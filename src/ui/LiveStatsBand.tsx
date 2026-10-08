@@ -45,6 +45,7 @@ import {
   findChartIndexByOffset,
   fullRollupsMissingStreamPrefix,
   MAX_PLOTTED_EMOTES,
+  mergeRecentRollupTail,
   PLOT_PICKER_EMOTE_LIMIT,
   prepareChartRollups,
   resolveChartCoverageStartSeconds,
@@ -52,6 +53,7 @@ import {
   type ChartTimelineWindow,
 } from './chatActivityEmotes.ts'
 import { downsampleRollupsForChart } from './extensionChartPoints.ts'
+import { momentStrength } from './momentStrength.ts'
 import {
   chartHighlightedGameKey,
   chartVisibleRangeFromRollups,
@@ -713,6 +715,17 @@ export function LiveStatsBand({
       chartPeakMarkerTotal: ranked.length,
     }
   }, [payload])
+  const featuredMoment = chartPeakMarkers[0]
+  // Validated full history only, so the pill never shows a recent-window
+  // number first and jumps once the full timeline arrives. The coverage marks
+  // viewer-only rows in missing chat ranges as unmeasured, not quiet.
+  const featuredStrength = useMemo(
+    () => (hasFullRollups && featuredMoment
+      ? momentStrength(mergeRecentRollupTail(payload.fullRollups ?? [], payload.rollups), featuredMoment, payload.coverage)
+      : null),
+    [featuredMoment, hasFullRollups, payload.coverage, payload.fullRollups, payload.rollups],
+  )
+  const featuredTime = featuredMoment ? formatHeatOffset(featuredMoment.offsetSeconds) : ''
 
   const chartRailRollups = useMemo(
     () => (hasFullRollups ? payload.fullRollups ?? [] : rollups),
@@ -1245,15 +1258,27 @@ export function LiveStatsBand({
         </div>
       </div>
 
-      {!demoMode && chartPeakMarkers[0] && onMomentSelect ? (
+      {!demoMode && featuredMoment && onMomentSelect ? (
         <button type="button" data-featured-moment="true" data-chart-action="true"
           // Same pairing SavedMoments uses: the chip styles already carry the
           // transition and accent hover, this button just never had the class.
           className="pulse-action-chip pulse-action-chip-primary"
           style={{ ...overlayGhostChipButton, display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', whiteSpace: 'normal' }}
-          onClick={() => onMomentSelect(chartPeakMarkers[0])}>
-          <span style={{ flex: 1 }}>Strongest loaded moment · {formatHeatOffset(chartPeakMarkers[0].offsetSeconds)}</span>
-          {chartPeakMarkers[0].topEmotes?.slice(0, 3).map(emote => <span key={emote.name} title={emote.name} style={{ width: 20, height: 20, overflow: 'hidden', flexShrink: 0 }}><PulseEmoteImg emote={emote} backendUrl={backendUrl} width={20} height={20} /></span>)}
+          title={featuredStrength ? `${featuredStrength.value} ${featuredStrength.emotes ? 'emotes' : 'chats'} in the minute at ${featuredTime}. The ${featuredStrength.minutes} measured minutes before it averaged ${featuredStrength.mean < 5 ? 'under 5' : Math.round(featuredStrength.mean)} a minute.` : undefined}
+          onClick={() => onMomentSelect(featuredMoment)}>
+          {featuredStrength ? (
+            // Two fixed-height lines inside the chip's 40px minimum, so the
+            // row never grows when the pill appears.
+            <span style={{ flex: 1 }} className="pulse-strength-two">
+              <span>Strongest loaded moment · {featuredTime}</span>
+              <span className="pulse-strength-line2">
+                <span className="pulse-strength-pill" data-lvl={featuredStrength.level}>{featuredStrength.label} usual</span>
+              </span>
+            </span>
+          ) : (
+            <span style={{ flex: 1 }}>Strongest loaded moment · {featuredTime}</span>
+          )}
+          {featuredMoment.topEmotes?.slice(0, 3).map(emote => <span key={emote.name} title={emote.name} style={{ width: 20, height: 20, overflow: 'hidden', flexShrink: 0 }}><PulseEmoteImg emote={emote} backendUrl={backendUrl} width={20} height={20} /></span>)}
           <span aria-hidden="true">→</span>
         </button>
       ) : null}

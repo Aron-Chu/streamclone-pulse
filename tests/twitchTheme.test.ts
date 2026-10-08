@@ -79,3 +79,43 @@ describe('light Twitch tab row', () => {
     expect(shadowStyles).toContain(':host([data-twitch-theme="light"]) .pulse-sidebar-header-tabs .pulse-sidebar-tab:focus-visible')
   })
 })
+
+describe('strength pill top step', () => {
+  const PALETTE_VARS: Record<string, keyof (typeof ACCENT_PALETTES)['aurora']> = {
+    '--pulse-accent': 'accent',
+    '--pulse-accent-strong': 'accentStrong',
+    '--pulse-accent-rgb': 'accentRgb',
+    '--pulse-accent-strong-rgb': 'accentStrongRgb',
+    '--pulse-accent-light-rgb': 'accentLightRgb',
+    '--pulse-on-accent': 'onAccent',
+  }
+  /** Resolves a solid `rgb(var(--x-rgb, …))`, `var(--x, #hex)` or `#hex` colour for one palette. */
+  const resolve = (value: string, palette: (typeof ACCENT_PALETTES)['aurora']): Rgb => {
+    const rgbVar = value.match(/^rgb\(var\((--[\w-]+)/)
+    if (rgbVar) return palette[PALETTE_VARS[rgbVar[1]]].split(',').map(Number) as Rgb
+    const hexVar = value.match(/^var\((--[\w-]+)/)
+    if (hexVar) return hex(palette[PALETTE_VARS[hexVar[1]]])
+    expect(value).toMatch(/^#[0-9a-f]{6}$/i)
+    return hex(value)
+  }
+  const rule = () => {
+    const rules = [...shadowStyles.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^}]*)\}/g)]
+      .filter(([, head]) => head.trim() === '.pulse-strength-pill[data-lvl="5"]')
+    expect(rules).toHaveLength(1)
+    return Object.fromEntries(rules[0][2].split(';').map(d => d.split(':').map(v => v.trim())).filter(([k, v]) => k && v))
+  }
+
+  it('fills with accentStrong under onAccent, as the design guide asks of solid text pills', () => {
+    const declared = rule()
+    expect(declared.background).toContain('--pulse-accent-strong-rgb')
+    expect(declared.color).toContain('--pulse-on-accent')
+  })
+
+  it('keeps its 9px label at AA text contrast for every accent', () => {
+    const declared = rule()
+    for (const [name, palette] of Object.entries(ACCENT_PALETTES)) {
+      const ratio = contrast(resolve(declared.color, palette), resolve(declared.background, palette))
+      expect(ratio, name).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+})
