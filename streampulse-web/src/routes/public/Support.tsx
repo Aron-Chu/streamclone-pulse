@@ -94,9 +94,10 @@ const COUNTER_FROM = SUPPORT_DESCRIPTION_MAX - 500
 
 /**
  * How long Send waits after a 429 that names no readable Retry-After. The
- * backend's limiter for this route counts per minute and its 429 carries no
- * Retry-After, and a cross-origin reply only exposes that header when CORS
- * lists it, so a missing value is the normal case, not an edge.
+ * backend's limiter for this route counts per minute; current backends send
+ * `Retry-After: 60` and list it in CORS, but older ones send none and a
+ * cross-origin reply only exposes the header when CORS lists it, so a missing
+ * value must still be handled.
  */
 const RATE_LIMIT_FALLBACK_MS = 60_000
 

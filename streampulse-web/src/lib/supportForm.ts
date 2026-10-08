@@ -263,8 +263,13 @@ export type SupportSendOutcome =
   | { kind: 'rejected'; field: 'message' | 'email' | null }
   | { kind: 'failed' }
 
-/** Backend codes that mean the hosted form is switched off or not configured — not worth retrying. */
-const UNAVAILABLE_CODES = new Set(['disabled', 'missing_turnstile_secret', 'missing_limiter', 'missing_store'])
+/**
+ * Backend codes that mean the hosted form is switched off or not configured — not
+ * worth retrying. `missing_delivery_adapter` is a backend with intake on but no
+ * ready email adapter: it refuses every case until an operator fixes it, so the
+ * reader gets the unavailable panel, not a "Try again" that can never succeed.
+ */
+const UNAVAILABLE_CODES = new Set(['disabled', 'missing_turnstile_secret', 'missing_limiter', 'missing_store', 'missing_delivery_adapter'])
 
 /** What a 2xx reply means: only a case ID the server returned counts as sent. */
 export function supportSuccessOutcome(body: unknown): SupportSendOutcome {
