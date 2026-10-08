@@ -152,6 +152,7 @@ describe('send outcomes', () => {
     [{ status: 503, code: 'missing_turnstile_secret' }, { kind: 'unavailable' }],
     [{ status: 503, code: 'missing_limiter' }, { kind: 'unavailable' }],
     [{ status: 503, code: 'missing_store' }, { kind: 'unavailable' }],
+    [{ status: 503, code: 'missing_delivery_adapter' }, { kind: 'unavailable' }],
     [{ status: 503, code: 'store_error' }, { kind: 'failed' }],
     [{ status: 502 }, { kind: 'failed' }],
     [{ status: 500, code: 'internal' }, { kind: 'failed' }],

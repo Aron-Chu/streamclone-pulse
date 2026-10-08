@@ -52,8 +52,9 @@ so `/support` shows the form as unavailable. Activation inputs are listed in
   an optional reply email, and the explicit consent checkbox; the contact-consent checkbox
   appears only when an email is entered (current consent behaviour, kept until the owner decides).
 - States: sending; sent with the server's `case_id` exactly as returned; could not send (text kept,
-  same key on retry); too many attempts (honours `Retry-After`); unavailable (hosted form off — keeps
-  the GitHub issue and safe-diagnostics paths). The Turnstile token is reset after every attempt.
+  same key on retry); too many attempts (honours `Retry-After`); unavailable (hosted form off or
+  not configured: `503` `disabled`, `missing_turnstile_secret`, `missing_limiter`, `missing_store`,
+  `missing_delivery_adapter` — keeps the GitHub issue and safe-diagnostics paths). The Turnstile token is reset after every attempt.
 - Retention stays **off** (`PULSE_SUPPORT_RETENTION_ENABLED=false`) until a duration is approved.
 
 **Forbidden attachments** in v1. No automatic screenshots, logs, cookies, or IDs.
