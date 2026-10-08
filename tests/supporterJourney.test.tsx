@@ -16,7 +16,7 @@ const ready = (status: string, extra: Partial<Extract<SupporterEntitlement, { st
 type Worker = {
   account: (action: SupporterAccountAction) => SupporterAccountState | Promise<SupporterAccountState> | Error
   entitlement: () => SupporterEntitlement | Promise<SupporterEntitlement> | Error
-  billing?: (action: string) => SupporterBillingState
+  billing?: (action: string) => SupporterBillingState | Promise<SupporterBillingState>
   restore?: (action: string, email?: string) => SupporterRestoreState | Promise<SupporterRestoreState>
   devices?: (action: string, deviceId?: string) => import('../src/shared/supporterAccount.ts').SupporterDevicesState
 }
@@ -35,7 +35,7 @@ async function mount(worker: Worker, onEntitlement?: (value: SupporterEntitlemen
       if (entitlement instanceof Error) throw entitlement
       return { type: 'SUPPORTER_ENTITLEMENT', entitlement }
     }
-    if (message.type === 'SUPPORTER_BILLING') return { type: 'SUPPORTER_BILLING', billing: worker.billing?.(message.action!) ?? { state: 'fallback' } }
+    if (message.type === 'SUPPORTER_BILLING') return { type: 'SUPPORTER_BILLING', billing: (await worker.billing?.(message.action!)) ?? { state: 'fallback' } }
     if (message.type === 'SUPPORTER_RESTORE' && worker.restore) return { type: 'SUPPORTER_RESTORE', restore: await worker.restore(message.action!, message.email) }
     if (message.type === 'SUPPORTER_DEVICES' && worker.devices) return { type: 'SUPPORTER_DEVICES', devices: worker.devices(message.action!, message.deviceId) }
     return undefined
@@ -748,6 +748,356 @@ describe('connection states', () => {
   })
 })
 
+/**
+ * The Account card closes the page, far below the card footer, so the outcome
+ * of an action taken there is reported there: in a live region that exists
+ * before the action, never only in the footer's status a screen away.
+ */
+describe('notices beside the action that caused them', () => {
+  const sections = (host: HTMLElement) => {
+    const account = [...host.querySelectorAll('section')].find(section => section.querySelector('h3')?.textContent === 'Account')!
+    return {
+      account,
+      accountStatus: () => account.querySelector<HTMLElement>('[role="status"][data-account-notice]'),
+      footer: () => host.querySelector<HTMLElement>('.pulse-journey-status')!.textContent ?? '',
+    }
+  }
+  const DISCONNECT_UNCONFIRMED = 'server revocation could not be confirmed'
+  const MANAGE_FAILED = 'Could not open membership management'
+
+  it.each([
+    ['returns an error', () => ({ state: 'error' }) as SupporterAccountState, DISCONNECT_UNCONFIRMED],
+    ['throws', () => new Error('worker gone'), 'Disconnect could not be confirmed'],
+  ] as const)('reports a disconnect that %s in the Account card, not the card footer', async (_name, failure, copy) => {
+    const view = await mount({ account: action => action === 'disconnect' ? failure() : linked, entitlement: () => ready('active', { accountKind: 'installation', installationAccountsEnabled: true }), billing: () => ({ state: 'idle' }) })
+    try {
+      const page = sections(view.host)
+      // The live region is there, empty, before anything happens.
+      expect(page.accountStatus()?.textContent).toBe('')
+      await view.click('Disconnect extension')
+      await view.click('Confirm disconnect')
+      expect(view.calls('SUPPORTER_ACCOUNT', 'disconnect')).toBe(1)
+      expect(page.accountStatus()?.textContent).toContain(copy)
+      expect(page.footer()).not.toContain(copy)
+    } finally { view.cleanup() }
+  })
+
+  it('reports a failed Manage billing in the Account card, and the footer’s own Manage membership in the footer', async () => {
+    const view = await mount({ account: () => linked, entitlement: () => ready('active', { installationAccountsEnabled: true }), billing: action => action === 'portal' ? { state: 'error' } : { state: 'idle' } })
+    try {
+      const page = sections(view.host)
+      await view.click('Manage billing ↗')
+      expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(1)
+      expect(page.accountStatus()?.textContent).toContain(MANAGE_FAILED)
+      expect(page.footer()).not.toContain(MANAGE_FAILED)
+
+      await view.click('Manage membership')
+      expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(2)
+      expect(page.footer()).toContain(MANAGE_FAILED)
+      expect(page.accountStatus()?.textContent).toBe('')
+    } finally { view.cleanup() }
+  })
+
+  it('keeps Manage billing enabled and focused while it opens, ignores a second press, and reports the failure beside it', async () => {
+    let answer: (billing: SupporterBillingState) => void = () => undefined
+    const view = await mount({ account: () => linked, entitlement: () => ready('active', { installationAccountsEnabled: true }), billing: action => action === 'portal' ? new Promise<SupporterBillingState>(resolve => { answer = resolve }) : { state: 'idle' } })
+    try {
+      const page = sections(view.host)
+      const manage = [...page.account.querySelectorAll('button')].find(button => button.textContent === 'Manage billing ↗')!
+      manage.focus()
+      await act(async () => manage.click())
+      // While the request is open: still enabled (a disabled button drops focus), marked busy, and a second press does nothing.
+      expect(manage.disabled).toBe(false)
+      expect(manage.getAttribute('aria-busy')).toBe('true')
+      expect(document.activeElement).toBe(manage)
+      await act(async () => manage.click())
+      expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(1)
+      await act(async () => answer({ state: 'error' }))
+      expect(manage.hasAttribute('aria-busy')).toBe(false)
+      expect(document.activeElement).toBe(manage)
+      // The failure is stated in the Account card that holds the button.
+      expect(page.accountStatus()?.textContent).toContain(MANAGE_FAILED)
+      expect(manage.closest('section')).toBe(page.accountStatus()?.closest('section'))
+      expect(page.footer()).not.toContain(MANAGE_FAILED)
+    } finally { view.cleanup() }
+  })
+
+  it('reports a peer revoke in the Account card that lists the connections', async () => {
+    const peer = '55555555-5555-4555-8555-555555555555'
+    const view = await mount({ account: () => linked, entitlement: () => ready('active', { accountKind: 'installation', installationAccountsEnabled: true }), devices: action => action === 'revoke' ? { state: 'error' } : { state: 'ready', currentDeviceId: ACCOUNT_ID, devices: [{ id: ACCOUNT_ID, label: 'Chrome extension', createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 900_000).toISOString() }, { id: peer, label: 'Chrome extension', createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 900_000).toISOString() }] } })
+    try {
+      const page = sections(view.host)
+      const details = view.host.querySelector('details')!
+      await act(async () => { details.open = true; details.dispatchEvent(new Event('toggle')) })
+      await view.click('Revoke connection')
+      await view.click('Confirm revoke')
+      expect(page.accountStatus()?.textContent).toContain('Could not revoke that connection')
+      expect(page.footer()).not.toContain('Could not revoke')
+    } finally { view.cleanup() }
+  })
+
+  it('keeps a retry from the footer’s pending revocation in the footer', async () => {
+    const view = await mount({ account: () => ({ state: 'error', revocationPending: true }), entitlement: () => ({ state: 'not_linked' }) })
+    try {
+      const page = sections(view.host)
+      await view.click('Retry disconnect')
+      expect(page.footer()).toContain(DISCONNECT_UNCONFIRMED)
+      expect(page.accountStatus()?.textContent).toBe('')
+    } finally { view.cleanup() }
+  })
+})
+
+describe('the offer names what the banner sells', () => {
+  // The settings banner sells three perks: title paint, the tenure crest and
+  // emote rain. The "You get" line above the purchase button names each one.
+  it.each([
+    ['signed out', () => ({ state: 'signed_out' }) as SupporterAccountState, () => ({ state: 'not_linked' }) as SupporterEntitlement],
+    ['linked without a membership', () => linked, () => ready('none')],
+  ] as const)('lists title paint, the tenure crest and emote rain when %s', async (_name, account, entitlement) => {
+    const view = await mount({ account, entitlement, billing: () => ({ state: 'idle' }) })
+    try {
+      const youGet = [...view.host.querySelectorAll('.pulse-supporter-detail')].find(line => line.querySelector('b')?.textContent === 'You get')?.textContent ?? ''
+      expect(youGet).toMatch(/header accent/)
+      expect(youGet).toMatch(/accent finishes/)
+      expect(youGet).toMatch(/tenure crest beside your panel title that grows with your support/)
+      expect(youGet).toMatch(/emote rain behind your Pulse panel/)
+      expect(youGet).not.toMatch(/signature/i)
+    } finally { view.cleanup() }
+  })
+})
+
+describe('the price comes before the button that buys it', () => {
+  // Reading and Tab order follow the DOM: a screen-reader or keyboard user must
+  // hear the price and that it renews monthly before reaching the purchase
+  // button, and at narrow widths the price sits above it.
+  it.each<[string, () => SupporterAccountState, () => SupporterEntitlement, string]>([
+    ['unlinked', () => ({ state: 'signed_out' }), () => ({ state: 'not_linked' }), 'Become a Supporter'],
+    ['offer', () => linked, () => ready('none', { installationAccountsEnabled: true }), 'Become a Supporter'],
+    ['offer', () => linked, () => ready('none'), 'Continue to checkout'],
+    ['checkout-closed', () => linked, () => ready('none', { checkoutEnabled: false }), 'Check sign-up status'],
+    ['expired', () => linked, () => ready('expired'), 'Rejoin Supporter'],
+  ])('in the %s state, before "%s"', async (state, account, entitlement, label) => {
+    const view = await mount({ account, entitlement })
+    try {
+      expect(view.state()).toBe(state)
+      const primary = view.host.querySelector<HTMLElement>('.pulse-journey-primary')!
+      expect(primary.textContent).toBe(label)
+      const terms = view.host.querySelector<HTMLElement>('.pulse-supporter-terms')!
+      expect(terms.textContent).toContain('US$4.99 / month')
+      expect(terms.textContent).toContain('renews monthly until you cancel')
+      const youGet = [...view.host.querySelectorAll('.pulse-supporter-detail')].find(line => line.querySelector('b')?.textContent === 'You get')!
+      for (const line of [terms, youGet]) expect(line.compareDocumentPosition(primary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      // Beside the button's own column, not after the row that holds it.
+      expect(terms.closest('.pulse-journey-main')).not.toBeNull()
+    } finally { view.cleanup() }
+  })
+})
+
+describe('Your card is a headed section', () => {
+  // Pressing H from the page's h2 must stop at the card, before its name,
+  // ladder, status and action, not skip to "Who sees what" below it.
+  it.each<[string, () => SupporterAccountState, () => SupporterEntitlement, string, string]>([
+    ['unlinked', () => ({ state: 'signed_out' }), () => ({ state: 'not_linked' }), 'Become a Pulse Supporter', 'Become a Supporter'],
+    ['grace', () => linked, () => ready('grace', { accessUntil: '2026-10-19T12:00:00Z' }), 'Payment needs attention', 'Update payment method'],
+  ])('in the %s state', async (_state, account, entitlement, title, action) => {
+    const view = await mount({ account, entitlement })
+    try {
+      const section = view.host.querySelector<HTMLElement>('section.pulse-supporter-card')!
+      const headings = [...section.querySelectorAll('h1, h2, h3, h4, h5, h6, [role="heading"]')]
+      expect(headings.map(heading => `${heading.tagName} ${heading.textContent}`)).toEqual(['H3 Your Supporter card'])
+      const [heading] = headings
+      expect(section.getAttribute('aria-labelledby')).toBe(heading.id)
+      expect(heading.id).not.toBe('')
+      expect(document.getElementById(heading.id)).toBe(heading)
+      const status = section.querySelector('.pulse-journey-status')!
+      expect(status.textContent).toContain(title)
+      const primary = section.querySelector<HTMLElement>('.pulse-journey-primary')!
+      expect(primary.textContent).toBe(action)
+      for (const after of [section.querySelector('.pulse-supporter-card-who')!, section.querySelector('.pulse-supporter-ladder')!, status, primary]) {
+        expect(heading.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      }
+    } finally { view.cleanup() }
+  })
+})
+
+const PERKS = ['supporter.banner.v1', 'supporter.finish.v1']
+const HALO = { enabled: true, finish: 'halo' } as const
+function card(host: HTMLElement) {
+  const root = host.querySelector<HTMLElement>('.pulse-supporter-card')!
+  return {
+    root,
+    name: () => root.querySelector<HTMLElement>('.pulse-supporter-card-who strong')!,
+    sub: () => root.querySelector('.pulse-supporter-card-who > span')?.textContent ?? '',
+    avatar: () => root.querySelector('.pulse-supporter-card-avatar')?.getAttribute('data-identity'),
+    sample: () => root.querySelector('.pulse-supporter-card-sample') !== null,
+    steps: () => [...root.querySelectorAll<HTMLElement>('.pulse-supporter-ladder li')].map(step => step.dataset.step),
+    next: () => root.querySelector('.pulse-supporter-ladder-next')?.textContent ?? '',
+  }
+}
+const accountRow = (host: HTMLElement) => host.querySelector('[data-row="account"] dd')?.textContent ?? ''
+
+describe('Your card while the account is unknown', () => {
+  it('claims neither an account nor sign-out before the account reply, then names the account', async () => {
+    let answer!: (value: SupporterAccountState) => void
+    const reply = new Promise<SupporterAccountState>(resolve => { answer = resolve })
+    const view = await mount({ account: () => reply, entitlement: () => ready('active', { features: PERKS, cosmetics: HALO }) })
+    try {
+      const yours = card(view.host)
+      expect(view.state()).toBe('loading')
+      expect(yours.name().textContent).toBe('Checking your account…')
+      expect(yours.avatar()).toBe('unknown')
+      // The server-confirmed membership is stated, but nothing paints a status line as a name.
+      expect(yours.name().querySelector('.pulse-paint, .pulse-crest')).toBeNull()
+      expect(accountRow(view.host)).toContain('Checking the connection…')
+      expect(view.text()).not.toContain('Not signed in')
+      expect(view.text()).not.toContain('Free tools work without')
+      expect(view.buttons()).not.toContain('Disconnect extension')
+      await act(async () => answer(linked))
+      expect(yours.name().textContent).toBe(accountReference(ACCOUNT_ID))
+      expect(yours.avatar()).toBe('pulse')
+      expect(yours.name().querySelector('.pulse-paint')?.getAttribute('data-text')).toBe(accountReference(ACCOUNT_ID))
+      expect(accountRow(view.host)).toContain('Connected to this extension')
+    } finally { view.cleanup() }
+  })
+
+  it('says the account is unavailable, unpainted, when the account read fails but membership is active', async () => {
+    const view = await mount({ account: () => new Error('worker asleep'), entitlement: () => ready('active', { features: PERKS, cosmetics: HALO }) })
+    try {
+      const yours = card(view.host)
+      expect(view.state()).toBe('account-unavailable')
+      expect(yours.name().textContent).toBe('Account unavailable')
+      expect(yours.avatar()).toBe('unknown')
+      expect(yours.name().querySelector('.pulse-paint, .pulse-crest')).toBeNull()
+      expect(yours.sub()).not.toContain('Free tools work without')
+      expect(accountRow(view.host)).toContain('Connection status unavailable')
+      expect(view.text()).not.toContain('Not signed in')
+    } finally { view.cleanup() }
+  })
+
+  it.each<[string, SupporterAccountState]>([
+    ['an account error', { state: 'error' }],
+    ['a pending revocation', { state: 'error', revocationPending: true }],
+    ['an unreachable account service', { state: 'unavailable', reason: 'temporarily_unavailable' }],
+  ])('stays neutral for %s', async (_label, account) => {
+    const view = await mount({ account: () => account, entitlement: () => ({ state: 'not_linked' }) })
+    try {
+      const yours = card(view.host)
+      expect(yours.name().textContent).toBe('Account unavailable')
+      expect(yours.avatar()).toBe('unknown')
+      expect(yours.sub()).toBe('Your free tools still work.')
+      expect(accountRow(view.host)).toContain('Connection status unavailable')
+      expect(view.text()).not.toContain('Not signed in')
+    } finally { view.cleanup() }
+  })
+
+  it.each<SupporterAccountState>([
+    { state: 'signed_out' },
+    { state: 'denied' },
+    { state: 'expired' },
+    { state: 'relink_required' },
+    { state: 'unavailable', reason: 'not_deployed' },
+  ])('says Not signed in only when the account state is known: %o', async account => {
+    const view = await mount({ account: () => account, entitlement: () => ({ state: 'not_linked' }) })
+    try {
+      const yours = card(view.host)
+      expect(yours.name().textContent).toBe('Not signed in')
+      expect(yours.avatar()).toBe('none')
+      expect(yours.sub()).toBe('Free tools work without an account.')
+      expect(accountRow(view.host)).toContain('Not signed in')
+    } finally { view.cleanup() }
+  })
+})
+
+describe('Your card states only the membership it knows', () => {
+  const NEUTRAL_LADDER = ['off', 'off', 'off', 'off', 'off']
+  const NEUTRAL_NEXT = 'A crest starts at New and grows at 3, 6, 12 and 24 months.'
+
+  it('says it is checking, not "not a Supporter yet", while a linked account waits for the membership read', async () => {
+    let answer!: (value: SupporterEntitlement) => void
+    const reply = new Promise<SupporterEntitlement>(resolve => { answer = resolve })
+    const view = await mount({ account: () => linked, entitlement: () => reply })
+    try {
+      const yours = card(view.host)
+      expect(view.state()).toBe('membership-loading')
+      expect(yours.name().textContent).toBe(accountReference(ACCOUNT_ID))
+      expect(yours.sub()).toBe('StreamPulse account · checking membership…')
+      expect(yours.sample()).toBe(false)
+      expect(yours.steps()).toEqual(NEUTRAL_LADDER)
+      expect(yours.next()).toBe(NEUTRAL_NEXT)
+      expect(view.text()).not.toContain('not a Supporter yet')
+      await act(async () => answer(ready('active', { supportPeriods: 7, features: PERKS, cosmetics: HALO })))
+      expect(yours.sub()).toBe('Pulse Supporter · 7 months')
+      expect(yours.steps()).toEqual(['past', 'past', 'current', 'off', 'off'])
+    } finally { view.cleanup() }
+  })
+
+  it('treats a linked account still reported as not linked as checking', async () => {
+    const view = await mount({ account: () => linked, entitlement: () => ({ state: 'not_linked' }) })
+    try {
+      expect(card(view.host).sub()).toBe('StreamPulse account · checking membership…')
+      expect(card(view.host).sample()).toBe(false)
+    } finally { view.cleanup() }
+  })
+
+  it.each<[string, SupporterEntitlement | Error]>([
+    ['an error', { state: 'error' }],
+    ['a temporarily unavailable service', { state: 'unavailable', reason: 'temporarily_unavailable' }],
+    ['Supporter not deployed', { state: 'unavailable', reason: 'not_deployed' }],
+    ['a thrown read', new Error('worker gone')],
+  ])('says the membership is unavailable after %s, matching the footer', async (_label, entitlement) => {
+    const view = await mount({ account: () => linked, entitlement: () => entitlement })
+    try {
+      const yours = card(view.host)
+      expect(view.state()).toBe('membership-unknown')
+      expect(yours.sub()).toBe('StreamPulse account · membership status unavailable')
+      expect(yours.sample()).toBe(false)
+      expect(yours.steps()).toEqual(NEUTRAL_LADDER)
+      expect(yours.next()).toBe(NEUTRAL_NEXT)
+      expect(view.text()).not.toContain('not a Supporter yet')
+    } finally { view.cleanup() }
+  })
+
+  it('claims nothing about membership before the account answers', async () => {
+    const view = await mount({ account: () => new Promise<SupporterAccountState>(() => {}), entitlement: () => new Promise<SupporterEntitlement>(() => {}) })
+    try {
+      const yours = card(view.host)
+      expect(yours.name().textContent).toBe('Checking your account…')
+      expect(yours.sub()).toBe('Your free tools still work.')
+      expect(yours.sample()).toBe(false)
+      expect(yours.steps()).toEqual(NEUTRAL_LADDER)
+      expect(view.text()).not.toMatch(/not a Supporter yet|Not signed in|Free tools work without/)
+    } finally { view.cleanup() }
+  })
+
+  it('names a membership under review and holds the crest it earned', async () => {
+    const view = await mount({ account: () => linked, entitlement: () => ready('review', { supportPeriods: 13, features: PERKS, cosmetics: HALO }) })
+    try {
+      const yours = card(view.host)
+      expect(view.state()).toBe('review')
+      expect(yours.sub()).toBe('StreamPulse account · membership needs review')
+      expect(yours.steps()).toEqual(['past', 'past', 'past', 'current', 'off'])
+      expect(yours.next()).toBe('Year-one crest earned · on hold while your membership is reviewed')
+      expect(view.text()).not.toContain('not a Supporter yet')
+      expect(view.text()).not.toContain('Your crest starts at New')
+    } finally { view.cleanup() }
+  })
+
+  it.each<[string, SupporterEntitlement, string]>([
+    ['pending', ready('pending', { supportPeriods: 0 }), 'StreamPulse account · payment confirming'],
+    ['none', ready('none'), 'StreamPulse account · not a Supporter yet'],
+    ['expired', ready('expired'), 'StreamPulse account · Supporter ended'],
+  ])('states a known %s membership as the server reports it', async (_status, entitlement, line) => {
+    const view = await mount({ account: () => linked, entitlement: () => entitlement })
+    try {
+      const yours = card(view.host)
+      expect(yours.sub()).toBe(line)
+      expect(yours.sample()).toBe(true)
+      expect(yours.steps()).toEqual(['start', 'off', 'off', 'off', 'off'])
+      expect(yours.next()).toBe('Your crest starts at New and grows at 3, 6, 12 and 24 months.')
+    } finally { view.cleanup() }
+  })
+})
+
 describe('change signals and stale reads', () => {
   it('re-reads quietly on a projection signal and ignores unrelated storage changes', async () => {
     let entitlement: SupporterEntitlement = ready('none')
@@ -763,17 +1113,39 @@ describe('change signals and stale reads', () => {
     expect(view.listeners.size).toBe(0)
   })
 
-  it('keeps the last confirmed status on a failed quiet read, but never hands it to paid controls', async () => {
-    let entitlement: SupporterEntitlement | Error = ready('active', { features: ['supporter.banner.v1', 'supporter.finish.v1'] })
+  it.each<[string, () => SupporterEntitlement | Error]>([
+    ['a thrown read', () => new Error('offline')],
+    ['an error', () => ({ state: 'error' })],
+    ['a temporarily unavailable service', () => ({ state: 'unavailable', reason: 'temporarily_unavailable' })],
+  ])('keeps the last confirmed status and look after %s on a quiet read, but never hands it to paid controls', async (_label, failure) => {
+    let entitlement: SupporterEntitlement | Error = ready('active', { features: PERKS, cosmetics: HALO })
     const onEntitlement = vi.fn()
     const view = await mount({ account: () => linked, entitlement: () => entitlement }, onEntitlement)
     try {
       expect(onEntitlement).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'active' }))
-      entitlement = new Error('offline')
+      entitlement = failure()
       await view.change({ pulseSupporterRevision: { newValue: 'changed' } })
       expect(view.state()).toBe('active')
       expect(view.host.querySelector('[data-journey-stale="true"]')).not.toBeNull()
       expect(onEntitlement).toHaveBeenLastCalledWith(null)
+      // The card still wears the confirmed look: no sample tag, the paint and crest stay.
+      const yours = card(view.host)
+      expect(yours.root.dataset.supporterCard).toBe('own')
+      expect(yours.sample()).toBe(false)
+      expect(yours.name().querySelector('.pulse-paint')?.getAttribute('data-finish')).toBe('halo')
+      expect(yours.name().querySelector('.pulse-crest')).not.toBeNull()
+      expect(yours.root.style.getPropertyValue('--spk-fin')).toBe('#e6a9d6')
+      expect(yours.sub()).toBe('Pulse Supporter · 2 months')
+    } finally { view.cleanup() }
+  })
+
+  it('never tags a Supporter’s card as a sample, even when the server withholds the look', async () => {
+    const view = await mount({ account: () => linked, entitlement: () => ready('active', { features: [] }) })
+    try {
+      const yours = card(view.host)
+      expect(yours.sub()).toBe('Pulse Supporter · 2 months')
+      expect(yours.sample()).toBe(false)
+      expect(yours.name().querySelector('.pulse-paint')).toBeNull()
     } finally { view.cleanup() }
   })
 

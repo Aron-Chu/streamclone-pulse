@@ -309,8 +309,8 @@ function ChannelHeader({ channel, name }: { channel: QuickSettingsChannel; name:
 
 /**
  * The Supporter entry, with the design lab's "Your Line" card: Anatomy for
- * someone who is not a Supporter (their would-be line, with hover labels for
- * the crest, the paint and the signature emote), and Tenure Climb for a
+ * someone who is not a Supporter (their would-be line, with its crest and
+ * paint), and Tenure Climb for a
  * verified Supporter, whatever their finish, climbing to the crest the server
  * reports. No price, no purchase wording.
  */
@@ -330,7 +330,7 @@ export function SupporterHero({ appearance, disabled, onOpen }: { appearance: Su
         <strong>Pulse Supporter</strong>
         <span>{appearance ? 'Manage Supporter' : 'Explore Supporter'} <span aria-hidden="true">›</span></span>
       </span>
-      <small>{appearance ? 'A crest that levels up the longer you support. Only you see it. Core tools stay free.' : 'Your crest, paint and emote on your line. Only you see them. Core tools stay free.'}</small>
+      <small>{appearance ? 'A crest that levels up the longer you support. Only you see it. Core tools stay free.' : 'Your crest and paint on your line. Only you see them. Core tools stay free.'}</small>
       <SupporterCardStage mode={appearance ? 'tenure' : 'anatomy'} tenure={appearance?.tenure} finish={finish} paint={appearance?.paint} />
     </button>
   )

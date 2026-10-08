@@ -84,9 +84,10 @@ afterEach(() => {
 })
 
 const youImages = (stage: HTMLElement) => [...stage.querySelectorAll<HTMLImageElement>('.spk-you img')].map(img => img.src)
+const chips = (banner: HTMLElement) => [...banner.querySelectorAll('.pulse-settings-supporter-perk')].map(chip => chip.textContent)
 
-describe('full-settings Supporter banner: Emote Pile · Crown', () => {
-  it('renders the Crown for a non-Supporter with the lab’s sample kit, its copy and the way to the benefits', async () => {
+describe('full-settings Supporter banner: Crown, staged', () => {
+  it('renders the staged Crown for a non-Supporter: the sample kit, the price, three perk chips and the way to the benefits', async () => {
     stubExtension(NON_SUPPORTER)
     const onPerks = vi.fn()
     const onOpen = vi.fn()
@@ -96,23 +97,35 @@ describe('full-settings Supporter banner: Emote Pile · Crown', () => {
     expect(view.stage().dataset.mode).toBe('crown')
     expect(view.stage().getAttribute('aria-hidden')).toBe('true')
     expect(view.stage().dataset.running).toBe('true')
-    expect(view.banner().querySelector('strong')?.textContent).toBe('Pulse Supporter')
-    expect(view.banner().querySelector('small')?.textContent).toBe('Your signature emote lands on top, crest and all. Only you see it. Core Pulse tools stay free.')
+    expect(view.banner().querySelector('.pulse-settings-supporter-banner-eyebrow')?.textContent).toBe('Pulse Supporter· US$4.99/mo')
+    expect(view.banner().querySelector('strong')?.textContent).toBe('Your crest lands on top')
+    expect(chips(view.banner())).toEqual(['Title paint', 'Tenure crest', 'Emote rain'])
+    expect(view.banner().querySelector('[data-perk="crest"] .pulse-crest')?.getAttribute('data-tenure')).toBe('12m')
+    expect(view.banner().querySelector('small')?.textContent).toBe('Only you see them. Core tools stay free.')
+    expect(view.banner().textContent).not.toMatch(/signature/i)
     expect(view.banner().querySelector('.pulse-settings-supporter-banner-arrow')?.textContent).toBe('View benefits →')
     expect(view.banner().style.getPropertyValue('--spk-fin')).toBe('#efc96a')
     runFrames(1)
-    // The lab builds nine chat emotes and one signature emote into a settled pile.
+    // The lab builds nine chat emotes and one of yours into a settled pile. Yours is your crest, not an emote.
     expect(view.stage().querySelectorAll('.spk-body')).toHaveLength(10)
-    expect(youImages(view.stage())).toEqual(['https://cdn.7tv.app/emote/01GAFTZ9K80003DHH026MC7JW0/2x.webp'])
-    expect(view.stage().querySelector('.spk-you .spk-crest')?.getAttribute('data-tenure')).toBe('12m')
+    expect(youImages(view.stage())).toEqual([])
+    const you = view.stage().querySelector<HTMLElement>('.spk-you')!
+    expect(you.querySelector('.spk-crest')?.getAttribute('data-tenure')).toBe('12m')
+    // The sample crest's frame is drawn in the sample's Etched paint.
+    expect(you.querySelector('.spk-crest polygon')?.getAttribute('stroke')).toBe('#efc96a')
+    // A small "you" tag rides above it.
+    const tag = view.stage().querySelector<HTMLElement>('.spk-tag')!
+    expect(tag.textContent).toBe('you')
+    expect(tag.style.opacity).toBe('1')
     runFrames(600)
     const bodies = view.stage().querySelectorAll('.spk-body')
     expect(bodies.length).toBeGreaterThan(10)
-    expect(bodies.length).toBeLessThanOrEqual(26 + 2)
+    // Staged keeps fewer bodies on screen than the lab's 26.
+    expect(bodies.length).toBeLessThanOrEqual(22 + 2)
     for (const img of view.stage().querySelectorAll('img')) {
       expect(img.src).toMatch(/^https:\/\/(static-cdn\.jtvnw\.net\/emoticons\/v2\/\d+\/default\/dark\/2\.0|cdn\.7tv\.app\/emote\/[0-9A-Z]+\/2x\.webp)$/)
     }
-    // Hover shakes the pile and drops a signature emote in; a click opens the benefits.
+    // Hover shakes the pile and drops your crest in; a click opens the benefits.
     const yours = view.stage().querySelectorAll('.spk-you').length
     view.banner().dispatchEvent(new Event('pointerenter'))
     expect(view.stage().querySelectorAll('.spk-you').length).toBeGreaterThan(Math.min(yours, 2) - 1)
@@ -122,42 +135,75 @@ describe('full-settings Supporter banner: Emote Pile · Crown', () => {
     expect(frames).toHaveLength(0)
   })
 
-  it('crowns the pile with a Supporter’s own signature emote, glowing in their paint, with their crest on top', async () => {
+  it('crowns the pile with a Supporter’s own crest in their paint, and names their kit', async () => {
     stubExtension(SUPPORTER)
-    stored = { supporterSignatureEmote: 'wideReacting' }
     const view = await mount(<SupporterBanner onOpen={() => {}} />)
     expect(view.banner().dataset.supporterKit).toBe('own')
     expect(view.banner().style.getPropertyValue('--spk-fin')).toBe('#e6a9d6')
+    expect(view.banner().querySelector('.pulse-settings-supporter-banner-eyebrow')?.textContent).toBe('Your kit')
+    expect(view.banner().querySelector('strong')?.textContent).toBe('Yours lands on top')
+    expect(chips(view.banner())).toEqual(['Halo paint', 'Year-one crest', 'Emote rain'])
+    expect(view.banner().textContent).not.toContain('4.99')
     runFrames(1)
-    expect(youImages(view.stage())).toEqual(['https://cdn.7tv.app/emote/01HMM8VG3R0007GXBD883VP2YY/2x.webp'])
+    expect(youImages(view.stage())).toEqual([])
     const you = view.stage().querySelector<HTMLElement>('.spk-you')!
     expect(you.querySelector('.spk-crest')?.getAttribute('data-tenure')).toBe('12m')
-    // The crest's frame is drawn in the Halo paint.
+    // The crest's frame is drawn in the Halo paint, and the tag's "you" wears their real paint.
     expect(you.querySelector('.spk-crest polygon')?.getAttribute('stroke')).toBe('#e6a9d6')
-    // A wide signature emote keeps the lab's crown size, as an ellipse as wide as the emote.
-    expect(parseFloat(you.style.width) / parseFloat(you.style.height)).toBeCloseTo(3.3, 1)
+    expect(view.stage().querySelector<HTMLElement>('.spk-tag .pulse-paint')?.dataset).toMatchObject({ finish: 'halo', wave: 'chrome', sheen: 'glint', text: 'you' })
+    // A crest stays nearly upright, like a wide emote, so it reads.
+    const angle = Number(/rotate\(([-\d.]+)deg\)/.exec(you.querySelector<HTMLElement>('.spk-inner')!.style.transform)![1])
+    expect(Math.abs(angle)).toBeLessThanOrEqual(20)
     view.unmount()
   })
 
-  it('gives a Supporter who never picked one the default wideSpeedLaugh4, and a Supporter without a finish the Peak teal', async () => {
+  it('gives a Supporter without a finish the Peak teal, their own crest and a default paint chip', async () => {
     stubExtension(PLAIN_SUPPORTER)
     const view = await mount(<SupporterBanner onOpen={() => {}} />)
     expect(view.banner().dataset.supporterKit).toBe('own')
     expect(view.banner().style.getPropertyValue('--spk-fin')).toBe('#2dd4bf')
+    expect(chips(view.banner())).toEqual(['Default paint', 'Signal set', 'Emote rain'])
     runFrames(1)
-    expect(youImages(view.stage())).toEqual(['https://cdn.7tv.app/emote/01J7VZYB08000E8DPG2XYMKQYR/2x.webp'])
     expect(view.stage().querySelector('.spk-you .spk-crest')?.getAttribute('data-tenure')).toBe('3m')
+    expect(view.stage().querySelector('.spk-tag .spk-name')?.className).toBe('spk-name')
     view.unmount()
   })
 
-  it('never shows a stored signature emote without Supporter perks', async () => {
+  it('runs calmer than the lab: the first peak at 8 s, then one every 28 to 36 s, each swelling the glow for a moment', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     stubExtension(NON_SUPPORTER)
-    stored = { supporterSignatureEmote: 'PartyParrot' }
     const view = await mount(<SupporterBanner onOpen={() => {}} />)
-    runFrames(300)
-    expect(view.banner().dataset.supporterKit).toBe('sample')
-    expect(view.stage().querySelector('img[src*="01FKSDK14G0008TM5NY9QEG0QV"]')).toBeNull()
+    runFrames(150)
+    expect(view.stage().dataset.peaks).toBeUndefined()
+    runFrames(20)
+    expect(view.stage().dataset.peaks).toBe('1')
+    expect(view.stage().dataset.glow).toBe('peak')
+    await act(async () => { vi.advanceTimersByTime(1500) })
+    expect(view.stage().dataset.glow).toBeUndefined()
+    // 35 s in, still only the first peak; by 45 s the second.
+    runFrames(530)
+    expect(view.stage().dataset.peaks).toBe('1')
+    runFrames(200)
+    expect(view.stage().dataset.peaks).toBe('2')
+    const stage = view.stage()
+    expect(stage.dataset.glow).toBe('peak')
     view.unmount()
+    // Stopping the pile drops a glow that was still swollen.
+    expect(stage.dataset.glow).toBeUndefined()
+  })
+
+  it('never reads or shows an emote stored by the dropped signature perk', async () => {
+    for (const appearance of [NON_SUPPORTER, SUPPORTER]) {
+      resetSupporterAppearanceForTests()
+      stubExtension(appearance)
+      stored = { supporterSignatureEmote: 'PartyParrot' }
+      const view = await mount(<SupporterBanner onOpen={() => {}} />)
+      runFrames(300)
+      expect(view.stage().querySelector('img[src*="01FKSDK14G0008TM5NY9QEG0QV"]')).toBeNull()
+      expect((chrome.storage.sync.get as ReturnType<typeof vi.fn>).mock.calls.flat()).not.toContain('supporterSignatureEmote')
+      expect(stored).toEqual({ supporterSignatureEmote: 'PartyParrot' })
+      view.unmount()
+    }
   })
 
   it('pauses in a hidden tab and offscreen, and resumes when shown', async () => {
@@ -180,7 +226,6 @@ describe('full-settings Supporter banner: Emote Pile · Crown', () => {
 
   it('draws one settled still pile from static images under reduced motion and never schedules a frame', async () => {
     stubExtension(SUPPORTER, true)
-    stored = { supporterSignatureEmote: 'PETPET' }
     const view = await mount(<SupporterBanner onOpen={() => {}} />)
     expect(view.stage().dataset.still).toBe('true')
     expect(view.stage().dataset.running).toBe('false')
@@ -193,7 +238,9 @@ describe('full-settings Supporter banner: Emote Pile · Crown', () => {
       expect(y + parseFloat(body.style.height)).toBeLessThanOrEqual(111)
       expect(y).toBeGreaterThan(-20)
     }
-    expect(youImages(view.stage()).every(src => src === 'https://cdn.7tv.app/emote/01FE3XY508000AA32JP519W2EW/2x_static.webp')).toBe(true)
+    expect(youImages(view.stage())).toEqual([])
+    expect(view.stage().querySelector('.spk-you .spk-crest')?.getAttribute('data-tenure')).toBe('12m')
+    expect(view.stage().querySelector<HTMLElement>('.spk-tag')?.style.opacity).toBe('1')
     expect([...view.stage().querySelectorAll<HTMLImageElement>('img')].filter(img => img.src.includes('cdn.7tv.app')).every(img => img.src.endsWith('/2x_static.webp'))).toBe(true)
     view.banner().dispatchEvent(new Event('pointerenter'))
     expect(view.stage().querySelectorAll('.spk-body')).toHaveLength(bodies.length)

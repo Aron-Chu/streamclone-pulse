@@ -99,7 +99,7 @@ describe('PulseSettingsPanel quick workspace', () => {
   it('gives everyone else the lab’s Your Line · Anatomy copy and an empty stage the card script fills, with no emotes in this bundle', () => {
     const html = renderToStaticMarkup(<SupporterHero appearance={null} onOpen={() => {}} />)
     expect(html).toContain('Explore Supporter')
-    expect(html).toContain('<small>Your crest, paint and emote on your line. Only you see them. Core tools stay free.</small>')
+    expect(html).toContain('<small>Your crest and paint on your line. Only you see them. Core tools stay free.</small>')
     expect(html).toContain('<span class="pulse-supporter-stage" aria-hidden="true"></span>')
     expect(html).not.toContain('<img')
     expect(html).not.toContain('cdn.7tv.app')

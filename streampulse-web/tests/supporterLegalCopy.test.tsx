@@ -96,6 +96,16 @@ describe('Supporter legal copy', () => {
     expect(body).toMatch(/active for up to 72 hours after the paid period ends/)
   })
 
+  it('Supporter lists the three perks the extension sells: title paint, the tenure crest and emote rain', () => {
+    render(<MemoryRouter><Supporter /></MemoryRouter>)
+    const list = screen.getByRole('heading', { name: 'What Supporter includes' }).nextElementSibling!
+    const items = [...list.querySelectorAll('li')].map(item => item.textContent ?? '')
+    expect(items.some(item => /header accent/.test(item))).toBe(true)
+    expect(items.some(item => /tenure crest beside your Pulse panel title that grows with your support/.test(item))).toBe(true)
+    expect(items.some(item => /^Emote rain/.test(item))).toBe(true)
+    expect(items.join(' ')).not.toMatch(/signature/i)
+  })
+
   it('Privacy keeps the privacy mailbox and describes the account cookies on the portal origin', () => {
     render(<MemoryRouter><Privacy /></MemoryRouter>)
     expect(screen.getByTestId('privacy-contact').querySelector('a[href="mailto:privacy@streampulse.stream"]')).toBeTruthy()

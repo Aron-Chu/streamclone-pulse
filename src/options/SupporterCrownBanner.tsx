@@ -1,22 +1,23 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { sendBackgroundMessage } from '../content/bridge.ts'
 import { mountEmotePile } from '../supporter/emotePile.ts'
-import { SAMPLE_KIT, finishVars, type Kit } from '../supporter/kit.ts'
+import { FINISHES, SAMPLE_KIT, TENURES, finishVars, kitEmoteSrc, tenureIndex, type Kit } from '../supporter/kit.ts'
 import { PeakMark } from '../ui/PeakMark.tsx'
 import { useSupporterAppearanceDetails } from '../ui/useSupporterAppearance.ts'
-import { useSignatureEmote } from './useSignatureEmote.ts'
 
-/** The lab's Crown copy (`wide`), saying who sees it. */
-export const CROWN_COPY = 'Your signature emote lands on top, crest and all. Only you see it. Core Pulse tools stay free.'
 /** How long the banner waits for the membership answer before showing the sample pile. */
 const SAMPLE_AFTER_MS = 1200
+/** USD only at launch, matching the public /supporter page. */
+const PRICE_SHORT = 'US$4.99/mo'
 
 /**
- * The full-settings Supporter banner: the design lab's "Emote Pile · Crown".
- * Chat emotes drop, bounce and stack behind the copy; every so often a
- * signature emote drops in bigger, glowing in its paint with a crest riding on
- * it. A Supporter sees their own signature emote, paint and crest; everyone
- * else sees the lab's sample.
+ * The full-settings Supporter banner, "Crown, staged" (direction B of the
+ * 2026-10-07 banner round): the lab's Emote Pile gets the whole right half and
+ * runs calmer, with a soft glow at each peak. Every so often your crest drops
+ * in on top, bigger and glowing in your paint, with a small "you" tag. The
+ * copy names the three perks as chips: title paint, tenure crest, emote rain.
+ * A Supporter sees their own paint and crest; everyone else sees the lab's
+ * sample, with the price.
  *
  * It owns the settings page's membership check (the same worker reply the
  * overlay header uses) and reports whether perks are on, so the page's other
@@ -34,35 +35,65 @@ export function SupporterBanner({ onOpen, onPerks }: { onOpen: () => void; onPer
   // An inherited verified appearance is an answer too.
   const known = answered || appearance !== null
   useEffect(() => { onPerks?.(known ? perks : undefined) }, [known, perks, onPerks])
-  const signature = useSignatureEmote()
   // The pile starts once it knows whose kit to draw, so a Supporter never sees
   // the sample swap for their own; a slow answer falls back to the sample.
   const [waited, setWaited] = useState(false)
   useEffect(() => { const timer = window.setTimeout(() => setWaited(true), SAMPLE_AFTER_MS); return () => window.clearTimeout(timer) }, [])
   const kit: Kit | null = known && perks && appearance
-    ? (signature.ready ? { name: 'you', finish: appearance.finish, tenure: appearance.tenure ?? 'new', emote: signature.value, paint: appearance.paint } : null)
+    ? { name: 'you', finish: appearance.finish, tenure: appearance.tenure ?? 'new', paint: appearance.paint }
     : known || waited ? { ...SAMPLE_KIT } : null
   const shown = kit ?? SAMPLE_KIT
+  const state = kit ? (perks ? 'own' : 'sample') : 'pending'
+  const own = state === 'own'
   return (
-    <button
-      type="button"
-      className="pulse-settings-supporter-banner"
-      data-settings-host-banner="supporter"
-      data-supporter-kit={kit ? (perks ? 'own' : 'sample') : 'pending'}
-      onClick={onOpen}
-      style={finishVars(shown.finish) as CSSProperties}
-    >
-      <EmotePileStage kit={kit} />
-      <span className="pulse-settings-supporter-banner-plate">
-        <span className="pulse-settings-supporter-banner-mark" aria-hidden="true"><PeakMark size={20} strokeWidth={1.8} /></span>
+    <div className="pulse-settings-supporter-banner-frame">
+      <button
+        type="button"
+        className="pulse-settings-supporter-banner"
+        data-settings-host-banner="supporter"
+        data-supporter-kit={state}
+        onClick={onOpen}
+        style={finishVars(shown.finish) as CSSProperties}
+      >
+        <EmotePileStage kit={kit} />
         <span className="pulse-settings-supporter-banner-copy">
-          <strong>Pulse Supporter</strong>
-          <small>{CROWN_COPY}</small>
+          <span className="pulse-settings-supporter-banner-eyebrow">
+            <PeakMark size={13} strokeWidth={2} stroke="currentColor" />
+            <span>{own ? 'Your kit' : 'Pulse Supporter'}</span>
+            {state === 'sample' ? <em>· {PRICE_SHORT}</em> : null}
+          </span>
+          <strong>{own ? 'Yours lands on top' : 'Your crest lands on top'}</strong>
+          <span className="pulse-settings-supporter-banner-perks">
+            <BannerPerks kit={shown} own={own} />
+          </span>
+          <small>{own ? 'Only you see your kit. Core tools stay free.' : 'Only you see them. Core tools stay free.'}</small>
         </span>
-      </span>
-      <span className="pulse-settings-supporter-banner-arrow">View benefits <span aria-hidden="true">→</span></span>
-    </button>
+        <span className="pulse-settings-supporter-banner-arrow">View benefits <span aria-hidden="true">→</span></span>
+      </button>
+    </div>
   )
+}
+
+/**
+ * The three perks as chips. The sample names them; a Supporter's chips name
+ * their own kit: their paint, their crest, and the rain they can turn on.
+ */
+function BannerPerks({ kit, own }: { kit: Kit; own: boolean }) {
+  const finish = own ? kit.finish : SAMPLE_KIT.finish
+  return <>
+    <span className="pulse-settings-supporter-perk" data-perk="paint">
+      <i className="pulse-settings-supporter-swatch" style={{ background: finish ? FINISHES[finish].paint : 'var(--pulse-accent-soft, #c4b5fd)' }} aria-hidden="true" />
+      {own ? (finish ? `${FINISHES[finish].label} paint` : 'Default paint') : 'Title paint'}
+    </span>
+    <span className="pulse-settings-supporter-perk" data-perk="crest">
+      <i className="pulse-crest" data-tenure={kit.tenure} aria-hidden="true" />
+      {own ? TENURES[tenureIndex(kit.tenure)].title : 'Tenure crest'}
+    </span>
+    <span className="pulse-settings-supporter-perk" data-perk="rain">
+      <img src={kitEmoteSrc('PepePls', true)} alt="" draggable={false} decoding="async" referrerPolicy="no-referrer" onError={event => { event.currentTarget.style.visibility = 'hidden' }} />
+      Emote rain
+    </span>
+  </>
 }
 
 /** The Crown pile behind the banner copy; decorative, so hidden from assistive tech. */
