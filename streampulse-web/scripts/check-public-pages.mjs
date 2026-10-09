@@ -24,7 +24,51 @@ const expected = [
   ['404.html', 'Page not found — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/'],
 ]
 
+const SHARE_IMAGE = 'https://streampulse.stream/og-default.png'
+
+function metaContent(html, attribute, key) {
+  // Keys are fixed literals of letters, '_' and ':', so they need no regex escaping.
+  const tags = html.match(new RegExp(`<meta\\s+${attribute}="${key}"[^>]*>`, 'gi')) ?? []
+  if (tags.length !== 1) return tags.length === 0 ? undefined : null
+  return /content="([^"]*)"/.exec(tags[0])?.[1]
+}
+
+/** Link previews: every page names the shared 1200x630 card and its own title/description. */
+function linkPreviewFailures(relativePath, html, title, canonical) {
+  const out = []
+  const description = metaContent(html, 'name', 'description')
+  if (!description) out.push(`${relativePath}: missing description`)
+  const expectTag = (attribute, key, value) => {
+    const actual = metaContent(html, attribute, key)
+    if (actual === null) out.push(`${relativePath}: duplicate ${key}`)
+    else if (actual !== value) out.push(`${relativePath}: ${key} is ${actual === undefined ? 'missing' : 'incorrect'}`)
+  }
+  expectTag('property', 'og:type', 'website')
+  expectTag('property', 'og:site_name', 'StreamPulse')
+  expectTag('property', 'og:title', title)
+  expectTag('property', 'og:description', description)
+  expectTag('property', 'og:url', canonical)
+  expectTag('property', 'og:image', SHARE_IMAGE)
+  expectTag('property', 'og:image:type', 'image/png')
+  expectTag('property', 'og:image:width', '1200')
+  expectTag('property', 'og:image:height', '630')
+  if (!metaContent(html, 'property', 'og:image:alt')) out.push(`${relativePath}: og:image:alt is missing`)
+  expectTag('name', 'twitter:card', 'summary_large_image')
+  expectTag('name', 'twitter:title', title)
+  expectTag('name', 'twitter:description', description)
+  expectTag('name', 'twitter:image', SHARE_IMAGE)
+  if (!metaContent(html, 'name', 'twitter:image:alt')) out.push(`${relativePath}: twitter:image:alt is missing`)
+  return out
+}
+
 const failures = []
+const sharePath = join(dist, 'og-default.png')
+if (!existsSync(sharePath)) failures.push('og-default.png: missing link-preview image')
+else {
+  const png = readFileSync(sharePath)
+  const isPng = png.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+  if (!isPng || png.readUInt32BE(16) !== 1200 || png.readUInt32BE(20) !== 630) failures.push('og-default.png: not a 1200x630 PNG')
+}
 const manifestPath = join(dist, '.vite', 'manifest.json')
 if (!existsSync(manifestPath)) failures.push('Missing emitted Vite manifest')
 else {
@@ -44,6 +88,7 @@ for (const [relativePath, title, robots, canonical] of expected) {
   if (!html.includes(`<title>${title}</title>`)) failures.push(`${relativePath}: incorrect title`)
   if (!html.includes(`<meta name="robots" content="${robots}" />`)) failures.push(`${relativePath}: incorrect robots policy`)
   if (!html.includes(`<link rel="canonical" href="${canonical}" />`)) failures.push(`${relativePath}: incorrect canonical URL`)
+  failures.push(...linkPreviewFailures(relativePath, html, title, canonical))
   if (!textContainsHostedApiOrigin(html)) failures.push(`${relativePath}: hosted API CSP missing`)
   if (!/<div id="root"[^>]*>[\s\S]*?<h1\b/.test(html)) failures.push(`${relativePath}: missing meaningful prerendered heading`)
   if (/https?:\/\/(?:localhost|127\.0\.0\.1)/i.test(html)) failures.push(`${relativePath}: local URL leaked into artifact`)

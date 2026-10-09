@@ -919,7 +919,11 @@
 }
 .sl-mobile-nav__title { margin: 0 0 1rem; font-weight: 700; }
 .sl-mobile-nav__links { display: flex; flex-direction: column; gap: .5rem; margin-top: 1rem; }
-.sl-mobile-nav__links a { display: flex; align-items: center; min-height: 44px; padding: .6rem; color: #eee; }
+.sl-mobile-nav__links a { display: flex; align-items: center; min-height: 44px; padding: .6rem; }
+/* Text links only: the drawer's Open Analytics is a light primary button and
+   keeps its own dark label (#eee on its #fafafa fill was about 1.06:1). */
+.sl-mobile-nav__links a:not(.sc-btn) { color: #eee; }
+.sl-mobile-nav__links a.sc-btn { justify-content: center; margin-top: .5rem; }
 .sl-mobile-nav__layer :focus-visible { outline: 2px solid #c4b5fd; outline-offset: 2px; }
 .sl-sample-label {
   display: inline-block; margin-block: .75rem; padding: .35rem .65rem;

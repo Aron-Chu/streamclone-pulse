@@ -9,23 +9,46 @@
  * project on the ASU account serves `app.streampulse.stream` only — deploying
  * without the apex account ID silently updates the wrong project.
  *
- * When VITE_SENTRY_DSN is set, also requires:
- *   SENTRY_AUTH_TOKEN, SENTRY_ORG (default streampulse), SENTRY_PROJECT (default streampulse-portal)
- * and uploads hidden source maps via @sentry/vite-plugin, then deletes *.map from dist.
+ * Refuses to build unless every production input in pages-deploy-env.mjs is set
+ * and well formed: VITE_SENTRY_DSN, VITE_POSTHOG_PROJECT_TOKEN,
+ * VITE_TURNSTILE_SITE_KEY and VITE_PUBLIC_DISCORD_INVITE_URL (from the shell or a
+ * .env.production file). Each can be waived on purpose with its own
+ * PAGES_DEPLOY_ALLOW_NO_{SENTRY,POSTHOG,TURNSTILE,DISCORD}=1, which is printed
+ * loudly. Only names are printed, never values.
+ *
+ * With VITE_SENTRY_DSN it also requires SENTRY_AUTH_TOKEN, SENTRY_ORG (default
+ * streampulse), SENTRY_PROJECT (default streampulse-portal), uploads hidden
+ * source maps via @sentry/vite-plugin, then deletes *.map from dist.
  *
  * Build uses VITE_BACKEND_URL when set; defaults to hosted API.
  * Portal release is always streampulse-portal@<full git SHA>.
  */
 import { spawnSync } from 'node:child_process'
-import { existsSync, readdirSync, unlinkSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, unlinkSync, statSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { verifyHostedAnalyticsRoutes, verifyHostedAccountRoutes } from './hosted-analytics-route-smoke.mjs'
 import { assertDeploySourceIsOriginMaster, assertEdgeFreeze, describeEdgeFreeze } from './check-edge-freeze.mjs'
+import { checkProductionBuildEnv, describeWaivedInputs } from './pages-deploy-env.mjs'
+import { loadEnv } from 'vite'
 
 const root = dirname(fileURLToPath(import.meta.url))
 const webRoot = join(root, '..')
 const repoRoot = join(webRoot, '..')
+
+// First, before any check, build or upload: a production build without these
+// inputs silently drops error reporting, analytics, the form's bot check or the
+// Discord links. What the production Vite build will see is any .env.production
+// file overridden by the shell. Names only; values are never printed.
+const productionEnv = { ...process.env, ...loadEnv('production', webRoot, ['VITE_']) }
+const inputCheck = checkProductionBuildEnv(productionEnv)
+if (inputCheck.errors.length > 0) {
+  console.error('pages:deploy:prod refuses to build production without its build inputs:')
+  for (const error of inputCheck.errors) console.error(`  - ${error}`)
+  process.exit(1)
+}
+for (const line of describeWaivedInputs(inputCheck.waived)) console.warn(line)
+
 // No environment override: an edge architecture exception needs explicit review.
 // The source check fails fast; the full check on the built dist/ runs again
 // immediately before the upload.
@@ -146,19 +169,13 @@ function countMapFiles(dir) {
 
 const sha = resolveGitSha()
 const portalRelease = `streampulse-portal@${sha}`
-const viteSentryDsn = process.env.VITE_SENTRY_DSN?.trim() || ''
-const sentryAuth = process.env.SENTRY_AUTH_TOKEN?.trim() || ''
+const viteSentryDsn = productionEnv.VITE_SENTRY_DSN?.trim() || ''
 
 console.log(`Deploying git SHA ${sha}`)
 assertCleanGitTree()
 // ALLOW_DIRTY_PAGES_DEPLOY never covers this: HEAD must be a freshly fetched
 // origin/master and every edge path must match it by content.
 edgeCheck(() => assertDeploySourceIsOriginMaster(webRoot))
-
-if (viteSentryDsn && !sentryAuth) {
-  console.error('pages:deploy:prod: VITE_SENTRY_DSN is set but SENTRY_AUTH_TOKEN is missing')
-  process.exit(1)
-}
 
 console.log('Running production deploy gates')
 run('npx', ['tsc', '--noEmit', '-p', 'tsconfig.json'])
@@ -196,6 +213,16 @@ if (remaining > 0) {
 }
 if (viteSentryDsn) {
   console.log(`Sentry source maps uploaded for ${portalRelease}; removed ${removed} local .map files`)
+  // The plugin stamps each chunk with a debug ID; without one, production stack
+  // traces would not resolve. Report yes/no only.
+  const assetsDir = join(webRoot, 'dist', 'assets')
+  const entryChunks = readdirSync(assetsDir).filter(name => /^index-.+\.js$/.test(name))
+  const hasDebugIds = entryChunks.some(name => readFileSync(join(assetsDir, name), 'utf8').includes('sentry-dbid-'))
+  console.log(`Sentry debug IDs in the entry bundle: ${hasDebugIds ? 'yes' : 'no'}`)
+  if (!hasDebugIds) {
+    console.error('pages:deploy:prod: the entry bundle has no Sentry debug IDs; refusing to deploy unresolvable stack traces')
+    process.exit(1)
+  }
 }
 
 const hasApiToken = Boolean(process.env.CLOUDFLARE_API_TOKEN?.trim())
