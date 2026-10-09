@@ -652,7 +652,7 @@ export async function postWatchChannel(login: string, baseUrl?: string): Promise
   await releaseResponse(res)
 }
 
-async function bookmarkRequest<T>(root: string, path: string, init: RequestInit, consume: (response: Response) => Promise<T>, accountId?: string): Promise<T> {
+async function accountBearerRequest<T>(root: string, path: string, init: RequestInit, consume: (response: Response) => Promise<T>, accountId?: string): Promise<T> {
   // No account bearer may follow a developer override or a redirect. Never
   // fall back to Protect's legacy device credential after account disconnect.
   if (root !== DEFAULT_BACKEND_URL || await getBackendUrl() !== DEFAULT_BACKEND_URL) throw new Error('account_hosted_only')
@@ -686,7 +686,7 @@ export async function fetchPulseBookmarks(
   if (params.limit !== undefined) qs.set('limit', String(params.limit))
   if (params.cursor !== undefined) qs.set('cursor', params.cursor)
   const suffix = qs.toString() ? `?${qs.toString()}` : ''
-  return bookmarkRequest(root, `/v1/pulse/bookmarks${suffix}`, {
+  return accountBearerRequest(root, `/v1/pulse/bookmarks${suffix}`, {
     signal: params.signal,
   }, async res => {
     if (!res.ok) {
@@ -707,7 +707,7 @@ export async function createPulseBookmark(
   accountId?: string,
 ): Promise<PulseBookmark> {
   const root = baseUrl ?? await getBackendUrl()
-  return bookmarkRequest(root, '/v1/pulse/bookmarks', {
+  return accountBearerRequest(root, '/v1/pulse/bookmarks', {
     method: 'POST',
     body: JSON.stringify(bookmark),
   }, async res => {
@@ -721,7 +721,7 @@ export async function createPulseBookmark(
 
 export async function deletePulseBookmark(id: string, baseUrl?: string, accountId?: string): Promise<void> {
   const root = baseUrl ?? await getBackendUrl()
-  return bookmarkRequest(root, `/v1/pulse/bookmarks/${encodeURIComponent(id)}`, {
+  return accountBearerRequest(root, `/v1/pulse/bookmarks/${encodeURIComponent(id)}`, {
     method: 'DELETE',
   }, async res => {
     if (!res.ok) {
@@ -729,6 +729,27 @@ export async function deletePulseBookmark(id: string, baseUrl?: string, accountI
       throw new Error(`delete_bookmark ${res.status}`)
     }
     await releaseResponse(res)
+  }, accountId)
+}
+
+/**
+ * Synced watched history (`/v1/account/history/*`) for the linked account. The
+ * caller reads the status: 404 means the server does not offer sync, 409 that
+ * the account turned it off.
+ */
+export async function accountHistoryRequest(
+  path: '/v1/account/history/sync' | '/v1/account/history/settings' | '/v1/account/history/clear',
+  body: Record<string, unknown>,
+  accountId: string,
+): Promise<{ status: number; body: unknown }> {
+  const root = await getBackendUrl()
+  return accountBearerRequest(root, path, { method: 'POST', body: JSON.stringify(body) }, async res => {
+    const text = await res.text()
+    // A full reply is at most 1,000 short rows.
+    if (text.length > 1048576) throw new Error('history_response_invalid')
+    let data: unknown = null
+    try { data = text ? JSON.parse(text) : null } catch { /* The status still says what happened. */ }
+    return { status: res.status, body: data }
   }, accountId)
 }
 

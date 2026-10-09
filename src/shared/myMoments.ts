@@ -1,7 +1,7 @@
 import type { LibraryCommand, LibrarySnapshot, MomentReference } from '../ui/library/model.ts'
 import type { PulseBookmark } from './messages.ts'
 
-export type MyMomentsCommand = Extract<LibraryCommand, { kind: 'save' | 'unsave' | 'edit' | 'clear-history' | 'preferences' | 'import-device-saves' }>
+export type MyMomentsCommand = Extract<LibraryCommand, { kind: 'save' | 'unsave' | 'edit' | 'clear-history' | 'preferences' | 'import-device-saves' | 'history-sync' }>
 export type MyMomentsRequest =
   | { type: 'MY_MOMENTS'; action: 'load' }
   | { type: 'MY_MOMENTS'; action: 'recent' }
@@ -73,6 +73,7 @@ export function parseMyMoments(raw: Record<string, unknown>): MyMomentsRequest |
   const valid = c.kind === 'save' ? keys(c, ['kind','reference']) && validMomentReference(c.reference)
     : c.kind === 'clear-history' ? keys(c, ['kind'])
       : c.kind === 'import-device-saves' ? keys(c, ['kind', 'id']) && (c.id === undefined || typeof c.id === 'string' && c.id.length > 0 && c.id.length <= 200)
+      : c.kind === 'history-sync' ? keys(c, ['kind','enabled']) && typeof c.enabled === 'boolean'
       : c.kind === 'preferences' ? keys(c, ['kind','value']) && record(c.value) && keys(c.value, ['captureHistory','retentionDays']) && typeof c.value.captureHistory === 'boolean' && [7,30,90].includes(c.value.retentionDays as number)
         : c.kind === 'edit' || c.kind === 'unsave' ? keys(c, c.kind === 'edit' ? ['kind','id','note'] : ['kind','id']) && typeof c.id === 'string' && c.id.length <= 200 && c.id.length > 0 && (c.kind !== 'edit' || typeof c.note === 'string' && c.note.length <= 1000)
           : false

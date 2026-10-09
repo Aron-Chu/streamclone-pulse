@@ -1,6 +1,7 @@
 import { parseBookmarkPage } from '../shared/bookmarkPage.ts'
 import type { CreatePulseBookmarkInput, PulseBookmark } from '../shared/messages.ts'
 import type { LibraryMoment, LibraryPreferences } from '../ui/library/model.ts'
+import type { AccountHistorySync } from './historySync.ts'
 
 export interface PersonalData {
   preferences: LibraryPreferences
@@ -13,6 +14,8 @@ export interface PersonalData {
    * bookmark shape each one keeps. Account scopes leave this empty.
    */
   bookmarks: PulseBookmark[]
+  /** Account scopes only: this browser's side of the account's synced history. */
+  accountSync?: AccountHistorySync
 }
 export const emptyPersonalData = (): PersonalData => ({ preferences: { captureHistory: false, retentionDays: 30 }, epoch: 0, history: [], notes: {}, bookmarks: [] })
 type MomentKey = { channel: string; vodId: string | null; streamId?: string; offsetSeconds: number | null }
@@ -63,7 +66,11 @@ export function recordWatched(data: PersonalData, moment: LibraryMoment, epoch: 
   const next = prunePersonalData(data, now)
   if (!data.preferences.captureHistory || data.epoch !== epoch) return next
   const entry = { ...moment, jumpedAt: now, historyExpiresAt: now + data.preferences.retentionDays * 86400000 }
-  return { ...next, history: [...next.history.filter(m => m.id !== entry.id), entry].slice(-1000) }
+  const sync = next.accountSync
+  // While the account syncs, the jump waits in the queue until it is sent.
+  const key = `${entry.channel}:${entry.streamId || entry.vodId}:${Math.floor(entry.offsetSeconds ?? 0)}`
+  return { ...next, history: [...next.history.filter(m => m.id !== entry.id), entry].slice(-1000),
+    ...(sync?.enabled ? { accountSync: { ...sync, pending: [...sync.pending.filter(k => k !== key), key] } } : {}) }
 }
 async function database(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
