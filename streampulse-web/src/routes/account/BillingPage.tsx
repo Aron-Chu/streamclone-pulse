@@ -504,7 +504,7 @@ export default function BillingPage() {
       {stepUpConfirmed && !wrongAccount && !reauth ? <p className="pulse-account-note" role="status" data-testid="billing-step-up-confirmed">Thanks, that’s confirmed. Choose Manage subscription to continue.</p> : null}
       {!reauth && (primary || secondary) ? <div className="pulse-account-actions">{primary}{secondary}</div> : null}
       {retrySeconds > 0 && <p role="status">Wait {retrySeconds} seconds before checking again.</p>}
-      {status !== 'none' && load === 'ready' && !uncertain ? <p className="pulse-account-meta">Payment details, invoices and cancellation are in the Stripe Customer Portal. Cancellation takes effect at the end of the paid period.</p> : null}
+      {status !== 'none' && load === 'ready' && !uncertain && !wrongAccount ? <p className="pulse-account-meta">Payment details, invoices and cancellation are in the Stripe Customer Portal. Cancellation takes effect at the end of the paid period.</p> : null}
       {!reauth && showRefresh ? <button className="pulse-account-text-button" type="button" disabled={readBusy} onClick={() => void checkAgain()}>{busy ? 'Checking…' : 'Refresh status'}</button> : null}
     </div>
     <p className="pulse-account-links">{load !== 'signed_out' && !twitchSignInPublic() ? <><Link to="/account/link-device">Connect your extension</Link><span aria-hidden="true">·</span></> : null}<Link to="/terms">Supporter terms</Link><span aria-hidden="true">·</span><Link to="/refunds">Cancellation and refunds</Link><span aria-hidden="true">·</span><Link to="/support">Support</Link></p>

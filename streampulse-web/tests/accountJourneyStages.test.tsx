@@ -273,6 +273,7 @@ describe('Manage subscription: Confirm it’s you', () => {
     expect(screen.getByRole('heading', { name: 'You came back as a different account' })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: 'Supporter active' })).toBeNull()
     expect(document.querySelector('.pulse-membership-facts')).toBeNull()
+    expect(screen.queryByText(/Payment details, invoices and cancellation are in the Stripe Customer Portal/)).toBeNull()
   })
 
   it('lets the person keep the account Twitch returned, and then manage that account', async () => {
