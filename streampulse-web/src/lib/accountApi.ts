@@ -45,7 +45,10 @@ async function requestJson(path: string, body: Record<string, unknown> | undefin
       if (typeof attempt === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(attempt)) attemptId = attempt
     } catch { /* Generic status handling is intentional for malformed provider responses. */ }
     const retryAfter = Number(response.headers?.get?.('Retry-After'))
-    throw new AccountError(response.status, code, Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter, 900) : undefined, attemptId)
+    // Checkout and portal sessions have a daily budget too (backend #162), so
+    // their wait can be honest up to a day; everything else stays within 15 min.
+    const retryCap = body && SLOW_BILLING_POSTS.has(path) ? 86_400 : 900
+    throw new AccountError(response.status, code, Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter, retryCap) : undefined, attemptId)
   }
   if (response.status === 204) return {}
   const data: unknown = await response.json()

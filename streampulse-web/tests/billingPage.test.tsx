@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import BillingPage, { CONFIRM_DELAYS_S, stripeDestination } from '../src/routes/account/BillingPage'
 import Supporter from '../src/routes/public/Supporter'
 import { accountBillingSignInHref } from '../src/lib/accountBillingReturn'
+import { retryWaitCopy } from '../src/lib/billingTryLater'
 
 const returnPath = '/account/billing/return?attempt=12345678-1234-4234-8234-123456789abc'
 const membership = (status: string, checkoutEnabled = false, extra: Record<string, unknown> = {}) => new Response(JSON.stringify({ schemaVersion: 1, status, checkoutEnabled, ...extra }))
@@ -892,5 +893,47 @@ describe('no checkout while a payment is uncertain, at any moment', () => {
     render(<MemoryRouter initialEntries={[`${returnPath}&cancelled=1`]}><BillingPage /></MemoryRouter>)
     expect(await screen.findByRole('heading', { name: 'Sign in to see your membership' })).toBeTruthy()
     expect(document.body.textContent).not.toMatch(/If you just paid|payment is safe/)
+  })
+})
+
+describe('a 429 try_later from Checkout or the portal', () => {
+  // Backend #162 bounds Checkout and portal sessions per account and network.
+  it('names the wait from Retry-After, disables the button until then and never retries on its own', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    vi.setSystemTime(Date.parse('2026-10-09T18:00:00Z'))
+    try {
+      const fetch = vi.fn().mockResolvedValueOnce(membership('none', true))
+        .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'try_later' }), { status: 429, headers: { 'Retry-After': '540' } }))
+      vi.stubGlobal('fetch', fetch)
+      render(<MemoryRouter><BillingPage /></MemoryRouter>)
+      await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+      fireEvent.click(screen.getByRole('button', { name: 'Continue to Stripe checkout' }))
+      await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+      const until = Date.parse('2026-10-09T18:00:00Z') + 540_000
+      const at = retryWaitCopy(until, Date.parse('2026-10-09T18:00:00Z')).at
+      expect(document.body.textContent).toContain(`Checkout was opened too many times in a short while, so it is paused for this account. This attempt started nothing and charged nothing. Try again after ${at}`)
+      expect(document.body.textContent).toMatch(/\(about 9 minutes\)/)
+      const button = screen.getByRole('button', { name: `Try again after ${at}` })
+      expect(button.hasAttribute('disabled')).toBe(true)
+      fireEvent.click(button)
+      const posts = () => fetch.mock.calls.filter(([, options]) => options?.method === 'POST').length
+      expect(posts()).toBe(1)
+      // The window passes without a request; then one click may ask again.
+      await act(async () => { await vi.advanceTimersByTimeAsync(540_000 + 1_000) })
+      expect(posts()).toBe(1)
+      expect(screen.getByRole('button', { name: 'Continue to Stripe checkout' }).hasAttribute('disabled')).toBe(false)
+    } finally { vi.useRealTimers() }
+  })
+
+  it('names the wait for Manage subscription and keeps the membership as it is', async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(membership('active', false, { accessUntil: '2026-11-01T00:00:00Z' }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'try_later' }), { status: 429, headers: { 'Retry-After': '7200' } }))
+    vi.stubGlobal('fetch', fetch)
+    render(<MemoryRouter><BillingPage /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: 'Manage subscription' }))
+    await waitFor(() => expect(document.body.textContent).toContain('Subscription management was opened too many times in a short while, so it is paused for this account. Your membership is unchanged.'))
+    expect(document.body.textContent).toMatch(/\(about 2 hours\)/)
+    expect(document.body.textContent).not.toContain('Billing could not open')
+    expect(screen.getByRole('button', { name: /^Try again after / }).hasAttribute('disabled')).toBe(true)
   })
 })

@@ -3,6 +3,7 @@ import { PublicLayout } from '../../ui/components/PublicLayout'
 import { PRIVACY_PATH, REFUNDS_PATH, TERMS_PATH } from '../../lib/externalLinks'
 import { PrelaunchNotice } from './PrelaunchNotice'
 import { CHROME_WEB_STORE_LISTING_URL } from '../../lib/publicSiteConfig'
+import { SUPPORTER_PERKS, SupporterPerkItems } from '../../ui/components/SupporterPerks'
 
 /**
  * Public Supporter offer. One honest monthly price, stated once.
@@ -14,7 +15,9 @@ import { CHROME_WEB_STORE_LISTING_URL } from '../../lib/publicSiteConfig'
  *
  * Account wording follows the Continue with Twitch journey (closeout
  * 2026-10-08 spec §3-§4): no website-account or email-restore choice is offered
- * here. The benefit lists below are owner-frozen (open Terms a/b/c choice).
+ * here. The benefit list is the one perk list in src/shared/supporter-perks.json
+ * (owner decision 2026-10-09, Terms option a): every perk the extension gives,
+ * identical to the Terms and the extension.
  *
  * USD only at launch: Checkout charges in US dollars, so the price says so. Tax
  * wording stays general until Checkout calculates tax itself.
@@ -76,11 +79,10 @@ export default function Supporter() {
         </section>
 
         <h2>What Supporter includes</h2>
-        <ul>
-          <li>A private Pulse header accent.</li>
-          <li>Three private overlay finishes.</li>
-          <li>Private support recognition in your account.</li>
+        <ul data-testid="supporter-perks">
+          <SupporterPerkItems />
         </ul>
+        <p>{SUPPORTER_PERKS.onlyYou} Nothing else is promised.</p>
 
         <h2>What it does not include</h2>
         <p>
@@ -95,9 +97,9 @@ export default function Supporter() {
         <h2>What stays free</h2>
         <p>
           The Chrome extension, Pulse overlays, coverage and backfill status, the public analytics
-          hub, channel and session analytics, accent themes, and ordinary clip downloading. None of
-          these are behind Supporter, and none will be moved behind it.
+          hub, channel and session analytics, and accent themes. None of these are behind Supporter.
         </p>
+        <p data-testid="supporter-moved">{SUPPORTER_PERKS.moved}</p>
 
         <h2 id="subscribe">How to subscribe</h2>
         <div className="rounded-xl border border-white/[0.08] bg-black/20 p-6" data-testid="supporter-availability">

@@ -96,6 +96,21 @@ describe('Supporter legal copy', () => {
     expect(body).toMatch(/active for up to 72 hours after the paid period ends/)
   })
 
+  it('Supporter says plainly that the 7TV header backdrop moved to Supporter, and no longer promises that nothing free will move', () => {
+    render(<MemoryRouter><Supporter /></MemoryRouter>)
+    const body = screen.getByTestId('supporter-offer').textContent ?? ''
+    expect(body).not.toMatch(/none will be moved|nothing free will move|will never be moved/i)
+    expect(body).not.toMatch(/clip downloading/i)
+    expect(screen.getByTestId('supporter-moved').textContent).toBe('Emote rain, the 7TV header backdrop, was free up to extension 0.2.1. From 0.2.2 it is a Supporter perk, and a backdrop you saved is kept for when you support. No other free feature moved behind Supporter.')
+    expect(body).not.toMatch(/header accent|overlay finishes/i)
+  })
+
+  it('Terms names the moved backdrop and no withdrawn perk names', () => {
+    const body = textOf(Terms, 'terms-of-use')
+    expect(body).toContain('From 0.2.2 it is a Supporter perk')
+    expect(body).not.toMatch(/header accent|overlay finishes|none will be moved/i)
+  })
+
   it('Privacy keeps the privacy mailbox and describes the account cookies on the portal origin', () => {
     render(<MemoryRouter><Privacy /></MemoryRouter>)
     expect(screen.getByTestId('privacy-contact').querySelector('a[href="mailto:privacy@streampulse.stream"]')).toBeTruthy()

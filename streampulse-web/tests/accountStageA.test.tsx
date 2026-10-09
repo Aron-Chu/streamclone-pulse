@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import SUPPORTER_PERKS from '../../src/shared/supporter-perks.json'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import AccountPage from '../src/routes/account/AccountPage'
@@ -77,17 +78,37 @@ describe('/analytics support menu', () => {
   })
 })
 
+// Owner decision 2026-10-09 (Terms option a): /supporter and the Terms list every
+// perk the extension gives, from the one list in src/shared/supporter-perks.json
+// that the extension renders too. These pin the exact text on both pages.
+const PERKS = [
+      'Title paint: your Pulse panel title painted in a Glass, Etched or Halo finish, with the wave and sheen you pick.',
+      'Tenure crest: a crest beside your painted title that levels up at 3, 6, 12 and 24 months of support.',
+      'Emote rain: 7TV emotes behind your Pulse panel header, still or falling: the 7TV header backdrop.',
+      'Supporter card: your own crest and paint on the Supporter card in quick settings and in settings, as private recognition for supporting.',
+    ]
+
 describe('frozen Supporter benefit lists', () => {
-  it('keeps the Supporter page lists byte-identical', () => {
+  it('keeps the Supporter page list byte-identical to the shared perk list', () => {
     render(<MemoryRouter><Supporter /></MemoryRouter>)
-    const items = Array.from(screen.getByTestId('supporter-offer').querySelectorAll('h2 + ul li')).map(li => li.textContent)
-    expect(items).toEqual(['A private Pulse header accent.', 'Three private overlay finishes.', 'Private support recognition in your account.'])
+    const items = Array.from(screen.getByTestId('supporter-perks').querySelectorAll('li')).map(li => li.textContent)
+    expect(items).toEqual(PERKS)
+    expect(items).toEqual(SUPPORTER_PERKS.names.map(name => `${name}: ${SUPPORTER_PERKS.details[name as keyof typeof SUPPORTER_PERKS.details]}`))
   })
 
   it('keeps the Terms “What you get” and “What you do not get” bullets byte-identical', () => {
     render(<MemoryRouter><Terms /></MemoryRouter>)
+    const benefits = screen.getByTestId('terms-supporter-benefits')
+    expect(Array.from(benefits.querySelectorAll('li')).map(li => li.textContent)).toEqual(PERKS)
+    expect(benefits.textContent).toMatch(/^What you get: every Supporter perk the extension gives, the same list\s+as on the Supporter page:/)
+    expect(benefits.textContent).toContain(`${SUPPORTER_PERKS.onlyYou} ${SUPPORTER_PERKS.moved} Nothing else is promised.`)
     const items = Array.from(screen.getByTestId('terms-of-use').querySelectorAll('li')).map(li => li.textContent)
-    expect(items).toContain('What you get: a private Pulse header accent, three private overlay finishes, and private support recognition. Nothing else is promised.')
     expect(items).toContain('What you do not get: no public Twitch chat badge — it is not included — and no analytics, coverage or rate-limit changes of any kind.')
+  })
+
+  it('pins the shared perk list itself', () => {
+    expect(SUPPORTER_PERKS.names).toEqual(['Title paint', 'Tenure crest', 'Emote rain', 'Supporter card'])
+    expect(SUPPORTER_PERKS.onlyYou).toBe('Only you see them, in your own StreamPulse extension. Nothing is added to chat, and nobody else sees them.')
+    expect(SUPPORTER_PERKS.moved).toBe('Emote rain, the 7TV header backdrop, was free up to extension 0.2.1. From 0.2.2 it is a Supporter perk, and a backdrop you saved is kept for when you support. No other free feature moved behind Supporter.')
   })
 })

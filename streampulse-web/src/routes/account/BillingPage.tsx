@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { SUPPORTER_PERKS } from '../../ui/components/SupporterPerks'
+import { DEFAULT_TRY_LATER_SECONDS, retryWaitCopy, tryLaterCopy } from '../../lib/billingTryLater'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { CreditCard } from 'lucide-react'
 import { PublicLayout } from '../../ui/components/PublicLayout'
@@ -68,6 +70,9 @@ export default function BillingPage() {
   const [opening, setOpening] = useState(false)
   const openingRef = useRef(false)
   const [notice, setNotice] = useState('')
+  // A 429 try_later from Checkout or the portal (backend #162): which action
+  // and until when. Nothing is sent before then, and nothing retries by itself.
+  const [paused, setPaused] = useState<{ kind: 'checkout' | 'portal'; until: number } | null>(null)
   const [reauth, setReauth] = useState(false)
   const [pendingAttempt, setPendingAttempt] = useState<string | null>(null)
   const requestID = useRef(0)
@@ -262,8 +267,15 @@ export default function BillingPage() {
     await read()
   }
 
+  useEffect(() => {
+    if (!paused) return
+    const timer = window.setTimeout(() => { setPaused(null); setNotice('') }, Math.min(2_147_483_647, Math.max(0, paused.until - Date.now()) + 250))
+    return () => window.clearTimeout(timer)
+  }, [paused])
+
   async function open(kind: 'checkout' | 'portal') {
     if (openingRef.current || inFlight.current || busy) return
+    if (paused && Date.now() < paused.until) return
     const request = ++requestID.current
     openingRef.current = true
     setOpening(true); setNotice(''); setReauth(false)
@@ -290,6 +302,12 @@ export default function BillingPage() {
           if (!error.attemptId) setNotice('A checkout for this account is still being confirmed. You don’t need to pay again.')
           void readRef.current()
         }
+        return
+      }
+      if (error instanceof AccountError && error.status === 429) {
+        const until = Date.now() + (error.retryAfterSeconds ?? DEFAULT_TRY_LATER_SECONDS) * 1000
+        setPaused({ kind, until })
+        setNotice(tryLaterCopy(kind, until))
         return
       }
       setNotice(error instanceof AccountError && error.code === 'subscription_exists' ? 'You already have a Supporter membership. Use Manage subscription to make changes.'
@@ -319,8 +337,9 @@ export default function BillingPage() {
   let terms = false
   let showRefresh = true
 
-  const portal = (label: string, emphasis = true) => <button className={emphasis ? 'pulse-account-primary' : undefined} type="button" disabled={actionBusy} onClick={() => void open('portal')}>{opening ? 'Opening…' : label}</button>
-  const checkout = (label: string) => <button className="pulse-account-primary" type="button" disabled={actionBusy} onClick={() => void open('checkout')}>{opening ? 'Opening Stripe…' : label}</button>
+  const pausedLabel = paused ? `Try again after ${retryWaitCopy(paused.until).at}` : null
+  const portal = (label: string, emphasis = true) => <button className={emphasis ? 'pulse-account-primary' : undefined} type="button" disabled={actionBusy || Boolean(paused)} onClick={() => void open('portal')}>{opening ? 'Opening…' : paused?.kind === 'portal' ? pausedLabel : label}</button>
+  const checkout = (label: string) => <button className="pulse-account-primary" type="button" disabled={actionBusy || Boolean(paused)} onClick={() => void open('checkout')}>{opening ? 'Opening Stripe…' : paused?.kind === 'checkout' ? pausedLabel : label}</button>
   const refresh = (label: string) => <button className="pulse-account-primary" type="button" disabled={readBusy} onClick={() => void checkAgain()}>{busy ? 'Checking…' : label}</button>
 
   if (load === 'loading') {
@@ -352,7 +371,7 @@ export default function BillingPage() {
   } else if (confirmed && (returnedFromStripe || connected) && status === 'active') {
     state = 'welcome'
     title = 'You’re a Supporter'
-    body = <p>Thank you. Supporter finishes unlock in any StreamPulse extension connected to this account, and a connected extension updates by itself.</p>
+    body = <p>Thank you. Your Supporter perks unlock in any StreamPulse extension connected to this account, and a connected extension updates by itself.</p>
     primary = portal('Manage subscription')
   } else if (status === 'active') {
     state = 'active'
@@ -415,7 +434,7 @@ export default function BillingPage() {
         {notice ? <p className="pulse-account-note">{notice}</p> : null}
       </div>
       {facts.length ? <dl className="pulse-membership-facts">{facts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl> : null}
-      {terms ? <dl className="pulse-membership-terms"><dt>Price</dt><dd>US$4.99 per month, charged in US dollars</dd><dt>Renews</dt><dd>Monthly, automatically, until you cancel</dd><dt>Includes</dt><dd>A private Pulse header accent, three private finishes and private support recognition</dd><dt>Taxes</dt><dd>Handled as stated at checkout</dd></dl> : null}
+      {terms ? <dl className="pulse-membership-terms"><dt>Price</dt><dd>US$4.99 per month, charged in US dollars</dd><dt>Renews</dt><dd>Monthly, automatically, until you cancel</dd><dt>Includes</dt><dd>{SUPPORTER_PERKS.names.join(', ')}. Only you see them</dd><dt>Taxes</dt><dd>Handled as stated at checkout</dd></dl> : null}
       {reauth ? <div className="pulse-account-note" role="alert"><p>For your security, changing billing needs a sign-in from the last 10 minutes. Nothing was charged.</p><Link className="pulse-account-button pulse-account-primary" to={signInHref}>Sign in again</Link></div> : null}
       {!reauth && (primary || secondary) ? <div className="pulse-account-actions">{primary}{secondary}</div> : null}
       {retrySeconds > 0 && <p role="status">Wait {retrySeconds} seconds before checking again.</p>}
