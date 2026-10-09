@@ -226,7 +226,7 @@ test.describe('hub metrics honesty (mocked hub)', () => {
     const errors = attachConsoleErrorGuard(page)
     await page.goto('/analytics')
     await expect(page.getByText('Tracked channels', { exact: true })).toBeVisible()
-    await expect(page.getByText('Tracked live viewers', { exact: true })).toBeVisible()
+    await expect(page.getByText('Watching now', { exact: true })).toBeVisible()
     const peaks = page.getByRole('region', { name: 'Activity peaks in the last 1 day' })
     await expect(peaks.getByText('Emotes/min', { exact: true })).toBeVisible()
     await expect(page.getByText('Corpus streams', { exact: true })).toHaveCount(0)
@@ -313,17 +313,27 @@ test.describe('hub metrics sanity banner (mocked sparse rollups)', () => {
     await installSparseViewerRollupMock(page)
     await page.goto('/analytics')
     await expect(page.locator('.figma-global-activity__sanity-banner')).toHaveCount(0)
-    await expect(page.getByText('Live pool sum now', { exact: true })).toBeVisible()
+    await expect(page.getByTestId('hub-watching-now')).toHaveText('83K')
     await assertNoConsoleErrors(page, errors)
   })
 
-  test('24h view shows live pool sum KPI while chart floors sparse buckets', async ({ page }) => {
+  test('24h view keeps one viewer figure per strip, each with its own scope', async ({ page }) => {
     const errors = attachConsoleErrorGuard(page)
     await installSparseViewerRollupMock(page)
     await page.goto('/analytics')
     await page.getByRole('button', { name: /Activity time window:.*24h/i }).click()
-    await expect(page.getByText('Live pool sum now', { exact: true })).toBeVisible()
-    await expect(page.locator('.figma-global-activity__peak-row').getByText('83K', { exact: true })).toBeVisible()
+    // Header strip: the live list's current sum, scoped to its channels.
+    await expect(page.getByTestId('hub-watching-now')).toHaveText('83K')
+    await expect(page.locator('.hub-command-header__primary-scope')).toHaveText('on 2 live tracked channels')
+    await expect(page.locator('.hub-command-header__peaks')).not.toContainText(/viewers/i)
+    // Chart strip: only the chart's own sampled peak; no live sum beside it.
+    const peakRow = page.locator('.figma-global-activity__peak-row')
+    await expect(peakRow.locator('[data-viewer-scope]')).toHaveCount(1)
+    await expect(peakRow.getByText('Peak sampled viewers', { exact: true })).toBeVisible()
+    await expect(peakRow).not.toContainText('83K')
+    await expect(peakRow).not.toContainText(/Live pool sum/i)
+    await expect(peakRow.locator('[data-viewer-scope="sampled-peak"]')).toHaveAttribute('title', /complete sampling pass/)
+    await expect(page.getByTestId('hub-viewer-definitions')).toContainText('not comparable')
     await assertNoConsoleErrors(page, errors)
   })
 })
@@ -386,7 +396,7 @@ test.describe('hub metrics honesty (hosted API)', () => {
     await page.goto('/analytics', { waitUntil: 'domcontentloaded' })
 
     await expect(page.getByText('Tracked channels', { exact: true })).toBeVisible({ timeout: 30_000 })
-    await expect(page.getByText('Tracked live viewers', { exact: true })).toBeVisible()
+    await expect(page.getByText('Watching now', { exact: true })).toBeVisible()
     await expect(page.getByText('Corpus streams', { exact: true })).toHaveCount(0)
     await expect(page.getByText('Tracked streams', { exact: true })).toHaveCount(0)
 
