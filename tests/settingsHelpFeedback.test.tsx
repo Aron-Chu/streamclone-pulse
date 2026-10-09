@@ -84,7 +84,7 @@ afterEach(() => {
 describe('community links', () => {
   it('point at the website pages only, never at an invite', () => {
     expect(COMMUNITY_LINKS).toEqual({
-      feedback: 'https://streampulse.stream/support',
+      feedback: 'https://streampulse.stream/feedback',
       discord: 'https://streampulse.stream/discord',
     })
   })
@@ -108,7 +108,8 @@ describe('settings page: Help & Feedback', () => {
     const title = (choice: Element) => document.getElementById(choice.getAttribute('aria-labelledby')!)?.textContent
     const detail = (choice: Element) => document.getElementById(choice.getAttribute('aria-describedby')!)?.textContent
     expect(title(choices[0])).toBe('Join the StreamPulse Discord (opens in a new tab)')
-    expect(detail(choices[0])).toBe('Ideas, help and release news')
+    // Discord is public; only the feedback form is described as private.
+    expect(detail(choices[0])).toBe('Public server: ideas, help and release news')
     expect(title(choices[1])).toBe('Send feedback (opens in a new tab)')
     expect(detail(choices[1])).toBe('Private. Only the team reads it.')
     expect(host.querySelector('[data-settings-host-banner="supporter"]')).toBeNull()
