@@ -28,8 +28,10 @@ describe('portal session control target CSS', () => {
   })
 
   it('shows a visible focus ring on the keyboard-focusable session plot', () => {
+    // The plot's wrapper clips overflow, so the ring must be drawn inside the
+    // plot's edge; a positive offset paints it where the wrapper hides it.
     expect(css).toMatch(
-      /\.sc-analytics-console \[data-session-chart-stack\] svg\[role='group'\]:focus-visible \{\s*outline: 2px solid rgb\(196 181 253\);\s*outline-offset: 2px;/,
+      /\.sc-analytics-console \[data-session-chart-stack\] svg\[role='group'\]:focus-visible \{\s*outline: 2px solid rgb\(196 181 253\);\s*outline-offset: -2px;/,
     )
   })
 
