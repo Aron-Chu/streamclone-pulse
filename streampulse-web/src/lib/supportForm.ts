@@ -304,7 +304,11 @@ export function createSupportIdempotency(create: () => string = createSupportIde
 
 export type SupportSendOutcome =
   | { kind: 'sent'; caseId: string }
-  | { kind: 'rate_limited'; retryAfterMs: number | null }
+  /**
+   * `busy` is the site-wide hourly ceiling (`429 intake_busy`): the form is
+   * taking no new messages until the hour ends, whatever this reader did.
+   */
+  | { kind: 'rate_limited'; retryAfterMs: number | null; busy?: true }
   | { kind: 'unavailable' }
   | { kind: 'check_failed' }
   | { kind: 'rejected'; field: 'message' | 'email' | null }
@@ -333,7 +337,7 @@ export function supportFailureOutcome(error: unknown): SupportSendOutcome {
     const wait = typeof record.retryAfterMs === 'number' && Number.isFinite(record.retryAfterMs) && record.retryAfterMs > 0
       ? record.retryAfterMs
       : null
-    return { kind: 'rate_limited', retryAfterMs: wait }
+    return code === 'intake_busy' ? { kind: 'rate_limited', retryAfterMs: wait, busy: true } : { kind: 'rate_limited', retryAfterMs: wait }
   }
   if (status === 503 && UNAVAILABLE_CODES.has(code)) return { kind: 'unavailable' }
   if (status === 400 && (code === 'turnstile_failed' || code === 'invalid_turnstile_token')) return { kind: 'check_failed' }

@@ -332,6 +332,36 @@ describe('support feedback card', () => {
     }
   })
 
+  it('says the form is busy (not "too many attempts") when the hourly ceiling is reached', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      respondWith(json(429, { error: 'intake_busy' }, { 'Retry-After': '2400' }))
+      await renderCard()
+      typeMessage('First message today.')
+      consent()
+      issue('tok-1')
+      send()
+      const alert = await screen.findByTestId('support-form-rate-limit')
+      expect(alert.textContent).toBe('The feedback form is busy right now. Try again later this hour, or post publicly on one of the places below. Your message is still here.')
+      expect(alert.textContent).not.toContain('Too many attempts')
+      expect(screen.getByTestId('feedback-public-alternatives')).toBeTruthy()
+      // No countdown that would suggest the form is back in a minute or two.
+      expect(screen.queryByTestId('support-rate-countdown')).toBeNull()
+      expect(submitButton().getAttribute('aria-disabled')).toBe('true')
+      expect(message().value).toBe('First message today.')
+      issue('tok-2')
+      send()
+      expect(requests).toHaveLength(1)
+      // Send comes back after the client's capped wait; the message is kept.
+      await act(async () => { vi.advanceTimersByTime(121_000) })
+      await waitFor(() => expect(screen.queryByTestId('support-form-rate-limit')).toBeNull())
+      expect(submitButton().getAttribute('aria-disabled')).toBeNull()
+      expect(message().value).toBe('First message today.')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('asks the reader to wait a minute when the server names no Retry-After, then lets them send again', async () => {
     // The backend's 429 for this route sends no Retry-After, and a cross-origin
     // reply hides it unless CORS exposes it: Send must not stay off until reload.

@@ -40,7 +40,7 @@ type CardState =
   | { kind: 'invalid'; error: FeedbackDraftError | 'check_pending' }
   | Exclude<SupportSendOutcome, { kind: 'rate_limited' } | { kind: 'sent' }>
   | { kind: 'sent'; caseId: string; replyTo: string | null }
-  | { kind: 'rate_limited'; until: number; seconds: number | null }
+  | { kind: 'rate_limited'; until: number; seconds: number | null; busy?: true }
   /** The bot check could not load or keeps failing in this browser (a blocker, not an outage). */
   | { kind: 'check_blocked' }
 
@@ -589,6 +589,7 @@ function FeedbackCard({ siteKey, shell = false, lead, onPhase }: FeedbackCardPro
         kind: 'rate_limited',
         until: arrived + waitMs,
         seconds: outcome.retryAfterMs === null ? null : Math.ceil(outcome.retryAfterMs / 1000),
+        ...(outcome.busy ? { busy: true as const } : {}),
       })
       return
     }
@@ -618,10 +619,18 @@ function FeedbackCard({ siteKey, shell = false, lead, onPhase }: FeedbackCardPro
   const consentError = state.kind === 'invalid' && state.error === 'consent_required' ? DRAFT_ERRORS.consent_required : null
   // Visible countdown only; the alert below keeps the wording it arrived with,
   // because a role="alert" whose text changes is read out again every second.
-  const waitSeconds = state.kind === 'rate_limited' ? retrySeconds(state.until, now) : null
+  // No countdown for a busy form: Send is held briefly, but the real wait is
+  // longer than any countdown we could show (see the alert below).
+  const waitSeconds = state.kind === 'rate_limited' && !state.busy ? retrySeconds(state.until, now) : null
   const alert = state.kind === 'failed' ? "Couldn't send. Your message is still here."
     : state.kind === 'check_failed' ? "The bot check didn't go through. Your message is still here; try again."
     : state.kind === 'rejected' && state.field === null ? 'The server could not accept this report. Check the fields and try again.'
+    : state.kind === 'rate_limited' && state.busy
+      // The site-wide hourly ceiling (429 intake_busy): not this reader's
+      // doing, and a minute later the answer would be the same. The server's
+      // wait is the rest of the clock hour, but the API client caps any
+      // Retry-After at two minutes, so no exact time is promised here.
+      ? 'The feedback form is busy right now. Try again later this hour, or post publicly on one of the places below. Your message is still here.'
     : state.kind === 'rate_limited'
       ? state.seconds === null
         ? 'Too many attempts. Wait a minute, then try again. Your message is still here.'
@@ -711,7 +720,7 @@ function FeedbackCard({ siteKey, shell = false, lead, onPhase }: FeedbackCardPro
             ) : null}
             {/* After a send that failed outright, say where else it can go,
                 labelled public; the form and the message stay for a retry. */}
-            {state.kind === 'failed' ? <PublicAlternatives compact /> : null}
+            {state.kind === 'failed' || (state.kind === 'rate_limited' && state.busy) ? <PublicAlternatives compact /> : null}
             {state.kind === 'invalid' && state.error === 'check_pending' ? (
               <p className="feedback-hint" role="status">{DRAFT_ERRORS.check_pending}</p>
             ) : null}

@@ -151,6 +151,11 @@ describe('send outcomes', () => {
   it.each([
     [{ status: 429, code: 'rate_limited', retryAfterMs: 30_000 }, { kind: 'rate_limited', retryAfterMs: 30_000 }],
     [{ status: 429, code: 'rate_limited' }, { kind: 'rate_limited', retryAfterMs: null }],
+    // The site-wide hourly ceiling: not this reader's doing; the wait is the rest of the hour.
+    [{ status: 429, code: 'intake_busy', retryAfterMs: 2_400_000 }, { kind: 'rate_limited', retryAfterMs: 2_400_000, busy: true }],
+    [{ status: 429, code: 'intake_busy' }, { kind: 'rate_limited', retryAfterMs: null, busy: true }],
+    // Too many bot checks in flight on the server: a retry with the same message.
+    [{ status: 503, code: 'turnstile_busy' }, { kind: 'failed' }],
     [{ status: 503, code: 'disabled' }, { kind: 'unavailable' }],
     [{ status: 503, code: 'missing_turnstile_secret' }, { kind: 'unavailable' }],
     [{ status: 503, code: 'missing_limiter' }, { kind: 'unavailable' }],
