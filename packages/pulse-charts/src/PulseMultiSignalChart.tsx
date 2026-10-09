@@ -2940,6 +2940,20 @@ function PulseMultiSignalChartInnerImpl({
       };
     }
 
+    // With full-resolution bars, hover reads the per-minute row under the
+    // pointer in every lane; a click anywhere must pin that same minute, not
+    // the bucketed bar's peak (which on long streams is minutes away) or the
+    // nearest row of the thinned chart series.
+    const activityHit = activityHoverAtPlotX(plotX);
+    if (activityHit) {
+      return {
+        kind: "chart_minute",
+        canonicalIndex: rollupIndexForActivityIndex(activityHit.index),
+        offsetSeconds:
+          pointOffsetSeconds(activityHit.rollup.minuteTs, streamStartedAt) ?? activityHit.index * 60,
+      };
+    }
+
     if (plotYValue >= emoteBand.bandTop && plotYValue <= emoteMagnitudeBottom) {
       const emote = activityBarAtPlotX(emoteBarRects, plotX);
       if (emote?.peak || emote) {
@@ -2973,19 +2987,6 @@ function PulseMultiSignalChartInnerImpl({
             ?? index * 60,
         });
       }
-    }
-
-    // With full-resolution bars, hover reads the per-minute row inside the bar
-    // under the pointer; a click must pin that same minute, not the nearest
-    // row of the thinned chart series (which can be minutes away, or missing).
-    const activityHit = activityHoverAtPlotX(plotX);
-    if (activityHit) {
-      return {
-        kind: "chart_minute",
-        canonicalIndex: rollupIndexForActivityIndex(activityHit.index),
-        offsetSeconds:
-          pointOffsetSeconds(activityHit.rollup.minuteTs, streamStartedAt) ?? activityHit.index * 60,
-      };
     }
 
     const region = chartHitRegionAtX(hoverHitRegions, plotX);
@@ -3237,7 +3238,21 @@ function PulseMultiSignalChartInnerImpl({
     onPreviewReactionMoment?.(
       reactionMomentAtClientPoint(event.clientX, event.clientY, event.currentTarget),
     );
-    scheduleHoverFromClientX(event.clientX, event.currentTarget, true);
+    // A mouse press lands where the last mousemove already put the hover. The
+    // pointer event carries a fractional clientX (at 125% and other scaled
+    // displays) while mousemove and click carry whole pixels, and with
+    // per-minute bars that half pixel can be the next minute: the readout
+    // would jump a minute past the one the click then pins. Reuse the
+    // mousemove position; touch and pen have no mousemove, so they still hover
+    // from the press itself.
+    const pendingMouseX = pendingHoverClientRef.current?.clientX;
+    const pressClientX = activityBarsUseDetail
+      && event.pointerType === "mouse"
+      && pendingMouseX != null
+      && Math.abs(pendingMouseX - event.clientX) < 1
+      ? pendingMouseX
+      : event.clientX;
+    scheduleHoverFromClientX(pressClientX, event.currentTarget, true);
   }
 
   function handlePlotPointerMove(event: ReactPointerEvent<SVGRectElement>) {
