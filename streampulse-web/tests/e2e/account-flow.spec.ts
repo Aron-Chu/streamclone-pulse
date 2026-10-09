@@ -57,6 +57,10 @@ test('a prepared device request opens straight to its review, and approval stays
   await expect(page.getByText('StreamPulse · Chrome on this PC')).toBeVisible()
   await expect(page.getByText('ABCDE-12345', { exact: true })).toBeVisible()
   await expect(page.getByText(/Check that this code matches the code currently shown in your extension/)).toBeVisible()
+  // The review names everything the device credential can do, and when it was asked for.
+  await expect(page.getByTestId('device-access')).toContainText('saved moments and their notes')
+  await expect(page.getByTestId('device-access')).toContainText('turn synced watch history on or off')
+  await expect(page.getByTestId('device-requested')).toContainText(/^Requested at .+ \(less than a minute ago\)$/)
   expect(approvals).toBe(0)
   expect(inspections).toBe(1)
   await page.screenshot({ path: info.outputPath('device-review.png'), fullPage: true })

@@ -203,6 +203,7 @@
 .pulse-membership .pulse-account-actions { margin-top: 0; }
 .pulse-account .pulse-account-meta { color: #9a9aac; font-size: 13px; }
 .pulse-account .pulse-account-access { margin: 8px 0 12px; padding-left: 20px; color: #b6b6c5; font-size: 15px; line-height: 1.65; list-style: disc; }
+.pulse-account .pulse-account-access li { margin: 4px 0; padding: 0; border: 0; }
 .pulse-account .pulse-account-note { margin: 0 0 16px; padding: 12px 14px; border: 1px solid #3e394c; border-radius: 10px; background: #1c1a25; color: #d4d4de; font-size: 14px; }
 .pulse-membership .pulse-account-note { margin: 0; }
 .pulse-account .pulse-account-note p { margin: 0 0 10px; }
