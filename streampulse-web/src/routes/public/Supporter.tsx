@@ -5,6 +5,7 @@ import { PrelaunchNotice } from './PrelaunchNotice'
 import { CHROME_WEB_STORE_LISTING_URL } from '../../lib/publicSiteConfig'
 import { accountBillingSignInHref } from '../../lib/accountBillingReturn'
 import { twitchSignInPublic } from '../../lib/twitchSignInFlag'
+import { stripePortalLoginUrl } from '../../lib/accountStripePortalLogin'
 
 /**
  * Public Supporter offer. One honest monthly price, stated once.
@@ -24,6 +25,8 @@ import { twitchSignInPublic } from '../../lib/twitchSignInFlag'
 const PRICE_DISPLAY = 'US$4.99 per month, charged in US dollars'
 
 export default function Supporter() {
+  // Optional (spec P2.6): without a valid Stripe login link the sentence stays plain text.
+  const portalLogin = stripePortalLoginUrl()
   return (
     <PublicLayout>
       <article className="panel public-document" data-testid="supporter-offer">
@@ -133,8 +136,11 @@ export default function Supporter() {
           your Supporter status comes back. No code to copy, no email to confirm.
         </p>
         <p data-testid="supporter-lost-twitch">
-          Lost access to your Twitch account? You can still cancel or update billing in
-          Stripe&rsquo;s customer portal with the email you paid with. That changes billing only. It
+          Lost access to your Twitch account? You can still cancel or update billing in{' '}
+          {portalLogin
+            ? <a href={portalLogin} target="_blank" rel="noopener noreferrer" data-testid="supporter-stripe-portal-login">Stripe&rsquo;s customer portal</a>
+            : <>Stripe&rsquo;s customer portal</>}{' '}
+          with the email you paid with. That changes billing only. It
           doesn&rsquo;t move your membership to another Twitch account; contact us and we&rsquo;ll help.
         </p>
 

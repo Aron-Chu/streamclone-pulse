@@ -14,6 +14,8 @@ interface ImportMetaEnv {
   readonly VITE_ACCOUNT_MOMENTS?: string
   /** "1" turns on the header account entry (Sign in link / account menu); anything else leaves the header as before. */
   readonly VITE_ACCOUNT_HEADER?: string
+  /** Optional Stripe customer-portal login link (https://billing.stripe.com/p/login/...). Without a valid one, pages keep the plain sentence. */
+  readonly VITE_STRIPE_PORTAL_LOGIN_URL?: string
   /** Activation input: Cloudflare Turnstile site key. Without it the support form stays unavailable. */
   readonly VITE_TURNSTILE_SITE_KEY?: string
   /** Activation input: public Discord invite. Without a valid one every Discord link is hidden. */
