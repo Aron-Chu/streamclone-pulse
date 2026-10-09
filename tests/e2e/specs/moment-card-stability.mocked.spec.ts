@@ -508,8 +508,11 @@ test('live: Jump and Open Analytics keep keyboard focus through a real worker po
   const served = await serveLive(extension.context, () => current)
   const { rows, card } = await openPanel(extension.page, 1000)
   await expect(rows).toHaveCount(3)
-  await expect(card).toHaveAttribute('data-top-moment-card', 'strongest')
-  expect(await cardLabel(card)).toMatch(/^Strongest moment at 01:00/)
+  // Nothing shows above the list until a pick (#80): pick the strongest moment.
+  await expect(card).toHaveCount(0)
+  await rows.filter({ hasText: '01:00' }).first().click()
+  await expect(card).toHaveCount(1)
+  expect(await cardLabel(card)).toMatch(/^Selected moment at 01:00/)
   const action = (name: string) => card.locator(`[data-moment-inspector-action="${name}"]`)
   const shadowActive = (name: string) => action(name).evaluate(el => (el.getRootNode() as ShadowRoot).activeElement === el)
   const nextPoll = async () => {
@@ -517,15 +520,17 @@ test('live: Jump and Open Analytics keep keyboard focus through a real worker po
     await expect.poll(served.count, { timeout: 25_000, intervals: [500] }).toBeGreaterThan(before)
   }
 
-  // Jump, reached from the keyboard, on the strongest moment. The next poll
-  // ranks a new strongest moment at 00:40; the card shows it on the same nodes.
+  // Jump, reached from the keyboard, on the picked moment. The next poll
+  // ranks a new strongest moment at 00:40 first; the card keeps the pick on
+  // the same nodes.
   const jump = action('jump')
   await jump.focus()
   await expect.poll(() => shadowActive('jump')).toBe(true)
   const jumpHandle = await jump.elementHandle()
   current = liveWithPeaks([{ ...second, score: 99, chatCount: 400 }, strongest, third], { 2400: 400 })
   await nextPoll()
-  await expect.poll(() => cardLabel(card), { timeout: 10_000 }).toMatch(/^Strongest moment at 00:40/)
+  await expect.poll(() => rows.first().getAttribute('aria-label'), { timeout: 10_000 }).toContain('00:40')
+  expect(await cardLabel(card)).toMatch(/^Selected moment at 01:00/)
   expect(await jumpHandle!.evaluate(el => el.isConnected)).toBe(true)
   expect(await jumpHandle!.evaluate(el => (el.getRootNode() as ShadowRoot).activeElement === el)).toBe(true)
   await info.attach('focus-jump-after-poll.png', { body: await card.screenshot(), contentType: 'image/png' })
