@@ -77,7 +77,7 @@ import { isExtensionPageSender, isSenderAuthorizedForMessage, isSupportedTwitchU
 import { discoverLiveVodIdFromGqlInTab } from './twitchPageGql.ts'
 import {
   awaitPulsePrefetchInFlight,
-  handleTwitchTabNavigation,
+  handleTwitchTabUpdate,
 } from './pulsePrefetch.ts'
 import {
   createPulseCoordinatorState,
@@ -1321,13 +1321,7 @@ void (async () => {
 installBackgroundDiagnosticsEmitters()
 
 chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
-  if (changeInfo.url) {
-    handleTwitchTabNavigation(changeInfo.url)
-    return
-  }
-  if (changeInfo.status === 'complete') {
-    handleTwitchTabNavigation(tab.url)
-  }
+  handleTwitchTabUpdate(changeInfo, tab)
 })
 
 export {}
