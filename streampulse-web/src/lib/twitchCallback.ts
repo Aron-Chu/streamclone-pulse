@@ -1,9 +1,21 @@
 // Twitch returns the ID token in the callback URL fragment. This module has no
 // imports so it can run before anything else on the page (see
 // twitchCallbackBoot.ts, the first import in main.tsx): the fragment and query
-// are removed from the address bar and history before the router, page
-// metadata, Sentry or product analytics can read location. The token is kept
-// in memory only, for one completion attempt.
+// are removed from the address bar and from this tab's current session-history
+// entry before the router, page metadata, Sentry or product analytics can read
+// location. The token is kept in memory only, for one completion attempt.
+//
+// What replaceState cannot do: the browser has already committed the full
+// callback URL, fragment included, to the profile's browsing history, and the
+// page load's Navigation Timing entry keeps the original URL. Neither can be
+// changed from the page. Replay is blocked server-side (single-use nonce, flow
+// secret and binding cookie), so what remains is disclosure of the Twitch
+// identity to someone with access to this browser profile.
+// tests/twitchCallbackPrivacy.test.ts fails if anything in the portal starts
+// reading performance entries or loads a real-user monitoring collector that
+// could send that URL off the device. Moving to response_type=code with a
+// backend code exchange removes the token from the URL entirely; that is an
+// owner decision across the backend, portal and extension.
 
 export const TWITCH_CALLBACK_PATH = '/account/twitch/callback'
 

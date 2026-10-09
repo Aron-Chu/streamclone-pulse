@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { readFileSync, readdirSync } from 'node:fs'
+import { join, relative, resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ErrorEvent } from '@sentry/react'
 import { sanitizePortalPath, scrubPortalEvent } from '../src/lib/sentry'
@@ -69,5 +69,59 @@ describe('Twitch callback privacy', () => {
   it('gives product analytics no page category for the callback', () => {
     expect(publicPageCategory('/account/twitch/callback')).toBeNull()
     expect(publicPageCategory('/account/twitch/callback/')).toBeNull()
+  })
+
+  // replaceState cannot remove the original callback URL (fragment included)
+  // from the profile's browsing history or from the page load's Navigation
+  // Timing entry. Nothing in the portal may read performance entries or ship a
+  // real-user-monitoring collector, so that URL never leaves the device.
+  it('never reads Navigation Timing or loads a real-user monitoring collector', () => {
+    const readers: Array<[string, RegExp]> = [
+      ['performance entry read', /\bperformance\s*\.\s*getEntries(?:ByType|ByName)?\s*\(/],
+      ['PerformanceObserver', /\bPerformanceObserver\b/],
+      ['Navigation Timing type', /\bPerformanceNavigationTiming\b/],
+      ['legacy timing API', /\bperformance\s*\.\s*(?:timing|navigation)\b/],
+      ['web-vitals import', /(?:from\s*|import\s*\(\s*)['"]web-vitals/],
+      ['Sentry tracing, profiling or replay', /\b(?:browserTracingIntegration|browserProfilingIntegration|replayIntegration|replayCanvasIntegration|BrowserTracing)\b/],
+      ['Cloudflare Web Analytics beacon', /cloudflareinsights/i],
+      ['PostHog SDK', /(?:from\s*|import\s*\(\s*)['"]posthog-js/],
+    ]
+    const files: string[] = []
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = join(dir, entry.name)
+        if (entry.isDirectory()) walk(path)
+        else if (/\.(?:[cm]?[jt]sx?)$/.test(entry.name) && !/\.test\.[jt]sx?$/.test(entry.name)) files.push(path)
+      }
+    }
+    walk(src)
+    files.push(resolve(src, '../index.html'))
+    const hits = files.flatMap(file => {
+      const text = readFileSync(file, 'utf8')
+      return readers.filter(([, pattern]) => pattern.test(text)).map(([name]) => `${relative(resolve(src, '..'), file)}: ${name}`)
+    })
+    expect(hits).toEqual([])
+
+    const pkg = JSON.parse(readFileSync(resolve(src, '../package.json'), 'utf8')) as Record<string, Record<string, string> | undefined>
+    const deps = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies })
+    expect(deps.filter(name => /^(?:web-vitals|posthog-js|@vercel\/(?:analytics|speed-insights)|@datadog\/browser-rum.*|@newrelic\/.*|@sentry\/(?:tracing|replay))$/.test(name))).toEqual([])
+
+    // Sentry is error-only: no performance tracing and no default integrations.
+    const sentry = readFileSync(resolve(src, 'lib/sentry.ts'), 'utf8')
+    expect(sentry).toMatch(/tracesSampleRate:\s*0,/)
+    expect(sentry).toMatch(/defaultIntegrations:\s*false,/)
+
+    // A collector injected outside the bundle (for example a host-added
+    // analytics beacon) cannot load or report: both policies allow scripts
+    // only from this origin and Turnstile.
+    const policies = [
+      readFileSync(resolve(src, '../index.html'), 'utf8').match(/http-equiv="Content-Security-Policy"\s+content="([^"]+)"/)?.[1],
+      readFileSync(resolve(src, '../public/_headers'), 'utf8').match(/Content-Security-Policy:\s*(.+)/)?.[1],
+    ]
+    for (const policy of policies) {
+      expect(policy).toBeTruthy()
+      const scriptSrc = policy!.split(';').map(part => part.trim()).find(part => part.startsWith('script-src '))
+      expect(scriptSrc?.split(/\s+/).slice(1).sort()).toEqual(["'self'", 'https://challenges.cloudflare.com'])
+    }
   })
 })
