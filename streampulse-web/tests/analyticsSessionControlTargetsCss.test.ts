@@ -35,6 +35,15 @@ describe('portal session control target CSS', () => {
     )
   })
 
+  it('insets the whole stream navigator to the plot at every width, as on the hub', () => {
+    const rules = [...css.matchAll(/\[data-session-chart-navigator\] \.hx-chart-navigator \{([^}]*)\}/g)].map(m => m[1])
+    const margins = rules.map(body => [body.match(/margin-left:\s*(\d+)px/)?.[1], body.match(/margin-right:\s*(\d+)px/)?.[1]].join('/'))
+    expect(margins).toEqual(['58/18', '64/24', '90/34'])
+    // No width threshold below which only the track is inset.
+    expect(css).not.toMatch(/\[data-session-chart-navigator\] \.hx-chart-navigator__bar \{[^}]*margin-left/)
+    expect(css).not.toContain('@container session-chart (min-width: 880px)')
+  })
+
   it('keeps the override portal-scoped and wraps dense chart toolbars', () => {
     expect(css).not.toMatch(/(?:^|\n)\s*:where\([^\n]*button[^\n]*\)\s*\{[^}]*min-height:\s*44px/s)
     expect(css).toMatch(/\.sc-analytics-console \[data-chart-focus-top-row\][\s\S]*?flex-wrap:\s*wrap;/)

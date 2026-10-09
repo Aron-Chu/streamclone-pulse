@@ -94,6 +94,32 @@ for (const viewport of VIEWPORTS) {
       expect(track.x).toBeGreaterThan(plot.x)
       expect(track.x + track.width).toBeLessThan(plot.x + plot.width)
 
+      // As on the hub, the whole navigator spans exactly the plot area at
+      // every width: track, readout and hint start at the plot's left edge,
+      // and nothing passes either edge. The toolbar sits at the right end of
+      // the readout's row, or wraps under the readout at the left edge where
+      // both do not fit on one line.
+      const area = await page.locator(`${CHART} rect[data-chart-touch-action]`).boundingBox()
+      if (!area) throw new Error('plot area has no layout box')
+      const partBox = async (part: string) => {
+        const box = await navigator.locator(`.hx-chart-navigator__${part}`).boundingBox()
+        if (!box) throw new Error(`navigator ${part} has no layout box`)
+        return box
+      }
+      for (const part of ['track', 'readout', 'toolbar', 'hint']) {
+        const box = await partBox(part)
+        expect(box.x, `navigator ${part} stays inside the plot's left edge`).toBeGreaterThanOrEqual(area.x - 1)
+        expect(box.x + box.width, `navigator ${part} stays inside the plot's right edge`).toBeLessThanOrEqual(area.x + area.width + 1)
+        if (part !== 'toolbar') expect(Math.abs(box.x - area.x), `navigator ${part} starts at the plot's left edge`).toBeLessThanOrEqual(1)
+      }
+      const readoutBox = await partBox('readout')
+      const toolbarBox = await partBox('toolbar')
+      if (toolbarBox.y >= readoutBox.y + readoutBox.height - 1) {
+        expect(Math.abs(toolbarBox.x - area.x), "a wrapped toolbar starts at the plot's left edge").toBeLessThanOrEqual(1)
+      } else {
+        expect(Math.abs(toolbarBox.x + toolbarBox.width - (area.x + area.width)), "the toolbar ends at the plot's right edge").toBeLessThanOrEqual(1)
+      }
+
       const bucketMinutes = Number(await page.locator(CHART).getAttribute('data-activity-bucket-minutes'))
       expect(bucketMinutes).toBeGreaterThan(1)
       await expect(page.locator('[data-chart-bar-bucket-minutes]')).toContainText(`bars ${bucketMinutes}-min avg`)
