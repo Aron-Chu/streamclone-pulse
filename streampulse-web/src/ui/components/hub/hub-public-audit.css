@@ -98,6 +98,25 @@
 .hubx .hx-chart-header__readout:not([data-active]) .hx-hover-interval {
   color: hsl(var(--muted-foreground));
 }
+/* Phones: interval, metrics and status each get a full-width row so the three
+   metric labels keep whole words ("Viewers", not "Viewer/s"). The
+   hub-activity-chart container queries in this file never match because no
+   element declares that container, so this uses the viewport. */
+@media (max-width: 640px) {
+  .hubx .hx-chart-header .hx-chart-header__readout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 22px minmax(40px, auto) 54px;
+    height: auto;
+    gap: 0.25rem 0;
+  }
+  .hubx .hx-hover-metrics span {
+    overflow-wrap: normal;
+    white-space: nowrap;
+  }
+  .hubx .hx-hover-metrics strong {
+    overflow-wrap: normal;
+  }
+}
 .hubx .hx-chart-navigator .hx-chart-navigator__actions {
   align-items: flex-start;
   gap: 0.65rem 1rem;

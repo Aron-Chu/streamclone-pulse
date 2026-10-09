@@ -29,6 +29,15 @@ import {
 import { HubSearch, type HubSuggestion } from "../hub/HubSearch";
 import { ActivityBucketInspector } from "./ActivityBucketInspector";
 import { ActivityViewerSanityBanner } from "./ActivityViewerSanityBanner";
+import {
+  hubSampledViewerExtremes,
+  hubLiveChannelCount,
+  SAMPLED_PEAK_LABEL,
+  SAMPLED_VIEWERS_DEFINITION,
+  sampledRosterLabel,
+  WATCHING_NOW_LABEL,
+  watchingNowDefinition,
+} from "../../../lib/hubViewerScopes";
 import { HubFreshnessCaption } from "./HubFreshnessCaption";
 import { SystemStatusBadge } from "./primitives/SystemStatusBadge";
 import { compact } from "./hubFormat";
@@ -375,6 +384,8 @@ export function FigmaGlobalActivityPanel({
     peakViewersAt,
     peakChatPerMin,
   } = chartModel;
+  const sampledPeak = useMemo(() => hubSampledViewerExtremes(chartPoints).peak, [chartPoints]);
+  const sampledPeakRoster = sampledRosterLabel(sampledPeak);
   // A legacy fallback can contain stale rows from the requested long range.
   // The chart model has already bounded those rows to the served slice; keep
   // the raw contract issue visible in diagnostics without withholding a
@@ -482,25 +493,27 @@ export function FigmaGlobalActivityPanel({
         <p className="figma-global-activity__lede muted">{measurementSummary}</p>
         {peakViewersAt != null && peakViewers > 0 ? (
           <div className="figma-global-activity__peak-row" role="group" aria-label="Peak summary">
-            <span className="figma-global-activity__peak-stat">
-              <span className="figma-global-activity__peak-label">Peak global viewers</span>
-              <strong>{compact(peakViewers)}</strong>
-            </span>
-            {chartInputs.livePoolViewerSum > 0 ? (
-              <span className="figma-global-activity__peak-stat">
-                <span className="figma-global-activity__peak-label">Live pool sum now</span>
-                <strong>{compact(chartInputs.livePoolViewerSum)}</strong>
+            <span
+              className="figma-global-activity__peak-stat"
+              title={SAMPLED_VIEWERS_DEFINITION}
+              data-viewer-scope="sampled-peak"
+            >
+              <span className="figma-global-activity__peak-label">{SAMPLED_PEAK_LABEL}</span>
+              <strong data-testid="hub-sampled-peak-viewers">{compact(peakViewers)}</strong>
+              {/* Time and roster belong to the viewer peak only (the chat peak
+                  can fall in a different minute), so they caption this stat. */}
+              <span
+                className="figma-global-activity__peak-time muted"
+                data-testid="hub-sampled-peak-caption"
+              >
+                {formatPeakTime(peakViewersAt)}
+                {sampledPeakRoster ? ` · ${sampledPeakRoster}` : null}
               </span>
-            ) : null}
+            </span>
             {peakChatPerMin > 0 ? (
               <span className="figma-global-activity__peak-stat">
                 <span className="figma-global-activity__peak-label">Peak chat/min</span>
                 <strong>{compact(peakChatPerMin)}</strong>
-              </span>
-            ) : null}
-            {peakViewersAt ? (
-              <span className="figma-global-activity__peak-time muted">
-                {formatPeakTime(peakViewersAt)}
               </span>
             ) : null}
           </div>
@@ -508,6 +521,18 @@ export function FigmaGlobalActivityPanel({
         <details className="figma-global-activity__measurement-details">
           <summary>Measurement and coverage details</summary>
           {!unavailable ? <p>{hubMetricLegend(hub)}</p> : null}
+          {!unavailable ? (
+            <dl className="figma-global-activity__viewer-definitions" data-testid="hub-viewer-definitions">
+              <div>
+                <dt>{SAMPLED_PEAK_LABEL} (this chart)</dt>
+                <dd>{SAMPLED_VIEWERS_DEFINITION}</dd>
+              </div>
+              <div>
+                <dt>{WATCHING_NOW_LABEL} (page header)</dt>
+                <dd>{watchingNowDefinition(hubLiveChannelCount(hub))}</dd>
+              </div>
+            </dl>
+          ) : null}
           <ActivityViewerSanityBanner
             hub={hub}
             chartPeakViewers={peakViewers}

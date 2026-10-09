@@ -9,6 +9,7 @@ import {
   selectHubChartActivityInputs,
 } from '../../../lib/hubChartActivityModel'
 import { formatHubTrustLine, resolveHubTrustFreshness } from '../../../lib/hubTrustLine'
+import { hubLiveChannelCount, WATCHING_NOW_LABEL, watchingNowDefinition } from '../../../lib/hubViewerScopes'
 import type { PublicHub, PublicHubLoadSource } from '../../../lib/publicHub'
 import type { PoolWireEvent } from '../../../lib/poolWireReducer'
 import { useCommandCenterLabels } from '../../providers/AnalyticsThemeProvider'
@@ -63,11 +64,12 @@ export function HubCommandHeader({
     () => deriveHubChartActivityModel(chartInputs),
     [chartInputs.points, chartInputs.windowMinutes, chartInputs.livePoolViewerSum],
   )
-  const peakViewers = chartModel.peakViewers
   const peakChat = chartModel.peakChatPerMin
   const peakEmotes = chartModel.peakEmotesPerMin
   const trackedPoolSize = hub.poolSize > 0 ? hub.poolSize : hub.liveChannels.length
   const liveViewersNow = chartInputs.livePoolViewerSum
+  const liveChannelCount = hubLiveChannelCount(hub)
+  const watchingNowTitle = watchingNowDefinition(liveChannelCount)
   const collectorActive = hub.corpusPipeline.collectorActive
   const collectorMax = hub.corpusPipeline.collectorMax
   const snapshotIsNotLive = loadSource != null && loadSource !== 'full'
@@ -139,12 +141,20 @@ export function HubCommandHeader({
             </div>
             <div
               className="hub-command-header__primary-stat"
-              title="Sum of viewer counts on currently live rows in the tracked pool — not all of Twitch."
+              title={watchingNowTitle}
+              data-viewer-scope="watching-now"
             >
-              <span className="hub-command-header__primary-label">Tracked live viewers</span>
-              <strong className="hub-command-header__primary-value hub-command-header__primary-value--viewers">
+              <span className="hub-command-header__primary-label">{WATCHING_NOW_LABEL}</span>
+              <strong
+                className="hub-command-header__primary-value hub-command-header__primary-value--viewers"
+                data-testid="hub-watching-now"
+                aria-describedby="hub-watching-now-scope"
+              >
                 {!loading && !measurementAvailable ? 'Unknown' : <AnimatedCompact value={liveViewersNow} loading={loading} />}
               </strong>
+              <span id="hub-watching-now-scope" className="hub-command-header__primary-scope">
+                {liveChannelCount > 0 ? `on ${compact(liveChannelCount)} live tracked channels` : 'on live tracked channels'}
+              </span>
             </div>
           </div>
 
@@ -160,15 +170,6 @@ export function HubCommandHeader({
           >
             <h2 className="hub-command-header__peaks-label">{measurementAvailable ? peaksLabel : 'No measured snapshot available'}</h2>
             <div className="hub-command-header__peaks-row">
-              <div
-                className="hub-command-header__peak"
-                title="Highest network viewer total in the activity window from minute rollups. Not Twitch-wide."
-              >
-                <span className="hub-command-header__peak-label">Viewers</span>
-                <strong className="hub-command-header__peak-value hub-command-header__peak-value--viewers">
-                  {loading ? '…' : peakViewers > 0 ? compact(peakViewers) : '—'}
-                </strong>
-              </div>
               <div
                 className="hub-command-header__peak"
                 title="Peak IRC chat messages per minute summed across tracked channels in this window."

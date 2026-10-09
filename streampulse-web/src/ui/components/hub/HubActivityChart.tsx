@@ -1353,7 +1353,7 @@ export function HubActivityChart({
   const chartSummary = (() => {
     const parts: string[] = []
     if (peakViewers > 0) {
-      parts.push(`Peak ${compact(peakViewers)} viewers at ${peakViewerAt}`)
+      parts.push(`Peak ${compact(peakViewers)} sampled viewers at ${peakViewerAt}`)
     }
     if (peakChat > 0) {
       parts.push(`chat busiest around ${peakChatAt}`)
@@ -1653,7 +1653,7 @@ export function HubActivityChart({
               <span className={`sw${viewerSeriesPartial ? ' sw--viewers-sampled' : ''}`} style={viewerSeriesPartial ? undefined : { background: 'hsl(var(--sp-chart-viewers))' }} aria-hidden="true" />
               {viewerSeriesPartial
                 ? viewerQualifiedCount > 0 ? 'Viewer coverage' : 'Sampled viewer trend'
-                : 'Viewers'}
+                : 'Sampled viewers'}
             </button>
             <button
               type="button"
@@ -1715,7 +1715,7 @@ export function HubActivityChart({
         >
           <span className="hx-chart-series-labels__item hx-chart-series-labels__item--viewers">
             {peakViewers > 0
-              ? `${chartIsZoomed ? 'Full loaded range: ' : ''}${compact(peakViewers)} coverage-qualified peak viewers`
+              ? `${chartIsZoomed ? 'Full loaded range: ' : ''}${compact(peakViewers)} peak sampled viewers`
               : viewerSampleCount > 0
                 ? `${chartIsZoomed ? 'Full loaded range: ' : ''}Viewer peak unavailable · sampled coverage unknown`
                 : `${chartIsZoomed ? 'Full loaded range: ' : ''}Viewer peak unavailable`}
@@ -1732,7 +1732,7 @@ export function HubActivityChart({
         <div className="hx-plot-stack__row hx-plot-stack__row--full">
           <div className="hx-plot-stack__plot">
             <div className="hx-chart-axis-labels" aria-hidden="true" hidden={compactAnnotations}>
-              <span className="hx-chart-axis-labels__left">Viewers</span>
+              <span className="hx-chart-axis-labels__left">Sampled viewers</span>
               {hasTotalEmotes && !showProviderOverlay ? (
                 <span className="hx-chart-axis-labels__center">Total emotes/min</span>
               ) : null}
@@ -1957,7 +1957,7 @@ export function HubActivityChart({
           <span className="ylab ylab--viewers">
             <span className="hx-viewer-domain">Auto scale · {compact(model.viewerDomainFloor)}–{compact(model.viewerDomainCeil)} viewers</span>
             {peakViewers > 0
-              ? `${chartIsZoomed ? 'Full loaded range: ' : ''}${compact(peakViewers)} peak viewers · ${viewerQualifiedCount}/${chartPoints.length} coverage-qualified`
+              ? `${chartIsZoomed ? 'Full loaded range: ' : ''}${compact(peakViewers)} peak sampled viewers · ${viewerQualifiedCount}/${chartPoints.length} coverage-qualified`
               : viewerSampleCount > 0
                 ? `${chartIsZoomed ? 'Full loaded range: ' : ''}Viewer peak unavailable · ${viewerSampleCount}/${chartPoints.length} sampled; coverage unknown`
                 : `${chartIsZoomed ? 'Full loaded range: ' : ''}Viewer peak unavailable · no samples`}
@@ -2077,6 +2077,7 @@ export function HubActivityChart({
                   <span className="hx-provider-lane__coverage" data-provider-coverage>
                     {coverageLabel}
                   </span>
+                  <span className="hx-provider-lane__track">
                   {hasSamples ? (
                     <svg viewBox="0 0 100 100" preserveAspectRatio="none">
                       {providerLaneLines[key].map((line, i) => (
@@ -2118,6 +2119,7 @@ export function HubActivityChart({
                       }}
                     />
                   ) : null}
+                  </span>
                 </div>
               </div>
             )
