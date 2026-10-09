@@ -7,7 +7,7 @@ import BillingPage from '../src/routes/account/BillingPage'
 import Supporter from '../src/routes/public/Supporter'
 import Terms from '../src/routes/public/Terms'
 import { rememberTwitchIdentity, resetAccountSessionForTests } from '../src/lib/accountSession'
-import { completeBillingStepUp, rememberBillingStepUp, takeBillingStepUp, BILLING_STEP_UP_MAX_AGE_MS } from '../src/lib/accountStepUp'
+import { completeBillingStepUp, rememberBillingStepUp, takeBillingStepUp, STEP_UP_MAX_AGE_MS } from '../src/lib/accountStepUp'
 import { AnalyticsTopNav } from '../src/ui/components/analytics/AnalyticsTopNav'
 import { beginTwitchFlow } from '../src/lib/twitchSignIn'
 import { twitchSignInEnabled, twitchSignInPublic, twitchSignInStage } from '../src/lib/twitchSignInFlag'
@@ -317,7 +317,7 @@ describe('step-up record', () => {
     vi.useFakeTimers()
     try {
       finishedStepUp(ACCOUNT_A)
-      vi.advanceTimersByTime(BILLING_STEP_UP_MAX_AGE_MS + 1)
+      vi.advanceTimersByTime(STEP_UP_MAX_AGE_MS + 1)
       expect(takeBillingStepUp(ACCOUNT_A)).toBe('none')
     } finally { vi.useRealTimers() }
   })

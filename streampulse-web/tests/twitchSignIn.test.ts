@@ -343,10 +343,11 @@ describe('billing “Confirm it’s you” record', () => {
 
   it('counts only after that flow’s sign-in finishes', async () => {
     await startedForBilling()
-    // Before the callback, a billing read finds nothing finished.
-    const unfinished = sessionStorage.getItem(STEP_UP_KEY)
+    // Before the callback, a billing read finds nothing finished (and drops the record).
     expect(takeBillingStepUp(ACCOUNT_A)).toBe('none')
-    sessionStorage.setItem(STEP_UP_KEY, unfinished!)
+    expect(sessionStorage.getItem(STEP_UP_KEY)).toBeNull()
+    // The same flow's record again, still unfinished, as the page saves it before leaving.
+    expect(rememberBillingStepUp(ACCOUNT_A, FLOW_ID)).toBe(true)
     arriveAtCallback(`#id_token=${ID_TOKEN}&state=${FLOW_ID}`)
     vi.mocked(accountRequest).mockResolvedValueOnce({ status: 'signed_in', profile: {} })
     await expect(completeTwitchCallback()).resolves.toMatchObject({ status: 'signed_in' })

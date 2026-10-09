@@ -17,7 +17,7 @@
  * control: the API opens the portal only for the session's own customer.
  */
 const KEY = 'pulse.account.billingStepUp.v1'
-export const BILLING_STEP_UP_MAX_AGE_MS = 10 * 60_000
+export const STEP_UP_MAX_AGE_MS = 10 * 60_000
 const ACCOUNT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const FLOW_ID = /^[a-f0-9]{32}$/
 
@@ -39,7 +39,7 @@ function readRecord(): StepUpRecord | null {
     const { tag, flowId, expiresAt, completed } = value as Record<string, unknown>
     const now = Date.now()
     if (typeof tag !== 'string' || typeof flowId !== 'string' || !FLOW_ID.test(flowId) || typeof expiresAt !== 'number'
-      || expiresAt <= now || expiresAt > now + BILLING_STEP_UP_MAX_AGE_MS || typeof completed !== 'boolean') return null
+      || expiresAt <= now || expiresAt > now + STEP_UP_MAX_AGE_MS || typeof completed !== 'boolean') return null
     return { tag, flowId, expiresAt, completed }
   } catch { return null }
 }
@@ -61,7 +61,7 @@ export function rememberBillingStepUp(accountId: unknown, flowId: unknown): bool
   const tag = accountTag(accountId)
   try {
     if (!tag || typeof flowId !== 'string' || !FLOW_ID.test(flowId)) { sessionStorage.removeItem(KEY); return false }
-    const record: StepUpRecord = { tag, flowId, expiresAt: Date.now() + BILLING_STEP_UP_MAX_AGE_MS, completed: false }
+    const record: StepUpRecord = { tag, flowId, expiresAt: Date.now() + STEP_UP_MAX_AGE_MS, completed: false }
     sessionStorage.setItem(KEY, JSON.stringify(record))
     return true
   } catch { return false }
