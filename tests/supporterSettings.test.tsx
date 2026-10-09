@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import SUPPORTER_PERKS from '../src/shared/supporter-perks.json'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, expect, it, vi } from 'vitest'
@@ -60,13 +61,14 @@ describe('supporter settings', () => {
       // would connect rather than implying the preview grants anything.
       expect(host.textContent).toContain('opens streampulse.stream, where you sign in and approve this extension before paying on Stripe')
       expect(host.textContent).toContain('remain free')
-      // Who sees what: everything is yours only; the chat crest is a labelled concept.
+      // Who sees what: every perk is yours only, and nothing unbuilt is offered.
       const rows = [...host.querySelectorAll<HTMLElement>('.pulse-supporter-who > li')]
-      expect(rows.map(row => row.querySelector('strong')?.textContent)).toEqual(['You', 'Other StreamPulse viewers', 'Everyone else on Twitch'])
+      expect(rows.map(row => row.querySelector('strong')?.textContent)).toEqual(['You', 'Everyone else on Twitch'])
       expect(rows[0].querySelector('.pulse-supporter-vis')?.textContent).toBe('Only you')
-      expect(rows[1].dataset.concept).toBe('true')
-      expect(rows[1].querySelector('.pulse-supporter-vis')?.textContent).toBe('Concept · not built')
-      expect(rows[2].textContent).toContain('Normal chat. Nothing added.')
+      expect(rows[0].querySelector('[data-supporter-perk-names="true"]')?.textContent).toBe(SUPPORTER_PERKS.names.join(' · '))
+      expect(host.querySelector('[data-concept]')).toBeNull()
+      expect(host.textContent).not.toContain('Concept · not built')
+      expect(rows[1].textContent).toContain('Normal chat. Nothing added.')
       expect(host.textContent).toContain('Shown with the sample look')
       // Your look: paint, wave, sheen and emote rain; rain is a locked perk here.
       expect([...host.querySelectorAll('.pulse-supporter-look-row > legend')].map(legend => legend.textContent)).toEqual(['Paint', 'Wave', 'Sheen', 'Emote rain'])
@@ -135,7 +137,7 @@ describe('supporter settings', () => {
       expect(journey.hasAttribute('data-tone')).toBe(false)
       // Billing is one tap away, and nothing about a chat badge is offered as included.
       expect([...host.querySelectorAll('button')].map(button => button.textContent)).toContain('Manage billing ↗')
-      expect(host.textContent).toContain('Concept · not built')
+      expect(host.textContent).not.toContain('Concept · not built')
       expect(host.textContent).not.toContain('US$4.99 / month')
       // An active member's pre-purchase choice is never read.
       expect(sendMessage.mock.calls.map(([message]) => message)).toEqual([{ type: 'SUPPORTER_ACCOUNT', action: 'status' }, { type: 'SUPPORTER_ENTITLEMENT' }, { type: 'SUPPORTER_BILLING', action: 'status' }, { type: 'SUPPORTER_RESTORE', action: 'status' }])

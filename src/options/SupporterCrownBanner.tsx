@@ -3,6 +3,7 @@ import { sendBackgroundMessage } from '../content/bridge.ts'
 import { mountEmotePile } from '../supporter/emotePile.ts'
 import { FINISHES, SAMPLE_KIT, TENURES, finishVars, kitEmoteSrc, tenureIndex, type Kit } from '../supporter/kit.ts'
 import { PeakMark } from '../ui/PeakMark.tsx'
+import { names as PERK_NAMES } from '../shared/supporter-perks.json'
 import { useSupporterAppearanceDetails } from '../ui/useSupporterAppearance.ts'
 
 /** How long the banner waits for the membership answer before showing the sample pile. */
@@ -15,7 +16,9 @@ const PRICE_SHORT = 'US$4.99/mo'
  * 2026-10-07 banner round): the lab's Emote Pile gets the whole right half and
  * runs calmer, with a soft glow at each peak. Every so often your crest drops
  * in on top, bigger and glowing in your paint, with a small "you" tag. The
- * copy names the three perks as chips: title paint, tenure crest, emote rain.
+ * copy names every perk as a chip, in the order of the one perk list
+ * (src/shared/supporter-perks.json): title paint, tenure crest, emote rain,
+ * Supporter card.
  * A Supporter sees their own paint and crest; everyone else sees the lab's
  * sample, with the price.
  *
@@ -75,23 +78,28 @@ export function SupporterBanner({ onOpen, onPerks }: { onOpen: () => void; onPer
 }
 
 /**
- * The three perks as chips. The sample names them; a Supporter's chips name
- * their own kit: their paint, their crest, and the rain they can turn on.
+ * Every perk as a chip, named and ordered by the one perk list. The sample
+ * names them; a Supporter's paint and crest chips name their own kit.
  */
 function BannerPerks({ kit, own }: { kit: Kit; own: boolean }) {
   const finish = own ? kit.finish : SAMPLE_KIT.finish
+  const [paint, crest, rain, card] = PERK_NAMES
   return <>
     <span className="pulse-settings-supporter-perk" data-perk="paint">
       <i className="pulse-settings-supporter-swatch" style={{ background: finish ? FINISHES[finish].paint : 'var(--pulse-accent-soft, #c4b5fd)' }} aria-hidden="true" />
-      {own ? (finish ? `${FINISHES[finish].label} paint` : 'Default paint') : 'Title paint'}
+      {own ? (finish ? `${FINISHES[finish].label} paint` : 'Default paint') : paint}
     </span>
     <span className="pulse-settings-supporter-perk" data-perk="crest">
       <i className="pulse-crest" data-tenure={kit.tenure} aria-hidden="true" />
-      {own ? TENURES[tenureIndex(kit.tenure)].title : 'Tenure crest'}
+      {own ? TENURES[tenureIndex(kit.tenure)].title : crest}
     </span>
     <span className="pulse-settings-supporter-perk" data-perk="rain">
       <img src={kitEmoteSrc('PepePls', true)} alt="" draggable={false} decoding="async" referrerPolicy="no-referrer" onError={event => { event.currentTarget.style.visibility = 'hidden' }} />
-      Emote rain
+      {rain}
+    </span>
+    <span className="pulse-settings-supporter-perk" data-perk="card">
+      <PeakMark size={13} strokeWidth={2} stroke="currentColor" />
+      {card}
     </span>
   </>
 }
