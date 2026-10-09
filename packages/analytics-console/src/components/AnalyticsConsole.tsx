@@ -1248,7 +1248,11 @@ export function AnalyticsConsole({
                     )}
               </span>
               {mode === 'public' ? (
-                <DataQualityDisclosure detail={detail} summaryMetrics={summaryQuery.data?.metrics} />
+                <DataQualityDisclosure
+                  detail={detail}
+                  summaryMetrics={summaryQuery.data?.metrics}
+                  pending={!detail && (detailQuery.isLoading || sessionResolving || sessionLoadFailed)}
+                />
               ) : null}
             </div>
             <h1

@@ -28,7 +28,9 @@ vi.mock('./analytics/AnalyticsChart.tsx', () => ({
   default: () => <div data-testid="analytics-chart">No recent data</div>,
 }))
 vi.mock('./analytics/ConsoleBits.tsx', () => ({
-  DataQualityDisclosure: () => null,
+  DataQualityDisclosure: ({ pending }: { pending?: boolean }) => (
+    <span data-testid="data-quality">{pending ? 'Data quality: —' : 'Data quality: verdict'}</span>
+  ),
   StatCard: ({ label, value }: { label: string; value: string }) => <div data-testid="stat-card">{label}: {value}</div>,
   CoverageStartBanner: () => null,
 }))
@@ -186,6 +188,38 @@ describe('AnalyticsConsole channel route load failures', () => {
 
     expect(await screen.findByText(/took too long to load\. Refresh to try again\./)).toBeTruthy()
     expect(screen.queryByTestId('analytics-chart')).toBeNull()
+  })
+})
+
+describe('AnalyticsConsole data quality chip without data', () => {
+  const items = [{ streamId: '320567744986', login: 'xqc', startedAt, endedAt: '2026-07-11T20:00:00.000Z' }]
+
+  it('shows a neutral chip, not a verdict, while the session is loading', async () => {
+    api.getAnalyticsStreams.mockResolvedValue({ channel: 'xqc', items, sources: [], updatedAt: 0 })
+    api.getAnalyticsStream.mockImplementation(() => new Promise(() => undefined))
+    renderConsole('/analytics/xqc/320567744986')
+
+    await waitFor(() => expect(api.getAnalyticsStream).toHaveBeenCalled())
+    expect(screen.getByTestId('data-quality').textContent).toBe('Data quality: —')
+  })
+
+  it('shows a neutral chip, not a verdict, after the session request failed', async () => {
+    api.getAnalyticsStreams.mockResolvedValue({ channel: 'xqc', items, sources: [], updatedAt: 0 })
+    api.getAnalyticsStream.mockRejectedValue(serverError)
+    renderConsole('/analytics/xqc/320567744986')
+
+    await screen.findByText(/Unable to load session data for/)
+    expect(screen.getByTestId('data-quality').textContent).toBe('Data quality: —')
+  })
+
+  it('gives the verdict once the session has loaded', async () => {
+    api.getAnalyticsStreams.mockResolvedValue({ channel: 'xqc', items, sources: [], updatedAt: 0 })
+    api.getAnalyticsStream.mockResolvedValue({
+      channel: 'xqc', state: 'historical', stream: items[0], rollups: [], topEmotes: [], sources: [], updatedAt: 0,
+    })
+    renderConsole('/analytics/xqc/320567744986')
+
+    await waitFor(() => expect(screen.getByTestId('data-quality').textContent).toBe('Data quality: verdict'))
   })
 })
 
