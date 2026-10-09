@@ -108,8 +108,16 @@ export interface TwitchSignInStatus {
  *   - `sign_in_required`: this device's sign-in had already ended.
  *   - `not_available`: the route is not there yet (404). Nothing was signed out.
  *   - `try_later`: rate limited.
- *   - `failed`: an outage, a network failure or an unexpected answer; whether
- *     it happened is not confirmed.
+ *   - `step_up_failed`: the Twitch check from a click did not finish (window
+ *     failed, flow expired, reply not verified). Nothing was signed out.
+ *   - `unavailable`: the account service answered with an error (503
+ *     `request_unavailable`, another 5xx, an unexpected status) or reports
+ *     itself unavailable; whether it happened is not confirmed.
+ *   - `failed`: the request did not reach the service (network failure,
+ *     timeout); whether it happened is not confirmed.
+ *   - `busy`: another Twitch sign-in on this extension is still open; nothing
+ *     was sent.
+ *   - `disabled`: Twitch sign-in is off in this build; nothing was sent.
  */
 export type TwitchSignOutEverywhereResult =
   | 'signed_out_everywhere'
@@ -118,6 +126,8 @@ export type TwitchSignOutEverywhereResult =
   | 'sign_in_required'
   | 'not_available'
   | 'try_later'
+  | 'step_up_failed'
+  | 'unavailable'
   | 'failed'
   | 'busy'
   | 'disabled'

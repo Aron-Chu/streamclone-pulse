@@ -269,7 +269,7 @@ export class TwitchSignIn {
     this.active = true
     try {
       const account = await this.ports.account.run('status')
-      if (account.state === 'unavailable' && account.linked) return await reply('failed', account)
+      if (account.state === 'unavailable' && account.linked) return await reply('unavailable', account)
       if (account.state !== 'linked') return await reply('sign_in_required', account)
       const accountId = account.accountId
       const revokeAll = () => this.ports.account.withCredential(async token => {
@@ -286,14 +286,19 @@ export class TwitchSignIn {
             if (proof.error === 'identity_mismatch') return await reply('wrong_account')
             if (proof.error === 'sign_in_required') return await reply('sign_in_required')
             if (mode === 'silent' || proof.error === 'cancelled' || proof.error === 'interaction_required' || proof.error === 'busy') return await reply('step_up_required')
-            return await reply(proof.error === 'try_later' ? 'try_later' : 'failed', undefined, proof.retryAfterSeconds)
+            if (proof.error === 'try_later') return await reply('try_later', undefined, proof.retryAfterSeconds)
+            if (proof.error === 'network') return await reply('failed')
+            if (proof.error === 'unavailable') return await reply('unavailable')
+            // The Twitch window, flow or reply did not finish; revoke-all was not retried.
+            return await reply('step_up_failed')
           }
           answer = (await revokeAll()).result
           if (requiresStepUp(answer)) return await reply('step_up_required')
         }
       } catch (error) {
         // A 401 has already cleared this device's credential (withCredential).
-        return await reply(thrownFailure(error).outcome === 'sign_in_required' ? 'sign_in_required' : 'failed')
+        const { outcome } = thrownFailure(error)
+        return await reply(outcome === 'sign_in_required' ? 'sign_in_required' : outcome === 'unavailable' || outcome === 'error' ? 'unavailable' : 'failed')
       }
       if (answer.status === 204) {
         await this.markSignedOutByUser().catch(() => undefined)
@@ -304,7 +309,9 @@ export class TwitchSignIn {
       }
       if (answer.status === 404) return await reply('not_available')
       if (answer.status === 429) return await reply('try_later', undefined, answer.retryAfterSeconds)
-      return await reply('failed')
+      // The service answered, so the connection is fine: 503 request_unavailable,
+      // another 5xx, or a status this client does not expect.
+      return await reply('unavailable')
     } catch {
       return reply('failed')
     } finally {

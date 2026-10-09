@@ -570,8 +570,10 @@ describe('Sign out everywhere', () => {
 
   it.each([
     [404, { error: 'not_found' }, 'not_available'],
-    [503, { error: 'request_unavailable' }, 'failed'],
-    [400, { error: 'invalid_request' }, 'failed'],
+    // The service answered: an outage, not the connection.
+    [503, { error: 'request_unavailable' }, 'unavailable'],
+    [500, null, 'unavailable'],
+    [400, { error: 'invalid_request' }, 'unavailable'],
   ] as const)('keeps this extension signed in on %i', async (status, body, everywhere) => {
     const f = fixture({ stored: linkedRecord, routes: { [REVOKE_ALL]: () => json(status, body) } })
     const response = await f.signIn.signOutEverywhere()
@@ -593,6 +595,33 @@ describe('Sign out everywhere', () => {
     const f = fixture({ stored: linkedRecord, routes: { [REVOKE_ALL]: () => { throw new TypeError('Failed to fetch') } } })
     expect((await f.signIn.signOutEverywhere()).everywhere).toBe('failed')
     expect(f.stored()).toMatchObject({ kind: 'linked' })
+  })
+
+  it('reports a Twitch check from a click that did not finish as step_up_failed, without a retry', async () => {
+    const f = fixture({ stored: linkedRecord, routes: { [REVOKE_ALL]: stepUpNeeded, '/v1/account/auth/twitch/stepup': () => json(400, { error: 'flow_expired' }) } })
+    const response = await f.signIn.signOutEverywhere('interactive')
+    expect(response.everywhere).toBe('step_up_failed')
+    expect(f.calls(REVOKE_ALL)).toHaveLength(1)
+    expect(f.stored()).toMatchObject({ kind: 'linked', token: 'c'.repeat(64) })
+  })
+
+  it('reports an unavailable step-up service as unavailable, without a retry', async () => {
+    const f = fixture({ stored: linkedRecord, routes: { [REVOKE_ALL]: stepUpNeeded, '/v1/account/auth/twitch/stepup': () => json(503, { error: 'request_unavailable' }) } })
+    const response = await f.signIn.signOutEverywhere('interactive')
+    expect(response.everywhere).toBe('unavailable')
+    expect(f.calls(REVOKE_ALL)).toHaveLength(1)
+    expect(f.stored()).toMatchObject({ kind: 'linked' })
+  })
+
+  it('answers busy while another Twitch sign-in is open, and sends nothing', async () => {
+    let release!: () => void
+    const f = fixture({ stored: linkedRecord, routes: { [REVOKE_ALL]: done }, launch: () => new Promise(resolve => { release = () => resolve(undefined) }) })
+    const pending = f.signIn.stepUp('interactive')
+    await vi.waitFor(() => expect(f.launch).toHaveBeenCalled())
+    expect((await f.signIn.signOutEverywhere()).everywhere).toBe('busy')
+    expect(f.calls(REVOKE_ALL)).toHaveLength(0)
+    release()
+    await pending
   })
 
   it('treats a refused bearer as an ended sign-in', async () => {

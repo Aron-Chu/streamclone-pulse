@@ -1536,6 +1536,10 @@ describe('Sign out everywhere (Twitch sign-in on)', () => {
     ['wrong_account', 'Twitch confirmed a different Twitch account than the one signed in here. Nothing was signed out.'],
     ['try_later', 'Too many attempts. Wait a few minutes, then try again.'],
     ['failed', 'Sign out everywhere couldn’t be confirmed. Check your connection and try again.'],
+    ['unavailable', 'Sign out everywhere couldn’t be confirmed. Account services are unavailable right now. Please try again later.'],
+    ['step_up_failed', 'The Twitch check didn’t finish, so nothing was signed out. Try again.'],
+    ['busy', 'A Twitch sign-in is already open. Finish or close it, then try again. Nothing was signed out.'],
+    ['disabled', 'Sign out everywhere isn’t available yet. Nothing was signed out. Sign out here still ends this extension’s access.'],
   ] as const)('stays signed in and says so on %s', async (answer, message) => {
     const view = await signedIn('public', answer)
     try {
@@ -1554,7 +1558,7 @@ describe('Sign out everywhere (Twitch sign-in on)', () => {
     try {
       await view.click('Sign out everywhere')
       await view.click('Confirm sign out everywhere')
-      expect(accountNotice(view.host)).toBe('Sign out everywhere couldn’t be confirmed. Check your connection and try again.')
+      expect(accountNotice(view.host)).toBe('Sign out everywhere couldn’t be confirmed. Reload this page, then try again.')
       expect(accountRow(view.host)).toContain('Signed in with Twitch as PulseViewer')
     } finally { view.cleanup() }
   })

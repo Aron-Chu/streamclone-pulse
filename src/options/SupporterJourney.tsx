@@ -525,7 +525,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
     accountInFlight.current = true
     const id = ++accountRequest.current
     setEverywhereBusy(true); setAccountBusy(true); setNotice('', 'account')
-    const failed = 'Sign out everywhere couldn’t be confirmed. Check your connection and try again.'
+    const notAvailable = 'Sign out everywhere isn’t available yet. Nothing was signed out. Sign out here still ends this extension’s access.'
     try {
       const response = await chrome.runtime.sendMessage(confirm
         ? { type: 'TWITCH_SIGN_IN', action: 'sign_out_everywhere', confirm: true }
@@ -551,10 +551,14 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
       showAccount(response.account, false)
       setNotice(result === 'wrong_account' ? 'Twitch confirmed a different Twitch account than the one signed in here. Nothing was signed out.'
         : result === 'sign_in_required' ? 'Your sign-in ended on this browser. Continue with Twitch, then try again.'
-        : result === 'not_available' ? 'Sign out everywhere isn’t available yet. Nothing was signed out. Sign out here still ends this extension’s access.'
+        : result === 'not_available' || result === 'disabled' ? notAvailable
         : result === 'try_later' ? 'Too many attempts. Wait a few minutes, then try again.'
-        : failed, 'account')
-    } catch { setNotice(failed, 'account') }
+        : result === 'busy' ? 'A Twitch sign-in is already open. Finish or close it, then try again. Nothing was signed out.'
+        : result === 'step_up_failed' ? 'The Twitch check didn’t finish, so nothing was signed out. Try again.'
+        : result === 'unavailable' ? 'Sign out everywhere couldn’t be confirmed. Account services are unavailable right now. Please try again later.'
+        // Only a request that never reached the service points at the connection.
+        : 'Sign out everywhere couldn’t be confirmed. Check your connection and try again.', 'account')
+    } catch { setNotice('Sign out everywhere couldn’t be confirmed. Reload this page, then try again.', 'account') }
     finally {
       if (id === accountRequest.current) { accountInFlight.current = false; setAccountBusy(false) }
       setEverywhereBusy(false)
