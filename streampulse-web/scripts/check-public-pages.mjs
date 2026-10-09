@@ -19,6 +19,7 @@ const expected = [
   ['supporter/thanks/index.html', 'Return to your extension — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/supporter/thanks'],
   ['account/restore/index.html', 'Restore Supporter — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/account/restore'],
   ['support/index.html', 'Support — StreamPulse', 'index,follow', 'https://streampulse.stream/support'],
+  ['feedback/index.html', 'Send Feedback — StreamPulse', 'index,follow', 'https://streampulse.stream/feedback'],
   ['discord/index.html', 'Discord — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/discord'],
   ['changelog/index.html', 'Release Notes — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/changelog'],
   ['404.html', 'Page not found — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/'],
@@ -53,7 +54,7 @@ for (const relativePath of ['robots.txt', 'sitemap.xml', '_headers', '_redirects
   if (!existsSync(join(dist, relativePath))) failures.push(`${relativePath}: missing`)
 }
 
-for (const route of ['analytics', 'docs', 'status', 'privacy', 'terms', 'refunds', 'supporter', 'support', 'discord', 'changelog']) {
+for (const route of ['analytics', 'docs', 'status', 'privacy', 'terms', 'refunds', 'supporter', 'support', 'feedback', 'discord', 'changelog']) {
   const aliasPath = join(dist, `${route}.html`)
   if (!existsSync(aliasPath)) failures.push(`${route}.html: missing clean-route Vite fallback alias`)
 }

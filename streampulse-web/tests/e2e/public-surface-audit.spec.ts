@@ -58,6 +58,7 @@ const coldPages = [
   ['/docs', /^Get started with Pulse$/i],
   ['/privacy', /Privacy Policy/i],
   ['/support', /Support & Troubleshooting/i],
+  ['/feedback', /^Send feedback$/i],
   ['/status', /System Status/i],
 ] as const
 
@@ -77,6 +78,8 @@ test.describe('public surface audit', () => {
       ['/', 'Find the Twitch moments people'],
       ['/docs', 'Get started with Pulse'],
       ['/analytics', 'StreamPulse Analytics'],
+      ['/feedback', 'Send feedback</h1>'],
+      ['/feedback/', 'Send feedback</h1>'],
     ] as const
     for (const [route, heading] of expected) {
       const response = await request.get(route)
@@ -87,6 +90,29 @@ test.describe('public surface audit', () => {
 
   test.beforeEach(async ({ page }) => {
     await installPublicMocks(page, [])
+  })
+
+  test('/support links to the private /feedback page, which needs no account and labels public alternatives', async ({ page }) => {
+    await page.goto('/support')
+    const card = page.getByTestId('support-feedback-link')
+    await expect(card).toHaveAttribute('id', 'send-feedback')
+    await expect(card.getByRole('link', { name: 'Send feedback' })).toHaveAttribute('href', '/feedback')
+    await expect(page.getByRole('heading', { name: 'Extension not appearing on Twitch' })).toBeVisible()
+    await card.getByRole('link', { name: 'Send feedback' }).click()
+    await expect(page).toHaveURL(/\/feedback$/)
+    await expect(page.getByRole('heading', { level: 1, name: 'Send feedback' })).toBeVisible()
+    await expect(page.getByTestId('feedback-private-note')).toContainText('Only the StreamPulse team reads it')
+    await expect(page.getByText('No account needed.')).toBeVisible()
+    const form = page.getByTestId('support-form')
+    const off = page.getByTestId('support-form-unavailable')
+    await expect(form.or(off)).toBeVisible()
+    // The audit build has no Turnstile key, so the form says it is unavailable.
+    if (await off.isVisible()) {
+      await expect(off.getByTestId('feedback-public-alternatives')).toContainText('Public alternatives. Anyone can read these')
+      await expect(off.getByRole('link', { name: /Open a public issue on GitHub/ })).toBeVisible()
+    }
+    const footer = page.getByRole('navigation', { name: 'Footer' })
+    await expect(footer.getByRole('link', { name: 'Send feedback' })).toHaveAttribute('href', '/feedback')
   })
 
   test('cold public entries load no analytics UI or optional demo and report actual font downloads', async ({ page, request }, testInfo) => {
