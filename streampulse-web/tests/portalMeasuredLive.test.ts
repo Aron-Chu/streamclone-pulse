@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { AnalyticsStreamDetail } from '@streampulse/analytics-console'
 
 const apiClientMock = vi.fn()
 
@@ -79,7 +80,7 @@ describe('measured live evidence when the lifecycle contract is absent', () => {
         availability: { version: 'v1', liveDvrState: 'live', vodState: 'pending_live' },
       },
     })
-    const detail = await portalAnalyticsApi.getAnalyticsLive('example')
+    const detail = (await portalAnalyticsApi.getAnalyticsLive('example')) as AnalyticsStreamDetail
     expect(detail.state).toBe('live')
     expect(detail.stream?.lifecycleState).toBe('confirmed_live')
     expect(detail.stream?.lifecycleObservedAt).toBe(new Date(NOW).toISOString())
@@ -100,7 +101,7 @@ describe('measured live evidence when the lifecycle contract is absent', () => {
       }
       throw new Error(`unexpected ${path}`)
     })
-    const detail = await portalAnalyticsApi.getAnalyticsStream('s-live', { sparse: false, channel: 'example' })
+    const detail = (await portalAnalyticsApi.getAnalyticsStream('s-live', { sparse: false, channel: 'example' })) as AnalyticsStreamDetail | null
     expect(detail?.state).toBe('live')
     expect(detail?.stream?.lifecycleState).toBe('confirmed_live')
   })
@@ -116,7 +117,7 @@ describe('measured live evidence when the lifecycle contract is absent', () => {
         availability: { version: 'v1', liveDvrState: 'live' },
       },
     })
-    const detail = await portalAnalyticsApi.getAnalyticsLive('example')
+    const detail = (await portalAnalyticsApi.getAnalyticsLive('example')) as AnalyticsStreamDetail
     expect(detail.state).toBe('unknown')
     expect(detail.stream?.lifecycleState).toBe('unknown')
   })
