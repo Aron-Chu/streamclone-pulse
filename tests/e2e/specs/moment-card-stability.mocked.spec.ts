@@ -454,13 +454,21 @@ test('live: Jump and Open Analytics keep keyboard focus through a real worker po
   await expect(card).toHaveAttribute('data-top-moment-card', 'selected')
   expect(await cardLabel(card)).toMatch(/^Selected moment at 00:20/)
   const analytics = action('analytics')
+  const activity = card.locator('[data-moment-inspector-activity="true"]')
+  const activityBefore = await activity.textContent()
+  expect(activityBefore).toContain('40 chat')
   await analytics.focus()
   await expect.poll(() => shadowActive('analytics')).toBe(true)
   const analyticsHandle = await analytics.elementHandle()
-  current = liveWithPeaks([{ ...second, score: 99, chatCount: 400 }, strongest, { ...third, reactionApexOffsetSeconds: 1231, refinementStatus: 'refined' }], { 2400: 400 })
+  // The refined payload also changes the picked moment's chat count, so the
+  // card visibly takes the refresh; otherwise the checks below could pass
+  // before (or without) the new payload ever rendering.
+  current = liveWithPeaks(
+    [{ ...second, score: 99, chatCount: 400 }, strongest, { ...third, chatCount: 77, reactionApexOffsetSeconds: 1231, refinementStatus: 'refined' }],
+    { 2400: 400, 1200: 77 },
+  )
   await nextPoll()
-  // Give the refreshed payload time to render before checking focus.
-  await extension.page.waitForTimeout(1_000)
+  await expect(activity).toContainText('77 chat', { timeout: 10_000 })
   expect(await cardLabel(card)).toMatch(/^Selected moment at 00:20/)
   expect(await analyticsHandle!.evaluate(el => el.isConnected)).toBe(true)
   expect(await analyticsHandle!.evaluate(el => (el.getRootNode() as ShadowRoot).activeElement === el)).toBe(true)
