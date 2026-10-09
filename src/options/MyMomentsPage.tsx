@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { LibraryWorkspace } from '../ui/library/LibraryWorkspace.tsx'
 import type { LibraryCommand, LibraryRepository } from '../ui/library/model.ts'
 import type { MyMomentsCommand, MyMomentsSnapshot } from '../shared/myMoments.ts'
+import { usePortalOrigin } from './usePortalOrigin.ts'
 
 export function createMyMomentsRepository(): LibraryRepository {
   let scope: string | undefined
@@ -46,7 +47,15 @@ export function MyMomentsPage() {
     return () => chrome.storage.onChanged.removeListener(changed)
   }, [])
   const repository = useMemo(createMyMomentsRepository, [revision])
-  return <LibraryWorkspace key={revision} repository={repository} onExport={json => {
+  return <MyMomentsWorkspace key={revision} repository={repository} />
+}
+
+function MyMomentsWorkspace({ repository }: { repository: LibraryRepository }) {
+  // Analytics links follow the configured API (a local backend opens the local
+  // portal), like every other product link here. Keyed by revision above, so a
+  // backend switch re-reads the origin.
+  const analyticsOrigin = usePortalOrigin()
+  return <LibraryWorkspace repository={repository} analyticsOrigin={analyticsOrigin} onExport={json => {
     const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }))
     const link = document.createElement('a')
     link.href = url; link.download = 'streampulse-my-moments.json'; link.click()

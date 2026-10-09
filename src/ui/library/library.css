@@ -79,6 +79,8 @@
 .pl-moment:focus-within { background:rgba(255,255,255,.035); box-shadow:0 0 0 1px rgba(var(--pulse-accent-light-rgb,167,139,250),.25); }
 .pl-moment-time { font-size:12px; font-weight:800; font-variant-numeric:tabular-nums; border-left:2px solid var(--pulse-accent-soft,#c4b5fd); padding-left:9px; color:var(--pulse-accent-ink,#ddd6fe); align-self:start; }
 .pl-moment-body { display:grid; gap:6px; min-width:0; }
+.pl-moment-device { grid-template-columns:minmax(0,1fr); }
+.pl-device-saves { margin-top:20px; }
 .pl-moment-body strong { font-size:13px; overflow-wrap:anywhere; }
 .pl-actions { margin-top:5px; }
 .pl-actions .pl-button { font-size:12px; }

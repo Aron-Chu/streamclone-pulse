@@ -21,6 +21,8 @@ function chromeExtensionPlugin() {
     async closeBundle() {
       // One-shot builds: content IIFE via dedicated config (dev watch uses the same file).
       await viteBuild({ configFile: resolve(__dirname, 'vite.content.config.ts') })
+      // The Supporter card's stage, injected on demand; never part of content/twitch.js.
+      await viteBuild({ configFile: resolve(__dirname, 'vite.supporterCard.config.ts') })
 
       const dist = resolve(__dirname, 'dist')
       mkdirSync(dist, { recursive: true })

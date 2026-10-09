@@ -231,15 +231,20 @@ test.describe('StreamPulse final visual, interaction & failure-state audit', () 
     await openTwitchChannel(extension.page)
     await waitForPulseRoot(extension.page)
 
-    // Open settings panel
-    await extension.page.getByRole('button', { name: 'Open settings' }).click()
+    // The failed first load shows the outage card (with its own "Open settings"), not an endless "Loading Pulse".
+    await expect(
+      extension.page.locator(`#${PULSE_ROOT_ID}`).getByRole('heading', { name: "Can't reach StreamPulse" }),
+    ).toBeVisible()
+
+    // Open settings panel from the bottom bar
+    await extension.page.locator(`#${PULSE_ROOT_ID} [data-pulse-settings-entry="bottom-bar"]`).click()
     const settings = extension.page.locator('[data-overlay-settings-panel="true"]')
     await expect(settings).toBeVisible()
 
     // Look for unreachable status and retry button
     const statusEl = settings.locator('[data-api-status="unreachable"]')
     await expect(statusEl).toBeVisible()
-    await expect(statusEl).toHaveText('API unreachable')
+    await expect(statusEl).toHaveText('Can’t reach StreamPulse. Try again.')
 
     const retryBtn = settings.getByRole('button', { name: 'Test connection' })
     await expect(retryBtn).toBeVisible()

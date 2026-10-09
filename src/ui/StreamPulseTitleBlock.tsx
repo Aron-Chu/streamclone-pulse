@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react'
 import { LIVE_HEAT_SUBTITLE } from '@streampulse/pulse-core'
-import { PeakMark } from './PeakMark.tsx'
-import { supporterFinish, type SupporterFinishId } from './supporterFinish.ts'
+import type { SupporterPaintStyle, SupporterTenure } from '../shared/supporterPaint.ts'
+import type { SupporterFinishId } from './supporterFinish.ts'
 import { theme } from './theme.ts'
 
 /**
@@ -14,7 +14,7 @@ import { theme } from './theme.ts'
  */
 export type StreamPulseStatusTone = 'live' | 'idle' | 'local'
 
-/** Unframed header; personal recognition belongs to the mark beside the title. */
+/** Unframed header; personal recognition is the crest and paint on the title itself. */
 export const streamPulseHeaderChrome: CSSProperties = {
   alignItems: 'flex-start',
   boxSizing: 'border-box',
@@ -43,19 +43,27 @@ export const streamPulseHeaderChromeSidebar: CSSProperties = {
 export function StreamPulseTitleBlock({
   title = 'Stream Pulse',
   finish = null,
+  tenure = 'new',
+  paint,
   statusLabel,
   statusTone = 'idle',
 }: {
   title?: string
   finish?: SupporterFinishId | null
+  /** The crest earned from the server's support count. Drawn by the stylesheet. */
+  tenure?: SupporterTenure
+  /** How the paint moves; the finish is its colour. */
+  paint?: SupporterPaintStyle
   statusLabel: string
   statusTone?: StreamPulseStatusTone
 }) {
   return (
     <>
       <div style={styles.titleRow}>
-        {finish ? <span style={{ display: 'inline-flex', padding: 4, borderRadius: 6, background: `${supporterFinish[finish]}18` }}><PeakMark size={18} stroke={supporterFinish[finish]} /></span> : null}
-        <h2 style={{ ...styles.title, overflowWrap: 'anywhere', minWidth: 0 }}>{title}</h2>
+        {finish ? <i className="pulse-crest" data-tenure={tenure} aria-hidden="true" /> : null}
+        {finish
+          ? <h2 className="pulse-paint" data-finish={finish} data-wave={paint?.wave} data-sheen={paint?.sheen} data-text={title} style={styles.paintedTitle}>{title}</h2>
+          : <h2 style={styles.plainTitle}>{title}</h2>}
         <span style={styles[`${statusTone}Pill`]} aria-label={statusLabel}>{statusLabel}</span>
       </div>
       <p style={styles.lead}>{LIVE_HEAT_SUBTITLE}</p>
@@ -74,7 +82,8 @@ const pillBase: CSSProperties = {
 
 const styles: Record<string, CSSProperties> = {
   titleRow: { alignItems: 'center', display: 'flex', flexWrap: 'wrap', gap: 8 },
-  title: { color: '#fafafa', fontSize: 17, fontWeight: 800, letterSpacing: 0, lineHeight: 1.25, margin: 0 },
+  plainTitle: { color: '#fafafa', fontSize: 17, fontWeight: 800, letterSpacing: 0, lineHeight: 1.25, margin: 0, overflowWrap: 'anywhere', minWidth: 0 },
+  paintedTitle: { fontSize: 17, fontWeight: 800, letterSpacing: 0, lineHeight: 1.25, margin: 0, overflowWrap: 'anywhere', minWidth: 0 },
   lead: { color: theme.textSecondary, fontSize: 11, fontWeight: 600, lineHeight: 1.4, margin: '6px 0 0' },
   livePill: {
     ...pillBase,

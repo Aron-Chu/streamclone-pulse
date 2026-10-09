@@ -44,11 +44,11 @@ export class PanelErrorBoundary extends Component<PanelErrorBoundaryProps, Panel
 
   render(): ReactNode {
     if (this.state.hasError) {
-      const code = this.state.errorClass ?? 'unknown'
+      // The error class goes to diagnostics above, never into viewer copy.
       return (
         <section style={styles.block} data-testid="pulse-panel-error">
           <h2 style={styles.title}>Pulse panel error</h2>
-          <p style={styles.text}>Something went wrong rendering this panel ({code}).</p>
+          <p style={styles.text}>Something went wrong rendering this panel.</p>
           <p style={styles.hint}>Reload the Twitch tab. If this persists, open Options and report a support case.</p>
         </section>
       )

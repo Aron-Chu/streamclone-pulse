@@ -15,6 +15,6 @@ void getThemePreference().then(applyAccentTheme)
 
 createRoot(document.getElementById('root')!).render(
   <SettingsHostShell version={installedExtensionVersion()}>
-    {activeSection => activeSection === 'moments' ? <MyMomentsPage /> : <SettingsWorkspace activeSection={activeSection} />}
+    {(activeSection, supporterPerks) => activeSection === 'moments' ? <MyMomentsPage /> : <SettingsWorkspace activeSection={activeSection} supporterPerks={supporterPerks} />}
   </SettingsHostShell>,
 )

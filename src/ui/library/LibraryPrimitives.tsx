@@ -74,21 +74,23 @@ export function MomentEditor({ moment, personalWorkspace = false, collections, s
   </LibraryDialog>
 }
 
-export function MomentListItem({ moment, personalWorkspace = false, recent, busy, onSave, onEdit, onRemove, onOpenLink, onPreview, presentation, context }: {
+export function MomentListItem({ moment, personalWorkspace = false, analyticsOrigin = DEFAULT_WEB_ANALYTICS_BASE_URL, recent, busy, onSave, onEdit, onRemove, onOpenLink, onPreview, presentation, context }: {
   personalWorkspace?: boolean
+  /** Portal origin for the Analytics link, derived from the configured API (dev → local portal). */
+  analyticsOrigin?: string
   moment: LibraryMoment; recent: boolean; busy: boolean; onSave: (reference: MomentReference) => void
   onEdit: (moment: LibraryMoment) => void; onRemove: (moment: LibraryMoment) => void; onOpenLink?: (reference: MomentReference) => void
   onPreview?: (moment: LibraryMoment) => void
   presentation?: MomentPresentation
   context?: MomentContextState
 }) {
-  // A stored VOD id is only an identity hint until the backend verifies that
-  // the replay is available. Keep the list consistent with MomentPreview and
+  // A stored VOD id is only an identity hint until the worker resolves the
+  // replay as available. Keep the list consistent with MomentPreview and
   // never turn an unresolved reference into a playable link.
   const url = replayUrl(moment)
   const replayStatus = moment.availability === 'unresolved' ? 'Replay link unavailable' : 'Source unavailable'
   const date = recent ? moment.jumpedAt : moment.savedAt
-  const analytics = personalWorkspace && moment.streamId ? buildAnalyticsUrl({ webAnalyticsBaseUrl: DEFAULT_WEB_ANALYTICS_BASE_URL, channelLogin: moment.channel, streamId: moment.streamId, offsetSeconds: moment.offsetSeconds ?? undefined }) : null
+  const analytics = personalWorkspace && moment.streamId ? buildAnalyticsUrl({ webAnalyticsBaseUrl: analyticsOrigin, channelLogin: moment.channel, streamId: moment.streamId, offsetSeconds: moment.offsetSeconds ?? undefined }) : null
   return <li className="pl-moment" data-moment-id={moment.id}>
     <MomentMedia moment={moment} presentation={presentation} compact />
     <div className="pl-moment-body"><div className="pl-row"><strong>{moment.title}</strong>
@@ -109,6 +111,35 @@ export function MomentListItem({ moment, personalWorkspace = false, recent, busy
             <button type="button" className="pl-button pl-quiet" disabled={busy} onClick={() => onRemove(moment)} aria-label={`Remove bookmark: ${moment.title}`}>Remove bookmark</button>
           </div></details>
         </>}
+      </div>
+    </div>
+  </li>
+}
+
+/**
+ * A save kept on this device from before an account was linked. Listed beside
+ * the account's bookmarks so it stays reachable until an import exists: it can
+ * be opened and removed here, but not edited, previewed or uploaded. A
+ * stream-only save (no resolved replay) keeps the same Analytics link it had
+ * before the account linked, so it never becomes remove-only.
+ */
+export function DeviceSaveItem({ moment, analyticsOrigin = DEFAULT_WEB_ANALYTICS_BASE_URL, busy, onRemove, onOpenLink }: {
+  /** Portal origin for the Analytics link, as on MomentListItem (dev → local portal). */
+  analyticsOrigin?: string
+  moment: LibraryMoment; busy: boolean; onRemove: (moment: LibraryMoment) => void; onOpenLink?: (reference: MomentReference) => void
+}) {
+  const url = replayUrl(moment)
+  const analytics = moment.streamId ? buildAnalyticsUrl({ webAnalyticsBaseUrl: analyticsOrigin, channelLogin: moment.channel, streamId: moment.streamId, offsetSeconds: moment.offsetSeconds ?? undefined }) : null
+  return <li className="pl-moment pl-moment-device" data-moment-id={moment.id} data-device-save="true">
+    <div className="pl-moment-body"><div className="pl-row"><strong>{moment.title}</strong><span className="pl-tag">On this device</span></div>
+      <p className="pl-moment-identity">{moment.channel} · {timestamp(moment.offsetSeconds)}</p>
+      <p className="pl-muted">Bookmarked {moment.savedAt === undefined ? '—' : <time dateTime={new Date(moment.savedAt).toISOString()}>{new Date(moment.savedAt).toLocaleString()}</time>}</p>
+      {moment.note ? <p className="pl-note">{moment.note}</p> : null}
+      <div className="pl-row pl-actions" role="group" aria-label={`Actions for ${moment.title}`}>
+        {url ? <a className="pl-button" href={url} target="_blank" rel="noopener noreferrer" onClick={() => onOpenLink?.(moment)} aria-label={`Watch moment: ${moment.title} (new tab)`}>Open saved Twitch link</a>
+          : <span className="pl-replay-status" role="status">Replay link unavailable</span>}
+        {analytics ? <a className="pl-button" href={analytics} target="_blank" rel="noopener noreferrer" aria-label={`Open analytics for ${moment.title} (new tab)`}>Analytics</a> : null}
+        <button type="button" className="pl-button pl-quiet" disabled={busy} onClick={() => onRemove(moment)} aria-label={`Remove from this device: ${moment.title}`}>Remove</button>
       </div>
     </div>
   </li>

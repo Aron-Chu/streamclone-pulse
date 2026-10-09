@@ -65,6 +65,17 @@ export function replayUrl(reference: MomentReference): string | null {
     || reference.offsetSeconds === null || !Number.isFinite(reference.offsetSeconds) || reference.offsetSeconds < 0) return null
   return `https://www.twitch.tv/videos/${reference.vodId}?t=${Math.floor(reference.offsetSeconds)}s`
 }
+/**
+ * Pulse offsets count from go-live; Twitch's `?t=` counts from the archive
+ * start. They agree when the archive starts with the stream, the mapping every
+ * VOD path uses when the backend reports no origin delta (completed VOD pages,
+ * the channel's open-in-VOD jump, the portal's bookmark link). Saved references
+ * never carry a delta, so a numeric VOD id is required to address the second;
+ * a stream-only reference stays unresolved and keeps its analytics link.
+ */
+export function replayAvailability(m: Pick<MomentReference, 'vodId' | 'offsetSeconds'>): MomentReference['availability'] {
+  return m.vodId && /^\d{6,20}$/.test(m.vodId) && m.offsetSeconds !== null && Number.isFinite(m.offsetSeconds) && m.offsetSeconds >= 0 ? 'available' : 'unresolved'
+}
 export function hasRecent(moment: LibraryMoment, now: number): boolean {
   return moment.jumpedAt !== undefined && moment.historyExpiresAt !== undefined && moment.historyExpiresAt > now
 }

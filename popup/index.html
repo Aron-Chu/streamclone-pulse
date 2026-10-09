@@ -2,19 +2,21 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta name="color-scheme" content="dark light" />
     <title>StreamPulse</title>
     <style>
-      /* Keep browser popup chrome from showing a default white fringe. */
+      /* Paint the page colour before the script loads so the popup never flashes. */
       html,
       body {
-        background: #0e1016;
-        color-scheme: dark;
+        background: #111117;
         margin: 0;
         padding: 0;
       }
-      #root {
-        background: #0e1016;
-        min-height: 100%;
+      @media (prefers-color-scheme: light) {
+        html,
+        body {
+          background: #f1f1f4;
+        }
       }
     </style>
   </head>

@@ -45,6 +45,20 @@ export type SupporterEntitlement =
       restoreEligible?: boolean
     }
 
+/**
+ * Whether this membership unlocks the Supporter cosmetics: a verified active or
+ * grace membership with the banner and finish features. One rule for the finish
+ * controls, the worker's appearance reply and emote rain, so no surface can
+ * grant a perk another one withholds. Presentation only; the BFF still
+ * authorizes every paid mutation.
+ */
+export function supporterPerksAllowed(entitlement: SupporterEntitlement | null | undefined): boolean {
+  return entitlement?.state === 'ready'
+    && (entitlement.status === 'active' || entitlement.status === 'grace')
+    && entitlement.features.includes('supporter.banner.v1')
+    && entitlement.features.includes('supporter.finish.v1')
+}
+
 /** Safe settings projection. Bearer, refresh and polling secrets never belong here. */
 export type SupporterAccountState =
   | { state: 'signed_out' | 'denied' | 'expired' | 'relink_required' }

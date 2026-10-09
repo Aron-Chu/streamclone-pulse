@@ -25,6 +25,7 @@ import { PulseOverviewChart } from './PulseOverviewChart.tsx'
 import { ChartReadoutBand, type ChartReadoutMode } from './ChartReadoutBand.tsx'
 import { ChartMinuteInspectCard } from './ChartMinuteInspectCard.tsx'
 import { SelectedMomentCard } from './SelectedMomentCard.tsx'
+import { MomentCardSlot } from './MomentCardSlot.tsx'
 import { SavedMoments } from './SavedMoments.tsx'
 import { resolvePinnedMomentPoint } from './chartSelectedMoment.ts'
 import { usePinnedCardHold } from './pinnedCardExit.ts'
@@ -120,6 +121,11 @@ export interface LiveStatsBandProps {
   previewOffsetSeconds?: number | null
   /** Ranked-moment origin for the shared chart inspector; null means a raw chart minute. */
   selectedMomentOffsetSeconds?: number | null
+  /**
+   * The pinned moment was picked in the Top Moments list and its card opens
+   * there, under its row. The chart still marks the minute but opens no card.
+   */
+  cardInList?: boolean
   hasVodContext?: boolean
   coverageTier?: string | null
   liveMetadata?: LiveViewerMetadata | null
@@ -261,6 +267,7 @@ export function LiveStatsBand({
   pinOffsetSeconds = null,
   previewOffsetSeconds = null,
   selectedMomentOffsetSeconds = null,
+  cardInList = false,
   hasVodContext = false,
   coverageTier = null,
   liveMetadata = null,
@@ -552,22 +559,28 @@ export function LiveStatsBand({
     [payload, selectedMomentOffsetSeconds],
   )
 
+  // The list shows the card only while it still lists the moment. Once a poll
+  // drops it, the chart takes the card back for the pinned minute.
+  const listCard = cardInList && selectedMomentPoint != null
+
   // Clearing the pin used to unmount the inspector on the same frame, so it
   // vanished and the content below snapped up. Hold the last contents for one
   // exit window and let CSS fade and collapse them.
   const inspectorInput = useMemo(
-    () => (pinOffsetSeconds != null && selectedRollup
+    () => (pinOffsetSeconds != null && selectedRollup && !listCard
       ? { rollup: selectedRollup, moment: selectedMomentPoint }
       : null),
-    [pinOffsetSeconds, selectedRollup, selectedMomentPoint],
+    [pinOffsetSeconds, selectedRollup, selectedMomentPoint, listCard],
   )
   const inspectorHold = usePinnedCardHold(inspectorInput, prefersReducedMotion())
 
+  // The 7TV panel folds for the card under the chart. A card in the list
+  // leaves it alone, so nothing above the picked row moves.
   useEffect(() => {
-    if (pinChartIndex != null) {
+    if (pinChartIndex != null && !listCard) {
       setEmotePanelExpanded(false)
     }
-  }, [pinChartIndex])
+  }, [pinChartIndex, listCard])
 
   const topEmotesForChips = useMemo(() => {
     const fromRollups = aggregateChartEmotes(rollups, PLOT_PICKER_EMOTE_LIMIT)
@@ -928,6 +941,8 @@ export function LiveStatsBand({
   ])
 
   useEffect(() => {
+    // A cleared pin (from any card's ✕, or Escape) drops a pending return to it.
+    if (pinOffsetSeconds == null) pendingReturnSpanRef.current = null
     if (
       pendingReturnSpanRef.current == null
       || !hasFullRollups
@@ -1460,14 +1475,16 @@ export function LiveStatsBand({
             />
           </div>
           {inspectorHold.point ? (
-            <div
-              className={inspectorHold.exiting ? 'pulse-moment-card-exit' : undefined}
+            <MomentCardSlot
+              exiting={inspectorHold.exiting}
               style={styles.chartInspector}
               data-chart-inspector-owner="activity-chart"
               data-chart-inspector-kind={inspectorHold.point.moment ? 'moment' : 'minute'}
               data-chart-inspector-exiting={inspectorHold.exiting ? 'true' : undefined}
               aria-live="polite"
             >
+              {/* The gap above the card grows and collapses with it, so a press below never drifts. */}
+              <div style={styles.chartInspectorGap}>
               {inspectorHold.point.moment ? (
                 <SelectedMomentCard
                   point={inspectorHold.point.moment}
@@ -1490,7 +1507,8 @@ export function LiveStatsBand({
                   viewerUnavailableDetail={viewerUnavailableDetail}
                 />
               )}
-            </div>
+              </div>
+            </MomentCardSlot>
           ) : null}
         </div>
         {chartRailVisible ? (
@@ -1559,7 +1577,15 @@ export function LiveStatsBand({
             }
           />
         ) : null}
-        {!demoMode ? <SavedMoments login={payload.login} streamId={payload.streamId} vodId={payload.vodId ?? undefined} selected={selectedMomentPoint} /> : null}
+        {!demoMode ? (
+          <SavedMoments
+            login={payload.login}
+            streamId={payload.streamId}
+            vodId={payload.vodId ?? undefined}
+            selected={selectedMomentPoint}
+            minuteOffsetSeconds={inspectorInput && !inspectorInput.moment ? inspectorInput.rollup.offsetSeconds : null}
+          />
+        ) : null}
         {rollupGapNotice ? <p style={styles.gapNotice}>{rollupGapNotice}</p> : null}
         {topEmotesForChips.length > 0 ? (
           <div data-chart-action="true">
@@ -1657,10 +1683,10 @@ const styles: Record<string, CSSProperties> = {
     width: '100%',
   },
   chartInspector: {
-    marginTop: 8,
     minWidth: 0,
     width: '100%',
   },
+  chartInspectorGap: { paddingTop: 8 },
   chartLeadIn: {
     display: 'grid',
     gap: 4,

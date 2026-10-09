@@ -56,9 +56,6 @@ export default defineConfig({
         if (path.endsWith('/src/ui/theme.ts')) {
           return { code: minifyInlineCss(code, 'export const shadowStyles = `', shadowStyles), map: null }
         }
-        if (path.endsWith('/src/ui/PulseBanner.tsx')) {
-          return { code: minifyInlineCss(code, 'const BANNER_CSS = `'), map: null }
-        }
         return null
       },
     },

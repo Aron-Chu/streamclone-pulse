@@ -1,4 +1,4 @@
-import { onPulseUpdate, onVodPulseUpdate, sendBackgroundMessage } from './bridge.ts'
+import { contextInvalidated, onContextInvalidated, onPulseUpdate, onVodPulseUpdate, sendBackgroundMessage } from './bridge.ts'
 
 import { createLivePollController } from './livePoll.ts'
 
@@ -46,7 +46,7 @@ import { getWatchlist } from '../shared/watchlist.ts'
 import { isPulseRosterEligible } from '../ui/pulseEligibility.ts'
 
 import { vodPulseToChannelPayload } from '../vod/vodPulseToChannelPayload.ts'
-import { isSupportedTwitchUrl } from '../background/pulseBroadcastTargets.ts'
+import { isSupportedTwitchUrl } from '../shared/twitchUrl.ts'
 import { readVodAnalyticsBridge } from '../shared/vodAnalyticsBridge.ts'
 
 if (isSupportedTwitchUrl(window.location.href)) {
@@ -275,7 +275,10 @@ function applyVodPulseMessage(message: VodPulseUpdateMessage): void {
     requestPulseLoadCompletedAnalytics()
   }
 
-  updateOverlayPayload(payload, message.error ?? (payload ? undefined : message.vodPulse?.coverageMessage))
+  // Missing / syncing coverage is a status VodPulseStatusCard explains, not a
+  // transport failure: keep coverageMessage out of the error lane, and clear an
+  // earlier failure once the worker has answered ('' wins over a kept error).
+  updateOverlayPayload(payload, message.error ?? (message.vodPulse ? '' : undefined))
 
   if (isLiveDvr && streamId) {
     scheduleVodLivePoll(message.vodId, streamId)
@@ -288,15 +291,16 @@ async function fetchVodPulseResult(
   streamId?: string,
   window: 'recent' | 'full' = 'recent',
 ): Promise<VodPulseUpdateMessage> {
-  const response = await sendBackgroundMessage({ type: 'GET_PULSE_VOD', vodId, streamId, window })
-  if ('type' in response && response.type === 'VOD_PULSE_UPDATE') {
+  // A rejected worker call (e.g. a closed message port) is a failed load, not a pending one.
+  const response = await sendBackgroundMessage({ type: 'GET_PULSE_VOD', vodId, streamId, window }).catch(() => null)
+  if (response && 'type' in response && response.type === 'VOD_PULSE_UPDATE') {
     return response
   }
   return {
     type: 'VOD_PULSE_UPDATE',
     vodId,
     vodPulse: null,
-    error: 'vod_pulse_failed',
+    error: response ? pulseTransportError(response) : 'request_failed',
   }
 }
 
@@ -371,6 +375,8 @@ async function activateChannel(context: TwitchPageContext): Promise<void> {
   const onWatchlist = watchlist.includes(intendedLogin.toLowerCase())
   const autoTrack = localStack && (policy === 'followed' || (policy === 'ask' && onWatchlist))
   const message = await loadInitialChannelPayload(intendedLogin, autoTrack, hosted)
+    // A rejected worker call (e.g. a closed message port) is a failed load, not a pending one.
+    .catch((): PulseUpdateMessage => ({ type: 'PULSE_UPDATE', login: intendedLogin, payload: null, error: 'request_failed' }))
   if (generation !== activationGate.current()) return
   if (activeSession?.kind !== 'channel' || activeSession.login !== intendedLogin) return
 
@@ -384,6 +390,7 @@ async function activateChannel(context: TwitchPageContext): Promise<void> {
 
   mountOverlay(intendedLogin, payload, contextNow, {
     sessionOpenedAtMs,
+    error: message.error,
     coverageTier: message.coverageTier ?? null,
     pendingTrackPrompt: localStack && policy === 'ask' && !autoTrack && !payload?.tracking && lastRosterEligible,
     onPulseRefresh: () => refreshChannelPulse(intendedLogin),
@@ -511,9 +518,15 @@ onPulseUpdate((message: PulseUpdateMessage) => {
 
   const broadcastStreamId = message.streamId?.trim()
   const payloadStreamId = message.payload?.streamId?.trim()
-  // Service-worker broadcasts are stream-scoped. A missing metadata identity is
-  // rejected so a late login-only error cannot blank a different broadcast.
-  if (!broadcastStreamId) return
+  // Service-worker broadcasts are stream-scoped. A login-only one (the live
+  // poll never sends a stream id) may still move the soft-stale / error lane,
+  // which keeps the chart on screen, but it can never replace the payload.
+  if (!broadcastStreamId) {
+    if (!message.payload && (message.softStaleRefresh || message.error)) {
+      updateOverlayPayload(null, message.error, undefined, { softStaleRefresh: message.softStaleRefresh })
+    }
+    return
+  }
   if (payloadStreamId && payloadStreamId !== broadcastStreamId) return
   if (activeStreamId && activeStreamId !== broadcastStreamId) return
   if (message.payload && !payloadStreamId) return
@@ -545,6 +558,15 @@ onPulseUpdate((message: PulseUpdateMessage) => {
 
 onVodPulseUpdate((message: VodPulseUpdateMessage) => {
   applyVodPulseMessage(message)
+})
+
+onContextInvalidated(() => {
+  // The extension updated or reloaded under this tab. No poll can succeed
+  // again, so stop them and let the panel ask for a reload instead of freezing.
+  // Runs on every detection, so each step must be idempotent.
+  livePoll.stop()
+  stopVodLivePoll()
+  updateOverlayPayload(null, EXTENSION_RECONNECT_MESSAGE)
 })
 
 const NAV_MAX_WAIT_MS = 1_200
@@ -585,7 +607,14 @@ history.replaceState = (...args) => {
   scheduleRouteSync(true)
 }
 
+// An idle or background tab makes no bridge calls: check on return and on the
+// 5 s tick, which also keeps a live-state flip from restarting a dead poll.
+document.addEventListener('visibilitychange', () => {
+  contextInvalidated()
+})
+
 setInterval(() => {
+  if (contextInvalidated()) return
   if (!activeSession || activeSession.kind !== 'channel') return
 
   const context = parseTwitchPage(window.location.pathname)

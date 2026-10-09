@@ -93,9 +93,9 @@ export const overlayBaseStyles = `
     border-radius: 999px;
     overflow: visible;
   }
-  .mode-collapsed.placement-bottom { bottom: 16px; }
+  .mode-collapsed.placement-bottom { bottom: 16px; width: auto; border-radius: 999px; overflow: visible; }
   .placement-right:not(.mode-mini):not(.mode-collapsed) { animation-name: pulse-in-right; }
-  .placement-bottom:not(.mode-mini):not(.mode-collapsed) { animation-name: pulse-in-bottom; }
+  .placement-bottom:not(.mode-mini) { animation-name: pulse-in-bottom; }
   .pulse-hidden { display: none !important; }
   .pulse-sidebar-panel.pulse-shell {
     background: ${theme.bgCanvas};

@@ -14,11 +14,12 @@ import { LiveStatsBand } from './LiveStatsBand.tsx'
 import { MostReactedSection } from './MostReactedSection.tsx'
 import { PastVodsSection } from './PastVodsSection.tsx'
 import { CoverageCard } from './CoverageCard.tsx'
-import { PulseSettingsPanel } from './PulseSettingsPanel.tsx'
+import { OpenAllSettingsButton, PulseSettingsPanel } from './PulseSettingsPanel.tsx'
 import { SettingsGearIcon } from './SettingsGearIcon.tsx'
-import { useSupporterAppearance } from './useSupporterAppearance.ts'
+import { useSupporterAppearanceDetails } from './useSupporterAppearance.ts'
 import { StreamPulseTitleBlock, streamPulseHeaderChrome, streamPulseHeaderChromeSidebar } from './StreamPulseTitleBlock.tsx'
 import { PulseBannerBackdrop, usePulseBanner } from './PulseBanner.tsx'
+import { useKeepPressedInPlace } from './keepPressedInPlace.ts'
 import { AnalyticsHubCta } from './AnalyticsHubCta.tsx'
 import { rollupToRecapHeatPoint } from './recapChartPeaks.ts'
 import { buildRecapEmoteCatalog } from './recapEmotes.ts'
@@ -30,6 +31,7 @@ import {
   DEFAULT_BACKEND_URL,
   getAutoUpdateEnabled,
   getBackendUrl,
+  densityFromStorageChange,
   getDensityPreference,
   getVodJumpChartPinEnabled,
   getOverlayDisplayPreferences,
@@ -274,7 +276,7 @@ function OverlayMain({
   login,
   context,
   payload,
-  error,
+  error: reportedError,
   pendingTrackPrompt = false,
   onTrackStarted,
   sessionOpenedAtMs = null,
@@ -295,10 +297,30 @@ function OverlayMain({
   vodPulseLoading = false,
   softStaleRefreshWarning = false,
 }: OverlayProps) {
+  // A worker or network that never answers must not leave "Loading Pulse" up
+  // forever: offer Retry after 10 s, and treat 30 s of silence as an outage.
+  const loadKey = `${login}:${context.vodId ?? ''}:${sessionOpenedAtMs ?? ''}`
+  const awaitingData = !reportedError && !payload && !vodPulse
+  const [loadStall, setLoadStall] = useState<[string, number]>(['', 0])
+  useEffect(() => {
+    if (!awaitingData) return
+    const soft = setTimeout(() => setLoadStall([loadKey, 1]), 10_000)
+    const hard = setTimeout(() => setLoadStall([loadKey, 2]), 30_000)
+    return () => {
+      clearTimeout(soft)
+      clearTimeout(hard)
+    }
+  }, [awaitingData, loadKey])
+  const loadStallStage = awaitingData && loadStall[0] === loadKey ? loadStall[1] : 0
+  const error = reportedError || (loadStallStage > 1 ? 'request_failed' : undefined)
   const [mode, setModeState] = useState<OverlayMode>('expanded')
   const [placement, setPlacementState] = useState<OverlayPlacement>('right')
   const [density, setDensityState] = useState<DensityPreference>('comfortable')
   const banner = usePulseBanner()
+  // Emote rain is a Supporter perk. The header owns the membership check on the
+  // Pulse view, where the backdrop draws, and reports it here.
+  const [supporterPerks, setSupporterPerks] = useState(false)
+  const keepPressedInPlace = useKeepPressedInPlace()
   const [sidebarTab, setSidebarTabState] = useState<SidebarTab>('pulse')
   const controlledSidebarTab = sidebarTabProp != null
   const [backendUrl, setBackendUrlState] = useState(DEFAULT_BACKEND_URL)
@@ -321,6 +343,10 @@ function OverlayMain({
   const [chartPinOffset, setChartPinOffset] = useState<number | null>(null)
   const [vodJumpChartPinEnabled, setVodJumpChartPinEnabled] = useState(true)
   const [mostReactedPinOffset, setMostReactedPinOffset] = useState<number | null>(null)
+  // The moment a Top Moments row picked. While it is still the pinned moment,
+  // its card opens under that row; picked on the chart, it opens there.
+  const [listPinOffset, setListPinOffset] = useState<number | null>(null)
+  const cardInList = listPinOffset != null && listPinOffset === mostReactedPinOffset
   const [mostReactedPreviewOffset, setMostReactedPreviewOffset] = useState<number | null>(null)
   const [chartMinuteSelection, setChartMinuteSelection] = useState<ExtensionRollup | null>(null)
   const jumpBusyRef = useRef(false)
@@ -459,11 +485,12 @@ function OverlayMain({
     }
   }
 
-  const handleMostReactedPin = useCallback((offsetSeconds: number | null) => {
+  const handleMostReactedPin = useCallback((offsetSeconds: number | null, fromList?: boolean) => {
     setMostReactedPreviewOffset(null)
     setMostReactedPinOffset(offsetSeconds)
     setChartPinOffset(offsetSeconds)
     setChartMinuteSelection(null)
+    setListPinOffset(fromList ? offsetSeconds : null)
   }, [])
 
   const handleChartPin = useCallback((offsetSeconds: number | null) => {
@@ -600,9 +627,8 @@ function OverlayMain({
       if (changes.overlayMode || changes.overlayPlacement) {
         refreshDisplay()
       }
-      if (changes.density) {
-        setDensityState(changes.density.newValue === 'compact' ? 'compact' : 'comfortable')
-      }
+      const nextDensity = densityFromStorageChange(changes)
+      if (nextDensity) setDensityState(nextDensity)
       if (changes.sidebarTab && !controlledSidebarTab) {
         const requestId = ++tabRequestId
         void getSidebarTab().then(tab => {
@@ -704,7 +730,11 @@ function OverlayMain({
         pulseSupported,
       })
     : null
-  const panelSurfaceState = resolvePulsePanelSurfaceState({
+  // A VOD answered without chart data (missing / syncing replay) is a status,
+  // not an outage: VodPulseStatusCard explains it, the header must not say
+  // Loading or Unavailable.
+  const vodStatusOnly = Boolean(vodPulse && !payload && !error)
+  const panelSurfaceState = vodStatusOnly ? 'offline_empty' : resolvePulsePanelSurfaceState({
     payload,
     error,
     pageIsLive,
@@ -1286,7 +1316,8 @@ function OverlayMain({
       apiBaseUrl: backendUrl,
       channelLogin: login,
       streamId: payload?.streamId,
-      offsetSeconds: offsetSeconds ?? 0,
+      // Undefined opens the stream itself; 0 is its first minute.
+      offsetSeconds,
     })
   }
 
@@ -1442,7 +1473,8 @@ function OverlayMain({
       }
       setNotice({
         kind: 'warn',
-        text: err instanceof Error ? err.message : 'Could not load full stream chart.',
+        // Viewer copy only: a raw transport message is not an explanation.
+        text: coverageErrorMessage(err instanceof Error ? err.message : null, 'Could not load full stream chart.'),
       })
       return { ok: false, reason: 'request_failed' }
     }
@@ -1580,9 +1612,11 @@ function OverlayMain({
   }
 
   // Body host visibility is owned by mount.tsx (hidden entirely on Chat tab).
+  // Only the sidebar body fills its host. On a fixed floating shell 100% means
+  // the whole viewport, so the placement CSS must size the pill and mini bar.
   if (resolvedMode === 'collapsed') {
     return (
-      <section className={shellClass} data-pulse-density={density} style={styles.collapsedHost} aria-label="StreamPulse collapsed">
+      <section className={shellClass} data-pulse-density={density} style={sidebarBodyOnly ? styles.collapsedHost : undefined} aria-label="StreamPulse collapsed">
         <CollapsedPill
           tracking={payload?.tracking ?? false}
           isLive={uiIsLive}
@@ -1595,7 +1629,7 @@ function OverlayMain({
 
   if (resolvedMode === 'mini') {
     return (
-      <section className={shellClass} data-pulse-density={density} style={styles.miniHost} aria-label="StreamPulse mini overlay">
+      <section className={shellClass} data-pulse-density={density} style={sidebarBodyOnly ? styles.miniHost : undefined} aria-label="StreamPulse mini overlay">
         <MiniDock
           login={login}
           payload={payload}
@@ -1619,7 +1653,7 @@ function OverlayMain({
       style={{ ...styles.panel, overflow: 'hidden', boxSizing: 'border-box', height: sidebarBodyOnly ? '100%' : undefined, padding: showSidebarTabs || sidebarBodyOnly ? 0 : 12 }}
       aria-label="StreamPulse overlay"
     >
-      {panelView === 'pulse' && !sidebarChatOnly && <PulseBannerBackdrop value={banner.value} />}
+      {panelView === 'pulse' && !sidebarChatOnly && <PulseBannerBackdrop value={banner.value} perks={supporterPerks} />}
       {showSidebarTabs ? (
         <div className="pulse-sidebar-tabs-wrap" style={styles.sidebarTabsWrap}>
           <PulseSidebarTabs active={resolvedSidebarTab} onChange={tab => void persistSidebarTab(tab)} />
@@ -1627,6 +1661,7 @@ function OverlayMain({
       ) : null}
 
       <div
+        ref={keepPressedInPlace}
         className={`pulse-panel-body ${showSidebarTabs ? 'pulse-tab-fade' : ''}`}
         style={{
           ...(sidebarChatOnly ? styles.panelHidden : undefined),
@@ -1642,7 +1677,18 @@ function OverlayMain({
       <PanelErrorBoundary>
       {panelView === 'settings' ? (
         <div key="settings" className="pulse-panel-view-enter pulse-panel-view-settings pulse-panel-view-stack">
-          <PulseSettingsPanel onBack={() => setPanelView('pulse')} />
+          <PulseSettingsPanel
+            onBack={() => setPanelView('pulse')}
+            channel={{
+              login,
+              displayName: coverageTierState?.displayName,
+              isLive: uiIsLive,
+              category: payload?.category ?? coverageTierState?.liveMetadata?.category,
+              viewerCount: currentViewerCount(payload, uiIsLive),
+              startedAt: payload?.startedAt ?? coverageTierState?.liveMetadata?.startedAt,
+              surface: panelSurfaceState,
+            }}
+          />
         </div>
       ) : (
         <div
@@ -1669,6 +1715,7 @@ function OverlayMain({
         onTrack={localStackBackend ? () => void startTracking() : undefined}
         onMini={() => void persistMode('mini')}
         onHide={() => void hideOverlay()}
+        onSupporterPerks={setSupporterPerks}
       />
 
       {panelView === 'pulse' && !sidebarChatOnly ? (
@@ -1782,6 +1829,7 @@ function OverlayMain({
                   pinOffsetSeconds={chartPinOffset}
                   previewOffsetSeconds={mostReactedPreviewOffset}
                   selectedMomentOffsetSeconds={mostReactedPinOffset}
+                  cardInList={cardInList}
                   hasVodContext={Boolean(payload?.vodId ?? context.vodId)}
                   coverageTier={coverageTierState?.coverageTier ?? null}
                   liveMetadata={coverageTierState?.liveMetadata ?? null}
@@ -1801,6 +1849,7 @@ function OverlayMain({
                   onAnalyticsAtOffset={openAnalytics}
                   onHighlightOffset={setMostReactedPreviewOffset}
                   onPinOffset={handleMostReactedPin}
+                  cardInList={cardInList}
                   hasVodContext={Boolean(payload?.vodId ?? context.vodId)}
                 />
               ) : null}
@@ -1837,9 +1886,11 @@ function OverlayMain({
       {isVodPage && !hasRecapPanel && panelSurfaceState !== 'identity_mismatch' ? (
         <VodPulseStatusCard
           vodPulse={vodPulse}
-          loading={vodPulseLoading}
+          // A stalled load is reported as an error above; never "Loading" beside it.
+          loading={vodPulseLoading && !error}
           error={error}
-          onRetry={() => void refreshPulse()}
+          // An orphaned tab can only reload, which the error card above offers.
+          onRetry={error === EXTENSION_RECONNECT_MESSAGE ? undefined : () => void refreshPulse()}
         />
       ) : null}
 
@@ -1882,19 +1933,26 @@ function OverlayMain({
         </>
       ) : null}
 
-      {!error && !payload ? (
-        sidebarBodyOnly && resolvedPlacement === 'sidebar' ? (
-          <PulseSidebarSkeleton hostedBackend={hostedBackend} />
-        ) : (
-          <section style={styles.stateBlock}>
-            <h2 style={styles.stateTitle}>Loading Pulse</h2>
-            <p style={styles.stateText}>
-              {hostedBackend
-                ? 'Fetching live analytics from StreamPulse…'
-                : `Waiting for Pulse data from ${backendUrl}. Make sure the stack is running, then retry.`}
-            </p>
-          </section>
-        )
+      {awaitingData && !error ? (
+        <>
+          {sidebarBodyOnly && resolvedPlacement === 'sidebar' ? (
+            <PulseSidebarSkeleton hostedBackend={hostedBackend} />
+          ) : (
+            <section style={styles.stateBlock}>
+              <h2 style={styles.stateTitle}>Loading Pulse</h2>
+              <p style={styles.stateText}>
+                {hostedBackend
+                  ? 'Fetching live analytics from StreamPulse…'
+                  : `Waiting for Pulse data from ${backendUrl}. Make sure the stack is running, then retry.`}
+              </p>
+            </section>
+          )}
+          {loadStallStage ? (
+            <div style={styles.footerActions}>
+              <button type="button" style={styles.secondaryButton} onClick={() => void refreshPulse()}>Retry</button>
+            </div>
+          ) : null}
+        </>
       ) : null}
         </div>
       )}
@@ -1917,8 +1975,24 @@ function OverlayMain({
           </button>
         </div>
       ) : null}
+      {panelView === 'settings' && !sidebarChatOnly ? (
+        <div className="pulse-settings-footer" style={styles.settingsFooter}>
+          <OpenAllSettingsButton style={styles.settingsBottomBar} />
+        </div>
+      ) : null}
     </section>
   )
+}
+
+/** Latest sampled viewer count within five minutes of the live edge, if any. */
+function currentViewerCount(payload: PulsePayload | null, isLive: boolean): number | null {
+  if (!payload || !isLive) return null
+  for (let index = payload.rollups.length - 1; index >= 0; index--) {
+    const rollup = payload.rollups[index]!
+    if (rollup.offsetSeconds < payload.currentOffsetSeconds - 300) return null
+    if ((rollup.viewerSamples ?? 0) > 0 && rollup.viewerCount != null) return rollup.viewerCount
+  }
+  return null
 }
 
 function StreamPulseHeader({
@@ -1937,6 +2011,7 @@ function StreamPulseHeader({
   onTrack,
   onMini,
   onHide,
+  onSupporterPerks,
 }: {
   personalTitle: string
   isLive: boolean
@@ -1953,9 +2028,13 @@ function StreamPulseHeader({
   onTrack?: () => void
   onMini: () => void
   onHide: () => void
+  onSupporterPerks: (perks: boolean) => void
 }) {
   const headerStyle = sidebarFill ? streamPulseHeaderChromeSidebar : streamPulseHeaderChrome
-  const finish = useSupporterAppearance()
+  const appearance = useSupporterAppearanceDetails()
+  const finish = appearance?.finish ?? null
+  const perks = appearance?.perks === true
+  useEffect(() => onSupporterPerks(perks), [perks, onSupporterPerks])
   const actionsStyle = sidebarFill ? styles.streamPulseHeaderActionsSidebar : styles.streamPulseHeaderActions
   const trackButtonStyle = sidebarFill ? styles.trackingButtonFull : styles.trackingButton
   const trackStreamerStyle = sidebarFill ? styles.trackStreamerButtonFull : styles.trackStreamerButton
@@ -1975,6 +2054,8 @@ function StreamPulseHeader({
         <StreamPulseTitleBlock
           title={personalTitle || undefined}
           finish={finish}
+          tenure={appearance?.tenure}
+          paint={appearance?.paint}
           statusLabel={hostedBackend ? statusLabel : 'Local dev API'}
           statusTone={hostedBackend ? (isLive ? 'live' : 'idle') : 'local'}
         />
@@ -2149,7 +2230,7 @@ export function ClipSpikeCard({ clip, backendUrl, onSelect }: { clip: ExtensionC
         style={styles.clipSpikeCard}
         aria-label={`Clip spike: ${clip.title}`}
       >
-        <div style={styles.clipThumbWrap}>
+        <div className="pulse-clip-thumb" style={styles.clipThumbWrap}>
           {thumbnailUrl ? (
             <img
               src={thumbnailUrl}
@@ -2307,7 +2388,11 @@ function BackendError({ backendUrl, error, onRetry, onSettings }: { backendUrl: 
   return (
     <section style={styles.errorBlock}>
       <h2 style={styles.errorTitle}>Can&apos;t reach StreamPulse</h2>
-      <p style={styles.stateText}>No response from {backendUrl}. Is the StreamPulse stack running? Showing this instead of empty charts.</p>
+      <p style={styles.stateText}>
+        {isHostedBackendUrl(backendUrl)
+          ? 'StreamPulse isn’t responding right now. Try again in a minute.'
+          : `No response from ${backendUrl}. Is the StreamPulse stack running? Showing this instead of empty charts.`}
+      </p>
       <div style={styles.footerActions}>
         <button type="button" style={styles.secondaryButton} onClick={onRetry}>Retry</button>
         <button type="button" style={styles.textButtonLarge} onClick={onSettings}>Open settings</button>
@@ -2317,10 +2402,14 @@ function BackendError({ backendUrl, error, onRetry, onSettings }: { backendUrl: 
 }
 
 function PulseRefreshError({ error, onRetry }: { error: string; onRetry: () => void }) {
+  // An orphaned tab keeps its last chart, but Retry goes through a dead port.
+  const reconnect = error === EXTENSION_RECONNECT_MESSAGE
   return (
     <div role="status" className="pulse-refresh-error" style={styles.refreshError}>
       <span>{formatPulseApiError(error) ?? 'The latest Pulse refresh failed; showing the last good data.'}</span>
-      <button type="button" style={styles.textButtonLarge} onClick={onRetry}>Retry</button>
+      <button type="button" style={styles.textButtonLarge} onClick={reconnect ? () => window.location.reload() : onRetry}>
+        {reconnect ? 'Reload page' : 'Retry'}
+      </button>
     </div>
   )
 }
