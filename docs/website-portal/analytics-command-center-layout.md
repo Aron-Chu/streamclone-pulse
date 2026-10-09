@@ -36,6 +36,34 @@ strip, the range row, the tab and overlay rows), which is an owner layout
 decision. Measurements: streampulse-sdlc
 `artifacts/analytics-compact-2026-10-08/` (`owner-window/` for the 125% window).
 
+### Stream page option: whole timeline on the first screen (2026-10-09)
+
+An option on top of the compact density, offered for the owner to accept or
+drop. On the owner's window the stream timeline now starts at y=617 CSS (771
+physical px; live at 75% is 844), so all 400px of it are on the first screen at
+100%. Same section order, plot height, inspector and navigator; rows are merged,
+not shrunk:
+
+- **Chart header row.** The hover readout and hint share a row with the range
+  controls, which moved up from their own row above the plot. They are still
+  above the plot and never cover it (#76's rule), and the navigator below the
+  plot is unchanged. In DOM and keyboard order the range controls now come
+  before the games strip and the focus bar, at every width (on phones too).
+  The hover values outlast the viewer-source label when the row is tight.
+- **Status row.** The coverage notice and the session lifecycle row sit side by
+  side (`data-session-status-row`); below 1100px they stack as before.
+- **Games played.** The label sits beside the box art, and the hovered or pinned
+  game's line sits under the label, so hovering a game no longer pushes the
+  plot down.
+- **Focus bar.** Series tabs and overlay focus chips share a row when both fit;
+  otherwise the overlay row wraps below as before.
+- **Stat cards.** Label and value on one line when the card is wide enough.
+
+The layout rules are in the last block of `analytics-compact.css` (1100px and
+up). The only markup changes are the chart header row and the status-row
+wrapper. Evidence: streampulse-sdlc
+`artifacts/closeout-2026-10-08b/followups/stream-compact-option/`.
+
 ## Moments review refinements (2026-09-08)
 
 Follow-up audit implementation: at widths up to600px Moments collapses browse
