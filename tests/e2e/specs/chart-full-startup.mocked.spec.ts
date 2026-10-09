@@ -12,7 +12,8 @@ const ranges = [
   ['Full stream', Infinity],
 ] as const
 
-for (const duration of [120, 21600]) {
+// 44,820 s (12h27m) is the long-stream case from the Codex audit (#70).
+for (const duration of [120, 21600, 44820]) {
   test(`Full startup and all range zoom controls on a ${duration}-second stream`, async ({
     extension, prepare, evidence,
   }, info) => {
