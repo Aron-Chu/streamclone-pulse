@@ -54,7 +54,6 @@ async function access(write: boolean, value?: unknown, key: string = DEFAULT_BAC
   } finally { db.close() }
 }
 
-/** Sign in with Twitch markers (never credentials) share the private store under their own key. */
 /**
  * myMoments binds the removal of an account's local copy here; it imports this
  * module, so the coordinator below cannot import it back.
@@ -64,6 +63,7 @@ export function bindAccountDataForget(forget: (accountId: string) => void): void
   accountDataForget = forget
 }
 
+/** Sign in with Twitch markers (never credentials) share the private store under their own key. */
 const TWITCH_SIGN_IN_META_KEY = `twitch-signin-meta-v1:${DEFAULT_BACKEND_URL}`
 export const twitchSignInMetaRecord = {
   read: () => access(false, undefined, TWITCH_SIGN_IN_META_KEY),
