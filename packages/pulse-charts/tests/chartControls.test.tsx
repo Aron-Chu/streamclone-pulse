@@ -531,7 +531,7 @@ describe('chart controls', () => {
 
     const run = (
       event: ReturnType<typeof wheel>,
-      overrides: Partial<{ viewport: { startSeconds: number; endSeconds: number }; durationSeconds: number; wheelZoomMode: 'modified' | 'direct' }> = {},
+      overrides: Partial<{ viewport: { startSeconds: number; endSeconds: number }; durationSeconds: number; wheelZoomMode: 'modified' | 'direct' | 'none' }> = {},
     ) => {
       const preventDefault = vi.fn()
       const onViewportChange = vi.fn()
@@ -558,6 +558,14 @@ describe('chart controls', () => {
       expect(consumed).toBe(true)
       expect(preventDefault).toHaveBeenCalledOnce()
       expect(onViewportChange.mock.calls[0][0].endSeconds - onViewportChange.mock.calls[0][0].startSeconds).toBeLessThan(3600)
+    })
+
+    it.each([{}, { altKey: true }])('never zooms on the wheel when the parent navigator owns it: %j', event => {
+      // The portal stream chart routes wheel zoom through its shared navigator.
+      const { consumed, preventDefault, onViewportChange } = run(wheel(event), { wheelZoomMode: 'none' })
+      expect(consumed).toBe(false)
+      expect(preventDefault).not.toHaveBeenCalled()
+      expect(onViewportChange).not.toHaveBeenCalled()
     })
 
     it.each([{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { deltaY: 240 }])('preserves browser gestures and the full-range boundary in direct mode: %j', event => {

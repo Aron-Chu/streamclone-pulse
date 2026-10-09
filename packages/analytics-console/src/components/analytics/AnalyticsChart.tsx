@@ -3,6 +3,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode
 import type { AnalyticsMinuteRollup, AnalyticsStreamDetail, GameSegment } from '../../api.ts'
 import { formatHeatOffset } from '@streampulse/pulse-core'
 import {
+  MIN_CHART_VIEWPORT_SECONDS,
   PulseMultiSignalChartInner,
   analyzeViewerCoverage,
   buildChartSeries,
@@ -43,7 +44,7 @@ import {
   trimRollupsToWallDuration,
 } from '../../utils/gameSegmentChart.ts'
 import { GamesPlayedStrip } from './GamesPlayedStrip.tsx'
-import { ChartNavigator, type ChartNavigatorRange } from './ChartNavigator.tsx'
+import { ChartNavigator, zoomNavigatorRange, type ChartNavigatorRange } from './ChartNavigator.tsx'
 import {
   sessionNavigatorIndexForOffset,
   sessionNavigatorPointCount,
@@ -97,6 +98,13 @@ function readoutCount(value: number | null | undefined): string {
 
 /** The standard small bordered button, with a visible disabled state. */
 const DATA_PAGER_BUTTON_CLASS = 'min-h-11 rounded border border-white/10 px-3 font-bold text-zinc-300 transition hover:border-white/20 hover:bg-white/[0.06] hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-white/10 disabled:hover:bg-transparent'
+
+/**
+ * The session view never shows fewer minutes than the chart's own viewport
+ * floor, so the navigator stops there too: Zoom in disables instead of each
+ * click being widened back to the floor and nudged a minute right.
+ */
+const NAVIGATOR_MIN_VISIBLE_MINUTES = Math.ceil(MIN_CHART_VIEWPORT_SECONDS / 60)
 
 /** How far back the resting readout may look for a minute with a viewer sample. */
 const RESTING_VIEWER_LOOKBACK_MS = 15 * 60_000
@@ -465,6 +473,7 @@ function AnalyticsChart({
   )
   const navigatorIndexForOffset = (offsetSeconds: number | null) =>
     sessionNavigatorIndexForOffset(offsetSeconds, chartDurationSeconds, chartDomainStartSeconds)
+  const navigatorFocusIndex = navigatorIndexForOffset(selectedChartOffsetSeconds ?? (isLive ? chartDurationSeconds : null))
   // A navigator drag reports every pointer move with animate=false. The plot
   // must follow the pointer, so motion stays off while the rendered target is
   // the viewport the drag last set (the hub does the same with jumpTo).
@@ -484,7 +493,35 @@ function AnalyticsChart({
     setNavigatorDirectViewport(null)
     handleViewportChange(fullChartViewport(chartDurationSeconds, chartDomainStartSeconds))
   }, [chartDomainStartSeconds, chartDurationSeconds, handleViewportChange])
+  // The plot's + / - / 0 keys step exactly like Zoom in / Zoom out / Reset zoom.
+  const handleZoomKey = useCallback((action: 'in' | 'out' | 'reset') => {
+    if (action === 'reset') {
+      resetNavigator()
+      return
+    }
+    const next = zoomNavigatorRange(
+      navigatorPointCount,
+      navigatorRange,
+      navigatorFocusIndex,
+      action,
+      NAVIGATOR_MIN_VISIBLE_MINUTES,
+    )
+    if (next.startIndex === navigatorRange.startIndex && next.endIndex === navigatorRange.endIndex) return
+    handleNavigatorChange(next)
+  }, [
+    handleNavigatorChange,
+    navigatorFocusIndex,
+    navigatorPointCount,
+    navigatorRange.endIndex,
+    navigatorRange.startIndex,
+    resetNavigator,
+  ])
   const chartStackRef = useRef<HTMLDivElement>(null)
+  // Wheel zoom anchors on the plot area, not the axis gutters around it.
+  const plotWheelAnchor = useCallback(
+    () => chartStackRef.current?.querySelector('svg[role="group"] rect[data-chart-touch-action]'),
+    [],
+  )
 
   // At rest the readout names the pinned minute, else the last complete minute:
   // a live stream's newest minute is still filling and reads like a collapse.
@@ -641,7 +678,7 @@ function AnalyticsChart({
       aria-describedby="analytics-chart-help"
     >
       <p id="analytics-chart-help" className="sr-only">
-        Viewer, chat, and emote measurements over the selected session. Use the chart controls to change the view; hover or focus a minute to inspect it and select it to pin details. With the chart focused, + and − zoom and 0 resets the view.
+        Viewer, chat, and emote measurements over the selected session. Use the chart controls to change the view; hover or focus a minute to inspect it and select it to pin details. With the chart focused, + and − work like Zoom in and Zoom out and 0 like Reset zoom.
       </p>
       <p className="sr-only" aria-live="polite" aria-atomic="true" data-chart-selection-announcement>
         {selectedRollup
@@ -941,7 +978,10 @@ function AnalyticsChart({
            onViewportChange={handleViewportChange}
           layoutMode="equal-signals"
           dragPanMode="zoomed"
-          wheelZoomMode={scrollZoomEnabled ? 'direct' : 'modified'}
+          // Wheel zoom goes through the navigator below, as on the hub, so one
+          // notch zooms the same amount wherever the pointer is.
+          wheelZoomMode="none"
+          onZoomKey={handleZoomKey}
           lineWeightMode="viewport-adaptive"
           activityBucketing="time"
           onActivityBucketMinutesChange={setActivityBucketMinutes}
@@ -961,9 +1001,11 @@ function AnalyticsChart({
               endIndex={navigatorRange.endIndex}
               startLabel={formatHeatOffset(effectiveChartViewport.startSeconds)}
               endLabel={formatHeatOffset(effectiveChartViewport.endSeconds)}
-              focusIndex={navigatorIndexForOffset(selectedChartOffsetSeconds ?? (isLive ? chartDurationSeconds : null))}
+              focusIndex={navigatorFocusIndex}
               selectedIndex={navigatorIndexForOffset(selectedChartOffsetSeconds)}
               wheelSurfaceRef={chartStackRef}
+              wheelAnchor={plotWheelAnchor}
+              minVisibleCount={NAVIGATOR_MIN_VISIBLE_MINUTES}
               scrollZoomEnabled={scrollZoomEnabled}
               onScrollZoomChange={setScrollZoomEnabled}
               onChange={handleNavigatorChange}

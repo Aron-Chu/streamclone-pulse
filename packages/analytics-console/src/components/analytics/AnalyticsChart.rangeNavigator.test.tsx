@@ -160,7 +160,7 @@ describe('AnalyticsChart range controls and navigator', () => {
   it('mentions the plot zoom keys only to assistive tech', () => {
     const { container } = renderChart(91)
     expect(container.querySelector('#analytics-chart-help')?.textContent)
-      .toContain('With the chart focused, + and − zoom and 0 resets the view.')
+      .toContain('With the chart focused, + and − work like Zoom in and Zoom out and 0 like Reset zoom.')
   })
 
   it('zooms to the first preset around a click on the track at full range, as the hub does', () => {

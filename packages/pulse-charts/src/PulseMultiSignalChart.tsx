@@ -1041,6 +1041,12 @@ function linePath(
  * viewport. Ctrl/Meta stay reserved for the browser's own page zoom, and Shift
  * is left to the surrounding navigator rail — so neither is consumed here.
  */
+/**
+ * `modified` (default) zooms on Alt+wheel, `direct` on a plain wheel too, and
+ * `none` never zooms on the wheel, for a parent whose navigator owns wheel zoom.
+ */
+export type ChartWheelZoomMode = 'modified' | 'direct' | 'none'
+
 export function isChartZoomWheelGesture(
   event: Pick<WheelEvent, "altKey" | "ctrlKey" | "metaKey" | "shiftKey">,
 ): boolean {
@@ -1075,7 +1081,7 @@ export function handleMultiSignalWheelEvent(args: {
   anchorSeconds: number
   onViewportChange: (viewport: ChartViewport) => void
   domainStartSeconds?: number
-  wheelZoomMode?: 'modified' | 'direct'
+  wheelZoomMode?: ChartWheelZoomMode
 }): boolean {
   const {
     event,
@@ -1086,6 +1092,8 @@ export function handleMultiSignalWheelEvent(args: {
     domainStartSeconds = 0,
   } = args
   if (durationSeconds <= 0) return false
+  // A parent that zooms through its own navigator leaves the wheel to it.
+  if (args.wheelZoomMode === 'none') return false
   // Session charts opt into direct wheel zoom; other surfaces require Alt.
   if (!isChartZoomWheelGesture(event) && !(args.wheelZoomMode === 'direct' && !event.ctrlKey && !event.metaKey && !event.shiftKey)) return false
   if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) return false
@@ -1153,6 +1161,7 @@ function PulseMultiSignalChartInnerImpl({
   layoutMode = "viewer-led",
   dragPanMode = "off",
   wheelZoomMode = 'modified',
+  onZoomKey,
   lineWeightMode = "fixed",
   activityBucketing = "budget",
   onActivityBucketMinutesChange,
@@ -1210,7 +1219,12 @@ function PulseMultiSignalChartInnerImpl({
   layoutMode?: ChartLayoutMode;
   /** Optional graph-surface navigation. The extension keeps its existing gesture path. */
   dragPanMode?: ChartDragPanMode;
-  wheelZoomMode?: 'modified' | 'direct';
+  wheelZoomMode?: ChartWheelZoomMode;
+  /**
+   * Replaces the plot's own + / - / 0 zoom keys, so a parent with a navigator
+   * can make them step exactly like its Zoom in / Zoom out / Reset zoom.
+   */
+  onZoomKey?: (action: "in" | "out" | "reset") => void;
   /** Disable viewport easing while the parent rail is being dragged/resized. */
   viewportMotionEnabled?: boolean;
   /** Portal-only opt-in; shared/extension callers retain the fixed stroke contract. */
@@ -3124,11 +3138,12 @@ function PulseMultiSignalChartInnerImpl({
       inferredDurationSeconds > 0
     ) {
       event.preventDefault();
-      if (event.key === "0") resetViewport();
-      else
-        zoomViewportByFactor(
-          event.key === "+" || event.key === "=" ? 0.75 : 1.333333,
-        );
+      const action = event.key === "0"
+        ? "reset"
+        : event.key === "+" || event.key === "=" ? "in" : "out";
+      if (onZoomKey) onZoomKey(action);
+      else if (action === "reset") resetViewport();
+      else zoomViewportByFactor(action === "in" ? 0.75 : 1.333333);
       return;
     }
     if (!onSelectRollup || rollups.length === 0) return;
