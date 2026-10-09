@@ -826,10 +826,10 @@ function AnalyticsChart({
               onClick={() => toggleFocusMode('spikes')}
               aria-pressed={showSpikes}
               aria-label={showSpikes ? 'Hide chart spikes' : 'Show chart spikes'}
-              className={`shrink-0 rounded px-2.5 py-1.5 text-xs font-black uppercase transition ${
+              className={`shrink-0 rounded border px-2.5 py-1.5 text-xs font-black uppercase transition ${
                 showSpikes
-                  ? 'bg-amber-400/15 text-amber-200 ring-1 ring-inset ring-amber-300/25'
-                  : 'text-zinc-500 hover:bg-white/[0.07] hover:text-zinc-200'
+                  ? 'border-amber-300/25 bg-amber-400/15 text-amber-200'
+                  : 'border-white/10 text-zinc-500 hover:border-white/20 hover:bg-white/[0.07] hover:text-zinc-200'
               }`}
             >
               Spikes
