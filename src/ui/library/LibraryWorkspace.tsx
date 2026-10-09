@@ -8,6 +8,7 @@ import { MomentPreview, type MomentContextState } from './MomentPreview.tsx'
 import type { MomentPresentation } from './MomentMedia.tsx'
 import type { BookmarksState } from '../../shared/myMoments.ts'
 import type { PulseBookmark } from '../../shared/messages.ts'
+import { TWITCH_SIGNIN_ENABLED } from '../../shared/twitchSignIn.ts'
 import './library.css'
 
 export interface LibraryWorkspaceProps {
@@ -21,6 +22,12 @@ export interface LibraryWorkspaceProps {
   presentations?: Readonly<Record<string, MomentPresentation>>
   /** Portal origin for moment Analytics links; production when omitted. */
   analyticsOrigin?: string
+  /**
+   * Whether this build can create an account (Continue with Twitch). With
+   * sign-in compiled off nobody can make one, so nothing here offers it.
+   * Fixed at build time; a prop for tests only.
+   */
+  accountsOpen?: boolean
   now?: () => number
 }
 
@@ -46,36 +53,47 @@ function deviceSaveMoments(snapshot: LibrarySnapshot | null): LibraryMoment[] {
 }
 
 /**
+ * My Moments with Sign in with Twitch compiled off (every store build today):
+ * there is no account anyone can create, so the copy says where saves live
+ * and what is coming, and offers no account action.
+ */
+export const DEVICE_ONLY_INTRO = 'Find your way back to the stream. Bookmarks are free and stay in this browser, along with your notes and watched history. Accounts are coming with Continue with Twitch.'
+export const DEVICE_ONLY_COPY = 'Bookmarks, notes and watched history stay in this browser and are never uploaded. Accounts are coming with Continue with Twitch; until then there is nothing to sign up for.'
+
+/**
  * Names why the hosted list is missing and what to do about it.
  *
  * The worker distinguishes these; an earlier single "could not be loaded"
  * banner covered a missing sign-in, an expired link and a dead network alike,
  * so it could never point at the one action that resolves the common case.
  */
-function BookmarksNotice({ state, onRetry }: { state: BookmarksState; onRetry: () => void }) {
+function BookmarksNotice({ state, onRetry, accountsOpen }: { state: BookmarksState; onRetry: () => void; accountsOpen: boolean }) {
   if (state === 'ready') return null
-  const linkable = state === 'not_linked' || state === 'expired'
+  // Without sign-in nobody can make an account, so a missing one is not a
+  // problem to fix: no Connect button, and no Retry that could change nothing.
+  const deviceOnly = state === 'not_linked' && !accountsOpen
+  const linkable = !deviceOnly && (state === 'not_linked' || state === 'expired')
   return (
     <PulseSectionCard
       title={state === 'not_linked' ? 'Bookmarks are saved on this device' : state === 'expired' ? 'Your account link expired' : 'Could not reach StreamPulse'}
       headingLevel={3}
     >
       <p className="pl-muted">
-        {state === 'not_linked'
+        {deviceOnly ? DEVICE_ONLY_COPY : state === 'not_linked'
           ? 'Connect a free Pulse account and new bookmarks follow you to any device. Bookmarks, notes and watched history saved here stay on this device.'
           : linkable
             ? 'Saved moments sync through your account so they survive a reinstall. Watched history and notes stay on this device either way.'
             : 'No bookmark change was confirmed. Watched history and notes on this device are unaffected.'}
       </p>
-      <div className="pl-row">
+      {deviceOnly ? null : <div className="pl-row">
         {linkable ? <a className="pl-button pl-primary" href="#supporter">Connect account</a> : null}
         <button type="button" className="pl-button" onClick={onRetry}>Retry</button>
-      </div>
+      </div>}
     </PulseSectionCard>
   )
 }
 
-export function LibraryWorkspace({ repository, initialView = 'saved', onExport, contexts, presentations, analyticsOrigin, now = Date.now }: LibraryWorkspaceProps) {
+export function LibraryWorkspace({ repository, initialView = 'saved', onExport, contexts, presentations, analyticsOrigin, now = Date.now, accountsOpen = TWITCH_SIGNIN_ENABLED }: LibraryWorkspaceProps) {
   const library = useLibrary(repository)
   const [view, setView] = useState<LibraryView>(initialView)
   const [query, setQuery] = useState('')
@@ -146,7 +164,7 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
   const contentView = view === 'saved' || view === 'recent'
   return <main className="pl-library" id="settings-content" tabIndex={-1} aria-label="My Moments settings">
     <div className="pl-page-heading"><div><span className="pl-eyebrow">YOUR MOMENTS · FREE</span><h2 ref={heading} tabIndex={-1}>My Moments</h2>
-      <p className="pl-muted">Find your way back to the stream. Bookmarks are free. Without an account they stay on this device; with a free Pulse account they follow you to any device. Notes and watch history stay on this device.</p></div></div>
+      <p className="pl-muted">{accountsOpen ? 'Find your way back to the stream. Bookmarks are free. Without an account they stay on this device; with a free Pulse account they follow you to any device. Notes and watch history stay on this device.' : DEVICE_ONLY_INTRO}</p></div></div>
     <div className="pl-library-intro" aria-label="How My Moments works">
       <span><strong>Bookmarks</strong><small>Keep a timestamp and note for later.</small></span>
       <span><strong>History</strong><small>Optional, device-only playback memory.</small></span>
@@ -165,7 +183,7 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
     {library.loading ? <section aria-busy="true" aria-label="Loading My Moments" className="pl-stack"><p role="status">Loading your moments…</p>
       {[0, 1, 2].map(n => <div className="pl-skeleton" aria-hidden="true" key={n}><span /><span /></div>)}</section> : null}
     {snapshot ? <>
-      {contentView ? <BookmarksNotice state={bookmarksState} onRetry={library.retry} /> : null}
+      {contentView ? <BookmarksNotice state={bookmarksState} onRetry={library.retry} accountsOpen={accountsOpen} /> : null}
       {snapshot.sync.kind === 'offline' ? <p className="pl-warning">You’re offline. Local saves still work. Cloud changes have not been backed up yet.</p> : null}
       {contentView ? <>
         <section className="pl-library-results" id={`${id}-panel-${view}`} role="tabpanel" aria-labelledby={`${id}-tab-${view}`} tabIndex={-1} aria-label={views.find(v => v.id === view)?.label}>
