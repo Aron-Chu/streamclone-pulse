@@ -172,6 +172,28 @@ type Device = { code: string; label: string; expiresAt: string }
 type Phase = 'idle' | 'inspecting' | 'review' | 'needs_sign_in' | 'invalid' | 'approved' | 'denied'
 
 const formatCode = (code: string) => `${code.slice(0, 5)}-${code.slice(5)}`
+const clockTime = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+/** The API gives every extension request a fixed ten-minute life (device_links.go), so it was created ten minutes before it expires. */
+const DEVICE_REQUEST_LIFETIME_MS = 10 * 60_000
+function requestAge(requestedAt: number, now: number): string {
+  const minutes = Math.max(0, Math.floor((now - requestedAt) / 60_000))
+  return minutes < 1 ? 'less than a minute ago' : minutes === 1 ? '1 minute ago' : `${minutes} minutes ago`
+}
+
+/**
+ * Everything an approved extension's device credential can do on the API: the
+ * bookmark routes accept it for saved moments and notes, and the history sync,
+ * settings and clear routes accept it without a further sign-in.
+ */
+function DeviceAccess() {
+  return <><p>If you approve, this extension can, until you sign it out in Account &amp; devices:</p>
+    <ul className="pulse-account-access" data-testid="device-access">
+      <li>read your Supporter status and save your Pulse appearance</li>
+      <li>see, add, change and delete your saved moments and their notes</li>
+      <li>turn synced watch history on or off, and read or clear that history while it’s on</li>
+    </ul>
+    <p>It cannot connect Twitch, publish a badge, or start a subscription.</p></>
+}
 
 function LinkDevice() {
   const navigate = useNavigate()
@@ -344,8 +366,8 @@ function LinkDevice() {
       : phase === 'approved' ? <div role="status"><h1>Extension connected</h1><p className="pulse-account-intro">Return to your extension. It finishes connecting by itself, and you can close this tab.</p><p><Link to="/account/billing">Membership &amp; billing</Link></p></div>
       : phase === 'denied' ? <div role="status"><h1>Request declined</h1><p className="pulse-account-intro">This request cannot connect to your account.</p></div>
       : phase === 'invalid' ? <><h1>This request is no longer valid</h1><p className="pulse-account-intro">Extension requests last ten minutes and work once. Start again from your extension’s settings and this page opens with a fresh request.</p><ManualCode code={code} setCode={setCode} busy={busy} onSubmit={() => void inspect(code)} help="Or check the code and enter it again, exactly as your extension shows it." /></>
-      : device ? <div className="pulse-account-review"><h1 tabIndex={-1} ref={confirmationHeading}>Allow this extension?</h1><p className="pulse-account-device">{device.label}</p><p className="pulse-account-code-check"><span>Extension code</span><samp>{formatCode(device.code)}</samp></p>{accountRef ? <p className="pulse-account-code-check" data-testid="link-account"><span>Connects to Pulse account</span><samp>{accountRef}</samp></p> : null}<p>Check that this code matches the code currently shown in your extension. Only approve a request you started yourself.</p><p>It will be able to read your Supporter status and save your Pulse appearance. This does not connect Twitch, publish a badge, or start a subscription.</p>
-        {deviceExpired ? <p role="status">This code has expired. Start a new connection in the extension.</p> : <p className="pulse-account-meta">Code expires at {new Date(device.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.</p>}
+      : device ? <div className="pulse-account-review"><h1 tabIndex={-1} ref={confirmationHeading}>Allow this extension?</h1><p className="pulse-account-device">{device.label}</p><p className="pulse-account-code-check"><span>Extension code</span><samp>{formatCode(device.code)}</samp></p>{accountRef ? <p className="pulse-account-code-check" data-testid="link-account"><span>Connects to Pulse account</span><samp>{accountRef}</samp></p> : null}<p className="pulse-account-meta" data-testid="device-requested">Requested at {clockTime(Date.parse(device.expiresAt) - DEVICE_REQUEST_LIFETIME_MS)} ({requestAge(Date.parse(device.expiresAt) - DEVICE_REQUEST_LIFETIME_MS, now)})</p><p>Check that this code matches the code currently shown in your extension. Only approve a request you started yourself, just now, in your own browser. If someone sent you this link or code, decline.</p><DeviceAccess />
+        {deviceExpired ? <p role="status">This code has expired. Start a new connection in the extension.</p> : <p className="pulse-account-meta">Code expires at {clockTime(Date.parse(device.expiresAt))}.</p>}
         <div className="pulse-account-actions"><button className="pulse-account-primary" disabled={busy || deviceExpired} onClick={() => void decide(true)}>{busy ? 'Approving…' : purchase ? 'Approve and continue' : 'Approve extension'}</button><button disabled={busy || deviceExpired} onClick={() => void decide(false)}>Decline</button></div>
         {error || deviceExpired ? <button className="pulse-account-text-button" disabled={busy} onClick={startOver}>Use another code</button> : null}
       </div>
