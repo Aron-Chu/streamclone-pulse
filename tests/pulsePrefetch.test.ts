@@ -13,6 +13,7 @@ import {
   awaitPulsePrefetchInFlight,
   fetchAndCachePulseChannel,
   handleTwitchTabNavigation,
+  handleTwitchTabUpdate,
   pulsePrefetchInFlightCount,
   resetPulsePrefetchInFlightForTests,
   schedulePulsePrefetch,
@@ -117,6 +118,32 @@ describe('pulse prefetch', () => {
     expect(fetchPulseChannel).toHaveBeenCalledTimes(1)
     expect(fetchPulseChannel).toHaveBeenCalledWith('xqc', { window: 'recent' })
     expect(sessionStore['pulse:xqc:recent']).toBeTruthy()
+  })
+
+  it('skips a channel page that loads or navigates in a background tab', async () => {
+    handleTwitchTabUpdate({ url: 'https://www.twitch.tv/xqc' }, { url: 'https://www.twitch.tv/xqc', active: false })
+    handleTwitchTabUpdate({ status: 'complete' }, { url: 'https://www.twitch.tv/xqc', active: false })
+    expect(pulsePrefetchInFlightCount()).toBe(0)
+    await new Promise(resolve => setTimeout(resolve, 30))
+    expect(fetchPulseChannel).not.toHaveBeenCalled()
+    expect(fetchExtensionCoverage).not.toHaveBeenCalled()
+  })
+
+  it('handleTwitchTabNavigation skips a tab known to be in the background', async () => {
+    handleTwitchTabNavigation('https://www.twitch.tv/xqc', { active: false })
+    expect(pulsePrefetchInFlightCount()).toBe(0)
+  })
+
+  it('prefetches a channel page in the active tab, on a URL change or a completed load', async () => {
+    handleTwitchTabUpdate({ url: 'https://www.twitch.tv/xqc' }, { url: 'https://www.twitch.tv/xqc', active: true })
+    expect(pulsePrefetchInFlightCount()).toBe(1)
+    await awaitPulsePrefetchInFlight('xqc')
+    expect(fetchPulseChannel).toHaveBeenCalledWith('xqc', { window: 'recent' })
+    resetPulsePrefetchInFlightForTests()
+    handleTwitchTabUpdate({ status: 'loading' }, { url: 'https://www.twitch.tv/shroud', active: true })
+    expect(pulsePrefetchInFlightCount()).toBe(0)
+    handleTwitchTabUpdate({ status: 'complete' }, { url: 'https://www.twitch.tv/shroud', active: true })
+    expect(pulsePrefetchInFlightCount()).toBe(1)
   })
 
   it('reuses session cache and skips network when fresh', async () => {
