@@ -95,9 +95,8 @@ import {
   shouldShowMissedMomentsBanner,
   shouldShowStreamStartAction,
   canShowVodBackfillCTA,
-  backendResolvedVod,
 } from './missedMoments.ts'
-import { initPulseDebug, pulseDebug, summarizeVodDebugBlockers } from '../shared/pulseDebug.ts'
+import { initPulseDebug, pulseDebug } from '../shared/pulseDebug.ts'
 import { resolveMostReactedHeat } from './mostReacted.ts'
 import { StreamRecapSection } from './StreamRecapSection.tsx'
 import { resolveRecapUiState } from './recapUiState.ts'
@@ -339,7 +338,6 @@ function OverlayMain({
   const [missedJob, setMissedJob] = useState<PulseBackfillJob | null>(null)
   const [coverageLastCheck, setCoverageLastCheck] = useState<number | null>(null)
   const [coverageCheckError, setCoverageCheckError] = useState<string | null>(null)
-  const [vodDebugDetail, setVodDebugDetail] = useState<string | null>(null)
   const [panelView, setPanelView] = useState<'pulse' | 'settings'>('pulse')
   const [chartPinOffset, setChartPinOffset] = useState<number | null>(null)
   const [vodJumpChartPinEnabled, setVodJumpChartPinEnabled] = useState(true)
@@ -975,18 +973,6 @@ function OverlayMain({
     setNotice({ kind: 'warn', text: 'Backfill is taking longer than expected — try again shortly.' })
   }
 
-  async function refreshVodDebugDetail(
-    activePayload?: PulsePayload | null,
-    token?: BackfillOperationToken | null,
-  ): Promise<void> {
-    const source = activePayload ?? payload
-    const summary = await summarizeVodDebugBlockers({
-      backendVodResolved: source ? backendResolvedVod(source) : false,
-    })
-    if (token && !tokenIsLive(token)) return
-    setVodDebugDetail(summary)
-  }
-
   async function submitPageVodHint(token?: BackfillOperationToken | null): Promise<string | null> {
     const op = token ?? backfillOpsRef.current.current()
     if (!payload?.streamId || payload.vodId) return payload?.vodId ?? null
@@ -1053,10 +1039,7 @@ function OverlayMain({
       }, hint ? 'info' : 'warn')
     }
     if (op && !tokenIsLive(op)) return null
-    if (!hint) {
-      await refreshVodDebugDetail(undefined, op)
-      return null
-    }
+    if (!hint) return null
     try {
       const res = await sendBackgroundMessage({
         type: 'HINT_VOD',
@@ -1124,14 +1107,12 @@ function OverlayMain({
           kind: 'info',
           text: 'Twitch VOD linked — tap Fill from Twitch VOD when you want to load missing chat.',
         })
-        await refreshVodDebugDetail(next, token)
         return
       }
       if (next.helixEnabled === false) {
         setCoverageCheckError(
           'Backend Helix is off — analytics needs TWITCH_OAUTH_CLIENT_ID/SECRET (or redeploy latest analytics).',
         )
-        await refreshVodDebugDetail(next, token)
         return
       }
       if (!next.vodId && healthRes && 'type' in healthRes && healthRes.type === 'HEALTH' && healthRes.helixEnabled == null) {
@@ -1145,7 +1126,6 @@ function OverlayMain({
       } else {
         setCoverageCheckError(null)
       }
-      await refreshVodDebugDetail(next, token)
     } catch (err) {
       if (!tokenIsLive(token) || isAbortError(err)) return
       setCoverageCheckError(coverageErrorMessage(
@@ -1240,9 +1220,6 @@ function OverlayMain({
       coverageStart: payload.coverageStartOffsetSeconds ?? null,
       helixEnabled: payload.helixEnabled ?? null,
     })
-    if (coverage?.state === 'waiting_for_vod') {
-      void refreshVodDebugDetail()
-    }
   }, [login, payload?.streamId, payload?.vodId, payload?.tracking, payload?.coverageStartOffsetSeconds, payload?.coverage?.state, payload?.helixEnabled])
 
   const coverageForPoll = payload ? resolvePulseCoverage(payload) : undefined
@@ -1861,7 +1838,6 @@ function OverlayMain({
               job={missedJob}
               lastCheckedAt={coverageLastCheck}
               checkError={coverageCheckError}
-              debugDetail={vodDebugDetail}
               onLoad={() => void loadMissedMoments()}
               onCheckVod={() => void refreshVodStatus()}
               onOpenSettings={openInlineSettings}
