@@ -55,6 +55,28 @@ describe('Privacy: feedback form', () => {
     expect(section('privacy-feedback-logs')).toMatch(/never your message,\s+your email or the Turnstile token/)
   })
 
+  it('lists the outgoing mail service and support inbox as recipients of the report', () => {
+    render(<MemoryRouter><Privacy /></MemoryRouter>)
+    const mail = section('privacy-third-party-support-mail')
+    expect(mail).toMatch(/feedback form only/)
+    expect(mail).toMatch(/receive the case ID, kind, subject, message and any\s+reply email/)
+  })
+
+  it('does not promise a time limit for the in-memory record of the network address', () => {
+    render(<MemoryRouter><Privacy /></MemoryRouter>)
+    const logs = section('privacy-feedback-logs')
+    expect(logs).toMatch(/may also keep the\s+address in memory until it next restarts/)
+    expect(logs).toMatch(/Neither is stored with the case or written to\s+logs/)
+    expect(logs).not.toMatch(/ten minutes/)
+  })
+
+  it('names answering feedback reports among the purposes', () => {
+    render(<MemoryRouter><Privacy /></MemoryRouter>)
+    expect(section('privacy-purpose')).toMatch(
+      /Feedback reports, and any reply email you give with one, are used only\s+to read and answer that report/,
+    )
+  })
+
   it('states the current retention (no automatic deletion) without inventing a period', () => {
     render(<MemoryRouter><Privacy /></MemoryRouter>)
     const retention = section('privacy-feedback-retention')

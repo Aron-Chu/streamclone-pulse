@@ -254,9 +254,10 @@ export default function Privacy() {
           </p>
           <p data-testid="privacy-feedback-logs">
             <strong>Abuse limits and logs.</strong> To limit abuse, the API counts reports per
-            network address in short-lived counters that expire within about ten minutes. Its logs
-            and metrics for the form record counts and fixed status codes only, never your message,
-            your email or the Turnstile token.
+            network address. The counters expire within minutes, and the API may also keep the
+            address in memory until it next restarts. Neither is stored with the case or written to
+            logs. Its logs and metrics for the form record counts and fixed status codes only, never
+            your message, your email or the Turnstile token.
           </p>
           <p data-testid="privacy-feedback-retention">
             <strong>How long it's kept.</strong> Automatic deletion of feedback reports is switched
@@ -394,6 +395,12 @@ export default function Privacy() {
             form. Cloudflare processes your IP address and browser signals to tell people from bots,
             as described under Feedback form.
           </li>
+          <li data-testid="privacy-third-party-support-mail">
+            <strong>Outgoing mail service and support inbox (feedback form only)</strong> — the email
+            provider StreamPulse uses to send feedback reports, and the provider that hosts
+            StreamPulse's private support inbox, receive the case ID, kind, subject, message and any
+            reply email in order to deliver and hold the report, as described under Feedback form.
+          </li>
           <li>
             <strong>Stripe (payments)</strong> — only if you subscribe to Supporter. Stripe receives
             your payment details directly and acts as the payment processor; StreamPulse receives
@@ -437,10 +444,11 @@ export default function Privacy() {
         </p>
 
         <h2>Purpose</h2>
-        <p>
+        <p data-testid="privacy-purpose">
           Data is used to provide Pulse overlays on Twitch, honest coverage and backfill status, and public
           aggregate analytics. Account data is used to sign you in and, if you subscribe, to know whether
-          your membership is paid. Data is not sold, used for advertising, or used for unrelated profiling.
+          your membership is paid. Feedback reports, and any reply email you give with one, are used only
+          to read and answer that report and to fix the problem it describes. Data is not sold, used for advertising, or used for unrelated profiling.
         </p>
 
         <h2>Retention and deletion</h2>
