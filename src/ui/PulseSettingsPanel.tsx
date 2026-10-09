@@ -14,6 +14,7 @@ import { formatCount } from './mostReacted.ts'
 import type { PulsePanelSurfaceState } from './pulsePanelLayout.ts'
 import type { SettingsHostSection } from '../shared/messages.ts'
 import type { SupporterCardOptions } from '../supporter/cardContract.ts'
+import { names as SUPPORTER_PERK_NAMES } from '../shared/supporter-perks.json'
 
 const RELEASE_PREVIEW = __EXTENSION_RELEASE_PREVIEW__
 
@@ -316,11 +317,13 @@ function ChannelHeader({ channel, name }: { channel: QuickSettingsChannel; name:
  *
  * The card shows only its title row and the moving stage, which takes the
  * room a line of copy used to cover. The copy stays as the button's
- * description for screen readers.
+ * description for screen readers and its tooltip: every perk, named in the
+ * order of the one perk list (src/shared/supporter-perks.json).
  */
 export function SupporterHero({ appearance, disabled, onOpen }: { appearance: SupporterAppearance | null; disabled?: boolean; onOpen: () => void }) {
   const finish = appearance?.finish ?? null
   const descriptionId = useId()
+  const perks = `${appearance ? 'Your Supporter perks' : 'Supporter perks'}: ${SUPPORTER_PERK_NAMES.join(', ')}. Only you see them. Core tools stay free.`
   return (
     <button
       type="button"
@@ -330,13 +333,14 @@ export function SupporterHero({ appearance, disabled, onOpen }: { appearance: Su
       data-finish={finish ?? undefined}
       disabled={disabled}
       aria-describedby={descriptionId}
+      title={perks}
       onClick={onOpen}
     >
       <span className="pulse-supporter-cta-head">
         <strong>Pulse Supporter</strong>
         <span>{appearance ? 'Manage Supporter' : 'Explore Supporter'} <span aria-hidden="true">›</span></span>
       </span>
-      <span id={descriptionId} hidden>{appearance ? 'A crest that levels up the longer you support. Only you see it. Core tools stay free.' : 'Your crest and paint on your line. Only you see them. Core tools stay free.'}</span>
+      <span id={descriptionId} hidden>{perks}</span>
       <SupporterCardStage mode={appearance ? 'tenure' : 'anatomy'} tenure={appearance?.tenure} finish={finish} paint={appearance?.paint} />
     </button>
   )
