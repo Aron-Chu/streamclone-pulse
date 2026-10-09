@@ -30,7 +30,7 @@ export const POLICY_LINKS = {
 } as const
 
 /**
- * Community destinations: the website's feedback form and its Discord page.
+ * Community destinations: the website's private feedback page and its Discord page.
  *
  * Fixed production pages, separate from the policy links. The extension never
  * embeds a Discord invite: `/discord` is the website's own page, which holds the
@@ -40,10 +40,10 @@ export const POLICY_LINKS = {
  * Both pages are website work this file depends on, not something it provides.
  * `tests/portalLinks.test.ts` fails while streampulse-web has no route for a
  * path here, and the store review checklist requires the deployed /discord page
- * to forward to an invite and the /support form to be on before a release.
+ * to forward to an invite and the /feedback form to be on before a release.
  */
 export const COMMUNITY_LINKS = {
-  feedback: `${CANONICAL_PORTAL_ORIGIN}/support`,
+  feedback: `${CANONICAL_PORTAL_ORIGIN}/feedback`,
   discord: `${CANONICAL_PORTAL_ORIGIN}/discord`,
 } as const
 

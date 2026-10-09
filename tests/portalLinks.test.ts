@@ -44,9 +44,9 @@ describe('portal link registry', () => {
   })
 
   it('keeps the community links on fixed, slash-free production pages', () => {
-    // The extension's contract with the website: /support holds the feedback
-    // form and /discord holds the invite. A dev origin never rewrites them.
-    expect(COMMUNITY_LINKS).toEqual({ feedback: `${CANONICAL_PORTAL_ORIGIN}/support`, discord: `${CANONICAL_PORTAL_ORIGIN}/discord` })
+    // The extension's contract with the website: /feedback holds the private
+    // feedback form and /discord holds the invite. A dev origin never rewrites them.
+    expect(COMMUNITY_LINKS).toEqual({ feedback: `${CANONICAL_PORTAL_ORIGIN}/feedback`, discord: `${CANONICAL_PORTAL_ORIGIN}/discord` })
     for (const link of Object.values(COMMUNITY_LINKS)) {
       const url = new URL(link)
       expect(url.origin).toBe(CANONICAL_PORTAL_ORIGIN)
@@ -175,7 +175,7 @@ describe('content bundle', () => {
   // literal (`${C}/discord`), so a full 'streampulse.stream/discord' string never
   // appears in any build. Match the bare path, at a path-segment end so
   // '/supporter' is not read as '/support'.
-  const markers = ['/refunds', '/terms', '/privacy', '/discord', '/support']
+  const markers = ['/refunds', '/terms', '/privacy', '/discord', '/support', '/feedback']
   const pathSegment = (marker: string) => new RegExp(`${marker}(?![\\w-])`)
 
   it('matches a marker only at a path-segment end', () => {

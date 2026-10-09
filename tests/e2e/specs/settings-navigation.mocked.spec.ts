@@ -95,7 +95,7 @@ test('Supporter leads settings and section navigation remains consistent at ever
       // The Community card sits under the section list on every section, Help & Feedback included.
       await expect(community).toBeVisible()
       await expect(community.getByRole('link', { name: 'Join the Discord (opens in a new tab)', exact: true })).toHaveAttribute('href', 'https://streampulse.stream/discord')
-      await expect(community.getByRole('link', { name: 'Send feedback (opens in a new tab)', exact: true })).toHaveAttribute('href', 'https://streampulse.stream/support')
+      await expect(community.getByRole('link', { name: 'Send feedback (opens in a new tab)', exact: true })).toHaveAttribute('href', 'https://streampulse.stream/feedback')
       // Under the section list, never between it and the page it controls.
       const navBox = await page.getByRole('navigation', { name: 'Settings sections' }).boundingBox()
       const communityBox = await community.boundingBox()
@@ -107,8 +107,8 @@ test('Supporter leads settings and section navigation remains consistent at ever
         const discordChoice = help.getByRole('link', { name: 'Join the StreamPulse Discord (opens in a new tab)', exact: true })
         const feedbackChoice = help.getByRole('link', { name: 'Send feedback (opens in a new tab)', exact: true })
         await expect(discordChoice).toHaveAttribute('href', 'https://streampulse.stream/discord')
-        await expect(discordChoice).toHaveAccessibleDescription('Ideas, help and release news')
-        await expect(feedbackChoice).toHaveAttribute('href', 'https://streampulse.stream/support')
+        await expect(discordChoice).toHaveAccessibleDescription('Public server: ideas, help and release news')
+        await expect(feedbackChoice).toHaveAttribute('href', 'https://streampulse.stream/feedback')
         await expect(feedbackChoice).toHaveAccessibleDescription('Private. Only the team reads it.')
         if (width < 860) {
           // Stacked layout: a short section sits right under the rail (section list + Community card), not pushed down the window.
@@ -138,7 +138,7 @@ test('Supporter leads settings and section navigation remains consistent at ever
 
   // Both Community links open the website in a new tab without an opener.
   await page.getByRole('navigation', { name: 'Settings sections' }).getByRole('link', { name: 'Pulse on Twitch', exact: true }).click()
-  for (const [name, url] of [['Join the Discord (opens in a new tab)', 'https://streampulse.stream/discord'], ['Send feedback (opens in a new tab)', 'https://streampulse.stream/support']]) {
+  for (const [name, url] of [['Join the Discord (opens in a new tab)', 'https://streampulse.stream/discord'], ['Send feedback (opens in a new tab)', 'https://streampulse.stream/feedback']]) {
     const opened = extension.context.waitForEvent('page')
     await community.getByRole('link', { name, exact: true }).click()
     const destination = await opened
