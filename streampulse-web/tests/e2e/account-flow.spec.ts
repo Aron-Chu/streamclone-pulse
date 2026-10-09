@@ -1,4 +1,10 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
+
+/** With Continue with Twitch on (VITE_TWITCH_SIGNIN=1 or public), the email form waits under "Tester email sign-in". */
+const TWITCH_SIGNIN = process.env.VITE_TWITCH_SIGNIN === '1' || process.env.VITE_TWITCH_SIGNIN === 'public'
+async function openTesterEmail(page: Page): Promise<void> {
+  if (TWITCH_SIGNIN) await page.getByRole('button', { name: 'Tester email sign-in' }).click()
+}
 
 test.beforeEach(async ({ context, baseURL }) => {
   const origin = new URL(baseURL!).origin
@@ -64,6 +70,7 @@ test('a prepared device request opens straight to its review, and approval stays
 test('delivery failure does not pretend an email was sent', async ({ page }, info) => {
   await page.route('**/v1/account/auth/start', route => route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"delivery_unavailable"}' }))
   await page.goto('/account/sign-in')
+  await openTesterEmail(page)
   await page.getByLabel('Email address').fill('fixture@example.com')
   await page.getByRole('button', { name: 'Send sign-in link' }).click()
   await expect(page.getByRole('alert')).toContainText('unavailable')
@@ -118,6 +125,7 @@ for (const returnPath of ['/account/billing', '/account/billing/return?attempt=1
     await page.goto(returnPath)
     await page.getByRole('link', { name: 'Tester sign-in', exact: true }).click()
     expect(new URL(page.url()).searchParams.get('returnTo')).toBe(returnPath)
+    await openTesterEmail(page)
     await page.getByLabel('Email address').fill('fixture@example.com')
     await page.getByRole('button', { name: 'Send sign-in link' }).click()
     await expect(page.getByRole('heading', { name: 'Check your email' })).toBeVisible()
