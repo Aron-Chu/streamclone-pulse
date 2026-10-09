@@ -34,6 +34,9 @@ function renderSection(payload: PulsePayload): string {
   )
 }
 
+/** The rows alone, without the Top Moments card above them. */
+const rowsMarkup = (html: string) => html.slice(html.indexOf('pulse-moment-row-button'))
+
 const peak: ExtensionPeak = {
   offsetSeconds: 120,
   score: 92,
@@ -62,7 +65,7 @@ describe('MostReactedSection', () => {
     expect(html).toContain('pulse-moment-row-button')
   })
 
-  it('keeps ranked rows compact and leaves inspection to the chart', () => {
+  it('keeps ranked rows compact and leaves inspection to the card above them', () => {
     const html = renderToStaticMarkup(
       <MostReactedSection
         payload={makePayload({
@@ -83,12 +86,15 @@ describe('MostReactedSection', () => {
       />,
     )
 
-    expect(html).toContain('aria-label="HyperMegaLongEmoteName"')
-    expect(html).toContain('aria-label="LUL"')
-    expect(html).toContain('aria-label="catJAM"')
+    const rows = rowsMarkup(html)
+    expect(rows).toContain('aria-label="HyperMegaLongEmoteName"')
+    expect(rows).toContain('aria-label="LUL"')
+    expect(rows).toContain('aria-label="catJAM"')
     expect(html).not.toContain('fourthHidden')
-    expect(html).not.toContain('data-moment-inspector-card="true"')
+    expect(rows).not.toContain('data-moment-inspector-card="true"')
     expect(html).not.toContain('data-selected-minute-slot="true"')
+    // The one card is the Top Moments card, above the rows.
+    expect(html.match(/data-moment-inspector-card="true"/g)).toHaveLength(1)
   })
 
   it('omits the emote row entirely when a ranked moment has no breakdown', () => {
@@ -102,7 +108,7 @@ describe('MostReactedSection', () => {
       />,
     )
 
-    expect(html).not.toContain('data-moment-inspector-card="true"')
+    expect(html).not.toContain('data-moment-inspector-emotes="true"')
     expect(html).not.toContain('No emote breakdown')
   })
 
@@ -139,7 +145,7 @@ describe('MostReactedSection', () => {
     expect(html).toContain('No reaction moments yet')
   })
 
-  it('highlights the selected row without duplicating the chart inspector', () => {
+  it('highlights the selected row and shows it in the one card above the list', () => {
     const idle = renderSection(makePayload({ peaks: [peak] }))
     const active = renderToStaticMarkup(
       <MostReactedSection
@@ -151,8 +157,11 @@ describe('MostReactedSection', () => {
       />,
     )
 
-    expect(idle).not.toContain('data-moment-inspector-card="true"')
-    expect(active).not.toContain('data-moment-inspector-card="true"')
+    expect(rowsMarkup(idle)).not.toContain('data-moment-inspector-card="true"')
+    expect(rowsMarkup(active)).not.toContain('data-moment-inspector-card="true"')
+    expect(idle).toContain('aria-label="Strongest moment at 00:02')
+    expect(active).toContain('aria-label="Selected moment at 00:02')
+    expect(active.match(/data-moment-inspector-card="true"/g)).toHaveLength(1)
     expect(active.match(/aria-pressed="true"/g)).toHaveLength(1)
     expect(active).toContain('data-most-reacted-count="true"')
     expect(active).toContain('Top moments')
@@ -166,6 +175,26 @@ describe('MostReactedSection', () => {
     expect(html).toContain('data-most-reacted-count="true"')
     expect(html).toContain('Top moments')
     expect(html).toContain('Chat and emote spikes')
+  })
+
+  it('keeps the pinned row listed at the end when it ranks past the fold', () => {
+    const many = Array.from({ length: 8 }, (_, index) => ({ ...peak, offsetSeconds: (index + 1) * 120, score: 99 - index }))
+    const render = (pinnedOffsetSeconds: number | null) => renderToStaticMarkup(
+      <MostReactedSection
+        payload={makePayload({ peaks: many })}
+        backendUrl="https://api.streampulse.stream"
+        pinnedOffsetSeconds={pinnedOffsetSeconds}
+        onJump={() => undefined}
+        onAnalytics={() => undefined}
+      />,
+    )
+    // Five rows show before the fold; the seventh-ranked one is pinned.
+    expect(render(null).match(/pulse-moment-row-button/g)).toHaveLength(5)
+    const rows = rowsMarkup(render(840)).split('pulse-moment-row-button').slice(1)
+    expect(rows).toHaveLength(6)
+    expect(rows[5]).toContain('aria-pressed="true"')
+    expect(rows[5]).toContain('Select minute bucket 00:14')
+    expect(render(840)).toContain('Show 2 more moments')
   })
 
   it('marks the list disclosure as a chart action so it preserves a locked minute', () => {

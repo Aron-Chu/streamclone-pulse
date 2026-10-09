@@ -418,7 +418,7 @@ describe('chatActivityEmotes', () => {
     })).toContain('available outside this view')
   })
 
-  it('slices rollups for the 2h chart window', () => {
+  it('charts the 2h chart window from a one-minute grid over validated full history', () => {
     const payload: PulsePayload = {
       login: 'test',
       isLive: true,
@@ -435,8 +435,14 @@ describe('chatActivityEmotes', () => {
       recap: null,
     }
     const rollups = prepareChartRollups(payload, { chartWindow: '2h', currentOffsetSeconds: 7200 })
-    expect(rollups.every(r => r.offsetSeconds >= 7200 - 2 * 60 * 60)).toBe(true)
-    expect(rollups[rollups.length - 1]?.chatCount).toBe(9)
+    // The source keeps the whole stream (the chart viewport narrows it to 2h),
+    // one point per minute so the axis is time-true.
+    expect(rollups).toHaveLength(121)
+    expect(rollups.every((rollup, index) => rollup.offsetSeconds === index * 60)).toBe(true)
+    expect(rollups[119]?.chatCount).toBe(9)
+    // With no coverage hole, absent minutes (the open one too) are quiet, not missing.
+    expect(rollups.some(rollup => rollup.missing)).toBe(false)
+    expect(rollups[120]?.chatCount).toBe(0)
   })
 
   it('densifies sparse full-stream rollups across the stream timeline when tracked from start', () => {

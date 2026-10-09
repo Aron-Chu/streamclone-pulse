@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import {
   momentClockDisplay,
@@ -41,10 +41,11 @@ import type { RecapUiState } from './recapUiState.ts'
 import { formatPulseApiError } from './pulseApiErrors.ts'
 import type { ExtensionCoverageResponse } from '../shared/coverage.ts'
 import type { FullHistoryRequestResult } from '../shared/fullHistoryAuth.ts'
-import { PulseMomentRow, momentRowKey, type PulseMomentRowCard } from './PulseMomentRow.tsx'
+import { PulseMomentRow, momentRowKey } from './PulseMomentRow.tsx'
 import { SelectedMomentCard } from './SelectedMomentCard.tsx'
 import { MomentCardSlot } from './MomentCardSlot.tsx'
 import { SavedMoments } from './SavedMoments.tsx'
+import { TopMomentCard, type TopMomentCardProps } from './TopMomentCard.tsx'
 import { usePinnedCardHold } from './pinnedCardExit.ts'
 import { prefersReducedMotion } from './motion/useSmoothedScalar.ts'
 import { theme } from './theme.ts'
@@ -175,35 +176,25 @@ function RecapHighlightStrip({
   burst,
   burstEmote,
   backendUrl,
-  streamId,
-  selectedKey,
   onSelectSpike,
   onSelectBurst,
   effectiveSpikeOffset,
   effectiveBurstOffset,
-  spikeSelected,
-  burstSelected,
+  spikeSelected: isSpikeSelected,
+  burstSelected: isBurstSelected,
 }: {
   spike?: PulseStreamRecap['biggestChatSpike']
   burst?: PulseStreamRecap['funniestEmoteBurst']
   burstEmote: ExtensionEmote | null
   backendUrl: string
-  streamId: string | undefined
-  selectedKey: string | null
   onSelectSpike: () => void
   onSelectBurst: () => void
   effectiveSpikeOffset?: number
   effectiveBurstOffset?: number
-  spikeSelected?: boolean
-  burstSelected?: boolean
+  spikeSelected: boolean
+  burstSelected: boolean
 }) {
   if (!spike && !burst) return null
-  const isSpikeSelected = spikeSelected ?? (spike
-    ? selectedKey === recapHighlightSpikeKey(streamId, spike.offsetSeconds)
-    : false)
-  const isBurstSelected = burstSelected ?? (burst
-    ? selectedKey === recapHighlightBurstKey(streamId, burst.offsetSeconds)
-    : false)
   const spikeOffset = effectiveSpikeOffset ?? spike?.offsetSeconds ?? 0
   const burstOffset = effectiveBurstOffset ?? burst?.offsetSeconds ?? 0
   const spikeClock = momentClockDisplay({ offsetSeconds: spikeOffset }).text
@@ -263,9 +254,23 @@ function RecapHighlightStrip({
 const RECAP_MOMENTS_COLLAPSED_COUNT = 5
 const RECAP_MOMENTS_MAX_COUNT = 20
 
-/** Collapsed, a list shows its first rows plus the row whose card is open. */
-function foldMoments<T>(items: T[], expanded: boolean, open: (item: T) => boolean): T[] {
-  return expanded ? items : items.filter((item, index) => index < RECAP_MOMENTS_COLLAPSED_COUNT || open(item))
+/** Collapsed, a list shows its first rows, and at the end a picked row past them. */
+function foldMoments<T>(items: T[], expanded: boolean, picked: (item: T) => boolean): T[] {
+  return expanded ? items : items.filter((item, index) => index < RECAP_MOMENTS_COLLAPSED_COUNT || picked(item))
+}
+
+/**
+ * The listed moment a spike marker on the recap chart stands for: the same
+ * moment, or else one within a minute of it, as for the highlight strip.
+ */
+function listedMoment<T extends { offsetSeconds: number; score: number }>(items: T[], peak: ExtensionPeak): T | undefined {
+  return items.find(item => item.offsetSeconds === peak.offsetSeconds && Math.round(item.score) === Math.round(peak.score))
+    ?? items.find(item => Math.abs(item.offsetSeconds - peak.offsetSeconds) <= 60)
+}
+
+/** Escape in a list whose pick the card shows goes back to the strongest. */
+function clearOnEscape(card: TopMomentCardProps | null) {
+  return (event: { key: string }) => { if (event.key === 'Escape' && card?.selected) card.onClear() }
 }
 
 function RecapMomentsList({
@@ -278,7 +283,6 @@ function RecapMomentsList({
   rollups,
   peaks,
   selectedKey,
-  cardKey,
   card,
   onSelect,
   onHighlight,
@@ -292,19 +296,19 @@ function RecapMomentsList({
   rollups: ExtensionRollup[]
   peaks: ExtensionPeak[] | undefined
   selectedKey: string | null
-  /** The row picked in this list, whose card opens under it. */
-  cardKey: string | null
-  card: Omit<PulseMomentRowCard, 'open'>
+  /** The card above the list: the moment picked in it, or the strongest. */
+  card: TopMomentCardProps | null
   onSelect: (key: string) => void
   onHighlight: (offsetSeconds: number | null) => void
 }) {
   if (moments.length === 0) return null
-  const shown = foldMoments(moments, expanded, moment => recapMomentKey(payload.streamId, moment) === cardKey)
+  const shown = foldMoments(moments, expanded, moment => recapMomentKey(payload.streamId, moment) === selectedKey)
   const hiddenCount = moments.length - shown.length
   return (
     <>
       <span style={styles.listCaption}>Top moments</span>
-      <div style={styles.momentList}>
+      {card ? <TopMomentCard {...card} /> : null}
+      <div style={styles.momentList} onKeyDown={clearOnEscape(card)}>
         {shown.map(moment => {
           const key = recapMomentKey(payload.streamId, moment)
           const point = recapMomentToLiveHeatPoint(moment, catalog, payload.startedAt, rollups, peaks)
@@ -316,7 +320,7 @@ function RecapMomentsList({
               selected={key === selectedKey}
               onHighlight={onHighlight}
               onSelect={() => onSelect(key)}
-              card={{ ...card, open: key === cardKey }}
+              controls={card?.id}
             />
           )
         })}
@@ -374,8 +378,8 @@ function RecapReadyContent({
   )
   const [overridePoint, setOverridePoint] = useState<LiveHeatPoint | null>(null)
   const userSelectedRef = useRef(false)
-  // Picked in the Top moments list: the card opens under that row, not above the list.
-  const [listPick, setListPick] = useState(false)
+  const [, setPicks] = useState(0)
+  const cardId = useId()
 
   useEffect(() => {
     userSelectedRef.current = false
@@ -383,32 +387,28 @@ function RecapReadyContent({
 
   useEffect(() => {
     if (userSelectedRef.current) return
-    if (!heroMoment) {
-      setSelectedKey(null)
-      setOverridePoint(null)
-      return
-    }
-    setSelectedKey(recapMomentKey(payload.streamId, heroMoment))
+    setSelectedKey(heroMoment ? recapMomentKey(payload.streamId, heroMoment) : null)
     setOverridePoint(null)
   }, [payload.streamId, heroMoment?.offsetSeconds, heroMoment?.score])
 
   const selectedMoment = mergedMoments.find(moment => recapMomentKey(payload.streamId, moment) === selectedKey) ?? null
   useEffect(() => {
-    if (!externalPoint) return
-    userSelectedRef.current = true
-    setListPick(false)
-    setSelectedKey(`clip:${externalPoint.offsetSeconds}`)
-    setOverridePoint(externalPoint)
-    setHoveredOffset(null)
+    if (externalPoint) pick(`clip:${externalPoint.offsetSeconds}`, externalPoint)
   }, [externalPoint])
   const selectedPoint = selectedMoment
     ? recapMomentToLiveHeatPoint(selectedMoment, catalog, payload.startedAt, rollups, payload.peaks)
     : overridePoint
+  // A listed moment, however it was picked, shows in the card above the list.
+  const listedPick = userSelectedRef.current && selectedMoment != null
+  const topPoint = listedPick
+    ? selectedPoint
+    : heroMoment && recapMomentToLiveHeatPoint(heroMoment, catalog, payload.startedAt, rollups, payload.peaks)
 
-  // Hold the card for one exit window so clearing a selection fades and
-  // collapses instead of vanishing on the same frame.
+  // A minute, clip or highlight the list does not rank opens its own card.
+  // Hold it for one exit window so clearing a selection fades and collapses
+  // instead of vanishing on the same frame.
   const recapCardHold = usePinnedCardHold(
-    userSelectedRef.current && !listPick ? selectedPoint : null,
+    userSelectedRef.current && !selectedMoment ? selectedPoint : null,
     prefersReducedMotion(),
   )
 
@@ -452,50 +452,33 @@ function RecapReadyContent({
       ? recapHighlightBurstKey(payload.streamId, recap.funniestEmoteBurst.offsetSeconds)
       : null
 
-  function markUserSelected(fromList = false): void {
+  // Selects a listed moment by its key, or anything else by a key and the
+  // point it shows. A pick that changes no other state (the highlighted first
+  // row) still has to render: the card then shows it as the selected moment.
+  function pick(key: string | null, point: LiveHeatPoint | null = null): void {
     userSelectedRef.current = true
-    setListPick(fromList)
+    setPicks(picks => picks + 1)
+    setSelectedKey(key)
+    setOverridePoint(point)
+    setHoveredOffset(null)
   }
 
   function clearRecapSelection(): void {
-    markUserSelected()
-    setSelectedKey(null)
-    setOverridePoint(null)
-    setHoveredOffset(null)
+    pick(null)
   }
 
   function selectChatSpike(): void {
     const spike = recap.biggestChatSpike
     if (!spike) return
-    markUserSelected()
-    if (matchingSpikeMoment) {
-      const key = recapMomentKey(payload.streamId, matchingSpikeMoment)
-      setSelectedKey(key)
-      setOverridePoint(null)
-    } else {
-      const key = recapHighlightSpikeKey(payload.streamId, spike.offsetSeconds)
-      const point = recapChatSpikeToHeatPoint(spike, catalog, payload.startedAt, rollups, payload.peaks)
-      setSelectedKey(key)
-      setOverridePoint(point)
-    }
-    setHoveredOffset(null)
+    if (matchingSpikeMoment) pick(recapMomentKey(payload.streamId, matchingSpikeMoment))
+    else pick(recapHighlightSpikeKey(payload.streamId, spike.offsetSeconds), recapChatSpikeToHeatPoint(spike, catalog, payload.startedAt, rollups, payload.peaks))
   }
 
   function selectEmoteBurst(): void {
     const burst = recap.funniestEmoteBurst
     if (!burst) return
-    markUserSelected()
-    if (matchingBurstMoment) {
-      const key = recapMomentKey(payload.streamId, matchingBurstMoment)
-      setSelectedKey(key)
-      setOverridePoint(null)
-    } else {
-      const key = recapHighlightBurstKey(payload.streamId, burst.offsetSeconds)
-      const point = recapEmoteBurstToHeatPoint(burst, catalog, payload.startedAt, rollups, payload.peaks)
-      setSelectedKey(key)
-      setOverridePoint(point)
-    }
-    setHoveredOffset(null)
+    if (matchingBurstMoment) pick(recapMomentKey(payload.streamId, matchingBurstMoment))
+    else pick(recapHighlightBurstKey(payload.streamId, burst.offsetSeconds), recapEmoteBurstToHeatPoint(burst, catalog, payload.startedAt, rollups, payload.peaks))
   }
   const topEmotes = resolveRecapEmotes(recap.topEmotes, catalog)
   const burstEmote = recap.funniestEmoteBurst?.code
@@ -545,8 +528,6 @@ function RecapReadyContent({
         burst={recap.funniestEmoteBurst}
         burstEmote={burstEmote}
         backendUrl={backendUrl}
-        streamId={payload.streamId}
-        selectedKey={selectedKey}
         onSelectSpike={selectChatSpike}
         onSelectBurst={selectEmoteBurst}
         effectiveSpikeOffset={matchingSpikeMoment?.offsetSeconds}
@@ -571,11 +552,12 @@ function RecapReadyContent({
         sidebarFill={sidebarFill}
         highlightedGameSegmentKey={recapChartHighlightedGameKey}
         onClearSelection={clearRecapSelection}
-        onSelectPoint={point => {
-          markUserSelected()
-          setSelectedKey(`bucket:${point.offsetSeconds}`)
-          setOverridePoint(point)
-          setHoveredOffset(null)
+        onSelectPoint={point => pick(`bucket:${point.offsetSeconds}`, point)}
+        // A spike marker of a listed moment shows it in the Top Moments card.
+        onSelectMoment={peak => {
+          const moment = listedMoment(mergedMoments, peak)
+          if (moment) pick(recapMomentKey(payload.streamId, moment))
+          return moment != null
         }}
         onRequestFullRollups={onRequestFullRollups}
       />
@@ -610,14 +592,16 @@ function RecapReadyContent({
         rollups={rollups}
         peaks={payload.peaks}
         selectedKey={selectedKey}
-        cardKey={userSelectedRef.current && listPick ? selectedKey : null}
-        card={{ onJump, onAnalytics, onClose: clearRecapSelection }}
-        onSelect={key => {
-          markUserSelected(true)
-          setSelectedKey(key)
-          setOverridePoint(null)
-          setHoveredOffset(null)
-        }}
+        card={topPoint ? {
+          id: cardId,
+          point: topPoint,
+          selected: listedPick,
+          backendUrl,
+          onJump,
+          onAnalytics,
+          onClear: clearRecapSelection,
+        } : null}
+        onSelect={key => pick(key)}
         onHighlight={setHoveredOffset}
       />
       <RecapTopEmotesRow backendUrl={backendUrl} emotes={topEmotes} />
@@ -688,8 +672,8 @@ function OfflineFallbackContent({
   )
   const [overridePoint, setOverridePoint] = useState<LiveHeatPoint | null>(null)
   const userSelectedRef = useRef(false)
-  // Picked in the Top moments list: the card opens under that row, not above the list.
-  const [listPick, setListPick] = useState(false)
+  const [, setPicks] = useState(0)
+  const cardId = useId()
 
   useEffect(() => {
     userSelectedRef.current = false
@@ -697,44 +681,49 @@ function OfflineFallbackContent({
 
   useEffect(() => {
     if (userSelectedRef.current) return
-    if (!heroPoint) {
-      setSelectedKey(null)
-      setOverridePoint(null)
-      return
-    }
-    setSelectedKey(offlinePointKey(heroPoint))
+    setSelectedKey(heroPoint ? offlinePointKey(heroPoint) : null)
     setOverridePoint(null)
   }, [payload.streamId, heroPoint?.offsetSeconds, heroPoint?.score])
 
-  const selectedPoint =
-    selectedKey == null
-      ? null
-      : peakPoints.find(point => offlinePointKey(point) === selectedKey) ?? overridePoint
+  const listedPoint = peakPoints.find(point => offlinePointKey(point) === selectedKey)
+  const selectedPoint = selectedKey == null ? null : listedPoint ?? overridePoint
 
   useEffect(() => {
-    if (!externalPoint) return
-    userSelectedRef.current = true
-    setListPick(false)
-    setSelectedKey(`clip:${externalPoint.offsetSeconds}`)
-    setOverridePoint(externalPoint)
-    setHoveredOffset(null)
+    if (externalPoint) pick(`clip:${externalPoint.offsetSeconds}`, externalPoint)
   }, [externalPoint])
 
   // Hold the card for one exit window so clearing a selection fades and
   // collapses instead of vanishing on the same frame.
   const recapCardHold = usePinnedCardHold(
-    userSelectedRef.current && !listPick ? selectedPoint : null,
+    userSelectedRef.current && !listedPoint ? selectedPoint : null,
     prefersReducedMotion(),
   )
-  const cardKey = userSelectedRef.current && listPick ? selectedKey : null
-  const shownPeakPoints = foldMoments(peakPoints, momentsExpanded, point => offlinePointKey(point) === cardKey)
+  // A listed moment, however it was picked, shows in the card above the list.
+  const listedPick = userSelectedRef.current && listedPoint != null
+  const topPoint = listedPick ? listedPoint : heroPoint
+  const card: TopMomentCardProps | null = topPoint ? {
+    id: cardId,
+    point: topPoint,
+    selected: listedPick,
+    backendUrl,
+    onJump,
+    onAnalytics,
+    onClear: clearOfflineSelection,
+  } : null
+  const shownPeakPoints = foldMoments(peakPoints, momentsExpanded, point => offlinePointKey(point) === selectedKey)
   const hiddenPeakCount = peakPoints.length - shownPeakPoints.length
 
-  function clearOfflineSelection(): void {
+  // As in the recap: a pick of the highlighted first row still renders.
+  function pick(key: string | null, point: LiveHeatPoint | null = null): void {
     userSelectedRef.current = true
-    setSelectedKey(null)
-    setOverridePoint(null)
+    setPicks(picks => picks + 1)
+    setSelectedKey(key)
+    setOverridePoint(point)
     setHoveredOffset(null)
+  }
+
+  function clearOfflineSelection(): void {
+    pick(null)
   }
   const chartPeakOffsets = useMemo(
     () => resolveRecapChartPeakOffsets(undefined, payload.peaks),
@@ -801,12 +790,11 @@ function OfflineFallbackContent({
         sidebarFill={sidebarFill}
         highlightedGameSegmentKey={recapChartHighlightedGameKey}
         onClearSelection={clearOfflineSelection}
-        onSelectPoint={point => {
-          userSelectedRef.current = true
-          setListPick(false)
-          setSelectedKey(`bucket:${point.offsetSeconds}`)
-          setOverridePoint(point)
-          setHoveredOffset(null)
+        onSelectPoint={point => pick(`bucket:${point.offsetSeconds}`, point)}
+        onSelectMoment={peak => {
+          const point = listedMoment(peakPoints, peak)
+          if (point) pick(offlinePointKey(point))
+          return point != null
         }}
         onRequestFullRollups={onRequestFullRollups}
       />
@@ -834,7 +822,8 @@ function OfflineFallbackContent({
       {peakPoints.length > 0 ? (
         <>
           <span style={styles.listCaption}>Top moments</span>
-          <div style={styles.momentList}>
+          {card ? <TopMomentCard {...card} /> : null}
+          <div style={styles.momentList} onKeyDown={clearOnEscape(card)}>
             {shownPeakPoints.map(point => {
               const key = offlinePointKey(point)
               return (
@@ -844,19 +833,8 @@ function OfflineFallbackContent({
                   backendUrl={backendUrl}
                   selected={key === selectedKey}
                   onHighlight={setHoveredOffset}
-                  onSelect={next => {
-                    userSelectedRef.current = true
-                    setListPick(true)
-                    setSelectedKey(offlinePointKey(next))
-                    setOverridePoint(null)
-                    setHoveredOffset(null)
-                  }}
-                  card={{
-                    open: key === cardKey,
-                    onJump,
-                    onAnalytics,
-                    onClose: clearOfflineSelection,
-                  }}
+                  onSelect={next => pick(offlinePointKey(next))}
+                  controls={card?.id}
                 />
               )
             })}

@@ -1,4 +1,4 @@
-import { useRef, type CSSProperties } from 'react'
+import { useLayoutEffect, useRef, type CSSProperties } from 'react'
 import {
   LIVE_HEAT_COLLECTING_LABEL,
   displayMomentReasonLabel,
@@ -6,34 +6,17 @@ import {
   reactionAnalyticalOffset,
   type LiveHeatPoint,
 } from '@streampulse/pulse-core'
-import { MomentCardSlot } from './MomentCardSlot.tsx'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
-import { SelectedMomentCard } from './SelectedMomentCard.tsx'
 import { formatMomentMetricsLine } from './momentActivity.ts'
 import { momentReasonLabelStyle } from './momentReasonStyles.ts'
 import { liveHeatPointKey } from './mostReacted.ts'
-import { prefersReducedMotion } from './motion/useSmoothedScalar.ts'
-import { usePinnedCardHold } from './pinnedCardExit.ts'
 import { theme } from './theme.ts'
-
-/**
- * The selected-moment card a list opens directly under the row picked in it.
- * Rows above never move and the row stays under the pointer; only the rows
- * below slide down.
- */
-export interface PulseMomentRowCard {
-  open: boolean
-  jumpLabel?: string
-  onJump: (point: LiveHeatPoint) => void
-  onAnalytics: (point: LiveHeatPoint) => void
-  onClose: () => void
-}
 
 /**
  * A list row's React key. Alone in its minute bucket, a moment is keyed by the
  * bucket, which a refinement poll leaves alone. Sharing it (two refined moments
  * can), it is keyed by its full identity instead, so a poll can remount its row
- * but never hand the row, its focus and its card to the other moment.
+ * but never hand the row and its focus to the other moment.
  */
 export function momentRowKey(point: LiveHeatPoint, points: LiveHeatPoint[]): string {
   return points.filter(other => other.offsetSeconds === point.offsetSeconds)[1]
@@ -47,7 +30,8 @@ export interface PulseMomentRowProps {
   selected: boolean
   onSelect: (point: LiveHeatPoint) => void
   onHighlight: (offsetSeconds: number | null) => void
-  card?: PulseMomentRowCard
+  /** Id of the card above the list that shows the moment a row picks. */
+  controls?: string
 }
 
 export function PulseMomentRow({
@@ -56,16 +40,24 @@ export function PulseMomentRow({
   selected,
   onSelect,
   onHighlight,
-  card,
+  controls,
 }: PulseMomentRowProps) {
-  const buttonRef = useRef<HTMLButtonElement>(null)
-  // Each row holds its own card, so moving the card to another row closes
-  // this one the same way the ✕ does.
-  const cardHold = usePinnedCardHold(card?.open || null, prefersReducedMotion())
   const clock = momentClockDisplay(point)
   const offsetLabel = clock.text
   const analyticalOffset = reactionAnalyticalOffset(point)
   const collecting = point.collecting
+  const ref = useRef<HTMLButtonElement>(null)
+  // A row that leaves the list while focused (a poll ranks it past the fold,
+  // or the pick it was listed for is cleared) hands focus on to what follows
+  // the list, its Show more control, instead of dropping it.
+  useLayoutEffect(() => {
+    const button = ref.current
+    return () => {
+      if (button && (button.getRootNode() as Document).activeElement === button) {
+        (button.parentElement!.nextElementSibling as HTMLElement | null)?.focus()
+      }
+    }
+  }, [])
   const body = (
     <div
       className={
@@ -128,67 +120,34 @@ export function PulseMomentRow({
     return body
   }
 
-  // Closing hands focus back to the row instead of dropping it with the card.
-  // A row listed past the fold only for its card leaves with it; focus then
-  // moves on to what follows the list, its Show more control.
-  const close = (): void => {
-    const row = buttonRef.current!
-    const list = row.parentElement!.parentElement!
-    row.focus()
-    card?.onClose()
-    setTimeout(() => { if (!row.isConnected) (list.nextElementSibling as HTMLElement | null)?.focus() })
-  }
-
-  // One wrapper per row keeps the card's slot out of the list's gapped grid,
-  // and keeps the row button mounted (and focused) when its card opens.
   return (
-    <div onKeyDown={event => { if (event.key === 'Escape' && card?.open) close() }}>
-      <button
-        ref={buttonRef}
-        type="button"
-        className="pulse-moment-row-button"
-        style={styles.momentButton}
-        // Selecting a moment row pins the chart bucket, so the row belongs to the
-        // chart even though it sits outside the plot boundary. Without this marker
-        // the chart's document-level pointerdown clears the current inspector
-        // first; removing that card shifts this row before pointer-up and the
-        // browser never dispatches the click, losing the selection entirely.
-        data-chart-action="true"
-        // Focus stays on the row, so keyboard users keep their place.
-        onClick={() => onSelect(point)}
-        onMouseEnter={() => onHighlight(analyticalOffset)}
-        onMouseLeave={() => onHighlight(null)}
-        onFocus={() => onHighlight(analyticalOffset)}
-        onBlur={() => onHighlight(null)}
-        aria-pressed={selected}
-        aria-expanded={card?.open}
-        aria-label={`Select minute bucket ${offsetLabel}, ${formatMomentMetricsLine(point)}, ${point.reasonLabel}`}
-      >
-        {body}
-      </button>
-      {card && cardHold.point ? (
-        // keepPressedInPlace knows this slot by its place, right after the row.
-        <MomentCardSlot exiting={cardHold.exiting}>
-          <div style={styles.cardGap}>
-            <SelectedMomentCard
-              point={point}
-              backendUrl={backendUrl}
-              compact
-              jumpLabel={card.jumpLabel}
-              onJump={card.onJump}
-              onAnalytics={card.onAnalytics}
-              onClear={close}
-            />
-          </div>
-        </MomentCardSlot>
-      ) : null}
-    </div>
+    <button
+      ref={ref}
+      type="button"
+      className="pulse-moment-row-button"
+      style={styles.momentButton}
+      // Selecting a moment row pins the chart bucket, so the row belongs to the
+      // chart even though it sits outside the plot boundary. Without this marker
+      // the chart's document-level pointerdown clears the current inspector
+      // first; removing that card shifts this row before pointer-up and the
+      // browser never dispatches the click, losing the selection entirely.
+      data-chart-action="true"
+      // Focus stays on the row, so keyboard users keep their place.
+      onClick={() => onSelect(point)}
+      onMouseEnter={() => onHighlight(analyticalOffset)}
+      onMouseLeave={() => onHighlight(null)}
+      onFocus={() => onHighlight(analyticalOffset)}
+      onBlur={() => onHighlight(null)}
+      aria-pressed={selected}
+      aria-controls={controls}
+      aria-label={`Select minute bucket ${offsetLabel}, ${formatMomentMetricsLine(point)}, ${point.reasonLabel}`}
+    >
+      {body}
+    </button>
   )
 }
 
 const styles: Record<string, CSSProperties> = {
-  // The list's own row gap, inside the slot so it opens and closes with the card.
-  cardGap: { paddingTop: 4 },
   momentButton: {
     background: 'transparent',
     border: 0,

@@ -190,7 +190,8 @@ test.describe('chart preview/lock interactions', () => {
     await expect(featured).toBeVisible()
     expect((await featured.boundingBox())!.y).toBeLessThan((await chart.boundingBox())!.y)
     await featured.click()
-    await expect(extension.page.locator(`#${PULSE_ROOT_ID} [data-selected-moment-card="true"]`)).toBeVisible()
+    // Its ranked moment shows in the Top Moments card.
+    await expect(extension.page.locator(`#${PULSE_ROOT_ID} [data-top-moment-card="selected"] [data-selected-moment-card="true"]`)).toBeVisible()
     await assertBookmarkLabel(extension.page)
     assertNoUncaughtErrors(evidence)
   })

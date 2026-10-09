@@ -4,6 +4,7 @@ import {
   areaPathInBand,
   chartBarBucketOpacity,
   easeInOutCubic,
+  extendSeriesToTrailingEdge,
   firstViewerOffsetSeconds,
   linePathInBand,
   plotY,
@@ -13,6 +14,7 @@ import {
   smoothLinePathInBand,
   smoothNullableSeriesValues,
   smoothSeriesValues,
+  STREAM_START_RAMP_MAX_BUCKETS,
   trendSmoothingWindow,
   valueYInBand,
 } from '../src/ui/chartRollupUtils.ts'
@@ -203,6 +205,19 @@ describe('rampNullableSeriesFromStreamStart', () => {
   })
 })
 
+describe('extendSeriesToTrailingEdge', () => {
+  it('carries the last value to Now across real quiet buckets', () => {
+    expect(extendSeriesToTrailingEdge([5, 7, null, null])).toEqual([5, 7, 7, 7])
+    expect(extendSeriesToTrailingEdge([5, 7, null, null], [{}, {}, { missing: false }, {}])).toEqual([5, 7, 7, 7])
+  })
+
+  it('stops at the first missing bucket of the plotted points', () => {
+    const points = [{}, {}, {}, { missing: true }, { missing: true }]
+    expect(extendSeriesToTrailingEdge([5, 7, null, null, null], points)).toEqual([5, 7, 7, null, null])
+    expect(extendSeriesToTrailingEdge([5, 7, null, null], [{}, {}, { missing: true }, {}])).toEqual([5, 7, null, null])
+  })
+})
+
 describe('smoothLinePathInBand', () => {
   it('returns cubic-bezier paths for multi-point series', () => {
     const path = smoothLinePathInBand([0, 500, 1200, 800], 1200, 320, 160, 4, 12, 80, 140, 0)
@@ -304,5 +319,19 @@ describe('viewer gap honesty', () => {
     // Interior nulls are never filled by the ramp.
     expect(rampNullableSeriesFromStreamStart([5, null, null, 6])[1]).toBeNull()
     expect(rampNullableSeriesFromStreamStart([5, null, null, 6])[2]).toBeNull()
+  })
+
+  it('never ramps over a missing bucket in the opening', () => {
+    const values = [null, null, 5, 6]
+    const points = [{ missing: true }, {}, {}, {}]
+    expect(rampNullableSeriesFromStreamStart(values, points)).toEqual(values)
+    // Real quiet buckets still ramp.
+    expect(rampNullableSeriesFromStreamStart(values, [{}, {}, {}, {}])[0]).toBe(0)
+  })
+
+  it('leaves an opening longer than the ramp limit blank', () => {
+    const values = [...Array<null>(STREAM_START_RAMP_MAX_BUCKETS + 1).fill(null), 5]
+    expect(rampNullableSeriesFromStreamStart(values)).toEqual(values)
+    expect(rampNullableSeriesFromStreamStart(values.slice(1))[0]).toBe(0)
   })
 })

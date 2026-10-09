@@ -1,7 +1,7 @@
 /**
- * Reserved height for the inspector slot. The inspector itself uses this as a
- * `min-height`, not a fixed height, so the ranked-moment variant (which adds a
- * reason row) can grow while the minute variant stays compact. The tray uses
- * the same value so the surrounding layout does not shift when a card appears.
+ * Height the Top Moments card reserves, so swapping one moment for another
+ * never moves the list below it: a moment with three top emotes and one-line
+ * reason and activity lines, plus the card's 8 px bottom margin (187 + 8 px in
+ * the sidebar). The card holds any taller height it shows from then on.
  */
-export const MOMENT_CARD_HEIGHT = 184
+export const MOMENT_CARD_HEIGHT = 195
