@@ -195,4 +195,9 @@
   .sc-analytics-console [data-analytics-center-column] > .space-y-4 > :not([hidden]) ~ :not([hidden]) {
     margin-top: 0.75rem;
   }
+  /* These one-line captions inherited 12px paragraph margins, which made the
+     selection-hint row 40px tall for 16px of text. */
+  .sc-analytics-console :is([data-chart-selection-hint], [data-chart-range-summary]) {
+    margin-block: 0;
+  }
 }
