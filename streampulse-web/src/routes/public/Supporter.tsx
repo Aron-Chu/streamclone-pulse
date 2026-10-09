@@ -12,6 +12,10 @@ import { CHROME_WEB_STORE_LISTING_URL } from '../../lib/publicSiteConfig'
  * cancellation. Checkout availability remains server-controlled on the
  * extension; this public page must not guess deployment state.
  *
+ * Account wording follows the Continue with Twitch journey (closeout
+ * 2026-10-08 spec §3-§4): no website-account or email-restore choice is offered
+ * here. The benefit lists below are owner-frozen (open Terms a/b/c choice).
+ *
  * USD only at launch: Checkout charges in US dollars, so the price says so. Tax
  * wording stays general until Checkout calculates tax itself.
  */
@@ -98,27 +102,36 @@ export default function Supporter() {
         <h2 id="subscribe">How to subscribe</h2>
         <div className="rounded-xl border border-white/[0.08] bg-black/20 p-6" data-testid="supporter-availability">
           <p className="!mt-0">
-            <strong>Paid sign-ups are not open yet.</strong> Supporter cannot be bought on this site
-            today. When sign-ups open, get the extension and choose <strong>Become a Supporter</strong>
-            in its settings. You pay on Stripe, then the extension checks your membership automatically.
+            <strong>Supporter sign-ups are not open yet.</strong> When they open, you&rsquo;ll
+            choose <strong>Continue with Twitch</strong>, then pay on Stripe. Free tools work without
+            an account.
           </p>
-          <p className="mb-0">
+          <p className="mb-0 flex flex-wrap gap-3">
             <a className="btn btn-primary" href={CHROME_WEB_STORE_LISTING_URL} target="_blank" rel="noopener noreferrer">Get the extension</a>
           </p>
-          <p>Website accounts are optional. <Link to="/account/billing">Use a StreamPulse website account</Link> if you already have one.</p>
+          <p className="mb-0">
+            Stripe asks for a billing email at checkout. It can be different from your Twitch email,
+            and you don&rsquo;t need a separate StreamPulse sign-up.
+          </p>
         </div>
 
         <h2>Managing a membership</h2>
         <p>
-          Once sign-ups open, payment method, invoice history and cancellation are handled in the
-          Stripe Customer Portal, reachable through <strong>Manage membership</strong> in the extension
-          or through account billing for website accounts. Cancelling takes effect at the end of
-          the period you have already paid for, and billing history stays available after access
-          ends. While Stripe finalizes a renewal, a membership may show as active for up to 72 hours
-          after the paid period ends. See <Link to={REFUNDS_PATH}>cancellation and refunds</Link> for
-          the details.
+          Once sign-ups open, choose <strong>Manage subscription</strong> in the extension or on your
+          account page. Stripe handles your payment method, invoices and cancellation. Cancelling
+          takes effect at the end of the period you&rsquo;ve already paid for. While Stripe finalizes a
+          renewal, a membership may show as active for up to 72 hours after the paid period ends. See{' '}
+          <Link to={REFUNDS_PATH}>cancellation and refunds</Link> for the details.
         </p>
-        <p>If you reinstall or use another browser, choose <strong>Restore my Supporter</strong> in the extension. Request a restore link using the email you paid with, then confirm that link.</p>
+        <p data-testid="supporter-reinstall">
+          Reinstalled or on another browser? Continue with Twitch with the same Twitch account and
+          your Supporter status comes back. No code to copy, no email to confirm.
+        </p>
+        <p data-testid="supporter-lost-twitch">
+          Lost access to your Twitch account? You can still cancel or update billing in
+          Stripe&rsquo;s customer portal with the email you paid with. That changes billing only. It
+          doesn&rsquo;t move your membership to another Twitch account; contact us and we&rsquo;ll help.
+        </p>
 
         <h2>Before you subscribe</h2>
         <p>

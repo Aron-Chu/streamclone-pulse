@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { CheckCircle2, Mail, Puzzle, ShieldCheck } from 'lucide-react'
 import { PublicLayout } from '../../ui/components/PublicLayout'
@@ -21,7 +21,12 @@ export default function AccountPage() {
 }
 
 const PILOT_SIGN_IN_NOTE = 'During the private pilot, sign-in emails are sent only to invited testers. If you’re not on the list, you won’t receive an email.'
+export const FREE_TOOLS_LINE = 'Free tools work without an account.'
 
+/**
+ * /account/sign-in. Until Continue with Twitch opens, this is the invited-tester
+ * email sign-in, and says so. Nothing public links here; free tools need no account.
+ */
 function SignIn() {
   const returnTo = accountBillingReturnFromSearch(useLocation().search)
   const navigate = useNavigate()
@@ -31,7 +36,8 @@ function SignIn() {
     if (signal === 'signed-in' && returnTo) navigate(returnTo)
   }), [navigate, returnTo])
   return <><p className="pulse-account-kicker"><Mail size={16} aria-hidden="true" /> StreamPulse account</p>
-    <SignInForm returnTo={returnTo} heading={sent => sent ? 'Check your email' : 'Sign in to Pulse'} sentDetail={returnTo ? 'This tab continues by itself once you confirm.' : undefined} /></>
+    <SignInForm returnTo={returnTo} heading={sent => sent ? 'Check your email' : 'Tester sign-in'} sentDetail={returnTo ? 'This tab continues by itself once you confirm.' : undefined}
+      lead={<p className="pulse-account-intro" data-testid="twitch-coming-soon">Twitch sign-in is coming soon. {FREE_TOOLS_LINE}</p>} /></>
 }
 
 /**
@@ -39,11 +45,12 @@ function SignIn() {
  * Embedded, the tab keeps its prepared extension code in memory while the user
  * confirms the email in another tab, then continues by itself.
  */
-function SignInForm({ returnTo, heading, intro = 'We’ll email you a link. No password needed.', sentDetail }: {
+function SignInForm({ returnTo, heading, intro = 'We’ll email you a link. No password needed.', sentDetail, lead }: {
   returnTo: string | null
   heading: (sent: boolean) => string
   intro?: string
   sentDetail?: string
+  lead?: ReactNode
 }) {
   const [email, setEmail] = useState('')
   const [busy, setBusy] = useState(false)
@@ -63,6 +70,7 @@ function SignInForm({ returnTo, heading, intro = 'We’ll email you a link. No p
   // The pilot notice is the same static text for every address, before and after
   // sending, so it never reveals whether a given address is on the tester list.
   return <><h1>{heading(sent)}</h1>
+    {!sent && lead ? lead : null}
     {sent ? <div role="status"><p className="pulse-account-intro">Open the sign-in link in this browser, then confirm. The link expires after 15 minutes.</p>{sentDetail ? <p className="pulse-account-waiting" data-testid="sign-in-waiting"><span className="pulse-account-spinner" aria-hidden="true" />{sentDetail}</p> : null}<p className="pulse-account-pilot" data-testid="pilot-sign-in-note">{PILOT_SIGN_IN_NOTE}</p><button onClick={() => setSent(false)}>Use another email</button></div>
       : <form onSubmit={submit}><p className="pulse-account-intro">{intro}</p><p className="pulse-account-pilot" data-testid="pilot-sign-in-note">{PILOT_SIGN_IN_NOTE}</p><label htmlFor="account-email">Email address</label>
         <input id="account-email" type="email" autoComplete="email" required maxLength={254} value={email} onChange={event => setEmail(event.target.value)} disabled={busy} />
@@ -294,7 +302,7 @@ function LinkDevice() {
         {error || deviceExpired ? <button className="pulse-account-text-button" disabled={busy} onClick={startOver}>Use another code</button> : null}
       </div>
       : phase === 'inspecting' || (prepared.code && autoInspected.current < 0) ? <><h1>Connect your extension</h1><p role="status" className="pulse-account-waiting"><span className="pulse-account-spinner" aria-hidden="true" />Opening your extension’s request…</p></>
-      : <><h1>Link your extension</h1><ManualCode code={code} setCode={setCode} busy={busy} onSubmit={() => void inspect(code)} help="In StreamPulse settings on Twitch, open Account & Supporter and choose Become a Supporter or Connect; this page then opens with the request ready. Otherwise, enter the code your extension shows." /></>}
+      : <><h1>Link your extension</h1><ManualCode code={code} setCode={setCode} busy={busy} onSubmit={() => void inspect(code)} help="In StreamPulse settings on Twitch, open Account & Supporter and start a connection; this page then opens with the request ready. Otherwise, enter the code your extension shows." /></>}
     {error ? <p role="alert">{error}</p> : null}</>
 }
 

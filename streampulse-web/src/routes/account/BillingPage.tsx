@@ -292,7 +292,7 @@ export default function BillingPage() {
         }
         return
       }
-      setNotice(error instanceof AccountError && error.code === 'subscription_exists' ? 'You already have a Supporter membership. Use Manage membership to make changes.'
+      setNotice(error instanceof AccountError && error.code === 'subscription_exists' ? 'You already have a Supporter membership. Use Manage subscription to make changes.'
         : error instanceof AccountError && error.code === 'checkout_expired' ? 'The previous checkout expired without a purchase. Nothing was charged; you can start a new checkout.'
         : error instanceof AccountError && (error.code === 'checkout_disabled' || error.code === 'checkout_not_available') ? 'Checkout is not open for this account right now.'
         : 'Billing could not open. Check your connection and try again.')
@@ -328,8 +328,8 @@ export default function BillingPage() {
   } else if (load === 'signed_out') {
     state = 'signed-out'
     title = 'Sign in to see your membership'
-    body = <p>{attempt && !cancelled ? 'If you just paid, sign in with the same account you used at checkout to see it confirmed. Don’t start another checkout.' : 'Your Supporter membership belongs to your Pulse account.'}</p>
-    primary = <Link className="pulse-account-button pulse-account-primary" to={signInHref}>Sign in to Pulse</Link>
+    body = <p>{attempt && !cancelled ? 'If you just paid, sign in with the same account you used at checkout to see it confirmed. Don’t start another checkout.' : 'Supporter sign-ups are not open yet. Invited testers can sign in to see their membership. Free tools work without an account.'}</p>
+    primary = <Link className="pulse-account-button pulse-account-primary" to={signInHref}>Tester sign-in</Link>
     showRefresh = false
   } else if (load === 'error' || !snapshot) {
     state = 'unavailable'
@@ -347,18 +347,18 @@ export default function BillingPage() {
     primary = refresh('Check again')
     // A pending membership already has a subscription: invoices and the
     // payment method stay one click away, never a second checkout.
-    secondary = status === 'pending' ? portal('Manage membership', false) : null
+    secondary = status === 'pending' ? portal('Manage subscription', false) : null
     showRefresh = false
   } else if (confirmed && (returnedFromStripe || connected) && status === 'active') {
     state = 'welcome'
     title = 'You’re a Supporter'
     body = <p>Thank you. Supporter finishes unlock in any StreamPulse extension connected to this account, and a connected extension updates by itself.</p>
-    primary = portal('Manage membership')
+    primary = portal('Manage subscription')
   } else if (status === 'active') {
     state = 'active'
     title = 'Supporter active'
     body = <p>Thank you for supporting Pulse. If you cancel, access continues until the end of the period you’ve paid for.</p>
-    primary = portal('Manage membership')
+    primary = portal('Manage subscription')
   } else if (status === 'grace') {
     state = 'grace'
     title = 'Payment needs attention'
@@ -368,7 +368,7 @@ export default function BillingPage() {
     state = 'review'
     title = 'Membership needs review'
     body = <p>Supporter access is paused while a payment is reviewed, for example during an open dispute. Nothing is lost, and your free tools are unaffected.</p>
-    primary = portal('Manage membership')
+    primary = portal('Manage subscription')
     secondary = <Link className="pulse-account-button" to="/support">Contact support</Link>
   } else if (status === 'expired') {
     state = 'expired'
@@ -422,7 +422,7 @@ export default function BillingPage() {
       {status !== 'none' && load === 'ready' && !uncertain ? <p className="pulse-account-meta">Payment details, invoices and cancellation are in the Stripe Customer Portal. Cancellation takes effect at the end of the paid period.</p> : null}
       {!reauth && showRefresh ? <button className="pulse-account-text-button" type="button" disabled={readBusy} onClick={() => void checkAgain()}>{busy ? 'Checking…' : 'Refresh status'}</button> : null}
     </div>
-    <p className="pulse-account-links"><Link to="/account/link-device">Connect your extension</Link><span aria-hidden="true">·</span><Link to="/terms">Supporter terms</Link><span aria-hidden="true">·</span><Link to="/refunds">Cancellation and refunds</Link><span aria-hidden="true">·</span><Link to="/support">Support</Link></p>
+    <p className="pulse-account-links">{load !== 'signed_out' ? <><Link to="/account/link-device">Connect your extension</Link><span aria-hidden="true">·</span></> : null}<Link to="/terms">Supporter terms</Link><span aria-hidden="true">·</span><Link to="/refunds">Cancellation and refunds</Link><span aria-hidden="true">·</span><Link to="/support">Support</Link></p>
     <AccountFooter current="billing" />
   </section></PublicLayout>
 }
