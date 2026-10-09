@@ -66,6 +66,8 @@ describe('hosted account route smoke', () => {
     '/account/billing',
     '/account/billing/return',
     '/supporter/thanks',
+    '/account/twitch/callback',
+    '/account/moments',
   ]
 
   it('checks all account and static payment-return entrypoints directly without following redirects', async () => {

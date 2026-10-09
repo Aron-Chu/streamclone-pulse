@@ -29,6 +29,8 @@ const required = [
   '/account/link-device',
   '/account/billing',
   '/account/billing/return',
+  '/account/twitch/callback',
+  '/account/moments',
   '/analytics',
   '/analytics/:login',
   '/analytics/:login/:streamId',

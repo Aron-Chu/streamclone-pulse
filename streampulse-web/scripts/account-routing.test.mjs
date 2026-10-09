@@ -44,7 +44,7 @@ test('account SPA and same-origin API use the actual Vite routing configuration'
     testServer.listen(0, '127.0.0.1')
     await once(testServer, 'listening')
     const origin = `http://127.0.0.1:${testServer.address().port}`
-    for (const path of ['/account/sign-in', '/account/settings', '/account/confirm', '/account/restore', '/account/link-device', '/account/billing', '/account/billing/return', '/supporter/thanks']) {
+    for (const path of ['/account/sign-in', '/account/settings', '/account/confirm', '/account/restore', '/account/link-device', '/account/billing', '/account/billing/return', '/supporter/thanks', '/account/twitch/callback', '/account/moments']) {
       const page = await fetch(origin + path, { signal: AbortSignal.timeout(5000) })
       assert.equal(page.status, 200)
       assert.match(page.headers.get('content-type'), /text\/html/)
