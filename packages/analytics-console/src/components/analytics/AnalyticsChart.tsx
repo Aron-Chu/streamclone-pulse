@@ -991,7 +991,10 @@ function AnalyticsChart({
         onReset={onResetEmotePlots}
       />
 
-      <div className="mt-3 min-h-[116px]" data-chart-selected-detail-slot>
+      {/* No reserved height: it never stopped the content below from moving (a
+          pinned card is taller than any fixed reserve) and left a blank band at
+          rest. */}
+      <div className={selectedDetail ? 'mt-3' : undefined} data-chart-selected-detail-slot>
         {selectedDetail ? <div data-chart-selected-detail data-chart-action="true">{selectedDetail}</div> : null}
       </div>
 

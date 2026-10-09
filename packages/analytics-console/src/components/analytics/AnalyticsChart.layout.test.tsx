@@ -121,4 +121,29 @@ describe('AnalyticsChart stable regions', () => {
     expect(chartSvg()?.style.height).toBe(collapsedSvgHeight)
     expect(screen.getByRole('button', { name: 'Expand activity detail' }).getAttribute('aria-pressed')).toBe('false')
   })
+
+  it('leaves no blank band under the chart while nothing is pinned', () => {
+    const { container } = renderChart()
+    const slot = container.querySelector<HTMLElement>('[data-chart-selected-detail-slot]')!
+    expect(slot).not.toBeNull()
+    expect(slot.className).toBe('')
+    expect(slot.childElementCount).toBe(0)
+
+    cleanup()
+    const pinned = render(
+      <AnalyticsChart
+        detail={detail}
+        selectedEmotes={new Set(['Kappa'])}
+        onSelectEmote={vi.fn()}
+        selectedRollup={detail.rollups[20]!}
+        onSelectRollup={vi.fn()}
+        viewMode="overview"
+        onViewModeChange={vi.fn()}
+        selectedDetail={<p>Pinned minute</p>}
+      />,
+    )
+    const pinnedSlot = pinned.container.querySelector<HTMLElement>('[data-chart-selected-detail-slot]')!
+    expect(pinnedSlot.className).toBe('mt-3')
+    expect(pinnedSlot.querySelector('[data-chart-selected-detail]')?.textContent).toBe('Pinned minute')
+  })
 })
