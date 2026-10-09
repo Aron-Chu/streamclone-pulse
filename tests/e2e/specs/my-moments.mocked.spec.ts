@@ -53,6 +53,11 @@ test('packaged My Moments retains notes, separates consent and clears history wi
     }, { timeout: 15000, intervals: [1000] }).toBe('linked')
   }
   await expect(page.getByText('Bookmarks are saved on this device', { exact: true })).toBeVisible()
+  // Sign-in is compiled off: no account to promise, connect to or retry.
+  await expect(page.getByText(/Accounts are coming with Continue with Twitch/).first()).toBeVisible()
+  await expect(page.getByText(/free Pulse account/)).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Connect account', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Retry', exact: true })).toHaveCount(0)
   await link()
   await expect(page.getByRole('heading',{name:'My Moments',exact:true})).toBeVisible()
   await expect(page.getByText('Saved comeback',{exact:true})).toBeVisible()

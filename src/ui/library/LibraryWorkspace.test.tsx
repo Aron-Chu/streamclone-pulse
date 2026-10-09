@@ -146,8 +146,10 @@ describe('My Moments frontend', () => {
 
     await render(withState('not_linked'))
     expect(container.textContent).toContain('Bookmarks are saved on this device')
-    expect(container.textContent).toContain('saved here stay on this device')
-    expect(container.querySelector('a[href="#supporter"]')?.textContent).toBe('Connect account')
+    // Sign-in is compiled off: no account to promise or connect (a sign-in build
+    // keeps Connect account; tests/myMomentsDeviceOnly.test.tsx covers both).
+    expect(container.textContent).toContain('stay in this browser and are never uploaded')
+    expect(container.querySelector('a[href="#supporter"]')).toBeNull()
 
     await act(async () => root?.unmount())
     document.body.replaceChildren()
