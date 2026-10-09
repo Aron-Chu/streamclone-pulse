@@ -80,7 +80,7 @@ async function assertTouchTargets(page: Page, width: number) {
     ['header actions', page.locator('.analytics-console header button:visible')],
     ['session tabs', page.locator('[data-session-details-tabs] [role="tab"]:visible')],
     ['chart focus', page.locator('[data-chart-focus-bar] button:visible')],
-    ['chart zoom', page.locator('[data-chart-viewport-controls] button:visible')],
+    ['chart zoom', page.locator('[data-session-chart-navigator] .hx-chart-navigator__toolbar button:visible')],
     ['data alternative disclosure', page.locator('[data-chart-data-alternative] > summary:visible')],
     ['minute pagination', page.locator('[data-chart-data-alternative] button:visible')],
   ] as const

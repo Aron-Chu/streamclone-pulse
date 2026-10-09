@@ -205,7 +205,7 @@
   }
   /* These one-line captions inherited 12px paragraph margins, which made the
      selection-hint row 40px tall for 16px of text. */
-  .sc-analytics-console :is([data-chart-selection-hint], [data-chart-range-summary]) {
+  .sc-analytics-console [data-chart-selection-hint] {
     margin-block: 0;
   }
 }

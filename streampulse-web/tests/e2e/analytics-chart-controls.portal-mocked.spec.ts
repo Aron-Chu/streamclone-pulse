@@ -9,6 +9,8 @@ import {
 // Owner report (2026-10-08): the range buttons covered the top of the graph,
 // the zoom bar did not match the hub's, and Full view on a 12h+ stream drew a
 // barcode of ~2px bars. These checks keep all three fixed.
+// Owner ask (2026-10-09): "the -+ zoom stuff can be the same as the global
+// activity chart". The stream chart's only zoom UI is the hub's navigator.
 const LONG_STREAM_MINUTES = 748
 const CHART = 'svg[aria-label="Analytics timeline chart"]'
 const VIEWPORTS = [
@@ -33,7 +35,7 @@ async function openLongSession(page: Page) {
   return harness
 }
 
-const readout = (page: Page) => page.locator('[data-chart-viewport-readout]')
+const readout = (page: Page) => page.locator('[data-session-chart-navigator] [data-hub-chart-navigator] strong')
 
 // The harness installs a fake clock; let queued animation frames run.
 async function settle(page: Page) {
@@ -45,25 +47,25 @@ for (const viewport of VIEWPORTS) {
   test.describe(`session chart controls at ${viewport.width}px`, () => {
     test.use({ viewport, contextOptions: { reducedMotion: 'reduce' } })
 
-    test('range controls sit above the plot and never cover it', async ({ page }) => {
+    test('zoom controls sit below the plot and never cover it', async ({ page }) => {
       const harness = await openLongSession(page)
-      const controls = page.locator('[data-chart-viewport-controls]')
-      await expect(controls).toBeVisible()
+      await expect(page.locator('[data-chart-viewport-controls]')).toHaveCount(0)
+      await expect(page.locator('[data-chart-range-row]')).toHaveCount(0)
+      const toolbar = page.locator('[data-session-chart-navigator] .hx-chart-navigator__toolbar')
+      await expect(toolbar).toBeVisible()
       const plot = await page.locator(CHART).boundingBox()
-      const row = await page.locator('[data-chart-range-row]').boundingBox()
-      if (!plot || !row) throw new Error('chart or range row has no layout box')
-      expect(row.y + row.height, 'range row ends above the plot').toBeLessThanOrEqual(plot.y + 0.5)
+      const toolbarBox = await toolbar.boundingBox()
+      if (!plot || !toolbarBox) throw new Error('chart or navigator toolbar has no layout box')
+      expect(toolbarBox.y, 'zoom toolbar starts below the plot').toBeGreaterThanOrEqual(plot.y + plot.height - 0.5)
 
-      const buttons = controls.locator('button:visible')
+      const buttons = toolbar.locator('button:visible')
       const labels = (await buttons.allTextContents()).map(text => text.trim())
-      expect(labels).toEqual(
-        viewport.width < 640 ? ['−', '+', '1h', '4h', 'Full'] : ['−', '+', '15m', '1h', '2h', '4h', 'Full'],
-      )
+      expect(labels).toEqual(['Zoom in', 'Zoom out', 'Reset zoom', 'Scroll zoomOff'])
       for (const box of await buttons.evaluateAll(nodes => nodes.map(node => {
         const rect = node.getBoundingClientRect()
         return { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
       }))) {
-        expect(intersects(box, plot), 'range button overlaps the plot').toBe(false)
+        expect(intersects(box, plot), 'zoom button overlaps the plot').toBe(false)
         expect(box.width).toBeGreaterThanOrEqual(44)
         expect(box.height).toBeGreaterThanOrEqual(44)
         // Nothing is clipped off the side of the card.
@@ -108,17 +110,22 @@ for (const viewport of VIEWPORTS) {
 test.describe('session chart zoom gestures (desktop)', () => {
   test.use({ viewport: { width: 1440, height: 900 }, contextOptions: { reducedMotion: 'reduce' } })
 
-  test('presets, navigator reset, and Alt + wheel all drive the same view', async ({ page }) => {
+  test('track click, navigator reset, and Alt + wheel all drive the same view', async ({ page }) => {
     const harness = await openLongSession(page)
     const navigator = page.locator('[data-session-chart-navigator] [data-hub-chart-navigator]')
     const window = () => navigator.getAttribute('data-hub-chart-navigator-window')
     const fullWindow = await window()
 
-    await page.locator('[data-chart-viewport-controls]').getByRole('button', { name: '1h' }).click()
+    // One click on the purple bar zooms to a 1h window around the click, as on the hub.
+    const track = await navigator.locator('.hx-chart-navigator__track').boundingBox()
+    if (!track) throw new Error('navigator track has no layout box')
+    await page.mouse.click(track.x + track.width / 2, track.y + track.height / 2)
     await settle(page)
-    await expect(readout(page)).toHaveText('1h')
-    await expect(navigator.locator('strong')).toHaveText('Zoomed view')
-    await expect.poll(window).not.toBe(fullWindow)
+    await expect(readout(page)).toHaveText('Zoomed view')
+    await expect.poll(async () => {
+      const [start, end] = String(await window()).split(':').map(Number)
+      return end! - start!
+    }).toBe(59)
 
     await navigator.getByRole('button', { name: 'Reset zoom' }).click()
     await settle(page)

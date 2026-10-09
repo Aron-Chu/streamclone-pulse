@@ -10,7 +10,6 @@ describe('portal session control target CSS', () => {
     for (const selector of [
       '[data-session-details-tabs]',
       '[data-chart-focus-bar]',
-      '[data-chart-viewport-controls]',
       '[data-chart-position-rail]',
       '[data-chart-data-alternative]',
     ]) {
@@ -20,14 +19,16 @@ describe('portal session control target CSS', () => {
     expect(css).toMatch(/data-chart-data-alternative[^}]*summary[\s\S]*?min-height:\s*44px !important;/)
   })
 
+  it('keeps the zoom controls on the shared navigator, whose buttons are 44px tall', () => {
+    // The stream chart's only zoom UI is the hub navigator in a `.hubx` host.
+    expect(css).toContain('.sc-analytics-console .hubx.sc-chart-navigator-host')
+    expect(css).not.toContain('[data-chart-viewport-controls]')
+    const hubCss = readFileSync(resolve(process.cwd(), 'src/ui/components/hub/hub.css'), 'utf8')
+    expect(hubCss).toMatch(/\.hubx \.hx-chart-navigator__toolbar button \{[^}]*min-height:\s*44px;/)
+  })
+
   it('keeps the override portal-scoped and wraps dense chart toolbars', () => {
     expect(css).not.toMatch(/(?:^|\n)\s*:where\([^\n]*button[^\n]*\)\s*\{[^}]*min-height:\s*44px/s)
     expect(css).toMatch(/\.sc-analytics-console \[data-chart-focus-top-row\][\s\S]*?flex-wrap:\s*wrap;/)
-  })
-
-  it('scrolls the range controls sideways rather than growing the toolbar', () => {
-    expect(css).toMatch(
-      /\.sc-analytics-console \[data-chart-viewport-controls\][^}]*flex-wrap:\s*nowrap;[^}]*overflow-x:\s*auto;/s,
-    )
   })
 })

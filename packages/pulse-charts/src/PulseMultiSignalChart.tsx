@@ -3368,8 +3368,8 @@ function PulseMultiSignalChartInnerImpl({
     >
       {/* Viewport controls deliberately do not live here. An overlay pinned to
           the top-right of the plot covered the viewer peak — the one region the
-          chart exists to show. The console renders them in its chart toolbar
-          (`data-chart-range-row`); keyboard (+ / − / 0) and Alt+wheel still work
+          chart exists to show. The console renders them in the shared
+          ChartNavigator under the plot; keyboard (+ / − / 0) and Alt+wheel still work
           here because the chart owns the gestures, not the buttons. */}
       {variant === "console" && reactionBarRectsForChart.length > 0 ? (
         <div

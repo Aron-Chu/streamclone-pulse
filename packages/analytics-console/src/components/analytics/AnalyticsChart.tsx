@@ -6,7 +6,6 @@ import {
   PulseMultiSignalChartInner,
   analyzeViewerCoverage,
   buildChartSeries,
-  chartViewportPresets,
   count,
   formatVodClock,
   fullChartViewport,
@@ -23,10 +22,8 @@ import {
   viewerSourceLabel,
   viewerReadoutValue,
   viewerValue,
-  viewportCenterSeconds,
   viewportDurationSeconds,
   vodClock,
-  zoomChartViewport,
 } from '@streampulse/pulse-charts'
 import type { ChartReactionPoint, ChartViewport } from '@streampulse/pulse-charts'
 import { classifyLiveEmptyState } from '../../utils/liveEmptyState.ts'
@@ -50,6 +47,7 @@ import { ChartNavigator, type ChartNavigatorRange } from './ChartNavigator.tsx'
 import {
   sessionNavigatorIndexForOffset,
   sessionNavigatorPointCount,
+  sessionNavigatorPresets,
   sessionNavigatorRangeForViewport,
   sessionViewportForNavigatorRange,
 } from '../../utils/sessionChartNavigator.ts'
@@ -68,14 +66,6 @@ function chartVisibleRangeFromRollups(
     startOffset: Math.max(0, Math.round((first - startMs) / 1000)),
     endOffset: Math.max(0, Math.round((last - startMs) / 1000)),
   }
-}
-
-function formatViewportDuration(seconds: number): string {
-  const totalMinutes = Math.max(0, Math.round(seconds / 60))
-  if (totalMinutes < 60) return `${totalMinutes}m`
-  const hours = Math.floor(totalMinutes / 60)
-  const minutes = totalMinutes % 60
-  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`
 }
 
 function selectedMinuteRangeLabel(
@@ -452,47 +442,11 @@ function AnalyticsChart({
       selectedChartOffsetSeconds < effectiveChartViewport.startSeconds
       || selectedChartOffsetSeconds > effectiveChartViewport.endSeconds
     )
-  // Zoom anchors on whatever the user is already looking at: the pinned moment,
-  // else the live edge, else the centre of the visible window.
-  const zoomAnchorSeconds = useMemo(() => {
-    if (selectedChartOffsetSeconds != null) return selectedChartOffsetSeconds
-    if (isLive) return chartDurationSeconds
-    return viewportCenterSeconds(effectiveChartViewport)
-  }, [chartDurationSeconds, effectiveChartViewport, isLive, selectedChartOffsetSeconds])
-
-  const zoomByFactor = useCallback((factor: number) => {
-    if (chartDurationSeconds <= 0) return
-    handleViewportChange(zoomChartViewport({
-      viewport: effectiveChartViewport,
-      durationSeconds: chartDurationSeconds,
-      zoomSeconds: viewportDurationSeconds(effectiveChartViewport) * factor,
-      anchorSeconds: zoomAnchorSeconds,
-      domainStartSeconds: chartDomainStartSeconds,
-    }))
-  }, [chartDomainStartSeconds, chartDurationSeconds, effectiveChartViewport, handleViewportChange, zoomAnchorSeconds])
-
-  const zoomToPreset = useCallback((seconds: number | 'full') => {
-    if (chartDurationSeconds <= 0) return
-    if (seconds === 'full') {
-      handleViewportChange(fullChartViewport(chartDurationSeconds, chartDomainStartSeconds))
-      return
-    }
-    handleViewportChange(zoomChartViewport({
-      viewport: effectiveChartViewport,
-      durationSeconds: chartDurationSeconds,
-      zoomSeconds: seconds,
-      anchorSeconds: zoomAnchorSeconds,
-      domainStartSeconds: chartDomainStartSeconds,
-    }))
-  }, [chartDomainStartSeconds, chartDurationSeconds, effectiveChartViewport, handleViewportChange, zoomAnchorSeconds])
-
-  const viewportPresets = useMemo(
-    () => chartViewportPresets(chartDurationSeconds),
-    [chartDurationSeconds],
-  )
-  const showRangeControls = chartDurationSeconds >= 10 * 60
-
   const navigatorPointCount = sessionNavigatorPointCount(chartDurationSeconds, chartDomainStartSeconds)
+  const navigatorPresets = useMemo(
+    () => sessionNavigatorPresets(chartDurationSeconds, chartDomainStartSeconds),
+    [chartDomainStartSeconds, chartDurationSeconds],
+  )
   const navigatorRange = sessionNavigatorRangeForViewport(
     effectiveChartViewport,
     chartDurationSeconds,
@@ -663,7 +617,7 @@ function AnalyticsChart({
       aria-describedby="analytics-chart-help"
     >
       <p id="analytics-chart-help" className="sr-only">
-        Viewer, chat, and emote measurements over the selected session. Use the chart controls to change the view; hover or focus a minute to inspect it and select it to pin details.
+        Viewer, chat, and emote measurements over the selected session. Use the chart controls to change the view; hover or focus a minute to inspect it and select it to pin details. With the chart focused, + and − zoom and 0 resets the view.
       </p>
       <p className="sr-only" aria-live="polite" aria-atomic="true" data-chart-selection-announcement>
         {selectedRollup
@@ -714,8 +668,9 @@ function AnalyticsChart({
       ) : null}
 
       <div className="mb-3 space-y-2" data-chart-header-block>
-        {/* Chart header: the hover readout and hint on the left, the range
-            controls on the right; it wraps to two rows on narrow cards. */}
+        {/* Chart header: the hover readout and the selection hint. Zoom and
+            range controls live only in the shared navigator under the plot,
+            as on the hub's Global activity chart. */}
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2" data-chart-header-row>
           <div className="min-w-0 flex-[999_1_20rem] space-y-2" data-chart-header-readouts>
             <div className="flex h-5 min-h-5 min-w-0 items-center justify-between gap-2" data-chart-hover-readout-row>
@@ -780,70 +735,6 @@ function AnalyticsChart({
               ) : null}
             </div>
           </div>
-          {showRangeControls ? (
-            <div
-              className="flex min-w-0 max-w-full flex-[1_0_auto] flex-wrap items-center justify-between gap-x-2 gap-y-1"
-              data-chart-range-row
-            >
-              {/* Range controls share the chart header row with the readouts; they stay
-                  above the plot and never cover data. */}
-              <p className="min-w-0 truncate text-xs font-bold tabular-nums text-zinc-500" data-chart-range-summary>
-                <span className="uppercase tracking-wide text-zinc-600">Range </span>
-                <span className="text-zinc-300" data-chart-viewport-readout>
-                  {isChartZoomed ? formatViewportDuration(viewportDurationSeconds(effectiveChartViewport)) : 'Full stream'}
-                </span>
-                {activityBucketMinutes != null && activityBucketMinutes > 1 ? (
-                  <span
-                    data-chart-bar-bucket-minutes={activityBucketMinutes}
-                    title={`Each activity bar averages ${activityBucketMinutes} measured minutes so bars stay readable at this width. Gaps are minutes with no measurement.`}
-                  >
-                    {` · bars ${activityBucketMinutes}-min avg`}
-                  </span>
-                ) : null}
-              </p>
-              <div
-                className="ml-auto flex max-w-full items-center gap-1 overflow-x-auto rounded border border-white/10 bg-white/[0.025] p-0.5 text-xs font-black uppercase text-zinc-400 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-                data-chart-viewport-controls
-                role="group"
-                aria-label="Chart range"
-                title="Hold Alt and scroll over the graph to zoom (or turn on Scroll zoom below), Shift + scroll to pan, or use + / − / 0 when the chart has focus."
-              >
-                <button
-                  type="button"
-                  onClick={() => zoomByFactor(1.333333)}
-                  aria-label="Zoom chart out"
-                  className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded text-xs transition hover:bg-white/10 hover:text-zinc-200"
-                >
-                  −
-                </button>
-                <button
-                  type="button"
-                  onClick={() => zoomByFactor(0.75)}
-                  aria-label="Zoom chart in"
-                  className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded text-xs transition hover:bg-white/10 hover:text-zinc-200"
-                >
-                  +
-                </button>
-                {viewportPresets.map(preset => {
-                  // Phones keep 1h · 4h · Full so the whole control fits without hidden scrolling.
-                  const pressed = preset.seconds === 'full'
-                    ? !isChartZoomed
-                    : Math.abs(viewportDurationSeconds(effectiveChartViewport) - preset.seconds) < 1
-                  return (
-                    <button
-                      key={preset.label}
-                      type="button"
-                      onClick={() => zoomToPreset(preset.seconds)}
-                      aria-pressed={pressed}
-                      className={`inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded text-xs transition hover:bg-white/10 hover:text-zinc-200 aria-[pressed=true]:bg-violet-400/15 aria-[pressed=true]:text-violet-200${preset.label === '15m' || preset.label === '2h' ? ' max-sm:hidden' : ''}`}
-                    >
-                      {preset.label}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          ) : null}
         </div>
 
         <GamesPlayedStrip
@@ -1057,6 +948,15 @@ function AnalyticsChart({
               zoomedRangeLabel="Zoomed view"
               unitLabel="minutes"
               selectedLabel="Return to selected"
+              presets={navigatorPresets}
+              readoutNote={activityBucketMinutes != null && activityBucketMinutes > 1 ? (
+                <span
+                  data-chart-bar-bucket-minutes={activityBucketMinutes}
+                  title={`Each activity bar averages ${activityBucketMinutes} measured minutes so bars stay readable at this width. Gaps are minutes with no measurement.`}
+                >
+                  {`bars ${activityBucketMinutes}-min avg`}
+                </span>
+              ) : undefined}
             />
           </div>
         ) : null}

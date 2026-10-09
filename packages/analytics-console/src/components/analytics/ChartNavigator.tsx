@@ -6,6 +6,7 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
   type RefObject,
 } from 'react'
 
@@ -98,6 +99,12 @@ export interface ChartNavigatorProps {
   unitLabel?: string
   /** Label for the button that brings an off-screen selection back into view. */
   selectedLabel?: string
+  /**
+   * Optional extra fact shown on the count line of the readout, after " · "
+   * (the session chart uses it for the activity bar bucket size). Omitted, the
+   * readout markup is unchanged.
+   */
+  readoutNote?: ReactNode
 }
 
 interface DragState {
@@ -176,6 +183,7 @@ export function ChartNavigator({
   zoomedRangeLabel = 'Zoomed view',
   unitLabel = 'buckets',
   selectedLabel = 'Show selected bucket',
+  readoutNote,
 }: ChartNavigatorProps) {
   const maxIndex = Math.max(0, pointCount - 1)
   const range = normalizedRange(pointCount, startIndex, endIndex)
@@ -517,7 +525,7 @@ export function ChartNavigator({
         <div className="hx-chart-navigator__readout" role="status" aria-live="polite">
           <strong>{isFullRange ? fullRangeLabel : zoomedRangeLabel}</strong>
           <span className="hx-chart-navigator__time-range">{startLabel} – {endLabel}</span>
-          <span className="hx-chart-navigator__bucket-count">{visibleCount} of {pointCount} {unitLabel}</span>
+          <span className="hx-chart-navigator__bucket-count">{visibleCount} of {pointCount} {unitLabel}{readoutNote != null ? <> · {readoutNote}</> : null}</span>
         </div>
         <div className="hx-chart-navigator__toolbar" role="group" aria-label="Chart view controls">
           {selectedOutsideView ? <button type="button" onClick={(event) => { event.stopPropagation(); showSelectedBucket() }}><LocateFixed size={15} aria-hidden="true" />{selectedLabel}</button> : null}
