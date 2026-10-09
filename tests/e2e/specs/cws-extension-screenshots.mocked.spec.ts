@@ -146,13 +146,20 @@ test.describe('CWS extension-on-Twitch screenshots', () => {
     await openTwitchChannel(extension.page, 'fixturechan')
     await waitForPulseRoot(extension.page)
     await assertPulseShadowContains(extension.page, /Viewers|Chat \/ min|Collecting|1,180|Just Chatting/i)
+    // Bring the chart into view and point at a minute, so the readout shows.
+    const chart = extension.page.locator(`#${PULSE_ROOT_ID} svg[data-testid="pulse-overview-chart"]`)
+    await chart.evaluate(element => element.scrollIntoView({ block: 'center' }))
+    await extension.page.waitForTimeout(300)
+    const box = await chart.boundingBox()
+    if (box) await extension.page.mouse.move(box.x + box.width * 0.62, box.y + box.height * 0.45)
+    await extension.page.waitForTimeout(400)
     await writeExactStoreShot(extension.page, '01-live-pulse.png')
   })
 
-  test('02 honest not-tracked / coverage state', async ({ extension, prepare }) => {
+  test('02 top moments with a picked moment card', async ({ extension, prepare }) => {
     await extension.page.setViewportSize({ width: W, height: H })
     await prepare({
-      scenario: 'live-partial',
+      scenario: 'live-ready',
       twitchKind: 'live',
       storage: {
         overlayMode: 'expanded',
@@ -162,11 +169,17 @@ test.describe('CWS extension-on-Twitch screenshots', () => {
     })
     await openTwitchChannel(extension.page, 'fixturechan')
     await waitForPulseRoot(extension.page)
-    await assertPulseShadowContains(
-      extension.page,
-      /Not tracked|live IRC pool|Partial tracking|joined after stream start/i,
-    )
-    await writeExactStoreShot(extension.page, '02-coverage.png')
+    const root = extension.page.locator(`#${PULSE_ROOT_ID}`)
+    // Top Moments opens a card only after a pick, and the row stays put.
+    const heading = root.getByText(/^Top moments$/i).first()
+    await heading.scrollIntoViewIfNeeded()
+    const row = root.locator('.pulse-moment-row-button').first()
+    await row.scrollIntoViewIfNeeded()
+    await row.click()
+    await extension.page.waitForTimeout(400)
+    await heading.evaluate(element => element.scrollIntoView({ block: 'start' }))
+    await extension.page.waitForTimeout(300)
+    await writeExactStoreShot(extension.page, '02-top-moments.png')
   })
 
   test('03 vod replay pulse', async ({ extension, prepare }) => {
@@ -186,7 +199,7 @@ test.describe('CWS extension-on-Twitch screenshots', () => {
     await writeExactStoreShot(extension.page, '03-vod-replay.png')
   })
 
-  test('04 most reacted region on live overlay', async ({ extension, prepare }) => {
+  test('04 quick settings with the Supporter card', async ({ extension, prepare }) => {
     await extension.page.setViewportSize({ width: W, height: H })
     await prepare({
       scenario: 'live-ready',
@@ -199,9 +212,24 @@ test.describe('CWS extension-on-Twitch screenshots', () => {
     })
     await openTwitchChannel(extension.page, 'fixturechan')
     await waitForPulseRoot(extension.page)
-    await assertPulseShadowContains(extension.page, /Most Reacted|Viewers|Collecting/i)
-    await scrollPulsePanel(extension.page, 0.55)
-    await writeExactStoreShot(extension.page, '04-most-reacted.png')
+    const root = extension.page.locator(`#${PULSE_ROOT_ID}`)
+    await root.getByRole('button', { name: 'Open settings', exact: true }).click()
+    await expect(root.getByRole('heading', { name: 'Quick settings' })).toBeVisible()
+    const card = root.locator('[data-settings-host-cta="supporter"]')
+    await expect(card).toBeVisible()
+    // The Supporter card's chat stage is scripted motion: let it draw its first lines.
+    await extension.page.waitForTimeout(2500)
+    await writeExactStoreShot(extension.page, '04-quick-settings.png')
+  })
+
+  test('05 help and feedback in settings', async ({ extension, prepare }) => {
+    await prepare({ scenario: 'live-ready', twitchKind: 'live' })
+    const page = extension.page
+    await page.setViewportSize({ width: W, height: H })
+    await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#help`)
+    await expect(page.getByText('Send feedback', { exact: true }).first()).toBeVisible()
+    await page.waitForTimeout(1200)
+    await writeExactStoreShot(page, '05-help-feedback.png')
 
     writeFileSync(
       join(OUT, 'manifest.json'),
@@ -211,12 +239,13 @@ test.describe('CWS extension-on-Twitch screenshots', () => {
           dims: { width: W, height: H },
           kind: 'extension_embedded_on_twitch_tv',
           harness: 'tests/e2e/specs/cws-extension-screenshots.mocked.spec.ts',
-          note: 'Real unpacked dist/ content script on *.twitch.tv fixture documents. Not the streampulse-web landing tour.',
+          note: 'Real unpacked dist/ content script on *.twitch.tv fixture documents (01-04) and the packaged settings page (05). Synthetic fixture channel; mocked captures are not live evidence. Not the streampulse-web landing tour.',
           files: [
             '01-live-pulse.png',
-            '02-coverage.png',
+            '02-top-moments.png',
             '03-vod-replay.png',
-            '04-most-reacted.png',
+            '04-quick-settings.png',
+            '05-help-feedback.png',
           ],
         },
         null,

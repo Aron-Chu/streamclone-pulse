@@ -7,6 +7,7 @@ type ChangelogCardProps =
 
 const CATEGORY_LABELS = {
   new: 'New',
+  changed: 'Changed',
   improved: 'Improved',
   fixed: 'Fixed',
   knownIssues: 'Known limitations',
@@ -17,6 +18,7 @@ function releaseHighlights(entry: ReleaseEntry, limit: number): string[] {
   if (source.length > 0) return source.slice(0, limit)
   return [
     ...(entry.new ?? []),
+    ...(entry.changed ?? []),
     ...(entry.improved ?? []),
     ...(entry.fixed ?? []),
     ...(entry.knownIssues ?? []),
@@ -41,8 +43,16 @@ function releaseLink(value: string | undefined): string | undefined {
   return value.startsWith('https://streampulse.stream/') ? value : undefined
 }
 
+/**
+ * The installed build, a version the store published, or one that never was
+ * (an internal preview, or the next version before it ships).
+ */
+export function releaseLifecycleLabel(entry: Pick<ReleaseEntry, 'status'>, isInstalled: boolean): string {
+  return isInstalled ? 'Installed' : entry.status === 'released' ? 'Released' : 'Not published'
+}
+
 function ReleaseHeading({ entry, isInstalled }: { entry: ReleaseEntry; isInstalled: boolean }) {
-  const lifecycle = isInstalled ? 'Installed' : entry.status === 'unreleased' ? 'Preview' : 'Released'
+  const lifecycle = releaseLifecycleLabel(entry, isInstalled)
   const date = releaseDate(entry.releasedAt)
   return (
     <>
