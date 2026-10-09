@@ -6,7 +6,7 @@ import { AccountFooter } from './AccountFooter'
 import { accountRequest, accountErrorText, AccountError } from '../../lib/accountApi'
 import { announceAccountSignedOut } from '../../lib/accountSessionSignal'
 import { knownTwitchIdentity, useAccountSession } from '../../lib/accountSession'
-import { accountSignInLabel, twitchSignInEnabled } from '../../lib/twitchSignInFlag'
+import { twitchSignInEnabled, twitchSignInPublic } from '../../lib/twitchSignInFlag'
 import { beginTwitchFlow, twitchErrorCode, type TwitchErrorCode } from '../../lib/twitchSignIn'
 import { TwitchButton, TwitchErrorNotice, TwitchGlitch } from './TwitchSignIn'
 import './account.css'
@@ -52,6 +52,32 @@ function TwitchAccountRow() {
   </section>
 }
 
+/**
+ * A visit with no session: how to sign in for this stage, and that free tools
+ * need no account. In the public stage Continue with Twitch returns here
+ * (the Twitch flow's default destination); otherwise the sign-in page is the
+ * invited-tester sign-in.
+ */
+function SignedOutSettings() {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<TwitchErrorCode | null>(null)
+  async function continueWithTwitch() {
+    if (busy) return
+    setBusy(true); setError(null)
+    // On success the page leaves for Twitch, so the button stays busy.
+    try { await beginTwitchFlow({ purpose: 'signin' }) }
+    catch (failure) { setError(twitchErrorCode(failure)); setBusy(false) }
+  }
+  return <div className="pulse-account-signed-out" data-testid="settings-signed-out">
+    {twitchSignInPublic()
+      ? <><p>Sign in to see your account and devices. Free tools work without an account.</p>
+        <TwitchButton busy={busy} busyLabel="Opening Twitch…" onClick={() => void continueWithTwitch()}>Continue with Twitch</TwitchButton>
+        {error ? <TwitchErrorNotice code={error} purpose="signin" current="/account/settings" /> : null}</>
+      : <><p>Invited testers can sign in to see their account and devices. Free tools work without an account.</p>
+        <Link className="pulse-account-button pulse-account-primary" to="/account/sign-in">Tester sign-in</Link></>}
+  </div>
+}
+
 type Device = { id: string; label: string; expiresAt: string; revokedAt?: string }
 export default function AccountSettings() {
   const [identity, setIdentity] = useState('')
@@ -71,12 +97,22 @@ export default function AccountSettings() {
   }
   async function load() {
     setBusy(true); setError('')
+    let hadSession = false
     try {
       const me = await accountRequest('/me')
       if (typeof me.accountId !== 'string') throw new Error('Invalid account')
+      hadSession = true
       setIdentity(typeof me.email === 'string' ? me.email : me.accountId)
       await list()
-    } catch (e) { setError(accountErrorText(e)); setSignedOut(e instanceof AccountError && e.status === 401) }
+    } catch (e) {
+      const unauthorized = e instanceof AccountError && e.status === 401
+      setSignedOut(unauthorized)
+      // No session at first load is the ordinary signed-out visit, not an expired
+      // one: no error and no Retry that could only repeat the 401. "Expired" stays
+      // for a session this page had that ended.
+      if (unauthorized) { setIdentity(''); setDevices([]); setCursor(''); setConfirm('') }
+      if (!unauthorized || hadSession) setError(accountErrorText(e))
+    }
     finally { setBusy(false) }
   }
   useEffect(() => { void load() }, [])
@@ -104,9 +140,10 @@ export default function AccountSettings() {
     <p className="pulse-account-kicker"><Monitor size={16} aria-hidden="true" /> StreamPulse account</p>
     <h1>Account &amp; devices</h1>
     {identity ? <div className="pulse-account-session"><p>You’re signed in to StreamPulse.</p><button disabled={busy} onClick={() => void logout()}><LogOut size={16} aria-hidden="true" /> Sign out</button></div> : null}
-    {signedOut ? <Link to="/account/sign-in">{accountSignInLabel()}</Link> : null}
     {busy ? <p role="status">Updating account...</p> : null}
-    {error ? <div className="pulse-account-error"><p role="alert">{error}</p><button disabled={busy} onClick={() => void load()}>Retry</button></div> : null}
+    {/* Retry cannot help a 401; the sign-in below can. */}
+    {error ? <div className="pulse-account-error"><p role="alert">{error}</p>{signedOut ? null : <button disabled={busy} onClick={() => void load()}>Retry</button>}</div> : null}
+    {signedOut ? <SignedOutSettings /> : null}
     {identity && !signedOut && twitch ? <TwitchAccountRow /> : null}
     {/* Every extension signed in to this account is listed here, whichever way it
         connected. With Continue with Twitch on, only the connection-code entry is

@@ -5,6 +5,7 @@ import AccountPage from '../src/routes/account/AccountPage'
 import AccountSettings from '../src/routes/account/AccountSettings'
 import BillingPage from '../src/routes/account/BillingPage'
 import Supporter from '../src/routes/public/Supporter'
+import Privacy from '../src/routes/public/Privacy'
 import Terms from '../src/routes/public/Terms'
 import { rememberTwitchIdentity, resetAccountSessionForTests } from '../src/lib/accountSession'
 import { completeBillingStepUp, rememberBillingStepUp, takeBillingStepUp, STEP_UP_MAX_AGE_MS } from '../src/lib/accountStepUp'
@@ -153,6 +154,74 @@ describe('account settings', () => {
     expect(await screen.findByRole('heading', { level: 2, name: 'Linked extensions' })).toBeTruthy()
     expect(screen.queryByTestId('other-ways-to-connect')).toBeNull()
     expect(calls.some(call => call.includes('/twitch/'))).toBe(false)
+  })
+})
+
+describe('account settings, signed out', () => {
+  it.each(['', '1'] as const)('shows the tester sign-in, not an expired session or Retry, with VITE_TWITCH_SIGNIN=%s', async value => {
+    vi.stubEnv('VITE_TWITCH_SIGNIN', value)
+    stubApi({})
+    render(<MemoryRouter initialEntries={['/account/settings']}><AccountSettings /></MemoryRouter>)
+    const signedOut = await screen.findByTestId('settings-signed-out')
+    expect(signedOut.textContent).toContain('Invited testers can sign in to see their account and devices. Free tools work without an account.')
+    expect(within(signedOut).getByRole('link', { name: 'Tester sign-in' }).getAttribute('href')).toBe('/account/sign-in')
+    expect(screen.queryByText(/expired/i)).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Continue with Twitch' })).toBeNull()
+    expect(calls.some(call => call.includes('/twitch/'))).toBe(false)
+  })
+
+  it('offers Continue with Twitch, which returns to Account & devices, in the public stage', async () => {
+    vi.stubEnv('VITE_TWITCH_SIGNIN', 'public')
+    stubApi({})
+    render(<MemoryRouter initialEntries={['/account/settings']}><AccountSettings /></MemoryRouter>)
+    const signedOut = await screen.findByTestId('settings-signed-out')
+    expect(signedOut.textContent).toContain('Sign in to see your account and devices. Free tools work without an account.')
+    expect(screen.queryByText(/expired/i)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+    fireEvent.click(within(signedOut).getByRole('button', { name: 'Continue with Twitch' }))
+    // No returnTo: the Twitch flow's default destination is /account/settings.
+    await waitFor(() => expect(beginTwitchFlow).toHaveBeenCalledWith({ purpose: 'signin' }))
+  })
+
+  it('still says the session expired, without Retry, when a session this page had ends', async () => {
+    vi.stubEnv('VITE_TWITCH_SIGNIN', '')
+    cookie = `__Host-pulse_csrf=${'d'.repeat(64)}`
+    stubApi({ me: () => json({ accountId: ACCOUNT_A }) })
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const path = String(input)
+      if (path === '/v1/account/me') return json({ accountId: ACCOUNT_A })
+      return json({ error: 'sign_in_required' }, 401)
+    })
+    render(<MemoryRouter initialEntries={['/account/settings']}><AccountSettings /></MemoryRouter>)
+    expect((await screen.findByRole('alert')).textContent).toBe('This session or link has expired. Sign in again to continue.')
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+    expect(screen.queryByText('You’re signed in to StreamPulse.')).toBeNull()
+    expect(within(screen.getByTestId('settings-signed-out')).getByRole('link', { name: 'Tester sign-in' })).toBeTruthy()
+  })
+
+  it('keeps Retry for a failure that is not a 401', async () => {
+    vi.stubEnv('VITE_TWITCH_SIGNIN', '')
+    stubApi({ me: () => json({ error: 'unavailable' }, 503) })
+    render(<MemoryRouter initialEntries={['/account/settings']}><AccountSettings /></MemoryRouter>)
+    expect(await screen.findByRole('button', { name: 'Retry' })).toBeTruthy()
+    expect(screen.queryByTestId('settings-signed-out')).toBeNull()
+  })
+})
+
+describe('Privacy summary by stage', () => {
+  it.each([
+    ['', true],
+    ['1', true],
+    ['public', false],
+  ] as const)('VITE_TWITCH_SIGNIN=%s says Continue with Twitch is coming soon: %s', (value, comingSoon) => {
+    vi.stubEnv('VITE_TWITCH_SIGNIN', value)
+    render(<MemoryRouter><Privacy /></MemoryRouter>)
+    const summary = screen.getByTestId('privacy-summary-accounts').textContent ?? ''
+    expect(summary).toMatch(/A StreamPulse account is\s+created when you choose Continue with Twitch/)
+    expect(summary.includes('Continue with Twitch (coming soon).')).toBe(comingSoon)
+    if (!comingSoon) expect(summary).toMatch(/created when you choose Continue with Twitch\. During the private pilot/)
   })
 })
 

@@ -129,6 +129,9 @@
 
 .pulse-account-settings { max-width: 760px; }
 .pulse-account-error { margin-bottom: 24px; }
+/* Account & devices with no session: how to sign in for this stage. */
+.pulse-account-signed-out { display: grid; gap: 12px; justify-items: start; margin-bottom: 32px; padding-bottom: 24px; border-bottom: 1px solid #353540; }
+.pulse-account-signed-out p { margin: 0; }
 
 .pulse-account-session {
   display: flex;
