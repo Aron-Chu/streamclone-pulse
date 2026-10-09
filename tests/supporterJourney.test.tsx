@@ -20,13 +20,13 @@ type Worker = {
   billing?: (action: string) => SupporterBillingState | Promise<SupporterBillingState>
   restore?: (action: string, email?: string) => SupporterRestoreState | Promise<SupporterRestoreState>
   devices?: (action: string, deviceId?: string) => import('../src/shared/supporterAccount.ts').SupporterDevicesState
-  twitch?: (message: { action: string; mode?: string; forceVerify?: boolean }) => Omit<TwitchSignInResponse, 'type'> | Promise<Omit<TwitchSignInResponse, 'type'>>
+  twitch?: (message: { action: string; mode?: string; forceVerify?: boolean; confirm?: boolean }) => Omit<TwitchSignInResponse, 'type'> | Promise<Omit<TwitchSignInResponse, 'type'>>
 }
 
 async function mount(worker: Worker, onEntitlement?: (value: SupporterEntitlement | null) => void, twitchStage: TwitchSignInStage = 'off') {
   const write = vi.fn()
   const listeners = new Set<(changes: Record<string, chrome.storage.StorageChange>) => void>()
-  const sendMessage = vi.fn(async (message: { type: string; action?: string; email?: string; deviceId?: string; mode?: string; forceVerify?: boolean }) => {
+  const sendMessage = vi.fn(async (message: { type: string; action?: string; email?: string; deviceId?: string; mode?: string; forceVerify?: boolean; confirm?: boolean }) => {
     if (message.type === 'SUPPORTER_ACCOUNT') {
       const account = await worker.account(message.action as SupporterAccountAction)
       if (account instanceof Error) throw account
@@ -40,7 +40,7 @@ async function mount(worker: Worker, onEntitlement?: (value: SupporterEntitlemen
     if (message.type === 'SUPPORTER_BILLING') return { type: 'SUPPORTER_BILLING', billing: (await worker.billing?.(message.action!)) ?? { state: 'fallback' } }
     if (message.type === 'SUPPORTER_RESTORE' && worker.restore) return { type: 'SUPPORTER_RESTORE', restore: await worker.restore(message.action!, message.email) }
     if (message.type === 'SUPPORTER_DEVICES' && worker.devices) return { type: 'SUPPORTER_DEVICES', devices: worker.devices(message.action!, message.deviceId) }
-    if (message.type === 'TWITCH_SIGN_IN' && worker.twitch) return { type: 'TWITCH_SIGN_IN', ...(await worker.twitch({ action: message.action!, mode: message.mode, forceVerify: message.forceVerify })) }
+    if (message.type === 'TWITCH_SIGN_IN' && worker.twitch) return { type: 'TWITCH_SIGN_IN', ...(await worker.twitch({ action: message.action!, mode: message.mode, forceVerify: message.forceVerify, confirm: message.confirm })) }
     return undefined
   })
   const create = vi.fn(async () => ({}))
@@ -1422,6 +1422,137 @@ describe('Continue with Twitch (tester and public stages)', () => {
       expect(view.calls('SUPPORTER_ACCOUNT', 'disconnect')).toBe(1)
       expect(view.state()).toBe('signed-out')
       expect(view.text()).not.toContain('You were signed out on this browser')
+    } finally { view.cleanup() }
+  })
+})
+
+describe('Sign out everywhere (Twitch sign-in on)', () => {
+  const PROFILE = { displayName: 'PulseViewer' }
+  const twitchStatus = (overrides: Partial<TwitchSignInResponse['status']> = {}) => ({ enabled: true, available: true, silentEligible: false, profile: PROFILE, ...overrides })
+  const twitchAccount = (status: string) => ready(status, { accountKind: 'twitch', checkoutEnabled: false })
+  const everywhereCalls = (view: Awaited<ReturnType<typeof mount>>) => view.sendMessage.mock.calls.filter(([message]) => message.type === 'TWITCH_SIGN_IN' && message.action === 'sign_out_everywhere').map(([message]) => message)
+  const accountNotice = (host: HTMLElement) => host.querySelector('[data-account-notice]')?.textContent ?? ''
+
+  /** A signed-in Twitch account whose worker answers Sign out everywhere with `answers` in turn (the last repeats). */
+  async function signedIn(stage: TwitchSignInStage, ...answers: Array<TwitchSignInResponse['everywhere'] | Error>) {
+    let account: SupporterAccountState = linked
+    let membership: SupporterEntitlement = twitchAccount('none')
+    const view = await mount({
+      account: () => account,
+      entitlement: () => membership,
+      twitch: message => {
+        if (message.action !== 'sign_out_everywhere') return { status: twitchStatus({ profile: account.state === 'linked' ? PROFILE : null }), account }
+        const answer = answers.length > 1 ? answers.shift()! : answers[0]!
+        if (answer instanceof Error) throw answer
+        if (answer === 'signed_out_everywhere') { account = { state: 'signed_out' }; membership = { state: 'not_linked' } }
+        return { status: twitchStatus({ profile: account.state === 'linked' ? PROFILE : null }), account, everywhere: answer }
+      },
+    }, undefined, stage)
+    return view
+  }
+
+  it('is not offered with Twitch sign-in off, even to a connected tester', async () => {
+    const view = await mount({ account: () => linked, entitlement: () => ready('none', { accountKind: 'email' }) })
+    try {
+      expect(view.buttons()).toContain('Sign out')
+      expect(view.buttons()).not.toContain('Sign out everywhere')
+      expect(view.text()).not.toContain('Sign out everywhere')
+    } finally { view.cleanup() }
+  })
+
+  it('is not offered to a connection that is not a Twitch sign-in, or where the Twitch window cannot open', async () => {
+    const tester = await mount({ account: () => linked, entitlement: () => ready('none', { accountKind: 'email' }), twitch: () => ({ status: twitchStatus({ profile: null }), account: linked }) }, undefined, 'tester')
+    try { expect(tester.buttons()).not.toContain('Sign out everywhere') } finally { tester.cleanup() }
+    const noWindow = await mount({ account: () => linked, entitlement: () => twitchAccount('none'), twitch: () => ({ status: twitchStatus({ available: false }), account: linked }) }, undefined, 'public')
+    try { expect(noWindow.buttons()).not.toContain('Sign out everywhere') } finally { noWindow.cleanup() }
+  })
+
+  it.each(['tester', 'public'] as const)('asks first, then signs out everywhere and shows this extension signed out (%s)', async stage => {
+    const view = await signedIn(stage, 'signed_out_everywhere')
+    try {
+      expect(accountRow(view.host)).toContain('Signed in with Twitch as PulseViewer')
+      await view.click('Sign out everywhere')
+      // The first click only asks.
+      expect(everywhereCalls(view)).toHaveLength(0)
+      const ask = view.host.querySelector('[data-sign-out-everywhere="ask"]')!
+      expect(ask.getAttribute('role')).toBe('group')
+      expect(ask.textContent).toContain('signs out every extension connected to this account, including this one. Nothing is deleted, and it does not cancel your subscription.')
+      await view.click('Stay signed in')
+      expect(view.host.querySelector('[data-sign-out-everywhere]')).toBeNull()
+      expect(everywhereCalls(view)).toHaveLength(0)
+      await view.click('Sign out everywhere')
+      await view.click('Confirm sign out everywhere')
+      expect(everywhereCalls(view)).toEqual([{ type: 'TWITCH_SIGN_IN', action: 'sign_out_everywhere' }])
+      expect(accountNotice(view.host)).toContain('You’re signed out everywhere.')
+      expect(accountNotice(view.host)).toContain('Nothing was deleted, and your subscription is unchanged.')
+      // Signed out here too, as a choice: not "You were signed out on this browser".
+      expect(accountRow(view.host)).toContain('Not signed in')
+      expect(view.text()).not.toContain('You were signed out on this browser')
+      expect(view.buttons()).not.toContain('Sign out')
+      expect(view.buttons()).not.toContain('Sign out everywhere')
+      expect(view.host.querySelector('button[data-twitch-signin]')?.textContent).toBe('Continue with Twitch')
+      // Nothing silent follows: the page never asks for a silent sign-in it was not offered.
+      expect(view.sendMessage.mock.calls.some(([message]) => message.type === 'TWITCH_SIGN_IN' && message.mode === 'silent')).toBe(false)
+      expect(view.create).not.toHaveBeenCalled()
+    } finally { view.cleanup() }
+  })
+
+  it('handles a needed Twitch check the way Manage subscription does: a click opens the window, then it retries once', async () => {
+    const view = await signedIn('public', 'step_up_required', 'signed_out_everywhere')
+    try {
+      await view.click('Sign out everywhere')
+      await view.click('Confirm sign out everywhere')
+      const confirm = view.host.querySelector('[data-sign-out-everywhere="confirm-identity"]')!
+      expect(confirm.textContent).toContain(ACCOUNT_COPY.confirmHeading)
+      expect(confirm.textContent).toContain('For your security, signing out everywhere needs a Twitch check from the last 10 minutes. Nothing was signed out.')
+      expect(accountRow(view.host)).toContain('Signed in with Twitch as PulseViewer')
+      await view.click('Continue with Twitch')
+      expect(everywhereCalls(view)).toEqual([
+        { type: 'TWITCH_SIGN_IN', action: 'sign_out_everywhere' },
+        { type: 'TWITCH_SIGN_IN', action: 'sign_out_everywhere', confirm: true },
+      ])
+      expect(accountNotice(view.host)).toContain('You’re signed out everywhere.')
+      expect(view.host.querySelector('[data-sign-out-everywhere]')).toBeNull()
+    } finally { view.cleanup() }
+  })
+
+  it('"Not now" closes the Twitch check without a request', async () => {
+    const view = await signedIn('public', 'step_up_required')
+    try {
+      await view.click('Sign out everywhere')
+      await view.click('Confirm sign out everywhere')
+      await view.click('Not now')
+      expect(view.host.querySelector('[data-sign-out-everywhere]')).toBeNull()
+      expect(everywhereCalls(view)).toHaveLength(1)
+      expect(accountRow(view.host)).toContain('Signed in with Twitch as PulseViewer')
+    } finally { view.cleanup() }
+  })
+
+  it.each([
+    ['not_available', 'Sign out everywhere isn’t available yet. Nothing was signed out. Sign out here still ends this extension’s access.'],
+    ['wrong_account', 'Twitch confirmed a different Twitch account than the one signed in here. Nothing was signed out.'],
+    ['try_later', 'Too many attempts. Wait a few minutes, then try again.'],
+    ['failed', 'Sign out everywhere couldn’t be confirmed. Check your connection and try again.'],
+  ] as const)('stays signed in and says so on %s', async (answer, message) => {
+    const view = await signedIn('public', answer)
+    try {
+      await view.click('Sign out everywhere')
+      await view.click('Confirm sign out everywhere')
+      expect(accountNotice(view.host)).toBe(message)
+      expect(accountRow(view.host)).toContain('Signed in with Twitch as PulseViewer')
+      expect(view.buttons()).toContain('Sign out')
+      expect(view.buttons()).toContain('Sign out everywhere')
+      expect(view.text()).not.toContain('signed out everywhere.')
+    } finally { view.cleanup() }
+  })
+
+  it('reports an unreachable worker as unconfirmed', async () => {
+    const view = await signedIn('public', new Error('worker gone'))
+    try {
+      await view.click('Sign out everywhere')
+      await view.click('Confirm sign out everywhere')
+      expect(accountNotice(view.host)).toBe('Sign out everywhere couldn’t be confirmed. Check your connection and try again.')
+      expect(accountRow(view.host)).toContain('Signed in with Twitch as PulseViewer')
     } finally { view.cleanup() }
   })
 })

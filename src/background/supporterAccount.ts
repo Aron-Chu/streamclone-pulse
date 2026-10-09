@@ -186,6 +186,31 @@ export class SupporterAccountCoordinator {
   }
 
   /**
+   * Sign out everywhere answered 204: the server already revoked every device
+   * of `accountId`, this one included. Forget the stored credential as an
+   * explicit sign-out does, without another revocation request (it could only
+   * answer 401, and a lost reply would leave a tombstone for a credential that
+   * is already dead). A different identity stored meanwhile is left alone.
+   */
+  forgetSignedOutEverywhere(accountId: string): Promise<SupporterAccountState> {
+    this.generation++
+    const generation = this.generation
+    const task = this.queue.then(async (): Promise<SupporterAccountState> => {
+      const raw = object(await this.ports.read())
+      const credentials = raw.kind === 'linked' ? linked(raw) : raw.kind === 'refreshing' && raw.installation === true ? linked(raw.credentials) : null
+      if (credentials?.accountId !== accountId) return this.perform('status', generation)
+      await this.ports.writeInstallationKey?.(null)
+      await this.ports.writeIntent?.(null)
+      this.lastProjection = undefined
+      this.revocationUnconfirmed = false
+      this.renewalPause = null
+      return this.clear('signed_out')
+    }).catch((): SupporterAccountState => ({ state: 'error' }))
+    this.queue = task
+    return task
+  }
+
+  /**
    * Identity generation. Work that leaves the queue (an auth window) records
    * it first; a cancel or disconnect since then makes `adopt` refuse.
    */
