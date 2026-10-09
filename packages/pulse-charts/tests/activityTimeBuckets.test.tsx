@@ -97,10 +97,32 @@ describe('buildActivityTimeBuckets', () => {
       [minute(3), minute(4)],
       [minute(8), minute(9)],
     ])
-    // Partial buckets disclose how much of the slot was measured.
-    expect(buckets.map(bucket => `${bucket.observedCount}/${bucket.rangeLength}`)).toEqual(['2/5', '2/5', '2/5'])
+    // Each bar covers only measured minutes, so it is fully observed over its
+    // own span; the gap is the empty space between bars, not a dimmed bar.
+    expect(buckets.map(bucket => `${bucket.observedCount}/${bucket.rangeLength}`)).toEqual(['2/2', '2/2', '2/2'])
     // Averages use observed minutes only; nothing is invented for the gap.
     expect(buckets.map(bucket => bucket.average)).toEqual([10, 10, 20])
+  })
+
+  it('does not report a short bar at the stream edges or beside a gap as partly observed', () => {
+    // Production minutes sit a few seconds past the stream start, and the
+    // 748-minute stream's first and last 5-minute slots hold 4 minutes each.
+    const OFFSET_MS = 7_000
+    const present = Array.from({ length: 14 }, (_, index) => index).filter(index => index !== 7)
+    const buckets = buildActivityTimeBuckets({
+      values: present.map(() => 5),
+      timestampsMs: present.map(index => minute(index) + OFFSET_MS),
+      bucketMinutes: 5,
+      originMs: START_MS,
+      // The viewport cuts the last slot after minute 12.
+      include: index => present[index]! >= 1 && present[index]! <= 12,
+    })
+    expect(buckets.map(bucket => [bucket.observedCount, bucket.rangeLength])).toEqual([
+      [4, 4], // minutes 1–4: stream start
+      [2, 2], // minutes 5–6, before the missing minute 7
+      [2, 2], // minutes 8–9, after it
+      [3, 3], // minutes 10–12: cut by the viewport
+    ])
   })
 
   it('respects the visible-domain filter', () => {
@@ -200,8 +222,32 @@ describe('PulseMultiSignalChartInner time bucketing', () => {
     expect(bars.length).toBeGreaterThan(140)
     expect(bars.length).toBeLessThanOrEqual(152)
     expect(bars.filter(bar => bar.width < 3).length).toBeLessThanOrEqual(4)
-    const fullRanges = [...markup.matchAll(/data-activity-bar="chat"[^>]*data-range-length="(\d+)"/g)].map(match => match[1])
-    expect(new Set(fullRanges)).toEqual(new Set(['5']))
+    const ranges = [...markup.matchAll(/data-activity-bar="chat"[^>]*data-range-length="(\d+)"/g)].map(match => Number(match[1]))
+    // Whole 5-minute buckets, except the bars cut by the gap or the stream end.
+    expect(ranges.filter(range => range === 5).length).toBeGreaterThanOrEqual(ranges.length - 3)
+    expect(Math.max(...ranges)).toBe(5)
+  })
+
+  it('does not dim bars at the stream edges or beside the gap', () => {
+    // Shift every minute 7s past the stream start, as production rows are.
+    const shifted = rollups.map(row => ({
+      ...row,
+      minuteTs: new Date(Date.parse(row.minuteTs) + 7_000).toISOString(),
+    }))
+    const markup = renderToStaticMarkup(
+      <PulseMultiSignalChartInner
+        rollups={shifted}
+        streamStartedAt={new Date(START_MS).toISOString()}
+        durationSeconds={MINUTES * 60 + 7}
+        variant="console"
+        motionEnabled={false}
+        activityBucketing="time"
+      />,
+    )
+    const ratios = [...markup.matchAll(/data-activity-bar="chat"[^>]*data-observed-ratio="([^"]+)"/g)]
+      .map(match => match[1])
+    expect(ratios.length).toBeGreaterThan(140)
+    expect(new Set(ratios)).toEqual(new Set(['1.000']))
   })
 
   it('leaves the missing minutes empty instead of drawing a bar across them', () => {

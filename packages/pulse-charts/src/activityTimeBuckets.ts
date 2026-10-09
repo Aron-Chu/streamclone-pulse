@@ -13,6 +13,12 @@
  * current bar and the next observed minute starts a new one. No bar is drawn
  * across time that has no measurement. Every bar records the minutes it
  * actually covers so hover and selection can report the real range.
+ *
+ * Because a bar never spans a missing minute, every bar is fully observed over
+ * its own span. A bar can still be shorter than the bucket size (cut by the
+ * viewport edge, the stream start or end, or a gap in the same slot); its
+ * narrower width already shows that, so it is not dimmed or announced as
+ * partly observed.
  */
 
 /** Bucket sizes the chart may choose from, in measurement cadences (minutes). */
@@ -54,7 +60,11 @@ export interface ActivityTimeBucket {
   slotStartMs: number
   /** Observed minutes in the bar, always contiguous. */
   observedCount: number
-  /** Nominal minutes in the bucket (the chosen bucket size). */
+  /**
+   * Minutes the bar spans, first to last included minute. Bars never bridge a
+   * missing minute, so this equals `observedCount`; it is not the bucket size,
+   * which callers already know.
+   */
   rangeLength: number
   /** Mean of the observed values. */
   average: number
@@ -92,7 +102,12 @@ export function buildActivityTimeBuckets(args: {
   const close = () => {
     if (!current) return
     const { sum, slot: _slot, ...bucket } = current
-    buckets.push({ ...bucket, average: sum / Math.max(1, bucket.observedCount) })
+    const spanMinutes = Math.round((bucket.lastMs - bucket.firstMs) / cadenceMs) + 1
+    buckets.push({
+      ...bucket,
+      rangeLength: Math.max(bucket.observedCount, spanMinutes),
+      average: sum / Math.max(1, bucket.observedCount),
+    })
     current = null
   }
 
@@ -123,7 +138,7 @@ export function buildActivityTimeBuckets(args: {
         lastMs: at,
         slotStartMs: originMs + slot * slotMs,
         observedCount: 1,
-        rangeLength: bucketMinutes,
+        rangeLength: 1,
         average: value,
         peak: { index, value },
         sum: value,
