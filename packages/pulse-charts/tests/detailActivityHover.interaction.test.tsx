@@ -1,0 +1,179 @@
+// @vitest-environment jsdom
+
+import { act } from 'react'
+import { createRoot, type Root } from 'react-dom/client'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { PulseMultiSignalChartInner } from '../src/PulseMultiSignalChart.tsx'
+import type { ChartMinuteRollup } from '../src/types.ts'
+
+;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+
+const START_MS = Date.parse('2026-09-20T00:00:00.000Z')
+const MINUTES = 748
+
+// Every measured minute, as the console passes them in `detailRollups`.
+const detailRollups: ChartMinuteRollup[] = Array.from({ length: MINUTES }, (_, index) => ({
+  minuteTs: new Date(START_MS + index * 60_000).toISOString(),
+  viewerAvg: 20_000 + (index % 50) * 100,
+  viewerSamples: 2,
+  chatCount: 100 + ((index * 37) % 17) * 10,
+  totalEmoteCount: 40 + ((index * 11) % 13) * 5,
+}))
+
+// Long streams chart a thinned series: the busiest minute of each ~3-minute
+// window, so the rows are unevenly spaced and miss most minutes.
+const rollups: ChartMinuteRollup[] = []
+for (let start = 0; start < MINUTES; start += 3) {
+  const window = detailRollups.slice(start, start + 3)
+  rollups.push(window.reduce((best, row) => ((row.chatCount ?? 0) > (best.chatCount ?? 0) ? row : best)))
+}
+
+const ONE_HOUR = { startSeconds: 300 * 60, endSeconds: 360 * 60 }
+
+type Rect = { x: number; y: number; width: number; height: number }
+
+function rectOf(element: Element): Rect {
+  return {
+    x: Number(element.getAttribute('x')),
+    y: Number(element.getAttribute('y')),
+    width: Number(element.getAttribute('width')),
+    height: Number(element.getAttribute('height')),
+  }
+}
+
+describe('activity hover and pin bands on per-minute bars over a thinned series', () => {
+  let root: Root | null = null
+  let container: HTMLDivElement | null = null
+  const frames: FrameRequestCallback[] = []
+
+  beforeEach(() => {
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      frames.push(callback)
+      return frames.length
+    })
+    vi.stubGlobal('cancelAnimationFrame', () => {})
+  })
+
+  afterEach(() => {
+    act(() => root?.unmount())
+    root = null
+    container?.remove()
+    container = null
+    frames.length = 0
+    vi.unstubAllGlobals()
+  })
+
+  function flushFrames() {
+    act(() => {
+      while (frames.length > 0) frames.shift()!(performance.now())
+    })
+  }
+
+  function renderChart(props: {
+    selectedOffsetSeconds?: number | null
+    selectedRollup?: ChartMinuteRollup | null
+    onSelectOffset?: (offsetSeconds: number) => void
+    onHoverRollupChange?: (rollup: ChartMinuteRollup | null) => void
+  }) {
+    if (!container) {
+      container = document.createElement('div')
+      document.body.appendChild(container)
+      root = createRoot(container)
+    }
+    act(() => {
+      root?.render(
+        <PulseMultiSignalChartInner
+          rollups={rollups}
+          detailRollups={detailRollups}
+          streamStartedAt={new Date(START_MS).toISOString()}
+          durationSeconds={MINUTES * 60}
+          viewport={ONE_HOUR}
+          variant="console"
+          chromeless
+          motionEnabled={false}
+          activityBucketing="time"
+          onSelectRollup={() => {}}
+          {...props}
+        />,
+      )
+    })
+    const plot = container.querySelector<SVGRectElement>('rect[data-chart-touch-action]')
+    if (!plot) throw new Error('plot overlay did not render')
+    // Client pixels equal SVG units, so a bar's x is also its clientX.
+    const box = rectOf(plot)
+    Object.defineProperty(plot, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({
+        left: box.x,
+        top: box.y,
+        width: box.width,
+        height: box.height,
+        right: box.x + box.width,
+        bottom: box.y + box.height,
+        x: box.x,
+        y: box.y,
+      }),
+    })
+    return plot
+  }
+
+  const chatBars = () =>
+    [...container!.querySelectorAll('rect[data-activity-bar="chat"]')].map(rectOf)
+  const band = (name: 'hover' | 'pin') => {
+    const element = container!.querySelector(`[data-chart-${name}-band="true"]`)
+    return element ? rectOf(element) : null
+  }
+
+  it('lights the bar under the pointer and keeps a locked band after a click', () => {
+    const hovered: Array<ChartMinuteRollup | null> = []
+    const onSelectOffset = vi.fn()
+    const plot = renderChart({ onSelectOffset, onHoverRollupChange: rollup => hovered.push(rollup) })
+    expect(container!.querySelector('svg[data-activity-bucket-minutes]')?.getAttribute('data-activity-bucket-minutes'))
+      .toBe('1')
+    const bars = chatBars()
+    expect(bars.length).toBeGreaterThan(50)
+
+    // Consecutive bars, so two of every three sit between thinned rows.
+    for (const bar of bars.slice(20, 29)) {
+      const centerX = bar.x + bar.width / 2
+      act(() => {
+        plot.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: centerX, clientY: bar.y }))
+      })
+      flushFrames()
+      const hoverBand = band('hover')
+      expect(hoverBand).not.toBeNull()
+      expect(hoverBand!.x).toBeLessThanOrEqual(centerX)
+      expect(hoverBand!.x + hoverBand!.width).toBeGreaterThanOrEqual(centerX)
+      expect(hoverBand!.x).toBeCloseTo(bar.x, 3)
+    }
+
+    // The readout names the minute that a click there selects.
+    const target = bars[25]!
+    const centerX = target.x + target.width / 2
+    act(() => {
+      plot.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: centerX, clientY: target.y + target.height / 2 }))
+    })
+    flushFrames()
+    const readout = hovered[hovered.length - 1]
+    expect(readout).not.toBeNull()
+    act(() => {
+      plot.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: centerX, clientY: target.y + target.height / 2 }))
+    })
+    expect(onSelectOffset).toHaveBeenCalledTimes(1)
+    const offset = onSelectOffset.mock.calls[0]![0] as number
+    expect((Date.parse(readout!.minuteTs) - START_MS) / 1000).toBe(offset)
+
+    // The console then selects that minute from the per-minute data, which the
+    // thinned rows usually lack. The locked band must still be the clicked bar.
+    const selectedRollup = detailRollups.find(row => (Date.parse(row.minuteTs) - START_MS) / 1000 === offset)!
+    renderChart({ onSelectOffset, selectedOffsetSeconds: offset, selectedRollup })
+    act(() => {
+      plot.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }))
+    })
+    const pinBand = band('pin')
+    expect(pinBand).not.toBeNull()
+    expect(pinBand!.width).toBeGreaterThan(1.5)
+    expect(pinBand!.x).toBeCloseTo(target.x, 3)
+    expect(pinBand!.width).toBeCloseTo(target.width, 3)
+  })
+})

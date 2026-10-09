@@ -1226,6 +1226,10 @@ function PulseMultiSignalChartInnerImpl({
   onActivityBucketMinutesChange?: (minutes: number | null) => void;
 }) {
   const [hover, setHover] = useState<number | null>(null);
+  // Index into the per-minute activity-bar series under the pointer. Only set
+  // when bars are built from `detailRollups` rather than the thinned `rollups`.
+  const [hoverActivityIndex, setHoverActivityIndex] = useState<number | null>(null);
+  const hoverActivityIndexRef = useRef<number | null>(null);
   const [scrubbing, setScrubbing] = useState(false);
   const hoverIndexRef = useRef<number | null>(null);
   const hoverRafRef = useRef<number | null>(null);
@@ -1326,6 +1330,8 @@ function PulseMultiSignalChartInnerImpl({
   }, [activityExpanded, activityExpandedControlled, onActivityExpandedChange]);
   useEffect(() => {
     hoverIndexRef.current = null;
+    hoverActivityIndexRef.current = null;
+    setHoverActivityIndex(null);
     pointerRef.current = null;
     suppressClickRef.current = false;
     pendingHoverClientRef.current = null;
@@ -1537,12 +1543,21 @@ function PulseMultiSignalChartInnerImpl({
     streamStartedAt,
   ]);
   const commitHover = useCallback(
-    (index: number | null) => {
-      if (hoverIndexRef.current === index) return;
+    (
+      index: number | null,
+      activity: { index: number; rollup: ChartMinuteRollup } | null = null,
+    ) => {
+      const activityIndex = activity?.index ?? null;
+      if (hoverIndexRef.current === index && hoverActivityIndexRef.current === activityIndex) return;
       hoverIndexRef.current = index;
+      hoverActivityIndexRef.current = activityIndex;
       setHover(index);
+      setHoverActivityIndex(activityIndex);
+      // The readout names the minute under the pointer: the per-minute row
+      // when bars come from detail data, else the chart row.
       onHoverRollupChange?.(
-        index != null && rollups[index] ? rollups[index]! : null,
+        activity?.rollup
+          ?? (index != null && rollups[index] ? rollups[index]! : null),
       );
     },
     [onHoverRollupChange, rollups],
@@ -2569,8 +2584,13 @@ function PulseMultiSignalChartInnerImpl({
     viewerBand.bandBottom -
     ((avgViewers - viewerScaleMin) / viewerScaleSpan) * viewerBand.bandHeight;
   const showAvgLabel = yAvg - yMax > 22 && viewerBand.bandBottom - yAvg > 22;
+  const hoverActivityRollup = activityBarsUseDetail && hoverActivityIndex != null
+    ? activityBarRollups[hoverActivityIndex] ?? null
+    : null;
   const hoverPoint =
-    hover != null
+    hoverActivityRollup
+      ? hoverActivityRollup
+      : hover != null
       ? (rollups[hover] ??
         previewRollup ??
         selectedRollup ??
@@ -2667,12 +2687,47 @@ function PulseMultiSignalChartInnerImpl({
       })
     );
   };
+  // With per-minute bars the thinned `rollups` rows no longer line up with
+  // the bars, so hover and pin bands come from the bar series itself.
+  const activityBandForIndex = (index: number | null) =>
+    index == null || index < 0
+      ? null
+      : hoverBandFromBars(emoteBarRects, index) ?? hoverBandFromBars(chatWhisperBarRects, index);
+  const selectedActivityIndex = useMemo(() => {
+    if (!activityBarsUseDetail) return -1;
+    if (selectedRollup) {
+      const exact = activityBarRollups.findIndex((rollup) => rollup.minuteTs === selectedRollup.minuteTs);
+      if (exact >= 0) return exact;
+    }
+    const streamMs = streamStartedAt ? Date.parse(streamStartedAt) : Number.NaN;
+    const targetMs = typeof selectedOffsetSeconds === "number"
+      && Number.isFinite(selectedOffsetSeconds)
+      && Number.isFinite(streamMs)
+      ? streamMs + selectedOffsetSeconds * 1000
+      : selectedRollup
+        ? Date.parse(selectedRollup.minuteTs)
+        : Number.NaN;
+    if (!Number.isFinite(targetMs) || activityBarTimesMs.length === 0) return -1;
+    const nearest = nearestIndexByTime(activityBarTimesMs, targetMs);
+    // A selection inside a gap has no bar; never light a neighbour instead.
+    return Math.abs((activityBarTimesMs[nearest] ?? Infinity) - targetMs) < 60_000 ? nearest : -1;
+  }, [
+    activityBarRollups,
+    activityBarTimesMs,
+    activityBarsUseDetail,
+    selectedOffsetSeconds,
+    selectedRollup,
+    streamStartedAt,
+  ]);
   const pinBand = selectedMarkerX == null
     ? null
-    : bandForIndex(selectedSourceIndex >= 0 ? selectedSourceIndex : null);
-  const hoverBand = bandForIndex(hover);
-  const hoverLineX =
-    hover != null && rollups[hover]
+    : (activityBarsUseDetail ? activityBandForIndex(selectedActivityIndex) : null)
+      ?? bandForIndex(selectedSourceIndex >= 0 ? selectedSourceIndex : null);
+  const hoverBand = (hoverActivityRollup ? activityBandForIndex(hoverActivityIndex) : null)
+    ?? bandForIndex(hover);
+  const hoverLineX = hoverActivityRollup
+    ? timestampScale.xForTimestamp(hoverActivityRollup.minuteTs)
+    : hover != null && rollups[hover]
       ? timestampScale.xForTimestamp(
           rollups[hover]!.minuteTs,
           hover,
@@ -2680,8 +2735,8 @@ function PulseMultiSignalChartInnerImpl({
         )
       : null;
   const chromeTimeOffset =
-    hover != null
-      ? pointOffsetSeconds(rollups[hover]?.minuteTs ?? "", streamStartedAt)
+    hover != null || hoverActivityRollup
+      ? pointOffsetSeconds(hoverActivityRollup?.minuteTs ?? rollups[hover!]?.minuteTs ?? "", streamStartedAt)
       : Number.isFinite(selectedOffsetSeconds)
         ? selectedOffsetSeconds
         : selectedRollup
@@ -2794,7 +2849,27 @@ function PulseMultiSignalChartInnerImpl({
     const pct = Math.min(1, Math.max(0, clientXRelative / rect.width));
     const plotX = timestampScale.plotStartX + pct * timestampScale.plotWidth;
     const region = chartHitRegionAtX(hoverHitRegions, plotX);
-    commitHover(region?.index ?? null);
+    commitHover(region?.index ?? null, activityHoverAtPlotX(plotX));
+  }
+
+  /**
+   * The per-minute row under the pointer, inside the activity bar a click at
+   * this x would select. Null unless bars come from `detailRollups`.
+   */
+  function activityHoverAtPlotX(plotX: number): { index: number; rollup: ChartMinuteRollup } | null {
+    if (!activityBarsUseDetail) return null;
+    const bar = activityBarAtPlotX(emoteBarRects, plotX)
+      ?? activityBarAtPlotX(chatWhisperBarRects, plotX);
+    if (!bar) return null;
+    const first = bar.bucketStartIndex;
+    const last = Math.max(first, bar.bucketEndExclusive - 1);
+    const pointerMs = timestampScale.timestampAtX(plotX);
+    const index = pointerMs == null
+      ? (bar.peak?.index ?? bar.sourceIndex)
+      : Math.max(first, Math.min(last, nearestIndexByTime(activityBarTimesMs, pointerMs)));
+    const rollup = activityBarRollups[index];
+    if (!rollup || rollup.missing) return null;
+    return { index, rollup };
   }
 
   function scheduleHoverFromClientX(
@@ -2922,7 +2997,9 @@ function PulseMultiSignalChartInnerImpl({
       hoverRafRef.current = null;
     }
     hoverIndexRef.current = null;
+    hoverActivityIndexRef.current = null;
     setHover(null);
+    setHoverActivityIndex(null);
     onHoverRollupChange?.(null);
     onPreviewReactionMoment?.(null);
   }
