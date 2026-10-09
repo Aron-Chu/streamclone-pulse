@@ -69,9 +69,10 @@ test('packaged supporter settings stay local, accessible and responsive', async 
     // No Your look choice may spill its label past its own border, even where the page does not scroll.
     expect(await page.locator('.pulse-supporter-look-row :is(label, button)').evaluateAll(choices => choices.filter(choice => choice.scrollWidth > choice.clientWidth + 1).map(choice => choice.textContent))).toEqual([])
     if (width < 768) {
-      // Narrow, the button wraps below its column: the price sits above it, never under it.
+      // Narrow, the action wraps below its column: the price sits above it, never under it.
+      // Where a short action fits beside the column, the price sits to its left.
       const [price, button] = await Promise.all([terms.boundingBox(), primary.boundingBox()])
-      expect(price!.y + price!.height).toBeLessThanOrEqual(button!.y)
+      expect(price!.y + price!.height <= button!.y || price!.x + price!.width <= button!.x, `price before the primary action at ${width}px`).toBe(true)
     }
     await page.screenshot({ path: info.outputPath(`supporter-settings-${width}.png`), fullPage: true, animations: 'disabled' })
   }
@@ -168,7 +169,7 @@ test('account settings connect through the packaged worker and disconnect', asyn
   await expect(page.getByText('ABCDE-12345', { exact: true })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Reopen streampulse.stream' })).toHaveAttribute('href', 'https://streampulse.stream/account/link-device#code=ABCDE12345')
   expect(await page.locator('body').innerText()).not.toContain('c'.repeat(64))
-  await expect(page.getByText('Connected to this extension', { exact: true })).toBeVisible({ timeout: 12000 })
+  await expect(page.locator('[data-row="account"]')).toContainText('Connected to this extension', { timeout: 12000 })
   await expect(page.getByText('An invited tester’s StreamPulse account.', { exact: false })).toBeVisible()
   await page.getByRole('button', { name: 'Sign out', exact: true }).click()
   await expect(page.locator('[data-journey-state="signed-out"]')).toBeVisible()
@@ -249,10 +250,10 @@ test('Manage billing keeps keyboard focus while it opens and reports a failure i
   await expect(manage).toHaveAttribute('aria-busy', 'true')
   // A second press while it opens asks nothing more.
   await page.keyboard.press('Enter')
-  await expect(status).toContainText('Could not open membership management')
+  await expect(status).toContainText('Could not open subscription management')
   await expect(manage).not.toHaveAttribute('aria-busy', 'true')
   await expect(manage).toBeFocused()
   expect(portals).toBe(1)
   // Reported beside the button, not in the card footer a screen above.
-  await expect(page.locator('.pulse-journey-status')).not.toContainText('Could not open membership management')
+  await expect(page.locator('.pulse-journey-status')).not.toContainText('Could not open subscription management')
 })
