@@ -1467,7 +1467,8 @@ export function AnalyticsConsole({
                   >
                     open the full VOD
                   </a>
-                  {isLongStreamChart ? ' Long streams (6h+) may feel slower while hovering the chart.' : ''}
+                  {/* Its own sentence, so the long-stream note does not run on. */}
+                  .{isLongStreamChart ? ' Long streams (6h+) may feel slower while hovering the chart.' : ''}
                 </p>
               ) : vodLinkState.detail ? (
                 <p className={`text-xs font-semibold ${vodLinkState.status === 'request_failed' ? 'text-amber-200' : 'text-zinc-400'}`}>

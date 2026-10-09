@@ -161,6 +161,8 @@ test.describe('portal VOD correctness (mocked)', () => {
     const fullVod = page.getByRole('link', { name: /open the full VOD/i })
     await expect(fullVod).toBeVisible()
     await expect(fullVod).toHaveAttribute('href', `https://www.twitch.tv/videos/${PORTAL_VOD_ID}`)
+    // The link ends its sentence; any long-stream note starts a new one.
+    await expect(fullVod.locator('xpath=..')).toContainText(/open the full VOD\.(?: Long streams|$)/)
     await expect(page.locator(`a[href*="/videos/${OTHER_VOD_ID}"]`)).toHaveCount(0)
 
     const moment = page.getByRole('region', { name: 'Pulse moments recap' }).getByRole('button', { name: /00:04:00 into stream/ })
