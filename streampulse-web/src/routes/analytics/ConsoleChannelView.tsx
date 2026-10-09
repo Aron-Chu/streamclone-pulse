@@ -15,6 +15,9 @@ import '../../ui/components/analytics/analytics-console.css'
 import '../../ui/components/analytics/figma-analytics.css'
 import '@streampulse/analytics-console/analytics-chart-motion.css'
 import '@streampulse/pulse-charts/pulse-chart-motion.css'
+// The session chart reuses the hub's chart navigator and its styles.
+import '../../ui/components/hub/hub.css'
+import '../../ui/components/hub/hub-public-audit.css'
 
 setupStreamcloneAnalyticsApi()
 

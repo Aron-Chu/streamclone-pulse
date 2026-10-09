@@ -3,7 +3,6 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode
 import type { AnalyticsMinuteRollup, AnalyticsStreamDetail, GameSegment } from '../../api.ts'
 import { formatHeatOffset } from '@streampulse/pulse-core'
 import {
-  ChartPositionRail,
   PulseMultiSignalChartInner,
   analyzeViewerCoverage,
   buildChartSeries,
@@ -47,6 +46,13 @@ import {
   trimRollupsToWallDuration,
 } from '../../utils/gameSegmentChart.ts'
 import { GamesPlayedStrip } from './GamesPlayedStrip.tsx'
+import { ChartNavigator, type ChartNavigatorRange } from './ChartNavigator.tsx'
+import {
+  sessionNavigatorIndexForOffset,
+  sessionNavigatorPointCount,
+  sessionNavigatorRangeForViewport,
+  sessionViewportForNavigatorRange,
+} from '../../utils/sessionChartNavigator.ts'
 
 function chartVisibleRangeFromRollups(
   rollups: AnalyticsMinuteRollup[],
@@ -350,7 +356,9 @@ function AnalyticsChart({
     }),
     [playheadOffsetSeconds, playheadPlaying, playheadStreamId],
   )
-  const [railInteracting, setRailInteracting] = useState(false)
+  // Matches the hub: plain wheel scrolls the page until Scroll zoom is on.
+  const [scrollZoomEnabled, setScrollZoomEnabled] = useState(false)
+  const [activityBucketMinutes, setActivityBucketMinutes] = useState<number | null>(null)
   const [dataPage, setDataPage] = useState(0)
   const selectedChartOffsetSeconds = useMemo(() => {
     const explicitOffset = typeof selectedOffsetSeconds === 'number' && Number.isFinite(selectedOffsetSeconds)
@@ -444,19 +452,6 @@ function AnalyticsChart({
       selectedChartOffsetSeconds < effectiveChartViewport.startSeconds
       || selectedChartOffsetSeconds > effectiveChartViewport.endSeconds
     )
-  const returnToSelected = useCallback(() => {
-    if (selectedChartOffsetSeconds == null) return
-    handleViewportChange(
-      jumpViewportToOffset(
-        effectiveChartViewport,
-        selectedChartOffsetSeconds,
-        chartDurationSeconds,
-        viewportDurationSeconds(effectiveChartViewport),
-        chartDomainStartSeconds,
-      ),
-    )
-  }, [chartDomainStartSeconds, chartDurationSeconds, effectiveChartViewport, handleViewportChange, selectedChartOffsetSeconds])
-
   // Zoom anchors on whatever the user is already looking at: the pinned moment,
   // else the live edge, else the centre of the visible window.
   const zoomAnchorSeconds = useMemo(() => {
@@ -496,6 +491,23 @@ function AnalyticsChart({
     [chartDurationSeconds],
   )
   const showRangeControls = chartDurationSeconds >= 10 * 60
+
+  const navigatorPointCount = sessionNavigatorPointCount(chartDurationSeconds, chartDomainStartSeconds)
+  const navigatorRange = sessionNavigatorRangeForViewport(
+    effectiveChartViewport,
+    chartDurationSeconds,
+    chartDomainStartSeconds,
+  )
+  const navigatorIndexForOffset = (offsetSeconds: number | null) =>
+    sessionNavigatorIndexForOffset(offsetSeconds, chartDurationSeconds, chartDomainStartSeconds)
+  const handleNavigatorChange = useCallback((range: ChartNavigatorRange) => {
+    handleViewportChange(sessionViewportForNavigatorRange(range, chartDurationSeconds, chartDomainStartSeconds))
+  }, [chartDomainStartSeconds, chartDurationSeconds, handleViewportChange])
+  const resetNavigator = useCallback(() => {
+    setScrollZoomEnabled(false)
+    handleViewportChange(fullChartViewport(chartDurationSeconds, chartDomainStartSeconds))
+  }, [chartDomainStartSeconds, chartDurationSeconds, handleViewportChange])
+  const chartStackRef = useRef<HTMLDivElement>(null)
 
   // At rest the readout names the pinned minute, else the last complete minute:
   // a live stream's newest minute is still filling and reads like a collapse.
@@ -881,67 +893,70 @@ function AnalyticsChart({
           </div>
         ) : null}
       </div>
-      <div className="relative" data-session-chart-stack>
-        {showRangeControls ? (
+      {showRangeControls ? (
+        <div
+          className="mb-2 flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1"
+          data-chart-range-row
+        >
+          {/* Its own row above the plot, so the range buttons never cover data. */}
+          <p className="min-w-0 truncate text-xs font-bold tabular-nums text-zinc-500" data-chart-range-summary>
+            <span className="uppercase tracking-wide text-zinc-600">Range </span>
+            <span className="text-zinc-300" data-chart-viewport-readout>
+              {isChartZoomed ? formatViewportDuration(viewportDurationSeconds(effectiveChartViewport)) : 'Full stream'}
+            </span>
+            {activityBucketMinutes != null && activityBucketMinutes > 1 ? (
+              <span
+                data-chart-bar-bucket-minutes={activityBucketMinutes}
+                title={`Each activity bar averages ${activityBucketMinutes} measured minutes so bars stay readable at this width. Gaps are minutes with no measurement.`}
+              >
+                {` · bars ${activityBucketMinutes}-min avg`}
+              </span>
+            ) : null}
+          </p>
           <div
-            className="absolute right-2 top-2 z-20 max-w-full"
-            data-chart-range-row
+            className="ml-auto flex max-w-full items-center gap-1 overflow-x-auto rounded border border-white/10 bg-white/[0.025] p-0.5 text-xs font-black uppercase text-zinc-400 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            data-chart-viewport-controls
+            role="group"
+            aria-label="Chart range"
+            title="Hold Alt and scroll over the graph to zoom (or turn on Scroll zoom below), Shift + scroll to pan, or use + / − / 0 when the chart has focus."
           >
-            <div
-              className="flex max-w-full items-center gap-1 overflow-x-auto rounded border border-white/10 bg-zinc-950/80 p-1 text-xs font-black uppercase text-zinc-400 shadow-lg backdrop-blur-sm [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-              data-chart-viewport-controls
-              role="group"
-              aria-label="Chart range"
-               title="Scroll over the graph to zoom, or use + / − / 0 when the chart has focus. Alt + arrow keys pan."
+            <button
+              type="button"
+              onClick={() => zoomByFactor(1.333333)}
+              aria-label="Zoom chart out"
+              className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded text-xs transition hover:bg-white/10 hover:text-zinc-200"
             >
-              {/* The pressed "Full" preset already says when the whole stream is shown. */}
-              {isChartZoomed ? (
-                <span
-                  className="shrink-0 px-1 tabular-nums text-zinc-500"
-                  data-chart-viewport-readout
+              −
+            </button>
+            <button
+              type="button"
+              onClick={() => zoomByFactor(0.75)}
+              aria-label="Zoom chart in"
+              className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded text-xs transition hover:bg-white/10 hover:text-zinc-200"
+            >
+              +
+            </button>
+            {viewportPresets.map(preset => {
+              // Phones keep 1h · 4h · Full so the whole control fits without hidden scrolling.
+              const pressed = preset.seconds === 'full'
+                ? !isChartZoomed
+                : Math.abs(viewportDurationSeconds(effectiveChartViewport) - preset.seconds) < 1
+              return (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => zoomToPreset(preset.seconds)}
+                  aria-pressed={pressed}
+                  className={`inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded text-xs transition hover:bg-white/10 hover:text-zinc-200 aria-[pressed=true]:bg-violet-400/15 aria-[pressed=true]:text-violet-200${preset.label === '15m' || preset.label === '2h' ? ' max-sm:hidden' : ''}`}
                 >
-                  {formatViewportDuration(viewportDurationSeconds(effectiveChartViewport))}
-                </span>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => zoomByFactor(1.333333)}
-                aria-label="Zoom chart out"
-                className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded text-xs transition hover:bg-white/10 hover:text-zinc-200"
-                style={{ minWidth: 44, minHeight: 44 }}
-              >
-                −
-              </button>
-              <button
-                type="button"
-                onClick={() => zoomByFactor(0.75)}
-                aria-label="Zoom chart in"
-                className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded text-xs transition hover:bg-white/10 hover:text-zinc-200"
-                style={{ minWidth: 44, minHeight: 44 }}
-              >
-                +
-              </button>
-              {viewportPresets.map(preset => {
-                // Phones keep 1h · 4h · Full so the whole control fits without hidden scrolling.
-                const pressed = preset.seconds === 'full'
-                  ? !isChartZoomed
-                  : Math.abs(viewportDurationSeconds(effectiveChartViewport) - preset.seconds) < 1
-                return (
-                  <button
-                    key={preset.label}
-                    type="button"
-                    onClick={() => zoomToPreset(preset.seconds)}
-                    aria-pressed={pressed}
-                    className={`inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded text-xs transition hover:bg-white/10 hover:text-zinc-200 aria-[pressed=true]:bg-violet-400/15 aria-[pressed=true]:text-violet-200${preset.label === '15m' || preset.label === '2h' ? ' max-sm:hidden' : ''}`}
-                    style={{ minWidth: 44, minHeight: 44 }}
-                  >
-                    {preset.label}
-                  </button>
-                )
-              })}
-            </div>
+                  {preset.label}
+                </button>
+              )
+            })}
           </div>
-        ) : null}
+        </div>
+      ) : null}
+      <div className="relative" data-session-chart-stack ref={chartStackRef}>
         <PulseMultiSignalChartInner
           chromeless
           variant="console"
@@ -976,53 +991,40 @@ function AnalyticsChart({
            viewport={effectiveChartViewport}
            viewportDomainStartSeconds={chartDomainStartSeconds}
            onViewportChange={handleViewportChange}
-           viewportMotionEnabled={!railInteracting}
-           layoutMode="equal-signals"
-           dragPanMode="zoomed"
-           wheelZoomMode="direct"
+          layoutMode="equal-signals"
+          dragPanMode="zoomed"
+          wheelZoomMode={scrollZoomEnabled ? 'direct' : 'modified'}
           lineWeightMode="viewport-adaptive"
+          activityBucketing="time"
+          onActivityBucketMinutesChange={setActivityBucketMinutes}
         />
 
         {showPositionRail ? (
-          <div data-session-chart-rail>
-            <ChartPositionRail
-              viewport={effectiveChartViewport}
-              durationSeconds={chartDurationSeconds}
-              minuteRollups={rollups}
-              onViewportChange={handleViewportChange}
-              onInteractionChange={setRailInteracting}
-              selectedOffsetSeconds={selectedChartOffsetSeconds}
-              coverageStartSeconds={chartDomainStartSeconds}
-              plotInsetLeft="9%"
-              plotInsetRight="3.4%"
+          <div
+            className="hubx sc-chart-navigator-host"
+            data-session-chart-rail
+            data-session-chart-navigator
+            data-chart-range-state={isChartZoomed ? 'zoomed' : 'full'}
+          >
+            {/* The same navigator as the hub's Global activity chart. */}
+            <ChartNavigator
+              pointCount={navigatorPointCount}
+              startIndex={navigatorRange.startIndex}
+              endIndex={navigatorRange.endIndex}
+              startLabel={formatHeatOffset(effectiveChartViewport.startSeconds)}
+              endLabel={formatHeatOffset(effectiveChartViewport.endSeconds)}
+              focusIndex={navigatorIndexForOffset(selectedChartOffsetSeconds ?? (isLive ? chartDurationSeconds : null))}
+              selectedIndex={navigatorIndexForOffset(selectedChartOffsetSeconds)}
+              wheelSurfaceRef={chartStackRef}
+              scrollZoomEnabled={scrollZoomEnabled}
+              onScrollZoomChange={setScrollZoomEnabled}
+              onChange={handleNavigatorChange}
+              onReset={resetNavigator}
+              fullRangeLabel="Full stream"
+              zoomedRangeLabel="Zoomed view"
+              unitLabel="minutes"
+              selectedLabel="Return to selected"
             />
-            <div
-              className="flex min-w-0 items-center justify-between gap-2 pt-1 text-xs font-bold tabular-nums text-zinc-500"
-              style={{ marginLeft: '9%', marginRight: '3.4%' }}
-              data-session-chart-range
-              data-chart-range-state={isChartZoomed ? 'zoomed' : 'full'}
-              title="Visible elapsed stream time / full stream length"
-            >
-              <span className="shrink-0 uppercase tracking-wide text-zinc-600">
-                {isChartZoomed ? 'Visible range' : 'Full stream'}
-              </span>
-              <span className="flex min-w-0 items-center justify-end gap-2 text-right">
-                <span className="min-w-0 truncate" data-chart-visible-range>
-                  {formatHeatOffset(effectiveChartViewport.startSeconds)}–{formatHeatOffset(effectiveChartViewport.endSeconds)} / {formatHeatOffset(chartDurationSeconds)}
-                </span>
-                {selectedOutsideViewport ? (
-                  <button
-                    type="button"
-                    onClick={returnToSelected}
-                    className="shrink-0 rounded border border-amber-300/30 bg-amber-400/10 px-1.5 py-0.5 text-xs font-black uppercase tracking-wide text-amber-200 transition hover:bg-amber-400/20"
-                    aria-label="Return to selected minute"
-                    data-chart-return-to-selection="true"
-                  >
-                    Return to selected
-                  </button>
-                ) : null}
-              </span>
-            </div>
           </div>
         ) : null}
       </div>

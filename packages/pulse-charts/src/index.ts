@@ -30,6 +30,13 @@ export {
   type GameSegmentOverlayProps,
 } from './GameSegmentOverlay.tsx'
 export { rollupsForChart } from './chartSession.ts'
+export {
+  ACTIVITY_BUCKET_MIN_SLOT_PX,
+  ACTIVITY_BUCKET_STEPS_MINUTES,
+  activityBucketMinutesForWidth,
+  buildActivityTimeBuckets,
+  type ActivityTimeBucket,
+} from './activityTimeBuckets.ts'
 export { buildChartSeries, type ChartSeries } from './chartSeries.ts'
 export { useSmoothedScalar, lerpScalar, type ScalarMotionOptions } from './useSmoothedScalar.ts'
 export { MAX_PLOTTED_EMOTES } from './emotePlotSelection.ts'

@@ -646,6 +646,15 @@ The chart owns a client-side `HubChartNavigator` between the time axis and the f
 - Pointer cancellation restores the last committed range. All mutations clamp indices and prevent inverted handles.
 - The navigator exposes two ARIA sliders, a concise interaction hint, and a polite visible-range announcement.
 
+### Session chart uses the same navigator (2026-10-08)
+
+The channel session chart (`AnalyticsChart`) renders the same navigator, now shared as `ChartNavigator` in `@streampulse/analytics-console` (`/chart-navigator` entry; the hub re-exports it as `HubChartNavigator`). It replaces the session chart's old purple position rail.
+
+- One navigator step is one stream minute; the readout says "Full stream" / "Zoomed view" and "N of M minutes".
+- The range buttons (−, +, 15m, 1h, 2h, 4h, Full; phones keep 1h, 4h, Full) sit in their own `[data-chart-range-row]` above the plot. Do not float them over the plot: `check:analytics-overlap` fails on an `absolute`/`fixed`/`sticky` range row or one placed after `[data-session-chart-stack]`.
+- Scroll zoom is off by default, as on the hub. Alt+wheel zooms, Shift+wheel pans, and +/−/0 still work when the plot has focus. The navigator ignores wheel events the plot has already consumed, so one gesture never zooms twice.
+- Long streams: the session chart opts into `activityBucketing="time"`. Activity bars group full-resolution minutes into whole 1/2/5/10/15/30/60-minute buckets aligned to the stream start, choosing the smallest bucket that keeps each bar slot at least 4px wide. A bucket only holds consecutive measured minutes, so no bar spans a gap. Bars show the bucket mean, the peak minute stays attached for selection, and the range row discloses "bars N-min avg". The extension does not use this chart, and the default `budget` path is unchanged.
+
 ### Responsive inspector and initial loading (2026-09-30)
 
 - Moment Inspector Review moment, Open analytics and Copy link actions share one responsive group. Clipboard feedback occupies a row only after an attempted copy, and resets when the selected moment changes.
