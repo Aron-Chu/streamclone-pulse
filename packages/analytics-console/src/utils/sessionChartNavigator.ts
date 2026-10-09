@@ -1,5 +1,5 @@
 import type { ChartViewport } from '@streampulse/pulse-charts'
-import type { ChartNavigatorRange } from '../components/analytics/ChartNavigator.tsx'
+import type { ChartNavigatorPreset, ChartNavigatorRange } from '../components/analytics/ChartNavigator.tsx'
 
 /** One navigator step is one stream minute. */
 const NAVIGATOR_STEP_SECONDS = 60
@@ -52,4 +52,19 @@ export function sessionNavigatorIndexForOffset(
   if (offsetSeconds == null || !Number.isFinite(offsetSeconds)) return null
   const pointCount = sessionNavigatorPointCount(durationSeconds, domainStartSeconds)
   return Math.max(0, Math.min(pointCount - 1, Math.floor((offsetSeconds - domainStartSeconds) / NAVIGATOR_STEP_SECONDS)))
+}
+
+/**
+ * One-click zoom sizes for the navigator track, as on the hub: a click on the
+ * purple bar at full range zooms to `presets[0]` around the click. Spans of 2h
+ * or less get 15m first; longer streams get 1h. A preset that is not smaller
+ * than the whole navigator is dropped.
+ */
+export function sessionNavigatorPresets(durationSeconds: number, domainStartSeconds: number): ChartNavigatorPreset[] {
+  const pointCount = sessionNavigatorPointCount(durationSeconds, domainStartSeconds)
+  const spanSeconds = Math.max(0, durationSeconds - domainStartSeconds)
+  const presets = spanSeconds <= 2 * 60 * 60
+    ? [{ label: '15m', pointCount: 15 }, { label: '1h', pointCount: 60 }]
+    : [{ label: '1h', pointCount: 60 }, { label: '4h', pointCount: 240 }]
+  return presets.filter(preset => preset.pointCount < pointCount)
 }

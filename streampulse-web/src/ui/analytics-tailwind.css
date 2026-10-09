@@ -125,23 +125,16 @@
   height: auto;
 }
 
-/* Keep the range controls (their own row above the plot) in one locally
-   scrollable row. */
-.sc-analytics-console [data-chart-viewport-controls] {
-  max-width: 100%;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-}
-
-/* Keep every range action usable by touch and keyboard at every viewport. */
-.sc-analytics-console [data-chart-viewport-controls] button {
-  min-width: 44px !important;
-  min-height: 44px !important;
+/* The session plot takes keyboard focus (arrows, Enter, +/-/0, Escape); show
+   it with the same ring as the chart controls. The plot fills a wrapper that
+   clips its overflow, so the ring is drawn just inside the plot's edge. */
+.sc-analytics-console [data-session-chart-stack] svg[role='group']:focus-visible {
+  outline: 2px solid rgb(196 181 253);
+  outline-offset: -2px;
 }
 
 .sc-analytics-console [data-chart-data-alternative] button:focus-visible,
 .sc-analytics-console [data-chart-focus-bar] button:focus-visible,
-.sc-analytics-console [data-chart-viewport-controls] button:focus-visible,
 .sc-analytics-console .analytics-console[data-analytics-console-shell] header :is(a, button):focus-visible {
   outline: 2px solid rgb(196 181 253);
   outline-offset: 2px;
@@ -396,9 +389,11 @@
 
 /* Channel chart navigator: the hub's Global activity navigator, rendered in a
  * `.hubx` host so it picks up the hub's tokens and navigator styles. The host
- * drops the hub shell layout that `.hubx` also carries, and the track lines up
- * with the plot (the console chart pads 58/18px, 64/24px from 480px and
- * 90/34px from 720px; see PulseMultiSignalChart). */
+ * drops the hub shell layout that `.hubx` also carries. As on the hub, the
+ * whole navigator (track, readout, toolbar and hint) spans exactly the plot at
+ * every width: the console chart pads 58/18px, 64/24px from 480px and 90/34px
+ * from 720px (see PulseMultiSignalChart). Where the readout and the toolbar do
+ * not fit on one line, the toolbar wraps under the readout, as the hub's does. */
 .sc-analytics-console .hubx.sc-chart-navigator-host {
   display: block;
   min-height: 0;
@@ -410,22 +405,41 @@
   container: session-chart / inline-size;
 }
 
-.sc-analytics-console [data-session-chart-navigator] .hx-chart-navigator__bar {
+.sc-analytics-console [data-session-chart-navigator] .hx-chart-navigator {
   width: auto;
   margin-left: 58px;
   margin-right: 18px;
 }
 
 @container session-chart (min-width: 480px) {
-  .sc-analytics-console [data-session-chart-navigator] .hx-chart-navigator__bar {
+  .sc-analytics-console [data-session-chart-navigator] .hx-chart-navigator {
     margin-left: 64px;
     margin-right: 24px;
   }
 }
 
 @container session-chart (min-width: 720px) {
-  .sc-analytics-console [data-session-chart-navigator] .hx-chart-navigator__bar {
+  .sc-analytics-console [data-session-chart-navigator] .hx-chart-navigator {
     margin-left: 90px;
     margin-right: 34px;
+  }
+}
+
+/* On a phone-width card the plot is too narrow for the three zoom buttons at
+ * their natural width, so they share the plot's width equally. */
+@container session-chart (max-width: 479px) {
+  .sc-analytics-console [data-session-chart-navigator] .hx-chart-navigator__toolbar {
+    width: 100%;
+  }
+
+  .sc-analytics-console [data-session-chart-navigator] .hx-chart-navigator__zoom-buttons {
+    display: flex;
+    width: 100%;
+  }
+
+  .sc-analytics-console [data-session-chart-navigator] .hx-chart-navigator__zoom-buttons button {
+    flex: 1 1 0;
+    min-width: 0;
+    padding-inline: 0.25rem;
   }
 }

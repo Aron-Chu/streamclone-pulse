@@ -10,7 +10,6 @@ describe('portal session control target CSS', () => {
     for (const selector of [
       '[data-session-details-tabs]',
       '[data-chart-focus-bar]',
-      '[data-chart-viewport-controls]',
       '[data-chart-position-rail]',
       '[data-chart-data-alternative]',
     ]) {
@@ -20,14 +19,33 @@ describe('portal session control target CSS', () => {
     expect(css).toMatch(/data-chart-data-alternative[^}]*summary[\s\S]*?min-height:\s*44px !important;/)
   })
 
+  it('keeps the zoom controls on the shared navigator, whose buttons are 44px tall', () => {
+    // The stream chart's only zoom UI is the hub navigator in a `.hubx` host.
+    expect(css).toContain('.sc-analytics-console .hubx.sc-chart-navigator-host')
+    expect(css).not.toContain('[data-chart-viewport-controls]')
+    const hubCss = readFileSync(resolve(process.cwd(), 'src/ui/components/hub/hub.css'), 'utf8')
+    expect(hubCss).toMatch(/\.hubx \.hx-chart-navigator__toolbar button \{[^}]*min-height:\s*44px;/)
+  })
+
+  it('shows a visible focus ring on the keyboard-focusable session plot', () => {
+    // The plot's wrapper clips overflow, so the ring must be drawn inside the
+    // plot's edge; a positive offset paints it where the wrapper hides it.
+    expect(css).toMatch(
+      /\.sc-analytics-console \[data-session-chart-stack\] svg\[role='group'\]:focus-visible \{\s*outline: 2px solid rgb\(196 181 253\);\s*outline-offset: -2px;/,
+    )
+  })
+
+  it('insets the whole stream navigator to the plot at every width, as on the hub', () => {
+    const rules = [...css.matchAll(/\[data-session-chart-navigator\] \.hx-chart-navigator \{([^}]*)\}/g)].map(m => m[1])
+    const margins = rules.map(body => [body.match(/margin-left:\s*(\d+)px/)?.[1], body.match(/margin-right:\s*(\d+)px/)?.[1]].join('/'))
+    expect(margins).toEqual(['58/18', '64/24', '90/34'])
+    // No width threshold below which only the track is inset.
+    expect(css).not.toMatch(/\[data-session-chart-navigator\] \.hx-chart-navigator__bar \{[^}]*margin-left/)
+    expect(css).not.toContain('@container session-chart (min-width: 880px)')
+  })
+
   it('keeps the override portal-scoped and wraps dense chart toolbars', () => {
     expect(css).not.toMatch(/(?:^|\n)\s*:where\([^\n]*button[^\n]*\)\s*\{[^}]*min-height:\s*44px/s)
     expect(css).toMatch(/\.sc-analytics-console \[data-chart-focus-top-row\][\s\S]*?flex-wrap:\s*wrap;/)
-  })
-
-  it('scrolls the range controls sideways rather than growing the toolbar', () => {
-    expect(css).toMatch(
-      /\.sc-analytics-console \[data-chart-viewport-controls\][^}]*flex-wrap:\s*nowrap;[^}]*overflow-x:\s*auto;/s,
-    )
   })
 })

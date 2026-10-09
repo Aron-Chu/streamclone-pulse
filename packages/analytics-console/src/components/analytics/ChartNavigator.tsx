@@ -6,6 +6,7 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
   type RefObject,
 } from 'react'
 
@@ -85,6 +86,17 @@ export interface ChartNavigatorProps {
   selectedIndex?: number | null
   presets?: ChartNavigatorPreset[]
   wheelSurfaceRef?: RefObject<HTMLElement | null>
+  /**
+   * Element whose box anchors wheel zoom over `wheelSurfaceRef` (the plot
+   * area). Omitted, the wheel surface itself is the anchor.
+   */
+  wheelAnchor?: () => Element | null | undefined
+  /**
+   * Fewest steps the view can show (default 2). Zoom in disables at this
+   * floor, and wheel, brush and handle gestures stop there instead of letting
+   * the chart widen the view again.
+   */
+  minVisibleCount?: number
   scrollZoomEnabled: boolean
   onScrollZoomChange: (enabled: boolean) => void
   onChange: (range: ChartNavigatorRange, animate?: boolean) => void
@@ -98,6 +110,12 @@ export interface ChartNavigatorProps {
   unitLabel?: string
   /** Label for the button that brings an off-screen selection back into view. */
   selectedLabel?: string
+  /**
+   * Optional extra fact shown on the count line of the readout, after " · "
+   * (the session chart uses it for the activity bar bucket size). Omitted, the
+   * readout markup is unchanged.
+   */
+  readoutNote?: ReactNode
 }
 
 interface DragState {
@@ -117,13 +135,19 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value))
 }
 
+/** Fewest visible steps for a navigator, never more than it has. */
+function minimumCount(pointCount: number, minVisibleCount = 2): number {
+  return clamp(Math.round(minVisibleCount), 2, Math.max(2, pointCount))
+}
+
 function normalizedRange(
   pointCount: number,
   startIndex: number,
   endIndex: number,
+  minVisibleCount = 2,
 ): ChartNavigatorRange {
   const maxIndex = Math.max(0, pointCount - 1)
-  const minimumSpan = maxIndex > 0 ? 1 : 0
+  const minimumSpan = maxIndex > 0 ? Math.min(maxIndex, minimumCount(pointCount, minVisibleCount) - 1) : 0
   const end = clamp(Math.round(endIndex), minimumSpan, maxIndex)
   const start = clamp(Math.round(startIndex), 0, Math.max(0, end - minimumSpan))
   return { startIndex: start, endIndex: end }
@@ -135,13 +159,14 @@ export function zoomNavigatorRange(
   currentRange: ChartNavigatorRange,
   focusIndex: number | null | undefined,
   direction: 'in' | 'out',
+  minVisibleCount = 2,
 ): ChartNavigatorRange {
-  const range = normalizedRange(pointCount, currentRange.startIndex, currentRange.endIndex)
+  const range = normalizedRange(pointCount, currentRange.startIndex, currentRange.endIndex, minVisibleCount)
   if (pointCount < 2) return range
   const visibleCount = range.endIndex - range.startIndex + 1
   const nextCount = clamp(
     direction === 'in' ? Math.ceil(visibleCount / 2) : visibleCount * 2,
-    2,
+    minimumCount(pointCount, minVisibleCount),
     pointCount,
   )
   if (nextCount === visibleCount) return range
@@ -167,6 +192,8 @@ export function ChartNavigator({
   selectedIndex = null,
   presets = [],
   wheelSurfaceRef,
+  wheelAnchor,
+  minVisibleCount = 2,
   scrollZoomEnabled,
   onScrollZoomChange,
   onChange,
@@ -176,9 +203,13 @@ export function ChartNavigator({
   zoomedRangeLabel = 'Zoomed view',
   unitLabel = 'buckets',
   selectedLabel = 'Show selected bucket',
+  readoutNote,
 }: ChartNavigatorProps) {
   const maxIndex = Math.max(0, pointCount - 1)
-  const range = normalizedRange(pointCount, startIndex, endIndex)
+  const minCount = minimumCount(pointCount, minVisibleCount)
+  // Steps between the first and last visible step at the floor.
+  const minSpan = Math.min(maxIndex, minCount - 1)
+  const range = normalizedRange(pointCount, startIndex, endIndex, minVisibleCount)
   const inputRangeRef = useRef(controlRange ?? range)
   useLayoutEffect(() => {
     inputRangeRef.current = controlRange ?? range
@@ -216,14 +247,17 @@ export function ChartNavigator({
       drag.hasMoved = true
       const first = Math.min(drag.anchorIndex, pointerIndex)
       const last = Math.max(drag.anchorIndex, pointerIndex)
-      next = first === last
-        ? first < maxIndex
-          ? { startIndex: first, endIndex: first + 1 }
-          : { startIndex: Math.max(0, first - 1), endIndex: first }
-        : { startIndex: first, endIndex: last }
+      if (last - first >= minSpan) next = { startIndex: first, endIndex: last }
+      else {
+        // Below the floor the brush grows from its anchor towards the pointer.
+        const nextStart = pointerIndex >= drag.anchorIndex
+          ? clamp(first, 0, maxIndex - minSpan)
+          : clamp(last - minSpan, 0, maxIndex - minSpan)
+        next = { startIndex: nextStart, endIndex: nextStart + minSpan }
+      }
     } else if (drag.mode === 'start') {
       next = {
-        startIndex: clamp(drag.startIndex + roundedDelta, 0, Math.max(0, drag.endIndex - 1)),
+        startIndex: clamp(drag.startIndex + roundedDelta, 0, Math.max(0, drag.endIndex - minSpan)),
         endIndex: drag.endIndex,
       }
     } else if (drag.mode === 'end') {
@@ -231,7 +265,7 @@ export function ChartNavigator({
         startIndex: drag.startIndex,
         endIndex: clamp(
           drag.endIndex + roundedDelta,
-          Math.min(maxIndex, drag.startIndex + 1),
+          Math.min(maxIndex, drag.startIndex + minSpan),
           maxIndex,
         ),
       }
@@ -256,7 +290,7 @@ export function ChartNavigator({
       if (drag.mode === 'brush' && !drag.hasMoved) {
         const currentCount = drag.endIndex - drag.startIndex + 1
         const defaultCount = presets[0]?.pointCount ?? Math.max(2, Math.round(pointCount / 4))
-        const nextCount = clamp(isFullRange ? defaultCount : currentCount, 2, pointCount)
+        const nextCount = clamp(isFullRange ? defaultCount : currentCount, minCount, pointCount)
         let nextStart = Math.round(drag.anchorIndex - (nextCount - 1) / 2)
         nextStart = clamp(nextStart, 0, Math.max(0, pointCount - nextCount))
         emitRange({ startIndex: nextStart, endIndex: nextStart + nextCount - 1 })
@@ -306,7 +340,7 @@ export function ChartNavigator({
     const inputRange = inputRangeRef.current
     if (handle === 'start') {
       emitRange({
-        startIndex: clamp(inputRange.startIndex + delta, 0, Math.max(0, inputRange.endIndex - 1)),
+        startIndex: clamp(inputRange.startIndex + delta, 0, Math.max(0, inputRange.endIndex - minSpan)),
         endIndex: inputRange.endIndex,
       })
     } else {
@@ -314,7 +348,7 @@ export function ChartNavigator({
         startIndex: inputRange.startIndex,
         endIndex: clamp(
           inputRange.endIndex + delta,
-          Math.min(maxIndex, inputRange.startIndex + 1),
+          Math.min(maxIndex, inputRange.startIndex + minSpan),
           maxIndex,
         ),
       })
@@ -323,7 +357,7 @@ export function ChartNavigator({
 
   const zoomFromCenter = (direction: 'in' | 'out') => {
     const inputRange = inputRangeRef.current
-    const next = zoomNavigatorRange(pointCount, inputRange, focusIndex, direction)
+    const next = zoomNavigatorRange(pointCount, inputRange, focusIndex, direction, minVisibleCount)
     if (next.startIndex !== inputRange.startIndex || next.endIndex !== inputRange.endIndex) emitRange(next)
   }
 
@@ -348,10 +382,10 @@ export function ChartNavigator({
     } else if (event.key === 'Home') {
       event.preventDefault()
       if (handle === 'start') emitRange({ startIndex: 0, endIndex: inputRange.endIndex })
-      else emitRange({ startIndex: inputRange.startIndex, endIndex: Math.min(maxIndex, inputRange.startIndex + 1) })
+      else emitRange({ startIndex: inputRange.startIndex, endIndex: Math.min(maxIndex, inputRange.startIndex + minSpan) })
     } else if (event.key === 'End') {
       event.preventDefault()
-      if (handle === 'start') emitRange({ startIndex: Math.max(0, inputRange.endIndex - 1), endIndex: inputRange.endIndex })
+      if (handle === 'start') emitRange({ startIndex: Math.max(0, inputRange.endIndex - minSpan), endIndex: inputRange.endIndex })
       else emitRange({ startIndex: inputRange.startIndex, endIndex: maxIndex })
     } else if (event.key === 'Escape') {
       event.preventDefault()
@@ -362,7 +396,7 @@ export function ChartNavigator({
 
   // Plain scrolling stays available until the user explicitly enables Scroll
   // zoom. Alt+wheel works without that mode; Ctrl/Meta remain browser shortcuts.
-  const handleWheel = (event: WheelEvent, surface: HTMLElement) => {
+  const handleWheel = (event: WheelEvent, surface: Element) => {
     const inputRange = inputRangeRef.current
     // A chart inside the wheel surface may already have zoomed for this event.
     if (event.defaultPrevented) return
@@ -396,9 +430,9 @@ export function ChartNavigator({
       if (deltaY === 0) return
       const bucketCount = inputRange.endIndex - inputRange.startIndex + 1
       const scale = Math.exp(deltaY * 0.0025)
-      let nextBucketCount = clamp(Math.round(bucketCount * scale), 2, pointCount)
+      let nextBucketCount = clamp(Math.round(bucketCount * scale), minCount, pointCount)
       if (nextBucketCount === bucketCount) {
-        nextBucketCount = clamp(bucketCount + Math.sign(deltaY), 2, pointCount)
+        nextBucketCount = clamp(bucketCount + Math.sign(deltaY), minCount, pointCount)
       }
       const anchorRatio = clamp((event.clientX - rect.left) / Math.max(1, rect.width), 0, 1)
       const anchorIndex = inputRange.startIndex + anchorRatio * Math.max(0, bucketCount - 1)
@@ -419,7 +453,10 @@ export function ChartNavigator({
       .filter((surface): surface is HTMLElement => surface != null)
       .filter((surface, index, all) => all.indexOf(surface) === index)
     const listeners = surfaces.map((surface) => {
-      const onWheel = (event: WheelEvent) => handleWheel(event, surface === navigator ? trackRef.current ?? surface : surface)
+      const onWheel = (event: WheelEvent) => handleWheel(
+        event,
+        surface === navigator ? trackRef.current ?? surface : wheelAnchor?.() ?? surface,
+      )
       surface.addEventListener('wheel', onWheel, { passive: false })
       return { surface, onWheel }
     })
@@ -481,7 +518,7 @@ export function ChartNavigator({
               aria-label="Chart view start"
               aria-orientation="horizontal"
               aria-valuemin={0}
-              aria-valuemax={Math.max(0, range.endIndex - 1)}
+              aria-valuemax={Math.max(0, range.endIndex - minSpan)}
               aria-valuenow={range.startIndex}
               aria-valuetext={`Start ${startLabel}; showing ${startLabel} to ${endLabel}`}
               onKeyDown={(event) => handleKeyDown(event, 'start')}
@@ -497,7 +534,7 @@ export function ChartNavigator({
               style={{ left: `clamp(22px, ${right}%, calc(100% - 22px))` }}
               aria-label="Chart view end"
               aria-orientation="horizontal"
-              aria-valuemin={Math.min(maxIndex, range.startIndex + 1)}
+              aria-valuemin={Math.min(maxIndex, range.startIndex + minSpan)}
               aria-valuemax={maxIndex}
               aria-valuenow={range.endIndex}
               aria-valuetext={`End ${endLabel}; showing ${startLabel} to ${endLabel}`}
@@ -517,12 +554,12 @@ export function ChartNavigator({
         <div className="hx-chart-navigator__readout" role="status" aria-live="polite">
           <strong>{isFullRange ? fullRangeLabel : zoomedRangeLabel}</strong>
           <span className="hx-chart-navigator__time-range">{startLabel} – {endLabel}</span>
-          <span className="hx-chart-navigator__bucket-count">{visibleCount} of {pointCount} {unitLabel}</span>
+          <span className="hx-chart-navigator__bucket-count">{visibleCount} of {pointCount} {unitLabel}{readoutNote != null ? <> · {readoutNote}</> : null}</span>
         </div>
         <div className="hx-chart-navigator__toolbar" role="group" aria-label="Chart view controls">
           {selectedOutsideView ? <button type="button" onClick={(event) => { event.stopPropagation(); showSelectedBucket() }}><LocateFixed size={15} aria-hidden="true" />{selectedLabel}</button> : null}
           <div className="hx-chart-navigator__zoom-buttons">
-            <button type="button" disabled={visibleCount <= 2} onClick={() => zoomFromCenter('in')}><Plus size={15} aria-hidden="true" />Zoom in</button>
+            <button type="button" disabled={visibleCount <= minCount} onClick={() => zoomFromCenter('in')}><Plus size={15} aria-hidden="true" />Zoom in</button>
             <button type="button" disabled={isFullRange} onClick={() => zoomFromCenter('out')}><Minus size={15} aria-hidden="true" />Zoom out</button>
             <button type="button" disabled={isFullRange && !scrollZoomEnabled} onClick={onReset}><RotateCcw size={15} aria-hidden="true" />Reset zoom</button>
           </div>

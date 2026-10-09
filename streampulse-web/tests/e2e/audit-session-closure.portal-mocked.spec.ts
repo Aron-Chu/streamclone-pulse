@@ -80,7 +80,7 @@ async function assertTouchTargets(page: Page, width: number) {
     ['header actions', page.locator('.analytics-console header button:visible')],
     ['session tabs', page.locator('[data-session-details-tabs] [role="tab"]:visible')],
     ['chart focus', page.locator('[data-chart-focus-bar] button:visible')],
-    ['chart zoom', page.locator('[data-chart-viewport-controls] button:visible')],
+    ['chart zoom', page.locator('[data-session-chart-navigator] .hx-chart-navigator__toolbar button:visible')],
     ['data alternative disclosure', page.locator('[data-chart-data-alternative] > summary:visible')],
     ['minute pagination', page.locator('[data-chart-data-alternative] button:visible')],
   ] as const
@@ -226,12 +226,14 @@ test.describe('portal session closure acceptance (mocked)', () => {
 
     const dataAlternative = page.locator('[data-chart-data-alternative]')
     await dataAlternative.locator('summary').click()
-    await expect(dataAlternative.getByText('Page 1 of 2')).toBeVisible()
+    const pageLabel = dataAlternative.locator('[data-chart-data-page-label]')
+    // Pages count from the stream start: the newest page, shown first, is 2 of 2.
+    await expect(pageLabel).toHaveText(/ · 2 of 2$/)
     await expect(dataAlternative.locator('tbody tr')).toHaveCount(120)
     const pinnedDataRow = dataAlternative.locator('[data-chart-selected-data-row]')
     await expect(pinnedDataRow).toHaveCount(0)
     await dataAlternative.getByRole('button', { name: 'Earlier minutes' }).click()
-    await expect(dataAlternative.getByText('Page 2 of 2')).toBeVisible()
+    await expect(pageLabel).toHaveText(/^00:00:00–00:29:00 · 1 of 2$/)
     await expect(dataAlternative.locator('tbody tr')).toHaveCount(30)
     await expect(dataAlternative.locator('tbody tr').first()).toContainText('0:00')
     await expect(dataAlternative.locator('tbody tr').last()).toContainText('29:00')

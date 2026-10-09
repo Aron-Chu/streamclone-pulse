@@ -33,7 +33,7 @@ const forbiddenInSource = [
   {
     file: join(repoRoot, 'packages/pulse-charts/src/PulseMultiSignalChart.tsx'),
     needle: 'data-chart-viewport-controls',
-    why: 'viewport controls belong in the console chart toolbar (AnalyticsChart range row), '
+    why: 'viewport controls belong in the shared ChartNavigator under the plot, '
       + 'not floating over the plot where they covered the viewer peak',
   },
 ]
@@ -56,22 +56,33 @@ for (const { file, needle, why } of forbiddenInSource) {
 
 // The console range controls once came back as an `absolute right-2 top-2`
 // overlay inside the plot stack (the guard above only covers the chart
-// package). Keep them in their own row before the plot and never floating.
+// package), and later as a second, stream-only zoom row above the plot. The
+// stream chart now has exactly one zoom UI, the hub's: the shared
+// ChartNavigator, rendered after the plot inside the chart stack and never
+// floating over it.
 const consoleChartFile = join(repoRoot, 'packages/analytics-console/src/components/analytics/AnalyticsChart.tsx')
 if (existsSync(consoleChartFile)) {
   const source = readFileSync(consoleChartFile, 'utf8')
-  const rowAt = source.search(/<div[^>]*\bdata-chart-range-row\b/)
-  const stackAt = source.search(/<div[^>]*\bdata-session-chart-stack\b/)
-  if (rowAt < 0) {
-    errors.push(`${consoleChartFile} must render the chart range controls in a [data-chart-range-row]`)
-  } else if (stackAt >= 0 && rowAt > stackAt) {
-    errors.push(`${consoleChartFile} must place [data-chart-range-row] before [data-session-chart-stack], not over the plot`)
+  for (const needle of ['data-chart-viewport-controls', 'data-chart-range-row']) {
+    if (source.includes(needle)) {
+      errors.push(`${consoleChartFile} must not render [${needle}] — the shared ChartNavigator under the plot is the only zoom UI`)
+    }
   }
-  for (const needle of ['data-chart-range-row', 'data-chart-viewport-controls']) {
-    for (const match of source.matchAll(new RegExp(`<div[^>]*\\b${needle}\\b[^>]*>`, 'g'))) {
-      if (/className=["{`][^"`}]*\b(?:absolute|fixed|sticky)\b/.test(match[0])) {
-        errors.push(`${consoleChartFile} must not position [${needle}] absolute/fixed/sticky — it covered the plot`)
-      }
+  const stackAt = source.search(/<div[^>]*\bdata-session-chart-stack\b/)
+  const plotAt = source.indexOf('<PulseMultiSignalChartInner', Math.max(0, stackAt))
+  const navigatorAt = source.indexOf('<ChartNavigator', Math.max(0, stackAt))
+  if (stackAt < 0 || plotAt < 0 || navigatorAt < 0) {
+    errors.push(`${consoleChartFile} must render <PulseMultiSignalChartInner> and <ChartNavigator> inside [data-session-chart-stack]`)
+  } else if (navigatorAt < plotAt) {
+    errors.push(`${consoleChartFile} must render <ChartNavigator> after <PulseMultiSignalChartInner>, under the plot`)
+  }
+  const hosts = [...source.matchAll(/<div[^>]*\bdata-session-chart-navigator\b[^>]*>/g)]
+  if (hosts.length === 0) {
+    errors.push(`${consoleChartFile} must host the navigator in a [data-session-chart-navigator] element`)
+  }
+  for (const match of hosts) {
+    if (/className=["{`][^"`}]*\b(?:absolute|fixed|sticky)\b/.test(match[0])) {
+      errors.push(`${consoleChartFile} must not position [data-session-chart-navigator] absolute/fixed/sticky — it would cover the plot`)
     }
   }
 }

@@ -65,7 +65,7 @@ export function SyncStatusPanel({
       {coveragePct !== undefined ? (
         <div className="rounded border border-white/10 bg-white/[0.03] px-3 py-2.5">
           <div className="text-xs font-black uppercase text-zinc-500">Chat coverage</div>
-          <div className="mt-1 text-sm font-black text-zinc-100">{formatCoveragePercent(coveragePct)} of stream minutes</div>
+          <div className="mt-1 text-sm font-black text-zinc-100">{formatCoveragePercent(coveragePct)} of tracked minutes</div>
           {coverage?.partial ? (
             <div className="mt-1 text-xs font-semibold text-amber-200/90">
               Partial coverage — chat spans {coverage.chatSpanMinutes ?? 0} of {coverage.streamSpanMinutes ?? 0} minutes.

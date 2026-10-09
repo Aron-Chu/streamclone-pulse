@@ -1041,6 +1041,12 @@ function linePath(
  * viewport. Ctrl/Meta stay reserved for the browser's own page zoom, and Shift
  * is left to the surrounding navigator rail — so neither is consumed here.
  */
+/**
+ * `modified` (default) zooms on Alt+wheel, `direct` on a plain wheel too, and
+ * `none` never zooms on the wheel, for a parent whose navigator owns wheel zoom.
+ */
+export type ChartWheelZoomMode = 'modified' | 'direct' | 'none'
+
 export function isChartZoomWheelGesture(
   event: Pick<WheelEvent, "altKey" | "ctrlKey" | "metaKey" | "shiftKey">,
 ): boolean {
@@ -1075,7 +1081,7 @@ export function handleMultiSignalWheelEvent(args: {
   anchorSeconds: number
   onViewportChange: (viewport: ChartViewport) => void
   domainStartSeconds?: number
-  wheelZoomMode?: 'modified' | 'direct'
+  wheelZoomMode?: ChartWheelZoomMode
 }): boolean {
   const {
     event,
@@ -1086,6 +1092,8 @@ export function handleMultiSignalWheelEvent(args: {
     domainStartSeconds = 0,
   } = args
   if (durationSeconds <= 0) return false
+  // A parent that zooms through its own navigator leaves the wheel to it.
+  if (args.wheelZoomMode === 'none') return false
   // Session charts opt into direct wheel zoom; other surfaces require Alt.
   if (!isChartZoomWheelGesture(event) && !(args.wheelZoomMode === 'direct' && !event.ctrlKey && !event.metaKey && !event.shiftKey)) return false
   if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) return false
@@ -1153,6 +1161,7 @@ function PulseMultiSignalChartInnerImpl({
   layoutMode = "viewer-led",
   dragPanMode = "off",
   wheelZoomMode = 'modified',
+  onZoomKey,
   lineWeightMode = "fixed",
   activityBucketing = "budget",
   onActivityBucketMinutesChange,
@@ -1210,7 +1219,12 @@ function PulseMultiSignalChartInnerImpl({
   layoutMode?: ChartLayoutMode;
   /** Optional graph-surface navigation. The extension keeps its existing gesture path. */
   dragPanMode?: ChartDragPanMode;
-  wheelZoomMode?: 'modified' | 'direct';
+  wheelZoomMode?: ChartWheelZoomMode;
+  /**
+   * Replaces the plot's own + / - / 0 zoom keys, so a parent with a navigator
+   * can make them step exactly like its Zoom in / Zoom out / Reset zoom.
+   */
+  onZoomKey?: (action: "in" | "out" | "reset") => void;
   /** Disable viewport easing while the parent rail is being dragged/resized. */
   viewportMotionEnabled?: boolean;
   /** Portal-only opt-in; shared/extension callers retain the fixed stroke contract. */
@@ -2940,6 +2954,20 @@ function PulseMultiSignalChartInnerImpl({
       };
     }
 
+    // With full-resolution bars, hover reads the per-minute row under the
+    // pointer in every lane; a click anywhere must pin that same minute, not
+    // the bucketed bar's peak (which on long streams is minutes away) or the
+    // nearest row of the thinned chart series.
+    const activityHit = activityHoverAtPlotX(plotX);
+    if (activityHit) {
+      return {
+        kind: "chart_minute",
+        canonicalIndex: rollupIndexForActivityIndex(activityHit.index),
+        offsetSeconds:
+          pointOffsetSeconds(activityHit.rollup.minuteTs, streamStartedAt) ?? activityHit.index * 60,
+      };
+    }
+
     if (plotYValue >= emoteBand.bandTop && plotYValue <= emoteMagnitudeBottom) {
       const emote = activityBarAtPlotX(emoteBarRects, plotX);
       if (emote?.peak || emote) {
@@ -3110,11 +3138,12 @@ function PulseMultiSignalChartInnerImpl({
       inferredDurationSeconds > 0
     ) {
       event.preventDefault();
-      if (event.key === "0") resetViewport();
-      else
-        zoomViewportByFactor(
-          event.key === "+" || event.key === "=" ? 0.75 : 1.333333,
-        );
+      const action = event.key === "0"
+        ? "reset"
+        : event.key === "+" || event.key === "=" ? "in" : "out";
+      if (onZoomKey) onZoomKey(action);
+      else if (action === "reset") resetViewport();
+      else zoomViewportByFactor(action === "in" ? 0.75 : 1.333333);
       return;
     }
     if (!onSelectRollup || rollups.length === 0) return;
@@ -3224,7 +3253,21 @@ function PulseMultiSignalChartInnerImpl({
     onPreviewReactionMoment?.(
       reactionMomentAtClientPoint(event.clientX, event.clientY, event.currentTarget),
     );
-    scheduleHoverFromClientX(event.clientX, event.currentTarget, true);
+    // A mouse press lands where the last mousemove already put the hover. The
+    // pointer event carries a fractional clientX (at 125% and other scaled
+    // displays) while mousemove and click carry whole pixels, and with
+    // per-minute bars that half pixel can be the next minute: the readout
+    // would jump a minute past the one the click then pins. Reuse the
+    // mousemove position; touch and pen have no mousemove, so they still hover
+    // from the press itself.
+    const pendingMouseX = pendingHoverClientRef.current?.clientX;
+    const pressClientX = activityBarsUseDetail
+      && event.pointerType === "mouse"
+      && pendingMouseX != null
+      && Math.abs(pendingMouseX - event.clientX) < 1
+      ? pendingMouseX
+      : event.clientX;
+    scheduleHoverFromClientX(pressClientX, event.currentTarget, true);
   }
 
   function handlePlotPointerMove(event: ReactPointerEvent<SVGRectElement>) {
@@ -3368,8 +3411,8 @@ function PulseMultiSignalChartInnerImpl({
     >
       {/* Viewport controls deliberately do not live here. An overlay pinned to
           the top-right of the plot covered the viewer peak — the one region the
-          chart exists to show. The console renders them in its chart toolbar
-          (`data-chart-range-row`); keyboard (+ / − / 0) and Alt+wheel still work
+          chart exists to show. The console renders them in the shared
+          ChartNavigator under the plot; keyboard (+ / − / 0) and Alt+wheel still work
           here because the chart owns the gestures, not the buttons. */}
       {variant === "console" && reactionBarRectsForChart.length > 0 ? (
         <div

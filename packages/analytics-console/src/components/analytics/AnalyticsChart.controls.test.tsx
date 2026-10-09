@@ -118,6 +118,21 @@ describe('AnalyticsChart unified controls', () => {
     expect(kappaFocus.getAttribute('aria-pressed')).toBe('true')
   })
 
+  it('styles Spikes and Expand alike: both bordered toggles when off', () => {
+    render(<Harness />)
+    const spikes = screen.getByRole('button', { name: 'Show chart spikes' })
+    const expand = screen.getByRole('button', { name: 'Expand activity detail' })
+    for (const toggle of [spikes, expand]) {
+      expect(toggle.className).toMatch(/(?:^|\s)border(?:\s|$)/)
+      expect(toggle.className).toContain('border-white/10')
+      expect(toggle.className).toContain('hover:border-white/20')
+    }
+    fireEvent.click(spikes)
+    const on = screen.getByRole('button', { name: 'Hide chart spikes' })
+    expect(on.className).toContain('border-amber-300/25')
+    expect(on.className).not.toContain('ring-1')
+  })
+
   it('keeps Emote overlays compact until explicitly expanded', () => {
     render(<Harness />)
 
