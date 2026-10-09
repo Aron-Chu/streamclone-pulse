@@ -54,13 +54,18 @@ const TURNSTILE_STUB = `
 
 type CaseReply = { status: number; body: unknown; delayMs?: number }
 
-/** Mocks the network: the support case endpoint answers from `replies`, other API calls 503. */
-async function mockNetwork(page: Page, baseURL: string | undefined, replies: CaseReply[] = []) {
+/**
+ * Mocks the network: the support case endpoint answers from `replies`, other
+ * API calls 503. While `challenge.blocked` is true, Cloudflare's script is
+ * refused the way a content blocker refuses it.
+ */
+async function mockNetwork(page: Page, baseURL: string | undefined, replies: CaseReply[] = [], challenge: { blocked: boolean } = { blocked: false }) {
   const origin = new URL(baseURL ?? 'http://127.0.0.1:4173').origin
   const queue = [...replies]
   await page.route('**/*', async (route) => {
     const url = new URL(route.request().url())
     if (url.origin === 'https://challenges.cloudflare.com') {
+      if (challenge.blocked) return route.abort('blockedbyclient')
       return route.fulfill({ status: 200, contentType: 'application/javascript', body: TURNSTILE_STUB })
     }
     if (url.pathname === '/v1/portal/support/cases' && route.request().method() === 'POST') {
@@ -295,6 +300,65 @@ test.describe('configured build', () => {
       await expect(box).toBeFocused()
       await expect(box).toHaveAttribute('aria-invalid', 'true')
       await expect(box).toHaveAccessibleDescription('Add a few words first.')
+    })
+
+    for (const [width, height] of [[390, 844], [1440, 900]] as const) {
+      test(`the receipt names the team, a short reference with Copy, the full ID and the reply address at ${width}px`, async ({ page, context, baseURL }) => {
+        await page.setViewportSize({ width, height })
+        await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+        const caseId = 'd91b5942-fc50-410a-9b7e-82754d3feaf2'
+        await mockNetwork(page, baseURL, [{ status: 201, body: { case_id: caseId } }, { status: 201, body: { case_id: 'a1b2c3d4-0000-4000-8000-000000000000' } }])
+        await openConfiguredFeedback(page)
+        await page.getByLabel('Your message').fill('Chart froze after 20 minutes')
+        await page.getByLabel(/^Email/).fill('reader@example.com')
+        await page.getByLabel('I consent to being contacted at this email about this report.').check()
+        await page.getByLabel('I consent to submitting this text to StreamPulse support.').check()
+        await sendButton(page).click()
+        const done = page.getByTestId('support-form-success')
+        await expect(done.getByText('Sent to the StreamPulse team')).toBeFocused()
+        await expect(done.getByTestId('support-form-reference')).toHaveText('D91B5942')
+        await expect(done.getByTestId('support-form-case-id')).toHaveText(`Full case ID: ${caseId}`)
+        await expect(done.getByTestId('support-form-reply')).toHaveText("If we need more, we'll reply to reader@example.com. Writing again about this? Mention D91B5942.")
+        await done.getByRole('button', { name: 'Copy reference D91B5942' }).click()
+        await expect(done.getByText('Reference copied.')).toBeVisible()
+        expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('D91B5942')
+        // The short reference stays on one line; nothing scrolls sideways.
+        const refBox = await done.getByTestId('support-form-reference').boundingBox()
+        expect(refBox!.height).toBeLessThan(40)
+        const { scrollWidth, innerWidth } = await noHorizontalScroll(page)
+        expect(scrollWidth).toBeLessThanOrEqual(innerWidth)
+
+        await page.getByRole('button', { name: 'Send something else' }).click()
+        await page.getByLabel('Your message').fill('Love the minute chart')
+        await page.getByLabel('I consent to submitting this text to StreamPulse support.').check()
+        await sendButton(page).click()
+        await expect(page.getByTestId('support-form-reply')).toHaveText("You didn't leave an email, so no reply needed — we read every message. Writing again about this? Mention A1B2C3D4.")
+      })
+    }
+
+    test('a blocked bot check says so instead of looking like an outage, and Try again recovers once allowed', async ({ page, baseURL }) => {
+      const challenge = { blocked: true }
+      await mockNetwork(page, baseURL, [{ status: 201, body: { case_id: 'case-e2e-unblocked' } }], challenge)
+      await page.goto('/feedback')
+      const blocked = page.getByTestId('support-form-check-blocked')
+      const off = page.getByTestId('support-form-unavailable')
+      await expect(blocked.or(off)).toBeVisible()
+      test.skip(await off.isVisible(), 'build has no VITE_TURNSTILE_SITE_KEY, so /feedback shows no form')
+      await expect(blocked).toContainText('Your browser blocked the spam check — try again or disable blockers for this page.')
+      await expect(off).toHaveCount(0)
+      // An open form behind a blocked check: the header does not say it is closed.
+      await expect(page.getByTestId('feedback-private-badge')).toBeVisible()
+      await expect(blocked.getByTestId('feedback-public-alternatives')).toContainText('Public alternatives. Anyone can read these')
+
+      challenge.blocked = false
+      await blocked.getByRole('button', { name: 'Try again' }).click()
+      await expect(page.getByTestId('support-form')).toBeVisible()
+      await expect(page.getByLabel('Your message')).toBeFocused()
+      await expect.poll(() => page.evaluate(() => (window as { __turnstileRenders?: unknown[] }).__turnstileRenders?.length ?? 0)).toBe(1)
+      await page.getByLabel('Your message').fill('Unblocked now')
+      await page.getByLabel('I consent to submitting this text to StreamPulse support.').check()
+      await sendButton(page).click()
+      await expect(page.getByTestId('support-form-reference')).toHaveText('CASE-E2E')
     })
 
     test('"Send something else" puts focus in the message box', async ({ page, baseURL }) => {

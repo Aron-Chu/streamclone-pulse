@@ -18,7 +18,7 @@ const CLOSED_SUB = "Spotted a problem or have an idea? The private form isn't ta
  *
  * The "Private feedback" badge, the "tell the team here" line and the
  * "Private" note show only while the form can take a message. Once it is
- * unavailable (no site key, intake off, or the check cannot load), the header
+ * unavailable (no site key, or intake off), the header
  * says the form is closed and the card shows its own public alternatives, so
  * the page never invites a message it cannot send. The quiet Discord line
  * also hides whenever the card lists the public alternatives itself (after a

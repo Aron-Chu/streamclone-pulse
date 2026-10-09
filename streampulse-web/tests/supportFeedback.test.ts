@@ -8,6 +8,8 @@ import {
   supportFailureOutcome,
   supportSuccessOutcome,
   truncateUtf8,
+  supportShortReference,
+  turnstileErrorIsSiteConfig,
   turnstileErrorRetryable,
   utf8ByteLength,
   validateFeedbackDraft,
@@ -187,4 +189,22 @@ describe('Turnstile widget errors', () => {
       expect(turnstileErrorRetryable(code)).toBe(false)
     },
   )
+
+  // Our own setup (parameters, site key, domain) shows the unavailable panel;
+  // anything else that no retry fixes is this browser blocking the check.
+  it.each(['102001', '106010', '110100', '110110', '110200', '110420', '400020', '400030', '400070'])('%j is our site configuration', (code) => {
+    expect(turnstileErrorIsSiteConfig(code)).toBe(true)
+  })
+
+  it.each(['110500', '110510', '110600', '200100', '200500', '300030', '600010', '100000', '120000', '', undefined, null])('%j is not', (code) => {
+    expect(turnstileErrorIsSiteConfig(code)).toBe(false)
+  })
+})
+
+describe('supportShortReference', () => {
+  it('is the first 8 characters of the case ID, upper-cased', () => {
+    expect(supportShortReference('ecf01b0b-4d2a-4c1e-9f3b-5a6b7c8d9e0f')).toBe('ECF01B0B')
+    expect(supportShortReference(' d91b5942-fc50-410a-9b7e-82754d3feaf2 ')).toBe('D91B5942')
+    expect(supportShortReference('c1')).toBe('C1')
+  })
 })

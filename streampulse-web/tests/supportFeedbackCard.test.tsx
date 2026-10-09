@@ -79,7 +79,7 @@ describe('support feedback card', () => {
     consent()
     issue('tok-1')
     send()
-    await screen.findByText('Saved. Thank you.')
+    await screen.findByText('Sent to the StreamPulse team')
     expect(requests[0]!.body).toEqual({
       category: 'bug',
       subject: 'Pulse tab is blank on every channel',
@@ -88,6 +88,43 @@ describe('support feedback card', () => {
       turnstile_token: 'tok-1',
     })
     expect(within(screen.getByTestId('support-form-success')).getByText('case-123')).toBeTruthy()
+  })
+
+  it('says who has it, gives a short reference with Copy and the full ID, and says where a reply goes', async () => {
+    const writeText = vi.fn(async () => {})
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
+    respondWith(json(201, { case_id: 'ecf01b0b-4d2a-4c1e-9f3b-5a6b7c8d9e0f' }), json(201, { case_id: 'a1b2c3d4-0000-4000-8000-000000000000' }))
+    await renderCard()
+    typeMessage('Chart froze after 20 minutes')
+    fireEvent.change(screen.getByLabelText(/^Email/), { target: { value: ' reader@example.com ' } })
+    fireEvent.click(screen.getByLabelText('I consent to being contacted at this email about this report.'))
+    consent()
+    issue('tok-1')
+    send()
+    const done = await screen.findByTestId('support-form-success')
+    expect(within(done).getByText('Sent to the StreamPulse team')).toBeTruthy()
+    await waitFor(() => expect(document.activeElement).toBe(within(done).getByText('Sent to the StreamPulse team')))
+    expect(within(done).getByTestId('support-form-reference').textContent).toBe('ECF01B0B')
+    expect(within(done).getByTestId('support-form-case-id').textContent).toBe('Full case ID: ecf01b0b-4d2a-4c1e-9f3b-5a6b7c8d9e0f')
+    expect(within(done).getByTestId('support-form-reply').textContent)
+      .toBe("If we need more, we'll reply to reader@example.com. Writing again about this? Mention ECF01B0B.")
+    fireEvent.click(within(done).getByRole('button', { name: 'Copy reference ECF01B0B' }))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('ECF01B0B'))
+    expect(await within(done).findByText('Reference copied.')).toBeTruthy()
+    // The email field still clears after a send.
+    fireEvent.click(within(done).getByRole('button', { name: 'Send something else' }))
+    expect((screen.getByLabelText(/^Email/) as HTMLInputElement).value).toBe('')
+
+    // Without an email there is nobody to reply to, and the receipt says so.
+    typeMessage('Love the minute chart')
+    consent()
+    issue('tok-2')
+    send()
+    const second = await screen.findByTestId('support-form-success')
+    expect(within(second).getByTestId('support-form-reference').textContent).toBe('A1B2C3D4')
+    expect(within(second).getByTestId('support-form-reply').textContent)
+      .toBe("You didn't leave an email, so no reply needed — we read every message. Writing again about this? Mention A1B2C3D4.")
+    expect(second.textContent).not.toMatch(/reader@example\.com/)
   })
 
   it('files "I have an idea" as a suggestion and sends contact consent only with an email', async () => {
@@ -103,7 +140,7 @@ describe('support feedback card', () => {
     expect(requests).toHaveLength(0)
     fireEvent.click(screen.getByLabelText('I consent to being contacted at this email about this report.'))
     send()
-    await screen.findByText('Saved. Thank you.')
+    await screen.findByText('Sent to the StreamPulse team')
     expect(requests[0]!.body).toMatchObject({ category: 'suggestion', email: 'me@example.com', contact_consent: true })
   })
 
@@ -123,7 +160,7 @@ describe('support feedback card', () => {
     typeMessage('First try, edited')
     issue('tok-3')
     send()
-    await screen.findByText('Saved. Thank you.')
+    await screen.findByText('Sent to the StreamPulse team')
     expect(requests[2]!.key).not.toBe(requests[1]!.key)
 
     fireEvent.click(screen.getByRole('button', { name: 'Send something else' }))
@@ -152,7 +189,7 @@ describe('support feedback card', () => {
 
     issue('tok-2')
     send()
-    await screen.findByText('Saved. Thank you.')
+    await screen.findByText('Sent to the StreamPulse team')
     expect(requests[1]!.body.turnstile_token).toBe('tok-2')
     expect(resets).toBe(2)
 
@@ -188,7 +225,7 @@ describe('support feedback card', () => {
     send()
     expect(requests).toHaveLength(1)
     release(json(200, { case_id: 'c1' })())
-    await screen.findByText('Saved. Thank you.')
+    await screen.findByText('Sent to the StreamPulse team')
   })
 
   it('keeps focus on Send after a failed send and moves it to the message after "Send something else"', async () => {
@@ -203,7 +240,7 @@ describe('support feedback card', () => {
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Try again' }))
     issue('tok-2')
     send()
-    await screen.findByText('Saved. Thank you.')
+    await screen.findByText('Sent to the StreamPulse team')
     fireEvent.click(screen.getByRole('button', { name: 'Send something else' }))
     await waitFor(() => expect(document.activeElement).toBe(message()))
   })
@@ -254,7 +291,7 @@ describe('support feedback card', () => {
     issue('tok-1')
     send()
     expect(await screen.findByText("Couldn't send. Your message is still here.")).toBeTruthy()
-    expect(screen.queryByText('Saved. Thank you.')).toBeNull()
+    expect(screen.queryByText('Sent to the StreamPulse team')).toBeNull()
   })
 
   it('uses Retry-After for too many attempts and holds Send until then', async () => {
@@ -313,7 +350,7 @@ describe('support feedback card', () => {
       await waitFor(() => expect(screen.queryByTestId('support-form-rate-limit')).toBeNull())
       issue('tok-2')
       send()
-      await screen.findByText('Saved. Thank you.')
+      await screen.findByText('Sent to the StreamPulse team')
       expect(requests).toHaveLength(2)
     } finally {
       vi.useRealTimers()
@@ -409,7 +446,7 @@ describe('support feedback card', () => {
     expect(resets).toBe(2)
     issue('tok-fresh')
     send()
-    await screen.findByText('Saved. Thank you.')
+    await screen.findByText('Sent to the StreamPulse team')
     expect(requests).toHaveLength(1)
     expect(requests[0]!.body.turnstile_token).toBe('tok-fresh')
   })
@@ -423,8 +460,9 @@ describe('support feedback card', () => {
     expect((within(off).getByRole('textbox') as HTMLTextAreaElement).value).toBe('Is the check broken?')
   })
 
-  it('falls back to the unavailable panel when every fresh challenge fails', async () => {
-    const fetchMock = respondWith()
+  it('says the browser blocked the check, not that the form is down, when every fresh challenge fails', async () => {
+    const fetchMock = respondWith(json(201, { case_id: 'case-after-unblock' }))
+    vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', 'https://discord.gg/sp-test-code')
     await renderCard()
     typeMessage('Blocked iframe')
     consent()
@@ -434,10 +472,58 @@ describe('support feedback card', () => {
     expect(await screen.findByText("The bot check didn't go through. Your message is still here; try again.")).toBeTruthy()
     send()
     widgetError('200500')
-    const off = await screen.findByTestId('support-form-unavailable')
-    expect((within(off).getByRole('textbox') as HTMLTextAreaElement).value).toBe('Blocked iframe')
+    const blocked = await screen.findByTestId('support-form-check-blocked')
+    expect(blocked.textContent).toMatch(/Your browser blocked the spam check — try again or disable blockers for this page\./)
+    expect(blocked.textContent).not.toMatch(/unavailable/i)
+    expect(screen.queryByTestId('support-form-unavailable')).toBeNull()
+    expect((within(blocked).getByRole('textbox') as HTMLTextAreaElement).value).toBe('Blocked iframe')
+    expect(within(blocked).getByTestId('feedback-public-alternatives')).toBeTruthy()
+    // The page header still describes an open form, and Discord is listed once.
+    expect(screen.getByTestId('feedback-private-badge')).toBeTruthy()
+    expect(screen.queryByTestId('support-discord-line')).toBeNull()
     expect(resets).toBe(2)
     expect(fetchMock).not.toHaveBeenCalled()
+
+    // Try again renders a fresh check and brings the form back with the message.
+    const before = renderOpts
+    fireEvent.click(within(blocked).getByRole('button', { name: 'Try again' }))
+    await waitFor(() => expect(screen.getByTestId('support-form')).toBeTruthy())
+    await waitFor(() => expect(renderOpts).not.toBe(before))
+    expect(message().value).toBe('Blocked iframe')
+    expect(consentBox().checked).toBe(true)
+    issue('tok-unblocked')
+    send()
+    await screen.findByText('Sent to the StreamPulse team')
+    expect(requests[0]!.body.turnstile_token).toBe('tok-unblocked')
+  })
+
+  it.each(['110500', '200100', ''])('treats a browser-side check error %j as blocked, not as an outage', async (code) => {
+    respondWith()
+    await renderCard()
+    typeMessage('Old browser')
+    widgetError(code)
+    const blocked = await screen.findByTestId('support-form-check-blocked')
+    expect((within(blocked).getByRole('textbox') as HTMLTextAreaElement).value).toBe('Old browser')
+    expect(screen.queryByTestId('support-form-unavailable')).toBeNull()
+  })
+
+  it('shows the blocked panel when the check script cannot load, and Try again loads it afresh', async () => {
+    delete window.turnstile
+    respondWith()
+    render(<MemoryRouter><Feedback /></MemoryRouter>)
+    await waitFor(() => expect(document.querySelector('script[data-streampulse-turnstile]')).toBeTruthy())
+    const first = document.querySelector('script[data-streampulse-turnstile]') as HTMLScriptElement
+    act(() => { first.dispatchEvent(new Event('error')) })
+    const blocked = await screen.findByTestId('support-form-check-blocked')
+    expect(blocked.textContent).toMatch(/Your browser blocked the spam check/)
+    expect(screen.queryByTestId('support-form-unavailable')).toBeNull()
+    // The failed tag is gone, so Try again adds a fresh one instead of waiting on it.
+    expect(document.querySelector('script[data-streampulse-turnstile]')).toBeNull()
+    fireEvent.click(within(blocked).getByRole('button', { name: 'Try again' }))
+    await waitFor(() => expect(document.querySelector('script[data-streampulse-turnstile]')).toBeTruthy())
+    expect(document.querySelector('script[data-streampulse-turnstile]')).not.toBe(first)
+    expect(screen.getByTestId('support-form')).toBeTruthy()
+    document.querySelectorAll('script[data-streampulse-turnstile]').forEach(s => s.remove())
   })
 
   it('leaves a sent case on screen when the next challenge errors', async () => {
@@ -447,9 +533,9 @@ describe('support feedback card', () => {
     consent()
     issue('tok-1')
     send()
-    await screen.findByText('Saved. Thank you.')
+    await screen.findByText('Sent to the StreamPulse team')
     widgetError('110200')
-    expect(screen.getByText('Saved. Thank you.')).toBeTruthy()
+    expect(screen.getByText('Sent to the StreamPulse team')).toBeTruthy()
     expect(screen.queryByTestId('support-form-unavailable')).toBeNull()
   })
 
@@ -623,6 +709,16 @@ describe('/support link card', () => {
     expect(screen.queryByTestId('support-form-unavailable')).toBeNull()
     // Troubleshooting content stays on /support.
     expect(screen.getByRole('heading', { name: 'Extension not appearing on Twitch' })).toBeTruthy()
+  })
+
+  it('sends security reports to GitHub private vulnerability reporting', () => {
+    render(<MemoryRouter><Support /></MemoryRouter>)
+    const security = screen.getByTestId('support-security-report')
+    expect(security.textContent).not.toMatch(/has not been published/)
+    const link = within(security).getByRole('link', { name: 'GitHub private vulnerability reporting (opens in a new tab)' })
+    expect(link.getAttribute('href')).toBe('https://github.com/Aron-Chu/streamclone-pulse/security/advisories/new')
+    expect(link.getAttribute('rel')).toBe('noopener noreferrer')
+    expect(security.textContent).toMatch(/Do not post vulnerability details in public issues, on Discord or in the feedback form\./)
   })
 
   it('does not promise private delivery when the build cannot take messages', () => {

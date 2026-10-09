@@ -3,7 +3,7 @@ import { ArrowRight, Lock } from 'lucide-react'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { ChromeInstallCta } from '../../ui/components/ChromeInstallCta'
 import { buttonClass } from '../../ui/primitives'
-import { FEEDBACK_PATH } from '../../lib/externalLinks'
+import { FEEDBACK_PATH, SECURITY_REPORT_URL } from '../../lib/externalLinks'
 import { feedbackSiteKey, supportFormAvailability } from '../../lib/supportForm'
 import './support.css'
 
@@ -102,7 +102,12 @@ export default function Support() {
               legal questions only. It is not a routine product-support mailbox.
             </p>
             <h3 id="security">Security reports</h3>
-            <p className="muted text-xs">A private security-reporting channel has not been published yet. Do not post vulnerability details in public issues, on Discord or in the feedback form. A verified private contact is required before sending sensitive details.</p>
+            <p className="muted text-xs" data-testid="support-security-report">
+              Report vulnerabilities privately through{' '}
+              <a href={SECURITY_REPORT_URL} target="_blank" rel="noopener noreferrer" className="text-violet-400 hover:underline"
+                aria-label="GitHub private vulnerability reporting (opens in a new tab)">GitHub private vulnerability reporting</a>
+              {' '}(only the maintainers see it; needs a GitHub account). Do not post vulnerability details in public issues, on Discord or in the feedback form.
+            </p>
             <p className="text-xs text-zinc-400 mt-2">
               You can also review the <Link to="/docs#extension" className="text-violet-400 hover:underline">extension setup guide</Link> or the{' '}
               <Link to="/privacy" className="text-violet-400 hover:underline">privacy policy</Link>.

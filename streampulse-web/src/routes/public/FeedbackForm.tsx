@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode, type RefObject } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertCircle, ArrowRight, ArrowUpRight, Check, Lightbulb } from 'lucide-react'
+import { AlertCircle, ArrowRight, ArrowUpRight, Check, Copy, Lightbulb, ShieldAlert } from 'lucide-react'
 import { DiscordMark } from '../../ui/components/DiscordMark'
 import { buttonClass } from '../../ui/primitives'
 import { apiClient } from '../../lib/apiClient'
@@ -16,7 +16,9 @@ import {
   feedbackSiteKey,
   supportFailureOutcome,
   supportFormAvailability,
+  supportShortReference,
   supportSuccessOutcome,
+  turnstileErrorIsSiteConfig,
   turnstileErrorRetryable,
   utf8ByteLength,
   validateFeedbackDraft,
@@ -36,8 +38,11 @@ type CardState =
   | { kind: 'idle' }
   | { kind: 'sending' }
   | { kind: 'invalid'; error: FeedbackDraftError | 'check_pending' }
-  | Exclude<SupportSendOutcome, { kind: 'rate_limited' }>
+  | Exclude<SupportSendOutcome, { kind: 'rate_limited' } | { kind: 'sent' }>
+  | { kind: 'sent'; caseId: string; replyTo: string | null }
   | { kind: 'rate_limited'; until: number; seconds: number | null }
+  /** The bot check could not load or keeps failing in this browser (a blocker, not an outage). */
+  | { kind: 'check_blocked' }
 
 /** Where keyboard focus goes after a send or a reset, so it never falls to <body>. */
 type FocusTarget = 'message' | 'email' | 'contact' | 'consent' | 'submit'
@@ -192,6 +197,85 @@ function UnavailablePanel({ keptMessage, takeFocus = false }: { keptMessage?: st
 }
 
 /**
+ * The bot check could not load, or keeps failing, in this browser. That is
+ * almost always a content or privacy blocker stopping Cloudflare's check, not
+ * the form being down, so it says so and offers a retry instead of the
+ * unavailable panel. The typed message stays in the form behind it.
+ */
+function CheckBlockedPanel({ keptMessage, takeFocus, onRetry }: { keptMessage?: string; takeFocus: boolean; onRetry: () => void }) {
+  const leadRef = useRef<HTMLParagraphElement | null>(null)
+  useEffect(() => {
+    if (takeFocus) leadRef.current?.focus()
+  }, [takeFocus])
+  return (
+    <div className="feedback-off" data-testid="support-form-check-blocked">
+      <p className="feedback-off__lead feedback-blocked__lead" role="status" ref={leadRef} tabIndex={-1}>
+        <ShieldAlert aria-hidden="true" />
+        <span>
+          Your browser blocked the spam check — try again or disable blockers for this page.
+          <small>Nothing was sent. A content or privacy blocker can stop Cloudflare&apos;s check from loading.{keptMessage ? ' Your message is kept for the retry.' : ''}</small>
+        </span>
+      </p>
+      {keptMessage ? (
+        <label className="feedback-field">
+          <span className="feedback-label">Your message, kept so you can copy it</span>
+          <textarea className="feedback-input" readOnly value={keptMessage} rows={3} />
+        </label>
+      ) : null}
+      <div className="feedback-off__actions">
+        <button type="button" className={buttonClass('default', 'lg')} onClick={onRetry}>Try again</button>
+      </div>
+      <PublicAlternatives compact />
+    </div>
+  )
+}
+
+/**
+ * The receipt after a send: who has it, a short reference to quote (with Copy)
+ * and the full case ID in small text, and where a reply would go.
+ */
+function SentReceipt({ caseId, replyTo, headingRef, onAnother }: {
+  caseId: string
+  replyTo: string | null
+  headingRef: RefObject<HTMLParagraphElement>
+  onAnother: () => void
+}) {
+  const reference = supportShortReference(caseId)
+  const [copyNote, setCopyNote] = useState('')
+  async function copyReference() {
+    try { await navigator.clipboard.writeText(reference); setCopyNote('Reference copied.') }
+    catch { setCopyNote('Copy was unavailable. Select the reference to copy it.') }
+  }
+  return (
+    <div className="feedback-done" data-testid="support-form-success" role="status">
+      <span className="feedback-done__check" aria-hidden="true"><Check /></span>
+      <div className="feedback-done__body">
+        <p className="feedback-done__title" ref={headingRef} tabIndex={-1}>Sent to the StreamPulse team</p>
+        <div className="feedback-done__refbox">
+          <span className="feedback-done__reflabel">Reference</span>
+          <code className="feedback-done__refcode" data-testid="support-form-reference">{reference}</code>
+          <button type="button" className={buttonClass('outline', 'sm')} onClick={() => void copyReference()}
+            aria-label={`Copy reference ${reference}`}>
+            <Copy aria-hidden="true" />Copy
+          </button>
+        </div>
+        <p className="feedback-done__full" data-testid="support-form-case-id">Full case ID: <code>{caseId}</code></p>
+        <p className="feedback-done__copied" role="status">{copyNote}</p>
+        <p className="feedback-done__sub" data-testid="support-form-reply">
+          {replyTo
+            ? <>If we need more, we&apos;ll reply to <strong>{replyTo}</strong>.</>
+            : <>You didn&apos;t leave an email, so no reply needed — we read every message.</>}
+          {' '}Writing again about this? Mention {reference}.
+        </p>
+        <button type="button" className={buttonClass('outline', 'default')} onClick={onAnother}>
+          Send something else
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/**
  * Public feedback card (RPR-4). The form works only in a browser with a
  * Turnstile site key; the backend stays flag-gated and answers 503 until it is
  * activated, which the card shows as unavailable rather than as a send failure.
@@ -214,8 +298,9 @@ type FeedbackCardProps = {
 
 /**
  * What the page around the card needs to know: `open` (the form or a sent
- * case), `failed` (a send failed outright, so the card lists the public
- * alternatives under the form) or `unavailable` (the unavailable panel).
+ * case), `failed` (a send failed outright, or this browser blocked the bot
+ * check, so the card lists the public alternatives itself) or `unavailable`
+ * (the unavailable panel).
  */
 export type FeedbackPhase = 'open' | 'failed' | 'unavailable'
 
@@ -252,12 +337,16 @@ function FeedbackCard({ siteKey, shell = false, lead, onPhase }: FeedbackCardPro
   const widgetFailedRef = useRef(false)
   const widgetRetriesRef = useRef(0)
   const [panelTakesFocus, setPanelTakesFocus] = useState(false)
+  // Bumped by the blocked panel's Try again, so the check loads from scratch.
+  const [checkAttempt, setCheckAttempt] = useState(0)
   useEffect(() => () => {
     submitControllerRef.current?.abort()
     if (noteTimerRef.current !== null) window.clearTimeout(noteTimerRef.current)
   }, [])
 
-  const phase: FeedbackPhase = state.kind === 'unavailable' ? 'unavailable' : state.kind === 'failed' ? 'failed' : 'open'
+  // A blocked check lists the public alternatives itself, like a failed send.
+  const phase: FeedbackPhase = state.kind === 'unavailable' ? 'unavailable'
+    : state.kind === 'failed' || state.kind === 'check_blocked' ? 'failed' : 'open'
   useEffect(() => {
     onPhase?.(phase)
   }, [phase, onPhase])
@@ -305,7 +394,8 @@ function FeedbackCard({ siteKey, shell = false, lead, onPhase }: FeedbackCardPro
         })
       })
       .catch(() => {
-        if (!cancelled) becomeUnavailable()
+        // The script itself did not load: a blocker in this browser, not an outage.
+        if (!cancelled) checkBlocked()
       })
     return () => {
       cancelled = true
@@ -314,7 +404,7 @@ function FeedbackCard({ siteKey, shell = false, lead, onPhase }: FeedbackCardPro
         widgetIdRef.current = null
       }
     }
-  }, [availability, siteKey])
+  }, [availability, siteKey, checkAttempt])
 
   // A rate limit holds Send until the server's Retry-After (or the fallback
   // minute) has passed, then lets the reader send again without a reload.
@@ -370,20 +460,42 @@ function FeedbackCard({ siteKey, shell = false, lead, onPhase }: FeedbackCardPro
     setState({ kind: 'unavailable' })
   }
 
+  /** A case already sent, or on its way, stays on screen. */
+  function checkBlocked() {
+    notePanelFocus()
+    setState(prev => (prev.kind === 'sent' || prev.kind === 'sending' ? prev : { kind: 'check_blocked' }))
+  }
+
+  /** The blocked panel's Try again: load and render the check from scratch, back on the form. */
+  function retryCheck() {
+    widgetFailedRef.current = false
+    widgetRetriesRef.current = 0
+    setTurnstileToken('')
+    setChallengeShown(false)
+    pendingFocusRef.current = 'message'
+    setState({ kind: 'idle' })
+    setCheckAttempt(n => n + 1)
+  }
+
   /**
    * The widget reported an error. A timeout, a failed challenge or an iframe
    * that did not load keeps the form and the typed message: Turnstile retries
-   * on its own, and the reader's next Send starts a fresh challenge. A
-   * configuration error (site key, domain), or fresh challenges that keep
-   * failing, show the unavailable panel instead.
+   * on its own, and the reader's next Send starts a fresh challenge. Our own
+   * configuration error (site key, domain) shows the unavailable panel. Any
+   * other error no retry fixes, or fresh challenges that keep failing, mean
+   * this browser is blocking the check, which gets its own panel.
    */
   function widgetFailed(errorCode: unknown) {
     setTurnstileToken('')
     widgetFailedRef.current = true
-    if (!turnstileErrorRetryable(errorCode) || widgetRetriesRef.current >= WIDGET_RETRY_LIMIT) {
+    if (turnstileErrorIsSiteConfig(errorCode)) {
       notePanelFocus()
       // A case already sent, or on its way, stays on screen.
       setState(prev => (prev.kind === 'sent' || prev.kind === 'sending' ? prev : { kind: 'unavailable' }))
+      return
+    }
+    if (!turnstileErrorRetryable(errorCode) || widgetRetriesRef.current >= WIDGET_RETRY_LIMIT) {
+      checkBlocked()
       return
     }
     // Said only to a reader waiting on the check, never to one still typing;
@@ -423,6 +535,8 @@ function FeedbackCard({ siteKey, shell = false, lead, onPhase }: FeedbackCardPro
       return
     }
     const body = buildSupportCaseBody(draft)
+    // Where a reply would go, said on the receipt (the field clears on success).
+    const replyTo = typeof body.email === 'string' && body.email ? body.email : null
     const key = idempotency.current.keyFor(body)
     setState({ kind: 'sending' })
     const controller = new AbortController()
@@ -455,7 +569,7 @@ function FeedbackCard({ siteKey, shell = false, lead, onPhase }: FeedbackCardPro
       setContactConsent(false)
       // Consent is per submission: the next report asks again.
       setConsent(false)
-      setState(outcome)
+      setState({ kind: 'sent', caseId: outcome.caseId, replyTo })
       return
     }
     if (outcome.kind === 'unavailable') {
@@ -519,18 +633,10 @@ function FeedbackCard({ siteKey, shell = false, lead, onPhase }: FeedbackCardPro
       {lead ? (shell ? <div className="feedback-js-only">{lead}</div> : lead) : null}
       <p className="feedback-sr" role="status" data-testid="support-form-announce">{liveNote}</p>
       {state.kind === 'sent' ? (
-        <div className="feedback-done" data-testid="support-form-success" role="status">
-          <span className="feedback-done__check" aria-hidden="true"><Check /></span>
-          <div>
-            <p className="feedback-done__title" ref={sentHeadingRef} tabIndex={-1}>Saved. Thank you.</p>
-            <p className="feedback-done__sub">Keep this ID if you follow up.</p>
-            <p className="feedback-done__ref">Case ID: <code>{state.caseId}</code></p>
-            <button type="button" className={buttonClass('outline', 'default')}
-              onClick={() => { pendingFocusRef.current = 'message'; setState({ kind: 'idle' }) }}>
-              Send something else
-            </button>
-          </div>
-        </div>
+        <SentReceipt caseId={state.caseId} replyTo={state.replyTo} headingRef={sentHeadingRef}
+          onAnother={() => { pendingFocusRef.current = 'message'; setState({ kind: 'idle' }) }} />
+      ) : state.kind === 'check_blocked' ? (
+        <CheckBlockedPanel keptMessage={message.trim() ? message : undefined} takeFocus={panelTakesFocus} onRetry={retryCheck} />
       ) : (
         <form data-testid="support-form" className={shell ? 'feedback-form feedback-form--shell' : 'feedback-form'}
           onSubmit={onSubmit} aria-busy={sending} noValidate ref={formRef}>
@@ -630,7 +736,7 @@ function FeedbackCard({ siteKey, shell = false, lead, onPhase }: FeedbackCardPro
           </p>
         </form>
       )}
-      <div ref={widgetHostRef} hidden={state.kind === 'sent'} data-testid="support-turnstile"
+      <div ref={widgetHostRef} hidden={state.kind === 'sent' || state.kind === 'check_blocked'} data-testid="support-turnstile"
         className={`feedback-challenge${challengeShown ? ' is-shown' : ''}`} />
     </>
   )

@@ -8,6 +8,12 @@ export const ROADMAP_URL = `${GITHUB_REPO_URL}/issues`
 export const PUBLIC_SUPPORT_URL = `${GITHUB_REPO_URL}/issues`
 
 /**
+ * GitHub private vulnerability reporting for this repository (enabled; only
+ * the maintainers see a report). Needs a GitHub account.
+ */
+export const SECURITY_REPORT_URL = `${GITHUB_REPO_URL}/security/advisories/new`
+
+/**
  * First-party policy and offer routes, as in-app paths.
  *
  * Held here so the footer, the legal pages and the Supporter offer cannot drift

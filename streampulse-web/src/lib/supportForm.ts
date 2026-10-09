@@ -120,7 +120,10 @@ export function ensureTurnstileScript(siteKey: string): Promise<void> {
   if (existing) {
     return new Promise((resolve, reject) => {
       existing.addEventListener('load', () => resolve(), { once: true })
-      existing.addEventListener('error', () => reject(new Error('turnstile_script_failed')), { once: true })
+      existing.addEventListener('error', () => {
+        existing.remove()
+        reject(new Error('turnstile_script_failed'))
+      }, { once: true })
     })
   }
   return new Promise((resolve, reject) => {
@@ -130,7 +133,12 @@ export function ensureTurnstileScript(siteKey: string): Promise<void> {
     script.defer = true
     script.dataset.streampulseTurnstile = '1'
     script.onload = () => resolve()
-    script.onerror = () => reject(new Error('turnstile_script_failed'))
+    // A failed tag is removed, so a later attempt (the reader's Try again)
+    // adds a fresh one instead of waiting on a tag that already failed.
+    script.onerror = () => {
+      script.remove()
+      reject(new Error('turnstile_script_failed'))
+    }
     document.head.appendChild(script)
   })
 }
@@ -144,8 +152,29 @@ export function ensureTurnstileScript(siteKey: string): Promise<void> {
  * clock) that no retry fixes, as is a missing or unknown code.
  */
 export function turnstileErrorRetryable(code: unknown): boolean {
-  const value = typeof code === 'number' ? String(code) : typeof code === 'string' ? code.trim() : ''
-  return /^(1106\d\d|200500|300\d{3}|600\d{3})$/.test(value)
+  return /^(1106\d\d|200500|300\d{3}|600\d{3})$/.test(turnstileCode(code))
+}
+
+function turnstileCode(code: unknown): string {
+  return typeof code === 'number' ? String(code) : typeof code === 'string' ? code.trim() : ''
+}
+
+/**
+ * Whether a Turnstile client error code is our own site configuration (bad
+ * parameters 102xxx-106xxx, unknown site key or domain 1101xx/1102xx/1104xx,
+ * invalid site key 4000xx), which only an operator can fix. Any other code no
+ * retry fixes is this browser blocking or breaking the check.
+ */
+export function turnstileErrorIsSiteConfig(code: unknown): boolean {
+  return /^(10[2-6]\d{3}|110[124]\d\d|4000\d\d)$/.test(turnstileCode(code))
+}
+
+/**
+ * The short reference a reader can quote: the first 8 characters of the case
+ * ID (the first block of its UUID), upper-cased so it reads clearly.
+ */
+export function supportShortReference(caseId: string): string {
+  return caseId.trim().slice(0, 8).toUpperCase()
 }
 
 const utf8 = new TextEncoder()
