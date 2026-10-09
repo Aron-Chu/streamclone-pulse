@@ -46,14 +46,18 @@ afterEach(() => { vi.unstubAllEnvs() })
 describe('with VITE_TWITCH_SIGNIN off (default)', () => {
   beforeEach(() => { vi.stubEnv('VITE_TWITCH_SIGNIN', '') })
 
-  it('keeps the sign-in page exactly as the email form', () => {
+  it('keeps the sign-in page as the tester email form, with Twitch coming soon', () => {
     render(<MemoryRouter initialEntries={['/account/sign-in']}><AccountPage /></MemoryRouter>)
-    expect(screen.getByRole('heading', { level: 1, name: 'Sign in to Pulse' })).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 1, name: 'Tester sign-in' })).toBeTruthy()
+    expect(screen.getByTestId('twitch-coming-soon').textContent).toBe('Twitch sign-in is coming soon. Free tools work without an account.')
+    expect(screen.getByTestId('pilot-sign-in-note')).toBeTruthy()
     expect(screen.getByLabelText('Email address')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Send sign-in link' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: /Twitch/ })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Use email instead' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Tester email sign-in' })).toBeNull()
     expect(screen.queryByTestId('twitch-sign-in')).toBeNull()
+    // Nothing on the page starts a Twitch flow.
+    expect(beginTwitchFlow).not.toHaveBeenCalled()
   })
 
   it('shows no Twitch row in account settings', async () => {
@@ -75,13 +79,16 @@ describe('with VITE_TWITCH_SIGNIN off (default)', () => {
 describe('with VITE_TWITCH_SIGNIN=1', () => {
   beforeEach(() => { vi.stubEnv('VITE_TWITCH_SIGNIN', '1') })
 
-  it('puts Sign in with Twitch above the email form, which waits under “Use email instead”', () => {
+  it('puts Continue with Twitch above the email form, which waits under “Tester email sign-in”', () => {
     render(<MemoryRouter initialEntries={['/account/sign-in']}><AccountPage /></MemoryRouter>)
-    const twitch = screen.getByRole('button', { name: 'Sign in with Twitch' })
+    expect(screen.getByRole('heading', { level: 1, name: 'Tester sign-in' })).toBeTruthy()
+    expect(screen.getByText('Twitch sign-in is open to invited testers right now. Free tools work without an account.')).toBeTruthy()
+    expect(screen.getByTestId('twitch-pilot-note')).toBeTruthy()
+    const twitch = screen.getByRole('button', { name: 'Continue with Twitch' })
     expect(twitch.className).toContain('pulse-account-twitch-button')
     expect(twitch.querySelector('svg[aria-hidden="true"]')).toBeTruthy()
     expect(screen.queryByLabelText('Email address')).toBeNull()
-    const toggle = screen.getByRole('button', { name: 'Use email instead' })
+    const toggle = screen.getByRole('button', { name: 'Tester email sign-in' })
     expect(toggle.getAttribute('aria-expanded')).toBe('false')
     fireEvent.click(toggle)
     expect(toggle.getAttribute('aria-expanded')).toBe('true')
@@ -94,30 +101,30 @@ describe('with VITE_TWITCH_SIGNIN=1', () => {
   it('opens the email form directly for ?method=email', () => {
     render(<MemoryRouter initialEntries={['/account/sign-in?method=email']}><AccountPage /></MemoryRouter>)
     expect(screen.getByLabelText('Email address')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Sign in with Twitch' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Continue with Twitch' })).toBeTruthy()
   })
 
   it('starts a sign-in carrying only an allowlisted billing return', async () => {
     render(<MemoryRouter initialEntries={[`/account/sign-in?returnTo=${encodeURIComponent(billingReturn)}`]}><AccountPage /></MemoryRouter>)
-    fireEvent.click(screen.getByRole('button', { name: 'Sign in with Twitch' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with Twitch' }))
     await waitFor(() => expect(beginTwitchFlow).toHaveBeenCalledWith({ purpose: 'signin', returnTo: billingReturn }))
     expect((screen.getByRole('button', { name: 'Opening Twitch…' }) as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('ignores a returnTo that is not allowlisted', async () => {
     render(<MemoryRouter initialEntries={[`/account/sign-in?returnTo=${encodeURIComponent('https://evil.example/')}`]}><AccountPage /></MemoryRouter>)
-    fireEvent.click(screen.getByRole('button', { name: 'Sign in with Twitch' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with Twitch' }))
     await waitFor(() => expect(beginTwitchFlow).toHaveBeenCalledWith({ purpose: 'signin', returnTo: null }))
   })
 
   it('explains a failed start and offers email in place', async () => {
     vi.mocked(beginTwitchFlow).mockRejectedValueOnce(new AccountError(404, 'not_found'))
     render(<MemoryRouter initialEntries={['/account/sign-in']}><AccountPage /></MemoryRouter>)
-    fireEvent.click(screen.getByRole('button', { name: 'Sign in with Twitch' }))
-    expect(await screen.findByRole('heading', { name: 'Sign in with Twitch is unavailable' })).toBeTruthy()
-    fireEvent.click(screen.getAllByRole('button', { name: 'Use email instead' })[0]!)
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with Twitch' }))
+    expect(await screen.findByRole('heading', { name: 'Twitch sign-in is unavailable' })).toBeTruthy()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Tester email sign-in' })[0]!)
     expect(screen.getByLabelText('Email address')).toBeTruthy()
-    expect((screen.getByRole('button', { name: 'Sign in with Twitch' }) as HTMLButtonElement).disabled).toBe(false)
+    expect((screen.getByRole('button', { name: 'Continue with Twitch' }) as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('finishes the callback by navigating to the return path with the outcome', async () => {
@@ -132,11 +139,11 @@ describe('with VITE_TWITCH_SIGNIN=1', () => {
   })
 
   it.each([
-    ['pilot_only', 'Twitch sign-in is invite-only for now', 'link', 'Sign in with email'],
-    ['link_required', 'Link Twitch to your account first', 'link', 'Sign in with email'],
+    ['pilot_only', 'Twitch sign-in is invite-only for now', 'link', 'Tester email sign-in'],
+    ['link_required', 'Link Twitch to your account first', 'link', 'Tester email sign-in'],
     ['signup_unavailable', 'New accounts are paused', 'link', 'Back to sign-in'],
-    ['revoked', 'Confirm your sign-in on Twitch', 'button', 'Sign in with Twitch'],
-    ['unavailable', 'Sign in with Twitch is unavailable', 'link', 'Sign in with email'],
+    ['revoked', 'Confirm your sign-in on Twitch', 'button', 'Continue with Twitch'],
+    ['unavailable', 'Twitch sign-in is unavailable', 'link', 'Tester email sign-in'],
   ] as const)('explains %s on the callback page with a next step', async (code, title, role, action) => {
     vi.mocked(completeTwitchCallback).mockResolvedValue({ status: 'error', purpose: 'signin', code })
     render(<MemoryRouter initialEntries={['/account/twitch/callback']}><AccountTwitchCallback /></MemoryRouter>)
@@ -145,9 +152,10 @@ describe('with VITE_TWITCH_SIGNIN=1', () => {
     expect(screen.getByRole(role, { name: action })).toBeTruthy()
   })
 
-  it('offers another Twitch account when the identity belongs to another account', async () => {
+  it('never combines accounts when the identity belongs to another account, and offers another Twitch account', async () => {
     vi.mocked(completeTwitchCallback).mockResolvedValue({ status: 'error', purpose: 'link', code: 'identity_in_use' })
     render(<MemoryRouter initialEntries={['/account/twitch/callback']}><AccountTwitchCallback /></MemoryRouter>)
+    expect((await screen.findByRole('alert')).textContent).toBe('That Twitch account already has its own StreamPulse account. We never combine accounts. Contact us if one of them has a membership.')
     fireEvent.click(await screen.findByRole('button', { name: 'Use a different Twitch account' }))
     await waitFor(() => expect(beginTwitchFlow).toHaveBeenCalledWith({ purpose: 'link', returnTo: undefined, forceVerify: true }))
   })
@@ -173,13 +181,16 @@ describe('with VITE_TWITCH_SIGNIN=1', () => {
     expect(screen.queryByRole('link', { name: 'Back to Account & devices' })).toBeNull()
   })
 
-  it('shows “Connected as” for the Twitch identity this session signed in with', async () => {
+  it('shows the linked Twitch identity after a link, and keeps connection codes under the tester heading', async () => {
     signedIn()
-    rememberTwitchIdentity({ displayName: 'PulseTester', avatarUrl: avatar })
+    rememberTwitchIdentity({ displayName: 'PulseTester', avatarUrl: avatar, via: 'link' })
     vi.mocked(accountRequest).mockImplementation(async path => path === '/me' ? { accountId: 'account-a' } : { devices: [] })
     render(<MemoryRouter initialEntries={[{ pathname: '/account/settings', state: { twitch: 'linked' } }]}><AccountSettings /></MemoryRouter>)
     const row = await screen.findByTestId('twitch-account-row')
-    expect(row.textContent).toContain('Connected as PulseTester')
+    expect(row.textContent).toContain('Twitch linked: PulseTester')
+    expect(row.textContent).not.toContain('Signed in with Twitch')
+    expect(screen.getByRole('heading', { level: 2, name: 'Other ways to connect (testers)' })).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 3, name: 'Linked extensions' })).toBeTruthy()
     expect(row.querySelector('img')?.getAttribute('src')).toBe(avatar)
     expect(screen.queryByRole('button', { name: 'Link Twitch' })).toBeNull()
     expect(screen.getByText(/Twitch is now linked/)).toBeTruthy()

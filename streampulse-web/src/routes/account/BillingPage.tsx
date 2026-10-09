@@ -4,9 +4,14 @@ import { CreditCard } from 'lucide-react'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { AccountFooter } from './AccountFooter'
 import { AccountSteps, SUPPORTER_JOURNEY_STEPS, accountReference } from './AccountJourney'
-import { AccountError, billingRequest } from '../../lib/accountApi'
+import { AccountError, accountErrorText, billingRequest } from '../../lib/accountApi'
 import { accountBillingReturnPath, accountBillingSignInHref } from '../../lib/accountBillingReturn'
 import { onAccountSessionSignal } from '../../lib/accountSessionSignal'
+import { leaveAccountPagesAfterSignOut, signOutAccount, useAccountSession } from '../../lib/accountSession'
+import { rememberBillingStepUp, takeBillingStepUp } from '../../lib/accountStepUp'
+import { twitchSignInEnabled, twitchSignInPublic } from '../../lib/twitchSignInFlag'
+import { beginTwitchFlow, twitchErrorCode, type TwitchErrorCode } from '../../lib/twitchSignIn'
+import { TwitchButton, TwitchErrorNotice } from './TwitchSignIn'
 import './account.css'
 
 export function stripeDestination(value: unknown, kind: 'checkout' | 'portal'): string | null {
@@ -48,6 +53,23 @@ function longDate(value: unknown): string | null {
     : null
 }
 
+function SignInAgain({ signInHref }: { signInHref: string }) {
+  return <div className="pulse-account-note" role="alert"><p>For your security, changing billing needs a sign-in from the last 10 minutes. Nothing was charged.</p><Link className="pulse-account-button pulse-account-primary" to={signInHref}>Sign in again</Link></div>
+}
+
+/**
+ * Recent-auth prompt while Continue with Twitch is on. Mounted only then, so
+ * the /v1/account/me check behind useAccountSession runs only for this prompt.
+ * Accounts that sign in with Twitch confirm with Twitch; others keep the email path.
+ */
+function ConfirmItsYou({ signInHref, busy, onTwitch }: { signInHref: string; busy: boolean; onTwitch: () => void }) {
+  const session = useAccountSession()
+  if (session.status === 'checking') return <p className="pulse-account-note" role="status">Checking your sign-in…</p>
+  const twitchAccount = session.status === 'signed_in' && (session.profile.twitchLinked === true || session.profile.via === 'signin')
+  if (!twitchAccount) return <SignInAgain signInHref={signInHref} />
+  return <div className="pulse-account-note" role="alert" data-testid="billing-confirm-twitch"><h3>Confirm it’s you</h3><p>For your security, managing your subscription needs a Twitch check from the last 10 minutes. Nothing was charged.</p><TwitchButton busy={busy} busyLabel="Opening Twitch…" onClick={onTwitch}>Continue with Twitch</TwitchButton></div>
+}
+
 export default function BillingPage() {
   const location = useLocation()
   const navigate = useNavigate()
@@ -69,6 +91,15 @@ export default function BillingPage() {
   const openingRef = useRef(false)
   const [notice, setNotice] = useState('')
   const [reauth, setReauth] = useState(false)
+  // Set when a "Confirm it's you" Twitch sign-in came back as a different
+  // StreamPulse account: that account's portal is never offered here.
+  const [wrongAccount, setWrongAccount] = useState(false)
+  const wrongAccountRef = useRef(false)
+  const [stepUpConfirmed, setStepUpConfirmed] = useState(false)
+  const [twitchBusy, setTwitchBusy] = useState(false)
+  const [twitchError, setTwitchError] = useState<TwitchErrorCode | null>(null)
+  const [signingOut, setSigningOut] = useState(false)
+  const [signOutError, setSignOutError] = useState('')
   const [pendingAttempt, setPendingAttempt] = useState<string | null>(null)
   const requestID = useRef(0)
   const inFlight = useRef(false)
@@ -136,6 +167,11 @@ export default function BillingPage() {
         }
       }
       accountID.current = result.accountId
+      // Back from "Confirm it's you": the same account may continue; a different
+      // one sees the wrong-account explanation and no portal button.
+      const stepUp = takeBillingStepUp(result.accountId)
+      if (stepUp === 'different') { wrongAccountRef.current = true; setWrongAccount(true); setStepUpConfirmed(false) }
+      else if (stepUp === 'same') setStepUpConfirmed(true)
       snapshotRef.current = result as Snapshot
       setSnapshot(result as Snapshot)
       setAttemptState(nextAttempt)
@@ -190,6 +226,7 @@ export default function BillingPage() {
   useEffect(() => {
     snapshotRef.current = null
     setSnapshot(null); setLoad('loading'); setStale(null); setAttemptState(''); setAttemptMissing(false); setNotice(''); setReauth(false); setPendingAttempt(null)
+    wrongAccountRef.current = false; setWrongAccount(false); setStepUpConfirmed(false); setTwitchError(null)
     accountID.current = undefined
     readOwner.current = 0; inFlight.current = false; pendingSessionRead.current = false; sessionRound.current = null
     openingRef.current = false; setOpening(false)
@@ -245,6 +282,9 @@ export default function BillingPage() {
       snapshotRef.current = null
       setSnapshot(null); setLoad('loading'); setStale(null); setConnected(false)
       setAttemptState(''); setAttemptMissing(false); setNotice(''); setReauth(false)
+      // A sign-in or sign-out elsewhere is a deliberate choice of account; any
+      // "Confirm it's you" outcome belonged to the previous session.
+      wrongAccountRef.current = false; setWrongAccount(false); setStepUpConfirmed(false)
       watchRef.current = 'idle'; setWatch('idle')
       pendingSessionRead.current = true
       drainSessionRead()
@@ -263,10 +303,10 @@ export default function BillingPage() {
   }
 
   async function open(kind: 'checkout' | 'portal') {
-    if (openingRef.current || inFlight.current || busy) return
+    if (openingRef.current || inFlight.current || busy || wrongAccountRef.current) return
     const request = ++requestID.current
     openingRef.current = true
-    setOpening(true); setNotice(''); setReauth(false)
+    setOpening(true); setNotice(''); setReauth(false); setStepUpConfirmed(false)
     try {
       const result = await billingRequest(kind === 'checkout' ? '/checkout' : '/portal', {})
       if (request !== requestID.current) return
@@ -276,7 +316,7 @@ export default function BillingPage() {
     } catch (error) {
       if (request !== requestID.current) return
       openingRef.current = false; setOpening(false)
-      if (error instanceof AccountError && error.status === 401) {
+      if (error instanceof AccountError && (error.status === 401 || error.code === 'recent_auth_required')) {
         // Changing billing needs a sign-in from the last ten minutes; the
         // membership read does not, so the page stays as it is.
         setReauth(true)
@@ -292,12 +332,30 @@ export default function BillingPage() {
         }
         return
       }
-      setNotice(error instanceof AccountError && error.code === 'subscription_exists' ? 'You already have a Supporter membership. Use Manage membership to make changes.'
+      setNotice(error instanceof AccountError && error.code === 'subscription_exists' ? 'You already have a Supporter membership. Use Manage subscription to make changes.'
         : error instanceof AccountError && error.code === 'checkout_expired' ? 'The previous checkout expired without a purchase. Nothing was charged; you can start a new checkout.'
         : error instanceof AccountError && (error.code === 'checkout_disabled' || error.code === 'checkout_not_available') ? 'Checkout is not open for this account right now.'
         : 'Billing could not open. Check your connection and try again.')
       if (error instanceof AccountError && (error.code === 'subscription_exists' || error.code === 'checkout_disabled' || error.code === 'checkout_not_available')) void read()
     }
+  }
+
+  /** Continue with Twitch from this page: a signed-out visit (public stage) or "Confirm it's you". */
+  async function continueWithTwitch(confirmAccount: boolean) {
+    if (twitchBusy) return
+    setTwitchBusy(true); setTwitchError(null)
+    // The account that asked, so the return can tell whether Twitch chose the same one.
+    if (confirmAccount) rememberBillingStepUp(accountID.current)
+    // On success the page leaves for Twitch, so the button stays busy.
+    try { await beginTwitchFlow({ purpose: 'signin', returnTo: returnPath }) }
+    catch (failure) { setTwitchError(twitchErrorCode(failure)); setTwitchBusy(false) }
+  }
+
+  async function signOutOfWrongAccount() {
+    if (signingOut) return
+    setSigningOut(true); setSignOutError('')
+    try { await signOutAccount(); leaveAccountPagesAfterSignOut() }
+    catch (failure) { setSignOutError(accountErrorText(failure)); setSigningOut(false) }
   }
 
   const checkoutEnabled = snapshot?.checkoutEnabled === true
@@ -328,8 +386,13 @@ export default function BillingPage() {
   } else if (load === 'signed_out') {
     state = 'signed-out'
     title = 'Sign in to see your membership'
-    body = <p>{attempt && !cancelled ? 'If you just paid, sign in with the same account you used at checkout to see it confirmed. Don’t start another checkout.' : 'Your Supporter membership belongs to your Pulse account.'}</p>
-    primary = <Link className="pulse-account-button pulse-account-primary" to={signInHref}>Sign in to Pulse</Link>
+    if (twitchSignInPublic()) {
+      body = <p>{attempt && !cancelled ? 'If you just paid, Continue with Twitch with the same Twitch account you used at checkout to see it confirmed. Don’t start another checkout.' : 'Your Supporter membership belongs to the Twitch account you sign in with. Free tools work without an account.'}</p>
+      primary = <TwitchButton busy={twitchBusy} busyLabel="Opening Twitch…" onClick={() => void continueWithTwitch(false)}>Continue with Twitch</TwitchButton>
+    } else {
+      body = <p>{attempt && !cancelled ? 'If you just paid, sign in with the same account you used at checkout to see it confirmed. Don’t start another checkout.' : 'Supporter sign-ups are not open yet. Invited testers can sign in to see their membership. Free tools work without an account.'}</p>
+      primary = <Link className="pulse-account-button pulse-account-primary" to={signInHref}>Tester sign-in</Link>
+    }
     showRefresh = false
   } else if (load === 'error' || !snapshot) {
     state = 'unavailable'
@@ -347,18 +410,18 @@ export default function BillingPage() {
     primary = refresh('Check again')
     // A pending membership already has a subscription: invoices and the
     // payment method stay one click away, never a second checkout.
-    secondary = status === 'pending' ? portal('Manage membership', false) : null
+    secondary = status === 'pending' ? portal('Manage subscription', false) : null
     showRefresh = false
   } else if (confirmed && (returnedFromStripe || connected) && status === 'active') {
     state = 'welcome'
     title = 'You’re a Supporter'
     body = <p>Thank you. Supporter finishes unlock in any StreamPulse extension connected to this account, and a connected extension updates by itself.</p>
-    primary = portal('Manage membership')
+    primary = portal('Manage subscription')
   } else if (status === 'active') {
     state = 'active'
     title = 'Supporter active'
     body = <p>Thank you for supporting Pulse. If you cancel, access continues until the end of the period you’ve paid for.</p>
-    primary = portal('Manage membership')
+    primary = portal('Manage subscription')
   } else if (status === 'grace') {
     state = 'grace'
     title = 'Payment needs attention'
@@ -368,7 +431,7 @@ export default function BillingPage() {
     state = 'review'
     title = 'Membership needs review'
     body = <p>Supporter access is paused while a payment is reviewed, for example during an open dispute. Nothing is lost, and your free tools are unaffected.</p>
-    primary = portal('Manage membership')
+    primary = portal('Manage subscription')
     secondary = <Link className="pulse-account-button" to="/support">Contact support</Link>
   } else if (status === 'expired') {
     state = 'expired'
@@ -396,6 +459,10 @@ export default function BillingPage() {
     if (!checkoutEnabled) showRefresh = false
   }
 
+  // A different account came back from "Confirm it's you": no billing action
+  // for it here, only the way back to the right account.
+  if (wrongAccount && load === 'ready') { primary = null; secondary = null; terms = false; showRefresh = false }
+
   const facts: Array<[string, string]> = []
   if ((status === 'active' || status === 'grace') && accessUntil) facts.push([status === 'grace' ? 'Access until' : 'Access through', accessUntil])
   if (periods && status !== 'none') facts.push(['Supported', `${periods} ${periods === 1 ? 'month' : 'months'}`])
@@ -416,13 +483,18 @@ export default function BillingPage() {
       </div>
       {facts.length ? <dl className="pulse-membership-facts">{facts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl> : null}
       {terms ? <dl className="pulse-membership-terms"><dt>Price</dt><dd>US$4.99 per month, charged in US dollars</dd><dt>Renews</dt><dd>Monthly, automatically, until you cancel</dd><dt>Includes</dt><dd>A private Pulse header accent, three private finishes and private support recognition</dd><dt>Taxes</dt><dd>Handled as stated at checkout</dd></dl> : null}
-      {reauth ? <div className="pulse-account-note" role="alert"><p>For your security, changing billing needs a sign-in from the last 10 minutes. Nothing was charged.</p><Link className="pulse-account-button pulse-account-primary" to={signInHref}>Sign in again</Link></div> : null}
+      {wrongAccount && load === 'ready' ? <div className="pulse-account-note" role="alert" data-testid="billing-wrong-account"><p>This subscription belongs to a different Twitch account. Sign out, then Continue with Twitch with the account you subscribed with.</p><button type="button" className="pulse-account-primary" disabled={signingOut} onClick={() => void signOutOfWrongAccount()}>{signingOut ? 'Signing out…' : 'Sign out'}</button>{signOutError ? <p role="alert">{signOutError}</p> : null}</div> : null}
+      {reauth && !wrongAccount ? twitchSignInEnabled()
+        ? <ConfirmItsYou signInHref={signInHref} busy={twitchBusy} onTwitch={() => void continueWithTwitch(true)} />
+        : <SignInAgain signInHref={signInHref} /> : null}
+      {twitchError ? <TwitchErrorNotice code={twitchError} purpose="signin" returnTo={returnPath} current="/account/billing" /> : null}
+      {stepUpConfirmed && !wrongAccount && !reauth ? <p className="pulse-account-note" role="status" data-testid="billing-step-up-confirmed">Thanks, that’s confirmed. Choose Manage subscription to continue.</p> : null}
       {!reauth && (primary || secondary) ? <div className="pulse-account-actions">{primary}{secondary}</div> : null}
       {retrySeconds > 0 && <p role="status">Wait {retrySeconds} seconds before checking again.</p>}
       {status !== 'none' && load === 'ready' && !uncertain ? <p className="pulse-account-meta">Payment details, invoices and cancellation are in the Stripe Customer Portal. Cancellation takes effect at the end of the paid period.</p> : null}
       {!reauth && showRefresh ? <button className="pulse-account-text-button" type="button" disabled={readBusy} onClick={() => void checkAgain()}>{busy ? 'Checking…' : 'Refresh status'}</button> : null}
     </div>
-    <p className="pulse-account-links"><Link to="/account/link-device">Connect your extension</Link><span aria-hidden="true">·</span><Link to="/terms">Supporter terms</Link><span aria-hidden="true">·</span><Link to="/refunds">Cancellation and refunds</Link><span aria-hidden="true">·</span><Link to="/support">Support</Link></p>
+    <p className="pulse-account-links">{load !== 'signed_out' && !twitchSignInPublic() ? <><Link to="/account/link-device">Connect your extension</Link><span aria-hidden="true">·</span></> : null}<Link to="/terms">Supporter terms</Link><span aria-hidden="true">·</span><Link to="/refunds">Cancellation and refunds</Link><span aria-hidden="true">·</span><Link to="/support">Support</Link></p>
     <AccountFooter current="billing" />
   </section></PublicLayout>
 }

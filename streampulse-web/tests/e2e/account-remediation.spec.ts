@@ -61,7 +61,7 @@ test('account controls revoke the selected device and end the website session', 
   await page.getByRole('button', { name: 'Confirm revocation' }).click()
   await expect(page.getByText('Revoked', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Sign out', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Sign in to Pulse' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Tester sign-in' })).toBeVisible()
   expect(loggedOut).toBe(true)
   await expect(page.getByText('Desktop extension', { exact: true })).toHaveCount(0)
 })

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { CheckCircle2, Mail, Puzzle, ShieldCheck } from 'lucide-react'
 import { PublicLayout } from '../../ui/components/PublicLayout'
@@ -12,7 +12,7 @@ import { ACCOUNT_LINK_DEVICE_PATH, accountBillingReturnFromSearch, accountBillin
 import { accountSignInAge, announceAccountSignedIn, onAccountSessionSignal, RECENT_SIGN_IN_MS } from '../../lib/accountSessionSignal'
 import { PRIVACY_PATH, TERMS_PATH } from '../../lib/externalLinks'
 import { refreshAccountSession } from '../../lib/accountSession'
-import { twitchSignInEnabled } from '../../lib/twitchSignInFlag'
+import { twitchSignInStage } from '../../lib/twitchSignInFlag'
 import { beginTwitchFlow, twitchErrorCode, type TwitchErrorCode } from '../../lib/twitchSignIn'
 import { TwitchButton, TwitchErrorNotice } from './TwitchSignIn'
 import './account.css'
@@ -26,8 +26,17 @@ export default function AccountPage() {
 }
 
 const PILOT_SIGN_IN_NOTE = 'During the private pilot, sign-in emails are sent only to invited testers. If you’re not on the list, you won’t receive an email.'
-const TWITCH_PILOT_NOTE = 'During the private pilot, Sign in with Twitch works for invited testers who have already linked Twitch in Account & devices. First time here? Use email instead.'
+const TWITCH_PILOT_NOTE = 'During the private pilot, Continue with Twitch works for invited testers who have already linked Twitch in Account & devices. First time here? Use Tester email sign-in.'
+export const FREE_TOOLS_LINE = 'Free tools work without an account.'
 
+/**
+ * /account/sign-in by stage (twitchSignInStage):
+ * - off (today): "Tester sign-in", Twitch coming soon, the pilot email form.
+ * - tester: still "Tester sign-in"; Continue with Twitch leads, with the tester
+ *   note, and email waits under "Tester email sign-in".
+ * - public: "Sign in to StreamPulse"; Continue with Twitch, email only under
+ *   "Tester email sign-in".
+ */
 function SignIn() {
   const returnTo = accountBillingReturnFromSearch(useLocation().search)
   const navigate = useNavigate()
@@ -36,9 +45,11 @@ function SignIn() {
   useEffect(() => onAccountSessionSignal(signal => {
     if (signal === 'signed-in' && returnTo) navigate(returnTo)
   }), [navigate, returnTo])
+  const stage = twitchSignInStage()
   return <><p className="pulse-account-kicker"><Mail size={16} aria-hidden="true" /> StreamPulse account</p>
-    <SignInForm returnTo={returnTo} heading={sent => sent ? 'Check your email' : 'Sign in to Pulse'} sentDetail={returnTo ? 'This tab continues by itself once you confirm.' : undefined}
-      withTwitch={twitchSignInEnabled()} /></>
+    <SignInForm returnTo={returnTo} heading={sent => sent ? 'Check your email' : stage === 'public' ? 'Sign in to StreamPulse' : 'Tester sign-in'} sentDetail={returnTo ? 'This tab continues by itself once you confirm.' : undefined}
+      lead={stage === 'off' ? <p className="pulse-account-intro" data-testid="twitch-coming-soon">Twitch sign-in is coming soon. {FREE_TOOLS_LINE}</p> : undefined}
+      withTwitch={stage === 'off' ? false : stage} /></>
 }
 
 /**
@@ -46,16 +57,18 @@ function SignIn() {
  * Embedded, the tab keeps its prepared extension code in memory while the user
  * confirms the email in another tab, then continues by itself.
  *
- * `withTwitch` (VITE_TWITCH_SIGNIN=1, sign-in page only) puts Twitch first and
- * folds the email form behind "Use email instead". The extension-link page
- * never offers it: leaving for Twitch would drop the code held in memory.
+ * `withTwitch` (tester or public stage, sign-in page only) puts Continue with
+ * Twitch first and folds the email form behind "Tester email sign-in". The
+ * extension-link page never offers it: leaving for Twitch would drop the code
+ * held in memory.
  */
-function SignInForm({ returnTo, heading, intro = 'We’ll email you a link. No password needed.', sentDetail, withTwitch = false }: {
+function SignInForm({ returnTo, heading, intro = 'We’ll email you a link. No password needed.', sentDetail, withTwitch = false, lead }: {
   returnTo: string | null
   heading: (sent: boolean) => string
   intro?: string
   sentDetail?: string
-  withTwitch?: boolean
+  withTwitch?: false | 'tester' | 'public'
+  lead?: ReactNode
 }) {
   const { search } = useLocation()
   const [email, setEmail] = useState('')
@@ -90,18 +103,19 @@ function SignInForm({ returnTo, heading, intro = 'We’ll email you a link. No p
   // The pilot notice is the same static text for every address, before and after
   // sending, so it never reveals whether a given address is on the tester list.
   return <><h1>{heading(sent)}</h1>
+    {!sent && lead ? lead : null}
     {!sent && withTwitch ? <div className="pulse-account-twitch" data-testid="twitch-sign-in">
-      <p className="pulse-account-intro">Use your Twitch account. No password or email needed.</p>
-      <TwitchButton busy={twitchBusy} busyLabel="Opening Twitch…" onClick={() => void signInWithTwitch()}>Sign in with Twitch</TwitchButton>
+      <p className="pulse-account-intro">{withTwitch === 'tester' ? `Twitch sign-in is open to invited testers right now. ${FREE_TOOLS_LINE}` : FREE_TOOLS_LINE}</p>
+      <TwitchButton busy={twitchBusy} busyLabel="Opening Twitch…" onClick={() => void signInWithTwitch()}>Continue with Twitch</TwitchButton>
       <p className="pulse-account-privacy">
-        StreamPulse receives your Twitch user ID, display name and profile picture, never your Twitch password or email. See the{' '}
+        StreamPulse asks Twitch only to confirm who you are. It never receives your Twitch password or email, and its servers don’t keep your display name or picture. See the{' '}
         <Link to={PRIVACY_PATH}>privacy policy</Link> and <Link to={TERMS_PATH}>terms of use</Link>.
       </p>
-      <p className="pulse-account-pilot" data-testid="twitch-pilot-note">{TWITCH_PILOT_NOTE}</p>
+      {withTwitch === 'tester' ? <p className="pulse-account-pilot" data-testid="twitch-pilot-note">{TWITCH_PILOT_NOTE}</p> : null}
       {twitchError ? <TwitchErrorNotice code={twitchError} purpose="signin" returnTo={returnTo} current="/account/sign-in"
         onEmail={() => { emailToggled.current = true; setEmailOpen(true) }} /> : null}
       <button type="button" className="pulse-account-disclosure" aria-expanded={emailOpen} aria-controls={emailFormId}
-        onClick={() => { emailToggled.current = true; setEmailOpen(open => !open) }}>Use email instead</button>
+        onClick={() => { emailToggled.current = true; setEmailOpen(open => !open) }}>Tester email sign-in</button>
     </div> : null}
     {sent ? <div role="status"><p className="pulse-account-intro">Open the sign-in link in this browser, then confirm. The link expires after 15 minutes.</p>{sentDetail ? <p className="pulse-account-waiting" data-testid="sign-in-waiting"><span className="pulse-account-spinner" aria-hidden="true" />{sentDetail}</p> : null}<p className="pulse-account-pilot" data-testid="pilot-sign-in-note">{PILOT_SIGN_IN_NOTE}</p><button onClick={() => setSent(false)}>Use another email</button></div>
       : !emailOpen ? null
@@ -336,7 +350,7 @@ function LinkDevice() {
         {error || deviceExpired ? <button className="pulse-account-text-button" disabled={busy} onClick={startOver}>Use another code</button> : null}
       </div>
       : phase === 'inspecting' || (prepared.code && autoInspected.current < 0) ? <><h1>Connect your extension</h1><p role="status" className="pulse-account-waiting"><span className="pulse-account-spinner" aria-hidden="true" />Opening your extension’s request…</p></>
-      : <><h1>Link your extension</h1><ManualCode code={code} setCode={setCode} busy={busy} onSubmit={() => void inspect(code)} help="In StreamPulse settings on Twitch, open Account & Supporter and choose Become a Supporter or Connect; this page then opens with the request ready. Otherwise, enter the code your extension shows." /></>}
+      : <><h1>Link your extension</h1><ManualCode code={code} setCode={setCode} busy={busy} onSubmit={() => void inspect(code)} help="In StreamPulse settings on Twitch, open Account & Supporter and start a connection; this page then opens with the request ready. Otherwise, enter the code your extension shows." /></>}
     {error ? <p role="alert">{error}</p> : null}</>
 }
 

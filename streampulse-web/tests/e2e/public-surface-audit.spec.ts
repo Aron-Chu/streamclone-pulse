@@ -52,8 +52,8 @@ async function expectNoHorizontalOverflow(page: Page): Promise<void> {
   expect(dimensions.body, JSON.stringify(dimensions)).toBeLessThanOrEqual(dimensions.viewport + 1)
 }
 
-/** The build under test has Sign in with Twitch on (npm run test:e2e:audit inherits VITE_TWITCH_SIGNIN). */
-const TWITCH_SIGNIN = process.env.VITE_TWITCH_SIGNIN === '1'
+/** The build under test has Continue with Twitch on (npm run test:e2e:audit inherits VITE_TWITCH_SIGNIN: "1" testers, "public"). */
+const TWITCH_SIGNIN = process.env.VITE_TWITCH_SIGNIN === '1' || process.env.VITE_TWITCH_SIGNIN === 'public'
 /** The build under test has My Moments on; its item then leads the account menu. */
 const ACCOUNT_MOMENTS = process.env.VITE_ACCOUNT_MOMENTS === '1'
 /** The build under test has the header account entry on (Sign in link / account menu). Off by default. */
@@ -61,7 +61,7 @@ const ACCOUNT_HEADER = process.env.VITE_ACCOUNT_HEADER === '1'
 
 /** The signed-out sign-in page leads with Twitch when the flag is on, else with the email form. */
 async function expectSignedOutSignInPage(page: Page): Promise<void> {
-  if (TWITCH_SIGNIN) await expect(page.getByRole('button', { name: 'Sign in with Twitch' })).toBeVisible()
+  if (TWITCH_SIGNIN) await expect(page.getByRole('button', { name: 'Continue with Twitch' })).toBeVisible()
   else await expect(page.getByLabel('Email address')).toBeVisible()
 }
 
@@ -359,10 +359,10 @@ test.describe('public surface audit', () => {
   })
 })
 
-// Sign in with Twitch, mocked end to end: the API start/complete routes and
+// Continue with Twitch, mocked end to end: the API start/complete routes and
 // Twitch's authorize page are intercepted; nothing leaves the machine. Run with
 // the flag on:  VITE_TWITCH_SIGNIN=1 npm run test:e2e:audit -- --grep "Twitch"
-test.describe('Sign in with Twitch', () => {
+test.describe('Continue with Twitch', () => {
   const FLOW_ID = '0123456789abcdef0123456789abcdef'
   const FLOW_SECRET = 'f'.repeat(64)
   const ID_TOKEN = /* A stand-in, built at runtime so secret scanners see no token literal. */ [{ alg: 'RS256' }, { sub: '42424242' }].map(part => btoa(JSON.stringify(part))).concat(btoa('mocked-signature')).map(part => part.replace(/=+$/, '')).join('.')
@@ -386,13 +386,13 @@ test.describe('Sign in with Twitch', () => {
   }
 
   test('is absent and the callback path is an ordinary 404 while VITE_TWITCH_SIGNIN is off', async ({ page }) => {
-    test.skip(TWITCH_SIGNIN, 'this build has Sign in with Twitch on')
+    test.skip(TWITCH_SIGNIN, 'this build has Continue with Twitch on')
     const twitchCalls: string[] = []
     page.on('request', request => { if (request.url().includes('/twitch/')) twitchCalls.push(request.url()) })
     await page.goto('/account/sign-in')
     await expect(page.getByLabel('Email address')).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Sign in with Twitch' })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: 'Use email instead' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Continue with Twitch' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Tester email sign-in' })).toHaveCount(0)
     // Even with the flag off, a token that lands on the callback is stripped and never used.
     await page.goto(`/account/twitch/callback#id_token=${ID_TOKEN}&state=${FLOW_ID}`)
     await expect(page.getByTestId('not-found')).toBeVisible()
@@ -401,7 +401,7 @@ test.describe('Sign in with Twitch', () => {
   })
 
   for (const width of [1440, 375]) {
-    test(`signed out → Sign in with Twitch → Twitch → callback → signed in at ${width}px`, async ({ page, baseURL }, testInfo) => {
+    test(`signed out → Continue with Twitch → Twitch → callback → signed in at ${width}px`, async ({ page, baseURL }, testInfo) => {
       test.skip(!TWITCH_SIGNIN, 'needs a VITE_TWITCH_SIGNIN=1 build')
       const origin = new URL(baseURL!).origin
       const host = new URL(baseURL!).hostname
@@ -440,11 +440,11 @@ test.describe('Sign in with Twitch', () => {
       await page.goto('/account/sign-in')
       const header = page.locator('header.app-nav')
       if (ACCOUNT_HEADER) await expect(header.getByRole('link', { name: 'Sign in', exact: true })).toBeVisible()
-      const twitch = page.getByRole('button', { name: 'Sign in with Twitch' })
+      const twitch = page.getByRole('button', { name: 'Continue with Twitch' })
       await expect(twitch).toBeVisible()
       await expect(twitch).toHaveCSS('background-color', 'rgb(145, 70, 255)')
       await expect(page.getByLabel('Email address')).toHaveCount(0)
-      const disclosure = page.getByRole('button', { name: 'Use email instead' })
+      const disclosure = page.getByRole('button', { name: 'Tester email sign-in' })
       await expect(disclosure).toHaveAttribute('aria-expanded', 'false')
       expect((await twitch.boundingBox())!.y).toBeLessThan((await disclosure.boundingBox())!.y)
       await expectNoHorizontalOverflow(page)
@@ -461,7 +461,7 @@ test.describe('Sign in with Twitch', () => {
         await expect(header.locator('.account-entry')).toHaveCount(0)
       }
       await expect(header.getByRole('link', { name: 'Sign in', exact: true })).toHaveCount(0)
-      await expect(page.getByTestId('twitch-account-row')).toContainText('Connected as PulseTester')
+      await expect(page.getByTestId('twitch-account-row')).toContainText('Signed in with Twitch as PulseTester')
       await expectNoHorizontalOverflow(page)
       await page.screenshot({ path: testInfo.outputPath(`twitch-signed-in-settings-${width}.png`), fullPage: true })
 
@@ -483,12 +483,12 @@ test.describe('Sign in with Twitch', () => {
     await page.route('**/v1/account/auth/twitch/complete', route => route.fulfill({ status: 403, json: { error: 'pilot_only' } }))
     await page.setViewportSize({ width: 375, height: 900 })
     await page.goto('/account/sign-in')
-    await page.getByRole('button', { name: 'Sign in with Twitch' }).click()
+    await page.getByRole('button', { name: 'Continue with Twitch' }).click()
     await expect(page.getByRole('heading', { level: 1, name: 'Twitch sign-in is invite-only for now' })).toBeVisible()
     expect(page.url()).toBe(`${origin}/account/twitch/callback`)
     await expectNoHorizontalOverflow(page)
     await page.screenshot({ path: testInfo.outputPath('twitch-callback-pilot-only-375.png'), fullPage: true })
-    await page.getByRole('link', { name: 'Sign in with email' }).click()
+    await page.getByRole('link', { name: 'Tester email sign-in' }).click()
     await expect(page.getByLabel('Email address')).toBeVisible()
     await expectNoHorizontalOverflow(page)
   })

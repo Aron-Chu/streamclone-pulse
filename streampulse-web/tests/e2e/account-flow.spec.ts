@@ -116,7 +116,7 @@ for (const returnPath of ['/account/billing', '/account/billing/return?attempt=1
       return route.fulfill({ json: { status: 'signed_in' } })
     })
     await page.goto(returnPath)
-    await page.getByRole('link', { name: 'Sign in to Pulse', exact: true }).click()
+    await page.getByRole('link', { name: 'Tester sign-in', exact: true }).click()
     expect(new URL(page.url()).searchParams.get('returnTo')).toBe(returnPath)
     await page.getByLabel('Email address').fill('fixture@example.com')
     await page.getByRole('button', { name: 'Send sign-in link' }).click()

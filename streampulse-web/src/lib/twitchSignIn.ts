@@ -6,7 +6,7 @@ import { TWITCH_CALLBACK_PATH, TWITCH_STATE, takeTwitchCallback } from './twitch
 import { twitchProfileImageRendition } from './twitchProfileImage'
 
 /**
- * Website half of Sign in with Twitch (backend: internal/accounts/twitch_handler.go).
+ * Website half of Continue with Twitch (backend: internal/accounts/twitch_handler.go).
  *
  * 1. POST /v1/account/auth/twitch/start {purpose} answers
  *    {flowId, flowSecret, authorizeUrl, expiresAt}. A sign-in flow is bound to
@@ -194,7 +194,7 @@ async function finishTwitchCallback(): Promise<TwitchCompletion> {
     const status = purpose === 'link' ? 'linked' : 'signed_in'
     if (result.status !== status) return fail('unavailable')
     const profile = twitchProfile(result.profile)
-    rememberTwitchIdentity(profile)
+    rememberTwitchIdentity({ ...profile, via: purpose === 'link' ? 'link' : 'signin' })
     // A tab waiting on this sign-in (an extension approval or billing) re-checks too.
     if (status === 'signed_in') announceAccountSignedIn()
     await refreshAccountSession()
@@ -202,7 +202,7 @@ async function finishTwitchCallback(): Promise<TwitchCompletion> {
   } catch (error) {
     const code = twitchErrorCode(error)
     // Linking an account that already has Twitch tells us it is linked.
-    if (code === 'account_already_linked') rememberTwitchIdentity({})
+    if (code === 'account_already_linked') rememberTwitchIdentity({ via: 'link' })
     return fail(code)
   }
 }
@@ -218,11 +218,11 @@ export function twitchErrorCopy(code: TwitchErrorCode, purpose: TwitchPurpose): 
   const link = purpose === 'link'
   switch (code) {
     case 'pilot_only':
-      return { title: 'Twitch sign-in is invite-only for now', body: 'StreamPulse accounts are in a private pilot, and this Twitch account isn’t on the invite list. Nothing was created or changed.', next: link ? 'settings' : 'email' }
+      return { title: 'Twitch sign-in is invite-only for now', body: 'Twitch sign-in is open to invited testers right now, and this Twitch account isn’t on the list. Nothing was created or changed. Free tools work without an account.', next: link ? 'settings' : 'email' }
     case 'link_required':
-      return { title: 'Link Twitch to your account first', body: 'This Twitch account isn’t linked to a StreamPulse account yet. Sign in with your email, then choose Link Twitch in Account & devices. After that, Sign in with Twitch works.', next: 'email' }
+      return { title: 'Link Twitch to your account first', body: 'This Twitch account isn’t linked to a StreamPulse account yet. Invited testers: use Tester email sign-in, then choose Link Twitch in Account & devices. After that, Continue with Twitch works.', next: 'email' }
     case 'identity_in_use':
-      return { title: 'That Twitch account belongs to another StreamPulse account', body: 'A Twitch account can be linked to only one StreamPulse account, so nothing was changed. Link a different Twitch account, or sign out and use Sign in with Twitch to open the other account.', next: 'switch_account' }
+      return { title: 'That Twitch account belongs to another StreamPulse account', body: 'That Twitch account already has its own StreamPulse account. We never combine accounts. Contact us if one of them has a membership.', next: 'switch_account' }
     case 'account_already_linked':
       return { title: 'Twitch is already linked', body: 'This StreamPulse account already has a Twitch account linked, so nothing was changed.', next: 'settings' }
     case 'revoked':
@@ -230,11 +230,11 @@ export function twitchErrorCopy(code: TwitchErrorCode, purpose: TwitchPurpose): 
     case 'signup_unavailable':
       return { title: 'New accounts are paused', body: 'StreamPulse isn’t creating new accounts right now. Existing accounts can still sign in. Please try again later.', next: 'later' }
     case 'interaction_required':
-      return { title: 'Continue on Twitch', body: 'Choose Sign in with Twitch to confirm it’s you.', next: 'twitch' }
+      return { title: 'Continue on Twitch', body: 'Choose Continue with Twitch to confirm it’s you.', next: 'twitch' }
     case 'recent_auth_required':
-      return { title: 'Sign in again to link Twitch', body: 'For your security, linking Twitch needs a sign-in from the last 10 minutes. Sign out, sign in with your email again, then choose Link Twitch.', next: 'reauth' }
+      return { title: 'Sign in again to link Twitch', body: 'For your security, linking Twitch needs a sign-in from the last 10 minutes. Sign out, use Tester email sign-in again, then choose Link Twitch.', next: 'reauth' }
     case 'sign_in_required':
-      return { title: 'Your session has ended', body: link ? 'Sign in with your email again, then choose Link Twitch in Account & devices.' : 'Sign in again to continue.', next: link ? 'reauth' : 'twitch' }
+      return { title: 'Your session has ended', body: link ? 'Use Tester email sign-in again, then choose Link Twitch in Account & devices.' : 'Sign in again to continue.', next: link ? 'reauth' : 'twitch' }
     case 'account_deleted':
       return { title: 'This account was deleted', body: 'The StreamPulse account for this sign-in no longer exists. Contact support if you think this is a mistake.', next: 'support' }
     case 'access_denied':
@@ -248,9 +248,9 @@ export function twitchErrorCopy(code: TwitchErrorCode, purpose: TwitchPurpose): 
     case 'try_later':
       return { title: 'Too many attempts', body: 'Wait a few minutes, then try again.', next: 'later' }
     case 'storage_unavailable':
-      return { title: 'This browser blocked sign-in storage', body: 'Sign in with Twitch needs to keep a short-lived value in this tab. Allow site data for streampulse.stream, or sign in with email instead.', next: link ? 'settings' : 'email' }
+      return { title: 'This browser blocked sign-in storage', body: 'Continue with Twitch needs to keep a short-lived value in this tab. Allow site data for streampulse.stream, then try again.', next: link ? 'settings' : 'email' }
     case 'unavailable':
     default:
-      return { title: link ? 'Twitch linking is unavailable' : 'Sign in with Twitch is unavailable', body: 'Account services couldn’t finish this right now. Please try again in a few minutes.', next: link ? 'settings' : 'email' }
+      return { title: link ? 'Twitch linking is unavailable' : 'Twitch sign-in is unavailable', body: 'Account services couldn’t finish this right now. Please try again in a few minutes.', next: link ? 'settings' : 'email' }
   }
 }

@@ -59,6 +59,6 @@ test('My Moments asks a signed-out visitor to sign in without any account reques
   const reads: string[] = []
   page.on('request', request => { if (new URL(request.url()).pathname.startsWith('/v1/account/')) reads.push(request.url()) })
   await page.goto('/account/moments')
-  await expect(page.getByRole('link', { name: 'Sign in to Pulse' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Tester sign-in' })).toBeVisible()
   expect(reads).toEqual([])
 })

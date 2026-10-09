@@ -24,10 +24,10 @@ function textOf(Page: ComponentType, testId: string): string {
 }
 
 describe('Supporter legal copy', () => {
-  it.each(pages)('%s states that paid sign-ups are not open yet', (_, Page, testId) => {
+  it.each(pages)('%s states that Supporter sign-ups are not open yet', (_, Page, testId) => {
     render(<MemoryRouter><Page /></MemoryRouter>)
     const notice = screen.getByTestId('prelaunch-notice')
-    expect(notice.textContent).toMatch(/^Paid sign-ups are not open yet\./)
+    expect(notice.textContent).toMatch(/^Supporter sign-ups are not open yet\./)
     expect(screen.getByTestId(testId).contains(notice)).toBe(true)
   })
 
@@ -100,22 +100,42 @@ describe('Supporter legal copy', () => {
     render(<MemoryRouter><Privacy /></MemoryRouter>)
     expect(screen.getByTestId('privacy-contact').querySelector('a[href="mailto:privacy@streampulse.stream"]')).toBeTruthy()
     const body = screen.getByTestId('privacy-policy').textContent ?? ''
-    expect(body).toMatch(/paid Supporter sign-ups are not open yet/)
+    expect(body).toMatch(/Supporter sign-ups are not open yet; card details go to Stripe, never to StreamPulse/)
     expect(body).toMatch(/set when you use the account pages on https:\/\/streampulse\.stream/)
     expect(body).not.toMatch(/all set by the StreamPulse API at/)
   })
 
-  it('directs new buyers to the extension and keeps website accounts secondary', () => {
+  it('directs new buyers to the extension and Continue with Twitch, with no competing account choice', () => {
     render(<MemoryRouter><Supporter /></MemoryRouter>)
     expect(screen.getByRole('link', { name: 'Get the extension' }).getAttribute('href')).toMatch(/^https:\/\/chromewebstore\.google\.com\//)
-    expect(screen.getByText('Become a Supporter')).toBeTruthy()
-    expect(screen.getByRole('link', { name: 'Use a StreamPulse website account' }).getAttribute('href')).toBe('/account/billing')
+    expect(screen.getByTestId('supporter-availability').textContent).toMatch(/you’ll choose Continue with Twitch, then pay on Stripe/)
+    expect(screen.queryByRole('link', { name: 'Use a StreamPulse website account' })).toBeNull()
     expect(screen.queryByRole('link', { name: 'Open account billing' })).toBeNull()
+    expect(screen.getByTestId('supporter-offer').textContent).not.toMatch(/Restore my Supporter|restore link/)
   })
-  it.each([['Privacy', Privacy, 'privacy-policy'], ['Terms', Terms, 'terms-of-use']] as const)('%s explains receipts and requested recovery without claiming checkout email is verified', (_, Page, testId) => {
+  it.each([['Privacy', Privacy, 'privacy-policy'], ['Terms', Terms, 'terms-of-use']] as const)('%s leaves the billing email with Stripe and describes no email restore or installation account', (_, Page, testId) => {
     const body = textOf(Page, testId)
-    expect(body).toContain('The email you give Stripe at checkout is used for receipts and, if you ask, membership recovery.')
-    expect(body).toMatch(/keyed hash/)
-    expect(body).toMatch(/billing history/)
+    expect(body).not.toMatch(/keyed hash of (your|that) (checkout )?email/i)
+    expect(body).not.toMatch(/membership recovery|recovery link|restore link|installation account/i)
+    expect(body).toMatch(/Continue with Twitch/)
+  })
+
+  it('Privacy says what reaches StreamPulse from Stripe instead of claiming the billing email never does', () => {
+    render(<MemoryRouter><Privacy /></MemoryRouter>)
+    const billing = screen.getByTestId('privacy-billing-email').textContent ?? ''
+    expect(billing).toMatch(/payment notifications to StreamPulse\s+can include that email, your name and billing address/)
+    expect(billing).toMatch(/removes those details before saving it/)
+    expect(billing).toMatch(/never matches accounts by email/)
+    const twitch = screen.getByTestId('privacy-continue-with-twitch').textContent ?? ''
+    expect(twitch).toMatch(/keyed hash of your Twitch user ID/)
+    expect(twitch).toMatch(/never receives your Twitch password, Twitch email or a\s+Twitch access token/)
+  })
+
+  it('Terms separates losing Twitch access from cancelling billing in Stripe', () => {
+    render(<MemoryRouter><Terms /></MemoryRouter>)
+    const billing = screen.getByTestId('terms-billing-email').textContent ?? ''
+    expect(billing).toMatch(/you can still cancel billing through Stripe/)
+    expect(billing).toMatch(/moving a\s+membership to another account needs our help/)
+    expect(screen.getByTestId('terms-your-account').textContent).toMatch(/Your StreamPulse account is your Twitch identity/)
   })
 })

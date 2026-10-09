@@ -20,7 +20,7 @@ export default function Privacy() {
           </div>
           <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Privacy Policy</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            Last updated: October 1, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse Chrome extension.
+            Last updated: October 8, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse Chrome extension.
           </p>
         </header>
 
@@ -31,42 +31,53 @@ export default function Privacy() {
           <p className="text-zinc-300">
             StreamPulse shows Twitch stream activity using minute-level aggregates from the StreamPulse
             API. The extension and public site are rollup-first: they do not expose raw chat messages or
-            chatter identity to users. The extension does not use Twitch OAuth. Protect enrollment is
-            optional and uses a beta access key once to create a local device credential.
+            chatter identity to users. The extension uses Twitch sign-in only if you choose Continue
+            with Twitch, and only to confirm your Twitch user ID. Protect enrollment is optional and
+            uses a beta access key once to create a local device credential.
           </p>
           <p className="text-zinc-300">
-            A website account is optional and uses an email address. Pulse Supporter is an optional paid
-            subscription, and paid sign-ups are not open yet; once they are, card details go to Stripe
-            and never to StreamPulse. Neither an account nor a subscription is required to use the
-            extension or the public analytics.
+            Accounts are optional; free tools work without an account. A StreamPulse account is
+            created when you choose Continue with Twitch (coming soon). During the private pilot,
+            invited testers can also sign in by email. Supporter sign-ups are not open yet; card
+            details go to Stripe, never to StreamPulse.
           </p>
         </section>
 
         <h2>Your account, if you create one</h2>
-        <p>
-            A website account is optional. It lets you link the extension to a Pulse account; paid
-            Supporter sign-ups are not open yet. Creating a website account stores your email address, an internal account
-          identifier, and timestamps for creation and sign-in. There is no password, no name field,
-          and no profile.
-        </p>
-          <p>When you first choose Supporter or restore a membership in the extension, it can create an installation account without a website sign-in. That account stores an internal identifier, credential hashes and activity timestamps. Core Pulse stays free and does not require this account.</p>
-        <p>
-          Sign-in works by emailed link. When you request one, StreamPulse stores a hash of a
-          single-use secret — not the secret itself — with a 15-minute expiry, and emails you a link
-          containing it. The secret travels in the link's <strong>URL fragment</strong> (after the{' '}
-          <code>#</code>), which browsers do not send to the server or include in a{' '}
-          <code>Referer</code> header, so it is not written into server logs. Confirming a sign-in
-          requires the same browser that requested it.
+        <p data-testid="privacy-continue-with-twitch">
+          <strong>Continue with Twitch.</strong> StreamPulse asks Twitch only to confirm who you are.
+          Twitch returns a signed, one-time sign-in proof that StreamPulse checks against Twitch's
+          public keys. StreamPulse stores a keyed hash of your Twitch user ID, an internal account
+          identifier, and creation, sign-in and activity times. Your Twitch display name and picture
+          are shown after sign-in but not stored by StreamPulse; only that browser tab keeps them, to
+          show who is signed in. StreamPulse never receives your Twitch password, Twitch email or a
+          Twitch access token. While you're on Twitch's page, this tab keeps a one-time sign-in value
+          in session storage; it's removed when you return.
         </p>
         <p>
-          Linking the extension stores a short-lived connection code, the device label you approve,
-          and a device credential identifier. Approving a device does not connect your Twitch
-          identity, publish anything about you, or start a subscription.
+          <strong>Tester email sign-in.</strong> During the private pilot, invited testers can sign in
+          by emailed link. A tester account stores the email address, an internal account identifier,
+          and timestamps for creation and sign-in; there is no password, no name field and no
+          profile. When you request a link, StreamPulse stores a hash of a single-use secret — not
+          the secret itself — with a 15-minute expiry, and emails you a link containing it. The
+          secret travels in the link's <strong>URL fragment</strong> (after the <code>#</code>), which
+          browsers do not send to the server or include in a <code>Referer</code> header, so it is
+          not written into server logs. Confirming a sign-in requires the same browser that
+          requested it. A tester's email is used for sign-in links and for notices about the account
+          or subscription. It is not used for marketing, and it is not sold, shared or used to build
+          an advertising profile.
         </p>
         <p>
-          Account email is used for sign-in links and for notices about your account or subscription.
-          It is not used for marketing, and it is not sold, shared or used to build an advertising
-          profile.
+          Testers can link Twitch to the same account. Linking needs a sign-in from the last 10
+          minutes plus a fresh Twitch sign-in, and never combines two accounts.
+        </p>
+        <p>
+          <strong>Extensions.</strong> Signing in from the extension stores a device credential in
+          it. Sign out ends that device's access; Sign out everywhere, once available, ends every
+          session and device. Testers can also connect an extension with a connection code: that
+          stores a short-lived connection code, the device label you approve, and a device
+          credential identifier. Approving a device does not publish anything about you or start a
+          subscription.
         </p>
 
         <h2>Payment data, if you subscribe</h2>
@@ -75,12 +86,17 @@ export default function Privacy() {
           taken through StreamPulse.
         </p>
         <p>
-          Payments are processed by <strong>Stripe</strong>. Card numbers, CVC and billing address are
-          entered on Stripe's own hosted pages and go to Stripe — StreamPulse never receives or stores
-          them.
+          Payments are processed by <strong>Stripe</strong>. Card numbers and CVC are entered on
+          Stripe's own hosted pages and go to Stripe — StreamPulse never receives or stores them.
         </p>
-          <p>The email you give Stripe at checkout is used for receipts and, if you ask, membership recovery. Stripe keeps the checkout email. StreamPulse stores only a keyed hash of that email as a recovery reference, not the plaintext checkout email, and does not treat it as verified ownership until you confirm a recovery link.</p>
-          <p>For recovery, the email you enter is sent through the existing transactional mail service to deliver a single-use, 15-minute restore link. The link secret is stored only as a digest on the server, captured in page memory and removed from the browser URL. Opening a link does not approve a restore; you must confirm the requesting extension. Accounts with billing history are never automatically combined.</p>
+        <p data-testid="privacy-billing-email">
+          Stripe asks for a billing email at checkout; it can differ from your Twitch email, and
+          StreamPulse never matches accounts by email. Stripe's payment notifications to StreamPulse
+          can include that email, your name and billing address. StreamPulse checks each
+          notification's signature and removes those details before saving it, and saved
+          notifications are reduced to identifiers about 30 days after processing. StreamPulse does
+          not keep your billing email or a hash of it.
+        </p>
         <p>
           What StreamPulse stores is the identifiers and state needed to know whether your membership
           is paid: a Stripe customer identifier, subscription and invoice identifiers, paid period
@@ -130,10 +146,10 @@ export default function Privacy() {
             with the session.
           </li>
           <li>
-            <strong><code>__Host-pulse_login</code></strong> — set while a sign-in link is
-            outstanding, so the link can only be confirmed in the browser that requested it.{' '}
+            <strong><code>__Host-pulse_login</code></strong> — set while a sign-in (email link or
+            Twitch) is in progress, so it can only be finished in the browser that started it.{' '}
             <code>Secure</code>, <code>HttpOnly</code>, <code>SameSite=Strict</code>, and it expires
-            with the 15-minute challenge.
+            with that sign-in (15 minutes for an email link, 10 for Twitch).
           </li>
         </ul>
         <p>
@@ -180,8 +196,9 @@ export default function Privacy() {
           </li>
         </ul>
         <p>
-           The extension does not request or transmit Twitch cookies, passwords, Twitch OAuth credentials,
-           raw chat exports, or chatter identities. A beta access key is sent only to the hosted enrollment
+           The extension does not request or transmit Twitch cookies, passwords, Twitch OAuth credentials
+           (except the one-time sign-in proof described under Your account, sent only when you choose
+           Continue with Twitch), raw chat exports, or chatter identities. A beta access key is sent only to the hosted enrollment
            endpoint when you explicitly connect Protect; it is discarded after that request and is not stored
            or sent with later requests. Page-context Twitch requests may
           use your active Twitch browser session through normal browser credential handling. Those requests
@@ -243,7 +260,7 @@ export default function Privacy() {
           </li>
           <li>
             <strong>Extension IndexedDB</strong> (<code>pulse-account-private-v1</code>) — after you
-             link the extension to a Pulse account or start an installation account for Supporter, the account device credential is held in an
+             connect the extension to a StreamPulse account, the account device credential is held in an
             extension-origin database reachable only from the extension's own trusted contexts, not
             from any Twitch page script. Disconnecting the extension or uninstalling it removes it.
           </li>
@@ -259,9 +276,15 @@ export default function Privacy() {
             sign-out. Clearing site data for streampulse.stream removes these keys.
           </li>
           <li>
-            <strong>Portal sessionStorage</strong> — may hold a developer backend URL override
-            (<code>sp.backendUrlOverride</code>) in local development builds only. Production portal builds
-            do not apply session backend overrides. Clearing site data removes session keys as well.
+            <strong>Portal sessionStorage</strong> — while a Twitch sign-in is in progress, the
+            one-time sign-in value and the page to return to (<code>pulse.account.twitchFlow.v1</code>,
+            removed when you return); after a Twitch sign-in, the Twitch display name and picture shown
+            for that tab (<code>pulse.account.twitch.v1</code>, removed on sign-out); and, during a
+            “Confirm it’s you” check, a short tag of the account that asked
+            (<code>pulse.account.billingStepUp.v1</code>, at most 10 minutes). In local development
+            builds only, it may also hold a developer backend URL override
+            (<code>sp.backendUrlOverride</code>); production portal builds do not apply session backend
+            overrides. Clearing site data removes session keys as well.
           </li>
         </ul>
 
@@ -272,8 +295,8 @@ export default function Privacy() {
             <code>https://api.streampulse.stream</code>.
           </li>
           <li>
-            <strong>Resend (transactional email)</strong> — receives your email address and the
-             sign-in or requested recovery message in order to deliver it. Used only for account sign-in links, requested recovery links and account
+            <strong>Resend (transactional email)</strong> — receives a tester's email address and the
+            sign-in message in order to deliver it. Used only for tester sign-in links and account
             notices, never for marketing. Open and click tracking are switched off, so links in
             StreamPulse email are not rewritten through a tracking domain and opening an email is not
             recorded.
@@ -281,12 +304,14 @@ export default function Privacy() {
           <li>
             <strong>Stripe (payments)</strong> — only if you subscribe to Supporter. Stripe receives
             your payment details directly and acts as the payment processor; StreamPulse receives
-            payment status and identifiers back, not card data. See{' '}
+            payment status and identifiers back, not card data. Billing details in Stripe's
+            notifications are handled as described under Payment data. See{' '}
             <Link to={REFUNDS_PATH}>cancellation and refunds</Link> for how billing is handled.
           </li>
           <li>
             <strong>Twitch</strong> — page context and GraphQL used to identify streams and VODs on
-            twitch.tv.
+            twitch.tv, and, only when you choose Continue with Twitch, Twitch's sign-in page, which
+            confirms your Twitch user ID to StreamPulse.
           </li>
           <li>
             <strong>Emote CDNs</strong> — image assets from providers such as 7TV, Twitch CDN, BetterTTV,

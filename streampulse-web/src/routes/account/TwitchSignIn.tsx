@@ -33,7 +33,7 @@ type NoticeProps = {
   returnTo?: string | null
   /** Renders the title as the page heading (the callback page). */
   page?: boolean
-  /** On the sign-in page, "use email" opens the form in place instead of linking to it. */
+  /** On the sign-in page, "Tester email sign-in" opens the form in place instead of linking to it. */
   onEmail?: () => void
   /** A next step that would only link to this page is left out. */
   current?: string
@@ -61,15 +61,15 @@ export function TwitchErrorNotice({ code, purpose, returnTo, page = false, onEma
   let action: ReactNode = null
   switch (copy.next) {
     case 'twitch':
-      action = <TwitchButton busy={busy} busyLabel="Opening Twitch…" onClick={() => void restart(false)}>{purpose === 'link' ? 'Link Twitch' : 'Sign in with Twitch'}</TwitchButton>
+      action = <TwitchButton busy={busy} busyLabel="Opening Twitch…" onClick={() => void restart(false)}>{purpose === 'link' ? 'Link Twitch' : 'Continue with Twitch'}</TwitchButton>
       break
     case 'switch_account':
       action = <button type="button" disabled={busy} onClick={() => void restart(true)}>{busy ? 'Opening Twitch…' : 'Use a different Twitch account'}</button>
       break
     case 'email':
       action = onEmail
-        ? <button type="button" onClick={onEmail}>Use email instead</button>
-        : <Link className="pulse-account-button pulse-account-primary" to="/account/sign-in?method=email">Sign in with email</Link>
+        ? <button type="button" onClick={onEmail}>Tester email sign-in</button>
+        : <Link className="pulse-account-button pulse-account-primary" to="/account/sign-in?method=email">Tester email sign-in</Link>
       break
     case 'settings':
       action = current === '/account/settings' ? null : <Link className="pulse-account-button" to="/account/settings">Back to Account &amp; devices</Link>

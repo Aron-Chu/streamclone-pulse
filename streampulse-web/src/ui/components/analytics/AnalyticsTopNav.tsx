@@ -102,7 +102,7 @@ export function AnalyticsTopNav({
               {accountHeaderEnabled()
                 ? <MenuAccountLink onNavigate={() => closeMenu()} />
                 : <Link to="/account/sign-in" onClick={() => closeMenu()}>Account</Link>}
-              <Link to="/account/billing" onClick={() => closeMenu()}>Manage membership</Link>
+              <Link to="/account/billing" onClick={() => closeMenu()}>Manage subscription</Link>
               <Link to="/account/link-device" onClick={() => closeMenu()}>Link extension</Link>
               <Link to="/privacy" onClick={() => closeMenu()}>Privacy</Link>
               <Link to="/terms" onClick={() => closeMenu()}>Terms</Link>

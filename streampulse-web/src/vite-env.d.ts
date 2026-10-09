@@ -8,7 +8,7 @@ interface ImportMetaEnv {
   readonly VITE_POSTHOG_PROJECT_TOKEN?: string
   readonly VITE_REPLAYFORGE_UI_ORIGIN?: string
   readonly VITE_STREAMCLONE_WATCH_ORIGIN?: string
-  /** "1" turns on Sign in with Twitch on the website; anything else leaves it off. */
+  /** Continue with Twitch stage: "1" = invited testers, "public" = the public account path; anything else leaves it off. */
   readonly VITE_TWITCH_SIGNIN?: string
   /** "1" turns on My Moments on the website (account bookmarks and synced history). */
   readonly VITE_ACCOUNT_MOMENTS?: string

@@ -6,7 +6,7 @@ import { AccountFooter } from './AccountFooter'
 import { accountRequest, accountErrorText, AccountError } from '../../lib/accountApi'
 import { announceAccountSignedOut } from '../../lib/accountSessionSignal'
 import { knownTwitchIdentity, useAccountSession } from '../../lib/accountSession'
-import { twitchSignInEnabled } from '../../lib/twitchSignInFlag'
+import { accountSignInLabel, twitchSignInEnabled } from '../../lib/twitchSignInFlag'
 import { beginTwitchFlow, twitchErrorCode, type TwitchErrorCode } from '../../lib/twitchSignIn'
 import { TwitchButton, TwitchErrorNotice, TwitchGlitch } from './TwitchSignIn'
 import './account.css'
@@ -34,16 +34,20 @@ function TwitchAccountRow() {
     catch (failure) { setError(twitchErrorCode(failure)); setBusy(false) }
   }
   const name = known?.displayName
+  // Only a sign-in this tab saw may say "Signed in with Twitch"; a link or /me says linked.
+  const signedInWithTwitch = known?.via === 'signin'
   return <section className="pulse-account-twitch-row" aria-labelledby={headingId} data-testid="twitch-account-row">
     <div className="pulse-account-section-heading"><h2 id={headingId}>Twitch</h2></div>
     {known ? <div className="pulse-account-twitch-connected">
       {known.avatarUrl ? <img src={known.avatarUrl} alt="" width={32} height={32} referrerPolicy="no-referrer" /> : <span className="pulse-account-twitch-mark"><TwitchGlitch /></span>}
-      <p>{name ? <>Connected as <strong>{name}</strong></> : 'Twitch is connected to this account.'}</p>
+      <p>{signedInWithTwitch
+        ? name ? <>Signed in with Twitch as <strong>{name}</strong></> : 'Signed in with Twitch'
+        : name ? <>Twitch linked: <strong>{name}</strong></> : 'Twitch is linked to this account.'}</p>
     </div> : <div className="pulse-account-twitch-link">
-      <p>Link your Twitch account to sign in with Twitch. StreamPulse receives your Twitch user ID, display name and profile picture, never your Twitch password or email.</p>
+      <p>Link Twitch so you can Continue with Twitch next time. Linking needs a sign-in from the last 10 minutes plus a fresh Twitch sign-in, and never combines two accounts. StreamPulse never receives your Twitch password or email.</p>
       <TwitchButton busy={busy} busyLabel="Opening Twitch…" onClick={() => void link()}>Link Twitch</TwitchButton>
     </div>}
-    {known && state?.twitch === 'linked' ? <p role="status">Twitch is now linked. Next time, you can use Sign in with Twitch.</p> : null}
+    {known && state?.twitch === 'linked' ? <p role="status">Twitch is now linked. Next time, you can Continue with Twitch.</p> : null}
     {error ? <TwitchErrorNotice code={error} purpose="link" current="/account/settings" /> : null}
   </section>
 }
@@ -98,11 +102,13 @@ export default function AccountSettings() {
     <p className="pulse-account-kicker"><Monitor size={16} aria-hidden="true" /> StreamPulse account</p>
     <h1>Account &amp; devices</h1>
     {identity ? <div className="pulse-account-session"><p>You’re signed in to StreamPulse.</p><button disabled={busy} onClick={() => void logout()}><LogOut size={16} aria-hidden="true" /> Sign out</button></div> : null}
-    {signedOut ? <Link to="/account/sign-in">Sign in to Pulse</Link> : null}
+    {signedOut ? <Link to="/account/sign-in">{accountSignInLabel()}</Link> : null}
     {busy ? <p role="status">Updating account...</p> : null}
     {error ? <div className="pulse-account-error"><p role="alert">{error}</p><button disabled={busy} onClick={() => void load()}>Retry</button></div> : null}
     {identity && !signedOut && twitchSignInEnabled() ? <TwitchAccountRow /> : null}
-    {identity && !signedOut ? <><div className="pulse-account-section-heading"><h2>Linked extensions</h2><Link to="/account/link-device">Link extension</Link></div>
+    {/* With Continue with Twitch on, connection codes are the tester bridge, not the main path. */}
+    {identity && !signedOut && twitchSignInEnabled() ? <div className="pulse-account-section-heading" data-testid="other-ways-to-connect"><h2>Other ways to connect (testers)</h2></div> : null}
+    {identity && !signedOut ? <><div className="pulse-account-section-heading">{twitchSignInEnabled() ? <h3>Linked extensions</h3> : <h2>Linked extensions</h2>}<Link to="/account/link-device">Link extension</Link></div>
       {!busy && !devices.length && !error ? <p className="pulse-account-empty">No linked extensions. Link your extension to use this account on Twitch.</p> : null}
       <ul className="pulse-account-devices">{devices.map(device => <li key={device.id}><div className="pulse-account-device-details"><strong>{device.label}</strong>
         <p>{device.revokedAt ? <span className="pulse-account-device-status">Revoked</span> : `Credential expires ${new Date(device.expiresAt).toLocaleDateString()}`}</p></div>

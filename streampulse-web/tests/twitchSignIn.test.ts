@@ -216,7 +216,7 @@ describe('completing the callback', () => {
     })
     expect(accountRequest).toHaveBeenLastCalledWith('/auth/twitch/complete', { flowId: FLOW_ID, flowSecret: FLOW_SECRET, idToken: ID_TOKEN })
     expect(refreshAccountSession).toHaveBeenCalledOnce()
-    expect(knownTwitchIdentity()).toEqual({ displayName: 'PulseTester', avatarUrl: 'https://static-cdn.jtvnw.net/jtv_user_pictures/abc-profile_image-70x70.png' })
+    expect(knownTwitchIdentity()).toEqual({ displayName: 'PulseTester', avatarUrl: 'https://static-cdn.jtvnw.net/jtv_user_pictures/abc-profile_image-70x70.png', via: 'signin' })
     expect(sessionStorage.getItem('pulse.account.twitchFlow.v1')).toBeNull()
   })
 
@@ -304,7 +304,7 @@ describe('completing the callback', () => {
     arriveAtCallback(`#id_token=${ID_TOKEN}&state=${FLOW_ID}`)
     vi.mocked(accountRequest).mockRejectedValueOnce(new AccountError(409, 'account_already_linked'))
     await expect(completeTwitchCallback()).resolves.toMatchObject({ code: 'account_already_linked', purpose: 'link' })
-    expect(knownTwitchIdentity()).toEqual({})
+    expect(knownTwitchIdentity()).toEqual({ via: 'link' })
   })
 
   it('refuses an unexpected success body', async () => {
