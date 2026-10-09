@@ -206,6 +206,73 @@ export default function Privacy() {
           not promise a fixed retention period for events already sent to PostHog.
         </p>
 
+        {/* Feedback form: describes the processing in streampulse-backend
+            internal/analytics/portal_support_{cases,adapters,outbox,turnstile,retention}.go
+            (origin/master fdc99414) and the website form (streamclone-pulse #77).
+            OWNER GATE: retention below is the backend default
+            (PULSE_SUPPORT_RETENTION_ENABLED=false, PULSE_SUPPORT_RETENTION_DAYS unset),
+            so nothing is deleted automatically. If a retention period is approved,
+            change only the "How long it's kept" paragraph. Keep this section identical
+            in PR #82 and PR #78. */}
+        <section data-testid="privacy-feedback">
+          <h2 id="feedback-form">Feedback form</h2>
+          <p data-testid="privacy-feedback-sent">
+            <strong>What the form sends.</strong> The private feedback form on streampulse.stream
+            needs no account. When you press Send feedback, the website sends the StreamPulse API the
+            kind of feedback you picked, your message, a subject line taken from the start of the
+            message, a random request ID that keeps a retry from creating a second report, your tick
+            on “I consent to submitting this text to StreamPulse support”, and the bot-check token
+            described below. If you type an email for a reply, it is sent only together with your
+            tick on “I consent to being contacted at this email about this report”. The form doesn't
+            ask for your Twitch name or account, attaches no diagnostics, page address or browser
+            details, and doesn't save your message in browser storage. The Copy safe diagnostics
+            button, shown only when the form is unavailable, copies a summary to your clipboard and
+            sends nothing.
+          </p>
+          <p data-testid="privacy-feedback-stored">
+            <strong>What StreamPulse stores.</strong> The StreamPulse API saves each report as a case
+            in its database: a case ID, the kind, the subject line, your message, the reply email if
+            you gave one, whether each consent box was ticked, the request ID, the case state and the
+            time it arrived. A second copy of the case ID, kind, subject, message and reply email is
+            saved with the case's email delivery record and stays there after the email is sent. If
+            delivery still fails after about two days of retries, a third copy is kept in a
+            failed-delivery record. Your IP address is not stored with the case.
+          </p>
+          <p data-testid="privacy-feedback-delivery">
+            <strong>Who reads it.</strong> The case is sent by email, through StreamPulse's outgoing
+            mail service, to the StreamPulse team's private support inbox. The email holds the case
+            ID, the kind, the subject and your message, and, if you gave a reply email, uses it as
+            the reply-to address so the team can answer. Your reply email is used only to answer
+            about that report. Nothing sent through the form is posted publicly.
+          </p>
+          <p data-testid="privacy-feedback-turnstile">
+            <strong>Bot check.</strong> The form uses Cloudflare Turnstile to tell people from bots.
+            The page loads Turnstile from <code>challenges.cloudflare.com</code>, and Cloudflare
+            processes your IP address and signals from your browser to run the check; it usually
+            shows nothing unless it needs you to click. Turnstile gives the page a one-time token,
+            which the StreamPulse API checks with Cloudflare and never logs or stores.
+          </p>
+          <p data-testid="privacy-feedback-logs">
+            <strong>Abuse limits and logs.</strong> To limit abuse, the API counts reports per
+            network address in short-lived counters that expire within about ten minutes. Its logs
+            and metrics for the form record counts and fixed status codes only, never your message,
+            your email or the Turnstile token.
+          </p>
+          <p data-testid="privacy-feedback-retention">
+            <strong>How long it's kept.</strong> Automatic deletion of feedback reports is switched
+            off until StreamPulse chooses a retention period. Until then, the stored case, its
+            delivery record and any failed-delivery record are kept until they are deleted by hand,
+            and the email in the support inbox is kept until the team deletes it. When a period is
+            chosen, this page will say what it is.
+          </p>
+          <p data-testid="privacy-feedback-deletion">
+            <strong>Asking for deletion.</strong> To have a report deleted, email{' '}
+            <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a> with the case
+            ID shown after you sent it, or from the reply email you gave. Deletion is done by hand
+            and covers the stored case, its delivery records and the email in the support inbox.
+          </p>
+        </section>
+
         <h2>What the Chrome extension observes on Twitch</h2>
         <ul>
           <li>The active Twitch page URL, channel login, and stream or VOD identifiers for the tab you are viewing.</li>
@@ -322,6 +389,11 @@ export default function Privacy() {
             StreamPulse email are not rewritten through a tracking domain and opening an email is not
             recorded.
           </li>
+          <li data-testid="privacy-third-party-turnstile">
+            <strong>Cloudflare Turnstile (feedback form bot check)</strong> — only on the feedback
+            form. Cloudflare processes your IP address and browser signals to tell people from bots,
+            as described under Feedback form.
+          </li>
           <li>
             <strong>Stripe (payments)</strong> — only if you subscribe to Supporter. Stripe receives
             your payment details directly and acts as the payment processor; StreamPulse receives
@@ -398,6 +470,11 @@ export default function Privacy() {
           sign-in challenges expire on their own after 15 minutes. Cancelling a subscription does not
           delete the account, and deleting an account does not by itself cancel a subscription: see{' '}
           <Link to={REFUNDS_PATH}>cancellation and refunds</Link>.
+        </p>
+
+        <p>
+          <strong>Feedback reports.</strong> How long reports sent through the feedback form are
+          kept, and how to ask for one to be deleted, is described under Feedback form above.
         </p>
 
         <h2>Chrome Web Store limited use</h2>
