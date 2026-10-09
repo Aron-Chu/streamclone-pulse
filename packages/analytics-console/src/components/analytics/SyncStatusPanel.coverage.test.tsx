@@ -18,6 +18,6 @@ describe('SyncStatusPanel coverage labels', () => {
       topEmotes: [],
       chatCoveragePct: coveragePct,
     }} />)
-    expect(screen.getByText(`${expected} of stream minutes`)).not.toBeNull()
+    expect(screen.getByText(`${expected} of tracked minutes`)).not.toBeNull()
   })
 })
