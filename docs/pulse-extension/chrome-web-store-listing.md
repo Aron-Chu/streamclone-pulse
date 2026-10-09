@@ -105,10 +105,12 @@ Show Twitch chat and emote activity for the stream or VOD you are watching, in a
 | Store icon | `store/cws/icons/icon128.png` | 128×128 RGBA |
 | Small promo tile | `store/cws/icons/small-promo-440x280.png` | 440×280 |
 
-The 0.2.2 screenshots were regenerated on 2026-10-09 from the extension RC
-build on the mocked Twitch fixture (synthetic channel, no real streamer or
-email), by `tests/e2e/specs/cws-extension-screenshots.mocked.spec.ts`. Mocked
-captures are not live evidence.
+The five 0.2.2 screenshots (live chart, Top Moments card, VOD recap, quick
+settings, Help & Feedback) were regenerated on 2026-10-09 from the extension
+RC on the mocked Twitch fixture (synthetic channel, no real streamer or email)
+by `tests/e2e/specs/cws-extension-screenshots.mocked.spec.ts`; see
+`store/cws/README.md` for which build each frame used. Mocked captures are not
+live evidence.
 
 ---
 

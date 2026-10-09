@@ -44,6 +44,30 @@ async function hideAllScrollbars(page: import('@playwright/test').Page) {
   }, PULSE_ROOT_ID)
 }
 
+/**
+ * A caption on the fixture page's stand-in video area, outside the extension:
+ * the panel is only the right 340 px of a 1280 px frame, so each store frame
+ * says in one line what it shows. Nothing inside the extension is altered.
+ */
+async function addCaption(page: import('@playwright/test').Page, title: string, body: string) {
+  await page.evaluate(({ title, body }) => {
+    const box = document.createElement('div')
+    box.setAttribute('data-cws-caption', 'true')
+    box.style.cssText = 'position:fixed;left:72px;top:50%;transform:translateY(-50%);max-width:760px;z-index:1;font-family:Inter,"Segoe UI",system-ui,sans-serif;color:#fff;pointer-events:none'
+    const mark = document.createElement('div')
+    mark.textContent = 'StreamPulse'
+    mark.style.cssText = 'font-size:20px;font-weight:700;letter-spacing:0.02em;color:#a78bfa;margin-bottom:18px'
+    const heading = document.createElement('div')
+    heading.textContent = title
+    heading.style.cssText = 'font-size:52px;line-height:1.1;font-weight:700;margin-bottom:18px'
+    const line = document.createElement('div')
+    line.textContent = body
+    line.style.cssText = 'font-size:24px;line-height:1.4;font-weight:400;color:#d4d4d8'
+    box.append(mark, heading, line)
+    document.body.append(box)
+  }, { title, body })
+}
+
 async function writeExactStoreShot(page: import('@playwright/test').Page, filename: string) {
   mkdirSync(OUT, { recursive: true })
   await page.setViewportSize({ width: W, height: H })
@@ -148,11 +172,12 @@ test.describe('CWS extension-on-Twitch screenshots', () => {
     await assertPulseShadowContains(extension.page, /Viewers|Chat \/ min|Collecting|1,180|Just Chatting/i)
     // Bring the chart into view and point at a minute, so the readout shows.
     const chart = extension.page.locator(`#${PULSE_ROOT_ID} svg[data-testid="pulse-overview-chart"]`)
-    await chart.evaluate(element => element.scrollIntoView({ block: 'center' }))
+    await chart.evaluate(element => element.scrollIntoView({ block: 'end' }))
     await extension.page.waitForTimeout(300)
     const box = await chart.boundingBox()
-    if (box) await extension.page.mouse.move(box.x + box.width * 0.62, box.y + box.height * 0.45)
+    if (box) await extension.page.mouse.move(box.x + box.width * 0.94, box.y + box.height * 0.6)
     await extension.page.waitForTimeout(400)
+    await addCaption(extension.page, 'See what Twitch chat reacted to', 'A live Pulse chart of chat, emote and viewer activity, right beside Twitch chat.')
     await writeExactStoreShot(extension.page, '01-live-pulse.png')
   })
 
@@ -179,6 +204,7 @@ test.describe('CWS extension-on-Twitch screenshots', () => {
     await extension.page.waitForTimeout(400)
     await heading.evaluate(element => element.scrollIntoView({ block: 'start' }))
     await extension.page.waitForTimeout(300)
+    await addCaption(extension.page, 'Jump to the moments that mattered', 'Top Moments ranks the strongest reactions. Pick one to open its card and jump in the player.')
     await writeExactStoreShot(extension.page, '02-top-moments.png')
   })
 
@@ -196,6 +222,7 @@ test.describe('CWS extension-on-Twitch screenshots', () => {
     await openTwitchVod(extension.page)
     await waitForPulseRoot(extension.page, 30_000)
     await assertPulseShadowContains(extension.page, /Pulse|VOD|Replay|Past streams|Chat|STREAM RECAP|Peak/i)
+    await addCaption(extension.page, 'Recaps for past streams', 'Replay Pulse charts the chat and emotes of a broadcast StreamPulse tracked.')
     await writeExactStoreShot(extension.page, '03-vod-replay.png')
   })
 
@@ -219,6 +246,7 @@ test.describe('CWS extension-on-Twitch screenshots', () => {
     await expect(card).toBeVisible()
     // The Supporter card's chat stage is scripted motion: let it draw its first lines.
     await extension.page.waitForTimeout(2500)
+    await addCaption(extension.page, 'Settings one click away', 'See what Pulse is charting, and preview Pulse Supporter cosmetics. Sign-ups are not open yet.')
     await writeExactStoreShot(extension.page, '04-quick-settings.png')
   })
 

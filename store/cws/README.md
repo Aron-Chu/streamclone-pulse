@@ -80,9 +80,14 @@ common reject / blank-toolbar failure mode. `icons:cws` asserts PNG color type 6
 
 ## Screenshots (exact 1280×800, full bleed, no scrollbars)
 
-**0.2.2 upload set**, regenerated 2026-10-09 from the extension RC build on the
-mocked Twitch fixture (see `screenshots/manifest.json`). Every frame is a
-synthetic fixture channel: no real streamer, face or email.
+**0.2.2 upload set**, regenerated 2026-10-09 from the extension RC (all 0.2.2
+PRs merged locally) on the mocked Twitch fixture (see `screenshots/manifest.json`).
+Frames 01-04 use the RC's development-target `dist/`, the only target the
+mocked Twitch harness runs (the panel code is the store build's); frame 05 is
+the store-target (`EXTENSION_TARGET=cws`) settings page, so it has no Developer
+section. Each frame has a one-line caption on the fixture's stand-in video
+area, outside the extension. Every frame is a synthetic fixture channel: no
+real streamer, face or email.
 
 | File | Content |
 |------|---------|
