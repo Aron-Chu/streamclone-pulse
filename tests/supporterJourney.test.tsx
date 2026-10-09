@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import SUPPORTER_PERKS from '../src/shared/supporter-perks.json'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -848,20 +849,19 @@ describe('notices beside the action that caused them', () => {
 })
 
 describe('the offer names what the banner sells', () => {
-  // The settings banner sells three perks: title paint, the tenure crest and
-  // emote rain. The "You get" line above the purchase button names each one.
+  // The offer lists every perk from the one perk list the settings banner,
+  // quick settings, /supporter and the Terms share, in the same order.
   it.each([
     ['signed out', () => ({ state: 'signed_out' }) as SupporterAccountState, () => ({ state: 'not_linked' }) as SupporterEntitlement],
     ['linked without a membership', () => linked, () => ready('none')],
-  ] as const)('lists title paint, the tenure crest and emote rain when %s', async (_name, account, entitlement) => {
+  ] as const)('lists every perk from the shared list when %s', async (_name, account, entitlement) => {
     const view = await mount({ account, entitlement, billing: () => ({ state: 'idle' }) })
     try {
-      const youGet = [...view.host.querySelectorAll('.pulse-supporter-detail')].find(line => line.querySelector('b')?.textContent === 'You get')?.textContent ?? ''
-      expect(youGet).toMatch(/header accent/)
-      expect(youGet).toMatch(/accent finishes/)
-      expect(youGet).toMatch(/tenure crest beside your panel title that grows with your support/)
-      expect(youGet).toMatch(/emote rain behind your Pulse panel/)
-      expect(youGet).not.toMatch(/signature/i)
+      const list = view.host.querySelector<HTMLElement>('[data-supporter-perks-list="true"]')!
+      expect(list.querySelector('b')?.textContent).toBe('You get')
+      expect([...list.querySelectorAll('li')].map(item => item.textContent)).toEqual(SUPPORTER_PERKS.names.map(name => `${name}: ${SUPPORTER_PERKS.details[name as keyof typeof SUPPORTER_PERKS.details]}`))
+      expect(list.textContent).toContain(SUPPORTER_PERKS.onlyYou)
+      expect(list.textContent).not.toMatch(/signature|header accent|concept/i)
     } finally { view.cleanup() }
   })
 })
@@ -885,7 +885,7 @@ describe('the price comes before the button that buys it', () => {
       const terms = view.host.querySelector<HTMLElement>('.pulse-supporter-terms')!
       expect(terms.textContent).toContain('US$4.99 / month')
       expect(terms.textContent).toContain('renews monthly until you cancel')
-      const youGet = [...view.host.querySelectorAll('.pulse-supporter-detail')].find(line => line.querySelector('b')?.textContent === 'You get')!
+      const youGet = view.host.querySelector<HTMLElement>('[data-supporter-perks-list="true"]')!
       for (const line of [terms, youGet]) expect(line.compareDocumentPosition(primary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
       // Beside the button's own column, not after the row that holds it.
       expect(terms.closest('.pulse-journey-main')).not.toBeNull()

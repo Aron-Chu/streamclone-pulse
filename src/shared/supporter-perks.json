@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "names": [
+    "Title paint",
+    "Tenure crest",
+    "Emote rain",
+    "Supporter card"
+  ],
+  "details": {
+    "Title paint": "your Pulse panel title painted in a Glass, Etched or Halo finish, with the wave and sheen you pick.",
+    "Tenure crest": "a crest beside your painted title that levels up at 3, 6, 12 and 24 months of support.",
+    "Emote rain": "7TV emotes behind your Pulse panel header, still or falling: the 7TV header backdrop.",
+    "Supporter card": "your own crest and paint on the Supporter card in quick settings and in settings, as private recognition for supporting."
+  },
+  "onlyYou": "Only you see them, in your own StreamPulse extension. Nothing is added to chat, and nobody else sees them.",
+  "moved": "Emote rain, the 7TV header backdrop, was free up to extension 0.2.1. From 0.2.2 it is a Supporter perk, and a backdrop you saved is kept for when you support. No other free feature moved behind Supporter."
+}
