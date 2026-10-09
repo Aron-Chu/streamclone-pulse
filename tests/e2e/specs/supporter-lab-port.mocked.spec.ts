@@ -99,7 +99,19 @@ test('quick settings: non-Supporters get Your Line · Anatomy, injected on deman
   await page.waitForTimeout(1600)
   await capture(card, info, 'ext-card-anatomy-rest.png')
 
+  // A peak (the lab's timer: 10 s in): three quick lines, then yours.
+  await expect(stage).toHaveAttribute('data-peaks', '1', { timeout: 15_000 })
+  await expect(stage.locator('.spk-cl.spk-sup', { hasText: 'that peak was mine' }).last()).toBeAttached()
+  await expect(stage.locator('.spk-callouts, .spk-co')).toHaveCount(0)
+  await page.waitForTimeout(500)
+  await capture(card, info, 'ext-card-anatomy-peak.png')
+  await expectCannedChat(stage)
+  expect(await card.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+
   // Hover brings your line in last and freezes chat; no labels are drawn over it.
+  // Checked after the first peak: a peak's lines arrive even while hovered,
+  // and the next one is at least 17 s away. The stage keeps up to seven
+  // lines, so a line arriving while frozen would change the count.
   await card.hover()
   await expect(stage.locator('.spk-callouts, .spk-co')).toHaveCount(0)
   await expect(stage.locator('.spk-cl').last()).toHaveClass(/spk-sup/)
@@ -110,15 +122,6 @@ test('quick settings: non-Supporters get Your Line · Anatomy, injected on deman
   expect(await stage.locator('.spk-cl').count()).toBe(frozen)
   await expect(stage.locator('.spk-cl').last()).toHaveClass(/spk-sup/)
   await page.mouse.move(5, 5)
-
-  // A peak (the lab's timer: 10 s in): three quick lines, then yours.
-  await expect(stage).toHaveAttribute('data-peaks', '1', { timeout: 15_000 })
-  await expect(stage.locator('.spk-cl.spk-sup', { hasText: 'that peak was mine' }).last()).toBeAttached()
-  await expect(stage.locator('.spk-callouts, .spk-co')).toHaveCount(0)
-  await page.waitForTimeout(500)
-  await capture(card, info, 'ext-card-anatomy-peak.png')
-  await expectCannedChat(stage)
-  expect(await card.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
 
   // Scrolled out of the panel, the stage stops scheduling frames.
   await page.setViewportSize({ width: 1440, height: 520 })
