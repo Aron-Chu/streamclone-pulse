@@ -18,7 +18,17 @@ interface SteadinessLog {
   hostRemovals: number
   shellRemovals: number
   entranceAnimations: string[]
+  /** Frames with no connected live chart svg in the panel. */
+  chartMissingFrames: number
+  /** Frames whose header status was not the live one, with what it said instead. */
+  statusChangedFrames: number
+  statusesSeen: string[]
 }
+
+/** The header status pill; "Live chart" while the live panel is up. */
+const STATUS_PILL = '.pulse-personal-banner .pulse-banner-copy span[aria-label]'
+const LIVE_CHART = 'svg[data-testid="pulse-overview-chart"]'
+const LIVE_STATUS = 'Live chart'
 
 test('live: side nav collapse/expand, a whisper, a Twitch popup and an ad do not move, blink or re-animate the panel', async ({
   extension, prepare, evidence,
@@ -28,7 +38,8 @@ test('live: side nav collapse/expand, a whisper, a Twitch popup and an ad do not
   await openTwitchChannel(page)
   await waitForPulseRoot(page)
   const root = page.locator(`#${PULSE_ROOT_ID}`)
-  await expect(root.locator('svg[data-testid="pulse-overview-chart"]')).toBeVisible()
+  await expect(root.locator(LIVE_CHART)).toBeVisible()
+  await expect(root.locator(STATUS_PILL)).toHaveAttribute('aria-label', LIVE_STATUS)
   // Twitch's left side nav, expanded, as the page normally has it.
   await page.evaluate(() => {
     const nav = document.createElement('nav')
@@ -41,10 +52,13 @@ test('live: side nav collapse/expand, a whisper, a Twitch popup and an ad do not
   await page.waitForTimeout(1_500)
   await info.attach('steadiness-before.png', { body: await page.screenshot(), contentType: 'image/png' })
 
-  await page.evaluate(rootId => {
+  await page.evaluate(({ rootId, statusPill, liveChart, liveStatus }) => {
     const host = document.getElementById(rootId)!
     const shadow = host.shadowRoot!
-    const log = { frames: 0, maxDrift: 0, hiddenFrames: 0, hostRemovals: 0, shellRemovals: 0, entranceAnimations: [] as string[] }
+    const log = {
+      frames: 0, maxDrift: 0, hiddenFrames: 0, hostRemovals: 0, shellRemovals: 0, entranceAnimations: [] as string[],
+      chartMissingFrames: 0, statusChangedFrames: 0, statusesSeen: [] as string[],
+    }
     ;(window as unknown as { __steady: typeof log }).__steady = log
     const start = host.getBoundingClientRect()
     const shell = shadow.querySelector('.pulse-shell')
@@ -70,10 +84,18 @@ test('live: side nav collapse/expand, a whisper, a Twitch popup and an ad do not
       log.maxDrift = Math.max(log.maxDrift, Math.abs(now.x - start.x), Math.abs(now.y - start.y), Math.abs(now.width - start.width), Math.abs(now.height - start.height))
       const style = getComputedStyle(host)
       if (!host.isConnected || style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) < 1 || now.width === 0) log.hiddenFrames += 1
+      // The host can stay put while its content flips to a waiting, loading
+      // or offline state; check the live chart and live status every frame.
+      if (!shadow.querySelector(liveChart)?.isConnected) log.chartMissingFrames += 1
+      const status = shadow.querySelector(statusPill)?.getAttribute('aria-label') ?? '(no status)'
+      if (status !== liveStatus) {
+        log.statusChangedFrames += 1
+        if (!log.statusesSeen.includes(status)) log.statusesSeen.push(status)
+      }
       requestAnimationFrame(frame)
     }
     requestAnimationFrame(frame)
-  }, PULSE_ROOT_ID)
+  }, { rootId: PULSE_ROOT_ID, statusPill: STATUS_PILL, liveChart: LIVE_CHART, liveStatus: LIVE_STATUS })
 
   const nav = page.locator('#side-nav')
   // Collapse and expand the side nav twice.
@@ -139,7 +161,10 @@ test('live: side nav collapse/expand, a whisper, a Twitch popup and an ad do not
   expect(log.entranceAnimations, 'slide-in replayed').toEqual([])
   expect(log.hiddenFrames, 'panel blinked').toBe(0)
   expect(log.maxDrift, 'panel moved or resized').toBeLessThanOrEqual(1)
-  // Still the live panel with its chart, not a fallback state.
-  await expect(root.locator('svg[data-testid="pulse-overview-chart"]')).toBeVisible()
+  // The panel stayed the live panel on every frame, not only at the end.
+  expect(log.chartMissingFrames, 'live chart went missing').toBe(0)
+  expect(log.statusesSeen, 'header left the live status').toEqual([])
+  expect(log.statusChangedFrames, 'header left the live status').toBe(0)
+  await expect(root.locator(LIVE_CHART)).toBeVisible()
   assertNoUncaughtErrors(evidence)
 })
