@@ -950,7 +950,8 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           return
         }
         case 'SUPPORTER_APPEARANCE': {
-          const entitlement = await supporterAccount.entitlement()
+          // Every visible Twitch tab asks about once a minute; they share the worker's read.
+          const entitlement = await supporterAccount.cachedEntitlement()
           sendResponse(await supporterAppearanceReply(entitlement, () => getSupporterPaintStyle().catch(() => DEFAULT_SUPPORTER_PAINT)) satisfies BackgroundResponse)
           return
         }
