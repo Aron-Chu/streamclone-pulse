@@ -95,6 +95,9 @@ function readoutCount(value: number | null | undefined): string {
   return value == null ? '—' : count(value)
 }
 
+/** The standard small bordered button, with a visible disabled state. */
+const DATA_PAGER_BUTTON_CLASS = 'min-h-11 rounded border border-white/10 px-3 font-bold text-zinc-300 transition hover:border-white/20 hover:bg-white/[0.06] hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-white/10 disabled:hover:bg-transparent'
+
 /** How far back the resting readout may look for a minute with a viewer sample. */
 const RESTING_VIEWER_LOOKBACK_MS = 15 * 60_000
 
@@ -998,15 +1001,37 @@ function AnalyticsChart({
         {selectedDetail ? <div data-chart-selected-detail data-chart-action="true">{selectedDetail}</div> : null}
       </div>
 
-      <details className="mt-3 rounded border border-white/10 bg-black/20 px-3 py-2" data-chart-data-alternative data-chart-action="true">
-        <summary className="cursor-pointer text-xs font-bold text-zinc-300">
+      <details className="group mt-3 rounded border border-white/10 bg-black/20 px-3 py-2" data-chart-data-alternative data-chart-action="true">
+        <summary className="cursor-pointer gap-1.5 text-xs font-bold text-zinc-300">
+          {/* The portal lays the summary out as flex, which drops the native marker. */}
+          <span aria-hidden="true" className="inline-block text-zinc-500 transition-transform group-open:rotate-90">▸</span>
           View measured minute data ({pagedDataRows.length} of {tableRollups.length} minutes)
         </summary>
         {tableRollups.length > 120 ? (
-          <div className="mt-2 flex items-center justify-between gap-2 text-xs text-zinc-400">
-            <button type="button" disabled={boundedDataPage >= dataPageCount - 1} onClick={() => setDataPage(page => Math.min(dataPageCount - 1, page + 1))}>Earlier minutes</button>
-            <span>Page {boundedDataPage + 1} of {dataPageCount}</span>
-            <button type="button" disabled={boundedDataPage === 0} onClick={() => setDataPage(page => Math.max(0, page - 1))}>Later minutes</button>
+          <div className="mt-2 flex items-center justify-between gap-2 text-xs text-zinc-400" data-chart-data-pager>
+            <button
+              type="button"
+              className={DATA_PAGER_BUTTON_CLASS}
+              disabled={boundedDataPage >= dataPageCount - 1}
+              onClick={() => setDataPage(page => Math.min(dataPageCount - 1, page + 1))}
+            >
+              Earlier minutes
+            </button>
+            {/* Pages count from the stream start, so the newest page is "N of N". */}
+            <span className="text-center tabular-nums" data-chart-data-page-label>
+              {pagedDataRows.length > 0
+                ? `${vodClock(pagedDataRows[0]!.minuteTs, streamStartedAt)}–${vodClock(pagedDataRows[pagedDataRows.length - 1]!.minuteTs, streamStartedAt)} · `
+                : ''}
+              {dataPageCount - boundedDataPage} of {dataPageCount}
+            </span>
+            <button
+              type="button"
+              className={DATA_PAGER_BUTTON_CLASS}
+              disabled={boundedDataPage === 0}
+              onClick={() => setDataPage(page => Math.max(0, page - 1))}
+            >
+              Later minutes
+            </button>
           </div>
         ) : null}
         <div className="mt-2 max-h-72 overflow-auto">

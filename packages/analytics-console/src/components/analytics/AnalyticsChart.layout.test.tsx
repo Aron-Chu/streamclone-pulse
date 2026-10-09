@@ -65,9 +65,20 @@ describe('AnalyticsChart stable regions', () => {
     expect(alternative?.querySelectorAll('tbody tr')).toHaveLength(121)
     expect(alternative?.textContent).toContain('120 of 180')
     expect(alternative?.querySelector('[data-chart-selected-data-row]')?.textContent).toContain('(pinned)')
+    // Pages are named by their minutes and count from the stream start, so the
+    // newest page (shown first) is the last one.
+    const pageLabel = () => alternative?.querySelector('[data-chart-data-page-label]')?.textContent
+    expect(pageLabel()).toBe('01:00:00–02:59:00 · 2 of 2')
+    const later = screen.getByRole('button', { name: 'Later minutes' }) as HTMLButtonElement
+    expect(later.disabled).toBe(true)
+    expect(later.className).toContain('disabled:opacity-40')
+    expect(later.className).toContain('border-white/10')
     fireEvent.click(screen.getByRole('button', { name: 'Earlier minutes' }))
-    expect(alternative?.textContent).toContain('Page 2 of 2')
+    expect(pageLabel()).toBe('00:00:00–00:59:00 · 1 of 2')
+    expect((screen.getByRole('button', { name: 'Earlier minutes' }) as HTMLButtonElement).disabled).toBe(true)
     expect(alternative?.querySelectorAll('tbody tr')).toHaveLength(60)
+    // The summary shows a disclosure marker; the portal's flex summary hides the native one.
+    expect(alternative?.querySelector('summary > [aria-hidden="true"]')?.textContent).toBe('▸')
     expect(container.querySelector('[data-chart-selection-announcement]')?.textContent).toContain('Selected 00:10:00–00:11:00')
   })
 
