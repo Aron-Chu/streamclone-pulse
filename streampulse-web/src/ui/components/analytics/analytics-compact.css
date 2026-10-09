@@ -2,12 +2,17 @@
  * Compact desktop density for the /analytics hub and channel/stream console.
  *
  * Why: at 100% browser zoom the hub spent ~1.2k CSS px on header chrome before
- * the Global Activity plot started, so a 1272px-tall desktop window showed no
- * chart at all. At 75% zoom (the owner's preferred reading) the same layout
- * fits 1696 CSS px per screen and the plot is on the first screen. This file
- * removes the excess vertical chrome instead of shrinking the page: no CSS
- * zoom, no transforms, body/label sizes unchanged (12px minimum label kept),
- * 44px interactive targets unchanged, chart heights (420/360) unchanged.
+ * the Global Activity plot started. The owner prefers 75% zoom. His Chrome runs
+ * with Windows display scaling at 125%, so a maximized window is about
+ * 2048x1018 CSS px at 100% and 2731x1357 CSS px at 75%. Zooming out therefore
+ * does two things: it gives 33% more CSS height per screen, and it widens the
+ * hub past the 2200px frame cap (center column 1400 -> 1552 CSS px). This
+ * file addresses only the vertical chrome; it does not reproduce the wider
+ * 75% layout, and on that window the stream page still shows less of its
+ * chart than at 75%.
+ * It removes chrome instead of shrinking the page: no CSS zoom, no
+ * transforms, body/label sizes unchanged (12px minimum label kept), 44px
+ * interactive targets unchanged, chart heights (420/360) unchanged.
  *
  * Scope: desktop widths only (>=1100px, where the sidebar layout starts).
  * Narrower layouts keep their existing mobile/tablet rules. One exception
