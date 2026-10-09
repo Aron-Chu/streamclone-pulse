@@ -32,6 +32,21 @@ export function useSmoothedScalar(
 
   targetRef.current = target
 
+  // Rising edge of `enabled` (e.g. a pin band appearing): start at the target.
+  // While disabled the value is parked wherever the caller's fallback put it
+  // (the plot's left edge for a pin), and easing from there swept a fresh pin
+  // in from the side. Adjusting state during render (React's derived-state
+  // pattern) means no frame is painted at the parked value. Smoothing between
+  // two targets while enabled is unchanged.
+  const [wasEnabled, setWasEnabled] = useState(enabled)
+  if (wasEnabled !== enabled) {
+    setWasEnabled(enabled)
+    if (enabled) {
+      displayRef.current = target
+      setDisplay(target)
+    }
+  }
+
   const settleMs = Math.max(1, options.settleMs ?? DEFAULT_SETTLE_MS)
   const snapEpsilon = Math.max(0.001, options.snapEpsilon ?? SNAP_EPSILON)
 
