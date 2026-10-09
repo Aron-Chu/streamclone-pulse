@@ -5253,47 +5253,55 @@ button.hub-live-wire__chip {
   margin-top: 0;
 }
 
-.figma-global-activity__hub-chart .hx-plot-stack__row,
-.figma-global-activity__hub-chart .hx-provider-lane {
+/* The hub chart host is also `.hubx`. These overrides are compounded on
+   `.hubx.figma-global-activity__hub-chart` so they beat hub.css's same-weight
+   `.hubx …` rules whichever CSS chunk loads last. */
+.hubx.figma-global-activity__hub-chart .hx-plot-stack__row,
+.hubx.figma-global-activity__hub-chart .hx-provider-lane {
   gap: 0.35rem;
 }
 
-.figma-global-activity__hub-chart .hx-chart2 {
+.hubx.figma-global-activity__hub-chart .hx-chart2 {
   min-height: 220px;
 }
 
+/* flex-wrap stays at the lower weight on purpose: hub-public-audit.css's
+   `.hubx.figma-global-activity__hub-chart .hx-chart-header { flex-wrap: wrap }`
+   already wins it at every width, independent of load order. */
 .figma-global-activity__hub-chart .hx-chart-header {
   flex-wrap: nowrap;
 }
 
-/* The hub chart host is also `.hubx`. Compound it so this header layout beats
-   hub.css's `.hubx .hx-chart-header` rules whichever CSS chunk loads last. */
 .hubx.figma-global-activity__hub-chart .hx-chart-header {
   margin-bottom: 0.35rem;
   align-items: flex-start;
   gap: 0.45rem 0.55rem;
 }
 
-.figma-global-activity__hub-chart .hx-chart-header .hx-chart-actions {
+.hubx.figma-global-activity__hub-chart .hx-chart-header .hx-chart-actions {
   justify-content: flex-end;
 }
 
-.figma-global-activity__hub-chart .hx-legend {
+.hubx.figma-global-activity__hub-chart .hx-legend {
   gap: 0.55rem;
   font-size: 0.75rem;
 }
 
-.figma-global-activity__hub-chart .hx-chart-summary {
+.hubx.figma-global-activity__hub-chart .hx-chart-summary {
   margin: 0.15rem 0 0.1rem;
   text-align: left;
   font-size: 0.75rem;
 }
 
-.figma-global-activity__hub-chart .hx-chart-axis-labels {
-  margin: 0.05rem 0 0.2rem;
+/* margin-top stays with hub.css's `.hubx .hx-plot-stack .hx-chart-axis-labels
+   { margin-top: 0 }`, which wins it in production. */
+.hubx.figma-global-activity__hub-chart .hx-chart-axis-labels {
+  margin-right: 0;
+  margin-bottom: 0.2rem;
+  margin-left: 0;
 }
 
-.figma-global-activity__hub-chart .hx-plot-stack .hx-axis {
+.hubx.figma-global-activity__hub-chart .hx-plot-stack .hx-axis {
   margin-top: 0.05rem;
 }
 
@@ -5303,7 +5311,7 @@ button.hub-live-wire__chip {
   }
 }
 
-.figma-global-activity__hub-chart .hx-provider-lanes {
+.hubx.figma-global-activity__hub-chart .hx-provider-lanes {
   margin-top: 0.45rem;
   padding-top: 0.4rem;
 }
