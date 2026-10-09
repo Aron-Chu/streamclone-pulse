@@ -2,6 +2,7 @@ import { AccountError, accountRequest } from './accountApi'
 import { accountBillingReturnPath } from './accountBillingReturn'
 import { refreshAccountSession, rememberTwitchIdentity, type AccountProfile } from './accountSession'
 import { announceAccountSignedIn } from './accountSessionSignal'
+import { clearBillingStepUp, completeBillingStepUp } from './accountStepUp'
 import { TWITCH_CALLBACK_PATH, TWITCH_STATE, takeTwitchCallback } from './twitchCallback'
 import { twitchProfileImageRendition } from './twitchProfileImage'
 
@@ -142,6 +143,10 @@ function clearPendingFlow(): void {
  * when it passes twitchReturnPath; a link flow always returns to settings.
  */
 export async function startTwitchFlow(options: { purpose: TwitchPurpose; returnTo?: unknown; forceVerify?: boolean }): Promise<string> {
+  return (await openTwitchFlow(options)).authorizeUrl
+}
+
+async function openTwitchFlow(options: { purpose: TwitchPurpose; returnTo?: unknown; forceVerify?: boolean }): Promise<{ authorizeUrl: string; flowId: string }> {
   const { purpose } = options
   const result = await accountRequest('/auth/twitch/start', { purpose, ...(options.forceVerify ? { forceVerify: true } : {}) })
   const { flowId, flowSecret } = result
@@ -155,12 +160,18 @@ export async function startTwitchFlow(options: { purpose: TwitchPurpose; returnT
   const expiresAt = Number.isFinite(serverExpiry) && serverExpiry > now ? Math.min(serverExpiry, now + MAX_FLOW_MS) : now + MAX_FLOW_MS
   const returnTo = purpose === 'link' ? TWITCH_DEFAULT_RETURN : twitchReturnPath(options.returnTo) ?? TWITCH_DEFAULT_RETURN
   savePendingFlow({ flowId, flowSecret, purpose, returnTo, expiresAt })
-  return authorizeUrl
+  return { authorizeUrl, flowId }
 }
 
-/** Starts a flow and leaves for Twitch. */
-export async function beginTwitchFlow(options: { purpose: TwitchPurpose; returnTo?: unknown; forceVerify?: boolean }): Promise<void> {
-  window.location.assign(await startTwitchFlow(options))
+/**
+ * Starts a flow and leaves for Twitch. `beforeLeave` runs with the new flow's
+ * ID once it is saved, so a page can tie its own note to this exact flow.
+ */
+export async function beginTwitchFlow(options: { purpose: TwitchPurpose; returnTo?: unknown; forceVerify?: boolean; beforeLeave?: (flowId: string) => void }): Promise<void> {
+  const { beforeLeave, ...flowOptions } = options
+  const { authorizeUrl, flowId } = await openTwitchFlow(flowOptions)
+  beforeLeave?.(flowId)
+  window.location.assign(authorizeUrl)
 }
 
 let completion: Promise<TwitchCompletion> | null = null
@@ -186,15 +197,20 @@ async function finishTwitchCallback(): Promise<TwitchCompletion> {
   // cancel a sign-in still in progress.
   if (!flow || callback.state !== flow.flowId) return fail('state_mismatch')
   clearPendingFlow()
-  if (callback.kind === 'error') return fail(callback.error === 'access_denied' ? 'access_denied' : 'twitch_error')
-  if (flow.expiresAt <= Date.now()) return fail('flow_invalid_or_expired')
+  // A billing "Confirm it's you" note for this flow counts only if this
+  // sign-in finishes; every other ending drops it.
+  const failFlow = (code: TwitchErrorCode): TwitchCompletion => { clearBillingStepUp(flow.flowId); return fail(code) }
+  if (callback.kind === 'error') return failFlow(callback.error === 'access_denied' ? 'access_denied' : 'twitch_error')
+  if (flow.expiresAt <= Date.now()) return failFlow('flow_invalid_or_expired')
   try {
     const path = purpose === 'link' ? '/identities/twitch/link' : '/auth/twitch/complete'
     const result = await accountRequest(path, { flowId: flow.flowId, flowSecret: flow.flowSecret, idToken: callback.idToken })
     const status = purpose === 'link' ? 'linked' : 'signed_in'
-    if (result.status !== status) return fail('unavailable')
+    if (result.status !== status) return failFlow('unavailable')
     const profile = twitchProfile(result.profile)
     rememberTwitchIdentity({ ...profile, via: purpose === 'link' ? 'link' : 'signin' })
+    if (status === 'signed_in') completeBillingStepUp(flow.flowId)
+    else clearBillingStepUp(flow.flowId)
     // A tab waiting on this sign-in (an extension approval or billing) re-checks too.
     if (status === 'signed_in') announceAccountSignedIn()
     await refreshAccountSession()
@@ -203,7 +219,7 @@ async function finishTwitchCallback(): Promise<TwitchCompletion> {
     const code = twitchErrorCode(error)
     // Linking an account that already has Twitch tells us it is linked.
     if (code === 'account_already_linked') rememberTwitchIdentity({ via: 'link' })
-    return fail(code)
+    return failFlow(code)
   }
 }
 

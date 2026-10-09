@@ -126,6 +126,9 @@ describe('Supporter legal copy', () => {
     expect(billing).toMatch(/payment notifications to StreamPulse\s+can include that email, your name and billing address/)
     expect(billing).toMatch(/removes those details before saving it/)
     expect(billing).toMatch(/never matches accounts by email/)
+    // Stripping customer_* fields (backend #162) and the inbox prune (#150) are not
+    // on backend master yet, so this handling is stated for when sign-ups open.
+    expect(billing).toMatch(/Once sign-ups open, StreamPulse\s+checks each notification's signature/)
     const twitch = screen.getByTestId('privacy-continue-with-twitch').textContent ?? ''
     expect(twitch).toMatch(/keyed hash of your Twitch user ID/)
     expect(twitch).toMatch(/never receives your Twitch password, Twitch email or a\s+Twitch access token/)
@@ -136,6 +139,19 @@ describe('Supporter legal copy', () => {
     const billing = screen.getByTestId('terms-billing-email').textContent ?? ''
     expect(billing).toMatch(/you can still cancel billing through Stripe/)
     expect(billing).toMatch(/moving a\s+membership to another account needs our help/)
-    expect(screen.getByTestId('terms-your-account').textContent).toMatch(/Your StreamPulse account is your Twitch identity/)
+    // Continue with Twitch is not live yet, so the account model is stated conditionally.
+    expect(screen.getByTestId('terms-your-account').textContent).toMatch(/^\s*Once Continue with Twitch is open, your StreamPulse account is your Twitch identity/)
+  })
+
+  it('Privacy says where Twitch display details are kept on the website and in the extension', () => {
+    const body = textOf(Privacy, 'privacy-policy')
+    expect(body).toMatch(/not stored on StreamPulse's servers\. On the website, only that\s+browser tab keeps them; in the extension, they're kept for the current browser session/)
+    expect(body).toMatch(/chrome\.storage\.session — short-lived Pulse and coverage caches for the current\s+browser session and, after you choose Continue with Twitch in the extension, your Twitch\s+display name and picture/)
+  })
+
+  it('Refunds asks for requests from the billing email given to Stripe, not an account address', () => {
+    const body = textOf(Refunds, 'refund-policy')
+    expect(body).not.toMatch(/address on the account/)
+    expect(body.match(/from the billing\s+email you gave Stripe at checkout/g)).toHaveLength(2)
   })
 })

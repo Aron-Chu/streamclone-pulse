@@ -8,7 +8,9 @@ import {
   resetTwitchCallbackForTests,
   takeTwitchCallback,
 } from '../src/lib/twitchCallback'
+import { rememberBillingStepUp, takeBillingStepUp } from '../src/lib/accountStepUp'
 import {
+  beginTwitchFlow,
   completeTwitchCallback,
   resetTwitchSignInForTests,
   startTwitchFlow,
@@ -312,6 +314,74 @@ describe('completing the callback', () => {
     arriveAtCallback(`#id_token=${ID_TOKEN}&state=${FLOW_ID}`)
     vi.mocked(accountRequest).mockResolvedValueOnce({ status: 'linked' })
     await expect(completeTwitchCallback()).resolves.toMatchObject({ code: 'unavailable' })
+  })
+})
+
+describe('billing “Confirm it’s you” record', () => {
+  const ACCOUNT_A = '11111111-1111-4111-8111-111111111111'
+  const ACCOUNT_B = '22222222-2222-4222-8222-222222222222'
+  const STEP_UP_KEY = 'pulse.account.billingStepUp.v1'
+  beforeEach(() => { sessionStorage.removeItem(STEP_UP_KEY); sessionStorage.removeItem('pulse.account.twitchFlow.v1') })
+  async function startedForBilling() {
+    vi.mocked(accountRequest).mockResolvedValueOnce(startResponse())
+    await startTwitchFlow({ purpose: 'signin', returnTo: '/account/billing' })
+    expect(rememberBillingStepUp(ACCOUNT_A, FLOW_ID)).toBe(true)
+  }
+
+  it('hands the new flow’s ID to the page before leaving for Twitch', async () => {
+    vi.mocked(accountRequest).mockResolvedValueOnce(startResponse())
+    const assign = vi.fn()
+    vi.stubGlobal('location', { ...window.location, assign })
+    try {
+      const order: string[] = []
+      assign.mockImplementation(() => { order.push('assign') })
+      await beginTwitchFlow({ purpose: 'signin', returnTo: '/account/billing', beforeLeave: flowId => { order.push(`before:${flowId}`) } })
+      expect(order).toEqual([`before:${FLOW_ID}`, 'assign'])
+      expect(assign).toHaveBeenCalledWith(authorizeUrl())
+    } finally { vi.unstubAllGlobals() }
+  })
+
+  it('counts only after that flow’s sign-in finishes', async () => {
+    await startedForBilling()
+    // Before the callback, a billing read finds nothing finished.
+    const unfinished = sessionStorage.getItem(STEP_UP_KEY)
+    expect(takeBillingStepUp(ACCOUNT_A)).toBe('none')
+    sessionStorage.setItem(STEP_UP_KEY, unfinished!)
+    arriveAtCallback(`#id_token=${ID_TOKEN}&state=${FLOW_ID}`)
+    vi.mocked(accountRequest).mockResolvedValueOnce({ status: 'signed_in', profile: {} })
+    await expect(completeTwitchCallback()).resolves.toMatchObject({ status: 'signed_in' })
+    expect(takeBillingStepUp(ACCOUNT_A)).toBe('same')
+  })
+
+  it('is dropped when Twitch sign-in is cancelled, so nothing reads as confirmed', async () => {
+    await startedForBilling()
+    arriveAtCallback('', `?error=access_denied&error_description=denied&state=${FLOW_ID}`)
+    await expect(completeTwitchCallback()).resolves.toMatchObject({ code: 'access_denied' })
+    expect(sessionStorage.getItem(STEP_UP_KEY)).toBeNull()
+    expect(takeBillingStepUp(ACCOUNT_A)).toBe('none')
+  })
+
+  it.each([
+    [new AccountError(403, 'pilot_only')],
+    [new AccountError(403, 'link_required')],
+    [new TypeError('Failed to fetch')],
+  ])('is dropped when the sign-in ends in %s, so no false wrong-account block follows', async failure => {
+    await startedForBilling()
+    arriveAtCallback(`#id_token=${ID_TOKEN}&state=${FLOW_ID}`)
+    vi.mocked(accountRequest).mockRejectedValueOnce(failure)
+    await expect(completeTwitchCallback()).resolves.toMatchObject({ status: 'error' })
+    expect(sessionStorage.getItem(STEP_UP_KEY)).toBeNull()
+    expect(takeBillingStepUp(ACCOUNT_B)).toBe('none')
+  })
+
+  it('is not marked by a sign-in for some other flow', async () => {
+    vi.mocked(accountRequest).mockResolvedValueOnce(startResponse())
+    await startTwitchFlow({ purpose: 'signin', returnTo: '/account/billing' })
+    rememberBillingStepUp(ACCOUNT_A, 'f'.repeat(32))
+    arriveAtCallback(`#id_token=${ID_TOKEN}&state=${FLOW_ID}`)
+    vi.mocked(accountRequest).mockResolvedValueOnce({ status: 'signed_in', profile: {} })
+    await expect(completeTwitchCallback()).resolves.toMatchObject({ status: 'signed_in' })
+    expect(takeBillingStepUp(ACCOUNT_B)).toBe('none')
   })
 })
 

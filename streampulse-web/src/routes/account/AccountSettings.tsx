@@ -61,6 +61,8 @@ export default function AccountSettings() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(true)
   const [signedOut, setSignedOut] = useState(false)
+  const otherWaysId = useId()
+  const twitch = twitchSignInEnabled()
   async function list(next = '') {
     const result = await accountRequest(next ? `/devices?cursor=${encodeURIComponent(next)}` : '/devices')
     if (!Array.isArray(result.devices) || result.devices.some(d => !d || typeof d.id !== 'string' || typeof d.label !== 'string' || typeof d.expiresAt !== 'string')) throw new Error('Invalid device list')
@@ -105,11 +107,12 @@ export default function AccountSettings() {
     {signedOut ? <Link to="/account/sign-in">{accountSignInLabel()}</Link> : null}
     {busy ? <p role="status">Updating account...</p> : null}
     {error ? <div className="pulse-account-error"><p role="alert">{error}</p><button disabled={busy} onClick={() => void load()}>Retry</button></div> : null}
-    {identity && !signedOut && twitchSignInEnabled() ? <TwitchAccountRow /> : null}
-    {/* With Continue with Twitch on, connection codes are the tester bridge, not the main path. */}
-    {identity && !signedOut && twitchSignInEnabled() ? <div className="pulse-account-section-heading" data-testid="other-ways-to-connect"><h2>Other ways to connect (testers)</h2></div> : null}
-    {identity && !signedOut ? <><div className="pulse-account-section-heading">{twitchSignInEnabled() ? <h3>Linked extensions</h3> : <h2>Linked extensions</h2>}<Link to="/account/link-device">Link extension</Link></div>
-      {!busy && !devices.length && !error ? <p className="pulse-account-empty">No linked extensions. Link your extension to use this account on Twitch.</p> : null}
+    {identity && !signedOut && twitch ? <TwitchAccountRow /> : null}
+    {/* Every extension signed in to this account is listed here, whichever way it
+        connected. With Continue with Twitch on, only the connection-code entry is
+        the tester bridge, under its own heading below. */}
+    {identity && !signedOut ? <><div className="pulse-account-section-heading"><h2>Linked extensions</h2>{twitch ? null : <Link to="/account/link-device">Link extension</Link>}</div>
+      {!busy && !devices.length && !error ? <p className="pulse-account-empty">{twitch ? 'No extensions are signed in to this account.' : 'No linked extensions. Link your extension to use this account on Twitch.'}</p> : null}
       <ul className="pulse-account-devices">{devices.map(device => <li key={device.id}><div className="pulse-account-device-details"><strong>{device.label}</strong>
         <p>{device.revokedAt ? <span className="pulse-account-device-status">Revoked</span> : `Credential expires ${new Date(device.expiresAt).toLocaleDateString()}`}</p></div>
         {!device.revokedAt ? <button className="pulse-account-revoke" disabled={busy} aria-label={`Revoke ${device.label}`} onClick={() => setConfirm(device.id)}><Trash2 size={16} aria-hidden="true" /> Revoke</button> : null}
@@ -117,6 +120,11 @@ export default function AccountSettings() {
       {confirm ? <div className="pulse-account-review" role="group" aria-label="Confirm device revocation"><h2>Revoke this extension?</h2><p>This extension will lose account access. Its local records are not deleted.</p><div className="pulse-account-actions"><button className="pulse-account-revoke" disabled={busy} onClick={() => void revoke()}>Confirm revocation</button><button disabled={busy} onClick={() => setConfirm('')}>Cancel</button></div></div> : null}
       {cursor ? <button disabled={busy} onClick={() => { setBusy(true); void list(cursor).catch(e => setError(accountErrorText(e))).finally(() => setBusy(false)) }}>More devices</button> : null}
     </> : null}
+    {identity && !signedOut && twitch ? <section className="pulse-account-other-ways" data-testid="other-ways-to-connect" aria-labelledby={otherWaysId}>
+      <div className="pulse-account-section-heading"><h2 id={otherWaysId}>Other ways to connect (testers)</h2></div>
+      <p>Invited testers can still connect an extension with a connection code.</p>
+      <Link to="/account/link-device">Link extension with a code</Link>
+    </section> : null}
     <div className="pulse-account-explainer"><h2>Your account and this browser</h2><p>Website saves stay in this browser. They are separate from extension bookmarks and are not moved or merged when you sign in.</p>
     <p>Signing out here ends this website session. Revoke a linked extension separately to stop its account access.</p></div>
     <AccountFooter current="settings" />

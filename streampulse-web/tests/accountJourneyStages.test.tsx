@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AccountPage from '../src/routes/account/AccountPage'
@@ -7,7 +7,8 @@ import BillingPage from '../src/routes/account/BillingPage'
 import Supporter from '../src/routes/public/Supporter'
 import Terms from '../src/routes/public/Terms'
 import { rememberTwitchIdentity, resetAccountSessionForTests } from '../src/lib/accountSession'
-import { rememberBillingStepUp, takeBillingStepUp, BILLING_STEP_UP_MAX_AGE_MS } from '../src/lib/accountStepUp'
+import { completeBillingStepUp, rememberBillingStepUp, takeBillingStepUp, BILLING_STEP_UP_MAX_AGE_MS } from '../src/lib/accountStepUp'
+import { AnalyticsTopNav } from '../src/ui/components/analytics/AnalyticsTopNav'
 import { beginTwitchFlow } from '../src/lib/twitchSignIn'
 import { twitchSignInEnabled, twitchSignInPublic, twitchSignInStage } from '../src/lib/twitchSignInFlag'
 
@@ -25,6 +26,12 @@ vi.mock('../src/ui/components/PublicLayout', () => ({ PublicLayout: ({ children 
 
 const ACCOUNT_A = '11111111-1111-4111-8111-111111111111'
 const ACCOUNT_B = '22222222-2222-4222-8222-222222222222'
+const FLOW = 'a'.repeat(32)
+/** The Twitch round trip for a billing check came back finished for `accountId`'s flow. */
+function finishedStepUp(accountId: string) {
+  rememberBillingStepUp(accountId, FLOW)
+  completeBillingStepUp(FLOW)
+}
 let cookie = ''
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
 
@@ -72,7 +79,7 @@ describe.each([
   ['', 'A (today)'],
   ['1', 'tester'],
   ['public', 'public'],
-] as const)('/supporter with VITE_TWITCH_SIGNIN=%s (%s)', (value) => {
+] as const)('/supporter with VITE_TWITCH_SIGNIN=%s (%s)', (value, _stage) => {
   beforeEach(() => { vi.stubEnv('VITE_TWITCH_SIGNIN', value) })
 
   it('offers no website-account or restore choice and says sign-ups are not open', () => {
@@ -116,6 +123,26 @@ describe('account settings', () => {
     stubApi({ me: () => json({ accountId: ACCOUNT_A, signInMethods: ['twitch'] }) })
     render(<MemoryRouter><AccountSettings /></MemoryRouter>)
     expect((await screen.findByTestId('twitch-account-row')).textContent).toContain('Signed in with Twitch as PulseTester')
+  })
+
+  it('lists every signed-in extension as a normal section; only connection codes are the tester bridge', async () => {
+    vi.stubEnv('VITE_TWITCH_SIGNIN', '1')
+    cookie = `__Host-pulse_csrf=${'d'.repeat(64)}`
+    stubApi({ me: () => json({ accountId: ACCOUNT_A, signInMethods: ['twitch'] }) })
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const path = String(input)
+      if (path === '/v1/account/me') return json({ accountId: ACCOUNT_A, signInMethods: ['twitch'] })
+      if (path === '/v1/account/devices') return json({ devices: [{ id: 'dev-1', label: 'Chrome on Windows', expiresAt: '2026-11-08T00:00:00Z' }] })
+      return json({ error: 'not_found' }, 404)
+    })
+    render(<MemoryRouter><AccountSettings /></MemoryRouter>)
+    expect(await screen.findByRole('heading', { level: 2, name: 'Linked extensions' })).toBeTruthy()
+    expect(await screen.findByRole('button', { name: 'Revoke Chrome on Windows' })).toBeTruthy()
+    const testers = screen.getByTestId('other-ways-to-connect')
+    expect(within(testers).getByRole('heading', { level: 2, name: 'Other ways to connect (testers)' })).toBeTruthy()
+    expect(within(testers).getByRole('link', { name: 'Link extension with a code' }).getAttribute('href')).toBe('/account/link-device')
+    expect(within(testers).queryByText('Chrome on Windows')).toBeNull()
+    expect(screen.getAllByRole('link').filter(link => link.getAttribute('href') === '/account/link-device')).toHaveLength(1)
   })
 
   it('keeps today’s device section and no tester heading while Twitch is off', async () => {
@@ -167,9 +194,56 @@ describe('Manage subscription: Confirm it’s you', () => {
     const prompt = await screen.findByTestId('billing-confirm-twitch')
     expect(prompt.textContent).toContain('Confirm it’s you')
     expect(prompt.textContent).toContain('For your security, managing your subscription needs a Twitch check from the last 10 minutes.')
+    vi.mocked(beginTwitchFlow).mockImplementation(async options => { options.beforeLeave?.(FLOW) })
     fireEvent.click(screen.getByRole('button', { name: 'Continue with Twitch' }))
-    await waitFor(() => expect(beginTwitchFlow).toHaveBeenCalledWith({ purpose: 'signin', returnTo: '/account/billing' }))
+    await waitFor(() => expect(beginTwitchFlow).toHaveBeenCalledWith(expect.objectContaining({ purpose: 'signin', returnTo: '/account/billing' })))
+    // Remembered for this flow, but it counts only once that flow's callback finishes.
+    expect(JSON.parse(sessionStorage.getItem('pulse.account.billingStepUp.v1')!)).toMatchObject({ flowId: FLOW, completed: false })
+    completeBillingStepUp(FLOW)
     expect(takeBillingStepUp(ACCOUNT_A)).toBe('same')
+  })
+
+  it('never says “confirmed” after a Twitch round trip that did not finish', async () => {
+    let portalCalls = 0
+    stubApi({
+      me: () => json({ accountId: ACCOUNT_A, signInMethods: ['twitch'] }),
+      supporter: () => json({ schemaVersion: 1, status: 'active', accountId: ACCOUNT_A }),
+      portal: () => { portalCalls++; return json({ error: 'sign_in_required' }, 401) },
+    })
+    vi.mocked(beginTwitchFlow).mockImplementation(async options => { options.beforeLeave?.(FLOW) })
+    const first = render(<MemoryRouter initialEntries={['/account/billing']}><BillingPage /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: 'Manage subscription' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue with Twitch' }))
+    await waitFor(() => expect(beginTwitchFlow).toHaveBeenCalled())
+    // The person cancels on Twitch or presses Back: no callback finishes.
+    first.unmount()
+    render(<MemoryRouter initialEntries={['/account/billing']}><BillingPage /></MemoryRouter>)
+    expect(await screen.findByRole('heading', { name: 'Supporter active' })).toBeTruthy()
+    expect(screen.queryByTestId('billing-step-up-confirmed')).toBeNull()
+    expect(screen.queryByTestId('billing-wrong-account')).toBeNull()
+    expect(sessionStorage.getItem('pulse.account.billingStepUp.v1')).toBeNull()
+    expect(portalCalls).toBe(1)
+  })
+
+  it('leaves no record behind when the Twitch flow cannot start, so a later account switch is not blocked', async () => {
+    stubApi({
+      me: () => json({ accountId: ACCOUNT_A, signInMethods: ['twitch'] }),
+      supporter: () => json({ schemaVersion: 1, status: 'active', accountId: ACCOUNT_A }),
+      portal: () => json({ error: 'sign_in_required' }, 401),
+    })
+    // The flow is saved, then leaving for Twitch fails.
+    vi.mocked(beginTwitchFlow).mockImplementation(async options => { options.beforeLeave?.(FLOW); throw new TypeError('Failed to fetch') })
+    const first = render(<MemoryRouter initialEntries={['/account/billing']}><BillingPage /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: 'Manage subscription' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue with Twitch' }))
+    expect(await screen.findByText('Twitch sign-in is unavailable')).toBeTruthy()
+    expect(sessionStorage.getItem('pulse.account.billingStepUp.v1')).toBeNull()
+    first.unmount()
+    // Signed in to another account in this tab afterwards: an ordinary visit.
+    stubApi({ supporter: () => json({ schemaVersion: 1, status: 'active', accountId: ACCOUNT_B }) })
+    render(<MemoryRouter initialEntries={['/account/billing']}><BillingPage /></MemoryRouter>)
+    expect(await screen.findByRole('button', { name: 'Manage subscription' })).toBeTruthy()
+    expect(screen.queryByTestId('billing-wrong-account')).toBeNull()
   })
 
   it('keeps the email path for an account without Twitch', async () => {
@@ -185,7 +259,7 @@ describe('Manage subscription: Confirm it’s you', () => {
   })
 
   it('shows the wrong-account copy and never opens the portal when Twitch returned another account', async () => {
-    rememberBillingStepUp(ACCOUNT_A)
+    finishedStepUp(ACCOUNT_A)
     stubApi({ supporter: () => json({ schemaVersion: 1, status: 'active', accountId: ACCOUNT_B }) })
     const assign = vi.fn()
     vi.stubGlobal('location', { ...window.location, assign })
@@ -195,10 +269,24 @@ describe('Manage subscription: Confirm it’s you', () => {
     expect(screen.getByRole('button', { name: 'Sign out' })).toBeTruthy()
     expect(calls.filter(call => call.includes('/v1/billing/portal'))).toEqual([])
     expect(assign).not.toHaveBeenCalled()
+    // The other account's own membership is not shown as the one being managed.
+    expect(screen.getByRole('heading', { name: 'You came back as a different account' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Supporter active' })).toBeNull()
+    expect(document.querySelector('.pulse-membership-facts')).toBeNull()
+  })
+
+  it('lets the person keep the account Twitch returned, and then manage that account', async () => {
+    finishedStepUp(ACCOUNT_A)
+    stubApi({ supporter: () => json({ schemaVersion: 1, status: 'active', accountId: ACCOUNT_B }) })
+    render(<MemoryRouter initialEntries={['/account/billing']}><BillingPage /></MemoryRouter>)
+    fireEvent.click(within(await screen.findByTestId('billing-wrong-account')).getByRole('button', { name: 'Stay with this account' }))
+    expect(screen.queryByTestId('billing-wrong-account')).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Supporter active' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Manage subscription' })).toBeTruthy()
   })
 
   it('lets the same account continue after the check', async () => {
-    rememberBillingStepUp(ACCOUNT_A)
+    finishedStepUp(ACCOUNT_A)
     stubApi({ supporter: () => json({ schemaVersion: 1, status: 'active', accountId: ACCOUNT_A }) })
     render(<MemoryRouter initialEntries={['/account/billing']}><BillingPage /></MemoryRouter>)
     expect((await screen.findByTestId('billing-step-up-confirmed')).textContent).toBe('Thanks, that’s confirmed. Choose Manage subscription to continue.')
@@ -208,17 +296,26 @@ describe('Manage subscription: Confirm it’s you', () => {
 })
 
 describe('step-up record', () => {
-  it('is single-use, expires and ignores malformed IDs', () => {
+  it('is single-use, expires, needs a finished flow and ignores malformed IDs', () => {
     expect(takeBillingStepUp(ACCOUNT_A)).toBe('none')
-    expect(rememberBillingStepUp('not-an-account')).toBe(false)
+    expect(rememberBillingStepUp('not-an-account', FLOW)).toBe(false)
+    expect(rememberBillingStepUp(ACCOUNT_A, 'not-a-flow')).toBe(false)
     expect(takeBillingStepUp(ACCOUNT_A)).toBe('none')
-    expect(rememberBillingStepUp(ACCOUNT_A)).toBe(true)
+    expect(rememberBillingStepUp(ACCOUNT_A, FLOW)).toBe(true)
     expect(sessionStorage.getItem('pulse.account.billingStepUp.v1')).not.toContain(ACCOUNT_A)
+    // Unfinished: neither "same" nor "different", and the read drops it.
+    expect(takeBillingStepUp(ACCOUNT_B)).toBe('none')
+    expect(sessionStorage.getItem('pulse.account.billingStepUp.v1')).toBeNull()
+    finishedStepUp(ACCOUNT_A)
     expect(takeBillingStepUp(ACCOUNT_B)).toBe('different')
+    expect(takeBillingStepUp(ACCOUNT_A)).toBe('none')
+    // Another flow's sign-in does not finish this record.
+    rememberBillingStepUp(ACCOUNT_A, FLOW)
+    completeBillingStepUp('b'.repeat(32))
     expect(takeBillingStepUp(ACCOUNT_A)).toBe('none')
     vi.useFakeTimers()
     try {
-      rememberBillingStepUp(ACCOUNT_A)
+      finishedStepUp(ACCOUNT_A)
       vi.advanceTimersByTime(BILLING_STEP_UP_MAX_AGE_MS + 1)
       expect(takeBillingStepUp(ACCOUNT_A)).toBe('none')
     } finally { vi.useRealTimers() }
@@ -237,5 +334,28 @@ describe('frozen Supporter benefit lists', () => {
     const items = Array.from(screen.getByTestId('terms-of-use').querySelectorAll('li')).map(li => li.textContent)
     expect(items).toContain('What you get: a private Pulse header accent, three private overlay finishes, and private support recognition. Nothing else is promised.')
     expect(items).toContain('What you do not get: no public Twitch chat badge — it is not included — and no analytics, coverage or rate-limit changes of any kind.')
+  })
+})
+
+describe('/analytics support menu by stage (header flag off)', () => {
+  const menuItems = () => Array.from(screen.getByRole('navigation', { name: 'Analytics navigation' }).querySelectorAll('.analytics-topnav__more-links a')).map(link => [link.textContent, link.getAttribute('href')])
+
+  it.each(['', '1'] as const)('links no tester sign-in, billing action or connection code with VITE_TWITCH_SIGNIN=%s', value => {
+    vi.stubEnv('VITE_TWITCH_SIGNIN', value)
+    stubApi({})
+    render(<MemoryRouter initialEntries={['/analytics']}><AnalyticsTopNav items={[{ label: 'Overview', to: '/analytics', end: true }]} /></MemoryRouter>)
+    expect(menuItems().map(([, href]) => href)).toEqual(['/docs', '/support', '/status', '/supporter', '/privacy', '/terms', '/refunds'])
+    expect(calls).toEqual([])
+  })
+
+  it('offers Sign in and Manage subscription in the public stage, never a connection code', () => {
+    vi.stubEnv('VITE_TWITCH_SIGNIN', 'public')
+    stubApi({})
+    render(<MemoryRouter initialEntries={['/analytics']}><AnalyticsTopNav items={[{ label: 'Overview', to: '/analytics', end: true }]} /></MemoryRouter>)
+    const items = menuItems()
+    expect(items).toContainEqual(['Sign in', '/account/sign-in'])
+    expect(items).toContainEqual(['Manage subscription', '/account/billing'])
+    expect(items.some(([, href]) => href === '/account/link-device')).toBe(false)
+    expect(calls).toEqual([])
   })
 })

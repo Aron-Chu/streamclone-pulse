@@ -83,11 +83,11 @@ export default function Terms() {
 
         <h2>Your account</h2>
         <p data-testid="terms-your-account">
-          Your StreamPulse account is your Twitch identity: you sign in with Continue with Twitch, and
-          anyone who controls that Twitch account can sign in as you, so keep it secure. During the
-          private pilot, invited testers may also use an emailed sign-in link that expires after 15
-          minutes. StreamPulse will never ask you to share a sign-in link or an extension connection
-          code.
+          Once Continue with Twitch is open, your StreamPulse account is your Twitch identity: you
+          sign in with Continue with Twitch, and anyone who controls that Twitch account can sign in
+          as you, so keep it secure. During the private pilot, invited testers may also use an
+          emailed sign-in link that expires after 15 minutes. StreamPulse will never ask you to share
+          a sign-in link or an extension connection code.
         </p>
         <p>
           See the <Link to={PRIVACY_PATH}>privacy policy</Link> for what an account stores.

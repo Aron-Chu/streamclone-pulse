@@ -8,7 +8,7 @@ import { AccountError, accountErrorText, billingRequest } from '../../lib/accoun
 import { accountBillingReturnPath, accountBillingSignInHref } from '../../lib/accountBillingReturn'
 import { onAccountSessionSignal } from '../../lib/accountSessionSignal'
 import { leaveAccountPagesAfterSignOut, signOutAccount, useAccountSession } from '../../lib/accountSession'
-import { rememberBillingStepUp, takeBillingStepUp } from '../../lib/accountStepUp'
+import { clearBillingStepUp, rememberBillingStepUp, takeBillingStepUp } from '../../lib/accountStepUp'
 import { twitchSignInEnabled, twitchSignInPublic } from '../../lib/twitchSignInFlag'
 import { beginTwitchFlow, twitchErrorCode, type TwitchErrorCode } from '../../lib/twitchSignIn'
 import { TwitchButton, TwitchErrorNotice } from './TwitchSignIn'
@@ -344,11 +344,17 @@ export default function BillingPage() {
   async function continueWithTwitch(confirmAccount: boolean) {
     if (twitchBusy) return
     setTwitchBusy(true); setTwitchError(null)
-    // The account that asked, so the return can tell whether Twitch chose the same one.
-    if (confirmAccount) rememberBillingStepUp(accountID.current)
+    // The account that asked, tied to this exact flow, so the return can tell
+    // whether Twitch chose the same one. It counts only once that flow's
+    // callback finishes a sign-in (accountStepUp.ts).
+    const account = accountID.current
     // On success the page leaves for Twitch, so the button stays busy.
-    try { await beginTwitchFlow({ purpose: 'signin', returnTo: returnPath }) }
-    catch (failure) { setTwitchError(twitchErrorCode(failure)); setTwitchBusy(false) }
+    try { await beginTwitchFlow({ purpose: 'signin', returnTo: returnPath, beforeLeave: confirmAccount ? flowId => { rememberBillingStepUp(account, flowId) } : undefined }) }
+    catch (failure) {
+      // Nothing started (or leaving failed): no note may outlive this click.
+      if (confirmAccount) clearBillingStepUp()
+      setTwitchError(twitchErrorCode(failure)); setTwitchBusy(false)
+    }
   }
 
   async function signOutOfWrongAccount() {
@@ -459,14 +465,21 @@ export default function BillingPage() {
     if (!checkoutEnabled) showRefresh = false
   }
 
-  // A different account came back from "Confirm it's you": no billing action
-  // for it here, only the way back to the right account.
-  if (wrongAccount && load === 'ready') { primary = null; secondary = null; terms = false; showRefresh = false }
+  // A different account came back from "Confirm it's you": its own membership
+  // is not shown as if it were the one being managed, and no billing action is
+  // offered until the person chooses which account to continue with.
+  if (wrongAccount && load === 'ready') {
+    state = 'wrong-account'
+    title = 'You came back as a different account'
+    body = <p>Twitch signed you in to a different StreamPulse account{reference ? ` (${reference})` : ''} than the one that asked to manage its subscription.</p>
+    primary = null; secondary = null; terms = false; showRefresh = false
+  }
 
   const facts: Array<[string, string]> = []
   if ((status === 'active' || status === 'grace') && accessUntil) facts.push([status === 'grace' ? 'Access until' : 'Access through', accessUntil])
   if (periods && status !== 'none') facts.push(['Supported', `${periods} ${periods === 1 ? 'month' : 'months'}`])
   if (reference && load === 'ready') facts.push(['Pulse account', reference])
+  if (wrongAccount) facts.length = 0
 
   return <PublicLayout><section className="pulse-account" aria-label="Supporter billing">
     <p className="pulse-account-kicker"><CreditCard size={16} aria-hidden="true" /> StreamPulse account</p><h1>Supporter membership</h1>
@@ -483,7 +496,7 @@ export default function BillingPage() {
       </div>
       {facts.length ? <dl className="pulse-membership-facts">{facts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl> : null}
       {terms ? <dl className="pulse-membership-terms"><dt>Price</dt><dd>US$4.99 per month, charged in US dollars</dd><dt>Renews</dt><dd>Monthly, automatically, until you cancel</dd><dt>Includes</dt><dd>A private Pulse header accent, three private finishes and private support recognition</dd><dt>Taxes</dt><dd>Handled as stated at checkout</dd></dl> : null}
-      {wrongAccount && load === 'ready' ? <div className="pulse-account-note" role="alert" data-testid="billing-wrong-account"><p>This subscription belongs to a different Twitch account. Sign out, then Continue with Twitch with the account you subscribed with.</p><button type="button" className="pulse-account-primary" disabled={signingOut} onClick={() => void signOutOfWrongAccount()}>{signingOut ? 'Signing out…' : 'Sign out'}</button>{signOutError ? <p role="alert">{signOutError}</p> : null}</div> : null}
+      {wrongAccount && load === 'ready' ? <div className="pulse-account-note" role="alert" data-testid="billing-wrong-account"><p>This subscription belongs to a different Twitch account. Sign out, then Continue with Twitch with the account you subscribed with.</p><div className="pulse-account-actions"><button type="button" className="pulse-account-primary" disabled={signingOut} onClick={() => void signOutOfWrongAccount()}>{signingOut ? 'Signing out…' : 'Sign out'}</button><button type="button" className="pulse-account-text-button" disabled={signingOut} onClick={() => { wrongAccountRef.current = false; setWrongAccount(false) }}>Stay with this account</button></div>{signOutError ? <p role="alert">{signOutError}</p> : null}</div> : null}
       {reauth && !wrongAccount ? twitchSignInEnabled()
         ? <ConfirmItsYou signInHref={signInHref} busy={twitchBusy} onTwitch={() => void continueWithTwitch(true)} />
         : <SignInAgain signInHref={signInHref} /> : null}

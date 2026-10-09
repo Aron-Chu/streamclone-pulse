@@ -1,5 +1,9 @@
 import { test, expect } from '@playwright/test'
 
+/** Menu account entries follow the build's Continue with Twitch stage and header flag. */
+const TWITCH_PUBLIC = process.env.VITE_TWITCH_SIGNIN === 'public'
+const ACCOUNT_HEADER = process.env.VITE_ACCOUNT_HEADER === '1'
+
 test.beforeEach(async ({ context, baseURL }) => {
   const origin = new URL(baseURL!).origin
   await context.route('**/*', route => {
@@ -17,7 +21,12 @@ test('analytics support navigation at desktop and mobile sizes', async ({ page }
     const menu = page.locator('.analytics-topnav__more')
     const trigger = menu.getByRole('button', { name: 'Support and account', exact: true })
     await trigger.click()
-    await expect(menu.getByRole('link', { name: 'Manage subscription' })).toBeVisible()
+    await expect(menu.getByRole('link', { name: 'Pulse Supporter' })).toBeVisible()
+    // Extension connection codes are tester-only in every stage. Before the public
+    // stage the menu links no tester sign-in or closed billing action either.
+    await expect(menu.locator('a[href="/account/link-device"]')).toHaveCount(0)
+    if (!ACCOUNT_HEADER && !TWITCH_PUBLIC) await expect(menu.locator('a[href^="/account"]')).toHaveCount(0)
+    if (!ACCOUNT_HEADER && TWITCH_PUBLIC) await expect(menu.getByRole('link', { name: 'Manage subscription' })).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
     await page.screenshot({ path: info.outputPath(`analytics-menu-${width}.png`), animations: 'disabled' })
     await trigger.press('Escape')

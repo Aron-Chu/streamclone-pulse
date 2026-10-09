@@ -251,11 +251,19 @@ test.describe('public surface audit', () => {
         await expect(page.locator('header .account-entry')).toHaveCount(0)
         await expect(page.getByRole('banner').getByRole('button', { name: 'Account', exact: true })).toHaveCount(0)
       }
-      // The support menu keeps master's plain "Account" link.
+      // Before the public Twitch stage the support menu links no account page
+      // (the sign-in page is the tester bridge); in the public stage it offers
+      // Sign in and Manage subscription. Never a connection code.
       const analyticsHeader = page.locator('header.analytics-topnav')
       await analyticsHeader.getByRole('button', { name: 'Support and account', exact: true }).click()
       const support = analyticsHeader.locator('.analytics-topnav__more-links')
-      await expect(support.getByRole('link', { name: 'Account', exact: true })).toHaveAttribute('href', '/account/sign-in')
+      if (process.env.VITE_TWITCH_SIGNIN === 'public') {
+        await expect(support.getByRole('link', { name: 'Sign in', exact: true })).toHaveAttribute('href', '/account/sign-in')
+        await expect(support.getByRole('link', { name: 'Manage subscription', exact: true })).toHaveAttribute('href', '/account/billing')
+      } else {
+        await expect(support.locator('a[href^="/account"]')).toHaveCount(0)
+      }
+      await expect(support.locator('a[href="/account/link-device"]')).toHaveCount(0)
       await expect(support.getByRole('link', { name: 'Account & devices' })).toHaveCount(0)
       // Header chrome never asks who is signed in.
       expect(accountReads).toEqual([])

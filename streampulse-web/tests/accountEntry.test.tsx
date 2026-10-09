@@ -171,7 +171,8 @@ describe('header account entry flag (VITE_ACCOUNT_HEADER)', () => {
     expect(analyticsHeader.className).toBe('analytics-topnav')
     expect(analyticsHeader.querySelector('.account-entry')).toBeNull()
     const menu = screen.getByRole('navigation', { name: 'Analytics navigation' })
-    expect(menu.querySelector('a[href="/account/sign-in"]')?.textContent).toBe('Account')
+    // Before the public Twitch stage the menu links no account page at all.
+    expect(menu.querySelector('a[href^="/account"]')).toBeNull()
     expect(menu.querySelector('a[href="/account/settings"]')).toBeNull()
     expect(accountRequest).not.toHaveBeenCalled()
   })
@@ -194,6 +195,8 @@ describe('header placement (VITE_ACCOUNT_HEADER=1)', () => {
     const menu = () => screen.getByRole('navigation', { name: 'Analytics navigation' })
     expect(menu().querySelector('a[href="/account/sign-in"]')?.textContent).toBe('Sign in')
     expect(menu().querySelector('a[href="/account/settings"]')).toBeNull()
+    expect(menu().querySelector('a[href="/account/billing"]')).toBeNull()
+    expect(menu().querySelector('a[href="/account/link-device"]')).toBeNull()
     expect(screen.getByRole('banner').className).toBe('analytics-topnav analytics-topnav--account')
     view.unmount()
 
@@ -203,6 +206,8 @@ describe('header placement (VITE_ACCOUNT_HEADER=1)', () => {
     await act(async () => { await Promise.resolve() })
     expect(menu().querySelector('a[href="/account/sign-in"]')).toBeNull()
     expect(menu().querySelector('a[href="/account/settings"]')?.textContent).toBe('Account & devices')
+    expect(menu().querySelector('a[href="/account/billing"]')?.textContent).toBe('Manage subscription')
+    expect(menu().querySelector('a[href="/account/link-device"]')).toBeNull()
     expect(screen.getByRole('banner').querySelector('[data-account-entry="signed-in"]')).toBeTruthy()
   })
 })

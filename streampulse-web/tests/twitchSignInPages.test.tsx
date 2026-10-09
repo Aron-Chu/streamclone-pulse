@@ -181,7 +181,7 @@ describe('with VITE_TWITCH_SIGNIN=1', () => {
     expect(screen.queryByRole('link', { name: 'Back to Account & devices' })).toBeNull()
   })
 
-  it('shows the linked Twitch identity after a link, and keeps connection codes under the tester heading', async () => {
+  it('shows the linked Twitch identity after a link, and keeps only connection codes under the tester heading', async () => {
     signedIn()
     rememberTwitchIdentity({ displayName: 'PulseTester', avatarUrl: avatar, via: 'link' })
     vi.mocked(accountRequest).mockImplementation(async path => path === '/me' ? { accountId: 'account-a' } : { devices: [] })
@@ -189,8 +189,10 @@ describe('with VITE_TWITCH_SIGNIN=1', () => {
     const row = await screen.findByTestId('twitch-account-row')
     expect(row.textContent).toContain('Twitch linked: PulseTester')
     expect(row.textContent).not.toContain('Signed in with Twitch')
-    expect(screen.getByRole('heading', { level: 2, name: 'Other ways to connect (testers)' })).toBeTruthy()
-    expect(screen.getByRole('heading', { level: 3, name: 'Linked extensions' })).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 2, name: 'Linked extensions' })).toBeTruthy()
+    const testers = screen.getByTestId('other-ways-to-connect')
+    expect(testers.querySelector('h2')?.textContent).toBe('Other ways to connect (testers)')
+    expect(testers.querySelector('a')?.getAttribute('href')).toBe('/account/link-device')
     expect(row.querySelector('img')?.getAttribute('src')).toBe(avatar)
     expect(screen.queryByRole('button', { name: 'Link Twitch' })).toBeNull()
     expect(screen.getByText(/Twitch is now linked/)).toBeTruthy()

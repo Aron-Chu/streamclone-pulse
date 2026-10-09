@@ -49,10 +49,11 @@ export default function Privacy() {
           Twitch returns a signed, one-time sign-in proof that StreamPulse checks against Twitch's
           public keys. StreamPulse stores a keyed hash of your Twitch user ID, an internal account
           identifier, and creation, sign-in and activity times. Your Twitch display name and picture
-          are shown after sign-in but not stored by StreamPulse; only that browser tab keeps them, to
-          show who is signed in. StreamPulse never receives your Twitch password, Twitch email or a
-          Twitch access token. While you're on Twitch's page, this tab keeps a one-time sign-in value
-          in session storage; it's removed when you return.
+          are shown after sign-in but not stored on StreamPulse's servers. On the website, only that
+          browser tab keeps them; in the extension, they're kept for the current browser session.
+          Either way they're used only to show who is signed in. StreamPulse never receives your
+          Twitch password, Twitch email or a Twitch access token. While you're on Twitch's page, this
+          tab keeps a one-time sign-in value in session storage; it's removed when you return.
         </p>
         <p>
           <strong>Tester email sign-in.</strong> During the private pilot, invited testers can sign in
@@ -89,13 +90,18 @@ export default function Privacy() {
           Payments are processed by <strong>Stripe</strong>. Card numbers and CVC are entered on
           Stripe's own hosted pages and go to Stripe — StreamPulse never receives or stores them.
         </p>
+        {/* OWNER GATE: the "once sign-ups open" handling below is true only when
+            backend #162 (customer_name/customer_address stripping) and #150 (inbox
+            prune) are deployed, PULSE_ACCOUNT_PRUNE_ENABLED=true and
+            PULSE_RECOVERY_EMAIL_HMAC_KEY stays unset. Do not open live Checkout
+            before then. */}
         <p data-testid="privacy-billing-email">
           Stripe asks for a billing email at checkout; it can differ from your Twitch email, and
           StreamPulse never matches accounts by email. Stripe's payment notifications to StreamPulse
-          can include that email, your name and billing address. StreamPulse checks each
-          notification's signature and removes those details before saving it, and saved
-          notifications are reduced to identifiers about 30 days after processing. StreamPulse does
-          not keep your billing email or a hash of it.
+          can include that email, your name and billing address. Once sign-ups open, StreamPulse
+          checks each notification's signature and removes those details before saving it, saved
+          notifications are reduced to identifiers about 30 days after processing, and StreamPulse
+          does not keep your billing email or a hash of it.
         </p>
         <p>
           What StreamPulse stores is the identifiers and state needed to know whether your membership
@@ -248,7 +254,8 @@ export default function Privacy() {
           </li>
           <li>
             <strong>chrome.storage.session</strong> — short-lived Pulse and coverage caches for the current
-            browser session.
+            browser session and, after you choose Continue with Twitch in the extension, your Twitch
+            display name and picture for that browser session.
           </li>
           <li>
              <strong>chrome.storage.local</strong> — the local opaque device token, device identifier, and
