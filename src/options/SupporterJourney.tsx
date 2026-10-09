@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { SupporterPerkList } from './SupporterPerkList.tsx'
 import type { BackgroundResponse } from '../shared/messages.ts'
 import { POLICY_LINKS, deviceLinkWithCode, productLink } from '../shared/portalLinks.ts'
 import {
@@ -141,11 +142,9 @@ function OfferTerms() {
     <>
       {/* The card's footer line: the price and its terms in one row, before the action. */}
       <p className="pulse-supporter-terms"><b>{PRICE_DISPLAY}</b><span>renews monthly until you cancel</span><span>cancel any time; access runs to the end of the paid month</span><span>taxes, if any, shown before you pay</span></p>
-      {/* "You get" lists only shipped benefits, and names each perk the
-          settings banner sells: title paint, the tenure crest and emote rain.
-          "Who sees what" shows the chat crest as a concept, so it is not
-          restated here. */}
-      <p className="pulse-supporter-detail"><b>You get</b> a private Pulse header accent, three accent finishes, a tenure crest beside your panel title that grows with your support (only you see it), emote rain behind your Pulse panel, and private support recognition.</p>
+      {/* "You get" is the one perk list (src/shared/supporter-perks.json) that
+          the settings banner, quick settings, /supporter and the Terms share. */}
+      <SupporterPerkList />
     </>
   )
 }

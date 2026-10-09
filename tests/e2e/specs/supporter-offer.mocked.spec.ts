@@ -193,10 +193,9 @@ test.describe('packaged supporter offer', () => {
         await expect(page.locator(`a[href="https://streampulse.stream${policy}"]`).first()).toBeVisible()
       }
 
-      // The unreleased chat crest must never read as included: "Who sees what"
-      // labels it a concept exactly once, so the page cannot contradict itself.
-      await expect(page.getByText('Concept · not built', { exact: true })).toHaveCount(1)
-      await expect(page.getByText('Only if you opt in, once it’s built', { exact: true })).toBeVisible()
+      // The purchase page offers only what ships: no unbuilt chat crest concept.
+      await expect(page.getByText('Concept · not built', { exact: true })).toHaveCount(0)
+      await expect(page.getByText('Only if you opt in, once it’s built', { exact: true })).toHaveCount(0)
 
       await page.screenshot({
         path: join(CAPTURE_DIR, `supporter-${status}.png`),
