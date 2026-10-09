@@ -623,6 +623,16 @@ describe('/support link card', () => {
     // Troubleshooting content stays on /support.
     expect(screen.getByRole('heading', { name: 'Extension not appearing on Twitch' })).toBeTruthy()
   })
+
+  it('does not promise private delivery when the build cannot take messages', () => {
+    vi.stubEnv('VITE_TURNSTILE_SITE_KEY', '')
+    render(<MemoryRouter><Support /></MemoryRouter>)
+    const card = screen.getByTestId('support-feedback-link')
+    expect(screen.getByTestId('support-feedback-link-sub').textContent)
+      .toBe("The private feedback form isn't taking messages right now. The feedback page lists public alternatives.")
+    expect(card.textContent).not.toMatch(/Only the StreamPulse team reads it/)
+    expect(within(card).getByRole('link', { name: 'Send feedback' }).getAttribute('href')).toBe('/feedback')
+  })
 })
 
 describe('/feedback page', () => {
@@ -648,6 +658,45 @@ describe('/feedback page', () => {
     expect(screen.queryByTestId('support-form')).toBeNull()
     expect(within(off).getByRole('link', { name: 'Ask in the public Discord (opens in a new tab)' }).getAttribute('href')).toBe('https://discord.gg/sp-test-code')
     expect(within(off).getByRole('button', { name: 'Copy safe diagnostics' })).toBeTruthy()
+  })
+
+  it('drops the private note and the second Discord line while the form is unavailable', () => {
+    vi.stubEnv('VITE_TURNSTILE_SITE_KEY', '')
+    vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', 'https://discord.gg/sp-test-code')
+    render(<MemoryRouter><Feedback /></MemoryRouter>)
+    expect(screen.getByTestId('support-form-unavailable')).toBeTruthy()
+    expect(screen.queryByTestId('feedback-private-note')).toBeNull()
+    expect(screen.queryByTestId('support-discord-line')).toBeNull()
+    expect(screen.getAllByRole('link', { name: /Discord/ })
+      .filter(a => !a.closest('footer, nav'))).toHaveLength(1)
+  })
+
+  it('drops the private note and the Discord line when a send finds the form switched off', async () => {
+    vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', 'https://discord.gg/sp-test-code')
+    respondWith(json(503, { error: 'disabled' }))
+    await renderCard()
+    expect(screen.getByTestId('feedback-private-note')).toBeTruthy()
+    expect(screen.getByTestId('support-discord-line')).toBeTruthy()
+    typeMessage('Is this on?')
+    consent()
+    issue('tok-1')
+    send()
+    const off = await screen.findByTestId('support-form-unavailable')
+    expect(off.textContent).toMatch(/so your message was not sent/)
+    expect(screen.queryByTestId('feedback-private-note')).toBeNull()
+    expect(screen.queryByTestId('support-discord-line')).toBeNull()
+    expect(within(off).getByRole('link', { name: 'Ask in the public Discord (opens in a new tab)' })).toBeTruthy()
+  })
+
+  it('keeps the private note above a sent case', async () => {
+    respondWith(json(201, { case_id: 'case-note-1' }))
+    await renderCard()
+    typeMessage('Thanks')
+    consent()
+    issue('tok-1')
+    send()
+    await screen.findByTestId('support-form-success')
+    expect(screen.getByTestId('feedback-private-note')).toBeTruthy()
   })
 
   it('hides Discord from the public alternatives without a valid invite', () => {

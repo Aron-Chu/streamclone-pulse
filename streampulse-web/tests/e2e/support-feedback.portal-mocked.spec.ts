@@ -116,12 +116,20 @@ test.describe('any build', () => {
     const card = page.locator('#send-feedback')
     await expect(card).toHaveAttribute('data-testid', 'support-feedback-link')
     await expect(card).toBeInViewport()
-    await expect(card).toContainText('Only the StreamPulse team reads it.')
+    // A build without the Turnstile site key (CI) cannot take private
+    // messages, so the card says so instead of promising them.
+    await expect(card).toContainText(/Only the StreamPulse team reads it\.|The private feedback form isn't taking messages right now\./)
     await expect(page.getByTestId('support-form')).toHaveCount(0)
     await card.getByRole('link', { name: 'Send feedback' }).click()
     await expect(page).toHaveURL(/\/feedback$/)
     await expect(page.getByRole('heading', { level: 1, name: 'Send feedback' })).toBeVisible()
-    await expect(page.getByTestId('feedback-private-note')).toHaveText('Private. Only the StreamPulse team reads it; nothing here is posted publicly.')
+    const form = page.getByTestId('support-form')
+    await expect(form.or(page.getByTestId('support-form-unavailable'))).toBeVisible()
+    if (await form.isVisible()) {
+      await expect(page.getByTestId('feedback-private-note')).toHaveText('Private. Only the StreamPulse team reads it; nothing here is posted publicly.')
+    } else {
+      await expect(page.getByTestId('feedback-private-note')).toHaveCount(0)
+    }
   })
 
   test('without a working form, /feedback offers only alternatives labelled public', async ({ page, baseURL }) => {
@@ -142,6 +150,9 @@ test.describe('any build', () => {
     const alternatives = off.getByTestId('feedback-public-alternatives')
     await expect(alternatives).toContainText('Public alternatives. Anyone can read these')
     expect(await alternatives.textContent()).not.toMatch(/private/i)
+    // No private-delivery promise over the unavailable panel, and Discord once.
+    await expect(page.getByTestId('feedback-private-note')).toHaveCount(0)
+    await expect(page.getByTestId('support-discord-line')).toHaveCount(0)
     await expect(page.getByTestId('support-form-success')).toHaveCount(0)
   })
 })

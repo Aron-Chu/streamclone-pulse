@@ -157,6 +157,7 @@ describe('Discord entry points', () => {
 
   it('adds the quiet Discord line, labelled public, under the feedback card', () => {
     vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', SHORT_INVITE)
+    vi.stubEnv('VITE_TURNSTILE_SITE_KEY', '1x00000000000000000000AA')
     render(<MemoryRouter><Feedback /></MemoryRouter>)
     const line = screen.getByTestId('support-discord-line')
     expect(line.textContent).toContain('Ideas or just want to chat?')

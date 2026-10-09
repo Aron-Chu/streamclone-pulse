@@ -101,13 +101,18 @@ test.describe('public surface audit', () => {
     await card.getByRole('link', { name: 'Send feedback' }).click()
     await expect(page).toHaveURL(/\/feedback$/)
     await expect(page.getByRole('heading', { level: 1, name: 'Send feedback' })).toBeVisible()
-    await expect(page.getByTestId('feedback-private-note')).toContainText('Only the StreamPulse team reads it')
     await expect(page.getByText('No account needed.')).toBeVisible()
     const form = page.getByTestId('support-form')
     const off = page.getByTestId('support-form-unavailable')
     await expect(form.or(off)).toBeVisible()
-    // The audit build has no Turnstile key, so the form says it is unavailable.
+    if (await form.isVisible()) {
+      await expect(page.getByTestId('feedback-private-note')).toContainText('Only the StreamPulse team reads it')
+    }
+    // The audit build has no Turnstile key, so the form says it is unavailable
+    // and the page makes no private-delivery promise above it.
     if (await off.isVisible()) {
+      await expect(page.getByTestId('feedback-private-note')).toHaveCount(0)
+      await expect(page.getByTestId('support-discord-line')).toHaveCount(0)
       await expect(off.getByTestId('feedback-public-alternatives')).toContainText('Public alternatives. Anyone can read these')
       await expect(off.getByRole('link', { name: /Open a public issue on GitHub/ })).toBeVisible()
     }

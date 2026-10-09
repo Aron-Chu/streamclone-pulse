@@ -84,6 +84,11 @@ export function supportFormAvailability(siteKey: string | undefined | null): 're
   return siteKey && siteKey.trim() ? 'ready' : 'unavailable'
 }
 
+/** The build's public Turnstile site key; empty when the build has none. */
+export function feedbackSiteKey(): string {
+  return (import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined)?.trim() ?? ''
+}
+
 /** Stable Idempotency-Key for one logical submission (retries reuse the same key). */
 export function createSupportIdempotencyKey(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {

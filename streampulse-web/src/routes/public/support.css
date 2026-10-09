@@ -191,7 +191,7 @@ textarea.feedback-input { min-height: 118px; resize: vertical; line-height: 1.5;
 .feedback-form--shell .sc-btn:disabled { opacity: 1; }
 .feedback-form--shell :is(input, textarea):disabled { cursor: default; }
 @media (scripting: none) {
-  .feedback-form--shell { display: none; }
+  .feedback-form--shell, .feedback-js-only { display: none; }
 }
 
 /* Windows High Contrast / forced colours drops the backgrounds, borders'

@@ -4,9 +4,13 @@ import { PublicLayout } from '../../ui/components/PublicLayout'
 import { ChromeInstallCta } from '../../ui/components/ChromeInstallCta'
 import { buttonClass } from '../../ui/primitives'
 import { FEEDBACK_PATH } from '../../lib/externalLinks'
+import { feedbackSiteKey, supportFormAvailability } from '../../lib/supportForm'
 import './support.css'
 
 export default function Support() {
+  // A build without the Turnstile site key cannot take private messages, so
+  // the card does not promise them; /feedback then lists public alternatives.
+  const formReady = supportFormAvailability(feedbackSiteKey()) === 'ready'
   return (
     <PublicLayout>
       <div data-testid="support-page" className="support-page">
@@ -26,9 +30,11 @@ export default function Support() {
         <section id="send-feedback" className="feedback-card feedback-link-card" aria-labelledby="feedback-title" data-testid="support-feedback-link">
           <div className="feedback-link-card__text">
             <h2 id="feedback-title" className="feedback-card__title">Send private feedback</h2>
-            <p className="feedback-card__sub">
+            <p className="feedback-card__sub" data-testid="support-feedback-link-sub">
               <Lock aria-hidden="true" />
-              Report a problem or share an idea. Only the StreamPulse team reads it. No account needed.
+              {formReady
+                ? 'Report a problem or share an idea. Only the StreamPulse team reads it. No account needed.'
+                : "The private feedback form isn't taking messages right now. The feedback page lists public alternatives."}
             </p>
           </div>
           <Link className={buttonClass('default', 'lg')} to={FEEDBACK_PATH}>

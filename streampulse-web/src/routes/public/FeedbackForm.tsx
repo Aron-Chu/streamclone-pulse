@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertCircle, ArrowRight, ArrowUpRight, Check, Lightbulb } from 'lucide-react'
 import { DiscordMark } from '../../ui/components/DiscordMark'
@@ -13,6 +13,7 @@ import {
   buildSupportCaseBody,
   createSupportIdempotency,
   ensureTurnstileScript,
+  feedbackSiteKey,
   supportFailureOutcome,
   supportFormAvailability,
   supportSuccessOutcome,
@@ -198,8 +199,19 @@ function UnavailablePanel({ keptMessage, takeFocus = false }: { keptMessage?: st
  * `shell` is the prerendered copy: the same markup with every control
  * disabled, so the page does not jump when the live form replaces it, and
  * nothing typed before JavaScript runs is thrown away by that replacement.
+ *
+ * `lead` shows above the form and its success state only while the card can
+ * take a message, so a promise about delivery never sits over the unavailable
+ * panel. `onUnavailable` tells the page once the card has switched to it.
  */
-function FeedbackCard({ siteKey, shell = false }: { siteKey: string; shell?: boolean }) {
+type FeedbackCardProps = {
+  siteKey: string
+  shell?: boolean
+  lead?: ReactNode
+  onUnavailable?: () => void
+}
+
+function FeedbackCard({ siteKey, shell = false, lead, onUnavailable }: FeedbackCardProps) {
   const availability = supportFormAvailability(siteKey)
   const [kind, setKind] = useState<FeedbackKind>('bug')
   const [message, setMessage] = useState('')
@@ -236,6 +248,11 @@ function FeedbackCard({ siteKey, shell = false }: { siteKey: string; shell?: boo
     submitControllerRef.current?.abort()
     if (noteTimerRef.current !== null) window.clearTimeout(noteTimerRef.current)
   }, [])
+
+  const unavailable = state.kind === 'unavailable'
+  useEffect(() => {
+    if (unavailable) onUnavailable?.()
+  }, [unavailable, onUnavailable])
 
   /** Say `text` once through the status line, even when it repeats the last note. */
   function announce(text: string) {
@@ -491,6 +508,7 @@ function FeedbackCard({ siteKey, shell = false }: { siteKey: string; shell?: boo
 
   return (
     <>
+      {lead ? (shell ? <div className="feedback-js-only">{lead}</div> : lead) : null}
       <p className="feedback-sr" role="status" data-testid="support-form-announce">{liveNote}</p>
       {state.kind === 'sent' ? (
         <div className="feedback-done" data-testid="support-form-success" role="status">
@@ -613,15 +631,16 @@ function FeedbackCard({ siteKey, shell = false }: { siteKey: string; shell?: boo
 /**
  * The form as a page shows it. In the prerender it is the form's own markup
  * with every control disabled, so the live form takes exactly its space;
- * without JavaScript that shell hides and the unavailable panel shows.
+ * without JavaScript that shell (and its `lead`) hides and the unavailable
+ * panel shows.
  */
-export function FeedbackFormSlot() {
-  const siteKey = (import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined)?.trim() ?? ''
+export function FeedbackFormSlot({ lead, onUnavailable }: { lead?: ReactNode; onUnavailable?: () => void } = {}) {
+  const siteKey = feedbackSiteKey()
   const ready = supportFormAvailability(siteKey) === 'ready'
   return ready && typeof window === 'undefined' ? (
     <>
-      <FeedbackCard siteKey={siteKey} shell />
+      <FeedbackCard siteKey={siteKey} shell lead={lead} />
       <noscript><UnavailablePanel /></noscript>
     </>
-  ) : <FeedbackCard siteKey={siteKey} />
+  ) : <FeedbackCard siteKey={siteKey} lead={lead} onUnavailable={onUnavailable} />
 }

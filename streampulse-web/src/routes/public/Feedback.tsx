@@ -1,8 +1,10 @@
+import { useCallback, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Lock } from 'lucide-react'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { DiscordMark } from '../../ui/components/DiscordMark'
 import { discordInviteUrl } from '../../lib/discord'
+import { feedbackSiteKey, supportFormAvailability } from '../../lib/supportForm'
 import { FeedbackFormSlot } from './FeedbackForm'
 import './support.css'
 
@@ -10,9 +12,16 @@ import './support.css'
  * /feedback: the private feedback form on its own page. No account is needed;
  * an email is optional and only for a reply. Troubleshooting stays on /support,
  * which links here.
+ *
+ * The "Private" note and the quiet Discord line show only while the form can
+ * take a message. Once it is unavailable (no site key, intake off, or the
+ * check cannot load), the card shows its own public alternatives instead, so
+ * the page neither promises private delivery nor lists Discord twice.
  */
 export default function Feedback() {
   const discord = discordInviteUrl()
+  const [formOpen, setFormOpen] = useState(() => supportFormAvailability(feedbackSiteKey()) === 'ready')
+  const closeForm = useCallback(() => setFormOpen(false), [])
   return (
     <PublicLayout>
       <div data-testid="feedback-page" className="support-page">
@@ -26,15 +35,19 @@ export default function Feedback() {
         </header>
 
         <section id="send-feedback" className="feedback-card" aria-labelledby="feedback-title">
-          <p className="feedback-card__private" data-testid="feedback-private-note">
-            <Lock aria-hidden="true" />
-            <span>Private. Only the StreamPulse team reads it; nothing here is posted publicly.</span>
-          </p>
-          <FeedbackFormSlot />
+          <FeedbackFormSlot
+            onUnavailable={closeForm}
+            lead={(
+              <p className="feedback-card__private" data-testid="feedback-private-note">
+                <Lock aria-hidden="true" />
+                <span>Private. Only the StreamPulse team reads it; nothing here is posted publicly.</span>
+              </p>
+            )}
+          />
         </section>
 
-        {discord ? (
-          <p className="support-discord-line" data-testid="support-discord-line">
+        {discord && formOpen ? (
+          <p className="support-discord-line feedback-js-only" data-testid="support-discord-line">
             Ideas or just want to chat?{' '}
             <a href={discord} target="_blank" rel="noopener noreferrer" aria-label="Join the public Discord (opens in a new tab)">
               <DiscordMark size={15} /><span>Join the public Discord</span>
