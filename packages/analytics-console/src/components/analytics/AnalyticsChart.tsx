@@ -500,11 +500,23 @@ function AnalyticsChart({
   )
   const navigatorIndexForOffset = (offsetSeconds: number | null) =>
     sessionNavigatorIndexForOffset(offsetSeconds, chartDurationSeconds, chartDomainStartSeconds)
-  const handleNavigatorChange = useCallback((range: ChartNavigatorRange) => {
-    handleViewportChange(sessionViewportForNavigatorRange(range, chartDurationSeconds, chartDomainStartSeconds))
+  // A navigator drag reports every pointer move with animate=false. The plot
+  // must follow the pointer, so motion stays off while the rendered target is
+  // the viewport the drag last set (the hub does the same with jumpTo).
+  const [navigatorDirectViewport, setNavigatorDirectViewport] = useState<ChartViewport | null>(null)
+  const handleNavigatorChange = useCallback((range: ChartNavigatorRange, animate = true) => {
+    const next = sessionViewportForNavigatorRange(range, chartDurationSeconds, chartDomainStartSeconds)
+    setNavigatorDirectViewport(animate
+      ? null
+      : normalizeChartViewport(next, chartDurationSeconds, undefined, chartDomainStartSeconds))
+    handleViewportChange(next)
   }, [chartDomainStartSeconds, chartDurationSeconds, handleViewportChange])
+  const navigatorDirect = navigatorDirectViewport != null
+    && Math.abs(navigatorDirectViewport.startSeconds - effectiveChartViewport.startSeconds) < 0.5
+    && Math.abs(navigatorDirectViewport.endSeconds - effectiveChartViewport.endSeconds) < 0.5
   const resetNavigator = useCallback(() => {
     setScrollZoomEnabled(false)
+    setNavigatorDirectViewport(null)
     handleViewportChange(fullChartViewport(chartDurationSeconds, chartDomainStartSeconds))
   }, [chartDomainStartSeconds, chartDurationSeconds, handleViewportChange])
   const chartStackRef = useRef<HTMLDivElement>(null)
@@ -956,7 +968,19 @@ function AnalyticsChart({
           </div>
         </div>
       ) : null}
-      <div className="relative" data-session-chart-stack ref={chartStackRef}>
+      <div
+        className="relative"
+        data-session-chart-stack
+        ref={chartStackRef}
+        onKeyDownCapture={(event) => {
+          // The navigator hint promises Escape turns Scroll zoom off; that must
+          // also hold with focus on the plot, ahead of its Escape clearing the pin.
+          if (event.key !== 'Escape' || !scrollZoomEnabled) return
+          event.preventDefault()
+          event.stopPropagation()
+          resetNavigator()
+        }}
+      >
         <PulseMultiSignalChartInner
           chromeless
           variant="console"
@@ -983,6 +1007,7 @@ function AnalyticsChart({
           showSpikes={showSpikes}
           activityExpanded={activityExpanded}
           motionEnabled={motionEnabled}
+          viewportMotionEnabled={!navigatorDirect}
           playhead={chartPlayhead}
           onHoverRollupChange={setHoverRollup}
           focusedSeriesKey={focusedSeriesKey}

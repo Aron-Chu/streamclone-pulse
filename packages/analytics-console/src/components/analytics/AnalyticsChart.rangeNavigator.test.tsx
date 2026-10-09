@@ -9,8 +9,9 @@ import {
   sessionViewportForNavigatorRange,
 } from '../../utils/sessionChartNavigator.ts'
 
+const motion = vi.hoisted(() => ({ enabled: false }))
 vi.mock('../../hooks/useConsoleMotion.ts', () => ({
-  useConsoleMotion: () => ({ motionEnabled: false }),
+  useConsoleMotion: () => ({ motionEnabled: motion.enabled }),
 }))
 
 function detailWithMinutes(minuteCount: number): AnalyticsStreamDetail {
@@ -33,7 +34,7 @@ function detailWithMinutes(minuteCount: number): AnalyticsStreamDetail {
   } as unknown as AnalyticsStreamDetail
 }
 
-afterEach(() => { cleanup(); vi.restoreAllMocks() })
+afterEach(() => { cleanup(); vi.restoreAllMocks(); motion.enabled = false })
 
 function renderChart(minuteCount: number) {
   return render(
@@ -180,6 +181,81 @@ describe('AnalyticsChart range controls and navigator', () => {
     expect(viewportOf(container)).toEqual([0, 91 * 60])
     expect(screen.getByRole('button', { name: /Scroll zoom/ }).getAttribute('aria-pressed')).toBe('false')
     expect(container.querySelector('[data-chart-viewport-readout]')?.textContent).toBe('Full stream')
+  })
+
+  it('keeps the plot under the pointer while the navigator window is dragged with motion on', () => {
+    motion.enabled = true
+    // Hold every animation frame: a tween would leave the plot on its old range.
+    const frames = new Map<number, FrameRequestCallback>()
+    let frameId = 0
+    vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => {
+      frames.set(++frameId, callback)
+      return frameId
+    })
+    vi.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(key => { frames.delete(key) })
+    const flush = () => {
+      for (let round = 0; round < 4; round += 1) {
+        act(() => {
+          const pending = [...frames.values()]
+          frames.clear()
+          pending.forEach(callback => callback(performance.now() + 1000))
+        })
+      }
+    }
+    const { container } = renderChart(91)
+    fireEvent.click(screen.getByRole('button', { name: '15m' }))
+    flush()
+    const before = viewportOf(container)
+    expect(before[1]! - before[0]!).toBe(15 * 60)
+
+    const track = container.querySelector<HTMLElement>('.hx-chart-navigator__track')!
+    const windowEl = container.querySelector<HTMLElement>('.hx-chart-navigator__window')!
+    vi.spyOn(track, 'getBoundingClientRect').mockReturnValue({ left: 0, width: 900 } as DOMRect)
+    // 90 navigator steps over 900px: 10px per minute.
+    fireEvent.pointerDown(windowEl, { pointerId: 7, button: 0, clientX: 300 })
+    for (const clientX of [400, 500, 600]) {
+      fireEvent.pointerMove(windowEl, { pointerId: 7, clientX })
+      const minutesMoved = (clientX - 300) / 10
+      // No frame has run, so a tween would still show the previous window.
+      expect(viewportOf(container)).toEqual([before[0]! + minutesMoved * 60, before[1]! + minutesMoved * 60])
+    }
+    fireEvent.pointerUp(windowEl, { pointerId: 7, clientX: 600 })
+    expect(viewportOf(container)).toEqual([before[0]! + 30 * 60, before[1]! + 30 * 60])
+
+    // Discrete controls still ease once the drag is over.
+    fireEvent.click(screen.getByRole('button', { name: 'Full' }))
+    expect(viewportOf(container)).not.toEqual([0, 91 * 60])
+    flush()
+    expect(viewportOf(container)).toEqual([0, 91 * 60])
+  })
+
+  it('turns Scroll zoom off on Escape from the focused plot and keeps the pin', () => {
+    const detail = detailWithMinutes(91)
+    const onSelectRollup = vi.fn()
+    const { container } = render(
+      <AnalyticsChart
+        detail={detail}
+        selectedEmotes={new Set()}
+        onSelectEmote={vi.fn()}
+        selectedRollup={detail.rollups[20]!}
+        onSelectRollup={onSelectRollup}
+        viewMode="overview"
+        onViewModeChange={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '15m' }))
+    const scrollZoom = screen.getByRole('button', { name: /Scroll zoom/ })
+    fireEvent.click(scrollZoom)
+    expect(scrollZoom.getAttribute('aria-pressed')).toBe('true')
+    const plot = container.querySelector<HTMLElement>('[data-chart-touch-action]')!
+    fireEvent.keyDown(plot, { key: 'Escape' })
+    expect(scrollZoom.getAttribute('aria-pressed')).toBe('false')
+    expect(viewportOf(container)).toEqual([0, 91 * 60])
+    expect(onSelectRollup).not.toHaveBeenCalled()
+
+    // With Scroll zoom already off, Escape on the plot clears the pin as before.
+    fireEvent.keyDown(plot, { key: 'Escape' })
+    expect(onSelectRollup).toHaveBeenCalledWith(null)
   })
 
   it('zooms with Alt + wheel and pans with Shift + wheel while Scroll zoom is off', () => {
