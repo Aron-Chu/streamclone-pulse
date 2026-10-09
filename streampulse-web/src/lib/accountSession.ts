@@ -211,6 +211,15 @@ export async function signOutAccount(): Promise<void> {
   settleSignedOut()
 }
 
+/**
+ * The server already ended this session (Sign out everywhere answered 204 and
+ * cleared the cookie): forget it here too, with the Twitch name this tab kept,
+ * without another request.
+ */
+export function forgetAccountSession(): void {
+  settleSignedOut()
+}
+
 /** Account pages hold loaded account data; a full navigation drops it, as Account settings does. */
 export function leaveAccountPagesAfterSignOut(): void {
   window.location.assign('/account/sign-in')

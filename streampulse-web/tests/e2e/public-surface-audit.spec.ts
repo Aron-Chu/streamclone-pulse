@@ -500,4 +500,80 @@ test.describe('Continue with Twitch', () => {
     await expect(page.getByLabel('Email address')).toBeVisible()
     await expectNoHorizontalOverflow(page)
   })
+
+  // Sign out everywhere (backend #162, POST /v1/account/sessions/revoke-all),
+  // mocked: first the route is missing (not deployed or not relayed yet), then
+  // a recent-auth refusal, then success.
+  for (const width of [1440, 375]) {
+    test(`Sign out everywhere asks first, is honest while unavailable, and ends signed out at ${width}px`, async ({ page, baseURL }, testInfo) => {
+      test.skip(!TWITCH_SIGNIN, 'needs a VITE_TWITCH_SIGNIN=1 build')
+      const origin = new URL(baseURL!).origin
+      const host = new URL(baseURL!).hostname
+      const answers = [
+        { status: 404, json: { error: 'not_found' } },
+        { status: 403, json: { error: 'recent_auth_required' } },
+        { status: 204 },
+      ]
+      const revokes: Array<{ body: unknown; csrf?: string; origin?: string }> = []
+      let signedIn = true
+      await page.route('**/*', route => {
+        const url = new URL(route.request().url())
+        if (url.origin === origin && url.pathname.startsWith('/v1/')) return route.fulfill({ status: 404, json: { error: 'not_found' } })
+        return url.origin === origin ? route.continue() : route.abort('blockedbyclient')
+      })
+      await page.context().addCookies([{ name: '__Host-pulse_csrf', value: '56'.repeat(32), domain: host, path: '/', secure: true, sameSite: 'Strict' }])
+      await page.route('**/v1/account/me', route => signedIn
+        ? route.fulfill({ json: { accountId: '11111111-1111-4111-8111-111111111111', signInMethods: ['twitch'], expiresAt: '2027-01-01T00:00:00Z' } })
+        : route.fulfill({ status: 401, json: { error: 'sign_in_required' } }))
+      await page.route('**/v1/account/devices', route => route.fulfill({ json: { devices: [{ id: 'dev-1', label: 'Chrome on Windows', expiresAt: '2027-01-01T00:00:00Z' }] } }))
+      await page.route('**/v1/account/sessions/revoke-all', async route => {
+        const request = route.request()
+        revokes.push({ body: request.postDataJSON(), csrf: request.headers()['x-pulse-csrf'], origin: request.headers().origin })
+        const answer = answers.shift()!
+        if (answer.status === 204) {
+          // The API clears this browser's session cookies with the 204.
+          await page.context().clearCookies()
+          signedIn = false
+          return route.fulfill({ status: 204, body: '' })
+        }
+        return route.fulfill({ status: answer.status, json: answer.json })
+      })
+
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto('/account/settings')
+      const section = page.getByTestId('sign-out-everywhere')
+      await expect(section.getByRole('heading', { level: 2, name: 'Sign out everywhere' })).toBeVisible()
+      await section.getByRole('button', { name: 'Sign out everywhere' }).click()
+      const confirm = section.getByRole('button', { name: 'Confirm sign out everywhere' })
+      await expect(confirm).toBeVisible()
+      expect(revokes).toEqual([])
+      await expectNoHorizontalOverflow(page)
+      await page.screenshot({ path: testInfo.outputPath(`sign-out-everywhere-confirm-${width}.png`), fullPage: true })
+
+      await confirm.click()
+      await expect(page.getByTestId('revoke-all-unavailable')).toHaveText('Sign out everywhere isn’t available yet. Nothing was signed out. You can still sign out here and revoke each extension above.')
+      await expect(page.getByText('You’re signed in to StreamPulse.')).toBeVisible()
+      await expectNoHorizontalOverflow(page)
+      await page.screenshot({ path: testInfo.outputPath(`sign-out-everywhere-unavailable-${width}.png`), fullPage: true })
+
+      await confirm.click()
+      const prompt = page.getByTestId('revoke-all-confirm-twitch')
+      await expect(prompt).toContainText('Confirm it’s you')
+      await expect(prompt.getByRole('button', { name: 'Continue with Twitch' })).toBeVisible()
+      await expect(page.getByTestId('revoke-all-unavailable')).toHaveCount(0)
+      await expectNoHorizontalOverflow(page)
+      await page.screenshot({ path: testInfo.outputPath(`sign-out-everywhere-confirm-its-you-${width}.png`), fullPage: true })
+
+      await confirm.click()
+      await expect(page.getByTestId('revoke-all-done')).toContainText('You’re signed out everywhere.')
+      await expect(page.getByTestId('settings-signed-out')).toBeVisible()
+      await expect(page.getByText('You’re signed in to StreamPulse.')).toHaveCount(0)
+      await expect(page.getByText('Chrome on Windows')).toHaveCount(0)
+      await expectNoHorizontalOverflow(page)
+      await page.screenshot({ path: testInfo.outputPath(`sign-out-everywhere-done-${width}.png`), fullPage: true })
+
+      expect(revokes).toHaveLength(3)
+      for (const revoke of revokes) expect(revoke).toEqual({ body: {}, csrf: '56'.repeat(32), origin })
+    })
+  }
 })

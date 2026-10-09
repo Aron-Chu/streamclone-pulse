@@ -5,9 +5,10 @@ import { PublicLayout } from '../../ui/components/PublicLayout'
 import { AccountFooter } from './AccountFooter'
 import { accountRequest, accountErrorText, AccountError } from '../../lib/accountApi'
 import { announceAccountSignedOut } from '../../lib/accountSessionSignal'
-import { knownTwitchIdentity, useAccountSession } from '../../lib/accountSession'
+import { forgetAccountSession, knownTwitchIdentity, useAccountSession } from '../../lib/accountSession'
+import { clearBillingStepUp, rememberBillingStepUp, takeBillingStepUp, type BillingStepUpCheck } from '../../lib/accountStepUp'
 import { twitchSignInEnabled, twitchSignInPublic } from '../../lib/twitchSignInFlag'
-import { beginTwitchFlow, twitchErrorCode, type TwitchErrorCode } from '../../lib/twitchSignIn'
+import { beginTwitchFlow, TWITCH_DEFAULT_RETURN, twitchErrorCode, type TwitchErrorCode } from '../../lib/twitchSignIn'
 import { TwitchButton, TwitchErrorNotice, TwitchGlitch } from './TwitchSignIn'
 import './account.css'
 
@@ -78,6 +79,91 @@ function SignedOutSettings() {
   </div>
 }
 
+type RevokeAllProblem = 'step_up' | 'unavailable' | 'failed'
+
+/**
+ * Sign out everywhere (VITE_TWITCH_SIGNIN on): POST
+ * /v1/account/sessions/revoke-all ends every website session and extension
+ * device of this account and blocks the extension's silent sign-in. It needs a
+ * sign-in from the last 10 minutes (403 recent_auth_required), which a Twitch
+ * account confirms with "Confirm it's you" and an email account with a fresh
+ * sign-in. Until the backend route is deployed and the website relay allows it,
+ * the call answers 404, and the page says it is not available yet.
+ *
+ * The Twitch check is tied to the account that asked (accountStepUp.ts, purpose
+ * 'revoke-all'): if Twitch returns a different account, nothing is signed out
+ * and the person chooses what to do.
+ */
+function SignOutEverywhere({ accountId, returned, onDone, onSessionEnded, onSignOut, signOutBusy }: {
+  accountId: string
+  returned: BillingStepUpCheck
+  onDone: () => void
+  onSessionEnded: (error: unknown) => void
+  onSignOut: () => void
+  signOutBusy: boolean
+}) {
+  const headingId = useId()
+  const session = useAccountSession()
+  const [confirming, setConfirming] = useState(returned === 'same')
+  const [wrongAccount, setWrongAccount] = useState(returned === 'different')
+  const [busy, setBusy] = useState(false)
+  const [problem, setProblem] = useState<RevokeAllProblem | null>(null)
+  const [error, setError] = useState('')
+  const [twitchBusy, setTwitchBusy] = useState(false)
+  const [twitchError, setTwitchError] = useState<TwitchErrorCode | null>(null)
+  async function revokeAll() {
+    if (busy) return
+    setBusy(true); setProblem(null); setError(''); setTwitchError(null)
+    try {
+      await accountRequest('/sessions/revoke-all', {})
+      // 204: the server ended every session, including this one.
+      onDone()
+      return
+    } catch (failure) {
+      if (failure instanceof AccountError && failure.status === 403 && failure.code === 'recent_auth_required') setProblem('step_up')
+      // Not deployed or not relayed yet (the edge answers 404 for routes it does not know).
+      else if (failure instanceof AccountError && (failure.status === 404 || failure.status === 405)) setProblem('unavailable')
+      else if (failure instanceof AccountError && failure.status === 401) { onSessionEnded(failure); return }
+      else if (failure instanceof AccountError && (failure.status === 429 || failure.status === 403)) setError(accountErrorText(failure))
+      else setProblem('failed')
+    }
+    setBusy(false)
+  }
+  async function confirmWithTwitch() {
+    if (twitchBusy) return
+    setTwitchBusy(true); setTwitchError(null)
+    // Back on this page, the record says whether Twitch chose the same account.
+    try { await beginTwitchFlow({ purpose: 'signin', returnTo: TWITCH_DEFAULT_RETURN, beforeLeave: flowId => { rememberBillingStepUp(accountId, flowId, 'revoke-all') } }) }
+    catch (failure) { clearBillingStepUp(); setTwitchError(twitchErrorCode(failure)); setTwitchBusy(false) }
+  }
+  const twitchAccount = session.status === 'signed_in' && (session.profile.twitchLinked === true || session.profile.via === 'signin')
+  return <section className="pulse-account-signout-everywhere" aria-labelledby={headingId} data-testid="sign-out-everywhere">
+    <div className="pulse-account-section-heading"><h2 id={headingId}>Sign out everywhere</h2></div>
+    <p>Ends every website session and signs out every extension connected to this account, including this browser. Nothing is deleted: your account and Supporter membership stay, and you can sign in again.</p>
+    {wrongAccount ? <div className="pulse-account-note" role="alert" data-testid="revoke-all-wrong-account">
+      <p>Twitch signed you in to a different StreamPulse account than the one that asked to sign out everywhere. Nothing was signed out.</p>
+      <div className="pulse-account-actions"><button type="button" className="pulse-account-primary" disabled={signOutBusy} onClick={onSignOut}>Sign out</button><button type="button" className="pulse-account-text-button" disabled={signOutBusy} onClick={() => setWrongAccount(false)}>Stay with this account</button></div>
+    </div>
+    : confirming ? <div className="pulse-account-review" role="group" aria-label="Confirm sign out everywhere">
+      {returned === 'same' && !problem ? <p role="status" data-testid="revoke-all-confirmed">Thanks, that’s confirmed. Choose Confirm sign out everywhere to continue.</p> : null}
+      <h3>Sign out everywhere?</h3>
+      <p>Every browser and extension signed in to this account will need to sign in again, including this one.</p>
+      <div className="pulse-account-actions"><button className="pulse-account-revoke" disabled={busy} onClick={() => void revokeAll()}>{busy ? 'Signing out everywhere…' : 'Confirm sign out everywhere'}</button><button disabled={busy} onClick={() => { setConfirming(false); setProblem(null); setError(''); setTwitchError(null) }}>Cancel</button></div>
+    </div>
+    : <button className="pulse-account-revoke" onClick={() => { setConfirming(true); setProblem(null); setError('') }}><LogOut size={16} aria-hidden="true" /> Sign out everywhere</button>}
+    {problem === 'step_up' ? session.status === 'checking'
+      ? <p className="pulse-account-note" role="status">Checking your sign-in…</p>
+      : twitchAccount
+        ? <div className="pulse-account-note" role="alert" data-testid="revoke-all-confirm-twitch"><h3>Confirm it’s you</h3><p>For your security, signing out everywhere needs a Twitch check from the last 10 minutes. Nothing was signed out.</p><TwitchButton busy={twitchBusy} busyLabel="Opening Twitch…" onClick={() => void confirmWithTwitch()}>Continue with Twitch</TwitchButton></div>
+        : <div className="pulse-account-note" role="alert" data-testid="revoke-all-sign-in-again"><p>For your security, signing out everywhere needs a sign-in from the last 10 minutes. Nothing was signed out. Sign in again, then come back to Account &amp; devices.</p><Link className="pulse-account-button pulse-account-primary" to="/account/sign-in">Sign in again</Link></div>
+      : null}
+    {twitchError ? <TwitchErrorNotice code={twitchError} purpose="signin" current="/account/settings" /> : null}
+    {problem === 'unavailable' ? <p className="pulse-account-note" role="status" data-testid="revoke-all-unavailable">Sign out everywhere isn’t available yet. Nothing was signed out. You can still sign out here and revoke each extension above.</p> : null}
+    {problem === 'failed' ? <p role="alert" data-testid="revoke-all-failed">Sign out everywhere couldn’t be confirmed. Check your connection and try again.</p> : null}
+    {error ? <p role="alert">{error}</p> : null}
+  </section>
+}
+
 type Device = { id: string; label: string; expiresAt: string; revokedAt?: string }
 export default function AccountSettings() {
   const [identity, setIdentity] = useState('')
@@ -87,6 +173,9 @@ export default function AccountSettings() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(true)
   const [signedOut, setSignedOut] = useState(false)
+  const [accountId, setAccountId] = useState('')
+  const [revokeAllReturn, setRevokeAllReturn] = useState<BillingStepUpCheck>('none')
+  const [signedOutEverywhere, setSignedOutEverywhere] = useState(false)
   const otherWaysId = useId()
   const twitch = twitchSignInEnabled()
   async function list(next = '') {
@@ -102,6 +191,9 @@ export default function AccountSettings() {
       const me = await accountRequest('/me')
       if (typeof me.accountId !== 'string') throw new Error('Invalid account')
       hadSession = true
+      setAccountId(me.accountId)
+      // Back from a Sign out everywhere "Confirm it's you" round trip.
+      if (twitch) setRevokeAllReturn(takeBillingStepUp(me.accountId, 'revoke-all'))
       setIdentity(typeof me.email === 'string' ? me.email : me.accountId)
       await list()
     } catch (e) {
@@ -123,6 +215,18 @@ export default function AccountSettings() {
     catch (e) { setError(accountErrorText(e)) }
     finally { setBusy(false) }
   }
+  /** Sign out everywhere answered 204: this session is over too. */
+  function signedOutEverywhereDone() {
+    forgetAccountSession()
+    // Other open account tabs re-check and stop acting for this account.
+    announceAccountSignedOut()
+    setIdentity(''); setAccountId(''); setDevices([]); setCursor(''); setConfirm(''); setError('')
+    setSignedOut(true); setSignedOutEverywhere(true)
+  }
+  function sessionEnded(failure: unknown) {
+    setIdentity(''); setAccountId(''); setDevices([]); setCursor(''); setConfirm('')
+    setSignedOut(true); setError(accountErrorText(failure))
+  }
   async function logout() {
     if (busy) return
     setBusy(true); setError('')
@@ -143,6 +247,7 @@ export default function AccountSettings() {
     {busy ? <p role="status">Updating account...</p> : null}
     {/* Retry cannot help a 401; the sign-in below can. */}
     {error ? <div className="pulse-account-error"><p role="alert">{error}</p>{signedOut ? null : <button disabled={busy} onClick={() => void load()}>Retry</button>}</div> : null}
+    {signedOutEverywhere ? <p className="pulse-account-note" role="status" data-testid="revoke-all-done">You’re signed out everywhere. Every browser and extension that was signed in to this account has to sign in again. Nothing was deleted.</p> : null}
     {signedOut ? <SignedOutSettings /> : null}
     {identity && !signedOut && twitch ? <TwitchAccountRow /> : null}
     {/* Every extension signed in to this account is listed here, whichever way it
@@ -162,8 +267,9 @@ export default function AccountSettings() {
       <p>Invited testers can still connect an extension with a connection code.</p>
       <Link to="/account/link-device">Link extension with a code</Link>
     </section> : null}
+    {identity && !signedOut && twitch && accountId ? <SignOutEverywhere accountId={accountId} returned={revokeAllReturn} onDone={signedOutEverywhereDone} onSessionEnded={sessionEnded} onSignOut={() => void logout()} signOutBusy={busy} /> : null}
     <div className="pulse-account-explainer"><h2>Your account and this browser</h2><p>Website saves stay in this browser. They are separate from extension bookmarks and are not moved or merged when you sign in.</p>
-    <p>Signing out here ends this website session. Revoke a linked extension separately to stop its account access.</p></div>
+    <p>{twitch ? 'Signing out here ends this website session. Revoke a linked extension separately, or use Sign out everywhere to end every session and extension at once.' : 'Signing out here ends this website session. Revoke a linked extension separately to stop its account access.'}</p></div>
     <AccountFooter current="settings" />
   </section></PublicLayout>
 }

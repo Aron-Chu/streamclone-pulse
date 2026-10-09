@@ -15,13 +15,19 @@
  * Only a non-reversible tag of the account ID is kept, in this tab's
  * sessionStorage, for at most 10 minutes. It is a display guard, not access
  * control: the API opens the portal only for the session's own customer.
+ *
+ * Sign out everywhere (Account & devices) uses the same check with purpose
+ * 'revoke-all', so a Twitch round trip that lands on another account never
+ * reads as "confirmed" for the account that asked. Each page takes only the
+ * record started for its own purpose; a record without a purpose is billing's.
  */
 const KEY = 'pulse.account.billingStepUp.v1'
 export const STEP_UP_MAX_AGE_MS = 10 * 60_000
 const ACCOUNT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const FLOW_ID = /^[a-f0-9]{32}$/
 
-type StepUpRecord = { tag: string; flowId: string; expiresAt: number; completed: boolean }
+export type StepUpPurpose = 'billing' | 'revoke-all'
+type StepUpRecord = { tag: string; flowId: string; expiresAt: number; completed: boolean; purpose: StepUpPurpose }
 
 /** FNV-1a over the normalised ID, plus its last six hex digits (already shown as the account reference). */
 function accountTag(accountId: unknown): string | null {
@@ -36,11 +42,12 @@ function readRecord(): StepUpRecord | null {
   try {
     const value: unknown = JSON.parse(sessionStorage.getItem(KEY) ?? 'null')
     if (!value || typeof value !== 'object') return null
-    const { tag, flowId, expiresAt, completed } = value as Record<string, unknown>
+    const { tag, flowId, expiresAt, completed, purpose = 'billing' } = value as Record<string, unknown>
     const now = Date.now()
     if (typeof tag !== 'string' || typeof flowId !== 'string' || !FLOW_ID.test(flowId) || typeof expiresAt !== 'number'
-      || expiresAt <= now || expiresAt > now + STEP_UP_MAX_AGE_MS || typeof completed !== 'boolean') return null
-    return { tag, flowId, expiresAt, completed }
+      || expiresAt <= now || expiresAt > now + STEP_UP_MAX_AGE_MS || typeof completed !== 'boolean'
+      || (purpose !== 'billing' && purpose !== 'revoke-all')) return null
+    return { tag, flowId, expiresAt, completed, purpose }
   } catch { return null }
 }
 
@@ -57,11 +64,11 @@ export function clearBillingStepUp(flowId?: string): void {
  * Called once the Twitch flow has started, just before leaving for Twitch.
  * Returns false when the account or flow is unknown (nothing is saved).
  */
-export function rememberBillingStepUp(accountId: unknown, flowId: unknown): boolean {
+export function rememberBillingStepUp(accountId: unknown, flowId: unknown, purpose: StepUpPurpose = 'billing'): boolean {
   const tag = accountTag(accountId)
   try {
     if (!tag || typeof flowId !== 'string' || !FLOW_ID.test(flowId)) { sessionStorage.removeItem(KEY); return false }
-    const record: StepUpRecord = { tag, flowId, expiresAt: Date.now() + STEP_UP_MAX_AGE_MS, completed: false }
+    const record: StepUpRecord = { tag, flowId, expiresAt: Date.now() + STEP_UP_MAX_AGE_MS, completed: false, purpose }
     sessionStorage.setItem(KEY, JSON.stringify(record))
     return true
   } catch { return false }
@@ -82,10 +89,12 @@ export type BillingStepUpCheck = 'none' | 'same' | 'different'
 /**
  * Compares the account now signed in with the one that asked, once: the record
  * is removed whatever the answer. Unfinished, expired, malformed or unreadable
- * records are 'none'.
+ * records are 'none'. A record started for another purpose is 'none' and is
+ * left for the page it belongs to.
  */
-export function takeBillingStepUp(accountId: unknown): BillingStepUpCheck {
+export function takeBillingStepUp(accountId: unknown, purpose: StepUpPurpose = 'billing'): BillingStepUpCheck {
   const record = readRecord()
+  if (record && record.purpose !== purpose) return 'none'
   clearBillingStepUp()
   if (!record || !record.completed) return 'none'
   const current = accountTag(accountId)

@@ -1,4 +1,4 @@
-type AccountPath = '/auth/start' | '/auth/complete' | '/auth/logout' | '/auth/twitch/start' | '/auth/twitch/complete' | '/identities/twitch/link' | '/history/list' | '/history/forget' | '/saves/list' | '/me' | '/devices' | `/devices?cursor=${string}` | '/devices/revoke' | '/device-links/inspect' | '/device-links/approve'
+type AccountPath = '/auth/start' | '/auth/complete' | '/auth/logout' | '/auth/twitch/start' | '/auth/twitch/complete' | '/identities/twitch/link' | '/history/list' | '/history/forget' | '/saves/list' | '/me' | '/devices' | `/devices?cursor=${string}` | '/devices/revoke' | '/sessions/revoke-all' | '/device-links/inspect' | '/device-links/approve'
 export class AccountError extends Error {
   /** Seconds from a Retry-After header, when the server sent a usable one. */
   constructor(public status: number, public code?: string, public retryAfterSeconds?: number, public attemptId?: string) { super('Account request failed') }
@@ -21,7 +21,7 @@ export const BILLING_POST_TIMEOUT_MS = 35_000
 const SLOW_BILLING_POSTS = new Set(['/v1/billing/checkout', '/v1/billing/portal'])
 async function sessionRequest(path: string, body?: Record<string, unknown>): Promise<Record<string, unknown>> {
   // Validate URL-derived IDs at runtime, including calls from JavaScript.
-  const allowed = /^\/v1\/(?:account\/(?:auth\/(?:start|complete|logout|twitch\/(?:start|complete))|identities\/twitch\/link|history\/(?:list|forget)|saves\/list|me|devices(?:\?cursor=[0-9a-fA-F-]{36}|\/revoke)?|device-links\/(?:inspect|approve))|billing\/(?:supporter|portal|checkout(?:\/[0-9a-fA-F-]{36})?))$/
+  const allowed = /^\/v1\/(?:account\/(?:auth\/(?:start|complete|logout|twitch\/(?:start|complete))|identities\/twitch\/link|history\/(?:list|forget)|saves\/list|me|devices(?:\?cursor=[0-9a-fA-F-]{36}|\/revoke)?|sessions\/revoke-all|device-links\/(?:inspect|approve))|billing\/(?:supporter|portal|checkout(?:\/[0-9a-fA-F-]{36})?))$/
   if (!allowed.test(path) || path.includes('\n') || path.includes('\r')) throw new AccountError(400, 'invalid_request_path')
   return requestJson(path, body, 'same-origin', true)
 }

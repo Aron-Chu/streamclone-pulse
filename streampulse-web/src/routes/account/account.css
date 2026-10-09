@@ -294,3 +294,6 @@
 
 /* Reduced motion keeps a static ring; the copy already says what is happening. */
 @keyframes pulse-account-spin { to { transform: rotate(360deg); } }
+.pulse-account-signout-everywhere { margin-top: 28px; }
+.pulse-account-signout-everywhere .pulse-account-review { margin-top: 12px; }
+.pulse-account-signout-everywhere h3 { margin: 0 0 8px; }
