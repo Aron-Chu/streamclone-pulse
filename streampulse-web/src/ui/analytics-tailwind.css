@@ -125,6 +125,13 @@
   height: auto;
 }
 
+/* The session plot takes keyboard focus (arrows, Enter, +/-/0, Escape); show
+   it with the same ring as the chart controls. Drawn outside the plot. */
+.sc-analytics-console [data-session-chart-stack] svg[role='group']:focus-visible {
+  outline: 2px solid rgb(196 181 253);
+  outline-offset: 2px;
+}
+
 .sc-analytics-console [data-chart-data-alternative] button:focus-visible,
 .sc-analytics-console [data-chart-focus-bar] button:focus-visible,
 .sc-analytics-console .analytics-console[data-analytics-console-shell] header :is(a, button):focus-visible {

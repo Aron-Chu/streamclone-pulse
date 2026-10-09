@@ -27,6 +27,12 @@ describe('portal session control target CSS', () => {
     expect(hubCss).toMatch(/\.hubx \.hx-chart-navigator__toolbar button \{[^}]*min-height:\s*44px;/)
   })
 
+  it('shows a visible focus ring on the keyboard-focusable session plot', () => {
+    expect(css).toMatch(
+      /\.sc-analytics-console \[data-session-chart-stack\] svg\[role='group'\]:focus-visible \{\s*outline: 2px solid rgb\(196 181 253\);\s*outline-offset: 2px;/,
+    )
+  })
+
   it('keeps the override portal-scoped and wraps dense chart toolbars', () => {
     expect(css).not.toMatch(/(?:^|\n)\s*:where\([^\n]*button[^\n]*\)\s*\{[^}]*min-height:\s*44px/s)
     expect(css).toMatch(/\.sc-analytics-console \[data-chart-focus-top-row\][\s\S]*?flex-wrap:\s*wrap;/)
