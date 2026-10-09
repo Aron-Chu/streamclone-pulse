@@ -2077,6 +2077,7 @@ export function HubActivityChart({
                   <span className="hx-provider-lane__coverage" data-provider-coverage>
                     {coverageLabel}
                   </span>
+                  <span className="hx-provider-lane__track">
                   {hasSamples ? (
                     <svg viewBox="0 0 100 100" preserveAspectRatio="none">
                       {providerLaneLines[key].map((line, i) => (
@@ -2118,6 +2119,7 @@ export function HubActivityChart({
                       }}
                     />
                   ) : null}
+                  </span>
                 </div>
               </div>
             )

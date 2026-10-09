@@ -2375,10 +2375,67 @@
   background: hsl(var(--background) / 0.45);
   box-shadow: inset 0 0 0 1px hsl(var(--border) / 0.35);
 }
+.hubx .hx-provider-lane__track {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
 .hubx .hx-provider-lane__plot svg {
   display: block;
   width: 100%;
   height: 100%;
+}
+/* Phones: the provider name and its bucket coverage sit on their own line
+   above the sparkline and may wrap at spaces. Overlaid on a ~300px plot they
+   overflowed it and were clipped from the left, so "238/240 measured buckets"
+   read as "8/240" and "Full" as "ll". Numerals are never cut or ellipsized. */
+@media (max-width: 640px) {
+  .hubx .hx-provider-lane {
+    height: auto;
+  }
+  .hubx .hx-provider-lane__plot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.1rem 0.5rem;
+    height: auto;
+    overflow: visible;
+    background: none;
+    box-shadow: none;
+    border-radius: 0;
+  }
+  .hubx .hx-provider-lane__label,
+  .hubx .hx-provider-lane__coverage {
+    position: static;
+    transform: none;
+    padding: 0;
+    border: 0;
+    background: none;
+  }
+  .hubx .hx-provider-lane__label {
+    flex: 0 0 auto;
+  }
+  .hubx .hx-provider-lane__coverage {
+    flex: 1 1 10rem;
+    min-width: 0;
+    white-space: normal;
+    text-align: right;
+    line-height: 1.3;
+  }
+  .hubx .hx-provider-lane__track {
+    position: relative;
+    inset: auto;
+    flex: 0 0 100%;
+    height: 20px;
+    border-radius: 3px;
+    overflow: hidden;
+    background: hsl(var(--background) / 0.45);
+    box-shadow: inset 0 0 0 1px hsl(var(--border) / 0.35);
+  }
+  .hubx .hx-provider-lanes {
+    gap: 0.4rem;
+  }
 }
 .hubx .hx-provider-lane__area {
   opacity: 0.16;
