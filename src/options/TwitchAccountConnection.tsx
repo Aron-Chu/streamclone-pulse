@@ -41,7 +41,7 @@ const OUTCOME_COPY: Partial<Record<TwitchSignInOutcome, string>> = {
   auth_window_failed: 'The Twitch window could not finish. Try again.',
   network: 'Could not reach StreamPulse. Check your connection and try again.',
   unavailable: 'Sign-in is not available right now. Your free tools still work; try again later.',
-  hosted_only: 'Sign-in works only with the hosted StreamPulse service. Reset the backend address in Developer tools, then try again.',
+  hosted_only: 'Sign-in works only with the hosted StreamPulse service. Reset the backend address to the default, then try again.',
   revocation_pending: 'Finish signing out first: select Retry sign out.',
   busy: 'A Twitch sign-in window is already open. Finish or close it first.',
   disabled: 'Twitch sign-in is coming soon.',

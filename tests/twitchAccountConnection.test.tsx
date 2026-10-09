@@ -4,7 +4,8 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AccountConnection } from '../src/options/AccountConnection.tsx'
 import { twitchOutcomeMessage } from '../src/options/TwitchAccountConnection.tsx'
-import { TWITCH_SIGNIN_ENABLED, type TwitchSignInStatus } from '../src/shared/twitchSignIn.ts'
+import { TWITCH_SIGNIN_ENABLED, type TwitchSignInOutcome, type TwitchSignInStatus } from '../src/shared/twitchSignIn.ts'
+import { findStoreDeveloperMarkers } from '../scripts/store-artifact-policy.mjs'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -145,6 +146,19 @@ describe('Pulse account card with Sign in with Twitch on', () => {
     // A server revoke shows the button only.
     expect(twitchOutcomeMessage('revoked')).toBe('')
     expect(twitchOutcomeMessage('try_later', 30)).toContain('about 1 minute.')
+  })
+
+  it('keeps every outcome message free of store developer-tooling markers', () => {
+    // SupporterJourney imports this copy into store options bundles, which the
+    // package validator scans for developer tooling text.
+    const outcomes: TwitchSignInOutcome[] = [
+      'signed_in', 'already_signed_in', 'interaction_required', 'revoked', 'cancelled', 'state_mismatch', 'token_invalid',
+      'flow_expired', 'pilot_only', 'link_required', 'identity_in_use', 'account_deleted', 'signup_unavailable', 'try_later',
+      'surface_unavailable', 'redirect_mismatch', 'auth_window_failed', 'network', 'unavailable', 'hosted_only',
+      'revocation_pending', 'busy', 'disabled', 'unsupported', 'error',
+    ]
+    for (const outcome of outcomes) expect(findStoreDeveloperMarkers(twitchOutcomeMessage(outcome, 30))).toEqual([])
+    expect(twitchOutcomeMessage('hosted_only')).toContain('hosted StreamPulse service')
   })
 
   it('tries a silent sign-in once on first install and stays quiet when it needs a click', async () => {
