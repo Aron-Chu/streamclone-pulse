@@ -617,6 +617,7 @@ describe('/support link card', () => {
     const card = screen.getByTestId('support-feedback-link')
     expect(card.id).toBe('send-feedback')
     expect(card.textContent).toMatch(/Only the StreamPulse team reads it\. No account needed\./)
+    expect(within(card).getByTestId('support-feedback-link-lock')).toBeTruthy()
     expect(within(card).getByRole('link', { name: 'Send feedback' }).getAttribute('href')).toBe('/feedback')
     expect(screen.queryByTestId('support-form')).toBeNull()
     expect(screen.queryByTestId('support-form-unavailable')).toBeNull()
@@ -631,6 +632,8 @@ describe('/support link card', () => {
     expect(screen.getByTestId('support-feedback-link-sub').textContent)
       .toBe("The private feedback form isn't taking messages right now. The feedback page lists public alternatives.")
     expect(card.textContent).not.toMatch(/Only the StreamPulse team reads it/)
+    // No lock icon beside copy that says the private form is closed.
+    expect(within(card).queryByTestId('support-feedback-link-lock')).toBeNull()
     expect(within(card).getByRole('link', { name: 'Send feedback' }).getAttribute('href')).toBe('/feedback')
   })
 })
@@ -640,6 +643,9 @@ describe('/feedback page', () => {
     await renderCard()
     expect(screen.getByTestId('feedback-private-note').textContent).toBe('Private. Only the StreamPulse team reads it; nothing here is posted publicly.')
     expect(screen.getByRole('heading', { level: 1 }).parentElement!.textContent).toMatch(/No account needed\./)
+    expect(screen.getByTestId('feedback-private-badge').textContent).toBe('Private feedback')
+    expect(screen.getByTestId('feedback-page-sub').textContent)
+      .toBe('Spotted a problem or have an idea? Tell the StreamPulse team here. No account needed.')
     expect(screen.getByText(/optional, only if you.d like a reply/)).toBeTruthy()
     // The reply-consent box appears only once an email is typed; the send consent is always there.
     expect(screen.queryByLabelText('I consent to being contacted at this email about this report.')).toBeNull()
@@ -671,6 +677,43 @@ describe('/feedback page', () => {
       .filter(a => !a.closest('footer, nav'))).toHaveLength(1)
   })
 
+  it('does not invite a message in the header while the form is unavailable', () => {
+    vi.stubEnv('VITE_TURNSTILE_SITE_KEY', '')
+    render(<MemoryRouter><Feedback /></MemoryRouter>)
+    expect(screen.getByTestId('support-form-unavailable')).toBeTruthy()
+    expect(screen.queryByTestId('feedback-private-badge')).toBeNull()
+    expect(screen.getByTestId('feedback-page-sub').textContent)
+      .toBe("Spotted a problem or have an idea? The private form isn't taking messages right now.")
+    const head = screen.getByRole('heading', { level: 1 }).parentElement!
+    expect(head.textContent).not.toMatch(/Tell the StreamPulse team here|Private feedback/)
+  })
+
+  it('lists the public Discord once after a failed send, and brings the quiet line back on retry', async () => {
+    vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', 'https://discord.gg/sp-test-code')
+    respondWith(json(500, { error: 'boom' }), json(201, { case_id: 'case-retry-1' }))
+    await renderCard()
+    expect(screen.getByTestId('support-discord-line')).toBeTruthy()
+    typeMessage('Charts are blank')
+    consent()
+    issue('tok-1')
+    send()
+    await screen.findByTestId('support-form-error')
+    const alternatives = screen.getByTestId('feedback-public-alternatives')
+    expect(within(alternatives).getByRole('link', { name: 'Ask in the public Discord (opens in a new tab)' })).toBeTruthy()
+    expect(screen.queryByTestId('support-discord-line')).toBeNull()
+    expect(screen.getAllByRole('link', { name: /Discord/ })
+      .filter(a => !a.closest('footer, nav'))).toHaveLength(1)
+    // The form is still open, so the header and the private note stay.
+    expect(screen.getByTestId('feedback-private-badge')).toBeTruthy()
+    expect(screen.getByTestId('feedback-private-note')).toBeTruthy()
+
+    issue('tok-2')
+    send()
+    await screen.findByTestId('support-form-success')
+    expect(screen.queryByTestId('feedback-public-alternatives')).toBeNull()
+    expect(screen.getByTestId('support-discord-line')).toBeTruthy()
+  })
+
   it('drops the private note and the Discord line when a send finds the form switched off', async () => {
     vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', 'https://discord.gg/sp-test-code')
     respondWith(json(503, { error: 'disabled' }))
@@ -685,6 +728,8 @@ describe('/feedback page', () => {
     expect(off.textContent).toMatch(/so your message was not sent/)
     expect(screen.queryByTestId('feedback-private-note')).toBeNull()
     expect(screen.queryByTestId('support-discord-line')).toBeNull()
+    expect(screen.queryByTestId('feedback-private-badge')).toBeNull()
+    expect(screen.getByTestId('feedback-page-sub').textContent).toMatch(/The private form isn't taking messages right now\./)
     expect(within(off).getByRole('link', { name: 'Ask in the public Discord (opens in a new tab)' })).toBeTruthy()
   })
 

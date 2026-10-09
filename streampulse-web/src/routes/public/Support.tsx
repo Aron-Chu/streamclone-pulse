@@ -31,7 +31,9 @@ export default function Support() {
           <div className="feedback-link-card__text">
             <h2 id="feedback-title" className="feedback-card__title">Send private feedback</h2>
             <p className="feedback-card__sub" data-testid="support-feedback-link-sub">
-              <Lock aria-hidden="true" />
+              {/* The lock marks a private channel that can take a message; a build
+                  that cannot take one says so without it. */}
+              {formReady ? <Lock aria-hidden="true" data-testid="support-feedback-link-lock" /> : null}
               {formReady
                 ? 'Report a problem or share an idea. Only the StreamPulse team reads it. No account needed.'
                 : "The private feedback form isn't taking messages right now. The feedback page lists public alternatives."}

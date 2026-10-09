@@ -202,16 +202,24 @@ function UnavailablePanel({ keptMessage, takeFocus = false }: { keptMessage?: st
  *
  * `lead` shows above the form and its success state only while the card can
  * take a message, so a promise about delivery never sits over the unavailable
- * panel. `onUnavailable` tells the page once the card has switched to it.
+ * panel. `onPhase` tells the page whether the card can take a message, shows
+ * its own public alternatives after a failed send, or is unavailable.
  */
 type FeedbackCardProps = {
   siteKey: string
   shell?: boolean
   lead?: ReactNode
-  onUnavailable?: () => void
+  onPhase?: (phase: FeedbackPhase) => void
 }
 
-function FeedbackCard({ siteKey, shell = false, lead, onUnavailable }: FeedbackCardProps) {
+/**
+ * What the page around the card needs to know: `open` (the form or a sent
+ * case), `failed` (a send failed outright, so the card lists the public
+ * alternatives under the form) or `unavailable` (the unavailable panel).
+ */
+export type FeedbackPhase = 'open' | 'failed' | 'unavailable'
+
+function FeedbackCard({ siteKey, shell = false, lead, onPhase }: FeedbackCardProps) {
   const availability = supportFormAvailability(siteKey)
   const [kind, setKind] = useState<FeedbackKind>('bug')
   const [message, setMessage] = useState('')
@@ -249,10 +257,10 @@ function FeedbackCard({ siteKey, shell = false, lead, onUnavailable }: FeedbackC
     if (noteTimerRef.current !== null) window.clearTimeout(noteTimerRef.current)
   }, [])
 
-  const unavailable = state.kind === 'unavailable'
+  const phase: FeedbackPhase = state.kind === 'unavailable' ? 'unavailable' : state.kind === 'failed' ? 'failed' : 'open'
   useEffect(() => {
-    if (unavailable) onUnavailable?.()
-  }, [unavailable, onUnavailable])
+    onPhase?.(phase)
+  }, [phase, onPhase])
 
   /** Say `text` once through the status line, even when it repeats the last note. */
   function announce(text: string) {
@@ -634,7 +642,7 @@ function FeedbackCard({ siteKey, shell = false, lead, onUnavailable }: FeedbackC
  * without JavaScript that shell (and its `lead`) hides and the unavailable
  * panel shows.
  */
-export function FeedbackFormSlot({ lead, onUnavailable }: { lead?: ReactNode; onUnavailable?: () => void } = {}) {
+export function FeedbackFormSlot({ lead, onPhase }: { lead?: ReactNode; onPhase?: (phase: FeedbackPhase) => void } = {}) {
   const siteKey = feedbackSiteKey()
   const ready = supportFormAvailability(siteKey) === 'ready'
   return ready && typeof window === 'undefined' ? (
@@ -642,5 +650,5 @@ export function FeedbackFormSlot({ lead, onUnavailable }: { lead?: ReactNode; on
       <FeedbackCard siteKey={siteKey} shell lead={lead} />
       <noscript><UnavailablePanel /></noscript>
     </>
-  ) : <FeedbackCard siteKey={siteKey} lead={lead} onUnavailable={onUnavailable} />
+  ) : <FeedbackCard siteKey={siteKey} lead={lead} onPhase={onPhase} />
 }
