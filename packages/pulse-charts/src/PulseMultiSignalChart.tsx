@@ -39,6 +39,7 @@ import {
 import { buildChartHitRegions, chartHitRegionAtX } from "./chartHitRegions.ts";
 import { buildRenderBuckets } from "./renderBuckets.ts";
 import { composeRenderView } from "./renderView.ts";
+import { activityBucketMinutesForWidth, buildActivityTimeBuckets } from "./activityTimeBuckets.ts";
 import {
   buildReactionLaneGeometry,
   findReactionMomentAtPlotX,
@@ -530,6 +531,23 @@ type ActivityBarRect = {
 
 type ActivityBarHitBar = Pick<ActivityBarRect, "x" | "width" | "hasValue">;
 
+/** Index of the timestamp nearest `targetMs` in an ascending list (0 when unknown). */
+function nearestIndexByTime(timesMs: readonly number[], targetMs: number | undefined): number {
+  if (timesMs.length === 0 || targetMs == null || !Number.isFinite(targetMs)) return 0;
+  let low = 0;
+  let high = timesMs.length - 1;
+  while (low < high) {
+    const mid = (low + high) >> 1;
+    if ((timesMs[mid] ?? Number.NaN) < targetMs) low = mid + 1;
+    else high = mid;
+  }
+  const previous = low - 1;
+  if (previous >= 0 && Math.abs((timesMs[previous] ?? Infinity) - targetMs) <= Math.abs((timesMs[low] ?? Infinity) - targetMs)) {
+    return previous;
+  }
+  return low;
+}
+
 /**
  * Resolve activity clicks with the same bounded regions used by the shared
  * timestamp interaction model. A nearest-bar tolerance would make real
@@ -556,6 +574,80 @@ export function activityBarAtPlotX<T extends ActivityBarHitBar>(
   return region ? bars[region.index] ?? null : null;
 }
 
+/** Opt-in fixed-size, time-aligned activity buckets (see activityTimeBuckets.ts). */
+export type ActivityTimeBucketing = {
+  bucketMinutes: number;
+  /** Bucket alignment origin, normally the stream start. */
+  originMs: number | null;
+};
+
+function timeBucketActivityBarRects(args: {
+  values: Array<number | null>;
+  timestampMs: Array<number | null>;
+  timeBuckets: ActivityTimeBucketing;
+  cadenceMs: number;
+  plotWidth: number;
+  domainMs: number;
+  density: { minWidth: number; maxWidth: number };
+  timeScale: ViewerTimestampScale;
+  spikeThreshold: number;
+  barY: (value: number) => { y: number; height: number };
+}): ActivityBarRect[] {
+  const { timeScale, cadenceMs, timeBuckets } = args;
+  const pxPerCadence = args.plotWidth * cadenceMs / Math.max(1, args.domainMs);
+  const slotWidth = pxPerCadence * timeBuckets.bucketMinutes;
+  const gap = Math.min(slotWidth * 0.45, Math.max(1, slotWidth * ACTIVITY_BAR_GAP_RATIO));
+  const buckets = buildActivityTimeBuckets({
+    values: args.values,
+    timestampsMs: args.timestampMs,
+    bucketMinutes: timeBuckets.bucketMinutes,
+    cadenceMs,
+    originMs: timeBuckets.originMs,
+    include: (index) => {
+      const at = args.timestampMs[index];
+      return at != null && at >= timeScale.firstTimestampMs && at <= timeScale.lastTimestampMs;
+    },
+  });
+  return buckets.map((bucket, barIdx) => {
+    // Same centring rule as the budget path: the bar sits over the minutes it
+    // contains, and is exactly as wide as those minutes (less the gap).
+    const startX = timeScale.xForTimestampMs(bucket.firstMs);
+    const endX = timeScale.xForTimestampMs(bucket.lastMs);
+    const centerX = startX + Math.max(0, endX - startX) / 2;
+    const spanMinutes = Math.max(1, Math.round((bucket.lastMs - bucket.firstMs) / cadenceMs) + 1);
+    const nominalWidth = Math.max(
+      args.density.minWidth,
+      Math.min(args.density.maxWidth, spanMinutes * pxPerCadence - gap),
+    );
+    const x = Math.max(timeScale.plotStartX, centerX - nominalWidth / 2);
+    const widthPx = Math.max(0, Math.min(timeScale.plotEndX, centerX + nominalWidth / 2) - x);
+    // Bars show the bucket mean, the same per-minute rate the lines use. The
+    // peak minute stays attached for selection and disclosure.
+    const value = bucket.average;
+    const { y, height } = args.barY(value);
+    const observedRatio = Math.min(1, bucket.observedCount / Math.max(1, bucket.rangeLength));
+    return {
+      key: `tbar-${bucket.startIndex}-${barIdx}`,
+      x,
+      y,
+      width: widthPx,
+      height,
+      value,
+      hasValue: true,
+      peakValue: bucket.peak.value,
+      isSpike: args.spikeThreshold > 0 && value > args.spikeThreshold,
+      sourceIndex: bucket.peak.index,
+      bucketStartIndex: bucket.startIndex,
+      bucketEndExclusive: bucket.endExclusive,
+      observedCount: bucket.observedCount,
+      rangeLength: bucket.rangeLength,
+      observedRatio,
+      fullyObserved: bucket.observedCount >= bucket.rangeLength,
+      peak: bucket.peak,
+    };
+  });
+}
+
 function activityBarRects(
   values: Array<number | null>,
   timestamps: string[],
@@ -575,6 +667,7 @@ function activityBarRects(
   detailProgress = 0,
   aggregation: "average" | "peak" = "average",
   bandBottomOverride?: number,
+  timeBuckets: ActivityTimeBucketing | null = null,
 ): ActivityBarRect[] {
   const n = values.length;
   if (n === 0) return [];
@@ -618,6 +711,26 @@ function activityBarRects(
   const domainMs = Number.isFinite(timestampDomainMs) && timestampDomainMs > 0
     ? timestampDomainMs
     : cadenceMs * Math.max(1, n - 1);
+  if (timeBuckets) {
+    return timeBucketActivityBarRects({
+      values,
+      timestampMs,
+      timeBuckets,
+      cadenceMs,
+      plotWidth,
+      domainMs,
+      density,
+      timeScale,
+      spikeThreshold,
+      barY: (value) => {
+        const cy = plotY(value, max, height, padTop, padBottom, zone, rangeMin, layout);
+        return {
+          y: value > 0 ? cy : bandBottom - 1,
+          height: value > 0 ? Math.max(1, bandBottom - cy) : 1,
+        };
+      },
+    });
+  }
   // Line continuity includes offscreen halo rows. Aggregate only visible,
   // timestamp-contiguous activity, preserving source indices for inspection.
   const runs: Array<{ startIndex: number; endExclusive: number }> = [];
@@ -1041,6 +1154,8 @@ function PulseMultiSignalChartInnerImpl({
   dragPanMode = "off",
   wheelZoomMode = 'modified',
   lineWeightMode = "fixed",
+  activityBucketing = "budget",
+  onActivityBucketMinutesChange,
 }: {
   rollups: ChartMinuteRollup[];
   /** Full-resolution viewer source used for idle/detail geometry and moment lookup. */
@@ -1100,8 +1215,21 @@ function PulseMultiSignalChartInnerImpl({
   viewportMotionEnabled?: boolean;
   /** Portal-only opt-in; shared/extension callers retain the fixed stroke contract. */
   lineWeightMode?: ChartLineWeightMode;
+  /**
+   * `budget` (default) splits the visible minutes into a fixed bar budget.
+   * `time` groups them into whole 1/2/5/10/15/30/60-minute buckets chosen by
+   * plot width, so long streams keep bars of about 3px or wider and never
+   * draw a bar across missing minutes. Only the website console opts in.
+   */
+  activityBucketing?: "budget" | "time";
+  /** Reports the bucket size in minutes while `activityBucketing` is `time`. */
+  onActivityBucketMinutesChange?: (minutes: number | null) => void;
 }) {
   const [hover, setHover] = useState<number | null>(null);
+  // Index into the per-minute activity-bar series under the pointer. Only set
+  // when bars are built from `detailRollups` rather than the thinned `rollups`.
+  const [hoverActivityIndex, setHoverActivityIndex] = useState<number | null>(null);
+  const hoverActivityIndexRef = useRef<number | null>(null);
   const [scrubbing, setScrubbing] = useState(false);
   const hoverIndexRef = useRef<number | null>(null);
   const hoverRafRef = useRef<number | null>(null);
@@ -1202,6 +1330,8 @@ function PulseMultiSignalChartInnerImpl({
   }, [activityExpanded, activityExpandedControlled, onActivityExpandedChange]);
   useEffect(() => {
     hoverIndexRef.current = null;
+    hoverActivityIndexRef.current = null;
+    setHoverActivityIndex(null);
     pointerRef.current = null;
     suppressClickRef.current = false;
     pendingHoverClientRef.current = null;
@@ -1413,12 +1543,21 @@ function PulseMultiSignalChartInnerImpl({
     streamStartedAt,
   ]);
   const commitHover = useCallback(
-    (index: number | null) => {
-      if (hoverIndexRef.current === index) return;
+    (
+      index: number | null,
+      activity: { index: number; rollup: ChartMinuteRollup } | null = null,
+    ) => {
+      const activityIndex = activity?.index ?? null;
+      if (hoverIndexRef.current === index && hoverActivityIndexRef.current === activityIndex) return;
       hoverIndexRef.current = index;
+      hoverActivityIndexRef.current = activityIndex;
       setHover(index);
+      setHoverActivityIndex(activityIndex);
+      // The readout names the minute under the pointer: the per-minute row
+      // when bars come from detail data, else the chart row.
       onHoverRollupChange?.(
-        index != null && rollups[index] ? rollups[index]! : null,
+        activity?.rollup
+          ?? (index != null && rollups[index] ? rollups[index]! : null),
       );
     },
     [onHoverRollupChange, rollups],
@@ -1587,6 +1726,21 @@ function PulseMultiSignalChartInnerImpl({
   );
   // Shared once per rollup change so downstream path/rect memos can hit equality on
   // minuteTs arrays instead of `.map()`-allocating a new array each render.
+  const activityTimeBuckets = useMemo<ActivityTimeBucketing | null>(() => {
+    if (activityBucketing !== "time") return null;
+    const domainMs = timestampScale.lastTimestampMs - timestampScale.firstTimestampMs;
+    const visibleMinutes = Number.isFinite(domainMs) && domainMs > 0 ? domainMs / 60_000 + 1 : 1;
+    return {
+      bucketMinutes: activityBucketMinutesForWidth(visibleMinutes, timestampScale.plotWidth),
+      originMs: Number.isFinite(streamStartMs) ? streamStartMs : null,
+    };
+  }, [activityBucketing, streamStartMs, timestampScale]);
+  const activityBucketMinutes = activityTimeBuckets?.bucketMinutes ?? null;
+  const onActivityBucketMinutesChangeRef = useRef(onActivityBucketMinutesChange);
+  onActivityBucketMinutesChangeRef.current = onActivityBucketMinutesChange;
+  useEffect(() => {
+    onActivityBucketMinutesChangeRef.current?.(activityBucketMinutes);
+  }, [activityBucketMinutes]);
   const rollupMinuteTimestamps = useMemo(
     () => rollups.map((point) => point.minuteTs),
     [rollups],
@@ -1599,6 +1753,52 @@ function PulseMultiSignalChartInnerImpl({
     () => series.find((s) => s.key === "chat"),
     [series],
   );
+  // Time-bucketed bars are built from the full-resolution minutes. The chart's
+  // `rollups` can be a downsampled series (one row every 3–4 minutes on long
+  // streams), and grouping those into 5-minute buckets would put one sample in
+  // each bar. Bar indices then refer to `activityBarRollups`.
+  const activityBarRollups = activityBucketing === "time" && detailRollups.length > 0
+    ? detailRollups
+    : rollups;
+  const activityBarsUseDetail = activityBarRollups !== rollups;
+  const activityBarTimestamps = useMemo(
+    () => activityBarsUseDetail
+      ? activityBarRollups.map((point) => point.minuteTs)
+      : rollupMinuteTimestamps,
+    [activityBarRollups, activityBarsUseDetail, rollupMinuteTimestamps],
+  );
+  const activityBarChatValues = useMemo(
+    () => activityBarsUseDetail
+      ? activityBarRollups.map((point) => (point.missing ? null : (point.chatCount ?? null)))
+      : null,
+    [activityBarRollups, activityBarsUseDetail],
+  );
+  const activityBarEmoteValues = useMemo(
+    () => activityBarsUseDetail
+      ? activityBarRollups.map((point) => (point.missing ? null : minuteEmoteTotal(point)))
+      : null,
+    [activityBarRollups, activityBarsUseDetail],
+  );
+  const rollupTimesMs = useMemo(
+    () => rollups.map((point) => Date.parse(point.minuteTs)),
+    [rollups],
+  );
+  const activityBarTimesMs = useMemo(
+    () => activityBarsUseDetail
+      ? activityBarRollups.map((point) => Date.parse(point.minuteTs))
+      : rollupTimesMs,
+    [activityBarRollups, activityBarsUseDetail, rollupTimesMs],
+  );
+  /** Chart (`rollups`) index for an activity-bar source index. */
+  const rollupIndexForActivityIndex = (index: number): number =>
+    activityBarsUseDetail
+      ? nearestIndexByTime(rollupTimesMs, activityBarTimesMs[index])
+      : index;
+  /** Activity-bar source index for a chart (`rollups`) index. */
+  const activityIndexForRollupIndex = (index: number): number =>
+    activityBarsUseDetail
+      ? nearestIndexByTime(activityBarTimesMs, rollupTimesMs[index])
+      : index;
   const emotesItem = useMemo(
     () => series.find((s) => s.key === "emotes"),
     [series],
@@ -1797,8 +1997,8 @@ function PulseMultiSignalChartInnerImpl({
     if (!emotesItem) return [];
     const spikeThreshold = activityAxis.max * 0.55;
     return activityBarRects(
-      emotesItem.values,
-      rollupMinuteTimestamps,
+      activityBarEmoteValues ?? emotesItem.values,
+      activityBarTimestamps,
       activityAxis.max,
       activityAxis.min,
       "activity-emote",
@@ -1815,10 +2015,14 @@ function PulseMultiSignalChartInnerImpl({
       expandProgress,
       "peak",
       emoteMagnitudeBottom,
+      activityTimeBuckets,
     );
   }, [
     activityAxis,
+    activityBarEmoteValues,
+    activityBarTimestamps,
     activityLayout,
+    activityTimeBuckets,
     emoteMagnitudeBottom,
     emotesItem,
     expandProgress,
@@ -2011,8 +2215,8 @@ function PulseMultiSignalChartInnerImpl({
     if (!chatItem) return [];
     const chatMax = scaleForSeries(chatItem);
     return activityBarRects(
-      chatItem.values,
-      rollupMinuteTimestamps,
+      activityBarChatValues ?? chatItem.values,
+      activityBarTimestamps,
       chatMax,
       0,
       "activity-chat",
@@ -2028,9 +2232,14 @@ function PulseMultiSignalChartInnerImpl({
       0,
       expandProgress,
       "average",
+      undefined,
+      activityTimeBuckets,
     );
   }, [
+    activityBarChatValues,
+    activityBarTimestamps,
     activityLayout,
+    activityTimeBuckets,
     chatItem,
     expandProgress,
     height,
@@ -2375,8 +2584,13 @@ function PulseMultiSignalChartInnerImpl({
     viewerBand.bandBottom -
     ((avgViewers - viewerScaleMin) / viewerScaleSpan) * viewerBand.bandHeight;
   const showAvgLabel = yAvg - yMax > 22 && viewerBand.bandBottom - yAvg > 22;
+  const hoverActivityRollup = activityBarsUseDetail && hoverActivityIndex != null
+    ? activityBarRollups[hoverActivityIndex] ?? null
+    : null;
   const hoverPoint =
-    hover != null
+    hoverActivityRollup
+      ? hoverActivityRollup
+      : hover != null
       ? (rollups[hover] ??
         previewRollup ??
         selectedRollup ??
@@ -2461,9 +2675,10 @@ function PulseMultiSignalChartInnerImpl({
     );
   const bandForIndex = (index: number | null) => {
     if (index == null || index < 0) return null;
+    const barIndex = activityIndexForRollupIndex(index);
     return (
-      hoverBandFromBars(emoteBarRects, index)
-      ?? hoverBandFromBars(chatWhisperBarRects, index)
+      hoverBandFromBars(emoteBarRects, barIndex)
+      ?? hoverBandFromBars(chatWhisperBarRects, barIndex)
       ?? intervalBandFromTimestamps({
         startIndex: index,
         endExclusive: index + 1,
@@ -2472,12 +2687,47 @@ function PulseMultiSignalChartInnerImpl({
       })
     );
   };
+  // With per-minute bars the thinned `rollups` rows no longer line up with
+  // the bars, so hover and pin bands come from the bar series itself.
+  const activityBandForIndex = (index: number | null) =>
+    index == null || index < 0
+      ? null
+      : hoverBandFromBars(emoteBarRects, index) ?? hoverBandFromBars(chatWhisperBarRects, index);
+  const selectedActivityIndex = useMemo(() => {
+    if (!activityBarsUseDetail) return -1;
+    if (selectedRollup) {
+      const exact = activityBarRollups.findIndex((rollup) => rollup.minuteTs === selectedRollup.minuteTs);
+      if (exact >= 0) return exact;
+    }
+    const streamMs = streamStartedAt ? Date.parse(streamStartedAt) : Number.NaN;
+    const targetMs = typeof selectedOffsetSeconds === "number"
+      && Number.isFinite(selectedOffsetSeconds)
+      && Number.isFinite(streamMs)
+      ? streamMs + selectedOffsetSeconds * 1000
+      : selectedRollup
+        ? Date.parse(selectedRollup.minuteTs)
+        : Number.NaN;
+    if (!Number.isFinite(targetMs) || activityBarTimesMs.length === 0) return -1;
+    const nearest = nearestIndexByTime(activityBarTimesMs, targetMs);
+    // A selection inside a gap has no bar; never light a neighbour instead.
+    return Math.abs((activityBarTimesMs[nearest] ?? Infinity) - targetMs) < 60_000 ? nearest : -1;
+  }, [
+    activityBarRollups,
+    activityBarTimesMs,
+    activityBarsUseDetail,
+    selectedOffsetSeconds,
+    selectedRollup,
+    streamStartedAt,
+  ]);
   const pinBand = selectedMarkerX == null
     ? null
-    : bandForIndex(selectedSourceIndex >= 0 ? selectedSourceIndex : null);
-  const hoverBand = bandForIndex(hover);
-  const hoverLineX =
-    hover != null && rollups[hover]
+    : (activityBarsUseDetail ? activityBandForIndex(selectedActivityIndex) : null)
+      ?? bandForIndex(selectedSourceIndex >= 0 ? selectedSourceIndex : null);
+  const hoverBand = (hoverActivityRollup ? activityBandForIndex(hoverActivityIndex) : null)
+    ?? bandForIndex(hover);
+  const hoverLineX = hoverActivityRollup
+    ? timestampScale.xForTimestamp(hoverActivityRollup.minuteTs)
+    : hover != null && rollups[hover]
       ? timestampScale.xForTimestamp(
           rollups[hover]!.minuteTs,
           hover,
@@ -2485,8 +2735,8 @@ function PulseMultiSignalChartInnerImpl({
         )
       : null;
   const chromeTimeOffset =
-    hover != null
-      ? pointOffsetSeconds(rollups[hover]?.minuteTs ?? "", streamStartedAt)
+    hover != null || hoverActivityRollup
+      ? pointOffsetSeconds(hoverActivityRollup?.minuteTs ?? rollups[hover!]?.minuteTs ?? "", streamStartedAt)
       : Number.isFinite(selectedOffsetSeconds)
         ? selectedOffsetSeconds
         : selectedRollup
@@ -2599,7 +2849,27 @@ function PulseMultiSignalChartInnerImpl({
     const pct = Math.min(1, Math.max(0, clientXRelative / rect.width));
     const plotX = timestampScale.plotStartX + pct * timestampScale.plotWidth;
     const region = chartHitRegionAtX(hoverHitRegions, plotX);
-    commitHover(region?.index ?? null);
+    commitHover(region?.index ?? null, activityHoverAtPlotX(plotX));
+  }
+
+  /**
+   * The per-minute row under the pointer, inside the activity bar a click at
+   * this x would select. Null unless bars come from `detailRollups`.
+   */
+  function activityHoverAtPlotX(plotX: number): { index: number; rollup: ChartMinuteRollup } | null {
+    if (!activityBarsUseDetail) return null;
+    const bar = activityBarAtPlotX(emoteBarRects, plotX)
+      ?? activityBarAtPlotX(chatWhisperBarRects, plotX);
+    if (!bar) return null;
+    const first = bar.bucketStartIndex;
+    const last = Math.max(first, bar.bucketEndExclusive - 1);
+    const pointerMs = timestampScale.timestampAtX(plotX);
+    const index = pointerMs == null
+      ? (bar.peak?.index ?? bar.sourceIndex)
+      : Math.max(first, Math.min(last, nearestIndexByTime(activityBarTimesMs, pointerMs)));
+    const rollup = activityBarRollups[index];
+    if (!rollup || rollup.missing) return null;
+    return { index, rollup };
   }
 
   function scheduleHoverFromClientX(
@@ -2675,7 +2945,7 @@ function PulseMultiSignalChartInnerImpl({
       if (emote?.peak || emote) {
         const sourceIndex = emote.peak?.index ?? emote.sourceIndex;
         const offset = pointOffsetSeconds(
-          rollups[sourceIndex]?.minuteTs ?? "",
+          activityBarRollups[sourceIndex]?.minuteTs ?? "",
           streamStartedAt,
         ) ?? sourceIndex * 60;
         return {
@@ -2699,7 +2969,7 @@ function PulseMultiSignalChartInnerImpl({
           observedCount: chat.observedCount,
           rangeLength: chat.rangeLength,
           offsetForIndex: (index) =>
-            pointOffsetSeconds(rollups[index]?.minuteTs ?? "", streamStartedAt)
+            pointOffsetSeconds(activityBarRollups[index]?.minuteTs ?? "", streamStartedAt)
             ?? index * 60,
         });
       }
@@ -2727,7 +2997,9 @@ function PulseMultiSignalChartInnerImpl({
       hoverRafRef.current = null;
     }
     hoverIndexRef.current = null;
+    hoverActivityIndexRef.current = null;
     setHover(null);
+    setHoverActivityIndex(null);
     onHoverRollupChange?.(null);
     onPreviewReactionMoment?.(null);
   }
@@ -3117,6 +3389,8 @@ function PulseMultiSignalChartInnerImpl({
           measuredPlotCssWidth > 0 ? measuredPlotCssWidth.toFixed(2) : undefined
         }
         data-chart-line-weight-mode={lineWeightMode}
+        data-activity-bucketing={activityBucketing}
+        data-activity-bucket-minutes={activityBucketMinutes ?? undefined}
         data-chart-primary-line-width={primaryLineWidth.toFixed(2)}
         role={onSelectRollup ? "group" : "img"}
         aria-roledescription={
@@ -3795,14 +4069,14 @@ function PulseMultiSignalChartInnerImpl({
             }
             if (selection.kind === "emote_peak") {
               if (onSelectOffset) onSelectOffset(selection.offsetSeconds);
-              else toggleRollupSelection(selection.sourceIndex);
+              else toggleRollupSelection(rollupIndexForActivityIndex(selection.sourceIndex));
               setAnnouncement(`Selected emote peak at ${formatVodClock(selection.offsetSeconds)}.`);
               return;
             }
             if (selection.kind === "chat_interval") {
               const idx = selection.peak?.index ?? selection.startIndex;
               if (onSelectOffset) onSelectOffset(selection.anchorOffsetSeconds);
-              else toggleRollupSelection(idx);
+              else toggleRollupSelection(rollupIndexForActivityIndex(idx));
               setAnnouncement(
                 `Selected chat interval avg ${Math.round(selection.average)} `
                 + `from ${selection.startOffsetSeconds}s to ${selection.endOffsetSeconds}s `

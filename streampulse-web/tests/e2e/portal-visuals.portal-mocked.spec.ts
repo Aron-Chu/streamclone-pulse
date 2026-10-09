@@ -36,6 +36,32 @@ async function assertNonBlankScreenshot(page: import('@playwright/test').Page, n
   })
 }
 
+/**
+ * The range row plus the top of the plot. At 1440px the full-viewport shot
+ * stops at the plot's top edge, so controls drifting back over the plot would
+ * stay under the 4% tolerance there; in this crop they fill the frame.
+ */
+async function assertChartTopScreenshot(page: import('@playwright/test').Page, name: string) {
+  const row = page.locator('[data-chart-range-row]')
+  const stack = page.locator('[data-session-chart-stack]')
+  await expect(row).toBeVisible()
+  // Centre the row: below the sticky site header, with room for the crop.
+  await row.evaluate(element => element.scrollIntoView({ block: 'center' }))
+  await page.mouse.move(0, 0)
+  const rowBox = await row.boundingBox()
+  const stackBox = await stack.boundingBox()
+  if (!rowBox || !stackBox) throw new Error('chart range row or plot is not laid out')
+  // The row must sit wholly above the plot before the crop is worth comparing.
+  expect(rowBox.y + rowBox.height).toBeLessThanOrEqual(stackBox.y + 1)
+  const left = Math.max(0, Math.min(rowBox.x, stackBox.x) - 8)
+  const right = Math.max(rowBox.x + rowBox.width, stackBox.x + stackBox.width) + 8
+  await expect(page).toHaveScreenshot(name, {
+    clip: { x: left, y: rowBox.y, width: right - left, height: stackBox.y + 240 - rowBox.y },
+    maxDiffPixelRatio: 0.04,
+    animations: 'disabled',
+  })
+}
+
 async function assertScenarioRegionScreenshot(region: Locator, name: string) {
   await expect(region).toBeVisible()
   await expect(region).toHaveScreenshot(name, {
@@ -65,6 +91,8 @@ test.describe('portal responsive visuals (mocked)', () => {
             page.locator('[data-analytics-center-column]'),
             'portal-live-narrow-center.png',
           )
+        } else {
+          await assertChartTopScreenshot(page, 'portal-live-desktop-chart-top.png')
         }
         await assertNoUnexpected(harness)
       })

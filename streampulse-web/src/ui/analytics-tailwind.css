@@ -125,7 +125,8 @@
   height: auto;
 }
 
-/* Keep the overlaid range controls in one locally scrollable row. */
+/* Keep the range controls (their own row above the plot) in one locally
+   scrollable row. */
 .sc-analytics-console [data-chart-viewport-controls] {
   max-width: 100%;
   flex-wrap: nowrap;
@@ -390,5 +391,41 @@
   .sc-analytics-console .sc-loading-skeleton {
     animation: none;
     background: rgba(24, 24, 27, 0.95);
+  }
+}
+
+/* Channel chart navigator: the hub's Global activity navigator, rendered in a
+ * `.hubx` host so it picks up the hub's tokens and navigator styles. The host
+ * drops the hub shell layout that `.hubx` also carries, and the track lines up
+ * with the plot (the console chart pads 58/18px, 64/24px from 480px and
+ * 90/34px from 720px; see PulseMultiSignalChart). */
+.sc-analytics-console .hubx.sc-chart-navigator-host {
+  display: block;
+  min-height: 0;
+  grid-template-columns: none;
+  background: transparent;
+}
+
+.sc-analytics-console [data-session-chart-stack] {
+  container: session-chart / inline-size;
+}
+
+.sc-analytics-console [data-session-chart-navigator] .hx-chart-navigator__bar {
+  width: auto;
+  margin-left: 58px;
+  margin-right: 18px;
+}
+
+@container session-chart (min-width: 480px) {
+  .sc-analytics-console [data-session-chart-navigator] .hx-chart-navigator__bar {
+    margin-left: 64px;
+    margin-right: 24px;
+  }
+}
+
+@container session-chart (min-width: 720px) {
+  .sc-analytics-console [data-session-chart-navigator] .hx-chart-navigator__bar {
+    margin-left: 90px;
+    margin-right: 34px;
   }
 }

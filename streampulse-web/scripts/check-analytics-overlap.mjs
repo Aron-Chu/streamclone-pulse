@@ -54,6 +54,28 @@ for (const { file, needle, why } of forbiddenInSource) {
   }
 }
 
+// The console range controls once came back as an `absolute right-2 top-2`
+// overlay inside the plot stack (the guard above only covers the chart
+// package). Keep them in their own row before the plot and never floating.
+const consoleChartFile = join(repoRoot, 'packages/analytics-console/src/components/analytics/AnalyticsChart.tsx')
+if (existsSync(consoleChartFile)) {
+  const source = readFileSync(consoleChartFile, 'utf8')
+  const rowAt = source.search(/<div[^>]*\bdata-chart-range-row\b/)
+  const stackAt = source.search(/<div[^>]*\bdata-session-chart-stack\b/)
+  if (rowAt < 0) {
+    errors.push(`${consoleChartFile} must render the chart range controls in a [data-chart-range-row]`)
+  } else if (stackAt >= 0 && rowAt > stackAt) {
+    errors.push(`${consoleChartFile} must place [data-chart-range-row] before [data-session-chart-stack], not over the plot`)
+  }
+  for (const needle of ['data-chart-range-row', 'data-chart-viewport-controls']) {
+    for (const match of source.matchAll(new RegExp(`<div[^>]*\\b${needle}\\b[^>]*>`, 'g'))) {
+      if (/className=["{`][^"`}]*\b(?:absolute|fixed|sticky)\b/.test(match[0])) {
+        errors.push(`${consoleChartFile} must not position [${needle}] absolute/fixed/sticky — it covered the plot`)
+      }
+    }
+  }
+}
+
 if (errors.length > 0) {
   console.error('check:analytics-overlap FAILED\n')
   for (const err of errors) {

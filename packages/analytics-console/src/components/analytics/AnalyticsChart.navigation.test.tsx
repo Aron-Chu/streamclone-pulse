@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { AnalyticsStreamDetail } from '../../api.ts'
 import AnalyticsChart from './AnalyticsChart.tsx'
@@ -9,7 +9,7 @@ vi.mock('../../hooks/useConsoleMotion.ts', () => ({
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
-it('accumulates gentle animated wheel input while keeping drag release immediate', () => {
+it('accumulates gentle animated wheel input once Scroll zoom is on, keeping drag release immediate', () => {
   const frames = new Map<number, FrameRequestCallback>()
   let id = 0
   vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => {
@@ -38,6 +38,15 @@ it('accumulates gentle animated wheel input while keeping drag release immediate
   const range = () => [Number(plot.getAttribute('data-chart-viewport-start')), Number(plot.getAttribute('data-chart-viewport-end'))]
   const initial = range()
   const wheel = (deltaY: number) => fireEvent.wheel(plot, { deltaY, clientX: 500 })
+  // As on the hub, a plain wheel scrolls the page until Scroll zoom is on.
+  expect(wheel(-100)).toBe(true)
+  flush()
+  flush(150)
+  expect(range()).toEqual(initial)
+  const scrollZoom = screen.getByRole('button', { name: /Scroll zoom/ })
+  expect(scrollZoom.getAttribute('aria-pressed')).toBe('false')
+  fireEvent.click(scrollZoom)
+  expect(scrollZoom.getAttribute('aria-pressed')).toBe('true')
   wheel(-100)
   wheel(-100)
   wheel(-100)
