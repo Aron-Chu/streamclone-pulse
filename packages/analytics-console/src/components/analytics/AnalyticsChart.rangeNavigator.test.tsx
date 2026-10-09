@@ -98,6 +98,28 @@ describe('AnalyticsChart range controls and navigator', () => {
     expect(container.querySelector('[data-chart-viewport-readout]')?.textContent).toBe('Full stream')
   })
 
+  it('shares the chart header row with the readouts, ahead of the games strip and focus bar', () => {
+    const { container } = renderChart(91)
+    const header = container.querySelector<HTMLElement>('[data-chart-header-row]')!
+    const row = container.querySelector<HTMLElement>('[data-chart-range-row]')!
+    const readouts = container.querySelector<HTMLElement>('[data-chart-header-readouts]')!
+    expect(header).not.toBeNull()
+    expect(header.contains(row)).toBe(true)
+    expect(readouts.contains(container.querySelector('[data-chart-hover-readout-row]'))).toBe(true)
+    expect(readouts.contains(container.querySelector('[data-chart-selection-hint]'))).toBe(true)
+    // Readouts first, then range, in DOM (and so keyboard) order.
+    expect(readouts.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // The header (with its range controls) precedes the focus bar and the plot.
+    const focusBar = container.querySelector('[data-chart-focus-bar]')!
+    const stack = container.querySelector('[data-session-chart-stack]')!
+    expect(row.compareDocumentPosition(focusBar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(focusBar.compareDocumentPosition(stack) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // The hover values outlast the viewer-source label when the row is tight.
+    const readoutValues = container.querySelector<HTMLElement>('[data-chart-hover-readout-row] > p')!
+    expect(readoutValues.className).toMatch(/\bshrink-\[0\.01\]/)
+    expect(readoutValues.className).toMatch(/\btruncate\b/)
+  })
+
   it('hides the navigator below the five-minute interaction threshold', () => {
     const { container } = renderChart(4)
     expect(container.querySelector('[data-session-chart-navigator]')).toBeNull()
