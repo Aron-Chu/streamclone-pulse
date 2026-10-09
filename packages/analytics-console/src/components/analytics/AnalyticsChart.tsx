@@ -1008,7 +1008,7 @@ function AnalyticsChart({
           View measured minute data ({pagedDataRows.length} of {tableRollups.length} minutes)
         </summary>
         {tableRollups.length > 120 ? (
-          <div className="mt-2 flex items-center justify-between gap-2 text-xs text-zinc-400" data-chart-data-pager>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400" data-chart-data-pager>
             <button
               type="button"
               className={DATA_PAGER_BUTTON_CLASS}
@@ -1017,8 +1017,9 @@ function AnalyticsChart({
             >
               Earlier minutes
             </button>
-            {/* Pages count from the stream start, so the newest page is "N of N". */}
-            <span className="text-center tabular-nums" data-chart-data-page-label>
+            {/* Pages count from the stream start, so the newest page is "N of N".
+                On a phone the label takes its own row above the two buttons. */}
+            <span className="order-first basis-full text-center tabular-nums sm:order-none sm:basis-auto" data-chart-data-page-label>
               {pagedDataRows.length > 0
                 ? `${vodClock(pagedDataRows[0]!.minuteTs, streamStartedAt)}–${vodClock(pagedDataRows[pagedDataRows.length - 1]!.minuteTs, streamStartedAt)} · `
                 : ''}
