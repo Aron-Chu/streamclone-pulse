@@ -40,7 +40,9 @@ test('packaged history sync joins the account, sends real jumps, pulls other bro
   })
 
   const page = extension.page
-  const settled = () => page.waitForFunction(() => document.getAnimations().every(a => a.playState !== 'running'))
+  // Finite animations only: a looping one (the Supporter card's paint in the
+  // release build's settings sidebar) never finishes, as in popup.mocked.spec.ts.
+  const settled = () => page.waitForFunction(() => document.getAnimations().every(a => a.playState !== 'running' || a.effect?.getTiming().iterations === Infinity))
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#moments`)
   const start = await page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_ACCOUNT', action: 'start' }))
   expect(start.account.state).toBe('pending')
