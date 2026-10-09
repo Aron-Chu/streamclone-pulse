@@ -333,6 +333,11 @@ test.describe('hub metrics sanity banner (mocked sparse rollups)', () => {
     await expect(peakRow).not.toContainText('83K')
     await expect(peakRow).not.toContainText(/Live pool sum/i)
     await expect(peakRow.locator('[data-viewer-scope="sampled-peak"]')).toHaveAttribute('title', /complete sampling pass/)
+    // The peak time and roster caption the viewer peak, not the chat peak beside it.
+    const viewerCaption = peakRow.locator('[data-viewer-scope="sampled-peak"] [data-testid="hub-sampled-peak-caption"]')
+    await expect(viewerCaption).toBeVisible()
+    await expect(viewerCaption).toContainText(/\d{1,2}:\d{2}/)
+    await expect(peakRow.locator(':scope > .figma-global-activity__peak-time')).toHaveCount(0)
     await expect(page.getByTestId('hub-viewer-definitions')).toContainText('not comparable')
     await assertNoConsoleErrors(page, errors)
   })

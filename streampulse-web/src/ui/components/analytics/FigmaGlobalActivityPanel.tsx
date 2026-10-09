@@ -500,17 +500,20 @@ export function FigmaGlobalActivityPanel({
             >
               <span className="figma-global-activity__peak-label">{SAMPLED_PEAK_LABEL}</span>
               <strong data-testid="hub-sampled-peak-viewers">{compact(peakViewers)}</strong>
+              {/* Time and roster belong to the viewer peak only (the chat peak
+                  can fall in a different minute), so they caption this stat. */}
+              <span
+                className="figma-global-activity__peak-time muted"
+                data-testid="hub-sampled-peak-caption"
+              >
+                {formatPeakTime(peakViewersAt)}
+                {sampledPeakRoster ? ` · ${sampledPeakRoster}` : null}
+              </span>
             </span>
             {peakChatPerMin > 0 ? (
               <span className="figma-global-activity__peak-stat">
                 <span className="figma-global-activity__peak-label">Peak chat/min</span>
                 <strong>{compact(peakChatPerMin)}</strong>
-              </span>
-            ) : null}
-            {peakViewersAt ? (
-              <span className="figma-global-activity__peak-time muted">
-                {formatPeakTime(peakViewersAt)}
-                {sampledPeakRoster ? ` · ${sampledPeakRoster}` : null}
               </span>
             ) : null}
           </div>
