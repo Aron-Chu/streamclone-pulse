@@ -5,6 +5,8 @@ import { getBackendUrl, getThemePreference, setOverlayMode, setSidebarTab } from
 import { extensionBackendSourceCaption, extensionBackendSourceLabel, resolveExtensionBackendSource } from '../shared/backendSource.ts'
 import { installedExtensionVersion } from '../shared/releaseManifest.ts'
 import { openHubAnalytics } from '../shared/analyticsLinks.ts'
+import { COMMUNITY_LINKS } from '../shared/portalLinks.ts'
+import { DiscordMark } from '../ui/communityIcons.tsx'
 import { applyAccentTheme } from '../ui/overlayTheme.ts'
 import { replayUrl } from '../ui/library/model.ts'
 import type { HubSnapshot } from '../shared/hubSnapshot.ts'
@@ -229,6 +231,14 @@ function PopupApp() {
           onClick={() => openHubAnalytics(backendUrl)}
         />
       </nav>
+
+      {/* The website's /discord page holds the invite; none ships in the extension. */}
+      <button type="button" className="pp-discord" data-popup-action="open-discord" onClick={() => void openUrl(COMMUNITY_LINKS.discord)}>
+        <span className="pp-discord-icon" aria-hidden="true"><DiscordMark /></span>
+        Join the StreamPulse Discord
+        <span className="pp-sr"> (opens in a new tab)</span>
+        <ExternalIcon />
+      </button>
 
       <footer className="pp-foot">
         <span className="pp-dot" data-tone={health.state === 'ok' ? 'ok' : health.state === 'down' ? 'bad' : undefined} aria-hidden="true" />

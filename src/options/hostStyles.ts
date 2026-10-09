@@ -377,6 +377,8 @@ const hostStyles = `
   /* ---------- body: section links + content ---------- */
   .pulse-host-body {
     display: grid;
+    /* Rows hug their content: a short section (Help & Feedback) must not spread the stacked rail and content apart. */
+    align-content: start;
     align-items: start;
     gap: 24px;
     grid-template-columns: 184px minmax(0, 720px);
@@ -385,11 +387,17 @@ const hostStyles = `
     padding: 24px 20px 56px;
     width: 100%;
   }
+  /* The rail (section list + Community card) stays in view while a long section scrolls. */
+  .pulse-host-rail {
+    display: grid;
+    gap: 18px;
+    min-width: 0;
+    position: sticky;
+    top: 18px;
+  }
   .pulse-host-nav {
     display: grid;
     gap: 5px;
-    position: sticky;
-    top: 18px;
   }
   .pulse-host-nav-label {
     color: ${theme.textMuted};
@@ -435,6 +443,57 @@ const hostStyles = `
     outline: 2px solid var(--pulse-accent-light, #a78bfa);
     outline-offset: 2px;
   }
+  /* ---------- Community card: Discord + feedback, under the section list ---------- */
+  .pulse-host-community {
+    background: #0f0f14;
+    border: 1px solid ${theme.border};
+    border-radius: 12px;
+    display: grid;
+    gap: 6px;
+    padding: 10px;
+  }
+  .pulse-host-community .pulse-host-nav-label { padding: 0 2px 2px; }
+  .pulse-host-community-link {
+    align-items: center;
+    background: #15151c;
+    border: 1px solid #2a2a36;
+    border-radius: 9px;
+    color: ${theme.textPrimary};
+    display: flex;
+    font-size: 12px;
+    font-weight: 700;
+    gap: 8px;
+    min-height: 36px;
+    padding: 0 10px;
+    text-decoration: none;
+    transition: background 140ms ease, border-color 140ms ease;
+    white-space: nowrap;
+  }
+  .pulse-host-community-link > svg { flex: none; height: 15px; width: 15px; }
+  .pulse-host-community-link > svg:last-child { height: 11px; margin-left: auto; opacity: 0.8; width: 11px; }
+  .pulse-host-community-link[data-community-link="feedback"] > svg:first-child { color: var(--pulse-accent-soft, #c4b5fd); }
+  .pulse-host-community-link:hover { background: #1c1c25; border-color: #3a3a48; }
+  /* Discord Blurple with white text: 4.6:1. */
+  .pulse-host-community-link[data-community-link="discord"] { background: #5865f2; border-color: #5865f2; color: #fff; }
+  .pulse-host-community-link[data-community-link="discord"]:hover { background: #4752c4; border-color: #4752c4; }
+  .pulse-host-community-link:focus-visible,
+  .pulse-settings-help-choice:focus-visible {
+    outline: 2px solid var(--pulse-accent-light, #a78bfa);
+    outline-offset: 2px;
+  }
+  .pulse-host-community-sr {
+    clip: rect(0 0 0 0);
+    height: 1px;
+    overflow: hidden;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+  }
+  /* A rail taller than a short window would hide its own bottom while stuck. */
+  @media (max-height: 560px) {
+    .pulse-host-rail { position: static; }
+  }
+
   .pulse-host-main {
     display: grid;
     gap: 12px;
@@ -458,12 +517,22 @@ const hostStyles = `
       grid-template-columns: minmax(0, 1fr);
       padding: 14px 14px 40px;
     }
+    .pulse-host-rail {
+      gap: 10px;
+      position: static;
+    }
     .pulse-host-nav {
       display: flex;
       flex-wrap: wrap;
       gap: 5px;
-      position: static;
     }
+    .pulse-host-community {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      padding: 8px;
+    }
+    .pulse-host-community .pulse-host-nav-label { display: none; }
+    .pulse-host-community-link { justify-content: center; padding: 0 8px; }
+    .pulse-host-community-link > svg:last-child { margin-left: 0; }
     .pulse-host-nav-label { display: none; }
     .pulse-host-nav a {
       flex: 1 1 auto;
@@ -589,6 +658,53 @@ const hostStyles = `
     height: 14px;
     width: 14px;
   }
+  /* ---------- Help & Feedback: two large choices ---------- */
+  .pulse-settings-help-choices {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .pulse-settings-help-choice {
+    align-items: center;
+    background: #111117;
+    border: 1px solid #2a2a36;
+    border-radius: 12px;
+    color: ${theme.textPrimary};
+    display: grid;
+    gap: 14px;
+    grid-template-columns: 40px minmax(0, 1fr) 14px;
+    min-height: 88px;
+    padding: 16px 18px;
+    text-decoration: none;
+    transition: background 140ms ease, border-color 140ms ease;
+  }
+  .pulse-settings-help-choice:hover { background: #17171f; border-color: #3a3a48; }
+  .pulse-settings-help-icon {
+    align-items: center;
+    background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.16);
+    border: 1px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.3);
+    border-radius: 10px;
+    color: var(--pulse-accent-soft, #c4b5fd);
+    display: grid;
+    height: 40px;
+    place-items: center;
+    width: 40px;
+  }
+  .pulse-settings-help-icon svg { height: 22px; width: 22px; }
+  .pulse-settings-help-copy { display: grid; gap: 2px; min-width: 0; }
+  .pulse-settings-help-copy strong { font-size: 15px; font-weight: 800; letter-spacing: -0.01em; line-height: 1.3; }
+  .pulse-settings-help-copy small { color: ${theme.textSecondary}; font-size: 12px; }
+  .pulse-settings-help-choice > svg { color: ${theme.textMuted}; height: 14px; width: 14px; }
+  .pulse-settings-help-choice[data-help-choice="discord"] { background: #5865f2; border-color: #5865f2; color: #fff; }
+  .pulse-settings-help-choice[data-help-choice="discord"]:hover { background: #4752c4; border-color: #4752c4; }
+  .pulse-settings-help-choice[data-help-choice="discord"] .pulse-settings-help-icon { background: rgba(255, 255, 255, 0.16); border-color: rgba(255, 255, 255, 0.22); color: #fff; }
+  .pulse-settings-help-choice[data-help-choice="discord"] small,
+  .pulse-settings-help-choice[data-help-choice="discord"] > svg { color: #fff; }
+  /* Stacked when the rail moves above the content; side by side needs ~560px of content. */
+  @media (max-width: 860px) {
+    .pulse-settings-help-choices { grid-template-columns: minmax(0, 1fr); }
+  }
+
   .pulse-settings-policy-link {
     color: var(--pulse-accent-soft, #c4b5fd);
     font-size: 14px;
@@ -942,6 +1058,8 @@ const hostStyles = `
 
   @media (prefers-reduced-motion: reduce) {
     .pulse-host-nav a,
+    .pulse-host-community-link,
+    .pulse-settings-help-choice,
     .pulse-settings-skip-link,
     .pulse-changelog-release,
     .pulse-changelog-chevron,

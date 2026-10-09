@@ -256,6 +256,9 @@ describe('Overlay load, error and dock states', () => {
       })
       expect(text()).toContain('Something went wrong rendering this panel.')
       expect(text()).not.toMatch(/type_error|unknown|\(/)
+      // The way out is text only: the content script carries no feedback button or URL.
+      expect(text()).toContain('If this persists, open Help & Feedback in Settings.')
+      expect(node.querySelector('a, button')).toBeNull()
       consoleError.mockRestore()
     })
 
