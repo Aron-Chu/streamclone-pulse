@@ -90,6 +90,14 @@ export type AnalyticsViewMode =
   | `series:${string}`
 export type RightPanelTab = 'moments' | 'emotes' | 'clips' | 'sync'
 
+/** A missing value reads as an em dash, as on the hub's readout ("Viewers —"). */
+function readoutCount(value: number | null | undefined): string {
+  return value == null ? '—' : count(value)
+}
+
+/** How far back the resting readout may look for a minute with a viewer sample. */
+const RESTING_VIEWER_LOOKBACK_MS = 15 * 60_000
+
 function ChartHoverReadout({
   minuteTs,
   streamStartedAt,
@@ -108,7 +116,7 @@ function ChartHoverReadout({
       className="min-w-0 shrink-[0.01] truncate text-xs font-bold tabular-nums text-zinc-500"
       title="Values at the hovered minute on the chart"
     >
-      {vodClock(minuteTs, streamStartedAt)} · viewers {count(viewers)} · chat {count(chatCount)}/min · emotes {count(emoteTotal)}/min
+      {vodClock(minuteTs, streamStartedAt)} · viewers {readoutCount(viewers)} · chat {readoutCount(chatCount)}/min · emotes {readoutCount(emoteTotal)}/min
     </p>
   )
 }
@@ -485,7 +493,20 @@ function AnalyticsChart({
     }
     return null
   }, [detail?.updatedAt, rollups])
-  const hoverPoint = hoverRollup ?? selectedRollup ?? lastCompleteRollup ?? rollups[rollups.length - 1] ?? null
+  // The newest complete minute can have chat but no viewer sample yet. At rest,
+  // show the latest recent minute that has one, so the readout does not say
+  // "viewers —" beside a stat card with a viewer count.
+  const restingRollup = useMemo(() => {
+    if (!lastCompleteRollup || viewerReadoutValue(lastCompleteRollup) !== null) return lastCompleteRollup
+    const lastMs = Date.parse(lastCompleteRollup.minuteTs)
+    for (let index = rollups.indexOf(lastCompleteRollup) - 1; index >= 0; index -= 1) {
+      const rollup = rollups[index]!
+      if (lastMs - Date.parse(rollup.minuteTs) > RESTING_VIEWER_LOOKBACK_MS) break
+      if (viewerReadoutValue(rollup) !== null) return rollup
+    }
+    return lastCompleteRollup
+  }, [lastCompleteRollup, rollups])
+  const hoverPoint = hoverRollup ?? selectedRollup ?? restingRollup ?? rollups[rollups.length - 1] ?? null
   const toggleActivityExpanded = useCallback(() => {
     setActivityExpanded(value => !value)
   }, [])
