@@ -67,7 +67,9 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 0.65rem 1.5rem;
-  padding: 0.65rem 1.25rem;
+  /* 44px links + 0.35rem: a 56px bar instead of 66px on every analytics
+     page wider than 720px (the <=720px block below sets its own padding). */
+  padding: 0.35rem 1.25rem;
   background: color-mix(in srgb, var(--fma-bg) 86%, transparent);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--fma-border);
@@ -8476,6 +8478,9 @@ button.hub-live-wire__chip {
 }
 
 .live-channels-matrix__table-wrap {
+  /* Containing block for the cells' absolutely positioned screen-reader
+     text, so a table widened by long names scrolls here, not the page. */
+  position: relative;
   overflow: auto;
   padding: 0 1rem 1rem;
 }
@@ -8676,6 +8681,12 @@ button.hub-live-wire__chip {
   display: flex;
   flex-direction: column;
   gap: 0.1rem;
+}
+
+/* A long unbroken channel name or title wraps inside the card instead of
+   widening the page (found at 390px with a 60-character display name). */
+.live-channels-matrix__card-main > :is(strong, small) {
+  overflow-wrap: anywhere;
 }
 
 .live-channels-matrix__card-stats {

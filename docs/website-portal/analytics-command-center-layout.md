@@ -1,5 +1,41 @@
 # Analytics command center layout
 
+## Compact desktop density (2026-10-08)
+
+The owner preferred the hub at 75% browser zoom ("at 100% it's too fat"). His
+Chrome runs with Windows display scaling at 125%, so a maximized window (about
+2560x1272 device px of content) is CSS 2048x1018 at DPR 1.25 at 100% zoom and CSS
+2731x1357 at DPR 0.9375 at 75%. Zooming out therefore changes two things:
+
+- **Height.** 75% gives 33% more CSS height per screen. Before this change, at
+  100% the Global Activity plot started at y=1282 CSS, below the 1018px fold,
+  and on the stream page only 60 of the 400px timeline was on the first screen
+  (live at 75%: all 400).
+- **Width.** 2731 CSS px crosses the hub's 2200px frame cap and 2048 does not, so
+  at 75% the hub center column is 1552 CSS px wide instead of 1400. The console
+  is 1780 CSS px at both zooms (1820px cap).
+
+This change addresses only the height. From 1100px up, `analytics-compact.css`
+(loaded last by the hub and console views) caps display type with tokens instead
+of `vw` clamps (title 26.4px, KPI 32px, secondary stat 18.4px), puts pool scale and window peaks on one row, tightens panel,
+search and section spacing, shortens the reserved hover readout from 96px to 74px,
+and trims the console header and stat cards. The shared analytics top bar is
+56px instead of 66px (44px links kept); that one change is not limited to 1100px
+and up: it applies on every analytics page (hub, console, Explorer, Moments,
+Newsroom) wider than 720px, so the bar keeps one height across pages.
+
+Unchanged on purpose: section order, the 420/360px plot, 44px targets
+(including the window-peaks disclosure), the 760px inspector docking rule, the
+380px outer rail, body and label sizes (12px minimum), and every layout below
+1100px apart from the top-bar height. No CSS zoom, transforms or density
+setting. It does not reproduce the wider 75% hub, and it does not match 75% on
+the stream page: on the owner's window the stream timeline starts at y=856 CSS at
+100%, with 162 of 400px on the first screen, while live at 75% shows all 400. The
+remaining chrome above that plot is console chart structure (the Games played
+strip, the range row, the tab and overlay rows), which is an owner layout
+decision. Measurements: streampulse-sdlc
+`artifacts/analytics-compact-2026-10-08/` (`owner-window/` for the 125% window).
+
 ## Moments review refinements (2026-09-08)
 
 Follow-up audit implementation: at widths up to600px Moments collapses browse

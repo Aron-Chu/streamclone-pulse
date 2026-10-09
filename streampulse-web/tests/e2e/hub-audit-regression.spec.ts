@@ -258,6 +258,8 @@ test.describe('hub audit regression', () => {
         expect(box?.height).toBeGreaterThanOrEqual(44)
         expect(box?.width).toBeGreaterThanOrEqual(44)
       }
+      // The compact desktop header keeps the window-peaks disclosure at 44px.
+      expect((await page.locator('[data-window-peak-disclosure] > summary').boundingBox())?.height).toBeGreaterThanOrEqual(44)
       if (width < 768) {
         const anchors = page.locator('.hub-mobile-sections a')
         await expect(anchors).toHaveText(['Overview', 'Hottest Live', 'Moments', 'Emotes', 'Channels'])
