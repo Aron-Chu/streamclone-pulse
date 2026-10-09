@@ -218,8 +218,8 @@
  * of it does. These rules remove whole rows of chrome above the plot instead
  * of shrinking anything: one-line facts share a row, the games strip puts its
  * label beside the box art, the overlay focus chips join the series tabs when
- * they fit, and the stat cards read label-then-value on one line. The range
- * controls moved into the chart header row in AnalyticsChart.tsx. Every
+ * they fit, and the stat cards read label-then-value on one line. The zoom
+ * controls are the shared navigator under the plot, as on the hub. Every
  * control keeps its 44px target; rows wrap back to the stacked layout when a
  * card is too narrow. No zoom, no transforms, no font changes.
  * ------------------------------------------------------------------------ */
@@ -232,6 +232,7 @@
 @container (min-width: 105rem) {
   .sc-analytics-console [data-session-stat-row] > .sc-stat-card {
     display: flex;
+    flex-direction: row;
     flex-wrap: wrap;
     align-items: baseline;
     justify-content: space-between;
@@ -240,6 +241,7 @@
   }
   .sc-analytics-console [data-session-stat-row] .sc-stat-card__value {
     margin-top: 0;
+    padding-top: 0;
   }
 }
 

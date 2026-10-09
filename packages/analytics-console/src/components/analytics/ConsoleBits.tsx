@@ -27,9 +27,9 @@ export function StatCard({ label, value, tone }: { label: string; value: string;
   }, [value, motionEnabled])
 
   return (
-    <div className="sc-stat-card rounded border border-white/10 bg-white/[0.035] p-3" data-value-changed={pulse ? 'true' : undefined}>
+    <div className="sc-stat-card flex flex-col rounded border border-white/10 bg-white/[0.035] p-3" data-value-changed={pulse ? 'true' : undefined}>
       <div className="text-xs font-black uppercase text-zinc-400">{label}</div>
-      <div className={`sc-stat-card__value mt-1 truncate text-xl font-black ${tone || 'text-white'}`}>{value}</div>
+      <div className={`sc-stat-card__value mt-auto truncate pt-1 text-xl font-black ${tone || 'text-white'}`}>{value}</div>
     </div>
   )
 }
