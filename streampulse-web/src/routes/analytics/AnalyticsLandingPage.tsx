@@ -66,6 +66,8 @@ import "../../ui/components/analytics/figma-analytics.css";
 import "../../ui/components/newsroom/newsroom.css";
 import "../../ui/components/analytics/discovery-layout.css";
 import "../../ui/components/analytics/analytics-interaction.css";
+// Loaded last: compact desktop density overrides for the hub.
+import "../../ui/components/analytics/analytics-compact.css";
 
 const FALLBACK_SUGGESTIONS: HubSuggestion[] = [
   { login: "xqc", displayName: "xQc", category: "Just Chatting" },

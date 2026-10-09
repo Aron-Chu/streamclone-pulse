@@ -1,5 +1,22 @@
 # Analytics command center layout
 
+## Compact desktop density (2026-10-08)
+
+The owner preferred the hub at 75% browser zoom ("at 100% it's too fat"). On a
+2560px-wide window both zoom levels produce the same CSS layout (the hub frame is
+capped at 2200px, the console at 1820px), so the preference is about vertical chrome,
+not breakpoints: at 100% the Global Activity plot started at y=1283, below a 1272px
+fold. From 1100px up, `analytics-compact.css` (loaded last by the hub and console
+views) caps display type with tokens instead of `vw` clamps (title 26.4px, KPI 32px,
+secondary stat 18.4px), puts pool scale and window peaks on one row, tightens panel,
+search and section spacing, shortens the reserved hover readout from 96px to 74px,
+and trims the console header and stat cards. The top bar is 56px (44px links kept).
+
+Unchanged on purpose: section order, the 420/360px plot, 44px targets, the
+760px inspector docking rule, the 380px outer rail, body and label sizes (12px
+minimum), and every layout below 1100px. No CSS zoom, transforms or density
+setting. Measurements: streampulse-sdlc `artifacts/analytics-compact-2026-10-08/`.
+
 ## Moments review refinements (2026-09-08)
 
 Follow-up audit implementation: at widths up to600px Moments collapses browse
