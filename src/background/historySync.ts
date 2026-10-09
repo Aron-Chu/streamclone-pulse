@@ -225,12 +225,14 @@ async function runSync(scope: string, accountId: string): Promise<void> {
 }
 
 /**
- * Whether this browser should ask the account whether history sync is on: it
- * is not syncing here, and it has not asked in the last few minutes.
+ * Whether a Pulse jump should first ask the account whether history sync is
+ * on: it is not syncing here, it has not asked in the last few minutes, and
+ * the server has not answered that it does not offer sync (that is learned
+ * again when My Moments opens).
  */
 export function historySyncCheckDue(data: PersonalData, now = Date.now()): boolean {
   const sync = data.accountSync
-  return !sync?.enabled && !(sync?.checkedAt && now - sync.checkedAt < RECHECK_MS)
+  return !sync?.enabled && sync?.available !== false && !(sync?.checkedAt && now - sync.checkedAt < RECHECK_MS)
 }
 
 /**

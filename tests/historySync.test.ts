@@ -217,6 +217,16 @@ describe('My Moments with account history sync', () => {
     expect(server.calls).toEqual(['settings'])
   })
 
+  it('stops asking at Pulse jumps once the server answers that it does not offer sync', async () => {
+    const server = fakeServer()
+    server.available = false
+    vi.useFakeTimers({ toFake: ['Date'] })
+    await handleMyMoments({ type: 'MOMENT_CAPTURE', action: 'status' }, {})
+    vi.setSystemTime(Date.now() + 60 * 60_000)
+    await handleMyMoments({ type: 'MOMENT_CAPTURE', action: 'status' }, {})
+    expect(server.calls).toEqual(['settings'])
+  })
+
   it('clears the account first, and changes nothing here when that fails', async () => {
     const server = fakeServer()
     server.settings = { syncEnabled: true, retentionDays: 30 }
