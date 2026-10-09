@@ -1302,7 +1302,7 @@ export function AnalyticsConsole({
           </div>
         </header>
 
-        <section className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+        <section className="grid grid-cols-2 gap-3 lg:grid-cols-6" data-session-stat-row>
           <StatCard
             label={isHistoricalRoute ? 'Last measured viewers' : 'Current viewers'}
             value={statCardsPending ? '-' : statCardClasses.current.placeholder ?? count(headerStats.current)}
@@ -1354,11 +1354,30 @@ export function AnalyticsConsole({
             ) : null}
             {!sessionResolving && !effectiveSessionNotFound && !(detailQuery.isLoading && !detail) ? (
             <div className="min-w-0 space-y-4">
-              <CoverageStartBanner
-                offsetSeconds={detail?.coverageStartOffsetSeconds}
-                missingRanges={detail?.availability?.missingRanges}
-                message={detail?.availability?.coverageMessage}
-              />
+              {/* The coverage notice and the session lifecycle row are one-line
+                  facts about the session; wide portal layouts put them side by
+                  side (data-session-status-row), narrow ones stack them. */}
+              <div className="flex min-w-0 flex-col gap-4 empty:hidden [&:empty+*]:!mt-0" data-session-status-row>
+                <CoverageStartBanner
+                  offsetSeconds={detail?.coverageStartOffsetSeconds}
+                  missingRanges={detail?.availability?.missingRanges}
+                  message={detail?.availability?.coverageMessage}
+                />
+                <PastBroadcastBanner
+                  isLiveRoute={isLiveRoute}
+                  isActiveLiveCollector={isActiveLiveCollector}
+                  stream={stream}
+                  syncing={syncing}
+                  hasChartData={
+                    (detail?.rollups ?? []).some(rollupHasMinuteData)
+                    || rollupsHaveViewerData(detail?.rollups ?? [])
+                  }
+                  vodLinkState={vodLinkState}
+                  sessionStreamId={targetQueryStreamId}
+                  channelLogin={channelLogin}
+                  buildSessionPath={buildSessionPath}
+                />
+              </div>
               <StreamQualityBanner
                 diagnosis={qualityDiagnosis}
                 syncing={syncing}
@@ -1377,20 +1396,6 @@ export function AnalyticsConsole({
                   Unable to load session data. Refresh to try again.
                 </p>
               ) : null}
-              <PastBroadcastBanner
-                isLiveRoute={isLiveRoute}
-                isActiveLiveCollector={isActiveLiveCollector}
-                stream={stream}
-                syncing={syncing}
-                hasChartData={
-                  (detail?.rollups ?? []).some(rollupHasMinuteData)
-                  || rollupsHaveViewerData(detail?.rollups ?? [])
-                }
-                vodLinkState={vodLinkState}
-                sessionStreamId={targetQueryStreamId}
-                channelLogin={channelLogin}
-                buildSessionPath={buildSessionPath}
-              />
               {showSessionSignalTape ? (
                 <SessionSignalTape
                   key={`${channelLogin}:${canonicalStreamId || targetQueryStreamId}`}

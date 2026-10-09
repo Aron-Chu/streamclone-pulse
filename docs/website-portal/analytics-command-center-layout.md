@@ -36,6 +36,48 @@ strip, the range row, the tab and overlay rows), which is an owner layout
 decision. Measurements: streampulse-sdlc
 `artifacts/analytics-compact-2026-10-08/` (`owner-window/` for the 125% window).
 
+### Stream page option: whole timeline on the first screen (2026-10-09)
+
+An option on top of the compact density, offered for the owner to accept or
+drop. On the owner's window the stream timeline now starts at y=617 CSS (771
+physical px; live at 75% is 844), so all 400px of it are on the first screen at
+100%. Same plot height, inspector and navigator; rows are merged, not shrunk.
+Two blocks move in the markup, so they move at every width (see the status row
+and the chart header row below):
+
+- **Chart header row.** The hover readout and hint share a row with the range
+  controls, which moved up from their own row above the plot. They are still
+  above the plot and never cover it (#76's rule), and the navigator below the
+  plot is unchanged. In DOM and keyboard order the range controls now come
+  before the games strip and the focus bar, at every width (on phones too).
+  The hover values outlast the viewer-source label when the row is tight.
+  Because this is a markup move, it also lifts the plot below 1100px: at
+  1024-1099px wide (and 200% zoom on the owner window) the plot top moves from
+  965 to 907. At 768px and narrower the plot stays where it was.
+- **Status row.** The coverage notice and the session lifecycle row sit side by
+  side (`data-session-status-row`); below 1100px they stack. The lifecycle row
+  (with Watch VOD) moved up in the markup to join the notice, so at every width
+  it now comes before the stream-quality warning, the sync messages and the
+  "Unable to load session data" alert (on #81 it came after them). Only a
+  lifecycle row that holds a 44px link loses its padding; a notice or a
+  lifecycle row without a link keeps its own, alone or side by side.
+- **Games played.** The label sits beside the box art. The hovered or pinned
+  game sits under the label: the name on one line, then its time window with
+  the chart-window and pinned marks (wrapping to a third line when needed). It
+  is positioned inside that space, so hovering or pinning a game no longer
+  pushes the plot down.
+- **Focus bar.** Series tabs and overlay focus chips share a row when both fit;
+  otherwise the overlay row wraps below as before.
+- **Stat cards.** Label and value on one line when the card is wide enough.
+
+The layout rules are in the last block of `analytics-compact.css` (1100px and
+up). The markup changes are the chart header row and the status-row wrapper,
+plus data hooks for the CSS (`data-session-stat-row`,
+`data-session-lifecycle-row`, `data-has-action`, and the games details name and
+separator) and one class on the hover readout (`shrink-[0.01]`, so the values
+outlast the source label). Evidence: streampulse-sdlc
+`artifacts/closeout-2026-10-08b/followups/stream-compact-option/`.
+
 ## Moments review refinements (2026-09-08)
 
 Follow-up audit implementation: at widths up to600px Moments collapses browse

@@ -115,7 +115,7 @@ function ChartHoverReadout({
 }) {
   return (
     <p
-      className="min-w-0 truncate text-xs font-bold tabular-nums text-zinc-500"
+      className="min-w-0 shrink-[0.01] truncate text-xs font-bold tabular-nums text-zinc-500"
       title="Values at the hovered minute on the chart"
     >
       {vodClock(minuteTs, streamStartedAt)} · viewers {count(viewers)} · chat {count(chatCount)}/min · emotes {count(emoteTotal)}/min
@@ -713,65 +713,136 @@ function AnalyticsChart({
         <div className="mb-3 rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-bold text-red-300">{syncError}</div>
       ) : null}
 
-      <div className="mb-3 space-y-2">
-        <div className="flex h-5 min-h-5 min-w-0 items-center justify-between gap-2" data-chart-hover-readout-row>
-          <ChartHoverReadout
-            minuteTs={hoverPoint?.minuteTs}
-            streamStartedAt={streamStartedAt}
-            viewers={hoverPoint ? viewerReadoutValue(hoverPoint) : null}
-            chatCount={hoverPoint?.chatCount}
-            emoteTotal={hoverPoint ? minuteEmoteTotal(hoverPoint) : null}
-          />
-          <div className="flex shrink-0 items-center gap-2">
-            {detail?.viewerSource ? (
-              <span className="hidden text-xs font-bold uppercase tracking-wide text-zinc-500 sm:inline">
-                Viewers: {viewerSourceLabel(detail.viewerSource) || detail.viewerSource}
-              </span>
-            ) : null}
-            {canSync && !coreMinuteChartsBlocked && (!hasChatData || needsViewerResync) ? (
-              <button
-                type="button"
-                onClick={onSync}
-                disabled={syncing}
-                className="shrink-0 rounded border border-violet-400/30 bg-violet-500/10 px-2.5 py-1 text-xs font-black uppercase text-violet-200 transition hover:bg-violet-500/20 disabled:opacity-50"
-              >
-                {syncing ? 'Syncing…' : needsViewerResync ? 'Re-sync viewers' : 'Sync chat/emotes'}
-              </button>
-            ) : null}
-            {showRefreshControl ? <button
-              type="button"
-              onClick={onRefresh}
-              disabled={refreshing}
-              aria-label={refreshing ? 'Refreshing chart and stats' : 'Refresh chart and stats'}
-              title="Reload chart and stats from server"
-              className="shrink-0 rounded border border-white/10 px-2 py-1 text-xs font-black uppercase text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-300 disabled:opacity-50"
-            >
-              {refreshing ? '…' : '↻'}
-            </button> : null}
-          </div>
-        </div>
+      <div className="mb-3 space-y-2" data-chart-header-block>
+        {/* Chart header: the hover readout and hint on the left, the range
+            controls on the right; it wraps to two rows on narrow cards. */}
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2" data-chart-header-row>
+          <div className="min-w-0 flex-[999_1_20rem] space-y-2" data-chart-header-readouts>
+            <div className="flex h-5 min-h-5 min-w-0 items-center justify-between gap-2" data-chart-hover-readout-row>
+              <ChartHoverReadout
+                minuteTs={hoverPoint?.minuteTs}
+                streamStartedAt={streamStartedAt}
+                viewers={hoverPoint ? viewerReadoutValue(hoverPoint) : null}
+                chatCount={hoverPoint?.chatCount}
+                emoteTotal={hoverPoint ? minuteEmoteTotal(hoverPoint) : null}
+              />
+              {/* The source label gives way before the hover values do. */}
+              <div className="flex min-w-0 items-center gap-2">
+                {detail?.viewerSource ? (
+                  <span className="hidden min-w-0 truncate text-xs font-bold uppercase tracking-wide text-zinc-500 sm:block">
+                    Viewers: {viewerSourceLabel(detail.viewerSource) || detail.viewerSource}
+                  </span>
+                ) : null}
+                {canSync && !coreMinuteChartsBlocked && (!hasChatData || needsViewerResync) ? (
+                  <button
+                    type="button"
+                    onClick={onSync}
+                    disabled={syncing}
+                    className="shrink-0 rounded border border-violet-400/30 bg-violet-500/10 px-2.5 py-1 text-xs font-black uppercase text-violet-200 transition hover:bg-violet-500/20 disabled:opacity-50"
+                  >
+                    {syncing ? 'Syncing…' : needsViewerResync ? 'Re-sync viewers' : 'Sync chat/emotes'}
+                  </button>
+                ) : null}
+                {showRefreshControl ? <button
+                  type="button"
+                  onClick={onRefresh}
+                  disabled={refreshing}
+                  aria-label={refreshing ? 'Refreshing chart and stats' : 'Refresh chart and stats'}
+                  title="Reload chart and stats from server"
+                  className="shrink-0 rounded border border-white/10 px-2 py-1 text-xs font-black uppercase text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-300 disabled:opacity-50"
+                >
+                  {refreshing ? '…' : '↻'}
+                </button> : null}
+              </div>
+            </div>
 
-        <div className="flex min-w-0 items-center justify-between gap-2">
-          <p
-            className="min-w-0 truncate text-xs font-bold leading-4 text-zinc-600"
-            data-chart-selection-hint
-            title="Hover previews a minute. Click to select it. Press Escape or use Clear to release the selection."
-          >
-            {selectedRollup
-              ? `Pinned minute ${selectedMinuteRangeLabel(selectedRollup.minuteTs, streamStartedAt)}${Number.isFinite(selectedOffsetSeconds) ? ` · exact moment ${formatHeatOffset(selectedOffsetSeconds!)}` : ''}${selectedOutsideViewport ? ' · outside visible range · Return below' : ''} · Esc or Clear to release`
-              : 'Hover to preview a minute · click to select · press Esc to clear'}
-          </p>
-          {selectedRollup && vodJump && !selectedDetail ? (
-            <a
-              href={vodJump.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              data-chart-vod-jump
-              className="shrink-0 whitespace-nowrap rounded border border-violet-400/25 bg-violet-500/10 px-2 py-1 text-xs font-black uppercase text-violet-100 transition hover:border-violet-300/40 hover:bg-violet-500/20"
-              title={vodJump.offsetStr ? `Open the Twitch VOD at ${vodJump.offsetStr}` : 'Open the Twitch VOD'}
+            <div className="flex min-w-0 items-center justify-between gap-2">
+              <p
+                className="min-w-0 truncate text-xs font-bold leading-4 text-zinc-600"
+                data-chart-selection-hint
+                title="Hover previews a minute. Click to select it. Press Escape or use Clear to release the selection."
+              >
+                {selectedRollup
+                  ? `Pinned minute ${selectedMinuteRangeLabel(selectedRollup.minuteTs, streamStartedAt)}${Number.isFinite(selectedOffsetSeconds) ? ` · exact moment ${formatHeatOffset(selectedOffsetSeconds!)}` : ''}${selectedOutsideViewport ? ' · outside visible range · Return below' : ''} · Esc or Clear to release`
+                  : 'Hover to preview a minute · click to select · press Esc to clear'}
+              </p>
+              {selectedRollup && vodJump && !selectedDetail ? (
+                <a
+                  href={vodJump.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  data-chart-vod-jump
+                  className="shrink-0 whitespace-nowrap rounded border border-violet-400/25 bg-violet-500/10 px-2 py-1 text-xs font-black uppercase text-violet-100 transition hover:border-violet-300/40 hover:bg-violet-500/20"
+                  title={vodJump.offsetStr ? `Open the Twitch VOD at ${vodJump.offsetStr}` : 'Open the Twitch VOD'}
+                >
+                  {vodJump.offsetStr ? `Jump to VOD · ${vodJump.offsetStr}` : 'Open VOD'}
+                </a>
+              ) : null}
+            </div>
+          </div>
+          {showRangeControls ? (
+            <div
+              className="flex min-w-0 max-w-full flex-[1_0_auto] flex-wrap items-center justify-between gap-x-2 gap-y-1"
+              data-chart-range-row
             >
-              {vodJump.offsetStr ? `Jump to VOD · ${vodJump.offsetStr}` : 'Open VOD'}
-            </a>
+              {/* Range controls share the chart header row with the readouts; they stay
+                  above the plot and never cover data. */}
+              <p className="min-w-0 truncate text-xs font-bold tabular-nums text-zinc-500" data-chart-range-summary>
+                <span className="uppercase tracking-wide text-zinc-600">Range </span>
+                <span className="text-zinc-300" data-chart-viewport-readout>
+                  {isChartZoomed ? formatViewportDuration(viewportDurationSeconds(effectiveChartViewport)) : 'Full stream'}
+                </span>
+                {activityBucketMinutes != null && activityBucketMinutes > 1 ? (
+                  <span
+                    data-chart-bar-bucket-minutes={activityBucketMinutes}
+                    title={`Each activity bar averages ${activityBucketMinutes} measured minutes so bars stay readable at this width. Gaps are minutes with no measurement.`}
+                  >
+                    {` · bars ${activityBucketMinutes}-min avg`}
+                  </span>
+                ) : null}
+              </p>
+              <div
+                className="ml-auto flex max-w-full items-center gap-1 overflow-x-auto rounded border border-white/10 bg-white/[0.025] p-0.5 text-xs font-black uppercase text-zinc-400 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                data-chart-viewport-controls
+                role="group"
+                aria-label="Chart range"
+                title="Hold Alt and scroll over the graph to zoom (or turn on Scroll zoom below), Shift + scroll to pan, or use + / − / 0 when the chart has focus."
+              >
+                <button
+                  type="button"
+                  onClick={() => zoomByFactor(1.333333)}
+                  aria-label="Zoom chart out"
+                  className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded text-xs transition hover:bg-white/10 hover:text-zinc-200"
+                >
+                  −
+                </button>
+                <button
+                  type="button"
+                  onClick={() => zoomByFactor(0.75)}
+                  aria-label="Zoom chart in"
+                  className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded text-xs transition hover:bg-white/10 hover:text-zinc-200"
+                >
+                  +
+                </button>
+                {viewportPresets.map(preset => {
+                  // Phones keep 1h · 4h · Full so the whole control fits without hidden scrolling.
+                  const pressed = preset.seconds === 'full'
+                    ? !isChartZoomed
+                    : Math.abs(viewportDurationSeconds(effectiveChartViewport) - preset.seconds) < 1
+                  return (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => zoomToPreset(preset.seconds)}
+                      aria-pressed={pressed}
+                      className={`inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded text-xs transition hover:bg-white/10 hover:text-zinc-200 aria-[pressed=true]:bg-violet-400/15 aria-[pressed=true]:text-violet-200${preset.label === '15m' || preset.label === '2h' ? ' max-sm:hidden' : ''}`}
+                    >
+                      {preset.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
           ) : null}
         </div>
 
@@ -905,69 +976,6 @@ function AnalyticsChart({
           </div>
         ) : null}
       </div>
-      {showRangeControls ? (
-        <div
-          className="mb-2 flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1"
-          data-chart-range-row
-        >
-          {/* Its own row above the plot, so the range buttons never cover data. */}
-          <p className="min-w-0 truncate text-xs font-bold tabular-nums text-zinc-500" data-chart-range-summary>
-            <span className="uppercase tracking-wide text-zinc-600">Range </span>
-            <span className="text-zinc-300" data-chart-viewport-readout>
-              {isChartZoomed ? formatViewportDuration(viewportDurationSeconds(effectiveChartViewport)) : 'Full stream'}
-            </span>
-            {activityBucketMinutes != null && activityBucketMinutes > 1 ? (
-              <span
-                data-chart-bar-bucket-minutes={activityBucketMinutes}
-                title={`Each activity bar averages ${activityBucketMinutes} measured minutes so bars stay readable at this width. Gaps are minutes with no measurement.`}
-              >
-                {` · bars ${activityBucketMinutes}-min avg`}
-              </span>
-            ) : null}
-          </p>
-          <div
-            className="ml-auto flex max-w-full items-center gap-1 overflow-x-auto rounded border border-white/10 bg-white/[0.025] p-0.5 text-xs font-black uppercase text-zinc-400 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-            data-chart-viewport-controls
-            role="group"
-            aria-label="Chart range"
-            title="Hold Alt and scroll over the graph to zoom (or turn on Scroll zoom below), Shift + scroll to pan, or use + / − / 0 when the chart has focus."
-          >
-            <button
-              type="button"
-              onClick={() => zoomByFactor(1.333333)}
-              aria-label="Zoom chart out"
-              className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded text-xs transition hover:bg-white/10 hover:text-zinc-200"
-            >
-              −
-            </button>
-            <button
-              type="button"
-              onClick={() => zoomByFactor(0.75)}
-              aria-label="Zoom chart in"
-              className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded text-xs transition hover:bg-white/10 hover:text-zinc-200"
-            >
-              +
-            </button>
-            {viewportPresets.map(preset => {
-              // Phones keep 1h · 4h · Full so the whole control fits without hidden scrolling.
-              const pressed = preset.seconds === 'full'
-                ? !isChartZoomed
-                : Math.abs(viewportDurationSeconds(effectiveChartViewport) - preset.seconds) < 1
-              return (
-                <button
-                  key={preset.label}
-                  type="button"
-                  onClick={() => zoomToPreset(preset.seconds)}
-                  aria-pressed={pressed}
-                  className={`inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded text-xs transition hover:bg-white/10 hover:text-zinc-200 aria-[pressed=true]:bg-violet-400/15 aria-[pressed=true]:text-violet-200${preset.label === '15m' || preset.label === '2h' ? ' max-sm:hidden' : ''}`}
-                >
-                  {preset.label}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      ) : null}
       <div
         className="relative"
         data-session-chart-stack
