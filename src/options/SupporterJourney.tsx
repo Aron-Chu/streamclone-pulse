@@ -406,7 +406,8 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
       if (!response || response.type !== 'TWITCH_SIGN_IN' || !response.status || !response.account) throw new Error('Account worker unavailable')
       setTwitch(response.status)
       // A different account replaces this one: forget the old membership first.
-      if (response.account.state !== 'linked' || response.account.accountId !== (lastAccount.current?.state === 'linked' ? lastAccount.current.accountId : null)) {
+      const replaced = response.account.state !== 'linked' || response.account.accountId !== (lastAccount.current?.state === 'linked' ? lastAccount.current.accountId : null)
+      if (replaced) {
         entitlementRequest.current++
         entitlementInFlight.current = false
         shown.current = null
@@ -419,7 +420,11 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
         const message = twitchOutcomeMessage(response.outcome, response.retryAfterSeconds)
         if (message) setNotice(message)
       }
-      if (next.state === 'linked') { void readEntitlement(false); void readBilling() }
+      // Every reset is followed by a read: a sign-in that did not finish must
+      // not leave membership unknown (the worker answers not_linked), or the
+      // Your look controls stay on "Checking Supporter status…" until reload.
+      if (replaced || next.state === 'linked') void readEntitlement(false)
+      if (next.state === 'linked') void readBilling()
     } catch {
       if (mode === 'interactive') setNotice('Could not reach StreamPulse. Check your connection and try again.')
     } finally {

@@ -1266,6 +1266,44 @@ describe('Continue with Twitch (tester and public stages)', () => {
     } finally { after.cleanup() }
   })
 
+  // The Your look controls read `onEntitlement`: null means "Checking Supporter
+  // status…". A sign-in that did not finish must hand them the worker's answer.
+  it.each(['tester', 'public'] as const)('re-reads membership after a silent first-install attempt that cannot finish (%s)', async stage => {
+    const seen: (SupporterEntitlement | null)[] = []
+    let attempted = false
+    const view = await mount({ account: () => ({ state: 'signed_out' }), entitlement: () => ({ state: 'not_linked' }), twitch: message => {
+      if (message.action === 'sign_in') attempted = true
+      return { status: twitchStatus({ silentEligible: !attempted }), account: { state: 'signed_out' }, ...(message.action === 'sign_in' ? { outcome: 'interaction_required' as const } : {}) }
+    } }, value => seen.push(value), stage)
+    try {
+      expect(attempted).toBe(true)
+      expect(view.calls('SUPPORTER_ENTITLEMENT')).toBe(2)
+      expect(seen.at(-1)).toEqual({ state: 'not_linked' })
+    } finally { view.cleanup() }
+  })
+
+  it.each<[TwitchSignInStage, TwitchSignInResponse['outcome'] | 'unreachable']>([
+    ['tester', 'pilot_only'],
+    ['tester', 'unreachable'],
+    ['public', 'token_invalid'],
+    ['public', 'cancelled'],
+  ])('re-reads membership after a Continue with Twitch that does not sign in (%s, %s)', async (stage, outcome) => {
+    const seen: (SupporterEntitlement | null)[] = []
+    const view = await mount({ account: () => ({ state: 'signed_out' }), entitlement: () => ({ state: 'not_linked' }), twitch: message => {
+      if (message.action === 'sign_in' && outcome === 'unreachable') throw new Error('worker unavailable')
+      return { status: twitchStatus(), account: { state: 'signed_out' }, ...(message.action === 'sign_in' ? { outcome: outcome as TwitchSignInResponse['outcome'] } : {}) }
+    } }, value => seen.push(value), stage)
+    try {
+      expect(seen.at(-1)).toEqual({ state: 'not_linked' })
+      const before = view.calls('SUPPORTER_ENTITLEMENT')
+      await view.click('Continue with Twitch')
+      expect(view.state()).toBe('signed-out')
+      // A failed sign-in that never reached the worker changed nothing to re-read.
+      expect(view.calls('SUPPORTER_ENTITLEMENT')).toBe(outcome === 'unreachable' ? before : before + 1)
+      expect(seen.at(-1)).toEqual({ state: 'not_linked' })
+    } finally { view.cleanup() }
+  })
+
   it.each<[string, string]>([
     ['pilot_only', 'Twitch sign-in is open to invited testers right now.'],
     ['link_required', 'Invited testers: link Twitch to your StreamPulse account on streampulse.stream first'],
