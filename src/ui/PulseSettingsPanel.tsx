@@ -1,5 +1,5 @@
 import { PulseBannerQuickPreview } from './PulseBanner.tsx'
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { backgroundErrorMessage, EXTENSION_RECONNECT_MESSAGE } from '../shared/backgroundResponse.ts'
 import { sendBackgroundMessage } from '../content/bridge.ts'
 import { readTwitchChannelAvatarUrl } from '../content/twitch.ts'
@@ -313,9 +313,14 @@ function ChannelHeader({ channel, name }: { channel: QuickSettingsChannel; name:
  * paint), and Tenure Climb for a
  * verified Supporter, whatever their finish, climbing to the crest the server
  * reports. No price, no purchase wording.
+ *
+ * The card shows only its title row and the moving stage, which takes the
+ * room a line of copy used to cover. The copy stays as the button's
+ * description for screen readers.
  */
 export function SupporterHero({ appearance, disabled, onOpen }: { appearance: SupporterAppearance | null; disabled?: boolean; onOpen: () => void }) {
   const finish = appearance?.finish ?? null
+  const descriptionId = useId()
   return (
     <button
       type="button"
@@ -324,13 +329,14 @@ export function SupporterHero({ appearance, disabled, onOpen }: { appearance: Su
       data-supporter-verified={appearance ? 'true' : undefined}
       data-finish={finish ?? undefined}
       disabled={disabled}
+      aria-describedby={descriptionId}
       onClick={onOpen}
     >
       <span className="pulse-supporter-cta-head">
         <strong>Pulse Supporter</strong>
         <span>{appearance ? 'Manage Supporter' : 'Explore Supporter'} <span aria-hidden="true">›</span></span>
       </span>
-      <small>{appearance ? 'A crest that levels up the longer you support. Only you see it. Core tools stay free.' : 'Your crest and paint on your line. Only you see them. Core tools stay free.'}</small>
+      <span id={descriptionId} hidden>{appearance ? 'A crest that levels up the longer you support. Only you see it. Core tools stay free.' : 'Your crest and paint on your line. Only you see them. Core tools stay free.'}</span>
       <SupporterCardStage mode={appearance ? 'tenure' : 'anatomy'} tenure={appearance?.tenure} finish={finish} paint={appearance?.paint} />
     </button>
   )
