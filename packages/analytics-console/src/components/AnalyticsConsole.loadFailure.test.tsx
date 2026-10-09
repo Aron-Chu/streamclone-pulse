@@ -31,7 +31,9 @@ vi.mock('./analytics/ConsoleBits.tsx', () => ({
   DataQualityDisclosure: ({ pending }: { pending?: boolean }) => (
     <span data-testid="data-quality">{pending ? 'Data quality: —' : 'Data quality: verdict'}</span>
   ),
-  StatCard: ({ label, value }: { label: string; value: string }) => <div data-testid="stat-card">{label}: {value}</div>,
+  StatCard: ({ label, value, tone }: { label: string; value: string; tone?: string }) => (
+    <div data-testid="stat-card" data-tone={tone}>{label}: {value}</div>
+  ),
   CoverageStartBanner: () => null,
 }))
 vi.mock('./analytics/MomentReviewPanel.tsx', () => ({ MomentReviewPanel: () => null }))
@@ -145,6 +147,16 @@ describe('AnalyticsConsole channel route load failures', () => {
     await waitFor(() => expect(screen.getAllByTestId('stat-card')).toHaveLength(6))
     expect(screen.queryByText(/Needs sync/)).toBeNull()
     for (const card of screen.getAllByTestId('stat-card')) expect(card.textContent).toMatch(/: -$/)
+  })
+
+  it('mutes every placeholder dash the same way, Measured span included', async () => {
+    api.getAnalyticsLive.mockImplementation(() => new Promise(() => undefined))
+    renderConsole('/analytics/xqc')
+
+    await waitFor(() => expect(screen.getAllByTestId('stat-card')).toHaveLength(6))
+    const tones = screen.getAllByTestId('stat-card').map(card => card.getAttribute('data-tone'))
+    expect(new Set(tones)).toEqual(new Set(['text-zinc-600 font-semibold']))
+    expect(screen.getAllByTestId('stat-card').at(-1)?.textContent).toBe('Measured span: -')
   })
 
   it('reports a failed live read as unavailable instead of an empty chart', async () => {

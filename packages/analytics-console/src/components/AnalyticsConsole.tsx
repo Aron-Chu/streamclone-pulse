@@ -468,6 +468,8 @@ export function AnalyticsConsole({
   const effectiveSessionNotFound = sessionNotFound || sessionLoadFailed
   // Until the first read settles there is nothing to classify; "Needs sync" would claim an empty session.
   const statCardsPending = effectiveSessionNotFound || sessionResolving || (detailQuery.isLoading && !detail)
+  // Same muted placeholder as the other five cards when there is no span yet.
+  const measuredSpanValue = statCardsPending ? '-' : durationFromDetail(detail)
 
   const handleSelectOffset = useCallback((offsetSeconds: number) => {
     if (!Number.isFinite(offsetSeconds)) return
@@ -1334,7 +1336,8 @@ export function AnalyticsConsole({
           />
           <StatCard
             label="Measured span"
-            value={statCardsPending ? '-' : durationFromDetail(detail)}
+            value={measuredSpanValue}
+            tone={measuredSpanValue === '-' ? STAT_PLACEHOLDER_MUTED_CLASS : undefined}
           />
         </section>
 
