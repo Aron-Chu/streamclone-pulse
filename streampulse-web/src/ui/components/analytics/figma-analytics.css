@@ -5263,8 +5263,13 @@ button.hub-live-wire__chip {
 }
 
 .figma-global-activity__hub-chart .hx-chart-header {
-  margin-bottom: 0.35rem;
   flex-wrap: nowrap;
+}
+
+/* The hub chart host is also `.hubx`. Compound it so this header layout beats
+   hub.css's `.hubx .hx-chart-header` rules whichever CSS chunk loads last. */
+.hubx.figma-global-activity__hub-chart .hx-chart-header {
+  margin-bottom: 0.35rem;
   align-items: flex-start;
   gap: 0.45rem 0.55rem;
 }
