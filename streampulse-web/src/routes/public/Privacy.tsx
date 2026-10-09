@@ -214,9 +214,12 @@ export default function Privacy() {
             so nothing is deleted automatically. If a retention period is approved,
             change only the "How long it's kept" paragraph. Keep this section identical
             in PR #82 and PR #78.
-            The staff Discord sentence matches backend PR
-            claude/support-intake-hardening-20261009 (message text and short reference,
-            never the email); change it if that payload changes. */}
+            The staff Discord sentences match backend PR #164
+            (claude/support-intake-hardening-20261009, 7af59e8): kind, short reference,
+            case ID, time received and the message text with address-like strings masked
+            as [email]; never the reply email. The abuse-limits paragraph matches its
+            counters: per-minute keys, and an hourly per-address cap whose Redis keys
+            expire after at most two hours. Change these if the backend changes. */}
         <section data-testid="privacy-feedback">
           <h2 id="feedback-form">Feedback form</h2>
           <p data-testid="privacy-feedback-sent">
@@ -246,9 +249,11 @@ export default function Privacy() {
             mail service, to the StreamPulse team's private support inbox. The email holds the case
             ID, the kind, the subject and your message, and, if you gave a reply email, uses it as
             the reply-to address so the team can answer. Your reply email is used only to answer
-            about that report. When enabled, the message text and a short reference (never your
-            email) are also posted to a private staff-only Discord channel. Nothing sent through
-            the form is posted publicly.
+            about that report. When enabled, a short notice is also posted to a private
+            staff-only Discord channel: the kind of feedback, a short reference, the case ID, the
+            time it arrived and your message, with anything in it that looks like an email address
+            hidden. Your reply email is never posted there. Nothing sent through the form is posted
+            publicly.
           </p>
           <p data-testid="privacy-feedback-turnstile">
             <strong>Bot check.</strong> The form uses Cloudflare Turnstile to tell people from bots.
@@ -259,7 +264,7 @@ export default function Privacy() {
           </p>
           <p data-testid="privacy-feedback-logs">
             <strong>Abuse limits and logs.</strong> To limit abuse, the API counts reports per
-            network address. The counters expire within minutes, and the API may also keep the
+            network address. The counters expire within two hours, and the API may also keep the
             address in memory until it next restarts. Neither is stored with the case or written to
             logs. Its logs and metrics for the form record counts and fixed status codes only, never
             your message, your email or the Turnstile token.
@@ -440,9 +445,9 @@ export default function Privacy() {
           </li>
           <li data-testid="privacy-third-party-discord">
             <strong>Discord (feedback form only, when enabled)</strong> — when StreamPulse turns it
-            on, the message text and short reference of each feedback report are posted to a
-            private staff-only Discord channel, as described under Feedback form. Your email is
-            never posted there.
+            on, each feedback report's kind, short reference, case ID, time received and message
+            (with any email address in it hidden) are posted to a private staff-only Discord
+            channel, as described under Feedback form. Your reply email is never posted there.
           </li>
           <li data-testid="privacy-third-party-sentry">
             <strong>Sentry (website error monitoring)</strong> — when a public page of

@@ -55,15 +55,21 @@ describe('Privacy: feedback form', () => {
     expect(section('privacy-feedback-logs')).toMatch(/never your message,\s+your email or the Turnstile token/)
   })
 
-  it('says the staff Discord channel gets the message text and a short reference, never the email', () => {
+  it('lists exactly what the staff Discord post holds: kind, reference, case ID, time and message with emails hidden', () => {
+    // Matches the payload of backend #164 (portal_support_discord.go).
     render(<MemoryRouter><Privacy /></MemoryRouter>)
     const delivery = section('privacy-feedback-delivery')
-    expect(delivery).toMatch(/When enabled, the message text and a short reference \(never your\s+email\) are also posted to a private staff-only Discord channel\./)
-    expect(delivery).toMatch(/Nothing sent through\s+the form is posted publicly/)
+    expect(delivery).toMatch(/When enabled, a short notice is also posted to a private\s+staff-only Discord channel: the kind of feedback, a short reference, the case ID, the\s+time it arrived and your message, with anything in it that looks like an email address\s+hidden\./)
+    expect(delivery).toMatch(/Your reply email is never posted there\./)
+    expect(delivery).not.toMatch(/never your\s+email\)/)
+    expect(delivery).toMatch(/Nothing sent through the form is posted\s+publicly/)
     const discord = section('privacy-third-party-discord')
     expect(discord).toMatch(/Discord \(feedback form only, when enabled\)/)
-    expect(discord).toMatch(/private staff-only Discord channel/)
-    expect(discord).toMatch(/Your email is\s+never posted there/)
+    expect(discord).toMatch(/kind, short reference, case ID, time received and message\s+\(with any email address in it hidden\)/)
+    expect(discord).toMatch(/private staff-only Discord\s+channel/)
+    expect(discord).toMatch(/Your reply email is never posted there/)
+    // The hourly per-address cap's counters live up to two hours (backend #164).
+    expect(section('privacy-feedback-logs')).toMatch(/The counters expire within two hours/)
     expect(section('privacy-feedback-retention')).toMatch(/any staff Discord post are kept until the team\s+deletes them/)
     expect(section('privacy-feedback-deletion')).toMatch(/any staff Discord post/)
   })
