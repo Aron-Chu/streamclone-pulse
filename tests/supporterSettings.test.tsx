@@ -41,7 +41,8 @@ describe('supporter settings', () => {
       expect(card.querySelector('.pulse-supporter-card-who strong')?.textContent).toBe('Not signed in')
       expect(card.querySelector('.pulse-supporter-card-avatar')?.getAttribute('data-identity')).toBe('none')
       expect(card.querySelector('.pulse-supporter-card-sample')?.textContent).toBe('Sample look')
-      expect(card.textContent).not.toMatch(/twitch/i)
+      // The card names nobody; the footer says how Supporter will start.
+      expect(card.querySelector('.pulse-supporter-card-who')?.textContent).not.toMatch(/twitch/i)
       // The card wears the sample paint, with emote rain across its top and no gradient layer of its own.
       expect(card.style.getPropertyValue('--spk-fin')).toBe('#efc96a')
       expect(card.querySelector('.pulse-supporter-card-banner .pulse-banner-art')?.getAttribute('data-mode')).toBe('rain')
@@ -53,12 +54,14 @@ describe('supporter settings', () => {
       expect(card.querySelector('.pulse-supporter-ladder-next')?.textContent).toBe('Your crest starts at New and grows at 3, 6, 12 and 24 months.')
       // The journey is the card's footer: one primary action, with the price.
       const journey = card.querySelector<HTMLElement>('.pulse-journey')!
-      expect(journey.dataset.journeyState).toBe('unlinked')
-      expect([...journey.querySelectorAll('.pulse-journey-primary')].map(button => button.textContent)).toEqual(['Become a Supporter'])
+      expect(journey.dataset.journeyState).toBe('signed-out')
+      expect([...journey.querySelectorAll('.pulse-journey-primary')].map(button => button.textContent)).toEqual(['Supporter details'])
       expect(journey.textContent).toContain('US$4.99 / month')
-      // Status comes from the server. An unlinked install must say how it
-      // would connect rather than implying the preview grants anything.
-      expect(host.textContent).toContain('opens streampulse.stream, where you sign in and approve this extension before paying on Stripe')
+      // Status comes from the server. With Twitch sign-in off, a signed-out
+      // install says sign-ups are not open and offers nothing to buy.
+      expect(journey.textContent).toContain('Supporter sign-ups are not open yet')
+      expect(journey.textContent).toContain('Free tools work without an account.')
+      expect(host.textContent).not.toMatch(/Restore my Supporter|website account|Become a Supporter/)
       expect(host.textContent).toContain('remain free')
       // Who sees what: everything is yours only; the chat crest is a labelled concept.
       const rows = [...host.querySelectorAll<HTMLElement>('.pulse-supporter-who > li')]
@@ -83,7 +86,6 @@ describe('supporter settings', () => {
         { type: 'SUPPORTER_ACCOUNT', action: 'status' },
         { type: 'SUPPORTER_ENTITLEMENT' },
         { type: 'SUPPORTER_BILLING', action: 'status' },
-        { type: 'SUPPORTER_RESTORE', action: 'status' },
         // Reading the optional pre-purchase finish choice; no `finish` field, so no write.
         { type: 'SUPPORTER_FINISH_INTENT' },
       ])
@@ -138,7 +140,7 @@ describe('supporter settings', () => {
       expect(host.textContent).toContain('Concept · not built')
       expect(host.textContent).not.toContain('US$4.99 / month')
       // An active member's pre-purchase choice is never read.
-      expect(sendMessage.mock.calls.map(([message]) => message)).toEqual([{ type: 'SUPPORTER_ACCOUNT', action: 'status' }, { type: 'SUPPORTER_ENTITLEMENT' }, { type: 'SUPPORTER_BILLING', action: 'status' }, { type: 'SUPPORTER_RESTORE', action: 'status' }])
+      expect(sendMessage.mock.calls.map(([message]) => message)).toEqual([{ type: 'SUPPORTER_ACCOUNT', action: 'status' }, { type: 'SUPPORTER_ENTITLEMENT' }, { type: 'SUPPORTER_BILLING', action: 'status' }])
     } finally {
       act(() => root.unmount())
       host.remove()

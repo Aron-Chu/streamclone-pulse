@@ -225,7 +225,8 @@ export class TwitchSignIn {
    * Prove, with a fresh ID token, that the person holding this device is the
    * account's Twitch identity. For sensitive bearer routes that answer 403
    * `recent_auth_required` (see `requiresStepUp`): try `silent` first, then
-   * `interactive` from a click. Not wired into billing yet.
+   * `interactive` from a click. The Supporter coordinator calls it when the
+   * subscription portal asks for a recent Twitch check.
    */
   async stepUp(mode: TwitchSignInMode = 'silent'): Promise<TwitchStepUpResult> {
     if (!this.ports.enabled) return { ok: false, error: 'disabled' }

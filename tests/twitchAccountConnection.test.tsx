@@ -77,15 +77,15 @@ describe('Pulse account card with Sign in with Twitch off (the build default)', 
 })
 
 describe('Pulse account card with Sign in with Twitch on', () => {
-  it('leads with a Twitch-branded button and tucks the code flow under Other ways to connect', async () => {
+  it('leads with a Twitch-branded Continue with Twitch button and tucks the code flow under Other ways to connect (testers)', async () => {
     worker()
     await render(true)
     const signIn = host.querySelector<HTMLButtonElement>('button.pulse-twitch-signin')!
-    expect(signIn.textContent).toBe('Sign in with Twitch')
+    expect(signIn.textContent).toBe('Continue with Twitch')
     expect(signIn.querySelector('svg.pulse-twitch-glitch[aria-hidden="true"]')).not.toBeNull()
-    expect(host.textContent).toContain('Core Pulse tools work without an account.')
+    expect(host.textContent).toContain('Free tools work without an account.')
     const details = host.querySelector('details.pulse-account-other-ways')!
-    expect(details.querySelector('summary')!.textContent).toBe('Other ways to connect')
+    expect(details.querySelector('summary')!.textContent).toBe('Other ways to connect (testers)')
     expect(details.hasAttribute('open')).toBe(false)
     expect(details.textContent).toContain('Link with a code')
   })
@@ -95,7 +95,7 @@ describe('Pulse account card with Sign in with Twitch on', () => {
     await render(true)
     await act(async () => host.querySelector<HTMLButtonElement>('button.pulse-twitch-signin')!.click())
     expect(send).toHaveBeenCalledWith({ type: 'TWITCH_SIGN_IN', action: 'sign_in', mode: 'interactive' })
-    expect(host.textContent).toContain('Signed in as PulseFan')
+    expect(host.textContent).toContain('Signed in with Twitch as PulseFan')
     const avatar = host.querySelector<HTMLImageElement>('img.pulse-account-avatar')!
     expect(avatar.src).toBe(profile.picture)
     expect(avatar.alt).toBe('')
@@ -108,7 +108,7 @@ describe('Pulse account card with Sign in with Twitch on', () => {
   it('"Not you?" forces the account chooser and Sign out uses the existing disconnect', async () => {
     const send = worker({ account: linked, status: status({ profile }) })
     await render(true)
-    expect(host.textContent).toContain('Signed in as PulseFan')
+    expect(host.textContent).toContain('Signed in with Twitch as PulseFan')
     await act(async () => button('Not you?').click())
     expect(send).toHaveBeenLastCalledWith({ type: 'TWITCH_SIGN_IN', action: 'sign_in', mode: 'interactive', forceVerify: true })
     await act(async () => button('Sign out').click())
@@ -127,9 +127,10 @@ describe('Pulse account card with Sign in with Twitch on', () => {
 
   it('explains each failure in plain words that say what to do', async () => {
     for (const [outcome, copy, retryAfterSeconds] of [
-      ['pilot_only', 'invite-only for now', undefined],
-      ['link_required', 'link Twitch from your account page, then try again', undefined],
-      ['cancelled', 'Sign-in was cancelled. Select Sign in with Twitch to try again.', undefined],
+      ['pilot_only', 'Twitch sign-in is open to invited testers right now.', undefined],
+      ['link_required', 'Invited testers: link Twitch to your StreamPulse account on streampulse.stream first, then try again.', undefined],
+      ['identity_in_use', 'That Twitch account already has its own StreamPulse account. We never combine accounts. Contact us if one of them has a membership.', undefined],
+      ['cancelled', 'Sign-in was cancelled. Select Continue with Twitch to try again.', undefined],
       ['signup_unavailable', 'try again in about 2 minutes', 120],
       ['state_mismatch', 'nothing changed. Try again.', undefined],
     ] as const) {
@@ -141,6 +142,8 @@ describe('Pulse account card with Sign in with Twitch on', () => {
       act(() => root.unmount()); host.remove(); vi.unstubAllGlobals()
     }
     expect(twitchOutcomeMessage('signed_in')).toBe('')
+    // A server revoke shows the button only.
+    expect(twitchOutcomeMessage('revoked')).toBe('')
     expect(twitchOutcomeMessage('try_later', 30)).toContain('about 1 minute.')
   })
 
@@ -149,7 +152,7 @@ describe('Pulse account card with Sign in with Twitch on', () => {
     await render(true)
     const silent = twitchCalls(send).filter(message => message.action === 'sign_in')
     expect(silent).toEqual([{ type: 'TWITCH_SIGN_IN', action: 'sign_in', mode: 'silent' }])
-    expect(host.textContent).not.toContain('Select Sign in with Twitch to continue.')
+    expect(host.textContent).not.toContain('Select Continue with Twitch to continue.')
     expect(host.querySelector('.pulse-twitch-signin')).not.toBeNull()
   })
 

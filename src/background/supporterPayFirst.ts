@@ -1,4 +1,5 @@
 import type { SupporterBillingState, SupporterRestoreState, SupporterDevicesState } from '../shared/supporterAccount.ts'
+import type { TwitchSignInMode, TwitchStepUpResult } from '../shared/twitchSignIn.ts'
 import type { SupporterAccountCoordinator } from './supporterAccount.ts'
 
 export const PAY_FIRST_WATCH_MS = 30 * 60_000
@@ -12,6 +13,7 @@ type Restore = { accountId: string; restoreId: string; secret: string; expiresAt
 type RestoreStart = { accountId: string; key: string; until: number; nextRetry: number }
 type PrivateJourney = { billing?: Billing; billingRetryUntil?: number; restoreRetryUntil?: number; restore?: Restore; restoreStart?: RestoreStart; unresolvedAccounts?: UnresolvedAccount[]; restoreResult?: 'restored' | 'expired' | 'conflict' }
 type Result = { status: number; body: unknown; retryAfterMs?: number }
+type BillingAction = 'status' | 'check' | 'checkout' | 'resume' | 'portal' | 'portal_confirm'
 type Ports = {
   account: SupporterAccountCoordinator
   request: (path: string, body?: Record<string, unknown>, bearer?: string) => Promise<Result>
@@ -20,6 +22,13 @@ type Ports = {
   open: (url: string) => Promise<void>
   changed?: () => Promise<void>
   now?: () => number
+  /**
+   * Sign in with Twitch builds: Checkout and the portal need a signed-in
+   * account, and this coordinator never creates an installation account.
+   */
+  twitchSignIn?: boolean
+  /** Fresh Twitch proof for a portal that answers 403 `recent_auth_required`. */
+  stepUp?: (mode: TwitchSignInMode) => Promise<TwitchStepUpResult>
 }
 const object = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
 const id = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9-]{36}$/.test(value)
@@ -28,6 +37,8 @@ const code = (value: unknown): value is string => typeof value === 'string' && /
 const emailAddress = (value: unknown): value is string => typeof value === 'string' && value.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
 const randomKey = () => Array.from(crypto.getRandomValues(new Uint8Array(32)), byte => byte.toString(16).padStart(2, '0')).join('')
 async function accountHash(accountId: string): Promise<string> { return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`supporter-payment-account-v1:${accountId}`))), byte => byte.toString(16).padStart(2, '0')).join('') }
+/** The answer a step-up-gated bearer route gives without a fresh Twitch check. */
+const needsStepUp = (result: Result) => result.status === 403 && object(result.body).error === 'recent_auth_required'
 const retryMs = (result: Result) => Math.max(POLL_MS, Math.min(RETRY_MAX_MS, Number.isFinite(result.retryAfterMs) ? result.retryAfterMs! : 60_000))
 
 /** Provider navigation is performed by the worker only, never by a content page. */
@@ -87,7 +98,7 @@ export class SupporterPayFirstCoordinator {
     const value = await this.read(), current = await this.ports.account.localAccountId()
     return Boolean(value.billing && value.billing.accountId === current && Math.min(value.billing.until, value.billing.watchUntil) > this.now() || value.restore && value.restore.accountId === current && Date.parse(value.restore.expiresAt) > this.now())
   }
-  billing(action: 'status' | 'check' | 'checkout' | 'resume' | 'portal'): Promise<SupporterBillingState> {
+  billing(action: BillingAction): Promise<SupporterBillingState> {
     return this.serialize(() => this.performBilling(action), { state: 'unavailable' })
   }
   restore(action: 'status' | 'start' | 'check' | 'cancel', email?: string): Promise<SupporterRestoreState> {
@@ -122,17 +133,18 @@ export class SupporterPayFirstCoordinator {
     const state = await this.ports.account.run('status')
     return state.state === 'linked' ? state.accountId : null
   }
-  private async performBilling(action: 'status' | 'check' | 'checkout' | 'resume' | 'portal'): Promise<SupporterBillingState> {
+  private async performBilling(action: BillingAction): Promise<SupporterBillingState> {
     await this.reconcileIdentity()
     const value = await this.read()
     if (action !== 'status' && value.billingRetryUntil && value.billingRetryUntil > this.now()) return value.billing ? { state: 'still_confirming', ...(value.billing.attemptId ? { attemptId: value.billing.attemptId } : {}) } : { state: 'unavailable' }
+    const portal = action === 'portal' || action === 'portal_confirm'
     if (value.billing) {
       if (await this.identity() !== value.billing.accountId) { await this.reconcileIdentity(); return { state: 'reconnect_required' } }
       if (action === 'resume' && value.billing.phase === 'waiting' && value.billing.url && value.billing.until > this.now()) {
         await this.ports.open(value.billing.url)
         return { state: 'waiting', ...(value.billing.attemptId ? { attemptId: value.billing.attemptId } : {}) }
       }
-      if (action !== 'portal') {
+      if (!portal) {
         if (action === 'check' && !value.billing.url) {
           const recovered = await this.createOrRecoverCheckout(value, value.billing.accountId, false)
           // A named expired/pending result also has an owned read that may
@@ -153,7 +165,7 @@ export class SupporterPayFirstCoordinator {
         // unrelated old-account fingerprints remain untouched.
         const currentHash = await accountHash(current)
         if (value.unresolvedAccounts.some(item => item.hash === currentHash)) await this.resolveBilling(value, current)
-        if (action !== 'portal') return { state: 'active' }
+        if (!portal) return { state: 'active' }
       } else {
         const currentHash = await accountHash(current)
         if (action !== 'check' || !value.unresolvedAccounts.some(item => item.hash === currentHash)) return { state: 'reconnect_required' }
@@ -163,6 +175,10 @@ export class SupporterPayFirstCoordinator {
       }
     }
     if (action === 'status' || action === 'check') return { state: 'idle' }
+    if (this.ports.twitchSignIn) {
+      const signedIn = await this.signedInBilling(action, value)
+      if (signedIn) return signedIn
+    } else if (action === 'portal_confirm') return { state: 'unavailable' }
     const installation = await this.ports.account.ensureInstallation()
     if (installation.state === 'fallback') return { state: 'fallback' }
     if (installation.state !== 'linked') return { state: 'unavailable' }
@@ -172,8 +188,8 @@ export class SupporterPayFirstCoordinator {
     // skew on a created installation must never switch to a different cookie account.
     if (capability.accountKind === 'email') return { state: 'fallback' }
     if (capability.accountKind === undefined && capability.installationAccountsEnabled !== true && !await this.ports.account.isInstallationIdentity()) return { state: 'fallback' }
-    if (capability.accountKind !== 'installation' || action !== 'portal' && capability.installationAccountsEnabled !== true) return { state: 'unavailable' }
-    if (action === 'portal') {
+    if (capability.accountKind !== 'installation' || !portal && capability.installationAccountsEnabled !== true) return { state: 'unavailable' }
+    if (portal) {
       const result = await this.ports.account.withCredential(token => this.ports.request('/v1/billing/portal', {}, token), installation.accountId)
       if (result.status === 429) { value.billingRetryUntil = this.now() + retryMs(result); await this.ports.write(value) }
       const url = result.status === 200 ? validatedStripeUrl(object(result.body).url, 'portal') : null
@@ -190,6 +206,61 @@ export class SupporterPayFirstCoordinator {
     value.billing = { accountId: installation.accountId, phase: 'confirming', until: this.now() + ATTEMPT_MAX_MS, watchUntil: this.now() + PAY_FIRST_WATCH_MS, nextPoll: this.now() + POLL_MS }
     await this.ports.write(value)
     return this.createOrRecoverCheckout(value, installation.accountId, true)
+  }
+  /**
+   * Checkout and the portal for a signed-in account (Sign in with Twitch
+   * builds): this replaces `ensureInstallation`, so nothing here creates an
+   * account. Returns null only for an installation account, which keeps its
+   * existing path.
+   */
+  private async signedInBilling(action: 'checkout' | 'resume' | 'portal' | 'portal_confirm', value: PrivateJourney): Promise<SupporterBillingState | null> {
+    if (action === 'resume') return { state: 'idle' }
+    const account = await this.ports.account.run('status')
+    if (account.state !== 'linked') return { state: account.state === 'unavailable' && account.linked ? 'unavailable' : 'sign_in_required' }
+    const capability = await this.ports.account.entitlement()
+    if (capability.state !== 'ready') return { state: 'unavailable' }
+    if (capability.accountKind === 'installation') return null
+    if (action === 'portal' || action === 'portal_confirm') return this.openSignedInPortal(account.accountId, action === 'portal_confirm' ? 'interactive' : 'silent')
+    if (capability.status === 'active' || capability.status === 'grace') return { state: 'active' }
+    if (capability.status === 'review') return { state: 'review' }
+    if (capability.status === 'pending') return { state: 'confirming' }
+    if (!capability.checkoutEnabled) return { state: 'closed' }
+    delete value.restoreResult
+    value.billing = { accountId: account.accountId, phase: 'confirming', until: this.now() + ATTEMPT_MAX_MS, watchUntil: this.now() + PAY_FIRST_WATCH_MS, nextPoll: this.now() + POLL_MS }
+    await this.ports.write(value)
+    return this.createOrRecoverCheckout(value, account.accountId, true)
+  }
+  /**
+   * Opens Stripe's portal for the signed-in account only. A portal that asks
+   * for a recent Twitch check gets one silent attempt (or, from a click, the
+   * Twitch window) and one retry. It never loops, and never opens the portal
+   * after a check that named a different Twitch account.
+   */
+  private async openSignedInPortal(accountId: string, mode: TwitchSignInMode): Promise<SupporterBillingState> {
+    const portal = () => this.ports.account.withCredential(token => this.ports.request('/v1/billing/portal', {}, token), accountId)
+    let result = await portal()
+    if (needsStepUp(result)) {
+      const proof: TwitchStepUpResult = this.ports.stepUp ? await this.ports.stepUp(mode) : { ok: false, error: 'unavailable' }
+      if (!proof.ok) {
+        if (proof.error === 'identity_mismatch') return { state: 'wrong_account' }
+        if (proof.error === 'sign_in_required') return { state: 'sign_in_required' }
+        // A silent check that cannot finish, or a closed window: a click can try again.
+        if (mode === 'silent' || proof.error === 'cancelled' || proof.error === 'interaction_required' || proof.error === 'busy') return { state: 'step_up_required' }
+        return { state: proof.error === 'network' || proof.error === 'unavailable' || proof.error === 'try_later' ? 'unavailable' : 'error' }
+      }
+      if (await this.identity() !== accountId) return { state: 'error' }
+      result = await portal()
+      if (needsStepUp(result)) return { state: 'step_up_required' }
+    }
+    const body = object(result.body)
+    // An invited tester's email account without a Twitch identity keeps the website path.
+    if (result.status === 403 && body.error === 'browser_sign_in_required') return { state: 'fallback' }
+    if (result.status === 429) { const value = await this.read(); value.billingRetryUntil = this.now() + retryMs(result); await this.ports.write(value) }
+    const url = result.status === 200 ? validatedStripeUrl(body.url, 'portal') : null
+    if (!url) return { state: result.status === 404 || result.status === 503 || result.status === 429 ? 'unavailable' : 'error' }
+    if (await this.identity() !== accountId) return { state: 'error' }
+    await this.ports.open(url)
+    return { state: 'idle' }
   }
   private async resolveBilling(value: PrivateJourney, accountId: string): Promise<void> {
     delete value.billing
@@ -219,6 +290,12 @@ export class SupporterPayFirstCoordinator {
       return { state: 'confirming' }
     }
     if (result.status === 409 && id(body.attemptId) && (body.error === 'checkout_pending' || body.error === 'checkout_expired')) return { state: 'confirming', attemptId: body.attemptId }
+    if (navigate && result.status === 403 && body.error === 'browser_sign_in_required') {
+      // An invited tester's email account without a Twitch identity: no
+      // attempt exists, so the website's own sign-in and checkout take over.
+      await this.resolveBilling(value, accountId); return { state: 'fallback' }
+    }
+    if (navigate && (result.status === 403 || result.status === 409) && body.error === 'checkout_not_available') { await this.resolveBilling(value, accountId); return { state: 'closed' } }
     if (result.status !== 200 && result.status !== 201) {
       if (result.status === 429) { value.billingRetryUntil = this.now() + retryMs(result); pending.nextPoll = value.billingRetryUntil; await this.ports.write(value) }
       if (navigate && (result.status === 400 || result.status === 403 || result.status === 429)) { await this.resolveBilling(value, accountId); return { state: result.status === 429 ? 'unavailable' : 'error' } }

@@ -1,17 +1,32 @@
 import type { SupporterAccountState } from './supporterAccount.ts'
 
 /**
- * Client kill switch for Sign in with Twitch.
+ * Sign in with Twitch build stage, fixed at build time from
+ * PULSE_EXTENSION_TWITCH_SIGNIN (see scripts/extension-target.mjs):
  *
- * While false the options page keeps the device-code account card and the
- * worker answers TWITCH_SIGN_IN without network I/O. Turn it on only after the
- * backend's Twitch routes are mounted for this build's store surface and the
- * redirect spike has passed for every browser this build ships to. The same
- * change adds the `identity` permission to every manifest, the permission
- * allowlist and the store permission docs; tests/manifestPermissions.test.ts
- * fails until both move together.
+ *   - `off` (the default and every store build today): the options page says
+ *     Supporter sign-ups are not open yet and keeps the invited-tester device
+ *     link behind a closed disclosure. The worker answers TWITCH_SIGN_IN
+ *     without network I/O.
+ *   - `tester`: development and preview builds for invited testers while the
+ *     backend runs Twitch sign-in in pilot mode. Store builds refuse it.
+ *   - `public`: Continue with Twitch for everyone. A store build accepts it
+ *     only once that store's manifest requests `identity`; that release also
+ *     updates the permission allowlist and the store permission docs, and
+ *     tests/manifestPermissions.test.ts fails until all of them move together.
  */
-export const TWITCH_SIGNIN_ENABLED = false
+export type TwitchSignInStage = 'off' | 'tester' | 'public'
+
+export function parseTwitchSignInStage(value: unknown): TwitchSignInStage {
+  return value === 'tester' || value === 'public' ? value : 'off'
+}
+
+export const TWITCH_SIGNIN_STAGE: TwitchSignInStage = parseTwitchSignInStage(
+  typeof __TWITCH_SIGNIN_STAGE__ !== 'undefined' ? __TWITCH_SIGNIN_STAGE__ : 'off',
+)
+
+/** Client kill switch: Twitch sign-in code runs only in the tester and public stages. */
+export const TWITCH_SIGNIN_ENABLED = TWITCH_SIGNIN_STAGE !== 'off'
 
 /** `silent` never opens a window and never creates an account. */
 export type TwitchSignInMode = 'interactive' | 'silent'

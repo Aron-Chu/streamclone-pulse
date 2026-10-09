@@ -7,9 +7,9 @@ import { openTwitchChannel } from '../helpers/mockTwitch.ts'
 /**
  * Packaged proof of the Supporter surface, plus captures of each state.
  *
- * These legacy fixtures omit the installation-accounts capability and keep the
- * existing website account journey. The pay-first worker path has separate
- * packaged specs, with bearer billing and no ambient browser session.
+ * These fixtures omit the installation-accounts capability: a connected
+ * invited tester keeps website billing. The kept pay-first worker path has
+ * separate packaged specs, with bearer billing and no ambient browser session.
  */
 const CAPTURE_DIR = join('test-results', 'supporter-offer')
 
@@ -182,7 +182,7 @@ test.describe('packaged supporter offer', () => {
       expect(sawBearer).not.toContain('pulse_account=')
 
       const action = page.locator('a[data-supporter-action="billing"]')
-      const label = { none: 'Continue to checkout', active: 'Manage membership', grace: 'Update payment method', pending: 'View payment status', review: 'Review membership', expired: 'Rejoin Supporter' }[status]
+      const label = { none: 'Continue to checkout', active: 'Manage subscription', grace: 'Update payment method', pending: 'View payment status', review: 'Review membership', expired: 'Rejoin Supporter' }[status]
       await expect(action).toHaveText(label)
       if (status === 'none' || status === 'expired') await expect(page.getByText('US$4.99 / month')).toBeVisible()
       else await expect(page.getByText('US$4.99 / month')).toHaveCount(0)
@@ -247,14 +247,25 @@ test.describe('packaged supporter offer', () => {
     await expect(page.getByRole('button', { name: 'Check again', exact: true })).toBeVisible()
   })
 
-  test('an unlinked install offers one purchase action and secondary recovery choices', async ({ extension, prepare }) => {
+  test('a signed-out install says sign-ups are not open and offers no purchase, restore or website account', async ({ extension, prepare }) => {
     await prepare({ scenario: 'live-ready' })
+    const requests: string[] = []
+    for (const path of ['account/installations', 'account/restores', 'account/device-links', 'billing/checkout', 'billing/portal', 'account/auth/twitch/start-device']) {
+      await extension.context.route(`https://api.streampulse.stream/v1/${path}`, route => { requests.push(path); return route.fulfill({ status: 500, json: {} }) })
+    }
     const page = extension.page
     await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
-    await expect(page.getByText('opens streampulse.stream, where you sign in and approve this extension before paying on Stripe', { exact: false })).toBeVisible()
+    await expect(page.locator('[data-journey-state="signed-out"]')).toBeVisible()
+    await expect(page.getByText('Supporter sign-ups are not open yet', { exact: true })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Supporter details', exact: true })).toHaveAttribute('href', 'https://streampulse.stream/supporter')
     await expect(page.locator('a[data-supporter-action="billing"]')).toHaveCount(0)
-    await expect(page.getByRole('button', { name: 'Become a Supporter', exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Use a StreamPulse website account', exact: true })).toBeVisible()
+    for (const gone of ['Become a Supporter', 'Restore my Supporter', 'Use a StreamPulse website account', 'Continue with Twitch']) {
+      await expect(page.getByRole('button', { name: gone, exact: true })).toHaveCount(0)
+    }
+    // Invited testers keep the device link, closed and never a purchase.
+    await expect(page.locator('details[data-tester-bridge]')).not.toHaveAttribute('open', /.*/)
+    await expect(page.getByText('Invited tester? Connect this extension', { exact: true })).toBeVisible()
+    expect(requests).toEqual([])
   })
 
   test('a remotely revoked device clears the connection and can link again', async ({ extension, prepare }) => {
@@ -278,15 +289,15 @@ test.describe('packaged supporter offer', () => {
     const page = extension.page
     await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
     await expect(page.getByText('Supporter active', { exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Disconnect extension', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible()
 
     revoked = true
     const requestsBeforeRevocation = entitlementRequests
     // Returning to settings re-reads by itself; no refresh button is needed.
     await page.waitForTimeout(5_200)
     await page.evaluate(() => window.dispatchEvent(new Event('focus')))
-    await expect(page.getByText('was disconnected from your Pulse account', { exact: false })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Disconnect extension', exact: true })).toHaveCount(0)
+    await expect(page.getByText('was disconnected from your StreamPulse account', { exact: false })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toHaveCount(0)
     await expect(page.getByText('Supporter active', { exact: true })).toHaveCount(0)
     expect(entitlementRequests).toBeGreaterThan(requestsBeforeRevocation)
 
@@ -308,7 +319,8 @@ test.describe('packaged supporter offer', () => {
     const status = await page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_ACCOUNT', action: 'status' }))
     expect(status).toEqual({ type: 'SUPPORTER_ACCOUNT', account: { state: 'relink_required' } })
 
-    await page.getByRole('button', { name: 'Use a StreamPulse website account', exact: true }).click()
+    await page.getByText('Invited tester? Connect this extension', { exact: true }).click()
+    await page.getByRole('button', { name: 'Connect this extension', exact: true }).click()
     await expect(page.getByText('ABCDE-12345', { exact: true })).toBeVisible()
     await expect(page.getByRole('link', { name: 'Reopen streampulse.stream', exact: true }))
       .toHaveAttribute('href', 'https://streampulse.stream/account/link-device#code=ABCDE12345')

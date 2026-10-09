@@ -41,7 +41,8 @@ export type SupporterEntitlement =
       checkoutEnabled?: boolean
       /** Server capability; absent on older deployments. Never opens Checkout itself. */
       installationAccountsEnabled?: boolean
-      accountKind?: 'email' | 'installation'
+      /** `twitch`: created by Continue with Twitch. `email`: an invited tester's account. */
+      accountKind?: 'email' | 'installation' | 'twitch'
       restoreEligible?: boolean
     }
 
@@ -68,9 +69,15 @@ export type SupporterAccountState =
   | { state: 'pending'; code: string; expiresAt: string; retryAfterSeconds: number }
   | { state: 'linked'; accountId: string; expiresAt: string }
 
-/** Worker-owned purchase state: provider URLs and all credentials stay private. */
+/**
+ * Worker-owned purchase state: provider URLs and all credentials stay private.
+ * With Twitch sign-in on, `sign_in_required` means no signed-in account,
+ * `step_up_required` that managing the subscription needs a Twitch check from
+ * the last 10 minutes, and `wrong_account` that the Twitch account in that
+ * check is not this account's.
+ */
 export type SupporterBillingState =
-  | { state: 'idle' | 'fallback' | 'closed' | 'active' | 'expired' | 'review' | 'unavailable' | 'error' | 'reconnect_required' }
+  | { state: 'idle' | 'fallback' | 'closed' | 'active' | 'expired' | 'review' | 'unavailable' | 'error' | 'reconnect_required' | 'sign_in_required' | 'step_up_required' | 'wrong_account' }
   | { state: 'waiting' | 'confirming' | 'still_confirming'; attemptId?: string; automaticPolling?: false }
 export type SupporterRestoreState =
   | { state: 'idle' | 'fallback' | 'restored' | 'expired' | 'conflict' | 'error' | 'ineligible' }

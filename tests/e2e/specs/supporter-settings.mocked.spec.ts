@@ -22,7 +22,8 @@ test('packaged supporter settings stay local, accessible and responsive', async 
   await expect(page.locator('.pulse-supporter-settings').getByRole('heading')).toHaveText(['Account & Supporter', 'Your Supporter card', 'Who sees what', 'Your look', 'Account'])
   await expect(card.locator('.pulse-supporter-card-who strong')).toHaveText('Not signed in')
   await expect(card.getByText('Sample look', { exact: true })).toBeVisible()
-  await expect(card).not.toContainText('Twitch')
+  // The card names nobody: no Twitch name or picture while Twitch sign-in is off.
+  await expect(card.locator('.pulse-supporter-card-who')).not.toContainText('Twitch')
   const ladder = card.getByRole('list', { name: 'Crest ladder' })
   await expect(ladder.getByRole('listitem')).toHaveText(['New', '3 mo', '6 mo', '1 year', '2 years'])
   // The real crest art, from the stylesheet, at ladder size.
@@ -32,10 +33,13 @@ test('packaged supporter settings stay local, accessible and responsive', async 
   const top = card.locator('.pulse-supporter-card-banner')
   await expect(top).toHaveCSS('background-image', 'none')
   await expect(top.locator('.pulse-banner-art')).toHaveAttribute('data-mode', 'rain')
-  await expect(card.locator('.pulse-journey')).toHaveAttribute('data-journey-state', 'unlinked')
+  await expect(card.locator('.pulse-journey')).toHaveAttribute('data-journey-state', 'signed-out')
+  // Sign-ups are not open: the one action describes Supporter, it does not sell it.
   const primary = card.locator('.pulse-journey-primary')
-  await expect(primary).toHaveText(['Become a Supporter'])
-  // The price and that it renews come before the button that buys it, in reading and Tab order.
+  await expect(primary).toHaveText(['Supporter details'])
+  await expect(card.locator('.pulse-journey')).toContainText('Supporter sign-ups are not open yet')
+  await expect(page.getByRole('button', { name: /Become a Supporter|Restore my Supporter|Use a StreamPulse website account/ })).toHaveCount(0)
+  // The price and that it renews come before the primary action, in reading and Tab order.
   const terms = card.locator('.pulse-supporter-terms')
   await expect(terms).toContainText('US$4.99 / month')
   await expect(terms).toContainText('renews monthly until you cancel')
@@ -155,28 +159,32 @@ test('account settings connect through the packaged worker and disconnect', asyn
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
   const openedTabs = await recordOpenedTabs(page)
   const opened = extension.context.waitForEvent('page')
-  await page.getByRole('button', { name: 'Use a StreamPulse website account', exact: true }).click()
+  // Invited testers only: the device link sits behind a closed disclosure.
+  await page.getByText('Invited tester? Connect this extension', { exact: true }).click()
+  await page.getByRole('button', { name: 'Connect this extension', exact: true }).click()
   await opened
   // The worker's code reaches the website in the fragment only; no second click is needed.
   expect(await openedTabs()).toEqual(['https://streampulse.stream/account/link-device#code=ABCDE12345'])
   await expect(page.getByText('ABCDE-12345', { exact: true })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Reopen streampulse.stream' })).toHaveAttribute('href', 'https://streampulse.stream/account/link-device#code=ABCDE12345')
   expect(await page.locator('body').innerText()).not.toContain('c'.repeat(64))
-  await expect(page.getByText('This extension is connected to your Pulse account.', { exact: false })).toBeVisible({ timeout: 12000 })
-  await expect(page.getByText('Connecting does not link your Twitch identity.', { exact: false })).toBeVisible()
-  await page.getByRole('button', { name: 'Disconnect extension' }).click()
-  await expect(page.getByRole('button', { name: 'Become a Supporter', exact: true })).toBeVisible()
+  await expect(page.getByText('Connected to this extension', { exact: true })).toBeVisible({ timeout: 12000 })
+  await expect(page.getByText('An invited tester’s StreamPulse account.', { exact: false })).toBeVisible()
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click()
+  await expect(page.locator('[data-journey-state="signed-out"]')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Become a Supporter', exact: true })).toHaveCount(0)
 })
 
 test('unmounted account backend produces a clear unavailable state', async ({ extension, prepare }) => {
   await prepare()
   await extension.context.route('https://api.streampulse.stream/v1/account/device-links', route => route.fulfill({ status: 404 }))
   await extension.page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
-  await extension.page.getByRole('button', { name: 'Become a Supporter', exact: true }).click()
-  await expect(extension.page.getByText('Account linking is not available on the server yet. Your free tools still work.')).toBeVisible()
+  await extension.page.getByText('Invited tester? Connect this extension', { exact: true }).click()
+  await extension.page.getByRole('button', { name: 'Connect this extension', exact: true }).click()
+  await expect(extension.page.getByText('Account sign-in is not available on the server yet. Your free tools still work.')).toBeVisible()
   await expect(extension.page.getByRole('link', { name: 'Reopen streampulse.stream' })).toHaveCount(0)
   // UI-11: linking that is not deployed is explained, not offered again.
-  await expect(extension.page.getByRole('button', { name: 'Become a Supporter', exact: true })).toHaveCount(0)
+  await expect(extension.page.getByRole('button', { name: 'Connect this extension', exact: true })).toHaveCount(0)
 })
 
 test('a Supporter’s emote rain choice keeps keyboard focus through its save', async ({ extension, prepare }) => {
