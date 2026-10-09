@@ -221,7 +221,10 @@ export default function Privacy() {
             (PULSE_SUPPORT_RETENTION_ENABLED=false, PULSE_SUPPORT_RETENTION_DAYS unset),
             so nothing is deleted automatically. If a retention period is approved,
             change only the "How long it's kept" paragraph. Keep this section identical
-            in PR #82 and PR #78. */}
+            in PR #82 and PR #78.
+            The staff Discord sentence matches backend PR
+            claude/support-intake-hardening-20261009 (message text and short reference,
+            never the email); change it if that payload changes. */}
         <section data-testid="privacy-feedback">
           <h2 id="feedback-form">Feedback form</h2>
           <p data-testid="privacy-feedback-sent">
@@ -251,7 +254,9 @@ export default function Privacy() {
             mail service, to the StreamPulse team's private support inbox. The email holds the case
             ID, the kind, the subject and your message, and, if you gave a reply email, uses it as
             the reply-to address so the team can answer. Your reply email is used only to answer
-            about that report. Nothing sent through the form is posted publicly.
+            about that report. When enabled, the message text and a short reference (never your
+            email) are also posted to a private staff-only Discord channel. Nothing sent through
+            the form is posted publicly.
           </p>
           <p data-testid="privacy-feedback-turnstile">
             <strong>Bot check.</strong> The form uses Cloudflare Turnstile to tell people from bots.
@@ -271,14 +276,16 @@ export default function Privacy() {
             <strong>How long it's kept.</strong> Automatic deletion of feedback reports is switched
             off until StreamPulse chooses a retention period. Until then, the stored case, its
             delivery record and any failed-delivery record are kept until they are deleted by hand,
-            and the email in the support inbox is kept until the team deletes it. When a period is
+            and the email in the support inbox and any staff Discord post are kept until the team
+            deletes them. When a period is
             chosen, this page will say what it is.
           </p>
           <p data-testid="privacy-feedback-deletion">
             <strong>Asking for deletion.</strong> To have a report deleted, email{' '}
             <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a> with the case
             ID shown after you sent it, or from the reply email you gave. Deletion is done by hand
-            and covers the stored case, its delivery records and the email in the support inbox.
+            and covers the stored case, its delivery records, the email in the support inbox and
+            any staff Discord post.
           </p>
         </section>
 
@@ -439,11 +446,21 @@ export default function Privacy() {
             never talks to PostHog directly; the StreamPulse backend may forward fixed aggregate event
             names only. Not active in the current extension package.
           </li>
-          <li>
-            <strong>Website error monitoring (portal only)</strong> — when the streampulse.stream website
-            build is configured with an error-monitoring DSN, the portal may send sanitized browser error
-            events to that processor. This does not apply to the Chrome extension package. The portal
-            scrubbing path is designed to avoid attaching users, cookies, and free-form request bodies.
+          <li data-testid="privacy-third-party-discord">
+            <strong>Discord (feedback form only, when enabled)</strong> — when StreamPulse turns it
+            on, the message text and short reference of each feedback report are posted to a
+            private staff-only Discord channel, as described under Feedback form. Your email is
+            never posted there.
+          </li>
+          <li data-testid="privacy-third-party-sentry">
+            <strong>Sentry (website error monitoring)</strong> — when a public page of
+            streampulse.stream hits an error, the website sends Sentry, in the United States, an
+            error report: the kind of error, where in the site's code it happened, the site
+            version and the page route, with channel names and stream IDs replaced by
+            placeholders. Free-form error text is dropped, and no account, cookie, form entry or
+            request body is attached. Account pages have it off. Your IP address is seen by Sentry
+            while a report is sent, as with any web request, and is not stored. The Chrome
+            extension does not use Sentry.
           </li>
         </ul>
         <p>

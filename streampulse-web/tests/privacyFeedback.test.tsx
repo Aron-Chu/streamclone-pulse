@@ -55,6 +55,31 @@ describe('Privacy: feedback form', () => {
     expect(section('privacy-feedback-logs')).toMatch(/never your message,\s+your email or the Turnstile token/)
   })
 
+  it('says the staff Discord channel gets the message text and a short reference, never the email', () => {
+    render(<MemoryRouter><Privacy /></MemoryRouter>)
+    const delivery = section('privacy-feedback-delivery')
+    expect(delivery).toMatch(/When enabled, the message text and a short reference \(never your\s+email\) are also posted to a private staff-only Discord channel\./)
+    expect(delivery).toMatch(/Nothing sent through\s+the form is posted publicly/)
+    const discord = section('privacy-third-party-discord')
+    expect(discord).toMatch(/Discord \(feedback form only, when enabled\)/)
+    expect(discord).toMatch(/private staff-only Discord channel/)
+    expect(discord).toMatch(/Your email is\s+never posted there/)
+    expect(section('privacy-feedback-retention')).toMatch(/any staff Discord post are kept until the team\s+deletes them/)
+    expect(section('privacy-feedback-deletion')).toMatch(/any staff Discord post/)
+  })
+
+  it('names Sentry, what it receives, that account pages have it off and that IP addresses are not stored', () => {
+    render(<MemoryRouter><Privacy /></MemoryRouter>)
+    const sentry = section('privacy-third-party-sentry')
+    expect(sentry).toMatch(/Sentry \(website error monitoring\)/)
+    expect(sentry).toMatch(/error\s+report: the kind of error, where in the site's code it happened, the site\s+version and the page route/)
+    expect(sentry).toMatch(/Account pages have it off\./)
+    expect(sentry).toMatch(/Your IP address is seen by Sentry\s+while a report is sent, as with any web request, and is not stored\./)
+    expect(sentry).toMatch(/extension does not use Sentry/)
+    // The unnamed "error-monitoring processor" wording is gone.
+    expect(screen.getByTestId('privacy-policy').textContent).not.toMatch(/error-monitoring DSN/)
+  })
+
   it('lists the outgoing mail service and support inbox as recipients of the report', () => {
     render(<MemoryRouter><Privacy /></MemoryRouter>)
     const mail = section('privacy-third-party-support-mail')
