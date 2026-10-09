@@ -255,6 +255,12 @@
     display: flex;
     align-items: center;
     flex: 0 1 auto;
+  }
+  /* A lifecycle row that holds a 44px link (Watch VOD, Open session page) is
+     tall enough already, so only that row loses its padding; the notice beside
+     it stretches to the same height. A notice or a lifecycle row without a
+     link keeps its own padding, alone or side by side. */
+  .sc-analytics-console [data-session-status-row] > [data-session-lifecycle-row][data-has-action] {
     padding-block: 0.125rem;
   }
   /* The lifecycle row (always last when present) takes the remaining width. */
@@ -264,6 +270,7 @@
 
   /* Games played: the label sits beside the box art instead of above it. */
   .sc-analytics-console [data-games-played] {
+    position: relative;
     display: grid;
     grid-template-columns: minmax(12rem, max-content) minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
@@ -283,13 +290,42 @@
     min-height: 72px; /* the 70px box-art targets plus their 1px ring room */
     padding-block: 1px;
   }
-  /* The hover/pinned game line sits under the label. It takes the label
-     column's width without widening it, so hovering never moves the art. */
+  /* The hovered or pinned game sits in the free space under the label: the
+     name on one line, then its time window with the chart-window and pinned
+     marks, wrapping onto a third line when needed. It is positioned inside
+     that grid area (explicit end lines: an absolute item's "auto" end would
+     be the strip's edge), so it never sizes the strip: hovering or pinning a
+     game cannot move the art or the plot, and nothing is cut to one line. */
   .sc-analytics-console [data-games-played] > [data-games-played-details] {
-    grid-column: 1;
-    grid-row: 2;
-    align-self: start;
-    contain: inline-size;
+    position: absolute;
+    grid-column: 1 / 2;
+    grid-row: 2 / 3;
+    inset: 0;
+    margin: 0;
+    padding: 0 0.25rem 0 0.625rem; /* text lines up with the label */
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    column-gap: 0.25rem;
+    overflow: hidden;
+    white-space: normal;
+    line-height: 0.875rem; /* three 14px lines fit the 42px under the label */
+  }
+  /* Each part stays on one line and wraps as a whole; a part wider than the
+     column (a very long game name) ends in an ellipsis, with the full text in
+     the line's tooltip. */
+  .sc-analytics-console [data-games-played-details] > * {
+    margin: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .sc-analytics-console [data-games-played-details] > [data-games-played-details-name] {
+    flex: 0 0 100%;
+  }
+  .sc-analytics-console [data-games-played-details] > [data-games-played-details-sep] {
+    display: none;
   }
 
   /* The chart header block (readouts, range, games) to the focus bar. */

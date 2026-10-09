@@ -524,8 +524,8 @@ export function GamesPlayedStrip({
           aria-live="polite"
           title={`${displayedSlot.segment.gameName} · ${formatWindowLabel(displayedSlot.visibleStart, displayedSlot.visibleEnd)}${displayedSlot.clipped ? ' · chart window' : ''}`}
         >
-          <span className="font-black text-zinc-300">{displayedSlot.segment.gameName}</span>
-          <span className="mx-1 text-zinc-700" aria-hidden="true">·</span>
+          <span className="font-black text-zinc-300" data-games-played-details-name>{displayedSlot.segment.gameName}</span>
+          <span className="mx-1 text-zinc-700" aria-hidden="true" data-games-played-details-sep>·</span>
           <span>{formatWindowLabel(displayedSlot.visibleStart, displayedSlot.visibleEnd)}</span>
           {displayedSlot.clipped ? <span> · chart window</span> : null}
           {selectedKey === displayedKey ? <span className="ml-1 text-cyan-300">· pinned</span> : null}

@@ -37,4 +37,26 @@ describe('stream page compact layout CSS (option)', () => {
     // The games strip keeps room for its 70px box-art targets.
     expect(streamBlock).toMatch(/\[data-games-played-track\][^}]*min-height:\s*72px/)
   })
+
+  it('trims status-row padding only on a lifecycle row that holds a 44px link', () => {
+    // A blanket rule turned a lone coverage notice into a ~20px strip.
+    expect(streamBlock).not.toMatch(/\[data-session-status-row\] > \* \{[^}]*padding/)
+    expect(streamBlock).toMatch(/\[data-session-status-row\] > \[data-session-lifecycle-row\]\[data-has-action\] \{\s*padding-block: 0\.125rem;/)
+  })
+
+  it('shows the hovered or pinned game in full under the label without sizing the strip', () => {
+    const details = streamBlock.match(/\[data-games-played\] > \[data-games-played-details\] \{([^}]*)\}/)?.[1] ?? ''
+    // Positioned inside its grid area: it never grows the strip, so the plot cannot move.
+    expect(streamBlock).toMatch(/\.sc-analytics-console \[data-games-played\] \{\s*position: relative;/)
+    expect(details).toMatch(/position: absolute;/)
+    // Explicit end lines: an absolute grid item's auto end is the strip's edge, so it would cover the art.
+    expect(details).toMatch(/grid-column: 1 \/ 2;/)
+    expect(details).toMatch(/grid-row: 2 \/ 3;/)
+    expect(details).toMatch(/overflow: hidden;/)
+    // Wraps instead of truncating to one line, so the window and pinned mark stay readable.
+    expect(details).toMatch(/flex-wrap: wrap;/)
+    expect(details).toMatch(/white-space: normal;/)
+    expect(details).not.toMatch(/contain:/)
+    expect(streamBlock).toMatch(/\[data-games-played-details\] > \[data-games-played-details-name\] \{[^}]*flex: 0 0 100%;/)
+  })
 })
