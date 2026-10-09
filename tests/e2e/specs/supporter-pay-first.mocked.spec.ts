@@ -323,7 +323,8 @@ test('uncertain installation refresh retains its identity and restores after ren
   expect(restoreStarts).toBe(1)
   approved = true
   await expect(page.getByText('Supporter active', { exact: true })).toBeVisible({ timeout: 20_000 })
-  await expect(page.getByRole('button', { name: 'Manage subscription', exact: true })).toBeVisible()
+  // The Account card's billing row carries its own Manage subscription; this is the footer's.
+  await expect(page.locator('.pulse-journey').getByRole('button', { name: 'Manage subscription', exact: true })).toBeVisible()
 })
 
 test('slow Checkout and Portal responses survive the former twelve-second deadline', async ({ extension, prepare }) => {
@@ -351,7 +352,7 @@ test('slow Checkout and Portal responses survive the former twelve-second deadli
   await page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_BILLING', action: 'check' }))
   await page.reload()
   await expect(page.locator('[data-journey-state="active"]')).toBeVisible()
-  await page.getByRole('button', { name: 'Manage subscription', exact: true }).click()
+  await page.locator('.pulse-journey').getByRole('button', { name: 'Manage subscription', exact: true }).click()
   await expect.poll(tabs, { timeout: 30_000 }).toContain('https://billing.stripe.com/p/session/slow-fixture')
 })
 

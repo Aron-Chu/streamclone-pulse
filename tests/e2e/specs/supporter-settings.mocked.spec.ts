@@ -223,7 +223,7 @@ test('a Supporter’s emote rain choice keeps keyboard focus through its save', 
   expect(stored).toMatchObject({ pulseBanner: { mode: 'rain' } })
 })
 
-test('Manage billing keeps keyboard focus while it opens and reports a failure in the Account card', async ({ extension, prepare }) => {
+test('the Account card’s Manage subscription keeps keyboard focus while it opens and reports a failure in the Account card', async ({ extension, prepare }) => {
   await prepare()
   await linkDevice(extension.serviceWorker)
   await serveMembership(extension.context, () => ({ ...supporterBody('active', 2), accountKind: 'installation', installationAccountsEnabled: true, restoreEligible: false }))
@@ -237,7 +237,8 @@ test('Manage billing keeps keyboard focus while it opens and reports a failure i
   const page = extension.page
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
   const account = page.locator('section').filter({ has: page.getByRole('heading', { level: 3, name: 'Account', exact: true }) })
-  const manage = account.getByRole('button', { name: 'Manage billing', exact: false })
+  // The footer has its own Manage subscription; this is the one in the Account card's billing row.
+  const manage = account.locator('[data-row="billing"]').getByRole('button', { name: 'Manage subscription', exact: true })
   const status = account.locator('[data-account-notice]')
   await expect(status).toHaveText('')
   await manage.focus()

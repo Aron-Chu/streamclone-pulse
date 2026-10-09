@@ -625,10 +625,10 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
       terms = true
       primary = supporterDetails(true)
     } else {
-      title = 'Sign in with Twitch'
+      title = 'Supporter starts with Twitch sign-in'
       body = <>
         {why ? <p className="pulse-journey-notice">{why}</p> : null}
-        <p>Supporter starts with <b>Continue with Twitch</b>, then payment on Stripe. {ACCOUNT_COPY.freeTools}</p>
+        <p>Choose <b>Continue with Twitch</b>, then pay on Stripe. {ACCOUNT_COPY.freeTools}</p>
         {twitchStage === 'tester' ? <p className="pulse-supporter-detail">{ACCOUNT_COPY.testersOnly}</p> : null}
         {twitchWindow ? null : <p className="pulse-supporter-detail">This browser cannot open the Twitch sign-in window.</p>}
       </>
@@ -842,7 +842,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
               <dd>Stripe<small>Change card, get receipts, or cancel.</small></dd>
               {/* Never disabled while it works: a disabled button drops keyboard
                   focus to the page. manage() ignores a press while one is open. */}
-              <dd className="pulse-account-link-actions"><button type="button" aria-busy={payBusy || undefined} onClick={() => void manage('account')}>Manage billing <span className="pulse-supporter-ext" aria-hidden="true">↗</span></button></dd>
+              <dd className="pulse-account-link-actions"><button type="button" aria-busy={payBusy || undefined} onClick={() => void manage('account')}>{ACCOUNT_COPY.manageSubscription} <span className="pulse-supporter-ext" aria-hidden="true">↗</span></button></dd>
             </div> : null}
             <div data-row="new-browser">
               <dt>New browser</dt>
@@ -862,7 +862,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
               <dd />
             </div> : null}
           </dl>
-          {/* Sign out, Manage billing and revoke report here, beside their
+          {/* Sign out, Manage subscription and revoke report here, beside their
               rows, not in the card footer a screen above. Always present, so
               the outcome is announced when it arrives. */}
           <div role="status" aria-live="polite" className="pulse-supporter-account-status" data-account-notice>

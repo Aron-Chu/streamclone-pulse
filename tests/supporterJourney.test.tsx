@@ -761,11 +761,11 @@ describe('notices beside the action that caused them', () => {
     } finally { view.cleanup() }
   })
 
-  it('reports a failed Manage billing in the Account card, and the footer’s own Manage subscription in the footer', async () => {
+  it('reports a failed Manage subscription in the Account card, and the footer’s own Manage subscription in the footer', async () => {
     const view = await mount({ account: () => linked, entitlement: () => ready('active', { installationAccountsEnabled: true }), billing: action => action === 'portal' ? { state: 'error' } : { state: 'idle' } })
     try {
       const page = sections(view.host)
-      await view.click('Manage billing ↗')
+      await view.click('Manage subscription ↗')
       expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(1)
       expect(page.accountStatus()?.textContent).toContain(MANAGE_FAILED)
       expect(page.footer()).not.toContain(MANAGE_FAILED)
@@ -777,12 +777,12 @@ describe('notices beside the action that caused them', () => {
     } finally { view.cleanup() }
   })
 
-  it('keeps Manage billing enabled and focused while it opens, ignores a second press, and reports the failure beside it', async () => {
+  it('keeps the Account card’s Manage subscription enabled and focused while it opens, ignores a second press, and reports the failure beside it', async () => {
     let answer: (billing: SupporterBillingState) => void = () => undefined
     const view = await mount({ account: () => linked, entitlement: () => ready('active', { installationAccountsEnabled: true }), billing: action => action === 'portal' ? new Promise<SupporterBillingState>(resolve => { answer = resolve }) : { state: 'idle' } })
     try {
       const page = sections(view.host)
-      const manage = [...page.account.querySelectorAll('button')].find(button => button.textContent === 'Manage billing ↗')!
+      const manage = [...page.account.querySelectorAll('button')].find(button => button.textContent === 'Manage subscription ↗')!
       manage.focus()
       await act(async () => manage.click())
       // While the request is open: still enabled (a disabled button drops focus), marked busy, and a second press does nothing.
@@ -1196,7 +1196,10 @@ describe('Continue with Twitch (tester and public stages)', () => {
       const button = view.host.querySelector<HTMLButtonElement>('button[data-twitch-signin]')!
       expect(button.textContent).toBe('Continue with Twitch')
       expect(button.disabled).toBe(false)
-      expect(view.text()).toContain('Free tools work without an account.')
+      // One verb for signing in: the spec's "Continue with Twitch", never a second "Sign in with Twitch".
+      expect(view.host.querySelector('.pulse-journey-title')?.textContent).toBe('Supporter starts with Twitch sign-in')
+      expect(view.text()).toContain('Choose Continue with Twitch, then pay on Stripe. Free tools work without an account.')
+      expect(view.text()).not.toContain('Sign in with Twitch')
       expect(view.text().includes('Twitch sign-in is open to invited testers right now.')).toBe(stage === 'tester')
       expect(view.host.querySelector('details[data-tester-bridge] summary')?.textContent).toBe('Other ways to connect (testers)')
       expect(view.host.querySelector<HTMLDetailsElement>('details[data-tester-bridge]')!.open).toBe(false)
@@ -1338,7 +1341,7 @@ describe('Continue with Twitch (tester and public stages)', () => {
   it('names a different Twitch account in the check and never opens the portal', async () => {
     const view = await mount({ account: () => linked, entitlement: () => twitchAccount('active'), billing: action => action === 'portal' ? { state: 'wrong_account' } : { state: 'idle' }, twitch: () => ({ status: twitchStatus(), account: linked }) }, undefined, 'public')
     try {
-      await view.click('Manage billing ↗')
+      await view.click('Manage subscription ↗')
       expect(view.text()).toContain('This subscription belongs to a different Twitch account. Sign out, then Continue with Twitch with the account you subscribed with.')
       expect(view.create).not.toHaveBeenCalled()
       expect(view.state()).toBe('active')

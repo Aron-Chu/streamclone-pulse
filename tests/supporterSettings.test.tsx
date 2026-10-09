@@ -136,7 +136,7 @@ describe('supporter settings', () => {
       expect(journey.dataset.journeyState).toBe('active')
       expect(journey.hasAttribute('data-tone')).toBe(false)
       // Billing is one tap away, and nothing about a chat badge is offered as included.
-      expect([...host.querySelectorAll('button')].map(button => button.textContent)).toContain('Manage billing ↗')
+      expect([...host.querySelectorAll('button')].map(button => button.textContent)).toContain('Manage subscription ↗')
       expect(host.textContent).toContain('Concept · not built')
       expect(host.textContent).not.toContain('US$4.99 / month')
       // An active member's pre-purchase choice is never read.
