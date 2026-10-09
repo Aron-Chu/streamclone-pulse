@@ -3,7 +3,7 @@ import { SupporterAccountCoordinator } from '../src/background/supporterAccount.
 import { createPulseBookmark, deletePulseBookmark, fetchPulseBookmarks } from '../src/background/api.ts'
 
 const runtime = vi.hoisted(() => ({ coordinator: null as unknown as SupporterAccountCoordinator, root: 'https://api.streampulse.stream' }))
-vi.mock('../src/background/supporterAccountRuntime.ts', () => ({ supporterAccount: {
+vi.mock('../src/background/supporterAccountRuntime.ts', () => ({ ACCOUNT_BACKEND_URL: 'https://api.streampulse.stream', supporterAccount: {
   withCredential: (operation: (token: string) => Promise<{ status: number }>, accountId?: string) => runtime.coordinator.withCredential(operation, accountId),
 } }))
 vi.mock('../src/shared/storage.ts', async importOriginal => ({ ...await importOriginal<object>(), getBackendUrl: async () => runtime.root }))

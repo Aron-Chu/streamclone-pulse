@@ -4,8 +4,23 @@ import { TWITCH_SIGNIN_ENABLED, type TwitchSignInMode, type TwitchStepUpResult }
 import { AccountRequestNotSent, SupporterAccountCoordinator } from './supporterAccount.ts'
 import { SupporterPayFirstCoordinator } from './supporterPayFirst.ts'
 
-const ACCOUNT_BACKEND_URL = typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__ ? DEFAULT_BACKEND_URL
+/**
+ * The one origin every account request goes to: the credential store, refresh,
+ * Twitch sign-in, saves and history. Production in every store build; a
+ * development build pinned to a local backend keeps all of them there, so a
+ * credential issued by one origin is never sent to another.
+ */
+export const ACCOUNT_BACKEND_URL: string = typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__ ? DEFAULT_BACKEND_URL
   : typeof __SUPPORTER_BACKEND_ORIGIN__ !== 'undefined' ? __SUPPORTER_BACKEND_ORIGIN__ : DEFAULT_BACKEND_URL
+
+/**
+ * Account credentials cannot follow a dynamically selected backend: with the
+ * production account origin, a developer override pauses account requests.
+ * The isolated local sandbox is an explicit, immutable development build.
+ */
+export async function accountRequestsAllowed(): Promise<boolean> {
+  return ACCOUNT_BACKEND_URL !== DEFAULT_BACKEND_URL || await getBackendUrl() === DEFAULT_BACKEND_URL
+}
 
 // Extension-origin IndexedDB is unavailable to Twitch content scripts. Do not
 // move this record to sync storage or send it through a UI message.
@@ -76,9 +91,7 @@ export function accountRequestDeadlineMs(path: string): number {
     : path === '/v1/account/restores' ? 25_000 : 12_000
 }
 export async function accountRequest(path: string, body?: Record<string, unknown>, bearer?: string): Promise<{ status: number; body: unknown; retryAfterMs?: number }> {
-    // Account credentials cannot follow a dynamically selected backend. The
-    // isolated local sandbox is an explicit, immutable development build.
-    if (ACCOUNT_BACKEND_URL === DEFAULT_BACKEND_URL && await getBackendUrl() !== DEFAULT_BACKEND_URL) throw new AccountRequestNotSent('account_hosted_only')
+    if (!await accountRequestsAllowed()) throw new AccountRequestNotSent('account_hosted_only')
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     // The installation credential is a bearer, never a cookie: this request
     // sends credentials: 'omit', so no ambient browser session is involved.
