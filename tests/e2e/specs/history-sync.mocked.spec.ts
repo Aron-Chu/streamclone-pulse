@@ -51,7 +51,7 @@ test('packaged history sync joins the account, sends real jumps, pulls other bro
   await expect(page.getByRole('heading', { name: 'Sync with your account' })).toBeVisible()
   const sync = page.getByRole('checkbox', { name: /Sync watched history to your account/ })
   await expect(sync).not.toBeChecked()
-  await expect(page.getByText('Off. Only this browser keeps its history.', { exact: true })).toBeVisible()
+  await expect(page.getByText('Off. Only this browser keeps its history, and removing the extension removes it. Turn sync on to keep it through a reinstall.', { exact: true })).toBeVisible()
   await page.setViewportSize({ width: 1440, height: 900 })
   await settled()
   await page.screenshot({ path: testInfo.outputPath('history-sync-off-1440.png'), fullPage: true })

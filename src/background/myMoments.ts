@@ -6,7 +6,7 @@ import type { BookmarksState, MyMomentsRecent, MyMomentsRequest, MyMomentsSnapsh
 import type { BackgroundResponse, ListBookmarksMessage, PulseBookmark, SaveBookmarkMessage } from '../shared/messages.ts'
 import { replayAvailability, type LibraryMoment, type MomentReference } from '../ui/library/model.ts'
 import { addDeviceBookmark, bookmarkIdentity, momentIdentity as identity, personalTransaction, recordWatched } from './myMomentsStore.ts'
-import { clearAccountHistory, historySyncView, refreshHistorySync, setAccountRetention, setHistorySync, syncHistoryNow } from './historySync.ts'
+import { clearAccountHistory, historySyncCheckDue, historySyncView, refreshHistorySync, setAccountRetention, setHistorySync, syncHistoryNow } from './historySync.ts'
 
 export { replayAvailability }
 const bookmarkMoment = (b: PulseBookmark, note: string): LibraryMoment => ({ id: b.id, channel: b.login, title: b.label || 'Saved moment', vodId: b.vodId ?? null,
@@ -141,6 +141,10 @@ export function handleMyMoments(message: MyMomentsRequest, sender: chrome.runtim
     const { scope, held } = await resolveScope()
     if (message.type === 'MOMENT_CAPTURE') {
       if (message.action === 'status') {
+        // A browser that joined or was reinstalled into an account that syncs
+        // learns it at its first Pulse jump too, not only when My Moments opens.
+        const account = scopeAccount(scope)
+        if (account && historySyncCheckDue(await personalTransaction(scope))) await within(refreshHistorySync(scope, account), 3000)
         const data = await personalTransaction(scope)
         return { type: 'MOMENT_CAPTURE', enabled: data.preferences.captureHistory, epoch: data.epoch }
       }

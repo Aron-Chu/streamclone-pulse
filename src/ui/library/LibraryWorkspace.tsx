@@ -260,10 +260,10 @@ export function HistorySyncCard({ sync, busy, onChange, now = Date.now() }: { sy
         <div className="pl-row"><a className="pl-button" href="#supporter">Connect account</a></div></>
       : <>
         <label className="pl-check"><input type="checkbox" checked={sync.state === 'on'} disabled={busy} onChange={event => onChange(event.target.checked)} />
-          <span><strong>Sync watched history to your account</strong><span className="pl-muted pl-block">Every browser signed in to your account, and My Moments on streampulse.stream, shows the same history. Up to 1,000 recent moments, kept for the period above. Notes stay on each device.</span></span></label>
+          <span><strong>Sync watched history to your account</strong><span className="pl-muted pl-block">Every browser signed in to your account, and My Moments on streampulse.stream, shows the same history, and browsers that sign in later remember watched moments too (each can turn that off above). Up to 1,000 recent moments, kept for the period above. Notes stay on each device.</span></span></label>
         {sync.state === 'on' ? <p className="pl-muted" role="status">{sync.failed ? 'The last sync did not finish. It retries on its own; history on this device is safe.'
           : sync.syncedAt ? syncedLabel(sync.syncedAt, now) : 'Waiting for the first sync.'}{sync.pending ? ` ${sync.pending === 1 ? '1 moment is' : `${sync.pending} moments are`} waiting to be sent.` : ''}</p>
-          : <p className="pl-muted">Off. Only this browser keeps its history.</p>}
+          : <p className="pl-muted">Off. Only this browser keeps its history, and removing the extension removes it. Turn sync on to keep it through a reinstall.</p>}
       </>}
   </PulseSectionCard>
 }

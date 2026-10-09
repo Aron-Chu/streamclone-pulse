@@ -169,6 +169,54 @@ describe('My Moments with account history sync', () => {
     expect(snapshot.moments.map(m => m.id)).toEqual(['xqc:123456:9'])
   })
 
+  it('a browser joining an account that syncs records its own jumps, learned at the first Pulse jump', async () => {
+    const server = fakeServer()
+    server.settings = { syncEnabled: true, retentionDays: 30 }
+    server.rows.set('xqc:123456:9', wire(moment(9, Date.now() - DAY), 30))
+    // A fresh profile: nothing stored, My Moments never opened.
+    const status = await handleMyMoments({ type: 'MOMENT_CAPTURE', action: 'status' }, {}) as { enabled: boolean; epoch: number }
+    expect(status.enabled).toBe(true)
+    expect(f.data.get(SCOPE)?.preferences).toEqual({ captureHistory: true, retentionDays: 30 })
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    await capture(42.5, status.epoch)
+    await vi.runAllTimersAsync()
+    expect(server.rows.has('xqc:123456:42')).toBe(true)
+    expect(f.data.get(SCOPE)?.history.map(m => syncKey(m)).sort()).toEqual(['xqc:123456:42', 'xqc:123456:9'])
+  })
+
+  it('a reinstalled browser opening My Moments gets the account history back and records again', async () => {
+    const server = fakeServer()
+    server.settings = { syncEnabled: true, retentionDays: 7 }
+    server.rows.set('xqc:123456:9', wire(moment(9, Date.now() - DAY), 7))
+    const snapshot = await load()
+    expect(snapshot.preferences).toEqual({ captureHistory: true, retentionDays: 7 })
+    expect(snapshot.historySync.state).toBe('on')
+    const status = await handleMyMoments({ type: 'MOMENT_CAPTURE', action: 'status' }, {}) as { enabled: boolean }
+    expect(status.enabled).toBe(true)
+  })
+
+  it('keeps remembering off on a browser that turned it off while the account syncs', async () => {
+    const server = fakeServer()
+    server.settings = { syncEnabled: true, retentionDays: 30 }
+    await load()
+    const off = await mutate({ kind: 'preferences', value: { captureHistory: false, retentionDays: 30 } })
+    expect(off.preferences.captureHistory).toBe(false)
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    vi.setSystemTime(Date.now() + 10 * 60_000)
+    expect((await load()).preferences.captureHistory).toBe(false)
+    const status = await handleMyMoments({ type: 'MOMENT_CAPTURE', action: 'status' }, {}) as { enabled: boolean }
+    expect(status.enabled).toBe(false)
+  })
+
+  it('asks the account at a Pulse jump at most every five minutes while sync is off, and never while signed out', async () => {
+    const server = fakeServer()
+    for (let i = 0; i < 3; i++) await handleMyMoments({ type: 'MOMENT_CAPTURE', action: 'status' }, {})
+    expect(server.calls).toEqual(['settings'])
+    f.accountId = null
+    await handleMyMoments({ type: 'MOMENT_CAPTURE', action: 'status' }, {})
+    expect(server.calls).toEqual(['settings'])
+  })
+
   it('clears the account first, and changes nothing here when that fails', async () => {
     const server = fakeServer()
     server.settings = { syncEnabled: true, retentionDays: 30 }

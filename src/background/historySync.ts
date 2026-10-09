@@ -225,9 +225,23 @@ async function runSync(scope: string, accountId: string): Promise<void> {
 }
 
 /**
- * Before My Moments shows the account's history: sync if on, otherwise learn
- * (at most every few minutes) whether another browser or the website turned it
- * on. Never throws; a failure shows as a status.
+ * Whether this browser should ask the account whether history sync is on: it
+ * is not syncing here, and it has not asked in the last few minutes.
+ */
+export function historySyncCheckDue(data: PersonalData, now = Date.now()): boolean {
+  const sync = data.accountSync
+  return !sync?.enabled && !(sync?.checkedAt && now - sync.checkedAt < RECHECK_MS)
+}
+
+/**
+ * Before My Moments shows the account's history, and before a Twitch tab asks
+ * whether to record a jump: sync if on, otherwise learn (at most every few
+ * minutes) whether another browser or the website turned it on. A browser that
+ * joins (or is reinstalled into) an account that syncs also starts
+ * remembering watched moments: the account's choice was explicit, and without
+ * it this browser would show other browsers' history but add none of its own.
+ * It can still turn that off here, and a later check does not turn it back on.
+ * Never throws; a failure shows as a status.
  */
 export async function refreshHistorySync(scope: string, accountId: string, now = Date.now()): Promise<void> {
   try {
@@ -238,7 +252,7 @@ export async function refreshHistorySync(scope: string, accountId: string, now =
     const settings = await accountSettings(accountId)
     const revision = (sync?.revision ?? 0) + 1
     await personalTransaction(scope, d => d.accountSync?.revision !== sync?.revision ? d : {
-      ...d, ...(settings?.syncEnabled ? { preferences: { ...d.preferences, retentionDays: settings.retentionDays } } : {}),
+      ...d, ...(settings?.syncEnabled ? { preferences: { ...d.preferences, captureHistory: true, retentionDays: settings.retentionDays } } : {}),
       accountSync: { enabled: !!settings?.syncEnabled, available: settings !== null, revision, checkedAt: now,
         pending: settings?.syncEnabled ? syncableKeys(d.history) : [] },
     })
