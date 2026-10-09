@@ -43,7 +43,7 @@ export function TopEmoteTable({
         embedded ? 'sc-console-scroll max-h-[calc(100vh-14rem)] overflow-y-auto' : 'rounded border border-white/10 bg-white/[0.035]'
       }`}
     >
-      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-2 border-b border-white/10 px-2 py-1.5 text-xs font-black uppercase text-zinc-500">
+      <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_3.5rem] gap-2 border-b border-white/10 px-2 py-1.5 text-xs font-black uppercase text-zinc-500">
         <span>Emote</span>
         <span>Provider</span>
         <span className="text-right">Uses</span>
@@ -60,7 +60,7 @@ export function TopEmoteTable({
             key={emote.key}
             type="button"
             onClick={() => onSelect(emote.key)}
-            className="grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 border-b border-white/5 px-2 py-1.5 text-left text-xs last:border-b-0 transition hover:bg-white/[0.03]"
+            className="grid w-full grid-cols-[minmax(0,1fr)_4.5rem_3.5rem] items-center gap-2 border-b border-white/5 px-2 py-1.5 text-left text-xs last:border-b-0 transition hover:bg-white/[0.03]"
             style={{
               backgroundColor: chipStyle.backgroundColor,
               color: chipStyle.color,
