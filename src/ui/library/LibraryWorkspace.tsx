@@ -31,6 +31,8 @@ const views: readonly { id: LibraryView; label: string }[] = [
 ]
 
 type Confirmation = { kind: 'remove'; moment: LibraryMoment } | { kind: 'clear' } | { kind: 'retention'; preferences: LibraryPreferences }
+  /** Add saves made without an account to it: one, or all when `moment` is absent. */
+  | { kind: 'import'; moment?: LibraryMoment }
 
 /** Pre-link device saves as rows, newest first. Only the worker's linked snapshot carries any. */
 function deviceSaveMoments(snapshot: LibrarySnapshot | null): LibraryMoment[] {
@@ -198,9 +200,11 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
 
           {view === 'saved' && deviceSaves ? <section className="pl-stack pl-device-saves" aria-labelledby={`${id}-device-saves`}>
             <h3 id={`${id}-device-saves`}>Saved on this device</h3>
-            <p className="pl-muted">{deviceSaves === 1 ? '1 bookmark' : `${deviceSaves} bookmarks`} saved without an account {deviceSaves === 1 ? 'is' : 'are'} kept on this device, not in your account.</p>
+            <p className="pl-muted">{deviceSaves === 1 ? '1 bookmark' : `${deviceSaves} bookmarks`} saved without an account {deviceSaves === 1 ? 'is' : 'are'} kept on this device, not in your account.{bookmarksState === 'ready' ? ' Add them to your account to keep them on every device where you sign in.' : ''}</p>
+            {bookmarksState === 'ready' && deviceSaves > 1 ? <div className="pl-row"><button type="button" className="pl-button" disabled={library.busy} onClick={() => setConfirmation({ kind: 'import' })}>Add all to account</button></div> : null}
             <ul className="pl-list">{deviceMoments.map(moment => <DeviceSaveItem key={moment.id} moment={moment} busy={library.busy} analyticsOrigin={analyticsOrigin}
               onRemove={moment => setConfirmation({ kind: 'remove', moment })}
+              onImport={bookmarksState === 'ready' ? moment => setConfirmation({ kind: 'import', moment }) : undefined}
               onOpenLink={() => setLocalNotice('Opened a replay link. This is not a confirmed jump and has not been added to history.')} />)}</ul>
           </section> : null}
         </section>
@@ -218,20 +222,23 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
       onOpenLink={() => setLocalNotice('Opened a replay link. Playback is unconfirmed; History was not changed.')} /> : null}
     {editing && snapshot ? <MomentEditor personalWorkspace key={editing.id} moment={editing} collections={snapshot.collections} supporter={false} busy={library.busy} error={library.error}
       onClose={() => setEditing(null)} onCommit={note => library.run({ kind: 'edit', id: editing.id, note }, 'Note saved on this device.')} /> : null}
-    {confirmation ? <LibraryDialog title={confirmation.kind === 'clear' ? 'Clear history?' : confirmation.kind === 'remove' ? 'Remove bookmark?' : 'Shorten history?'} canClose={!library.busy} onClose={() => setConfirmation(null)}>
-      <p>{confirmation.kind === 'clear' ? 'This removes history. Manual bookmarks and notes stay.'
+    {confirmation ? <LibraryDialog title={confirmation.kind === 'clear' ? 'Clear history?' : confirmation.kind === 'remove' ? 'Remove bookmark?'
+      : confirmation.kind === 'import' ? confirmation.moment ? 'Add to your account?' : `Add ${deviceSaves} bookmarks to your account?` : 'Shorten history?'} canClose={!library.busy} onClose={() => setConfirmation(null)}>
+      <p>{confirmation.kind === 'import' ? `${confirmation.moment ? 'This bookmark is' : 'These bookmarks are'} added to your StreamPulse account, so ${confirmation.moment ? 'it follows' : 'they follow'} you to every device where you sign in. Notes stay on this device. The copy kept here is removed once your account has it.`
+        : confirmation.kind === 'clear' ? 'This removes history. Manual bookmarks and notes stay.'
         : confirmation.kind === 'remove' ? deviceMoments.some(m => m.id === confirmation.moment.id)
           ? 'This removes the bookmark and its note from this device. Your account is not changed.'
           : 'This removes the bookmark and its note. A separately remembered jump may still appear until history expires.'
           : 'Older history may expire. Bookmarks are unaffected. Export or save anything you want to keep before continuing.'}</p>
       {library.error ? <p className="pl-error" role="alert">{library.error}</p> : null}
       <div className="pl-row"><button type="button" className="pl-button" disabled={library.busy} onClick={() => setConfirmation(null)}>Keep as is</button>
-        <button type="button" className="pl-button pl-danger" disabled={library.busy} onClick={async () => {
+        <button type="button" className={confirmation.kind === 'import' ? 'pl-button' : 'pl-button pl-danger'} disabled={library.busy} onClick={async () => {
           const command = confirmation.kind === 'clear' ? { kind: 'clear-history' as const }
             : confirmation.kind === 'remove' ? { kind: 'unsave' as const, id: confirmation.moment.id }
-              : { kind: 'preferences' as const, value: confirmation.preferences }
-          if (await library.run(command, confirmation.kind === 'clear' ? 'History cleared. Bookmarks were kept.' : 'Change saved.')) setConfirmation(null)
-        }}>{library.busy ? 'Saving…' : 'Confirm change'}</button></div>
+              : confirmation.kind === 'import' ? { kind: 'import-device-saves' as const, ...(confirmation.moment ? { id: confirmation.moment.id } : {}) }
+                : { kind: 'preferences' as const, value: confirmation.preferences }
+          if (await library.run(command, confirmation.kind === 'clear' ? 'History cleared. Bookmarks were kept.' : confirmation.kind === 'import' ? 'Added to your account.' : 'Change saved.')) setConfirmation(null)
+        }}>{confirmation.kind === 'import' ? library.busy ? 'Adding…' : 'Add to account' : library.busy ? 'Saving…' : 'Confirm change'}</button></div>
     </LibraryDialog> : null}
   </main>
 }

@@ -123,10 +123,13 @@ export function MomentListItem({ moment, personalWorkspace = false, analyticsOri
  * stream-only save (no resolved replay) keeps the same Analytics link it had
  * before the account linked, so it never becomes remove-only.
  */
-export function DeviceSaveItem({ moment, analyticsOrigin = DEFAULT_WEB_ANALYTICS_BASE_URL, busy, onRemove, onOpenLink }: {
+export function DeviceSaveItem({ moment, analyticsOrigin = DEFAULT_WEB_ANALYTICS_BASE_URL, busy, onRemove, onImport, onOpenLink }: {
   /** Portal origin for the Analytics link, as on MomentListItem (dev → local portal). */
   analyticsOrigin?: string
-  moment: LibraryMoment; busy: boolean; onRemove: (moment: LibraryMoment) => void; onOpenLink?: (reference: MomentReference) => void
+  moment: LibraryMoment; busy: boolean; onRemove: (moment: LibraryMoment) => void
+  /** Offered only while the account's bookmarks are reachable. */
+  onImport?: (moment: LibraryMoment) => void
+  onOpenLink?: (reference: MomentReference) => void
 }) {
   const url = replayUrl(moment)
   const analytics = moment.streamId ? buildAnalyticsUrl({ webAnalyticsBaseUrl: analyticsOrigin, channelLogin: moment.channel, streamId: moment.streamId, offsetSeconds: moment.offsetSeconds ?? undefined }) : null
@@ -139,6 +142,7 @@ export function DeviceSaveItem({ moment, analyticsOrigin = DEFAULT_WEB_ANALYTICS
         {url ? <a className="pl-button" href={url} target="_blank" rel="noopener noreferrer" onClick={() => onOpenLink?.(moment)} aria-label={`Watch moment: ${moment.title} (new tab)`}>Open saved Twitch link</a>
           : <span className="pl-replay-status" role="status">Replay link unavailable</span>}
         {analytics ? <a className="pl-button" href={analytics} target="_blank" rel="noopener noreferrer" aria-label={`Open analytics for ${moment.title} (new tab)`}>Analytics</a> : null}
+        {onImport ? <button type="button" className="pl-button" disabled={busy} onClick={() => onImport(moment)} aria-label={`Add to your account: ${moment.title}`}>Add to account</button> : null}
         <button type="button" className="pl-button pl-quiet" disabled={busy} onClick={() => onRemove(moment)} aria-label={`Remove from this device: ${moment.title}`}>Remove</button>
       </div>
     </div>

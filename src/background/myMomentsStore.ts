@@ -8,9 +8,9 @@ export interface PersonalData {
   history: LibraryMoment[]
   notes: Record<string, string>
   /**
-   * Saves made without an account. They never leave this database; each keeps
-   * the hosted bookmark shape so a later, explicit account import can post them
-   * as-is. Account scopes leave this empty.
+   * Saves made without an account. They leave this database only through an
+   * explicit "Add to account" (`import-device-saves`), which posts the hosted
+   * bookmark shape each one keeps. Account scopes leave this empty.
    */
   bookmarks: PulseBookmark[]
 }
