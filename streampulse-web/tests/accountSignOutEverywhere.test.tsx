@@ -30,7 +30,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 
 type Call = { method: string; path: string; body?: string; csrf?: string }
 const calls: Call[] = []
-function stubApi(options: { me?: Record<string, unknown>; revokeAll?: () => Response }) {
+function stubApi(options: { me?: Record<string, unknown>; revokeAll?: () => Response; logout?: () => Response }) {
   calls.length = 0
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = String(input)
@@ -39,6 +39,7 @@ function stubApi(options: { me?: Record<string, unknown>; revokeAll?: () => Resp
     if (path === '/v1/account/me') return options.me ? json(options.me) : json({ error: 'sign_in_required' }, 401)
     if (path === '/v1/account/devices') return json({ devices: [{ id: 'dev-1', label: 'Chrome on Windows', expiresAt: '2026-11-08T00:00:00Z' }] })
     if (path === REVOKE_ALL) return options.revokeAll?.() ?? new Response(null, { status: 204 })
+    if (path === '/v1/account/auth/logout') return options.logout?.() ?? new Response(null, { status: 204 })
     return json({ error: 'not_found' }, 404)
   }))
 }
@@ -162,16 +163,43 @@ describe('Sign out everywhere: outcomes', () => {
     await waitFor(() => expect(sessionStorage.getItem(STEP_UP_KEY)).toBeNull())
   })
 
-  it('sends an email account to sign in again on recent_auth_required', async () => {
+  it('asks an email account to sign out and sign in again on recent_auth_required', async () => {
     stubApi({ me: { accountId: ACCOUNT_A, email: 'tester@example.com' }, revokeAll: () => json({ error: 'recent_auth_required' }, 403) })
+    const assign = vi.fn()
+    vi.stubGlobal('location', { ...window.location, assign })
     render(<MemoryRouter><AccountSettings /></MemoryRouter>)
     const section = await openConfirm()
     fireEvent.click(within(section).getByRole('button', { name: 'Confirm sign out everywhere' }))
     const prompt = await screen.findByTestId('revoke-all-sign-in-again')
-    expect(prompt.textContent).toContain('needs a sign-in from the last 10 minutes. Nothing was signed out.')
-    expect(within(prompt).getByRole('link', { name: 'Sign in again' }).getAttribute('href')).toBe('/account/sign-in')
+    expect(prompt.textContent).toContain('needs a sign-in from the last 10 minutes. Nothing was signed out yet.')
+    expect(prompt.textContent).toContain('To confirm, sign out of this browser and sign in again with your email.')
+    // A plain link to /account/sign-in would show this still-signed-in browser
+    // "You're signed in" and no email form (AccountSignInGate).
+    expect(within(prompt).queryByRole('link')).toBeNull()
     expect(screen.queryByTestId('revoke-all-confirm-twitch')).toBeNull()
     expect(beginTwitchFlow).not.toHaveBeenCalled()
+    expect(calls.some(call => call.path === '/v1/account/auth/logout')).toBe(false)
+    fireEvent.click(within(prompt).getByRole('button', { name: 'Sign out and sign in again' }))
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/account/sign-in?method=email'))
+    const logout = calls.filter(call => call.path === '/v1/account/auth/logout')
+    expect(logout).toEqual([{ method: 'POST', path: '/v1/account/auth/logout', body: '{}', csrf: CSRF }])
+    // Only this browser signed out; nothing asked for revoke-all again.
+    expect(revokeCalls()).toHaveLength(1)
+    expect(screen.queryByTestId('revoke-all-done')).toBeNull()
+  })
+
+  it('keeps the email account signed in and says so when signing out here fails', async () => {
+    stubApi({ me: { accountId: ACCOUNT_A, email: 'tester@example.com' }, revokeAll: () => json({ error: 'recent_auth_required' }, 403), logout: () => json({ error: 'request_unavailable' }, 503) })
+    const assign = vi.fn()
+    vi.stubGlobal('location', { ...window.location, assign })
+    render(<MemoryRouter><AccountSettings /></MemoryRouter>)
+    const section = await openConfirm()
+    fireEvent.click(within(section).getByRole('button', { name: 'Confirm sign out everywhere' }))
+    const prompt = await screen.findByTestId('revoke-all-sign-in-again')
+    fireEvent.click(within(prompt).getByRole('button', { name: 'Sign out and sign in again' }))
+    expect(await screen.findByText('Account services are unavailable right now. Please try again later.')).toBeTruthy()
+    expect(assign).not.toHaveBeenCalled()
+    expect(screen.getByText('You’re signed in to StreamPulse.')).toBeTruthy()
   })
 
   it.each([404, 405])('says it is not available yet when the route answers %i', async status => {
@@ -185,13 +213,13 @@ describe('Sign out everywhere: outcomes', () => {
     expect(screen.getByText('Chrome on Windows')).toBeTruthy()
   })
 
-  it('reports a failure without claiming success, and can be tried again', async () => {
+  it('reports a server failure without claiming success or blaming the connection, and can be tried again', async () => {
     let answer = () => json({ error: 'request_unavailable' }, 503)
     stubApi({ me: twitchMe, revokeAll: () => answer() })
     render(<MemoryRouter><AccountSettings /></MemoryRouter>)
     const section = await openConfirm()
     fireEvent.click(within(section).getByRole('button', { name: 'Confirm sign out everywhere' }))
-    expect((await screen.findByTestId('revoke-all-failed')).textContent).toBe('Sign out everywhere couldn’t be confirmed. Check your connection and try again.')
+    expect((await screen.findByTestId('revoke-all-failed')).textContent).toBe('Sign out everywhere couldn’t be confirmed. Account services are unavailable right now. Please try again later.')
     expect(screen.queryByTestId('revoke-all-done')).toBeNull()
     expect(screen.getByText('You’re signed in to StreamPulse.')).toBeTruthy()
     answer = () => new Response(null, { status: 204 })
@@ -202,12 +230,21 @@ describe('Sign out everywhere: outcomes', () => {
     expect(revokeCalls()).toHaveLength(2)
   })
 
-  it('treats a network failure as unconfirmed', async () => {
+  it.each([500, 502])('gives a %i the server wording, not the connection wording', async status => {
+    stubApi({ me: twitchMe, revokeAll: () => new Response('upstream', { status }) })
+    render(<MemoryRouter><AccountSettings /></MemoryRouter>)
+    const section = await openConfirm()
+    fireEvent.click(within(section).getByRole('button', { name: 'Confirm sign out everywhere' }))
+    expect((await screen.findByTestId('revoke-all-failed')).textContent).toBe('Sign out everywhere couldn’t be confirmed. Account services are unavailable right now. Please try again later.')
+    expect(screen.queryByTestId('revoke-all-done')).toBeNull()
+  })
+
+  it('treats a network failure as unconfirmed and points at the connection', async () => {
     stubApi({ me: twitchMe, revokeAll: () => { throw new TypeError('Failed to fetch') } })
     render(<MemoryRouter><AccountSettings /></MemoryRouter>)
     const section = await openConfirm()
     fireEvent.click(within(section).getByRole('button', { name: 'Confirm sign out everywhere' }))
-    expect(await screen.findByTestId('revoke-all-failed')).toBeTruthy()
+    expect((await screen.findByTestId('revoke-all-failed')).textContent).toBe('Sign out everywhere couldn’t be confirmed. Check your connection and try again.')
     expect(screen.queryByTestId('revoke-all-done')).toBeNull()
   })
 

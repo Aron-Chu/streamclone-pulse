@@ -576,4 +576,49 @@ test.describe('Continue with Twitch', () => {
       for (const revoke of revokes) expect(revoke).toEqual({ body: {}, csrf: '56'.repeat(32), origin })
     })
   }
+
+  // An email account refused with recent_auth_required is still signed in, and
+  // /account/sign-in shows a signed-in browser "You're signed in", not the
+  // email form. The page signs this browser out first, then opens the form.
+  for (const width of [1440, 375]) {
+    test(`Sign out everywhere sends an email account through sign-out to the email form at ${width}px`, async ({ page, baseURL }, testInfo) => {
+      test.skip(!TWITCH_SIGNIN, 'needs a VITE_TWITCH_SIGNIN=1 build')
+      const origin = new URL(baseURL!).origin
+      const host = new URL(baseURL!).hostname
+      let signedIn = true
+      const posts: string[] = []
+      await page.route('**/*', route => {
+        const url = new URL(route.request().url())
+        if (url.origin === origin && url.pathname.startsWith('/v1/')) return route.fulfill({ status: 404, json: { error: 'not_found' } })
+        return url.origin === origin ? route.continue() : route.abort('blockedbyclient')
+      })
+      await page.context().addCookies([{ name: '__Host-pulse_csrf', value: '56'.repeat(32), domain: host, path: '/', secure: true, sameSite: 'Strict' }])
+      await page.route('**/v1/account/me', route => signedIn
+        ? route.fulfill({ json: { accountId: '11111111-1111-4111-8111-111111111111', email: 'tester@example.com', signInMethods: ['email'], expiresAt: '2027-01-01T00:00:00Z' } })
+        : route.fulfill({ status: 401, json: { error: 'sign_in_required' } }))
+      await page.route('**/v1/account/devices', route => route.fulfill({ json: { devices: [] } }))
+      await page.route('**/v1/account/sessions/revoke-all', route => { posts.push('revoke-all'); return route.fulfill({ status: 403, json: { error: 'recent_auth_required' } }) })
+      await page.route('**/v1/account/auth/logout', route => { posts.push('logout'); signedIn = false; return route.fulfill({ status: 204, body: '' }) })
+
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto('/account/settings')
+      const section = page.getByTestId('sign-out-everywhere')
+      await section.getByRole('button', { name: 'Sign out everywhere' }).click()
+      await section.getByRole('button', { name: 'Confirm sign out everywhere' }).click()
+      const prompt = page.getByTestId('revoke-all-sign-in-again')
+      await expect(prompt).toContainText('Nothing was signed out yet.')
+      await expect(prompt).toContainText('To confirm, sign out of this browser and sign in again with your email.')
+      await expect(page.getByTestId('revoke-all-confirm-twitch')).toHaveCount(0)
+      await expectNoHorizontalOverflow(page)
+      await page.screenshot({ path: testInfo.outputPath(`sign-out-everywhere-email-sign-in-again-${width}.png`), fullPage: true })
+
+      await prompt.getByRole('button', { name: 'Sign out and sign in again' }).click()
+      await page.waitForURL(`${origin}/account/sign-in?method=email`)
+      await expect(page.getByLabel('Email address')).toBeVisible()
+      await expect(page.getByRole('heading', { level: 1, name: 'You’re signed in' })).toHaveCount(0)
+      await expectNoHorizontalOverflow(page)
+      await page.screenshot({ path: testInfo.outputPath(`sign-out-everywhere-email-form-${width}.png`), fullPage: true })
+      expect(posts).toEqual(['revoke-all', 'logout'])
+    })
+  }
 })
