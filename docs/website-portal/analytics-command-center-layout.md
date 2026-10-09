@@ -10,11 +10,15 @@ fold. From 1100px up, `analytics-compact.css` (loaded last by the hub and consol
 views) caps display type with tokens instead of `vw` clamps (title 26.4px, KPI 32px,
 secondary stat 18.4px), puts pool scale and window peaks on one row, tightens panel,
 search and section spacing, shortens the reserved hover readout from 96px to 74px,
-and trims the console header and stat cards. The top bar is 56px (44px links kept).
+and trims the console header and stat cards. The shared analytics top bar is
+56px instead of 66px (44px links kept); that one change is not limited to 1100px
+and up: it applies on every analytics page (hub, console, Explorer, Moments,
+Newsroom) wider than 720px, so the bar keeps one height across pages.
 
-Unchanged on purpose: section order, the 420/360px plot, 44px targets, the
-760px inspector docking rule, the 380px outer rail, body and label sizes (12px
-minimum), and every layout below 1100px. No CSS zoom, transforms or density
+Unchanged on purpose: section order, the 420/360px plot, 44px targets
+(including the window-peaks disclosure), the 760px inspector docking rule, the
+380px outer rail, body and label sizes (12px minimum), and every layout below
+1100px apart from the top-bar height. No CSS zoom, transforms or density
 setting. Measurements: streampulse-sdlc `artifacts/analytics-compact-2026-10-08/`.
 
 ## Moments review refinements (2026-09-08)

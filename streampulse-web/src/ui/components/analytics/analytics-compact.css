@@ -10,7 +10,10 @@
  * 44px interactive targets unchanged, chart heights (420/360) unchanged.
  *
  * Scope: desktop widths only (>=1100px, where the sidebar layout starts).
- * Narrower layouts keep their existing mobile/tablet rules.
+ * Narrower layouts keep their existing mobile/tablet rules. One exception
+ * lives in figma-analytics.css: the shared analytics top bar is 56px (was
+ * 66px) on every analytics page wider than 720px, so it stays the same
+ * height across pages whether or not this file has loaded.
  * Evidence: streampulse-sdlc artifacts/analytics-compact-2026-10-08/.
  */
 
@@ -83,9 +86,6 @@
     flex: 1 1 16rem;
     min-width: min(100%, 16rem);
   }
-  .figma-analytics [data-window-peak-disclosure] > summary {
-    min-height: 32px;
-  }
   .figma-analytics .hub-command-header__peaks {
     gap: 0.2rem;
   }
@@ -147,8 +147,11 @@
   .figma-analytics .analytics-discovery-layout .figma-global-activity__chart-col {
     padding-block: 0.5rem;
   }
+  /* Row 1 holds the interval and the two-line metrics (label + value, 36px);
+     row 2 holds the one-line status. 36 + 28 fits the 65px content box
+     (74px less the 1px top border and 4px padding each side). */
   .figma-analytics .hubx .hx-chart-header .hx-chart-header__readout {
-    grid-template-rows: 30px 36px;
+    grid-template-rows: 36px 28px;
     height: 74px;
     margin-top: 4px;
     padding: 4px 0;

@@ -67,7 +67,8 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 0.65rem 1.5rem;
-  /* 44px links + 0.35rem: a 56px bar instead of 66px (compact desktop). */
+  /* 44px links + 0.35rem: a 56px bar instead of 66px on every analytics
+     page wider than 720px (the <=720px block below sets its own padding). */
   padding: 0.35rem 1.25rem;
   background: color-mix(in srgb, var(--fma-bg) 86%, transparent);
   backdrop-filter: blur(12px);
