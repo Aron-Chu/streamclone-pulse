@@ -176,4 +176,56 @@ describe('activity hover and pin bands on per-minute bars over a thinned series'
     expect(pinBand!.x).toBeCloseTo(target.x, 3)
     expect(pinBand!.width).toBeCloseTo(target.width, 3)
   })
+
+  it('pins the hovered minute from a click on the viewer line at full range', () => {
+    const hovered: Array<ChartMinuteRollup | null> = []
+    const onSelectOffset = vi.fn()
+    const plot = renderChart({
+      onSelectOffset,
+      onHoverRollupChange: rollup => hovered.push(rollup),
+    })
+    // Full range: re-render without the one-hour viewport.
+    act(() => {
+      root?.render(
+        <PulseMultiSignalChartInner
+          rollups={rollups}
+          detailRollups={detailRollups}
+          streamStartedAt={new Date(START_MS).toISOString()}
+          durationSeconds={MINUTES * 60}
+          variant="console"
+          chromeless
+          motionEnabled={false}
+          activityBucketing="time"
+          onSelectRollup={() => {}}
+          onSelectOffset={onSelectOffset}
+          onHoverRollupChange={rollup => hovered.push(rollup)}
+        />,
+      )
+    })
+    expect(Number(container!.querySelector('svg[data-activity-bucket-minutes]')?.getAttribute('data-activity-bucket-minutes')))
+      .toBeGreaterThan(1)
+    const box = rectOf(plot)
+    // The viewer band is the top of the plot, above the activity lanes, so a
+    // click there reaches the chart-minute path rather than a bar's peak.
+    const clientY = box.y + box.height * 0.08
+    let clicks = 0
+    for (let step = 1; step < 40; step += 1) {
+      const clientX = box.x + (box.width * step) / 40
+      act(() => {
+        plot.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX, clientY }))
+      })
+      flushFrames()
+      const readout = hovered[hovered.length - 1]
+      expect(readout, `hover readout at x=${clientX}`).not.toBeNull()
+      act(() => {
+        plot.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX, clientY }))
+      })
+      clicks += 1
+      // Every in-plot click pins something...
+      expect(onSelectOffset, `click at x=${clientX} pinned nothing`).toHaveBeenCalledTimes(clicks)
+      // ...and it is the minute the readout showed.
+      const offset = onSelectOffset.mock.calls[clicks - 1]![0] as number
+      expect(offset, `click at x=${clientX}`).toBe((Date.parse(readout!.minuteTs) - START_MS) / 1000)
+    }
+  })
 })

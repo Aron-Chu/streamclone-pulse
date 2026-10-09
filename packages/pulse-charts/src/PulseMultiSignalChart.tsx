@@ -2975,6 +2975,19 @@ function PulseMultiSignalChartInnerImpl({
       }
     }
 
+    // With full-resolution bars, hover reads the per-minute row inside the bar
+    // under the pointer; a click must pin that same minute, not the nearest
+    // row of the thinned chart series (which can be minutes away, or missing).
+    const activityHit = activityHoverAtPlotX(plotX);
+    if (activityHit) {
+      return {
+        kind: "chart_minute",
+        canonicalIndex: rollupIndexForActivityIndex(activityHit.index),
+        offsetSeconds:
+          pointOffsetSeconds(activityHit.rollup.minuteTs, streamStartedAt) ?? activityHit.index * 60,
+      };
+    }
+
     const region = chartHitRegionAtX(hoverHitRegions, plotX);
     if (!region) return { kind: "none" };
     const canonicalIndex = region.index;
