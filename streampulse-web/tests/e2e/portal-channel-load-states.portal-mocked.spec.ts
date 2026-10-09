@@ -6,7 +6,7 @@ import {
 } from './helpers/portalAcceptanceHarness'
 
 // OP1-RES-001 / CX-RES-002: failed channel reads are reported as failures with a
-// retry, never as "No past streams indexed yet" / "No recent data".
+// retry, never as "No past streams indexed yet" / "No recent data" / "No minute data".
 
 const STREAMS = new RegExp(`/channels/${PORTAL_LOGIN}/streams`)
 const LIVE = new RegExp(`/channels/${PORTAL_LOGIN}/live`)
@@ -29,6 +29,8 @@ test.describe('channel page load states (mocked)', () => {
       await expect(page.getByText('No past streams indexed yet.')).toHaveCount(0)
       await expect(page.getByText(`Unable to load the latest session for ${PORTAL_LOGIN}`, { exact: false })).toBeVisible()
       await expect(page.getByText('No recent data')).toHaveCount(0)
+      // The public empty-chart copy must not stand in for a failed read either.
+      await expect(page.getByText('No minute data', { exact: false })).toHaveCount(0)
 
       // The list recovers on its own retry without a page reload.
       await page.unroute(STREAMS)

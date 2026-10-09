@@ -589,11 +589,11 @@ function AnalyticsChart({
     return (
       <div className="grid min-h-80 place-items-center rounded border border-white/10 bg-[#0d0d12]/50 backdrop-blur-md px-4 text-center">
         <div>
-          <div className="text-base font-black text-zinc-100">{(isTwitchTracker || canSync) ? 'Chat & Emotes Offline' : 'No recent data'}</div>
+          <div className="text-base font-black text-zinc-100">{(isTwitchTracker || canSync) ? 'Chat & Emotes Offline' : 'No minute data'}</div>
           <div className="mt-1 text-sm font-semibold text-zinc-500 max-w-md">
             {(isTwitchTracker || canSync)
               ? 'This stream has TwitchTracker averages only. Sync pulls minute-level viewers, chat, and 7TV data (large VODs can take a few minutes).'
-              : 'Analytics start collecting when this channel is viewed in Streamclone.'}
+              : 'No minute data was recorded for this stream.'}
           </div>
           {notInAnalyticsDb ? (
             <div className="mt-2 text-xs font-semibold text-zinc-600">
