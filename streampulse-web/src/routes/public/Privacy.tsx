@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { REFUNDS_PATH, SUPPORTER_PATH, TERMS_PATH } from '../../lib/externalLinks'
+import { twitchSignInPublic } from '../../lib/twitchSignInFlag'
 import { PrelaunchNotice } from './PrelaunchNotice'
 
 /** Public privacy policy for StreamPulse (portal + Chrome extension). Current behavior only. */
@@ -20,7 +21,7 @@ export default function Privacy() {
           </div>
           <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Privacy Policy</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            Last updated: October 8, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse Chrome extension.
+            Last updated: October 9, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse Chrome extension.
           </p>
         </header>
 
@@ -31,13 +32,17 @@ export default function Privacy() {
           <p className="text-zinc-300">
             StreamPulse shows Twitch stream activity using minute-level aggregates from the StreamPulse
             API. The extension and public site are rollup-first: they do not expose raw chat messages or
-            chatter identity to users. The extension uses Twitch sign-in only if you choose Continue
-            with Twitch, and only to confirm your Twitch user ID. Protect enrollment is optional and
+            chatter identity to users. The extension uses Twitch sign-in only to confirm your Twitch
+            user ID: when you choose Continue with Twitch, and in one check without a window after a
+            fresh install, which can only sign you back in to a StreamPulse account you already have
+            (see Extensions below). Protect enrollment is optional and
             uses a beta access key once to create a local device credential.
           </p>
-          <p className="text-zinc-300">
+          {/* "(coming soon)" stays until the public stage (VITE_TWITCH_SIGNIN=public),
+              where Continue with Twitch is offered on /supporter, billing and sign-in. */}
+          <p className="text-zinc-300" data-testid="privacy-summary-accounts">
             Accounts are optional; free tools work without an account. A StreamPulse account is
-            created when you choose Continue with Twitch (coming soon). During the private pilot,
+            created when you choose Continue with Twitch{twitchSignInPublic() ? '' : ' (coming soon)'}. During the private pilot,
             invited testers can also sign in by email. Supporter sign-ups are not open yet; card
             details go to Stripe, never to StreamPulse.
           </p>
@@ -72,13 +77,25 @@ export default function Privacy() {
           Testers can link Twitch to the same account. Linking needs a sign-in from the last 10
           minutes plus a fresh Twitch sign-in, and never combines two accounts.
         </p>
-        <p>
+        <p data-testid="privacy-extensions">
           <strong>Extensions.</strong> Signing in from the extension stores a device credential in
           it. Sign out ends that device's access; Sign out everywhere, once available, ends every
-          session and device. Testers can also connect an extension with a connection code: that
-          stores a short-lived connection code, the device label you approve, and a device
-          credential identifier. Approving a device does not publish anything about you or start a
-          subscription.
+          session and device. StreamPulse keeps a record of each extension signed in to an account:
+          a label naming the store, the browser family and the sign-in time, plus hashed credentials
+          and their expiry. It is listed under Account &amp; devices. A signed-out or expired
+          extension stays on that record, without access, until the account is deleted. Testers can
+          also connect an extension with a connection code: that stores a short-lived connection
+          code, the device label you approve, and a device credential identifier. Approving a device
+          does not publish anything about you or start a subscription.
+        </p>
+        <p data-testid="privacy-extension-first-install">
+          <strong>One check after a fresh install.</strong> The first time you open the extension's
+          Account &amp; Supporter settings after installing it, the extension checks once with
+          Twitch, without opening a window, whether you've used Continue with Twitch before. If
+          your browser is signed in to Twitch and that Twitch account already has a StreamPulse
+          account, the extension signs back in to it and keeps your Twitch display name and picture
+          for that browser session. Otherwise nothing changes. This check never creates an account,
+          and it doesn't run again after you sign out.
         </p>
 
         <h2>Payment data, if you subscribe</h2>
@@ -204,7 +221,7 @@ export default function Privacy() {
         <p>
            The extension does not request or transmit Twitch cookies, passwords, Twitch OAuth credentials
            (except the one-time sign-in proof described under Your account, sent only when you choose
-           Continue with Twitch), raw chat exports, or chatter identities. A beta access key is sent only to the hosted enrollment
+           Continue with Twitch or during the one check after a fresh install), raw chat exports, or chatter identities. A beta access key is sent only to the hosted enrollment
            endpoint when you explicitly connect Protect; it is discarded after that request and is not stored
            or sent with later requests. Page-context Twitch requests may
           use your active Twitch browser session through normal browser credential handling. Those requests
@@ -254,8 +271,8 @@ export default function Privacy() {
           </li>
           <li>
             <strong>chrome.storage.session</strong> — short-lived Pulse and coverage caches for the current
-            browser session and, after you choose Continue with Twitch in the extension, your Twitch
-            display name and picture for that browser session.
+            browser session and, after the extension signs in with Twitch, your Twitch display name
+            and picture for that browser session.
           </li>
           <li>
              <strong>chrome.storage.local</strong> — the local opaque device token, device identifier, and
@@ -315,10 +332,13 @@ export default function Privacy() {
             notifications are handled as described under Payment data. See{' '}
             <Link to={REFUNDS_PATH}>cancellation and refunds</Link> for how billing is handled.
           </li>
-          <li>
+          <li data-testid="privacy-third-party-twitch">
             <strong>Twitch</strong> — page context and GraphQL used to identify streams and VODs on
-            twitch.tv, and, only when you choose Continue with Twitch, Twitch's sign-in page, which
-            confirms your Twitch user ID to StreamPulse.
+            twitch.tv, and, only when you choose Continue with Twitch or during the extension's one
+            check after a fresh install, Twitch's sign-in service, which confirms your Twitch user ID
+            to StreamPulse. If you disconnect StreamPulse in your Twitch settings, Twitch sends
+            StreamPulse a notification with your Twitch user ID, which StreamPulse uses only to sign
+            that account out everywhere and does not store.
           </li>
           <li>
             <strong>Emote CDNs</strong> — image assets from providers such as 7TV, Twitch CDN, BetterTTV,

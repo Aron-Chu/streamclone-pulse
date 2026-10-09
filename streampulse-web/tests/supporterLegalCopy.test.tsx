@@ -146,7 +146,32 @@ describe('Supporter legal copy', () => {
   it('Privacy says where Twitch display details are kept on the website and in the extension', () => {
     const body = textOf(Privacy, 'privacy-policy')
     expect(body).toMatch(/not stored on StreamPulse's servers\. On the website, only that\s+browser tab keeps them; in the extension, they're kept for the current browser session/)
-    expect(body).toMatch(/chrome\.storage\.session — short-lived Pulse and coverage caches for the current\s+browser session and, after you choose Continue with Twitch in the extension, your Twitch\s+display name and picture/)
+    expect(body).toMatch(/chrome\.storage\.session — short-lived Pulse and coverage caches for the current\s+browser session and, after the extension signs in with Twitch, your Twitch display name\s+and picture/)
+  })
+
+  // The extension's tester and public builds try one silent Twitch sign-in on a
+  // true first install, with no click (src/options/SupporterJourney.tsx and
+  // src/background/twitchSignIn.ts). Privacy must not say a Twitch proof is sent
+  // only after a click.
+  it('Privacy discloses the extension’s one silent check after a fresh install', () => {
+    const body = textOf(Privacy, 'privacy-policy')
+    expect(body).not.toMatch(/Twitch sign-in only if you choose/)
+    expect(body).not.toMatch(/sent only when you choose\s+Continue with Twitch\)/)
+    expect(body).toMatch(/one check without a window after a\s+fresh install, which can only sign you back in/)
+    const check = screen.getByTestId('privacy-extension-first-install').textContent ?? ''
+    expect(check).toMatch(/checks once with\s+Twitch, without opening a window/)
+    expect(check).toMatch(/This check never creates an account,\s+and it doesn't run again after you sign out/)
+    expect(body).toMatch(/sent only when you choose\s+Continue with Twitch or during the one check after a fresh install/)
+  })
+
+  it('Privacy describes the server-side extension record and Twitch’s disconnect notification', () => {
+    render(<MemoryRouter><Privacy /></MemoryRouter>)
+    const extensions = screen.getByTestId('privacy-extensions').textContent ?? ''
+    expect(extensions).toMatch(/a label naming the store, the browser family and the sign-in time, plus hashed credentials\s+and their expiry/)
+    expect(extensions).toMatch(/A signed-out or expired\s+extension stays on that record, without access, until the account is deleted/)
+    const twitch = screen.getByTestId('privacy-third-party-twitch').textContent ?? ''
+    expect(twitch).toMatch(/If you disconnect StreamPulse in your Twitch settings, Twitch sends\s+StreamPulse a notification with your Twitch user ID/)
+    expect(twitch).toMatch(/only to sign\s+that account out everywhere and does not store/)
   })
 
   it('Refunds asks for requests from the billing email given to Stripe, not an account address', () => {
