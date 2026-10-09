@@ -12,6 +12,17 @@ const LIVE: QuickSettingsChannel = {
   surface: 'live_tracked',
 }
 
+/**
+ * The Supporter card's copy, which no longer covers its stage: a hidden span
+ * the button names as its description, so screen readers still hear it.
+ */
+function describedCopy(html: string): string | undefined {
+  const id = html.match(/<button[^>]*data-settings-host-cta="supporter"[^>]*aria-describedby="([^"]+)"/)?.[1]
+  if (!id) return undefined
+  const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return html.match(new RegExp(`<span id="${escaped}" hidden="">([^<]*)</span>`))?.[1]
+}
+
 describe('PulseSettingsPanel quick workspace', () => {
   it('keeps everyday controls inline and the three-item changelog collapsed by default', () => {
     const html = renderToStaticMarkup(<PulseSettingsPanel />)
@@ -99,7 +110,10 @@ describe('PulseSettingsPanel quick workspace', () => {
   it('gives everyone else the lab’s Your Line · Anatomy copy and an empty stage the card script fills, with no emotes in this bundle', () => {
     const html = renderToStaticMarkup(<SupporterHero appearance={null} onOpen={() => {}} />)
     expect(html).toContain('Explore Supporter')
-    expect(html).toContain('<small>Your crest and paint on your line. Only you see them. Core tools stay free.</small>')
+    expect(describedCopy(html)).toBe('Your crest and paint on your line. Only you see them. Core tools stay free.')
+    // Only the title row and the stage show; nothing covers the stage.
+    expect(html).not.toContain('<small')
+    expect(html).toMatch(/<span class="pulse-supporter-cta-head"><strong>Pulse Supporter<\/strong><span>Explore Supporter <span aria-hidden="true">›<\/span><\/span><\/span><span id="[^"]+" hidden="">[^<]*<\/span><span class="pulse-supporter-stage"/)
     expect(html).toContain('<span class="pulse-supporter-stage" aria-hidden="true"></span>')
     expect(html).not.toContain('<img')
     expect(html).not.toContain('cdn.7tv.app')
@@ -111,7 +125,8 @@ describe('PulseSettingsPanel quick workspace', () => {
     expect(verified).toContain('data-finish="etched"')
     expect(verified).toContain('Manage Supporter')
     expect(verified).not.toContain('Explore Supporter')
-    expect(verified).toContain('<small>A crest that levels up the longer you support. Only you see it. Core tools stay free.</small>')
+    expect(describedCopy(verified)).toBe('A crest that levels up the longer you support. Only you see it. Core tools stay free.')
+    expect(verified).not.toContain('<small')
     const neutral = renderToStaticMarkup(<SupporterHero appearance={null} onOpen={() => {}} />)
     expect(neutral).toContain('Explore Supporter')
     expect(neutral).not.toContain('levels up')

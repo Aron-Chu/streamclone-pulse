@@ -46,6 +46,21 @@ async function openQuickSettingsAt305(page: Page) {
   return root
 }
 
+/**
+ * The card shows only its title row and the stage, right under it: no copy
+ * covers the stage. The copy is the button's description for screen readers,
+ * not part of its name.
+ */
+async function expectStageUncovered(card: Locator, action: string, copy: string) {
+  await expect(card).toHaveAccessibleName(new RegExp(`^Pulse Supporter\\s*${action}$`))
+  await expect(card).toHaveAccessibleDescription(copy)
+  await expect(card.locator('small')).toHaveCount(0)
+  await expect(card.getByText(copy)).toBeHidden()
+  const [head, stage] = await Promise.all([card.locator('.pulse-supporter-cta-head').boundingBox(), card.locator('.pulse-supporter-stage').boundingBox()])
+  expect(stage!.y - (head!.y + head!.height)).toBeLessThanOrEqual(10)
+  expect(stage!.height).toBeGreaterThanOrEqual(90)
+}
+
 /** Emote images settle before a capture (the CDNs are real; nothing else is). */
 async function imagesSettled(stage: Locator) {
   await stage.locator('img').evaluateAll(images => Promise.all(images.map(image => {
@@ -71,7 +86,7 @@ test('quick settings: non-Supporters get Your Line · Anatomy, injected on deman
   await expect(stage).toHaveAttribute('data-mode', 'anatomy')
   await expect(stage).toHaveAttribute('data-running', 'true')
   await expect(card.locator('.pulse-supporter-cta-head')).toHaveText('Pulse SupporterExplore Supporter ›')
-  await expect(card.locator('small')).toHaveText('Your crest and paint on your line. Only you see them. Core tools stay free.')
+  await expectStageUncovered(card, 'Explore Supporter', 'Your crest and paint on your line. Only you see them. Core tools stay free.')
   expect((await card.boundingBox())!.width).toBeLessThanOrEqual(305)
 
   // Every sixth line is yours, with the lab's sample crest, Etched paint and sample emote.
@@ -148,7 +163,7 @@ test('quick settings: Supporters get Tenure Climb up to their own crest, in thei
   await expect(card).toHaveAttribute('data-supporter-verified', 'true')
   await expect(stage).toHaveAttribute('data-mode', 'tenure')
   await expect(card.locator('.pulse-supporter-cta-head')).toHaveText('Pulse SupporterManage Supporter ›')
-  await expect(card.locator('small')).toHaveText('A crest that levels up the longer you support. Only you see it. Core tools stay free.')
+  await expectStageUncovered(card, 'Manage Supporter', 'A crest that levels up the longer you support. Only you see it. Core tools stay free.')
 
   // The climb: First signal, Signal set, Steady signal, Year-one crest, then it holds there.
   // A chip a wide emote would reach keeps only its length ("12 mo").
