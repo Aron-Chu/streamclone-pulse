@@ -79,6 +79,12 @@ export type SupporterAccountState =
 export type SupporterBillingState =
   | { state: 'idle' | 'fallback' | 'closed' | 'active' | 'expired' | 'review' | 'unavailable' | 'error' | 'reconnect_required' | 'sign_in_required' | 'step_up_required' | 'wrong_account' }
   | { state: 'waiting' | 'confirming' | 'still_confirming'; attemptId?: string; automaticPolling?: false }
+  /**
+   * Checkout or the portal answered 429 `try_later`: nothing new was started,
+   * and the worker sends no billing request before `retryAt` (epoch ms, from
+   * the server's Retry-After).
+   */
+  | { state: 'try_later'; retryAt: number }
 export type SupporterRestoreState =
   | { state: 'idle' | 'fallback' | 'restored' | 'expired' | 'conflict' | 'error' | 'ineligible' }
   | { state: 'unavailable'; reason?: 'connection' | 'membership' | 'membership_invalid' | 'environment_mismatch' }

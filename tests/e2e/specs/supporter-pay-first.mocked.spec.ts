@@ -327,6 +327,32 @@ test('uncertain installation refresh retains its identity and restores after ren
   await expect(page.locator('.pulse-journey').getByRole('button', { name: 'Manage subscription', exact: true })).toBeVisible()
 })
 
+test('a 429 try_later from Checkout names the wait and the worker sends nothing until it ends', async ({ extension, prepare }) => {
+  await prepare()
+  const checkoutCalls: number[] = []
+  await extension.context.route('https://api.streampulse.stream/v1/account/installations', route => route.fulfill({ status: 201, json: credential() }))
+  await extension.context.route('https://api.streampulse.stream/v1/billing/supporter', route => route.fulfill({ json: snapshot('none') }))
+  await extension.context.route('https://api.streampulse.stream/v1/billing/checkout', route => {
+    checkoutCalls.push(Date.now())
+    return route.fulfill({ status: 429, headers: { 'Retry-After': '540' }, json: { error: 'try_later' } })
+  })
+  const page = extension.page
+  await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
+  const first = await workerCheckout(page)
+  expect(first.billing.state).toBe('try_later')
+  expect(first.billing.retryAt - Date.now()).toBeGreaterThan(530_000)
+  // Pressing again, or reopening settings, asks the server nothing.
+  expect((await workerCheckout(page)).billing.state).toBe('try_later')
+  await page.reload()
+  const journey = page.locator('[data-journey-state="try-later"]')
+  await expect(journey).toBeVisible()
+  await expect(journey).toContainText('Checkout is paused for a moment')
+  await expect(journey).toContainText('This attempt started nothing and charged nothing.')
+  await expect(journey).toContainText('(about 9 minutes)')
+  await expect(journey.getByRole('button', { name: /^Try again after / })).toBeDisabled()
+  expect(checkoutCalls).toHaveLength(1)
+})
+
 test('slow Checkout and Portal responses survive the former twelve-second deadline', async ({ extension, prepare }) => {
   test.setTimeout(100_000)
   await prepare()

@@ -3,7 +3,7 @@ import SUPPORTER_PERKS from '../src/shared/supporter-perks.json'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ACCOUNT_COPY, MEMBERSHIP_WATCH_DELAYS_MS, MEMBERSHIP_WATCH_MS, SupporterJourney, accountReference } from '../src/options/SupporterJourney.tsx'
+import { ACCOUNT_COPY, MEMBERSHIP_WATCH_DELAYS_MS, MEMBERSHIP_WATCH_MS, SupporterJourney, accountReference, retryWaitCopy } from '../src/options/SupporterJourney.tsx'
 import type { SupporterAccountAction, SupporterAccountState, SupporterEntitlement, SupporterBillingState, SupporterRestoreState } from '../src/shared/supporterAccount.ts'
 import type { TwitchSignInResponse, TwitchSignInStage } from '../src/shared/twitchSignIn.ts'
 
@@ -1373,6 +1373,46 @@ describe('Continue with Twitch (tester and public stages)', () => {
       expect(view.state()).toBe('active')
       // The worker opens Stripe; the page never opens a provider URL itself.
       expect(view.create).not.toHaveBeenCalled()
+    } finally { view.cleanup() }
+  })
+
+  it('says calmly when Checkout is paused by a 429, names the wait, and never retries on its own', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    vi.setSystemTime(Date.parse('2026-10-09T18:00:00Z'))
+    const retryAt = Date.now() + 9 * 60_000
+    let billing: SupporterBillingState = { state: 'idle' }
+    const view = await mount({ account: () => linked, entitlement: () => twitchAccount('none'), billing: action => action === 'checkout' ? (billing = { state: 'try_later', retryAt }) : billing, twitch: () => ({ status: twitchStatus({ profile: PROFILE }), account: linked }) }, undefined, 'public')
+    try {
+      await view.click('Become a Supporter')
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(1)
+      expect(view.state()).toBe('try-later')
+      expect(view.text()).toContain('Checkout is paused for a moment')
+      expect(view.text()).toContain('This attempt started nothing and charged nothing.')
+      expect(view.text()).toContain(`Try again after ${retryWaitCopy(retryAt).at} (about 9 minutes).`)
+      const again = view.host.querySelector<HTMLButtonElement>('.pulse-journey-primary')!
+      expect(again.textContent).toBe(`Try again after ${retryWaitCopy(retryAt).at}`)
+      expect(again.disabled).toBe(true)
+      // The page waits silently: no billing request while the window runs.
+      const before = view.sendMessage.mock.calls.filter(([message]) => message.type === 'SUPPORTER_BILLING').length
+      await act(async () => { await vi.advanceTimersByTimeAsync(9 * 60_000 + 1_000) })
+      expect(view.sendMessage.mock.calls.filter(([message]) => message.type === 'SUPPORTER_BILLING')).toHaveLength(before)
+      // Then one click may try again.
+      const ready = view.host.querySelector<HTMLButtonElement>('.pulse-journey-primary')!
+      expect(ready.textContent).toBe('Try again')
+      expect(ready.disabled).toBe(false)
+    } finally { view.cleanup(); vi.useRealTimers() }
+  })
+
+  it('names the wait when Manage subscription is paused by a 429', async () => {
+    const retryAt = Date.now() + 2 * 60 * 60_000
+    const view = await mount({ account: () => linked, entitlement: () => twitchAccount('active', { features: PERKS }), billing: action => action === 'portal' ? { state: 'try_later', retryAt } : { state: 'idle' }, twitch: () => ({ status: twitchStatus({ profile: PROFILE }), account: linked }) }, undefined, 'public')
+    try {
+      await view.click('Manage subscription')
+      expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(1)
+      expect(view.text()).toContain(`Subscription management was opened too many times in a short while, so it is paused for this account. Your membership is unchanged. Try again after ${retryWaitCopy(retryAt).at} (about 2 hours).`)
+      expect(view.text()).not.toContain('Could not open subscription management')
+      expect(view.create).not.toHaveBeenCalled()
+      expect(view.state()).toBe('active')
     } finally { view.cleanup() }
   })
 

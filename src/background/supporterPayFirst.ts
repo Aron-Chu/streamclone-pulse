@@ -136,7 +136,12 @@ export class SupporterPayFirstCoordinator {
   private async performBilling(action: BillingAction): Promise<SupporterBillingState> {
     await this.reconcileIdentity()
     const value = await this.read()
-    if (action !== 'status' && value.billingRetryUntil && value.billingRetryUntil > this.now()) return value.billing ? { state: 'still_confirming', ...(value.billing.attemptId ? { attemptId: value.billing.attemptId } : {}) } : { state: 'unavailable' }
+    // Inside a server Retry-After window nothing is sent: a pending payment
+    // stays pending, and a new Checkout or portal request waits it out.
+    if (value.billingRetryUntil && value.billingRetryUntil > this.now()) {
+      if (value.billing) { if (action !== 'status') return { state: 'still_confirming', ...(value.billing.attemptId ? { attemptId: value.billing.attemptId } : {}) } }
+      else if (action !== 'status' || !value.unresolvedAccounts?.length) return { state: 'try_later', retryAt: value.billingRetryUntil }
+    }
     const portal = action === 'portal' || action === 'portal_confirm'
     if (value.billing) {
       if (await this.identity() !== value.billing.accountId) { await this.reconcileIdentity(); return { state: 'reconnect_required' } }
@@ -191,9 +196,9 @@ export class SupporterPayFirstCoordinator {
     if (capability.accountKind !== 'installation' || !portal && capability.installationAccountsEnabled !== true) return { state: 'unavailable' }
     if (portal) {
       const result = await this.ports.account.withCredential(token => this.ports.request('/v1/billing/portal', {}, token), installation.accountId)
-      if (result.status === 429) { value.billingRetryUntil = this.now() + retryMs(result); await this.ports.write(value) }
+      if (result.status === 429) { value.billingRetryUntil = this.now() + retryMs(result); await this.ports.write(value); return { state: 'try_later', retryAt: value.billingRetryUntil } }
       const url = result.status === 200 ? validatedStripeUrl(object(result.body).url, 'portal') : null
-      if (!url) return { state: result.status === 404 || result.status === 503 || result.status === 429 ? 'unavailable' : 'error' }
+      if (!url) return { state: result.status === 404 || result.status === 503 ? 'unavailable' : 'error' }
       if (await this.identity() !== installation.accountId) return { state: 'error' }
       await this.ports.open(url)
       return { state: 'idle' }
@@ -255,9 +260,9 @@ export class SupporterPayFirstCoordinator {
     const body = object(result.body)
     // An invited tester's email account without a Twitch identity keeps the website path.
     if (result.status === 403 && body.error === 'browser_sign_in_required') return { state: 'fallback' }
-    if (result.status === 429) { const value = await this.read(); value.billingRetryUntil = this.now() + retryMs(result); await this.ports.write(value) }
+    if (result.status === 429) { const value = await this.read(); value.billingRetryUntil = this.now() + retryMs(result); await this.ports.write(value); return { state: 'try_later', retryAt: value.billingRetryUntil } }
     const url = result.status === 200 ? validatedStripeUrl(body.url, 'portal') : null
-    if (!url) return { state: result.status === 404 || result.status === 503 || result.status === 429 ? 'unavailable' : 'error' }
+    if (!url) return { state: result.status === 404 || result.status === 503 ? 'unavailable' : 'error' }
     if (await this.identity() !== accountId) return { state: 'error' }
     await this.ports.open(url)
     return { state: 'idle' }
@@ -298,7 +303,7 @@ export class SupporterPayFirstCoordinator {
     if (navigate && (result.status === 403 || result.status === 409) && body.error === 'checkout_not_available') { await this.resolveBilling(value, accountId); return { state: 'closed' } }
     if (result.status !== 200 && result.status !== 201) {
       if (result.status === 429) { value.billingRetryUntil = this.now() + retryMs(result); pending.nextPoll = value.billingRetryUntil; await this.ports.write(value) }
-      if (navigate && (result.status === 400 || result.status === 403 || result.status === 429)) { await this.resolveBilling(value, accountId); return { state: result.status === 429 ? 'unavailable' : 'error' } }
+      if (navigate && (result.status === 400 || result.status === 403 || result.status === 429)) { await this.resolveBilling(value, accountId); return result.status === 429 ? { state: 'try_later', retryAt: value.billingRetryUntil! } : { state: 'error' } }
       return { state: 'confirming', ...(pending.attemptId ? { attemptId: pending.attemptId } : {}) }
     }
     const url = validatedStripeUrl(body.url, 'checkout')
