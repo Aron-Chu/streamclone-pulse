@@ -94,6 +94,7 @@ test('emote rain is a Supporter perk: a saved Rain draws nothing without one, st
   await expect(modes.getByRole('button', { name: 'Rain', exact: true })).toBeDisabled()
   const perk = settings.locator('[data-supporter-perk="emote-rain"]')
   await expect(perk).toContainText('Supporter perk')
+  await expect(perk).toContainText('It moved from free to Supporter in 0.2.2')
   await settings.getByLabel('Panel title').fill('Renamed Pulse')
   await settings.getByRole('button', { name: 'Save background', exact: true }).click()
   await expect(settings.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
