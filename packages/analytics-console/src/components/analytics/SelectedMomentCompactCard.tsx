@@ -1,4 +1,5 @@
 import { useLayoutEffect, useMemo, useRef } from 'react'
+import { formatHeatOffset } from '@streampulse/pulse-core'
 import { useConsoleMotion } from '../../hooks/useConsoleMotion.ts'
 import type { AnalyticsMinuteRollup, AnalyticsTopEmote, PulseRecapMoment } from '../../apiTypes.ts'
 import type { ReplayHeatmapDetailPoint, ReplayHeatmapPoint } from '../../types/heatmap.ts'
@@ -104,7 +105,9 @@ export function SelectedMomentCompactCard({
       <div className="flex flex-wrap items-center gap-x-6 gap-y-4">
         <div className="flex min-w-0 flex-col gap-1">
           {display.offsetStr ? (
-             <span className="font-mono text-base font-semibold tabular-nums text-zinc-100">{display.offsetStr}</span>
+             // Shown on the stream clock (hh:mm:ss) like the readout and the axis;
+             // offsetStr ("5h52m7s") stays in the label and the VOD link.
+             <span className="font-mono text-base font-semibold tabular-nums text-zinc-100" data-selected-moment-time>{formatHeatOffset(display.offsetSeconds)}</span>
           ) : null}
           <span className="text-xs text-zinc-400">Selected minute</span>
         </div>
