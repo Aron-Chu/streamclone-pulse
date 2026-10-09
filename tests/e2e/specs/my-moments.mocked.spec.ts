@@ -132,7 +132,10 @@ test('packaged My Moments retains notes, separates consent and clears history wi
   accountId = '22222222-2222-4222-8222-222222222222'
   items = firstAccountItems
   await link()
-  await expect(page.getByText('My note across reload', { exact: true })).toBeVisible()
+  // The bookmark is the account's and comes back; the note was this browser's
+  // copy and was removed when it signed out of the account.
+  await expect(page.getByText('Saved comeback', { exact: true })).toBeVisible()
+  await expect(page.getByText('My note across reload', { exact: true })).toHaveCount(0)
   const publicStorage = await extension.serviceWorker.evaluate(() => chrome.storage.local.get(null))
   expect(JSON.stringify(publicStorage)).not.toContain(bearer)
   expect(JSON.stringify(publicStorage)).not.toContain('b'.repeat(64))

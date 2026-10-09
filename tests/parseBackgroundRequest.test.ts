@@ -199,4 +199,15 @@ describe('parseBackgroundRequest', () => {
       ...['url', 'authorizeUrl', 'redirectUri', 'surface', 'idToken', 'flowSecret', 'token'].map(field => ({ type: 'TWITCH_SIGN_IN', action: 'sign_in', mode: 'interactive', [field]: 'attacker' })),
     ]) expect(parseBackgroundRequest(bad)).toBeNull()
   })
+
+  it('accepts only the exact Sign out everywhere shapes', () => {
+    expect(parseBackgroundRequest({ type: 'TWITCH_SIGN_IN', action: 'sign_out_everywhere' })).toEqual({ type: 'TWITCH_SIGN_IN', action: 'sign_out_everywhere' })
+    expect(parseBackgroundRequest({ type: 'TWITCH_SIGN_IN', action: 'sign_out_everywhere', confirm: false })).toEqual({ type: 'TWITCH_SIGN_IN', action: 'sign_out_everywhere' })
+    expect(parseBackgroundRequest({ type: 'TWITCH_SIGN_IN', action: 'sign_out_everywhere', confirm: true })).toEqual({ type: 'TWITCH_SIGN_IN', action: 'sign_out_everywhere', confirm: true })
+    for (const bad of [
+      { type: 'TWITCH_SIGN_IN', action: 'sign_out_everywhere', confirm: 'yes' },
+      { type: 'TWITCH_SIGN_IN', action: 'sign_out_everywhere', mode: 'interactive' },
+      ...['accountId', 'token', 'url', 'path'].map(field => ({ type: 'TWITCH_SIGN_IN', action: 'sign_out_everywhere', [field]: 'attacker' })),
+    ]) expect(parseBackgroundRequest(bad)).toBeNull()
+  })
 })

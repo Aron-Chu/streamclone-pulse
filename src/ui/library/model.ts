@@ -41,6 +41,8 @@ export type LibraryCommand =
   | { kind: 'edit'; id: string; note: string; collectionId?: string }
   | { kind: 'clear-history' }
   | { kind: 'preferences'; value: LibraryPreferences }
+  /** Adds saves made without an account to the signed-in account: one (`id`) or all. */
+  | { kind: 'import-device-saves'; id?: string }
   | { kind: 'create-collection'; name: string }
   | { kind: 'interaction'; event: MomentInteraction }
 export interface LibraryRepository {

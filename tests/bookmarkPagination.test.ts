@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fetchPulseBookmarks } from '../src/background/api.ts'
 import { parseBookmarkPage } from '../src/shared/bookmarkPage.ts'
 import { parseBackgroundRequest } from '../src/shared/parseBackgroundRequest.ts'
-vi.mock('../src/background/supporterAccountRuntime.ts', () => ({
+vi.mock('../src/background/supporterAccountRuntime.ts', () => ({ ACCOUNT_BACKEND_URL: 'https://api.streampulse.stream',
   supporterAccount: { withCredential: async (operation: (token: string) => Promise<{ status: number }>) => {
     const result = await operation('a'.repeat(64))
     if (result.status === 401) throw new Error('account_authorization_required')

@@ -950,7 +950,8 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           return
         }
         case 'SUPPORTER_APPEARANCE': {
-          const entitlement = await supporterAccount.entitlement()
+          // Every visible Twitch tab asks about once a minute; they share the worker's read.
+          const entitlement = await supporterAccount.cachedEntitlement()
           sendResponse(await supporterAppearanceReply(entitlement, () => getSupporterPaintStyle().catch(() => DEFAULT_SUPPORTER_PAINT)) satisfies BackgroundResponse)
           return
         }
@@ -992,7 +993,9 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
         case 'TWITCH_SIGN_IN': {
           sendResponse((message.action === 'status'
             ? await twitchSignIn.status()
-            : await twitchSignIn.signIn(message.mode, message.forceVerify === true)) satisfies BackgroundResponse)
+            : message.action === 'sign_out_everywhere'
+              ? await twitchSignIn.signOutEverywhere(message.confirm === true ? 'interactive' : 'silent')
+              : await twitchSignIn.signIn(message.mode, message.forceVerify === true)) satisfies BackgroundResponse)
           return
         }
         case 'OPEN_SETTINGS_HOST': {

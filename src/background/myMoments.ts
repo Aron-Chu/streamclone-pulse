@@ -1,11 +1,11 @@
 import { createPulseBookmark, deletePulseBookmark, fetchPulseBookmarks } from './api.ts'
 import { isDeviceCredentialInvalidatedError } from './deviceAuth.ts'
 import { DEFAULT_BACKEND_URL, getBackendUrl } from '../shared/storage.ts'
-import { supporterAccount } from './supporterAccountRuntime.ts'
+import { bindAccountDataForget, supporterAccount } from './supporterAccountRuntime.ts'
 import type { BookmarksState, MyMomentsRecent, MyMomentsRequest, MyMomentsSnapshot } from '../shared/myMoments.ts'
 import type { BackgroundResponse, ListBookmarksMessage, PulseBookmark, SaveBookmarkMessage } from '../shared/messages.ts'
 import { replayAvailability, type LibraryMoment, type MomentReference } from '../ui/library/model.ts'
-import { addDeviceBookmark, bookmarkIdentity, momentIdentity as identity, personalTransaction, recordWatched } from './myMomentsStore.ts'
+import { addDeviceBookmark, bookmarkIdentity, deletePersonal, momentIdentity as identity, personalTransaction, recordWatched } from './myMomentsStore.ts'
 
 export { replayAvailability }
 const bookmarkMoment = (b: PulseBookmark, note: string): LibraryMoment => ({ id: b.id, channel: b.login, title: b.label || 'Saved moment', vodId: b.vodId ?? null,
@@ -119,7 +119,69 @@ async function recent(scope: string): Promise<MyMomentsRecent> {
   const latest = [...device.bookmarks].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
   return { watched, deviceSaves: device.bookmarks.length, latestSave: latest ? reference(bookmarkMoment(latest, '')) : null }
 }
+/** One click adds at most this many; any rest stay listed for another click. */
+const IMPORT_LIMIT = 100
+/**
+ * "Add to account": saves made without an account join the signed-in account,
+ * only when asked, one (`id`) or all. Each is posted in the hosted bookmark
+ * shape it was kept in and leaves this device only after the account confirms
+ * it (2xx), so a failure partway keeps the rest here. A save the account
+ * already has (same channel, stream or VOD, and second) is not posted again.
+ * Its note never leaves the device: it moves to the account's local notes.
+ */
+async function importDeviceSaves(scope: string, held: boolean, id?: string): Promise<void> {
+  const account = scopeAccount(scope)
+  if (!account || held) throw new Error('Sign in to add saves to your account.')
+  const all = await snapshot(scope)
+  if (!all.bookmarksAvailable) {
+    throw new Error(all.bookmarksState === 'expired'
+      ? 'Your Pulse account link expired. Sign in again to add saves to your account.'
+      : 'Could not reach StreamPulse. Your saves stay on this device.')
+  }
+  const chosen = all.deviceBookmarks.filter(b => id === undefined || b.id === id).slice(0, IMPORT_LIMIT)
+  if (!chosen.length) throw new Error('That save is no longer on this device. Reload My Moments.')
+  const inAccount = new Map(all.moments.filter(m => m.savedAt !== undefined).map(m => [identity(m), m.id]))
+  let added = 0
+  for (const b of chosen) {
+    const key = bookmarkIdentity(b)
+    let hostedId = inAccount.get(key)
+    try {
+      await assertScope(scope)
+      if (!hostedId) {
+        const created = await createPulseBookmark({ login: b.login, ...(b.streamId ? { streamId: b.streamId } : {}), ...(b.vodId ? { vodId: b.vodId } : {}),
+          offsetSeconds: Math.floor(b.offsetSeconds), label: b.label.slice(0, 160), source: 'extension' }, undefined, account)
+        hostedId = typeof created?.id === 'string' && created.id ? created.id : undefined
+        inAccount.set(key, hostedId ?? '')
+      }
+    } catch (error) {
+      if (error instanceof Error && /connection changed/.test(error.message)) throw error
+      throw new Error(added
+        ? `Added ${added} of ${chosen.length} to your account. The rest stay on this device; try again shortly.`
+        : 'Could not add to your account. Your saves stay on this device; try again shortly.')
+    }
+    const note = b.notes
+    if (note && hostedId) await personalTransaction(scope, data => data.notes[hostedId!] ? data : { ...data, notes: { ...data.notes, [hostedId!]: note } })
+    await personalTransaction(deviceScope(scope), data => {
+      const notes = { ...data.notes }
+      delete notes[b.id]
+      return { ...data, notes, bookmarks: data.bookmarks.filter(item => item.id !== b.id) }
+    })
+    added++
+  }
+}
 let queue: Promise<unknown> = Promise.resolve()
+/**
+ * This device left the account (Sign out, Sign out everywhere, or a revoked
+ * credential): its copy of that account's watched history and notes goes.
+ * Saves made without an account (the `|local` scope) stay. Queued behind any
+ * My Moments request already under way, so none can write the copy back.
+ */
+export function forgetAccountScope(accountId: string): Promise<void> {
+  const run = queue.then(() => deletePersonal(`${DEFAULT_BACKEND_URL}|account:${accountId}`))
+  queue = run.catch(() => undefined)
+  return run
+}
+bindAccountDataForget(accountId => { void forgetAccountScope(accountId).catch(() => undefined) })
 export function handleMyMoments(message: MyMomentsRequest, sender: chrome.runtime.MessageSender): Promise<unknown> {
   const run = queue.then(async () => {
     if (privateBrowsing(sender)) throw new Error('My Moments is unavailable in private browsing.')
@@ -159,6 +221,8 @@ export function handleMyMoments(message: MyMomentsRequest, sender: chrome.runtim
           await assertScope(scope)
           await createPulseBookmark({ login: r.channel, streamId: r.streamId, vodId: r.vodId ?? undefined, offsetSeconds: Math.floor(r.offsetSeconds!), label: r.title.slice(0, 160), source: 'extension' }, undefined, scopeAccount(scope))
         }
+      } else if (command.kind === 'import-device-saves') {
+        await importDeviceSaves(scope, held, command.id)
       } else if (command.kind === 'unsave' || command.kind === 'edit') {
         const all = await snapshot(scope)
         const hosted = all.moments.some(m => m.id === command.id && m.savedAt !== undefined)

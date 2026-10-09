@@ -6,6 +6,7 @@ import type {
   TwitchSignInOutcome,
   TwitchSignInResponse,
   TwitchSignInStatus,
+  TwitchSignOutEverywhereResult,
   TwitchStepUpError,
   TwitchStepUpResult,
   TwitchSurface,
@@ -38,6 +39,11 @@ type Account = {
   run(action: SupporterAccountAction): Promise<SupporterAccountState>
   adopt(body: unknown, generation: number): Promise<{ adopted: boolean; account: SupporterAccountState }>
   withCredential<T extends { status: number }>(operation: (token: string) => Promise<T>, accountId?: string): Promise<T>
+  /**
+   * Sign out everywhere succeeded: forget this device's credential without
+   * another revocation request. Absent on older coordinators, which disconnect.
+   */
+  forgetSignedOutEverywhere?(accountId: string): Promise<SupporterAccountState>
   readonly identityGeneration: number
 }
 
@@ -234,6 +240,89 @@ export class TwitchSignIn {
     if (this.active) return { ok: false, error: 'busy' }
     this.active = true
     try {
+      return await this.runStepUp(mode)
+    } finally {
+      this.active = false
+    }
+  }
+
+  /**
+   * Sign out everywhere: POST /v1/account/sessions/revoke-all with this
+   * device's bearer. The server ends every web session and extension device
+   * of the account and blocks silent sign-in. It needs a recent Twitch check
+   * on this device (403 `recent_auth_required`), handled as Manage
+   * subscription does: one silent check (or, from a click, the Twitch window)
+   * and one retry, never a loop. A check that names another Twitch account
+   * signs nothing out.
+   *
+   * After a 204 this extension is signed out too, as after Sign out: the
+   * credential is forgotten and silent sign-in stays off until a click.
+   */
+  async signOutEverywhere(mode: TwitchSignInMode = 'silent'): Promise<TwitchSignInResponse> {
+    const reply = async (everywhere: TwitchSignOutEverywhereResult, account?: SupporterAccountState, retryAfterSeconds?: number) => {
+      const response = await this.respond(account ?? await this.ports.account.run('status'), retryAfterSeconds !== undefined ? { retryAfterSeconds } : {})
+      response.everywhere = everywhere
+      return response
+    }
+    if (!this.ports.enabled) return reply('disabled')
+    if (this.active) return reply('busy')
+    this.active = true
+    try {
+      const account = await this.ports.account.run('status')
+      if (account.state === 'unavailable' && account.linked) return await reply('unavailable', account)
+      if (account.state !== 'linked') return await reply('sign_in_required', account)
+      const accountId = account.accountId
+      const revokeAll = () => this.ports.account.withCredential(async token => {
+        const result = await this.post('/v1/account/sessions/revoke-all', {}, token)
+        return { status: result.status, result }
+      }, accountId)
+      let answer: Http
+      try {
+        answer = (await revokeAll()).result
+        if (requiresStepUp(answer)) {
+          if (!this.available) return await reply('step_up_required')
+          const proof = await this.runStepUp(mode)
+          if (!proof.ok) {
+            if (proof.error === 'identity_mismatch') return await reply('wrong_account')
+            if (proof.error === 'sign_in_required') return await reply('sign_in_required')
+            if (mode === 'silent' || proof.error === 'cancelled' || proof.error === 'interaction_required' || proof.error === 'busy') return await reply('step_up_required')
+            if (proof.error === 'try_later') return await reply('try_later', undefined, proof.retryAfterSeconds)
+            if (proof.error === 'network') return await reply('failed')
+            if (proof.error === 'unavailable') return await reply('unavailable')
+            // The Twitch window, flow or reply did not finish; revoke-all was not retried.
+            return await reply('step_up_failed')
+          }
+          answer = (await revokeAll()).result
+          if (requiresStepUp(answer)) return await reply('step_up_required')
+        }
+      } catch (error) {
+        // A 401 has already cleared this device's credential (withCredential).
+        const { outcome } = thrownFailure(error)
+        return await reply(outcome === 'sign_in_required' ? 'sign_in_required' : outcome === 'unavailable' || outcome === 'error' ? 'unavailable' : 'failed')
+      }
+      if (answer.status === 204) {
+        await this.markSignedOutByUser().catch(() => undefined)
+        const forgotten = this.ports.account.forgetSignedOutEverywhere
+          ? await this.ports.account.forgetSignedOutEverywhere(accountId)
+          : await this.ports.account.run('disconnect')
+        return await reply('signed_out_everywhere', forgotten)
+      }
+      if (answer.status === 404) return await reply('not_available')
+      if (answer.status === 429) return await reply('try_later', undefined, answer.retryAfterSeconds)
+      // The service answered, so the connection is fine: 503 request_unavailable,
+      // another 5xx, or a status this client does not expect.
+      return await reply('unavailable')
+    } catch {
+      return reply('failed')
+    } finally {
+      this.active = false
+    }
+  }
+
+  /** One step-up round; the caller holds `active`. */
+  private async runStepUp(mode: TwitchSignInMode): Promise<TwitchStepUpResult> {
+    if (!this.available) return { ok: false, error: 'unsupported' }
+    try {
       const account = await this.ports.account.run('status')
       if (account.state === 'unavailable' && account.linked) return { ok: false, error: 'unavailable' }
       if (account.state !== 'linked') return { ok: false, error: 'sign_in_required' }
@@ -255,8 +344,6 @@ export class TwitchSignIn {
       return stepUpFailure(serverFailure(finished.result))
     } catch (error) {
       return stepUpFailure(thrownFailure(error))
-    } finally {
-      this.active = false
     }
   }
 

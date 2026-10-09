@@ -95,9 +95,48 @@ export interface TwitchSignInStatus {
   profile: TwitchProfile | null
 }
 
+/**
+ * How Sign out everywhere (POST /v1/account/sessions/revoke-all) ended.
+ *
+ *   - `signed_out_everywhere`: the server ended every session and device of
+ *     the account (204); this extension is signed out too, and silent sign-in
+ *     stays off until a click signs in again.
+ *   - `step_up_required`: the server wants a Twitch check from the last 10
+ *     minutes and a silent one could not finish; a click can start it.
+ *   - `wrong_account`: the Twitch check named another Twitch account. Nothing
+ *     was signed out.
+ *   - `sign_in_required`: this device's sign-in had already ended.
+ *   - `not_available`: the route is not there yet (404). Nothing was signed out.
+ *   - `try_later`: rate limited.
+ *   - `step_up_failed`: the Twitch check from a click did not finish (window
+ *     failed, flow expired, reply not verified). Nothing was signed out.
+ *   - `unavailable`: the account service answered with an error (503
+ *     `request_unavailable`, another 5xx, an unexpected status) or reports
+ *     itself unavailable; whether it happened is not confirmed.
+ *   - `failed`: the request did not reach the service (network failure,
+ *     timeout); whether it happened is not confirmed.
+ *   - `busy`: another Twitch sign-in on this extension is still open; nothing
+ *     was sent.
+ *   - `disabled`: Twitch sign-in is off in this build; nothing was sent.
+ */
+export type TwitchSignOutEverywhereResult =
+  | 'signed_out_everywhere'
+  | 'step_up_required'
+  | 'wrong_account'
+  | 'sign_in_required'
+  | 'not_available'
+  | 'try_later'
+  | 'step_up_failed'
+  | 'unavailable'
+  | 'failed'
+  | 'busy'
+  | 'disabled'
+
 export type TwitchSignInRequest =
   | { type: 'TWITCH_SIGN_IN'; action: 'status' }
   | { type: 'TWITCH_SIGN_IN'; action: 'sign_in'; mode: TwitchSignInMode; forceVerify?: true }
+  /** `confirm`: a click asked for the Twitch window when a silent check could not finish. */
+  | { type: 'TWITCH_SIGN_IN'; action: 'sign_out_everywhere'; confirm?: true }
 
 export interface TwitchSignInResponse {
   type: 'TWITCH_SIGN_IN'
@@ -105,4 +144,6 @@ export interface TwitchSignInResponse {
   account: SupporterAccountState
   outcome?: TwitchSignInOutcome
   retryAfterSeconds?: number
+  /** Present only in the answer to `sign_out_everywhere`. */
+  everywhere?: TwitchSignOutEverywhereResult
 }
