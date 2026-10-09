@@ -2,7 +2,8 @@
 import { act, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it } from 'vitest'
-import { DEVICE_ONLY_COPY, DEVICE_ONLY_INTRO, LibraryWorkspace } from '../src/ui/library/LibraryWorkspace.tsx'
+import { DEVICE_ONLY_COPY, DEVICE_ONLY_INTRO, HistorySyncCard, LibraryWorkspace } from '../src/ui/library/LibraryWorkspace.tsx'
+import { renderToStaticMarkup } from 'react-dom/server'
 import type { LibraryRepository } from '../src/ui/library/model.ts'
 import type { MyMomentsSnapshot } from '../src/shared/myMoments.ts'
 import type { BookmarksState } from '../src/shared/myMoments.ts'
@@ -85,5 +86,20 @@ describe('My Moments with sign-in on (tester and public builds)', () => {
       expect(view.text()).not.toContain(DEVICE_ONLY_INTRO)
       expect(view.buttons()).toEqual(expect.arrayContaining(['Connect account', 'Retry']))
     } finally { view.cleanup() }
+  })
+})
+
+describe('History sync card (history sync builds)', () => {
+  it('offers no account while sign-in is compiled off, and says where history stays', () => {
+    const html = renderToStaticMarkup(createElement(HistorySyncCard, { sync: { state: 'signed_out' }, busy: false, onChange: () => {} }))
+    expect(html).toContain('History stays in this browser.')
+    expect(html).toContain('coming with Continue with Twitch')
+    expect(html).not.toMatch(/free Pulse account|Connect account|href="#supporter"/)
+  })
+
+  it('keeps Connect account for a signed-out browser when sign-in is on', () => {
+    const html = renderToStaticMarkup(createElement(HistorySyncCard, { sync: { state: 'signed_out' }, busy: false, onChange: () => {}, accountsOpen: true }))
+    expect(html).toContain('Connect a free Pulse account to see this history in your other browsers')
+    expect(html).toContain('href="#supporter"')
   })
 })
