@@ -333,3 +333,112 @@ describe('overview chart over missing buckets', () => {
     expect(chatOverviewStartX(markup)).toBeLessThan(10)
   })
 })
+
+describe('gaps on every zoomed range (Codex audit: 15m to 4h, missing tail)', () => {
+  const holeFrom = 5 * 3600 + 10 * 60
+  const holeTo = 5 * 3600 + 40 * 60
+  type ZoomWindow = '15m' | '30m' | '60m' | '2h' | '4h'
+  const WINDOW_SECONDS: Record<ZoomWindow, number> = { '15m': 900, '30m': 1800, '60m': 3600, '2h': 7200, '4h': 14400 }
+
+  function withMissing(fromOffset: number, toOffset: number, coverageEndOffsetSeconds?: number): PulsePayload {
+    const base = longStreamPayload()
+    return {
+      ...base,
+      rollups: base.rollups.filter(rollup => rollup.offsetSeconds < fromOffset || rollup.offsetSeconds >= toOffset),
+      fullRollups: base.fullRollups!.filter(rollup => rollup.offsetSeconds < fromOffset || rollup.offsetSeconds >= toOffset),
+      coverage: {
+        ...base.coverage!,
+        state: 'missing_ranges_detected',
+        hasFullStreamCoverage: false,
+        hasGaps: true,
+        missingRanges: [{ fromOffsetSeconds: fromOffset, toOffsetSeconds: toOffset }],
+        ...(coverageEndOffsetSeconds !== undefined ? { coverageEndOffsetSeconds } : {}),
+      },
+    }
+  }
+
+  function prepareWindow(payload: PulsePayload, chartWindow: ZoomWindow) {
+    return prepareChartRollups(payload, {
+      chartWindow,
+      currentOffsetSeconds: CURRENT_OFFSET_SECONDS,
+      coverageStartOffsetSeconds: 0,
+      activation: makeFullHistoryActivation(payload),
+    })
+  }
+
+  /** No-data band x positions (with opacity) and each trend path's x values. */
+  function drawn(rollups: ExtensionRollup[], viewport: { startSeconds: number; endSeconds: number }) {
+    const markup = renderToStaticMarkup(
+      <PulseOverviewChart rollups={rollups} durationSeconds={CURRENT_OFFSET_SECONDS} viewport={viewport} isLive />,
+    )
+    const bands = [...markup.matchAll(/<rect x="(-?[\d.]+)"[^>]*width="([\d.]+)"[^>]*opacity="([\d.]+)" data-chart-no-data=""/g)]
+      .map(match => ({ x: Number(match[1]), width: Number(match[2]), opacity: Number(match[3]) }))
+    const path = (series: string, state: string) => markup.match(
+      new RegExp(`<path[^>]*d="([^"]+)"[^>]*data-chart-path-state="${state}"[^>]*data-chart-series="${series}"`),
+    )?.[1]
+    return { markup, bands, path }
+  }
+
+  const xsOf = (d: string): number[] => d.match(/-?[\d.]+/g)!.map(Number).filter((_, index) => index % 2 === 0)
+
+  it.each(['15m', '30m', '60m', '2h', '4h'] as const)('%s panned over a 30-minute hole: bands, a split chat line and the notice', chartWindow => {
+    const payload = withMissing(holeFrom, holeTo)
+    const rollups = prepareWindow(payload, chartWindow)
+    const span = WINDOW_SECONDS[chartWindow]
+    // Centre the viewport on the hole. A 15m or 30m range is no wider than the
+    // hole, so it starts 5 minutes before it to keep real data on its left.
+    const startSeconds = span <= holeTo - holeFrom ? holeFrom - 5 * 60 : Math.round((holeFrom + holeTo) / 2 - span / 2)
+    const viewport = { startSeconds, endSeconds: startSeconds + span }
+    expect(describeRollupGap(rollups, true)).toBe('Missing chat data from 05:10:00 to 05:40:00')
+    const { bands, path } = drawn(rollups, viewport)
+    expect(bands.length, chartWindow).toBeGreaterThan(0)
+    // Fully missing points are drawn at the full no-data shade; nothing of the
+    // chat line may sit inside their span.
+    const solid = bands.filter(band => band.opacity === 0.5)
+    expect(solid.length, chartWindow).toBeGreaterThan(0)
+    const solidFrom = Math.min(...solid.map(band => band.x))
+    const solidTo = Math.max(...solid.map(band => band.x + band.width))
+    const chat = path('chat', 'overview')
+    expect(chat, chartWindow).toBeTruthy()
+    const xs = xsOf(chat!)
+    expect(xs.some(x => x > solidFrom + 0.5 && x < solidTo - 0.5), chartWindow).toBe(false)
+    if (span > holeTo - holeFrom) {
+      // The hole has real data on both sides: the line breaks in two.
+      expect(chat!.match(/M/g), chartWindow).toHaveLength(2)
+      expect(xs.some(x => x < solidFrom)).toBe(true)
+      expect(xs.some(x => x > solidTo)).toBe(true)
+    } else {
+      // 15m: real data only before the hole, then the line stops.
+      expect(Math.max(...xs)).toBeLessThanOrEqual(solidFrom + 0.5)
+    }
+  })
+
+  it.each(['15m', '30m', '60m', '2h', '4h'] as const)('%s following Now with a missing tail stops the lines at the band', chartWindow => {
+    // Tracking stopped 10 minutes before Now: coverage ends there, no rows
+    // after it, and the backend reports the rest of the stream missing.
+    const tailFrom = Math.floor(CURRENT_OFFSET_SECONDS / 60) * 60 - 10 * 60
+    const payload = withMissing(tailFrom, CURRENT_OFFSET_SECONDS, tailFrom)
+    expect(hasFullTimelineRollups(payload, makeFullHistoryActivation(payload))).toBe(true)
+    const rollups = prepareWindow(payload, chartWindow)
+    const viewport = resolveViewport({
+      durationSeconds: CURRENT_OFFSET_SECONDS,
+      zoomSeconds: WINDOW_SECONDS[chartWindow],
+      followEnd: true,
+      currentViewport: { startSeconds: 0, endSeconds: CURRENT_OFFSET_SECONDS },
+    })
+    expect(viewport.endSeconds).toBeGreaterThanOrEqual(CURRENT_OFFSET_SECONDS - 60)
+    const { bands, path } = drawn(rollups, viewport)
+    // A thinned point (2h/4h) that holds both a real and a missing minute keeps
+    // its real value under a lighter band; fully missing points get the full
+    // shade, and no line may reach into them.
+    const solid = bands.filter(band => band.opacity === 0.5)
+    expect(solid.length, chartWindow).toBeGreaterThan(0)
+    const bandStart = Math.min(...solid.map(band => band.x))
+    expect(Math.max(...solid.map(band => band.x + band.width))).toBeGreaterThan(bandStart)
+    for (const series of ['chat', 'emotes']) {
+      const d = path(series, 'overview')
+      expect(d, `${chartWindow} ${series}`).toBeTruthy()
+      expect(Math.max(...xsOf(d!)), `${chartWindow} ${series}`).toBeLessThanOrEqual(bandStart + 0.5)
+    }
+  })
+})

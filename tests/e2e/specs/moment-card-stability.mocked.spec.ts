@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import type { Locator, Page } from '@playwright/test'
+import type { BrowserContext, Locator, Page, Route } from '@playwright/test'
 import { test, expect } from '../helpers/testFixtures.ts'
 import { openTwitchChannel } from '../helpers/mockTwitch.ts'
 import { waitForPulseRoot } from '../helpers/assertions.ts'
@@ -325,4 +325,144 @@ test('live: a chart card opening above a pressed clip stays in view and moves th
   const moved = after.y - before.y
   expect(moved).toBeGreaterThan(0)
   expect(moved).toBeLessThan(card.height)
+})
+
+/**
+ * pulse-live-ready.json with three ranked spikes; `peaks` replaces them when
+ * given, and `chatAt` overrides a minute's chat count (the ranking reads the
+ * moment's own minute, not only the peak's score).
+ */
+function liveWithPeaks(peaks?: unknown[], chatAt: Record<number, number> = {}) {
+  const live = JSON.parse(readFileSync(new URL('../fixtures/api/pulse-live-ready.json', import.meta.url), 'utf8'))
+  const [strongest] = live.peaks
+  live.fullRollups = live.fullRollups.map((rollup: { offsetSeconds: number; chatCount: number }) =>
+    rollup.offsetSeconds in chatAt ? { ...rollup, chatCount: chatAt[rollup.offsetSeconds] } : rollup)
+  return {
+    ...live,
+    // Live Top Moments lists more than one moment only after 5 completed
+    // recent minutes (LIVE_HEAT_MIN_COMPLETED_ROLLUPS); the fixture's recent
+    // window has 3, so serve its full minutes as the recent window too.
+    rollups: live.fullRollups,
+    peaks: peaks ?? [
+      strongest,
+      { ...strongest, offsetSeconds: 2400, score: 80, chatCount: 60, topEmotes: [] },
+      { ...strongest, offsetSeconds: 1200, score: 70, chatCount: 40, topEmotes: [] },
+    ],
+  }
+}
+
+/** Serve the live channel (and its by-stream full request) from `current()`. */
+async function serveLive(context: BrowserContext, current: () => unknown): Promise<{ count: () => number }> {
+  let count = 0
+  const serve = async (route: Route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname.endsWith('/fixturechan') || url.pathname.startsWith('/v1/extension/pulse/streams/')) {
+      count += 1
+      // As in production, only a full-window request carries fullRollups; a
+      // recent poll answers with the recent tail alone.
+      const body = current() as Record<string, unknown>
+      const full = url.searchParams.get('window') === 'full'
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify(full ? body : { ...body, fullRollups: undefined }) })
+    } else {
+      await route.fallback()
+    }
+  }
+  await context.route('https://api.streampulse.stream/v1/extension/pulse/channels/fixturechan*', serve)
+  await context.route('https://api.streampulse.stream/v1/extension/pulse/streams/**', serve)
+  return { count: () => count }
+}
+
+// Codex audit (#70): "The chart locks on that moment, and its own spike marker
+// lights up. Clicking the locked column again releases the lock." Spike
+// markers are off by default, so the test turns them on first.
+test('live: a Top Moments row pick lights its own spike marker, and clicking the locked column releases it', async ({ extension, prepare }, info) => {
+  await prepare({ scenario: 'live-ready', twitchKind: 'live', storage: SIDEBAR })
+  await serveLive(extension.context, () => liveWithPeaks())
+  const { root, rows, card } = await openPanel(extension.page, 1000)
+  const chart = root.locator('svg[data-testid="pulse-overview-chart"]')
+  const markers = chart.locator('[data-chart-moment-marker="true"]')
+  const marker = (offset: number) => chart.locator(`[data-chart-moment-marker="true"][data-chart-moment-marker-offset="${offset}"]`)
+  await expect(rows).toHaveCount(3)
+  await expect(markers).toHaveCount(0)
+  await root.getByRole('button', { name: 'Show spike markers' }).click()
+  await expect(markers).toHaveCount(3)
+  await expect(chart.locator('[data-chart-moment-marker-state="active"]')).toHaveCount(0)
+
+  for (const [index, offset] of [[0, 3600], [1, 2400]] as const) {
+    await rows.nth(index).click()
+    await expect(card).toHaveAttribute('data-top-moment-card', 'selected')
+    await expect(chart).toHaveAttribute('data-chart-locked-index', /\d+/)
+    await expect(marker(offset)).toHaveAttribute('data-chart-moment-marker-state', 'active')
+    // Only the picked moment lights; the other two rest.
+    await expect(chart.locator('[data-chart-moment-marker-state="active"]')).toHaveCount(1)
+    await expect(chart.locator('[data-chart-moment-marker-state="resting"]')).toHaveCount(2)
+  }
+  await chart.scrollIntoViewIfNeeded()
+  await info.attach('spike-marker-active.png', { body: await chart.screenshot(), contentType: 'image/png' })
+
+  // Click the locked column to release the lock: the lit marker's x, low in
+  // the plot so the click lands on the column and not on the marker's own
+  // diamond (which picks its moment instead).
+  const lit = (await marker(2400).boundingBox())!
+  const plot = (await chart.locator('[data-chart-scrubber="true"]').boundingBox())!
+  const diamond = lit.y + lit.height / 2
+  const y = plot.y + plot.height * 0.92
+  expect(Math.abs(y - diamond)).toBeGreaterThan(12)
+  await extension.page.mouse.click(lit.x + lit.width / 2, y)
+  await expect(chart).not.toHaveAttribute('data-chart-locked-index')
+  await expect(marker(2400)).toHaveAttribute('data-chart-moment-marker-state', 'resting')
+  await expect(chart.locator('[data-chart-moment-marker-state="active"]')).toHaveCount(0)
+  await info.attach('spike-marker-released.png', { body: await chart.screenshot(), contentType: 'image/png' })
+})
+
+// Codex audit (#70): "Jump and Open Analytics keep keyboard focus through a
+// live refresh." The unit tests re-render with new data; this drives a real
+// worker poll at the 15 s product minimum, so the test allows two poll waits.
+test('live: Jump and Open Analytics keep keyboard focus through a real worker poll', async ({ extension, prepare }, info) => {
+  test.setTimeout(120_000)
+  await prepare({ scenario: 'live-ready', twitchKind: 'live', storage: { ...SIDEBAR, pollIntervalMs: 15_000, autoUpdateEnabled: true } })
+  const base = liveWithPeaks()
+  const [strongest, second, third] = base.peaks
+  let current: unknown = base
+  const served = await serveLive(extension.context, () => current)
+  const { rows, card } = await openPanel(extension.page, 1000)
+  await expect(rows).toHaveCount(3)
+  await expect(card).toHaveAttribute('data-top-moment-card', 'strongest')
+  expect(await cardLabel(card)).toMatch(/^Strongest moment at 01:00/)
+  const action = (name: string) => card.locator(`[data-moment-inspector-action="${name}"]`)
+  const shadowActive = (name: string) => action(name).evaluate(el => (el.getRootNode() as ShadowRoot).activeElement === el)
+  const nextPoll = async () => {
+    const before = served.count()
+    await expect.poll(served.count, { timeout: 25_000, intervals: [500] }).toBeGreaterThan(before)
+  }
+
+  // Jump, reached from the keyboard, on the strongest moment. The next poll
+  // ranks a new strongest moment at 00:40; the card shows it on the same nodes.
+  const jump = action('jump')
+  await jump.focus()
+  await expect.poll(() => shadowActive('jump')).toBe(true)
+  const jumpHandle = await jump.elementHandle()
+  current = liveWithPeaks([{ ...second, score: 99, chatCount: 400 }, strongest, third], { 2400: 400 })
+  await nextPoll()
+  await expect.poll(() => cardLabel(card), { timeout: 10_000 }).toMatch(/^Strongest moment at 00:40/)
+  expect(await jumpHandle!.evaluate(el => el.isConnected)).toBe(true)
+  expect(await jumpHandle!.evaluate(el => (el.getRootNode() as ShadowRoot).activeElement === el)).toBe(true)
+  await info.attach('focus-jump-after-poll.png', { body: await card.screenshot(), contentType: 'image/png' })
+
+  // Open Analytics on a picked moment, through a poll that refines it.
+  await rows.filter({ hasText: '00:20' }).first().click()
+  await expect(card).toHaveAttribute('data-top-moment-card', 'selected')
+  expect(await cardLabel(card)).toMatch(/^Selected moment at 00:20/)
+  const analytics = action('analytics')
+  await analytics.focus()
+  await expect.poll(() => shadowActive('analytics')).toBe(true)
+  const analyticsHandle = await analytics.elementHandle()
+  current = liveWithPeaks([{ ...second, score: 99, chatCount: 400 }, strongest, { ...third, reactionApexOffsetSeconds: 1231, refinementStatus: 'refined' }], { 2400: 400 })
+  await nextPoll()
+  // Give the refreshed payload time to render before checking focus.
+  await extension.page.waitForTimeout(1_000)
+  expect(await cardLabel(card)).toMatch(/^Selected moment at 00:20/)
+  expect(await analyticsHandle!.evaluate(el => el.isConnected)).toBe(true)
+  expect(await analyticsHandle!.evaluate(el => (el.getRootNode() as ShadowRoot).activeElement === el)).toBe(true)
+  await info.attach('focus-analytics-after-poll.png', { body: await card.screenshot(), contentType: 'image/png' })
 })
