@@ -52,7 +52,12 @@ export default function Privacy() {
         <p data-testid="privacy-continue-with-twitch">
           <strong>Continue with Twitch.</strong> StreamPulse asks Twitch only to confirm who you are.
           Twitch returns a signed, one-time sign-in proof that StreamPulse checks against Twitch's
-          public keys. StreamPulse stores a keyed hash of your Twitch user ID, an internal account
+          public keys. That proof arrives in the page address. The website removes it from the
+          address bar as soon as the page opens, but your browser has already saved the full address
+          in its history on this device, where anyone using this browser profile could read your
+          Twitch user ID, display name and picture link from it. It cannot be used to sign in again,
+          and StreamPulse never sends that address anywhere. Clearing your browser history for
+          streampulse.stream removes it. StreamPulse stores a keyed hash of your Twitch user ID, an internal account
           identifier, and creation, sign-in and activity times. Your Twitch display name and picture
           are shown after sign-in but not stored on StreamPulse's servers. On the website, only that
           browser tab keeps them; in the extension, they're kept for the current browser session.

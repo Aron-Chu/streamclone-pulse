@@ -132,6 +132,11 @@ describe('Supporter legal copy', () => {
     const twitch = screen.getByTestId('privacy-continue-with-twitch').textContent ?? ''
     expect(twitch).toMatch(/keyed hash of your Twitch user ID/)
     expect(twitch).toMatch(/never receives your Twitch password, Twitch email or a\s+Twitch access token/)
+    // replaceState cannot reach the profile's browsing history, so the policy
+    // must not imply the sign-in proof leaves no trace on the device.
+    expect(twitch).toMatch(/your browser has already saved the full address\s+in its history on this device/)
+    expect(twitch).toMatch(/Twitch user ID, display name and picture link/)
+    expect(twitch).toMatch(/cannot be used to sign in again/)
   })
 
   it('Terms separates losing Twitch access from cancelling billing in Stripe', () => {
