@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { PRIVACY_PATH, PUBLIC_SUPPORT_URL, REFUNDS_PATH, SUPPORTER_PATH } from '../../lib/externalLinks'
 import { PrelaunchNotice } from './PrelaunchNotice'
+import { SUPPORTER_PERKS, SupporterPerkItems } from '../../ui/components/SupporterPerks'
 
 /**
  * Terms of use for the portal, the Chrome extension and the Supporter
@@ -24,7 +25,7 @@ export default function Terms() {
           </div>
           <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Terms of Use</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            Last updated: October 8, 2026 · Applies to{' '}
+            Last updated: October 9, 2026 · Applies to{' '}
             <code className="font-mono text-zinc-300">streampulse.stream</code>, the StreamPulse
             Chrome extension, and the Pulse Supporter subscription.
           </p>
@@ -111,9 +112,13 @@ export default function Terms() {
             Cancelling stops future charges and takes effect at the
             end of the period you already paid for; your access continues until then.
           </li>
-          <li>
-            <strong>What you get:</strong> a private Pulse header accent, three private overlay
-            finishes, and private support recognition. Nothing else is promised.
+          <li data-testid="terms-supporter-benefits">
+            <strong>What you get:</strong> every Supporter perk the extension gives, the same list
+            as on the <Link to={SUPPORTER_PATH}>Supporter page</Link>:
+            <ul>
+              <SupporterPerkItems />
+            </ul>
+            {SUPPORTER_PERKS.onlyYou} {SUPPORTER_PERKS.moved} Nothing else is promised.
           </li>
           <li>
             <strong>What you do not get:</strong> no public Twitch chat badge — it is not included —
