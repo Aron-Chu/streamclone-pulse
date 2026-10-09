@@ -19,7 +19,7 @@ const f = vi.hoisted(() => ({
 }))
 // One real coordinator per test, reached through the same runtime module the
 // worker and the bookmark API both import.
-vi.mock('../src/background/supporterAccountRuntime.ts', () => ({ supporterAccount: {
+vi.mock('../src/background/supporterAccountRuntime.ts', () => ({ bindAccountDataForget: () => undefined, supporterAccount: {
   run: (action: 'status') => f.coordinator.run(action),
   localAccountId: () => f.coordinator.localAccountId(),
   withCredential: (operation: (token: string) => Promise<{ status: number }>, id?: string) => f.coordinator.withCredential(operation, id),

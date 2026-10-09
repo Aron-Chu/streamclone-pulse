@@ -541,7 +541,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
         setEntitlement(null)
         setStale(false)
         showAccount(response.account, true)
-        setNotice('You’re signed out everywhere. Every browser and extension that was signed in to this account has to sign in again. Nothing was deleted, and your subscription is unchanged.', 'account')
+        setNotice('You’re signed out everywhere. Every browser and extension that was signed in to this account has to sign in again. Nothing was deleted from your account, and your subscription is unchanged. This browser removed its signed-in watched history and notes.', 'account')
         void readEntitlement(false)
         void readBilling()
         return
@@ -843,8 +843,8 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   const equipped = perks && entitlement?.state === 'ready' && entitlement.cosmetics?.enabled ? entitlement.cosmetics.finish : null
   const cardLook: CardLook = { finish: look ? look.finish : perks ? equipped : SAMPLE_KIT.finish, paint: look?.paint ?? DEFAULT_SUPPORTER_PAINT, perks }
   const connected = linked !== null || renewalWaiting
-  const accountRow: [string, string] = signedInWithTwitch ? [profile ? `${ACCOUNT_COPY.signedInWithTwitch} as ${profile.displayName}` : ACCOUNT_COPY.signedInWithTwitch, 'Signing in stores a device credential in this extension. Sign out ends this device’s access.']
-    : connected ? ['Connected to this extension', 'An invited tester’s StreamPulse account. Sign out ends this device’s access.']
+  const accountRow: [string, string] = signedInWithTwitch ? [profile ? `${ACCOUNT_COPY.signedInWithTwitch} as ${profile.displayName}` : ACCOUNT_COPY.signedInWithTwitch, 'Signing in stores a device credential in this extension. Sign out ends this device’s access and removes its signed-in watched history and notes.']
+    : connected ? ['Connected to this extension', 'An invited tester’s StreamPulse account. Sign out ends this device’s access and removes its signed-in watched history and notes.']
     : identity.kind === 'unknown' ? [identity.reason === 'checking' ? 'Checking the connection…' : 'Connection status unavailable', 'Your free tools still work.']
     : ['Not signed in', ACCOUNT_COPY.freeTools]
   // Invited testers keep the existing device link, closed by default and
@@ -906,7 +906,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
             {/* Its own row: the account row already holds Sign out and the account switch. */}
             {everywhereOffered ? <div data-row="sign-out-everywhere">
               <dt>All devices</dt>
-              <dd>Every browser and extension<small>Sign out everywhere ends every website session and extension signed in to this account. Nothing is deleted.</small></dd>
+              <dd>Every browser and extension<small>Sign out everywhere ends every website session and extension signed in to this account. Nothing is deleted from your account.</small></dd>
               <dd className="pulse-account-link-actions"><button type="button" disabled={accountBusy || payBusy || signingIn !== null} onClick={() => { setConfirmDisconnect(false); setNotice('', 'account'); setEverywhere('ask') }}>{ACCOUNT_COPY.signOutEverywhere}</button></dd>
             </div> : null}
             {isSupporter && entitlement?.state === 'ready' ? <div data-row="billing">
@@ -941,7 +941,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
             {notice.text && notice.at === 'account' ? <p className="pulse-journey-notice">{notice.text}</p> : null}
           </div>
         </div>
-        {everywhereOffered && everywhere === 'ask' ? <div className="pulse-journey-confirm" role="group" aria-label="Confirm sign out everywhere" data-sign-out-everywhere="ask"><p>Sign out everywhere? This ends every StreamPulse website session and signs out every extension connected to this account, including this one. Nothing is deleted, and it does not cancel your subscription. Continue with Twitch with the same Twitch account to sign in again.</p><div className="pulse-account-link-actions pulse-journey-actions"><button type="button" disabled={everywhereBusy || accountBusy || payBusy} aria-busy={everywhereBusy || undefined} onClick={() => void signOutEverywhere()}>{everywhereBusy ? 'Signing out everywhere…' : 'Confirm sign out everywhere'}</button><button type="button" disabled={everywhereBusy} onClick={() => setEverywhere(null)}>Stay signed in</button></div></div> : null}
+        {everywhereOffered && everywhere === 'ask' ? <div className="pulse-journey-confirm" role="group" aria-label="Confirm sign out everywhere" data-sign-out-everywhere="ask"><p>Sign out everywhere? This ends every StreamPulse website session and signs out every extension connected to this account, including this one. Nothing is deleted from your account, and it does not cancel your subscription. Each extension removes its signed-in watched history and notes. Continue with Twitch with the same Twitch account to sign in again.</p><div className="pulse-account-link-actions pulse-journey-actions"><button type="button" disabled={everywhereBusy || accountBusy || payBusy} aria-busy={everywhereBusy || undefined} onClick={() => void signOutEverywhere()}>{everywhereBusy ? 'Signing out everywhere…' : 'Confirm sign out everywhere'}</button><button type="button" disabled={everywhereBusy} onClick={() => setEverywhere(null)}>Stay signed in</button></div></div> : null}
         {everywhereOffered && everywhere === 'confirm_identity' ? <div className="pulse-journey-confirm" role="group" aria-label={ACCOUNT_COPY.confirmHeading} data-sign-out-everywhere="confirm-identity"><p><strong>{ACCOUNT_COPY.confirmHeading}</strong></p><p>{ACCOUNT_COPY.confirmEverywhereBody}</p><div className="pulse-account-link-actions pulse-journey-actions"><button className="pulse-twitch-signin" type="button" disabled={everywhereBusy} aria-busy={everywhereBusy || undefined} onClick={() => void signOutEverywhere(true)}><TwitchGlitch />{everywhereBusy ? ACCOUNT_COPY.openingTwitch : ACCOUNT_COPY.continueWithTwitch}</button><button type="button" disabled={everywhereBusy} onClick={() => setEverywhere(null)}>Not now</button></div></div> : null}
         {confirmDisconnect ? <div className="pulse-journey-confirm" role="group" aria-label="Confirm sign out"><p>Sign out of this extension? This does not cancel your subscription or stop a payment already in progress. {twitchOn ? 'Continue with Twitch with the same Twitch account to see it here again.' : 'Connect this extension again to see it here.'}</p><div className="pulse-account-link-actions pulse-journey-actions"><button type="button" disabled={accountBusy || payBusy} onClick={() => void confirmDisconnection()}>Confirm sign out</button><button type="button" onClick={() => setConfirmDisconnect(false)}>Stay signed in</button></div></div> : null}
         {linked && entitlement?.state === 'ready' && entitlement.accountKind === 'installation' && entitlement.installationAccountsEnabled === true ? <details className="pulse-journey-devices" onToggle={event => { if (event.currentTarget.open && devices === null) void listDevices() }}>

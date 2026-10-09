@@ -1479,7 +1479,7 @@ describe('Sign out everywhere (Twitch sign-in on)', () => {
       expect(everywhereCalls(view)).toHaveLength(0)
       const ask = view.host.querySelector('[data-sign-out-everywhere="ask"]')!
       expect(ask.getAttribute('role')).toBe('group')
-      expect(ask.textContent).toContain('signs out every extension connected to this account, including this one. Nothing is deleted, and it does not cancel your subscription.')
+      expect(ask.textContent).toContain('signs out every extension connected to this account, including this one. Nothing is deleted from your account, and it does not cancel your subscription.')
       await view.click('Stay signed in')
       expect(view.host.querySelector('[data-sign-out-everywhere]')).toBeNull()
       expect(everywhereCalls(view)).toHaveLength(0)
@@ -1487,7 +1487,7 @@ describe('Sign out everywhere (Twitch sign-in on)', () => {
       await view.click('Confirm sign out everywhere')
       expect(everywhereCalls(view)).toEqual([{ type: 'TWITCH_SIGN_IN', action: 'sign_out_everywhere' }])
       expect(accountNotice(view.host)).toContain('You’re signed out everywhere.')
-      expect(accountNotice(view.host)).toContain('Nothing was deleted, and your subscription is unchanged.')
+      expect(accountNotice(view.host)).toContain('Nothing was deleted from your account, and your subscription is unchanged.')
       // Signed out here too, as a choice: not "You were signed out on this browser".
       expect(accountRow(view.host)).toContain('Not signed in')
       expect(view.text()).not.toContain('You were signed out on this browser')

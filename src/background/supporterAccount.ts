@@ -29,6 +29,13 @@ type Ports = {
   writeIntent?: (value: FinishIntent | null) => Promise<void>
   readInstallationKey?: () => Promise<unknown>
   writeInstallationKey?: (value: InstallationBootstrap | null) => Promise<void>
+  /**
+   * This device left `accountId`: an explicit sign-out, Sign out everywhere,
+   * or the server rejecting its credential (401). The owner removes its local
+   * copy of that account's data. Called, never awaited, inside this queue: the
+   * owner serializes the removal with work that itself waits on this queue.
+   */
+  accountForgotten?: (accountId: string) => void
 }
 const secret =(value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)
 const id = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9-]{36}$/.test(value)
@@ -199,6 +206,7 @@ export class SupporterAccountCoordinator {
       const raw = object(await this.ports.read())
       const credentials = raw.kind === 'linked' ? linked(raw) : raw.kind === 'refreshing' && raw.installation === true ? linked(raw.credentials) : null
       if (credentials?.accountId !== accountId) return this.perform('status', generation)
+      this.forgetAccount(accountId)
       await this.ports.writeInstallationKey?.(null)
       await this.ports.writeIntent?.(null)
       this.lastProjection = undefined
@@ -275,7 +283,7 @@ export class SupporterAccountCoordinator {
       const result = await operation(credentials.token)
       if (generation !== this.generation) { await discardStale?.(result).catch(() => undefined); throw new Error('account_identity_changed') }
       if (result.status === 401) {
-        await this.clear('relink_required')
+        await this.rejected(credentials.accountId)
         throw new Error('account_authorization_required')
       }
       return result
@@ -307,7 +315,7 @@ export class SupporterAccountCoordinator {
         const result = await this.ports.request('/v1/billing/supporter', undefined, credentials.token)
         if (generation !== this.generation) return { state: 'not_linked' }
         if (result.status === 401) {
-          await this.clear('relink_required')
+          await this.rejected(credentials.accountId)
           return { state: 'not_linked' }
         }
         const projected = projectEntitlement(result, credentials.accountId, this.ports.environments ?? ['live'], performance.now() - started)
@@ -379,7 +387,7 @@ export class SupporterAccountCoordinator {
       const result = await this.ports.request('/v1/billing/cosmetics', cosmetics, credentials.token)
       if (generation !== this.generation) return { state: 'not_linked' }
       if (result.status === 401) {
-        await this.clear('relink_required')
+        await this.rejected(credentials.accountId)
         return { state: 'not_linked' }
       }
       if (result.status !== 200) throw new Error('finish_intent_refused')
@@ -428,6 +436,17 @@ export class SupporterAccountCoordinator {
     return { state } as SupporterAccountState
   }
 
+  /** Best effort; a failure here never blocks signing out. */
+  private forgetAccount(accountId: string): void {
+    try { this.ports.accountForgotten?.(accountId) } catch { /* the credential is still cleared */ }
+  }
+
+  /** The server rejected this device's credential (401): signed out here, and its local copy goes. */
+  private async rejected(accountId: string): Promise<SupporterAccountState> {
+    this.forgetAccount(accountId)
+    return this.clear('relink_required')
+  }
+
   private async discardCredential(credentials: Linked): Promise<SupporterAccountState> {
     return this.revoke(credentials.token)
   }
@@ -454,7 +473,7 @@ export class SupporterAccountCoordinator {
       if (!credentials || generation !== this.generation) return false
       const result = await this.ports.request('/v1/billing/cosmetics', value, credentials.token)
       if (generation !== this.generation) return false
-      if (result.status === 401) await this.clear('relink_required')
+      if (result.status === 401) await this.rejected(credentials.accountId)
       if (result.status !== 200) return false
       // An explicit choice supersedes any earlier pre-purchase choice, and open
       // Twitch tabs apply it now instead of at their next scheduled check.
@@ -482,7 +501,11 @@ export class SupporterAccountCoordinator {
       // Deliberately leaving an account also abandons a pending finish choice.
       await this.ports.writeIntent?.(null)
       this.lastProjection = undefined
-      if (credentials) return this.revoke(credentials.token)
+      if (credentials) {
+        // Before any network I/O: a failed revocation must not keep the copy.
+        this.forgetAccount(credentials.accountId)
+        return this.revoke(credentials.token)
+      }
       if (raw.kind === 'refreshing') this.revocationUnconfirmed = true
       // Clear before network I/O so a failed request cannot keep local access.
       await this.ports.write(null)
@@ -516,6 +539,8 @@ export class SupporterAccountCoordinator {
       const retryMs = unattemptedRefreshRetryMs(result)
       if (retryMs) return this.keepUnrenewed(credentials, retryMs)
       if (installation && (result.status >= 500 || result.status === 408)) return renewalWaiting()
+      // A refresh the server rejects outright: the session was revoked.
+      if (result.status === 401) return this.rejected(credentials.accountId)
       const next = linked(result.body)
       if (result.status !== 200 || !next || next.accountId !== credentials.accountId || next.deviceId !== credentials.deviceId) return this.clear('relink_required')
       this.renewalPause = null

@@ -1,11 +1,11 @@
 import { createPulseBookmark, deletePulseBookmark, fetchPulseBookmarks } from './api.ts'
 import { isDeviceCredentialInvalidatedError } from './deviceAuth.ts'
 import { DEFAULT_BACKEND_URL, getBackendUrl } from '../shared/storage.ts'
-import { supporterAccount } from './supporterAccountRuntime.ts'
+import { bindAccountDataForget, supporterAccount } from './supporterAccountRuntime.ts'
 import type { BookmarksState, MyMomentsRecent, MyMomentsRequest, MyMomentsSnapshot } from '../shared/myMoments.ts'
 import type { BackgroundResponse, ListBookmarksMessage, PulseBookmark, SaveBookmarkMessage } from '../shared/messages.ts'
 import { replayAvailability, type LibraryMoment, type MomentReference } from '../ui/library/model.ts'
-import { addDeviceBookmark, bookmarkIdentity, momentIdentity as identity, personalTransaction, recordWatched } from './myMomentsStore.ts'
+import { addDeviceBookmark, bookmarkIdentity, deletePersonal, momentIdentity as identity, personalTransaction, recordWatched } from './myMomentsStore.ts'
 
 export { replayAvailability }
 const bookmarkMoment = (b: PulseBookmark, note: string): LibraryMoment => ({ id: b.id, channel: b.login, title: b.label || 'Saved moment', vodId: b.vodId ?? null,
@@ -120,6 +120,18 @@ async function recent(scope: string): Promise<MyMomentsRecent> {
   return { watched, deviceSaves: device.bookmarks.length, latestSave: latest ? reference(bookmarkMoment(latest, '')) : null }
 }
 let queue: Promise<unknown> = Promise.resolve()
+/**
+ * This device left the account (Sign out, Sign out everywhere, or a revoked
+ * credential): its copy of that account's watched history and notes goes.
+ * Saves made without an account (the `|local` scope) stay. Queued behind any
+ * My Moments request already under way, so none can write the copy back.
+ */
+export function forgetAccountScope(accountId: string): Promise<void> {
+  const run = queue.then(() => deletePersonal(`${DEFAULT_BACKEND_URL}|account:${accountId}`))
+  queue = run.catch(() => undefined)
+  return run
+}
+bindAccountDataForget(accountId => { void forgetAccountScope(accountId).catch(() => undefined) })
 export function handleMyMoments(message: MyMomentsRequest, sender: chrome.runtime.MessageSender): Promise<unknown> {
   const run = queue.then(async () => {
     if (privateBrowsing(sender)) throw new Error('My Moments is unavailable in private browsing.')

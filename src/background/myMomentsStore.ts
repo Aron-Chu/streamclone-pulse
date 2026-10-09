@@ -48,6 +48,18 @@ async function database(): Promise<IDBDatabase> {
     request.onerror = () => reject(request.error)
   })
 }
+/** Removes one scope's record: an account's copy (history, notes) after this device leaves it. */
+export async function deletePersonal(scope: string): Promise<void> {
+  const db = await database()
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('personal', 'readwrite')
+      tx.objectStore('personal').delete(scope)
+      tx.oncomplete = () => resolve()
+      tx.onerror = tx.onabort = () => reject(tx.error ?? new Error('Local storage unavailable'))
+    })
+  } finally { db.close() }
+}
 export async function personalTransaction(scope: string, update?: (data: PersonalData) => PersonalData): Promise<PersonalData> {
   const db = await database()
   try {

@@ -122,7 +122,7 @@ test.describe('packaged Sign out everywhere', () => {
     await expect(everywhere).toBeVisible()
     await everywhere.click()
     const ask = page.locator('[data-sign-out-everywhere="ask"]')
-    await expect(ask).toContainText('Nothing is deleted, and it does not cancel your subscription.')
+    await expect(ask).toContainText('Nothing is deleted from your account, and it does not cancel your subscription.')
     expect(revokes).toEqual([])
     await page.screenshot({ path: test.info().outputPath('sign-out-everywhere-ask.png'), fullPage: true })
 
