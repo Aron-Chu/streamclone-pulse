@@ -172,7 +172,14 @@ test.describe('CWS extension-on-Twitch screenshots', () => {
     await assertPulseShadowContains(extension.page, /Viewers|Chat \/ min|Collecting|1,180|Just Chatting/i)
     // Bring the chart into view and point at a minute, so the readout shows.
     const chart = extension.page.locator(`#${PULSE_ROOT_ID} svg[data-testid="pulse-overview-chart"]`)
-    await chart.evaluate(element => element.scrollIntoView({ block: 'end' }))
+    await chart.evaluate(element => {
+      element.scrollIntoView({ block: 'end' })
+      // 'end' leaves the stream-analytics row half under the CHAT/PULSE tabs;
+      // scroll a little further so the frame starts cleanly at the stats.
+      let node: Element | null = element.parentElement
+      while (node && !(node.scrollHeight > node.clientHeight && /auto|scroll/.test(getComputedStyle(node).overflowY))) node = node.parentElement
+      node?.scrollBy(0, 20)
+    })
     await extension.page.waitForTimeout(300)
     const box = await chart.boundingBox()
     if (box) await extension.page.mouse.move(box.x + box.width * 0.94, box.y + box.height * 0.6)
@@ -244,8 +251,10 @@ test.describe('CWS extension-on-Twitch screenshots', () => {
     await expect(root.getByRole('heading', { name: 'Quick settings' })).toBeVisible()
     const card = root.locator('[data-settings-host-cta="supporter"]')
     await expect(card).toBeVisible()
-    // The Supporter card's chat stage is scripted motion: let it draw its first lines.
-    await extension.page.waitForTimeout(2500)
+    // The Supporter card's chat stage is scripted motion: wait until your own
+    // line (crest and paint) has arrived, then let its entrance settle.
+    await expect(card.locator('.spk-sup').first()).toBeVisible({ timeout: 30_000 })
+    await extension.page.waitForTimeout(900)
     await addCaption(extension.page, 'Settings one click away', 'See what Pulse is charting, and preview Pulse Supporter cosmetics. Sign-ups are not open yet.')
     await writeExactStoreShot(extension.page, '04-quick-settings.png')
   })
@@ -255,6 +264,10 @@ test.describe('CWS extension-on-Twitch screenshots', () => {
     const page = extension.page
     await page.setViewportSize({ width: W, height: H })
     await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#help`)
+    // Help & Feedback ships with #74. A branch without it has no fifth frame to
+    // take; the store set is captured from the RC, which has every 0.2.2 PR.
+    await expect(page.getByText('Updates & Changelog').first()).toBeVisible()
+    test.skip(await page.getByText('Help & Feedback').count() === 0, 'this build has no Help & Feedback section')
     await expect(page.getByText('Send feedback', { exact: true }).first()).toBeVisible()
     await page.waitForTimeout(1200)
     await writeExactStoreShot(page, '05-help-feedback.png')
