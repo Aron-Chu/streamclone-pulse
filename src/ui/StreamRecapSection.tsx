@@ -268,9 +268,9 @@ function listedMoment<T extends { offsetSeconds: number; score: number }>(items:
     ?? items.find(item => Math.abs(item.offsetSeconds - peak.offsetSeconds) <= 60)
 }
 
-/** Escape in a list whose pick the card shows goes back to the strongest. */
-function clearOnEscape(card: TopMomentCardProps | null) {
-  return (event: { key: string }) => { if (event.key === 'Escape' && card?.selected) card.onClear() }
+/** Escape in a list whose pick the card shows closes the card. */
+function clearOnEscape(card: TopMomentCardProps) {
+  return (event: { key: string }) => { if (event.key === 'Escape' && card.point) card.onClear() }
 }
 
 function RecapMomentsList({
@@ -296,8 +296,8 @@ function RecapMomentsList({
   rollups: ExtensionRollup[]
   peaks: ExtensionPeak[] | undefined
   selectedKey: string | null
-  /** The card above the list: the moment picked in it, or the strongest. */
-  card: TopMomentCardProps | null
+  /** The card above the list, which shows a moment picked in it. */
+  card: TopMomentCardProps
   onSelect: (key: string) => void
   onHighlight: (offsetSeconds: number | null) => void
 }) {
@@ -307,34 +307,42 @@ function RecapMomentsList({
   return (
     <>
       <span style={styles.listCaption}>Top moments</span>
-      {card ? <TopMomentCard {...card} /> : null}
-      <div style={styles.momentList} onKeyDown={clearOnEscape(card)}>
-        {shown.map(moment => {
-          const key = recapMomentKey(payload.streamId, moment)
-          const point = recapMomentToLiveHeatPoint(moment, catalog, payload.startedAt, rollups, peaks)
-          return (
-            <PulseMomentRow
-              key={key}
-              point={point}
-              backendUrl={backendUrl}
-              selected={key === selectedKey}
-              onHighlight={onHighlight}
-              onSelect={() => onSelect(key)}
-              controls={card?.id}
-            />
-          )
-        })}
+      {/*
+        The card, the list and its Show more control share one grid child, so
+        the card's slot never adds or drops a grid gap, and a row that leaves
+        the list hands focus on to Show more (PulseMomentRow).
+      */}
+      <div>
+        <TopMomentCard {...card} />
+        <div style={styles.momentList} onKeyDown={clearOnEscape(card)}>
+          {shown.map(moment => {
+            const key = recapMomentKey(payload.streamId, moment)
+            const point = recapMomentToLiveHeatPoint(moment, catalog, payload.startedAt, rollups, peaks)
+            return (
+              <PulseMomentRow
+                key={key}
+                point={point}
+                backendUrl={backendUrl}
+                selected={key === selectedKey}
+                onHighlight={onHighlight}
+                // Picking the moment the card shows again closes the card.
+                onSelect={() => (card.point && key === selectedKey ? card.onClear() : onSelect(key))}
+                controls={card.point ? card.id : undefined}
+              />
+            )
+          })}
+        </div>
+        {expanded || hiddenCount > 0 ? (
+          <button type="button" className="pulse-secondary-btn" style={styles.momentsExpandButton} data-chart-action="true" onClick={onToggleExpanded}>
+            <span>
+              {expanded ? 'Show less' : `Show ${hiddenCount} more moment${hiddenCount === 1 ? '' : 's'}`}
+            </span>
+            <span style={styles.momentsExpandChevron} aria-hidden="true">
+              {expanded ? '▾' : '▸'}
+            </span>
+          </button>
+        ) : null}
       </div>
-      {expanded || hiddenCount > 0 ? (
-        <button type="button" className="pulse-secondary-btn" style={styles.momentsExpandButton} data-chart-action="true" onClick={onToggleExpanded}>
-          <span>
-            {expanded ? 'Show less' : `Show ${hiddenCount} more moment${hiddenCount === 1 ? '' : 's'}`}
-          </span>
-          <span style={styles.momentsExpandChevron} aria-hidden="true">
-            {expanded ? '▾' : '▸'}
-          </span>
-        </button>
-      ) : null}
     </>
   )
 }
@@ -400,9 +408,6 @@ function RecapReadyContent({
     : overridePoint
   // A listed moment, however it was picked, shows in the card above the list.
   const listedPick = userSelectedRef.current && selectedMoment != null
-  const topPoint = listedPick
-    ? selectedPoint
-    : heroMoment && recapMomentToLiveHeatPoint(heroMoment, catalog, payload.startedAt, rollups, payload.peaks)
 
   // A minute, clip or highlight the list does not rank opens its own card.
   // Hold it for one exit window so clearing a selection fades and collapses
@@ -592,15 +597,14 @@ function RecapReadyContent({
         rollups={rollups}
         peaks={payload.peaks}
         selectedKey={selectedKey}
-        card={topPoint ? {
+        card={{
           id: cardId,
-          point: topPoint,
-          selected: listedPick,
+          point: listedPick ? selectedPoint : null,
           backendUrl,
           onJump,
           onAnalytics,
           onClear: clearRecapSelection,
-        } : null}
+        }}
         onSelect={key => pick(key)}
         onHighlight={setHoveredOffset}
       />
@@ -700,16 +704,14 @@ function OfflineFallbackContent({
   )
   // A listed moment, however it was picked, shows in the card above the list.
   const listedPick = userSelectedRef.current && listedPoint != null
-  const topPoint = listedPick ? listedPoint : heroPoint
-  const card: TopMomentCardProps | null = topPoint ? {
+  const card: TopMomentCardProps = {
     id: cardId,
-    point: topPoint,
-    selected: listedPick,
+    point: listedPick ? listedPoint : null,
     backendUrl,
     onJump,
     onAnalytics,
     onClear: clearOfflineSelection,
-  } : null
+  }
   const shownPeakPoints = foldMoments(peakPoints, momentsExpanded, point => offlinePointKey(point) === selectedKey)
   const hiddenPeakCount = peakPoints.length - shownPeakPoints.length
 
@@ -822,40 +824,48 @@ function OfflineFallbackContent({
       {peakPoints.length > 0 ? (
         <>
           <span style={styles.listCaption}>Top moments</span>
-          {card ? <TopMomentCard {...card} /> : null}
-          <div style={styles.momentList} onKeyDown={clearOnEscape(card)}>
-            {shownPeakPoints.map(point => {
-              const key = offlinePointKey(point)
-              return (
-                <PulseMomentRow
-                  key={momentRowKey(point, peakPoints)}
-                  point={point}
-                  backendUrl={backendUrl}
-                  selected={key === selectedKey}
-                  onHighlight={setHoveredOffset}
-                  onSelect={next => pick(offlinePointKey(next))}
-                  controls={card?.id}
-                />
-              )
-            })}
+          {/*
+            The card, the list and its Show more control share one grid child, so
+            the card's slot never adds or drops a grid gap, and a row that leaves
+            the list hands focus on to Show more (PulseMomentRow).
+          */}
+          <div>
+            <TopMomentCard {...card} />
+            <div style={styles.momentList} onKeyDown={clearOnEscape(card)}>
+              {shownPeakPoints.map(point => {
+                const key = offlinePointKey(point)
+                return (
+                  <PulseMomentRow
+                    key={momentRowKey(point, peakPoints)}
+                    point={point}
+                    backendUrl={backendUrl}
+                    selected={key === selectedKey}
+                    onHighlight={setHoveredOffset}
+                    // Picking the moment the card shows again closes the card.
+                    onSelect={() => (card.point && key === selectedKey ? card.onClear() : pick(key))}
+                    controls={card.point ? card.id : undefined}
+                  />
+                )
+              })}
+            </div>
+            {momentsExpanded || hiddenPeakCount > 0 ? (
+              <button
+                type="button"
+                className="pulse-secondary-btn"
+                style={styles.momentsExpandButton}
+                onClick={() => setMomentsExpanded(value => !value)}
+              >
+                <span>
+                  {momentsExpanded
+                    ? 'Show less'
+                    : `Show ${hiddenPeakCount} more moment${hiddenPeakCount === 1 ? '' : 's'}`}
+                </span>
+                <span style={styles.momentsExpandChevron} aria-hidden="true">
+                  {momentsExpanded ? '▾' : '▸'}
+                </span>
+              </button>
+            ) : null}
           </div>
-          {momentsExpanded || hiddenPeakCount > 0 ? (
-            <button
-              type="button"
-              className="pulse-secondary-btn"
-              style={styles.momentsExpandButton}
-              onClick={() => setMomentsExpanded(value => !value)}
-            >
-              <span>
-                {momentsExpanded
-                  ? 'Show less'
-                  : `Show ${hiddenPeakCount} more moment${hiddenPeakCount === 1 ? '' : 's'}`}
-              </span>
-              <span style={styles.momentsExpandChevron} aria-hidden="true">
-                {momentsExpanded ? '▾' : '▸'}
-              </span>
-            </button>
-          ) : null}
         </>
       ) : null}
       <RecapTopEmotesRow backendUrl={backendUrl} emotes={topEmotes} />
@@ -1065,6 +1075,8 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     gap: 6,
     justifyContent: 'center',
+    // The recap's 10 px grid gap.
+    marginTop: 10,
     padding: '8px 0 0',
     width: '100%',
   },

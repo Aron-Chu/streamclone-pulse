@@ -145,7 +145,7 @@ describe('MostReactedSection', () => {
     expect(html).toContain('No reaction moments yet')
   })
 
-  it('highlights the selected row and shows it in the one card above the list', () => {
+  it('shows no card until a moment is picked, then highlights its row and shows it in the one card above the list', () => {
     const idle = renderSection(makePayload({ peaks: [peak] }))
     const active = renderToStaticMarkup(
       <MostReactedSection
@@ -159,7 +159,11 @@ describe('MostReactedSection', () => {
 
     expect(rowsMarkup(idle)).not.toContain('data-moment-inspector-card="true"')
     expect(rowsMarkup(active)).not.toContain('data-moment-inspector-card="true"')
-    expect(idle).toContain('aria-label="Strongest moment at 00:02')
+    expect(idle).not.toContain('data-moment-inspector-card="true"')
+    expect(idle).not.toContain('data-top-moment-card')
+    expect(idle).not.toContain('Strongest moment')
+    expect(rowsMarkup(idle)).not.toContain('aria-controls')
+    expect(idle).not.toContain('aria-pressed="true"')
     expect(active).toContain('aria-label="Selected moment at 00:02')
     expect(active.match(/data-moment-inspector-card="true"/g)).toHaveLength(1)
     expect(active.match(/aria-pressed="true"/g)).toHaveLength(1)
