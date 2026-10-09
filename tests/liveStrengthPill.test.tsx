@@ -146,3 +146,54 @@ describe('Live now strongest moment strength pill', () => {
     expect(shadowRule('.pulse-strength-two')).toMatchObject({ 'line-height': '12px', 'min-width': '0' })
   })
 })
+
+describe('Live now strength pill tint steps (Codex audit: 2x/3x/5x/8x)', () => {
+  // Usual is 40 a minute (the 30 measured minutes before the moment); the
+  // moment minute's chat count sets the ratio.
+  const stepPayload = (momentChat: number): PulsePayload => {
+    const base = payload(true)
+    const bump = (row: ExtensionRollup): ExtensionRollup => row.offsetSeconds === MOMENT_MINUTE * 60 ? { ...row, chatCount: momentChat } : row
+    return { ...base, rollups: base.rollups.map(bump), fullRollups: base.fullRollups!.map(bump) }
+  }
+  const renderStep = (momentChat: number) => featuredRow(renderToStaticMarkup(
+    <LiveStatsBand
+      payload={stepPayload(momentChat)}
+      backendUrl="https://api.example.test"
+      currentOffsetSeconds={MINUTES * 60}
+      onMomentSelect={vi.fn()}
+    />,
+  ))
+
+  it.each([
+    [1.5, '1', '1.5×'],
+    [2.4, '2', '2.4×'],
+    [3.6, '3', '3.6×'],
+    [6.0, '4', '6.0×'],
+    [9.0, '5', '9.0×'],
+    [12, '5', '10×+'],
+  ])('a %s× moment renders data-lvl=%s and "%s usual"', (ratio, level, label) => {
+    const row = renderStep(Math.round(40 * ratio))
+    expect(row).toContain(`<span class="pulse-strength-pill" data-lvl="${level}">${label} usual</span>`)
+  })
+
+  /** Background alpha of a pill level: 1 for a solid rgb() fill. */
+  const backgroundAlpha = (level: number): { alpha: number; neutral: boolean } => {
+    const background = shadowRule(`.pulse-strength-pill[data-lvl="${level}"]`).background
+    expect(background).toBeTruthy()
+    const rgba = background.match(/^rgba\((.*),\s*([\d.]+)\)$/)
+    if (rgba) return { alpha: Number(rgba[2]), neutral: rgba[1].trim() === '255, 255, 255' }
+    expect(background).toMatch(/^rgb\(var\(--pulse-accent-strong-rgb/)
+    return { alpha: 1, neutral: false }
+  }
+
+  it('gets strictly more intense at each step: neutral, then rising accent alpha, then a solid fill', () => {
+    const levels = [1, 2, 3, 4, 5].map(backgroundAlpha)
+    expect(levels[0].neutral).toBe(true)
+    expect(levels.slice(1).every(level => !level.neutral)).toBe(true)
+    for (let i = 2; i < levels.length; i += 1) {
+      expect(levels[i].alpha).toBeGreaterThan(levels[i - 1].alpha)
+    }
+    expect(levels[4].alpha).toBe(1)
+    expect(shadowRule('.pulse-strength-pill[data-lvl="5"]').background).not.toMatch(/^rgba/)
+  })
+})
