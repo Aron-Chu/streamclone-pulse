@@ -7,7 +7,7 @@ describe('public page metadata', () => {
     expect(resolvePageMetadata('/supporter/thanks', '?attempt=private')).toMatchObject({ canonicalPath: '/supporter/thanks', robots: 'noindex,nofollow' })
   })
   it('publishes indexable metadata for public release routes', () => {
-    for (const path of ['/', '/analytics', '/docs', '/status', '/privacy', '/support', '/supporter', '/terms', '/refunds']) {
+    for (const path of ['/', '/analytics', '/docs', '/status', '/privacy', '/support', '/feedback', '/supporter', '/terms', '/refunds']) {
       const metadata = resolvePageMetadata(path)
       expect(metadata.robots, path).toBe('index,follow')
       expect(metadata.title, path).toContain('StreamPulse')
