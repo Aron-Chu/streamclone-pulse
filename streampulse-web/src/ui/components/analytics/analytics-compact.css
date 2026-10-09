@@ -223,10 +223,14 @@
  * control keeps its 44px target; rows wrap back to the stacked layout when a
  * card is too narrow. No zoom, no transforms, no font changes.
  * ------------------------------------------------------------------------ */
-@media (min-width: 1100px) {
-  /* Stat cards: label and value on one line, value wraps below when the
-     card is too narrow for both. */
-  .sc-analytics-console .sc-stat-card {
+/* Stat cards: label and value on one line, but only when the whole row is
+   wide enough (six cards of about 17rem) for every card to do it, so the row
+   never mixes one-line and two-line cards. */
+.sc-analytics-console [data-session-stat-row] {
+  container-type: inline-size;
+}
+@container (min-width: 105rem) {
+  .sc-analytics-console [data-session-stat-row] > .sc-stat-card {
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
@@ -234,9 +238,12 @@
     gap: 0.125rem 0.75rem;
     padding-block: 0.4rem;
   }
-  .sc-analytics-console .sc-stat-card__value {
+  .sc-analytics-console [data-session-stat-row] .sc-stat-card__value {
     margin-top: 0;
   }
+}
+
+@media (min-width: 1100px) {
 
   /* Coverage notice and session lifecycle row side by side. */
   .sc-analytics-console [data-session-status-row] {

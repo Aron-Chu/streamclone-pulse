@@ -6,12 +6,14 @@ const css = readFileSync(resolve(process.cwd(), 'src/ui/components/analytics/ana
 const streamBlock = css.slice(css.indexOf('Stream page: fit the session timeline'))
 
 describe('stream page compact layout CSS (option)', () => {
-  it('lives in one desktop-only block', () => {
+  it('is desktop-only: a 1100px media block plus a stat row that needs 105rem', () => {
     expect(streamBlock.length).toBeGreaterThan(0)
     expect(streamBlock).toMatch(/@media \(min-width: 1100px\)/)
-    // Nothing in the block applies outside the desktop media query.
-    const afterMedia = streamBlock.slice(streamBlock.indexOf('@media'))
-    expect(afterMedia.trimEnd().endsWith('}')).toBe(true)
+    expect(streamBlock).toMatch(/\[data-session-stat-row\] \{\s*container-type: inline-size;/)
+    // Card layout changes only inside the container query, never for every card.
+    expect(streamBlock).toMatch(/@container \(min-width: 105rem\) \{\s*\.sc-analytics-console \[data-session-stat-row\] > \.sc-stat-card/)
+    const outsideQueries = streamBlock.replace(/@(?:media|container)[^{]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, '')
+    expect(outsideQueries).not.toMatch(/sc-stat-card|data-games-played|data-chart-|data-session-status-row/)
   })
 
   it('rearranges rows without zoom, transforms or font changes', () => {
@@ -24,7 +26,7 @@ describe('stream page compact layout CSS (option)', () => {
 
   it('covers the rows it promises to merge', () => {
     for (const selector of [
-      '.sc-analytics-console .sc-stat-card',
+      '.sc-analytics-console [data-session-stat-row] > .sc-stat-card',
       '.sc-analytics-console [data-session-status-row]',
       '.sc-analytics-console [data-games-played]',
       '.sc-analytics-console [data-chart-focus-bar] > [data-chart-overlay-focus-row]',

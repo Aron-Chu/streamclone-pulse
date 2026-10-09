@@ -1302,7 +1302,7 @@ export function AnalyticsConsole({
           </div>
         </header>
 
-        <section className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+        <section className="grid grid-cols-2 gap-3 lg:grid-cols-6" data-session-stat-row>
           <StatCard
             label={isHistoricalRoute ? 'Last measured viewers' : 'Current viewers'}
             value={statCardsPending ? '-' : statCardClasses.current.placeholder ?? count(headerStats.current)}
