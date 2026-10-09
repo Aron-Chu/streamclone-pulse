@@ -945,7 +945,8 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           return
         }
         case 'SUPPORTER_APPEARANCE': {
-          const entitlement = await supporterAccount.entitlement()
+          // Every visible Twitch tab asks about once a minute; they share the worker's read.
+          const entitlement = await supporterAccount.cachedEntitlement()
           const finish = entitlement.state === 'ready' && entitlement.features.includes('supporter.banner.v1') && entitlement.features.includes('supporter.finish.v1') && entitlement.cosmetics?.enabled ? entitlement.cosmetics.finish : null
           sendResponse({ type: 'SUPPORTER_APPEARANCE', finish, validForMs: finish && entitlement.state === 'ready' ? entitlement.validForMs ?? 0 : 0 } satisfies BackgroundResponse)
           return
