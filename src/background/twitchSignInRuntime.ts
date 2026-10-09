@@ -1,6 +1,6 @@
 import { DEFAULT_BACKEND_URL, getBackendUrl } from '../shared/storage.ts'
 import { TWITCH_SIGNIN_ENABLED } from '../shared/twitchSignIn.ts'
-import { supporterAccount, twitchSignInMetaRecord } from './supporterAccountRuntime.ts'
+import { bindTwitchStepUp, supporterAccount, twitchSignInMetaRecord } from './supporterAccountRuntime.ts'
 import { TwitchSignIn, twitchSurface, type WebAuthFlowDetails } from './twitchSignIn.ts'
 
 type IdentityApi = {
@@ -48,3 +48,6 @@ export const twitchSignIn = new TwitchSignIn({
     },
   },
 })
+
+// Managing a subscription asks for a recent Twitch check when the server requires one.
+bindTwitchStepUp(mode => twitchSignIn.stepUp(mode))

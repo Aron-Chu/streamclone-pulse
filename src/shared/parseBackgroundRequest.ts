@@ -278,7 +278,7 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
     }
     case 'SUPPORTER_BILLING':
       if (Object.keys(raw).some(key => key !== 'type' && key !== 'action')) return null
-      return raw.action === 'status' || raw.action === 'check' || raw.action === 'checkout' || raw.action === 'resume' || raw.action === 'portal' ? { type, action: raw.action } : null
+      return raw.action === 'status' || raw.action === 'check' || raw.action === 'checkout' || raw.action === 'resume' || raw.action === 'portal' || raw.action === 'portal_confirm' ? { type, action: raw.action } : null
     case 'SUPPORTER_RESTORE': {
       if (Object.keys(raw).some(key => !['type', 'action', 'email'].includes(key))) return null
       if (raw.action === 'status' || raw.action === 'check' || raw.action === 'cancel') return 'email' in raw ? null : { type, action: raw.action }

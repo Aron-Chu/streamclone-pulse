@@ -87,7 +87,7 @@ function projectEntitlement(result: { status: number; body: unknown }, accountId
     // Only a literal true opens a purchase path; anything else is closed.
     checkoutEnabled: body.checkoutEnabled === true,
     installationAccountsEnabled: body.installationAccountsEnabled === true,
-    accountKind: body.accountKind === 'email' || body.accountKind === 'installation' ? body.accountKind : undefined,
+    accountKind: body.accountKind === 'email' || body.accountKind === 'installation' || body.accountKind === 'twitch' ? body.accountKind : undefined,
     restoreEligible: body.restoreEligible === true,
   }
 }

@@ -1,5 +1,6 @@
 import { DEFAULT_BACKEND_URL, getBackendUrl } from '../shared/storage.ts'
 import { ACCOUNT_REVISION_KEY, SUPPORTER_REVISION_KEY } from '../shared/supporterAccount.ts'
+import { TWITCH_SIGNIN_ENABLED, type TwitchSignInMode, type TwitchStepUpResult } from '../shared/twitchSignIn.ts'
 import { AccountRequestNotSent, SupporterAccountCoordinator } from './supporterAccount.ts'
 import { SupporterPayFirstCoordinator } from './supporterPayFirst.ts'
 
@@ -92,7 +93,18 @@ export const supporterPayFirst = new SupporterPayFirstCoordinator({
   write: async value => { await access(true, value, JOURNEY_KEY) },
   open: async url => { await chrome.tabs.create({ url }) },
   changed: async () => { await chrome.storage.local.set({ [SUPPORTER_REVISION_KEY]: crypto.randomUUID() }) },
+  twitchSignIn: TWITCH_SIGNIN_ENABLED,
+  stepUp: mode => twitchStepUp ? twitchStepUp(mode) : Promise.resolve({ ok: false, error: 'unavailable' }),
 })
+
+/**
+ * twitchSignInRuntime binds its step-up here; it imports this module, so the
+ * coordinator above cannot import it back.
+ */
+let twitchStepUp: ((mode: TwitchSignInMode) => Promise<TwitchStepUpResult>) | undefined
+export function bindTwitchStepUp(stepUp: (mode: TwitchSignInMode) => Promise<TwitchStepUpResult>): void {
+  twitchStepUp = stepUp
+}
 
 /**
  * While a link request waits, the worker collects the approval itself, so it

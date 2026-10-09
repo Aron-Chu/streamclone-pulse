@@ -1,6 +1,6 @@
 import { test, expect } from '../helpers/testFixtures.ts'
 import { openTwitchChannel } from '../helpers/mockTwitch.ts'
-import type { CDPSession, Worker } from '@playwright/test'
+import type { CDPSession, Page, Worker } from '@playwright/test'
 
 const ACCOUNT = '11111111-1111-4111-8111-1111111a1b2c'
 const ATTEMPT = '33333333-3333-4333-8333-333333333333'
@@ -12,6 +12,15 @@ function snapshot(status: 'none' | 'pending' | 'active', cosmetics = { enabled: 
   const paid = status === 'active'
   return { schemaVersion: 1, accountId, environment: 'live', revision: paid ? 2 : 1, status, checkoutEnabled: true, installationAccountsEnabled: true, accountKind: 'installation', restoreEligible: status === 'none', serverTime: new Date().toISOString(), accessFrom: new Date(Date.now() - 60_000).toISOString(), accessUntil: new Date(Date.now() + 30 * 86_400_000).toISOString(), cacheUntil: new Date(Date.now() + 60_000).toISOString(), supportPeriods: paid ? 1 : 0, features: { 'supporter.banner.v1': paid, 'supporter.finish.v1': paid, 'supporter.recognition.v1': paid }, cosmetics }
 }
+/**
+ * The options page no longer starts an installation account or an email
+ * restore (account journey spec, closeout 2026-10-08b: the page never sends
+ * SUPPORTER_RESTORE and never asks for an installation). The worker paths are
+ * kept, so these packaged proofs start them through the same extension-page
+ * message the page used to send, then observe the page and the mock server.
+ */
+const workerCheckout = (page: Page) => page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_BILLING', action: 'checkout' }))
+const workerRestore = (page: Page, email = 'payer@example.test') => page.evaluate(address => chrome.runtime.sendMessage({ type: 'SUPPORTER_RESTORE', action: 'start', email: address }), email)
 // Controlled fixture worker only. Real provider destinations are resolver-blocked.
 async function recordTabs(worker: Worker) {
   await worker.evaluate(() => {
@@ -35,7 +44,7 @@ async function finish(cdp: CDPSession) {
   return banner ? attr(banner, 'data-supporter-finish') ?? null : undefined
 }
 
-test('pay first opens only Stripe, delayed payment activates a chosen finish on an already-open Twitch tab without reload', async ({ extension, prepare }, info) => {
+test('worker installation Checkout opens only Stripe, delayed payment activates a chosen finish on an already-open Twitch tab without reload', async ({ extension, prepare }, info) => {
   test.setTimeout(100_000)
   await prepare()
   const context = extension.context
@@ -72,7 +81,9 @@ test('pay first opens only Stripe, delayed payment activates a chosen finish on 
   await settings.getByRole('button', { name: 'Use Halo when Supporter starts', exact: true }).click()
   expect(calls).toEqual([])
   const tabs = await recordTabs(extension.serviceWorker)
-  await settings.getByRole('button', { name: 'Become a Supporter', exact: true }).click()
+  // A signed-out page offers no purchase; the kept worker path is started directly.
+  await expect(settings.getByRole('button', { name: 'Become a Supporter', exact: true })).toHaveCount(0)
+  await workerCheckout(settings)
   await expect(settings.locator('[data-journey-state="stripe-open"]')).toBeVisible()
   expect(await tabs()).toEqual(['https://checkout.stripe.com/c/pay/cs_test_local_fixture#fidkdWxOYHwnPyd1blppbHNgWmR'])
   await settings.getByRole('button', { name: 'Return to Stripe checkout', exact: true }).click()
@@ -95,131 +106,6 @@ test('pay first opens only Stripe, delayed payment activates a chosen finish on 
   await cdp.detach()
 })
 
-for (const failure of ['connection', 'membership', 'membership_invalid', 'ineligible'] as const) {
-  test(`restore feedback survives quiet refresh after ${failure} and clears on retry or Back`, async ({ extension, prepare }) => {
-    await prepare()
-    let failing = true, restorePosts = 0
-    await extension.context.route('https://api.streampulse.stream/v1/account/installations', route => route.fulfill(failing && failure === 'connection' ? { status: 503, json: { error: 'request_unavailable' } } : { status: 201, json: credential() }))
-    await extension.context.route('https://api.streampulse.stream/v1/billing/supporter', route => route.fulfill(failing && failure === 'membership' ? { status: 503, json: { error: 'billing_unavailable' } } : { json: {
-      ...snapshot('none'),
-      ...(failing && failure === 'membership_invalid' ? { revision: 'invalid' } : {}),
-      ...(failing && failure === 'ineligible' ? { restoreEligible: false } : {}),
-    } }))
-    await extension.context.route('https://api.streampulse.stream/v1/account/restores', route => {
-      restorePosts++
-      expect(route.request().postDataJSON().email).toBe('payer@example.test')
-      return route.fulfill({ status: 201, json: { restoreId: RESTORE, pollingSecret: 'c'.repeat(64), expiresAt: new Date(Date.now() + 900_000).toISOString(), intervalSeconds: 5, comparisonCode: 'A3B4C5' } })
-    })
-    await extension.context.route('https://api.streampulse.stream/v1/account/restores/poll', route => route.fulfill({ json: { state: 'pending' } }))
-    const page = extension.page
-    await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
-    await page.getByRole('button', { name: 'Restore my Supporter', exact: true }).click()
-    await page.getByLabel('Email used at checkout').fill('payer@example.test')
-    await page.getByRole('button', { name: 'Send restore link', exact: true }).click()
-    const state = failure === 'ineligible' ? 'restore-ineligible' : 'restore-unavailable'
-    await expect(page.locator(`[data-journey-state="${state}"]`)).toBeVisible()
-    if (failure === 'connection') await expect(page.getByText('This extension’s connection could not be prepared.', { exact: false })).toBeVisible()
-    if (failure === 'membership') await expect(page.getByText('Your membership could not be checked.', { exact: false })).toBeVisible()
-    if (failure === 'membership_invalid') await expect(page.getByText('The membership response could not be verified.', { exact: false })).toBeVisible()
-    // These are the same non-secret revision signals emitted by the real worker.
-    await page.evaluate(async () => {
-      await chrome.storage.local.set({ pulseSupporterRevision: crypto.randomUUID() })
-      window.dispatchEvent(new Event('focus'))
-      await chrome.runtime.sendMessage({ type: 'SUPPORTER_RESTORE', action: 'status' })
-    })
-    await expect(page.locator(`[data-journey-state="${state}"]`)).toBeVisible()
-    expect(restorePosts).toBe(0)
-    expect(await page.locator('body').innerText()).not.toContain('payer@example.test')
-    if (failure === 'membership_invalid') {
-      // Delay only a fixture UI message. Its stale conflict must not replace a
-      // retry form or reopen recovery after the email form's Back action.
-      await page.evaluate(() => {
-        const original = chrome.runtime.sendMessage.bind(chrome.runtime)
-        const fixture = window as unknown as { holdRestoreRead?: boolean; releaseRestoreRead?: () => void }
-        chrome.runtime.sendMessage = ((message: { type?: string; action?: string }) => {
-          if (message.type === 'SUPPORTER_RESTORE' && message.action === 'status' && fixture.holdRestoreRead) {
-            fixture.holdRestoreRead = false
-            return new Promise(resolve => { fixture.releaseRestoreRead = () => { delete fixture.releaseRestoreRead; resolve({ type: 'SUPPORTER_RESTORE', restore: { state: 'conflict' } }) } })
-          }
-          return original(message)
-        }) as typeof chrome.runtime.sendMessage
-      })
-      const holdRead = async () => {
-        await page.evaluate(async () => {
-          ;(window as unknown as { holdRestoreRead: boolean }).holdRestoreRead = true
-          await chrome.storage.local.set({ pulseSupporterRevision: crypto.randomUUID() })
-        })
-        await expect.poll(() => page.evaluate(() => typeof (window as unknown as { releaseRestoreRead?: () => void }).releaseRestoreRead)).toBe('function')
-      }
-      const releaseRead = () => page.evaluate(() => (window as unknown as { releaseRestoreRead: () => void }).releaseRestoreRead())
-      await holdRead()
-      await page.getByRole('button', { name: 'Use another email', exact: true }).click()
-      await releaseRead()
-      await expect(page.getByLabel('Email used at checkout')).toBeVisible()
-      await expect(page.getByLabel('Email used at checkout')).toHaveValue('')
-      await holdRead()
-      await page.getByRole('button', { name: 'Back', exact: true }).click()
-      await releaseRead()
-      await expect(page.getByLabel('Email used at checkout')).toHaveCount(0)
-      await expect(page.locator('[data-journey-state="restore-conflict"]')).toHaveCount(0)
-    }
-    failing = false
-    if (failure === 'ineligible' || failure === 'membership_invalid') {
-      if (failure === 'ineligible') await page.getByRole('button', { name: 'Back to membership', exact: true }).click()
-      await expect(page.locator('[data-journey-state="restore-ineligible"]')).toHaveCount(0)
-      await page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_ENTITLEMENT' }))
-      if (failure === 'membership_invalid') await page.getByRole('button', { name: 'Check again', exact: true }).click()
-      await page.getByRole('button', { name: 'Restore my Supporter', exact: true }).click()
-      await page.getByLabel('Email used at checkout').fill('payer@example.test')
-      await page.getByRole('button', { name: 'Send restore link', exact: true }).click()
-    } else {
-      // A retry after a proven preflight failure actually sends the request;
-      // it must not require another email entry or another form submission.
-      await page.getByRole('button', { name: 'Try restore again', exact: true }).click()
-    }
-    await expect(page.locator('[data-journey-state="restore-pending"]')).toBeVisible()
-    expect(restorePosts).toBe(1)
-    await page.getByRole('button', { name: 'Back to membership', exact: true }).click()
-    await expect(page.locator('[data-journey-state="restore-pending"]')).toHaveCount(0)
-    await page.getByRole('button', { name: 'Restore my Supporter', exact: true }).click()
-    await expect(page.getByLabel('Email used at checkout')).toHaveValue('')
-    expect(restorePosts).toBe(1)
-  })
-}
-
-test('restore feedback ignores a delayed submission for an account that changed meanwhile', async ({ extension, prepare }) => {
-  await prepare()
-  await extension.context.route('https://api.streampulse.stream/v1/account/installations', route => route.fulfill({ status: 201, json: credential() }))
-  await extension.context.route('https://api.streampulse.stream/v1/billing/supporter', route => route.fulfill({ json: { ...snapshot('none'), checkoutEnabled: false } }))
-  const page = extension.page
-  await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
-  await page.getByRole('button', { name: 'Become a Supporter', exact: true }).click()
-  await expect(page.locator('[data-journey-state="checkout-closed"]')).toBeVisible()
-  await page.getByRole('button', { name: 'Restore my Supporter', exact: true }).click()
-  await page.evaluate(() => {
-    const original = chrome.runtime.sendMessage.bind(chrome.runtime)
-    const fixture = window as unknown as { identityChanged?: boolean; releaseSubmission?: () => void }
-    chrome.runtime.sendMessage = ((message: { type?: string; action?: string }) => {
-      if (message.type === 'SUPPORTER_RESTORE' && message.action === 'start') return new Promise(resolve => { fixture.releaseSubmission = () => resolve({ type: 'SUPPORTER_RESTORE', restore: { state: 'unavailable', reason: 'membership_invalid' } }) })
-      if (fixture.identityChanged && message.type === 'SUPPORTER_ACCOUNT' && message.action === 'status') return Promise.resolve({ type: 'SUPPORTER_ACCOUNT', account: { state: 'linked', accountId: '77777777-7777-4777-8777-777777777777', expiresAt: new Date(Date.now() + 86_400_000).toISOString() } })
-      if (fixture.identityChanged && message.type === 'SUPPORTER_ENTITLEMENT') return Promise.resolve({ type: 'SUPPORTER_ENTITLEMENT', entitlement: { state: 'ready', status: 'none', features: [], supportPeriods: 0, validForMs: 0, cosmetics: { enabled: false, finish: 'glass' }, checkoutEnabled: false, installationAccountsEnabled: true, accountKind: 'installation', restoreEligible: true } })
-      return original(message)
-    }) as typeof chrome.runtime.sendMessage
-  })
-  await page.getByLabel('Email used at checkout').fill('payer@example.test')
-  await page.getByRole('button', { name: 'Send restore link', exact: true }).click()
-  await expect(page.getByText('Preparing your restore', { exact: true })).toBeVisible()
-  await page.evaluate(async () => {
-    ;(window as unknown as { identityChanged: boolean }).identityChanged = true
-    await chrome.storage.local.set({ pulseAccountRevision: crypto.randomUUID() })
-  })
-  await expect(page.getByText('··777777', { exact: true })).toBeVisible()
-  await page.evaluate(() => (window as unknown as { releaseSubmission: () => void }).releaseSubmission())
-  await expect(page.getByRole('button', { name: 'Restore my Supporter', exact: true })).toBeEnabled()
-  await expect(page.locator('[data-journey-state="restore-unavailable"]')).toHaveCount(0)
-  await expect(page.getByLabel('Email used at checkout')).toHaveCount(0)
-})
-
 test('worker confirms a payment with settings closed and no Twitch page', async ({ extension, prepare }, info) => {
   test.setTimeout(90_000)
   await prepare()
@@ -238,7 +124,7 @@ test('worker confirms a payment with settings closed and no Twitch page', async 
   })
   const page = extension.page
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
-  await page.getByRole('button', { name: 'Become a Supporter', exact: true }).click()
+  await workerCheckout(page)
   await expect(page.locator('[data-journey-state="stripe-open"]')).toBeVisible()
   // Keep only a blank stand-in: closing Chromium's final window also kills its
   // worker. The resolver-blocked Stripe tab is not a settings or Twitch page.
@@ -265,7 +151,7 @@ test('worker confirms a payment with settings closed and no Twitch page', async 
   expect(pollTimes).toHaveLength(completedPollCount)
 })
 
-test('a fresh profile restores privately after email approval even when settings closes', async ({ extension, prepare }, info) => {
+test('the kept worker restore completes privately after email approval even when settings closes', async ({ extension, prepare }, info) => {
   test.setTimeout(90_000)
   await prepare()
   const recoveredAccount = '55555555-5555-4555-8555-555555555555'
@@ -288,33 +174,13 @@ test('a fresh profile restores privately after email approval even when settings
   await extension.context.route('https://api.streampulse.stream/v1/billing/supporter', route => route.fulfill({ json: snapshot(route.request().headers().authorization === `Bearer ${'d'.repeat(64)}` ? 'active' : 'none', undefined, route.request().headers().authorization === `Bearer ${'d'.repeat(64)}` ? recoveredAccount : ACCOUNT) }))
   const page = extension.page
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
-  await page.getByRole('button', { name: 'Restore my Supporter', exact: true }).click()
-  await page.getByLabel('Email used at checkout').fill('payer@example.test')
-  await page.getByRole('button', { name: 'Send restore link', exact: true }).click()
-  await expect(page.locator('[data-journey-state="restore-pending"]')).toBeVisible()
+  const started = await workerRestore(page)
+  expect(started.restore).toMatchObject({ state: 'pending', comparisonCode: 'A3B4C5' })
   expect(posts).toEqual([{ email: 'payer@example.test', restoreKey: expect.stringMatching(/^[a-f0-9]{64}$/) }])
-  expect(await page.locator('body').innerText()).not.toMatch(/cccc|dddd|payer@example/)
+  // The page shows no restore and no email, and the worker hands out no secret.
+  expect(await page.locator('body').innerText()).not.toMatch(/cccc|dddd|payer@example|A3B4C5/)
   const safe = await page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_RESTORE', action: 'status' }))
   expect(JSON.stringify(safe)).not.toMatch(/cccc|restoreId|token/)
-  await page.emulateMedia({ reducedMotion: 'reduce' })
-  const primary = page.locator('[data-journey-state="restore-pending"] .pulse-journey-primary')
-  await expect(primary).toHaveCount(1)
-  await expect(primary).toHaveText('Check restore status')
-  for (const width of [320, 360, 380]) {
-    await page.setViewportSize({ width, height: 900 })
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
-    const target = await primary.boundingBox()
-    // min-height is 44px; a box that starts on a fractional pixel can measure 43.999998.
-    expect(target?.height).toBeGreaterThanOrEqual(43.99)
-    await page.screenshot({ path: info.outputPath(`restore-pending-${width}-reduced-motion.png`), fullPage: true, animations: 'disabled' })
-  }
-  let keyboardReached = false
-  for (let index = 0; index < 60 && !keyboardReached; index++) {
-    await page.keyboard.press('Tab')
-    keyboardReached = await primary.evaluate(button => document.activeElement === button)
-  }
-  expect(keyboardReached).toBe(true)
-  expect(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches)).toBe(true)
   // Email approval happens in another tab. Keep a blank fixture stand-in so
   // closing settings does not close Chromium's final window and stop its worker.
   const emailTab = await extension.context.newPage()
@@ -331,7 +197,7 @@ test('a fresh profile restores privately after email approval even when settings
   await new Promise(resolve => setTimeout(resolve, STOPPED_POLL_PROOF_MS))
   expect(pollTimes).toHaveLength(completedPollCount)
   const reopenedAt = Date.now()
-  await info.attach('settings-closed-restore-timing', { body: JSON.stringify({ closedAt, pendingPollTimes, approvedAt, approvalCollectedAt, pollTimes, reopenedAt, stoppedPollProofMs: STOPPED_POLL_PROOF_MS, keyboardReached, widths: [320, 360, 380], reducedMotion: true }), contentType: 'application/json' })
+  await info.attach('settings-closed-restore-timing', { body: JSON.stringify({ closedAt, pendingPollTimes, approvedAt, approvalCollectedAt, pollTimes, reopenedAt, stoppedPollProofMs: STOPPED_POLL_PROOF_MS }), contentType: 'application/json' })
   const reopened = await extension.context.newPage()
   await reopened.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
   await expect(reopened.getByText('Supporter active', { exact: true })).toBeVisible({ timeout: 15_000 })
@@ -341,7 +207,7 @@ test('a fresh profile restores privately after email approval even when settings
   expect(pollTimes).toHaveLength(completedPollCount)
 })
 
-test('explicit Restore replaces a revoked bootstrap identity instead of replaying a claimed key', async ({ extension, prepare }) => {
+test('the kept worker restore replaces a revoked bootstrap identity instead of replaying a claimed key', async ({ extension, prepare }) => {
   await prepare()
   let firstKey = '', installations = 0, approved = false
   const freshAccount = '77777777-7777-4777-8777-777777777777'
@@ -361,7 +227,7 @@ test('explicit Restore replaces a revoked bootstrap identity instead of replayin
   })
   const page = extension.page
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
-  await page.getByRole('button', { name: 'Become a Supporter', exact: true }).click()
+  expect((await workerCheckout(page)).billing).toEqual({ state: 'closed' })
   await expect(page.locator('[data-journey-state="checkout-closed"]')).toBeVisible()
   await extension.context.route('https://api.streampulse.stream/v1/billing/supporter', route => route.request().headers().authorization === `Bearer ${credential().token}` ? route.fulfill({ status: 401, json: { error: 'account_authorization_required' } }) : route.fallback())
   await page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_ENTITLEMENT' }))
@@ -370,11 +236,10 @@ test('explicit Restore replaces a revoked bootstrap identity instead of replayin
     return route.fulfill({ status: 201, json: { restoreId: RESTORE, pollingSecret: 'c'.repeat(64), expiresAt: new Date(Date.now() + 900_000).toISOString(), intervalSeconds: 5, comparisonCode: 'A3B4C5' } })
   })
   await extension.context.route('https://api.streampulse.stream/v1/account/restores/poll', route => route.fulfill({ json: approved ? { state: 'approved', ...credential(restoredAccount, 'd'.repeat(64)) } : { state: 'pending' } }))
-  await expect(page.getByRole('button', { name: 'Restore my Supporter', exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Restore my Supporter', exact: true }).click()
-  await page.getByLabel('Email used at checkout').fill('payer@example.test')
-  await page.getByRole('button', { name: 'Send restore link', exact: true }).click()
-  await expect(page.locator('[data-journey-state="restore-pending"]')).toBeVisible()
+  // The page offers no restore after the rejection; the worker path is kept.
+  await expect(page.locator('[data-journey-state="signed-out"]')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Restore my Supporter', exact: true })).toHaveCount(0)
+  expect((await workerRestore(page)).restore.state).toBe('pending')
   expect(installations).toBe(2)
   approved = true
   await expect(page.getByText('Supporter active', { exact: true })).toBeVisible({ timeout: 20_000 })
@@ -407,7 +272,7 @@ test('uncertain installation refresh retains its identity and restores after ren
   await extension.context.route('https://api.streampulse.stream/v1/account/restores/poll', route => route.fulfill({ json: approved ? { state: 'approved', ...credential(restoredAccount, 'd'.repeat(64)) } : { state: 'pending' } }))
   const page = extension.page
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
-  await page.getByRole('button', { name: 'Become a Supporter', exact: true }).click()
+  expect((await workerCheckout(page)).billing).toEqual({ state: 'closed' })
   await expect(page.locator('[data-journey-state="checkout-closed"]')).toBeVisible()
   // Expire only the disposable fixture credential, never an owner profile.
   await extension.serviceWorker.evaluate(async () => {
@@ -422,18 +287,10 @@ test('uncertain installation refresh retains its identity and restores after ren
   })
   const unavailable = await page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_ACCOUNT', action: 'status' }))
   expect(unavailable.account).toMatchObject({ state: 'unavailable', linked: true, reason: 'temporarily_unavailable' })
-  await page.getByRole('button', { name: 'Restore my Supporter', exact: true }).click()
-  await page.getByLabel('Email used at checkout').fill('payer@example.test')
-  await page.getByRole('button', { name: 'Send restore link', exact: true }).click()
-  await expect(page.locator('[data-journey-state="restore-unavailable"]')).toBeVisible()
+  expect((await workerRestore(page)).restore).toEqual({ state: 'unavailable', reason: 'connection' })
   expect(installations).toBe(1)
   expect(refreshes).toBe(1)
   expect(restoreStarts).toBe(0)
-  await page.evaluate(async () => {
-    await chrome.storage.local.set({ pulseSupporterRevision: crypto.randomUUID() })
-    window.dispatchEvent(new Event('focus'))
-  })
-  await expect(page.locator('[data-journey-state="restore-unavailable"]')).toBeVisible()
   const retained = await extension.serviceWorker.evaluate(async expectedKey => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => { const r = indexedDB.open('pulse-account-private-v1', 1); r.onsuccess = () => resolve(r.result); r.onerror = reject })
     try {
@@ -461,13 +318,13 @@ test('uncertain installation refresh retains its identity and restores after ren
   const recovered = await page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_ACCOUNT', action: 'status' }))
   expect(recovered.account).toMatchObject({ state: 'linked', accountId: ACCOUNT })
   expect(refreshes).toBe(2)
-  await page.getByRole('button', { name: 'Try restore again', exact: true }).click()
-  await expect(page.locator('[data-journey-state="restore-pending"]')).toBeVisible()
+  expect((await workerRestore(page)).restore.state).toBe('pending')
   expect(installations).toBe(1)
   expect(restoreStarts).toBe(1)
   approved = true
   await expect(page.getByText('Supporter active', { exact: true })).toBeVisible({ timeout: 20_000 })
-  await expect(page.getByRole('button', { name: 'Manage membership', exact: true })).toBeVisible()
+  // The Account card's billing row carries its own Manage subscription; this is the footer's.
+  await expect(page.locator('.pulse-journey').getByRole('button', { name: 'Manage subscription', exact: true })).toBeVisible()
 })
 
 test('slow Checkout and Portal responses survive the former twelve-second deadline', async ({ extension, prepare }) => {
@@ -489,13 +346,13 @@ test('slow Checkout and Portal responses survive the former twelve-second deadli
   })
   const page = extension.page
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
-  await page.getByRole('button', { name: 'Become a Supporter', exact: true }).click()
+  await workerCheckout(page)
   await expect(page.locator('[data-journey-state="stripe-open"]')).toBeVisible({ timeout: 30_000 })
   paid = true
   await page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_BILLING', action: 'check' }))
   await page.reload()
   await expect(page.locator('[data-journey-state="active"]')).toBeVisible()
-  await page.getByRole('button', { name: 'Manage membership', exact: true }).click()
+  await page.locator('.pulse-journey').getByRole('button', { name: 'Manage subscription', exact: true }).click()
   await expect.poll(tabs, { timeout: 30_000 }).toContain('https://billing.stripe.com/p/session/slow-fixture')
 })
 
@@ -519,14 +376,9 @@ test('lost restore start resumes its matching code without resending an email', 
   await extension.context.route('https://api.streampulse.stream/v1/account/restores/poll', route => route.fulfill({ json: { state: 'pending' } }))
   const page = extension.page
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
-  await page.getByRole('button', { name: 'Restore my Supporter', exact: true }).click()
-  await page.getByLabel('Email used at checkout').fill('payer@example.test')
-  await page.getByRole('button', { name: 'Send restore link', exact: true }).click()
-  await expect(page.locator('[data-journey-state="restore-uncertain"]')).toBeVisible({ timeout: 30_000 })
-  await expect(page.getByText('The request may have reached the server and sent an email.', { exact: false })).toBeVisible()
-  await page.getByRole('button', { name: 'Check restore request', exact: true }).click()
-  await expect(page.locator('[data-journey-state="restore-pending"]')).toBeVisible()
-  await expect(page.getByText('A3B4C5', { exact: true })).toBeVisible()
+  expect((await workerRestore(page)).restore.state).toBe('uncertain')
+  const checked = await page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_RESTORE', action: 'check' }))
+  expect(checked.restore).toMatchObject({ state: 'pending', comparisonCode: 'A3B4C5' })
   expect(writes).toBe(2)
   const privateRecord = await extension.serviceWorker.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => { const r = indexedDB.open('pulse-account-private-v1', 1); r.onsuccess = () => resolve(r.result); r.onerror = reject })
@@ -547,14 +399,9 @@ test('a successful slow restore response outlasts the former twelve-second deadl
   await extension.context.route('https://api.streampulse.stream/v1/account/restores/poll', route => route.fulfill({ json: { state: 'pending' } }))
   const page = extension.page
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
-  await page.getByRole('button', { name: 'Restore my Supporter', exact: true }).click()
-  await page.getByLabel('Email used at checkout').fill('payer@example.test')
-  await page.getByRole('button', { name: 'Send restore link', exact: true }).click()
-  await expect(page.locator('[data-journey-state="restore-sending"]')).toBeVisible()
-  await expect(page.getByText('Preparing your restore', { exact: true })).toBeVisible()
-  await expect(page.getByLabel('Email used at checkout')).toHaveCount(0)
-  await expect(page.locator('[data-journey-state="restore-pending"]')).toBeVisible({ timeout: 30_000 })
-  await expect(page.getByText('A3B4C5', { exact: true })).toBeVisible()
+  const started = Date.now()
+  expect((await workerRestore(page)).restore).toMatchObject({ state: 'pending', comparisonCode: 'A3B4C5' })
+  expect(Date.now() - started).toBeGreaterThanOrEqual(12_000)
 })
 
 test('a restore that may have been sent never reuses the email for a retry', async ({ extension, prepare }) => {
@@ -569,17 +416,10 @@ test('a restore that may have been sent never reuses the email for a retry', asy
   })
   const page = extension.page
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
-  await page.getByRole('button', { name: 'Restore my Supporter', exact: true }).click()
-  await page.getByLabel('Email used at checkout').fill('payer@example.test')
-  await page.getByRole('button', { name: 'Send restore link', exact: true }).click()
-  await expect(page.locator('[data-journey-state="restore-uncertain"]')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Use another email', exact: true })).toHaveCount(0)
-  await page.getByRole('button', { name: 'Check restore request', exact: true }).click()
-  await expect(page.locator('[data-journey-state="restore-error"]')).toBeVisible()
+  expect((await workerRestore(page)).restore.state).toBe('uncertain')
+  const checked = await page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_RESTORE', action: 'check' }))
+  expect(checked.restore.state).toBe('error')
   expect(bodies).toEqual([{ restoreKey: expect.any(String), email: 'payer@example.test' }, { restoreKey: bodies[0].restoreKey }])
-  await page.getByRole('button', { name: 'Try restore again', exact: true }).click()
-  await expect(page.getByLabel('Email used at checkout')).toHaveValue('')
-  expect(bodies).toHaveLength(2)
 })
 
 test('lost Checkout response recovers on explicit check without a second provider navigation', async ({ extension, prepare }) => {
@@ -596,7 +436,7 @@ test('lost Checkout response recovers on explicit check without a second provide
   await extension.context.route(`https://api.streampulse.stream/v1/billing/checkout/${ATTEMPT}`, route => route.fulfill({ json: { attemptId: ATTEMPT, state: 'open', expiresAt: new Date(Date.now() + 86_400_000).toISOString() } }))
   const page = extension.page
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
-  await page.getByRole('button', { name: 'Become a Supporter', exact: true }).click()
+  await workerCheckout(page)
   await expect(page.getByRole('button', { name: 'Check payment status', exact: true })).toBeVisible()
   expect(posts).toBe(1)
   await page.getByRole('button', { name: 'Check payment status', exact: true }).click()
@@ -617,7 +457,7 @@ test('owned device list has an explicit peer-revocation confirmation', async ({ 
   await extension.context.route('https://api.streampulse.stream/v1/account/installations/devices/revoke', route => { revocations.push(route.request().postDataJSON()); return route.fulfill({ status: 204 }) })
   const page = extension.page
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
-  await page.getByRole('button', { name: 'Become a Supporter', exact: true }).click()
+  expect((await workerCheckout(page)).billing).toEqual({ state: 'active' })
   await expect(page.locator('[data-journey-state="active"]')).toBeVisible()
   await page.getByText('Connected extensions', { exact: true }).click()
   await expect(page.getByRole('button', { name: 'Revoke connection', exact: true })).toHaveCount(1)
