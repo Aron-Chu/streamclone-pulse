@@ -178,3 +178,157 @@ test.describe('session chart zoom gestures (desktop)', () => {
     await assertNoUnexpected(harness)
   })
 })
+
+test.describe('session chart zoom matches the Global activity chart (owner window)', () => {
+  // Aron's window: CSS 2048x1018 at Windows 125%.
+  test.use({ viewport: { width: 2048, height: 1018 }, deviceScaleFactor: 1.25, contextOptions: { reducedMotion: 'reduce' } })
+
+  const navigator = (page: Page) => page.locator('[data-session-chart-navigator] [data-hub-chart-navigator]')
+  const span = async (page: Page) => {
+    const [start, end] = String(await navigator(page).getAttribute('data-hub-chart-navigator-window')).split(':').map(Number)
+    return end! - start! + 1
+  }
+
+  test('Zoom in halves the view down to five minutes, then disables', async ({ page }) => {
+    const harness = await openLongSession(page)
+    const zoomIn = navigator(page).getByRole('button', { name: 'Zoom in' })
+    const spans = [await span(page)]
+    for (let click = 0; click < 14 && await zoomIn.isEnabled(); click += 1) {
+      await zoomIn.click()
+      await settle(page)
+      spans.push(await span(page))
+    }
+    await expect(zoomIn).toBeDisabled()
+    expect(spans[spans.length - 1]).toBe(5)
+    for (let index = 1; index < spans.length; index += 1) expect(spans[index]!).toBeLessThan(spans[index - 1]!)
+    await assertNoUnexpected(harness)
+  })
+
+  test('one wheel notch zooms by the same step over the plot and the navigator', async ({ page }) => {
+    const harness = await openLongSession(page)
+    const full = await span(page)
+    // Every notch below is the same wheel event, so every surface must give
+    // the shared navigator's one step (exp(deltaY * 0.0025), as on the hub).
+    const deltas: number[] = []
+    await page.exposeFunction('recordWheelDelta', (deltaY: number) => { deltas.push(deltaY) })
+    await page.evaluate(() => window.addEventListener('wheel', event => {
+      (window as unknown as { recordWheelDelta: (deltaY: number) => void }).recordWheelDelta(event.deltaY)
+    }, { capture: true, passive: true }))
+    const expectedSpan = async () => {
+      await expect.poll(() => deltas.length).toBeGreaterThan(0)
+      return Math.round(full * Math.exp(deltas[deltas.length - 1]! * 0.0025))
+    }
+    const reset = async () => {
+      await navigator(page).getByRole('button', { name: 'Reset zoom' }).click()
+      await settle(page)
+      await expect.poll(() => span(page)).toBe(full)
+      deltas.length = 0
+    }
+    const overPlot = async () => {
+      const box = await page.locator(`${CHART} rect[data-chart-touch-action]`).boundingBox()
+      if (!box) throw new Error('plot area has no layout box')
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    }
+
+    await overPlot()
+    await page.keyboard.down('Alt')
+    await page.mouse.wheel(0, -100)
+    await page.keyboard.up('Alt')
+    await settle(page)
+    const expected = await expectedSpan()
+    expect(expected).toBeLessThan(full)
+    await expect.poll(() => span(page), { message: 'Alt + one notch over the plot' }).toBe(expected)
+
+    await reset()
+    await navigator(page).getByRole('button', { name: /Scroll zoom/ }).click()
+    await overPlot()
+    await page.mouse.wheel(0, -100)
+    await settle(page)
+    await expect.poll(() => span(page), { message: 'Scroll zoom on, one notch over the plot' }).toBe(await expectedSpan())
+
+    await reset()
+    await navigator(page).getByRole('button', { name: /Scroll zoom/ }).click()
+    const track = await navigator(page).locator('.hx-chart-navigator__track').boundingBox()
+    if (!track) throw new Error('navigator track has no layout box')
+    await page.mouse.move(track.x + track.width / 2, track.y + track.height / 2)
+    await page.mouse.wheel(0, -100)
+    await settle(page)
+    await expect.poll(() => span(page), { message: 'Scroll zoom on, one notch over the navigator' }).toBe(await expectedSpan())
+    await assertNoUnexpected(harness)
+  })
+
+  test('a click pins the minute the readout shows, in every lane, and the readout stays on it', async ({ page }) => {
+    const harness = await openLongSession(page)
+    const area = await page.locator(`${CHART} rect[data-chart-touch-action]`).boundingBox()
+    if (!area) throw new Error('plot area has no layout box')
+    const laneY = async (name: 'chat' | 'emotes') => {
+      const bars = await page.locator(`${CHART} rect[data-activity-bar="${name}"]`).evaluateAll(nodes =>
+        nodes.map(node => { const rect = node.getBoundingClientRect(); return { y: rect.y, height: rect.height } }))
+      const tallest = bars.reduce((best, bar) => (bar.height > best.height ? bar : best))
+      return tallest.y + tallest.height - 2
+    }
+    const minuteOf = (text: string | null) => text?.match(/\d\d:\d\d:\d\d/)?.[0] ?? null
+    const header = page.locator('[data-chart-hover-readout-row] p').first()
+    const lanes = [area.y + area.height * 0.08, await laneY('chat'), await laneY('emotes')]
+    let checked = 0
+    for (const y of lanes) {
+      for (const fraction of [0.13, 0.4471, 0.555, 0.61, 0.88]) {
+        const x = area.x + area.width * fraction
+        await page.mouse.move(x, y)
+        await settle(page)
+        const hovered = minuteOf(await header.textContent())
+        expect(hovered).not.toBeNull()
+        await page.mouse.click(x, y)
+        await settle(page)
+        // The pointer has not moved: readout, pin hint, card and announcement agree.
+        expect(minuteOf(await header.textContent()), `readout after click at ${fraction}`).toBe(hovered)
+        expect(minuteOf(await page.locator('[data-chart-selection-hint]').textContent()), `pin hint at ${fraction}`).toBe(hovered)
+        expect(minuteOf(await page.locator('[data-selected-moment-time]').textContent()), `card at ${fraction}`).toBe(hovered)
+        expect(minuteOf(await page.locator('[data-chart-selection-announcement]').textContent()), `announcement at ${fraction}`).toBe(hovered)
+        checked += 1
+        await page.keyboard.press('Escape')
+        await page.mouse.move(area.x - 40, area.y - 60)
+        await settle(page)
+      }
+    }
+    expect(checked).toBe(15)
+    await assertNoUnexpected(harness)
+  })
+
+  test('the focused plot shows its focus ring', async ({ page }) => {
+    const harness = await openLongSession(page)
+    const plot = page.locator('[data-session-chart-stack] svg[role="group"]').first()
+    await page.locator('[data-chart-focus-bar] button').last().focus()
+    await page.keyboard.press('Tab')
+    await expect(plot).toBeFocused()
+    const box = await plot.boundingBox()
+    if (!box) throw new Error('plot has no layout box')
+    // A strip just inside the plot's top edge, where the ring is painted.
+    const strip = { x: box.x + 24, y: box.y, width: 80, height: 3 }
+    const focused = await page.screenshot({ clip: strip, animations: 'disabled' })
+    await plot.evaluate(node => (node as SVGElement).blur())
+    await expect(plot).not.toBeFocused()
+    const blurred = await page.screenshot({ clip: strip, animations: 'disabled' })
+    expect(focused.equals(blurred), 'the focus ring changes the pixels at the plot edge').toBe(false)
+    await assertNoUnexpected(harness)
+  })
+})
+
+test.describe('minute-data pager on a phone', () => {
+  test.use({ viewport: { width: 390, height: 844 }, contextOptions: { reducedMotion: 'reduce' } })
+
+  test('puts the page label on its own row, with Earlier and Later at either end below it', async ({ page }) => {
+    const harness = await openLongSession(page)
+    await page.locator('[data-chart-data-alternative] summary').click()
+    const pager = page.locator('[data-chart-data-pager]')
+    await expect(pager).toBeVisible()
+    const label = await pager.locator('[data-chart-data-page-label]').boundingBox()
+    const earlier = await pager.getByRole('button', { name: 'Earlier minutes' }).boundingBox()
+    const later = await pager.getByRole('button', { name: 'Later minutes' }).boundingBox()
+    if (!label || !earlier || !later) throw new Error('pager has no layout box')
+    expect(label.y + label.height).toBeLessThanOrEqual(Math.min(earlier.y, later.y) + 1)
+    expect(Math.abs(earlier.y - later.y)).toBeLessThanOrEqual(1)
+    expect(earlier.x + earlier.width).toBeLessThan(later.x)
+    await assertNoUnexpected(harness)
+  })
+})
