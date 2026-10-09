@@ -498,6 +498,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   }
 
   function disconnect() {
+    setEverywhere(null)
     if (status === 'active' || status === 'grace' || status === 'pending' || account?.state === 'unavailable' && account.linked === true || billing.state === 'waiting' || billing.state === 'confirming' || billing.state === 'still_confirming' || billing.state === 'reconnect_required') {
       setConfirmDisconnect(true)
       return
@@ -896,9 +897,14 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
               <dd className="pulse-account-link-actions">{connected ? <>
                 <button type="button" disabled={accountBusy || payBusy || signingIn !== null} onClick={disconnect}>{ACCOUNT_COPY.signOut}</button>
                 {twitchOn && signedInWithTwitch && twitchWindow ? <button type="button" className="pulse-account-quiet-button" disabled={accountBusy || payBusy || signingIn !== null} onClick={() => void signIn('interactive', true)}>{ACCOUNT_COPY.differentAccount}</button> : null}
-                {everywhereOffered ? <button type="button" disabled={accountBusy || payBusy || signingIn !== null} onClick={() => { setConfirmDisconnect(false); setNotice('', 'account'); setEverywhere('ask') }}>{ACCOUNT_COPY.signOutEverywhere}</button> : null}
               </> : null}</dd>
             </div>
+            {/* Its own row: the account row already holds Sign out and the account switch. */}
+            {everywhereOffered ? <div data-row="sign-out-everywhere">
+              <dt>All devices</dt>
+              <dd>Every browser and extension<small>Sign out everywhere ends every website session and extension signed in to this account. Nothing is deleted.</small></dd>
+              <dd className="pulse-account-link-actions"><button type="button" disabled={accountBusy || payBusy || signingIn !== null} onClick={() => { setConfirmDisconnect(false); setNotice('', 'account'); setEverywhere('ask') }}>{ACCOUNT_COPY.signOutEverywhere}</button></dd>
+            </div> : null}
             {isSupporter && entitlement?.state === 'ready' ? <div data-row="billing">
               <dt>Billing</dt>
               <dd>Stripe<small>Change card, get receipts, or cancel.</small></dd>

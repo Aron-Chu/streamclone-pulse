@@ -1471,6 +1471,9 @@ describe('Sign out everywhere (Twitch sign-in on)', () => {
     const view = await signedIn(stage, 'signed_out_everywhere')
     try {
       expect(accountRow(view.host)).toContain('Signed in with Twitch as PulseViewer')
+      // Its own row, so the account row keeps room for its name and Sign out.
+      expect(view.host.querySelector('[data-row="sign-out-everywhere"] button')?.textContent).toBe('Sign out everywhere')
+      expect(view.host.querySelector('[data-row="account"]')?.textContent).not.toContain('Sign out everywhere')
       await view.click('Sign out everywhere')
       // The first click only asks.
       expect(everywhereCalls(view)).toHaveLength(0)
