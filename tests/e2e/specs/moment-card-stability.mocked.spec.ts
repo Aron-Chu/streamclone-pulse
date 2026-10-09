@@ -89,6 +89,47 @@ async function openPanel(page: Page, height: number) {
   }
 }
 
+/**
+ * Nothing is picked for the viewer: the strongest moment is not auto-selected,
+ * highlighted or locked on the chart, live or on a VOD, until a pick.
+ */
+for (const surface of [
+  { name: 'live', scenario: 'live-ready', twitchKind: 'live' },
+  { name: 'VOD recap', scenario: 'vod-ready', twitchKind: 'vod' },
+] as const) {
+  test(`${surface.name}: on load no moment is selected, highlighted or locked until a pick`, async ({ extension, prepare }) => {
+    await prepare({ scenario: surface.scenario, twitchKind: surface.twitchKind, storage: SIDEBAR })
+    const { root, rows, card, anyCard } = await openPanel(extension.page, 1000)
+    const chart = root.locator('svg[data-testid="pulse-overview-chart"]')
+    await expect(chart).toBeVisible()
+    await expect(rows.first()).toBeVisible()
+    const expectNothingPicked = async () => {
+      await expect(anyCard).toHaveCount(0)
+      await expect(root.locator('.pulse-moment-row-button[aria-pressed="true"]')).toHaveCount(0)
+      await expect(root.locator('.pulse-moment-row-selected')).toHaveCount(0)
+      await expect(chart).not.toHaveAttribute('data-chart-locked-index')
+      await expect(root.locator('[data-chart-readout-state="selected"]')).toHaveCount(0)
+      await expect(root.locator('[data-chart-moment-marker-state="active"]')).toHaveCount(0)
+      await expect(root.locator('.pulse-recap-highlight-btn[aria-pressed="true"]')).toHaveCount(0)
+      await expect(root.locator('.pulse-moment-slot')).toHaveCount(0)
+    }
+    await expectNothingPicked()
+    // Still nothing a few seconds in, after the panel has settled.
+    await extension.page.waitForTimeout(2_000)
+    await expectNothingPicked()
+    if (surface.name === 'live') await expect(root.locator('[data-featured-moment="true"]')).toContainText('Strongest loaded moment')
+
+    // A pick selects, highlights and locks; picking the row again releases all of it.
+    await rows.first().click()
+    await expect(rows.first()).toHaveAttribute('aria-pressed', 'true')
+    await expect(card).toHaveCount(1)
+    await expect(chart).toHaveAttribute('data-chart-locked-index', /\d+/)
+    await rows.first().click()
+    await expect(rows.first()).toHaveAttribute('aria-pressed', 'false')
+    await expectNothingPicked()
+  })
+}
+
 test('nothing shows above Top Moments until a pick; later picks swap the card in place and move nothing', async ({ extension, prepare }) => {
   await prepare({ scenario: 'vod-ready', twitchKind: 'vod', storage: SIDEBAR })
   const { root, rows, card, anyCard } = await openPanel(extension.page, 2200)

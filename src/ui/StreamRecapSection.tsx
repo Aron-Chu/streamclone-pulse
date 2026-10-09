@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
 import {
   momentClockDisplay,
@@ -380,24 +380,17 @@ function RecapReadyContent({
   const [hoveredOffset, setHoveredOffset] = useState<number | null>(null)
   const [hoveredGameKey, setHoveredGameKey] = useState<string | null>(null)
   const rollups = pickRecapRollups(payload)
-  const heroMoment = mergedMoments[0] ?? null
-  const [selectedKey, setSelectedKey] = useState<string | null>(
-    heroMoment ? recapMomentKey(payload.streamId, heroMoment) : null,
-  )
+  // Nothing is selected, highlighted or locked on the chart until the viewer
+  // picks something; the strongest moment is not picked for them.
+  const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [overridePoint, setOverridePoint] = useState<LiveHeatPoint | null>(null)
-  const userSelectedRef = useRef(false)
-  const [, setPicks] = useState(0)
   const cardId = useId()
 
+  // Another stream starts with nothing picked.
   useEffect(() => {
-    userSelectedRef.current = false
-  }, [payload.streamId])
-
-  useEffect(() => {
-    if (userSelectedRef.current) return
-    setSelectedKey(heroMoment ? recapMomentKey(payload.streamId, heroMoment) : null)
+    setSelectedKey(null)
     setOverridePoint(null)
-  }, [payload.streamId, heroMoment?.offsetSeconds, heroMoment?.score])
+  }, [payload.streamId])
 
   const selectedMoment = mergedMoments.find(moment => recapMomentKey(payload.streamId, moment) === selectedKey) ?? null
   useEffect(() => {
@@ -406,14 +399,11 @@ function RecapReadyContent({
   const selectedPoint = selectedMoment
     ? recapMomentToLiveHeatPoint(selectedMoment, catalog, payload.startedAt, rollups, payload.peaks)
     : overridePoint
-  // A listed moment, however it was picked, shows in the card above the list.
-  const listedPick = userSelectedRef.current && selectedMoment != null
-
   // A minute, clip or highlight the list does not rank opens its own card.
   // Hold it for one exit window so clearing a selection fades and collapses
   // instead of vanishing on the same frame.
   const recapCardHold = usePinnedCardHold(
-    userSelectedRef.current && !selectedMoment ? selectedPoint : null,
+    selectedMoment ? null : selectedPoint,
     prefersReducedMotion(),
   )
 
@@ -458,11 +448,8 @@ function RecapReadyContent({
       : null
 
   // Selects a listed moment by its key, or anything else by a key and the
-  // point it shows. A pick that changes no other state (the highlighted first
-  // row) still has to render: the card then shows it as the selected moment.
+  // point it shows; null clears the selection.
   function pick(key: string | null, point: LiveHeatPoint | null = null): void {
-    userSelectedRef.current = true
-    setPicks(picks => picks + 1)
     setSelectedKey(key)
     setOverridePoint(point)
     setHoveredOffset(null)
@@ -568,7 +555,7 @@ function RecapReadyContent({
       />
       {/* One grid child, so the card's slot never adds or drops a grid gap. */}
       <div>
-        <SavedMoments login={payload.login} streamId={payload.streamId} vodId={payload.vodId ?? undefined} selected={userSelectedRef.current ? selectedPoint : null} />
+        <SavedMoments login={payload.login} streamId={payload.streamId} vodId={payload.vodId ?? undefined} selected={selectedPoint} />
         {recapCardHold.point ? (
           <MomentCardSlot
             exiting={recapCardHold.exiting}
@@ -599,7 +586,8 @@ function RecapReadyContent({
         selectedKey={selectedKey}
         card={{
           id: cardId,
-          point: listedPick ? selectedPoint : null,
+          // A listed moment, however it was picked, shows in the card above the list.
+          point: selectedMoment ? selectedPoint : null,
           backendUrl,
           onJump,
           onAnalytics,
@@ -670,24 +658,15 @@ function OfflineFallbackContent({
   const [momentsExpanded, setMomentsExpanded] = useState(false)
   const [hoveredOffset, setHoveredOffset] = useState<number | null>(null)
   const [hoveredGameKey, setHoveredGameKey] = useState<string | null>(null)
-  const heroPoint = peakPoints[0] ?? null
-  const [selectedKey, setSelectedKey] = useState<string | null>(
-    heroPoint ? offlinePointKey(heroPoint) : null,
-  )
+  // As in the recap: nothing is picked until the viewer picks it.
+  const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [overridePoint, setOverridePoint] = useState<LiveHeatPoint | null>(null)
-  const userSelectedRef = useRef(false)
-  const [, setPicks] = useState(0)
   const cardId = useId()
 
   useEffect(() => {
-    userSelectedRef.current = false
-  }, [payload.login, payload.streamId, payload.vodId, payload.startedAt])
-
-  useEffect(() => {
-    if (userSelectedRef.current) return
-    setSelectedKey(heroPoint ? offlinePointKey(heroPoint) : null)
+    setSelectedKey(null)
     setOverridePoint(null)
-  }, [payload.streamId, heroPoint?.offsetSeconds, heroPoint?.score])
+  }, [payload.login, payload.streamId, payload.vodId, payload.startedAt])
 
   const listedPoint = peakPoints.find(point => offlinePointKey(point) === selectedKey)
   const selectedPoint = selectedKey == null ? null : listedPoint ?? overridePoint
@@ -699,14 +678,13 @@ function OfflineFallbackContent({
   // Hold the card for one exit window so clearing a selection fades and
   // collapses instead of vanishing on the same frame.
   const recapCardHold = usePinnedCardHold(
-    userSelectedRef.current && !listedPoint ? selectedPoint : null,
+    listedPoint ? null : selectedPoint,
     prefersReducedMotion(),
   )
-  // A listed moment, however it was picked, shows in the card above the list.
-  const listedPick = userSelectedRef.current && listedPoint != null
   const card: TopMomentCardProps = {
     id: cardId,
-    point: listedPick ? listedPoint : null,
+    // A listed moment, however it was picked, shows in the card above the list.
+    point: listedPoint ?? null,
     backendUrl,
     onJump,
     onAnalytics,
@@ -715,10 +693,8 @@ function OfflineFallbackContent({
   const shownPeakPoints = foldMoments(peakPoints, momentsExpanded, point => offlinePointKey(point) === selectedKey)
   const hiddenPeakCount = peakPoints.length - shownPeakPoints.length
 
-  // As in the recap: a pick of the highlighted first row still renders.
+  // As in the recap; null clears the selection.
   function pick(key: string | null, point: LiveHeatPoint | null = null): void {
-    userSelectedRef.current = true
-    setPicks(picks => picks + 1)
     setSelectedKey(key)
     setOverridePoint(point)
     setHoveredOffset(null)
@@ -802,7 +778,7 @@ function OfflineFallbackContent({
       />
       {/* One grid child, so the card's slot never adds or drops a grid gap. */}
       <div>
-        <SavedMoments login={payload.login} streamId={payload.streamId} vodId={payload.vodId ?? undefined} selected={userSelectedRef.current ? selectedPoint : null} />
+        <SavedMoments login={payload.login} streamId={payload.streamId} vodId={payload.vodId ?? undefined} selected={selectedPoint} />
         {recapCardHold.point ? (
           <MomentCardSlot
             exiting={recapCardHold.exiting}

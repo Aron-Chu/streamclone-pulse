@@ -187,6 +187,10 @@ describe('Top Moments card (live panel)', () => {
     expect(rows(host).filter(row => row.hasAttribute('aria-controls'))).toHaveLength(0)
     expect(chartCard(host)).toBeNull()
     expect(selectionCards(host)).toHaveLength(0)
+    // Nor is the strongest minute locked or highlighted on the chart.
+    expect(host.querySelector('svg[data-chart-locked-index]')).toBeNull()
+    expect(host.querySelector('[data-chart-readout-state="selected"]')).toBeNull()
+    expect(host.querySelectorAll('[data-chart-moment-marker-state="active"]')).toHaveLength(0)
   })
 
   it('opens a list pick in a card right above the list, swaps later picks into it and locks the chart', () => {
@@ -763,16 +767,23 @@ describe('Stream recap Top moments', () => {
       const host = mount(recap(variant.payload))
       const list = rows(host)
       expect(list.length).toBeGreaterThanOrEqual(3)
-      // The first moment starts highlighted, with no card above the list.
+      // Nothing is picked for the viewer: no card, no pressed or highlighted
+      // row, no locked chart minute, no selected highlight.
       expect(topCard(host)).toBeNull()
       expect(host.textContent).not.toContain('Strongest moment')
-      expect(list[0].getAttribute('aria-pressed')).toBe('true')
+      expect(list.every(row => row.getAttribute('aria-pressed') === 'false')).toBe(true)
+      expect(host.querySelectorAll('.pulse-moment-row-selected')).toHaveLength(0)
       expect(list.filter(row => row.hasAttribute('aria-controls'))).toHaveLength(0)
+      expect(host.querySelector('svg[data-chart-locked-index]')).toBeNull()
+      expect(host.querySelector('[data-chart-readout-state="selected"]')).toBeNull()
+      expect(host.querySelectorAll('.pulse-recap-highlight-btn[aria-pressed="true"]')).toHaveLength(0)
       expect(selectionCards(host)).toHaveLength(0)
 
-      // Picking the highlighted first row changes no key, but still opens it;
-      // picking it again closes the card.
+      // Picking the first row opens it and locks its minute; picking it again
+      // closes the card and releases the chart.
       click(list[0])
+      expect(list[0].getAttribute('aria-pressed')).toBe('true')
+      expect(host.querySelector('svg[data-chart-locked-index]')).not.toBeNull()
       const card = openCard(host)!
       expect(topCardLabel(host)).toMatch(/^Selected moment at 00:02/)
       expect(card.nextElementSibling).toBe(list[0].parentElement)
@@ -781,6 +792,7 @@ describe('Stream recap Top moments', () => {
       click(list[0])
       expect(openCard(host)).toBeNull()
       expect(list[0].getAttribute('aria-pressed')).toBe('false')
+      expect(host.querySelector('svg[data-chart-locked-index]')).toBeNull()
       expect(selectionCards(host)).toHaveLength(0)
 
       click(list[1])
