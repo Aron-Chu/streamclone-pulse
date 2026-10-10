@@ -26,7 +26,7 @@ import { buildRecapEmoteCatalog } from './recapEmotes.ts'
 import { PulseSectionCard } from './PulseSectionCard.tsx'
 import { PanelErrorBoundary } from './PanelErrorBoundary.tsx'
 import type { ExtensionClip, ExtensionCoverageTierResponse, ExtensionRollup, PulseBackfillJob, PulsePayload, PulseUpdateMessage } from '../shared/messages.ts'
-import { openStreamAnalytics } from '../shared/analyticsLinks.ts'
+import { buildHubAnalyticsUrl, defaultWebAnalyticsBaseUrlForApi, openStreamAnalytics, resolveStreamAnalyticsHref } from '../shared/analyticsLinks.ts'
 import {
   DEFAULT_BACKEND_URL,
   getAutoUpdateEnabled,
@@ -104,8 +104,7 @@ import { formatPulseApiError } from './pulseApiErrors.ts'
 import { resolveJumpMomentAction } from './jumpMomentAction.ts'
 import type { ChartTimelineWindow } from './chatActivityEmotes.ts'
 import type { ExtensionVodPulseResponse } from '../types/vodPulseTypes.ts'
-import { isVodArchiveConflict, resolveVodPulseState } from '../vod/normalizeVodPulseFetch.ts'
-import { PulseStatusPill, type PulseStatusKind } from './PulseStatusPill.tsx'
+import { resolveVodPulseState, MAX_VOD_SECONDS } from '../vod/normalizeVodPulseFetch.ts'
 import { PulseSidebarTabs } from './PulseSidebarTabs.tsx'
 import { safeImageUrl, safeTwitchNavigationUrl } from '../shared/safeUrl.ts'
 import { mergePulsePayload } from '../background/pulsePayloadMerge.ts'
@@ -305,12 +304,13 @@ function OverlayMain({
   useEffect(() => {
     if (!awaitingData) return
     const soft = setTimeout(() => setLoadStall([loadKey, 1]), 10_000)
-    const hard = setTimeout(() => setLoadStall([loadKey, 2]), 30_000)
+    // A replay stops waiting after 20 s and says why (VodPulseStatusCard).
+    const hard = setTimeout(() => setLoadStall([loadKey, 2]), context.kind === 'vod' ? 20_000 : 30_000)
     return () => {
       clearTimeout(soft)
       clearTimeout(hard)
     }
-  }, [awaitingData, loadKey])
+  }, [awaitingData, loadKey, context.kind])
   const loadStallStage = awaitingData && loadStall[0] === loadKey ? loadStall[1] : 0
   const error = reportedError || (loadStallStage > 1 ? 'request_failed' : undefined)
   const [mode, setModeState] = useState<OverlayMode>('expanded')
@@ -1701,6 +1701,7 @@ function OverlayMain({
         >
       <StreamPulseHeader
         personalTitle={banner.value.title}
+        replayLead={isVodPage ? replayLead(vodPulse) : undefined}
         isLive={uiIsLive}
         surfaceState={panelSurfaceState}
         pulseLiveAccess={pulseLiveAccess.state}
@@ -1747,7 +1748,7 @@ function OverlayMain({
         </section>
       ) : null}
 
-      {error && !payload && !(isVodPage && isVodArchiveConflict(vodPulse)) ? (
+      {error && !payload && !(isVodPage && error !== EXTENSION_RECONNECT_MESSAGE) ? (
         <BackendError backendUrl={backendUrl} error={error} onRetry={() => void refreshPulse()} onSettings={openInlineSettings} />
       ) : null}
 
@@ -1886,9 +1887,15 @@ function OverlayMain({
       {isVodPage && !hasRecapPanel && panelSurfaceState !== 'identity_mismatch' ? (
         <VodPulseStatusCard
           vodPulse={vodPulse}
-          // A stalled load is reported as an error above; never "Loading" beside it.
+          // A stalled load is reported as an error; never "Loading" beside it.
           loading={vodPulseLoading && !error}
           error={error}
+          vodId={context.vodId}
+          analyticsHref={resolveStreamAnalyticsHref({
+            apiBaseUrl: backendUrl,
+            channelLogin: vodPulse?.channelLogin ?? (login.startsWith('__vod__:') ? undefined : login),
+            streamId: vodPulse?.streamId,
+          }) ?? buildHubAnalyticsUrl(defaultWebAnalyticsBaseUrlForApi(backendUrl))}
           // An orphaned tab can only reload, which the error card above offers.
           onRetry={error === EXTENSION_RECONNECT_MESSAGE ? undefined : () => void refreshPulse()}
         />
@@ -1933,7 +1940,7 @@ function OverlayMain({
         </>
       ) : null}
 
-      {awaitingData && !error ? (
+      {awaitingData && !error && !isVodPage ? (
         <>
           {sidebarBodyOnly && resolvedPlacement === 'sidebar' ? (
             <PulseSidebarSkeleton hostedBackend={hostedBackend} />
@@ -1997,6 +2004,7 @@ function currentViewerCount(payload: PulsePayload | null, isLive: boolean): numb
 
 function StreamPulseHeader({
   personalTitle,
+  replayLead,
   isLive,
   surfaceState,
   pulseLiveAccess,
@@ -2014,6 +2022,8 @@ function StreamPulseHeader({
   onSupporterPerks,
 }: {
   personalTitle: string
+  /** Set on a /videos/ replay: the badge reads Replay, never Live or Offline. */
+  replayLead?: string
   isLive: boolean
   surfaceState: PulsePanelSurfaceState
   pulseLiveAccess: import('./resolvePulseLiveAccess.ts').PulseLiveAccessState
@@ -2056,8 +2066,9 @@ function StreamPulseHeader({
           finish={finish}
           tenure={appearance?.tenure}
           paint={appearance?.paint}
-          statusLabel={hostedBackend ? statusLabel : 'Local dev API'}
-          statusTone={hostedBackend ? (isLive ? 'live' : 'idle') : 'local'}
+          statusLabel={hostedBackend ? (replayLead != null ? 'Replay' : statusLabel) : 'Local dev API'}
+          statusTone={hostedBackend ? (replayLead != null ? 'replay' : isLive ? 'live' : 'idle') : 'local'}
+          lead={replayLead || undefined}
         />
       </div>
       <div style={{ ...actionsStyle, ...(hostedBackend && hideUtilityActions ? { display: 'none' } : {}) }}>
@@ -2104,62 +2115,81 @@ function StreamPulseHeader({
   )
 }
 
-function vodPulseStatusKind(state: ReturnType<typeof resolveVodPulseState>): PulseStatusKind {
-  switch (state.status) {
-    case 'live_dvr':
-      return 'tracking'
-    case 'ready':
-      return 'replay-synced'
-    case 'partial':
-      return 'partial'
-    case 'syncing':
-    case 'loading':
-      return 'syncing'
-    case 'missing':
-      return 'missing'
-    default:
-      return state.status === 'error' && state.archiveConflict ? 'archive-conflict' : 'backend-error'
-  }
+/** Answers that retrying cannot change. */
+const PERMANENT_VOD_STATES = new Set(['stream_not_collected', 'duration_implausible'])
+
+/**
+ * "Oct 7 · 8h 25m": the replay's own stream, never the live one. No game: the
+ * Games played strip is the one place that names games, so the header never
+ * names one the recap says it doesn't know. A length over 48 h is not a real
+ * stream (see parseExtensionVodPulseResponse) and is left out.
+ */
+export function replayLead(vod: ExtensionVodPulseResponse | null): string {
+  const started = Date.parse(vod?.startedAt ?? '')
+  const seconds = vod?.durationSeconds ?? 0
+  const hours = Math.floor(seconds / 3600)
+  return [
+    Number.isFinite(started) ? new Date(started).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '',
+    seconds > 0 && seconds <= MAX_VOD_SECONDS ? `${hours ? `${hours}h ` : ''}${Math.floor((seconds % 3600) / 60)}m` : '',
+  ].filter(Boolean).join(' · ')
 }
 
+/**
+ * Every replay state that is not a chart: loading for at most 20 s, then a
+ * plain-language reason, Retry and Open in Analytics. Never a dead end.
+ */
 function VodPulseStatusCard({
   vodPulse,
   loading,
   error,
+  vodId,
+  analyticsHref,
   onRetry,
 }: {
   vodPulse: ExtensionVodPulseResponse | null
   loading?: boolean
   error?: string
+  vodId?: string | null
+  analyticsHref?: string | null
   onRetry?: () => void
 }) {
   const state = resolveVodPulseState(vodPulse, error, loading)
-  const status = vodPulseStatusKind(state)
-  const subtitle =
+  const channel = vodPulse?.channelDisplayName || vodPulse?.channelLogin || 'this channel'
+  // A permanent answer gets no Retry: retrying cannot change it.
+  const permanent = PERMANENT_VOD_STATES.has(vodPulse?.resolutionState ?? '')
+  const [title, body] =
     state.status === 'loading'
-      ? 'Loading replay analytics…'
-      : state.status === 'live_dvr'
-        ? 'Live analytics are active. Replay chat may remain unavailable until Twitch publishes the archive.'
+      ? ['Loading this replay', 'Matching this VOD to the chat we recorded. This usually takes a few seconds; after 20 seconds we stop and tell you why.']
       : state.status === 'syncing'
-        ? state.reason ?? 'Replay analytics are still syncing for this VOD.'
+        ? ['Still preparing this replay', state.reason]
         : state.status === 'missing'
-          ? state.reason ?? 'No replay analytics have been indexed for this VOD yet.'
-          : state.status === 'error'
-            ? state.message
-            : 'Replay analytics are partially available.'
+          ? vodPulse?.resolutionState === 'vod_not_found'
+            ? ['Twitch doesn’t list this VOD', 'It may be deleted, expired or private.']
+            : vodPulse?.resolutionState === 'stream_not_collected'
+            ? ['No replay data for this VOD', 'Pulse wasn’t recording this channel’s chat during this stream.']
+            : [permanent ? 'No replay data for this VOD' : 'No replay data for this VOD yet', state.reason]
+          : state.status === 'error' && state.archiveConflict
+            ? ['We couldn’t match this VOD to a recorded stream', `StreamPulse may not have been following ${channel}’s chat when this was streamed, or Twitch hasn’t finished the archive yet.`]
+            : state.status === 'error'
+              ? ['We couldn’t load this replay', state.message]
+              : ['Part of this replay has data', 'Open it in Analytics for the whole stream.']
+  const support = [vodId && `vod ${vodId}`, vodPulse?.streamId && `stream ${vodPulse.streamId}`, vodPulse?.resolutionState].filter(Boolean).join(' · ')
+  const [copied, setCopied] = useState(false)
 
   return (
-    <PulseSectionCard title="Replay Pulse">
-      <div style={styles.vodStateWrap}>
-        <PulseStatusPill status={status} />
-        <p style={styles.stateText}>{subtitle}</p>
-        {onRetry && !(state.status === 'error' && state.retryable === false) ? (
-          <button type="button" style={styles.secondaryButton} onClick={onRetry}>
-            Retry
-          </button>
-        ) : null}
-      </div>
-    </PulseSectionCard>
+    <section className="pulse-vod-state" data-vod-state={state.status} role="status" style={state.status === 'loading' ? styles.vodState : { ...styles.vodState, ...styles.vodStateWarn }}>
+      <h3 style={{ ...styles.vodStateTitle, color: state.status === 'loading' ? '#fafafc' : '#fde68a' }}>{title}</h3>
+      <p style={{ ...styles.stateText, margin: 0 }}>{body}</p>
+      {state.status === 'loading' ? null : (
+        <>
+          <div style={styles.footerActions}>
+            {onRetry && !permanent ? <button type="button" style={styles.primaryButton} onClick={onRetry}>↻ Retry</button> : null}
+            {analyticsHref ? <a href={analyticsHref} target="_blank" rel="noopener noreferrer" style={{ ...styles.secondaryButton, ...styles.vodStateLink }}>Open in Analytics ↗</a> : null}
+          </div>
+          {support ? <button type="button" style={styles.vodStateSupport} onClick={() => void navigator.clipboard?.writeText(support).then(() => setCopied(true), () => {})}>{copied ? 'Support details copied' : 'Copy support details'}</button> : null}
+        </>
+      )}
+    </section>
   )
 }
 
@@ -2465,7 +2495,11 @@ const styles: Record<string, CSSProperties> = {
     margin: '0 0 10px',
     padding: '8px 10px',
   },
-  vodStateWrap: { display: 'grid', gap: 8 },
+  vodState: { background: '#1f1f27', border: '1px solid #3f3f50', borderRadius: 12, padding: 14 },
+  vodStateWarn: { background: 'rgba(245, 158, 11, 0.08)', borderColor: 'rgba(251, 191, 36, 0.38)' },
+  vodStateTitle: { fontSize: 15, fontWeight: 700, lineHeight: 1.3, margin: '0 0 6px' },
+  vodStateLink: { alignItems: 'center', boxSizing: 'border-box', display: 'flex', fontSize: 13, justifyContent: 'center', padding: '10px 6px', textDecoration: 'none', whiteSpace: 'nowrap' },
+  vodStateSupport: { background: 'none', border: 0, color: '#a1a1b5', cursor: 'pointer', font: 'inherit', fontSize: 11, margin: '10px 0 0', padding: 0, textDecoration: 'underline' },
   progressTrack: { background: '#33333d', borderRadius: 999, height: 8, marginBottom: 10, overflow: 'hidden' },
   progressFill: { background: 'var(--pulse-accent-soft, #a78bfa)', borderRadius: 999, display: 'block', height: '100%' },
   errorBlock: { background: '#1f1f27', borderRadius: 12, padding: 16 },

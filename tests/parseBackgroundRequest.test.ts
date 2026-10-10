@@ -43,6 +43,13 @@ describe('parseBackgroundRequest', () => {
     })
   })
 
+  it('passes a VOD channel login through, and drops a placeholder instead of refusing the VOD', () => {
+    expect(parseBackgroundRequest({ type: 'GET_PULSE_VOD', vodId: '2894307326', login: 'OhnePixel' }))
+      .toEqual({ type: 'GET_PULSE_VOD', vodId: '2894307326', streamId: undefined, window: undefined, login: 'ohnepixel' })
+    expect(parseBackgroundRequest({ type: 'GET_PULSE_VOD', vodId: '2894307326', login: '__vod__:2894307326' }))
+      .toEqual({ type: 'GET_PULSE_VOD', vodId: '2894307326', streamId: undefined, window: undefined })
+  })
+
   it('drops raw page and chat fields from outbound pulse requests', () => {
     expect(parseBackgroundRequest({
       type: 'GET_PULSE',
