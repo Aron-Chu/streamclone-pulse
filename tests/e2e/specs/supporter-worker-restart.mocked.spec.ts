@@ -298,7 +298,7 @@ test('a stopped packaged worker resumes Checkout cooldown and applies the chosen
     })
     await extension.page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
     await extension.page.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Halo', exact: true }).check()
-    await extension.page.getByRole('button', { name: 'Use Halo when Supporter starts', exact: true }).click()
+    await extension.page.getByRole('button', { name: 'Save for when Supporter opens', exact: true }).click()
     // The page offers no purchase while signed out; the kept worker path is started directly.
     await extension.page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_BILLING', action: 'checkout' }))
     await expect(extension.page.locator('[data-journey-state="stripe-open"]')).toBeVisible()

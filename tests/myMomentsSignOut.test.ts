@@ -71,7 +71,7 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllGlobals())
 
-describe('only a confirmed sign-out removes an account's local copy', () => {
+describe('only a confirmed sign-out removes an account’s local copy', () => {
   it('myMoments binds the removal at load', () => {
     expect(typeof f.forget).toBe('function')
   })

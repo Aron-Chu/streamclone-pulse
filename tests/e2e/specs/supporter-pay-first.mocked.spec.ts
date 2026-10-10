@@ -78,7 +78,7 @@ test('worker installation Checkout opens only Stripe, delayed payment activates 
   const initialNavigations = twitchNavigations
   await settings.bringToFront()
   await settings.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Halo', exact: true }).check()
-  await settings.getByRole('button', { name: 'Use Halo when Supporter starts', exact: true }).click()
+  await settings.getByRole('button', { name: 'Save for when Supporter opens', exact: true }).click()
   expect(calls).toEqual([])
   const tabs = await recordTabs(extension.serviceWorker)
   // A signed-out page offers no purchase; the kept worker path is started directly.

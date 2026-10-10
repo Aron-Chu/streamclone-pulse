@@ -258,7 +258,7 @@ const hostStyles = `
   .pulse-supporter-tile input { height: 1px; opacity: 0; position: absolute; width: 1px; }
   .pulse-supporter-tile .pulse-supporter-paint-sample { font-size: 18px; line-height: 1.1; min-width: 0; }
   .pulse-supporter-tile small { font-size: 12px; font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .pulse-supporter-tile-chip { background: ${theme.panel}; border: 1px solid ${theme.border}; border-radius: 999px; color: ${theme.textPrimary}; font-size: 9.5px; font-weight: 800; left: 50%; letter-spacing: 0.02em; line-height: 13px; padding: 0 5px; pointer-events: none; position: absolute; top: -7px; transform: translateX(-50%); white-space: nowrap; }
+  .pulse-supporter-tile-chip { background: ${theme.panel}; border: 1px solid ${theme.border}; border-radius: 999px; box-sizing: border-box; color: ${theme.textPrimary}; font-size: 12px; font-weight: 700; line-height: 16px; max-width: 100%; overflow: hidden; padding: 0 6px; pointer-events: none; text-overflow: ellipsis; white-space: nowrap; }
   .pulse-supporter-tile-chip[data-chip="equipped"] { border-color: rgba(45, 212, 191, 0.7); }
   .pulse-supporter-tile-chip[data-chip="previewing"] { border-color: ${theme.accentSoft}; border-style: dashed; }
   .pulse-supporter-look-row:disabled .pulse-supporter-tile { cursor: wait; }
