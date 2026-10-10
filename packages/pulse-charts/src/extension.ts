@@ -28,7 +28,7 @@ export {
 export { buildChartHitRegions, chartHitRegionAtX } from './chartHitRegions.ts'
 export { viewerScaleBounds } from './viewerScale.ts'
 export {
-  buildViewerGeometry,
+  buildViewerOverviewGeometry,
   buildViewerOverviewAreaPath,
   type ViewerTimedValue,
 } from './viewerGeometry.ts'

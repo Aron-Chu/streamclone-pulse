@@ -9,7 +9,7 @@ import {
   normalizeGameSegments as normalizeChartGameSegments,
   buildChartHitRegions,
   chartHitRegionAtX,
-  buildViewerGeometry,
+  buildViewerOverviewGeometry,
   ViewerNoDotPath,
   viewerScaleBounds,
   type ChartGameSegment,
@@ -830,7 +830,7 @@ function PulseOverviewChartImpl({
   const viewerGeometry = useMemo(() => {
     if (!showViewerStrip || !viewerSamplesObserved) return null
     const axisSpan = Math.max(1, viewerAxisMax - viewerAxisMin)
-    return buildViewerGeometry(viewerTimedValues, viewerTimedValues, {
+    return buildViewerOverviewGeometry(viewerTimedValues, {
       width,
       padLeft: PAD_LEFT,
       padRight: PAD_RIGHT,

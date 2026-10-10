@@ -42,6 +42,7 @@ export {
 } from './viewerInteraction.ts'
 export {
   buildViewerGeometry,
+  buildViewerOverviewGeometry,
   buildViewerMorphGeometry,
   buildViewerOverviewAreaPath,
   buildViewerOverviewPath,
