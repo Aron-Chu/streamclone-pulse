@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, MouseEvent, PointerEvent as ReactPointerEvent, RefObject } from 'react'
+import type { MouseEvent, PointerEvent as ReactPointerEvent, RefObject } from 'react'
 import { formatHeatOffset, momentClockDisplay, reactionAnalyticalOffset } from '@streampulse/pulse-core'
 import {
   GameSegmentOverlay,
@@ -1520,26 +1520,27 @@ function PulseOverviewChartImpl({
     onSelectIndex?.(clickedFullIndex)
   }
 
-  const shellStyle = { ...styles.shell, height, minHeight: height }
+  // Static shell, empty-state and svg layout lives in shadow.css (.pulse-overview-*).
+  const shellStyle = { height, minHeight: height }
 
   if (loading) {
     return (
-      <div ref={containerRef} id={chartRegionId} style={shellStyle}>
-        <div style={styles.empty}>Loading timeline…</div>
+      <div ref={containerRef} id={chartRegionId} className="pulse-overview-shell" style={shellStyle}>
+        <div className="pulse-overview-empty">Loading timeline…</div>
       </div>
     )
   }
 
   if (n === 0) {
     return (
-      <div ref={containerRef} id={chartRegionId} style={shellStyle}>
-        <div style={styles.empty}>{emptyMessage ?? 'No chart data yet'}</div>
+      <div ref={containerRef} id={chartRegionId} className="pulse-overview-shell" style={shellStyle}>
+        <div className="pulse-overview-empty">{emptyMessage ?? 'No chart data yet'}</div>
       </div>
     )
   }
 
   return (
-    <div ref={containerRef} id={chartRegionId} className="pulse-sparkline-wrap" style={shellStyle}>
+    <div ref={containerRef} id={chartRegionId} className="pulse-sparkline-wrap pulse-overview-shell" style={shellStyle}>
       <svg
         ref={svgRef}
         data-testid="pulse-overview-chart"
@@ -1565,7 +1566,7 @@ function PulseOverviewChartImpl({
         data-chart-mode={detailPresentationState}
         data-chart-presentation={detailPresentationState}
         data-chart-geometry="single"
-        style={{ ...styles.svg, height }}
+        style={{ height }}
       >
         <defs>
           <linearGradient id={svgIds.viewerGradient} x1="0" y1="0" x2="0" y2="1">
@@ -2267,30 +2268,3 @@ function PulseOverviewChartImpl({
 // Memoized (Aug-16 pattern): parent poll renders must not reconcile the whole
 // chart subtree; imperative hover already bypasses React for pointer chrome.
 export const PulseOverviewChart = memo(PulseOverviewChartImpl)
-
-const styles: Record<string, CSSProperties> = {
-  shell: {
-    background: CHART_THEME.background,
-    borderRadius: 8,
-    minWidth: 0,
-    overflow: 'hidden',
-    position: 'relative',
-    width: '100%',
-  },
-  svg: {
-    display: 'block',
-    width: '100%',
-  },
-  empty: {
-    alignItems: 'center',
-    color: 'rgba(161, 161, 170, 0.95)',
-    display: 'grid',
-    fontSize: 11,
-    fontWeight: 700,
-    height: '100%',
-    minHeight: 0,
-    padding: '0 12px',
-    placeItems: 'center',
-    textAlign: 'center',
-  },
-}

@@ -123,6 +123,40 @@ export const shadowStyles = `
   }
   .pulse-animate-in { animation: pulse-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
   .pulse-bar-grow { transform-origin: bottom center; animation: bar-grow 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .pulse-chart-readout-band { background: rgba(255, 255, 255, 0.025); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; box-sizing: border-box; display: grid; gap: 4px; height: 60px; min-height: 60px; overflow: hidden; padding: 6px 8px; width: 100%; }
+  .pulse-chart-readout-content { display: grid; gap: 3px; grid-template-rows: 16px 27px; min-width: 0; }
+  .pulse-readout-header { align-items: center; display: flex; gap: 6px; min-width: 0; white-space: nowrap; }
+  .pulse-readout-kicker { color: ${theme.accent2}; flex-shrink: 0; font-size: 9px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
+  .pulse-readout-time { color: ${theme.textPrimary}; flex-shrink: 0; font-size: 11px; font-variant-numeric: tabular-nums; font-weight: 800; }
+  .pulse-readout-emotes { align-items: center; display: inline-flex; gap: 4px; margin-left: auto; min-width: 0; overflow: hidden; }
+  .pulse-readout-emote { align-items: center; display: inline-flex; flex-shrink: 0; height: 18px; justify-content: center; width: 18px; }
+  .pulse-readout-hint { color: ${theme.textMuted}; flex: 1 1 auto; font-size: 9px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .pulse-readout-metrics { align-items: center; display: grid; gap: 8px; grid-template-columns: repeat(3, minmax(0, 1fr)); min-width: 0; }
+  .pulse-readout-metric { display: grid; gap: 1px; line-height: 1.1; min-width: 0; }
+  .pulse-readout-label { color: ${theme.textMuted}; flex-shrink: 0; font-size: 9px; font-weight: 800; letter-spacing: 0.02em; text-transform: uppercase; }
+  .pulse-readout-value { color: ${theme.textSecondary}; font-size: 10px; font-variant-numeric: tabular-nums; font-weight: 800; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pulse-games { display: grid; gap: 4px; margin-bottom: 2px; min-width: 0; width: 100%; }
+  .pulse-games-head { align-items: center; display: flex; gap: 6px; min-width: 0; width: 100%; }
+  .pulse-games-label-shell { align-items: baseline; display: flex; gap: 6px; flex: 1 1 auto; min-width: 0; overflow: hidden; }
+  .pulse-games-name { color: ${theme.textPrimary}; flex: 0 1 auto; font-size: 10px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pulse-games-meta { color: ${theme.textMuted}; flex-shrink: 0; font-size: 9px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pulse-games-label { color: ${theme.textMuted}; font-size: 9px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+  .pulse-games-trail { align-items: center; display: flex; gap: 6px; min-width: 0; flex-shrink: 0; margin-left: auto; }
+  .pulse-games-count { color: ${theme.textSecondary}; font-size: 10px; font-variant-numeric: tabular-nums; font-weight: 800; white-space: nowrap; }
+  .pulse-games-empty-copy { color: ${theme.textMuted}; font-size: 9px; font-weight: 600; line-height: 1.35; margin: 0; }
+  .pulse-games-nav { display: flex; gap: 3px; }
+  .pulse-games-arrow { align-items: center; background: ${theme.panel}; border: 1px solid ${theme.border}; border-radius: 6px; color: ${theme.textPrimary}; cursor: pointer; display: flex; font-size: 16px; height: 24px; justify-content: center; line-height: 1; padding: 0; width: 24px; }
+  .pulse-games-arrow:disabled { cursor: default; opacity: 0.35; }
+  .pulse-games-timeline { min-width: 0; overflow: hidden; }
+  .pulse-games-track { align-items: center; display: flex; gap: 8px; min-height: 74px; min-width: 0; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; padding: 2px 3px; scrollbar-width: none; width: 100%; }
+  .pulse-games-item { flex: 0 0 52px; position: relative; }
+  .pulse-games-card { align-items: center; background: ${theme.panel}; border: 1px solid ${theme.border}; border-radius: 8px; box-sizing: border-box; cursor: pointer; display: flex; height: 70px; justify-content: center; outline: none; overflow: hidden; padding: 2px; position: relative; text-align: center; transition: background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease; width: 52px; }
+  .pulse-games-card.is-active { background: rgba(139, 92, 246, 0.14); border: 1px solid ${theme.borderAccent}; box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.18), 0 5px 16px rgba(0,0,0,0.24); transform: translateY(-2px) scale(1.02); }
+  .pulse-games-card.is-clipped { border-style: dashed; }
+  .pulse-games-art { border-radius: 7px; display: block; height: 64px; overflow: hidden; position: relative; width: 46px; }
+  .pulse-games-art-img { border-radius: 7px; box-sizing: border-box; display: block; height: 64px; inset: 0; object-fit: cover; position: absolute; width: 46px; }
+  .pulse-games-art-fallback { align-items: center; background: linear-gradient(155deg, rgba(139,92,246,0.20), rgba(15,23,42,0.94)); border: 1px dashed ${theme.borderAccent}; border-radius: 7px; box-sizing: border-box; color: ${theme.textPrimary}; display: flex; font-size: 14px; font-weight: 900; height: 64px; inset: 0; justify-content: center; letter-spacing: 0.08em; position: absolute; width: 46px; }
+  .pulse-games-card-name { background: linear-gradient(180deg, transparent, rgba(0,0,0,0.92) 42%); bottom: 0; color: #fafafc; font-size: 9px; font-weight: 850; left: 0; line-height: 1.15; overflow: hidden; padding: 10px 3px 3px; pointer-events: none; position: absolute; right: 0; text-overflow: ellipsis; text-shadow: 0 1px 2px rgba(0,0,0,0.9); white-space: nowrap; }
   .pulse-shimmer {
     background: linear-gradient(90deg, ${theme.panel} 0%, rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.18) 50%, ${theme.panel} 100%);
     background-size: 200% 100%;
@@ -225,6 +259,18 @@ export const shadowStyles = `
   .pulse-chart-legend-chip-dimmed:hover {
     opacity: 0.72 !important;
   }
+  .pulse-chart-legend-chip { align-items: center; background: transparent; border: 1px solid transparent; border-radius: 4px; color: ${theme.textMuted}; cursor: pointer; display: inline-flex; font-family: inherit; font-size: 9px; font-weight: 700; gap: 4px; padding: 2px 6px; }
+  .pulse-chart-legend-static { align-items: center; color: ${theme.textMuted}; display: inline-flex; font-size: 9px; font-weight: 700; gap: 4px; padding: 2px 6px; }
+  .pulse-chart-legend-dot { border-radius: 999px; flex-shrink: 0; height: 6px; width: 6px; }
+  .pulse-chart-legend-stroke { background: transparent; border: 1.5px solid #a78bfa; border-radius: 1px; flex-shrink: 0; height: 0; width: 10px; }
+  .pulse-chart-legend-row { align-items: center; display: flex; flex-wrap: wrap; gap: 4px; min-height: 14px; min-width: 0; }
+  .pulse-chart-legend-overlays { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+  .pulse-chart-header { display: grid; gap: 6px; min-width: 0; overflow: visible; }
+  .pulse-chart-header-top { align-items: flex-start; display: flex; gap: 8px; justify-content: space-between; min-height: 16px; min-width: 0; }
+  .pulse-chart-header-title-row { align-items: center; display: flex; flex: 1 1 auto; gap: 8px; min-width: 0; overflow: hidden; }
+  .pulse-chart-header-title { color: ${theme.textMuted}; font-size: 9px; font-weight: 800; letter-spacing: 0.04em; line-height: 12px; overflow: hidden; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+  .pulse-chart-header-slot { align-items: center; display: inline-flex; flex-shrink: 0; }
+  .pulse-chart-header-controls { align-items: center; display: inline-flex; flex-shrink: 0; gap: 6px; }
   .pulse-chart-overlay-legend-chip {
     transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
   }
@@ -513,6 +559,21 @@ export const shadowStyles = `
   .pulse-chart-zoom-reset:hover:not(:disabled) {
     color: ${theme.textSecondary} !important;
   }
+  .pulse-chart-toolbar { align-items: center; display: flex; gap: 5px; min-height: 30px; min-width: 0; width: 100%; }
+  .pulse-chart-toolbar-range { display: inline-flex; flex-shrink: 0; }
+  .pulse-chart-toolbar-aux { align-items: center; display: inline-flex; flex: 0 0 auto; gap: 4px; min-width: 0; overflow: visible; white-space: nowrap; }
+  .pulse-chart-toolbar-expand { display: inline-flex; flex: 0 0 auto; margin-left: auto; }
+  .pulse-chart-viewport { display: grid; gap: 3px; min-width: 0; width: 100%; }
+  .pulse-chart-viewport-meta { display: grid; gap: 2px; min-height: 14px; min-width: 0; }
+  .pulse-chart-viewport-range-row { align-items: center; display: flex; gap: 6px; min-width: 0; }
+  .pulse-chart-viewport-range { color: ${theme.textSecondary}; font-size: 10px; font-variant-numeric: tabular-nums; font-weight: 700; line-height: 14px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pulse-chart-return { background: rgba(251, 191, 36, 0.1); border: 1px solid rgba(251, 191, 36, 0.3); border-radius: 5px; color: #fde68a; cursor: pointer; flex: 0 0 auto; font-size: 9px; font-weight: 900; letter-spacing: 0.025em; line-height: 1; padding: 3px 5px; text-transform: uppercase; white-space: nowrap; }
+  .pulse-chart-viewport-hint { color: ${theme.textMuted}; display: block; font-size: 9px; font-weight: 600; line-height: 12px; min-height: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pulse-chart-viewport-row { align-items: stretch; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .pulse-chart-viewport-rail { flex: 1 1 auto; min-width: 0; width: 100%; }
+  .pulse-chart-zoom-controls { align-items: center; display: inline-flex; flex: 0 0 auto; gap: 4px; justify-content: flex-end; }
+  .pulse-chart-zoom-controls .pulse-chart-zoom-step { align-items: center; background: rgba(139, 92, 246, 0.12); border: 1px solid rgba(167, 139, 250, 0.32); border-radius: 6px; color: #ddd6fe; cursor: pointer; display: inline-flex; font-size: 14px; font-weight: 900; height: 24px; justify-content: center; line-height: 1; padding: 0; width: 24px; }
+  .pulse-chart-zoom-controls .pulse-chart-zoom-reset { background: transparent; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; color: ${theme.textMuted}; cursor: pointer; font-size: 9px; font-weight: 800; height: 24px; width: 44px; min-width: 44px; padding: 0 7px; white-space: nowrap; }
   .pulse-chart-rail-track {
     transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
   }
@@ -535,6 +596,11 @@ export const shadowStyles = `
   .pulse-chart-rail-track:hover:not([aria-disabled="true"]) .pulse-chart-rail-thumb {
     filter: brightness(1.08);
   }
+  .pulse-chart-rail-label { color: ${theme.textMuted}; display: flex; font-size: 10px; justify-content: flex-end; letter-spacing: 0.2px; line-height: 12px; margin-bottom: 2px; padding: 0 2px; user-select: none; }
+  .pulse-chart-rail-track { background: rgba(255, 255, 255, 0.04); border: 1px solid ${theme.border}; border-radius: 6px; margin: 6px 0; min-width: 0; overflow: hidden; position: relative; touch-action: none; user-select: none; width: 100%; }
+  .pulse-chart-rail-thumb { border-radius: 4px; bottom: 0; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35); left: 0; position: absolute; top: 0; }
+  .pulse-chart-rail-handle { background: transparent; border-radius: 0; bottom: 0; box-sizing: border-box; cursor: ew-resize; height: 100%; max-width: 25%; opacity: 1; position: absolute; top: 0; width: 14px; z-index: 1; }
+  .pulse-chart-rail-marker { background: rgba(251, 191, 36, 0.95); bottom: 0; box-shadow: 0 0 5px rgba(251, 191, 36, 0.6); pointer-events: none; position: absolute; top: 0; transform: translateX(-1px); width: 2px; z-index: 2; }
   .pulse-secondary-btn {
     appearance: none;
     background: ${theme.panel};
@@ -615,6 +681,9 @@ export const shadowStyles = `
   .pulse-sparkline-wrap {
     position: relative;
   }
+  .pulse-overview-shell { background: var(--pulse-chart-bg, #0d0d12); border-radius: 8px; min-width: 0; overflow: hidden; position: relative; width: 100%; }
+  .pulse-overview-empty { align-items: center; color: rgba(161, 161, 170, 0.95); display: grid; font-size: 11px; font-weight: 700; height: 100%; min-height: 0; padding: 0 12px; place-items: center; text-align: center; }
+  .pulse-overview-chart { display: block; width: 100%; }
   .pulse-sparkline-tooltip {
     background: rgba(17, 17, 23, 0.96);
     border: 1px solid rgba(167, 139, 250, 0.3);

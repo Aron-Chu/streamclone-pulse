@@ -13,6 +13,7 @@ import {
   shouldShowChartRail,
 } from '../src/ui/ChartPositionRail.tsx'
 import type { ChartViewport } from '../src/ui/chartViewport.ts'
+import { shadowStyles } from '../src/ui/theme.ts'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -406,8 +407,12 @@ describe('ChartPositionRail', () => {
     const rail = renderRail(vi.fn())
     const start = rail.querySelector<HTMLElement>('[data-chart-rail-resize="start"]')
     const end = rail.querySelector<HTMLElement>('[data-chart-rail-resize="end"]')
-    expect(start?.getAttribute('style')).toContain('background: transparent')
-    expect(end?.getAttribute('style')).toContain('background: transparent')
+    // The handles' static look lives in the shadow stylesheet.
+    expect(start?.classList.contains('pulse-chart-rail-handle')).toBe(true)
+    expect(end?.classList.contains('pulse-chart-rail-handle')).toBe(true)
+    const rule = shadowStyles.slice(shadowStyles.indexOf('.pulse-chart-rail-handle {'))
+    expect(rule.slice(0, rule.indexOf('}'))).toContain('background: transparent')
+    expect(rule.slice(0, rule.indexOf('}'))).not.toContain('255, 255, 255')
     expect(start?.getAttribute('style')).not.toContain('255, 255, 255')
     expect(end?.getAttribute('style')).not.toContain('255, 255, 255')
   })

@@ -1,6 +1,5 @@
-import type { CSSProperties, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { CHART_LANE, CHART_THEME } from './chartTheme.ts'
-import { theme } from './theme.ts'
 
 export interface StreamActivityChartHeaderProps {
   rightControl?: ReactNode
@@ -12,22 +11,12 @@ export interface StreamActivityChartHeaderProps {
   showViewerLegend?: boolean
 }
 
+// Static layout lives in shadow.css (.pulse-chart-header*, .pulse-chart-legend-*).
 function legendChipClassName(focused: boolean, dimmed: boolean): string {
   const parts = ['pulse-chart-legend-chip']
   if (focused) parts.push('pulse-chart-legend-chip-focused')
   if (dimmed) parts.push('pulse-chart-legend-chip-dimmed')
   return parts.join(' ')
-}
-
-function legendChipStyle(focused: boolean, dimmed: boolean): CSSProperties {
-  return {
-    ...styles.chartLegendItem,
-    ...(focused
-      ? styles.chartLegendItemFocused
-      : dimmed
-        ? styles.chartLegendItemDimmed
-        : styles.chartLegendItemDefault),
-  }
 }
 
 export function StreamActivityChartHeader({
@@ -48,11 +37,10 @@ export function StreamActivityChartHeader({
   ) {
     const isFocused = focusedSeriesKey === seriesKey
     const isDimmed = focusedSeriesKey != null && !isFocused
-    const chipStyle = legendChipStyle(isFocused, isDimmed)
 
     if (!interactive) {
       return (
-        <span key={`${seriesKey}-${label}`} style={styles.chartLegendItemStatic}>
+        <span key={`${seriesKey}-${label}`} className="pulse-chart-legend-static">
           {swatch}
           {label}
         </span>
@@ -65,7 +53,6 @@ export function StreamActivityChartHeader({
         type="button"
         className={legendChipClassName(isFocused, isDimmed)}
         data-chart-action="true"
-        style={chipStyle}
         aria-pressed={isFocused}
         title={isFocused ? 'Click to show all series' : `Highlight ${label}`}
         onClick={() => onToggleSeriesFocus?.(seriesKey)}
@@ -77,151 +64,39 @@ export function StreamActivityChartHeader({
   }
 
   return (
-    <div style={styles.header}>
-      <div style={styles.headerTop}>
-        <div style={styles.titleRow}>
-          <span style={styles.title}>Stream activity</span>
+    <div className="pulse-chart-header">
+      <div className="pulse-chart-header-top">
+        <div className="pulse-chart-header-title-row">
+          <span className="pulse-chart-header-title">Stream activity</span>
         </div>
         {leadingControl || expandControl || rightControl ? (
-          <div style={styles.controls}>
-            {leadingControl ? <div style={styles.leadingSlot}>{leadingControl}</div> : null}
-            {expandControl ? <div style={styles.expandSlot}>{expandControl}</div> : null}
+          <div className="pulse-chart-header-controls">
+            {leadingControl ? <div className="pulse-chart-header-slot">{leadingControl}</div> : null}
+            {expandControl ? <div className="pulse-chart-header-slot">{expandControl}</div> : null}
             {rightControl}
           </div>
         ) : null}
       </div>
-      <div style={styles.chartLegend} aria-label="Chart series legend">
+      <div className="pulse-chart-legend-row" aria-label="Chart series legend">
         {showViewerLegend
           ? renderLegendItem(
               'viewers',
               'Viewers',
-              <span
-                style={{
-                  ...styles.chartLegendStroke,
-                  borderColor: CHART_THEME.viewer.color,
-                }}
-              />,
+              <span className="pulse-chart-legend-stroke" style={{ borderColor: CHART_THEME.viewer.color }} />,
             )
           : null}
         {renderLegendItem(
           'chat',
           'Chat',
-          <span style={{ ...styles.chartLegendDot, background: CHART_LANE.chatBar }} />,
+          <span className="pulse-chart-legend-dot" style={{ background: CHART_LANE.chatBar }} />,
         )}
         {renderLegendItem(
           'emotes',
           'Emotes',
-          <span style={{ ...styles.chartLegendDot, background: CHART_LANE.emoteBar }} />,
+          <span className="pulse-chart-legend-dot" style={{ background: CHART_LANE.emoteBar }} />,
         )}
       </div>
-      {overlayLegend ? <div style={styles.overlayLegendRow}>{overlayLegend}</div> : null}
+      {overlayLegend ? <div className="pulse-chart-legend-overlays">{overlayLegend}</div> : null}
     </div>
   )
-}
-
-const styles: Record<string, CSSProperties> = {
-  header: { display: 'grid', gap: 6, minWidth: 0, overflow: 'visible' },
-  headerTop: {
-    alignItems: 'flex-start',
-    display: 'flex',
-    gap: 8,
-    justifyContent: 'space-between',
-    minHeight: 16,
-    minWidth: 0,
-  },
-  titleRow: {
-    alignItems: 'center',
-    display: 'flex',
-    flex: '1 1 auto',
-    gap: 8,
-    minWidth: 0,
-    overflow: 'hidden',
-  },
-  title: {
-    color: theme.textMuted,
-    fontSize: 9,
-    fontWeight: 800,
-    letterSpacing: '0.04em',
-    lineHeight: '12px',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    textTransform: 'uppercase',
-    whiteSpace: 'nowrap',
-  },
-  expandSlot: {
-    alignItems: 'center',
-    display: 'inline-flex',
-    flexShrink: 0,
-  },
-  leadingSlot: {
-    alignItems: 'center',
-    display: 'inline-flex',
-    flexShrink: 0,
-  },
-  controls: {
-    alignItems: 'center',
-    display: 'inline-flex',
-    flexShrink: 0,
-    gap: 6,
-  },
-  chartLegend: {
-    alignItems: 'center',
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: 4,
-    minHeight: 14,
-    minWidth: 0,
-  },
-  chartLegendItem: {
-    alignItems: 'center',
-    background: 'transparent',
-    border: '1px solid transparent',
-    borderRadius: 4,
-    color: theme.textMuted,
-    cursor: 'pointer',
-    display: 'inline-flex',
-    fontFamily: 'inherit',
-    fontSize: 9,
-    fontWeight: 700,
-    gap: 4,
-    padding: '2px 6px',
-  },
-  chartLegendItemStatic: {
-    alignItems: 'center',
-    color: theme.textMuted,
-    display: 'inline-flex',
-    fontSize: 9,
-    fontWeight: 700,
-    gap: 4,
-    padding: '2px 6px',
-  },
-  chartLegendItemDefault: {},
-  chartLegendItemFocused: {
-    background: 'rgba(255,255,255,0.1)',
-    borderColor: 'rgba(255,255,255,0.28)',
-    color: theme.textPrimary,
-  },
-  chartLegendItemDimmed: {
-    opacity: 0.4,
-  },
-  chartLegendDot: {
-    borderRadius: 999,
-    flexShrink: 0,
-    height: 6,
-    width: 6,
-  },
-  chartLegendStroke: {
-    background: 'transparent',
-    border: `1.5px solid ${CHART_LANE.chatTrend}`,
-    borderRadius: 1,
-    flexShrink: 0,
-    height: 0,
-    width: 10,
-  },
-  overlayLegendRow: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: 6,
-    minWidth: 0,
-  },
 }
