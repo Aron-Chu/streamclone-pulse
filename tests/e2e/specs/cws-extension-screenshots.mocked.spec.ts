@@ -270,6 +270,11 @@ test.describe('CWS extension-on-Twitch screenshots', () => {
     await openTwitchVod(extension.page)
     await waitForPulseRoot(extension.page, 30_000)
     await assertPulseShadowContains(extension.page, /Minecraft/)
+    // Point at the biggest spike, so the chart's readout shows that minute.
+    const chart = extension.page.locator(`#${PULSE_ROOT_ID} svg[data-testid="pulse-overview-chart"]`).first()
+    const box = await chart.boundingBox()
+    if (box) await extension.page.mouse.move(box.x + box.width * 0.54, box.y + box.height * 0.5)
+    await extension.page.waitForTimeout(400)
   
     await addCaption(extension.page, 'Recaps for past streams', 'Replay Pulse charts the chat and emotes of a broadcast StreamPulse tracked.')
     await writeExactStoreShot(extension.page, '03-vod-replay.png')
