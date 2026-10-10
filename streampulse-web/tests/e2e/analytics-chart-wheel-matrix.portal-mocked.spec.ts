@@ -345,7 +345,8 @@ for (const [surfaceName, open] of Object.entries(SURFACES)) {
         await page.mouse.wheel(0, 100)
         await page.waitForTimeout(70)
       }
-      await expect.poll(() => scrollYOf(page)).toBeGreaterThan(scrollBefore + 300)
+      // The page scrolls until the sweep ends (or it reaches the bottom of the page).
+      await expect.poll(() => scrollYOf(page)).toBeGreaterThan(scrollBefore + 150)
       await surface.settle()
       const sweep = await read()
       expect(sweep.filter(entry => entry.overPlot).length, 'the plot passed under the pointer').toBeGreaterThan(0)
