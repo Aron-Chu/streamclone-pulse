@@ -100,6 +100,7 @@ import {
 import { useSmoothedChartViewport } from "./useSmoothedChartViewport.ts";
 import {
   SCALE_CHIP_HEIGHT,
+  SCALE_ROW_EDGE_INSET,
   placePlotEdgeLabels,
   polylineObstacles,
   scaleChipWidth,
@@ -3527,11 +3528,16 @@ function PulseMultiSignalChartInnerImpl({
           ChartNavigator under the plot; keyboard (+ / − / 0) and Alt+wheel still work
           here because the chart owns the gestures, not the buttons. */}
       {consoleScale ? (
-        // The console's scale row: the top margin above the plot, from the
-        // plot's left edge up to the live-edge marker on its right.
+        // The console's scale row: the top margin above the plot, from just
+        // inside the plot's left edge up to the live-edge marker on its right.
+        // It stays clear of the focus ring drawn inside the plot's edge.
         <div
-          className="pointer-events-none absolute left-0 top-0 z-10 flex min-w-0 items-center gap-x-3 overflow-hidden whitespace-nowrap"
-          style={{ height: padTop, right: liveEdgeReserve }}
+          className="pointer-events-none absolute top-0 z-10 flex min-w-0 items-center gap-x-3 overflow-hidden whitespace-nowrap"
+          style={{
+            height: padTop,
+            left: SCALE_ROW_EDGE_INSET,
+            right: Math.max(liveEdgeReserve, SCALE_ROW_EDGE_INSET),
+          }}
           data-chart-scale-row
         >
           {consoleScale.rowItems.map((item) => (
@@ -3551,8 +3557,14 @@ function PulseMultiSignalChartInnerImpl({
               title="Backend-authored reaction markers use a fixed-height gutter; color shows reason and opacity shows confidence."
             >
               <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" aria-hidden="true" />
-              <span className="shrink-0">Reaction markers</span>
-              <span className="min-w-0 truncate text-zinc-500">fixed height · reason color · fade = confidence</span>
+              {/* One line that truncates as a whole: where the row is short (a
+                  phone with the live marker on its right) the description goes
+                  first, then the label ends in an ellipsis instead of being
+                  clipped with none. */}
+              <span className="min-w-0 truncate" data-reaction-legend-label>
+                Reaction markers
+                <span className="ml-1.5 text-zinc-500" data-reaction-legend-detail>fixed height · reason color · fade = confidence</span>
+              </span>
             </span>
           ) : null}
         </div>

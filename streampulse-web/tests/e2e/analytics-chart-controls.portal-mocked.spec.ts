@@ -122,6 +122,10 @@ for (const viewport of VIEWPORTS) {
       }
       await expect(page.locator(`${CHART} text`, { hasText: /^PEAK$/ })).toHaveCount(0)
       await expect(page.locator('[data-chart-scale-row] [data-chart-scale-value="peak"]')).toBeVisible()
+      // PEAK stays clear of the 2px focus ring drawn just inside the plot edge.
+      const peak = await page.locator('[data-chart-scale-row] [data-chart-scale-value="peak"]').boundingBox()
+      if (!peak || !edges.plot) throw new Error('peak or plot has no layout box')
+      expect(peak.x - edges.plot.left, 'PEAK clears the focus ring inside the plot edge').toBeGreaterThanOrEqual(4)
 
       // As on the hub, the whole navigator spans exactly the plot area at
       // every width: track, readout and hint start at the plot's left edge,

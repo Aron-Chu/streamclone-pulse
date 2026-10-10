@@ -5,6 +5,7 @@ import {
   placePlotEdgeLabels,
   polylineObstacles,
   scaleChipWidth,
+  SCALE_ROW_EDGE_INSET,
 } from '../src/plotEdgeLabels.ts'
 import { PulseMultiSignalChartInner } from '../src/PulseMultiSignalChart.tsx'
 import type { ChartMinuteRollup } from '../src/types.ts'
@@ -90,6 +91,39 @@ describe('console chart width', () => {
     expect(markup).toMatch(/data-chart-scale-value="peak"/)
     // No value is drawn outside the plot any more.
     expect(markup).not.toMatch(/>PEAK<\/text>/)
+  })
+
+  it('keeps the scale row clear of the focus ring drawn inside the plot edge', () => {
+    // The focused plot draws a 2px ring just inside its edge; the row is HTML
+    // over the SVG, so PEAK must start past it (review finding, 2026-10-09).
+    expect(SCALE_ROW_EDGE_INSET).toBeGreaterThanOrEqual(4)
+    const row = (markup: string) => markup.match(/<div class="([^"]*)" style="([^"]*)" data-chart-scale-row/)
+    const ended = row(renderChart(rollupsWith(minute => 1000 + minute * 10), 'console'))
+    expect(ended?.[1]).not.toMatch(/left-0/)
+    expect(ended?.[2]).toContain(`left:${SCALE_ROW_EDGE_INSET}px`)
+    expect(ended?.[2]).toContain(`right:${SCALE_ROW_EDGE_INSET}px`)
+  })
+
+  it('ends a squeezed reaction legend in an ellipsis instead of clipping its label', () => {
+    const markup = renderToStaticMarkup(
+      <PulseMultiSignalChartInner
+        rollups={rollupsWith(minute => 1000 + minute * 10)}
+        streamStartedAt={new Date(START).toISOString()}
+        durationSeconds={60 * 60}
+        reactionPoints={[{ offsetSeconds: 600, durationSeconds: 30, reactionScore: 80, confidence: 0.8, reason: 'emote_spike', precisionSeconds: 1 }]}
+        showSpikes
+        isLive
+        variant="console"
+        chromeless
+        motionEnabled={false}
+      />,
+    )
+    const label = markup.match(/<span class="([^"]*)" data-reaction-legend-label="true">Reaction markers<span class="([^"]*)" data-reaction-legend-detail="true">fixed height/)
+    // Label and description are one truncating line, so a short row cuts the
+    // description first and then ends the label in an ellipsis.
+    expect(label?.[1].split(' ')).toEqual(expect.arrayContaining(['min-w-0', 'truncate']))
+    expect(label?.[1]).not.toMatch(/shrink-0/)
+    expect(label?.[2]).not.toMatch(/truncate|shrink/)
   })
 
   it('places AVG inside the plot edge when the viewer line leaves room, else in the scale row', () => {

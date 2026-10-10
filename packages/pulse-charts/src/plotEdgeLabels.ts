@@ -113,3 +113,10 @@ export function scaleChipWidth(label: string, value: string): number {
 }
 
 export const SCALE_CHIP_HEIGHT = 20
+
+/**
+ * How far the scale row above the plot stays in from the plot's sides. The
+ * focused plot draws a 2px ring just inside its edge; the row is HTML over the
+ * SVG, so without this gap PEAK would paint over that ring.
+ */
+export const SCALE_ROW_EDGE_INSET = 6
