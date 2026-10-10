@@ -662,6 +662,10 @@ describe('connection states', () => {
     const view = await mount({ account: action => action === 'disconnect' ? { state: 'error' } : linked, entitlement: () => ready('none') })
     try {
       await view.click('Sign out')
+      // Sign out always asks first, and says what it removes.
+      expect(view.calls('SUPPORTER_ACCOUNT', 'disconnect')).toBe(0)
+      expect(view.text()).toContain('This removes the watched history and notes saved here while signed in. Saves made without an account stay.')
+      await view.click('Confirm sign out')
       expect(view.text()).toContain('the server could not confirm it')
     } finally { view.cleanup() }
   })
@@ -709,6 +713,7 @@ describe('connection states', () => {
     const own = await mount({ account: action => action === 'disconnect' ? (mine = { state: 'signed_out' }) : mine, entitlement: () => ready('none') })
     try {
       await own.click('Sign out')
+      await own.click('Confirm sign out')
       await own.change({ pulseAccountRevision: { newValue: 'disconnected' } })
       expect(own.text()).not.toContain('was disconnected from your StreamPulse account')
     } finally { own.cleanup() }

@@ -4,10 +4,12 @@ import { forgetAccountScope, handleMyMoments } from '../src/background/myMoments
 import { emptyPersonalData, type PersonalData } from '../src/background/myMomentsStore.ts'
 
 /**
- * Leaving an account removes this browser's copy of that account's watched
- * history and notes (the `|account:<id>` record); saves made without an
- * account (`|local`) stay. Every exit goes through the real coordinator:
- * Sign out, Sign out everywhere, and the server rejecting the credential.
+ * Only an explicit, confirmed Sign out or Sign out everywhere removes this
+ * browser's copy of that account's watched history and notes (the
+ * `|account:<id>` record); saves made without an account (`|local`) stay.
+ * A credential the server rejects (401) or a relink only ends the sign-in:
+ * the copy stays and comes back when the same account signs in again.
+ * Every exit goes through the real coordinator.
  */
 const root = 'https://api.streampulse.stream'
 const accountId = '22222222-2222-4222-8222-222222222222'
@@ -69,7 +71,7 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllGlobals())
 
-describe('leaving an account removes its local copy', () => {
+describe('only a confirmed sign-out removes an account's local copy', () => {
   it('myMoments binds the removal at load', () => {
     expect(typeof f.forget).toBe('function')
   })
@@ -104,7 +106,7 @@ describe('leaving an account removes its local copy', () => {
     expect(f.data.has(`${root}|account:${otherAccount}`)).toBe(true)
   })
 
-  it('a credential the server rejects (401) on an account request removes the copy', async () => {
+  it('a credential the server rejects (401) on an account request keeps the notes and history', async () => {
     f.pages.mockImplementation(async () => {
       await f.coordinator.withCredential(async () => ({ status: 401 }), accountId).catch(() => undefined)
       throw new Error('account_authorization_required')
@@ -112,15 +114,38 @@ describe('leaving an account removes its local copy', () => {
     await handleMyMoments({ type: 'MY_MOMENTS', action: 'load' }, {}).catch(() => undefined)
     await settle()
     expect(stored).toEqual({ kind: 'relink_required' })
-    expect(f.data.has(accountScope)).toBe(false)
+    expect(f.data.get(accountScope)).toMatchObject({ history: [{ id: watched.id }], notes: { 'bk-1': 'private note' } })
   })
 
-  it('a refresh the server rejects (401) removes the copy', async () => {
+  it('a refresh the server rejects (401) keeps the notes and history', async () => {
     stored = credentials(accountId, 0)
     request.mockResolvedValue({ status: 401, body: { error: 'invalid_refresh_token' } })
     expect(await f.coordinator.run('status')).toEqual({ state: 'relink_required' })
     await settle()
+    expect(f.data.get(accountScope)).toMatchObject({ history: [{ id: watched.id }], notes: { 'bk-1': 'private note' } })
+  })
+
+  it('a rejected cosmetics save (401) keeps the notes and history', async () => {
+    request.mockImplementation(async (path: string) => path === '/v1/billing/cosmetics' ? { status: 401, body: null } : { status: 200, body: {} })
+    await f.coordinator.saveCosmetics({ enabled: true, finish: 'glass' } as never)
+    await settle()
+    expect(stored).toEqual({ kind: 'relink_required' })
+    expect(f.data.get(accountScope)?.notes).toEqual({ 'bk-1': 'private note' })
+  })
+
+  it('relink_required keeps the notes and history, then a confirmed Sign out removes them', async () => {
+    stored = { kind: 'relink_required' }
+    expect(await f.coordinator.run('status')).toEqual({ state: 'relink_required' })
+    await settle()
+    expect(f.data.get(accountScope)?.history).toHaveLength(1)
+    // Signing back in with the same account finds its copy again.
+    stored = credentials()
+    expect(await f.coordinator.localAccountId()).toBe(accountId)
+    request.mockResolvedValue({ status: 204, body: null })
+    expect(await f.coordinator.run('disconnect')).toEqual({ state: 'signed_out' })
+    await settle()
     expect(f.data.has(accountScope)).toBe(false)
+    expect(f.data.has(localScope)).toBe(true)
   })
 
   it('a refresh lost on the network keeps the copy (not a revocation)', async () => {

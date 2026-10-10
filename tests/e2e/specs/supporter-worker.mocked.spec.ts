@@ -63,6 +63,7 @@ test('packaged disconnect keeps private retry authority across settings reload',
   })
   await extension.page.reload()
   await extension.page.getByRole('button', { name: 'Sign out', exact: true }).click()
+  await extension.page.getByRole('button', { name: 'Confirm sign out', exact: true }).click()
   await expect(extension.page.getByRole('button', { name: 'Retry sign out', exact: true })).toBeVisible()
   await extension.page.reload()
   await expect(extension.page.getByRole('button', { name: 'Retry sign out', exact: true })).toBeVisible()
