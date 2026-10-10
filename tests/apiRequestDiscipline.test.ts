@@ -380,6 +380,39 @@ describe('extension API discipline', () => {
     expect(vod.mode).toBe('live_dvr')
   })
 
+  it('a 429 from the live bridge on a later poll keeps the live DVR and honours Retry-After', async () => {
+    const startedAt = new Date(Date.now() - 2 * 3600_000).toISOString()
+    let bridgeStatus = 200
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input))
+      if (url.pathname.startsWith('/v1/extension/pulse/channels/')) {
+        return new Response(JSON.stringify({ login: 'channel', isLive: true, tracking: true, streamId: 'live-stream', startedAt, currentOffsetSeconds: 7200, rollups: [], lanes: { composite: [], chat: [], seventv: [] }, recap: null }), { headers: { 'content-type': 'application/json' } })
+      }
+      if (url.searchParams.get('allowLiveBridge') === 'true') {
+        if (bridgeStatus === 429) {
+          return new Response(JSON.stringify({ error: 'rate_limited' }), { status: 429, headers: { 'content-type': 'application/json', 'Retry-After': '120' } })
+        }
+        return new Response(JSON.stringify({ mode: 'live_dvr', vodId: '777777', streamId: 'live-stream', login: 'channel', isLive: true, tracking: true, provisional: true, resolutionState: 'live_archive_validated', retryable: true, currentOffsetSeconds: 120, rollups: [], lanes: { composite: [], chat: [], seventv: [] } }), { headers: { 'content-type': 'application/json' } })
+      }
+      return new Response(JSON.stringify({ mode: 'vod', vodId: '777777', streamId: 'live-stream', channelLogin: 'channel', startedAt, durationSeconds: 7200, coverageStatus: 'partial' }), { headers: { 'content-type': 'application/json' } })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    expect((await fetchPulseVod('777777', { baseUrl: 'https://custom.example' })).mode).toBe('live_dvr')
+    fetchMock.mockClear()
+
+    bridgeStatus = 429
+    const polled = await fetchPulseVod('777777', { baseUrl: 'https://custom.example', streamId: 'live-stream' })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(new URL(String(fetchMock.mock.calls[0]?.[0])).searchParams.get('allowLiveBridge')).toBe('true')
+    expect(polled).toMatchObject({ mode: 'live_dvr', streamId: 'live-stream' })
+
+    fetchMock.mockClear()
+    const waiting = await fetchPulseVod('777777', { baseUrl: 'https://custom.example', streamId: 'live-stream' })
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(waiting.mode).toBe('live_dvr')
+  })
+
   it('surfaces offline/network failures', async () => {
     vi.stubGlobal(
       'fetch',

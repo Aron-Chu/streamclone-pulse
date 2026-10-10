@@ -26,6 +26,26 @@ export const LIVE_ARCHIVE_END_SLACK_MS = 15 * 60_000
 export const LIVE_ARCHIVE_MAX_AGE_MS = 48 * 60 * 60_000
 /** How long a confirmed live archive is asked for with the bridge first. */
 export const LIVE_ARCHIVE_MEMO_MS = 5 * 60_000
+/** Longest Retry-After honoured for the live bridge; the memo expires before this anyway. */
+export const LIVE_BRIDGE_RETRY_MAX_MS = LIVE_ARCHIVE_MEMO_MS
+
+/**
+ * A bridged request that did not get an answer: a 429, a 5xx, a timeout or a
+ * network error. It says nothing about whether the stream is still live.
+ */
+export class VodBridgeTransientError extends Error {
+  constructor(readonly status: number, readonly retryAfterMs?: number) {
+    super(`vod_bridge_transient_${status}`)
+  }
+}
+
+/** Retry-After as milliseconds (seconds or an HTTP date), or undefined. */
+export function retryAfterMs(value: string | null | undefined, nowMs: number): number | undefined {
+  const text = trimmed(value)
+  if (!text) return undefined
+  const ms = /^\d+$/.test(text) ? Number(text) * 1000 : Date.parse(text) - nowMs
+  return Number.isFinite(ms) && ms > 0 ? ms : undefined
+}
 
 function trimmed(value: string | null | undefined): string {
   return typeof value === 'string' ? value.trim() : ''
@@ -92,9 +112,19 @@ export interface VodPulseRequestDeps {
   now?: () => number
 }
 
-export type VodBridgeOutcome = 'plain' | 'bridge' | 'bridge_rejected'
+export type VodBridgeOutcome = 'plain' | 'bridge' | 'bridge_rejected' | 'bridge_transient'
 
-const liveArchiveMemo = new Map<string, { streamId: string; atMs: number }>()
+interface LiveArchiveMemo {
+  streamId: string
+  /** When the bridge last confirmed this VOD as the live DVR. */
+  atMs: number
+  /** That confirmed answer, shown again while the bridge is briefly unreachable. */
+  last: Extract<ExtensionVodPulseResponse, { mode: 'live_dvr' }>
+  /** Do not ask the bridge again before this (Retry-After). */
+  retryAtMs?: number
+}
+
+const liveArchiveMemo = new Map<string, LiveArchiveMemo>()
 
 /** Test hook: forget confirmed live archives. */
 export function resetLiveArchiveMemo(): void {
@@ -104,7 +134,10 @@ export function resetLiveArchiveMemo(): void {
 /**
  * Plain first; the bridge only for the archive of the stream that is live now.
  * A VOD already confirmed as the live archive (recurring growing-VOD polls)
- * asks with the bridge first, and if that fails, retries once without it.
+ * asks with the bridge first. If the bridge gives no answer (429, 5xx, timeout,
+ * network), the last confirmed live DVR is kept and polling goes on, without
+ * further requests and within Retry-After. Only a definite answer that is not
+ * this stream's live DVR drops to the plain request.
  */
 export async function requestVodPulse(
   vodId: string,
@@ -116,9 +149,22 @@ export async function requestVodPulse(
 
   const memo = liveArchiveMemo.get(vodId)
   if (memo && now() - memo.atMs <= LIVE_ARCHIVE_MEMO_MS) {
-    const bridged = await deps.request(true, memo.streamId).catch(() => null)
+    if (memo.retryAtMs !== undefined && now() < memo.retryAtMs) {
+      return { payload: memo.last, outcome: 'bridge_transient' }
+    }
+    let bridged: ExtensionVodPulseResponse | null = null
+    try {
+      bridged = await deps.request(true, memo.streamId)
+    } catch (err) {
+      const wait = err instanceof VodBridgeTransientError ? err.retryAfterMs : undefined
+      liveArchiveMemo.set(vodId, {
+        ...memo,
+        retryAtMs: wait ? now() + Math.min(wait, LIVE_BRIDGE_RETRY_MAX_MS) : undefined,
+      })
+      return { payload: memo.last, outcome: 'bridge_transient' }
+    }
     if (isAcceptedLiveBridge(bridged, memo.streamId)) {
-      liveArchiveMemo.set(vodId, { streamId: memo.streamId, atMs: now() })
+      liveArchiveMemo.set(vodId, { streamId: memo.streamId, atMs: now(), last: bridged })
       return { payload: bridged, outcome: 'bridge' }
     }
     outcome = 'bridge_rejected'
@@ -146,7 +192,7 @@ export async function requestVodPulse(
 
   const bridged = await deps.request(true, expected).catch(() => null)
   if (isAcceptedLiveBridge(bridged, expected)) {
-    liveArchiveMemo.set(vodId, { streamId: expected, atMs: now() })
+    liveArchiveMemo.set(vodId, { streamId: expected, atMs: now(), last: bridged })
     return { payload: bridged, outcome: 'bridge' }
   }
   return { payload: plain, outcome: 'bridge_rejected' }

@@ -223,6 +223,21 @@ describe('Overlay load, error and dock states', () => {
       })
     }
 
+    it('a VOD Twitch does not list says so instead of "yet", and keeps Retry and Open in Analytics', async () => {
+      // Production answer for a VOD id Twitch does not know (2026-10-09 probe).
+      await render({
+        context: VOD,
+        login: '__vod__:2999999999',
+        vodPulse: { mode: 'vod', vodId: null, provisional: false, coverageStatus: 'missing', coverageMessage: 'Twitch does not report this VOD.', resolutionState: 'vod_not_found' } as ExtensionVodPulseResponse,
+        vodPulseLoading: false,
+      })
+      expect(text()).toContain('Twitch doesn’t list this VOD')
+      expect(text()).toContain('It may be deleted, expired or private.')
+      expect(text()).not.toContain('No replay data for this VOD yet')
+      expect(buttons('↻ Retry')).toHaveLength(1)
+      expect(node.querySelector('.pulse-vod-state a')?.textContent).toBe('Open in Analytics ↗')
+    })
+
     it('a stalled VOD load stops after 20 s with one error state, Retry and Open in Analytics', async () => {
       vi.useFakeTimers()
       await render({ context: VOD, login: '__vod__:2806037629', vodPulse: null, vodPulseLoading: true })

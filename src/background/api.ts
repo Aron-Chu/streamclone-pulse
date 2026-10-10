@@ -31,7 +31,7 @@ import {
 } from './deviceAuth.ts'
 import { pulseDebug } from '../shared/pulseDebug.ts'
 import { normalizeVodPulseHttpResponse } from '../vod/normalizeVodPulseFetch.ts'
-import { requestVodPulse } from './vodLiveBridge.ts'
+import { requestVodPulse, retryAfterMs, VodBridgeTransientError } from './vodLiveBridge.ts'
 
 /** Default bound for extension BFF requests (health/pulse/coverage/watchlist). */
 export const EXTENSION_API_TIMEOUT_MS = 15_000
@@ -522,6 +522,11 @@ export async function fetchPulseVod(
         headers: await pulseRequestHeaders(false, root),
       },
     )
+    if (bridge && (res.status === 429 || res.status >= 500)) {
+      // No answer from the bridge is not a "not live" answer (vodLiveBridge.ts).
+      await releaseResponse(res)
+      throw new VodBridgeTransientError(res.status, retryAfterMs(res.headers.get('Retry-After'), Date.now()))
+    }
     const body = await readResponseText(res, LARGE_RESPONSE_MAX_BYTES)
     return normalizeVodPulseHttpResponse(vodId, new Response(body, {
       status: res.status,

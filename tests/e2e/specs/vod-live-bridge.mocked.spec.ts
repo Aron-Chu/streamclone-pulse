@@ -26,6 +26,7 @@ const PAST_VOD = '2894307326'
 const PAST_STREAM = '317950783460'
 const ORDINARY_VOD = '2894428685'
 const CONFLICT_VOD = '2896173997'
+const DELETED_VOD = '2999999999'
 
 const HOUR = 3600
 const liveStartedAt = new Date(Date.now() - 2 * HOUR * 1000).toISOString()
@@ -79,6 +80,9 @@ function plainVod(vodId: string): { status: number; body: Record<string, unknown
           resolutionState: 'helix_exact',
         },
       }
+    case DELETED_VOD:
+      // Production answer for a VOD id Twitch does not know (2026-10-09 probe).
+      return { status: 200, body: { mode: 'vod', vodId: null, coverageStatus: 'missing', coverageMessage: 'Twitch does not report this VOD.', resolutionState: 'vod_not_found' } }
     case ORDINARY_VOD:
       return { status: 200, body: { ...ready, vodId, streamId: '319491763415', channelLogin: 'quietchan', channelDisplayName: 'quietchan', resolutionState: 'helix_exact' } }
     case CONFLICT_VOD:
@@ -99,17 +103,32 @@ function plainVod(vodId: string): { status: number; body: Record<string, unknown
 
 interface BridgeModel {
   vodRequests: () => URL[]
+  /** Every StreamPulse request: VODs and the channel lookup. */
+  allRequests: () => URL[]
+  /** Make the bridge answer 429 (with Retry-After) or 504 instead of the live DVR. */
+  failBridge: (failure: { status: 429 | 504; retryAfterSeconds?: number } | null) => void
 }
 
 async function installProductionVodModel(page: Page, options: { channelLive: boolean }): Promise<BridgeModel> {
   const requests: Request[] = []
+  const all: Request[] = []
+  let bridgeFailure: { status: 429 | 504; retryAfterSeconds?: number } | null = null
   const handler = async (route: Route) => {
     const request = route.request()
     const url = new URL(request.url())
+    all.push(request)
     const vod = /^\/v1\/extension\/pulse\/vods\/(\d+)$/.exec(url.pathname)
     if (vod) {
       requests.push(request)
       const vodId = vod[1]!
+      if (url.searchParams.get('allowLiveBridge') === 'true' && bridgeFailure) {
+        await route.fulfill({
+          status: bridgeFailure.status,
+          headers: bridgeFailure.retryAfterSeconds ? { 'Retry-After': String(bridgeFailure.retryAfterSeconds) } : {},
+          json: { error: bridgeFailure.status === 429 ? 'rate_limited' : 'gateway_timeout' },
+        })
+        return
+      }
       if (url.searchParams.get('allowLiveBridge') === 'true') {
         if (vodId === CONFLICT_VOD) {
           await route.fulfill({ status: 409, json: { error: 'vod_broadcaster_mismatch', mode: 'vod', resolutionState: 'live_archive_conflict', retryable: false } })
@@ -132,7 +151,11 @@ async function installProductionVodModel(page: Page, options: { channelLive: boo
     await route.fallback()
   }
   await page.context().route('https://api.streampulse.stream/v1/extension/pulse/**', handler)
-  return { vodRequests: () => requests.map(request => new URL(request.url())) }
+  return {
+    vodRequests: () => requests.map(request => new URL(request.url())),
+    allRequests: () => all.map(request => new URL(request.url())),
+    failBridge: failure => { bridgeFailure = failure },
+  }
 }
 
 async function headerStatus(page: Page): Promise<string> {
@@ -232,6 +255,58 @@ test.describe('VOD replay: the live bridge only for the stream that is live now'
     for (const url of model.vodRequests()) expect(url.searchParams.get('allowLiveBridge')).toBeNull()
 
     await captureDarkAndLight(extension.page, theme => info.outputPath(`couldnt-match-${theme}.png`))
+    assertNoUncaughtErrors(evidence)
+  })
+
+  test('a 429 on a live-chart poll keeps the live chart, sends one request, waits out Retry-After, then polls again', async ({ extension, prepare, evidence }) => {
+    test.setTimeout(180_000)
+    await prepare({ scenario: 'vod-ready', twitchKind: 'vod' })
+    const model = await installProductionVodModel(extension.page, { channelLive: true })
+    await openTwitchVod(extension.page, LIVE_NOW_VOD)
+    await waitForPulseRoot(extension.page)
+    await expect.poll(() => model.vodRequests().some(url => url.searchParams.get('allowLiveBridge') === 'true')).toBe(true)
+    await expect.poll(() => headerStatus(extension.page)).not.toBe('Replay')
+    const liveHeader = await headerStatus(extension.page)
+    expect(liveHeader).not.toBe('')
+
+    // The next 30 s poll gets a 429 asking for 40 s.
+    model.failBridge({ status: 429, retryAfterSeconds: 40 })
+    const mark = model.allRequests().length
+    await expect.poll(() => model.allRequests().length, { timeout: 45_000 }).toBeGreaterThan(mark)
+    await extension.page.waitForTimeout(3_000)
+    const failing = model.allRequests().slice(mark)
+    expect(failing).toHaveLength(1)
+    expect(failing[0]?.searchParams.get('allowLiveBridge')).toBe('true')
+    expect(await headerStatus(extension.page)).toBe(liveHeader)
+
+    // The bridge recovers. The poll inside Retry-After sends nothing; the one
+    // after it asks the bridge again, and the live chart carries on.
+    model.failBridge(null)
+    const mark2 = model.allRequests().length
+    await expect.poll(() => model.allRequests().length, { timeout: 75_000 }).toBeGreaterThan(mark2)
+    const recovered = model.allRequests().slice(mark2)
+    expect(recovered.every(url => url.searchParams.get('allowLiveBridge') === 'true')).toBe(true)
+    expect(await headerStatus(extension.page)).toBe(liveHeader)
+    assertNoUncaughtErrors(evidence)
+  })
+
+  test('a VOD Twitch does not list says so, with Retry and Open in Analytics', async ({ extension, prepare, evidence }, info) => {
+    await prepare({ scenario: 'vod-ready', twitchKind: 'vod' })
+    const model = await installProductionVodModel(extension.page, { channelLive: true })
+    await extension.page.setViewportSize({ width: 1440, height: 900 })
+    await openTwitchVod(extension.page, DELETED_VOD)
+    await waitForPulseRoot(extension.page)
+
+    await expect.poll(() => pulseShadowText(extension.page)).toContain('Twitch doesn’t list this VOD')
+    const text = await pulseShadowText(extension.page)
+    expect(text).toContain('It may be deleted, expired or private.')
+    expect(text).not.toContain('No replay data for this VOD yet')
+    const card = extension.page.locator('#streamclone-pulse-root .pulse-vod-state')
+    await expect(card.getByRole('link', { name: 'Open in Analytics ↗' })).toBeVisible()
+    await expect(card.getByRole('button', { name: '↻ Retry' })).toBeVisible()
+    for (const url of model.vodRequests()) expect(url.searchParams.get('allowLiveBridge')).toBeNull()
+
+    await capturePanel(extension.page, info.outputPath('vod-not-found-dark.png'))
     assertNoUncaughtErrors(evidence)
   })
 })

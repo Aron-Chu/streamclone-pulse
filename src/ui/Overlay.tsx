@@ -2154,7 +2154,9 @@ function VodPulseStatusCard({
       : state.status === 'syncing'
         ? ['Still preparing this replay', state.reason]
         : state.status === 'missing'
-          ? ['No replay data for this VOD yet', state.reason]
+          ? vodPulse?.resolutionState === 'vod_not_found'
+            ? ['Twitch doesn’t list this VOD', 'It may be deleted, expired or private.']
+            : ['No replay data for this VOD yet', state.reason]
           : state.status === 'error' && state.archiveConflict
             ? ['We couldn’t match this VOD to a recorded stream', `StreamPulse may not have been following ${channel}’s chat when this was streamed, or Twitch hasn’t finished the archive yet.`]
             : state.status === 'error'
