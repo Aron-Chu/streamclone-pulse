@@ -108,7 +108,7 @@ describe('PulseSettingsPanel quick workspace', () => {
       .toBeLessThan(html.indexOf('aria-label="Extension preferences"'))
   })
 
-  it('gives everyone else the lab’s Your Line · Anatomy copy and an empty stage the card script fills, with no emotes in this bundle', () => {
+  it('gives everyone else the perk copy and an empty stage the card script fills, with no emotes in this bundle', () => {
     const html = renderToStaticMarkup(<SupporterHero appearance={null} onOpen={() => {}} />)
     expect(html).toContain('Explore Supporter')
     expect(describedCopy(html)).toBe('Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. Core tools stay free.')
@@ -122,7 +122,7 @@ describe('PulseSettingsPanel quick workspace', () => {
     expect(html).not.toContain('cdn.7tv.app')
     expect(html).not.toContain('data-supporter-verified')
   })
-  it('gives a verified Supporter the Tenure Climb copy and Manage Supporter, and otherwise stays neutral', () => {
+  it('gives a verified Supporter their perk copy and Manage Supporter, and otherwise stays neutral', () => {
     const verified = renderToStaticMarkup(<SupporterHero appearance={{ finish: 'etched', tenure: '24m', paint: { wave: 'chrome', sheen: 'glint' }, perks: true }} onOpen={() => {}} />)
     expect(verified).toContain('data-supporter-verified="true"')
     expect(verified).toContain('data-finish="etched"')
