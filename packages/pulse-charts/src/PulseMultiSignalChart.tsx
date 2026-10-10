@@ -9,6 +9,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { keepUncrowdedAxisLabels, niceMinuteTickIndices } from "./axisTicks.ts";
 import { parseEmoteKey, reactionAnalyticalOffset, type ChartSelection } from "@streampulse/pulse-core";
 import { chatIntervalSelectionFromActivityBar } from "./chatIntervalSelection.ts";
 import type {
@@ -3971,15 +3972,26 @@ function PulseMultiSignalChartInnerImpl({
               : 8;
             const numTicks = Math.min(responsiveTickLimit, axisRollups.length);
             if (numTicks <= 1) return null;
-            const tickIndices = [];
-            for (let i = 0; i < numTicks; i++) {
-              tickIndices.push(
-                Math.round((i / (numTicks - 1)) * (axisRollups.length - 1)),
-              );
+            // Console: whole-minute nice steps from the first visible minute, so
+            // two ticks never land on neighbouring minutes. The extension keeps
+            // its evenly spread ticks on the fixed 1000-unit viewBox.
+            const niceIndices = variant === "console"
+              ? niceMinuteTickIndices(
+                axisRollups.map((point) => pointOffsetSeconds(point.minuteTs, streamStartedAt)),
+                responsiveTickLimit,
+              )
+              : null;
+            const tickIndices: number[] = niceIndices ?? [];
+            if (!niceIndices) {
+              for (let i = 0; i < numTicks; i++) {
+                tickIndices.push(
+                  Math.round((i / (numTicks - 1)) * (axisRollups.length - 1)),
+                );
+              }
             }
-            return tickIndices.map((idx) => {
+            const placedTicks = tickIndices.flatMap((idx) => {
               const item = axisRollups[idx];
-              if (!item) return null;
+              if (!item) return [];
               const x = timestampScale.xForTimestamp(
                 item.minuteTs,
                 idx,
@@ -3990,6 +4002,11 @@ function PulseMultiSignalChartInnerImpl({
               // SVG on phones. Keep it inside; the tick itself stays at its minute.
               const halfLabel = variant === "console" ? label.length * 3.9 + 1 : 0;
               const labelX = halfLabel > 0 ? Math.min(Math.max(x, halfLabel), width - halfLabel) : x;
+              return [{ idx, x, label, labelX, centerX: labelX, halfWidth: halfLabel }];
+            });
+            // Console labels never touch: a label too close to the one before is dropped.
+            const shownTicks = variant === "console" ? keepUncrowdedAxisLabels(placedTicks) : placedTicks;
+            return shownTicks.map(({ idx, x, label, labelX }) => {
               return (
                 <g key={idx} className="opacity-60" data-chart-x-axis-tick="true">
                   <line
