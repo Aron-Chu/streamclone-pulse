@@ -107,7 +107,11 @@ export interface WheelGesture {
 
 export interface WheelProbe {
   chartFound: boolean
-  /** Ordinary vertical wheel — must scroll the page, must not be consumed. */
+  /**
+   * Ordinary vertical wheel-down at the full range — must scroll the page and
+   * must not be consumed. Since 2026-10-09 a plain wheel zooms by default, but a
+   * zoom-out at the full range has nothing to apply and goes to the page.
+   */
   plain: WheelGesture | null
   /** Alt+wheel zooming *in*, which the chart has room to apply and must consume. */
   altZoomIn: WheelGesture | null
@@ -344,9 +348,10 @@ export async function probeHoverOcclusion(
 }
 
 /**
- * Drift item 5. Ordinary vertical wheel movement over the chart must scroll the
- * page and must not be preventDefault()ed; Alt+wheel is the documented chart
- * gesture and is the only path allowed to consume the event.
+ * Drift item 5. An ordinary wheel-down over the chart at the full range must
+ * scroll the page and must not be preventDefault()ed (a plain wheel zooms by
+ * default since 2026-10-09, but there is nothing to zoom out to); Alt+wheel
+ * zooming in has room to apply and must be consumed.
  *
  * Each gesture is measured from a fresh hover so the page scroll caused by the
  * first one cannot move the chart out from under the second.
