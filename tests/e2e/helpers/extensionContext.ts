@@ -102,8 +102,10 @@ export async function launchExtensionContext(
 }
 
 /**
- * Branded Google Chrome (137+) and Microsoft Edge ignore --load-extension, so a
- * run on those channels would never see the extension. They load the unpacked
+ * Branded Google Chrome (137+) ignores --load-extension, so a run on that
+ * channel would never see the extension. Microsoft Edge 155 still honours the
+ * switch (checked 2026-10-10), but takes the same path so both branded channels
+ * load the same way if Edge follows Chrome. They load the unpacked
  * build through the CDP Extensions domain instead, which the browser exposes
  * only with --enable-unsafe-extension-debugging over Playwright's debugging
  * pipe. Chromium, Chrome for Testing and Brave (executable path) keep the
