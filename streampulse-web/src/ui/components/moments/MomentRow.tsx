@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { formatStreamOffset } from '../../../lib/formatStreamOffset'
-import { formatMomentDateTime } from '../../../lib/liveWire'
+import { formatMomentDateTime, formatMomentOccurrence } from '../../../lib/liveWire'
 import { discoveryAnalyticsHref, type DiscoveryMoment } from '../../../lib/discoveryMoments'
 import { broadcastTimelineHref } from '../../../lib/momentsNavigation'
 import { momentComparisonBadge } from '../../../lib/momentComparison'
@@ -68,12 +68,7 @@ export function MomentRow({
   const name = moment.displayName || moment.login
   const offset = formatStreamOffset(moment.offsetSeconds)
   const occurrenceDateTime = formatMomentDateTime(moment.at)
-  const occurrenceLabel = occurrenceDateTime
-    ? new Date(occurrenceDateTime).toLocaleString(undefined, {
-      month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit',
-      timeZone: 'UTC', timeZoneName: 'short',
-    })
-    : null
+  const occurrenceLabel = occurrenceDateTime ? formatMomentOccurrence(occurrenceDateTime) : null
   const occurrenceAge = useMomentRelativeAge(occurrenceDateTime)
   const badge = momentComparisonBadge(moment.comparison, moment.reactionSignal)
   return <article

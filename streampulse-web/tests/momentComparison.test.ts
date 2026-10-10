@@ -69,9 +69,31 @@ describe('compact comparison badge', () => {
     expect(momentComparisonBadge(comparison, 'emotes')).toEqual({ label: 'Emotes', short: '7.1×', long: "Emotes 7.1× this stream's earlier average", belowBaseline: false })
     expect(momentComparisonBadge(comparison, 'chat')).toEqual({ label: 'Chat', short: '2.1×', long: "Chat 2.1× this stream's earlier average", belowBaseline: false })
   })
-  it('marks a value under the earlier average as a dip', () => {
+  it('never shows a dip as the chip: it moves to the signal that rose', () => {
     const dip = { ...comparison, chat: { ...comparison.chat, multiplier: 0.14 } } as LiveWireMomentComparison
-    expect(momentComparisonBadge(dip, 'chat')).toEqual({ label: 'Chat', short: '0.1×', long: "Chat 0.1× this stream's earlier average", belowBaseline: true })
+    expect(momentComparisonBadge(dip, 'chat')).toEqual({ label: 'Emotes', short: '7.1×', long: "Emotes 7.1× this stream's earlier average", belowBaseline: false })
+  })
+  it('shows the chat rise on the caseoh_ "Emote spike" row whose emotes fell to 0.1×', () => {
+    // The row the audit saw on /analytics/moments: titled "Emote spike", chip "Emotes 0.1× earlier avg".
+    const caseoh = fromHubMoment({
+      login: 'caseoh_', streamId: 'stream-caseoh', offsetSeconds: 7_260, label: 'Emote spike', kind: 'emote_spike',
+      comparison: {
+        chat: { state: 'ready', currentPerMin: 412, multiplier: 2.6 },
+        emotes: { state: 'ready', currentPerMin: 9, multiplier: 0.12 },
+      } as LiveWireMomentComparison,
+    })!
+    expect(caseoh.reactionSignal).toBe('emotes')
+    const badge = momentComparisonBadge(caseoh.comparison, caseoh.reactionSignal)
+    expect(badge).toEqual({ label: 'Chat', short: '2.6×', long: "Chat 2.6× this stream's earlier average", belowBaseline: false })
+    expect(`${badge!.label} ${badge!.short}`).not.toMatch(/^Emotes 0\.1×/)
+  })
+  it('shows no chip when every signal fell under its earlier average', () => {
+    const fell = {
+      chat: { state: 'ready', currentPerMin: 40, multiplier: 0.6 },
+      emotes: { state: 'ready', currentPerMin: 3, multiplier: 0.1 },
+    } as LiveWireMomentComparison
+    expect(momentComparisonBadge(fell, 'emotes')).toBeNull()
+    expect(momentComparisonBadge({ ...fell, chat: { ...fell.chat, multiplier: 0 } }, 'chat')).toBeNull()
   })
   it('refuses to compress what cannot be stated in one cell', () => {
     // A percentage or absolute delta has no honest one-cell form, so the row

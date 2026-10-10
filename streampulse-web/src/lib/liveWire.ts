@@ -24,6 +24,20 @@ export function formatMomentDateTime(at?: number): string | undefined {
   return Number.isFinite(date.getTime()) ? date.toISOString() : undefined
 }
 
+/**
+ * A moment's occurrence for people: the reader's own time zone, named
+ * ("Sep 22, 2026, 9:50 AM MST"). Rows used to show UTC, which put an evening
+ * moment on the next day's date for anyone west of Greenwich. The page renders
+ * on the client only (createRoot, no hydration), so the local zone is safe.
+ * `timeZone` exists for tests.
+ */
+export function formatMomentOccurrence(dateTime: string, timeZone?: string): string {
+  return new Date(dateTime).toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit',
+    timeZoneName: 'short', ...(timeZone ? { timeZone } : {}),
+  })
+}
+
 export type MomentWindowClass = 'live' | 'older' | 'omit'
 
 export interface MomentWindowBuckets<T> {

@@ -155,6 +155,16 @@ const routes = [
   },
 ]
 
+// One shared 1200x630 card (public/og-default.png, source in scripts/og/) gives
+// every page a large link preview; title and description stay per page.
+const shareImage = {
+  url: `${origin}/og-default.png`,
+  type: 'image/png',
+  width: '1200',
+  height: '630',
+  alt: 'StreamPulse: find the Twitch moments people actually reacted to.',
+}
+
 function escapeAttribute(value) {
   return value
     .replaceAll('&', '&amp;')
@@ -180,8 +190,18 @@ function renderShell(metadata) {
   html = upsertMeta(html, 'property', 'og:title', metadata.title)
   html = upsertMeta(html, 'property', 'og:description', metadata.description)
   html = upsertMeta(html, 'property', 'og:url', canonical)
+  html = upsertMeta(html, 'property', 'og:type', 'website')
+  html = upsertMeta(html, 'property', 'og:site_name', 'StreamPulse')
+  html = upsertMeta(html, 'property', 'og:image', shareImage.url)
+  html = upsertMeta(html, 'property', 'og:image:type', shareImage.type)
+  html = upsertMeta(html, 'property', 'og:image:width', shareImage.width)
+  html = upsertMeta(html, 'property', 'og:image:height', shareImage.height)
+  html = upsertMeta(html, 'property', 'og:image:alt', shareImage.alt)
+  html = upsertMeta(html, 'name', 'twitter:card', 'summary_large_image')
   html = upsertMeta(html, 'name', 'twitter:title', metadata.title)
   html = upsertMeta(html, 'name', 'twitter:description', metadata.description)
+  html = upsertMeta(html, 'name', 'twitter:image', shareImage.url)
+  html = upsertMeta(html, 'name', 'twitter:image:alt', shareImage.alt)
   const canonicalTag = `<link rel="canonical" href="${canonical}" />`
   html = /<link\s+rel="canonical"[^>]*>/i.test(html)
     ? html.replace(/<link\s+rel="canonical"[^>]*>/i, canonicalTag)

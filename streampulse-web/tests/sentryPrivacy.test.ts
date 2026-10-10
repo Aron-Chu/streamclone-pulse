@@ -10,6 +10,17 @@ describe('Sentry privacy boundary', () => {
     }
     window.history.replaceState({}, '', '/')
   })
+  it('names the page for events that arrive without a route tag', () => {
+    for (const [path, route] of [['/feedback?ref=private', '/feedback'], ['/terms', '/terms'], ['/no-such-page', '/:unknown']]) {
+      window.history.replaceState({}, '', path)
+      const clean = scrubPortalEvent({ type: undefined, message: 'Failed to fetch' })!
+      expect(clean.tags?.route, path).toBe(route)
+      expect(clean.transaction, path).toBe(route)
+    }
+    window.history.replaceState({}, '', '/account/settings')
+    expect(scrubPortalEvent({ type: undefined, message: 'Failed to fetch' })).toBeNull()
+    window.history.replaceState({}, '', '/')
+  })
   it('removes signed media URLs and credential assignments from diagnostic text', () => {
     const clean = scrubDiagnosticText('Failed https://media.example/secret-id.mp4?signature=private token=private Bearer private')
     expect(clean).not.toContain('private')

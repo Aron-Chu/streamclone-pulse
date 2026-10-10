@@ -85,6 +85,21 @@ test.describe('public surface audit', () => {
     }
   })
 
+  test('cold route documents carry a large link preview with the shared card image', async ({ request }) => {
+    for (const route of ['/', '/docs', '/status', '/support', '/privacy']) {
+      const html = await (await request.get(route)).text()
+      const meta = (attribute: string, key: string) =>
+        new RegExp(`<meta ${attribute}="${key}" content="([^"]*)"`).exec(html)?.[1]
+      expect(meta('name', 'twitter:card'), route).toBe('summary_large_image')
+      expect(meta('property', 'og:image'), route).toBe('https://streampulse.stream/og-default.png')
+      expect(meta('property', 'og:title'), route).toBeTruthy()
+      expect(meta('property', 'og:description'), route).toBeTruthy()
+    }
+    const image = await request.get('/og-default.png')
+    expect(image.ok()).toBe(true)
+    expect(image.headers()['content-type']).toContain('image/png')
+  })
+
   test.beforeEach(async ({ page }) => {
     await installPublicMocks(page, [])
   })
@@ -170,6 +185,23 @@ test.describe('public surface audit', () => {
     await expect(dialog.getByRole('link', { name: 'Status' })).toHaveAttribute('href', '/status')
     await expect(dialog.getByRole('link', { name: 'Support' })).toHaveAttribute('href', '/support')
     await expect(dialog.getByRole('link', { name: 'Privacy' })).toHaveAttribute('href', '/privacy')
+    // The drawer's primary button once inherited the text-link colour (#eee on #fafafa, about 1.06:1).
+    const openAnalytics = dialog.getByRole('link', { name: 'Open Analytics' })
+    await expect(openAnalytics).toBeVisible()
+    const contrast = await openAnalytics.evaluate((element) => {
+      const rgb = (value: string) => (value.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number)
+      const lum = (value: string) => {
+        const [r, g, b] = rgb(value).map((channel) => {
+          const c = channel / 255
+          return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+        })
+        return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!
+      }
+      const style = getComputedStyle(element)
+      const [hi, lo] = [lum(style.color), lum(style.backgroundColor)].sort((x, y) => y - x)
+      return (hi! + 0.05) / (lo! + 0.05)
+    })
+    expect(contrast).toBeGreaterThanOrEqual(4.5)
     await page.keyboard.press('Escape')
     await expect(menu).toBeFocused()
     await expect(page.getByText(/Sample data · interactive demonstration/i)).toBeVisible()
@@ -179,6 +211,12 @@ test.describe('public surface audit', () => {
     await expect(page.getByRole('region', { name: 'StreamPulse Pulse sidebar preview' })).toBeVisible()
     await expect(page.locator('.lsg')).toHaveAttribute('data-static', '')
     await expectNoHorizontalOverflow(page)
+  })
+
+  test('documentation sections are numbered in reading order', async ({ page }) => {
+    await page.goto('/docs')
+    const headings = await page.getByTestId('docs-page').locator('h2').allInnerTexts()
+    expect(headings.filter((text) => /^\d+\./.test(text)).map((text) => Number.parseInt(text, 10))).toEqual([1, 2, 3])
   })
 
   test('documentation aliases resolve while unknown documentation routes retain not-found metadata', async ({ page }) => {

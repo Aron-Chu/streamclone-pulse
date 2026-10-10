@@ -22,6 +22,18 @@ describe('public release routes', () => {
     expect(document.body.textContent).not.toMatch(/public API.*coming soon/i)
   })
 
+  it('numbers the documentation sections in reading order, matching the table of contents', () => {
+    renderRoute(<Docs />)
+    const numbered = screen.getAllByRole('heading', { level: 2 })
+      .map((heading) => heading.textContent ?? '')
+      .filter((text) => /^\d+\./.test(text))
+      .map((text) => Number.parseInt(text, 10))
+    expect(numbered).toEqual([1, 2, 3])
+    const toc = Array.from(document.querySelectorAll('.public-toc a')).map((link) => link.getAttribute('href'))
+    const sections = Array.from(screen.getByTestId('docs-page').querySelectorAll('section[id]')).map((section) => `#${section.id}`)
+    expect(sections).toEqual(toc)
+  })
+
   it('describes local beta keys as an interface gate, not API authorization', () => {
     renderRoute(<DashboardShell />)
     expect(screen.getByRole('note').textContent).toContain('the server checks access for each request')
