@@ -1826,7 +1826,11 @@ export function HubActivityChart({
             <div><span>Chat/min</span><strong>{hp?.hasChatRollup === true ? compact(hp.chat) : '—'}</strong></div>
             <div><span>Emotes/min</span><strong>{hp?.hasChatRollup === true ? compact(emoteCount(hp)) : '—'}</strong></div>
           </div>
-          <small className="hx-hover-status" data-hub-bar-status={hoverBarStatus ? 'true' : undefined}>{hoverBarStatus ?? (hp?.viewerSourceMismatch ? 'Viewer source incompatible; snapshot unavailable' : hover != null && !hp ? 'No recorded activity in this interval' : hover != null && selectedIndex >= 0 && !touchInput ? 'Hover preview · selection stays on the chosen bucket' : selectedOutsideView ? 'Selected bucket is outside the zoomed view' : selectedIndex >= 0 ? `Selected bucket · ${touchInput ? 'tap' : 'click'} another interval to change it` : incompatibleViewerCount > 0 ? `${incompatibleViewerCount} viewer intervals have incompatible sources` : touchInput ? 'Tap a bucket to see its activity and filter moments' : 'Hover to preview · click a bucket to filter moments')}</small>
+          <small className="hx-hover-status" data-hub-bar-status={hoverBarStatus ? 'true' : undefined}>{hoverBarStatus
+            // A hover over a merged bar names the bar; with a bucket selected it
+            // still says this is only a preview (the selection stays put).
+            ? `${selectedIndex >= 0 && !touchInput ? 'Hover preview · ' : ''}${hoverBarStatus}`
+            : (hp?.viewerSourceMismatch ? 'Viewer source incompatible; snapshot unavailable' : hover != null && !hp ? 'No recorded activity in this interval' : hover != null && selectedIndex >= 0 && !touchInput ? 'Hover preview · selection stays on the chosen bucket' : selectedOutsideView ? 'Selected bucket is outside the zoomed view' : selectedIndex >= 0 ? `Selected bucket · ${touchInput ? 'tap' : 'click'} another interval to change it` : incompatibleViewerCount > 0 ? `${incompatibleViewerCount} viewer intervals have incompatible sources` : touchInput ? 'Tap a bucket to see its activity and filter moments' : 'Hover to preview · click a bucket to filter moments')}</small>
         </div>
       </div>
       {annotationLane}

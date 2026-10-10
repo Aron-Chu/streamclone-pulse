@@ -89,7 +89,8 @@ for (const surface of ['plot', 'navigator track'] as const) {
       // Escape on the plot releases the selected bucket first, then restores the full range.
       await plot.focus()
       await page.keyboard.press('Escape')
-      await expect(selectedTime).toHaveCount(0)
+      await expect(page.getByRole('status').filter({ hasText: 'Bucket selection cleared' })).toHaveCount(1)
+      await expect(selected).toBeHidden()
       await expect(navigator).not.toHaveAttribute('data-hub-chart-navigator-window', initial)
       await page.keyboard.press('Escape')
     } else {

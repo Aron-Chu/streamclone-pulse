@@ -902,4 +902,18 @@ describe('HubActivityChart zoom-aware chat bars', () => {
     fireEvent.mouseLeave(chart)
     await waitFor(() => expect(status.getAttribute('data-hub-bar-status')).toBeNull())
   })
+
+  it('keeps saying the hover is only a preview while a bucket is selected', async () => {
+    stubPlotWidth(243)
+    const { container } = render(<HubActivityChart points={dayPoints} windowMinutes={1440} channelCount={1} selectedBucketT={dayPoints[100]!.t} onBucketSelect={vi.fn()} />)
+    const series = container.querySelector('[data-component="HubActivityBarSeries"]') as SVGGElement
+    await waitFor(() => expect(series.getAttribute('data-hub-bar-span')).toBe('5'))
+    // The merged bar holding the selected bucket is highlighted.
+    expect(series.querySelector(`[data-bar-t="${dayPoints[100]!.t}"] .hx-chat-bar`)?.getAttribute('class')).toContain('is-selected')
+    const chart = container.querySelector('[data-hub-chart-wheel-surface]') as HTMLElement
+    fireEvent.mouseMove(chart, { clientX: (11.5 / 240) * 243, clientY: 80 })
+    const status = container.querySelector('.hx-hover-status') as HTMLElement
+    await waitFor(() => expect(status.getAttribute('data-hub-bar-status')).toBe('true'))
+    expect(status.textContent).toMatch(/^Hover preview · 30-min bar .+–.+ · chat avg \d+\/min · peak \d+$/)
+  })
 })
