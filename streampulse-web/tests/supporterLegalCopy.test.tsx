@@ -61,13 +61,28 @@ describe('Supporter legal copy', () => {
     expect(body).toMatch(/no public Twitch chat badge — it is not included/)
   })
 
-  it('Terms keeps the selling entity, address and law visibly pending owner input', () => {
+  it('Terms says in one sentence that the selling entity, address and law are stated before sign-ups open', () => {
     render(<MemoryRouter><Terms /></MemoryRouter>)
     const pending = screen.getByTestId('terms-pending-owner-input')
-    for (const label of ['Selling entity', 'Legal address', 'Governing law', 'Consumer cancellation rights']) {
-      expect(pending.textContent).toContain(label)
-    }
-    expect(pending.textContent?.match(/Pending — not yet stated\./g)).toHaveLength(4)
+    expect(pending.textContent?.replace(/\s+/g, ' ')).toContain(
+      'The selling entity, legal address, governing law and consumer cancellation rights will be stated here before paid sign-ups open.',
+    )
+    // No table of four "Pending" rows: one sentence says it once.
+    expect(screen.getByTestId('terms-of-use').textContent).not.toMatch(/Pending — not yet stated/)
+  })
+
+  it('Terms gives the Pulse Supporter section an anchor the extension links to (/terms#supporter)', () => {
+    const { container } = render(<MemoryRouter><Terms /></MemoryRouter>)
+    const heading = container.querySelector('h2#supporter')
+    expect(heading?.textContent).toBe('Pulse Supporter')
+  })
+
+  it('Supporter links "contact us" to the privacy mailbox and "Supporter terms" to the Supporter section', () => {
+    render(<MemoryRouter><Supporter /></MemoryRouter>)
+    const contact = screen.getByRole('link', { name: 'contact us' })
+    expect(contact.getAttribute('href')).toBe('mailto:privacy@streampulse.stream')
+    expect(screen.getByTestId('supporter-lost-twitch').contains(contact)).toBe(true)
+    expect(screen.getByRole('link', { name: 'Supporter terms' }).getAttribute('href')).toBe('/terms#supporter')
   })
 
   it('Refunds matches the backend access rules for refunds, disputes and failed renewals', () => {

@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
-import { PRIVACY_PATH, REFUNDS_PATH, TERMS_PATH } from '../../lib/externalLinks'
+import { PRIVACY_PATH, REFUNDS_PATH, SUPPORTER_TERMS_PATH } from '../../lib/externalLinks'
 import { PrelaunchNotice } from './PrelaunchNotice'
 import { CHROME_WEB_STORE_LISTING_URL } from '../../lib/publicSiteConfig'
 import { SUPPORTER_PERKS, SupporterPerkItems, supporterOnlyYou } from '../../ui/components/SupporterPerks'
@@ -138,12 +138,13 @@ export default function Supporter() {
         <p data-testid="supporter-lost-twitch">
           Lost access to your Twitch account? You can still cancel or update billing in
           Stripe&rsquo;s customer portal with the email you paid with. That changes billing only. It
-          doesn&rsquo;t move your membership to another Twitch account; contact us and we&rsquo;ll help.
+          doesn&rsquo;t move your membership to another Twitch account;{' '}
+          <a href="mailto:privacy@streampulse.stream">contact us</a> and we&rsquo;ll help.
         </p>
 
         <h2>Before you subscribe</h2>
         <p>
-          Read the <Link to={TERMS_PATH}>Supporter terms</Link>, the{' '}
+          Read the <Link to={SUPPORTER_TERMS_PATH}>Supporter terms</Link>, the{' '}
           <Link to={REFUNDS_PATH}>cancellation and refund policy</Link>, and the{' '}
           <Link to={PRIVACY_PATH}>privacy policy</Link> — the last one covers what an account stores
           and what Stripe receives.

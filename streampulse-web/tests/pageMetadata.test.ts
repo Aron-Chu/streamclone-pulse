@@ -16,6 +16,14 @@ describe('public page metadata', () => {
     }
   })
 
+  it('titles /terms as the general Terms of Use (site, extension and Supporter)', () => {
+    const metadata = resolvePageMetadata('/terms')
+    expect(metadata.title).toBe('Terms of Use — StreamPulse')
+    expect(metadata.description).toMatch(/website/)
+    expect(metadata.description).toMatch(/extension/)
+    expect(metadata.description).toMatch(/Supporter/)
+  })
+
   it('canonicalizes analytics aliases without treating them as channel names', () => {
     for (const path of ['/analytics/hub', '/analytics/emotes', '/analytics/streams', '/atlas']) {
       expect(resolvePageMetadata(path)).toMatchObject({

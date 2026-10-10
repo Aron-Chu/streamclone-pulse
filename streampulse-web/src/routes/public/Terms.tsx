@@ -96,7 +96,7 @@ export default function Terms() {
           See the <Link to={PRIVACY_PATH}>privacy policy</Link> for what an account stores.
         </p>
 
-        <h2>Pulse Supporter</h2>
+        <h2 id="supporter">Pulse Supporter</h2>
         <p>
           Supporter is optional, and paid sign-ups are not open yet. Full details are on the{' '}
           <Link to={SUPPORTER_PATH}>Supporter page</Link>. Once sign-ups open, the terms of the offer
@@ -161,23 +161,11 @@ export default function Terms() {
             can supply, with a legal professional. Never fill them in from anywhere else.
             They must be stated here before paid sign-ups open. */}
         <h2>Selling entity and applicable law</h2>
-        <p>
-          Paid sign-ups are not open, and no sale is offered through this site today. The following
-          will be stated on this page before paid sign-ups open:
+        <p data-testid="terms-pending-owner-input">
+          Paid sign-ups are not open, and no sale is offered through this site today. The selling
+          entity, legal address, governing law and consumer cancellation rights will be stated here
+          before paid sign-ups open.
         </p>
-        <dl
-          className="mt-4 grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-[14rem_minmax(0,1fr)]"
-          data-testid="terms-pending-owner-input"
-        >
-          <dt className="text-sm font-bold text-zinc-400">Selling entity</dt>
-          <dd className="m-0 text-sm text-zinc-200">Pending — not yet stated.</dd>
-          <dt className="text-sm font-bold text-zinc-400">Legal address</dt>
-          <dd className="m-0 text-sm text-zinc-200">Pending — not yet stated.</dd>
-          <dt className="text-sm font-bold text-zinc-400">Governing law</dt>
-          <dd className="m-0 text-sm text-zinc-200">Pending — not yet stated.</dd>
-          <dt className="text-sm font-bold text-zinc-400">Consumer cancellation rights</dt>
-          <dd className="m-0 text-sm text-zinc-200">Pending — not yet stated.</dd>
-        </dl>
         <p>Nothing on this page limits rights you have under consumer law that cannot be waived.</p>
 
         <h2>Price and term changes</h2>

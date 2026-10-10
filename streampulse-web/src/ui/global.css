@@ -693,7 +693,7 @@ select {
   outline: 2px solid #c4b5fd;
   outline-offset: 3px;
 }
-.app-shell section[id] { scroll-margin-top: 6rem; }
+.app-shell :is(section, h2, h3)[id] { scroll-margin-top: 6rem; }
 .public-skip-link { position: fixed; top: .5rem; left: .5rem; z-index: 100; padding: .75rem 1rem; min-height: 44px; color: #fff; background: #352447; border: 2px solid #c4b5fd; transform: translateY(-200%); }
 .public-skip-link:focus { transform: translateY(0); }
 .app-nav__menu { display: none; }
