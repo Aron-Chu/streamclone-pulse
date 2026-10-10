@@ -890,12 +890,15 @@ export function HubActivityChart({
     [chartPointWindowKey, chartPoints, hubBucketMs],
   )
   const plotSize = usePlotSize(wrapRef, chartPoints.length >= 2 && !loading)
-  const barStepRef = useRef<number | null>(null)
+  // The bar size on screen holds through an easing zoom (hysteresis), but only
+  // at the same plot width: a resize picks the size afresh.
+  const barStepRef = useRef<{ step: number; width: number } | null>(null)
   const barLevel = useMemo(() => {
     if (plotSize.width <= 0) return null
     const spanMs = Math.max(0, viewportBounds.endIndex - viewportBounds.startIndex) * hubBucketMs
-    const level = pickBarLevel(barLevels, spanMs, plotSize.width, hubBucketMs, barStepRef.current)
-    barStepRef.current = level?.step ?? null
+    const held = barStepRef.current
+    const level = pickBarLevel(barLevels, spanMs, plotSize.width, hubBucketMs, held && held.width === plotSize.width ? held.step : null)
+    barStepRef.current = level ? { step: level.step, width: plotSize.width } : null
     return level
   }, [barLevels, hubBucketMs, plotSize.width, viewportBounds.endIndex, viewportBounds.startIndex])
   const barSpan = barLevel?.step ?? 1

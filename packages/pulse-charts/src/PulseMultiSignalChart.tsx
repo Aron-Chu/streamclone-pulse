@@ -1892,19 +1892,22 @@ function PulseMultiSignalChartInnerImpl({
     return Number.isFinite(first) ? { firstMs: first, endMs: last + 60_000 } : null;
   }, [activityBarTimesMs]);
   // The level on screen; a change needs the slot to clear the 5px floor by
-  // 15%, so an easing zoom crosses each level once.
-  const activityBarStepRef = useRef<number | null>(null);
+  // 15%, so an easing zoom crosses each level once. The hold applies only at
+  // the same plot width: after a resize (including the first measurement,
+  // which replaces the 1000-unit fallback) the level is picked afresh.
+  const activityBarStepRef = useRef<{ step: number; plotWidth: number } | null>(null);
   const activityBarLevel = useMemo(() => {
     if (!activityBarLevels) return null;
     const spanMs = timestampScale.lastTimestampMs - timestampScale.firstTimestampMs;
+    const held = activityBarStepRef.current;
     const level = pickBarLevel(
       activityBarLevels,
       Number.isFinite(spanMs) && spanMs > 0 ? spanMs : 0,
       timestampScale.plotWidth,
       60_000,
-      activityBarStepRef.current,
+      held && held.plotWidth === timestampScale.plotWidth ? held.step : null,
     );
-    activityBarStepRef.current = level?.step ?? null;
+    activityBarStepRef.current = level ? { step: level.step, plotWidth: timestampScale.plotWidth } : null;
     return level;
   }, [activityBarLevels, timestampScale]);
   const chatTimeBuckets = useMemo<ActivityTimeBucketing | null>(
