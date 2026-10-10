@@ -185,7 +185,7 @@ describe('PulseMultiSignalChartInner time bucketing', () => {
 
   it('draws whole 5-minute bars of at least 3px for a 12.5h stream', () => {
     const markup = render('time')
-    // 1000-unit fallback width less the console pads leaves an 876px plot.
+    // The console plot fills the 1000-unit fallback width.
     expect(markup).toContain('data-activity-bucket-minutes="5"')
     for (const signal of ['chat', 'emotes'] as const) {
       const bars = activityRects(markup, signal)
@@ -252,8 +252,9 @@ describe('PulseMultiSignalChartInner time bucketing', () => {
 
   it('leaves the missing minutes empty instead of drawing a bar across them', () => {
     const markup = render('time')
-    const plotLeft = 90
-    const plotWidth = 1000 - 90 - 34
+    // The console plot spans the whole 1000-unit fallback width (no gutters).
+    const plotLeft = 0
+    const plotWidth = 1000
     const xFor = (index: number) => plotLeft + (index / (MINUTES - 1)) * plotWidth
     const gapLeft = xFor(GAP.from - 0.5)
     const gapRight = xFor(GAP.to - 0.5)
