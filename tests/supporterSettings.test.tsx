@@ -76,6 +76,7 @@ describe('supporter settings', () => {
       // Your look: paint, wave, sheen and emote rain; rain is a locked perk here.
       expect([...host.querySelectorAll('.pulse-supporter-look-row > legend')].map(legend => legend.textContent)).toEqual(['Paint', 'Wave', 'Sheen', 'Emote rain'])
       expect(host.querySelector('[data-supporter-perk="emote-rain"]')?.textContent).toContain('Supporter perk')
+      expect(host.querySelector('[data-supporter-perk="emote-rain"]')?.textContent).toContain('It moved from free to Supporter in 0.2.2')
       // No signature emote anywhere, and the old badge preview is gone.
       expect(host.textContent).not.toMatch(/signature/i)
       expect(host.querySelector('.pulse-supporter-tenure-choices, .pulse-supporter-chat-preview')).toBeNull()

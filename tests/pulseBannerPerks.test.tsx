@@ -47,6 +47,8 @@ describe('emote rain is a Supporter perk in settings', () => {
     const perk = view.host.querySelector('[data-supporter-perk="emote-rain"]')!
     expect(perk.textContent).toContain('Supporter perk')
     expect(perk.textContent).toContain('Only you see it')
+    // 0.2.1 gave the backdrop free: say plainly that it moved, and that a saved choice is kept.
+    expect(perk.textContent).toContain('It moved from free to Supporter in 0.2.2, and a backdrop you chose is kept for when you support.')
     expect(perk.querySelector('a')?.getAttribute('href')).toBe('#supporter')
 
     // The title stays free, and saving it keeps the stored Rain for a returning Supporter.

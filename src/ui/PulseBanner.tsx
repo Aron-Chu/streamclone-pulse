@@ -104,7 +104,7 @@ export function PulseBannerControls({ expanded = false, perks }: { expanded?: bo
           {(['off', 'still', 'rain'] as const).map(mode => <button key={mode} type="button" aria-pressed={draft.mode === mode} disabled={!perks && mode !== 'off'} title={!perks && mode !== 'off' ? 'Supporter perk' : undefined} onClick={() => setDraft({ ...draft, mode })}>{mode === 'off' ? 'Off' : mode === 'still' ? 'Still' : 'Rain'}</button>)}
         </div>
         {perks !== false ? null : <p className="pulse-supporter-detail" data-supporter-perk="emote-rain">
-          Emote rain, still or falling, is a Supporter perk. Only you see it.{' '}
+          Emote rain, still or falling, is a Supporter perk. Only you see it. It moved from free to Supporter in 0.2.2, and a backdrop you chose is kept for when you support.{' '}
           <a href="#supporter" onClick={() => window.scrollTo?.(0, 0)}>View Supporter benefits →</a>
         </p>}
         <label htmlFor={`${id}-intensity`}>Intensity <output>{draft.intensity}%</output></label>
