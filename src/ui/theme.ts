@@ -233,6 +233,26 @@ export const shadowStyles = `
     border-color: inherit !important;
     transform: none !important;
   }
+  .pulse-seven-tv-panel { background: rgba(17, 17, 23, 0.72); border: 1px solid rgba(103, 232, 249, 0.1); border-radius: 10px; margin-top: 8px; overflow: hidden; }
+  .pulse-seven-tv-head { align-items: center; display: flex; gap: 4px; min-width: 0; }
+  .pulse-seven-tv-panel .pulse-seven-tv-toggle { align-items: center; background: transparent; border: 0; color: ${theme.textPrimary}; cursor: pointer; display: flex; gap: 8px; padding: 8px 10px; text-align: left; flex: 1 1 auto; min-width: 0; }
+  .pulse-seven-tv-clear { background: rgba(139, 92, 246, 0.12); border: 1px solid rgba(167, 139, 250, 0.3); border-radius: 6px; color: #ddd6fe; cursor: pointer; flex: 0 0 auto; font-size: 9px; font-weight: 800; min-height: 25px; padding: 3px 7px; }
+  .pulse-seven-tv-label { color: ${theme.textMuted}; flex-shrink: 0; font-size: 9px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+  .pulse-seven-tv-preview { align-items: center; display: inline-flex; flex: 1; gap: 5px; min-width: 0; }
+  .pulse-seven-tv-preview-emote { align-items: center; background: rgba(255, 255, 255, 0.035); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 5px; display: inline-flex; flex-shrink: 0; height: 22px; justify-content: center; width: 22px; }
+  .pulse-seven-tv-chevron { color: ${theme.accentSoft}; flex-shrink: 0; font-size: 11px; font-weight: 900; margin-left: auto; transition: transform .18s cubic-bezier(.2,0,0,1); }
+  .pulse-seven-tv-chevron.is-reduced { transition: none; }
+  .pulse-seven-tv-body { border-top: 0 solid transparent; display: grid; gap: 0; grid-template-rows: 0fr; opacity: 0; overflow: hidden; padding: 0 8px; pointer-events: none; transform: translateY(-4px); transition: grid-template-rows .22s cubic-bezier(.2,0,0,1), opacity .18s cubic-bezier(.2,0,0,1), padding .22s cubic-bezier(.2,0,0,1), border-color .22s cubic-bezier(.2,0,0,1), transform .18s cubic-bezier(.2,0,0,1); }
+  .pulse-seven-tv-body[data-expanded="true"] { border-top: 1px solid rgba(255, 255, 255, 0.06); gap: 7px; grid-template-rows: 1fr; opacity: 1; padding: 7px 8px 8px; pointer-events: auto; transform: translateY(0); }
+  .pulse-seven-tv-body.is-reduced { transition: none; transform: none; }
+  .pulse-seven-tv-body-inner { min-height: 0; overflow: hidden; }
+  .pulse-emote-picker-grid { align-items: center; display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+  .pulse-seven-tv-chip { align-items: center; background: rgba(255, 255, 255, 0.045); border-color: rgba(255, 255, 255, 0.12); border-style: solid; border-width: 1px; border-radius: 999px; color: ${theme.textPrimary}; cursor: pointer; display: inline-flex; flex: 0 1 auto; gap: 5px; justify-content: center; min-height: 30px; min-width: 58px; padding: 3px 8px 3px 5px; }
+  .pulse-seven-tv-chip.is-compact { min-height: 28px; min-width: 54px; padding: 3px 7px 3px 4px; }
+  .pulse-seven-tv-chip.pulse-seven-tv-chip-disabled { cursor: not-allowed; opacity: 0.48; }
+  .pulse-seven-tv-count { color: ${theme.textSecondary}; font-size: 10px; font-variant-numeric: tabular-nums; font-weight: 800; line-height: 1; }
+  .pulse-seven-tv-swatch { border-radius: 999px; flex-shrink: 0; height: 7px; width: 7px; }
+  .pulse-seven-tv-more { background: rgba(139, 92, 246, 0.1); border: 1px solid rgba(167, 139, 250, 0.35); border-radius: 999px; color: #c4b5fd; cursor: pointer; font-size: 9px; font-weight: 800; justify-self: center; padding: 5px 10px; }
   .pulse-overview-chart:focus-visible,
   .pulse-overview-chart [data-chart-scrubber]:focus-visible {
     outline: none !important;
