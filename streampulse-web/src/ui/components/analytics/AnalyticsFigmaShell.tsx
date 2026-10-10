@@ -13,6 +13,8 @@ import { AnalyticsHubSidebar } from './AnalyticsHubSidebar'
 import { AnalyticsTopNav } from './AnalyticsTopNav'
 
 import { PageErrorBoundary } from '../../PortalErrorBoundary'
+import { discordInviteUrl } from '../../../lib/discord'
+import { FEEDBACK_PATH } from '../../../lib/externalLinks'
 
 const NAV_ITEMS = [
   { label: 'Home', to: '/', end: true },
@@ -45,6 +47,7 @@ function AnalyticsFigmaShellInner({
 }: AnalyticsFigmaShellProps) {
   const { labels } = useAnalyticsTheme()
   const centerRef = useRef<HTMLDivElement>(null)
+  const discord = discordInviteUrl()
 
   const sidebarTone =
     backendStatus?.tone === 'checking'
@@ -101,7 +104,7 @@ function AnalyticsFigmaShellInner({
       </div>
       <footer className="figma-analytics__site-footer" aria-label="Site information">
         <span>StreamPulse Analytics Hub</span>
-        <nav aria-label="Site links"><Link to="/privacy">Privacy</Link><Link to="/terms">Terms</Link><Link to="/support">Support</Link></nav>
+        <nav aria-label="Site links"><Link to={FEEDBACK_PATH}>Send feedback</Link>{discord ? <a href={discord} target="_blank" rel="noopener noreferrer" aria-label="Discord (opens in a new tab)">Discord</a> : null}<Link to="/privacy">Privacy</Link><Link to="/terms">Terms</Link><Link to="/support">Support</Link></nav>
       </footer>
     </div>
   )

@@ -18,7 +18,7 @@ import { BrandMark } from '../../ui/components/BrandMark'
 import { DiscordMark } from '../../ui/components/DiscordMark'
 import { ChromeInstallCta } from '../../ui/components/ChromeInstallCta'
 import { AnalyticsPreferences } from '../../ui/components/AnalyticsPreferences'
-import { GITHUB_REPO_URL } from '../../lib/externalLinks'
+import { FEEDBACK_PATH, GITHUB_REPO_URL } from '../../lib/externalLinks'
 import { discordInviteUrl } from '../../lib/discord'
 import { capturePublicCta } from '../../lib/productAnalytics'
 
@@ -218,7 +218,7 @@ function Footer({ discord }: { discord: string | null }) {
           <Link to="/status">Status</Link>
           <Link to="/analytics" onClick={() => capturePublicCta('open_analytics')}>Analytics</Link>
           <Link to="/support">Support</Link>
-          <Link to="/support#send-feedback">Send feedback</Link>
+          <Link to={FEEDBACK_PATH}>Send feedback</Link>
           {discord ? (
             <a href={discord} target="_blank" rel="noopener noreferrer" className="sl-foot__discord" aria-label="Discord (opens in a new tab)">
               <DiscordMark size={15} />Discord

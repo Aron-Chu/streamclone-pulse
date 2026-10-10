@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { DiscordMark } from '../../ui/components/DiscordMark'
 import { buttonClass } from '../../ui/primitives'
+import { FEEDBACK_PATH } from '../../lib/externalLinks'
 import { discordInviteUrl } from '../../lib/discord'
 
 function leaveFor(url: string) {
@@ -33,14 +34,14 @@ export default function Discord({ redirect = leaveFor }: { redirect?: (url: stri
                 <DiscordMark size={18} />Join the Discord
               </a>
             </div>
-            <p className="muted">The server is public, so keep account problems for the <Link to="/support#send-feedback">feedback form</Link>.</p>
+            <p className="muted">The server is public, so keep account problems for the <Link to={FEEDBACK_PATH}>private feedback form</Link>.</p>
           </>
         ) : (
           <>
             <h1>The StreamPulse Discord isn&apos;t open yet</h1>
-            <p>There is no community server to join right now. To report a problem or share an idea, use the support page.</p>
+            <p>There is no community server to join right now. To report a problem or share an idea, send private feedback.</p>
             <div className="public-document__actions">
-              <Link className={buttonClass('default', 'lg')} to="/support#send-feedback">Send feedback</Link>
+              <Link className={buttonClass('default', 'lg')} to={FEEDBACK_PATH}>Send feedback</Link>
             </div>
           </>
         )}

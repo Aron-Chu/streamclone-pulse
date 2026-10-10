@@ -1,15 +1,16 @@
 # RPR-4 — Hosted support case schema
 
 **Status:** Contract frozen. **Implemented, not activated.** The backend route and outbox and the
-portal feedback card exist; the hosted flag is off and the portal build has no Turnstile site key,
-so `/support` shows the form as unavailable. Activation inputs are listed in
+portal feedback form exists on `/feedback` (`/support` links to it, and keeps the `#send-feedback`
+anchor); the hosted flag is off and the portal build has no Turnstile site key, so `/feedback`
+shows the form as unavailable. Activation inputs are listed in
 [activation.md](./activation.md#activation-inputs).
 
 ## Transport
 
 - Portal only: `POST /v1/portal/support/cases` (hosted BFF).
 - Turnstile challenge runs in the **portal**, never inside MV3.
-- The extension's "Send feedback" opens `https://streampulse.stream/support` (no remote challenge
+- The extension's "Send feedback" opens `https://streampulse.stream/feedback` (no remote challenge
   script and no invite or form logic in the extension). "Join Discord" opens
   `https://streampulse.stream/discord`; the extension never embeds a Discord invite.
 

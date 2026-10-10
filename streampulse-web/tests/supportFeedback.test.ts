@@ -8,6 +8,8 @@ import {
   supportFailureOutcome,
   supportSuccessOutcome,
   truncateUtf8,
+  supportShortReference,
+  turnstileErrorIsSiteConfig,
   turnstileErrorRetryable,
   utf8ByteLength,
   validateFeedbackDraft,
@@ -149,6 +151,11 @@ describe('send outcomes', () => {
   it.each([
     [{ status: 429, code: 'rate_limited', retryAfterMs: 30_000 }, { kind: 'rate_limited', retryAfterMs: 30_000 }],
     [{ status: 429, code: 'rate_limited' }, { kind: 'rate_limited', retryAfterMs: null }],
+    // The site-wide hourly ceiling: not this reader's doing; the wait is the rest of the hour.
+    [{ status: 429, code: 'intake_busy', retryAfterMs: 2_400_000 }, { kind: 'rate_limited', retryAfterMs: 2_400_000, busy: true }],
+    [{ status: 429, code: 'intake_busy' }, { kind: 'rate_limited', retryAfterMs: null, busy: true }],
+    // Too many bot checks in flight on the server: a retry with the same message.
+    [{ status: 503, code: 'turnstile_busy' }, { kind: 'failed' }],
     [{ status: 503, code: 'disabled' }, { kind: 'unavailable' }],
     [{ status: 503, code: 'missing_turnstile_secret' }, { kind: 'unavailable' }],
     [{ status: 503, code: 'missing_limiter' }, { kind: 'unavailable' }],
@@ -187,4 +194,22 @@ describe('Turnstile widget errors', () => {
       expect(turnstileErrorRetryable(code)).toBe(false)
     },
   )
+
+  // Our own setup (parameters, site key, domain) shows the unavailable panel;
+  // anything else that no retry fixes is this browser blocking the check.
+  it.each(['102001', '106010', '110100', '110110', '110200', '110420', '400020', '400030', '400070'])('%j is our site configuration', (code) => {
+    expect(turnstileErrorIsSiteConfig(code)).toBe(true)
+  })
+
+  it.each(['110500', '110510', '110600', '200100', '200500', '300030', '600010', '100000', '120000', '', undefined, null])('%j is not', (code) => {
+    expect(turnstileErrorIsSiteConfig(code)).toBe(false)
+  })
+})
+
+describe('supportShortReference', () => {
+  it('is the first 8 characters of the case ID, upper-cased', () => {
+    expect(supportShortReference('ecf01b0b-4d2a-4c1e-9f3b-5a6b7c8d9e0f')).toBe('ECF01B0B')
+    expect(supportShortReference(' d91b5942-fc50-410a-9b7e-82754d3feaf2 ')).toBe('D91B5942')
+    expect(supportShortReference('c1')).toBe('C1')
+  })
 })
