@@ -25,6 +25,12 @@ export const CANONICAL_PORTAL_ORIGIN = 'https://streampulse.stream'
 export const POLICY_LINKS = {
   privacy: `${CANONICAL_PORTAL_ORIGIN}/privacy`,
   terms: `${CANONICAL_PORTAL_ORIGIN}/terms`,
+  /**
+   * The Supporter section of the terms, the one policy link with a fragment: it
+   * is a place in the terms document, not a separate address. A site without the
+   * `supporter` anchor opens the terms at the top, so it is safe before deploy.
+   */
+  supporterTerms: `${CANONICAL_PORTAL_ORIGIN}/terms#supporter`,
   refunds: `${CANONICAL_PORTAL_ORIGIN}/refunds`,
   support: `${CANONICAL_PORTAL_ORIGIN}/support`,
 } as const
