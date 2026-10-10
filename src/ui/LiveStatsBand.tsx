@@ -21,7 +21,7 @@ import {
 } from '../shared/fullHistoryAuth.ts'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
 import { GamesPlayedStrip } from './GamesPlayedStrip.tsx'
-import { PulseOverviewChart } from './PulseOverviewChart.tsx'
+import { PulseOverviewChart, type ChartBarSummary } from './PulseOverviewChart.tsx'
 import { ChartReadoutBand, type ChartReadoutMode } from './ChartReadoutBand.tsx'
 import { ChartMinuteInspectCard } from './ChartMinuteInspectCard.tsx'
 import { SelectedMomentCard } from './SelectedMomentCard.tsx'
@@ -47,6 +47,7 @@ import {
   MAX_PLOTTED_EMOTES,
   PLOT_PICKER_EMOTE_LIMIT,
   prepareChartRollups,
+  prepareBarRollups,
   resolveChartCoverageStartSeconds,
   toggleEmotePlotKeys,
   type ChartTimelineWindow,
@@ -358,6 +359,19 @@ export function LiveStatsBand({
     [payload, chartWindow, effectiveCurrentOffsetSeconds, coverageStartOffsetSeconds, activation],
   )
   const displayRollups = useMemo(() => downsampleRollupsForChart(rollups), [rollups])
+  // Bars need every minute even when Full past 8 h thins the chart rows.
+  const barRollups = useMemo(
+    () =>
+      prepareBarRollups(payload, {
+        chartWindow,
+        currentOffsetSeconds: effectiveCurrentOffsetSeconds,
+        coverageStartOffsetSeconds,
+        activation,
+      }),
+    [payload, chartWindow, effectiveCurrentOffsetSeconds, coverageStartOffsetSeconds, activation],
+  )
+  // The averaged bar under the pointer or pin, while bars span several minutes.
+  const [chartBar, setChartBar] = useState<ChartBarSummary | null>(null)
   // Pin/preview indexes must match the chart's source domain (raw prepared rollups).
   const chartOffsets = useMemo(
     () => rollups.map(rollup => rollup.offsetSeconds),
@@ -1432,6 +1446,7 @@ export function LiveStatsBand({
             backendUrl={backendUrl}
             emoteScope={readoutEmoteScope}
             onClearSelection={demoMode ? undefined : handleClearChartSelection}
+            bar={chartBar}
           />
           <div style={styles.chartStack}>
             <PulseOverviewChart
@@ -1474,6 +1489,8 @@ export function LiveStatsBand({
               loading={chartLoading}
               isLive={isLive}
               emoteSyncTone={emoteSyncTone}
+              barRollups={barRollups}
+              onBarChange={setChartBar}
             />
           </div>
           {inspectorHold.point ? (

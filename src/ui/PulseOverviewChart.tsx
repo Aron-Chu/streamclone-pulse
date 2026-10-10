@@ -12,6 +12,11 @@ import {
   buildViewerOverviewGeometry,
   ViewerNoDotPath,
   viewerScaleBounds,
+  buildBarPyramid,
+  pickBarLevel,
+  barLevelRange,
+  barBucketAt,
+  type BarBucket,
   type ChartGameSegment,
   type ViewerTimedValue,
 } from '@streampulse/pulse-charts'
@@ -25,6 +30,7 @@ import {
   chartDurationSeconds,
   extendSeriesToTrailingEdge,
   minuteEmoteTotal,
+  OVERVIEW_CHART_MAX_BAR_WIDTH_PX,
   overviewBarWidth,
   plotXForIndex,
   rampNullableSeriesFromStreamStart,
@@ -100,7 +106,18 @@ export interface PulseOverviewChartProps {
   backendUrl?: string
   /** Reset ephemeral chart interaction when the live stream/channel changes. */
   interactionResetKey?: string
+  /** One-minute rows for the bars when `rollups` is thinned (Full past 8 h). */
+  barRollups?: ExtensionRollup[]
+  /** The bar under the pointer, pin or list preview while bars average more than one minute; null otherwise. */
+  onBarChange?: (bar: ChartBarSummary | null) => void
 }
+
+/**
+ * An averaged activity bar: its pyramid bucket (series 0 chat, 1 emotes,
+ * 2 viewers; observed of expected minutes measured), the bar length in
+ * minutes, and its slot clipped to the data.
+ */
+export type ChartBarSummary = BarBucket & { step: number; startSeconds: number; endSeconds: number }
 
 /**
  * Chart actions live beside the plot, so they must not be mistaken for a
@@ -313,6 +330,10 @@ type SignalBar = {
   width: number
   height: number
   hasValue: boolean
+  /** Peak tick y when a multi-minute bar averages a much higher minute. */
+  cap?: number
+  /** Measured share of the minutes the bar covers; below 1 the bar is partial. */
+  share: number
 }
 
 const SignalBarLane = memo(function SignalBarLane({
@@ -335,7 +356,7 @@ const SignalBarLane = memo(function SignalBarLane({
   return (
     <>
       {bars.map((bar, index) => {
-        const { key, hasValue: _hasValue, ...geometry } = bar
+        const { key, hasValue: _hasValue, cap, share, ...geometry } = bar
         const state = pinIndex === index
           ? 'locked'
           : activeIndex === index
@@ -352,19 +373,34 @@ const SignalBarLane = memo(function SignalBarLane({
             highlightOpacity: Math.min(1, restAlpha * 2.4),
           })
         })()
-        const opacity = seriesFocusOpacity(focusedSeriesKey, seriesKey, base)
-        return (
+        // A partial bar (unmeasured minutes inside its slot) fades with its share.
+        const opacity = seriesFocusOpacity(focusedSeriesKey, seriesKey, base) * Math.max(0.35, share)
+        return [
           <rect
             key={key}
             {...geometry}
             data-chart-signal-bar={seriesKey}
             data-chart-bucket-index={index}
             data-chart-bar-highlight={state}
+            data-chart-bar-partial={share < 1 ? 'true' : undefined}
             fill={color}
             opacity={opacity}
             pointerEvents="none"
-          />
-        )
+          />,
+          cap == null ? null : (
+            <rect
+              key={`${key}p`}
+              x={geometry.x}
+              y={cap}
+              width={geometry.width}
+              height={1}
+              data-chart-bar-peak=""
+              fill={color}
+              opacity={opacity}
+              pointerEvents="none"
+            />
+          ),
+        ]
       })}
     </>
   )
@@ -408,6 +444,8 @@ function PulseOverviewChartImpl({
   coverageStartSeconds = 0,
   onViewportChange,
   interactionResetKey,
+  barRollups,
+  onBarChange,
 }: PulseOverviewChartProps) {
   const chartId = useId().replace(/:/g, '')
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -1051,6 +1089,9 @@ function PulseOverviewChartImpl({
   const markerFade = motionEnabled
     ? `opacity ${MARKER_FADE_MS}ms ${MARKER_FADE_EASING}`
     : undefined
+  // A level change swaps bars at once (levels nest, so it reads as a split or
+  // merge); the new set fades up briefly unless motion is off.
+  const barLevelClassName = motionEnabled ? 'pulse-bar-level' : undefined
   const overviewPathClassName = 'pulse-chart-overview-path'
   const detailPathClassName = 'pulse-chart-detail-path'
   const interactionLayerOpacity = activeIndex != null || highlightedGamePlotBounds != null ? 1 : 0
@@ -1174,29 +1215,106 @@ function PulseOverviewChartImpl({
     ? visibleViewerMarkerX(viewerSampleEndOffsetSeconds)
     : null
 
-  const emoteBars = useMemo(() => {
-    if (n === 0) return []
-    const barWidth = overviewBarWidth(plotWidth, n)
-    return emotes.map((value, index) => {
-      const x = plotXForIndex(index, n, PAD_LEFT, plotWidth) - barWidth / 2
-      const v = value ?? 0
-      const barHeight = v > 0 ? (emoteLaneHeight * v) / emoteBarAxisMax : 1
-      const y = emoteLaneBottom - barHeight
-      return { key: `emote-${index}`, x, y, width: barWidth, height: Math.max(1, barHeight), hasValue: v > 0 }
+  // Bars average aligned minute slots (stream offset 0 is the origin); the
+  // slot length follows the zoom. The pyramid is built once per data load, so
+  // a zoom, pan or resize only picks a level and slices it.
+  const barSource = barRollups ?? sourceRollups
+  const barLevels = useMemo(() => buildBarPyramid(
+    barSource.map(point => point.offsetSeconds * 1000),
+    [
+      barSource.map(point => (point.missing ? null : point.chatCount ?? 0)),
+      barSource.map(point => (point.missing ? null : minuteEmoteTotal(point))),
+      barSource.map(viewerObservedValue),
+    ],
+    60_000,
+  ), [barSource])
+  // Each drawn point owns one column of plot width, and the column's time runs
+  // over its own source rows, so bars share the pin, preview and no-data
+  // columns and stay evenly sized however the drawn minutes are picked.
+  const barColumns = useMemo(() => visibleRanges.map(([start, end]): [number, number] => {
+    const from = sourceRollups[start]!.offsetSeconds
+    const last = sourceRollups[end - 1]!.offsetSeconds
+    const next = sourceRollups[end]?.offsetSeconds
+    return [from, next != null && next - last <= 120 ? next : last + 60]
+  }), [sourceRollups, visibleRanges])
+  const barStepRef = useRef<number | null>(null)
+  const barLevel = n > 0
+    ? pickBarLevel(barLevels, (barColumns[n - 1]![1] - 60 - barColumns[0]![0]) * 1000, plotWidth, 60_000, barStepRef.current)
+    : null
+  barStepRef.current = barLevel?.step ?? null
+  const visibleBars = useMemo(() => {
+    if (!barLevel || n === 0) return []
+    const [from, to] = barLevelRange(barLevel, barColumns[0]![0] * 1000, barColumns[n - 1]![1] * 1000 - 1)
+    return barLevel.buckets.slice(from, to)
+  }, [barLevel, barColumns, n])
+  const [emoteBars, chatBars] = useMemo(() => {
+    const step = plotWidth / Math.max(1, n - 1)
+    // Buckets ascend, so one forward pass over the columns places every bar.
+    let i = 0
+    const xAt = (seconds: number): number => {
+      while (i < n - 1 && barColumns[i + 1]![0] <= seconds) i += 1
+      const [from, to] = barColumns[i]!
+      const fraction = (seconds - from) / (to - from)
+      return PAD_LEFT + (i - 0.5 + (i < n - 1 ? Math.min(1, fraction) : fraction)) * step
+    }
+    const slots = visibleBars.map(bucket => {
+      const x0 = xAt(bucket.firstMs / 1000)
+      const span = xAt(bucket.lastMs / 1000 + 60) - x0
+      const width = Math.min(OVERVIEW_CHART_MAX_BAR_WIDTH_PX, Math.max(1, span - Math.max(0.5, span * 0.2)))
+      return { x: x0 + (span - width) / 2, width }
     })
-  }, [emotes, n, plotWidth, emoteBarAxisMax, emoteLaneBottom, emoteLaneHeight])
-
-  const chatBars = useMemo(() => {
-    if (n === 0) return []
-    const barWidth = overviewBarWidth(plotWidth, n)
-    return chat.map((value, index) => {
-      const x = plotXForIndex(index, n, PAD_LEFT, plotWidth) - barWidth / 2
-      const v = value ?? 0
-      const barHeight = v > 0 ? (chatLaneHeight * v) / chatBarAxisMax : 1
-      const y = chatLaneBottom - barHeight
-      return { key: `chat-${index}`, x, y, width: barWidth, height: Math.max(1, barHeight), hasValue: v > 0 }
+    const multi = (barLevel?.step ?? 1) > 1
+    const lane = (k: number, axisMax: number, bottom: number, laneHeight: number): SignalBar[] => visibleBars.map((bucket, index) => {
+      const yFor = (value: number) => bottom - Math.min(laneHeight, (laneHeight * value) / axisMax)
+      const value = bucket.avg[k]!
+      const peak = bucket.peak[k]!
+      return {
+        key: `${barLevel!.step}-${bucket.startMs}`,
+        ...slots[index]!,
+        y: value > 0 ? yFor(value) : bottom - 1,
+        height: value > 0 ? Math.max(1, bottom - yFor(value)) : 1,
+        hasValue: value > 0,
+        cap: multi && peak > value * 1.25 ? yFor(peak) : undefined,
+        share: bucket.observed / bucket.expected,
+      }
     })
-  }, [chat, n, plotWidth, chatBarAxisMax, chatLaneBottom, chatLaneHeight])
+    return [
+      lane(1, emoteBarAxisMax, emoteLaneBottom, emoteLaneHeight),
+      lane(0, chatBarAxisMax, chatLaneBottom, chatLaneHeight),
+    ]
+  }, [visibleBars, barColumns, barLevel, n, plotWidth, emoteBarAxisMax, emoteLaneBottom, emoteLaneHeight, chatBarAxisMax, chatLaneBottom, chatLaneHeight])
+  // Hover and keyboard preview pick the bar under their column's middle; a
+  // pin or list preview picks the bar holding its own minute.
+  const barAt = (seconds: number | undefined): BarBucket | null =>
+    seconds == null || !barLevel ? null : barBucketAt(barLevel, seconds * 1000)
+  const pinBar = pinIndex == null ? null : barAt(sourceRollups[selectedIndex!]?.offsetSeconds)
+  const hoverColumn = hoveredBucketIndex == null ? undefined : barColumns[hoveredBucketIndex]
+  const activeBucket = hoverColumn
+    ? barAt((hoverColumn[0] + hoverColumn[1]) / 2) ?? barAt(visibleRollups[hoveredBucketIndex!]?.offsetSeconds)
+    : pinIndex != null
+      ? pinBar
+      : listPreviewIndex == null ? null : barAt(sourceRollups[previewIndex!]?.offsetSeconds)
+  const barIndexOf = (bucket: BarBucket | null): number | null => {
+    const index = bucket ? visibleBars.indexOf(bucket) : -1
+    return index < 0 ? null : index
+  }
+  const activeBarIndex = barIndexOf(activeBucket)
+  const pinBarIndex = barIndexOf(pinBar)
+  const activeBar = barLevel == null || barLevel.step < 2 || activeBarIndex == null ? null : activeBucket
+  const onBarChangeRef = useRef(onBarChange)
+  onBarChangeRef.current = onBarChange
+  useEffect(() => {
+    if (!activeBar || !barLevel) {
+      onBarChangeRef.current?.(null)
+      return
+    }
+    onBarChangeRef.current?.({
+      ...activeBar,
+      step: barLevel.step,
+      startSeconds: Math.max(barSource[0]!.offsetSeconds, activeBar.startMs / 1000),
+      endSeconds: Math.min(barSource[barSource.length - 1]!.offsetSeconds + 60, (activeBar.startMs + barLevel.slotMs) / 1000),
+    })
+  }, [activeBar, barLevel, barSource])
 
   // Live render values for imperative chrome updates (hover runs outside React).
   const chromeStateRef = useRef({ visibleRollups, n, plotWidth })
@@ -1547,6 +1665,7 @@ function PulseOverviewChartImpl({
         data-chart-hover-render="imperative"
         data-chart-point-count={n}
         data-chart-point-cap={EXTENSION_CHART_MAX_POINTS}
+        data-chart-bar-minutes={barLevel?.step}
         data-chart-viewport-start={internalViewport.startSeconds}
         data-chart-viewport-end={internalViewport.endSeconds}
         data-chart-viewer-axis-min={showViewerStrip ? viewerAxisMin : undefined}
@@ -1839,15 +1958,17 @@ function PulseOverviewChartImpl({
               data-chart-signal-group="emotes"
               opacity={activeIndex != null ? 1 : 0}
             >
+            <g key={barLevel?.step} className={barLevelClassName}>
             <SignalBarLane
               bars={emoteBars}
               seriesKey="emotes"
               color={CHART_THEME.emote.color}
-              pinIndex={pinIndex}
-              activeIndex={activeIndex}
+              pinIndex={pinBarIndex}
+              activeIndex={activeBarIndex}
               focusedSeriesKey={focusedSeriesKey}
               restAlpha={0.18}
             />
+            </g>
             </g>
             {emoteLinePath ? (
               <path
@@ -1892,15 +2013,17 @@ function PulseOverviewChartImpl({
               data-chart-signal-group="chat"
               opacity={activeIndex != null ? 1 : 0}
             >
+            <g key={barLevel?.step} className={barLevelClassName}>
             <SignalBarLane
               bars={chatBars}
               seriesKey="chat"
               color={CHART_THEME.chat.color}
-              pinIndex={pinIndex}
-              activeIndex={activeIndex}
+              pinIndex={pinBarIndex}
+              activeIndex={activeBarIndex}
               focusedSeriesKey={focusedSeriesKey}
               restAlpha={0.08}
             />
+            </g>
             </g>
             {chatLinePath ? (
               <path

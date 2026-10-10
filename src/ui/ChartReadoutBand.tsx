@@ -1,6 +1,7 @@
 import { formatHeatOffset } from '@streampulse/pulse-core'
 import type { ExtensionEmote } from '../shared/messages.ts'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
+import type { ChartBarSummary } from './PulseOverviewChart.tsx'
 
 export type ChartReadoutMode = 'idle' | 'preview' | 'selected'
 
@@ -15,6 +16,8 @@ export interface ChartReadoutBandProps {
   backendUrl: string
   emoteScope?: 'minute' | 'stream'
   onClearSelection?: () => void
+  /** The averaged bar under the pointer or pin, while bars span several minutes. */
+  bar?: ChartBarSummary | null
 }
 
 const READOUT_NUMBER = new Intl.NumberFormat('en-US', {
@@ -41,28 +44,37 @@ export function ChartReadoutBand({
   backendUrl,
   emoteScope = 'minute',
   onClearSelection,
+  bar: barProp,
 }: ChartReadoutBandProps) {
+  const bar = mode === 'idle' ? null : barProp ?? null
   const title = mode === 'selected'
     ? 'Selected'
     : mode === 'preview'
       ? 'Preview'
       : 'Chart inspection'
-  const time = typeof offsetSeconds === 'number' && Number.isFinite(offsetSeconds)
-    ? formatHeatOffset(offsetSeconds)
-    : '—'
+  const time = bar
+    ? `${formatHeatOffset(bar.startSeconds)}–${formatHeatOffset(bar.endSeconds)}`
+    : typeof offsetSeconds === 'number' && Number.isFinite(offsetSeconds)
+      ? formatHeatOffset(offsetSeconds)
+      : '—'
+  // Bar series: 0 chat, 1 emotes, 2 viewers (no viewer sample in the bar: peakAt -1).
+  const viewerSample = bar ? (bar.peakAt[2]! < 0 ? null : Math.round(bar.avg[2]!)) : viewerValue
   const viewer = !viewerVisible
     ? '—'
-    : typeof viewerValue === 'number' && Number.isFinite(viewerValue)
-      ? formatReadoutNumber(viewerValue)
+    : typeof viewerSample === 'number' && Number.isFinite(viewerSample)
+      ? formatReadoutNumber(viewerSample)
       : 'Unavailable'
-  const visibleEmotes = mode === 'idle' ? [] : topEmotes.slice(0, 3)
+  const visibleEmotes = mode === 'idle' || bar ? [] : topEmotes.slice(0, 3)
   const emoteScopeLabel = emoteScope === 'minute'
     ? 'Top emotes in this minute'
     : 'Stream top emotes; this minute has no emote breakdown'
-  const metric = (label: string, value: string) => (
+  const metric = (label: string, value: string, peak?: number) => (
     <span className="pulse-readout-metric">
       <span className="pulse-readout-label">{label}</span>
-      <strong className="pulse-readout-value">{value}</strong>
+      <strong className="pulse-readout-value">
+        {value}
+        {peak == null ? null : <small className="pulse-readout-peak"> pk {formatReadoutNumber(peak)}</small>}
+      </strong>
     </span>
   )
 
@@ -81,12 +93,21 @@ export function ChartReadoutBand({
       }}
     >
       <div
-        key={`${mode}:${offsetSeconds ?? 'idle'}`}
+        key={bar ? `${mode}:bar:${bar.step}:${bar.startSeconds}` : `${mode}:${offsetSeconds ?? 'idle'}`}
         className="pulse-chart-readout-content"
       >
         <div className="pulse-readout-header">
           <span className="pulse-readout-kicker">{title}</span>
           <span className="pulse-readout-time">{time}</span>
+          {bar ? (
+            <span
+              className="pulse-readout-kicker pulse-readout-note"
+              data-chart-readout-bar={bar.step}
+              data-chart-readout-bar-partial={bar.observed < bar.expected ? 'true' : undefined}
+            >
+              {bar.step}-min avg{bar.observed < bar.expected ? ` · ${bar.observed}/${bar.expected} min` : ''}
+            </span>
+          ) : null}
           {visibleEmotes.length > 0 ? (
             <span
               className="pulse-readout-emotes"
@@ -122,8 +143,8 @@ export function ChartReadoutBand({
         </div>
         <div className="pulse-readout-metrics" data-chart-readout-metrics="true">
           {metric('Viewers', viewer)}
-          {metric('Chat/min', formatReadoutNumber(chatValue))}
-          {metric('Emotes/min', formatReadoutNumber(emoteValue))}
+          {metric('Chat/min', formatReadoutNumber(bar ? bar.avg[0] : chatValue), bar?.peak[0])}
+          {metric('Emotes/min', formatReadoutNumber(bar ? bar.avg[1] : emoteValue), bar?.peak[1])}
         </div>
       </div>
     </div>

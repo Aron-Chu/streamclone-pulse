@@ -123,10 +123,13 @@ export const shadowStyles = `
   }
   .pulse-animate-in { animation: pulse-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
   .pulse-bar-grow { transform-origin: bottom center; animation: bar-grow 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
+  @keyframes pulse-bar-level { from { opacity: 0.55; } }
+  .pulse-bar-level { animation: pulse-bar-level 120ms ease-out; }
   .pulse-chart-readout-band { background: rgba(255, 255, 255, 0.025); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; box-sizing: border-box; display: grid; gap: 4px; height: 60px; min-height: 60px; overflow: hidden; padding: 6px 8px; width: 100%; }
   .pulse-chart-readout-content { display: grid; gap: 3px; grid-template-rows: 16px 27px; min-width: 0; }
   .pulse-readout-header { align-items: center; display: flex; gap: 6px; min-width: 0; white-space: nowrap; }
   .pulse-readout-kicker { color: ${theme.accent2}; flex-shrink: 0; font-size: 9px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
+  .pulse-readout-note { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .pulse-readout-time { color: ${theme.textPrimary}; flex-shrink: 0; font-size: 11px; font-variant-numeric: tabular-nums; font-weight: 800; }
   .pulse-readout-emotes { align-items: center; display: inline-flex; gap: 4px; margin-left: auto; min-width: 0; overflow: hidden; }
   .pulse-readout-emote { align-items: center; display: inline-flex; flex-shrink: 0; height: 18px; justify-content: center; width: 18px; }
@@ -135,6 +138,7 @@ export const shadowStyles = `
   .pulse-readout-metric { display: grid; gap: 1px; line-height: 1.1; min-width: 0; }
   .pulse-readout-label { color: ${theme.textMuted}; flex-shrink: 0; font-size: 9px; font-weight: 800; letter-spacing: 0.02em; text-transform: uppercase; }
   .pulse-readout-value { color: ${theme.textSecondary}; font-size: 10px; font-variant-numeric: tabular-nums; font-weight: 800; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pulse-readout-peak { color: ${theme.textMuted}; font-size: 9px; font-weight: 700; }
   .pulse-games { display: grid; gap: 4px; margin-bottom: 2px; min-width: 0; width: 100%; }
   .pulse-games-head { align-items: center; display: flex; gap: 6px; min-width: 0; width: 100%; }
   .pulse-games-label-shell { align-items: baseline; display: flex; gap: 6px; flex: 1 1 auto; min-width: 0; overflow: hidden; }
