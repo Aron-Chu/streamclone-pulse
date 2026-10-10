@@ -203,6 +203,19 @@ select {
   overflow-wrap: anywhere;
 }
 
+/* Links inside running text stay inline, so a wrapped line keeps its normal
+   height. The padding still gives a tall hit area without opening a gap
+   between lines; stand-alone action links above keep the 44px box. */
+[data-testid="supporter-offer"] :is(p:not(.public-document__back), li) a:not(.btn) {
+  display: inline;
+  min-height: 0;
+  min-width: 0;
+  /* At least 0.6em, and enough that the box reaches 44px: the content area is
+     taller than 1em, so 44px - 1em of padding always clears it. */
+  padding-block: max(0.6em, calc(22px - 0.5em));
+  margin-block: min(-0.6em, calc(0.5em - 22px));
+}
+
 .public-document h1 {
   margin-top: 0;
   font-size: 2rem;
