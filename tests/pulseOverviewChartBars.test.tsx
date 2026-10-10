@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ExtensionRollup, PulsePayload } from '../src/shared/messages.ts'
 import { makeFullHistoryActivation } from '../src/shared/fullHistoryAuth.ts'
 import { ChartReadoutBand } from '../src/ui/ChartReadoutBand.tsx'
+import { RecapTimelineChart } from '../src/ui/RecapTimelineChart.tsx'
 import { PulseOverviewChart, type ChartBarSummary } from '../src/ui/PulseOverviewChart.tsx'
 import { FULL_TIMELINE_MAX_POINTS, prepareBarRollups, prepareChartRollups } from '../src/ui/chatActivityEmotes.ts'
 
@@ -199,6 +200,34 @@ describe('PulseOverviewChart zoom-aware bars', () => {
     // No false partial bars from the mixed-width rows, and the peaks come from real minutes.
     expect(svg.querySelectorAll('[data-chart-bar-partial]')).toHaveLength(0)
     expect(svg.querySelectorAll('rect[data-chart-bar-peak][data-chart-bar-peak=""]').length).toBeGreaterThan(40)
+  })
+})
+
+describe('RecapTimelineChart bar readout (Past streams and VODs)', () => {
+  it('names the pinned bar in the readout band, and the exact minute at 1-minute level', () => {
+    const recap = (count: number) => ({
+      login: 'fixturechan',
+      isLive: false,
+      tracking: true,
+      streamId: 'stream-recap-bars',
+      vodId: '2806037629',
+      currentOffsetSeconds: count * 60,
+      durationSeconds: count * 60,
+      rollups: minutes(count, index => ({ chatCount: index === 40 ? 845 : 280 })),
+      lanes: { composite: [], chat: [], seventv: [] },
+      recap: null,
+    }) as PulsePayload
+    const props = { backendUrl: 'https://api.streampulse.stream', peakOffsets: [], catalog: [], onSelectPoint: () => undefined }
+    act(() => root.render(<RecapTimelineChart {...props} payload={recap(720)} pinOffsetSeconds={37 * 60} />))
+    const readout = () => host.querySelector('[data-chart-readout="true"]')
+    expect(readout()?.getAttribute('data-chart-readout-state')).toBe('selected')
+    expect(host.querySelector('[data-chart-readout-bar]')?.getAttribute('data-chart-readout-bar')).toBe('15')
+    expect(readout()?.querySelector('.pulse-readout-time')?.textContent).toBe('00:30:00–00:45:00')
+    expect(readout()?.textContent).toContain('pk 845')
+
+    act(() => root.render(<RecapTimelineChart {...props} payload={recap(21)} pinOffsetSeconds={5 * 60} />))
+    expect(host.querySelector('[data-chart-readout-bar]')).toBeNull()
+    expect(readout()?.querySelector('.pulse-readout-time')?.textContent).toBe('00:05:00')
   })
 })
 
