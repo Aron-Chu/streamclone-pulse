@@ -29,6 +29,13 @@ type Ports = {
   writeIntent?: (value: FinishIntent | null) => Promise<void>
   readInstallationKey?: () => Promise<unknown>
   writeInstallationKey?: (value: InstallationBootstrap | null) => Promise<void>
+  /**
+   * This device left `accountId`: an explicit sign-out, Sign out everywhere,
+   * or the server rejecting its credential (401). The owner removes its local
+   * copy of that account's data. Called, never awaited, inside this queue: the
+   * owner serializes the removal with work that itself waits on this queue.
+   */
+  accountForgotten?: (accountId: string) => void
 }
 const secret =(value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)
 const id = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9-]{36}$/.test(value)
@@ -87,7 +94,7 @@ function projectEntitlement(result: { status: number; body: unknown }, accountId
     // Only a literal true opens a purchase path; anything else is closed.
     checkoutEnabled: body.checkoutEnabled === true,
     installationAccountsEnabled: body.installationAccountsEnabled === true,
-    accountKind: body.accountKind === 'email' || body.accountKind === 'installation' ? body.accountKind : undefined,
+    accountKind: body.accountKind === 'email' || body.accountKind === 'installation' || body.accountKind === 'twitch' ? body.accountKind : undefined,
     restoreEligible: body.restoreEligible === true,
   }
 }
@@ -98,6 +105,25 @@ function finishIntent(value: unknown, now: number): FinishIntent | null {
   if (!FINISHES.has(String(r.finish)) || typeof r.setAt !== 'number' || r.setAt > now || now - r.setAt > FINISH_INTENT_TTL_MS) return null
   if (r.accountId !== undefined && !id(r.accountId)) return null
   return { finish: r.finish as Finish, setAt: r.setAt, ...(r.accountId ? { accountId: r.accountId as string } : {}) }
+}
+
+/** A shared appearance read for an account with perks; its accent still renews before it lapses. */
+export const ENTITLEMENT_PERKS_CACHE_LEAD_MS = 20_000
+/** A failed or unavailable read is shared this long, so open tabs do not each retry it. */
+export const ENTITLEMENT_FAILURE_CACHE_MS = 30_000
+/** Never trust a server cache window longer than its own 15-minute snapshot freshness. */
+export const ENTITLEMENT_MAX_CACHE_MS = 15 * 60_000
+
+/** How long the worker may serve this read to Twitch-tab appearance checks. */
+function entitlementCacheMs(value: SupporterEntitlement, result: { status: number; body: unknown }, elapsedMs: number): number {
+  if (value.state === 'error' || value.state === 'unavailable') return ENTITLEMENT_FAILURE_CACHE_MS
+  if (value.state !== 'ready') return 0
+  // Perks: the accent's own bounded validity (at most 60 s) minus the renewal lead.
+  if (value.features.length) return Math.max(0, (value.validForMs ?? 0) - ENTITLEMENT_PERKS_CACHE_LEAD_MS)
+  // No perks: nothing to revoke, so re-check at the server's cacheUntil.
+  const body = object(result.body)
+  const until = Date.parse(String(body.cacheUntil)) - Date.parse(String(body.serverTime)) - elapsedMs
+  return Number.isFinite(until) ? Math.max(0, Math.min(ENTITLEMENT_MAX_CACHE_MS, until)) : 60_000
 }
 
 /** What a settings or Twitch surface would render differently. Revision alone is not a change. */
@@ -186,6 +212,32 @@ export class SupporterAccountCoordinator {
   }
 
   /**
+   * Sign out everywhere answered 204: the server already revoked every device
+   * of `accountId`, this one included. Forget the stored credential as an
+   * explicit sign-out does, without another revocation request (it could only
+   * answer 401, and a lost reply would leave a tombstone for a credential that
+   * is already dead). A different identity stored meanwhile is left alone.
+   */
+  forgetSignedOutEverywhere(accountId: string): Promise<SupporterAccountState> {
+    this.generation++
+    const generation = this.generation
+    const task = this.queue.then(async (): Promise<SupporterAccountState> => {
+      const raw = object(await this.ports.read())
+      const credentials = raw.kind === 'linked' ? linked(raw) : raw.kind === 'refreshing' && raw.installation === true ? linked(raw.credentials) : null
+      if (credentials?.accountId !== accountId) return this.perform('status', generation)
+      this.forgetAccount(accountId)
+      await this.ports.writeInstallationKey?.(null)
+      await this.ports.writeIntent?.(null)
+      this.lastProjection = undefined
+      this.revocationUnconfirmed = false
+      this.renewalPause = null
+      return this.clear('signed_out')
+    }).catch((): SupporterAccountState => ({ state: 'error' }))
+    this.queue = task
+    return task
+  }
+
+  /**
    * Identity generation. Work that leaves the queue (an auth window) records
    * it first; a cancel or disconnect since then makes `adopt` refuse.
    */
@@ -250,13 +302,41 @@ export class SupporterAccountCoordinator {
       const result = await operation(credentials.token)
       if (generation !== this.generation) { await discardStale?.(result).catch(() => undefined); throw new Error('account_identity_changed') }
       if (result.status === 401) {
-        await this.clear('relink_required')
+        await this.rejected(credentials.accountId)
         throw new Error('account_authorization_required')
       }
       return result
     })
     this.queue = task.catch(() => undefined)
     return task
+  }
+
+  /** The last verified read, shared by every tab's appearance check for the same account. */
+  private entitlementCache: { accountId: string; generation: number; value: SupporterEntitlement; at: number; ttl: number } | null = null
+
+  /**
+   * The appearance check each visible Twitch tab makes (about once a minute).
+   * Served from the worker's last read for this account while it is fresh, so
+   * tabs and remounts share one request: up to 40 s for an account with perks
+   * (the served validity is reduced by the cache age, so its accent still
+   * renews before it lapses), until the server's cacheUntil (at most 15
+   * minutes) for an account without, and 30 s after a failed read. Changes
+   * made here (purchase, cosmetics, sign-in or out) reach tabs at once through
+   * the account and Supporter revision signals; settings always reads fresh.
+   */
+  cachedEntitlement(): Promise<SupporterEntitlement> {
+    const generation = this.generation
+    const task = this.queue.then(async (): Promise<SupporterEntitlement | null> => {
+      const account = await this.perform('status', generation)
+      const cached = this.entitlementCache
+      if (account.state !== 'linked' || !cached || cached.accountId !== account.accountId || cached.generation !== this.generation) return null
+      const age = this.now() - cached.at
+      if (age < 0 || age >= cached.ttl) return null
+      const value = cached.value
+      return value.state === 'ready' ? { ...value, validForMs: Math.max(0, (value.validForMs ?? 0) - age) } : value
+    }).catch(() => null)
+    this.queue = task
+    return task.then(value => value ?? this.entitlement())
   }
 
   /**
@@ -282,11 +362,15 @@ export class SupporterAccountCoordinator {
         const result = await this.ports.request('/v1/billing/supporter', undefined, credentials.token)
         if (generation !== this.generation) return { state: 'not_linked' }
         if (result.status === 401) {
-          await this.clear('relink_required')
+          await this.rejected(credentials.accountId)
           return { state: 'not_linked' }
         }
-        const projected = projectEntitlement(result, credentials.accountId, this.ports.environments ?? ['live'], performance.now() - started)
+        const elapsed = performance.now() - started
+        const projected = projectEntitlement(result, credentials.accountId, this.ports.environments ?? ['live'], elapsed)
         const value = await this.applyFinishIntent(projected, credentials, generation)
+        if (generation === this.generation && value.state !== 'not_linked') {
+          this.entitlementCache = { accountId: credentials.accountId, generation, value, at: this.now(), ttl: entitlementCacheMs(value, result, elapsed) }
+        }
         await this.noteProjection(credentials.accountId, value)
         return value
       })
@@ -319,6 +403,8 @@ export class SupporterAccountCoordinator {
   setFinishIntent(finish: Finish | null): Promise<Finish | null> {
     const generation = this.generation
     const task = this.queue.then(async () => {
+      // The next appearance read applies or drops the choice; never a stale one.
+      this.entitlementCache = null
       if (!this.ports.writeIntent) return null
       if (finish === null) { await this.ports.writeIntent(null); return null }
       const credentials = linked(await this.ports.read())
@@ -354,7 +440,7 @@ export class SupporterAccountCoordinator {
       const result = await this.ports.request('/v1/billing/cosmetics', cosmetics, credentials.token)
       if (generation !== this.generation) return { state: 'not_linked' }
       if (result.status === 401) {
-        await this.clear('relink_required')
+        await this.rejected(credentials.accountId)
         return { state: 'not_linked' }
       }
       if (result.status !== 200) throw new Error('finish_intent_refused')
@@ -396,11 +482,27 @@ export class SupporterAccountCoordinator {
   }
 
   private async clear(state: SupporterAccountState['state']): Promise<SupporterAccountState> {
+    this.entitlementCache = null
     await this.ports.write(state === 'relink_required' ? { kind: 'relink_required' } : null)
     // An authoritative credential rejection cannot erase the durable installation
     // identity. Explicit Disconnect is the only action that discards its key.
     await this.ports.identityChanged?.()
     return { state } as SupporterAccountState
+  }
+
+  /** Best effort; a failure here never blocks signing out. */
+  private forgetAccount(accountId: string): void {
+    try { this.ports.accountForgotten?.(accountId) } catch { /* the credential is still cleared */ }
+  }
+
+  /**
+   * The server rejected this device's credential (401): only the credential
+   * goes. The account's watched history, bookmarks and notes stay in this
+   * browser and come back when the same account signs in again; they are
+   * removed only by an explicit, confirmed Sign out or Sign out everywhere.
+   */
+  private async rejected(_accountId: string): Promise<SupporterAccountState> {
+    return this.clear('relink_required')
   }
 
   private async discardCredential(credentials: Linked): Promise<SupporterAccountState> {
@@ -429,10 +531,11 @@ export class SupporterAccountCoordinator {
       if (!credentials || generation !== this.generation) return false
       const result = await this.ports.request('/v1/billing/cosmetics', value, credentials.token)
       if (generation !== this.generation) return false
-      if (result.status === 401) await this.clear('relink_required')
+      if (result.status === 401) await this.rejected(credentials.accountId)
       if (result.status !== 200) return false
       // An explicit choice supersedes any earlier pre-purchase choice, and open
       // Twitch tabs apply it now instead of at their next scheduled check.
+      this.entitlementCache = null
       await this.ports.writeIntent?.(null)
       // Surfaces re-read on this signal; the next read sets a fresh baseline
       // rather than announcing the same change a second time.
@@ -457,7 +560,11 @@ export class SupporterAccountCoordinator {
       // Deliberately leaving an account also abandons a pending finish choice.
       await this.ports.writeIntent?.(null)
       this.lastProjection = undefined
-      if (credentials) return this.revoke(credentials.token)
+      if (credentials) {
+        // Before any network I/O: a failed revocation must not keep the copy.
+        this.forgetAccount(credentials.accountId)
+        return this.revoke(credentials.token)
+      }
       if (raw.kind === 'refreshing') this.revocationUnconfirmed = true
       // Clear before network I/O so a failed request cannot keep local access.
       await this.ports.write(null)
@@ -491,6 +598,8 @@ export class SupporterAccountCoordinator {
       const retryMs = unattemptedRefreshRetryMs(result)
       if (retryMs) return this.keepUnrenewed(credentials, retryMs)
       if (installation && (result.status >= 500 || result.status === 408)) return renewalWaiting()
+      // A refresh the server rejects outright: the session was revoked.
+      if (result.status === 401) return this.rejected(credentials.accountId)
       const next = linked(result.body)
       if (result.status !== 200 || !next || next.accountId !== credentials.accountId || next.deviceId !== credentials.deviceId) return this.clear('relink_required')
       this.renewalPause = null

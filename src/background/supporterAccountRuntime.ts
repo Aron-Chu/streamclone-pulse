@@ -1,10 +1,26 @@
 import { DEFAULT_BACKEND_URL, getBackendUrl } from '../shared/storage.ts'
 import { ACCOUNT_REVISION_KEY, SUPPORTER_REVISION_KEY } from '../shared/supporterAccount.ts'
+import { TWITCH_SIGNIN_ENABLED, type TwitchSignInMode, type TwitchStepUpResult } from '../shared/twitchSignIn.ts'
 import { AccountRequestNotSent, SupporterAccountCoordinator } from './supporterAccount.ts'
 import { SupporterPayFirstCoordinator } from './supporterPayFirst.ts'
 
-const ACCOUNT_BACKEND_URL = typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__ ? DEFAULT_BACKEND_URL
+/**
+ * The one origin every account request goes to: the credential store, refresh,
+ * Twitch sign-in, saves and history. Production in every store build; a
+ * development build pinned to a local backend keeps all of them there, so a
+ * credential issued by one origin is never sent to another.
+ */
+export const ACCOUNT_BACKEND_URL: string = typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__ ? DEFAULT_BACKEND_URL
   : typeof __SUPPORTER_BACKEND_ORIGIN__ !== 'undefined' ? __SUPPORTER_BACKEND_ORIGIN__ : DEFAULT_BACKEND_URL
+
+/**
+ * Account credentials cannot follow a dynamically selected backend: with the
+ * production account origin, a developer override pauses account requests.
+ * The isolated local sandbox is an explicit, immutable development build.
+ */
+export async function accountRequestsAllowed(): Promise<boolean> {
+  return ACCOUNT_BACKEND_URL !== DEFAULT_BACKEND_URL || await getBackendUrl() === DEFAULT_BACKEND_URL
+}
 
 // Extension-origin IndexedDB is unavailable to Twitch content scripts. Do not
 // move this record to sync storage or send it through a UI message.
@@ -38,6 +54,15 @@ async function access(write: boolean, value?: unknown, key: string = DEFAULT_BAC
   } finally { db.close() }
 }
 
+/**
+ * myMoments binds the removal of an account's local copy here; it imports this
+ * module, so the coordinator below cannot import it back.
+ */
+let accountDataForget: ((accountId: string) => void) | undefined
+export function bindAccountDataForget(forget: (accountId: string) => void): void {
+  accountDataForget = forget
+}
+
 /** Sign in with Twitch markers (never credentials) share the private store under their own key. */
 const TWITCH_SIGN_IN_META_KEY = `twitch-signin-meta-v1:${DEFAULT_BACKEND_URL}`
 export const twitchSignInMetaRecord = {
@@ -52,6 +77,7 @@ export const supporterAccount = new SupporterAccountCoordinator({
   writeIntent: async value => { await access(true, value, FINISH_INTENT_KEY) },
   readInstallationKey: () => access(false, undefined, INSTALLATION_KEY),
   writeInstallationKey: async value => { await access(true, value, INSTALLATION_KEY) },
+  accountForgotten: accountId => accountDataForget?.(accountId),
   // Store builds honour only live billing, so a sandbox purchase never unlocks
   // anything for real users; development builds may test against either.
   environments: typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__ ? ['live'] : ['live', 'sandbox'],
@@ -65,9 +91,7 @@ export function accountRequestDeadlineMs(path: string): number {
     : path === '/v1/account/restores' ? 25_000 : 12_000
 }
 export async function accountRequest(path: string, body?: Record<string, unknown>, bearer?: string): Promise<{ status: number; body: unknown; retryAfterMs?: number }> {
-    // Account credentials cannot follow a dynamically selected backend. The
-    // isolated local sandbox is an explicit, immutable development build.
-    if (ACCOUNT_BACKEND_URL === DEFAULT_BACKEND_URL && await getBackendUrl() !== DEFAULT_BACKEND_URL) throw new AccountRequestNotSent('account_hosted_only')
+    if (!await accountRequestsAllowed()) throw new AccountRequestNotSent('account_hosted_only')
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     // The installation credential is a bearer, never a cookie: this request
     // sends credentials: 'omit', so no ambient browser session is involved.
@@ -92,7 +116,18 @@ export const supporterPayFirst = new SupporterPayFirstCoordinator({
   write: async value => { await access(true, value, JOURNEY_KEY) },
   open: async url => { await chrome.tabs.create({ url }) },
   changed: async () => { await chrome.storage.local.set({ [SUPPORTER_REVISION_KEY]: crypto.randomUUID() }) },
+  twitchSignIn: TWITCH_SIGNIN_ENABLED,
+  stepUp: mode => twitchStepUp ? twitchStepUp(mode) : Promise.resolve({ ok: false, error: 'unavailable' }),
 })
+
+/**
+ * twitchSignInRuntime binds its step-up here; it imports this module, so the
+ * coordinator above cannot import it back.
+ */
+let twitchStepUp: ((mode: TwitchSignInMode) => Promise<TwitchStepUpResult>) | undefined
+export function bindTwitchStepUp(stepUp: (mode: TwitchSignInMode) => Promise<TwitchStepUpResult>): void {
+  twitchStepUp = stepUp
+}
 
 /**
  * While a link request waits, the worker collects the approval itself, so it

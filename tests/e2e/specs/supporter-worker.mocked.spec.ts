@@ -62,16 +62,17 @@ test('packaged disconnect keeps private retry authority across settings reload',
     } finally { db.close() }
   })
   await extension.page.reload()
-  await extension.page.getByRole('button', { name: 'Disconnect extension', exact: true }).click()
-  await expect(extension.page.getByRole('button', { name: 'Retry disconnect', exact: true })).toBeVisible()
+  await extension.page.getByRole('button', { name: 'Sign out', exact: true }).click()
+  await extension.page.getByRole('button', { name: 'Confirm sign out', exact: true }).click()
+  await expect(extension.page.getByRole('button', { name: 'Retry sign out', exact: true })).toBeVisible()
   await extension.page.reload()
-  await expect(extension.page.getByRole('button', { name: 'Retry disconnect', exact: true })).toBeVisible()
+  await expect(extension.page.getByRole('button', { name: 'Retry sign out', exact: true })).toBeVisible()
   const status = await extension.page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_ACCOUNT', action: 'status' }))
   expect(status.account).toEqual({ state: 'error', revocationPending: true })
   expect(JSON.stringify(status)).not.toContain('a'.repeat(64))
   available = true
-  await extension.page.getByRole('button', { name: 'Retry disconnect', exact: true }).click()
-  await expect(extension.page.getByRole('button', { name: 'Become a Supporter', exact: true })).toBeVisible()
+  await extension.page.getByRole('button', { name: 'Retry sign out', exact: true }).click()
+  await expect(extension.page.locator('[data-journey-state="signed-out"]')).toBeVisible()
 })
 
 test('the worker collects a website approval by itself after settings close', async ({ extension, prepare }) => {

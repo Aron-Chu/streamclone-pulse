@@ -8,18 +8,43 @@ export interface PersonalData {
   history: LibraryMoment[]
   notes: Record<string, string>
   /**
-   * Saves made without an account. They never leave this database; each keeps
-   * the hosted bookmark shape so a later, explicit account import can post them
-   * as-is. Account scopes leave this empty.
+   * Saves made without an account. They leave this database only through an
+   * explicit "Add to account" (`import-device-saves`), which posts the hosted
+   * bookmark shape each one keeps. Account scopes leave this empty.
    */
   bookmarks: PulseBookmark[]
 }
 export const emptyPersonalData = (): PersonalData => ({ preferences: { captureHistory: false, retentionDays: 30 }, epoch: 0, history: [], notes: {}, bookmarks: [] })
-export const momentIdentity = (m: { channel: string; vodId: string | null; streamId?: string; offsetSeconds: number | null }) => `${m.channel}:${m.streamId || m.vodId}:${m.offsetSeconds}`
+type MomentKey = { channel: string; vodId: string | null; streamId?: string; offsetSeconds: number | null }
+/** Channel, stream (or VOD) and whole second, like bookmarks and the account's history keys. */
+export const momentIdentity = (m: MomentKey) => `${m.channel}:${m.streamId || m.vodId}:${m.offsetSeconds === null ? null : Math.floor(m.offsetSeconds)}`
 export const bookmarkIdentity = (b: PulseBookmark) => momentIdentity({ channel: b.login, vodId: b.vodId ?? null, streamId: b.streamId, offsetSeconds: b.offsetSeconds })
+/** The id history entries got before identities used whole seconds (`…:125.6`). */
+const fractionalIdentity = (m: MomentKey) => `${m.channel}:${m.streamId || m.vodId}:${m.offsetSeconds}`
+/**
+ * Re-keys history written with a fractional second to the whole-second
+ * identity, once per read until the next write stores it. Duplicates merge
+ * into the newest jump; a note follows its moment unless the new id has one.
+ */
+function wholeSecondHistory(data: PersonalData): PersonalData {
+  if (!data.history.some(m => m.id === fractionalIdentity(m) && m.id !== momentIdentity(m))) return data
+  const notes = { ...data.notes }
+  const byId = new Map<string, LibraryMoment>()
+  for (const m of data.history) {
+    const id = m.id === fractionalIdentity(m) ? momentIdentity(m) : m.id
+    if (id !== m.id && notes[m.id] !== undefined) {
+      if (notes[id] === undefined) notes[id] = notes[m.id]
+      delete notes[m.id]
+    }
+    const prior = byId.get(id)
+    if (!prior || (m.jumpedAt ?? 0) >= (prior.jumpedAt ?? 0)) byId.set(id, { ...m, id })
+  }
+  return { ...data, notes, history: [...byId.values()].sort((a, b) => (a.jumpedAt ?? 0) - (b.jumpedAt ?? 0)) }
+}
 export function prunePersonalData(data: PersonalData, now: number): PersonalData {
   // Records written before device bookmarks existed have no `bookmarks` field.
-  return { ...emptyPersonalData(), ...data, history: data.history.filter(m => (m.historyExpiresAt ?? 0) > now).slice(-1000) }
+  const current = wholeSecondHistory({ ...emptyPersonalData(), ...data })
+  return { ...current, history: current.history.filter(m => (m.historyExpiresAt ?? 0) > now).slice(-1000) }
 }
 /**
  * Idempotent per channel, stream (or VOD) and whole second, like the hosted
@@ -47,6 +72,18 @@ async function database(): Promise<IDBDatabase> {
     request.onsuccess = () => resolve(request.result)
     request.onerror = () => reject(request.error)
   })
+}
+/** Removes one scope's record: an account's copy (history, notes) after this device leaves it. */
+export async function deletePersonal(scope: string): Promise<void> {
+  const db = await database()
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('personal', 'readwrite')
+      tx.objectStore('personal').delete(scope)
+      tx.oncomplete = () => resolve()
+      tx.onerror = tx.onabort = () => reject(tx.error ?? new Error('Local storage unavailable'))
+    })
+  } finally { db.close() }
 }
 export async function personalTransaction(scope: string, update?: (data: PersonalData) => PersonalData): Promise<PersonalData> {
   const db = await database()

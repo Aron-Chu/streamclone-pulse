@@ -207,6 +207,37 @@ describe('My Moments frontend', () => {
     expect(commands).toEqual([{ kind: 'unsave', id: 'local:a' }])
     expect(container.querySelectorAll('[data-device-save="true"]')).toHaveLength(1)
   })
+  it('adds device saves to the account only after a confirm, one or all, and only while the account is reachable', async () => {
+    const save = (id: string, label: string) => ({ id, login: 'xqc', streamId: '123456', vodId: '1234567890', offsetSeconds: 754, label, notes: '', source: 'extension',
+      createdAt: '2026-10-01T12:00:00.000Z', updatedAt: '2026-10-01T12:00:00.000Z' })
+    const deviceBookmarks = [save('local:a', 'Chat spike'), save('local:b', 'Clutch')]
+    const commands: unknown[] = []
+    const repository = (bookmarksState: string): LibraryRepository => {
+      const snapshot = { ...createDemoSnapshot('new', 0), bookmarksState, bookmarksAvailable: bookmarksState === 'ready', deviceBookmarks }
+      return { load: async () => snapshot as unknown as LibrarySnapshot,
+        execute: async command => { commands.push(command); return { ...snapshot, deviceBookmarks: [] } as unknown as LibrarySnapshot }, export: async () => '' }
+    }
+    await render(repository('error'))
+    expect(container.querySelector('button[aria-label^="Add to your account"]')).toBeNull()
+    expect([...container.querySelectorAll('button')].some(b => b.textContent === 'Add all to account')).toBe(false)
+    await act(async () => root?.unmount()); document.body.replaceChildren()
+
+    await render(repository('ready'))
+    expect(container.textContent).toContain('Add them to your account to keep them on every device where you sign in.')
+    await act(async () => { container.querySelector<HTMLButtonElement>('button[aria-label="Add to your account: Clutch"]')!.click(); await new Promise(r => setTimeout(r, 5)) })
+    const dialog = () => container.querySelector('dialog')?.textContent ?? ''
+    expect(dialog()).toContain('Add to your account?')
+    expect(dialog()).toContain('Notes stay on this device.')
+    expect(commands).toEqual([])
+    await click('Keep as is')
+    expect(commands).toEqual([])
+    await click('Add all to account')
+    expect(dialog()).toContain('Add 2 bookmarks to your account?')
+    const confirm = [...container.querySelectorAll('dialog button')].find(b => b.textContent === 'Add to account') as HTMLButtonElement
+    await act(async () => { confirm.click(); await new Promise(r => setTimeout(r, 5)) })
+    expect(commands).toEqual([{ kind: 'import-device-saves' }])
+    expect(container.textContent).toContain('Added to your account.')
+  })
   it('ignores stale completion after repository/account changes', async () => {
     let finish!: (snapshot: LibrarySnapshot) => void
     const old: LibraryRepository = { load: () => new Promise(resolve => { finish = resolve }), execute: async () => createDemoSnapshot(), export: async () => '' }

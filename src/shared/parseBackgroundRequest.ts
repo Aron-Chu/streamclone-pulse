@@ -270,6 +270,11 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
       // Exact shapes only: no URL, redirect, token or surface ever comes from a page.
       const keys = Object.keys(raw)
       if (raw.action === 'status') return keys.length === 2 ? { type, action: 'status' } : null
+      if (raw.action === 'sign_out_everywhere') {
+        if (keys.some(key => !['type', 'action', 'confirm'].includes(key))) return null
+        if (raw.confirm === undefined || raw.confirm === false) return { type, action: 'sign_out_everywhere' }
+        return raw.confirm === true ? { type, action: 'sign_out_everywhere', confirm: true } : null
+      }
       if (raw.action !== 'sign_in' || keys.some(key => !['type', 'action', 'mode', 'forceVerify'].includes(key))) return null
       if (raw.mode !== 'interactive' && raw.mode !== 'silent') return null
       if (raw.forceVerify === undefined || raw.forceVerify === false) return { type, action: 'sign_in', mode: raw.mode }
@@ -278,7 +283,7 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
     }
     case 'SUPPORTER_BILLING':
       if (Object.keys(raw).some(key => key !== 'type' && key !== 'action')) return null
-      return raw.action === 'status' || raw.action === 'check' || raw.action === 'checkout' || raw.action === 'resume' || raw.action === 'portal' ? { type, action: raw.action } : null
+      return raw.action === 'status' || raw.action === 'check' || raw.action === 'checkout' || raw.action === 'resume' || raw.action === 'portal' || raw.action === 'portal_confirm' ? { type, action: raw.action } : null
     case 'SUPPORTER_RESTORE': {
       if (Object.keys(raw).some(key => !['type', 'action', 'email'].includes(key))) return null
       if (raw.action === 'status' || raw.action === 'check' || raw.action === 'cancel') return 'email' in raw ? null : { type, action: raw.action }

@@ -2,11 +2,13 @@ import { build as viteBuild, defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
-import { loadManifestForTarget, resolveSupporterBackendOrigin } from './scripts/extension-target.mjs'
+import { loadManifestForTarget, manifestForTwitchSignInStage, resolveSupporterBackendOrigin, resolveTwitchSignInStage } from './scripts/extension-target.mjs'
 import { extensionBuildId, extensionReleasePreview, extensionResolve, extensionTarget, isStoreBuild, sharedOutput } from './vite.shared.ts'
 
 const root = __dirname
 const supporterBackendOrigin = resolveSupporterBackendOrigin(extensionTarget)
+// Worker and options only: the content script never carries sign-in code.
+const twitchSignInStage = resolveTwitchSignInStage(extensionTarget)
 
 function copyToDist(rootDir: string, relativePath: string): void {
   const src = resolve(rootDir, relativePath)
@@ -26,7 +28,7 @@ function chromeExtensionPlugin() {
 
       const dist = resolve(__dirname, 'dist')
       mkdirSync(dist, { recursive: true })
-      const manifest = loadManifestForTarget(extensionTarget)
+      const manifest = manifestForTwitchSignInStage(loadManifestForTarget(extensionTarget), extensionTarget, twitchSignInStage)
       writeFileSync(resolve(dist, 'manifest.json'), JSON.stringify(manifest, null, 2))
       writeFileSync(
         resolve(dist, 'extension-target.json'),
@@ -56,6 +58,7 @@ export default defineConfig({
     ),
     __EXTENSION_BUILD_ID__: JSON.stringify(extensionBuildId),
     __EXTENSION_RELEASE_PREVIEW__: JSON.stringify(extensionReleasePreview),
+    __TWITCH_SIGNIN_STAGE__: JSON.stringify(twitchSignInStage),
   },
   build: {
     outDir: 'dist',

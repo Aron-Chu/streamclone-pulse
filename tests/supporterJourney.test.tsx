@@ -3,8 +3,9 @@ import SUPPORTER_PERKS from '../src/shared/supporter-perks.json'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { MEMBERSHIP_WATCH_DELAYS_MS, MEMBERSHIP_WATCH_MS, SupporterJourney, accountReference } from '../src/options/SupporterJourney.tsx'
+import { ACCOUNT_COPY, MEMBERSHIP_WATCH_DELAYS_MS, MEMBERSHIP_WATCH_MS, SupporterJourney, accountReference, retryWaitCopy } from '../src/options/SupporterJourney.tsx'
 import type { SupporterAccountAction, SupporterAccountState, SupporterEntitlement, SupporterBillingState, SupporterRestoreState } from '../src/shared/supporterAccount.ts'
+import type { TwitchSignInResponse, TwitchSignInStage } from '../src/shared/twitchSignIn.ts'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -20,12 +21,13 @@ type Worker = {
   billing?: (action: string) => SupporterBillingState | Promise<SupporterBillingState>
   restore?: (action: string, email?: string) => SupporterRestoreState | Promise<SupporterRestoreState>
   devices?: (action: string, deviceId?: string) => import('../src/shared/supporterAccount.ts').SupporterDevicesState
+  twitch?: (message: { action: string; mode?: string; forceVerify?: boolean; confirm?: boolean }) => Omit<TwitchSignInResponse, 'type'> | Promise<Omit<TwitchSignInResponse, 'type'>>
 }
 
-async function mount(worker: Worker, onEntitlement?: (value: SupporterEntitlement | null) => void) {
+async function mount(worker: Worker, onEntitlement?: (value: SupporterEntitlement | null) => void, twitchStage: TwitchSignInStage = 'off') {
   const write = vi.fn()
   const listeners = new Set<(changes: Record<string, chrome.storage.StorageChange>) => void>()
-  const sendMessage = vi.fn(async (message: { type: string; action?: string; email?: string; deviceId?: string }) => {
+  const sendMessage = vi.fn(async (message: { type: string; action?: string; email?: string; deviceId?: string; mode?: string; forceVerify?: boolean; confirm?: boolean }) => {
     if (message.type === 'SUPPORTER_ACCOUNT') {
       const account = await worker.account(message.action as SupporterAccountAction)
       if (account instanceof Error) throw account
@@ -39,6 +41,7 @@ async function mount(worker: Worker, onEntitlement?: (value: SupporterEntitlemen
     if (message.type === 'SUPPORTER_BILLING') return { type: 'SUPPORTER_BILLING', billing: (await worker.billing?.(message.action!)) ?? { state: 'fallback' } }
     if (message.type === 'SUPPORTER_RESTORE' && worker.restore) return { type: 'SUPPORTER_RESTORE', restore: await worker.restore(message.action!, message.email) }
     if (message.type === 'SUPPORTER_DEVICES' && worker.devices) return { type: 'SUPPORTER_DEVICES', devices: worker.devices(message.action!, message.deviceId) }
+    if (message.type === 'TWITCH_SIGN_IN' && worker.twitch) return { type: 'TWITCH_SIGN_IN', ...(await worker.twitch({ action: message.action!, mode: message.mode, forceVerify: message.forceVerify, confirm: message.confirm })) }
     return undefined
   })
   const create = vi.fn(async () => ({}))
@@ -58,7 +61,7 @@ async function mount(worker: Worker, onEntitlement?: (value: SupporterEntitlemen
   const host = document.createElement('div')
   document.body.append(host)
   const root = createRoot(host)
-  await act(async () => root.render(<SupporterJourney onEntitlement={onEntitlement} />))
+  await act(async () => root.render(<SupporterJourney onEntitlement={onEntitlement} twitchStage={twitchStage} />))
   const button = (name: string) => [...host.querySelectorAll('button')].find(element => element.textContent === name)
   return {
     host, sendMessage, create, write, listeners,
@@ -80,14 +83,14 @@ describe('pay-first settings', () => {
   it.each(['active', 'pending'] as const)('asks before disconnecting a %s installation and preserves it when canceled', async status => {
     const view = await mount({ account: () => linked, entitlement: () => ready(status, { accountKind: 'installation', installationAccountsEnabled: true }), billing: () => ({ state: status === 'pending' ? 'waiting' : 'idle' }) })
     try {
-      await view.click('Disconnect extension')
+      await view.click('Sign out')
       expect(view.calls('SUPPORTER_ACCOUNT', 'disconnect')).toBe(0)
       expect(view.text()).toContain('does not cancel your subscription')
-      await view.click('Keep connected')
+      await view.click('Stay signed in')
       expect(view.calls('SUPPORTER_ACCOUNT', 'disconnect')).toBe(0)
-      expect(view.buttons()).not.toContain('Confirm disconnect')
-      await view.click('Disconnect extension')
-      await view.click('Confirm disconnect')
+      expect(view.buttons()).not.toContain('Confirm sign out')
+      await view.click('Sign out')
+      await view.click('Confirm sign out')
       expect(view.calls('SUPPORTER_ACCOUNT', 'disconnect')).toBe(1)
     } finally { view.cleanup() }
   })
@@ -110,12 +113,13 @@ describe('pay-first settings', () => {
       expect(view.create).not.toHaveBeenCalled()
     } finally { view.cleanup() }
   })
-  it.each(['ineligible', 'conflict', 'expired', 'error'] as const)('keeps verified membership management above a stale restore %s result', async result => {
+  it.each(['ineligible', 'conflict', 'expired', 'error'] as const)('never reads a worker restore, so a stale %s result cannot cover membership management', async result => {
     const view = await mount({ account: () => linked, entitlement: () => ready('active', { accountKind: 'installation', installationAccountsEnabled: true, restoreEligible: false }), restore: () => ({ state: result }), billing: () => ({ state: 'idle' }) })
     try {
+      expect(view.calls('SUPPORTER_RESTORE')).toBe(0)
       expect(view.state()).toBe('active')
-      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Manage membership')
-      await view.click('Manage membership')
+      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Manage subscription')
+      await view.click('Manage subscription')
       expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(1)
     } finally { view.cleanup() }
   })
@@ -139,7 +143,7 @@ describe('pay-first settings', () => {
       expect(view.text()).not.toContain('Your Supporter finishes are unlocked')
       expect(view.buttons()).not.toContain('Rejoin Supporter')
       expect(view.buttons()).not.toContain('Become a Supporter')
-      expect(view.buttons()).not.toContain('Manage membership')
+      expect(view.buttons()).not.toContain('Manage subscription')
       expect(onEntitlement.mock.calls.some(([value]) => value?.state === 'ready' && (value.status === 'active' || value.status === 'grace'))).toBe(false)
       membership = ready('active', { installationAccountsEnabled: true })
       await view.click('Check again')
@@ -149,7 +153,7 @@ describe('pay-first settings', () => {
       expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(0)
       expect(view.create).not.toHaveBeenCalled()
       expect(view.state()).toBe('active')
-      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Manage membership')
+      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Manage subscription')
       expect(onEntitlement).toHaveBeenLastCalledWith(membership)
     } finally { view.cleanup() }
   })
@@ -170,7 +174,7 @@ describe('pay-first settings', () => {
     } finally { view.cleanup() }
   })
   it.each([
-    ['active', 'Manage membership'],
+    ['active', 'Manage subscription'],
     ['grace', 'Update payment method'],
   ] as const)('keeps verified %s membership management above worker payment confirmation', async (status, label) => {
     const view = await mount({ account: () => linked, entitlement: () => ready(status, { installationAccountsEnabled: true }), billing: () => ({ state: 'active' }) })
@@ -222,7 +226,7 @@ describe('pay-first settings', () => {
     ['waiting', 'stripe-open', 'Return to Stripe checkout', 'resume'],
     ['confirming', 'payment-pending', 'Check payment status', 'check'],
     ['still_confirming', 'still-confirming', 'Check payment status', 'check'],
-    ['reconnect_required', 'previous-payment-unresolved', 'Restore my Supporter', 'restore'],
+    ['reconnect_required', 'previous-payment-unresolved', 'Contact support', 'support'],
     ['review', 'review', 'Contact support', 'support'],
     ['closed', 'checkout-closed', 'Check sign-up status', 'read'],
     ['unavailable', 'billing-unavailable', 'Try again', 'read'],
@@ -235,7 +239,7 @@ describe('pay-first settings', () => {
         expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
         expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe(label)
         expect(view.buttons()).not.toContain('Rejoin Supporter')
-        expect(view.buttons()).not.toContain('Manage membership')
+        expect(view.buttons()).not.toContain('Manage subscription')
         expect(view.text()).not.toContain('US$4.99 / month')
         if (billingState === 'confirming' || billingState === 'still_confirming' || billingState === 'review') expect(view.text()).toContain('Do not pay again')
         if (action === 'support') {
@@ -244,7 +248,6 @@ describe('pay-first settings', () => {
           await view.click(label)
           if (action === 'resume' || action === 'check') expect(view.calls('SUPPORTER_BILLING', action)).toBe(1)
           if (action === 'read') expect(view.calls('SUPPORTER_ENTITLEMENT')).toBeGreaterThan(1)
-          if (action === 'restore') expect(view.state()).toBe('restore-email')
         }
         expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
         expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(0)
@@ -259,16 +262,16 @@ describe('pay-first settings', () => {
       expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
       expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe(billingState === 'review' ? 'Contact support' : 'Check payment status')
       expect(view.text()).toContain('Do not pay again')
-      expect(view.buttons()).not.toContain('Manage membership')
+      expect(view.buttons()).not.toContain('Manage subscription')
       expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
     } finally { view.cleanup() }
   })
   it.each([
-    ['active', true, 'confirming', 'Manage membership', 'portal'],
+    ['active', true, 'confirming', 'Manage subscription', 'portal'],
     ['grace', true, 'still_confirming', 'Update payment method', 'portal'],
     ['expired', true, 'idle', 'Rejoin Supporter', 'checkout'],
-    ['expired', false, 'idle', 'Manage membership', 'portal'],
-    ['review', true, 'fallback', 'Manage membership', 'portal'],
+    ['expired', false, 'idle', 'Manage subscription', 'portal'],
+    ['review', true, 'fallback', 'Manage subscription', 'portal'],
   ] as const)('keeps the ordinary %s installation action with Checkout %s and billing %s', async (status, checkoutEnabled, billingState, label, action) => {
     const view = await mount({ account: () => linked, entitlement: () => ready(status, { installationAccountsEnabled: true, checkoutEnabled }), billing: () => ({ state: billingState }) })
     try {
@@ -295,14 +298,17 @@ describe('pay-first settings', () => {
       expect(view.text()).toContain('connection was revoked')
     } finally { view.cleanup() }
   })
-  it('makes recovery primary after relink, with a separate explicit new-membership confirmation', async () => {
+  it('explains a sign-out it did not choose without offering email restore, a website account or a new payment', async () => {
     const view = await mount({ account: () => ({ state: 'relink_required' }), entitlement: () => ({ state: 'not_linked' }), billing: () => ({ state: 'idle' }) })
     try {
-      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Restore my Supporter')
+      expect(view.text()).toContain('This extension was disconnected from your StreamPulse account.')
+      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Supporter details')
       expect(view.buttons()).not.toContain('Become a Supporter')
-      await view.click('Start a new membership')
-      expect(view.text()).toContain('separate subscription')
+      expect(view.buttons()).not.toContain('Restore my Supporter')
+      expect(view.buttons()).not.toContain('Use a StreamPulse website account')
+      expect(view.buttons()).not.toContain('Start a new membership')
       expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
+      expect(view.calls('SUPPORTER_RESTORE')).toBe(0)
     } finally { view.cleanup() }
   })
   it.each([{ accountKind: 'email' as const, installationAccountsEnabled: true, restoreEligible: true }, { accountKind: 'installation' as const, installationAccountsEnabled: false, restoreEligible: true }, { accountKind: 'installation' as const, installationAccountsEnabled: true, restoreEligible: false }])('hides restore when server capability refuses this account: %s', async capability => {
@@ -315,30 +321,28 @@ describe('pay-first settings', () => {
       expect(view.host.querySelector('a[data-supporter-action="billing"]')).toBeNull()
       expect(view.text()).toContain('New Supporter sign-ups are temporarily unavailable')
       expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
-      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe(status === 'grace' ? 'Update payment method' : 'Manage membership')
-      await view.click(status === 'grace' ? 'Update payment method' : 'Manage membership')
+      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe(status === 'grace' ? 'Update payment method' : 'Manage subscription')
+      await view.click(status === 'grace' ? 'Update payment method' : 'Manage subscription')
       expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(1)
       expect(view.create).not.toHaveBeenCalled()
     } finally { view.cleanup() }
   })
-  it('checks a lost payment explicitly through the worker and shows a comparison code during restore', async () => {
-    let restore: SupporterRestoreState = { state: 'idle' }
-    const view = await mount({ account: () => linked, entitlement: () => ready('none', { accountKind: 'installation', installationAccountsEnabled: true, restoreEligible: true }), billing: () => ({ state: 'still_confirming' }), restore: () => restore })
+  it('checks a lost payment explicitly through the worker, never through an email restore', async () => {
+    const view = await mount({ account: () => linked, entitlement: () => ready('none', { accountKind: 'installation', installationAccountsEnabled: true, restoreEligible: true }), billing: () => ({ state: 'still_confirming' }), restore: () => ({ state: 'pending', expiresAt: new Date(Date.now() + 900_000).toISOString(), comparisonCode: 'A3B4C5' }) })
     try {
       await view.click('Check payment status')
       expect(view.calls('SUPPORTER_BILLING', 'check')).toBe(1)
-      restore = { state: 'pending', expiresAt: new Date(Date.now() + 900_000).toISOString(), comparisonCode: 'A3B4C5' }
       await view.change({ pulseAccountRevision: { newValue: 'restore' } })
-      expect(view.text()).toContain('A3B4C5')
-      expect(view.text()).toContain('matches')
+      expect(view.text()).not.toContain('A3B4C5')
+      expect(view.calls('SUPPORTER_RESTORE')).toBe(0)
     } finally { view.cleanup() }
   })
   it('does not disguise an unrelated outage as an existing payment status', async () => {
     const view = await mount({ account: () => linked, entitlement: () => ready('none'), billing: () => ({ state: 'unavailable' }) })
     try { expect(view.buttons()).not.toContain('Check payment status'); expect(view.buttons()).toContain('Try again') } finally { view.cleanup() }
   })
-  it.each(['billing-review', 'restore-conflict'])('offers safe support for %s instead of another payment', async state => {
-    const view = await mount({ account: () => linked, entitlement: () => ready('none', { installationAccountsEnabled: true }), billing: () => state === 'billing-review' ? { state: 'review' } : { state: 'idle' }, restore: () => state === 'restore-conflict' ? { state: 'conflict' } : { state: 'idle' } })
+  it('offers safe support for a payment under review instead of another payment', async () => {
+    const view = await mount({ account: () => linked, entitlement: () => ready('none', { installationAccountsEnabled: true }), billing: () => ({ state: 'review' }) })
     try {
       const help = view.host.querySelector<HTMLAnchorElement>('a.pulse-journey-primary')!
       expect(help.textContent).toBe('Contact support')
@@ -347,12 +351,11 @@ describe('pay-first settings', () => {
       expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
     } finally { view.cleanup() }
   })
-  it('opens payment through the worker and waits without a second purchase action', async () => {
-    let account: SupporterAccountState = { state: 'signed_out' }
-    let membership: SupporterEntitlement = { state: 'not_linked' }
+  it('opens payment through the worker for a signed-in account and waits without a second purchase action', async () => {
+    let membership: SupporterEntitlement = ready('none', { installationAccountsEnabled: true })
     let billing: SupporterBillingState = { state: 'idle' }
-    const view = await mount({ account: () => account, entitlement: () => membership, billing: action => {
-      if (action === 'checkout') { account = linked; membership = ready('none', { installationAccountsEnabled: true }); billing = { state: 'waiting', attemptId: 'safe-local-attempt' } }
+    const view = await mount({ account: () => linked, entitlement: () => membership, billing: action => {
+      if (action === 'checkout') billing = { state: 'waiting', attemptId: 'safe-local-attempt' }
       return billing
     } })
     try {
@@ -386,8 +389,8 @@ describe('pay-first settings', () => {
     const view = await mount({ account: () => linked, entitlement: () => ready('active', { installationAccountsEnabled: true }), billing: () => ({ state: 'idle' }) })
     try {
       expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
-      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Manage membership')
-      await view.click('Manage membership')
+      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Manage subscription')
+      await view.click('Manage subscription')
       expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(1)
       expect(view.create).not.toHaveBeenCalled()
     } finally { view.cleanup() }
@@ -414,96 +417,67 @@ describe('pay-first settings', () => {
       expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
     } finally { view.cleanup() }
   })
-  it('discards a delayed preflight failure after settings unmount and remount', async () => {
-    let release!: (value: SupporterRestoreState) => void
-    const delayed = new Promise<SupporterRestoreState>(resolve => { release = resolve })
-    const worker: Worker = { account: () => linked, entitlement: () => ready('none', { installationAccountsEnabled: true }), restore: action => action === 'start' ? delayed : { state: 'idle' } }
-    const previous = await mount(worker)
-    await previous.click('Restore my Supporter')
-    const email = previous.host.querySelector<HTMLInputElement>('#supporter-restore-email')!
-    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(email, 'payer@example.test'); email.dispatchEvent(new Event('input', { bubbles: true })) })
-    await previous.click('Send restore link')
-    expect(previous.state()).toBe('restore-sending')
-    previous.cleanup()
-    const current = await mount(worker)
-    try {
-      const initialCalls = current.sendMessage.mock.calls.length
-      await act(async () => release({ state: 'unavailable', reason: 'connection' }))
-      expect(current.sendMessage.mock.calls.length).toBe(initialCalls)
-      expect(current.state()).toBe('offer')
-      await current.click('Restore my Supporter')
-      expect(current.host.querySelector<HTMLInputElement>('#supporter-restore-email')!.value).toBe('')
-      expect(current.calls('SUPPORTER_RESTORE', 'start')).toBe(0)
-      expect(current.write).not.toHaveBeenCalled()
-    } finally { current.cleanup() }
-  })
-  it('shows one primary restore action and generic recovery copy without persisting email', async () => {
-    let restore: SupporterRestoreState = { state: 'idle' }
-    const view = await mount({ account: () => ({ state: 'signed_out' }), entitlement: () => ({ state: 'not_linked' }), restore: action => action === 'start' ? (restore = { state: 'pending', expiresAt: new Date(Date.now() + 900_000).toISOString(), comparisonCode: 'A3B4C5' }) : restore })
-    try {
-      await view.click('Restore my Supporter')
-      expect(view.state()).toBe('restore-email')
-      expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
-      const email = view.host.querySelector<HTMLInputElement>('#supporter-restore-email')!
-      await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(email, 'payer@example.test'); email.dispatchEvent(new Event('input', { bubbles: true })) })
-      await view.click('Send restore link')
-      expect(view.sendMessage).toHaveBeenCalledWith({ type: 'SUPPORTER_RESTORE', action: 'start', email: 'payer@example.test' })
-      expect(view.state()).toBe('restore-pending')
-      expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
-      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Check restore status')
-      expect(view.text()).toContain('If that email has a recoverable membership')
-      expect(view.text()).not.toContain('payer@example.test')
-      await view.click('Check restore status')
-      expect(view.sendMessage).toHaveBeenCalledWith({ type: 'SUPPORTER_RESTORE', action: 'check' })
-      expect(view.calls('SUPPORTER_RESTORE', 'start')).toBe(1)
-      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
-      expect(view.calls('SUPPORTER_ACCOUNT', 'start')).toBe(0)
-      expect(view.state()).toBe('restore-pending')
-      expect(view.text()).toContain('A3B4C5')
-      expect(view.create).not.toHaveBeenCalled()
-      expect(view.write).not.toHaveBeenCalled()
-    } finally { view.cleanup() }
+  it('has no email restore form anywhere: no email field, no restore messages', async () => {
+    for (const account of [{ state: 'signed_out' }, { state: 'relink_required' }, linked] as SupporterAccountState[]) {
+      const view = await mount({ account: () => account, entitlement: () => account.state === 'linked' ? ready('none', { accountKind: 'installation', installationAccountsEnabled: true, restoreEligible: true }) : { state: 'not_linked' }, billing: () => ({ state: 'reconnect_required' }), restore: () => ({ state: 'idle' }) })
+      try {
+        expect(view.host.querySelector('input[type="email"]')).toBeNull()
+        expect(view.text()).not.toMatch(/Restore my Supporter|restore link|email you used at checkout/i)
+        expect(view.calls('SUPPORTER_RESTORE')).toBe(0)
+        expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
+      } finally { view.cleanup() }
+    }
   })
 })
 
-describe('one Supporter entry point', () => {
-  it('starts linking for a purchase, opens the website with the prepared request, and shows one primary action', async () => {
+describe('Twitch sign-in off (stage A): signed out', () => {
+  it('says sign-ups are not open, links Supporter details, and offers no purchase, restore or website account', async () => {
+    const view = await mount({ account: () => ({ state: 'signed_out' }), entitlement: () => ({ state: 'not_linked' }) })
+    try {
+      expect(view.state()).toBe('signed-out')
+      expect(view.text()).toContain('Supporter sign-ups are not open yet')
+      expect(view.text()).toContain('When they open, you\'ll choose Continue with Twitch, then pay on Stripe. Free tools work without an account.')
+      expect(view.text()).toContain('US$4.99 / month')
+      // Your card says who is here: nobody, and that is fine. The Account card does not repeat it.
+      expect(card(view.host).name().textContent).toBe('Not signed in')
+      expect(view.host.querySelector('[data-row="account"]')).toBeNull()
+      expect(view.text().match(/Not signed in/g)).toHaveLength(1)
+      const primary = view.host.querySelectorAll<HTMLAnchorElement>('.pulse-journey-primary')
+      expect(primary).toHaveLength(1)
+      expect(primary[0].textContent).toBe('Supporter details')
+      expect(primary[0].href).toBe('https://streampulse.stream/supporter')
+      for (const gone of ['Become a Supporter', 'Restore my Supporter', 'Use a StreamPulse website account', 'Continue with Twitch']) expect(view.buttons()).not.toContain(gone)
+      expect(view.text()).not.toMatch(/website account|restore/i)
+      expect(view.text()).toContain('Twitch sign-in is coming soon.')
+      // Nothing on this page asks the worker to buy, restore, or sign in with Twitch.
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
+      expect(view.calls('SUPPORTER_RESTORE')).toBe(0)
+      expect(view.calls('TWITCH_SIGN_IN')).toBe(0)
+      expect(view.calls('SUPPORTER_ACCOUNT', 'start')).toBe(0)
+      expect(view.create).not.toHaveBeenCalled()
+    } finally { view.cleanup() }
+  })
+
+  it('keeps the invited-tester device link behind a closed disclosure, never as a purchase', async () => {
     let account: SupporterAccountState = { state: 'signed_out' }
     const view = await mount({ account: action => action === 'start' ? (account = pendingLink({ pollingSecret: 'c'.repeat(64), unknownField: 'leak' })) : account, entitlement: () => ({ state: 'not_linked' }) })
     try {
-      expect(view.state()).toBe('unlinked')
-      expect(view.text()).toContain('Become a Pulse Supporter')
-      expect(view.text()).toContain('US$4.99 / month')
-      // Production has no installation accounts, so the click falls back to the
-      // website: the copy names that path first, and Stripe-first only as the
-      // case where the server allows it.
-      const detail = view.text()
-      expect(detail).toContain('Become a Supporter opens streampulse.stream, where you sign in and approve this extension before paying on Stripe.')
-      expect(detail).toContain('If the server lets this extension check out by itself, Stripe opens directly and asks for your email and payment details')
-      expect(detail).not.toContain('Stripe asks for your email and payment details. You only verify')
-      expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
-      await view.click('Become a Supporter')
-      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(1)
+      const bridge = view.host.querySelector<HTMLDetailsElement>('details[data-tester-bridge]')!
+      expect(bridge.open).toBe(false)
+      expect(bridge.querySelector('summary')?.textContent).toBe('Invited tester? Connect this extension')
+      expect(bridge.textContent).toContain('This is not a purchase.')
+      await view.click('Connect this extension')
       expect(view.sendMessage).toHaveBeenCalledWith({ type: 'SUPPORTER_ACCOUNT', action: 'start' })
-      // The worker resolves where to go; only the human code and a fixed flow name travel.
-      expect(view.create).toHaveBeenCalledExactlyOnceWith({ url: 'https://streampulse.stream/account/link-device#code=ABCDE12345&then=billing' })
+      // Only the human code travels, and no billing continuation.
+      expect(view.create).toHaveBeenCalledExactlyOnceWith({ url: 'https://streampulse.stream/account/link-device#code=ABCDE12345' })
       expect(view.state()).toBe('link-pending')
       expect(view.text()).toContain('Finish on streampulse.stream')
       expect(view.text()).toContain('ABCDE-12345')
       expect(view.host.innerHTML).not.toContain('c'.repeat(64))
       expect(view.host.innerHTML).not.toContain('leak')
-      expect(view.host.querySelector<HTMLAnchorElement>('a.pulse-journey-primary')?.href).toBe('https://streampulse.stream/account/link-device#code=ABCDE12345&then=billing')
+      expect(view.host.querySelector<HTMLAnchorElement>('a.pulse-journey-primary')?.href).toBe('https://streampulse.stream/account/link-device#code=ABCDE12345')
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
       expect(view.write).not.toHaveBeenCalled()
-    } finally { view.cleanup() }
-  })
-
-  it('connects an already-paid installation without a purchase continuation', async () => {
-    let account: SupporterAccountState = { state: 'signed_out' }
-    const view = await mount({ account: action => action === 'start' ? (account = pendingLink()) : account, entitlement: () => ({ state: 'not_linked' }) })
-    try {
-      await view.click('Use a StreamPulse website account')
-      expect(view.create).toHaveBeenCalledExactlyOnceWith({ url: 'https://streampulse.stream/account/link-device#code=ABCDE12345' })
-      expect(view.text()).toContain('This page updates by itself')
     } finally { view.cleanup() }
   })
 
@@ -514,7 +488,7 @@ describe('one Supporter entry point', () => {
       entitlement: () => ({ state: 'not_linked' }),
     })
     try {
-      const button = [...view.host.querySelectorAll('button')].find(element => element.textContent === 'Become a Supporter')!
+      const button = [...view.host.querySelectorAll('button')].find(element => element.textContent === 'Connect this extension')!
       await act(async () => { button.click(); button.click(); button.click() })
       expect(view.calls('SUPPORTER_ACCOUNT', 'start')).toBe(1)
       await act(async () => release(pendingLink()))
@@ -547,7 +521,7 @@ describe('one Supporter entry point', () => {
     } finally { if (!unmounted) view.cleanup() }
   })
 
-  it('continues the purchase after approval and turns Supporter on without a manual refresh', async () => {
+  it('lets a connected tester continue to website checkout and turns Supporter on without a manual refresh', async () => {
     vi.useFakeTimers()
     let account: SupporterAccountState = { state: 'signed_out' }
     let membership: SupporterEntitlement = { state: 'not_linked' }
@@ -559,17 +533,20 @@ describe('one Supporter entry point', () => {
       entitlement: () => membership,
     })
     try {
-      await view.click('Become a Supporter')
+      await view.click('Connect this extension')
       // Approval on the website: the worker's next poll completes the link and
       // signals the account revision.
       account = linked
       membership = ready('none')
       await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
       await view.change({ pulseAccountRevision: { newValue: 'linked' } })
+      expect(view.state()).toBe('offer')
+      await act(async () => view.link()!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })))
       expect(view.state()).toBe('purchase-continuing')
       expect(view.text()).toContain('Complete your purchase on streampulse.stream')
       expect(view.link()?.href).toBe('https://streampulse.stream/account/billing')
       expect(view.text()).toContain(accountReference(ACCOUNT_ID))
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
       // Payment pending, then confirmed: the card follows on its own backoff.
       membership = ready('pending')
       await act(async () => { await vi.advanceTimersByTimeAsync(MEMBERSHIP_WATCH_DELAYS_MS[0]) })
@@ -605,7 +582,7 @@ describe('membership states', () => {
   it.each<[string, SupporterEntitlement, string, string | null]>([
     ['offer', ready('none'), 'Continue to checkout', 'https://streampulse.stream/account/billing'],
     ['checkout-closed', ready('none', { checkoutEnabled: false }), '', null],
-    ['active', ready('active', { accessUntil: '2026-11-01T12:00:00Z' }), 'Manage membership', 'https://streampulse.stream/account/billing'],
+    ['active', ready('active', { accessUntil: '2026-11-01T12:00:00Z' }), 'Manage subscription', 'https://streampulse.stream/account/billing'],
     ['grace', ready('grace', { accessUntil: '2026-10-19T12:00:00Z' }), 'Update payment method', 'https://streampulse.stream/account/billing'],
     ['expired', ready('expired'), 'Rejoin Supporter', 'https://streampulse.stream/account/billing'],
     ['expired', ready('expired', { checkoutEnabled: false }), 'Review membership', 'https://streampulse.stream/account/billing'],
@@ -631,10 +608,10 @@ describe('membership states', () => {
         expect(view.text()).not.toContain('US$4.99 / month')
         expect(view.text()).toContain('2 months')
       }
-      // A connected installation always names its account and can disconnect.
+      // A connected tester always names the account and can sign out.
       expect(view.text()).toContain(accountReference(ACCOUNT_ID))
-      expect(view.text()).toContain('does not link your Twitch identity')
-      expect(view.buttons()).toContain('Disconnect extension')
+      expect(accountRow(view.host)).toContain('Connected to this extension')
+      expect(view.buttons()).toContain('Sign out')
       expect(view.text()).not.toContain('badge is active')
     } finally { view.cleanup() }
   })
@@ -675,8 +652,8 @@ describe('connection states', () => {
   it('shows a pending revocation with only a retry', async () => {
     const view = await mount({ account: () => ({ state: 'error', revocationPending: true }), entitlement: () => ({ state: 'not_linked' }) })
     try {
-      expect(view.buttons()).toEqual(['Retry disconnect'])
-      await view.click('Retry disconnect')
+      expect(view.buttons()).toEqual(['Retry sign out'])
+      await view.click('Retry sign out')
       expect(view.sendMessage).toHaveBeenLastCalledWith({ type: 'SUPPORTER_ACCOUNT', action: 'disconnect' })
     } finally { view.cleanup() }
   })
@@ -684,23 +661,27 @@ describe('connection states', () => {
   it('reports an unconfirmed disconnect instead of claiming it worked', async () => {
     const view = await mount({ account: action => action === 'disconnect' ? { state: 'error' } : linked, entitlement: () => ready('none') })
     try {
-      await view.click('Disconnect extension')
-      expect(view.text()).toContain('server revocation could not be confirmed')
+      await view.click('Sign out')
+      // Sign out always asks first, and says what it removes.
+      expect(view.calls('SUPPORTER_ACCOUNT', 'disconnect')).toBe(0)
+      expect(view.text()).toContain('This removes the watched history and notes saved here while signed in. Saves made without an account stay.')
+      await view.click('Confirm sign out')
+      expect(view.text()).toContain('the server could not confirm it')
     } finally { view.cleanup() }
   })
 
   it('keeps a connection waiting on renewal distinct from a missing or unreachable service', async () => {
     const waiting = await mount({ account: () => ({ state: 'unavailable', reason: 'temporarily_unavailable', linked: true }), entitlement: () => ({ state: 'unavailable', reason: 'temporarily_unavailable' }) })
     try {
-      expect(waiting.text()).toContain('still connected')
-      expect(waiting.buttons()).toEqual(['Check again', 'Disconnect extension'])
+      expect(waiting.text()).toContain('still signed in')
+      expect(waiting.buttons()).toEqual(['Check again', 'Sign out'])
       expect(waiting.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
     } finally { waiting.cleanup(); vi.unstubAllGlobals() }
 
     const missing = await mount({ account: () => ({ state: 'unavailable', reason: 'not_deployed' }), entitlement: () => ({ state: 'unavailable', reason: 'not_deployed' }) })
     try {
       // Linking that is not deployed is explained, never offered.
-      expect(missing.text()).toContain('Account linking is not available on the server yet')
+      expect(missing.text()).toContain('Account sign-in is not available on the server yet')
       expect(missing.buttons()).toEqual([])
       expect(missing.link()).toBeNull()
     } finally { missing.cleanup(); vi.unstubAllGlobals() }
@@ -721,30 +702,33 @@ describe('connection states', () => {
       // Revoked on the website: the worker's next read is simply signed out.
       account = { state: 'signed_out' }
       await view.change({ pulseAccountRevision: { newValue: 'revoked' } })
-      expect(view.text()).toContain('was disconnected from your Pulse account')
-      expect(view.buttons()).toContain('Restore my Supporter')
+      expect(view.text()).toContain('was disconnected from your StreamPulse account')
+      expect(view.buttons()).not.toContain('Restore my Supporter')
+      expect(view.host.querySelector('details[data-tester-bridge]')).not.toBeNull()
       await view.change({ pulseAccountRevision: { newValue: 'again' } })
-      expect(view.text()).toContain('was disconnected from your Pulse account')
+      expect(view.text()).toContain('was disconnected from your StreamPulse account')
     } finally { view.cleanup() }
 
     let mine: SupporterAccountState = linked
     const own = await mount({ account: action => action === 'disconnect' ? (mine = { state: 'signed_out' }) : mine, entitlement: () => ready('none') })
     try {
-      await own.click('Disconnect extension')
+      await own.click('Sign out')
+      await own.click('Confirm sign out')
       await own.change({ pulseAccountRevision: { newValue: 'disconnected' } })
-      expect(own.text()).not.toContain('was disconnected from your Pulse account')
+      expect(own.text()).not.toContain('was disconnected from your StreamPulse account')
     } finally { own.cleanup() }
   })
 
   it.each([
     ['denied', 'declined'],
     ['expired', 'expired before it was approved'],
-    ['relink_required', 'was disconnected from your Pulse account'],
-  ] as const)('explains a %s request and offers to start again', async (state, copy) => {
+    ['relink_required', 'was disconnected from your StreamPulse account'],
+  ] as const)('explains a %s request and lets a tester start again', async (state, copy) => {
     const view = await mount({ account: () => ({ state }), entitlement: () => ({ state: 'not_linked' }) })
     try {
       expect(view.text()).toContain(copy)
-      expect(view.buttons()).toContain(state === 'relink_required' ? 'Restore my Supporter' : 'Become a Supporter')
+      expect(view.buttons()).toContain('Connect this extension')
+      expect(view.buttons()).not.toContain('Become a Supporter')
     } finally { view.cleanup() }
   })
 })
@@ -763,48 +747,48 @@ describe('notices beside the action that caused them', () => {
       footer: () => host.querySelector<HTMLElement>('.pulse-journey-status')!.textContent ?? '',
     }
   }
-  const DISCONNECT_UNCONFIRMED = 'server revocation could not be confirmed'
-  const MANAGE_FAILED = 'Could not open membership management'
+  const DISCONNECT_UNCONFIRMED = 'the server could not confirm it'
+  const MANAGE_FAILED = 'Could not open subscription management'
 
   it.each([
     ['returns an error', () => ({ state: 'error' }) as SupporterAccountState, DISCONNECT_UNCONFIRMED],
-    ['throws', () => new Error('worker gone'), 'Disconnect could not be confirmed'],
+    ['throws', () => new Error('worker gone'), 'Sign out could not be confirmed'],
   ] as const)('reports a disconnect that %s in the Account card, not the card footer', async (_name, failure, copy) => {
     const view = await mount({ account: action => action === 'disconnect' ? failure() : linked, entitlement: () => ready('active', { accountKind: 'installation', installationAccountsEnabled: true }), billing: () => ({ state: 'idle' }) })
     try {
       const page = sections(view.host)
       // The live region is there, empty, before anything happens.
       expect(page.accountStatus()?.textContent).toBe('')
-      await view.click('Disconnect extension')
-      await view.click('Confirm disconnect')
+      await view.click('Sign out')
+      await view.click('Confirm sign out')
       expect(view.calls('SUPPORTER_ACCOUNT', 'disconnect')).toBe(1)
       expect(page.accountStatus()?.textContent).toContain(copy)
       expect(page.footer()).not.toContain(copy)
     } finally { view.cleanup() }
   })
 
-  it('reports a failed Manage billing in the Account card, and the footer’s own Manage membership in the footer', async () => {
+  it('reports a failed Manage subscription in the Account card, and the footer’s own Manage subscription in the footer', async () => {
     const view = await mount({ account: () => linked, entitlement: () => ready('active', { installationAccountsEnabled: true }), billing: action => action === 'portal' ? { state: 'error' } : { state: 'idle' } })
     try {
       const page = sections(view.host)
-      await view.click('Manage billing ↗')
+      await view.click('Manage subscription ↗')
       expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(1)
       expect(page.accountStatus()?.textContent).toContain(MANAGE_FAILED)
       expect(page.footer()).not.toContain(MANAGE_FAILED)
 
-      await view.click('Manage membership')
+      await view.click('Manage subscription')
       expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(2)
       expect(page.footer()).toContain(MANAGE_FAILED)
       expect(page.accountStatus()?.textContent).toBe('')
     } finally { view.cleanup() }
   })
 
-  it('keeps Manage billing enabled and focused while it opens, ignores a second press, and reports the failure beside it', async () => {
+  it('keeps the Account card’s Manage subscription enabled and focused while it opens, ignores a second press, and reports the failure beside it', async () => {
     let answer: (billing: SupporterBillingState) => void = () => undefined
     const view = await mount({ account: () => linked, entitlement: () => ready('active', { installationAccountsEnabled: true }), billing: action => action === 'portal' ? new Promise<SupporterBillingState>(resolve => { answer = resolve }) : { state: 'idle' } })
     try {
       const page = sections(view.host)
-      const manage = [...page.account.querySelectorAll('button')].find(button => button.textContent === 'Manage billing ↗')!
+      const manage = [...page.account.querySelectorAll('button')].find(button => button.textContent === 'Manage subscription ↗')!
       manage.focus()
       await act(async () => manage.click())
       // While the request is open: still enabled (a disabled button drops focus), marked busy, and a second press does nothing.
@@ -841,7 +825,7 @@ describe('notices beside the action that caused them', () => {
     const view = await mount({ account: () => ({ state: 'error', revocationPending: true }), entitlement: () => ({ state: 'not_linked' }) })
     try {
       const page = sections(view.host)
-      await view.click('Retry disconnect')
+      await view.click('Retry sign out')
       expect(page.footer()).toContain(DISCONNECT_UNCONFIRMED)
       expect(page.accountStatus()?.textContent).toBe('')
     } finally { view.cleanup() }
@@ -871,7 +855,7 @@ describe('the price comes before the button that buys it', () => {
   // hear the price and that it renews monthly before reaching the purchase
   // button, and at narrow widths the price sits above it.
   it.each<[string, () => SupporterAccountState, () => SupporterEntitlement, string]>([
-    ['unlinked', () => ({ state: 'signed_out' }), () => ({ state: 'not_linked' }), 'Become a Supporter'],
+    ['signed-out', () => ({ state: 'signed_out' }), () => ({ state: 'not_linked' }), 'Supporter details'],
     ['offer', () => linked, () => ready('none', { installationAccountsEnabled: true }), 'Become a Supporter'],
     ['offer', () => linked, () => ready('none'), 'Continue to checkout'],
     ['checkout-closed', () => linked, () => ready('none', { checkoutEnabled: false }), 'Check sign-up status'],
@@ -897,7 +881,7 @@ describe('Your card is a headed section', () => {
   // Pressing H from the page's h2 must stop at the card, before its name,
   // ladder, status and action, not skip to "Who sees what" below it.
   it.each<[string, () => SupporterAccountState, () => SupporterEntitlement, string, string]>([
-    ['unlinked', () => ({ state: 'signed_out' }), () => ({ state: 'not_linked' }), 'Become a Pulse Supporter', 'Become a Supporter'],
+    ['signed-out', () => ({ state: 'signed_out' }), () => ({ state: 'not_linked' }), 'Supporter sign-ups are not open yet', 'Supporter details'],
     ['grace', () => linked, () => ready('grace', { accessUntil: '2026-10-19T12:00:00Z' }), 'Payment needs attention', 'Update payment method'],
   ])('in the %s state', async (_state, account, entitlement, title, action) => {
     const view = await mount({ account, entitlement })
@@ -951,7 +935,7 @@ describe('Your card while the account is unknown', () => {
       expect(accountRow(view.host)).toContain('Checking the connection…')
       expect(view.text()).not.toContain('Not signed in')
       expect(view.text()).not.toContain('Free tools work without')
-      expect(view.buttons()).not.toContain('Disconnect extension')
+      expect(view.buttons()).not.toContain('Sign out')
       await act(async () => answer(linked))
       expect(yours.name().textContent).toBe(accountReference(ACCOUNT_ID))
       expect(yours.avatar()).toBe('pulse')
@@ -1003,7 +987,7 @@ describe('Your card while the account is unknown', () => {
       expect(yours.name().textContent).toBe('Not signed in')
       expect(yours.avatar()).toBe('none')
       expect(yours.sub()).toBe('Free tools work without an account.')
-      expect(accountRow(view.host)).toContain('Not signed in')
+      expect(view.host.querySelector('[data-row=\"account\"]')).toBeNull()
     } finally { view.cleanup() }
   })
 })
@@ -1179,22 +1163,448 @@ describe('change signals and stale reads', () => {
 })
 
 describe('journey continuity across a settings reload', () => {
-  it('keeps the purchase continuation for the website link, and forgets it once Supporter is active', async () => {
+  it('keeps a tester connection in progress across a reload, and forgets the journey once Supporter is active', async () => {
     let account: SupporterAccountState = { state: 'signed_out' }
     let membership: SupporterEntitlement = { state: 'not_linked' }
     const worker: Worker = { account: action => action === 'start' ? (account = pendingLink()) : account, entitlement: () => membership }
     const first = await mount(worker)
-    await first.click('Become a Supporter')
+    await first.click('Connect this extension')
     first.cleanup()
     const reloaded = await mount(worker)
     try {
-      expect(reloaded.host.querySelector<HTMLAnchorElement>('a.pulse-journey-primary')?.href).toBe('https://streampulse.stream/account/link-device#code=ABCDE12345&then=billing')
+      expect(reloaded.host.querySelector<HTMLAnchorElement>('a.pulse-journey-primary')?.href).toBe('https://streampulse.stream/account/link-device#code=ABCDE12345')
       expect(JSON.stringify({ ...sessionStorage })).not.toContain('ABCDE')
       account = linked
       membership = ready('active')
       await reloaded.change({ pulseAccountRevision: { newValue: 'linked' } })
-      expect(reloaded.text()).toContain('You are a Supporter')
+      expect(reloaded.text()).toContain('Supporter active')
       expect(sessionStorage.getItem('pulse.supporterJourneyIntent.v1')).toBeNull()
     } finally { reloaded.cleanup() }
+  })
+})
+
+/**
+ * Account journey spec (closeout 2026-10-08b) §2 E2 and §3: with Twitch
+ * sign-in compiled on, the journey is Continue with Twitch → Become a
+ * Supporter (worker Checkout for a signed-in account) → Manage subscription
+ * (a recent Twitch check when the server asks) → Sign out.
+ */
+describe('Continue with Twitch (tester and public stages)', () => {
+  const PROFILE = { displayName: 'PulseViewer' }
+  const twitchStatus = (overrides: Partial<TwitchSignInResponse['status']> = {}) => ({ enabled: true, available: true, silentEligible: false, profile: null, ...overrides })
+  const twitchAccount = (status: string, extra: Partial<Extract<SupporterEntitlement, { state: 'ready' }>> = {}) => ready(status, { accountKind: 'twitch', ...extra })
+
+  it.each(['tester', 'public'] as const)('signs out to Continue with Twitch, with the device link only under testers (%s)', async stage => {
+    const view = await mount({ account: () => ({ state: 'signed_out' }), entitlement: () => ({ state: 'not_linked' }), twitch: () => ({ status: twitchStatus(), account: { state: 'signed_out' } }) }, undefined, stage)
+    try {
+      expect(view.state()).toBe('signed-out')
+      const button = view.host.querySelector<HTMLButtonElement>('button[data-twitch-signin]')!
+      expect(button.textContent).toBe('Continue with Twitch')
+      expect(button.disabled).toBe(false)
+      // One verb for signing in: the spec's "Continue with Twitch", never a second "Sign in with Twitch".
+      expect(view.host.querySelector('.pulse-journey-title')?.textContent).toBe('Supporter starts with Twitch sign-in')
+      expect(view.text()).toContain('Choose Continue with Twitch, then pay on Stripe. Free tools work without an account.')
+      expect(view.text()).not.toContain('Sign in with Twitch')
+      expect(view.text().includes('Twitch sign-in is open to invited testers right now.')).toBe(stage === 'tester')
+      expect(view.host.querySelector('details[data-tester-bridge] summary')?.textContent).toBe('Other ways to connect (testers)')
+      expect(view.host.querySelector<HTMLDetailsElement>('details[data-tester-bridge]')!.open).toBe(false)
+      expect(view.hrefs()).toContain('https://streampulse.stream/supporter')
+      for (const gone of ['Become a Supporter', 'Restore my Supporter', 'Use a StreamPulse website account']) expect(view.buttons()).not.toContain(gone)
+      // Reinstall and new browsers come back through the same Twitch account.
+      expect(view.host.querySelector('[data-row="new-browser"]')?.textContent).toContain('Continue with Twitch with the same Twitch account.')
+      expect(view.host.querySelector('[data-row="lost-twitch"]')?.textContent).toContain('That changes billing only.')
+      // A signed-out page never asks the worker for Checkout, a restore, or a silent sign-in it was not offered.
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
+      expect(view.calls('SUPPORTER_RESTORE')).toBe(0)
+      expect(view.sendMessage.mock.calls.some(([message]) => message.type === 'TWITCH_SIGN_IN' && message.mode === 'silent')).toBe(false)
+    } finally { view.cleanup() }
+  })
+
+  it('signs in through the worker and names the Twitch account for display only', async () => {
+    let account: SupporterAccountState = { state: 'signed_out' }
+    let membership: SupporterEntitlement = { state: 'not_linked' }
+    const view = await mount({
+      account: () => account,
+      entitlement: () => membership,
+      twitch: message => {
+        if (message.action === 'sign_in') { account = linked; membership = twitchAccount('none', { checkoutEnabled: false }); return { status: twitchStatus({ profile: PROFILE }), account, outcome: 'signed_in' } }
+        return { status: twitchStatus({ profile: account.state === 'linked' ? PROFILE : null }), account }
+      },
+    }, undefined, 'public')
+    try {
+      await view.click('Continue with Twitch')
+      expect(view.sendMessage).toHaveBeenCalledWith({ type: 'TWITCH_SIGN_IN', action: 'sign_in', mode: 'interactive' })
+      expect(card(view.host).name().textContent).toBe('PulseViewer')
+      expect(accountRow(view.host)).toContain('Signed in with Twitch as PulseViewer')
+      expect(card(view.host).sub()).toContain('Signed in with Twitch')
+      // Closed sign-ups: truthful, and no purchase.
+      expect(view.state()).toBe('checkout-closed')
+      expect(view.text()).toContain('Supporter sign-ups are not open yet')
+      expect(view.buttons()).not.toContain('Become a Supporter')
+      expect(view.buttons()).toContain('Sign out')
+      expect(view.buttons()).toContain('Use a different Twitch account')
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
+      expect(view.write).not.toHaveBeenCalled()
+    } finally { view.cleanup() }
+  })
+
+  it('tries silent sign-in once, only when the worker says this is a true first install', async () => {
+    const silent: string[] = []
+    const eligible = await mount({ account: () => ({ state: 'signed_out' }), entitlement: () => ({ state: 'not_linked' }), twitch: message => {
+      if (message.action === 'sign_in') silent.push(String(message.mode))
+      return { status: twitchStatus({ silentEligible: message.action === 'status' && silent.length === 0 }), account: { state: 'signed_out' }, ...(message.action === 'sign_in' ? { outcome: 'interaction_required' as const } : {}) }
+    } }, undefined, 'public')
+    try {
+      expect(silent).toEqual(['silent'])
+      // A silent attempt that cannot finish leaves the button and explains nothing.
+      expect(eligible.text()).not.toContain('Select Continue with Twitch')
+      expect(eligible.host.querySelector('button[data-twitch-signin]')).not.toBeNull()
+    } finally { eligible.cleanup() }
+    // After Sign out or a server revoke the worker reports not eligible: no silent attempt.
+    const after = await mount({ account: () => ({ state: 'relink_required' }), entitlement: () => ({ state: 'not_linked' }), twitch: message => {
+      if (message.action === 'sign_in') silent.push(String(message.mode))
+      return { status: twitchStatus({ silentEligible: false }), account: { state: 'relink_required' } }
+    } }, undefined, 'public')
+    try {
+      expect(silent).toEqual(['silent'])
+      expect(after.text()).toContain('You were signed out on this browser. Continue with Twitch to sign in again.')
+    } finally { after.cleanup() }
+  })
+
+  // The Your look controls read `onEntitlement`: null means "Checking Supporter
+  // status…". A sign-in that did not finish must hand them the worker's answer.
+  it.each(['tester', 'public'] as const)('re-reads membership after a silent first-install attempt that cannot finish (%s)', async stage => {
+    const seen: (SupporterEntitlement | null)[] = []
+    let attempted = false
+    const view = await mount({ account: () => ({ state: 'signed_out' }), entitlement: () => ({ state: 'not_linked' }), twitch: message => {
+      if (message.action === 'sign_in') attempted = true
+      return { status: twitchStatus({ silentEligible: !attempted }), account: { state: 'signed_out' }, ...(message.action === 'sign_in' ? { outcome: 'interaction_required' as const } : {}) }
+    } }, value => seen.push(value), stage)
+    try {
+      expect(attempted).toBe(true)
+      expect(view.calls('SUPPORTER_ENTITLEMENT')).toBe(2)
+      expect(seen.at(-1)).toEqual({ state: 'not_linked' })
+    } finally { view.cleanup() }
+  })
+
+  it.each<[TwitchSignInStage, TwitchSignInResponse['outcome'] | 'unreachable']>([
+    ['tester', 'pilot_only'],
+    ['tester', 'unreachable'],
+    ['public', 'token_invalid'],
+    ['public', 'cancelled'],
+  ])('re-reads membership after a Continue with Twitch that does not sign in (%s, %s)', async (stage, outcome) => {
+    const seen: (SupporterEntitlement | null)[] = []
+    const view = await mount({ account: () => ({ state: 'signed_out' }), entitlement: () => ({ state: 'not_linked' }), twitch: message => {
+      if (message.action === 'sign_in' && outcome === 'unreachable') throw new Error('worker unavailable')
+      return { status: twitchStatus(), account: { state: 'signed_out' }, ...(message.action === 'sign_in' ? { outcome: outcome as TwitchSignInResponse['outcome'] } : {}) }
+    } }, value => seen.push(value), stage)
+    try {
+      expect(seen.at(-1)).toEqual({ state: 'not_linked' })
+      const before = view.calls('SUPPORTER_ENTITLEMENT')
+      await view.click('Continue with Twitch')
+      expect(view.state()).toBe('signed-out')
+      // A failed sign-in that never reached the worker changed nothing to re-read.
+      expect(view.calls('SUPPORTER_ENTITLEMENT')).toBe(outcome === 'unreachable' ? before : before + 1)
+      expect(seen.at(-1)).toEqual({ state: 'not_linked' })
+    } finally { view.cleanup() }
+  })
+
+  it.each<[string, string]>([
+    ['pilot_only', 'Twitch sign-in is open to invited testers right now.'],
+    ['link_required', 'This Twitch account isn’t linked to a StreamPulse account yet. Invited testers can connect with a one-time code below instead.'],
+    ['identity_in_use', 'We never combine accounts.'],
+  ])('explains %s with tester copy and creates nothing', async (outcome, copy) => {
+    const view = await mount({ account: () => ({ state: 'signed_out' }), entitlement: () => ({ state: 'not_linked' }), twitch: message => ({ status: twitchStatus(), account: { state: 'signed_out' }, ...(message.action === 'sign_in' ? { outcome: outcome as TwitchSignInResponse['outcome'] } : {}) }) }, undefined, 'tester')
+    try {
+      await view.click('Continue with Twitch')
+      expect(view.host.querySelector('.pulse-journey-notice')?.textContent).toContain(copy)
+      expect(view.state()).toBe('signed-out')
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
+    } finally { view.cleanup() }
+  })
+
+  it('shows only the button after a server revoke', async () => {
+    const view = await mount({ account: () => ({ state: 'signed_out' }), entitlement: () => ({ state: 'not_linked' }), twitch: message => ({ status: twitchStatus(), account: { state: 'signed_out' }, ...(message.action === 'sign_in' ? { outcome: 'revoked' as const } : {}) }) }, undefined, 'public')
+    try {
+      await view.click('Continue with Twitch')
+      expect(view.host.querySelector('.pulse-journey-notice')).toBeNull()
+      expect(view.host.querySelector('button[data-twitch-signin]')?.textContent).toBe('Continue with Twitch')
+    } finally { view.cleanup() }
+  })
+
+  it('becomes a Supporter through worker Checkout, gated on a signed-in account', async () => {
+    let billing: SupporterBillingState = { state: 'idle' }
+    const view = await mount({ account: () => linked, entitlement: () => twitchAccount('none'), billing: action => action === 'checkout' ? (billing = { state: 'waiting', attemptId: 'safe-local-attempt' }) : billing, twitch: () => ({ status: twitchStatus({ profile: PROFILE }), account: linked }) }, undefined, 'public')
+    try {
+      expect(view.state()).toBe('offer')
+      expect(view.text()).toContain('It can be different from your Twitch email')
+      await view.click('Become a Supporter')
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(1)
+      expect(view.calls('SUPPORTER_ACCOUNT', 'start')).toBe(0)
+      expect(view.state()).toBe('stripe-open')
+      expect(view.create).not.toHaveBeenCalled()
+    } finally { view.cleanup() }
+  })
+
+  it('sends an invited tester whose account the server refuses for bearer Checkout to the website, without a second payment', async () => {
+    const view = await mount({ account: () => linked, entitlement: () => ready('none', { accountKind: 'email' }), billing: action => action === 'checkout' ? { state: 'fallback' } : { state: 'idle' }, twitch: () => ({ status: twitchStatus(), account: linked }) }, undefined, 'tester')
+    try {
+      await view.click('Become a Supporter')
+      expect(view.create).toHaveBeenCalledExactlyOnceWith({ url: 'https://streampulse.stream/account/billing' })
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(1)
+    } finally { view.cleanup() }
+  })
+
+  it('asks "Confirm it’s you" when the portal needs a recent Twitch check, and opens nothing until the click succeeds', async () => {
+    let gate = true
+    const view = await mount({ account: () => linked, entitlement: () => twitchAccount('active', { features: PERKS }), billing: action => {
+      if (action === 'portal') return { state: 'step_up_required' }
+      if (action === 'portal_confirm') { const answer: SupporterBillingState = gate ? { state: 'step_up_required' } : { state: 'idle' }; gate = false; return answer }
+      return { state: 'idle' }
+    }, twitch: () => ({ status: twitchStatus({ profile: PROFILE }), account: linked }) }, undefined, 'public')
+    try {
+      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Manage subscription')
+      await view.click('Manage subscription')
+      expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(1)
+      expect(view.state()).toBe('confirm-identity')
+      expect(view.text()).toContain(ACCOUNT_COPY.confirmHeading)
+      expect(view.text()).toContain('For your security, managing your subscription needs a Twitch check from the last 10 minutes.')
+      // A cancelled window keeps the question; a confirmed one closes it.
+      await view.click('Continue with Twitch')
+      expect(view.calls('SUPPORTER_BILLING', 'portal_confirm')).toBe(1)
+      expect(view.state()).toBe('confirm-identity')
+      await view.click('Continue with Twitch')
+      expect(view.calls('SUPPORTER_BILLING', 'portal_confirm')).toBe(2)
+      expect(view.state()).toBe('active')
+      // The worker opens Stripe; the page never opens a provider URL itself.
+      expect(view.create).not.toHaveBeenCalled()
+    } finally { view.cleanup() }
+  })
+
+  it('says calmly when Checkout is paused by a 429, names the wait, and never retries on its own', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    vi.setSystemTime(Date.parse('2026-10-09T18:00:00Z'))
+    const retryAt = Date.now() + 9 * 60_000
+    let billing: SupporterBillingState = { state: 'idle' }
+    const view = await mount({ account: () => linked, entitlement: () => twitchAccount('none'), billing: action => action === 'checkout' ? (billing = { state: 'try_later', retryAt }) : billing, twitch: () => ({ status: twitchStatus({ profile: PROFILE }), account: linked }) }, undefined, 'public')
+    try {
+      await view.click('Become a Supporter')
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(1)
+      expect(view.state()).toBe('try-later')
+      expect(view.text()).toContain('Checkout is paused for a moment')
+      expect(view.text()).toContain('This attempt started nothing and charged nothing.')
+      expect(view.text()).toContain(`Try again after ${retryWaitCopy(retryAt).at} (about 9 minutes).`)
+      const again = view.host.querySelector<HTMLButtonElement>('.pulse-journey-primary')!
+      expect(again.textContent).toBe(`Try again after ${retryWaitCopy(retryAt).at}`)
+      expect(again.disabled).toBe(true)
+      // The page waits silently: no billing request while the window runs.
+      const before = view.sendMessage.mock.calls.filter(([message]) => message.type === 'SUPPORTER_BILLING').length
+      await act(async () => { await vi.advanceTimersByTimeAsync(9 * 60_000 + 1_000) })
+      expect(view.sendMessage.mock.calls.filter(([message]) => message.type === 'SUPPORTER_BILLING')).toHaveLength(before)
+      // Then one click may try again.
+      const ready = view.host.querySelector<HTMLButtonElement>('.pulse-journey-primary')!
+      expect(ready.textContent).toBe('Try again')
+      expect(ready.disabled).toBe(false)
+    } finally { view.cleanup(); vi.useRealTimers() }
+  })
+
+  it('names the wait when Manage subscription is paused by a 429', async () => {
+    const retryAt = Date.now() + 2 * 60 * 60_000
+    const view = await mount({ account: () => linked, entitlement: () => twitchAccount('active', { features: PERKS }), billing: action => action === 'portal' ? { state: 'try_later', retryAt } : { state: 'idle' }, twitch: () => ({ status: twitchStatus({ profile: PROFILE }), account: linked }) }, undefined, 'public')
+    try {
+      await view.click('Manage subscription')
+      expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(1)
+      expect(view.text()).toContain(`Subscription management was opened too many times in a short while, so it is paused for this account. Your membership is unchanged. Try again after ${retryWaitCopy(retryAt).at} (about 2 hours).`)
+      expect(view.text()).not.toContain('Could not open subscription management')
+      expect(view.create).not.toHaveBeenCalled()
+      expect(view.state()).toBe('active')
+    } finally { view.cleanup() }
+  })
+
+  it('names a different Twitch account in the check and never opens the portal', async () => {
+    const view = await mount({ account: () => linked, entitlement: () => twitchAccount('active'), billing: action => action === 'portal' ? { state: 'wrong_account' } : { state: 'idle' }, twitch: () => ({ status: twitchStatus(), account: linked }) }, undefined, 'public')
+    try {
+      await view.click('Manage subscription ↗')
+      expect(view.text()).toContain('This subscription belongs to a different Twitch account. Sign out, then Continue with Twitch with the account you subscribed with.')
+      expect(view.create).not.toHaveBeenCalled()
+      expect(view.state()).toBe('active')
+    } finally { view.cleanup() }
+  })
+
+  it('chooses another Twitch account through a forced Twitch window', async () => {
+    const view = await mount({ account: () => linked, entitlement: () => twitchAccount('none', { checkoutEnabled: false }), twitch: message => ({ status: twitchStatus({ profile: PROFILE }), account: linked, ...(message.action === 'sign_in' ? { outcome: 'signed_in' as const } : {}) }) }, undefined, 'public')
+    try {
+      await view.click('Use a different Twitch account')
+      expect(view.sendMessage).toHaveBeenCalledWith({ type: 'TWITCH_SIGN_IN', action: 'sign_in', mode: 'interactive', forceVerify: true })
+    } finally { view.cleanup() }
+  })
+
+  it('gets Supporter back after a reinstall by signing in with the same Twitch account (mocked worker)', async () => {
+    // A fresh install: no credential. The same Twitch identity returns the same account and membership.
+    let account: SupporterAccountState = { state: 'signed_out' }
+    let membership: SupporterEntitlement = { state: 'not_linked' }
+    const view = await mount({ account: () => account, entitlement: () => membership, twitch: message => {
+      if (message.action === 'sign_in') { account = linked; membership = twitchAccount('active', { supportPeriods: 4, features: PERKS }) }
+      return { status: twitchStatus({ profile: account.state === 'linked' ? PROFILE : null }), account, ...(message.action === 'sign_in' ? { outcome: 'signed_in' as const } : {}) }
+    } }, undefined, 'public')
+    try {
+      expect(view.state()).toBe('signed-out')
+      await view.click('Continue with Twitch')
+      expect(view.state()).toBe('active')
+      expect(card(view.host).sub()).toBe('Pulse Supporter · 4 months')
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
+      expect(view.calls('SUPPORTER_RESTORE')).toBe(0)
+    } finally { view.cleanup() }
+  })
+
+  it('signs out from the Account card with a confirmation while Supporter is active', async () => {
+    let account: SupporterAccountState = linked
+    const view = await mount({ account: action => action === 'disconnect' ? (account = { state: 'signed_out' }) : account, entitlement: () => twitchAccount('active'), twitch: () => ({ status: twitchStatus(), account }) }, undefined, 'public')
+    try {
+      await view.click('Sign out')
+      expect(view.text()).toContain('Continue with Twitch with the same Twitch account to see it here again.')
+      await view.click('Confirm sign out')
+      expect(view.calls('SUPPORTER_ACCOUNT', 'disconnect')).toBe(1)
+      expect(view.state()).toBe('signed-out')
+      expect(view.text()).not.toContain('You were signed out on this browser')
+    } finally { view.cleanup() }
+  })
+})
+
+describe('Sign out everywhere (Twitch sign-in on)', () => {
+  const PROFILE = { displayName: 'PulseViewer' }
+  const twitchStatus = (overrides: Partial<TwitchSignInResponse['status']> = {}) => ({ enabled: true, available: true, silentEligible: false, profile: PROFILE, ...overrides })
+  const twitchAccount = (status: string) => ready(status, { accountKind: 'twitch', checkoutEnabled: false })
+  const everywhereCalls = (view: Awaited<ReturnType<typeof mount>>) => view.sendMessage.mock.calls.filter(([message]) => message.type === 'TWITCH_SIGN_IN' && message.action === 'sign_out_everywhere').map(([message]) => message)
+  const accountNotice = (host: HTMLElement) => host.querySelector('[data-account-notice]')?.textContent ?? ''
+
+  /** A signed-in Twitch account whose worker answers Sign out everywhere with `answers` in turn (the last repeats). */
+  async function signedIn(stage: TwitchSignInStage, ...answers: Array<TwitchSignInResponse['everywhere'] | Error>) {
+    let account: SupporterAccountState = linked
+    let membership: SupporterEntitlement = twitchAccount('none')
+    const view = await mount({
+      account: () => account,
+      entitlement: () => membership,
+      twitch: message => {
+        if (message.action !== 'sign_out_everywhere') return { status: twitchStatus({ profile: account.state === 'linked' ? PROFILE : null }), account }
+        const answer = answers.length > 1 ? answers.shift()! : answers[0]!
+        if (answer instanceof Error) throw answer
+        if (answer === 'signed_out_everywhere') { account = { state: 'signed_out' }; membership = { state: 'not_linked' } }
+        return { status: twitchStatus({ profile: account.state === 'linked' ? PROFILE : null }), account, everywhere: answer }
+      },
+    }, undefined, stage)
+    return view
+  }
+
+  it('is not offered with Twitch sign-in off, even to a connected tester', async () => {
+    const view = await mount({ account: () => linked, entitlement: () => ready('none', { accountKind: 'email' }) })
+    try {
+      expect(view.buttons()).toContain('Sign out')
+      expect(view.buttons()).not.toContain('Sign out everywhere')
+      expect(view.text()).not.toContain('Sign out everywhere')
+    } finally { view.cleanup() }
+  })
+
+  it('is not offered to a connection that is not a Twitch sign-in, or where the Twitch window cannot open', async () => {
+    const tester = await mount({ account: () => linked, entitlement: () => ready('none', { accountKind: 'email' }), twitch: () => ({ status: twitchStatus({ profile: null }), account: linked }) }, undefined, 'tester')
+    try { expect(tester.buttons()).not.toContain('Sign out everywhere') } finally { tester.cleanup() }
+    const noWindow = await mount({ account: () => linked, entitlement: () => twitchAccount('none'), twitch: () => ({ status: twitchStatus({ available: false }), account: linked }) }, undefined, 'public')
+    try { expect(noWindow.buttons()).not.toContain('Sign out everywhere') } finally { noWindow.cleanup() }
+  })
+
+  it.each(['tester', 'public'] as const)('asks first, then signs out everywhere and shows this extension signed out (%s)', async stage => {
+    const view = await signedIn(stage, 'signed_out_everywhere')
+    try {
+      expect(accountRow(view.host)).toContain('Signed in with Twitch as PulseViewer')
+      // Its own row, so the account row keeps room for its name and Sign out.
+      expect(view.host.querySelector('[data-row="sign-out-everywhere"] button')?.textContent).toBe('Sign out everywhere')
+      expect(view.host.querySelector('[data-row="account"]')?.textContent).not.toContain('Sign out everywhere')
+      await view.click('Sign out everywhere')
+      // The first click only asks.
+      expect(everywhereCalls(view)).toHaveLength(0)
+      const ask = view.host.querySelector('[data-sign-out-everywhere="ask"]')!
+      expect(ask.getAttribute('role')).toBe('group')
+      expect(ask.textContent).toContain('signs out every extension connected to this account, including this one. Nothing is deleted from your account, and it does not cancel your subscription.')
+      await view.click('Stay signed in')
+      expect(view.host.querySelector('[data-sign-out-everywhere]')).toBeNull()
+      expect(everywhereCalls(view)).toHaveLength(0)
+      await view.click('Sign out everywhere')
+      await view.click('Confirm sign out everywhere')
+      expect(everywhereCalls(view)).toEqual([{ type: 'TWITCH_SIGN_IN', action: 'sign_out_everywhere' }])
+      expect(accountNotice(view.host)).toContain('You’re signed out everywhere.')
+      expect(accountNotice(view.host)).toContain('Nothing was deleted from your account, and your subscription is unchanged.')
+      // Signed out here too, as a choice: not "You were signed out on this browser".
+      expect(view.host.querySelector('[data-row=\"account\"]')).toBeNull()
+      expect(view.text()).not.toContain('You were signed out on this browser')
+      expect(view.buttons()).not.toContain('Sign out')
+      expect(view.buttons()).not.toContain('Sign out everywhere')
+      expect(view.host.querySelector('button[data-twitch-signin]')?.textContent).toBe('Continue with Twitch')
+      // Nothing silent follows: the page never asks for a silent sign-in it was not offered.
+      expect(view.sendMessage.mock.calls.some(([message]) => message.type === 'TWITCH_SIGN_IN' && message.mode === 'silent')).toBe(false)
+      expect(view.create).not.toHaveBeenCalled()
+    } finally { view.cleanup() }
+  })
+
+  it('handles a needed Twitch check the way Manage subscription does: a click opens the window, then it retries once', async () => {
+    const view = await signedIn('public', 'step_up_required', 'signed_out_everywhere')
+    try {
+      await view.click('Sign out everywhere')
+      await view.click('Confirm sign out everywhere')
+      const confirm = view.host.querySelector('[data-sign-out-everywhere="confirm-identity"]')!
+      expect(confirm.textContent).toContain(ACCOUNT_COPY.confirmHeading)
+      expect(confirm.textContent).toContain('For your security, signing out everywhere needs a Twitch check from the last 10 minutes. Nothing was signed out.')
+      expect(accountRow(view.host)).toContain('Signed in with Twitch as PulseViewer')
+      await view.click('Continue with Twitch')
+      expect(everywhereCalls(view)).toEqual([
+        { type: 'TWITCH_SIGN_IN', action: 'sign_out_everywhere' },
+        { type: 'TWITCH_SIGN_IN', action: 'sign_out_everywhere', confirm: true },
+      ])
+      expect(accountNotice(view.host)).toContain('You’re signed out everywhere.')
+      expect(view.host.querySelector('[data-sign-out-everywhere]')).toBeNull()
+    } finally { view.cleanup() }
+  })
+
+  it('"Not now" closes the Twitch check without a request', async () => {
+    const view = await signedIn('public', 'step_up_required')
+    try {
+      await view.click('Sign out everywhere')
+      await view.click('Confirm sign out everywhere')
+      await view.click('Not now')
+      expect(view.host.querySelector('[data-sign-out-everywhere]')).toBeNull()
+      expect(everywhereCalls(view)).toHaveLength(1)
+      expect(accountRow(view.host)).toContain('Signed in with Twitch as PulseViewer')
+    } finally { view.cleanup() }
+  })
+
+  it.each([
+    ['not_available', 'Sign out everywhere isn’t available yet. Nothing was signed out. Sign out here still ends this extension’s access.'],
+    ['wrong_account', 'Twitch confirmed a different Twitch account than the one signed in here. Nothing was signed out.'],
+    ['try_later', 'Too many attempts. Wait a few minutes, then try again.'],
+    ['failed', 'Sign out everywhere couldn’t be confirmed. Check your connection and try again.'],
+    ['unavailable', 'Sign out everywhere couldn’t be confirmed. Account services are unavailable right now. Please try again later.'],
+    ['step_up_failed', 'The Twitch check didn’t finish, so nothing was signed out. Try again.'],
+    ['busy', 'A Twitch sign-in is already open. Finish or close it, then try again. Nothing was signed out.'],
+    ['disabled', 'Sign out everywhere isn’t available yet. Nothing was signed out. Sign out here still ends this extension’s access.'],
+  ] as const)('stays signed in and says so on %s', async (answer, message) => {
+    const view = await signedIn('public', answer)
+    try {
+      await view.click('Sign out everywhere')
+      await view.click('Confirm sign out everywhere')
+      expect(accountNotice(view.host)).toBe(message)
+      expect(accountRow(view.host)).toContain('Signed in with Twitch as PulseViewer')
+      expect(view.buttons()).toContain('Sign out')
+      expect(view.buttons()).toContain('Sign out everywhere')
+      expect(view.text()).not.toContain('signed out everywhere.')
+    } finally { view.cleanup() }
+  })
+
+  it('reports an unreachable worker as unconfirmed', async () => {
+    const view = await signedIn('public', new Error('worker gone'))
+    try {
+      await view.click('Sign out everywhere')
+      await view.click('Confirm sign out everywhere')
+      expect(accountNotice(view.host)).toBe('Sign out everywhere couldn’t be confirmed. Reload this page, then try again.')
+      expect(accountRow(view.host)).toContain('Signed in with Twitch as PulseViewer')
+    } finally { view.cleanup() }
   })
 })

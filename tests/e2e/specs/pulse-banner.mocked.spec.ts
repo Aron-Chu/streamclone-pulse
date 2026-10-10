@@ -106,7 +106,13 @@ test('emote rain is a Supporter perk: a saved Rain draws nothing without one, st
   await settings.close()
 
   // A payment retry window still counts: grace brings the saved rain back.
+  // Twitch tabs share the worker's read, and one without perks is re-checked at
+  // the server's cacheUntil; a settings read is always fresh and refreshes it.
   status = 'grace'
+  const fresh = await extension.context.newPage()
+  await fresh.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
+  expect(await fresh.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_ENTITLEMENT' }))).toMatchObject({ entitlement: { state: 'ready', status: 'grace' } })
+  await fresh.close()
   await page.reload()
   await waitForPulseRoot(page)
   await expect(root.getByRole('heading', { name: 'Renamed Pulse', exact: true })).toBeVisible()

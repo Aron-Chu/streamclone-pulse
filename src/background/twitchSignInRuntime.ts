@@ -1,6 +1,5 @@
-import { DEFAULT_BACKEND_URL, getBackendUrl } from '../shared/storage.ts'
 import { TWITCH_SIGNIN_ENABLED } from '../shared/twitchSignIn.ts'
-import { supporterAccount, twitchSignInMetaRecord } from './supporterAccountRuntime.ts'
+import { ACCOUNT_BACKEND_URL, accountRequestsAllowed, bindTwitchStepUp, supporterAccount, twitchSignInMetaRecord } from './supporterAccountRuntime.ts'
 import { TwitchSignIn, twitchSurface, type WebAuthFlowDetails } from './twitchSignIn.ts'
 
 type IdentityApi = {
@@ -29,8 +28,10 @@ export const twitchSignIn = new TwitchSignIn({
   redirectUrl: typeof identity?.getRedirectURL === 'function' ? () => identity.getRedirectURL!() : undefined,
   surface,
   chromium: surface !== 'firefox' && !runtimeUrl.startsWith('moz-extension:'),
-  apiOrigin: DEFAULT_BACKEND_URL,
-  hosted: async () => await getBackendUrl() === DEFAULT_BACKEND_URL,
+  // The same origin as the stored credential and its refresh: a development
+  // build pinned to a local backend never signs in against production.
+  apiOrigin: ACCOUNT_BACKEND_URL,
+  hosted: accountRequestsAllowed,
   meta: twitchSignInMetaRecord,
   // Display name and avatar live for this browser session only: session
   // storage is memory-backed and, by default, closed to content scripts.
@@ -48,3 +49,6 @@ export const twitchSignIn = new TwitchSignIn({
     },
   },
 })
+
+// Managing a subscription asks for a recent Twitch check when the server requires one.
+bindTwitchStepUp(mode => twitchSignIn.stepUp(mode))

@@ -11,7 +11,7 @@ import type {
   PulsePayload,
 } from '../shared/messages.ts'
 import { parseBookmarkPage, validBookmarkCursor, validBookmarkPageLimit } from '../shared/bookmarkPage.ts'
-import { supporterAccount } from './supporterAccountRuntime.ts'
+import { ACCOUNT_BACKEND_URL, supporterAccount } from './supporterAccountRuntime.ts'
 import type { ExtensionDiagnosticPayload } from '../shared/diagnosticsConsent.ts'
 import { pickTopClip, selectStreamClips } from '../shared/clips.ts'
 import {
@@ -658,7 +658,8 @@ async function bookmarkRequest<T>(root: string, path: string, init: RequestInit,
   if (root !== DEFAULT_BACKEND_URL || await getBackendUrl() !== DEFAULT_BACKEND_URL) throw new Error('account_hosted_only')
   const result = await supporterAccount.withCredential(async token => {
     if (await getBackendUrl() !== root) throw new Error('account_hosted_only')
-    const response = await fetchWithTimeout(`${root}${path}`, {
+    // The bearer goes only to the origin that issued it (production in store builds).
+    const response = await fetchWithTimeout(`${ACCOUNT_BACKEND_URL}${path}`, {
       ...init, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       credentials: 'omit', redirect: 'error', cache: 'no-store',
     })
