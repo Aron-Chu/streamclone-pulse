@@ -228,7 +228,7 @@ describe('PulseMultiSignalChartInner time bucketing', () => {
     expect(Math.max(...ranges)).toBe(5)
   })
 
-  it('does not dim bars at the stream edges or beside the gap', () => {
+  it('does not dim bars at the stream edges, and marks the bar the gap cuts as partial', () => {
     // Shift every minute 7s past the stream start, as production rows are.
     const shifted = rollups.map(row => ({
       ...row,
@@ -244,23 +244,117 @@ describe('PulseMultiSignalChartInner time bucketing', () => {
         activityBucketing="time"
       />,
     )
-    const ratios = [...markup.matchAll(/data-activity-bar="chat"[^>]*data-observed-ratio="([^"]+)"/g)]
-      .map(match => match[1])
-    expect(ratios.length).toBeGreaterThan(140)
-    expect(new Set(ratios)).toEqual(new Set(['1.000']))
+    const bars = [...markup.matchAll(/<rect[^>]*data-activity-bar="chat"[^>]*>/g)].map(([rect]) => ({
+      ratio: rect.match(/data-observed-ratio="([^"]+)"/)?.[1],
+      partial: /data-bar-partial="true"/.test(rect),
+    }))
+    expect(bars.length).toBeGreaterThan(140)
+    // The first and last slots are short (the stream starts and ends there),
+    // not partial. Only the slot holding minutes 310-314, whose first two
+    // minutes fall in the gap, is partial: 3 of 5 minutes measured.
+    expect(bars.filter(bar => bar.partial)).toEqual([{ ratio: '0.600', partial: true }])
+    expect(new Set(bars.filter(bar => !bar.partial).map(bar => bar.ratio))).toEqual(new Set(['1.000']))
   })
 
-  it('leaves the missing minutes empty instead of drawing a bar across them', () => {
-    const markup = render('time')
-    // The console plot spans the whole 1000-unit fallback width (no gutters).
+  it('leaves the missing minutes empty at 1-minute bars and draws no bar across a gap at 5-minute bars', () => {
     const plotLeft = 0
     const plotWidth = 1000
+    // Full range (5-minute bars): a bar spans only the minutes it measured.
+    const markup = render('time')
     const xFor = (index: number) => plotLeft + (index / (MINUTES - 1)) * plotWidth
-    const gapLeft = xFor(GAP.from - 0.5)
-    const gapRight = xFor(GAP.to - 0.5)
     for (const bar of activityRects(markup, 'chat')) {
-      const overlaps = bar.x < gapRight - 0.01 && bar.x + bar.width > gapLeft + 0.01
+      const overlaps = bar.x < xFor(GAP.to - 0.5) - 0.01 && bar.x + bar.width > xFor(GAP.from - 0.5) + 0.01
       expect(overlaps).toBe(false)
     }
+    // Zoomed to one hour around the gap: one bar per measured minute, none in it.
+    const view = { startSeconds: 280 * 60, endSeconds: 340 * 60 }
+    const zoomed = renderToStaticMarkup(
+      <PulseMultiSignalChartInner
+        rollups={rollups}
+        streamStartedAt={new Date(START_MS).toISOString()}
+        durationSeconds={MINUTES * 60}
+        viewport={view}
+        variant="console"
+        motionEnabled={false}
+        activityBucketing="time"
+      />,
+    )
+    expect(zoomed).toContain('data-activity-bucket-minutes="1"')
+    const zoomX = (index: number) => plotLeft + ((index * 60 - view.startSeconds) / (view.endSeconds - view.startSeconds)) * plotWidth
+    const zoomedBars = activityRects(zoomed, 'chat')
+    expect(zoomedBars.length).toBeGreaterThanOrEqual(48)
+    for (const bar of zoomedBars) {
+      const overlaps = bar.x < zoomX(GAP.to - 0.5) - 0.01 && bar.x + bar.width > zoomX(GAP.from - 0.5) + 0.01
+      expect(overlaps).toBe(false)
+    }
+    expect(zoomed).not.toContain('data-bar-partial')
+    expect(zoomed).not.toContain('data-activity-bar-peak')
+  })
+
+  it('bridges unmeasured minutes inside a slot only above 1-minute bars, and marks that bar partial', () => {
+    // Minutes 401 and 402 are reported as missing rows inside the 400-404 slot.
+    const withMissing = rollups.map(row => {
+      const index = Math.round((Date.parse(row.minuteTs) - START_MS) / 60_000)
+      return index === 401 || index === 402 ? { ...row, missing: true, chatCount: null, totalEmoteCount: null } : row
+    })
+    const markup = renderToStaticMarkup(
+      <PulseMultiSignalChartInner
+        rollups={withMissing}
+        streamStartedAt={new Date(START_MS).toISOString()}
+        durationSeconds={MINUTES * 60}
+        variant="console"
+        motionEnabled={false}
+        activityBucketing="time"
+      />,
+    )
+    expect(markup).toContain('data-activity-bucket-minutes="5"')
+    const partial = [...markup.matchAll(/<rect[^>]*data-activity-bar="chat"[^>]*data-bar-partial="true"[^>]*>/g)].map(([rect]) => rect)
+    expect(partial).toHaveLength(2)
+    const xFor = (index: number) => (index / (MINUTES - 1)) * 1000
+    const bars = partial.map(rect => ({
+      ratio: rect.match(/data-observed-ratio="([^"]+)"/)?.[1],
+      x: Number(rect.match(/ x="([^"]+)"/)?.[1]),
+      width: Number(rect.match(/ width="([^"]+)"/)?.[1]),
+    }))
+    // One is the slot the 300-311 gap cuts; the other spans minutes 400-404,
+    // across the two unmeasured minutes, with 3 of 5 measured.
+    const bridged = bars.find(bar => bar.x > xFor(390))!
+    expect(bridged.ratio).toBe('0.600')
+    expect(bridged.x).toBeLessThan(xFor(401))
+    expect(bridged.x + bridged.width).toBeGreaterThan(xFor(403))
+  })
+
+  it('caps a bar whose peak minute stands well above its average, above 1-minute bars only', () => {
+    const spiked = rollups.map(row => {
+      const index = Math.round((Date.parse(row.minuteTs) - START_MS) / 60_000)
+      // Flat chat, except one spike at minute 502.
+      return { ...row, chatCount: index === 502 ? 5_000 : 500 }
+    })
+    const full = renderToStaticMarkup(
+      <PulseMultiSignalChartInner
+        rollups={spiked}
+        streamStartedAt={new Date(START_MS).toISOString()}
+        durationSeconds={MINUTES * 60}
+        variant="console"
+        motionEnabled={false}
+        activityBucketing="time"
+      />,
+    )
+    expect(full).toContain('data-activity-bucket-minutes="5"')
+    const caps = [...full.matchAll(/<rect[^>]*data-activity-bar-peak="chat"[^>]*>/g)]
+    expect(caps).toHaveLength(1)
+    const zoomed = renderToStaticMarkup(
+      <PulseMultiSignalChartInner
+        rollups={spiked}
+        streamStartedAt={new Date(START_MS).toISOString()}
+        durationSeconds={MINUTES * 60}
+        viewport={{ startSeconds: 480 * 60, endSeconds: 540 * 60 }}
+        variant="console"
+        motionEnabled={false}
+        activityBucketing="time"
+      />,
+    )
+    expect(zoomed).toContain('data-activity-bucket-minutes="1"')
+    expect(zoomed).not.toContain('data-activity-bar-peak')
   })
 })

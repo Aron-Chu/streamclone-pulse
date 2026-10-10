@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AnalyticsStreamDetail } from '../../api.ts'
 import AnalyticsChart from './AnalyticsChart.tsx'
+import { resetChartWheelGuard } from './ChartNavigator.tsx'
 import {
   sessionNavigatorIndexForOffset,
   sessionNavigatorPointCount,
@@ -208,11 +209,12 @@ describe('AnalyticsChart range controls and navigator', () => {
     expect(start.getAttribute('aria-valuetext')).toBe('Start 00:00:00; showing 00:00:00 to 01:30:00')
     expect(screen.getByRole('slider', { name: 'Chart view end' })).not.toBeNull()
     expect(navigator.querySelector('strong')?.textContent).toBe('Full stream')
-    expect(navigator.querySelector('.hx-chart-navigator__bucket-count')?.textContent).toBe('91 of 91 minutes')
+    expect(navigator.querySelector('.hx-chart-navigator__bucket-count')?.textContent).toBe('91 of 91 minutes · bars per minute')
     for (const name of ['Zoom in', 'Zoom out', 'Reset zoom']) {
       expect(screen.getByRole('button', { name })).not.toBeNull()
     }
-    expect(screen.getByRole('button', { name: /Scroll zoom/ }).getAttribute('aria-pressed')).toBe('false')
+    // On by default, and remembered in this browser.
+    expect(screen.getByRole('button', { name: /Scroll zoom/ }).getAttribute('aria-pressed')).toBe('true')
     expect(container.querySelector('[data-chart-position-rail]')).toBeNull()
   })
 
@@ -263,10 +265,11 @@ describe('AnalyticsChart range controls and navigator', () => {
     const shrunk = viewportOf(container)
     expect(shrunk[1]! - shrunk[0]!).toBeCloseTo(zoomed[1]! - zoomed[0]! - 5 * 60, 0)
 
-    fireEvent.click(screen.getByRole('button', { name: /Scroll zoom/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Reset zoom' }))
     expect(viewportOf(container)).toEqual([0, 90 * 60])
-    expect(screen.getByRole('button', { name: /Scroll zoom/ }).getAttribute('aria-pressed')).toBe('false')
+    // Reset restores the full range and leaves the Scroll zoom choice alone.
+    expect(screen.getByRole('button', { name: /Scroll zoom/ }).getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByRole('button', { name: 'Reset zoom' }).hasAttribute('disabled')).toBe(true)
     expect(navigatorHeading(container)).toBe('Full stream')
   })
 
@@ -316,33 +319,43 @@ describe('AnalyticsChart range controls and navigator', () => {
     expect(viewportOf(container)).toEqual([0, 90 * 60])
   })
 
-  it('turns Scroll zoom off on Escape from the focused plot and keeps the pin', () => {
+  it('Escape releases the pin first, then restores the full range, and never changes Scroll zoom', () => {
     const detail = detailWithMinutes(91)
     const onSelectRollup = vi.fn()
-    const { container } = render(
+    const chart = (selectedRollup: (typeof detail.rollups)[number] | null) => (
       <AnalyticsChart
         detail={detail}
         selectedEmotes={new Set()}
         onSelectEmote={vi.fn()}
-        selectedRollup={detail.rollups[20]!}
+        selectedRollup={selectedRollup}
         onSelectRollup={onSelectRollup}
         viewMode="overview"
         onViewModeChange={vi.fn()}
-      />,
+      />
     )
+    const { container, rerender } = render(chart(detail.rollups[20]!))
     clickNavigatorTrack(container, 450)
+    const zoomed = viewportOf(container)
+    expect(zoomed).not.toEqual([0, 90 * 60])
     const scrollZoom = screen.getByRole('button', { name: /Scroll zoom/ })
-    fireEvent.click(scrollZoom)
     expect(scrollZoom.getAttribute('aria-pressed')).toBe('true')
     const plot = container.querySelector<HTMLElement>('[data-chart-touch-action]')!
-    fireEvent.keyDown(plot, { key: 'Escape' })
-    expect(scrollZoom.getAttribute('aria-pressed')).toBe('false')
-    expect(viewportOf(container)).toEqual([0, 90 * 60])
-    expect(onSelectRollup).not.toHaveBeenCalled()
-
-    // With Scroll zoom already off, Escape on the plot clears the pin as before.
+    // A pin exists: Escape clears it and keeps the zoom.
     fireEvent.keyDown(plot, { key: 'Escape' })
     expect(onSelectRollup).toHaveBeenCalledWith(null)
+    expect(viewportOf(container)).toEqual(zoomed)
+
+    // Nothing pinned: Escape restores the full range.
+    onSelectRollup.mockClear()
+    rerender(chart(null))
+    fireEvent.keyDown(plot, { key: 'Escape' })
+    expect(viewportOf(container)).toEqual([0, 90 * 60])
+    expect(scrollZoom.getAttribute('aria-pressed')).toBe('true')
+
+    // At the full range with nothing pinned, Escape does nothing more.
+    fireEvent.keyDown(plot, { key: 'Escape' })
+    expect(viewportOf(container)).toEqual([0, 90 * 60])
+    expect(scrollZoom.getAttribute('aria-pressed')).toBe('true')
   })
 
   it('zooms with Alt + wheel and pans with Shift + wheel while Scroll zoom is off', () => {
@@ -363,19 +376,28 @@ describe('AnalyticsChart range controls and navigator', () => {
       }
     }
     const { container } = renderChart(91)
+    fireEvent.click(screen.getByRole('button', { name: /Scroll zoom/ }))
+    expect(screen.getByRole('button', { name: /Scroll zoom/ }).getAttribute('aria-pressed')).toBe('false')
     const plot = container.querySelector('[data-chart-touch-action]')!
     const stack = container.querySelector('[data-session-chart-stack]')!
-    vi.spyOn(plot, 'getBoundingClientRect').mockReturnValue({ left: 0, width: 1000 } as DOMRect)
-    vi.spyOn(stack, 'getBoundingClientRect').mockReturnValue({ left: 0, width: 1000 } as DOMRect)
+    const box = { left: 0, right: 1000, top: 0, bottom: 300, width: 1000, height: 300 } as DOMRect
+    vi.spyOn(plot, 'getBoundingClientRect').mockReturnValue(box)
+    vi.spyOn(stack, 'getBoundingClientRect').mockReturnValue({ ...box, bottom: 500, height: 500 } as DOMRect)
     const full = viewportOf(container)
 
-    expect(fireEvent.wheel(plot, { deltaY: -400, clientX: 500, altKey: true })).toBe(false)
+    // A plain wheel goes to the page while Scroll zoom is off.
+    expect(fireEvent.wheel(plot, { deltaY: -400, clientX: 500, clientY: 150 })).toBe(true)
+    flush()
+    expect(viewportOf(container)).toEqual(full)
+    resetChartWheelGuard()
+
+    expect(fireEvent.wheel(plot, { deltaY: -400, clientX: 500, clientY: 150, altKey: true })).toBe(false)
     flush()
     const zoomed = viewportOf(container)
     expect(zoomed[1]! - zoomed[0]!).toBeLessThan(full[1]! - full[0]!)
 
     // Shift + wheel is the navigator's pan gesture; it must not also zoom.
-    expect(fireEvent.wheel(plot, { deltaY: 300, clientX: 500, shiftKey: true })).toBe(false)
+    expect(fireEvent.wheel(plot, { deltaY: 300, clientX: 500, clientY: 150, shiftKey: true })).toBe(false)
     flush()
     const panned = viewportOf(container)
     expect(panned[0]).toBeGreaterThan(zoomed[0]!)
@@ -396,8 +418,95 @@ describe('AnalyticsChart range controls and navigator', () => {
     expect(readout?.querySelector('.hx-chart-navigator__bucket-count')?.textContent)
       .toBe('748 of 748 minutes · bars 5-min avg')
     expect(note?.getAttribute('title')).toBe(
-      'Each activity bar averages 5 measured minutes so bars stay readable at this width. Gaps are minutes with no measurement.',
+      'Each activity bar averages the measured minutes in its 5-minute slot so bars stay readable at this width; a thin cap marks a peak minute well above the average, and a faded bar had unmeasured minutes. Gaps are slots with no measurement.',
     )
+  })
+
+  it('re-buckets the bars as the view zooms and keeps the note live', () => {
+    const { container } = renderChart(748)
+    const level = () => container.querySelector('svg[data-activity-bucket-minutes]')?.getAttribute('data-activity-bucket-minutes')
+    const note = () => container.querySelector('[data-chart-bar-bucket-minutes]')
+    const levels = [level()]
+    const notes = [note()?.textContent]
+    // 748 -> 374 -> 187 -> 94 minutes over the 1000-unit jsdom plot. A level
+    // changes only once its slot clears 5px by 15%, so 374 minutes keep 5-min bars.
+    for (let click = 0; click < 3; click += 1) {
+      fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
+      levels.push(level())
+      notes.push(note()?.textContent)
+    }
+    expect(levels).toEqual(['5', '5', '2', '1'])
+    expect(notes).toEqual(['bars 5-min avg', 'bars 5-min avg', 'bars 2-min avg', 'bars per minute'])
+    expect(note()?.getAttribute('data-chart-bar-bucket-minutes')).toBe('1')
+    // Zooming back out returns to 5-minute bars.
+    fireEvent.click(screen.getByRole('button', { name: 'Reset zoom' }))
+    expect(level()).toBe('5')
+  })
+
+  it('caps busy slots above 1-minute bars and draws no caps at 1-minute bars', () => {
+    const { container } = renderChart(748)
+    expect(container.querySelectorAll('rect[data-activity-bar-peak]').length).toBeGreaterThan(0)
+    for (const cap of container.querySelectorAll('rect[data-activity-bar-peak]')) {
+      // A sibling of its bar, never a wrapper around it.
+      expect(cap.previousElementSibling?.hasAttribute('data-activity-bar')).toBe(true)
+    }
+    for (let click = 0; click < 3; click += 1) fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
+    expect(container.querySelector('svg[data-activity-bucket-minutes]')?.getAttribute('data-activity-bucket-minutes')).toBe('1')
+    expect(container.querySelectorAll('rect[data-activity-bar-peak]').length).toBe(0)
+  })
+
+  it('names the hovered bar above 1-minute bars in the second header row, and reads minutes exactly at 1-minute bars', () => {
+    const frames = new Map<number, FrameRequestCallback>()
+    let frameId = 0
+    vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => {
+      frames.set(++frameId, callback)
+      return frameId
+    })
+    vi.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(key => { frames.delete(key) })
+    const flush = () => act(() => {
+      const pending = [...frames.values()]
+      frames.clear()
+      pending.forEach(callback => callback(performance.now() + 1000))
+    })
+    const { container } = renderChart(748)
+    const plot = container.querySelector<SVGRectElement>('[data-chart-touch-action]')!
+    vi.spyOn(plot, 'getBoundingClientRect').mockReturnValue({ left: 0, right: 1000, top: 0, bottom: 300, width: 1000, height: 300 } as DOMRect)
+    expect(container.querySelector('svg[data-activity-bucket-minutes]')?.getAttribute('data-activity-bucket-minutes')).toBe('5')
+    const hint = () => container.querySelector<HTMLElement>('[data-chart-selection-hint]')!
+
+    // Minute 42 sits in the 00:40-00:45 bar. Chat there runs 14, 15, 16, 17, 18.
+    fireEvent.pointerEnter(plot)
+    fireEvent.mouseMove(plot, { clientX: (42 / 747) * 1000, clientY: 150 })
+    flush()
+    const readout = container.querySelector<HTMLElement>('[data-chart-bar-readout]')!
+    expect(readout).not.toBeNull()
+    expect(readout.getAttribute('data-bar-step')).toBe('5')
+    expect(readout.getAttribute('data-bar-start')).toBe(String(Date.parse('2026-07-31T00:40:00.000Z')))
+    expect(readout.getAttribute('data-bar-partial')).toBe('false')
+    expect(readout.textContent).toMatch(/^Bar 00:40:00–00:45:00 · 5-min avg · chat 16\/min \(peak 18\) · emotes \d+\/min \(peak \d+\)$/)
+    expect(readout.getAttribute('title')).toBe(readout.textContent)
+    // The header readout above it stays minute-exact.
+    expect(container.querySelector('[data-chart-hover-readout-row]')?.textContent).toContain('00:42')
+    expect(container.querySelector('[data-chart-hover-readout-row]')?.textContent).not.toContain('avg')
+
+    // Leaving the plot restores the usual hint.
+    fireEvent.mouseLeave(plot)
+    flush()
+    expect(container.querySelector('[data-chart-bar-readout]')).toBeNull()
+    expect(hint().textContent).toBe('Hover to preview a minute · click to select · press Esc to clear')
+
+    // At 1-minute bars there is no bar summary: the row reads as before.
+    for (let click = 0; click < 3; click += 1) fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
+    flush()
+    expect(container.querySelector('svg[data-activity-bucket-minutes]')?.getAttribute('data-activity-bucket-minutes')).toBe('1')
+    const start = Number(plot.getAttribute('data-chart-viewport-start'))
+    const end = Number(plot.getAttribute('data-chart-viewport-end'))
+    fireEvent.mouseMove(plot, { clientX: 500, clientY: 150 })
+    flush()
+    expect(start).toBeGreaterThan(0)
+    expect(end).toBeLessThan(747 * 60)
+    expect(container.querySelector('[data-chart-bar-readout]')).toBeNull()
+    expect(hint().textContent).toBe('Hover to preview a minute · click to select · press Esc to clear')
   })
 
   it('offers a VOD jump beside the pinned minute', () => {

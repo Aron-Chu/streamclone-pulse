@@ -1,5 +1,7 @@
 import { afterEach, vi } from 'vitest'
 import { configure } from '@testing-library/dom'
+import { resetChartWheelGuard } from '@streampulse/analytics-console/components/analytics/ChartNavigator'
+import { resetChartScrollZoomMemory } from '@streampulse/analytics-console/components/analytics/chartScrollZoom'
 
 configure({ asyncUtilTimeout: 5000 })
 
@@ -61,4 +63,7 @@ afterEach(() => {
   vi.restoreAllMocks()
   localStorage.clear()
   sessionStorage.clear()
+  // Chart Scroll zoom preference and scroll-through guard are page-wide.
+  resetChartScrollZoomMemory()
+  resetChartWheelGuard()
 })

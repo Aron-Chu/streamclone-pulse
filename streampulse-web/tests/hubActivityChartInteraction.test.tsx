@@ -502,23 +502,22 @@ describe('HubActivityChart interaction contract', () => {
     const { container, getByRole } = render(<HubActivityChart points={navigatorPoints} windowMinutes={6} channelCount={1} />)
     const navigator = container.querySelector('[data-hub-chart-navigator]') as HTMLElement
     const track = navigator.querySelector('.hx-chart-navigator__track') as HTMLDivElement
+    const trackShell = navigator.querySelector('.hx-chart-navigator__track-shell') as HTMLDivElement
     const chart = container.querySelector('[data-hub-chart-wheel-surface]') as HTMLElement
     const rect = { left: 0, right: 500, top: 0, bottom: 200, width: 500, height: 200, x: 0, y: 0, toJSON: () => ({}) }
-    Object.defineProperty(track, 'getBoundingClientRect', { configurable: true, value: () => rect })
-    Object.defineProperty(chart, 'getBoundingClientRect', { configurable: true, value: () => rect })
-    const plain = dispatchWheelEvent(chart, { deltaY: -120, clientX: 250 })
-    expect(plain.defaultPrevented).toBe(false)
-    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:5'))
-    const zoom = dispatchWheelEvent(chart, { deltaY: -120, deltaX: 0, deltaMode: 0, clientX: 250, altKey: true })
+    for (const element of [track, trackShell, chart]) Object.defineProperty(element, 'getBoundingClientRect', { configurable: true, value: () => rect })
+    // Scroll zoom is on by default: a plain wheel over the plot zooms.
+    expect(getByRole('button', { name: /Scroll zoom/ }).getAttribute('aria-pressed')).toBe('true')
+    const zoom = dispatchWheelEvent(chart, { deltaY: -120, deltaX: 0, deltaMode: 0, clientX: 250, clientY: 100 })
     expect(zoom.defaultPrevented).toBe(true)
     // The readout states the committed view at once; the plot eases to it.
     expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('1:4')
     await waitFor(() => expect(plotWindow(container)).toBe('1:4'))
-    const pan = dispatchWheelEvent(track, { deltaY: 120, deltaX: 0, deltaMode: 0, shiftKey: true, clientX: 250 })
+    const pan = dispatchWheelEvent(track, { deltaY: 120, deltaX: 0, deltaMode: 0, shiftKey: true, clientX: 250, clientY: 100 })
     expect(pan.defaultPrevented).toBe(true)
     expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('2:5')
     await waitFor(() => expect(plotWindow(container)).toBe('2:5'))
-    const browserZoom = dispatchWheelEvent(chart, { deltaY: -120, ctrlKey: true, clientX: 250 })
+    const browserZoom = dispatchWheelEvent(chart, { deltaY: -120, ctrlKey: true, clientX: 250, clientY: 100 })
     expect(browserZoom.defaultPrevented).toBe(false)
     await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('2:5'))
 
@@ -529,60 +528,82 @@ describe('HubActivityChart interaction contract', () => {
 
     fireEvent.click(getByRole('button', { name: 'Reset zoom' }))
     await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:5'))
+
+    // Off, a plain wheel goes to the page; Alt+wheel still zooms.
+    fireEvent.click(getByRole('button', { name: /Scroll zoom/ }))
+    expect(dispatchWheelEvent(chart, { deltaY: -120, clientX: 250, clientY: 100 }).defaultPrevented).toBe(false)
+    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:5'))
+    expect(dispatchWheelEvent(chart, { deltaY: -120, clientX: 250, clientY: 100, altKey: true }).defaultPrevented).toBe(true)
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('1:4')
   })
 
-  it('enables plain wheel zoom only by choice and restores page scrolling with reset or Escape', async () => {
+  it('zooms with a plain wheel by default; Escape releases the selection first and the preference survives Reset and Escape', async () => {
     const navigatorPoints = Array.from({ length: 16 }, (_, index) => ({ ...points[0], t: firstBucketT + index * 60_000 }))
     const onBucketSelect = vi.fn()
-    const { container, getByRole } = render(<HubActivityChart points={navigatorPoints} windowMinutes={16} channelCount={1} selectedBucketT={navigatorPoints[5].t} onBucketSelect={onBucketSelect} />)
+    const view = render(<HubActivityChart points={navigatorPoints} windowMinutes={16} channelCount={1} selectedBucketT={navigatorPoints[5].t} onBucketSelect={onBucketSelect} />)
+    const { container, getByRole } = view
     const navigator = container.querySelector('[data-hub-chart-navigator]') as HTMLElement
     const track = navigator.querySelector('.hx-chart-navigator__track') as HTMLElement
+    const trackShell = navigator.querySelector('.hx-chart-navigator__track-shell') as HTMLElement
     const chart = container.querySelector('[data-hub-chart-wheel-surface]') as HTMLElement
     const rect = { left: 0, right: 500, top: 0, bottom: 200, width: 500, height: 200, x: 0, y: 0, toJSON: () => ({}) }
-    Object.defineProperty(track, 'getBoundingClientRect', { configurable: true, value: () => rect })
-    Object.defineProperty(chart, 'getBoundingClientRect', { configurable: true, value: () => rect })
-    const toggle = getByRole('button', { name: 'Scroll zoom' })
-    expect(toggle.getAttribute('aria-pressed')).toBe('false')
-    expect(dispatchWheelEvent(chart, { deltaY: -120, clientX: 250 }).defaultPrevented).toBe(false)
-    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:15'))
-
-    fireEvent.click(toggle)
+    for (const element of [track, trackShell, chart]) Object.defineProperty(element, 'getBoundingClientRect', { configurable: true, value: () => rect })
+    const toggle = getByRole('button', { name: /Scroll zoom/ })
     expect(toggle.getAttribute('aria-pressed')).toBe('true')
-    expect(navigator.querySelector('.hx-chart-navigator__hint')?.textContent).toContain('Scroll zoom is on')
-    expect(dispatchWheelEvent(chart, { deltaY: -120, clientX: 250 }).defaultPrevented).toBe(true)
+    expect(toggle.getAttribute('title')).toBe('Remembered in this browser')
+    expect(navigator.querySelector('.hx-chart-navigator__hint')?.textContent).toBe('Scroll over the chart to zoom · Shift + scroll to pan · Drag the purple bar to pick a span')
+    expect(dispatchWheelEvent(chart, { deltaY: -120, clientX: 250, clientY: 100 }).defaultPrevented).toBe(true)
     await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('2:13'))
-    expect(dispatchWheelEvent(getByRole('slider', { name: 'Chart view end' }), { deltaY: -120, clientX: 250 }).defaultPrevented).toBe(true)
+    expect(dispatchWheelEvent(getByRole('slider', { name: 'Chart view end' }), { deltaY: -120, clientX: 250, clientY: 100 }).defaultPrevented).toBe(true)
     await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('4:12'))
-    expect(dispatchWheelEvent(chart, { deltaY: -120, metaKey: true, clientX: 250 }).defaultPrevented).toBe(false)
-    fireEvent.keyDown(chart, { key: 'Escape' })
-    expect(toggle.getAttribute('aria-pressed')).toBe('false')
-    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:15'))
-    expect(dispatchWheelEvent(chart, { deltaY: -120, clientX: 250 }).defaultPrevented).toBe(false)
+    expect(dispatchWheelEvent(chart, { deltaY: -120, metaKey: true, clientX: 250, clientY: 100 }).defaultPrevented).toBe(false)
 
-    fireEvent.click(toggle)
+    // Escape releases the selected bucket first and leaves the zoom alone.
+    fireEvent.keyDown(chart, { key: 'Escape' })
+    expect(onBucketSelect).toHaveBeenCalledWith(null)
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('4:12')
+    // With nothing selected, Escape restores the full range; the preference stays on.
+    view.rerender(<HubActivityChart points={navigatorPoints} windowMinutes={16} channelCount={1} selectedBucketT={null} onBucketSelect={onBucketSelect} />)
+    fireEvent.keyDown(chart, { key: 'Escape' })
+    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:15'))
+    expect(toggle.getAttribute('aria-pressed')).toBe('true')
+    expect(getByRole('button', { name: 'Reset zoom' }).hasAttribute('disabled')).toBe(true)
+
+    // Reset zoom keeps it on too; Escape on the toggle does nothing.
+    expect(dispatchWheelEvent(chart, { deltaY: -120, clientX: 250, clientY: 100 }).defaultPrevented).toBe(true)
     fireEvent.click(getByRole('button', { name: 'Reset zoom' }))
-    expect(toggle.getAttribute('aria-pressed')).toBe('false')
+    expect(toggle.getAttribute('aria-pressed')).toBe('true')
     await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:15'))
-    fireEvent.click(toggle)
-    dispatchWheelEvent(chart, { deltaY: -120, clientX: 250 })
+    expect(dispatchWheelEvent(chart, { deltaY: -120, clientX: 250, clientY: 100 }).defaultPrevented).toBe(true)
+    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('2:13'))
     fireEvent.keyDown(toggle, { key: 'Escape' })
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('2:13')
+    expect(toggle.getAttribute('aria-pressed')).toBe('true')
+
+    // Only the toggle turns it off; then the wheel scrolls the page.
+    fireEvent.click(toggle)
     expect(toggle.getAttribute('aria-pressed')).toBe('false')
-    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:15'))
-    expect(onBucketSelect).not.toHaveBeenCalled()
+    expect(window.localStorage.getItem('sp.chart.scrollZoom.v1')).toBe('off')
+    expect(navigator.querySelector('.hx-chart-navigator__hint')?.textContent).toBe('Scroll zoom is off: the wheel scrolls the page · Hold Alt and scroll to zoom · Shift + scroll to pan')
+    expect(dispatchWheelEvent(chart, { deltaY: -120, clientX: 250, clientY: 100 }).defaultPrevented).toBe(false)
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('2:13')
+    expect(onBucketSelect).toHaveBeenCalledTimes(1)
   })
 
-  it('turns scroll zoom off when the requested range changes, while refreshes preserve the chosen viewport', async () => {
+  it('keeps the Scroll zoom choice when the requested range changes, while refreshes preserve the chosen viewport', async () => {
     const navigatorPoints = Array.from({ length: 16 }, (_, index) => ({ ...points[0], t: firstBucketT + index * 60_000 }))
     const { container, getByRole, rerender } = render(<HubActivityChart points={navigatorPoints} windowMinutes={16} channelCount={1} />)
     const navigator = container.querySelector('[data-hub-chart-navigator]') as HTMLElement
-    fireEvent.click(getByRole('button', { name: 'Scroll zoom' }))
+    expect(getByRole('button', { name: /Scroll zoom/ }).getAttribute('aria-pressed')).toBe('true')
     fireEvent.click(getByRole('button', { name: 'Zoom in' }))
     await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('4:11'))
     rerender(<HubActivityChart points={navigatorPoints.map(point => ({ ...point, viewers: point.viewers + 10 }))} windowMinutes={16} channelCount={1} />)
     await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('4:11'))
-    expect(getByRole('button', { name: 'Scroll zoom' }).getAttribute('aria-pressed')).toBe('true')
+    expect(getByRole('button', { name: /Scroll zoom/ }).getAttribute('aria-pressed')).toBe('true')
+    // Off is kept across a range change too.
+    fireEvent.click(getByRole('button', { name: /Scroll zoom/ }))
     rerender(<HubActivityChart points={navigatorPoints} windowMinutes={30} channelCount={1} />)
-    expect(getByRole('button', { name: 'Scroll zoom' }).getAttribute('aria-pressed')).toBe('false')
+    expect(getByRole('button', { name: /Scroll zoom/ }).getAttribute('aria-pressed')).toBe('false')
     const end = Number(container.querySelector('.hx-plot-stack')?.getAttribute('data-hub-chart-viewport-end'))
     await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe(`0:${end}`))
   })
@@ -593,7 +614,6 @@ describe('HubActivityChart interaction contract', () => {
     const { container, getByRole, rerender } = render(<HubActivityChart points={fallbackPoints} windowMinutes={30} channelCount={1} rangeControl={rangeControl} />)
     const navigator = container.querySelector('[data-hub-chart-navigator]')!
     const fullWindow = navigator.getAttribute('data-hub-chart-navigator-window')
-    fireEvent.click(getByRole('button', { name: 'Scroll zoom' }))
     fireEvent.click(getByRole('button', { name: 'Zoom in' }))
     await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('8:22'))
     const zoomedWindow = navigator.getAttribute('data-hub-chart-navigator-window')
@@ -601,12 +621,34 @@ describe('HubActivityChart interaction contract', () => {
 
     rerender(<HubActivityChart points={fallbackPoints.map(point => ({ ...point, chat: point.chat + 1 }))} windowMinutes={30} channelCount={1} rangeControl={{ ...rangeControl }} />)
     await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe(zoomedWindow))
-    expect(getByRole('button', { name: 'Scroll zoom' }).getAttribute('aria-pressed')).toBe('true')
+    expect(getByRole('button', { name: /Scroll zoom/ }).getAttribute('aria-pressed')).toBe('true')
 
     rerender(<HubActivityChart points={fallbackPoints} windowMinutes={30} channelCount={1} rangeControl={{ ...rangeControl, active: '7d' }} />)
     await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe(fullWindow))
-    expect(getByRole('button', { name: 'Scroll zoom' }).getAttribute('aria-pressed')).toBe('false')
+    expect(getByRole('button', { name: /Scroll zoom/ }).getAttribute('aria-pressed')).toBe('true')
     expect(rangeControl.onSelect).not.toHaveBeenCalled()
+  })
+
+  it('steps the zoom with +, - and 0 on the focused plot, and leaves Ctrl, Cmd and Alt to the browser', async () => {
+    const navigatorPoints = Array.from({ length: 16 }, (_, index) => ({ ...points[0], t: firstBucketT + index * 60_000 }))
+    const { container } = render(<HubActivityChart points={navigatorPoints} windowMinutes={16} channelCount={1} />)
+    const navigator = container.querySelector('[data-hub-chart-navigator]') as HTMLElement
+    const plot = container.querySelector('[data-hub-chart-wheel-surface]') as HTMLElement
+    expect(plot.getAttribute('tabindex')).toBe('0')
+    for (const modifiers of [{ ctrlKey: true }, { metaKey: true }, { altKey: true }]) {
+      const event = new KeyboardEvent('keydown', { key: '+', bubbles: true, cancelable: true, ...modifiers })
+      fireEvent(plot, event)
+      expect(event.defaultPrevented).toBe(false)
+    }
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:15')
+    fireEvent.keyDown(plot, { key: '+' })
+    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('4:11'))
+    fireEvent.keyDown(plot, { key: '=' })
+    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('6:9'))
+    fireEvent.keyDown(plot, { key: '-' })
+    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('4:11'))
+    fireEvent.keyDown(plot, { key: '0' })
+    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:15'))
   })
 })
 
@@ -622,7 +664,6 @@ describe('HubActivityChart viewport motion', () => {
     const navigator = container.querySelector('[data-hub-chart-navigator]') as HTMLElement
     const chart = container.querySelector('[data-hub-chart-wheel-surface]') as HTMLElement
     Object.defineProperty(chart, 'getBoundingClientRect', { configurable: true, value: () => rect })
-    fireEvent.click(getByRole('button', { name: 'Scroll zoom' }))
     expect(dispatchWheelEvent(chart, { deltaY: -120, clientX: 250 }).defaultPrevented).toBe(true)
     // The readout and sliders state the committed view at once (as on the
     // stream chart); the purple window and the plot have not moved yet.
@@ -665,7 +706,6 @@ describe('HubActivityChart viewport motion', () => {
     const navigator = container.querySelector('[data-hub-chart-navigator]') as HTMLElement
     const chart = container.querySelector('[data-hub-chart-wheel-surface]') as HTMLElement
     Object.defineProperty(chart, 'getBoundingClientRect', { configurable: true, value: () => rect })
-    fireEvent.click(getByRole('button', { name: 'Scroll zoom' }))
     expect(dispatchWheelEvent(chart, { deltaY: -120, clientX: 250 }).defaultPrevented).toBe(true)
     expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('2:13')
     expect(navigator.querySelector('.hx-chart-navigator__readout strong')?.textContent).toBe('Zoomed view')
@@ -721,7 +761,6 @@ describe('HubActivityChart viewport motion', () => {
     const { container, getByRole } = render(<HubActivityChart points={motionPoints.map((point, index) => index === 0 ? { ...point, hasChatRollup: false } : point)} windowMinutes={16} channelCount={1} />)
     const chart = container.querySelector('[data-hub-chart-wheel-surface]') as HTMLElement
     Object.defineProperty(chart, 'getBoundingClientRect', { configurable: true, value: () => rect })
-    fireEvent.click(getByRole('button', { name: 'Scroll zoom' }))
     dispatchWheelEvent(chart, { deltaY: -120, clientX: 250 })
     frames.step(16)
     const band = container.querySelector('.gap-fill--chat-rollup') as HTMLElement
@@ -780,4 +819,87 @@ it('preserves inspected timestamps when polling advances the grid', async () => 
   view.rerender(<HubActivityChart points={[...samples.slice(1), { ...samples[29], t: end + 60000 }]} windowMinutes={30} channelCount={1} />)
   await waitFor(() => expect(Number(stack.getAttribute('data-hub-chart-viewport-start'))).toBe(beforeStart - 1))
   expect(Number(stack.getAttribute('data-hub-chart-viewport-end'))).toBe(beforeEnd - 1)
+})
+
+describe('HubActivityChart zoom-aware chat bars', () => {
+  // A 24h window: 240 server buckets of 6 minutes, starting on a UTC half hour
+  // so 30-minute bars hold exactly five buckets each.
+  const BUCKET_MS = 6 * 60_000
+  const lastT = Math.floor(Date.now() / (30 * 60_000)) * 30 * 60_000 - BUCKET_MS
+  const dayPoints = Array.from({ length: 240 }, (_, index) => ({
+    ...points[0],
+    t: lastT - (239 - index) * BUCKET_MS,
+    // A short spike in every fifth slot: one bucket at 500 among 100s.
+    chat: index % 25 === 2 ? 500 : 100,
+  }))
+
+  function stubPlotWidth(width: number, height = 160) {
+    const original = HTMLElement.prototype.getBoundingClientRect
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      if (this.matches('[data-hub-chart-wheel-surface]')) {
+        return { left: 0, right: width, top: 0, bottom: height, width, height, x: 0, y: 0, toJSON: () => ({}) } as DOMRect
+      }
+      return original.call(this)
+    })
+  }
+
+  it('merges five buckets per bar on a 243px plot, with caps on short spikes and the size in the navigator note', async () => {
+    stubPlotWidth(243)
+    const { container } = render(<HubActivityChart points={dayPoints} windowMinutes={1440} channelCount={1} />)
+    const series = container.querySelector('[data-component="HubActivityBarSeries"]') as SVGGElement
+    await waitFor(() => expect(series.getAttribute('data-hub-bar-span')).toBe('5'))
+    const bars = Array.from(series.querySelectorAll('[data-bar-span]'))
+    expect(bars).toHaveLength(48)
+    expect(bars.every(bar => bar.getAttribute('data-bar-span') === '5')).toBe(true)
+    // Slot starts are UTC half hours and every bar averages its five buckets.
+    expect(bars.every(bar => Number(bar.getAttribute('data-bar-t')) % (30 * 60_000) === 0)).toBe(true)
+    expect(bars.every(bar => bar.getAttribute('data-bar-observed') === '5' && bar.getAttribute('data-bar-expected') === '5')).toBe(true)
+    // (4 x 100 + 500) / 5 = 180 average; the 500 bucket is 2.8x that: a cap.
+    expect(series.querySelectorAll('[data-activity-bar-peak="chat"]')).toHaveLength(10)
+    const note = container.querySelector('[data-hub-chart-navigator] [data-chart-bar-bucket-minutes]') as HTMLElement
+    expect(note.getAttribute('data-chart-bar-bucket-minutes')).toBe('30')
+    expect(note.textContent).toBe('bars 30-min avg')
+  })
+
+  it('keeps one bar per bucket when the plot is wide enough, with no note', async () => {
+    stubPlotWidth(1293)
+    const { container } = render(<HubActivityChart points={dayPoints} windowMinutes={1440} channelCount={1} />)
+    const series = container.querySelector('[data-component="HubActivityBarSeries"]') as SVGGElement
+    await waitFor(() => expect(series.querySelectorAll('[data-bar-t]')).toHaveLength(240))
+    expect(series.getAttribute('data-hub-bar-span')).toBeNull()
+    expect(series.querySelectorAll('[data-bar-span]')).toHaveLength(0)
+    expect(series.querySelectorAll('[data-activity-bar-peak]')).toHaveLength(0)
+    expect(container.querySelector('[data-hub-chart-navigator] [data-chart-bar-bucket-minutes]')).toBeNull()
+  })
+
+  it('marks a bar partial and fades it when a bucket in its slot has no chat rollup', async () => {
+    stubPlotWidth(243)
+    const gappy = dayPoints.map((point, index) => (index === 12 ? { ...point, hasChatRollup: false, chat: 0 } : point))
+    const { container } = render(<HubActivityChart points={gappy} windowMinutes={1440} channelCount={1} />)
+    const series = container.querySelector('[data-component="HubActivityBarSeries"]') as SVGGElement
+    await waitFor(() => expect(series.getAttribute('data-hub-bar-span')).toBe('5'))
+    const partial = Array.from(series.querySelectorAll('[data-bar-partial="true"]'))
+    expect(partial).toHaveLength(1)
+    expect(partial[0]!.getAttribute('data-bar-t')).toBe(String(gappy[10]!.t))
+    expect(partial[0]!.getAttribute('data-bar-observed')).toBe('4')
+    expect(partial[0]!.getAttribute('data-bar-expected')).toBe('5')
+    expect(Number(partial[0]!.getAttribute('opacity'))).toBeCloseTo(0.8)
+  })
+
+  it('names the hovered merged bar in the status line', async () => {
+    stubPlotWidth(243)
+    const gappy = dayPoints.map((point, index) => (index === 12 ? { ...point, hasChatRollup: false, chat: 0 } : point))
+    const { container } = render(<HubActivityChart points={gappy} windowMinutes={1440} channelCount={1} />)
+    const series = container.querySelector('[data-component="HubActivityBarSeries"]') as SVGGElement
+    await waitFor(() => expect(series.getAttribute('data-hub-bar-span')).toBe('5'))
+    const chart = container.querySelector('[data-hub-chart-wheel-surface]') as HTMLElement
+    // Bucket 11 sits in the third slot (buckets 10-14), which lost bucket 12.
+    // The hub plots chat per minute: 100 per 6-minute bucket is about 17/min.
+    fireEvent.mouseMove(chart, { clientX: (11.5 / 240) * 243, clientY: 80 })
+    const status = container.querySelector('.hx-hover-status') as HTMLElement
+    await waitFor(() => expect(status.getAttribute('data-hub-bar-status')).toBe('true'))
+    expect(status.textContent).toMatch(/^30-min bar .+–.+ · chat avg 17\/min · peak 17 · 4 of 5 buckets measured$/)
+    fireEvent.mouseLeave(chart)
+    await waitFor(() => expect(status.getAttribute('data-hub-bar-status')).toBeNull())
+  })
 })

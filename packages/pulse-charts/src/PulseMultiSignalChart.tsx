@@ -40,7 +40,7 @@ import {
 import { buildChartHitRegions, chartHitRegionAtX } from "./chartHitRegions.ts";
 import { buildRenderBuckets } from "./renderBuckets.ts";
 import { composeRenderView } from "./renderView.ts";
-import { activityBucketMinutesForWidth, buildActivityTimeBuckets } from "./activityTimeBuckets.ts";
+import { barBucketAt, barLevelRange, buildBarPyramid, pickBarLevel, type BarBucket, type BarLevel } from "./barPyramid.ts";
 import {
   buildReactionLaneGeometry,
   findReactionMomentAtPlotX,
@@ -536,6 +536,10 @@ type ActivityBarRect = {
   observedRatio: number;
   fullyObserved: boolean;
   peak: { index: number; value: number } | null;
+  /** Time-bucketed bars: slot size in minutes, slot start, and the peak cap (a thin tick at the slot's peak). */
+  step?: number;
+  slotStartMs?: number;
+  cap?: { y: number; height: number } | null;
 };
 
 type ActivityBarHitBar = Pick<ActivityBarRect, "x" | "width" | "hasValue">;
@@ -583,16 +587,51 @@ export function activityBarAtPlotX<T extends ActivityBarHitBar>(
   return region ? bars[region.index] ?? null : null;
 }
 
-/** Opt-in fixed-size, time-aligned activity buckets (see activityTimeBuckets.ts). */
+/**
+ * Opt-in time-aligned activity bars (see barPyramid.ts): one level of the bar
+ * pyramid built once per data load, and which of its series this lane draws.
+ */
 export type ActivityTimeBucketing = {
-  bucketMinutes: number;
-  /** Bucket alignment origin, normally the stream start. */
-  originMs: number | null;
+  level: BarLevel;
+  seriesIndex: number;
 };
 
+/** Partial time-bucketed bars fade by their measured share, never below 35%. */
+function timeBarOpacity(bar: ActivityBarRect): number {
+  return bar.step != null && !bar.fullyObserved ? Math.max(0.35, bar.observedRatio) : 1;
+}
+
+/**
+ * The time-bucketed bar a readout describes (only above 1-minute bars): its
+ * slot clipped to the loaded minutes, the averages and peaks of chat and
+ * emotes per minute, and how many of its minutes were measured.
+ */
+export type ActivityBarSummary = {
+  step: number;
+  /** Slot start and end (exclusive), clipped to the loaded minutes, in ms and stream offsets. */
+  startMs: number;
+  endMs: number;
+  startOffsetSeconds: number | null;
+  endOffsetSeconds: number | null;
+  observed: number;
+  expected: number;
+  partial: boolean;
+  chat: { avg: number; peak: number } | null;
+  emotes: { avg: number; peak: number } | null;
+};
+
+export type ActivityBarFocus = {
+  /** The bar under the pointer (or the keyboard preview). */
+  hover: ActivityBarSummary | null;
+  /** The bar holding the pinned minute. */
+  pinned: ActivityBarSummary | null;
+};
+
+/** A cap marks a slot whose peak minute stands this far above its average. */
+const ACTIVITY_PEAK_CAP_RATIO = 1.25;
+const ACTIVITY_PEAK_CAP_HEIGHT = 1.5;
+
 function timeBucketActivityBarRects(args: {
-  values: Array<number | null>;
-  timestampMs: Array<number | null>;
   timeBuckets: ActivityTimeBucketing;
   cadenceMs: number;
   plotWidth: number;
@@ -602,24 +641,19 @@ function timeBucketActivityBarRects(args: {
   spikeThreshold: number;
   barY: (value: number) => { y: number; height: number };
 }): ActivityBarRect[] {
-  const { timeScale, cadenceMs, timeBuckets } = args;
+  const { timeScale, cadenceMs } = args;
+  const { level, seriesIndex: k } = args.timeBuckets;
   const pxPerCadence = args.plotWidth * cadenceMs / Math.max(1, args.domainMs);
-  const slotWidth = pxPerCadence * timeBuckets.bucketMinutes;
+  const slotWidth = pxPerCadence * level.step;
   const gap = Math.min(slotWidth * 0.45, Math.max(1, slotWidth * ACTIVITY_BAR_GAP_RATIO));
-  const buckets = buildActivityTimeBuckets({
-    values: args.values,
-    timestampsMs: args.timestampMs,
-    bucketMinutes: timeBuckets.bucketMinutes,
-    cadenceMs,
-    originMs: timeBuckets.originMs,
-    include: (index) => {
-      const at = args.timestampMs[index];
-      return at != null && at >= timeScale.firstTimestampMs && at <= timeScale.lastTimestampMs;
-    },
-  });
-  return buckets.map((bucket, barIdx) => {
-    // Same centring rule as the budget path: the bar sits over the minutes it
-    // contains, and is exactly as wide as those minutes (less the gap).
+  const [from, to] = barLevelRange(level, timeScale.firstTimestampMs, timeScale.lastTimestampMs);
+  const rects: ActivityBarRect[] = [];
+  for (let index = from; index < to; index += 1) {
+    const bucket = level.buckets[index]!;
+    // This lane has no measured value in the slot (another series did).
+    if ((bucket.peakAt[k] ?? -1) < 0) continue;
+    // Centred on the measured minutes it holds, and exactly as wide as they
+    // span (less the gap): a gap at either end of the slot stays empty.
     const startX = timeScale.xForTimestampMs(bucket.firstMs);
     const endX = timeScale.xForTimestampMs(bucket.lastMs);
     const centerX = startX + Math.max(0, endX - startX) / 2;
@@ -630,31 +664,40 @@ function timeBucketActivityBarRects(args: {
     );
     const x = Math.max(timeScale.plotStartX, centerX - nominalWidth / 2);
     const widthPx = Math.max(0, Math.min(timeScale.plotEndX, centerX + nominalWidth / 2) - x);
-    // Bars show the bucket mean, the same per-minute rate the lines use. The
-    // peak minute stays attached for selection and disclosure.
-    const value = bucket.average;
+    if (widthPx <= 0) continue;
+    // Bars show the slot mean of measured minutes, the same per-minute rate
+    // the lines use; the peak minute stays attached and gets a cap.
+    const value = bucket.avg[k] ?? 0;
+    const peakValue = bucket.peak[k] ?? value;
     const { y, height } = args.barY(value);
-    const observedRatio = Math.min(1, bucket.observedCount / Math.max(1, bucket.rangeLength));
-    return {
-      key: `tbar-${bucket.startIndex}-${barIdx}`,
+    const cap = level.step > 1 && peakValue > value * ACTIVITY_PEAK_CAP_RATIO
+      ? { y: args.barY(peakValue).y - ACTIVITY_PEAK_CAP_HEIGHT / 2, height: ACTIVITY_PEAK_CAP_HEIGHT }
+      : null;
+    const observedRatio = Math.min(1, bucket.observed / Math.max(1, bucket.expected));
+    rects.push({
+      key: `tbar-${level.step}-${bucket.startMs}`,
       x,
       y,
       width: widthPx,
       height,
       value,
       hasValue: true,
-      peakValue: bucket.peak.value,
+      peakValue,
       isSpike: args.spikeThreshold > 0 && value > args.spikeThreshold,
-      sourceIndex: bucket.peak.index,
-      bucketStartIndex: bucket.startIndex,
-      bucketEndExclusive: bucket.endExclusive,
-      observedCount: bucket.observedCount,
-      rangeLength: bucket.rangeLength,
+      sourceIndex: bucket.peakAt[k]!,
+      bucketStartIndex: bucket.from,
+      bucketEndExclusive: bucket.to,
+      observedCount: bucket.observed,
+      rangeLength: bucket.expected,
       observedRatio,
-      fullyObserved: bucket.observedCount >= bucket.rangeLength,
-      peak: bucket.peak,
-    };
-  });
+      fullyObserved: bucket.observed >= bucket.expected,
+      peak: { index: bucket.peakAt[k]!, value: peakValue },
+      step: level.step,
+      slotStartMs: bucket.startMs,
+      cap,
+    });
+  }
+  return rects;
 }
 
 function activityBarRects(
@@ -689,6 +732,27 @@ function activityBarRects(
     layout,
   );
   const bandBottom = bandBottomOverride ?? zoneBand.bandBottom;
+  if (timeBuckets) {
+    // The pyramid already holds every slot: no per-render pass over minutes.
+    const timeDomainMs = timeScale.lastTimestampMs - timeScale.firstTimestampMs;
+    return timeBucketActivityBarRects({
+      timeBuckets,
+      // Time-bucketed bars are built from minute data.
+      cadenceMs: 60_000,
+      plotWidth,
+      domainMs: Number.isFinite(timeDomainMs) && timeDomainMs > 0 ? timeDomainMs : 60_000 * Math.max(1, n - 1),
+      density,
+      timeScale,
+      spikeThreshold,
+      barY: (value) => {
+        const cy = plotY(value, max, height, padTop, padBottom, zone, rangeMin, layout);
+        return {
+          y: value > 0 ? cy : bandBottom - 1,
+          height: value > 0 ? Math.max(1, bandBottom - cy) : 1,
+        };
+      },
+    });
+  }
   const parseTimestamp = (value: string | undefined) => {
     const parsed = value ? Date.parse(value) : Number.NaN;
     return Number.isFinite(parsed) ? parsed : null;
@@ -720,26 +784,6 @@ function activityBarRects(
   const domainMs = Number.isFinite(timestampDomainMs) && timestampDomainMs > 0
     ? timestampDomainMs
     : cadenceMs * Math.max(1, n - 1);
-  if (timeBuckets) {
-    return timeBucketActivityBarRects({
-      values,
-      timestampMs,
-      timeBuckets,
-      cadenceMs,
-      plotWidth,
-      domainMs,
-      density,
-      timeScale,
-      spikeThreshold,
-      barY: (value) => {
-        const cy = plotY(value, max, height, padTop, padBottom, zone, rangeMin, layout);
-        return {
-          y: value > 0 ? cy : bandBottom - 1,
-          height: value > 0 ? Math.max(1, bandBottom - cy) : 1,
-        };
-      },
-    });
-  }
   // Line continuity includes offscreen halo rows. Aggregate only visible,
   // timestamp-contiguous activity, preserving source indices for inspection.
   const runs: Array<{ startIndex: number; endExclusive: number }> = [];
@@ -1174,6 +1218,7 @@ function PulseMultiSignalChartInnerImpl({
   lineWeightMode = "fixed",
   activityBucketing = "budget",
   onActivityBucketMinutesChange,
+  onActivityBarFocusChange,
   liveEdgeLabel = null,
   liveEdgeTone = "live",
 }: {
@@ -1250,6 +1295,11 @@ function PulseMultiSignalChartInnerImpl({
   /** Reports the bucket size in minutes while `activityBucketing` is `time`. */
   onActivityBucketMinutesChange?: (minutes: number | null) => void;
   /**
+   * With `time` bucketing above 1-minute bars: the hovered and the pinned bar,
+   * reported when either changes (null at 1-minute bars).
+   */
+  onActivityBarFocusChange?: (focus: ActivityBarFocus | null) => void;
+  /**
    * Portal-only: a short marker drawn above the right end of the plot (never
    * over it) while the view reaches a live stream's newest minute, e.g.
    * "Live · updating". Omitted, nothing is drawn.
@@ -1266,6 +1316,10 @@ function PulseMultiSignalChartInnerImpl({
   // when bars are built from `detailRollups` rather than the thinned `rollups`.
   const [hoverActivityIndex, setHoverActivityIndex] = useState<number | null>(null);
   const hoverActivityIndexRef = useRef<number | null>(null);
+  // Slot start of the time-bucketed bar under the pointer: undefined without
+  // a pointer, null over no bar. Changes only when the pointer crosses a bar.
+  const [pointerBarStartMs, setPointerBarStartMs] = useState<number | null | undefined>(undefined);
+  const pointerBarStartRef = useRef<number | null | undefined>(undefined);
   const [scrubbing, setScrubbing] = useState(false);
   const hoverIndexRef = useRef<number | null>(null);
   const hoverRafRef = useRef<number | null>(null);
@@ -1767,21 +1821,6 @@ function PulseMultiSignalChartInnerImpl({
   );
   // Shared once per rollup change so downstream path/rect memos can hit equality on
   // minuteTs arrays instead of `.map()`-allocating a new array each render.
-  const activityTimeBuckets = useMemo<ActivityTimeBucketing | null>(() => {
-    if (activityBucketing !== "time") return null;
-    const domainMs = timestampScale.lastTimestampMs - timestampScale.firstTimestampMs;
-    const visibleMinutes = Number.isFinite(domainMs) && domainMs > 0 ? domainMs / 60_000 + 1 : 1;
-    return {
-      bucketMinutes: activityBucketMinutesForWidth(visibleMinutes, timestampScale.plotWidth),
-      originMs: Number.isFinite(streamStartMs) ? streamStartMs : null,
-    };
-  }, [activityBucketing, streamStartMs, timestampScale]);
-  const activityBucketMinutes = activityTimeBuckets?.bucketMinutes ?? null;
-  const onActivityBucketMinutesChangeRef = useRef(onActivityBucketMinutesChange);
-  onActivityBucketMinutesChangeRef.current = onActivityBucketMinutesChange;
-  useEffect(() => {
-    onActivityBucketMinutesChangeRef.current?.(activityBucketMinutes);
-  }, [activityBucketMinutes]);
   const rollupMinuteTimestamps = useMemo(
     () => rollups.map((point) => point.minuteTs),
     [rollups],
@@ -1797,11 +1836,14 @@ function PulseMultiSignalChartInnerImpl({
   // Time-bucketed bars are built from the full-resolution minutes. The chart's
   // `rollups` can be a downsampled series (one row every 3–4 minutes on long
   // streams), and grouping those into 5-minute buckets would put one sample in
-  // each bar. Bar indices then refer to `activityBarRollups`.
-  const activityBarRollups = activityBucketing === "time" && detailRollups.length > 0
-    ? detailRollups
+  // each bar. They use every loaded minute, not the viewport's slice, so the
+  // bar pyramid is built once per data load. Bar indices then refer to
+  // `activityBarRollups`.
+  const activityBarRollups = activityBucketing === "time" && fullDetailRollups.length > 0
+    ? fullDetailRollups
     : rollups;
   const activityBarsUseDetail = activityBarRollups !== rollups;
+  const timeBucketed = activityBucketing === "time";
   const activityBarTimestamps = useMemo(
     () => activityBarsUseDetail
       ? activityBarRollups.map((point) => point.minuteTs)
@@ -1809,16 +1851,16 @@ function PulseMultiSignalChartInnerImpl({
     [activityBarRollups, activityBarsUseDetail, rollupMinuteTimestamps],
   );
   const activityBarChatValues = useMemo(
-    () => activityBarsUseDetail
+    () => activityBarsUseDetail || timeBucketed
       ? activityBarRollups.map((point) => (point.missing ? null : (point.chatCount ?? null)))
       : null,
-    [activityBarRollups, activityBarsUseDetail],
+    [activityBarRollups, activityBarsUseDetail, timeBucketed],
   );
   const activityBarEmoteValues = useMemo(
-    () => activityBarsUseDetail
+    () => activityBarsUseDetail || timeBucketed
       ? activityBarRollups.map((point) => (point.missing ? null : minuteEmoteTotal(point)))
       : null,
-    [activityBarRollups, activityBarsUseDetail],
+    [activityBarRollups, activityBarsUseDetail, timeBucketed],
   );
   const rollupTimesMs = useMemo(
     () => rollups.map((point) => Date.parse(point.minuteTs)),
@@ -1830,6 +1872,71 @@ function PulseMultiSignalChartInnerImpl({
       : rollupTimesMs,
     [activityBarRollups, activityBarsUseDetail, rollupTimesMs],
   );
+  // Every bar size, aggregated once per data load: [chat, emotes] averages,
+  // peaks and coverage for slots of 1, 2, 5 ... 240 minutes aligned to the
+  // stream start (the chart's own clock), so slot edges never move.
+  const activityBarLevels = useMemo<BarLevel[] | null>(() => {
+    if (!timeBucketed || !activityBarChatValues || !activityBarEmoteValues) return null;
+    const firstMs = activityBarTimesMs.find((value) => Number.isFinite(value));
+    const originMs = Number.isFinite(streamStartMs) ? streamStartMs : (firstMs ?? 0);
+    return buildBarPyramid(activityBarTimesMs, [activityBarChatValues, activityBarEmoteValues], 60_000, originMs);
+  }, [activityBarChatValues, activityBarEmoteValues, activityBarTimesMs, streamStartMs, timeBucketed]);
+  const activityBarDomain = useMemo(() => {
+    let first = Infinity;
+    let last = -Infinity;
+    for (const at of activityBarTimesMs) {
+      if (!Number.isFinite(at)) continue;
+      if (at < first) first = at;
+      if (at > last) last = at;
+    }
+    return Number.isFinite(first) ? { firstMs: first, endMs: last + 60_000 } : null;
+  }, [activityBarTimesMs]);
+  // The level on screen; a change needs the slot to clear the 5px floor by
+  // 15%, so an easing zoom crosses each level once.
+  const activityBarStepRef = useRef<number | null>(null);
+  const activityBarLevel = useMemo(() => {
+    if (!activityBarLevels) return null;
+    const spanMs = timestampScale.lastTimestampMs - timestampScale.firstTimestampMs;
+    const level = pickBarLevel(
+      activityBarLevels,
+      Number.isFinite(spanMs) && spanMs > 0 ? spanMs : 0,
+      timestampScale.plotWidth,
+      60_000,
+      activityBarStepRef.current,
+    );
+    activityBarStepRef.current = level?.step ?? null;
+    return level;
+  }, [activityBarLevels, timestampScale]);
+  const chatTimeBuckets = useMemo<ActivityTimeBucketing | null>(
+    () => (activityBarLevel ? { level: activityBarLevel, seriesIndex: 0 } : null),
+    [activityBarLevel],
+  );
+  const emoteTimeBuckets = useMemo<ActivityTimeBucketing | null>(
+    () => (activityBarLevel ? { level: activityBarLevel, seriesIndex: 1 } : null),
+    [activityBarLevel],
+  );
+  const activityBucketMinutes = activityBarLevel?.step ?? null;
+  const onActivityBucketMinutesChangeRef = useRef(onActivityBucketMinutesChange);
+  onActivityBucketMinutesChangeRef.current = onActivityBucketMinutesChange;
+  useEffect(() => {
+    onActivityBucketMinutesChangeRef.current?.(activityBucketMinutes);
+  }, [activityBucketMinutes]);
+  // A level change swaps bars at once; levels nest, so it reads as a split or
+  // a merge. The bar groups fade in briefly from 55% unless motion is off.
+  const barLevelEnterRef = useRef<{ step: number | null; entering: number | null }>({ step: null, entering: null });
+  if (barLevelEnterRef.current.step !== activityBucketMinutes) {
+    const previousStep = barLevelEnterRef.current.step;
+    barLevelEnterRef.current = {
+      step: activityBucketMinutes,
+      entering: previousStep != null && activityBucketMinutes != null && motionEnabled !== false ? activityBucketMinutes : null,
+    };
+  }
+  const barLevelEntering = barLevelEnterRef.current.entering != null
+    && barLevelEnterRef.current.entering === activityBucketMinutes;
+  const handleBarLevelEnterEnd = useCallback((event: { currentTarget: Element }) => {
+    event.currentTarget.classList.remove("is-level-enter");
+    barLevelEnterRef.current.entering = null;
+  }, []);
   /** Chart (`rollups`) index for an activity-bar source index. */
   const rollupIndexForActivityIndex = (index: number): number =>
     activityBarsUseDetail
@@ -2056,14 +2163,14 @@ function PulseMultiSignalChartInnerImpl({
       expandProgress,
       "peak",
       emoteMagnitudeBottom,
-      activityTimeBuckets,
+      emoteTimeBuckets,
     );
   }, [
     activityAxis,
     activityBarEmoteValues,
     activityBarTimestamps,
     activityLayout,
-    activityTimeBuckets,
+    emoteTimeBuckets,
     emoteMagnitudeBottom,
     emotesItem,
     expandProgress,
@@ -2274,13 +2381,13 @@ function PulseMultiSignalChartInnerImpl({
       expandProgress,
       "average",
       undefined,
-      activityTimeBuckets,
+      chatTimeBuckets,
     );
   }, [
     activityBarChatValues,
     activityBarTimestamps,
     activityLayout,
-    activityTimeBuckets,
+    chatTimeBuckets,
     chatItem,
     expandProgress,
     height,
@@ -2389,49 +2496,87 @@ function PulseMultiSignalChartInnerImpl({
   // Keep the dense, static SVG children referentially stable while hover and
   // preview chrome move. React can then skip reconciling hundreds of bars on
   // every distinct bucket transition.
+  // Time-bucketed bars: a slot with fewer measured minutes than it covers is
+  // faded by its share (never below 35%) and marked; a thin cap in the bar's
+  // colour marks a peak minute well above the slot average. Caps are sibling
+  // rects so every bar attribute stays on the bar rect itself.
   const emoteBarElements = useMemo(
-    () => emoteBarRects.map((bar) => (
-      <rect
-        key={bar.key}
-        x={bar.x}
-        y={bar.y}
-        width={bar.width}
-        height={bar.height}
-        rx={0}
-        data-activity-bar="emotes"
-        fill={CHART_THEME.emote.color}
-        opacity={seriesFocusOpacity(
-          "emotes",
-          (bar.hasValue
-            ? (bar.isSpike ? CHART_THEME.emote.barSpike : CHART_THEME.emote.bar)
-            : CHART_THEME.emote.barBaseline) * activityVisualBoost,
-        )}
-      />
-    )),
+    () => emoteBarRects.map((bar) => {
+      const opacity = seriesFocusOpacity(
+        "emotes",
+        (bar.hasValue
+          ? (bar.isSpike ? CHART_THEME.emote.barSpike : CHART_THEME.emote.bar)
+          : CHART_THEME.emote.barBaseline) * activityVisualBoost * timeBarOpacity(bar),
+      );
+      const rect = (
+        <rect
+          key={bar.key}
+          x={bar.x}
+          y={bar.y}
+          width={bar.width}
+          height={bar.height}
+          rx={0}
+          data-activity-bar="emotes"
+          data-bar-partial={bar.step != null && !bar.fullyObserved ? "true" : undefined}
+          fill={CHART_THEME.emote.color}
+          opacity={opacity}
+        />
+      );
+      return bar.cap ? [rect, (
+        <rect
+          key={`${bar.key}-peak`}
+          x={bar.x}
+          y={bar.cap.y}
+          width={bar.width}
+          height={bar.cap.height}
+          data-activity-bar-peak="emotes"
+          fill={CHART_THEME.emote.color}
+          opacity={opacity}
+          pointerEvents="none"
+        />
+      )] : rect;
+    }),
     [activityVisualBoost, emoteBarRects, seriesFocusOpacity],
   );
   const chatBarElements = useMemo(
-    () => chatWhisperBarRects.map((bar) => (
-      <rect
-        key={bar.key}
-        x={bar.x}
-        y={bar.y}
-        width={bar.width}
-        height={bar.height}
-        rx={0}
-        data-activity-bar="chat"
-        data-observed-ratio={bar.observedRatio.toFixed(3)}
-        data-range-length={bar.rangeLength}
-        fill={CHART_THEME.chat.color}
-        opacity={seriesFocusOpacity(
-          "chat",
-          (bar.hasValue
-            ? CHART_THEME.chat.whisperBar
-            : CHART_THEME.chat.whisperBar * 0.6)
-          * (bar.fullyObserved ? 1 : Math.max(0.35, bar.observedRatio)),
-        )}
-      />
-    )),
+    () => chatWhisperBarRects.map((bar) => {
+      const opacity = seriesFocusOpacity(
+        "chat",
+        (bar.hasValue
+          ? CHART_THEME.chat.whisperBar
+          : CHART_THEME.chat.whisperBar * 0.6)
+        * (bar.fullyObserved ? 1 : Math.max(0.35, bar.observedRatio)),
+      );
+      const rect = (
+        <rect
+          key={bar.key}
+          x={bar.x}
+          y={bar.y}
+          width={bar.width}
+          height={bar.height}
+          rx={0}
+          data-activity-bar="chat"
+          data-observed-ratio={bar.observedRatio.toFixed(3)}
+          data-range-length={bar.rangeLength}
+          data-bar-partial={bar.step != null && !bar.fullyObserved ? "true" : undefined}
+          fill={CHART_THEME.chat.color}
+          opacity={opacity}
+        />
+      );
+      return bar.cap ? [rect, (
+        <rect
+          key={`${bar.key}-peak`}
+          x={bar.x}
+          y={bar.cap.y}
+          width={bar.width}
+          height={bar.cap.height}
+          data-activity-bar-peak="chat"
+          fill={CHART_THEME.chat.color}
+          opacity={opacity}
+          pointerEvents="none"
+        />
+      )] : rect;
+    }),
     [chatWhisperBarRects, seriesFocusOpacity],
   );
   const perEmoteOverlayElements = useMemo(
@@ -2846,6 +2991,61 @@ function PulseMultiSignalChartInnerImpl({
     selectedRollup,
     streamStartedAt,
   ]);
+  // Readouts above 1-minute bars: the hovered and the pinned bar. The pointer
+  // names the bar it is over; a keyboard preview names the previewed minute's.
+  const activityBarFocus = useMemo<ActivityBarFocus | null>(() => {
+    const level = activityBarLevel;
+    if (!level || level.step <= 1 || !activityBarDomain) return null;
+    const summarize = (bucket: BarBucket | null): ActivityBarSummary | null => {
+      if (!bucket) return null;
+      const startMs = Math.max(bucket.startMs, activityBarDomain.firstMs);
+      const endMs = Math.min(bucket.startMs + level.slotMs, activityBarDomain.endMs);
+      const offset = (ms: number) => (Number.isFinite(streamStartMs) ? Math.max(0, Math.round((ms - streamStartMs) / 1000)) : null);
+      const lane = (k: number) => ((bucket.peakAt[k] ?? -1) >= 0 ? { avg: bucket.avg[k]!, peak: bucket.peak[k]! } : null);
+      return {
+        step: level.step,
+        startMs,
+        endMs,
+        startOffsetSeconds: offset(startMs),
+        endOffsetSeconds: offset(endMs),
+        observed: bucket.observed,
+        expected: bucket.expected,
+        partial: bucket.observed < bucket.expected,
+        chat: lane(0),
+        emotes: lane(1),
+      };
+    };
+    const atMs = (minuteTs: string | undefined) => (minuteTs ? Date.parse(minuteTs) : Number.NaN);
+    const bucketAt = (ms: number) => (Number.isFinite(ms) ? barBucketAt(level, ms) : null);
+    const hoverMinuteMs = atMs(hoverActivityRollup?.minuteTs ?? (hover != null ? rollups[hover]?.minuteTs : undefined));
+    const hoverBucket = pointerBarStartMs === undefined
+      ? bucketAt(hoverMinuteMs)
+      : pointerBarStartMs === null ? null : bucketAt(pointerBarStartMs);
+    const pinnedMs = typeof selectedOffsetSeconds === "number" && Number.isFinite(selectedOffsetSeconds) && Number.isFinite(streamStartMs)
+      ? streamStartMs + selectedOffsetSeconds * 1000
+      : atMs(selectedRollup?.minuteTs);
+    return { hover: summarize(hoverBucket), pinned: summarize(bucketAt(pinnedMs)) };
+  }, [
+    activityBarDomain,
+    activityBarLevel,
+    hover,
+    hoverActivityRollup,
+    pointerBarStartMs,
+    rollups,
+    selectedOffsetSeconds,
+    selectedRollup,
+    streamStartMs,
+  ]);
+  const activityBarFocusKey = activityBarFocus
+    ? `${activityBarFocus.hover?.step ?? ""}:${activityBarFocus.hover?.startMs ?? ""}|${activityBarFocus.pinned?.step ?? ""}:${activityBarFocus.pinned?.startMs ?? ""}`
+    : "";
+  const onActivityBarFocusChangeRef = useRef(onActivityBarFocusChange);
+  onActivityBarFocusChangeRef.current = onActivityBarFocusChange;
+  const activityBarFocusRef = useRef(activityBarFocus);
+  activityBarFocusRef.current = activityBarFocus;
+  useEffect(() => {
+    onActivityBarFocusChangeRef.current?.(activityBarFocusRef.current);
+  }, [activityBarFocusKey]);
   const pinBand = selectedMarkerX == null
     ? null
     : (activityBarsUseDetail ? activityBandForIndex(selectedActivityIndex) : null)
@@ -2977,6 +3177,21 @@ function PulseMultiSignalChartInnerImpl({
     const plotX = timestampScale.plotStartX + pct * timestampScale.plotWidth;
     const region = chartHitRegionAtX(hoverHitRegions, plotX);
     commitHover(region?.index ?? null, activityHoverAtPlotX(plotX));
+    notePointerBar(plotX);
+  }
+
+  /** Remembers which time-bucketed bar (above 1-minute bars) the pointer is over. */
+  function notePointerBar(plotX: number | null) {
+    let next: number | null | undefined = plotX == null ? undefined : null;
+    if (plotX != null && activityBarLevel && activityBarLevel.step > 1) {
+      const atMs = timestampScale.timestampAtX(plotX);
+      const bucket = atMs == null ? null : barBucketAt(activityBarLevel, atMs);
+      // Over the bar itself: its measured minutes, half a minute either side.
+      if (bucket && atMs! >= bucket.firstMs - 30_000 && atMs! <= bucket.lastMs + 30_000) next = bucket.startMs;
+    }
+    if (pointerBarStartRef.current === next) return;
+    pointerBarStartRef.current = next;
+    setPointerBarStartMs(next);
   }
 
   /**
@@ -3141,6 +3356,7 @@ function PulseMultiSignalChartInnerImpl({
     hoverActivityIndexRef.current = null;
     setHover(null);
     setHoverActivityIndex(null);
+    notePointerBar(null);
     onHoverRollupChange?.(null);
     onPreviewReactionMoment?.(null);
   }
@@ -3248,6 +3464,10 @@ function PulseMultiSignalChartInnerImpl({
         event.key === "-" ||
         event.key === "_" ||
         event.key === "0") &&
+      // Ctrl/Cmd + and - stay the browser's page zoom.
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey &&
       inferredDurationSeconds > 0
     ) {
       event.preventDefault();
@@ -3883,7 +4103,15 @@ function PulseMultiSignalChartInnerImpl({
           >
           {/* Dense emote bar histogram — always on, like chat whisper bars.
               Reaction windows live in the gutter below and never replace this. */}
-          {emoteBarElements}
+          {activityBucketMinutes != null ? (
+            <g
+              data-activity-bar-level={activityBucketMinutes}
+              className={barLevelEntering ? "is-level-enter" : undefined}
+              onAnimationEnd={handleBarLevelEnterEnd}
+            >
+              {emoteBarElements}
+            </g>
+          ) : emoteBarElements}
 
           {reactionBarRectsForChart.map((bar) => (
             <rect
@@ -3948,7 +4176,15 @@ function PulseMultiSignalChartInnerImpl({
           ) : null}
 
           {/* Chat whisper bars behind line */}
-          {chatBarElements}
+          {activityBucketMinutes != null ? (
+            <g
+              data-activity-bar-level={activityBucketMinutes}
+              className={barLevelEntering ? "is-level-enter" : undefined}
+              onAnimationEnd={handleBarLevelEnterEnd}
+            >
+              {chatBarElements}
+            </g>
+          ) : chatBarElements}
 
           {/* Chat line */}
           {chatLinePathD ? (
