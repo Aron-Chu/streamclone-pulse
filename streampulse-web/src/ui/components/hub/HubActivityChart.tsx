@@ -19,12 +19,23 @@ import './hub-public-audit.css'
 export type { HubActivityRangeOption, HubActivityRangeControl } from './HubRangeMenu'
 import type { HubActivityRangeControl } from './HubRangeMenu'
 
+/** Easing settles this long after the last input. */
+const NAVIGATOR_EASE_SETTLE_MS = 180
+/**
+ * Lands the plot on its target even when no animation frame runs: frames stop
+ * whenever the page is not painted (a background tab, an occluded or
+ * power-saving window), and the wheel input had already been taken from the
+ * page, so the chart looked like it ignored the wheel.
+ */
+const NAVIGATOR_EASE_SAFETY_MS = NAVIGATOR_EASE_SETTLE_MS + 120
+
 /** One visual viewport for the plot and navigator; input always updates its target immediately. */
 function useNavigatorViewport(target: HubChartNavigatorRange, gridKey: string, motionEnabled: boolean, reducedMotion: boolean) {
   const [viewport, setViewport] = useState(target)
   const current = useRef(target)
   const latest = useRef(target)
   const frame = useRef<number | null>(null)
+  const safety = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastFrame = useRef(0)
   const lastInput = useRef(0)
   const previousGrid = useRef(gridKey)
@@ -32,6 +43,8 @@ function useNavigatorViewport(target: HubChartNavigatorRange, gridKey: string, m
   const stop = useCallback((range: HubChartNavigatorRange) => {
     if (frame.current != null) window.cancelAnimationFrame(frame.current)
     frame.current = null
+    if (safety.current != null) clearTimeout(safety.current)
+    safety.current = null
     current.current = range
     latest.current = range
     setViewport(range)
@@ -48,6 +61,8 @@ function useNavigatorViewport(target: HubChartNavigatorRange, gridKey: string, m
     }
     if (current.current.startIndex === target.startIndex && current.current.endIndex === target.endIndex) return
     lastInput.current = performance.now()
+    if (safety.current != null) clearTimeout(safety.current)
+    safety.current = setTimeout(() => stop(latest.current), NAVIGATOR_EASE_SAFETY_MS)
     // Retarget the running easing instead of restarting it for every wheel event.
     if (frame.current != null) return
     lastFrame.current = lastInput.current
@@ -56,7 +71,7 @@ function useNavigatorViewport(target: HubChartNavigatorRange, gridKey: string, m
       lastFrame.current = now
       const alpha = 1 - Math.exp(-elapsed / 36)
       const destination = latest.current
-      const settled = now - lastInput.current >= 180
+      const settled = now - lastInput.current >= NAVIGATOR_EASE_SETTLE_MS
       const next = settled ? destination : {
         startIndex: current.current.startIndex + (destination.startIndex - current.current.startIndex) * alpha,
         endIndex: current.current.endIndex + (destination.endIndex - current.current.endIndex) * alpha,
@@ -64,6 +79,10 @@ function useNavigatorViewport(target: HubChartNavigatorRange, gridKey: string, m
       current.current = next
       setViewport(next)
       frame.current = settled ? null : window.requestAnimationFrame(tick)
+      if (settled && safety.current != null) {
+        clearTimeout(safety.current)
+        safety.current = null
+      }
     }
     frame.current = window.requestAnimationFrame(tick)
   }, [target.startIndex, target.endIndex, gridKey, motionEnabled, reducedMotion, stop])
@@ -71,6 +90,8 @@ function useNavigatorViewport(target: HubChartNavigatorRange, gridKey: string, m
   useEffect(() => () => {
     if (frame.current != null) window.cancelAnimationFrame(frame.current)
     frame.current = null
+    if (safety.current != null) clearTimeout(safety.current)
+    safety.current = null
   }, [])
 
   return { viewport, jumpTo: stop }
@@ -2022,22 +2043,24 @@ export function HubActivityChart({
             </div>
           </div>
         </div>
+        {/* The readout, sliders and labels state the committed view at once, as
+            on the stream chart; only the purple window eases with the plot. */}
         <HubChartNavigator
           pointCount={chartPoints.length}
-          startIndex={viewportStartIndex}
-          endIndex={viewportEndIndex}
+          startIndex={navigatorBounds.startIndex}
+          endIndex={navigatorBounds.endIndex}
           controlRange={navigatorBounds}
           visualRange={viewportBounds}
           focusIndex={selectedIndex >= 0 ? selectedIndex : accentIndex >= 0 ? accentIndex : null}
           selectedIndex={selectedIndex >= 0 ? selectedIndex : null}
           startLabel={formatNavigatorTick(
-            chartPoints[viewportStartIndex]?.t ?? 0,
-            chartPoints[viewportEndIndex]?.t ?? lastT,
+            chartPoints[navigatorBounds.startIndex]?.t ?? 0,
+            chartPoints[navigatorBounds.endIndex]?.t ?? lastT,
             windowMinutes,
           )}
           endLabel={formatNavigatorTick(
-            chartPoints[viewportEndIndex]?.t ?? 0,
-            chartPoints[viewportStartIndex]?.t ?? lastT,
+            chartPoints[navigatorBounds.endIndex]?.t ?? 0,
+            chartPoints[navigatorBounds.startIndex]?.t ?? lastT,
             windowMinutes,
           )}
           presets={navigatorPresets}

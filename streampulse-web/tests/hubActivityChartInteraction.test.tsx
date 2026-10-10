@@ -72,6 +72,15 @@ function controlAnimationFrames() {
   }
 }
 
+/**
+ * The range the plot shows (eased). The navigator readout states the committed
+ * range at once; the plot and the purple window ease to it.
+ */
+function plotWindow(container: HTMLElement): string {
+  const stack = container.querySelector('.hx-plot-stack')
+  return `${stack?.getAttribute('data-hub-chart-viewport-start')}:${stack?.getAttribute('data-hub-chart-viewport-end')}`
+}
+
 describe('HubActivityChart interaction contract', () => {
   it('exposes an interactive chart group with hidden geometry and accessible 44px marker controls', () => {
     const onSelect = vi.fn()
@@ -387,7 +396,7 @@ describe('HubActivityChart interaction contract', () => {
     expect(navigator.querySelector('[data-hub-chart-preset]')).toBeNull()
     fireEvent.keyDown(start, { key: 'ArrowRight' })
     await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('1:5'))
-    expect(container.querySelector('.hx-plot-stack')?.getAttribute('data-hub-chart-viewport-start')).toBe('1')
+    await waitFor(() => expect(container.querySelector('.hx-plot-stack')?.getAttribute('data-hub-chart-viewport-start')).toBe('1'))
     expect(onRangeSelect).not.toHaveBeenCalled()
     fireEvent.keyDown(start, { key: 'Escape' })
     await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:5'))
@@ -424,8 +433,8 @@ describe('HubActivityChart interaction contract', () => {
     fireEvent.click(zoomIn)
     await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('4:11'))
     expect(navigator.textContent).toContain('8 of 16 buckets')
-    expect(chatBars().map(bar => Number(bar.getAttribute('data-bar-t')))).toEqual(navigatorPoints.slice(4, 12).map(point => point.t))
-    expect(Number.parseFloat(chatBars()[0].querySelector('rect')!.getAttribute('width')!)).toBeCloseTo(fullBarWidth * 2)
+    await waitFor(() => expect(chatBars().map(bar => Number(bar.getAttribute('data-bar-t')))).toEqual(navigatorPoints.slice(4, 12).map(point => point.t)))
+    await waitFor(() => expect(Number.parseFloat(chatBars()[0].querySelector('rect')!.getAttribute('width')!)).toBeCloseTo(fullBarWidth * 2))
     fireEvent.click(zoomIn)
     await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('6:9'))
     fireEvent.click(zoomOut)
@@ -502,10 +511,13 @@ describe('HubActivityChart interaction contract', () => {
     await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:5'))
     const zoom = dispatchWheelEvent(chart, { deltaY: -120, deltaX: 0, deltaMode: 0, clientX: 250, altKey: true })
     expect(zoom.defaultPrevented).toBe(true)
-    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('1:4'))
+    // The readout states the committed view at once; the plot eases to it.
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('1:4')
+    await waitFor(() => expect(plotWindow(container)).toBe('1:4'))
     const pan = dispatchWheelEvent(track, { deltaY: 120, deltaX: 0, deltaMode: 0, shiftKey: true, clientX: 250 })
     expect(pan.defaultPrevented).toBe(true)
-    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('2:5'))
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('2:5')
+    await waitFor(() => expect(plotWindow(container)).toBe('2:5'))
     const browserZoom = dispatchWheelEvent(chart, { deltaY: -120, ctrlKey: true, clientX: 250 })
     expect(browserZoom.defaultPrevented).toBe(false)
     await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('2:5'))
@@ -612,14 +624,20 @@ describe('HubActivityChart viewport motion', () => {
     Object.defineProperty(chart, 'getBoundingClientRect', { configurable: true, value: () => rect })
     fireEvent.click(getByRole('button', { name: 'Scroll zoom' }))
     expect(dispatchWheelEvent(chart, { deltaY: -120, clientX: 250 }).defaultPrevented).toBe(true)
-    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:15')
-    frames.step(16)
+    // The readout and sliders state the committed view at once (as on the
+    // stream chart); the purple window and the plot have not moved yet.
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('2:13')
+    expect(navigator.querySelector('.hx-chart-navigator__bucket-count')?.textContent).toBe('12 of 16 buckets')
     const window = navigator.querySelector('.hx-chart-navigator__window') as HTMLElement
+    expect(Number.parseFloat(window.style.left)).toBe(0)
+    expect(plotWindow(container)).toBe('0:15')
+    frames.step(16)
+    const visualStart = Number.parseFloat(window.style.left) / 100 * 15
     const visualSpan = Number.parseFloat(window.style.width) / 100 * 15
     const bar = container.querySelector(`[data-bar-t="${motionPoints[5].t}"] .hx-chat-bar`) as SVGRectElement
     expect(Number.parseFloat(bar.getAttribute('width')!)).toBeCloseTo(72 / (visualSpan + 1))
-    const stack = container.querySelector('.hx-plot-stack')!
-    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe(`${stack.getAttribute('data-hub-chart-viewport-start')}:${stack.getAttribute('data-hub-chart-viewport-end')}`)
+    // The purple window and the plot ease together.
+    expect(plotWindow(container)).toBe(`${Math.floor(visualStart + 1e-9)}:${Math.ceil(visualStart + visualSpan - 1e-9)}`)
     expect(Number.parseFloat(window.style.left)).toBeGreaterThan(0)
     expect(Number.parseFloat(window.style.width)).toBeGreaterThan(11 / 15 * 100)
     act(() => {
@@ -627,14 +645,34 @@ describe('HubActivityChart viewport motion', () => {
       chart.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -120, clientX: 250 }))
     })
     expect(frames.pending.size).toBe(1)
-    frames.step(180)
     // 16 -> 12 -> 9 -> 7 buckets. Composing against the still-moving visual
     // span would incorrectly repeat the first step.
     expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('5:11')
+    frames.step(180)
+    expect(plotWindow(container)).toBe('5:11')
     expect(frames.pending.size).toBe(0)
     expect(onRangeSelect).not.toHaveBeenCalled()
     expect(onBucketSelect).not.toHaveBeenCalled()
     expect(container.querySelector('.hx-hover-status')?.textContent).not.toContain('outside the zoomed view')
+  })
+
+  it('lands the plot on the wheel-zoomed view even when no animation frame ever runs', async () => {
+    // Frames stop while a page is not painted (background tab, occluded or
+    // power-saving window). The wheel was already taken from the page, so the
+    // plot must still arrive instead of looking like it ignored the wheel.
+    const frames = controlAnimationFrames()
+    const { container, getByRole } = render(<HubActivityChart points={motionPoints} windowMinutes={16} channelCount={1} />)
+    const navigator = container.querySelector('[data-hub-chart-navigator]') as HTMLElement
+    const chart = container.querySelector('[data-hub-chart-wheel-surface]') as HTMLElement
+    Object.defineProperty(chart, 'getBoundingClientRect', { configurable: true, value: () => rect })
+    fireEvent.click(getByRole('button', { name: 'Scroll zoom' }))
+    expect(dispatchWheelEvent(chart, { deltaY: -120, clientX: 250 }).defaultPrevented).toBe(true)
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('2:13')
+    expect(navigator.querySelector('.hx-chart-navigator__readout strong')?.textContent).toBe('Zoomed view')
+    expect(frames.pending.size).toBe(1)
+    await waitFor(() => expect(plotWindow(container)).toBe('2:13'), { timeout: 2000 })
+    const window = navigator.querySelector('.hx-chart-navigator__window') as HTMLElement
+    expect(Number.parseFloat(window.style.left)).toBeCloseTo(2 / 15 * 100)
   })
 
   it('cancels easing at the visible interval for a direct drag, reset and range change', () => {
