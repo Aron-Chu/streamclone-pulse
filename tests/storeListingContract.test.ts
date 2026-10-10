@@ -56,4 +56,23 @@ describe('Chrome Web Store listing copy (0.2.2)', () => {
       expect(png.readUInt32BE(20)).toBe(800)
     }
   })
+
+  it('answers privacy practices for the linked-account path the package contains', () => {
+    // A linked (invited-tester) account saves bookmarks to /v1/pulse/bookmarks and,
+    // with sync on, watched history to the account; linking needs no extension update.
+    const privacy = section('## Privacy practices (dashboard) for 0.2.2')
+    expect(privacy).toMatch(/\| User activity \| \*\*Yes\*\* \(only with a linked account\) \|/)
+    expect(privacy).not.toMatch(/never uploaded in 0\.2\.2/)
+    const storage = section('### storage')
+    expect(storage).not.toContain('Nothing in local storage is synced or uploaded')
+    expect(storage).toContain('unless you link a StreamPulse account')
+  })
+
+  it('justifies scripting with the injections the extension actually makes', () => {
+    const scripting = section('### scripting')
+    expect(scripting).toContain('gql.twitch.tv')
+    expect(scripting).toContain('content/supporter-card.js')
+    expect(scripting).toContain('channel avatar')
+    expect(scripting).toContain('does not need this permission')
+  })
 })

@@ -10,7 +10,7 @@
 import { test, expect } from '../helpers/testFixtures.ts'
 import { waitForPulseRoot, assertPulseShadowContains, PULSE_ROOT_ID } from '../helpers/assertions.ts'
 import { openTwitchChannel, openTwitchVod } from '../helpers/mockTwitch.ts'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -136,6 +136,45 @@ async function writeExactStoreShot(page: import('@playwright/test').Page, filena
   writeFileSync(join(OUT, filename), exact)
 }
 
+/**
+ * Frame 03's past broadcast: the vod-ready fixture stretched to a whole
+ * three-hour stream, so the header's date, length and category, the recap and
+ * the chart all describe the same broadcast. Synthetic data on the fixture
+ * channel; only this frame uses it.
+ */
+function replayStoreVod(): Record<string, unknown> {
+  const base = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../fixtures/api/vod-ready.json'), 'utf8')) as Record<string, unknown>
+  const minutes = 180
+  const wave = (minute: number, period: number, phase: number) => (Math.sin((minute / period) * Math.PI * 2 + phase) + 1) / 2
+  const spikes = new Map([[38, 2.6], [97, 3.4], [151, 2.2]])
+  const points = Array.from({ length: minutes }, (_, index) => {
+    const minute = index + 1
+    const lift = spikes.get(minute) ?? spikes.get(minute - 1) ?? spikes.get(minute + 1) ?? 1
+    const chat = Math.round((34 + 22 * wave(minute, 23, 0.4) + 8 * wave(minute, 7, 1.3)) * lift)
+    return {
+      offsetSeconds: minute * 60,
+      chatPerMin: chat,
+      emotesPerMin: Math.round(chat * (0.32 + 0.12 * wave(minute, 11, 2.1))),
+      viewers: Math.round(1180 + 520 * Math.min(1, minute / 40) - 140 * wave(minute, 61, 0.2)),
+      score: Math.min(100, Math.round(chat / 1.6)),
+    }
+  })
+  const moment = (offsetSeconds: number, label: string) => {
+    const point = points[offsetSeconds / 60 - 1]!
+    return { offsetSeconds, label, reason: 'emote burst', score: point.score, chatPerMin: point.chatPerMin, emotesPerMin: point.emotesPerMin }
+  }
+  return {
+    ...base,
+    durationSeconds: minutes * 60,
+    timeline: { bucketSeconds: 60, points },
+    topMoments: [moment(97 * 60, 'Chat spike'), moment(38 * 60, 'Emote burst'), moment(151 * 60, 'Chat spike')],
+    games: [
+      { gameName: 'Just Chatting', offsetSeconds: 0, durationSeconds: 70 * 60 },
+      { gameName: 'Minecraft', offsetSeconds: 70 * 60, durationSeconds: 110 * 60 },
+    ],
+  }
+}
+
 async function scrollPulsePanel(page: import('@playwright/test').Page, progress: number) {
   await page.evaluate(
     ({ rootId, p }) => {
@@ -226,9 +265,12 @@ test.describe('CWS extension-on-Twitch screenshots', () => {
         sidebarTab: 'pulse',
       },
     })
+    const vod = replayStoreVod()
+    await extension.page.context().route('https://api.streampulse.stream/v1/extension/pulse/vods/**', route => route.fulfill({ status: 200, json: vod }))
     await openTwitchVod(extension.page)
     await waitForPulseRoot(extension.page, 30_000)
-    await assertPulseShadowContains(extension.page, /Pulse|VOD|Replay|Past streams|Chat|STREAM RECAP|Peak/i)
+    await assertPulseShadowContains(extension.page, /Minecraft/)
+  
     await addCaption(extension.page, 'Recaps for past streams', 'Replay Pulse charts the chat and emotes of a broadcast StreamPulse tracked.')
     await writeExactStoreShot(extension.page, '03-vod-replay.png')
   })
@@ -251,11 +293,12 @@ test.describe('CWS extension-on-Twitch screenshots', () => {
     await expect(root.getByRole('heading', { name: 'Quick settings' })).toBeVisible()
     const card = root.locator('[data-settings-host-cta="supporter"]')
     await expect(card).toBeVisible()
-    // The Supporter card's chat stage is scripted motion: wait until your own
-    // line (crest and paint) has arrived, then let its entrance settle.
-    await expect(card.locator('.spk-sup').first()).toBeVisible({ timeout: 30_000 })
+    // The Supporter card's stage is scripted motion: wait until the crest has
+    // landed (.spk-you, the Crown pile; .spk-sup on builds before it), then
+    // let it settle.
+    await expect(card.locator('.spk-you, .spk-sup').first()).toBeVisible({ timeout: 30_000 })
     await extension.page.waitForTimeout(900)
-    await addCaption(extension.page, 'Settings one click away', 'See what Pulse is charting, and preview Pulse Supporter cosmetics. Sign-ups are not open yet.')
+    await addCaption(extension.page, 'Settings one click away', 'See what Pulse is charting, and preview Supporter cosmetics only you see, never in chat. Sign-ups are not open yet.')
     await writeExactStoreShot(extension.page, '04-quick-settings.png')
   })
 
