@@ -85,7 +85,8 @@ function HistoryBody({ entry }: { entry: ReleaseEntry }) {
   const categories = (Object.keys(CATEGORY_LABELS) as Array<keyof typeof CATEGORY_LABELS>)
     .map(key => ({ key, label: CATEGORY_LABELS[key], items: entry[key] ?? [] }))
     .filter(category => category.items.length > 0)
-  const details = releaseLink(entry.links?.details)
+  // Release details only for a published version, at its own entry on the site's changelog (#v0.2.1).
+  const details = entry.status === 'released' ? releaseLink(entry.links?.details) : undefined
   const support = releaseLink(entry.links?.support)
 
   return (
@@ -101,7 +102,7 @@ function HistoryBody({ entry }: { entry: ReleaseEntry }) {
       ))}
       {details || support ? (
         <div className="pulse-changelog-links">
-          {details ? <a href={details} target="_blank" rel="noreferrer">Release details ↗</a> : null}
+          {details ? <a href={`${details}#v${entry.version}`} target="_blank" rel="noreferrer">Release details ↗</a> : null}
           {support ? <a href={support} target="_blank" rel="noreferrer">Support ↗</a> : null}
         </div>
       ) : null}
