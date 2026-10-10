@@ -1089,9 +1089,6 @@ function PulseOverviewChartImpl({
   const markerFade = motionEnabled
     ? `opacity ${MARKER_FADE_MS}ms ${MARKER_FADE_EASING}`
     : undefined
-  // A level change swaps bars at once (levels nest, so it reads as a split or
-  // merge); the new set fades up briefly unless motion is off.
-  const barLevelClassName = motionEnabled ? 'pulse-bar-level' : undefined
   const overviewPathClassName = 'pulse-chart-overview-path'
   const detailPathClassName = 'pulse-chart-detail-path'
   const interactionLayerOpacity = activeIndex != null || highlightedGamePlotBounds != null ? 1 : 0
@@ -1242,6 +1239,16 @@ function PulseOverviewChartImpl({
     ? pickBarLevel(barLevels, (barColumns[n - 1]![1] - 60 - barColumns[0]![0]) * 1000, plotWidth, 60_000, barStepRef.current)
     : null
   barStepRef.current = barLevel?.step ?? null
+  // A level change swaps bars at once (levels nest, so it reads as a split or
+  // merge). A lone change fades the new set up briefly; changes in quick
+  // succession (a wheel burst) skip the fade, which would repaint the bars on
+  // every frame of the burst. No fade when motion is off.
+  const barLevelChangeRef = useRef({ step: 0, at: -Infinity, fade: false })
+  if (barLevel && barLevel.step !== barLevelChangeRef.current.step) {
+    const at = performance.now()
+    barLevelChangeRef.current = { step: barLevel.step, at, fade: at - barLevelChangeRef.current.at > 400 }
+  }
+  const barLevelClassName = motionEnabled && barLevelChangeRef.current.fade ? 'pulse-bar-level' : undefined
   const visibleBars = useMemo(() => {
     if (!barLevel || n === 0) return []
     const [from, to] = barLevelRange(barLevel, barColumns[0]![0] * 1000, barColumns[n - 1]![1] * 1000 - 1)
@@ -1283,14 +1290,17 @@ function PulseOverviewChartImpl({
       lane(0, chatBarAxisMax, chatLaneBottom, chatLaneHeight),
     ]
   }, [visibleBars, barColumns, barLevel, n, plotWidth, emoteBarAxisMax, emoteLaneBottom, emoteLaneHeight, chatBarAxisMax, chatLaneBottom, chatLaneHeight])
-  // Hover and keyboard preview pick the bar under their column's middle; a
-  // pin or list preview picks the bar holding its own minute.
+  // Hover and keyboard preview pick the bar under their column's middle (or
+  // their drawn minute), fixed when the hover lands, so a wheel zoom under a
+  // still pointer keeps the same bar; a pin or list preview picks the bar
+  // holding its own minute.
+  const hoverBarTimesRef = useRef<[number, number | undefined] | null>(null)
   const barAt = (seconds: number | undefined): BarBucket | null =>
     seconds == null || !barLevel ? null : barBucketAt(barLevel, seconds * 1000)
   const pinBar = pinIndex == null ? null : barAt(sourceRollups[selectedIndex!]?.offsetSeconds)
-  const hoverColumn = hoveredBucketIndex == null ? undefined : barColumns[hoveredBucketIndex]
-  const activeBucket = hoverColumn
-    ? barAt((hoverColumn[0] + hoverColumn[1]) / 2) ?? barAt(visibleRollups[hoveredBucketIndex!]?.offsetSeconds)
+  const hoverTimes = hoveredBucketIndex == null ? null : hoverBarTimesRef.current
+  const activeBucket = hoverTimes
+    ? barAt(hoverTimes[0]) ?? barAt(hoverTimes[1])
     : pinIndex != null
       ? pinBar
       : listPreviewIndex == null ? null : barAt(sourceRollups[previewIndex!]?.offsetSeconds)
@@ -1317,8 +1327,13 @@ function PulseOverviewChartImpl({
   }, [activeBar, barLevel, barSource])
 
   // Live render values for imperative chrome updates (hover runs outside React).
-  const chromeStateRef = useRef({ visibleRollups, n, plotWidth })
-  chromeStateRef.current = { visibleRollups, n, plotWidth }
+  const chromeStateRef = useRef({ visibleRollups, n, plotWidth, barColumns })
+  chromeStateRef.current = { visibleRollups, n, plotWidth, barColumns }
+  const holdHoverBar = (index: number | null): void => {
+    const { barColumns: columns, visibleRollups: points } = chromeStateRef.current
+    const column = index == null ? undefined : columns[index]
+    hoverBarTimesRef.current = column ? [(column[0] + column[1]) / 2, points[index!]?.offsetSeconds] : null
+  }
   // The imperative hover layer writes bar-group opacity directly. It must know
   // about a committed pin, otherwise clearing hover hides a lane that React
   // still considers visible — and React will not repair it, because the
@@ -1527,6 +1542,7 @@ function PulseOverviewChartImpl({
     const index = indexForPointer(pending.clientX, pending.clientY, bounds)
     if (hoverIndexRef.current === index) return
     hoverIndexRef.current = index
+    holdHoverBar(index)
     setHoveredBucketIndex(index)
     applyInspectionDOM(index)
     const offset =
@@ -1603,6 +1619,7 @@ function PulseOverviewChartImpl({
     }
     pendingHoverTargetRef.current = null
     hoverIndexRef.current = next
+    holdHoverBar(next)
     setHoveredBucketIndex(next)
     applyInspectionDOM(next)
     onHoverOffsetChange?.(visibleRollups[next]?.offsetSeconds ?? null)
