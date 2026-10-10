@@ -130,8 +130,9 @@ export function handleMyMoments(message: MyMomentsRequest, sender: chrome.runtim
         return { type: 'MOMENT_CAPTURE', enabled: data.preferences.captureHistory, epoch: data.epoch }
       }
       const ref = message.reference
-      const path = new URL(sender.tab?.url ?? 'https://invalid/').pathname
-      if (path !== `/videos/${ref.vodId}` && path !== `/${ref.channel}`) throw new Error('Source changed')
+      // The page the jump was watched on: its channel (any capitals, trailing slash) or the VOD it names.
+      const path = new URL(sender.tab?.url ?? 'https://invalid/').pathname.replace(/\/+$/, '').toLowerCase()
+      if (path !== `/videos/${ref.vodId}` && path !== `/${ref.channel.toLowerCase()}`) throw new Error('Source changed')
       await assertScope(scope)
       await personalTransaction(scope, data => recordWatched(data, { ...ref, id: identity(ref), note: '' }, message.epoch, Date.now()))
       return { ok: true }
