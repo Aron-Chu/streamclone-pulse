@@ -16,7 +16,8 @@ describe('PulseSettingsPanel quick workspace', () => {
   it('keeps everyday controls inline and the three-item changelog collapsed by default', () => {
     const html = renderToStaticMarkup(<PulseSettingsPanel />)
     expect(html).toContain('Refresh live data automatically')
-    expect(html).toContain('Auto-update')
+    // The label says what it does; no hint repeats it.
+    expect(html).not.toContain('Auto-update activity')
     expect(html).toContain('Accent')
     expect(html).toContain('Appearance preview')
     expect(html).toContain('data-appearance-preview="true"')

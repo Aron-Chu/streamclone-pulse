@@ -30,6 +30,8 @@ describe('parseBackgroundRequest', () => {
       type: 'OPEN_SETTINGS_HOST',
       section: 'updates',
     })
+    // A place inside a section: Pulse with Background & motion open.
+    expect(parseBackgroundRequest({ type: 'OPEN_SETTINGS_HOST', section: 'pulse-background' })).toEqual({ type: 'OPEN_SETTINGS_HOST', section: 'pulse-background' })
     expect(parseBackgroundRequest({
       type: 'GET_PULSE_VOD',
       vodId: '2806037629',

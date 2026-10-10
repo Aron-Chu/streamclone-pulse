@@ -254,7 +254,7 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
       // a caller-controlled destination into this content-script-reachable action.
       if ('url' in raw || 'path' in raw || 'target' in raw) return null
       const section =
-        raw.section === 'moments' || raw.section === 'pulse' || raw.section === 'supporter' || raw.section === 'privacy' || raw.section === 'updates' || raw.section === 'developer'
+        raw.section === 'moments' || raw.section === 'pulse' || raw.section === 'supporter' || raw.section === 'privacy' || raw.section === 'updates' || raw.section === 'developer' || raw.section === 'pulse-background'
           ? raw.section
           : raw.section == null ? undefined : null
       if (section === null) return null

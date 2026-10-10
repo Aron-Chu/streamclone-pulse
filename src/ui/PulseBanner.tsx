@@ -87,9 +87,18 @@ export function PulseBannerControls({ expanded = false, perks }: { expanded?: bo
   const [draft, setDraft] = useState(banner.value)
   const id = useId()
   useEffect(() => setDraft(banner.value), [banner.value])
+  // "Edit background in all settings" opens #pulse-background: expand this and bring it into view.
+  const ref = useRef<HTMLDetailsElement>(null)
+  useEffect(() => {
+    const details = ref.current
+    if (!details || window.location.hash !== '#pulse-background') return
+    details.open = true
+    details.scrollIntoView?.({ block: 'start' })
+    details.querySelector<HTMLElement>('summary')?.focus({ preventScroll: true })
+  }, [])
   // Without perks, Reset clears only what this person may change: the title.
   const reset = perks ? DEFAULT_PULSE_BANNER : { ...DEFAULT_PULSE_BANNER, mode: banner.value.mode, intensity: banner.value.intensity }
-  return <details className="pulse-banner-customize" open={expanded || undefined} style={bannerThemeVariables} data-supporter-perks={perks ? 'on' : perks === false ? 'locked' : 'pending'}>
+  return <details ref={ref} className="pulse-banner-customize" open={expanded || undefined} style={bannerThemeVariables} data-supporter-perks={perks ? 'on' : perks === false ? 'locked' : 'pending'}>
     <summary>Background &amp; motion</summary>
     <form onSubmit={event => { event.preventDefault(); void banner.save(draft) }}>
       <div className="pulse-personal-panel pulse-background-preview" data-appearance-preview="true" aria-label="Appearance preview" style={{ ...streamPulseHeaderChromeSidebar, minHeight: 112 }}>

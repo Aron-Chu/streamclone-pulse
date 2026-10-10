@@ -55,9 +55,11 @@ test('quick settings opens on the channel, then Supporter and live controls, wit
   await panel.locator('[data-banner-editor-cta="true"]').click()
   const settings = await opened
   await settings.waitForLoadState('domcontentloaded')
-  expect(settings.url()).toContain('#pulse')
+  expect(settings.url()).toContain('#pulse-background')
   await expect(settings.locator('.pulse-banner-customize')).toBeVisible()
-  await settings.locator('.pulse-banner-customize summary').click()
+  // Background & motion opens by itself and scrolls into view.
+  await expect(settings.locator('.pulse-banner-customize')).toHaveJSProperty('open', true)
+  await expect(settings.locator('.pulse-banner-customize summary')).toBeInViewport()
   await expect(settings.getByRole('group', { name: '7TV backdrop' }).getByRole('button')).toHaveCount(3)
 })
 
