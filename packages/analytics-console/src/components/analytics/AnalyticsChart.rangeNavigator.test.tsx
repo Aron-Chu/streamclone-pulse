@@ -78,43 +78,50 @@ const viewportOf = (container: HTMLElement) => {
 }
 
 describe('session navigator mapping', () => {
-  it('counts whole minutes and round-trips the full stream', () => {
-    expect(sessionNavigatorPointCount(91 * 60, 0)).toBe(91)
-    const full = sessionNavigatorRangeForViewport({ startSeconds: 0, endSeconds: 91 * 60 }, 91 * 60, 0)
+  // The plot ends on the start of its last minute, so a 91-minute stream
+  // (minutes 0..90) spans 90 * 60 seconds and has 91 steps, one per minute.
+  it('counts the plotted minutes and round-trips the full stream', () => {
+    expect(sessionNavigatorPointCount(90 * 60, 0)).toBe(91)
+    const full = sessionNavigatorRangeForViewport({ startSeconds: 0, endSeconds: 90 * 60 }, 90 * 60, 0)
     expect(full).toEqual({ startIndex: 0, endIndex: 90 })
-    expect(sessionViewportForNavigatorRange(full, 91 * 60, 0)).toEqual({ startSeconds: 0, endSeconds: 91 * 60 })
+    expect(sessionViewportForNavigatorRange(full, 90 * 60, 0)).toEqual({ startSeconds: 0, endSeconds: 90 * 60 })
   })
 
-  it('maps a zoomed window to the minutes it contains and back', () => {
-    const range = sessionNavigatorRangeForViewport({ startSeconds: 600, endSeconds: 1500 }, 91 * 60, 0)
-    expect(range).toEqual({ startIndex: 10, endIndex: 24 })
-    expect(sessionViewportForNavigatorRange(range, 91 * 60, 0)).toEqual({ startSeconds: 600, endSeconds: 1500 })
+  it('maps a zoomed window to the minutes at its edges and back, so the purple window spans what the plot shows', () => {
+    const range = sessionNavigatorRangeForViewport({ startSeconds: 600, endSeconds: 1500 }, 90 * 60, 0)
+    expect(range).toEqual({ startIndex: 10, endIndex: 25 })
+    expect(sessionViewportForNavigatorRange(range, 90 * 60, 0)).toEqual({ startSeconds: 600, endSeconds: 1500 })
+    // Window position on the track (index / last index) equals the plot's share of the domain.
+    const pointCount = sessionNavigatorPointCount(90 * 60, 0)
+    expect(range.startIndex / (pointCount - 1)).toBeCloseTo(600 / (90 * 60))
+    expect(range.endIndex / (pointCount - 1)).toBeCloseTo(1500 / (90 * 60))
   })
 
   it('counts from the first charted minute and clamps offsets', () => {
-    expect(sessionNavigatorPointCount(3600, 600)).toBe(50)
+    expect(sessionNavigatorPointCount(3600, 600)).toBe(51)
     expect(sessionNavigatorIndexForOffset(605, 3600, 600)).toBe(0)
-    expect(sessionNavigatorIndexForOffset(10_000, 3600, 600)).toBe(49)
+    expect(sessionNavigatorIndexForOffset(10_000, 3600, 600)).toBe(50)
     expect(sessionNavigatorIndexForOffset(null, 3600, 600)).toBeNull()
   })
 
   it('offers the hub-style one-click zoom sizes by stream length', () => {
-    // Two hours or less: 15m first, then 1h (a 2h stream is 120 steps).
+    // A view m minutes long holds m + 1 minute steps.
+    // Two hours or less: 15m first, then 1h (a 2h stream is 121 steps).
     expect(sessionNavigatorPresets(2 * 3600, 0)).toEqual([
-      { label: '15m', pointCount: 15 },
-      { label: '1h', pointCount: 60 },
+      { label: '15m', pointCount: 16 },
+      { label: '1h', pointCount: 61 },
     ])
     // Longer streams: 1h first, then 4h when it still fits.
-    expect(sessionNavigatorPresets(3 * 3600, 0)).toEqual([{ label: '1h', pointCount: 60 }])
+    expect(sessionNavigatorPresets(3 * 3600, 0)).toEqual([{ label: '1h', pointCount: 61 }])
     expect(sessionNavigatorPresets(12 * 3600, 0)).toEqual([
-      { label: '1h', pointCount: 60 },
-      { label: '4h', pointCount: 240 },
+      { label: '1h', pointCount: 61 },
+      { label: '4h', pointCount: 241 },
     ])
     // A preset that is not smaller than the whole navigator is dropped.
-    expect(sessionNavigatorPresets(45 * 60, 0)).toEqual([{ label: '15m', pointCount: 15 }])
-    expect(sessionNavigatorPresets(10 * 60, 0)).toEqual([])
+    expect(sessionNavigatorPresets(45 * 60, 0)).toEqual([{ label: '15m', pointCount: 16 }])
+    expect(sessionNavigatorPresets(15 * 60, 0)).toEqual([])
     // Spans count from the first charted minute.
-    expect(sessionNavigatorPresets(70 * 60, 30 * 60)).toEqual([{ label: '15m', pointCount: 15 }])
+    expect(sessionNavigatorPresets(70 * 60, 30 * 60)).toEqual([{ label: '15m', pointCount: 16 }])
   })
 })
 
@@ -170,8 +177,9 @@ describe('AnalyticsChart range controls and navigator', () => {
     const target = container.querySelector<HTMLElement>('.hx-chart-navigator__window')!
     fireEvent.pointerDown(target, { pointerId: 4, button: 0, clientX: 400 })
     fireEvent.pointerUp(target, { pointerId: 4, clientX: 400 })
-    // 748 minutes is over 2h, so presets[0] is 1h: a 60-minute window around minute 400.
-    expect(navigatorWindowSpan(container)).toBe(60)
+    // 748 minutes is over 2h, so presets[0] is 1h: a 60-minute window (61 minute
+    // steps, both edge minutes included) around minute 400.
+    expect(navigatorWindowSpan(container)).toBe(61)
     const [start, end] = viewportOf(container)
     expect(end! - start!).toBe(60 * 60)
     expect(start!).toBeLessThanOrEqual(400 * 60)
@@ -196,7 +204,8 @@ describe('AnalyticsChart range controls and navigator', () => {
     expect(navigator.getAttribute('aria-label')).toBe('Chart navigator')
     expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:90')
     const start = screen.getByRole('slider', { name: 'Chart view start' })
-    expect(start.getAttribute('aria-valuetext')).toBe('Start 00:00:00; showing 00:00:00 to 01:31:00')
+    // The plot ends on its last minute (01:30:00), where that minute's point is.
+    expect(start.getAttribute('aria-valuetext')).toBe('Start 00:00:00; showing 00:00:00 to 01:30:00')
     expect(screen.getByRole('slider', { name: 'Chart view end' })).not.toBeNull()
     expect(navigator.querySelector('strong')?.textContent).toBe('Full stream')
     expect(navigator.querySelector('.hx-chart-navigator__bucket-count')?.textContent).toBe('91 of 91 minutes')
@@ -241,7 +250,8 @@ describe('AnalyticsChart range controls and navigator', () => {
     expect(navigatorHeading(container)).toBe('Zoomed view')
     expect(axis()).not.toEqual(fullAxis)
     expect(viewerPath()).not.toBe(fullPath)
-    expect(navigatorWindowSpan(container)).toBe(15)
+    // 15 minutes long: 16 minute steps.
+    expect(navigatorWindowSpan(container)).toBe(16)
   })
 
   it('drives the plotted viewport from the navigator sliders and resets', () => {
@@ -255,7 +265,7 @@ describe('AnalyticsChart range controls and navigator', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Scroll zoom/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Reset zoom' }))
-    expect(viewportOf(container)).toEqual([0, 91 * 60])
+    expect(viewportOf(container)).toEqual([0, 90 * 60])
     expect(screen.getByRole('button', { name: /Scroll zoom/ }).getAttribute('aria-pressed')).toBe('false')
     expect(navigatorHeading(container)).toBe('Full stream')
   })
@@ -301,9 +311,9 @@ describe('AnalyticsChart range controls and navigator', () => {
 
     // Discrete controls still ease once the drag is over.
     fireEvent.click(screen.getByRole('button', { name: 'Reset zoom' }))
-    expect(viewportOf(container)).not.toEqual([0, 91 * 60])
+    expect(viewportOf(container)).not.toEqual([0, 90 * 60])
     flush()
-    expect(viewportOf(container)).toEqual([0, 91 * 60])
+    expect(viewportOf(container)).toEqual([0, 90 * 60])
   })
 
   it('turns Scroll zoom off on Escape from the focused plot and keeps the pin', () => {
@@ -327,7 +337,7 @@ describe('AnalyticsChart range controls and navigator', () => {
     const plot = container.querySelector<HTMLElement>('[data-chart-touch-action]')!
     fireEvent.keyDown(plot, { key: 'Escape' })
     expect(scrollZoom.getAttribute('aria-pressed')).toBe('false')
-    expect(viewportOf(container)).toEqual([0, 91 * 60])
+    expect(viewportOf(container)).toEqual([0, 90 * 60])
     expect(onSelectRollup).not.toHaveBeenCalled()
 
     // With Scroll zoom already off, Escape on the plot clears the pin as before.

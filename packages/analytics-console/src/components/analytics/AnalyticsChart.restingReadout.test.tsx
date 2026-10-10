@@ -56,10 +56,13 @@ describe('AnalyticsChart resting readout', () => {
 
   it('shows an em dash for a value the minute does not have', () => {
     const rows = Array.from({ length: 30 }, () => ({ viewerAvg: null, chatCount: 400, emote: 50 }))
-    rows.push({ viewerAvg: null, chatCount: null, emote: 0 })
+    // The newest plotted minute has emotes but no chat count or viewer sample.
+    // (A trailing minute with no data at all is not plotted, so it never rests the readout.)
+    rows.push({ viewerAvg: null, chatCount: null, emote: 7 })
     const text = readout(detail(rows))
     expect(text).toContain('viewers —')
     expect(text).toContain('chat —/min')
+    expect(text).toContain('emotes 7/min')
     expect(text).not.toMatch(/ - /)
   })
 })

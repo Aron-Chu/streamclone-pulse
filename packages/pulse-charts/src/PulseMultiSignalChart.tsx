@@ -1165,6 +1165,7 @@ function PulseMultiSignalChartInnerImpl({
   lineWeightMode = "fixed",
   activityBucketing = "budget",
   onActivityBucketMinutesChange,
+  liveEdgeLabel = null,
 }: {
   rollups: ChartMinuteRollup[];
   /** Full-resolution viewer source used for idle/detail geometry and moment lookup. */
@@ -1238,6 +1239,12 @@ function PulseMultiSignalChartInnerImpl({
   activityBucketing?: "budget" | "time";
   /** Reports the bucket size in minutes while `activityBucketing` is `time`. */
   onActivityBucketMinutesChange?: (minutes: number | null) => void;
+  /**
+   * Portal-only: a short marker drawn above the right end of the plot (never
+   * over it) while the view reaches a live stream's newest minute, e.g.
+   * "Live · updating". Omitted, nothing is drawn.
+   */
+  liveEdgeLabel?: string | null;
 }) {
   const [hover, setHover] = useState<number | null>(null);
   // Index into the per-minute activity-bar series under the pointer. Only set
@@ -3634,6 +3641,29 @@ function PulseMultiSignalChartInnerImpl({
             </>
           )}
         </g>
+
+        {/* Live edge: above the plot's right end, in the top margin, so it
+            never covers a value. */}
+        {isLive && liveEdgeLabel ? (
+          <g data-chart-live-edge={liveEdgeLabel}>
+            <circle
+              cx={width - padRight - 4}
+              cy={padTop - 16}
+              r={3.5}
+              fill="#fb7185"
+              className={motionEnabled ? "animate-pulse" : undefined}
+            />
+            <text
+              x={width - padRight - 12}
+              y={padTop - 12}
+              textAnchor="end"
+              fill="#fda4af"
+              className="text-xs font-black uppercase"
+            >
+              {liveEdgeLabel}
+            </text>
+          </g>
+        ) : null}
 
         <g
           className="sc-chart-plot"
