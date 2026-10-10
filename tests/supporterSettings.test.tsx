@@ -1,16 +1,18 @@
 // @vitest-environment jsdom
+import SUPPORTER_PERKS from '../src/shared/supporter-perks.json'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, expect, it, vi } from 'vitest'
 import { SupporterAccountSection } from '../src/options/SupporterAccountSection.tsx'
 import { SupporterCosmeticControls } from '../src/options/SupporterCosmeticControls.tsx'
+import { injectHostStyles } from '../src/options/hostStyles.ts'
 import { parseBackgroundRequest } from '../src/shared/parseBackgroundRequest.ts'
 import type { SupporterEntitlement } from '../src/shared/supporterAccount.ts'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 describe('supporter settings', () => {
-  it('previews bundled badges without storage, network, or entitlement mutation', async () => {
+  it('draws Your card, who sees what and your look without storage, network, or entitlement mutation', async () => {
     const write = vi.fn()
     const sendMessage = vi.fn().mockImplementation((message: { type: string }) =>
       message.type === 'SUPPORTER_ENTITLEMENT'
@@ -23,23 +25,61 @@ describe('supporter settings', () => {
     const root = createRoot(host)
     try {
       await act(async () => root.render(<SupporterAccountSection />))
-      const sample = host.querySelector('.pulse-supporter-chat-preview')!
-      // The local preview is intentionally larger for readability; the badge
-      // component itself still defaults to the 18px chat footprint.
-      expect(sample.querySelector('svg')?.getAttribute('width')).toBe('18')
-      expect(sample.querySelector('[data-supporter-badge="new"]')).not.toBeNull()
-      act(() => (host.querySelector('input[value="24m"]') as HTMLInputElement).click())
-      expect(sample.querySelector('[data-supporter-badge="24m"]')).not.toBeNull()
-      act(() => (host.querySelector('input[type="checkbox"]') as HTMLInputElement).click())
-      expect(sample.querySelector('svg')).toBeNull()
-      expect(host.textContent).toContain('nothing is equipped, published, or injected into Twitch chat')
-      // Status comes from the server. An unlinked install must say how it
-      // would connect rather than implying the preview grants anything.
-      expect(host.textContent).toContain('Stripe asks for your email and payment details')
+      expect(host.querySelector('h2')?.textContent).toBe('Account & Supporter')
+      // Your card: only an identity that exists. Twitch sign-in is off, so nobody is signed in and no Twitch name is drawn.
+      const card = host.querySelector<HTMLElement>('.pulse-supporter-card')!
+      // Heading navigation stops at the card: a visually hidden h3 names it,
+      // between the page's h2 and "Who sees what" (the preview's own title is decoration).
+      const outline = [...host.querySelectorAll<HTMLElement>('h2, h3')].filter(heading => !heading.closest('[aria-hidden="true"]')).map(heading => `${heading.tagName} ${heading.textContent}`)
+      expect(outline).toEqual(['H2 Account & Supporter', 'H3 Your Supporter card', 'H3 Who sees what', 'H3 Your look', 'H3 Account'])
+      const heading = card.querySelector('h3')!
+      expect(card.firstElementChild).toBe(heading)
+      expect(heading.id).not.toBe('')
+      expect(card.getAttribute('aria-labelledby')).toBe(heading.id)
+      expect(card.hasAttribute('aria-label')).toBe(false)
+      expect(heading.className).toBe('pulse-visually-hidden')
+      expect(card.dataset.supporterCard).toBe('sample')
+      expect(card.querySelector('.pulse-supporter-card-who strong')?.textContent).toBe('Not signed in')
+      expect(card.querySelector('.pulse-supporter-card-avatar')?.getAttribute('data-identity')).toBe('none')
+      expect(card.querySelector('.pulse-supporter-card-sample')?.textContent).toBe('Sample look')
+      // The card names nobody; the footer says how Supporter will start.
+      expect(card.querySelector('.pulse-supporter-card-who')?.textContent).not.toMatch(/twitch/i)
+      // The card wears the sample paint, with emote rain across its top and no gradient layer of its own.
+      expect(card.style.getPropertyValue('--spk-fin')).toBe('#efc96a')
+      expect(card.querySelector('.pulse-supporter-card-banner .pulse-banner-art')?.getAttribute('data-mode')).toBe('rain')
+      expect(card.querySelectorAll('.pulse-supporter-card-banner .pulse-banner-art img')).toHaveLength(6)
+      // The five-step crest ladder starts at New for everyone who is not a Supporter.
+      const steps = [...card.querySelectorAll<HTMLElement>('.pulse-supporter-ladder li')]
+      expect(steps.map(step => step.textContent)).toEqual(['New', '3 mo', '6 mo', '1 year', '2 years'])
+      expect(steps.map(step => step.dataset.step)).toEqual(['start', 'off', 'off', 'off', 'off'])
+      expect(card.querySelector('.pulse-supporter-ladder-next')?.textContent).toBe('Your crest starts at New and grows at 3, 6, 12 and 24 months.')
+      // The journey is the card's footer: one primary action, with the price.
+      const journey = card.querySelector<HTMLElement>('.pulse-journey')!
+      expect(journey.dataset.journeyState).toBe('signed-out')
+      expect([...journey.querySelectorAll('.pulse-journey-primary')].map(button => button.textContent)).toEqual(['Supporter details'])
+      expect(journey.textContent).toContain('US$4.99 / month')
+      // Status comes from the server. With Twitch sign-in off, a signed-out
+      // install says sign-ups are not open and offers nothing to buy.
+      expect(journey.textContent).toContain('Supporter sign-ups are not open yet')
+      expect(journey.textContent).toContain('Free tools work without an account.')
+      expect(host.textContent).not.toMatch(/Restore my Supporter|website account|Become a Supporter/)
       expect(host.textContent).toContain('remain free')
-      // The chat badge must never be presented as included.
-      expect(host.textContent).toContain('Not included yet')
-      expect(host.textContent).toContain('does not alter Twitch chat')
+      // Who sees what: every perk is yours only, and nothing unbuilt is offered.
+      const rows = [...host.querySelectorAll<HTMLElement>('.pulse-supporter-who > li')]
+      expect(rows.map(row => row.querySelector('strong')?.textContent)).toEqual(['You', 'Everyone else on Twitch'])
+      expect(rows[0].querySelector('.pulse-supporter-vis')?.textContent).toBe('Only you')
+      expect(rows[0].querySelector('[data-supporter-perk-names="true"]')?.textContent).toBe(SUPPORTER_PERKS.names.join(' · '))
+      expect(host.querySelector('[data-concept]')).toBeNull()
+      expect(host.textContent).not.toContain('Concept · not built')
+      expect(rows[1].textContent).toContain('Normal chat. Nothing added.')
+      expect(host.textContent).toContain('Shown with the sample look')
+      // Your look: paint, wave, sheen and emote rain; rain is a locked perk here.
+      expect([...host.querySelectorAll('.pulse-supporter-look-row > legend')].map(legend => legend.textContent)).toEqual(['Paint', 'Wave', 'Sheen', 'Emote rain'])
+      expect(host.querySelector('[data-supporter-perk="emote-rain"]')?.textContent).toContain('Supporter perk')
+      expect(host.querySelector('[data-supporter-perk="emote-rain"]')?.textContent).toContain('It moved from free to Supporter in 0.2.2')
+      // No signature emote anywhere, and the old badge preview is gone.
+      expect(host.textContent).not.toMatch(/signature/i)
+      expect(host.querySelector('.pulse-supporter-tenure-choices, .pulse-supporter-chat-preview')).toBeNull()
 
       // No storage write, no direct fetch: previewing and reading status are
       // both side-effect free, so a local edit cannot grant an entitlement.
@@ -49,7 +89,6 @@ describe('supporter settings', () => {
         { type: 'SUPPORTER_ACCOUNT', action: 'status' },
         { type: 'SUPPORTER_ENTITLEMENT' },
         { type: 'SUPPORTER_BILLING', action: 'status' },
-        { type: 'SUPPORTER_RESTORE', action: 'status' },
         // Reading the optional pre-purchase finish choice; no `finish` field, so no write.
         { type: 'SUPPORTER_FINISH_INTENT' },
       ])
@@ -64,30 +103,47 @@ describe('supporter settings', () => {
     }
   })
 
-  it('separates service-reported stages from future artwork without granting a badge', async () => {
+  it('states a Supporter’s months and earned crest on the ladder, naming the connected account, without granting a badge', async () => {
     const sendMessage = vi.fn().mockImplementation((message: { type: string }) =>
       message.type === 'SUPPORTER_ENTITLEMENT'
         ? Promise.resolve({ type: 'SUPPORTER_ENTITLEMENT', entitlement: {
-          state: 'ready', status: 'active', supportPeriods: 6, features: [],
+          state: 'ready', status: 'active', supportPeriods: 7, features: ['supporter.banner.v1', 'supporter.finish.v1'], cosmetics: { enabled: true, finish: 'halo' },
         } })
-        : Promise.resolve({ type: 'SUPPORTER_ACCOUNT', account: { state: 'signed_out' } }))
+        : message.type === 'SUPPORTER_ACCOUNT'
+          ? Promise.resolve({ type: 'SUPPORTER_ACCOUNT', account: { state: 'linked', accountId: '11111111-1111-4111-8111-1111111a1b2c', expiresAt: new Date(Date.now() + 86_400_000).toISOString() } })
+          : Promise.resolve(undefined))
     vi.stubGlobal('chrome', { runtime: { sendMessage } })
     const host = document.createElement('div')
     document.body.append(host)
     const root = createRoot(host)
     try {
       await act(async () => root.render(<SupporterAccountSection />))
-      const stage = (id: string) => host.querySelector(`.pulse-supporter-tenure-choices input[value="${id}"]`)?.closest('label')
-      expect(stage('new')?.getAttribute('data-stage-state')).toBe('reported-earlier')
-      expect(stage('6m')?.getAttribute('data-stage-state')).toBe('reported-current')
-      expect(stage('12m')?.getAttribute('data-stage-state')).toBe('future')
-      expect(stage('24m')?.textContent).toContain('Future preview')
-      expect(host.textContent).toContain('exact tenure still needs ledger reconciliation')
-      act(() => (stage('24m')?.querySelector('input') as HTMLInputElement).click())
-      expect(host.querySelector('.pulse-supporter-chat-preview [data-supporter-badge="24m"]')).not.toBeNull()
-      // The membership is active but grants no finish here, so the saved
-      // pre-purchase choice is read once; nothing is written.
-      expect(sendMessage.mock.calls.map(([message]) => message)).toEqual([{ type: 'SUPPORTER_ACCOUNT', action: 'status' }, { type: 'SUPPORTER_ENTITLEMENT' }, { type: 'SUPPORTER_BILLING', action: 'status' }, { type: 'SUPPORTER_RESTORE', action: 'status' }, { type: 'SUPPORTER_FINISH_INTENT' }])
+      const card = host.querySelector<HTMLElement>('.pulse-supporter-card')!
+      expect(card.dataset.supporterCard).toBe('own')
+      expect(card.querySelector('.pulse-supporter-card-sample')).toBeNull()
+      // The identity that exists: the connected StreamPulse account, masked as the website shows it.
+      const name = card.querySelector<HTMLElement>('.pulse-supporter-card-who strong')!
+      expect(name.textContent).toBe('··1a1b2c')
+      expect(card.querySelector('.pulse-supporter-card-avatar')?.getAttribute('data-identity')).toBe('pulse')
+      // Painted in their equipped finish, with the crest the server's count earns.
+      expect(name.querySelector('.pulse-crest')?.getAttribute('data-tenure')).toBe('6m')
+      expect(name.querySelector<HTMLElement>('.pulse-paint')?.dataset).toMatchObject({ finish: 'halo', text: '··1a1b2c' })
+      expect(card.style.getPropertyValue('--spk-fin')).toBe('#e6a9d6')
+      expect(card.querySelector('.pulse-supporter-card-who > span')?.textContent).toBe('Pulse Supporter · 7 months')
+      const steps = [...card.querySelectorAll<HTMLElement>('.pulse-supporter-ladder li')]
+      expect(steps.map(step => step.dataset.step)).toEqual(['past', 'past', 'current', 'off', 'off'])
+      expect(steps[2].getAttribute('aria-current')).toBe('step')
+      expect(card.querySelector('.pulse-supporter-ladder-next')?.textContent).toBe('Steady signal now · Year-one crest in 5 months')
+      // A paid-up member's footer is not the payment-issue warning.
+      const journey = card.querySelector<HTMLElement>('.pulse-journey')!
+      expect(journey.dataset.journeyState).toBe('active')
+      expect(journey.hasAttribute('data-tone')).toBe(false)
+      // Billing is one tap away, and nothing about a chat badge is offered as included.
+      expect([...host.querySelectorAll('button')].map(button => button.textContent)).toContain('Manage subscription ↗')
+      expect(host.textContent).not.toContain('Concept · not built')
+      expect(host.textContent).not.toContain('US$4.99 / month')
+      // An active member's pre-purchase choice is never read.
+      expect(sendMessage.mock.calls.map(([message]) => message)).toEqual([{ type: 'SUPPORTER_ACCOUNT', action: 'status' }, { type: 'SUPPORTER_ENTITLEMENT' }, { type: 'SUPPORTER_BILLING', action: 'status' }])
     } finally {
       act(() => root.unmount())
       host.remove()
@@ -124,6 +180,8 @@ describe('supporter settings', () => {
       const button = host.querySelector('.pulse-account-link-actions button') as HTMLButtonElement
       expect(button.disabled).toBe(true)
       expect(button.textContent).toContain('Default active')
+      // Emote rain is locked too, and its saved choice untouched.
+      expect(host.querySelector('[data-supporter-perks="locked"]')?.querySelectorAll('button:disabled')).toHaveLength(3)
       expect(host.textContent).toContain('Equipping an accent requires an active linked Supporter membership')
       // Only a read of the optional saved choice; never a save.
       expect(sendMessage.mock.calls).toEqual([[{ type: 'SUPPORTER_FINISH_INTENT' }]])
@@ -213,6 +271,170 @@ describe('supporter settings', () => {
   })
 })
 
+describe('Your card: payment issue and the top crest', () => {
+  const linkedAccount = { state: 'linked', accountId: '11111111-1111-4111-8111-1111111a1b2c', expiresAt: new Date(Date.now() + 86_400_000).toISOString() }
+  const supporter = (status: 'active' | 'grace', supportPeriods: number, extra: Partial<SupporterEntitlement> = {}): SupporterEntitlement => ({
+    state: 'ready', status, supportPeriods, features: ['supporter.banner.v1', 'supporter.finish.v1'], cosmetics: { enabled: true, finish: 'halo' }, ...extra,
+  } as SupporterEntitlement)
+  const renderCard = async (entitlement: SupporterEntitlement) => {
+    const sendMessage = vi.fn(async (message: { type: string }) =>
+      message.type === 'SUPPORTER_ENTITLEMENT' ? { type: 'SUPPORTER_ENTITLEMENT', entitlement }
+        : message.type === 'SUPPORTER_ACCOUNT' ? { type: 'SUPPORTER_ACCOUNT', account: linkedAccount }
+          : undefined)
+    vi.stubGlobal('chrome', { runtime: { sendMessage } })
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    await act(async () => root.render(<SupporterAccountSection />))
+    const card = host.querySelector<HTMLElement>('.pulse-supporter-card')!
+    const steps = [...card.querySelectorAll<HTMLElement>('.pulse-supporter-ladder li')]
+    return {
+      host,
+      card,
+      journey: card.querySelector<HTMLElement>('.pulse-journey')!,
+      subline: card.querySelector('.pulse-supporter-card-who > span')?.textContent,
+      crest: card.querySelector('.pulse-supporter-card-who strong .pulse-crest')?.getAttribute('data-tenure'),
+      steps: steps.map(step => step.dataset.step),
+      currentStep: steps.filter(step => step.getAttribute('aria-current') === 'step').map(step => step.dataset.tier),
+      next: card.querySelector('.pulse-supporter-ladder-next')?.textContent,
+      cleanup: () => {
+        act(() => root.unmount())
+        host.remove()
+        vi.unstubAllGlobals()
+      },
+    }
+  }
+
+  it('warns in the footer and the subline when a renewal failed, with the earned crest held on the ladder', async () => {
+    const view = await renderCard(supporter('grace', 7, { accessUntil: '2026-10-19T12:00:00Z' }))
+    try {
+      // The card is still the member's own, painted, with the crest 7 months earned.
+      expect(view.card.dataset.supporterCard).toBe('own')
+      expect(view.card.querySelector('.pulse-supporter-card-sample')).toBeNull()
+      expect(view.crest).toBe('6m')
+      expect(view.subline).toBe('Pulse Supporter · 7 months · payment due')
+      expect(view.steps).toEqual(['past', 'past', 'current', 'off', 'off'])
+      expect(view.currentStep).toEqual(['6m'])
+      expect(view.next).toBe('Steady signal now · Year-one crest in 5 months')
+      // The footer carries the warm payment-issue tone, its title and the fix.
+      expect(view.journey.dataset.journeyState).toBe('grace')
+      expect(view.journey.dataset.tone).toBe('warn')
+      expect(view.journey.querySelector('.pulse-journey-title')?.textContent).toBe('Payment needs attention')
+      expect([...view.journey.querySelectorAll('.pulse-journey-primary')].map(action => action.textContent)).toEqual(['Update payment method'])
+      expect([...view.journey.querySelectorAll('.pulse-journey-facts dt')].map(term => term.textContent)).toEqual(['Access until'])
+      // The warm styling is a settings-page rule this footer actually matches.
+      injectHostStyles()
+      const css = document.getElementById('streampulse-settings-host-styles')?.textContent ?? ''
+      const warnRules = [...css.matchAll(/([^{}]*\[data-tone="warn"\][^{}]*)\{([^}]*)\}/g)].map(([, selector, body]) => ({ selector: selector.trim(), body }))
+      const footerRule = warnRules.find(rule => rule.selector === '.pulse-supporter-card > .pulse-journey[data-tone="warn"]')
+      expect(footerRule?.body).toMatch(/background:\s*rgba\(253, 186, 116/)
+      expect(view.journey.matches(footerRule!.selector)).toBe(true)
+      const statusRule = warnRules.find(rule => rule.selector.endsWith('.pulse-journey-status'))
+      expect(statusRule).toBeDefined()
+      expect(view.journey.querySelector('.pulse-journey-status')?.matches(statusRule!.selector)).toBe(true)
+    } finally {
+      view.cleanup()
+    }
+  })
+
+  it('says nothing is due and draws no warning for the same member while paid up', async () => {
+    const view = await renderCard(supporter('active', 7, { accessUntil: '2026-10-19T12:00:00Z' }))
+    try {
+      expect(view.subline).toBe('Pulse Supporter · 7 months')
+      expect(view.subline).not.toContain('payment due')
+      expect(view.journey.dataset.journeyState).toBe('active')
+      expect(view.journey.hasAttribute('data-tone')).toBe(false)
+      expect([...view.journey.querySelectorAll('.pulse-journey-facts dt')].map(term => term.textContent)).toEqual(['Access through'])
+    } finally {
+      view.cleanup()
+    }
+  })
+
+  it.each([
+    [23, '12m', ['past', 'past', 'past', 'current', 'off'], 'Year-one crest now · Two-year pinnacle in 1 month'],
+    [24, '24m', ['past', 'past', 'past', 'past', 'current'], 'Two-year pinnacle now · the top crest'],
+    [31, '24m', ['past', 'past', 'past', 'past', 'current'], 'Two-year pinnacle now · the top crest'],
+  ] as const)('puts %i months at the right rung, naming the top crest from 24 months', async (months, tier, steps, next) => {
+    const view = await renderCard(supporter('active', months))
+    try {
+      expect(view.subline).toBe(`Pulse Supporter · ${months} months`)
+      expect(view.crest).toBe(tier)
+      expect(view.steps).toEqual(steps)
+      expect(view.currentStep).toEqual([tier])
+      expect(view.next).toBe(next)
+    } finally {
+      view.cleanup()
+    }
+  })
+
+  it('keeps the top crest through a payment issue', async () => {
+    const view = await renderCard(supporter('grace', 26))
+    try {
+      expect(view.subline).toBe('Pulse Supporter · 26 months · payment due')
+      expect(view.currentStep).toEqual(['24m'])
+      expect(view.next).toBe('Two-year pinnacle now · the top crest')
+      expect(view.journey.dataset.tone).toBe('warn')
+    } finally {
+      view.cleanup()
+    }
+  })
+})
+
+describe('Your card through a failed refresh', () => {
+  it('keeps a Supporter’s confirmed look on the card and in who sees what, while the paid controls pause', async () => {
+    let membership: SupporterEntitlement | Error = {
+      state: 'ready', status: 'active', supportPeriods: 13, features: ['supporter.banner.v1', 'supporter.finish.v1'], cosmetics: { enabled: true, finish: 'halo' },
+    }
+    const listeners = new Set<(changes: Record<string, chrome.storage.StorageChange>) => void>()
+    const sendMessage = vi.fn(async (message: { type: string }) => {
+      if (message.type === 'SUPPORTER_ENTITLEMENT') {
+        if (membership instanceof Error) throw membership
+        return { type: 'SUPPORTER_ENTITLEMENT', entitlement: membership }
+      }
+      if (message.type === 'SUPPORTER_ACCOUNT') return { type: 'SUPPORTER_ACCOUNT', account: { state: 'linked', accountId: '11111111-1111-4111-8111-1111111a1b2c', expiresAt: new Date(Date.now() + 86_400_000).toISOString() } }
+      return undefined
+    })
+    vi.stubGlobal('chrome', { runtime: { sendMessage }, storage: { onChanged: {
+      addListener: (listener: (changes: Record<string, chrome.storage.StorageChange>) => void) => listeners.add(listener),
+      removeListener: (listener: (changes: Record<string, chrome.storage.StorageChange>) => void) => listeners.delete(listener),
+    } } })
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    const look = () => {
+      const card = host.querySelector<HTMLElement>('.pulse-supporter-card')!
+      return {
+        card: card.dataset.supporterCard,
+        sample: card.querySelector('.pulse-supporter-card-sample') !== null,
+        finish: card.style.getPropertyValue('--spk-fin'),
+        paint: card.querySelector('.pulse-supporter-card-who strong .pulse-paint')?.getAttribute('data-finish'),
+        crest: card.querySelector('.pulse-supporter-card-who strong .pulse-crest')?.getAttribute('data-tenure'),
+        line: card.querySelector('.pulse-supporter-card-who > span')?.textContent,
+      }
+    }
+    try {
+      await act(async () => root.render(<SupporterAccountSection />))
+      const confirmed = look()
+      expect(confirmed).toEqual({ card: 'own', sample: false, finish: '#e6a9d6', paint: 'halo', crest: '12m', line: 'Pulse Supporter · 13 months' })
+      expect(host.textContent).not.toContain('Shown with the sample look')
+
+      // A quiet re-read fails: the footer says it shows the last confirmed status.
+      membership = new Error('offline')
+      await act(async () => { for (const listener of listeners) listener({ pulseSupporterRevision: { newValue: 'changed', oldValue: 'old' } }) })
+      expect(host.querySelector('[data-journey-stale="true"]')).not.toBeNull()
+      expect(look()).toEqual(confirmed)
+      expect(host.textContent).not.toContain('Sample look')
+      expect(host.textContent).not.toContain('Shown with the sample look')
+      // Paid controls only act on fresh values, so equipping pauses until a read succeeds.
+      expect([...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Checking Supporter status…')?.disabled).toBe(true)
+    } finally {
+      act(() => root.unmount())
+      host.remove()
+      vi.unstubAllGlobals()
+    }
+  })
+})
+
 describe('cosmetics while membership is unknown', () => {
   it('pauses instead of switching to pre-purchase mode, and keeps the selection', async () => {
     const sendMessage = vi.fn()
@@ -271,6 +493,129 @@ describe('cosmetic save races', () => {
       await act(async () => respond({ type: 'SUPPORTER_COSMETICS', ok: true }))
       expect(host.textContent).toContain('Halo accent equipped.')
       expect(host.textContent).toContain('Halo active')
+    } finally {
+      act(() => root.unmount())
+      host.remove()
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('keeps its confirmation when a quiet re-check fails and recovers while the save is in flight', async () => {
+    let respond!: (value: unknown) => void
+    const sendMessage = vi.fn(() => new Promise(resolve => { respond = resolve }))
+    vi.stubGlobal('chrome', { runtime: { sendMessage } })
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    const active = (finish: 'glass' | 'halo', enabled: boolean): SupporterEntitlement => ({
+      state: 'ready', status: 'active', supportPeriods: 3,
+      features: ['supporter.banner.v1', 'supporter.finish.v1'], cosmetics: { enabled, finish },
+    })
+    try {
+      await act(async () => root.render(<SupporterCosmeticControls entitlement={active('glass', false)} />))
+      act(() => (host.querySelector('input[value="finish-halo"]') as HTMLInputElement).click())
+      await act(async () => (host.querySelector('.pulse-account-link-actions button') as HTMLButtonElement).click())
+      // The re-read the save triggered could not confirm the status, then did, with the same access.
+      await act(async () => root.render(<SupporterCosmeticControls entitlement={null} />))
+      await act(async () => root.render(<SupporterCosmeticControls entitlement={active('halo', true)} />))
+      await act(async () => respond({ type: 'SUPPORTER_COSMETICS', ok: true }))
+      expect(host.querySelector('.pulse-supporter-save-status')?.textContent).toBe('Halo accent equipped.')
+      expect(host.textContent).toContain('Halo active')
+    } finally {
+      act(() => root.unmount())
+      host.remove()
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('keeps a finish chosen while the status is still checking when the first answer arrives', async () => {
+    vi.stubGlobal('chrome', { runtime: { sendMessage: vi.fn() } })
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    const active = (cosmetics: { enabled: boolean; finish: 'glass' | 'halo' }): SupporterEntitlement => ({
+      state: 'ready', status: 'active', supportPeriods: 3,
+      features: ['supporter.banner.v1', 'supporter.finish.v1'], cosmetics,
+    })
+    const radio = (value: string) => host.querySelector(`input[value="finish-${value}"]`) as HTMLInputElement
+    const button = () => host.querySelector('.pulse-account-link-actions button') as HTMLButtonElement
+    try {
+      await act(async () => root.render(<SupporterCosmeticControls entitlement={null} />))
+      // Nothing is presumed chosen while checking.
+      expect(radio('default').checked).toBe(true)
+      act(() => radio('glass').click())
+      await act(async () => root.render(<SupporterCosmeticControls entitlement={active({ enabled: false, finish: 'glass' })} />))
+      expect(radio('glass').checked).toBe(true)
+      expect(host.textContent).toContain('Preview: Glass / Active: Default')
+      expect(button().textContent).toBe('Equip accent')
+      // After that, a change to the applied finish still replaces the draft.
+      await act(async () => root.render(<SupporterCosmeticControls entitlement={active({ enabled: true, finish: 'halo' })} />))
+      expect(radio('halo').checked).toBe(true)
+      expect(host.textContent).toContain('Halo active')
+    } finally {
+      act(() => root.unmount())
+      host.remove()
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('keeps the emote rain choice enabled and focused through its save, and announces each save afresh', async () => {
+    // Each storage write waits for the test to settle it.
+    const writes: Array<{ settle: (ok: boolean) => void }> = []
+    const set = vi.fn(() => new Promise<void>((resolve, reject) => { writes.push({ settle: ok => ok ? resolve() : reject(new Error('quota exceeded')) }) }))
+    vi.stubGlobal('chrome', {
+      runtime: { id: 'test-extension', sendMessage: vi.fn() },
+      storage: { sync: { get: vi.fn(async () => ({})), set }, onChanged: { addListener: vi.fn(), removeListener: vi.fn() } },
+    })
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    const entitlement: SupporterEntitlement = {
+      state: 'ready', status: 'active', supportPeriods: 3,
+      features: ['supporter.banner.v1', 'supporter.finish.v1'], cosmetics: { enabled: true, finish: 'glass' },
+    }
+    try {
+      await act(async () => root.render(<SupporterCosmeticControls entitlement={entitlement} />))
+      const group = host.querySelector<HTMLFieldSetElement>('[data-supporter-perks="on"]')!
+      expect(group.querySelector('legend')?.textContent).toBe('Emote rain')
+      const choice = (name: string) => [...group.querySelectorAll('button')].find(button => button.textContent === name)!
+      // One live region, present and empty before any save, so each result is announced.
+      const status = group.querySelector<HTMLElement>('[role="status"]')!
+      expect(status.textContent).toBe('')
+
+      choice('Still').focus()
+      await act(async () => choice('Still').click())
+      expect(set).toHaveBeenCalledTimes(1)
+      // Saving locks nothing: a disabled fieldset would drop focus to the body in Chromium.
+      expect(group.disabled).toBe(false)
+      expect(group.querySelectorAll('button:disabled')).toHaveLength(0)
+      expect(group.getAttribute('aria-busy')).toBe('true')
+      expect(document.activeElement).toBe(choice('Still'))
+      // A second press while the first save runs is ignored.
+      await act(async () => choice('Rain').click())
+      expect(set).toHaveBeenCalledTimes(1)
+      await act(async () => writes[0].settle(true))
+      expect(group.querySelector('[role="status"]')).toBe(status)
+      expect(status.textContent).toBe('Emote rain saved.')
+      expect(choice('Still').getAttribute('aria-pressed')).toBe('true')
+      expect(group.hasAttribute('aria-busy')).toBe(false)
+      expect(document.activeElement).toBe(choice('Still'))
+
+      // The next save clears the last confirmation while it runs, then reports its own result.
+      choice('Rain').focus()
+      await act(async () => choice('Rain').click())
+      expect(set).toHaveBeenCalledTimes(2)
+      expect(status.textContent).toBe('')
+      expect(group.querySelectorAll('button:disabled')).toHaveLength(0)
+      await act(async () => writes[1].settle(false))
+      expect(status.textContent).toBe('Could not save emote rain. Please try again.')
+      expect(document.activeElement).toBe(choice('Rain'))
+
+      // And a later success is announced again, not left as the old text.
+      await act(async () => choice('Rain').click())
+      expect(status.textContent).toBe('')
+      await act(async () => writes[2].settle(true))
+      expect(status.textContent).toBe('Emote rain saved.')
     } finally {
       act(() => root.unmount())
       host.remove()

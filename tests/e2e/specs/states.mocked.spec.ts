@@ -1,3 +1,4 @@
+import type { Page } from '@playwright/test'
 import { test, expect } from '../helpers/testFixtures.ts'
 import {
   assertExactlyOnePulseRoot,
@@ -5,11 +6,35 @@ import {
   assertNoPulseVodDiscoverWarnings,
   assertNoUncaughtErrors,
   assertPulseShadowContains,
+  pulseShadowText,
   selectChartRangeOption,
   waitForPulseRoot,
 } from '../helpers/assertions.ts'
 import { readExtensionStorage } from '../helpers/extensionContext.ts'
 import { openTwitchChannel, openTwitchVod } from '../helpers/mockTwitch.ts'
+
+/** UX-1 / LIFE-1: a failed load ends in the outage card with Retry, never an endless loader. */
+async function assertOutageCardWithRetry(page: Page): Promise<void> {
+  await expect.poll(() => pulseShadowText(page)).toContain("Can't reach StreamPulse")
+  const text = await pulseShadowText(page)
+  expect(text).not.toContain('Loading Pulse')
+  // Hosted viewers get viewer copy: no stack question, no API URL, no raw code.
+  expect(text).not.toMatch(/stack running|api\.streampulse\.stream|internal_fixture_error|extension_api_/)
+  await expect(page.getByRole('button', { name: 'Retry', exact: true }).first()).toBeVisible()
+}
+
+/** UX-2: a VOD the backend answered is a replay status, not an outage. */
+async function assertReplayStatusWithoutOutage(page: Page, statusCopy: string): Promise<void> {
+  await assertPulseShadowContains(page, new RegExp(statusCopy))
+  const text = await pulseShadowText(page)
+  expect(text).not.toContain("Can't reach StreamPulse")
+  expect(text).not.toContain('stack running')
+  expect(text).not.toContain('Loading Pulse')
+  const headerPill = page.locator('#streamclone-pulse-root header.pulse-personal-banner h2 + span')
+  await expect(headerPill).toBeVisible()
+  await expect(headerPill).not.toHaveAttribute('aria-label', 'Unavailable')
+  await expect(headerPill).not.toHaveAttribute('aria-label', 'Loading')
+}
 
 function parseClock(value: string): number {
   const parts = value.split(':').map(Number)
@@ -254,7 +279,8 @@ test.describe('extension mocked states', () => {
     const settings = extension.page.locator('[data-overlay-settings-panel="true"]')
     await expect(settings).toBeVisible()
     await expect(settings.locator('[data-api-status]')).toBeVisible()
-    await expect(settings.locator('[data-sampler-status]')).toBeVisible()
+    // Backend sampler health lives in full settings, not on the channel card.
+    await expect(settings.locator('[data-sampler-status]')).toHaveCount(0)
     await expect(settings.getByText('Remember recently opened channels')).toHaveCount(0)
     await expect(settings.locator('[data-settings-section]')).toHaveCount(0)
     await expect(settings.locator('input[type="password"]')).toHaveCount(0)
@@ -432,6 +458,8 @@ test.describe('extension mocked states', () => {
     await expect(settingsShell).toBeVisible()
     await expect(settingsShell).toHaveScreenshot('overlay-settings-panel.png', {
       animations: 'disabled',
+      // The Supporter card's chat stage is live, scripted motion; its copy and frame stay covered.
+      mask: [settingsShell.locator('.pulse-supporter-stage')],
       caret: 'hide',
       maxDiffPixelRatio: 0.04,
     })
@@ -440,6 +468,82 @@ test.describe('extension mocked states', () => {
     await settings.getByRole('button', { name: 'Back to Pulse' }).click()
     await expect(extension.page.getByRole('combobox', { name: 'Chart time range' })).toBeVisible()
   })
+
+  // UX-3: inline 100% sizes used to stretch the fixed floating shell to the
+  // whole viewport, so Hide drew a page-sized ellipse that took player clicks.
+  for (const placement of ['right', 'bottom'] as const) {
+    test(`${placement} dock Mini bar and Hide pill stay small and leave the page clickable`, async ({
+      extension,
+      prepare,
+    }) => {
+      await prepare({
+        scenario: 'live-ready',
+        twitchKind: 'live',
+        storage: {
+          overlayPlacement: placement,
+          overlayMode: 'mini',
+          defaultChartWindowMigratedToRecentV2: true,
+        },
+      })
+      await openTwitchChannel(extension.page)
+      await waitForPulseRoot(extension.page)
+      await expect(extension.page.locator('#streamclone-pulse-root')).toHaveAttribute('data-streampulse-styles', 'loaded')
+      const viewport = extension.page.viewportSize()!
+
+      const miniShell = extension.page.locator('#streamclone-pulse-root section[aria-label="StreamPulse mini overlay"]')
+      await expect(miniShell).toBeVisible()
+      const mini = (await miniShell.boundingBox())!
+      expect(mini.height).toBeLessThanOrEqual(80)
+      expect(mini.width).toBeLessThanOrEqual(870)
+      expect(mini.x).toBeGreaterThanOrEqual(0)
+      expect(mini.x + mini.width).toBeLessThanOrEqual(viewport.width)
+      expect(mini.y + mini.height).toBeLessThanOrEqual(viewport.height)
+      const miniDock = extension.page.getByRole('region', { name: 'StreamPulse mini dock' })
+      for (const name of ['Open settings', 'Expand panel', 'Hide overlay']) {
+        const control = (await miniDock.getByRole('button', { name }).boundingBox())!
+        expect(control.x, `${name} sits inside the mini bar`).toBeGreaterThanOrEqual(mini.x - 1)
+        expect(control.x + control.width, `${name} sits inside the mini bar`).toBeLessThanOrEqual(mini.x + mini.width + 1)
+        expect(control.y, `${name} sits inside the mini bar`).toBeGreaterThanOrEqual(mini.y - 1)
+        expect(control.y + control.height, `${name} sits inside the mini bar`).toBeLessThanOrEqual(mini.y + mini.height + 1)
+      }
+
+      await miniDock.getByRole('button', { name: 'Hide overlay' }).click()
+      const pillShell = extension.page.locator('#streamclone-pulse-root section[aria-label="StreamPulse collapsed"]')
+      const assertSmallPill = async () => {
+        await expect(pillShell).toBeVisible()
+        await expect(extension.page.getByRole('button', { name: 'Open Pulse panel' })).toBeVisible()
+        const layoutWidth = await extension.page.evaluate(() => document.documentElement.clientWidth)
+        await expect(async () => {
+          const pill = (await pillShell.boundingBox())!
+          expect(pill.width).toBeLessThan(320)
+          expect(pill.height).toBeLessThan(120)
+          expect(pill.x).toBeGreaterThanOrEqual(0)
+          expect(pill.x + pill.width).toBeLessThanOrEqual(viewport.width)
+          expect(pill.y).toBeGreaterThan(viewport.height / 2)
+          expect(pill.y + pill.height).toBeLessThanOrEqual(viewport.height)
+          if (placement === 'bottom') {
+            expect(Math.abs(pill.x + pill.width / 2 - layoutWidth / 2)).toBeLessThanOrEqual(4)
+          }
+        }).toPass({ timeout: 5_000 })
+        // The middle of the page (player and chat) must stay Twitch's to click.
+        const centreOwner = await extension.page.evaluate(
+          ([x, y]) => document.elementFromPoint(x, y)?.id ?? '',
+          [viewport.width / 2, viewport.height / 2],
+        )
+        expect(centreOwner).not.toBe('streamclone-pulse-root')
+      }
+      await assertSmallPill()
+
+      // The stored collapsed mode comes back on reload and must still be a pill.
+      await expect.poll(async () => {
+        const stored = await readExtensionStorage(extension.serviceWorker, ['overlayMode'])
+        return stored.overlayMode
+      }).toBe('collapsed')
+      await openTwitchChannel(extension.page)
+      await waitForPulseRoot(extension.page)
+      await assertSmallPill()
+    })
+  }
 
   test('packaged internal host mounts the shared workspace with stable keyboard order', async ({
     extension,
@@ -510,24 +614,50 @@ test.describe('extension mocked states', () => {
     await expect.poll(async () => olderReveal.evaluate(element => Number.parseFloat(getComputedStyle(element).transitionDuration))).toBeLessThan(0.001)
     await host.emulateMedia({ reducedMotion: 'no-preference' })
 
-    await expect(host.locator('.pulse-host')).toHaveScreenshot('full-settings-changelog.png', {
+    // Soft, like the emote-picker set: the test still fails on any mismatch, but one
+    // run records the actual PNG of all three settings-page captures, so a baseline
+    // refresh never has to stop at the first stale one.
+    await expect.soft(host.locator('.pulse-host')).toHaveScreenshot('full-settings-changelog.png', {
       animations: 'disabled',
+      // Only the Supporter banner's emote pile moves, so it is masked. On wide banners the pile spans the right
+      // half under the "View benefits" pill, so the mask hides the pill too: bannerPillOnTop() checks it instead.
+      mask: [host.locator('.pulse-supporter-pile')],
       caret: 'hide',
       maxDiffPixelRatio: 0.04,
     })
 
     // Visual coverage for the complete page shell and its responsive top nav.
     await sectionNav.getByRole('link', { name: 'Pulse on Twitch' }).click()
+    expect(await host.locator('.pulse-host-rail').evaluate(element => getComputedStyle(element).position)).toBe('sticky')
     await host.evaluate(() => window.scrollTo(0, 0))
-    await expect(host.locator('.pulse-host')).toHaveScreenshot('settings-host-page.png', {
+    // The pill sits inside the banner and paints above the (masked) pile: the topmost element at its centre is the pill.
+    const bannerPill = host.locator('.pulse-settings-supporter-banner-arrow')
+    const bannerPillOnTop = () => bannerPill.evaluate(pill => {
+      const box = pill.getBoundingClientRect()
+      const banner = pill.closest('.pulse-settings-supporter-banner')?.getBoundingClientRect()
+      const root = pill.getRootNode() as Document | ShadowRoot
+      const hit = root.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)
+      return Boolean(banner && box.width > 0 && box.left >= banner.left && box.right <= banner.right && box.top >= banner.top && box.bottom <= banner.bottom && hit && pill.contains(hit))
+    })
+    await expect(bannerPill).toHaveText('View benefits →')
+    expect(await bannerPillOnTop()).toBe(true)
+    await expect.soft(host.locator('.pulse-host')).toHaveScreenshot('settings-host-page.png', {
       animations: 'disabled',
+      // Only the Supporter banner's emote pile moves, so it is masked. On wide banners the pile spans the right
+      // half under the "View benefits" pill, so the mask hides the pill too: bannerPillOnTop() checks it instead.
+      mask: [host.locator('.pulse-supporter-pile')],
       caret: 'hide',
       maxDiffPixelRatio: 0.04,
     })
     await host.setViewportSize({ width: 620, height: 820 })
-    await expect.poll(() => sectionNav.evaluate(element => getComputedStyle(element).position)).toBe('static')
-    await expect(host.locator('.pulse-host')).toHaveScreenshot('settings-host-page-narrow.png', {
+    // The rail (section list + Community card) is what sticks on wide pages; narrow pages flow it as a block.
+    await expect.poll(() => host.locator('.pulse-host-rail').evaluate(element => getComputedStyle(element).position)).toBe('static')
+    expect(await bannerPillOnTop()).toBe(true)
+    await expect.soft(host.locator('.pulse-host')).toHaveScreenshot('settings-host-page-narrow.png', {
       animations: 'disabled',
+      // Only the Supporter banner's emote pile moves, so it is masked. On wide banners the pile spans the right
+      // half under the "View benefits" pill, so the mask hides the pill too: bannerPillOnTop() checks it instead.
+      mask: [host.locator('.pulse-supporter-pile')],
       caret: 'hide',
       maxDiffPixelRatio: 0.04,
     })
@@ -599,9 +729,20 @@ test.describe('extension mocked states', () => {
     evidence,
   }) => {
     await prepare({ scenario: 'helix-off', twitchKind: 'live' })
+    // UX-5: the Full-window refresh answers with a body the worker rejects
+    // (extension_api_invalid_pulse_payload), so a refresh failure is on screen.
+    await extension.context.route(
+      'https://api.streampulse.stream/v1/extension/pulse/streams/**',
+      route => route.fulfill({ json: {} }),
+    )
     await openTwitchChannel(extension.page)
     await waitForPulseRoot(extension.page)
     await assertPulseShadowContains(extension.page, /Helix|Pulse|fixturechan/i)
+    // Refresh failures read as viewer copy, never as raw worker codes. Wait
+    // for the banner: a one-shot read right after mount sees only the loader.
+    await expect(extension.page.locator('#streamclone-pulse-root .pulse-refresh-error'))
+      .toContainText('The latest Pulse refresh failed; showing the last good data.')
+    expect(await pulseShadowText(extension.page)).not.toMatch(/extension_api_|pulse_stream_|pulse_login_/)
     assertNoUncaughtErrors(evidence)
   })
 
@@ -626,6 +767,19 @@ test.describe('extension mocked states', () => {
     await openTwitchVod(extension.page)
     await waitForPulseRoot(extension.page)
     await assertPulseShadowContains(extension.page, /sync|Syncing|Replay|Pulse/i)
+    await assertReplayStatusWithoutOutage(extension.page, 'Replay Pulse is syncing this VOD')
+    assertNoUncaughtErrors(evidence)
+  })
+
+  test('VOD with no indexed replay shows the missing status, not an outage', async ({
+    extension,
+    prepare,
+    evidence,
+  }) => {
+    await prepare({ scenario: 'vod-missing', twitchKind: 'vod' })
+    await openTwitchVod(extension.page)
+    await waitForPulseRoot(extension.page)
+    await assertReplayStatusWithoutOutage(extension.page, 'No replay analytics have been indexed for this VOD yet.')
     assertNoUncaughtErrors(evidence)
   })
 
@@ -638,7 +792,7 @@ test.describe('extension mocked states', () => {
     await openTwitchChannel(extension.page)
     await waitForPulseRoot(extension.page)
     await assertExactlyOnePulseRoot(extension.page)
-    // Overlay may show error/empty state; page must stay stable.
+    await assertOutageCardWithRetry(extension.page)
     expect(evidence.pageErrors).toEqual([])
   })
 
@@ -650,6 +804,7 @@ test.describe('extension mocked states', () => {
     await prepare({ scenario: 'timeout', twitchKind: 'live' })
     await openTwitchChannel(extension.page)
     await waitForPulseRoot(extension.page)
+    await assertOutageCardWithRetry(extension.page)
     expect(evidence.pageErrors).toEqual([])
   })
 
@@ -661,6 +816,7 @@ test.describe('extension mocked states', () => {
     await prepare({ scenario: 'malformed', twitchKind: 'live' })
     await openTwitchChannel(extension.page)
     await waitForPulseRoot(extension.page)
+    await assertOutageCardWithRetry(extension.page)
     expect(evidence.pageErrors).toEqual([])
   })
 })

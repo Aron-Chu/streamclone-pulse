@@ -4,7 +4,6 @@ import type { CSSProperties } from 'react'
 import type { PulseBackfillJob } from '../shared/messages.ts'
 import {
   coverageCardCopy,
-  backendResolvedVod,
   missedMomentsButtonLabel,
   missedMomentsButtonState,
   type PulseCoverageSource,
@@ -19,7 +18,6 @@ export interface CoverageCardProps {
   job?: PulseBackfillJob | null
   lastCheckedAt?: number | null
   checkError?: string | null
-  debugDetail?: string | null
   onLoad: () => void
   onCheckVod?: () => void
   onOpenSettings?: () => void
@@ -32,7 +30,6 @@ export function CoverageCard({
   refreshed,
   job,
   checkError,
-  debugDetail,
   onLoad,
   onCheckVod,
   onOpenSettings,
@@ -46,8 +43,6 @@ export function CoverageCard({
   const waitingVod = buttonState === 'check_vod' || buttonState === 'waiting_vod'
   const failed = buttonState === 'failed' || Boolean(checkError)
   const loadReady = buttonState === 'load' && !busy
-  const backendVod = backendResolvedVod(source)
-  const localDiscoveryNote = debugDetail?.trim() || null
 
   const pct = job?.progress?.percent
   const hasRealProgress = typeof pct === 'number' && pct > 0
@@ -56,7 +51,8 @@ export function CoverageCard({
   const helixBlocked = source.helixEnabled === false
   const errorText = helixBlocked
     ? 'StreamPulse backend is missing Twitch API credentials (TWITCH_OAUTH_CLIENT_ID / SECRET). VOD lookup cannot run.'
-    : formatPulseApiError(checkError ?? (buttonState === 'failed' ? job?.error : null))
+    // checkError is already overlay copy; only raw job codes go through the allowlist.
+    : checkError ?? (buttonState === 'failed' ? formatPulseApiError(job?.error) ?? 'Backfill failed.' : null)
 
   let statusLine = copy.body
   if (backfilling) {
@@ -109,13 +105,6 @@ export function CoverageCard({
         <button type="button" style={styles.loadLink} onClick={onCheckVod} disabled={busy}>
           {busy ? 'Checking…' : 'Try VOD backfill for missing chat'}
         </button>
-      ) : null}
-
-      {localDiscoveryNote && (waitingVod || loadReady) ? (
-        <p style={styles.debugDetail}>
-          {backendVod ? 'Local page note: ' : ''}
-          {localDiscoveryNote}
-        </p>
       ) : null}
 
       {failed && errorText ? (
@@ -192,13 +181,6 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 10,
     lineHeight: 1.45,
     margin: '0 0 6px',
-  },
-  debugDetail: {
-    color: 'var(--pulse-accent-soft, #c4b5fd)',
-    fontSize: 10,
-    lineHeight: 1.45,
-    margin: '6px 0 0',
-    opacity: 0.9,
   },
 }
 

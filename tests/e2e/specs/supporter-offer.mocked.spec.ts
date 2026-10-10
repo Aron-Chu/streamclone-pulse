@@ -7,9 +7,9 @@ import { openTwitchChannel } from '../helpers/mockTwitch.ts'
 /**
  * Packaged proof of the Supporter surface, plus captures of each state.
  *
- * These legacy fixtures omit the installation-accounts capability and keep the
- * existing website account journey. The pay-first worker path has separate
- * packaged specs, with bearer billing and no ambient browser session.
+ * These fixtures omit the installation-accounts capability: a connected
+ * invited tester keeps website billing. The kept pay-first worker path has
+ * separate packaged specs, with bearer billing and no ambient browser session.
  */
 const CAPTURE_DIR = join('test-results', 'supporter-offer')
 
@@ -92,14 +92,15 @@ async function linkDevice(extension: { serviceWorker: import('@playwright/test')
   expect(stored, 'linked credential was not seeded into the worker').toBe('linked')
 }
 
-function supporterBody(status: string, supportPeriods: number) {
+// The backend reports Checkout per account; these fixtures default to open.
+function supporterBody(status: string, supportPeriods: number, checkoutEnabled = true) {
   return {
     schemaVersion: 1,
     accountId: LINKED_DEVICE.accountId,
     environment: 'live',
     revision: 4,
     status,
-    checkoutEnabled: true,
+    checkoutEnabled,
     serverTime: new Date().toISOString(),
     accessFrom: new Date(Date.now() - 86_400_000).toISOString(),
     accessUntil: new Date(Date.now() + 20 * 86_400_000).toISOString(),
@@ -132,7 +133,7 @@ test.describe('packaged supporter offer', () => {
     const twitch = await extension.context.newPage()
     const cdp = await extension.context.newCDPSession(twitch)
     for (const finish of ['glass', 'etched', 'halo']) {
-      await settings.getByRole('group', { name: 'Accent finish' }).getByRole('radio', { name: new RegExp(finish, 'i') }).check()
+      await settings.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: new RegExp(finish, 'i') }).check()
       await settings.getByRole('button', { name: 'Equip accent', exact: true }).click()
       await expect(settings.getByText(new RegExp(`${finish} accent equipped\\.`, 'i'))).toBeVisible()
       await openTwitchChannel(twitch)
@@ -140,13 +141,13 @@ test.describe('packaged supporter offer', () => {
       await twitch.screenshot({ path: join(CAPTURE_DIR, `accent-${finish}.png`), animations: 'disabled' })
     }
     await settings.reload()
-    await expect(settings.getByRole('group', { name: 'Accent finish' }).getByRole('radio', { name: 'Halo', exact: true })).toBeChecked()
-    await settings.getByRole('group', { name: 'Accent finish' }).getByRole('radio', { name: 'Default', exact: true }).check()
+    await expect(settings.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Halo', exact: true })).toBeChecked()
+    await settings.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Default', exact: true }).check()
     await settings.getByRole('button', { name: 'Use default', exact: true }).click()
     await expect(settings.getByText('Default accent restored.', { exact: true })).toBeVisible()
     await twitch.reload()
     await expectBannerFinish(cdp, null)
-    await settings.getByRole('group', { name: 'Accent finish' }).getByRole('radio', { name: 'Halo', exact: true }).check()
+    await settings.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Halo', exact: true }).check()
     await settings.getByRole('button', { name: 'Equip accent', exact: true }).click()
     await expect(settings.getByText('Halo accent equipped.', { exact: true })).toBeVisible()
     status = 'expired'
@@ -181,7 +182,7 @@ test.describe('packaged supporter offer', () => {
       expect(sawBearer).not.toContain('pulse_account=')
 
       const action = page.locator('a[data-supporter-action="billing"]')
-      const label = { none: 'Continue to checkout', active: 'Manage membership', grace: 'Update payment method', pending: 'View payment status', review: 'Review membership', expired: 'Rejoin Supporter' }[status]
+      const label = { none: 'Continue to checkout', active: 'Manage subscription', grace: 'Update payment method', pending: 'View payment status', review: 'Review membership', expired: 'Rejoin Supporter' }[status]
       await expect(action).toHaveText(label)
       if (status === 'none' || status === 'expired') await expect(page.getByText('US$4.99 / month')).toBeVisible()
       else await expect(page.getByText('US$4.99 / month')).toHaveCount(0)
@@ -192,10 +193,9 @@ test.describe('packaged supporter offer', () => {
         await expect(page.locator(`a[href="https://streampulse.stream${policy}"]`).first()).toBeVisible()
       }
 
-      // The unreleased chat badge must never read as included, and the caveat
-      // is stated exactly once so the page cannot contradict itself.
-      await expect(page.getByText('Not included yet')).toHaveCount(1)
-      await expect(page.getByText(/chat badge/i).first()).toBeVisible()
+      // The purchase page offers only what ships: no unbuilt chat crest concept.
+      await expect(page.getByText('Concept · not built', { exact: true })).toHaveCount(0)
+      await expect(page.getByText('Only if you opt in, once it’s built', { exact: true })).toHaveCount(0)
 
       await page.screenshot({
         path: join(CAPTURE_DIR, `supporter-${status}.png`),
@@ -246,14 +246,25 @@ test.describe('packaged supporter offer', () => {
     await expect(page.getByRole('button', { name: 'Check again', exact: true })).toBeVisible()
   })
 
-  test('an unlinked install offers one purchase action and secondary recovery choices', async ({ extension, prepare }) => {
+  test('a signed-out install says sign-ups are not open and offers no purchase, restore or website account', async ({ extension, prepare }) => {
     await prepare({ scenario: 'live-ready' })
+    const requests: string[] = []
+    for (const path of ['account/installations', 'account/restores', 'account/device-links', 'billing/checkout', 'billing/portal', 'account/auth/twitch/start-device']) {
+      await extension.context.route(`https://api.streampulse.stream/v1/${path}`, route => { requests.push(path); return route.fulfill({ status: 500, json: {} }) })
+    }
     const page = extension.page
     await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
-    await expect(page.getByText('Stripe asks for your email and payment details', { exact: false })).toBeVisible()
+    await expect(page.locator('[data-journey-state="signed-out"]')).toBeVisible()
+    await expect(page.getByText('Supporter sign-ups are not open yet', { exact: true })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Supporter details', exact: true })).toHaveAttribute('href', 'https://streampulse.stream/supporter')
     await expect(page.locator('a[data-supporter-action="billing"]')).toHaveCount(0)
-    await expect(page.getByRole('button', { name: 'Become a Supporter', exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Use a StreamPulse website account', exact: true })).toBeVisible()
+    for (const gone of ['Become a Supporter', 'Restore my Supporter', 'Use a StreamPulse website account', 'Continue with Twitch']) {
+      await expect(page.getByRole('button', { name: gone, exact: true })).toHaveCount(0)
+    }
+    // Invited testers keep the device link, closed and never a purchase.
+    await expect(page.locator('details[data-tester-bridge]')).not.toHaveAttribute('open', /.*/)
+    await expect(page.getByText('Invited tester? Connect this extension', { exact: true })).toBeVisible()
+    expect(requests).toEqual([])
   })
 
   test('a remotely revoked device clears the connection and can link again', async ({ extension, prepare }) => {
@@ -277,15 +288,15 @@ test.describe('packaged supporter offer', () => {
     const page = extension.page
     await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
     await expect(page.getByText('Supporter active', { exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Disconnect extension', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible()
 
     revoked = true
     const requestsBeforeRevocation = entitlementRequests
     // Returning to settings re-reads by itself; no refresh button is needed.
     await page.waitForTimeout(5_200)
     await page.evaluate(() => window.dispatchEvent(new Event('focus')))
-    await expect(page.getByText('was disconnected from your Pulse account', { exact: false })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Disconnect extension', exact: true })).toHaveCount(0)
+    await expect(page.getByText('was disconnected from your StreamPulse account', { exact: false })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toHaveCount(0)
     await expect(page.getByText('Supporter active', { exact: true })).toHaveCount(0)
     expect(entitlementRequests).toBeGreaterThan(requestsBeforeRevocation)
 
@@ -307,7 +318,8 @@ test.describe('packaged supporter offer', () => {
     const status = await page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_ACCOUNT', action: 'status' }))
     expect(status).toEqual({ type: 'SUPPORTER_ACCOUNT', account: { state: 'relink_required' } })
 
-    await page.getByRole('button', { name: 'Use a StreamPulse website account', exact: true }).click()
+    await page.getByText('Invited tester? Connect this extension', { exact: true }).click()
+    await page.getByRole('button', { name: 'Connect this extension', exact: true }).click()
     await expect(page.getByText('ABCDE-12345', { exact: true })).toBeVisible()
     await expect(page.getByRole('link', { name: 'Reopen streampulse.stream', exact: true }))
       .toHaveAttribute('href', 'https://streampulse.stream/account/link-device#code=ABCDE12345')

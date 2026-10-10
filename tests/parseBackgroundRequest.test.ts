@@ -30,6 +30,10 @@ describe('parseBackgroundRequest', () => {
       type: 'OPEN_SETTINGS_HOST',
       section: 'updates',
     })
+    expect(parseBackgroundRequest({ type: 'OPEN_SETTINGS_HOST', section: 'help' })).toEqual({
+      type: 'OPEN_SETTINGS_HOST',
+      section: 'help',
+    })
     expect(parseBackgroundRequest({
       type: 'GET_PULSE_VOD',
       vodId: '2806037629',
@@ -41,6 +45,13 @@ describe('parseBackgroundRequest', () => {
       streamId: '317150146039',
       window: 'recent',
     })
+  })
+
+  it('passes a VOD channel login through, and drops a placeholder instead of refusing the VOD', () => {
+    expect(parseBackgroundRequest({ type: 'GET_PULSE_VOD', vodId: '2894307326', login: 'OhnePixel' }))
+      .toEqual({ type: 'GET_PULSE_VOD', vodId: '2894307326', streamId: undefined, window: undefined, login: 'ohnepixel' })
+    expect(parseBackgroundRequest({ type: 'GET_PULSE_VOD', vodId: '2894307326', login: '__vod__:2894307326' }))
+      .toEqual({ type: 'GET_PULSE_VOD', vodId: '2894307326', streamId: undefined, window: undefined })
   })
 
   it('drops raw page and chat fields from outbound pulse requests', () => {
@@ -176,5 +187,34 @@ describe('parseBackgroundRequest', () => {
       error: 'type_error',
       frames: [{ bundle: 'content/twitch.js', line: 1, column: 2 }],
     })
+  })
+
+  it('accepts only the exact TWITCH_SIGN_IN shapes', () => {
+    expect(parseBackgroundRequest({ type: 'TWITCH_SIGN_IN', action: 'status' })).toEqual({ type: 'TWITCH_SIGN_IN', action: 'status' })
+    expect(parseBackgroundRequest({ type: 'TWITCH_SIGN_IN', action: 'sign_in', mode: 'interactive' })).toEqual({ type: 'TWITCH_SIGN_IN', action: 'sign_in', mode: 'interactive' })
+    expect(parseBackgroundRequest({ type: 'TWITCH_SIGN_IN', action: 'sign_in', mode: 'silent', forceVerify: false })).toEqual({ type: 'TWITCH_SIGN_IN', action: 'sign_in', mode: 'silent' })
+    expect(parseBackgroundRequest({ type: 'TWITCH_SIGN_IN', action: 'sign_in', mode: 'interactive', forceVerify: true })).toEqual({ type: 'TWITCH_SIGN_IN', action: 'sign_in', mode: 'interactive', forceVerify: true })
+    // Choosing another account always needs the window.
+    expect(parseBackgroundRequest({ type: 'TWITCH_SIGN_IN', action: 'sign_in', mode: 'silent', forceVerify: true })).toBeNull()
+    for (const bad of [
+      { type: 'TWITCH_SIGN_IN' },
+      { type: 'TWITCH_SIGN_IN', action: 'sign_in' },
+      { type: 'TWITCH_SIGN_IN', action: 'sign_in', mode: 'popup' },
+      { type: 'TWITCH_SIGN_IN', action: 'sign_in', mode: 'interactive', forceVerify: 'yes' },
+      { type: 'TWITCH_SIGN_IN', action: 'status', mode: 'silent' },
+      { type: 'TWITCH_SIGN_IN', action: 'sign_out' },
+      ...['url', 'authorizeUrl', 'redirectUri', 'surface', 'idToken', 'flowSecret', 'token'].map(field => ({ type: 'TWITCH_SIGN_IN', action: 'sign_in', mode: 'interactive', [field]: 'attacker' })),
+    ]) expect(parseBackgroundRequest(bad)).toBeNull()
+  })
+
+  it('accepts only the exact Sign out everywhere shapes', () => {
+    expect(parseBackgroundRequest({ type: 'TWITCH_SIGN_IN', action: 'sign_out_everywhere' })).toEqual({ type: 'TWITCH_SIGN_IN', action: 'sign_out_everywhere' })
+    expect(parseBackgroundRequest({ type: 'TWITCH_SIGN_IN', action: 'sign_out_everywhere', confirm: false })).toEqual({ type: 'TWITCH_SIGN_IN', action: 'sign_out_everywhere' })
+    expect(parseBackgroundRequest({ type: 'TWITCH_SIGN_IN', action: 'sign_out_everywhere', confirm: true })).toEqual({ type: 'TWITCH_SIGN_IN', action: 'sign_out_everywhere', confirm: true })
+    for (const bad of [
+      { type: 'TWITCH_SIGN_IN', action: 'sign_out_everywhere', confirm: 'yes' },
+      { type: 'TWITCH_SIGN_IN', action: 'sign_out_everywhere', mode: 'interactive' },
+      ...['accountId', 'token', 'url', 'path'].map(field => ({ type: 'TWITCH_SIGN_IN', action: 'sign_out_everywhere', [field]: 'attacker' })),
+    ]) expect(parseBackgroundRequest(bad)).toBeNull()
   })
 })

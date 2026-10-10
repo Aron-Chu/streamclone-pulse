@@ -297,9 +297,10 @@ test('a stopped packaged worker resumes Checkout cooldown and applies the chosen
       await respond(route, entry, cosmetics)
     })
     await extension.page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
-    await extension.page.getByRole('group', { name: 'Accent finish' }).getByRole('radio', { name: 'Halo', exact: true }).check()
+    await extension.page.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Halo', exact: true }).check()
     await extension.page.getByRole('button', { name: 'Use Halo when Supporter starts', exact: true }).click()
-    await extension.page.getByRole('button', { name: 'Become a Supporter', exact: true }).click()
+    // The page offers no purchase while signed out; the kept worker path is started directly.
+    await extension.page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_BILLING', action: 'checkout' }))
     await expect(extension.page.locator('[data-journey-state="stripe-open"]')).toBeVisible()
     await extension.page.screenshot({ path: info.outputPath('before-worker-stop.png'), fullPage: true })
     await extension.page.goto('about:blank')
@@ -370,10 +371,9 @@ test('a stopped packaged worker resumes the exact private restore and respects i
       }
     })
     await extension.page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
-    await extension.page.getByRole('button', { name: 'Restore my Supporter', exact: true }).click()
-    await extension.page.getByRole('textbox', { name: 'Email used at checkout', exact: true }).fill('payer@example.test')
-    await extension.page.getByRole('button', { name: 'Send restore link', exact: true }).click()
-    await expect(extension.page.getByText('A1B2C3', { exact: true })).toBeVisible()
+    // The page offers no email restore; the kept worker path uses the same extension-page message.
+    const started = await extension.page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_RESTORE', action: 'start', email: 'payer@example.test' }))
+    expect(started.restore).toMatchObject({ state: 'pending', comparisonCode: 'A1B2C3' })
     await extension.page.screenshot({ path: info.outputPath('before-restore-worker-stop.png'), fullPage: true })
     await extension.page.goto('about:blank'); trace.checks.settingsClosedAt = Date.now()
     await expect.poll(() => throttled?.responseAt).toBeTruthy()
@@ -485,7 +485,8 @@ test('a restarted packaged worker bounds Checkout polling at real fixture expiry
       await respond(route, entry, { attemptId: ATTEMPT, state: 'open' })
     })
     await extension.page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
-    await extension.page.getByRole('button', { name: 'Become a Supporter', exact: true }).click()
+    // The page offers no purchase while signed out; the kept worker path is started directly.
+    await extension.page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_BILLING', action: 'checkout' }))
     await expect(extension.page.locator('[data-journey-state="stripe-open"]')).toBeVisible()
     await extension.page.screenshot({ path: info.outputPath('before-checkout-expiry-worker-stop.png'), fullPage: true })
     await extension.page.goto('about:blank')

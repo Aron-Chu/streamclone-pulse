@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { ALLOWED_PERMISSIONS } from '../scripts/extension-permission-allowlists.mjs'
+import { TWITCH_SIGNIN_ENABLED } from '../src/shared/twitchSignIn.ts'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -64,6 +66,23 @@ describe('manifest targets', () => {
     const rootManifest = JSON.parse(readFileSync(join(root, 'manifest.json'), 'utf8'))
     const development = loadManifest('development.json')
     expect(rootManifest).toEqual(development)
+  })
+
+  it('requests identity only once Sign in with Twitch is compiled on, never identity.email, external messaging or a store key', () => {
+    // Store review rejects a permission the package never uses; the worker
+    // already treats a missing chrome.identity as sign-in unavailable.
+    expect(TWITCH_SIGNIN_ENABLED).toBe(false)
+    expect(ALLOWED_PERMISSIONS).not.toContain('identity')
+    for (const name of ['development.json', 'cws.json', 'edge.json', 'firefox.json'] as const) {
+      const manifest = JSON.parse(readFileSync(join(root, 'manifests', name), 'utf8')) as Record<string, unknown> & { permissions?: string[] }
+      expect(manifest.permissions?.includes('identity')).toBe(TWITCH_SIGNIN_ENABLED)
+      // identity.email is the variant Chrome warns about; the flow never needs it.
+      expect(manifest.permissions).not.toContain('identity.email')
+      expect(manifest).not.toHaveProperty('externally_connectable')
+      if (name !== 'development.json') expect(manifest).not.toHaveProperty('key')
+    }
+    const rootManifest = JSON.parse(readFileSync(join(root, 'manifest.json'), 'utf8')) as { permissions?: string[] }
+    expect(rootManifest.permissions?.includes('identity')).toBe(TWITCH_SIGNIN_ENABLED)
   })
 
   it('matches content scripts on HTTPS Twitch only', () => {

@@ -29,6 +29,7 @@ function spawnWatch(args, label) {
 const children = [
   spawnWatch(['build', '--watch'], 'main'),
   spawnWatch(['build', '--watch', '--config', 'vite.content.config.ts'], 'content'),
+  spawnWatch(['build', '--watch', '--config', 'vite.supporterCard.config.ts'], 'supporter-card'),
 ]
 
 function shutdown(code = 0) {

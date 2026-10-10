@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { sendBackgroundMessage } from '../src/content/bridge.ts'
 import { usePulseHealth } from '../src/ui/usePulseHealth.ts'
-import { PulseSettingsPanel } from '../src/ui/PulseSettingsPanel.tsx'
+import { OpenAllSettingsButton, PulseSettingsPanel } from '../src/ui/PulseSettingsPanel.tsx'
 
 vi.mock('../src/content/bridge.ts', () => ({ sendBackgroundMessage: vi.fn() }))
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -52,9 +52,20 @@ describe('settings connection recovery', () => {
       ? { type: 'HEALTH', ok: true }
       : { ok: false, error: 'extension_context_invalidated' })
     await act(async () => root.render(<PulseSettingsPanel />))
-    const button = node.querySelector<HTMLButtonElement>('[data-settings-host-cta="pulse"]')!
+    const button = node.querySelector<HTMLButtonElement>('[data-settings-host-cta="supporter"]')!
     await act(async () => button.click())
     expect(node.querySelector('[role="alert"]')?.textContent).toContain('Reload this page')
+    expect(button.disabled).toBe(false)
+  })
+
+  it('announces a failed Open all settings outside the pinned bar and keeps it retryable', async () => {
+    vi.mocked(sendBackgroundMessage).mockResolvedValue({ ok: false, error: 'extension_context_invalidated' })
+    await act(async () => root.render(<OpenAllSettingsButton />))
+    const button = node.querySelector<HTMLButtonElement>('[data-settings-host-cta="pulse"]')!
+    await act(async () => button.click())
+    const alert = node.querySelector('[role="alert"]')
+    expect(alert?.textContent).toContain('Reload this page')
+    expect(button.contains(alert)).toBe(false)
     expect(button.disabled).toBe(false)
   })
 })

@@ -52,7 +52,12 @@ test('packaged My Moments retains notes, separates consent and clears history wi
       return response.account.state
     }, { timeout: 15000, intervals: [1000] }).toBe('linked')
   }
-  await expect(page.getByText('Bookmarks need your Pulse account', { exact: true })).toBeVisible()
+  await expect(page.getByText('Bookmarks are saved on this device', { exact: true })).toBeVisible()
+  // Sign-in is compiled off: no account to promise, connect to or retry.
+  await expect(page.getByText(/Accounts are coming with Continue with Twitch/).first()).toBeVisible()
+  await expect(page.getByText(/free Pulse account/)).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Connect account', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Retry', exact: true })).toHaveCount(0)
   await link()
   await expect(page.getByRole('heading',{name:'My Moments',exact:true})).toBeVisible()
   await expect(page.getByText('Saved comeback',{exact:true})).toBeVisible()
@@ -120,7 +125,7 @@ test('packaged My Moments retains notes, separates consent and clears history wi
   await expect(page.getByText('My note across reload', { exact: true })).toBeVisible()
   const disconnected = await page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_ACCOUNT', action: 'disconnect' }))
   expect(disconnected.account.state).toBe('signed_out')
-  await expect(page.getByText('Bookmarks need your Pulse account', { exact: true })).toBeVisible()
+  await expect(page.getByText('Bookmarks are saved on this device', { exact: true })).toBeVisible()
   await expect(page.getByText('My note across reload', { exact: true })).toHaveCount(0)
   const firstAccountItems = items
   items = []
@@ -132,7 +137,10 @@ test('packaged My Moments retains notes, separates consent and clears history wi
   accountId = '22222222-2222-4222-8222-222222222222'
   items = firstAccountItems
   await link()
-  await expect(page.getByText('My note across reload', { exact: true })).toBeVisible()
+  // The bookmark is the account's and comes back; the note was this browser's
+  // copy and was removed when it signed out of the account.
+  await expect(page.getByText('Saved comeback', { exact: true })).toBeVisible()
+  await expect(page.getByText('My note across reload', { exact: true })).toHaveCount(0)
   const publicStorage = await extension.serviceWorker.evaluate(() => chrome.storage.local.get(null))
   expect(JSON.stringify(publicStorage)).not.toContain(bearer)
   expect(JSON.stringify(publicStorage)).not.toContain('b'.repeat(64))

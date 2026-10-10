@@ -71,6 +71,17 @@ describe('billing membership copy', () => {
     expect(document.body.textContent).not.toMatch(/Taxes, if any/)
   })
 
+  it('names the tenure crest with the other perks the offer includes', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(membership('none', true)))
+    render(<MemoryRouter><BillingPage /></MemoryRouter>)
+    const label = await screen.findByText('Includes')
+    const includes = label.nextElementSibling?.textContent ?? ''
+    expect(includes).toMatch(/header accent/)
+    expect(includes).toMatch(/tenure crest that grows with your support/)
+    expect(includes).toMatch(/emote rain behind your Pulse panel/)
+    expect(includes).not.toMatch(/signature/i)
+  })
+
   it.each(['none', 'expired'])('says sign-ups are closed for %s without implying existing members', async status => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(membership(status)))
     render(<MemoryRouter><BillingPage /></MemoryRouter>)

@@ -1,24 +1,36 @@
 import { useEffect, useRef, useState } from 'react'
-import type { SupporterEntitlement, SupporterCosmetics } from '../shared/supporterAccount.ts'
+import { supporterPerksAllowed, type SupporterEntitlement, type SupporterCosmetics } from '../shared/supporterAccount.ts'
+import { SAMPLE_KIT } from '../supporter/kit.ts'
 import { PulseSectionCard } from '../ui/PulseSectionCard.tsx'
-import { supporterFinish, SUPPORTER_FINISH_OPTIONS } from '../ui/supporterFinish.ts'
-import { StreamPulseTitleBlock, streamPulseHeaderChromeSidebar } from '../ui/StreamPulseTitleBlock.tsx'
-import { theme } from '../ui/theme.ts'
-import { PulseBannerBackdrop, usePulseBanner } from '../ui/PulseBanner.tsx'
+import { SUPPORTER_FINISH_OPTIONS } from '../ui/supporterFinish.ts'
+import { usePulseBanner } from '../ui/PulseBanner.tsx'
+import type { PulseBannerPreference } from '../shared/storage.ts'
+import { SupporterPaintStyleFields, useSupporterPaintStyle } from './SupporterPaintStyleFields.tsx'
 
 /**
- * The finish colours the small Peak signature beside the title.
- * The preview reproduces that header rather than a
- * decorative plate: an earlier version previewed a tinted banner that the
- * overlay no longer draws, so the preview promised something the extension did
- * not render.
+ * "Your look", direction B of the 2026-10-07 Account & Supporter redesign:
+ * paint, wave, sheen and emote rain as rows of tiles. The finish paints the
+ * panel title, wave and sheen choose how that paint moves, the tenure crest
+ * sits beside it, and emote rain falls behind the panel. The card and "Who sees
+ * what" above preview the chosen paint (`onDraft`), drawn with the overlay's own
+ * paint and crest styles, so nothing promises a look the extension does not
+ * render.
+ *
+ * A finish is checked by the server and saved with Equip; wave, sheen and emote
+ * rain save to this browser profile at once. Everyone else may try any paint
+ * and choose one to apply when Supporter starts.
  */
-export function SupporterCosmeticControls({ entitlement, onSaved }: {
+export function SupporterCosmeticControls({ entitlement, onSaved, onDraft }: {
   entitlement: SupporterEntitlement | null
   onSaved?: (cosmetics: SupporterCosmetics) => void
+  /** The paint being tried or worn, for the previews; undefined while membership is unknown. */
+  onDraft?: (finish: SupporterCosmetics['finish'] | null | undefined) => void
 }) {
   const banner = usePulseBanner()
-  const [finish, setFinish] = useState<SupporterCosmetics['finish'] | null>('glass')
+  const paint = useSupporterPaintStyle()
+  // Nothing is presumed while the first answer is pending: a finish shown as
+  // chosen then is one the person chose.
+  const [finish, setFinish] = useState<SupporterCosmetics['finish'] | null>(null)
   const [appliedFinish, setAppliedFinish] = useState<SupporterCosmetics['finish'] | null>(null)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
@@ -29,10 +41,7 @@ export function SupporterCosmeticControls({ entitlement, onSaved }: {
   // privately and applies it once the server grants Supporter access.
   const [intent, setIntent] = useState<SupporterCosmetics['finish'] | null>(null)
   const [intentBusy, setIntentBusy] = useState(false)
-  const allowed = entitlement?.state === 'ready'
-    && (entitlement.status === 'active' || entitlement.status === 'grace')
-    && entitlement.features.includes('supporter.banner.v1')
-    && entitlement.features.includes('supporter.finish.v1')
+  const allowed = supporterPerksAllowed(entitlement)
   const entitlementState = entitlement?.state
   const entitlementStatus = entitlement?.state === 'ready' ? entitlement.status : undefined
   const cosmetics = entitlement?.state === 'ready' ? entitlement.cosmetics : undefined
@@ -46,12 +55,21 @@ export function SupporterCosmeticControls({ entitlement, onSaved }: {
   // read must not.
   const appliedKey = unknown ? null : JSON.stringify([entitlementState, entitlementStatus, allowed, cosmetics?.enabled ?? null, cosmetics?.finish ?? null])
   const lastAppliedKey = useRef<string | null>(null)
+  // Access as last confirmed. A read that could not confirm it (the unknown
+  // gap of a quiet re-check that failed and recovered) is not a change, so a
+  // save in flight keeps its acknowledgment through it.
+  const accessKey = unknown ? null : JSON.stringify([entitlementState, entitlementStatus, allowed])
+  const lastAccessKey = useRef<string | null>(null)
   useEffect(() => {
-    if (appliedKey === null) return
-    savedCosmetics.current = null
-  }, [entitlementState, entitlementStatus, allowed])
+    if (accessKey === null) return
+    if (accessKey !== lastAccessKey.current) savedCosmetics.current = null
+    lastAccessKey.current = accessKey
+  }, [accessKey])
+  // A finish chosen before the first answer arrives.
+  const chosenWhileChecking = useRef(false)
   useEffect(() => {
     if (appliedKey === null || appliedKey === lastAppliedKey.current) return
+    const firstAnswer = lastAppliedKey.current === null
     lastAppliedKey.current = appliedKey
     const activeFinish = allowed && cosmetics?.enabled ? cosmetics.finish : null
     setAppliedFinish(activeFinish)
@@ -66,9 +84,12 @@ export function SupporterCosmeticControls({ entitlement, onSaved }: {
     generation.current++
     pending.current = false
     setBusy(false)
-    setFinish(cosmetics ? activeFinish : 'glass')
+    // The first answer keeps what the person chose while it was pending; after
+    // that, a change to access or the applied finish replaces the draft.
+    if (!(firstAnswer && chosenWhileChecking.current)) setFinish(cosmetics ? activeFinish : SAMPLE_KIT.finish)
     setNotice('')
   }, [appliedKey])
+  useEffect(() => { onDraft?.(unknown ? undefined : finish) }, [unknown, finish, onDraft])
   // A save in flight belongs to this view only.
   useEffect(() => () => { generation.current++ }, [])
   // Read the saved choice only while it could still matter, and only once.
@@ -82,7 +103,7 @@ export function SupporterCosmeticControls({ entitlement, onSaved }: {
       .then(response => {
         if (!mounted.current || response?.type !== 'SUPPORTER_FINISH_INTENT') return
         setIntent(response.finish)
-        if (response.finish) setFinish(current => current === 'glass' ? response.finish : current)
+        if (response.finish) setFinish(current => current === SAMPLE_KIT.finish ? response.finish : current)
       })
       .catch(() => { /* No saved choice is shown when the worker is unavailable. */ })
   }, [allowed, unknown])
@@ -110,6 +131,7 @@ export function SupporterCosmeticControls({ entitlement, onSaved }: {
   const unchanged = finish === appliedFinish
 
   function selectFinish(value: typeof finish) {
+    if (lastAppliedKey.current === null) chosenWhileChecking.current = true
     setFinish(value)
     setNotice('')
   }
@@ -147,38 +169,41 @@ export function SupporterCosmeticControls({ entitlement, onSaved }: {
       }
     }
   }
-  return <PulseSectionCard title="Pulse signature" headingLevel={3} subtitle="A personal colour for the Pulse mark beside your title.">
-    {/* True sidebar width on the real panel colour, rendering the same
-        component the overlay renders, so this cannot promise a header the
-        extension does not draw. */}
-    <div className="pulse-supporter-finish-preview" aria-label={`${selectedLabel} sidebar header preview`} data-preview-finish={finish ?? 'default'} style={{ background: theme.bgCanvas, maxWidth: '100%', width: 'min(340px, 100%)' }}>
-      <div className="pulse-personal-panel pulse-background-preview" style={{ ...streamPulseHeaderChromeSidebar, minHeight: 180 }}>
-        <PulseBannerBackdrop value={banner.value} paused />
-        <div className="pulse-banner-copy"><StreamPulseTitleBlock title={banner.value.title || undefined} finish={finish} statusLabel="Live chart" statusTone="live" /></div>
-      </div>
+  return <PulseSectionCard
+    title="Your look"
+    headingLevel={3}
+    meta={unknown ? undefined : allowed ? 'Wave, sheen and rain save right away' : 'Try anything. It applies when you support.'}
+  >
+    <div className="pulse-supporter-look" data-preview-finish={finish ?? 'default'}>
+      <fieldset className="pulse-supporter-look-row" disabled={busy}>
+        <legend>Paint</legend>
+        <div className="pulse-supporter-tiles">
+          <label className="pulse-supporter-tile" title="Your free theme">
+            <input type="radio" name="supporter-finish" value="finish-default" aria-label="Default" checked={finish === null} onChange={() => selectFinish(null)} />
+            <span className="pulse-supporter-paint-sample" style={{ color: 'var(--pulse-accent-soft, #c4b5fd)' }} aria-hidden="true">Aa</span>
+            <small>Default</small>
+          </label>
+          {SUPPORTER_FINISH_OPTIONS.map(option => <label key={option.id} className="pulse-supporter-tile" title={option.description}>
+            <input
+              type="radio"
+              name="supporter-finish"
+              value={`finish-${option.id}`}
+              aria-label={option.label}
+              checked={finish === option.id}
+              onChange={() => selectFinish(option.id)}
+            />
+            <span className="pulse-paint pulse-supporter-paint-sample" data-finish={option.id} data-wave="smooth" data-sheen="none" data-text="Aa" aria-hidden="true">Aa</span>
+            <small>{option.label}</small>
+          </label>)}
+        </div>
+      </fieldset>
+      <SupporterPaintStyleFields finish={finish} style={paint.style} onChoose={next => void paint.choose(next)} />
+      <EmoteRainField banner={banner} perks={unknown ? undefined : allowed} />
     </div>
     <p className="pulse-supporter-detail" data-supporter-accent-state={unchanged ? 'equipped' : 'preview'}>
       {unchanged ? `${appliedLabel} active` : `Preview: ${selectedLabel} / Active: ${appliedLabel}`}
     </p>
-    <fieldset className="pulse-supporter-badge-choices" disabled={busy}><legend>Accent finish</legend>
-      <label>
-        <input type="radio" name="supporter-finish" value="finish-default" aria-label="Default" checked={finish === null} onChange={() => selectFinish(null)} />
-        <span className="pulse-supporter-finish-swatch" style={{ background: 'var(--pulse-accent-soft, #a78bfa)' }} aria-hidden="true" />
-        <span className="pulse-supporter-finish-choice"><strong>Default</strong><small>Your free theme</small></span>
-      </label>
-      {SUPPORTER_FINISH_OPTIONS.map(option => <label key={option.id} title={option.description}>
-        <input
-          type="radio"
-          name="supporter-finish"
-          value={`finish-${option.id}`}
-          aria-label={option.label}
-          checked={finish === option.id}
-          onChange={() => selectFinish(option.id)}
-        />
-        <span className="pulse-supporter-finish-swatch" style={{ background: supporterFinish[option.id] }} aria-hidden="true" />
-        <span className="pulse-supporter-finish-choice"><strong>{option.label}</strong><small>{option.description}</small></span>
-      </label>)}
-    </fieldset>
+    <p className="pulse-supporter-detail" aria-live="polite">{paint.status || 'Wave and sheen save to this browser profile right away and show whenever your finish is equipped.'}</p>
     <div className="pulse-account-link-actions">
       {unknown ? (
         <button type="button" disabled>Checking Supporter status…</button>
@@ -202,4 +227,52 @@ export function SupporterCosmeticControls({ entitlement, onSaved }: {
     </p> : null}
     <p className="pulse-supporter-detail pulse-supporter-save-status" role="status">{notice}</p>
   </PulseSectionCard>
+}
+
+/**
+ * Emote rain behind your Pulse panel: off, still or falling. A Supporter perk
+ * on the same rule as the backdrop editor: without one it is locked and the
+ * saved choice stays as it was; while membership is unknown it waits, neutral.
+ * A Supporter's choice saves at once.
+ *
+ * A save never disables the row: the pressed button would lose keyboard focus
+ * to the page. Presses while one saves are ignored instead, and one live region,
+ * always present, is cleared when a save starts and then states its result.
+ */
+function EmoteRainField({ banner, perks }: { banner: ReturnType<typeof usePulseBanner>; perks: boolean | undefined }) {
+  const [message, setMessage] = useState('')
+  const [saving, setSaving] = useState(false)
+  // Locked, the row shows the sample look's rain.
+  const shown = perks === false ? 'rain' : banner.value.mode
+  // The shared hook reports the result once its write settles (status and
+  // saving change together), so this row reads only the save it started.
+  useEffect(() => {
+    if (!saving || banner.saving) return
+    setSaving(false)
+    setMessage(banner.status === 'Saved' ? 'Emote rain saved.' : 'Could not save emote rain. Please try again.')
+  }, [saving, banner.saving, banner.status])
+  function choose(mode: PulseBannerPreference['mode']) {
+    if (!perks || !banner.ready || saving || banner.saving) return
+    setMessage('')
+    setSaving(true)
+    void banner.save({ ...banner.value, mode })
+  }
+  return <fieldset className="pulse-supporter-look-row" disabled={!perks || !banner.ready} aria-busy={perks === undefined || saving || undefined} data-supporter-perks={perks ? 'on' : perks === false ? 'locked' : 'pending'}>
+    <legend>Emote rain</legend>
+    <div>
+      <div className="pulse-supporter-seg">
+        {(['off', 'still', 'rain'] as const).map(mode => <button
+          key={mode}
+          type="button"
+          aria-pressed={shown === mode}
+          title={perks === false ? 'Supporter perk' : undefined}
+          onClick={() => choose(mode)}
+        >{mode === 'off' ? 'Off' : mode === 'still' ? 'Still' : 'Rain'}</button>)}
+      </div>
+      {perks === false
+        ? <p className="pulse-supporter-detail" data-supporter-perk="emote-rain">Emote rain, still or falling, is a Supporter perk. Only you see it. It moved from free to Supporter in 0.2.2, and a backdrop you chose is kept for when you support.</p>
+        : null}
+      <p className="pulse-supporter-detail" role="status" data-emote-rain-status>{message}</p>
+    </div>
+  </fieldset>
 }

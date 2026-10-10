@@ -1,11 +1,14 @@
+import type { SupporterPaintStyle, SupporterTenure } from './supporterPaint.ts'
 import type { SupporterAccountAction, SupporterAccountState, SupporterEntitlement, SupporterBillingState, SupporterRestoreState, SupporterDevicesState } from './supporterAccount.ts'
 
 export type MessageType =
   | 'SUPPORTER_ACCOUNT'
+  | 'TWITCH_SIGN_IN'
   | 'SUPPORTER_ENTITLEMENT'
   | 'SUPPORTER_COSMETICS'
   | 'SUPPORTER_APPEARANCE'
   | 'SUPPORTER_FINISH_INTENT'
+  | 'SUPPORTER_CARD_SCRIPT'
   | 'SUPPORTER_BILLING'
   | 'SUPPORTER_RESTORE'
   | 'SUPPORTER_DEVICES'
@@ -16,6 +19,7 @@ export type MessageType =
   | 'GET_ALWAYS_TRACKED'
   | 'GET_CLIP'
   | 'HEALTH'
+  | 'HUB_SNAPSHOT'
   | 'GET_UPDATE_CHECK_CAPABILITY'
   | 'CHECK_FOR_UPDATE'
   | 'OPEN_SETTINGS_HOST'
@@ -163,7 +167,7 @@ export interface CheckForUpdateMessage {
   type: 'CHECK_FOR_UPDATE'
 }
 
-export type SettingsHostSection = 'moments' | 'pulse' | 'supporter' | 'privacy' | 'updates' | 'developer'
+export type SettingsHostSection = 'moments' | 'pulse' | 'supporter' | 'privacy' | 'updates' | 'help' | 'developer'
 
 /** Open the packaged extension-origin settings host from a Twitch surface. */
 export interface OpenSettingsHostMessage {
@@ -239,7 +243,9 @@ export interface DeleteBookmarkMessage {
 export type BackgroundRequest =
   | import('./myMoments.ts').MyMomentsRequest
   | { type: 'SUPPORTER_ACCOUNT'; action: SupporterAccountAction }
-  | { type: 'SUPPORTER_BILLING'; action: 'status' | 'check' | 'checkout' | 'resume' | 'portal' }
+  | import('./twitchSignIn.ts').TwitchSignInRequest
+  /** `portal_confirm`: a click-started Twitch check, then the portal (Twitch sign-in builds only). */
+  | { type: 'SUPPORTER_BILLING'; action: 'status' | 'check' | 'checkout' | 'resume' | 'portal' | 'portal_confirm' }
   | { type: 'SUPPORTER_RESTORE'; action: 'status' | 'start' | 'check' | 'cancel'; email?: string }
   | { type: 'SUPPORTER_DEVICES'; action: 'list'; cursor?: string }
   | { type: 'SUPPORTER_DEVICES'; action: 'revoke'; deviceId: string }
@@ -248,6 +254,8 @@ export type BackgroundRequest =
   | { type: 'SUPPORTER_APPEARANCE' }
   /** Omit `finish` to read; null clears the pre-purchase choice. */
   | { type: 'SUPPORTER_FINISH_INTENT'; finish?: 'glass' | 'etched' | 'halo' | null }
+  /** Injects the quick-settings Supporter card's stage script into the sender's own Twitch tab. */
+  | { type: 'SUPPORTER_CARD_SCRIPT' }
   | TrackMessage
   | UntrackMessage
   | GetPulseMessage
@@ -255,6 +263,7 @@ export type BackgroundRequest =
   | GetAlwaysTrackedMessage
   | GetClipMessage
   | HealthMessage
+  | { type: 'HUB_SNAPSHOT' }
   | GetUpdateCheckCapabilityMessage
   | CheckForUpdateMessage
   | OpenSettingsHostMessage
@@ -538,6 +547,8 @@ export interface GetPulseVodMessage {
   /** Optional exact provider stream assertion for recurring growing-VOD polls. */
   streamId?: string
   window?: 'recent' | 'full'
+  /** The VOD's channel when the page already knows it; used to tell the live archive apart. */
+  login?: string
 }
 
 export interface DiscoverLiveVodMessage {
@@ -734,18 +745,27 @@ export type BackgroundResponse =
       error?: string
     }
   | { type: 'OPEN_SETTINGS_HOST'; ok: boolean; error?: 'settings_host_open_failed' }
+  | { type: 'HUB_SNAPSHOT'; snapshot: import('./hubSnapshot.ts').HubSnapshot | null; error?: string }
+  | { type: 'MY_MOMENTS_RECENT'; recent: import('./myMoments.ts').MyMomentsRecent }
   | { type: 'SUPPORTER_ACCOUNT'; account: SupporterAccountState }
+  | import('./twitchSignIn.ts').TwitchSignInResponse
   | { type: 'SUPPORTER_BILLING'; billing: SupporterBillingState }
   | { type: 'SUPPORTER_RESTORE'; restore: SupporterRestoreState }
   | { type: 'SUPPORTER_DEVICES'; devices: SupporterDevicesState }
   | { type: 'SUPPORTER_ENTITLEMENT'; entitlement: SupporterEntitlement }
   | { type: 'SUPPORTER_COSMETICS'; ok: boolean }
-  | { type: 'SUPPORTER_APPEARANCE'; finish: 'glass' | 'etched' | 'halo' | null; validForMs: number }
+  /**
+   * `perks`: Supporter perks such as emote rain are on, with or without an equipped finish.
+   * `unverified`: the account read failed or is waiting on renewal; keep the last verified state until it expires.
+   */
+  | { type: 'SUPPORTER_APPEARANCE'; finish: 'glass' | 'etched' | 'halo' | null; validForMs: number; tenure?: SupporterTenure; paint?: SupporterPaintStyle; perks?: true; unverified?: true }
   | { type: 'SUPPORTER_FINISH_INTENT'; finish: 'glass' | 'etched' | 'halo' | null }
+  | { type: 'SUPPORTER_CARD_SCRIPT'; ok: boolean }
   | { type: 'DEVICE_AUTH'; status: DeviceAuthStatus }
   | { type: 'PULSE_DEBUG_LOG'; entries: import('./pulseDebug.ts').PulseDebugEntry[] }
-  | ({ type: 'BOOKMARKS'; error?: string } & PulseBookmarkPage)
-  | { type: 'BOOKMARK'; item: PulseBookmark; error?: string }
+  /** `device`: saved without an account; these rows never leave this browser. */
+  | ({ type: 'BOOKMARKS'; device?: true; error?: string } & PulseBookmarkPage)
+  | { type: 'BOOKMARK'; item: PulseBookmark; device?: true; error?: string }
   | { type: 'DELETE_BOOKMARK'; ok: boolean; error?: string }
   | { type: 'WATCHLIST'; channels: string[]; sync?: WatchlistSyncStatus; error?: string }
   | { type: 'SYNC_WATCHLIST'; channels: string[]; sync?: WatchlistSyncStatus; error?: string }

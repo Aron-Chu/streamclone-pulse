@@ -24,6 +24,14 @@ export type SyncState =
   | { kind: 'syncing'; pending: number }
   | { kind: 'synced'; at: number }
   | { kind: 'error'; message: string }
+/**
+ * Watched history synced through the signed-in account. `unavailable`: the
+ * server does not offer it. `on` is the account's choice, shared by every
+ * browser signed in to it.
+ */
+export type HistorySyncView =
+  | { state: 'signed_out' | 'unavailable' | 'off' }
+  | { state: 'on'; syncedAt: number | null; pending: number; failed: boolean }
 export interface LibrarySnapshot {
   moments: readonly LibraryMoment[]
   collections: readonly LibraryCollection[]
@@ -31,6 +39,7 @@ export interface LibrarySnapshot {
   membership: 'free' | 'supporter' | 'expired'
   storage: { usedBytes: number; limitBytes: number; persistence: 'granted' | 'not-granted' | 'unknown' }
   sync: SyncState
+  historySync?: HistorySyncView
 }
 export type MomentInteraction =
   | { kind: 'selected' | 'opened-link' | 'seek-failed'; reference: MomentReference }
@@ -41,6 +50,9 @@ export type LibraryCommand =
   | { kind: 'edit'; id: string; note: string; collectionId?: string }
   | { kind: 'clear-history' }
   | { kind: 'preferences'; value: LibraryPreferences }
+  /** Adds saves made without an account to the signed-in account: one (`id`) or all. */
+  | { kind: 'import-device-saves'; id?: string }
+  | { kind: 'history-sync'; enabled: boolean }
   | { kind: 'create-collection'; name: string }
   | { kind: 'interaction'; event: MomentInteraction }
 export interface LibraryRepository {
@@ -64,6 +76,17 @@ export function replayUrl(reference: MomentReference): string | null {
   if (reference.availability !== 'available' || !reference.vodId || !/^\d+$/.test(reference.vodId)
     || reference.offsetSeconds === null || !Number.isFinite(reference.offsetSeconds) || reference.offsetSeconds < 0) return null
   return `https://www.twitch.tv/videos/${reference.vodId}?t=${Math.floor(reference.offsetSeconds)}s`
+}
+/**
+ * Pulse offsets count from go-live; Twitch's `?t=` counts from the archive
+ * start. They agree when the archive starts with the stream, the mapping every
+ * VOD path uses when the backend reports no origin delta (completed VOD pages,
+ * the channel's open-in-VOD jump, the portal's bookmark link). Saved references
+ * never carry a delta, so a numeric VOD id is required to address the second;
+ * a stream-only reference stays unresolved and keeps its analytics link.
+ */
+export function replayAvailability(m: Pick<MomentReference, 'vodId' | 'offsetSeconds'>): MomentReference['availability'] {
+  return m.vodId && /^\d{6,20}$/.test(m.vodId) && m.offsetSeconds !== null && Number.isFinite(m.offsetSeconds) && m.offsetSeconds >= 0 ? 'available' : 'unresolved'
 }
 export function hasRecent(moment: LibraryMoment, now: number): boolean {
   return moment.jumpedAt !== undefined && moment.historyExpiresAt !== undefined && moment.historyExpiresAt > now

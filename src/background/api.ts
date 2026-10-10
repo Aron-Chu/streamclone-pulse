@@ -11,7 +11,7 @@ import type {
   PulsePayload,
 } from '../shared/messages.ts'
 import { parseBookmarkPage, validBookmarkCursor, validBookmarkPageLimit } from '../shared/bookmarkPage.ts'
-import { supporterAccount } from './supporterAccountRuntime.ts'
+import { ACCOUNT_BACKEND_URL, supporterAccount } from './supporterAccountRuntime.ts'
 import type { ExtensionDiagnosticPayload } from '../shared/diagnosticsConsent.ts'
 import { pickTopClip, selectStreamClips } from '../shared/clips.ts'
 import {
@@ -19,7 +19,7 @@ import {
   type AnalyticsStreamListItem,
   type MetadataStreamHistoryItem,
 } from '../shared/pastVods.ts'
-import { getBackendUrl } from '../shared/storage.ts'
+import { getBackendUrl, getSessionPulse } from '../shared/storage.ts'
 import { DEFAULT_BACKEND_URL } from '../shared/storage.ts'
 import {
   getDeviceCredential,
@@ -31,6 +31,7 @@ import {
 } from './deviceAuth.ts'
 import { pulseDebug } from '../shared/pulseDebug.ts'
 import { normalizeVodPulseHttpResponse } from '../vod/normalizeVodPulseFetch.ts'
+import { requestVodPulse, retryAfterMs, VodBridgeTransientError } from './vodLiveBridge.ts'
 
 /** Default bound for extension BFF requests (health/pulse/coverage/watchlist). */
 export const EXTENSION_API_TIMEOUT_MS = 15_000
@@ -502,35 +503,57 @@ export async function fetchPulseChannel(
 
 export async function fetchPulseVod(
   vodId: string,
-  options?: { baseUrl?: string; streamId?: string; window?: 'recent' | 'full' },
+  options?: { baseUrl?: string; streamId?: string; window?: 'recent' | 'full'; login?: string },
 ): Promise<import('../types/vodPulseTypes.ts').ExtensionVodPulseResponse> {
   const root = options?.baseUrl ?? await getBackendUrl()
   const streamId = options?.streamId?.trim() ?? ''
   if (streamId && !/^[A-Za-z0-9_-]{1,64}$/.test(streamId)) {
     throw new Error('pulse_stream_invalid')
   }
-  const query = new URLSearchParams({
-    allowLiveBridge: 'true',
-    window: options?.window === 'full' ? 'full' : 'recent',
-  })
-  if (streamId) query.set('streamId', streamId)
-  const res = await fetchWithTimeout(
-    `${root}/v1/extension/pulse/vods/${encodeURIComponent(vodId)}?${query.toString()}`,
+  const window = options?.window === 'full' ? 'full' : 'recent'
+  const request = async (bridge: boolean, bridgeStreamId?: string) => {
+    // The live bridge answers with the channel's live DVR, so it is only ever
+    // sent for the archive of the stream that is live now (vodLiveBridge.ts).
+    const query = new URLSearchParams(bridge ? { allowLiveBridge: 'true', window } : { window })
+    if (bridge && bridgeStreamId) query.set('streamId', bridgeStreamId)
+    const res = await fetchWithTimeout(
+      `${root}/v1/extension/pulse/vods/${encodeURIComponent(vodId)}?${query.toString()}`,
+      {
+        headers: await pulseRequestHeaders(false, root),
+      },
+    )
+    if (bridge && (res.status === 429 || res.status >= 500)) {
+      // No answer from the bridge is not a "not live" answer (vodLiveBridge.ts).
+      await releaseResponse(res)
+      throw new VodBridgeTransientError(res.status, retryAfterMs(res.headers.get('Retry-After'), Date.now()))
+    }
+    const body = await readResponseText(res, LARGE_RESPONSE_MAX_BYTES)
+    return normalizeVodPulseHttpResponse(vodId, new Response(body, {
+      status: res.status,
+      headers: res.headers,
+    }))
+  }
+  const { payload, outcome } = await requestVodPulse(
+    vodId,
+    { streamId: streamId || undefined, login: options?.login },
     {
-      headers: await pulseRequestHeaders(false, root),
+      request,
+      liveIdentity: async login => {
+        const cached = await getSessionPulse(login, 'recent').catch(() => null)
+        const live = cached?.payload ?? await fetchPulseChannel(login, { baseUrl: root })
+        return {
+          isLive: live.isLive === true,
+          streamId: live.streamId ?? null,
+          startedAt: live.startedAt ?? null,
+          vodId: live.vodId ?? null,
+        }
+      },
     },
   )
-  const body = await readResponseText(res, LARGE_RESPONSE_MAX_BYTES)
-  const payload = await normalizeVodPulseHttpResponse(vodId, new Response(body, {
-    status: res.status,
-    headers: res.headers,
-  }))
-  if (streamId && payload.streamId?.trim() !== streamId) {
-    throw new Error('pulse_stream_mismatch')
-  }
   await pulseDebug('vod.pulse.api', 'vod pulse payload received', {
     vodId,
     mode: payload.mode,
+    liveBridge: outcome,
     resolutionState: payload.resolutionState ?? null,
     streamId: payload.streamId ?? null,
     channelLogin: payload.channelLogin ?? null,
@@ -652,13 +675,14 @@ export async function postWatchChannel(login: string, baseUrl?: string): Promise
   await releaseResponse(res)
 }
 
-async function bookmarkRequest<T>(root: string, path: string, init: RequestInit, consume: (response: Response) => Promise<T>, accountId?: string): Promise<T> {
+async function accountBearerRequest<T>(root: string, path: string, init: RequestInit, consume: (response: Response) => Promise<T>, accountId?: string): Promise<T> {
   // No account bearer may follow a developer override or a redirect. Never
   // fall back to Protect's legacy device credential after account disconnect.
   if (root !== DEFAULT_BACKEND_URL || await getBackendUrl() !== DEFAULT_BACKEND_URL) throw new Error('account_hosted_only')
   const result = await supporterAccount.withCredential(async token => {
     if (await getBackendUrl() !== root) throw new Error('account_hosted_only')
-    const response = await fetchWithTimeout(`${root}${path}`, {
+    // The bearer goes only to the origin that issued it (production in store builds).
+    const response = await fetchWithTimeout(`${ACCOUNT_BACKEND_URL}${path}`, {
       ...init, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       credentials: 'omit', redirect: 'error', cache: 'no-store',
     })
@@ -685,7 +709,7 @@ export async function fetchPulseBookmarks(
   if (params.limit !== undefined) qs.set('limit', String(params.limit))
   if (params.cursor !== undefined) qs.set('cursor', params.cursor)
   const suffix = qs.toString() ? `?${qs.toString()}` : ''
-  return bookmarkRequest(root, `/v1/pulse/bookmarks${suffix}`, {
+  return accountBearerRequest(root, `/v1/pulse/bookmarks${suffix}`, {
     signal: params.signal,
   }, async res => {
     if (!res.ok) {
@@ -706,7 +730,7 @@ export async function createPulseBookmark(
   accountId?: string,
 ): Promise<PulseBookmark> {
   const root = baseUrl ?? await getBackendUrl()
-  return bookmarkRequest(root, '/v1/pulse/bookmarks', {
+  return accountBearerRequest(root, '/v1/pulse/bookmarks', {
     method: 'POST',
     body: JSON.stringify(bookmark),
   }, async res => {
@@ -720,7 +744,7 @@ export async function createPulseBookmark(
 
 export async function deletePulseBookmark(id: string, baseUrl?: string, accountId?: string): Promise<void> {
   const root = baseUrl ?? await getBackendUrl()
-  return bookmarkRequest(root, `/v1/pulse/bookmarks/${encodeURIComponent(id)}`, {
+  return accountBearerRequest(root, `/v1/pulse/bookmarks/${encodeURIComponent(id)}`, {
     method: 'DELETE',
   }, async res => {
     if (!res.ok) {
@@ -728,6 +752,27 @@ export async function deletePulseBookmark(id: string, baseUrl?: string, accountI
       throw new Error(`delete_bookmark ${res.status}`)
     }
     await releaseResponse(res)
+  }, accountId)
+}
+
+/**
+ * Synced watched history (`/v1/account/history/*`) for the linked account. The
+ * caller reads the status: 404 means the server does not offer sync, 409 that
+ * the account turned it off.
+ */
+export async function accountHistoryRequest(
+  path: '/v1/account/history/sync' | '/v1/account/history/settings' | '/v1/account/history/clear',
+  body: Record<string, unknown>,
+  accountId: string,
+): Promise<{ status: number; body: unknown }> {
+  const root = await getBackendUrl()
+  return accountBearerRequest(root, path, { method: 'POST', body: JSON.stringify(body) }, async res => {
+    const text = await res.text()
+    // A full reply is at most 1,000 short rows.
+    if (text.length > 1048576) throw new Error('history_response_invalid')
+    let data: unknown = null
+    try { data = text ? JSON.parse(text) : null } catch { /* The status still says what happened. */ }
+    return { status: res.status, body: data }
   }, accountId)
 }
 

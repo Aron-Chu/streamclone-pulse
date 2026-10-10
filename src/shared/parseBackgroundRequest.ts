@@ -7,10 +7,12 @@ const KNOWN_MESSAGE_TYPES = new Set<string>([
   'MY_MOMENTS',
   'MOMENT_CAPTURE',
   'SUPPORTER_ACCOUNT',
+  'TWITCH_SIGN_IN',
   'SUPPORTER_ENTITLEMENT',
   'SUPPORTER_COSMETICS',
   'SUPPORTER_APPEARANCE',
   'SUPPORTER_FINISH_INTENT',
+  'SUPPORTER_CARD_SCRIPT',
   'SUPPORTER_BILLING',
   'SUPPORTER_RESTORE',
   'SUPPORTER_DEVICES',
@@ -21,6 +23,7 @@ const KNOWN_MESSAGE_TYPES = new Set<string>([
   'GET_ALWAYS_TRACKED',
   'GET_CLIP',
   'HEALTH',
+  'HUB_SNAPSHOT',
   'GET_UPDATE_CHECK_CAPABILITY',
   'CHECK_FOR_UPDATE',
   'OPEN_SETTINGS_HOST',
@@ -182,7 +185,9 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
       const streamId = optionalString(raw.streamId)
       if (streamId && !/^[A-Za-z0-9_-]{1,64}$/.test(streamId)) return null
       const window = raw.window === 'full' || raw.window === 'recent' ? raw.window : undefined
-      return { type, vodId, streamId, window }
+      // A placeholder or malformed channel is dropped, never a reason to refuse the VOD.
+      const login = requireLogin(raw.login) ?? undefined
+      return { type, vodId, streamId, window, ...(login ? { login } : {}) }
     }
     case 'LOAD_MISSED_MOMENTS': {
       const login = requireLogin(raw.login)
@@ -242,6 +247,7 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
     }
     case 'HEALTH':
       return { type, force: optionalBoolean(raw.force) }
+    case 'HUB_SNAPSHOT':
     case 'GET_UPDATE_CHECK_CAPABILITY':
     case 'CHECK_FOR_UPDATE':
       return { type }
@@ -250,7 +256,7 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
       // a caller-controlled destination into this content-script-reachable action.
       if ('url' in raw || 'path' in raw || 'target' in raw) return null
       const section =
-        raw.section === 'moments' || raw.section === 'pulse' || raw.section === 'supporter' || raw.section === 'privacy' || raw.section === 'updates' || raw.section === 'developer'
+        raw.section === 'moments' || raw.section === 'pulse' || raw.section === 'supporter' || raw.section === 'privacy' || raw.section === 'updates' || raw.section === 'help' || raw.section === 'developer'
           ? raw.section
           : raw.section == null ? undefined : null
       if (section === null) return null
@@ -262,9 +268,24 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
       return action === 'status' || action === 'start' || action === 'poll' || action === 'cancel' || action === 'disconnect'
         ? { type, action } : null
     }
+    case 'TWITCH_SIGN_IN': {
+      // Exact shapes only: no URL, redirect, token or surface ever comes from a page.
+      const keys = Object.keys(raw)
+      if (raw.action === 'status') return keys.length === 2 ? { type, action: 'status' } : null
+      if (raw.action === 'sign_out_everywhere') {
+        if (keys.some(key => !['type', 'action', 'confirm'].includes(key))) return null
+        if (raw.confirm === undefined || raw.confirm === false) return { type, action: 'sign_out_everywhere' }
+        return raw.confirm === true ? { type, action: 'sign_out_everywhere', confirm: true } : null
+      }
+      if (raw.action !== 'sign_in' || keys.some(key => !['type', 'action', 'mode', 'forceVerify'].includes(key))) return null
+      if (raw.mode !== 'interactive' && raw.mode !== 'silent') return null
+      if (raw.forceVerify === undefined || raw.forceVerify === false) return { type, action: 'sign_in', mode: raw.mode }
+      // Choosing another account always needs the window.
+      return raw.forceVerify === true && raw.mode === 'interactive' ? { type, action: 'sign_in', mode: 'interactive', forceVerify: true } : null
+    }
     case 'SUPPORTER_BILLING':
       if (Object.keys(raw).some(key => key !== 'type' && key !== 'action')) return null
-      return raw.action === 'status' || raw.action === 'check' || raw.action === 'checkout' || raw.action === 'resume' || raw.action === 'portal' ? { type, action: raw.action } : null
+      return raw.action === 'status' || raw.action === 'check' || raw.action === 'checkout' || raw.action === 'resume' || raw.action === 'portal' || raw.action === 'portal_confirm' ? { type, action: raw.action } : null
     case 'SUPPORTER_RESTORE': {
       if (Object.keys(raw).some(key => !['type', 'action', 'email'].includes(key))) return null
       if (raw.action === 'status' || raw.action === 'check' || raw.action === 'cancel') return 'email' in raw ? null : { type, action: raw.action }
@@ -287,6 +308,8 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
       return raw.finish === null || raw.finish === 'glass' || raw.finish === 'etched' || raw.finish === 'halo' ? { type, finish: raw.finish } : null
     case 'SUPPORTER_ENTITLEMENT':
     case 'SUPPORTER_APPEARANCE':
+    // No file, tab or frame comes from the caller: the worker injects one fixed script into the sender's own frame.
+    case 'SUPPORTER_CARD_SCRIPT':
       return Object.keys(raw).length === 1 ? { type } : null
     case 'GET_DEVICE_AUTH_STATUS':
     case 'ROTATE_DEVICE':

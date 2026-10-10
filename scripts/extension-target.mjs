@@ -45,6 +45,47 @@ export function resolveSupporterBackendOrigin(target = resolveExtensionTarget(),
   return url.origin
 }
 
+/**
+ * Sign in with Twitch build stage, from PULSE_EXTENSION_TWITCH_SIGNIN:
+ *
+ *   - `off` (default, and today's store builds): no Twitch sign-in; the options
+ *     page says Supporter sign-ups are not open and keeps the invited-tester
+ *     device link behind a closed disclosure.
+ *   - `tester`: development and preview builds only, for invited testers while
+ *     the backend runs Twitch sign-in in pilot mode. Store builds refuse it.
+ *   - `public`: Continue with Twitch for everyone. A store build accepts it only
+ *     once that store's manifest already requests `identity` (the release that
+ *     also updates the permission allowlist and the store permission docs).
+ *
+ * A development build with Twitch on gets `identity` added to its generated
+ * manifest only; the checked-in manifests stay unchanged.
+ */
+export const TWITCH_SIGNIN_STAGES = ['off', 'tester', 'public']
+
+export function resolveTwitchSignInStage(target = resolveExtensionTarget(), raw = process.env.PULSE_EXTENSION_TWITCH_SIGNIN, manifest = undefined) {
+  const value = String(raw ?? '').trim().toLowerCase() || 'off'
+  if (!TWITCH_SIGNIN_STAGES.includes(value)) {
+    throw new Error(`unknown PULSE_EXTENSION_TWITCH_SIGNIN=${JSON.stringify(raw)}; expected one of ${TWITCH_SIGNIN_STAGES.join(', ')}`)
+  }
+  if (isStoreTarget(target) && value === 'tester') {
+    throw new Error(`PULSE_EXTENSION_TWITCH_SIGNIN=tester is for development and preview builds only; ${target} store builds use off or public`)
+  }
+  if (isStoreTarget(target) && value === 'public') {
+    const permissions = (manifest ?? JSON.parse(readFileSync(manifestPathForTarget(target), 'utf8'))).permissions ?? []
+    if (!permissions.includes('identity')) {
+      throw new Error(`PULSE_EXTENSION_TWITCH_SIGNIN=public needs the ${target} manifest to request identity first (with the permission allowlist and store permission docs in the same change)`)
+    }
+  }
+  return value
+}
+
+/** The generated manifest for a build: development builds with Twitch on also request `identity`. */
+export function manifestForTwitchSignInStage(manifest, target, stage) {
+  if (stage === 'off' || target !== 'development') return manifest
+  const permissions = manifest.permissions ?? []
+  return permissions.includes('identity') ? manifest : { ...manifest, permissions: [...permissions, 'identity'] }
+}
+
 export function isStoreTarget(target = resolveExtensionTarget()) {
   return target === 'cws' || target === 'edge' || target === 'firefox'
 }

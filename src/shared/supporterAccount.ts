@@ -41,9 +41,24 @@ export type SupporterEntitlement =
       checkoutEnabled?: boolean
       /** Server capability; absent on older deployments. Never opens Checkout itself. */
       installationAccountsEnabled?: boolean
-      accountKind?: 'email' | 'installation'
+      /** `twitch`: created by Continue with Twitch. `email`: an invited tester's account. */
+      accountKind?: 'email' | 'installation' | 'twitch'
       restoreEligible?: boolean
     }
+
+/**
+ * Whether this membership unlocks the Supporter cosmetics: a verified active or
+ * grace membership with the banner and finish features. One rule for the finish
+ * controls, the worker's appearance reply and emote rain, so no surface can
+ * grant a perk another one withholds. Presentation only; the BFF still
+ * authorizes every paid mutation.
+ */
+export function supporterPerksAllowed(entitlement: SupporterEntitlement | null | undefined): boolean {
+  return entitlement?.state === 'ready'
+    && (entitlement.status === 'active' || entitlement.status === 'grace')
+    && entitlement.features.includes('supporter.banner.v1')
+    && entitlement.features.includes('supporter.finish.v1')
+}
 
 /** Safe settings projection. Bearer, refresh and polling secrets never belong here. */
 export type SupporterAccountState =
@@ -54,10 +69,22 @@ export type SupporterAccountState =
   | { state: 'pending'; code: string; expiresAt: string; retryAfterSeconds: number }
   | { state: 'linked'; accountId: string; expiresAt: string }
 
-/** Worker-owned purchase state: provider URLs and all credentials stay private. */
+/**
+ * Worker-owned purchase state: provider URLs and all credentials stay private.
+ * With Twitch sign-in on, `sign_in_required` means no signed-in account,
+ * `step_up_required` that managing the subscription needs a Twitch check from
+ * the last 10 minutes, and `wrong_account` that the Twitch account in that
+ * check is not this account's.
+ */
 export type SupporterBillingState =
-  | { state: 'idle' | 'fallback' | 'closed' | 'active' | 'expired' | 'review' | 'unavailable' | 'error' | 'reconnect_required' }
+  | { state: 'idle' | 'fallback' | 'closed' | 'active' | 'expired' | 'review' | 'unavailable' | 'error' | 'reconnect_required' | 'sign_in_required' | 'step_up_required' | 'wrong_account' }
   | { state: 'waiting' | 'confirming' | 'still_confirming'; attemptId?: string; automaticPolling?: false }
+  /**
+   * Checkout or the portal answered 429 `try_later`: nothing new was started,
+   * and the worker sends no billing request before `retryAt` (epoch ms, from
+   * the server's Retry-After).
+   */
+  | { state: 'try_later'; retryAt: number }
 export type SupporterRestoreState =
   | { state: 'idle' | 'fallback' | 'restored' | 'expired' | 'conflict' | 'error' | 'ineligible' }
   | { state: 'unavailable'; reason?: 'connection' | 'membership' | 'membership_invalid' | 'environment_mismatch' }

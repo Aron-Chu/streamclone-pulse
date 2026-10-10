@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react'
+import { useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react'
 import type { ExtensionEmote } from '../shared/messages.ts'
 import { formatCount } from './mostReacted.ts'
 import { overlayGhostChipButton, overlayTextLinkButton } from './momentReasonStyles.ts'
@@ -26,7 +26,12 @@ export interface MomentSelectionCardProps {
   onAnalytics?: () => void
   onClose?: () => void
   className?: string
-  bodyClassName?: string
+  /**
+   * Identity of the selection shown. When it changes the details fade in place
+   * instead of the card remounting and sliding in again. They keep their
+   * nodes, so a focused action keeps focus when a poll swaps the moment.
+   */
+  contentKey?: string
   ariaLabel: string
   style?: CSSProperties
 }
@@ -48,10 +53,22 @@ export function MomentSelectionCard({
   onAnalytics,
   onClose,
   className,
-  bodyClassName,
+  contentKey,
   ariaLabel,
   style,
 }: MomentSelectionCardProps) {
+  const contentRef = useRef<HTMLDivElement>(null)
+  const shownKeyRef = useRef(contentKey)
+  // The first selection fades in with the card itself; a swap restarts the
+  // details' fade on the same nodes (a key remount would drop focus).
+  useLayoutEffect(() => {
+    if (contentKey === shownKeyRef.current) return
+    shownKeyRef.current = contentKey
+    const content = contentRef.current!
+    content.className = ''
+    content.getBoundingClientRect()
+    content.className = 'pulse-moment-card-swap'
+  }, [contentKey])
   return (
     <div
       className={['pulse-moment-selection-card', className].filter(Boolean).join(' ')}
@@ -65,7 +82,7 @@ export function MomentSelectionCard({
       onPointerDown={event => event.stopPropagation()}
       onClick={event => event.stopPropagation()}
     >
-      <div className={bodyClassName}>
+      <div ref={contentRef}>
         <div style={styles.header}>
           <span style={styles.kicker}>{label}</span>
           <span style={styles.offset} data-moment-inspector-clock="true">{timeLabel}</span>

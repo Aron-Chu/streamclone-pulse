@@ -3,11 +3,14 @@ import type { CDPSession } from '@playwright/test'
 import { openTwitchChannel } from '../helpers/mockTwitch.ts'
 
 /**
- * The reduced-action Supporter journey, packaged, with fixture APIs only:
- * Become a Supporter → (website sign-in + one approval, simulated by the poll
- * fixture) → delayed payment confirmation → membership and a pre-chosen finish
- * reach settings and an already-open Twitch tab without any reload, then a
- * remote revocation removes the finish from that tab, again without reload.
+ * The invited-tester Supporter journey with Twitch sign-in off (stage A),
+ * packaged, with fixture APIs only: Connect this extension from the closed
+ * tester disclosure → (website sign-in + one approval, simulated by the poll
+ * fixture) → Continue to checkout on the website → delayed payment
+ * confirmation → membership and a pre-chosen finish reach settings and an
+ * already-open Twitch tab without any reload, then a remote revocation removes
+ * the finish from that tab, again without reload. A signed-out page offers no
+ * purchase of its own.
  *
  * Nothing here talks to Stripe or the real website; the portal half of the
  * journey has its own browser spec in streampulse-web.
@@ -49,7 +52,7 @@ async function recordOpenedTabs(page: import('@playwright/test').Page) {
   return () => page.evaluate(() => (window as unknown as { __openedTabs: string[] }).__openedTabs)
 }
 
-test('purchase journey needs no codes, refreshes or reloads, and revocation reaches an open Twitch tab', async ({ extension, prepare }, info) => {
+test('tester purchase journey needs no codes, refreshes or reloads, and revocation reaches an open Twitch tab', async ({ extension, prepare }, info) => {
   test.setTimeout(150_000)
   await prepare({ scenario: 'live-ready' })
   const context = extension.context
@@ -98,26 +101,33 @@ test('purchase journey needs no codes, refreshes or reloads, and revocation reac
   await settings.bringToFront()
 
   // Optional explicit finish choice before purchase: a preview, nothing equipped.
-  await settings.getByRole('group', { name: 'Accent finish' }).getByRole('radio', { name: 'Halo', exact: true }).check()
+  await settings.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Halo', exact: true }).check()
   await settings.getByRole('button', { name: 'Use Halo when Supporter starts', exact: true }).click()
   await expect(settings.locator('[data-supporter-finish-intent="halo"]')).toBeVisible()
   expect(cosmeticWrites).toEqual([])
 
-  // One entry point. The website opens with the request prepared.
+  // Signed out, the page sells nothing; an invited tester connects from the closed disclosure.
+  await expect(settings.getByRole('button', { name: 'Become a Supporter', exact: true })).toHaveCount(0)
   const openedTabs = await recordOpenedTabs(settings)
   const opened = context.waitForEvent('page')
-  await settings.getByRole('button', { name: 'Become a Supporter', exact: true }).click()
+  await settings.getByText('Invited tester? Connect this extension', { exact: true }).click()
+  await settings.getByRole('button', { name: 'Connect this extension', exact: true }).click()
   const portal = await opened
-  expect(await openedTabs()).toEqual(['https://streampulse.stream/account/link-device#code=ABCDE12345&then=billing'])
+  expect(await openedTabs()).toEqual(['https://streampulse.stream/account/link-device#code=ABCDE12345'])
   await expect(settings.locator('[data-journey-state="link-pending"]')).toBeVisible()
   await settings.screenshot({ path: info.outputPath('journey-1-link-pending.png'), fullPage: true, animations: 'disabled' })
 
-  // The user signs in and approves on the website; the settings page is not
-  // touched again. It finishes connecting and continues to checkout.
+  // The user signs in and approves on the website; the settings page finishes
+  // connecting by itself, then offers the website checkout.
   approved = true
   await portal.bringToFront()
-  await expect(settings.locator('[data-journey-state="purchase-continuing"]')).toBeVisible({ timeout: 20_000 })
+  await expect(settings.locator('[data-journey-state="offer"]')).toBeVisible({ timeout: 20_000 })
   await expect(settings.getByText('··1a1b2c', { exact: true })).toBeVisible()
+  await settings.bringToFront()
+  const checkout = context.waitForEvent('page')
+  await settings.locator('a[data-supporter-action="billing"]').click()
+  await checkout
+  await expect(settings.locator('[data-journey-state="purchase-continuing"]')).toBeVisible()
 
   // Stripe's webhook is delayed: pending, then active. No refresh button is pressed.
   status = 'pending'
@@ -142,7 +152,7 @@ test('purchase journey needs no codes, refreshes or reloads, and revocation reac
   await settings.bringToFront()
   await settings.waitForTimeout(5_200)
   await settings.evaluate(() => window.dispatchEvent(new Event('focus')))
-  await expect(settings.getByText('was disconnected from your Pulse account', { exact: false })).toBeVisible({ timeout: 15_000 })
+  await expect(settings.getByText('was disconnected from your StreamPulse account', { exact: false })).toBeVisible({ timeout: 15_000 })
   await twitch.bringToFront()
   await expect.poll(() => bannerFinish(cdp), { timeout: 20_000 }).toBe(null)
 
@@ -151,7 +161,7 @@ test('purchase journey needs no codes, refreshes or reloads, and revocation reac
   // stubbed by the route or, when it navigates before routing attaches,
   // refused by the harness resolver rule (see extensionContext.ts).
   expect(checkoutWrites).toEqual([])
-  expect(website.every(url => url === 'https://streampulse.stream/account/link-device')).toBe(true)
+  expect(website.every(url => url === 'https://streampulse.stream/account/link-device' || url === 'https://streampulse.stream/account/billing')).toBe(true)
   expect(await portal.title()).not.toMatch(/Twitch reaction analytics/)
   expect(await settings.locator('body').innerText()).not.toContain('c'.repeat(64))
   await cdp.detach()

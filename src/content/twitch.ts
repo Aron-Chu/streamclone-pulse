@@ -52,6 +52,12 @@ export function isTwitchVodPath(pathname: string): boolean {
   return parseTwitchPage(pathname).kind === 'vod'
 }
 
+/** True where Twitch shows a chat column: a channel's own page or a VOD watch page. */
+export function isTwitchChatPath(pathname: string): boolean {
+  const { kind } = parseTwitchPage(pathname)
+  return kind === 'vod' || (kind === 'channel' && pathname.split('/').filter(Boolean).length === 1)
+}
+
 export function parseTwitchPage(pathname: string): TwitchPageContext {
   const parts = pathname.split('/').filter(Boolean)
   if (!parts.length) return { kind: 'non-channel', login: null, vodId: null }
@@ -304,25 +310,61 @@ function normalizeVodPathPart(value: string | undefined): string | null {
   return /^\d{5,20}$/.test(value) ? value : null
 }
 
+/**
+ * How long a live reading holds without a fresh one. The content script's 5 s
+ * live tick has to read offline twice in a row before live drops, so an ad
+ * break or player swap that briefly hides the live player cannot flip the
+ * panel to recap and force a refetch. Twitch's own offline markers still drop
+ * live at once.
+ */
+export const LIVE_READING_HOLD_MS = 7_000
+
+let liveReadingLogin: string | null | undefined
+let liveReadingAt = 0
+
 /** True when the Twitch channel page is showing a live broadcast (not offline/VOD). */
-export function detectTwitchChannelLive(context: TwitchPageContext): boolean {
+export function detectTwitchChannelLive(context: TwitchPageContext, now = Date.now()): boolean {
   if (context.kind !== 'channel' || context.vodId) return false
   if (typeof document === 'undefined') return false
 
-  if (document.querySelector('[data-a-target="channel-offline-still-image"]')) return false
-  if (document.querySelector('[data-a-target="channel-offline-header"]')) return false
+  if (document.querySelector('[data-a-target="channel-offline-still-image"], [data-a-target="channel-offline-header"]')) {
+    liveReadingLogin = undefined
+    return false
+  }
 
-  const video = document.querySelector('video')
+  // The main player, not the first <video> on the page: an ad or preview
+  // player can come first in DOM order.
+  const video = getPrimaryVideo()
+  const streamCard = document.querySelector('[data-a-target="stream-info-card-component"]')
   // Live HLS often reports duration as Infinity. Number.isFinite(Infinity) is false,
   // so do not gate this branch on isFinite.
-  if (video && video.duration === Infinity) {
+  if ((video && video.duration === Infinity) || /\bLIVE\b/i.test(streamCard?.textContent ?? '')) {
+    liveReadingLogin = context.login
+    liveReadingAt = now
     return true
   }
 
-  const streamCard = document.querySelector('[data-a-target="stream-info-card-component"]')
-  if (streamCard && /\bLIVE\b/i.test(streamCard.textContent ?? '')) {
-    return true
-  }
+  return liveReadingLogin === context.login && now - liveReadingAt < LIVE_READING_HOLD_MS
+}
 
-  return false
+/**
+ * The channel's own avatar from Twitch's channel header, when it is on the page.
+ *
+ * Only the header avatar whose alt text names this channel counts (the left
+ * sidebar shows other channels' avatars), and only Twitch's image CDN is
+ * accepted. The viewer's own Twitch identity is never read.
+ */
+export function readTwitchChannelAvatarUrl(login: string, displayName?: string | null): string | undefined {
+  if (typeof document === 'undefined') return undefined
+  const names = new Set([login, displayName].filter((name): name is string => Boolean(name)).map(name => name.trim().toLowerCase()))
+  for (const image of document.querySelectorAll<HTMLImageElement>('.channel-info-content img.tw-image-avatar')) {
+    if (!names.has(image.alt.trim().toLowerCase())) continue
+    try {
+      const url = new URL(image.currentSrc || image.src)
+      if (url.protocol === 'https:' && url.hostname === 'static-cdn.jtvnw.net') return url.toString()
+    } catch {
+      // An unparseable source is not an avatar.
+    }
+  }
+  return undefined
 }

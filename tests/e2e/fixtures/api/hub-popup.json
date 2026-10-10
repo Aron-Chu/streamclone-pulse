@@ -1,0 +1,159 @@
+{
+ "generatedAt": "2026-10-03T03:07:26.324Z",
+ "poolSize": 998,
+ "activity": {
+  "livePoolViewerSum": 882821,
+  "points": []
+ },
+ "emoteIntel": {
+  "emotesPerMin": 6141.37
+ },
+ "topEmotes": [
+  {
+   "name": "LOL",
+   "provider": "7tv",
+   "imageUrl": "https://cdn.7tv.app/emote/01FZ975PV8000B4AWRZNMVNEXN/4x.webp",
+   "count": 4937,
+   "animated": true
+  },
+  {
+   "name": "LUL",
+   "provider": "twitch",
+   "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/425618/default/dark/2.0",
+   "count": 4673,
+   "animated": false
+  },
+  {
+   "name": "chatterboxLove",
+   "provider": "twitch",
+   "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_fixture1/default/dark/2.0",
+   "count": 4274,
+   "animated": false
+  },
+  {
+   "name": "DinoDance",
+   "provider": "twitch",
+   "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_fixture2/default/dark/2.0",
+   "count": 2916,
+   "animated": true
+  },
+  {
+   "name": "om",
+   "provider": "7tv",
+   "imageUrl": "https://cdn.7tv.app/emote/01FET023A8000C9XXF2H0G0AQF/4x.webp",
+   "count": 2498,
+   "animated": true
+  },
+  {
+   "name": "NotLikeThis",
+   "provider": "twitch",
+   "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/58765/default/dark/2.0",
+   "count": 2224,
+   "animated": false
+  },
+  {
+   "name": "waga",
+   "provider": "7tv",
+   "imageUrl": "https://cdn.7tv.app/emote/01FIXTUREWAGA/4x.webp",
+   "count": 2046,
+   "animated": true
+  },
+  {
+   "name": "WW",
+   "provider": "7tv",
+   "imageUrl": "https://cdn.7tv.app/emote/01GM9KFF4G000BYX6NYFV0K5MZ/4x.webp",
+   "count": 1513,
+   "animated": true
+  },
+  {
+   "name": "OOOO",
+   "provider": "7tv",
+   "imageUrl": "https://cdn.7tv.app/emote/01GB4PT9NG000DGEZ8VYY59RSM/4x.webp",
+   "count": 1275,
+   "animated": true
+  },
+  {
+   "name": "o7",
+   "provider": "7tv",
+   "imageUrl": "https://cdn.7tv.app/emote/01FS5ZCFG0000500DPPCXJWCP8/4x.webp",
+   "count": 1203,
+   "animated": false
+  },
+  {
+   "name": "YESS",
+   "provider": "7tv",
+   "imageUrl": "https://cdn.7tv.app/emote/01GZTRK6Z8000CZM5QS5C17H64/4x.webp",
+   "count": 1100,
+   "animated": true
+  },
+  {
+   "name": "plink",
+   "provider": "7tv",
+   "imageUrl": "https://cdn.7tv.app/emote/01HA7QP7C8000BNMZK2KZG7XCQ/4x.webp",
+   "count": 1001,
+   "animated": false
+  }
+ ],
+ "liveChannels": [
+  {
+   "streamId": "320581609948",
+   "login": "maplemoth",
+   "displayName": "MapleMoth",
+   "category": "Food & Drink",
+   "profileImageUrl": "https://static-cdn.jtvnw.net/jtv_user_pictures/maplemoth-profile_image-300x300.png",
+   "viewers": 13174,
+   "chatPerMin": 309.2,
+   "emotesPerMin": 154.6,
+   "coverageState": "synced",
+   "trendPct": 0
+  },
+  {
+   "streamId": "320581609948",
+   "login": "novarunner",
+   "displayName": "NovaRunner",
+   "category": "Just Chatting",
+   "profileImageUrl": "https://static-cdn.jtvnw.net/jtv_user_pictures/novarunner-profile_image-300x300.png",
+   "viewers": 2596,
+   "chatPerMin": 466.4,
+   "emotesPerMin": 233.2,
+   "coverageState": "synced",
+   "trendPct": 0
+  },
+  {
+   "streamId": "320581609948",
+   "login": "quietcat",
+   "displayName": "QuietCat",
+   "category": "Art",
+   "profileImageUrl": "https://static-cdn.jtvnw.net/jtv_user_pictures/quietcat-profile_image-300x300.png",
+   "viewers": 120,
+   "chatPerMin": 12,
+   "emotesPerMin": 6.0,
+   "coverageState": "synced",
+   "trendPct": 0
+  },
+  {
+   "streamId": "320581609948",
+   "login": "statsonly",
+   "displayName": "StatsOnly",
+   "category": "Chess",
+   "profileImageUrl": "https://static-cdn.jtvnw.net/jtv_user_pictures/statsonly-profile_image-300x300.png",
+   "viewers": 9000,
+   "chatPerMin": 999,
+   "emotesPerMin": 499.5,
+   "coverageState": "stats_only",
+   "trendPct": 0
+  },
+  {
+   "streamId": "320581609948",
+   "login": "pixelpilot",
+   "displayName": "PixelPilot",
+   "category": "Grand Theft Auto V",
+   "profileImageUrl": "https://static-cdn.jtvnw.net/jtv_user_pictures/pixelpilot-profile_image-300x300.png",
+   "viewers": 32888,
+   "chatPerMin": 405.1,
+   "emotesPerMin": 202.55,
+   "coverageState": "synced",
+   "trendPct": 0
+  }
+ ]
+}
