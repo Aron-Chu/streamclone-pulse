@@ -1,10 +1,10 @@
-import { LINES, NAME_COLORS, NAMES, TENURES, finishVars, kitCrest, kitEmote, kitEmoteSrc, kitName, pick, rand, renderWords, tenureIndex, type Kit, type KitEmoteName } from './kit.ts'
+import { LINES, NAME_COLORS, NAMES, TENURES, finishVars, kitCrest, kitName, lineEmote, pick, rand, renderWords, tenureIndex, type Kit } from './kit.ts'
 import { mountStage, runStage, type StageContext, type StageModel } from './stage.ts'
 import { CHAT_STACK_CSS } from './styles.ts'
 
 /**
  * "Your Line": a Twitch-style chat column where your line arrives with your
- * crest, painted name and signature emote. Ported from the lab's
+ * crest and painted name (and the lab's sample emote as decoration). Ported from the lab's
  * `ChatStack(stage, o, mode)` in its narrow (sidebar card) form.
  *
  * - `anatomy` (the lab's sidebar pick, for people who are not Supporters):
@@ -26,9 +26,7 @@ const YOURS_LINES: Record<ChatMode, ReadonlyArray<string>> = {
   tenure: ['gg', 'still here', 'here again', 'run it back', 'day one'],
 }
 
-export interface ChatStack extends StageModel { setEmote(name: KitEmoteName): void }
-
-export function ChatStack(stage: HTMLElement, context: StageContext, kit: Kit, mode: ChatMode): ChatStack {
+export function ChatStack(stage: HTMLElement, context: StageContext, kit: Kit, mode: ChatMode): StageModel {
   stage.classList.add('spk-chat')
   const { still } = context
   const LH = 18
@@ -82,7 +80,7 @@ export function ChatStack(stage: HTMLElement, context: StageContext, kit: Kit, m
     el.className = 'spk-cl spk-sup'
     const tn = mode === 'tenure' ? TENURES[tenureIdx] : null
     const crest = kitCrest(kit, LH - 4, tn ? tn.id : kit.tenure)
-    const emote = kitEmote(kit, LH, still)
+    const emote = lineEmote(LH, still)
     el.append(crest, kitName(kit), ': ', renderWords(text || pick(YOURS), LH, still), emote)
     let chip: HTMLSpanElement | null = null
     if (tn) {
@@ -94,7 +92,7 @@ export function ChatStack(stage: HTMLElement, context: StageContext, kit: Kit, m
       if (!still) context.later(() => crest.animate?.([{ transform: 'scale(1.9) rotate(-12deg)', filter: 'brightness(2)' }, { transform: 'scale(1)', filter: 'none' }], { duration: 520, easing: 'cubic-bezier(.2,.8,.3,1.3)' }), 260)
     }
     push(el)
-    // A wide signature emote can reach the stage chip; then the chip keeps only its length ("6 mo").
+    // A long line can push its emote under the stage chip; then the chip keeps only its length ("6 mo").
     if (chip && tn) {
       const chipBox = chip.getBoundingClientRect()
       if (chipBox.width > 0 && emote.getBoundingClientRect().right > chipBox.left - 4) chip.textContent = tn.short
@@ -133,31 +131,15 @@ export function ChatStack(stage: HTMLElement, context: StageContext, kit: Kit, m
     resize: () => { H = 0 },
     // A still frame always ends on your line, so it still shows the kit.
     settle: () => { if (lastYours !== lines[lines.length - 1]) addYours() },
-    setEmote(name) {
-      kit.emote = name
-      stage.querySelectorAll<HTMLImageElement>('img.spk-kit-emote').forEach(img => { img.dataset.em = name; img.src = kitEmoteSrc(name, still) })
-    },
   }
 }
 
 export interface ChatStackOptions { mode: ChatMode; kit: Kit }
-export interface MountedChatStack { stop(): void; setEmote(name: KitEmoteName): void }
 
-/** Draws "Your Line" into `stage` until `stop()`. */
-export function mountChatStack(stage: HTMLElement, { mode, kit }: ChatStackOptions): MountedChatStack {
+/** Draws "Your Line" into `stage`; returns its stop. */
+export function mountChatStack(stage: HTMLElement, { mode, kit }: ChatStackOptions): () => void {
   const own: Kit = { ...kit }
-  let model: ChatStack | null = null
   for (const [name, value] of Object.entries(finishVars(own.finish))) stage.style.setProperty(name, value)
   stage.dataset.mode = mode
-  const stop = mountStage(stage, CHAT_STACK_CSS, still => {
-    const halt = runStage(stage, still, context => (model = ChatStack(stage, context, own, mode)))
-    return () => { halt(); model = null }
-  })
-  return {
-    stop,
-    setEmote(name) {
-      if (own.emote === name) return
-      if (model) model.setEmote(name); else own.emote = name
-    },
-  }
+  return mountStage(stage, CHAT_STACK_CSS, still => runStage(stage, still, context => ChatStack(stage, context, own, mode)))
 }

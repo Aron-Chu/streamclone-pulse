@@ -12,7 +12,7 @@ import { useSupporterAppearanceDetails, type SupporterAppearance } from './useSu
 import { SettingsGearIcon } from './SettingsGearIcon.tsx'
 import { formatCount } from './mostReacted.ts'
 import type { PulsePanelSurfaceState } from './pulsePanelLayout.ts'
-import type { SettingsHostSection } from '../shared/messages.ts'
+import type { SettingsHostTarget } from '../shared/messages.ts'
 import type { SupporterCardOptions } from '../supporter/cardContract.ts'
 
 const RELEASE_PREVIEW = __EXTENSION_RELEASE_PREVIEW__
@@ -32,7 +32,7 @@ export interface QuickSettingsChannel {
 function useSettingsHostOpener() {
   const [error, setError] = useState<string | null>(null)
   const [opening, setOpening] = useState(false)
-  async function open(section: SettingsHostSection): Promise<void> {
+  async function open(section: SettingsHostTarget): Promise<void> {
     setOpening(true)
     setError(null)
     try {
@@ -178,7 +178,6 @@ export function PulseSettingsPanel({ onBack, channel }: { onBack?: () => void; c
           <ToggleRow
             id="pulse-auto-update"
             label="Refresh live data automatically"
-            hint="Auto-update activity and viewer counts."
             checked={preferences.autoUpdate}
             onChange={preferences.setAutoUpdate}
           />
@@ -215,7 +214,7 @@ export function PulseSettingsPanel({ onBack, channel }: { onBack?: () => void; c
           <ToggleRow
             id="pulse-chat-dock"
             label="Dock when chat is closed"
-            hint={isSidebar ? 'Show a mini Pulse dock when Twitch chat is hidden.' : 'Docking is only available when placement is set to Sidebar.'}
+            hint={isSidebar ? 'Show a mini Pulse dock when Twitch chat is hidden.' : 'Docking needs Sidebar placement.'}
             checked={preferences.dock}
             disabled={!isSidebar}
             onChange={preferences.setDock}
@@ -237,7 +236,7 @@ export function PulseSettingsPanel({ onBack, channel }: { onBack?: () => void; c
           <div className="pulse-settings-field pulse-settings-control-block">
             <span className="pulse-settings-label">Background &amp; motion</span>
             <PulseBannerQuickPreview perks={appearance?.perks === true} />
-            <button type="button" className="pulse-link-btn" data-banner-editor-cta="true" disabled={opening} onClick={() => void openHost('pulse')}>
+            <button type="button" className="pulse-link-btn" data-banner-editor-cta="true" disabled={opening} onClick={() => void openHost('pulse-background')}>
               Edit background in all settings ↗
             </button>
           </div>
@@ -309,8 +308,8 @@ function ChannelHeader({ channel, name }: { channel: QuickSettingsChannel; name:
 
 /**
  * The Supporter entry, with the design lab's "Your Line" card: Anatomy for
- * someone who is not a Supporter (their would-be line, with hover labels for
- * the crest, the paint and the signature emote), and Tenure Climb for a
+ * someone who is not a Supporter (their would-be line, with its crest and
+ * paint), and Tenure Climb for a
  * verified Supporter, whatever their finish, climbing to the crest the server
  * reports. No price, no purchase wording.
  */
@@ -330,7 +329,7 @@ export function SupporterHero({ appearance, disabled, onOpen }: { appearance: Su
         <strong>Pulse Supporter</strong>
         <span>{appearance ? 'Manage Supporter' : 'Explore Supporter'} <span aria-hidden="true">›</span></span>
       </span>
-      <small>{appearance ? 'A crest that levels up the longer you support. Only you see it. Core tools stay free.' : 'Your crest, paint and emote on your line. Only you see them. Core tools stay free.'}</small>
+      <small>{appearance ? 'A crest that levels up the longer you support. Only you see it. Core tools stay free.' : 'Your crest and paint on your line. Only you see them. Core tools stay free.'}</small>
       <SupporterCardStage mode={appearance ? 'tenure' : 'anatomy'} tenure={appearance?.tenure} finish={finish} paint={appearance?.paint} />
     </button>
   )

@@ -19,10 +19,17 @@ export interface StageContext {
   later(run: () => void, ms: number): void
 }
 
-/** The lab's chat pace slider at its default, 40 (about 75 messages a minute). */
-const STREAM_PACE = 0.4
-/** The lab fires its first peak 10 s in, then every 17 to 23 s. */
-const FIRST_PEAK_S = 10
+/**
+ * How fast a stage's stream runs and how often it peaks. The defaults are the
+ * lab's: its chat pace slider at 40 (about 75 messages a minute), the first
+ * peak 10 s in, then one every 17 to 23 s.
+ */
+export interface StageTiming {
+  pace: number
+  firstPeak: number
+  peakEvery: readonly [number, number]
+}
+const LAB_TIMING: StageTiming = { pace: 0.4, firstPeak: 10, peakEvery: [17, 23] }
 const REDUCED_MOTION = '(prefers-reduced-motion: reduce)'
 
 /**
@@ -35,11 +42,11 @@ const REDUCED_MOTION = '(prefers-reduced-motion: reduce)'
  * `stage.dataset.running` says whether frames are being scheduled, and
  * `stage.dataset.peaks` how many peaks have fired.
  */
-export function runStage(stage: HTMLElement, still: boolean, build: (context: StageContext) => StageModel): () => void {
+export function runStage(stage: HTMLElement, still: boolean, build: (context: StageContext) => StageModel, timing: StageTiming = LAB_TIMING): () => void {
   let hot = false
   let surge = 0
   let clock = 0
-  let autoPeakAt = FIRST_PEAK_S
+  let autoPeakAt = timing.firstPeak
   let frame = 0
   let last = 0
   let inView = true
@@ -47,7 +54,7 @@ export function runStage(stage: HTMLElement, still: boolean, build: (context: St
   const timers = new Set<number>()
   const context: StageContext = {
     still,
-    pace: () => clamp(STREAM_PACE + (hot ? 0.32 : 0) + surge * 0.6, 0, 1),
+    pace: () => clamp(timing.pace + (hot ? 0.32 : 0) + surge * 0.6, 0, 1),
     hot: () => hot,
     later(run, ms) {
       const id = window.setTimeout(() => { timers.delete(id); if (!stopped) run() }, ms)
@@ -65,7 +72,7 @@ export function runStage(stage: HTMLElement, still: boolean, build: (context: St
     last = now
     clock += dt
     surge = Math.max(0, surge - dt / 2.6)
-    if (clock >= autoPeakAt) { firePeak(); autoPeakAt = clock + rand(17, 23) }
+    if (clock >= autoPeakAt) { firePeak(); autoPeakAt = clock + rand(...timing.peakEvery) }
     model.tick(dt)
     schedule()
   }

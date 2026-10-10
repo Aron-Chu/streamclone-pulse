@@ -71,10 +71,10 @@ test('quick settings: non-Supporters get Your Line · Anatomy, injected on deman
   await expect(stage).toHaveAttribute('data-mode', 'anatomy')
   await expect(stage).toHaveAttribute('data-running', 'true')
   await expect(card.locator('.pulse-supporter-cta-head')).toHaveText('Pulse SupporterExplore Supporter ›')
-  await expect(card.locator('small')).toHaveText('Your crest, paint and emote on your line. Only you see them. Core tools stay free.')
+  await expect(card.locator('small')).toHaveText('Your crest and paint on your line. Only you see them. Core tools stay free.')
   expect((await card.boundingBox())!.width).toBeLessThanOrEqual(305)
 
-  // Every sixth line is yours, with the lab's sample crest, Etched paint and signature emote.
+  // Every sixth line is yours, with the lab's sample crest, Etched paint and sample emote.
   const yours = stage.locator('.spk-cl.spk-sup')
   await expect(yours.first()).toBeAttached({ timeout: 20_000 })
   await expect(yours.first().locator('.spk-crest')).toHaveAttribute('data-tenure', '12m')
@@ -134,8 +134,9 @@ test('quick settings: non-Supporters get Your Line · Anatomy, injected on deman
   await capture(card, info, 'ext-card-anatomy-still.png')
 })
 
-test('quick settings: Supporters get Tenure Climb up to their own crest, in their paint, with their signature emote', async ({ extension, prepare }, info) => {
+test('quick settings: Supporters get Tenure Climb up to their own crest, in their paint', async ({ extension, prepare }, info) => {
   await prepare({ storage: { overlayPlacement: 'sidebar', sidebarTab: 'pulse', overlayMode: 'expanded' } })
+  // A choice an older build saved for the dropped signature perk: left in place, never shown.
   await extension.serviceWorker.evaluate(() => chrome.storage.sync.set({ supporterSignatureEmote: 'wideReacting' }))
   await linkDevice(extension.serviceWorker)
   // 13 support periods: the Year-one crest.
@@ -157,11 +158,11 @@ test('quick settings: Supporters get Tenure Climb up to their own crest, in thei
     return chips.has('Year-one crest · 12 mo') || chips.has('12 mo')
   }, { timeout: 40_000, intervals: [200] }).toBe(true)
   expect([...chips].every(text => ['First signal · New', 'Signal set · 3 mo', 'Steady signal · 6 mo', 'Year-one crest · 12 mo', 'New', '3 mo', '6 mo', '12 mo'].includes(text))).toBe(true)
-  // The chip never covers the signature emote.
+  // The chip never covers the emote that ends the line.
   const [emoteBox, chipBox] = await Promise.all([stage.locator('.spk-cl.spk-sup').last().locator('img.spk-kit-emote').boundingBox(), stage.locator('.spk-cl.spk-sup').last().locator('.spk-chip').boundingBox()])
   expect(chipBox!.x).toBeGreaterThanOrEqual(emoteBox!.x + emoteBox!.width - 4)
   const mine = stage.locator('.spk-cl.spk-sup').last()
-  await expect(mine.locator('img.spk-kit-emote')).toHaveAttribute('src', 'https://cdn.7tv.app/emote/01HMM8VG3R0007GXBD883VP2YY/2x.webp')
+  await expect(mine.locator('img.spk-kit-emote')).toHaveAttribute('src', 'https://cdn.7tv.app/emote/01GAFTZ9K80003DHH026MC7JW0/2x.webp')
   await expect(mine.locator('.spk-name')).toHaveAttribute('data-finish', 'etched')
   await page.mouse.move(5, 5)
   await page.waitForTimeout(700)
@@ -174,12 +175,11 @@ test('quick settings: Supporters get Tenure Climb up to their own crest, in thei
   await page.waitForTimeout(700)
   await capture(card, info, 'ext-card-tenure-hover.png')
   await expectCannedChat(stage)
-  // The signature emote follows a change made in settings.
-  await extension.serviceWorker.evaluate(() => chrome.storage.sync.set({ supporterSignatureEmote: 'PartyParrot' }))
-  await expect(stage.locator('img.spk-kit-emote').last()).toHaveAttribute('src', 'https://cdn.7tv.app/emote/01FKSDK14G0008TM5NY9QEG0QV/2x.webp')
+  await expect(stage.locator('img[src*="01HMM8VG3R0007GXBD883VP2YY"].spk-kit-emote')).toHaveCount(0)
+  expect(await extension.serviceWorker.evaluate(() => chrome.storage.sync.get('supporterSignatureEmote'))).toEqual({ supporterSignatureEmote: 'wideReacting' })
 })
 
-test('full settings: the Crown pile, the lab sample for non-Supporters, paused offscreen and still under reduced motion', async ({ extension, prepare }, info) => {
+test('full settings: the staged Crown, the lab sample for non-Supporters, paused offscreen and still under reduced motion', async ({ extension, prepare }, info) => {
   await prepare()
   const page = extension.page
   await page.setViewportSize({ width: 1280, height: 720 })
@@ -189,19 +189,31 @@ test('full settings: the Crown pile, the lab sample for non-Supporters, paused o
   await expect(banner).toHaveAttribute('data-supporter-kit', 'sample')
   await expect(stage).toHaveAttribute('data-mode', 'crown')
   await expect(stage).toHaveAttribute('data-running', 'true')
-  await expect(banner.locator('strong')).toHaveText('Pulse Supporter')
-  await expect(banner.locator('small')).toHaveText('Your signature emote lands on top, crest and all. Only you see it. Core Pulse tools stay free.')
-  await expect(banner.locator('.pulse-settings-supporter-banner-arrow')).toHaveText('View benefits →')
+  // Sign-ups are closed in this fixture: no price, and the way in says what it is.
+  await expect(banner.locator('.pulse-settings-supporter-banner-eyebrow')).toHaveText('Pulse Supporter')
+  await expect(banner.locator('strong')).toHaveText('Your crest lands on top')
+  await expect(banner.locator('.pulse-settings-supporter-perk')).toHaveText(['Title paint', 'Tenure crest', 'Emote rain', 'Supporter card'])
+  await expect(banner.locator('small')).toHaveText('Only you see them. Core tools stay free.')
+  await expect(banner.locator('.pulse-settings-supporter-banner-arrow')).toHaveText('See what’s coming →')
   await expect.poll(() => stage.locator('.spk-body').count()).toBeGreaterThanOrEqual(8)
+  // Yours is the sample crest, with the small "you" tag riding above it.
   const you = stage.locator('.spk-you')
-  await expect(you.first().locator('img')).toHaveAttribute('src', 'https://cdn.7tv.app/emote/01GAFTZ9K80003DHH026MC7JW0/2x.webp')
   await expect(you.first().locator('.spk-crest')).toHaveAttribute('data-tenure', '12m')
+  await expect(you.locator('img')).toHaveCount(0)
+  const tag = stage.locator('.spk-tag')
+  await expect(tag).toHaveText('you')
+  await expect(tag).toHaveCSS('opacity', '1')
+  // The pile has the whole right half.
+  const [bannerBox, stageBox] = await Promise.all([banner.boundingBox(), stage.boundingBox()])
+  expect(stageBox!.x - bannerBox!.x).toBeCloseTo(bannerBox!.width / 2, -1)
+  expect(bannerBox!.height).toBeGreaterThanOrEqual(132)
+  expect(bannerBox!.height).toBeLessThanOrEqual(134)
   for (const src of await stage.locator('img').evaluateAll(images => images.map(image => (image as HTMLImageElement).src))) expect(src).toMatch(EMOTE_SRC)
   expect(await banner.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
   await page.waitForTimeout(2500)
   await capture(banner, info, 'ext-banner-crown-rest.png')
 
-  // Hover shakes the pile and drops a signature emote in.
+  // Hover shakes the pile and drops yours in.
   const yoursBefore = await you.count()
   await banner.hover()
   await expect.poll(() => you.count()).toBeGreaterThanOrEqual(Math.min(2, yoursBefore + 1))
@@ -209,9 +221,10 @@ test('full settings: the Crown pile, the lab sample for non-Supporters, paused o
   await capture(banner, info, 'ext-banner-crown-hover.png')
   await page.mouse.move(5, 700)
 
-  // A peak (the lab's timer): a row of nine, then a signature emote on top.
+  // A peak (8 s in, then every 28 to 36 s): a row of nine, then yours on top, and the glow swells.
   const before = await stage.locator('.spk-body').count()
   await expect(stage).toHaveAttribute('data-peaks', '1', { timeout: 15_000 })
+  await expect(stage).toHaveAttribute('data-glow', 'peak')
   await page.waitForTimeout(1100)
   expect(await stage.locator('.spk-you').count()).toBeGreaterThanOrEqual(1)
   expect(await stage.locator('.spk-body').count()).toBeGreaterThanOrEqual(Math.min(26, before))
@@ -226,6 +239,7 @@ test('full settings: the Crown pile, the lab sample for non-Supporters, paused o
   // The lab's phone layout: copy on top, the pile along the bottom, nothing scrolling sideways.
   await page.setViewportSize({ width: 400, height: 860 })
   await expect.poll(() => banner.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+  await expect.poll(async () => (await stage.boundingBox())!.height).toBeCloseTo(84, 0)
   await page.waitForTimeout(1500)
   expect(await banner.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
   await capture(banner, info, 'ext-banner-crown-phone.png')
@@ -235,24 +249,23 @@ test('full settings: the Crown pile, the lab sample for non-Supporters, paused o
   await expect(stage).toHaveAttribute('data-still', 'true')
   await expect(stage).toHaveAttribute('data-running', 'false')
   for (const src of await stage.locator('img[src*="cdn.7tv.app"]').evaluateAll(images => images.map(image => (image as HTMLImageElement).src))) expect(src).toMatch(/\/2x_static\.webp$/)
+  await expect(stage.locator('.spk-you .spk-crest').first()).toBeAttached()
   await imagesSettled(stage)
   await capture(banner, info, 'ext-banner-crown-still.png')
   await page.emulateMedia({ reducedMotion: 'no-preference' })
 
-  // The picker is a locked Supporter perk here, and the banner opens the benefits.
+  // The banner opens the benefits, where no signature emote is offered any more.
   await banner.click()
   await expect(page).toHaveURL(/#supporter$/)
-  const picker = page.locator('.pulse-supporter-signature-choices')
-  await expect(picker).toHaveAttribute('data-supporter-perks', 'locked')
-  await expect(picker.getByRole('radio')).toHaveCount(9)
-  for (const radio of await picker.getByRole('radio').all()) await expect(radio).toBeDisabled()
-  await expect(picker.getByRole('radio', { name: 'wideSpeedLaugh4' })).toBeChecked()
-  await expect(page.locator('[data-supporter-perk="signature-emote"]')).toHaveText('A signature emote is a Supporter perk. Only you see it.')
+  await expect(page.getByRole('heading', { name: 'Account & Supporter' })).toBeVisible()
+  await expect(page.locator('.pulse-supporter-signature-choices')).toHaveCount(0)
+  await expect(page.getByText(/signature emote/i)).toHaveCount(0)
   expect(await extension.serviceWorker.evaluate(() => chrome.storage.sync.get('supporterSignatureEmote'))).toEqual({})
 })
 
-test('full settings: a Supporter’s own emote crowns the pile in their paint, and they pick it under Paint & crest', async ({ extension, prepare }, info) => {
+test('full settings: a Supporter’s own crest crowns the pile in their paint, and an old signature choice is left alone', async ({ extension, prepare }, info) => {
   await prepare()
+  // Saved by an older build for the dropped signature perk.
   await extension.serviceWorker.evaluate(() => chrome.storage.sync.set({ supporterSignatureEmote: 'wideReacting' }))
   await linkDevice(extension.serviceWorker)
   await serveMembership(extension.context, () => supporterBody('active', 13, { enabled: true, finish: 'halo' }))
@@ -263,20 +276,20 @@ test('full settings: a Supporter’s own emote crowns the pile in their paint, a
   const stage = banner.locator('.pulse-supporter-pile')
   await expect(banner).toHaveAttribute('data-supporter-kit', 'own')
   await expect(banner).toHaveCSS('--spk-fin', '#e6a9d6')
+  await expect(banner.locator('.pulse-settings-supporter-banner-eyebrow')).toHaveText('Your kit')
+  await expect(banner.locator('strong')).toHaveText('Yours lands on top')
+  await expect(banner.locator('.pulse-settings-supporter-perk')).toHaveText(['Halo paint', 'Year-one crest', 'Emote rain', 'Supporter card'])
   const you = stage.locator('.spk-you')
-  await expect(you.first().locator('img')).toHaveAttribute('src', 'https://cdn.7tv.app/emote/01HMM8VG3R0007GXBD883VP2YY/2x.webp')
   await expect(you.first().locator('.spk-crest')).toHaveAttribute('data-tenure', '12m')
+  await expect(you.first().locator('.spk-crest polygon')).toHaveAttribute('stroke', '#e6a9d6')
+  await expect(you.locator('img')).toHaveCount(0)
+  await expect(stage.locator('.spk-tag .pulse-paint')).toHaveAttribute('data-finish', 'halo')
   await page.waitForTimeout(2500)
   await capture(banner, info, 'ext-banner-crown-supporter.png')
 
-  // Account & Supporter → Paint & crest: the picker is unlocked and saves at once.
+  // Account & Supporter offers no emote picker, and the old choice stays stored, untouched.
   await page.getByRole('navigation', { name: 'Settings sections' }).getByRole('link', { name: 'Account & Supporter', exact: true }).click()
-  const picker = page.locator('.pulse-supporter-signature-choices')
-  await expect(picker).toHaveAttribute('data-supporter-perks', 'on')
-  await expect(picker.getByRole('radio', { name: 'wideReacting' })).toBeChecked()
-  await picker.getByRole('radio', { name: 'PartyParrot' }).check()
-  await expect.poll(() => extension.serviceWorker.evaluate(() => chrome.storage.sync.get('supporterSignatureEmote'))).toEqual({ supporterSignatureEmote: 'PartyParrot' })
-  await picker.screenshot({ path: info.outputPath('ext-signature-picker.png') })
-  await page.getByRole('navigation', { name: 'Settings sections' }).getByRole('link', { name: 'Pulse on Twitch', exact: true }).click()
-  await expect(banner.locator('.spk-you img').first()).toHaveAttribute('src', 'https://cdn.7tv.app/emote/01FKSDK14G0008TM5NY9QEG0QV/2x.webp')
+  await expect(page.getByRole('heading', { name: 'Account & Supporter' })).toBeVisible()
+  await expect(page.locator('.pulse-supporter-signature-choices')).toHaveCount(0)
+  expect(await extension.serviceWorker.evaluate(() => chrome.storage.sync.get('supporterSignatureEmote'))).toEqual({ supporterSignatureEmote: 'wideReacting' })
 })

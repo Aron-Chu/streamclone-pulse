@@ -619,7 +619,8 @@ test.describe('extension mocked states', () => {
     // refresh never has to stop at the first stale one.
     await expect.soft(host.locator('.pulse-host')).toHaveScreenshot('full-settings-changelog.png', {
       animations: 'disabled',
-      // Only the Supporter banner's emote pile moves; the banner copy and "View benefits" pill stay covered.
+      // Only the Supporter banner's emote pile moves, so it is masked. On wide banners the pile spans the right
+      // half under the "View benefits" pill, so the mask hides the pill too: bannerPillOnTop() checks it instead.
       mask: [host.locator('.pulse-supporter-pile')],
       caret: 'hide',
       maxDiffPixelRatio: 0.04,
@@ -628,18 +629,32 @@ test.describe('extension mocked states', () => {
     // Visual coverage for the complete page shell and its responsive top nav.
     await sectionNav.getByRole('link', { name: 'Pulse on Twitch' }).click()
     await host.evaluate(() => window.scrollTo(0, 0))
+    // The pill sits inside the banner and paints above the (masked) pile: the topmost element at its centre is the pill.
+    const bannerPill = host.locator('.pulse-settings-supporter-banner-arrow')
+    const bannerPillOnTop = () => bannerPill.evaluate(pill => {
+      const box = pill.getBoundingClientRect()
+      const banner = pill.closest('.pulse-settings-supporter-banner')?.getBoundingClientRect()
+      const root = pill.getRootNode() as Document | ShadowRoot
+      const hit = root.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)
+      return Boolean(banner && box.width > 0 && box.left >= banner.left && box.right <= banner.right && box.top >= banner.top && box.bottom <= banner.bottom && hit && pill.contains(hit))
+    })
+    await expect(bannerPill).toHaveText('See what’s coming →')
+    expect(await bannerPillOnTop()).toBe(true)
     await expect.soft(host.locator('.pulse-host')).toHaveScreenshot('settings-host-page.png', {
       animations: 'disabled',
-      // Only the Supporter banner's emote pile moves; the banner copy and "View benefits" pill stay covered.
+      // Only the Supporter banner's emote pile moves, so it is masked. On wide banners the pile spans the right
+      // half under the "View benefits" pill, so the mask hides the pill too: bannerPillOnTop() checks it instead.
       mask: [host.locator('.pulse-supporter-pile')],
       caret: 'hide',
       maxDiffPixelRatio: 0.04,
     })
     await host.setViewportSize({ width: 620, height: 820 })
     await expect.poll(() => sectionNav.evaluate(element => getComputedStyle(element).position)).toBe('static')
+    expect(await bannerPillOnTop()).toBe(true)
     await expect.soft(host.locator('.pulse-host')).toHaveScreenshot('settings-host-page-narrow.png', {
       animations: 'disabled',
-      // Only the Supporter banner's emote pile moves; the banner copy and "View benefits" pill stay covered.
+      // Only the Supporter banner's emote pile moves, so it is masked. On wide banners the pile spans the right
+      // half under the "View benefits" pill, so the mask hides the pill too: bannerPillOnTop() checks it instead.
       mask: [host.locator('.pulse-supporter-pile')],
       caret: 'hide',
       maxDiffPixelRatio: 0.04,

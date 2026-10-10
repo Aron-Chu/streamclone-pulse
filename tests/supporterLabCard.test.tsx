@@ -158,12 +158,11 @@ describe('quick-settings Supporter card shell (content script)', () => {
 describe('Your Line, drawn by content/supporter-card.js', () => {
   it('Anatomy: the lab sample kit, a spotlight line every sixth, no labels over the line, and chat frozen while hovered', async () => {
     stubExtension()
-    stored = { supporterSignatureEmote: 'PartyParrot' }
     const card = cardStage()
     const stop = mountCard(card.stage, { mode: 'anatomy', finish: null })
     expect(card.stage.dataset.mode).toBe('anatomy')
     expect(card.stage.dataset.running).toBe('true')
-    // The sample never reads a stored signature: that is a Supporter perk.
+    // The card reads no storage: there is no emote to choose any more.
     expect(chrome.storage.sync.get).not.toHaveBeenCalled()
     expect(card.host.style.getPropertyValue('--spk-fin')).toBe('#efc96a')
     runFrames(300)
@@ -211,10 +210,11 @@ describe('Your Line, drawn by content/supporter-card.js', () => {
       'First signal · New', 'Signal set · 3 mo', 'Steady signal · 6 mo', ...Array(mine.length - 3).fill('Steady signal · 6 mo'),
     ])
     expect(mine.map(line => line.querySelector('.spk-crest')!.getAttribute('data-tenure')).slice(0, 4)).toEqual(['new', '3m', '6m', '6m'])
-    // No finish: an unpainted name and the Peak teal; never having picked one, the default signature emote.
+    // No finish: an unpainted name and the Peak teal; the line ends on the lab's fixed sample emote.
     expect(mine[0].querySelector('.spk-name')!.className).toBe('spk-name')
     expect(card.host.style.getPropertyValue('--spk-fin')).toBe('#2dd4bf')
-    expect(mine.every(line => line.querySelector<HTMLImageElement>('img.spk-kit-emote')!.src === 'https://cdn.7tv.app/emote/01J7VZYB08000E8DPG2XYMKQYR/2x.webp')).toBe(true)
+    expect(mine.every(line => line.querySelector<HTMLImageElement>('img.spk-kit-emote')!.src === 'https://cdn.7tv.app/emote/01GAFTZ9K80003DHH026MC7JW0/2x.webp')).toBe(true)
+    expect(chrome.storage.sync.get).not.toHaveBeenCalled()
     // Hover brings your next line right away.
     card.added()
     card.host.dispatchEvent(new Event('pointerenter'))
@@ -235,20 +235,22 @@ describe('Your Line, drawn by content/supporter-card.js', () => {
     second.remove()
   })
 
-  it('shows a Supporter their stored signature emote, and follows a change made in settings', async () => {
+  it('ignores an emote stored by the dropped signature perk, and listens to no storage', async () => {
     stubExtension()
+    // A value an older build saved stays where it is, unread.
     stored = { supporterSignatureEmote: 'wideReacting' }
     const card = cardStage()
     const stop = mountCard(card.stage, { mode: 'tenure', tenure: '12m', finish: 'etched', paint: { wave: 'smooth', sheen: 'sweep' } })
     await act(async () => { await Promise.resolve() })
     runFrames(400)
-    const emotes = () => [...card.stage.querySelectorAll<HTMLImageElement>('img.spk-kit-emote')].map(img => img.src)
-    expect(emotes().length).toBeGreaterThan(0)
-    expect(new Set(emotes())).toEqual(new Set(['https://cdn.7tv.app/emote/01HMM8VG3R0007GXBD883VP2YY/2x.webp']))
-    for (const listener of storageListeners) listener({ supporterSignatureEmote: { newValue: 'PETPET' } }, 'sync')
-    expect(new Set(emotes())).toEqual(new Set(['https://cdn.7tv.app/emote/01FE3XY508000AA32JP519W2EW/2x.webp']))
-    stop()
+    const emotes = [...card.stage.querySelectorAll<HTMLImageElement>('img.spk-kit-emote')].map(img => img.src)
+    expect(emotes.length).toBeGreaterThan(0)
+    expect(new Set(emotes)).toEqual(new Set(['https://cdn.7tv.app/emote/01GAFTZ9K80003DHH026MC7JW0/2x.webp']))
+    expect(chrome.storage.sync.get).not.toHaveBeenCalled()
+    expect(chrome.storage.sync.set).not.toHaveBeenCalled()
     expect(storageListeners.size).toBe(0)
+    expect(stored).toEqual({ supporterSignatureEmote: 'wideReacting' })
+    stop()
     card.remove()
   })
 
@@ -300,7 +302,6 @@ describe('Your Line, drawn by content/supporter-card.js', () => {
 
   it('draws one still frame from static images under reduced motion, ending on your line, and never schedules a frame', async () => {
     stubExtension({ reducedMotion: true })
-    stored = { supporterSignatureEmote: 'AlienDance' }
     for (const options of [{ mode: 'anatomy', finish: null }, { mode: 'tenure', tenure: '24m', finish: 'halo', paint: { wave: 'smooth', sheen: 'none' } }] as const) {
       const card = cardStage()
       const stop = mountCard(card.stage, options)

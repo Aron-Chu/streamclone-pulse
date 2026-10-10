@@ -87,9 +87,18 @@ export function PulseBannerControls({ expanded = false, perks }: { expanded?: bo
   const [draft, setDraft] = useState(banner.value)
   const id = useId()
   useEffect(() => setDraft(banner.value), [banner.value])
+  // "Edit background in all settings" opens #pulse-background: expand this and bring it into view.
+  const ref = useRef<HTMLDetailsElement>(null)
+  useEffect(() => {
+    const details = ref.current
+    if (!details || window.location.hash !== '#pulse-background') return
+    details.open = true
+    details.scrollIntoView?.({ block: 'start' })
+    details.querySelector<HTMLElement>('summary')?.focus({ preventScroll: true })
+  }, [])
   // Without perks, Reset clears only what this person may change: the title.
   const reset = perks ? DEFAULT_PULSE_BANNER : { ...DEFAULT_PULSE_BANNER, mode: banner.value.mode, intensity: banner.value.intensity }
-  return <details className="pulse-banner-customize" open={expanded || undefined} style={bannerThemeVariables} data-supporter-perks={perks ? 'on' : perks === false ? 'locked' : 'pending'}>
+  return <details ref={ref} className="pulse-banner-customize" open={expanded || undefined} style={bannerThemeVariables} data-supporter-perks={perks ? 'on' : perks === false ? 'locked' : 'pending'}>
     <summary>Background &amp; motion</summary>
     <form onSubmit={event => { event.preventDefault(); void banner.save(draft) }}>
       <div className="pulse-personal-panel pulse-background-preview" data-appearance-preview="true" aria-label="Appearance preview" style={{ ...streamPulseHeaderChromeSidebar, minHeight: 112 }}>
@@ -104,7 +113,7 @@ export function PulseBannerControls({ expanded = false, perks }: { expanded?: bo
           {(['off', 'still', 'rain'] as const).map(mode => <button key={mode} type="button" aria-pressed={draft.mode === mode} disabled={!perks && mode !== 'off'} title={!perks && mode !== 'off' ? 'Supporter perk' : undefined} onClick={() => setDraft({ ...draft, mode })}>{mode === 'off' ? 'Off' : mode === 'still' ? 'Still' : 'Rain'}</button>)}
         </div>
         {perks !== false ? null : <p className="pulse-supporter-detail" data-supporter-perk="emote-rain">
-          Emote rain, still or falling, is a Supporter perk. Only you see it.{' '}
+          Emote rain, still or falling, is a Supporter perk. Only you see it. It moved from free to Supporter in 0.2.2, and a backdrop you chose is kept for when you support.{' '}
           <a href="#supporter" onClick={() => window.scrollTo?.(0, 0)}>View Supporter benefits →</a>
         </p>}
         <label htmlFor={`${id}-intensity`}>Intensity <output>{draft.intensity}%</output></label>

@@ -36,13 +36,8 @@ export const KIT_EMOTES = {
   wideSpeedLaugh4: { cdn: '7tv', id: '01J7VZYB08000E8DPG2XYMKQYR', aspect: 3.1 },
   wideReacting: { cdn: '7tv', id: '01HMM8VG3R0007GXBD883VP2YY', aspect: 3.3 },
   wideSpeedNod: { cdn: '7tv', id: '01K6YP3JPX47KY68B19S6MY6DY', aspect: 3 },
-  // The lab's signature emote choices (its SIGS), from the 7TV global set.
+  // The lab's sample emote, from the 7TV global set: decoration on your line.
   PepePls: { cdn: '7tv', id: '01GAFTZ9K80003DHH026MC7JW0' },
-  peepoPls: { cdn: '7tv', id: '01HM524VE80004SKSHMCZWXH1T' },
-  PartyParrot: { cdn: '7tv', id: '01FKSDK14G0008TM5NY9QEG0QV' },
-  BillyApprove: { cdn: '7tv', id: '01GB2S7H7000018VJGJ4A9BMFS' },
-  PETPET: { cdn: '7tv', id: '01FE3XY508000AA32JP519W2EW' },
-  AlienDance: { cdn: '7tv', id: '01GB2ZJFBG000DTBJYANG8XYFP' },
 } as const satisfies Record<string, KitEmote>
 
 export type KitEmoteName = keyof typeof KIT_EMOTES
@@ -51,7 +46,13 @@ export type KitEmoteName = keyof typeof KIT_EMOTES
 export const AMBIENT: ReadonlyArray<KitEmoteName> = ['Kappa', 'LUL', 'PogChamp', 'Kreygasm', 'SeemsGood', '4Head', 'NotLikeThis', 'HeyGuys', 'wideSpeedLaugh4', 'wideReacting', 'wideSpeedNod']
 
 /** The lab's sample kit, shown to anyone who is not (yet) a Supporter. */
-export const SAMPLE_KIT = { name: 'you', finish: 'etched', tenure: '12m', emote: 'PepePls' } as const satisfies { name: string; finish: KitFinish; tenure: SupporterTenure; emote: KitEmoteName }
+export const SAMPLE_KIT = { name: 'you', finish: 'etched', tenure: '12m' } as const satisfies { name: string; finish: KitFinish; tenure: SupporterTenure }
+
+/**
+ * The lab's sample emote at the end of your line on the Supporter card. It is
+ * decoration, the same for everyone: there is no emote to choose.
+ */
+export const LINE_EMOTE: KitEmoteName = 'PepePls'
 
 export function isKitEmote(name: unknown): name is KitEmoteName {
   return typeof name === 'string' && Object.prototype.hasOwnProperty.call(KIT_EMOTES, name)
@@ -115,7 +116,6 @@ export interface Kit {
   name: string
   finish: KitFinish | null
   tenure: SupporterTenure
-  emote: KitEmoteName
   /** A Supporter's own wave and sheen: their name is drawn with the header's real paint. */
   paint?: SupporterPaintStyle
 }
@@ -178,9 +178,9 @@ export function kitName(kit: Kit): HTMLElement {
   return b
 }
 
-/** The lab's `kitEmote()`: the signature emote. */
-export function kitEmote(kit: Kit, h: number, still: boolean): HTMLImageElement {
-  const img = emoteImg(kit.emote, h, still)
+/** The lab's `kitEmote()`: the fixed sample emote that ends your line. */
+export function lineEmote(h: number, still: boolean): HTMLImageElement {
+  const img = emoteImg(LINE_EMOTE, h, still)
   img.classList.add('spk-kit-emote')
   return img
 }

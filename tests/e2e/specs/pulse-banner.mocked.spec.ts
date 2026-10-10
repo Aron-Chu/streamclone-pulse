@@ -21,8 +21,10 @@ test('a Supporter banner: preferences persist, rain pauses, and narrow layout st
   await root.getByRole('button', { name: 'Edit background in all settings' }).click()
   const settings = await opened
   await settings.waitForLoadState('domcontentloaded')
-  expect(settings.url()).toContain('#pulse')
-  await settings.locator('.pulse-banner-customize summary').click()
+  // It lands on Pulse with Background & motion already open and in view.
+  expect(settings.url()).toContain('#pulse-background')
+  await expect(settings.locator('.pulse-banner-customize')).toHaveJSProperty('open', true)
+  await expect(settings.locator('.pulse-banner-customize summary')).toBeInViewport()
   await settings.getByLabel('Panel title').fill('Aron\'s Pulse')
   await settings.getByRole('button', { name: 'Rain', exact: true }).click()
   await settings.getByRole('button', { name: 'Save background', exact: true }).click()
@@ -86,7 +88,8 @@ test('emote rain is a Supporter perk: a saved Rain draws nothing without one, st
   await root.getByRole('button', { name: 'Edit background in all settings' }).click()
   const settings = await opened
   await settings.waitForLoadState('domcontentloaded')
-  await settings.locator('.pulse-banner-customize summary').click()
+  // Background & motion opens by itself (#pulse-background); a click on its summary would close it.
+  await expect(settings.locator('.pulse-banner-customize')).toHaveJSProperty('open', true)
   const modes = settings.getByRole('group', { name: '7TV backdrop' })
   await expect(modes.getByRole('button')).toHaveCount(3)
   await expect(modes.getByRole('button', { name: 'Off', exact: true })).toBeEnabled()
@@ -94,6 +97,7 @@ test('emote rain is a Supporter perk: a saved Rain draws nothing without one, st
   await expect(modes.getByRole('button', { name: 'Rain', exact: true })).toBeDisabled()
   const perk = settings.locator('[data-supporter-perk="emote-rain"]')
   await expect(perk).toContainText('Supporter perk')
+  await expect(perk).toContainText('It moved from free to Supporter in 0.2.2')
   await settings.getByLabel('Panel title').fill('Renamed Pulse')
   await settings.getByRole('button', { name: 'Save background', exact: true }).click()
   await expect(settings.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
