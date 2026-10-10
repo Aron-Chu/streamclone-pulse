@@ -137,7 +137,11 @@ export function resetLiveArchiveMemo(): void {
  * asks with the bridge first. If the bridge gives no answer (429, 5xx, timeout,
  * network), the last confirmed live DVR is kept and polling goes on, without
  * further requests and within Retry-After. Only a definite answer that is not
- * this stream's live DVR drops to the plain request.
+ * this stream's live DVR drops to the plain request. When the memo has run out
+ * during such an outage, the plain request and the channel check run again;
+ * if they still show this VOD as the live stream's archive and the bridge
+ * still gives no answer, the last live DVR is kept rather than replaced by the
+ * plain archive, which would end the growing-VOD poll for good.
  */
 export async function requestVodPulse(
   vodId: string,
@@ -169,6 +173,9 @@ export async function requestVodPulse(
     }
     outcome = 'bridge_rejected'
   }
+  // A memo that ran out without a definite answer (an outage) is kept as the
+  // fallback for this check; a definite rejection above leaves none.
+  const fallback = memo && outcome !== 'bridge_rejected' ? memo : undefined
   liveArchiveMemo.delete(vodId)
 
   const plain = await deps.request(false)
@@ -190,7 +197,21 @@ export async function requestVodPulse(
   const expected = vodStreamId || trimmed(live?.streamId)
   if (!isLiveArchive || !expected) return { payload: plain, outcome }
 
-  const bridged = await deps.request(true, expected).catch(() => null)
+  let bridged: ExtensionVodPulseResponse | null = null
+  try {
+    bridged = await deps.request(true, expected)
+  } catch (err) {
+    // Still the live stream's archive, and still no answer from the bridge.
+    if (fallback && fallback.streamId === expected) {
+      const wait = err instanceof VodBridgeTransientError ? err.retryAfterMs : undefined
+      liveArchiveMemo.set(vodId, {
+        ...fallback,
+        atMs: now(),
+        retryAtMs: wait ? now() + Math.min(wait, LIVE_BRIDGE_RETRY_MAX_MS) : undefined,
+      })
+      return { payload: fallback.last, outcome: 'bridge_transient' }
+    }
+  }
   if (isAcceptedLiveBridge(bridged, expected)) {
     liveArchiveMemo.set(vodId, { streamId: expected, atMs: now(), last: bridged })
     return { payload: bridged, outcome: 'bridge' }
