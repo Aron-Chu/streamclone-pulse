@@ -3,6 +3,14 @@ import { PublicLayout } from '../../ui/components/PublicLayout'
 import { REFUNDS_PATH, SUPPORTER_PATH, TERMS_PATH } from '../../lib/externalLinks'
 import { twitchSignInPublic } from '../../lib/twitchSignInFlag'
 import { PrelaunchNotice } from './PrelaunchNotice'
+import { supporterChatBadgesEnabled } from '../../lib/supporterChatBadgesFlag'
+import {
+  PRIVACY_CHATTER_IDENTITY_EXCEPTION,
+  PRIVACY_TWITCH_PLAIN_ID_SENTENCE,
+  PRIVACY_TWITCH_THIRD_PARTY_SEEN_IN_CHAT,
+  PrivacyObservesChatUsernames,
+  PrivacySeenInChat,
+} from '../../ui/components/SupporterChatBadgeCopy'
 
 /** Public privacy policy for StreamPulse (portal + Chrome extension). Current behavior only. */
 export default function Privacy() {
@@ -32,7 +40,7 @@ export default function Privacy() {
           <p className="text-zinc-300">
             StreamPulse shows Twitch stream activity using minute-level aggregates from the StreamPulse
             API. The extension and public site are rollup-first: they do not expose raw chat messages or
-            chatter identity to users. The extension uses Twitch sign-in only to confirm your Twitch
+            chatter identity to users{supporterChatBadgesEnabled() ? PRIVACY_CHATTER_IDENTITY_EXCEPTION : ''}. The extension uses Twitch sign-in only to confirm your Twitch
             user ID: when you choose Continue with Twitch, and in one check without a window after a
             fresh install, which can only sign you back in to a StreamPulse account you already have
             (see Extensions below). Protect enrollment is optional and
@@ -64,6 +72,7 @@ export default function Privacy() {
           Either way they're used only to show who is signed in. StreamPulse never receives your
           Twitch password, Twitch email or a Twitch access token. While you're on Twitch's page, this
           tab keeps a one-time sign-in value in session storage; it's removed when you return.
+          {supporterChatBadgesEnabled() ? <> {PRIVACY_TWITCH_PLAIN_ID_SENTENCE}</> : null}
         </p>
         <p>
           <strong>Tester email sign-in.</strong> During the private pilot, invited testers can sign in
@@ -102,6 +111,9 @@ export default function Privacy() {
           for that browser session. Otherwise nothing changes. This check never creates an account,
           and it doesn't run again after you sign out.
         </p>
+
+        {/* Seen in chat copy only once VITE_SUPPORTER_CHAT_BADGES is on (launch day). */}
+        {supporterChatBadgesEnabled() ? <PrivacySeenInChat /> : null}
 
         <h2>Payment data, if you subscribe</h2>
         <p>
@@ -302,6 +314,7 @@ export default function Privacy() {
             Twitch GraphQL requests performed in the Twitch page context when needed to resolve stream or
             VOD identity for Pulse coverage and backfill flows.
           </li>
+          {supporterChatBadgesEnabled() ? <PrivacyObservesChatUsernames /> : null}
         </ul>
         <p>
            The extension does not request or transmit Twitch cookies, passwords, Twitch OAuth credentials
@@ -435,6 +448,7 @@ export default function Privacy() {
             to StreamPulse. If you disconnect StreamPulse in your Twitch settings, Twitch sends
             StreamPulse a notification with your Twitch user ID, which StreamPulse uses only to sign
             that account out everywhere and does not store.
+            {supporterChatBadgesEnabled() ? <> {PRIVACY_TWITCH_THIRD_PARTY_SEEN_IN_CHAT}</> : null}
           </li>
           <li>
             <strong>Emote CDNs</strong> — image assets from providers such as 7TV, Twitch CDN, BetterTTV,

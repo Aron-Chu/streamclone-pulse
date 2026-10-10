@@ -3,7 +3,9 @@ import { PublicLayout } from '../../ui/components/PublicLayout'
 import { PRIVACY_PATH, REFUNDS_PATH, TERMS_PATH } from '../../lib/externalLinks'
 import { PrelaunchNotice } from './PrelaunchNotice'
 import { CHROME_WEB_STORE_LISTING_URL } from '../../lib/publicSiteConfig'
-import { SUPPORTER_PERKS, SupporterPerkItems } from '../../ui/components/SupporterPerks'
+import { SUPPORTER_PERKS, SupporterPerkItems, supporterOnlyYou } from '../../ui/components/SupporterPerks'
+import { SupporterNoTwitchChatBadge, SupporterSeenInChat } from '../../ui/components/SupporterChatBadgeCopy'
+import { supporterChatBadgesEnabled } from '../../lib/supporterChatBadgesFlag'
 import { accountBillingSignInHref } from '../../lib/accountBillingReturn'
 import { twitchSignInPublic } from '../../lib/twitchSignInFlag'
 import { stripePortalLoginUrl } from '../../lib/accountStripePortalLogin'
@@ -87,13 +89,17 @@ export default function Supporter() {
         <ul data-testid="supporter-perks">
           <SupporterPerkItems />
         </ul>
-        <p>{SUPPORTER_PERKS.onlyYou} Nothing else is promised.</p>
+        <p>{supporterOnlyYou()} Nothing else is promised.</p>
+        {supporterChatBadgesEnabled() ? <SupporterSeenInChat /> : null}
 
         <h2>What it does not include</h2>
-        <p>
-          <strong>No public Twitch chat badge.</strong> A chat badge is not included in Supporter and
-          is not part of what you would be buying.
-        </p>
+        {/* Seen in chat copy only once VITE_SUPPORTER_CHAT_BADGES is on (launch day). */}
+        {supporterChatBadgesEnabled() ? <SupporterNoTwitchChatBadge /> : (
+          <p>
+            <strong>No public Twitch chat badge.</strong> A chat badge is not included in Supporter and
+            is not part of what you would be buying.
+          </p>
+        )}
         <p>
           Supporter does not unlock analytics, change coverage, raise rate limits, or affect what the
           extension can see on Twitch. It buys cosmetics and funds the work.

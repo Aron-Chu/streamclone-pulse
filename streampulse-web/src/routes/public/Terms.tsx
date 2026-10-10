@@ -2,7 +2,9 @@ import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { PRIVACY_PATH, PUBLIC_SUPPORT_URL, REFUNDS_PATH, SUPPORTER_PATH } from '../../lib/externalLinks'
 import { PrelaunchNotice } from './PrelaunchNotice'
-import { SUPPORTER_PERKS, SupporterPerkItems } from '../../ui/components/SupporterPerks'
+import { SUPPORTER_PERKS, SupporterPerkItems, supporterOnlyYou } from '../../ui/components/SupporterPerks'
+import { TermsSeenInChatBullets } from '../../ui/components/SupporterChatBadgeCopy'
+import { supporterChatBadgesEnabled } from '../../lib/supporterChatBadgesFlag'
 
 /**
  * Terms of use for the portal, the Chrome extension and the Supporter
@@ -118,12 +120,15 @@ export default function Terms() {
             <ul>
               <SupporterPerkItems />
             </ul>
-            {SUPPORTER_PERKS.onlyYou} {SUPPORTER_PERKS.moved} Nothing else is promised.
+            {supporterOnlyYou()} {SUPPORTER_PERKS.moved} Nothing else is promised.
           </li>
-          <li>
-            <strong>What you do not get:</strong> no public Twitch chat badge — it is not included —
-            and no analytics, coverage or rate-limit changes of any kind.
-          </li>
+          {/* Seen in chat copy only once VITE_SUPPORTER_CHAT_BADGES is on (launch day). */}
+          {supporterChatBadgesEnabled() ? <TermsSeenInChatBullets /> : (
+            <li>
+              <strong>What you do not get:</strong> no public Twitch chat badge — it is not included —
+              and no analytics, coverage or rate-limit changes of any kind.
+            </li>
+          )}
         </ul>
         <p>
           Payments are processed by Stripe. Your card details go to Stripe, not to StreamPulse —

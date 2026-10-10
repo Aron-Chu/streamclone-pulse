@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { SUPPORTER_PERKS } from '../../ui/components/SupporterPerks'
+import { BILLING_SEEN_IN_CHAT_NOTE } from '../../ui/components/SupporterChatBadgeCopy'
+import { supporterChatBadgesEnabled } from '../../lib/supporterChatBadgesFlag'
 import { DEFAULT_TRY_LATER_SECONDS, retryWaitCopy, tryLaterCopy } from '../../lib/billingTryLater'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { CreditCard } from 'lucide-react'
@@ -514,7 +516,7 @@ export default function BillingPage() {
         {notice ? <p className="pulse-account-note">{notice}</p> : null}
       </div>
       {facts.length ? <dl className="pulse-membership-facts">{facts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl> : null}
-      {terms ? <dl className="pulse-membership-terms"><dt>Price</dt><dd>US$4.99 per month, charged in US dollars</dd><dt>Renews</dt><dd>Monthly, automatically, until you cancel</dd><dt>Includes</dt><dd>{SUPPORTER_PERKS.names.join(', ')}. Only you see them</dd><dt>Taxes</dt><dd>Handled as stated at checkout</dd></dl> : null}
+      {terms ? <dl className="pulse-membership-terms"><dt>Price</dt><dd>US$4.99 per month, charged in US dollars</dd><dt>Renews</dt><dd>Monthly, automatically, until you cancel</dd><dt>Includes</dt><dd>{SUPPORTER_PERKS.names.join(', ')}. {supporterChatBadgesEnabled() ? BILLING_SEEN_IN_CHAT_NOTE : 'Only you see them'}</dd><dt>Taxes</dt><dd>Handled as stated at checkout</dd></dl> : null}
       {wrongAccount && load === 'ready' ? <div className="pulse-account-note" role="alert" data-testid="billing-wrong-account"><p>This subscription belongs to a different Twitch account. Sign out, then Continue with Twitch with the account you subscribed with.</p><div className="pulse-account-actions"><button type="button" className="pulse-account-primary" disabled={signingOut} onClick={() => void signOutOfWrongAccount()}>{signingOut ? 'Signing out…' : 'Sign out'}</button><button type="button" className="pulse-account-text-button" disabled={signingOut} onClick={() => { wrongAccountRef.current = false; setWrongAccount(false) }}>Stay with this account</button></div>{signOutError ? <p role="alert">{signOutError}</p> : null}</div> : null}
       {reauth && !wrongAccount ? twitchSignInEnabled()
         ? <ConfirmItsYou signInHref={signInHref} busy={twitchBusy} onTwitch={() => void continueWithTwitch(true)} />
