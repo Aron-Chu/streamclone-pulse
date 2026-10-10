@@ -800,7 +800,7 @@ describe('/feedback page', () => {
     expect(screen.queryByTestId('feedback-private-note')).toBeNull()
     expect(screen.queryByTestId('support-discord-line')).toBeNull()
     expect(screen.getAllByRole('link', { name: /Discord/ })
-      .filter(a => !a.closest('footer, nav'))).toHaveLength(1)
+      .filter(a => !a.closest('header, footer, nav'))).toHaveLength(1)
   })
 
   it('does not invite a message in the header while the form is unavailable', () => {
@@ -828,7 +828,7 @@ describe('/feedback page', () => {
     expect(within(alternatives).getByRole('link', { name: 'Ask in the public Discord (opens in a new tab)' })).toBeTruthy()
     expect(screen.queryByTestId('support-discord-line')).toBeNull()
     expect(screen.getAllByRole('link', { name: /Discord/ })
-      .filter(a => !a.closest('footer, nav'))).toHaveLength(1)
+      .filter(a => !a.closest('header, footer, nav'))).toHaveLength(1)
     // The form is still open, so the header and the private note stay.
     expect(screen.getByTestId('feedback-private-badge')).toBeTruthy()
     expect(screen.getByTestId('feedback-private-note')).toBeTruthy()

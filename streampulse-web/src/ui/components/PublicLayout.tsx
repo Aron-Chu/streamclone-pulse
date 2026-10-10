@@ -16,6 +16,8 @@ import {
   TERMS_PATH,
 } from '../../lib/externalLinks'
 
+const DISCORD_LABEL = 'Join the StreamPulse Discord (opens in a new tab)'
+
 export function PublicLayout({ children }: { children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const discord = discordInviteUrl()
@@ -39,6 +41,12 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
           <BrandMark className="app-nav__mark" size={28} />
           <span>StreamPulse</span>
         </Link>
+        {/* At Menu widths the header Discord button collapses to this 44px mark beside Menu. */}
+        {discord ? (
+          <a href={discord} target="_blank" rel="noopener noreferrer" className="app-nav__discord-icon" aria-label={DISCORD_LABEL}>
+            <DiscordMark size={22} />
+          </a>
+        ) : null}
         <button ref={menuTrigger} type="button" className="app-nav__menu" aria-expanded={menuOpen}
           aria-controls="public-navigation" onClick={() => setMenuOpen(!menuOpen)}>
           {menuOpen ? 'Close menu' : 'Menu'}
@@ -86,6 +94,11 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
           >
             GitHub
           </a>
+          {discord ? (
+            <a href={discord} target="_blank" rel="noopener noreferrer" className="app-nav__discord" aria-label={DISCORD_LABEL}>
+              <DiscordMark size={16} />Discord
+            </a>
+          ) : null}
           <ChromeInstallCta className="app-nav__install" data-cta="chrome-install-public-nav" />
         </nav>
       </header>
