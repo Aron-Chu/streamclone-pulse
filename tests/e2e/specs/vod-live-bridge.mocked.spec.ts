@@ -194,7 +194,8 @@ test.describe('VOD replay: the live bridge only for the stream that is live now'
     await waitForPulseRoot(extension.page)
 
     await expect.poll(() => headerStatus(extension.page)).toBe('Replay')
-    await expect.poll(() => pulseShadowText(extension.page)).toContain('Just Chatting')
+    // The replay's own length; no game in the header (Games played is the one place that names games).
+    await expect.poll(() => pulseShadowText(extension.page)).toContain('8h 25m')
     const text = await pulseShadowText(extension.page)
     expect(text).not.toMatch(/Marvel Rivals|Live now|Live chart|50h/i)
     expect(model.vodRequests().length).toBeGreaterThan(0)
@@ -231,7 +232,8 @@ test.describe('VOD replay: the live bridge only for the stream that is live now'
     await waitForPulseRoot(extension.page)
 
     await expect.poll(() => headerStatus(extension.page)).toBe('Replay')
-    await expect.poll(() => pulseShadowText(extension.page)).toMatch(/Chat spike|Just Chatting/)
+    await expect.poll(() => pulseShadowText(extension.page)).toContain('Stream Recap')
+    expect(await pulseShadowText(extension.page)).toContain('1h 0m')
     for (const url of model.vodRequests()) expect(url.searchParams.get('allowLiveBridge')).toBeNull()
 
     await captureDarkAndLight(extension.page, theme => info.outputPath(`ordinary-past-vod-${theme}.png`))
