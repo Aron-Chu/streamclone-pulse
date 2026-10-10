@@ -63,7 +63,7 @@ describe('sign-in page for a signed-in visitor', () => {
     vi.mocked(accountRequest).mockRejectedValue(new AccountError(401))
     render(<MemoryRouter initialEntries={['/account/sign-in']}><AccountPage /></MemoryRouter>)
     expect(await screen.findByLabelText('Email address')).toBeTruthy()
-    expect(screen.getByRole('heading', { level: 1, name: 'Sign in to Pulse' })).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 1, name: 'Tester sign-in' })).toBeTruthy()
   })
 })
 

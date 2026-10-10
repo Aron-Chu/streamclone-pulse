@@ -1,4 +1,12 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
+
+/** With Continue with Twitch on (VITE_TWITCH_SIGNIN=1 or public), the email form waits under "Tester email sign-in". */
+const TWITCH_SIGNIN = process.env.VITE_TWITCH_SIGNIN === '1' || process.env.VITE_TWITCH_SIGNIN === 'public'
+/** In the public stage signed-out billing offers Continue with Twitch, not the tester sign-in link. */
+const TWITCH_PUBLIC = process.env.VITE_TWITCH_SIGNIN === 'public'
+async function openTesterEmail(page: Page): Promise<void> {
+  if (TWITCH_SIGNIN) await page.getByRole('button', { name: 'Tester email sign-in' }).click()
+}
 
 test.beforeEach(async ({ context, baseURL }) => {
   const origin = new URL(baseURL!).origin
@@ -49,6 +57,10 @@ test('a prepared device request opens straight to its review, and approval stays
   await expect(page.getByText('StreamPulse · Chrome on this PC')).toBeVisible()
   await expect(page.getByText('ABCDE-12345', { exact: true })).toBeVisible()
   await expect(page.getByText(/Check that this code matches the code currently shown in your extension/)).toBeVisible()
+  // The review names everything the device credential can do, and when it was asked for.
+  await expect(page.getByTestId('device-access')).toContainText('saved moments and their notes')
+  await expect(page.getByTestId('device-access')).toContainText('turn synced watch history on or off')
+  await expect(page.getByTestId('device-requested')).toContainText(/^Requested at .+ \(less than a minute ago\)$/)
   expect(approvals).toBe(0)
   expect(inspections).toBe(1)
   await page.screenshot({ path: info.outputPath('device-review.png'), fullPage: true })
@@ -64,6 +76,7 @@ test('a prepared device request opens straight to its review, and approval stays
 test('delivery failure does not pretend an email was sent', async ({ page }, info) => {
   await page.route('**/v1/account/auth/start', route => route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"delivery_unavailable"}' }))
   await page.goto('/account/sign-in')
+  await openTesterEmail(page)
   await page.getByLabel('Email address').fill('fixture@example.com')
   await page.getByRole('button', { name: 'Send sign-in link' }).click()
   await expect(page.getByRole('alert')).toContainText('unavailable')
@@ -116,8 +129,16 @@ for (const returnPath of ['/account/billing', '/account/billing/return?attempt=1
       return route.fulfill({ json: { status: 'signed_in' } })
     })
     await page.goto(returnPath)
-    await page.getByRole('link', { name: 'Sign in to Pulse', exact: true }).click()
+    if (TWITCH_PUBLIC) {
+      // Testers still reach email sign-in, from the sign-in page with the same return path.
+      await expect(page.getByRole('button', { name: 'Continue with Twitch' })).toBeVisible()
+      await expect(page.getByRole('link', { name: 'Tester sign-in', exact: true })).toHaveCount(0)
+      await page.goto(`/account/sign-in?returnTo=${encodeURIComponent(returnPath)}`)
+    } else {
+      await page.getByRole('link', { name: 'Tester sign-in', exact: true }).click()
+    }
     expect(new URL(page.url()).searchParams.get('returnTo')).toBe(returnPath)
+    await openTesterEmail(page)
     await page.getByLabel('Email address').fill('fixture@example.com')
     await page.getByRole('button', { name: 'Send sign-in link' }).click()
     await expect(page.getByRole('heading', { name: 'Check your email' })).toBeVisible()

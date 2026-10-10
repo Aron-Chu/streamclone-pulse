@@ -27,6 +27,8 @@ export type AccountProfile = {
   avatarUrl?: string
   /** From /me: the account can sign in with Twitch, even if this tab never saw it happen. */
   twitchLinked?: boolean
+  /** How this tab saw Twitch: a Continue with Twitch sign-in, or linking Twitch to a signed-in account. */
+  via?: 'signin' | 'link'
 }
 export type AccountSession =
   | { status: 'checking' }
@@ -79,9 +81,10 @@ function sessionTag(): string | null {
 function displayProfile(value: unknown): AccountProfile {
   const profile: AccountProfile = {}
   if (!value || typeof value !== 'object') return profile
-  const { displayName, avatarUrl } = value as { displayName?: unknown; avatarUrl?: unknown }
+  const { displayName, avatarUrl, via } = value as { displayName?: unknown; avatarUrl?: unknown; via?: unknown }
   if (typeof displayName === 'string' && displayName.length <= 100) profile.displayName = displayName
   if (typeof avatarUrl === 'string' && avatarUrl.length <= 512 && avatarUrl.startsWith('https://')) profile.avatarUrl = avatarUrl
+  if (via === 'signin' || via === 'link') profile.via = via
   return profile
 }
 
@@ -115,7 +118,8 @@ function forgetTwitchIdentity(): void {
 function signedIn(profile: AccountProfile): AccountSession {
   if (!profile.displayName && !profile.avatarUrl && !profile.twitchLinked) return SIGNED_IN
   if (snapshot?.status === 'signed_in' && snapshot.profile.displayName === profile.displayName
-    && snapshot.profile.avatarUrl === profile.avatarUrl && snapshot.profile.twitchLinked === profile.twitchLinked) return snapshot
+    && snapshot.profile.avatarUrl === profile.avatarUrl && snapshot.profile.twitchLinked === profile.twitchLinked
+    && snapshot.profile.via === profile.via) return snapshot
   return { status: 'signed_in', profile }
 }
 
@@ -204,6 +208,15 @@ export function refreshAccountSession(): Promise<void> {
 export async function signOutAccount(): Promise<void> {
   try { await accountRequest('/auth/logout', {}) }
   catch (error) { if (!(error instanceof AccountError && error.status === 401)) throw error }
+  settleSignedOut()
+}
+
+/**
+ * The server already ended this session (Sign out everywhere answered 204 and
+ * cleared the cookie): forget it here too, with the Twitch name this tab kept,
+ * without another request.
+ */
+export function forgetAccountSession(): void {
   settleSignedOut()
 }
 

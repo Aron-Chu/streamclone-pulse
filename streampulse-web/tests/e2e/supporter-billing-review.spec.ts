@@ -1,5 +1,9 @@
 import { test, expect } from '@playwright/test'
 
+/** Menu account entries follow the build's Continue with Twitch stage and header flag. */
+const TWITCH_PUBLIC = process.env.VITE_TWITCH_SIGNIN === 'public'
+const ACCOUNT_HEADER = process.env.VITE_ACCOUNT_HEADER === '1'
+
 test.beforeEach(async ({ context, baseURL }) => {
   const origin = new URL(baseURL!).origin
   await context.route('**/*', route => {
@@ -17,7 +21,12 @@ test('analytics support navigation at desktop and mobile sizes', async ({ page }
     const menu = page.locator('.analytics-topnav__more')
     const trigger = menu.getByRole('button', { name: 'Support and account', exact: true })
     await trigger.click()
-    await expect(menu.getByRole('link', { name: 'Manage membership' })).toBeVisible()
+    await expect(menu.getByRole('link', { name: 'Pulse Supporter' })).toBeVisible()
+    // Extension connection codes are tester-only in every stage. Before the public
+    // stage the menu links no tester sign-in or closed billing action either.
+    await expect(menu.locator('a[href="/account/link-device"]')).toHaveCount(0)
+    if (!ACCOUNT_HEADER && !TWITCH_PUBLIC) await expect(menu.locator('a[href^="/account"]')).toHaveCount(0)
+    if (!ACCOUNT_HEADER && TWITCH_PUBLIC) await expect(menu.getByRole('link', { name: 'Manage subscription' })).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
     await page.screenshot({ path: info.outputPath(`analytics-menu-${width}.png`), animations: 'disabled' })
     await trigger.press('Escape')
@@ -48,12 +57,12 @@ for (const width of [1440, 390]) {
       await expect(page.getByRole('status')).toContainText('Don’t start another checkout.')
       await expect(page.getByText('No purchase has been started.', { exact: false })).toHaveCount(0)
       await expect(page.getByRole('button', { name: 'Continue to Stripe checkout', exact: true })).toHaveCount(0)
-      await expect(page.getByRole('button', { name: 'Manage membership', exact: true })).toHaveCount(0)
+      await expect(page.getByRole('button', { name: 'Manage subscription', exact: true })).toHaveCount(0)
       expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
       failed = false
       await page.getByRole('button', { name: 'Check again', exact: true }).click()
       await expect(page.getByRole('heading', { name: 'You’re a Supporter', exact: true })).toBeVisible()
-      await expect(page.getByRole('button', { name: 'Manage membership', exact: true })).toBeEnabled()
+      await expect(page.getByRole('button', { name: 'Manage subscription', exact: true })).toBeEnabled()
     }
     expect(writes).toEqual([])
   })
@@ -71,7 +80,7 @@ for (const width of [1440, 390]) {
       await expect(page.getByRole('heading', { name: 'Supporter active', exact: true })).toBeVisible()
       await expect(page.getByRole('status')).toContainText(attempt === 'invalid'
         ? 'This checkout link is invalid.' : 'This checkout link is no longer available.')
-      await expect(page.getByRole('button', { name: 'Manage membership', exact: true })).toBeEnabled()
+      await expect(page.getByRole('button', { name: 'Manage subscription', exact: true })).toBeEnabled()
       await expect(page.getByRole('button', { name: 'Continue to Stripe checkout', exact: true })).toHaveCount(0)
       // Development StrictMode may repeat this read. The contract is that
       // invalid IDs never reach the API and valid reads target only that ID.
@@ -104,10 +113,10 @@ for (const width of [1440, 390]) {
       // Routine states keep a quiet recovery refresh; a payment being confirmed refreshes itself.
       if (status === 'pending') await expect(page.getByRole('button', { name: 'Refresh status' })).toHaveCount(0)
       else await expect(page.getByRole('button', { name: 'Refresh status' })).toBeEnabled()
-      const portal = page.getByRole('button', { name: status === 'grace' ? 'Update payment method' : status === 'expired' ? 'Billing history' : 'Manage membership', exact: true })
-      if (status === 'none') await expect(page.getByRole('button', { name: 'Manage membership', exact: true })).toHaveCount(0)
+      const portal = page.getByRole('button', { name: status === 'grace' ? 'Update payment method' : status === 'expired' ? 'Billing history' : 'Manage subscription', exact: true })
+      if (status === 'none') await expect(page.getByRole('button', { name: 'Manage subscription', exact: true })).toHaveCount(0)
       else await expect(portal).toBeEnabled()
-      await expect(page.getByRole('link', { name: 'Sign in to Pulse', exact: true })).toHaveCount(0)
+      await expect(page.getByRole('link', { name: 'Tester sign-in', exact: true })).toHaveCount(0)
       const checkout = page.getByRole('button', { name: status === 'expired' ? 'Rejoin Supporter' : 'Continue to Stripe checkout', exact: true })
       if (['none', 'expired'].includes(status)) await expect(checkout).toBeEnabled()
       else await expect(page.getByRole('button', { name: /Stripe checkout|Rejoin/ })).toHaveCount(0)
@@ -123,7 +132,7 @@ for (const width of [1440, 390]) {
         await page.goto('/account/billing')
         await expect(page.getByRole('heading', { name: status === 'none' ? 'Supporter sign-ups are not open yet' : headings[status as keyof typeof headings], exact: true })).toBeVisible()
         await expect(page.getByRole('button', { name: /Stripe checkout|Rejoin/ })).toHaveCount(0)
-        if (status !== 'none') await expect(page.getByRole('button', { name: status === 'expired' ? 'Billing history' : 'Manage membership', exact: true })).toBeEnabled()
+        if (status !== 'none') await expect(page.getByRole('button', { name: status === 'expired' ? 'Billing history' : 'Manage subscription', exact: true })).toBeEnabled()
         if (status !== 'active') await expect(page.getByText('New Supporter sign-ups are not open yet.', { exact: false })).toBeVisible()
       }
     }
@@ -142,7 +151,7 @@ for (const width of [1440, 390]) {
     await expect(page.getByRole('heading', { name: 'Billing status is unavailable right now', exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Check again' })).toBeEnabled()
     await expect(page.getByRole('button', { name: /checkout/i })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: 'Manage membership', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Manage subscription', exact: true })).toHaveCount(0)
     await page.screenshot({ path: info.outputPath(`billing-unavailable-${width}.png`), fullPage: true })
   })
 }

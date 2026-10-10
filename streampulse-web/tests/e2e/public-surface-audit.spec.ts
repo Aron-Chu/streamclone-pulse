@@ -52,8 +52,8 @@ async function expectNoHorizontalOverflow(page: Page): Promise<void> {
   expect(dimensions.body, JSON.stringify(dimensions)).toBeLessThanOrEqual(dimensions.viewport + 1)
 }
 
-/** The build under test has Sign in with Twitch on (npm run test:e2e:audit inherits VITE_TWITCH_SIGNIN). */
-const TWITCH_SIGNIN = process.env.VITE_TWITCH_SIGNIN === '1'
+/** The build under test has Continue with Twitch on (npm run test:e2e:audit inherits VITE_TWITCH_SIGNIN: "1" testers, "public"). */
+const TWITCH_SIGNIN = process.env.VITE_TWITCH_SIGNIN === '1' || process.env.VITE_TWITCH_SIGNIN === 'public'
 /** The build under test has My Moments on; its item then leads the account menu. */
 const ACCOUNT_MOMENTS = process.env.VITE_ACCOUNT_MOMENTS === '1'
 /** The build under test has the header account entry on (Sign in link / account menu). Off by default. */
@@ -61,7 +61,7 @@ const ACCOUNT_HEADER = process.env.VITE_ACCOUNT_HEADER === '1'
 
 /** The signed-out sign-in page leads with Twitch when the flag is on, else with the email form. */
 async function expectSignedOutSignInPage(page: Page): Promise<void> {
-  if (TWITCH_SIGNIN) await expect(page.getByRole('button', { name: 'Sign in with Twitch' })).toBeVisible()
+  if (TWITCH_SIGNIN) await expect(page.getByRole('button', { name: 'Continue with Twitch' })).toBeVisible()
   else await expect(page.getByLabel('Email address')).toBeVisible()
 }
 
@@ -251,11 +251,19 @@ test.describe('public surface audit', () => {
         await expect(page.locator('header .account-entry')).toHaveCount(0)
         await expect(page.getByRole('banner').getByRole('button', { name: 'Account', exact: true })).toHaveCount(0)
       }
-      // The support menu keeps master's plain "Account" link.
+      // Before the public Twitch stage the support menu links no account page
+      // (the sign-in page is the tester bridge); in the public stage it offers
+      // Sign in and Manage subscription. Never a connection code.
       const analyticsHeader = page.locator('header.analytics-topnav')
       await analyticsHeader.getByRole('button', { name: 'Support and account', exact: true }).click()
       const support = analyticsHeader.locator('.analytics-topnav__more-links')
-      await expect(support.getByRole('link', { name: 'Account', exact: true })).toHaveAttribute('href', '/account/sign-in')
+      if (process.env.VITE_TWITCH_SIGNIN === 'public') {
+        await expect(support.getByRole('link', { name: 'Sign in', exact: true })).toHaveAttribute('href', '/account/sign-in')
+        await expect(support.getByRole('link', { name: 'Manage subscription', exact: true })).toHaveAttribute('href', '/account/billing')
+      } else {
+        await expect(support.locator('a[href^="/account"]')).toHaveCount(0)
+      }
+      await expect(support.locator('a[href="/account/link-device"]')).toHaveCount(0)
       await expect(support.getByRole('link', { name: 'Account & devices' })).toHaveCount(0)
       // Header chrome never asks who is signed in.
       expect(accountReads).toEqual([])
@@ -359,10 +367,10 @@ test.describe('public surface audit', () => {
   })
 })
 
-// Sign in with Twitch, mocked end to end: the API start/complete routes and
+// Continue with Twitch, mocked end to end: the API start/complete routes and
 // Twitch's authorize page are intercepted; nothing leaves the machine. Run with
 // the flag on:  VITE_TWITCH_SIGNIN=1 npm run test:e2e:audit -- --grep "Twitch"
-test.describe('Sign in with Twitch', () => {
+test.describe('Continue with Twitch', () => {
   const FLOW_ID = '0123456789abcdef0123456789abcdef'
   const FLOW_SECRET = 'f'.repeat(64)
   const ID_TOKEN = /* A stand-in, built at runtime so secret scanners see no token literal. */ [{ alg: 'RS256' }, { sub: '42424242' }].map(part => btoa(JSON.stringify(part))).concat(btoa('mocked-signature')).map(part => part.replace(/=+$/, '')).join('.')
@@ -386,13 +394,13 @@ test.describe('Sign in with Twitch', () => {
   }
 
   test('is absent and the callback path is an ordinary 404 while VITE_TWITCH_SIGNIN is off', async ({ page }) => {
-    test.skip(TWITCH_SIGNIN, 'this build has Sign in with Twitch on')
+    test.skip(TWITCH_SIGNIN, 'this build has Continue with Twitch on')
     const twitchCalls: string[] = []
     page.on('request', request => { if (request.url().includes('/twitch/')) twitchCalls.push(request.url()) })
     await page.goto('/account/sign-in')
     await expect(page.getByLabel('Email address')).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Sign in with Twitch' })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: 'Use email instead' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Continue with Twitch' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Tester email sign-in' })).toHaveCount(0)
     // Even with the flag off, a token that lands on the callback is stripped and never used.
     await page.goto(`/account/twitch/callback#id_token=${ID_TOKEN}&state=${FLOW_ID}`)
     await expect(page.getByTestId('not-found')).toBeVisible()
@@ -401,7 +409,7 @@ test.describe('Sign in with Twitch', () => {
   })
 
   for (const width of [1440, 375]) {
-    test(`signed out → Sign in with Twitch → Twitch → callback → signed in at ${width}px`, async ({ page, baseURL }, testInfo) => {
+    test(`signed out → Continue with Twitch → Twitch → callback → signed in at ${width}px`, async ({ page, baseURL }, testInfo) => {
       test.skip(!TWITCH_SIGNIN, 'needs a VITE_TWITCH_SIGNIN=1 build')
       const origin = new URL(baseURL!).origin
       const host = new URL(baseURL!).hostname
@@ -440,11 +448,11 @@ test.describe('Sign in with Twitch', () => {
       await page.goto('/account/sign-in')
       const header = page.locator('header.app-nav')
       if (ACCOUNT_HEADER) await expect(header.getByRole('link', { name: 'Sign in', exact: true })).toBeVisible()
-      const twitch = page.getByRole('button', { name: 'Sign in with Twitch' })
+      const twitch = page.getByRole('button', { name: 'Continue with Twitch' })
       await expect(twitch).toBeVisible()
       await expect(twitch).toHaveCSS('background-color', 'rgb(145, 70, 255)')
       await expect(page.getByLabel('Email address')).toHaveCount(0)
-      const disclosure = page.getByRole('button', { name: 'Use email instead' })
+      const disclosure = page.getByRole('button', { name: 'Tester email sign-in' })
       await expect(disclosure).toHaveAttribute('aria-expanded', 'false')
       expect((await twitch.boundingBox())!.y).toBeLessThan((await disclosure.boundingBox())!.y)
       await expectNoHorizontalOverflow(page)
@@ -461,7 +469,7 @@ test.describe('Sign in with Twitch', () => {
         await expect(header.locator('.account-entry')).toHaveCount(0)
       }
       await expect(header.getByRole('link', { name: 'Sign in', exact: true })).toHaveCount(0)
-      await expect(page.getByTestId('twitch-account-row')).toContainText('Connected as PulseTester')
+      await expect(page.getByTestId('twitch-account-row')).toContainText('Signed in with Twitch as PulseTester')
       await expectNoHorizontalOverflow(page)
       await page.screenshot({ path: testInfo.outputPath(`twitch-signed-in-settings-${width}.png`), fullPage: true })
 
@@ -483,13 +491,134 @@ test.describe('Sign in with Twitch', () => {
     await page.route('**/v1/account/auth/twitch/complete', route => route.fulfill({ status: 403, json: { error: 'pilot_only' } }))
     await page.setViewportSize({ width: 375, height: 900 })
     await page.goto('/account/sign-in')
-    await page.getByRole('button', { name: 'Sign in with Twitch' }).click()
+    await page.getByRole('button', { name: 'Continue with Twitch' }).click()
     await expect(page.getByRole('heading', { level: 1, name: 'Twitch sign-in is invite-only for now' })).toBeVisible()
     expect(page.url()).toBe(`${origin}/account/twitch/callback`)
     await expectNoHorizontalOverflow(page)
     await page.screenshot({ path: testInfo.outputPath('twitch-callback-pilot-only-375.png'), fullPage: true })
-    await page.getByRole('link', { name: 'Sign in with email' }).click()
+    await page.getByRole('link', { name: 'Tester email sign-in' }).click()
     await expect(page.getByLabel('Email address')).toBeVisible()
     await expectNoHorizontalOverflow(page)
   })
+
+  // Sign out everywhere (backend #162, POST /v1/account/sessions/revoke-all),
+  // mocked: first the route is missing (not deployed or not relayed yet), then
+  // a recent-auth refusal, then success.
+  for (const width of [1440, 375]) {
+    test(`Sign out everywhere asks first, is honest while unavailable, and ends signed out at ${width}px`, async ({ page, baseURL }, testInfo) => {
+      test.skip(!TWITCH_SIGNIN, 'needs a VITE_TWITCH_SIGNIN=1 build')
+      const origin = new URL(baseURL!).origin
+      const host = new URL(baseURL!).hostname
+      const answers = [
+        { status: 404, json: { error: 'not_found' } },
+        { status: 403, json: { error: 'recent_auth_required' } },
+        { status: 204 },
+      ]
+      const revokes: Array<{ body: unknown; csrf?: string; origin?: string }> = []
+      let signedIn = true
+      await page.route('**/*', route => {
+        const url = new URL(route.request().url())
+        if (url.origin === origin && url.pathname.startsWith('/v1/')) return route.fulfill({ status: 404, json: { error: 'not_found' } })
+        return url.origin === origin ? route.continue() : route.abort('blockedbyclient')
+      })
+      await page.context().addCookies([{ name: '__Host-pulse_csrf', value: '56'.repeat(32), domain: host, path: '/', secure: true, sameSite: 'Strict' }])
+      await page.route('**/v1/account/me', route => signedIn
+        ? route.fulfill({ json: { accountId: '11111111-1111-4111-8111-111111111111', signInMethods: ['twitch'], expiresAt: '2027-01-01T00:00:00Z' } })
+        : route.fulfill({ status: 401, json: { error: 'sign_in_required' } }))
+      await page.route('**/v1/account/devices', route => route.fulfill({ json: { devices: [{ id: 'dev-1', label: 'Chrome on Windows', expiresAt: '2027-01-01T00:00:00Z' }] } }))
+      await page.route('**/v1/account/sessions/revoke-all', async route => {
+        const request = route.request()
+        revokes.push({ body: request.postDataJSON(), csrf: request.headers()['x-pulse-csrf'], origin: request.headers().origin })
+        const answer = answers.shift()!
+        if (answer.status === 204) {
+          // The API clears this browser's session cookies with the 204.
+          await page.context().clearCookies()
+          signedIn = false
+          return route.fulfill({ status: 204, body: '' })
+        }
+        return route.fulfill({ status: answer.status, json: answer.json })
+      })
+
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto('/account/settings')
+      const section = page.getByTestId('sign-out-everywhere')
+      await expect(section.getByRole('heading', { level: 2, name: 'Sign out everywhere' })).toBeVisible()
+      await section.getByRole('button', { name: 'Sign out everywhere' }).click()
+      const confirm = section.getByRole('button', { name: 'Confirm sign out everywhere' })
+      await expect(confirm).toBeVisible()
+      expect(revokes).toEqual([])
+      await expectNoHorizontalOverflow(page)
+      await page.screenshot({ path: testInfo.outputPath(`sign-out-everywhere-confirm-${width}.png`), fullPage: true })
+
+      await confirm.click()
+      await expect(page.getByTestId('revoke-all-unavailable')).toHaveText('Sign out everywhere isn’t available yet. Nothing was signed out. You can still sign out here and revoke each extension above.')
+      await expect(page.getByText('You’re signed in to StreamPulse.')).toBeVisible()
+      await expectNoHorizontalOverflow(page)
+      await page.screenshot({ path: testInfo.outputPath(`sign-out-everywhere-unavailable-${width}.png`), fullPage: true })
+
+      await confirm.click()
+      const prompt = page.getByTestId('revoke-all-confirm-twitch')
+      await expect(prompt).toContainText('Confirm it’s you')
+      await expect(prompt.getByRole('button', { name: 'Continue with Twitch' })).toBeVisible()
+      await expect(page.getByTestId('revoke-all-unavailable')).toHaveCount(0)
+      await expectNoHorizontalOverflow(page)
+      await page.screenshot({ path: testInfo.outputPath(`sign-out-everywhere-confirm-its-you-${width}.png`), fullPage: true })
+
+      await confirm.click()
+      await expect(page.getByTestId('revoke-all-done')).toContainText('You’re signed out everywhere.')
+      await expect(page.getByTestId('settings-signed-out')).toBeVisible()
+      await expect(page.getByText('You’re signed in to StreamPulse.')).toHaveCount(0)
+      await expect(page.getByText('Chrome on Windows')).toHaveCount(0)
+      await expectNoHorizontalOverflow(page)
+      await page.screenshot({ path: testInfo.outputPath(`sign-out-everywhere-done-${width}.png`), fullPage: true })
+
+      expect(revokes).toHaveLength(3)
+      for (const revoke of revokes) expect(revoke).toEqual({ body: {}, csrf: '56'.repeat(32), origin })
+    })
+  }
+
+  // An email account refused with recent_auth_required is still signed in, and
+  // /account/sign-in shows a signed-in browser "You're signed in", not the
+  // email form. The page signs this browser out first, then opens the form.
+  for (const width of [1440, 375]) {
+    test(`Sign out everywhere sends an email account through sign-out to the email form at ${width}px`, async ({ page, baseURL }, testInfo) => {
+      test.skip(!TWITCH_SIGNIN, 'needs a VITE_TWITCH_SIGNIN=1 build')
+      const origin = new URL(baseURL!).origin
+      const host = new URL(baseURL!).hostname
+      let signedIn = true
+      const posts: string[] = []
+      await page.route('**/*', route => {
+        const url = new URL(route.request().url())
+        if (url.origin === origin && url.pathname.startsWith('/v1/')) return route.fulfill({ status: 404, json: { error: 'not_found' } })
+        return url.origin === origin ? route.continue() : route.abort('blockedbyclient')
+      })
+      await page.context().addCookies([{ name: '__Host-pulse_csrf', value: '56'.repeat(32), domain: host, path: '/', secure: true, sameSite: 'Strict' }])
+      await page.route('**/v1/account/me', route => signedIn
+        ? route.fulfill({ json: { accountId: '11111111-1111-4111-8111-111111111111', email: 'tester@example.com', signInMethods: ['email'], expiresAt: '2027-01-01T00:00:00Z' } })
+        : route.fulfill({ status: 401, json: { error: 'sign_in_required' } }))
+      await page.route('**/v1/account/devices', route => route.fulfill({ json: { devices: [] } }))
+      await page.route('**/v1/account/sessions/revoke-all', route => { posts.push('revoke-all'); return route.fulfill({ status: 403, json: { error: 'recent_auth_required' } }) })
+      await page.route('**/v1/account/auth/logout', route => { posts.push('logout'); signedIn = false; return route.fulfill({ status: 204, body: '' }) })
+
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto('/account/settings')
+      const section = page.getByTestId('sign-out-everywhere')
+      await section.getByRole('button', { name: 'Sign out everywhere' }).click()
+      await section.getByRole('button', { name: 'Confirm sign out everywhere' }).click()
+      const prompt = page.getByTestId('revoke-all-sign-in-again')
+      await expect(prompt).toContainText('Nothing was signed out yet.')
+      await expect(prompt).toContainText('To confirm, sign out of this browser and sign in again with your email.')
+      await expect(page.getByTestId('revoke-all-confirm-twitch')).toHaveCount(0)
+      await expectNoHorizontalOverflow(page)
+      await page.screenshot({ path: testInfo.outputPath(`sign-out-everywhere-email-sign-in-again-${width}.png`), fullPage: true })
+
+      await prompt.getByRole('button', { name: 'Sign out and sign in again' }).click()
+      await page.waitForURL(`${origin}/account/sign-in?method=email`)
+      await expect(page.getByLabel('Email address')).toBeVisible()
+      await expect(page.getByRole('heading', { level: 1, name: 'You’re signed in' })).toHaveCount(0)
+      await expectNoHorizontalOverflow(page)
+      await page.screenshot({ path: testInfo.outputPath(`sign-out-everywhere-email-form-${width}.png`), fullPage: true })
+      expect(posts).toEqual(['revoke-all', 'logout'])
+    })
+  }
 })

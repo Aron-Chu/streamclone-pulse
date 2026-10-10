@@ -8,16 +8,20 @@ interface ImportMetaEnv {
   readonly VITE_POSTHOG_PROJECT_TOKEN?: string
   readonly VITE_REPLAYFORGE_UI_ORIGIN?: string
   readonly VITE_STREAMCLONE_WATCH_ORIGIN?: string
-  /** "1" turns on Sign in with Twitch on the website; anything else leaves it off. */
+  /** Continue with Twitch stage: "1" = invited testers, "public" = the public account path; anything else leaves it off. */
   readonly VITE_TWITCH_SIGNIN?: string
   /** "1" turns on My Moments on the website (account bookmarks and synced history). */
   readonly VITE_ACCOUNT_MOMENTS?: string
   /** "1" turns on the header account entry (Sign in link / account menu); anything else leaves the header as before. */
   readonly VITE_ACCOUNT_HEADER?: string
+  /** Optional Stripe customer-portal login link (https://billing.stripe.com/p/login/...). Without a valid one, pages keep the plain sentence. */
+  readonly VITE_STRIPE_PORTAL_LOGIN_URL?: string
   /** Activation input: Cloudflare Turnstile site key. Without it the support form stays unavailable. */
   readonly VITE_TURNSTILE_SITE_KEY?: string
   /** Activation input: public Discord invite. Without a valid one every Discord link is hidden. */
   readonly VITE_PUBLIC_DISCORD_INVITE_URL?: string
+  /** Launch switch: `on` shows the optional "Seen in chat" Supporter copy (lib/supporterChatBadgesFlag.ts). */
+  readonly VITE_SUPPORTER_CHAT_BADGES?: string
   readonly DEV: boolean
   readonly PROD: boolean
   readonly MODE: string

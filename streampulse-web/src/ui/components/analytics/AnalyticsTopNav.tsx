@@ -6,6 +6,7 @@ import { BrandMark } from '../BrandMark'
 import { ChromeInstallCta } from '../ChromeInstallCta'
 import { useAccountSession } from '../../../lib/accountSession'
 import { accountHeaderEnabled } from '../../../lib/accountHeaderFlag'
+import { twitchSignInPublic } from '../../../lib/twitchSignInFlag'
 
 export interface AnalyticsTopNavItem {
   label: string
@@ -99,11 +100,18 @@ export function AnalyticsTopNav({
               <Link to="/support" onClick={() => closeMenu()}>Support</Link>
               <Link to="/status" onClick={() => closeMenu()}>Service status</Link>
               <Link to="/supporter" onClick={() => closeMenu()}>Pulse Supporter</Link>
+              {/* Account entries follow the Continue with Twitch stage. Before the
+                  public stage the sign-in page is the invited-tester bridge and
+                  sign-ups are closed, so the menu links neither; extension
+                  connection codes are tester-only in every stage. */}
               {accountHeaderEnabled()
-                ? <MenuAccountLink onNavigate={() => closeMenu()} />
-                : <Link to="/account/sign-in" onClick={() => closeMenu()}>Account</Link>}
-              <Link to="/account/billing" onClick={() => closeMenu()}>Manage membership</Link>
-              <Link to="/account/link-device" onClick={() => closeMenu()}>Link extension</Link>
+                ? <MenuAccountLinks onNavigate={() => closeMenu()} />
+                : twitchSignInPublic()
+                  ? <>
+                    <Link to="/account/sign-in" onClick={() => closeMenu()}>Sign in</Link>
+                    <Link to="/account/billing" onClick={() => closeMenu()}>Manage subscription</Link>
+                  </>
+                  : null}
               <Link to="/privacy" onClick={() => closeMenu()}>Privacy</Link>
               <Link to="/terms" onClick={() => closeMenu()}>Terms</Link>
               <Link to="/refunds" onClick={() => closeMenu()}>Cancellation and refunds</Link>
@@ -132,9 +140,15 @@ export function AnalyticsTopNav({
   )
 }
 
-/** With the header account entry on, the menu's account link follows the session. */
-function MenuAccountLink({ onNavigate }: { onNavigate: () => void }) {
+/**
+ * With the header account entry on (public stage only, spec §7), the menu's
+ * account links follow the session, matching the header's own "Sign in".
+ */
+function MenuAccountLinks({ onNavigate }: { onNavigate: () => void }) {
   return useAccountSession().status === 'signed_out'
     ? <Link to="/account/sign-in" onClick={onNavigate}>Sign in</Link>
-    : <Link to="/account/settings" onClick={onNavigate}>Account &amp; devices</Link>
+    : <>
+      <Link to="/account/settings" onClick={onNavigate}>Account &amp; devices</Link>
+      <Link to="/account/billing" onClick={onNavigate}>Manage subscription</Link>
+    </>
 }

@@ -1,5 +1,8 @@
 import { test, expect } from '@playwright/test'
 
+/** The sign-in page heading follows the Continue with Twitch stage: "Sign in to StreamPulse" only when VITE_TWITCH_SIGNIN=public. */
+const SIGN_IN_HEADING = process.env.VITE_TWITCH_SIGNIN === 'public' ? 'Sign in to StreamPulse' : 'Tester sign-in'
+
 test.beforeEach(async ({ page }) => {
   await page.route('**/*', async route => {
     const url = new URL(route.request().url())
@@ -61,7 +64,7 @@ test('account controls revoke the selected device and end the website session', 
   await page.getByRole('button', { name: 'Confirm revocation' }).click()
   await expect(page.getByText('Revoked', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Sign out', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Sign in to Pulse' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: SIGN_IN_HEADING })).toBeVisible()
   expect(loggedOut).toBe(true)
   await expect(page.getByText('Desktop extension', { exact: true })).toHaveCount(0)
 })
