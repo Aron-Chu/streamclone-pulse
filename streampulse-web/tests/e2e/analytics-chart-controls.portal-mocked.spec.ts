@@ -142,7 +142,8 @@ test.describe('session chart zoom gestures (desktop)', () => {
     const window = () => navigator.getAttribute('data-hub-chart-navigator-window')
     const fullWindow = await window()
 
-    // One click on the purple bar zooms to a 1h window around the click, as on the hub.
+    // One click on the purple bar zooms to a 1h window around the click, as on the hub:
+    // 60 minutes from its first to its last plotted minute.
     const track = await navigator.locator('.hx-chart-navigator__track').boundingBox()
     if (!track) throw new Error('navigator track has no layout box')
     await page.mouse.click(track.x + track.width / 2, track.y + track.height / 2)
@@ -151,7 +152,7 @@ test.describe('session chart zoom gestures (desktop)', () => {
     await expect.poll(async () => {
       const [start, end] = String(await window()).split(':').map(Number)
       return end! - start!
-    }).toBe(59)
+    }).toBe(60)
 
     await navigator.getByRole('button', { name: 'Reset zoom' }).click()
     await settle(page)
@@ -199,7 +200,11 @@ test.describe('session chart zoom matches the Global activity chart (owner windo
       spans.push(await span(page))
     }
     await expect(zoomIn).toBeDisabled()
-    expect(spans[spans.length - 1]).toBe(5)
+    // Five minutes hold six minute steps (both edge minutes are plotted).
+    expect(spans[spans.length - 1]).toBe(6)
+    const plot = page.locator(`${CHART} rect[data-chart-touch-action]`)
+    const viewportSeconds = Number(await plot.getAttribute('data-chart-viewport-end')) - Number(await plot.getAttribute('data-chart-viewport-start'))
+    expect(viewportSeconds).toBe(300)
     for (let index = 1; index < spans.length; index += 1) expect(spans[index]!).toBeLessThan(spans[index - 1]!)
     await assertNoUnexpected(harness)
   })
