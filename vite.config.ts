@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { loadManifestForTarget, manifestForTwitchSignInStage, resolveSupporterBackendOrigin, resolveTwitchSignInStage } from './scripts/extension-target.mjs'
+import { resolveChatBadgeDevKeys } from './scripts/chat-badge-keys.mjs'
 import { extensionBuildId, extensionReleasePreview, extensionResolve, extensionTarget, isStoreBuild, sharedOutput } from './vite.shared.ts'
 
 const root = __dirname
@@ -25,6 +26,8 @@ function chromeExtensionPlugin() {
       await viteBuild({ configFile: resolve(__dirname, 'vite.content.config.ts') })
       // The Supporter card's stage, injected on demand; never part of content/twitch.js.
       await viteBuild({ configFile: resolve(__dirname, 'vite.supporterCard.config.ts') })
+      // The Seen in chat decorator, registered by the worker only while there is a list to show.
+      await viteBuild({ configFile: resolve(__dirname, 'vite.chatBadges.config.ts') })
 
       const dist = resolve(__dirname, 'dist')
       mkdirSync(dist, { recursive: true })
@@ -59,6 +62,8 @@ export default defineConfig({
     __EXTENSION_BUILD_ID__: JSON.stringify(extensionBuildId),
     __EXTENSION_RELEASE_PREVIEW__: JSON.stringify(extensionReleasePreview),
     __TWITCH_SIGNIN_STAGE__: JSON.stringify(twitchSignInStage),
+    // Seen in chat list keys: development builds only; store builds pin production keys in source.
+    __CHAT_BADGE_DEV_KEYS__: JSON.stringify(resolveChatBadgeDevKeys(extensionTarget)),
   },
   build: {
     outDir: 'dist',

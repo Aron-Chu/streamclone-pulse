@@ -2,6 +2,10 @@
 //
 // We never mutate or restructure Twitch's own DOM. We only read the bounding
 // rect of the chat column so the shadow-DOM Pulse panel can be laid over it.
+// One scoped exception (owner decision D3), outside this bundle: the Seen in
+// chat decorator (content/chat-badges.js, src/content/chatBadgeDom.ts) adds
+// its own crest node and data-sp-* attributes to chat lines, never edits or
+// removes Twitch's, and restores the markup exactly on teardown.
 // When no usable chat column is found (popout chat, theater, layout change,
 // zero-width), the caller falls back to the floating right dock.
 

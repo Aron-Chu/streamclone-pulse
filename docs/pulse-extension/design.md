@@ -346,6 +346,14 @@ Today **hosted-production-vps** runs the hosted compose stack (streampulse-backe
 - **Cold cache / revalidate:** BFF compute-on-miss must stay < ~150ms p95; extension-side single-flight and soft stale refresh landed under RPR-1. Backend `pulseRevalidateGate` hardening remains a BFF concern if further needed.
 - **Telemetry isolation (planned R15).** Extension diagnostics and product analytics are planned as separate, versioned, default-off consents. No durable install/session ID. Server-generated correlation IDs are planned and must not be sent to product-analytics vendors. Portal error monitoring via `VITE_SENTRY_DSN` is a separate, existing website path — not extension consent.
 
+### 9.1 Seen in chat (Supporter crests in chat, draft, server flag off)
+
+- **What it is.** Supporters may opt in to show their crest and paint to other StreamPulse users in Twitch chat. The server publishes one signed list (`GET /v1/billing/badges`, format `SPB1`, Ed25519 over `"streampulse-badges-v1 " ‖ docBytes`) of `[twitchUserId, login, tier, paint, wave]`. Code: `src/shared/chatBadges.ts`, `src/background/chatBadge*.ts`, `src/content/chatBadge*.ts`.
+- **Privacy.** The worker downloads the whole list with no credentials, cookies, query string or channel (`credentials:'omit'`), about hourly and only while a Twitch tab asks, so the server never learns which chats anyone opens. Tabs get the list by message; nothing leaves the browser and nothing is sent to Twitch.
+- **Budget.** The decorator is its own lazily registered chunk, `content/chat-badges.js` (`vite.chatBadges.config.ts`, own cap 8,000 B gzip). `content/twitch.js` gains 0 bytes and must never contain the `sp-cb-` marker (`scripts/check-extension-bundle-budget.mjs`). The worker registers it with `chrome.scripting.registerContentScripts` only while the viewer setting is on and a valid list (or your own entry) exists; no new permission.
+- **Scoped DOM exception (owner decision D3).** The rule "we never mutate Twitch's DOM" (`src/content/twitchChat.ts`) has one exception: the decorator *adds* its own `span.sp-cb-crest` and `data-sp-paint`/`data-sp-wave` attributes inside chat lines. It never removes, moves or edits Twitch's nodes, text, classes or inline styles, reads no layout, writes no HTML strings, and its teardown restores the markup exactly (tests in `tests/chatBadgeDom.test.ts`).
+- **Keys.** Store builds pin only the production keys in `src/shared/chatBadgeKeys.ts` (empty until the owner provisions `spb-live-1`/`spb-live-2`, so the feature is inert). Development builds also pin the public e2e test key (`scripts/chat-badge-keys.mjs`).
+
 ---
 
 ## 10. Open decisions (resolve during RPR)
