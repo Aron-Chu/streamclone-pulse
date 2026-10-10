@@ -682,6 +682,31 @@ export function buildViewerGeometry(
   }
 }
 
+/**
+ * The resting overview only: the line and area `buildViewerGeometry(values,
+ * values, options)` returns as `idlePathD` and `idleAreaPathD`, without the
+ * detail lattice. For surfaces that never draw the detail path (the extension
+ * panel), so they skip that work and its bundle bytes.
+ */
+export function buildViewerOverviewGeometry(
+  values: ViewerTimedValue[],
+  options: ViewerGeometryOptions,
+): Pick<ViewerGeometry, 'idlePathD' | 'idleAreaPathD'> {
+  const plotWidth = Math.max(0, options.width - options.padLeft - options.padRight)
+  const segments = reduceSegments(
+    connectedSegments(
+      pointsForValues(values, options.timestampScale ?? buildViewerTimestampScale(values, options), options, IDLE_SMOOTHING_MINUTES),
+      gapThresholdMs(normalizeTimedValues(values)),
+    ),
+    options.idleAnchorCount ?? viewerIdlePointBudget(options.plotCssWidth ?? plotWidth),
+    reduceViewerOverviewSegment,
+  )
+  return {
+    idlePathD: buildViewerOverviewPath(segments),
+    idleAreaPathD: buildViewerOverviewAreaPath(segments, options.bandBottom),
+  }
+}
+
 /** Kept as a source-compatible name for package consumers; it no longer morphs. */
 export const buildViewerMorphGeometry = buildViewerGeometry
 

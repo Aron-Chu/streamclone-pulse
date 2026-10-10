@@ -9,7 +9,6 @@ import {
   resolveGamesPlayedTimelineRange,
 } from '@streampulse/pulse-charts'
 import type { ExtensionGameSegment } from '../shared/messages.ts'
-import { theme } from './theme.ts'
 import { onOutsidePointerDown, usePulsePortalRoot } from './pulsePortalContext.ts'
 import { isRenderableGameName } from './extensionChartAdapter.ts'
 
@@ -53,6 +52,7 @@ export interface GamesPlayedStripProps {
   plotPadRight?: number
 }
 
+// Static layout lives in shadow.css (.pulse-games-*); keep these in step with it.
 export const GAMES_PLAYED_HEADER_LAYOUT = {
   headerRow: { alignItems: 'center', display: 'flex', gap: 6, minWidth: 0, width: '100%' },
   gamesLabelShell: { flex: '1 1 auto', minWidth: 0, overflow: 'hidden' },
@@ -169,8 +169,8 @@ function GameArt({
   useEffect(() => setCandidateIndex(0), [candidates.join('\n')])
   const src = candidates[candidateIndex]
   return (
-    <span aria-hidden="true" style={styles.gameArtShell}>
-      <span data-game-art-fallback style={styles.gameArtFallback}>
+    <span aria-hidden="true" className="pulse-games-art">
+      <span data-game-art-fallback className="pulse-games-art-fallback">
         {initialsForGame(gameName)}
       </span>
       {src ? (
@@ -183,7 +183,7 @@ function GameArt({
           loading="eager"
           decoding="async"
           referrerPolicy="no-referrer"
-          style={styles.gameArt}
+          className="pulse-games-art-img"
           onError={() => setCandidateIndex(index => index + 1)}
         />
       ) : null}
@@ -314,12 +314,12 @@ export function GamesPlayedStrip({
 
   if (!hasMeaningfulGameSegments(segments, durationSeconds) || !timelineRange || gameSlots.length === 0) {
     return (
-      <div data-games-played data-games-played-empty aria-label="Games played" style={styles.gamesEmpty}>
-        <div data-games-played-header style={styles.headerRow}>
-          <span data-games-played-label style={styles.gamesLabel}>Games played</span>
-          <span data-games-played-count style={styles.gameCount}>Unavailable</span>
+      <div data-games-played data-games-played-empty aria-label="Games played" className="pulse-games">
+        <div data-games-played-header className="pulse-games-head">
+          <span data-games-played-label className="pulse-games-label">Games played</span>
+          <span data-games-played-count className="pulse-games-count">Unavailable</span>
         </div>
-        <p data-games-played-empty-copy style={styles.emptyCopy}>
+        <p data-games-played-empty-copy className="pulse-games-empty-copy">
           {segments.length > 0 ? 'Game metadata is unavailable for the visible stream.' : 'No game metadata is available for this stream yet.'}
         </p>
       </div>
@@ -358,7 +358,7 @@ export function GamesPlayedStrip({
       ref={rootRef}
       data-games-played
       aria-label="Games played"
-      style={styles.gamesStrip}
+      className="pulse-games"
       onPointerLeave={() => {
         setActiveKey(null)
         onHighlightKey?.(selectedKey)
@@ -373,24 +373,24 @@ export function GamesPlayedStrip({
         }
       }}
     >
-      <div data-games-played-header style={styles.headerRow}>
-        <span data-games-played-label style={styles.gamesLabelShell}>
+      <div data-games-played-header className="pulse-games-head">
+        <span data-games-played-label className="pulse-games-label-shell">
           {displayedSlot ? (
             <>
-              <strong style={styles.gamesLabelName}>{displayedSlot.segment.gameName}</strong>
-              <span style={styles.gamesLabelMeta}>
+              <strong className="pulse-games-name">{displayedSlot.segment.gameName}</strong>
+              <span className="pulse-games-meta">
                 {formatWindowLabel(displayedSlot.visibleStart, displayedSlot.visibleEnd)}
                 {selectedKey === displayedKey ? ' · pinned' : ''}
               </span>
             </>
-          ) : <span style={styles.gamesLabel}>Games played</span>}
+          ) : <span className="pulse-games-label">Games played</span>}
         </span>
-        <span data-games-played-trail style={styles.headerTrail}>
-          <span data-games-played-count style={styles.gameCount}>{gameSlots.length} {gameSlots.length === 1 ? 'game' : 'games'}</span>
+        <span data-games-played-trail className="pulse-games-trail">
+          <span data-games-played-count className="pulse-games-count">{gameSlots.length} {gameSlots.length === 1 ? 'game' : 'games'}</span>
           {scrollState.maxScroll > SCROLL_EDGE_EPSILON_PX ? (
-            <span style={styles.headerNav} aria-label="Games played navigation">
-              <button type="button" data-chart-action="true" aria-label="Previous games" title="Previous games" disabled={!scrollState.canScrollLeft} style={{ ...styles.headerArrow, ...(!scrollState.canScrollLeft ? styles.disabled : null) }} onClick={() => scrollBy(-1)}>‹</button>
-              <button type="button" data-chart-action="true" aria-label="Next games" title="Next games" disabled={!scrollState.canScrollRight} style={{ ...styles.headerArrow, ...(!scrollState.canScrollRight ? styles.disabled : null) }} onClick={() => scrollBy(1)}>›</button>
+            <span className="pulse-games-nav" aria-label="Games played navigation">
+              <button type="button" data-chart-action="true" aria-label="Previous games" title="Previous games" disabled={!scrollState.canScrollLeft} className="pulse-games-arrow" onClick={() => scrollBy(-1)}>‹</button>
+              <button type="button" data-chart-action="true" aria-label="Next games" title="Next games" disabled={!scrollState.canScrollRight} className="pulse-games-arrow" onClick={() => scrollBy(1)}>›</button>
             </span>
           ) : null}
         </span>
@@ -399,16 +399,17 @@ export function GamesPlayedStrip({
         data-games-timeline
         data-timeline-start={timelineRange.startOffset}
         data-timeline-end={timelineRange.endOffset}
-        style={{ ...styles.timelinePad, paddingLeft: plotPadLeft, paddingRight: plotPadRight }}
+        className="pulse-games-timeline"
+        style={{ paddingLeft: plotPadLeft, paddingRight: plotPadRight }}
       >
-        <div ref={trackRef} data-games-played-track className="pulse-no-scrollbar" role="list" tabIndex={-1} style={styles.timelineTrack}>
+        <div ref={trackRef} data-games-played-track className="pulse-no-scrollbar pulse-games-track" role="list" tabIndex={-1}>
           {gameSlots.map((slot, index) => {
             const key = gameSegmentKey(slot.segment)
             const selected = selectedKey === key
             const highlighted = highlightedKey === key || selected
             const title = `${slot.segment.gameName} · ${formatWindowLabel(slot.visibleStart, slot.visibleEnd)}${slot.clipped ? ' · clipped to chart' : ''}`
             return (
-              <div key={`${key}-${index}`} role="listitem" style={styles.item}>
+              <div key={`${key}-${index}`} role="listitem" className="pulse-games-item">
                 <button
                   type="button"
                   data-games-played-item
@@ -419,7 +420,7 @@ export function GamesPlayedStrip({
                   aria-label={title}
                   aria-pressed={selected}
                   title={title}
-                  style={{ ...styles.gameCard, ...(slot.clipped ? styles.clipped : null), ...(highlighted ? styles.active : null) }}
+                  className={`pulse-games-card${highlighted ? ' is-active' : ''}${slot.clipped ? ' is-clipped' : ''}`}
                   onPointerEnter={() => {
                     setActiveKey(key)
                     onHighlightKey?.(key)
@@ -446,7 +447,7 @@ export function GamesPlayedStrip({
                   onKeyDown={event => onItemKeyDown(event, index)}
                 >
                   <GameArt gameName={slot.segment.gameName} boxArtUrl={slot.segment.boxArtUrl} categoryId={slot.segment.categoryId} />
-                  <span aria-hidden="true" style={styles.gameCardName}>{slot.segment.gameName}</span>
+                  <span aria-hidden="true" className="pulse-games-card-name">{slot.segment.gameName}</span>
                 </button>
               </div>
             )
@@ -455,30 +456,4 @@ export function GamesPlayedStrip({
       </div>
     </div>
   )
-}
-
-const styles: Record<string, CSSProperties> = {
-  gamesStrip: { display: 'grid', gap: 4, marginBottom: 2, minWidth: 0, width: '100%' },
-  gamesEmpty: { display: 'grid', gap: 4, marginBottom: 2, minWidth: 0, width: '100%' },
-  headerRow: { ...GAMES_PLAYED_HEADER_LAYOUT.headerRow },
-  gamesLabelShell: { alignItems: 'baseline', display: 'flex', gap: 6, ...GAMES_PLAYED_HEADER_LAYOUT.gamesLabelShell },
-  gamesLabelName: { color: theme.textPrimary, flex: '0 1 auto', fontSize: 10, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  gamesLabelMeta: { color: theme.textMuted, flexShrink: 0, fontSize: 9, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' },
-  gamesLabel: { color: theme.textMuted, fontSize: 9, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase' },
-  headerTrail: { alignItems: 'center', display: 'flex', gap: 6, minWidth: 0, ...GAMES_PLAYED_HEADER_LAYOUT.headerTrail },
-  gameCount: { color: theme.textSecondary, fontSize: 10, fontVariantNumeric: 'tabular-nums', fontWeight: 800, whiteSpace: 'nowrap' },
-  emptyCopy: { color: theme.textMuted, fontSize: 9, fontWeight: 600, lineHeight: 1.35, margin: 0 },
-  headerNav: { display: 'flex', gap: 3 },
-  headerArrow: { alignItems: 'center', background: theme.panel, border: `1px solid ${theme.border}`, borderRadius: 6, color: theme.textPrimary, cursor: 'pointer', display: 'flex', fontSize: 16, height: 24, justifyContent: 'center', lineHeight: 1, padding: 0, width: 24 },
-  disabled: { cursor: 'default', opacity: 0.35 },
-  timelinePad: { minWidth: 0, overflow: 'hidden' },
-  timelineTrack: { alignItems: 'center', display: 'flex', gap: CHIP_GAP_PX, minHeight: GAMES_PLAYED_HIT_TARGET_HEIGHT_PX + 4, minWidth: 0, overflowX: 'auto', overflowY: 'hidden', overscrollBehaviorX: 'contain', padding: '2px 3px', scrollbarWidth: 'none', width: '100%' },
-  item: { flex: `0 0 ${GAMES_PLAYED_HIT_TARGET_PX}px`, position: 'relative' },
-  gameCard: { alignItems: 'center', background: theme.panel, border: `1px solid ${theme.border}`, borderRadius: 8, boxSizing: 'border-box', cursor: 'pointer', display: 'flex', height: GAMES_PLAYED_HIT_TARGET_HEIGHT_PX, justifyContent: 'center', outline: 'none', overflow: 'hidden', padding: 2, position: 'relative', textAlign: 'center', transition: 'background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease', width: GAMES_PLAYED_HIT_TARGET_PX },
-  clipped: { borderStyle: 'dashed' },
-  active: { background: 'rgba(139, 92, 246, 0.14)', border: `1px solid ${theme.borderAccent}`, boxShadow: '0 0 0 2px rgba(139, 92, 246, 0.18), 0 5px 16px rgba(0,0,0,0.24)', transform: 'translateY(-2px) scale(1.02)' },
-  gameArtShell: { borderRadius: 7, display: 'block', height: GAMES_PLAYED_ICON_SIZE_PX, overflow: 'hidden', position: 'relative', width: GAMES_PLAYED_ART_WIDTH_PX },
-  gameArt: { borderRadius: 7, boxSizing: 'border-box', display: 'block', height: GAMES_PLAYED_ICON_SIZE_PX, inset: 0, objectFit: 'cover', position: 'absolute', width: GAMES_PLAYED_ART_WIDTH_PX },
-  gameArtFallback: { alignItems: 'center', background: 'linear-gradient(155deg, rgba(139,92,246,0.20), rgba(15,23,42,0.94))', border: `1px dashed ${theme.borderAccent}`, borderRadius: 7, boxSizing: 'border-box', color: theme.textPrimary, display: 'flex', fontSize: 14, fontWeight: 900, height: GAMES_PLAYED_ICON_SIZE_PX, inset: 0, justifyContent: 'center', letterSpacing: '0.08em', position: 'absolute', width: GAMES_PLAYED_ART_WIDTH_PX },
-  gameCardName: { background: 'linear-gradient(180deg, transparent, rgba(0,0,0,0.92) 42%)', bottom: 0, color: '#fafafc', fontSize: 9, fontWeight: 850, left: 0, lineHeight: 1.15, overflow: 'hidden', padding: '10px 3px 3px', pointerEvents: 'none', position: 'absolute', right: 0, textOverflow: 'ellipsis', textShadow: '0 1px 2px rgba(0,0,0,0.9)', whiteSpace: 'nowrap' },
 }

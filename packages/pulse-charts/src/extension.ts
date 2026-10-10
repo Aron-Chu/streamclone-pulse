@@ -28,9 +28,10 @@ export {
 export { buildChartHitRegions, chartHitRegionAtX } from './chartHitRegions.ts'
 export { viewerScaleBounds } from './viewerScale.ts'
 export {
-  buildViewerGeometry,
+  buildViewerOverviewGeometry,
   buildViewerOverviewAreaPath,
   type ViewerTimedValue,
 } from './viewerGeometry.ts'
 export { ViewerNoDotPath, type ViewerNoDotPathProps } from './ViewerNoDotPath.tsx'
 export { GameSegmentOverlay } from './GameSegmentOverlay.tsx'
+export { buildBarPyramid, pickBarLevel, barLevelRange, barBucketAt, type BarLevel, type BarBucket } from './barPyramid.ts'

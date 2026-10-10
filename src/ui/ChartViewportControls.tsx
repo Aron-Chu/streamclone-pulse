@@ -1,8 +1,7 @@
-import { useRef, type CSSProperties, type ReactNode } from 'react'
+import { useRef, type ReactNode } from 'react'
 import { viewportContainsOffset, viewportDurationSeconds, type ChartViewport } from './chartViewport.ts'
 import { ChartPositionRail, shouldShowChartRail } from './ChartPositionRail.tsx'
 import { PulseThemedSelect, type PulseSelectOption } from './PulseThemedSelect.tsx'
-import { theme } from './theme.ts'
 
 export interface ChartToolbarProps<T extends string = string> {
   rangeValue: T
@@ -24,11 +23,11 @@ export function ChartToolbar<T extends string>({
 }: ChartToolbarProps<T>) {
   return (
     <div
-      style={styles.toolbar}
+      className="pulse-chart-toolbar"
       data-chart-toolbar="true"
       data-chart-range-controls="true"
     >
-      <div style={styles.rangeControl} data-chart-action="true">
+      <div className="pulse-chart-toolbar-range" data-chart-action="true">
         <PulseThemedSelect
           label="Range"
           value={rangeValue}
@@ -40,7 +39,7 @@ export function ChartToolbar<T extends string>({
       </div>
       {auxiliaryControls ? (
         <div
-          style={styles.auxiliaryControls}
+          className="pulse-chart-toolbar-aux"
           data-chart-range-actions="true"
           data-chart-action="true"
         >
@@ -48,7 +47,7 @@ export function ChartToolbar<T extends string>({
         </div>
       ) : null}
       {expandControl ? (
-        <div style={styles.expandControl} data-chart-action="true">
+        <div className="pulse-chart-toolbar-expand" data-chart-action="true">
           {expandControl}
         </div>
       ) : null}
@@ -92,7 +91,7 @@ export function ChartReturnToSelection({
       type="button"
       data-chart-action="true"
       data-chart-return-to-selection="true"
-      style={styles.returnToSelection}
+      className="pulse-chart-return"
       aria-label="Return to selected minute"
       onClick={onReturn}
     >
@@ -102,6 +101,9 @@ export function ChartReturnToSelection({
 }
 
 /**
+ * Static layout for the toolbar and these controls lives in shadow.css
+ * (.pulse-chart-toolbar*, .pulse-chart-viewport*, .pulse-chart-zoom-*).
+ *
  * Coverage text and viewport controls live together directly under the plot.
  * The rail stays mounted for short, usable timelines and buttons become
  * disabled when there is no meaningful action instead of disappearing.
@@ -140,13 +142,13 @@ export function ChartViewportControls({
 
   return (
     <div
-      style={styles.viewportControls}
+      className="pulse-chart-viewport"
       data-chart-viewport-controls="true"
       data-chart-selection-state={selectedOffsetSeconds == null ? 'none' : selectedOutsideViewport ? 'off-screen' : 'in-view'}
     >
-      <div style={styles.viewportMeta}>
-        <div style={styles.rangeRow}>
-          <span style={styles.rangeLabel} data-chart-visible-range="true" aria-live="polite">
+      <div className="pulse-chart-viewport-meta">
+        <div className="pulse-chart-viewport-range-row">
+          <span className="pulse-chart-viewport-range" data-chart-visible-range="true" aria-live="polite">
             {rangeLabel}
           </span>
           <ChartReturnToSelection
@@ -156,7 +158,7 @@ export function ChartViewportControls({
         </div>
         {coverageHint ? (
           <span
-            style={styles.coverageHint}
+            className="pulse-chart-viewport-hint"
             data-chart-coverage-hint="true"
             title={typeof coverageHint === 'string' ? coverageHint : undefined}
           >
@@ -164,8 +166,8 @@ export function ChartViewportControls({
           </span>
         ) : null}
       </div>
-      <div style={styles.viewportRow}>
-        <div ref={railRef} style={styles.rail} data-chart-action="true">
+      <div className="pulse-chart-viewport-row">
+        <div ref={railRef} className="pulse-chart-viewport-rail" data-chart-action="true">
           <ChartPositionRail
             viewport={viewport}
             durationSeconds={durationSeconds}
@@ -182,17 +184,15 @@ export function ChartViewportControls({
         {isZoomed ? (
           <div
             className="pulse-chart-zoom-controls"
-            style={styles.zoomControls}
             data-chart-zoom-expanded={isZoomed ? 'true' : 'false'}
             aria-label="Chart zoom controls"
             title={`${zoomLabel} zoom`}
           >
             <button
               type="button"
-              className="pulse-chart-zoom-button"
+              className="pulse-chart-zoom-button pulse-chart-zoom-step"
               data-chart-zoom-out="true"
               data-chart-action="true"
-              style={styles.zoomButton}
               disabled={disabled || zoomOutDisabled}
               aria-label="Zoom out chart"
               onClick={onZoomOut}
@@ -204,7 +204,6 @@ export function ChartViewportControls({
               className="pulse-chart-zoom-button pulse-chart-zoom-reset"
               data-chart-zoom-reset="true"
               data-chart-action="true"
-              style={styles.resetButton}
               disabled={disabled || resetDisabled}
               aria-label="Reset chart view"
               title="Reset chart view"
@@ -214,10 +213,9 @@ export function ChartViewportControls({
             </button>
             <button
               type="button"
-              className="pulse-chart-zoom-button"
+              className="pulse-chart-zoom-button pulse-chart-zoom-step"
               data-chart-zoom-in="true"
               data-chart-action="true"
-              style={styles.zoomButton}
               disabled={disabled || zoomInDisabled}
               aria-label="Zoom in chart"
               onClick={onZoomIn}
@@ -229,138 +227,4 @@ export function ChartViewportControls({
       </div>
     </div>
   )
-}
-
-const styles: Record<string, CSSProperties> = {
-  toolbar: {
-    alignItems: 'center',
-    display: 'flex',
-    gap: 5,
-    minHeight: 30,
-    minWidth: 0,
-    width: '100%',
-  },
-  rangeControl: {
-    display: 'inline-flex',
-    flexShrink: 0,
-  },
-  auxiliaryControls: {
-    alignItems: 'center',
-    display: 'inline-flex',
-    flex: '0 0 auto',
-    gap: 4,
-    minWidth: 0,
-    overflow: 'visible',
-    whiteSpace: 'nowrap',
-  },
-  expandControl: {
-    display: 'inline-flex',
-    flex: '0 0 auto',
-    marginLeft: 'auto',
-  },
-  viewportControls: {
-    display: 'grid',
-    gap: 3,
-    minWidth: 0,
-    width: '100%',
-  },
-  viewportMeta: {
-    display: 'grid',
-    gap: 2,
-    minHeight: 14,
-    minWidth: 0,
-  },
-  rangeRow: {
-    alignItems: 'center',
-    display: 'flex',
-    gap: 6,
-    minWidth: 0,
-  },
-  rangeLabel: {
-    color: theme.textSecondary,
-    fontSize: 10,
-    fontVariantNumeric: 'tabular-nums',
-    fontWeight: 700,
-    lineHeight: '14px',
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  },
-  returnToSelection: {
-    background: 'rgba(251, 191, 36, 0.1)',
-    border: '1px solid rgba(251, 191, 36, 0.3)',
-    borderRadius: 5,
-    color: '#fde68a',
-    cursor: 'pointer',
-    flex: '0 0 auto',
-    fontSize: 9,
-    fontWeight: 900,
-    letterSpacing: '0.025em',
-    lineHeight: 1,
-    padding: '3px 5px',
-    textTransform: 'uppercase',
-    whiteSpace: 'nowrap',
-  },
-  coverageHint: {
-    color: theme.textMuted,
-    display: 'block',
-    fontSize: 9,
-    fontWeight: 600,
-    lineHeight: '12px',
-    minHeight: 12,
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  },
-  viewportRow: {
-    alignItems: 'stretch',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 4,
-    minWidth: 0,
-  },
-  rail: {
-    flex: '1 1 auto',
-    minWidth: 0,
-    width: '100%',
-  },
-  zoomControls: {
-    alignItems: 'center',
-    display: 'inline-flex',
-    flex: '0 0 auto',
-    gap: 4,
-    justifyContent: 'flex-end',
-  },
-  zoomButton: {
-    alignItems: 'center',
-    background: 'rgba(139, 92, 246, 0.12)',
-    border: '1px solid rgba(167, 139, 250, 0.32)',
-    borderRadius: 6,
-    color: '#ddd6fe',
-    cursor: 'pointer',
-    display: 'inline-flex',
-    fontSize: 14,
-    fontWeight: 900,
-    height: 24,
-    justifyContent: 'center',
-    lineHeight: 1,
-    padding: 0,
-    width: 24,
-  },
-  resetButton: {
-    background: 'transparent',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-    borderRadius: 6,
-    color: theme.textMuted,
-    cursor: 'pointer',
-    fontSize: 9,
-    fontWeight: 800,
-    height: 24,
-    width: 44,
-    minWidth: 44,
-    padding: '0 7px',
-    whiteSpace: 'nowrap',
-  },
 }
