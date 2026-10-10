@@ -31,8 +31,8 @@ describe('Supporter card stays out of the Twitch content script', () => {
     expect(existsSync(cardBundle), 'dist/content/supporter-card.js is missing from a build that has twitch.js').toBe(true)
     const content = readFileSync(contentBundle, 'utf8')
     const card = readFileSync(cardBundle, 'utf8')
-    // The stage's own code and data: class names, emote IDs, canned lines, labels, crest stage names.
-    for (const marker of ['spk-chat', '01J7VZYB08000E8DPG2XYMKQYR', '01HMM8VG3R0007GXBD883VP2YY', 'that peak was mine', 'Year-one crest']) {
+    // The stage's own code and data: the Crown pile's class names and emote IDs.
+    for (const marker of ['spk-body', 'spk-tag', 'spk-you', '01J7VZYB08000E8DPG2XYMKQYR', '01HMM8VG3R0007GXBD883VP2YY']) {
       expect(content.includes(marker), `twitch.js must not contain ${marker}`).toBe(false)
       expect(card.includes(marker), `supporter-card.js must contain ${marker}`).toBe(true)
     }
@@ -41,6 +41,11 @@ describe('Supporter card stays out of the Twitch content script', () => {
     expect(content).toContain('SUPPORTER_CARD_SCRIPT')
     expect(content).toContain('__pulseSupporterCard')
     expect(card).toContain('__pulseSupporterCard')
+    // The card draws no chat column: the old "Your Line" chat stack is gone from both scripts.
+    for (const gone of ['spk-chat', 'spk-cl', 'that peak was mine']) {
+      expect(content.includes(gone), `twitch.js must not contain ${gone}`).toBe(false)
+      expect(card.includes(gone), `supporter-card.js must not contain ${gone}`).toBe(false)
+    }
     // The dropped signature perk: neither script reads its old storage key.
     expect(content.includes('supporterSignatureEmote')).toBe(false)
     expect(card.includes('supporterSignatureEmote')).toBe(false)

@@ -7,18 +7,17 @@ import { waitForPulseRoot } from '../helpers/assertions.ts'
 import { linkDevice, serveMembership, supporterBody } from '../helpers/supporterMembership.ts'
 
 /**
- * The design lab's Supporter banners, packaged: the quick-settings card is
- * "Your Line" (Anatomy for non-Supporters, Tenure Climb for Supporters), drawn
- * by a script the worker injects only when the card is shown; the full-settings
- * banner is "Emote Pile · Crown". Fixture APIs only; emote images come from the
- * two CDNs the extension already loads.
+ * The design lab's Supporter banners, packaged: the quick-settings card and the
+ * full-settings banner both show "Emote Pile · Crown" (the sample kit for
+ * non-Supporters, a Supporter's own crest and paint). The card's pile is drawn
+ * by a script the worker injects only when the card is shown. Neither draws a
+ * chat column: nothing a Supporter has is added to Twitch chat. Fixture APIs
+ * only; emote images come from the two CDNs the extension already loads.
  *
  * Set SUPPORTER_LAB_PORT_DIR to also write the fidelity captures there.
  */
 const CAPTURES = process.env.SUPPORTER_LAB_PORT_DIR
 const EMOTE_SRC = /^https:\/\/(static-cdn\.jtvnw\.net\/emoticons\/v2\/\d+\/default\/dark\/2\.0|cdn\.7tv\.app\/emote\/[0-9A-Z]+\/(2x|2x_static)\.webp)$/
-const CANNED = /^(mochi_rx|tilted_tom|vod_goblin|orbit42|sleepyyy|nightowl|pixelpanda|clipchimp|ramen_cat|lowping):( |$)/
-const YOURS = /^you: (saved that moment|that peak was mine|called it|clip it|gg|still here|here again|run it back|day one)/
 
 /**
  * One clipped page screenshot. An element screenshot makes Chromium re-hit-test
@@ -69,58 +68,49 @@ async function imagesSettled(stage: Locator) {
   })))
 }
 
-async function expectCannedChat(stage: Locator) {
-  const texts = await stage.locator('.spk-cl').evaluateAll(lines => lines.map(line => line.textContent?.replace(/\s+/g, ' ').trim() ?? ''))
-  expect(texts.length).toBeGreaterThan(0)
-  for (const text of texts) expect(CANNED.test(text) || YOURS.test(text), text).toBe(true)
-  for (const text of texts) expect(text).not.toMatch(/supporter|support pulse|subscribe/i)
+/** The card draws perks on their own: no chat column, chat line or chatter names. */
+async function expectNoChatColumn(stage: Locator) {
+  await expect(stage.locator('.spk-chat, .spk-cl, .spk-sup, .spk-chip')).toHaveCount(0)
+  const words = await stage.locator('.spk-body').evaluateAll(bodies => bodies.map(body => body.textContent?.trim() ?? '').filter(Boolean))
+  expect(words).toEqual([])
   for (const src of await stage.locator('img').evaluateAll(images => images.map(image => (image as HTMLImageElement).src))) expect(src).toMatch(EMOTE_SRC)
 }
 
-test('quick settings: non-Supporters get Your Line · Anatomy, injected on demand, with no labels over the line and a peak', async ({ extension, prepare }, info) => {
+test('quick settings: non-Supporters get the Crown pile with the sample crest, injected on demand, never a chat column', async ({ extension, prepare }, info) => {
   await prepare({ storage: { overlayPlacement: 'sidebar', sidebarTab: 'pulse', overlayMode: 'expanded' } })
   const page = extension.page
   const root = await openQuickSettingsAt305(page)
   const card = root.locator('[data-settings-host-cta="supporter"]')
   const stage = card.locator('.pulse-supporter-stage')
-  await expect(stage).toHaveAttribute('data-mode', 'anatomy')
+  await expect(stage).toHaveAttribute('data-mode', 'crown')
   await expect(stage).toHaveAttribute('data-running', 'true')
   await expect(card.locator('.pulse-supporter-cta-head')).toHaveText('Pulse SupporterExplore Supporter ›')
-  await expectStageUncovered(card, 'Explore Supporter', 'Your crest and paint on your line. Only you see them. Core tools stay free.')
+  await expectStageUncovered(card, 'Explore Supporter', 'Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. Core tools stay free.')
   expect((await card.boundingBox())!.width).toBeLessThanOrEqual(305)
 
-  // Every sixth line is yours, with the lab's sample crest, Etched paint and sample emote.
-  const yours = stage.locator('.spk-cl.spk-sup')
-  await expect(yours.first()).toBeAttached({ timeout: 20_000 })
-  await expect(yours.first().locator('.spk-crest')).toHaveAttribute('data-tenure', '12m')
-  await expect(yours.first().locator('.spk-name')).toHaveText('you')
-  await expect(yours.first().locator('img.spk-kit-emote')).toHaveAttribute('src', 'https://cdn.7tv.app/emote/01GAFTZ9K80003DHH026MC7JW0/2x.webp')
+  // The sample crest lands on the pile, with a "you" tag in the sample's paint.
+  const you = stage.locator('.spk-you')
+  await expect(you.first()).toBeAttached({ timeout: 20_000 })
+  await expect(you.first().locator('.spk-crest')).toHaveAttribute('data-tenure', '12m')
+  await expect(stage.locator('.spk-tag')).toHaveText('you')
+  await expectNoChatColumn(stage)
   await page.mouse.move(5, 5)
+  await imagesSettled(stage)
   await page.waitForTimeout(1600)
-  await capture(card, info, 'ext-card-anatomy-rest.png')
-
-  // A peak (the lab's timer: 10 s in): three quick lines, then yours.
-  await expect(stage).toHaveAttribute('data-peaks', '1', { timeout: 15_000 })
-  await expect(stage.locator('.spk-cl.spk-sup', { hasText: 'that peak was mine' }).last()).toBeAttached()
-  await expect(stage.locator('.spk-callouts, .spk-co')).toHaveCount(0)
-  await page.waitForTimeout(500)
-  await capture(card, info, 'ext-card-anatomy-peak.png')
-  await expectCannedChat(stage)
+  await capture(card, info, 'ext-card-crown-rest.png')
   expect(await card.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
 
-  // Hover brings your line in last and freezes chat; no labels are drawn over it.
-  // Checked after the first peak: a peak's lines arrive even while hovered,
-  // and the next one is at least 17 s away. The stage keeps up to seven
-  // lines, so a line arriving while frozen would change the count.
-  await card.hover()
-  await expect(stage.locator('.spk-callouts, .spk-co')).toHaveCount(0)
-  await expect(stage.locator('.spk-cl').last()).toHaveClass(/spk-sup/)
-  const frozen = await stage.locator('.spk-cl').count()
+  // A peak (8 s in): a row lands, then the crest on top.
+  await expect(stage).toHaveAttribute('data-peaks', '1', { timeout: 15_000 })
   await page.waitForTimeout(900)
-  await capture(card, info, 'ext-card-anatomy-hover.png')
-  await page.waitForTimeout(1700)
-  expect(await stage.locator('.spk-cl').count()).toBe(frozen)
-  await expect(stage.locator('.spk-cl').last()).toHaveClass(/spk-sup/)
+  await capture(card, info, 'ext-card-crown-peak.png')
+  await expectNoChatColumn(stage)
+
+  // Hover shakes the pile and drops a crest in.
+  await card.hover()
+  await expect(you.first()).toBeAttached()
+  await page.waitForTimeout(600)
+  await capture(card, info, 'ext-card-crown-hover.png')
   await page.mouse.move(5, 5)
 
   // Scrolled out of the panel, the stage stops scheduling frames.
@@ -142,17 +132,17 @@ test('quick settings: non-Supporters get Your Line · Anatomy, injected on deman
   await expect(stage).toHaveAttribute('data-running', 'true')
   await page.setViewportSize({ width: 1440, height: 900 })
 
-  // Reduced motion: one still frame from static images, ending on your line.
+  // Reduced motion: one settled pile from static images.
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await expect(stage).toHaveAttribute('data-still', 'true')
   await expect(stage).toHaveAttribute('data-running', 'false')
-  await expect(stage.locator('.spk-cl.spk-sup').last()).toBeAttached()
+  await expect(stage.locator('.spk-you').last()).toBeAttached()
   for (const src of await stage.locator('img[src*="cdn.7tv.app"]').evaluateAll(images => images.map(image => (image as HTMLImageElement).src))) expect(src).toMatch(/\/2x_static\.webp$/)
   await imagesSettled(stage)
-  await capture(card, info, 'ext-card-anatomy-still.png')
+  await capture(card, info, 'ext-card-crown-still.png')
 })
 
-test('quick settings: Supporters get Tenure Climb up to their own crest, in their paint', async ({ extension, prepare }, info) => {
+test('quick settings: Supporters get the Crown pile with their own crest, in their paint', async ({ extension, prepare }, info) => {
   await prepare({ storage: { overlayPlacement: 'sidebar', sidebarTab: 'pulse', overlayMode: 'expanded' } })
   // A choice an older build saved for the dropped signature perk: left in place, never shown.
   await extension.serviceWorker.evaluate(() => chrome.storage.sync.set({ supporterSignatureEmote: 'wideReacting' }))
@@ -164,35 +154,17 @@ test('quick settings: Supporters get Tenure Climb up to their own crest, in thei
   const card = root.locator('[data-settings-host-cta="supporter"]')
   const stage = card.locator('.pulse-supporter-stage')
   await expect(card).toHaveAttribute('data-supporter-verified', 'true')
-  await expect(stage).toHaveAttribute('data-mode', 'tenure')
+  await expect(stage).toHaveAttribute('data-mode', 'crown')
   await expect(card.locator('.pulse-supporter-cta-head')).toHaveText('Pulse SupporterManage Supporter ›')
-  await expectStageUncovered(card, 'Manage Supporter', 'A crest that levels up the longer you support. Only you see it. Core tools stay free.')
+  await expectStageUncovered(card, 'Manage Supporter', 'Your Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. Core tools stay free.')
 
-  // The climb: First signal, Signal set, Steady signal, Year-one crest, then it holds there.
-  // A chip a wide emote would reach keeps only its length ("12 mo").
-  const chips = new Set<string>()
-  await expect.poll(async () => {
-    for (const text of await stage.locator('.spk-chip').allTextContents()) chips.add(text)
-    return chips.has('Year-one crest · 12 mo') || chips.has('12 mo')
-  }, { timeout: 40_000, intervals: [200] }).toBe(true)
-  expect([...chips].every(text => ['First signal · New', 'Signal set · 3 mo', 'Steady signal · 6 mo', 'Year-one crest · 12 mo', 'New', '3 mo', '6 mo', '12 mo'].includes(text))).toBe(true)
-  // The chip never covers the emote that ends the line.
-  const [emoteBox, chipBox] = await Promise.all([stage.locator('.spk-cl.spk-sup').last().locator('img.spk-kit-emote').boundingBox(), stage.locator('.spk-cl.spk-sup').last().locator('.spk-chip').boundingBox()])
-  expect(chipBox!.x).toBeGreaterThanOrEqual(emoteBox!.x + emoteBox!.width - 4)
-  const mine = stage.locator('.spk-cl.spk-sup').last()
-  await expect(mine.locator('img.spk-kit-emote')).toHaveAttribute('src', 'https://cdn.7tv.app/emote/01GAFTZ9K80003DHH026MC7JW0/2x.webp')
-  await expect(mine.locator('.spk-name')).toHaveAttribute('data-finish', 'etched')
+  await expect(stage.locator('.spk-you').first().locator('.spk-crest')).toHaveAttribute('data-tenure', '12m', { timeout: 20_000 })
+  await expect(stage.locator('.spk-tag .spk-name')).toHaveAttribute('data-finish', 'etched')
+  await expectNoChatColumn(stage)
   await page.mouse.move(5, 5)
+  await imagesSettled(stage)
   await page.waitForTimeout(700)
-  await capture(card, info, 'ext-card-tenure-rest.png')
-  // Hover brings your next line right away.
-  // Counting lines would not do: the stack keeps a few, so a new line can push an old one of yours out.
-  await stage.locator('.spk-cl.spk-sup').evaluateAll(lines => lines.forEach(line => line.setAttribute('data-seen', '')))
-  await card.hover()
-  await expect.poll(() => stage.locator('.spk-cl.spk-sup:not([data-seen])').count(), { timeout: 1_000, intervals: [50] }).toBeGreaterThan(0)
-  await page.waitForTimeout(700)
-  await capture(card, info, 'ext-card-tenure-hover.png')
-  await expectCannedChat(stage)
+  await capture(card, info, 'ext-card-crown-supporter.png')
   await expect(stage.locator('img[src*="01HMM8VG3R0007GXBD883VP2YY"].spk-kit-emote')).toHaveCount(0)
   expect(await extension.serviceWorker.evaluate(() => chrome.storage.sync.get('supporterSignatureEmote'))).toEqual({ supporterSignatureEmote: 'wideReacting' })
 })

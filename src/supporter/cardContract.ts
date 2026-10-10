@@ -10,7 +10,7 @@ import type { SupporterPaintStyle, SupporterTenure } from '../shared/supporterPa
  * Only types live here, so the content script imports nothing from it at run time.
  */
 export interface SupporterCardOptions {
-  /** `tenure` (Tenure Climb) for a verified Supporter, `anatomy` for everyone else. */
+  /** `tenure` for a verified Supporter (their own crest and paint), `anatomy` for everyone else (the sample kit). */
   mode: 'anatomy' | 'tenure'
   /** The crest the server reports for this Supporter. */
   tenure?: SupporterTenure

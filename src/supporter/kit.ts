@@ -2,8 +2,8 @@ import { SUPPORTER_CREST_GEMS, SUPPORTER_CREST_PULSE_PATH, type SupporterPaintSt
 
 /**
  * Shared pieces of the Supporter design lab (round 2, "pulse-supporter-banners"):
- * its emotes, paints, crest stages, canned chatter and the small DOM builders
- * the Your Line and Emote Pile stages are drawn with.
+ * its emotes, paints, crest stages and the small DOM builders the Emote Pile
+ * stages (the settings banner and the quick-settings card) are drawn with.
  *
  * Ported from the lab rather than redrawn so the extension looks and moves like
  * the approved page. The two changes are the emote set (Twitch globals mixed
@@ -48,12 +48,6 @@ export const AMBIENT: ReadonlyArray<KitEmoteName> = ['Kappa', 'LUL', 'PogChamp',
 /** The lab's sample kit, shown to anyone who is not (yet) a Supporter. */
 export const SAMPLE_KIT = { name: 'you', finish: 'etched', tenure: '12m' } as const satisfies { name: string; finish: KitFinish; tenure: SupporterTenure }
 
-/**
- * The lab's sample emote at the end of your line on the Supporter card. It is
- * decoration, the same for everyone: there is no emote to choose.
- */
-export const LINE_EMOTE: KitEmoteName = 'PepePls'
-
 export function isKitEmote(name: unknown): name is KitEmoteName {
   return typeof name === 'string' && Object.prototype.hasOwnProperty.call(KIT_EMOTES, name)
 }
@@ -97,19 +91,6 @@ export const TENURES: ReadonlyArray<{ id: SupporterTenure; label: string; short:
 ]
 
 export const tenureIndex = (id: SupporterTenure | undefined): number => Math.max(0, TENURES.findIndex(stage => stage.id === id))
-
-/**
- * Canned, neutral stream chatter, from the lab with its emote words swapped
- * for this emote set. Never real chat, and no line ever mentions or praises
- * Supporter: perks are stated by Pulse, not by invented viewers.
- */
-export const LINES: ReadonlyArray<string> = [
-  'that spike was insane', 'CLIP IT', 'LUL LUL LUL', 'chat is cooking', 'W stream', 'no way he hit that wideReacting',
-  'Kappa', 'LETSGO', 'the chart called it', 'PogChamp PogChamp', 'SeemsGood SeemsGood SeemsGood', 'peak incoming', '+1', 'wideSpeedLaugh4',
-  'Kreygasm', 'run it back', 'chat woke up', 'HeyGuys HeyGuys', 'NotLikeThis', 'GG', 'he is locked in', 'wideSpeedNod', '4Head 4Head',
-]
-export const NAMES: ReadonlyArray<string> = ['mochi_rx', 'tilted_tom', 'vod_goblin', 'orbit42', 'sleepyyy', 'nightowl', 'pixelpanda', 'clipchimp', 'ramen_cat', 'lowping']
-export const NAME_COLORS: ReadonlyArray<string> = ['#ff7f50', '#1e90ff', '#9acd32', '#daa520', '#ff69b4', '#00ff7f', '#5f9ea0', '#d2691e', '#b48cff', '#ff4f4f']
 
 /** The Supporter shown on a stage: the lab sample, or a Supporter's own verified kit. */
 export interface Kit {
@@ -176,21 +157,4 @@ export function kitName(kit: Kit): HTMLElement {
     b.className = 'spk-name'
   }
   return b
-}
-
-/** The lab's `kitEmote()`: the fixed sample emote that ends your line. */
-export function lineEmote(h: number, still: boolean): HTMLImageElement {
-  const img = emoteImg(LINE_EMOTE, h, still)
-  img.classList.add('spk-kit-emote')
-  return img
-}
-
-/** The lab's `renderWords()`: chat text with emote words drawn as emotes. */
-export function renderWords(text: string, h: number, still: boolean): DocumentFragment {
-  const frag = document.createDocumentFragment()
-  text.split(' ').forEach((word, i) => {
-    if (isKitEmote(word)) frag.append(emoteImg(word, h, still))
-    else frag.append(document.createTextNode(`${i ? ' ' : ''}${word} `))
-  })
-  return frag
 }

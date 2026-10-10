@@ -15,28 +15,6 @@ const KIT_CSS = `
 @keyframes spk-paint-sweep { from { background-position: 100% 0; } to { background-position: -160% 0; } }
 `
 
-/** Your Line, plus the lab's sidebar-card glow and hover for the card that hosts it. */
-export const CHAT_STACK_CSS = `${KIT_CSS}
-.pulse-settings-supporter-cta::before { background: radial-gradient(70% 90% at 24% 100%, rgba(var(--spk-fin-rgb), 0.14), transparent 70%); content: ""; inset: 0; opacity: 0.5; pointer-events: none; position: absolute; transition: opacity 300ms; z-index: -1; }
-.pulse-settings-panel .pulse-settings-supporter-cta:not(:disabled):is(:hover, :focus-visible) { border-color: rgba(var(--spk-fin-rgb), 0.45); filter: none; }
-.pulse-settings-supporter-cta:is(:hover, :focus-visible)::before { opacity: 1; }
-.spk-chat { font: 500 12px/18px ${FONT}; overflow: hidden; }
-.spk-cl { color: #efeff1; display: block; height: 18px; left: 0; line-height: 18px; overflow: hidden; padding: 0 12px; position: absolute; right: 0; text-align: left; top: 0; transition: transform 260ms cubic-bezier(0.2, 0.7, 0.3, 1), opacity 300ms; white-space: nowrap; }
-.spk-cl b { font-weight: 700; }
-.spk-cl .spk-em { display: inline-block; height: 18px; vertical-align: top; }
-.spk-cl .spk-crest { display: inline-block; margin: 2px 4px 0 0; vertical-align: top; }
-.spk-cl .pulse-paint { font-size: inherit; line-height: inherit; }
-.spk-cl.spk-sup { background: rgba(var(--spk-fin-rgb), 0.1); box-shadow: inset 2px 0 0 var(--spk-fin); }
-.spk-cl.spk-dim { opacity: 0.3 !important; }
-.spk-cl.spk-sheen::after { animation: spk-sheen 900ms ease-out 1 forwards; background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.2) 50%, transparent 70%); background-size: 250% 100%; content: ""; inset: 0; pointer-events: none; position: absolute; }
-@keyframes spk-sheen { from { background-position: 130% 0; } to { background-position: -60% 0; } }
-.spk-chip { align-items: center; background: rgba(13, 13, 18, 0.92); border: 1px solid rgba(var(--spk-fin-rgb), 0.55); border-radius: 999px; color: var(--spk-fin-core); display: flex; font: 800 9.5px/14px ${FONT}; gap: 4px; height: 15px; padding: 0 6px; position: absolute; right: 8px; top: 1.5px; }
-@media (prefers-reduced-motion: reduce) {
-  .spk-cl, .pulse-settings-supporter-cta::before { transition: none; }
-  .spk-paint, .spk-cl.spk-sheen::after { animation: none; }
-}
-`
-
 /** The Emote Pile: your crest glows in your paint, and a "you" tag rides above the newest one. */
 export const EMOTE_PILE_CSS = `${KIT_CSS}
 .spk-body { left: 0; position: absolute; top: 0; will-change: transform; }
@@ -46,4 +24,18 @@ export const EMOTE_PILE_CSS = `${KIT_CSS}
 .spk-tag .spk-name { font-weight: 800; }
 .spk-tag .pulse-paint { font-size: inherit; line-height: inherit; }
 @media (prefers-reduced-motion: reduce) { .spk-paint { animation: none; } .spk-tag { transition: none; } }
+`
+
+/**
+ * The quick-settings Supporter card: the same Crown pile as the settings
+ * banner, plus the lab's sidebar-card glow and hover for the card that hosts
+ * it. It shows the crest, paint and emotes on their own, never as a line in a
+ * chat column: nothing a Supporter has is added to Twitch chat.
+ */
+export const CARD_PILE_CSS = `${EMOTE_PILE_CSS}
+.pulse-settings-supporter-cta::before { background: radial-gradient(70% 90% at 24% 100%, rgba(var(--spk-fin-rgb), 0.14), transparent 70%); content: ""; inset: 0; opacity: 0.5; pointer-events: none; position: absolute; transition: opacity 300ms; z-index: -1; }
+.pulse-settings-panel .pulse-settings-supporter-cta:not(:disabled):is(:hover, :focus-visible) { border-color: rgba(var(--spk-fin-rgb), 0.45); filter: none; }
+.pulse-settings-supporter-cta:is(:hover, :focus-visible)::before { opacity: 1; }
+.pulse-supporter-stage { overflow: hidden; }
+@media (prefers-reduced-motion: reduce) { .pulse-settings-supporter-cta::before { transition: none; } }
 `
