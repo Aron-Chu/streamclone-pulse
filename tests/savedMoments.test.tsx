@@ -1,16 +1,19 @@
 // @vitest-environment jsdom
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { LiveHeatPoint } from '@streampulse/pulse-core'
 import { SavedMoments } from '../src/ui/SavedMoments.tsx'
 import { sendBackgroundMessage } from '../src/content/bridge.ts'
 vi.mock('../src/content/bridge.ts', () => ({ sendBackgroundMessage: vi.fn() }))
+// Sign in with Twitch is a compile-time switch; each test picks the build it describes.
+const signIn = vi.hoisted(() => ({ on: true }))
+vi.mock('../src/shared/twitchSignIn.ts', () => ({ get TWITCH_SIGNIN_ENABLED() { return signIn.on } }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const point = { offsetSeconds: 120, reason: 'chat_spike', reasonLabel: 'Chat spike', topEmotes: [] } as unknown as LiveHeatPoint
 const item = { id: 'one', login: 'xqc', streamId: '123456', offsetSeconds: 120, label: 'Chat spike', notes: '', source: 'extension' as const, createdAt: '', updatedAt: '' }
 let root: Root, host: HTMLDivElement
-beforeEach(() => { vi.clearAllMocks(); host = document.createElement('div'); document.body.append(host); root = createRoot(host) })
+beforeEach(() => { vi.clearAllMocks(); signIn.on = true; host = document.createElement('div'); document.body.append(host); root = createRoot(host) })
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals() })
 async function render(login = 'xqc') {
   await act(async () => root.render(<SavedMoments login={login} streamId="123456" selected={point} />))
@@ -197,4 +200,42 @@ it('asks a private-window viewer, who cannot save on the device, to connect', as
   vi.mocked(sendBackgroundMessage).mockResolvedValueOnce({ error: 'account_authorization_required' })
   await act(async () => root.render(<SavedMoments login="xqc" streamId="123456" selected={point} />))
   expect(host.textContent).toContain('Free with a Pulse account. Connect to save.')
+})
+
+describe('with Sign in with Twitch compiled off (every store build today)', () => {
+  beforeEach(() => { signIn.on = false })
+  const privateTab = (incognito: boolean) => vi.stubGlobal('chrome', { runtime: { id: 'test-extension' }, extension: { inIncognitoContext: incognito }, storage: { onChanged: { addListener: vi.fn(), removeListener: vi.fn() } } })
+
+  it('promises no account before the worker answers', async () => {
+    vi.mocked(sendBackgroundMessage).mockReturnValueOnce(new Promise(() => {}))
+    privateTab(false)
+    await render()
+    expect(sendBackgroundMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'LIST_BOOKMARKS' }))
+    expect(host.textContent).toContain('Bookmarks stay on this device. No account needed.')
+    expect(host.textContent).not.toMatch(/Pulse account|Connect/)
+  })
+
+  it('tells a private-window viewer that nothing is kept there, with no button', async () => {
+    privateTab(true)
+    vi.mocked(sendBackgroundMessage).mockResolvedValue({ error: 'account_authorization_required' })
+    await render()
+    expect(host.textContent).toContain('Private windows keep no bookmarks.')
+    await click('Bookmark')
+    expect(host.querySelector('[role="alert"]')?.textContent).toBe('Private windows keep no bookmarks.')
+    expect(host.querySelector('[data-moment-action="connect-account"]')).toBeNull()
+    expect(host.textContent).not.toMatch(/Pulse account|Connect/)
+  })
+
+  it('sends an invited tester whose link lapsed to settings to reconnect', async () => {
+    privateTab(false)
+    vi.mocked(sendBackgroundMessage).mockResolvedValue({ error: 'account_authorization_required' })
+    await render()
+    expect(host.textContent).toContain('Reconnect your account in settings to bookmark.')
+    await click('Bookmark')
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('Reconnect your account in settings to bookmark.')
+    expect(host.textContent).not.toMatch(/free Pulse account|Connect free account/)
+    vi.mocked(sendBackgroundMessage).mockResolvedValueOnce({ type: 'OPEN_SETTINGS_HOST', ok: true })
+    await click('Open settings')
+    expect(sendBackgroundMessage).toHaveBeenLastCalledWith({ type: 'OPEN_SETTINGS_HOST', section: 'supporter' })
+  })
 })

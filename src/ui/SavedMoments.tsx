@@ -4,14 +4,25 @@ import { sendBackgroundMessage } from '../content/bridge.ts'
 import type { PulseBookmark } from '../shared/messages.ts'
 import { overlayGhostChipButton } from './momentReasonStyles.ts'
 import { LibraryIcon } from './library/LibraryIcon.tsx'
+import { TWITCH_SIGNIN_ENABLED } from '../shared/twitchSignIn.ts'
 import { theme } from './theme.ts'
 
 type SaveProblem = { message: string; connect?: boolean }
 
+/** A private window keeps nothing on the device, so the worker sends its saves to an account. */
+const privateWindow = () => !!globalThis.chrome?.extension?.inIncognitoContext
+
+/** The worker could not save without a linked account (signed out in a private window, or a lapsed link). */
+const needsAccount = (code: string) => /account_authorization_required|account_identity_changed/.test(code)
+
 function saveProblem(error: unknown): SaveProblem {
   const code = error instanceof Error ? error.message : String(error ?? '')
-  if (/account_authorization_required|account_identity_changed/.test(code)) {
-    return { message: 'Connect your free Pulse account to bookmark this moment.', connect: true }
+  if (needsAccount(code)) {
+    // With sign-in compiled off nobody can make an account: a private window
+    // says so with no button, and only an invited tester whose link lapsed is
+    // sent to settings to reconnect.
+    if (!TWITCH_SIGNIN_ENABLED && privateWindow()) return { message: 'Private windows keep no bookmarks.' }
+    return { message: TWITCH_SIGNIN_ENABLED ? 'Connect your free Pulse account to bookmark this moment.' : 'Reconnect your account in settings to bookmark.', connect: true }
   }
   if (code === 'account_hosted_only') return { message: 'Bookmarks are available with the hosted StreamPulse connection.' }
   if (code === 'extension_context_invalidated') return { message: 'The extension was updated. Refresh this Twitch tab to bookmark.' }
@@ -80,7 +91,7 @@ export function SavedMoments({ login, streamId, vodId, selected, minuteOffsetSec
       })).then(result => {
         if (!active || current !== generation.current || pending.current) return
         if ('error' in result && result.error) {
-          if (saveProblem(new Error(result.error)).connect) setHome('connect')
+          if (needsAccount(result.error)) setHome('connect')
           return
         }
         if ('type' in result && result.type === 'BOOKMARKS') {
@@ -195,13 +206,13 @@ export function SavedMoments({ login, streamId, vodId, selected, minuteOffsetSec
       {!usableOffset ? 'Select a moment or a chart minute to bookmark it.'
         : !canSave ? 'Bookmarks unlock once Pulse links this stream.'
           : home === 'device' ? 'Bookmarks stay on this device. No account needed.'
-            : home === 'connect' ? 'Free with a Pulse account. Connect to save.'
-              : 'Free to use. Bookmarks sync with your Pulse account.'}
+            : home === 'connect' ? (TWITCH_SIGNIN_ENABLED ? 'Free with a Pulse account. Connect to save.' : privateWindow() ? 'Private windows keep no bookmarks.' : 'Reconnect your account in settings to bookmark.')
+              : TWITCH_SIGNIN_ENABLED ? 'Free to use. Bookmarks sync with your Pulse account.' : 'Bookmarks stay on this device. No account needed.'}
     </p>
     {notice ? <p className="pulse-moment-action-feedback" role="status" style={{ margin: '6px 0 0', color: theme.textSecondary }}>{notice}</p> : null}
     {error ? <div className="pulse-moment-action-error" role="alert" style={{ marginTop: 6, display: 'grid', gap: 6 }}>
       <span>{error.message}</span>
-      {error.connect ? <button style={{ ...primaryButtonStyle, justifySelf: 'start' }} className="pulse-action-chip pulse-action-chip-primary" type="button" data-moment-action="connect-account" onClick={() => void openSettings('supporter')}>Connect free account</button> : null}
+      {error.connect ? <button style={{ ...primaryButtonStyle, justifySelf: 'start' }} className="pulse-action-chip pulse-action-chip-primary" type="button" data-moment-action="connect-account" onClick={() => void openSettings('supporter')}>{TWITCH_SIGNIN_ENABLED ? 'Connect free account' : 'Open settings'}</button> : null}
     </div> : null}
   </section>
 }
