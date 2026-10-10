@@ -58,6 +58,12 @@ export interface GameSegmentOverlayProps {
   dividerExtent?: number
   /** @deprecated Labels removed from plot. */
   minLabelWidth?: number
+  /**
+   * Draw the live cap this far inside the plot's right end. A plot that runs
+   * to the SVG's edge (the website console) would otherwise clip half of the
+   * dashed line away.
+   */
+  capInsetPx?: number
   /** Only the strip-focused game divider is visible at rest. */
   highlightedSegmentKey?: string | null
   /**
@@ -115,6 +121,7 @@ export function GameSegmentOverlay({
   timestampScale,
   isLive = false,
   highlightedSegmentKey = null,
+  capInsetPx = 0,
 }: GameSegmentOverlayProps) {
   const lineBottom = gameBandTop + Math.max(48, dividerExtent)
   const useOffsets = !timestampScale && (chartOffsets?.length ?? 0) > 0
@@ -138,7 +145,7 @@ export function GameSegmentOverlay({
     }
   }
   const capTitle = activeGameCapTitle(lastVisibleGameName)
-  const capX = activeGameCapX(padLeft, plotWidth)
+  const capX = activeGameCapX(padLeft, plotWidth) - capInsetPx
 
   return (
     <>

@@ -91,8 +91,41 @@ for (const viewport of VIEWPORTS) {
       const track = await navigator.locator('.hx-chart-navigator__track').boundingBox()
       if (!plot || !track) throw new Error('missing layout box')
       expect(track.y).toBeGreaterThan(plot.y + plot.height / 2)
-      expect(track.x).toBeGreaterThan(plot.x)
-      expect(track.x + track.width).toBeLessThan(plot.x + plot.width)
+      expect(track.x).toBeGreaterThanOrEqual(plot.x - 1)
+      expect(track.x + track.width).toBeLessThanOrEqual(plot.x + plot.width + 1)
+
+      // Owner report (2026-10-09, "the width of the graph and the bottom"):
+      // the plot, its time axis and the zoom bar share their left and right
+      // edges with the focus bar above and the overlay bar below, at every
+      // width. Scale values read above the plot or inside its edge instead of
+      // in a gutter beside it.
+      const edges = await page.evaluate(() => {
+        const of = (selector: string) => {
+          const rect = document.querySelector(selector)?.getBoundingClientRect()
+          return rect ? { left: rect.left, right: rect.right } : null
+        }
+        return {
+          focusBar: of('[data-chart-focus-bar]'),
+          overlays: of('[data-chart-overlay-selector]'),
+          plot: of('svg[aria-label="Analytics timeline chart"] rect[data-chart-touch-action]'),
+          axis: of('svg[aria-label="Analytics timeline chart"] [data-chart-x-axis-line]'),
+          zoomBar: of('[data-session-chart-navigator] .hx-chart-navigator__track'),
+          controls: of('[data-session-chart-navigator] .hx-chart-navigator__actions'),
+        }
+      })
+      if (!edges.focusBar) throw new Error('focus bar has no layout box')
+      for (const part of ['overlays', 'plot', 'axis', 'zoomBar', 'controls'] as const) {
+        const box = edges[part]
+        if (!box) throw new Error(`${part} has no layout box`)
+        expect(Math.abs(box.left - edges.focusBar.left), `${part} left edge matches the focus bar`).toBeLessThanOrEqual(2)
+        expect(Math.abs(box.right - edges.focusBar.right), `${part} right edge matches the focus bar`).toBeLessThanOrEqual(2)
+      }
+      await expect(page.locator(`${CHART} text`, { hasText: /^PEAK$/ })).toHaveCount(0)
+      await expect(page.locator('[data-chart-scale-row] [data-chart-scale-value="peak"]')).toBeVisible()
+      // PEAK stays clear of the 2px focus ring drawn just inside the plot edge.
+      const peak = await page.locator('[data-chart-scale-row] [data-chart-scale-value="peak"]').boundingBox()
+      if (!peak || !edges.plot) throw new Error('peak or plot has no layout box')
+      expect(peak.x - edges.plot.left, 'PEAK clears the focus ring inside the plot edge').toBeGreaterThanOrEqual(4)
 
       // As on the hub, the whole navigator spans exactly the plot area at
       // every width: track, readout and hint start at the plot's left edge,

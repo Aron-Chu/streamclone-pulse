@@ -98,6 +98,14 @@ import {
   type ChartViewport,
 } from "./chartViewport.ts";
 import { useSmoothedChartViewport } from "./useSmoothedChartViewport.ts";
+import {
+  SCALE_CHIP_HEIGHT,
+  SCALE_ROW_EDGE_INSET,
+  placePlotEdgeLabels,
+  polylineObstacles,
+  scaleChipWidth,
+  type PlotObstacle,
+} from "./plotEdgeLabels.ts";
 
 const ChartHoverReadout = memo(function ChartHoverReadout({
   minuteTs,
@@ -1634,8 +1642,13 @@ function PulseMultiSignalChartInnerImpl({
   // space instead of only reallocating the same 400px between lanes. Because
   // this follows the existing rAF progress, the container grows smoothly.
   const height = baseHeight + Math.round(expandProgress * 120);
-  const padLeft = width < 480 ? 58 : width < 720 ? 64 : 90;
-  const padRight = width < 480 ? 18 : width < 720 ? 24 : 34;
+  // The website console plot spans the card's full content width, so it lines
+  // up with the focus bar above and the overlay and pinned-minute blocks below;
+  // its scale values sit in the row above the plot or as chips inside the plot
+  // edge (placePlotEdgeLabels). The extension's compact chart keeps its
+  // established gutters on the fixed 1000-unit viewBox.
+  const padLeft = variant === "console" ? 0 : width < 480 ? 58 : width < 720 ? 64 : 90;
+  const padRight = variant === "console" ? 0 : width < 480 ? 18 : width < 720 ? 24 : 34;
   const padTop = 34;
   const padBottom = 34;
   const plotWidthPx = width - padLeft - padRight;
@@ -2612,6 +2625,92 @@ function PulseMultiSignalChartInnerImpl({
     viewerBand.bandBottom -
     ((avgViewers - viewerScaleMin) / viewerScaleSpan) * viewerBand.bandHeight;
   const showAvgLabel = yAvg - yMax > 22 && viewerBand.bandBottom - yAvg > 22;
+  // Console scale values. PEAK always reads in the scale row above the plot;
+  // AVG and MIN keep their place on the viewer scale as chips inside the plot
+  // edge wherever they cover no plotted line, bar or cap, and otherwise join
+  // the scale row. The compact extension chart keeps its gutter labels.
+  const consoleScale = useMemo(() => {
+    if (variant !== "console") return null;
+    const avgValue = count(avgViewers);
+    const minValue = count(viewerScaleMin);
+    const requests = [
+      ...(showAvgLabel
+        ? [{ key: "avg", label: "AVG", value: avgValue, y: yAvg }]
+        : []),
+      ...(viewerScaleMin > 0
+        ? [{ key: "min", label: "MIN", value: minValue, y: viewerBand.bandBottom - SCALE_CHIP_HEIGHT / 2 }]
+        : []),
+    ];
+    const plotLeft = padLeft;
+    const plotRight = width - padRight;
+    const obstacles: PlotObstacle[] = viewerGeometry
+      ? [
+          ...polylineObstacles(viewerGeometry.overviewSegments, primaryLineWidth / 2 + 1),
+          ...polylineObstacles(viewerGeometry.detailSegments, primaryLineWidth / 2 + 1),
+        ]
+      : [];
+    // The live cap is a dashed line on the plot's right edge.
+    if (isLive) obstacles.push({ x0: plotRight - 3, x1: plotRight + 3, y0: padTop, y1: height - padBottom });
+    const placements = placePlotEdgeLabels(
+      requests.map((request) => ({
+        key: request.key,
+        y: request.y,
+        width: scaleChipWidth(request.label, request.value),
+        height: SCALE_CHIP_HEIGHT,
+      })),
+      {
+        plotLeft,
+        plotRight,
+        top: padTop,
+        bottom: Math.min(activityLayout.activityTop, viewerBand.bandBottom + ACTIVITY_ZONE_GAP) - 1,
+        obstacles,
+      },
+    );
+    const chips = requests.flatMap((request, index) => {
+      const placement = placements[index]!;
+      return placement.side ? [{ ...request, ...placement }] : [];
+    });
+    const rowItems = [
+      { key: "peak", label: "PEAK", value: count(viewerPeakReading) },
+      ...requests.filter((_, index) => placements[index]!.side == null),
+    ];
+    return { chips, rowItems };
+  }, [
+    activityLayout.activityTop,
+    avgViewers,
+    height,
+    isLive,
+    padBottom,
+    padLeft,
+    padRight,
+    padTop,
+    primaryLineWidth,
+    showAvgLabel,
+    variant,
+    viewerBand.bandBottom,
+    viewerGeometry,
+    viewerPeakReading,
+    viewerScaleMin,
+    width,
+    yAvg,
+  ]);
+  // The live-edge marker keeps its place at the plot's right end in the top
+  // margin; the scale row stops short of it. On a narrow plot the marker keeps
+  // the part after its lead ("updating", "last data 00:20:29").
+  const scaleRowWidthEstimate = consoleScale
+    ? consoleScale.rowItems.reduce(
+        (total, item) => total + scaleChipWidth(item.label, item.value),
+        0,
+      )
+    : 0;
+  const liveEdgeShownLabel = liveEdgeLabel
+    ? liveEdgeLabel.length * 7.4 > plotWidthPx - 24 - scaleRowWidthEstimate && liveEdgeLabel.includes(" · ")
+      ? liveEdgeLabel.slice(liveEdgeLabel.indexOf(" · ") + 3)
+      : liveEdgeLabel
+    : null;
+  const liveEdgeReserve = liveEdgeShownLabel
+    ? Math.ceil(liveEdgeShownLabel.length * 7.4 + 24) + padRight
+    : 0;
   const hoverActivityRollup = activityBarsUseDetail && hoverActivityIndex != null
     ? activityBarRollups[hoverActivityIndex] ?? null
     : null;
@@ -3428,15 +3527,46 @@ function PulseMultiSignalChartInnerImpl({
           chart exists to show. The console renders them in the shared
           ChartNavigator under the plot; keyboard (+ / − / 0) and Alt+wheel still work
           here because the chart owns the gestures, not the buttons. */}
-      {variant === "console" && reactionBarRectsForChart.length > 0 ? (
+      {consoleScale ? (
+        // The console's scale row: the top margin above the plot, from just
+        // inside the plot's left edge up to the live-edge marker on its right.
+        // It stays clear of the focus ring drawn inside the plot's edge.
         <div
-          className="pointer-events-none absolute left-2 top-2 z-10 flex max-w-[calc(100%-1rem)] flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded border border-amber-400/25 bg-zinc-950/70 px-2 py-1 text-xs font-bold tracking-wide text-amber-100 shadow-sm backdrop-blur-sm"
-          data-reaction-legend
-          title="Backend-authored reaction markers use a fixed-height gutter; color shows reason and opacity shows confidence."
+          className="pointer-events-none absolute top-0 z-10 flex min-w-0 items-center gap-x-3 overflow-hidden whitespace-nowrap"
+          style={{
+            height: padTop,
+            left: SCALE_ROW_EDGE_INSET,
+            right: Math.max(liveEdgeReserve, SCALE_ROW_EDGE_INSET),
+          }}
+          data-chart-scale-row
         >
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" aria-hidden="true" />
-          <span>Reaction markers</span>
-          <span className="text-zinc-500">fixed height · reason color · fade = confidence</span>
+          {consoleScale.rowItems.map((item) => (
+            <span
+              key={item.key}
+              className="inline-flex shrink-0 items-baseline gap-1 font-black text-cyan-400"
+              data-chart-scale-value={item.key}
+            >
+              <span className="text-xs uppercase">{item.label}</span>
+              <span className="text-sm">{item.value}</span>
+            </span>
+          ))}
+          {reactionBarRectsForChart.length > 0 ? (
+            <span
+              className="flex min-w-0 items-center gap-x-1.5 rounded border border-amber-400/25 bg-zinc-950/70 px-2 py-1 text-xs font-bold tracking-wide text-amber-100 shadow-sm backdrop-blur-sm"
+              data-reaction-legend
+              title="Backend-authored reaction markers use a fixed-height gutter; color shows reason and opacity shows confidence."
+            >
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" aria-hidden="true" />
+              {/* One line that truncates as a whole: where the row is short (a
+                  phone with the live marker on its right) the description goes
+                  first, then the label ends in an ellipsis instead of being
+                  clipped with none. */}
+              <span className="min-w-0 truncate" data-reaction-legend-label>
+                Reaction markers
+                <span className="ml-1.5 text-zinc-500" data-reaction-legend-detail>fixed height · reason color · fade = confidence</span>
+              </span>
+            </span>
+          ) : null}
         </div>
       ) : null}
       <svg
@@ -3584,10 +3714,12 @@ function PulseMultiSignalChartInnerImpl({
           y2={height - padBottom}
           stroke="rgba(255,255,255,.08)"
           strokeWidth="1"
+          data-chart-x-axis-line
         />
 
-        {/* Left Y-Axis labels */}
-        <g>
+        {/* Left Y-Axis labels (compact extension chart only; the console
+            draws its scale in the row above the plot and as edge chips). */}
+        {variant !== "console" ? <g>
           {/* MAX Label */}
           <text
             x={padLeft - 12}
@@ -3647,7 +3779,7 @@ function PulseMultiSignalChartInnerImpl({
               </text>
             </>
           )}
-        </g>
+        </g> : null}
 
         {/* Live edge: above the plot's right end, in the top margin, so it
             never covers a value. */}
@@ -3669,9 +3801,7 @@ function PulseMultiSignalChartInnerImpl({
             >
               {/* On a narrow plot keep the part after the lead ("last data
                   00:20:29"); the dot's colour still says live or unconfirmed. */}
-              {liveEdgeLabel.length * 7.4 > plotWidthPx - 24 && liveEdgeLabel.includes(" · ")
-                ? liveEdgeLabel.slice(liveEdgeLabel.indexOf(" · ") + 3)
-                : liveEdgeLabel}
+              {liveEdgeShownLabel}
             </text>
           </g>
         ) : null}
@@ -3952,6 +4082,34 @@ function PulseMultiSignalChartInnerImpl({
           </>
         ))}
 
+        {consoleScale && consoleScale.chips.length > 0 ? (
+          <g aria-hidden="true" pointerEvents="none" data-chart-scale-chips>
+            {consoleScale.chips.map((chip) => (
+              <g key={chip.key} data-chart-scale-chip={chip.key} data-chart-scale-chip-side={chip.side ?? undefined}>
+                <rect
+                  x={chip.x}
+                  y={chip.y}
+                  width={chip.width}
+                  height={chip.height}
+                  rx={3}
+                  fill="rgba(13,13,18,0.82)"
+                  stroke="rgba(34,211,238,0.18)"
+                  strokeWidth="1"
+                />
+                <text
+                  x={chip.x + 6}
+                  y={chip.y + chip.height / 2 + 5}
+                  textAnchor="start"
+                  className="fill-cyan-400/80 text-sm font-black"
+                >
+                  <tspan className="text-xs uppercase">{chip.label}</tspan>
+                  <tspan dx={5}>{chip.value}</tspan>
+                </text>
+              </g>
+            ))}
+          </g>
+        ) : null}
+
         {/* Draw X-axis ticks and time labels. The group is measurable so the
             console can attach its position rail to visible axis content rather
             than the SVG's otherwise invisible footer. */}
@@ -4115,6 +4273,7 @@ function PulseMultiSignalChartInnerImpl({
           minLabelWidth={8}
           highlightedSegmentKey={highlightedGameSegmentKey}
           isLive={isLive}
+          capInsetPx={padRight < 1 ? 1.5 : 0}
         />
 
         {/* Transparent overlay rect for reliable mouse interaction */}

@@ -25,24 +25,36 @@ export function niceMinuteTickIndices(
   const last = offsets[offsets.length - 1]!
   if (offsets.length === 1 || last <= first || maxTicks <= 1) return [0]
   const spanMinutes = (last - first) / 60
-  const stepMinutes = NICE_STEP_MINUTES.find(step => Math.floor(spanMinutes / step + 1e-9) + 1 <= maxTicks)
-    ?? Math.ceil(spanMinutes / Math.max(1, maxTicks - 1))
-  const stepSeconds = stepMinutes * 60
   // A tick snaps only to a point about one point-spacing away (downsampled
   // series), never across a gap in the data.
   const spacings = offsets.slice(1).map((offset, index) => offset - offsets[index]!).sort((a, b) => a - b)
   const typicalSpacing = spacings[Math.floor(spacings.length / 2)] ?? 60
-  const snapSeconds = Math.min(stepSeconds / 2, typicalSpacing / 2 + 1)
-  const indices: number[] = []
-  let cursor = 0
-  for (let target = first; target <= last + 1e-6; target += stepSeconds) {
-    while (cursor < offsets.length - 1 && Math.abs(offsets[cursor + 1]! - target) <= Math.abs(offsets[cursor]! - target)) {
-      cursor += 1
+  const ticksForStep = (stepMinutes: number) => {
+    const stepSeconds = stepMinutes * 60
+    const snapSeconds = Math.min(stepSeconds / 2, typicalSpacing / 2 + 1)
+    const indices: number[] = []
+    let cursor = 0
+    for (let target = first; target <= last + 1e-6; target += stepSeconds) {
+      while (cursor < offsets.length - 1 && Math.abs(offsets[cursor + 1]! - target) <= Math.abs(offsets[cursor]! - target)) {
+        cursor += 1
+      }
+      if (Math.abs(offsets[cursor]! - target) > snapSeconds) continue
+      if (indices[indices.length - 1] !== cursor) indices.push(cursor)
     }
-    if (Math.abs(offsets[cursor]! - target) > snapSeconds) continue
-    if (indices[indices.length - 1] !== cursor) indices.push(cursor)
+    return indices
   }
-  return indices
+  const fitting = NICE_STEP_MINUTES.filter(step => Math.floor(spanMinutes / step + 1e-9) + 1 <= maxTicks)
+  if (fitting.length === 0) return ticksForStep(Math.ceil(spanMinutes / Math.max(1, maxTicks - 1)))
+  // The smallest step that fits the budget, unless its ticks fall in gaps in
+  // the data and one of the next two steps labels more of the axis (a 12h
+  // stream with gaps on a phone kept only its two end labels on 4h steps,
+  // where 6h steps label the middle too).
+  let best = ticksForStep(fitting[0]!)
+  for (const step of fitting.slice(1, 3)) {
+    const candidate = ticksForStep(step)
+    if (candidate.length > best.length) best = candidate
+  }
+  return best
 }
 
 /**

@@ -389,11 +389,13 @@
 
 /* Channel chart navigator: the hub's Global activity navigator, rendered in a
  * `.hubx` host so it picks up the hub's tokens and navigator styles. The host
- * drops the hub shell layout that `.hubx` also carries. As on the hub, the
- * whole navigator (track, readout, toolbar and hint) spans exactly the plot at
- * every width: the console chart pads 58/18px, 64/24px from 480px and 90/34px
- * from 720px (see PulseMultiSignalChart). Where the readout and the toolbar do
- * not fit on one line, the toolbar wraps under the readout, as the hub's does. */
+ * drops the hub shell layout that `.hubx` also carries. The whole navigator
+ * (track, readout, toolbar and hint) spans exactly the plot, and the console
+ * plot spans the chart card's full content width (PulseMultiSignalChart draws
+ * it with no side gutters), so the zoom bar and its controls share their left
+ * and right edges with the focus bar above and the blocks below. Where the
+ * readout and the toolbar do not fit on one line, the toolbar wraps under the
+ * readout, as the hub's does. */
 .sc-analytics-console .hubx.sc-chart-navigator-host {
   display: block;
   min-height: 0;
@@ -407,22 +409,8 @@
 
 .sc-analytics-console [data-session-chart-navigator] .hx-chart-navigator {
   width: auto;
-  margin-left: 58px;
-  margin-right: 18px;
-}
-
-@container session-chart (min-width: 480px) {
-  .sc-analytics-console [data-session-chart-navigator] .hx-chart-navigator {
-    margin-left: 64px;
-    margin-right: 24px;
-  }
-}
-
-@container session-chart (min-width: 720px) {
-  .sc-analytics-console [data-session-chart-navigator] .hx-chart-navigator {
-    margin-left: 90px;
-    margin-right: 34px;
-  }
+  margin-left: 0;
+  margin-right: 0;
 }
 
 /* On a phone-width card the plot is too narrow for the three zoom buttons at
