@@ -50,9 +50,11 @@ function cardStage() {
   host.append(stage)
   document.body.append(host)
   // Every line the stage ever shows, including those that scrolled away.
-  const seen = new MutationObserver(() => {})
+  // Records delivered while a test awaits are kept too, so the poster frame's lines count.
+  const delivered: MutationRecord[] = []
+  const seen = new MutationObserver(records => { delivered.push(...records) })
   seen.observe(stage, { childList: true, subtree: true })
-  const added = () => seen.takeRecords().flatMap(record => [...record.addedNodes]).filter((node): node is HTMLElement => node instanceof HTMLElement && node.classList.contains('spk-cl'))
+  const added = () => [...delivered.splice(0), ...seen.takeRecords()].flatMap(record => [...record.addedNodes]).filter((node): node is HTMLElement => node instanceof HTMLElement && node.classList.contains('spk-cl'))
   return { host, stage, added, remove: () => { seen.disconnect(); host.remove() } }
 }
 
@@ -300,6 +302,34 @@ describe('Your Line, drawn by content/supporter-card.js', () => {
     card.remove()
   })
 
+  it('opens on a poster frame, three lines of chatter then yours, under a corner chip that says it is a preview', async () => {
+    stubExtension()
+    for (const options of [{ mode: 'anatomy', finish: null }, { mode: 'tenure', tenure: '12m', finish: 'etched' }] as const) {
+      const card = cardStage()
+      frames = []
+      const stop = mountCard(card.stage, options)
+      // Before any animation frame runs: never an empty box.
+      expect(frames.length).toBeLessThanOrEqual(1)
+      const lines = [...card.stage.querySelectorAll<HTMLElement>('.spk-cl')]
+      expect(lines).toHaveLength(4)
+      expect(lines.map(line => line.classList.contains('spk-sup'))).toEqual([false, false, false, true])
+      // Laid out bottom-up, your line last, with no fade-in: in this 60 px test stage the top line is
+      // past the edge (the real card's stage is 96 px tall and shows all four).
+      expect(lines.map(line => line.style.opacity)).toEqual(['0', '1', '1', '1'])
+      expect(lines.map(line => line.style.transform)).toEqual(['translateY(-15px)', 'translateY(3px)', 'translateY(21px)', 'translateY(39px)'])
+      // No spotlight dims the poster frame.
+      expect(card.stage.querySelector('.spk-dim, .spk-sheen')).toBeNull()
+      const chips = card.stage.querySelectorAll('.spk-preview')
+      expect(chips).toHaveLength(1)
+      expect(chips[0].textContent).toBe('Preview · only you see this')
+      // The chip outlives the chat scrolling under it.
+      runFrames(400)
+      expect(card.stage.querySelectorAll('.spk-preview')).toHaveLength(1)
+      stop()
+      card.remove()
+    }
+  })
+
   it('draws one still frame from static images under reduced motion, ending on your line, and never schedules a frame', async () => {
     stubExtension({ reducedMotion: true })
     for (const options of [{ mode: 'anatomy', finish: null }, { mode: 'tenure', tenure: '24m', finish: 'halo', paint: { wave: 'smooth', sheen: 'none' } }] as const) {
@@ -320,6 +350,7 @@ describe('Your Line, drawn by content/supporter-card.js', () => {
       card.host.dispatchEvent(new Event('pointerenter'))
       expect(card.stage.querySelectorAll('.spk-cl')).toHaveLength(count)
       expect(card.stage.querySelector('.spk-callouts, .spk-co')).toBeNull()
+      expect(card.stage.querySelector('.spk-preview')!.textContent).toBe('Preview · only you see this')
       stop()
       card.remove()
     }

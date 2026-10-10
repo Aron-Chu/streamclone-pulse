@@ -1,4 +1,5 @@
 import { renderToStaticMarkup } from 'react-dom/server'
+import SUPPORTER_PERKS from '../src/shared/supporter-perks.json'
 import { describe, expect, it } from 'vitest'
 import { OpenAllSettingsButton, PulseSettingsPanel, SupporterHero, type QuickSettingsChannel } from '../src/ui/PulseSettingsPanel.tsx'
 
@@ -10,6 +11,17 @@ const LIVE: QuickSettingsChannel = {
   viewerCount: 28_231,
   startedAt: new Date(Date.now() - (8 * 60 + 35) * 60_000).toISOString(),
   surface: 'live_tracked',
+}
+
+/**
+ * The Supporter card's copy, which no longer covers its stage: a hidden span
+ * the button names as its description, so screen readers still hear it.
+ */
+function describedCopy(html: string): string | undefined {
+  const id = html.match(/<button[^>]*data-settings-host-cta="supporter"[^>]*aria-describedby="([^"]+)"/)?.[1]
+  if (!id) return undefined
+  const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return html.match(new RegExp(`<span id="${escaped}" hidden="">([^<]*)</span>`))?.[1]
 }
 
 describe('PulseSettingsPanel quick workspace', () => {
@@ -99,7 +111,12 @@ describe('PulseSettingsPanel quick workspace', () => {
   it('gives everyone else the lab’s Your Line · Anatomy copy and an empty stage the card script fills, with no emotes in this bundle', () => {
     const html = renderToStaticMarkup(<SupporterHero appearance={null} onOpen={() => {}} />)
     expect(html).toContain('Explore Supporter')
-    expect(html).toContain('<small>Your crest and paint on your line. Only you see them. Core tools stay free.</small>')
+    expect(describedCopy(html)).toBe('Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. Core tools stay free. This card is a preview, shown only in your StreamPulse extension. Twitch chat is unchanged.')
+    expect(describedCopy(html)).toBe(`Supporter perks: ${SUPPORTER_PERKS.names.join(', ')}. Only you see them. Core tools stay free. This card is a preview, shown only in your StreamPulse extension. Twitch chat is unchanged.`)
+    expect(html).toContain(`title="Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. Core tools stay free. This card is a preview, shown only in your StreamPulse extension. Twitch chat is unchanged."`)
+    // Only the title row and the stage show; nothing covers the stage.
+    expect(html).not.toContain('<small')
+    expect(html).toMatch(/<span class="pulse-supporter-cta-head"><strong>Pulse Supporter<\/strong><span>Explore Supporter <span aria-hidden="true">›<\/span><\/span><\/span><span id="[^"]+" hidden="">[^<]*<\/span><span class="pulse-supporter-stage"/)
     expect(html).toContain('<span class="pulse-supporter-stage" aria-hidden="true"></span>')
     expect(html).not.toContain('<img')
     expect(html).not.toContain('cdn.7tv.app')
@@ -111,16 +128,17 @@ describe('PulseSettingsPanel quick workspace', () => {
     expect(verified).toContain('data-finish="etched"')
     expect(verified).toContain('Manage Supporter')
     expect(verified).not.toContain('Explore Supporter')
-    expect(verified).toContain('<small>A crest that levels up the longer you support. Only you see it. Core tools stay free.</small>')
+    expect(describedCopy(verified)).toBe('Your Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. Core tools stay free. This card is a preview, shown only in your StreamPulse extension. Twitch chat is unchanged.')
+    expect(verified).not.toContain('<small')
     const neutral = renderToStaticMarkup(<SupporterHero appearance={null} onOpen={() => {}} />)
     expect(neutral).toContain('Explore Supporter')
-    expect(neutral).not.toContain('levels up')
+    expect(neutral).not.toContain('Your Supporter perks')
   })
   it('treats a verified Supporter on the default accent as a Supporter, not as someone to pitch', () => {
     const member = renderToStaticMarkup(<SupporterHero appearance={{ finish: null, tenure: '3m', perks: true }} onOpen={() => {}} />)
     expect(member).toContain('data-supporter-verified="true"')
     expect(member).toContain('Manage Supporter')
-    expect(member).toContain('A crest that levels up the longer you support.')
+    expect(member).toContain('Your Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. Core tools stay free. This card is a preview, shown only in your StreamPulse extension. Twitch chat is unchanged.')
     expect(member).not.toContain('Explore Supporter')
     expect(member).not.toContain('data-finish')
   })

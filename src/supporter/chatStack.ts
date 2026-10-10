@@ -17,7 +17,12 @@ import { CHAT_STACK_CSS } from './styles.ts'
  *   the server reports for this Supporter and stays there. Hover brings your
  *   next line right away.
  *
- * Every other line is canned, neutral chatter; never real chat.
+ * Every other line is canned, neutral chatter; never real chat. The column
+ * is a preview inside the extension, never Twitch chat: a corner chip says so,
+ * and no content script adds anything to a real chat column.
+ *
+ * The stage opens on a poster frame (three lines of chatter, then yours), so
+ * the first frame and a reduced-motion still are never an empty box.
  */
 export type ChatMode = 'anatomy' | 'tenure'
 
@@ -75,7 +80,7 @@ export function ChatStack(stage: HTMLElement, context: StageContext, kit: Kit, m
     el.append(b, ': ', renderWords(pick(LINES), LH, still))
     push(el)
   }
-  function addYours(text?: string | null) {
+  function addYours(text?: string | null, quiet = false) {
     const el = document.createElement('div')
     el.className = 'spk-cl spk-sup'
     const tn = mode === 'tenure' ? TENURES[tenureIdx] : null
@@ -98,7 +103,24 @@ export function ChatStack(stage: HTMLElement, context: StageContext, kit: Kit, m
       if (chipBox.width > 0 && emote.getBoundingClientRect().right > chipBox.left - 4) chip.textContent = tn.short
     }
     lastYours = el
-    if (mode === 'anatomy') spotlight(el)
+    if (mode === 'anatomy' && !quiet) spotlight(el)
+    return el
+  }
+  /** The poster frame: chatter, then your line, laid out at once with no fade. */
+  let seeded = false
+  function seed() {
+    if (seeded || !(H = stage.clientHeight)) return
+    seeded = true
+    W = stage.clientWidth
+    const before = lines.length
+    for (let k = 0; k < 3; k++) addOther()
+    addYours(null, true)
+    const fresh = lines.slice(before)
+    for (const ln of fresh) ln.style.transition = 'none'
+    layout()
+    stage.getBoundingClientRect()
+    for (const ln of fresh) ln.style.transition = ''
+    count = 0
   }
   function spotlight(el: HTMLElement) {
     if (still) return
@@ -110,6 +132,7 @@ export function ChatStack(stage: HTMLElement, context: StageContext, kit: Kit, m
     if (mode !== 'anatomy' || lastYours !== lines[lines.length - 1]) addYours()
   }
   function tick(dt: number) {
+    if (!seeded) seed()
     if (!H) { H = stage.clientHeight; W = stage.clientWidth }
     t += dt
     const p = context.pace()
@@ -124,6 +147,11 @@ export function ChatStack(stage: HTMLElement, context: StageContext, kit: Kit, m
     for (const d of [0, 140, 280]) context.later(addOther, d)
     context.later(() => addYours(mode === 'anatomy' ? 'that peak was mine' : null), 420)
   }
+  const chip = document.createElement('span')
+  chip.className = 'spk-preview'
+  chip.textContent = 'Preview · only you see this'
+  stage.append(chip)
+  seed()
   return {
     tick,
     peak,

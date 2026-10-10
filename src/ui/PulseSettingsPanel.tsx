@@ -1,5 +1,5 @@
 import { PulseBannerQuickPreview } from './PulseBanner.tsx'
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { backgroundErrorMessage, EXTENSION_RECONNECT_MESSAGE } from '../shared/backgroundResponse.ts'
 import { sendBackgroundMessage } from '../content/bridge.ts'
 import { readTwitchChannelAvatarUrl } from '../content/twitch.ts'
@@ -14,6 +14,7 @@ import { formatCount } from './mostReacted.ts'
 import type { PulsePanelSurfaceState } from './pulsePanelLayout.ts'
 import type { SettingsHostSection } from '../shared/messages.ts'
 import type { SupporterCardOptions } from '../supporter/cardContract.ts'
+import { names as SUPPORTER_PERK_NAMES } from '../shared/supporter-perks.json'
 
 const RELEASE_PREVIEW = __EXTENSION_RELEASE_PREVIEW__
 
@@ -312,10 +313,18 @@ function ChannelHeader({ channel, name }: { channel: QuickSettingsChannel; name:
  * someone who is not a Supporter (their would-be line, with its crest and
  * paint), and Tenure Climb for a
  * verified Supporter, whatever their finish, climbing to the crest the server
- * reports. No price, no purchase wording.
+ * reports. No price, no purchase wording. The chat column is a preview drawn
+ * in the extension (its corner chip says so); Twitch chat is unchanged.
+ *
+ * The card shows only its title row and the moving stage, which takes the
+ * room a line of copy used to cover. The copy stays as the button's
+ * description for screen readers and its tooltip: every perk, named in the
+ * order of the one perk list (src/shared/supporter-perks.json).
  */
 export function SupporterHero({ appearance, disabled, onOpen }: { appearance: SupporterAppearance | null; disabled?: boolean; onOpen: () => void }) {
   const finish = appearance?.finish ?? null
+  const descriptionId = useId()
+  const perks = `${appearance ? 'Your Supporter perks' : 'Supporter perks'}: ${SUPPORTER_PERK_NAMES.join(', ')}. Only you see them. Core tools stay free. This card is a preview, shown only in your StreamPulse extension. Twitch chat is unchanged.`
   return (
     <button
       type="button"
@@ -324,13 +333,15 @@ export function SupporterHero({ appearance, disabled, onOpen }: { appearance: Su
       data-supporter-verified={appearance ? 'true' : undefined}
       data-finish={finish ?? undefined}
       disabled={disabled}
+      aria-describedby={descriptionId}
+      title={perks}
       onClick={onOpen}
     >
       <span className="pulse-supporter-cta-head">
         <strong>Pulse Supporter</strong>
         <span>{appearance ? 'Manage Supporter' : 'Explore Supporter'} <span aria-hidden="true">›</span></span>
       </span>
-      <small>{appearance ? 'A crest that levels up the longer you support. Only you see it. Core tools stay free.' : 'Your crest and paint on your line. Only you see them. Core tools stay free.'}</small>
+      <span id={descriptionId} hidden>{perks}</span>
       <SupporterCardStage mode={appearance ? 'tenure' : 'anatomy'} tenure={appearance?.tenure} finish={finish} paint={appearance?.paint} />
     </button>
   )

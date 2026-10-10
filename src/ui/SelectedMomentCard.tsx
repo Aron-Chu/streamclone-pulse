@@ -14,8 +14,6 @@ export interface SelectedMomentCardProps {
   compact?: boolean
   interactionState?: 'preview' | 'selected'
   viewerUnavailableDetail?: string
-  /** The card's kicker: Top Moments shows its strongest moment until one is picked. */
-  label?: string
 }
 
 export function SelectedMomentCard({
@@ -26,7 +24,6 @@ export function SelectedMomentCard({
   onClear,
   jumpLabel = 'Jump',
   viewerUnavailableDetail,
-  label = 'Selected moment',
 }: SelectedMomentCardProps) {
   const clock = momentClockDisplay(point)
   const offsetLabel = clock.text
@@ -35,7 +32,7 @@ export function SelectedMomentCard({
   return (
     <MomentSelectionCard
       kind="moment"
-      label={label}
+      label="Selected moment"
       timeLabel={offsetLabel}
       detail={displayMomentReasonLabel(point.reason, point.reasonLabel)}
       detailStyle={momentReasonLabelStyle(point.reason, point.reasonLabel, 'md')}
@@ -49,7 +46,7 @@ export function SelectedMomentCard({
       onClose={onClear}
       style={{ marginBottom: 8 }}
       contentKey={pointIdentity}
-      ariaLabel={`${label} at ${offsetLabel}${clock.approximate ? ', start of minute bucket' : ''}`}
+      ariaLabel={`Selected moment at ${offsetLabel}${clock.approximate ? ', start of minute bucket' : ''}`}
     />
   )
 }

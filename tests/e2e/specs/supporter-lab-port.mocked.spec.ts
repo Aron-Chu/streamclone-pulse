@@ -8,7 +8,8 @@ import { linkDevice, serveMembership, supporterBody } from '../helpers/supporter
 
 /**
  * The design lab's Supporter banners, packaged: the quick-settings card is
- * "Your Line" (Anatomy for non-Supporters, Tenure Climb for Supporters), drawn
+ * "Your Line" (Anatomy for non-Supporters, Tenure Climb for Supporters), a
+ * preview chat column labelled as one (Twitch chat is never changed), drawn
  * by a script the worker injects only when the card is shown; the full-settings
  * banner is "Emote Pile · Crown". Fixture APIs only; emote images come from the
  * two CDNs the extension already loads.
@@ -46,6 +47,21 @@ async function openQuickSettingsAt305(page: Page) {
   return root
 }
 
+/**
+ * The card shows only its title row and the stage, right under it: no copy
+ * covers the stage. The copy is the button's description for screen readers,
+ * not part of its name.
+ */
+async function expectStageUncovered(card: Locator, action: string, copy: string) {
+  await expect(card).toHaveAccessibleName(new RegExp(`^Pulse Supporter\\s*${action}$`))
+  await expect(card).toHaveAccessibleDescription(copy)
+  await expect(card.locator('small')).toHaveCount(0)
+  await expect(card.getByText(copy)).toBeHidden()
+  const [head, stage] = await Promise.all([card.locator('.pulse-supporter-cta-head').boundingBox(), card.locator('.pulse-supporter-stage').boundingBox()])
+  expect(stage!.y - (head!.y + head!.height)).toBeLessThanOrEqual(10)
+  expect(stage!.height).toBeGreaterThanOrEqual(90)
+}
+
 /** Emote images settle before a capture (the CDNs are real; nothing else is). */
 async function imagesSettled(stage: Locator) {
   await stage.locator('img').evaluateAll(images => Promise.all(images.map(image => {
@@ -71,8 +87,12 @@ test('quick settings: non-Supporters get Your Line · Anatomy, injected on deman
   await expect(stage).toHaveAttribute('data-mode', 'anatomy')
   await expect(stage).toHaveAttribute('data-running', 'true')
   await expect(card.locator('.pulse-supporter-cta-head')).toHaveText('Pulse SupporterExplore Supporter ›')
-  await expect(card.locator('small')).toHaveText('Your crest and paint on your line. Only you see them. Core tools stay free.')
+  await expectStageUncovered(card, 'Explore Supporter', 'Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. Core tools stay free. This card is a preview, shown only in your StreamPulse extension. Twitch chat is unchanged.')
   expect((await card.boundingBox())!.width).toBeLessThanOrEqual(305)
+  // A preview, said so in one corner chip; it opens on a poster frame (chatter, then your line), never an empty box.
+  await expect(stage.locator('.spk-preview')).toHaveText('Preview · only you see this')
+  expect(await stage.locator('.spk-cl').count()).toBeGreaterThanOrEqual(4)
+  await capture(card, info, 'ext-card-anatomy-t0.png')
 
   // Every sixth line is yours, with the lab's sample crest, Etched paint and sample emote.
   const yours = stage.locator('.spk-cl.spk-sup')
@@ -84,7 +104,19 @@ test('quick settings: non-Supporters get Your Line · Anatomy, injected on deman
   await page.waitForTimeout(1600)
   await capture(card, info, 'ext-card-anatomy-rest.png')
 
+  // A peak (the lab's timer: 10 s in): three quick lines, then yours.
+  await expect(stage).toHaveAttribute('data-peaks', '1', { timeout: 15_000 })
+  await expect(stage.locator('.spk-cl.spk-sup', { hasText: 'that peak was mine' }).last()).toBeAttached()
+  await expect(stage.locator('.spk-callouts, .spk-co')).toHaveCount(0)
+  await page.waitForTimeout(500)
+  await capture(card, info, 'ext-card-anatomy-peak.png')
+  await expectCannedChat(stage)
+  expect(await card.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+
   // Hover brings your line in last and freezes chat; no labels are drawn over it.
+  // Checked after the first peak: a peak's lines arrive even while hovered,
+  // and the next one is at least 17 s away. The stage keeps up to seven
+  // lines, so a line arriving while frozen would change the count.
   await card.hover()
   await expect(stage.locator('.spk-callouts, .spk-co')).toHaveCount(0)
   await expect(stage.locator('.spk-cl').last()).toHaveClass(/spk-sup/)
@@ -95,15 +127,6 @@ test('quick settings: non-Supporters get Your Line · Anatomy, injected on deman
   expect(await stage.locator('.spk-cl').count()).toBe(frozen)
   await expect(stage.locator('.spk-cl').last()).toHaveClass(/spk-sup/)
   await page.mouse.move(5, 5)
-
-  // A peak (the lab's timer: 10 s in): three quick lines, then yours.
-  await expect(stage).toHaveAttribute('data-peaks', '1', { timeout: 15_000 })
-  await expect(stage.locator('.spk-cl.spk-sup', { hasText: 'that peak was mine' }).last()).toBeAttached()
-  await expect(stage.locator('.spk-callouts, .spk-co')).toHaveCount(0)
-  await page.waitForTimeout(500)
-  await capture(card, info, 'ext-card-anatomy-peak.png')
-  await expectCannedChat(stage)
-  expect(await card.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
 
   // Scrolled out of the panel, the stage stops scheduling frames.
   await page.setViewportSize({ width: 1440, height: 520 })
@@ -148,7 +171,7 @@ test('quick settings: Supporters get Tenure Climb up to their own crest, in thei
   await expect(card).toHaveAttribute('data-supporter-verified', 'true')
   await expect(stage).toHaveAttribute('data-mode', 'tenure')
   await expect(card.locator('.pulse-supporter-cta-head')).toHaveText('Pulse SupporterManage Supporter ›')
-  await expect(card.locator('small')).toHaveText('A crest that levels up the longer you support. Only you see it. Core tools stay free.')
+  await expectStageUncovered(card, 'Manage Supporter', 'Your Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. Core tools stay free. This card is a preview, shown only in your StreamPulse extension. Twitch chat is unchanged.')
 
   // The climb: First signal, Signal set, Steady signal, Year-one crest, then it holds there.
   // A chip a wide emote would reach keeps only its length ("12 mo").

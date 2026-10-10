@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, useCallback, useState } from 'react'
+import { act, useCallback, useEffect, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -10,8 +10,10 @@ import { MomentCardSlot } from '../src/ui/MomentCardSlot.tsx'
 import { MostReactedSection } from '../src/ui/MostReactedSection.tsx'
 import { RecapTimelineChart } from '../src/ui/RecapTimelineChart.tsx'
 import { StreamRecapSection } from '../src/ui/StreamRecapSection.tsx'
+import { bindKeepPressedInPlace } from '../src/ui/keepPressedInPlace.ts'
 import { MOMENT_CARD_HEIGHT } from '../src/ui/momentCardLayout.ts'
 import { liveHeatPointKey, resolveMostReactedHeat } from '../src/ui/mostReacted.ts'
+import { SELECTED_MOMENT_CARD_EXIT_MS } from '../src/ui/pinnedCardExit.ts'
 
 // SavedMoments (recap) lists bookmarks through the background worker.
 vi.mock('../src/content/bridge.ts', () => ({
@@ -21,12 +23,12 @@ vi.mock('../src/content/bridge.ts', () => ({
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 /**
- * Top Moments has one card, right above its list, that keeps its height. It
- * shows the strongest moment until a moment is picked, in the list or as a
- * ranked moment on the chart; a pick swaps its contents in place and × goes
- * back to the strongest. Nothing changes height, so the picked row never
- * moves. A minute picked on the chart keeps its card under the chart. One
- * selection shows in one place.
+ * Top Moments shows nothing above its list until a moment is picked, in the
+ * list or as a ranked moment on the chart. The pick opens one card right above
+ * the list; later picks swap its contents in place, and ×, Escape or the
+ * picked row again close it. While it opens or closes, the panel scrolls by
+ * its height so the picked row stays put. A minute picked on the chart keeps
+ * its card under the chart. One selection shows in one place.
  */
 
 const peaks: ExtensionPeak[] = [120, 240, 360].map((offsetSeconds, index) => ({
@@ -152,18 +154,20 @@ afterEach(() => {
 })
 
 const rows = (host: ParentNode) => [...host.querySelectorAll<HTMLButtonElement>('button.pulse-moment-row-button')]
-/** The Top Moments card (its wrapper, which stays mounted). */
+/** The Top Moments card, open or collapsing out. */
 const topCard = (host: ParentNode) => host.querySelector<HTMLElement>('[data-top-moment-card]')
-const topCardLabel = (host: ParentNode) => topCard(host)?.querySelector('[data-selected-moment-card="true"]')?.getAttribute('aria-label')
+/** The Top Moments card while it shows a pick (not collapsing out). */
+const openCard = (host: ParentNode) => host.querySelector<HTMLElement>('[data-top-moment-card="selected"]')
+const topCardLabel = (host: ParentNode) => openCard(host)?.querySelector('[data-selected-moment-card="true"]')?.getAttribute('aria-label')
 const chartCard = (host: ParentNode) => {
   const slot = host.querySelector('[data-chart-inspector-owner="activity-chart"]')
   return slot && !slot.classList.contains('pulse-moment-slot-exit') ? slot : null
 }
-/** Cards that show a selection (not the strongest-moment default, not one collapsing out). */
+/** Cards that show a selection (not one collapsing out). */
 const selectionCards = (host: ParentNode) => [
   ...host.querySelectorAll('[aria-label^="Selected moment at"], [data-chart-minute-card="true"]'),
 ].filter(card => !card.closest('.pulse-moment-slot-exit'))
-const clearButton = (host: ParentNode) => topCard(host)!.querySelector('[aria-label="Clear selected moment"]')
+const clearButton = (host: ParentNode) => openCard(host)!.querySelector('[aria-label="Clear selected moment"]')
 /** The list's Show more / Show less control. */
 const expander = (host: ParentNode) => [...host.querySelectorAll<HTMLButtonElement>('button')]
   .find(button => /^Show (less|\d+ more moments?)/.test(button.textContent ?? ''))!
@@ -173,54 +177,67 @@ const key = (element: Element, value: string) => act(() => {
 })
 
 describe('Top Moments card (live panel)', () => {
-  it('shows the strongest moment right above the list until a moment is picked', () => {
+  it('shows nothing above the list until a moment is picked', () => {
     const host = mount(<Panel />)
-    const card = topCard(host)!
-    expect(card.getAttribute('data-top-moment-card')).toBe('strongest')
-    expect(topCardLabel(host)).toMatch(/^Strongest moment at 00:02/)
-    expect(clearButton(host)).toBeNull()
-    // Directly above the rows, and the same height whatever it shows.
-    expect(card.nextElementSibling).toBe(rows(host)[0].parentElement)
-    expect(card.style.minHeight).toBe(`${MOMENT_CARD_HEIGHT}px`)
+    expect(topCard(host)).toBeNull()
+    expect(host.querySelector('.pulse-moment-slot')).toBeNull()
+    expect(host.textContent).not.toContain('Strongest moment')
     expect(rows(host).every(row => row.getAttribute('aria-pressed') === 'false')).toBe(true)
+    // Nothing to control yet.
+    expect(rows(host).filter(row => row.hasAttribute('aria-controls'))).toHaveLength(0)
     expect(chartCard(host)).toBeNull()
     expect(selectionCards(host)).toHaveLength(0)
+    // Nor is the strongest minute locked or highlighted on the chart.
+    expect(host.querySelector('svg[data-chart-locked-index]')).toBeNull()
+    expect(host.querySelector('[data-chart-readout-state="selected"]')).toBeNull()
+    expect(host.querySelectorAll('[data-chart-moment-marker-state="active"]')).toHaveLength(0)
   })
 
-  it('swaps a list pick into the same card, leaves the rows alone and locks the chart', () => {
+  it('opens a list pick in a card right above the list, swaps later picks into it and locks the chart', () => {
     const host = mount(<Panel />)
-    const card = topCard(host)!
     const list = rows(host)
-    const [, second] = list
+    const [, second, third] = list
 
     click(second)
 
-    expect(topCard(host)).toBe(card)
-    expect(card.getAttribute('data-top-moment-card')).toBe('selected')
+    const card = openCard(host)!
+    expect(card).not.toBeNull()
     expect(topCardLabel(host)).toMatch(/^Selected moment at 00:04/)
-    expect(card.style.minHeight).toBe(`${MOMENT_CARD_HEIGHT}px`)
-    // No card opens in the list: the rows are the same buttons, in the same place.
+    expect(clearButton(host)).not.toBeNull()
+    // Directly above the rows, in a slot that opens and closes, at one height
+    // whatever the moment shows.
+    expect(card.nextElementSibling).toBe(second.parentElement)
+    expect(card.querySelector('.pulse-moment-slot')).not.toBeNull()
+    expect(card.querySelector<HTMLElement>('.pulse-moment-slot-inner > div > div')!.style.minHeight).toBe(`${MOMENT_CARD_HEIGHT}px`)
+    // No card opens in the list: the rows are the same buttons.
     expect(rows(host)).toEqual(list)
     expect(second.parentElement!.querySelectorAll('[data-moment-inspector-card]')).toHaveLength(0)
-    expect(card.nextElementSibling).toBe(second.parentElement)
     expect(chartCard(host)).toBeNull()
     expect(selectionCards(host)).toHaveLength(1)
     // The chart marks and locks the picked minute.
     expect(host.querySelector('[data-chart-readout-state="selected"]')).not.toBeNull()
     expect(host.querySelector('svg[data-chart-locked-index]')).not.toBeNull()
+
+    // Another pick swaps into the same card.
+    click(third)
+    expect(openCard(host)).toBe(card)
+    expect(topCardLabel(host)).toMatch(/^Selected moment at 00:06/)
+    expect(third.getAttribute('aria-pressed')).toBe('true')
+    expect(second.getAttribute('aria-pressed')).toBe('false')
+    expect(selectionCards(host)).toHaveLength(1)
   })
 
-  it('keeps aria-pressed and focus on the picked row, which controls the card', () => {
+  it('keeps aria-pressed and focus on the picked row, which controls the card while it shows', () => {
     const host = mount(<Panel />)
     const [first, second] = rows(host)
-    const cardId = topCard(host)!.id
-    expect(cardId).not.toBe('')
-    expect(rows(host).map(row => row.getAttribute('aria-controls'))).toEqual([cardId, cardId, cardId])
-    expect(rows(host).filter(row => row.hasAttribute('aria-expanded'))).toHaveLength(0)
 
     act(() => second.focus())
     click(second)
 
+    const cardId = openCard(host)!.id
+    expect(cardId).not.toBe('')
+    expect(rows(host).map(row => row.getAttribute('aria-controls'))).toEqual([cardId, cardId, cardId])
+    expect(rows(host).filter(row => row.hasAttribute('aria-expanded'))).toHaveLength(0)
     expect(document.activeElement).toBe(second)
     expect(second.getAttribute('aria-pressed')).toBe('true')
     expect(first.getAttribute('aria-pressed')).toBe('false')
@@ -231,19 +248,19 @@ describe('Top Moments card (live panel)', () => {
 
     // The strongest-moment shortcut sits with the chart and picks its top marker.
     click(host.querySelector('[data-featured-moment="true"]')!)
-    expect(topCard(host)!.getAttribute('data-top-moment-card')).toBe('selected')
+    expect(openCard(host)).not.toBeNull()
     expect(topCardLabel(host)).toMatch(/^Selected moment at 00:02/)
     expect(chartCard(host)).toBeNull()
     expect(rows(host)[0].getAttribute('aria-pressed')).toBe('true')
     expect(selectionCards(host)).toHaveLength(1)
 
-    // A raw minute picked on the plot opens under the chart; Top Moments goes
-    // back to its strongest moment.
+    // A raw minute picked on the plot opens under the chart; the Top Moments
+    // card closes.
     const plot = host.querySelector('[data-chart-scrubber="true"]')!
     key(plot, 'Home')
     key(plot, 'Enter')
     expect(chartCard(host)?.getAttribute('data-chart-inspector-kind')).toBe('minute')
-    expect(topCard(host)!.getAttribute('data-top-moment-card')).toBe('strongest')
+    expect(openCard(host)).toBeNull()
     expect(rows(host).every(row => row.getAttribute('aria-pressed') === 'false')).toBe(true)
     expect(selectionCards(host)).toHaveLength(1)
 
@@ -254,32 +271,49 @@ describe('Top Moments card (live panel)', () => {
     expect(selectionCards(host)).toHaveLength(1)
   })
 
-  it('goes back to the strongest with Escape or ×, returning focus to the row', () => {
+  it('closes with Escape, × or the picked row again, keeping focus on the row', () => {
+    vi.useFakeTimers()
     const host = mount(<Panel />)
     const [, second] = rows(host)
 
     click(second)
-    const jump = topCard(host)!.querySelector<HTMLButtonElement>('[data-moment-inspector-action="jump"]')!
+    const jump = openCard(host)!.querySelector<HTMLButtonElement>('[data-moment-inspector-action="jump"]')!
     act(() => jump.focus())
     key(jump, 'Escape')
     expect(document.activeElement).toBe(second)
     expect(second.getAttribute('aria-pressed')).toBe('false')
-    expect(topCard(host)!.getAttribute('data-top-moment-card')).toBe('strongest')
+    expect(openCard(host)).toBeNull()
     expect(selectionCards(host)).toHaveLength(0)
 
     click(second)
     click(clearButton(host)!)
     expect(document.activeElement).toBe(second)
-    expect(topCardLabel(host)).toMatch(/^Strongest moment at 00:02/)
+    expect(second.getAttribute('aria-pressed')).toBe('false')
+    expect(openCard(host)).toBeNull()
+
+    act(() => second.focus())
+    click(second)
+    expect(openCard(host)).not.toBeNull()
+    click(second)
+    expect(document.activeElement).toBe(second)
+    expect(second.getAttribute('aria-pressed')).toBe('false')
+    expect(openCard(host)).toBeNull()
     expect(selectionCards(host)).toHaveLength(0)
+    // The card collapses out, then leaves nothing behind.
+    expect(topCard(host)?.getAttribute('data-top-moment-card')).toBe('closing')
+    act(() => { vi.advanceTimersByTime(SELECTED_MOMENT_CARD_EXIT_MS + 20) })
+    expect(topCard(host)).toBeNull()
+    expect(host.querySelector('.pulse-moment-slot')).toBeNull()
+    expect(rows(host).filter(row => row.hasAttribute('aria-controls'))).toHaveLength(0)
   })
 
-  it('jumps and opens analytics for the moment it shows, the strongest included', () => {
+  it('jumps and opens analytics for the picked moment', () => {
     const onJumpToOffset = vi.fn()
     const onOpenAnalytics = vi.fn()
     const host = mount(<Panel onJumpToOffset={onJumpToOffset} onOpenAnalytics={onOpenAnalytics} />)
-    const action = (name: string) => topCard(host)!.querySelector(`[data-moment-inspector-action="${name}"]`)!
+    const action = (name: string) => openCard(host)!.querySelector(`[data-moment-inspector-action="${name}"]`)!
 
+    click(rows(host)[0])
     expect(action('jump').textContent).toContain('Jump in player')
     click(action('jump'))
     click(action('analytics'))
@@ -316,7 +350,7 @@ describe('Top Moments card (live panel)', () => {
     // The next poll no longer ranks the 00:04 moment.
     act(() => root!.render(<Panel payload={makePayload({ peaks: [peaks[0], peaks[2]] })} />))
     expect(chartCard(host)?.getAttribute('data-chart-inspector-kind')).toBe('minute')
-    expect(topCard(host)!.getAttribute('data-top-moment-card')).toBe('strongest')
+    expect(openCard(host)).toBeNull()
     expect(selectionCards(host)).toHaveLength(1)
     expect(host.querySelector('[data-chart-readout-state="selected"]')).not.toBeNull()
   })
@@ -324,9 +358,9 @@ describe('Top Moments card (live panel)', () => {
   it('keeps the row, its focus and the card mounted while a poll refines the moment', () => {
     const host = mount(<Panel />)
     const row = rows(host)[1]
-    const card = topCard(host)
     act(() => row.focus())
     click(row)
+    const card = openCard(host)
 
     const refined = makePayload({
       peaks: [peaks[0], { ...peaks[1], reactionApexOffsetSeconds: 251, refinementStatus: 'refined' }, peaks[2]],
@@ -338,28 +372,27 @@ describe('Top Moments card (live panel)', () => {
 
     // ...but not its row or the card: no remount, focus kept.
     expect(rows(host)[1]).toBe(row)
-    expect(topCard(host)).toBe(card)
+    expect(openCard(host)).toBe(card)
     expect(topCardLabel(host)).toMatch(/^Selected moment at 00:04/)
     expect(document.activeElement).toBe(row)
   })
 
-  it('keeps focus on an action of the card when a poll changes the moment it shows', () => {
+  it('keeps focus on an action of the card when a poll re-ranks or refines the moment it shows', () => {
     const host = mount(<Panel />)
-    const action = (name: string) => topCard(host)!.querySelector<HTMLButtonElement>(`[data-moment-inspector-action="${name}"]`)!
+    const action = (name: string) => openCard(host)!.querySelector<HTMLButtonElement>(`[data-moment-inspector-action="${name}"]`)!
+    click(rows(host)[1])
     const jump = action('jump')
     act(() => jump.focus())
 
-    // The next poll ranks a new strongest moment; the card shows it on the
-    // same nodes, so Jump keeps focus.
+    // The next poll ranks a new strongest moment; the card keeps the pick on
+    // the same nodes, so Jump keeps focus.
     const stronger = { ...peaks[0], offsetSeconds: 480, score: 99 }
     act(() => root!.render(<Panel payload={makePayload({ peaks: [stronger, ...peaks] })} />))
-    expect(topCardLabel(host)).toMatch(/^Strongest moment at 00:08/)
+    expect(topCardLabel(host)).toMatch(/^Selected moment at 00:04/)
     expect(action('jump')).toBe(jump)
     expect(document.activeElement).toBe(jump)
 
-    // The same when a poll refines a picked moment.
-    click(rows(host)[2])
-    expect(topCardLabel(host)).toMatch(/^Selected moment at 00:04/)
+    // The same when a poll refines the picked moment.
     const analytics = action('analytics')
     act(() => analytics.focus())
     const refined = { ...peaks[1], reactionApexOffsetSeconds: 251, refinementStatus: 'refined' }
@@ -368,7 +401,7 @@ describe('Top Moments card (live panel)', () => {
     expect(action('analytics')).toBe(analytics)
     expect(document.activeElement).toBe(analytics)
     // The details still fade in on the swap.
-    expect(topCard(host)!.querySelector('.pulse-moment-card-swap')).not.toBeNull()
+    expect(openCard(host)!.querySelector('.pulse-moment-card-swap')).not.toBeNull()
   })
 
   it('keeps a pick past the fold listed at the end, and × then moves focus to Show more', () => {
@@ -391,7 +424,7 @@ describe('Top Moments card (live panel)', () => {
     expect(rows(host)).toHaveLength(5)
     expect(expander(host).textContent).toContain('Show 3 more moments')
     expect(document.activeElement).toBe(expander(host))
-    expect(topCard(host)!.getAttribute('data-top-moment-card')).toBe('strongest')
+    expect(openCard(host)).toBeNull()
   })
 
   it('keeps a picked row, its focus and its press when a poll ranks it past the fold', () => {
@@ -428,8 +461,164 @@ describe('Top Moments card (live panel)', () => {
       <MostReactedSection payload={payload} backendUrl="https://api.example.test" demoMode onJump={() => undefined} onAnalytics={() => undefined} />,
     )
     expect(rows(host)).toHaveLength(3)
+    click(rows(host)[1])
     expect(topCard(host)).toBeNull()
     expect(rows(host).filter(row => row.hasAttribute('aria-controls') || row.hasAttribute('aria-expanded'))).toHaveLength(0)
+  })
+})
+
+/**
+ * The panel scrolls by the card's height while it opens or closes, so the
+ * picked row stays under the pointer. jsdom has no layout, so the panel here
+ * lays itself out: 400 px of content above Top Moments, the card's slot (195
+ * px open, 0 once it collapses), then 44 px rows; the panel shows 500 px.
+ */
+describe('Top Moments card in a scrolling panel', () => {
+  const ABOVE = 400
+  const VIEW = 500
+  const ROW = 44
+  const CARD = MOMENT_CARD_HEIGHT
+
+  /** MostReactedSection wired as Overlay wires it, Escape included. */
+  function TopMoments() {
+    const [pin, setPin] = useState<number | null>(null)
+    useEffect(() => {
+      const clear = (event: KeyboardEvent) => { if (event.key === 'Escape') setPin(null) }
+      document.addEventListener('keydown', clear)
+      return () => document.removeEventListener('keydown', clear)
+    }, [])
+    return (
+      <MostReactedSection
+        payload={payload}
+        backendUrl="https://api.example.test"
+        pinnedOffsetSeconds={pin}
+        onPinOffset={setPin}
+        onJump={() => undefined}
+        onAnalytics={() => undefined}
+      />
+    )
+  }
+
+  let frames: FrameRequestCallback[] = []
+  let unbind: (() => void) | null = null
+  /**
+   * Runs the frames a press schedules until the layout settles, then one well
+   * past the press, which ends it: the next press or key starts afresh.
+   */
+  const flushFrames = () => {
+    for (let frame = 0; frame < 4; frame += 1) frames.splice(0).forEach(callback => callback(performance.now()))
+    frames.splice(0).forEach(callback => callback(performance.now() + 5_000))
+    expect(frames).toHaveLength(0)
+  }
+
+  function mountPanel(scrollTop: number) {
+    frames = []
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => frames.push(callback))
+    const host = mount(
+      <div className="pulse-panel-body">
+        <div data-above-top-moments="" />
+        <TopMoments />
+      </div>,
+    )
+    const panel = host.querySelector<HTMLElement>('.pulse-panel-body')!
+    const slotHeight = () => {
+      const slot = panel.querySelector('.pulse-moment-slot')
+      return slot && !slot.classList.contains('pulse-moment-slot-exit') ? CARD : 0
+    }
+    const contentHeight = () => ABOVE + slotHeight() + rows(panel).length * ROW + 600
+    // The panel clamps its scroll position like a real scroll container.
+    let scrolled = 0
+    Object.defineProperty(panel, 'scrollTop', {
+      configurable: true,
+      get: () => scrolled,
+      set: (value: number) => { scrolled = Math.max(0, Math.min(value, contentHeight() - VIEW)) },
+    })
+    const rect = (y: number, height: number) => ({ top: y, bottom: y + height, height, left: 0, right: 300, width: 300, x: 0, y } as DOMRect)
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      const list = rows(panel)
+      const listTop = ABOVE + slotHeight()
+      if (this === panel) return rect(0, VIEW)
+      if (this.matches('.pulse-moment-slot, [data-top-moment-card]')) return rect(ABOVE - scrolled, slotHeight())
+      if (this === list[0]?.parentElement) return rect(listTop - scrolled, list.length * ROW)
+      const index = list.indexOf(this as HTMLButtonElement)
+      if (index >= 0) return rect(listTop + index * ROW - scrolled, ROW - 4)
+      return rect(0, 0)
+    })
+    panel.scrollTop = scrollTop
+    unbind = bindKeepPressedInPlace(panel)
+    return { panel, cardTop: () => panel.querySelector('.pulse-moment-slot')!.getBoundingClientRect().top }
+  }
+
+  /** A pointer press and click, as the panel sees them, then a few frames. */
+  const press = (element: Element) => {
+    act(() => {
+      element.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, isPrimary: true }))
+      ;(element as HTMLElement).click()
+    })
+    flushFrames()
+  }
+  const topOf = (element: Element) => element.getBoundingClientRect().top
+
+  afterEach(() => {
+    unbind?.()
+    unbind = null
+    vi.restoreAllMocks()
+  })
+
+  it('keeps the picked row where it was when the card opens, and when the row closes it again', () => {
+    const { panel, cardTop } = mountPanel(150)
+    const row = rows(panel)[1]
+    const before = topOf(row)
+
+    press(row)
+    expect(openCard(panel)).not.toBeNull()
+    expect(Math.abs(topOf(row) - before)).toBeLessThanOrEqual(1)
+    // The panel scrolled by the card's height, and the whole card is in view.
+    expect(panel.scrollTop).toBe(150 + CARD)
+    expect(cardTop()).toBeGreaterThanOrEqual(0)
+    expect(cardTop() + CARD).toBeLessThanOrEqual(VIEW)
+
+    press(row)
+    expect(openCard(panel)).toBeNull()
+    expect(Math.abs(topOf(row) - before)).toBeLessThanOrEqual(1)
+    expect(panel.scrollTop).toBe(150)
+  })
+
+  it('keeps the row where it was when Escape or × closes the card', () => {
+    const { panel } = mountPanel(150)
+    const row = rows(panel)[2]
+    const before = topOf(row)
+
+    press(row)
+    expect(Math.abs(topOf(row) - before)).toBeLessThanOrEqual(1)
+    act(() => row.focus())
+    act(() => { row.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
+    flushFrames()
+    expect(openCard(panel)).toBeNull()
+    expect(document.activeElement).toBe(row)
+    expect(Math.abs(topOf(row) - before)).toBeLessThanOrEqual(1)
+
+    press(row)
+    expect(Math.abs(topOf(row) - before)).toBeLessThanOrEqual(1)
+    press(clearButton(panel)!)
+    expect(openCard(panel)).toBeNull()
+    expect(document.activeElement).toBe(row)
+    expect(Math.abs(topOf(row) - before)).toBeLessThanOrEqual(1)
+  })
+
+  it('keeps the card in view when the list sits near the top of the panel, moving the row only as far as that takes', () => {
+    // Top Moments starts 50 px below the panel's top edge: there is not the
+    // card's height to scroll away above it, so the card stays in view.
+    const { panel, cardTop } = mountPanel(ABOVE - 50)
+    const row = rows(panel)[0]
+    const before = topOf(row)
+
+    press(row)
+    expect(openCard(panel)).not.toBeNull()
+    // The card's top stops 8 px inside the panel...
+    expect(cardTop()).toBe(8)
+    // ...and the row moved down by what could not be scrolled away.
+    expect(topOf(row) - before).toBe(CARD - (50 - 8))
   })
 })
 
@@ -452,12 +641,13 @@ describe('Top Moments card in static markup', () => {
     expect(html.indexOf('data-top-moment-card')).toBeLessThan(html.indexOf('pulse-moment-row-button'))
   })
 
-  it('shows the strongest moment, whatever the sort, when nothing is pinned', () => {
+  it('shows no card when nothing is pinned, whatever the sort', () => {
     const html = renderToStaticMarkup(
       <MostReactedSection payload={payload} backendUrl="https://api.example.test" onJump={() => undefined} onAnalytics={() => undefined} />,
     )
-    expect(html).toContain('data-top-moment-card="strongest"')
-    expect(html).toMatch(/aria-label="Strongest moment at 00:02/)
+    expect(html).not.toContain('data-top-moment-card')
+    expect(html).not.toContain('data-selected-moment-card')
+    expect(html).not.toContain('Strongest moment')
     expect(html).not.toContain('Clear selected moment')
   })
 })
@@ -532,6 +722,7 @@ describe('Stream recap Top moments', () => {
   )
   /** The card a chart pick opens above the Top moments caption. */
   const slotCard = (host: ParentNode) => [...host.querySelectorAll('.pulse-moment-slot:not(.pulse-moment-slot-exit)')]
+    .filter(slot => !slot.closest('[data-top-moment-card]'))
   const marker = (host: ParentNode, offsetSeconds: number) =>
     host.querySelector(`[data-chart-moment-marker="true"][data-chart-moment-marker-offset="${offsetSeconds}"]`)
   const markerState = (host: ParentNode, offsetSeconds: number) => marker(host, offsetSeconds)?.getAttribute('data-chart-moment-marker-state')
@@ -572,28 +763,39 @@ describe('Stream recap Top moments', () => {
     { name: 'recap', payload: recapPayload },
     { name: 'peaks fallback', payload: { ...recapPayload, recap: null } },
   ]) {
-    it(`swaps list picks into the card above the list and keeps chart picks in their own card (${variant.name})`, () => {
+    it(`opens list picks in the card above the list and keeps chart picks in their own card (${variant.name})`, () => {
       const host = mount(recap(variant.payload))
       const list = rows(host)
-      const card = topCard(host)!
       expect(list.length).toBeGreaterThanOrEqual(3)
-      // The first moment starts highlighted, shown as the strongest.
-      expect(card.getAttribute('data-top-moment-card')).toBe('strongest')
-      expect(topCardLabel(host)).toMatch(/^Strongest moment at 00:02/)
-      expect(list[0].getAttribute('aria-pressed')).toBe('true')
-      expect(card.nextElementSibling).toBe(list[0].parentElement)
-      expect(list.map(row => row.getAttribute('aria-controls'))).toEqual(list.map(() => card.id))
+      // Nothing is picked for the viewer: no card, no pressed or highlighted
+      // row, no locked chart minute, no selected highlight.
+      expect(topCard(host)).toBeNull()
+      expect(host.textContent).not.toContain('Strongest moment')
+      expect(list.every(row => row.getAttribute('aria-pressed') === 'false')).toBe(true)
+      expect(host.querySelectorAll('.pulse-moment-row-selected')).toHaveLength(0)
+      expect(list.filter(row => row.hasAttribute('aria-controls'))).toHaveLength(0)
+      expect(host.querySelector('svg[data-chart-locked-index]')).toBeNull()
+      expect(host.querySelector('[data-chart-readout-state="selected"]')).toBeNull()
+      expect(host.querySelectorAll('.pulse-recap-highlight-btn[aria-pressed="true"]')).toHaveLength(0)
       expect(selectionCards(host)).toHaveLength(0)
 
-      // Picking the highlighted first row changes no key, but still selects it.
+      // Picking the first row opens it and locks its minute; picking it again
+      // closes the card and releases the chart.
       click(list[0])
+      expect(list[0].getAttribute('aria-pressed')).toBe('true')
+      expect(host.querySelector('svg[data-chart-locked-index]')).not.toBeNull()
+      const card = openCard(host)!
       expect(topCardLabel(host)).toMatch(/^Selected moment at 00:02/)
+      expect(card.nextElementSibling).toBe(list[0].parentElement)
+      expect(list.map(row => row.getAttribute('aria-controls'))).toEqual(list.map(() => card.id))
       expect(clearButton(host)).not.toBeNull()
-      click(clearButton(host)!)
-      expect(card.getAttribute('data-top-moment-card')).toBe('strongest')
+      click(list[0])
+      expect(openCard(host)).toBeNull()
+      expect(list[0].getAttribute('aria-pressed')).toBe('false')
+      expect(host.querySelector('svg[data-chart-locked-index]')).toBeNull()
+      expect(selectionCards(host)).toHaveLength(0)
 
       click(list[1])
-      expect(topCard(host)).toBe(card)
       expect(topCardLabel(host)).toMatch(/^Selected moment at 00:04/)
       expect(rows(host)).toEqual(list)
       expect(slotCard(host)).toHaveLength(0)
@@ -603,20 +805,20 @@ describe('Stream recap Top moments', () => {
       expect(topCardLabel(host)).toMatch(/^Selected moment at 00:06/)
       expect(selectionCards(host)).toHaveLength(1)
 
-      // A chart pick opens its own card above the list, as before.
+      // A chart pick opens its own card above the list, as before, and the
+      // Top Moments card closes.
       const plot = host.querySelector('[data-chart-scrubber="true"]')!
       key(plot, 'Home')
       key(plot, 'Enter')
       expect(slotCard(host)).toHaveLength(1)
       expect(slotCard(host)[0].compareDocumentPosition(list[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-      expect(card.getAttribute('data-top-moment-card')).toBe('strongest')
+      expect(openCard(host)).toBeNull()
       expect(selectionCards(host)).toHaveLength(1)
 
       // A spike marker of a listed moment shows it in the card, as in the
       // live panel: its row is pressed and the chart's card closes.
       click(host.querySelector('[data-chart-moment-toggle="true"]')!)
       clickMarker(host, 240)
-      expect(topCard(host)).toBe(card)
       expect(topCardLabel(host)).toMatch(/^Selected moment at 00:04/)
       expect(list[1].getAttribute('aria-pressed')).toBe('true')
       expect(slotCard(host)).toHaveLength(0)
@@ -629,7 +831,7 @@ describe('Stream recap Top moments', () => {
       act(() => list[0].focus())
       key(list[0], 'Escape')
       expect(document.activeElement).toBe(list[0])
-      expect(card.getAttribute('data-top-moment-card')).toBe('strongest')
+      expect(openCard(host)).toBeNull()
       expect(selectionCards(host)).toHaveLength(0)
     })
   }
@@ -662,7 +864,7 @@ describe('Stream recap Top moments', () => {
       click(clearButton(host)!)
       expect(rows(host)).toHaveLength(5)
       expect(document.activeElement).toBe(expander(host))
-      expect(topCard(host)!.getAttribute('data-top-moment-card')).toBe('strongest')
+      expect(openCard(host)).toBeNull()
 
       // Escape on the kept row does the same.
       click(expander(host))
@@ -674,7 +876,7 @@ describe('Stream recap Top moments', () => {
       expect(kept.isConnected).toBe(false)
       expect(rows(host)).toHaveLength(5)
       expect(document.activeElement).toBe(expander(host))
-      expect(topCard(host)!.getAttribute('data-top-moment-card')).toBe('strongest')
+      expect(openCard(host)).toBeNull()
     })
   }
 })
