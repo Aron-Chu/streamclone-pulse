@@ -6,45 +6,45 @@
       "version": "0.2.2",
       "status": "unreleased",
       "releasedAt": null,
-      "title": "Device bookmarks, a new popup, and Supporter perks",
-      "summary": "Device bookmarks with no account needed, a redesigned toolbar popup, a fixed Top Moments card, and Supporter perks, purchase and recovery for when Supporter sign-ups open.",
+      "title": "Whole-stream charts and Help & Feedback",
+      "summary": "Whole-stream charts, a calmer Top Moments list, Help & Feedback in settings, bookmarks without an account and a redesigned popup. The 7TV header backdrop is now a Supporter perk, and accounts and Supporter sign-ups are not open yet.",
       "preview": [
-        "Bookmark moments without an account; they stay on this device.",
-        "The toolbar popup shows channels Pulse is charting live and jumps back to your recent moments.",
-        "A picked Top Moment opens in a fixed card above the list."
+        "Help & Feedback: private feedback, Discord, release notes.",
+        "Top Moments opens a card only when you pick one.",
+        "The 7TV header backdrop moved to Supporter (not open yet)."
       ],
       "new": [
-        "Bookmarks work without an account: saves stay on this device and are never uploaded. Once an account is linked, My Moments lists them under Saved on this device.",
-        "The toolbar popup is redesigned. Away from a stream it lists channels Pulse is charting live and a Jump back in card for your recent moments and device saves.",
-        "Picking a Top Moments row shows its moment card in a fixed place above the list, so the list does not move.",
-        "Supporters can paint the panel title with their finish, a wave and a sheen, and show a tenure crest that grows with their support.",
-        "Become a Supporter opens streampulse.stream, where you sign in and approve this extension before paying on Stripe. Where the server allows it, Stripe opens directly instead, without a website sign-in or device code.",
-        "Membership management and recovery stay connected to the extension's own account."
+        "Help & Feedback in settings: send private feedback that only the StreamPulse team reads, join the StreamPulse Discord, and read these release notes.",
+        "A strength pill on the strongest moment so far shows how far it beat the stream's usual activity, for example 4.2× usual.",
+        "Bookmarks work without an account. Without one, they stay in this browser and are never uploaded.",
+        "The toolbar popup is redesigned. Away from a stream it lists channels Pulse is charting live, with a Jump back in card for your recent moments and bookmarks.",
+        "A Supporter preview in quick settings and settings shows what Supporter will add: title paint, a tenure crest, emote rain and a Supporter card, seen only by you. Supporter sign-ups are not open yet."
+      ],
+      "changed": [
+        "The 7TV header backdrop (emote rain: Still or Rain behind the panel header) moved from free to Supporter. Until Supporter sign-ups open it stays off for everyone, and a backdrop you chose before is kept for when you support. The panel title and accent themes stay free."
       ],
       "improved": [
-        "Quick settings open on a Watching card for the current channel, with the Supporter card under it and Open all settings pinned at the bottom.",
-        "The 7TV header backdrop (Still or Rain) is now a Supporter perk and is off by default. The panel title stays free, and a saved backdrop choice is kept for when you support."
+        "Long streams chart end to end.",
+        "Top Moments opens a moment's card only when you pick one, the row stays under your pointer, and nothing is picked for you.",
+        "Settings are reorganised, and quick settings open on a Watching card for the channel you are on.",
+        "Twitch tabs in the background no longer prefetch Pulse data, and your open Twitch tabs share one Supporter check."
       ],
       "fixed": [
         "When StreamPulse cannot be reached on first load, Pulse says so and offers Retry instead of showing Loading forever.",
         "Hiding Pulse in the right or bottom dock no longer draws a large dark shape over the page.",
         "VODs without replay data no longer show a false outage or raw error codes.",
-        "Analytics links keep a moment in the stream's first minute, and a link without a stream no longer selects a minute in a different stream.",
-        "While a linked account's connection is renewing, bookmarks stay with the account and report that it is unreachable instead of saving on this device and then dropping out of view.",
-        "A temporary connection error no longer immediately discards an installation account's credential.",
-        "Unpaid checkout stays available to reopen, with automatic checks bounded to thirty minutes.",
-        "Old restore notices no longer hide verified membership management."
+        "Analytics links keep a moment in the stream's first minute, and a link without a stream no longer selects a minute in a different stream."
       ],
       "knownIssues": [
-        "Supporter sign-ups are not yet open to everyone.",
-        "Bookmarks saved on this device before linking an account are not added to the account."
+        "Accounts and Supporter sign-ups are not open yet. Accounts are coming with Continue with Twitch.",
+        "Bookmarks, notes and watched history stay in the browser where you saved them, unless you link an account (invite-only for now)."
       ],
       "links": { "details": "/changelog", "support": "/support" }
     },
     {
       "version": "0.2.1",
-      "status": "unreleased",
-      "releasedAt": null,
+      "status": "released",
+      "releasedAt": "2026-08-31",
       "title": "Selected-minute clarity and complete extension settings",
       "summary": "Exact bucket selection, honest viewer history, refined chart motion, validated Twitch VOD playback windows, and a complete responsive settings workspace.",
       "preview": [
