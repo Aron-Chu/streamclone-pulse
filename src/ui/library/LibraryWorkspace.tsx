@@ -8,6 +8,7 @@ import { MomentPreview, type MomentContextState } from './MomentPreview.tsx'
 import type { MomentPresentation } from './MomentMedia.tsx'
 import type { BookmarksState } from '../../shared/myMoments.ts'
 import type { PulseBookmark } from '../../shared/messages.ts'
+import { TWITCH_SIGNIN_ENABLED } from '../../shared/twitchSignIn.ts'
 import './library.css'
 
 export interface LibraryWorkspaceProps {
@@ -21,6 +22,12 @@ export interface LibraryWorkspaceProps {
   presentations?: Readonly<Record<string, MomentPresentation>>
   /** Portal origin for moment Analytics links; production when omitted. */
   analyticsOrigin?: string
+  /**
+   * Whether this build can create an account (Continue with Twitch). With
+   * sign-in compiled off nobody can make one, so nothing here offers it.
+   * Fixed at build time; a prop for tests only.
+   */
+  accountsOpen?: boolean
   now?: () => number
 }
 
@@ -48,36 +55,47 @@ function deviceSaveMoments(snapshot: LibrarySnapshot | null): LibraryMoment[] {
 }
 
 /**
+ * My Moments with Sign in with Twitch compiled off (every store build today):
+ * there is no account anyone can create, so the copy says where saves live
+ * and what is coming, and offers no account action.
+ */
+export const DEVICE_ONLY_INTRO = 'Find your way back to the stream. Bookmarks are free and stay in this browser, along with your notes and watched history. Accounts are coming with Continue with Twitch.'
+export const DEVICE_ONLY_COPY = 'Bookmarks, notes and watched history stay in this browser and are never uploaded. Accounts are coming with Continue with Twitch; until then there is nothing to sign up for.'
+
+/**
  * Names why the hosted list is missing and what to do about it.
  *
  * The worker distinguishes these; an earlier single "could not be loaded"
  * banner covered a missing sign-in, an expired link and a dead network alike,
  * so it could never point at the one action that resolves the common case.
  */
-function BookmarksNotice({ state, onRetry }: { state: BookmarksState; onRetry: () => void }) {
+function BookmarksNotice({ state, onRetry, accountsOpen }: { state: BookmarksState; onRetry: () => void; accountsOpen: boolean }) {
   if (state === 'ready') return null
-  const linkable = state === 'not_linked' || state === 'expired'
+  // Without sign-in nobody can make an account, so a missing one is not a
+  // problem to fix: no Connect button, and no Retry that could change nothing.
+  const deviceOnly = state === 'not_linked' && !accountsOpen
+  const linkable = !deviceOnly && (state === 'not_linked' || state === 'expired')
   return (
     <PulseSectionCard
       title={state === 'not_linked' ? 'Bookmarks are saved on this device' : state === 'expired' ? 'Your account link expired' : 'Could not reach StreamPulse'}
       headingLevel={3}
     >
       <p className="pl-muted">
-        {state === 'not_linked'
+        {deviceOnly ? DEVICE_ONLY_COPY : state === 'not_linked'
           ? 'Connect a free Pulse account and new bookmarks follow you to any device. Bookmarks, notes and watched history saved here stay on this device.'
           : linkable
             ? 'Saved moments sync through your account so they survive a reinstall. Notes stay on this device, and so does watched history unless you turn on history sync.'
             : 'No bookmark change was confirmed. Watched history and notes on this device are unaffected.'}
       </p>
-      <div className="pl-row">
+      {deviceOnly ? null : <div className="pl-row">
         {linkable ? <a className="pl-button pl-primary" href="#supporter">Connect account</a> : null}
         <button type="button" className="pl-button" onClick={onRetry}>Retry</button>
-      </div>
+      </div>}
     </PulseSectionCard>
   )
 }
 
-export function LibraryWorkspace({ repository, initialView = 'saved', onExport, contexts, presentations, analyticsOrigin, now = Date.now }: LibraryWorkspaceProps) {
+export function LibraryWorkspace({ repository, initialView = 'saved', onExport, contexts, presentations, analyticsOrigin, now = Date.now, accountsOpen = TWITCH_SIGNIN_ENABLED }: LibraryWorkspaceProps) {
   const library = useLibrary(repository)
   const [view, setView] = useState<LibraryView>(initialView)
   const [query, setQuery] = useState('')
@@ -149,10 +167,10 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
   const syncing = snapshot?.historySync?.state === 'on'
   return <main className="pl-library" id="settings-content" tabIndex={-1} aria-label="My Moments settings">
     <div className="pl-page-heading"><div><span className="pl-eyebrow">YOUR MOMENTS · FREE</span><h2 ref={heading} tabIndex={-1}>My Moments</h2>
-      <p className="pl-muted">Find your way back to the stream. Bookmarks are free. Without an account they stay on this device; with a free Pulse account they follow you to any device. Notes stay on this device. Watched history does too, unless you sync it to your account.</p></div></div>
+      <p className="pl-muted">{accountsOpen ? 'Find your way back to the stream. Bookmarks are free. Without an account they stay on this device; with a free Pulse account they follow you to any device. Notes stay on this device. Watched history does too, unless you sync it to your account.' : DEVICE_ONLY_INTRO}</p></div></div>
     <div className="pl-library-intro" aria-label="How My Moments works">
       <span><strong>Bookmarks</strong><small>Keep a timestamp and note for later.</small></span>
-      <span><strong>History</strong><small>Optional playback memory, on this device or your account.</small></span>
+      <span><strong>History</strong><small>{accountsOpen ? 'Optional playback memory, on this device or your account.' : 'Optional, device-only playback memory.'}</small></span>
       <span><strong>Privacy</strong><small>References only; no video downloads.</small></span>
     </div>
 
@@ -168,7 +186,7 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
     {library.loading ? <section aria-busy="true" aria-label="Loading My Moments" className="pl-stack"><p role="status">Loading your moments…</p>
       {[0, 1, 2].map(n => <div className="pl-skeleton" aria-hidden="true" key={n}><span /><span /></div>)}</section> : null}
     {snapshot ? <>
-      {contentView ? <BookmarksNotice state={bookmarksState} onRetry={library.retry} /> : null}
+      {contentView ? <BookmarksNotice state={bookmarksState} onRetry={library.retry} accountsOpen={accountsOpen} /> : null}
       {snapshot.sync.kind === 'offline' ? <p className="pl-warning">You’re offline. Local saves still work. Cloud changes have not been backed up yet.</p> : null}
       {contentView ? <>
         <section className="pl-library-results" id={`${id}-panel-${view}`} role="tabpanel" aria-labelledby={`${id}-tab-${view}`} tabIndex={-1} aria-label={views.find(v => v.id === view)?.label}>
@@ -210,7 +228,7 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
           </section> : null}
         </section>
       </> : <div className="pl-library-results" id={`${id}-panel-storage`} role="tabpanel" aria-labelledby={`${id}-tab-storage`} tabIndex={-1} aria-label="Storage and privacy">
-        <StorageSettings snapshot={snapshot} busy={library.busy} onExport={() => void exportAll()} onClear={() => setConfirmation({ kind: 'clear' })}
+        <StorageSettings snapshot={snapshot} busy={library.busy} accountsOpen={accountsOpen} onExport={() => void exportAll()} onClear={() => setConfirmation({ kind: 'clear' })}
           exportLabel={bookmarksState === 'ready' ? 'Export all data' : 'Export device data'}
           onHistorySync={enabled => enabled
             ? void library.run({ kind: 'history-sync', enabled: true }, 'History sync is on. This browser’s history is joining your account.')
@@ -259,10 +277,13 @@ function syncedLabel(at: number, now: number): string {
 }
 
 /** The account half of history: the switch, what it shares, and how the last sync went. */
-export function HistorySyncCard({ sync, busy, onChange, now = Date.now() }: { sync: HistorySyncView; busy: boolean; onChange: (enabled: boolean) => void; now?: number }) {
+export function HistorySyncCard({ sync, busy, onChange, now = Date.now(), accountsOpen = TWITCH_SIGNIN_ENABLED }: { sync: HistorySyncView; busy: boolean; onChange: (enabled: boolean) => void; now?: number; accountsOpen?: boolean }) {
   if (sync.state === 'unavailable') return null
   return <PulseSectionCard title="Sync with your account">
-    {sync.state === 'signed_out'
+    {sync.state === 'signed_out' && !accountsOpen
+      // No account can be made with sign-in compiled off: say so, offer nothing.
+      ? <p className="pl-muted">History stays in this browser. Syncing it across browsers arrives with accounts, which are coming with Continue with Twitch.</p>
+      : sync.state === 'signed_out'
       ? <><p className="pl-muted">Connect a free Pulse account to see this history in your other browsers and on streampulse.stream. History kept while signed out stays on this device.</p>
         <div className="pl-row"><a className="pl-button" href="#supporter">Connect account</a></div></>
       : <>
@@ -275,9 +296,10 @@ export function HistorySyncCard({ sync, busy, onChange, now = Date.now() }: { sy
   </PulseSectionCard>
 }
 
-export function StorageSettings({ snapshot, busy, onChange, onExport, onClear, onHistorySync, exportLabel = 'Export all data' }: {
+export function StorageSettings({ snapshot, busy, onChange, onExport, onClear, onHistorySync, exportLabel = 'Export all data', accountsOpen = TWITCH_SIGNIN_ENABLED }: {
   snapshot: LibrarySnapshot; busy: boolean; onChange: (value: LibraryPreferences) => void; onExport: () => void; onClear: () => void
   onHistorySync?: (enabled: boolean) => void
+  accountsOpen?: boolean
   exportLabel?: string
 }) {
   const id = useId(); const preferences = snapshot.preferences; const storage = snapshot.storage
@@ -289,7 +311,7 @@ export function StorageSettings({ snapshot, busy, onChange, onExport, onClear, o
       <label className="pl-field" htmlFor={`${id}-retention`}>Keep history for<PulseThemedSelect id={`${id}-retention`} ariaLabel="Keep history for" fullWidth value={String(preferences.retentionDays)} disabled={busy} onChange={value => onChange({ ...preferences, retentionDays: Number(value) as 7 | 30 | 90 })} options={[7,30,90].map(days=>({value:String(days),label:`${days} days`}))} /></label>
       <p className="pl-muted">Bookmarks do not expire with history. Turning history off stops new capture; it does not clear existing entries.{syncing ? ' While history syncs, how long it is kept applies to your whole account.' : ''}</p>
     </PulseSectionCard>
-    {snapshot.historySync && onHistorySync ? <HistorySyncCard sync={snapshot.historySync} busy={busy} onChange={onHistorySync} /> : null}
+    {snapshot.historySync && onHistorySync ? <HistorySyncCard sync={snapshot.historySync} busy={busy} onChange={onHistorySync} accountsOpen={accountsOpen} /> : null}
     <PulseSectionCard title="On this device" meta={<span>{(storage.usedBytes / 1048576).toFixed(2)} / {(storage.limitBytes / 1048576).toFixed(0)} MiB</span>}>
       <label className="pl-field" htmlFor={`${id}-usage`}>Moment data allowance<meter id={`${id}-usage`} min={0} max={storage.limitBytes} value={Math.min(storage.usedBytes, storage.limitBytes)} /></label>
       <p>{full ? 'Storage limit reached. Remove bookmark items or clear eligible history before adding more. Existing items stay available.' : 'References and notes only. No downloaded videos or cached thumbnails.'}</p>
