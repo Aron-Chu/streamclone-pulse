@@ -9,7 +9,7 @@ vi.mock('../../hooks/useConsoleMotion.ts', () => ({
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
-it('accumulates gentle animated wheel input once Scroll zoom is on, keeping drag release immediate', () => {
+it('zooms with a plain wheel by default, accumulating gentle animated input, and keeps drag release immediate', () => {
   const frames = new Map<number, FrameRequestCallback>()
   let id = 0
   vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => {
@@ -34,18 +34,12 @@ it('accumulates gentle animated wheel input once Scroll zoom is on, keeping drag
     onSelectEmote={vi.fn()} selectedRollup={null} onSelectRollup={vi.fn()}
     viewMode="overview" onViewModeChange={vi.fn()} />)
   const plot = container.querySelector('[data-chart-touch-action]')!
-  vi.spyOn(plot, 'getBoundingClientRect').mockReturnValue({ left: 0, width: 1000 } as DOMRect)
+  vi.spyOn(plot, 'getBoundingClientRect').mockReturnValue({ left: 0, right: 1000, top: 0, bottom: 300, width: 1000, height: 300 } as DOMRect)
   const range = () => [Number(plot.getAttribute('data-chart-viewport-start')), Number(plot.getAttribute('data-chart-viewport-end'))]
   const initial = range()
-  const wheel = (deltaY: number) => fireEvent.wheel(plot, { deltaY, clientX: 500 })
-  // As on the hub, a plain wheel scrolls the page until Scroll zoom is on.
-  expect(wheel(-100)).toBe(true)
-  flush()
-  flush(150)
-  expect(range()).toEqual(initial)
+  const wheel = (deltaY: number) => fireEvent.wheel(plot, { deltaY, clientX: 500, clientY: 150 })
+  // As on the hub, Scroll zoom is on by default: a plain wheel over the plot zooms.
   const scrollZoom = screen.getByRole('button', { name: /Scroll zoom/ })
-  expect(scrollZoom.getAttribute('aria-pressed')).toBe('false')
-  fireEvent.click(scrollZoom)
   expect(scrollZoom.getAttribute('aria-pressed')).toBe('true')
   // Wheel zoom goes through the shared navigator, as on the hub: each notch
   // is the hub's step (exp(-100 * 0.0025), about 22% narrower), and notches
@@ -81,5 +75,13 @@ it('accumulates gentle animated wheel input once Scroll zoom is on, keeping drag
   expect(released[0]).toBeLessThan(beforeDrag[0])
   expect(released[1] - released[0]).toBeCloseTo(beforeDrag[1] - beforeDrag[0])
   flush()
+  expect(range()).toEqual(released)
+
+  // With Scroll zoom off, a plain wheel scrolls the page and the plot stays put.
+  fireEvent.click(scrollZoom)
+  expect(scrollZoom.getAttribute('aria-pressed')).toBe('false')
+  expect(wheel(-100)).toBe(true)
+  flush()
+  flush(1000)
   expect(range()).toEqual(released)
 })

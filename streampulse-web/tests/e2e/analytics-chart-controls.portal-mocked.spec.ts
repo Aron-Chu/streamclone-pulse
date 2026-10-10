@@ -60,7 +60,8 @@ for (const viewport of VIEWPORTS) {
 
       const buttons = toolbar.locator('button:visible')
       const labels = (await buttons.allTextContents()).map(text => text.trim())
-      expect(labels).toEqual(['Zoom in', 'Zoom out', 'Reset zoom', 'Scroll zoomOff'])
+      // Scroll zoom is on by default (owner ask, 2026-10-09) and remembered in this browser.
+      expect(labels).toEqual(['Zoom in', 'Zoom out', 'Reset zoom', 'Scroll zoomOn'])
       for (const box of await buttons.evaluateAll(nodes => nodes.map(node => {
         const rect = node.getBoundingClientRect()
         return { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
@@ -83,7 +84,8 @@ for (const viewport of VIEWPORTS) {
       await expect(navigator.getByRole('slider', { name: 'Chart view start' })).toBeVisible()
       await expect(navigator.getByRole('slider', { name: 'Chart view end' })).toBeVisible()
       await expect(navigator.getByRole('button', { name: 'Reset zoom' })).toBeVisible()
-      await expect(navigator.getByRole('button', { name: /Scroll zoom/ })).toHaveAttribute('aria-pressed', 'false')
+      await expect(navigator.getByRole('button', { name: /Scroll zoom/ })).toHaveAttribute('aria-pressed', 'true')
+      await expect(navigator.locator('.hx-chart-navigator__hint')).toHaveText('Scroll over the chart to zoom · Shift + scroll to pan · Drag the purple bar to pick a span')
       await expect(navigator.locator('strong')).toHaveText('Full stream')
 
       // The navigator track lines up with the plot and sits below it.
@@ -169,7 +171,7 @@ for (const viewport of VIEWPORTS) {
 test.describe('session chart zoom gestures (desktop)', () => {
   test.use({ viewport: { width: 1440, height: 900 }, contextOptions: { reducedMotion: 'reduce' } })
 
-  test('track click, navigator reset, and Alt + wheel all drive the same view', async ({ page }) => {
+  test('track click, navigator reset, a plain wheel, and Alt + wheel with Scroll zoom off all drive the same view', async ({ page }) => {
     const harness = await openLongSession(page)
     const navigator = page.locator('[data-session-chart-navigator] [data-hub-chart-navigator]')
     const window = () => navigator.getAttribute('data-hub-chart-navigator-window')
@@ -192,13 +194,30 @@ test.describe('session chart zoom gestures (desktop)', () => {
     await expect(readout(page)).toHaveText('Full stream')
     await expect.poll(window).toBe(fullWindow)
 
-    // A plain wheel over the plot scrolls the page while Scroll zoom is off.
+    // Scroll zoom is on by default: a plain wheel over the plot zooms.
     const plot = await page.locator(CHART).boundingBox()
     if (!plot) throw new Error('chart has no layout box')
     await page.mouse.move(plot.x + plot.width / 2, plot.y + plot.height / 2)
     await page.mouse.wheel(0, -200)
     await settle(page)
+    await expect(readout(page)).toHaveText('Zoomed view')
+    await navigator.getByRole('button', { name: 'Reset zoom' }).click()
+    await settle(page)
+    await expect.poll(window).toBe(fullWindow)
+
+    // Turned off, a plain wheel over the plot scrolls the page.
+    await navigator.getByRole('button', { name: /Scroll zoom/ }).click()
+    await expect(navigator.getByRole('button', { name: /Scroll zoom/ })).toHaveAttribute('aria-pressed', 'false')
+    await expect(navigator.locator('.hx-chart-navigator__hint')).toHaveText('Scroll zoom is off: the wheel scrolls the page · Hold Alt and scroll to zoom · Shift + scroll to pan')
+    await page.locator(CHART).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }))
+    const centered = await page.locator(CHART).boundingBox()
+    if (!centered) throw new Error('chart has no layout box')
+    await page.mouse.move(centered.x + centered.width / 2, centered.y + centered.height / 2)
+    const scrolledFrom = await page.evaluate(() => document.documentElement.scrollTop)
+    await page.mouse.wheel(0, -200)
+    await settle(page)
     await expect(readout(page)).toHaveText('Full stream')
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollTop)).toBeLessThan(scrolledFrom)
 
     const box = await page.locator(CHART).boundingBox()
     if (!box) throw new Error('chart has no layout box')
@@ -209,6 +228,71 @@ test.describe('session chart zoom gestures (desktop)', () => {
     await settle(page)
     await expect(readout(page)).not.toHaveText('Full stream')
     await expect(navigator.locator('strong')).toHaveText('Zoomed view')
+    await assertNoUnexpected(harness)
+  })
+})
+
+test.describe('session chart bars follow the zoom (desktop)', () => {
+  test.use({ viewport: { width: 1440, height: 900 }, contextOptions: { reducedMotion: 'reduce' } })
+
+  test('a wheel zoom re-buckets the bars and the note follows, down to 1-minute bars', async ({ page }) => {
+    const harness = await openLongSession(page)
+    const chart = page.locator(CHART)
+    const note = page.locator('[data-session-chart-navigator] [data-chart-bar-bucket-minutes]')
+    const area = await page.locator(`${CHART} rect[data-chart-touch-action]`).boundingBox()
+    if (!area) throw new Error('plot area has no layout box')
+    const levels: number[] = [Number(await chart.getAttribute('data-activity-bucket-minutes'))]
+    await expect(note).toHaveText(`bars ${levels[0]}-min avg`)
+    await page.mouse.move(area.x + area.width / 2, area.y + area.height / 2)
+    for (let notch = 0; notch < 12; notch += 1) {
+      await page.mouse.wheel(0, -100)
+      await settle(page)
+      const level = Number(await chart.getAttribute('data-activity-bucket-minutes'))
+      if (level !== levels[levels.length - 1]) levels.push(level)
+      await expect(note).toHaveAttribute('data-chart-bar-bucket-minutes', String(level))
+      await expect(note).toHaveText(level > 1 ? `bars ${level}-min avg` : 'bars per minute')
+    }
+    // Coarse to fine, never back, ending at one bar per minute.
+    expect(levels[0]).toBeGreaterThan(1)
+    expect(levels[levels.length - 1]).toBe(1)
+    for (let index = 1; index < levels.length; index += 1) expect(levels[index]!).toBeLessThan(levels[index - 1]!)
+    // At one bar per minute no bar averages anything: no caps.
+    await expect(page.locator(`${CHART} [data-activity-bar-peak]`)).toHaveCount(0)
+    await page.locator('[data-session-chart-navigator]').getByRole('button', { name: 'Reset zoom' }).click()
+    await settle(page)
+    await expect(chart).toHaveAttribute('data-activity-bucket-minutes', String(levels[0]))
+    await assertNoUnexpected(harness)
+  })
+
+  test('above 1-minute bars a short spike gets a cap and a slot with unmeasured minutes is faded and marked', async ({ page }) => {
+    const harness = await installPortalAcceptanceHarness(page)
+    const payload = buildMinutes({ count: LONG_STREAM_MINUTES, withEmotes: true })
+    // Minutes 101 and 102 were never measured; minute 402 is a short spike.
+    payload.minutes = payload.minutes
+      .filter(minute => ![101 * 60, 102 * 60].includes(Number(minute.offsetSeconds)))
+      .map(minute => (Number(minute.offsetSeconds) === 402 * 60 ? { ...minute, chatCount: 20_000 } : minute))
+    harness.setMinutesPayload(payload)
+    await openAnalyticsSession(page)
+    const chart = page.locator(CHART)
+    await expect(chart).toHaveCount(1, { timeout: 25_000 })
+    await expect(chart).toHaveAttribute('data-activity-bucket-minutes', '5')
+    // The 100-104 slot holds 3 measured minutes of 5.
+    const partial = page.locator(`${CHART} rect[data-activity-bar="chat"][data-bar-partial="true"]`)
+    await expect(partial).toHaveCount(1)
+    await expect(partial).toHaveAttribute('data-observed-ratio', '0.600')
+    const caps = page.locator(`${CHART} rect[data-activity-bar-peak="chat"]`)
+    await expect(caps).toHaveCount(1)
+    // The cap sits above its bar, at the spike's height, as wide as the bar.
+    const [cap, capBar] = await caps.evaluate(node => {
+      const box = (element: Element | null) => {
+        const rect = element!.getBoundingClientRect()
+        return { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+      }
+      return [box(node), box(node.previousElementSibling)]
+    })
+    expect(cap.y).toBeLessThan(capBar.y)
+    expect(Math.abs(cap.x - capBar.x)).toBeLessThanOrEqual(0.5)
+    expect(Math.abs(cap.width - capBar.width)).toBeLessThanOrEqual(0.5)
     await assertNoUnexpected(harness)
   })
 })
@@ -277,15 +361,14 @@ test.describe('session chart zoom matches the Global activity chart (owner windo
     expect(expected).toBeLessThan(full)
     await expect.poll(() => span(page), { message: 'Alt + one notch over the plot' }).toBe(expected)
 
+    // Scroll zoom is on by default: no modifier needed.
     await reset()
-    await navigator(page).getByRole('button', { name: /Scroll zoom/ }).click()
     await overPlot()
     await page.mouse.wheel(0, -100)
     await settle(page)
     await expect.poll(() => span(page), { message: 'Scroll zoom on, one notch over the plot' }).toBe(await expectedSpan())
 
     await reset()
-    await navigator(page).getByRole('button', { name: /Scroll zoom/ }).click()
     const track = await navigator(page).locator('.hx-chart-navigator__track').boundingBox()
     if (!track) throw new Error('navigator track has no layout box')
     await page.mouse.move(track.x + track.width / 2, track.y + track.height / 2)
@@ -318,14 +401,23 @@ test.describe('session chart zoom matches the Global activity chart (owner windo
         expect(hovered).not.toBeNull()
         await page.mouse.click(x, y)
         await settle(page)
-        // The pointer has not moved: readout, pin hint, card and announcement agree.
+        // The pointer has not moved: readout, card and announcement agree.
         expect(minuteOf(await header.textContent()), `readout after click at ${fraction}`).toBe(hovered)
-        expect(minuteOf(await page.locator('[data-chart-selection-hint]').textContent()), `pin hint at ${fraction}`).toBe(hovered)
         expect(minuteOf(await page.locator('[data-selected-moment-time]').textContent()), `card at ${fraction}`).toBe(hovered)
         expect(minuteOf(await page.locator('[data-chart-selection-announcement]').textContent()), `announcement at ${fraction}`).toBe(hovered)
+        // Over a bar wider than a minute, the second row names that bar, which
+        // holds the pinned minute; off the plot it reads the pin.
+        const bar = page.locator('[data-chart-bar-readout]')
+        if (await bar.count()) {
+          const range = (await bar.textContent())?.match(/(\d\d:\d\d:\d\d)–(\d\d:\d\d:\d\d)/)
+          expect(range, `bar readout at ${fraction}`).not.toBeNull()
+          expect(hovered! >= range![1]! && hovered! < range![2]!, `bar ${range![0]} holds ${hovered}`).toBe(true)
+        }
+        await page.mouse.move(area.x - 40, area.y - 60)
+        await settle(page)
+        expect(minuteOf(await page.locator('[data-chart-selection-hint]').textContent()), `pin hint at ${fraction}`).toBe(hovered)
         checked += 1
         await page.keyboard.press('Escape')
-        await page.mouse.move(area.x - 40, area.y - 60)
         await settle(page)
       }
     }

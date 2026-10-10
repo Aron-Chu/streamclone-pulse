@@ -9,11 +9,12 @@ import { CHART_MOTION } from '../../../lib/chartMotion'
 import { compact, getProviderColor } from '../analytics/hubFormat'
 import { EmptyState, Skeleton } from './primitives'
 import { HubRangeMenu } from './HubRangeMenu'
-import { HubActivityBarSeries } from '../analytics/HubActivityBarSeries'
+import { HubActivityBarSeries, type HubMergedBar } from '../analytics/HubActivityBarSeries'
 import { HubActivityRhythmLines } from '../analytics/HubActivityRhythmLines'
 import { HubActivityMomentAnnotations } from '../analytics/HubActivityMomentAnnotations'
 import { classifyMomentMarker, resolveAnnotationCollisions, type HubChartAnnotation } from '../../../lib/hubChartMarkers'
-import { HubChartNavigator, type HubChartNavigatorPreset, type HubChartNavigatorRange } from './HubChartNavigator'
+import { HubChartNavigator, useChartScrollZoom, zoomNavigatorRange, type HubChartNavigatorPreset, type HubChartNavigatorRange } from './HubChartNavigator'
+import { barBucketAt, barLevelRange, buildBarPyramid, pickBarLevel, type BarBucket, type BarLevel } from '@streampulse/pulse-charts/barPyramid'
 import './hub-public-audit.css'
 
 export type { HubActivityRangeOption, HubActivityRangeControl } from './HubRangeMenu'
@@ -666,6 +667,39 @@ function areaPathFromLine(d: string): string {
   return `${d} L ${endX} 100 L ${startX} 100 Z`
 }
 
+/** "30-min" or, from two hours up, "3.5-h": the length of one merged bar. */
+function barLengthLabel(minutes: number): string {
+  return minutes >= 120 ? `${Number((minutes / 60).toFixed(1))}-h` : `${minutes}-min`
+}
+
+/** Chat per minute a server bucket measured, or null when it holds no chat rollup. */
+function measuredChatOrNull(point: HubActivityPoint): number | null {
+  return point.hasChatRollup === false || isActivityGapMarker(point) ? null : point.chat
+}
+
+/** Rounded CSS size of the plot, updated only when it is resized. */
+function usePlotSize(ref: { current: HTMLElement | null }, active: boolean): { width: number; height: number } {
+  const [size, setSize] = useState({ width: 0, height: 0 })
+  useEffect(() => {
+    const element = ref.current
+    if (!active || !element) return
+    const update = (width: number, height: number) => {
+      const next = { width: Math.round(width), height: Math.round(height) }
+      setSize((current) => (current.width === next.width && current.height === next.height ? current : next))
+    }
+    const rect = element.getBoundingClientRect()
+    update(rect.width, rect.height)
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver((entries) => {
+      const box = entries[0]?.contentRect
+      if (box) update(box.width, box.height)
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [active, ref])
+  return size
+}
+
 export function HubActivityChart({
   points,
   windowMinutes,
@@ -781,9 +815,11 @@ export function HubActivityChart({
     endIndex: 1,
   })
   const navigatorTargetRef = useRef(navigatorRange)
-  const [scrollZoomEnabled, setScrollZoomEnabled] = useState(false)
+  // Shared with the stream chart and remembered in this browser: on by
+  // default, so a plain wheel over the plot zooms. Reset and range changes
+  // never change it.
+  const [scrollZoomEnabled, setScrollZoomEnabled] = useChartScrollZoom()
   const resetNavigator = () => {
-    setScrollZoomEnabled(false)
     changeNavigatorRange({ startIndex: 0, endIndex: Math.max(0, chartPoints.length - 1) }, false)
   }
 
@@ -797,7 +833,6 @@ export function HubActivityChart({
     const times = chartPoints.map(point => point.t);
     previousGrid.current = { window: windowMinutes, requestedRange, times };
     const rangeChanged = previous.window !== windowMinutes || previous.requestedRange !== requestedRange;
-    if (rangeChanged) setScrollZoomEnabled(false);
     const current = navigatorTargetRef.current;
     const next = (() => {
       const last = Math.max(0, times.length - 1);
@@ -843,6 +878,31 @@ export function HubActivityChart({
     return { startIndex: Math.max(0, Math.min(Math.max(0, endIndex - 1), viewport.startIndex)), endIndex }
   }, [chartPoints.length, viewport.startIndex, viewport.endIndex])
   const chartIsZoomed = viewportBounds.startIndex > 0 || viewportBounds.endIndex < Math.max(0, chartPoints.length - 1)
+  const targetIsZoomed = navigatorBounds.startIndex > 0 || navigatorBounds.endIndex < Math.max(0, chartPoints.length - 1)
+  // Chat bars average whole server buckets when the plot is too narrow for one
+  // bar per bucket. Every bar size is aggregated once per loaded window (slots
+  // aligned to UTC, as the server buckets are); a zoom only picks a size.
+  const hubBucketMs = activityBucketMs(windowMinutes)
+  const barLevels = useMemo<BarLevel[]>(
+    () => buildBarPyramid(chartPoints.map((point) => point.t), [chartPoints.map(measuredChatOrNull)], hubBucketMs, 0),
+    // Keyed on the loaded window, like the navigator grid.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [chartPointWindowKey, chartPoints, hubBucketMs],
+  )
+  const plotSize = usePlotSize(wrapRef, chartPoints.length >= 2 && !loading)
+  // The bar size on screen holds through an easing zoom (hysteresis), but only
+  // at the same plot width: a resize picks the size afresh.
+  const barStepRef = useRef<{ step: number; width: number } | null>(null)
+  const barLevel = useMemo(() => {
+    if (plotSize.width <= 0) return null
+    const spanMs = Math.max(0, viewportBounds.endIndex - viewportBounds.startIndex) * hubBucketMs
+    const held = barStepRef.current
+    const level = pickBarLevel(barLevels, spanMs, plotSize.width, hubBucketMs, held && held.width === plotSize.width ? held.step : null)
+    barStepRef.current = level ? { step: level.step, width: plotSize.width } : null
+    return level
+  }, [barLevels, hubBucketMs, plotSize.width, viewportBounds.endIndex, viewportBounds.startIndex])
+  const barSpan = barLevel?.step ?? 1
+  const barMinutes = Math.round((barSpan * hubBucketMs) / 60_000)
   const navigatorPresets = useMemo(
     () => hubNavigatorPresets(windowMinutes, chartPoints.length),
     [chartPoints.length, windowMinutes],
@@ -1171,6 +1231,25 @@ export function HubActivityChart({
   // Destructure before any early return so hook order stays stable across
   // loading → data transitions (React hook rules).
   const { timeDomain } = model
+  const mergedBars = useMemo<HubMergedBar[] | null>(() => {
+    if (!barLevel || barLevel.step <= 1) return null
+    const [from, to] = barLevelRange(barLevel, timeDomain.start, timeDomain.endExclusive)
+    const bars: HubMergedBar[] = []
+    for (let index = from; index < to; index += 1) {
+      const bucket = barLevel.buckets[index]!
+      bars.push({
+        slotStartMs: bucket.startMs,
+        slotMs: barLevel.slotMs,
+        firstMs: bucket.firstMs,
+        lastMs: bucket.lastMs,
+        avg: bucket.avg[0] ?? 0,
+        peak: bucket.peak[0] ?? 0,
+        observed: bucket.observed,
+        expected: bucket.expected,
+      })
+    }
+    return bars
+  }, [barLevel, timeDomain.endExclusive, timeDomain.start])
 
   // Moment markers → render-ready annotations: spikes vs regular, resolved
   // collisions in the chart's coordinate space, selected-state dimming.
@@ -1648,6 +1727,42 @@ export function HubActivityChart({
   const tipPoint = readoutIndex != null ? chartPoints[readoutIndex] : null
   const selectedOutsideView = selectedIndex >= 0 && (selectedIndex < viewportStartIndex || selectedIndex > viewportEndIndex)
   const incompatibleViewerCount = chartPoints.filter(point => point.viewerSourceMismatch).length
+  const navigatorFocusIndex = selectedIndex >= 0 ? selectedIndex : accentIndex >= 0 ? accentIndex : null
+
+  function handleZoomKey(event: ReactKeyboardEvent<HTMLDivElement>): boolean {
+    if (event.ctrlKey || event.metaKey || event.altKey || chartPoints.length <= 2) return false
+    const action = event.key === '0' ? 'reset' : event.key === '+' || event.key === '=' ? 'in' : event.key === '-' || event.key === '_' ? 'out' : null
+    if (!action) return false
+    event.preventDefault()
+    if (action === 'reset') {
+      if (targetIsZoomed) resetNavigator()
+      return true
+    }
+    const current = navigatorTargetRef.current
+    const next = zoomNavigatorRange(chartPoints.length, current, navigatorFocusIndex, action)
+    if (next.startIndex !== current.startIndex || next.endIndex !== current.endIndex) changeNavigatorRange(next)
+    return true
+  }
+
+  // Above one bar per bucket, the status line names the bar under the pointer.
+  const hoverBarBucket: BarBucket | null = hover != null && barLevel && barLevel.step > 1 && chartPoints[hover]
+    ? barBucketAt(barLevel, chartPoints[hover]!.t)
+    : null
+  const hoverBarStatus = (() => {
+    if (!hoverBarBucket || !barLevel) return null
+    const firstT = chartPoints[0]?.t ?? hoverBarBucket.startMs
+    const lastEnd = (chartPoints[chartPoints.length - 1]?.t ?? hoverBarBucket.startMs) + hubBucketMs
+    const start = Math.max(hoverBarBucket.startMs, firstT)
+    const end = Math.min(hoverBarBucket.startMs + barLevel.slotMs, lastEnd)
+    const startLabel = windowMinutes > 24 * 60
+      ? new Date(start).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+      : new Date(start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    const endLabel = new Date(end).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    const partial = hoverBarBucket.observed < hoverBarBucket.expected
+      ? ` · ${hoverBarBucket.observed} of ${hoverBarBucket.expected} buckets measured`
+      : ''
+    return `${barLengthLabel(barMinutes)} bar ${startLabel}–${endLabel} · chat avg ${compact(Math.round(hoverBarBucket.avg[0] ?? 0))}/min · peak ${compact(hoverBarBucket.peak[0] ?? 0)}${partial}`
+  })()
 
   return (
     <>
@@ -1711,7 +1826,11 @@ export function HubActivityChart({
             <div><span>Chat/min</span><strong>{hp?.hasChatRollup === true ? compact(hp.chat) : '—'}</strong></div>
             <div><span>Emotes/min</span><strong>{hp?.hasChatRollup === true ? compact(emoteCount(hp)) : '—'}</strong></div>
           </div>
-          <small className="hx-hover-status">{hp?.viewerSourceMismatch ? 'Viewer source incompatible; snapshot unavailable' : hover != null && !hp ? 'No recorded activity in this interval' : hover != null && selectedIndex >= 0 && !touchInput ? 'Hover preview · selection stays on the chosen bucket' : selectedOutsideView ? 'Selected bucket is outside the zoomed view' : selectedIndex >= 0 ? `Selected bucket · ${touchInput ? 'tap' : 'click'} another interval to change it` : incompatibleViewerCount > 0 ? `${incompatibleViewerCount} viewer intervals have incompatible sources` : touchInput ? 'Tap a bucket to see its activity and filter moments' : 'Hover to preview · click a bucket to filter moments'}</small>
+          <small className="hx-hover-status" data-hub-bar-status={hoverBarStatus ? 'true' : undefined}>{hoverBarStatus
+            // A hover over a merged bar names the bar; with a bucket selected it
+            // still says this is only a preview (the selection stays put).
+            ? `${selectedIndex >= 0 && !touchInput ? 'Hover preview · ' : ''}${hoverBarStatus}`
+            : (hp?.viewerSourceMismatch ? 'Viewer source incompatible; snapshot unavailable' : hover != null && !hp ? 'No recorded activity in this interval' : hover != null && selectedIndex >= 0 && !touchInput ? 'Hover preview · selection stays on the chosen bucket' : selectedOutsideView ? 'Selected bucket is outside the zoomed view' : selectedIndex >= 0 ? `Selected bucket · ${touchInput ? 'tap' : 'click'} another interval to change it` : incompatibleViewerCount > 0 ? `${incompatibleViewerCount} viewer intervals have incompatible sources` : touchInput ? 'Tap a bucket to see its activity and filter moments' : 'Hover to preview · click a bucket to filter moments')}</small>
         </div>
       </div>
       {annotationLane}
@@ -1774,7 +1893,7 @@ export function HubActivityChart({
               role="group"
               aria-roledescription="interactive activity chart"
               aria-label={chartAriaLabel}
-              tabIndex={onSelectMomentKey || bucketSelectEnabled || scrollZoomEnabled ? 0 : undefined}
+              tabIndex={onSelectMomentKey || bucketSelectEnabled || chartPoints.length > 2 ? 0 : undefined}
               onMouseMove={handleMove}
               onMouseLeave={handleLeave}
               onPointerLeave={handleLeave}
@@ -1786,16 +1905,21 @@ export function HubActivityChart({
               onPointerUp={bucketSelectEnabled || chartIsZoomed ? handlePointerUp : undefined}
               onPointerCancel={bucketSelectEnabled || chartIsZoomed ? handlePointerCancel : undefined}
               onKeyDown={(event) => {
-                if (event.key === 'Escape' && scrollZoomEnabled) {
-                  event.preventDefault()
-                  event.stopPropagation()
-                  resetNavigator()
-                  return
-                }
+                // + / - / 0 step like Zoom in, Zoom out and Reset zoom; with
+                // Ctrl, Cmd or Alt they stay the browser's.
+                if (handleZoomKey(event)) return
                 const fromMarker = (event.target as HTMLElement | null)?.closest?.('[data-chart-marker-key]')
+                // Escape releases a selected moment, then a selected bucket;
+                // with nothing selected it restores the full range.
                 if (event.key === 'Escape' && selectedMomentKey) {
                   event.preventDefault()
                   onSelectMomentKey?.(null)
+                  return
+                }
+                if (event.key === 'Escape' && !(bucketSelectEnabled && selectedBucketT != null) && targetIsZoomed) {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  resetNavigator()
                   return
                 }
                 if (fromMarker) return
@@ -1829,6 +1953,10 @@ export function HubActivityChart({
               const index = bucketT == null ? null : chartPoints.findIndex((point) => point.t === bucketT)
               commitHoverIndex(index != null && index >= 0 ? index : null)
             }}
+            bars={mergedBars}
+            barSpan={barSpan}
+            peakCapHeight={plotSize.height > 0 ? (1.5 * 100) / plotSize.height : undefined}
+            animateLevelChange={motionEnabled && !reducedMotion}
           />
           <g
             className={seriesFocusClass(focusedSeriesKey, 'viewers')}
@@ -2051,7 +2179,7 @@ export function HubActivityChart({
           endIndex={navigatorBounds.endIndex}
           controlRange={navigatorBounds}
           visualRange={viewportBounds}
-          focusIndex={selectedIndex >= 0 ? selectedIndex : accentIndex >= 0 ? accentIndex : null}
+          focusIndex={navigatorFocusIndex}
           selectedIndex={selectedIndex >= 0 ? selectedIndex : null}
           startLabel={formatNavigatorTick(
             chartPoints[navigatorBounds.startIndex]?.t ?? 0,
@@ -2070,6 +2198,16 @@ export function HubActivityChart({
           onChange={changeNavigatorRange}
           onDragStart={beginNavigatorDrag}
           onReset={resetNavigator}
+          readoutNote={barSpan > 1 ? (
+            <span
+              className="hx-chart-navigator__bar-note"
+              data-chart-bar-bucket-minutes={barMinutes}
+              data-hub-bar-span={barSpan}
+              title={`Each chat bar averages ${barSpan} measured buckets (${barLengthLabel(barMinutes)}) so bars stay readable at this width; a thin cap marks a bucket well above the average, and a faded bar had unmeasured buckets.`}
+            >
+              {`bars ${barLengthLabel(barMinutes)} avg`}
+            </span>
+          ) : undefined}
         />
         <div className="hx-provider-lanes" role="group" aria-label="Emote provider sparklines">
           {shownProviders.map((key) => {
