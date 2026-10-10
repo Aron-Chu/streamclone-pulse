@@ -75,8 +75,11 @@ describe('public release routes', () => {
       screen.getByTestId('support-page').querySelector('a[href="mailto:privacy@streampulse.stream"]'),
     ).toBeTruthy()
     const body = screen.getByTestId('support-page').textContent ?? ''
-    expect(body).toMatch(/privacy or legal/i)
-    expect(body).toMatch(/not a routine product-support mailbox/i)
+    expect(body).toMatch(/for privacy, legal, billing and refund questions/i)
+    expect(body).toMatch(/For bugs and ideas use the private feedback form/)
+    // The mailbox is not called "not support" any more; bugs go to the private form.
+    expect(body).not.toMatch(/not a routine product-support mailbox/i)
+    expect(within(screen.getByTestId('support-page').querySelector('#contact') as HTMLElement).getByRole('link', { name: 'private feedback form' }).getAttribute('href')).toBe('/feedback')
     // The private form is on /feedback; /support links to it.
     expect(within(screen.getByTestId('support-feedback-link')).getByRole('link', { name: 'Send feedback' }).getAttribute('href')).toBe('/feedback')
     expect(screen.queryByTestId('support-form')).toBeNull()
