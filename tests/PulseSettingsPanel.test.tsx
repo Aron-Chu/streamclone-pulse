@@ -108,12 +108,12 @@ describe('PulseSettingsPanel quick workspace', () => {
       .toBeLessThan(html.indexOf('aria-label="Extension preferences"'))
   })
 
-  it('gives everyone else the perk copy and an empty stage the card script fills, with no emotes in this bundle', () => {
+  it('gives everyone else the lab’s Your Line · Anatomy copy and an empty stage the card script fills, with no emotes in this bundle', () => {
     const html = renderToStaticMarkup(<SupporterHero appearance={null} onOpen={() => {}} />)
     expect(html).toContain('Explore Supporter')
-    expect(describedCopy(html)).toBe('Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. Core tools stay free.')
-    expect(describedCopy(html)).toBe(`Supporter perks: ${SUPPORTER_PERKS.names.join(', ')}. Only you see them. Core tools stay free.`)
-    expect(html).toContain(`title="Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. Core tools stay free."`)
+    expect(describedCopy(html)).toBe('Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. Core tools stay free. This card is a preview, shown only in your StreamPulse extension. Twitch chat is unchanged.')
+    expect(describedCopy(html)).toBe(`Supporter perks: ${SUPPORTER_PERKS.names.join(', ')}. Only you see them. Core tools stay free. This card is a preview, shown only in your StreamPulse extension. Twitch chat is unchanged.`)
+    expect(html).toContain(`title="Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. Core tools stay free. This card is a preview, shown only in your StreamPulse extension. Twitch chat is unchanged."`)
     // Only the title row and the stage show; nothing covers the stage.
     expect(html).not.toContain('<small')
     expect(html).toMatch(/<span class="pulse-supporter-cta-head"><strong>Pulse Supporter<\/strong><span>Explore Supporter <span aria-hidden="true">›<\/span><\/span><\/span><span id="[^"]+" hidden="">[^<]*<\/span><span class="pulse-supporter-stage"/)
@@ -122,13 +122,13 @@ describe('PulseSettingsPanel quick workspace', () => {
     expect(html).not.toContain('cdn.7tv.app')
     expect(html).not.toContain('data-supporter-verified')
   })
-  it('gives a verified Supporter their perk copy and Manage Supporter, and otherwise stays neutral', () => {
+  it('gives a verified Supporter the Tenure Climb copy and Manage Supporter, and otherwise stays neutral', () => {
     const verified = renderToStaticMarkup(<SupporterHero appearance={{ finish: 'etched', tenure: '24m', paint: { wave: 'chrome', sheen: 'glint' }, perks: true }} onOpen={() => {}} />)
     expect(verified).toContain('data-supporter-verified="true"')
     expect(verified).toContain('data-finish="etched"')
     expect(verified).toContain('Manage Supporter')
     expect(verified).not.toContain('Explore Supporter')
-    expect(describedCopy(verified)).toBe('Your Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. Core tools stay free.')
+    expect(describedCopy(verified)).toBe('Your Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. Core tools stay free. This card is a preview, shown only in your StreamPulse extension. Twitch chat is unchanged.')
     expect(verified).not.toContain('<small')
     const neutral = renderToStaticMarkup(<SupporterHero appearance={null} onOpen={() => {}} />)
     expect(neutral).toContain('Explore Supporter')
@@ -138,7 +138,7 @@ describe('PulseSettingsPanel quick workspace', () => {
     const member = renderToStaticMarkup(<SupporterHero appearance={{ finish: null, tenure: '3m', perks: true }} onOpen={() => {}} />)
     expect(member).toContain('data-supporter-verified="true"')
     expect(member).toContain('Manage Supporter')
-    expect(member).toContain('Your Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. Core tools stay free.')
+    expect(member).toContain('Your Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. Core tools stay free. This card is a preview, shown only in your StreamPulse extension. Twitch chat is unchanged.')
     expect(member).not.toContain('Explore Supporter')
     expect(member).not.toContain('data-finish')
   })

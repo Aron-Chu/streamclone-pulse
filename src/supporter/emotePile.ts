@@ -193,14 +193,11 @@ export function EmotePile(stage: HTMLElement, context: StageContext, kit: Kit): 
   }
 }
 
-/**
- * Draws the staged Crown pile into `stage` until the returned stop is called.
- * `css` lets the quick-settings card add its host's glow (CARD_PILE_CSS).
- */
-export function mountEmotePile(stage: HTMLElement, kit: Kit, css: string = EMOTE_PILE_CSS): () => void {
+/** Draws the staged Crown pile into `stage` until the returned stop is called. */
+export function mountEmotePile(stage: HTMLElement, kit: Kit): () => void {
   const own: Kit = { ...kit }
   for (const [name, value] of Object.entries(finishVars(own.finish))) stage.style.setProperty(name, value)
   stage.dataset.mode = 'crown'
-  const stop = mountStage(stage, css, still => runStage(stage, still, context => EmotePile(stage, context, own), STAGED_TIMING))
+  const stop = mountStage(stage, EMOTE_PILE_CSS, still => runStage(stage, still, context => EmotePile(stage, context, own), STAGED_TIMING))
   return () => { stop(); delete stage.dataset.glow }
 }

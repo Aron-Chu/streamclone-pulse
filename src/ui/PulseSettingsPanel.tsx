@@ -309,11 +309,12 @@ function ChannelHeader({ channel, name }: { channel: QuickSettingsChannel; name:
 }
 
 /**
- * The Supporter entry, with the settings banner's Crown pile as its moving
- * stage: the sample crest and paint for someone who is not a Supporter, and
- * a verified Supporter's own crest and paint, whatever their finish. It never
- * shows a chat column, since nothing a Supporter has is added to chat. No
- * price, no purchase wording.
+ * The Supporter entry, with the design lab's "Your Line" card: Anatomy for
+ * someone who is not a Supporter (their would-be line, with its crest and
+ * paint), and Tenure Climb for a
+ * verified Supporter, whatever their finish, climbing to the crest the server
+ * reports. No price, no purchase wording. The chat column is a preview drawn
+ * in the extension (its corner chip says so); Twitch chat is unchanged.
  *
  * The card shows only its title row and the moving stage, which takes the
  * room a line of copy used to cover. The copy stays as the button's
@@ -323,7 +324,7 @@ function ChannelHeader({ channel, name }: { channel: QuickSettingsChannel; name:
 export function SupporterHero({ appearance, disabled, onOpen }: { appearance: SupporterAppearance | null; disabled?: boolean; onOpen: () => void }) {
   const finish = appearance?.finish ?? null
   const descriptionId = useId()
-  const perks = `${appearance ? 'Your Supporter perks' : 'Supporter perks'}: ${SUPPORTER_PERK_NAMES.join(', ')}. Only you see them. Core tools stay free.`
+  const perks = `${appearance ? 'Your Supporter perks' : 'Supporter perks'}: ${SUPPORTER_PERK_NAMES.join(', ')}. Only you see them. Core tools stay free. This card is a preview, shown only in your StreamPulse extension. Twitch chat is unchanged.`
   return (
     <button
       type="button"

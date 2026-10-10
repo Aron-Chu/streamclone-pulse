@@ -78,11 +78,8 @@ test('emote rain is a Supporter perk: a saved Rain draws nothing without one, st
   const preview = root.locator('.pulse-banner-quick-preview')
   await expect(preview).toHaveAttribute('data-preview-mode', 'off')
   await expect(preview.locator('img')).toHaveCount(0)
-  // A lapsed member is pitched the card with the sample kit, not a Supporter's own crest.
-  const supporterCard = root.locator('[data-settings-host-cta="supporter"]')
-  await expect(supporterCard).not.toHaveAttribute('data-supporter-verified', 'true')
-  await expect(supporterCard.locator('.pulse-supporter-stage')).toHaveAttribute('data-mode', 'crown')
-  await expect(supporterCard.locator('.pulse-supporter-stage .spk-you .spk-crest').first()).toHaveAttribute('data-tenure', '12m')
+  // A lapsed member is pitched the lab's Your Line · Anatomy card, not a Supporter's Tenure Climb.
+  await expect(root.locator('[data-settings-host-cta="supporter"] .pulse-supporter-stage')).toHaveAttribute('data-mode', 'anatomy')
 
   // Full settings: the title stays free, Still and Rain are locked with a way to the offer.
   const opened = extension.context.waitForEvent('page')

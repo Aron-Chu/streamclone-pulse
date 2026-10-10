@@ -5,16 +5,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { supporterAppearanceReply } from '../src/background/supporterAppearance.ts'
 import { mountSupporterCard } from '../src/content/supporterCard.ts'
 import type { SupporterCardOptions } from '../src/supporter/cardContract.ts'
+import { LINES, NAMES } from '../src/supporter/kit.ts'
 import { SupporterHero } from '../src/ui/PulseSettingsPanel.tsx'
 import type { SupporterEntitlement } from '../src/shared/supporterAccount.ts'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 /**
- * The quick-settings Supporter card, drawn by content/supporter-card.js: the
- * settings banner's Crown pile, with the sample kit (anatomy) or a verified
- * Supporter's own crest and paint (tenure). It never draws a chat column:
- * nothing a Supporter has is added to Twitch chat.
+ * The quick-settings Supporter card: the lab's "Your Line" (ChatStack) in its
+ * Anatomy and Tenure Climb modes, drawn by content/supporter-card.js.
  */
 let hidden = false
 let frames: Array<{ id: number; run: FrameRequestCallback }> = []
@@ -42,7 +41,7 @@ function stubExtension({ reducedMotion = false, sendMessage = vi.fn(async () => 
   Object.defineProperty(window, 'matchMedia', { configurable: true, value: matchMedia })
 }
 
-/** The quick-settings card's stage: about 318 px wide and 96 px tall in the panel. */
+/** A sidebar card's stage: 285 px wide, 60 px tall, as in the lab. */
 function cardStage() {
   const host = document.createElement('button')
   host.className = 'pulse-settings-supporter-cta'
@@ -50,8 +49,16 @@ function cardStage() {
   stage.className = 'pulse-supporter-stage'
   host.append(stage)
   document.body.append(host)
-  return { host, stage, remove: () => host.remove() }
+  // Every line the stage ever shows, including those that scrolled away.
+  // Records delivered while a test awaits are kept too, so the poster frame's lines count.
+  const delivered: MutationRecord[] = []
+  const seen = new MutationObserver(records => { delivered.push(...records) })
+  seen.observe(stage, { childList: true, subtree: true })
+  const added = () => [...delivered.splice(0), ...seen.takeRecords()].flatMap(record => [...record.addedNodes]).filter((node): node is HTMLElement => node instanceof HTMLElement && node.classList.contains('spk-cl'))
+  return { host, stage, added, remove: () => { seen.disconnect(); host.remove() } }
 }
+
+const text = (el: Element) => el.textContent!.replace(/\s+/g, ' ').trim()
 
 /** Everything a test started, stopped in afterEach too, so a failing test never leaks a running stage. */
 const cleanups: Array<() => void> = []
@@ -77,9 +84,9 @@ beforeEach(() => {
   vi.stubGlobal('requestAnimationFrame', raf)
   vi.stubGlobal('cancelAnimationFrame', caf)
   vi.stubGlobal('IntersectionObserver', class { constructor(callback: typeof intersect) { intersect = callback } observe() {} disconnect() {} })
-  // jsdom has no layout; give the stage the quick-settings card's size.
-  Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get() { return (this as HTMLElement).classList.contains('pulse-supporter-stage') ? 318 : 0 } })
-  Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get() { return (this as HTMLElement).classList.contains('pulse-supporter-stage') ? 96 : 0 } })
+  // jsdom has no layout; give the stage the lab's sidebar-card size.
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get() { return (this as HTMLElement).classList.contains('pulse-supporter-stage') ? 285 : 0 } })
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get() { return (this as HTMLElement).classList.contains('pulse-supporter-stage') ? 60 : 0 } })
 })
 
 afterEach(() => {
@@ -103,7 +110,7 @@ describe('quick-settings Supporter card shell (content script)', () => {
     return { host, rerender: (next: React.ReactNode) => act(async () => root.render(next)), unmount: async () => unmount() }
   }
 
-  it('asks for the sample kit for anyone without perks, and a verified Supporter’s earned crest and paint', async () => {
+  it('picks Anatomy for anyone without perks and Tenure Climb, with the earned crest and paint, for a verified Supporter', async () => {
     stubExtension()
     const stop = vi.fn()
     const mount = vi.fn((_stage: HTMLElement, _options: SupporterCardOptions) => stop)
@@ -150,37 +157,38 @@ describe('quick-settings Supporter card shell (content script)', () => {
   })
 })
 
-describe('the card’s Crown pile, drawn by content/supporter-card.js', () => {
-  const youImages = (stage: HTMLElement) => [...stage.querySelectorAll<HTMLImageElement>('.spk-you img')].map(img => img.src)
-
-  it('anatomy: the sample crest and paint on a pile of emotes, with no chat column, line or chat names', () => {
+describe('Your Line, drawn by content/supporter-card.js', () => {
+  it('Anatomy: the lab sample kit, a spotlight line every sixth, no labels over the line, and chat frozen while hovered', async () => {
     stubExtension()
     const card = cardStage()
     const stop = mountCard(card.stage, { mode: 'anatomy', finish: null })
-    expect(card.stage.dataset.mode).toBe('crown')
+    expect(card.stage.dataset.mode).toBe('anatomy')
     expect(card.stage.dataset.running).toBe('true')
-    // The card reads no storage.
+    // The card reads no storage: there is no emote to choose any more.
     expect(chrome.storage.sync.get).not.toHaveBeenCalled()
     expect(card.host.style.getPropertyValue('--spk-fin')).toBe('#efc96a')
-    runFrames(1)
-    // Nine emotes and the sample crest, settled; a "you" tag rides above the crest.
-    expect(card.stage.querySelectorAll('.spk-body')).toHaveLength(10)
-    const you = card.stage.querySelector<HTMLElement>('.spk-you')!
-    expect(you.querySelector('.spk-crest')?.getAttribute('data-tenure')).toBe('12m')
-    expect(youImages(card.stage)).toEqual([])
-    expect(card.stage.querySelector('.spk-tag')?.textContent).toBe('you')
-    runFrames(600)
-    // Nothing that reads as Twitch chat: no chat lines, no chatter names, no text but the tag.
-    expect(card.stage.querySelector('.spk-chat, .spk-cl, .spk-sup, .spk-chip')).toBeNull()
-    const words = [...card.stage.querySelectorAll('.spk-body')].map(body => body.textContent?.trim()).filter(Boolean)
-    expect(words).toEqual([])
-    for (const img of card.stage.querySelectorAll('img')) {
-      expect(img.src).toMatch(/^https:\/\/(static-cdn\.jtvnw\.net\/emoticons\/v2\/\d+\/default\/dark\/2\.0|cdn\.7tv\.app\/emote\/[0-9A-Z]+\/2x\.webp)$/)
+    runFrames(300)
+    const lines = card.added()
+    const mine = lines.filter(line => line.classList.contains('spk-sup'))
+    expect(mine.length).toBeGreaterThan(0)
+    expect(lines.length / mine.length).toBeGreaterThanOrEqual(4)
+    for (const line of mine) {
+      expect(line.querySelector('.spk-crest')?.getAttribute('data-tenure')).toBe('12m')
+      expect(line.querySelector('.spk-name')?.textContent).toBe('you')
+      expect(line.querySelector<HTMLImageElement>('img.spk-kit-emote')?.src).toBe('https://cdn.7tv.app/emote/01GAFTZ9K80003DHH026MC7JW0/2x.webp')
     }
-    // Hover shakes the pile and drops a crest in.
-    const crests = card.stage.querySelectorAll('.spk-you').length
+
     card.host.dispatchEvent(new Event('pointerenter'))
-    expect(card.stage.querySelectorAll('.spk-you').length).toBeGreaterThanOrEqual(Math.min(crests, 2))
+    expect([...card.stage.querySelectorAll('.spk-cl')].at(-1)?.classList.contains('spk-sup')).toBe(true)
+    runFrames(1)
+    // Nothing is drawn over the demo line.
+    expect(card.stage.querySelector('.spk-callouts, .spk-co')).toBeNull()
+    card.added()
+    runFrames(200)
+    expect(card.added()).toHaveLength(0)
+    card.host.dispatchEvent(new Event('pointerleave'))
+    runFrames(200)
+    expect(card.added().length).toBeGreaterThan(0)
     stop()
     expect(card.stage.childElementCount).toBe(0)
     expect(card.host.style.getPropertyValue('--spk-fin')).toBe('')
@@ -188,7 +196,7 @@ describe('the card’s Crown pile, drawn by content/supporter-card.js', () => {
     card.remove()
   })
 
-  it('tenure: a verified Supporter’s own crest, and their real paint on the tag, finish or not', async () => {
+  it('Tenure Climb: each of your lines climbs one crest stage up to the one the server reports for this Supporter, then holds there, finish or not', async () => {
     stubExtension()
     const member = (cosmetics: { enabled: boolean; finish: 'glass' | 'etched' | 'halo' }) => ({ state: 'ready', status: 'active', supportPeriods: 7, features: ['supporter.banner.v1', 'supporter.finish.v1'], validForMs: 60_000, cosmetics }) as SupporterEntitlement
     // 7 support periods: Steady signal (6 months), for a Supporter on the default accent.
@@ -196,34 +204,50 @@ describe('the card’s Crown pile, drawn by content/supporter-card.js', () => {
     expect(reply).toMatchObject({ finish: null, tenure: '6m', perks: true })
     const card = cardStage()
     const stop = mountCard(card.stage, { mode: 'tenure', tenure: reply.tenure, finish: reply.finish, paint: reply.paint })
-    runFrames(1)
-    expect(card.stage.querySelector('.spk-you .spk-crest')?.getAttribute('data-tenure')).toBe('6m')
-    // No finish: an unpainted name and the Peak teal.
-    expect(card.stage.querySelector('.spk-tag .spk-name')?.className).toBe('spk-name')
+    await act(async () => { await Promise.resolve() })
+    runFrames(700)
+    const mine = card.added().filter(line => line.classList.contains('spk-sup'))
+    expect(mine.length).toBeGreaterThanOrEqual(5)
+    expect(mine.map(line => line.querySelector('.spk-chip')!.textContent)).toEqual([
+      'First signal · New', 'Signal set · 3 mo', 'Steady signal · 6 mo', ...Array(mine.length - 3).fill('Steady signal · 6 mo'),
+    ])
+    expect(mine.map(line => line.querySelector('.spk-crest')!.getAttribute('data-tenure')).slice(0, 4)).toEqual(['new', '3m', '6m', '6m'])
+    // No finish: an unpainted name and the Peak teal; the line ends on the lab's fixed sample emote.
+    expect(mine[0].querySelector('.spk-name')!.className).toBe('spk-name')
     expect(card.host.style.getPropertyValue('--spk-fin')).toBe('#2dd4bf')
+    expect(mine.every(line => line.querySelector<HTMLImageElement>('img.spk-kit-emote')!.src === 'https://cdn.7tv.app/emote/01GAFTZ9K80003DHH026MC7JW0/2x.webp')).toBe(true)
     expect(chrome.storage.sync.get).not.toHaveBeenCalled()
+    // Hover brings your next line right away.
+    card.added()
+    card.host.dispatchEvent(new Event('pointerenter'))
+    expect(card.added().filter(line => line.classList.contains('spk-sup'))).toHaveLength(1)
     stop()
     card.remove()
 
-    // With a finish, the tag's name wears the header's real paint: finish, wave and sheen.
+    // With a finish, the name wears the header's real paint: finish, wave and sheen.
     const painted = await supporterAppearanceReply(member({ enabled: true, finish: 'glass' }), async () => ({ wave: 'aurora', sheen: 'glint' }))
     const second = cardStage()
     const halt = mountCard(second.stage, { mode: 'tenure', tenure: painted.tenure, finish: painted.finish, paint: painted.paint })
-    runFrames(1)
-    expect(second.stage.querySelector<HTMLElement>('.spk-tag .pulse-paint')?.dataset).toMatchObject({ finish: 'glass', wave: 'aurora', sheen: 'glint', text: 'you' })
+    runFrames(300)
+    const name = second.added().find(line => line.classList.contains('spk-sup'))!.querySelector<HTMLElement>('.spk-name')!
+    expect(name.classList.contains('pulse-paint')).toBe(true)
+    expect(name.dataset).toMatchObject({ finish: 'glass', wave: 'aurora', sheen: 'glint', text: 'you' })
     expect(second.host.style.getPropertyValue('--spk-fin')).toBe('#78dce8')
     halt()
     second.remove()
   })
 
-  it('ignores an emote stored by the dropped signature perk, and listens to no storage', () => {
+  it('ignores an emote stored by the dropped signature perk, and listens to no storage', async () => {
     stubExtension()
     // A value an older build saved stays where it is, unread.
     stored = { supporterSignatureEmote: 'wideReacting' }
     const card = cardStage()
     const stop = mountCard(card.stage, { mode: 'tenure', tenure: '12m', finish: 'etched', paint: { wave: 'smooth', sheen: 'sweep' } })
+    await act(async () => { await Promise.resolve() })
     runFrames(400)
-    expect(card.stage.querySelector('img[src*="01FKSDK14G0008TM5NY9QEG0QV"]')).toBeNull()
+    const emotes = [...card.stage.querySelectorAll<HTMLImageElement>('img.spk-kit-emote')].map(img => img.src)
+    expect(emotes.length).toBeGreaterThan(0)
+    expect(new Set(emotes)).toEqual(new Set(['https://cdn.7tv.app/emote/01GAFTZ9K80003DHH026MC7JW0/2x.webp']))
     expect(chrome.storage.sync.get).not.toHaveBeenCalled()
     expect(chrome.storage.sync.set).not.toHaveBeenCalled()
     expect(storageListeners.size).toBe(0)
@@ -232,14 +256,27 @@ describe('the card’s Crown pile, drawn by content/supporter-card.js', () => {
     card.remove()
   })
 
-  it('carries the card host’s glow and hover in its own stage styles', () => {
+  it('never shows real chat: every other line is canned, neutral chatter, and none mentions Supporter', async () => {
     stubExtension()
     const card = cardStage()
     const stop = mountCard(card.stage, { mode: 'anatomy', finish: null })
-    const css = card.stage.querySelector('style')?.textContent ?? ''
-    expect(css).toContain('.pulse-settings-supporter-cta::before')
-    expect(css).toContain('.pulse-supporter-stage { overflow: hidden; }')
-    expect(css).not.toContain('spk-cl')
+    runFrames(1500)
+    const lines = card.added()
+    expect(lines.length).toBeGreaterThan(40)
+    const canned = new Set(LINES.map(line => line.split(' ').filter(word => !/^(Kappa|LUL|PogChamp|Kreygasm|SeemsGood|4Head|NotLikeThis|HeyGuys|wideSpeedLaugh4|wideReacting|wideSpeedNod)$/.test(word)).join(' ')))
+    for (const line of lines.filter(entry => !entry.classList.contains('spk-sup'))) {
+      const [who, ...rest] = text(line).split(': ')
+      expect(NAMES).toContain(who.replace(/:$/, ''))
+      expect(canned.has(rest.join(': ').trim())).toBe(true)
+    }
+    for (const line of lines) expect(text(line)).not.toMatch(/supporter|subscribe|support/i)
+    for (const img of lines.flatMap(line => [...line.querySelectorAll('img')])) {
+      expect(img.src).toMatch(/^https:\/\/(static-cdn\.jtvnw\.net\/emoticons\/v2\/\d+\/default\/dark\/2\.0|cdn\.7tv\.app\/emote\/[0-9A-Z]+\/2x\.webp)$/)
+    }
+    // Both halves of the requested mix show up: Twitch globals and the wide 7TV emotes.
+    const sources = lines.flatMap(line => [...line.querySelectorAll('img')].map(img => img.src))
+    expect(sources.some(src => new URL(src).hostname === 'static-cdn.jtvnw.net')).toBe(true)
+    expect(sources.some(src => /01J7VZYB08000E8DPG2XYMKQYR|01HMM8VG3R0007GXBD883VP2YY|01K6YP3JPX47KY68B19S6MY6DY/.test(src))).toBe(true)
     stop()
     card.remove()
   })
@@ -265,7 +302,35 @@ describe('the card’s Crown pile, drawn by content/supporter-card.js', () => {
     card.remove()
   })
 
-  it('draws one settled still pile from static images under reduced motion, and never schedules a frame', async () => {
+  it('opens on a poster frame, three lines of chatter then yours, under a corner chip that says it is a preview', async () => {
+    stubExtension()
+    for (const options of [{ mode: 'anatomy', finish: null }, { mode: 'tenure', tenure: '12m', finish: 'etched' }] as const) {
+      const card = cardStage()
+      frames = []
+      const stop = mountCard(card.stage, options)
+      // Before any animation frame runs: never an empty box.
+      expect(frames.length).toBeLessThanOrEqual(1)
+      const lines = [...card.stage.querySelectorAll<HTMLElement>('.spk-cl')]
+      expect(lines).toHaveLength(4)
+      expect(lines.map(line => line.classList.contains('spk-sup'))).toEqual([false, false, false, true])
+      // Laid out bottom-up, your line last, with no fade-in: in this 60 px test stage the top line is
+      // past the edge (the real card's stage is 96 px tall and shows all four).
+      expect(lines.map(line => line.style.opacity)).toEqual(['0', '1', '1', '1'])
+      expect(lines.map(line => line.style.transform)).toEqual(['translateY(-15px)', 'translateY(3px)', 'translateY(21px)', 'translateY(39px)'])
+      // No spotlight dims the poster frame.
+      expect(card.stage.querySelector('.spk-dim, .spk-sheen')).toBeNull()
+      const chips = card.stage.querySelectorAll('.spk-preview')
+      expect(chips).toHaveLength(1)
+      expect(chips[0].textContent).toBe('Preview · only you see this')
+      // The chip outlives the chat scrolling under it.
+      runFrames(400)
+      expect(card.stage.querySelectorAll('.spk-preview')).toHaveLength(1)
+      stop()
+      card.remove()
+    }
+  })
+
+  it('draws one still frame from static images under reduced motion, ending on your line, and never schedules a frame', async () => {
     stubExtension({ reducedMotion: true })
     for (const options of [{ mode: 'anatomy', finish: null }, { mode: 'tenure', tenure: '24m', finish: 'halo', paint: { wave: 'smooth', sheen: 'none' } }] as const) {
       const card = cardStage()
@@ -273,15 +338,19 @@ describe('the card’s Crown pile, drawn by content/supporter-card.js', () => {
       await act(async () => { await Promise.resolve() })
       expect(card.stage.dataset.still).toBe('true')
       expect(card.stage.dataset.running).toBe('false')
-      const bodies = card.stage.querySelectorAll('.spk-body')
-      expect(bodies.length).toBeGreaterThanOrEqual(10)
-      // A Supporter's still frame shows the crest they hold.
-      expect(card.stage.querySelector('.spk-you .spk-crest')?.getAttribute('data-tenure')).toBe(options.mode === 'tenure' ? '24m' : '12m')
+      const lines = [...card.stage.querySelectorAll('.spk-cl')]
+      expect(lines.at(-1)!.classList.contains('spk-sup')).toBe(true)
       const sevenTv = [...card.stage.querySelectorAll<HTMLImageElement>('img')].map(img => img.src).filter(src => src.includes('cdn.7tv.app'))
+      expect(sevenTv.length).toBeGreaterThan(0)
       expect(sevenTv.every(src => src.endsWith('/2x_static.webp'))).toBe(true)
-      // Hover adds nothing that moves.
+      // A Supporter's still frame shows the crest they hold, not the bottom of the climb.
+      if (options.mode === 'tenure') expect(lines.at(-1)!.querySelector('.spk-chip')!.textContent).toBe('Two-year pinnacle · 24 mo')
+      // Hover adds nothing that moves, and nothing covers the line.
+      const count = lines.length
       card.host.dispatchEvent(new Event('pointerenter'))
-      expect(card.stage.querySelectorAll('.spk-body')).toHaveLength(bodies.length)
+      expect(card.stage.querySelectorAll('.spk-cl')).toHaveLength(count)
+      expect(card.stage.querySelector('.spk-callouts, .spk-co')).toBeNull()
+      expect(card.stage.querySelector('.spk-preview')!.textContent).toBe('Preview · only you see this')
       stop()
       card.remove()
     }
