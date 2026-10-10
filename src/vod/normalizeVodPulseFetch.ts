@@ -9,6 +9,9 @@ const ARCHIVE_PROVIDER_UNAVAILABLE_MESSAGE = 'Archive verification is temporaril
 const LIVE_STREAM_PENDING_MESSAGE = 'StreamPulse is still matching this archive to the live stream.'
 const ARCHIVE_CONFLICT_MESSAGE = 'Archive identity could not be verified for this stream.'
 const ARCHIVE_VALIDATION_ERROR_MESSAGE = 'Archive validation failed. Live analytics are unaffected.'
+const IMPLAUSIBLE_MESSAGE = 'This replay could not be matched to one recorded stream, so no other stream’s data is shown.'
+/** 48 h: Twitch ends a broadcast at 48 h, so a longer replay is a mismatched stream, not this VOD. */
+export const MAX_VOD_SECONDS = 172_800
 
 type CandidateResolutionState =
   | 'live_archive_not_visible'
@@ -124,6 +127,22 @@ export function parseExtensionVodPulseResponse(raw: Record<string, unknown>): Ex
     } as ExtensionVodPulseResponse
   }
 
+  // A replay "longer" than any Twitch broadcast was mapped to another stream:
+  // show it as missing rather than that stream's chart, stats and moments.
+  if (typeof raw.durationSeconds === 'number' && raw.durationSeconds > MAX_VOD_SECONDS) {
+    return {
+      mode: 'vod',
+      vodId: vodId ?? null,
+      provisional: false,
+      retryable: false,
+      coverageStatus: 'missing',
+      coverageMessage: IMPLAUSIBLE_MESSAGE,
+      resolutionState: 'duration_implausible',
+      login: channelLogin || undefined,
+      channelLogin: channelLogin || undefined,
+      channelDisplayName: typeof raw.channelDisplayName === 'string' ? raw.channelDisplayName : undefined,
+    } as ExtensionVodPulseResponse
+  }
   const coverageStatus = isCoverageStatus(raw.coverageStatus) ? raw.coverageStatus : 'missing'
   const candidateResolutionState = isCandidateResolutionState(rawResolutionState)
   if (!vodId && coverageStatus !== 'missing' && coverageStatus !== 'error' && !candidateResolutionState) {

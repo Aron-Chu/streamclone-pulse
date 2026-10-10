@@ -104,7 +104,7 @@ import { formatPulseApiError } from './pulseApiErrors.ts'
 import { resolveJumpMomentAction } from './jumpMomentAction.ts'
 import type { ChartTimelineWindow } from './chatActivityEmotes.ts'
 import type { ExtensionVodPulseResponse } from '../types/vodPulseTypes.ts'
-import { resolveVodPulseState } from '../vod/normalizeVodPulseFetch.ts'
+import { resolveVodPulseState, MAX_VOD_SECONDS } from '../vod/normalizeVodPulseFetch.ts'
 import { PulseSidebarTabs } from './PulseSidebarTabs.tsx'
 import { safeImageUrl, safeTwitchNavigationUrl } from '../shared/safeUrl.ts'
 import { mergePulsePayload } from '../background/pulsePayloadMerge.ts'
@@ -2115,15 +2115,22 @@ function StreamPulseHeader({
   )
 }
 
-/** "Oct 7 · 8h 25m · Just Chatting": the replay's own stream, never the live one. */
-function replayLead(vod: ExtensionVodPulseResponse | null): string {
+/** Answers that retrying cannot change. */
+const PERMANENT_VOD_STATES = new Set(['stream_not_collected', 'duration_implausible'])
+
+/**
+ * "Oct 7 · 8h 25m": the replay's own stream, never the live one. No game: the
+ * Games played strip is the one place that names games, so the header never
+ * names one the recap says it doesn't know. A length over 48 h is not a real
+ * stream (see parseExtensionVodPulseResponse) and is left out.
+ */
+export function replayLead(vod: ExtensionVodPulseResponse | null): string {
   const started = Date.parse(vod?.startedAt ?? '')
   const seconds = vod?.durationSeconds ?? 0
   const hours = Math.floor(seconds / 3600)
   return [
     Number.isFinite(started) ? new Date(started).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '',
-    seconds > 0 ? `${hours ? `${hours}h ` : ''}${Math.floor((seconds % 3600) / 60)}m` : '',
-    vod?.games?.[0]?.gameName ?? '',
+    seconds > 0 && seconds <= MAX_VOD_SECONDS ? `${hours ? `${hours}h ` : ''}${Math.floor((seconds % 3600) / 60)}m` : '',
   ].filter(Boolean).join(' · ')
 }
 
@@ -2148,6 +2155,8 @@ function VodPulseStatusCard({
 }) {
   const state = resolveVodPulseState(vodPulse, error, loading)
   const channel = vodPulse?.channelDisplayName || vodPulse?.channelLogin || 'this channel'
+  // A permanent answer gets no Retry: retrying cannot change it.
+  const permanent = PERMANENT_VOD_STATES.has(vodPulse?.resolutionState ?? '')
   const [title, body] =
     state.status === 'loading'
       ? ['Loading this replay', 'Matching this VOD to the chat we recorded. This usually takes a few seconds; after 20 seconds we stop and tell you why.']
@@ -2156,13 +2165,16 @@ function VodPulseStatusCard({
         : state.status === 'missing'
           ? vodPulse?.resolutionState === 'vod_not_found'
             ? ['Twitch doesn’t list this VOD', 'It may be deleted, expired or private.']
-            : ['No replay data for this VOD yet', state.reason]
+            : vodPulse?.resolutionState === 'stream_not_collected'
+            ? ['No replay data for this VOD', 'Pulse wasn’t recording this channel’s chat during this stream.']
+            : [permanent ? 'No replay data for this VOD' : 'No replay data for this VOD yet', state.reason]
           : state.status === 'error' && state.archiveConflict
             ? ['We couldn’t match this VOD to a recorded stream', `StreamPulse may not have been following ${channel}’s chat when this was streamed, or Twitch hasn’t finished the archive yet.`]
             : state.status === 'error'
               ? ['We couldn’t load this replay', state.message]
               : ['Part of this replay has data', 'Open it in Analytics for the whole stream.']
   const support = [vodId && `vod ${vodId}`, vodPulse?.streamId && `stream ${vodPulse.streamId}`, vodPulse?.resolutionState].filter(Boolean).join(' · ')
+  const [copied, setCopied] = useState(false)
 
   return (
     <section className="pulse-vod-state" data-vod-state={state.status} role="status" style={state.status === 'loading' ? styles.vodState : { ...styles.vodState, ...styles.vodStateWarn }}>
@@ -2171,10 +2183,10 @@ function VodPulseStatusCard({
       {state.status === 'loading' ? null : (
         <>
           <div style={styles.footerActions}>
-            {onRetry ? <button type="button" style={styles.primaryButton} onClick={onRetry}>↻ Retry</button> : null}
+            {onRetry && !permanent ? <button type="button" style={styles.primaryButton} onClick={onRetry}>↻ Retry</button> : null}
             {analyticsHref ? <a href={analyticsHref} target="_blank" rel="noopener noreferrer" style={{ ...styles.secondaryButton, ...styles.vodStateLink }}>Open in Analytics ↗</a> : null}
           </div>
-          {support ? <p style={styles.vodStateSupport}>For support: {support}</p> : null}
+          {support ? <button type="button" style={styles.vodStateSupport} onClick={() => void navigator.clipboard?.writeText(support).then(() => setCopied(true), () => {})}>{copied ? 'Support details copied' : 'Copy support details'}</button> : null}
         </>
       )}
     </section>
@@ -2487,7 +2499,7 @@ const styles: Record<string, CSSProperties> = {
   vodStateWarn: { background: 'rgba(245, 158, 11, 0.08)', borderColor: 'rgba(251, 191, 36, 0.38)' },
   vodStateTitle: { fontSize: 15, fontWeight: 700, lineHeight: 1.3, margin: '0 0 6px' },
   vodStateLink: { alignItems: 'center', boxSizing: 'border-box', display: 'flex', fontSize: 13, justifyContent: 'center', padding: '10px 6px', textDecoration: 'none', whiteSpace: 'nowrap' },
-  vodStateSupport: { borderTop: '1px dashed #3f3f50', color: '#8b8ba0', fontFamily: 'ui-monospace, monospace', fontSize: 11, margin: '12px 0 0', overflowWrap: 'anywhere', paddingTop: 8 },
+  vodStateSupport: { background: 'none', border: 0, color: '#a1a1b5', cursor: 'pointer', font: 'inherit', fontSize: 11, margin: '10px 0 0', padding: 0, textDecoration: 'underline' },
   progressTrack: { background: '#33333d', borderRadius: 999, height: 8, marginBottom: 10, overflow: 'hidden' },
   progressFill: { background: 'var(--pulse-accent-soft, #a78bfa)', borderRadius: 999, display: 'block', height: '100%' },
   errorBlock: { background: '#1f1f27', borderRadius: 12, padding: 16 },

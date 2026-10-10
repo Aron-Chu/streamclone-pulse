@@ -135,3 +135,25 @@ describe('resolveVodPulseState', () => {
     }
   })
 })
+
+describe('a replay longer than any Twitch broadcast', () => {
+  // ohnePixel VOD 2894307326 came back mapped to a 62.9 h stream: another stream's data.
+  it.each([
+    ['a normal 8 h replay', 8 * 3600, 'ready'],
+    ['exactly 48 h', 172_800, 'ready'],
+    ['48 h and one second', 172_801, 'missing'],
+    ['the 62.9 h mapping', 226_440, 'missing'],
+  ] as const)('%s is %s', async (_case, durationSeconds, status) => {
+    const parsed = await normalizeVodPulseHttpResponse('2894307326', mockResponse(200, {
+      mode: 'vod', vodId: '2894307326', streamId: '317950783460', channelLogin: 'ohnepixel', coverageStatus: 'ready',
+      durationSeconds, startedAt: '2026-10-05T12:00:00Z', timeline: [{ offsetSeconds: 60, chatCount: 10 }], games: [{ gameName: 'Counter-Strike', offsetSeconds: 0, durationSeconds: 3600 }],
+    }))
+    const state = resolveVodPulseState(parsed)
+    expect(state.status).toBe(status)
+    if (status === 'missing') {
+      // Nothing of the other stream survives: no stream id, length, timeline or games, and no Retry.
+      expect(parsed).toMatchObject({ coverageStatus: 'missing', resolutionState: 'duration_implausible', retryable: false, channelLogin: 'ohnepixel' })
+      for (const key of ['streamId', 'durationSeconds', 'timeline', 'games', 'startedAt'] as const) expect(parsed[key as keyof ExtensionVodPulseResponse]).toBeUndefined()
+    }
+  })
+})
