@@ -88,7 +88,8 @@ test('emote rain is a Supporter perk: a saved Rain draws nothing without one, st
   await root.getByRole('button', { name: 'Edit background in all settings' }).click()
   const settings = await opened
   await settings.waitForLoadState('domcontentloaded')
-  await settings.locator('.pulse-banner-customize summary').click()
+  // Background & motion opens by itself (#pulse-background); a click on its summary would close it.
+  await expect(settings.locator('.pulse-banner-customize')).toHaveJSProperty('open', true)
   const modes = settings.getByRole('group', { name: '7TV backdrop' })
   await expect(modes.getByRole('button')).toHaveCount(3)
   await expect(modes.getByRole('button', { name: 'Off', exact: true })).toBeEnabled()
