@@ -348,7 +348,11 @@ export function HubLiveWireFeed({
      * with no ready comparison says so plainly rather than borrowing the
      * emphasis of a measured breakout.
      */
-    const badge = momentComparisonBadge(comparison, momentReactionSignal(moment.kind))
+    const reactionSignal = momentReactionSignal(moment.kind)
+    const badge = momentComparisonBadge(comparison, reactionSignal)
+    // The chip names its signal when it is not the one the row is titled by
+    // (a chat rise on an "Emote spike" row), so "2.5×" is never read as emotes.
+    const badgeNamed = badge != null && badge.label !== (reactionSignal === 'emotes' ? 'Emotes' : 'Chat')
     const category = moment.category?.trim()
     const profileImageUrl = moment.profileImageUrl ?? profileImageByLogin.get(login.toLowerCase())
     const canInspect = Boolean(onSelectMoment && canSelectMoment?.(moment) === true)
@@ -395,7 +399,7 @@ export function HubLiveWireFeed({
               className="hub-live-wire__magnitude"
               data-below={badge.belowBaseline ? 'true' : undefined}
               title={badge.long}
-            >{badge.short}</span>
+            >{badgeNamed ? `${badge.label} ${badge.short}` : badge.short}</span>
           ) : null}
           <strong className="hub-live-wire__rail-label" title={evidenceLabel(moment)}>{moment.label?.trim() || 'Activity moment'}</strong>
           <span className="hub-live-wire__rail-metrics" aria-label="Measured rates">
