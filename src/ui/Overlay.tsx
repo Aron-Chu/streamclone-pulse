@@ -817,7 +817,7 @@ function OverlayMain({
     if (!isPulseTop500Supported(payload)) {
       setNotice({
         kind: 'info',
-        text: 'StreamPulse live chat is only available for channels on the actively tracked roster.',
+        text: 'Pulse isn’t charting this channel’s chat.',
       })
       return
     }
@@ -2342,7 +2342,7 @@ function WarmingState({
       <section style={styles.stateBlock}>
         <h2 style={styles.stateTitle}>{statusLabel}</h2>
         <p style={styles.stateText}>
-          Viewer metadata may still update, but this channel has no IRC chat coverage right now. Most reacted requires measured minute chat rollups.
+          Viewer counts may still update, but Pulse isn’t reading this channel’s chat, so there are no moments.
         </p>
       </section>
     )
@@ -2356,10 +2356,10 @@ function WarmingState({
       <h2 style={styles.stateTitle}>{statusLabel}</h2>
       <p style={styles.stateText}>
         {firstMinutePending
-          ? 'IRC chat rollups close once per minute. The chart and Top Moments fill in automatically — nothing to load from stream start yet.'
+          ? 'Chat is counted once a minute. The chart and Top Moments fill in on their own.'
           : lateTracking
             ? `StreamPulse is tracking this broadcast (${formatHeatOffset(coverageStart)} in). Top Moments unlock after ${LIVE_HEAT_MIN_COMPLETED_ROLLUPS} completed minutes of chat rollups.`
-            : `Collecting chat and emote activity. Top Moments unlock after ${LIVE_HEAT_MIN_COMPLETED_ROLLUPS} completed minutes, never shown as final early.`}
+            : `Collecting chat and emote activity. Top Moments unlock after ${LIVE_HEAT_MIN_COMPLETED_ROLLUPS} completed minutes.`}
       </p>
       <div className="pulse-shimmer" style={styles.progressTrack}><span style={{ ...styles.progressFill, width: `${progress * 100}%` }} /></div>
       <p style={styles.muted}>{count} / {LIVE_HEAT_MIN_COMPLETED_ROLLUPS} minutes collected · updates automatically</p>

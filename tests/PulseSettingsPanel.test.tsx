@@ -51,6 +51,14 @@ describe('PulseSettingsPanel quick workspace', () => {
     expect(html).toContain('class="pulse-settings-bottom-bar"')
   })
 
+  it('puts a Discord row beside Open all settings that the worker opens, with no page URL in the panel', () => {
+    const html = renderToStaticMarkup(<OpenAllSettingsButton />)
+    expect(html).toContain('Join the StreamPulse Discord')
+    expect(html).toContain('data-community-link="discord"')
+    expect(html.indexOf('Open all settings')).toBeLessThan(html.indexOf('Join the StreamPulse Discord'))
+    expect(html).not.toContain('streampulse.stream/discord')
+  })
+
   it('opens on the channel being watched, in plain language', () => {
     const html = renderToStaticMarkup(<PulseSettingsPanel channel={LIVE} />)
     expect(html).toContain('Watching')

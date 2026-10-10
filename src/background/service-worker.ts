@@ -98,6 +98,7 @@ import {
   type AnalyticsEmitEventName,
 } from '../shared/extensionAnalytics.ts'
 import { createExtensionHealthCache } from './extensionHealthCache.ts'
+import { COMMUNITY_LINKS } from '../shared/portalLinks.ts'
 import { getUpdateCheckCapability, requestBrowserUpdateCheck } from './extensionUpdateCheck.ts'
 
 void initPulseDebug()
@@ -1001,6 +1002,15 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
             sendResponse({ type: 'OPEN_SETTINGS_HOST', ok: true } satisfies BackgroundResponse)
           } catch {
             sendResponse({ type: 'OPEN_SETTINGS_HOST', ok: false, error: 'settings_host_open_failed' } satisfies BackgroundResponse)
+          }
+          return
+        }
+        case 'OPEN_COMMUNITY_LINK': {
+          try {
+            await chrome.tabs.create({ url: COMMUNITY_LINKS[message.link] })
+            sendResponse({ type: 'OPEN_COMMUNITY_LINK', ok: true } satisfies BackgroundResponse)
+          } catch {
+            sendResponse({ type: 'OPEN_COMMUNITY_LINK', ok: false } satisfies BackgroundResponse)
           }
           return
         }
