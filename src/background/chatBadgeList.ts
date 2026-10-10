@@ -259,8 +259,10 @@ export class ChatBadgeList {
         stored.failures = 0
         stored.nextAt = this.now() + this.jittered(CHAT_BADGE_REFRESH_MS)
       } else if (response.status === 404) {
-        // Feature off on the server (the kill switch): clear, unregister, ask again in 6 h.
+        // Feature off on the server (the kill switch): clear everything, your own
+        // entry included, unregister, and ask again in 6 h.
         this.dropDoc()
+        delete stored.own
         stored.failures = 0
         stored.nextAt = this.now() + CHAT_BADGE_NOT_FOUND_MS
       } else if (response.status === 200) {

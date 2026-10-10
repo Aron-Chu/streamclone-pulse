@@ -24,19 +24,29 @@ async function viewerSettingOn(): Promise<boolean> {
   }
 }
 
-let reconcileQueued: Promise<void> | null = null
-/** Register or unregister the decorator to match the list, then tell open tabs. */
+let reconciling: Promise<void> | null = null
+let reconcileAgain = false
+/**
+ * Register or unregister the decorator to match the list, then tell open tabs.
+ * A change that arrives while one pass runs gets a fresh pass afterwards, so
+ * the last setting or list always wins.
+ */
 export function reconcileChatBadges(): Promise<void> {
-  if (!reconcileQueued) {
-    reconcileQueued = (async () => {
+  if (reconciling) {
+    reconcileAgain = true
+    return reconciling
+  }
+  reconciling = (async () => {
+    do {
+      reconcileAgain = false
       try {
         const want = await chatBadgeList.wanted()
         if (typeof chrome.scripting?.registerContentScripts === 'function') await reconcileChatBadgeScript(chrome.scripting, chrome.tabs, want)
         await notifyChatBadgeTabs(chrome.tabs)
       } catch { /* the next change reconciles again */ }
-    })().finally(() => { reconcileQueued = null })
-  }
-  return reconcileQueued
+    } while (reconcileAgain)
+  })().finally(() => { reconciling = null })
+  return reconciling
 }
 
 export const chatBadgeList = new ChatBadgeList({

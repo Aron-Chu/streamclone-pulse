@@ -199,12 +199,15 @@ describe('Seen in chat list scheduling', () => {
     const h = harness()
     const store = h.make()
     await store.ask()
+    // Your own entry, shown locally after opting in, goes with the kill switch too.
+    await store.patchOwn({ kind: 'on', entry: ['55555555', 'me_myself', 1, 1, 2], at: NOW_S * 1000 + CHAT_BADGE_REFRESH_MS })
     h.advance(CHAT_BADGE_REFRESH_MS * 2)
     h.setRespond(() => ({ status: 404, body: '{"error":"not_found"}' }))
     await store.refresh()
     expect(await store.ask()).toEqual({ type: 'CHAT_BADGES', off: true })
     expect(await store.wanted()).toBe(false)
     expect(h.stored.text).toBeUndefined()
+    expect(h.stored.own).toBeUndefined()
     expect(h.stored.nextAt).toBe(NOW_S * 1000 + CHAT_BADGE_REFRESH_MS * 2 + CHAT_BADGE_NOT_FOUND_MS)
     // The rollback floor survives the 404.
     expect(h.stored.floor.sandbox).toBe(NOW_S - 60)
