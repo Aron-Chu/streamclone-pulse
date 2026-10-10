@@ -53,9 +53,9 @@ import {
   sessionViewportForNavigatorRange,
 } from '../../utils/sessionChartNavigator.ts'
 import {
-  isUnfinishedLiveMinute,
   liveEdgeLabel,
-  newestPlottedMinute,
+  plotEndMinutes,
+  resolveLiveEdgeMode,
   rollupsThroughMinute,
 } from '../../utils/chartLiveEdge.ts'
 
@@ -275,22 +275,22 @@ function AnalyticsChart({
   )
   // The plot, its time axis and the navigator all end on the newest minute with
   // data, so the series reach the right edge with the axis and the zoom bar.
-  // On a live stream the minute still being measured is left off the plot (the
-  // table still lists it, marked as updating) and a marker at the edge says
-  // the chart is live.
-  const liveMeasuredThroughMs = isLive && detail?.updatedAt ? detail.updatedAt : null
-  const plotLastMinute = useMemo(
-    () => newestPlottedMinute(allDetailRollups ?? chartedRollups, liveMeasuredThroughMs),
-    [allDetailRollups, chartedRollups, liveMeasuredThroughMs],
+  // On an open stream (confirmed live, or reported live while its status is
+  // unconfirmed) a partial newest minute, still being measured or the one
+  // collection stopped in, is left off the plot (the table still lists it,
+  // marked) and a marker at the edge says how fresh the data is.
+  const liveEdgeMode = resolveLiveEdgeMode(detail, isLive)
+  const liveMeasuredThroughMs = liveEdgeMode && detail?.updatedAt ? detail.updatedAt : null
+  const plotEnd = useMemo(
+    () => plotEndMinutes(allDetailRollups ?? chartedRollups, liveMeasuredThroughMs, liveEdgeMode != null),
+    [allDetailRollups, chartedRollups, liveEdgeMode, liveMeasuredThroughMs],
   )
-  // The minute still being measured that the plot leaves off, if any.
-  const unfinishedMinuteTs = useMemo(() => {
-    const newest = [...(allDetailRollups ?? chartedRollups)].reverse().find(rollupHasMinuteData)
-    return newest && plotLastMinute && newest.minuteTs !== plotLastMinute.minuteTs
-      && isUnfinishedLiveMinute(newest, liveMeasuredThroughMs)
-      ? newest.minuteTs
-      : null
-  }, [allDetailRollups, chartedRollups, liveMeasuredThroughMs, plotLastMinute])
+  const plotLastMinute = plotEnd.plotted
+  // The partial minute the plot leaves off, if any, and why. While the live
+  // status is unconfirmed nothing says more data is coming, so it is "partial".
+  const leftOffMinute = plotEnd.leftOff && plotEnd.newest
+    ? { minuteTs: plotEnd.newest.minuteTs, reason: liveEdgeMode === 'unconfirmed' ? 'partial' as const : plotEnd.leftOff }
+    : null
   const rollups = useMemo(() => {
     const plotted = rollupsThroughMinute(chartedRollups, plotLastMinute)
     // A downsampled series may skip the last minute; end it there anyway.
@@ -504,12 +504,13 @@ function AnalyticsChart({
     || viewportDurationSeconds(effectiveChartViewport) < chartDurationSeconds - chartDomainStartSeconds - 5
   )
   // The marker belongs to the live edge, so it shows only while the view reaches it.
-  const liveEdgeMarker = isLive && plotLastMinute && effectiveChartViewport.endSeconds >= chartDurationSeconds - 1
+  const liveEdgeMarker = liveEdgeMode && plotLastMinute && effectiveChartViewport.endSeconds >= chartDurationSeconds - 1
     ? liveEdgeLabel({
       lastMinute: plotLastMinute,
       measuredThroughMs: liveMeasuredThroughMs,
       streamStartedAt,
       formatOffset: formatHeatOffset,
+      mode: liveEdgeMode,
     })
     : null
   const selectedOutsideViewport = selectedChartOffsetSeconds != null
@@ -1042,6 +1043,7 @@ function AnalyticsChart({
           activityBucketing="time"
           onActivityBucketMinutesChange={setActivityBucketMinutes}
           liveEdgeLabel={liveEdgeMarker}
+          liveEdgeTone={liveEdgeMode === 'unconfirmed' ? 'unconfirmed' : 'live'}
         />
 
         {showPositionRail ? (
@@ -1153,9 +1155,13 @@ function AnalyticsChart({
                 <tr key={rollup.minuteTs} className="border-t border-white/5">
                   <th scope="row">
                     {vodClock(rollup.minuteTs, streamStartedAt)}
-                    {/* Still being measured, so its counts are partial; the plot leaves it off. */}
-                    {isLive && rollup.minuteTs === unfinishedMinuteTs
-                      ? <span className="font-normal text-zinc-500" data-chart-data-updating> (updating)</span>
+                    {/* Partial (still being measured, or the minute collection stopped in); the plot leaves it off. */}
+                    {leftOffMinute && rollup.minuteTs === leftOffMinute.minuteTs
+                      ? (
+                        <span className="font-normal text-zinc-500" data-chart-data-updating={leftOffMinute.reason}>
+                          {leftOffMinute.reason === 'updating' ? ' (updating)' : ' (partial)'}
+                        </span>
+                      )
                       : null}
                   </th>
                   <td>{count(viewerReadoutValue(rollup))}</td>

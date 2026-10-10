@@ -14,7 +14,14 @@ afterEach(() => cleanup())
 // and the last bars stopped well short of it.
 const START = Date.parse('2026-10-09T23:46:31.000Z')
 
-function detail(args: { minutes: number; emptyTail?: number; updatedAt?: number; live?: boolean }): AnalyticsStreamDetail {
+function detail(args: {
+  minutes: number
+  emptyTail?: number
+  updatedAt?: number
+  live?: boolean
+  state?: string
+  lifecycleState?: 'unknown' | 'confirmed_live' | 'confirmed_ended'
+}): AnalyticsStreamDetail {
   const rows = Array.from({ length: args.minutes + (args.emptyTail ?? 0) }, (_, index) => {
     const hasData = index < args.minutes
     // The newest minute of a live stream is partial: short chat, no viewer sample yet.
@@ -29,7 +36,14 @@ function detail(args: { minutes: number; emptyTail?: number; updatedAt?: number;
     }
   })
   return {
-    stream: { streamId: 'live-edge', startedAt: new Date(START).toISOString(), peakViewers: 50_000, avgViewers: 48_000 },
+    state: args.state,
+    stream: {
+      streamId: 'live-edge',
+      startedAt: new Date(START).toISOString(),
+      peakViewers: 50_000,
+      avgViewers: 48_000,
+      ...(args.lifecycleState ? { lifecycleState: args.lifecycleState } : {}),
+    },
     rollups: rows,
     topEmotes: [],
     sources: [],
@@ -128,5 +142,44 @@ describe('AnalyticsChart live edge', () => {
     expect(lastBarRight).toBeCloseTo(plotEnd, 0)
     expect(container.querySelector('[data-hub-chart-navigator] .hx-chart-navigator__bucket-count')?.textContent)
       .toContain('748 of 748 minutes')
+  })
+
+  // Review finding (2026-10-09): the reported stream, read later, shows "Live status
+  // unconfirmed" (the API says state "live", lifecycle "unknown") because collection
+  // stopped. The client does not confirm it live, yet the plot must still line up.
+  it('lines up an open stream whose live status is unconfirmed, and says when its data stops', () => {
+    // 15 minutes; the 15th (00:14:00) is the partial minute collection stopped in, read 10 minutes later.
+    const data = detail({ minutes: 15, live: true, state: 'live', lifecycleState: 'unknown', updatedAt: START + 25 * 60_000 })
+    const { container } = renderChart(data, false)
+    const { plotEnd, viewerEnd, lastBarRight, viewportEnd } = geometry(container)
+    expect(viewportEnd).toBe(13 * 60)
+    expect(viewerEnd).toBeCloseTo(plotEnd, 0)
+    expect(lastBarRight).toBeCloseTo(plotEnd, 0)
+    expect(container.querySelector('[data-hub-chart-navigator] .hx-chart-navigator__bucket-count')?.textContent)
+      .toBe('14 of 14 minutes')
+    const marker = container.querySelector('[data-chart-live-edge]')
+    expect(marker?.textContent).toBe('Unconfirmed · last data 00:14:00')
+    expect(marker?.getAttribute('data-chart-live-edge-tone')).toBe('unconfirmed')
+    const partialRows = [...container.querySelectorAll('[data-chart-data-updating="partial"]')]
+    expect(partialRows).toHaveLength(1)
+    expect(partialRows[0]!.closest('tr')?.textContent).toContain('00:14:00 (partial)')
+  })
+
+  it('lines up a confirmed live stream whose newest minute stopped long ago', () => {
+    const data = detail({ minutes: 15, live: true, state: 'live', lifecycleState: 'confirmed_live', updatedAt: START + 25 * 60_000 })
+    const { container } = renderChart(data, true)
+    const { plotEnd, viewerEnd, viewportEnd } = geometry(container)
+    expect(viewportEnd).toBe(13 * 60)
+    expect(viewerEnd).toBeCloseTo(plotEnd, 0)
+    expect(container.querySelector('[data-chart-live-edge]')?.textContent).toBe('Live · last data 00:14:00')
+    expect(container.querySelector('[data-chart-live-edge]')?.getAttribute('data-chart-live-edge-tone')).toBe('live')
+  })
+
+  it('keeps the last minute of a confirmed ended stream, with no marker', () => {
+    const data = detail({ minutes: 15, live: true, state: 'historical', lifecycleState: 'confirmed_ended', updatedAt: START + 25 * 60_000 })
+    const { container } = renderChart(data, false)
+    expect(geometry(container).viewportEnd).toBe(14 * 60)
+    expect(container.querySelector('[data-chart-live-edge]')).toBeNull()
+    expect(container.querySelector('[data-chart-data-updating]')).toBeNull()
   })
 })

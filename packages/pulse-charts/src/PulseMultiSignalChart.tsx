@@ -1166,6 +1166,7 @@ function PulseMultiSignalChartInnerImpl({
   activityBucketing = "budget",
   onActivityBucketMinutesChange,
   liveEdgeLabel = null,
+  liveEdgeTone = "live",
 }: {
   rollups: ChartMinuteRollup[];
   /** Full-resolution viewer source used for idle/detail geometry and moment lookup. */
@@ -1245,6 +1246,11 @@ function PulseMultiSignalChartInnerImpl({
    * "Live · updating". Omitted, nothing is drawn.
    */
   liveEdgeLabel?: string | null;
+  /**
+   * `live`: a pulsing rose dot (the stream is confirmed live). `unconfirmed`:
+   * a still amber dot, for an open stream whose live status is unconfirmed.
+   */
+  liveEdgeTone?: "live" | "unconfirmed";
 }) {
   const [hover, setHover] = useState<number | null>(null);
   // Index into the per-minute activity-bar series under the pointer. Only set
@@ -3644,23 +3650,27 @@ function PulseMultiSignalChartInnerImpl({
 
         {/* Live edge: above the plot's right end, in the top margin, so it
             never covers a value. */}
-        {isLive && liveEdgeLabel ? (
-          <g data-chart-live-edge={liveEdgeLabel}>
+        {liveEdgeLabel ? (
+          <g data-chart-live-edge={liveEdgeLabel} data-chart-live-edge-tone={liveEdgeTone}>
             <circle
               cx={width - padRight - 4}
               cy={padTop - 16}
               r={3.5}
-              fill="#fb7185"
-              className={motionEnabled ? "animate-pulse" : undefined}
+              fill={liveEdgeTone === "unconfirmed" ? "#fbbf24" : "#fb7185"}
+              className={motionEnabled && liveEdgeTone === "live" ? "animate-pulse" : undefined}
             />
             <text
               x={width - padRight - 12}
               y={padTop - 12}
               textAnchor="end"
-              fill="#fda4af"
+              fill={liveEdgeTone === "unconfirmed" ? "#fcd34d" : "#fda4af"}
               className="text-xs font-black uppercase"
             >
-              {liveEdgeLabel}
+              {/* On a narrow plot keep the part after the lead ("last data
+                  00:20:29"); the dot's colour still says live or unconfirmed. */}
+              {liveEdgeLabel.length * 7.4 > plotWidthPx - 24 && liveEdgeLabel.includes(" · ")
+                ? liveEdgeLabel.slice(liveEdgeLabel.indexOf(" · ") + 3)
+                : liveEdgeLabel}
             </text>
           </g>
         ) : null}
