@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import SUPPORTER_PERKS from '../src/shared/supporter-perks.json'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -87,7 +88,7 @@ const youImages = (stage: HTMLElement) => [...stage.querySelectorAll<HTMLImageEl
 const chips = (banner: HTMLElement) => [...banner.querySelectorAll('.pulse-settings-supporter-perk')].map(chip => chip.textContent)
 
 describe('full-settings Supporter banner: Crown, staged', () => {
-  it('renders the staged Crown for a non-Supporter: the sample kit, the price, three perk chips and the way to the benefits', async () => {
+  it('renders the staged Crown for a non-Supporter: the sample kit, the price, a chip for every perk and the way to the benefits', async () => {
     stubExtension(NON_SUPPORTER)
     const onPerks = vi.fn()
     const onOpen = vi.fn()
@@ -99,7 +100,8 @@ describe('full-settings Supporter banner: Crown, staged', () => {
     expect(view.stage().dataset.running).toBe('true')
     expect(view.banner().querySelector('.pulse-settings-supporter-banner-eyebrow')?.textContent).toBe('Pulse Supporter· US$4.99/mo')
     expect(view.banner().querySelector('strong')?.textContent).toBe('Your crest lands on top')
-    expect(chips(view.banner())).toEqual(['Title paint', 'Tenure crest', 'Emote rain'])
+    expect(chips(view.banner())).toEqual(SUPPORTER_PERKS.names)
+    expect(chips(view.banner())).toEqual(['Title paint', 'Tenure crest', 'Emote rain', 'Supporter card'])
     expect(view.banner().querySelector('[data-perk="crest"] .pulse-crest')?.getAttribute('data-tenure')).toBe('12m')
     expect(view.banner().querySelector('small')?.textContent).toBe('Only you see them. Core tools stay free.')
     expect(view.banner().textContent).not.toMatch(/signature/i)
@@ -142,7 +144,7 @@ describe('full-settings Supporter banner: Crown, staged', () => {
     expect(view.banner().style.getPropertyValue('--spk-fin')).toBe('#e6a9d6')
     expect(view.banner().querySelector('.pulse-settings-supporter-banner-eyebrow')?.textContent).toBe('Your kit')
     expect(view.banner().querySelector('strong')?.textContent).toBe('Yours lands on top')
-    expect(chips(view.banner())).toEqual(['Halo paint', 'Year-one crest', 'Emote rain'])
+    expect(chips(view.banner())).toEqual(['Halo paint', 'Year-one crest', 'Emote rain', 'Supporter card'])
     expect(view.banner().textContent).not.toContain('4.99')
     runFrames(1)
     expect(youImages(view.stage())).toEqual([])
@@ -162,7 +164,7 @@ describe('full-settings Supporter banner: Crown, staged', () => {
     const view = await mount(<SupporterBanner onOpen={() => {}} />)
     expect(view.banner().dataset.supporterKit).toBe('own')
     expect(view.banner().style.getPropertyValue('--spk-fin')).toBe('#2dd4bf')
-    expect(chips(view.banner())).toEqual(['Default paint', 'Signal set', 'Emote rain'])
+    expect(chips(view.banner())).toEqual(['Default paint', 'Signal set', 'Emote rain', 'Supporter card'])
     runFrames(1)
     expect(view.stage().querySelector('.spk-you .spk-crest')?.getAttribute('data-tenure')).toBe('3m')
     expect(view.stage().querySelector('.spk-tag .spk-name')?.className).toBe('spk-name')

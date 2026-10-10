@@ -19,11 +19,12 @@ const attemptId = '33333333-3333-4333-8333-333333333333'
 const CHECKOUT_URL = 'https://checkout.stripe.com/c/pay/cs_test_local'
 const PORTAL_URL = 'https://billing.stripe.com/p/session/test_local'
 
-type Reply = { status: number; body: unknown }
+type Reply = { status: number; body: unknown; retryAfterMs?: number }
 
 function fixture({ signedIn = true, twitchSignIn = true, membership: changes = {}, stepUp }: { signedIn?: boolean; twitchSignIn?: boolean; membership?: Record<string, unknown>; stepUp?: (mode: TwitchSignInMode) => Promise<TwitchStepUpResult> } = {}) {
   let account: unknown = signedIn ? { kind: 'linked', ...credentials } : null
   let journey: unknown = null
+  let clock = now
   const membership: Record<string, unknown> = { schemaVersion: 1, accountId: credentials.accountId, environment: 'live', revision: 1, status: 'none', serverTime: iso(0), accessFrom: iso(-1000), accessUntil: iso(3_600_000), cacheUntil: iso(60_000), features: {}, checkoutEnabled: true, accountKind: 'twitch', ...changes }
   const routes = new Map<string, Reply[]>()
   const request = vi.fn(async (path: string, _body?: Record<string, unknown>, _bearer?: string): Promise<Reply> => {
@@ -38,12 +39,12 @@ function fixture({ signedIn = true, twitchSignIn = true, membership: changes = {
     readInstallationKey: async () => null,
     writeInstallationKey: async () => {},
     request: async (path, body, bearer) => path === '/v1/billing/supporter' ? { status: 200, body: membership } : path === '/v1/account/installations' ? installation() : request(path, body, bearer),
-    now: () => now,
+    now: () => clock,
   })
   const open = vi.fn(async (_url: string) => {})
   const step = vi.fn(stepUp ?? (async (): Promise<TwitchStepUpResult> => ({ ok: true, expiresAt: iso(600_000) })))
-  const pay = new SupporterPayFirstCoordinator({ account: supporter, request, read: async () => journey, write: async value => { journey = value }, open, now: () => now, twitchSignIn, stepUp: step })
-  return { pay, request, open, step, installation, route: (path: string, ...replies: Reply[]) => routes.set(path, replies), journey: () => journey }
+  const pay = new SupporterPayFirstCoordinator({ account: supporter, request, read: async () => journey, write: async value => { journey = value }, open, now: () => clock, twitchSignIn, stepUp: step })
+  return { pay, request, open, step, installation, route: (path: string, ...replies: Reply[]) => routes.set(path, replies), journey: () => journey, advance: (ms: number) => { clock += ms } }
 }
 
 describe('Twitch sign-in billing: Checkout needs a signed-in account', () => {
@@ -167,5 +168,57 @@ describe('portal_confirm is a settings-page request with no destination', () => 
   it('parses only the exact shape', () => {
     expect(parseBackgroundRequest({ type: 'SUPPORTER_BILLING', action: 'portal_confirm' })).toEqual({ type: 'SUPPORTER_BILLING', action: 'portal_confirm' })
     expect(parseBackgroundRequest({ type: 'SUPPORTER_BILLING', action: 'portal_confirm', url: PORTAL_URL })).toBeNull()
+  })
+})
+
+describe('Twitch sign-in billing: a 429 try_later pauses Checkout and the portal', () => {
+  // Backend #162 bounds Checkout and portal sessions per account and network:
+  // 429 {"error":"try_later"} with Retry-After. The page names the wait, and
+  // the worker sends nothing before it ends, however often the button is pressed.
+  const TRY_LATER: Reply = { status: 429, body: { error: 'try_later' }, retryAfterMs: 540_000 }
+
+  it('names when Checkout can be tried again and sends nothing before then', async () => {
+    const f = fixture()
+    f.route('/v1/billing/checkout', TRY_LATER, { status: 201, body: { attemptId, url: CHECKOUT_URL, expiresAt: iso(30 * 60_000) } })
+    expect(await f.pay.billing('checkout')).toEqual({ state: 'try_later', retryAt: now + 540_000 })
+    expect(f.open).not.toHaveBeenCalled()
+    // Repeated clicks and status reads inside the window reach no server route.
+    f.advance(60_000)
+    expect(await f.pay.billing('checkout')).toEqual({ state: 'try_later', retryAt: now + 540_000 })
+    expect(await f.pay.billing('status')).toEqual({ state: 'try_later', retryAt: now + 540_000 })
+    expect(await f.pay.billing('portal')).toEqual({ state: 'try_later', retryAt: now + 540_000 })
+    expect(f.request.mock.calls.filter(([path]) => path.startsWith('/v1/billing/'))).toHaveLength(1)
+    // No attempt is left behind to poll.
+    expect(f.journey()).not.toHaveProperty('billing')
+    // After the window one click asks once.
+    f.advance(480_000)
+    expect(await f.pay.billing('status')).toEqual({ state: 'idle' })
+    expect(await f.pay.billing('checkout')).toEqual({ state: 'waiting', attemptId })
+    expect(f.request.mock.calls.filter(([path]) => path === '/v1/billing/checkout')).toHaveLength(2)
+    expect(f.open).toHaveBeenCalledExactlyOnceWith(CHECKOUT_URL)
+  })
+
+  it('names when Manage subscription can be tried again, and opens nothing', async () => {
+    const f = fixture({ membership: { status: 'active' } })
+    f.route('/v1/billing/portal', { ...TRY_LATER, retryAfterMs: 120_000 }, { status: 200, body: { url: PORTAL_URL } })
+    expect(await f.pay.billing('portal')).toEqual({ state: 'try_later', retryAt: now + 120_000 })
+    expect(await f.pay.billing('portal')).toEqual({ state: 'try_later', retryAt: now + 120_000 })
+    expect(f.request.mock.calls.filter(([path]) => path === '/v1/billing/portal')).toHaveLength(1)
+    expect(f.open).not.toHaveBeenCalled()
+    f.advance(120_000)
+    expect(await f.pay.billing('portal')).toEqual({ state: 'idle' })
+    expect(f.open).toHaveBeenCalledExactlyOnceWith(PORTAL_URL)
+  })
+
+  it('waits at least five seconds when Retry-After is missing or tiny, and at most a day', async () => {
+    const f = fixture()
+    f.route('/v1/billing/checkout', { status: 429, body: { error: 'try_later' } })
+    expect(await f.pay.billing('checkout')).toEqual({ state: 'try_later', retryAt: now + 60_000 })
+    const g = fixture()
+    g.route('/v1/billing/checkout', { status: 429, body: { error: 'try_later' }, retryAfterMs: 1 })
+    expect(await g.pay.billing('checkout')).toEqual({ state: 'try_later', retryAt: now + 5_000 })
+    const h = fixture()
+    h.route('/v1/billing/checkout', { status: 429, body: { error: 'try_later' }, retryAfterMs: 10 * 86_400_000 })
+    expect(await h.pay.billing('checkout')).toEqual({ state: 'try_later', retryAt: now + 86_400_000 })
   })
 })

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { SupporterPerkList } from './SupporterPerkList.tsx'
 import type { BackgroundResponse } from '../shared/messages.ts'
 import { POLICY_LINKS, deviceLinkWithCode, productLink } from '../shared/portalLinks.ts'
 import {
@@ -83,6 +84,26 @@ export const ACCOUNT_COPY = {
   reinstall: 'Reinstalled or on another browser? Continue with Twitch with the same Twitch account and your Supporter status comes back. No code to copy, no email to confirm.',
 } as const
 
+/**
+ * The wait a 429 `try_later` from Checkout or the portal names (backend
+ * Retry-After): the clock time it ends, and roughly how long that is. The
+ * worker sends nothing before it, so the page never retries on its own.
+ */
+export function retryWaitCopy(retryAt: number, now = Date.now()): { at: string; span: string } {
+  const minutes = Math.max(1, Math.ceil((retryAt - now) / 60_000))
+  const hours = Math.round(minutes / 60)
+  const span = minutes < 60 ? `about ${minutes} minute${minutes === 1 ? '' : 's'}` : `about ${hours} hour${hours === 1 ? '' : 's'}`
+  const at = new Date(retryAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  return { at, span }
+}
+
+export function tryLaterCopy(kind: 'checkout' | 'portal', retryAt: number, now = Date.now()): string {
+  const { at, span } = retryWaitCopy(retryAt, now)
+  return kind === 'checkout'
+    ? `Checkout was opened too many times in a short while, so it is paused for this account. This attempt started nothing and charged nothing. Try again after ${at} (${span}).`
+    : `Subscription management was opened too many times in a short while, so it is paused for this account. Your membership is unchanged. Try again after ${at} (${span}).`
+}
+
 type Intent = 'purchase' | 'connect' | null
 /**
  * Where an action's outcome is reported: the card footer, or the Account card
@@ -141,11 +162,9 @@ function OfferTerms() {
     <>
       {/* The card's footer line: the price and its terms in one row, before the action. */}
       <p className="pulse-supporter-terms"><b>{PRICE_DISPLAY}</b><span>renews monthly until you cancel</span><span>cancel any time; access runs to the end of the paid month</span><span>taxes, if any, shown before you pay</span></p>
-      {/* "You get" lists only shipped benefits, and names each perk the
-          settings banner sells: title paint, the tenure crest and emote rain.
-          "Who sees what" shows the chat crest as a concept, so it is not
-          restated here. */}
-      <p className="pulse-supporter-detail"><b>You get</b> a private Pulse header accent, three accent finishes, a tenure crest beside your panel title that grows with your support (only you see it), emote rain behind your Pulse panel, and private support recognition.</p>
+      {/* "You get" is the one perk list (src/shared/supporter-perks.json) that
+          the settings banner, quick settings, /supporter and the Terms share. */}
+      <SupporterPerkList />
     </>
   )
 }
@@ -337,6 +356,16 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
     return () => window.clearTimeout(timer)
   }, [billing, readBilling])
 
+  // A Retry-After pause re-renders once when it ends, to enable Try again.
+  // Nothing is requested then: only the person's click asks the worker again.
+  const [, setRetryElapsed] = useState(0)
+  const retryAt = billing.state === 'try_later' ? billing.retryAt : null
+  useEffect(() => {
+    if (retryAt === null) return
+    const timer = window.setTimeout(() => setRetryElapsed(count => count + 1), Math.min(2_147_483_647, Math.max(0, retryAt - Date.now()) + 250))
+    return () => window.clearTimeout(timer)
+  }, [retryAt])
+
   const pending = account?.state === 'pending' ? account : null
   const linked = account?.state === 'linked' ? account : null
   useEffect(() => { deviceRequest.current++; setDevices(null); setRevokeDevice(null); setConfirmDisconnect(false); setConfirmIdentity(null) }, [linked?.accountId])
@@ -471,6 +500,8 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
       if (result.state === 'sign_in_required') { setNotice(twitchOn ? 'Your sign-in ended on this browser. Continue with Twitch, then try again.' : 'This extension is no longer connected.'); await run('status'); return }
       if (result.state === 'step_up_required' || result.state === 'wrong_account') { setBilling({ state: 'error' }); return }
       setBilling(result)
+      // Nothing was started: no membership watch, and no automatic retry.
+      if (result.state === 'try_later') return
       await run('status'); await readEntitlement(true)
       setWatchUntil(Date.now() + MEMBERSHIP_WATCH_MS)
     } catch { setBilling({ state: 'unavailable' }) }
@@ -492,6 +523,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
       if (result === 'fallback') openPortal(billingHref)
       else if (result === 'wrong_account') setNotice(ACCOUNT_COPY.wrongAccount, at)
       else if (result === 'sign_in_required') { setNotice(twitchOn ? 'Your sign-in ended on this browser. Continue with Twitch, then try again.' : 'This extension is no longer connected.', at); void run('status') }
+      else if (response.billing.state === 'try_later') setNotice(tryLaterCopy('portal', response.billing.retryAt), at)
       else if (result !== 'idle') setNotice(failed, at)
     } catch { setNotice(failed, at) }
     finally { payInFlight.current = false; setPayBusy(false) }
@@ -806,6 +838,11 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
       const support = <a key="help" className={twitchOn && unlinked && twitchWindow ? undefined : 'pulse-journey-primary'} href={POLICY_LINKS.support} target="_blank" rel="noopener noreferrer">Contact support</a>
       if (twitchOn && unlinked && twitchWindow) { primary = continueWithTwitch(); secondary = [support] } else primary = support
       if (linked) secondary.push(<button key="check" type="button" disabled={payBusy} onClick={() => void checkPayment()}>Check payment status</button>)
+    } else if (billing.state === 'try_later') {
+      const waiting = billing.retryAt > Date.now()
+      state = 'try-later'; title = 'Checkout is paused for a moment'
+      body = <p>{tryLaterCopy('checkout', billing.retryAt)} Your free tools still work.</p>
+      primary = <button className="pulse-journey-primary" type="button" disabled={payBusy || waiting} onClick={() => { setBilling({ state: 'idle' }); void purchase() }}>{waiting ? `Try again after ${retryWaitCopy(billing.retryAt).at}` : 'Try again'}</button>
     } else { state = 'billing-unavailable'; title = 'Checkout is unavailable'; body = <p>The service could not prepare checkout. Your free tools still work.</p>; primary = <button className="pulse-journey-primary" type="button" disabled={payBusy} onClick={() => { setBilling({ state: 'idle' }); void checkAgain() }}>Try again</button> }
   }
   if (entitlement?.state === 'ready' && entitlement.accountKind === 'installation' && entitlement.installationAccountsEnabled !== true) {

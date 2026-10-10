@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
+import SUPPORTER_PERKS from '../src/shared/supporter-perks.json'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ACCOUNT_COPY, MEMBERSHIP_WATCH_DELAYS_MS, MEMBERSHIP_WATCH_MS, SupporterJourney, accountReference } from '../src/options/SupporterJourney.tsx'
+import { ACCOUNT_COPY, MEMBERSHIP_WATCH_DELAYS_MS, MEMBERSHIP_WATCH_MS, SupporterJourney, accountReference, retryWaitCopy } from '../src/options/SupporterJourney.tsx'
 import type { SupporterAccountAction, SupporterAccountState, SupporterEntitlement, SupporterBillingState, SupporterRestoreState } from '../src/shared/supporterAccount.ts'
 import type { TwitchSignInResponse, TwitchSignInStage } from '../src/shared/twitchSignIn.ts'
 
@@ -827,20 +828,19 @@ describe('notices beside the action that caused them', () => {
 })
 
 describe('the offer names what the banner sells', () => {
-  // The settings banner sells three perks: title paint, the tenure crest and
-  // emote rain. The "You get" line above the purchase button names each one.
+  // The offer lists every perk from the one perk list the settings banner,
+  // quick settings, /supporter and the Terms share, in the same order.
   it.each([
     ['signed out', () => ({ state: 'signed_out' }) as SupporterAccountState, () => ({ state: 'not_linked' }) as SupporterEntitlement],
     ['linked without a membership', () => linked, () => ready('none')],
-  ] as const)('lists title paint, the tenure crest and emote rain when %s', async (_name, account, entitlement) => {
+  ] as const)('lists every perk from the shared list when %s', async (_name, account, entitlement) => {
     const view = await mount({ account, entitlement, billing: () => ({ state: 'idle' }) })
     try {
-      const youGet = [...view.host.querySelectorAll('.pulse-supporter-detail')].find(line => line.querySelector('b')?.textContent === 'You get')?.textContent ?? ''
-      expect(youGet).toMatch(/header accent/)
-      expect(youGet).toMatch(/accent finishes/)
-      expect(youGet).toMatch(/tenure crest beside your panel title that grows with your support/)
-      expect(youGet).toMatch(/emote rain behind your Pulse panel/)
-      expect(youGet).not.toMatch(/signature/i)
+      const list = view.host.querySelector<HTMLElement>('[data-supporter-perks-list="true"]')!
+      expect(list.querySelector('b')?.textContent).toBe('You get')
+      expect([...list.querySelectorAll('li')].map(item => item.textContent)).toEqual(SUPPORTER_PERKS.names.map(name => `${name}: ${SUPPORTER_PERKS.details[name as keyof typeof SUPPORTER_PERKS.details]}`))
+      expect(list.textContent).toContain(SUPPORTER_PERKS.onlyYou)
+      expect(list.textContent).not.toMatch(/signature|header accent|concept/i)
     } finally { view.cleanup() }
   })
 })
@@ -864,7 +864,7 @@ describe('the price comes before the button that buys it', () => {
       const terms = view.host.querySelector<HTMLElement>('.pulse-supporter-terms')!
       expect(terms.textContent).toContain('US$4.99 / month')
       expect(terms.textContent).toContain('renews monthly until you cancel')
-      const youGet = [...view.host.querySelectorAll('.pulse-supporter-detail')].find(line => line.querySelector('b')?.textContent === 'You get')!
+      const youGet = view.host.querySelector<HTMLElement>('[data-supporter-perks-list="true"]')!
       for (const line of [terms, youGet]) expect(line.compareDocumentPosition(primary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
       // Beside the button's own column, not after the row that holds it.
       expect(terms.closest('.pulse-journey-main')).not.toBeNull()
@@ -1373,6 +1373,46 @@ describe('Continue with Twitch (tester and public stages)', () => {
       expect(view.state()).toBe('active')
       // The worker opens Stripe; the page never opens a provider URL itself.
       expect(view.create).not.toHaveBeenCalled()
+    } finally { view.cleanup() }
+  })
+
+  it('says calmly when Checkout is paused by a 429, names the wait, and never retries on its own', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    vi.setSystemTime(Date.parse('2026-10-09T18:00:00Z'))
+    const retryAt = Date.now() + 9 * 60_000
+    let billing: SupporterBillingState = { state: 'idle' }
+    const view = await mount({ account: () => linked, entitlement: () => twitchAccount('none'), billing: action => action === 'checkout' ? (billing = { state: 'try_later', retryAt }) : billing, twitch: () => ({ status: twitchStatus({ profile: PROFILE }), account: linked }) }, undefined, 'public')
+    try {
+      await view.click('Become a Supporter')
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(1)
+      expect(view.state()).toBe('try-later')
+      expect(view.text()).toContain('Checkout is paused for a moment')
+      expect(view.text()).toContain('This attempt started nothing and charged nothing.')
+      expect(view.text()).toContain(`Try again after ${retryWaitCopy(retryAt).at} (about 9 minutes).`)
+      const again = view.host.querySelector<HTMLButtonElement>('.pulse-journey-primary')!
+      expect(again.textContent).toBe(`Try again after ${retryWaitCopy(retryAt).at}`)
+      expect(again.disabled).toBe(true)
+      // The page waits silently: no billing request while the window runs.
+      const before = view.sendMessage.mock.calls.filter(([message]) => message.type === 'SUPPORTER_BILLING').length
+      await act(async () => { await vi.advanceTimersByTimeAsync(9 * 60_000 + 1_000) })
+      expect(view.sendMessage.mock.calls.filter(([message]) => message.type === 'SUPPORTER_BILLING')).toHaveLength(before)
+      // Then one click may try again.
+      const ready = view.host.querySelector<HTMLButtonElement>('.pulse-journey-primary')!
+      expect(ready.textContent).toBe('Try again')
+      expect(ready.disabled).toBe(false)
+    } finally { view.cleanup(); vi.useRealTimers() }
+  })
+
+  it('names the wait when Manage subscription is paused by a 429', async () => {
+    const retryAt = Date.now() + 2 * 60 * 60_000
+    const view = await mount({ account: () => linked, entitlement: () => twitchAccount('active', { features: PERKS }), billing: action => action === 'portal' ? { state: 'try_later', retryAt } : { state: 'idle' }, twitch: () => ({ status: twitchStatus({ profile: PROFILE }), account: linked }) }, undefined, 'public')
+    try {
+      await view.click('Manage subscription')
+      expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(1)
+      expect(view.text()).toContain(`Subscription management was opened too many times in a short while, so it is paused for this account. Your membership is unchanged. Try again after ${retryWaitCopy(retryAt).at} (about 2 hours).`)
+      expect(view.text()).not.toContain('Could not open subscription management')
+      expect(view.create).not.toHaveBeenCalled()
+      expect(view.state()).toBe('active')
     } finally { view.cleanup() }
   })
 

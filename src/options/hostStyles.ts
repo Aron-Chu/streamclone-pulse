@@ -139,6 +139,11 @@ const hostStyles = `
   .pulse-supporter-settings .pulse-supporter-terms { color: ${theme.textSecondary}; font-size: 12.5px; }
   .pulse-supporter-terms b { color: ${theme.textPrimary}; }
   .pulse-supporter-terms > span::before { content: " · "; }
+  /* The one perk list, under the offer's price line. */
+  .pulse-supporter-perks { display: grid; gap: 4px; }
+  .pulse-supporter-perks p { margin: 0; }
+  .pulse-supporter-perks ul { color: ${theme.textSecondary}; display: grid; font-size: 12px; gap: 3px; line-height: 1.4; margin: 0; padding-left: 18px; }
+  .pulse-supporter-perks li b { color: ${theme.textPrimary}; }
   /* Policy destinations sit below the offer as a quiet row, not three CTAs. */
   .pulse-supporter-policies {
     display: flex;
@@ -217,13 +222,11 @@ const hostStyles = `
   /* "Who sees what": three rows, the concept one dashed in amber. */
   .pulse-supporter-who { display: grid; gap: 8px; list-style: none; margin: 0; padding: 0; }
   .pulse-supporter-who > li { align-items: center; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 10px; display: grid; gap: 8px 14px; grid-template-columns: minmax(0, 170px) minmax(0, 1fr); padding: 10px 12px; }
-  .pulse-supporter-who > li[data-concept="true"] { background: repeating-linear-gradient(135deg, rgba(253, 186, 116, 0.035) 0 8px, transparent 8px 16px); border: 1px dashed rgba(253, 186, 116, 0.38); }
   .pulse-supporter-who-label { display: grid; gap: 5px; justify-items: start; min-width: 0; }
   .pulse-supporter-who-label strong { color: ${theme.textPrimary}; font-size: 13px; font-weight: 800; }
   .pulse-supporter-who-label small { color: ${theme.textMuted}; font-size: 12px; line-height: 1.35; }
   .pulse-supporter-vis { align-items: center; border: 1px solid ${theme.border}; border-radius: 999px; color: ${theme.textSecondary}; display: inline-flex; font-size: 12px; font-weight: 800; gap: 5px; letter-spacing: 0.02em; line-height: 1; padding: 4px 8px; white-space: nowrap; }
   .pulse-supporter-vis svg { flex: none; }
-  .pulse-supporter-vis[data-concept="true"] { background: rgba(253, 186, 116, 0.08); border-color: rgba(253, 186, 116, 0.45); border-style: dashed; color: #fed7aa; }
   .pulse-supporter-who-preview { display: grid; gap: 6px; min-width: 0; }
   .pulse-supporter-mini-head { background: ${theme.bgCanvas}; border: 1px solid #2a2a36; border-radius: 8px; isolation: isolate; overflow: hidden; padding: 7px 10px; position: relative; }
   .pulse-supporter-mini-head .pulse-banner-art { z-index: 0; }

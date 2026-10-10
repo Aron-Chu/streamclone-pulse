@@ -48,10 +48,11 @@ test('packaged supporter settings stay local, accessible and responsive', async 
     return price ? Boolean(price.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING) : null
   })).toBe(true)
 
-  // Who sees what: only you, a labelled concept, and normal chat for everyone else.
+  // Who sees what: every perk is yours only, and normal chat for everyone else.
   const who = page.locator('.pulse-supporter-who > li')
-  await expect(who.locator('strong')).toHaveText(['You', 'Other StreamPulse viewers', 'Everyone else on Twitch'])
-  await expect(who.nth(1).getByText('Concept · not built')).toBeVisible()
+  await expect(who.locator('strong')).toHaveText(['You', 'Everyone else on Twitch'])
+  await expect(who.first().locator('[data-supporter-perk-names="true"]')).toHaveText('Title paint · Tenure crest · Emote rain · Supporter card')
+  await expect(page.getByText('Concept · not built')).toHaveCount(0)
   await expect(page.getByText('Shown with the sample look')).toBeVisible()
   await page.screenshot({ path: info.outputPath('supporter-settings.png'), fullPage: true, animations: 'disabled' })
 
