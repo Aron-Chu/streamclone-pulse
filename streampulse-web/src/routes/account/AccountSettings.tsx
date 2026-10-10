@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { LogOut, Monitor, Trash2 } from 'lucide-react'
 import { PublicLayout } from '../../ui/components/PublicLayout'
@@ -16,6 +16,8 @@ export default function AccountSettings() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(true)
   const [signedOut, setSignedOut] = useState(false)
+  // A 401 before any successful load means "not signed in", not "expired".
+  const loadedOnce = useRef(false)
   async function list(next = '') {
     const result = await accountRequest(next ? `/devices?cursor=${encodeURIComponent(next)}` : '/devices')
     if (!Array.isArray(result.devices) || result.devices.some(d => !d || typeof d.id !== 'string' || typeof d.label !== 'string' || typeof d.expiresAt !== 'string')) throw new Error('Invalid device list')
@@ -29,7 +31,16 @@ export default function AccountSettings() {
       if (typeof me.accountId !== 'string') throw new Error('Invalid account')
       setIdentity(typeof me.email === 'string' ? me.email : me.accountId)
       await list()
-    } catch (e) { setError(accountErrorText(e)); setSignedOut(e instanceof AccountError && e.status === 401) }
+      loadedOnce.current = true
+    } catch (e) {
+      const unauthorized = e instanceof AccountError && e.status === 401
+      // A visitor who never signed in sees a neutral sign-in card. The "expired"
+      // text stays for a dead sign-in link and for a session lost after a load.
+      const neverSignedIn = unauthorized && e.code !== 'link_invalid_or_expired' && (e.code === 'sign_in_required' || !loadedOnce.current)
+      setError(neverSignedIn ? '' : accountErrorText(e))
+      setSignedOut(unauthorized)
+      if (unauthorized) { setIdentity(''); setDevices([]); setConfirm('') }
+    }
     finally { setBusy(false) }
   }
   useEffect(() => { void load() }, [])
@@ -57,7 +68,11 @@ export default function AccountSettings() {
     <p className="pulse-account-kicker"><Monitor size={16} aria-hidden="true" /> StreamPulse account</p>
     <h1>Account &amp; devices</h1>
     {identity ? <div className="pulse-account-session"><p>You’re signed in to StreamPulse.</p><button disabled={busy} onClick={() => void logout()}><LogOut size={16} aria-hidden="true" /> Sign out</button></div> : null}
-    {signedOut ? <Link to="/account/sign-in">Sign in to Pulse</Link> : null}
+    {signedOut && !error && !busy ? <div className="pulse-membership" data-state="signed-out" data-testid="account-settings-signed-out"><div className="pulse-membership-status">
+      <h2>Sign in to see your account</h2>
+      <p>Account sign-in is open to invited testers. Free tools work without an account.</p>
+    </div><div className="pulse-account-actions"><Link className="pulse-account-button pulse-account-primary" to="/account/sign-in">Tester sign-in</Link></div></div> : null}
+    {signedOut && error ? <Link to="/account/sign-in">Sign in to Pulse</Link> : null}
     {busy ? <p role="status">Updating account...</p> : null}
     {error ? <div className="pulse-account-error"><p role="alert">{error}</p><button disabled={busy} onClick={() => void load()}>Retry</button></div> : null}
     {identity && !signedOut ? <><div className="pulse-account-section-heading"><h2>Linked extensions</h2><Link to="/account/link-device">Link extension</Link></div>
