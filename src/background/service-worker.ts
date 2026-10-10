@@ -33,6 +33,7 @@ import {
   isDeviceCredentialLive,
   safeDeviceAuthErrorMessage,
 } from './deviceAuth.ts'
+import { pageAlwaysTracked } from './alwaysTracked.ts'
 import { fetchEmoteImageBytes } from './emoteImageFetch.ts'
 import { isTracked, listTrackedLogins, trackLogin, untrackLogin } from './tracking.ts'
 import type { BackgroundRequest, BackgroundResponse, DeviceAuthStatus, ExtensionCoverageTierResponse, PastVodRow, PulseUpdateMessage, ProtectChannelSyncStatus, ProtectSyncOperation, ProtectSyncState, VodPulseUpdateMessage, WatchlistSyncStatus } from '../shared/messages.ts'
@@ -803,14 +804,15 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
         }
         case 'GET_ALWAYS_TRACKED': {
           try {
-            const channels = (await hostedBackend())
-              ? await fetchPulseWatchlist()
-              : await fetchAlwaysTracked()
-            // Content pages only need the current channel's status. Do not expose
-            // the complete local or principal-scoped watchlist to page content.
+            // Only the current channel's status; no request without a device key (it could only 401).
             sendResponse({
               type: 'ALWAYS_TRACKED',
-              channels: channels.filter(channel => channel === message.login),
+              channels: await pageAlwaysTracked(message.login, {
+                hosted: hostedBackend,
+                credential: getDeviceCredential,
+                fetchHosted: () => fetchPulseWatchlist(),
+                fetchLocal: fetchAlwaysTracked,
+              }),
             } satisfies BackgroundResponse)
           } catch (err) {
             sendResponse({
