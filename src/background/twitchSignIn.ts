@@ -1,4 +1,6 @@
 import { AccountRequestNotSent } from './supporterAccount.ts'
+import { isChatBadgeEntry, parseChatBadgeSnapshot, type ChatBadgeActionError, type ChatBadgeEntry, type ChatBadgeSnapshot } from '../shared/chatBadges.ts'
+import type { SupporterWave } from '../shared/supporterPaint.ts'
 import type { SupporterAccountAction, SupporterAccountState } from '../shared/supporterAccount.ts'
 import type {
   TwitchProfile,
@@ -319,6 +321,51 @@ export class TwitchSignIn {
     }
   }
 
+  /**
+   * Seen in chat opt-in: a fresh Twitch check that ends in one consent action.
+   *
+   * start-device with purpose `badge` (bound to this device's bearer, like a
+   * step-up) → the Twitch window → POST /v1/account/auth/twitch/badge with the
+   * ID token and the consent version the card showed. The server verifies the
+   * token, checks it is this account's Twitch identity and that the account is
+   * an active Supporter, and only then stores and publishes the Twitch user ID
+   * and login, so a tampered client cannot publish anyone else's. Always
+   * interactive: consent comes from a click, never a silent check.
+   */
+  async confirmForBadge(badge: { consentVersion: number; wave: SupporterWave }): Promise<TwitchBadgeResult> {
+    if (!this.ports.enabled || !this.available) return { ok: false, error: 'unavailable' }
+    if (this.active) return { ok: false, error: 'busy' }
+    this.active = true
+    try {
+      const account = await this.ports.account.run('status')
+      if (account.state === 'unavailable' && account.linked) return { ok: false, error: 'unavailable' }
+      if (account.state !== 'linked') return { ok: false, error: 'sign_in_required' }
+      const started = await this.ports.account.withCredential(async token => {
+        const result = await this.post('/v1/account/auth/twitch/start-device', { surface: this.ports.surface, purpose: 'badge', mode: 'interactive', forceVerify: false }, token)
+        return { status: bearerStatus(result), result }
+      }, account.accountId)
+      const flow = this.parseStart(started.result)
+      if (failure(flow)) return badgeFailure(flow, started.result)
+      const proof = await this.authorize(flow, 'interactive')
+      if (failure(proof)) return badgeFailure(proof)
+      const finished = await this.ports.account.withCredential(async token => {
+        const result = await this.post('/v1/account/auth/twitch/badge', { flowId: flow.flowId, flowSecret: flow.flowSecret, idToken: proof, badge: { consentVersion: badge.consentVersion, wave: badge.wave } }, token)
+        return { status: bearerStatus(result), result }
+      }, account.accountId)
+      const body = object(finished.result.body)
+      if (finished.result.status === 200 && body.status === 'badge_on') {
+        const chatBadge = parseChatBadgeSnapshot(body.chatBadge)
+        return { ok: true, ...(isChatBadgeEntry(body.own) ? { own: body.own } : {}), ...(chatBadge ? { chatBadge } : {}) }
+      }
+      if (finished.result.status === 200) return { ok: false, error: 'error' }
+      return badgeFailure(serverFailure(finished.result), finished.result)
+    } catch (error) {
+      return badgeFailure(thrownFailure(error))
+    } finally {
+      this.active = false
+    }
+  }
+
   /** One step-up round; the caller holds `active`. */
   private async runStepUp(mode: TwitchSignInMode): Promise<TwitchStepUpResult> {
     if (!this.available) return { ok: false, error: 'unsupported' }
@@ -528,6 +575,26 @@ export function parseAuthorizeRedirect(responseUrl: string | undefined, flow: { 
   const idToken = fragment.get('id_token')
   if (!idToken || idToken.length > MAX_ID_TOKEN || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(idToken)) return { outcome: 'error' }
   return idToken
+}
+
+export type TwitchBadgeResult =
+  | { ok: true; own?: ChatBadgeEntry; chatBadge?: ChatBadgeSnapshot }
+  | { ok: false; error: ChatBadgeActionError; retryAfterSeconds?: number }
+
+/** Server codes the badge action adds to the sign-in ones. */
+const BADGE_CODES: ReadonlySet<string> = new Set(['identity_mismatch', 'supporter_required', 'consent_outdated', 'pilot_only', 'twitch_in_use'])
+
+function badgeFailure(value: Failure, result?: Http): TwitchBadgeResult {
+  const code = result ? object(result.body).error : undefined
+  if (typeof code === 'string' && BADGE_CODES.has(code)) return { ok: false, error: code as ChatBadgeActionError }
+  // 400 invalid_request from start-device, or 404 from the badge route: the feature is off on the server.
+  if (result && (result.status === 404 || (result.status === 400 && code === 'invalid_request'))) return { ok: false, error: 'unavailable' }
+  const outcome = value.outcome
+  if (outcome === 'cancelled' || outcome === 'interaction_required') return { ok: false, error: 'cancelled' }
+  if (outcome === 'identity_mismatch' || outcome === 'sign_in_required' || outcome === 'pilot_only' || outcome === 'network' || outcome === 'unavailable') return { ok: false, error: outcome }
+  if (outcome === 'try_later') return { ok: false, error: 'try_later', ...(value.retryAfterSeconds !== undefined ? { retryAfterSeconds: value.retryAfterSeconds } : {}) }
+  if (outcome === 'hosted_only') return { ok: false, error: 'unavailable' }
+  return { ok: false, error: 'error' }
 }
 
 const STEP_UP_ERRORS: ReadonlySet<string> = new Set<TwitchStepUpError>([

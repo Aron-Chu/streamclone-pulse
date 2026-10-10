@@ -44,6 +44,11 @@ export type SupporterEntitlement =
       /** `twitch`: created by Continue with Twitch. `email`: an invited tester's account. */
       accountKind?: 'email' | 'installation' | 'twitch'
       restoreEligible?: boolean
+      /**
+       * Seen in chat, only while the server has the feature on. Presentation
+       * only: whether your entry is published is decided by the server.
+       */
+      chatBadge?: import('./chatBadges.ts').ChatBadgeSnapshot
     }
 
 /**
