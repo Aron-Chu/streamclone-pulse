@@ -129,7 +129,7 @@ describe('Pulse account card with Sign in with Twitch on', () => {
   it('explains each failure in plain words that say what to do', async () => {
     for (const [outcome, copy, retryAfterSeconds] of [
       ['pilot_only', 'Twitch sign-in is open to invited testers right now.', undefined],
-      ['link_required', 'Invited testers: link Twitch to your StreamPulse account on streampulse.stream first, then try again.', undefined],
+      ['link_required', 'This Twitch account isn’t linked to a StreamPulse account yet. Invited testers can connect with a one-time code below instead.', undefined],
       ['identity_in_use', 'That Twitch account already has its own StreamPulse account. We never combine accounts. Contact us if one of them has a membership.', undefined],
       ['cancelled', 'Sign-in was cancelled. Select Continue with Twitch to try again.', undefined],
       ['signup_unavailable', 'try again in about 2 minutes', 120],

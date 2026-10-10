@@ -877,10 +877,11 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   const equipped = perks && entitlement?.state === 'ready' && entitlement.cosmetics?.enabled ? entitlement.cosmetics.finish : null
   const cardLook: CardLook = { finish: look ? look.finish : perks ? equipped : SAMPLE_KIT.finish, paint: look?.paint ?? DEFAULT_SUPPORTER_PAINT, perks }
   const connected = linked !== null || renewalWaiting
-  const accountRow: [string, string] = signedInWithTwitch ? [profile ? `${ACCOUNT_COPY.signedInWithTwitch} as ${profile.displayName}` : ACCOUNT_COPY.signedInWithTwitch, 'Signing in stores a device credential in this extension. Sign out ends this device’s access and removes its signed-in watched history and notes.']
+  // Nobody signed in: Your card above already says "Not signed in", so the Account card has no row repeating it.
+  const accountRow: [string, string] | null = signedInWithTwitch ? [profile ? `${ACCOUNT_COPY.signedInWithTwitch} as ${profile.displayName}` : ACCOUNT_COPY.signedInWithTwitch, 'Signing in stores a device credential in this extension. Sign out ends this device’s access and removes its signed-in watched history and notes.']
     : connected ? ['Connected to this extension', 'An invited tester’s StreamPulse account. Sign out ends this device’s access and removes its signed-in watched history and notes.']
     : identity.kind === 'unknown' ? [identity.reason === 'checking' ? 'Checking the connection…' : 'Connection status unavailable', 'Your free tools still work.']
-    : ['Not signed in', ACCOUNT_COPY.freeTools]
+    : null
   // Invited testers keep the existing device link, closed by default and
   // never a purchase: "Connect this extension" with Twitch off, "Other ways to
   // connect" beside Continue with Twitch.
@@ -926,7 +927,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
       <PulseSectionCard title="Account" headingLevel={3}>
         <div className="pulse-supporter-account-rows">
           <dl className="pulse-supporter-rows">
-            <div data-row="account">
+            {accountRow ? <div data-row="account">
               <dt>StreamPulse</dt>
               <dd>
                 {accountRow[0]}
@@ -936,7 +937,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
                 <button type="button" disabled={accountBusy || payBusy || signingIn !== null} onClick={disconnect}>{ACCOUNT_COPY.signOut}</button>
                 {twitchOn && signedInWithTwitch && twitchWindow ? <button type="button" className="pulse-account-quiet-button" disabled={accountBusy || payBusy || signingIn !== null} onClick={() => void signIn('interactive', true)}>{ACCOUNT_COPY.differentAccount}</button> : null}
               </> : null}</dd>
-            </div>
+            </div> : null}
             {/* Its own row: the account row already holds Sign out and the account switch. */}
             {everywhereOffered ? <div data-row="sign-out-everywhere">
               <dt>All devices</dt>

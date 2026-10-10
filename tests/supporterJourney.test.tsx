@@ -438,10 +438,10 @@ describe('Twitch sign-in off (stage A): signed out', () => {
       expect(view.text()).toContain('Supporter sign-ups are not open yet')
       expect(view.text()).toContain('When they open, you\'ll choose Continue with Twitch, then pay on Stripe. Free tools work without an account.')
       expect(view.text()).toContain('US$4.99 / month')
-      // The card and the Account row both say who is here: nobody, and that is fine.
+      // Your card says who is here: nobody, and that is fine. The Account card does not repeat it.
       expect(card(view.host).name().textContent).toBe('Not signed in')
-      expect(accountRow(view.host)).toContain('Not signed in')
-      expect(accountRow(view.host)).toContain('Free tools work without an account.')
+      expect(view.host.querySelector('[data-row="account"]')).toBeNull()
+      expect(view.text().match(/Not signed in/g)).toHaveLength(1)
       const primary = view.host.querySelectorAll<HTMLAnchorElement>('.pulse-journey-primary')
       expect(primary).toHaveLength(1)
       expect(primary[0].textContent).toBe('Supporter details')
@@ -987,7 +987,7 @@ describe('Your card while the account is unknown', () => {
       expect(yours.name().textContent).toBe('Not signed in')
       expect(yours.avatar()).toBe('none')
       expect(yours.sub()).toBe('Free tools work without an account.')
-      expect(accountRow(view.host)).toContain('Not signed in')
+      expect(view.host.querySelector('[data-row=\"account\"]')).toBeNull()
     } finally { view.cleanup() }
   })
 })
@@ -1311,7 +1311,7 @@ describe('Continue with Twitch (tester and public stages)', () => {
 
   it.each<[string, string]>([
     ['pilot_only', 'Twitch sign-in is open to invited testers right now.'],
-    ['link_required', 'Invited testers: link Twitch to your StreamPulse account on streampulse.stream first'],
+    ['link_required', 'This Twitch account isn’t linked to a StreamPulse account yet. Invited testers can connect with a one-time code below instead.'],
     ['identity_in_use', 'We never combine accounts.'],
   ])('explains %s with tester copy and creates nothing', async (outcome, copy) => {
     const view = await mount({ account: () => ({ state: 'signed_out' }), entitlement: () => ({ state: 'not_linked' }), twitch: message => ({ status: twitchStatus(), account: { state: 'signed_out' }, ...(message.action === 'sign_in' ? { outcome: outcome as TwitchSignInResponse['outcome'] } : {}) }) }, undefined, 'tester')
@@ -1534,7 +1534,7 @@ describe('Sign out everywhere (Twitch sign-in on)', () => {
       expect(accountNotice(view.host)).toContain('You’re signed out everywhere.')
       expect(accountNotice(view.host)).toContain('Nothing was deleted from your account, and your subscription is unchanged.')
       // Signed out here too, as a choice: not "You were signed out on this browser".
-      expect(accountRow(view.host)).toContain('Not signed in')
+      expect(view.host.querySelector('[data-row=\"account\"]')).toBeNull()
       expect(view.text()).not.toContain('You were signed out on this browser')
       expect(view.buttons()).not.toContain('Sign out')
       expect(view.buttons()).not.toContain('Sign out everywhere')
