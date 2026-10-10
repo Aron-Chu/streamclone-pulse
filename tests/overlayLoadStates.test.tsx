@@ -213,6 +213,8 @@ describe('Overlay load, error and dock states', () => {
         await render({ context: VOD, login: '__vod__:2806037629', vodPulse: vodStatus(status, message), vodPulseLoading: false })
         await act(async () => { vi.advanceTimersByTime(30_000) })
         expect(text()).toContain(message)
+        expect(buttons('↻ Retry')).toHaveLength(1)
+        expect(node.querySelector('.pulse-vod-state a')?.textContent).toBe('Open in Analytics ↗')
         expect(text()).not.toContain("Can't reach StreamPulse")
         expect(text()).not.toContain('stack running')
         expect(text()).not.toContain('Loading Pulse')
@@ -221,13 +223,74 @@ describe('Overlay load, error and dock states', () => {
       })
     }
 
-    it('a stalled VOD load shows one error state, not "Loading replay analytics" beside the outage card', async () => {
+    it('a VOD Twitch does not list says so instead of "yet", and keeps Retry and Open in Analytics', async () => {
+      // Production answer for a VOD id Twitch does not know (2026-10-09 probe).
+      await render({
+        context: VOD,
+        login: '__vod__:2999999999',
+        vodPulse: { mode: 'vod', vodId: null, provisional: false, coverageStatus: 'missing', coverageMessage: 'Twitch does not report this VOD.', resolutionState: 'vod_not_found' } as ExtensionVodPulseResponse,
+        vodPulseLoading: false,
+      })
+      expect(text()).toContain('Twitch doesn’t list this VOD')
+      expect(text()).toContain('It may be deleted, expired or private.')
+      expect(text()).not.toContain('No replay data for this VOD yet')
+      expect(buttons('↻ Retry')).toHaveLength(1)
+      expect(node.querySelector('.pulse-vod-state a')?.textContent).toBe('Open in Analytics ↗')
+    })
+
+    it('a stalled VOD load stops after 20 s with one error state, Retry and Open in Analytics', async () => {
       vi.useFakeTimers()
       await render({ context: VOD, login: '__vod__:2806037629', vodPulse: null, vodPulseLoading: true })
-      expect(text()).toContain('Loading replay analytics')
-      await act(async () => { vi.advanceTimersByTime(30_000) })
-      expect(text()).toContain("Can't reach StreamPulse")
-      expect(text()).not.toContain('Loading replay analytics')
+      expect(text()).toContain('Loading this replay')
+      expect(text()).not.toContain('Loading Pulse')
+      await act(async () => { vi.advanceTimersByTime(19_000) })
+      expect(text()).toContain('Loading this replay')
+      await act(async () => { vi.advanceTimersByTime(1_000) })
+      expect(text()).toContain('We couldn’t load this replay')
+      expect(text()).not.toContain('Loading this replay')
+      expect(text()).not.toContain("Can't reach StreamPulse")
+      expect(buttons('↻ Retry')).toHaveLength(1)
+      expect(node.querySelector<HTMLAnchorElement>('.pulse-vod-state a')?.href).toBe('https://streampulse.stream/analytics')
+    })
+
+    it('a replay never shows Live or Offline in the header, and names its own stream', async () => {
+      await render({
+        context: VOD,
+        login: 'fixturechan',
+        vodPulse: { ...vodStatus('syncing', 'Replay Pulse is syncing this VOD'), startedAt: '2026-07-10T12:00:00.000Z', durationSeconds: 8 * 3600 + 25 * 60, games: [{ gameName: 'Just Chatting', offsetSeconds: 0, durationSeconds: 30300 }] },
+        vodPulseLoading: false,
+      })
+      expect(headerStatus()).toBe('Replay')
+      expect(node.querySelector('header.pulse-personal-banner p')?.textContent).toContain('8h 25m · Just Chatting')
+    })
+
+    it('a VOD that cannot be matched explains why, and still offers Retry and Open in Analytics', async () => {
+      await render({
+        context: VOD,
+        login: '__vod__:2806037629',
+        vodPulse: {
+          mode: 'vod',
+          vodId: null,
+          provisional: false,
+          channelLogin: 'ohnepixel',
+          channelDisplayName: 'ohnePixel',
+          streamId: '317950783460',
+          coverageStatus: 'error',
+          resolutionState: 'live_archive_conflict',
+          retryable: false,
+        } as ExtensionVodPulseResponse,
+        vodPulseLoading: false,
+      })
+      expect(text()).toContain('We couldn’t match this VOD to a recorded stream')
+      expect(text()).toContain('following ohnePixel’s chat')
+      expect(text()).not.toContain('Archive verification failed')
+      expect(buttons('↻ Retry')).toHaveLength(1)
+      const link = node.querySelector<HTMLAnchorElement>('.pulse-vod-state a')
+      expect(link?.textContent).toBe('Open in Analytics ↗')
+      expect(link?.href).toBe('https://streampulse.stream/analytics/ohnepixel/317950783460')
+      expect(link?.rel).toBe('noopener noreferrer')
+      expect(text()).toContain('For support: vod 2806037629 · stream 317950783460 · live_archive_conflict')
+      expect(headerStatus()).toBe('Replay')
     })
 
     it('an orphaned VOD tab offers Reload page only, never a Retry through the dead port', async () => {

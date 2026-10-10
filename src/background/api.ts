@@ -19,7 +19,7 @@ import {
   type AnalyticsStreamListItem,
   type MetadataStreamHistoryItem,
 } from '../shared/pastVods.ts'
-import { getBackendUrl } from '../shared/storage.ts'
+import { getBackendUrl, getSessionPulse } from '../shared/storage.ts'
 import { DEFAULT_BACKEND_URL } from '../shared/storage.ts'
 import {
   getDeviceCredential,
@@ -31,6 +31,7 @@ import {
 } from './deviceAuth.ts'
 import { pulseDebug } from '../shared/pulseDebug.ts'
 import { normalizeVodPulseHttpResponse } from '../vod/normalizeVodPulseFetch.ts'
+import { requestVodPulse, retryAfterMs, VodBridgeTransientError } from './vodLiveBridge.ts'
 
 /** Default bound for extension BFF requests (health/pulse/coverage/watchlist). */
 export const EXTENSION_API_TIMEOUT_MS = 15_000
@@ -502,35 +503,57 @@ export async function fetchPulseChannel(
 
 export async function fetchPulseVod(
   vodId: string,
-  options?: { baseUrl?: string; streamId?: string; window?: 'recent' | 'full' },
+  options?: { baseUrl?: string; streamId?: string; window?: 'recent' | 'full'; login?: string },
 ): Promise<import('../types/vodPulseTypes.ts').ExtensionVodPulseResponse> {
   const root = options?.baseUrl ?? await getBackendUrl()
   const streamId = options?.streamId?.trim() ?? ''
   if (streamId && !/^[A-Za-z0-9_-]{1,64}$/.test(streamId)) {
     throw new Error('pulse_stream_invalid')
   }
-  const query = new URLSearchParams({
-    allowLiveBridge: 'true',
-    window: options?.window === 'full' ? 'full' : 'recent',
-  })
-  if (streamId) query.set('streamId', streamId)
-  const res = await fetchWithTimeout(
-    `${root}/v1/extension/pulse/vods/${encodeURIComponent(vodId)}?${query.toString()}`,
+  const window = options?.window === 'full' ? 'full' : 'recent'
+  const request = async (bridge: boolean, bridgeStreamId?: string) => {
+    // The live bridge answers with the channel's live DVR, so it is only ever
+    // sent for the archive of the stream that is live now (vodLiveBridge.ts).
+    const query = new URLSearchParams(bridge ? { allowLiveBridge: 'true', window } : { window })
+    if (bridge && bridgeStreamId) query.set('streamId', bridgeStreamId)
+    const res = await fetchWithTimeout(
+      `${root}/v1/extension/pulse/vods/${encodeURIComponent(vodId)}?${query.toString()}`,
+      {
+        headers: await pulseRequestHeaders(false, root),
+      },
+    )
+    if (bridge && (res.status === 429 || res.status >= 500)) {
+      // No answer from the bridge is not a "not live" answer (vodLiveBridge.ts).
+      await releaseResponse(res)
+      throw new VodBridgeTransientError(res.status, retryAfterMs(res.headers.get('Retry-After'), Date.now()))
+    }
+    const body = await readResponseText(res, LARGE_RESPONSE_MAX_BYTES)
+    return normalizeVodPulseHttpResponse(vodId, new Response(body, {
+      status: res.status,
+      headers: res.headers,
+    }))
+  }
+  const { payload, outcome } = await requestVodPulse(
+    vodId,
+    { streamId: streamId || undefined, login: options?.login },
     {
-      headers: await pulseRequestHeaders(false, root),
+      request,
+      liveIdentity: async login => {
+        const cached = await getSessionPulse(login, 'recent').catch(() => null)
+        const live = cached?.payload ?? await fetchPulseChannel(login, { baseUrl: root })
+        return {
+          isLive: live.isLive === true,
+          streamId: live.streamId ?? null,
+          startedAt: live.startedAt ?? null,
+          vodId: live.vodId ?? null,
+        }
+      },
     },
   )
-  const body = await readResponseText(res, LARGE_RESPONSE_MAX_BYTES)
-  const payload = await normalizeVodPulseHttpResponse(vodId, new Response(body, {
-    status: res.status,
-    headers: res.headers,
-  }))
-  if (streamId && payload.streamId?.trim() !== streamId) {
-    throw new Error('pulse_stream_mismatch')
-  }
   await pulseDebug('vod.pulse.api', 'vod pulse payload received', {
     vodId,
     mode: payload.mode,
+    liveBridge: outcome,
     resolutionState: payload.resolutionState ?? null,
     streamId: payload.streamId ?? null,
     channelLogin: payload.channelLogin ?? null,

@@ -292,7 +292,8 @@ async function fetchVodPulseResult(
   window: 'recent' | 'full' = 'recent',
 ): Promise<VodPulseUpdateMessage> {
   // A rejected worker call (e.g. a closed message port) is a failed load, not a pending one.
-  const response = await sendBackgroundMessage({ type: 'GET_PULSE_VOD', vodId, streamId, window }).catch(() => null)
+  const login = activeSession?.kind === 'vod' && activeSession.vodId === vodId ? activeSession.login : undefined
+  const response = await sendBackgroundMessage({ type: 'GET_PULSE_VOD', vodId, streamId, window, login }).catch(() => null)
   if (response && 'type' in response && response.type === 'VOD_PULSE_UPDATE') {
     return response
   }

@@ -547,6 +547,8 @@ export interface GetPulseVodMessage {
   /** Optional exact provider stream assertion for recurring growing-VOD polls. */
   streamId?: string
   window?: 'recent' | 'full'
+  /** The VOD's channel when the page already knows it; used to tell the live archive apart. */
+  login?: string
 }
 
 export interface DiscoverLiveVodMessage {
