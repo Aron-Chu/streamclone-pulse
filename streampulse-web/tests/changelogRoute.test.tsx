@@ -23,7 +23,7 @@ interface ReleaseFixture {
 /** The page's note headings, in its order. */
 const CATEGORY_HEADINGS = [['new', 'New'], ['improved', 'Improved'], ['fixed', 'Fixed'], ['knownIssues', 'Known limitations']] as const
 
-const { currentVersion, releases } = releaseNotes as { currentVersion: string; releases: ReleaseFixture[] }
+const { releases } = releaseNotes as { releases: ReleaseFixture[] }
 const webRoot = resolve(import.meta.dirname, '..')
 const read = (path: string) => readFileSync(resolve(webRoot, path), 'utf8')
 
@@ -41,7 +41,7 @@ describe('extension "Release details" destination (OP1-FUN-003)', () => {
     }
   })
 
-  it('describes only released versions and labels the version in development honestly', () => {
+  it('describes only released versions and starts with the latest release', () => {
     render(<MemoryRouter initialEntries={['/changelog']}><AppRoutes /></MemoryRouter>)
     expect(screen.getByRole('heading', { level: 1, name: 'Release notes' })).toBeTruthy()
     const released = releases.filter((release) => release.status === 'released')
@@ -53,12 +53,8 @@ describe('extension "Release details" destination (OP1-FUN-003)', () => {
         expect(scoped.getByRole('heading', { level: 2, name: release.title })).toBeTruthy()
         expect(scoped.getByText(release.summary)).toBeTruthy()
         expect(section!.textContent).toContain(`v${release.version} · Released`)
-      } else if (release.version === currentVersion) {
-        // Named, never described: its notes can change before it ships.
-        expect(section!.textContent).toContain(`v${release.version} · In development`)
-        expect(section!.textContent).toContain('has not been released yet')
-        expect(document.body.textContent).not.toContain(release.summary)
       } else {
+        // Unreleased entries, the version in development included, get no section.
         expect(section).toBeNull()
         expect(document.body.textContent).not.toContain(release.summary)
       }
@@ -72,10 +68,11 @@ describe('extension "Release details" destination (OP1-FUN-003)', () => {
       expect(within(section).queryAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)).toEqual(filled.map(([, label]) => label))
       expect([...section.querySelectorAll('li')].map((item) => item.textContent)).toEqual(filled.flatMap(([key]) => release[key] ?? []))
     }
-    // The in-development label shows only while the current version is not released.
-    const inDevelopment = released.some((release) => release.version === currentVersion) ? null : currentVersion
-    if (inDevelopment) expect(document.getElementById(`v${inDevelopment}`)?.textContent).toContain(`v${inDevelopment} · In development`)
-    else expect(document.body.textContent).not.toContain('In development')
+    // No "Next version" placeholder: the first section is the first released entry.
+    expect(document.body.textContent).not.toContain('In development')
+    expect(document.body.textContent).not.toContain('Next version')
+    const firstSection = screen.getByTestId('changelog-page').querySelector('section')
+    expect(firstSection?.id).toBe(`v${released[0].version}`)
     expect(screen.getByRole('link', { name: 'StreamPulse Support' }).getAttribute('href')).toBe('/support')
     // The page itself makes no claim about which build the Chrome Web Store lists.
     expect(screen.getByText('What changed in each version of the StreamPulse Chrome extension.')).toBeTruthy()
