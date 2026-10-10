@@ -30,6 +30,7 @@ export {
   type GameSegmentOverlayProps,
 } from './GameSegmentOverlay.tsx'
 export { rollupsForChart } from './chartSession.ts'
+export * from './barPyramid.ts'
 export { buildChartSeries, type ChartSeries } from './chartSeries.ts'
 export { useSmoothedScalar, lerpScalar, type ScalarMotionOptions } from './useSmoothedScalar.ts'
 export { MAX_PLOTTED_EMOTES } from './emotePlotSelection.ts'
