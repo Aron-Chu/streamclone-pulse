@@ -129,11 +129,14 @@ describe('AnalyticsConsole channel route load failures', () => {
     expect(screen.queryByText('No past streams indexed yet.')).toBeNull()
   })
 
-  it('keeps the empty copy for a channel whose list loads empty', async () => {
+  it('keeps the empty copy for a channel whose list loads empty while its live read is syncing', async () => {
+    // A never-recorded channel (not_collected, empty list) gets one panel instead:
+    // see AnalyticsConsole.notRecorded.test.tsx.
+    api.getAnalyticsLive.mockResolvedValue({ channel: 'xqc', state: 'syncing', rollups: [], topEmotes: [], sources: [], updatedAt: 0 })
     renderConsole('/analytics/xqc')
     expect(await screen.findByText('No past streams indexed yet.')).toBeTruthy()
     expect(screen.queryByRole('alert')).toBeNull()
-    await waitFor(() => expect(screen.getAllByText(/Needs sync/)).toHaveLength(5))
+    expect(document.querySelector('[data-channel-not-recorded]')).toBeNull()
   })
 
   it('shows "-" stat cards instead of "Needs sync" while the first live read is pending', async () => {
@@ -158,6 +161,14 @@ describe('AnalyticsConsole channel route load failures', () => {
 
   it('recovers a failed live read from Refresh data', async () => {
     api.getAnalyticsLive.mockRejectedValueOnce(serverError)
+    // A recorded channel, so the recovered read shows its chart rather than the
+    // never-recorded panel.
+    api.getAnalyticsStreams.mockResolvedValue({
+      channel: 'xqc',
+      items: [{ streamId: '101', login: 'xqc', startedAt, endedAt: '2026-07-11T20:00:00.000Z', title: 'Stored broadcast' }],
+      sources: [],
+      updatedAt: 0,
+    })
     renderConsole('/analytics/xqc')
 
     await screen.findByText(/Unable to load the latest session for/)
