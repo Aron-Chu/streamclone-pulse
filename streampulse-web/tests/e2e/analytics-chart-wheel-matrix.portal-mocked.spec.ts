@@ -178,8 +178,12 @@ async function recordWheels(page: Page, plotSelector: string) {
     store.wheelLog = []
     const pending = new WeakMap<Event, boolean>()
     window.addEventListener('wheel', (event) => {
-      const rect = document.querySelector(selector)?.getBoundingClientRect()
-      pending.set(event, Boolean(rect && event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom))
+      const plot = document.querySelector(selector)
+      const rect = plot?.getBoundingClientRect()
+      const inside = Boolean(rect && event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom)
+      // Over the plot box, and the chart (not a sticky header) is what the pointer hits.
+      const surface = plot?.closest('[data-hub-chart-wheel-surface], [data-session-chart-stack]')
+      pending.set(event, inside && Boolean(surface && event.target instanceof Node && surface.contains(event.target)))
     }, { capture: true, passive: true })
     window.addEventListener('wheel', (event) => {
       store.wheelLog!.push({ overPlot: pending.get(event) ?? false, prevented: event.defaultPrevented })
@@ -324,7 +328,8 @@ for (const [surfaceName, open] of Object.entries(SURFACES)) {
       await page.waitForTimeout(600)
       // Park the plot below the pointer, then wheel the page down so the plot
       // (and the navigator under it) pass up under the pointer.
-      const pointer = { x: 0, y: 120 }
+      // Below any sticky site header.
+      const pointer = { x: 0, y: 260 }
       await surface.plot.evaluate(element => element.scrollIntoView({ block: 'center', behavior: 'instant' }))
       const centered = (await surface.plot.boundingBox())!
       await page.evaluate(by => window.scrollBy({ top: by, behavior: 'instant' }), centered.y - (pointer.y + 160))
@@ -334,7 +339,12 @@ for (const [surfaceName, open] of Object.entries(SURFACES)) {
       await page.mouse.move(pointer.x, pointer.y)
       const read = await recordWheels(page, PLOT_SELECTOR[surface.name])
       const scrollBefore = await scrollYOf(page)
-      for (let event = 0; event < 14; event += 1) await page.mouse.wheel(0, 100)
+      // 14 notches, 70 ms apart: well inside the 400 ms window, and slow enough
+      // for the page (and so the plot) to move under the pointer between them.
+      for (let event = 0; event < 14; event += 1) {
+        await page.mouse.wheel(0, 100)
+        await page.waitForTimeout(70)
+      }
       await expect.poll(() => scrollYOf(page)).toBeGreaterThan(scrollBefore + 300)
       await surface.settle()
       const sweep = await read()
