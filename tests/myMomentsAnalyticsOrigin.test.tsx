@@ -74,7 +74,7 @@ it('uses the given origin on a list row and production when none is given', () =
 it('gives a stream-only device save the same Analytics link, on the given origin or production', () => {
   const streamOnly: LibraryMoment = { ...moment, id: 'local:b', vodId: null, availability: 'unresolved' }
   const row = (analyticsOrigin?: string) => renderToStaticMarkup(createElement(DeviceSaveItem, { moment: streamOnly, analyticsOrigin, busy: false, onRemove: () => undefined }))
-  expect(row('http://localhost:5173')).toContain('Replay link unavailable')
+  expect(row('http://localhost:5173')).not.toContain('Replay link unavailable')
   expect(row('http://localhost:5173')).toContain('href="http://localhost:5173/analytics/xqc/123456#t=754"')
   expect(row()).toContain('href="https://streampulse.stream/analytics/xqc/123456#t=754"')
   // No stream id: nothing to open, and no channel-route link that would pick another stream.

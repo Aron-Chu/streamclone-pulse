@@ -44,7 +44,7 @@ describe('My Moments frontend', () => {
     await render(createDemoRepository('ready', 0))
     const card = [...container.querySelectorAll('.pl-moment')].find(item => item.textContent?.includes('Halloween: The Game'))!
     expect(card.querySelector('a[href*="/videos/"]')).toBeNull()
-    expect(card.textContent).toContain('Replay link unavailable')
+    expect(card.textContent).not.toContain('Replay link unavailable')
   })
   it('previews fixture analysis without recording history or fabricating footage', async () => {
     const repo = createDemoRepository('ready', 0)
@@ -191,7 +191,7 @@ describe('My Moments frontend', () => {
     // as it did before the account linked.
     expect(rows.map(row => row.dataset.momentId)).toEqual(['local:b', 'local:a'])
     expect(rows[0].textContent).toContain('Saved moment')
-    expect(rows[0].textContent).toContain('Replay link unavailable')
+    expect(rows[0].textContent).not.toContain('Replay link unavailable')
     expect(rows[0].querySelector('a[href*="/videos/"]')).toBeNull()
     const analyticsHref = (row: HTMLElement) => row.querySelector<HTMLAnchorElement>('a[aria-label^="Open analytics for"]')?.getAttribute('href')
     expect(analyticsHref(rows[0])).toBe('http://localhost:5173/analytics/xqc/123456#t=754')

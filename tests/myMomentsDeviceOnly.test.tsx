@@ -52,6 +52,9 @@ describe('My Moments with sign-in compiled off', () => {
       expect(view.text()).toContain(DEVICE_ONLY_COPY)
       expect(view.text()).toContain(DEVICE_ONLY_INTRO)
       expect(DEVICE_ONLY_COPY).toContain('Accounts are coming with Continue with Twitch')
+      // Said once, in the notice, not again in the page intro.
+      expect(view.text().split('Accounts are coming with Continue with Twitch')).toHaveLength(2)
+      expect(DEVICE_ONLY_INTRO).not.toContain('Accounts are coming')
       expect(view.text()).not.toMatch(/free Pulse account|Connect account|follow you to any device/)
       expect(view.buttons()).not.toContain('Connect account')
       expect(view.buttons()).not.toContain('Retry')
