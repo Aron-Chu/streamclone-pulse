@@ -135,6 +135,134 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value))
 }
 
+/*
+ * Wheel input is measured in "notch pixels": Chrome and Edge report one mouse
+ * wheel notch as 100px, Firefox as 3 lines. A line therefore counts as a third
+ * of a notch and a page as three notches, so one notch zooms the same amount in
+ * every browser.
+ */
+const WHEEL_LINE_PX = 100 / 3
+const WHEEL_PAGE_PX = 300
+/** One 100px notch narrows the view by e^0.25 (about 22%), on the hub and the stream chart alike. */
+const WHEEL_ZOOM_PER_PX = 0.0025
+/** No single event zooms more than 2x either way (a page-mode wheel). */
+const MAX_WHEEL_ZOOM_RATIO = 2
+/** Horizontal or Shift+wheel movement of this many pixels pans one whole view. */
+const WHEEL_PAN_PX_PER_VIEW = 800
+/** No single event pans more than a quarter of the view. */
+const MAX_WHEEL_PAN_FRACTION = 0.25
+/** A gesture's sub-step remainder carries over between events at most this far apart. */
+const WHEEL_GESTURE_GAP_MS = 1500
+/**
+ * An event at least this big is a whole wheel notch (Chrome 100px, Firefox 3
+ * lines), and always moves the view at least one step.
+ * Smaller high-resolution and touchpad deltas add up exactly instead.
+ */
+const WHEEL_NOTCH_MIN_PX = 50
+
+/**
+ * The wheel surface and the navigator can both hear one event (the stream
+ * chart's surface contains its navigator). preventDefault() does not mark an
+ * event that is not cancelable, so handled events are remembered here instead.
+ */
+const handledWheelEvents = new WeakSet<Event>()
+
+function wheelDeltaPixels(delta: number, deltaMode: number): number {
+  if (!Number.isFinite(delta)) return 0
+  return deltaMode === 1 ? delta * WHEEL_LINE_PX : deltaMode === 2 ? delta * WHEEL_PAGE_PX : delta
+}
+
+/**
+ * Exact (fractional) view a wheel gesture has reached. Wheel zoom and pan work
+ * on this, so a burst of small high-resolution or touchpad deltas moves the
+ * view as far as one notch of the same total, instead of every tiny event
+ * forcing at least one whole step.
+ */
+interface WheelGestureState {
+  start: number
+  end: number
+  /** Whole-step range last sent for this gesture; a different input range starts a new gesture. */
+  emitted: ChartNavigatorRange
+  pointCount: number
+  timeStamp: number
+}
+
+export interface WheelGestureResult {
+  /** Exact view after the event. */
+  start: number
+  end: number
+  /** Whole-step range to show. */
+  range: ChartNavigatorRange
+  /** False when the view could not move (at a zoom or pan limit): the page keeps the event. */
+  moved: boolean
+}
+
+/**
+ * One wheel event applied to the navigator's exact view. Zoom keeps the step
+ * under `anchorRatio` (0 = left edge, 1 = right edge) in place; pan moves by the
+ * pixel delta. A whole notch always shows at least one step of change. Pure,
+ * so the wheel matrix can be checked without a browser.
+ */
+export function applyWheelGesture(args: {
+  pointCount: number
+  minVisibleCount?: number
+  /** Whole-step range on screen now. */
+  current: ChartNavigatorRange
+  /** Exact view the gesture has reached (defaults to `current`). */
+  start?: number
+  end?: number
+  mode: 'zoom' | 'pan'
+  /** Pixel delta along the gesture's axis (deltaY for zoom, the pan delta for pan). */
+  deltaPixels: number
+  anchorRatio?: number
+}): WheelGestureResult {
+  const { pointCount, mode, deltaPixels, current } = args
+  const maxIndex = Math.max(0, pointCount - 1)
+  const minCount = minimumCount(pointCount, args.minVisibleCount ?? 2)
+  const fromStart = args.start ?? current.startIndex
+  const fromEnd = args.end ?? current.endIndex
+  const count = clamp(fromEnd - fromStart + 1, minCount, Math.max(minCount, pointCount))
+  const startLimit = (span: number) => Math.max(0, pointCount - span)
+  let start = clamp(fromStart, 0, startLimit(count))
+  let nextCount = count
+  const anchorRatio = clamp(Number.isFinite(args.anchorRatio) ? args.anchorRatio! : 0.5, 0, 1)
+  if (mode === 'pan') {
+    const fullView = start <= 0 && count >= pointCount
+    const shift = clamp(
+      count * (deltaPixels / WHEEL_PAN_PX_PER_VIEW),
+      -count * MAX_WHEEL_PAN_FRACTION,
+      count * MAX_WHEEL_PAN_FRACTION,
+    )
+    if (!fullView && Number.isFinite(shift)) start = clamp(start + shift, 0, startLimit(count))
+  } else {
+    const ratio = clamp(Math.exp(deltaPixels * WHEEL_ZOOM_PER_PX), 1 / MAX_WHEEL_ZOOM_RATIO, MAX_WHEEL_ZOOM_RATIO)
+    nextCount = clamp(count * (Number.isFinite(ratio) ? ratio : 1), minCount, Math.max(minCount, pointCount))
+    const anchor = start + anchorRatio * Math.max(0, count - 1)
+    start = clamp(anchor - anchorRatio * Math.max(0, nextCount - 1), 0, startLimit(nextCount))
+  }
+  const roundedCount = clamp(Math.round(nextCount), minCount, Math.max(minCount, pointCount))
+  const roundedStart = clamp(Math.round(start), 0, startLimit(roundedCount))
+  let range = { startIndex: roundedStart, endIndex: Math.min(maxIndex, roundedStart + roundedCount - 1) }
+  const moved = Math.abs(start - fromStart) > 1e-9 || Math.abs(nextCount - count) > 1e-9
+  const unchanged = range.startIndex === current.startIndex && range.endIndex === current.endIndex
+  if (moved && unchanged && Math.abs(deltaPixels) >= WHEEL_NOTCH_MIN_PX) {
+    // A whole notch that rounds back to the same view still takes one step.
+    const currentCount = current.endIndex - current.startIndex + 1
+    const direction = Math.sign(deltaPixels)
+    if (mode === 'pan') {
+      const stepped = clamp(current.startIndex + direction, 0, startLimit(currentCount))
+      range = { startIndex: stepped, endIndex: stepped + currentCount - 1 }
+    } else {
+      const steppedCount = clamp(currentCount + direction, minCount, Math.max(minCount, pointCount))
+      const anchor = current.startIndex + anchorRatio * Math.max(0, currentCount - 1)
+      const steppedStart = clamp(Math.round(anchor - anchorRatio * (steppedCount - 1)), 0, startLimit(steppedCount))
+      range = { startIndex: steppedStart, endIndex: Math.min(maxIndex, steppedStart + steppedCount - 1) }
+    }
+    return { start: range.startIndex, end: range.endIndex, range, moved: true }
+  }
+  return { start, end: start + nextCount - 1, range, moved }
+}
+
 /** Fewest visible steps for a navigator, never more than it has. */
 function minimumCount(pointCount: number, minVisibleCount = 2): number {
   return clamp(Math.round(minVisibleCount), 2, Math.max(2, pointCount))
@@ -395,55 +523,56 @@ export function ChartNavigator({
   }
 
   // Plain scrolling stays available until the user explicitly enables Scroll
-  // zoom. Alt+wheel works without that mode; Ctrl/Meta remain browser shortcuts.
+  // zoom. Alt+wheel works without that mode. Ctrl+wheel (also how a touchpad
+  // pinch arrives) and Meta+wheel always stay the browser's page zoom.
+  const wheelGestureRef = useRef<WheelGestureState | null>(null)
   const handleWheel = (event: WheelEvent, surface: Element) => {
-    const inputRange = inputRangeRef.current
-    // A chart inside the wheel surface may already have zoomed for this event.
-    if (event.defaultPrevented) return
+    // A chart inside the wheel surface may already have zoomed for this event,
+    // or the navigator inside this surface already took it.
+    if (event.defaultPrevented || handledWheelEvents.has(event)) return
     if (maxIndex <= 1 || event.ctrlKey || event.metaKey) return
+    const zoomMode = scrollZoomEnabled || event.altKey
     const rect = surface.getBoundingClientRect()
     if (!rect || rect.width <= 0) return
 
-    const deltaUnit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? Math.max(240, rect.width) : 1
-    const deltaX = event.deltaX * deltaUnit
-    const deltaY = event.deltaY * deltaUnit
+    const deltaX = wheelDeltaPixels(event.deltaX, event.deltaMode)
+    const deltaY = wheelDeltaPixels(event.deltaY, event.deltaMode)
     const horizontalIntent = Math.abs(deltaX) > Math.abs(deltaY)
-    if (!scrollZoomEnabled && !event.altKey && !event.shiftKey && !horizontalIntent) return
-    const panDelta = event.shiftKey ? (deltaY || deltaX) : deltaX
     const shouldPan = event.shiftKey || horizontalIntent
-    let next = inputRange
+    if (!zoomMode && !shouldPan) return
+    const deltaPixels = shouldPan ? (event.shiftKey ? (deltaY || deltaX) : deltaX) : deltaY
+    if (deltaPixels === 0) return
 
-    if (shouldPan) {
-      if (panDelta === 0 || (inputRange.startIndex === 0 && inputRange.endIndex === maxIndex)) return
-      const bucketCount = inputRange.endIndex - inputRange.startIndex + 1
-      const panBuckets = Math.sign(panDelta) * Math.max(
-        1,
-        Math.round(bucketCount * clamp(Math.abs(panDelta) / 800, 0.02, 0.25)),
-      )
-      const nextStart = clamp(
-        inputRange.startIndex + panBuckets,
-        0,
-        Math.max(0, pointCount - bucketCount),
-      )
-      next = { startIndex: nextStart, endIndex: nextStart + bucketCount - 1 }
-    } else {
-      if (deltaY === 0) return
-      const bucketCount = inputRange.endIndex - inputRange.startIndex + 1
-      const scale = Math.exp(deltaY * 0.0025)
-      let nextBucketCount = clamp(Math.round(bucketCount * scale), minCount, pointCount)
-      if (nextBucketCount === bucketCount) {
-        nextBucketCount = clamp(bucketCount + Math.sign(deltaY), minCount, pointCount)
-      }
-      const anchorRatio = clamp((event.clientX - rect.left) / Math.max(1, rect.width), 0, 1)
-      const anchorIndex = inputRange.startIndex + anchorRatio * Math.max(0, bucketCount - 1)
-      let nextStart = Math.round(anchorIndex - anchorRatio * (nextBucketCount - 1))
-      nextStart = clamp(nextStart, 0, Math.max(0, pointCount - nextBucketCount))
-      next = { startIndex: nextStart, endIndex: nextStart + nextBucketCount - 1 }
-    }
-
-    if (next.startIndex === inputRange.startIndex && next.endIndex === inputRange.endIndex) return
+    const inputRange = inputRangeRef.current
+    const previous = wheelGestureRef.current
+    const continues = previous != null
+      && previous.pointCount === pointCount
+      && previous.emitted.startIndex === inputRange.startIndex
+      && previous.emitted.endIndex === inputRange.endIndex
+      && Math.abs(event.timeStamp - previous.timeStamp) <= WHEEL_GESTURE_GAP_MS
+    const result = applyWheelGesture({
+      pointCount,
+      minVisibleCount,
+      current: inputRange,
+      start: continues ? previous.start : undefined,
+      end: continues ? previous.end : undefined,
+      mode: shouldPan ? 'pan' : 'zoom',
+      deltaPixels,
+      anchorRatio: (event.clientX - rect.left) / Math.max(1, rect.width),
+    })
+    // At a zoom or pan limit nothing can move: leave the event to the page.
+    if (!result.moved) return
+    handledWheelEvents.add(event)
     event.preventDefault()
-    emitRange(next)
+    const changed = result.range.startIndex !== inputRange.startIndex || result.range.endIndex !== inputRange.endIndex
+    wheelGestureRef.current = {
+      start: result.start,
+      end: result.end,
+      emitted: changed ? result.range : inputRange,
+      pointCount,
+      timeStamp: event.timeStamp,
+    }
+    if (changed) emitRange(result.range)
   }
 
   useEffect(() => {

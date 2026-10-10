@@ -107,7 +107,8 @@ describe('stream chart zoom matches the Global activity chart', () => {
       windows.push(navigatorWindow(container))
     }
     expect(zoomIn.disabled).toBe(true)
-    expect(spanOf(windows[windows.length - 1]!)).toBe(5)
+    // Five minutes hold six minute steps (both edge minutes are plotted).
+    expect(spanOf(windows[windows.length - 1]!)).toBe(6)
     // Every click halved the view until the floor; none was a same-size nudge.
     for (let index = 1; index < windows.length; index += 1) {
       expect(spanOf(windows[index]!)).toBeLessThan(spanOf(windows[index - 1]!))
@@ -143,7 +144,7 @@ describe('stream chart zoom matches the Global activity chart', () => {
     // At the floor, + does nothing (Zoom in is disabled there).
     for (let press = 0; press < 12; press += 1) fireEvent.keyDown(plot, { key: '+' })
     const floor = navigatorWindow(container)
-    expect(spanOf(floor)).toBe(5)
+    expect(spanOf(floor)).toBe(6)
     fireEvent.keyDown(plot, { key: '+' })
     expect(navigatorWindow(container)).toBe(floor)
   })
