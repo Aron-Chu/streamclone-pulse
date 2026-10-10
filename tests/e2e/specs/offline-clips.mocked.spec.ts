@@ -60,7 +60,7 @@ test('live clip resolves its exact archive when the live payload has no VOD id',
   await waitForPulseRoot(extension.page)
   const root = extension.page.locator('#streamclone-pulse-root')
   const popupPromise = extension.page.waitForEvent('popup')
-  await root.getByRole('link', { name: 'Clip spike: Live archive clip' }).click()
+  await root.getByRole('link', { name: /^Live archive clip, [0-9,.KkMm]+ views, opens on Twitch$/ }).click()
   await (await popupPromise).close()
   await expect(root.locator('[data-chart-active-offset]').first()).toHaveAttribute('data-chart-active-offset', '300')
 })
