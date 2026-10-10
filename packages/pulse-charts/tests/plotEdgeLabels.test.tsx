@@ -109,6 +109,26 @@ describe('console chart width', () => {
     expect(high).not.toMatch(/data-chart-scale-value="avg"/)
   })
 
+  it('keeps the live game cap fully inside the gutterless plot', () => {
+    const live = (variant: 'console' | 'compact') => renderToStaticMarkup(
+      <PulseMultiSignalChartInner
+        rollups={rollupsWith(minute => 1000 + minute * 10)}
+        streamStartedAt={new Date(START).toISOString()}
+        durationSeconds={60 * 60}
+        games={[{ gameName: 'Just Chatting', offsetSeconds: 0, durationSeconds: 3600 }]}
+        isLive
+        variant={variant}
+        chromeless={variant === 'console'}
+        motionEnabled={false}
+      />,
+    )
+    const capX = (markup: string) => Number(markup.match(/<line x1="([^"]+)"[^>]*data-active-game-cap="true"/)?.[1])
+    // 1.25px stroke: drawn 1.5px in from the SVG's right edge on the console.
+    expect(capX(live('console'))).toBe(998.5)
+    // The extension's cap stays on its plot end (1000 - 34).
+    expect(capX(live('compact'))).toBe(966)
+  })
+
   it('leaves the extension compact chart and its gutter labels as they were', () => {
     const markup = renderChart(rollupsWith(minute => 1000 + minute * 10), 'compact')
     const plot = markup.match(/<rect x="([^"]+)"[^>]*width="([^"]+)"[^>]*data-chart-touch-action/)

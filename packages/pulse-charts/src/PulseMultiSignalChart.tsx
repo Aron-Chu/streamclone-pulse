@@ -4261,6 +4261,7 @@ function PulseMultiSignalChartInnerImpl({
           minLabelWidth={8}
           highlightedSegmentKey={highlightedGameSegmentKey}
           isLive={isLive}
+          capInsetPx={padRight < 1 ? 1.5 : 0}
         />
 
         {/* Transparent overlay rect for reliable mouse interaction */}
