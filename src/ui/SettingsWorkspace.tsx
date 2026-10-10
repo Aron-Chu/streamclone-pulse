@@ -31,6 +31,8 @@ import { PulseSectionCard } from './PulseSectionCard.tsx'
 import { usePulseHealth } from './usePulseHealth.ts'
 import { usePulsePreferences } from './usePulsePreferences.ts'
 import { PulseBannerControls } from './PulseBanner.tsx'
+import { CHAT_CRESTS_KEY, CHAT_PAINT_MOTION_KEY, DEFAULT_CHAT_CRESTS, DEFAULT_CHAT_PAINT_MOTION } from '../shared/chatBadges.ts'
+import { useChatBadgeListReceived } from '../options/useChatBadges.ts'
 
 type UpdateCapability = 'loading' | 'supported' | 'browser' | 'development'
 
@@ -294,6 +296,7 @@ function PulseExperienceSection({ preferences, health, supporterPerks }: { prefe
 
       <PulseSectionCard title="Appearance & placement" headingLevel={3}>
         <PulseBannerControls perks={supporterPerks} />
+        <ChatCrestToggles />
         <div className="pulse-settings-field">
           <span className="pulse-settings-label">Accent</span>
           <ChoicePicker
@@ -332,6 +335,60 @@ function PulseExperienceSection({ preferences, health, supporterPerks }: { prefe
         </div>
       </PulseSectionCard>
     </section>
+  )
+}
+
+/**
+ * Seen in chat, as a viewer: other Supporters' crests in Twitch chat. Shown
+ * once this browser has received a list (the feature is live). Off stops the
+ * downloads and removes every crest; motion is off by default and always off
+ * under reduced motion.
+ */
+export function ChatCrestToggles() {
+  const [listReceived] = useChatBadgeListReceived()
+  const [crests, setCrests] = useState(DEFAULT_CHAT_CRESTS)
+  const [motion, setMotion] = useState(DEFAULT_CHAT_PAINT_MOTION)
+  const [status, setStatus] = useState('')
+  useEffect(() => {
+    let mounted = true
+    void chrome.storage?.sync?.get([CHAT_CRESTS_KEY, CHAT_PAINT_MOTION_KEY]).then(stored => {
+      if (!mounted) return
+      setCrests((stored[CHAT_CRESTS_KEY] ?? DEFAULT_CHAT_CRESTS) !== false)
+      setMotion((stored[CHAT_PAINT_MOTION_KEY] ?? DEFAULT_CHAT_PAINT_MOTION) === true)
+    }).catch(() => undefined)
+    return () => { mounted = false }
+  }, [])
+  if (!listReceived) return null
+  async function save(key: string, next: boolean, apply: (value: boolean) => void, previous: boolean) {
+    apply(next)
+    setStatus('')
+    try {
+      await chrome.storage.sync.set({ [key]: next })
+      setStatus('Saved')
+    } catch {
+      apply(previous)
+      setStatus('Could not save; changes were reverted.')
+    }
+  }
+  return (
+    <div data-settings-chat-crests="true">
+      <ToggleRow
+        id="settings-chat-crests"
+        label="Show Supporter crests in chat"
+        hint="Other StreamPulse Supporters who chose to be seen get a crest beside their name, and their paint on it. Your extension downloads a public list about once an hour and never tells StreamPulse which chats you open."
+        checked={crests}
+        onChange={next => save(CHAT_CRESTS_KEY, next, setCrests, crests)}
+      />
+      <ToggleRow
+        id="settings-chat-paint-motion"
+        label="Animate paints in chat"
+        hint="Off keeps every name still. Always still when your system asks for reduced motion."
+        checked={motion}
+        disabled={!crests}
+        onChange={next => save(CHAT_PAINT_MOTION_KEY, next, setMotion, motion)}
+      />
+      {status ? <span className="pulse-settings-hint" role="status">{status}</span> : null}
+    </div>
   )
 }
 

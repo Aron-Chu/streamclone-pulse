@@ -7,6 +7,8 @@ import { SupporterCosmeticControls } from './SupporterCosmeticControls.tsx'
 import { useSupporterPaintStyle } from './SupporterPaintStyleFields.tsx'
 import { SupporterJourney } from './SupporterJourney.tsx'
 import { SupporterWhoSees } from './SupporterWhoSees.tsx'
+import { SupporterChatBadgeControls } from './SupporterChatBadgeControls.tsx'
+import { useChatBadgeListReceived } from './useChatBadges.ts'
 
 /** The sample look's emote rain, for everyone who has not unlocked their own. */
 const SAMPLE_RAIN = { mode: 'rain', intensity: 35, title: '' } as const
@@ -14,7 +16,8 @@ const SAMPLE_RAIN = { mode: 'rain', intensity: 35, title: '' } as const
 /**
  * Account & Supporter, direction B "Your card" of the 2026-10-07 redesign:
  * your card (who you are, your membership, the crest ladder, and the one
- * action that matters now), who sees what, your look, then the account.
+ * action that matters now), who sees what, Seen in chat ("In chat", only
+ * where it is live), your look, then the account.
  *
  * A Supporter's card wears what they have equipped; everyone else's wears the
  * sample. "Who sees what" previews the paint being tried in "Your look".
@@ -40,6 +43,10 @@ export function SupporterAccountSection() {
   const worn = perks ? equipped : SAMPLE_KIT.finish
   const tried = draft === undefined ? worn : draft
   const tenure = perks && shown?.state === 'ready' ? supporterTenureForMonths(shown.supportPeriods) : SAMPLE_KIT.tenure
+  // Seen in chat adds "Other StreamPulse viewers" only where it is live.
+  const [chatListReceived] = useChatBadgeListReceived()
+  const chatBadge = shown?.state === 'ready' ? shown.chatBadge : undefined
+  const seenInChat = chatBadge || chatListReceived ? { on: chatBadge?.state === 'on' || chatBadge?.state === 'waiting' } : undefined
 
   return (
     <div className="pulse-supporter-settings">
@@ -48,7 +55,8 @@ export function SupporterAccountSection() {
         <p>Your Supporter card, who sees what, and billing.</p>
       </div>
       <SupporterJourney onEntitlement={setEntitlement} onShown={setShown} look={{ finish: worn, paint: paint.style }}>
-        <SupporterWhoSees finish={tried} paint={paint.style} tenure={tenure} rain={perks ? banner.value : SAMPLE_RAIN} shown={tried !== worn ? 'trying' : perks ? 'own' : 'sample'} />
+        <SupporterWhoSees finish={tried} paint={paint.style} tenure={tenure} rain={perks ? banner.value : SAMPLE_RAIN} shown={tried !== worn ? 'trying' : perks ? 'own' : 'sample'} seenInChat={seenInChat} />
+        <SupporterChatBadgeControls entitlement={entitlement} />
         <SupporterCosmeticControls entitlement={entitlement} onSaved={savedCosmetics} onDraft={setDraft} />
       </SupporterJourney>
     </div>
