@@ -9,6 +9,8 @@ export type MessageType =
   | 'SUPPORTER_APPEARANCE'
   | 'SUPPORTER_FINISH_INTENT'
   | 'SUPPORTER_CARD_SCRIPT'
+  | 'SUPPORTER_CHAT_BADGE'
+  | 'CHAT_BADGES'
   | 'SUPPORTER_BILLING'
   | 'SUPPORTER_RESTORE'
   | 'SUPPORTER_DEVICES'
@@ -256,6 +258,15 @@ export type BackgroundRequest =
   | { type: 'SUPPORTER_FINISH_INTENT'; finish?: 'glass' | 'etched' | 'halo' | null }
   /** Injects the quick-settings Supporter card's stage script into the sender's own Twitch tab. */
   | { type: 'SUPPORTER_CARD_SCRIPT' }
+  /**
+   * Seen in chat, from the options page: your own entry. `on` runs the Twitch
+   * check and the consent action; `off` withdraws at once; `style` changes the
+   * wave of an entry that is already on.
+   */
+  | { type: 'SUPPORTER_CHAT_BADGE'; action: 'status' | 'on' | 'off' }
+  | { type: 'SUPPORTER_CHAT_BADGE'; action: 'style'; wave: SupporterPaintStyle['wave'] }
+  /** The chat decorator asks for the Supporter list; `have` is the version it already shows. */
+  | { type: 'CHAT_BADGES'; have?: string }
   | TrackMessage
   | UntrackMessage
   | GetPulseMessage
@@ -759,6 +770,16 @@ export type BackgroundResponse =
   | { type: 'SUPPORTER_APPEARANCE'; finish: 'glass' | 'etched' | 'halo' | null; validForMs: number; tenure?: SupporterTenure; paint?: SupporterPaintStyle; perks?: true; unverified?: true }
   | { type: 'SUPPORTER_FINISH_INTENT'; finish: 'glass' | 'etched' | 'halo' | null }
   | { type: 'SUPPORTER_CARD_SCRIPT'; ok: boolean }
+  | import('./chatBadges.ts').ChatBadgesReply
+  | {
+      type: 'SUPPORTER_CHAT_BADGE'
+      ok: boolean
+      listReceived: boolean
+      /** After on/off: the state now shown locally; the server snapshot follows. */
+      own?: 'on' | 'off'
+      login?: string
+      error?: import('./chatBadges.ts').ChatBadgeActionError
+    }
   | { type: 'DEVICE_AUTH'; status: DeviceAuthStatus }
   | { type: 'PULSE_DEBUG_LOG'; entries: import('./pulseDebug.ts').PulseDebugEntry[] }
   /** `device`: saved without an account; these rows never leave this browser. */

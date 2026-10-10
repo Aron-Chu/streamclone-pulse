@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { SupporterPerkList } from './SupporterPerkList.tsx'
+import { useChatBadgeListReceived } from './useChatBadges.ts'
 import type { BackgroundResponse } from '../shared/messages.ts'
 import { POLICY_LINKS, deviceLinkWithCode, productLink } from '../shared/portalLinks.ts'
 import {
@@ -157,14 +158,14 @@ function openPortal(url: string): void {
   } else fallback()
 }
 
-function OfferTerms() {
+function OfferTerms({ seenInChat }: { seenInChat: boolean }) {
   return (
     <>
       {/* The card's footer line: the price and its terms in one row, before the action. */}
       <p className="pulse-supporter-terms"><b>{PRICE_DISPLAY}</b><span>renews monthly until you cancel</span><span>cancel any time; access runs to the end of the paid month</span><span>taxes, if any, shown before you pay</span></p>
       {/* "You get" is the one perk list (src/shared/supporter-perks.json) that
           the settings banner, quick settings, /supporter and the Terms share. */}
-      <SupporterPerkList />
+      <SupporterPerkList seenInChat={seenInChat} />
     </>
   )
 }
@@ -211,6 +212,8 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   const setIntent = useCallback((value: Intent) => { storeIntent(value); setIntentState(value) }, [])
   const [watchUntil, setWatchUntil] = useState(0)
   const [twitch, setTwitch] = useState<TwitchSignInStatus | null>(null)
+  // Seen in chat is offered only where it is live: the server reports it, or a list arrived.
+  const [chatListReceived] = useChatBadgeListReceived()
   const [signingIn, setSigningIn] = useState<TwitchSignInMode | null>(null)
   const signInFlight = useRef(false)
   const silentTried = useRef(false)
@@ -638,6 +641,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   const supporterHref = productLink('supporter', portalOrigin)
   const isSupporter = status === 'active' || status === 'grace'
   const checkoutOpen = entitlement?.state === 'ready' && entitlement.checkoutEnabled === true
+  const seenInChatLive = chatListReceived || (entitlement?.state === 'ready' && entitlement.chatBadge !== undefined)
   const accountKind = entitlement?.state === 'ready' ? entitlement.accountKind : undefined
   // Purchase and billing through the worker's bearer: any known account with
   // Twitch sign-in on (the server sends an invited tester's email account
@@ -907,7 +911,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
               {/* The price and its renewal terms come before the button that
                   buys it, in reading and Tab order and above it at any width;
                   beside it when there is room, as in the redesign's footer. */}
-              {terms ? <OfferTerms /> : null}
+              {terms ? <OfferTerms seenInChat={seenInChatLive} /> : null}
             </div>
             {primary ? <div className="pulse-account-link-actions pulse-journey-actions">{primary}</div> : null}
           </div>

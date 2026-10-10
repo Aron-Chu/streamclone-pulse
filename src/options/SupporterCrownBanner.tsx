@@ -3,7 +3,8 @@ import { sendBackgroundMessage } from '../content/bridge.ts'
 import { mountEmotePile } from '../supporter/emotePile.ts'
 import { FINISHES, SAMPLE_KIT, TENURES, finishVars, kitEmoteSrc, tenureIndex, type Kit } from '../supporter/kit.ts'
 import { PeakMark } from '../ui/PeakMark.tsx'
-import { names as PERK_NAMES } from '../shared/supporter-perks.json'
+import { names as PERK_NAMES, seenInChat as SEEN_IN_CHAT } from '../shared/supporter-perks.json'
+import { useChatBadgeListReceived } from './useChatBadges.ts'
 import { useSupporterAppearanceDetails } from '../ui/useSupporterAppearance.ts'
 
 /** How long the banner waits for the membership answer before showing the sample pile. */
@@ -48,6 +49,8 @@ export function SupporterBanner({ onOpen, onPerks }: { onOpen: () => void; onPer
   const shown = kit ?? SAMPLE_KIT
   const state = kit ? (perks ? 'own' : 'sample') : 'pending'
   const own = state === 'own'
+  // Seen in chat is named only once this browser has received a list (the feature is live).
+  const [seenInChat] = useChatBadgeListReceived()
   return (
     <div className="pulse-settings-supporter-banner-frame">
       <button
@@ -67,9 +70,11 @@ export function SupporterBanner({ onOpen, onPerks }: { onOpen: () => void; onPer
           </span>
           <strong>{own ? 'Yours lands on top' : 'Your crest lands on top'}</strong>
           <span className="pulse-settings-supporter-banner-perks">
-            <BannerPerks kit={shown} own={own} />
+            <BannerPerks kit={shown} own={own} seenInChat={seenInChat} />
           </span>
-          <small>{own ? 'Only you see your kit. Core tools stay free.' : 'Only you see them. Core tools stay free.'}</small>
+          <small>{seenInChat
+            ? own ? 'Only you see your kit, unless you turn on Seen in chat. Core tools stay free.' : 'Only you see them, unless you turn on Seen in chat. Core tools stay free.'
+            : own ? 'Only you see your kit. Core tools stay free.' : 'Only you see them. Core tools stay free.'}</small>
         </span>
         <span className="pulse-settings-supporter-banner-arrow">View benefits <span aria-hidden="true">→</span></span>
       </button>
@@ -81,7 +86,7 @@ export function SupporterBanner({ onOpen, onPerks }: { onOpen: () => void; onPer
  * Every perk as a chip, named and ordered by the one perk list. The sample
  * names them; a Supporter's paint and crest chips name their own kit.
  */
-function BannerPerks({ kit, own }: { kit: Kit; own: boolean }) {
+function BannerPerks({ kit, own, seenInChat = false }: { kit: Kit; own: boolean; seenInChat?: boolean }) {
   const finish = own ? kit.finish : SAMPLE_KIT.finish
   const [paint, crest, rain, card] = PERK_NAMES
   return <>
@@ -101,6 +106,10 @@ function BannerPerks({ kit, own }: { kit: Kit; own: boolean }) {
       <PeakMark size={13} strokeWidth={2} stroke="currentColor" />
       {card}
     </span>
+    {seenInChat ? <span className="pulse-settings-supporter-perk" data-perk="seen-in-chat">
+      <i className="pulse-crest" data-tenure={kit.tenure} aria-hidden="true" />
+      {SEEN_IN_CHAT.name}
+    </span> : null}
   </>
 }
 

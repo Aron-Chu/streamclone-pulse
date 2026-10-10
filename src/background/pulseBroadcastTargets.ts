@@ -63,6 +63,10 @@ export const MESSAGE_SENDER_SCOPE: Record<BackgroundRequest['type'], MessageSend
   SUPPORTER_FINISH_INTENT: 'extension-page',
   // A Twitch tab's quick settings asks for the card script in its own frame only.
   SUPPORTER_CARD_SCRIPT: 'twitch-any',
+  // Seen in chat: the consent action opens the Twitch window, so options only.
+  SUPPORTER_CHAT_BADGE: 'extension-page',
+  // The decorator in a top-frame Twitch tab asks for the public list; it sends nothing about the tab.
+  CHAT_BADGES: 'twitch-any',
   ENROLL_DEVICE: 'extension-page',
   GET_DEVICE_AUTH_STATUS: 'extension-page',
   ROTATE_DEVICE: 'extension-page',

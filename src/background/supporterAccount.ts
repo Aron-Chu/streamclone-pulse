@@ -1,5 +1,6 @@
 import type { SupporterAccountAction, SupporterAccountState, SupporterEntitlement, SupporterStatus, SupporterCosmetics } from '../shared/supporterAccount.ts'
 import { supporterAccess, SUPPORTER_FEATURES, type SupporterScope } from '../shared/supporterAccess.ts'
+import { parseChatBadgeSnapshot } from '../shared/chatBadges.ts'
 
 type Environment = SupporterScope['environment']
 type Finish = SupporterCosmetics['finish']
@@ -83,6 +84,7 @@ function projectEntitlement(result: { status: number; body: unknown }, accountId
   const remaining = Math.min(Date.parse(String(body.cacheUntil)), Date.parse(String(body.accessUntil))) - Date.parse(String(body.serverTime)) - elapsedMs
   const preferences = object(body.cosmetics)
   const finish = preferences.finish === 'etched' || preferences.finish === 'halo' ? preferences.finish : 'glass'
+  const chatBadge = parseChatBadgeSnapshot(body.chatBadge)
   return {
     state: 'ready',
     status: body.status as SupporterStatus,
@@ -96,6 +98,7 @@ function projectEntitlement(result: { status: number; body: unknown }, accountId
     installationAccountsEnabled: body.installationAccountsEnabled === true,
     accountKind: body.accountKind === 'email' || body.accountKind === 'installation' || body.accountKind === 'twitch' ? body.accountKind : undefined,
     restoreEligible: body.restoreEligible === true,
+    ...(chatBadge ? { chatBadge } : {}),
   }
 }
 
@@ -129,7 +132,7 @@ function entitlementCacheMs(value: SupporterEntitlement, result: { status: numbe
 /** What a settings or Twitch surface would render differently. Revision alone is not a change. */
 function fingerprint(accountId: string, value: SupporterEntitlement): string {
   if (value.state !== 'ready') return `${accountId}:${value.state}`
-  return JSON.stringify([accountId, value.status, value.accessUntil ?? null, value.features, value.supportPeriods, value.cosmetics ?? null, value.checkoutEnabled === true])
+  return JSON.stringify([accountId, value.status, value.accessUntil ?? null, value.features, value.supportPeriods, value.cosmetics ?? null, value.checkoutEnabled === true, value.chatBadge ?? null])
 }
 
 /** One coordinator per worker; installation refresh retries use the server's bounded idempotency window. */
@@ -520,6 +523,20 @@ export class SupporterAccountCoordinator {
     } catch { return { state: 'error', revocationPending: true } }
     this.revocationUnconfirmed = false
     return this.clear('signed_out')
+  }
+
+  /**
+   * The server changed something this coordinator cached (Seen in chat on or
+   * off): drop the cached read and tell open surfaces to read again.
+   */
+  invalidateEntitlement(): Promise<void> {
+    const task = this.queue.then(async () => {
+      this.entitlementCache = null
+      this.lastProjection = undefined
+      await this.ports.projectionChanged?.().catch(() => undefined)
+    }).catch(() => undefined)
+    this.queue = task
+    return task
   }
 
   saveCosmetics(value: SupporterCosmetics): Promise<boolean> {
