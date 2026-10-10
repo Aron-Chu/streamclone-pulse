@@ -287,6 +287,25 @@ describe('approval names its account and recognises old requests', () => {
     window.history.replaceState(null, '', '/')
   })
 
+  it('lists everything an approved extension can do, and when the request was made', async () => {
+    window.history.replaceState(null, '', '/account/link-device#code=ABCDE12345')
+    captureAccountDeviceCode()
+    // Created two and a half minutes ago: seven and a half of its ten minutes remain.
+    const expiresAt = new Date(Date.now() + 7 * 60_000 + 30_000).toISOString()
+    vi.mocked(accountRequest).mockImplementation(async path => path === '/me' ? { accountId: 'account-a' } : path === '/device-links/inspect' ? { label: 'My extension', expiresAt } : {})
+    render(<MemoryRouter initialEntries={['/account/link-device']}><AccountPage /></MemoryRouter>)
+    expect(await screen.findByRole('heading', { name: 'Allow this extension?' })).toBeTruthy()
+    const access = screen.getByTestId('device-access').textContent ?? ''
+    expect(access).toContain('Supporter status')
+    expect(access).toContain('saved moments and their notes')
+    // The old copy named only Supporter status and appearance.
+    expect(screen.queryByText(/It will be able to read your Supporter status and save your Pulse appearance[.]/)).toBeNull()
+    const requestedAt = new Date(Date.parse(expiresAt) - 10 * 60_000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    expect(screen.getByTestId('device-requested').textContent).toBe(`Requested at ${requestedAt} (2 minutes ago)`)
+    expect(screen.getByText(/If someone sent you this link or code, decline[.]/)).toBeTruthy()
+    window.history.replaceState(null, '', '/')
+  })
+
   it('calls a request from a tab left open past ten minutes invalid instead of asking for a sign-in', async () => {
     const now = vi.spyOn(Date, 'now').mockReturnValue(5_000_000)
     window.history.replaceState(null, '', '/account/link-device#code=ABCDE12345')

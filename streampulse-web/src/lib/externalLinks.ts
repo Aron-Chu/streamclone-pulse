@@ -17,5 +17,7 @@ export const PUBLIC_SUPPORT_URL = `${GITHUB_REPO_URL}/issues`
  */
 export const PRIVACY_PATH = '/privacy'
 export const TERMS_PATH = '/terms'
+/** The Pulse Supporter section of the terms (the h2 in Terms.tsx carries id="supporter"). */
+export const SUPPORTER_TERMS_PATH = '/terms#supporter'
 export const REFUNDS_PATH = '/refunds'
 export const SUPPORTER_PATH = '/supporter'

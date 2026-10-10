@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import BillingPage, { CONFIRM_DELAYS_S, stripeDestination } from '../src/routes/account/BillingPage'
 import Supporter from '../src/routes/public/Supporter'
 import { accountBillingSignInHref } from '../src/lib/accountBillingReturn'
+import { retryWaitCopy } from '../src/lib/billingTryLater'
 
 const returnPath = '/account/billing/return?attempt=12345678-1234-4234-8234-123456789abc'
 const membership = (status: string, checkoutEnabled = false, extra: Record<string, unknown> = {}) => new Response(JSON.stringify({ schemaVersion: 1, status, checkoutEnabled, ...extra }))
@@ -19,11 +20,10 @@ function renderNavigableBilling(path: string) {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('public Supporter handoff', () => {
-  it('states that paid sign-ups are closed, starts with the extension and preserves website account billing', () => {
+  it('states that Supporter sign-ups are closed, starts with the extension and offers no website-account or restore choice', () => {
     render(<MemoryRouter><Supporter /></MemoryRouter>)
-    const link = screen.getByRole('link', { name: 'Use a StreamPulse website account' })
-    expect(link.getAttribute('href')).toBe('/account/billing')
-    expect(screen.getByTestId('supporter-availability').textContent).toMatch(/Paid sign-ups are not open yet/)
+    expect(screen.queryByRole('link', { name: 'Use a StreamPulse website account' })).toBeNull()
+    expect(screen.getByTestId('supporter-availability').textContent).toMatch(/Supporter sign-ups are not open yet/)
     expect(screen.getByText('US$4.99 per month, charged in US dollars')).toBeTruthy()
     expect(screen.getByText(/Handled as stated at checkout/)).toBeTruthy()
     const body = screen.getByTestId('supporter-offer').textContent ?? ''
@@ -133,7 +133,7 @@ describe('billing lifecycle view', () => {
     vi.stubGlobal('fetch', vi.fn((path: string) => Promise.resolve(path.includes('/checkout/') ? new Response(JSON.stringify({ state: 'active' })) : membership('active'))))
     render(<MemoryRouter initialEntries={[returnPath]}><BillingPage /></MemoryRouter>)
     await screen.findByRole('heading', { name: 'You’re a Supporter' })
-    expect(screen.getByRole('button', { name: 'Manage membership' }).classList.contains('pulse-account-primary')).toBe(true)
+    expect(screen.getByRole('button', { name: 'Manage subscription' }).classList.contains('pulse-account-primary')).toBe(true)
     expect(document.querySelectorAll('.pulse-membership .pulse-account-primary')).toHaveLength(1)
   })
   it('never trusts a success query parameter as payment', async () => {
@@ -161,12 +161,12 @@ describe('billing lifecycle view', () => {
     expect(screen.getByText(/your payment is safe and will appear here once confirmed\. Don’t start another checkout/)).toBeTruthy()
     expect(screen.queryByText(/No purchase has been started/)).toBeNull()
     expect(screen.queryByRole('button', { name: 'Continue to Stripe checkout' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Manage membership' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Manage subscription' })).toBeNull()
     expect(screen.queryByText(/Checkout status:/)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Check again' }))
     expect(await screen.findByRole('heading', { name: 'You’re a Supporter' })).toBeTruthy()
     expect(screen.queryByText(/Billing status is unavailable/)).toBeNull()
-    expect(screen.getByRole('button', { name: 'Manage membership' }).hasAttribute('disabled')).toBe(false)
+    expect(screen.getByRole('button', { name: 'Manage subscription' }).hasAttribute('disabled')).toBe(false)
     expect(fetch.mock.calls.every(([, options]) => options.method === 'GET')).toBe(true)
   })
   it('posts checkout with session protection and handles duplicate membership', async () => {
@@ -176,7 +176,7 @@ describe('billing lifecycle view', () => {
     render(<MemoryRouter><BillingPage /></MemoryRouter>)
     expect(await screen.findByText(/New Supporter sign-ups are not open yet/)).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Continue to Stripe checkout' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Manage membership' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Manage subscription' })).toBeNull()
     expect(fetch).toHaveBeenCalledOnce()
   })
   it('shows checkout only when the server explicitly enables it', async () => {
@@ -198,7 +198,7 @@ describe('billing lifecycle view', () => {
   it.each(['/account/billing', returnPath, `${returnPath}&cancelled=1`])('preserves %s when membership requires sign-in', async path => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 401 })))
     render(<MemoryRouter initialEntries={[path]}><BillingPage /></MemoryRouter>)
-    expect((await screen.findByRole('link', { name: 'Sign in to Pulse' })).getAttribute('href')).toBe(accountBillingSignInHref(path))
+    expect((await screen.findByRole('link', { name: 'Tester sign-in' })).getAttribute('href')).toBe(accountBillingSignInHref(path))
     expect(screen.queryByRole('button', { name: 'Continue to Stripe checkout' })).toBeNull()
   })
 
@@ -237,7 +237,7 @@ describe('billing lifecycle view', () => {
   })
   it.each([
     ['Continue to Stripe checkout', 'none', true],
-    ['Manage membership', 'active', false],
+    ['Manage subscription', 'active', false],
   ] as const)('offers return-aware sign-in when %s loses its session', async (name, status, checkoutEnabled) => {
     const fetch = vi.fn().mockResolvedValueOnce(membership(status, checkoutEnabled))
       .mockResolvedValueOnce(new Response('{}', { status: 401 }))
@@ -264,7 +264,7 @@ describe('billing lifecycle view', () => {
     expect(fetch.mock.calls.map(call => call[0])).toEqual([
       '/v1/billing/checkout/12345678-1234-4234-8234-123456789abc', '/v1/billing/supporter',
     ])
-    expect(screen.getByRole('button', { name: 'Manage membership' }).hasAttribute('disabled')).toBe(false)
+    expect(screen.getByRole('button', { name: 'Manage subscription' }).hasAttribute('disabled')).toBe(false)
     expect(screen.queryByRole('button', { name: 'Continue to Stripe checkout' })).toBeNull()
     if (state === 'missing') {
       expect(screen.getByText(/This checkout link is no longer available/)).toBeTruthy()
@@ -285,7 +285,7 @@ describe('billing lifecycle view', () => {
     expect(await screen.findByRole('heading', { name: 'Supporter active' })).toBeTruthy()
     expect(screen.getByText(/This checkout link is invalid/)).toBeTruthy()
     expect(fetch.mock.calls.map(call => call[0])).toEqual(['/v1/billing/supporter'])
-    expect(screen.getByRole('button', { name: 'Manage membership' }).hasAttribute('disabled')).toBe(false)
+    expect(screen.getByRole('button', { name: 'Manage subscription' }).hasAttribute('disabled')).toBe(false)
     expect(screen.queryByRole('button', { name: 'Continue to Stripe checkout' })).toBeNull()
     expect(screen.queryByText(/Checkout status:/)).toBeNull()
   })
@@ -296,10 +296,10 @@ describe('billing lifecycle view', () => {
     render(<MemoryRouter initialEntries={['/account/billing/return?attempt=invalid']}><BillingPage /></MemoryRouter>)
     expect(await screen.findByRole('heading', { name: status === 401 ? 'Sign in to see your membership' : 'Billing status is unavailable right now' })).toBeTruthy()
     expect(fetch.mock.calls.map(call => call[0])).toEqual(['/v1/billing/supporter'])
-    expect(screen.queryByRole('button', { name: 'Manage membership' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Manage subscription' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Continue to Stripe checkout' })).toBeNull()
     if (status === 401) {
-      expect(screen.getByRole('link', { name: 'Sign in to Pulse' }).getAttribute('href')).toBe(accountBillingSignInHref('/account/billing'))
+      expect(screen.getByRole('link', { name: 'Tester sign-in' }).getAttribute('href')).toBe(accountBillingSignInHref('/account/billing'))
     }
   })
 
@@ -328,7 +328,7 @@ describe('billing lifecycle view', () => {
     await act(async () => { resolve(new Response(JSON.stringify({ state: 'pending' }), { status })) })
     expect(fetch).toHaveBeenCalledTimes(2)
     expect(screen.queryByText(/Checkout status:/)).toBeNull()
-    expect(screen.queryByRole('link', { name: 'Sign in to Pulse' })).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Tester sign-in' })).toBeNull()
     expect(screen.getByRole('heading', { name: 'Supporter active' })).toBeTruthy()
   })
 
@@ -366,7 +366,7 @@ describe('billing lifecycle view', () => {
     expect(await screen.findByRole('heading', { name: 'You’re a Supporter' })).toBeTruthy()
     await act(async () => { resolve(new Response('{}', { status: 401 })) })
     expect(screen.getByRole('heading', { name: 'You’re a Supporter' })).toBeTruthy()
-    expect(screen.queryByRole('link', { name: 'Sign in to Pulse' })).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Tester sign-in' })).toBeNull()
     expect(screen.queryByText(/Sign in again/)).toBeNull()
   })
 })
@@ -496,8 +496,8 @@ describe('automatic payment confirmation', () => {
 
   it.each([
     ['none', 'Continue to Stripe checkout', '/account/billing'],
-    ['active', 'Manage membership', '/account/billing'],
-    ['pending', 'Manage membership', returnPath],
+    ['active', 'Manage subscription', '/account/billing'],
+    ['pending', 'Manage subscription', returnPath],
   ])('keeps held %s billing requests independent from ordinary wake and timer reads', async (status, label, path) => {
     vi.useFakeTimers()
     let resolve!: (response: Response) => void
@@ -527,11 +527,11 @@ describe('automatic payment confirmation', () => {
     changed = true
     await act(async () => { window.dispatchEvent(new StorageEvent('storage', { key: 'pulse.account.signedInAt.v1', newValue: String(Date.now()) })) })
     expect(screen.getByRole('heading', { name: 'Supporter active' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Manage membership' }).hasAttribute('disabled')).toBe(false)
+    expect(screen.getByRole('button', { name: 'Manage subscription' }).hasAttribute('disabled')).toBe(false)
     await act(async () => { resolve(new Response('{}', { status: 401 })) })
     expect(screen.queryByRole('link', { name: 'Sign in again' })).toBeNull()
     expect(screen.getByRole('heading', { name: 'Supporter active' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Manage membership' }).hasAttribute('disabled')).toBe(false)
+    expect(screen.getByRole('button', { name: 'Manage subscription' }).hasAttribute('disabled')).toBe(false)
     expect(fetch.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1)
   })
 
@@ -562,7 +562,7 @@ describe('automatic payment confirmation', () => {
     expect(fetch).toHaveBeenCalledTimes(during + 1)
     expect(fetch.mock.calls.at(-1)?.[0]).toBe(stage === 'attempt' ? attemptPath : '/v1/billing/supporter')
     expect(screen.queryByRole('heading', { name: 'Supporter active' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Manage membership' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Manage subscription' })).toBeNull()
     expect(fetch.mock.calls.every(([, options]) => options?.method === 'GET')).toBe(true)
   })
 
@@ -893,5 +893,47 @@ describe('no checkout while a payment is uncertain, at any moment', () => {
     render(<MemoryRouter initialEntries={[`${returnPath}&cancelled=1`]}><BillingPage /></MemoryRouter>)
     expect(await screen.findByRole('heading', { name: 'Sign in to see your membership' })).toBeTruthy()
     expect(document.body.textContent).not.toMatch(/If you just paid|payment is safe/)
+  })
+})
+
+describe('a 429 try_later from Checkout or the portal', () => {
+  // Backend #162 bounds Checkout and portal sessions per account and network.
+  it('names the wait from Retry-After, disables the button until then and never retries on its own', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    vi.setSystemTime(Date.parse('2026-10-09T18:00:00Z'))
+    try {
+      const fetch = vi.fn().mockResolvedValueOnce(membership('none', true))
+        .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'try_later' }), { status: 429, headers: { 'Retry-After': '540' } }))
+      vi.stubGlobal('fetch', fetch)
+      render(<MemoryRouter><BillingPage /></MemoryRouter>)
+      await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+      fireEvent.click(screen.getByRole('button', { name: 'Continue to Stripe checkout' }))
+      await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+      const until = Date.parse('2026-10-09T18:00:00Z') + 540_000
+      const at = retryWaitCopy(until, Date.parse('2026-10-09T18:00:00Z')).at
+      expect(document.body.textContent).toContain(`Checkout was opened too many times in a short while, so it is paused for this account. This attempt started nothing and charged nothing. Try again after ${at}`)
+      expect(document.body.textContent).toMatch(/\(about 9 minutes\)/)
+      const button = screen.getByRole('button', { name: `Try again after ${at}` })
+      expect(button.hasAttribute('disabled')).toBe(true)
+      fireEvent.click(button)
+      const posts = () => fetch.mock.calls.filter(([, options]) => options?.method === 'POST').length
+      expect(posts()).toBe(1)
+      // The window passes without a request; then one click may ask again.
+      await act(async () => { await vi.advanceTimersByTimeAsync(540_000 + 1_000) })
+      expect(posts()).toBe(1)
+      expect(screen.getByRole('button', { name: 'Continue to Stripe checkout' }).hasAttribute('disabled')).toBe(false)
+    } finally { vi.useRealTimers() }
+  })
+
+  it('names the wait for Manage subscription and keeps the membership as it is', async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(membership('active', false, { accessUntil: '2026-11-01T00:00:00Z' }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'try_later' }), { status: 429, headers: { 'Retry-After': '7200' } }))
+    vi.stubGlobal('fetch', fetch)
+    render(<MemoryRouter><BillingPage /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: 'Manage subscription' }))
+    await waitFor(() => expect(document.body.textContent).toContain('Subscription management was opened too many times in a short while, so it is paused for this account. Your membership is unchanged.'))
+    expect(document.body.textContent).toMatch(/\(about 2 hours\)/)
+    expect(document.body.textContent).not.toContain('Billing could not open')
+    expect(screen.getByRole('button', { name: /^Try again after / }).hasAttribute('disabled')).toBe(true)
   })
 })

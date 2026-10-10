@@ -96,9 +96,9 @@ export function AnalyticsTopNav({
               <Link to="/support" onClick={() => closeMenu()}>Support</Link>
               <Link to="/status" onClick={() => closeMenu()}>Service status</Link>
               <Link to="/supporter" onClick={() => closeMenu()}>Pulse Supporter</Link>
-              <Link to="/account/sign-in" onClick={() => closeMenu()}>Account</Link>
-              <Link to="/account/billing" onClick={() => closeMenu()}>Manage membership</Link>
-              <Link to="/account/link-device" onClick={() => closeMenu()}>Link extension</Link>
+              {/* No account entries until Continue with Twitch is public: the sign-in
+                  page is the invited-tester bridge, sign-ups are closed, and extension
+                  connection codes are tester-only. Testers reach them from account pages. */}
               <Link to="/privacy" onClick={() => closeMenu()}>Privacy</Link>
               <Link to="/terms" onClick={() => closeMenu()}>Terms</Link>
               <Link to="/refunds" onClick={() => closeMenu()}>Cancellation and refunds</Link>

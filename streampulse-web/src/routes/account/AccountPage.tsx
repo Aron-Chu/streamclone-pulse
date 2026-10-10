@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { CheckCircle2, Mail, Puzzle, ShieldCheck } from 'lucide-react'
 import { PublicLayout } from '../../ui/components/PublicLayout'
@@ -21,7 +21,12 @@ export default function AccountPage() {
 }
 
 const PILOT_SIGN_IN_NOTE = 'During the private pilot, sign-in emails are sent only to invited testers. If you’re not on the list, you won’t receive an email.'
+export const FREE_TOOLS_LINE = 'Free tools work without an account.'
 
+/**
+ * /account/sign-in. Until Continue with Twitch opens, this is the invited-tester
+ * email sign-in, and says so. Nothing public links here; free tools need no account.
+ */
 function SignIn() {
   const returnTo = accountBillingReturnFromSearch(useLocation().search)
   const navigate = useNavigate()
@@ -31,7 +36,8 @@ function SignIn() {
     if (signal === 'signed-in' && returnTo) navigate(returnTo)
   }), [navigate, returnTo])
   return <><p className="pulse-account-kicker"><Mail size={16} aria-hidden="true" /> StreamPulse account</p>
-    <SignInForm returnTo={returnTo} heading={sent => sent ? 'Check your email' : 'Sign in to Pulse'} sentDetail={returnTo ? 'This tab continues by itself once you confirm.' : undefined} /></>
+    <SignInForm returnTo={returnTo} heading={sent => sent ? 'Check your email' : 'Tester sign-in'} sentDetail={returnTo ? 'This tab continues by itself once you confirm.' : undefined}
+      lead={<p className="pulse-account-intro" data-testid="twitch-coming-soon">Twitch sign-in is coming soon. {FREE_TOOLS_LINE}</p>} /></>
 }
 
 /**
@@ -39,11 +45,12 @@ function SignIn() {
  * Embedded, the tab keeps its prepared extension code in memory while the user
  * confirms the email in another tab, then continues by itself.
  */
-function SignInForm({ returnTo, heading, intro = 'We’ll email you a link. No password needed.', sentDetail }: {
+function SignInForm({ returnTo, heading, intro = 'We’ll email you a link. No password needed.', sentDetail, lead }: {
   returnTo: string | null
   heading: (sent: boolean) => string
   intro?: string
   sentDetail?: string
+  lead?: ReactNode
 }) {
   const [email, setEmail] = useState('')
   const [busy, setBusy] = useState(false)
@@ -63,6 +70,7 @@ function SignInForm({ returnTo, heading, intro = 'We’ll email you a link. No p
   // The pilot notice is the same static text for every address, before and after
   // sending, so it never reveals whether a given address is on the tester list.
   return <><h1>{heading(sent)}</h1>
+    {!sent && lead ? lead : null}
     {sent ? <div role="status"><p className="pulse-account-intro">Open the sign-in link in this browser, then confirm. The link expires after 15 minutes.</p>{sentDetail ? <p className="pulse-account-waiting" data-testid="sign-in-waiting"><span className="pulse-account-spinner" aria-hidden="true" />{sentDetail}</p> : null}<p className="pulse-account-pilot" data-testid="pilot-sign-in-note">{PILOT_SIGN_IN_NOTE}</p><button onClick={() => setSent(false)}>Use another email</button></div>
       : <form onSubmit={submit}><p className="pulse-account-intro">{intro}</p><p className="pulse-account-pilot" data-testid="pilot-sign-in-note">{PILOT_SIGN_IN_NOTE}</p><label htmlFor="account-email">Email address</label>
         <input id="account-email" type="email" autoComplete="email" required maxLength={254} value={email} onChange={event => setEmail(event.target.value)} disabled={busy} />
@@ -108,7 +116,7 @@ function Confirm() {
       : token ? <><p className="pulse-account-intro">Continue only if you requested this sign-in link.</p><button className="pulse-account-primary" onClick={() => void confirm()} disabled={busy}>{busy ? 'Confirming…' : 'Confirm sign-in'}</button></>
       : <p>This link is missing or expired. Request a new link in this browser.</p>}
     {error ? <p role="alert">{error}</p> : null}
-    {!complete ? <p><Link to={accountBillingSignInHref(returnTo)}>Request another sign-in link</Link></p> : null}</>
+    {!complete ? <p className="pulse-account-standalone"><Link to={accountBillingSignInHref(returnTo)}>Request another sign-in link</Link></p> : null}</>
 }
 
 type Session = 'loading' | 'ready' | 'signed_out' | 'error'
@@ -116,6 +124,28 @@ type Device = { code: string; label: string; expiresAt: string }
 type Phase = 'idle' | 'inspecting' | 'review' | 'needs_sign_in' | 'invalid' | 'approved' | 'denied'
 
 const formatCode = (code: string) => `${code.slice(0, 5)}-${code.slice(5)}`
+const clockTime = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+/** The API gives every extension request a fixed ten-minute life (device_links.go), so it was created ten minutes before it expires. */
+const DEVICE_REQUEST_LIFETIME_MS = 10 * 60_000
+function requestAge(requestedAt: number, now: number): string {
+  const minutes = Math.max(0, Math.floor((now - requestedAt) / 60_000))
+  return minutes < 1 ? 'less than a minute ago' : minutes === 1 ? '1 minute ago' : `${minutes} minutes ago`
+}
+
+/**
+ * Everything an approved extension's device credential can do on the API: the
+ * bookmark routes accept it for saved moments and notes. When the backend's
+ * synced history ships (streampulse-backend #151), its sync, settings and
+ * clear routes accept the same credential; add that line then, as #78 does.
+ */
+function DeviceAccess() {
+  return <><p>If you approve, this extension can, until you sign it out in Account &amp; devices:</p>
+    <ul className="pulse-account-access" data-testid="device-access">
+      <li>read your Supporter status and save your Pulse appearance</li>
+      <li>see, add, change and delete your saved moments and their notes</li>
+    </ul>
+    <p>It cannot connect Twitch, publish a badge, or start a subscription.</p></>
+}
 
 function LinkDevice() {
   const navigate = useNavigate()
@@ -285,16 +315,16 @@ function LinkDevice() {
         ? <SignInForm returnTo={ACCOUNT_LINK_DEVICE_PATH} heading={sent => sent ? 'Check your email' : 'Confirm it’s you'} intro="Connecting an extension needs a sign-in from the last 10 minutes. Your extension’s request stays ready in this tab." sentDetail={signInWaiting} />
         : <SignInForm returnTo={ACCOUNT_LINK_DEVICE_PATH} heading={sent => sent ? 'Check your email' : waitingForCode ? 'Sign in to connect your extension' : 'Sign in to link your extension'} intro={waitingForCode ? 'Your extension is waiting for approval. Sign in with email; no password needed.' : 'Sign in with email to link your extension. No password needed.'} sentDetail={waitingForCode ? signInWaiting : undefined} />
       : session === 'error' ? <><h1>Link your extension</h1><p>Account services could not be reached. Your extension keeps its request; try again in a moment.</p><div className="pulse-account-actions"><button className="pulse-account-primary" onClick={() => { setError(''); void checkSession() }}>Try again</button></div></>
-      : phase === 'approved' ? <div role="status"><h1>Extension connected</h1><p className="pulse-account-intro">Return to your extension. It finishes connecting by itself, and you can close this tab.</p><p><Link to="/account/billing">Membership &amp; billing</Link></p></div>
+      : phase === 'approved' ? <div role="status"><h1>Extension connected</h1><p className="pulse-account-intro">Return to your extension. It finishes connecting by itself, and you can close this tab.</p><p className="pulse-account-standalone"><Link to="/account/billing">Membership &amp; billing</Link></p></div>
       : phase === 'denied' ? <div role="status"><h1>Request declined</h1><p className="pulse-account-intro">This request cannot connect to your account.</p></div>
       : phase === 'invalid' ? <><h1>This request is no longer valid</h1><p className="pulse-account-intro">Extension requests last ten minutes and work once. Start again from your extension’s settings and this page opens with a fresh request.</p><ManualCode code={code} setCode={setCode} busy={busy} onSubmit={() => void inspect(code)} help="Or check the code and enter it again, exactly as your extension shows it." /></>
-      : device ? <div className="pulse-account-review"><h1 tabIndex={-1} ref={confirmationHeading}>Allow this extension?</h1><p className="pulse-account-device">{device.label}</p><p className="pulse-account-code-check"><span>Extension code</span><samp>{formatCode(device.code)}</samp></p>{accountRef ? <p className="pulse-account-code-check" data-testid="link-account"><span>Connects to Pulse account</span><samp>{accountRef}</samp></p> : null}<p>Check that this code matches the code currently shown in your extension. Only approve a request you started yourself.</p><p>It will be able to read your Supporter status and save your Pulse appearance. This does not connect Twitch, publish a badge, or start a subscription.</p>
-        {deviceExpired ? <p role="status">This code has expired. Start a new connection in the extension.</p> : <p className="pulse-account-meta">Code expires at {new Date(device.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.</p>}
+      : device ? <div className="pulse-account-review"><h1 tabIndex={-1} ref={confirmationHeading}>Allow this extension?</h1><p className="pulse-account-device">{device.label}</p><p className="pulse-account-code-check"><span>Extension code</span><samp>{formatCode(device.code)}</samp></p>{accountRef ? <p className="pulse-account-code-check" data-testid="link-account"><span>Connects to Pulse account</span><samp>{accountRef}</samp></p> : null}<p className="pulse-account-meta" data-testid="device-requested">Requested at {clockTime(Date.parse(device.expiresAt) - DEVICE_REQUEST_LIFETIME_MS)} ({requestAge(Date.parse(device.expiresAt) - DEVICE_REQUEST_LIFETIME_MS, now)})</p><p>Check that this code matches the code currently shown in your extension. Only approve a request you started yourself, just now, in your own browser. If someone sent you this link or code, decline.</p><DeviceAccess />
+        {deviceExpired ? <p role="status">This code has expired. Start a new connection in the extension.</p> : <p className="pulse-account-meta">Code expires at {clockTime(Date.parse(device.expiresAt))}.</p>}
         <div className="pulse-account-actions"><button className="pulse-account-primary" disabled={busy || deviceExpired} onClick={() => void decide(true)}>{busy ? 'Approving…' : purchase ? 'Approve and continue' : 'Approve extension'}</button><button disabled={busy || deviceExpired} onClick={() => void decide(false)}>Decline</button></div>
         {error || deviceExpired ? <button className="pulse-account-text-button" disabled={busy} onClick={startOver}>Use another code</button> : null}
       </div>
       : phase === 'inspecting' || (prepared.code && autoInspected.current < 0) ? <><h1>Connect your extension</h1><p role="status" className="pulse-account-waiting"><span className="pulse-account-spinner" aria-hidden="true" />Opening your extension’s request…</p></>
-      : <><h1>Link your extension</h1><ManualCode code={code} setCode={setCode} busy={busy} onSubmit={() => void inspect(code)} help="In StreamPulse settings on Twitch, open Account & Supporter and choose Become a Supporter or Connect; this page then opens with the request ready. Otherwise, enter the code your extension shows." /></>}
+      : <><h1>Link your extension</h1><ManualCode code={code} setCode={setCode} busy={busy} onSubmit={() => void inspect(code)} help="In StreamPulse settings on Twitch, open Account & Supporter and start a connection; this page then opens with the request ready. Otherwise, enter the code your extension shows." /></>}
     {error ? <p role="alert">{error}</p> : null}</>
 }
 

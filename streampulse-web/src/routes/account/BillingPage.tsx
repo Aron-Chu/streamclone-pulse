@@ -1,4 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { SUPPORTER_PERKS } from '../../ui/components/SupporterPerks'
+import { BILLING_SEEN_IN_CHAT_NOTE } from '../../ui/components/SupporterChatBadgeCopy'
+import { supporterChatBadgesEnabled } from '../../lib/supporterChatBadgesFlag'
+import { DEFAULT_TRY_LATER_SECONDS, retryWaitCopy, tryLaterCopy } from '../../lib/billingTryLater'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { CreditCard } from 'lucide-react'
 import { PublicLayout } from '../../ui/components/PublicLayout'
@@ -7,6 +11,7 @@ import { AccountSteps, SUPPORTER_JOURNEY_STEPS, accountReference } from './Accou
 import { AccountError, billingRequest } from '../../lib/accountApi'
 import { accountBillingReturnPath, accountBillingSignInHref } from '../../lib/accountBillingReturn'
 import { onAccountSessionSignal } from '../../lib/accountSessionSignal'
+import { SUPPORTER_TERMS_PATH } from '../../lib/externalLinks'
 import './account.css'
 
 export function stripeDestination(value: unknown, kind: 'checkout' | 'portal'): string | null {
@@ -68,6 +73,9 @@ export default function BillingPage() {
   const [opening, setOpening] = useState(false)
   const openingRef = useRef(false)
   const [notice, setNotice] = useState('')
+  // A 429 try_later from Checkout or the portal (backend #162): which action
+  // and until when. Nothing is sent before then, and nothing retries by itself.
+  const [paused, setPaused] = useState<{ kind: 'checkout' | 'portal'; until: number } | null>(null)
   const [reauth, setReauth] = useState(false)
   const [pendingAttempt, setPendingAttempt] = useState<string | null>(null)
   const requestID = useRef(0)
@@ -262,8 +270,15 @@ export default function BillingPage() {
     await read()
   }
 
+  useEffect(() => {
+    if (!paused) return
+    const timer = window.setTimeout(() => { setPaused(null); setNotice('') }, Math.min(2_147_483_647, Math.max(0, paused.until - Date.now()) + 250))
+    return () => window.clearTimeout(timer)
+  }, [paused])
+
   async function open(kind: 'checkout' | 'portal') {
     if (openingRef.current || inFlight.current || busy) return
+    if (paused && Date.now() < paused.until) return
     const request = ++requestID.current
     openingRef.current = true
     setOpening(true); setNotice(''); setReauth(false)
@@ -292,7 +307,13 @@ export default function BillingPage() {
         }
         return
       }
-      setNotice(error instanceof AccountError && error.code === 'subscription_exists' ? 'You already have a Supporter membership. Use Manage membership to make changes.'
+      if (error instanceof AccountError && error.status === 429) {
+        const until = Date.now() + (error.retryAfterSeconds ?? DEFAULT_TRY_LATER_SECONDS) * 1000
+        setPaused({ kind, until })
+        setNotice(tryLaterCopy(kind, until))
+        return
+      }
+      setNotice(error instanceof AccountError && error.code === 'subscription_exists' ? 'You already have a Supporter membership. Use Manage subscription to make changes.'
         : error instanceof AccountError && error.code === 'checkout_expired' ? 'The previous checkout expired without a purchase. Nothing was charged; you can start a new checkout.'
         : error instanceof AccountError && (error.code === 'checkout_disabled' || error.code === 'checkout_not_available') ? 'Checkout is not open for this account right now.'
         : 'Billing could not open. Check your connection and try again.')
@@ -319,8 +340,9 @@ export default function BillingPage() {
   let terms = false
   let showRefresh = true
 
-  const portal = (label: string, emphasis = true) => <button className={emphasis ? 'pulse-account-primary' : undefined} type="button" disabled={actionBusy} onClick={() => void open('portal')}>{opening ? 'Opening…' : label}</button>
-  const checkout = (label: string) => <button className="pulse-account-primary" type="button" disabled={actionBusy} onClick={() => void open('checkout')}>{opening ? 'Opening Stripe…' : label}</button>
+  const pausedLabel = paused ? `Try again after ${retryWaitCopy(paused.until).at}` : null
+  const portal = (label: string, emphasis = true) => <button className={emphasis ? 'pulse-account-primary' : undefined} type="button" disabled={actionBusy || Boolean(paused)} onClick={() => void open('portal')}>{opening ? 'Opening…' : paused?.kind === 'portal' ? pausedLabel : label}</button>
+  const checkout = (label: string) => <button className="pulse-account-primary" type="button" disabled={actionBusy || Boolean(paused)} onClick={() => void open('checkout')}>{opening ? 'Opening Stripe…' : paused?.kind === 'checkout' ? pausedLabel : label}</button>
   const refresh = (label: string) => <button className="pulse-account-primary" type="button" disabled={readBusy} onClick={() => void checkAgain()}>{busy ? 'Checking…' : label}</button>
 
   if (load === 'loading') {
@@ -328,8 +350,8 @@ export default function BillingPage() {
   } else if (load === 'signed_out') {
     state = 'signed-out'
     title = 'Sign in to see your membership'
-    body = <p>{attempt && !cancelled ? 'If you just paid, sign in with the same account you used at checkout to see it confirmed. Don’t start another checkout.' : 'Your Supporter membership belongs to your Pulse account.'}</p>
-    primary = <Link className="pulse-account-button pulse-account-primary" to={signInHref}>Sign in to Pulse</Link>
+    body = <p>{attempt && !cancelled ? 'If you just paid, sign in with the same account you used at checkout to see it confirmed. Don’t start another checkout.' : 'Supporter sign-ups are not open yet. Invited testers can sign in to see their membership. Free tools work without an account.'}</p>
+    primary = <Link className="pulse-account-button pulse-account-primary" to={signInHref}>Tester sign-in</Link>
     showRefresh = false
   } else if (load === 'error' || !snapshot) {
     state = 'unavailable'
@@ -347,18 +369,18 @@ export default function BillingPage() {
     primary = refresh('Check again')
     // A pending membership already has a subscription: invoices and the
     // payment method stay one click away, never a second checkout.
-    secondary = status === 'pending' ? portal('Manage membership', false) : null
+    secondary = status === 'pending' ? portal('Manage subscription', false) : null
     showRefresh = false
   } else if (confirmed && (returnedFromStripe || connected) && status === 'active') {
     state = 'welcome'
     title = 'You’re a Supporter'
-    body = <p>Thank you. Supporter finishes unlock in any StreamPulse extension connected to this account, and a connected extension updates by itself.</p>
-    primary = portal('Manage membership')
+    body = <p>Thank you. Your Supporter perks unlock in any StreamPulse extension connected to this account, and a connected extension updates by itself.</p>
+    primary = portal('Manage subscription')
   } else if (status === 'active') {
     state = 'active'
     title = 'Supporter active'
     body = <p>Thank you for supporting Pulse. If you cancel, access continues until the end of the period you’ve paid for.</p>
-    primary = portal('Manage membership')
+    primary = portal('Manage subscription')
   } else if (status === 'grace') {
     state = 'grace'
     title = 'Payment needs attention'
@@ -368,7 +390,7 @@ export default function BillingPage() {
     state = 'review'
     title = 'Membership needs review'
     body = <p>Supporter access is paused while a payment is reviewed, for example during an open dispute. Nothing is lost, and your free tools are unaffected.</p>
-    primary = portal('Manage membership')
+    primary = portal('Manage subscription')
     secondary = <Link className="pulse-account-button" to="/support">Contact support</Link>
   } else if (status === 'expired') {
     state = 'expired'
@@ -415,14 +437,14 @@ export default function BillingPage() {
         {notice ? <p className="pulse-account-note">{notice}</p> : null}
       </div>
       {facts.length ? <dl className="pulse-membership-facts">{facts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl> : null}
-      {terms ? <dl className="pulse-membership-terms"><dt>Price</dt><dd>US$4.99 per month, charged in US dollars</dd><dt>Renews</dt><dd>Monthly, automatically, until you cancel</dd><dt>Includes</dt><dd>A private Pulse header accent, three private finishes and private support recognition</dd><dt>Taxes</dt><dd>Handled as stated at checkout</dd></dl> : null}
+      {terms ? <dl className="pulse-membership-terms"><dt>Price</dt><dd>US$4.99 per month, charged in US dollars</dd><dt>Renews</dt><dd>Monthly, automatically, until you cancel</dd><dt>Includes</dt><dd>{SUPPORTER_PERKS.names.join(', ')}. {supporterChatBadgesEnabled() ? BILLING_SEEN_IN_CHAT_NOTE : 'Only you see them'}</dd><dt>Taxes</dt><dd>Handled as stated at checkout</dd></dl> : null}
       {reauth ? <div className="pulse-account-note" role="alert"><p>For your security, changing billing needs a sign-in from the last 10 minutes. Nothing was charged.</p><Link className="pulse-account-button pulse-account-primary" to={signInHref}>Sign in again</Link></div> : null}
       {!reauth && (primary || secondary) ? <div className="pulse-account-actions">{primary}{secondary}</div> : null}
       {retrySeconds > 0 && <p role="status">Wait {retrySeconds} seconds before checking again.</p>}
       {status !== 'none' && load === 'ready' && !uncertain ? <p className="pulse-account-meta">Payment details, invoices and cancellation are in the Stripe Customer Portal. Cancellation takes effect at the end of the paid period.</p> : null}
       {!reauth && showRefresh ? <button className="pulse-account-text-button" type="button" disabled={readBusy} onClick={() => void checkAgain()}>{busy ? 'Checking…' : 'Refresh status'}</button> : null}
     </div>
-    <p className="pulse-account-links"><Link to="/account/link-device">Connect your extension</Link><span aria-hidden="true">·</span><Link to="/terms">Supporter terms</Link><span aria-hidden="true">·</span><Link to="/refunds">Cancellation and refunds</Link><span aria-hidden="true">·</span><Link to="/support">Support</Link></p>
+    <p className="pulse-account-links">{load !== 'signed_out' ? <><Link to="/account/link-device">Connect your extension</Link><span aria-hidden="true">·</span></> : null}<Link to={SUPPORTER_TERMS_PATH}>Supporter terms</Link><span aria-hidden="true">·</span><Link to="/refunds">Cancellation and refunds</Link><span aria-hidden="true">·</span><Link to="/support">Support</Link></p>
     <AccountFooter current="billing" />
   </section></PublicLayout>
 }
