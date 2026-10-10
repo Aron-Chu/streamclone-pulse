@@ -189,11 +189,12 @@ test('full settings: the staged Crown, the lab sample for non-Supporters, paused
   await expect(banner).toHaveAttribute('data-supporter-kit', 'sample')
   await expect(stage).toHaveAttribute('data-mode', 'crown')
   await expect(stage).toHaveAttribute('data-running', 'true')
-  await expect(banner.locator('.pulse-settings-supporter-banner-eyebrow')).toHaveText('Pulse Supporter· US$4.99/mo')
+  // Sign-ups are closed in this fixture: no price, and the way in says what it is.
+  await expect(banner.locator('.pulse-settings-supporter-banner-eyebrow')).toHaveText('Pulse Supporter')
   await expect(banner.locator('strong')).toHaveText('Your crest lands on top')
   await expect(banner.locator('.pulse-settings-supporter-perk')).toHaveText(['Title paint', 'Tenure crest', 'Emote rain', 'Supporter card'])
   await expect(banner.locator('small')).toHaveText('Only you see them. Core tools stay free.')
-  await expect(banner.locator('.pulse-settings-supporter-banner-arrow')).toHaveText('View benefits →')
+  await expect(banner.locator('.pulse-settings-supporter-banner-arrow')).toHaveText('See what’s coming →')
   await expect.poll(() => stage.locator('.spk-body').count()).toBeGreaterThanOrEqual(8)
   // Yours is the sample crest, with the small "you" tag riding above it.
   const you = stage.locator('.spk-you')
