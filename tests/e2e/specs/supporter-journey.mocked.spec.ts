@@ -140,7 +140,8 @@ test('tester purchase journey needs no codes, refreshes or reloads, and revocati
 
   // The worker applied the explicit choice once access was verified.
   await expect.poll(() => cosmeticWrites).toEqual([{ enabled: true, finish: 'halo' }])
-  await expect(settings.getByText('Halo active', { exact: true })).toBeVisible()
+  // The Halo swatch carries the Equipped chip (the old "Halo active" line is gone).
+  await expect(settings.locator('.pulse-supporter-tile').filter({ hasText: 'Halo' }).locator('[data-chip="equipped"]')).toHaveText('Equipped')
   await settings.screenshot({ path: info.outputPath('journey-3-active.png'), fullPage: true, animations: 'disabled' })
   // …and the open Twitch tab shows it without a reload.
   await twitch.bringToFront()
