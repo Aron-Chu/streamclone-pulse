@@ -44,7 +44,17 @@ export type SupporterEntitlement =
       /** `twitch`: created by Continue with Twitch. `email`: an invited tester's account. */
       accountKind?: 'email' | 'installation' | 'twitch'
       restoreEligible?: boolean
+      /**
+       * `auto` renews on `renewsOn`; `ends` was cancelled and ends on `endsOn`;
+       * `none` has no live subscription. Absent when the server did not say
+       * (older servers, or a read it could not make): show no renewal line.
+       */
+      renewal?: SupporterRenewal
+      renewsOn?: string
+      endsOn?: string
     }
+
+export type SupporterRenewal = 'auto' | 'ends' | 'none'
 
 /**
  * Whether this membership unlocks the Supporter cosmetics: a verified active or

@@ -144,9 +144,21 @@ export function accountReference(accountId: string): string {
   return `··${accountId.replace(/-/g, '').slice(-6)}`
 }
 
-function shortDate(value: string | undefined): string | null {
+function shortDate(value: string | undefined, year = true): string | null {
   if (!value || !Number.isFinite(Date.parse(value))) return null
-  return new Date(value).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
+  return new Date(value).toLocaleDateString([], year ? { month: 'short', day: 'numeric', year: 'numeric' } : { month: 'short', day: 'numeric' })
+}
+
+/**
+ * One short line from the snapshot's optional renewal fields: "Cancels on" after
+ * a cancel at period end, else "Renews on". Older servers send neither: no line.
+ */
+export function renewalLine(entitlement: SupporterEntitlement | null | undefined): { kind: 'ends' | 'auto'; text: string } | null {
+  if (entitlement?.state !== 'ready' || entitlement.status !== 'active') return null
+  const ends = entitlement.renewal === 'ends' ? shortDate(entitlement.endsOn, false) : null
+  if (ends) return { kind: 'ends', text: `Cancels on ${ends}` }
+  const renews = entitlement.renewal === 'auto' ? shortDate(entitlement.renewsOn, false) : null
+  return renews ? { kind: 'auto', text: `Renews on ${renews}` } : null
 }
 
 function openPortal(url: string): void {
@@ -647,6 +659,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   const workerCheckout = twitchOn ? accountKind !== undefined && accountKind !== 'installation' || accountKind === 'installation' && entitlement?.state === 'ready' && entitlement.installationAccountsEnabled === true
     : accountKind === 'installation' && entitlement?.state === 'ready' && entitlement.installationAccountsEnabled === true
   const accessDate = entitlement?.state === 'ready' ? shortDate(entitlement.accessUntil) : null
+  const renewal = renewalLine(entitlement)
   const periods = entitlement?.state === 'ready' ? entitlement.supportPeriods : 0
   const unlinked = account !== null && (account.state === 'signed_out' || account.state === 'denied' || account.state === 'expired' || account.state === 'relink_required')
   const linkingNotDeployed = account?.state === 'unavailable' && account.reason === 'not_deployed' && !account.linked
@@ -900,6 +913,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
               <div role="status" aria-live="polite" className="pulse-journey-status">
                 <p className="pulse-journey-title"><strong>{title}</strong></p>
                 {body}
+                {renewal && state === 'active' ? <p className="pulse-supporter-detail" data-journey-renewal={renewal.kind}>{renewal.text}</p> : null}
                 {stale ? <p className="pulse-supporter-detail" data-journey-stale="true">Could not refresh just now; showing the last confirmed status.</p> : null}
                 {notice.text && notice.at === 'card' ? <p className="pulse-journey-notice">{notice.text}</p> : null}
               </div>

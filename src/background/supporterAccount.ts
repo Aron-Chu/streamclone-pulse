@@ -96,7 +96,16 @@ function projectEntitlement(result: { status: number; body: unknown }, accountId
     installationAccountsEnabled: body.installationAccountsEnabled === true,
     accountKind: body.accountKind === 'email' || body.accountKind === 'installation' || body.accountKind === 'twitch' ? body.accountKind : undefined,
     restoreEligible: body.restoreEligible === true,
+    ...renewal(body),
   }
+}
+
+/** The optional renewal fields, only in their documented shapes; anything else says nothing. */
+function renewal(body: Record<string, unknown>): Pick<Extract<SupporterEntitlement, { state: 'ready' }>, 'renewal' | 'renewsOn' | 'endsOn'> {
+  const value = body.renewal
+  if (value === 'auto') return date(body.renewsOn) ? { renewal: value, renewsOn: body.renewsOn } : { renewal: value }
+  if (value === 'ends') return date(body.endsOn) ? { renewal: value, endsOn: body.endsOn } : { renewal: value }
+  return value === 'none' ? { renewal: value } : {}
 }
 
 const FINISHES: ReadonlySet<string> = new Set(['glass', 'etched', 'halo'])
@@ -129,7 +138,7 @@ function entitlementCacheMs(value: SupporterEntitlement, result: { status: numbe
 /** What a settings or Twitch surface would render differently. Revision alone is not a change. */
 function fingerprint(accountId: string, value: SupporterEntitlement): string {
   if (value.state !== 'ready') return `${accountId}:${value.state}`
-  return JSON.stringify([accountId, value.status, value.accessUntil ?? null, value.features, value.supportPeriods, value.cosmetics ?? null, value.checkoutEnabled === true])
+  return JSON.stringify([accountId, value.status, value.accessUntil ?? null, value.features, value.supportPeriods, value.cosmetics ?? null, value.checkoutEnabled === true, value.renewal ?? null, value.renewsOn ?? value.endsOn ?? null])
 }
 
 /** One coordinator per worker; installation refresh retries use the server's bounded idempotency window. */

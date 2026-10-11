@@ -58,6 +58,12 @@ export interface TwitchSignInPorts {
   /** identity.getRedirectURL, for an early configuration check. */
   redirectUrl?: () => string
   surface: TwitchSurface
+  /**
+   * `development` for a build that is not a store package, so the account's
+   * device list names it a development build. Store builds (and absent) send
+   * no field, which the server reads as the store.
+   */
+  buildTarget?: 'store' | 'development'
   /** Pass Chrome's non-interactive timing options (other browsers reject unknown fields). */
   chromium: boolean
   apiOrigin: string
@@ -399,7 +405,11 @@ export class TwitchSignIn {
     if (failure(idToken)) return idToken
     let finished: Http
     try {
-      finished = await this.post('/v1/account/auth/twitch/device', { flowId: flow.flowId, flowSecret: flow.flowSecret, idToken })
+      const finish = (extra: Record<string, unknown>) => this.post('/v1/account/auth/twitch/device', { flowId: flow.flowId, flowSecret: flow.flowSecret, idToken, ...extra })
+      const development = this.ports.buildTarget === 'development'
+      finished = await finish(development ? { buildTarget: 'development' } : {})
+      // A server older than buildTarget rejects the field before it uses the flow: retry once without it.
+      if (development && finished.status === 400 && object(finished.body).error === 'invalid_request') finished = await finish({})
     } catch (error) { return thrownFailure(error) }
     if (finished.status !== 200) return serverFailure(finished)
     const profile = parseTwitchProfile(object(finished.body).profile)
