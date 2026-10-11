@@ -39,6 +39,7 @@ import type { BackgroundRequest, BackgroundResponse, DeviceAuthStatus, Extension
 import { parseBackgroundRequest } from '../shared/parseBackgroundRequest.ts'
 import { openSettingsHost } from './settingsHost.ts'
 import { resumePendingLink, supporterAccount, supporterOffer, supporterPayFirst, watchPendingLink } from './supporterAccountRuntime.ts'
+import { checkoutAllowedByOffer } from './supporterOffer.ts'
 import { supporterAppearanceReply } from './supporterAppearance.ts'
 import { injectSupporterCard } from './supporterCardScript.ts'
 import { twitchSignIn } from './twitchSignInRuntime.ts'
@@ -969,6 +970,12 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           return
         }
         case 'SUPPORTER_BILLING': {
+          // A new Checkout only while the public switch is open at this build's
+          // price, whatever the account flag says (settings checks it too).
+          if (!await checkoutAllowedByOffer(message.action, supporterOffer)) {
+            sendResponse({ type: 'SUPPORTER_BILLING', billing: { state: 'closed' } } satisfies BackgroundResponse)
+            return
+          }
           const billing = await supporterPayFirst.billing(message.action)
           if (await supporterPayFirst.hasPending()) watchPendingLink()
           sendResponse({ type: 'SUPPORTER_BILLING', billing } satisfies BackgroundResponse)

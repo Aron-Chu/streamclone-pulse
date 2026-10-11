@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { CDPSession } from '@playwright/test'
 import { openTwitchChannel } from '../helpers/mockTwitch.ts'
+import { routeOpenOffer } from '../helpers/mockApi.ts'
 
 /**
  * Packaged proof of the Supporter surface, plus captures of each state.
@@ -165,6 +166,7 @@ test.describe('packaged supporter offer', () => {
       mkdirSync(CAPTURE_DIR, { recursive: true })
       await prepare({ scenario: 'live-ready' })
       await linkDevice(extension)
+      if (status === 'none' || status === 'expired') await routeOpenOffer(extension.context)
 
       let sawBearer = ''
       await extension.context.route('https://api.streampulse.stream/v1/billing/supporter', route => {
@@ -328,6 +330,7 @@ test.describe('packaged supporter offer', () => {
   test('an older backend keeps the website purchase flow without bearer writes', async ({ extension, prepare }) => {
     await prepare({ scenario: 'live-ready' })
     await linkDevice(extension)
+    await routeOpenOffer(extension.context)
     const blocked: string[] = []
     for (const path of ['checkout', 'portal']) {
       await extension.context.route(`https://api.streampulse.stream/v1/billing/${path}`, route => {

@@ -164,6 +164,9 @@ for (const state of CASES) {
   test(`§7 state evidence: ${state.name}`, async ({ extension, prepare }, info) => {
     test.setTimeout(100_000)
     await prepare()
+    // Purchase states need the public switch open at the compiled price too;
+    // closed and signed-out evidence keeps it closed.
+    const salesOpen = state.status !== undefined && state.checkoutEnabled !== false && state.setup !== 'revoked'
     const identity = packageIdentity(), storeTarget = ['cws', 'edge', 'firefox'].includes(identity.target)
     const mismatchRepresentable = state.setup !== 'sandbox' || storeTarget
     const expectedJourney = mismatchRepresentable ? state.journey : 'active'
@@ -176,11 +179,11 @@ for (const state of CASES) {
     await extension.context.route(`${API}/v1/**`, async route => {
       const request = route.request(), url = new URL(request.url()), pathname = url.pathname
       if (!pathname.startsWith('/v1/account/') && !pathname.startsWith('/v1/billing/')) { await route.fallback(); return }
-      // The public sales switch is anonymous: no bearer, no cookie. Closed here;
-      // these states come from the per-account snapshot.
+      // The public sales switch is anonymous: no bearer, no cookie. Open at the
+      // compiled price only for states where the account can open Checkout.
       if (pathname === '/v1/billing/offer') {
         expect(request.headers().authorization).toBeUndefined()
-        await route.fulfill({ json: { schemaVersion: 1, salesOpen: false, environment: 'live', termsConsent: true, serverTime: new Date().toISOString() } })
+        await route.fulfill({ json: { schemaVersion: 1, salesOpen, environment: 'live', price: { unitAmount: 499, currency: 'usd', interval: 'month' }, termsConsent: true, serverTime: new Date().toISOString() } })
         return
       }
       if (pathname.startsWith('/v1/billing/') || pathname === '/v1/account/restores/poll') expect(request.headers().authorization).toBe(`Bearer ${credential().token}`)
