@@ -68,7 +68,8 @@ it('leaves a stream-only bookmark unresolved and still offers analytics', async 
   expect(replayUrl(moment)).toBeNull()
   const html = row(moment)
   expect(html).not.toContain('/videos/')
-  expect(html).toContain('Replay link unavailable')
+  // No dashed "Replay link unavailable" slot: the row simply has no replay link.
+  expect(html).not.toContain('Replay link unavailable')
   expect(html).toContain('href="https://streampulse.stream/analytics/xqc/123456#t=754"')
 })
 const deviceSave = (offsetSeconds: number, extra: object = {}) => handleDeviceBookmarks({ type: 'SAVE_BOOKMARK', bookmark: {

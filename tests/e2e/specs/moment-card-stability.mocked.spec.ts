@@ -117,7 +117,7 @@ for (const surface of [
     // Still nothing a few seconds in, after the panel has settled.
     await extension.page.waitForTimeout(2_000)
     await expectNothingPicked()
-    if (surface.name === 'live') await expect(root.locator('[data-featured-moment="true"]')).toContainText('Strongest loaded moment')
+    if (surface.name === 'live') await expect(root.locator('[data-featured-moment="true"]')).toContainText('Biggest moment so far')
 
     // A pick selects, highlights and locks; picking the row again releases all of it.
     await rows.first().click()
@@ -422,7 +422,7 @@ test('live: a chart card opening above a pressed clip stays in view and moves th
   await waitForPulseRoot(extension.page)
   const root = extension.page.locator('#streamclone-pulse-root')
   const body = root.locator('.pulse-panel-body')
-  const clip = root.getByRole('link', { name: 'Clip spike: Live archive clip' })
+  const clip = root.getByRole('link', { name: /^Live archive clip, [0-9,.KkMm]+ views, opens on Twitch$/ })
   await expect(clip).toBeVisible()
 
   // The chart's card opens where the chart surface ends: put that 40 px below

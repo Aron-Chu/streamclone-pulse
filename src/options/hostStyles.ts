@@ -859,7 +859,10 @@ const hostStyles = `
     transition: top 120ms ease;
     z-index: 40;
   }
-  .pulse-settings-skip-link:focus { top: 10px; }
+  .pulse-settings-skip-link:focus, .pulse-settings-skip-link:focus-visible { top: 10px; }
+  /* Links on this dark page get a ring that shows; the browser's default is close to invisible here. */
+  a:focus-visible { outline: 2px solid #a78bfa; outline-offset: 2px; }
+  .pulse-settings-skip-link:focus-visible { outline-color: #fff; }
   .pulse-settings-field {
     display: grid;
     gap: 5px;

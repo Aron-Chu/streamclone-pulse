@@ -1051,18 +1051,10 @@ export function LiveStatsBand({
         .map(rate => `${rate.provider === 'Other' ? 'Other' : rate.provider} ${formatNumber(rate.perMinute)}`)
         .join(' · ')
     }
-    if (emoteAvg5m.minutes > 0) {
-      const avg = `${formatNumber(emoteAvg5m.sevenTvPerMin)} 7TV avg · 5m`
-      return emoteAvg5m.totalPerMin !== emoteAvg5m.sevenTvPerMin
-        ? `${avg} · ${formatNumber(emoteAvg5m.totalPerMin)} total`
-        : avg
-    }
+    // The same metric as the headline (all emotes), so no "7TV" next to a number ("17TV").
+    if (emoteAvg5m.minutes > 0) return `avg ${formatNumber(emoteAvg5m.totalPerMin)} (5 min)`
     return 'No emotes this minute'
   })()
-  const emoteChartHint =
-    rollups.some(r => (r.totalEmoteCount ?? 0) > 0) && stats.totalEmotePerMin === 0
-      ? 'Chart uses full stream; metric is latest minute.'
-      : null
 
   const coverageHint = resolveCoverageStartHint({
     coverageStartOffsetSeconds,
@@ -1187,7 +1179,6 @@ export function LiveStatsBand({
       : `Viewing ${formatHeatOffset(chartViewportForRender.startSeconds)} – ${formatHeatOffset(chartViewportForRender.endSeconds)}`
   const chartStatusText = [
     emoteSyncLabel,
-    emoteChartHint,
     viewerStatusText,
   ].filter(Boolean).join(' · ')
   const viewerMetricValue = stats.viewerState === 'stale' ? null : stats.currentViewers
@@ -1270,13 +1261,13 @@ export function LiveStatsBand({
             // Two fixed-height lines inside the chip's 40px minimum, so the
             // row never grows when the pill appears.
             <span style={{ flex: 1 }} className="pulse-strength-two">
-              <span>Strongest loaded moment · {featuredTime}</span>
+              <span>Biggest moment so far · {featuredTime}</span>
               <span className="pulse-strength-line2">
                 <span className="pulse-strength-pill" data-lvl={featuredStrength.level}>{featuredStrength.label} usual</span>
               </span>
             </span>
           ) : (
-            <span style={{ flex: 1 }}>Strongest loaded moment · {featuredTime}</span>
+            <span style={{ flex: 1 }}>Biggest moment so far · {featuredTime}</span>
           )}
           {featuredMoment.topEmotes?.slice(0, 3).map(emote => <span key={emote.name} title={emote.name} style={{ width: 20, height: 20, overflow: 'hidden', flexShrink: 0 }}><PulseEmoteImg emote={emote} backendUrl={backendUrl} width={20} height={20} /></span>)}
           <span aria-hidden="true">→</span>

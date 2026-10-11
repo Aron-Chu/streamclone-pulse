@@ -45,7 +45,7 @@ describe('chart motion and accessibility chrome', () => {
     )
     expect(html).toContain('class="pulse-clip-spike-card"')
     expect(html).toContain('data-clip-spike-card="true"')
-    expect(html).toContain('aria-label="Clip spike: A clean chart spike"')
+    expect(html).toContain('aria-label="A clean chart spike, 123 views, opens on Twitch"')
     expect(shadowStyles).toContain('.pulse-clip-spike-card:hover')
     expect(shadowStyles).toContain('.pulse-clip-spike-card:focus-visible')
   })

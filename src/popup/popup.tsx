@@ -99,8 +99,14 @@ function PopupApp() {
         }
       }
       if (next.kind !== 'channel') return
+      const id = tab?.id
+      if (typeof id !== 'number') { void loadChannel(next.login); return }
+      void readChannelAvatar(id, next.login).then(first => { if (first) setAvatar(first) })
+      // Twitch may draw the avatar after the popup opens: read it once more when the channel has loaded,
+      // and fall back to the letter only when both reads find nothing.
       void loadChannel(next.login)
-      if (typeof tab?.id === 'number') void readChannelAvatar(tab.id, next.login).then(setAvatar)
+        .then(() => readChannelAvatar(id, next.login))
+        .then(second => { if (second) setAvatar(current => current ?? second) })
     })()
 
     const storageChanged = globalThis.chrome?.storage?.onChanged
@@ -333,7 +339,7 @@ function ChannelPulse({ summary }: { summary: PopupChannelSummary }) {
         <div className="pp-row">
           <p className="pp-label">{label}</p>
           {summary.isLive && summary.chatPerMinute !== null ? (
-            <span className="pp-rate">{formatCount(summary.chatPerMinute)} <small>msgs/min</small></span>
+            <span className="pp-rate">{formatCount(summary.chatPerMinute)} <small>chat/min</small></span>
           ) : null}
         </div>
         {hasSpark ? (
@@ -374,11 +380,11 @@ function ChannelPulse({ summary }: { summary: PopupChannelSummary }) {
           ) : null}
           {summary.topEmote ? (
             <div className="pp-stat">
-              <dt>Top emote</dt>
+              <dt>Top emote · this stream</dt>
               <dd>
                 {summary.topEmote.imageUrl ? <img className="pp-emote" src={summary.topEmote.imageUrl} alt="" /> : null}
                 <span>{summary.topEmote.name}</span>
-                <small>×{formatCount(summary.topEmote.count)}</small>
+                <small>{formatCount(summary.topEmote.count)} uses</small>
               </dd>
             </div>
           ) : null}

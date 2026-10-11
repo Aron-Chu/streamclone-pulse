@@ -80,7 +80,7 @@ describe('Live now strongest moment strength pill', () => {
   it('shows "<N>× usual" under the time once validated full history is loaded', () => {
     const row = featuredRow(render(true))
     expect(row).toContain('class="pulse-strength-two"')
-    expect(row).toContain('Strongest loaded moment · 00:30:00')
+    expect(row).toContain('Biggest moment so far · 00:30:00')
     // 168 in the moment minute over the 30 minutes before it at 40 a minute.
     expect(row).toMatch(/<span class="pulse-strength-pill" data-lvl="3">4\.2× usual<\/span>/)
     expect(row).toContain('title="168 chats in the minute at 00:30:00. The 30 measured minutes before it averaged 40 a minute."')
@@ -96,7 +96,7 @@ describe('Live now strongest moment strength pill', () => {
     expect(row).not.toContain('pulse-strength')
     expect(row).not.toContain('usual')
     expect(row).not.toContain('title="')
-    expect(row).toContain('<span style="flex:1">Strongest loaded moment · 00:30:00</span>')
+    expect(row).toContain('<span style="flex:1">Biggest moment so far · 00:30:00</span>')
   })
 
   it('passes the chat coverage, so viewer-only minutes before a late chat join are not a quiet usual', () => {
@@ -130,7 +130,7 @@ describe('Live now strongest moment strength pill', () => {
         onMomentSelect={vi.fn()}
       />,
     ))
-    expect(row).toContain('Strongest loaded moment · 00:30:00')
+    expect(row).toContain('Biggest moment so far · 00:30:00')
     expect(row).not.toContain('pulse-strength')
     expect(row).not.toContain('usual')
   })
