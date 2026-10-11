@@ -22,8 +22,10 @@ describe('toolbar popup ownership', () => {
     expect(source).toContain("type: 'GET_PULSE'")
     // GET_PULSE without `watch` never starts tracking a channel from the popup.
     expect(source).not.toMatch(/watch:\s*true/)
-    // The only page script reads the avatar Twitch already rendered.
-    expect(source.match(/executeScript/g)).toHaveLength(1)
+    // Two read-only page scripts: the avatar Twitch already rendered, and whether
+    // the Pulse panel host is showing after Open Pulse panel.
+    expect(source.match(/executeScript/g)).toHaveLength(2)
+    expect(source).toContain("return !host || getComputedStyle(host).display !== 'none'")
     expect(source).toContain('safeImageUrl(')
   })
 

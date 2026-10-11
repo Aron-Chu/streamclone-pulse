@@ -4,7 +4,7 @@ import { sendBackgroundMessage } from '../content/bridge.ts'
 import { getBackendUrl, getThemePreference, setOverlayMode, setSidebarTab } from '../shared/storage.ts'
 import { extensionBackendSourceCaption, extensionBackendSourceLabel, resolveExtensionBackendSource } from '../shared/backendSource.ts'
 import { installedExtensionVersion } from '../shared/releaseManifest.ts'
-import { openHubAnalytics } from '../shared/analyticsLinks.ts'
+import { DEFAULT_WEB_ANALYTICS_BASE_URL, buildAnalyticsUrl, defaultWebAnalyticsBaseUrlForApi, openHubAnalytics } from '../shared/analyticsLinks.ts'
 import { COMMUNITY_LINKS } from '../shared/portalLinks.ts'
 import { DiscordMark } from '../ui/communityIcons.tsx'
 import { applyAccentTheme } from '../ui/overlayTheme.ts'
@@ -45,6 +45,8 @@ function PopupApp() {
   const [avatar, setAvatar] = useState<string | null>(null)
   const [hub, setHub] = useState<HubLoad>({ status: 'loading' })
   const [recent, setRecent] = useState<MyMomentsRecent | null>(null)
+  // The tab answered that no Pulse panel can show there (an offline channel without chat).
+  const [panelHidden, setPanelHidden] = useState(false)
 
   const checkHealth = useCallback(async () => {
     setHealth({ state: 'checking' })
@@ -130,6 +132,12 @@ function PopupApp() {
     } catch {
       // The content script may still be loading; the stored mode opens Pulse when it mounts.
     }
+    // Nothing would open (an offline channel page has no chat to sit beside): keep the
+    // popup and offer the channel on Analytics instead of closing on nothing.
+    if (view?.kind === 'channel' && !(await pulsePanelShown(tabId))) {
+      setPanelHidden(true)
+      return
+    }
     await chrome.tabs.update(tabId, { active: true }).catch(() => null)
     window.close()
   }
@@ -179,7 +187,9 @@ function PopupApp() {
       </header>
 
       {view?.kind === 'channel' ? (
-        <ChannelCard login={view.login} load={channel} avatar={avatar} onOpen={() => void openPulsePanel()} onRetry={() => void loadChannel(view.login)} />
+        <ChannelCard login={view.login} load={channel} avatar={avatar} onOpen={() => void openPulsePanel()} onRetry={() => void loadChannel(view.login)}
+          analyticsHref={panelHidden ? buildAnalyticsUrl({ webAnalyticsBaseUrl: defaultWebAnalyticsBaseUrlForApi(backendUrl), channelLogin: view.login }) ?? buildAnalyticsUrl({ webAnalyticsBaseUrl: DEFAULT_WEB_ANALYTICS_BASE_URL, channelLogin: view.login }) : null}
+          onOpenUrl={url => void openUrl(url)} />
       ) : view?.kind === 'vod' ? (
         <section className="pp-card pp-hero" aria-labelledby="pp-hero-title">
           <h1 id="pp-hero-title">Watching a replay</h1>
@@ -261,12 +271,15 @@ function PopupApp() {
   )
 }
 
-function ChannelCard({ login, load, avatar, onOpen, onRetry }: {
+function ChannelCard({ login, load, avatar, onOpen, onRetry, analyticsHref = null, onOpenUrl }: {
   login: string
   load: ChannelLoad
   avatar: string | null
   onOpen: () => void
   onRetry: () => void
+  /** Set when the tab said no Pulse panel can show there: the button opens the channel on Analytics instead. */
+  analyticsHref?: string | null
+  onOpenUrl?: (url: string) => void
 }) {
   if (load.status === 'loading') {
     return (
@@ -314,9 +327,14 @@ function ChannelCard({ login, load, avatar, onOpen, onRetry }: {
         <ChannelPulse summary={summary} />
       ) : null}
 
-      <button type="button" className="pp-primary" data-popup-action="open-pulse" onClick={onOpen}>
+      {analyticsHref ? <>
+        <p className="pp-note" role="status">The Pulse panel opens beside Twitch chat, and this page has none.</p>
+        <button type="button" className="pp-primary" data-popup-action="open-analytics" onClick={() => onOpenUrl?.(analyticsHref)}>
+          {login} on Analytics <span aria-hidden="true">↗</span>
+        </button>
+      </> : <button type="button" className="pp-primary" data-popup-action="open-pulse" onClick={onOpen}>
         Open Pulse panel <ArrowIcon />
-      </button>
+      </button>}
     </section>
   )
 }
@@ -592,6 +610,30 @@ async function popupWindowIncognito(tab: chrome.tabs.Tab | undefined): Promise<b
     return typeof current?.incognito === 'boolean' ? current.incognito : undefined
   } catch {
     return undefined
+  }
+}
+
+/**
+ * Whether the tab shows its Pulse panel after OPEN_PULSE_SIDEBAR, read from the
+ * page so the content script carries no extra code (its bundle is at budget).
+ * The content script hides its host with display:none when nothing can show;
+ * no host yet (still loading) counts as shown, so the stored mode opens Pulse
+ * when it mounts, as before.
+ */
+async function pulsePanelShown(tabId: number): Promise<boolean> {
+  try {
+    const [result] = await chrome.scripting.executeScript({
+      target: { tabId },
+      // The content script's panel host id (PANEL_HOST_ID in src/content/mount.tsx).
+      args: ['streamclone-pulse-root'],
+      func: (id: string) => {
+        const host = document.getElementById(id)
+        return !host || getComputedStyle(host).display !== 'none'
+      },
+    })
+    return result?.result !== false
+  } catch {
+    return true
   }
 }
 

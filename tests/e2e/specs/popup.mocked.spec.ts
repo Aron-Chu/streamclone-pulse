@@ -285,6 +285,37 @@ test.describe('toolbar popup', () => {
       .toEqual({ sidebarTab: 'pulse', overlayMode: 'expanded' })
   })
 
+  test('on a channel page with no Pulse panel to show it stays open and offers the channel on Analytics', async ({ extension, prepare }, info) => {
+    await prepare()
+    const page = extension.page
+    await page.setViewportSize({ width: 320, height: 600 })
+    await routeMedia(page)
+    await page.addInitScript(({ avatar }) => {
+      chrome.tabs.query = (async () => [{ id: 4242, url: 'https://www.twitch.tv/fixturechan', active: true }]) as unknown as typeof chrome.tabs.query
+      // The panel host is display:none on this page (an offline channel without chat); the avatar read still answers.
+      chrome.scripting.executeScript = (async (injection: { args?: unknown[] }) => [{ result: injection.args?.[0] === 'streamclone-pulse-root' ? false : avatar }]) as unknown as typeof chrome.scripting.executeScript
+      chrome.tabs.sendMessage = (async () => undefined) as unknown as typeof chrome.tabs.sendMessage
+      const created: string[] = []
+      ;(window as unknown as { created: string[] }).created = created
+      chrome.tabs.create = (async (props: { url?: string }) => { created.push(props.url ?? ''); return {} }) as unknown as typeof chrome.tabs.create
+    }, { avatar: AVATAR_URL })
+    const setPulse = await routePulse(page)
+    setPulse({ ...readFixture('pulse-offline.json'), endedAt: new Date(Date.now() - 26 * 3_600_000).toISOString() })
+    await page.goto(`chrome-extension://${extension.extensionId}/popup/index.html`)
+    await expect(page.locator('.pp-badge')).toHaveText('Offline')
+
+    await page.getByRole('button', { name: 'Open Pulse panel' }).click()
+    // The popup stays open: the button becomes the channel on Analytics, with a line saying why.
+    const analytics = page.getByRole('button', { name: /^fixturechan on Analytics/ })
+    await expect(analytics).toBeVisible()
+    await expect(page.getByRole('status').filter({ hasText: 'The Pulse panel opens beside Twitch chat, and this page has none.' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Open Pulse panel' })).toHaveCount(0)
+    await settle(page)
+    await page.screenshot({ path: info.outputPath('popup-offline-no-panel.png') })
+    await analytics.click()
+    await expect.poll(() => page.evaluate(() => (window as unknown as { created: string[] }).created)).toEqual([expect.stringMatching(/\/analytics\/fixturechan$/)])
+  })
+
   test('says plainly when a channel is offline, uncharted or unreachable', async ({ extension, prepare }, info) => {
     await prepare()
     const page = extension.page
