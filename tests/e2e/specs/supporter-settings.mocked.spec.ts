@@ -173,6 +173,7 @@ test('account settings connect through the packaged worker and disconnect', asyn
   await expect(page.locator('[data-row="account"]')).toContainText('Connected to this extension', { timeout: 12000 })
   await expect(page.getByText('An invited tester’s StreamPulse account.', { exact: false })).toBeVisible()
   await page.getByRole('button', { name: 'Sign out', exact: true }).click()
+  await page.getByRole('button', { name: 'Confirm sign out', exact: true }).click()
   await expect(page.locator('[data-journey-state="signed-out"]')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Become a Supporter', exact: true })).toHaveCount(0)
 })

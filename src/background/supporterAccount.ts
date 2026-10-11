@@ -495,9 +495,13 @@ export class SupporterAccountCoordinator {
     try { this.ports.accountForgotten?.(accountId) } catch { /* the credential is still cleared */ }
   }
 
-  /** The server rejected this device's credential (401): signed out here, and its local copy goes. */
-  private async rejected(accountId: string): Promise<SupporterAccountState> {
-    this.forgetAccount(accountId)
+  /**
+   * The server rejected this device's credential (401): only the credential
+   * goes. The account's watched history, bookmarks and notes stay in this
+   * browser and come back when the same account signs in again; they are
+   * removed only by an explicit, confirmed Sign out or Sign out everywhere.
+   */
+  private async rejected(_accountId: string): Promise<SupporterAccountState> {
     return this.clear('relink_required')
   }
 
