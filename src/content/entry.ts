@@ -59,6 +59,8 @@ let activeSession: ActiveSession | null = null
 let activeStreamId: string | null = null
 
 let lastPageIsLive = false
+/** When a live broadcast of another stream last asked for a refresh (stream restart). */
+let restartRefreshAt = 0
 
 let lastCollecting = false
 
@@ -528,7 +530,16 @@ onPulseUpdate((message: PulseUpdateMessage) => {
     return
   }
   if (payloadStreamId && payloadStreamId !== broadcastStreamId) return
-  if (activeStreamId && activeStreamId !== broadcastStreamId) return
+  if (activeStreamId && activeStreamId !== broadcastStreamId) {
+    // The channel restarted: a live payload of a new stream while the page reads
+    // live. Never mix it in; take it through one authoritative refresh, at most
+    // every 30 s, which moves the panel to the new stream.
+    if (message.payload?.isLive && lastPageIsLive && Date.now() - restartRefreshAt > 30_000) {
+      restartRefreshAt = Date.now()
+      void refreshChannelPulse(activeSession.login)
+    }
+    return
+  }
   if (message.payload && !payloadStreamId) return
   activeStreamId = broadcastStreamId
 
