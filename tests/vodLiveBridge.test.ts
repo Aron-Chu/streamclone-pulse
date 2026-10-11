@@ -268,6 +268,41 @@ describe('requestVodPulse', () => {
     expect(result.payload.mode).toBe('vod')
   })
 
+  it('an outage longer than the memo keeps the live DVR while the stream is still live', async () => {
+    await confirmLiveArchive()
+    const today = plainVod({ vodId: '2896011569', streamId: '317967537252', startedAt: '2026-10-09T13:53:38Z', durationSeconds: 6 * 3600 })
+    const transient = new VodBridgeTransientError(503)
+    // Inside the memo: bridge only, last live DVR kept.
+    const inside = { ...deps([transient]), now: () => NOW + 4 * 60_000 }
+    expect(await requestVodPulse('2896011569', { streamId: '317967537252' }, inside)).toMatchObject({ outcome: 'bridge_transient', payload: { mode: 'live_dvr' } })
+    // Memo ran out, bridge still silent, channel still live on this stream: keep the live DVR.
+    const outlasted = { ...deps([today, transient]), now: () => NOW + 6 * 60_000 }
+    const kept = await requestVodPulse('2896011569', { streamId: '317967537252' }, outlasted)
+    expect(outlasted.calls).toEqual([{ bridge: false, streamId: undefined }, { bridge: true, streamId: '317967537252' }])
+    expect(kept).toMatchObject({ outcome: 'bridge_transient', payload: { mode: 'live_dvr', streamId: '317967537252' } })
+    // The next poll goes back to the bridge first, and the bridge recovering is accepted.
+    const back = { ...deps([liveDvr('317967537252')]), now: () => NOW + 6 * 60_000 + 30_000 }
+    expect(await requestVodPulse('2896011569', { streamId: '317967537252' }, back)).toMatchObject({ outcome: 'bridge' })
+    expect(back.calls).toEqual([{ bridge: true, streamId: '317967537252' }])
+  })
+
+  it('an outage longer than the memo still ends on the plain archive once the channel is offline', async () => {
+    await confirmLiveArchive()
+    const today = plainVod({ vodId: '2896011569', streamId: '317967537252', startedAt: '2026-10-09T13:53:38Z', durationSeconds: 6 * 3600 })
+    const ended = { ...deps([today], { isLive: false }), now: () => NOW + 6 * 60_000 }
+    const result = await requestVodPulse('2896011569', { streamId: '317967537252' }, ended)
+    expect(ended.calls).toEqual([{ bridge: false, streamId: undefined }])
+    expect(result).toMatchObject({ outcome: 'plain', payload: { mode: 'vod' } })
+  })
+
+  it('a definite rejection is not an outage: no live DVR is kept after it', async () => {
+    await confirmLiveArchive()
+    const today = plainVod({ vodId: '2896011569', streamId: '317967537252', startedAt: '2026-10-09T13:53:38Z', durationSeconds: 6 * 3600 })
+    const rejected = { ...deps([conflict(), today, new VodBridgeTransientError(503)]), now: () => NOW + 60_000 }
+    const result = await requestVodPulse('2896011569', { streamId: '317967537252' }, rejected)
+    expect(result).toMatchObject({ outcome: 'bridge_rejected', payload: { mode: 'vod' } })
+  })
+
   it('reads Retry-After as seconds or a date', () => {
     expect(retryAfterMs('120', NOW)).toBe(120_000)
     expect(retryAfterMs(new Date(NOW + 90_000).toUTCString(), NOW)).toBe(90_000)
