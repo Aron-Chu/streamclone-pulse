@@ -110,10 +110,11 @@ export function PrivacySeenInChat() {
         <strong>How the extension uses it.</strong> Each StreamPulse extension, signed in or not,
         downloads the whole list about once an hour while a Twitch page is open, without your
         account, credentials or any channel information, and compares it with chat usernames in your
-        browser. It then shows the crest and paint to its own user. StreamPulse never learns which
-        channels or chats anyone opens. Twitch chat itself never changes: people without StreamPulse
-        see normal chat, and nothing is sent to Twitch. You can hide everyone&rsquo;s crests in the
-        extension&rsquo;s settings; then it doesn&rsquo;t download the list.
+        browser. It then shows the crest and paint to its own user. Downloading the list
+        doesn&rsquo;t tell StreamPulse which channels or chats you open. Twitch chat itself never
+        changes: people without StreamPulse see normal chat, and nothing is sent to Twitch. You can
+        hide everyone&rsquo;s crests in the extension&rsquo;s settings; then it doesn&rsquo;t
+        download the list.
       </p>
       <p>
         <strong>Usernames.</strong> About once an hour StreamPulse asks Twitch&rsquo;s API for the
