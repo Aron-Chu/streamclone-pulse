@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { SIGN_IN_PUBLIC_TARGETS } from '../scripts/extension-permission-allowlists.mjs'
 import { manifestForTwitchSignInStage, resolveTwitchSignInStage } from '../scripts/extension-target.mjs'
 import { TWITCH_SIGNIN_ENABLED, TWITCH_SIGNIN_STAGE, parseTwitchSignInStage } from '../src/shared/twitchSignIn.ts'
 
@@ -13,9 +14,12 @@ describe('Sign in with Twitch build stage (PULSE_EXTENSION_TWITCH_SIGNIN)', () =
     expect(TWITCH_SIGNIN_STAGE).toBe('off')
     expect(TWITCH_SIGNIN_ENABLED).toBe(false)
     for (const target of ['development', 'cws', 'edge', 'firefox']) {
-      expect(resolveTwitchSignInStage(target, undefined)).toBe('off')
-      expect(resolveTwitchSignInStage(target, '')).toBe('off')
-      expect(resolveTwitchSignInStage(target, 'off')).toBe('off')
+      // Store builds follow their manifest: identity (a store that ships sign-in) means public.
+      const expected = SIGN_IN_PUBLIC_TARGETS.includes(target) ? 'public' : 'off'
+      expect(resolveTwitchSignInStage(target, undefined)).toBe(expected)
+      expect(resolveTwitchSignInStage(target, '')).toBe(expected)
+      if (expected === 'off') expect(resolveTwitchSignInStage(target, 'off')).toBe('off')
+      else expect(() => resolveTwitchSignInStage(target, 'off')).toThrow(/disagrees with the .* manifest/)
     }
     expect(parseTwitchSignInStage('anything')).toBe('off')
   })
@@ -38,8 +42,8 @@ describe('Sign in with Twitch build stage (PULSE_EXTENSION_TWITCH_SIGNIN)', () =
 
   it('refuses public in a store build until that store manifest requests identity (spec E3)', () => {
     for (const target of ['cws', 'edge', 'firefox']) {
-      expect(manifest(target).permissions).not.toContain('identity')
-      expect(() => resolveTwitchSignInStage(target, 'public')).toThrow(/needs the .* manifest to request identity first/)
+      expect(manifest(target).permissions.includes('identity')).toBe(SIGN_IN_PUBLIC_TARGETS.includes(target))
+      expect(() => resolveTwitchSignInStage(target, 'public', { permissions: ['storage', 'scripting'] })).toThrow(/needs the .* manifest to request identity first/)
       expect(resolveTwitchSignInStage(target, 'public', { permissions: ['storage', 'scripting', 'identity'] })).toBe('public')
     }
   })

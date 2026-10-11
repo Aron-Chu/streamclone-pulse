@@ -1,7 +1,30 @@
 {
   "schemaVersion": 1,
-  "currentVersion": "0.2.2",
+  "currentVersion": "0.2.3",
   "releases": [
+    {
+      "version": "0.2.3",
+      "status": "unreleased",
+      "releasedAt": null,
+      "title": "Continue with Twitch and Pulse Supporter",
+      "summary": "Continue with Twitch: your saves, history and Supporter follow your Twitch account. Become a Supporter from settings; Stripe handles payment.",
+      "preview": [
+        "Continue with Twitch in settings: your saves, history and Supporter follow your Twitch account.",
+        "Supporter starts in settings: check the renewal terms first, then pay on Stripe.",
+        "Account & Supporter says when your membership renews, or when it ends."
+      ],
+      "new": [
+        "Continue with Twitch signs this extension in with your Twitch account. Reinstalling or another browser gets your saves, history and Supporter back with the same Twitch account.",
+        "Become a Supporter from settings once sign-ups are open: one screen shows the price, the first charge, when it renews and how to cancel before Stripe opens."
+      ],
+      "improved": [
+        "Account & Supporter says when your membership renews, or when it ends with a way to resume."
+      ],
+      "fixed": [],
+      "knownIssues": [
+        "Continue with Twitch is not yet available in the Edge Add-ons build."
+      ]
+    },
     {
       "version": "0.2.2",
       "status": "unreleased",

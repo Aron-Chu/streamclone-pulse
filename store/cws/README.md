@@ -160,8 +160,8 @@ npm run package:development
 npm run validate:package
 ```
 
-Extension source manifests are **0.2.2**, selected for the owner-reviewed
-October 5 Supporter closeout. This is a source target, not an
+Extension source manifests are **0.2.3** (the owner-reviewed October 5
+Supporter closeout scope of the unreleased 0.2.2, plus Continue with Twitch). This is a source target, not an
 accepted or uploaded candidate: the public
 listing already reported `0.2.1` on 2026-09-24, and the published package's
 source revision is unverified. Owner must confirm the publisher-dashboard

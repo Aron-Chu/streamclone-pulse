@@ -31,7 +31,7 @@ export const ALLOWED_PERMISSIONS = Object.freeze(['storage', 'scripting'])
  * Twitch redirect (see docs/pulse-extension/twitch-signin-redirects.md).
  */
 /** @type {readonly string[]} */
-export const SIGN_IN_PUBLIC_TARGETS = Object.freeze([])
+export const SIGN_IN_PUBLIC_TARGETS = Object.freeze(['cws', 'firefox'])
 
 export const ALLOWED_HOST_PERMISSIONS_STORE = Object.freeze([
   'https://api.streampulse.stream/*',
