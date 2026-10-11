@@ -1,5 +1,6 @@
 import { test, expect } from '../helpers/testFixtures.ts'
 import { openTwitchChannel } from '../helpers/mockTwitch.ts'
+import { routeOpenOffer } from '../helpers/mockApi.ts'
 import type { CDPSession, Page, Worker } from '@playwright/test'
 
 const ACCOUNT = '11111111-1111-4111-8111-1111111a1b2c'
@@ -43,6 +44,10 @@ async function finish(cdp: CDPSession) {
   const banner = host && find(host, node => node.nodeName === 'HEADER' && (attr(node, 'class') ?? '').split(/\s+/).includes('pulse-personal-banner'))
   return banner ? attr(banner, 'data-supporter-finish') ?? null : undefined
 }
+
+
+// Checkout needs the public switch open at the compiled price as well as the account flag.
+test.beforeEach(async ({ extension, prepare }) => { void prepare; await routeOpenOffer(extension.context) })
 
 test('worker installation Checkout opens only Stripe, delayed payment activates a chosen finish on an already-open Twitch tab without reload', async ({ extension, prepare }, info) => {
   test.setTimeout(100_000)
@@ -227,8 +232,10 @@ test('the kept worker restore replaces a revoked bootstrap identity instead of r
   })
   const page = extension.page
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
+  // The switch is open (beforeEach), so the worker enrolls and asks; the
+  // server refuses Checkout for this account, which settings says plainly.
   expect((await workerCheckout(page)).billing).toEqual({ state: 'closed' })
-  await expect(page.locator('[data-journey-state="checkout-closed"]')).toBeVisible()
+  await expect(page.locator('[data-journey-state="checkout-unavailable"]')).toBeVisible()
   await extension.context.route('https://api.streampulse.stream/v1/billing/supporter', route => route.request().headers().authorization === `Bearer ${credential().token}` ? route.fulfill({ status: 401, json: { error: 'account_authorization_required' } }) : route.fallback())
   await page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_ENTITLEMENT' }))
   await extension.context.route('https://api.streampulse.stream/v1/account/restores', route => {
@@ -237,7 +244,9 @@ test('the kept worker restore replaces a revoked bootstrap identity instead of r
   })
   await extension.context.route('https://api.streampulse.stream/v1/account/restores/poll', route => route.fulfill({ json: approved ? { state: 'approved', ...credential(restoredAccount, 'd'.repeat(64)) } : { state: 'pending' } }))
   // The page offers no restore after the rejection; the worker path is kept.
-  await expect(page.locator('[data-journey-state="signed-out"]')).toBeVisible()
+  // Signed out with the switch open, a build without Twitch sign-in says
+  // Supporter isn't available in this version (signin-unsupported).
+  await expect(page.locator('[data-journey-state="signed-out"], [data-journey-state="signin-unsupported"]')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Restore my Supporter', exact: true })).toHaveCount(0)
   expect((await workerRestore(page)).restore.state).toBe('pending')
   expect(installations).toBe(2)
@@ -272,8 +281,10 @@ test('uncertain installation refresh retains its identity and restores after ren
   await extension.context.route('https://api.streampulse.stream/v1/account/restores/poll', route => route.fulfill({ json: approved ? { state: 'approved', ...credential(restoredAccount, 'd'.repeat(64)) } : { state: 'pending' } }))
   const page = extension.page
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
+  // The switch is open (beforeEach), so the worker enrolls and asks; the
+  // server refuses Checkout for this account, which settings says plainly.
   expect((await workerCheckout(page)).billing).toEqual({ state: 'closed' })
-  await expect(page.locator('[data-journey-state="checkout-closed"]')).toBeVisible()
+  await expect(page.locator('[data-journey-state="checkout-unavailable"]')).toBeVisible()
   // Expire only the disposable fixture credential, never an owner profile.
   await extension.serviceWorker.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => { const r = indexedDB.open('pulse-account-private-v1', 1); r.onsuccess = () => resolve(r.result); r.onerror = reject })

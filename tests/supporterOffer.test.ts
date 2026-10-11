@@ -7,6 +7,7 @@ import {
   OFFER_SETTINGS_REFRESH_MS,
   OFFER_UNKNOWN_CACHE_MS,
   SupporterOfferCache,
+  checkoutAllowedByOffer,
   fetchSupporterOffer,
   type CachedSupporterOffer,
 } from '../src/background/supporterOffer.ts'
@@ -271,6 +272,33 @@ describe('SUPPORTER_OFFER message', () => {
       expect(parseBackgroundRequest(bad)).toBeNull()
     }
     expect(MESSAGE_SENDER_SCOPE.SUPPORTER_OFFER).toBe('extension-page')
+  })
+})
+
+describe('worker Checkout gate (SUPPORTER_BILLING checkout)', () => {
+  const open = { state: 'open', price: { unitAmount: 499, currency: 'usd', interval: 'month' }, termsConsent: true } as const
+  it('starts a new Checkout only while the switch reads open, re-reading anything older than a minute', async () => {
+    const get = vi.fn(async (_refresh?: boolean) => open as never)
+    expect(await checkoutAllowedByOffer('checkout', { get })).toBe(true)
+    expect(get).toHaveBeenCalledWith(true)
+    for (const offer of [{ state: 'closed' }, { state: 'unknown' }]) {
+      expect(await checkoutAllowedByOffer('checkout', { get: async () => offer as never })).toBe(false)
+    }
+    expect(await checkoutAllowedByOffer('checkout', { get: async () => { throw new Error('gone') } })).toBe(false)
+  })
+  it('a server price other than the compiled one never opens Checkout from the account flag alone', async () => {
+    let body: Record<string, unknown> = { schemaVersion: 1, salesOpen: true, environment: 'live', price: { unitAmount: 599, currency: 'usd', interval: 'month' }, termsConsent: true }
+    const store: { value: unknown } = { value: null }
+    const cache = new SupporterOfferCache({ fetch: async () => ({ status: 200, body }), read: async () => store.value, write: async value => { store.value = value }, environments: ['live'] })
+    expect(await checkoutAllowedByOffer('checkout', cache)).toBe(false)
+    body = { ...body, price: { unitAmount: OFFER_CONFIG.price.unitAmount, currency: OFFER_CONFIG.price.currency, interval: OFFER_CONFIG.price.interval } }
+    store.value = null
+    expect(await checkoutAllowedByOffer('checkout', cache)).toBe(true)
+  })
+  it.each(['status', 'check', 'resume', 'portal', 'portal_confirm'])('never blocks %s, so members can always manage or cancel', async action => {
+    const get = vi.fn(async () => ({ state: 'closed' }) as never)
+    expect(await checkoutAllowedByOffer(action, { get })).toBe(true)
+    expect(get).not.toHaveBeenCalled()
   })
 })
 

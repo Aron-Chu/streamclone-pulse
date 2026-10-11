@@ -87,6 +87,10 @@ async function mount(worker: Worker, onEntitlement?: (value: SupporterEntitlemen
 
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); sessionStorage.clear() })
 
+/** The public switch, open at the compiled price: every purchase control needs it. */
+const OPEN_OFFER: SupporterOffer = { state: 'open', price: { unitAmount: 499, currency: 'usd', interval: 'month' }, termsConsent: true }
+const CLOSED_OFFER: SupporterOffer = { state: 'closed' }
+
 describe('pay-first settings', () => {
   it.each(['active', 'pending'] as const)('asks before disconnecting a %s installation and preserves it when canceled', async status => {
     const view = await mount({ account: () => linked, entitlement: () => ready(status, { accountKind: 'installation', installationAccountsEnabled: true }), billing: () => ({ state: status === 'pending' ? 'waiting' : 'idle' }) })
@@ -216,7 +220,7 @@ describe('pay-first settings', () => {
   })
   it.each(['none', 'expired'] as const)('allows one fresh Checkout after confirmed session expiry when the %s membership can open Checkout', async status => {
     let billing: SupporterBillingState = { state: 'expired' }
-    const view = await mount({ account: () => linked, entitlement: () => ready(status, { installationAccountsEnabled: true, checkoutEnabled: true }), billing: action => action === 'checkout' ? (billing = { state: 'confirming' }) : billing })
+    const view = await mount({ offer: () => OPEN_OFFER, account: () => linked, entitlement: () => ready(status, { installationAccountsEnabled: true, checkoutEnabled: true }), billing: action => action === 'checkout' ? (billing = { state: 'confirming' }) : billing })
     try {
       expect(view.state()).toBe('checkout-expired')
       expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
@@ -281,7 +285,7 @@ describe('pay-first settings', () => {
     ['expired', false, 'idle', 'Manage subscription', 'portal'],
     ['review', true, 'fallback', 'Manage subscription', 'portal'],
   ] as const)('keeps the ordinary %s installation action with Checkout %s and billing %s', async (status, checkoutEnabled, billingState, label, action) => {
-    const view = await mount({ account: () => linked, entitlement: () => ready(status, { installationAccountsEnabled: true, checkoutEnabled }), billing: () => ({ state: billingState }) })
+    const view = await mount({ account: () => linked, entitlement: () => ready(status, { installationAccountsEnabled: true, checkoutEnabled }), billing: () => ({ state: billingState }), offer: () => OPEN_OFFER })
     try {
       expect(view.state()).toBe(status)
       expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
@@ -362,7 +366,7 @@ describe('pay-first settings', () => {
   it('opens payment through the worker for a signed-in account and waits without a second purchase action', async () => {
     let membership: SupporterEntitlement = ready('none', { installationAccountsEnabled: true })
     let billing: SupporterBillingState = { state: 'idle' }
-    const view = await mount({ account: () => linked, entitlement: () => membership, billing: action => {
+    const view = await mount({ offer: () => OPEN_OFFER, account: () => linked, entitlement: () => membership, billing: action => {
       if (action === 'checkout') billing = { state: 'waiting', attemptId: 'safe-local-attempt' }
       return billing
     } })
@@ -410,7 +414,8 @@ describe('pay-first settings', () => {
   it.each(['idle', 'closed'] as const)('checks closed sign-ups through a read, with one primary action: %s', async billing => {
     let membership = ready('none', { installationAccountsEnabled: true, checkoutEnabled: false })
     let currentBilling: SupporterBillingState = { state: billing }
-    const view = await mount({ account: () => linked, entitlement: () => membership, billing: () => currentBilling })
+    let offer = CLOSED_OFFER
+    const view = await mount({ account: () => linked, entitlement: () => membership, billing: () => currentBilling, offer: () => offer })
     try {
       expect(view.state()).toBe('checkout-closed')
       expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
@@ -423,6 +428,7 @@ describe('pay-first settings', () => {
       expect(view.write).not.toHaveBeenCalled()
       expect(view.text()).toContain('Supporter sign-ups are not open yet')
       membership = ready('none', { installationAccountsEnabled: true, checkoutEnabled: true })
+      offer = OPEN_OFFER
       currentBilling = { state: 'idle' }
       await view.click('Check sign-up status')
       expect(view.state()).toBe('offer')
@@ -538,6 +544,7 @@ describe('Twitch sign-in off (stage A): signed out', () => {
     let account: SupporterAccountState = { state: 'signed_out' }
     let membership: SupporterEntitlement = { state: 'not_linked' }
     const view = await mount({
+      offer: () => OPEN_OFFER,
       account: action => {
         if (action === 'start') account = pendingLink()
         return account
@@ -601,7 +608,8 @@ describe('membership states', () => {
     ['payment-pending', ready('pending'), 'View payment status', 'https://streampulse.stream/account/billing'],
     ['review', ready('review'), 'Review membership', 'https://streampulse.stream/account/billing'],
   ])('renders %s with one truthful action', async (state, entitlement, label, href) => {
-    const view = await mount({ account: () => linked, entitlement: () => entitlement })
+    const purchasable = entitlement.state === 'ready' && entitlement.checkoutEnabled === true && (state === 'offer' || state === 'expired')
+    const view = await mount({ account: () => linked, entitlement: () => entitlement, offer: () => purchasable ? OPEN_OFFER : CLOSED_OFFER })
     try {
       expect(view.state()).toBe(state)
       expect(view.link()?.href ?? null).toBe(href)
@@ -873,7 +881,7 @@ describe('the price comes before the button that buys it', () => {
     ['checkout-closed', () => linked, () => ready('none', { checkoutEnabled: false }), 'Check sign-up status'],
     ['expired', () => linked, () => ready('expired'), 'Rejoin Supporter'],
   ])('in the %s state, before "%s"', async (state, account, entitlement, label) => {
-    const view = await mount({ account, entitlement })
+    const view = await mount({ account, entitlement, offer: () => state === 'offer' || state === 'expired' ? OPEN_OFFER : CLOSED_OFFER })
     try {
       expect(view.state()).toBe(state)
       const primary = view.host.querySelector<HTMLElement>('.pulse-journey-primary')!
@@ -1350,7 +1358,7 @@ describe('Continue with Twitch (tester and public stages)', () => {
 
   it('becomes a Supporter through worker Checkout, gated on a signed-in account', async () => {
     let billing: SupporterBillingState = { state: 'idle' }
-    const view = await mount({ account: () => linked, entitlement: () => twitchAccount('none'), billing: action => action === 'checkout' ? (billing = { state: 'waiting', attemptId: 'safe-local-attempt' }) : billing, twitch: () => ({ status: twitchStatus({ profile: PROFILE }), account: linked }) }, undefined, 'public')
+    const view = await mount({ offer: () => OPEN_OFFER, account: () => linked, entitlement: () => twitchAccount('none'), billing: action => action === 'checkout' ? (billing = { state: 'waiting', attemptId: 'safe-local-attempt' }) : billing, twitch: () => ({ status: twitchStatus({ profile: PROFILE }), account: linked }) }, undefined, 'public')
     try {
       expect(view.state()).toBe('offer')
       expect(view.text()).toContain('It can be different from your Twitch email')
@@ -1366,7 +1374,7 @@ describe('Continue with Twitch (tester and public stages)', () => {
   })
 
   it('sends an invited tester whose account the server refuses for bearer Checkout to the website, without a second payment', async () => {
-    const view = await mount({ account: () => linked, entitlement: () => ready('none', { accountKind: 'email' }), billing: action => action === 'checkout' ? { state: 'fallback' } : { state: 'idle' }, twitch: () => ({ status: twitchStatus(), account: linked }) }, undefined, 'tester')
+    const view = await mount({ offer: () => OPEN_OFFER, account: () => linked, entitlement: () => ready('none', { accountKind: 'email' }), billing: action => action === 'checkout' ? { state: 'fallback' } : { state: 'idle' }, twitch: () => ({ status: twitchStatus(), account: linked }) }, undefined, 'tester')
     try {
       await view.click('Become a Supporter')
       await view.click('Continue to payment')
@@ -1406,7 +1414,7 @@ describe('Continue with Twitch (tester and public stages)', () => {
     vi.setSystemTime(Date.parse('2026-10-09T18:00:00Z'))
     const retryAt = Date.now() + 9 * 60_000
     let billing: SupporterBillingState = { state: 'idle' }
-    const view = await mount({ account: () => linked, entitlement: () => twitchAccount('none'), billing: action => action === 'checkout' ? (billing = { state: 'try_later', retryAt }) : billing, twitch: () => ({ status: twitchStatus({ profile: PROFILE }), account: linked }) }, undefined, 'public')
+    const view = await mount({ offer: () => OPEN_OFFER, account: () => linked, entitlement: () => twitchAccount('none'), billing: action => action === 'checkout' ? (billing = { state: 'try_later', retryAt }) : billing, twitch: () => ({ status: twitchStatus({ profile: PROFILE }), account: linked }) }, undefined, 'public')
     try {
       await view.click('Become a Supporter')
       await view.click('Continue to payment')
@@ -1725,13 +1733,85 @@ describe('one sales switch and the shorter journey (supporter launch spec §2.5,
     } finally { view.cleanup() }
   })
 
-  it('with Twitch sign-in off, open sales point at streampulse.stream and never buy here', async () => {
+  it('with Twitch sign-in off (Edge Add-ons), open sales invite no purchase anywhere: the look could not reach this install', async () => {
     const view = await mount({ account: () => ({ state: 'signed_out' }), entitlement: () => ({ state: 'not_linked' }), offer: () => OPEN })
     try {
-      expect(view.host.querySelector('.pulse-journey-title')?.textContent).toBe('Supporter is open on streampulse.stream')
-      expect(view.hrefs()).toContain('https://streampulse.stream/supporter')
+      expect(view.state()).toBe('signin-unsupported')
+      expect(view.host.querySelector('.pulse-journey-title')?.textContent).toBe(ACCOUNT_COPY.notInThisVersion)
+      expect(view.text()).toContain(ACCOUNT_COPY.needsTwitch)
+      expect(view.text()).not.toMatch(/Become a Supporter on streampulse|pay on Stripe/)
+      // The price stays as information; nothing links to buying it.
+      expect(view.host.querySelector('.pulse-supporter-terms')?.textContent).toContain('US$4.99 / month')
+      expect(view.host.querySelector('.pulse-journey-primary')).toBeNull()
+      expect(view.hrefs()).not.toContain('https://streampulse.stream/supporter')
+      expect(view.hrefs()).not.toContain('https://streampulse.stream/account/billing')
       for (const label of PURCHASE_LABELS) expect(view.buttons()).not.toContain(label)
     } finally { view.cleanup() }
+  })
+
+  it('closed, the sign-in-off build still says when it opens and links the details', async () => {
+    const view = await mount({ account: () => ({ state: 'signed_out' }), entitlement: () => ({ state: 'not_linked' }), offer: () => ({ state: 'closed' }) })
+    try {
+      expect(view.host.querySelector('.pulse-journey-title')?.textContent).toBe('Supporter sign-ups are not open yet')
+      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe(ACCOUNT_COPY.supporterDetails)
+    } finally { view.cleanup() }
+  })
+
+  it('in a browser that cannot open the Twitch window, open sales invite no purchase', async () => {
+    const view = await mount({ account: () => ({ state: 'signed_out' }), entitlement: () => ({ state: 'not_linked' }), offer: () => OPEN, twitch: () => ({ status: twitchStatus({ available: false }), account: { state: 'signed_out' } }) }, undefined, 'public')
+    try {
+      expect(view.state()).toBe('signin-unsupported')
+      expect(view.host.querySelector('.pulse-journey-title')?.textContent).toBe(ACCOUNT_COPY.notInThisBrowser)
+      expect(view.host.querySelector('.pulse-journey-primary')).toBeNull()
+      expect(view.hrefs()).not.toContain('https://streampulse.stream/supporter')
+      for (const label of PURCHASE_LABELS) expect(view.buttons()).not.toContain(label)
+    } finally { view.cleanup() }
+  })
+
+  describe('signed in, the account flag alone never opens Checkout', () => {
+    // A server price other than the compiled US$4.99 reaches settings as
+    // unknown (worker reply) or closed (worker parse); the account's
+    // checkoutEnabled and salesOpen are true in every case here.
+    const MISMATCH = { state: 'open', price: { unitAmount: 599, currency: 'usd', interval: 'month' }, termsConsent: true } as SupporterOffer
+    it.each<[string, SupporterOffer, string]>([
+      ['closed', { state: 'closed' }, 'checkout-closed'],
+      ['unknown', { state: 'unknown' }, 'offer-unknown'],
+      ['open at another price', MISMATCH, 'offer-unknown'],
+    ])('with the switch %s: no offer, no review, no Continue to payment', async (_name, offer, expected) => {
+      sessionStorage.setItem('pulse.supporterJourneyIntent.v1', 'review')
+      const view = await mount({ account: () => linked, entitlement: () => twitchAccount('none', { checkoutEnabled: true, salesOpen: true }), offer: () => offer, billing: () => ({ state: 'idle' }), twitch: () => ({ status: twitchStatus({ profile: PROFILE }), account: linked }) }, undefined, 'public')
+      try {
+        expect(view.state()).toBe(expected)
+        expect(view.host.querySelector('[data-journey-review]')).toBeNull()
+        for (const label of PURCHASE_LABELS) expect(view.buttons()).not.toContain(label)
+        expect(view.text()).not.toContain('US$5.99')
+        expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
+        if (expected === 'offer-unknown') expect(view.buttons()).toContain('Check again')
+      } finally { view.cleanup() }
+    })
+
+    it('the review comes back once the switch reads open at the compiled price', async () => {
+      sessionStorage.setItem('pulse.supporterJourneyIntent.v1', 'review')
+      let offer: SupporterOffer = { state: 'unknown' }
+      const view = await mount({ account: () => linked, entitlement: () => twitchAccount('none', { salesOpen: true }), offer: () => offer, billing: () => ({ state: 'idle' }), twitch: () => ({ status: twitchStatus({ profile: PROFILE }), account: linked }) }, undefined, 'public')
+      try {
+        expect(view.state()).toBe('offer-unknown')
+        offer = OPEN
+        await view.click('Check again')
+        expect(view.state()).toBe('review')
+        expect(view.buttons()).toContain('Continue to payment')
+      } finally { view.cleanup() }
+    })
+
+    it.each<[string, SupporterOffer]>([['closed', { state: 'closed' }], ['open at another price', MISMATCH]])('an ended member is not offered Rejoin while the switch is %s', async (_name, offer) => {
+      const view = await mount({ account: () => linked, entitlement: () => twitchAccount('expired', { checkoutEnabled: true, salesOpen: true }), offer: () => offer, billing: () => ({ state: 'idle' }), twitch: () => ({ status: twitchStatus({ profile: PROFILE }), account: linked }) }, undefined, 'public')
+      try {
+        expect(view.state()).toBe('expired')
+        expect(view.text()).not.toContain('Rejoin Supporter')
+        await view.click(ACCOUNT_COPY.manageSubscription)
+        expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
+      } finally { view.cleanup() }
+    })
   })
 
   it('open sales but not for this account: says so, with support, and no purchase', async () => {

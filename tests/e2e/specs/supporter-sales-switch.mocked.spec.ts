@@ -10,8 +10,12 @@ import type { Page, Worker } from '@playwright/test'
  *     POST /v1/billing/checkout. Flipping the server answer opens the offer
  *     without a client release (the worker's cache is cleared here instead of
  *     waiting out its minute).
- *   - Twitch sign-in off: open sales point at streampulse.stream; nothing is
- *     bought in the extension.
+ *   - Twitch sign-in off (the Edge Add-ons package): open sales invite no
+ *     purchase at all, here or on the website, because a look bought there
+ *     could not reach this install. The price stays as information.
+ *   - Signed in, the account's checkoutEnabled alone never opens Checkout: a
+ *     server price other than the compiled one shows no review and no
+ *     Continue to payment, and the worker refuses a checkout message itself.
  *   - `public` builds (PULSE_EXTENSION_TWITCH_SIGNIN=public): a signed-in
  *     Twitch account goes Become a Supporter → one-screen review → Continue to
  *     payment → Stripe stand-in tab → welcome, and a cancelled membership shows
@@ -34,9 +38,9 @@ const LINKED_DEVICE = {
   expiresAt: new Date(Date.now() + 20 * 86_400_000).toISOString(),
   refreshExpiresAt: new Date(Date.now() + 80 * 86_400_000).toISOString(),
 }
-const offerBody = (salesOpen: boolean) => ({
+const offerBody = (salesOpen: boolean, unitAmount = 499) => ({
   schemaVersion: 1, salesOpen, environment: 'live',
-  price: { unitAmount: 499, currency: 'usd', interval: 'month' },
+  price: { unitAmount, currency: 'usd', interval: 'month' },
   tax: { collection: 'automatic', behavior: 'exclusive' },
   termsConsent: true, serverTime: new Date().toISOString(),
 })
@@ -80,11 +84,11 @@ async function linkDevice(serviceWorker: Worker) {
 /** Drop the worker's cached offer, as its minute running out would. */
 const forgetOffer = (serviceWorker: Worker) => serviceWorker.evaluate(() => chrome.storage.session.remove('pulseSupporterOffer'))
 
-async function routeOffer(page: Page, state: { open: boolean; reads: Array<{ cookie?: string; authorization?: string }> }) {
+async function routeOffer(page: Page, state: { open: boolean; unitAmount?: number; reads: Array<{ cookie?: string; authorization?: string }> }) {
   await page.context().route(`${API}/v1/billing/offer`, route => {
     const headers = route.request().headers()
     state.reads.push({ cookie: headers.cookie, authorization: headers.authorization })
-    return route.fulfill({ json: offerBody(state.open), headers: { 'cache-control': 'public, max-age=60' } })
+    return route.fulfill({ json: offerBody(state.open, state.unitAmount), headers: { 'cache-control': 'public, max-age=60' } })
   })
 }
 
@@ -130,8 +134,12 @@ test.describe('packaged sales switch', () => {
     await settings.goto(`${options}#supporter`)
     await settings.reload()
     if (STAGE === 'off') {
-      await expect(settings.locator('.pulse-journey-title')).toHaveText('Supporter is open on streampulse.stream')
-      await expect(settings.locator('a[href="https://streampulse.stream/supporter"]').first()).toBeVisible()
+      // No sign-in in this build: no invitation to buy, here or on the website.
+      await expect(settings.locator('[data-journey-state="signin-unsupported"]')).toBeVisible()
+      await expect(settings.locator('.pulse-journey-title')).toHaveText('Supporter isn’t available in this version yet')
+      await expect(settings.locator('.pulse-supporter-terms')).toContainText('US$4.99 / month')
+      await expect(settings.locator('.pulse-journey-actions a[href="https://streampulse.stream/supporter"]')).toHaveCount(0)
+      await expect(settings.locator('.pulse-journey-primary')).toHaveCount(0)
       await noPurchaseControls(settings)
     } else {
       await expect(settings.locator('[data-journey-state="signed-out-offer"]')).toBeVisible()
@@ -145,6 +153,45 @@ test.describe('packaged sales switch', () => {
     expect(offer.reads.length).toBeGreaterThanOrEqual(2)
     // Anonymous: no cookie, no bearer.
     for (const read of offer.reads) expect(read).toEqual({ cookie: undefined, authorization: undefined })
+  })
+
+  test('the worker refuses a checkout message while the server price differs from the compiled one', async ({ extension, prepare }) => {
+    await prepare({ scenario: 'live-ready' })
+    await linkDevice(extension.serviceWorker)
+    const offer = { open: true, unitAmount: 599, reads: [] as Array<{ cookie?: string; authorization?: string }> }
+    const checkouts: string[] = []
+    await routeOffer(extension.page, offer)
+    await extension.context.route(`${API}/v1/account/auth/twitch/**`, route => route.fulfill({ status: 500, json: {} }))
+    await extension.context.route(`${API}/v1/billing/supporter`, route => route.fulfill({ json: snapshot('none') }))
+    await extension.context.route(`${API}/v1/billing/checkout`, route => { checkouts.push(route.request().method()); return route.fulfill({ json: { attemptId: ATTEMPT, url: CHECKOUT_URL, expiresAt: new Date(Date.now() + 30 * 60_000).toISOString() } }) })
+    const settings = extension.page
+    await settings.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
+    await expect(settings.locator('[data-journey-state]')).toBeVisible()
+    const reply = await settings.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_BILLING', action: 'checkout' }))
+    expect(reply).toEqual({ type: 'SUPPORTER_BILLING', billing: { state: 'closed' } })
+    expect(checkouts).toEqual([])
+  })
+
+  test('signed in, an open offer at another price plus checkoutEnabled gives no review and no Continue to payment', async ({ extension, prepare }, info) => {
+    test.skip(STAGE !== 'public', 'needs a PULSE_EXTENSION_TWITCH_SIGNIN=public build')
+    await prepare({ scenario: 'live-ready' })
+    await linkDevice(extension.serviceWorker)
+    const offer = { open: true, unitAmount: 599, reads: [] as Array<{ cookie?: string; authorization?: string }> }
+    const checkouts: string[] = []
+    await routeOffer(extension.page, offer)
+    await extension.context.route(`${API}/v1/account/auth/twitch/**`, route => route.fulfill({ status: 500, json: {} }))
+    await extension.context.route(`${API}/v1/billing/supporter`, route => route.fulfill({ json: snapshot('none') }))
+    await extension.context.route(`${API}/v1/billing/checkout`, route => { checkouts.push(route.request().method()); return route.fulfill({ status: 500, json: {} }) })
+    const settings = extension.page
+    await settings.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
+    await settings.evaluate(() => sessionStorage.setItem('pulse.supporterJourneyIntent.v1', 'review'))
+    await settings.reload()
+    await expect(settings.locator('[data-journey-state="checkout-closed"]')).toBeVisible()
+    await expect(settings.locator('[data-journey-review]')).toHaveCount(0)
+    await noPurchaseControls(settings)
+    await expect(settings.getByText('US$5.99', { exact: false })).toHaveCount(0)
+    await settings.screenshot({ path: info.outputPath('price-mismatch-signed-in.png'), fullPage: true, animations: 'disabled' })
+    expect(checkouts).toEqual([])
   })
 
   test('a signed-in Twitch account reviews, pays on the Stripe stand-in and lands on the welcome', async ({ extension, prepare }, info) => {

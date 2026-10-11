@@ -1,6 +1,7 @@
 import { test, expect } from '../helpers/testFixtures.ts'
 import type { CDPSession } from '@playwright/test'
 import { openTwitchChannel } from '../helpers/mockTwitch.ts'
+import { routeOpenOffer } from '../helpers/mockApi.ts'
 
 /**
  * The invited-tester Supporter journey with Twitch sign-in off (stage A),
@@ -56,6 +57,7 @@ test('tester purchase journey needs no codes, refreshes or reloads, and revocati
   test.setTimeout(150_000)
   await prepare({ scenario: 'live-ready' })
   const context = extension.context
+  await routeOpenOffer(context)
   const website: string[] = []
   await context.route('https://streampulse.stream/**', route => {
     if (route.request().resourceType() === 'document') website.push(route.request().url())

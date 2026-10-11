@@ -94,6 +94,18 @@ export class SupporterOfferCache {
   }
 }
 
+/**
+ * Whether the worker may start a new Checkout for a SUPPORTER_BILLING action.
+ * Only `checkout` is gated: it needs the switch open (re-read when older than a
+ * minute), so the account's checkoutEnabled flag alone never opens a session
+ * at a price this build does not state. Status, resume and the portal are
+ * never blocked, so members can always manage or cancel.
+ */
+export async function checkoutAllowedByOffer(action: string, offers: Pick<SupporterOfferCache, 'get'>): Promise<boolean> {
+  if (action !== 'checkout') return true
+  try { return (await offers.get(true)).state === 'open' } catch { return false }
+}
+
 /** One anonymous GET; at most 4 KiB is read. */
 export async function fetchSupporterOffer(origin: string, fetchImpl: typeof fetch = fetch): Promise<{ status: number; body: unknown }> {
   const response = await fetchImpl(`${origin}${SUPPORTER_OFFER_PATH}`, {

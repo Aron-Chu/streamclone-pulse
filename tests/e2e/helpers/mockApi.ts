@@ -218,3 +218,15 @@ export async function installMockApi(
     },
   }
 }
+
+/**
+ * Open the public sales switch at the compiled price (US$4.99 / month, live),
+ * or answer closed with `salesOpen` false. Purchase controls in settings need
+ * it open as well as the account's checkoutEnabled; registered after
+ * installMockApi, it wins over the closed default above.
+ */
+export async function routeOpenOffer(context: import('@playwright/test').BrowserContext, salesOpen = true): Promise<void> {
+  await context.route('https://api.streampulse.stream/v1/billing/offer', route => route.fulfill({
+    json: { schemaVersion: 1, salesOpen, environment: 'live', price: { unitAmount: 499, currency: 'usd', interval: 'month' }, tax: { collection: 'none', behavior: 'unspecified' }, termsConsent: true, serverTime: new Date().toISOString() },
+  }))
+}
