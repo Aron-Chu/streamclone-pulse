@@ -26,6 +26,10 @@ type World = {
   attemptState: 'open' | 'pending' | 'active'
   checkoutPosts: number
   offerReads: number
+  /** Server price in cents (default: the price this build states). */
+  unitAmount?: number
+  /** Billing environment on the account read (default sandbox). */
+  environment?: string
 }
 
 async function stand(context: BrowserContext, origin: string, world: World) {
@@ -42,7 +46,7 @@ async function stand(context: BrowserContext, origin: string, world: World) {
       expect(headers.authorization).toBeUndefined()
       expect(headers['x-streamclone-beta-key']).toBeUndefined()
       expect(headers.cookie).toBeUndefined()
-      return route.fulfill({ json: { ...OFFER, salesOpen: world.salesOpen }, headers: { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=60' } })
+      return route.fulfill({ json: { ...OFFER, salesOpen: world.salesOpen, price: { ...OFFER.price, unitAmount: world.unitAmount ?? OFFER.price.unitAmount } }, headers: { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=60' } })
     }
     if (url.origin !== origin && !url.pathname.startsWith('/v1/')) return route.abort()
     if (!url.pathname.startsWith('/v1/')) return route.continue()
@@ -66,7 +70,7 @@ async function stand(context: BrowserContext, origin: string, world: World) {
     if (url.pathname === '/v1/billing/supporter') {
       if (!world.signedIn) return route.fulfill({ status: 401, json: { error: 'sign_in_required' } })
       return route.fulfill({ json: {
-        schemaVersion: 1, accountId: '11111111-1111-4111-8111-1111111a1b2c', environment: 'sandbox',
+        schemaVersion: 1, accountId: '11111111-1111-4111-8111-1111111a1b2c', environment: world.environment ?? 'sandbox',
         status: world.status, checkoutEnabled: world.checkoutEnabled, salesOpen: world.salesOpen,
         ...(world.status === 'active' ? { supportPeriods: 1, accessUntil: '2026-11-10T18:00:00Z', renewal: 'auto', renewsOn: '2026-11-10T18:00:00Z' } : {}),
       } })
@@ -117,6 +121,29 @@ for (const width of [1440, 390]) {
     }
     expect(world.checkoutPosts).toBe(0)
     expect(world.offerReads).toBeGreaterThan(0)
+  })
+
+  test(`account allowed but the switch closed or the price differs: /account/billing sells nothing at ${width}px`, async ({ browser, baseURL }) => {
+    // checkoutEnabled alone must never open Checkout: the server may allow the
+    // account while the public offer is closed, or state a price this build does not.
+    for (const [salesOpen, unitAmount] of [[false, undefined], [true, 599]] as const) {
+      // A fresh context per case, so the 60 s offer cache of the first case cannot answer the second.
+      const context = await browser.newContext({ serviceWorkers: 'block', viewport: { width, height: 900 } })
+      const page = await context.newPage()
+      const world: World = { salesOpen, unitAmount, environment: 'live', signedIn: true, checkoutEnabled: true, status: 'none', attemptState: 'open', checkoutPosts: 0, offerReads: 0 }
+      await stand(context, new URL(baseURL!).origin, world)
+      for (const path of ['/account/billing?intent=subscribe', '/account/billing']) {
+        await page.goto(path)
+        await expect(page.getByRole('heading', { name: salesOpen ? 'Checkout isn’t available for this account right now' : 'Supporter sign-ups are not open yet', exact: true })).toBeVisible()
+        await expect(page.getByTestId('billing-review-rows')).toHaveCount(0)
+        await expect(page.getByRole('button', { name: /Continue to payment|Rejoin Supporter|Return to checkout|Start a new checkout/ })).toHaveCount(0)
+        if (unitAmount) await expect(page.locator('#public-main')).not.toContainText('US$4.99')
+        await clickEveryButton(page, path)
+      }
+      expect(world.checkoutPosts).toBe(0)
+      expect(world.offerReads).toBeGreaterThan(0)
+      await context.close()
+    }
   })
 
   test(`open: Become a Supporter → Twitch → review → Stripe → activation → welcome at ${width}px`, async ({ page, context, baseURL }, info) => {

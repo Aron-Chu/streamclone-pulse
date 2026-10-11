@@ -7,7 +7,10 @@ import { accountBillingSignInHref } from '../src/lib/accountBillingReturn'
 import { retryWaitCopy } from '../src/lib/billingTryLater'
 
 const returnPath = '/account/billing/return?attempt=12345678-1234-4234-8234-123456789abc'
-const membership = (status: string, checkoutEnabled = false, extra: Record<string, unknown> = {}) => new Response(JSON.stringify({ schemaVersion: 1, status, checkoutEnabled, ...extra }))
+// These suites run before Continue with Twitch is public, where the only account that
+// may buy without an open public offer is the invited-tester sandbox pilot, so an
+// account with checkout on reads as that pilot unless a test says otherwise.
+const membership = (status: string, checkoutEnabled = false, extra: Record<string, unknown> = {}) => new Response(JSON.stringify({ schemaVersion: 1, status, checkoutEnabled, ...(checkoutEnabled ? { environment: 'sandbox' } : {}), ...extra }))
 
 function renderNavigableBilling(path: string) {
   render(<MemoryRouter initialEntries={[path]}>

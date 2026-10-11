@@ -110,6 +110,67 @@ describe('the remembered intent and the review (spec §3.1-§3.2)', () => {
   })
 })
 
+describe('every checkout button needs the sales switch, not only the account (review finding)', () => {
+  const noCheckout = () => expect(screen.queryByRole('button', { name: /Continue to payment|Rejoin Supporter|Return to checkout|Start a new checkout/ })).toBeNull()
+  const NEXT = { ...OPEN, price: { unitAmount: 599, currency: 'usd', interval: 'month' } }
+
+  it('offer closed while the account still says checkoutEnabled: "not open yet", no review', async () => {
+    serve({ status: 'none', checkoutEnabled: true, salesOpen: false }, { ...OPEN, salesOpen: false })
+    render(<MemoryRouter initialEntries={['/account/billing?intent=subscribe']}><BillingPage /></MemoryRouter>)
+    expect(await screen.findByRole('heading', { name: 'Supporter sign-ups are not open yet' })).toBeTruthy()
+    expect(screen.queryByTestId('billing-review-rows')).toBeNull()
+    noCheckout()
+  })
+  it('server open at a price this build does not state: no review, no price, no checkout', async () => {
+    serve({ status: 'none', checkoutEnabled: true, salesOpen: true }, NEXT)
+    render(<MemoryRouter initialEntries={['/account/billing?intent=subscribe']}><BillingPage /></MemoryRouter>)
+    expect(await screen.findByRole('heading', { name: 'Checkout isn’t available for this account right now' })).toBeTruthy()
+    expect(screen.queryByTestId('billing-review-rows')).toBeNull()
+    expect(document.body.textContent).not.toMatch(/US\$4\.99/)
+    noCheckout()
+  })
+  it('price mismatch with sales reported closed: the closed card shows no price', async () => {
+    serve({ status: 'none', checkoutEnabled: true, salesOpen: false }, { ...NEXT, salesOpen: false })
+    render(<MemoryRouter><BillingPage /></MemoryRouter>)
+    expect(await screen.findByRole('heading', { name: 'Supporter sign-ups are not open yet' })).toBeTruthy()
+    expect(document.body.textContent).not.toMatch(/US\$4\.99/)
+    noCheckout()
+  })
+  it.each([
+    ['expired', { status: 'expired' }, 'Supporter ended'],
+    ['checkout cancelled', { status: 'none' }, 'Checkout cancelled'],
+  ] as const)('%s: no Rejoin or Return to checkout while the offer is closed', async (_, extra, heading) => {
+    serve({ ...extra, checkoutEnabled: true, salesOpen: false }, { ...OPEN, salesOpen: false }, { state: 'open' })
+    const entry = extra.status === 'none' ? `/account/billing/return?attempt=${ATTEMPT}&cancelled=1` : '/account/billing'
+    render(<MemoryRouter initialEntries={[entry]}><BillingPage /></MemoryRouter>)
+    expect(await screen.findByRole('heading', { name: heading })).toBeTruthy()
+    await waitFor(() => expect(screen.getByText(/New Supporter sign-ups are not open yet\./)).toBeTruthy())
+    noCheckout()
+  })
+  it('offer open at the stated price: the review and Rejoin still work', async () => {
+    serve({ status: 'expired', checkoutEnabled: true, salesOpen: true })
+    render(<MemoryRouter><BillingPage /></MemoryRouter>)
+    expect(await screen.findByRole('heading', { name: 'Supporter ended' })).toBeTruthy()
+    expect(await screen.findByRole('button', { name: 'Rejoin Supporter' })).toBeTruthy()
+    expect(screen.getByTestId('billing-review-rows').textContent).toContain('US$4.99')
+  })
+  it('sandbox invited-tester pilot before Twitch is public keeps its review', async () => {
+    vi.stubEnv('VITE_TWITCH_SIGNIN', '')
+    serve({ status: 'none', checkoutEnabled: true, salesOpen: false, environment: 'sandbox' })
+    render(<MemoryRouter initialEntries={['/account/billing?intent=subscribe']}><BillingPage /></MemoryRouter>)
+    expect(await screen.findByRole('heading', { name: 'Become a Pulse Supporter' })).toBeTruthy()
+    expect(screen.getByTestId('billing-sandbox-banner')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Continue to payment' })).toBeTruthy()
+  })
+  it('a live account on a build that is not public gets no checkout, even with checkoutEnabled', async () => {
+    vi.stubEnv('VITE_TWITCH_SIGNIN', '')
+    serve({ status: 'none', checkoutEnabled: true, salesOpen: false, environment: 'live' })
+    render(<MemoryRouter initialEntries={['/account/billing?intent=subscribe']}><BillingPage /></MemoryRouter>)
+    expect(await screen.findByRole('heading', { name: 'Supporter sign-ups are not open yet' })).toBeTruthy()
+    noCheckout()
+  })
+})
+
 describe('activation and the welcome (spec §3.4)', () => {
   const returnPath = `/account/billing/return?attempt=${ATTEMPT}`
   it('ticks "Stripe confirmed your payment" once the attempt is paid, before Supporter is on', async () => {

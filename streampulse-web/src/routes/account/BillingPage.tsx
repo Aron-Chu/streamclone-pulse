@@ -492,12 +492,24 @@ export default function BillingPage() {
     catch (failure) { setSignOutError(accountErrorText(failure)); setSigningOut(false) }
   }
 
-  const checkoutEnabled = snapshot?.checkoutEnabled === true
   // The server's sales switch on the per-account read (additive field): sales
   // are open, but this account cannot start a checkout.
   const serverSalesOpen = snapshot?.salesOpen === true
   // Only an explicit "sandbox" proves test mode; anything else shows no banner.
   const sandbox = snapshot?.environment === 'sandbox'
+  // Every checkout button needs the account AND the one sales switch (spec §2).
+  // The per-account checkoutEnabled alone is not enough: the server can allow
+  // an account while the public offer is closed (price unread or stale) or
+  // states a price this build would not show. The one exception is the
+  // invited-tester sandbox pilot (SPEC §2: sandbox, salesOpen=false), and only
+  // before Continue with Twitch is public. A server price that differs from the
+  // one this page prints closes every path, the pilot included.
+  const priceMismatch = Boolean(offer.offer?.price) && !offer.priceOk
+  const sandboxPilot = sandbox && !twitchSignInPublic()
+  const accountCheckout = snapshot?.checkoutEnabled === true
+  const checkoutEnabled = accountCheckout && !priceMismatch && (offer.state === 'open' || sandboxPilot)
+  // The offer answer is still on its way: wait for it rather than flash "not open yet".
+  const offerPending = accountCheckout && !checkoutEnabled && offer.state === 'unknown' && twitchSignInPublic()
   const accessUntil = longDate(snapshot?.accessUntil)
   const renewal = renewalOf(snapshot)
   const periods = typeof snapshot?.supportPeriods === 'number' && snapshot.supportPeriods > 0 ? snapshot.supportPeriods : 0
@@ -619,17 +631,19 @@ export default function BillingPage() {
   } else if (status === 'expired') {
     state = 'expired'
     title = 'Supporter ended'
-    body = <p>Saved Supporter preferences are kept but inactive, and your billing history stays available.{checkoutEnabled ? '' : ' New Supporter sign-ups are not open yet.'}</p>
+    body = <p>Saved Supporter preferences are kept but inactive, and your billing history stays available.{checkoutEnabled || offerPending ? '' : ' New Supporter sign-ups are not open yet.'}</p>
     rows = checkoutEnabled ? 'review' : 'none'
     primary = checkoutEnabled ? checkout('Rejoin Supporter') : portal('Billing history')
     secondary = checkoutEnabled ? portal('Billing history', false) : null
   } else if (cancelled && attempt && OPEN_ATTEMPT.has(attemptState)) {
     state = 'checkout-cancelled'
     title = 'Checkout cancelled'
-    body = <><p>You left Stripe checkout before paying. Nothing was charged.</p>{!checkoutEnabled && <p>New Supporter sign-ups are not open yet.</p>}</>
+    body = <><p>You left Stripe checkout before paying. Nothing was charged.</p>{!checkoutEnabled && !offerPending && <p>New Supporter sign-ups are not open yet.</p>}</>
     rows = checkoutEnabled ? 'review' : 'none'
     primary = checkoutEnabled ? checkout('Return to checkout') : refresh('Refresh status')
     if (!checkoutEnabled) showRefresh = false
+  } else if (offerPending) {
+    showRefresh = false
   } else if (checkoutEnabled) {
     // The one-screen review (spec §3.2, mockup 01 step 03). This click is the
     // deliberate confirmation: Stripe never opens by itself after Twitch.
@@ -655,7 +669,8 @@ export default function BillingPage() {
     body = attempt && attemptState === 'expired'
       ? <p>It ended without a payment. Nothing was charged.</p>
       : <p>New Supporter sign-ups are not open yet. Your account and free tools are unaffected.</p>
-    rows = 'summary'
+    // The plain terms state this build's price; never beside a different server price.
+    rows = priceMismatch ? 'none' : 'summary'
     primary = refresh('Refresh status')
     showRefresh = false
   }

@@ -205,6 +205,8 @@ for (const width of [1440, 390]) {
       accessUntil: paid ? '2026-11-01T12:00:00Z' : undefined,
     } }))
     await context.route('https://checkout.stripe.com/**', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Stripe fixture</title><h1>Stripe Checkout fixture</h1>' }))
+    // The public build sells only while the one sales switch is open at the stated price.
+    await context.route('**/v1/billing/offer', route => route.fulfill({ json: { schemaVersion: 1, salesOpen: true, environment: 'sandbox', price: { unitAmount: 499, currency: 'usd', interval: 'month' }, tax: { collection: 'automatic', behavior: 'exclusive' }, termsConsent: true } }))
 
     // The extension opened this tab with its request prepared.
     await page.goto('/account/link-device#code=ABCDE12345&then=billing')

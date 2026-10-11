@@ -12,6 +12,14 @@ const SECRET = 'a'.repeat(64) // Fabricated restore secret, never a real link.
 const PRIMARY_SELECTOR = '.pulse-account-primary, .btn-primary'
 test.use({ serviceWorkers: 'block' })
 
+/** The audit preview on :4174, or a run's own loopback preview given as PLAYWRIGHT_BASE_URL. */
+function expectLocalPreview(baseURL: string) {
+  const url = new URL(baseURL)
+  expect(url.hostname).toBe('127.0.0.1')
+  const own = process.env.PLAYWRIGHT_BASE_URL ? new URL(process.env.PLAYWRIGHT_BASE_URL).port : null
+  expect([own, '4174']).toContain(url.port)
+}
+
 type State = {
   name: string
   path: string
@@ -152,7 +160,7 @@ async function installFixtures(page: Page, state: State, width: number, requests
     if (body && typeof body === 'object' && 'secret' in body) body = { ...body as Record<string, unknown>, secret: '[fabricated test-only restore secret]' }
     requests.push({ state: state.name, width, method: request.method(), url: url.href, body, disposition: 'local-mocked' })
     if (url.pathname === '/v1/account/me') return route.fulfill({ json: { accountId: '11111111-1111-4111-8111-111111111111' } })
-    if (url.pathname === '/v1/billing/supporter') return route.fulfill({ json: { schemaVersion: 1, status: state.status || 'none', checkoutEnabled: state.enabled, supportPeriods: 2, accessUntil: '2026-10-19T00:00:00Z', ...state.snapshot } })
+    if (url.pathname === '/v1/billing/supporter') return route.fulfill({ json: { schemaVersion: 1, status: state.status || 'none', checkoutEnabled: state.enabled, supportPeriods: 2, accessUntil: '2026-10-19T00:00:00Z', ...(state.enabled ? { environment: 'sandbox' } : {}), ...state.snapshot } })
     if (url.pathname === `/v1/billing/checkout/${ATTEMPT}`) return route.fulfill({ json: { state: state.attemptState || 'pending' } })
     if (['/v1/billing/checkout', '/v1/billing/portal'].includes(url.pathname) && request.method() === 'POST') {
       mutations++
@@ -196,7 +204,7 @@ async function enterState(page: Page, state: State) {
 }
 
 test('closed billing has one emphasized existing refresh action', async ({ page, baseURL }) => {
-  expect(new URL(baseURL!).port).toBe('4174')
+  expectLocalPreview(baseURL!)
   const state = states.find(candidate => candidate.name === 'billing-none-closed-false')!
   const fixture = await installFixtures(page, state, 1440, [], baseURL!)
   try {
@@ -210,7 +218,7 @@ test('closed billing has one emphasized existing refresh action', async ({ page,
 
 test('website state matrix has one primary action, accessible controls and local request evidence', async ({ browser, baseURL }) => {
   test.setTimeout(600_000)
-  expect(new URL(baseURL!).port).toBe('4174')
+  expectLocalPreview(baseURL!)
   const observations: Observation[] = []
   const requests: RequestRecord[] = []
   try {
@@ -296,7 +304,7 @@ test('supporter action links meet the 44px touch target at desktop and mobile wi
 })
 
 test('confirming action respects real Retry-After and in-flight reads without starting checkout', async ({ browser, baseURL }) => {
-  expect(new URL(baseURL!).port).toBe('4174')
+  expectLocalPreview(baseURL!)
   for (const width of [1440, 390]) {
     const context = await browser.newContext({ serviceWorkers: 'block', viewport: { width, height: 900 }, reducedMotion: 'reduce' })
     const page = await context.newPage()
