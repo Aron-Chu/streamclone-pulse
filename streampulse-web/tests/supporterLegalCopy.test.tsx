@@ -49,7 +49,9 @@ describe('Supporter legal copy', () => {
   it('Terms states the USD price, the renewal windows and what refunds and disputes do', () => {
     const body = textOf(Terms, 'terms-of-use')
     expect(body).toContain('US$4.99 per month, charged in US dollars')
-    expect(body).toContain('Taxes are handled as stated at checkout')
+    // Until the server's sales switch opens, the tax line is the always-true fallback.
+    expect(body).toContain('Taxes: Stripe shows the total before you pay.')
+    expect(body).not.toMatch(/Handled as stated at checkout|Taxes are handled as stated/)
     expect(body).toMatch(/cancel at any time in the Stripe Customer Portal/)
     expect(body).toMatch(/takes effect at the end of the period you already paid for/)
     expect(body).toMatch(/active for up to 72 hours after the paid period ends/)
@@ -87,7 +89,8 @@ describe('Supporter legal copy', () => {
     render(<MemoryRouter><Supporter /></MemoryRouter>)
     const terms = screen.getByTestId('supporter-terms').textContent ?? ''
     expect(terms).toContain('US$4.99 per month, charged in US dollars')
-    expect(terms).toContain('Handled as stated at checkout')
+    expect(terms).toContain('TaxesStripe shows the total before you pay.')
+    expect(terms).not.toMatch(/Handled as stated at checkout/)
     expect(terms).toMatch(/7-day grace period/)
     expect(terms).toMatch(/A full refund ends access for that period; a partial refund keeps it/)
     const body = screen.getByTestId('supporter-offer').textContent ?? ''
@@ -157,7 +160,8 @@ describe('Supporter legal copy', () => {
   it('Terms separates losing Twitch access from cancelling billing in Stripe', () => {
     render(<MemoryRouter><Terms /></MemoryRouter>)
     const billing = screen.getByTestId('terms-billing-email').textContent ?? ''
-    expect(billing).toMatch(/you can still cancel billing through Stripe/)
+    // Without a Stripe portal login link the page promises email help, not a link.
+    expect(billing).toMatch(/email privacy@streampulse\.stream from the email you paid with and we’ll cancel billing for you/)
     expect(billing).toMatch(/moving a\s+membership to another account needs our help/)
     // Continue with Twitch is not live yet, so the account model is stated conditionally.
     expect(screen.getByTestId('terms-your-account').textContent).toMatch(/^\s*Once Continue with Twitch is open, your StreamPulse account is your Twitch identity/)

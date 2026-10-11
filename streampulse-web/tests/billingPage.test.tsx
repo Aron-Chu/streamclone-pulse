@@ -7,7 +7,10 @@ import { accountBillingSignInHref } from '../src/lib/accountBillingReturn'
 import { retryWaitCopy } from '../src/lib/billingTryLater'
 
 const returnPath = '/account/billing/return?attempt=12345678-1234-4234-8234-123456789abc'
-const membership = (status: string, checkoutEnabled = false, extra: Record<string, unknown> = {}) => new Response(JSON.stringify({ schemaVersion: 1, status, checkoutEnabled, ...extra }))
+// These suites run before Continue with Twitch is public, where the only account that
+// may buy without an open public offer is the invited-tester sandbox pilot, so an
+// account with checkout on reads as that pilot unless a test says otherwise.
+const membership = (status: string, checkoutEnabled = false, extra: Record<string, unknown> = {}) => new Response(JSON.stringify({ schemaVersion: 1, status, checkoutEnabled, ...(checkoutEnabled ? { environment: 'sandbox' } : {}), ...extra }))
 
 function renderNavigableBilling(path: string) {
   render(<MemoryRouter initialEntries={[path]}>
@@ -25,7 +28,11 @@ describe('public Supporter handoff', () => {
     expect(screen.queryByRole('link', { name: 'Use a StreamPulse website account' })).toBeNull()
     expect(screen.getByTestId('supporter-availability').textContent).toMatch(/Supporter sign-ups are not open yet/)
     expect(screen.getByText('US$4.99 per month, charged in US dollars')).toBeTruthy()
-    expect(screen.getByText(/Handled as stated at checkout/)).toBeTruthy()
+    // Closed: the always-true tax fallback, never "Handled as stated at checkout".
+    expect(screen.getByTestId('supporter-tax-line').textContent).toBe('Stripe shows the total before you pay.')
+    // Closed: no button anywhere leads to Checkout (payment audit F4).
+    expect(screen.queryByTestId('supporter-continue-with-twitch')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Become a Supporter' })).toBeNull()
     const body = screen.getByTestId('supporter-offer').textContent ?? ''
     expect(body).not.toMatch(/including any tax it calculates/i)
     expect(body).not.toMatch(/existing members/i)
@@ -40,7 +47,7 @@ describe('billing sandbox banner', () => {
     const banner = screen.getByTestId('billing-sandbox-banner')
     expect(banner.textContent).toContain('Sandbox — test mode, no real charge.')
     expect(banner.getAttribute('role')).toBe('note')
-    expect(screen.getByRole('button', { name: 'Continue to Stripe checkout' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Continue to payment' })).toBeTruthy()
   })
 
   it.each([
@@ -63,12 +70,24 @@ describe('billing sandbox banner', () => {
 })
 
 describe('billing membership copy', () => {
-  it('states the USD price and leaves tax to checkout when checkout is enabled', async () => {
+  it('reviews the price, first charge, renewal and cancellation before Stripe when checkout is enabled', async () => {
+    vi.useFakeTimers({ now: new Date(2026, 0, 31, 12), toFake: ['Date'] })
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(membership('none', true)))
     render(<MemoryRouter><BillingPage /></MemoryRouter>)
-    expect(await screen.findByText(/US\$4\.99 per month, charged in US dollars/)).toBeTruthy()
-    expect(screen.getByText('Handled as stated at checkout')).toBeTruthy()
-    expect(document.body.textContent).not.toMatch(/Taxes, if any/)
+    const rows = await screen.findByTestId('billing-review-rows')
+    expect(rows.textContent).toContain('Pulse SupporterUS$4.99 / month')
+    // Closed or unknown offer: the always-true tax fallback.
+    expect(rows.textContent).toContain('First chargeToday. Stripe shows the total before you pay.')
+    // One month from Jan 31 clamps to the end of February.
+    expect(rows.textContent).toContain(`Renews${new Date(2026, 1, 28).toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' })}, then monthly`)
+    expect(rows.textContent).toContain('CancelAny time with Manage subscription. You keep Supporter until the end of the month you paid for.')
+    // No statement-descriptor row until the config states the Dashboard value.
+    expect(rows.textContent).not.toContain('On your statement')
+    expect(screen.getByRole('button', { name: 'Continue to payment' }).classList.contains('pulse-account-primary')).toBe(true)
+    expect(screen.getByTestId('billing-review-footnote').textContent).toMatch(/We take you to Manage subscription instead, so you can’t be charged twice\./)
+    expect(screen.getByTestId('billing-lost-twitch').textContent).toBe('Lost access to Twitch? Email privacy@streampulse.stream.')
+    expect(document.body.textContent).not.toMatch(/Taxes, if any|Handled as stated at checkout/)
+    vi.useRealTimers()
   })
 
   it.each(['none', 'expired'])('says sign-ups are closed for %s without implying existing members', async status => {
@@ -132,22 +151,29 @@ describe('billing lifecycle view', () => {
   it('makes existing membership management the sole primary on a confirmed return', async () => {
     vi.stubGlobal('fetch', vi.fn((path: string) => Promise.resolve(path.includes('/checkout/') ? new Response(JSON.stringify({ state: 'active' })) : membership('active'))))
     render(<MemoryRouter initialEntries={[returnPath]}><BillingPage /></MemoryRouter>)
-    await screen.findByRole('heading', { name: 'You’re a Supporter' })
-    expect(screen.getByRole('button', { name: 'Manage subscription' }).classList.contains('pulse-account-primary')).toBe(true)
+    await screen.findByRole('heading', { name: 'You’re a Supporter. Thank you.' })
+    // "Here's your look" (F9): Open Twitch is the one primary; Manage stays one quiet click away.
+    expect(screen.getByRole('link', { name: 'Open Twitch' }).classList.contains('pulse-account-primary')).toBe(true)
+    expect(screen.getByRole('link', { name: 'Get the extension' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Manage subscription' }).classList.contains('pulse-account-text-button')).toBe(true)
     expect(document.querySelectorAll('.pulse-membership .pulse-account-primary')).toHaveLength(1)
+    expect(screen.getByTestId('billing-welcome-steps').textContent).not.toMatch(/receipt/)
+    // Only builds with Continue with Twitch can show the look; Edge has sign-in off.
+    expect(screen.getByText('Your look shows in the extension on desktop Chrome or Firefox.')).toBeTruthy()
+    expect(screen.queryByText(/Edge/)).toBeNull()
   })
   it('never trusts a success query parameter as payment', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(membership('pending')))
     render(<MemoryRouter initialEntries={['/account/billing/return?success=true']}><BillingPage /></MemoryRouter>)
     expect(await screen.findByRole('heading', { name: 'Confirming your payment' })).toBeTruthy()
     expect(screen.queryByText('Supporter active')).toBeNull()
-    expect(screen.queryByText('Continue to Stripe checkout')).toBeNull()
+    expect(screen.queryByText('Continue to payment')).toBeNull()
   })
   it('shows unavailable services without purchase controls', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 503 })))
     render(<MemoryRouter><BillingPage /></MemoryRouter>)
     expect(await screen.findByText(/Billing status is unavailable/)).toBeTruthy()
-    expect(screen.queryByText('Continue to Stripe checkout')).toBeNull()
+    expect(screen.queryByText('Continue to payment')).toBeNull()
   })
   it.each(['attempt', 'membership'])('does not deny a purchase when the checkout return %s lookup fails', async stage => {
     const fetch = vi.fn()
@@ -160,11 +186,11 @@ describe('billing lifecycle view', () => {
     expect(await screen.findByRole('heading', { name: 'Billing status is unavailable right now' })).toBeTruthy()
     expect(screen.getByText(/your payment is safe and will appear here once confirmed\. Don’t start another checkout/)).toBeTruthy()
     expect(screen.queryByText(/No purchase has been started/)).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Continue to Stripe checkout' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Continue to payment' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Manage subscription' })).toBeNull()
     expect(screen.queryByText(/Checkout status:/)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Check again' }))
-    expect(await screen.findByRole('heading', { name: 'You’re a Supporter' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'You’re a Supporter. Thank you.' })).toBeTruthy()
     expect(screen.queryByText(/Billing status is unavailable/)).toBeNull()
     expect(screen.getByRole('button', { name: 'Manage subscription' }).hasAttribute('disabled')).toBe(false)
     expect(fetch.mock.calls.every(([, options]) => options.method === 'GET')).toBe(true)
@@ -175,7 +201,7 @@ describe('billing lifecycle view', () => {
     vi.stubGlobal('fetch', fetch)
     render(<MemoryRouter><BillingPage /></MemoryRouter>)
     expect(await screen.findByText(/New Supporter sign-ups are not open yet/)).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'Continue to Stripe checkout' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Continue to payment' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Manage subscription' })).toBeNull()
     expect(fetch).toHaveBeenCalledOnce()
   })
@@ -184,7 +210,7 @@ describe('billing lifecycle view', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'checkout_disabled' }), { status: 503 }))
     vi.stubGlobal('fetch', fetch)
     render(<MemoryRouter><BillingPage /></MemoryRouter>)
-    fireEvent.click(await screen.findByRole('button', { name: 'Continue to Stripe checkout' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue to payment' }))
     await waitFor(() => expect(screen.getByText(/Checkout is not open for this account right now/)).toBeTruthy())
     expect(document.body.textContent).not.toMatch(/existing members/i)
     expect(fetch.mock.calls[1][0]).toBe('/v1/billing/checkout')
@@ -199,7 +225,7 @@ describe('billing lifecycle view', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 401 })))
     render(<MemoryRouter initialEntries={[path]}><BillingPage /></MemoryRouter>)
     expect((await screen.findByRole('link', { name: 'Tester sign-in' })).getAttribute('href')).toBe(accountBillingSignInHref(path))
-    expect(screen.queryByRole('button', { name: 'Continue to Stripe checkout' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Continue to payment' })).toBeNull()
   })
 
   it('describes a cancelled Stripe return without implying payment success, and resumes the same checkout', async () => {
@@ -236,7 +262,7 @@ describe('billing lifecycle view', () => {
     expect(screen.queryByRole('button', { name: /checkout/i })).toBeNull()
   })
   it.each([
-    ['Continue to Stripe checkout', 'none', true],
+    ['Continue to payment', 'none', true],
     ['Manage subscription', 'active', false],
   ] as const)('offers return-aware sign-in when %s loses its session', async (name, status, checkoutEnabled) => {
     const fetch = vi.fn().mockResolvedValueOnce(membership(status, checkoutEnabled))
@@ -265,7 +291,7 @@ describe('billing lifecycle view', () => {
       '/v1/billing/checkout/12345678-1234-4234-8234-123456789abc', '/v1/billing/supporter',
     ])
     expect(screen.getByRole('button', { name: 'Manage subscription' }).hasAttribute('disabled')).toBe(false)
-    expect(screen.queryByRole('button', { name: 'Continue to Stripe checkout' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Continue to payment' })).toBeNull()
     if (state === 'missing') {
       expect(screen.getByText(/This checkout link is no longer available/)).toBeTruthy()
       expect(screen.queryByText(/Checkout status:/)).toBeNull()
@@ -286,7 +312,7 @@ describe('billing lifecycle view', () => {
     expect(screen.getByText(/This checkout link is invalid/)).toBeTruthy()
     expect(fetch.mock.calls.map(call => call[0])).toEqual(['/v1/billing/supporter'])
     expect(screen.getByRole('button', { name: 'Manage subscription' }).hasAttribute('disabled')).toBe(false)
-    expect(screen.queryByRole('button', { name: 'Continue to Stripe checkout' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Continue to payment' })).toBeNull()
     expect(screen.queryByText(/Checkout status:/)).toBeNull()
   })
 
@@ -297,7 +323,7 @@ describe('billing lifecycle view', () => {
     expect(await screen.findByRole('heading', { name: status === 401 ? 'Sign in to see your membership' : 'Billing status is unavailable right now' })).toBeTruthy()
     expect(fetch.mock.calls.map(call => call[0])).toEqual(['/v1/billing/supporter'])
     expect(screen.queryByRole('button', { name: 'Manage subscription' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Continue to Stripe checkout' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Continue to payment' })).toBeNull()
     if (status === 401) {
       expect(screen.getByRole('link', { name: 'Tester sign-in' }).getAttribute('href')).toBe(accountBillingSignInHref('/account/billing'))
     }
@@ -347,7 +373,7 @@ describe('billing lifecycle view', () => {
     await act(async () => { resolve(membership('none')) })
     expect(screen.getByRole('heading', { name: 'Supporter active' })).toBeTruthy()
     expect(screen.queryByText(/Checkout status:/)).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Continue to Stripe checkout' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Continue to payment' })).toBeNull()
   })
 
   it('ignores an old checkout failure after navigating to another billing route', async () => {
@@ -360,12 +386,12 @@ describe('billing lifecycle view', () => {
       .mockResolvedValueOnce(membership('active'))
     vi.stubGlobal('fetch', fetch)
     renderNavigableBilling('/account/billing')
-    fireEvent.click(await screen.findByRole('button', { name: 'Continue to Stripe checkout' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue to payment' }))
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2))
     fireEvent.click(screen.getByRole('link', { name: 'Checkout return' }))
-    expect(await screen.findByRole('heading', { name: 'You’re a Supporter' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'You’re a Supporter. Thank you.' })).toBeTruthy()
     await act(async () => { resolve(new Response('{}', { status: 401 })) })
-    expect(screen.getByRole('heading', { name: 'You’re a Supporter' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'You’re a Supporter. Thank you.' })).toBeTruthy()
     expect(screen.queryByRole('link', { name: 'Tester sign-in' })).toBeNull()
     expect(screen.queryByText(/Sign in again/)).toBeNull()
   })
@@ -386,10 +412,16 @@ describe('automatic payment confirmation', () => {
     vi.useFakeTimers()
     serve(() => new Response(JSON.stringify({ state: 'open' })), () => membership('none', true))
     await act(async () => { render(<MemoryRouter initialEntries={[returnPath]}><BillingPage /></MemoryRouter>) })
+    // Activation checkpoints (spec §3.4): the page reads by itself, so the check is quiet.
+    expect(screen.getByRole('heading', { name: 'Activating your membership' })).toBeTruthy()
+    const steps = screen.getByTestId('billing-activation-steps').textContent ?? ''
+    expect(steps).toMatch(/✓ Back from Stripe/)
+    expect(steps).toMatch(/◌ Stripe confirmed your payment \(waiting\)/)
     const check = screen.getByRole('button', { name: 'Check again' })
-    expect(check.classList.contains('pulse-account-primary')).toBe(true)
-    expect(document.querySelectorAll('.pulse-membership .pulse-account-primary')).toHaveLength(1)
-    expect(screen.queryByRole('button', { name: /checkout/i })).toBeNull()
+    expect(check.classList.contains('pulse-account-text-button')).toBe(true)
+    expect(document.querySelectorAll('.pulse-membership .pulse-account-primary')).toHaveLength(0)
+    expect(screen.getByText('You won’t be charged twice, even if you close this tab.')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /checkout|payment/i })).toBeNull()
   })
 
   it('honours an absolute Retry-After deadline for manual, wake and automatic reads', async () => {
@@ -416,13 +448,13 @@ describe('automatic payment confirmation', () => {
     const fetch = serve(() => new Response(JSON.stringify({ state: 'pending' })), () => membership('none', true))
     await act(async () => { render(<MemoryRouter initialEntries={[returnPath]}><BillingPage /></MemoryRouter>) })
     for (const delay of CONFIRM_DELAYS_S) await act(async () => { await vi.advanceTimersByTimeAsync(delay * 1000) })
-    expect(screen.getByRole('heading', { name: 'Still confirming your payment' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Still activating your membership' })).toBeTruthy()
     const bounded = reads(fetch)
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Check again' })) })
     expect(reads(fetch)).toBe(bounded + 1)
     await act(async () => { await vi.advanceTimersByTimeAsync(600_000) })
     expect(reads(fetch)).toBe(bounded + 1)
-    expect(screen.getByRole('heading', { name: 'Still confirming your payment' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Still activating your membership' })).toBeTruthy()
   })
 
   it('counts manual status checks within the existing automatic confirmation budget', async () => {
@@ -434,7 +466,7 @@ describe('automatic payment confirmation', () => {
     }
     await act(async () => { await vi.advanceTimersByTimeAsync(600_000) })
     expect(reads(fetch)).toBe(1 + CONFIRM_DELAYS_S.length)
-    expect(screen.getByRole('heading', { name: 'Still confirming your payment' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Still activating your membership' })).toBeTruthy()
   })
 
   it('never overlaps a manual status check with the automatic timer', async () => {
@@ -463,7 +495,7 @@ describe('automatic payment confirmation', () => {
       await act(async () => { await vi.advanceTimersByTimeAsync(5_000); window.dispatchEvent(new Event('focus')) })
     }
     expect(reads(fetch)).toBe(1 + CONFIRM_DELAYS_S.length)
-    expect(screen.getByRole('heading', { name: 'Still confirming your payment' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Still activating your membership' })).toBeTruthy()
     await act(async () => { await vi.advanceTimersByTimeAsync(600_000) })
     expect(reads(fetch)).toBe(1 + CONFIRM_DELAYS_S.length)
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Check again' })) })
@@ -489,13 +521,13 @@ describe('automatic payment confirmation', () => {
       for (let index = 0; index < 20; index++) await Promise.resolve()
       expect(reads(fetch)).toBe(1 + CONFIRM_DELAYS_S.length)
     })
-    expect(screen.getByRole('heading', { name: 'Still confirming your payment' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Still activating your membership' })).toBeTruthy()
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Check again' })) })
     expect(reads(fetch)).toBe(2 + CONFIRM_DELAYS_S.length)
   })
 
   it.each([
-    ['none', 'Continue to Stripe checkout', '/account/billing'],
+    ['none', 'Continue to payment', '/account/billing'],
     ['active', 'Manage subscription', '/account/billing'],
     ['pending', 'Manage subscription', returnPath],
   ])('keeps held %s billing requests independent from ordinary wake and timer reads', async (status, label, path) => {
@@ -523,7 +555,7 @@ describe('automatic payment confirmation', () => {
     const fetch = vi.fn((_url: string, options?: RequestInit) => options?.method === 'POST' ? held : Promise.resolve(membership(changed ? 'active' : 'none', !changed, { accountId: changed ? 'account-b' : 'account-a' })))
     vi.stubGlobal('fetch', fetch)
     await act(async () => { render(<MemoryRouter initialEntries={['/account/billing']}><BillingPage /></MemoryRouter>) })
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Continue to Stripe checkout' })) })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Continue to payment' })) })
     changed = true
     await act(async () => { window.dispatchEvent(new StorageEvent('storage', { key: 'pulse.account.signedInAt.v1', newValue: String(Date.now()) })) })
     expect(screen.getByRole('heading', { name: 'Supporter active' })).toBeTruthy()
@@ -688,9 +720,9 @@ describe('automatic payment confirmation', () => {
       .mockResolvedValueOnce(membership('none', true, { accountId }))
     vi.stubGlobal('fetch', fetch)
     await act(async () => { render(<MemoryRouter><BillingPage /></MemoryRouter>) })
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Continue to Stripe checkout' })) })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Continue to payment' })) })
     expect(screen.getByRole('heading', { name: 'Confirming your payment' })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'Continue to Stripe checkout' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Continue to payment' })).toBeNull()
     expect(fetch.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1)
   })
 
@@ -705,7 +737,7 @@ describe('automatic payment confirmation', () => {
     // An auto-advancing clock under parallel load can schedule the first timer
     // after findByRole has already observed the confirming heading.
     await act(async () => { render(<MemoryRouter initialEntries={[returnPath]}><BillingPage /></MemoryRouter>) })
-    expect(screen.getByRole('heading', { name: 'Confirming your payment' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Activating your membership' })).toBeTruthy()
     // Uncertain payment never offers another checkout.
     expect(screen.queryByRole('button', { name: /checkout/i })).toBeNull()
     const first = reads(fetch)
@@ -714,12 +746,12 @@ describe('automatic payment confirmation', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(1) })
     expect(reads(fetch)).toBe(first + 1)
     // Still unsettled: the heading never disappears between reads.
-    expect(screen.getByRole('heading', { name: 'Confirming your payment' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Activating your membership' })).toBeTruthy()
     await act(async () => { await vi.advanceTimersByTimeAsync(CONFIRM_DELAYS_S[1] * 1000 - 1) })
     expect(reads(fetch)).toBe(first + 1)
     settled = true
     await act(async () => { await vi.advanceTimersByTimeAsync(1) })
-    expect(screen.getByRole('heading', { name: 'You’re a Supporter' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'You’re a Supporter. Thank you.' })).toBeTruthy()
     expect(screen.getByText('Pulse account')).toBeTruthy()
     expect(screen.getByText('··111111')).toBeTruthy()
     const done = fetch.mock.calls.length
@@ -732,13 +764,13 @@ describe('automatic payment confirmation', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     const fetch = serve(() => new Response(JSON.stringify({ state: 'pending' })), () => membership('none', true))
     render(<MemoryRouter initialEntries={[returnPath]}><BillingPage /></MemoryRouter>)
-    expect(await screen.findByRole('heading', { name: 'Confirming your payment' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Activating your membership' })).toBeTruthy()
     // Each step is scheduled only after the previous read settles, so advance
     // until the bound is reached rather than assuming exact timing.
-    for (let i = 0; i < 40 && !screen.queryByRole('heading', { name: 'Still confirming your payment' }); i++) {
+    for (let i = 0; i < 40 && !screen.queryByRole('heading', { name: 'Still activating your membership' }); i++) {
       await act(async () => { await vi.advanceTimersByTimeAsync(31_000) })
     }
-    expect(screen.getByRole('heading', { name: 'Still confirming your payment' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Still activating your membership' })).toBeTruthy()
     expect(screen.getByText(/Don’t start another checkout/)).toBeTruthy()
     expect(screen.queryByRole('button', { name: /Stripe checkout|Return to checkout/ })).toBeNull()
     const bounded = reads(fetch)
@@ -757,7 +789,7 @@ describe('automatic payment confirmation', () => {
       () => limited ? new Response(JSON.stringify({ error: 'try_later' }), { status: 429, headers: { 'Retry-After': '20' } }) : membership('none', true),
     )
     render(<MemoryRouter initialEntries={[returnPath]}><BillingPage /></MemoryRouter>)
-    expect(await screen.findByRole('heading', { name: 'Confirming your payment' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Activating your membership' })).toBeTruthy()
     limited = true
     await act(async () => { await vi.advanceTimersByTimeAsync(2_100) })
     const after429 = reads(fetch)
@@ -767,7 +799,7 @@ describe('automatic payment confirmation', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(2_000) })
     expect(reads(fetch)).toBe(after429 + 1)
     // The last state stays on screen, marked stale, not blanked.
-    expect(screen.getByRole('heading', { name: 'Confirming your payment' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Activating your membership' })).toBeTruthy()
     expect(screen.getByTestId('billing-stale')).toBeTruthy()
   })
 
@@ -775,7 +807,7 @@ describe('automatic payment confirmation', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     const fetch = serve(() => new Response(JSON.stringify({ state: 'open' })), () => membership('none', true))
     const view = render(<MemoryRouter initialEntries={[returnPath]}><BillingPage /></MemoryRouter>)
-    expect(await screen.findByRole('heading', { name: 'Confirming your payment' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Activating your membership' })).toBeTruthy()
     const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true)
     const before = reads(fetch)
     await act(async () => { await vi.advanceTimersByTimeAsync(30_000) })
@@ -791,7 +823,7 @@ describe('automatic payment confirmation', () => {
 
     const settled = serve(() => new Response(JSON.stringify({ state: 'active' })), () => membership('active'))
     render(<MemoryRouter initialEntries={[returnPath]}><BillingPage /></MemoryRouter>)
-    expect(await screen.findByRole('heading', { name: 'You’re a Supporter' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'You’re a Supporter. Thank you.' })).toBeTruthy()
     const once = settled.mock.calls.length
     await act(async () => { await vi.advanceTimersByTimeAsync(120_000) })
     expect(settled.mock.calls.length).toBe(once)
@@ -808,7 +840,7 @@ describe('automatic payment confirmation', () => {
     })
     vi.stubGlobal('fetch', fetch)
     render(<MemoryRouter initialEntries={['/account/billing']}><BillingPage /></MemoryRouter>)
-    fireEvent.click(await screen.findByRole('button', { name: 'Continue to Stripe checkout' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue to payment' }))
     expect(await screen.findByRole('heading', { name: 'Confirming your payment' })).toBeTruthy()
     expect(screen.getByText(/you don’t need to pay again/i)).toBeTruthy()
     expect(fetch.mock.calls.filter(([path, options]) => path === '/v1/billing/checkout' && options?.method === 'POST')).toHaveLength(1)
@@ -822,7 +854,7 @@ describe('automatic payment confirmation', () => {
     render(<MemoryRouter initialEntries={[{ pathname: '/account/billing', state: { connected: true } }]}><BillingPage /></MemoryRouter>)
     expect(await screen.findByTestId('billing-connected-note')).toBeTruthy()
     expect(screen.getByRole('list', { name: 'Progress' }).querySelector('[aria-current="step"]')?.textContent).toMatch(/Supporter/)
-    expect(screen.getByRole('button', { name: 'Continue to Stripe checkout' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Continue to payment' })).toBeTruthy()
   })
 })
 
@@ -843,7 +875,7 @@ describe('no checkout while a payment is uncertain, at any moment', () => {
     vi.stubGlobal('fetch', vi.fn((path: string) => Promise.resolve(path.includes('/checkout/') ? new Response(JSON.stringify({ state: 'open' })) : membership('none', true))))
     try {
       render(<MemoryRouter initialEntries={[returnPath]}><BillingPage /></MemoryRouter>)
-      expect(await screen.findByRole('heading', { name: 'Confirming your payment' })).toBeTruthy()
+      expect(await screen.findByRole('heading', { name: 'Activating your membership' })).toBeTruthy()
       await act(async () => { await vi.advanceTimersByTimeAsync(10_000) })
       expect(watcher.seen).toEqual([])
     } finally { watcher.stop() }
@@ -866,12 +898,12 @@ describe('no checkout while a payment is uncertain, at any moment', () => {
     const watcher = watchForCheckout()
     try {
       render(<MemoryRouter initialEntries={['/account/billing']}><BillingPage /></MemoryRouter>)
-      const checkout = await screen.findByRole('button', { name: 'Continue to Stripe checkout' })
+      const checkout = await screen.findByRole('button', { name: 'Continue to payment' })
       watcher.seen.length = 0
       fireEvent.click(checkout)
       // The attempt read failed, so the page stays honest rather than offering checkout again.
       await waitFor(() => expect(attemptReads).toBeGreaterThan(0))
-      expect(screen.queryByRole('button', { name: 'Continue to Stripe checkout' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Continue to payment' })).toBeNull()
       attemptFails = false
       await act(async () => { await vi.advanceTimersByTimeAsync(2_100) })
       expect(await screen.findByRole('heading', { name: 'Confirming your payment' })).toBeTruthy()
@@ -907,7 +939,7 @@ describe('a 429 try_later from Checkout or the portal', () => {
       vi.stubGlobal('fetch', fetch)
       render(<MemoryRouter><BillingPage /></MemoryRouter>)
       await act(async () => { await vi.advanceTimersByTimeAsync(10) })
-      fireEvent.click(screen.getByRole('button', { name: 'Continue to Stripe checkout' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Continue to payment' }))
       await act(async () => { await vi.advanceTimersByTimeAsync(10) })
       const until = Date.parse('2026-10-09T18:00:00Z') + 540_000
       const at = retryWaitCopy(until, Date.parse('2026-10-09T18:00:00Z')).at
@@ -921,7 +953,7 @@ describe('a 429 try_later from Checkout or the portal', () => {
       // The window passes without a request; then one click may ask again.
       await act(async () => { await vi.advanceTimersByTimeAsync(540_000 + 1_000) })
       expect(posts()).toBe(1)
-      expect(screen.getByRole('button', { name: 'Continue to Stripe checkout' }).hasAttribute('disabled')).toBe(false)
+      expect(screen.getByRole('button', { name: 'Continue to payment' }).hasAttribute('disabled')).toBe(false)
     } finally { vi.useRealTimers() }
   })
 

@@ -18,8 +18,10 @@ for (const width of [1440, 390]) {
       page.on('request', request => { if (new URL(request.url()).pathname.startsWith('/v1/')) apiRequests.push(request.url()) })
       await page.goto(`/supporter/thanks?attempt=untrusted&success=1${cancelled ? '&cancelled=1' : ''}`)
       await expect(page.getByRole('heading', { name: 'Return to your extension' })).toBeVisible()
-      await expect(page.getByText(/Your extension will check its status/)).toBeVisible()
-      await expect(page.getByText(/Payment received|nothing was charged|Supporter is active/i)).toHaveCount(0)
+      // F22 copy: where Supporter turns on, conditional where the untrusted address cannot know.
+      await expect(page.getByTestId('supporter-thanks-copy')).toContainText(cancelled ? 'If you left checkout before paying, nothing was charged.' : 'Supporter turns on there by itself once Stripe confirms')
+      await expect(page.getByText(/This page does not confirm a payment or grant Supporter access/)).toBeVisible()
+      await expect(page.getByText(/Payment received|^nothing was charged|Supporter is active/i)).toHaveCount(0)
       expect(apiRequests).toEqual([])
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
       await page.screenshot({ path: testInfo.outputPath(`thanks-${cancelled ? 'cancelled' : 'returned'}-${width}.png`), fullPage: true })

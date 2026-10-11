@@ -1,12 +1,21 @@
 const STORAGE_KEY = 'pulse.account.billingReturn.v1'
 const MAX_AGE_MS = 15 * 60_000
 const ATTEMPT_ID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/
+const SUBSCRIBE_INTENT = 'subscribe'
+/** Where "Become a Supporter" continues: the one-screen review on the billing page. */
+export const ACCOUNT_BILLING_SUBSCRIBE_PATH = '/account/billing?intent=subscribe'
 
 export function accountBillingReturnPath(value: unknown): string | null {
   if (typeof value !== 'string' || value.length > 256 || !/^\/account\/billing(?:\/return)?(?:\?[^#\\\s]*)?$/.test(value)) return null
   const url = new URL(value, 'https://streampulse.stream')
   const entries = [...url.searchParams.entries()]
   if (entries.length === 0) return url.pathname
+  // The remembered "Become a Supporter" intent (spec 2026-10-10 §3.1): exactly
+  // one intent=subscribe on /account/billing. It names a flow, never a URL or
+  // identity; any other value, a duplicate or an extra parameter is refused.
+  if (url.pathname === '/account/billing') {
+    return entries.length === 1 && entries[0]![0] === 'intent' && entries[0]![1] === SUBSCRIBE_INTENT ? ACCOUNT_BILLING_SUBSCRIBE_PATH : null
+  }
   if (url.pathname !== '/account/billing/return') return null
   const attempts = url.searchParams.getAll('attempt')
   const cancelled = url.searchParams.getAll('cancelled')

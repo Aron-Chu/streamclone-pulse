@@ -1,7 +1,9 @@
 import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { SUPPORTER_PATH, TERMS_PATH } from '../../lib/externalLinks'
-import { PrelaunchNotice } from './PrelaunchNotice'
+import { PrelaunchNotice, useSalesOpen } from './PrelaunchNotice'
+import { BillingContactLink, LostTwitchShort } from './SupporterOfferCopy'
+import { statedConsumerRights } from '../../lib/supporterOffer'
 
 /**
  * Cancellation and refund policy for Pulse Supporter.
@@ -15,8 +17,14 @@ import { PrelaunchNotice } from './PrelaunchNotice'
  * a completed full refund or a lost dispute expires that period, a partial
  * refund keeps it, and an open dispute sends the membership to review, which
  * grants no access.
+ *
+ * "Not open yet" wording follows the one server-driven sales switch (Supporter
+ * launch spec 2026-10-10 §2.4); the billing contact and the statutory rights
+ * come from src/shared/supporter-offer.json (§7).
  */
 export default function Refunds() {
+  const open = useSalesOpen()
+  const consumerRights = statedConsumerRights()
   return (
     <PublicLayout>
       <article className="panel public-document" data-testid="refund-policy">
@@ -41,7 +49,7 @@ export default function Refunds() {
         <section className="mt-8 rounded-xl border border-white/[0.08] bg-black/20 p-6">
           <h2 className="!mt-0">Summary</h2>
           <p className="text-zinc-300">
-            Paid sign-ups are not open yet. Once they are, you can cancel whenever you like and keep
+            {open ? 'You can' : 'Paid sign-ups are not open yet. Once they are, you can'} cancel whenever you like and keep
             access until the end of the period you already paid for. No cancellation fee, no minimum
             term, and no need to ask anyone. If something went wrong — a duplicate charge, a charge
             you did not intend, or a feature that did not work — email and it gets refunded.
@@ -54,11 +62,10 @@ export default function Refunds() {
             time. If it is not monitored, replace the address everywhere. */}
         <p>
           Cancellation is self-service in the Stripe Customer Portal, reachable through Manage
-          subscription in the extension or on your account page once sign-ups open. You can also
-          cancel by emailing{' '}
-          <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a> from the billing
-          email you gave Stripe at checkout.
+          subscription in the extension or on your account page{open ? '' : ' once sign-ups open'}. You can also
+          cancel by emailing <BillingContactLink /> from the billing email you gave Stripe at checkout.
         </p>
+        <LostTwitchShort testId="refunds-lost-twitch-cancel" />
         <ul>
           <li>Cancelling takes effect at the end of the period you have already paid for.</li>
           <li>Supporter cosmetics stay active until then; nothing is switched off early.</li>
@@ -141,18 +148,24 @@ export default function Refunds() {
             rights depend on the selling entity and jurisdiction, which only the owner
             can supply with a legal professional. Do not fill them in from elsewhere. */}
         <h2>Consumer cancellation rights</h2>
-        <p>
+        <p data-testid="refunds-consumer-rights">
           Some places give you a statutory right to cancel a new online purchase within a set period,
           separate from this policy. Nothing here removes a right you have under consumer law that
-          cannot be waived. Paid sign-ups are not open yet. The specific statutory rights that apply
-          to you are pending and will be stated in the <Link to={TERMS_PATH}>terms of use</Link>{' '}
-          before sign-ups open.
+          cannot be waived.{' '}
+          {consumerRights
+            ? <span className="whitespace-pre-line">{consumerRights}</span>
+            : open
+              ? <>The specific statutory rights that apply to you are pending and will be stated in
+                the <Link to={TERMS_PATH}>terms of use</Link>.</>
+              : <>Paid sign-ups are not open yet. The specific statutory rights that apply
+                to you are pending and will be stated in the <Link to={TERMS_PATH}>terms of use</Link>{' '}
+                before sign-ups open.</>}
         </p>
 
         <h2>How to ask</h2>
         {/* MERGE GATE (memo T1-6): see the note under "Cancelling". */}
         <p>
-          Email <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a> from the
+          Email <BillingContactLink /> from the
           billing email you gave Stripe at checkout, and include the date and amount of the charge or
           the invoice number from your Stripe receipt. Please do not include your full card number —
           it is not needed and StreamPulse cannot use it.
@@ -161,6 +174,7 @@ export default function Refunds() {
           Refund requests are answered by a person. There is no automated refund line and no phone
           support.
         </p>
+        <LostTwitchShort testId="refunds-lost-twitch-ask" />
 
         <h2>Disputes and chargebacks</h2>
         <p>

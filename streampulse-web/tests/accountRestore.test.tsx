@@ -136,8 +136,10 @@ describe('static payment return', () => {
   it.each(['/supporter/thanks?attempt=fake&success=1', '/supporter/thanks?attempt=fake&cancelled=1'])('makes no authenticated reads or payment claims for %s', path => {
     render(<MemoryRouter initialEntries={[path]}><SupporterThanks /></MemoryRouter>)
     expect(screen.getByRole('heading', { name: 'Return to your extension' })).toBeTruthy()
-    expect(screen.getByText(/Your extension will check its status/)).toBeTruthy()
-    expect(screen.queryByText(/Payment received|nothing was charged|Supporter is active/i)).toBeNull()
+    expect(screen.getByTestId('supporter-thanks-copy').textContent).toMatch(path.includes('cancelled') ? /^If you left checkout before paying, nothing was charged\. You can start again from StreamPulse settings\.$/ : /Supporter turns on there by itself once Stripe confirms/)
+    expect(screen.getByText(/This page does not confirm a payment or grant Supporter access/)).toBeTruthy()
+    // An untrusted return address never claims an outcome as fact.
+    expect(screen.queryByText(/Payment received|^nothing was charged|Supporter is active|You're a Supporter/i)).toBeNull()
     expect(restoreRequest).not.toHaveBeenCalled()
     expect(screen.getByRole('link', { name: 'Help & support' }).classList.contains('pulse-account-primary')).toBe(true)
     expect(document.querySelectorAll('[data-testid="supporter-checkout-return"] .pulse-account-primary')).toHaveLength(1)

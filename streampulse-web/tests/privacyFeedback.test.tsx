@@ -79,7 +79,8 @@ describe('Privacy: feedback form', () => {
     const sentry = section('privacy-third-party-sentry')
     expect(sentry).toMatch(/Sentry \(website error monitoring\)/)
     expect(sentry).toMatch(/error\s+report: the kind of error, where in the site's code it happened, the site\s+version and the page route/)
-    expect(sentry).toMatch(/Account pages have it off\./)
+    expect(sentry).toMatch(/On account and billing pages it sends only the page name, a\s+short error code and the code location/)
+    expect(sentry).toMatch(/It is off on the Twitch sign-in return, email\s+sign-in, device approval and restore pages\./)
     expect(sentry).toMatch(/Your IP address is seen by Sentry\s+while a report is sent, as with any web request, and is not stored\./)
     expect(sentry).toMatch(/extension does not use Sentry/)
     // The unnamed "error-monitoring processor" wording is gone.
