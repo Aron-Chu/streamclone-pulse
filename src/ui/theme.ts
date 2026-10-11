@@ -334,6 +334,31 @@ export const shadowStyles = `
     outline: 2px solid rgba(var(--pulse-accent-light-rgb, 196, 181, 253), 0.95);
     outline-offset: 2px;
   }
+  .pulse-strength-two { display: grid; gap: 2px; line-height: 12px; min-width: 0; }
+  /* One line only: a wrapped first line would stack the pill under two 12px
+     lines and grow the row past 40px in narrow or compact panels. */
+  .pulse-strength-two > :first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pulse-strength-line2 { align-items: center; display: flex; gap: 5px; height: 14px; min-width: 0; }
+  .pulse-strength-pill {
+    align-items: center;
+    border: 1px solid;
+    border-radius: 999px;
+    display: inline-flex;
+    font-size: 9px;
+    font-variant-numeric: tabular-nums;
+    font-weight: 800;
+    height: 14px;
+    line-height: 1;
+    padding: 0 6px;
+    white-space: nowrap;
+  }
+  .pulse-strength-pill[data-lvl="1"] { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.12); color: ${theme.textSecondary}; }
+  .pulse-strength-pill[data-lvl="2"] { background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.12); border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.28); color: rgb(var(--pulse-accent-light-rgb, 167, 139, 250)); }
+  .pulse-strength-pill[data-lvl="3"] { background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.24); border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.45); color: ${theme.textPrimary}; }
+  .pulse-strength-pill[data-lvl="4"] { background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.48); border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.65); color: #fff; }
+  /* Solid fills carry text on accentStrong (design guide): onAccent on the
+     plain Aurora accent is only 4.2:1, under AA for 9px text. */
+  .pulse-strength-pill[data-lvl="5"] { background: rgb(var(--pulse-accent-strong-rgb, 124, 58, 237)); border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.9); color: ${theme.onAccent}; }
   .pulse-library-peek-cta {
     align-items: center;
     appearance: none;

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { test, expect } from '../helpers/testFixtures.ts'
 import type { EvidenceCollectors } from '../helpers/evidence.ts'
 import type { MockApiController } from '../helpers/mockApi.ts'
@@ -189,10 +190,56 @@ test.describe('chart preview/lock interactions', () => {
     const chart = extension.page.locator(`#${PULSE_ROOT_ID} svg[data-testid="pulse-overview-chart"]`)
     await expect(featured).toBeVisible()
     expect((await featured.boundingBox())!.y).toBeLessThan((await chart.boundingBox())!.y)
+    // Strength pill on a second line under the time: the fixture's 01:00:00
+    // minute has 140 chats; the 15 measured minutes before it average 58.7,
+    // so 2.4x usual, the first accent step. The row keeps its 40px height.
+    const pill = featured.locator('.pulse-strength-pill')
+    await expect(pill).toHaveText('2.4× usual')
+    await expect(pill).toHaveAttribute('data-lvl', '2')
+    await expect(featured).toHaveAttribute('title', '140 chats in the minute at 01:00:00. The 15 measured minutes before it averaged 59 a minute.')
+    const featuredBox = (await featured.boundingBox())!
+    const pillBox = (await pill.boundingBox())!
+    expect(featuredBox.height).toBeCloseTo(40, 0)
+    expect(pillBox.height).toBeCloseTo(14, 0)
+    expect(pillBox.y + pillBox.height).toBeLessThanOrEqual(featuredBox.y + featuredBox.height)
+    // At the default width the whole time line fits; nothing is ellipsized.
+    const line = featured.locator('.pulse-strength-two > :first-child')
+    expect(await line.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
     await featured.click()
     // Its ranked moment shows in the Top Moments card.
     await expect(extension.page.locator(`#${PULSE_ROOT_ID} [data-top-moment-card="selected"] [data-selected-moment-card="true"]`)).toBeVisible()
     await assertBookmarkLabel(extension.page)
+    assertNoUncaughtErrors(evidence)
+  })
+
+  test('featured moment row stays 40px with the pill in a narrow compact panel', async ({ extension, prepare, evidence }) => {
+    // Compact density in a 300px chat column leaves the time line less room
+    // than it needs; if it wrapped, the pill would stack under two lines and
+    // the row (and the chart under it) would grow to 50px when it appears.
+    await prepare({ scenario: 'live-ready', twitchKind: 'live', storage: { densityPreference: 'compact' } })
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+    await extension.page.addStyleTag({ content: '.channel-root__right-column { min-width: 300px !important; width: 300px !important; max-width: 300px !important; }' })
+    await expect
+      .poll(async () => Math.round((await extension.page.locator(`#${PULSE_ROOT_ID}`).boundingBox())?.width ?? 0), { timeout: 10_000 })
+      .toBe(300)
+    const featured = extension.page.locator(`#${PULSE_ROOT_ID} [data-featured-moment="true"]`)
+    const pill = featured.locator('.pulse-strength-pill')
+    await expect(pill).toHaveText('2.4× usual')
+    const featuredBox = (await featured.boundingBox())!
+    const pillBox = (await pill.boundingBox())!
+    expect(featuredBox.height).toBeCloseTo(40, 0)
+    expect(pillBox.y + pillBox.height).toBeLessThanOrEqual(featuredBox.y + featuredBox.height)
+    // The time line is narrower than its text here, so it ellipsizes on one
+    // line (the hover title still carries the full time).
+    const line = featured.locator('.pulse-strength-two > :first-child')
+    const fit = await line.evaluate(el => {
+      const range = document.createRange()
+      range.selectNodeContents(el)
+      return { client: el.clientWidth, scroll: el.scrollWidth, lines: new Set(Array.from(range.getClientRects()).map(rect => Math.round(rect.top))).size }
+    })
+    expect(fit.scroll).toBeGreaterThan(fit.client)
+    expect(fit.lines).toBe(1)
     assertNoUncaughtErrors(evidence)
   })
 
@@ -670,5 +717,131 @@ test.describe('chart preview/lock interactions', () => {
       extension.context.off('request', onRequest)
       await attachChartNetworkEvidence(testInfo, api, evidence, observedUrls)
     }
+  })
+})
+
+/**
+ * Serves pulse-live-ready.json (recent and ?window=full) with its rollups
+ * passed through `mutate`, so a spec can set the moment minute's chat count or
+ * mark earlier minutes unmeasured. The fixture's 15 minutes before the 01:00:00
+ * moment average 880 / 15 = 58.67 chats a minute.
+ */
+async function routeLiveReadyRollups(
+  context: import('@playwright/test').BrowserContext,
+  mutate: (rollup: { offsetSeconds: number; chatCount: number; missing?: boolean }) => Record<string, unknown>,
+): Promise<{ fullRequests: () => number; served: () => number }> {
+  let fullRequests = 0
+  let served = 0
+  const fixture = JSON.parse(readFileSync(new URL('../fixtures/api/pulse-live-ready.json', import.meta.url), 'utf8'))
+  const payload = { ...fixture, rollups: fixture.rollups.map(mutate), fullRollups: fixture.fullRollups.map(mutate) }
+  const serve = async (route: import('@playwright/test').Route) => {
+    const url = new URL(route.request().url())
+    // The worker asks for full history by stream id once it knows the stream
+    // (/pulse/streams/<id>?window=full), else on the channel route.
+    if (url.pathname.endsWith('/fixturechan') || url.pathname.startsWith('/v1/extension/pulse/streams/')) {
+      served += 1
+      if (url.searchParams.get('window') === 'full') fullRequests += 1
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify(payload) })
+    } else {
+      await route.fallback()
+    }
+  }
+  await context.route('https://api.streampulse.stream/v1/extension/pulse/channels/fixturechan*', serve)
+  await context.route('https://api.streampulse.stream/v1/extension/pulse/streams/**', serve)
+  return { fullRequests: () => fullRequests, served: () => served }
+}
+
+const FIXTURE_USUAL = 880 / 15
+
+/** Alpha of a computed CSS color: 1 for rgb(), the 4th channel for rgba(). */
+function cssAlpha(color: string): number {
+  const parts = color.match(/rgba?\(([^)]*)\)/)?.[1].split(',').map(part => Number(part.trim())) ?? []
+  return parts.length === 4 ? parts[3] : 1
+}
+
+test.describe('Live now strength pill steps and hidden states (Codex audit)', () => {
+  for (const step of [
+    { ratio: 2.4, label: '2.4× usual', level: '2' },
+    { ratio: 3.5, label: '3.5× usual', level: '3' },
+    { ratio: 6, label: '6.0× usual', level: '4' },
+    { ratio: 9, label: '9.0× usual', level: '5' },
+    { ratio: 11, label: '10×+ usual', level: '5' },
+  ]) {
+    test(`a ${step.ratio}x moment renders the level ${step.level} pill "${step.label}"`, async ({ extension, prepare, evidence }, info) => {
+      await prepare({ scenario: 'live-ready', twitchKind: 'live' })
+      const chatCount = Math.round(FIXTURE_USUAL * step.ratio)
+      await routeLiveReadyRollups(extension.context, rollup => rollup.offsetSeconds === 3600 ? { ...rollup, chatCount } : rollup)
+      await openTwitchChannel(extension.page)
+      await waitForPulseRoot(extension.page)
+      const featured = extension.page.locator(`#${PULSE_ROOT_ID} [data-featured-moment="true"]`)
+      const pill = featured.locator('.pulse-strength-pill')
+      await expect(pill).toHaveText(step.label)
+      await expect(pill).toHaveAttribute('data-lvl', step.level)
+      expect((await featured.boundingBox())!.height).toBeCloseTo(40, 0)
+      await info.attach(`strength-pill-lvl${step.level}-${step.ratio}x.png`, { body: await featured.screenshot(), contentType: 'image/png' })
+      assertNoUncaughtErrors(evidence)
+    })
+  }
+
+  test('each tint step paints more strongly than the last in the real panel', async ({ extension, prepare, evidence }, info) => {
+    await prepare({ scenario: 'live-ready', twitchKind: 'live' })
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+    const featured = extension.page.locator(`#${PULSE_ROOT_ID} [data-featured-moment="true"]`)
+    const pill = featured.locator('.pulse-strength-pill')
+    await expect(pill).toHaveAttribute('data-lvl', '2')
+    // Same element, same shadow stylesheet: step through the levels and read
+    // the computed paint, so the comparison is what Chrome actually draws.
+    const seen: Array<{ level: number; background: string; alpha: number }> = []
+    for (const level of [1, 2, 3, 4, 5]) {
+      await pill.evaluate((el, value) => el.setAttribute('data-lvl', String(value)), level)
+      const background = await pill.evaluate(el => getComputedStyle(el).backgroundColor)
+      seen.push({ level, background, alpha: cssAlpha(background) })
+      await info.attach(`strength-pill-css-lvl${level}.png`, { body: await pill.screenshot(), contentType: 'image/png' })
+    }
+    await info.attach('strength-pill-steps.json', { body: JSON.stringify(seen, null, 2), contentType: 'application/json' })
+    // Level 1 is a neutral white wash; 2 -> 3 -> 4 rise in accent alpha; 5 is solid.
+    expect(seen[0].background).toMatch(/^rgba\(255, 255, 255, /)
+    expect(seen[1].background).not.toMatch(/^rgba\(255, 255, 255, /)
+    for (let i = 2; i < 5; i += 1) expect(seen[i].alpha).toBeGreaterThan(seen[i - 1].alpha)
+    expect(seen[4].alpha).toBe(1)
+    assertNoUncaughtErrors(evidence)
+  })
+
+  test('a quiet stream (1.1x) shows no pill and keeps the 40px row', async ({ extension, prepare, evidence }, info) => {
+    await prepare({ scenario: 'live-ready', twitchKind: 'live' })
+    // 64 / 58.67 = 1.09, under the 1.2x floor.
+    const served = await routeLiveReadyRollups(extension.context, rollup => rollup.offsetSeconds === 3600 ? { ...rollup, chatCount: 64 } : rollup)
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+    const featured = extension.page.locator(`#${PULSE_ROOT_ID} [data-featured-moment="true"]`)
+    await expect(featured).toContainText('01:00:00')
+    // The fixture's first response already carries validated full history
+    // (fullRollups), which is what lets the 2.4x control show its pill at once;
+    // wait for the routed payload, then give the panel time before asserting absence.
+    await expect.poll(served.served, { timeout: 20_000 }).toBeGreaterThan(0)
+    await extension.page.waitForTimeout(1500)
+    await expect(featured.locator('.pulse-strength-pill')).toHaveCount(0)
+    await expect(featured).not.toContainText('usual')
+    expect((await featured.boundingBox())!.height).toBeCloseTo(40, 0)
+    await info.attach('strength-pill-quiet.png', { body: await featured.screenshot(), contentType: 'image/png' })
+    assertNoUncaughtErrors(evidence)
+  })
+
+  test('fewer than 10 measured minutes before the moment shows no pill', async ({ extension, prepare, evidence }, info) => {
+    await prepare({ scenario: 'live-ready', twitchKind: 'live' })
+    // Six of the 15 earlier minutes (00:00 to 00:25) are unmeasured, leaving 9.
+    const served = await routeLiveReadyRollups(extension.context, rollup => rollup.offsetSeconds <= 1500 ? { ...rollup, missing: true } : rollup)
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+    const featured = extension.page.locator(`#${PULSE_ROOT_ID} [data-featured-moment="true"]`)
+    await expect(featured).toContainText('01:00:00')
+    await expect.poll(served.fullRequests, { timeout: 20_000 }).toBeGreaterThan(0)
+    await extension.page.waitForTimeout(1500)
+    await expect(featured.locator('.pulse-strength-pill')).toHaveCount(0)
+    await expect(featured).not.toContainText('usual')
+    expect((await featured.boundingBox())!.height).toBeCloseTo(40, 0)
+    await info.attach('strength-pill-short-history.png', { body: await featured.screenshot(), contentType: 'image/png' })
+    assertNoUncaughtErrors(evidence)
   })
 })
