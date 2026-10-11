@@ -53,8 +53,8 @@ export function SavedMoments({ login, streamId, vodId, selected, minuteOffsetSec
   minuteOffsetSeconds?: number | null
 }) {
   const [items, setItems] = useState<PulseBookmark[]>([])
-  /** From the worker: saves stay on this device, or (private windows) need an account. */
-  const [home, setHome] = useState<'device' | 'connect'>()
+  /** From the worker: saves stay on this device, go to the signed-in account, or (private windows) need an account. */
+  const [home, setHome] = useState<'device' | 'account' | 'connect'>()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<SaveProblem>()
   const [notice, setNotice] = useState('')
@@ -95,7 +95,7 @@ export function SavedMoments({ login, streamId, vodId, selected, minuteOffsetSec
           return
         }
         if ('type' in result && result.type === 'BOOKMARKS') {
-          if (result.device) setHome('device')
+          setHome(result.device ? 'device' : 'account')
           setItems(previous => {
             const merged = new Map(previous.map(item => [item.id, item]))
             for (const item of result.items) merged.set(item.id, item)
@@ -167,7 +167,7 @@ export function SavedMoments({ login, streamId, vodId, selected, minuteOffsetSec
       if ('error' in result && result.error) throw new Error(result.error)
       if (!('type' in result) || result.type !== 'BOOKMARK') throw new Error('invalid_bookmark_response')
       setItems(previous => [result.item, ...previous.filter(item => item.id !== result.item.id)])
-      if (result.device) setHome('device')
+      setHome(result.device ? 'device' : 'account')
       setNotice(`${result.device ? 'Saved on this device' : 'Bookmarked'} at ${formatHeatOffset(offset)}.`)
     } catch (cause) {
       if (current === generation.current) setError(saveProblem(cause))
@@ -205,9 +205,9 @@ export function SavedMoments({ login, streamId, vodId, selected, minuteOffsetSec
     <p className="pulse-moment-actions-copy" style={{ margin: '7px 0 0', color: theme.textMuted, fontSize: 10, lineHeight: 1.4 }}>
       {!usableOffset ? 'Select a moment or a chart minute to bookmark it.'
         : !canSave ? 'Bookmarks unlock once Pulse links this stream.'
-          : home === 'device' ? 'Bookmarks stay on this device. No account needed.'
-            : home === 'connect' ? (TWITCH_SIGNIN_ENABLED ? 'Free with a Pulse account. Connect to save.' : privateWindow() ? 'Private windows keep no bookmarks.' : 'Reconnect your account in settings to bookmark.')
-              : TWITCH_SIGNIN_ENABLED ? 'Free to use. Bookmarks sync with your Pulse account.' : 'Bookmarks stay on this device. No account needed.'}
+          : home === 'connect' ? (TWITCH_SIGNIN_ENABLED ? 'Free with a Pulse account. Connect to save.' : privateWindow() ? 'Private windows keep no bookmarks.' : 'Reconnect your account in settings to bookmark.')
+            /* The worker's answer decides; until it answers, the build's sign-in switch does. */
+            : home === 'account' || (TWITCH_SIGNIN_ENABLED && !home) ? 'Free to use. Bookmarks sync with your Pulse account.' : 'Bookmarks stay on this device. No account needed.'}
     </p>
     {notice ? <p className="pulse-moment-action-feedback" role="status" style={{ margin: '6px 0 0', color: theme.textSecondary }}>{notice}</p> : null}
     {error ? <div className="pulse-moment-action-error" role="alert" style={{ marginTop: 6, display: 'grid', gap: 6 }}>
