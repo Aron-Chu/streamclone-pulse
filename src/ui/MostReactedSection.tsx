@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
 import {
   LIVE_HEAT_MIN_COMPLETED_ROLLUPS,
@@ -18,6 +18,7 @@ import {
 import { PulseMomentRow, momentRowKey } from './PulseMomentRow.tsx'
 import { PulseSectionCard } from './PulseSectionCard.tsx'
 import { PulseThemedSelect } from './PulseThemedSelect.tsx'
+import { TopMomentCard } from './TopMomentCard.tsx'
 import { theme } from './theme.ts'
 
 export interface MostReactedSectionProps {
@@ -31,13 +32,11 @@ export interface MostReactedSectionProps {
   onAnalytics: (point: LiveHeatPoint) => void
   onAnalyticsAtOffset?: (offsetSeconds: number) => void
   onHighlightOffset?: (offsetSeconds: number | null) => void
-  /** `fromList` marks a pick made in this list, whose card then opens here. */
-  onPinOffset?: (offsetSeconds: number | null, fromList?: boolean) => void
   /**
-   * The pinned moment was picked in this list, so its card opens under its
-   * row. Picked on the chart, the card opens under the chart instead.
+   * Pins a moment, or clears the pin. The pinned moment, picked here or as a
+   * ranked moment on the chart, shows in the card above the list.
    */
-  cardInList?: boolean
+  onPinOffset?: (offsetSeconds: number | null) => void
   hasVodContext?: boolean
   demoMode?: boolean
 }
@@ -64,13 +63,13 @@ export function MostReactedSection({
   onAnalyticsAtOffset,
   onHighlightOffset,
   onPinOffset,
-  cardInList = false,
   hasVodContext = false,
   demoMode = false,
 }: MostReactedSectionProps) {
   const heat = resolveMostReactedHeat(payload)
   const [sortMode, setSortMode] = useState<MomentSortMode>('reaction')
   const [listExpanded, setListExpanded] = useState(false)
+  const cardId = useId()
 
   const sortedPoints = useMemo(
     () => sortLiveHeatPoints(heat.points, sortMode),
@@ -89,12 +88,14 @@ export function MostReactedSection({
     ? liveHeatPointKey(payload.streamId, pinnedMomentPoint)
     : null
 
-  // A row with an open card stays listed while it is open, even when a newer
-  // moment outranks it past the fold.
+  // Collapsed, a picked row that ranks past the fold (a poll can push it
+  // there) stays listed at the end, so its row and its focus stay.
   const visiblePoints = listExpanded
     ? sortedPoints
     : sortedPoints.filter((point, index) => index < MOST_REACTED_VISIBLE_COUNT
-      || (cardInList && liveHeatPointKey(payload.streamId, point) === pinnedMomentKey))
+      || liveHeatPointKey(payload.streamId, point) === pinnedMomentKey)
+  // The card shows the pinned moment, or else the strongest one.
+  const cardPoint = demoMode ? null : pinnedMomentPoint ?? sortLiveHeatPoints(heat.points, 'reaction')[0]
   const hiddenPointCount = sortedPoints.length - visiblePoints.length
   const hasExplicitPeaks = payload.peaks !== undefined
   const isCollectingMoments = hasExplicitPeaks && (
@@ -151,6 +152,18 @@ export function MostReactedSection({
           </span>
         </div>
       ) : null}
+      {cardPoint ? (
+        <TopMomentCard
+          id={cardId}
+          point={cardPoint}
+          selected={pinnedMomentPoint != null}
+          backendUrl={backendUrl}
+          jumpLabel={resolveJumpLabel(payload, hasVodContext)}
+          onJump={next => onJumpToOffset?.(reactionAnalyticalOffset(next))}
+          onAnalytics={next => onAnalyticsAtOffset?.(reactionAnalyticalOffset(next))}
+          onClear={() => onPinOffset?.(null)}
+        />
+      ) : null}
       <div style={styles.momentList}>
         {visiblePoints.map(point => {
           const selected =
@@ -158,22 +171,15 @@ export function MostReactedSection({
           return (
             <PulseMomentRow
               // Stable while the backend refines the moment, so its row (and
-              // its open card and focus) stays mounted through a poll.
+              // its focus) stays mounted through a poll.
               key={momentRowKey(point, heat.points)}
               point={point}
               backendUrl={backendUrl}
               selected={selected}
+              controls={cardPoint ? cardId : undefined}
               onHighlight={demoMode ? () => undefined : handleHighlight}
               onSelect={demoMode ? () => undefined : next => {
-                if (!selected || !cardInList) onPinOffset?.(reactionAnalyticalOffset(next), true)
-              }}
-              // The same actions as the chart's card for this moment.
-              card={demoMode ? undefined : {
-                open: selected && cardInList,
-                jumpLabel: resolveJumpLabel(payload, hasVodContext),
-                onJump: next => onJumpToOffset?.(reactionAnalyticalOffset(next)),
-                onAnalytics: next => onAnalyticsAtOffset?.(reactionAnalyticalOffset(next)),
-                onClose: () => onPinOffset?.(null),
+                if (!selected) onPinOffset?.(reactionAnalyticalOffset(next))
               }}
             />
           )

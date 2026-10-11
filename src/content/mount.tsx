@@ -37,6 +37,7 @@ import {
 import {
   resolveOverlayHostVisibility,
   SIDEBAR_FLOAT_FALLBACK_MS,
+  snapLayoutNeedsRender,
   type OverlayHostVisibility,
 } from './resolveOverlayHostVisibility.ts'
 import { applyTwitchSidebarChromeHides } from './twitchSidebarChrome.ts'
@@ -191,24 +192,17 @@ function handleOverlayModeChange(mode: OverlayMode): void {
   renderOverlay(currentPayload, currentError)
 }
 
+// Hosts are only ever appended to <html> (createShadowHost), so duplicates are
+// found among its direct children, never by walking the whole document.
 function purgeExtraHosts(id: string, keep: HTMLElement | null): void {
   // Do not use `#id` selectors — browsers may collapse duplicate IDs to one match.
-  const doomed: HTMLElement[] = []
-  for (const node of document.querySelectorAll('*')) {
-    if (!(node instanceof HTMLElement) || node.id !== id) continue
-    if (keep && node === keep && keep.isConnected) continue
-    doomed.push(node)
+  for (const node of Array.from(document.documentElement.children)) {
+    if (node.id === id && node !== keep) node.remove()
   }
-  for (const node of doomed) node.remove()
 }
 
-function containsOverlayHost(node: Node): boolean {
-  if (!(node instanceof Element)) return false
-  if (node.id === TAB_HOST_ID || node.id === PANEL_HOST_ID) return true
-  for (const descendant of node.querySelectorAll('*')) {
-    if (descendant.id === TAB_HOST_ID || descendant.id === PANEL_HOST_ID) return true
-  }
-  return false
+function isOverlayHost(node: Node): boolean {
+  return node instanceof Element && (node.id === TAB_HOST_ID || node.id === PANEL_HOST_ID)
 }
 
 function reconcileOverlayHosts(): void {
@@ -241,14 +235,15 @@ function installOverlayHostObserver(): void {
     // Twitch and extension reinjection can append a second host without changing
     // the route. Reconcile that mutation immediately instead of waiting for the
     // debounced route scheduler, while ignoring normal chat/page churn.
-    if (!mutations.some(mutation => Array.from(mutation.addedNodes).some(containsOverlayHost))) return
+    if (!mutations.some(mutation => Array.from(mutation.addedNodes).some(isOverlayHost))) return
     if (overlayHostReconcileTimer != null) return
     overlayHostReconcileTimer = setTimeout(() => {
       overlayHostReconcileTimer = null
       reconcileOverlayHosts()
     }, 50)
   })
-  overlayHostObserver.observe(document.documentElement, { childList: true, subtree: true })
+  // Direct children only: chat churn deeper in the page never reaches this callback.
+  overlayHostObserver.observe(document.documentElement, { childList: true })
 }
 
 function createShadowHost(id: string): { host: HTMLElement; shadow: ShadowRoot; root: Root } {
@@ -577,11 +572,17 @@ function renderOverlay(payload: PulsePayload | null, error?: string): void {
 
 function startSidebarObserver(): void {
   stopObserve?.()
+  // Seed with the placed layout so a restart (navigation, settings) holds it
+  // through a brief chat remount instead of hiding the hosts.
   stopObserve = observeChatSnapLayout(next => {
+    const previous = sidebarLayout
     sidebarLayout = next
     if (next != null) resetSidebarFallback()
-    renderOverlay(currentPayload, currentError)
-  })
+    // A move or resize only restyles the hosts; React renders only when the
+    // panel appears, disappears or crosses the compact-width line.
+    if (snapLayoutNeedsRender(previous, next)) renderOverlay(currentPayload, currentError)
+    else applyHostVisibility(currentHostVisibility())
+  }, sidebarLayout)
 }
 
 export function mountOverlay(

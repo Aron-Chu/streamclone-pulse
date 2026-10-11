@@ -122,8 +122,9 @@ export interface LiveStatsBandProps {
   /** Ranked-moment origin for the shared chart inspector; null means a raw chart minute. */
   selectedMomentOffsetSeconds?: number | null
   /**
-   * The pinned moment was picked in the Top Moments list and its card opens
-   * there, under its row. The chart still marks the minute but opens no card.
+   * Top Moments is shown: its card above the list shows a pinned ranked
+   * moment, however it was picked. The chart still marks the minute but opens
+   * no card for it; minutes picked on the chart keep their card here.
    */
   cardInList?: boolean
   hasVodContext?: boolean
@@ -362,7 +363,8 @@ export function LiveStatsBand({
     () => rollups.map(rollup => rollup.offsetSeconds),
     [rollups],
   )
-  const rollupGapNotice = chartWindow === 'full' && hasFullRollups ? describeRollupGap(rollups) : null
+  // Validated full history flags missing Full buckets and zoomed-range minutes alike.
+  const rollupGapNotice = hasFullRollups ? describeRollupGap(rollups, true) : null
   const needsFullRollups =
     chartWindowNeedsFullFetch(chartWindow, payload, effectiveCurrentOffsetSeconds, activation)
     && (!hasFullRollups || fullRollupsMissingStreamPrefix(payload, activation))
@@ -559,8 +561,8 @@ export function LiveStatsBand({
     [payload, selectedMomentOffsetSeconds],
   )
 
-  // The list shows the card only while it still lists the moment. Once a poll
-  // drops it, the chart takes the card back for the pinned minute.
+  // Top Moments shows the card only while it still ranks the moment. Once a
+  // poll drops it, the chart takes the card back for the pinned minute.
   const listCard = cardInList && selectedMomentPoint != null
 
   // Clearing the pin used to unmount the inspector on the same frame, so it
@@ -574,8 +576,8 @@ export function LiveStatsBand({
   )
   const inspectorHold = usePinnedCardHold(inspectorInput, prefersReducedMotion())
 
-  // The 7TV panel folds for the card under the chart. A card in the list
-  // leaves it alone, so nothing above the picked row moves.
+  // The 7TV panel folds for the card under the chart. A moment shown in Top
+  // Moments leaves it alone, so nothing above the picked row moves.
   useEffect(() => {
     if (pinChartIndex != null && !listCard) {
       setEmotePanelExpanded(false)

@@ -271,7 +271,6 @@ export function streamSevenTvTotal(rollups: ExtensionRollup[]): number {
 }
 
 export function rollupSeries(payload: PulsePayload, window: RollupWindow = 'recent'): ExtensionRollup[] {
-  const maxPoints = window === 'full' ? FULL_TIMELINE_MAX_POINTS : SPARKLINE_MAX_POINTS
   const source = rollupSource(payload, window)
   const filtered = source.filter(rollup => {
     if (rollup.missing) return false
@@ -287,7 +286,10 @@ export function rollupSeries(payload: PulsePayload, window: RollupWindow = 'rece
       || (rollup.topEmotes?.length ?? 0) > 0
     )
   })
-  return filtered.slice(-maxPoints)
+  // Full history stays whole. densifyRollupsForTimeline already caps the Full
+  // chart at FULL_TIMELINE_MAX_POINTS buckets; trimming the source here dropped
+  // every minute before the last 8h of a long stream.
+  return window === 'full' ? filtered : filtered.slice(-SPARKLINE_MAX_POINTS)
 }
 
 /** Chart rollups: prefer full-stream payload whenever the backend sends it. */
@@ -469,23 +471,25 @@ export function densifyRollupsForTimeline(
 
   const bucketMinutes = totalMinutes / maxPoints
   const out: ExtensionRollup[] = []
+  // Buckets are contiguous and orderedRollups is sorted, so one cursor walks
+  // every minute once (a per-bucket filter was O(buckets x minutes)).
+  let cursor = 0
   for (let i = 0; i < maxPoints; i += 1) {
     const bucketStart = fromOffset + Math.floor(i * bucketMinutes) * step
     const bucketEnd = fromOffset + Math.floor((i + 1) * bucketMinutes) * step
-    const bucketRollups = orderedRollups.filter(rollup => (
-      rollup.offsetSeconds >= bucketStart
-      && (i === maxPoints - 1
-        ? rollup.offsetSeconds <= toOffset
-        : rollup.offsetSeconds < bucketEnd)
-    ))
     let chatSum = 0
     let sevenTvSum = 0
     let totalEmoteSum = 0
     let viewerSum = 0
     let viewerSamples = 0
     let missingMinutes = 0
+    let bucketRollupCount = 0
     const bucketTopEmotes: ExtensionEmote[][] = []
-    for (const rollup of bucketRollups) {
+    for (; cursor < orderedRollups.length; cursor += 1) {
+      const rollup = orderedRollups[cursor]!
+      // The last bucket also takes the closing minute (<= toOffset).
+      if (i < maxPoints - 1 && rollup.offsetSeconds >= bucketEnd) break
+      bucketRollupCount += 1
       chatSum += rollup.chatCount ?? 0
       sevenTvSum += rollup.sevenTvEmoteCount ?? 0
       totalEmoteSum += rollup.totalEmoteCount ?? rollup.sevenTvEmoteCount ?? 0
@@ -507,7 +511,7 @@ export function densifyRollupsForTimeline(
     }
     const minutesInBucket = Math.max(1, Math.floor((bucketEnd - bucketStart) / step))
     const provenMinutesInBucket = Math.max(0, minutesInBucket - missingMinutes)
-    if (provenMinutesInBucket === 0 || bucketRollups.length === 0) {
+    if (provenMinutesInBucket === 0 || bucketRollupCount === 0) {
       out.push({
         offsetSeconds: bucketStart,
         chatCount: 0,
@@ -595,9 +599,9 @@ export function prepareChartRollups(
     ? mergeRecentRollupTail(rollupSeries(payload, 'full'), payload.rollups)
     : rollupSeries(payload, 'recent')
   let result: ExtensionRollup[]
+  const lastOffset = raw.length > 0 ? raw[raw.length - 1]!.offsetSeconds : 0
+  const toOffset = Math.max(options.currentOffsetSeconds, lastOffset)
   if (options.chartWindow === 'full' && !hasFull) {
-    const lastOffset = raw.length > 0 ? raw[raw.length - 1]!.offsetSeconds : 0
-    const toOffset = Math.max(options.currentOffsetSeconds, lastOffset)
     result = densifyRollupsForTimeline(raw, {
       fromOffset: 0,
       toOffset,
@@ -605,16 +609,7 @@ export function prepareChartRollups(
       missingRanges: payload.coverage?.missingRanges,
       missingBeforeOffset: raw[0]?.offsetSeconds ?? toOffset,
     })
-  } else if (options.chartWindow !== 'full' && hasFull) {
-    // Once validated full history is present, keep the complete source domain
-    // and let the chart viewport implement 15m/30m/60m/2h/4h presets. The
-    // previous implementation sliced the source here while the rail still
-    // used the stream duration, making a 60-minute plot look like Full stream
-    // and hiding historical viewer samples outside the tail.
-    result = raw
-  } else if (options.chartWindow !== 'full') {
-    const lastOffset = raw.length > 0 ? raw[raw.length - 1]!.offsetSeconds : 0
-    const toOffset = Math.max(options.currentOffsetSeconds, lastOffset)
+  } else if (!hasFull) {
     const fromOffset = Math.max(0, toOffset - chartWindowSeconds(options.chartWindow))
     const windowed = raw.filter(
       rollup => rollup.offsetSeconds >= fromOffset && rollup.offsetSeconds <= toOffset,
@@ -622,27 +617,25 @@ export function prepareChartRollups(
     // Keep latest rollups visible when the window filter is empty but tracking has data.
     const source = windowed.length > 0 ? windowed : raw
     result = source.slice(-chartMaxPoints(payload, options.chartWindow))
-  } else if (!hasFull) {
+  } else if (toOffset <= 60) {
     result = raw
   } else {
-    const lastOffset = raw.length > 0 ? raw[raw.length - 1]!.offsetSeconds : 0
-    const toOffset = Math.max(options.currentOffsetSeconds, lastOffset)
-    if (toOffset <= 60) {
-      result = raw
-    } else {
-      const fromOffset = resolveFullChartDensifyFromOffset(payload, raw, options.coverageStartOffsetSeconds)
-      const coverageStart = resolvePayloadCoverageStartOffset(payload, options.coverageStartOffsetSeconds)
-      result = densifyRollupsForTimeline(raw, {
-        fromOffset,
-        toOffset,
-        maxPoints: chartMaxPoints(payload, options.chartWindow, options.activation),
-        missingRanges: payload.coverage?.missingRanges,
-        missingBeforeOffset: hasMissingPrefixFromStreamStart(payload.coverage)
-          || (!payload.coverage && coverageStart > FULL_CHART_STREAM_START_TOLERANCE_SEC)
-          ? coverageStart
-          : 0,
-      })
-    }
+    // Validated full history keeps the complete source domain for every range;
+    // the chart viewport implements the 15m/30m/60m/2h/4h presets. Zoomed
+    // ranges get an uncapped one-minute grid, so a tracking hole is a run of
+    // missing minutes (blank lines, no-data band, gap notice, as in Full)
+    // rather than index-spaced points that join straight across it.
+    const coverageStart = resolvePayloadCoverageStartOffset(payload, options.coverageStartOffsetSeconds)
+    result = densifyRollupsForTimeline(raw, {
+      fromOffset: resolveFullChartDensifyFromOffset(payload, raw, options.coverageStartOffsetSeconds),
+      toOffset,
+      maxPoints: options.chartWindow === 'full' ? FULL_TIMELINE_MAX_POINTS : Infinity,
+      missingRanges: payload.coverage?.missingRanges,
+      missingBeforeOffset: hasMissingPrefixFromStreamStart(payload.coverage)
+        || (!payload.coverage && coverageStart > FULL_CHART_STREAM_START_TOLERANCE_SEC)
+        ? coverageStart
+        : 0,
+    })
   }
 
   prepareChartRollupsCache = {
@@ -799,24 +792,34 @@ export function chartEmptyMessage(options: {
   return 'No chat activity in the recent window yet.'
 }
 
-/** Largest hole between rollup minutes — surfaces when IRC tracking dropped mid-stream. */
-export function describeRollupGap(rollups: ExtensionRollup[]): string | null {
-  if (rollups.length < 2) return null
-  let maxGap = 0
-  let gapAfter = 0
-  let gapBefore = 0
-  for (let i = 1; i < rollups.length; i += 1) {
-    const prev = rollups[i - 1]?.offsetSeconds ?? 0
-    const next = rollups[i]?.offsetSeconds ?? 0
-    const gap = next - prev
-    if (gap > maxGap) {
-      maxGap = gap
-      gapAfter = prev
-      gapBefore = next
+/**
+ * Largest real hole between covered minutes — surfaces when IRC tracking
+ * dropped mid-stream. A hole is a run of `missing` rollups (missingRanges and
+ * empty Full buckets are flagged by densify) or, for raw minute rollups only,
+ * minutes more than 120s apart. Pass `bucketed` for prepared chart rollups:
+ * Full buckets are 4-5 minutes apart on streams over ~16h, which is spacing,
+ * not missing data. A missing opening is the coverage-start hint's job.
+ */
+export function describeRollupGap(rollups: ExtensionRollup[], bucketed = false): string | null {
+  let from = 0
+  let to = 0
+  let coveredEnd: number | null = null
+  let holeStart: number | null = null
+  for (const { offsetSeconds, missing } of rollups) {
+    if (missing) {
+      if (coveredEnd != null) holeStart ??= offsetSeconds
+      continue
     }
+    const start = holeStart ?? (bucketed ? offsetSeconds : coveredEnd ?? offsetSeconds)
+    if (offsetSeconds - start > to - from) {
+      from = start
+      to = offsetSeconds
+    }
+    coveredEnd = offsetSeconds + 60
+    holeStart = null
   }
-  if (maxGap <= 120) return null
-  return `Missing chat data from ${formatHeatOffset(gapAfter + 60)} to ${formatHeatOffset(gapBefore)}`
+  if (to - from <= 60) return null
+  return `Missing chat data from ${formatHeatOffset(from)} to ${formatHeatOffset(to)}`
 }
 
 export function plottedCoverageLabel(rollups: ExtensionRollup[]): string {

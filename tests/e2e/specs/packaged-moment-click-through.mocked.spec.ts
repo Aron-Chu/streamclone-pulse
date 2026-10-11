@@ -41,16 +41,18 @@ test('pressing the next Top Moments row keeps the card and selects that row', as
   expect(host.shadowRoots?.[0].shadowRootType).toBe(target === 'development' ? 'open' : 'closed')
 
   const rows = async () => (await tree(cdp)).filter(node => hasClass(node, 'pulse-moment-row-button'))
-  const card = async () => (await tree(cdp)).find(node => attr(node, 'data-selected-moment-card') === 'true')
+  // The Top Moments card's label: "Selected moment at …" once a row is picked.
+  const label = async () => {
+    const card = (await tree(cdp)).find(node => attr(node, 'data-selected-moment-card') === 'true')
+    return card ? attr(card, 'aria-label') ?? null : null
+  }
 
   const first = await centerOf(cdp, (await rows())[0]!)
   await page.mouse.click(first.x, first.y)
-  await expect.poll(async () => attr((await card()) ?? { nodeId: 0, nodeName: '' }, 'aria-label') ?? null).not.toBeNull()
-  const firstLabel = attr((await card())!, 'aria-label')
+  await expect.poll(label).toMatch(/^Selected moment at /)
+  const firstLabel = await label()
 
-  // Measure the next row only once the card has finished opening (240 ms) and
-  // the rows have settled. This panel is not scrollable, so the opening card
-  // still pushes the rows down.
+  // Measure the next row once the rows have settled.
   await page.waitForTimeout(400)
   let second = await centerOf(cdp, (await rows())[1]!)
   await expect.poll(async () => {
@@ -68,9 +70,6 @@ test('pressing the next Top Moments row keeps the card and selects that row', as
   await page.waitForTimeout(120)
   await page.mouse.up()
   await expect.poll(async () => attr((await rows())[1]!, 'aria-pressed')).toBe('true')
-  await expect.poll(async () => {
-    const current = await card()
-    return current ? attr(current, 'aria-label') : null
-  }).not.toBe(firstLabel)
-  expect(await card()).toBeTruthy()
+  await expect.poll(label).not.toBe(firstLabel)
+  expect(await label()).toMatch(/^Selected moment at /)
 })
