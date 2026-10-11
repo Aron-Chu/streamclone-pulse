@@ -226,6 +226,48 @@ describe('with Sign in with Twitch compiled off (every store build today)', () =
     expect(host.textContent).not.toMatch(/Pulse account|Connect/)
   })
 
+  it('says saves sync with the account once the worker answers from one', async () => {
+    // The account demo: signed in, the save went to the account, and the line
+    // under Bookmark still said bookmarks stay on this device.
+    privateTab(false)
+    vi.mocked(sendBackgroundMessage)
+      .mockResolvedValueOnce({ type: 'BOOKMARKS', items: [] })
+      .mockResolvedValueOnce({ type: 'BOOKMARKS', items: [] })
+      .mockResolvedValueOnce({ type: 'BOOKMARK', item })
+    await render()
+    expect(host.textContent).toContain('Bookmarks sync with your Pulse account.')
+    await click('Bookmark')
+    expect(host.querySelector('[role="status"]')?.textContent).toBe('Bookmarked at 00:02:00.')
+    expect(host.textContent).toContain('Bookmarks sync with your Pulse account.')
+    expect(host.textContent).not.toContain('stay on this device')
+  })
+
+  it('switches to the account line after an account save even when the first read failed', async () => {
+    privateTab(false)
+    vi.mocked(sendBackgroundMessage)
+      .mockResolvedValueOnce({ error: 'unavailable' })
+      .mockResolvedValueOnce({ type: 'BOOKMARKS', items: [] })
+      .mockResolvedValueOnce({ type: 'BOOKMARK', item })
+    await render()
+    expect(host.textContent).toContain('Bookmarks stay on this device. No account needed.')
+    await click('Bookmark')
+    expect(host.textContent).toContain('Bookmarks sync with your Pulse account.')
+    expect(host.textContent).not.toContain('stay on this device')
+  })
+
+  it('keeps the device line when the worker saves on this device', async () => {
+    privateTab(false)
+    vi.mocked(sendBackgroundMessage)
+      .mockResolvedValueOnce({ type: 'BOOKMARKS', items: [], device: true })
+      .mockResolvedValueOnce({ type: 'BOOKMARKS', items: [], device: true })
+      .mockResolvedValueOnce({ type: 'BOOKMARK', item: { ...item, id: 'local:one' }, device: true })
+    await render()
+    await click('Bookmark')
+    expect(host.querySelector('[role="status"]')?.textContent).toBe('Saved on this device at 00:02:00.')
+    expect(host.textContent).toContain('Bookmarks stay on this device. No account needed.')
+    expect(host.textContent).not.toMatch(/Pulse account|Connect/)
+  })
+
   it('sends an invited tester whose link lapsed to settings to reconnect', async () => {
     privateTab(false)
     vi.mocked(sendBackgroundMessage).mockResolvedValue({ error: 'account_authorization_required' })
