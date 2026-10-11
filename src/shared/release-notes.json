@@ -29,8 +29,8 @@
     },
     {
       "version": "0.2.1",
-      "status": "unreleased",
-      "releasedAt": null,
+      "status": "released",
+      "releasedAt": "2026-08-31",
       "title": "Selected-minute clarity and complete extension settings",
       "summary": "Exact bucket selection, honest viewer history, refined chart motion, validated Twitch VOD playback windows, and a complete responsive settings workspace.",
       "preview": [

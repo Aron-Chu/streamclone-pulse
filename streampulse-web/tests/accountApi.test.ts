@@ -60,5 +60,8 @@ it('carries a bounded Retry-After and a well-formed attempt ID on errors', async
   await expect(billingRequest('/checkout', {})).rejects.toMatchObject({ status: 409, code: 'checkout_pending', attemptId: attempt })
   const error = await billingRequest('/checkout', {}).catch(value => value)
   expect(error.attemptId).toBeUndefined()
-  expect(error.retryAfterSeconds).toBe(900)
+  // A Checkout or portal session budget can be daily (backend #162): bounded at a day.
+  expect(error.retryAfterSeconds).toBe(86_400)
+  fetch.mockResolvedValueOnce(new Response(JSON.stringify({ error: 'try_later' }), { status: 429, headers: { 'Retry-After': '99999' } }))
+  await expect(billingRequest('/supporter')).rejects.toMatchObject({ status: 429, retryAfterSeconds: 900 })
 })

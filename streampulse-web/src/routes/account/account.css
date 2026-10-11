@@ -102,6 +102,9 @@
 .pulse-account-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
 .pulse-account a:not(.pulse-account-button) { display: inline-flex; align-items: center; min-height: 44px; min-width: 44px; max-width: 100%; overflow-wrap: anywhere; color: #c4b5fd; font-size: inherit; text-underline-offset: 3px; }
 .pulse-account a:not(.pulse-account-button):hover { color: #ddd6fe; }
+/* Links in running text stay inline so wrapped lines keep their height;
+   stand-alone links (.pulse-account-links, the footer nav, actions) keep 44px. */
+.pulse-account :is(p:not(.pulse-account-links, .pulse-account-standalone), li) a:not(.pulse-account-button) { display: inline; min-height: 0; min-width: 0; padding-block: max(.6em, calc(22px - .5em)); margin-block: min(-.6em, calc(.5em - 22px)); }
 .pulse-account .pulse-account-privacy { margin: 6px 0 0; font-size: 13px; }
 .pulse-account-footer { margin-top: 32px; padding-top: 24px; border-top: 1px solid #353540; }
 .pulse-account-footer p { margin: 0 0 16px; font-size: 14px; }
@@ -198,6 +201,8 @@
 .pulse-membership-terms dd { margin: 0; color: #e4e4ed; }
 .pulse-membership .pulse-account-actions { margin-top: 0; }
 .pulse-account .pulse-account-meta { color: #9a9aac; font-size: 13px; }
+.pulse-account .pulse-account-access { margin: 8px 0 12px; padding-left: 20px; color: #b6b6c5; font-size: 15px; line-height: 1.65; list-style: disc; }
+.pulse-account .pulse-account-access li { margin: 4px 0; padding: 0; border: 0; }
 .pulse-account .pulse-account-note { margin: 0 0 16px; padding: 12px 14px; border: 1px solid #3e394c; border-radius: 10px; background: #1c1a25; color: #d4d4de; font-size: 14px; }
 .pulse-membership .pulse-account-note { margin: 0; }
 .pulse-account .pulse-account-note p { margin: 0 0 10px; }

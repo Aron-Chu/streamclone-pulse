@@ -23,6 +23,8 @@ export const SECURITY_REPORT_URL = `${GITHUB_REPO_URL}/security/advisories/new`
  */
 export const PRIVACY_PATH = '/privacy'
 export const TERMS_PATH = '/terms'
+/** The Pulse Supporter section of the terms (the h2 in Terms.tsx carries id="supporter"). */
+export const SUPPORTER_TERMS_PATH = '/terms#supporter'
 export const REFUNDS_PATH = '/refunds'
 export const SUPPORTER_PATH = '/supporter'
 
