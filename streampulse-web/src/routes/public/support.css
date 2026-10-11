@@ -1,4 +1,4 @@
-/* /support feedback card (v2 design, 2026-10-07). Plain CSS on the public
+/* /feedback form and the /support link card (v2 design, 2026-10-07). Plain CSS on the public
    tokens so it renders on a cold route before any analytics styles load. */
 
 /* minmax(0, 1fr): nothing inside (a 300px challenge on a 320px phone) can
@@ -131,19 +131,53 @@ textarea.feedback-input { min-height: 118px; resize: vertical; line-height: 1.5;
 .feedback-done__title { margin: 0; font-size: 1.15rem; font-weight: 850; letter-spacing: -0.02em; color: #fff; }
 .feedback-done__title:focus { outline: none; }
 .feedback-done__sub { margin: 0.1rem 0 0; color: #a1a1aa; font-size: 0.9rem; }
-.feedback-done__ref { display: inline-block; margin: 0.45rem 0 0.9rem; padding: 0.2rem 0.55rem; border: 1px solid #27272a; border-radius: 6px; background: #09090b; font: 500 0.8rem/1.4 var(--font-mono); color: #d4d4d8; }
-.feedback-done__ref code { color: inherit; word-break: break-all; }
+.feedback-done__body { min-width: 0; flex: 1; display: grid; gap: 0.5rem; justify-items: start; }
+.feedback-done__refbox { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.75rem; margin-top: 0.3rem; padding: 0.45rem 0.5rem 0.45rem 0.75rem; border: 1px solid #27272a; border-radius: 8px; background: #09090b; }
+.feedback-done__reflabel { font-size: 0.8rem; color: #a1a1aa; }
+.feedback-done__refcode { font: 700 1.05rem/1.2 var(--font-mono); letter-spacing: 0.06em; color: #fff; user-select: all; }
+.feedback-done__refbox .sc-btn { min-height: 44px; }
+.feedback-done__full { margin: 0; font-size: 0.76rem; color: #8b8b95; }
+.feedback-done__full code { font-family: var(--font-mono); color: #a1a1aa; word-break: break-all; }
+.feedback-done__copied { margin: 0; font-size: 0.8rem; color: #6ee7b7; }
+.feedback-done__copied:empty { display: none; }
+.feedback-done__sub strong { color: #e4e4e7; font-weight: 600; word-break: break-all; }
 .feedback-done .sc-btn { display: flex; }
 
 .feedback-off { display: grid; gap: 0.85rem; }
 .feedback-off__lead { margin: 0; color: #d4d4d8; font-size: 0.95rem; }
 .feedback-off__lead:focus { outline: none; }
 .feedback-off__lead small { display: block; margin-top: 0.3rem; color: #8b8b95; font-size: 0.82rem; }
+/* The blocked bot check: an amber note about this browser, not an outage. */
+.feedback-blocked__lead { display: flex; align-items: flex-start; gap: 0.55rem; padding: 0.65rem 0.8rem; border: 1px solid rgba(251, 191, 36, 0.35); border-radius: 10px; background: rgba(251, 191, 36, 0.07); color: #fde68a; }
+.feedback-blocked__lead svg { width: 18px; height: 18px; flex: none; margin-top: 0.1rem; color: #fbbf24; }
+.feedback-blocked__lead small { color: #d4d4d8; }
 .feedback-off__actions { display: flex; flex-wrap: wrap; gap: 0.6rem; }
 .feedback-off__actions .sc-btn { white-space: normal; text-align: center; }
 .feedback-off__copy { margin: 0; font-size: 0.82rem; color: #a1a1aa; }
 .feedback-off__copy:empty { display: none; }
 .feedback-off pre { margin: 0; padding: 0.75rem; border: 1px solid #27272a; border-radius: 8px; background: #09090b; font: 0.78rem/1.5 var(--font-mono); color: #d4d4d8; white-space: pre-wrap; }
+
+/* /feedback: the private note above the form. */
+.feedback-card__private { display: flex; align-items: flex-start; gap: 0.5rem; margin: 0 0 1.1rem; padding: 0.6rem 0.75rem; border: 1px solid rgba(52, 211, 153, 0.28); border-radius: 10px; background: rgba(52, 211, 153, 0.06); color: #d1fae5; font-size: 0.9rem; line-height: 1.45; }
+.feedback-card__private svg { width: 16px; height: 16px; flex: none; margin-top: 0.15rem; color: #6ee7b7; }
+
+/* Public places to post instead; always labelled public. */
+.feedback-public { display: grid; gap: 0.6rem; padding: 0.8rem 0.9rem; border: 1px dashed #3f3f46; border-radius: 10px; }
+.feedback-public__note { margin: 0; font-size: 0.84rem; line-height: 1.45; color: #a1a1aa; }
+.feedback-public__note strong { color: #e4e4e7; }
+.feedback-public .sc-btn svg { flex: none; }
+.feedback-public--compact { padding: 0.65rem 0.75rem; }
+
+/* /support: the card that sends readers to /feedback. */
+.feedback-link-card { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem 1.5rem; }
+.feedback-link-card__text { flex: 1 1 18rem; min-width: 0; }
+.feedback-link-card .feedback-card__title { font-size: 1.45rem; }
+.feedback-link-card .feedback-card__sub { display: flex; align-items: flex-start; gap: 0.45rem; margin-bottom: 0; }
+.feedback-link-card .feedback-card__sub svg { width: 16px; height: 16px; flex: none; margin-top: 0.25rem; color: #6ee7b7; }
+.feedback-link-card .sc-btn { flex: none; min-height: 46px; }
+
+.support-page__aside { margin: -0.4rem auto 0; text-align: center; font-size: 0.9rem; color: #a1a1aa; }
+.support-page__aside a { color: #e4e4e7; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; text-decoration-color: rgba(255, 255, 255, 0.3); }
 
 .support-discord-line { margin: -0.4rem auto 0; text-align: center; font-size: 0.92rem; color: #8b8b95; }
 .support-discord-line a { display: inline-flex; align-items: center; gap: 0.4rem; min-height: 44px; padding: 0 0.35rem; font-weight: 600; color: #e4e4e7; }
@@ -159,6 +193,8 @@ textarea.feedback-input { min-height: 118px; resize: vertical; line-height: 1.5;
   .feedback-choice__opt { flex-direction: column; justify-content: center; gap: 0.3rem; min-height: 74px; padding: 0.6rem 0.4rem; font-size: 0.88rem; text-align: center; }
   .feedback-choice__opt svg { width: 19px; height: 19px; }
   .feedback-row .sc-btn { width: 100%; }
+  .feedback-link-card .feedback-card__title { font-size: 1.3rem; }
+  .feedback-link-card .sc-btn { width: 100%; }
 }
 
 /* Prerendered shell: looks like the live form (no disabled dimming) and is
@@ -167,7 +203,7 @@ textarea.feedback-input { min-height: 118px; resize: vertical; line-height: 1.5;
 .feedback-form--shell .sc-btn:disabled { opacity: 1; }
 .feedback-form--shell :is(input, textarea):disabled { cursor: default; }
 @media (scripting: none) {
-  .feedback-form--shell { display: none; }
+  .feedback-form--shell, .feedback-js-only { display: none; }
 }
 
 /* Windows High Contrast / forced colours drops the backgrounds, borders'
