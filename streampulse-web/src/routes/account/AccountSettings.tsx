@@ -1,11 +1,52 @@
-import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useId, useState } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 import { LogOut, Monitor, Trash2 } from 'lucide-react'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { AccountFooter } from './AccountFooter'
 import { accountRequest, accountErrorText, AccountError } from '../../lib/accountApi'
 import { announceAccountSignedOut } from '../../lib/accountSessionSignal'
+import { knownTwitchIdentity, useAccountSession } from '../../lib/accountSession'
+import { twitchSignInEnabled } from '../../lib/twitchSignInFlag'
+import { beginTwitchFlow, twitchErrorCode, type TwitchErrorCode } from '../../lib/twitchSignIn'
+import { TwitchButton, TwitchErrorNotice, TwitchGlitch } from './TwitchSignIn'
 import './account.css'
+
+/**
+ * Twitch row (VITE_TWITCH_SIGNIN=1). /v1/account/me does not say whether an
+ * account has Twitch linked, so "Connected" shows only what this tab saw: a
+ * Twitch sign-in, a finished link, or an "already linked" answer. Otherwise it
+ * offers Link Twitch, which the API answers with account_already_linked when
+ * there is nothing to do.
+ */
+function TwitchAccountRow() {
+  const headingId = useId()
+  const state = useLocation().state as { twitch?: unknown } | null
+  const session = useAccountSession()
+  // This tab's sign-in carries the name and picture; /me only says a link exists.
+  const known = knownTwitchIdentity() ?? (session.status === 'signed_in' && session.profile.twitchLinked ? {} : null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<TwitchErrorCode | null>(null)
+  async function link() {
+    if (busy) return
+    setBusy(true); setError(null)
+    // Linking needs a sign-in from the last 10 minutes; the API says so if not.
+    try { await beginTwitchFlow({ purpose: 'link' }) }
+    catch (failure) { setError(twitchErrorCode(failure)); setBusy(false) }
+  }
+  const name = known?.displayName
+  return <section className="pulse-account-twitch-row" aria-labelledby={headingId} data-testid="twitch-account-row">
+    <div className="pulse-account-section-heading"><h2 id={headingId}>Twitch</h2></div>
+    {known ? <div className="pulse-account-twitch-connected">
+      {known.avatarUrl ? <img src={known.avatarUrl} alt="" width={32} height={32} referrerPolicy="no-referrer" /> : <span className="pulse-account-twitch-mark"><TwitchGlitch /></span>}
+      <p>{name ? <>Connected as <strong>{name}</strong></> : 'Twitch is connected to this account.'}</p>
+    </div> : <div className="pulse-account-twitch-link">
+      <p>Link your Twitch account to sign in with Twitch. StreamPulse receives your Twitch user ID, display name and profile picture, never your Twitch password or email.</p>
+      <TwitchButton busy={busy} busyLabel="Opening Twitch…" onClick={() => void link()}>Link Twitch</TwitchButton>
+    </div>}
+    {known && state?.twitch === 'linked' ? <p role="status">Twitch is now linked. Next time, you can use Sign in with Twitch.</p> : null}
+    {error ? <TwitchErrorNotice code={error} purpose="link" current="/account/settings" /> : null}
+  </section>
+}
 
 type Device = { id: string; label: string; expiresAt: string; revokedAt?: string }
 export default function AccountSettings() {
@@ -60,6 +101,7 @@ export default function AccountSettings() {
     {signedOut ? <Link to="/account/sign-in">Sign in to Pulse</Link> : null}
     {busy ? <p role="status">Updating account...</p> : null}
     {error ? <div className="pulse-account-error"><p role="alert">{error}</p><button disabled={busy} onClick={() => void load()}>Retry</button></div> : null}
+    {identity && !signedOut && twitchSignInEnabled() ? <TwitchAccountRow /> : null}
     {identity && !signedOut ? <><div className="pulse-account-section-heading"><h2>Linked extensions</h2><Link to="/account/link-device">Link extension</Link></div>
       {!busy && !devices.length && !error ? <p className="pulse-account-empty">No linked extensions. Link your extension to use this account on Twitch.</p> : null}
       <ul className="pulse-account-devices">{devices.map(device => <li key={device.id}><div className="pulse-account-device-details"><strong>{device.label}</strong>

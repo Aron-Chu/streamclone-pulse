@@ -288,6 +288,19 @@
     white-space: nowrap;
     overflow-wrap: normal;
   }
+
+  /* With the header account entry (VITE_ACCOUNT_HEADER=1) the actions are too
+     wide to share the links row, so they start their own; the account entry
+     ends that row instead of adding another. */
+  .analytics-topnav--account .analytics-topnav__actions { flex: 1 1 18rem; }
+  .analytics-topnav--account > .account-entry { margin-left: auto; }
+}
+
+/* Phones give the links their own row, which leaves the brand row room for the
+   account entry. It stays last in tab order. */
+@media (max-width: 480px) {
+  .analytics-topnav--account .analytics-topnav__brand { order: -2; }
+  .analytics-topnav--account > .account-entry { order: -1; }
 }
 
 .hub-mobile-sections {

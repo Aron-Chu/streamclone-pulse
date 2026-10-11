@@ -210,11 +210,71 @@
 .pulse-account-review h1 { margin-top: 0; font-size: clamp(22px, 2.6vw, 26px); }
 .pulse-account-review h1:focus { outline: none; }
 
+/* Sign in with Twitch (VITE_TWITCH_SIGNIN=1). Twitch brand kit: purple
+   #9146FF (hover #772CE8) with the white Glitch; white text is 4.6:1. */
+.pulse-account-twitch { display: grid; gap: 12px; margin-bottom: 8px; }
+.pulse-account-twitch .pulse-account-intro { margin-bottom: 4px; }
+.pulse-account-twitch .pulse-account-privacy,
+.pulse-account-twitch .pulse-account-pilot { margin: 0; }
+.pulse-account .pulse-account-twitch-button {
+  min-height: 48px;
+  border-color: #9146ff;
+  background: #9146ff;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+}
+.pulse-account .pulse-account-twitch-button:hover:not(:disabled) { border-color: #772ce8; background: #772ce8; }
+.pulse-account-twitch-glitch { flex: 0 0 auto; }
+.pulse-account .pulse-account-disclosure {
+  justify-self: start;
+  min-height: 44px;
+  padding-inline: 0;
+  border-color: transparent;
+  background: transparent;
+  color: #c4b5fd;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.pulse-account .pulse-account-disclosure:hover:not(:disabled) { background: transparent; color: #ddd6fe; }
+.pulse-account-twitch + form { margin-top: 8px; padding-top: 20px; border-top: 1px solid #353540; }
+.pulse-account-twitch-notice { margin: 4px 0 8px; }
+.pulse-account-twitch-notice h2 { margin-top: 8px; }
+.pulse-account-twitch-notice .pulse-account-actions { margin-top: 12px; }
+
+.pulse-account-twitch-row { margin-bottom: 32px; padding-bottom: 24px; border-bottom: 1px solid #353540; }
+.pulse-account-twitch-link { display: grid; gap: 12px; justify-items: start; }
+.pulse-account-twitch-link p { margin: 0; }
+.pulse-account-twitch-connected { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.pulse-account-twitch-connected p { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.pulse-account-twitch-connected strong { color: #fafafc; }
+.pulse-account-twitch-connected img,
+.pulse-account-twitch-mark {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  object-fit: cover;
+}
+.pulse-account-twitch-mark { display: inline-flex; align-items: center; justify-content: center; background: #9146ff; color: #fff; }
+
+/* My Moments (VITE_ACCOUNT_MOMENTS=1). */
+.pulse-moments-tabs { display: flex; gap: 4px; margin: 8px 0 20px; border-bottom: 1px solid #353540; }
+.pulse-account .pulse-moments-tabs button { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 10px 14px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: #b6b6c5; }
+.pulse-account .pulse-moments-tabs button[aria-selected="true"] { border-bottom-color: #a78bfa; color: #fafafc; }
+.pulse-account .pulse-moments-tabs button:hover:not(:disabled) { background: transparent; color: #fafafc; }
+.pulse-moments-panel:focus-visible { outline: 2px solid #a78bfa; outline-offset: 4px; border-radius: 8px; }
+.pulse-moments-list li { align-items: flex-start; }
+.pulse-account .pulse-moments-note { margin: 8px 0 0; color: #d4d4de; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.pulse-moments-links { display: flex; flex-wrap: wrap; gap: 0 14px; font-size: 14px; }
+.pulse-account .pulse-account-feedback:empty { display: none; }
+
 @media (max-width: 540px) {
   .pulse-account { margin: 8px 0 24px; padding: 24px 20px; border-radius: 16px; }
   .pulse-membership { padding: 18px 16px; }
   .pulse-membership-terms { grid-template-columns: minmax(0, 1fr); gap: 2px; }
   .pulse-membership-terms dd { margin-bottom: 8px; }
+  .pulse-account .pulse-account-twitch-button { width: 100%; }
   .pulse-account h1 { font-size: 28px; }
   .pulse-account-devices li { align-items: flex-start; flex-wrap: wrap; }
   .pulse-account-review { padding: 16px; }
