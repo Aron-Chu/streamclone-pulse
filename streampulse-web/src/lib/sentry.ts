@@ -31,17 +31,35 @@ export function portalReleaseShort(): string {
   return `streampulse-portal@${m[1].slice(0, 7)}`
 }
 
+/**
+ * Every fixed route in src/routes/index.tsx reports under its own name. Anything
+ * else (typos, probes, removed pages) stays '/:unknown' so free-form paths never
+ * become a tag value. Account pages are named here for navigation breadcrumbs
+ * only: scrubPortalEvent still drops every event raised on them.
+ */
+const STATIC_ROUTE_NAMES = new Set([
+  '/', '/docs', '/status', '/privacy', '/terms', '/refunds', '/support', '/feedback', '/discord',
+  '/supporter', '/supporter/thanks', '/changelog',
+  '/analytics', '/analytics/streams', '/analytics/moments', '/analytics/explore', '/analytics/newsroom',
+  '/account/sign-in', '/account/confirm', '/account/restore', '/account/link-device', '/account/settings',
+  '/account/billing', '/account/billing/return',
+  '/dashboard', '/dashboard/clips',
+])
+
 export function sanitizePortalPath(pathname: string): string {
   let path = pathname.split(/[?#]/)[0] || '/'
   if (/^https?:\/\//i.test(path)) {
     try { path = new URL(path).pathname } catch { return '/:unknown' }
   }
-  if (path === '/analytics' || path === '/analytics/streams') return path
+  if (path.length > 1) path = path.replace(/\/+$/, '')
+  if (STATIC_ROUTE_NAMES.has(path)) return path
+  // Fixed analytics pages first: otherwise /analytics/moments reads as a channel login.
+  if (/^\/analytics\/explore\/[^/]+$/.test(path)) return '/analytics/explore/:broadcastId'
+  if (/^\/analytics\/newsroom\/[^/]+$/.test(path)) return '/analytics/newsroom/:storyId'
   if (/^\/analytics\/[^/]+\/s\/[^/]+\/?$/.test(path)) return '/analytics/:login/s/:streamId'
   if (/^\/analytics\/[^/]+\/[^/]+\/?$/.test(path)) return '/analytics/:login/:streamId'
   if (/^\/analytics\/[^/]+\/?$/.test(path)) return '/analytics/:login'
   if (/^\/s\/[^/]+\/[^/]+\/?$/.test(path)) return '/s/:login/:streamId'
-  if (['/', '/docs', '/status', '/privacy', '/support', '/dashboard', '/dashboard/clips'].includes(path)) return path
   return '/:unknown'
 }
 
@@ -106,6 +124,9 @@ export function scrubPortalEvent(event: Sentry.ErrorEvent): Sentry.ErrorEvent | 
   tags.service = 'portal'
   tags.role = 'portal'
   tags.release = portalRelease()
+  // Global onerror/unhandledrejection events carry no route of their own; name
+  // the page they happened on so /feedback and /terms issues stay apart.
+  if (!tags.route && typeof window !== 'undefined') tags.route = sanitizePortalPath(window.location.pathname)
   const safeNumber = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined
   const exception: Sentry.ErrorEvent['exception'] = event.exception?.values ? {
     values: event.exception.values.slice(0, 5).map(ex => ({
@@ -140,7 +161,7 @@ export function scrubPortalEvent(event: Sentry.ErrorEvent): Sentry.ErrorEvent | 
     release: portalRelease(),
     environment: import.meta.env.MODE,
     tags,
-    transaction: event.transaction ? sanitizePortalPath(event.transaction) : undefined,
+    transaction: event.transaction ? sanitizePortalPath(event.transaction) : tags.route,
     message: event.message ? scrubDiagnosticText(event.message) : undefined,
     exception,
     debug_meta: scrubSourceMapMetadata(event.debug_meta, frameFilenames),

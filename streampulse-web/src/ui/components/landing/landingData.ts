@@ -79,9 +79,25 @@ export function buildEmoteTicker(hub: PublicHub | null): TickerItem[] {
   }))
 }
 
+/** A channel needs at least this 7TV/min now to count as active (below it the strip would show "0/min"). */
+export const MOVER_MIN_ACTIVE_PER_MIN = 5
+/** Fewer qualifying channels than this hides the "Trending channels" strip entirely. */
+export const MOVER_MIN_ITEMS = 3
+
+/**
+ * The strip is labelled "Trending channels", so it lists only channels that are
+ * active right now and rising. A large percentage on a near-zero base (a quiet
+ * channel at 0/min, +376%) and a busy channel that is falling are both left out.
+ * When too few remain the strip is hidden rather than padded.
+ */
+function isTrendingMover(mover: { seventvPerMin: number; trendPct: number }): boolean {
+  return Number.isFinite(mover.seventvPerMin) && mover.seventvPerMin >= MOVER_MIN_ACTIVE_PER_MIN
+    && Number.isFinite(mover.trendPct) && mover.trendPct > 1
+}
+
 export function buildMoverTicker(hub: PublicHub | null): TickerItem[] {
-  const movers = hub?.topMovers ?? []
-  if (movers.length === 0) return []
+  const movers = (hub?.topMovers ?? []).filter(isTrendingMover)
+  if (movers.length < MOVER_MIN_ITEMS) return []
   // No rank glyphs: leads are the channel initial (or real avatar) so the strip
   // reads as "channels with rising 7TV/min", not a fabricated #1/#2 leaderboard.
   return movers.slice(0, 8).map((mover) => {

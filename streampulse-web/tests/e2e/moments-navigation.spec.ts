@@ -3,6 +3,12 @@ import { installDiscoveryFixture } from './helpers/discoveryFixture'
 import { installHubUxMock } from './helpers/hubUxMock'
 import { installNewsroomMock } from './helpers/newsroomMock'
 
+/**
+ * A time followed by a named zone: "3:30 AM UTC", "8:30 PM MST", "5:30 AM GMT+2". The row's
+ * text runs straight into the offset ("MST1:00 into broadcast"), so no word boundary.
+ */
+const OCCURRENCE_ZONE = /\d (AM|PM) (UTC|GMT[+-]\d{1,2}(:\d{2})?|[A-Z]{2,5})(?![A-Za-z])/
+
 function rankedHistoryResponse(url: URL) {
   const from = url.searchParams.get('from')!
   const to = url.searchParams.get('to')!
@@ -102,7 +108,8 @@ for (const width of [390, 1440]) test(`History recent overview and ranking navig
   expect(new Set(rankedRequests.map(url => url.searchParams.get('sort')))).toEqual(new Set(['volume']))
   expect(legacyCalendarRequests).toHaveLength(0)
   await expect(page.locator('.moments-result').first().locator('time')).toBeVisible()
-  await expect(page.locator('.moments-result').first().locator('.moments-result-timing')).toContainText('UTC')
+  // The occurrence is in the reader's own zone, named (UTC on CI, e.g. MST locally).
+  await expect(page.locator('.moments-result').first().locator('.moments-result-timing')).toContainText(OCCURRENCE_ZONE)
   await expect(page.locator('.moments-result').first().locator('.moments-result-timing')).toContainText('into broadcast')
   const day = page.getByRole('button', { name: /^2026-09-03:/ })
   await expect(day).toBeVisible()
@@ -140,7 +147,7 @@ test('Latest has one category filter, opaque menus and a working Saved shortlist
   // In line, the row above the detail carries the occurrence time.
   const openRow = page.locator('.moments-result').first()
   await expect(openRow.locator('time')).toHaveAttribute('dateTime', /Z$/)
-  await expect(openRow.locator('time')).toContainText('UTC')
+  await expect(openRow.locator('time')).toContainText(OCCURRENCE_ZONE)
   await expect(page.getByRole('button', { name: /Back to results/ })).toHaveCount(0)
   await selected.getByRole('button', { name: 'Close', exact: true }).click()
   await page.locator('.moments-result').first().getByRole('button', { name: 'Save', exact: true }).click()

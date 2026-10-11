@@ -18,10 +18,10 @@ interface ReleaseNote {
 
 const NOTES = releaseNotes as { currentVersion: string; releases: ReleaseNote[] }
 
-// Only released versions are described. The version in development is named with
-// an honest label, without its notes, which can still change before it ships.
+// Only released versions are shown, so the page starts with the latest release.
+// An unreleased entry (the version in development) gets no placeholder section:
+// its notes can still change before it ships.
 const RELEASED: ReadonlyArray<ReleaseNote> = NOTES.releases.filter((release) => release.status === 'released')
-const IN_DEVELOPMENT = RELEASED.some((release) => release.version === NOTES.currentVersion) ? null : NOTES.currentVersion
 
 // Same headings, in the same order, as the extension's changelog card.
 const CATEGORIES = [
@@ -48,21 +48,13 @@ export default function Changelog() {
           <p className="mt-2 text-base text-zinc-400">What changed in each version of the StreamPulse Chrome extension.</p>
         </header>
 
-        {IN_DEVELOPMENT ? (
-          <section id={`v${IN_DEVELOPMENT}`} aria-labelledby="in-development-title" className="mt-8 border-t border-white/[0.08] pt-6">
-            <p className="text-xs font-bold uppercase tracking-[0.14em] text-violet-300">v{IN_DEVELOPMENT} · In development</p>
-            <h2 id="in-development-title" className="!mt-0">Next version</h2>
-            <p className="text-zinc-400">v{IN_DEVELOPMENT} has not been released yet. Its notes appear here once it is.</p>
-          </section>
-        ) : null}
-
         {RELEASED.length === 0 ? <p className="mt-8 text-zinc-400">No version has been released yet.</p> : null}
 
         {RELEASED.map((release) => {
           const date = releaseDate(release.releasedAt)
           const titleId = `v${release.version}-title`
           return (
-            <section key={release.version} id={`v${release.version}`} aria-labelledby={titleId} className="mt-8 border-t border-white/[0.08] pt-6">
+            <section key={release.version} id={`v${release.version}`} aria-labelledby={titleId} className="mt-8 border-t border-white/[0.08] pt-6 first-of-type:mt-0 first-of-type:border-t-0 first-of-type:pt-0">
               <p className="text-xs font-bold uppercase tracking-[0.14em] text-violet-300">
                 v{release.version} · Released
                 {date ? <> · <time dateTime={release.releasedAt ?? undefined}>{date}</time></> : null}
