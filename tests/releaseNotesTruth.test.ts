@@ -35,8 +35,10 @@ describe('0.2.2 release notes', () => {
     expect(gate.publishable).toBe(true)
   })
 
-  it('never promise that bookmarks or history stay on the device for a linked account', () => {
-    expect(entry('0.2.2').knownIssues).toContain('Bookmarks, notes and watched history stay in the browser where you saved them, unless you link an account (invite-only for now).')
+  it('say where saves live the way My Moments does, with no account-linking aside', () => {
+    expect(entry('0.2.2').knownIssues).toContain('Bookmarks, notes and watched history stay in the browser where you saved them.')
+    // My Moments says accounts are coming; the notes must not offer linking one now.
+    expect(text(entry('0.2.2'))).not.toMatch(/link an account/i)
     expect(entry('0.2.2').new).toContain('Bookmarks work without an account. Without one, they stay in this browser and are never uploaded.')
   })
 

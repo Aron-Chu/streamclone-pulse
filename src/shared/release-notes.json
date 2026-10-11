@@ -37,7 +37,7 @@
       ],
       "knownIssues": [
         "Accounts and Supporter sign-ups are not open yet. Accounts are coming with Continue with Twitch.",
-        "Bookmarks, notes and watched history stay in the browser where you saved them, unless you link an account (invite-only for now)."
+        "Bookmarks, notes and watched history stay in the browser where you saved them."
       ],
       "links": { "details": "/changelog", "support": "/support" }
     },
