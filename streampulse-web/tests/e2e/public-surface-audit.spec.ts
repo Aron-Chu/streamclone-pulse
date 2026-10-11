@@ -58,6 +58,7 @@ const coldPages = [
   ['/docs', /^Get started with Pulse$/i],
   ['/privacy', /Privacy Policy/i],
   ['/support', /Support & Troubleshooting/i],
+  ['/feedback', /^Send feedback$/i],
   ['/status', /System Status/i],
 ] as const
 
@@ -77,6 +78,8 @@ test.describe('public surface audit', () => {
       ['/', 'Find the Twitch moments people'],
       ['/docs', 'Get started with Pulse'],
       ['/analytics', 'StreamPulse Analytics'],
+      ['/feedback', 'Send feedback</h1>'],
+      ['/feedback/', 'Send feedback</h1>'],
     ] as const
     for (const [route, heading] of expected) {
       const response = await request.get(route)
@@ -85,8 +88,53 @@ test.describe('public surface audit', () => {
     }
   })
 
+  test('cold route documents carry a large link preview with the shared card image', async ({ request }) => {
+    for (const route of ['/', '/docs', '/status', '/support', '/privacy']) {
+      const html = await (await request.get(route)).text()
+      const meta = (attribute: string, key: string) =>
+        new RegExp(`<meta ${attribute}="${key}" content="([^"]*)"`).exec(html)?.[1]
+      expect(meta('name', 'twitter:card'), route).toBe('summary_large_image')
+      expect(meta('property', 'og:image'), route).toBe('https://streampulse.stream/og-default.png')
+      expect(meta('property', 'og:title'), route).toBeTruthy()
+      expect(meta('property', 'og:description'), route).toBeTruthy()
+    }
+    const image = await request.get('/og-default.png')
+    expect(image.ok()).toBe(true)
+    expect(image.headers()['content-type']).toContain('image/png')
+  })
+
   test.beforeEach(async ({ page }) => {
     await installPublicMocks(page, [])
+  })
+
+  test('/support links to the private /feedback page, which needs no account and labels public alternatives', async ({ page }) => {
+    await page.goto('/support')
+    const card = page.getByTestId('support-feedback-link')
+    await expect(card).toHaveAttribute('id', 'send-feedback')
+    await expect(card.getByRole('link', { name: 'Send feedback' })).toHaveAttribute('href', '/feedback')
+    await expect(page.getByRole('heading', { name: 'Extension not appearing on Twitch' })).toBeVisible()
+    await card.getByRole('link', { name: 'Send feedback' }).click()
+    await expect(page).toHaveURL(/\/feedback$/)
+    await expect(page.getByRole('heading', { level: 1, name: 'Send feedback' })).toBeVisible()
+    const form = page.getByTestId('support-form')
+    const off = page.getByTestId('support-form-unavailable')
+    await expect(form.or(off)).toBeVisible()
+    if (await form.isVisible()) {
+      await expect(page.getByText('No account needed.')).toBeVisible()
+      await expect(page.getByTestId('feedback-private-note')).toContainText('Only the StreamPulse team reads it')
+    }
+    // The audit build has no Turnstile key, so the form says it is unavailable
+    // and the page makes no private-delivery promise or invitation above it.
+    if (await off.isVisible()) {
+      await expect(page.getByTestId('feedback-page-sub')).toHaveText("Spotted a problem or have an idea? The private form isn't taking messages right now.")
+      await expect(page.getByTestId('feedback-private-badge')).toHaveCount(0)
+      await expect(page.getByTestId('feedback-private-note')).toHaveCount(0)
+      await expect(page.getByTestId('support-discord-line')).toHaveCount(0)
+      await expect(off.getByTestId('feedback-public-alternatives')).toContainText('Public alternatives. Anyone can read these')
+      await expect(off.getByRole('link', { name: /Open a public issue on GitHub/ })).toBeVisible()
+    }
+    const footer = page.getByRole('navigation', { name: 'Footer' })
+    await expect(footer.getByRole('link', { name: 'Send feedback' })).toHaveAttribute('href', '/feedback')
   })
 
   test('cold public entries load no analytics UI or optional demo and report actual font downloads', async ({ page, request }, testInfo) => {
@@ -170,6 +218,23 @@ test.describe('public surface audit', () => {
     await expect(dialog.getByRole('link', { name: 'Status' })).toHaveAttribute('href', '/status')
     await expect(dialog.getByRole('link', { name: 'Support' })).toHaveAttribute('href', '/support')
     await expect(dialog.getByRole('link', { name: 'Privacy' })).toHaveAttribute('href', '/privacy')
+    // The drawer's primary button once inherited the text-link colour (#eee on #fafafa, about 1.06:1).
+    const openAnalytics = dialog.getByRole('link', { name: 'Open Analytics' })
+    await expect(openAnalytics).toBeVisible()
+    const contrast = await openAnalytics.evaluate((element) => {
+      const rgb = (value: string) => (value.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number)
+      const lum = (value: string) => {
+        const [r, g, b] = rgb(value).map((channel) => {
+          const c = channel / 255
+          return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+        })
+        return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!
+      }
+      const style = getComputedStyle(element)
+      const [hi, lo] = [lum(style.color), lum(style.backgroundColor)].sort((x, y) => y - x)
+      return (hi! + 0.05) / (lo! + 0.05)
+    })
+    expect(contrast).toBeGreaterThanOrEqual(4.5)
     await page.keyboard.press('Escape')
     await expect(menu).toBeFocused()
     await expect(page.getByText(/Sample data · interactive demonstration/i)).toBeVisible()
@@ -179,6 +244,12 @@ test.describe('public surface audit', () => {
     await expect(page.getByRole('region', { name: 'StreamPulse Pulse sidebar preview' })).toBeVisible()
     await expect(page.locator('.lsg')).toHaveAttribute('data-static', '')
     await expectNoHorizontalOverflow(page)
+  })
+
+  test('documentation sections are numbered in reading order', async ({ page }) => {
+    await page.goto('/docs')
+    const headings = await page.getByTestId('docs-page').locator('h2').allInnerTexts()
+    expect(headings.filter((text) => /^\d+\./.test(text)).map((text) => Number.parseInt(text, 10))).toEqual([1, 2, 3])
   })
 
   test('documentation aliases resolve while unknown documentation routes retain not-found metadata', async ({ page }) => {

@@ -611,7 +611,7 @@ it('leaves confirmed lifecycle transitions to Pool Wire instead of mirroring the
   expect(screen.queryByText(/Stream events unavailable/i)).toBeNull()
 })
 
-it('styles a below-baseline comparison as a dip rather than a spike', () => {
+it('never shows a fallen signal as the chip of an "Emote spike" row: it names the chat rise instead', () => {
   const hub = sampleHub()
   const at = Date.now() - 60_000
   const sample = comparison(at)
@@ -620,9 +620,11 @@ it('styles a below-baseline comparison as a dip rather than a spike', () => {
     comparison: { ...sample, emotes: { ...sample.emotes, multiplier: 0.1 } },
   })]
   renderFeed(resolveLivePulseMoments(hub), hub)
-  const magnitude = screen.getByTitle(/Emotes 0\.1× this stream's earlier average/i)
-  expect(magnitude.textContent).toBe('0.1×')
-  expect(magnitude.getAttribute('data-below')).toBe('true')
+  expect(screen.queryByTitle(/Emotes 0\.1×/i)).toBeNull()
+  const magnitude = screen.getByTitle(/Chat 2\.5× this stream's earlier average/i)
+  // Named, because it is not the signal the row is titled by.
+  expect(magnitude.textContent).toBe('Chat 2.5×')
+  expect(magnitude.getAttribute('data-below')).toBeNull()
   // The detector's own label is preserved verbatim, not rewritten in the client.
   expect(screen.getByText('Emote spike')).toBeTruthy()
 })

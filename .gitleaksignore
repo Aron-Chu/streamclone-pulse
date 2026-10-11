@@ -35,3 +35,15 @@ bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranke
 bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:generic-api-key:783
 bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:sentry-access-token:1269
 bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:sentry-access-token:787
+# Cloudflare's published always-pass Turnstile TEST site key (1x000...AA) in a deploy-guard
+# unit test placeholder. Not a credential; the next commit assembles it at runtime (2026-10-09).
+2f827b5fb95062140a365716a8b14ea6fdd67977:streampulse-web/tests/pagesDeployEnv.test.ts:generic-api-key:17
+# PostHog token placeholder (phc_placeholder123) in the same deploy-guard unit test.
+# Not a credential. Gitleaks flagged it in the site #87 squash commit (2026-10-11).
+907b85aa537485a5a0bf640869a7b48eaf8ab3d0:streampulse-web/tests/pagesDeployEnv.test.ts:generic-api-key:20
+# tests/twitchSignIn.test.ts:18 in 3aa5019 was a hand-written stand-in JWT ({"alg":"RS256"}.{"sub":"123"}."signature"),
+# not a credential. The literal is now built at runtime (2026-10-03).
+3aa501943942919b001d33122344d78317f3b779:tests/twitchSignIn.test.ts:generic-api-key:18
+# scripts/chat-badge-keys.mjs:12 in 98d465d is the Seen in chat e2e list key: the PUBLIC Ed25519 half of the
+# fixed test seed (32 bytes of 0x07, kid spb-sandbox-7), pinned only in development builds. Not a credential.
+98d465daaddaaee4cab08936f39295afdba80e11:scripts/chat-badge-keys.mjs:generic-api-key:12

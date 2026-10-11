@@ -36,6 +36,11 @@ export interface MomentComparisonBadge {
  * Only a supplied multiplier (or a stated new-activity baseline) compresses
  * honestly; percentage and absolute-delta fallbacks do not, so they return null
  * and the row shows its measured rates alone rather than an ambiguous chip.
+ *
+ * A row is titled by what rose ("Emote spike"), so a signal that fell under its
+ * earlier average is never its chip: "Emote spike · Emotes 0.1× earlier avg"
+ * contradicts itself. The chip moves on to the signal that rose (chat), and a
+ * row where nothing rose shows no chip.
  */
 export function momentComparisonBadge(comparison?: LiveWireMomentComparison, signal?: MomentReactionSignal): MomentComparisonBadge | null {
   for (const [label, metric] of comparisonCandidates(comparison, signal)) {
@@ -43,8 +48,10 @@ export function momentComparisonBadge(comparison?: LiveWireMomentComparison, sig
     if (metric.state === 'new_activity') return { label, short: 'new', long: `${label} is new from a zero earlier baseline`, belowBaseline: false }
     if (metric.state !== 'ready') continue
     if (metric.multiplier != null && Number.isFinite(metric.multiplier) && metric.multiplier >= 0) {
+      // Under the earlier average: not the reason this row exists.
+      if (metric.multiplier < 1) continue
       return { label, short: multiplierText(metric.multiplier), long: `${label} ${multiplierText(metric.multiplier)} this stream's earlier average`,
-        belowBaseline: metric.multiplier < 1 }
+        belowBaseline: false }
     }
     return null
   }

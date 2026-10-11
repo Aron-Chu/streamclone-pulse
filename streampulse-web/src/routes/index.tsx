@@ -11,6 +11,7 @@ import Refunds from './public/Refunds'
 import Supporter from './public/Supporter'
 import SupporterThanks from './public/SupporterThanks'
 import Support from './public/Support'
+import Feedback from './public/Feedback'
 import Discord from './public/Discord'
 import Changelog from './public/Changelog'
 import NotFound from './public/NotFound'
@@ -121,6 +122,8 @@ function PortalRoutes() {
         <Route path="/supporter" element={<Supporter />} />
         <Route path="/supporter/thanks" element={<SupporterThanks />} />
         <Route path="/support" element={<Support />} />
+        {/* The private feedback form. The extension's "Send feedback" opens this page. */}
+        <Route path="/feedback" element={<Feedback />} />
         {/* The extension's "Join Discord" opens this page; it forwards to the
             build-time invite, or says the server is not open yet. */}
         <Route path="/discord" element={<Discord />} />
