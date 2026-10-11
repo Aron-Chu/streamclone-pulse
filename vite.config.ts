@@ -7,7 +7,8 @@ import { extensionBuildId, extensionReleasePreview, extensionResolve, extensionT
 
 const root = __dirname
 const supporterBackendOrigin = resolveSupporterBackendOrigin(extensionTarget)
-// Worker and options only: the content script never carries sign-in code.
+// Same stage in every bundle (vite.content.config.ts too); the content script
+// reads it only to pick its copy and carries no sign-in code.
 const twitchSignInStage = resolveTwitchSignInStage(extensionTarget)
 
 function copyToDist(rootDir: string, relativePath: string): void {
