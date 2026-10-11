@@ -1133,14 +1133,14 @@ function OverlayMain({
       }
       if (next.helixEnabled === false) {
         setCoverageCheckError(
-          'Backend Helix is off — analytics needs TWITCH_OAUTH_CLIENT_ID/SECRET (or redeploy latest analytics).',
+          'Backend Helix is off — analytics needs TWITCH_OAUTH_CLIENT_ID/SECRET.',
         )
         await refreshVodDebugDetail(next, token)
         return
       }
       if (!next.vodId && healthRes && 'type' in healthRes && healthRes.type === 'HEALTH' && healthRes.helixEnabled == null) {
         setCoverageCheckError(
-          'Backend archive capability is unavailable. Live analytics remain active; deploy the latest analytics backend.',
+          'Backend archive capability is unavailable. Live analytics remain active.',
         )
       } else if (!next.vodId) {
         setCoverageCheckError(
