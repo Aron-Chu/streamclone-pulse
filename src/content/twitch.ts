@@ -29,6 +29,9 @@ export const TWITCH_SYSTEM_ROUTES = new Set([
   'privacy',
   'legal',
   'help',
+  // Device activation and the subscribe page (/subs/{login}) are not channels.
+  'activate',
+  'subs',
 ])
 
 export type TwitchPageKind = 'channel' | 'vod' | 'non-channel'

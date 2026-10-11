@@ -451,8 +451,8 @@ function OverlayMain({
     return null
   }
 
-  /** Transport only — does not mutate busy/Full/payload. */
-  async function fetchPulseTransport(full = false): Promise<{
+  /** Transport only — does not mutate busy/Full/payload. `latest` asks for the channel's current stream. */
+  async function fetchPulseTransport(full = false, latest = false): Promise<{
     response: unknown
     payload: PulsePayload | null
   }> {
@@ -465,7 +465,7 @@ function OverlayMain({
       login,
       watch: false,
       window: full ? 'full' : 'recent',
-      streamId: payload?.streamId,
+      streamId: latest ? undefined : payload?.streamId,
     })
     const next =
       response && typeof response === 'object' && 'type' in response && response.type === 'PULSE_UPDATE'
@@ -853,7 +853,8 @@ function OverlayMain({
 
     if (!op) setTrackBusy(true)
     try {
-      const { response, payload: next } = await fetchPulseTransport(full)
+      // Retry (not Full) asks for the channel's current stream, so it can leave an earlier one.
+      const { response, payload: next } = await fetchPulseTransport(full, !full)
       if (op && !tokenIsLive(op)) return null
       if (full && response) {
         const applied = applyPulseResponse(response as PulseUpdateMessage, op)
@@ -1923,7 +1924,7 @@ function OverlayMain({
               <p style={styles.stateText}>
                 {hostedBackend
                   ? 'Fetching live analytics from StreamPulse…'
-                  : `Waiting for Pulse data from ${backendUrl}. Make sure the stack is running, then retry.`}
+                  : `Waiting for ${backendUrl}…`}
               </p>
             </section>
           )}
@@ -2394,7 +2395,7 @@ function BackendError({ backendUrl, error, onRetry, onSettings }: { backendUrl: 
       <p style={styles.stateText}>
         {isHostedBackendUrl(backendUrl)
           ? 'StreamPulse isn’t responding right now. Try again in a minute.'
-          : `No response from ${backendUrl}. Is the StreamPulse stack running? Showing this instead of empty charts.`}
+          : `No response from ${backendUrl}.`}
       </p>
       <div style={styles.footerActions}>
         <button type="button" style={styles.secondaryButton} onClick={onRetry}>Retry</button>
