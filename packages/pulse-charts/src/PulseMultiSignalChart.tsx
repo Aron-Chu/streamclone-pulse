@@ -631,7 +631,8 @@ export type ActivityBarFocus = {
 const ACTIVITY_PEAK_CAP_RATIO = 1.25;
 const ACTIVITY_PEAK_CAP_HEIGHT = 1.5;
 
-function timeBucketActivityBarRects(args: {
+/** Exported for tests. */
+export function timeBucketActivityBarRects(args: {
   timeBuckets: ActivityTimeBucketing;
   cadenceMs: number;
   plotWidth: number;
@@ -647,6 +648,14 @@ function timeBucketActivityBarRects(args: {
   const slotWidth = pxPerCadence * level.step;
   const gap = Math.min(slotWidth * 0.45, Math.max(1, slotWidth * ACTIVITY_BAR_GAP_RATIO));
   const [from, to] = barLevelRange(level, timeScale.firstTimestampMs, timeScale.lastTimestampMs);
+  // Slots hold every loaded minute, so a slot at the plot edge reaches past
+  // the view. Place it with an unclamped mapping (the scale's own clamps to
+  // the edge, which shifts the bar inward over its neighbour) and clip the
+  // painted rect to the plot below.
+  const scaleSpanMs = timeScale.lastTimestampMs - timeScale.firstTimestampMs;
+  const xAt = Number.isFinite(scaleSpanMs) && scaleSpanMs > 0
+    ? (timestamp: number) => timeScale.plotStartX + ((timestamp - timeScale.firstTimestampMs) / scaleSpanMs) * timeScale.plotWidth
+    : timeScale.xForTimestampMs;
   const rects: ActivityBarRect[] = [];
   for (let index = from; index < to; index += 1) {
     const bucket = level.buckets[index]!;
@@ -654,8 +663,8 @@ function timeBucketActivityBarRects(args: {
     if ((bucket.peakAt[k] ?? -1) < 0) continue;
     // Centred on the measured minutes it holds, and exactly as wide as they
     // span (less the gap): a gap at either end of the slot stays empty.
-    const startX = timeScale.xForTimestampMs(bucket.firstMs);
-    const endX = timeScale.xForTimestampMs(bucket.lastMs);
+    const startX = xAt(bucket.firstMs);
+    const endX = xAt(bucket.lastMs);
     const centerX = startX + Math.max(0, endX - startX) / 2;
     const spanMinutes = Math.max(1, Math.round((bucket.lastMs - bucket.firstMs) / cadenceMs) + 1);
     const nominalWidth = Math.max(
@@ -1839,39 +1848,42 @@ function PulseMultiSignalChartInnerImpl({
   // each bar. They use every loaded minute, not the viewport's slice, so the
   // bar pyramid is built once per data load. Bar indices then refer to
   // `activityBarRollups`.
-  const activityBarRollups = activityBucketing === "time" && fullDetailRollups.length > 0
-    ? fullDetailRollups
-    : rollups;
-  const activityBarsUseDetail = activityBarRollups !== rollups;
   const timeBucketed = activityBucketing === "time";
-  const activityBarTimestamps = useMemo(
-    () => activityBarsUseDetail
-      ? activityBarRollups.map((point) => point.minuteTs)
-      : rollupMinuteTimestamps,
-    [activityBarRollups, activityBarsUseDetail, rollupMinuteTimestamps],
+  const activityBarDetailRollups = timeBucketed && fullDetailRollups.length > 0
+    ? fullDetailRollups
+    : null;
+  const activityBarRollups = activityBarDetailRollups ?? rollups;
+  const activityBarsUseDetail = activityBarRollups !== rollups;
+  // Keyed on the full-resolution rows alone: the viewport slice (`rollups`)
+  // changes on every zoomed wheel, pan or ease frame and must not rebuild the
+  // pyramid. At full range `rollups` can be the same rows, which flips
+  // `activityBarsUseDetail` but leaves these arrays (and the pyramid) as they were.
+  const activityBarDetailTimestamps = useMemo(
+    () => activityBarDetailRollups?.map((point) => point.minuteTs) ?? null,
+    [activityBarDetailRollups],
   );
+  const activityBarTimestamps = activityBarDetailTimestamps ?? rollupMinuteTimestamps;
   const activityBarChatValues = useMemo(
-    () => activityBarsUseDetail || timeBucketed
+    () => timeBucketed
       ? activityBarRollups.map((point) => (point.missing ? null : (point.chatCount ?? null)))
       : null,
-    [activityBarRollups, activityBarsUseDetail, timeBucketed],
+    [activityBarRollups, timeBucketed],
   );
   const activityBarEmoteValues = useMemo(
-    () => activityBarsUseDetail || timeBucketed
+    () => timeBucketed
       ? activityBarRollups.map((point) => (point.missing ? null : minuteEmoteTotal(point)))
       : null,
-    [activityBarRollups, activityBarsUseDetail, timeBucketed],
+    [activityBarRollups, timeBucketed],
   );
   const rollupTimesMs = useMemo(
     () => rollups.map((point) => Date.parse(point.minuteTs)),
     [rollups],
   );
-  const activityBarTimesMs = useMemo(
-    () => activityBarsUseDetail
-      ? activityBarRollups.map((point) => Date.parse(point.minuteTs))
-      : rollupTimesMs,
-    [activityBarRollups, activityBarsUseDetail, rollupTimesMs],
+  const activityBarDetailTimesMs = useMemo(
+    () => activityBarDetailRollups?.map((point) => Date.parse(point.minuteTs)) ?? null,
+    [activityBarDetailRollups],
   );
+  const activityBarTimesMs = activityBarDetailTimesMs ?? rollupTimesMs;
   // Every bar size, aggregated once per data load: [chat, emotes] averages,
   // peaks and coverage for slots of 1, 2, 5 ... 240 minutes aligned to the
   // stream start (the chart's own clock), so slot edges never move.
