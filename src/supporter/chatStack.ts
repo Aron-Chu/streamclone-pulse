@@ -19,7 +19,8 @@ import { CHAT_STACK_CSS } from './styles.ts'
  *
  * Every other line is canned, neutral chatter; never real chat. The column
  * is a preview inside the extension, never Twitch chat: a corner chip says so,
- * and no content script adds anything to a real chat column.
+ * and no content script adds anything to a real chat column. Lines that
+ * scroll up under that chip fade out, so it never covers chat text.
  *
  * The stage opens on a poster frame (three lines of chatter, then yours), so
  * the first frame and a reduced-motion still are never an empty box.
@@ -52,6 +53,8 @@ export function ChatStack(stage: HTMLElement, context: StageContext, kit: Kit, m
 
   function layout() {
     const bottom = chatBottom()
+    // Lines fade out under the preview chip, so it never covers chat text.
+    const reserve = badge.offsetTop + badge.offsetHeight - 2
     lines = lines.filter((ln, i) => {
       const y = bottom - LH * (lines.length - i)
       if (y < -LH * 2) { ln.remove(); return false }
@@ -60,7 +63,7 @@ export function ChatStack(stage: HTMLElement, context: StageContext, kit: Kit, m
     lines.forEach((ln, i) => {
       const y = bottom - LH * (lines.length - i)
       ln.style.transform = `translateY(${y}px)`
-      ln.style.opacity = y < -2 ? '0' : '1'
+      ln.style.opacity = y < reserve ? '0' : '1'
     })
   }
   function push(el: HTMLElement) {
@@ -147,10 +150,10 @@ export function ChatStack(stage: HTMLElement, context: StageContext, kit: Kit, m
     for (const d of [0, 140, 280]) context.later(addOther, d)
     context.later(() => addYours(mode === 'anatomy' ? 'that peak was mine' : null), 420)
   }
-  const chip = document.createElement('span')
-  chip.className = 'spk-preview'
-  chip.textContent = 'Preview · only you see this'
-  stage.append(chip)
+  const badge = document.createElement('span')
+  badge.className = 'spk-preview'
+  badge.textContent = 'Preview · only you see this'
+  stage.append(badge)
   seed()
   return {
     tick,

@@ -30,7 +30,7 @@ export const CHAT_STACK_CSS = `${KIT_CSS}
 .spk-cl.spk-dim { opacity: 0.3 !important; }
 .spk-cl.spk-sheen::after { animation: spk-sheen 900ms ease-out 1 forwards; background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.2) 50%, transparent 70%); background-size: 250% 100%; content: ""; inset: 0; pointer-events: none; position: absolute; }
 @keyframes spk-sheen { from { background-position: 130% 0; } to { background-position: -60% 0; } }
-.spk-preview { background: rgba(13, 13, 18, 0.86); border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 999px; color: #c8c8d0; font: 600 9.5px/14px ${FONT}; padding: 0 6px; pointer-events: none; position: absolute; right: 8px; top: 2px; white-space: nowrap; z-index: 2; }
+.spk-preview { background: #0d0d12; border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 999px; color: #c8c8d0; font: 600 9.5px/14px ${FONT}; padding: 0 6px; pointer-events: none; position: absolute; right: 8px; top: 2px; white-space: nowrap; z-index: 2; }
 .spk-chip { align-items: center; background: rgba(13, 13, 18, 0.92); border: 1px solid rgba(var(--spk-fin-rgb), 0.55); border-radius: 999px; color: var(--spk-fin-core); display: flex; font: 800 9.5px/14px ${FONT}; gap: 4px; height: 15px; padding: 0 6px; position: absolute; right: 8px; top: 1.5px; }
 @media (prefers-reduced-motion: reduce) {
   .spk-cl, .pulse-settings-supporter-cta::before { transition: none; }
