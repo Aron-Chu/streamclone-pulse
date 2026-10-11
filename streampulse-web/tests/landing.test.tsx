@@ -24,6 +24,9 @@ vi.mock('../src/lib/publicHub', async (importOriginal) => {
         seventvPerMin: 120,
         trendPct: 8,
       },
+      // The channel strip needs at least three active, rising channels.
+      { login: 'ludwig', displayName: 'ludwig', viewers: 9_000, chatPerMin: 300, seventvPerMin: 60, trendPct: 12 },
+      { login: 'tarik', displayName: 'tarik', viewers: 8_000, chatPerMin: 200, seventvPerMin: 30, trendPct: 5 },
     ],
     liveChannels: [],
     moments: [],

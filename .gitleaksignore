@@ -35,3 +35,6 @@ bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranke
 bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:generic-api-key:783
 bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:sentry-access-token:1269
 bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:sentry-access-token:787
+# Cloudflare's published always-pass Turnstile TEST site key (1x000...AA) in a deploy-guard
+# unit test placeholder. Not a credential; the next commit assembles it at runtime (2026-10-09).
+2f827b5fb95062140a365716a8b14ea6fdd67977:streampulse-web/tests/pagesDeployEnv.test.ts:generic-api-key:17

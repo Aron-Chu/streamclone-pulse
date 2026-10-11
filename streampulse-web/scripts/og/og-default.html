@@ -1,0 +1,86 @@
+<!doctype html>
+<!--
+  Source for public/og-default.png (the 1200x630 link-preview card used by every
+  public page). Regenerate with: node scripts/og/render-og-default.mjs
+  The waveform is decorative: it carries no numbers and claims no data.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      @font-face {
+        font-family: 'Geist';
+        src: url('../../node_modules/@fontsource-variable/geist/files/geist-latin-wght-normal.woff2') format('woff2');
+        font-weight: 100 900;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; width: 1200px; height: 630px; }
+      body {
+        position: relative;
+        overflow: hidden;
+        font-family: 'Geist', system-ui, sans-serif;
+        color: #fafafa;
+        background:
+          radial-gradient(circle at 12% -20%, rgb(244 63 94 / 0.22), transparent 520px),
+          radial-gradient(circle at 100% 0%, rgb(34 211 238 / 0.16), transparent 560px),
+          radial-gradient(circle at 70% 120%, rgb(167 139 250 / 0.18), transparent 520px),
+          #09090b;
+      }
+      .card { position: absolute; inset: 0; padding: 64px 72px; display: flex; flex-direction: column; }
+      .brand { display: flex; align-items: center; gap: 20px; }
+      .brand .site { margin-left: auto; font-size: 26px; font-weight: 600; color: #d4d4d8; letter-spacing: 0; }
+      .brand svg { width: 72px; height: 72px; }
+      .brand span { font-size: 40px; font-weight: 700; letter-spacing: -0.02em; }
+      h1 {
+        margin: 48px 0 0;
+        max-width: 980px;
+        font-size: 68px;
+        line-height: 1.04;
+        font-weight: 800;
+        letter-spacing: -0.035em;
+      }
+      .grad {
+        background: linear-gradient(90deg, #f4577a, #a78bfa, #22d3ee);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+      p {
+        margin: 24px 0 0;
+        max-width: 900px;
+        font-size: 28px;
+        line-height: 1.35;
+        color: #a1a1aa;
+      }
+      .wave { position: absolute; left: 0; right: 0; bottom: 0; height: 150px; }
+      .tag { margin-top: 22px; font-size: 24px; font-weight: 600; color: #5eead4; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="brand">
+        <svg viewBox="0 0 64 64" aria-hidden="true">
+          <rect width="64" height="64" rx="14" fill="#050608" stroke="#27272a" stroke-width="1.5" />
+          <path d="M6 49 H14 L18.5 33 L23 46 L28.5 20 L32 5 L35.5 20 L41 46 L45.5 33 L50 49 H58"
+            fill="none" stroke="#2dd4bf" stroke-width="5" stroke-linejoin="miter" stroke-miterlimit="12" />
+        </svg>
+        <span>StreamPulse</span>
+        <span class="site">streampulse.stream</span>
+      </div>
+      <h1>Find the Twitch moments people <span class="grad">actually reacted to.</span></h1>
+      <p>Chat, emote and viewer reactions for Twitch live streams and VODs, in a Pulse tab next to chat.</p>
+      <div class="tag">Free Chrome extension · Public analytics</div>
+    </div>
+    <svg class="wave" viewBox="0 0 1200 150" preserveAspectRatio="none" aria-hidden="true">
+      <defs>
+        <linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#2dd4bf" stop-opacity="0.28" />
+          <stop offset="1" stop-color="#2dd4bf" stop-opacity="0" />
+        </linearGradient>
+      </defs>
+      <path d="M0 132 L60 128 L110 130 L150 120 L190 126 L240 112 L280 122 L330 104 L370 116 L420 98 L450 108 L480 60 L500 34 L520 72 L560 100 L610 110 L660 96 L700 106 L750 88 L780 100 L810 70 L830 52 L850 80 L890 102 L940 110 L990 98 L1040 112 L1090 104 L1140 118 L1200 114 L1200 150 L0 150 Z" fill="url(#fill)" />
+      <path d="M0 132 L60 128 L110 130 L150 120 L190 126 L240 112 L280 122 L330 104 L370 116 L420 98 L450 108 L480 60 L500 34 L520 72 L560 100 L610 110 L660 96 L700 106 L750 88 L780 100 L810 70 L830 52 L850 80 L890 102 L940 110 L990 98 L1040 112 L1090 104 L1140 118 L1200 114"
+        fill="none" stroke="#2dd4bf" stroke-width="3" stroke-linejoin="round" />
+    </svg>
+  </body>
+</html>

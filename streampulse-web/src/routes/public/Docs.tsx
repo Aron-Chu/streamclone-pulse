@@ -39,6 +39,21 @@ export default function Docs() {
           </div>
         </section>
 
+        {/* Public Analytics */}
+        <section id="analytics" aria-labelledby="analytics-title" className="mt-8">
+          <h2 id="analytics-title">2. Explore Analytics</h2>
+          <p className="text-zinc-300">
+            <Link to="/analytics" className="font-bold text-violet-400 hover:underline">StreamPulse Analytics</Link> provides aggregate channel, stream, emote, and reaction
+            signals without exposing raw chat or chatter identities.
+          </p>
+          <ol className="mt-3 space-y-2">
+            <li>Start with Overview, then explore Moments, Emotes, or Channels.</li>
+            <li>Check the displayed time window and coverage before comparing numbers.</li>
+            <li>Open a moment to inspect its stream timestamp. Video may be pending or unavailable even when analytics exist.</li>
+            <li>Share the timestamped stream link to return to the same broadcast and moment.</li>
+          </ol>
+        </section>
+
         {/* Coverage States */}
         <section id="coverage" aria-labelledby="coverage-title" className="mt-8">
           <h2 id="coverage-title">3. Read coverage correctly</h2>
@@ -74,21 +89,6 @@ export default function Docs() {
               </p>
             </div>
           </div>
-        </section>
-
-        {/* Public Analytics */}
-        <section id="analytics" aria-labelledby="analytics-title" className="mt-8">
-          <h2 id="analytics-title">2. Explore Analytics</h2>
-          <p className="text-zinc-300">
-            <Link to="/analytics" className="font-bold text-violet-400 hover:underline">StreamPulse Analytics</Link> provides aggregate channel, stream, emote, and reaction
-            signals without exposing raw chat or chatter identities.
-          </p>
-          <ol className="mt-3 space-y-2">
-            <li>Start with Overview, then explore Moments, Emotes, or Channels.</li>
-            <li>Check the displayed time window and coverage before comparing numbers.</li>
-            <li>Open a moment to inspect its stream timestamp. Video may be pending or unavailable even when analytics exist.</li>
-            <li>Share the timestamped stream link to return to the same broadcast and moment.</li>
-          </ol>
         </section>
         <details className="mt-8 rounded-lg border border-white/[0.08] px-4 py-3">
           <summary className="cursor-pointer font-semibold text-zinc-200">Developer reference</summary>
