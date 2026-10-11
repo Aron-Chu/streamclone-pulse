@@ -41,6 +41,7 @@ import { openSettingsHost } from './settingsHost.ts'
 import { resumePendingLink, supporterAccount, supporterPayFirst, watchPendingLink } from './supporterAccountRuntime.ts'
 import { supporterAppearanceReply } from './supporterAppearance.ts'
 import { injectSupporterCard } from './supporterCardScript.ts'
+import { chatBadgeList, chatBadgeOptIn, installChatBadges } from './chatBadgeRuntime.ts'
 import { twitchSignIn } from './twitchSignInRuntime.ts'
 import {
   EXTENSION_DIAGNOSTICS_INGEST_ENABLED,
@@ -990,6 +991,17 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           sendResponse({ type: 'SUPPORTER_CARD_SCRIPT', ok: await injectSupporterCard(chrome.scripting, sender) } satisfies BackgroundResponse)
           return
         }
+        case 'CHAT_BADGES': {
+          sendResponse(await chatBadgeList.ask(message.have) satisfies BackgroundResponse)
+          return
+        }
+        case 'SUPPORTER_CHAT_BADGE': {
+          sendResponse((message.action === 'on' ? await chatBadgeOptIn.on()
+            : message.action === 'off' ? await chatBadgeOptIn.off()
+              : message.action === 'style' ? await chatBadgeOptIn.style(message.wave)
+                : await chatBadgeOptIn.status()) satisfies BackgroundResponse)
+          return
+        }
         case 'TWITCH_SIGN_IN': {
           sendResponse((message.action === 'status'
             ? await twitchSignIn.status()
@@ -1319,6 +1331,7 @@ void (async () => {
 })()
 
 installBackgroundDiagnosticsEmitters()
+installChatBadges()
 
 chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
   if (changeInfo.url) {

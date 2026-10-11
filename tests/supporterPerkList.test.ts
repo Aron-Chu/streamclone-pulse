@@ -24,6 +24,16 @@ describe('Supporter perk list', () => {
     expect(SUPPORTER_PERKS.onlyYou).toBe('Only you see them, in your own StreamPulse extension. Nothing is added to chat, and nobody else sees them.')
   })
 
+  it('pins Seen in chat separately: optional, off until turned on, and named only where it is live', () => {
+    // Not one of `names`: those four stay private to your own extension.
+    expect(SUPPORTER_PERKS.names).not.toContain('Seen in chat')
+    expect(SUPPORTER_PERKS.seenInChat).toEqual({
+      name: 'Seen in chat',
+      detail: 'optional: your crest beside your name and your paint on it in Twitch chat, for other StreamPulse viewers. Off until you turn it on.',
+      onlyYou: 'Title paint, emote rain and the Supporter card show only in your own StreamPulse extension. Seen in chat is the one exception, and only if you turn it on: then other StreamPulse viewers see your crest and paint in chat. People without StreamPulse always see normal Twitch chat.',
+    })
+  })
+
   it('says plainly that the 7TV header backdrop moved to Supporter in 0.2.2', () => {
     expect(SUPPORTER_PERKS.moved).toBe('Emote rain, the 7TV header backdrop, was free up to extension 0.2.1. From 0.2.2 it is a Supporter perk, and a backdrop you saved is kept for when you support. No other free feature moved behind Supporter.')
   })

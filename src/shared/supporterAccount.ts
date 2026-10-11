@@ -45,6 +45,11 @@ export type SupporterEntitlement =
       accountKind?: 'email' | 'installation' | 'twitch'
       restoreEligible?: boolean
       /**
+       * Seen in chat, only while the server has the feature on. Presentation
+       * only: whether your entry is published is decided by the server.
+       */
+      chatBadge?: import('./chatBadges.ts').ChatBadgeSnapshot
+      /**
        * `auto` renews on `renewsOn`; `ends` was cancelled and ends on `endsOn`;
        * `none` has no live subscription. Absent when the server did not say
        * (older servers, or a read it could not make): show no renewal line.

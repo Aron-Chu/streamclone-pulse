@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url'
 const here = dirname(fileURLToPath(import.meta.url))
 const root = resolve(here, '..')
 const contentBundle = resolve(root, 'dist/content/twitch.js')
+const chatBadgesChunk = resolve(root, 'dist/content/chat-badges.js')
 
 /** Accepted parent baseline (bytes) from clean `npm run build` — headroom ≤10%. */
 export const CONTENT_BUNDLE_BASELINE = {
@@ -21,6 +22,24 @@ export const CONTENT_BUNDLE_BASELINE = {
 }
 
 const HEADROOM = 1.1
+
+/**
+ * Seen in chat decorator (content/chat-badges.js): its own cap, separate from
+ * twitch.js. It must never be folded into twitch.js, which has no headroom.
+ */
+export const CHAT_BADGES_CHUNK_MAX_GZIP = 8_000
+/** Marker that must never appear in twitch.js (the decorator's class prefix). */
+export const CHAT_BADGES_MARKER = 'sp-cb-'
+
+export function checkChatBadgesChunk(chunkPath = chatBadgesChunk, contentPath = contentBundle) {
+  if (!existsSync(chunkPath)) return { ok: false, errors: [`missing ${chunkPath} — run npm run build first`] }
+  const raw = readFileSync(chunkPath)
+  const gzip = gzipSync(raw, { level: 9 }).length
+  const errors = []
+  if (gzip > CHAT_BADGES_CHUNK_MAX_GZIP) errors.push(`chat-badges.js gzip ${gzip} > cap ${CHAT_BADGES_CHUNK_MAX_GZIP}`)
+  if (existsSync(contentPath) && readFileSync(contentPath, 'utf8').includes(CHAT_BADGES_MARKER)) errors.push('twitch.js contains the chat badge decorator')
+  return { ok: errors.length === 0, errors, raw: raw.length, gzip, maxGzip: CHAT_BADGES_CHUNK_MAX_GZIP }
+}
 
 export function measureContentBundle(path = contentBundle) {
   if (!existsSync(path)) {
@@ -58,8 +77,10 @@ function main() {
       2,
     ),
   )
-  if (!result.ok) {
-    for (const e of result.errors) console.error(`bundle-budget: ${e}`)
+  const chat = checkChatBadgesChunk()
+  console.log(JSON.stringify({ path: 'dist/content/chat-badges.js', raw: chat.raw, gzip: chat.gzip, maxGzip: chat.maxGzip, ok: chat.ok }, null, 2))
+  if (!result.ok || !chat.ok) {
+    for (const e of [...result.errors, ...chat.errors]) console.error(`bundle-budget: ${e}`)
     process.exit(1)
   }
 }
