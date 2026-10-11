@@ -140,14 +140,14 @@ function ChartHoverReadout({
 }
 
 /** "Bar 00:40:00–00:50:00 · 10-min avg · chat 280/min (peak 845) · emotes 98/min (peak 410)". */
-function activityBarReadout(bar: ActivityBarSummary): string {
+function activityBarReadout(bar: ActivityBarSummary, label = 'Bar'): string {
   const range = bar.startOffsetSeconds != null && bar.endOffsetSeconds != null
     ? ` ${formatHeatOffset(bar.startOffsetSeconds)}–${formatHeatOffset(bar.endOffsetSeconds)}`
     : ''
   const lane = (label: string, values: ActivityBarSummary['chat']) =>
     values ? ` · ${label} ${count(Math.round(values.avg))}/min (peak ${count(values.peak)})` : ''
   const measured = bar.partial ? ` · ${bar.observed} of ${bar.expected} min measured` : ''
-  return `Bar${range} · ${bar.step}-min avg${lane('chat', bar.chat)}${lane('emotes', bar.emotes)}${measured}`
+  return `${label}${range} · ${bar.step}-min avg${lane('chat', bar.chat)}${lane('emotes', bar.emotes)}${measured}`
 }
 
 function AnalyticsChart({
@@ -616,14 +616,14 @@ function AnalyticsChart({
     return lastCompleteRollup
   }, [lastCompleteRollup, rollups])
   const hoverPoint = hoverRollup ?? selectedRollup ?? restingRollup ?? rollups[rollups.length - 1] ?? null
-  // Above 1-minute bars the second header row names the hovered bar, or adds
-  // the pinned minute's bar to the pinned text. At 1-minute bars it is unchanged.
+  // Above 1-minute bars the second header row names the hovered bar. While a
+  // minute is pinned, a line of its own names the pinned minute's bar in full
+  // (range, chat and emotes average and peak, coverage) and wraps on narrow
+  // screens, where a tap is the only way to read a bar.
   const hoverBar = activityBarFocus?.hover ?? null
   const hoverBarReadout = hoverBar ? activityBarReadout(hoverBar) : null
   const pinnedBar = activityBarFocus?.pinned ?? null
-  const pinnedBarNote = !hoverBar && selectedRollup && pinnedBar?.chat
-    ? ` · in ${pinnedBar.step}-min bar: chat avg ${count(Math.round(pinnedBar.chat.avg))} (peak ${count(pinnedBar.chat.peak)})`
-    : ''
+  const pinnedBarReadout = pinnedBar ? activityBarReadout(pinnedBar, 'Pinned bar') : null
   const toggleActivityExpanded = useCallback(() => {
     setActivityExpanded(value => !value)
   }, [])
@@ -866,12 +866,12 @@ function AnalyticsChart({
                 <p
                   className="min-w-0 truncate text-xs font-bold leading-4 text-zinc-600"
                   data-chart-selection-hint
-                  title={selectedRollup && pinnedBarNote
-                    ? `Pinned minute ${selectedMinuteRangeLabel(selectedRollup.minuteTs, streamStartedAt)}${pinnedBarNote}`
+                  title={selectedRollup
+                    ? `Pinned minute ${selectedMinuteRangeLabel(selectedRollup.minuteTs, streamStartedAt)}`
                     : 'Hover previews a minute. Click to select it. Press Escape or use Clear to release the selection.'}
                 >
                   {selectedRollup
-                    ? `Pinned minute ${selectedMinuteRangeLabel(selectedRollup.minuteTs, streamStartedAt)}${Number.isFinite(selectedOffsetSeconds) ? ` · exact moment ${formatHeatOffset(selectedOffsetSeconds!)}` : ''}${selectedOutsideViewport ? ' · outside visible range · Return below' : ''} · Esc or Clear to release${pinnedBarNote}`
+                    ? `Pinned minute ${selectedMinuteRangeLabel(selectedRollup.minuteTs, streamStartedAt)}${Number.isFinite(selectedOffsetSeconds) ? ` · exact moment ${formatHeatOffset(selectedOffsetSeconds!)}` : ''}${selectedOutsideViewport ? ' · outside visible range · Return below' : ''} · Esc or Clear to release`
                     : 'Hover to preview a minute · click to select · press Esc to clear'}
                 </p>
               )}
@@ -888,6 +888,20 @@ function AnalyticsChart({
                 </a>
               ) : null}
             </div>
+            {selectedRollup && activityBucketMinutes != null ? (
+              // Two lines are kept while a minute is pinned, so a zoom that
+              // changes the bar size (or reaches 1-minute bars) does not move
+              // the plot under the pointer.
+              <p
+                className="min-h-8 min-w-0 whitespace-normal break-words text-xs font-bold leading-4 tabular-nums text-zinc-500"
+                data-chart-pinned-bar-readout
+                data-bar-step={pinnedBar?.step ?? 1}
+                data-bar-start={pinnedBar?.startMs}
+                data-bar-partial={pinnedBar ? (pinnedBar.partial ? 'true' : 'false') : undefined}
+              >
+                {pinnedBarReadout ?? 'Pinned bar · 1-min bars: the bar is the pinned minute'}
+              </p>
+            ) : null}
           </div>
         </div>
 

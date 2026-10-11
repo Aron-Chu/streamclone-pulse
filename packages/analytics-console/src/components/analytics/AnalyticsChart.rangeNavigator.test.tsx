@@ -509,6 +509,45 @@ describe('AnalyticsChart range controls and navigator', () => {
     expect(hint().textContent).toBe('Hover to preview a minute · click to select · press Esc to clear')
   })
 
+  it('names the pinned minute\'s bar in full on a line of its own that wraps, not in the truncated hint', () => {
+    const detail = detailWithMinutes(748)
+    const props = {
+      detail,
+      selectedEmotes: new Set<string>(),
+      onSelectEmote: vi.fn(),
+      onSelectRollup: vi.fn(),
+      viewMode: 'overview' as const,
+      onViewModeChange: vi.fn(),
+    }
+    const { container, rerender } = render(<AnalyticsChart {...props} selectedRollup={null} />)
+    expect(container.querySelector('svg[data-activity-bucket-minutes]')?.getAttribute('data-activity-bucket-minutes')).toBe('5')
+    // No pin, no line.
+    expect(container.querySelector('[data-chart-pinned-bar-readout]')).toBeNull()
+
+    // Minute 42 sits in the 00:40-00:45 bar. Chat there runs 14, 15, 16, 17, 18.
+    rerender(<AnalyticsChart {...props} selectedRollup={detail.rollups[42]!} />)
+    const line = container.querySelector<HTMLElement>('[data-chart-pinned-bar-readout]')!
+    expect(line).not.toBeNull()
+    expect(line.textContent).toMatch(/^Pinned bar 00:40:00–00:45:00 · 5-min avg · chat 16\/min \(peak 18\) · emotes \d+\/min \(peak \d+\)$/)
+    expect(line.getAttribute('data-bar-step')).toBe('5')
+    expect(line.getAttribute('data-bar-partial')).toBe('false')
+    // It wraps instead of truncating, and keeps two lines so the plot does not move.
+    expect(line.className).not.toContain('truncate')
+    expect(line.className).toContain('whitespace-normal')
+    expect(line.className).toContain('min-h-8')
+    // The one-line hint no longer carries a bar suffix.
+    const hint = container.querySelector<HTMLElement>('[data-chart-selection-hint]')!
+    expect(hint.textContent).toMatch(/^Pinned minute 00:42:00–00:43:00 .*Esc or Clear to release$/)
+    expect(hint.textContent).not.toContain('bar')
+
+    // At 1-minute bars the line stays (same height) and says the bar is the minute.
+    for (let click = 0; click < 3; click += 1) fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
+    expect(container.querySelector('svg[data-activity-bucket-minutes]')?.getAttribute('data-activity-bucket-minutes')).toBe('1')
+    const atMinute = container.querySelector<HTMLElement>('[data-chart-pinned-bar-readout]')!
+    expect(atMinute.getAttribute('data-bar-step')).toBe('1')
+    expect(atMinute.textContent).toBe('Pinned bar · 1-min bars: the bar is the pinned minute')
+  })
+
   it('offers a VOD jump beside the pinned minute', () => {
     const detail = detailWithMinutes(91)
     const selected = detail.rollups[20]!

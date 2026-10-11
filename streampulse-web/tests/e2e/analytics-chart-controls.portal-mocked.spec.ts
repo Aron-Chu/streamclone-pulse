@@ -232,6 +232,46 @@ test.describe('session chart zoom gestures (desktop)', () => {
   })
 })
 
+// Review 2026-10-10: on a phone the pinned bar's average and peak were cut
+// off at the end of a one-line hint. They now sit on their own wrapping line.
+for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 }] as const) {
+  test.describe(`pinned bar readout at ${viewport.width}px`, () => {
+    test.use({ viewport, contextOptions: { reducedMotion: 'reduce' } })
+
+    test("names the pinned minute's bar in full, fully visible", async ({ page }) => {
+      const harness = await openLongSession(page)
+      const chart = page.locator(CHART)
+      expect(Number(await chart.getAttribute('data-activity-bucket-minutes'))).toBeGreaterThan(1)
+      const area = await page.locator(`${CHART} rect[data-chart-touch-action]`).boundingBox()
+      if (!area) throw new Error('plot area has no layout box')
+      await page.mouse.click(area.x + area.width * 0.4, area.y + area.height * 0.6)
+      await settle(page)
+      const line = page.locator('[data-chart-pinned-bar-readout]')
+      await expect(line).toHaveCount(1)
+      await expect(line).toHaveText(/^Pinned bar \d\d:\d\d:\d\d–\d\d:\d\d:\d\d · \d+-min avg · chat [\d,.]+[KM]?\/min \(peak [\d,.]+[KM]?\) · emotes [\d,.]+[KM]?\/min \(peak [\d,.]+[KM]?\)/)
+      const fit = await line.evaluate(element => {
+        const box = element.getBoundingClientRect()
+        return {
+          overflowX: element.scrollWidth - element.clientWidth,
+          overflowY: element.scrollHeight - element.clientHeight,
+          left: box.left,
+          right: box.right,
+          viewport: document.documentElement.clientWidth,
+          clipped: getComputedStyle(element).textOverflow === 'ellipsis',
+        }
+      })
+      expect(fit.overflowX, 'no text cut off sideways').toBeLessThanOrEqual(0)
+      expect(fit.overflowY, 'no text cut off below').toBeLessThanOrEqual(0)
+      expect(fit.clipped).toBe(false)
+      expect(fit.left).toBeGreaterThanOrEqual(0)
+      expect(fit.right).toBeLessThanOrEqual(fit.viewport)
+      // The one-line hint no longer carries a bar suffix.
+      await expect(page.locator('[data-chart-selection-hint]')).not.toContainText('bar')
+      await assertNoUnexpected(harness)
+    })
+  })
+}
+
 test.describe('session chart bars follow the zoom (desktop)', () => {
   test.use({ viewport: { width: 1440, height: 900 }, contextOptions: { reducedMotion: 'reduce' } })
 
