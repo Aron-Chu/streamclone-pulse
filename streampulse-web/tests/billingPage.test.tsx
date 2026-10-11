@@ -158,6 +158,9 @@ describe('billing lifecycle view', () => {
     expect(screen.getByRole('button', { name: 'Manage subscription' }).classList.contains('pulse-account-text-button')).toBe(true)
     expect(document.querySelectorAll('.pulse-membership .pulse-account-primary')).toHaveLength(1)
     expect(screen.getByTestId('billing-welcome-steps').textContent).not.toMatch(/receipt/)
+    // Only builds with Continue with Twitch can show the look; Edge has sign-in off.
+    expect(screen.getByText('Your look shows in the extension on desktop Chrome or Firefox.')).toBeTruthy()
+    expect(screen.queryByText(/Edge/)).toBeNull()
   })
   it('never trusts a success query parameter as payment', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(membership('pending')))

@@ -598,7 +598,7 @@ export default function BillingPage() {
     </ol>
     primary = <a className="pulse-account-button pulse-account-primary" href="https://www.twitch.tv/" target="_blank" rel="noopener noreferrer">Open Twitch</a>
     secondary = <><a className="pulse-account-button" href={CHROME_WEB_STORE_LISTING_URL} target="_blank" rel="noopener noreferrer">Get the extension</a>{portal('Manage subscription', 'text')}</>
-    footnote = <p className="pulse-account-meta pulse-account-narrow-only">Your look shows in the extension on desktop Chrome, Edge or Firefox.</p>
+    footnote = <p className="pulse-account-meta pulse-account-narrow-only">Your look shows in the extension on desktop Chrome or Firefox.</p>
   } else if (status === 'active' && renewal.kind === 'ends' && renewal.date) {
     // Cancelled at period end (spec §3.5, payment audit F8): when it ends and how to undo it.
     state = 'ending'
