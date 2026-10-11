@@ -1,6 +1,6 @@
 import { clamp, rand } from './kit.ts'
 
-/** One animated lab stage: the lab's `PileFamily` instance shape. */
+/** One animated lab stage: the lab's `ChatStack` / `PileFamily` instance shape. */
 export interface StageModel {
   tick(dt: number): void
   peak(): void
