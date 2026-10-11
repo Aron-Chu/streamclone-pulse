@@ -688,10 +688,12 @@ export default function BillingPage() {
 
   const facts: Array<[string, string]> = []
   if (status === 'grace' && accessUntil) facts.push(['Access until', accessUntil])
-  // A renewing membership shows when it renews (F8); "Access through" stays
-  // only for a server that does not send renewal state yet.
+  // A renewing membership shows when it renews (F8) and a cancelled one says
+  // when it ends in its title. Every other active membership keeps "Access
+  // through": renewal "none" (support access, or cancelled immediately with
+  // a paid period left), and a server that does not send renewal state yet.
   if (status === 'active' && renewal.kind === 'auto' && renewal.date) facts.push(['Renews', renewal.date])
-  if (status === 'active' && renewal.kind === 'unknown' && accessUntil) facts.push(['Access through', accessUntil])
+  if (status === 'active' && !renewal.date && accessUntil) facts.push(['Access through', accessUntil])
   if (periods && status !== 'none') facts.push(['Supported', `${periods} ${periods === 1 ? 'month' : 'months'}`])
   if (reference && load === 'ready') facts.push(['Pulse account', reference])
   if (wrongAccount) facts.length = 0

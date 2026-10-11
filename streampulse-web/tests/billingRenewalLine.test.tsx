@@ -33,6 +33,18 @@ describe('billing renewal on the launch page', () => {
     expect(document.body.textContent).not.toMatch(/Renews on/)
   })
 
+  it('an active membership with renewal "none" keeps Access through', async () => {
+    // Support-granted access, or a subscription cancelled immediately with a paid period left.
+    serve({ renewal: 'none' })
+    render(<MemoryRouter><BillingPage /></MemoryRouter>)
+    expect(await screen.findByRole('heading', { name: 'Supporter active' })).toBeTruthy()
+    expect(screen.getByText('Access through')).toBeTruthy()
+    expect(screen.getByText(longDate(ON))).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: /Supporter ends/ })).toBeNull()
+    expect(screen.queryByText('Renews')).toBeNull()
+    expect(screen.queryByTestId('billing-renewal')).toBeNull()
+  })
+
   it('an older server without the fields keeps Access through and nothing new', async () => {
     serve({})
     render(<MemoryRouter><BillingPage /></MemoryRouter>)

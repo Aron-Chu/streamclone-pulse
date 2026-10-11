@@ -23,8 +23,8 @@ for (const width of [1440, 390]) {
     let snapshot: Record<string, unknown> = ACTIVE
     await page.route('**/v1/billing/supporter', route => route.fulfill({ json: snapshot }))
     const date = async () => page.evaluate(on => new Date(on).toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' }), ON)
-    for (const name of ['cancelled', 'renewing', 'old-backend']) {
-      snapshot = name === 'cancelled' ? { ...ACTIVE, renewal: 'ends', endsOn: ON } : name === 'renewing' ? { ...ACTIVE, renewal: 'auto', renewsOn: ON } : ACTIVE
+    for (const name of ['cancelled', 'renewing', 'no-renewal', 'old-backend']) {
+      snapshot = name === 'cancelled' ? { ...ACTIVE, renewal: 'ends', endsOn: ON } : name === 'renewing' ? { ...ACTIVE, renewal: 'auto', renewsOn: ON } : name === 'no-renewal' ? { ...ACTIVE, renewal: 'none' } : ACTIVE
       await page.goto('/account/billing')
       if (name === 'cancelled') {
         await expect(page.getByRole('heading', { name: `Supporter ends ${await date()}`, exact: true })).toBeVisible()
