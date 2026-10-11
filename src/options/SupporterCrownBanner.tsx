@@ -20,7 +20,10 @@ const PRICE_SHORT = 'US$4.99/mo'
  * (src/shared/supporter-perks.json): title paint, tenure crest, emote rain,
  * Supporter card.
  * A Supporter sees their own paint and crest; everyone else sees the lab's
- * sample, with the price.
+ * sample. The price shows only while paid sign-ups are open (the worker's
+ * entitlement says checkoutEnabled); until then nothing here advertises a
+ * price for something that cannot be bought, and the way in reads "See
+ * what's coming".
  *
  * It owns the settings page's membership check (the same worker reply the
  * overlay header uses) and reports whether perks are on, so the page's other
@@ -48,6 +51,7 @@ export function SupporterBanner({ onOpen, onPerks }: { onOpen: () => void; onPer
   const shown = kit ?? SAMPLE_KIT
   const state = kit ? (perks ? 'own' : 'sample') : 'pending'
   const own = state === 'own'
+  const checkoutOpen = useCheckoutOpen()
   return (
     <div className="pulse-settings-supporter-banner-frame">
       <button
@@ -63,7 +67,7 @@ export function SupporterBanner({ onOpen, onPerks }: { onOpen: () => void; onPer
           <span className="pulse-settings-supporter-banner-eyebrow">
             <PeakMark size={13} strokeWidth={2} stroke="currentColor" />
             <span>{own ? 'Your kit' : 'Pulse Supporter'}</span>
-            {state === 'sample' ? <em>· {PRICE_SHORT}</em> : null}
+            {state === 'sample' && checkoutOpen ? <em>· {PRICE_SHORT}</em> : null}
           </span>
           <strong>{own ? 'Yours lands on top' : 'Your crest lands on top'}</strong>
           <span className="pulse-settings-supporter-banner-perks">
@@ -71,10 +75,28 @@ export function SupporterBanner({ onOpen, onPerks }: { onOpen: () => void; onPer
           </span>
           <small>{own ? 'Only you see your kit. Core tools stay free.' : 'Only you see them. Core tools stay free.'}</small>
         </span>
-        <span className="pulse-settings-supporter-banner-arrow">View benefits <span aria-hidden="true">→</span></span>
+        <span className="pulse-settings-supporter-banner-arrow">{checkoutOpen || own ? 'View benefits' : 'See what’s coming'} <span aria-hidden="true">→</span></span>
       </button>
     </div>
   )
+}
+
+/**
+ * Whether paid sign-ups are open, from one worker entitlement read. Unknown,
+ * failed or closed all read as closed, so a price never shows by default.
+ */
+function useCheckoutOpen(): boolean {
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    let live = true
+    try {
+      void Promise.resolve(chrome.runtime.sendMessage({ type: 'SUPPORTER_ENTITLEMENT' })).then((reply: { type?: string; entitlement?: { state?: string; checkoutEnabled?: boolean } } | undefined) => {
+        if (live && reply?.type === 'SUPPORTER_ENTITLEMENT' && reply.entitlement?.state === 'ready' && reply.entitlement.checkoutEnabled === true) setOpen(true)
+      }, () => {})
+    } catch { /* no worker: closed */ }
+    return () => { live = false }
+  }, [])
+  return open
 }
 
 /**

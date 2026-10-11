@@ -26,9 +26,9 @@ function runFrames(count: number) {
   for (let k = 0; k < count && frames.length; k++) frames.shift()!.run(clock += 50)
 }
 
-function stubExtension(appearance: unknown, reducedMotion = false) {
+function stubExtension(appearance: unknown, reducedMotion = false, entitlement?: unknown) {
   vi.stubGlobal('chrome', {
-    runtime: { id: 'test-extension', getURL: (path: string) => path, sendMessage: vi.fn(async (message: { type: string }) => message.type === 'SUPPORTER_APPEARANCE' ? appearance : undefined) },
+    runtime: { id: 'test-extension', getURL: (path: string) => path, sendMessage: vi.fn(async (message: { type: string }) => message.type === 'SUPPORTER_APPEARANCE' ? appearance : message.type === 'SUPPORTER_ENTITLEMENT' && entitlement ? { type: 'SUPPORTER_ENTITLEMENT', entitlement } : undefined) },
     storage: {
       sync: { get: vi.fn(async (key: string) => (key in stored ? { [key]: stored[key] } : key === 'pulseBanner' ? { pulseBanner: { mode: 'off', intensity: 35, title: '' } } : {})), set: vi.fn(async (items: Record<string, unknown>) => { Object.assign(stored, items) }) },
       onChanged: { addListener() {}, removeListener() {} },
@@ -88,7 +88,26 @@ const youImages = (stage: HTMLElement) => [...stage.querySelectorAll<HTMLImageEl
 const chips = (banner: HTMLElement) => [...banner.querySelectorAll('.pulse-settings-supporter-perk')].map(chip => chip.textContent)
 
 describe('full-settings Supporter banner: Crown, staged', () => {
-  it('renders the staged Crown for a non-Supporter: the sample kit, the price, a chip for every perk and the way to the benefits', async () => {
+  it('shows the price and View benefits only while paid sign-ups are open', async () => {
+    for (const [entitlement, eyebrow, arrow] of [
+      [undefined, 'Pulse Supporter', 'See what’s coming →'],
+      [{ state: 'not_linked' }, 'Pulse Supporter', 'See what’s coming →'],
+      [{ state: 'ready', status: 'none', checkoutEnabled: false }, 'Pulse Supporter', 'See what’s coming →'],
+      [{ state: 'ready', status: 'none', checkoutEnabled: true }, 'Pulse Supporter· US$4.99/mo', 'View benefits →'],
+    ] as const) {
+      stubExtension(NON_SUPPORTER, false, entitlement)
+      const onOpen = vi.fn()
+      const view = await mount(<SupporterBanner onOpen={onOpen} />)
+      expect(view.banner().querySelector('.pulse-settings-supporter-banner-eyebrow')?.textContent, JSON.stringify(entitlement)).toBe(eyebrow)
+      expect(view.banner().querySelector('.pulse-settings-supporter-banner-arrow')?.textContent).toBe(arrow)
+      // Same target either way: the Supporter page.
+      view.banner().click()
+      expect(onOpen).toHaveBeenCalledTimes(1)
+      view.unmount()
+    }
+  })
+
+  it('renders the staged Crown for a non-Supporter: the sample kit, a chip for every perk and the way to the benefits', async () => {
     stubExtension(NON_SUPPORTER)
     const onPerks = vi.fn()
     const onOpen = vi.fn()
@@ -98,14 +117,15 @@ describe('full-settings Supporter banner: Crown, staged', () => {
     expect(view.stage().dataset.mode).toBe('crown')
     expect(view.stage().getAttribute('aria-hidden')).toBe('true')
     expect(view.stage().dataset.running).toBe('true')
-    expect(view.banner().querySelector('.pulse-settings-supporter-banner-eyebrow')?.textContent).toBe('Pulse Supporter· US$4.99/mo')
+    // Sign-ups closed (no entitlement says otherwise): no price.
+    expect(view.banner().querySelector('.pulse-settings-supporter-banner-eyebrow')?.textContent).toBe('Pulse Supporter')
     expect(view.banner().querySelector('strong')?.textContent).toBe('Your crest lands on top')
     expect(chips(view.banner())).toEqual(SUPPORTER_PERKS.names)
     expect(chips(view.banner())).toEqual(['Title paint', 'Tenure crest', 'Emote rain', 'Supporter card'])
     expect(view.banner().querySelector('[data-perk="crest"] .pulse-crest')?.getAttribute('data-tenure')).toBe('12m')
     expect(view.banner().querySelector('small')?.textContent).toBe('Only you see them. Core tools stay free.')
     expect(view.banner().textContent).not.toMatch(/signature/i)
-    expect(view.banner().querySelector('.pulse-settings-supporter-banner-arrow')?.textContent).toBe('View benefits →')
+    expect(view.banner().querySelector('.pulse-settings-supporter-banner-arrow')?.textContent).toBe('See what’s coming →')
     expect(view.banner().style.getPropertyValue('--spk-fin')).toBe('#efc96a')
     runFrames(1)
     // The lab builds nine chat emotes and one of yours into a settled pile. Yours is your crest, not an emote.

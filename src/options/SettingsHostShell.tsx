@@ -11,7 +11,8 @@ export interface HostNavItem {
 
 function initialSection(navItems: ReadonlyArray<HostNavItem>): SettingsHostSection {
   if (typeof window === 'undefined') return navItems[0]?.id ?? 'pulse'
-  const hash = window.location.hash.replace(/^#/, '')
+  // A place inside a section opens that section (#pulse-background: Pulse, Background & motion).
+  const hash = window.location.hash.replace(/^#/, '').replace(/^pulse-background$/, 'pulse')
   return navItems.some(item => item.id === hash) ? hash as SettingsHostSection : navItems[0]?.id ?? 'pulse'
 }
 
@@ -39,7 +40,8 @@ export function SettingsHostShell({
   useEffect(() => {
     function syncFromHash(): void {
       const nextSection = initialSection(navItems)
-      const valid = navItems.some(item => `#${item.id}` === window.location.hash)
+      // #pulse-background stays in the address so Background & motion can open whenever it mounts.
+      const valid = window.location.hash === '#pulse-background' || navItems.some(item => `#${item.id}` === window.location.hash)
       if (!valid) window.history.replaceState(null, '', `#${nextSection}`)
       setActiveSection(nextSection)
     }

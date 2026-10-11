@@ -12,7 +12,7 @@ import { useSupporterAppearanceDetails, type SupporterAppearance } from './useSu
 import { SettingsGearIcon } from './SettingsGearIcon.tsx'
 import { formatCount } from './mostReacted.ts'
 import type { PulsePanelSurfaceState } from './pulsePanelLayout.ts'
-import type { SettingsHostSection } from '../shared/messages.ts'
+import type { SettingsHostTarget } from '../shared/messages.ts'
 import type { SupporterCardOptions } from '../supporter/cardContract.ts'
 import { names as SUPPORTER_PERK_NAMES } from '../shared/supporter-perks.json'
 
@@ -33,7 +33,7 @@ export interface QuickSettingsChannel {
 function useSettingsHostOpener() {
   const [error, setError] = useState<string | null>(null)
   const [opening, setOpening] = useState(false)
-  async function open(section: SettingsHostSection): Promise<void> {
+  async function open(section: SettingsHostTarget): Promise<void> {
     setOpening(true)
     setError(null)
     try {
@@ -179,7 +179,6 @@ export function PulseSettingsPanel({ onBack, channel }: { onBack?: () => void; c
           <ToggleRow
             id="pulse-auto-update"
             label="Refresh live data automatically"
-            hint="Auto-update activity and viewer counts."
             checked={preferences.autoUpdate}
             onChange={preferences.setAutoUpdate}
           />
@@ -216,7 +215,7 @@ export function PulseSettingsPanel({ onBack, channel }: { onBack?: () => void; c
           <ToggleRow
             id="pulse-chat-dock"
             label="Dock when chat is closed"
-            hint={isSidebar ? 'Show a mini Pulse dock when Twitch chat is hidden.' : 'Docking is only available when placement is set to Sidebar.'}
+            hint={isSidebar ? 'Show a mini Pulse dock when Twitch chat is hidden.' : 'Docking needs Sidebar placement.'}
             checked={preferences.dock}
             disabled={!isSidebar}
             onChange={preferences.setDock}
@@ -238,7 +237,7 @@ export function PulseSettingsPanel({ onBack, channel }: { onBack?: () => void; c
           <div className="pulse-settings-field pulse-settings-control-block">
             <span className="pulse-settings-label">Background &amp; motion</span>
             <PulseBannerQuickPreview perks={appearance?.perks === true} />
-            <button type="button" className="pulse-link-btn" data-banner-editor-cta="true" disabled={opening} onClick={() => void openHost('pulse')}>
+            <button type="button" className="pulse-link-btn" data-banner-editor-cta="true" disabled={opening} onClick={() => void openHost('pulse-background')}>
               Edit background in all settings ↗
             </button>
           </div>
