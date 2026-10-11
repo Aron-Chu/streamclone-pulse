@@ -4,12 +4,18 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, expect, it, vi } from 'vitest'
 import { SupporterAccountSection } from '../src/options/SupporterAccountSection.tsx'
+import { renewalLine } from '../src/options/SupporterJourney.tsx'
 import { SupporterCosmeticControls } from '../src/options/SupporterCosmeticControls.tsx'
 import { injectHostStyles } from '../src/options/hostStyles.ts'
 import { parseBackgroundRequest } from '../src/shared/parseBackgroundRequest.ts'
 import type { SupporterEntitlement } from '../src/shared/supporterAccount.ts'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+
+/** The chips on the paint swatches, as "Chip:finish", sorted: the paint in use and the one being tried. */
+const chipState = (host: HTMLElement) => [...host.querySelectorAll('.pulse-supporter-tile')]
+  .flatMap(tile => [...tile.querySelectorAll('.pulse-supporter-tile-chip')].map(chip => `${chip.textContent}:${tile.querySelector('input')!.value.replace('finish-', '')}`))
+  .sort()
 
 describe('supporter settings', () => {
   it('draws Your card, who sees what and your look without storage, network, or entitlement mutation', async () => {
@@ -179,11 +185,39 @@ describe('supporter settings', () => {
       const button = host.querySelector('.pulse-account-link-actions button') as HTMLButtonElement
       expect(button.disabled).toBe(true)
       expect(button.textContent).toContain('Default active')
-      // Emote rain is locked too, and its saved choice untouched.
-      expect(host.querySelector('[data-supporter-perks="locked"]')?.querySelectorAll('button:disabled')).toHaveLength(3)
+      // Emote rain is locked too, and its saved choice untouched: Rain is not shown pressed while rain is off.
+      const locked = host.querySelector('[data-supporter-perks="locked"]')!
+      expect(locked.querySelectorAll('button:disabled')).toHaveLength(3)
+      expect([...locked.querySelectorAll('[aria-pressed="true"]')].map(button => button.textContent)).not.toContain('Rain')
+      // No "Preview: … / Active: …" line: the swatches carry the state.
+      expect(host.textContent).not.toMatch(/Preview: |Active: /)
+      expect(chipState(host)).toEqual(['Equipped:default'])
       expect(host.textContent).toContain('Equipping an accent requires an active linked Supporter membership')
       // Only a read of the optional saved choice; never a save.
       expect(sendMessage.mock.calls).toEqual([[{ type: 'SUPPORTER_FINISH_INTENT' }]])
+    } finally {
+      act(() => root.unmount())
+      host.remove()
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('keeps a paint choice for when Supporter opens while sign-ups are closed', async () => {
+    const sendMessage = vi.fn(async (message: { type: string }) => message.type === 'SUPPORTER_FINISH_INTENT' ? { type: 'SUPPORTER_FINISH_INTENT', ok: true, finish: null } : undefined)
+    vi.stubGlobal('chrome', { runtime: { sendMessage } })
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => root.render(<SupporterCosmeticControls entitlement={{ state: 'not_linked' }} />))
+      expect(host.textContent).toContain('Try paint, wave and sheen. It applies when you support.')
+      expect(host.textContent).not.toContain('Try anything')
+      const etched = host.querySelector<HTMLInputElement>('input[value="finish-etched"]')!
+      await act(async () => { etched.click() })
+      expect(chipState(host)).toEqual(['Equipped:default', 'Previewing:etched'])
+      const buttons = [...host.querySelectorAll('.pulse-account-link-actions button')].map(button => button.textContent)
+      expect(buttons).toContain('Save for when Supporter opens')
+      expect(buttons.join(' ')).not.toContain('when Supporter starts')
     } finally {
       act(() => root.unmount())
       host.remove()
@@ -210,12 +244,12 @@ describe('supporter settings', () => {
       act(() => radio('etched').click())
       await render({ ...entitlement, cosmetics: { enabled: true, finish: 'glass' } })
       expect(radio('etched').checked).toBe(true)
-      expect(host.textContent).toContain('Preview: Etched / Active: Glass')
+      expect(chipState(host)).toEqual(['Equipped:glass', 'Previewing:etched'].sort())
 
       await render({ ...entitlement, cosmetics: { enabled: true, finish: 'halo' } })
       expect(radio('halo').checked).toBe(true)
       expect(host.querySelector('[data-preview-finish]')?.getAttribute('data-preview-finish')).toBe('halo')
-      expect(host.textContent).toContain('Halo active')
+      expect(chipState(host)).toEqual(['Equipped:halo'])
       expect((host.querySelector('.pulse-account-link-actions button') as HTMLButtonElement).disabled).toBe(true)
 
       await render({ ...entitlement, cosmetics: { enabled: false, finish: 'halo' } })
@@ -253,13 +287,13 @@ describe('supporter settings', () => {
       await act(async () => (host.querySelector('.pulse-account-link-actions button') as HTMLButtonElement).click())
       expect(sendMessage).toHaveBeenCalledOnce()
       expect(host.textContent).toContain('Halo accent equipped.')
-      expect(host.textContent).toContain('Halo active')
+      expect(chipState(host)).toEqual(['Equipped:halo'])
 
       await act(async () => {
         if (entitlement.state === 'ready') entitlement = { ...entitlement, cosmetics: { enabled: true, finish: 'etched' } }
         render()
       })
-      expect(host.textContent).toContain('Etched active')
+      expect(chipState(host)).toEqual(['Equipped:etched'])
       expect(host.textContent).not.toContain('Halo accent equipped.')
       expect((host.querySelector('input[value="finish-etched"]') as HTMLInputElement).checked).toBe(true)
     } finally {
@@ -347,6 +381,59 @@ describe('Your card: payment issue and the top crest', () => {
     } finally {
       view.cleanup()
     }
+  })
+
+  it('adds one short renewal line from the snapshot: Cancels on after a cancel, Renews on while renewing, nothing from an older server', async () => {
+    const end = '2026-11-30T17:00:00Z'
+    const day = new Date(end).toLocaleDateString([], { month: 'short', day: 'numeric' })
+    expect(day).not.toContain('2026')
+    const lines = (journey: HTMLElement) => [...journey.querySelectorAll<HTMLElement>('[data-journey-renewal]')].map(line => `${line.dataset.journeyRenewal}:${line.textContent}`)
+    const cancelled = await renderCard(supporter('active', 7, { accessUntil: end, renewal: 'ends', endsOn: end }))
+    try {
+      expect(cancelled.journey.dataset.journeyState).toBe('active')
+      expect(lines(cancelled.journey)).toEqual([`ends:Cancels on ${day}`])
+      // The line sits in the status, and the paid-through fact is unchanged.
+      expect(cancelled.journey.querySelector('.pulse-journey-status [data-journey-renewal]')).not.toBeNull()
+      expect([...cancelled.journey.querySelectorAll('.pulse-journey-facts dt')].map(term => term.textContent)).toEqual(['Access through'])
+    } finally {
+      cancelled.cleanup()
+    }
+    const renewing = await renderCard(supporter('active', 7, { accessUntil: end, renewal: 'auto', renewsOn: end }))
+    try {
+      expect(lines(renewing.journey)).toEqual([`auto:Renews on ${day}`])
+    } finally {
+      renewing.cleanup()
+    }
+    const older = await renderCard(supporter('active', 7, { accessUntil: end }))
+    try {
+      expect(lines(older.journey)).toEqual([])
+      expect(older.journey.textContent).not.toMatch(/Cancels on|Renews on/)
+    } finally {
+      older.cleanup()
+    }
+    // A failed renewal keeps its own warning, with no renewal line.
+    const grace = await renderCard(supporter('grace', 7, { accessUntil: end, renewal: 'auto', renewsOn: end }))
+    try {
+      expect(lines(grace.journey)).toEqual([])
+    } finally {
+      grace.cleanup()
+    }
+  })
+
+  it('picks the renewal line only for an active membership with a usable date', () => {
+    const end = '2026-11-30T17:00:00Z'
+    const day = new Date(end).toLocaleDateString([], { month: 'short', day: 'numeric' })
+    expect(renewalLine(supporter('active', 1, { renewal: 'ends', endsOn: end }))).toEqual({ kind: 'ends', text: `Cancels on ${day}` })
+    expect(renewalLine(supporter('active', 1, { renewal: 'auto', renewsOn: end }))).toEqual({ kind: 'auto', text: `Renews on ${day}` })
+    // Old backend: no fields. Unknown or dateless answers say nothing either.
+    expect(renewalLine(supporter('active', 1))).toBeNull()
+    expect(renewalLine(supporter('active', 1, { renewal: 'ends' }))).toBeNull()
+    expect(renewalLine(supporter('active', 1, { renewal: 'none' }))).toBeNull()
+    expect(renewalLine(supporter('active', 1, { renewal: 'ends', endsOn: 'soon' }))).toBeNull()
+    expect(renewalLine(supporter('grace', 1, { renewal: 'ends', endsOn: end }))).toBeNull()
+    expect(renewalLine({ state: 'ready', status: 'expired', supportPeriods: 1, features: [], renewal: 'none' })).toBeNull()
+    expect(renewalLine({ state: 'error' })).toBeNull()
+    expect(renewalLine(null)).toBeNull()
   })
 
   it.each([
@@ -460,7 +547,7 @@ describe('cosmetics while membership is unknown', () => {
       expect((host.querySelector('.pulse-account-link-actions button') as HTMLButtonElement).disabled).toBe(true)
       await render({ ...active })
       expect(radio('halo').checked).toBe(true)
-      expect(host.textContent).toContain('Preview: Halo / Active: Glass')
+      expect(chipState(host)).toEqual(['Equipped:glass', 'Previewing:halo'].sort())
       // Active members never had the pre-purchase choice read for them.
       expect(sendMessage).not.toHaveBeenCalled()
     } finally {
@@ -491,7 +578,7 @@ describe('cosmetic save races', () => {
       await act(async () => root.render(<SupporterCosmeticControls entitlement={active('halo', true)} />))
       await act(async () => respond({ type: 'SUPPORTER_COSMETICS', ok: true }))
       expect(host.textContent).toContain('Halo accent equipped.')
-      expect(host.textContent).toContain('Halo active')
+      expect(chipState(host)).toEqual(['Equipped:halo'])
     } finally {
       act(() => root.unmount())
       host.remove()
@@ -519,7 +606,7 @@ describe('cosmetic save races', () => {
       await act(async () => root.render(<SupporterCosmeticControls entitlement={active('halo', true)} />))
       await act(async () => respond({ type: 'SUPPORTER_COSMETICS', ok: true }))
       expect(host.querySelector('.pulse-supporter-save-status')?.textContent).toBe('Halo accent equipped.')
-      expect(host.textContent).toContain('Halo active')
+      expect(chipState(host)).toEqual(['Equipped:halo'])
     } finally {
       act(() => root.unmount())
       host.remove()
@@ -545,12 +632,12 @@ describe('cosmetic save races', () => {
       act(() => radio('glass').click())
       await act(async () => root.render(<SupporterCosmeticControls entitlement={active({ enabled: false, finish: 'glass' })} />))
       expect(radio('glass').checked).toBe(true)
-      expect(host.textContent).toContain('Preview: Glass / Active: Default')
+      expect(chipState(host)).toEqual(['Equipped:default', 'Previewing:glass'].sort())
       expect(button().textContent).toBe('Equip accent')
       // After that, a change to the applied finish still replaces the draft.
       await act(async () => root.render(<SupporterCosmeticControls entitlement={active({ enabled: true, finish: 'halo' })} />))
       expect(radio('halo').checked).toBe(true)
-      expect(host.textContent).toContain('Halo active')
+      expect(chipState(host)).toEqual(['Equipped:halo'])
     } finally {
       act(() => root.unmount())
       host.remove()

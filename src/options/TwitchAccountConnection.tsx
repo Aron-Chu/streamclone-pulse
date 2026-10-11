@@ -31,7 +31,7 @@ const OUTCOME_COPY: Partial<Record<TwitchSignInOutcome, string>> = {
   token_invalid: 'Twitch’s reply could not be verified, so nothing changed. Try again.',
   flow_expired: 'The sign-in took too long. Try again and finish in the Twitch window within a few minutes.',
   pilot_only: 'Twitch sign-in is open to invited testers right now. Free tools work without an account.',
-  link_required: 'Invited testers: link Twitch to your StreamPulse account on streampulse.stream first, then try again. Free tools work without an account.',
+  link_required: 'This Twitch account isn’t linked to a StreamPulse account yet. Invited testers can connect with a one-time code below instead.',
   identity_in_use: 'That Twitch account already has its own StreamPulse account. We never combine accounts. Contact us if one of them has a membership.',
   account_deleted: 'That StreamPulse account was deleted. Try again in a few minutes to start a new one.',
   signup_unavailable: 'New StreamPulse accounts are paused right now. Your free tools still work; try again later.',

@@ -6,7 +6,7 @@ import type { Worker } from '@playwright/test'
  *   - saves made without an account join the signed-in account only after an
  *     explicit "Add to account" confirm, and leave the device only after the
  *     account confirms each one (notes never leave the device);
- *   - Sign out removes this browser's copy of the account's history and
+ *   - A confirmed Sign out removes this browser's copy of the account's history and
  *     notes, while saves made without an account stay.
  */
 const API = 'https://api.streampulse.stream'

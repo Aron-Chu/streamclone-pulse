@@ -99,7 +99,16 @@ function projectEntitlement(result: { status: number; body: unknown }, accountId
     accountKind: body.accountKind === 'email' || body.accountKind === 'installation' || body.accountKind === 'twitch' ? body.accountKind : undefined,
     restoreEligible: body.restoreEligible === true,
     ...(chatBadge ? { chatBadge } : {}),
+    ...renewal(body),
   }
+}
+
+/** The optional renewal fields, only in their documented shapes; anything else says nothing. */
+function renewal(body: Record<string, unknown>): Pick<Extract<SupporterEntitlement, { state: 'ready' }>, 'renewal' | 'renewsOn' | 'endsOn'> {
+  const value = body.renewal
+  if (value === 'auto') return date(body.renewsOn) ? { renewal: value, renewsOn: body.renewsOn } : { renewal: value }
+  if (value === 'ends') return date(body.endsOn) ? { renewal: value, endsOn: body.endsOn } : { renewal: value }
+  return value === 'none' ? { renewal: value } : {}
 }
 
 const FINISHES: ReadonlySet<string> = new Set(['glass', 'etched', 'halo'])
@@ -132,7 +141,7 @@ function entitlementCacheMs(value: SupporterEntitlement, result: { status: numbe
 /** What a settings or Twitch surface would render differently. Revision alone is not a change. */
 function fingerprint(accountId: string, value: SupporterEntitlement): string {
   if (value.state !== 'ready') return `${accountId}:${value.state}`
-  return JSON.stringify([accountId, value.status, value.accessUntil ?? null, value.features, value.supportPeriods, value.cosmetics ?? null, value.checkoutEnabled === true, value.chatBadge ?? null])
+  return JSON.stringify([accountId, value.status, value.accessUntil ?? null, value.features, value.supportPeriods, value.cosmetics ?? null, value.checkoutEnabled === true, value.chatBadge ?? null, value.renewal ?? null, value.renewsOn ?? value.endsOn ?? null])
 }
 
 /** One coordinator per worker; installation refresh retries use the server's bounded idempotency window. */
@@ -498,9 +507,13 @@ export class SupporterAccountCoordinator {
     try { this.ports.accountForgotten?.(accountId) } catch { /* the credential is still cleared */ }
   }
 
-  /** The server rejected this device's credential (401): signed out here, and its local copy goes. */
-  private async rejected(accountId: string): Promise<SupporterAccountState> {
-    this.forgetAccount(accountId)
+  /**
+   * The server rejected this device's credential (401): only the credential
+   * goes. The account's watched history, bookmarks and notes stay in this
+   * browser and come back when the same account signs in again; they are
+   * removed only by an explicit, confirmed Sign out or Sign out everywhere.
+   */
+  private async rejected(_accountId: string): Promise<SupporterAccountState> {
     return this.clear('relink_required')
   }
 

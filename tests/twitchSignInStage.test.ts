@@ -44,6 +44,15 @@ describe('Sign in with Twitch build stage (PULSE_EXTENSION_TWITCH_SIGNIN)', () =
     }
   })
 
+  it('gives the content script the same stage as the worker and options', async () => {
+    // The panel's bookmark copy reads TWITCH_SIGNIN_ENABLED; without the define
+    // the content script always read 'off', whatever the build's stage.
+    const { default: content } = await import('../vite.content.config.ts')
+    const { default: pages } = await import('../vite.config.ts')
+    expect(content.define?.__TWITCH_SIGNIN_STAGE__).toBe(JSON.stringify('off'))
+    expect(content.define?.__TWITCH_SIGNIN_STAGE__).toBe(pages.define?.__TWITCH_SIGNIN_STAGE__)
+  })
+
   it('adds identity to the generated development manifest only when Twitch is on, never identity.email', () => {
     const development = manifest('development')
     expect(manifestForTwitchSignInStage(development, 'development', 'off')).toBe(development)

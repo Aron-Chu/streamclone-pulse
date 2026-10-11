@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { transform as transformCss } from 'lightningcss'
 import { shadowStyles } from './src/ui/theme.ts'
 import { overlayBaseStyles } from './src/ui/overlayStyles.ts'
+import { resolveTwitchSignInStage } from './scripts/extension-target.mjs'
 import { extensionBuildId, extensionReleasePreview, extensionResolve, extensionTarget, isStoreBuild, sharedOutput } from './vite.shared.ts'
 
 const root = fileURLToPath(new URL('.', import.meta.url))
@@ -66,6 +67,9 @@ export default defineConfig({
     __EXTENSION_TARGET__: JSON.stringify(extensionTarget),
     __EXTENSION_BUILD_ID__: JSON.stringify(extensionBuildId),
     __EXTENSION_RELEASE_PREVIEW__: JSON.stringify(extensionReleasePreview),
+    // Panel copy (bookmarks) follows the build's sign-in stage, like the worker
+    // and options do. Without it the content script always read 'off'.
+    __TWITCH_SIGNIN_STAGE__: JSON.stringify(resolveTwitchSignInStage(extensionTarget)),
   },
   build: {
     minify: 'terser',

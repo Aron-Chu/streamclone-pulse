@@ -107,6 +107,40 @@ describe('Sign in with Twitch worker flow', () => {
     await f.account.withCredential(async token => { expect(token).toBe('a'.repeat(64)); return { status: 200 } })
   })
 
+  it('names a development build at device link and leaves the field out on store builds', async () => {
+    const development = fixture({ ports: { buildTarget: 'development' } })
+    expect((await development.signIn.signIn('interactive')).outcome).toBe('signed_in')
+    expect(development.calls('/v1/account/auth/twitch/device')).toHaveLength(1)
+    expect(development.bodyOf('/v1/account/auth/twitch/device')).toEqual({ flowId: FLOW_ID, flowSecret: FLOW_SECRET, idToken: ID_TOKEN, buildTarget: 'development' })
+    // start-device is unchanged.
+    expect(development.bodyOf('/v1/account/auth/twitch/start-device')).toEqual({ surface: 'chrome', purpose: 'signin', mode: 'interactive', forceVerify: false })
+    for (const buildTarget of ['store', undefined] as const) {
+      const store = fixture({ ports: { buildTarget } })
+      expect((await store.signIn.signIn('interactive')).outcome).toBe('signed_in')
+      expect(store.bodyOf('/v1/account/auth/twitch/device')).toEqual({ flowId: FLOW_ID, flowSecret: FLOW_SECRET, idToken: ID_TOKEN })
+    }
+  })
+
+  it('retries the device link once without buildTarget when an older server rejects the field', async () => {
+    const old = fixture({ ports: { buildTarget: 'development' }, routes: { '/v1/account/auth/twitch/device': body => 'buildTarget' in body ? json(400, { error: 'invalid_request' }) : json(200, pair()) } })
+    expect((await old.signIn.signIn('interactive')).outcome).toBe('signed_in')
+    expect(old.calls('/v1/account/auth/twitch/device')).toHaveLength(2)
+    expect(old.bodyOf('/v1/account/auth/twitch/device', 0)).toMatchObject({ buildTarget: 'development' })
+    expect(old.bodyOf('/v1/account/auth/twitch/device', 1)).toEqual({ flowId: FLOW_ID, flowSecret: FLOW_SECRET, idToken: ID_TOKEN })
+    expect(old.stored()).toMatchObject({ kind: 'linked', accountId: ACCOUNT_ID })
+    // Only once, and only for that answer: a second refusal or another error is reported as is.
+    const refused = fixture({ ports: { buildTarget: 'development' }, routes: { '/v1/account/auth/twitch/device': () => json(400, { error: 'invalid_request' }) } })
+    expect((await refused.signIn.signIn('interactive')).outcome).toBe('error')
+    expect(refused.calls('/v1/account/auth/twitch/device')).toHaveLength(2)
+    const expired = fixture({ ports: { buildTarget: 'development' }, routes: { '/v1/account/auth/twitch/device': () => json(401, { error: 'flow_invalid_or_expired' }) } })
+    expect((await expired.signIn.signIn('interactive')).outcome).toBe('flow_expired')
+    expect(expired.calls('/v1/account/auth/twitch/device')).toHaveLength(1)
+    // A store build never retries: it sent no field to drop.
+    const store = fixture({ ports: { buildTarget: 'store' }, routes: { '/v1/account/auth/twitch/device': () => json(400, { error: 'invalid_request' }) } })
+    expect((await store.signIn.signIn('interactive')).outcome).toBe('error')
+    expect(store.calls('/v1/account/auth/twitch/device')).toHaveLength(1)
+  })
+
   it('treats a closed window as a cancel and stores nothing', async () => {
     const f = fixture({ launch: async () => { throw new Error('The user did not approve access.') } })
     const response = await f.signIn.signIn('interactive')

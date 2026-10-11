@@ -438,10 +438,10 @@ describe('Twitch sign-in off (stage A): signed out', () => {
       expect(view.text()).toContain('Supporter sign-ups are not open yet')
       expect(view.text()).toContain('When they open, you\'ll choose Continue with Twitch, then pay on Stripe. Free tools work without an account.')
       expect(view.text()).toContain('US$4.99 / month')
-      // The card and the Account row both say who is here: nobody, and that is fine.
+      // Your card says who is here: nobody, and that is fine. The Account card does not repeat it.
       expect(card(view.host).name().textContent).toBe('Not signed in')
-      expect(accountRow(view.host)).toContain('Not signed in')
-      expect(accountRow(view.host)).toContain('Free tools work without an account.')
+      expect(view.host.querySelector('[data-row="account"]')).toBeNull()
+      expect(view.text().match(/Not signed in/g)).toHaveLength(1)
       const primary = view.host.querySelectorAll<HTMLAnchorElement>('.pulse-journey-primary')
       expect(primary).toHaveLength(1)
       expect(primary[0].textContent).toBe('Supporter details')
@@ -662,6 +662,10 @@ describe('connection states', () => {
     const view = await mount({ account: action => action === 'disconnect' ? { state: 'error' } : linked, entitlement: () => ready('none') })
     try {
       await view.click('Sign out')
+      // Sign out always asks first, and says what it removes.
+      expect(view.calls('SUPPORTER_ACCOUNT', 'disconnect')).toBe(0)
+      expect(view.text()).toContain('This removes the watched history and notes saved here while signed in. Saves made without an account stay.')
+      await view.click('Confirm sign out')
       expect(view.text()).toContain('the server could not confirm it')
     } finally { view.cleanup() }
   })
@@ -709,6 +713,7 @@ describe('connection states', () => {
     const own = await mount({ account: action => action === 'disconnect' ? (mine = { state: 'signed_out' }) : mine, entitlement: () => ready('none') })
     try {
       await own.click('Sign out')
+      await own.click('Confirm sign out')
       await own.change({ pulseAccountRevision: { newValue: 'disconnected' } })
       expect(own.text()).not.toContain('was disconnected from your StreamPulse account')
     } finally { own.cleanup() }
@@ -982,7 +987,7 @@ describe('Your card while the account is unknown', () => {
       expect(yours.name().textContent).toBe('Not signed in')
       expect(yours.avatar()).toBe('none')
       expect(yours.sub()).toBe('Free tools work without an account.')
-      expect(accountRow(view.host)).toContain('Not signed in')
+      expect(view.host.querySelector('[data-row=\"account\"]')).toBeNull()
     } finally { view.cleanup() }
   })
 })
@@ -1306,7 +1311,7 @@ describe('Continue with Twitch (tester and public stages)', () => {
 
   it.each<[string, string]>([
     ['pilot_only', 'Twitch sign-in is open to invited testers right now.'],
-    ['link_required', 'Invited testers: link Twitch to your StreamPulse account on streampulse.stream first'],
+    ['link_required', 'This Twitch account isn’t linked to a StreamPulse account yet. Invited testers can connect with a one-time code below instead.'],
     ['identity_in_use', 'We never combine accounts.'],
   ])('explains %s with tester copy and creates nothing', async (outcome, copy) => {
     const view = await mount({ account: () => ({ state: 'signed_out' }), entitlement: () => ({ state: 'not_linked' }), twitch: message => ({ status: twitchStatus(), account: { state: 'signed_out' }, ...(message.action === 'sign_in' ? { outcome: outcome as TwitchSignInResponse['outcome'] } : {}) }) }, undefined, 'tester')
@@ -1520,6 +1525,9 @@ describe('Sign out everywhere (Twitch sign-in on)', () => {
       const ask = view.host.querySelector('[data-sign-out-everywhere="ask"]')!
       expect(ask.getAttribute('role')).toBe('group')
       expect(ask.textContent).toContain('signs out every extension connected to this account, including this one. Nothing is deleted from your account, and it does not cancel your subscription.')
+      // Only this extension removes its copy; another browser only sees a 401 and keeps its copy hidden.
+      expect(ask.textContent).toContain('This extension removes its signed-in watched history and notes. Other browsers keep theirs hidden until this account signs in there again.')
+      expect(ask.textContent).not.toContain('Each extension removes')
       await view.click('Stay signed in')
       expect(view.host.querySelector('[data-sign-out-everywhere]')).toBeNull()
       expect(everywhereCalls(view)).toHaveLength(0)
@@ -1529,7 +1537,7 @@ describe('Sign out everywhere (Twitch sign-in on)', () => {
       expect(accountNotice(view.host)).toContain('You’re signed out everywhere.')
       expect(accountNotice(view.host)).toContain('Nothing was deleted from your account, and your subscription is unchanged.')
       // Signed out here too, as a choice: not "You were signed out on this browser".
-      expect(accountRow(view.host)).toContain('Not signed in')
+      expect(view.host.querySelector('[data-row=\"account\"]')).toBeNull()
       expect(view.text()).not.toContain('You were signed out on this browser')
       expect(view.buttons()).not.toContain('Sign out')
       expect(view.buttons()).not.toContain('Sign out everywhere')

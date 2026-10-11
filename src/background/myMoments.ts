@@ -171,8 +171,9 @@ async function importDeviceSaves(scope: string, held: boolean, id?: string): Pro
 }
 let queue: Promise<unknown> = Promise.resolve()
 /**
- * This device left the account (Sign out, Sign out everywhere, or a revoked
- * credential): its copy of that account's watched history and notes goes.
+ * This device left the account by an explicit, confirmed Sign out or Sign out
+ * everywhere: its copy of that account's watched history and notes goes. A
+ * credential the server rejects (401) or a relink keeps the copy.
  * Saves made without an account (the `|local` scope) stay. Queued behind any
  * My Moments request already under way, so none can write the copy back.
  */

@@ -49,7 +49,17 @@ export type SupporterEntitlement =
        * only: whether your entry is published is decided by the server.
        */
       chatBadge?: import('./chatBadges.ts').ChatBadgeSnapshot
+      /**
+       * `auto` renews on `renewsOn`; `ends` was cancelled and ends on `endsOn`;
+       * `none` has no live subscription. Absent when the server did not say
+       * (older servers, or a read it could not make): show no renewal line.
+       */
+      renewal?: SupporterRenewal
+      renewsOn?: string
+      endsOn?: string
     }
+
+export type SupporterRenewal = 'auto' | 'ends' | 'none'
 
 /**
  * Whether this membership unlocks the Supporter cosmetics: a verified active or
