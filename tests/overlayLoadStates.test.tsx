@@ -369,7 +369,7 @@ describe('Overlay load, error and dock states', () => {
         throw new TypeError('boom')
       }
       await act(async () => {
-        root.render(<PanelErrorBoundary emit={vi.fn(async () => {})}><Crash /></PanelErrorBoundary>)
+        root.render(<PanelErrorBoundary><Crash /></PanelErrorBoundary>)
       })
       expect(text()).toContain('Something went wrong rendering this panel.')
       expect(text()).not.toMatch(/type_error|unknown|\(/)
