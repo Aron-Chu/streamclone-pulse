@@ -34,3 +34,31 @@ it('does not sample media when capture is disabled', async () => {
   await observeMomentPlayback(video,{id:'m',channel:'fixturechan',title:'Moment',vodId:'2806037629',offsetSeconds:0,availability:'unresolved'},0,60)
   expect(sendMessage).toHaveBeenCalledTimes(1)
 })
+it('records on a player that attaches its stream through srcObject, as Twitch VODs do', async () => {
+  // Twitch's player sets video.srcObject to a MediaSourceHandle, so currentSrc
+  // stays empty for the whole VOD. The handle is the source.
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] })
+  const sendMessage = vi.fn(async (m: {action: string}) => m.action === 'status' ? { enabled: true, epoch: 7 } : { ok: true })
+  vi.stubGlobal('chrome', { runtime: { sendMessage } })
+  Object.defineProperty(document, 'hidden', { configurable:true, value:false })
+  const video = document.createElement('video')
+  document.body.append(video)
+  let time=540, handle: object|null = { kind:'MediaSourceHandle' }
+  Object.defineProperties(video, { currentSrc:{ configurable:true,value:'' }, srcObject:{ configurable:true,get:()=>handle },
+    currentTime:{ configurable:true,get:()=>time }, paused:{ configurable:true,value:false }, seeking:{ configurable:true,value:false }, readyState:{ configurable:true,value:4 } })
+  const reference={id:'moment',channel:'fixturechan',vodId:'2897231587',offsetSeconds:545,title:'Moment',availability:'unresolved' as const}
+  const records=()=>sendMessage.mock.calls.filter(([m])=>m.action==='record').length
+  await observeMomentPlayback(video,reference,540,570)
+  for(let i=0;i<24;i++) { time+=.5; await vi.advanceTimersByTimeAsync(500) }
+  expect(records()).toBe(1)
+  expect(sendMessage).toHaveBeenLastCalledWith({type:'MOMENT_CAPTURE',action:'record',epoch:7,reference,watchedSeconds:10})
+  // Another attached stream is another source, and a video with no source never starts.
+  await observeMomentPlayback(video,reference,540,570)
+  handle={ kind:'replacement' }
+  for(let i=0;i<24;i++) { time+=.5; await vi.advanceTimersByTimeAsync(500) }
+  handle=null
+  const asked=sendMessage.mock.calls.length
+  await observeMomentPlayback(video,reference,540,570)
+  expect(records()).toBe(1)
+  expect(sendMessage.mock.calls.length).toBe(asked)
+})
