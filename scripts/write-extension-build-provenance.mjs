@@ -31,6 +31,7 @@ export const buildInputs = [
   'scripts/validate-extension-package.mjs',
   'scripts/extension-package-lib.mjs',
   'scripts/lib/release-notes-gate.mjs',
+  'scripts/lib/device-link-package.mjs',
   'scripts/extension-permission-allowlists.mjs',
   'scripts/remote-code-scan.mjs',
   'scripts/zip-byte-validate.mjs',

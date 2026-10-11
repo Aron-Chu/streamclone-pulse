@@ -13,6 +13,7 @@ import {
   type SupporterBillingState,
   type SupporterDevicesState,
 } from '../shared/supporterAccount.ts'
+import { DEVICE_LINK_ENABLED } from '../shared/deviceLink.ts'
 import { DEFAULT_SUPPORTER_PAINT, supporterTenureForMonths } from '../shared/supporterPaint.ts'
 import {
   TWITCH_SIGNIN_STAGE,
@@ -43,7 +44,8 @@ import { usePortalOrigin } from './usePortalOrigin.ts'
  * With Twitch sign-in compiled off (today) a signed-out page says Supporter
  * sign-ups are not open yet and offers no purchase: no email restore, no
  * website-account choice, and no installation account. Invited testers keep a
- * closed "Connect this extension" disclosure for the existing device link.
+ * closed "Connect this extension" disclosure for the existing device link,
+ * except in Firefox builds, which leave the device link out (deviceLink.ts).
  *
  * The worker owns credentials, polling secrets and every HTTP request; this
  * page receives safe projections and asks it to act. Nothing here asserts an
@@ -78,8 +80,9 @@ export const ACCOUNT_COPY = {
   confirmBody: 'For your security, managing your subscription needs a Twitch check from the last 10 minutes.',
   wrongAccount: 'This subscription belongs to a different Twitch account. Sign out, then Continue with Twitch with the account you subscribed with.',
   confirmEverywhereBody: 'For your security, signing out everywhere needs a Twitch check from the last 10 minutes. Nothing was signed out.',
-  testerBridge: 'Invited tester? Connect this extension',
-  otherWays: 'Other ways to connect (testers)',
+  // The device link's own words; Firefox builds leave the link out (deviceLink.ts).
+  testerBridge: DEVICE_LINK_ENABLED ? 'Invited tester? Connect this extension' : '',
+  otherWays: DEVICE_LINK_ENABLED ? 'Other ways to connect (testers)' : '',
   billingEmail: 'Stripe asks for a billing email at checkout. It can be different from your Twitch email, and you don\'t need a separate StreamPulse sign-up.',
   reinstall: 'Reinstalled or on another browser? Continue with Twitch with the same Twitch account and your Supporter status comes back. No code to copy, no email to confirm.',
 } as const
@@ -378,7 +381,8 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
     return () => window.clearTimeout(timer)
   }, [retryAt])
 
-  const pending = account?.state === 'pending' ? account : null
+  // Firefox builds have no device link (deviceLink.ts), so never a code to show.
+  const pending = DEVICE_LINK_ENABLED && account?.state === 'pending' ? account : null
   const linked = account?.state === 'linked' ? account : null
   useEffect(() => { deviceRequest.current++; setDevices(null); setRevokeDevice(null); setConfirmDisconnect(false); setConfirmIdentity(null) }, [linked?.accountId])
   const status = entitlement?.state === 'ready' ? entitlement.status : null
@@ -488,6 +492,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
 
   /** Invited testers only: the existing device link, never a purchase. */
   async function connectTester() {
+    if (!DEVICE_LINK_ENABLED) return
     // A second click before the first request returns must not cancel the
     // tab the first one is about to open.
     if (accountInFlight.current) return
@@ -897,8 +902,8 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
     : null
   // Invited testers keep the existing device link, closed by default and
   // never a purchase: "Connect this extension" with Twitch off, "Other ways to
-  // connect" beside Continue with Twitch.
-  const testerBridge = unlinked && !linkingNotDeployed && billing.state !== 'reconnect_required'
+  // connect" beside Continue with Twitch. Firefox builds leave it out.
+  const testerBridge = DEVICE_LINK_ENABLED && unlinked && !linkingNotDeployed && billing.state !== 'reconnect_required'
 
   return (
     <>
@@ -992,7 +997,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
         </div>
         {everywhereOffered && everywhere === 'ask' ? <div className="pulse-journey-confirm" role="group" aria-label="Confirm sign out everywhere" data-sign-out-everywhere="ask"><p>Sign out everywhere? This ends every StreamPulse website session and signs out every extension connected to this account, including this one. Nothing is deleted from your account, and it does not cancel your subscription. This extension removes its signed-in watched history and notes. Other browsers keep theirs hidden until this account signs in there again. Continue with Twitch with the same Twitch account to sign in again.</p><div className="pulse-account-link-actions pulse-journey-actions"><button type="button" disabled={everywhereBusy || accountBusy || payBusy} aria-busy={everywhereBusy || undefined} onClick={() => void signOutEverywhere()}>{everywhereBusy ? 'Signing out everywhere…' : 'Confirm sign out everywhere'}</button><button type="button" disabled={everywhereBusy} onClick={() => setEverywhere(null)}>Stay signed in</button></div></div> : null}
         {everywhereOffered && everywhere === 'confirm_identity' ? <div className="pulse-journey-confirm" role="group" aria-label={ACCOUNT_COPY.confirmHeading} data-sign-out-everywhere="confirm-identity"><p><strong>{ACCOUNT_COPY.confirmHeading}</strong></p><p>{ACCOUNT_COPY.confirmEverywhereBody}</p><div className="pulse-account-link-actions pulse-journey-actions"><button className="pulse-twitch-signin" type="button" disabled={everywhereBusy} aria-busy={everywhereBusy || undefined} onClick={() => void signOutEverywhere(true)}><TwitchGlitch />{everywhereBusy ? ACCOUNT_COPY.openingTwitch : ACCOUNT_COPY.continueWithTwitch}</button><button type="button" disabled={everywhereBusy} onClick={() => setEverywhere(null)}>Not now</button></div></div> : null}
-        {confirmDisconnect ? <div className="pulse-journey-confirm" role="group" aria-label="Confirm sign out"><p>Sign out of this extension? This removes the watched history and notes saved here while signed in. Saves made without an account stay. It does not cancel your subscription or stop a payment already in progress. {twitchOn ? 'Continue with Twitch with the same Twitch account to see it here again.' : 'Connect this extension again to see it here.'}</p><div className="pulse-account-link-actions pulse-journey-actions"><button type="button" disabled={accountBusy || payBusy} onClick={() => void confirmDisconnection()}>Confirm sign out</button><button type="button" onClick={() => setConfirmDisconnect(false)}>Stay signed in</button></div></div> : null}
+        {confirmDisconnect ? <div className="pulse-journey-confirm" role="group" aria-label="Confirm sign out"><p>Sign out of this extension? This removes the watched history and notes saved here while signed in. Saves made without an account stay. It does not cancel your subscription or stop a payment already in progress. {twitchOn ? 'Continue with Twitch with the same Twitch account to see it here again.' : DEVICE_LINK_ENABLED ? 'Connect this extension again to see it here.' : ''}</p><div className="pulse-account-link-actions pulse-journey-actions"><button type="button" disabled={accountBusy || payBusy} onClick={() => void confirmDisconnection()}>Confirm sign out</button><button type="button" onClick={() => setConfirmDisconnect(false)}>Stay signed in</button></div></div> : null}
         {linked && entitlement?.state === 'ready' && entitlement.accountKind === 'installation' && entitlement.installationAccountsEnabled === true ? <details className="pulse-journey-devices" onToggle={event => { if (event.currentTarget.open && devices === null) void listDevices() }}>
           <summary>Connected extensions</summary>
           <p className="pulse-supporter-detail">Revoke an extension you no longer recognize. Use Sign out above to leave this browser.</p>
