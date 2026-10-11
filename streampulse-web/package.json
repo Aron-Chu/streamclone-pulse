@@ -36,6 +36,7 @@
     "check:analytics-overlap": "node scripts/check-analytics-overlap.mjs",
     "check:public-pages": "node scripts/check-public-pages.mjs",
     "check:edge-freeze": "node scripts/check-edge-freeze.mjs",
+    "supporter:legal-status": "node scripts/supporter-legal-status.mjs",
     "check:backend-url": "node scripts/check-backend-url.mjs",
     "status:hosted": "node scripts/hosted-status.mjs",
     "pages:deploy:prod": "node scripts/pages-deploy-prod.mjs"

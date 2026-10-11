@@ -13,7 +13,7 @@ import {
   refreshPrincipal,
   setBackendUrlOverride,
 } from './lib/auth'
-import { initPortalSentry } from './lib/sentry'
+import { initPortalSentry, isSecretBearingRoute } from './lib/sentry'
 import { PortalErrorBoundary } from './ui/PortalErrorBoundary'
 import { PageMetadata } from './ui/PageMetadata'
 import { RouteScrollManager } from './ui/RouteScrollManager'
@@ -30,7 +30,11 @@ import { routeScrollState } from './lib/routeScroll'
 captureAccountConfirmation()
 captureAccountDeviceCode()
 captureAccountRestore()
-if (!isPrivateSupporterRoute(window.location.pathname)) initPortalSentry()
+// Error monitoring runs on public, account and billing pages, under the strict
+// allowlist event builder in lib/sentry.ts, but never starts on a page that
+// carries a sign-in proof or one-time secret (Twitch callback, email confirm,
+// device link, restore).
+if (!isSecretBearingRoute(window.location.pathname)) initPortalSentry()
 
 const queryClient = new QueryClient({
   defaultOptions: {

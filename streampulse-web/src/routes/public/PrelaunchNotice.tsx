@@ -1,12 +1,19 @@
+import type { ReactNode } from 'react'
+import { useSupporterOffer } from '../../lib/supporterOffer'
+
 /**
  * Pre-launch statement shared by the Terms, Refunds, Privacy and Supporter
  * pages, so the four cannot drift apart.
  *
- * Supporter sign-ups are closed. Nothing on these pages may read as if a membership
- * can be bought today, or as if one has already been sold. Remove this only
- * when live checkout opens, together with the owner-approved final copy.
+ * It follows the one server-driven sales switch (GET /v1/billing/offer, see
+ * lib/supporterOffer.ts): shown while Supporter sign-ups are closed, while the
+ * answer is unknown and in the prerendered HTML; gone only once the server says
+ * sales are open and this build's own checks agree. No site release is needed
+ * to flip it.
  */
 export function PrelaunchNotice() {
+  const offer = useSupporterOffer()
+  if (offer.state === 'open') return null
   return (
     <p
       role="note"
@@ -18,4 +25,18 @@ export function PrelaunchNotice() {
       work once sign-ups open.
     </p>
   )
+}
+
+/**
+ * Swaps one piece of copy on the sales switch: `closed` while sign-ups are not
+ * open (and before the server has answered, and when prerendered), `open` only
+ * once they are.
+ */
+export function SalesCopy({ closed, open }: { closed: ReactNode; open: ReactNode }) {
+  return <>{useSupporterOffer().state === 'open' ? open : closed}</>
+}
+
+/** True only once the server opened sales and this build agrees. */
+export function useSalesOpen(): boolean {
+  return useSupporterOffer().state === 'open'
 }

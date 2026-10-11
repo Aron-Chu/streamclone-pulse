@@ -56,12 +56,12 @@ for (const width of [1440, 390]) {
       await expect(page.getByRole('heading', { name: 'Billing status is unavailable right now', exact: true })).toBeVisible()
       await expect(page.getByRole('status')).toContainText('Don’t start another checkout.')
       await expect(page.getByText('No purchase has been started.', { exact: false })).toHaveCount(0)
-      await expect(page.getByRole('button', { name: 'Continue to Stripe checkout', exact: true })).toHaveCount(0)
+      await expect(page.getByRole('button', { name: 'Continue to payment', exact: true })).toHaveCount(0)
       await expect(page.getByRole('button', { name: 'Manage subscription', exact: true })).toHaveCount(0)
       expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
       failed = false
       await page.getByRole('button', { name: 'Check again', exact: true }).click()
-      await expect(page.getByRole('heading', { name: 'You’re a Supporter', exact: true })).toBeVisible()
+      await expect(page.getByRole('heading', { name: 'You’re a Supporter. Thank you.', exact: true })).toBeVisible()
       await expect(page.getByRole('button', { name: 'Manage subscription', exact: true })).toBeEnabled()
     }
     expect(writes).toEqual([])
@@ -81,7 +81,7 @@ for (const width of [1440, 390]) {
       await expect(page.getByRole('status')).toContainText(attempt === 'invalid'
         ? 'This checkout link is invalid.' : 'This checkout link is no longer available.')
       await expect(page.getByRole('button', { name: 'Manage subscription', exact: true })).toBeEnabled()
-      await expect(page.getByRole('button', { name: 'Continue to Stripe checkout', exact: true })).toHaveCount(0)
+      await expect(page.getByRole('button', { name: 'Continue to payment', exact: true })).toHaveCount(0)
       // Development StrictMode may repeat this read. The contract is that
       // invalid IDs never reach the API and valid reads target only that ID.
       if (attempt === 'invalid') expect(attempts).toEqual([])
@@ -117,9 +117,9 @@ for (const width of [1440, 390]) {
       if (status === 'none') await expect(page.getByRole('button', { name: 'Manage subscription', exact: true })).toHaveCount(0)
       else await expect(portal).toBeEnabled()
       await expect(page.getByRole('link', { name: 'Tester sign-in', exact: true })).toHaveCount(0)
-      const checkout = page.getByRole('button', { name: status === 'expired' ? 'Rejoin Supporter' : 'Continue to Stripe checkout', exact: true })
+      const checkout = page.getByRole('button', { name: status === 'expired' ? 'Rejoin Supporter' : 'Continue to payment', exact: true })
       if (['none', 'expired'].includes(status)) await expect(checkout).toBeEnabled()
-      else await expect(page.getByRole('button', { name: /Stripe checkout|Rejoin/ })).toHaveCount(0)
+      else await expect(page.getByRole('button', { name: /Continue to payment|Rejoin/ })).toHaveCount(0)
       await expect(page.getByText('Access through', { exact: true })).toHaveCount(status === 'active' ? 1 : 0)
       await expect(page.getByText('Access until', { exact: true })).toHaveCount(status === 'grace' ? 1 : 0)
       await page.screenshot({ path: info.outputPath(`billing-${state}-${width}.png`), fullPage: true, animations: 'disabled' })
@@ -131,7 +131,7 @@ for (const width of [1440, 390]) {
         state = status
         await page.goto('/account/billing')
         await expect(page.getByRole('heading', { name: status === 'none' ? 'Supporter sign-ups are not open yet' : headings[status as keyof typeof headings], exact: true })).toBeVisible()
-        await expect(page.getByRole('button', { name: /Stripe checkout|Rejoin/ })).toHaveCount(0)
+        await expect(page.getByRole('button', { name: /Continue to payment|Rejoin/ })).toHaveCount(0)
         if (status !== 'none') await expect(page.getByRole('button', { name: status === 'expired' ? 'Billing history' : 'Manage subscription', exact: true })).toBeEnabled()
         if (status !== 'active') await expect(page.getByText('New Supporter sign-ups are not open yet.', { exact: false })).toBeVisible()
       }
@@ -142,7 +142,7 @@ for (const width of [1440, 390]) {
     await page.route('**/v1/billing/supporter', route => route.fulfill({ json: { schemaVersion: 1, status: 'none', checkoutEnabled: true, environment: 'sandbox' } }))
     await page.goto('/account/billing')
     await expect(page.getByTestId('billing-sandbox-banner')).toContainText('Sandbox — test mode, no real charge.')
-    await expect(page.getByRole('button', { name: 'Continue to Stripe checkout', exact: true })).toBeEnabled()
+    await expect(page.getByRole('button', { name: 'Continue to payment', exact: true })).toBeEnabled()
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
     await page.screenshot({ path: info.outputPath(`billing-sandbox-${width}.png`), fullPage: true, animations: 'disabled' })
     await page.unroute('**/v1/billing/supporter')

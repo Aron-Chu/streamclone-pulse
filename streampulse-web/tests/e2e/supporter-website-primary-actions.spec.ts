@@ -27,14 +27,15 @@ type State = {
 const billing = (name: string, status: string, heading: string, primary: string, enabled?: boolean): State => ({ name, status, heading, primary, enabled, path: '/account/billing' })
 const states: State[] = [
   { name: 'public-supporter', path: '/supporter', heading: 'Pulse Supporter', primary: 'Get the extension' },
-  billing('billing-none-open', 'none', 'Become a Pulse Supporter', 'Continue to Stripe checkout', true),
+  billing('billing-none-open', 'none', 'Become a Pulse Supporter', 'Continue to payment', true),
   billing('billing-none-closed-false', 'none', 'Supporter sign-ups are not open yet', 'Refresh status', false),
   billing('billing-none-closed-missing', 'none', 'Supporter sign-ups are not open yet', 'Refresh status'),
   { ...billing('billing-cancelled-closed-false', 'none', 'Checkout cancelled', 'Refresh status', false), path: `/account/billing/return?attempt=${ATTEMPT}&cancelled=1`, attemptState: 'open' },
   { ...billing('billing-cancelled-closed-missing', 'none', 'Checkout cancelled', 'Refresh status'), path: `/account/billing/return?attempt=${ATTEMPT}&cancelled=1`, attemptState: 'open' },
-  { ...billing('billing-confirming-initial', 'none', 'Confirming your payment', 'Check again', false), path: `/account/billing/return?attempt=${ATTEMPT}`, attemptState: 'pending' },
+  // Back from Stripe: activation checkpoints read by themselves, so nothing is emphasized (spec 2026-10-10 §3.4).
+  { ...billing('billing-confirming-initial', 'none', 'Activating your membership', '', false), path: `/account/billing/return?attempt=${ATTEMPT}`, attemptState: 'pending' },
   billing('billing-membership-pending', 'pending', 'Confirming your payment', 'Check again', false),
-  { ...billing('billing-welcome', 'active', 'You’re a Supporter', 'Manage subscription', false), path: `/account/billing/return?attempt=${ATTEMPT}`, attemptState: 'active' },
+  { ...billing('billing-welcome', 'active', 'You’re a Supporter. Thank you.', 'Open Twitch', false), path: `/account/billing/return?attempt=${ATTEMPT}`, attemptState: 'active' },
   { ...billing('billing-reauth-checkout', 'none', 'Become a Pulse Supporter', 'Sign in again', true), setup: 'checkout-reauth' },
   { ...billing('billing-reauth-portal', 'active', 'Supporter active', 'Sign in again', false), setup: 'portal-reauth' },
   { ...billing('billing-preparing-hold', 'none', 'Become a Pulse Supporter', 'Opening Stripe…', true), setup: 'preparing' },
@@ -181,7 +182,7 @@ async function installFixtures(page: Page, state: State, width: number, requests
 async function enterState(page: Page, state: State) {
   await page.goto(state.path)
   if (state.setup === 'checkout-reauth' || state.setup === 'portal-reauth' || state.setup === 'preparing') {
-    await page.getByRole('button', { name: state.setup === 'portal-reauth' ? 'Manage subscription' : 'Continue to Stripe checkout', exact: true }).click()
+    await page.getByRole('button', { name: state.setup === 'portal-reauth' ? 'Manage subscription' : 'Continue to payment', exact: true }).click()
     await expect(page.getByRole(state.setup === 'preparing' ? 'button' : 'link', { name: state.setup === 'preparing' ? 'Opening Stripe…' : 'Sign in again', exact: true })).toBeVisible()
   }
   if (state.setup === 'restore-confirmed' || state.setup === 'restore-uncertain') {
@@ -226,11 +227,11 @@ test('website state matrix has one primary action, accessible controls and local
           if (state.name.startsWith('static-')) expect(requests.filter(request => request.state === state.name && request.width === width)).toEqual([])
           if (state.setup === 'preparing' || state.setup === 'checkout-reauth' || state.setup === 'portal-reauth') expect(fixture.mutations()).toBe(1)
           if (PHASE === 'after') {
-            expect.soft(observation.primaryNames, `${state.name} at ${width}px primary`).toEqual([state.primary])
+            expect.soft(observation.primaryNames, `${state.name} at ${width}px primary`).toEqual(state.primary ? [state.primary] : [])
             expect.soft(observation.failures, `${state.name} at ${width}px a11y observations`).toEqual([])
             if (state.setup === 'preparing' || state.setup === 'restore-ready' || state.setup === 'restore-429') await expect(page.locator('#public-main').locator(PRIMARY_SELECTOR)).toBeDisabled()
             if (state.setup === 'checkout-reauth' || state.setup === 'portal-reauth') {
-              await expect(page.getByRole('button', { name: /Continue to Stripe checkout|Manage subscription|Refresh status/ })).toHaveCount(0)
+              await expect(page.getByRole('button', { name: /Continue to payment|Manage subscription|Refresh status/ })).toHaveCount(0)
               await expect(page.getByRole('link', { name: 'Sign in again' })).toHaveAttribute('href', /returnTo=/)
             }
           }
@@ -239,7 +240,7 @@ test('website state matrix has one primary action, accessible controls and local
     }
     // Use the real browser clock for the natural bounded confirmation budget.
     // A single state reaches the slow view, then is audited at every width.
-    const slow: State = { ...billing('billing-confirming-bounded-slow', 'none', 'Still confirming your payment', 'Check again', false), path: `/account/billing/return?attempt=${ATTEMPT}`, attemptState: 'pending' }
+    const slow: State = { ...billing('billing-confirming-bounded-slow', 'none', 'Still activating your membership', 'Contact support', false), path: `/account/billing/return?attempt=${ATTEMPT}`, attemptState: 'pending' }
     const context = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' })
     const page = await context.newPage()
     const started = Date.now()
@@ -253,7 +254,7 @@ test('website state matrix has one primary action, accessible controls and local
         const observation = await observe(page, slow, width)
         observations.push(observation)
         if (PHASE === 'after') {
-          expect.soft(observation.primaryNames, `slow confirming at ${width}px`).toEqual(['Check again'])
+          expect.soft(observation.primaryNames, `slow confirming at ${width}px`).toEqual(['Contact support'])
           expect.soft(observation.failures, `slow confirming at ${width}px a11y`).toEqual([])
         }
       }

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "price": { "unitAmount": 499, "currency": "usd", "interval": "month",
+             "short": "US$4.99 / month", "long": "US$4.99 per month, charged in US dollars" },
+  "tax": {
+    "exclusive": "Plus sales tax or VAT where it applies. Stripe shows the total before you pay.",
+    "inclusive": "Includes sales tax or VAT where it applies. Stripe shows the total before you pay.",
+    "none": null,
+    "fallback": "Stripe shows the total before you pay.",
+    "short": { "exclusive": "plus sales tax or VAT where it applies", "inclusive": "tax included where it applies", "none": null, "fallback": "Stripe shows the total before you pay" }
+  },
+  "seller": { "name": null, "address": null },
+  "governingLaw": null,
+  "consumerRights": null,
+  "billingContact": { "email": "privacy@streampulse.stream", "confirmed": false },
+  "statementDescriptor": null,
+  "stripeReceipts": false,
+  "pending": "Pending — not yet stated."
+}

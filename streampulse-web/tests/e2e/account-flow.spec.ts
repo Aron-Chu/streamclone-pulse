@@ -112,6 +112,8 @@ for (const returnPath of ['/account/billing', '/account/billing/return?attempt=1
     await context.route('**/v1/billing/**', route => {
       expect(route.request().method()).toBe('GET')
       const path = new URL(route.request().url()).pathname
+      // The anonymous public offer read (sales switch) is not a billing read of this account.
+      if (path === '/v1/billing/offer') return route.fulfill({ status: 404, json: { error: 'not_found' } })
       billingReads.push(path)
       return !signedIn
         ? route.fulfill({ status: 401, json: { error: 'unauthorized' } })
@@ -164,7 +166,7 @@ for (const returnPath of ['/account/billing', '/account/billing/return?attempt=1
       expect([...new Set(billingReads)]).toEqual(returnPath.includes('attempt=')
         ? ['/v1/billing/checkout/12345678-1234-4234-8234-123456789abc', '/v1/billing/supporter']
         : ['/v1/billing/supporter'])
-      await expect(confirmationPage.getByRole('button', { name: 'Continue to Stripe checkout' })).toHaveCount(0)
+      await expect(confirmationPage.getByRole('button', { name: 'Continue to payment' })).toHaveCount(0)
       expect(await confirmationPage.evaluate(() => localStorage.getItem('pulse.account.billingReturn.v1'))).toBeNull()
     } finally {
       await confirmationPage.close()
@@ -232,7 +234,7 @@ for (const width of [1440, 390]) {
     // Straight on to membership, with the progress kept in view.
     await expect(page).toHaveURL(/\/account\/billing$/)
     await expect(page.getByTestId('billing-connected-note')).toBeVisible()
-    const checkout = page.getByRole('button', { name: 'Continue to Stripe checkout' })
+    const checkout = page.getByRole('button', { name: 'Continue to payment' })
     await expect(checkout).toBeEnabled()
     await page.screenshot({ path: info.outputPath(`journey-4-checkout-${width}.png`), fullPage: true, animations: 'disabled' })
     await checkout.dblclick()
@@ -241,10 +243,10 @@ for (const width of [1440, 390]) {
 
     // Stripe sends the buyer back before its webhook has been processed.
     await page.goto(`/account/billing/return?attempt=${attempt}`)
-    await expect(page.getByRole('heading', { name: 'Confirming your payment' })).toBeVisible()
-    await expect(page.getByRole('button', { name: /Stripe checkout|Return to checkout/ })).toHaveCount(0)
+    await expect(page.getByRole('heading', { name: 'Activating your membership' })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Continue to payment|Return to checkout/ })).toHaveCount(0)
     await page.screenshot({ path: info.outputPath(`journey-5-confirming-${width}.png`), fullPage: true, animations: 'disabled' })
-    await expect(page.getByRole('heading', { name: 'You’re a Supporter' })).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByRole('heading', { name: 'You’re a Supporter. Thank you.' })).toBeVisible({ timeout: 20_000 })
     await expect(page.getByText('··1a1b2c', { exact: true })).toBeVisible()
     await page.screenshot({ path: info.outputPath(`journey-6-supporter-${width}.png`), fullPage: true, animations: 'disabled' })
     expect(writes).toEqual(['POST'])

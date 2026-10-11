@@ -299,3 +299,16 @@
 .pulse-account-signout-everywhere { margin-top: 28px; }
 .pulse-account-signout-everywhere .pulse-account-review { margin-top: 12px; }
 .pulse-account-signout-everywhere h3 { margin: 0 0 8px; }
+
+/* Supporter launch (2026-10-10): review identity, activation checkpoints, welcome steps. */
+.pulse-account-review-who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.pulse-account-review-who img { width: 32px; height: 32px; flex: none; border-radius: 50%; }
+.pulse-account-review-who p { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.pulse-account .pulse-account-inline-button { min-height: 0; padding: 0; font-size: inherit; }
+.pulse-account-checklist,
+.pulse-account-welcome-steps { display: grid; gap: 6px; margin: 0; padding-left: 0; list-style: none; color: #e4e4ed; font-size: 14px; }
+.pulse-account-welcome-steps { padding-left: 1.4em; list-style: decimal; }
+.pulse-account-checklist li[data-done="true"] span { color: #86efac; }
+.pulse-account-checklist li[data-done="false"] { color: #b6b6c5; }
+.pulse-account-narrow-only { display: none; }
+@media (max-width: 767px) { .pulse-account .pulse-account-narrow-only { display: block; } }

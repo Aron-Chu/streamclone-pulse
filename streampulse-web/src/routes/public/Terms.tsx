@@ -1,7 +1,10 @@
 import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { PRIVACY_PATH, PUBLIC_SUPPORT_URL, REFUNDS_PATH, SUPPORTER_PATH } from '../../lib/externalLinks'
-import { PrelaunchNotice } from './PrelaunchNotice'
+import { PrelaunchNotice, useSalesOpen } from './PrelaunchNotice'
+import { BillingContactLink, SellerFacts } from './SupporterOfferCopy'
+import { useSupporterOffer } from '../../lib/supporterOffer'
+import { stripePortalLoginUrl } from '../../lib/accountStripePortalLogin'
 import { SUPPORTER_PERKS, SupporterPerkItems, supporterOnlyYou } from '../../ui/components/SupporterPerks'
 import { TermsSeenInChatBullets } from '../../ui/components/SupporterChatBadgeCopy'
 import { supporterChatBadgesEnabled } from '../../lib/supporterChatBadgesFlag'
@@ -10,8 +13,15 @@ import { supporterChatBadgesEnabled } from '../../lib/supporterChatBadgesFlag'
  * Terms of use for the portal, the Chrome extension and the Supporter
  * subscription. Describes current behaviour only — no clause here promises a
  * feature, entity or process that does not exist.
+ *
+ * "Not open yet" wording follows the one server-driven sales switch (Supporter
+ * launch spec 2026-10-10 §2.4); the seller, law, rights, billing contact and
+ * tax line come from src/shared/supporter-offer.json (§7).
  */
 export default function Terms() {
+  const open = useSalesOpen()
+  const offer = useSupporterOffer()
+  const portalLogin = stripePortalLoginUrl()
   return (
     <PublicLayout>
       <article className="panel public-document" data-testid="terms-of-use">
@@ -40,8 +50,9 @@ export default function Terms() {
           <p className="text-zinc-300">
             StreamPulse is a free Twitch analytics site and browser extension. Pulse Supporter is an
             optional subscription of US$4.99 per month that funds development and adds cosmetics — it
-            does not unlock analytics. Paid sign-ups are not open yet. Once they are, you will be able
-            to cancel at any time and keep access until the end of the period you paid for. The
+            does not unlock analytics. {open
+              ? 'You can cancel at any time and keep access until the end of the period you paid for.'
+              : 'Paid sign-ups are not open yet. Once they are, you will be able to cancel at any time and keep access until the end of the period you paid for.'} The
             service is provided as-is, with no uptime guarantee.
           </p>
         </section>
@@ -97,15 +108,20 @@ export default function Terms() {
         </p>
 
         <h2>Pulse Supporter</h2>
-        <p>
-          Supporter is optional, and paid sign-ups are not open yet. Full details are on the{' '}
-          <Link to={SUPPORTER_PATH}>Supporter page</Link>. Once sign-ups open, the terms of the offer
-          are:
-        </p>
+        {open
+          ? <p>
+            Supporter is optional. Full details are on the <Link to={SUPPORTER_PATH}>Supporter page</Link>.
+            The terms of the offer are:
+          </p>
+          : <p>
+            Supporter is optional, and paid sign-ups are not open yet. Full details are on the{' '}
+            <Link to={SUPPORTER_PATH}>Supporter page</Link>. Once sign-ups open, the terms of the offer
+            are:
+          </p>}
         <ul>
           <li>
-            <strong>Price:</strong> US$4.99 per month, charged in US dollars. Taxes are handled as
-            stated at checkout, and Stripe checkout shows the total before you pay.
+            <strong>Price:</strong> US$4.99 per month, charged in US dollars.{' '}
+            <span data-testid="terms-tax-line">Taxes: {offer.taxLine}</span>
           </li>
           <li><strong>Renewal:</strong> it renews automatically each month until you cancel.</li>
           <li>
@@ -139,7 +155,12 @@ export default function Terms() {
         <p data-testid="terms-billing-email">
           The email you give Stripe is used by Stripe for receipts and billing. To use Supporter on
           another browser or after a reinstall, Continue with Twitch with the same Twitch account. If
-          you lose that Twitch account, you can still cancel billing through Stripe; moving a
+          you lose that Twitch account,{' '}
+          {portalLogin
+            ? <>you can still cancel billing through{' '}
+              <a href={portalLogin} target="_blank" rel="noopener noreferrer" data-testid="terms-stripe-portal-login">Stripe&rsquo;s customer portal</a>{' '}
+              with the email you paid with</>
+            : <>email <BillingContactLink /> from the email you paid with and we&rsquo;ll cancel billing for you</>}; moving a
           membership to another account needs our help and proof you own the billing email.
         </p>
         <p>
@@ -159,25 +180,15 @@ export default function Terms() {
         {/* PENDING OWNER INPUT (audit LG-1, memo L-1): the selling entity, its legal
             address, the governing law and the statutory rights are facts only the owner
             can supply, with a legal professional. Never fill them in from anywhere else.
-            They must be stated here before paid sign-ups open. */}
+            They must be stated here before paid sign-ups open. They live in
+            src/shared/supporter-offer.json (seller, governingLaw, consumerRights); a null
+            value renders "Pending — not yet stated." */}
         <h2>Selling entity and applicable law</h2>
-        <p>
+        {open ? null : <p data-testid="terms-seller-prelaunch">
           Paid sign-ups are not open, and no sale is offered through this site today. The following
           will be stated on this page before paid sign-ups open:
-        </p>
-        <dl
-          className="mt-4 grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-[14rem_minmax(0,1fr)]"
-          data-testid="terms-pending-owner-input"
-        >
-          <dt className="text-sm font-bold text-zinc-400">Selling entity</dt>
-          <dd className="m-0 text-sm text-zinc-200">Pending — not yet stated.</dd>
-          <dt className="text-sm font-bold text-zinc-400">Legal address</dt>
-          <dd className="m-0 text-sm text-zinc-200">Pending — not yet stated.</dd>
-          <dt className="text-sm font-bold text-zinc-400">Governing law</dt>
-          <dd className="m-0 text-sm text-zinc-200">Pending — not yet stated.</dd>
-          <dt className="text-sm font-bold text-zinc-400">Consumer cancellation rights</dt>
-          <dd className="m-0 text-sm text-zinc-200">Pending — not yet stated.</dd>
-        </dl>
+        </p>}
+        <SellerFacts />
         <p>Nothing on this page limits rights you have under consumer law that cannot be waived.</p>
 
         <h2>Price and term changes</h2>
@@ -230,7 +241,7 @@ export default function Terms() {
             response time. If it is not monitored, replace the address everywhere. */}
         <p data-testid="terms-contact">
           Billing, account and legal questions:{' '}
-          <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a>. Product
+          <BillingContactLink />. Product
           questions and bug reports:{' '}
           <a href={PUBLIC_SUPPORT_URL} target="_blank" rel="noreferrer noopener">public GitHub issues</a>{' '}
           or the <Link to="/support">support page</Link>. There is no phone support.

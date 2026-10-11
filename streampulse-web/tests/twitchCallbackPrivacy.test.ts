@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ErrorEvent } from '@sentry/react'
-import { sanitizePortalPath, scrubPortalEvent } from '../src/lib/sentry'
+import { isSecretBearingRoute, sanitizePortalPath, scrubPortalEvent } from '../src/lib/sentry'
 import { publicPageCategory } from '../src/lib/productAnalytics'
 import { isPrivateSupporterRoute } from '../src/lib/accountRestore'
 
@@ -40,8 +40,9 @@ describe('Twitch callback privacy', () => {
     const main = readFileSync(resolve(src, 'main.tsx'), 'utf8')
     const firstImport = main.split('\n').find(line => /^import\b/.test(line))
     expect(firstImport).toBe("import './lib/twitchCallbackBoot'")
-    // Sentry is never initialised on account pages, including the callback.
-    expect(main).toMatch(/if \(!isPrivateSupporterRoute\(window\.location\.pathname\)\) initPortalSentry\(\)/)
+    // Sentry is never initialised on a secret-bearing page, including the callback.
+    expect(main).toMatch(/if \(!isSecretBearingRoute\(window\.location\.pathname\)\) initPortalSentry\(\)/)
+    expect(isSecretBearingRoute('/account/twitch/callback')).toBe(true)
     expect(isPrivateSupporterRoute('/account/twitch/callback')).toBe(true)
     const capture = readFileSync(resolve(src, 'lib/twitchCallback.ts'), 'utf8')
     expect(capture).not.toMatch(/^\s*import\b/m)

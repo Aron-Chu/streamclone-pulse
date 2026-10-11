@@ -138,3 +138,29 @@ describe('extension-link continuation', () => {
     expect(accountBillingReturnPath('/account/link-device')).toBeNull()
   })
 })
+
+describe('the remembered "Become a Supporter" intent (spec 2026-10-10 §3.1)', () => {
+  const intent = '/account/billing?intent=subscribe'
+  it('accepts exactly /account/billing?intent=subscribe and carries it through sign-in and storage', async () => {
+    expect(accountBillingReturnPath(intent)).toBe(intent)
+    expect(accountContinuationPath(intent)).toBe(intent)
+    const href = accountBillingSignInHref(intent)
+    expect(accountBillingReturnFromSearch(href.slice(href.indexOf('?')))).toBe(intent)
+    rememberAccountBillingReturn(intent)
+    expect(consumeAccountBillingReturn()).toBe(intent)
+    const { twitchReturnPath } = await import('../src/lib/twitchSignIn')
+    expect(twitchReturnPath(intent)).toBe(intent)
+  })
+  it.each([
+    '/account/billing?intent=other',
+    '/account/billing?intent=SUBSCRIBE',
+    '/account/billing?intent=subscribe&intent=subscribe',
+    '/account/billing?intent=subscribe&next=/evil',
+    '/account/billing?next=x',
+    `/account/billing/return?attempt=${attempt}&intent=subscribe`,
+    '/account/billing/return?intent=subscribe',
+    '/account/billing?intent=https://evil.test',
+  ])('refuses %s', path => {
+    expect(accountBillingReturnPath(path)).toBeNull()
+  })
+})

@@ -3,8 +3,10 @@ import type { ErrorEvent } from '@sentry/react'
 import { scrubDiagnosticText, scrubPortalEvent } from '../src/lib/sentry'
 
 describe('Sentry privacy boundary', () => {
-  it('drops diagnostics on account restore and Checkout-return routes even after SPA navigation', () => {
-    for (const path of ['/account/restore', '/supporter/thanks?attempt=private', '/account/sign-in']) {
+  it('drops diagnostics on secret-bearing account routes even after SPA navigation', () => {
+    // Account and billing pages report (scrubbed) since the Supporter launch;
+    // see sentryAccountPrivacy.test.ts. Secret-bearing pages never do.
+    for (const path of ['/account/restore', '/account/twitch/callback', '/account/confirm', '/account/link-device']) {
       window.history.replaceState({}, '', path)
       expect(scrubPortalEvent({ type: undefined, message: 'Failed to fetch' })).toBeNull()
     }

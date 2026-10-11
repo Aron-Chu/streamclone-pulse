@@ -94,11 +94,12 @@ describe.each([
     expect(availability).toContain('Stripe asks for a billing email at checkout. It can be different from your Twitch email, and you don’t need a separate StreamPulse sign-up.')
     expect(screen.getByTestId('supporter-reinstall').textContent).toMatch(/Continue with Twitch with the same Twitch account/)
     // Access recovery after losing Twitch is separate from Stripe billing.
-    expect(screen.getByTestId('supporter-lost-twitch').textContent).toMatch(/That changes billing only\. It doesn’t move your membership to another Twitch account/)
+    expect(screen.getByTestId('supporter-lost-twitch').textContent).toMatch(/Moving Supporter to another Twitch account also goes through us\./)
     for (const link of screen.getAllByRole('link')) expect(link.getAttribute('href')).not.toBe('/account')
-    const twitch = screen.queryByTestId('supporter-continue-with-twitch')
-    if (value === 'public') expect(twitch?.getAttribute('href')).toBe('/account/sign-in?returnTo=%2Faccount%2Fbilling')
-    else expect(twitch).toBeNull()
+    // While sales are closed no stage offers a path toward Checkout here
+    // (payment audit F4); Become a Supporter appears only when the server opens sales.
+    expect(screen.queryByTestId('supporter-continue-with-twitch')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Become a Supporter' })).toBeNull()
   })
 })
 

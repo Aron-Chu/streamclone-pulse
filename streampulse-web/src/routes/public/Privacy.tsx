@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { REFUNDS_PATH, SUPPORTER_PATH, TERMS_PATH } from '../../lib/externalLinks'
 import { twitchSignInPublic } from '../../lib/twitchSignInFlag'
-import { PrelaunchNotice } from './PrelaunchNotice'
+import { PrelaunchNotice, useSalesOpen } from './PrelaunchNotice'
 import { supporterChatBadgesEnabled } from '../../lib/supporterChatBadgesFlag'
 import {
   PRIVACY_CHATTER_IDENTITY_EXCEPTION,
@@ -14,6 +14,9 @@ import {
 
 /** Public privacy policy for StreamPulse (portal + Chrome extension). Current behavior only. */
 export default function Privacy() {
+  // "Not open yet" wording follows the one server-driven sales switch
+  // (Supporter launch spec 2026-10-10 §2.4).
+  const salesOpen = useSalesOpen()
   return (
     <PublicLayout>
       <article className="panel public-document" data-testid="privacy-policy">
@@ -51,7 +54,7 @@ export default function Privacy() {
           <p className="text-zinc-300" data-testid="privacy-summary-accounts">
             Accounts are optional; free tools work without an account. A StreamPulse account is
             created when you choose Continue with Twitch{twitchSignInPublic() ? '' : ' (coming soon)'}. During the private pilot,
-            invited testers can also sign in by email. Supporter sign-ups are not open yet; card
+            invited testers can also sign in by email. {salesOpen ? 'Card' : 'Supporter sign-ups are not open yet; card'}{' '}
             details go to Stripe, never to StreamPulse.
           </p>
         </section>
@@ -116,10 +119,10 @@ export default function Privacy() {
         {supporterChatBadgesEnabled() ? <PrivacySeenInChat /> : null}
 
         <h2>Payment data, if you subscribe</h2>
-        <p>
+        {salesOpen ? null : <p data-testid="privacy-payment-prelaunch">
           This section describes what happens once paid sign-ups open. Until then, no payment is
           taken through StreamPulse.
-        </p>
+        </p>}
         <p>
           Payments are processed by <strong>Stripe</strong>. Card numbers and CVC are entered on
           Stripe's own hosted pages and go to Stripe — StreamPulse never receives or stores them.
@@ -132,8 +135,8 @@ export default function Privacy() {
         <p data-testid="privacy-billing-email">
           Stripe asks for a billing email at checkout; it can differ from your Twitch email, and
           StreamPulse never matches accounts by email. Stripe's payment notifications to StreamPulse
-          can include that email, your name and billing address. Once sign-ups open, StreamPulse
-          checks each notification's signature and removes those details before saving it, saved
+          can include that email, your name and billing address. {salesOpen ? 'StreamPulse' : 'Once sign-ups open, StreamPulse'}
+          {' '}checks each notification's signature and removes those details before saving it, saved
           notifications are reduced to identifiers about 30 days after processing, and StreamPulse
           does not keep your billing email or a hash of it.
         </p>
@@ -472,12 +475,15 @@ export default function Privacy() {
             channel, as described under Feedback form. Your reply email is never posted there.
           </li>
           <li data-testid="privacy-third-party-sentry">
-            <strong>Sentry (website error monitoring)</strong> — when a public page of
+            <strong>Sentry (website error monitoring)</strong> — when a page of
             streampulse.stream hits an error, the website sends Sentry, in the United States, an
             error report: the kind of error, where in the site's code it happened, the site
             version and the page route, with channel names and stream IDs replaced by
             placeholders. Free-form error text is dropped, and no account, cookie, form entry or
-            request body is attached. Account pages have it off. Your IP address is seen by Sentry
+            request body is attached. On account and billing pages it sends only the page name, a
+            short error code and the code location: no account identifiers, payment details,
+            sign-in tokens or text you entered. It is off on the Twitch sign-in return, email
+            sign-in, device approval and restore pages. Your IP address is seen by Sentry
             while a report is sent, as with any web request, and is not stored. The Chrome
             extension does not use Sentry.
           </li>
