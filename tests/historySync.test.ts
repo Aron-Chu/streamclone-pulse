@@ -7,7 +7,7 @@ import type { LibraryMoment } from '../src/ui/library/model.ts'
 const DAY = 86_400_000
 const NOW = Date.parse('2026-10-03T12:00:00Z')
 const f = vi.hoisted(() => ({ accountId: 'one' as string | null, data: new Map<string, PersonalData>(), history: vi.fn() }))
-vi.mock('../src/background/supporterAccountRuntime.ts', () => ({ supporterAccount: { run: async () => f.accountId ? { state: 'linked', accountId: f.accountId } : { state: 'signed_out' } } }))
+vi.mock('../src/background/supporterAccountRuntime.ts', () => ({ bindAccountDataForget: () => undefined, supporterAccount: { run: async () => f.accountId ? { state: 'linked', accountId: f.accountId } : { state: 'signed_out' } } }))
 vi.mock('../src/background/api.ts', () => ({ fetchPulseBookmarks: async () => ({ items: [] }), createPulseBookmark: vi.fn(), deletePulseBookmark: vi.fn(), accountHistoryRequest: f.history }))
 vi.mock('../src/background/myMomentsStore.ts', async original => ({ ...await original<object>(), personalTransaction: async (scope: string, update?: (value: PersonalData) => PersonalData) => {
   const value = f.data.get(scope) ?? emptyPersonalData()
