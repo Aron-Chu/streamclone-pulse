@@ -1499,7 +1499,7 @@ function OverlayMain({
         const window = reactionMomentWindow(point)
         const start = target + window.startSeconds - reactionLeadInOffset(point, 5)
         void observeMomentPlayback(getPrimaryVideo(), { id: 'moment', channel: login, title: point.reasonLabel,
-          vodId: jumpVodId ?? null, streamId: payload?.streamId, offsetSeconds: point.offsetSeconds, availability: 'unresolved' }, start, start + window.durationSeconds)
+          vodId: jumpVodId ?? context.vodId, streamId: payload?.streamId, offsetSeconds: point.offsetSeconds, availability: 'unresolved' }, start, start + window.durationSeconds)
       }
       if (action.kind === 'seek-vod') {
         const result = await seekPlaybackOffsetVerified(getPrimaryVideo(), action.offsetSeconds, { isLive: false })
