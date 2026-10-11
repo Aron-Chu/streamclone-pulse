@@ -153,6 +153,27 @@ describe('private supporter account coordinator', () => {
       expect(await f.coordinator.entitlement()).toMatchObject({ state: 'ready', status: 'none', checkoutEnabled: expected })
     }
   })
+  it('reads the sales switch and renewal facts from the snapshot, dropping anything malformed (supporter launch §3.5)', async () => {
+    const body = { schemaVersion: 1, accountId: creds.accountId, environment: 'live', revision: 2, status: 'active', serverTime: iso(0), cacheUntil: iso(900), supportPeriods: 1, features: {} }
+    const cases: Array<[Record<string, unknown>, Record<string, unknown>]> = [
+      [{ salesOpen: true }, { salesOpen: true }],
+      [{ salesOpen: 'true' }, { salesOpen: false }],
+      [{}, { salesOpen: false }],
+      [{ renewal: 'auto', renewsOn: '2026-11-09T12:00:00Z' }, { renewal: 'auto', renewsOn: '2026-11-09T12:00:00Z' }],
+      [{ renewal: 'auto', renewsOn: 'soon' }, { renewal: 'auto', renewsOn: undefined }],
+      [{ renewal: 'ends', endsOn: '2026-11-09T12:00:00Z' }, { renewal: 'ends', endsOn: '2026-11-09T12:00:00Z' }],
+      [{ renewal: 'ends', renewsOn: '2026-11-09T12:00:00Z' }, { renewal: 'ends', renewsOn: undefined, endsOn: undefined }],
+      [{ renewal: 'none' }, { renewal: 'none' }],
+      [{ renewal: 'paused', renewsOn: '2026-11-09T12:00:00Z' }, { renewal: undefined, renewsOn: undefined }],
+    ]
+    for (const [change, expected] of cases) {
+      const f = fixture(creds)
+      f.request.mockResolvedValue({ status: 200, body: { ...body, ...change } })
+      const value = await f.coordinator.entitlement()
+      expect(value.state).toBe('ready')
+      for (const [key, wanted] of Object.entries(expected)) expect((value as Record<string, unknown>)[key]).toEqual(wanted)
+    }
+  })
   it('clears remotely revoked credentials and permits an immediate new device link', async () => {
     const f = fixture(creds)
     f.request.mockResolvedValueOnce({ status: 401, body: { error: 'unauthorized' } })

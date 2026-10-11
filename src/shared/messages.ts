@@ -1,5 +1,6 @@
 import type { SupporterPaintStyle, SupporterTenure } from './supporterPaint.ts'
 import type { SupporterAccountAction, SupporterAccountState, SupporterEntitlement, SupporterBillingState, SupporterRestoreState, SupporterDevicesState } from './supporterAccount.ts'
+import type { SupporterOffer } from './supporterOffer.ts'
 
 export type MessageType =
   | 'SUPPORTER_ACCOUNT'
@@ -12,6 +13,7 @@ export type MessageType =
   | 'SUPPORTER_BILLING'
   | 'SUPPORTER_RESTORE'
   | 'SUPPORTER_DEVICES'
+  | 'SUPPORTER_OFFER'
   | 'TRACK'
   | 'UNTRACK'
   | 'GET_PULSE'
@@ -250,6 +252,8 @@ export type BackgroundRequest =
   | { type: 'SUPPORTER_DEVICES'; action: 'list'; cursor?: string }
   | { type: 'SUPPORTER_DEVICES'; action: 'revoke'; deviceId: string }
   | { type: 'SUPPORTER_ENTITLEMENT' }
+  /** The public sales switch; `refresh` (settings opening) re-reads an answer older than a minute. */
+  | { type: 'SUPPORTER_OFFER'; refresh?: true }
   | { type: 'SUPPORTER_COSMETICS'; enabled: boolean; finish: 'glass' | 'etched' | 'halo' }
   | { type: 'SUPPORTER_APPEARANCE' }
   /** Omit `finish` to read; null clears the pre-purchase choice. */
@@ -751,6 +755,7 @@ export type BackgroundResponse =
   | { type: 'SUPPORTER_RESTORE'; restore: SupporterRestoreState }
   | { type: 'SUPPORTER_DEVICES'; devices: SupporterDevicesState }
   | { type: 'SUPPORTER_ENTITLEMENT'; entitlement: SupporterEntitlement }
+  | { type: 'SUPPORTER_OFFER'; offer: SupporterOffer }
   | { type: 'SUPPORTER_COSMETICS'; ok: boolean }
   /**
    * `perks`: Supporter perks such as emote rain are on, with or without an equipped finish.

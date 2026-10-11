@@ -22,7 +22,9 @@ describe('supporter settings', () => {
     const sendMessage = vi.fn().mockImplementation((message: { type: string }) =>
       message.type === 'SUPPORTER_ENTITLEMENT'
         ? Promise.resolve({ type: 'SUPPORTER_ENTITLEMENT', entitlement: { state: 'not_linked' } })
-        : Promise.resolve({ type: 'SUPPORTER_ACCOUNT', account: { state: 'signed_out' } }))
+        : message.type === 'SUPPORTER_OFFER'
+          ? Promise.resolve({ type: 'SUPPORTER_OFFER', offer: { state: 'closed' } })
+          : Promise.resolve({ type: 'SUPPORTER_ACCOUNT', account: { state: 'signed_out' } }))
     vi.stubGlobal('chrome', { storage: { local: { set: write }, sync: { set: write } }, runtime: { sendMessage } })
     vi.stubGlobal('fetch', write)
     const host = document.createElement('div')
@@ -90,6 +92,8 @@ describe('supporter settings', () => {
       expect(write).not.toHaveBeenCalled()
       const sent = sendMessage.mock.calls.map(([message]) => message)
       expect(sent).toEqual([
+        // The public sales switch, re-read when settings opens.
+        { type: 'SUPPORTER_OFFER', refresh: true },
         { type: 'SUPPORTER_ACCOUNT', action: 'status' },
         { type: 'SUPPORTER_ENTITLEMENT' },
         { type: 'SUPPORTER_BILLING', action: 'status' },
@@ -147,7 +151,7 @@ describe('supporter settings', () => {
       expect(host.textContent).not.toContain('Concept · not built')
       expect(host.textContent).not.toContain('US$4.99 / month')
       // An active member's pre-purchase choice is never read.
-      expect(sendMessage.mock.calls.map(([message]) => message)).toEqual([{ type: 'SUPPORTER_ACCOUNT', action: 'status' }, { type: 'SUPPORTER_ENTITLEMENT' }, { type: 'SUPPORTER_BILLING', action: 'status' }])
+      expect(sendMessage.mock.calls.map(([message]) => message)).toEqual([{ type: 'SUPPORTER_OFFER', refresh: true }, { type: 'SUPPORTER_ACCOUNT', action: 'status' }, { type: 'SUPPORTER_ENTITLEMENT' }, { type: 'SUPPORTER_BILLING', action: 'status' }])
     } finally {
       act(() => root.unmount())
       host.remove()

@@ -38,7 +38,7 @@ import { isTracked, listTrackedLogins, trackLogin, untrackLogin } from './tracki
 import type { BackgroundRequest, BackgroundResponse, DeviceAuthStatus, ExtensionCoverageTierResponse, PastVodRow, PulseUpdateMessage, ProtectChannelSyncStatus, ProtectSyncOperation, ProtectSyncState, VodPulseUpdateMessage, WatchlistSyncStatus } from '../shared/messages.ts'
 import { parseBackgroundRequest } from '../shared/parseBackgroundRequest.ts'
 import { openSettingsHost } from './settingsHost.ts'
-import { resumePendingLink, supporterAccount, supporterPayFirst, watchPendingLink } from './supporterAccountRuntime.ts'
+import { resumePendingLink, supporterAccount, supporterOffer, supporterPayFirst, watchPendingLink } from './supporterAccountRuntime.ts'
 import { supporterAppearanceReply } from './supporterAppearance.ts'
 import { injectSupporterCard } from './supporterCardScript.ts'
 import { twitchSignIn } from './twitchSignInRuntime.ts'
@@ -943,6 +943,10 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
         }
         case 'SUPPORTER_ENTITLEMENT': {
           sendResponse({ type: 'SUPPORTER_ENTITLEMENT', entitlement: await supporterAccount.entitlement() } satisfies BackgroundResponse)
+          return
+        }
+        case 'SUPPORTER_OFFER': {
+          sendResponse({ type: 'SUPPORTER_OFFER', offer: await supporterOffer.get(message.refresh === true) } satisfies BackgroundResponse)
           return
         }
         case 'SUPPORTER_COSMETICS': {
