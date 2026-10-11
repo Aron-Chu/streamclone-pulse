@@ -27,7 +27,8 @@ test('the overlay offers Supporter as a destination and opens that section', asy
   const cta = page.locator('[data-settings-host-cta="supporter"]')
   await expect(cta).toBeVisible()
   await expect(cta).toContainText('Pulse Supporter')
-  await expect(cta).toContainText('Core tools stay free')
+  // The copy is the card's description; its stage is not covered by it.
+  await expect(cta).toHaveAccessibleDescription(/Core tools stay free/)
 
   // The destination sits right under the channel card, above every control.
   const box = await cta.boundingBox()

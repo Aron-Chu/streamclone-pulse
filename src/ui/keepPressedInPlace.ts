@@ -36,14 +36,16 @@ function trackedHeightBefore(scroller: Element, anchor: Element): number {
  * Keep whatever the user pressed under the pointer while a moment card opens
  * or closes above it, by scrolling the panel instead of moving the content.
  *
- * The chart's card sits above the Top Moments list, so opening or closing it
- * moves the rows below (a row pick closes it). Each press records the pressed
- * element's position; every frame until the layout settles, any drift is
- * taken back out of `scrollTop`. Content above the card therefore moves up
- * ("the card expands up"), but the card itself is never scrolled out of view.
- * A press inside a card (its close button) holds the content below the card
- * still instead. The Top Moments card keeps its height, so it needs no
- * correction. Any scroll the user makes ends the correction.
+ * The chart's card and the Top Moments card both sit above the Top Moments
+ * list, so opening or closing either moves the rows below (a row pick opens
+ * the one and closes the other; picking the row again or Escape closes it).
+ * Each press records the pressed element's position; every frame until the
+ * layout settles, any drift is taken back out of `scrollTop`. Content above
+ * the card therefore moves up ("the card expands up"), but the card itself is
+ * never scrolled out of view: with too little above it to scroll away, the
+ * card stays in view and the pressed element moves only as far as that takes.
+ * A press inside a card (its close button, or Escape there) holds the content
+ * below the card still instead. Any scroll the user makes ends the correction.
  */
 export function bindKeepPressedInPlace(scroller: HTMLElement): () => void {
   let anchor: Element | null = null
@@ -120,7 +122,8 @@ export function bindKeepPressedInPlace(scroller: HTMLElement): () => void {
     } else start(event.target)
   }
   const key = (event: KeyboardEvent): void => {
-    if ((event.key === 'Enter' || event.key === ' ') && (event.target as Element | null)?.closest?.(PRESSABLE)) start(event.target)
+    // Escape closes a card wherever focus is; Enter and Space press a control.
+    if (event.key === 'Escape' || ((event.key === 'Enter' || event.key === ' ') && (event.target as Element | null)?.closest?.(PRESSABLE))) start(event.target)
   }
 
   // Capture listeners inside the shadow tree see the real target even when

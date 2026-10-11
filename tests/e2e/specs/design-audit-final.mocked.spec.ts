@@ -126,9 +126,9 @@ test.describe('StreamPulse final visual, interaction & failure-state audit', () 
     const shell = extension.page.locator('#streamclone-pulse-root .pulse-shell')
     await expect(shell).toBeVisible()
 
-    // On initial load the Top Moments card shows the strongest moment; nothing is selected.
+    // On initial load nothing shows above the Top Moments list.
     const topCard = extension.page.locator(`#${PULSE_ROOT_ID} [data-top-moment-card]`)
-    await expect(topCard).toHaveAttribute('data-top-moment-card', 'strongest')
+    await expect(topCard).toHaveCount(0)
     await expect(
       extension.page.locator(`#${PULSE_ROOT_ID} [aria-label^="Selected moment at"]`),
     ).toHaveCount(0)
@@ -136,7 +136,7 @@ test.describe('StreamPulse final visual, interaction & failure-state audit', () 
     // Capture initial recap state
     await saveScreenshot(extension.page, '18-recap-progressive-disclosure-initial.png', shell)
 
-    // Click first moment row to select it in the card
+    // Click first moment row to open it in the card
     const momentRow = extension.page.locator(`#${PULSE_ROOT_ID} .pulse-moment-row-button`).first()
     await expect(momentRow).toBeVisible()
     await momentRow.click()
@@ -149,10 +149,10 @@ test.describe('StreamPulse final visual, interaction & failure-state audit', () 
     // Capture expanded recap state
     await saveScreenshot(extension.page, '19-recap-progressive-disclosure-expanded.png', shell)
 
-    // Clearing the selection goes back to the strongest moment
+    // Clearing the selection closes the card
     await selectedCard.getByRole('button', { name: 'Clear selected moment' }).click()
     await expect(selectedCard).toHaveCount(0)
-    await expect(topCard).toHaveAttribute('data-top-moment-card', 'strongest')
+    await expect(topCard).toHaveCount(0)
   })
 
   test('4. Interaction proof: wheel zoom over chart without scrolling parent page', async ({

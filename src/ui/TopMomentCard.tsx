@@ -1,14 +1,16 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useRef } from 'react'
 import type { LiveHeatPoint } from '@streampulse/pulse-core'
+import { MomentCardSlot } from './MomentCardSlot.tsx'
 import { MOMENT_CARD_HEIGHT } from './momentCardLayout.ts'
+import { prefersReducedMotion } from './motion/useSmoothedScalar.ts'
+import { usePinnedCardHold } from './pinnedCardExit.ts'
 import { SelectedMomentCard } from './SelectedMomentCard.tsx'
 
 export interface TopMomentCardProps {
-  /** The rows point their aria-controls here. */
+  /** The rows point their aria-controls here while it shows. */
   id: string
-  point: LiveHeatPoint
-  /** The moment was picked; otherwise the card shows the strongest one. */
-  selected: boolean
+  /** The picked moment; null shows nothing. */
+  point: LiveHeatPoint | null
   backendUrl: string
   jumpLabel?: string
   onJump: (point: LiveHeatPoint) => void
@@ -17,19 +19,26 @@ export interface TopMomentCardProps {
 }
 
 /**
- * The Top Moments card. It always sits right above the list and shows the
- * strongest moment until one is picked; a pick swaps its contents in place
- * and × goes back to the strongest. It never gets shorter, so neither the
- * picked row nor the list ever moves.
+ * The Top Moments card. Nothing shows above the list until a moment is picked
+ * (a row, or a ranked moment on the chart); the pick opens this card right
+ * above the list, and ×, Escape or the picked row again closes it.
+ *
+ * It opens and closes in a MomentCardSlot, and the panel's keep-in-place
+ * (keepPressedInPlace) scrolls by the slot's height while it does, so the
+ * pressed row stays under the pointer. Near the top of the panel there is not
+ * always that much to scroll: the card then stays in view and the row moves
+ * as little as possible. A new pick swaps the contents in place, and the slot
+ * keeps its tallest height while open, so moving from pick to pick never
+ * moves the list.
+ *
+ * Callers keep the card, the list and its Show more control in one grid
+ * child, so opening and closing never adds or drops a grid gap the slot does
+ * not account for.
  */
-export function TopMomentCard({ id, point, selected, onClear, ...card }: TopMomentCardProps) {
+export function TopMomentCard({ id, point, onClear, ...card }: TopMomentCardProps) {
   const ref = useRef<HTMLDivElement>(null)
-  const [height, setHeight] = useState(MOMENT_CARD_HEIGHT)
-  // A taller card (lines wrapping in a narrow panel) raises the floor for good.
-  useLayoutEffect(() => {
-    const next = ref.current!.offsetHeight
-    if (next > height) setHeight(next)
-  })
+  const shown = usePinnedCardHold(point, prefersReducedMotion())
+  if (!shown.point) return null
   // Clearing hands focus back to the picked row, which the list keeps listed
   // while it is picked. A row listed past the fold only for the pick leaves
   // with it and hands focus on to Show more (PulseMomentRow).
@@ -41,16 +50,15 @@ export function TopMomentCard({ id, point, selected, onClear, ...card }: TopMome
     <div
       id={id}
       ref={ref}
-      data-top-moment-card={selected ? 'selected' : 'strongest'}
-      style={{ minHeight: height }}
-      onKeyDown={event => { if (event.key === 'Escape' && selected) clear() }}
+      data-top-moment-card={shown.exiting ? 'closing' : 'selected'}
+      onKeyDown={event => { if (event.key === 'Escape') clear() }}
     >
-      <SelectedMomentCard
-        {...card}
-        point={point}
-        label={selected ? 'Selected moment' : 'Strongest moment'}
-        onClear={selected ? clear : undefined}
-      />
+      <MomentCardSlot exiting={shown.exiting}>
+        {/* Moments with no, one or three top emotes all open to one height. */}
+        <div style={{ minHeight: MOMENT_CARD_HEIGHT }}>
+          <SelectedMomentCard {...card} point={shown.point} onClear={clear} />
+        </div>
+      </MomentCardSlot>
     </div>
   )
 }

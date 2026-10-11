@@ -1261,8 +1261,7 @@ export const shadowStyles = `
   .pulse-supporter-cta-head { align-items: baseline; display: flex; gap: 8px; justify-content: space-between; min-width: 0; }
   .pulse-supporter-cta-head strong { font-size: 14px; font-weight: 800; letter-spacing: -0.01em; line-height: 18px; }
   .pulse-supporter-cta-head span { color: var(--spk-fin, #efc96a); flex: none; font-size: 11px; font-weight: 700; line-height: 18px; white-space: nowrap; }
-  .pulse-settings-supporter-cta > small { color: rgba(250, 250, 252, 0.72); font-size: 11.5px; line-height: 16px; text-wrap: pretty; }
-  .pulse-supporter-stage { display: block; height: 60px; margin: 6px -14px 0; position: relative; }
+  .pulse-supporter-stage { display: block; height: 96px; margin: 6px -14px 0; position: relative; }
   ${/* @__PURE__ */ supporterPaintCss()}
   .pulse-settings-panel button:not(:disabled):hover,.pulse-settings-release-preview>summary:hover{border-color:var(--pulse-accent-light,#a78bfa);filter:brightness(1.15)}
   .pulse-settings-panel :is(button,input,select,summary):focus-visible{outline:2px solid var(--pulse-accent-light,#a78bfa);outline-offset:3px}
