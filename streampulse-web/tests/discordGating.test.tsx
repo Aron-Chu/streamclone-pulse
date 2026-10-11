@@ -218,7 +218,7 @@ describe('feedback and Discord beyond the landing page', () => {
     expect(text).not.toMatch(/GitHub issues/i)
     expect(within(contact).getByRole('link', { name: 'private feedback' }).getAttribute('href')).toBe('/feedback')
     expect(within(contact).getByRole('link', { name: 'Discord (opens in a new tab)' }).getAttribute('href')).toBe(SHORT_INVITE)
-    const github = [...contact.querySelectorAll('a')].filter(a => /github\.com/.test(a.href))
+    const github = [...contact.querySelectorAll('a')].filter(a => new URL(a.href).hostname === 'github.com')
     expect(github.map(a => a.textContent)).toEqual(['GitHub private vulnerability reporting'])
     expect(github[0].getAttribute('href')).toMatch(/\/security\/advisories\/new$/)
   })
