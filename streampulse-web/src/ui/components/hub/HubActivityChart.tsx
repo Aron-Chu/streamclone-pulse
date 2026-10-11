@@ -883,11 +883,20 @@ export function HubActivityChart({
   // bar per bucket. Every bar size is aggregated once per loaded window (slots
   // aligned to UTC, as the server buckets are); a zoom only picks a size.
   const hubBucketMs = activityBucketMs(windowMinutes)
+  // The newest bucket while it is still filling: it stays out of the merged
+  // bars (its low partial count would pull a slot's average down and dim the
+  // whole bar) and is drawn as its own dimmed one-bucket bar beside them.
+  const trailingPoint = chartPoints[chartPoints.length - 1]
+  const trailingBucketT = trailingPoint?.bucketComplete === false ? trailingPoint.t : null
+  const barSourcePoints = useMemo(
+    () => (trailingBucketT != null ? chartPoints.slice(0, -1) : chartPoints),
+    [chartPoints, trailingBucketT],
+  )
   const barLevels = useMemo<BarLevel[]>(
-    () => buildBarPyramid(chartPoints.map((point) => point.t), [chartPoints.map(measuredChatOrNull)], hubBucketMs, 0),
+    () => buildBarPyramid(barSourcePoints.map((point) => point.t), [barSourcePoints.map(measuredChatOrNull)], hubBucketMs, 0),
     // Keyed on the loaded window, like the navigator grid.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [chartPointWindowKey, chartPoints, hubBucketMs],
+    [chartPointWindowKey, barSourcePoints, hubBucketMs],
   )
   const plotSize = usePlotSize(wrapRef, chartPoints.length >= 2 && !loading)
   // The bar size on screen holds through an easing zoom (hysteresis), but only
@@ -1745,13 +1754,15 @@ export function HubActivityChart({
   }
 
   // Above one bar per bucket, the status line names the bar under the pointer.
+  // The in-progress bucket is its own bar, so it keeps the per-bucket status.
   const hoverBarBucket: BarBucket | null = hover != null && barLevel && barLevel.step > 1 && chartPoints[hover]
+    && chartPoints[hover]!.t !== trailingBucketT
     ? barBucketAt(barLevel, chartPoints[hover]!.t)
     : null
   const hoverBarStatus = (() => {
     if (!hoverBarBucket || !barLevel) return null
-    const firstT = chartPoints[0]?.t ?? hoverBarBucket.startMs
-    const lastEnd = (chartPoints[chartPoints.length - 1]?.t ?? hoverBarBucket.startMs) + hubBucketMs
+    const firstT = barSourcePoints[0]?.t ?? hoverBarBucket.startMs
+    const lastEnd = (barSourcePoints[barSourcePoints.length - 1]?.t ?? hoverBarBucket.startMs) + hubBucketMs
     const start = Math.max(hoverBarBucket.startMs, firstT)
     const end = Math.min(hoverBarBucket.startMs + barLevel.slotMs, lastEnd)
     const startLabel = windowMinutes > 24 * 60
@@ -1946,9 +1957,7 @@ export function HubActivityChart({
             focusedSeriesKey={focusedSeriesKey}
             highlightBarT={hover != null ? chartPoints[hover]?.t ?? null : null}
             selectedBarT={selectedIndex >= 0 ? chartPoints[selectedIndex]?.t ?? null : null}
-            trailingBucketT={chartPoints[chartPoints.length - 1]?.bucketComplete === false
-              ? chartPoints[chartPoints.length - 1]?.t ?? null
-              : null}
+            trailingBucketT={trailingBucketT}
             onBarHover={(bucketT) => {
               const index = bucketT == null ? null : chartPoints.findIndex((point) => point.t === bucketT)
               commitHoverIndex(index != null && index >= 0 ? index : null)
@@ -2198,14 +2207,16 @@ export function HubActivityChart({
           onChange={changeNavigatorRange}
           onDragStart={beginNavigatorDrag}
           onReset={resetNavigator}
-          readoutNote={barSpan > 1 ? (
+          readoutNote={barLevel ? (
             <span
               className="hx-chart-navigator__bar-note"
               data-chart-bar-bucket-minutes={barMinutes}
               data-hub-bar-span={barSpan}
-              title={`Each chat bar averages ${barSpan} measured buckets (${barLengthLabel(barMinutes)}) so bars stay readable at this width; a thin cap marks a bucket well above the average, and a faded bar had unmeasured buckets.`}
+              title={barSpan > 1
+                ? `Each chat bar averages ${barSpan} measured buckets (${barLengthLabel(barMinutes)}) so bars stay readable at this width; a thin cap marks a bucket well above the average, and a faded bar had unmeasured buckets.`
+                : `Each chat bar is one ${barLengthLabel(barMinutes)} server bucket (its chat per minute). This window has no finer data.`}
             >
-              {`bars ${barLengthLabel(barMinutes)} avg`}
+              {barSpan > 1 ? `bars ${barLengthLabel(barMinutes)} avg` : `bars ${barLengthLabel(barMinutes)}`}
             </span>
           ) : undefined}
         />

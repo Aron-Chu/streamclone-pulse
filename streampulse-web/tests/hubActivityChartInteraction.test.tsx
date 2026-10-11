@@ -861,7 +861,7 @@ describe('HubActivityChart zoom-aware chat bars', () => {
     expect(note.textContent).toBe('bars 30-min avg')
   })
 
-  it('keeps one bar per bucket when the plot is wide enough, with no note', async () => {
+  it('keeps one bar per bucket when the plot is wide enough, and the note names the bucket size', async () => {
     stubPlotWidth(1293)
     const { container } = render(<HubActivityChart points={dayPoints} windowMinutes={1440} channelCount={1} />)
     const series = container.querySelector('[data-component="HubActivityBarSeries"]') as SVGGElement
@@ -869,7 +869,37 @@ describe('HubActivityChart zoom-aware chat bars', () => {
     expect(series.getAttribute('data-hub-bar-span')).toBeNull()
     expect(series.querySelectorAll('[data-bar-span]')).toHaveLength(0)
     expect(series.querySelectorAll('[data-activity-bar-peak]')).toHaveLength(0)
-    expect(container.querySelector('[data-hub-chart-navigator] [data-chart-bar-bucket-minutes]')).toBeNull()
+    // Each bar is one 6-minute server bucket; the note still says so.
+    const note = container.querySelector('[data-hub-chart-navigator] [data-chart-bar-bucket-minutes]') as HTMLElement
+    expect(note.getAttribute('data-chart-bar-bucket-minutes')).toBe('6')
+    expect(note.getAttribute('data-hub-bar-span')).toBe('1')
+    expect(note.textContent).toBe('bars 6-min')
+  })
+
+  it('keeps the bucket still filling out of the merged bars and draws it as its own dimmed bar', async () => {
+    stubPlotWidth(243)
+    // The chart always drops the newest open bucket; when the one before it is
+    // still filling too, that one is the chart's trailing bucket. Here it is
+    // the fourth bucket of the last 30-minute slot, after three complete ones.
+    const filling = dayPoints.map((point, index) => (index >= dayPoints.length - 2 ? { ...point, chat: 5, bucketComplete: false } : point))
+    const { container } = render(<HubActivityChart points={filling} windowMinutes={1440} channelCount={1} />)
+    const series = container.querySelector('[data-component="HubActivityBarSeries"]') as SVGGElement
+    await waitFor(() => expect(series.getAttribute('data-hub-bar-span')).toBe('5'))
+    const trailingT = filling.at(-2)!.t
+    const merged = Array.from(series.querySelectorAll('[data-bar-span]'))
+    // No merged bar is dimmed as live, and none averages the partial bucket in.
+    expect(series.querySelectorAll('[data-bar-span][data-live]')).toHaveLength(0)
+    const lastSlot = merged.at(-1)!
+    expect(Number(lastSlot.getAttribute('data-bar-t'))).toBeLessThanOrEqual(trailingT)
+    expect(lastSlot.getAttribute('data-bar-observed')).toBe('3')
+    expect(lastSlot.getAttribute('data-bar-expected')).toBe('3')
+    expect(lastSlot.getAttribute('data-bar-partial')).toBeNull()
+    expect(lastSlot.getAttribute('opacity')).toBe('1')
+    // The filling bucket is its own one-bucket bar, dimmed.
+    const live = series.querySelector(`[data-bar-t="${trailingT}"][data-live="true"]`) as SVGGElement
+    expect(live).not.toBeNull()
+    expect(live.hasAttribute('data-bar-span')).toBe(false)
+    expect(live.getAttribute('opacity')).toBe('0.4')
   })
 
   it('marks a bar partial and fades it when a bucket in its slot has no chat rollup', async () => {

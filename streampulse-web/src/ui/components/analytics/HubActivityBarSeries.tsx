@@ -100,6 +100,48 @@ export const HubActivityBarSeries = memo(function HubActivityBarSeries({
     levelRef.current = { span: barSpan, entering: animateLevelChange ? barSpan : null }
   }
   const entering = levelRef.current.entering === barSpan
+  const renderPoint = (p: HubActivityPoint) => {
+    const x = clipPartialBuckets && p.t < timeDomain.endExclusive && p.t + timeDomain.bucketDurationMs > timeDomain.start
+      ? ((p.t - timeDomain.start) / (timeDomain.endExclusive - timeDomain.start)) * 100
+      : barXPercent(p.t, timeDomain)
+    if (x == null) return null
+    const visualX = x + visualInsetPct
+    const paintedX = clipPartialBuckets ? Math.max(0, visualX) : visualX
+    const paintedWidth = clipPartialBuckets ? Math.max(0, Math.min(100, visualX + visualWidthPct) - paintedX) : visualWidthPct
+    if (paintedWidth <= 0) return null
+    const isLive = trailingBucketT != null && p.t === trailingBucketT
+    const opacity = isLive ? 0.4 : 1
+    if (p.hasChatRollup === false || p.chat <= 0 || widthPct <= 0 || usableHeight <= 0) return null
+    const barHeight = Math.min(usableHeight, (p.chat / safeChatMax) * usableHeight)
+    if (barHeight <= 0) return null
+    const isHighlighted = highlightBarT === p.t || selectedBarT === p.t
+    const y = laneBottom - barHeight
+    return (
+      <g
+        key={p.t}
+        data-bar-t={p.t}
+        data-live={isLive ? 'true' : undefined}
+        onMouseEnter={() => onBarHover?.(p.t)}
+        onClick={() => onBarClick?.(p.t)}
+        style={onBarClick ? { cursor: 'pointer' } : undefined}
+        opacity={isHighlighted ? 1 : opacity}
+      >
+        <rect
+          className={`hx-chat-bar hx-bar-segment hx-bar-segment--chat ${isHighlighted ? 'is-selected' : ''}`}
+          x={`${paintedX}%`}
+          y={y}
+          width={`${paintedWidth}%`}
+          height={barHeight}
+          fillOpacity={focusedOpacity(focusedSeriesKey, 'chat')}
+        />
+      </g>
+    )
+  }
+  // Merged bars leave out the bucket still filling; it is drawn on its own.
+  const trailingPoint = merged && trailingBucketT != null
+    ? points.find((p) => p.t === trailingBucketT) ?? null
+    : null
+  const notTrailing = (t: number | null | undefined) => (t != null && t !== trailingBucketT ? t : null)
   return (
     <g
       data-component="HubActivityBarSeries"
@@ -130,10 +172,9 @@ export const HubActivityBarSeries = memo(function HubActivityBarSeries({
         if (paintedWidth <= 0) return null
         const slotEnd = bar.slotStartMs + bar.slotMs
         const contains = (t: number | null | undefined) => t != null && t >= bar.slotStartMs && t < slotEnd
-        const isLive = contains(trailingBucketT)
         const partial = bar.observed < bar.expected
-        const isHighlighted = contains(highlightBarT) || contains(selectedBarT)
-        const opacity = isHighlighted ? 1 : (isLive ? 0.4 : 1) * (partial ? Math.max(0.35, bar.observed / bar.expected) : 1)
+        const isHighlighted = contains(notTrailing(highlightBarT)) || contains(notTrailing(selectedBarT))
+        const opacity = isHighlighted ? 1 : (partial ? Math.max(0.35, bar.observed / bar.expected) : 1)
         const barHeight = Math.min(usableHeight, (bar.avg / safeChatMax) * usableHeight)
         if (barHeight <= 0) return null
         const peakY = laneBottom - Math.min(usableHeight, (bar.peak / safeChatMax) * usableHeight)
@@ -146,7 +187,6 @@ export const HubActivityBarSeries = memo(function HubActivityBarSeries({
             data-bar-observed={bar.observed}
             data-bar-expected={bar.expected}
             data-bar-partial={partial ? 'true' : undefined}
-            data-live={isLive ? 'true' : undefined}
             onClick={onBarClick ? () => onBarClick(bar.firstMs) : undefined}
             style={onBarClick ? { cursor: 'pointer' } : undefined}
             opacity={opacity}
@@ -173,43 +213,7 @@ export const HubActivityBarSeries = memo(function HubActivityBarSeries({
             ) : null}
           </g>
         )
-      }) : points.map((p) => {
-        const x = clipPartialBuckets && p.t < timeDomain.endExclusive && p.t + timeDomain.bucketDurationMs > timeDomain.start
-          ? ((p.t - timeDomain.start) / (timeDomain.endExclusive - timeDomain.start)) * 100
-          : barXPercent(p.t, timeDomain)
-        if (x == null) return null
-        const visualX = x + visualInsetPct
-        const paintedX = clipPartialBuckets ? Math.max(0, visualX) : visualX
-        const paintedWidth = clipPartialBuckets ? Math.max(0, Math.min(100, visualX + visualWidthPct) - paintedX) : visualWidthPct
-        if (paintedWidth <= 0) return null
-        const isLive = trailingBucketT != null && p.t === trailingBucketT
-        const opacity = isLive ? 0.4 : 1
-        if (p.hasChatRollup === false || p.chat <= 0 || widthPct <= 0 || usableHeight <= 0) return null
-        const barHeight = Math.min(usableHeight, (p.chat / safeChatMax) * usableHeight)
-        if (barHeight <= 0) return null
-        const isHighlighted = highlightBarT === p.t || selectedBarT === p.t
-        const y = laneBottom - barHeight
-        return (
-          <g
-            key={p.t}
-            data-bar-t={p.t}
-            data-live={isLive ? 'true' : undefined}
-            onMouseEnter={() => onBarHover?.(p.t)}
-            onClick={() => onBarClick?.(p.t)}
-            style={onBarClick ? { cursor: 'pointer' } : undefined}
-            opacity={isHighlighted ? 1 : opacity}
-          >
-            <rect
-              className={`hx-chat-bar hx-bar-segment hx-bar-segment--chat ${isHighlighted ? 'is-selected' : ''}`}
-              x={`${paintedX}%`}
-              y={y}
-              width={`${paintedWidth}%`}
-              height={barHeight}
-              fillOpacity={focusedOpacity(focusedSeriesKey, 'chat')}
-            />
-          </g>
-        )
-      })}
+      }).concat(trailingPoint ? [renderPoint(trailingPoint)] : []) : points.map(renderPoint)}
     </g>
   )
 })
