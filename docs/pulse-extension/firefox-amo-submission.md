@@ -43,22 +43,31 @@ Build the upload from the release commit only.
   prompt), but people can switch an add-on's site access off later in
   `about:addons`; the panel then has no Twitch access until it is switched back on.
 
-### Data collection: open owner decision
+### No device link in Firefox builds (D20)
 
 The Chrome privacy answers for 0.2.2 also cover two opt-in paths: the
 invited-tester device link (an opaque device credential) and bookmarks and
 history saved to a linked account. Firefox's manifest declares only
-`browsingActivity`. Before the first AMO upload, decide one of:
+`browsingActivity`, so Firefox builds leave the device link out (owner
+decision D20). Chrome and Edge keep it.
 
-- keep the device link out of Firefox builds for 0.2.2, so `browsingActivity`
-  stays the whole truth; or
-- declare the linked-account data as optional Firefox data collection
-  (for example `authenticationInfo`, `websiteActivity`) and request it with
-  `permissions.request({ data_collection })` before linking, as
-  `src/shared/firefoxDataConsent.ts` already does for technical data.
-
-`scripts/validate-extension-package.mjs` pins the current declaration, so either
-change updates that check in the same commit.
+- It is compiled out, not hidden. `src/shared/deviceLink.ts` turns it off when
+  the build target is `firefox`, so the Firefox package has no "Connect this
+  extension" button, no link code screen, no `/v1/account/device-links`
+  requests and no link to the `/account/link-device` page.
+- `scripts/validate-extension-package.mjs` checks the packaged files. A Firefox
+  package fails if any bundle contains `/v1/account/device-links`,
+  `/account/link-device` or "Connect this extension". A Chrome, Edge or
+  development package fails if it lost the link. `npm run package:firefox`
+  and CI run this check; `tests/deviceLink.test.ts` and
+  `tests/deviceLinkSettings.test.tsx` cover the switch, the worker and the
+  settings page.
+- To bring the link to Firefox later, first declare the account data as
+  optional Firefox data collection (for example `authenticationInfo`,
+  `websiteActivity`) and ask for it with `permissions.request({ data_collection })`
+  before linking, as `src/shared/firefoxDataConsent.ts` does for technical
+  data. Change the switch, the package check and the manifest declaration
+  in the same commit.
 
 ### Verified on 2026-10-10 (Firefox 157.0.1, Windows)
 
@@ -142,7 +151,8 @@ same SHA-256), and a second Windows build from a fresh shallow clone matched too
 ## Before each Firefox upload
 
 1. Release commit sets the version `"released"` with its date (same commit as Chrome and Edge).
-2. `npm run package:firefox` passes on that commit.
+2. `npm run package:firefox` passes on that commit. Its output includes
+   `REQUIRED: firefox build has no device link`.
 3. `npm run test:e2e:firefox` passes against that ZIP (installs it in Firefox and opens Settings, the popup and a background message). Set `GECKODRIVER_PORT` to pin geckodriver to a free port; if the first run fails with "Process unexpectedly closed with status 0", Firefox was most likely applying an update on launch (seen once on 2026-10-10); run it again.
 4. AMO linter clean of errors: `npx addons-linter streampulse-extension-firefox-<version>.zip`.
 5. Source archive made from the same commit as above.

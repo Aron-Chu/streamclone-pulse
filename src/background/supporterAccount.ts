@@ -1,5 +1,6 @@
 import type { SupporterAccountAction, SupporterAccountState, SupporterEntitlement, SupporterStatus, SupporterCosmetics } from '../shared/supporterAccount.ts'
 import { supporterAccess, SUPPORTER_FEATURES, type SupporterScope } from '../shared/supporterAccess.ts'
+import { DEVICE_LINK_ENABLED } from '../shared/deviceLink.ts'
 
 type Environment = SupporterScope['environment']
 type Finish = SupporterCosmetics['finish']
@@ -498,7 +499,9 @@ export class SupporterAccountCoordinator {
       await this.ports.write(installation ? { ...next, installation: true } : next)
       return this.project(next)
     }
-    if (raw.kind === 'pending' && secret(raw.secret) && typeof raw.code === 'string' && /^[A-F0-9]{5}-[A-F0-9]{5}$/.test(raw.code) && date(raw.expiresAt) && typeof raw.nextPoll === 'number') {
+    // Firefox builds have no device link (deviceLink.ts): no code to poll, and
+    // none to start below.
+    if (DEVICE_LINK_ENABLED && raw.kind === 'pending' && secret(raw.secret) && typeof raw.code === 'string' && /^[A-F0-9]{5}-[A-F0-9]{5}$/.test(raw.code) && date(raw.expiresAt) && typeof raw.nextPoll === 'number') {
       const pending: Pending = { kind: 'pending', secret: raw.secret, code: raw.code, expiresAt: raw.expiresAt, nextPoll: raw.nextPoll }
       if (Date.parse(pending.expiresAt) <= this.now()) return this.clear('expired')
       // Any status read may consume a due approval, so the worker finishes the
@@ -532,7 +535,7 @@ export class SupporterAccountCoordinator {
       await this.ports.identityChanged?.()
       return this.project(next)
     }
-    if (action === 'start') {
+    if (DEVICE_LINK_ENABLED && action === 'start') {
       const result = await this.ports.request('/v1/account/device-links', { label: 'StreamPulse extension' })
       if (generation !== this.generation) return this.clear('signed_out')
       if (result.status === 404) return { state: 'unavailable', reason: 'not_deployed' }

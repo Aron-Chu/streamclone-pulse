@@ -12,6 +12,7 @@ import {
   type SupporterRestoreState,
   type SupporterDevicesState,
 } from '../shared/supporterAccount.ts'
+import { DEVICE_LINK_ENABLED } from '../shared/deviceLink.ts'
 import { PulseSectionCard } from '../ui/PulseSectionCard.tsx'
 import { usePortalOrigin } from './usePortalOrigin.ts'
 
@@ -286,7 +287,8 @@ export function SupporterJourney({ onEntitlement }: { onEntitlement?: (value: Su
     return () => window.clearTimeout(timer)
   }, [billing, restore, readJourney])
 
-  const pending = account?.state === 'pending' ? account : null
+  // Firefox builds have no device link (deviceLink.ts), so never a code to show.
+  const pending = DEVICE_LINK_ENABLED && account?.state === 'pending' ? account : null
   const linked = account?.state === 'linked' ? account : null
   useEffect(() => { deviceRequest.current++; setDevices(null); setRevokeDevice(null); setConfirmDisconnect(false) }, [linked?.accountId])
   const status = entitlement?.state === 'ready' ? entitlement.status : null
@@ -349,6 +351,7 @@ export function SupporterJourney({ onEntitlement }: { onEntitlement?: (value: Su
   }, [status])
 
   async function begin(next: Exclude<Intent, null>) {
+    if (!DEVICE_LINK_ENABLED) return
     // A second click before the first request returns must not cancel the
     // tab the first one is about to open.
     if (accountInFlight.current) return
@@ -368,7 +371,8 @@ export function SupporterJourney({ onEntitlement }: { onEntitlement?: (value: Su
       await leaveRestore()
       const response: BackgroundResponse = await chrome.runtime.sendMessage({ type: 'SUPPORTER_BILLING', action: 'checkout' })
       if (response && 'type' in response && response.type === 'SUPPORTER_BILLING' && response.billing.state === 'fallback') {
-        if (linked) openPortal(billingHref)
+        // Without a device link (Firefox), checkout continues on the website alone.
+        if (linked || !DEVICE_LINK_ENABLED) openPortal(billingHref)
         else await begin('purchase')
         return
       }
@@ -558,12 +562,12 @@ export function SupporterJourney({ onEntitlement }: { onEntitlement?: (value: Su
     </>
     terms = true
     primary = <button className="pulse-journey-primary" type="button" disabled={accountBusy || payBusy} onClick={() => void purchase()}>{payBusy ? 'Preparing checkout…' : 'Become a Supporter'}</button>
-    secondary = [<button key="restore" type="button" disabled={accountBusy || payBusy} onClick={openRestoreForm}>Restore my Supporter</button>, <button key="connect" type="button" disabled={accountBusy || payBusy} onClick={() => void begin('connect')}>{accountBusy && intent === 'connect' ? 'Preparing…' : 'Use a StreamPulse website account'}</button>]
+    secondary = [<button key="restore" type="button" disabled={accountBusy || payBusy} onClick={openRestoreForm}>Restore my Supporter</button>, ...DEVICE_LINK_ENABLED ? [<button key="connect" type="button" disabled={accountBusy || payBusy} onClick={() => void begin('connect')}>{accountBusy && intent === 'connect' ? 'Preparing…' : 'Use a StreamPulse website account'}</button>] : []]
     if (account.state === 'relink_required') {
       state = 'relink-required'; title = 'Restore this extension’s connection'; terms = false
       body = <p>This extension was disconnected from your Pulse account. Restore your existing membership or connect your website account before considering another subscription.</p>
       primary = <button className="pulse-journey-primary" type="button" disabled={accountBusy || payBusy} onClick={openRestoreForm}>Restore my Supporter</button>
-      secondary = [<button key="connect" type="button" disabled={accountBusy || payBusy} onClick={() => void begin('connect')}>Use a StreamPulse website account</button>, <button key="new" type="button" disabled={accountBusy || payBusy} onClick={() => setConfirmNewMembership(true)}>Start a new membership</button>]
+      secondary = [...DEVICE_LINK_ENABLED ? [<button key="connect" type="button" disabled={accountBusy || payBusy} onClick={() => void begin('connect')}>Use a StreamPulse website account</button>] : [], <button key="new" type="button" disabled={accountBusy || payBusy} onClick={() => setConfirmNewMembership(true)}>Start a new membership</button>]
       if (confirmNewMembership) {
         state = 'confirm-new-membership'; title = 'Start a separate membership?'
         body = <p>This creates a separate subscription. Restore an existing membership first if you already pay for Supporter.</p>
@@ -672,7 +676,7 @@ export function SupporterJourney({ onEntitlement }: { onEntitlement?: (value: Su
     else if (billing.state === 'reconnect_required') {
       state = 'previous-payment-unresolved'; title = 'Restore before another payment'; body = <p>A payment from your previous connection is still unresolved. Restore that membership or contact support. Disconnecting does not prove the payment failed.</p>
       primary = <button className="pulse-journey-primary" type="button" disabled={payBusy} onClick={openRestoreForm}>Restore my Supporter</button>
-      secondary = [<button key="connect" type="button" onClick={() => void begin('connect')}>Use a StreamPulse website account</button>, <a key="help" href={POLICY_LINKS.support} target="_blank" rel="noopener noreferrer">Contact support</a>]
+      secondary = [...DEVICE_LINK_ENABLED ? [<button key="connect" type="button" onClick={() => void begin('connect')}>Use a StreamPulse website account</button>] : [], <a key="help" href={POLICY_LINKS.support} target="_blank" rel="noopener noreferrer">Contact support</a>]
       if (linked) secondary.push(<button key="check" type="button" disabled={payBusy} onClick={() => void checkPayment()}>Check payment status</button>)
     }
   }
@@ -726,7 +730,7 @@ export function SupporterJourney({ onEntitlement }: { onEntitlement?: (value: Su
         {/* The worker decides the path at the click: without installation
             accounts on the server (production today) it falls back to the
             website link, so the website path is stated first. */}
-        {state === 'unlinked' ? <p className="pulse-supporter-detail">Become a Supporter opens streampulse.stream, where you sign in and approve this extension before paying on Stripe. If the server lets this extension check out by itself, Stripe opens directly and asks for your email and payment details; you only verify that email if you restore membership later.</p> : null}
+        {DEVICE_LINK_ENABLED && state === 'unlinked' ? <p className="pulse-supporter-detail">Become a Supporter opens streampulse.stream, where you sign in and approve this extension before paying on Stripe. If the server lets this extension check out by itself, Stripe opens directly and asks for your email and payment details; you only verify that email if you restore membership later.</p> : null}
         {primary || secondary.length ? <div className="pulse-account-link-actions pulse-journey-actions">{primary}{secondary}</div> : null}
         {restoreForm && restore.state === 'idle' && !payBusy ? <form onSubmit={event => void startRestore(event)} className="pulse-journey-restore">
           <label htmlFor="supporter-restore-email">Email used at checkout</label>

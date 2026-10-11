@@ -1,4 +1,5 @@
 import { safeWebAnalyticsOrigin } from './analyticsLinks.ts'
+import { DEVICE_LINK_ENABLED } from './deviceLink.ts'
 
 /**
  * Every streampulse.stream link the extension publishes, in one place.
@@ -33,7 +34,8 @@ const PRODUCT_PATHS = {
   supporter: '/supporter',
   billing: '/account/billing',
   signIn: '/account/sign-in',
-  linkDevice: '/account/link-device',
+  // Firefox builds have no device link (deviceLink.ts), so not its page either.
+  linkDevice: DEVICE_LINK_ENABLED ? '/account/link-device' : '/account/sign-in',
 } as const
 
 export type ProductLinkName = keyof typeof PRODUCT_PATHS
