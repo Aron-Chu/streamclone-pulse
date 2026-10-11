@@ -100,6 +100,25 @@ function finishIntent(value: unknown, now: number): FinishIntent | null {
   return { finish: r.finish as Finish, setAt: r.setAt, ...(r.accountId ? { accountId: r.accountId as string } : {}) }
 }
 
+/** A shared appearance read for an account with perks; its accent still renews before it lapses. */
+export const ENTITLEMENT_PERKS_CACHE_LEAD_MS = 20_000
+/** A failed or unavailable read is shared this long, so open tabs do not each retry it. */
+export const ENTITLEMENT_FAILURE_CACHE_MS = 30_000
+/** Never trust a server cache window longer than its own 15-minute snapshot freshness. */
+export const ENTITLEMENT_MAX_CACHE_MS = 15 * 60_000
+
+/** How long the worker may serve this read to Twitch-tab appearance checks. */
+function entitlementCacheMs(value: SupporterEntitlement, result: { status: number; body: unknown }, elapsedMs: number): number {
+  if (value.state === 'error' || value.state === 'unavailable') return ENTITLEMENT_FAILURE_CACHE_MS
+  if (value.state !== 'ready') return 0
+  // Perks: the accent's own bounded validity (at most 60 s) minus the renewal lead.
+  if (value.features.length) return Math.max(0, (value.validForMs ?? 0) - ENTITLEMENT_PERKS_CACHE_LEAD_MS)
+  // No perks: nothing to revoke, so re-check at the server's cacheUntil.
+  const body = object(result.body)
+  const until = Date.parse(String(body.cacheUntil)) - Date.parse(String(body.serverTime)) - elapsedMs
+  return Number.isFinite(until) ? Math.max(0, Math.min(ENTITLEMENT_MAX_CACHE_MS, until)) : 60_000
+}
+
 /** What a settings or Twitch surface would render differently. Revision alone is not a change. */
 function fingerprint(accountId: string, value: SupporterEntitlement): string {
   if (value.state !== 'ready') return `${accountId}:${value.state}`
@@ -209,6 +228,34 @@ export class SupporterAccountCoordinator {
     return task
   }
 
+  /** The last verified read, shared by every tab's appearance check for the same account. */
+  private entitlementCache: { accountId: string; generation: number; value: SupporterEntitlement; at: number; ttl: number } | null = null
+
+  /**
+   * The appearance check each visible Twitch tab makes (about once a minute).
+   * Served from the worker's last read for this account while it is fresh, so
+   * tabs and remounts share one request: up to 40 s for an account with perks
+   * (the served validity is reduced by the cache age, so its accent still
+   * renews before it lapses), until the server's cacheUntil (at most 15
+   * minutes) for an account without, and 30 s after a failed read. Changes
+   * made here (purchase, cosmetics, sign-in or out) reach tabs at once through
+   * the account and Supporter revision signals; settings always reads fresh.
+   */
+  cachedEntitlement(): Promise<SupporterEntitlement> {
+    const generation = this.generation
+    const task = this.queue.then(async (): Promise<SupporterEntitlement | null> => {
+      const account = await this.perform('status', generation)
+      const cached = this.entitlementCache
+      if (account.state !== 'linked' || !cached || cached.accountId !== account.accountId || cached.generation !== this.generation) return null
+      const age = this.now() - cached.at
+      if (age < 0 || age >= cached.ttl) return null
+      const value = cached.value
+      return value.state === 'ready' ? { ...value, validForMs: Math.max(0, (value.validForMs ?? 0) - age) } : value
+    }).catch(() => null)
+    this.queue = task
+    return task.then(value => value ?? this.entitlement())
+  }
+
   /**
    * Read the server-reconciled entitlement.
    *
@@ -235,8 +282,12 @@ export class SupporterAccountCoordinator {
           await this.clear('relink_required')
           return { state: 'not_linked' }
         }
-        const projected = projectEntitlement(result, credentials.accountId, this.ports.environments ?? ['live'], performance.now() - started)
+        const elapsed = performance.now() - started
+        const projected = projectEntitlement(result, credentials.accountId, this.ports.environments ?? ['live'], elapsed)
         const value = await this.applyFinishIntent(projected, credentials, generation)
+        if (generation === this.generation && value.state !== 'not_linked') {
+          this.entitlementCache = { accountId: credentials.accountId, generation, value, at: this.now(), ttl: entitlementCacheMs(value, result, elapsed) }
+        }
         await this.noteProjection(credentials.accountId, value)
         return value
       })
@@ -269,6 +320,8 @@ export class SupporterAccountCoordinator {
   setFinishIntent(finish: Finish | null): Promise<Finish | null> {
     const generation = this.generation
     const task = this.queue.then(async () => {
+      // The next appearance read applies or drops the choice; never a stale one.
+      this.entitlementCache = null
       if (!this.ports.writeIntent) return null
       if (finish === null) { await this.ports.writeIntent(null); return null }
       const credentials = linked(await this.ports.read())
@@ -346,6 +399,7 @@ export class SupporterAccountCoordinator {
   }
 
   private async clear(state: SupporterAccountState['state']): Promise<SupporterAccountState> {
+    this.entitlementCache = null
     await this.ports.write(state === 'relink_required' ? { kind: 'relink_required' } : null)
     // An authoritative credential rejection cannot erase the durable installation
     // identity. Explicit Disconnect is the only action that discards its key.
@@ -383,6 +437,7 @@ export class SupporterAccountCoordinator {
       if (result.status !== 200) return false
       // An explicit choice supersedes any earlier pre-purchase choice, and open
       // Twitch tabs apply it now instead of at their next scheduled check.
+      this.entitlementCache = null
       await this.ports.writeIntent?.(null)
       // Surfaces re-read on this signal; the next read sets a fresh baseline
       // rather than announcing the same change a second time.
