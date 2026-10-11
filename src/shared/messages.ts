@@ -775,6 +775,8 @@ export type BackgroundResponse =
       type: 'SUPPORTER_CHAT_BADGE'
       ok: boolean
       listReceived: boolean
+      /** This build pins a key it can verify the list with; without one, turning on is never offered. */
+      keysPinned?: boolean
       /** After on/off: the state now shown locally; the server snapshot follows. */
       own?: 'on' | 'off'
       login?: string

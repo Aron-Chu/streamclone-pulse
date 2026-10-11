@@ -5,19 +5,24 @@ import type { BackgroundResponse } from '../shared/messages.ts'
 export type ChatBadgeReply = Extract<BackgroundResponse, { type: 'SUPPORTER_CHAT_BADGE' }>
 
 /**
- * Whether this browser has received a valid Seen in chat list: the feature is
- * live on the server. The viewer settings and the perk appear only then.
+ * Whether Seen in chat is live in this browser: a verified list arrived and
+ * the server hasn't switched the feature off since (404). The viewer settings
+ * and the perk appear only then. The third value says whether this build pins
+ * a list key at all; a build without one never offers publishing your own entry.
  */
-export function useChatBadgeListReceived(): [boolean, () => void] {
+export function useChatBadgeListReceived(): [boolean, () => void, boolean] {
   const [received, setReceived] = useState(false)
+  const [keysPinned, setKeysPinned] = useState(false)
   const read = useCallback(() => {
     void sendBackgroundMessage({ type: 'SUPPORTER_CHAT_BADGE', action: 'status' })
       .then(response => {
         const reply = response as ChatBadgeReply | undefined
-        if (reply?.type === 'SUPPORTER_CHAT_BADGE') setReceived(reply.listReceived === true)
+        if (reply?.type !== 'SUPPORTER_CHAT_BADGE') return
+        setReceived(reply.listReceived === true)
+        setKeysPinned(reply.keysPinned === true)
       })
       .catch(() => undefined)
   }, [])
   useEffect(() => { read() }, [read])
-  return [received, read]
+  return [received, read, keysPinned]
 }

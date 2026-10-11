@@ -43,10 +43,13 @@ export function SupporterAccountSection() {
   const worn = perks ? equipped : SAMPLE_KIT.finish
   const tried = draft === undefined ? worn : draft
   const tenure = perks && shown?.state === 'ready' ? supporterTenureForMonths(shown.supportPeriods) : SAMPLE_KIT.tenure
-  // Seen in chat adds "Other StreamPulse viewers" only where it is live.
-  const [chatListReceived] = useChatBadgeListReceived()
+  // Seen in chat adds "Other StreamPulse viewers" only where it is live: a
+  // list arrived here, or the server offers it and this build can verify one.
+  // An entry that is still on always shows, so it can be seen and turned off.
+  const [chatListReceived, , chatKeysPinned] = useChatBadgeListReceived()
   const chatBadge = shown?.state === 'ready' ? shown.chatBadge : undefined
-  const seenInChat = chatBadge || chatListReceived ? { on: chatBadge?.state === 'on' || chatBadge?.state === 'waiting' } : undefined
+  const chatOn = chatBadge?.state === 'on' || chatBadge?.state === 'waiting'
+  const seenInChat = chatListReceived || chatOn || (chatBadge && chatKeysPinned) ? { on: chatOn } : undefined
 
   return (
     <div className="pulse-supporter-settings">

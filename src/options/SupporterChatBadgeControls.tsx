@@ -4,7 +4,7 @@ import { CHAT_BADGE_CONSENT_VERSION, type ChatBadgeActionError } from '../shared
 import type { SupporterEntitlement } from '../shared/supporterAccount.ts'
 import { PulseSectionCard } from '../ui/PulseSectionCard.tsx'
 import { TwitchGlitch } from './TwitchAccountConnection.tsx'
-import type { ChatBadgeReply } from './useChatBadges.ts'
+import { useChatBadgeListReceived, type ChatBadgeReply } from './useChatBadges.ts'
 
 /**
  * The consent panel, word for word. CHAT_BADGE_CONSENT_VERSION pins this text
@@ -16,8 +16,8 @@ export const CHAT_BADGE_CONSENT_COPY = {
   points: [
     'Other people who use the StreamPulse extension will see your crest beside your name in Twitch chat, and your name in your paint.',
     'To do this, StreamPulse publishes a public list with your Twitch username, your Twitch user ID, your crest level (it shows roughly how long you’ve supported) and your paint. Anyone can download this list.',
-    'Twitch chat itself doesn’t change. People without StreamPulse see normal chat, and nothing is sent to Twitch.',
-    'StreamPulse never learns which channels you or anyone else watches. Each extension downloads the whole list and adds crests on its own computer.',
+    'Twitch chat itself doesn’t change. People without StreamPulse see normal chat, and your extension sends nothing to Twitch. About once an hour StreamPulse asks Twitch for the current username of each Twitch user ID on the list, so a rename follows you.',
+    'Seen in chat doesn’t tell StreamPulse which channels you or anyone else watches: each extension downloads the whole list, with no channel attached, and adds crests on its own computer.',
     'You can turn it off any time. Your entry leaves the list within about an hour, and StreamPulse deletes the Twitch user ID and username it stored for this. It also leaves if your membership ends, you disconnect StreamPulse in your Twitch settings, or you delete your account.',
   ],
   confirmTwitch: 'You’ll confirm with Twitch that it’s your account.',
@@ -52,8 +52,8 @@ type Local = { own: 'on' | 'off'; login?: string } | null
 
 /**
  * "In chat": Seen in chat for your own Twitch name. Shown only when the server
- * reports the feature (`chatBadge` in the Supporter snapshot) and you are, or
- * were recently, a Supporter. Turning it on needs a fresh Twitch check and the
+ * reports the feature (`chatBadge` in the Supporter snapshot), this build pins
+ * a list key, and you are, or were recently, a Supporter. Turning it on needs a fresh Twitch check and the
  * consent above; turning it off is one click. Nothing here grants anything:
  * the server decides what is published.
  */
@@ -63,6 +63,7 @@ export function SupporterChatBadgeControls({ entitlement }: { entitlement: Suppo
   const [notice, setNotice] = useState('')
   const [local, setLocal] = useState<Local>(null)
   const switchId = useId()
+  const [, , keysPinned] = useChatBadgeListReceived()
   const ready = entitlement?.state === 'ready' ? entitlement : null
   const badge = ready?.chatBadge
   const serverKey = badge ? `${badge.state}:${badge.login ?? ''}` : ''
@@ -71,6 +72,10 @@ export function SupporterChatBadgeControls({ entitlement }: { entitlement: Suppo
   if (!ready || !badge) return null
   const supporter = ready.status === 'active' || ready.status === 'grace'
   if (!supporter && badge.state === 'off') return null
+  // A build that pins no list key would publish your Twitch ID for a crest no
+  // one using it can see: offer turning on only where lists can be verified.
+  // An entry that is already on still shows, so it can be turned off.
+  if (!keysPinned && badge.state === 'off' && local?.own !== 'on') return null
 
   const outdated = badge.state === 'on' && badge.consentVersion !== undefined && badge.consentVersion < CHAT_BADGE_CONSENT_VERSION
   const own = local?.own ?? (badge.state === 'off' || outdated ? 'off' : 'on')

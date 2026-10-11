@@ -212,8 +212,8 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   const setIntent = useCallback((value: Intent) => { storeIntent(value); setIntentState(value) }, [])
   const [watchUntil, setWatchUntil] = useState(0)
   const [twitch, setTwitch] = useState<TwitchSignInStatus | null>(null)
-  // Seen in chat is offered only where it is live: the server reports it, or a list arrived.
-  const [chatListReceived] = useChatBadgeListReceived()
+  // Seen in chat is offered only where it is live: a list arrived, or the server reports it and this build pins a key.
+  const [chatListReceived, , chatKeysPinned] = useChatBadgeListReceived()
   const [signingIn, setSigningIn] = useState<TwitchSignInMode | null>(null)
   const signInFlight = useRef(false)
   const silentTried = useRef(false)
@@ -644,7 +644,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   const supporterHref = productLink('supporter', portalOrigin)
   const isSupporter = status === 'active' || status === 'grace'
   const checkoutOpen = entitlement?.state === 'ready' && entitlement.checkoutEnabled === true
-  const seenInChatLive = chatListReceived || (entitlement?.state === 'ready' && entitlement.chatBadge !== undefined)
+  const seenInChatLive = chatListReceived || (chatKeysPinned && entitlement?.state === 'ready' && entitlement.chatBadge !== undefined)
   const accountKind = entitlement?.state === 'ready' ? entitlement.accountKind : undefined
   // Purchase and billing through the worker's bearer: any known account with
   // Twitch sign-in on (the server sends an invited tester's email account

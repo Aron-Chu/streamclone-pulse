@@ -84,13 +84,13 @@ describe('Seen in chat opt-in: the Twitch check and the consent action', () => {
   })
 })
 
-function optIn(options: { send?: (body: Record<string, unknown>) => { status: number; body?: unknown }; confirm?: Awaited<ReturnType<TwitchSignIn['confirmForBadge']>>; snapshot?: ReturnType<typeof parseChatBadgeSnapshot> } = {}) {
+function optIn(options: { keysPinned?: boolean; send?: (body: Record<string, unknown>) => { status: number; body?: unknown }; confirm?: Awaited<ReturnType<TwitchSignIn['confirmForBadge']>>; snapshot?: ReturnType<typeof parseChatBadgeSnapshot> } = {}) {
   let own: ChatBadgeOwnOverlay | undefined
   const timers: Array<() => void> = []
   const ports = {
     confirm: vi.fn(async () => options.confirm ?? { ok: true as const, own: ['123', 'pulsefan', 2, 1, 1] as [string, string, number, number, number], chatBadge: { available: true, state: 'on' as const, login: 'pulsefan' } }),
     request: vi.fn(async (body: Record<string, unknown>) => { const answer = options.send?.(body) ?? { status: 200 }; return { status: answer.status, body: answer.body ?? null } }),
-    list: { patchOwn: vi.fn(async (next: ChatBadgeOwnOverlay | null) => { own = next ?? undefined }), ownOverlay: async () => own, status: async () => ({ listReceived: true }) },
+    list: { patchOwn: vi.fn(async (next: ChatBadgeOwnOverlay | null) => { own = next ?? undefined }), ownOverlay: async () => own, status: async () => ({ listReceived: true, keysPinned: options.keysPinned ?? true }) },
     invalidate: vi.fn(async () => {}),
     wave: async () => 'chrome' as const,
     snapshot: async () => options.snapshot,
@@ -104,10 +104,19 @@ function optIn(options: { send?: (body: Record<string, unknown>) => { status: nu
 describe('Seen in chat opt-in coordinator', () => {
   it('on: consent at the current version with your wave, your own crest shows at once, settings re-read', async () => {
     const f = optIn()
-    expect(await f.coordinator.on()).toEqual({ type: 'SUPPORTER_CHAT_BADGE', ok: true, listReceived: true, own: 'on', login: 'pulsefan' })
+    expect(await f.coordinator.on()).toEqual({ type: 'SUPPORTER_CHAT_BADGE', ok: true, listReceived: true, keysPinned: true, own: 'on', login: 'pulsefan' })
     expect(f.ports.confirm).toHaveBeenCalledWith({ consentVersion: CHAT_BADGE_CONSENT_VERSION, wave: 'chrome' })
     expect(f.own()).toEqual({ kind: 'on', entry: ['123', 'pulsefan', 2, 1, 1], at: 1_000 })
     expect(f.ports.invalidate).toHaveBeenCalled()
+  })
+
+  it('a build that pins no list key refuses to turn on before any Twitch check; turning off still works', async () => {
+    const f = optIn({ keysPinned: false })
+    expect(await f.coordinator.on()).toEqual({ type: 'SUPPORTER_CHAT_BADGE', ok: false, listReceived: true, keysPinned: false, error: 'unavailable' })
+    expect(f.ports.confirm).not.toHaveBeenCalled()
+    expect(f.ports.list.patchOwn).not.toHaveBeenCalled()
+    expect(await f.coordinator.off()).toMatchObject({ ok: true, own: 'off' })
+    expect(f.ports.request).toHaveBeenCalledWith({ enabled: false })
   })
 
   it('a refused opt-in changes nothing locally', async () => {

@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -8,6 +9,7 @@ import {
   CHAT_BADGE_OWN_TTL_MS,
   CHAT_BADGE_REFRESH_MS,
   ChatBadgeList,
+  expectedChatBadgeETag,
   type StoredChatBadgeList,
 } from '../src/background/chatBadgeList.ts'
 import { CHAT_BADGE_LIST_PATH, tenureCode, verifyChatBadgeList, waveCode, type ChatBadgeKey } from '../src/shared/chatBadges.ts'
@@ -26,6 +28,11 @@ const verify = (body: string | Uint8Array, overrides: Partial<Parameters<typeof 
 
 const ENTRIES: Entry[] = [['12345678', 'somelogin', 3, 2, 0], ['98765432', 'other_user', 0, 0, 0]]
 const list = (entries: Entry[] = ENTRIES, doc: Parameters<typeof makeDoc>[1] = {}) => signList(makeDoc(entries, { iat: NOW_S - 60, ...doc }))
+/** The ETag the backend's badgeDocETag gives this exact body. */
+function honestETag(body: string): string {
+  const doc = JSON.parse(body.slice(body.indexOf('\n') + 1)) as { env: string; seq: number }
+  return `"spb1-${doc.env}-${doc.seq}-${createHash('sha256').update(body).digest('hex').slice(0, 16)}"`
+}
 
 describe('Seen in chat list format v1', () => {
   it('verifies the cross-repo golden vector byte for byte (the backend signs the same bytes)', async () => {
@@ -125,7 +132,7 @@ function harness(options: { enabled?: boolean; stored?: unknown; respond?: Respo
   let now = options.now ?? NOW_S * 1000
   let enabled = options.enabled ?? true
   let stored: unknown = options.stored
-  let respond: Responder = options.respond ?? (() => ({ status: 200, body: list(), headers: { ETag: '"spb1-sandbox-1"' } }))
+  let respond: Responder = options.respond ?? (() => ({ status: 200, body: list(), headers: { ETag: honestETag(list()) } }))
   const fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const answer = await respond(init ?? {})
     const headers = new Headers(answer.headers)
@@ -173,7 +180,7 @@ describe('Seen in chat list scheduling', () => {
     h.advance(30 * 60_000)
     await store.ask(ver)
     expect(h.fetch).toHaveBeenCalledTimes(1)
-    expect(h.stored).toMatchObject({ etag: '"spb1-sandbox-1"', received: true, failures: 0, floor: { sandbox: NOW_S - 60 } })
+    expect(h.stored).toMatchObject({ etag: honestETag(list()), received: true, failures: 0, floor: { sandbox: NOW_S - 60 } })
     expect(h.changed).toHaveBeenCalled()
   })
 
@@ -191,7 +198,7 @@ describe('Seen in chat list scheduling', () => {
     await store.ask()
     await vi.waitFor(() => expect(h.fetch).toHaveBeenCalledTimes(2))
     await vi.waitFor(() => expect(h.stored.nextAt).toBeGreaterThan(NOW_S * 1000 + CHAT_BADGE_REFRESH_MS))
-    expect((h.fetch.mock.calls[1][1] as RequestInit).headers).toEqual({ 'If-None-Match': '"spb1-sandbox-1"' })
+    expect((h.fetch.mock.calls[1][1] as RequestInit).headers).toEqual({ 'If-None-Match': honestETag(list()) })
     expect(await store.ask()).toMatchObject({ u: ENTRIES })
   })
 
@@ -213,6 +220,76 @@ describe('Seen in chat list scheduling', () => {
     expect(h.stored.floor.sandbox).toBe(NOW_S - 60)
     await store.ask()
     expect(h.fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('after the 404 kill switch the feature is no longer called live: the perk, offer and viewer settings go', async () => {
+    const h = harness()
+    const store = h.make()
+    await store.ask()
+    expect(await store.status()).toEqual({ listReceived: true, keysPinned: true })
+    h.advance(2 * 3600_000)
+    h.setRespond(() => ({ status: 404, body: '{"error":"not_found"}' }))
+    await store.refresh()
+    expect(await store.status()).toEqual({ listReceived: false, keysPinned: true })
+    expect(h.stored.received).toBe(false)
+    // A new worker reads the same from storage.
+    expect(await h.make().status()).toEqual({ listReceived: false, keysPinned: true })
+    // Switched back on: the next verified list makes it live again.
+    h.advance(CHAT_BADGE_NOT_FOUND_MS + 1)
+    h.setRespond(() => ({ status: 200, body: list(ENTRIES, { seq: NOW_S }) }))
+    await store.refresh()
+    expect(await store.status()).toEqual({ listReceived: true, keysPinned: true })
+  })
+
+  it('a list that expires after failed refreshes is no longer live; one that was simply not asked for stays live', async () => {
+    const failing = harness()
+    const store = failing.make()
+    await store.ask()
+    failing.setRespond(() => ({ status: 503 }))
+    failing.advance(CHAT_BADGE_REFRESH_MS + 1)
+    await store.refresh()
+    failing.advance(37 * 3600_000)
+    expect(await store.status()).toEqual({ listReceived: false, keysPinned: true })
+    // No Twitch tab for two days: nothing was tried, so the settings stay.
+    const idle = harness()
+    await idle.make().ask()
+    idle.advance(48 * 3600_000)
+    expect(await idle.make().status()).toEqual({ listReceived: true, keysPinned: true })
+  })
+
+  it('stores and echoes only the ETag computed from the verified body, never one a relay made up', async () => {
+    // A relay hands this install its own tag: not stored, never sent back.
+    const tagged = harness({ respond: () => ({ status: 200, body: list(), headers: { ETag: '"install-7f3a9c"' } }) })
+    const store = tagged.make()
+    await store.ask()
+    expect(tagged.stored.etag).toBeUndefined()
+    tagged.advance(CHAT_BADGE_REFRESH_MS * 2)
+    await store.refresh()
+    expect((tagged.fetch.mock.calls[1][1] as RequestInit).headers).toEqual({})
+    // A tag stored by an older build is dropped before it is sent.
+    const old = harness()
+    await old.make().ask()
+    const legacy = harness({ stored: { ...old.stored, etag: '"install-7f3a9c"' } })
+    legacy.advance(CHAT_BADGE_REFRESH_MS * 2)
+    await legacy.make().refresh()
+    expect((legacy.fetch.mock.calls[0][1] as RequestInit).headers).toEqual({})
+    // The honest value matches the backend's badgeDocETag format.
+    const verified = await verify(list())
+    expect(verified.ok && await expectedChatBadgeETag(verified.doc, verified.text, subtle)).toBe(honestETag(list()))
+    expect(await expectedChatBadgeETag({ env: 'live', seq: 1 }, 'x', undefined)).toBeNull()
+  })
+
+  it('a build that pins no key for an environment it accepts reports keysPinned false and never calls the feature live', async () => {
+    for (const [keys, environments] of [[[], ['live']], [KEYS, ['live']]] as Array<[ChatBadgeKey[], Array<'live' | 'sandbox'>]>) {
+      let stored: unknown
+      const store = new ChatBadgeList({
+        fetch: (async () => new Response(list(), { status: 200 })) as unknown as typeof fetch,
+        origin: 'https://api.streampulse.stream', keys: () => keys, environments, subtle,
+        now: () => NOW_S * 1000, read: async () => stored, write: async value => { stored = value }, enabled: async () => true,
+      })
+      await store.ask()
+      expect(await store.status()).toEqual({ listReceived: false, keysPinned: false })
+    }
   })
 
   it('backs off 15 → 30 → 60 minutes on 5xx, 429 and network errors, keeping the last good list', async () => {
@@ -300,7 +377,7 @@ describe('Seen in chat list scheduling', () => {
     const h = harness({ respond: () => ({ status: 200, body: list([]) }) })
     const store = h.make()
     expect(await store.ask()).toEqual({ type: 'CHAT_BADGES', off: true })
-    expect(await store.status()).toEqual({ listReceived: true })
+    expect(await store.status()).toEqual({ listReceived: true, keysPinned: true })
     await store.patchOwn({ kind: 'on', entry: ['55555555', 'me_myself', 1, 1, 2], at: NOW_S * 1000 })
     expect(await store.wanted()).toBe(true)
   })

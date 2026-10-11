@@ -12,6 +12,10 @@ declare const __CHAT_BADGE_DEV_KEYS__: ChatBadgeKey[] | undefined
  *
  * Rotation: the server switches to the standby key; the next release pins the
  * standby and a new one and drops the old.
+ *
+ * Launch order: pin the keys here, release that build and check its adoption
+ * BEFORE the server's PULSE_SUPPORTER_CHAT_BADGES_ENABLED goes on. A build with
+ * no key never offers turning your own entry on (ChatBadgeList.keysPinned).
  */
 export const STORE_CHAT_BADGE_KEYS: readonly ChatBadgeKey[] = []
 

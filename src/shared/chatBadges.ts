@@ -6,8 +6,9 @@ import { SUPPORTER_TENURES, supporterTenureForMonths, type SupporterTenure, type
  * The server publishes one signed list of the Supporters who chose to be seen
  * (Twitch user ID, login, crest level, paint, wave). Every extension downloads
  * the whole list, with no channel, account or credential attached, and adds
- * crests to chat on its own computer. Twitch chat itself never changes and
- * nothing is sent to Twitch.
+ * crests to chat on its own computer. Twitch chat itself never changes and the
+ * extension sends nothing to Twitch (the server looks up current logins for
+ * the published IDs about hourly).
  *
  * Wire format v1 (spec: streampulse-sdlc artifacts/chat-badges-2026-10-10/SPEC.md §5.5):
  *
@@ -227,6 +228,8 @@ export type ChatBadgeActionError =
   | 'identity_mismatch' | 'supporter_required' | 'consent_outdated' | 'consent_required' | 'pilot_only' | 'twitch_in_use'
   | 'cancelled' | 'busy' | 'unavailable' | 'sign_in_required' | 'try_later' | 'network' | 'error'
 export interface ChatBadgeStatus {
-  /** A valid list has been received at least once on this browser: the viewer settings are shown. */
+  /** A verified list arrived and no kill switch (404) since: the viewer settings are shown. */
   listReceived: boolean
+  /** This build pins a list key; without one, publishing your own entry is never offered. */
+  keysPinned: boolean
 }

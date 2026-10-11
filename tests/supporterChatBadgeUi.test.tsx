@@ -40,11 +40,18 @@ async function mount(node: React.ReactNode) {
   return host
 }
 
-function stubRuntime(reply: (message: Record<string, unknown>) => unknown, sync: Record<string, unknown> = {}) {
+/**
+ * `sendMessage` records actions only; the `status` reads every surface makes on
+ * mount are answered by `reply` when it handles them, else by `status`.
+ */
+function stubRuntime(reply: (message: Record<string, unknown>) => unknown, sync: Record<string, unknown> = {}, status: Record<string, unknown> = { listReceived: true, keysPinned: true }) {
   const sendMessage = vi.fn(async (message: Record<string, unknown>) => reply(message))
   const set = vi.fn(async (items: Record<string, unknown>) => { Object.assign(sync, items) })
+  const runtimeSend = async (message: Record<string, unknown>) => message.action === 'status'
+    ? (await reply(message)) ?? { type: 'SUPPORTER_CHAT_BADGE', ok: true, ...status }
+    : sendMessage(message)
   vi.stubGlobal('chrome', {
-    runtime: { id: 'test-extension', sendMessage },
+    runtime: { id: 'test-extension', sendMessage: runtimeSend },
     storage: { sync: { get: vi.fn(async (keys: string[]) => Object.fromEntries(keys.filter(key => key in sync).map(key => [key, sync[key]]))), set } },
   })
   return { sendMessage, set, sync }
@@ -70,8 +77,8 @@ describe('In chat card: consent text', () => {
       points: [
         'Other people who use the StreamPulse extension will see your crest beside your name in Twitch chat, and your name in your paint.',
         'To do this, StreamPulse publishes a public list with your Twitch username, your Twitch user ID, your crest level (it shows roughly how long you’ve supported) and your paint. Anyone can download this list.',
-        'Twitch chat itself doesn’t change. People without StreamPulse see normal chat, and nothing is sent to Twitch.',
-        'StreamPulse never learns which channels you or anyone else watches. Each extension downloads the whole list and adds crests on its own computer.',
+        'Twitch chat itself doesn’t change. People without StreamPulse see normal chat, and your extension sends nothing to Twitch. About once an hour StreamPulse asks Twitch for the current username of each Twitch user ID on the list, so a rename follows you.',
+        'Seen in chat doesn’t tell StreamPulse which channels you or anyone else watches: each extension downloads the whole list, with no channel attached, and adds crests on its own computer.',
         'You can turn it off any time. Your entry leaves the list within about an hour, and StreamPulse deletes the Twitch user ID and username it stored for this. It also leaves if your membership ends, you disconnect StreamPulse in your Twitch settings, or you delete your account.',
       ],
       confirmTwitch: 'You’ll confirm with Twitch that it’s your account.',
@@ -89,6 +96,14 @@ describe('In chat card: states', () => {
     expect((await mount(<SupporterChatBadgeControls entitlement={entitlement(undefined)} />)).textContent).toBe('')
     expect((await mount(<SupporterChatBadgeControls entitlement={entitlement({ available: true, state: 'off' }, 'expired')} />)).textContent).toBe('')
     expect((await mount(<SupporterChatBadgeControls entitlement={null} />)).textContent).toBe('')
+  })
+
+  it('a build that pins no list key hides the card unless your entry is still on, so nobody publishes for nothing', async () => {
+    stubRuntime(() => undefined, {}, { listReceived: false, keysPinned: false })
+    expect((await mount(<SupporterChatBadgeControls entitlement={entitlement({ available: true, state: 'off' })} />)).textContent).toBe('')
+    const on = await mount(<SupporterChatBadgeControls entitlement={entitlement({ available: true, state: 'on', login: 'crest_glass', consentVersion: 1 })} />)
+    expect(on.querySelector('h3')?.textContent).toBe('In chat')
+    expect([...on.querySelectorAll('button')].some(button => button.textContent === 'Turn off')).toBe(true)
   })
 
   const cases: Array<[string, ChatBadgeSnapshot, 'active' | 'grace' | 'expired', string, boolean]> = [
@@ -156,7 +171,7 @@ describe('In chat card: actions', () => {
   ]
   for (const [error, text] of refusals) {
     it(`a refused opt-in (${error}) leaves the switch off and says why`, async () => {
-      stubRuntime(() => ({ type: 'SUPPORTER_CHAT_BADGE', ok: false, listReceived: false, error }))
+      stubRuntime(message => message.action === 'on' ? { type: 'SUPPORTER_CHAT_BADGE', ok: false, listReceived: true, keysPinned: true, error } : undefined)
       const host = await mount(<SupporterChatBadgeControls entitlement={entitlement({ available: true, state: 'off' })} />)
       await click(host.querySelector('input[role="switch"]'))
       await click([...host.querySelectorAll('button')].find(button => button.textContent?.includes('Continue with Twitch')))
@@ -228,7 +243,7 @@ describe('Viewer settings: Show Supporter crests in chat', () => {
     const crests = host.querySelector<HTMLInputElement>('#settings-chat-crests')!
     const motion = host.querySelector<HTMLInputElement>('#settings-chat-paint-motion')!
     expect(host.textContent).toContain('Show Supporter crests in chat')
-    expect(host.textContent).toContain('Other StreamPulse Supporters who chose to be seen get a crest beside their name, and their paint on it. Your extension downloads a public list about once an hour and never tells StreamPulse which chats you open.')
+    expect(host.textContent).toContain('Other StreamPulse Supporters who chose to be seen get a crest beside their name, and their paint on it. Your extension downloads a public list about once an hour; that download doesn’t tell StreamPulse which chats you open.')
     expect(host.textContent).toContain('Animate paints in chat')
     expect(host.textContent).toContain('Off keeps every name still. Always still when your system asks for reduced motion.')
     expect(crests.checked).toBe(true)

@@ -375,7 +375,7 @@ export function ChatCrestToggles() {
       <ToggleRow
         id="settings-chat-crests"
         label="Show Supporter crests in chat"
-        hint="Other StreamPulse Supporters who chose to be seen get a crest beside their name, and their paint on it. Your extension downloads a public list about once an hour and never tells StreamPulse which chats you open."
+        hint="Other StreamPulse Supporters who chose to be seen get a crest beside their name, and their paint on it. Your extension downloads a public list about once an hour; that download doesn’t tell StreamPulse which chats you open."
         checked={crests}
         onChange={next => save(CHAT_CRESTS_KEY, next, setCrests, crests)}
       />

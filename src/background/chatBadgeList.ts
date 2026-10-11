@@ -1,6 +1,7 @@
 import {
   CHAT_BADGE_LIST_PATH,
   CHAT_BADGE_MAX_BODY_BYTES,
+  chatBadgeKeyEnvironment,
   verifyChatBadgeList,
   type ChatBadgeDoc,
   type ChatBadgeEntry,
@@ -14,7 +15,9 @@ import {
  * The Seen in chat list, worker side: download, verify, cache, serve.
  *
  * One GET of the whole public list, with no credentials, cookies, query string
- * or channel attached, so the server never learns which chats anyone opens.
+ * or channel attached, so the download doesn't tell the server which chats
+ * anyone opens. (Pulse itself still asks for the channel you open; that is a
+ * separate feature, disclosed in Privacy.)
  * The list is refreshed about hourly, and only while a Twitch tab asks for it
  * (or, before any list exists, when a Twitch page loads). A list that fails
  * verification is never used; the previous one is kept until its own expiry.
@@ -42,6 +45,10 @@ export interface StoredChatBadgeList {
   failures: number
   /** Highest accepted seq per environment; survives a 404 so a rollback is still refused. */
   floor: Partial<Record<ChatBadgeEnvironment, number>>
+  /**
+   * A verified list has arrived, so the feature is live on the server. Cleared
+   * by the 404 kill switch, and when the list expires after refreshes failed.
+   */
   received: boolean
   own?: ChatBadgeOwnOverlay
 }
@@ -66,6 +73,24 @@ export interface ChatBadgeListPorts {
 
 const EMPTY: StoredChatBadgeList = { v: 1, nextAt: 0, failures: 0, floor: {}, received: false }
 const ETAG = /^(W\/)?"[\x21\x23-\x7e]{1,128}"$/
+
+/**
+ * The ETag an honest server sends for this exact list: "spb1-<env>-<seq>-<sha16>",
+ * the first 16 hex characters of SHA-256 over the whole body (the backend's
+ * badgeDocETag). The worker stores and echoes only this value, so a relay or
+ * CDN can't tag an install with an ETag of its own and link its hourly requests.
+ */
+export async function expectedChatBadgeETag(doc: Pick<ChatBadgeDoc, 'env' | 'seq'>, text: string, subtle: SubtleCrypto | undefined): Promise<string | null> {
+  if (!subtle) return null
+  try {
+    const digest = new Uint8Array(await subtle.digest('SHA-256', new TextEncoder().encode(text)))
+    let hex = ''
+    for (const byte of digest.subarray(0, 8)) hex += byte.toString(16).padStart(2, '0')
+    return `"spb1-${doc.env}-${doc.seq}-${hex}"`
+  } catch {
+    return null
+  }
+}
 
 function parseStored(value: unknown): StoredChatBadgeList {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return { ...EMPTY, floor: {} }
@@ -133,9 +158,24 @@ export class ChatBadgeList {
     if (!this.doc && this.due()) await this.refresh()
   }
 
-  async status(): Promise<{ listReceived: boolean }> {
+  /**
+   * `listReceived`: the feature is live here (a verified list arrived and no
+   * kill switch since). `keysPinned`: this build can verify a list at all; a
+   * build that pins no key must not offer publishing your Twitch ID.
+   */
+  async status(): Promise<{ listReceived: boolean; keysPinned: boolean }> {
     await this.load()
-    return { listReceived: this.stored?.received === true }
+    this.view()
+    const keysPinned = this.keysPinned()
+    return { listReceived: keysPinned && this.stored?.received === true, keysPinned }
+  }
+
+  /** Whether this build pins a key for an environment it accepts lists from. */
+  keysPinned(): boolean {
+    return this.ports.keys().some(key => {
+      const env = chatBadgeKeyEnvironment(key.kid)
+      return env !== null && this.ports.environments.includes(env)
+    })
   }
 
   /** The opt-in or opt-out response patches your own entry at once. */
@@ -212,8 +252,11 @@ export class ChatBadgeList {
     const nowMs = this.now()
     let dirty = false
     if (this.doc && this.doc.exp <= Math.floor(nowMs / 1000)) {
-      // Past its expiry, every crest goes, even if no refresh succeeded.
+      // Past its expiry, every crest goes, even if no refresh succeeded. If
+      // refreshes were tried and failed, stop calling the feature live too; a
+      // list that merely wasn't asked for (no Twitch tab) doesn't count.
       this.dropDoc()
+      if (stored.failures > 0) stored.received = false
       dirty = true
     }
     if (stored.own && nowMs - stored.own.at > CHAT_BADGE_OWN_TTL_MS) {
@@ -250,7 +293,9 @@ export class ChatBadgeList {
     const before = this.view()?.ver ?? null
     try {
       const headers: Record<string, string> = {}
-      if (stored.etag && this.doc) headers['If-None-Match'] = stored.etag
+      if (stored.etag && this.doc && stored.text && stored.etag === await expectedChatBadgeETag(this.doc, stored.text, this.ports.subtle)) {
+        headers['If-None-Match'] = stored.etag
+      }
       const response = await this.ports.fetch(`${this.ports.origin}${CHAT_BADGE_LIST_PATH}`, {
         method: 'GET', headers, credentials: 'omit', cache: 'no-store', redirect: 'error', referrerPolicy: 'no-referrer',
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
@@ -263,6 +308,7 @@ export class ChatBadgeList {
         // entry included, unregister, and ask again in 6 h.
         this.dropDoc()
         delete stored.own
+        stored.received = false
         stored.failures = 0
         stored.nextAt = this.now() + CHAT_BADGE_NOT_FOUND_MS
       } else if (response.status === 200) {
@@ -281,7 +327,7 @@ export class ChatBadgeList {
             stored.text = result.text
             stored.kid = result.kid
             const etag = response.headers.get('ETag')
-            if (etag && ETAG.test(etag)) stored.etag = etag
+            if (etag && etag === await expectedChatBadgeETag(result.doc, result.text, this.ports.subtle)) stored.etag = etag
             else delete stored.etag
             stored.floor[result.doc.env] = result.doc.seq
             stored.received = true

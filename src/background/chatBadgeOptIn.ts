@@ -37,9 +37,9 @@ export class ChatBadgeOptIn {
 
   private now(): number { return this.ports.now?.() ?? Date.now() }
 
-  private async reply(extra: Omit<Reply, 'type' | 'listReceived'>): Promise<Reply> {
-    const { listReceived } = await this.ports.list.status()
-    return { type: 'SUPPORTER_CHAT_BADGE', listReceived, ...extra }
+  private async reply(extra: Omit<Reply, 'type' | 'listReceived' | 'keysPinned'>): Promise<Reply> {
+    const { listReceived, keysPinned } = await this.ports.list.status()
+    return { type: 'SUPPORTER_CHAT_BADGE', listReceived, keysPinned, ...extra }
   }
 
   status(): Promise<Reply> {
@@ -47,6 +47,9 @@ export class ChatBadgeOptIn {
   }
 
   async on(): Promise<Reply> {
+    // A build that can't verify any list would publish your Twitch ID for a
+    // crest nobody using it could see: refuse before the Twitch check.
+    if (!(await this.ports.list.status()).keysPinned) return this.reply({ ok: false, error: 'unavailable' })
     const wave = await this.ports.wave().catch((): SupporterWave => 'smooth')
     const result = await this.ports.confirm({ consentVersion: CHAT_BADGE_CONSENT_VERSION, wave })
     if (!result.ok) return this.reply({ ok: false, error: result.error })
