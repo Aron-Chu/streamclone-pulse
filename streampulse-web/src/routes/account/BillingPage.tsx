@@ -57,6 +57,23 @@ function longDate(value: unknown): string | null {
     : null
 }
 
+/**
+ * One short line from the snapshot's optional renewal fields (backend #162,
+ * additive under schemaVersion 1): "Cancels on {date}" after a cancel at
+ * period end, otherwise "Renews on {date}". Only for an active membership;
+ * an older server sends neither field, and then nothing is shown.
+ */
+export function renewalLine(snapshot: Record<string, unknown> | null): string | null {
+  if (snapshot?.status !== 'active') return null
+  const shortDate = (value: unknown) => typeof value === 'string' && Number.isFinite(Date.parse(value))
+    ? new Date(value).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
+    : null
+  const ends = snapshot.renewal === 'ends' ? shortDate(snapshot.endsOn) : null
+  if (ends) return `Cancels on ${ends}`
+  const renews = snapshot.renewal === 'auto' ? shortDate(snapshot.renewsOn) : null
+  return renews ? `Renews on ${renews}` : null
+}
+
 function SignInAgain({ signInHref }: { signInHref: string }) {
   return <div className="pulse-account-note" role="alert"><p>For your security, changing billing needs a sign-in from the last 10 minutes. Nothing was charged.</p><Link className="pulse-account-button pulse-account-primary" to={signInHref}>Sign in again</Link></div>
 }
@@ -388,6 +405,7 @@ export default function BillingPage() {
   // Only an explicit "sandbox" proves test mode; anything else shows no banner.
   const sandbox = snapshot?.environment === 'sandbox'
   const accessUntil = longDate(snapshot?.accessUntil)
+  const renewal = load === 'ready' && !wrongAccount ? renewalLine(snapshot) : null
   const periods = typeof snapshot?.supportPeriods === 'number' && snapshot.supportPeriods > 0 ? snapshot.supportPeriods : 0
   const reference = accountReference(snapshot?.accountId)
   // A welcome belongs to this purchase only: not to a stale or foreign return link.
@@ -510,6 +528,7 @@ export default function BillingPage() {
       <div role="status" aria-live="polite" className="pulse-membership-status">
         <h2>{title}</h2>
         {load === 'loading' ? <p className="pulse-account-waiting"><span className="pulse-account-spinner" aria-hidden="true" />Reading your Supporter status.</p> : body}
+        {renewal ? <p data-testid="billing-renewal">{renewal}</p> : null}
         {invalid ? <p>This checkout link is invalid. Your current membership is shown here.</p> : null}
         {attempt && attemptMissing ? <p>This checkout link is no longer available. Your current membership is shown here.</p> : null}
         {stale !== null ? <p className="pulse-account-meta" data-testid="billing-stale">Couldn’t refresh just now; showing your status from {new Date(stale).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.</p> : null}
