@@ -756,7 +756,7 @@ export function SupporterJourney({ onEntitlement }: { onEntitlement?: (value: Su
         Core Pulse tools, your existing accent themes, moment bookmarks, and links to Twitch clips and VODs remain free.
       </p>
       <p className="pulse-supporter-detail pulse-supporter-policies">
-        <a href={POLICY_LINKS.terms} target="_blank" rel="noopener noreferrer">Supporter terms</a>
+        <a href={POLICY_LINKS.supporterTerms} target="_blank" rel="noopener noreferrer">Supporter terms</a>
         <a href={POLICY_LINKS.refunds} target="_blank" rel="noopener noreferrer">Cancellation &amp; refunds</a>
         <a href={POLICY_LINKS.privacy} target="_blank" rel="noopener noreferrer">Privacy</a>
       </p>

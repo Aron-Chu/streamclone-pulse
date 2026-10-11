@@ -19,7 +19,7 @@ describe('portal link registry', () => {
   it('publishes canonical, slash-free HTTPS policy links', () => {
     const links = Object.values(POLICY_LINKS)
     expect(links.length).toBeGreaterThanOrEqual(4)
-    for (const link of links) {
+    for (const [name, link] of Object.entries(POLICY_LINKS)) {
       const url = new URL(link)
       expect(url.protocol).toBe('https:')
       expect(url.hostname).toBe('streampulse.stream')
@@ -28,9 +28,14 @@ describe('portal link registry', () => {
       // redirect hop, and a query or fragment is not part of a policy address.
       expect(url.pathname.endsWith('/')).toBe(false)
       expect(url.search).toBe('')
-      expect(url.hash).toBe('')
+      // The one exception: a section of the terms document, linked by its anchor.
+      expect(url.hash).toBe(name === 'supporterTerms' ? '#supporter' : '')
     }
     expect(new Set(links).size).toBe(links.length)
+  })
+
+  it('links "Supporter terms" to the Supporter section of the terms', () => {
+    expect(POLICY_LINKS.supporterTerms).toBe(`${POLICY_LINKS.terms}#supporter`)
   })
 
   it('keeps policy links on production even when a dev portal is configured', () => {
