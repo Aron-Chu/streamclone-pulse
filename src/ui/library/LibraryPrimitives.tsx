@@ -88,22 +88,21 @@ export function MomentListItem({ moment, personalWorkspace = false, analyticsOri
   // replay as available. Keep the list consistent with MomentPreview and
   // never turn an unresolved reference into a playable link.
   const url = replayUrl(moment)
-  const replayStatus = moment.availability === 'unresolved' ? 'Replay link unavailable' : 'Source unavailable'
   const date = recent ? moment.jumpedAt : moment.savedAt
   const analytics = personalWorkspace && moment.streamId ? buildAnalyticsUrl({ webAnalyticsBaseUrl: analyticsOrigin, channelLogin: moment.channel, streamId: moment.streamId, offsetSeconds: moment.offsetSeconds ?? undefined }) : null
   return <li className="pl-moment" data-moment-id={moment.id}>
     <MomentMedia moment={moment} presentation={presentation} compact />
     <div className="pl-moment-body"><div className="pl-row"><strong>{moment.title}</strong>
       {recent && moment.savedAt !== undefined ? <span className="pl-tag">Bookmarked</span> : null}</div>
-      <p className="pl-moment-identity">{moment.channel} · {presentation?.gameAtMoment ?? 'Game at this moment unknown'}</p>
+      <p className="pl-moment-identity">{moment.channel}{presentation?.gameAtMoment ? ` · ${presentation.gameAtMoment}` : ''}</p>
       <p className="pl-muted">{recent ? personalWorkspace ? 'Watched' : 'Jumped' : 'Bookmarked'} {date === undefined ? '—' : <time dateTime={new Date(date).toISOString()}>{new Date(date).toLocaleString()}</time>}</p>
       {moment.note ? <p className="pl-note">{moment.note}</p> : null}
       {presentation?.signal ? <span className="pl-inline-signal" title={presentation.signal.basis}>{presentation.signal.illustrative ? 'Example · ' : ''}{presentation.signal.label}</span> : null}
-      {context?.kind === 'ready' ? <MomentGlance context={context.value} /> : <p className="pl-muted">{context?.kind === 'loading' ? 'Moment stats loading…' : 'No saved statistics for this moment.'}</p>}
+      {context?.kind === 'ready' ? <MomentGlance context={context.value} /> : context?.kind === 'loading' ? <p className="pl-muted">Moment stats loading…</p> : null}
       <div className="pl-row pl-actions" role="group" aria-label={`Actions for ${moment.title}`}>
         {onPreview ? <button className="pl-button pl-primary" type="button" onClick={() => onPreview(moment)} aria-label={`Preview: ${moment.title}`}><LibraryIcon name="preview" />Preview</button> : null}
         {url ? <a className="pl-button" href={url} target="_blank" rel="noopener noreferrer" onClick={() => onOpenLink?.(moment)} aria-label={`Watch moment: ${moment.title} (new tab)`}>{personalWorkspace ? 'Open saved Twitch link' : 'Watch moment ↗'}</a>
-          : <span className="pl-replay-status" role="status">{replayStatus}</span>}
+          : null}
         {analytics ? <a className="pl-button" href={analytics} target="_blank" rel="noopener noreferrer" aria-label={`Open analytics for ${moment.title} (new tab)`}>Analytics</a> : null}
         {moment.savedAt === undefined ? <MomentSaveButton moment={moment} busy={busy} onSave={onSave} /> : <>
           <details className="pl-moment-more"><summary aria-label="More actions" title="More actions">More</summary><div className="pl-row">
@@ -137,7 +136,7 @@ export function DeviceSaveItem({ moment, analyticsOrigin = DEFAULT_WEB_ANALYTICS
       {moment.note ? <p className="pl-note">{moment.note}</p> : null}
       <div className="pl-row pl-actions" role="group" aria-label={`Actions for ${moment.title}`}>
         {url ? <a className="pl-button" href={url} target="_blank" rel="noopener noreferrer" onClick={() => onOpenLink?.(moment)} aria-label={`Watch moment: ${moment.title} (new tab)`}>Open saved Twitch link</a>
-          : <span className="pl-replay-status" role="status">Replay link unavailable</span>}
+          : null}
         {analytics ? <a className="pl-button" href={analytics} target="_blank" rel="noopener noreferrer" aria-label={`Open analytics for ${moment.title} (new tab)`}>Analytics</a> : null}
         <button type="button" className="pl-button pl-quiet" disabled={busy} onClick={() => onRemove(moment)} aria-label={`Remove from this device: ${moment.title}`}>Remove</button>
       </div>

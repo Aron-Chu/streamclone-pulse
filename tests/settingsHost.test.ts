@@ -10,6 +10,12 @@ describe('settings host navigation', () => {
     expect(sharedStyles).not.toContain('.pulse-settings-supporter-banner')
   })
 
+  it('gives keyboard focus a visible ring on links and brings the skip link into view', () => {
+    const hostStyles = readFileSync(new URL('../src/options/hostStyles.ts', import.meta.url), 'utf8')
+    expect(hostStyles).toContain('a:focus-visible { outline: 2px solid #a78bfa; outline-offset: 2px; }')
+    expect(hostStyles).toContain('.pulse-settings-skip-link:focus, .pulse-settings-skip-link:focus-visible { top: 10px; }')
+  })
+
   it('always opens the packaged extension-owned host', async () => {
     const create = vi.fn(async () => undefined)
     await openSettingsHost({ create }, path => `chrome-extension://id/${path}`)
