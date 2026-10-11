@@ -148,6 +148,17 @@ describe('only a confirmed sign-out removes an account’s local copy', () => {
     expect(f.data.has(localScope)).toBe(true)
   })
 
+  it('Sign out while relink_required (e.g. after another device signed out everywhere) keeps the hidden copy for the next sign-in', async () => {
+    stored = { kind: 'relink_required' }
+    expect(await f.coordinator.run('disconnect')).toEqual({ state: 'signed_out' })
+    await settle()
+    expect(stored).toBeNull()
+    // No account id survives a 401, so nothing here can name the copy to remove:
+    // it stays hidden and returns only when that account signs in again.
+    expect(f.data.get(accountScope)).toMatchObject({ history: [{ id: watched.id }], notes: { 'bk-1': 'private note' } })
+    expect(f.data.has(localScope)).toBe(true)
+  })
+
   it('a refresh lost on the network keeps the copy (not a revocation)', async () => {
     stored = credentials(accountId, 0)
     request.mockRejectedValue(new Error('network interrupted'))

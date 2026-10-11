@@ -27,6 +27,7 @@ export const twitchSignIn = new TwitchSignIn({
   launchWebAuthFlow: typeof identity?.launchWebAuthFlow === 'function' ? details => identity.launchWebAuthFlow!(details) : undefined,
   redirectUrl: typeof identity?.getRedirectURL === 'function' ? () => identity.getRedirectURL!() : undefined,
   surface,
+  buildTarget: target === 'development' ? 'development' : 'store',
   chromium: surface !== 'firefox' && !runtimeUrl.startsWith('moz-extension:'),
   // The same origin as the stored credential and its refresh: a development
   // build pinned to a local backend never signs in against production.

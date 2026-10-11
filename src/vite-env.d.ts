@@ -17,7 +17,7 @@ declare const __EXTENSION_RELEASE_PREVIEW__: {
   title: string
   bullets: [string, string, string]
 }
-/** Sign in with Twitch build stage (PULSE_EXTENSION_TWITCH_SIGNIN); worker and options bundles only. */
+/** Sign in with Twitch build stage (PULSE_EXTENSION_TWITCH_SIGNIN); the same in every bundle. */
 declare const __TWITCH_SIGNIN_STAGE__: 'off' | 'tester' | 'public'
 /** Stripe customer-portal login link (PULSE_EXTENSION_STRIPE_PORTAL_LOGIN_URL), validated at build; empty when unset. */
 declare const __STRIPE_PORTAL_LOGIN_URL__: string

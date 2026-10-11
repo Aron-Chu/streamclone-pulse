@@ -431,6 +431,19 @@ describe('worker-owned journey completion', () => {
     expect(f.projectionChanged).toHaveBeenCalledOnce()
   })
 
+  it('signals open surfaces when a Supporter cancels or renews again', async () => {
+    const f = journey(creds)
+    f.request.mockResolvedValueOnce(snapshot('active', { renewal: 'auto', renewsOn: iso(3600) }))
+      .mockResolvedValueOnce(snapshot('active', { renewal: 'ends', endsOn: iso(3600) }))
+      .mockResolvedValueOnce(snapshot('active', { renewal: 'auto', renewsOn: iso(3600) }))
+    await f.coordinator.entitlement()
+    expect(f.projectionChanged).not.toHaveBeenCalled()
+    await f.coordinator.entitlement()
+    expect(f.projectionChanged).toHaveBeenCalledOnce()
+    await f.coordinator.entitlement()
+    expect(f.projectionChanged).toHaveBeenCalledTimes(2)
+  })
+
   it('passes Checkout availability through only as a literal true', async () => {
     for (const [value, expected] of [[true, true], ['true', false], [1, false], [undefined, false]] as const) {
       const f = journey(creds)

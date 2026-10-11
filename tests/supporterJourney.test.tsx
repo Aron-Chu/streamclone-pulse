@@ -1554,6 +1554,9 @@ describe('Sign out everywhere (Twitch sign-in on)', () => {
       const ask = view.host.querySelector('[data-sign-out-everywhere="ask"]')!
       expect(ask.getAttribute('role')).toBe('group')
       expect(ask.textContent).toContain('signs out every extension connected to this account, including this one. Nothing is deleted from your account, and it does not cancel your subscription.')
+      // Only this extension removes its copy; another browser only sees a 401 and keeps its copy hidden.
+      expect(ask.textContent).toContain('This extension removes its signed-in watched history and notes. Other browsers keep theirs hidden until this account signs in there again.')
+      expect(ask.textContent).not.toContain('Each extension removes')
       await view.click('Stay signed in')
       expect(view.host.querySelector('[data-sign-out-everywhere]')).toBeNull()
       expect(everywhereCalls(view)).toHaveLength(0)
