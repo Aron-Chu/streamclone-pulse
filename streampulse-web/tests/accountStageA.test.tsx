@@ -72,7 +72,7 @@ describe('/analytics support menu', () => {
     render(<MemoryRouter initialEntries={['/analytics']}><AnalyticsTopNav items={[{ label: 'Overview', to: '/analytics', end: true }]} /></MemoryRouter>)
     const menu = screen.getByRole('navigation', { name: 'Analytics navigation' }).querySelector('.analytics-topnav__more-links')!
     const hrefs = Array.from(menu.querySelectorAll('a')).map(link => link.getAttribute('href'))
-    expect(hrefs).toEqual(['/docs', '/support', '/status', '/supporter', '/privacy', '/terms', '/refunds'])
+    expect(hrefs).toEqual(['/feedback', '/docs', '/support', '/status', '/supporter', '/privacy', '/terms', '/refunds'])
     expect(hrefs.some(href => href?.startsWith('/account'))).toBe(false)
     expect(menu.textContent).not.toMatch(/Manage membership|Manage subscription|Link extension/)
   })
