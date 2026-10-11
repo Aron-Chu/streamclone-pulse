@@ -38,3 +38,6 @@ bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranke
 # Cloudflare's published always-pass Turnstile TEST site key (1x000...AA) in a deploy-guard
 # unit test placeholder. Not a credential; the next commit assembles it at runtime (2026-10-09).
 2f827b5fb95062140a365716a8b14ea6fdd67977:streampulse-web/tests/pagesDeployEnv.test.ts:generic-api-key:17
+# PostHog token placeholder (phc_placeholder123) in the same deploy-guard unit test.
+# Not a credential. Gitleaks flagged it in the site #87 squash commit (2026-10-11).
+907b85aa537485a5a0bf640869a7b48eaf8ab3d0:streampulse-web/tests/pagesDeployEnv.test.ts:generic-api-key:20
