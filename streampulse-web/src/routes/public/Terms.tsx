@@ -2,6 +2,9 @@ import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { PRIVACY_PATH, PUBLIC_SUPPORT_URL, REFUNDS_PATH, SUPPORTER_PATH } from '../../lib/externalLinks'
 import { PrelaunchNotice } from './PrelaunchNotice'
+import { SUPPORTER_PERKS, SupporterPerkItems, supporterOnlyYou } from '../../ui/components/SupporterPerks'
+import { TermsSeenInChatBullets } from '../../ui/components/SupporterChatBadgeCopy'
+import { supporterChatBadgesEnabled } from '../../lib/supporterChatBadgesFlag'
 
 /**
  * Terms of use for the portal, the Chrome extension and the Supporter
@@ -24,7 +27,7 @@ export default function Terms() {
           </div>
           <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Terms of Use</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            Last updated: October 1, 2026 · Applies to{' '}
+            Last updated: October 9, 2026 · Applies to{' '}
             <code className="font-mono text-zinc-300">streampulse.stream</code>, the StreamPulse
             Chrome extension, and the Pulse Supporter subscription.
           </p>
@@ -61,7 +64,10 @@ export default function Terms() {
           You may use StreamPulse if you are at least 13 years old. To subscribe you must also be old
           enough to enter into a contract where you live, or have a parent or guardian do it for you.
         </p>
-        <p>Core Pulse is free and does not require an account. Website accounts are optional. Once paid sign-ups open, you can start Supporter in the extension without a website sign-in; it creates an installation account for your membership.</p>
+        <p>
+          Core Pulse is free and does not require an account. To buy Supporter you'll sign in with
+          Twitch; your membership belongs to that StreamPulse account.
+        </p>
         <p>Please do not:</p>
         <ul>
           <li>Attempt to access another person's account or a device credential you were not given.</li>
@@ -79,14 +85,15 @@ export default function Terms() {
         </p>
 
         <h2>Your account</h2>
-        <p>
-          Sign-in is by emailed link — there is no password. Anyone who can read your email can sign
-          in as you, so keep that mailbox secure and do not forward a sign-in link. A link expires 15
-          minutes after it is requested and can only be confirmed in the browser that asked for it.
+        <p data-testid="terms-your-account">
+          Once Continue with Twitch is open, your StreamPulse account is your Twitch identity: you
+          sign in with Continue with Twitch, and anyone who controls that Twitch account can sign in
+          as you, so keep it secure. During the private pilot, invited testers may also use an
+          emailed sign-in link that expires after 15 minutes. StreamPulse will never ask you to share
+          a sign-in link or an extension connection code.
         </p>
         <p>
-          StreamPulse will never ask you to share a sign-in link or an extension connection code. See
-          the <Link to={PRIVACY_PATH}>privacy policy</Link> for what an account stores.
+          See the <Link to={PRIVACY_PATH}>privacy policy</Link> for what an account stores.
         </p>
 
         <h2>Pulse Supporter</h2>
@@ -103,31 +110,37 @@ export default function Terms() {
           <li><strong>Renewal:</strong> it renews automatically each month until you cancel.</li>
           <li>
             <strong>Cancellation:</strong> you can cancel at any time in the Stripe Customer Portal,
-            reachable through Manage membership in the extension or from account billing for website
-            accounts. Cancelling stops future charges and takes effect at the
+            reachable through Manage subscription in the extension or from your account page.
+            Cancelling stops future charges and takes effect at the
             end of the period you already paid for; your access continues until then.
           </li>
-          <li>
-            <strong>What you get:</strong> a private Pulse header accent, three private overlay
-            finishes, and private support recognition. Nothing else is promised.
+          <li data-testid="terms-supporter-benefits">
+            <strong>What you get:</strong> every Supporter perk the extension gives, the same list
+            as on the <Link to={SUPPORTER_PATH}>Supporter page</Link>:
+            <ul>
+              <SupporterPerkItems />
+            </ul>
+            {supporterOnlyYou()} {SUPPORTER_PERKS.moved} Nothing else is promised.
           </li>
-          <li>
-            <strong>What you do not get:</strong> no public Twitch chat badge — it is not included —
-            and no analytics, coverage or rate-limit changes of any kind.
-          </li>
+          {/* Seen in chat copy only once VITE_SUPPORTER_CHAT_BADGES is on (launch day). */}
+          {supporterChatBadgesEnabled() ? <TermsSeenInChatBullets /> : (
+            <li>
+              <strong>What you do not get:</strong> no public Twitch chat badge — it is not included —
+              and no analytics, coverage or rate-limit changes of any kind.
+            </li>
+          )}
         </ul>
         <p>
           Payments are processed by Stripe. Your card details go to Stripe, not to StreamPulse —
-          StreamPulse stores identifiers for your customer, subscription and invoices and a keyed
-          hash of your checkout email for requested recovery. Entitlement
+          StreamPulse stores identifiers for your customer, subscription and invoices. Entitlement
           is granted from confirmed payment records on the server, never from anything your browser or
           extension claims.
         </p>
-        <p>
-          The email you give Stripe at checkout is used for receipts and, if you ask, membership recovery.
-          Keep that mailbox secure. To restore on another browser or after a reinstall, request a
-          recovery link from the extension and confirm the requesting extension in that link. A
-          restore does not combine accounts with their own billing history.
+        <p data-testid="terms-billing-email">
+          The email you give Stripe is used by Stripe for receipts and billing. To use Supporter on
+          another browser or after a reinstall, Continue with Twitch with the same Twitch account. If
+          you lose that Twitch account, you can still cancel billing through Stripe; moving a
+          membership to another account needs our help and proof you own the billing email.
         </p>
         <p>
           While Stripe finalizes a renewal, your membership may show as active for up to 72 hours

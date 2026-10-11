@@ -6,6 +6,7 @@ import { AccountFooter } from './AccountFooter'
 import { AccountError, accountErrorText } from '../../lib/accountApi'
 import { useAccountSession } from '../../lib/accountSession'
 import { forgetHistory, listHistory, listSaves, momentAnalyticsHref, momentTimestamp, replayHref, type AccountMoment } from '../../lib/accountMoments'
+import { accountSignInLabel } from '../../lib/twitchSignInFlag'
 import './account.css'
 
 type View = 'saves' | 'history'
@@ -30,7 +31,7 @@ export default function AccountMoments() {
     <p className="pulse-account-intro">Moments you bookmarked with the extension, and the history you watched if you sync it, from every browser signed in to this account.</p>
     {session.status === 'checking' ? <p role="status">Checking your sign-in…</p>
       : session.status === 'signed_out' ? <div className="pulse-account-empty"><p>Sign in to see the moments saved to your account.</p>
-        <Link className="pulse-account-button pulse-account-primary" to="/account/sign-in">Sign in to Pulse</Link></div>
+        <Link className="pulse-account-button pulse-account-primary" to="/account/sign-in">{accountSignInLabel()}</Link></div>
       : <>
         <div className="pulse-moments-tabs" role="tablist" aria-label="My Moments">
           {tabs.map(tab => <button key={tab.id} type="button" role="tab" id={`${id}-tab-${tab.id}`} aria-controls={`${id}-panel-${tab.id}`}

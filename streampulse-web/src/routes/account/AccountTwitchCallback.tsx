@@ -24,7 +24,7 @@ export default function AccountTwitchCallback() {
     return () => { live = false }
   }, [navigate])
   return <PublicLayout><section className="pulse-account" aria-label="StreamPulse account">
-    <p className="pulse-account-kicker"><TwitchGlitch size={16} /> {failure?.purpose === 'link' ? 'Link Twitch' : 'Sign in with Twitch'}</p>
+    <p className="pulse-account-kicker"><TwitchGlitch size={16} /> {failure?.purpose === 'link' ? 'Link Twitch' : 'Continue with Twitch'}</p>
     {failure ? <TwitchErrorNotice page code={failure.code} purpose={failure.purpose} />
       : <><h1>Finishing up…</h1><p role="status">Checking your Twitch sign-in with StreamPulse.</p></>}
     <AccountFooter />

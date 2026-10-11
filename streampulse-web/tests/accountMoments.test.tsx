@@ -44,7 +44,7 @@ describe('My Moments page', () => {
   it('asks a signed-out visitor to sign in and makes no account request', async () => {
     Object.defineProperty(document, 'cookie', { configurable: true, get: () => '' })
     page()
-    expect(await screen.findByRole('link', { name: 'Sign in to Pulse' })).toBeTruthy()
+    expect(await screen.findByRole('link', { name: 'Tester sign-in' })).toBeTruthy()
     expect(accountRequest).not.toHaveBeenCalled()
   })
 

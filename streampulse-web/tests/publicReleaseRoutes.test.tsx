@@ -59,7 +59,7 @@ describe('public release routes', () => {
     expect(body).toMatch(/off by default/i)
     expect(body).toMatch(/Share crash diagnostics/i)
     expect(body).toMatch(/Hosted diagnostics upload is not active/i)
-    expect(body).toMatch(/Website error monitoring \(portal only\)/i)
+    expect(body).toMatch(/Sentry \(website error monitoring\)/i)
     expect(body).not.toMatch(/support@streampulse\.stream/i)
     expect(body).not.toMatch(/security@streampulse\.stream/i)
   })

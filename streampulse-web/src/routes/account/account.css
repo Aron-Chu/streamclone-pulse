@@ -129,6 +129,9 @@
 
 .pulse-account-settings { max-width: 760px; }
 .pulse-account-error { margin-bottom: 24px; }
+/* Account & devices with no session: how to sign in for this stage. */
+.pulse-account-signed-out { display: grid; gap: 12px; justify-items: start; margin-bottom: 32px; padding-bottom: 24px; border-bottom: 1px solid #353540; }
+.pulse-account-signed-out p { margin: 0; }
 
 .pulse-account-session {
   display: flex;
@@ -144,7 +147,7 @@
 .pulse-account-session p { margin: 0; }
 .pulse-account-session button { flex-shrink: 0; }
 .pulse-account-section-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
-.pulse-account-section-heading h2 { margin: 0; }
+.pulse-account-section-heading h2, .pulse-account-section-heading h3 { margin: 0; }
 .pulse-account-section-heading a { font-size: 14px; }
 .pulse-account-devices { display: grid; gap: 12px; margin: 0 0 20px; padding: 0; list-style: none; }
 
@@ -167,6 +170,7 @@
 .pulse-account .pulse-account-revoke:hover:not(:disabled) { background: #361f29; }
 .pulse-account .pulse-account-empty { padding: 20px; border: 1px dashed #454052; border-radius: 12px; }
 .pulse-account-explainer { margin-top: 28px; }
+.pulse-account-other-ways { margin-top: 28px; }
 .pulse-account-explainer h2 { font-size: 15px; }
 .pulse-account-explainer p { font-size: 14px; }
 .pulse-account .pulse-account-sandbox { margin: 0 0 20px; padding: 12px 14px; border: 1px solid #d97706; border-radius: 10px; background: #2a1f0b; color: #fde68a; }
@@ -198,9 +202,12 @@
 .pulse-membership-terms dd { margin: 0; color: #e4e4ed; }
 .pulse-membership .pulse-account-actions { margin-top: 0; }
 .pulse-account .pulse-account-meta { color: #9a9aac; font-size: 13px; }
+.pulse-account .pulse-account-access { margin: 8px 0 12px; padding-left: 20px; color: #b6b6c5; font-size: 15px; line-height: 1.65; list-style: disc; }
+.pulse-account .pulse-account-access li { margin: 4px 0; padding: 0; border: 0; }
 .pulse-account .pulse-account-note { margin: 0 0 16px; padding: 12px 14px; border: 1px solid #3e394c; border-radius: 10px; background: #1c1a25; color: #d4d4de; font-size: 14px; }
 .pulse-membership .pulse-account-note { margin: 0; }
 .pulse-account .pulse-account-note p { margin: 0 0 10px; }
+.pulse-account .pulse-account-note h3 { margin: 0 0 6px; font-size: 15px; color: #f4f4f8; }
 .pulse-account .pulse-account-text-button { justify-self: start; min-height: 44px; padding: 10px 0; border: 0; background: transparent; color: #c4b5fd; text-decoration: underline; text-underline-offset: 3px; }
 .pulse-account .pulse-account-text-button:hover:not(:disabled) { background: transparent; color: #ddd6fe; }
 .pulse-account .pulse-account-links { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 20px; font-size: 14px; }
@@ -289,3 +296,6 @@
 
 /* Reduced motion keeps a static ring; the copy already says what is happening. */
 @keyframes pulse-account-spin { to { transform: rotate(360deg); } }
+.pulse-account-signout-everywhere { margin-top: 28px; }
+.pulse-account-signout-everywhere .pulse-account-review { margin-top: 12px; }
+.pulse-account-signout-everywhere h3 { margin: 0 0 8px; }

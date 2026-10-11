@@ -34,18 +34,18 @@ const states: State[] = [
   { ...billing('billing-cancelled-closed-missing', 'none', 'Checkout cancelled', 'Refresh status'), path: `/account/billing/return?attempt=${ATTEMPT}&cancelled=1`, attemptState: 'open' },
   { ...billing('billing-confirming-initial', 'none', 'Confirming your payment', 'Check again', false), path: `/account/billing/return?attempt=${ATTEMPT}`, attemptState: 'pending' },
   billing('billing-membership-pending', 'pending', 'Confirming your payment', 'Check again', false),
-  { ...billing('billing-welcome', 'active', 'You’re a Supporter', 'Manage membership', false), path: `/account/billing/return?attempt=${ATTEMPT}`, attemptState: 'active' },
+  { ...billing('billing-welcome', 'active', 'You’re a Supporter', 'Manage subscription', false), path: `/account/billing/return?attempt=${ATTEMPT}`, attemptState: 'active' },
   { ...billing('billing-reauth-checkout', 'none', 'Become a Pulse Supporter', 'Sign in again', true), setup: 'checkout-reauth' },
   { ...billing('billing-reauth-portal', 'active', 'Supporter active', 'Sign in again', false), setup: 'portal-reauth' },
   { ...billing('billing-preparing-hold', 'none', 'Become a Pulse Supporter', 'Opening Stripe…', true), setup: 'preparing' },
-  billing('billing-active', 'active', 'Supporter active', 'Manage membership', false),
+  billing('billing-active', 'active', 'Supporter active', 'Manage subscription', false),
   billing('billing-grace', 'grace', 'Payment needs attention', 'Update payment method', false),
   billing('billing-expired-open', 'expired', 'Supporter ended', 'Rejoin Supporter', true),
   billing('billing-expired-closed', 'expired', 'Supporter ended', 'Billing history', false),
-  billing('billing-review', 'review', 'Membership needs review', 'Manage membership', false),
+  billing('billing-review', 'review', 'Membership needs review', 'Manage subscription', false),
   // The server projects cancellation/refunds into membership status. Extra
   // provider fields must never independently grant or invent entitlement.
-  { ...billing('billing-cancellation-scheduled', 'active', 'Supporter active', 'Manage membership', false), snapshot: { cancelAtPeriodEnd: true, cancellationScheduled: true } },
+  { ...billing('billing-cancellation-scheduled', 'active', 'Supporter active', 'Manage subscription', false), snapshot: { cancelAtPeriodEnd: true, cancellationScheduled: true } },
   { ...billing('billing-refunded', 'expired', 'Supporter ended', 'Billing history', false), snapshot: { refunded: true } },
   { ...billing('billing-invalid-provider-alias', 'canceled', 'Billing status is unavailable right now', 'Check again', false) },
   { name: 'static-thanks', path: '/supporter/thanks?attempt=untrusted&success=1', heading: 'Return to your extension', primary: 'Help & support' },
@@ -170,7 +170,7 @@ async function installFixtures(page: Page, state: State, width: number, requests
     }
     if (url.pathname === '/v1/account/restores/approve') {
       approvals++
-      expect(request.postDataJSON()).toEqual({ secret: SECRET, confirmed: true })
+      expect(request.postDataJSON()).toEqual({ secret: SECRET, comparisonCode: 'A4C8E2', confirmed: true })
       return state.setup === 'restore-uncertain' ? route.abort('timedout') : route.fulfill({ status: 204 })
     }
     return route.fulfill({ status: 503, json: { error: 'fixture_unavailable' } })
@@ -181,7 +181,7 @@ async function installFixtures(page: Page, state: State, width: number, requests
 async function enterState(page: Page, state: State) {
   await page.goto(state.path)
   if (state.setup === 'checkout-reauth' || state.setup === 'portal-reauth' || state.setup === 'preparing') {
-    await page.getByRole('button', { name: state.setup === 'portal-reauth' ? 'Manage membership' : 'Continue to Stripe checkout', exact: true }).click()
+    await page.getByRole('button', { name: state.setup === 'portal-reauth' ? 'Manage subscription' : 'Continue to Stripe checkout', exact: true }).click()
     await expect(page.getByRole(state.setup === 'preparing' ? 'button' : 'link', { name: state.setup === 'preparing' ? 'Opening Stripe…' : 'Sign in again', exact: true })).toBeVisible()
   }
   if (state.setup === 'restore-confirmed' || state.setup === 'restore-uncertain') {
@@ -230,7 +230,7 @@ test('website state matrix has one primary action, accessible controls and local
             expect.soft(observation.failures, `${state.name} at ${width}px a11y observations`).toEqual([])
             if (state.setup === 'preparing' || state.setup === 'restore-ready' || state.setup === 'restore-429') await expect(page.locator('#public-main').locator(PRIMARY_SELECTOR)).toBeDisabled()
             if (state.setup === 'checkout-reauth' || state.setup === 'portal-reauth') {
-              await expect(page.getByRole('button', { name: /Continue to Stripe checkout|Manage membership|Refresh status/ })).toHaveCount(0)
+              await expect(page.getByRole('button', { name: /Continue to Stripe checkout|Manage subscription|Refresh status/ })).toHaveCount(0)
               await expect(page.getByRole('link', { name: 'Sign in again' })).toHaveAttribute('href', /returnTo=/)
             }
           }
