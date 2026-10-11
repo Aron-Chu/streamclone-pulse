@@ -617,9 +617,9 @@ function AnalyticsChart({
   }, [lastCompleteRollup, rollups])
   const hoverPoint = hoverRollup ?? selectedRollup ?? restingRollup ?? rollups[rollups.length - 1] ?? null
   // Above 1-minute bars the second header row names the hovered bar. While a
-  // minute is pinned, a line of its own names the pinned minute's bar in full
-  // (range, chat and emotes average and peak, coverage) and wraps on narrow
-  // screens, where a tap is the only way to read a bar.
+  // minute is pinned, a line of its own under the navigator names the pinned
+  // minute's bar in full (range, chat and emotes average and peak, coverage)
+  // and wraps on narrow screens, where a tap is the only way to read a bar.
   const hoverBar = activityBarFocus?.hover ?? null
   const hoverBarReadout = hoverBar ? activityBarReadout(hoverBar) : null
   const pinnedBar = activityBarFocus?.pinned ?? null
@@ -888,20 +888,6 @@ function AnalyticsChart({
                 </a>
               ) : null}
             </div>
-            {selectedRollup && activityBucketMinutes != null ? (
-              // Two lines are kept while a minute is pinned, so a zoom that
-              // changes the bar size (or reaches 1-minute bars) does not move
-              // the plot under the pointer.
-              <p
-                className="min-h-8 min-w-0 whitespace-normal break-words text-xs font-bold leading-4 tabular-nums text-zinc-500"
-                data-chart-pinned-bar-readout
-                data-bar-step={pinnedBar?.step ?? 1}
-                data-bar-start={pinnedBar?.startMs}
-                data-bar-partial={pinnedBar ? (pinnedBar.partial ? 'true' : 'false') : undefined}
-              >
-                {pinnedBarReadout ?? 'Pinned bar · 1-min bars: the bar is the pinned minute'}
-              </p>
-            ) : null}
           </div>
         </div>
 
@@ -1141,6 +1127,19 @@ function AnalyticsChart({
               ) : undefined}
             />
           </div>
+        ) : null}
+        {/* Below the plot and its navigator, so pinning a minute or a zoom that
+            changes the bar size never moves the plot or scrolls the page. */}
+        {selectedRollup && pinnedBar && pinnedBarReadout ? (
+          <p
+            className="mt-2 min-w-0 whitespace-normal break-words text-xs font-bold leading-4 tabular-nums text-zinc-500"
+            data-chart-pinned-bar-readout
+            data-bar-step={pinnedBar.step}
+            data-bar-start={pinnedBar.startMs}
+            data-bar-partial={pinnedBar.partial ? 'true' : 'false'}
+          >
+            {pinnedBarReadout}
+          </p>
         ) : null}
       </div>
 

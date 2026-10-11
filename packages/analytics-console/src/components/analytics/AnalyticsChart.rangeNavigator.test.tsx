@@ -531,21 +531,24 @@ describe('AnalyticsChart range controls and navigator', () => {
     expect(line.textContent).toMatch(/^Pinned bar 00:40:00–00:45:00 · 5-min avg · chat 16\/min \(peak 18\) · emotes \d+\/min \(peak \d+\)$/)
     expect(line.getAttribute('data-bar-step')).toBe('5')
     expect(line.getAttribute('data-bar-partial')).toBe('false')
-    // It wraps instead of truncating, and keeps two lines so the plot does not move.
+    // It wraps instead of truncating, and sits below the plot and navigator,
+    // so it never moves the plot.
     expect(line.className).not.toContain('truncate')
     expect(line.className).toContain('whitespace-normal')
-    expect(line.className).toContain('min-h-8')
+    const plot = container.querySelector('svg[data-activity-bucket-minutes]')!
+    expect(plot.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const navigator = container.querySelector('[data-session-chart-navigator]')
+    if (navigator) expect(navigator.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     // The one-line hint no longer carries a bar suffix.
     const hint = container.querySelector<HTMLElement>('[data-chart-selection-hint]')!
     expect(hint.textContent).toMatch(/^Pinned minute 00:42:00–00:43:00 .*Esc or Clear to release$/)
     expect(hint.textContent).not.toContain('bar')
 
-    // At 1-minute bars the line stays (same height) and says the bar is the minute.
+    // At 1-minute bars the bar is the pinned minute, which the header row
+    // already reads exactly: no bar line.
     for (let click = 0; click < 3; click += 1) fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
     expect(container.querySelector('svg[data-activity-bucket-minutes]')?.getAttribute('data-activity-bucket-minutes')).toBe('1')
-    const atMinute = container.querySelector<HTMLElement>('[data-chart-pinned-bar-readout]')!
-    expect(atMinute.getAttribute('data-bar-step')).toBe('1')
-    expect(atMinute.textContent).toBe('Pinned bar · 1-min bars: the bar is the pinned minute')
+    expect(container.querySelector('[data-chart-pinned-bar-readout]')).toBeNull()
   })
 
   it('offers a VOD jump beside the pinned minute', () => {
