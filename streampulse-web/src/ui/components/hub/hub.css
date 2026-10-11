@@ -1731,6 +1731,24 @@
 .hubx .hx-chart2 [data-component="HubActivityBarSeries"] g[data-live="true"] .hx-chat-bar {
   opacity: 0.42;
 }
+/* Merged chat bars: a thin cap at the busiest bucket's height when it stands
+   well above the bar's average, so short spikes stay visible. */
+.hubx .hx-chart2 [data-component="HubActivityBarSeries"] .hx-chat-bar-peak {
+  fill: hsl(var(--sp-chart-chat, var(--chart-bar)) / 0.8);
+}
+/* A bar size change swaps the bars at once and fades them in from 55%. */
+@keyframes hx-bar-level-enter {
+  from { opacity: 0.55; }
+  to { opacity: 1; }
+}
+.hubx .hx-chart2 [data-component="HubActivityBarSeries"].is-level-enter {
+  animation: hx-bar-level-enter 120ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hubx .hx-chart2 [data-component="HubActivityBarSeries"].is-level-enter {
+    animation: none;
+  }
+}
 .hubx .hx-chart2--selectable {
   cursor: crosshair;
   touch-action: pan-y;

@@ -26,7 +26,7 @@ import {
   viewportDurationSeconds,
   vodClock,
 } from '@streampulse/pulse-charts'
-import type { ChartReactionPoint, ChartViewport } from '@streampulse/pulse-charts'
+import type { ActivityBarFocus, ActivityBarSummary, ChartReactionPoint, ChartViewport } from '@streampulse/pulse-charts'
 import { classifyLiveEmptyState } from '../../utils/liveEmptyState.ts'
 import { liveWarmupHintLine } from '../../utils/liveCollectionWarmup.ts'
 import { usePlayheadStore } from '../../stores/playheadStore.ts'
@@ -44,7 +44,7 @@ import {
   trimRollupsToWallDuration,
 } from '../../utils/gameSegmentChart.ts'
 import { GamesPlayedStrip } from './GamesPlayedStrip.tsx'
-import { ChartNavigator, zoomNavigatorRange, type ChartNavigatorRange } from './ChartNavigator.tsx'
+import { ChartNavigator, useChartScrollZoom, zoomNavigatorRange, type ChartNavigatorRange } from './ChartNavigator.tsx'
 import {
   sessionNavigatorIndexForOffset,
   sessionNavigatorPointCount,
@@ -137,6 +137,17 @@ function ChartHoverReadout({
       {vodClock(minuteTs, streamStartedAt)} · viewers {readoutCount(viewers)} · chat {readoutCount(chatCount)}/min · emotes {readoutCount(emoteTotal)}/min
     </p>
   )
+}
+
+/** "Bar 00:40:00–00:50:00 · 10-min avg · chat 280/min (peak 845) · emotes 98/min (peak 410)". */
+function activityBarReadout(bar: ActivityBarSummary, label = 'Bar'): string {
+  const range = bar.startOffsetSeconds != null && bar.endOffsetSeconds != null
+    ? ` ${formatHeatOffset(bar.startOffsetSeconds)}–${formatHeatOffset(bar.endOffsetSeconds)}`
+    : ''
+  const lane = (label: string, values: ActivityBarSummary['chat']) =>
+    values ? ` · ${label} ${count(Math.round(values.avg))}/min (peak ${count(values.peak)})` : ''
+  const measured = bar.partial ? ` · ${bar.observed} of ${bar.expected} min measured` : ''
+  return `${label}${range} · ${bar.step}-min avg${lane('chat', bar.chat)}${lane('emotes', bar.emotes)}${measured}`
 }
 
 function AnalyticsChart({
@@ -412,9 +423,11 @@ function AnalyticsChart({
     }),
     [playheadOffsetSeconds, playheadPlaying, playheadStreamId],
   )
-  // Matches the hub: plain wheel scrolls the page until Scroll zoom is on.
-  const [scrollZoomEnabled, setScrollZoomEnabled] = useState(false)
+  // Shared with the hub and remembered in this browser: on by default, so a
+  // plain wheel over the plot zooms.
+  const [scrollZoomEnabled, setScrollZoomEnabled] = useChartScrollZoom()
   const [activityBucketMinutes, setActivityBucketMinutes] = useState<number | null>(null)
+  const [activityBarFocus, setActivityBarFocus] = useState<ActivityBarFocus | null>(null)
   const [dataPage, setDataPage] = useState(0)
   const selectedChartOffsetSeconds = useMemo(() => {
     const explicitOffset = typeof selectedOffsetSeconds === 'number' && Number.isFinite(selectedOffsetSeconds)
@@ -546,7 +559,6 @@ function AnalyticsChart({
     && Math.abs(navigatorDirectViewport.startSeconds - effectiveChartViewport.startSeconds) < 0.5
     && Math.abs(navigatorDirectViewport.endSeconds - effectiveChartViewport.endSeconds) < 0.5
   const resetNavigator = useCallback(() => {
-    setScrollZoomEnabled(false)
     setNavigatorDirectViewport(null)
     handleViewportChange(fullChartViewport(chartDurationSeconds, chartDomainStartSeconds))
   }, [chartDomainStartSeconds, chartDurationSeconds, handleViewportChange])
@@ -604,6 +616,14 @@ function AnalyticsChart({
     return lastCompleteRollup
   }, [lastCompleteRollup, rollups])
   const hoverPoint = hoverRollup ?? selectedRollup ?? restingRollup ?? rollups[rollups.length - 1] ?? null
+  // Above 1-minute bars the second header row names the hovered bar. While a
+  // minute is pinned, a line of its own under the navigator names the pinned
+  // minute's bar in full (range, chat and emotes average and peak, coverage)
+  // and wraps on narrow screens, where a tap is the only way to read a bar.
+  const hoverBar = activityBarFocus?.hover ?? null
+  const hoverBarReadout = hoverBar ? activityBarReadout(hoverBar) : null
+  const pinnedBar = activityBarFocus?.pinned ?? null
+  const pinnedBarReadout = pinnedBar ? activityBarReadout(pinnedBar, 'Pinned bar') : null
   const toggleActivityExpanded = useCallback(() => {
     setActivityExpanded(value => !value)
   }, [])
@@ -830,15 +850,31 @@ function AnalyticsChart({
             </div>
 
             <div className="flex min-w-0 items-center justify-between gap-2">
-              <p
-                className="min-w-0 truncate text-xs font-bold leading-4 text-zinc-600"
-                data-chart-selection-hint
-                title="Hover previews a minute. Click to select it. Press Escape or use Clear to release the selection."
-              >
-                {selectedRollup
-                  ? `Pinned minute ${selectedMinuteRangeLabel(selectedRollup.minuteTs, streamStartedAt)}${Number.isFinite(selectedOffsetSeconds) ? ` · exact moment ${formatHeatOffset(selectedOffsetSeconds!)}` : ''}${selectedOutsideViewport ? ' · outside visible range · Return below' : ''} · Esc or Clear to release`
-                  : 'Hover to preview a minute · click to select · press Esc to clear'}
-              </p>
+              {hoverBar && hoverBarReadout ? (
+                <p
+                  className="min-w-0 truncate text-xs font-bold leading-4 tabular-nums text-zinc-500"
+                  data-chart-selection-hint
+                  data-chart-bar-readout
+                  data-bar-step={hoverBar.step}
+                  data-bar-start={hoverBar.startMs}
+                  data-bar-partial={hoverBar.partial ? 'true' : 'false'}
+                  title={hoverBarReadout}
+                >
+                  {hoverBarReadout}
+                </p>
+              ) : (
+                <p
+                  className="min-w-0 truncate text-xs font-bold leading-4 text-zinc-600"
+                  data-chart-selection-hint
+                  title={selectedRollup
+                    ? `Pinned minute ${selectedMinuteRangeLabel(selectedRollup.minuteTs, streamStartedAt)}`
+                    : 'Hover previews a minute. Click to select it. Press Escape or use Clear to release the selection.'}
+                >
+                  {selectedRollup
+                    ? `Pinned minute ${selectedMinuteRangeLabel(selectedRollup.minuteTs, streamStartedAt)}${Number.isFinite(selectedOffsetSeconds) ? ` · exact moment ${formatHeatOffset(selectedOffsetSeconds!)}` : ''}${selectedOutsideViewport ? ' · outside visible range · Return below' : ''} · Esc or Clear to release`
+                    : 'Hover to preview a minute · click to select · press Esc to clear'}
+                </p>
+              )}
               {selectedRollup && vodJump && !selectedDetail ? (
                 <a
                   href={vodJump.url}
@@ -990,9 +1026,12 @@ function AnalyticsChart({
         data-session-chart-stack
         ref={chartStackRef}
         onKeyDownCapture={(event) => {
-          // The navigator hint promises Escape turns Scroll zoom off; that must
-          // also hold with focus on the plot, ahead of its Escape clearing the pin.
-          if (event.key !== 'Escape' || !scrollZoomEnabled) return
+          // Escape releases a pin or selection first (the plot's own handler);
+          // with nothing pinned it restores the full range. A navigator slider
+          // keeps its own Escape, which resets the zoom.
+          if (event.key !== 'Escape' || !isChartZoomed) return
+          if (selectedRollup || Number.isFinite(selectedOffsetSeconds)) return
+          if ((event.target as Element | null)?.closest?.('[data-hub-chart-navigator]')) return
           event.preventDefault()
           event.stopPropagation()
           resetNavigator()
@@ -1042,6 +1081,7 @@ function AnalyticsChart({
           lineWeightMode="viewport-adaptive"
           activityBucketing="time"
           onActivityBucketMinutesChange={setActivityBucketMinutes}
+          onActivityBarFocusChange={setActivityBarFocus}
           liveEdgeLabel={liveEdgeMarker}
           liveEdgeTone={liveEdgeMode === 'unconfirmed' ? 'unconfirmed' : 'live'}
         />
@@ -1074,16 +1114,32 @@ function AnalyticsChart({
               unitLabel="minutes"
               selectedLabel="Return to selected"
               presets={navigatorPresets}
-              readoutNote={activityBucketMinutes != null && activityBucketMinutes > 1 ? (
+              readoutNote={activityBucketMinutes != null ? (
                 <span
+                  className="inline-block min-w-[15ch] tabular-nums"
                   data-chart-bar-bucket-minutes={activityBucketMinutes}
-                  title={`Each activity bar averages ${activityBucketMinutes} measured minutes so bars stay readable at this width. Gaps are minutes with no measurement.`}
+                  title={activityBucketMinutes > 1
+                    ? `Each activity bar averages the measured minutes in its ${activityBucketMinutes}-minute slot so bars stay readable at this width; a thin cap marks a peak minute well above the average, and a faded bar had unmeasured minutes. Gaps are slots with no measurement.`
+                    : 'One activity bar per measured minute. Gaps are minutes with no measurement.'}
                 >
-                  {`bars ${activityBucketMinutes}-min avg`}
+                  {activityBucketMinutes > 1 ? `bars ${activityBucketMinutes}-min avg` : 'bars per minute'}
                 </span>
               ) : undefined}
             />
           </div>
+        ) : null}
+        {/* Below the plot and its navigator, so pinning a minute or a zoom that
+            changes the bar size never moves the plot or scrolls the page. */}
+        {selectedRollup && pinnedBar && pinnedBarReadout ? (
+          <p
+            className="mt-2 min-w-0 whitespace-normal break-words text-xs font-bold leading-4 tabular-nums text-zinc-500"
+            data-chart-pinned-bar-readout
+            data-bar-step={pinnedBar.step}
+            data-bar-start={pinnedBar.startMs}
+            data-bar-partial={pinnedBar.partial ? 'true' : 'false'}
+          >
+            {pinnedBarReadout}
+          </p>
         ) : null}
       </div>
 

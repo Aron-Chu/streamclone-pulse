@@ -98,7 +98,7 @@ describe('AnalyticsChart live edge', () => {
     expect(lastBarRight).toBeCloseTo(plotEnd, 0)
     // The axis and the navigator describe the same span: 20 plotted minutes.
     const navigator = container.querySelector('[data-hub-chart-navigator]')!
-    expect(navigator.querySelector('.hx-chart-navigator__bucket-count')?.textContent).toBe('20 of 20 minutes')
+    expect(navigator.querySelector('.hx-chart-navigator__bucket-count')?.textContent).toBe('20 of 20 minutes · bars per minute')
     expect(screen.getByRole('slider', { name: 'Chart view end' }).getAttribute('aria-valuetext'))
       .toBe('End 00:19:00; showing 00:00:00 to 00:19:00')
     // An honest marker above the right end says the chart is live.
@@ -156,7 +156,7 @@ describe('AnalyticsChart live edge', () => {
     expect(viewerEnd).toBeCloseTo(plotEnd, 0)
     expect(lastBarRight).toBeCloseTo(plotEnd, 0)
     expect(container.querySelector('[data-hub-chart-navigator] .hx-chart-navigator__bucket-count')?.textContent)
-      .toBe('14 of 14 minutes')
+      .toBe('14 of 14 minutes · bars per minute')
     const marker = container.querySelector('[data-chart-live-edge]')
     expect(marker?.textContent).toBe('Unconfirmed · last data 00:14:00')
     expect(marker?.getAttribute('data-chart-live-edge-tone')).toBe('unconfirmed')
