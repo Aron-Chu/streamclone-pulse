@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
-import { PRIVACY_PATH, PUBLIC_SUPPORT_URL, REFUNDS_PATH, SUPPORTER_PATH } from '../../lib/externalLinks'
+import { FEEDBACK_PATH, PRIVACY_PATH, REFUNDS_PATH, SECURITY_REPORT_URL, SUPPORTER_PATH } from '../../lib/externalLinks'
+import { discordInviteUrl } from '../../lib/discord'
 import { PrelaunchNotice } from './PrelaunchNotice'
 
 /**
@@ -9,6 +10,7 @@ import { PrelaunchNotice } from './PrelaunchNotice'
  * feature, entity or process that does not exist.
  */
 export default function Terms() {
+  const discord = discordInviteUrl()
   return (
     <PublicLayout>
       <article className="panel public-document" data-testid="terms-of-use">
@@ -218,9 +220,12 @@ export default function Terms() {
         <p data-testid="terms-contact">
           Billing, account and legal questions:{' '}
           <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a>. Product
-          questions and bug reports:{' '}
-          <a href={PUBLIC_SUPPORT_URL} target="_blank" rel="noreferrer noopener">public GitHub issues</a>{' '}
-          or the <Link to="/support">support page</Link>. There is no phone support.
+          questions and bug reports: send <Link to={FEEDBACK_PATH}>private feedback</Link>
+          {discord ? <>{' '}or join the{' '}
+            <a href={discord} target="_blank" rel="noopener noreferrer" aria-label="Discord (opens in a new tab)">Discord</a></> : null}.
+          Security reports go privately through{' '}
+          <a href={SECURITY_REPORT_URL} target="_blank" rel="noreferrer noopener">GitHub private vulnerability reporting</a>.
+          There is no phone support.
         </p>
       </article>
     </PublicLayout>

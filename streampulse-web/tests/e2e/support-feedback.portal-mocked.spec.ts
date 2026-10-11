@@ -1,7 +1,8 @@
 import { expect, test, type Page, type Route } from '@playwright/test'
 
 /**
- * /support feedback card in a real browser. The form, the Turnstile widget and
+ * The private feedback form on /feedback (and the /support card that links to
+ * it) in a real browser. The form, the Turnstile widget and
  * the Discord links only render on a build given the activation inputs
  * (VITE_TURNSTILE_SITE_KEY, VITE_PUBLIC_DISCORD_INVITE_URL). CI builds set
  * neither, so the "configured build" cases skip there; run them against a
@@ -53,13 +54,18 @@ const TURNSTILE_STUB = `
 
 type CaseReply = { status: number; body: unknown; delayMs?: number }
 
-/** Mocks the network: the support case endpoint answers from `replies`, other API calls 503. */
-async function mockNetwork(page: Page, baseURL: string | undefined, replies: CaseReply[] = []) {
+/**
+ * Mocks the network: the support case endpoint answers from `replies`, other
+ * API calls 503. While `challenge.blocked` is true, Cloudflare's script is
+ * refused the way a content blocker refuses it.
+ */
+async function mockNetwork(page: Page, baseURL: string | undefined, replies: CaseReply[] = [], challenge: { blocked: boolean } = { blocked: false }) {
   const origin = new URL(baseURL ?? 'http://127.0.0.1:4173').origin
   const queue = [...replies]
   await page.route('**/*', async (route) => {
     const url = new URL(route.request().url())
     if (url.origin === 'https://challenges.cloudflare.com') {
+      if (challenge.blocked) return route.abort('blockedbyclient')
       return route.fulfill({ status: 200, contentType: 'application/javascript', body: TURNSTILE_STUB })
     }
     if (url.pathname === '/v1/portal/support/cases' && route.request().method() === 'POST') {
@@ -75,13 +81,13 @@ async function mockNetwork(page: Page, baseURL: string | undefined, replies: Cas
   })
 }
 
-/** Opens /support; skips the test when the build has no Turnstile site key (no form). */
-async function openConfiguredSupport(page: Page) {
-  await page.goto('/support')
+/** Opens /feedback; skips the test when the build has no Turnstile site key (no form). */
+async function openConfiguredFeedback(page: Page) {
+  await page.goto('/feedback')
   const form = page.getByTestId('support-form')
   const off = page.getByTestId('support-form-unavailable')
   await expect(form.or(off)).toBeVisible()
-  test.skip(await off.isVisible(), 'build has no VITE_TURNSTILE_SITE_KEY, so /support shows no form')
+  test.skip(await off.isVisible(), 'build has no VITE_TURNSTILE_SITE_KEY, so /feedback shows no form')
   await expect.poll(() => page.evaluate(() => (window as { __turnstileRenders?: unknown[] }).__turnstileRenders?.length ?? 0)).toBe(1)
 }
 
@@ -98,13 +104,61 @@ const noHorizontalScroll = (page: Page) =>
   page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, innerWidth }))
 
 test.describe('any build', () => {
-  test('the page h1 comes before every other heading on /support', async ({ page, baseURL }) => {
+  for (const [path, title] of [['/support', 'Support & Troubleshooting'], ['/feedback', 'Send feedback']] as const) {
+    test(`the page h1 comes before every other heading on ${path}`, async ({ page, baseURL }) => {
+      await mockNetwork(page, baseURL)
+      await page.goto(path)
+      await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible()
+      const tags = await page.locator('main h1, main h2, main h3, main h4, main h5, main h6').evaluateAll(hs => hs.map(h => h.tagName))
+      expect(tags[0]).toBe('H1')
+      expect(tags.filter(tag => tag === 'H1')).toHaveLength(1)
+    })
+  }
+
+  test('an old /support#send-feedback link lands on the card that opens /feedback', async ({ page, baseURL }) => {
     await mockNetwork(page, baseURL)
-    await page.goto('/support')
-    await expect(page.getByRole('heading', { level: 1, name: 'Support & Troubleshooting' })).toBeVisible()
-    const tags = await page.locator('main h1, main h2, main h3, main h4, main h5, main h6').evaluateAll(hs => hs.map(h => h.tagName))
-    expect(tags[0]).toBe('H1')
-    expect(tags.filter(tag => tag === 'H1')).toHaveLength(1)
+    await page.goto('/support#send-feedback')
+    const card = page.locator('#send-feedback')
+    await expect(card).toHaveAttribute('data-testid', 'support-feedback-link')
+    await expect(card).toBeInViewport()
+    // A build without the Turnstile site key (CI) cannot take private
+    // messages, so the card says so instead of promising them.
+    await expect(card).toContainText(/Only the StreamPulse team reads it\.|The private feedback form isn't taking messages right now\./)
+    await expect(page.getByTestId('support-form')).toHaveCount(0)
+    await card.getByRole('link', { name: 'Send feedback' }).click()
+    await expect(page).toHaveURL(/\/feedback$/)
+    await expect(page.getByRole('heading', { level: 1, name: 'Send feedback' })).toBeVisible()
+    const form = page.getByTestId('support-form')
+    await expect(form.or(page.getByTestId('support-form-unavailable'))).toBeVisible()
+    if (await form.isVisible()) {
+      await expect(page.getByTestId('feedback-private-note')).toHaveText('Private. Only the StreamPulse team reads it; nothing here is posted publicly.')
+    } else {
+      await expect(page.getByTestId('feedback-private-note')).toHaveCount(0)
+    }
+  })
+
+  test('without a working form, /feedback offers only alternatives labelled public', async ({ page, baseURL }) => {
+    // Every case POST answers 503 disabled, so a configured build ends up here too.
+    await page.addInitScript(() => { (window as { __turnstilePasses?: boolean }).__turnstilePasses = true })
+    await mockNetwork(page, baseURL, [{ status: 503, body: { error: 'disabled' } }])
+    await page.goto('/feedback')
+    const form = page.getByTestId('support-form')
+    const off = page.getByTestId('support-form-unavailable')
+    await expect(form.or(off)).toBeVisible()
+    if (await form.isVisible()) {
+      await page.getByLabel('Your message').fill('Is this on?')
+      await page.getByLabel('I consent to submitting this text to StreamPulse support.').check()
+      await form.locator('button[type="submit"]').click()
+      await expect(off).toBeVisible()
+      await expect(off.getByRole('textbox')).toHaveValue('Is this on?')
+    }
+    const alternatives = off.getByTestId('feedback-public-alternatives')
+    await expect(alternatives).toContainText('Public alternatives. Anyone can read these')
+    expect(await alternatives.textContent()).not.toMatch(/private/i)
+    // No private-delivery promise over the unavailable panel, and Discord once.
+    await expect(page.getByTestId('feedback-private-note')).toHaveCount(0)
+    await expect(page.getByTestId('support-discord-line')).toHaveCount(0)
+    await expect(page.getByTestId('support-form-success')).toHaveCount(0)
   })
 })
 
@@ -113,7 +167,7 @@ test.describe('configured build', () => {
     test(`the challenge fits a ${width}px viewport without horizontal scroll`, async ({ page, baseURL }) => {
       await page.setViewportSize({ width, height: 800 })
       await mockNetwork(page, baseURL)
-      await openConfiguredSupport(page)
+      await openConfiguredFeedback(page)
       await expect(page.locator('[data-turnstile-stub]')).toBeVisible()
       const { scrollWidth, innerWidth } = await noHorizontalScroll(page)
       expect(scrollWidth).toBeLessThanOrEqual(innerWidth)
@@ -139,14 +193,14 @@ test.describe('configured build', () => {
       // no script loads, so the prerendered markup is what lays out.
       const noScripts = (route: Route) => (route.request().resourceType() === 'script' ? route.abort() : route.fallback())
       await page.route('**/*', noScripts)
-      await page.goto('/support')
+      await page.goto('/feedback')
       // Without a site key the card prerenders the unavailable panel instead.
-      test.skip(await page.getByTestId('support-form-unavailable').isVisible(), 'build has no VITE_TURNSTILE_SITE_KEY, so /support prerenders no form')
+      test.skip(await page.getByTestId('support-form-unavailable').isVisible(), 'build has no VITE_TURNSTILE_SITE_KEY, so /feedback prerenders no form')
       const prerendered = await cardLayout(page)
       await expect(page.locator('.feedback-form--shell')).toBeVisible()
 
       await page.unroute('**/*', noScripts)
-      await page.goto('/support')
+      await page.goto('/feedback')
       await expect(page.locator('.feedback-form')).not.toHaveClass(/feedback-form--shell/)
       await expect.poll(() => page.evaluate(() => (window as { __turnstileRenders?: unknown[] }).__turnstileRenders?.length ?? 0)).toBe(1)
       await expect(page.getByLabel('Your message')).toBeEnabled()
@@ -161,12 +215,13 @@ test.describe('configured build', () => {
     test.use({ javaScriptEnabled: false })
 
     test('shows the unavailable panel instead of the disabled shell', async ({ page }) => {
-      await page.goto('/support')
-      test.skip(await page.locator('.feedback-form--shell').count() === 0, 'build has no VITE_TURNSTILE_SITE_KEY, so /support prerenders no form')
+      await page.goto('/feedback')
+      test.skip(await page.locator('.feedback-form--shell').count() === 0, 'build has no VITE_TURNSTILE_SITE_KEY, so /feedback prerenders no form')
       await expect(page.locator('.feedback-form--shell')).toBeHidden()
       const off = page.getByTestId('support-form-unavailable')
       await expect(off).toBeVisible()
-      await expect(off.getByRole('link', { name: 'Open a public issue on GitHub' })).toBeVisible()
+      await expect(off.getByRole('link', { name: 'Open a public issue on GitHub (opens in a new tab)' })).toBeVisible()
+      await expect(off.getByTestId('feedback-public-alternatives')).toContainText('Public alternatives. Anyone can read these')
     })
   })
 
@@ -174,7 +229,7 @@ test.describe('configured build', () => {
     await page.setViewportSize({ width: 390, height: 900 })
     await page.emulateMedia({ forcedColors: 'active' })
     await mockNetwork(page, baseURL)
-    await openConfiguredSupport(page)
+    await openConfiguredFeedback(page)
     const radios = page.locator('.feedback-choice input[type="radio"]')
     await expect(radios).toHaveCount(2)
     // The system radio is drawn, so the checked one is shown without colour.
@@ -225,7 +280,7 @@ test.describe('configured build', () => {
 
     test('focus stays on Send while sending and after a failed send', async ({ page, baseURL }) => {
       await mockNetwork(page, baseURL, [{ status: 500, body: { error: 'boom' }, delayMs: 800 }])
-      await openConfiguredSupport(page)
+      await openConfiguredFeedback(page)
       await page.getByLabel('Your message').fill('Pulse tab is blank')
       await page.getByLabel('I consent to submitting this text to StreamPulse support.').check()
       await sendButton(page).focus()
@@ -239,7 +294,7 @@ test.describe('configured build', () => {
 
     test('an empty Send moves focus to the message box with its hint', async ({ page, baseURL }) => {
       await mockNetwork(page, baseURL)
-      await openConfiguredSupport(page)
+      await openConfiguredFeedback(page)
       await sendButton(page).click()
       const box = page.getByLabel('Your message')
       await expect(box).toBeFocused()
@@ -247,9 +302,68 @@ test.describe('configured build', () => {
       await expect(box).toHaveAccessibleDescription('Add a few words first.')
     })
 
+    for (const [width, height] of [[390, 844], [1440, 900]] as const) {
+      test(`the receipt names the team, a short reference with Copy, the full ID and the reply address at ${width}px`, async ({ page, context, baseURL }) => {
+        await page.setViewportSize({ width, height })
+        await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+        const caseId = 'd91b5942-fc50-410a-9b7e-82754d3feaf2'
+        await mockNetwork(page, baseURL, [{ status: 201, body: { case_id: caseId } }, { status: 201, body: { case_id: 'a1b2c3d4-0000-4000-8000-000000000000' } }])
+        await openConfiguredFeedback(page)
+        await page.getByLabel('Your message').fill('Chart froze after 20 minutes')
+        await page.getByLabel(/^Email/).fill('reader@example.com')
+        await page.getByLabel('I consent to being contacted at this email about this report.').check()
+        await page.getByLabel('I consent to submitting this text to StreamPulse support.').check()
+        await sendButton(page).click()
+        const done = page.getByTestId('support-form-success')
+        await expect(done.getByText('Sent to the StreamPulse team')).toBeFocused()
+        await expect(done.getByTestId('support-form-reference')).toHaveText('D91B5942')
+        await expect(done.getByTestId('support-form-case-id')).toHaveText(`Full case ID: ${caseId}`)
+        await expect(done.getByTestId('support-form-reply')).toHaveText("If we need more, we'll reply to reader@example.com. Writing again about this? Mention D91B5942.")
+        await done.getByRole('button', { name: 'Copy reference D91B5942' }).click()
+        await expect(done.getByText('Reference copied.')).toBeVisible()
+        expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('D91B5942')
+        // The short reference stays on one line; nothing scrolls sideways.
+        const refBox = await done.getByTestId('support-form-reference').boundingBox()
+        expect(refBox!.height).toBeLessThan(40)
+        const { scrollWidth, innerWidth } = await noHorizontalScroll(page)
+        expect(scrollWidth).toBeLessThanOrEqual(innerWidth)
+
+        await page.getByRole('button', { name: 'Send something else' }).click()
+        await page.getByLabel('Your message').fill('Love the minute chart')
+        await page.getByLabel('I consent to submitting this text to StreamPulse support.').check()
+        await sendButton(page).click()
+        await expect(page.getByTestId('support-form-reply')).toHaveText("You didn't leave an email, so no reply needed — we read every message. Writing again about this? Mention A1B2C3D4.")
+      })
+    }
+
+    test('a blocked bot check says so instead of looking like an outage, and Try again recovers once allowed', async ({ page, baseURL }) => {
+      const challenge = { blocked: true }
+      await mockNetwork(page, baseURL, [{ status: 201, body: { case_id: 'case-e2e-unblocked' } }], challenge)
+      await page.goto('/feedback')
+      const blocked = page.getByTestId('support-form-check-blocked')
+      const off = page.getByTestId('support-form-unavailable')
+      await expect(blocked.or(off)).toBeVisible()
+      test.skip(await off.isVisible(), 'build has no VITE_TURNSTILE_SITE_KEY, so /feedback shows no form')
+      await expect(blocked).toContainText('Your browser blocked the spam check — try again or disable blockers for this page.')
+      await expect(off).toHaveCount(0)
+      // An open form behind a blocked check: the header does not say it is closed.
+      await expect(page.getByTestId('feedback-private-badge')).toBeVisible()
+      await expect(blocked.getByTestId('feedback-public-alternatives')).toContainText('Public alternatives. Anyone can read these')
+
+      challenge.blocked = false
+      await blocked.getByRole('button', { name: 'Try again' }).click()
+      await expect(page.getByTestId('support-form')).toBeVisible()
+      await expect(page.getByLabel('Your message')).toBeFocused()
+      await expect.poll(() => page.evaluate(() => (window as { __turnstileRenders?: unknown[] }).__turnstileRenders?.length ?? 0)).toBe(1)
+      await page.getByLabel('Your message').fill('Unblocked now')
+      await page.getByLabel('I consent to submitting this text to StreamPulse support.').check()
+      await sendButton(page).click()
+      await expect(page.getByTestId('support-form-reference')).toHaveText('CASE-E2E')
+    })
+
     test('"Send something else" puts focus in the message box', async ({ page, baseURL }) => {
       await mockNetwork(page, baseURL, [{ status: 200, body: { case_id: 'case-e2e-1' } }])
-      await openConfiguredSupport(page)
+      await openConfiguredFeedback(page)
       await page.getByLabel('Your message').fill('An idea')
       await page.getByLabel('I consent to submitting this text to StreamPulse support.').check()
       await sendButton(page).click()
@@ -263,7 +377,7 @@ test.describe('configured build', () => {
       // starts fails; the one after that passes.
       await page.addInitScript(() => { (window as { __turnstileErrors?: string[] }).__turnstileErrors = ['110600', '600010'] })
       await mockNetwork(page, baseURL, [{ status: 200, body: { case_id: 'case-e2e-check' } }])
-      await openConfiguredSupport(page)
+      await openConfiguredFeedback(page)
       await page.getByLabel('Your message').fill('Human, honest')
       await page.getByLabel('I consent to submitting this text to StreamPulse support.').check()
       await expect(page.getByTestId('support-form').getByRole('alert')).toHaveCount(0)
@@ -281,7 +395,7 @@ test.describe('configured build', () => {
 
     test('the rate-limit alert keeps its words while the countdown ticks', async ({ page, baseURL }) => {
       await mockNetwork(page, baseURL, [{ status: 429, body: { error: 'rate_limited' } }])
-      await openConfiguredSupport(page)
+      await openConfiguredFeedback(page)
       await page.getByLabel('Your message').fill('Again')
       await page.getByLabel('I consent to submitting this text to StreamPulse support.').check()
       await sendButton(page).click()
@@ -293,6 +407,20 @@ test.describe('configured build', () => {
       await expect(alert).toHaveText('Too many attempts. Wait a minute, then try again. Your message is still here.')
       await expect(sendButton(page)).toHaveAttribute('aria-disabled', 'true')
       await expect(sendButton(page)).toBeFocused()
+    })
+
+    test('a busy form (hourly ceiling) says so and offers the public places, not "too many attempts"', async ({ page, baseURL }) => {
+      await mockNetwork(page, baseURL, [{ status: 429, body: { error: 'intake_busy' } }])
+      await openConfiguredFeedback(page)
+      await page.getByLabel('Your message').fill('First message today')
+      await page.getByLabel('I consent to submitting this text to StreamPulse support.').check()
+      await sendButton(page).click()
+      const alert = page.getByTestId('support-form-rate-limit')
+      await expect(alert).toHaveText('The feedback form is busy right now. Try again later this hour, or post publicly on one of the places below. Your message is still here.')
+      await expect(page.getByTestId('feedback-public-alternatives')).toBeVisible()
+      await expect(page.getByTestId('support-rate-countdown')).toHaveCount(0)
+      await expect(page.getByLabel('Your message')).toHaveValue('First message today')
+      await expect(sendButton(page)).toHaveAttribute('aria-disabled', 'true')
     })
   })
 })

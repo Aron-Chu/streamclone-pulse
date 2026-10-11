@@ -2,8 +2,11 @@ import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { ChromeInstallCta } from '../../ui/components/ChromeInstallCta'
 import { buttonClass } from '../../ui/primitives'
+import { discordInviteUrl } from '../../lib/discord'
+import { FEEDBACK_PATH } from '../../lib/externalLinks'
 
 export default function Docs() {
+  const discord = discordInviteUrl()
   return (
     <PublicLayout>
       <article className="panel public-document" data-testid="docs-page">
@@ -104,8 +107,11 @@ export default function Docs() {
         {/* Need Help */}
         <section id="help" aria-labelledby="help-title" className="mt-8 border-t border-white/[0.08] pt-6">
           <h2 id="help-title">Need help?</h2>
-          <p className="text-zinc-400">
-            Visit <Link to="/support" className="text-violet-400 hover:underline">StreamPulse Support</Link>, check the <Link to="/status" className="text-violet-400 hover:underline">service status</Link>, or
+          <p className="text-zinc-400" data-testid="docs-help">
+            Send <Link to={FEEDBACK_PATH} className="text-violet-400 hover:underline">private feedback</Link> about a bug or an idea
+            {discord ? <>, or ask in the{' '}
+              <a href={discord} target="_blank" rel="noopener noreferrer" className="text-violet-400 hover:underline" aria-label="Discord (opens in a new tab)">Discord</a></> : null}.
+            You can also visit <Link to="/support" className="text-violet-400 hover:underline">StreamPulse Support</Link>, check the <Link to="/status" className="text-violet-400 hover:underline">service status</Link>, or
             read the <Link to="/privacy" className="text-violet-400 hover:underline">privacy policy</Link>.
           </p>
         </section>

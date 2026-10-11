@@ -32,6 +32,9 @@ describe('/support text contrast', () => {
   it.each([
     { selector: '.support-discord-line small', background: '#0e0c13' },
     { selector: '.feedback-input::placeholder', background: '#09090b' },
+    { selector: '.feedback-public__note', background: '#121218' },
+    { selector: '.support-page__aside', background: '#0e0c13' },
+    { selector: '.feedback-card__private', background: '#121218' },
   ])('$selector is at least 4.5:1 on $background', ({ selector, background }) => {
     expect(contrast(colorOf(selector), background)).toBeGreaterThanOrEqual(4.5)
   })
