@@ -143,7 +143,10 @@ describe('Seen in chat copy, flag on (launch)', () => {
     expect(section).toContain('your Twitch user ID, Twitch username, crest level')
     expect(section).toContain('no account identifier, email, billing detail or date')
     expect(section).toContain('Anyone can download it.')
-    expect(section).toContain('StreamPulse never learns which channels or chats anyone opens.')
+    expect(section).toContain('Downloading the list doesn’t tell StreamPulse which channels or chats you open.')
+    // Scoped to the list: the extension does send channel logins for Pulse ("What is sent to StreamPulse").
+    expect(section).not.toMatch(/never learns/i)
+    expect(body).toContain('The extension service worker sends channel login')
     expect(section).toContain('asks Twitch’s API for the current username')
     expect(section).toContain('your entry leaves the list within about an hour')
     expect(section).toContain('deleted 30 days later')
