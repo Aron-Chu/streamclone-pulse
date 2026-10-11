@@ -184,6 +184,12 @@ export async function installMockApi(
       return
     }
 
+    // The public sales switch defaults to closed; launch specs route their own.
+    if (pathname === '/v1/billing/offer') {
+      await json(route, 200, { schemaVersion: 1, salesOpen: false, environment: 'live', price: { unitAmount: 499, currency: 'usd', interval: 'month' }, tax: { collection: 'none', behavior: 'unspecified' }, termsConsent: true, serverTime: new Date().toISOString() })
+      return
+    }
+
     // Fixtures default to the existing deployment with installation accounts
     // disabled. Pay-first specs install their own explicit route above this.
     if (pathname === '/v1/account/installations') { await json(route, 404, {}); return }

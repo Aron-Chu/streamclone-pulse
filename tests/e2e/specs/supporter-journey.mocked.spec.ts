@@ -135,8 +135,10 @@ test('tester purchase journey needs no codes, refreshes or reloads, and revocati
   await expect(settings.getByText('you do not need to pay again', { exact: false })).toBeVisible()
   await settings.screenshot({ path: info.outputPath('journey-2-payment-pending.png'), fullPage: true, animations: 'disabled' })
   status = 'active'
-  await expect(settings.locator('[data-journey-state="active"]')).toBeVisible({ timeout: 30_000 })
-  await expect(settings.getByText('You are a Supporter', { exact: true })).toBeVisible()
+  // The welcome after a purchase started here (supporter launch spec §3.6).
+  await expect(settings.locator('[data-journey-state="welcome"]')).toBeVisible({ timeout: 30_000 })
+  await expect(settings.getByText('You’re a Supporter. Thank you.', { exact: true })).toBeVisible()
+  await expect(settings.getByRole('button', { name: 'Pick your finish', exact: true })).toBeVisible()
 
   // The worker applied the explicit choice once access was verified.
   await expect.poll(() => cosmeticWrites).toEqual([{ enabled: true, finish: 'halo' }])

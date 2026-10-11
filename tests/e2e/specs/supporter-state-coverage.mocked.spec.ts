@@ -32,7 +32,7 @@ type StateCase = {
 const CASES: StateCase[] = [
   { name: 'not-a-supporter', journey: 'signed-out', principal: 'Supporter details', setup: 'unlinked', alias: 'Twitch sign-in off (stage A): sign-ups are not open, so the signed-out page describes Supporter and offers no purchase.' },
   { name: 'checkout-closed', journey: 'checkout-closed', principal: 'Check sign-up status', status: 'none', checkoutEnabled: false },
-  { name: 'preparing-checkout', journey: 'offer', principal: 'Preparing checkout…', status: 'none', setup: 'preparing', alias: 'Transient busy offer. The worker is awaiting the mocked checkout response; the disabled action prevents another request.' },
+  { name: 'preparing-checkout', journey: 'review', principal: 'Preparing checkout…', status: 'none', setup: 'preparing', alias: 'Transient busy review. The worker is awaiting the mocked checkout response; the disabled action prevents another request.' },
   { name: 'stripe-open', journey: 'stripe-open', principal: 'Return to Stripe checkout', status: 'none', billing: 'waiting' },
   { name: 'payment-confirming', journey: 'payment-pending', principal: 'Check payment status', status: 'pending', billing: 'confirming' },
   { name: 'still-confirming', journey: 'still-confirming', principal: 'Check payment status', status: 'none', billing: 'still_confirming' },
@@ -176,6 +176,13 @@ for (const state of CASES) {
     await extension.context.route(`${API}/v1/**`, async route => {
       const request = route.request(), url = new URL(request.url()), pathname = url.pathname
       if (!pathname.startsWith('/v1/account/') && !pathname.startsWith('/v1/billing/')) { await route.fallback(); return }
+      // The public sales switch is anonymous: no bearer, no cookie. Closed here;
+      // these states come from the per-account snapshot.
+      if (pathname === '/v1/billing/offer') {
+        expect(request.headers().authorization).toBeUndefined()
+        await route.fulfill({ json: { schemaVersion: 1, salesOpen: false, environment: 'live', termsConsent: true, serverTime: new Date().toISOString() } })
+        return
+      }
       if (pathname.startsWith('/v1/billing/') || pathname === '/v1/account/restores/poll') expect(request.headers().authorization).toBe(`Bearer ${credential().token}`)
       let status = 200, body: unknown = {}
       if (pathname === '/v1/billing/supporter') {
@@ -215,6 +222,8 @@ for (const state of CASES) {
     }
     if (state.setup === 'preparing') {
       await page.getByRole('button', { name: 'Become a Supporter', exact: true }).click()
+      // The one-screen review comes first; Continue to payment starts Checkout.
+      await page.getByRole('button', { name: 'Continue to payment', exact: true }).click()
       await expect.poll(() => checkoutReached).toBe(true)
     }
     try {
