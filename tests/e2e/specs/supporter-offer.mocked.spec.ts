@@ -189,7 +189,7 @@ test.describe('packaged supporter offer', () => {
       // A linked account goes straight to its own billing page, never the public offer.
       await expect(action).toHaveAttribute('href', 'https://streampulse.stream/account/billing')
       await expect(page.getByText('··', { exact: false }).first()).toBeVisible()
-      for (const policy of ['/privacy', '/terms', '/refunds']) {
+      for (const policy of ['/privacy', '/terms#supporter', '/refunds']) {
         await expect(page.locator(`a[href="https://streampulse.stream${policy}"]`).first()).toBeVisible()
       }
 
