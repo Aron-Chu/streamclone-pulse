@@ -38,3 +38,6 @@ bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranke
 # tests/twitchSignIn.test.ts:18 in 3aa5019 was a hand-written stand-in JWT ({"alg":"RS256"}.{"sub":"123"}."signature"),
 # not a credential. The literal is now built at runtime (2026-10-03).
 3aa501943942919b001d33122344d78317f3b779:tests/twitchSignIn.test.ts:generic-api-key:18
+# scripts/chat-badge-keys.mjs:12 in 98d465d is the Seen in chat e2e list key: the PUBLIC Ed25519 half of the
+# fixed test seed (32 bytes of 0x07, kid spb-sandbox-7), pinned only in development builds. Not a credential.
+98d465daaddaaee4cab08936f39295afdba80e11:scripts/chat-badge-keys.mjs:generic-api-key:12
