@@ -65,6 +65,13 @@ Build a **new** candidate only after RPR-2 validation gates. Every gate below st
 
 Required `permissions`: `storage`, `scripting`
 
+`identity` joins only in the release that turns on Continue with Twitch for this
+store (0.2.3; the manifest, `SIGN_IN_PUBLIC_TARGETS` in
+`scripts/extension-permission-allowlists.mjs` and this list move in one commit).
+Never `identity.email`. Justification, privacy answers and release order:
+[`store-permission-change-0.2.3.md`](./store-permission-change-0.2.3.md);
+redirect URLs to register first: [`twitch-signin-redirects.md`](./twitch-signin-redirects.md).
+
 Required `host_permissions` (store):
 
 - `https://api.streampulse.stream/*`

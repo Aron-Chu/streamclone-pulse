@@ -14,13 +14,24 @@
  * surfaces; keep the wildcard until product confirms www-only injection.
  */
 /**
- * No `identity` while Sign in with Twitch is compiled off
- * (TWITCH_SIGNIN_ENABLED in src/shared/twitchSignIn.ts): store review rejects
- * a permission the package never uses. The release that turns the flag on adds
- * `identity` here, to every manifest, and to the store permission docs
- * together. Never add `identity.email`.
+ * Base permissions for every target. `identity` is added per store target, and
+ * only for the targets listed in SIGN_IN_PUBLIC_TARGETS: store review rejects a
+ * permission the package never uses, and a store build's Twitch sign-in stage
+ * is derived from its manifest (identity means public; see
+ * resolveTwitchSignInStage in extension-target.mjs). Never `identity.email`.
  */
 export const ALLOWED_PERMISSIONS = Object.freeze(['storage', 'scripting'])
+
+/**
+ * Store targets that ship Continue with Twitch (their manifest requests
+ * `identity`). Empty until the release commit that turns sign-in on: that
+ * commit adds the target here, adds `identity` to its manifest and updates
+ * docs/pulse-extension/store-permission-change-0.2.3.md and the CWS review
+ * checklist. Edge joins only once its Add-ons listing ID is registered as a
+ * Twitch redirect (see docs/pulse-extension/twitch-signin-redirects.md).
+ */
+/** @type {readonly string[]} */
+export const SIGN_IN_PUBLIC_TARGETS = Object.freeze([])
 
 export const ALLOWED_HOST_PERMISSIONS_STORE = Object.freeze([
   'https://api.streampulse.stream/*',
@@ -38,7 +49,7 @@ export const ALLOWED_OPTIONAL_HOST_PERMISSIONS_DEVELOPMENT = Object.freeze([
 ])
 
 export function permissionAllowlistForTarget(target) {
-  const permissions = [...ALLOWED_PERMISSIONS]
+  const permissions = [...ALLOWED_PERMISSIONS, ...(SIGN_IN_PUBLIC_TARGETS.includes(target) ? ['identity'] : [])]
   const host_permissions = [...ALLOWED_HOST_PERMISSIONS_STORE]
   const optional_host_permissions =
     target === 'development' ? [...ALLOWED_OPTIONAL_HOST_PERMISSIONS_DEVELOPMENT] : []
