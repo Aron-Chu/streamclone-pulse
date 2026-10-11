@@ -217,6 +217,9 @@ const hostStyles = `
   .pulse-supporter-card > .pulse-journey .pulse-journey-facts div { display: flex; flex-wrap: wrap; gap: 0 5px; }
   .pulse-supporter-card > .pulse-journey .pulse-journey-facts dt { color: ${theme.textSecondary}; font-size: 12.5px; font-weight: 600; letter-spacing: 0; text-transform: none; }
   .pulse-supporter-card > .pulse-journey .pulse-journey-facts dd { font-weight: 700; }
+  /* The review before Stripe: one fact per row, labels in one column (mockup 01 step 03). */
+  .pulse-supporter-card > .pulse-journey .pulse-journey-facts[data-journey-review] { display: grid; grid-template-columns: minmax(96px, max-content) minmax(0, 1fr); gap: 6px 16px; }
+  .pulse-supporter-card > .pulse-journey .pulse-journey-facts[data-journey-review] div { display: contents; }
   .pulse-supporter-ext { font-size: 0.9em; margin-left: 5px; opacity: 0.8; }
 
   /* "Who sees what": three rows, the concept one dashed in amber. */

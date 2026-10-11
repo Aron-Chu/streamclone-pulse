@@ -39,22 +39,27 @@ export type SupporterEntitlement =
       cosmetics?: SupporterCosmetics
       /** Whether the server would open Checkout for this account now. */
       checkoutEnabled?: boolean
+      /**
+       * The public sales switch as the server saw it on this read (the same
+       * value GET /v1/billing/offer serves). With `checkoutEnabled` false it
+       * tells "not open yet" apart from "not for this account". Absent on
+       * older servers, which reads as closed.
+       */
+      salesOpen?: boolean
+      /**
+       * Renewal of a current membership: `auto` renews on `renewsOn`; `ends`
+       * was cancelled and ends on `endsOn`; `none` has no live subscription.
+       * Absent on older servers, which show neither date.
+       */
+      renewal?: 'auto' | 'ends' | 'none'
+      renewsOn?: string
+      endsOn?: string
       /** Server capability; absent on older deployments. Never opens Checkout itself. */
       installationAccountsEnabled?: boolean
       /** `twitch`: created by Continue with Twitch. `email`: an invited tester's account. */
       accountKind?: 'email' | 'installation' | 'twitch'
       restoreEligible?: boolean
-      /**
-       * `auto` renews on `renewsOn`; `ends` was cancelled and ends on `endsOn`;
-       * `none` has no live subscription. Absent when the server did not say
-       * (older servers, or a read it could not make): show no renewal line.
-       */
-      renewal?: SupporterRenewal
-      renewsOn?: string
-      endsOn?: string
     }
-
-export type SupporterRenewal = 'auto' | 'ends' | 'none'
 
 /**
  * Whether this membership unlocks the Supporter cosmetics: a verified active or

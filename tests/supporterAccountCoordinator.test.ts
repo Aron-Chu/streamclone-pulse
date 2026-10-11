@@ -153,28 +153,25 @@ describe('private supporter account coordinator', () => {
       expect(await f.coordinator.entitlement()).toMatchObject({ state: 'ready', status: 'none', checkoutEnabled: expected })
     }
   })
-  it('carries the renewal fields only in their documented shapes, and nothing from an older server', async () => {
-    const body = { schemaVersion: 1, accountId: creds.accountId, environment: 'live', revision: 6, status: 'active', serverTime: iso(0), accessFrom: iso(-100), accessUntil: iso(3600), cacheUntil: iso(900), supportPeriods: 1, features: {} }
+  it('reads the sales switch and renewal facts from the snapshot, dropping anything malformed (supporter launch §3.5)', async () => {
+    const body = { schemaVersion: 1, accountId: creds.accountId, environment: 'live', revision: 2, status: 'active', serverTime: iso(0), cacheUntil: iso(900), supportPeriods: 1, features: {} }
     const cases: Array<[Record<string, unknown>, Record<string, unknown>]> = [
-      [{ renewal: 'ends', endsOn: iso(3600) }, { renewal: 'ends', endsOn: iso(3600) }],
-      [{ renewal: 'auto', renewsOn: iso(3600) }, { renewal: 'auto', renewsOn: iso(3600) }],
-      [{ status: 'expired', renewal: 'none' }, { renewal: 'none' }],
-      // A date belongs only to its own renewal kind.
-      [{ renewal: 'auto', endsOn: iso(3600) }, { renewal: 'auto' }],
-      [{ renewal: 'ends', renewsOn: iso(3600) }, { renewal: 'ends' }],
-      [{ renewal: 'ends', endsOn: 'soon' }, { renewal: 'ends' }],
-      [{ renewal: 'Ends', endsOn: iso(3600) }, {}],
-      [{ renewal: null }, {}],
-      // Older servers, and a read the server could not make: no keys at all.
-      [{}, {}],
+      [{ salesOpen: true }, { salesOpen: true }],
+      [{ salesOpen: 'true' }, { salesOpen: false }],
+      [{}, { salesOpen: false }],
+      [{ renewal: 'auto', renewsOn: '2026-11-09T12:00:00Z' }, { renewal: 'auto', renewsOn: '2026-11-09T12:00:00Z' }],
+      [{ renewal: 'auto', renewsOn: 'soon' }, { renewal: 'auto', renewsOn: undefined }],
+      [{ renewal: 'ends', endsOn: '2026-11-09T12:00:00Z' }, { renewal: 'ends', endsOn: '2026-11-09T12:00:00Z' }],
+      [{ renewal: 'ends', renewsOn: '2026-11-09T12:00:00Z' }, { renewal: 'ends', renewsOn: undefined, endsOn: undefined }],
+      [{ renewal: 'none' }, { renewal: 'none' }],
+      [{ renewal: 'paused', renewsOn: '2026-11-09T12:00:00Z' }, { renewal: undefined, renewsOn: undefined }],
     ]
     for (const [change, expected] of cases) {
       const f = fixture(creds)
       f.request.mockResolvedValue({ status: 200, body: { ...body, ...change } })
       const value = await f.coordinator.entitlement()
-      expect(value.state, JSON.stringify(change)).toBe('ready')
-      const fields = Object.fromEntries(Object.entries(value).filter(([key]) => key === 'renewal' || key === 'renewsOn' || key === 'endsOn'))
-      expect(fields, JSON.stringify(change)).toEqual(expected)
+      expect(value.state).toBe('ready')
+      for (const [key, wanted] of Object.entries(expected)) expect((value as Record<string, unknown>)[key]).toEqual(wanted)
     }
   })
   it('clears remotely revoked credentials and permits an immediate new device link', async () => {

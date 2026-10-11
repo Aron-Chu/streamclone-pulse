@@ -97,6 +97,13 @@ async function guard(context: BrowserContext, trace: Trace) {
     expect(entry.method).toBe('GET')
     await respond(route, entry, JSON.parse(fs.readFileSync(new URL('../fixtures/api/health-ok.json', import.meta.url), 'utf8')))
   })
+  // The public sales switch: anonymous (no cookie, no bearer), answered open
+  // at the compiled price, since every Checkout needs it as well as the account flag.
+  await context.route(`${API}/v1/billing/offer`, async route => {
+    const entry = call(route, trace, null)
+    expect(entry.method).toBe('GET')
+    await respond(route, entry, { schemaVersion: 1, salesOpen: true, environment: 'live', price: { unitAmount: 499, currency: 'usd', interval: 'month' }, termsConsent: true, serverTime: new Date().toISOString() })
+  })
 }
 async function privateState(worker: WorkerExecution) {
   return worker.evaluate(async () => {

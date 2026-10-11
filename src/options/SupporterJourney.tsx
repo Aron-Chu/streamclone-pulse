@@ -21,11 +21,21 @@ import {
   type TwitchSignInStage,
   type TwitchSignInStatus,
 } from '../shared/twitchSignIn.ts'
+import {
+  BILLING_CONTACT_EMAIL,
+  OFFER_PRICE_SHORT,
+  STRIPE_PORTAL_LOGIN_URL,
+  SUPPORTER_OFFER_CONFIG,
+  addOneMonthClamped,
+  supporterTaxLine,
+  type SupporterOffer,
+} from '../shared/supporterOffer.ts'
 import { SAMPLE_KIT } from '../supporter/kit.ts'
 import { PulseSectionCard } from '../ui/PulseSectionCard.tsx'
 import { SupporterCard, type CardIdentity, type CardLook, type CardStatus } from './SupporterCard.tsx'
 import { TwitchGlitch, twitchOutcomeMessage } from './TwitchAccountConnection.tsx'
 import { usePortalOrigin } from './usePortalOrigin.ts'
+import { useSupporterOffer } from './useSupporterOffer.ts'
 
 /**
  * Account and Supporter membership as one journey, drawn as the Account &
@@ -40,18 +50,30 @@ import { usePortalOrigin } from './usePortalOrigin.ts'
  * server asks) → Sign out. Reinstalling or another browser gets Supporter back
  * by signing in with the same Twitch account.
  *
- * With Twitch sign-in compiled off (today) a signed-out page says Supporter
- * sign-ups are not open yet and offers no purchase: no email restore, no
- * website-account choice, and no installation account. Invited testers keep a
- * closed "Connect this extension" disclosure for the existing device link.
+ * One sales switch (supporter launch spec §2): the worker's SUPPORTER_OFFER
+ * answer says whether paid sign-ups are open. Until it says open, every state
+ * here says "not open yet" and shows no purchase control; a failed read says
+ * so and still shows none. Open, the signed-out card shows the price, terms
+ * and perks before Become a Supporter, which goes to Twitch in one click and
+ * remembers the intent; signed in, it opens a one-screen review (price, first
+ * charge, renews on, how to cancel, tax line), then Continue to payment opens
+ * Stripe. A signed-in account still needs the server's per-account
+ * `checkoutEnabled` before the review appears.
+ *
+ * With Twitch sign-in compiled off a signed-out page offers no purchase: it
+ * says sign-ups are not open yet, or, once they are, points at
+ * streampulse.stream. No email restore, no website-account choice, and no
+ * installation account. Invited testers keep a closed "Connect this
+ * extension" disclosure for the existing device link.
  *
  * The worker owns credentials, polling secrets and every HTTP request; this
  * page receives safe projections and asks it to act. Nothing here asserts an
  * entitlement locally: paid access appears only after the server projects it.
  */
 
-// USD only at launch, matching the public /supporter page.
-const PRICE_DISPLAY = 'US$4.99 / month'
+// USD only at launch, from the offer config the public /supporter page shares.
+const PRICE_DISPLAY = OFFER_PRICE_SHORT
+const TWITCH_HOME = 'https://www.twitch.tv/'
 /** Reads after a purchase or payment wait stop after this long; focus still refreshes. */
 export const MEMBERSHIP_WATCH_MS = 15 * 60_000
 /** Backoff for those reads while the page is visible. */
@@ -82,7 +104,32 @@ export const ACCOUNT_COPY = {
   otherWays: 'Other ways to connect (testers)',
   billingEmail: 'Stripe asks for a billing email at checkout. It can be different from your Twitch email, and you don\'t need a separate StreamPulse sign-up.',
   reinstall: 'Reinstalled or on another browser? Continue with Twitch with the same Twitch account and your Supporter status comes back. No code to copy, no email to confirm.',
+  continueToPayment: 'Continue to payment',
+  journeyHelper: 'Continue with Twitch, check the details, then pay on Stripe.',
+  reviewHelper: 'Check the details, then pay on Stripe.',
+  cancelTerms: 'Any time with Manage subscription. You keep Supporter until the end of the month you paid for.',
+  termsOnStripe: 'You’ll accept the Supporter terms on Stripe.',
+  offerUnknownTitle: 'Couldn’t check whether Supporter is open',
+  offerUnknownBody: 'Your free tools still work.',
+  notForAccount: 'Checkout isn’t available for this account right now.',
+  notInThisVersion: 'Supporter isn’t available in this version yet',
+  notInThisBrowser: 'Supporter isn’t available in this browser yet',
+  needsTwitch: 'Supporter turns on through Continue with Twitch, which this version of Pulse doesn’t have yet. The Chrome Web Store and Firefox versions have it.',
+  needsTwitchWindow: 'Supporter turns on through Continue with Twitch, and this browser cannot open the Twitch sign-in window.',
+  welcomeTitle: 'You’re a Supporter. Thank you.',
+  welcomeBody: 'Your look is on. Pick a finish below; only you see it.',
+  receiptSent: 'Stripe emailed your receipt to your billing email.',
+  pickFinish: 'Pick your finish',
+  openTwitch: 'Open Twitch',
+  resume: 'Resume',
+  resumeHelper: 'Resume opens Stripe, where you choose Renew.',
 } as const
+
+/** "Today. Stripe shows the total…" or "Today, plus sales tax…": the first-charge row. */
+export function firstChargeLine(offer: SupporterOffer | null): string {
+  const short = supporterTaxLine(offer, 'short')
+  return short === SUPPORTER_OFFER_CONFIG.tax.short.fallback ? `Today. ${short}.` : `Today, ${short}.`
+}
 
 /**
  * The wait a 429 `try_later` from Checkout or the portal names (backend
@@ -104,7 +151,12 @@ export function tryLaterCopy(kind: 'checkout' | 'portal', retryAt: number, now =
     : `Subscription management was opened too many times in a short while, so it is paused for this account. Your membership is unchanged. Try again after ${at} (${span}).`
 }
 
-type Intent = 'purchase' | 'connect' | null
+/**
+ * `review`: Become a Supporter was chosen and the one-screen review is next
+ * (it survives the Twitch window and a settings reload). `purchase`: Continue
+ * to payment opened Stripe. `connect`: an invited tester's device link.
+ */
+type Intent = 'review' | 'purchase' | 'connect' | null
 /**
  * Where an action's outcome is reported: the card footer, or the Account card
  * that closes the page. Each action reports beside the control that started it.
@@ -115,7 +167,7 @@ const INTENT_KEY = 'pulse.supporterJourneyIntent.v1'
 function storedIntent(): Intent {
   try {
     const value = sessionStorage.getItem(INTENT_KEY)
-    return value === 'purchase' || value === 'connect' ? value : null
+    return value === 'review' || value === 'purchase' || value === 'connect' ? value : null
   } catch { return null }
 }
 function storeIntent(value: Intent): void {
@@ -144,21 +196,9 @@ export function accountReference(accountId: string): string {
   return `··${accountId.replace(/-/g, '').slice(-6)}`
 }
 
-function shortDate(value: string | undefined, year = true): string | null {
+function shortDate(value: string | undefined): string | null {
   if (!value || !Number.isFinite(Date.parse(value))) return null
-  return new Date(value).toLocaleDateString([], year ? { month: 'short', day: 'numeric', year: 'numeric' } : { month: 'short', day: 'numeric' })
-}
-
-/**
- * One short line from the snapshot's optional renewal fields: "Cancels on" after
- * a cancel at period end, else "Renews on". Older servers send neither: no line.
- */
-export function renewalLine(entitlement: SupporterEntitlement | null | undefined): { kind: 'ends' | 'auto'; text: string } | null {
-  if (entitlement?.state !== 'ready' || entitlement.status !== 'active') return null
-  const ends = entitlement.renewal === 'ends' ? shortDate(entitlement.endsOn, false) : null
-  if (ends) return { kind: 'ends', text: `Cancels on ${ends}` }
-  const renews = entitlement.renewal === 'auto' ? shortDate(entitlement.renewsOn, false) : null
-  return renews ? { kind: 'auto', text: `Renews on ${renews}` } : null
+  return new Date(value).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 function openPortal(url: string): void {
@@ -169,11 +209,11 @@ function openPortal(url: string): void {
   } else fallback()
 }
 
-function OfferTerms() {
+function OfferTerms({ offer, whenOpens = false }: { offer: SupporterOffer | null; whenOpens?: boolean }) {
   return (
     <>
       {/* The card's footer line: the price and its terms in one row, before the action. */}
-      <p className="pulse-supporter-terms"><b>{PRICE_DISPLAY}</b><span>renews monthly until you cancel</span><span>cancel any time; access runs to the end of the paid month</span><span>taxes, if any, shown before you pay</span></p>
+      <p className="pulse-supporter-terms"><b>{whenOpens ? `${PRICE_DISPLAY} when it opens` : PRICE_DISPLAY}</b><span>renews monthly until you cancel</span><span>cancel any time; access runs to the end of the paid month</span><span>{supporterTaxLine(offer, 'short')}</span></p>
       {/* "You get" is the one perk list (src/shared/supporter-perks.json) that
           the settings banner, quick settings, /supporter and the Terms share. */}
       <SupporterPerkList />
@@ -197,6 +237,9 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
 } = {}) {
   const portalOrigin = usePortalOrigin()
   const twitchOn = twitchStage !== 'off'
+  // The one sales switch. Null (not answered yet) and unknown never open anything.
+  const { offer, recheck: recheckOffer, checking: offerChecking } = useSupporterOffer()
+  const salesOpen = offer?.state === 'open'
   const [account, setAccount] = useState<SupporterAccountState | null>(null)
   const [entitlement, setEntitlement] = useState<SupporterEntitlement | null>(null)
   // A quiet re-read that failed keeps the last membership on screen, marked
@@ -440,8 +483,8 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
     if (status === 'active' || status === 'grace') storeIntent(null)
   }, [status])
 
-  async function signIn(mode: TwitchSignInMode, forceVerify = false) {
-    if (!twitchOn || signInFlight.current || accountInFlight.current) return
+  async function signIn(mode: TwitchSignInMode, forceVerify = false): Promise<SupporterAccountState | null> {
+    if (!twitchOn || signInFlight.current || accountInFlight.current) return null
     signInFlight.current = true
     setSigningIn(mode)
     if (mode === 'interactive') setNotice('')
@@ -471,8 +514,10 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
       // Your look controls stay on "Checking Supporter status…" until reload.
       if (replaced || next.state === 'linked') void readEntitlement(false)
       if (next.state === 'linked') void readBilling()
+      return next
     } catch {
       if (mode === 'interactive') setNotice('Could not reach StreamPulse. Check your connection and try again.')
+      return null
     } finally {
       signInFlight.current = false
       setSigningIn(null)
@@ -502,6 +547,8 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   /** Checkout through the worker's bearer, for a signed-in account only. */
   async function purchase() {
     if (!linked || payInFlight.current || accountInFlight.current) return
+    // Only while the switch is open at this build's price; the worker checks again.
+    if (!salesOpen) { void recheckOffer(); return }
     payInFlight.current = true; setPayBusy(true); setNotice(''); setIntent('purchase')
     try {
       const response: BackgroundResponse = await chrome.runtime.sendMessage({ type: 'SUPPORTER_BILLING', action: 'checkout' })
@@ -512,6 +559,9 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
       if (result.state === 'sign_in_required') { setNotice(twitchOn ? 'Your sign-in ended on this browser. Continue with Twitch, then try again.' : 'This extension is no longer connected.'); await run('status'); return }
       if (result.state === 'step_up_required' || result.state === 'wrong_account') { setBilling({ state: 'error' }); return }
       setBilling(result)
+      // Sales closed after this page last asked: re-read the switch so every
+      // surface here says "not open yet" again.
+      if (result.state === 'closed') { setIntent(null); void recheckOffer(); return }
       // Nothing was started: no membership watch, and no automatic retry.
       if (result.state === 'try_later') return
       await run('status'); await readEntitlement(true)
@@ -606,6 +656,24 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
     }
   }
 
+  /**
+   * Become a Supporter, signed out: remember the intent, then Continue with
+   * Twitch in the same click. Signed in, the review opens next.
+   */
+  function becomeSupporter() {
+    setIntent('review')
+    setNotice('')
+    // A Twitch window that did not finish keeps nothing: the next sign-in is not a purchase.
+    if (!linked) void signIn('interactive').then(next => { if (next?.state !== 'linked') setIntent(null) })
+  }
+
+  /** The welcome's next step: the Your look controls below the card. */
+  function pickFinish() {
+    const look = document.querySelector<HTMLElement>('.pulse-supporter-look')
+    look?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    look?.querySelector<HTMLInputElement>('input[name="supporter-finish"]:checked, input[name="supporter-finish"]')?.focus({ preventScroll: true })
+  }
+
   function openBilling() {
     setIntent('purchase')
     setWatchUntil(Date.now() + MEMBERSHIP_WATCH_MS)
@@ -650,6 +718,12 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   const supporterHref = productLink('supporter', portalOrigin)
   const isSupporter = status === 'active' || status === 'grace'
   const checkoutOpen = entitlement?.state === 'ready' && entitlement.checkoutEnabled === true
+  // Every purchase control needs both: the server will open Checkout for this
+  // account, and the public switch is open at the price this build states (a
+  // different server price reads as not open). No exception for testers: a
+  // sandbox backend on a preview origin reports salesOpen itself, and
+  // development builds honour sandbox offers.
+  const purchaseOpen = checkoutOpen && salesOpen
   const accountKind = entitlement?.state === 'ready' ? entitlement.accountKind : undefined
   // Purchase and billing through the worker's bearer: any known account with
   // Twitch sign-in on (the server sends an invited tester's email account
@@ -659,7 +733,8 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   const workerCheckout = twitchOn ? accountKind !== undefined && accountKind !== 'installation' || accountKind === 'installation' && entitlement?.state === 'ready' && entitlement.installationAccountsEnabled === true
     : accountKind === 'installation' && entitlement?.state === 'ready' && entitlement.installationAccountsEnabled === true
   const accessDate = entitlement?.state === 'ready' ? shortDate(entitlement.accessUntil) : null
-  const renewal = renewalLine(entitlement)
+  const renewsDate = entitlement?.state === 'ready' && entitlement.renewal === 'auto' ? shortDate(entitlement.renewsOn) : null
+  const endsDate = entitlement?.state === 'ready' && entitlement.renewal === 'ends' ? shortDate(entitlement.endsOn) : null
   const periods = entitlement?.state === 'ready' ? entitlement.supportPeriods : 0
   const unlinked = account !== null && (account.state === 'signed_out' || account.state === 'denied' || account.state === 'expired' || account.state === 'relink_required')
   const linkingNotDeployed = account?.state === 'unavailable' && account.reason === 'not_deployed' && !account.linked
@@ -688,7 +763,8 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   let body: ReactNode = null
   let primary: ReactNode = null
   let secondary: ReactNode[] = []
-  let terms = false
+  // The price and terms before the action; `when-open` adds "when it opens" to the price.
+  let terms: boolean | 'when-open' = false
 
   if (!account) {
     state = 'loading'
@@ -722,26 +798,62 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   } else if (unlinked) {
     state = 'signed-out'
     const why = signedOutNotice(account.state, twitchOn)
-    if (!twitchOn) {
-      // Stage A: nothing to buy and no account to make. The one action says
-      // where Supporter is described; testers connect below.
-      title = 'Supporter sign-ups are not open yet'
+    const whyNotice = why ? <p className="pulse-journey-notice">{why}</p> : null
+    const checkOfferAgain = (key?: string) => <button key={key} className={key ? undefined : 'pulse-journey-primary'} type="button" disabled={offerChecking} onClick={() => void recheckOffer()}>{offerChecking ? 'Checking…' : 'Check again'}</button>
+    if (offer?.state === 'unknown') {
+      // The switch could not be read: no purchase, and no guess either way.
+      state = 'offer-unknown'
+      title = ACCOUNT_COPY.offerUnknownTitle
+      body = <>{whyNotice}<p>{ACCOUNT_COPY.offerUnknownBody}</p></>
+      primary = checkOfferAgain()
+      secondary = twitchOn && twitchWindow ? [continueWithTwitch('twitch'), supporterDetails(false)] : [supporterDetails(false)]
+    } else if (!twitchOn) {
+      // No Twitch sign-in in this build (Edge Add-ons until its redirect is
+      // registered): nothing to buy and no account to make here. Open, it never
+      // invites a purchase: a look bought on the website could not reach this
+      // install. The price stays as information.
+      title = salesOpen ? ACCOUNT_COPY.notInThisVersion : 'Supporter sign-ups are not open yet'
+      if (salesOpen) state = 'signin-unsupported'
       body = <>
-        {why ? <p className="pulse-journey-notice">{why}</p> : null}
-        <p>When they open, you'll choose <b>Continue with Twitch</b>, then pay on Stripe. {ACCOUNT_COPY.freeTools}</p>
+        {whyNotice}
+        {salesOpen
+          ? <p>{ACCOUNT_COPY.needsTwitch} {ACCOUNT_COPY.freeTools}</p>
+          : <p>When they open, you'll choose <b>Continue with Twitch</b>, then pay on Stripe. {ACCOUNT_COPY.freeTools}</p>}
       </>
       terms = true
-      primary = supporterDetails(true)
-    } else {
-      title = 'Supporter starts with Twitch sign-in'
+      primary = salesOpen ? null : supporterDetails(true)
+    } else if (!twitchWindow) {
+      title = salesOpen ? ACCOUNT_COPY.notInThisBrowser : 'Supporter sign-ups are not open yet'
+      if (salesOpen) state = 'signin-unsupported'
       body = <>
-        {why ? <p className="pulse-journey-notice">{why}</p> : null}
-        <p>Choose <b>Continue with Twitch</b>, then pay on Stripe. {ACCOUNT_COPY.freeTools}</p>
-        {twitchStage === 'tester' ? <p className="pulse-supporter-detail">{ACCOUNT_COPY.testersOnly}</p> : null}
-        {twitchWindow ? null : <p className="pulse-supporter-detail">This browser cannot open the Twitch sign-in window.</p>}
+        {whyNotice}
+        <p className="pulse-supporter-detail">{salesOpen ? `${ACCOUNT_COPY.needsTwitchWindow} ${ACCOUNT_COPY.freeTools}` : 'This browser cannot open the Twitch sign-in window.'}</p>
       </>
-      primary = twitchWindow ? continueWithTwitch() : supporterDetails(true)
-      if (twitchWindow) secondary = [supporterDetails(false)]
+      terms = true
+      primary = salesOpen ? null : supporterDetails(true)
+    } else if (salesOpen) {
+      // Price, terms and perks before the button (payment F12); one click to Twitch.
+      state = 'signed-out-offer'
+      title = 'Become a Pulse Supporter'
+      body = <>
+        {whyNotice}
+        <p className="pulse-supporter-detail">{ACCOUNT_COPY.journeyHelper} {ACCOUNT_COPY.freeTools}</p>
+        {twitchStage === 'tester' ? <p className="pulse-supporter-detail">{ACCOUNT_COPY.testersOnly}</p> : null}
+      </>
+      terms = true
+      primary = <button className="pulse-journey-primary" type="button" data-supporter-action="become" disabled={accountBusy || payBusy || signingIn !== null || twitch === null} aria-busy={signingIn === 'interactive' ? true : undefined} onClick={becomeSupporter}>{signingIn === 'interactive' ? ACCOUNT_COPY.openingTwitch : ACCOUNT_COPY.becomeSupporter}</button>
+      secondary = [supporterDetails(false)]
+    } else {
+      // Closed: Twitch sign-in keeps saves and history; no purchase intent.
+      title = 'Supporter sign-ups are not open yet'
+      body = <>
+        {whyNotice}
+        <p>Continue with Twitch to keep your saves and history across browsers. Supporter opens here when sign-ups open. {ACCOUNT_COPY.freeTools}</p>
+        {twitchStage === 'tester' ? <p className="pulse-supporter-detail">{ACCOUNT_COPY.testersOnly}</p> : null}
+      </>
+      terms = 'when-open'
+      primary = continueWithTwitch()
+      secondary = [supporterDetails(false)]
     }
   } else if (renewalWaiting) {
     state = 'connection-waiting'
@@ -757,16 +869,55 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
     body = <p className="pulse-supporter-detail">{entitlement.state === 'unavailable' && 'reason' in entitlement ? UNAVAILABLE_COPY[entitlement.reason] : 'Could not reach StreamPulse to check Supporter status.'} Your free tools are unaffected.</p>
     primary = <button className="pulse-journey-primary" type="button" disabled={checking} onClick={() => void checkAgain()}>{checking ? 'Checking…' : 'Check again'}</button>
   } else if (status === 'none') {
-    if (!checkoutOpen) {
+    const accountSalesOpen = salesOpen || entitlement.state === 'ready' && entitlement.salesOpen === true
+    if (!checkoutOpen && accountSalesOpen) {
+      // Sales are open, but the server will not open Checkout for this account.
+      state = 'checkout-unavailable'
+      title = ACCOUNT_COPY.notForAccount
+      body = <p className="pulse-supporter-detail">Your free tools still work. Support can tell you why.</p>
+      primary = <a className="pulse-journey-primary" href={POLICY_LINKS.support} target="_blank" rel="noopener noreferrer">Contact support</a>
+      secondary = [<button key="check" type="button" disabled={checking} onClick={() => void checkAgain().then(readBilling)}>Check again</button>]
+    } else if (checkoutOpen && offer?.state === 'unknown') {
+      // The switch could not be read: no purchase, and no guess either way.
+      state = 'offer-unknown'
+      title = ACCOUNT_COPY.offerUnknownTitle
+      body = <p>{ACCOUNT_COPY.offerUnknownBody}</p>
+      primary = <button className="pulse-journey-primary" type="button" disabled={offerChecking} onClick={() => void recheckOffer()}>{offerChecking ? 'Checking…' : 'Check again'}</button>
+    } else if (!purchaseOpen) {
+      // Closed, not answered yet, or open at a price this build does not state.
       state = 'checkout-closed'
       title = 'Supporter sign-ups are not open yet'
       body = <p>{signedInWithTwitch ? 'You’re signed in.' : 'Your account is connected.'} The offer appears here when sign-ups open.</p>
-      primary = <button className="pulse-journey-primary" type="button" disabled={checking} onClick={() => void checkAgain().then(readBilling)}>Check sign-up status</button>
+      primary = <button className="pulse-journey-primary" type="button" disabled={checking} onClick={() => void checkAgain().then(readBilling).then(recheckOffer)}>Check sign-up status</button>
       terms = true
+    } else if (workerCheckout && (intent === 'review' || payBusy)) {
+      // One screen before Stripe (mockup 01 step 03): who pays, the price, the
+      // first charge, when it renews, how to cancel, and the tax line. It
+      // stays up, its action disabled, while Checkout is being prepared.
+      state = 'review'; title = 'Become a Pulse Supporter'
+      const renews = addOneMonthClamped(new Date()).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
+      const descriptor: unknown = SUPPORTER_OFFER_CONFIG.statementDescriptor
+      const reviewRows: Array<[string, ReactNode]> = [
+        ['Account', profile ? `${profile.displayName} · ${ACCOUNT_COPY.signedInWithTwitch}` : signedInWithTwitch ? ACCOUNT_COPY.signedInWithTwitch : `Pulse account ${accountReference(linked!.accountId)}`],
+        ['Pulse Supporter', PRICE_DISPLAY],
+        ['First charge', firstChargeLine(offer)],
+        ['Renews', `${renews}, then monthly`],
+        ...(typeof descriptor === 'string' && descriptor ? [['On your statement', descriptor] as [string, ReactNode]] : []),
+        ['Cancel', ACCOUNT_COPY.cancelTerms],
+      ]
+      body = <>
+        <p className="pulse-supporter-detail">{ACCOUNT_COPY.reviewHelper}</p>
+        <dl className="pulse-journey-facts" data-journey-review="true">{reviewRows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
+        {/* Supporter terms, Cancellation & refunds and Privacy are the card's policy row below. */}
+        <p className="pulse-supporter-detail">{offer?.state === 'open' && offer.termsConsent ? ACCOUNT_COPY.termsOnStripe : 'The Supporter terms below apply.'}</p>
+        {twitchOn ? <p className="pulse-supporter-detail">{ACCOUNT_COPY.billingEmail}</p> : null}
+      </>
+      primary = <button className="pulse-journey-primary" type="button" disabled={payBusy} onClick={() => void purchase()}>{payBusy ? 'Preparing checkout…' : ACCOUNT_COPY.continueToPayment}</button>
+      secondary = [<button key="back" type="button" disabled={payBusy} onClick={() => setIntent(null)}>Back</button>]
     } else if (workerCheckout) {
       state = 'offer'; title = 'Become a Pulse Supporter'
-      body = <><p>Pay on Stripe. This extension updates by itself after your payment is confirmed.</p>{twitchOn ? <p className="pulse-supporter-detail">{ACCOUNT_COPY.billingEmail}</p> : null}</>
-      primary = <button className="pulse-journey-primary" type="button" disabled={payBusy} onClick={() => void purchase()}>{payBusy ? 'Preparing checkout…' : ACCOUNT_COPY.becomeSupporter}</button>
+      body = <><p className="pulse-supporter-detail">{ACCOUNT_COPY.reviewHelper} This extension updates by itself after your payment is confirmed.</p>{twitchOn ? <p className="pulse-supporter-detail">{ACCOUNT_COPY.billingEmail}</p> : null}</>
+      primary = <button className="pulse-journey-primary" type="button" data-supporter-action="become" disabled={payBusy} onClick={becomeSupporter}>{ACCOUNT_COPY.becomeSupporter}</button>
       terms = true
     } else if (intent === 'purchase') {
       state = 'purchase-continuing'
@@ -788,10 +939,31 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
     primary = workerBilling
       ? <button className="pulse-journey-primary" type="button" disabled={payBusy} onClick={() => void checkPayment()}>Check payment status</button>
       : <a className="pulse-journey-primary" data-supporter-action="billing" href={billingHref} target="_blank" rel="noopener noreferrer">View payment status</a>
+  } else if (status === 'active' && intent === 'purchase') {
+    // The welcome after a purchase from here (mockup 01 steps 05-06): the look
+    // is on, so the next step is choosing it. Manage subscription stays in the
+    // Account card's Billing row.
+    state = 'welcome'
+    title = ACCOUNT_COPY.welcomeTitle
+    body = <>
+      <p>{ACCOUNT_COPY.welcomeBody}</p>
+      {SUPPORTER_OFFER_CONFIG.stripeReceipts ? <p className="pulse-supporter-detail">{ACCOUNT_COPY.receiptSent}</p> : null}
+    </>
+    primary = <button className="pulse-journey-primary" type="button" data-supporter-action="pick-finish" onClick={pickFinish}>{ACCOUNT_COPY.pickFinish}</button>
+    secondary = [<a key="twitch" href={TWITCH_HOME} target="_blank" rel="noopener noreferrer">{ACCOUNT_COPY.openTwitch}</a>]
+  } else if (status === 'active' && entitlement.state === 'ready' && entitlement.renewal === 'ends') {
+    // Cancelled at period end: say when it ends and how to undo it (payment F8).
+    state = 'ending'
+    title = endsDate ? `Supporter ends ${endsDate}` : 'Supporter won’t renew'
+    body = <>
+      <p>You cancelled, so it won’t renew. You keep Supporter until then, and your crest keeps its months.</p>
+      <p className="pulse-supporter-detail">{ACCOUNT_COPY.resumeHelper}</p>
+    </>
+    primary = <a className="pulse-journey-primary" data-supporter-action="billing" href={billingHref} target="_blank" rel="noopener noreferrer">{ACCOUNT_COPY.resume}</a>
   } else if (status === 'active') {
     state = 'active'
-    title = intent === 'purchase' ? 'You are a Supporter' : 'Supporter active'
-    body = <p>{intent === 'purchase' ? 'Thank you. Your Supporter finishes are unlocked below.' : 'Thank you for supporting Pulse.'}</p>
+    title = 'Supporter active'
+    body = <p>Thank you for supporting Pulse.</p>
     primary = <a className="pulse-journey-primary" data-supporter-action="billing" href={billingHref} target="_blank" rel="noopener noreferrer">{ACCOUNT_COPY.manageSubscription}</a>
   } else if (status === 'grace') {
     state = 'grace'
@@ -802,8 +974,8 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
     state = 'expired'
     title = 'Supporter ended'
     body = <p className="pulse-supporter-detail">Saved Supporter preferences are kept but inactive. Your free settings and data are untouched.</p>
-    terms = checkoutOpen
-    primary = <a className="pulse-journey-primary" data-supporter-action="billing" href={billingHref} target="_blank" rel="noopener noreferrer" onClick={checkoutOpen ? openBilling : undefined}>{checkoutOpen ? 'Rejoin Supporter' : 'Review membership'}</a>
+    terms = purchaseOpen
+    primary = <a className="pulse-journey-primary" data-supporter-action="billing" href={billingHref} target="_blank" rel="noopener noreferrer" onClick={purchaseOpen ? openBilling : undefined}>{purchaseOpen ? 'Rejoin Supporter' : 'Review membership'}</a>
   } else {
     state = 'review'
     title = 'Membership needs review'
@@ -811,9 +983,10 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
     primary = <a className="pulse-journey-primary" data-supporter-action="billing" href={billingHref} target="_blank" rel="noopener noreferrer">Review membership</a>
   }
 
-  if (linked && workerBilling && entitlement?.state === 'ready' && (isSupporter || status === 'expired' || status === 'review')) {
-    primary = status === 'expired' && checkoutOpen && workerCheckout ? <button className="pulse-journey-primary" type="button" disabled={payBusy} onClick={() => void purchase()}>Rejoin Supporter</button>
-      : <button className="pulse-journey-primary" type="button" disabled={payBusy} onClick={() => void manage('card')}>{status === 'grace' ? 'Update payment method' : ACCOUNT_COPY.manageSubscription}</button>
+  if (linked && workerBilling && entitlement?.state === 'ready' && state !== 'welcome' && (isSupporter || status === 'expired' || status === 'review')) {
+    primary = status === 'expired' && purchaseOpen && workerCheckout ? <button className="pulse-journey-primary" type="button" disabled={payBusy} onClick={() => void purchase()}>Rejoin Supporter</button>
+      : <button className="pulse-journey-primary" type="button" disabled={payBusy} onClick={() => void manage('card')}>{state === 'ending' ? ACCOUNT_COPY.resume : status === 'grace' ? 'Update payment method' : ACCOUNT_COPY.manageSubscription}</button>
+    if (state === 'ending') secondary = [<button key="manage" type="button" disabled={payBusy} onClick={() => void manage('card')}>{ACCOUNT_COPY.manageSubscription}</button>]
   }
 
   // Worker-owned uncertainty always outranks the offer, including after settings
@@ -835,7 +1008,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
       title = billing.state === 'confirming' ? 'Confirming your payment' : 'Still confirming your payment'
       body = <p>Your payment status is not confirmed yet. Do not pay again. {billing.state === 'still_confirming' ? 'Check status when you return, or contact support if it stays unresolved.' : 'Supporter turns on here after the server confirms it.'}</p>
       primary = <button className="pulse-journey-primary" type="button" disabled={payBusy} onClick={() => void checkPayment()}>Check payment status</button>
-    } else if (billing.state === 'closed' || (billing.state === 'expired' && entitlement?.state === 'ready' && !checkoutOpen)) { state = 'checkout-closed'; title = 'Supporter sign-ups are not open yet'; body = <p>Your free tools still work. Return when paid sign-ups open.</p>; primary = <button className="pulse-journey-primary" type="button" disabled={checking} onClick={() => void checkAgain().then(readBilling)}>Check sign-up status</button> }
+    } else if (billing.state === 'closed' || (billing.state === 'expired' && entitlement?.state === 'ready' && !purchaseOpen)) { state = 'checkout-closed'; title = 'Supporter sign-ups are not open yet'; body = <p>Your free tools still work. Return when paid sign-ups open.</p>; primary = <button className="pulse-journey-primary" type="button" disabled={checking} onClick={() => void checkAgain().then(readBilling).then(recheckOffer)}>Check sign-up status</button> }
     else if (billing.state === 'expired') { state = 'checkout-expired'; title = 'Checkout expired'; body = <p>The checkout session ended before completion. You can start a new checkout when ready.</p>; primary = linked ? <button className="pulse-journey-primary" type="button" disabled={payBusy} onClick={() => void purchase()}>Start checkout again</button> : null }
     else if (billing.state === 'review') { state = 'review'; title = 'Membership needs review'; body = <p>A payment needs checking. Do not pay again; contact support for help.</p>; primary = <a className="pulse-journey-primary" href={POLICY_LINKS.support} target="_blank" rel="noopener noreferrer">Contact support</a> }
     else if (billing.state === 'reconnect_required') {
@@ -871,8 +1044,14 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   }
 
   // The card already names the account and the months supported.
+  // Active shows when it renews (payment F8); a cancelled one says when it ends
+  // in its title. An older server without renewal facts keeps "Access through".
   const facts: Array<[string, string]> = []
-  if (isSupporter && accessDate) facts.push([status === 'grace' ? 'Access until' : 'Access through', accessDate])
+  if (status === 'grace' && accessDate) facts.push(['Access until', accessDate])
+  else if (status === 'active' && state !== 'ending') {
+    if (renewsDate) facts.push(['Renews', renewsDate])
+    else if (entitlement?.state === 'ready' && entitlement.renewal === undefined && accessDate) facts.push(['Access through', accessDate])
+  }
 
   // Only a known account state names an account or says there is none: before
   // the worker answers, or when it cannot, the card and the Account row stay neutral.
@@ -913,7 +1092,6 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
               <div role="status" aria-live="polite" className="pulse-journey-status">
                 <p className="pulse-journey-title"><strong>{title}</strong></p>
                 {body}
-                {renewal && state === 'active' ? <p className="pulse-supporter-detail" data-journey-renewal={renewal.kind}>{renewal.text}</p> : null}
                 {stale ? <p className="pulse-supporter-detail" data-journey-stale="true">Could not refresh just now; showing the last confirmed status.</p> : null}
                 {notice.text && notice.at === 'card' ? <p className="pulse-journey-notice">{notice.text}</p> : null}
               </div>
@@ -921,7 +1099,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
               {/* The price and its renewal terms come before the button that
                   buys it, in reading and Tab order and above it at any width;
                   beside it when there is room, as in the redesign's footer. */}
-              {terms ? <OfferTerms /> : null}
+              {terms ? <OfferTerms offer={offer} whenOpens={terms === 'when-open'} /> : null}
             </div>
             {primary ? <div className="pulse-account-link-actions pulse-journey-actions">{primary}</div> : null}
           </div>
@@ -979,8 +1157,12 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
             </div>
             {twitchOn ? <div data-row="lost-twitch">
               <dt>Lost Twitch access</dt>
-              <dd>Stripe’s customer portal still works with the email you paid with.<small>That changes billing only. It doesn’t move your membership to another Twitch account; contact support and we’ll help.</small></dd>
-              <dd />
+              {STRIPE_PORTAL_LOGIN_URL
+                ? <dd>Stripe’s customer portal works with the email you paid with.<small>That changes billing only. Moving Supporter to another Twitch account goes through us: {BILLING_CONTACT_EMAIL}.</small></dd>
+                : <dd>Email {BILLING_CONTACT_EMAIL} from the email you paid with.<small>We’ll cancel or update billing for you. Moving Supporter to another Twitch account also goes through us.</small></dd>}
+              <dd className="pulse-account-link-actions">{STRIPE_PORTAL_LOGIN_URL
+                ? <button type="button" data-supporter-action="portal-login" onClick={() => openPortal(STRIPE_PORTAL_LOGIN_URL!)}>Manage billing with your email <span className="pulse-supporter-ext" aria-hidden="true">↗</span></button>
+                : null}</dd>
             </div> : null}
           </dl>
           {/* Sign out, Manage subscription and revoke report here, beside their

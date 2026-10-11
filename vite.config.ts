@@ -2,7 +2,7 @@ import { build as viteBuild, defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
-import { loadManifestForTarget, manifestForTwitchSignInStage, resolveSupporterBackendOrigin, resolveTwitchSignInStage } from './scripts/extension-target.mjs'
+import { loadManifestForTarget, manifestForTwitchSignInStage, resolveStripePortalLoginUrl, resolveSupporterBackendOrigin, resolveTwitchSignInStage } from './scripts/extension-target.mjs'
 import { extensionBuildId, extensionReleasePreview, extensionResolve, extensionTarget, isStoreBuild, sharedOutput } from './vite.shared.ts'
 
 const root = __dirname
@@ -10,6 +10,9 @@ const supporterBackendOrigin = resolveSupporterBackendOrigin(extensionTarget)
 // Same stage in every bundle (vite.content.config.ts too); the content script
 // reads it only to pick its copy and carries no sign-in code.
 const twitchSignInStage = resolveTwitchSignInStage(extensionTarget)
+// Options only: the "Lost Twitch access" row; empty until the owner turns on
+// Stripe's portal login link (the row then says to email us).
+const stripePortalLoginUrl = resolveStripePortalLoginUrl()
 
 function copyToDist(rootDir: string, relativePath: string): void {
   const src = resolve(rootDir, relativePath)
@@ -60,6 +63,7 @@ export default defineConfig({
     __EXTENSION_BUILD_ID__: JSON.stringify(extensionBuildId),
     __EXTENSION_RELEASE_PREVIEW__: JSON.stringify(extensionReleasePreview),
     __TWITCH_SIGNIN_STAGE__: JSON.stringify(twitchSignInStage),
+    __STRIPE_PORTAL_LOGIN_URL__: JSON.stringify(stripePortalLoginUrl),
   },
   build: {
     outDir: 'dist',

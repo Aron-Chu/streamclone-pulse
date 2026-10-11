@@ -44,6 +44,24 @@ describe('Sign in with Twitch build stage (PULSE_EXTENSION_TWITCH_SIGNIN)', () =
     }
   })
 
+  it('derives a store build’s stage from its manifest, so the manifest is the one switch per store', () => {
+    const withIdentity = { permissions: ['storage', 'scripting', 'identity'] }
+    const without = { permissions: ['storage', 'scripting'] }
+    for (const target of ['cws', 'edge', 'firefox']) {
+      // No env needed: identity requested means public, none means off.
+      expect(resolveTwitchSignInStage(target, undefined, withIdentity)).toBe('public')
+      expect(resolveTwitchSignInStage(target, '', without)).toBe('off')
+      // An env value may be given, but it must agree.
+      expect(resolveTwitchSignInStage(target, 'public', withIdentity)).toBe('public')
+      expect(resolveTwitchSignInStage(target, 'off', without)).toBe('off')
+      // identity without sign-in is an unused permission, which store review rejects.
+      expect(() => resolveTwitchSignInStage(target, 'off', withIdentity)).toThrow(/disagrees with the .* manifest, which requests identity/)
+      expect(() => resolveTwitchSignInStage(target, 'tester', withIdentity)).toThrow(/development and preview builds only/)
+    }
+    // Development builds still read the env (default off); their checked-in manifest never requests identity.
+    expect(resolveTwitchSignInStage('development', undefined, withIdentity)).toBe('off')
+  })
+
   it('gives the content script the same stage as the worker and options', async () => {
     // The panel's bookmark copy reads TWITCH_SIGNIN_ENABLED; without the define
     // the content script always read 'off', whatever the build's stage.

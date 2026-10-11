@@ -2,6 +2,7 @@ import { DEFAULT_BACKEND_URL, getBackendUrl } from '../shared/storage.ts'
 import { ACCOUNT_REVISION_KEY, SUPPORTER_REVISION_KEY } from '../shared/supporterAccount.ts'
 import { TWITCH_SIGNIN_ENABLED, type TwitchSignInMode, type TwitchStepUpResult } from '../shared/twitchSignIn.ts'
 import { AccountRequestNotSent, SupporterAccountCoordinator } from './supporterAccount.ts'
+import { SupporterOfferCache, SUPPORTER_OFFER_SESSION_KEY, fetchSupporterOffer, type CachedSupporterOffer } from './supporterOffer.ts'
 import { SupporterPayFirstCoordinator } from './supporterPayFirst.ts'
 
 /**
@@ -118,6 +119,27 @@ export const supporterPayFirst = new SupporterPayFirstCoordinator({
   changed: async () => { await chrome.storage.local.set({ [SUPPORTER_REVISION_KEY]: crypto.randomUUID() }) },
   twitchSignIn: TWITCH_SIGNIN_ENABLED,
   stepUp: mode => twitchStepUp ? twitchStepUp(mode) : Promise.resolve({ ok: false, error: 'unavailable' }),
+})
+
+/**
+ * The public sales switch (GET /v1/billing/offer), read without credentials
+ * from the same origin as Checkout and cached in session storage. Store builds
+ * honour live only, so a sandbox server never opens sales there.
+ */
+let memoryOffer: CachedSupporterOffer | null = null
+export const supporterOffer = new SupporterOfferCache({
+  fetch: () => fetchSupporterOffer(ACCOUNT_BACKEND_URL),
+  read: async () => {
+    const session = chrome.storage?.session
+    if (!session) return memoryOffer
+    return (await session.get(SUPPORTER_OFFER_SESSION_KEY))[SUPPORTER_OFFER_SESSION_KEY] ?? null
+  },
+  write: async value => {
+    const session = chrome.storage?.session
+    if (!session) { memoryOffer = value; return }
+    await session.set({ [SUPPORTER_OFFER_SESSION_KEY]: value })
+  },
+  environments: typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__ ? ['live'] : ['live', 'sandbox'],
 })
 
 /**

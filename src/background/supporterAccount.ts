@@ -93,19 +93,20 @@ function projectEntitlement(result: { status: number; body: unknown }, accountId
     cosmetics: { enabled: preferences.enabled === true, finish },
     // Only a literal true opens a purchase path; anything else is closed.
     checkoutEnabled: body.checkoutEnabled === true,
+    salesOpen: body.salesOpen === true,
+    ...renewalFacts(body),
     installationAccountsEnabled: body.installationAccountsEnabled === true,
     accountKind: body.accountKind === 'email' || body.accountKind === 'installation' || body.accountKind === 'twitch' ? body.accountKind : undefined,
     restoreEligible: body.restoreEligible === true,
-    ...renewal(body),
   }
 }
 
-/** The optional renewal fields, only in their documented shapes; anything else says nothing. */
-function renewal(body: Record<string, unknown>): Pick<Extract<SupporterEntitlement, { state: 'ready' }>, 'renewal' | 'renewsOn' | 'endsOn'> {
-  const value = body.renewal
-  if (value === 'auto') return date(body.renewsOn) ? { renewal: value, renewsOn: body.renewsOn } : { renewal: value }
-  if (value === 'ends') return date(body.endsOn) ? { renewal: value, endsOn: body.endsOn } : { renewal: value }
-  return value === 'none' ? { renewal: value } : {}
+/** Renews or ends, from the snapshot (spec §3.5); a malformed date is dropped, never guessed. */
+function renewalFacts(body: Record<string, unknown>): Pick<Extract<SupporterEntitlement, { state: 'ready' }>, 'renewal' | 'renewsOn' | 'endsOn'> {
+  if (body.renewal === 'auto') return date(body.renewsOn) ? { renewal: 'auto', renewsOn: body.renewsOn as string } : { renewal: 'auto' }
+  if (body.renewal === 'ends') return date(body.endsOn) ? { renewal: 'ends', endsOn: body.endsOn as string } : { renewal: 'ends' }
+  if (body.renewal === 'none') return { renewal: 'none' }
+  return {}
 }
 
 const FINISHES: ReadonlySet<string> = new Set(['glass', 'etched', 'halo'])
@@ -138,7 +139,7 @@ function entitlementCacheMs(value: SupporterEntitlement, result: { status: numbe
 /** What a settings or Twitch surface would render differently. Revision alone is not a change. */
 function fingerprint(accountId: string, value: SupporterEntitlement): string {
   if (value.state !== 'ready') return `${accountId}:${value.state}`
-  return JSON.stringify([accountId, value.status, value.accessUntil ?? null, value.features, value.supportPeriods, value.cosmetics ?? null, value.checkoutEnabled === true, value.renewal ?? null, value.renewsOn ?? value.endsOn ?? null])
+  return JSON.stringify([accountId, value.status, value.accessUntil ?? null, value.features, value.supportPeriods, value.cosmetics ?? null, value.checkoutEnabled === true, value.salesOpen === true, value.renewal ?? null, value.renewsOn ?? null, value.endsOn ?? null])
 }
 
 /** One coordinator per worker; installation refresh retries use the server's bounded idempotency window. */

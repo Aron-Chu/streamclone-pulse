@@ -184,6 +184,12 @@ export async function installMockApi(
       return
     }
 
+    // The public sales switch defaults to closed; launch specs route their own.
+    if (pathname === '/v1/billing/offer') {
+      await json(route, 200, { schemaVersion: 1, salesOpen: false, environment: 'live', price: { unitAmount: 499, currency: 'usd', interval: 'month' }, tax: { collection: 'none', behavior: 'unspecified' }, termsConsent: true, serverTime: new Date().toISOString() })
+      return
+    }
+
     // Fixtures default to the existing deployment with installation accounts
     // disabled. Pay-first specs install their own explicit route above this.
     if (pathname === '/v1/account/installations') { await json(route, 404, {}); return }
@@ -211,4 +217,16 @@ export async function installMockApi(
       await context.unroute(pattern, handler)
     },
   }
+}
+
+/**
+ * Open the public sales switch at the compiled price (US$4.99 / month, live),
+ * or answer closed with `salesOpen` false. Purchase controls in settings need
+ * it open as well as the account's checkoutEnabled; registered after
+ * installMockApi, it wins over the closed default above.
+ */
+export async function routeOpenOffer(context: import('@playwright/test').BrowserContext, salesOpen = true): Promise<void> {
+  await context.route('https://api.streampulse.stream/v1/billing/offer', route => route.fulfill({
+    json: { schemaVersion: 1, salesOpen, environment: 'live', price: { unitAmount: 499, currency: 'usd', interval: 'month' }, tax: { collection: 'none', behavior: 'unspecified' }, termsConsent: true, serverTime: new Date().toISOString() },
+  }))
 }

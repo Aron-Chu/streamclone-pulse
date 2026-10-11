@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { ALLOWED_PERMISSIONS } from '../scripts/extension-permission-allowlists.mjs'
+import { ALLOWED_PERMISSIONS, SIGN_IN_PUBLIC_TARGETS, permissionAllowlistForTarget } from '../scripts/extension-permission-allowlists.mjs'
+import { storeManifestTwitchSignInStage } from '../scripts/extension-target.mjs'
 import { TWITCH_SIGNIN_ENABLED } from '../src/shared/twitchSignIn.ts'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -52,7 +53,8 @@ describe('manifest targets', () => {
   it('CWS, Edge, and Firefox store manifests have no localhost or loopback permissions', () => {
     for (const name of ['cws.json', 'edge.json', 'firefox.json'] as const) {
       const manifest = loadManifest(name)
-      expect(manifest.permissions).toEqual(EXPECTED_PERMISSIONS)
+      const target = name.replace('.json', '')
+      expect(manifest.permissions).toEqual([...EXPECTED_PERMISSIONS, ...(SIGN_IN_PUBLIC_TARGETS.includes(target) ? ['identity'] : [])])
       expect(manifest.host_permissions).toEqual(EXPECTED_HOST_PERMISSIONS)
       expect(manifest.optional_host_permissions ?? []).toEqual([])
       const allHosts = [...(manifest.host_permissions ?? []), ...(manifest.optional_host_permissions ?? [])]
@@ -68,21 +70,33 @@ describe('manifest targets', () => {
     expect(rootManifest).toEqual(development)
   })
 
-  it('requests identity only once Sign in with Twitch is compiled on, never identity.email, external messaging or a store key', () => {
-    // Store review rejects a permission the package never uses; the worker
-    // already treats a missing chrome.identity as sign-in unavailable.
-    expect(TWITCH_SIGNIN_ENABLED).toBe(false)
+  it('requests identity exactly for the store targets that ship sign-in, never identity.email, external messaging or a store key', () => {
+    // Store review rejects a permission the package never uses, and a store
+    // build's sign-in stage is derived from its manifest: identity means public.
     expect(ALLOWED_PERMISSIONS).not.toContain('identity')
+    expect(SIGN_IN_PUBLIC_TARGETS.every(target => ['cws', 'edge', 'firefox'].includes(target))).toBe(true)
+    for (const target of ['cws', 'edge', 'firefox'] as const) {
+      const manifest = JSON.parse(readFileSync(join(root, 'manifests', `${target}.json`), 'utf8')) as Record<string, unknown> & { permissions?: string[] }
+      const shipsSignIn = SIGN_IN_PUBLIC_TARGETS.includes(target)
+      expect(manifest.permissions?.includes('identity')).toBe(shipsSignIn)
+      expect(permissionAllowlistForTarget(target).permissions.includes('identity')).toBe(shipsSignIn)
+      // The reverse check: identity iff the derived stage is public.
+      expect(storeManifestTwitchSignInStage(target, manifest)).toBe(shipsSignIn ? 'public' : 'off')
+    }
+    // Edge ships sign-in only once its Add-ons listing ID is a registered Twitch redirect.
+    expect(SIGN_IN_PUBLIC_TARGETS).not.toContain('edge')
     for (const name of ['development.json', 'cws.json', 'edge.json', 'firefox.json'] as const) {
       const manifest = JSON.parse(readFileSync(join(root, 'manifests', name), 'utf8')) as Record<string, unknown> & { permissions?: string[] }
-      expect(manifest.permissions?.includes('identity')).toBe(TWITCH_SIGNIN_ENABLED)
       // identity.email is the variant Chrome warns about; the flow never needs it.
       expect(manifest.permissions).not.toContain('identity.email')
       expect(manifest).not.toHaveProperty('externally_connectable')
       if (name !== 'development.json') expect(manifest).not.toHaveProperty('key')
     }
+    // Development gets identity in its generated manifest only, when built with Twitch on.
+    expect(TWITCH_SIGNIN_ENABLED).toBe(false)
+    expect(loadManifest('development.json').permissions).not.toContain('identity')
     const rootManifest = JSON.parse(readFileSync(join(root, 'manifest.json'), 'utf8')) as { permissions?: string[] }
-    expect(rootManifest.permissions?.includes('identity')).toBe(TWITCH_SIGNIN_ENABLED)
+    expect(rootManifest.permissions).not.toContain('identity')
   })
 
   it('matches content scripts on HTTPS Twitch only', () => {

@@ -26,9 +26,11 @@ function runFrames(count: number) {
   for (let k = 0; k < count && frames.length; k++) frames.shift()!.run(clock += 50)
 }
 
-function stubExtension(appearance: unknown, reducedMotion = false) {
+const OPEN_OFFER = { type: 'SUPPORTER_OFFER', offer: { state: 'open', price: { unitAmount: 499, currency: 'usd', interval: 'month' }, termsConsent: true } }
+
+function stubExtension(appearance: unknown, reducedMotion = false, offer: unknown = OPEN_OFFER) {
   vi.stubGlobal('chrome', {
-    runtime: { id: 'test-extension', getURL: (path: string) => path, sendMessage: vi.fn(async (message: { type: string }) => message.type === 'SUPPORTER_APPEARANCE' ? appearance : undefined) },
+    runtime: { id: 'test-extension', getURL: (path: string) => path, sendMessage: vi.fn(async (message: { type: string }) => message.type === 'SUPPORTER_APPEARANCE' ? appearance : message.type === 'SUPPORTER_OFFER' ? offer : undefined) },
     storage: {
       sync: { get: vi.fn(async (key: string) => (key in stored ? { [key]: stored[key] } : key === 'pulseBanner' ? { pulseBanner: { mode: 'off', intensity: 35, title: '' } } : {})), set: vi.fn(async (items: Record<string, unknown>) => { Object.assign(stored, items) }) },
       onChanged: { addListener() {}, removeListener() {} },
@@ -98,6 +100,7 @@ describe('full-settings Supporter banner: Crown, staged', () => {
     expect(view.stage().dataset.mode).toBe('crown')
     expect(view.stage().getAttribute('aria-hidden')).toBe('true')
     expect(view.stage().dataset.running).toBe('true')
+    // Sales open (the worker's SUPPORTER_OFFER): the sample names the price.
     expect(view.banner().querySelector('.pulse-settings-supporter-banner-eyebrow')?.textContent).toBe('Pulse Supporter· US$4.99/mo')
     expect(view.banner().querySelector('strong')?.textContent).toBe('Your crest lands on top')
     expect(chips(view.banner())).toEqual(SUPPORTER_PERKS.names)
@@ -277,5 +280,22 @@ describe('full-settings Supporter banner: Crown, staged', () => {
       expect(sent).toHaveLength(1)
       view.unmount()
     }
+  })
+})
+
+describe('the banner chip follows the one sales switch', () => {
+  it.each([
+    ['closed', { type: 'SUPPORTER_OFFER', offer: { state: 'closed' } }],
+    ['unknown', { type: 'SUPPORTER_OFFER', offer: { state: 'unknown' } }],
+    ['no answer', null],
+    ['a price this build does not state', { type: 'SUPPORTER_OFFER', offer: { state: 'open', price: { unitAmount: 999, currency: 'usd', interval: 'month' } } }],
+  ])('says "Coming soon" instead of a price when sales are %s', async (_label, offer) => {
+    stubExtension(NON_SUPPORTER, false, offer)
+    const view = await mount(<SupporterBanner onOpen={() => {}} />)
+    const eyebrow = view.banner().querySelector('.pulse-settings-supporter-banner-eyebrow')
+    expect(eyebrow?.textContent).toBe('Pulse Supporter· Coming soon')
+    expect(eyebrow?.querySelector('[data-supporter-offer-chip]')?.getAttribute('data-supporter-offer-chip')).toBe('closed')
+    expect(view.banner().textContent).not.toContain('4.99')
+    view.unmount()
   })
 })

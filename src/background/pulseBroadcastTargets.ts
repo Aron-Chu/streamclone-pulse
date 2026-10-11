@@ -58,6 +58,8 @@ export const MESSAGE_SENDER_SCOPE: Record<BackgroundRequest['type'], MessageSend
   SUPPORTER_RESTORE: 'extension-page',
   SUPPORTER_DEVICES: 'extension-page',
   SUPPORTER_ENTITLEMENT: 'extension-page',
+  // Public, anonymous data, but only settings renders it.
+  SUPPORTER_OFFER: 'extension-page',
   SUPPORTER_COSMETICS: 'extension-page',
   SUPPORTER_APPEARANCE: 'twitch-any',
   SUPPORTER_FINISH_INTENT: 'extension-page',

@@ -46,37 +46,75 @@ export function resolveSupporterBackendOrigin(target = resolveExtensionTarget(),
 }
 
 /**
- * Sign in with Twitch build stage, from PULSE_EXTENSION_TWITCH_SIGNIN:
+ * Sign in with Twitch build stage.
  *
- *   - `off` (default, and today's store builds): no Twitch sign-in; the options
- *     page says Supporter sign-ups are not open and keeps the invited-tester
- *     device link behind a closed disclosure.
+ *   - `off`: no Twitch sign-in; the options page keeps the invited-tester device
+ *     link behind a closed disclosure and points purchases at streampulse.stream.
  *   - `tester`: development and preview builds only, for invited testers while
  *     the backend runs Twitch sign-in in pilot mode. Store builds refuse it.
- *   - `public`: Continue with Twitch for everyone. A store build accepts it only
- *     once that store's manifest already requests `identity` (the release that
- *     also updates the permission allowlist and the store permission docs).
+ *   - `public`: Continue with Twitch for everyone.
  *
- * A development build with Twitch on gets `identity` added to its generated
- * manifest only; the checked-in manifests stay unchanged.
+ * Store builds (cws, edge, firefox) derive the stage from their checked-in
+ * manifest, so the manifest is the one auditable switch per store: `identity`
+ * requested means `public`, no `identity` means `off`. PULSE_EXTENSION_TWITCH_SIGNIN
+ * may be given but must agree, or the build fails (a store package that asks for
+ * `identity` and never uses it is an unused permission, which store review
+ * rejects; one that turns sign-in on without the permission cannot open Twitch).
+ * The release that adds `identity` to a store manifest also adds that target to
+ * SIGN_IN_PUBLIC_TARGETS in extension-permission-allowlists.mjs and updates the
+ * store permission docs; tests/manifestPermissions.test.ts fails until all move
+ * together.
+ *
+ * Development builds read PULSE_EXTENSION_TWITCH_SIGNIN (default `off`); with
+ * Twitch on, `identity` is added to the generated manifest only and the
+ * checked-in development manifest stays unchanged.
  */
 export const TWITCH_SIGNIN_STAGES = ['off', 'tester', 'public']
 
+/** The stage a store manifest implies: `identity` requested means public. */
+export function storeManifestTwitchSignInStage(target, manifest = undefined) {
+  const permissions = (manifest ?? JSON.parse(readFileSync(manifestPathForTarget(target), 'utf8'))).permissions ?? []
+  return permissions.includes('identity') ? 'public' : 'off'
+}
+
 export function resolveTwitchSignInStage(target = resolveExtensionTarget(), raw = process.env.PULSE_EXTENSION_TWITCH_SIGNIN, manifest = undefined) {
-  const value = String(raw ?? '').trim().toLowerCase() || 'off'
-  if (!TWITCH_SIGNIN_STAGES.includes(value)) {
+  const given = String(raw ?? '').trim().toLowerCase()
+  if (given && !TWITCH_SIGNIN_STAGES.includes(given)) {
     throw new Error(`unknown PULSE_EXTENSION_TWITCH_SIGNIN=${JSON.stringify(raw)}; expected one of ${TWITCH_SIGNIN_STAGES.join(', ')}`)
   }
-  if (isStoreTarget(target) && value === 'tester') {
+  if (!isStoreTarget(target)) return given || 'off'
+  if (given === 'tester') {
     throw new Error(`PULSE_EXTENSION_TWITCH_SIGNIN=tester is for development and preview builds only; ${target} store builds use off or public`)
   }
-  if (isStoreTarget(target) && value === 'public') {
-    const permissions = (manifest ?? JSON.parse(readFileSync(manifestPathForTarget(target), 'utf8'))).permissions ?? []
-    if (!permissions.includes('identity')) {
-      throw new Error(`PULSE_EXTENSION_TWITCH_SIGNIN=public needs the ${target} manifest to request identity first (with the permission allowlist and store permission docs in the same change)`)
-    }
+  const derived = storeManifestTwitchSignInStage(target, manifest)
+  if (given && given !== derived) {
+    throw new Error(derived === 'off'
+      ? `PULSE_EXTENSION_TWITCH_SIGNIN=public needs the ${target} manifest to request identity first (with the permission allowlist and store permission docs in the same change)`
+      : `PULSE_EXTENSION_TWITCH_SIGNIN=off disagrees with the ${target} manifest, which requests identity: a store package must not request a permission it never uses`)
   }
-  return value
+  return derived
+}
+
+/**
+ * Stripe customer-portal login link for the "Lost Twitch access" row, from
+ * PULSE_EXTENSION_STRIPE_PORTAL_LOGIN_URL. Empty is allowed (the row then says
+ * to email us). A set value must be https://billing.stripe.com/p/login/<id>
+ * with no credentials, port, query or fragment, or the build fails: a store
+ * package never ships a link the runtime would refuse. Same rule as the
+ * website's VITE_STRIPE_PORTAL_LOGIN_URL and src/shared/supporterOffer.ts.
+ */
+export function resolveStripePortalLoginUrl(raw = process.env.PULSE_EXTENSION_STRIPE_PORTAL_LOGIN_URL) {
+  const value = String(raw ?? '').trim()
+  if (!value) return ''
+  let url
+  try { url = new URL(value) } catch { url = null }
+  const ok = url !== null
+    && url.protocol === 'https:'
+    && url.hostname === 'billing.stripe.com'
+    && !url.username && !url.password && !url.port && !url.search && !url.hash
+    && /^\/p\/login\/[A-Za-z0-9_]+$/.test(url.pathname)
+  if (!ok) throw new Error('PULSE_EXTENSION_STRIPE_PORTAL_LOGIN_URL must be an https://billing.stripe.com/p/login/<id> address with no query or fragment')
+  return url.href
 }
 
 /** The generated manifest for a build: development builds with Twitch on also request `identity`. */

@@ -5,11 +5,13 @@ import { FINISHES, SAMPLE_KIT, TENURES, finishVars, kitEmoteSrc, tenureIndex, ty
 import { PeakMark } from '../ui/PeakMark.tsx'
 import { names as PERK_NAMES } from '../shared/supporter-perks.json'
 import { useSupporterAppearanceDetails } from '../ui/useSupporterAppearance.ts'
+import { useSupporterOffer } from './useSupporterOffer.ts'
 
 /** How long the banner waits for the membership answer before showing the sample pile. */
 const SAMPLE_AFTER_MS = 1200
-/** USD only at launch, matching the public /supporter page. */
+/** USD only at launch, matching the public /supporter page; shown only while sales are open. */
 const PRICE_SHORT = 'US$4.99/mo'
+const NOT_OPEN = 'Coming soon'
 
 /**
  * The full-settings Supporter banner, "Crown, staged" (direction B of the
@@ -20,7 +22,8 @@ const PRICE_SHORT = 'US$4.99/mo'
  * (src/shared/supporter-perks.json): title paint, tenure crest, emote rain,
  * Supporter card.
  * A Supporter sees their own paint and crest; everyone else sees the lab's
- * sample, with the price.
+ * sample, with the price once sales are open (the worker's SUPPORTER_OFFER)
+ * and "Coming soon" until then.
  *
  * It owns the settings page's membership check (the same worker reply the
  * overlay header uses) and reports whether perks are on, so the page's other
@@ -29,6 +32,7 @@ const PRICE_SHORT = 'US$4.99/mo'
  */
 export function SupporterBanner({ onOpen, onPerks }: { onOpen: () => void; onPerks?: (perks: boolean | undefined) => void }) {
   const [answered, setAnswered] = useState(false)
+  const { offer } = useSupporterOffer()
   const request = useCallback(() => sendBackgroundMessage({ type: 'SUPPORTER_APPEARANCE' }).then(reply => {
     if (reply && 'type' in reply && reply.type === 'SUPPORTER_APPEARANCE' && !reply.unverified) setAnswered(true)
     return reply
@@ -63,7 +67,7 @@ export function SupporterBanner({ onOpen, onPerks }: { onOpen: () => void; onPer
           <span className="pulse-settings-supporter-banner-eyebrow">
             <PeakMark size={13} strokeWidth={2} stroke="currentColor" />
             <span>{own ? 'Your kit' : 'Pulse Supporter'}</span>
-            {state === 'sample' ? <em>· {PRICE_SHORT}</em> : null}
+            {state === 'sample' ? <em data-supporter-offer-chip={offer?.state === 'open' ? 'open' : 'closed'}>· {offer?.state === 'open' ? PRICE_SHORT : NOT_OPEN}</em> : null}
           </span>
           <strong>{own ? 'Yours lands on top' : 'Your crest lands on top'}</strong>
           <span className="pulse-settings-supporter-banner-perks">

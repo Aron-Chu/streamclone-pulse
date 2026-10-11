@@ -1,6 +1,7 @@
 import { test, expect } from '../helpers/testFixtures.ts'
 import type { CDPSession } from '@playwright/test'
 import { openTwitchChannel } from '../helpers/mockTwitch.ts'
+import { routeOpenOffer } from '../helpers/mockApi.ts'
 
 /**
  * The invited-tester Supporter journey with Twitch sign-in off (stage A),
@@ -56,6 +57,7 @@ test('tester purchase journey needs no codes, refreshes or reloads, and revocati
   test.setTimeout(150_000)
   await prepare({ scenario: 'live-ready' })
   const context = extension.context
+  await routeOpenOffer(context)
   const website: string[] = []
   await context.route('https://streampulse.stream/**', route => {
     if (route.request().resourceType() === 'document') website.push(route.request().url())
@@ -135,8 +137,10 @@ test('tester purchase journey needs no codes, refreshes or reloads, and revocati
   await expect(settings.getByText('you do not need to pay again', { exact: false })).toBeVisible()
   await settings.screenshot({ path: info.outputPath('journey-2-payment-pending.png'), fullPage: true, animations: 'disabled' })
   status = 'active'
-  await expect(settings.locator('[data-journey-state="active"]')).toBeVisible({ timeout: 30_000 })
-  await expect(settings.getByText('You are a Supporter', { exact: true })).toBeVisible()
+  // The welcome after a purchase started here (supporter launch spec §3.6).
+  await expect(settings.locator('[data-journey-state="welcome"]')).toBeVisible({ timeout: 30_000 })
+  await expect(settings.getByText('You’re a Supporter. Thank you.', { exact: true })).toBeVisible()
+  await expect(settings.getByRole('button', { name: 'Pick your finish', exact: true })).toBeVisible()
 
   // The worker applied the explicit choice once access was verified.
   await expect.poll(() => cosmeticWrites).toEqual([{ enabled: true, finish: 'halo' }])

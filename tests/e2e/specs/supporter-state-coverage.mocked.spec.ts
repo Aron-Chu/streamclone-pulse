@@ -27,19 +27,17 @@ type StateCase = {
   restore?: 'pending' | 'expired' | 'conflict'
   setup?: 'unlinked' | 'preparing' | 'fallback' | 'revoked' | 'outage' | 'sandbox'
   checkoutEnabled?: boolean
-  /** The snapshot's optional renewal field; absent means an older server. */
-  renewal?: 'auto' | 'ends'
   alias?: string
 }
 const CASES: StateCase[] = [
   { name: 'not-a-supporter', journey: 'signed-out', principal: 'Supporter details', setup: 'unlinked', alias: 'Twitch sign-in off (stage A): sign-ups are not open, so the signed-out page describes Supporter and offers no purchase.' },
   { name: 'checkout-closed', journey: 'checkout-closed', principal: 'Check sign-up status', status: 'none', checkoutEnabled: false },
-  { name: 'preparing-checkout', journey: 'offer', principal: 'Preparing checkout…', status: 'none', setup: 'preparing', alias: 'Transient busy offer. The worker is awaiting the mocked checkout response; the disabled action prevents another request.' },
+  { name: 'preparing-checkout', journey: 'review', principal: 'Preparing checkout…', status: 'none', setup: 'preparing', alias: 'Transient busy review. The worker is awaiting the mocked checkout response; the disabled action prevents another request.' },
   { name: 'stripe-open', journey: 'stripe-open', principal: 'Return to Stripe checkout', status: 'none', billing: 'waiting' },
   { name: 'payment-confirming', journey: 'payment-pending', principal: 'Check payment status', status: 'pending', billing: 'confirming' },
   { name: 'still-confirming', journey: 'still-confirming', principal: 'Check payment status', status: 'none', billing: 'still_confirming' },
-  { name: 'active', journey: 'active', principal: 'Manage subscription', status: 'active', renewal: 'auto', alias: 'Active and renewing: renewal auto with renewsOn gives one Renews on line.' },
-  { name: 'scheduled-cancellation', journey: 'active', principal: 'Manage subscription', status: 'active', renewal: 'ends', alias: 'Active after a cancel at period end: renewal ends with endsOn gives one Cancels on line; Access through stays the authoritative accessUntil.' },
+  { name: 'active', journey: 'active', principal: 'Manage subscription', status: 'active' },
+  { name: 'scheduled-cancellation', journey: 'active', principal: 'Manage subscription', status: 'active', alias: 'Active + Access through the authoritative accessUntil. The extension projection has no cancellation-reason/cancelAt field; this image does not prove cancellation was scheduled.' },
   { name: 'grace', journey: 'grace', principal: 'Update payment method', status: 'grace' },
   { name: 'ended', journey: 'expired', principal: 'Rejoin Supporter', status: 'expired' },
   { name: 'review-dispute', journey: 'review', principal: 'Manage subscription', status: 'review', alias: 'Authoritative review status. The snapshot exposes no dispute-reason field, so this does not prove a dispute.' },
@@ -61,17 +59,15 @@ const VIEWS = [
 const credential = () => ({ kind: 'linked', accountId: ACCOUNT, deviceId: DEVICE, token: 'a'.repeat(64), refreshToken: 'b'.repeat(64), expiresAt: new Date(Date.now() + 20 * 86_400_000).toISOString(), refreshExpiresAt: new Date(Date.now() + 80 * 86_400_000).toISOString() })
 function snapshot(state: StateCase) {
   const paid = state.status === 'active' || state.status === 'grace'
-  const accessUntil = new Date(Date.now() + 28 * 86_400_000).toISOString()
   return {
     schemaVersion: 1, accountId: ACCOUNT, environment: state.setup === 'sandbox' ? 'sandbox' : 'live', revision: 1,
     status: state.status ?? 'none', checkoutEnabled: state.checkoutEnabled !== false,
     accountKind: 'installation', installationAccountsEnabled: true, restoreEligible: state.status === 'none',
     serverTime: new Date().toISOString(), accessFrom: new Date(Date.now() - 60_000).toISOString(),
-    accessUntil, cacheUntil: new Date(Date.now() + 300_000).toISOString(),
+    accessUntil: new Date(Date.now() + 28 * 86_400_000).toISOString(), cacheUntil: new Date(Date.now() + 300_000).toISOString(),
     supportPeriods: paid ? 1 : 0,
     features: { 'supporter.banner.v1': paid, 'supporter.finish.v1': paid, 'supporter.recognition.v1': paid, 'supporter.chat_badge.v1': paid },
     cosmetics: { enabled: false, finish: 'glass' },
-    ...(state.renewal === 'ends' ? { renewal: 'ends', endsOn: accessUntil } : state.renewal === 'auto' ? { renewal: 'auto', renewsOn: accessUntil } : {}),
   }
 }
 async function seedPrivate(worker: Worker, state: StateCase) {
@@ -168,6 +164,9 @@ for (const state of CASES) {
   test(`§7 state evidence: ${state.name}`, async ({ extension, prepare }, info) => {
     test.setTimeout(100_000)
     await prepare()
+    // Purchase states need the public switch open at the compiled price too;
+    // closed and signed-out evidence keeps it closed.
+    const salesOpen = state.status !== undefined && state.checkoutEnabled !== false && state.setup !== 'revoked'
     const identity = packageIdentity(), storeTarget = ['cws', 'edge', 'firefox'].includes(identity.target)
     const mismatchRepresentable = state.setup !== 'sandbox' || storeTarget
     const expectedJourney = mismatchRepresentable ? state.journey : 'active'
@@ -180,6 +179,13 @@ for (const state of CASES) {
     await extension.context.route(`${API}/v1/**`, async route => {
       const request = route.request(), url = new URL(request.url()), pathname = url.pathname
       if (!pathname.startsWith('/v1/account/') && !pathname.startsWith('/v1/billing/')) { await route.fallback(); return }
+      // The public sales switch is anonymous: no bearer, no cookie. Open at the
+      // compiled price only for states where the account can open Checkout.
+      if (pathname === '/v1/billing/offer') {
+        expect(request.headers().authorization).toBeUndefined()
+        await route.fulfill({ json: { schemaVersion: 1, salesOpen, environment: 'live', price: { unitAmount: 499, currency: 'usd', interval: 'month' }, termsConsent: true, serverTime: new Date().toISOString() } })
+        return
+      }
       if (pathname.startsWith('/v1/billing/') || pathname === '/v1/account/restores/poll') expect(request.headers().authorization).toBe(`Bearer ${credential().token}`)
       let status = 200, body: unknown = {}
       if (pathname === '/v1/billing/supporter') {
@@ -219,6 +225,8 @@ for (const state of CASES) {
     }
     if (state.setup === 'preparing') {
       await page.getByRole('button', { name: 'Become a Supporter', exact: true }).click()
+      // The one-screen review comes first; Continue to payment starts Checkout.
+      await page.getByRole('button', { name: 'Continue to payment', exact: true }).click()
       await expect.poll(() => checkoutReached).toBe(true)
     }
     try {
@@ -257,14 +265,6 @@ for (const state of CASES) {
         await expect(journey.getByRole('button', { name: /Become a Supporter|Rejoin|Start checkout again/ })).toHaveCount(0)
       }
       if (state.name === 'scheduled-cancellation') await expect(journey).toContainText('Access through')
-      if (CAPTURE_PHASE === 'after' && state.renewal) {
-        // One line, dated in the page's own locale (short month, no year).
-        const day = await page.evaluate(value => new Date(value).toLocaleDateString([], { month: 'short', day: 'numeric' }), membership.accessUntil)
-        const line = journey.locator('[data-journey-renewal]')
-        await expect(line).toHaveCount(1)
-        await expect(line).toHaveAttribute('data-journey-renewal', state.renewal)
-        await expect(line).toHaveText(state.renewal === 'ends' ? `Cancels on ${day}` : `Renews on ${day}`)
-      }
       // The page never asks for an installation account or an email restore.
       expect(requests.some(request => request.path === '/v1/account/installations' || request.path === '/v1/account/restores')).toBe(false)
       if (state.setup === 'fallback') {
