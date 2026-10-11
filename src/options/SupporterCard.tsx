@@ -12,10 +12,10 @@ import type { SupporterFinishId } from '../ui/supporterFinish.ts'
  * that is the StreamPulse account this extension is connected to (masked the
  * way streampulse.stream shows it), or nobody. While the account state is still
  * loading or could not be read, the card is `unknown`: it claims neither an
- * account nor its absence. Sign in with Twitch is compiled off in this build
- * (`TWITCH_SIGNIN_ENABLED`), so there is no Twitch name or picture to show. The
- * `twitch` kind is the seam for when it ships: feed it the display-only profile
- * the sign-in returns.
+ * account nor its absence. With Continue with Twitch compiled on
+ * (`TWITCH_SIGNIN_STAGE` tester or public), the `twitch` kind carries the
+ * display-only profile that sign-in returns for this browser session; it is
+ * never stored by StreamPulse.
  */
 export type CardIdentity =
   | { kind: 'none' }

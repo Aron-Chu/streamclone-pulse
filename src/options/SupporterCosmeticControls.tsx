@@ -127,8 +127,14 @@ export function SupporterCosmeticControls({ entitlement, onSaved, onDraft }: {
   }
   const selectedLabel = SUPPORTER_FINISH_OPTIONS.find(option => option.id === finish)?.label ?? 'Default'
   const intentLabel = SUPPORTER_FINISH_OPTIONS.find(option => option.id === intent)?.label
-  const appliedLabel = SUPPORTER_FINISH_OPTIONS.find(option => option.id === appliedFinish)?.label ?? 'Default'
   const unchanged = finish === appliedFinish
+  // Sign-ups closed: a choice is kept for when Supporter opens, not for a membership that cannot start yet.
+  const checkoutOpen = entitlement?.state === 'ready' && entitlement.checkoutEnabled === true
+  /** The swatch's state, as a chip on it: the paint you are trying, and the one in use. */
+  const chip = (id: SupporterCosmetics['finish'] | null) => <>
+    {id === appliedFinish ? <span className="pulse-supporter-tile-chip" data-chip="equipped">Equipped</span> : null}
+    {id === finish && !unchanged ? <span className="pulse-supporter-tile-chip" data-chip="previewing">Previewing</span> : null}
+  </>
 
   function selectFinish(value: typeof finish) {
     if (lastAppliedKey.current === null) chosenWhileChecking.current = true
@@ -172,7 +178,7 @@ export function SupporterCosmeticControls({ entitlement, onSaved, onDraft }: {
   return <PulseSectionCard
     title="Your look"
     headingLevel={3}
-    meta={unknown ? undefined : allowed ? 'Wave, sheen and rain save right away' : 'Try anything. It applies when you support.'}
+    meta={unknown ? undefined : allowed ? 'Wave, sheen and rain save right away' : 'Try paint, wave and sheen. It applies when you support.'}
   >
     <div className="pulse-supporter-look" data-preview-finish={finish ?? 'default'}>
       <fieldset className="pulse-supporter-look-row" disabled={busy}>
@@ -182,6 +188,7 @@ export function SupporterCosmeticControls({ entitlement, onSaved, onDraft }: {
             <input type="radio" name="supporter-finish" value="finish-default" aria-label="Default" checked={finish === null} onChange={() => selectFinish(null)} />
             <span className="pulse-supporter-paint-sample" style={{ color: 'var(--pulse-accent-soft, #c4b5fd)' }} aria-hidden="true">Aa</span>
             <small>Default</small>
+            {chip(null)}
           </label>
           {SUPPORTER_FINISH_OPTIONS.map(option => <label key={option.id} className="pulse-supporter-tile" title={option.description}>
             <input
@@ -194,15 +201,13 @@ export function SupporterCosmeticControls({ entitlement, onSaved, onDraft }: {
             />
             <span className="pulse-paint pulse-supporter-paint-sample" data-finish={option.id} data-wave="smooth" data-sheen="none" data-text="Aa" aria-hidden="true">Aa</span>
             <small>{option.label}</small>
+            {chip(option.id)}
           </label>)}
         </div>
       </fieldset>
       <SupporterPaintStyleFields finish={finish} style={paint.style} onChoose={next => void paint.choose(next)} />
       <EmoteRainField banner={banner} perks={unknown ? undefined : allowed} />
     </div>
-    <p className="pulse-supporter-detail" data-supporter-accent-state={unchanged ? 'equipped' : 'preview'}>
-      {unchanged ? `${appliedLabel} active` : `Preview: ${selectedLabel} / Active: ${appliedLabel}`}
-    </p>
     <p className="pulse-supporter-detail" aria-live="polite">{paint.status || 'Wave and sheen save to this browser profile right away and show whenever your finish is equipped.'}</p>
     <div className="pulse-account-link-actions">
       {unknown ? (
@@ -213,10 +218,10 @@ export function SupporterCosmeticControls({ entitlement, onSaved, onDraft }: {
         </button>
       ) : finish && finish !== intent ? (
         <button type="button" disabled={intentBusy} aria-busy={intentBusy} onClick={() => void chooseForLater(finish)}>
-          {intentBusy ? 'Saving...' : `Use ${selectedLabel} when Supporter starts`}
+          {intentBusy ? 'Saving...' : checkoutOpen ? `Use ${selectedLabel} when Supporter starts` : 'Save for when Supporter opens'}
         </button>
       ) : (
-        <button type="button" disabled>{finish ? `${selectedLabel} chosen` : 'Default active'}</button>
+        <button type="button" disabled>{!finish ? 'Default active' : checkoutOpen ? `${selectedLabel} chosen` : 'Saved for when Supporter opens'}</button>
       )}
       {!allowed && !unknown && intent ? <button type="button" disabled={intentBusy} onClick={() => void chooseForLater(null)}>Clear choice</button> : null}
     </div>
@@ -242,8 +247,8 @@ export function SupporterCosmeticControls({ entitlement, onSaved, onDraft }: {
 function EmoteRainField({ banner, perks }: { banner: ReturnType<typeof usePulseBanner>; perks: boolean | undefined }) {
   const [message, setMessage] = useState('')
   const [saving, setSaving] = useState(false)
-  // Locked, the row shows the sample look's rain.
-  const shown = perks === false ? 'rain' : banner.value.mode
+  // Locked, the row shows the saved choice: Rain is never pressed while rain is off.
+  const shown = banner.value.mode
   // The shared hook reports the result once its write settles (status and
   // saving change together), so this row reads only the save it started.
   useEffect(() => {

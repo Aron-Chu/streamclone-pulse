@@ -29,6 +29,13 @@ type Ports = {
   writeIntent?: (value: FinishIntent | null) => Promise<void>
   readInstallationKey?: () => Promise<unknown>
   writeInstallationKey?: (value: InstallationBootstrap | null) => Promise<void>
+  /**
+   * This device left `accountId`: an explicit sign-out, Sign out everywhere,
+   * or the server rejecting its credential (401). The owner removes its local
+   * copy of that account's data. Called, never awaited, inside this queue: the
+   * owner serializes the removal with work that itself waits on this queue.
+   */
+  accountForgotten?: (accountId: string) => void
 }
 const secret =(value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)
 const id = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9-]{36}$/.test(value)
@@ -87,9 +94,18 @@ function projectEntitlement(result: { status: number; body: unknown }, accountId
     // Only a literal true opens a purchase path; anything else is closed.
     checkoutEnabled: body.checkoutEnabled === true,
     installationAccountsEnabled: body.installationAccountsEnabled === true,
-    accountKind: body.accountKind === 'email' || body.accountKind === 'installation' ? body.accountKind : undefined,
+    accountKind: body.accountKind === 'email' || body.accountKind === 'installation' || body.accountKind === 'twitch' ? body.accountKind : undefined,
     restoreEligible: body.restoreEligible === true,
+    ...renewal(body),
   }
+}
+
+/** The optional renewal fields, only in their documented shapes; anything else says nothing. */
+function renewal(body: Record<string, unknown>): Pick<Extract<SupporterEntitlement, { state: 'ready' }>, 'renewal' | 'renewsOn' | 'endsOn'> {
+  const value = body.renewal
+  if (value === 'auto') return date(body.renewsOn) ? { renewal: value, renewsOn: body.renewsOn } : { renewal: value }
+  if (value === 'ends') return date(body.endsOn) ? { renewal: value, endsOn: body.endsOn } : { renewal: value }
+  return value === 'none' ? { renewal: value } : {}
 }
 
 const FINISHES: ReadonlySet<string> = new Set(['glass', 'etched', 'halo'])
@@ -122,7 +138,7 @@ function entitlementCacheMs(value: SupporterEntitlement, result: { status: numbe
 /** What a settings or Twitch surface would render differently. Revision alone is not a change. */
 function fingerprint(accountId: string, value: SupporterEntitlement): string {
   if (value.state !== 'ready') return `${accountId}:${value.state}`
-  return JSON.stringify([accountId, value.status, value.accessUntil ?? null, value.features, value.supportPeriods, value.cosmetics ?? null, value.checkoutEnabled === true])
+  return JSON.stringify([accountId, value.status, value.accessUntil ?? null, value.features, value.supportPeriods, value.cosmetics ?? null, value.checkoutEnabled === true, value.renewal ?? null, value.renewsOn ?? value.endsOn ?? null])
 }
 
 /** One coordinator per worker; installation refresh retries use the server's bounded idempotency window. */
@@ -205,6 +221,32 @@ export class SupporterAccountCoordinator {
   }
 
   /**
+   * Sign out everywhere answered 204: the server already revoked every device
+   * of `accountId`, this one included. Forget the stored credential as an
+   * explicit sign-out does, without another revocation request (it could only
+   * answer 401, and a lost reply would leave a tombstone for a credential that
+   * is already dead). A different identity stored meanwhile is left alone.
+   */
+  forgetSignedOutEverywhere(accountId: string): Promise<SupporterAccountState> {
+    this.generation++
+    const generation = this.generation
+    const task = this.queue.then(async (): Promise<SupporterAccountState> => {
+      const raw = object(await this.ports.read())
+      const credentials = raw.kind === 'linked' ? linked(raw) : raw.kind === 'refreshing' && raw.installation === true ? linked(raw.credentials) : null
+      if (credentials?.accountId !== accountId) return this.perform('status', generation)
+      this.forgetAccount(accountId)
+      await this.ports.writeInstallationKey?.(null)
+      await this.ports.writeIntent?.(null)
+      this.lastProjection = undefined
+      this.revocationUnconfirmed = false
+      this.renewalPause = null
+      return this.clear('signed_out')
+    }).catch((): SupporterAccountState => ({ state: 'error' }))
+    this.queue = task
+    return task
+  }
+
+  /**
    * Identity generation. Work that leaves the queue (an auth window) records
    * it first; a cancel or disconnect since then makes `adopt` refuse.
    */
@@ -269,7 +311,7 @@ export class SupporterAccountCoordinator {
       const result = await operation(credentials.token)
       if (generation !== this.generation) { await discardStale?.(result).catch(() => undefined); throw new Error('account_identity_changed') }
       if (result.status === 401) {
-        await this.clear('relink_required')
+        await this.rejected(credentials.accountId)
         throw new Error('account_authorization_required')
       }
       return result
@@ -329,7 +371,7 @@ export class SupporterAccountCoordinator {
         const result = await this.ports.request('/v1/billing/supporter', undefined, credentials.token)
         if (generation !== this.generation) return { state: 'not_linked' }
         if (result.status === 401) {
-          await this.clear('relink_required')
+          await this.rejected(credentials.accountId)
           return { state: 'not_linked' }
         }
         const elapsed = performance.now() - started
@@ -407,7 +449,7 @@ export class SupporterAccountCoordinator {
       const result = await this.ports.request('/v1/billing/cosmetics', cosmetics, credentials.token)
       if (generation !== this.generation) return { state: 'not_linked' }
       if (result.status === 401) {
-        await this.clear('relink_required')
+        await this.rejected(credentials.accountId)
         return { state: 'not_linked' }
       }
       if (result.status !== 200) throw new Error('finish_intent_refused')
@@ -457,6 +499,21 @@ export class SupporterAccountCoordinator {
     return { state } as SupporterAccountState
   }
 
+  /** Best effort; a failure here never blocks signing out. */
+  private forgetAccount(accountId: string): void {
+    try { this.ports.accountForgotten?.(accountId) } catch { /* the credential is still cleared */ }
+  }
+
+  /**
+   * The server rejected this device's credential (401): only the credential
+   * goes. The account's watched history, bookmarks and notes stay in this
+   * browser and come back when the same account signs in again; they are
+   * removed only by an explicit, confirmed Sign out or Sign out everywhere.
+   */
+  private async rejected(_accountId: string): Promise<SupporterAccountState> {
+    return this.clear('relink_required')
+  }
+
   private async discardCredential(credentials: Linked): Promise<SupporterAccountState> {
     return this.revoke(credentials.token)
   }
@@ -483,7 +540,7 @@ export class SupporterAccountCoordinator {
       if (!credentials || generation !== this.generation) return false
       const result = await this.ports.request('/v1/billing/cosmetics', value, credentials.token)
       if (generation !== this.generation) return false
-      if (result.status === 401) await this.clear('relink_required')
+      if (result.status === 401) await this.rejected(credentials.accountId)
       if (result.status !== 200) return false
       // An explicit choice supersedes any earlier pre-purchase choice, and open
       // Twitch tabs apply it now instead of at their next scheduled check.
@@ -512,7 +569,11 @@ export class SupporterAccountCoordinator {
       // Deliberately leaving an account also abandons a pending finish choice.
       await this.ports.writeIntent?.(null)
       this.lastProjection = undefined
-      if (credentials) return this.revoke(credentials.token)
+      if (credentials) {
+        // Before any network I/O: a failed revocation must not keep the copy.
+        this.forgetAccount(credentials.accountId)
+        return this.revoke(credentials.token)
+      }
       if (raw.kind === 'refreshing') this.revocationUnconfirmed = true
       // Clear before network I/O so a failed request cannot keep local access.
       await this.ports.write(null)
@@ -546,6 +607,8 @@ export class SupporterAccountCoordinator {
       const retryMs = unattemptedRefreshRetryMs(result)
       if (retryMs) return this.keepUnrenewed(credentials, retryMs)
       if (installation && (result.status >= 500 || result.status === 408)) return renewalWaiting()
+      // A refresh the server rejects outright: the session was revoked.
+      if (result.status === 401) return this.rejected(credentials.accountId)
       const next = linked(result.body)
       if (result.status !== 200 || !next || next.accountId !== credentials.accountId || next.deviceId !== credentials.deviceId) return this.clear('relink_required')
       this.renewalPause = null

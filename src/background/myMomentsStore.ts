@@ -9,9 +9,9 @@ export interface PersonalData {
   history: LibraryMoment[]
   notes: Record<string, string>
   /**
-   * Saves made without an account. They never leave this database; each keeps
-   * the hosted bookmark shape so a later, explicit account import can post them
-   * as-is. Account scopes leave this empty.
+   * Saves made without an account. They leave this database only through an
+   * explicit "Add to account" (`import-device-saves`), which posts the hosted
+   * bookmark shape each one keeps. Account scopes leave this empty.
    */
   bookmarks: PulseBookmark[]
   /** Account scopes only: this browser's side of the account's synced history. */
@@ -79,6 +79,18 @@ async function database(): Promise<IDBDatabase> {
     request.onsuccess = () => resolve(request.result)
     request.onerror = () => reject(request.error)
   })
+}
+/** Removes one scope's record: an account's copy (history, notes) after this device leaves it. */
+export async function deletePersonal(scope: string): Promise<void> {
+  const db = await database()
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('personal', 'readwrite')
+      tx.objectStore('personal').delete(scope)
+      tx.oncomplete = () => resolve()
+      tx.onerror = tx.onabort = () => reject(tx.error ?? new Error('Local storage unavailable'))
+    })
+  } finally { db.close() }
 }
 export async function personalTransaction(scope: string, update?: (data: PersonalData) => PersonalData): Promise<PersonalData> {
   const db = await database()

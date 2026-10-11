@@ -1,5 +1,5 @@
 import { TWITCH_SIGNIN_ENABLED } from '../shared/twitchSignIn.ts'
-import { ACCOUNT_BACKEND_URL, accountRequestsAllowed, supporterAccount, twitchSignInMetaRecord } from './supporterAccountRuntime.ts'
+import { ACCOUNT_BACKEND_URL, accountRequestsAllowed, bindTwitchStepUp, supporterAccount, twitchSignInMetaRecord } from './supporterAccountRuntime.ts'
 import { TwitchSignIn, twitchSurface, type WebAuthFlowDetails } from './twitchSignIn.ts'
 
 type IdentityApi = {
@@ -27,6 +27,7 @@ export const twitchSignIn = new TwitchSignIn({
   launchWebAuthFlow: typeof identity?.launchWebAuthFlow === 'function' ? details => identity.launchWebAuthFlow!(details) : undefined,
   redirectUrl: typeof identity?.getRedirectURL === 'function' ? () => identity.getRedirectURL!() : undefined,
   surface,
+  buildTarget: target === 'development' ? 'development' : 'store',
   chromium: surface !== 'firefox' && !runtimeUrl.startsWith('moz-extension:'),
   // The same origin as the stored credential and its refresh: a development
   // build pinned to a local backend never signs in against production.
@@ -49,3 +50,6 @@ export const twitchSignIn = new TwitchSignIn({
     },
   },
 })
+
+// Managing a subscription asks for a recent Twitch check when the server requires one.
+bindTwitchStepUp(mode => twitchSignIn.stepUp(mode))

@@ -1,5 +1,6 @@
 import { DEFAULT_BACKEND_URL, getBackendUrl } from '../shared/storage.ts'
 import { ACCOUNT_REVISION_KEY, SUPPORTER_REVISION_KEY } from '../shared/supporterAccount.ts'
+import { TWITCH_SIGNIN_ENABLED, type TwitchSignInMode, type TwitchStepUpResult } from '../shared/twitchSignIn.ts'
 import { AccountRequestNotSent, SupporterAccountCoordinator } from './supporterAccount.ts'
 import { SupporterPayFirstCoordinator } from './supporterPayFirst.ts'
 
@@ -53,6 +54,15 @@ async function access(write: boolean, value?: unknown, key: string = DEFAULT_BAC
   } finally { db.close() }
 }
 
+/**
+ * myMoments binds the removal of an account's local copy here; it imports this
+ * module, so the coordinator below cannot import it back.
+ */
+let accountDataForget: ((accountId: string) => void) | undefined
+export function bindAccountDataForget(forget: (accountId: string) => void): void {
+  accountDataForget = forget
+}
+
 /** Sign in with Twitch markers (never credentials) share the private store under their own key. */
 const TWITCH_SIGN_IN_META_KEY = `twitch-signin-meta-v1:${DEFAULT_BACKEND_URL}`
 export const twitchSignInMetaRecord = {
@@ -67,6 +77,7 @@ export const supporterAccount = new SupporterAccountCoordinator({
   writeIntent: async value => { await access(true, value, FINISH_INTENT_KEY) },
   readInstallationKey: () => access(false, undefined, INSTALLATION_KEY),
   writeInstallationKey: async value => { await access(true, value, INSTALLATION_KEY) },
+  accountForgotten: accountId => accountDataForget?.(accountId),
   // Store builds honour only live billing, so a sandbox purchase never unlocks
   // anything for real users; development builds may test against either.
   environments: typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__ ? ['live'] : ['live', 'sandbox'],
@@ -105,7 +116,18 @@ export const supporterPayFirst = new SupporterPayFirstCoordinator({
   write: async value => { await access(true, value, JOURNEY_KEY) },
   open: async url => { await chrome.tabs.create({ url }) },
   changed: async () => { await chrome.storage.local.set({ [SUPPORTER_REVISION_KEY]: crypto.randomUUID() }) },
+  twitchSignIn: TWITCH_SIGNIN_ENABLED,
+  stepUp: mode => twitchStepUp ? twitchStepUp(mode) : Promise.resolve({ ok: false, error: 'unavailable' }),
 })
+
+/**
+ * twitchSignInRuntime binds its step-up here; it imports this module, so the
+ * coordinator above cannot import it back.
+ */
+let twitchStepUp: ((mode: TwitchSignInMode) => Promise<TwitchStepUpResult>) | undefined
+export function bindTwitchStepUp(stepUp: (mode: TwitchSignInMode) => Promise<TwitchStepUpResult>): void {
+  twitchStepUp = stepUp
+}
 
 /**
  * While a link request waits, the worker collects the approval itself, so it

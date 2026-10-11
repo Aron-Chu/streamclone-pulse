@@ -107,6 +107,40 @@ describe('Sign in with Twitch worker flow', () => {
     await f.account.withCredential(async token => { expect(token).toBe('a'.repeat(64)); return { status: 200 } })
   })
 
+  it('names a development build at device link and leaves the field out on store builds', async () => {
+    const development = fixture({ ports: { buildTarget: 'development' } })
+    expect((await development.signIn.signIn('interactive')).outcome).toBe('signed_in')
+    expect(development.calls('/v1/account/auth/twitch/device')).toHaveLength(1)
+    expect(development.bodyOf('/v1/account/auth/twitch/device')).toEqual({ flowId: FLOW_ID, flowSecret: FLOW_SECRET, idToken: ID_TOKEN, buildTarget: 'development' })
+    // start-device is unchanged.
+    expect(development.bodyOf('/v1/account/auth/twitch/start-device')).toEqual({ surface: 'chrome', purpose: 'signin', mode: 'interactive', forceVerify: false })
+    for (const buildTarget of ['store', undefined] as const) {
+      const store = fixture({ ports: { buildTarget } })
+      expect((await store.signIn.signIn('interactive')).outcome).toBe('signed_in')
+      expect(store.bodyOf('/v1/account/auth/twitch/device')).toEqual({ flowId: FLOW_ID, flowSecret: FLOW_SECRET, idToken: ID_TOKEN })
+    }
+  })
+
+  it('retries the device link once without buildTarget when an older server rejects the field', async () => {
+    const old = fixture({ ports: { buildTarget: 'development' }, routes: { '/v1/account/auth/twitch/device': body => 'buildTarget' in body ? json(400, { error: 'invalid_request' }) : json(200, pair()) } })
+    expect((await old.signIn.signIn('interactive')).outcome).toBe('signed_in')
+    expect(old.calls('/v1/account/auth/twitch/device')).toHaveLength(2)
+    expect(old.bodyOf('/v1/account/auth/twitch/device', 0)).toMatchObject({ buildTarget: 'development' })
+    expect(old.bodyOf('/v1/account/auth/twitch/device', 1)).toEqual({ flowId: FLOW_ID, flowSecret: FLOW_SECRET, idToken: ID_TOKEN })
+    expect(old.stored()).toMatchObject({ kind: 'linked', accountId: ACCOUNT_ID })
+    // Only once, and only for that answer: a second refusal or another error is reported as is.
+    const refused = fixture({ ports: { buildTarget: 'development' }, routes: { '/v1/account/auth/twitch/device': () => json(400, { error: 'invalid_request' }) } })
+    expect((await refused.signIn.signIn('interactive')).outcome).toBe('error')
+    expect(refused.calls('/v1/account/auth/twitch/device')).toHaveLength(2)
+    const expired = fixture({ ports: { buildTarget: 'development' }, routes: { '/v1/account/auth/twitch/device': () => json(401, { error: 'flow_invalid_or_expired' }) } })
+    expect((await expired.signIn.signIn('interactive')).outcome).toBe('flow_expired')
+    expect(expired.calls('/v1/account/auth/twitch/device')).toHaveLength(1)
+    // A store build never retries: it sent no field to drop.
+    const store = fixture({ ports: { buildTarget: 'store' }, routes: { '/v1/account/auth/twitch/device': () => json(400, { error: 'invalid_request' }) } })
+    expect((await store.signIn.signIn('interactive')).outcome).toBe('error')
+    expect(store.calls('/v1/account/auth/twitch/device')).toHaveLength(1)
+  })
+
   it('treats a closed window as a cancel and stores nothing', async () => {
     const f = fixture({ launch: async () => { throw new Error('The user did not approve access.') } })
     const response = await f.signIn.signIn('interactive')
@@ -486,5 +520,169 @@ describe('account coordinator adopt', () => {
     expect(result).toEqual({ adopted: false, account: { state: 'error', revocationPending: true } })
     // The tombstone keeps the authority to retry revoking the unwanted pair.
     expect(c.stored()).toEqual({ kind: 'revoking', token: 'a'.repeat(64) })
+  })
+})
+
+describe('Sign out everywhere', () => {
+  const REVOKE_ALL = '/v1/account/sessions/revoke-all'
+  const stepUpNeeded = () => json(403, { error: 'recent_auth_required' })
+  const done = () => new Response(null, { status: 204 })
+  /** Answers revoke-all from a queue, the last answer repeating. */
+  const answers = (...queue: Array<() => Response>): Route => () => (queue.length > 1 ? queue.shift()! : queue[0])()
+
+  it('posts revoke-all with the device bearer, then signs this extension out with silent sign-in kept off', async () => {
+    const f = fixture({ stored: linkedRecord, meta: { v: 1, firstInstallPending: true, signedOutByUser: false, serverRevoked: false }, routes: { [REVOKE_ALL]: done } })
+    const response = await f.signIn.signOutEverywhere()
+    expect(response.everywhere).toBe('signed_out_everywhere')
+    expect(response.account).toEqual({ state: 'signed_out' })
+    expect(f.calls(REVOKE_ALL)).toHaveLength(1)
+    const [, init] = f.calls(REVOKE_ALL)[0]
+    expect(init).toMatchObject({ method: 'POST', credentials: 'omit', redirect: 'error', cache: 'no-store', body: '{}' })
+    expect((init!.headers as Record<string, string>).Authorization).toBe(`Bearer ${'c'.repeat(64)}`)
+    // No step-up was needed, and no second revocation request was made for a dead credential.
+    expect(f.calls('/v1/account/auth/twitch/start-device')).toHaveLength(0)
+    expect(f.accountRequest).not.toHaveBeenCalled()
+    expect(f.stored()).toBeNull()
+    expect(f.identityChanged).toHaveBeenCalled()
+    expect(f.meta()).toMatchObject({ signedOutByUser: true, firstInstallPending: false })
+    expect(response.status.silentEligible).toBe(false)
+    expect(response.status.profile).toBeNull()
+    // Silent sign-in stays blocked: no network, no window.
+    f.fetchMock.mockClear(); f.launch.mockClear()
+    expect((await f.signIn.signIn('silent')).outcome).toBe('interaction_required')
+    expect(f.fetchMock).not.toHaveBeenCalled()
+    expect(f.launch).not.toHaveBeenCalled()
+    // Secrets never reach the page.
+    expect(JSON.stringify(response)).not.toContain('c'.repeat(64))
+  })
+
+  it('on recent_auth_required tries one silent Twitch check and retries once', async () => {
+    const f = fixture({ stored: linkedRecord, routes: { [REVOKE_ALL]: answers(stepUpNeeded, done) } })
+    const response = await f.signIn.signOutEverywhere()
+    expect(response.everywhere).toBe('signed_out_everywhere')
+    expect(f.calls(REVOKE_ALL)).toHaveLength(2)
+    expect(f.bodyOf('/v1/account/auth/twitch/start-device')).toEqual({ surface: 'chrome', purpose: 'stepup', mode: 'silent', forceVerify: false })
+    expect(f.launch).toHaveBeenCalledWith(expect.objectContaining({ interactive: false }))
+    expect(f.stored()).toBeNull()
+  })
+
+  it('asks for a click when the silent check cannot finish, and signs nothing out', async () => {
+    const f = fixture({ stored: linkedRecord, routes: { [REVOKE_ALL]: stepUpNeeded }, launch: async () => { throw new Error('User interaction required.') } })
+    const response = await f.signIn.signOutEverywhere()
+    expect(response.everywhere).toBe('step_up_required')
+    expect(response.account).toMatchObject({ state: 'linked', accountId: ACCOUNT_ID })
+    expect(f.calls(REVOKE_ALL)).toHaveLength(1)
+    expect(f.calls('/v1/account/auth/twitch/stepup')).toHaveLength(0)
+    expect(f.stored()).toMatchObject({ kind: 'linked', token: 'c'.repeat(64) })
+    expect(f.meta()).toBeNull()
+  })
+
+  it('opens the Twitch window from a click, then retries once', async () => {
+    const f = fixture({ stored: linkedRecord, routes: { [REVOKE_ALL]: answers(stepUpNeeded, done) } })
+    const response = await f.signIn.signOutEverywhere('interactive')
+    expect(response.everywhere).toBe('signed_out_everywhere')
+    expect(f.bodyOf('/v1/account/auth/twitch/start-device')).toMatchObject({ purpose: 'stepup', mode: 'interactive' })
+    expect(f.launch).toHaveBeenCalledWith({ url: authorizeUrl(), interactive: true })
+    expect(f.calls(REVOKE_ALL)).toHaveLength(2)
+  })
+
+  it('never loops: a second recent-auth refusal after a check asks again', async () => {
+    const f = fixture({ stored: linkedRecord, routes: { [REVOKE_ALL]: stepUpNeeded } })
+    expect((await f.signIn.signOutEverywhere('interactive')).everywhere).toBe('step_up_required')
+    expect(f.calls(REVOKE_ALL)).toHaveLength(2)
+    expect(f.calls('/v1/account/auth/twitch/stepup')).toHaveLength(1)
+    expect(f.stored()).toMatchObject({ kind: 'linked' })
+  })
+
+  it('signs nothing out when the check names a different Twitch account', async () => {
+    const f = fixture({ stored: linkedRecord, routes: { [REVOKE_ALL]: stepUpNeeded, '/v1/account/auth/twitch/stepup': () => json(403, { error: 'identity_mismatch' }) } })
+    const response = await f.signIn.signOutEverywhere('interactive')
+    expect(response.everywhere).toBe('wrong_account')
+    expect(f.calls(REVOKE_ALL)).toHaveLength(1)
+    expect(f.stored()).toMatchObject({ kind: 'linked', token: 'c'.repeat(64) })
+  })
+
+  it.each([
+    [404, { error: 'not_found' }, 'not_available'],
+    // The service answered: an outage, not the connection.
+    [503, { error: 'request_unavailable' }, 'unavailable'],
+    [500, null, 'unavailable'],
+    [400, { error: 'invalid_request' }, 'unavailable'],
+  ] as const)('keeps this extension signed in on %i', async (status, body, everywhere) => {
+    const f = fixture({ stored: linkedRecord, routes: { [REVOKE_ALL]: () => json(status, body) } })
+    const response = await f.signIn.signOutEverywhere()
+    expect(response.everywhere).toBe(everywhere)
+    expect(response.account).toMatchObject({ state: 'linked' })
+    expect(f.stored()).toMatchObject({ kind: 'linked', token: 'c'.repeat(64) })
+    expect(f.calls('/v1/account/auth/twitch/start-device')).toHaveLength(0)
+    expect(f.meta()).toBeNull()
+  })
+
+  it('passes a rate limit through with its wait', async () => {
+    const f = fixture({ stored: linkedRecord, routes: { [REVOKE_ALL]: () => json(429, { error: 'try_later' }, { 'Retry-After': '900' }) } })
+    const response = await f.signIn.signOutEverywhere()
+    expect(response).toMatchObject({ everywhere: 'try_later', retryAfterSeconds: 900 })
+    expect(f.stored()).toMatchObject({ kind: 'linked' })
+  })
+
+  it('reports a network failure as unconfirmed and keeps the sign-in', async () => {
+    const f = fixture({ stored: linkedRecord, routes: { [REVOKE_ALL]: () => { throw new TypeError('Failed to fetch') } } })
+    expect((await f.signIn.signOutEverywhere()).everywhere).toBe('failed')
+    expect(f.stored()).toMatchObject({ kind: 'linked' })
+  })
+
+  it('reports a Twitch check from a click that did not finish as step_up_failed, without a retry', async () => {
+    const f = fixture({ stored: linkedRecord, routes: { [REVOKE_ALL]: stepUpNeeded, '/v1/account/auth/twitch/stepup': () => json(400, { error: 'flow_expired' }) } })
+    const response = await f.signIn.signOutEverywhere('interactive')
+    expect(response.everywhere).toBe('step_up_failed')
+    expect(f.calls(REVOKE_ALL)).toHaveLength(1)
+    expect(f.stored()).toMatchObject({ kind: 'linked', token: 'c'.repeat(64) })
+  })
+
+  it('reports an unavailable step-up service as unavailable, without a retry', async () => {
+    const f = fixture({ stored: linkedRecord, routes: { [REVOKE_ALL]: stepUpNeeded, '/v1/account/auth/twitch/stepup': () => json(503, { error: 'request_unavailable' }) } })
+    const response = await f.signIn.signOutEverywhere('interactive')
+    expect(response.everywhere).toBe('unavailable')
+    expect(f.calls(REVOKE_ALL)).toHaveLength(1)
+    expect(f.stored()).toMatchObject({ kind: 'linked' })
+  })
+
+  it('answers busy while another Twitch sign-in is open, and sends nothing', async () => {
+    let release!: () => void
+    const f = fixture({ stored: linkedRecord, routes: { [REVOKE_ALL]: done }, launch: () => new Promise(resolve => { release = () => resolve(undefined) }) })
+    const pending = f.signIn.stepUp('interactive')
+    await vi.waitFor(() => expect(f.launch).toHaveBeenCalled())
+    expect((await f.signIn.signOutEverywhere()).everywhere).toBe('busy')
+    expect(f.calls(REVOKE_ALL)).toHaveLength(0)
+    release()
+    await pending
+  })
+
+  it('treats a refused bearer as an ended sign-in', async () => {
+    const f = fixture({ stored: linkedRecord, routes: { [REVOKE_ALL]: () => json(401, { error: 'sign_in_required' }) } })
+    const response = await f.signIn.signOutEverywhere()
+    expect(response.everywhere).toBe('sign_in_required')
+    expect(f.stored()).toEqual({ kind: 'relink_required' })
+  })
+
+  it('needs a signed-in extension and the build flag', async () => {
+    const signedOut = fixture()
+    expect((await signedOut.signIn.signOutEverywhere()).everywhere).toBe('sign_in_required')
+    expect(signedOut.fetchMock).not.toHaveBeenCalled()
+    const off = fixture({ stored: linkedRecord, ports: { enabled: false } })
+    expect((await off.signIn.signOutEverywhere()).everywhere).toBe('disabled')
+    expect(off.fetchMock).not.toHaveBeenCalled()
+    expect(off.stored()).toMatchObject({ kind: 'linked' })
+  })
+
+  it('the coordinator forgets only the account that was signed out everywhere', async () => {
+    let stored: unknown = linkedRecord
+    const request = vi.fn(async () => ({ status: 204, body: null }))
+    const c = new SupporterAccountCoordinator({ read: async () => stored, write: async next => { stored = next }, request })
+    expect(await c.forgetSignedOutEverywhere('44444444-4444-4444-8444-444444444444')).toMatchObject({ state: 'linked', accountId: ACCOUNT_ID })
+    expect(stored).toMatchObject({ kind: 'linked' })
+    expect(await c.forgetSignedOutEverywhere(ACCOUNT_ID)).toEqual({ state: 'signed_out' })
+    expect(stored).toBeNull()
+    expect(request).not.toHaveBeenCalled()
   })
 })

@@ -41,9 +41,20 @@ export type SupporterEntitlement =
       checkoutEnabled?: boolean
       /** Server capability; absent on older deployments. Never opens Checkout itself. */
       installationAccountsEnabled?: boolean
-      accountKind?: 'email' | 'installation'
+      /** `twitch`: created by Continue with Twitch. `email`: an invited tester's account. */
+      accountKind?: 'email' | 'installation' | 'twitch'
       restoreEligible?: boolean
+      /**
+       * `auto` renews on `renewsOn`; `ends` was cancelled and ends on `endsOn`;
+       * `none` has no live subscription. Absent when the server did not say
+       * (older servers, or a read it could not make): show no renewal line.
+       */
+      renewal?: SupporterRenewal
+      renewsOn?: string
+      endsOn?: string
     }
+
+export type SupporterRenewal = 'auto' | 'ends' | 'none'
 
 /**
  * Whether this membership unlocks the Supporter cosmetics: a verified active or
@@ -68,10 +79,22 @@ export type SupporterAccountState =
   | { state: 'pending'; code: string; expiresAt: string; retryAfterSeconds: number }
   | { state: 'linked'; accountId: string; expiresAt: string }
 
-/** Worker-owned purchase state: provider URLs and all credentials stay private. */
+/**
+ * Worker-owned purchase state: provider URLs and all credentials stay private.
+ * With Twitch sign-in on, `sign_in_required` means no signed-in account,
+ * `step_up_required` that managing the subscription needs a Twitch check from
+ * the last 10 minutes, and `wrong_account` that the Twitch account in that
+ * check is not this account's.
+ */
 export type SupporterBillingState =
-  | { state: 'idle' | 'fallback' | 'closed' | 'active' | 'expired' | 'review' | 'unavailable' | 'error' | 'reconnect_required' }
+  | { state: 'idle' | 'fallback' | 'closed' | 'active' | 'expired' | 'review' | 'unavailable' | 'error' | 'reconnect_required' | 'sign_in_required' | 'step_up_required' | 'wrong_account' }
   | { state: 'waiting' | 'confirming' | 'still_confirming'; attemptId?: string; automaticPolling?: false }
+  /**
+   * Checkout or the portal answered 429 `try_later`: nothing new was started,
+   * and the worker sends no billing request before `retryAt` (epoch ms, from
+   * the server's Retry-After).
+   */
+  | { state: 'try_later'; retryAt: number }
 export type SupporterRestoreState =
   | { state: 'idle' | 'fallback' | 'restored' | 'expired' | 'conflict' | 'error' | 'ineligible' }
   | { state: 'unavailable'; reason?: 'connection' | 'membership' | 'membership_invalid' | 'environment_mismatch' }

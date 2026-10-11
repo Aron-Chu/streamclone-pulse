@@ -1,17 +1,32 @@
 import type { SupporterAccountState } from './supporterAccount.ts'
 
 /**
- * Client kill switch for Sign in with Twitch.
+ * Sign in with Twitch build stage, fixed at build time from
+ * PULSE_EXTENSION_TWITCH_SIGNIN (see scripts/extension-target.mjs):
  *
- * While false the options page keeps the device-code account card and the
- * worker answers TWITCH_SIGN_IN without network I/O. Turn it on only after the
- * backend's Twitch routes are mounted for this build's store surface and the
- * redirect spike has passed for every browser this build ships to. The same
- * change adds the `identity` permission to every manifest, the permission
- * allowlist and the store permission docs; tests/manifestPermissions.test.ts
- * fails until both move together.
+ *   - `off` (the default and every store build today): the options page says
+ *     Supporter sign-ups are not open yet and keeps the invited-tester device
+ *     link behind a closed disclosure. The worker answers TWITCH_SIGN_IN
+ *     without network I/O.
+ *   - `tester`: development and preview builds for invited testers while the
+ *     backend runs Twitch sign-in in pilot mode. Store builds refuse it.
+ *   - `public`: Continue with Twitch for everyone. A store build accepts it
+ *     only once that store's manifest requests `identity`; that release also
+ *     updates the permission allowlist and the store permission docs, and
+ *     tests/manifestPermissions.test.ts fails until all of them move together.
  */
-export const TWITCH_SIGNIN_ENABLED = false
+export type TwitchSignInStage = 'off' | 'tester' | 'public'
+
+export function parseTwitchSignInStage(value: unknown): TwitchSignInStage {
+  return value === 'tester' || value === 'public' ? value : 'off'
+}
+
+export const TWITCH_SIGNIN_STAGE: TwitchSignInStage = parseTwitchSignInStage(
+  typeof __TWITCH_SIGNIN_STAGE__ !== 'undefined' ? __TWITCH_SIGNIN_STAGE__ : 'off',
+)
+
+/** Client kill switch: Twitch sign-in code runs only in the tester and public stages. */
+export const TWITCH_SIGNIN_ENABLED = TWITCH_SIGNIN_STAGE !== 'off'
 
 /** `silent` never opens a window and never creates an account. */
 export type TwitchSignInMode = 'interactive' | 'silent'
@@ -80,9 +95,48 @@ export interface TwitchSignInStatus {
   profile: TwitchProfile | null
 }
 
+/**
+ * How Sign out everywhere (POST /v1/account/sessions/revoke-all) ended.
+ *
+ *   - `signed_out_everywhere`: the server ended every session and device of
+ *     the account (204); this extension is signed out too, and silent sign-in
+ *     stays off until a click signs in again.
+ *   - `step_up_required`: the server wants a Twitch check from the last 10
+ *     minutes and a silent one could not finish; a click can start it.
+ *   - `wrong_account`: the Twitch check named another Twitch account. Nothing
+ *     was signed out.
+ *   - `sign_in_required`: this device's sign-in had already ended.
+ *   - `not_available`: the route is not there yet (404). Nothing was signed out.
+ *   - `try_later`: rate limited.
+ *   - `step_up_failed`: the Twitch check from a click did not finish (window
+ *     failed, flow expired, reply not verified). Nothing was signed out.
+ *   - `unavailable`: the account service answered with an error (503
+ *     `request_unavailable`, another 5xx, an unexpected status) or reports
+ *     itself unavailable; whether it happened is not confirmed.
+ *   - `failed`: the request did not reach the service (network failure,
+ *     timeout); whether it happened is not confirmed.
+ *   - `busy`: another Twitch sign-in on this extension is still open; nothing
+ *     was sent.
+ *   - `disabled`: Twitch sign-in is off in this build; nothing was sent.
+ */
+export type TwitchSignOutEverywhereResult =
+  | 'signed_out_everywhere'
+  | 'step_up_required'
+  | 'wrong_account'
+  | 'sign_in_required'
+  | 'not_available'
+  | 'try_later'
+  | 'step_up_failed'
+  | 'unavailable'
+  | 'failed'
+  | 'busy'
+  | 'disabled'
+
 export type TwitchSignInRequest =
   | { type: 'TWITCH_SIGN_IN'; action: 'status' }
   | { type: 'TWITCH_SIGN_IN'; action: 'sign_in'; mode: TwitchSignInMode; forceVerify?: true }
+  /** `confirm`: a click asked for the Twitch window when a silent check could not finish. */
+  | { type: 'TWITCH_SIGN_IN'; action: 'sign_out_everywhere'; confirm?: true }
 
 export interface TwitchSignInResponse {
   type: 'TWITCH_SIGN_IN'
@@ -90,4 +144,6 @@ export interface TwitchSignInResponse {
   account: SupporterAccountState
   outcome?: TwitchSignInOutcome
   retryAfterSeconds?: number
+  /** Present only in the answer to `sign_out_everywhere`. */
+  everywhere?: TwitchSignOutEverywhereResult
 }

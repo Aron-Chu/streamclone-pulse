@@ -20,10 +20,9 @@ const unavailable: Record<Extract<SupporterAccountState, { state: 'unavailable' 
 const unrenewed = 'This extension is still connected, but the account service is temporarily unavailable. Your free tools still work; check again in a moment.'
 
 /**
- * Not mounted. Since the pay-first journey (#55) the options page links
- * accounts through SupporterJourney, so this card only carries Sign in with
- * Twitch (off by default) and its device-code fallback. Wire it into the
- * journey before TWITCH_SIGNIN_ENABLED is turned on.
+ * Not mounted. The Account & Supporter page signs in through SupporterJourney,
+ * which carries Continue with Twitch (PULSE_EXTENSION_TWITCH_SIGNIN tester or
+ * public) and the invited-tester device link itself.
  *
  * The "Pulse account" card. With Sign in with Twitch off (the build default)
  * it is the device-code card; with it on, the Twitch card, which falls back to
