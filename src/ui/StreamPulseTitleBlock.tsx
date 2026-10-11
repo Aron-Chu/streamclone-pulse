@@ -12,7 +12,7 @@ import { theme } from './theme.ts'
  * showed something the extension never renders. Rendering the same component in
  * both places is what keeps the preview honest.
  */
-export type StreamPulseStatusTone = 'live' | 'idle' | 'local'
+export type StreamPulseStatusTone = 'live' | 'idle' | 'local' | 'replay'
 
 /** Unframed header; personal recognition is the crest and paint on the title itself. */
 export const streamPulseHeaderChrome: CSSProperties = {
@@ -47,6 +47,7 @@ export function StreamPulseTitleBlock({
   paint,
   statusLabel,
   statusTone = 'idle',
+  lead = LIVE_HEAT_SUBTITLE,
 }: {
   title?: string
   finish?: SupporterFinishId | null
@@ -56,6 +57,8 @@ export function StreamPulseTitleBlock({
   paint?: SupporterPaintStyle
   statusLabel: string
   statusTone?: StreamPulseStatusTone
+  /** The line under the title; a replay shows its own date, length and category. */
+  lead?: string
 }) {
   return (
     <>
@@ -66,7 +69,7 @@ export function StreamPulseTitleBlock({
           : <h2 style={styles.plainTitle}>{title}</h2>}
         <span style={styles[`${statusTone}Pill`]} aria-label={statusLabel}>{statusLabel}</span>
       </div>
-      <p style={styles.lead}>{LIVE_HEAT_SUBTITLE}</p>
+      <p style={styles.lead}>{lead}</p>
     </>
   )
 }
@@ -99,6 +102,13 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 10,
     fontWeight: 900,
     padding: '4px 10px',
+  },
+  /** A cool blue no live state uses, so a replay never reads as live or offline. */
+  replayPill: {
+    ...pillBase,
+    background: 'rgba(56, 189, 248, 0.14)',
+    border: '1px solid rgba(56, 189, 248, 0.4)',
+    color: '#bae6fd',
   },
   localPill: {
     ...pillBase,

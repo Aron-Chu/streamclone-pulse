@@ -97,7 +97,9 @@ describe('content mount error lane', () => {
       updateOverlayVodState({ vodPulse: null, loading: false })
       updateOverlayPayload(null, 'request_failed')
     })
-    expect(panelText()).toContain("Can't reach StreamPulse")
+    // A replay has one error state: the VOD card with Retry and Open in Analytics.
+    expect(panelText()).toContain('We couldn’t load this replay')
+    expect(panelText()).not.toContain("Can't reach StreamPulse")
 
     // Retry answers 200 "missing": the entry passes '' so the kept failure is cleared.
     await settle(() => {
@@ -105,6 +107,6 @@ describe('content mount error lane', () => {
       updateOverlayPayload(null, '')
     })
     expect(panelText()).toContain('No replay analytics have been indexed for this VOD yet.')
-    expect(panelText()).not.toContain("Can't reach StreamPulse")
+    expect(panelText()).not.toContain('We couldn’t load this replay')
   })
 })

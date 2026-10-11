@@ -149,14 +149,27 @@ test.describe('extension lifecycle', () => {
         { timeout: 5_000 },
       )
       .toBeGreaterThan(0)
-    expect(
-      api.requests().find(request => request.url().includes('/v1/extension/pulse/vods/'))?.url(),
-    ).toContain('streamId=stream-fixture-1')
+    // A VOD is always asked for plainly first: the saved analytics-bridge stream
+    // is only used when the plain answer is unresolved and the VOD is the live
+    // stream's archive (src/background/vodLiveBridge.ts). The fixture VOD resolves.
+    const firstVodRequest = new URL(
+      api.requests().find(request => request.url().includes('/v1/extension/pulse/vods/'))!.url(),
+    )
+    expect(firstVodRequest.pathname).toBe('/v1/extension/pulse/vods/2806037629')
+    expect(firstVodRequest.searchParams.get('allowLiveBridge')).toBeNull()
+    expect(firstVodRequest.searchParams.get('streamId')).toBeNull()
 
     // Twitch can emit another route-sync signal for the same VOD while the
     // first recap request is still pending. This must not cancel that request.
     await spaNavigate(extension.page, { kind: 'vod', vodId: '2806037629' }, 'vod')
-    await assertPulseShadowContains(extension.page, /Replay ready/i)
+    // The replay header reads "Replay" with the VOD's own date (not the old
+    // "Replay ready" status), and the recap arrives from the kept request.
+    await assertPulseShadowContains(extension.page, /Stream Recap/i)
+    await expect
+      .poll(() => extension.page.evaluate(() =>
+        document.getElementById('streamclone-pulse-root')?.shadowRoot
+          ?.querySelector('header.pulse-personal-banner span[aria-label]')?.textContent?.trim() ?? ''))
+      .toBe('Replay')
     assertNoUncaughtErrors(evidence)
   })
 

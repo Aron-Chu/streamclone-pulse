@@ -185,7 +185,9 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
       const streamId = optionalString(raw.streamId)
       if (streamId && !/^[A-Za-z0-9_-]{1,64}$/.test(streamId)) return null
       const window = raw.window === 'full' || raw.window === 'recent' ? raw.window : undefined
-      return { type, vodId, streamId, window }
+      // A placeholder or malformed channel is dropped, never a reason to refuse the VOD.
+      const login = requireLogin(raw.login) ?? undefined
+      return { type, vodId, streamId, window, ...(login ? { login } : {}) }
     }
     case 'LOAD_MISSED_MOMENTS': {
       const login = requireLogin(raw.login)
