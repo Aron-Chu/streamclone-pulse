@@ -188,6 +188,70 @@ test.describe('Seen in chat: viewer setting, kill switch and motion', () => {
   })
 })
 
+test.describe('Seen in chat: list changes in long chats', () => {
+  // FFZ's scrollback and 7TV's line limit can keep far more than Twitch's 150
+  // lines. A new list (hourly, or your own on/off) must not leave the visible,
+  // newest lines bare for a frame, and must not remove and re-add crests that stay.
+  for (const chat of ['7tv', 'ffz'] as const) {
+    test(`${chat}, 600 lines: no newest line is bare at the next frame after a list change`, async ({ extension }) => {
+      const { build } = await import('esbuild')
+      const bundle = await build({
+        stdin: {
+          contents: "export { ChatBadgeDecorator } from './src/content/chatBadgeDom.ts'\nexport { chatLine, chatContainer, FIXTURE_LIST } from './tests/fixtures/chat-badges/chatMarkup.ts'",
+          resolveDir: process.cwd(), loader: 'ts',
+        },
+        bundle: true, format: 'iife', globalName: 'CB', write: false, platform: 'browser',
+      })
+      const page = await extension.context.newPage()
+      await page.setContent('<!doctype html><html class="tw-root--theme-dark"><head></head><body><div class="chat-column" style="height:600px;overflow:auto"></div></body></html>')
+      await page.addScriptTag({ content: bundle.outputFiles[0].text })
+      const result = await page.evaluate(async chat => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const CB = (window as unknown as { CB: any }).CB
+        const list: Array<[string, string, number, number, number]> = CB.FIXTURE_LIST
+        let html = ''
+        for (let i = 0; i < 600; i++) {
+          const login = i % 2 === 0 ? list[i % list.length][1] : `viewer${i}`
+          html += CB.chatLine(chat, { login, display: login, id: i % 2 === 0 ? list[i % list.length][0] : String(20000000 + i), text: `m${i}` })
+        }
+        const column = document.querySelector('.chat-column')!
+        // Test setup only: the decorator itself never writes HTML strings.
+        column.innerHTML = CB.chatContainer(chat, html)
+        column.scrollTop = 1e9
+        const decorator = new CB.ChatBadgeDecorator(document)
+        decorator.setList(list)
+        decorator.start()
+        const frame = () => new Promise(resolve => requestAnimationFrame(() => resolve(null)))
+        await frame(); await new Promise(resolve => setTimeout(resolve, 50))
+        const container = chat === '7tv' ? document.querySelector('.seventv-chat-list')! : document.querySelector('[data-test-selector="chat-scrollable-area__message-container"]')!
+        const hits = [...container.children].filter((_, i) => i % 2 === 0)
+        const newest = hits.slice(-20)
+        const crestsBefore = newest.map(line => line.querySelector('.sp-cb-crest'))
+        const bare: number[] = []
+        for (let k = 0; k < 10; k++) {
+          // Alternate a re-issued list (same people) and one where a tier changes.
+          const next = list.map(([id, login, tier, paint, wave]) => [id, login, k % 2 ? (tier + 1) % 5 : tier, paint, wave])
+          bare.push(await new Promise<number>(resolve => setTimeout(() => {
+            decorator.setList(next)
+            requestAnimationFrame(() => resolve(newest.filter(line => !line.querySelector('.sp-cb-crest')).length))
+          }, 0)))
+          await frame()
+        }
+        const sameNodes = newest.every((line, i) => line.querySelector('.sp-cb-crest') === crestsBefore[i])
+        await new Promise(resolve => setTimeout(resolve, 50))
+        const bareEnd = hits.filter(line => !line.querySelector('.sp-cb-crest')).length
+        decorator.stop()
+        return { bare, sameNodes, bareEnd, hits: hits.length }
+      }, chat)
+      expect(result.hits).toBe(300)
+      expect(result.bare).toEqual(Array(10).fill(0))
+      expect(result.sameNodes).toBe(true)
+      expect(result.bareEnd).toBe(0)
+      await page.close()
+    })
+  }
+})
+
 test.describe('Seen in chat: your own entry', () => {
   const OWN: Entry = ['10000099', 'my_login', 2, 3, 1]
 

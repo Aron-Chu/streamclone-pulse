@@ -110,18 +110,39 @@ const CREST_LABELS = SUPPORTER_TENURES.map(option => option.id === 'new' ? 'new'
 export function decorateLine(line: Element, style: ChatStyle, index: ChatBadgeIndex): boolean {
   const code = lookupAuthor(index, lineAuthor(line, style))
   if (code === undefined) return false
+  applyCode(line, style, code)
+  return true
+}
+
+/**
+ * A new list, one line already decorated: update its crest and paint in place,
+ * or remove them if the author left the list. Never removes and re-adds a crest
+ * that stays, so names don't shift sideways when the list changes.
+ */
+export function rematchLine(line: Element, style: ChatStyle, index: ChatBadgeIndex): boolean {
+  const code = lookupAuthor(index, lineAuthor(line, style))
+  if (code === undefined) {
+    undecorate(line)
+    return false
+  }
+  applyCode(line, style, code)
+  return true
+}
+
+function setIfChanged(element: Element, name: string, value: string): void {
+  if (element.getAttribute(name) !== value) element.setAttribute(name, value)
+}
+
+function applyCode(line: Element, style: ChatStyle, code: number): void {
   const tier = code & 7
   const paint = code >> 3 & 3
   const wave = code >> 5 & 3
-  const doc = line.ownerDocument
-  if (!line.querySelector('.sp-cb-crest')) {
-    const crest = doc.createElement('span')
+  const label = CREST_LABELS[tier] ?? 'new'
+  let crest = line.querySelector('.sp-cb-crest')
+  if (!crest) {
+    crest = line.ownerDocument.createElement('span')
     crest.className = 'sp-cb-crest'
-    crest.setAttribute('data-t', String(tier))
     crest.setAttribute('role', 'img')
-    const label = CREST_LABELS[tier] ?? 'new'
-    crest.setAttribute('aria-label', `StreamPulse Supporter, ${label}`)
-    crest.setAttribute('title', `StreamPulse Supporter · ${label}`)
     if (style === 'native') {
       const ffzBadges = line.querySelector('.chat-line__message--badges')
       const username = line.querySelector('.chat-line__username')
@@ -134,24 +155,30 @@ export function decorateLine(line: Element, style: ChatStyle, index: ChatBadgeIn
       else if (username?.parentNode) username.parentNode.insertBefore(crest, username)
     }
   }
-  if (paint > 0) {
-    const name = style === 'native'
-      ? line.querySelector('.chat-author__display-name')
-      : line.querySelector('.seventv-chat-user-username')
-    // A name 7TV already paints keeps its 7TV paint; the crest still shows.
-    const painted = style === '7tv' && name && (name.querySelector('.seventv-painted-content') || /background-image/.test(name.getAttribute('style') ?? ''))
-    if (name && !painted) {
-      name.setAttribute('data-sp-paint', String(paint))
-      name.setAttribute('data-sp-wave', String(wave))
-    }
+  setIfChanged(crest, 'data-t', String(tier))
+  setIfChanged(crest, 'aria-label', `StreamPulse Supporter, ${label}`)
+  setIfChanged(crest, 'title', `StreamPulse Supporter · ${label}`)
+  const name = style === 'native'
+    ? line.querySelector('.chat-author__display-name')
+    : line.querySelector('.seventv-chat-user-username')
+  if (!name) return
+  // A name 7TV already paints keeps its 7TV paint; the crest still shows.
+  const painted = style === '7tv' && (name.querySelector('.seventv-painted-content') || /background-image/.test(name.getAttribute('style') ?? ''))
+  if (paint > 0 && !painted) {
+    setIfChanged(name, 'data-sp-paint', String(paint))
+    setIfChanged(name, 'data-sp-wave', String(wave))
+  } else if (name.hasAttribute('data-sp-paint')) {
+    name.removeAttribute('data-sp-paint')
+    name.removeAttribute('data-sp-wave')
   }
-  return true
 }
 
-/** Removes everything this module added under `root`. */
+/** Removes everything this module added under `root` (or on `root` itself). */
 export function undecorate(root: ParentNode): void {
   for (const crest of Array.from(root.querySelectorAll('.sp-cb-crest'))) crest.remove()
-  for (const name of Array.from(root.querySelectorAll('[data-sp-paint]'))) {
+  const names = Array.from(root.querySelectorAll('[data-sp-paint]'))
+  if (root instanceof Element && root.hasAttribute('data-sp-paint')) names.push(root)
+  for (const name of names) {
     name.removeAttribute('data-sp-paint')
     name.removeAttribute('data-sp-wave')
   }
@@ -195,6 +222,11 @@ export const CHAT_BADGES_STYLE_ID = 'streampulse-chat-badges'
 export const MAX_LINES_PER_CALLBACK = 300
 const SAMPLE_RING = 1024
 
+/** A container's lines, newest (bottom, on screen) first. */
+function newestFirst(container: Element): Element[] {
+  return Array.from(container.children).reverse()
+}
+
 export interface ChatBadgeStats {
   lines: number
   hits: number
@@ -234,15 +266,32 @@ export class ChatBadgeDecorator {
     if (this.styleElement) this.styleElement.textContent = chatBadgeCss(motion)
   }
 
-  /** A new list: re-match every line on screen. */
+  /**
+   * A new list: re-match every line on screen without a bare frame. Lines that
+   * already carry a crest are updated in place (or cleared) in this task; the
+   * rest are queued newest first, so any backlog is off-screen history.
+   */
   setList(entries: readonly ChatBadgeEntry[]): void {
     this.index = buildChatBadgeIndex(entries)
     if (!this.running) return
-    if (this.container) {
-      undecorate(this.container)
-      this.processed = new WeakSet()
-      this.queue(Array.from(this.container.children))
+    const container = this.container
+    const style = this.style
+    if (!container || !style) return
+    this.processed = new WeakSet()
+    this.backlog = []
+    const selector = CHAT_LINE[style]
+    const decorated = new Set<Element>()
+    for (const mark of Array.from(container.querySelectorAll('.sp-cb-crest, [data-sp-paint]'))) {
+      const line = mark.closest(selector)
+      if (line && container.contains(line)) decorated.add(line)
+      else if (mark.classList.contains('sp-cb-crest')) mark.remove()
+      else undecorate(mark)
     }
+    for (const line of decorated) {
+      this.processed.add(line)
+      rematchLine(line, style, this.index)
+    }
+    this.queue(newestFirst(container))
   }
 
   start(): void {
@@ -301,7 +350,7 @@ export class ChatBadgeDecorator {
     if (!found) return
     this.observer = new MutationObserver(records => this.onMutations(records))
     this.observer.observe(found.container, { childList: true })
-    this.queue(Array.from(found.container.children))
+    this.queue(newestFirst(found.container))
   }
 
   private onMutations(records: MutationRecord[]): void {

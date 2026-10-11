@@ -168,6 +168,59 @@ describe('Seen in chat decorator: one observer, live chat', () => {
     decorator.stop()
   })
 
+  for (const style of STYLES) {
+    it(`${style}: a new list keeps the crest node that stays, changes tier and paint in place, and drops only people who left`, () => {
+      const { container } = mount(style)
+      const decorator = new ChatBadgeDecorator(document)
+      decorator.setList(FIXTURE_LIST)
+      decorator.start()
+      const crestOf = (login: string) => [...container.querySelectorAll('.sp-cb-crest')].find(crest => crest.closest(style === '7tv' ? '.seventv-message' : '.chat-line__message')!.textContent!.toLowerCase().includes(login))
+      const glass = crestOf('crest_glass')!
+      const halo = crestOf('crest_halo')!
+      const removed: Node[] = []
+      const watcher = new MutationObserver(records => { for (const record of records) removed.push(...record.removedNodes) })
+      watcher.observe(container, { childList: true, subtree: true })
+      // Same people, crest_glass moves to tier 4 with no paint; crest_halo is unchanged; crest_etched leaves.
+      decorator.setList([['10000001', 'crest_glass', 4, 0, 0], ['10000004', 'crest_halo', 4, 3, 3], ['10000006', 'crest_new', 0, 0, 0]])
+      const records = watcher.takeRecords()
+      for (const record of records) removed.push(...record.removedNodes)
+      watcher.disconnect()
+      expect(crestOf('crest_glass')).toBe(glass)
+      expect(crestOf('crest_halo')).toBe(halo)
+      expect(glass.getAttribute('data-t')).toBe('4')
+      expect(glass.closest(style === '7tv' ? '.seventv-message' : '.chat-line__message')!.querySelector('[data-sp-paint]')).toBeNull()
+      expect(crestOf('crest_etched')).toBeUndefined()
+      expect(removed).toHaveLength(1)
+      decorator.stop()
+    })
+  }
+
+  it('a list change in a chat longer than one callback leaves no visible line bare: newest lines first, decorated ones in place', () => {
+    const count = MAX_LINES_PER_CALLBACK * 2
+    const people = Array.from({ length: count }, (_, i) => i % 2 === 0 ? FIXTURE_PEOPLE[0] : { ...FIXTURE_PEOPLE[1], text: `m${i}` })
+    const { container } = mount('7tv', people)
+    const decorator = new ChatBadgeDecorator(document)
+    decorator.setList(FIXTURE_LIST)
+    decorator.start()
+    // First attach: the newest lines are handled at once; the backlog is the oldest history.
+    const newest = [...container.children].slice(-40).filter((_, i) => i % 2 === 0)
+    expect(newest.every(line => line.querySelector('.sp-cb-crest'))).toBe(true)
+    return flush().then(() => {
+      expect(container.querySelectorAll('.sp-cb-crest')).toHaveLength(count / 2)
+      // Re-issued list with the same people: synchronously, every crest is still there.
+      decorator.setList(FIXTURE_LIST.map(entry => [...entry] as typeof entry))
+      expect(container.querySelectorAll('.sp-cb-crest')).toHaveLength(count / 2)
+      // A new person joins: the newest of their lines are decorated in the same task.
+      const lines = [...container.children]
+      decorator.setList([...FIXTURE_LIST, ['10000002', 'plainviewer', 1, 0, 0]])
+      expect(lines.slice(-20).every(line => line.querySelector('.sp-cb-crest'))).toBe(true)
+      return flush().then(() => {
+        expect(container.querySelectorAll('.sp-cb-crest')).toHaveLength(count)
+        decorator.stop()
+      })
+    })
+  })
+
   it('a burst larger than one callback is finished in the next task, not dropped', async () => {
     const { container } = mount('native', [])
     const decorator = new ChatBadgeDecorator(document)
