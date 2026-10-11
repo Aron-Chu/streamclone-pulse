@@ -784,10 +784,10 @@ export function chartEmptyMessage(options: {
     return 'Chart data is available outside this view. Reset or move the chart window to the covered range.'
   }
   if (confidence === 'Waiting for first minute') {
-    return 'Collecting the first minute of chat rollups. The graph appears here automatically.'
+    return 'Collecting the first minute of chat. The graph appears here on its own.'
   }
   if (fullTimelineRequested && !hasFullRollups && currentOffsetSeconds > 120) {
-    return 'Full stream requested, but StreamPulse has no rollups for this broadcast yet. Tracking may have started late or paused.'
+    return 'No chat data for this stream yet. Tracking may have started late or paused.'
   }
   return 'No chat activity in the recent window yet.'
 }

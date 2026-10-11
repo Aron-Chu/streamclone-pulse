@@ -69,6 +69,12 @@ export function OpenAllSettingsButton({ style }: { style?: CSSProperties }) {
         <span>{opening ? 'Opening settings…' : 'Open all settings'}</span>
         <span aria-hidden="true">↗</span>
       </button>
+      {/* The worker opens the website's /discord page: no page links ship in the content script. */}
+      <button type="button" className="pulse-settings-bottom-bar" data-community-link="discord" style={{ ...style, marginTop: 6 }}
+        onClick={() => void sendBackgroundMessage({ type: 'OPEN_COMMUNITY_LINK', link: 'discord' })}>
+        <span>Join the StreamPulse Discord</span>
+        <span aria-hidden="true">↗</span>
+      </button>
     </>
   )
 }

@@ -36,6 +36,11 @@ describe('parseBackgroundRequest', () => {
     })
     // A place inside a section: Pulse with Background & motion open.
     expect(parseBackgroundRequest({ type: 'OPEN_SETTINGS_HOST', section: 'pulse-background' })).toEqual({ type: 'OPEN_SETTINGS_HOST', section: 'pulse-background' })
+    // A fixed community link name only, never a caller-controlled URL.
+    expect(parseBackgroundRequest({ type: 'OPEN_COMMUNITY_LINK', link: 'discord' })).toEqual({ type: 'OPEN_COMMUNITY_LINK', link: 'discord' })
+    expect(parseBackgroundRequest({ type: 'OPEN_COMMUNITY_LINK', link: 'feedback' })).toBeNull()
+    expect(parseBackgroundRequest({ type: 'OPEN_COMMUNITY_LINK' })).toBeNull()
+    expect(parseBackgroundRequest({ type: 'OPEN_COMMUNITY_LINK', link: 'discord', url: 'https://evil.test' })).toBeNull()
     expect(parseBackgroundRequest({
       type: 'GET_PULSE_VOD',
       vodId: '2806037629',

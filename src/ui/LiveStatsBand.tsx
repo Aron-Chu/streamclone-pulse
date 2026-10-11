@@ -1383,7 +1383,7 @@ export function LiveStatsBand({
                   data-testid="load-full-history"
                   style={styles.streamStartLink}
                   disabled={timelineLoading || demoMode}
-                  title="Retry this activation's one-shot full-history request. Live polling remains recent."
+                  title="Retry loading the whole stream"
                   onClick={() => requestFullTimeline(true)}
                 >
                   {timelineLoading ? 'Loading…' : 'Retry full history'}
