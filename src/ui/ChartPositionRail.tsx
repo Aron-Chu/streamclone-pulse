@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
-import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { formatHeatOffset } from '@streampulse/pulse-core'
 import {
   CHART_DRAG_INTENT_PX,
@@ -42,7 +42,8 @@ export const LONG_STREAM_OVERVIEW_SECONDS = 90 * 60
 const DEFAULT_FOCUS_SECONDS = 60 * 60
 const MIN_PAN_SECONDS = 60
 const SHIFT_PAN_SECONDS = 10 * 60
-const RESIZE_HANDLE_PX = 14
+// Static layout (including the 14px resize handles) lives in shadow.css
+// (.pulse-chart-rail-*).
 const POINTER_CLICK_THRESHOLD_PX = CHART_DRAG_INTENT_PX
 
 export function shouldShowChartRail(
@@ -522,7 +523,7 @@ export const ChartPositionRail = memo(function ChartPositionRail({
 
   return (
     <div data-chart-rail-wrap>
-      {!hideRangeLabel ? <div style={styles.labelRow} aria-hidden>{rangeText}</div> : null}
+      {!hideRangeLabel ? <div className="pulse-chart-rail-label" aria-hidden>{rangeText}</div> : null}
       <div
         ref={trackRef}
         role="slider"
@@ -535,10 +536,8 @@ export const ChartPositionRail = memo(function ChartPositionRail({
         aria-valuetext={`Viewing minutes ${startLabel}–${endLabel} of ${totalLabel}${selectedInDomain && !selectedInViewport ? '; selected minute is outside the window' : ''}. Arrow keys pan; Alt+arrows or [ ] resize the window.`}
         title={disabled ? undefined : 'Drag to pan, or pull either edge to resize the window'}
         style={{
-          ...styles.track,
           height,
           cursor: disabled ? 'default' : interacting ? 'grabbing' : 'pointer',
-          touchAction: 'none',
         }}
         className="pulse-chart-rail-track"
         data-chart-rail
@@ -558,12 +557,12 @@ export const ChartPositionRail = memo(function ChartPositionRail({
             data-chart-rail-selection-offscreen={selectedInViewport ? 'false' : 'true'}
             aria-hidden
             title="Selected minute"
-            style={{ ...styles.selectionMarker, left: `${selectedMarkerPercent}%` }}
+            className="pulse-chart-rail-marker"
+            style={{ left: `${selectedMarkerPercent}%` }}
           />
         ) : null}
         <div
           style={{
-            ...styles.thumb,
             width: `${geometry.thumbWidth}%`,
             left: `${geometry.thumbX}%`,
             background: following ? theme.accentStrong : theme.accent,
@@ -579,8 +578,8 @@ export const ChartPositionRail = memo(function ChartPositionRail({
           onPointerCancel={onPointerCancel}
         >
           <div
+            className="pulse-chart-rail-handle"
             style={{
-              ...styles.resizeHandle,
               borderLeft: `1px solid ${interacting ? 'rgba(221, 214, 254, 0.95)' : 'rgba(196, 181, 253, 0.55)'}`,
               left: 0,
               ...(geometry.thumbWidth < 13 ? { maxWidth: 'none', transform: 'translateX(-100%)' } : {}),
@@ -593,8 +592,8 @@ export const ChartPositionRail = memo(function ChartPositionRail({
             onPointerCancel={onPointerCancel}
           />
           <div
+            className="pulse-chart-rail-handle"
             style={{
-              ...styles.resizeHandle,
               borderRight: `1px solid ${interacting ? 'rgba(221, 214, 254, 0.95)' : 'rgba(196, 181, 253, 0.55)'}`,
               right: 0,
               ...(geometry.thumbWidth < 13 ? { maxWidth: 'none', transform: 'translateX(100%)' } : {}),
@@ -611,62 +610,3 @@ export const ChartPositionRail = memo(function ChartPositionRail({
     </div>
   )
 })
-
-const styles: Record<string, CSSProperties> = {
-  labelRow: {
-    color: theme.textMuted,
-    display: 'flex',
-    fontSize: 10,
-    justifyContent: 'flex-end',
-    letterSpacing: 0.2,
-    lineHeight: '12px',
-    marginBottom: 2,
-    padding: '0 2px',
-    userSelect: 'none',
-  },
-  track: {
-    background: 'rgba(255, 255, 255, 0.04)',
-    border: `1px solid ${theme.border}`,
-    borderRadius: 6,
-    margin: '6px 0',
-    minWidth: 0,
-    overflow: 'hidden',
-    position: 'relative',
-    userSelect: 'none',
-    width: '100%',
-  },
-  thumb: {
-    borderRadius: 4,
-    bottom: 0,
-    boxShadow: '0 1px 4px rgba(0, 0, 0, 0.35)',
-    left: 0,
-    position: 'absolute',
-    top: 0,
-  },
-  resizeHandle: {
-    background: 'transparent',
-    borderRadius: 0,
-    bottom: 0,
-    boxSizing: 'border-box',
-    cursor: 'ew-resize',
-    height: '100%',
-    // Reserve the middle half for panning even at the minimum thumb width.
-    maxWidth: '25%',
-    opacity: 1,
-    position: 'absolute',
-    top: 0,
-    width: RESIZE_HANDLE_PX,
-    zIndex: 1,
-  },
-  selectionMarker: {
-    background: 'rgba(251, 191, 36, 0.95)',
-    bottom: 0,
-    boxShadow: '0 0 5px rgba(251, 191, 36, 0.6)',
-    pointerEvents: 'none',
-    position: 'absolute',
-    top: 0,
-    transform: 'translateX(-1px)',
-    width: 2,
-    zIndex: 2,
-  },
-}

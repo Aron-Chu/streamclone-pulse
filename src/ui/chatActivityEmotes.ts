@@ -625,17 +625,13 @@ export function prepareChartRollups(
     // ranges get an uncapped one-minute grid, so a tracking hole is a run of
     // missing minutes (blank lines, no-data band, gap notice, as in Full)
     // rather than index-spaced points that join straight across it.
-    const coverageStart = resolvePayloadCoverageStartOffset(payload, options.coverageStartOffsetSeconds)
-    result = densifyRollupsForTimeline(raw, {
-      fromOffset: resolveFullChartDensifyFromOffset(payload, raw, options.coverageStartOffsetSeconds),
+    result = densifyFullRollups(
+      payload,
+      raw,
       toOffset,
-      maxPoints: options.chartWindow === 'full' ? FULL_TIMELINE_MAX_POINTS : Infinity,
-      missingRanges: payload.coverage?.missingRanges,
-      missingBeforeOffset: hasMissingPrefixFromStreamStart(payload.coverage)
-        || (!payload.coverage && coverageStart > FULL_CHART_STREAM_START_TOLERANCE_SEC)
-        ? coverageStart
-        : 0,
-    })
+      options.coverageStartOffsetSeconds,
+      options.chartWindow === 'full' ? FULL_TIMELINE_MAX_POINTS : Infinity,
+    )
   }
 
   prepareChartRollupsCache = {
@@ -647,6 +643,44 @@ export function prepareChartRollups(
     result,
   }
   return result
+}
+
+function densifyFullRollups(
+  payload: PulsePayload,
+  raw: ExtensionRollup[],
+  toOffset: number,
+  coverageStartOffsetSeconds: number | undefined,
+  maxPoints: number,
+): ExtensionRollup[] {
+  const coverageStart = resolvePayloadCoverageStartOffset(payload, coverageStartOffsetSeconds)
+  return densifyRollupsForTimeline(raw, {
+    fromOffset: resolveFullChartDensifyFromOffset(payload, raw, coverageStartOffsetSeconds),
+    toOffset,
+    maxPoints,
+    missingRanges: payload.coverage?.missingRanges,
+    missingBeforeOffset: hasMissingPrefixFromStreamStart(payload.coverage)
+      || (!payload.coverage && coverageStart > FULL_CHART_STREAM_START_TOLERANCE_SEC)
+      ? coverageStart
+      : 0,
+  })
+}
+
+/**
+ * Full past 8 h thins the chart rows to FULL_TIMELINE_MAX_POINTS averaged
+ * buckets of mixed width. The activity bars still need every minute, so this
+ * returns the same timeline as an uncapped one-minute grid (missing flags
+ * included), or undefined when the chart rows already are one.
+ */
+export function prepareBarRollups(
+  payload: PulsePayload,
+  options: Parameters<typeof prepareChartRollups>[1],
+): ExtensionRollup[] | undefined {
+  if (options.chartWindow !== 'full' || !hasFullTimelineRollups(payload, options.activation)) return undefined
+  const raw = mergeRecentRollupTail(rollupSeries(payload, 'full'), payload.rollups)
+  const toOffset = Math.max(options.currentOffsetSeconds, raw[raw.length - 1]?.offsetSeconds ?? 0)
+  return toOffset > FULL_TIMELINE_MAX_POINTS * 60
+    ? densifyFullRollups(payload, raw, toOffset, options.coverageStartOffsetSeconds, Infinity)
+    : undefined
 }
 
 export function chartAlignFromStart(_payload: PulsePayload, _window: ChartTimelineWindow = '60m'): boolean {

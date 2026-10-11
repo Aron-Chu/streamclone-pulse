@@ -73,6 +73,13 @@ function makePayload(overrides: Partial<PulsePayload> = {}): PulsePayload {
   }
 }
 
+/** The declarations of one rule in the shadow stylesheet (static chart layout lives there). */
+function shadowRule(selector: string): string {
+  const start = shadowStyles.indexOf(`${selector} {`)
+  if (start < 0) throw new Error(`shadow.css rule missing: ${selector}`)
+  return shadowStyles.slice(start + selector.length + 2, shadowStyles.indexOf('}', start))
+}
+
 function shellHeight(html: string): number {
   const match = html.match(/style="[^"]*height:([0-9.]+)px/)
   if (!match) throw new Error(`chart shell height missing: ${html}`)
@@ -303,8 +310,9 @@ describe('chart shells and controls', () => {
     expect(shellHeight(empty)).toBe(shellHeight(loading))
     expect(shellHeight(populated)).toBe(shellHeight(loading))
     expect(shellHeight(expandedEmpty) - shellHeight(empty)).toBe(48)
-    expect(loading).toContain('height:100%')
-    expect(empty).toContain('height:100%')
+    expect(loading).toContain('class="pulse-overview-empty"')
+    expect(empty).toContain('class="pulse-overview-empty"')
+    expect(shadowRule('.pulse-overview-empty')).toContain('height: 100%')
   })
 
   it('moves lane geometry with the same intermediate expansion progress', () => {
@@ -392,14 +400,16 @@ describe('chart shells and controls', () => {
         if (!button) throw new Error(`chart zoom ${action} control did not render`)
         expect(button.tagName).toBe('BUTTON')
         expect(button.classList.contains('pulse-chart-zoom-button')).toBe(true)
-        expect(button.style.height).toBe('24px')
         if (action === 'reset') {
           expect(button.classList.contains('pulse-chart-zoom-reset')).toBe(true)
         } else {
-          expect(button.style.width).toBe('24px')
+          expect(button.classList.contains('pulse-chart-zoom-step')).toBe(true)
         }
       }
     }
+    // The fixed 24px targets are in the shadow stylesheet, not inline.
+    expect(shadowRule('.pulse-chart-zoom-controls .pulse-chart-zoom-step')).toMatch(/height: 24px;.*width: 24px;/)
+    expect(shadowRule('.pulse-chart-zoom-controls .pulse-chart-zoom-reset')).toMatch(/height: 24px; width: 44px; min-width: 44px;/)
   })
 
   it('limits rail hover feedback to enabled controls and removes transitions for reduced motion', () => {

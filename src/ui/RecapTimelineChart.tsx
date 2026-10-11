@@ -27,7 +27,7 @@ import { minuteEmoteTotal } from './chartRollupUtils.ts'
 import { nearestRollupIndex } from './extensionChartPoints.ts'
 import { extensionRollupViewerCount, safeGameTimeline } from './extensionChartAdapter.ts'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
-import { PulseOverviewChart } from './PulseOverviewChart.tsx'
+import { PulseOverviewChart, type ChartBarSummary } from './PulseOverviewChart.tsx'
 import { ChartReadoutBand } from './ChartReadoutBand.tsx'
 import { pickRecapRollups } from './recapMomentMetrics.ts'
 import { zeroFillRollupsForRecap } from './recapChartPrep.ts'
@@ -91,6 +91,8 @@ export function RecapTimelineChart({
   const hasFullRollups = hasValidatedFullHistory(payload, activation)
   const [timelineLoading, setTimelineLoading] = useState(false)
   const [chartHoverOffsetSeconds, setChartHoverOffsetSeconds] = useState<number | null>(null)
+  // The averaged bar under the pointer or pin, while bars span several minutes.
+  const [chartBar, setChartBar] = useState<ChartBarSummary | null>(null)
   const [selectedEmoteKeys, setSelectedEmoteKeys] = useState<string[]>([])
   const [showPeakMarkers, setShowPeakMarkers] = useState(false)
   const [emotePanelExpanded, setEmotePanelExpanded] = useState(false)
@@ -615,6 +617,7 @@ export function RecapTimelineChart({
           backendUrl={backendUrl}
           emoteScope={readoutEmoteScope}
           onClearSelection={handleClearChartSelection}
+          bar={chartBar}
         />
         <div style={styles.chartStack}>
           <PulseOverviewChart
@@ -652,6 +655,7 @@ export function RecapTimelineChart({
             // rollups drawable while the one-shot request is pending or fails.
             loading={(timelineLoading && minuteRollups.length === 0) || (minuteRollups.length === 0 && Boolean(onRequestFullRollups))}
             isLive={false}
+            onBarChange={setChartBar}
           />
         </div>
       </div>

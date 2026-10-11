@@ -11,6 +11,14 @@ vi.mock('../src/ui/PulseEmoteImg.tsx', () => ({
 }))
 
 import { SevenTvEmotePanel } from '../src/ui/SevenTvEmotePanel.tsx'
+import { shadowStyles } from '../src/ui/theme.ts'
+
+/** The declarations of one rule in the shadow stylesheet (the picker's static layout lives there). */
+function shadowRule(selector: string): string {
+  const start = shadowStyles.indexOf(`${selector} {`)
+  if (start < 0) throw new Error(`shadow.css rule missing: ${selector}`)
+  return shadowStyles.slice(start + selector.length + 2, shadowStyles.indexOf('}', start))
+}
 
 function makeEmotes(count: number): ExtensionEmote[] {
   return Array.from({ length: count }, (_, index) => ({
@@ -77,9 +85,12 @@ describe('SevenTvEmotePanel packed picker', () => {
     expect(collapsedBody).not.toBeNull()
     expect(collapsedBody?.getAttribute('data-expanded')).toBe('false')
     expect(collapsedBody?.getAttribute('aria-hidden')).toBe('true')
-    expect((collapsedBody as HTMLElement).style.gridTemplateRows).toBe('0fr')
-    expect((collapsedBody as HTMLElement).style.padding).toBe('0px 8px')
-    expect((collapsedBody as HTMLElement).style.borderTop).toBe('0px solid transparent')
+    // Collapsed and expanded layouts are stylesheet rules keyed on data-expanded.
+    expect(collapsedBody?.classList.contains('pulse-seven-tv-body')).toBe(true)
+    expect(shadowRule('.pulse-seven-tv-body')).toContain('grid-template-rows: 0fr')
+    expect(shadowRule('.pulse-seven-tv-body')).toContain('padding: 0 8px')
+    expect(shadowRule('.pulse-seven-tv-body')).toContain('border-top: 0 solid transparent')
+    expect(shadowRule('.pulse-seven-tv-body')).not.toContain('max-height')
     expect((collapsedBody as HTMLElement).style.maxHeight).toBe('')
     expect(container.querySelector<HTMLButtonElement>('.pulse-seven-tv-chip')?.tabIndex).toBe(-1)
     expect(container.querySelector<HTMLButtonElement>('[data-emote-picker-more]')?.tabIndex).toBe(-1)
@@ -88,9 +99,9 @@ describe('SevenTvEmotePanel packed picker', () => {
     expect(container.querySelector('[data-emote-picker-body]')).toBe(collapsedBody)
     expect(container.querySelector('[data-emote-picker-body]')?.getAttribute('data-expanded')).toBe('true')
     expect(container.querySelector('[data-emote-picker-body]')?.getAttribute('aria-hidden')).toBe('false')
-    expect((container.querySelector('[data-emote-picker-body]') as HTMLElement).style.gridTemplateRows).toBe('1fr')
-    expect((container.querySelector('[data-emote-picker-body]') as HTMLElement).style.padding).toBe('7px 8px 8px')
-    expect((container.querySelector('[data-emote-picker-body]') as HTMLElement).style.transition).toContain('grid-template-rows')
+    expect(shadowRule('.pulse-seven-tv-body[data-expanded="true"]')).toContain('grid-template-rows: 1fr')
+    expect(shadowRule('.pulse-seven-tv-body[data-expanded="true"]')).toContain('padding: 7px 8px 8px')
+    expect(shadowRule('.pulse-seven-tv-body')).toContain('transition: grid-template-rows')
     expect(container.querySelector<HTMLButtonElement>('.pulse-seven-tv-chip')?.tabIndex).toBe(0)
     expect(container.querySelector<HTMLButtonElement>('[data-emote-picker-more]')?.tabIndex).toBe(0)
   })
@@ -168,7 +179,9 @@ describe('SevenTvEmotePanel packed picker', () => {
     renderPicker([], true)
     const body = container.querySelector('[data-emote-picker-body]') as HTMLElement
     expect(body.style.maxHeight).toBe('')
-    expect(container.querySelector('[data-emote-picker-body] > div')?.getAttribute('style')).toContain('min-height: 0')
+    expect(shadowRule('.pulse-seven-tv-body[data-expanded="true"]')).not.toContain('max-height')
+    expect(container.querySelector('[data-emote-picker-body] > div')?.className).toBe('pulse-seven-tv-body-inner')
+    expect(shadowRule('.pulse-seven-tv-body-inner')).toContain('min-height: 0')
   })
 
   it('resets the expanded list when the picker is closed and reopened', () => {

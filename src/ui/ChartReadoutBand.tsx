@@ -1,8 +1,7 @@
-import type { CSSProperties } from 'react'
 import { formatHeatOffset } from '@streampulse/pulse-core'
 import type { ExtensionEmote } from '../shared/messages.ts'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
-import { theme } from './theme.ts'
+import type { ChartBarSummary } from './PulseOverviewChart.tsx'
 
 export type ChartReadoutMode = 'idle' | 'preview' | 'selected'
 
@@ -17,11 +16,15 @@ export interface ChartReadoutBandProps {
   backendUrl: string
   emoteScope?: 'minute' | 'stream'
   onClearSelection?: () => void
+  /** The averaged bar under the pointer or pin, while bars span several minutes. */
+  bar?: ChartBarSummary | null
 }
 
 const READOUT_NUMBER = new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 1,
 })
+
+const EMOTE_IMAGE_STYLE = { display: 'block', height: 16, objectFit: 'contain', width: 16 } as const
 
 function formatReadoutNumber(value: number | null | undefined): string {
   return typeof value === 'number' && Number.isFinite(value)
@@ -29,6 +32,7 @@ function formatReadoutNumber(value: number | null | undefined): string {
     : '—'
 }
 
+// Static layout lives in shadow.css (.pulse-chart-readout-*, .pulse-readout-*).
 export function ChartReadoutBand({
   mode,
   offsetSeconds,
@@ -40,32 +44,44 @@ export function ChartReadoutBand({
   backendUrl,
   emoteScope = 'minute',
   onClearSelection,
+  bar: barProp,
 }: ChartReadoutBandProps) {
+  const bar = mode === 'idle' ? null : barProp ?? null
   const title = mode === 'selected'
     ? 'Selected'
     : mode === 'preview'
       ? 'Preview'
       : 'Chart inspection'
-  const time = typeof offsetSeconds === 'number' && Number.isFinite(offsetSeconds)
-    ? formatHeatOffset(offsetSeconds)
-    : '—'
+  const time = bar
+    ? `${formatHeatOffset(bar.startSeconds)}–${formatHeatOffset(bar.endSeconds)}`
+    : typeof offsetSeconds === 'number' && Number.isFinite(offsetSeconds)
+      ? formatHeatOffset(offsetSeconds)
+      : '—'
+  // Bar series: 0 chat, 1 emotes, 2 viewers (no viewer sample in the bar: peakAt -1).
+  const viewerSample = bar ? (bar.peakAt[2]! < 0 ? null : Math.round(bar.avg[2]!)) : viewerValue
   const viewer = !viewerVisible
     ? '—'
-    : typeof viewerValue === 'number' && Number.isFinite(viewerValue)
-      ? formatReadoutNumber(viewerValue)
+    : typeof viewerSample === 'number' && Number.isFinite(viewerSample)
+      ? formatReadoutNumber(viewerSample)
       : 'Unavailable'
-  const visibleEmotes = mode === 'idle' ? [] : topEmotes.slice(0, 3)
+  const visibleEmotes = mode === 'idle' || bar ? [] : topEmotes.slice(0, 3)
   const emoteScopeLabel = emoteScope === 'minute'
     ? 'Top emotes in this minute'
     : 'Stream top emotes; this minute has no emote breakdown'
+  const metric = (label: string, value: string, peak?: number) => (
+    <span className="pulse-readout-metric">
+      <span className="pulse-readout-label">{label}</span>
+      <strong className="pulse-readout-value">
+        {value}
+        {peak == null ? null : <small className="pulse-readout-peak"> pk {formatReadoutNumber(peak)}</small>}
+      </strong>
+    </span>
+  )
 
   return (
     <div
       className="pulse-chart-readout-band"
-      style={{
-        ...styles.band,
-        cursor: mode !== 'idle' ? 'pointer' : undefined,
-      }}
+      style={mode !== 'idle' ? { cursor: 'pointer' } : undefined}
       data-chart-readout="true"
       data-chart-readout-state={mode}
       aria-live={mode === 'selected' ? 'polite' : 'off'}
@@ -77,16 +93,24 @@ export function ChartReadoutBand({
       }}
     >
       <div
-        key={`${mode}:${offsetSeconds ?? 'idle'}`}
+        key={bar ? `${mode}:bar:${bar.step}:${bar.startSeconds}` : `${mode}:${offsetSeconds ?? 'idle'}`}
         className="pulse-chart-readout-content"
-        style={styles.content}
       >
-        <div style={styles.header}>
-          <span style={styles.kicker}>{title}</span>
-          <span style={styles.time}>{time}</span>
+        <div className="pulse-readout-header">
+          <span className="pulse-readout-kicker">{title}</span>
+          <span className="pulse-readout-time">{time}</span>
+          {bar ? (
+            <span
+              className="pulse-readout-kicker pulse-readout-note"
+              data-chart-readout-bar={bar.step}
+              data-chart-readout-bar-partial={bar.observed < bar.expected ? 'true' : undefined}
+            >
+              {bar.step}-min avg{bar.observed < bar.expected ? ` · ${bar.observed}/${bar.expected} min` : ''}
+            </span>
+          ) : null}
           {visibleEmotes.length > 0 ? (
             <span
-              style={styles.emotes}
+              className="pulse-readout-emotes"
               aria-label={emoteScopeLabel}
               data-chart-readout-emotes="true"
               data-chart-readout-emote-scope={emoteScope}
@@ -95,7 +119,7 @@ export function ChartReadoutBand({
               {visibleEmotes.map(emote => (
                 <span
                   key={`${emote.provider ?? 'emote'}:${emote.id ?? emote.name}`}
-                  style={styles.emote}
+                  className="pulse-readout-emote"
                   data-chart-readout-emote="true"
                   title={`${emote.name}${emoteScope === 'stream' ? ' · stream total' : ''}`}
                 >
@@ -104,7 +128,7 @@ export function ChartReadoutBand({
                     backendUrl={backendUrl}
                     width={16}
                     height={16}
-                    style={styles.emoteImage}
+                    style={EMOTE_IMAGE_STYLE}
                     showHoverPreview={false}
                     previewFocusable={false}
                     eager
@@ -114,125 +138,15 @@ export function ChartReadoutBand({
             </span>
           ) : null}
           {mode === 'idle' ? (
-            <span style={styles.hint}>Hover the chart to inspect a minute.</span>
+            <span className="pulse-readout-hint">Hover the chart to inspect a minute.</span>
           ) : null}
         </div>
-        <div style={styles.metrics} data-chart-readout-metrics="true">
-          <span style={styles.metric}>
-            <span style={styles.metricLabel}>Viewers</span>
-            <strong style={styles.metricValue}>{viewer}</strong>
-          </span>
-          <span style={styles.metric}>
-            <span style={styles.metricLabel}>Chat/min</span>
-            <strong style={styles.metricValue}>{formatReadoutNumber(chatValue)}</strong>
-          </span>
-          <span style={styles.metric}>
-            <span style={styles.metricLabel}>Emotes/min</span>
-            <strong style={styles.metricValue}>{formatReadoutNumber(emoteValue)}</strong>
-          </span>
+        <div className="pulse-readout-metrics" data-chart-readout-metrics="true">
+          {metric('Viewers', viewer)}
+          {metric('Chat/min', formatReadoutNumber(bar ? bar.avg[0] : chatValue), bar?.peak[0])}
+          {metric('Emotes/min', formatReadoutNumber(bar ? bar.avg[1] : emoteValue), bar?.peak[1])}
         </div>
       </div>
     </div>
   )
-}
-
-const styles: Record<string, CSSProperties> = {
-  band: {
-    background: 'rgba(255, 255, 255, 0.025)',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
-    borderRadius: 8,
-    boxSizing: 'border-box',
-    display: 'grid',
-    gap: 4,
-    height: 60,
-    minHeight: 60,
-    overflow: 'hidden',
-    padding: '6px 8px',
-    width: '100%',
-  },
-  content: {
-    display: 'grid',
-    gap: 3,
-    gridTemplateRows: '16px 27px',
-    minWidth: 0,
-  },
-  header: {
-    alignItems: 'center',
-    display: 'flex',
-    gap: 6,
-    minWidth: 0,
-    whiteSpace: 'nowrap',
-  },
-  kicker: {
-    color: theme.accent2,
-    flexShrink: 0,
-    fontSize: 9,
-    fontWeight: 800,
-    letterSpacing: '0.04em',
-    textTransform: 'uppercase',
-  },
-  time: {
-    color: theme.textPrimary,
-    flexShrink: 0,
-    fontSize: 11,
-    fontVariantNumeric: 'tabular-nums',
-    fontWeight: 800,
-  },
-  emotes: {
-    alignItems: 'center',
-    display: 'inline-flex',
-    gap: 4,
-    marginLeft: 'auto',
-    minWidth: 0,
-    overflow: 'hidden',
-  },
-  emote: {
-    alignItems: 'center',
-    display: 'inline-flex',
-    flexShrink: 0,
-    height: 18,
-    justifyContent: 'center',
-    width: 18,
-  },
-  emoteImage: { display: 'block', height: 16, objectFit: 'contain', width: 16 },
-  hint: {
-    color: theme.textMuted,
-    flex: '1 1 auto',
-    fontSize: 9,
-    fontWeight: 600,
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-  },
-  metrics: {
-    alignItems: 'center',
-    display: 'grid',
-    gap: 8,
-    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-    minWidth: 0,
-  },
-  metric: {
-    display: 'grid',
-    gap: 1,
-    lineHeight: 1.1,
-    minWidth: 0,
-  },
-  metricLabel: {
-    color: theme.textMuted,
-    flexShrink: 0,
-    fontSize: 9,
-    fontWeight: 800,
-    letterSpacing: '0.02em',
-    textTransform: 'uppercase',
-  },
-  metricValue: {
-    color: theme.textSecondary,
-    fontSize: 10,
-    fontVariantNumeric: 'tabular-nums',
-    fontWeight: 800,
-    lineHeight: 1.2,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  },
 }

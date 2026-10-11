@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildViewerGeometry,
+  buildViewerOverviewGeometry,
   buildViewerTimestampScale,
   projectValuesToTimestamps,
   viewerDetailPointBudget,
@@ -217,5 +218,30 @@ describe('viewer static geometry', () => {
     expect(scale.xForTimestamp('bad-a', 0, 2)).toBe(10)
     expect(scale.xForTimestamp('bad-b', 1, 2)).toBe(90)
     expect(scale.timestampAtX(50)).toBeNull()
+  })
+})
+
+describe('viewer overview geometry', () => {
+  it('matches the idle line and area of the full geometry for the same values', () => {
+    const cases = [
+      // Dense minutes with a long unobserved run and a lone sampled zero.
+      Array.from({ length: 720 }, (_, index) => ({
+        minuteTs: minute(index),
+        value: index >= 200 && index < 260 ? null : index === 400 ? 0 : 1000 + Math.round(400 * Math.sin(index / 37)),
+      })),
+      // Sparse, irregular samples.
+      [0, 1, 2, 9, 30, 31, 90].map(index => ({ minuteTs: minute(index), value: 50 + index })),
+      [{ minuteTs: minute(3), value: 12 }],
+    ]
+    for (const values of cases) {
+      for (const plotCssWidth of [324, 876]) {
+        const options = { ...geometryOptions, plotCssWidth }
+        const full = buildViewerGeometry(values, values, options)
+        expect(buildViewerOverviewGeometry(values, options)).toEqual({
+          idlePathD: full.idlePathD,
+          idleAreaPathD: full.idleAreaPathD,
+        })
+      }
+    }
   })
 })

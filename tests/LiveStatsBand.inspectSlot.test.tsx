@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import type { ExtensionPeak, ExtensionRollup, PulsePayload } from '../src/shared/messages.ts'
 import { LiveStatsBand } from '../src/ui/LiveStatsBand.tsx'
+import { shadowStyles } from '../src/ui/theme.ts'
 
 function makePayload(peaks: ExtensionPeak[]): PulsePayload {
   return {
@@ -243,7 +244,9 @@ describe('LiveStatsBand chart layout', () => {
     expect(markup).toContain('data-chart-zoom-reset="true"')
     expect(markup).toContain('data-chart-zoom-in="true"')
     expect(markup).toContain('data-chart-rail-resize="start"')
-    expect(markup).toContain('background:transparent')
+    // The reset control is the quiet transparent button (its static style lives in shadow.css).
+    expect(markup).toContain('class="pulse-chart-zoom-button pulse-chart-zoom-reset"')
+    expect(shadowStyles).toMatch(/\.pulse-chart-zoom-controls \.pulse-chart-zoom-reset \{ background: transparent;/)
     expect(markup).not.toContain('rgba(255,255,255,0.72)')
   })
 
