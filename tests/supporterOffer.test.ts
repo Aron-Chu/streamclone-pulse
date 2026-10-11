@@ -143,7 +143,7 @@ describe('Stripe portal login link (PULSE_EXTENSION_STRIPE_PORTAL_LOGIN_URL)', (
     expect(resolveStripePortalLoginUrl('https://billing.stripe.com/p/login/test_abc123')).toBe('https://billing.stripe.com/p/login/test_abc123')
     for (const bad of BAD) {
       expect(parseStripePortalLoginUrl(bad), String(bad)).toBeNull()
-      if (typeof bad === 'string' && bad.trim()) expect(() => resolveStripePortalLoginUrl(bad), bad).toThrow(/billing\.stripe\.com\/p\/login/)
+      if (typeof bad === 'string' && bad.trim()) expect(() => resolveStripePortalLoginUrl(bad), bad).toThrow('billing.stripe.com/p/login')
     }
     // Unset is allowed: the "Lost Twitch access" row then says to email us.
     for (const empty of [undefined, '', '   ']) expect(resolveStripePortalLoginUrl(empty)).toBe('')
