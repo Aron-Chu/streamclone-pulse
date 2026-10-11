@@ -867,9 +867,10 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
       body = <p>{signedInWithTwitch ? 'You’re signed in.' : 'Your account is connected.'} The offer appears here when sign-ups open.</p>
       primary = <button className="pulse-journey-primary" type="button" disabled={checking} onClick={() => void checkAgain().then(readBilling).then(recheckOffer)}>Check sign-up status</button>
       terms = true
-    } else if (workerCheckout && intent === 'review') {
+    } else if (workerCheckout && (intent === 'review' || payBusy)) {
       // One screen before Stripe (mockup 01 step 03): who pays, the price, the
-      // first charge, when it renews, how to cancel, and the tax line.
+      // first charge, when it renews, how to cancel, and the tax line. It
+      // stays up, its action disabled, while Checkout is being prepared.
       state = 'review'; title = 'Become a Pulse Supporter'
       const renews = addOneMonthClamped(new Date()).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
       const descriptor: unknown = SUPPORTER_OFFER_CONFIG.statementDescriptor
@@ -884,7 +885,8 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
       body = <>
         <p className="pulse-supporter-detail">{ACCOUNT_COPY.reviewHelper}</p>
         <dl className="pulse-journey-facts" data-journey-review="true">{reviewRows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
-        <p className="pulse-supporter-detail">{offer?.state === 'open' && offer.termsConsent ? ACCOUNT_COPY.termsOnStripe : 'The Supporter terms apply.'} <a href={POLICY_LINKS.terms} target="_blank" rel="noopener noreferrer">Supporter terms</a></p>
+        {/* Supporter terms, Cancellation & refunds and Privacy are the card's policy row below. */}
+        <p className="pulse-supporter-detail">{offer?.state === 'open' && offer.termsConsent ? ACCOUNT_COPY.termsOnStripe : 'The Supporter terms below apply.'}</p>
         {twitchOn ? <p className="pulse-supporter-detail">{ACCOUNT_COPY.billingEmail}</p> : null}
       </>
       primary = <button className="pulse-journey-primary" type="button" disabled={payBusy} onClick={() => void purchase()}>{payBusy ? 'Preparing checkout…' : ACCOUNT_COPY.continueToPayment}</button>
