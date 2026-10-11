@@ -4,6 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium, type BrowserContext, type Page, type Worker } from '@playwright/test'
 import type { DefaultChartWindow, DensityPreference, ThemePreference } from '../../../src/shared/storage.ts'
+import { extensionServiceWorkerTimeoutMessage, resolveExtensionBrowserLaunch } from './extensionBrowserLaunch.ts'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
 export const EXTENSION_DIST_DIR = path.resolve(root, process.env.PULSE_EXTENSION_DIST_DIR || 'dist')
@@ -61,12 +62,11 @@ export async function launchExtensionContext(
   const headless = options?.headless ?? process.env.PULSE_EXTENSION_HEADLESS === '1'
   const viewport = options?.viewport ?? { width: 1440, height: 900 }
   const deviceScaleFactor = options?.deviceScaleFactor ?? 1
-  const browserChannel = process.env.PULSE_EXTENSION_BROWSER_CHANNEL?.trim() || undefined
-  const browserExecutablePath = process.env.PULSE_EXTENSION_BROWSER_EXECUTABLE_PATH?.trim() || undefined
+  const launch = resolveExtensionBrowserLaunch(headless)
 
   const context = await chromium.launchPersistentContext(userDataDir, {
-    channel: browserExecutablePath ? undefined : browserChannel,
-    executablePath: browserExecutablePath,
+    channel: launch.channel,
+    executablePath: launch.executablePath,
     headless,
     args: [
       `--disable-extensions-except=${EXTENSION_DIST_DIR}`,
@@ -86,7 +86,14 @@ export async function launchExtensionContext(
     recordVideo: { dir: videoDir, size: viewport },
   })
 
-  const serviceWorker = await waitForExtensionServiceWorker(context)
+  const serviceWorkerTimeoutMs = 30_000
+  let serviceWorker: Worker
+  try {
+    serviceWorker = await waitForExtensionServiceWorker(context, serviceWorkerTimeoutMs)
+  } catch (error) {
+    await context.close().catch(() => {})
+    throw new Error(extensionServiceWorkerTimeoutMessage(serviceWorkerTimeoutMs, launch), { cause: error })
+  }
   const extensionId = extensionIdFromWorker(serviceWorker)
   const page = context.pages()[0] ?? (await context.newPage())
 
