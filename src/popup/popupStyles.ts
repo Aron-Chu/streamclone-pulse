@@ -259,6 +259,22 @@ button.pp-chan-row:hover { background: var(--pp-hover); }
 .pp-link-label svg { width: 12px; height: 12px; color: var(--pp-text-3); }
 .pp-link-desc { font-size: 11px; color: var(--pp-text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* One slim row: the tiles stay the popup's main links. Blurple marks it as Discord. */
+.pp-discord {
+  min-height: 36px; padding: 0 10px 0 5px;
+  display: flex; align-items: center; gap: 8px;
+  border: 1px solid rgba(88, 101, 242, 0.55); border-radius: 10px;
+  background: linear-gradient(180deg, rgba(88, 101, 242, 0.22), rgba(88, 101, 242, 0.1)), var(--pp-card);
+  color: var(--pp-text); font: inherit; font-size: 12.5px; font-weight: 650; text-align: left;
+  cursor: pointer;
+  animation: pp-rise 260ms cubic-bezier(0.2, 0.8, 0.2, 1) 140ms both;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+.pp-discord:hover { border-color: rgba(88, 101, 242, 0.85); }
+.pp-discord-icon { width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; background: #5865f2; color: #fff; flex: none; }
+.pp-discord-icon svg { width: 15px; height: 15px; }
+.pp-discord > svg { width: 12px; height: 12px; margin-left: auto; color: var(--pp-text-3); flex: none; }
+
 .pp-foot { display: flex; align-items: center; gap: 6px; min-height: 24px; padding: 0 2px; font-size: 11px; color: var(--pp-text-3); }
 .pp-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--pp-text-3); }
 .pp-dot[data-tone="ok"] { background: var(--pp-ok); }
@@ -279,7 +295,7 @@ button.pp-chan-row:hover { background: var(--pp-hover); }
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 @media (forced-colors: active) {
-  .pp-card, .pp-link, .pp-stat { border: 1px solid CanvasText; }
+  .pp-card, .pp-link, .pp-stat, .pp-discord { border: 1px solid CanvasText; }
   .pp-badge { border: 1px solid CanvasText; }
 }
 `

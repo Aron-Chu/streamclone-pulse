@@ -23,6 +23,7 @@ export type MessageType =
   | 'GET_UPDATE_CHECK_CAPABILITY'
   | 'CHECK_FOR_UPDATE'
   | 'OPEN_SETTINGS_HOST'
+  | 'OPEN_COMMUNITY_LINK'
   | 'LIST_BOOKMARKS'
   | 'MY_MOMENTS'
   | 'MOMENT_CAPTURE'
@@ -167,7 +168,7 @@ export interface CheckForUpdateMessage {
   type: 'CHECK_FOR_UPDATE'
 }
 
-export type SettingsHostSection = 'moments' | 'pulse' | 'supporter' | 'privacy' | 'updates' | 'developer'
+export type SettingsHostSection = 'moments' | 'pulse' | 'supporter' | 'privacy' | 'updates' | 'help' | 'developer'
 /** A section, or a place inside one: `pulse-background` opens Pulse with Background & motion expanded. */
 export type SettingsHostTarget = SettingsHostSection | 'pulse-background'
 
@@ -175,6 +176,15 @@ export type SettingsHostTarget = SettingsHostSection | 'pulse-background'
 export interface OpenSettingsHostMessage {
   type: 'OPEN_SETTINGS_HOST'
   section?: SettingsHostTarget
+}
+
+/**
+ * Open a fixed community page (the website's /discord) from a Twitch surface.
+ * The worker owns the URL, so the content script carries no page links.
+ */
+export interface OpenCommunityLinkMessage {
+  type: 'OPEN_COMMUNITY_LINK'
+  link: 'discord'
 }
 
 export interface EnrollDeviceMessage {
@@ -268,6 +278,7 @@ export type BackgroundRequest =
   | GetUpdateCheckCapabilityMessage
   | CheckForUpdateMessage
   | OpenSettingsHostMessage
+  | OpenCommunityLinkMessage
   | EnrollDeviceMessage
   | GetDeviceAuthStatusMessage
   | RotateDeviceMessage
@@ -746,6 +757,7 @@ export type BackgroundResponse =
       error?: string
     }
   | { type: 'OPEN_SETTINGS_HOST'; ok: boolean; error?: 'settings_host_open_failed' }
+  | { type: 'OPEN_COMMUNITY_LINK'; ok: boolean }
   | { type: 'HUB_SNAPSHOT'; snapshot: import('./hubSnapshot.ts').HubSnapshot | null; error?: string }
   | { type: 'MY_MOMENTS_RECENT'; recent: import('./myMoments.ts').MyMomentsRecent }
   | { type: 'SUPPORTER_ACCOUNT'; account: SupporterAccountState }

@@ -406,7 +406,7 @@ describe('chatActivityEmotes', () => {
         confidence: 'Collecting',
         currentOffsetSeconds: 7200,
       }),
-    ).toContain('no rollups')
+    ).toContain('No chat data for this stream yet')
 
     expect(chartEmptyMessage({
       rollupCount: 59,

@@ -116,6 +116,15 @@ test.describe('toolbar popup', () => {
     const hub = page.getByRole('button', { name: 'Open analytics hub', exact: true })
     await expect(hub).toHaveAccessibleDescription(/Stream history/)
     await expect(page.getByRole('button', { name: 'Open settings', exact: true })).toBeVisible()
+    // One slim Discord row under the tiles; it opens the website's /discord page, never an invite.
+    const discord = page.getByRole('button', { name: 'Join the StreamPulse Discord (opens in a new tab)', exact: true })
+    await expect(discord).toBeVisible()
+    expect(await discord.evaluate(element => element.getBoundingClientRect().height)).toBeLessThanOrEqual(40)
+    expect(await discord.evaluate(element => {
+      const tiles = document.querySelector('.pp-links')!.getBoundingClientRect()
+      const row = element.getBoundingClientRect()
+      return row.top >= tiles.bottom && Math.abs(row.left - tiles.left) < 1 && Math.abs(row.width - tiles.width) < 1
+    })).toBe(true)
     await expect(page.getByRole('status')).toHaveText('Connected')
     await expect(page.locator('.pp-version')).toHaveText(/^v\d+\.\d+\.\d+/)
     await expect.poll(() => page.evaluate(() => [...document.images].every(image => image.complete && image.naturalWidth > 0))).toBe(true)

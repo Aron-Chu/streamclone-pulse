@@ -27,6 +27,7 @@ const KNOWN_MESSAGE_TYPES = new Set<string>([
   'GET_UPDATE_CHECK_CAPABILITY',
   'CHECK_FOR_UPDATE',
   'OPEN_SETTINGS_HOST',
+  'OPEN_COMMUNITY_LINK',
   'LIST_BOOKMARKS',
   'SAVE_BOOKMARK',
   'DELETE_BOOKMARK',
@@ -256,12 +257,16 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
       // a caller-controlled destination into this content-script-reachable action.
       if ('url' in raw || 'path' in raw || 'target' in raw) return null
       const section =
-        raw.section === 'moments' || raw.section === 'pulse' || raw.section === 'supporter' || raw.section === 'privacy' || raw.section === 'updates' || raw.section === 'developer' || raw.section === 'pulse-background'
+        raw.section === 'moments' || raw.section === 'pulse' || raw.section === 'supporter' || raw.section === 'privacy' || raw.section === 'updates' || raw.section === 'help' || raw.section === 'developer' || raw.section === 'pulse-background'
           ? raw.section
           : raw.section == null ? undefined : null
       if (section === null) return null
       return section ? { type, section } : { type }
     }
+    case 'OPEN_COMMUNITY_LINK':
+      // A fixed link name only; the worker resolves it. Never a caller-controlled URL.
+      if (Object.keys(raw).some(key => key !== 'type' && key !== 'link')) return null
+      return raw.link === 'discord' ? { type, link: 'discord' } : null
     case 'SUPPORTER_ACCOUNT': {
       if (Object.keys(raw).some(key => key !== 'type' && key !== 'action')) return null
       const action = raw.action

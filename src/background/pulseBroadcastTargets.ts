@@ -94,6 +94,7 @@ export const MESSAGE_SENDER_SCOPE: Record<BackgroundRequest['type'], MessageSend
   GET_UPDATE_CHECK_CAPABILITY: 'twitch-any',
   CHECK_FOR_UPDATE: 'twitch-any',
   OPEN_SETTINGS_HOST: 'twitch-any',
+  OPEN_COMMUNITY_LINK: 'twitch-any',
   REPORT_EXTENSION_DIAGNOSTIC: 'twitch-any',
   EMIT_EXTENSION_ANALYTICS: 'twitch-any',
   SET_AUTO_UPDATE: 'twitch-any',
