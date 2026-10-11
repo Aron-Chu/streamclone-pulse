@@ -284,7 +284,7 @@ function PulseExperienceSection({ preferences, health, supporterPerks }: { prefe
         <ToggleRow
           id="settings-chat-dock"
           label="Dock when chat is closed"
-          hint={preferences.placement === 'sidebar' ? 'Show a mini Pulse dock when Twitch chat is hidden.' : 'Docking is only available when placement is set to Sidebar.'}
+          hint={preferences.placement === 'sidebar' ? 'Show a mini Pulse dock when Twitch chat is hidden.' : 'Docking needs Sidebar placement.'}
           checked={preferences.dock}
           disabled={preferences.placement !== 'sidebar'}
           onChange={preferences.setDock}

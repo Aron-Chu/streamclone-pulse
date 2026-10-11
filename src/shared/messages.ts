@@ -168,11 +168,13 @@ export interface CheckForUpdateMessage {
 }
 
 export type SettingsHostSection = 'moments' | 'pulse' | 'supporter' | 'privacy' | 'updates' | 'developer'
+/** A section, or a place inside one: `pulse-background` opens Pulse with Background & motion expanded. */
+export type SettingsHostTarget = SettingsHostSection | 'pulse-background'
 
 /** Open the packaged extension-origin settings host from a Twitch surface. */
 export interface OpenSettingsHostMessage {
   type: 'OPEN_SETTINGS_HOST'
-  section?: SettingsHostSection
+  section?: SettingsHostTarget
 }
 
 export interface EnrollDeviceMessage {

@@ -17,7 +17,7 @@
         "Bookmarks work without an account: saves stay on this device and are never uploaded. Once an account is linked, My Moments lists them under Saved on this device.",
         "The toolbar popup is redesigned. Away from a stream it lists channels Pulse is charting live and a Jump back in card for your recent moments and device saves.",
         "Picking a Top Moments row shows its moment card in a fixed place above the list, so the list does not move.",
-        "Supporters can paint the panel title with their finish, a wave and a sheen, show a tenure crest that grows with their support, and pick a signature emote.",
+        "Supporters can paint the panel title with their finish, a wave and a sheen, and show a tenure crest that grows with their support.",
         "Become a Supporter opens streampulse.stream, where you sign in and approve this extension before paying on Stripe. Where the server allows it, Stripe opens directly instead, without a website sign-in or device code.",
         "Membership management and recovery stay connected to the extension's own account."
       ],

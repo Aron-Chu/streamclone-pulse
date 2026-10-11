@@ -16,7 +16,8 @@ describe('PulseSettingsPanel quick workspace', () => {
   it('keeps everyday controls inline and the three-item changelog collapsed by default', () => {
     const html = renderToStaticMarkup(<PulseSettingsPanel />)
     expect(html).toContain('Refresh live data automatically')
-    expect(html).toContain('Auto-update')
+    // The label says what it does; no hint repeats it.
+    expect(html).not.toContain('Auto-update activity')
     expect(html).toContain('Accent')
     expect(html).toContain('Appearance preview')
     expect(html).toContain('data-appearance-preview="true"')
@@ -99,7 +100,7 @@ describe('PulseSettingsPanel quick workspace', () => {
   it('gives everyone else the lab’s Your Line · Anatomy copy and an empty stage the card script fills, with no emotes in this bundle', () => {
     const html = renderToStaticMarkup(<SupporterHero appearance={null} onOpen={() => {}} />)
     expect(html).toContain('Explore Supporter')
-    expect(html).toContain('<small>Your crest, paint and emote on your line. Only you see them. Core tools stay free.</small>')
+    expect(html).toContain('<small>Your crest and paint on your line. Only you see them. Core tools stay free.</small>')
     expect(html).toContain('<span class="pulse-supporter-stage" aria-hidden="true"></span>')
     expect(html).not.toContain('<img')
     expect(html).not.toContain('cdn.7tv.app')

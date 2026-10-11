@@ -68,7 +68,7 @@ test('pay first opens only Stripe, delayed payment activates a chosen finish on 
   await expect.poll(() => finish(cdp)).toBe(null)
   const initialNavigations = twitchNavigations
   await settings.bringToFront()
-  await settings.getByRole('group', { name: 'Accent finish' }).getByRole('radio', { name: 'Halo', exact: true }).check()
+  await settings.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Halo', exact: true }).check()
   await settings.getByRole('button', { name: 'Use Halo when Supporter starts', exact: true }).click()
   expect(calls).toEqual([])
   const tabs = await recordTabs(extension.serviceWorker)

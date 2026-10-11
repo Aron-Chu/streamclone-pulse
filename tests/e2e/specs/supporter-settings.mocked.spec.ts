@@ -1,4 +1,6 @@
+import type { Locator } from '@playwright/test'
 import { test, expect } from '../helpers/testFixtures.ts'
+import { linkDevice, serveMembership, supporterBody } from '../helpers/supporterMembership.ts'
 
 const WIDE_EMOTE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="106" height="32" viewBox="0 0 106 32"><rect width="106" height="32" rx="6" fill="#9146ff"/></svg>'
 
@@ -11,45 +13,123 @@ test('packaged supporter settings stay local, accessible and responsive', async 
   const before = await extension.serviceWorker.evaluate(() => chrome.storage.sync.get(null))
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
   await expect(page.getByRole('heading', { name: 'Account & Supporter' })).toBeVisible()
-  const signatureImages = page.getByRole('group', { name: 'Signature emote' }).locator('img')
-  await expect(signatureImages).toHaveCount(9)
-  await expect.poll(() => signatureImages.evaluateAll(imgs => imgs.every(img => (img as HTMLImageElement).complete && (img as HTMLImageElement).naturalWidth > 0))).toBe(true)
   await expect(page.getByRole('link', { name: 'Account & Supporter' })).toHaveAttribute('aria-current', 'page')
-  const choices = page.getByRole('group', { name: 'Tenure preview' })
-  await expect(choices.getByRole('radio')).toHaveCount(5)
-  const radio = choices.getByRole('radio', { name: '24 months', exact: true })
-  await radio.check()
-  const sample = page.getByLabel('Sample compatible StreamPulse chat message')
-  await expect(sample.locator('[data-supporter-badge="24m"]')).toBeVisible()
-  // Preview at native chat size, where small artwork must remain legible.
-  await expect(sample.locator('svg')).toHaveCSS('width', '18px')
-  await expect(page.getByText('Two-year pinnacle')).toBeVisible()
-  await page.screenshot({ path: info.outputPath('supporter-settings-24m.png'), fullPage: true, animations: 'disabled' })
-  await radio.press('ArrowRight')
-  await expect(choices.getByRole('radio', { name: 'New', exact: true })).toBeChecked()
-  await expect(sample.locator('[data-supporter-badge="new"]')).toBeVisible()
-  await page.getByRole('checkbox', { name: 'Show badge in this preview' }).uncheck()
-  await expect(sample.locator('svg')).toHaveCount(0)
-  await page.getByRole('checkbox', { name: 'Show badge in this preview' }).check()
-  await expect(sample.locator('[data-supporter-badge="new"]')).toBeVisible()
-  await expect(page.getByText(/nothing is equipped, published, or injected into Twitch chat/)).toBeVisible()
+
+  // Your card: the identity that exists (nobody, with Twitch sign-in off), the sample look, and the crest ladder.
+  const card = page.getByRole('region', { name: 'Your Supporter card' })
+  // Heading navigation stops at the card (its h3 is visually hidden), between the page's h2 and "Who sees what".
+  await expect(card.getByRole('heading', { level: 3, name: 'Your Supporter card', exact: true })).toHaveCount(1)
+  await expect(page.locator('.pulse-supporter-settings').getByRole('heading')).toHaveText(['Account & Supporter', 'Your Supporter card', 'Who sees what', 'Your look', 'Account'])
+  await expect(card.locator('.pulse-supporter-card-who strong')).toHaveText('Not signed in')
+  await expect(card.getByText('Sample look', { exact: true })).toBeVisible()
+  await expect(card).not.toContainText('Twitch')
+  const ladder = card.getByRole('list', { name: 'Crest ladder' })
+  await expect(ladder.getByRole('listitem')).toHaveText(['New', '3 mo', '6 mo', '1 year', '2 years'])
+  // The real crest art, from the stylesheet, at ladder size.
+  await expect(ladder.locator('.pulse-crest').first()).toHaveCSS('width', '22px')
+  await expect(ladder.locator('.pulse-crest[data-tenure="24m"]')).toHaveCSS('background-image', /^url\("data:image\/svg\+xml/)
+  // Emote rain across the card's top, on the card itself: no gradient layer.
+  const top = card.locator('.pulse-supporter-card-banner')
+  await expect(top).toHaveCSS('background-image', 'none')
+  await expect(top.locator('.pulse-banner-art')).toHaveAttribute('data-mode', 'rain')
+  await expect(card.locator('.pulse-journey')).toHaveAttribute('data-journey-state', 'unlinked')
+  const primary = card.locator('.pulse-journey-primary')
+  await expect(primary).toHaveText(['Become a Supporter'])
+  // The price and that it renews come before the button that buys it, in reading and Tab order.
+  const terms = card.locator('.pulse-supporter-terms')
+  await expect(terms).toContainText('US$4.99 / month')
+  await expect(terms).toContainText('renews monthly until you cancel')
+  expect(await primary.evaluate(button => {
+    const price = button.closest('.pulse-journey')?.querySelector('.pulse-supporter-terms')
+    return price ? Boolean(price.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING) : null
+  })).toBe(true)
+
+  // Who sees what: every perk is yours only, and normal chat for everyone else.
+  const who = page.locator('.pulse-supporter-who > li')
+  await expect(who.locator('strong')).toHaveText(['You', 'Everyone else on Twitch'])
+  await expect(who.first().locator('[data-supporter-perk-names="true"]')).toHaveText('Title paint · Tenure crest · Emote rain · Supporter card')
+  await expect(page.getByText('Concept · not built')).toHaveCount(0)
+  await expect(page.getByText('Shown with the sample look')).toBeVisible()
   await page.screenshot({ path: info.outputPath('supporter-settings.png'), fullPage: true, animations: 'disabled' })
+
+  // Trying a paint previews it, and saves nothing.
+  await page.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Halo', exact: true }).check()
+  await expect(who.first().locator('.pulse-paint').first()).toHaveAttribute('data-finish', 'halo')
+  await expect(page.getByText('Shown with the look you’re trying')).toBeVisible()
+  await expect(page.getByRole('group', { name: 'Emote rain' }).getByRole('button')).toHaveCount(3)
+  for (const button of await page.getByRole('group', { name: 'Emote rain' }).getByRole('button').all()) await expect(button).toBeDisabled()
+  await expect(page.getByText(/signature emote/i)).toHaveCount(0)
+  await page.screenshot({ path: info.outputPath('supporter-settings-halo.png'), fullPage: true, animations: 'disabled' })
   for (const width of [320, 360, 390, 480, 768]) {
     await page.setViewportSize({ width, height: 900 })
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
-    // No choice card may spill its emote name past its own border, even where the page does not scroll.
-    expect(await page.locator('.pulse-supporter-badge-choices label').evaluateAll(labels => labels.filter(label => label.scrollWidth > label.clientWidth + 1).map(label => label.textContent))).toEqual([])
+    // No Your look choice may spill its label past its own border, even where the page does not scroll.
+    expect(await page.locator('.pulse-supporter-look-row :is(label, button)').evaluateAll(choices => choices.filter(choice => choice.scrollWidth > choice.clientWidth + 1).map(choice => choice.textContent))).toEqual([])
+    if (width < 768) {
+      // Narrow, the button wraps below its column: the price sits above it, never under it.
+      const [price, button] = await Promise.all([terms.boundingBox(), primary.boundingBox()])
+      expect(price!.y + price!.height).toBeLessThanOrEqual(button!.y)
+    }
     await page.screenshot({ path: info.outputPath(`supporter-settings-${width}.png`), fullPage: true, animations: 'disabled' })
   }
-  await radio.check()
   await page.reload()
-  await expect(page.getByRole('radio', { name: 'New', exact: true })).toBeChecked()
+  await expect(page.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Etched', exact: true })).toBeChecked()
   const after = await extension.serviceWorker.evaluate(() => chrome.storage.sync.get(null))
   expect(after).toEqual(before)
   await page.getByRole('link', { name: 'Privacy & Data', exact: true }).click()
   await expect(page).toHaveURL(/#privacy$/)
   await page.goBack()
   await expect(page.getByRole('heading', { name: 'Account & Supporter' })).toBeVisible()
+})
+
+test('Your look tiles work from the keyboard and show where focus is', async ({ extension, prepare }) => {
+  await prepare()
+  const page = extension.page
+  await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
+  // Each tile's radio is a 1px transparent input: the tile's focus-within outline is the only focus indicator.
+  const tile = (radio: Locator) => radio.locator('xpath=ancestor::label[contains(concat(" ", @class, " "), " pulse-supporter-tile ")][1]')
+  const you = page.locator('.pulse-supporter-who > li').first()
+  const paint = page.getByRole('group', { name: 'Paint' })
+  const wave = page.getByRole('group', { name: 'Wave' })
+  const sheen = page.getByRole('group', { name: 'Sheen' })
+  const etched = paint.getByRole('radio', { name: 'Etched', exact: true })
+  const smooth = wave.getByRole('radio', { name: 'Smooth wave', exact: true })
+  await expect(etched).toBeChecked()
+  await expect(smooth).toBeChecked()
+  await expect(tile(etched)).toHaveCSS('outline-style', 'none')
+
+  // Shift+Tab from Wave reaches the checked Paint tile: the hidden inputs stay in the tab order.
+  await smooth.focus()
+  await page.keyboard.press('Shift+Tab')
+  await expect(etched).toBeFocused()
+  await expect(tile(etched)).toHaveCSS('outline-style', 'solid')
+  // An arrow key moves the choice to the next tile, the outline follows it, and Who sees what previews it.
+  await page.keyboard.press('ArrowRight')
+  const halo = paint.getByRole('radio', { name: 'Halo', exact: true })
+  await expect(halo).toBeChecked()
+  await expect(halo).toBeFocused()
+  await expect(tile(halo)).toHaveCSS('outline-style', 'solid')
+  await expect(tile(etched)).toHaveCSS('outline-style', 'none')
+  await expect(you.locator('.pulse-paint').first()).toHaveAttribute('data-finish', 'halo')
+  await expect(page.getByText('Shown with the look you’re trying')).toBeVisible()
+
+  // Tab goes on to the checked Wave tile, then the checked Sheen tile.
+  await page.keyboard.press('Tab')
+  await expect(smooth).toBeFocused()
+  await expect(tile(smooth)).toHaveCSS('outline-style', 'solid')
+  await page.keyboard.press('Tab')
+  const sweep = sheen.getByRole('radio', { name: 'Sweep sheen', exact: true })
+  await expect(sweep).toBeChecked()
+  await expect(sweep).toBeFocused()
+  await expect(tile(sweep)).toHaveCSS('outline-style', 'solid')
+  await expect(you.locator('.pulse-supporter-chat-line .pulse-paint')).toHaveAttribute('data-sheen', 'sweep')
+  await page.keyboard.press('ArrowRight')
+  const glint = sheen.getByRole('radio', { name: 'Glint sheen', exact: true })
+  await expect(glint).toBeChecked()
+  await expect(glint).toBeFocused()
+  await expect(tile(glint)).toHaveCSS('outline-style', 'solid')
+  await expect(tile(sweep)).toHaveCSS('outline-style', 'none')
+  await expect(you.locator('.pulse-supporter-chat-line .pulse-paint')).toHaveAttribute('data-sheen', 'glint')
 })
 
 /** Record what the page asks the browser to open, then open it as usual. */
@@ -98,4 +178,74 @@ test('unmounted account backend produces a clear unavailable state', async ({ ex
   await expect(extension.page.getByRole('link', { name: 'Reopen streampulse.stream' })).toHaveCount(0)
   // UI-11: linking that is not deployed is explained, not offered again.
   await expect(extension.page.getByRole('button', { name: 'Become a Supporter', exact: true })).toHaveCount(0)
+})
+
+test('a Supporter’s emote rain choice keeps keyboard focus through its save', async ({ extension, prepare }) => {
+  await prepare()
+  await linkDevice(extension.serviceWorker)
+  await serveMembership(extension.context, () => supporterBody('active', 2))
+  const page = extension.page
+  await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
+  const rain = page.getByRole('group', { name: 'Emote rain' })
+  await expect(rain).toHaveAttribute('data-supporter-perks', 'on')
+  const status = rain.getByRole('status')
+  await expect(status).toHaveText('')
+  // Hold each write long enough for Chromium to run its focus fixup, as a slow sync write would.
+  await page.evaluate(() => {
+    const original = chrome.storage.sync.set.bind(chrome.storage.sync)
+    chrome.storage.sync.set = ((items: Record<string, unknown>) => new Promise(resolve => setTimeout(resolve, 400)).then(() => original(items))) as typeof chrome.storage.sync.set
+  })
+  const focused = () => page.evaluate(() => document.activeElement?.tagName === 'BUTTON' ? document.activeElement.textContent : document.activeElement?.tagName)
+  for (const [name, previous] of [['Still', 'Off'], ['Rain', 'Still']] as const) {
+    await rain.getByRole('button', { name: previous, exact: true }).focus()
+    await page.keyboard.press('Tab')
+    expect(await focused()).toBe(name)
+    await page.keyboard.press('Space')
+    // While it saves: nothing is disabled, focus stays put, and the old result is cleared.
+    await expect(rain).toHaveAttribute('aria-busy', 'true')
+    await expect(status).toHaveText('')
+    // Read at once, not retried: a row disabled for the save is enabled again once it ends.
+    expect(await rain.evaluate(group => group.querySelectorAll('button:disabled').length)).toBe(0)
+    expect(await focused()).toBe(name)
+    await expect(status).toHaveText('Emote rain saved.')
+    await expect(rain.getByRole('button', { name, exact: true })).toHaveAttribute('aria-pressed', 'true')
+    expect(await focused()).toBe(name)
+  }
+  const stored = await extension.serviceWorker.evaluate(() => chrome.storage.sync.get('pulseBanner'))
+  expect(stored).toMatchObject({ pulseBanner: { mode: 'rain' } })
+})
+
+test('Manage billing keeps keyboard focus while it opens and reports a failure in the Account card', async ({ extension, prepare }) => {
+  await prepare()
+  await linkDevice(extension.serviceWorker)
+  await serveMembership(extension.context, () => ({ ...supporterBody('active', 2), accountKind: 'installation', installationAccountsEnabled: true, restoreEligible: false }))
+  let portals = 0
+  await extension.context.route('https://api.streampulse.stream/v1/billing/portal', async route => {
+    portals++
+    // Long enough for Chromium's focus fixup to run, as a slow portal request would.
+    await new Promise(resolve => setTimeout(resolve, 1_000))
+    await route.fulfill({ status: 503, json: { error: 'unavailable' } })
+  })
+  const page = extension.page
+  await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
+  const account = page.locator('section').filter({ has: page.getByRole('heading', { level: 3, name: 'Account', exact: true }) })
+  const manage = account.getByRole('button', { name: 'Manage billing', exact: false })
+  const status = account.locator('[data-account-notice]')
+  await expect(status).toHaveText('')
+  await manage.focus()
+  await page.keyboard.press('Enter')
+  await expect.poll(() => portals).toBe(1)
+  // While it opens: enabled, still focused, and busy. Read at once, not retried:
+  // a button disabled for the request is enabled again once it ends.
+  expect(await manage.isEnabled()).toBe(true)
+  expect(await manage.evaluate(button => button === document.activeElement)).toBe(true)
+  await expect(manage).toHaveAttribute('aria-busy', 'true')
+  // A second press while it opens asks nothing more.
+  await page.keyboard.press('Enter')
+  await expect(status).toContainText('Could not open membership management')
+  await expect(manage).not.toHaveAttribute('aria-busy', 'true')
+  await expect(manage).toBeFocused()
+  expect(portals).toBe(1)
+  // Reported beside the button, not in the card footer a screen above.
+  await expect(page.locator('.pulse-journey-status')).not.toContainText('Could not open membership management')
 })

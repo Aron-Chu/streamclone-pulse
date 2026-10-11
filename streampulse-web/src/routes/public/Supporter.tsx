@@ -75,8 +75,8 @@ export default function Supporter() {
         <ul>
           <li>A private Pulse header accent.</li>
           <li>Three private overlay finishes.</li>
+          <li>A tenure crest beside your Pulse panel title that grows with your support, which only you see.</li>
           <li>Emote rain: 7TV emotes behind your Pulse panel on Twitch, which only you see.</li>
-          <li>A signature emote only you see, picked from a curated 7TV set, on your Supporter card in the extension.</li>
           <li>Private support recognition in your account.</li>
         </ul>
 

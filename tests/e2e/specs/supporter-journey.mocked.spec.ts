@@ -98,7 +98,7 @@ test('purchase journey needs no codes, refreshes or reloads, and revocation reac
   await settings.bringToFront()
 
   // Optional explicit finish choice before purchase: a preview, nothing equipped.
-  await settings.getByRole('group', { name: 'Accent finish' }).getByRole('radio', { name: 'Halo', exact: true }).check()
+  await settings.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Halo', exact: true }).check()
   await settings.getByRole('button', { name: 'Use Halo when Supporter starts', exact: true }).click()
   await expect(settings.locator('[data-supporter-finish-intent="halo"]')).toBeVisible()
   expect(cosmeticWrites).toEqual([])

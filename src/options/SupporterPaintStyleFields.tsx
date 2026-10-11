@@ -42,7 +42,7 @@ export function useSupporterPaintStyle() {
   return { style, status, choose }
 }
 
-/** Wave and sheen pickers. Each choice previews itself in the selected finish. */
+/** Wave and sheen pickers, as rows of tiles. Each choice previews itself in the selected finish. */
 export function SupporterPaintStyleFields({ finish, style, onChoose }: {
   finish: SupporterFinishId | null
   style: SupporterPaintStyle
@@ -50,33 +50,37 @@ export function SupporterPaintStyleFields({ finish, style, onChoose }: {
 }) {
   const sample = finish ?? 'glass'
   return <>
-    <fieldset className="pulse-supporter-badge-choices pulse-supporter-paint-choices"><legend>Wave</legend>
-      {SUPPORTER_WAVE_OPTIONS.map(option => <label key={option.id} title={option.description}>
-        <input
-          type="radio"
-          name="supporter-wave"
-          value={`wave-${option.id}`}
-          aria-label={`${option.label} wave`}
-          checked={style.wave === option.id}
-          onChange={() => onChoose({ ...style, wave: option.id })}
-        />
-        <span className="pulse-paint pulse-supporter-paint-sample" data-finish={sample} data-wave={option.id} data-sheen="none" data-text="Aa" aria-hidden="true">Aa</span>
-        <span className="pulse-supporter-finish-choice"><strong>{option.label}</strong><small>{option.description}</small></span>
-      </label>)}
+    <fieldset className="pulse-supporter-look-row"><legend>Wave</legend>
+      <div className="pulse-supporter-tiles">
+        {SUPPORTER_WAVE_OPTIONS.map(option => <label key={option.id} className="pulse-supporter-tile" title={option.description}>
+          <input
+            type="radio"
+            name="supporter-wave"
+            value={`wave-${option.id}`}
+            aria-label={`${option.label} wave`}
+            checked={style.wave === option.id}
+            onChange={() => onChoose({ ...style, wave: option.id })}
+          />
+          <span className="pulse-paint pulse-supporter-paint-sample" data-finish={sample} data-wave={option.id} data-sheen="none" data-text="Aa" aria-hidden="true">Aa</span>
+          <small>{option.label}</small>
+        </label>)}
+      </div>
     </fieldset>
-    <fieldset className="pulse-supporter-badge-choices pulse-supporter-paint-choices"><legend>Sheen</legend>
-      {SUPPORTER_SHEEN_OPTIONS.map(option => <label key={option.id} title={option.description}>
-        <input
-          type="radio"
-          name="supporter-sheen"
-          value={`sheen-${option.id}`}
-          aria-label={`${option.label} sheen`}
-          checked={style.sheen === option.id}
-          onChange={() => onChoose({ ...style, sheen: option.id })}
-        />
-        <span className="pulse-paint pulse-supporter-paint-sample" data-finish={sample} data-wave={style.wave} data-sheen={option.id} data-text="Aa" aria-hidden="true">Aa</span>
-        <span className="pulse-supporter-finish-choice"><strong>{option.label}</strong><small>{option.description}</small></span>
-      </label>)}
+    <fieldset className="pulse-supporter-look-row"><legend>Sheen</legend>
+      <div className="pulse-supporter-tiles">
+        {SUPPORTER_SHEEN_OPTIONS.map(option => <label key={option.id} className="pulse-supporter-tile" title={option.description}>
+          <input
+            type="radio"
+            name="supporter-sheen"
+            value={`sheen-${option.id}`}
+            aria-label={`${option.label} sheen`}
+            checked={style.sheen === option.id}
+            onChange={() => onChoose({ ...style, sheen: option.id })}
+          />
+          <span className="pulse-paint pulse-supporter-paint-sample" data-finish={sample} data-wave={style.wave} data-sheen={option.id} data-text="Aa" aria-hidden="true">Aa</span>
+          <small>{option.label}</small>
+        </label>)}
+      </div>
     </fieldset>
   </>
 }

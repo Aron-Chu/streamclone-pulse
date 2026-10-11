@@ -37,11 +37,13 @@ export const CHAT_STACK_CSS = `${KIT_CSS}
 }
 `
 
-/** The Emote Pile. */
+/** The Emote Pile: your crest glows in your paint, and a "you" tag rides above the newest one. */
 export const EMOTE_PILE_CSS = `${KIT_CSS}
 .spk-body { left: 0; position: absolute; top: 0; will-change: transform; }
 .spk-body .spk-inner { align-items: center; display: flex; height: 100%; justify-content: center; width: 100%; }
 .spk-you::before { background: radial-gradient(circle, rgba(var(--spk-fin-rgb), 0.55), transparent 68%); border-radius: 50%; content: ""; inset: -7px; position: absolute; z-index: -1; }
-.spk-you .spk-crest { position: absolute; right: -7px; top: -7px; }
-@media (prefers-reduced-motion: reduce) { .spk-paint { animation: none; } }
+.spk-tag { align-items: center; background: rgba(13, 13, 18, 0.92); border: 1px solid rgba(var(--spk-fin-rgb), 0.55); border-radius: 999px; box-sizing: border-box; color: var(--spk-fin-core); display: inline-flex; font: 800 9.5px/14px ${FONT}; height: 16px; left: 0; opacity: 0; padding: 0 6px; pointer-events: none; position: absolute; top: 0; transition: opacity 200ms; white-space: nowrap; will-change: transform; z-index: 3; }
+.spk-tag .spk-name { font-weight: 800; }
+.spk-tag .pulse-paint { font-size: inherit; line-height: inherit; }
+@media (prefers-reduced-motion: reduce) { .spk-paint { animation: none; } .spk-tag { transition: none; } }
 `

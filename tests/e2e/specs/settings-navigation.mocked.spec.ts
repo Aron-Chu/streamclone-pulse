@@ -52,7 +52,8 @@ test('Supporter leads settings and section navigation remains consistent at ever
   for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 900 })
     await expect(banner).toBeInViewport()
-    await expect(page.locator('.pulse-host-main > :first-child')).toHaveAttribute('data-settings-host-banner', 'supporter')
+    // The banner leads the main column, inside the frame its narrow layout queries.
+    await expect(page.locator('.pulse-host-main > :first-child > [data-settings-host-banner="supporter"]')).toHaveCount(1)
     const bannerBox = await banner.boundingBox()
     const contentBox = await page.locator('#settings-content').boundingBox()
     expect(bannerBox!.y + bannerBox!.height).toBeLessThanOrEqual(contentBox!.y)
