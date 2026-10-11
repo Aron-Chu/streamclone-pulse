@@ -8,6 +8,7 @@ import { capturePublicCta } from '../../lib/productAnalytics'
 import { AnalyticsPreferences } from './AnalyticsPreferences'
 import { PageErrorBoundary } from '../PortalErrorBoundary'
 import {
+  FEEDBACK_PATH,
   GITHUB_REPO_URL,
   PRIVACY_PATH,
   REFUNDS_PATH,
@@ -107,7 +108,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
               <Link to="/docs">Documentation</Link>
               <Link to="/status">System Status</Link>
               <Link to="/support">Support</Link>
-              <Link to="/support#send-feedback">Send feedback</Link>
+              <Link to={FEEDBACK_PATH}>Send feedback</Link>
               {discord ? (
                 <a href={discord} target="_blank" rel="noopener noreferrer" className="app-footer__discord" aria-label="Discord (opens in a new tab)">
                   <DiscordMark size={15} />Discord

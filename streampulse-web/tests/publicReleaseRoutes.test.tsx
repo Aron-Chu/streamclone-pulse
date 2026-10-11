@@ -6,6 +6,7 @@ import Docs from '../src/routes/public/Docs'
 import NotFound from '../src/routes/public/NotFound'
 import Privacy from '../src/routes/public/Privacy'
 import Support from '../src/routes/public/Support'
+import Feedback from '../src/routes/public/Feedback'
 import DashboardShell from '../src/routes/dashboard/DashboardShell'
 import { supportDiagnostics } from '../src/lib/supportDiagnostics'
 
@@ -30,8 +31,9 @@ describe('public release routes', () => {
   })
 
   it('offers a public issue path and keeps diagnostics strictly allowlisted', () => {
-    renderRoute(<Support />)
-    expect(screen.getByRole('link', { name: 'Open a public issue on GitHub' }).getAttribute('href')).toBe('https://github.com/Aron-Chu/streamclone-pulse/issues')
+    // A build without a Turnstile key: /feedback offers the labelled public path.
+    renderRoute(<Feedback />)
+    expect(screen.getByRole('link', { name: 'Open a public issue on GitHub (opens in a new tab)' }).getAttribute('href')).toBe('https://github.com/Aron-Chu/streamclone-pulse/issues')
     const diagnostic = supportDiagnostics({ userAgent: 'Chrome/125 token=private email=private', online: true, width: 390, height: 844 })
     expect(diagnostic).toContain('Chrome/125')
     expect(diagnostic).not.toContain('private')
@@ -64,6 +66,21 @@ describe('public release routes', () => {
     expect(body).not.toMatch(/security@streampulse\.stream/i)
   })
 
+  it('lists the extension My Moments database with what it holds and that it stays on the device', () => {
+    renderRoute(<Privacy />)
+    const storage = screen.getByRole('heading', { name: /what is stored in the browser/i }).nextElementSibling
+    const entry = [...(storage?.querySelectorAll('li') ?? [])].find(item => item.textContent?.includes('pulse-my-moments-v1'))
+    const text = entry?.textContent?.replace(/\s+/g, ' ') ?? ''
+    expect(text).toMatch(/Extension IndexedDB/)
+    expect(text).toMatch(/history \(off by default/i)
+    expect(text).toMatch(/notes you add to saved moments/i)
+    expect(text).toMatch(/bookmarks you save while no account is linked/i)
+    expect(text).toMatch(/None of it is uploaded to StreamPulse or synced/i)
+    expect(text).toMatch(/incognito windows neither read it nor add to it/i)
+    expect(text).toMatch(/uninstalling the extension deletes it/i)
+    expect(text).toMatch(/Bookmarks saved while an account is linked are stored by StreamPulse with that account/i)
+  })
+
   it('publishes actionable extension and analytics support guidance', () => {
     renderRoute(<Support />)
     expect(screen.getByRole('heading', { name: /support & troubleshooting/i })).toBeTruthy()
@@ -75,7 +92,8 @@ describe('public release routes', () => {
     const body = screen.getByTestId('support-page').textContent ?? ''
     expect(body).toMatch(/privacy or legal/i)
     expect(body).toMatch(/not a routine product-support mailbox/i)
-    expect(body).toMatch(/unavailable/i)
+    // The private form is on /feedback; /support links to it.
+    expect(within(screen.getByTestId('support-feedback-link')).getByRole('link', { name: 'Send feedback' }).getAttribute('href')).toBe('/feedback')
     expect(screen.queryByTestId('support-form')).toBeNull()
     expect(body).not.toMatch(/Turnstile/i)
     expect(body).not.toMatch(/support@streampulse\.stream/i)

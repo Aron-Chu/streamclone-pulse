@@ -121,6 +121,15 @@ const routes = [
     robots: 'index,follow',
   },
   {
+    // The private feedback form. /support links here and the extension's
+    // "Send feedback" opens it.
+    path: 'feedback',
+    title: 'Send Feedback — StreamPulse',
+    description: 'Send private feedback to the StreamPulse team. No account needed.',
+    canonicalPath: '/feedback',
+    robots: 'index,follow',
+  },
+  {
     // The extension's "Join Discord" opens this page. It only forwards to the
     // build-time invite (or says there is none), so it stays out of search.
     path: 'discord',

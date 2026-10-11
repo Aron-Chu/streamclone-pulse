@@ -14,6 +14,7 @@ interface ReleaseFixture {
   title: string
   summary: string
   new?: string[]
+  changed?: string[]
   improved?: string[]
   fixed?: string[]
   knownIssues?: string[]
@@ -21,7 +22,7 @@ interface ReleaseFixture {
 }
 
 /** The page's note headings, in its order. */
-const CATEGORY_HEADINGS = [['new', 'New'], ['improved', 'Improved'], ['fixed', 'Fixed'], ['knownIssues', 'Known limitations']] as const
+const CATEGORY_HEADINGS = [['new', 'New'], ['changed', 'Changed'], ['improved', 'Improved'], ['fixed', 'Fixed'], ['knownIssues', 'Known limitations']] as const
 
 const { currentVersion, releases } = releaseNotes as { currentVersion: string; releases: ReleaseFixture[] }
 const webRoot = resolve(import.meta.dirname, '..')

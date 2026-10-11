@@ -14,12 +14,11 @@ import {
   getSidebarTab,
   getChatClosedPulseDockEnabled,
   getThemePreference,
+  themeFromStorageChange,
   CHAT_CLOSED_PULSE_DOCK_ENABLED_KEY,
-  THEME_PREFERENCE_KEY,
   type OverlayMode,
   type OverlayPlacement,
   type SidebarTab,
-  type ThemePreference,
 } from '../shared/storage.ts'
 import { applyAccentTheme } from '../ui/overlayTheme.ts'
 import { PulsePortalContext } from '../ui/pulsePortalContext.ts'
@@ -38,12 +37,14 @@ import {
 import {
   resolveOverlayHostVisibility,
   SIDEBAR_FLOAT_FALLBACK_MS,
+  snapLayoutNeedsRender,
   type OverlayHostVisibility,
 } from './resolveOverlayHostVisibility.ts'
 import { applyTwitchSidebarChromeHides } from './twitchSidebarChrome.ts'
 import type { TwitchPageContext } from './twitch.ts'
 import { detectTwitchChannelLive } from './twitch.ts'
 import { installContentDiagnosticsEmitters } from '../shared/extensionDiagnostics.ts'
+import { EXTENSION_DIAGNOSTICS_INGEST_ENABLED } from '../shared/diagnosticsConsent.ts'
 import type { LivePollController } from './livePoll.ts'
 
 const TAB_HOST_ID = 'streamclone-pulse-tabs'
@@ -52,6 +53,11 @@ const PANEL_HOST_ID = 'streamclone-pulse-root'
 export const PULSE_TABS_HOST_ID = TAB_HOST_ID
 export const PULSE_ROOT_HOST_ID = PANEL_HOST_ID
 
+/** Twitch marks <html> with its theme; the tab row is transparent over Twitch's header. */
+export function twitchTheme(root: Element): 'light' | 'dark' {
+  return root.classList.contains('tw-root--theme-light') ? 'light' : 'dark'
+}
+
 let themeListenerInstalled = false
 
 function installThemeSyncListener(): void {
@@ -59,11 +65,8 @@ function installThemeSyncListener(): void {
   if (typeof chrome === 'undefined' || !chrome.storage?.onChanged) return
   themeListenerInstalled = true
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'sync' || !changes[THEME_PREFERENCE_KEY]) return
-    const next = changes[THEME_PREFERENCE_KEY].newValue
-    if (next === 'aurora' || next === 'volt' || next === 'azure') {
-      applyAccentTheme(next as ThemePreference)
-    }
+    const next = area === 'sync' ? themeFromStorageChange(changes) : undefined
+    if (next) applyAccentTheme(next)
   })
 }
 
@@ -76,6 +79,8 @@ export interface OverlayMountOptions {
   onLivePollWindowChange?: (window: PulseCacheWindow) => void
   livePollStore?: Pick<LivePollController, 'getSnapshot' | 'subscribe'>
   softStaleRefreshWarning?: boolean
+  /** Failed first load: render the error state, not an endless "Loading Pulse". */
+  error?: string
 }
 
 export function applyOverlayPayloadUpdate(
@@ -119,10 +124,19 @@ let mountStorageListenerInstalled = false
 let overlayDiagnosticsInstalled = false
 let overlayHostObserver: MutationObserver | null = null
 let overlayHostReconcileTimer: ReturnType<typeof setTimeout> | null = null
+let twitchThemeObserver: MutationObserver | null = null
 let nativeChatFocusHandoff: NativeChatFocusHandoff | null = null
 
+/** The panel host carries the theme too, ready for a later light panel. */
+function syncTwitchTheme(): void {
+  const theme = twitchTheme(document.documentElement)
+  for (const host of [tabsHostEl, panelHostEl]) if (host) host.dataset.twitchTheme = theme
+}
+
 function installOverlayDiagnosticsOnce(): void {
-  if (overlayDiagnosticsInstalled) return
+  // While ingest is compiled off every emitter is a no-op, so the bundle can
+  // drop the listeners and everything they pull in.
+  if (!EXTENSION_DIAGNOSTICS_INGEST_ENABLED || overlayDiagnosticsInstalled) return
   overlayDiagnosticsInstalled = true
   installContentDiagnosticsEmitters({ feature: 'overlay' })
 }
@@ -178,24 +192,17 @@ function handleOverlayModeChange(mode: OverlayMode): void {
   renderOverlay(currentPayload, currentError)
 }
 
+// Hosts are only ever appended to <html> (createShadowHost), so duplicates are
+// found among its direct children, never by walking the whole document.
 function purgeExtraHosts(id: string, keep: HTMLElement | null): void {
   // Do not use `#id` selectors — browsers may collapse duplicate IDs to one match.
-  const doomed: HTMLElement[] = []
-  for (const node of document.querySelectorAll('*')) {
-    if (!(node instanceof HTMLElement) || node.id !== id) continue
-    if (keep && node === keep && keep.isConnected) continue
-    doomed.push(node)
+  for (const node of Array.from(document.documentElement.children)) {
+    if (node.id === id && node !== keep) node.remove()
   }
-  for (const node of doomed) node.remove()
 }
 
-function containsOverlayHost(node: Node): boolean {
-  if (!(node instanceof Element)) return false
-  if (node.id === TAB_HOST_ID || node.id === PANEL_HOST_ID) return true
-  for (const descendant of node.querySelectorAll('*')) {
-    if (descendant.id === TAB_HOST_ID || descendant.id === PANEL_HOST_ID) return true
-  }
-  return false
+function isOverlayHost(node: Node): boolean {
+  return node instanceof Element && (node.id === TAB_HOST_ID || node.id === PANEL_HOST_ID)
 }
 
 function reconcileOverlayHosts(): void {
@@ -228,14 +235,15 @@ function installOverlayHostObserver(): void {
     // Twitch and extension reinjection can append a second host without changing
     // the route. Reconcile that mutation immediately instead of waiting for the
     // debounced route scheduler, while ignoring normal chat/page churn.
-    if (!mutations.some(mutation => Array.from(mutation.addedNodes).some(containsOverlayHost))) return
+    if (!mutations.some(mutation => Array.from(mutation.addedNodes).some(isOverlayHost))) return
     if (overlayHostReconcileTimer != null) return
     overlayHostReconcileTimer = setTimeout(() => {
       overlayHostReconcileTimer = null
       reconcileOverlayHosts()
     }, 50)
   })
-  overlayHostObserver.observe(document.documentElement, { childList: true, subtree: true })
+  // Direct children only: chat churn deeper in the page never reaches this callback.
+  overlayHostObserver.observe(document.documentElement, { childList: true })
 }
 
 function createShadowHost(id: string): { host: HTMLElement; shadow: ShadowRoot; root: Root } {
@@ -564,11 +572,17 @@ function renderOverlay(payload: PulsePayload | null, error?: string): void {
 
 function startSidebarObserver(): void {
   stopObserve?.()
+  // Seed with the placed layout so a restart (navigation, settings) holds it
+  // through a brief chat remount instead of hiding the hosts.
   stopObserve = observeChatSnapLayout(next => {
+    const previous = sidebarLayout
     sidebarLayout = next
     if (next != null) resetSidebarFallback()
-    renderOverlay(currentPayload, currentError)
-  })
+    // A move or resize only restyles the hosts; React renders only when the
+    // panel appears, disappears or crosses the compact-width line.
+    if (snapLayoutNeedsRender(previous, next)) renderOverlay(currentPayload, currentError)
+    else applyHostVisibility(currentHostVisibility())
+  }, sidebarLayout)
 }
 
 export function mountOverlay(
@@ -583,7 +597,7 @@ export function mountOverlay(
   currentContext = context
   currentOptions = options
   currentPayload = initial
-  currentError = undefined
+  currentError = options.error
   currentCoverageTier = options.coverageTier ?? null
   if (needsDisplayHydration) {
     storedPlacement = DEFAULT_OVERLAY_PLACEMENT
@@ -607,6 +621,12 @@ export function mountOverlay(
     panelRoot = panel.root
   }
   installOverlayHostObserver()
+  if (!twitchThemeObserver) {
+    // <html> class only, never the subtree: Twitch toggles it on theme switch.
+    twitchThemeObserver = new MutationObserver(syncTwitchTheme)
+    twitchThemeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+  }
+  syncTwitchTheme()
 
   installThemeSyncListener()
   installMountStorageListener()
@@ -650,7 +670,8 @@ export function updateOverlayPayload(
   const previousPayload = currentPayload
   if (meta?.softStaleRefresh) {
     // Keep cached chart; surface a bounded nonblocking warning via options/error lane.
-    currentError = undefined
+    // With no chart on screen an error card stays: there is nothing to keep.
+    if (currentPayload) currentError = undefined
     currentOptions = {
       ...currentOptions,
       softStaleRefreshWarning: true,
@@ -722,6 +743,8 @@ export function unmountOverlay(): void {
   displayPreferenceRequestId += 1
   overlayHostObserver?.disconnect()
   overlayHostObserver = null
+  twitchThemeObserver?.disconnect()
+  twitchThemeObserver = null
   if (overlayHostReconcileTimer != null) {
     clearTimeout(overlayHostReconcileTimer)
     overlayHostReconcileTimer = null

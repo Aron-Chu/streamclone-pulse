@@ -52,7 +52,9 @@ Build a **new** candidate only after RPR-2 validation gates. Every gate below st
 - [ ] Store package contains **no** `localhost` / `127.0.0.1` host permissions
 - [ ] Development-only local BFF access lives in a **separate development manifest** (RPR-2 / R18)
 - [ ] Privacy and Support URLs match live pages and **current** disclosures
-- [ ] Every route linked by the extension returns the intended live portal page, including supporter, account, policy, and changelog routes
+- [ ] Every route linked by the extension returns the intended live portal page, including supporter, account, policy, changelog, and community (`/feedback`, `/discord`) routes
+- [ ] `https://streampulse.stream/discord` returns 200 **and** forwards to the Discord invite, not the "isn't open yet" page: the portal `/discord` route (PR #71) is merged and deployed with a valid invite. Until then the extension's Discord entry points (popup row, Settings Community card, Help & Feedback) must not ship
+- [ ] `https://streampulse.stream/feedback` is deployed (portal before extension) and its private feedback form is on (support cases enabled with a private delivery adapter, Turnstile site key in the deployed portal build). The extension's "Send feedback" choice says "Private. Only the team reads it.", which holds only for the form; with the form off the page offers public alternatives, each labelled public
 - [ ] Contact disclosures use only verified mailboxes (today: `privacy@streampulse.stream`)
 - [ ] Screenshots match the packaged `dist/` for that SHA
 - [ ] Owner authorizes upload; candidate `0.2.2` exceeds the confirmed dashboard version (the public listing reported `0.2.1` on 2026-09-24; verify the dashboard and the owner-reviewed candidate scope)

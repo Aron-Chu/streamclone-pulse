@@ -145,6 +145,38 @@ describe('private supporter account coordinator', () => {
     development.request.mockResolvedValue({ status: 200, body: { ...body, environment: 'sandbox' } })
     expect(await development.coordinator.entitlement()).toMatchObject({ state: 'ready', features: ['supporter.banner.v1'] })
   })
+  it('carries the per-account Checkout flag only when the server reports exactly true', async () => {
+    const body = { schemaVersion: 1, accountId: creds.accountId, environment: 'live', revision: 2, status: 'none', serverTime: iso(0), cacheUntil: iso(900), supportPeriods: 0, features: {} }
+    for (const [checkoutEnabled, expected] of [[true, true], [false, false], [undefined, false], ['true', false]] as const) {
+      const f = fixture(creds)
+      f.request.mockResolvedValue({ status: 200, body: { ...body, checkoutEnabled } })
+      expect(await f.coordinator.entitlement()).toMatchObject({ state: 'ready', status: 'none', checkoutEnabled: expected })
+    }
+  })
+  it('carries the renewal fields only in their documented shapes, and nothing from an older server', async () => {
+    const body = { schemaVersion: 1, accountId: creds.accountId, environment: 'live', revision: 6, status: 'active', serverTime: iso(0), accessFrom: iso(-100), accessUntil: iso(3600), cacheUntil: iso(900), supportPeriods: 1, features: {} }
+    const cases: Array<[Record<string, unknown>, Record<string, unknown>]> = [
+      [{ renewal: 'ends', endsOn: iso(3600) }, { renewal: 'ends', endsOn: iso(3600) }],
+      [{ renewal: 'auto', renewsOn: iso(3600) }, { renewal: 'auto', renewsOn: iso(3600) }],
+      [{ status: 'expired', renewal: 'none' }, { renewal: 'none' }],
+      // A date belongs only to its own renewal kind.
+      [{ renewal: 'auto', endsOn: iso(3600) }, { renewal: 'auto' }],
+      [{ renewal: 'ends', renewsOn: iso(3600) }, { renewal: 'ends' }],
+      [{ renewal: 'ends', endsOn: 'soon' }, { renewal: 'ends' }],
+      [{ renewal: 'Ends', endsOn: iso(3600) }, {}],
+      [{ renewal: null }, {}],
+      // Older servers, and a read the server could not make: no keys at all.
+      [{}, {}],
+    ]
+    for (const [change, expected] of cases) {
+      const f = fixture(creds)
+      f.request.mockResolvedValue({ status: 200, body: { ...body, ...change } })
+      const value = await f.coordinator.entitlement()
+      expect(value.state, JSON.stringify(change)).toBe('ready')
+      const fields = Object.fromEntries(Object.entries(value).filter(([key]) => key === 'renewal' || key === 'renewsOn' || key === 'endsOn'))
+      expect(fields, JSON.stringify(change)).toEqual(expected)
+    }
+  })
   it('clears remotely revoked credentials and permits an immediate new device link', async () => {
     const f = fixture(creds)
     f.request.mockResolvedValueOnce({ status: 401, body: { error: 'unauthorized' } })
@@ -402,6 +434,19 @@ describe('worker-owned journey completion', () => {
     expect(f.projectionChanged).toHaveBeenCalledOnce()
   })
 
+  it('signals open surfaces when a Supporter cancels or renews again', async () => {
+    const f = journey(creds)
+    f.request.mockResolvedValueOnce(snapshot('active', { renewal: 'auto', renewsOn: iso(3600) }))
+      .mockResolvedValueOnce(snapshot('active', { renewal: 'ends', endsOn: iso(3600) }))
+      .mockResolvedValueOnce(snapshot('active', { renewal: 'auto', renewsOn: iso(3600) }))
+    await f.coordinator.entitlement()
+    expect(f.projectionChanged).not.toHaveBeenCalled()
+    await f.coordinator.entitlement()
+    expect(f.projectionChanged).toHaveBeenCalledOnce()
+    await f.coordinator.entitlement()
+    expect(f.projectionChanged).toHaveBeenCalledTimes(2)
+  })
+
   it('passes Checkout availability through only as a literal true', async () => {
     for (const [value, expected] of [[true, true], ['true', false], [1, false], [undefined, false]] as const) {
       const f = journey(creds)
@@ -531,5 +576,92 @@ describe('pre-purchase finish choice failures', () => {
     const waiting = new SupporterAccountCoordinator({ read: async () => ({ kind: 'pending', secret: 'c'.repeat(64), code: 'ABCDE-12345', expiresAt: iso(600), nextPoll: now }), write: async () => {}, request: f.request })
     expect(await waiting.hasPendingLink()).toBe(true)
     expect(f.request).not.toHaveBeenCalled()
+  })
+})
+
+describe('shared appearance reads (cachedEntitlement)', () => {
+  const perks = { 'supporter.banner.v1': true, 'supporter.finish.v1': true }
+  const none = { 'supporter.banner.v1': false, 'supporter.finish.v1': false }
+  const snapshot = (features: Record<string, boolean>, extra: Record<string, unknown> = {}) => ({ status: 200, body: { schemaVersion: 1, accountId: creds.accountId, environment: 'live', revision: 3,
+    status: Object.values(features).some(Boolean) ? 'active' : 'none', serverTime: iso(0), accessFrom: iso(-100), accessUntil: iso(3600), cacheUntil: iso(900), supportPeriods: 1,
+    features, cosmetics: { enabled: true, finish: 'halo' }, ...extra } })
+  function setup(first: { status: number; body: unknown }) {
+    let value: unknown = { ...creds, expiresAt: iso(30 * 86_400), refreshExpiresAt: iso(60 * 86_400) }
+    let clock = now
+    const request = vi.fn<(path: string, body?: Record<string, unknown>, bearer?: string) => Promise<{ status: number; body: unknown }>>(async () => first)
+    const coordinator = new SupporterAccountCoordinator({ read: async () => value, write: async next => { value = next }, request, now: () => clock })
+    const reads = () => request.mock.calls.filter(([path]) => path === '/v1/billing/supporter').length
+    return { coordinator, request, reads, advance: (ms: number) => { clock += ms }, store: (next: unknown) => { value = next } }
+  }
+
+  it('shares one read with perks across tabs for 40 s, serving the remaining validity', async () => {
+    const f = setup(snapshot(perks))
+    expect(await f.coordinator.cachedEntitlement()).toMatchObject({ state: 'ready', validForMs: 60_000 })
+    f.advance(25_000)
+    // Another tab, or a remount, 25 s later: no request, and 25 s less validity.
+    expect(await f.coordinator.cachedEntitlement()).toMatchObject({ state: 'ready', validForMs: 35_000, cosmetics: { finish: 'halo' } })
+    expect(f.reads()).toBe(1)
+    f.advance(15_000)
+    await f.coordinator.cachedEntitlement()
+    expect(f.reads()).toBe(2)
+  })
+
+  it('re-checks an account without perks only at the server cacheUntil (at most 15 minutes)', async () => {
+    const f = setup(snapshot(none))
+    expect(await f.coordinator.cachedEntitlement()).toMatchObject({ state: 'ready', features: [] })
+    for (let minute = 1; minute < 15; minute++) { f.advance(60_000); await f.coordinator.cachedEntitlement() }
+    expect(f.reads()).toBe(1)
+    f.advance(60_000)
+    await f.coordinator.cachedEntitlement()
+    expect(f.reads()).toBe(2)
+  })
+
+  it('never trusts a server cache window beyond 15 minutes', async () => {
+    const f = setup(snapshot(none, { cacheUntil: iso(86_400) }))
+    await f.coordinator.cachedEntitlement()
+    f.advance(15 * 60_000)
+    await f.coordinator.cachedEntitlement()
+    expect(f.reads()).toBe(2)
+  })
+
+  it('shares a failed read for 30 s instead of every tab retrying it', async () => {
+    const f = setup({ status: 503, body: null })
+    expect(await f.coordinator.cachedEntitlement()).toEqual({ state: 'unavailable', reason: 'temporarily_unavailable' })
+    f.advance(29_000)
+    await f.coordinator.cachedEntitlement()
+    expect(f.reads()).toBe(1)
+    f.advance(1_000)
+    await f.coordinator.cachedEntitlement()
+    expect(f.reads()).toBe(2)
+  })
+
+  it('a settings read is always fresh and refreshes what tabs are served', async () => {
+    const f = setup(snapshot(none))
+    await f.coordinator.cachedEntitlement()
+    f.request.mockResolvedValue(snapshot(perks))
+    expect(await f.coordinator.entitlement()).toMatchObject({ features: expect.arrayContaining(['supporter.banner.v1']) })
+    expect(await f.coordinator.cachedEntitlement()).toMatchObject({ features: expect.arrayContaining(['supporter.banner.v1']) })
+    expect(f.reads()).toBe(2)
+  })
+
+  it('drops the shared read on a cosmetics save, a finish choice, sign-out and another account', async () => {
+    const f = setup(snapshot(perks))
+    await f.coordinator.cachedEntitlement()
+    f.request.mockImplementation(async path => path === '/v1/billing/cosmetics' ? { status: 200, body: {} } : snapshot(perks))
+    expect(await f.coordinator.saveCosmetics({ enabled: true, finish: 'etched' })).toBe(true)
+    await f.coordinator.cachedEntitlement()
+    expect(f.reads()).toBe(2)
+    await f.coordinator.setFinishIntent(null)
+    await f.coordinator.cachedEntitlement()
+    expect(f.reads()).toBe(3)
+    // Another account signed in on this device: the first account's read is never served.
+    f.store({ ...creds, accountId: '99999999-9999-4999-8999-999999999999', expiresAt: iso(30 * 86_400), refreshExpiresAt: iso(60 * 86_400) })
+    f.request.mockResolvedValue({ status: 200, body: { ...snapshot(none).body, accountId: '99999999-9999-4999-8999-999999999999' } })
+    expect(await f.coordinator.cachedEntitlement()).toMatchObject({ state: 'ready', features: [] })
+    expect(f.reads()).toBe(4)
+    f.request.mockResolvedValue({ status: 204, body: null })
+    await f.coordinator.run('disconnect')
+    expect(await f.coordinator.cachedEntitlement()).toEqual({ state: 'not_linked' })
+    expect(f.reads()).toBe(4)
   })
 })

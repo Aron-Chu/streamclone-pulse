@@ -219,9 +219,14 @@ export function extendViewerSeriesToTrailingEdge(
 /**
  * Chart-only: carry the last positive sample forward across trailing null/zero gaps
  * (viewers, chat trends, emote trends).
+ *
+ * With the plotted `points`, the carry stops at the first `missing` one: only
+ * real quiet buckets (the open minute among them) are carried, so a line
+ * never runs on over trailing minutes that were never recorded.
  */
 export function extendSeriesToTrailingEdge(
   values: Array<number | null>,
+  points?: ReadonlyArray<Pick<ExtensionRollup, 'missing'>>,
 ): Array<number | null> {
   let lastIndex = -1
   let lastValue = 0
@@ -234,7 +239,7 @@ export function extendSeriesToTrailingEdge(
   }
   if (lastIndex < 0 || lastIndex >= values.length - 1) return values
   const out = [...values]
-  for (let i = lastIndex + 1; i < out.length; i += 1) {
+  for (let i = lastIndex + 1; i < out.length && !points?.[i]?.missing; i += 1) {
     out[i] = lastValue
   }
   return out
@@ -495,15 +500,27 @@ export function easeInOutCubic(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
 }
 
+/** Longest quiet opening (in plotted buckets) the stream-start ramp may cover. */
+export const STREAM_START_RAMP_MAX_BUCKETS = 3
+
 /**
  * Chart display: ramp from 0 at stream start to the first positive sample so
  * trend/area lines rise gradually instead of jumping or backfilling flat.
+ *
+ * Only a short opening of real quiet buckets is ramped. A longer opening, or
+ * one containing a `missing` bucket, stays blank like the viewer lane: a ramp
+ * there would draw hours of history that was never recorded.
  */
 export function rampNullableSeriesFromStreamStart(
   values: Array<number | null>,
+  points?: ReadonlyArray<Pick<ExtensionRollup, 'missing'>>,
 ): Array<number | null> {
   const firstIndex = values.findIndex(value => value != null && value > 0)
-  if (firstIndex <= 0) return values
+  if (
+    firstIndex <= 0
+    || firstIndex > STREAM_START_RAMP_MAX_BUCKETS
+    || points?.slice(0, firstIndex).some(point => point.missing)
+  ) return values
   const anchor = values[firstIndex]!
   const out = [...values]
   out[0] = 0

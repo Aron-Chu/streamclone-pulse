@@ -7,6 +7,7 @@ type ChangelogCardProps =
 
 const CATEGORY_LABELS = {
   new: 'New',
+  changed: 'Changed',
   improved: 'Improved',
   fixed: 'Fixed',
   knownIssues: 'Known limitations',
@@ -17,6 +18,7 @@ function releaseHighlights(entry: ReleaseEntry, limit: number): string[] {
   if (source.length > 0) return source.slice(0, limit)
   return [
     ...(entry.new ?? []),
+    ...(entry.changed ?? []),
     ...(entry.improved ?? []),
     ...(entry.fixed ?? []),
     ...(entry.knownIssues ?? []),
@@ -41,8 +43,16 @@ function releaseLink(value: string | undefined): string | undefined {
   return value.startsWith('https://streampulse.stream/') ? value : undefined
 }
 
+/**
+ * The installed build, a version the store published, or one that never was
+ * (an internal preview, or the next version before it ships).
+ */
+export function releaseLifecycleLabel(entry: Pick<ReleaseEntry, 'status'>, isInstalled: boolean): string {
+  return isInstalled ? 'Installed' : entry.status === 'released' ? 'Released' : 'Not published'
+}
+
 function ReleaseHeading({ entry, isInstalled }: { entry: ReleaseEntry; isInstalled: boolean }) {
-  const lifecycle = isInstalled ? 'Installed' : entry.status === 'unreleased' ? 'Preview' : 'Released'
+  const lifecycle = releaseLifecycleLabel(entry, isInstalled)
   const date = releaseDate(entry.releasedAt)
   return (
     <>
@@ -75,7 +85,8 @@ function HistoryBody({ entry }: { entry: ReleaseEntry }) {
   const categories = (Object.keys(CATEGORY_LABELS) as Array<keyof typeof CATEGORY_LABELS>)
     .map(key => ({ key, label: CATEGORY_LABELS[key], items: entry[key] ?? [] }))
     .filter(category => category.items.length > 0)
-  const details = releaseLink(entry.links?.details)
+  // Release details only for a published version, at its own entry on the site's changelog (#v0.2.1).
+  const details = entry.status === 'released' ? releaseLink(entry.links?.details) : undefined
   const support = releaseLink(entry.links?.support)
 
   return (
@@ -91,7 +102,7 @@ function HistoryBody({ entry }: { entry: ReleaseEntry }) {
       ))}
       {details || support ? (
         <div className="pulse-changelog-links">
-          {details ? <a href={details} target="_blank" rel="noreferrer">Release details ↗</a> : null}
+          {details ? <a href={`${details}#v${entry.version}`} target="_blank" rel="noreferrer">Release details ↗</a> : null}
           {support ? <a href={support} target="_blank" rel="noreferrer">Support ↗</a> : null}
         </div>
       ) : null}

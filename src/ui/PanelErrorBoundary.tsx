@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { requestExtensionErrorShownAnalytics } from '../shared/extensionAnalytics.ts'
+import { EXTENSION_DIAGNOSTICS_INGEST_ENABLED } from '../shared/diagnosticsConsent.ts'
 import {
   classifyDiagnosticsError,
   emitExtensionDiagnostic,
@@ -9,47 +10,44 @@ import { theme } from './theme.ts'
 
 interface PanelErrorBoundaryProps {
   children: ReactNode
-  /** Override for tests. */
-  emit?: typeof emitExtensionDiagnostic
 }
 
 interface PanelErrorBoundaryState {
   hasError: boolean
-  errorClass: 'type_error' | 'network_error' | 'timeout' | 'abort' | 'unknown' | null
 }
 
 /** Prevent a single chart/runtime throw from blanking the whole Pulse sidebar. */
 export class PanelErrorBoundary extends Component<PanelErrorBoundaryProps, PanelErrorBoundaryState> {
-  state: PanelErrorBoundaryState = { hasError: false, errorClass: null }
+  state: PanelErrorBoundaryState = { hasError: false }
 
-  static getDerivedStateFromError(error: Error): PanelErrorBoundaryState {
-    return {
-      hasError: true,
-      errorClass: classifyDiagnosticsError(error),
-    }
+  static getDerivedStateFromError(): PanelErrorBoundaryState {
+    return { hasError: true }
   }
 
   componentDidCatch(error: Error, _info: ErrorInfo): void {
-    // NEVER send error.message or raw stack — enums + sanitized frames only.
-    const emit = this.props.emit ?? emitExtensionDiagnostic
-    void emit({
-      feature: 'overlay',
-      event: 'render_error',
-      error: classifyDiagnosticsError(error),
-      frames: framesFromErrorStack(error.stack),
-    })
+    // Diagnostics upload is compiled off, so a report would be dropped unsent.
+    // This check keeps the report code out of the content script.
+    if (EXTENSION_DIAGNOSTICS_INGEST_ENABLED) {
+      // NEVER send error.message or raw stack — enums + sanitized frames only.
+      void emitExtensionDiagnostic({
+        feature: 'overlay',
+        event: 'render_error',
+        error: classifyDiagnosticsError(error),
+        frames: framesFromErrorStack(error.stack),
+      })
+    }
     // User-visible error UI is about to render — coarse analytics only (consent + kill switch gated).
     requestExtensionErrorShownAnalytics()
   }
 
   render(): ReactNode {
     if (this.state.hasError) {
-      const code = this.state.errorClass ?? 'unknown'
+      // The error class goes to diagnostics above, never into viewer copy.
       return (
         <section style={styles.block} data-testid="pulse-panel-error">
           <h2 style={styles.title}>Pulse panel error</h2>
-          <p style={styles.text}>Something went wrong rendering this panel ({code}).</p>
-          <p style={styles.hint}>Reload the Twitch tab. If this persists, open Options and report a support case.</p>
+          <p style={styles.text}>Something went wrong rendering this panel.</p>
+          <p style={styles.hint}>Reload the Twitch tab. If this persists, open Help &amp; Feedback in Settings.</p>
         </section>
       )
     }

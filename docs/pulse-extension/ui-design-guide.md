@@ -319,6 +319,22 @@ Do not copy portal dashboard density into the MV3 popup.
 | Error | Short cause + retry; no secrets in copy |
 | Retry | Explicit control; preserve last good frame when possible |
 
+### Accepted overlay outage and reconnect copy (2026-10-07)
+
+The owner accepted the reviewed copy from the 2026-10-05 fix run as is. Change
+it only with a new owner decision.
+
+- **Hosted outage card** (`BackendError`, hosted API): title "Can't reach
+  StreamPulse", body "StreamPulse isn't responding right now. Try again in a
+  minute." No backend URL. A local backend keeps its developer sentence.
+- **Open settings** stays on that card, next to Retry.
+- **Offline** header pill: a VOD whose replay data is missing or still syncing
+  shows the `offline_empty` state ("Offline"), not an outage.
+- **Updated or reloaded extension (LIFE-2):** title "Extension disconnected",
+  one action, "Reload page"; over a chart, "Extension disconnected. Reload this
+  page to reconnect." Retry is never offered through the dead port. The
+  popup's own dead-connection handling is still open.
+
 ---
 
 ## 18. Content and error-copy conventions

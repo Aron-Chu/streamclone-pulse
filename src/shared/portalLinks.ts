@@ -1,4 +1,5 @@
 import { safeWebAnalyticsOrigin } from './analyticsLinks.ts'
+import { DEVICE_LINK_ENABLED } from './deviceLink.ts'
 
 /**
  * Every streampulse.stream link the extension publishes, in one place.
@@ -25,15 +26,40 @@ export const CANONICAL_PORTAL_ORIGIN = 'https://streampulse.stream'
 export const POLICY_LINKS = {
   privacy: `${CANONICAL_PORTAL_ORIGIN}/privacy`,
   terms: `${CANONICAL_PORTAL_ORIGIN}/terms`,
+  /**
+   * The Supporter section of the terms, the one policy link with a fragment: it
+   * is a place in the terms document, not a separate address. A site without the
+   * `supporter` anchor opens the terms at the top, so it is safe before deploy.
+   */
+  supporterTerms: `${CANONICAL_PORTAL_ORIGIN}/terms#supporter`,
   refunds: `${CANONICAL_PORTAL_ORIGIN}/refunds`,
   support: `${CANONICAL_PORTAL_ORIGIN}/support`,
+} as const
+
+/**
+ * Community destinations: the website's private feedback page and its Discord page.
+ *
+ * Fixed production pages, separate from the policy links. The extension never
+ * embeds a Discord invite: `/discord` is the website's own page, which holds the
+ * current invite (or says the server isn't open yet), so an invite can rotate
+ * without a store release.
+ *
+ * Both pages are website work this file depends on, not something it provides.
+ * `tests/portalLinks.test.ts` fails while streampulse-web has no route for a
+ * path here, and the store review checklist requires the deployed /discord page
+ * to forward to an invite and the /feedback form to be on before a release.
+ */
+export const COMMUNITY_LINKS = {
+  feedback: `${CANONICAL_PORTAL_ORIGIN}/feedback`,
+  discord: `${CANONICAL_PORTAL_ORIGIN}/discord`,
 } as const
 
 const PRODUCT_PATHS = {
   supporter: '/supporter',
   billing: '/account/billing',
   signIn: '/account/sign-in',
-  linkDevice: '/account/link-device',
+  // Firefox builds have no device link (deviceLink.ts), so not its page either.
+  linkDevice: DEVICE_LINK_ENABLED ? '/account/link-device' : '/account/sign-in',
 } as const
 
 export type ProductLinkName = keyof typeof PRODUCT_PATHS

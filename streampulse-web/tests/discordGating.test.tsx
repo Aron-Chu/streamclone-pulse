@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { discordInviteUrl, parseDiscordInviteUrl } from '../src/lib/discord'
 import Discord from '../src/routes/public/Discord'
 import Landing from '../src/routes/public/Landing'
+import Feedback from '../src/routes/public/Feedback'
 import Support from '../src/routes/public/Support'
 import { PublicLayout } from '../src/ui/components/PublicLayout'
 
@@ -82,8 +83,12 @@ describe('Discord entry points', () => {
 
     const support = render(<MemoryRouter><Support /></MemoryRouter>)
     expect(discordLinks()).toEqual([])
-    expect(screen.queryByTestId('support-discord-line')).toBeNull()
     support.unmount()
+
+    const feedback = render(<MemoryRouter><Feedback /></MemoryRouter>)
+    expect(discordLinks()).toEqual([])
+    expect(screen.queryByTestId('support-discord-line')).toBeNull()
+    feedback.unmount()
 
     render(<MemoryRouter><PublicLayout><p>page</p></PublicLayout></MemoryRouter>)
     expect(discordLinks()).toEqual([])
@@ -110,14 +115,14 @@ describe('Discord entry points', () => {
     expect(screen.queryAllByRole('link', { name: /menu/i })).toHaveLength(0)
     // Send feedback sits in the footer regardless of Discord.
     const footer = document.querySelector('footer')!
-    expect(within(footer as HTMLElement).getByRole('link', { name: 'Send feedback' }).getAttribute('href')).toBe('/support#send-feedback')
+    expect(within(footer as HTMLElement).getByRole('link', { name: 'Send feedback' }).getAttribute('href')).toBe('/feedback')
   })
 
   it('adds Send feedback and Discord to the site footer', () => {
     vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', LONG_INVITE)
     render(<MemoryRouter><PublicLayout><p>page</p></PublicLayout></MemoryRouter>)
     const footer = screen.getByRole('navigation', { name: 'Footer' })
-    expect(within(footer).getByRole('link', { name: 'Send feedback' }).getAttribute('href')).toBe('/support#send-feedback')
+    expect(within(footer).getByRole('link', { name: 'Send feedback' }).getAttribute('href')).toBe('/feedback')
     expect(within(footer).getByRole('link', { name: 'Discord (opens in a new tab)' }).getAttribute('href')).toBe(LONG_INVITE)
   })
 
@@ -133,7 +138,7 @@ describe('Discord entry points', () => {
     vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', SHORT_INVITE)
     const landing = render(<MemoryRouter><Landing /></MemoryRouter>)
     await screen.findByRole('heading', { name: /actually reacted to/i })
-    const support = render(<MemoryRouter><Support /></MemoryRouter>)
+    const support = render(<MemoryRouter><Feedback /></MemoryRouter>)
     const site = render(<MemoryRouter><PublicLayout><p>page</p></PublicLayout></MemoryRouter>)
     const links = discordLinks()
     expect(links.length).toBeGreaterThanOrEqual(6)
@@ -150,13 +155,14 @@ describe('Discord entry points', () => {
     site.unmount()
   })
 
-  it('adds the quiet Discord line under the support card', () => {
+  it('adds the quiet Discord line, labelled public, under the feedback card', () => {
     vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', SHORT_INVITE)
-    render(<MemoryRouter><Support /></MemoryRouter>)
+    vi.stubEnv('VITE_TURNSTILE_SITE_KEY', '1x00000000000000000000AA')
+    render(<MemoryRouter><Feedback /></MemoryRouter>)
     const line = screen.getByTestId('support-discord-line')
     expect(line.textContent).toContain('Ideas or just want to chat?')
-    expect(line.textContent).toContain("It's public, so keep account problems in the form.")
-    expect(within(line).getByRole('link', { name: 'Join the Discord (opens in a new tab)' }).getAttribute('href')).toBe(SHORT_INVITE)
+    expect(line.textContent).toContain('Anyone there can read it, so keep account problems in this form.')
+    expect(within(line).getByRole('link', { name: 'Join the public Discord (opens in a new tab)' }).getAttribute('href')).toBe(SHORT_INVITE)
   })
 })
 
@@ -170,13 +176,13 @@ describe('/discord page', () => {
     expect(redirect).toHaveBeenCalledWith(SHORT_INVITE)
   })
 
-  it('says the server is not open yet and points at /support without a valid invite', () => {
+  it('says the server is not open yet and points at /feedback without a valid invite', () => {
     vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', 'https://discord.gg/not a code')
     const redirect = vi.fn()
     render(<MemoryRouter><Discord redirect={redirect} /></MemoryRouter>)
     expect(screen.getByRole('heading', { level: 1, name: "The StreamPulse Discord isn't open yet" })).toBeTruthy()
     const page = screen.getByTestId('discord-page')
-    expect(within(page).getByRole('link', { name: 'Send feedback' }).getAttribute('href')).toBe('/support#send-feedback')
+    expect(within(page).getByRole('link', { name: 'Send feedback' }).getAttribute('href')).toBe('/feedback')
     expect(discordLinks()).toEqual([])
     expect(redirect).not.toHaveBeenCalled()
   })
