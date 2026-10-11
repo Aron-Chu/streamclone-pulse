@@ -1,7 +1,7 @@
 import type { MomentReference } from '../ui/library/model.ts'
 
-export interface PlaybackSample { time: number; clock: number; source: string; active: boolean }
-export function watchedProgress(start: number, end: number, source: string) {
+export interface PlaybackSample { time: number; clock: number; source: unknown; active: boolean }
+export function watchedProgress(start: number, end: number, source: unknown) {
   let previous: PlaybackSample | undefined
   let seconds = 0
   return (sample: PlaybackSample): 'stop' | 'watched' | 'pending' => {
@@ -16,23 +16,25 @@ export function watchedProgress(start: number, end: number, source: string) {
   }
 }
 let cancel: (() => void) | undefined
+/** What the video plays: its URL, or the object Twitch attaches through srcObject (currentSrc is then empty). */
+const sourceOf = (video: HTMLVideoElement): unknown => video.currentSrc || video.srcObject
 /** Called only by an explicit, verified Pulse seek. No page events can start capture. */
 export async function observeMomentPlayback(video: HTMLVideoElement | null, reference: MomentReference, start: number, end: number): Promise<void> {
   cancel?.()
   let cancelled = false
   cancel = () => { cancelled = true }
-  if (!video || !Number.isFinite(start) || !Number.isFinite(end) || end - start < 10 || end - start > 120 || !video.currentSrc) return
+  if (!video || !Number.isFinite(start) || !Number.isFinite(end) || end - start < 10 || end - start > 120 || !sourceOf(video)) return
   const status = await chrome.runtime.sendMessage({ type: 'MOMENT_CAPTURE', action: 'status' }).catch(() => null)
   if (cancelled || !status?.enabled) return
-  const source = video.currentSrc
+  const source = sourceOf(video)
   const url = location.href
   const sample = watchedProgress(start, end, source)
   let entered = false
   const deadline = performance.now() + 180000
   const timer = setInterval(() => {
     if (!entered && video.currentTime >= start) entered = true
-    if (!entered && video.currentTime >= start - 10 && video.currentSrc === source && location.href === url && performance.now() < deadline && video.isConnected && !cancelled) return
-    const result = sample({ time: video.currentTime, clock: performance.now(), source: video.currentSrc,
+    if (!entered && video.currentTime >= start - 10 && sourceOf(video) === source && location.href === url && performance.now() < deadline && video.isConnected && !cancelled) return
+    const result = sample({ time: video.currentTime, clock: performance.now(), source: sourceOf(video),
       active: !document.hidden && !video.paused && !video.seeking && video.readyState >= 3 })
     if (cancelled || !video.isConnected || location.href !== url || performance.now() >= deadline || result === 'stop' || result === 'watched') {
       clearInterval(timer)
