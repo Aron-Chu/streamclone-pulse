@@ -577,6 +577,10 @@ test.describe('extension mocked states', () => {
     await host.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
     await host.keyboard.press('Tab')
     await expect(skipLink).toBeFocused()
+    // Focused, the skip link slides into view with a visible ring.
+    await expect(skipLink).toBeInViewport()
+    await expect(skipLink).toHaveCSS('outline-style', 'solid')
+    await expect(skipLink).toHaveCSS('outline-width', '2px')
     await host.keyboard.press('Tab')
     await expect(sectionNav.getByRole('link').first()).toBeFocused()
 

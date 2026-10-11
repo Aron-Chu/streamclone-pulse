@@ -58,7 +58,7 @@ export function MomentPreview({ moment, context, presentation, busy, error, onCl
   const analysisUrl = safePresentationUrl(presentation?.analysisUrl)
   return <LibraryDialog title="Moment preview" onClose={onClose} canClose={!busy}>
     <header className="pl-preview-heading"><span className="pl-eyebrow">{moment.channel} / {timestamp(moment.offsetSeconds)}</span><h3>{moment.title}</h3>
-      <p className="pl-moment-identity">{presentation?.gameAtMoment ?? 'Game at this moment unknown'}</p>
+      {presentation?.gameAtMoment ? <p className="pl-moment-identity">{presentation.gameAtMoment}</p> : null}
       <div className="pl-row"><span className="pl-tag">{moment.savedAt !== undefined ? 'Bookmarked' : 'Not bookmarked'}</span>{data ? <span className="pl-muted">{data.provenance === 'fixture' ? 'Illustrative analysis · fixture data' : 'Saved analysis snapshot'} · {data.coverage === 'partial' ? 'Partial coverage' : 'Covered window'}</span> : null}</div></header>
     <div className="pl-preview-tabs" role="tablist" aria-label="Moment detail views">{tabs.map((name, index) => <button key={name} ref={element => { buttons.current[index] = element }}
       className="pl-button" type="button" role="tab" id={`${id}-tab-${index}`} aria-selected={tab === name} aria-controls={`${id}-panel`} tabIndex={tab === name ? 0 : -1}

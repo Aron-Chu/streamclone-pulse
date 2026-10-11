@@ -57,7 +57,7 @@ function deviceSaveMoments(snapshot: LibrarySnapshot | null): LibraryMoment[] {
  * there is no account anyone can create, so the copy says where saves live
  * and what is coming, and offers no account action.
  */
-export const DEVICE_ONLY_INTRO = 'Find your way back to the stream. Bookmarks are free and stay in this browser, along with your notes and watched history. Accounts are coming with Continue with Twitch.'
+export const DEVICE_ONLY_INTRO = 'Find your way back to the stream. Bookmarks are free and stay in this browser, along with your notes and watched history.'
 export const DEVICE_ONLY_COPY = 'Bookmarks, notes and watched history stay in this browser and are never uploaded. Accounts are coming with Continue with Twitch; until then there is nothing to sign up for.'
 
 /**
@@ -166,11 +166,6 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
   return <main className="pl-library" id="settings-content" tabIndex={-1} aria-label="My Moments settings">
     <div className="pl-page-heading"><div><span className="pl-eyebrow">YOUR MOMENTS · FREE</span><h2 ref={heading} tabIndex={-1}>My Moments</h2>
       <p className="pl-muted">{accountsOpen ? 'Find your way back to the stream. Bookmarks are free. Without an account they stay on this device; with a free Pulse account they follow you to any device. Notes stay on this device. Watched history does too, unless you sync it to your account.' : DEVICE_ONLY_INTRO}</p></div></div>
-    <div className="pl-library-intro" aria-label="How My Moments works">
-      <span><strong>Bookmarks</strong><small>Keep a timestamp and note for later.</small></span>
-      <span><strong>History</strong><small>{accountsOpen ? 'Optional playback memory, on this device or your account.' : 'Optional, device-only playback memory.'}</small></span>
-      <span><strong>Privacy</strong><small>References only; no video downloads.</small></span>
-    </div>
 
     <div className="pl-tabs" role="tablist" aria-label="My Moments views">{views.map((item, index) => <button type="button" key={item.id}
       ref={element => { tabButtons.current[index] = element }}

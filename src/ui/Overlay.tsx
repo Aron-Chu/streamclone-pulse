@@ -2228,7 +2228,7 @@ export function ClipSpikeCard({ clip, backendUrl, onSelect }: { clip: ExtensionC
         rel="noreferrer"
         referrerPolicy="no-referrer"
         style={styles.clipSpikeCard}
-        aria-label={`Clip spike: ${clip.title}`}
+        aria-label={`${clip.title}, ${formatNumber(clip.viewCount ?? 0)} views, opens on Twitch`}
       >
         <div className="pulse-clip-thumb" style={styles.clipThumbWrap}>
           {thumbnailUrl ? (

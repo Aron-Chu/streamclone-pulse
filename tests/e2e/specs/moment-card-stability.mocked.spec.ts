@@ -333,7 +333,7 @@ test('live: a chart card opening above a pressed clip stays in view and moves th
   await waitForPulseRoot(extension.page)
   const root = extension.page.locator('#streamclone-pulse-root')
   const body = root.locator('.pulse-panel-body')
-  const clip = root.getByRole('link', { name: 'Clip spike: Live archive clip' })
+  const clip = root.getByRole('link', { name: /^Live archive clip, [0-9,.KkMm]+ views, opens on Twitch$/ })
   await expect(clip).toBeVisible()
 
   // The chart's card opens where the chart surface ends: put that 40 px below
