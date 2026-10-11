@@ -37,6 +37,13 @@ async function access(write: boolean, value?: unknown, key: string = DEFAULT_BAC
     })
   } finally { db.close() }
 }
+
+/** Sign in with Twitch markers (never credentials) share the private store under their own key. */
+const TWITCH_SIGN_IN_META_KEY = `twitch-signin-meta-v1:${DEFAULT_BACKEND_URL}`
+export const twitchSignInMetaRecord = {
+  read: () => access(false, undefined, TWITCH_SIGN_IN_META_KEY),
+  write: async (value: unknown) => { await access(true, value, TWITCH_SIGN_IN_META_KEY) },
+}
 export const supporterAccount = new SupporterAccountCoordinator({
   // Only an invalidation signal is public, never an account ID or credential.
   identityChanged: async () => { await supporterPayFirst.reconcileIdentity(); await chrome.storage.local.set({ [ACCOUNT_REVISION_KEY]: crypto.randomUUID() }) },

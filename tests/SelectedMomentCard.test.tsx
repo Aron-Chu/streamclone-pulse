@@ -83,4 +83,23 @@ describe('SelectedMomentCard', () => {
     expect(onAnalytics).toHaveBeenCalledWith(point)
     expect(onClear).toHaveBeenCalledOnce()
   })
+
+  it('fades a newly selected moment in place without remounting the card', () => {
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    const render = (value: LiveHeatPoint) => act(() => {
+      root?.render(<SelectedMomentCard point={value} backendUrl="https://api.streampulse.stream" onJump={() => {}} onAnalytics={() => {}} />)
+    })
+    render(point)
+    const card = container.querySelector('[data-selected-moment-card="true"]')
+    const clock = () => container?.querySelector('[data-moment-inspector-clock="true"]')?.textContent
+    const firstClock = clock()
+    // The first selection fades in with the card itself; only later swaps fade the details.
+    expect(container.querySelector('.pulse-moment-card-swap')).toBeNull()
+    render({ ...point, offsetSeconds: 150, minuteTs: '2026-08-29T12:02:00.000Z' })
+    expect(container.querySelector('[data-selected-moment-card="true"]')).toBe(card)
+    expect(container.querySelector('.pulse-moment-card-swap')).not.toBeNull()
+    expect(clock()).not.toBe(firstClock)
+  })
 })

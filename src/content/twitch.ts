@@ -326,3 +326,25 @@ export function detectTwitchChannelLive(context: TwitchPageContext): boolean {
 
   return false
 }
+
+/**
+ * The channel's own avatar from Twitch's channel header, when it is on the page.
+ *
+ * Only the header avatar whose alt text names this channel counts (the left
+ * sidebar shows other channels' avatars), and only Twitch's image CDN is
+ * accepted. The viewer's own Twitch identity is never read.
+ */
+export function readTwitchChannelAvatarUrl(login: string, displayName?: string | null): string | undefined {
+  if (typeof document === 'undefined') return undefined
+  const names = new Set([login, displayName].filter((name): name is string => Boolean(name)).map(name => name.trim().toLowerCase()))
+  for (const image of document.querySelectorAll<HTMLImageElement>('.channel-info-content img.tw-image-avatar')) {
+    if (!names.has(image.alt.trim().toLowerCase())) continue
+    try {
+      const url = new URL(image.currentSrc || image.src)
+      if (url.protocol === 'https:' && url.hostname === 'static-cdn.jtvnw.net') return url.toString()
+    } catch {
+      // An unparseable source is not an avatar.
+    }
+  }
+  return undefined
+}

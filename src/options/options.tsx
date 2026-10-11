@@ -21,6 +21,6 @@ const DEV_NAV = [
 
 createRoot(document.getElementById('root')!).render(
   <SettingsHostShell version={installedExtensionVersion()} navItems={DEV_NAV}>
-    {activeSection => activeSection === 'moments' ? <MyMomentsPage /> : <SettingsWorkspace activeSection={activeSection} developerTools={<DeveloperTools />} />}
+    {(activeSection, supporterPerks) => activeSection === 'moments' ? <MyMomentsPage /> : <SettingsWorkspace activeSection={activeSection} supporterPerks={supporterPerks} developerTools={<DeveloperTools />} />}
   </SettingsHostShell>,
 )

@@ -92,14 +92,15 @@ async function linkDevice(extension: { serviceWorker: import('@playwright/test')
   expect(stored, 'linked credential was not seeded into the worker').toBe('linked')
 }
 
-function supporterBody(status: string, supportPeriods: number) {
+// The backend reports Checkout per account; these fixtures default to open.
+function supporterBody(status: string, supportPeriods: number, checkoutEnabled = true) {
   return {
     schemaVersion: 1,
     accountId: LINKED_DEVICE.accountId,
     environment: 'live',
     revision: 4,
     status,
-    checkoutEnabled: true,
+    checkoutEnabled,
     serverTime: new Date().toISOString(),
     accessFrom: new Date(Date.now() - 86_400_000).toISOString(),
     accessUntil: new Date(Date.now() + 20 * 86_400_000).toISOString(),
@@ -250,7 +251,7 @@ test.describe('packaged supporter offer', () => {
     await prepare({ scenario: 'live-ready' })
     const page = extension.page
     await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
-    await expect(page.getByText('Stripe asks for your email and payment details', { exact: false })).toBeVisible()
+    await expect(page.getByText('opens streampulse.stream, where you sign in and approve this extension before paying on Stripe', { exact: false })).toBeVisible()
     await expect(page.locator('a[data-supporter-action="billing"]')).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Become a Supporter', exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Use a StreamPulse website account', exact: true })).toBeVisible()

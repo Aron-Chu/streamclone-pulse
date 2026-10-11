@@ -6,24 +6,38 @@
       "version": "0.2.2",
       "status": "unreleased",
       "releasedAt": null,
-      "title": "Supporter purchase and recovery",
-      "summary": "Direct Stripe checkout, automatic Supporter activation, and safer membership recovery. Available when Supporter sign-ups open.",
+      "title": "Device bookmarks, a new popup, and Supporter perks",
+      "summary": "Device bookmarks with no account needed, a redesigned toolbar popup, Top Moments cards in line, and Supporter perks, purchase and recovery for when Supporter sign-ups open.",
       "preview": [
-        "Supporter purchase opens Stripe directly when sign-ups are available.",
-        "Confirmed membership updates your open Twitch tab automatically.",
-        "Manage membership in Stripe and use email verification only for recovery."
+        "Bookmark moments without an account; they stay on this device.",
+        "The toolbar popup shows channels Pulse is charting live and jumps back to your recent moments.",
+        "Picking a Top Moments row opens its card right under that row."
       ],
       "new": [
-        "Supporter purchase starts in the extension without an initial website sign-in or device code.",
+        "Bookmarks work without an account: saves stay on this device and are never uploaded. Once an account is linked, My Moments lists them under Saved on this device.",
+        "The toolbar popup is redesigned. Away from a stream it lists channels Pulse is charting live and a Jump back in card for your recent moments and device saves.",
+        "Picking a Top Moments row opens its moment card directly under that row, so the rows above it stay in place.",
+        "Supporters can paint the panel title with their finish, a wave and a sheen, show a tenure crest that grows with their support, and pick a signature emote.",
+        "Become a Supporter opens streampulse.stream, where you sign in and approve this extension before paying on Stripe. Where the server allows it, Stripe opens directly instead, without a website sign-in or device code.",
         "Membership management and recovery stay connected to the extension's own account."
       ],
+      "improved": [
+        "Quick settings open on a Watching card for the current channel, with the Supporter card under it and Open all settings pinned at the bottom.",
+        "The 7TV header backdrop (Still or Rain) is now a Supporter perk and is off by default. The panel title stays free, and a saved backdrop choice is kept for when you support."
+      ],
       "fixed": [
+        "When StreamPulse cannot be reached on first load, Pulse says so and offers Retry instead of showing Loading forever.",
+        "Hiding Pulse in the right or bottom dock no longer draws a large dark shape over the page.",
+        "VODs without replay data no longer show a false outage or raw error codes.",
+        "Analytics links keep a moment in the stream's first minute, and a link without a stream no longer selects a minute in a different stream.",
+        "While a linked account's connection is renewing, bookmarks stay with the account and report that it is unreachable instead of saving on this device and then dropping out of view.",
         "A temporary connection error no longer immediately discards an installation account's credential.",
         "Unpaid checkout stays available to reopen, with automatic checks bounded to thirty minutes.",
         "Old restore notices no longer hide verified membership management."
       ],
       "knownIssues": [
-        "Supporter sign-ups are not yet open to everyone."
+        "Supporter sign-ups are not yet open to everyone.",
+        "Bookmarks saved on this device before linking an account are not added to the account."
       ],
       "links": { "details": "/changelog", "support": "/support" }
     },

@@ -183,9 +183,12 @@ function useAdministrativeSettings() {
 export function SettingsWorkspace({
   activeSection = 'pulse',
   developerTools,
+  supporterPerks,
 }: {
   activeSection?: SettingsHostSection
   developerTools?: ReactNode
+  /** Verified by the settings page's Supporter banner; unlocks emote rain. Undefined until it answers. */
+  supporterPerks?: boolean
 }) {
   const preferences = usePulsePreferences()
   const administrative = useAdministrativeSettings()
@@ -218,7 +221,7 @@ export function SettingsWorkspace({
           data-settings-section-stage={visibleSection}
         >
           {visibleSection === 'pulse' ? (
-            <PulseExperienceSection preferences={preferences} health={health} />
+            <PulseExperienceSection preferences={preferences} health={health} supporterPerks={supporterPerks} />
           ) : null}
           {visibleSection === 'privacy' ? (
             <PrivacySection settings={administrative} />
@@ -248,7 +251,7 @@ function SectionIntro({ eyebrow, title, copy }: { eyebrow: string; title: string
   )
 }
 
-function PulseExperienceSection({ preferences, health }: { preferences: PulsePreferences; health: PulseHealth }) {
+function PulseExperienceSection({ preferences, health, supporterPerks }: { preferences: PulsePreferences; health: PulseHealth; supporterPerks: boolean | undefined }) {
   const reachable = health.health?.ok === true
   const apiStatus = health.checking ? 'checking' : reachable ? 'connected' : 'unreachable'
   const sampler = summarizeViewerSampling(reachable ? health.health?.viewerSampling : undefined)
@@ -290,7 +293,7 @@ function PulseExperienceSection({ preferences, health }: { preferences: PulsePre
       </PulseSectionCard>
 
       <PulseSectionCard title="Appearance & placement" headingLevel={3}>
-        <PulseBannerControls />
+        <PulseBannerControls perks={supporterPerks} />
         <div className="pulse-settings-field">
           <span className="pulse-settings-label">Accent</span>
           <ChoicePicker

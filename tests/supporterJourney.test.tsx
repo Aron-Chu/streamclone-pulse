@@ -473,9 +473,16 @@ describe('one Supporter entry point', () => {
       expect(view.state()).toBe('unlinked')
       expect(view.text()).toContain('Become a Pulse Supporter')
       expect(view.text()).toContain('US$4.99 / month')
-      expect(view.text()).toContain('Stripe asks for your email and payment details')
+      // Production has no installation accounts, so the click falls back to the
+      // website: the copy names that path first, and Stripe-first only as the
+      // case where the server allows it.
+      const detail = view.text()
+      expect(detail).toContain('Become a Supporter opens streampulse.stream, where you sign in and approve this extension before paying on Stripe.')
+      expect(detail).toContain('If the server lets this extension check out by itself, Stripe opens directly and asks for your email and payment details')
+      expect(detail).not.toContain('Stripe asks for your email and payment details. You only verify')
       expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
       await view.click('Become a Supporter')
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(1)
       expect(view.sendMessage).toHaveBeenCalledWith({ type: 'SUPPORTER_ACCOUNT', action: 'start' })
       // The worker resolves where to go; only the human code and a fixed flow name travel.
       expect(view.create).toHaveBeenCalledExactlyOnceWith({ url: 'https://streampulse.stream/account/link-device#code=ABCDE12345&then=billing' })

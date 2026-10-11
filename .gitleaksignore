@@ -35,3 +35,6 @@ bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranke
 bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:generic-api-key:783
 bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:sentry-access-token:1269
 bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:sentry-access-token:787
+# tests/twitchSignIn.test.ts:18 in 3aa5019 was a hand-written stand-in JWT ({"alg":"RS256"}.{"sub":"123"}."signature"),
+# not a credential. The literal is now built at runtime (2026-10-03).
+3aa501943942919b001d33122344d78317f3b779:tests/twitchSignIn.test.ts:generic-api-key:18

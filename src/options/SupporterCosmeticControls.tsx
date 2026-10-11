@@ -1,13 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
-import type { SupporterEntitlement, SupporterCosmetics } from '../shared/supporterAccount.ts'
+import { supporterPerksAllowed, type SupporterEntitlement, type SupporterCosmetics } from '../shared/supporterAccount.ts'
 import { PulseSectionCard } from '../ui/PulseSectionCard.tsx'
 import { supporterFinish, SUPPORTER_FINISH_OPTIONS } from '../ui/supporterFinish.ts'
 import { StreamPulseTitleBlock, streamPulseHeaderChromeSidebar } from '../ui/StreamPulseTitleBlock.tsx'
 import { theme } from '../ui/theme.ts'
 import { PulseBannerBackdrop, usePulseBanner } from '../ui/PulseBanner.tsx'
+import { supporterTenureForMonths } from '../shared/supporterPaint.ts'
+import { SupporterPaintStyleFields, useSupporterPaintStyle } from './SupporterPaintStyleFields.tsx'
+import { SupporterSignatureField } from './SupporterSignatureField.tsx'
 
 /**
- * The finish colours the small Peak signature beside the title.
+ * The finish paints the panel title, wave and sheen choose how that paint
+ * moves, and the tenure crest sits beside it. The signature emote rides the
+ * Supporter's line on the quick-settings card and tops the settings banner.
  * The preview reproduces that header rather than a
  * decorative plate: an earlier version previewed a tinted banner that the
  * overlay no longer draws, so the preview promised something the extension did
@@ -18,7 +23,10 @@ export function SupporterCosmeticControls({ entitlement, onSaved }: {
   onSaved?: (cosmetics: SupporterCosmetics) => void
 }) {
   const banner = usePulseBanner()
-  const [finish, setFinish] = useState<SupporterCosmetics['finish'] | null>('glass')
+  const paint = useSupporterPaintStyle()
+  // Nothing is presumed while the first answer is pending: a finish shown as
+  // chosen then is one the person chose.
+  const [finish, setFinish] = useState<SupporterCosmetics['finish'] | null>(null)
   const [appliedFinish, setAppliedFinish] = useState<SupporterCosmetics['finish'] | null>(null)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
@@ -29,13 +37,11 @@ export function SupporterCosmeticControls({ entitlement, onSaved }: {
   // privately and applies it once the server grants Supporter access.
   const [intent, setIntent] = useState<SupporterCosmetics['finish'] | null>(null)
   const [intentBusy, setIntentBusy] = useState(false)
-  const allowed = entitlement?.state === 'ready'
-    && (entitlement.status === 'active' || entitlement.status === 'grace')
-    && entitlement.features.includes('supporter.banner.v1')
-    && entitlement.features.includes('supporter.finish.v1')
+  const allowed = supporterPerksAllowed(entitlement)
   const entitlementState = entitlement?.state
   const entitlementStatus = entitlement?.state === 'ready' ? entitlement.status : undefined
   const cosmetics = entitlement?.state === 'ready' ? entitlement.cosmetics : undefined
+  const tenure = entitlement?.state === 'ready' ? supporterTenureForMonths(entitlement.supportPeriods) : 'new'
   // Loading, or a background read that could not confirm the last status: the
   // controls pause rather than switching to the pre-purchase mode, and the
   // user's selection is kept.
@@ -46,12 +52,21 @@ export function SupporterCosmeticControls({ entitlement, onSaved }: {
   // read must not.
   const appliedKey = unknown ? null : JSON.stringify([entitlementState, entitlementStatus, allowed, cosmetics?.enabled ?? null, cosmetics?.finish ?? null])
   const lastAppliedKey = useRef<string | null>(null)
+  // Access as last confirmed. A read that could not confirm it (the unknown
+  // gap of a quiet re-check that failed and recovered) is not a change, so a
+  // save in flight keeps its acknowledgment through it.
+  const accessKey = unknown ? null : JSON.stringify([entitlementState, entitlementStatus, allowed])
+  const lastAccessKey = useRef<string | null>(null)
   useEffect(() => {
-    if (appliedKey === null) return
-    savedCosmetics.current = null
-  }, [entitlementState, entitlementStatus, allowed])
+    if (accessKey === null) return
+    if (accessKey !== lastAccessKey.current) savedCosmetics.current = null
+    lastAccessKey.current = accessKey
+  }, [accessKey])
+  // A finish chosen before the first answer arrives.
+  const chosenWhileChecking = useRef(false)
   useEffect(() => {
     if (appliedKey === null || appliedKey === lastAppliedKey.current) return
+    const firstAnswer = lastAppliedKey.current === null
     lastAppliedKey.current = appliedKey
     const activeFinish = allowed && cosmetics?.enabled ? cosmetics.finish : null
     setAppliedFinish(activeFinish)
@@ -66,7 +81,9 @@ export function SupporterCosmeticControls({ entitlement, onSaved }: {
     generation.current++
     pending.current = false
     setBusy(false)
-    setFinish(cosmetics ? activeFinish : 'glass')
+    // The first answer keeps what the person chose while it was pending; after
+    // that, a change to access or the applied finish replaces the draft.
+    if (!(firstAnswer && chosenWhileChecking.current)) setFinish(cosmetics ? activeFinish : 'glass')
     setNotice('')
   }, [appliedKey])
   // A save in flight belongs to this view only.
@@ -110,6 +127,7 @@ export function SupporterCosmeticControls({ entitlement, onSaved }: {
   const unchanged = finish === appliedFinish
 
   function selectFinish(value: typeof finish) {
+    if (lastAppliedKey.current === null) chosenWhileChecking.current = true
     setFinish(value)
     setNotice('')
   }
@@ -147,14 +165,14 @@ export function SupporterCosmeticControls({ entitlement, onSaved }: {
       }
     }
   }
-  return <PulseSectionCard title="Pulse signature" headingLevel={3} subtitle="A personal colour for the Pulse mark beside your title.">
+  return <PulseSectionCard title="Paint & crest" headingLevel={3} subtitle="Your finish paints your panel title. Choose how it moves; your tenure crest sits beside it.">
     {/* True sidebar width on the real panel colour, rendering the same
         component the overlay renders, so this cannot promise a header the
         extension does not draw. */}
     <div className="pulse-supporter-finish-preview" aria-label={`${selectedLabel} sidebar header preview`} data-preview-finish={finish ?? 'default'} style={{ background: theme.bgCanvas, maxWidth: '100%', width: 'min(340px, 100%)' }}>
       <div className="pulse-personal-panel pulse-background-preview" style={{ ...streamPulseHeaderChromeSidebar, minHeight: 180 }}>
-        <PulseBannerBackdrop value={banner.value} paused />
-        <div className="pulse-banner-copy"><StreamPulseTitleBlock title={banner.value.title || undefined} finish={finish} statusLabel="Live chart" statusTone="live" /></div>
+        <PulseBannerBackdrop value={banner.value} perks={allowed} paused />
+        <div className="pulse-banner-copy"><StreamPulseTitleBlock title={banner.value.title || undefined} finish={finish} tenure={tenure} paint={paint.style} statusLabel="Live chart" statusTone="live" /></div>
       </div>
     </div>
     <p className="pulse-supporter-detail" data-supporter-accent-state={unchanged ? 'equipped' : 'preview'}>
@@ -179,6 +197,9 @@ export function SupporterCosmeticControls({ entitlement, onSaved }: {
         <span className="pulse-supporter-finish-choice"><strong>{option.label}</strong><small>{option.description}</small></span>
       </label>)}
     </fieldset>
+    <SupporterPaintStyleFields finish={finish} style={paint.style} onChoose={next => void paint.choose(next)} />
+    <p className="pulse-supporter-detail" aria-live="polite">{paint.status || 'Wave and sheen save to this browser profile right away and show whenever your finish is equipped.'}</p>
+    <SupporterSignatureField allowed={allowed} unknown={unknown} />
     <div className="pulse-account-link-actions">
       {unknown ? (
         <button type="button" disabled>Checking Supporter status…</button>

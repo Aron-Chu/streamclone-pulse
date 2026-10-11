@@ -177,4 +177,22 @@ describe('parseBackgroundRequest', () => {
       frames: [{ bundle: 'content/twitch.js', line: 1, column: 2 }],
     })
   })
+
+  it('accepts only the exact TWITCH_SIGN_IN shapes', () => {
+    expect(parseBackgroundRequest({ type: 'TWITCH_SIGN_IN', action: 'status' })).toEqual({ type: 'TWITCH_SIGN_IN', action: 'status' })
+    expect(parseBackgroundRequest({ type: 'TWITCH_SIGN_IN', action: 'sign_in', mode: 'interactive' })).toEqual({ type: 'TWITCH_SIGN_IN', action: 'sign_in', mode: 'interactive' })
+    expect(parseBackgroundRequest({ type: 'TWITCH_SIGN_IN', action: 'sign_in', mode: 'silent', forceVerify: false })).toEqual({ type: 'TWITCH_SIGN_IN', action: 'sign_in', mode: 'silent' })
+    expect(parseBackgroundRequest({ type: 'TWITCH_SIGN_IN', action: 'sign_in', mode: 'interactive', forceVerify: true })).toEqual({ type: 'TWITCH_SIGN_IN', action: 'sign_in', mode: 'interactive', forceVerify: true })
+    // Choosing another account always needs the window.
+    expect(parseBackgroundRequest({ type: 'TWITCH_SIGN_IN', action: 'sign_in', mode: 'silent', forceVerify: true })).toBeNull()
+    for (const bad of [
+      { type: 'TWITCH_SIGN_IN' },
+      { type: 'TWITCH_SIGN_IN', action: 'sign_in' },
+      { type: 'TWITCH_SIGN_IN', action: 'sign_in', mode: 'popup' },
+      { type: 'TWITCH_SIGN_IN', action: 'sign_in', mode: 'interactive', forceVerify: 'yes' },
+      { type: 'TWITCH_SIGN_IN', action: 'status', mode: 'silent' },
+      { type: 'TWITCH_SIGN_IN', action: 'sign_out' },
+      ...['url', 'authorizeUrl', 'redirectUri', 'surface', 'idToken', 'flowSecret', 'token'].map(field => ({ type: 'TWITCH_SIGN_IN', action: 'sign_in', mode: 'interactive', [field]: 'attacker' })),
+    ]) expect(parseBackgroundRequest(bad)).toBeNull()
+  })
 })

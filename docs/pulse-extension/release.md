@@ -33,8 +33,9 @@ Generation must not broaden production permissions beyond the audited set.
 `validate:package` is the **development** target only and is not uploadable.
 Do **not** upload until RPR-9.
 
-Working-tree candidate version is **0.2.2** (Supporter purchase and recovery plus
-the earlier selected-minute/settings work). Manifests, `package.json`, and the
+Working-tree candidate version is **0.2.2** (device bookmarks, the redesigned
+popup, Supporter perks, and Supporter purchase and recovery, plus the earlier
+selected-minute/settings work). Manifests, `package.json`, and the
 current `src/shared/release-notes.json` entry all read `0.2.2`. It remains unreleased;
 local builds and mocked checks do not prove the owner purchase or Store gates.
 The public Chrome Web Store listing reported **0.2.1**
