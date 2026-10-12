@@ -135,30 +135,36 @@ function waitPhrase(seconds: number): string {
  * Places to post in public when the private form cannot take a message. Each
  * one is labelled public, never private: anyone can read what is posted there.
  * Discord shows only when the build has a valid invite. Before launch
- * (`notLaunched`) Discord leads, and the card itself is the only frame, so
- * there is no dashed box inside it.
+ * (`notLaunched`) Discord leads as "Ask in Discord" with the same outward
+ * arrow as GitHub, and the card itself is the only frame, so there is no
+ * dashed box inside it. A configured build (a failed send, or intake off)
+ * keeps its wording as it was: GitHub first, then "Ask in the public Discord".
  */
 function PublicAlternatives({ compact = false, notLaunched = false }: { compact?: boolean; notLaunched?: boolean }) {
   const discord = discordInviteUrl()
   const size = compact ? 'default' : 'lg'
-  const discordLink = discord ? (
-    <a className={buttonClass('outline', size)} href={discord} target="_blank" rel="noopener noreferrer"
-      aria-label="Ask in Discord (public, opens in a new tab)">
-      <DiscordMark size={15} className="feedback-public__discord" />Ask in Discord<ArrowUpRight aria-hidden="true" />
-    </a>
-  ) : null
   return (
     <div className={`feedback-public${compact ? ' feedback-public--compact' : ''}${notLaunched ? ' feedback-public--plain' : ''}`} data-testid="feedback-public-alternatives">
       <p className="feedback-public__note">
         <strong>Public alternatives.</strong> Anyone can read these, so leave out emails, account details and anything personal.
       </p>
       <div className="feedback-off__actions">
-        {notLaunched ? discordLink : null}
+        {discord && notLaunched ? (
+          <a className={buttonClass('outline', size)} href={discord} target="_blank" rel="noopener noreferrer"
+            aria-label="Ask in Discord (public, opens in a new tab)">
+            <DiscordMark size={15} className="feedback-public__discord" />Ask in Discord<ArrowUpRight aria-hidden="true" />
+          </a>
+        ) : null}
         <a className={buttonClass('outline', size)} href={PUBLIC_SUPPORT_URL} target="_blank" rel="noopener noreferrer"
           aria-label="Open a public issue on GitHub (opens in a new tab)">
           Open a public issue on GitHub<ArrowUpRight aria-hidden="true" />
         </a>
-        {notLaunched ? null : discordLink}
+        {discord && !notLaunched ? (
+          <a className={buttonClass('outline', size)} href={discord} target="_blank" rel="noopener noreferrer"
+            aria-label="Ask in the public Discord (opens in a new tab)">
+            <DiscordMark size={15} />Ask in the public Discord
+          </a>
+        ) : null}
       </div>
     </div>
   )

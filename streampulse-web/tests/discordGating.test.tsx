@@ -165,7 +165,10 @@ describe('Discord entry points', () => {
     const line = screen.getByTestId('support-discord-line')
     expect(line.textContent).toContain('Ideas or just want to chat?')
     expect(line.textContent).toContain('Anyone there can read it, so keep account problems in this form.')
-    expect(within(line).getByRole('link', { name: 'Join the Discord (public, opens in a new tab)' }).getAttribute('href')).toBe(SHORT_INVITE)
+    // The configured form's line keeps its wording: the public Discord is visibly labelled public.
+    const link = within(line).getByRole('link', { name: 'Join the public Discord (opens in a new tab)' })
+    expect(link.getAttribute('href')).toBe(SHORT_INVITE)
+    expect(link.textContent).toBe('Join the public Discord')
   })
 })
 

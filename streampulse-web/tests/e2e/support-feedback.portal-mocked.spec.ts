@@ -296,6 +296,24 @@ test.describe('configured build', () => {
     expect(wrapped).toEqual([])
   })
 
+  test('keeps the public Discord labelled public under the form and after a failed send', async ({ page, baseURL }) => {
+    // The launch-day labels ("Ask in Discord") are for the closed form only; the real form's wording stays as it was.
+    await page.addInitScript(() => { (window as { __turnstilePasses?: boolean }).__turnstilePasses = true })
+    await mockNetwork(page, baseURL, [{ status: 500, body: { error: 'boom' } }])
+    await openConfiguredFeedback(page)
+    const line = page.getByTestId('support-discord-line')
+    test.skip(await line.count() === 0, 'build has no VITE_PUBLIC_DISCORD_INVITE_URL, so there is no Discord line')
+    await expect(line.getByRole('link', { name: 'Join the public Discord (opens in a new tab)' })).toHaveText('Join the public Discord')
+    await page.getByLabel('Your message').fill('Charts are blank')
+    await page.getByLabel('I consent to submitting this text to StreamPulse support.').check()
+    await page.getByTestId('support-form').locator('button[type="submit"]').click()
+    await expect(page.getByTestId('support-form-error')).toBeVisible()
+    const alternatives = page.getByTestId('feedback-public-alternatives')
+    await expect(alternatives.getByRole('link')).toHaveText(['Open a public issue on GitHub', 'Ask in the public Discord'])
+    await expect(alternatives.getByRole('link', { name: 'Ask in the public Discord (opens in a new tab)' })).toBeVisible()
+    await expect(alternatives).not.toContainText('Ask in Discord')
+  })
+
   test.describe('keyboard and screen-reader paths', () => {
     test.beforeEach(async ({ page }) => {
       await page.setViewportSize({ width: 390, height: 844 })

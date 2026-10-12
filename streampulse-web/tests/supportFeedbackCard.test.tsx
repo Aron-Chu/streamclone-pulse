@@ -866,7 +866,16 @@ describe('/feedback page', () => {
     send()
     await screen.findByTestId('support-form-error')
     const alternatives = screen.getByTestId('feedback-public-alternatives')
-    expect(within(alternatives).getByRole('link', { name: 'Ask in Discord (public, opens in a new tab)' })).toBeTruthy()
+    // A configured build keeps its wording after a failed send: GitHub first,
+    // then the Discord labelled public, with no "Ask in Discord" or extra arrow.
+    const publicLinks = within(alternatives).getAllByRole('link')
+    expect(publicLinks.map(link => link.getAttribute('aria-label'))).toEqual([
+      'Open a public issue on GitHub (opens in a new tab)',
+      'Ask in the public Discord (opens in a new tab)',
+    ])
+    expect(publicLinks[1]!.textContent).toBe('Ask in the public Discord')
+    expect(publicLinks[1]!.querySelector('svg.lucide-arrow-up-right')).toBeNull()
+    expect(alternatives.textContent).not.toContain('Ask in Discord')
     expect(screen.queryByTestId('support-discord-line')).toBeNull()
     expect(screen.getAllByRole('link', { name: /Discord/ })
       .filter(a => !a.closest('header, footer, nav'))).toHaveLength(1)
@@ -899,7 +908,9 @@ describe('/feedback page', () => {
     // A configured build that finds intake off is a real outage, so the header says so.
     expect(screen.getByTestId('feedback-page-sub').textContent).toMatch(/The private form isn't taking messages right now\./)
     expect(screen.queryByTestId('feedback-soon-badge')).toBeNull()
-    expect(within(off).getByRole('link', { name: 'Ask in Discord (public, opens in a new tab)' })).toBeTruthy()
+    const discordLink = within(off).getByRole('link', { name: 'Ask in the public Discord (opens in a new tab)' })
+    expect(discordLink.textContent).toBe('Ask in the public Discord')
+    expect(off.textContent).not.toContain('Ask in Discord')
   })
 
   it('keeps the private note above a sent case', async () => {

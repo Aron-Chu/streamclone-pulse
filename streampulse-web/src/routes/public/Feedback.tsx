@@ -78,11 +78,13 @@ export default function Feedback() {
           />
         </section>
 
+        {/* Only under the open form, so only in a configured build: its wording
+            stays as it was, with the public Discord visibly labelled public. */}
         {discord && phase === 'open' ? (
           <p className="support-discord-line feedback-js-only" data-testid="support-discord-line">
             Ideas or just want to chat?{' '}
-            <a href={discord} target="_blank" rel="noopener noreferrer" aria-label="Join the Discord (public, opens in a new tab)">
-              <DiscordMark size={15} /><span>Join the Discord</span>
+            <a href={discord} target="_blank" rel="noopener noreferrer" aria-label="Join the public Discord (opens in a new tab)">
+              <DiscordMark size={15} /><span>Join the public Discord</span>
             </a>
             <small>Anyone there can read it, so keep account problems in this form.</small>
           </p>
