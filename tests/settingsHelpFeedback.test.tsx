@@ -108,10 +108,10 @@ describe('settings page: Help & Feedback', () => {
     const title = (choice: Element) => document.getElementById(choice.getAttribute('aria-labelledby')!)?.textContent
     const detail = (choice: Element) => document.getElementById(choice.getAttribute('aria-describedby')!)?.textContent
     expect(title(choices[0])).toBe('Join the StreamPulse Discord (opens in a new tab)')
-    // Discord is public; only the feedback form is described as private.
+    // Discord is public; the feedback choice stays neutral, since the form can be closed (D19).
     expect(detail(choices[0])).toBe('Public server: ideas, help and release news')
     expect(title(choices[1])).toBe('Send feedback (opens in a new tab)')
-    expect(detail(choices[1])).toBe('Private. Only the team reads it.')
+    expect(detail(choices[1])).toBe('Report a problem or share an idea')
     expect(host.querySelector('[data-settings-host-banner="supporter"]')).toBeNull()
     // The Community card stays put here too; only the Supporter banner steps aside.
     expect(host.querySelector('.pulse-host-rail > aside.pulse-host-community')).not.toBeNull()

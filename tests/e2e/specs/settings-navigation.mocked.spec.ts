@@ -110,7 +110,7 @@ test('Supporter leads settings and section navigation remains consistent at ever
         await expect(discordChoice).toHaveAttribute('href', 'https://streampulse.stream/discord')
         await expect(discordChoice).toHaveAccessibleDescription('Public server: ideas, help and release news')
         await expect(feedbackChoice).toHaveAttribute('href', 'https://streampulse.stream/feedback')
-        await expect(feedbackChoice).toHaveAccessibleDescription('Private. Only the team reads it.')
+        await expect(feedbackChoice).toHaveAccessibleDescription('Report a problem or share an idea')
         if (width < 860) {
           // Stacked layout: a short section sits right under the rail (section list + Community card), not pushed down the window.
           const contentBox = await page.locator('#settings-content').boundingBox()

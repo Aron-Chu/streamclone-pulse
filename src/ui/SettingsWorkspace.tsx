@@ -453,15 +453,16 @@ function UpdatesSection({ settings }: { settings: AdministrativeSettings }) {
 /**
  * Two ways to reach StreamPulse. Both open streampulse.stream: the website's
  * /discord page holds the invite (none ships in the extension) to a public
- * server, and /feedback holds the private feedback form.
+ * server, and /feedback holds the feedback form. The feedback choice makes no
+ * privacy promise: the form can be closed (owner decision D19).
  */
 function HelpFeedbackSection() {
   return (
     <section data-settings-section="help" className="pulse-settings-page-section">
-      <SectionIntro eyebrow="Help" title="Help & Feedback" copy="Talk with other viewers in public, or tell the team privately. Both open streampulse.stream." />
+      <SectionIntro eyebrow="Help" title="Help & Feedback" copy="Talk with other viewers in public, or send the team feedback. Both open streampulse.stream." />
       <div className="pulse-settings-help-choices">
         <HelpChoice kind="discord" href={COMMUNITY_LINKS.discord} icon={<DiscordMark />} title="Join the StreamPulse Discord" detail="Public server: ideas, help and release news" />
-        <HelpChoice kind="feedback" href={COMMUNITY_LINKS.feedback} icon={<FeedbackIcon />} title="Send feedback" detail="Private. Only the team reads it." />
+        <HelpChoice kind="feedback" href={COMMUNITY_LINKS.feedback} icon={<FeedbackIcon />} title="Send feedback" detail="Report a problem or share an idea" />
       </div>
     </section>
   )

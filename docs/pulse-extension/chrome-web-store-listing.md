@@ -60,11 +60,11 @@ StreamPulse adds a Pulse panel beside Twitch chat. It charts chat and emote acti
 
 • Live Pulse chart: chat, emote and viewer activity for the whole stream, with a readout for any minute you point at.
 • Top Moments: the strongest reactions, ranked. Pick one to see its card and jump to that point in the stream or VOD.
-• Recaps for offline channels and VODs.
+• Recaps for VODs: the Pulse chart and Top Moments of a past broadcast StreamPulse tracked.
 • Bookmarks that stay in your browser: no account needed.
 • One click to the full public analytics for the channel on streampulse.stream.
 • Honest coverage: when StreamPulse wasn't tracking part of a stream, the chart says so instead of guessing.
-• Help & Feedback in settings: send private feedback, join the Discord, read the release notes.
+• Help & Feedback in settings: send feedback, join the Discord, read the release notes.
 
 Privacy: the extension sends the channel, stream or VOD you're viewing to the StreamPulse API to fetch aggregate activity. It never sends chat messages, your Twitch password or your cookies. Full details: https://streampulse.stream/privacy
 
