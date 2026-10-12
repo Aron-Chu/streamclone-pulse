@@ -78,57 +78,79 @@ async function expectCannedChat(stage: Locator) {
   for (const src of await stage.locator('img').evaluateAll(images => images.map(image => (image as HTMLImageElement).src))) expect(src).toMatch(EMOTE_SRC)
 }
 
-test('quick settings: non-Supporters get Your Line · Anatomy, injected on demand, with no labels over the line and a peak', async ({ extension, prepare }, info) => {
+test('quick settings: non-Supporters get Your Line · Anatomy, injected on demand, still at rest and playing on hover or keyboard focus, with no labels over the line and a peak', async ({ extension, prepare }, info) => {
   await prepare({ storage: { overlayPlacement: 'sidebar', sidebarTab: 'pulse', overlayMode: 'expanded' } })
   const page = extension.page
   const root = await openQuickSettingsAt305(page)
   const card = root.locator('[data-settings-host-cta="supporter"]')
   const stage = card.locator('.pulse-supporter-stage')
   await expect(stage).toHaveAttribute('data-mode', 'anatomy')
-  await expect(stage).toHaveAttribute('data-running', 'true')
+  await expect(stage).toHaveAttribute('data-idle', 'true')
   await expect(card.locator('.pulse-supporter-cta-head')).toHaveText('Pulse SupporterExplore Supporter ›')
   await expectStageUncovered(card, 'Explore Supporter', 'Supporter perks: Title paint, Tenure crest, 7TV emote backdrop, Supporter card. Only you see them. Core tools stay free. This card is a preview, shown only in your StreamPulse extension. Twitch chat is unchanged.')
   expect((await card.boundingBox())!.width).toBeLessThanOrEqual(305)
+  const sizeAtRest = await card.boundingBox()
   // A preview, said so in one corner chip; it opens on a poster frame (chatter, then your line), never an empty box.
   await expect(stage.locator('.spk-preview')).toHaveText('Preview · only you see this')
   expect(await stage.locator('.spk-cl').count()).toBeGreaterThanOrEqual(4)
-  await capture(card, info, 'ext-card-anatomy-t0.png')
-
-  // Every sixth line is yours, with the lab's sample crest, Etched paint and sample emote.
   const yours = stage.locator('.spk-cl.spk-sup')
-  await expect(yours.first()).toBeAttached({ timeout: 20_000 })
+  await expect(stage.locator('.spk-cl').last()).toHaveClass(/spk-sup/)
   await expect(yours.first().locator('.spk-crest')).toHaveAttribute('data-tenure', '12m')
   await expect(yours.first().locator('.spk-name')).toHaveText('you')
-  await expect(yours.first().locator('img.spk-kit-emote')).toHaveAttribute('src', 'https://cdn.7tv.app/emote/01GAFTZ9K80003DHH026MC7JW0/2x.webp')
+  await capture(card, info, 'ext-card-anatomy-t0.png')
+
+  // At rest it holds that frame: no frames scheduled, static emotes, the painted name's sweep paused.
+  const lineTexts = () => stage.locator('.spk-cl').evaluateAll(lines => lines.map(line => line.textContent))
+  const sevenTv = () => stage.locator('img[src*="cdn.7tv.app"]').evaluateAll(images => images.map(image => (image as HTMLImageElement).src))
   await page.mouse.move(5, 5)
-  await page.waitForTimeout(1600)
+  await expect(stage).toHaveAttribute('data-running', 'false')
+  const poster = await lineTexts()
+  for (const src of await sevenTv()) expect(src).toMatch(/\/2x_static\.webp$/)
+  await expect(yours.first().locator('img.spk-kit-emote')).toHaveAttribute('src', 'https://cdn.7tv.app/emote/01GAFTZ9K80003DHH026MC7JW0/2x_static.webp')
+  await expect(yours.first().locator('.spk-name')).toHaveCSS('animation-play-state', 'paused')
+  await page.waitForTimeout(3000)
+  expect(await lineTexts()).toEqual(poster)
+  await expect(stage).toHaveAttribute('data-running', 'false')
   await capture(card, info, 'ext-card-anatomy-rest.png')
 
-  // A peak (the lab's timer: 10 s in): three quick lines, then yours.
-  await expect(stage).toHaveAttribute('data-peaks', '1', { timeout: 15_000 })
+  // Hover plays it at the stream's pace with moving emotes, and a peak comes 2 s in:
+  // three quick lines, then yours. No labels are drawn over the line.
+  await card.hover()
+  await expect(stage).toHaveAttribute('data-running', 'true')
+  await expect(yours.first().locator('.spk-name')).toHaveCSS('animation-play-state', 'running')
+  for (const src of await sevenTv()) expect(src).toMatch(/\/2x\.webp$/)
+  await expect(stage).toHaveAttribute('data-peaks', '1', { timeout: 8_000 })
   await expect(stage.locator('.spk-cl.spk-sup', { hasText: 'that peak was mine' }).last()).toBeAttached()
   await expect(stage.locator('.spk-callouts, .spk-co')).toHaveCount(0)
   await page.waitForTimeout(500)
   await capture(card, info, 'ext-card-anatomy-peak.png')
   await expectCannedChat(stage)
   expect(await card.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+  // Same size while it plays.
+  const sizePlaying = await card.boundingBox()
+  expect(sizePlaying!.width).toBeCloseTo(sizeAtRest!.width, 0)
+  expect(sizePlaying!.height).toBeCloseTo(sizeAtRest!.height, 0)
 
-  // Hover brings your line in last and freezes chat; no labels are drawn over it.
-  // Checked after the first peak: a peak's lines arrive even while hovered,
-  // and the next one is at least 17 s away. The stage keeps up to seven
-  // lines, so a line arriving while frozen would change the count.
-  await card.hover()
-  await expect(stage.locator('.spk-callouts, .spk-co')).toHaveCount(0)
-  await expect(stage.locator('.spk-cl').last()).toHaveClass(/spk-sup/)
-  const frozen = await stage.locator('.spk-cl').count()
-  await page.waitForTimeout(900)
-  await capture(card, info, 'ext-card-anatomy-hover.png')
-  await page.waitForTimeout(1700)
-  expect(await stage.locator('.spk-cl').count()).toBe(frozen)
-  await expect(stage.locator('.spk-cl').last()).toHaveClass(/spk-sup/)
+  // Leaving pauses it again on static emotes, and it stays put.
   await page.mouse.move(5, 5)
+  await expect(stage).toHaveAttribute('data-running', 'false')
+  for (const src of await sevenTv()) expect(src).toMatch(/\/2x_static\.webp$/)
+  // A peak's last lines and a spotlight may still land in the first 1.5 s.
+  await page.waitForTimeout(1800)
+  const settled = await lineTexts()
+  await page.waitForTimeout(2500)
+  expect(await lineTexts()).toEqual(settled)
 
-  // Scrolled out of the panel, the stage stops scheduling frames.
+  // Keyboard focus plays it too, and moving focus away pauses it.
+  await card.focus()
+  await page.keyboard.press('Shift+Tab')
+  await page.keyboard.press('Tab')
+  expect(await card.evaluate(element => element.matches(':focus-visible'))).toBe(true)
+  await expect(stage).toHaveAttribute('data-running', 'true')
+  await page.waitForTimeout(900)
+  await capture(card, info, 'ext-card-anatomy-focus.png')
+
+  // Scrolled out of the panel, the stage stops scheduling frames, even while focused.
   await page.setViewportSize({ width: 1440, height: 520 })
   const scroll = (to: 'top' | 'bottom') => card.evaluate((element, where) => {
     let node: Node | null = element
@@ -146,15 +168,24 @@ test('quick settings: non-Supporters get Your Line · Anatomy, injected on deman
   await scroll('top')
   await expect(stage).toHaveAttribute('data-running', 'true')
   await page.setViewportSize({ width: 1440, height: 900 })
+  await page.keyboard.press('Tab')
+  await expect(stage).toHaveAttribute('data-running', 'false')
 
-  // Reduced motion: one still frame from static images, ending on your line.
+  // Reduced motion: one still frame from static images, ending on your line, and hover changes nothing.
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await expect(stage).toHaveAttribute('data-still', 'true')
   await expect(stage).toHaveAttribute('data-running', 'false')
   await expect(stage.locator('.spk-cl.spk-sup').last()).toBeAttached()
-  for (const src of await stage.locator('img[src*="cdn.7tv.app"]').evaluateAll(images => images.map(image => (image as HTMLImageElement).src))) expect(src).toMatch(/\/2x_static\.webp$/)
+  for (const src of await sevenTv()) expect(src).toMatch(/\/2x_static\.webp$/)
+  const still = await lineTexts()
+  await card.hover()
+  await page.waitForTimeout(1500)
+  await expect(stage).toHaveAttribute('data-running', 'false')
+  expect(await lineTexts()).toEqual(still)
+  await expect(yours.first().locator('.spk-name')).toHaveCSS('animation-name', 'none')
   await imagesSettled(stage)
   await capture(card, info, 'ext-card-anatomy-still.png')
+  await page.mouse.move(5, 5)
 })
 
 test('quick settings: Supporters get Tenure Climb up to their own crest, in their paint', async ({ extension, prepare }, info) => {
