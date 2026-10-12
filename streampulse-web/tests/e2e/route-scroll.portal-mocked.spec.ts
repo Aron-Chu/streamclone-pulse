@@ -394,12 +394,15 @@ test('the extension "Release details" destination is a prerendered release-notes
   expect(await response?.text()).toContain('data-testid="changelog-page"')
   await expect(page).toHaveTitle('Release Notes — StreamPulse')
   await expect(page.getByRole('heading', { level: 1, name: 'Release notes' })).toBeVisible()
-  // Released versions only, plus an honest label for the current version while it is unreleased.
-  await expect(page.getByText(/^v[\d.]+ · Released/).first()).toBeVisible()
-  const { currentVersion, releases } = releaseNotes as { currentVersion: string; releases: Array<{ version: string; status: string }> }
-  const currentReleased = releases.some((release) => release.version === currentVersion && release.status === 'released')
-  if (currentReleased) await expect(page.getByText(/^v[\d.]+ · In development$/)).toHaveCount(0)
-  else await expect(page.getByText(`v${currentVersion} · In development`, { exact: true })).toBeVisible()
+  // Released versions only: the page starts with the latest release and never shows an
+  // "In development" placeholder for the version being built.
+  const { releases } = releaseNotes as { releases: Array<{ version: string; status: string }> }
+  const latestReleased = releases.find((release) => release.status === 'released')
+  expect(latestReleased).toBeTruthy()
+  const releaseLabels = page.getByText(/^v[\d.]+ · Released/)
+  await expect(releaseLabels.first()).toBeVisible()
+  await expect(releaseLabels.first()).toContainText(`v${latestReleased!.version} · Released`)
+  await expect(page.getByText(/In development/)).toHaveCount(0)
   await expect(page.getByText(/· Preview/)).toHaveCount(0)
   await expect(page.getByTestId('not-found')).toHaveCount(0)
 })

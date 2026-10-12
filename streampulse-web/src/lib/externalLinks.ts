@@ -8,6 +8,12 @@ export const ROADMAP_URL = `${GITHUB_REPO_URL}/issues`
 export const PUBLIC_SUPPORT_URL = `${GITHUB_REPO_URL}/issues`
 
 /**
+ * GitHub private vulnerability reporting for this repository (enabled; only
+ * the maintainers see a report). Needs a GitHub account.
+ */
+export const SECURITY_REPORT_URL = `${GITHUB_REPO_URL}/security/advisories/new`
+
+/**
  * First-party policy and offer routes, as in-app paths.
  *
  * Held here so the footer, the legal pages and the Supporter offer cannot drift
@@ -17,5 +23,14 @@ export const PUBLIC_SUPPORT_URL = `${GITHUB_REPO_URL}/issues`
  */
 export const PRIVACY_PATH = '/privacy'
 export const TERMS_PATH = '/terms'
+/** The Pulse Supporter section of the terms (the h2 in Terms.tsx carries id="supporter"). */
+export const SUPPORTER_TERMS_PATH = '/terms#supporter'
 export const REFUNDS_PATH = '/refunds'
 export const SUPPORTER_PATH = '/supporter'
+
+/**
+ * The private feedback form. Only the StreamPulse team reads what is sent
+ * there; the extension's "Send feedback" opens this page. /support keeps an
+ * element with id `send-feedback` that links here, so older links still land.
+ */
+export const FEEDBACK_PATH = '/feedback'

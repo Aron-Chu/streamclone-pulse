@@ -76,7 +76,7 @@ function resolveBasePageMetadata(pathname: string): PageMetadata {
     case '/supporter/thanks':
         return { title: 'Return to your extension — StreamPulse', description: 'Return to StreamPulse to check your membership after Checkout.', canonicalPath: normalizedPath, robots: 'noindex,nofollow' }
     case '/terms':
-      return { title: 'Supporter Terms — StreamPulse', description: 'StreamPulse Supporter subscription terms and payment conditions.', canonicalPath: normalizedPath, robots: 'index,follow' }
+      return { title: 'Terms of Use — StreamPulse', description: 'Terms of use for the StreamPulse website, the StreamPulse Chrome extension and the optional Pulse Supporter subscription.', canonicalPath: normalizedPath, robots: 'index,follow' }
     case '/refunds':
       return { title: 'Cancellation and Refunds — StreamPulse', description: 'Manage cancellation, paid access, and refund requests for Pulse Supporter.', canonicalPath: normalizedPath, robots: 'index,follow' }
     case '/support':
@@ -86,6 +86,8 @@ function resolveBasePageMetadata(pathname: string): PageMetadata {
         canonicalPath: '/support',
         robots: 'index,follow',
       }
+    case '/feedback':
+      return { title: 'Send Feedback — StreamPulse', description: 'Send private feedback to the StreamPulse team. No account needed.', canonicalPath: '/feedback', robots: 'index,follow' }
     case '/discord':
       return { title: 'Discord — StreamPulse', description: 'Join the public StreamPulse community on Discord.', canonicalPath: normalizedPath, robots: 'noindex,nofollow' }
     case '/changelog':

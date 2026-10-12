@@ -203,6 +203,19 @@ select {
   overflow-wrap: anywhere;
 }
 
+/* Links inside running text stay inline, so a wrapped line keeps its normal
+   height. The padding still gives a tall hit area without opening a gap
+   between lines; stand-alone action links above keep the 44px box. */
+[data-testid="supporter-offer"] :is(p:not(.public-document__back), li) a:not(.btn) {
+  display: inline;
+  min-height: 0;
+  min-width: 0;
+  /* At least 0.6em, and enough that the box reaches 44px: the content area is
+     taller than 1em, so 44px - 1em of padding always clears it. */
+  padding-block: max(0.6em, calc(22px - 0.5em));
+  margin-block: min(-0.6em, calc(0.5em - 22px));
+}
+
 .public-document h1 {
   margin-top: 0;
   font-size: 2rem;
@@ -675,6 +688,43 @@ select {
   gap: 0.35rem;
 }
 
+/* Public header Discord button, styled like the landing header's (Blurple).
+   At Menu widths it collapses to a 44px mark beside Menu, as on the landing. */
+.app-nav__discord {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  white-space: nowrap;
+  margin-left: 0.5rem;
+  padding: 0.38rem 0.7rem 0.38rem 0.6rem;
+  border: 1px solid #5865f2;
+  border-radius: var(--radius-button);
+  background: #5865f2;
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.app-nav__discord:hover { border-color: #4752c4; background: #4752c4; color: #fff; }
+.app-nav__discord + .app-nav__install { margin-left: 0; }
+.app-nav__discord-icon {
+  display: none;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  margin-left: auto;
+  place-items: center;
+  border-radius: 0.55rem;
+  background: #5865f2;
+  color: #fff;
+}
+.app-nav__discord-icon:hover { background: #4752c4; color: #fff; }
+@media (max-width: 960px) {
+  .app-nav__links .app-nav__discord { display: none; }
+  .app-nav__discord-icon { display: grid; }
+}
+
 /* /discord: the one Blurple action on the page. */
 .app-shell .sc-btn.discord-join,
 .app-shell .sc-btn.discord-join:hover:not(:disabled) {
@@ -693,7 +743,7 @@ select {
   outline: 2px solid #c4b5fd;
   outline-offset: 3px;
 }
-.app-shell section[id] { scroll-margin-top: 6rem; }
+.app-shell :is(section, h2, h3)[id] { scroll-margin-top: 6rem; }
 .public-skip-link { position: fixed; top: .5rem; left: .5rem; z-index: 100; padding: .75rem 1rem; min-height: 44px; color: #fff; background: #352447; border: 2px solid #c4b5fd; transform: translateY(-200%); }
 .public-skip-link:focus { transform: translateY(0); }
 .app-nav__menu { display: none; }

@@ -53,10 +53,11 @@ export default function Refunds() {
             confirms that this mailbox is monitored, who answers it and the response
             time. If it is not monitored, replace the address everywhere. */}
         <p>
-          Cancellation is self-service in the Stripe Customer Portal, reachable from account billing
-          on streampulse.stream once sign-ups open. You can also cancel by emailing{' '}
-          <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a> from the address
-          on the account.
+          Cancellation is self-service in the Stripe Customer Portal, reachable through Manage
+          subscription in the extension or on your account page once sign-ups open. You can also
+          cancel by emailing{' '}
+          <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a> from the billing
+          email you gave Stripe at checkout.
         </p>
         <ul>
           <li>Cancelling takes effect at the end of the period you have already paid for.</li>
@@ -152,9 +153,9 @@ export default function Refunds() {
         {/* MERGE GATE (memo T1-6): see the note under "Cancelling". */}
         <p>
           Email <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a> from the
-          address on the account, and include the date and amount of the charge or the invoice number
-          from your Stripe receipt. Please do not include your full card number — it is not needed and
-          StreamPulse cannot use it.
+          billing email you gave Stripe at checkout, and include the date and amount of the charge or
+          the invoice number from your Stripe receipt. Please do not include your full card number —
+          it is not needed and StreamPulse cannot use it.
         </p>
         <p>
           Refund requests are answered by a person. There is no automated refund line and no phone
