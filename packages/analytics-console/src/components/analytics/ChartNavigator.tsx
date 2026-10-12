@@ -89,10 +89,22 @@ export interface ChartNavigatorProps {
   /** Locked bucket, which may be outside a panned viewport. */
   selectedIndex?: number | null
   presets?: ChartNavigatorPreset[]
+  /**
+   * The whole chart: the label band above the plot, the plot and its lanes,
+   * the time axis and this navigator. A wheel anywhere from its top edge down
+   * to the bottom of the navigator bar, across its full width, zooms (see
+   * `wheelZoneContains`). Below the bar (buttons, readout, hint) the page
+   * keeps the wheel. It should contain the navigator, so one listener hears
+   * every part of that zone, including the gaps between its rows. Do not pass
+   * the plot here: Chrome decides from the listening element's box whether a
+   * wheel event can be cancelled, so outside it the browser scrolls the page
+   * before this code runs, whatever the zone check says.
+   */
   wheelSurfaceRef?: RefObject<HTMLElement | null>
   /**
-   * Element whose box anchors wheel zoom over `wheelSurfaceRef` (the plot
-   * area). Omitted, the wheel surface itself is the anchor.
+   * The plot box. Wheel zoom keeps the step under the pointer's x position on
+   * it in place; it never limits where the wheel zooms. Omitted, the wheel
+   * surface itself is the anchor.
    */
   wheelAnchor?: () => Element | null | undefined
   /**
@@ -208,8 +220,55 @@ export function resetChartWheelGuard() {
   lastPassedWheelAt = Number.NEGATIVE_INFINITY
 }
 
-function pointInRect(rect: DOMRect | undefined, x: number, y: number): boolean {
-  return rect != null && rect.width > 0 && x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom
+interface Box {
+  left: number
+  right: number
+  top: number
+  bottom: number
+  width: number
+}
+
+/**
+ * Chrome reports a wheel event's clientX/clientY as whole pixels while boxes
+ * sit on fractional ones, so the box is rounded outwards: the first pixel row
+ * of a box whose top is at 250.2 reports clientY 250 and still counts.
+ */
+function pointInRect(rect: Box | undefined, x: number, y: number): boolean {
+  return rect != null && rect.width > 0
+    && x >= Math.floor(rect.left) && x <= Math.ceil(rect.right)
+    && y >= Math.floor(rect.top) && y <= Math.ceil(rect.bottom)
+}
+
+/**
+ * Whether a wheel at (x, y) is over the chart, so it zooms. The zone is the
+ * wheel surface's full width, from its top edge down to the bottom of the
+ * navigator bar when the surface holds the navigator, else the surface's own
+ * box. It is decided by position, not by the event target: labels, lanes,
+ * markers and overlays inside the zone all count, and so does the gap between
+ * the plot and the bar. The plot box is always inside it.
+ *
+ * Do not narrow this to the plot box again. That made the label band above
+ * the plot and the time-axis row below it scroll the page (2026-10-12).
+ */
+export function wheelZoneContains(
+  surface: Element,
+  bar: Element | null | undefined,
+  plot: Element | null | undefined,
+  x: number,
+  y: number,
+): boolean {
+  const box = surface.getBoundingClientRect()
+  const barBox = bar && surface.contains(bar) ? bar.getBoundingClientRect() : null
+  const zone: Box = barBox && barBox.width > 0 && barBox.bottom > box.top
+    ? {
+        left: Math.min(box.left, barBox.left),
+        right: Math.max(box.right, barBox.right),
+        top: box.top,
+        bottom: barBox.bottom,
+        width: Math.max(box.right, barBox.right) - Math.min(box.left, barBox.left),
+      }
+    : box
+  return pointInRect(zone, x, y) || pointInRect(plot?.getBoundingClientRect(), x, y)
 }
 
 function wheelDeltaPixels(delta: number, deltaMode: number): number {
@@ -404,6 +463,8 @@ export function ChartNavigator({
     (selectedIndex < range.startIndex || selectedIndex > range.endIndex)
   const trackRef = useRef<HTMLDivElement>(null)
   const trackShellRef = useRef<HTMLDivElement>(null)
+  /** The bar row (track and range label): the bottom edge of the chart's wheel zone. */
+  const barRef = useRef<HTMLDivElement>(null)
   const navigatorRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<DragState | null>(null)
   const [draggingMode, setDraggingMode] = useState<DragState['mode'] | null>(null)
@@ -571,26 +632,24 @@ export function ChartNavigator({
     }
   }
 
-  // A plain wheel over the plot (or the navigator track) zooms around the
-  // pointer while Scroll zoom is on, which is the default. Everywhere else the
-  // page scrolls. Alt+wheel zooms in either mode; Shift+wheel and horizontal
-  // swipes pan a zoomed view. Ctrl+wheel (also how a touchpad pinch arrives)
-  // and Meta+wheel always stay the browser's page zoom.
+  // A plain wheel anywhere over the chart (see wheelZoneContains) or the
+  // navigator track zooms around the pointer while Scroll zoom is on, which is
+  // the default. Everywhere else the page scrolls. Alt+wheel zooms in either
+  // mode; Shift+wheel and horizontal swipes pan a zoomed view. Ctrl+wheel (also
+  // how a touchpad pinch arrives) and Meta+wheel always stay the browser's
+  // page zoom.
   const wheelGestureRef = useRef<WheelGestureState | null>(null)
   /** Time of the last wheel event this navigator took, for the zoom-in floor rule. */
   const lastHandledWheelAtRef = useRef(Number.NEGATIVE_INFINITY)
-  const handleWheel = (event: WheelEvent, zone: Element | null | undefined, anchor: Element | null | undefined) => {
+  const handleWheel = (event: WheelEvent, inZone: (x: number, y: number) => boolean, anchor: Element | null | undefined) => {
     // A chart inside the wheel surface may already have zoomed for this event,
     // or the navigator inside this surface already took it.
     if (event.defaultPrevented || handledWheelEvents.has(event)) return
     if (event.ctrlKey || event.metaKey) return noteWheelOutcome(event, 'pass:browser-zoom')
     if (maxIndex <= 1) return noteWheelOutcome(event, 'pass:no-range')
-    // Over the plot box or the track only, by the pointer's position: markers
-    // and overlays drawn on top of the plot still count as the plot.
-    if (!pointInRect(zone?.getBoundingClientRect(), event.clientX, event.clientY)) {
-      return noteWheelOutcome(event, 'pass:outside-plot')
-    }
-    const rect = (anchor ?? zone)!.getBoundingClientRect()
+    // By the pointer's position, not the event target.
+    if (!anchor || !inZone(event.clientX, event.clientY)) return noteWheelOutcome(event, 'pass:outside-chart')
+    const rect = anchor.getBoundingClientRect()
 
     const deltaX = wheelDeltaPixels(event.deltaX, event.deltaMode)
     const deltaY = wheelDeltaPixels(event.deltaY, event.deltaMode)
@@ -657,13 +716,19 @@ export function ChartNavigator({
     installWheelDebug()
     const navigator = navigatorRef.current
     if (!navigator) return
-    const onWheel = (event: WheelEvent) =>
-      wheelHandlerRef.current(event, trackShellRef.current, trackRef.current)
+    // The track zooms around the step under the pointer on the track. Elsewhere
+    // in the navigator, the chart's wheel surface (when it holds the navigator)
+    // decides.
+    const onWheel = (event: WheelEvent) => wheelHandlerRef.current(
+      event,
+      (x, y) => pointInRect(trackShellRef.current?.getBoundingClientRect(), x, y),
+      trackRef.current,
+    )
     navigator.addEventListener('wheel', onWheel, { passive: false })
     return () => navigator.removeEventListener('wheel', onWheel)
   }, [])
 
-  // The plot surface can be swapped by its chart; rebind only when it is.
+  // The chart surface can be swapped by its chart; rebind only when it is.
   const boundSurfaceRef = useRef<{ surface: HTMLElement; release: () => void } | null>(null)
   useEffect(() => {
     const surface = wheelSurfaceRef?.current ?? null
@@ -672,8 +737,12 @@ export function ChartNavigator({
     boundSurfaceRef.current = null
     if (!surface || surface === navigatorRef.current) return
     const onWheel = (event: WheelEvent) => {
-      const zone = wheelAnchorRef.current?.() ?? surface
-      wheelHandlerRef.current(event, zone, zone)
+      const plot = wheelAnchorRef.current?.() ?? surface
+      wheelHandlerRef.current(
+        event,
+        (x, y) => wheelZoneContains(surface, barRef.current, plot, x, y),
+        plot,
+      )
     }
     surface.addEventListener('wheel', onWheel, { passive: false })
     boundSurfaceRef.current = { surface, release: () => surface.removeEventListener('wheel', onWheel) }
@@ -698,7 +767,7 @@ export function ChartNavigator({
       onPointerCancel={(event) => finishPointerDrag(event, true)}
       onLostPointerCapture={(event) => finishPointerDrag(event, true)}
     >
-      <div className="hx-chart-navigator__bar">
+      <div ref={barRef} className="hx-chart-navigator__bar">
         <div ref={trackShellRef} className="hx-chart-navigator__track-shell">
           <div
             ref={trackRef}
@@ -790,7 +859,7 @@ export function ChartNavigator({
         ? 'Scroll over the chart to zoom · Shift + scroll to pan · Drag the purple bar to pick a span'
         : 'Scroll zoom is off: the wheel scrolls the page · Hold Alt and scroll to zoom · Shift + scroll to pan'}</small>
       <span id={hintId} className="sr-only">
-        Scroll over the plot to zoom around the pointer while Scroll zoom is on. It is on by default, and your choice is remembered in this browser. When it is off, the wheel scrolls the page and Alt plus wheel zooms. At the full range, scrolling down scrolls the page. Shift plus wheel or a horizontal swipe pans a zoomed view. Ctrl or Command plus wheel zooms the page. With the plot focused, plus, minus and zero zoom in, zoom out and reset. Drag the purple track to select a span, drag the window to pan, or use the start and end sliders. Double-click the track, use Reset zoom, or press Escape to restore the full range.
+        Scroll anywhere over the chart, from its labels down to this bar, to zoom around the pointer while Scroll zoom is on. It is on by default, and your choice is remembered in this browser. When it is off, the wheel scrolls the page and Alt plus wheel zooms. At the full range, scrolling down scrolls the page. Shift plus wheel or a horizontal swipe pans a zoomed view. Ctrl or Command plus wheel zooms the page. With the plot focused, plus, minus and zero zoom in, zoom out and reset. Drag the purple track to select a span, drag the window to pan, or use the start and end sliders. Double-click the track, use Reset zoom, or press Escape to restore the full range.
       </span>
     </div>
   )

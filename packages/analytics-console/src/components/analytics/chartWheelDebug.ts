@@ -13,7 +13,7 @@ export type WheelDebugOutcome =
   | 'pass:limit'
   | 'pass:scroll-through'
   | 'pass:browser-zoom'
-  | 'pass:outside-plot'
+  | 'pass:outside-chart'
   | 'pass:no-range'
 
 /** Read once per page load. */
@@ -34,24 +34,18 @@ export function noteWheelOutcome(event: Event, outcome: WheelDebugOutcome) {
 
 interface Row {
   event: WheelEvent
-  surface: 'hub-plot' | 'stream-plot' | 'navigator' | 'page'
+  surface: 'hub-chart' | 'stream-chart' | 'navigator' | 'page'
 }
 
 let installed = false
 
+/** The element under the pointer; the outcome column says whether the chart's wheel zone took it. */
 function surfaceOf(event: WheelEvent): Row['surface'] {
   const target = event.target instanceof Element ? event.target : null
   if (!target) return 'page'
   if (target.closest('[data-hub-chart-navigator]')) return 'navigator'
-  if (target.closest('[data-hub-chart-wheel-surface]')) return 'hub-plot'
-  const stack = target.closest('[data-session-chart-stack]')
-  const plot = stack?.querySelector('svg[role="group"] rect[data-chart-touch-action]')
-  if (plot) {
-    const rect = plot.getBoundingClientRect()
-    if (event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom) {
-      return 'stream-plot'
-    }
-  }
+  if (target.closest('[data-hub-chart-wheel-zone]')) return 'hub-chart'
+  if (target.closest('[data-session-chart-stack]')) return 'stream-chart'
   return 'page'
 }
 
@@ -61,7 +55,7 @@ function format(row: Row, index: number): string {
     .filter(Boolean)
     .join('+') || '-'
   const outcome = outcomes?.get(event) ?? (row.surface === 'page' ? 'page' : 'unhandled')
-  return `${String(index).padStart(3)} dY=${event.deltaY.toFixed(1).padStart(7)} dX=${event.deltaX.toFixed(1).padStart(6)} mode=${event.deltaMode} ${keys.padEnd(9)} ${row.surface.padEnd(11)} ${outcome}`
+  return `${String(index).padStart(3)} dY=${event.deltaY.toFixed(1).padStart(7)} dX=${event.deltaX.toFixed(1).padStart(6)} mode=${event.deltaMode} ${keys.padEnd(9)} ${row.surface.padEnd(12)} ${outcome}`
 }
 
 /** Installs the capture listener and panel once per page, when the flag is on. */
