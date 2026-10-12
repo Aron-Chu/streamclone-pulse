@@ -33,6 +33,7 @@ import {
   validateExtensionAttributionBytes,
 } from './stage-extension-attribution.mjs'
 import { textContainsHostedApiOrigin } from './lib/hosted-api-origin.mjs'
+import { checkDeviceLinkBundles } from './lib/device-link-package.mjs'
 import { findStoreDeveloperMarkers } from './store-artifact-policy.mjs'
 import { evaluateReleaseNotesGate, resolveCiPackageProbe } from './lib/release-notes-gate.mjs'
 
@@ -304,6 +305,15 @@ function validateDistContents(store, target) {
   }
   if (!foundHosted) fail('hosted API default https://api.streampulse.stream not found in bundles')
   else ok('REQUIRED: hosted API default present in bundles')
+
+  // Firefox builds compile the device link out (src/shared/deviceLink.ts); the
+  // others keep it. The ZIP is checked byte-for-byte against these files.
+  const bundles = Object.fromEntries(
+    packable.filter((f) => f.endsWith('.js')).map((f) => [f, readFileSync(join(dist, f), 'utf8')]),
+  )
+  const deviceLink = checkDeviceLinkBundles(target, bundles)
+  for (const error of deviceLink.errors) fail(error)
+  if (!deviceLink.errors.length) ok(deviceLink.summary)
 
   return packable
 }
