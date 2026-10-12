@@ -76,9 +76,9 @@ describe('billing membership copy', () => {
     render(<MemoryRouter><BillingPage /></MemoryRouter>)
     const label = await screen.findByText('Includes')
     const includes = label.nextElementSibling?.textContent ?? ''
-    expect(includes).toMatch(/header accent/)
-    expect(includes).toMatch(/tenure crest that grows with your support/)
-    expect(includes).toMatch(/emote rain behind your Pulse panel/)
+    expect(includes).toMatch(/Title paint/)
+    expect(includes).toMatch(/Tenure crest/)
+    expect(includes).toMatch(/Emote rain/)
     expect(includes).not.toMatch(/signature/i)
   })
 
