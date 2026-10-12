@@ -6,15 +6,16 @@
       "version": "0.2.2",
       "status": "unreleased",
       "releasedAt": null,
-      "title": "Whole-stream charts and a new popup",
-      "summary": "Whole-stream charts, a calmer Top Moments list, feedback and Discord links in settings, bookmarks without an account and a redesigned popup. The 7TV emote backdrop stays free until Supporter sign-ups open, and accounts and Supporter sign-ups are not open yet.",
+      "title": "Whole-stream charts, calmer Top Moments",
+      "summary": "Charts cover the whole stream, Top Moments opens a card only when you pick one, bookmarks work without an account, and the popup is redesigned. Also built for Edge and Firefox. Accounts and Supporter sign-ups aren't open yet.",
       "preview": [
-        "Send feedback and Discord links are in settings.",
+        "Charts cover the whole stream.",
         "Top Moments opens a card only when you pick one.",
-        "The 7TV emote backdrop stays free until sign-ups open."
+        "Also built for Edge and Firefox."
       ],
       "new": [
-        "Every settings page links to Send feedback and Join the Discord.",
+        "Built for Microsoft Edge and Firefox as well as Chrome and Brave.",
+        "Send feedback and Discord links are in settings.",
         "A strength pill on the strongest moment so far shows how far it beat the stream's usual activity, for example 4.2× usual.",
         "Bookmarks work without an account. Without one, they stay in this browser and are never uploaded.",
         "The toolbar popup is redesigned. Away from a stream it lists channels Pulse is charting live, with a Jump back in card for your recent moments and bookmarks.",
@@ -33,7 +34,11 @@
         "When StreamPulse cannot be reached on first load, Pulse says so and offers Retry instead of showing Loading forever.",
         "Hiding Pulse in the right or bottom dock no longer draws a large dark shape over the page.",
         "VODs without replay data no longer show a false outage or raw error codes.",
-        "Analytics links keep a moment in the stream's first minute, and a link without a stream no longer selects a minute in a different stream."
+        "Analytics links keep a moment in the stream's first minute, and a link without a stream no longer selects a minute in a different stream.",
+        "Watched moments on VODs are remembered again.",
+        "Replays show their own stream's chart.",
+        "A restarted stream moves the panel to the new stream.",
+        "The popup says when a page has no chat for the panel."
       ],
       "knownIssues": [
         "Accounts and Supporter sign-ups are not open yet. Accounts are coming with Continue with Twitch.",

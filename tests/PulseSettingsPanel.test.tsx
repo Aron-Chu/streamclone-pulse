@@ -40,7 +40,10 @@ describe('PulseSettingsPanel quick workspace', () => {
     expect(html).toContain('Reset appearance and layout to defaults')
     expect(html).toContain('data-settings-connection="true"')
     expect(html).toContain('data-changelog-preview="true"')
-    expect(html).toMatch(/<summary><span class="pulse-settings-release-version">.*?<\/summary>/)
+    // What's new is an open card, not a disclosure: no summary, no chevron, the highlights show at once.
+    expect(html).toMatch(/<section class="pulse-settings-release-preview" data-changelog-preview="true" aria-label="What&#x27;s new"><header><span class="pulse-settings-release-version">.*?<\/header>/)
+    expect(html).not.toContain('pulse-settings-release-chevron')
+    expect(html).not.toContain('<details class="pulse-settings-release-preview"')
     expect(html).toContain('Background &amp; motion')
     expect(html).toContain('data-banner-editor-cta="true"')
     // The 7TV emote backdrop is free until Supporter sign-ups open, and says so once, in amber.
@@ -49,9 +52,10 @@ describe('PulseSettingsPanel quick workspace', () => {
     expect(html.indexOf('data-backdrop-note="free"')).toBeLessThan(html.indexOf('data-banner-editor-cta="true"'))
     expect(html).not.toContain('<details class="pulse-banner-customize"')
     expect(html).not.toContain('Panel title')
-    expect(html).toContain('pulse-settings-release-body pulse-tab-fade')
+    expect(html).toContain('<div class="pulse-settings-release-body"><ul>')
     expect(html.match(/<li>/g)).toHaveLength(3)
-    expect(html).toContain('View full changelog ↗')
+    expect(html).toContain('See all changes ↗')
+    expect(html).not.toContain('View full changelog')
     expect(html).toContain('data-settings-host-cta="updates"')
     expect(html).not.toContain('Privacy &amp; Data')
     // "Open all settings" is pinned outside the scrolling panel, like the Pulse view's Settings bar.
