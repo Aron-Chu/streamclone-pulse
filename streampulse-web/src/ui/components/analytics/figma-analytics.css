@@ -2641,6 +2641,7 @@
 .figma-activity-hub .pulse-moments-live--embedded .pulse-moments-live__bucket-filter,
 .figma-activity-hub .pulse-moments-live--embedded .pulse-moments-live__diagnostics,
 .figma-activity-hub .pulse-moments-live--embedded .pulse-moments-live__banner,
+.figma-activity-hub .pulse-moments-live--embedded .pulse-moments-live__sub,
 .figma-activity-hub .pulse-moments-live--embedded .pulse-moments-live__filters {
   padding-left: 1.1rem;
   padding-right: 1.1rem;
@@ -2693,7 +2694,7 @@
 .figma-activity-hub .pulse-moments-live--embedded .pulse-moments-live__grid {
   grid-template-columns: minmax(0, 1.85fr) minmax(240px, 0.72fr);
   align-items: stretch;
-  padding: 0.3rem 0.55rem 0.45rem;
+  padding: 0.3rem 1.1rem 0.45rem;
 }
 
 .figma-activity-hub .pulse-moments-live--embedded .pulse-moments-live__grid > .pulse-moments__table-panel {

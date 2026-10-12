@@ -87,6 +87,8 @@
 
 .analytics-discovery-layout .figma-global-activity__chart-col {
   margin-right: 0;
+  /* The plot's edges are the frame's edges, which match the cards below. */
+  padding-inline: 0;
 }
 
 .analytics-discovery-layout .figma-global-activity__inspector {
