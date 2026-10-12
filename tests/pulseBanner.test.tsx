@@ -6,7 +6,7 @@ import { StreamPulseTitleBlock } from '../src/ui/StreamPulseTitleBlock.tsx'
 import { shadowStyles } from '../src/ui/theme.ts'
 
 describe('personal Pulse banner', () => {
-  it('keeps the 7TV backdrop opt-in: new and unsaved installs start with it off', () => {
+  it('keeps the 7TV emote backdrop opt-in: new and unsaved installs start with it off', () => {
     expect(DEFAULT_PULSE_BANNER.mode).toBe('off')
     expect(normalizePulseBanner(undefined).mode).toBe('off')
     expect(normalizePulseBanner({ mode: 'rain' }).mode).toBe('rain')
@@ -27,15 +27,15 @@ describe('personal Pulse banner', () => {
     expect(rain).not.toContain('<style')
     expect(shadowStyles).toMatch(/prefers-reduced-motion: reduce\) \{ \.pulse-banner-art\[data-mode="rain"\] img \{ animation: none/)
   })
-  it('draws emote rain, still or falling, only for verified Supporter perks', () => {
+  it('draws the 7TV emote backdrop, still or falling, for everyone while it is free', () => {
+    // Until Supporter sign-ups open (BACKDROP_FREE); the Supporter-only gate is
+    // checked with the flag off in tests/pulseBannerPerksLocked.test.tsx.
     for (const mode of ['rain', 'still'] as const) {
-      // A lapsed or non-Supporter profile may still hold an older saved choice.
-      const locked = renderToStaticMarkup(<PulseBannerBackdrop value={{ ...DEFAULT_PULSE_BANNER, mode }} perks={false} />)
-      expect(locked, mode).toContain('data-mode="off"')
-      expect(locked, mode).not.toContain('<img')
-      const supporter = renderToStaticMarkup(<PulseBannerBackdrop value={{ ...DEFAULT_PULSE_BANNER, mode }} perks />)
-      expect(supporter, mode).toContain(`data-mode="${mode}"`)
-      expect(supporter.match(/<img/g), mode).toHaveLength(6)
+      for (const perks of [false, true]) {
+        const html = renderToStaticMarkup(<PulseBannerBackdrop value={{ ...DEFAULT_PULSE_BANNER, mode }} perks={perks} />)
+        expect(html, `${mode} ${perks}`).toContain(`data-mode="${mode}"`)
+        expect(html.match(/<img/g), `${mode} ${perks}`).toHaveLength(6)
+      }
     }
   })
   it('renders personal titles as text, never markup', () => {

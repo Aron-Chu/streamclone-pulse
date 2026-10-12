@@ -1,12 +1,16 @@
 // @vitest-environment jsdom
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { PulseBannerControls, PulseBannerQuickPreview } from '../src/ui/PulseBanner.tsx'
+import { BACKDROP_FREE, BACKDROP_FREE_NOTE } from '../src/shared/backdropPolicy.ts'
+import { DEFAULT_PULSE_BANNER } from '../src/shared/storage.ts'
+import { PulseBannerBackdrop, PulseBannerControls, PulseBannerQuickPreview } from '../src/ui/PulseBanner.tsx'
+import { shadowStyles } from '../src/ui/theme.ts'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
-/** A profile that saved Rain earlier, for instance while it was a Supporter. */
+/** A profile that saved Rain at 40% in 0.2.1, when the backdrop was free. */
 function stubSavedBanner(saved: Record<string, unknown> = { mode: 'rain', intensity: 40, title: 'My Pulse' }) {
   const set = vi.fn().mockResolvedValue(undefined)
   vi.stubGlobal('chrome', {
@@ -31,83 +35,87 @@ const modeButton = (host: HTMLElement, name: string) => [...host.querySelectorAl
 
 afterEach(() => { vi.unstubAllGlobals() })
 
-describe('emote rain is a Supporter perk in settings', () => {
-  it('locks Still and Rain for a non-Supporter, points to the offer, and keeps the saved choice untouched', async () => {
+/**
+ * Owner decision 2026-10-11: the 7TV emote backdrop stays free until Supporter
+ * sign-ups open, with one short note that it becomes a Supporter perk then.
+ * tests/pulseBannerPerksLocked.test.tsx flips BACKDROP_FREE off and checks the gate.
+ */
+describe('the 7TV emote backdrop is free until Supporter sign-ups open', () => {
+  it('ships free, with one short note', () => {
+    expect(BACKDROP_FREE).toBe(true)
+    expect(BACKDROP_FREE_NOTE).toBe('Becomes a Supporter perk when sign-ups open.')
+    // A temporary "not yet" state, in the extension's amber.
+    expect(shadowStyles).toContain('.pulse-settings-hint.pulse-backdrop-note, .pulse-supporter-detail.pulse-backdrop-note { color: #fcd34d; }')
+  })
+
+  it('draws a saved backdrop, still or falling, without Supporter perks', () => {
+    for (const mode of ['rain', 'still'] as const) {
+      const free = renderToStaticMarkup(<PulseBannerBackdrop value={{ ...DEFAULT_PULSE_BANNER, mode }} perks={false} />)
+      expect(free, mode).toContain(`data-mode="${mode}"`)
+      expect(free.match(/<img/g), mode).toHaveLength(6)
+    }
+    // Off stays off.
+    expect(renderToStaticMarkup(<PulseBannerBackdrop value={DEFAULT_PULSE_BANNER} perks={false} />)).not.toContain('<img')
+  })
+
+  it('gives a non-Supporter Off, Still, Rain and intensity, with the note and no lock', async () => {
     const set = stubSavedBanner()
     const view = await mount(<PulseBannerControls expanded perks={false} />)
-    expect(view.host.querySelector('[data-supporter-perks]')?.getAttribute('data-supporter-perks')).toBe('locked')
-    expect(modeButton(view.host, 'Off').disabled).toBe(false)
-    expect(modeButton(view.host, 'Still').disabled).toBe(true)
-    expect(modeButton(view.host, 'Rain').disabled).toBe(true)
-    // The saved choice is shown as kept, but nothing draws it.
+    expect(document.getElementById(view.host.querySelector('.pulse-banner-modes')!.getAttribute('aria-labelledby')!)?.textContent).toBe('7TV emote backdrop')
+    for (const name of ['Off', 'Still', 'Rain']) {
+      expect(modeButton(view.host, name).disabled, name).toBe(false)
+      expect(modeButton(view.host, name).title, name).toBe('')
+    }
+    // The 0.2.1 user's rain is back: pressed, and drawn in the preview.
     expect(modeButton(view.host, 'Rain').getAttribute('aria-pressed')).toBe('true')
-    expect(view.host.querySelector<HTMLInputElement>('input[type="range"]')!.disabled).toBe(true)
-    expect(view.host.querySelector('.pulse-background-preview .pulse-banner-art')?.getAttribute('data-mode')).toBe('off')
-    expect(view.host.querySelectorAll('.pulse-background-preview img')).toHaveLength(0)
-    const perk = view.host.querySelector('[data-supporter-perk="emote-rain"]')!
-    expect(perk.textContent).toContain('Supporter perk')
-    expect(perk.textContent).toContain('Only you see it')
-    // 0.2.1 gave the backdrop free: say plainly that it moved, and that a saved choice is kept.
-    expect(perk.textContent).toContain('It moved from free to Supporter in 0.2.2, and a backdrop you chose is kept for when you support.')
-    expect(perk.querySelector('a')?.getAttribute('href')).toBe('#supporter')
-
-    // The title stays free, and saving it keeps the stored Rain for a returning Supporter.
-    const title = view.host.querySelector<HTMLInputElement>('input[maxlength="40"]')!
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(title, 'Renamed')
-      title.dispatchEvent(new Event('input', { bubbles: true }))
-    })
-    await act(async () => { view.host.querySelector('form')!.requestSubmit() })
-    expect(set).toHaveBeenCalledWith({ pulseBanner: { mode: 'rain', intensity: 40, title: 'Renamed' } })
-    view.unmount()
-  })
-
-  it('keeps a locked Supporter choice through Reset: only the free title goes back to default', async () => {
-    const set = stubSavedBanner()
-    const view = await mount(<PulseBannerControls expanded perks={false} />)
-    await act(async () => { [...view.host.querySelectorAll('button')].find(button => button.textContent === 'Reset')!.click() })
-    expect(view.host.querySelector<HTMLInputElement>('input[maxlength="40"]')!.value).toBe('')
-    await act(async () => { view.host.querySelector('form')!.requestSubmit() })
-    expect(set).toHaveBeenCalledWith({ pulseBanner: { mode: 'rain', intensity: 40, title: '' } })
-    view.unmount()
-  })
-
-  it('waits, neutral, until the membership check answers instead of flashing the lock', async () => {
-    stubSavedBanner()
-    const view = await mount(<PulseBannerControls expanded perks={undefined} />)
-    expect(view.host.querySelector('[data-supporter-perks]')?.getAttribute('data-supporter-perks')).toBe('pending')
-    expect(view.host.querySelector('[data-supporter-perk]')).toBeNull()
-    expect(modeButton(view.host, 'Rain').disabled).toBe(true)
-    expect(view.host.querySelector('.pulse-banner-modes')?.getAttribute('aria-busy')).toBe('true')
-    expect(view.host.querySelectorAll('.pulse-background-preview img')).toHaveLength(0)
-    view.unmount()
-  })
-
-  it('gives an active or grace Supporter today’s controls and preview', async () => {
-    stubSavedBanner()
-    const view = await mount(<PulseBannerControls expanded perks />)
-    expect(view.host.querySelector('[data-supporter-perks]')?.getAttribute('data-supporter-perks')).toBe('on')
-    for (const name of ['Off', 'Still', 'Rain']) expect(modeButton(view.host, name).disabled, name).toBe(false)
-    expect(view.host.querySelector('[data-supporter-perk]')).toBeNull()
     expect(view.host.querySelector<HTMLInputElement>('input[type="range"]')!.disabled).toBe(false)
     expect(view.host.querySelector('.pulse-background-preview .pulse-banner-art')?.getAttribute('data-mode')).toBe('rain')
     expect(view.host.querySelectorAll('.pulse-background-preview img')).toHaveLength(6)
+    expect(view.host.querySelector('[data-supporter-perk]')).toBeNull()
+    const note = view.host.querySelector('[data-backdrop-note="free"]')!
+    expect(note.textContent).toBe('Becomes a Supporter perk when sign-ups open.')
+    expect(note.classList.contains('pulse-backdrop-note')).toBe(true)
+
+    // Still saves for everyone.
+    await act(async () => { modeButton(view.host, 'Still').click() })
+    await act(async () => { view.host.querySelector('form')!.requestSubmit() })
+    expect(set).toHaveBeenCalledWith({ pulseBanner: { mode: 'still', intensity: 40, title: 'My Pulse' } })
     view.unmount()
   })
 
-  it('previews in quick settings only what the overlay draws', async () => {
+  it('does not wait on the membership check, and Reset resets everything', async () => {
+    const set = stubSavedBanner()
+    const view = await mount(<PulseBannerControls expanded perks={undefined} />)
+    expect(modeButton(view.host, 'Rain').disabled).toBe(false)
+    expect(view.host.querySelector('.pulse-banner-modes')?.hasAttribute('aria-busy')).toBe(false)
+    expect(view.host.querySelector('[data-backdrop-note="free"]')).not.toBeNull()
+    await act(async () => { [...view.host.querySelectorAll('button')].find(button => button.textContent === 'Reset')!.click() })
+    await act(async () => { view.host.querySelector('form')!.requestSubmit() })
+    expect(set).toHaveBeenCalledWith({ pulseBanner: DEFAULT_PULSE_BANNER })
+    view.unmount()
+  })
+
+  it('leaves the note out for a verified Supporter', async () => {
     stubSavedBanner()
-    const locked = await mount(<PulseBannerQuickPreview perks={false} />)
-    const lockedPreview = locked.host.querySelector('[data-appearance-preview]')!
-    expect(lockedPreview.getAttribute('data-preview-mode')).toBe('off')
-    expect(lockedPreview.getAttribute('aria-label')).toBe('Appearance preview: My Pulse, Backdrop off')
-    expect(lockedPreview.querySelectorAll('img')).toHaveLength(0)
-    locked.unmount()
-    const supporter = await mount(<PulseBannerQuickPreview perks />)
-    const preview = supporter.host.querySelector('[data-appearance-preview]')!
+    const view = await mount(<PulseBannerControls expanded perks />)
+    for (const name of ['Off', 'Still', 'Rain']) expect(modeButton(view.host, name).disabled, name).toBe(false)
+    expect(view.host.querySelector('[data-backdrop-note]')).toBeNull()
+    expect(view.host.querySelector('[data-supporter-perk]')).toBeNull()
+    view.unmount()
+  })
+
+  it('previews in quick settings what the overlay draws, named the 7TV emote backdrop', async () => {
+    stubSavedBanner()
+    const free = await mount(<PulseBannerQuickPreview perks={false} />)
+    const preview = free.host.querySelector('[data-appearance-preview]')!
     expect(preview.getAttribute('data-preview-mode')).toBe('rain')
-    expect(preview.getAttribute('aria-label')).toBe('Appearance preview: My Pulse, 7TV rain')
+    expect(preview.getAttribute('aria-label')).toBe('Appearance preview: My Pulse. 7TV emote backdrop: Rain')
+    expect(preview.querySelector('small')?.textContent).toBe('7TV emote backdrop: Rain')
     expect(preview.querySelectorAll('img')).toHaveLength(6)
-    supporter.unmount()
+    free.unmount()
+    stubSavedBanner({ mode: 'off', intensity: 40, title: '' })
+    const off = await mount(<PulseBannerQuickPreview perks={false} />)
+    expect(off.host.querySelector('[data-appearance-preview] small')?.textContent).toBe('7TV emote backdrop: Off')
+    off.unmount()
   })
 })

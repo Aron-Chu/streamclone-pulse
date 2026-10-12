@@ -15,6 +15,7 @@ import type { PulsePanelSurfaceState } from './pulsePanelLayout.ts'
 import type { SettingsHostTarget } from '../shared/messages.ts'
 import type { SupporterCardOptions } from '../supporter/cardContract.ts'
 import { names as SUPPORTER_PERK_NAMES } from '../shared/supporter-perks.json'
+import { BACKDROP_FREE, BACKDROP_FREE_NOTE } from '../shared/backdropPolicy.ts'
 
 const RELEASE_PREVIEW = __EXTENSION_RELEASE_PREVIEW__
 
@@ -243,6 +244,7 @@ export function PulseSettingsPanel({ onBack, channel }: { onBack?: () => void; c
           <div className="pulse-settings-field pulse-settings-control-block">
             <span className="pulse-settings-label">Background &amp; motion</span>
             <PulseBannerQuickPreview perks={appearance?.perks === true} />
+            {BACKDROP_FREE && appearance?.perks !== true ? <small className="pulse-settings-hint pulse-backdrop-note" data-backdrop-note="free">{BACKDROP_FREE_NOTE}</small> : null}
             <button type="button" className="pulse-link-btn" data-banner-editor-cta="true" disabled={opening} onClick={() => void openHost('pulse-background')}>
               Edit background in all settings ↗
             </button>

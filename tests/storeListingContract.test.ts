@@ -33,7 +33,8 @@ describe('Chrome Web Store listing copy (0.2.2)', () => {
     expect(at.every(index => index > -1)).toBe(true)
     expect([...at].sort((a, b) => a - b)).toEqual(at)
     expect(description).toContain('they are not open yet')
-    expect(description).toContain('the 7TV header backdrop')
+    expect(description).toContain('the 7TV emote backdrop (free until sign-ups open)')
+    expect(description).not.toMatch(/header backdrop|emote rain/i)
   })
 
   it('describes no account, Protect enrollment or sign-in this build does not offer', () => {

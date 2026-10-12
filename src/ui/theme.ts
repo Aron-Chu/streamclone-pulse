@@ -1726,6 +1726,8 @@ export const shadowStyles = `
   .pulse-banner-quick-preview { align-items: center; background: var(--pulse-banner-canvas); border: 1px solid var(--pulse-banner-border); border-radius: var(--pulse-banner-radius); color: var(--pulse-banner-text); display: flex; gap: 8px; min-height: 48px; min-width: 0; overflow: hidden; padding: 8px 10px; }
   .pulse-banner-quick-preview strong { flex: 1 1 auto; font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pulse-banner-quick-preview small { color: var(--pulse-banner-text-secondary); flex: none; font-size: 10px; }
+  /* "Becomes a Supporter perk when sign-ups open": a temporary state, in the extension's amber. */
+  .pulse-settings-hint.pulse-backdrop-note, .pulse-supporter-detail.pulse-backdrop-note { color: #fcd34d; }
   .pulse-personal-banner { background: transparent; }
   .pulse-banner-art { position: absolute; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; container-type: size; }
   .pulse-background-preview .pulse-banner-art, .pulse-banner-quick-preview .pulse-banner-art { z-index: 0; }
