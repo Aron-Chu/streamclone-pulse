@@ -66,7 +66,7 @@ test('one rule under the header, then the latest release with its highlights fir
     const order = await page.locator(`[id="v${latest.version}"]`).evaluate((section) => section.firstElementChild?.getAttribute('data-testid'))
     expect(order).toBe('changelog-whats-new')
     await card.getByRole('link', { name: 'See all changes ↓' }).click()
-    await expect(page).toHaveURL(new RegExp(`#v${latest.version.replace(/\./g, '\\.')}-changes$`))
+    await expect.poll(() => new URL(page.url()).hash).toBe(`#v${latest.version}-changes`)
     // The full list starts near the top of the view, not under the sticky site header.
     const target = page.locator(`[id="v${latest.version}-changes"]`)
     await expect.poll(() => target.evaluate((node) => {
