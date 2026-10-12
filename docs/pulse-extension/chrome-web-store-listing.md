@@ -110,8 +110,9 @@ settings, and settings with release notes and the Community links) come from
 the mocked Twitch fixture (synthetic channel, no real streamer or email) by
 `tests/e2e/specs/cws-extension-screenshots.mocked.spec.ts`; see
 `store/cws/README.md` for which build each frame used. Mocked captures are not
-live evidence. Frame 5 was retaken on 2026-10-11 because settings no longer
-has a Help & Feedback section; frames 1-4 predate the 2026-10-11 polish, so
+live evidence. Frame 5 was retaken on 2026-10-12 because settings no longer
+has a Help & Feedback section and the Supporter banner is back to master's
+chips; frames 1-4 predate the 2026-10-11 polish, so
 recapture all five from the package `dist/` before the 0.2.2 upload.
 
 ---

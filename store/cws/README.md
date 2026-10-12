@@ -94,7 +94,8 @@ common reject / blank-toolbar failure mode. `icons:cws` asserts PNG color type 6
 Frames 01-04 were regenerated 2026-10-09 from the extension RC (all 0.2.2 PRs
 merged locally) with its development-target `dist/`, the only target the
 mocked Twitch harness runs (the panel code is the store build's). Frame 05 was
-retaken 2026-10-11 from the store-target (`EXTENSION_TARGET=cws`) settings
+retaken 2026-10-12 (after the emote rain revert: master's Supporter banner
+chips, no amber line) from the store-target (`EXTENSION_TARGET=cws`) settings
 page of the 0.2.2 polish, so it has no Developer section: settings no longer
 has a Help & Feedback section, so it shows Updates & Changelog with the What's
 new card and the Community card (Join the Discord, Send feedback). The 0.2.2
