@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 // /changelog reads the extension's src/shared/release-notes.json, which the
 // extension's release changes. This renders the page with notes shaped like
 // the 0.2.2 release (a Changed group, three highlights, marked released) to
-// prove the layout holds for that text as well as for the notes on disk.
+// prove the layout holds for that text as well as for the notes on disk. The
+// Supporter lines are master's 0.2.2 wording.
 vi.mock('../../src/shared/release-notes.json', () => ({
   default: {
     schemaVersion: 1,
@@ -20,11 +21,11 @@ vi.mock('../../src/shared/release-notes.json', () => ({
         preview: [
           'Send feedback and Discord links are in settings.',
           'Top Moments opens a card only when you pick one.',
-          'The 7TV emote backdrop stays free until sign-ups open.',
+          'The 7TV header backdrop moved to Supporter (not open yet).',
           'A fourth highlight that the card leaves out.',
         ],
         new: ['Bookmarks work without an account.', 'The toolbar popup is redesigned.'],
-        changed: ['The 7TV emote backdrop stays free until Supporter sign-ups open, then becomes a Supporter perk.'],
+        changed: ['The 7TV header backdrop (emote rain: Still or Rain behind the panel header) moved from free to Supporter. Until Supporter sign-ups open it stays off for everyone, and a backdrop you chose before is kept for when you support. The panel title and accent themes stay free.'],
         improved: ['Long streams chart end to end.'],
         fixed: ['Hiding Pulse in the right dock no longer draws a dark shape.', 'VODs without replay data no longer show a false outage.', 'Retry shows when StreamPulse cannot be reached.'],
         knownIssues: ['Accounts and Supporter sign-ups are not open yet.'],
@@ -64,7 +65,7 @@ describe('/changelog layout with the 0.2.2 notes', () => {
     expect([...card.querySelectorAll('li')].map((item) => item.textContent)).toEqual([
       'Send feedback and Discord links are in settings.',
       'Top Moments opens a card only when you pick one.',
-      'The 7TV emote backdrop stays free until sign-ups open.',
+      'The 7TV header backdrop moved to Supporter (not open yet).',
     ])
     expect(within(card).getByRole('link', { name: 'See all changes ↓' }).getAttribute('href')).toBe('#v0.2.2-changes')
     // Only the latest release gets the card; the older one keeps its plain header.
@@ -90,6 +91,6 @@ describe('/changelog layout with the 0.2.2 notes', () => {
       { key: 'knownIssues', open: true, label: 'Known limitations', count: '1', items: 1 },
     ])
     // The Supporter change is readable without a click.
-    expect(within(section).getByText(/becomes a Supporter perk/)).toBeTruthy()
+    expect(within(section).getByText(/moved from free to Supporter/)).toBeTruthy()
   })
 })
