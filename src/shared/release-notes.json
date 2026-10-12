@@ -6,15 +6,15 @@
       "version": "0.2.2",
       "status": "unreleased",
       "releasedAt": null,
-      "title": "Whole-stream charts and Help & Feedback",
-      "summary": "Whole-stream charts, a calmer Top Moments list, Help & Feedback in settings, bookmarks without an account and a redesigned popup. The 7TV emote backdrop stays free until Supporter sign-ups open, and accounts and Supporter sign-ups are not open yet.",
+      "title": "Whole-stream charts and a new popup",
+      "summary": "Whole-stream charts, a calmer Top Moments list, feedback and Discord links in settings, bookmarks without an account and a redesigned popup. The 7TV emote backdrop stays free until Supporter sign-ups open, and accounts and Supporter sign-ups are not open yet.",
       "preview": [
-        "Help & Feedback: private feedback, Discord, release notes.",
+        "Send feedback and Discord links are in settings.",
         "Top Moments opens a card only when you pick one.",
         "The 7TV emote backdrop stays free until sign-ups open."
       ],
       "new": [
-        "Help & Feedback in settings: send private feedback that only the StreamPulse team reads, join the StreamPulse Discord, and read these release notes.",
+        "Every settings page links to Send feedback and Join the Discord.",
         "A strength pill on the strongest moment so far shows how far it beat the stream's usual activity, for example 4.2× usual.",
         "Bookmarks work without an account. Without one, they stay in this browser and are never uploaded.",
         "The toolbar popup is redesigned. Away from a stream it lists channels Pulse is charting live, with a Jump back in card for your recent moments and bookmarks.",

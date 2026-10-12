@@ -4,6 +4,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_NAV, SettingsHostShell } from '../src/options/SettingsHostShell.tsx'
+import { injectHostStyles } from '../src/options/hostStyles.ts'
 import { COMMUNITY_LINKS } from '../src/shared/portalLinks.ts'
 import { SettingsWorkspace } from '../src/ui/SettingsWorkspace.tsx'
 import { resetSupporterAppearanceForTests } from '../src/ui/useSupporterAppearance.ts'
@@ -20,9 +21,11 @@ vi.mock('../src/content/bridge.ts', () => ({
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 /**
- * Help & Feedback in the extension settings page: two website links, never an
- * invite. The website's /discord page owns the invite, so it can rotate (or not
- * exist yet) without a store release.
+ * Feedback and Discord in the extension settings page: two website links in the
+ * Community card on every section, never an invite. The website's /discord page
+ * owns the invite, so it can rotate (or not exist yet) without a store release.
+ * The Help & Feedback section that repeated them was removed on 2026-10-11; its
+ * one useful line, public vs private, lives on as a subline under each link.
  */
 const roots: Array<() => void> = []
 
@@ -89,57 +92,83 @@ describe('community links', () => {
     })
   })
 
-  it('list Help & Feedback after Updates in the section nav', () => {
-    expect(DEFAULT_NAV.map(item => item.id)).toEqual(['moments', 'pulse', 'supporter', 'privacy', 'updates', 'help'])
-    expect(DEFAULT_NAV.at(-1)).toEqual({ id: 'help', label: 'Help & Feedback' })
+  it('have no Help & Feedback section: the nav ends on Updates & Changelog', () => {
+    expect(DEFAULT_NAV.map(item => item.id)).toEqual(['moments', 'pulse', 'supporter', 'privacy', 'updates'])
+    expect(DEFAULT_NAV.map(item => item.label)).not.toContain('Help & Feedback')
   })
 })
 
-describe('settings page: Help & Feedback', () => {
-  it('offers the Discord page and the feedback form as two new-tab choices, without the Supporter banner', async () => {
+type Rgb = [number, number, number]
+const hex = (value: string): Rgb => [1, 3, 5].map(i => parseInt(value.slice(i, i + 2), 16)) as Rgb
+const luminance = (rgb: Rgb) => {
+  const [r, g, b] = rgb.map(v => { const c = v / 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4 })
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+const contrast = (a: Rgb, b: Rgb) => { const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x); return (hi + 0.05) / (lo + 0.05) }
+/** Declarations of the settings-page rules whose selector list is exactly `selector` (narrow-layout overrides merged in). */
+function hostRule(selector: string): Record<string, string> {
+  injectHostStyles()
+  const css = document.getElementById('streampulse-settings-host-styles')!.textContent!.replace(/\/\*[\s\S]*?\*\//g, '')
+  const rules = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].filter(([, head]) => head.trim() === selector)
+  expect(rules.length, selector).toBeGreaterThan(0)
+  return Object.assign({}, ...rules.map(rule => Object.fromEntries(rule[2].split(';').map(d => d.split(':').map(v => v.trim())).filter(([k, v]) => k && v))))
+}
+
+describe('settings page: Community card', () => {
+  it('sends an old #help link to Updates & Changelog', async () => {
     const host = await mountAt('help')
-    expect(host.querySelector('.pulse-host')?.getAttribute('data-host-active-section')).toBe('help')
-    expect(host.querySelector('[data-settings-section="help"] h2')?.textContent).toBe('Help & Feedback')
-    const choices = [...host.querySelectorAll('[data-help-choice]')]
-    expect(choices.map(choice => choice.getAttribute('data-help-choice'))).toEqual(['discord', 'feedback'])
-    expectNewTabLink(choices[0], COMMUNITY_LINKS.discord)
-    expectNewTabLink(choices[1], COMMUNITY_LINKS.feedback)
-    // Named by the title; the one-line detail is the description.
-    const title = (choice: Element) => document.getElementById(choice.getAttribute('aria-labelledby')!)?.textContent
-    const detail = (choice: Element) => document.getElementById(choice.getAttribute('aria-describedby')!)?.textContent
-    expect(title(choices[0])).toBe('Join the StreamPulse Discord (opens in a new tab)')
-    // Discord is public; only the feedback form is described as private.
-    expect(detail(choices[0])).toBe('Public server: ideas, help and release news')
-    expect(title(choices[1])).toBe('Send feedback (opens in a new tab)')
-    expect(detail(choices[1])).toBe('Private. Only the team reads it.')
-    expect(host.querySelector('[data-settings-host-banner="supporter"]')).toBeNull()
-    // The Community card stays put here too; only the Supporter banner steps aside.
-    expect(host.querySelector('.pulse-host-rail > aside.pulse-host-community')).not.toBeNull()
+    expect(host.querySelector('.pulse-host')?.getAttribute('data-host-active-section')).toBe('updates')
+    expect(window.location.hash).toBe('#updates')
+    expect(host.querySelector('[data-settings-section="updates"]')).not.toBeNull()
+    expect(host.querySelector('[data-settings-section="help"]')).toBeNull()
+    expect(host.querySelector('[data-settings-host-banner="supporter"]')).not.toBeNull()
   })
 
-  it('shows the Community card under the section list on every section', async () => {
-    for (const section of ['moments', 'pulse', 'supporter', 'privacy', 'updates', 'help']) {
+  it('shows the Community card under the section list on every section, with public vs private as a subline', async () => {
+    for (const section of ['moments', 'pulse', 'supporter', 'privacy', 'updates']) {
       const host = await mountAt(section)
       const card = host.querySelector('.pulse-host-rail > aside.pulse-host-community')
       expect(card?.getAttribute('aria-label')).toBe('Community')
-      expectNewTabLink(card?.querySelector('[data-community-link="discord"]'), COMMUNITY_LINKS.discord)
-      expectNewTabLink(card?.querySelector('[data-community-link="feedback"]'), COMMUNITY_LINKS.feedback)
-      expect(card?.querySelector('[data-community-link="discord"]')?.textContent).toBe('Join the Discord (opens in a new tab)')
-      expect(card?.querySelector('[data-community-link="feedback"]')?.textContent).toBe('Send feedback (opens in a new tab)')
+      const discord = card?.querySelector('[data-community-link="discord"]')
+      const feedback = card?.querySelector('[data-community-link="feedback"]')
+      expectNewTabLink(discord, COMMUNITY_LINKS.discord)
+      expectNewTabLink(feedback, COMMUNITY_LINKS.feedback)
+      for (const [link, label, detail] of [[discord, 'Join the Discord', 'Public server'], [feedback, 'Send feedback', 'Private to the team']] as const) {
+        // The label names the link; the visible two-word subline is its description, not part of its name.
+        expect(link!.querySelector('.pulse-host-community-copy > span')?.textContent).toBe(label)
+        const small = link!.querySelector('.pulse-host-community-copy > small')!
+        expect(small.textContent).toBe(detail)
+        expect(small.getAttribute('aria-hidden')).toBe('true')
+        expect(link!.getAttribute('aria-describedby')).toBe(small.id)
+        expect(link!.querySelector('.pulse-host-community-sr')?.textContent).toBe(' (opens in a new tab)')
+      }
       // The card follows the nav, so keyboard order is still skip link, sections, content.
       const rail = host.querySelector('.pulse-host-rail')!
       expect(rail.firstElementChild?.matches('nav.pulse-host-nav')).toBe(true)
-      // The Supporter banner shows everywhere except its own section and Help & Feedback.
-      expect(host.querySelector('[data-settings-host-banner="supporter"]') !== null).toBe(section !== 'supporter' && section !== 'help')
+      // The Supporter banner shows everywhere except its own section.
+      expect(host.querySelector('[data-settings-host-banner="supporter"]') !== null).toBe(section !== 'supporter')
       roots.splice(0).forEach(unmount => unmount())
     }
   })
 
-  it('sends Updates readers to the Help section instead of an external support page', async () => {
+  it('keeps each subline at 4.5:1 or better, at rest and hovered', () => {
+    const link = hostRule('.pulse-host-community-link')
+    const hover = hostRule('.pulse-host-community-link:hover')
+    const discord = hostRule('.pulse-host-community-link[data-community-link="discord"]')
+    const discordHover = hostRule('.pulse-host-community-link[data-community-link="discord"]:hover')
+    const muted = hostRule('.pulse-host-community-copy small').color
+    const onBlurple = hostRule('.pulse-host-community-link[data-community-link="discord"] .pulse-host-community-copy small').color
+    expect(muted).toMatch(/^#[0-9a-f]{6}$/i)
+    expect(onBlurple).toBe('#fff')
+    for (const background of [link.background, hover.background]) expect(contrast(hex(muted), hex(background))).toBeGreaterThanOrEqual(4.5)
+    for (const background of [discord.background, discordHover.background]) expect(contrast(hex('#ffffff'), hex(background))).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('has no Help link left on Updates & Changelog', async () => {
     const host = await mountAt('updates')
-    const link = [...host.querySelectorAll('[data-settings-section="updates"] a')].find(anchor => anchor.textContent === 'Get help or send feedback →')
-    expect(link?.getAttribute('href')).toBe('#help')
-    expect(link?.hasAttribute('target')).toBe(false)
+    expect(host.querySelector('a[href="#help"]')).toBeNull()
+    expect(host.textContent).not.toContain('Get help or send feedback')
+    expect(host.textContent).not.toContain('Help & Feedback')
     expect(host.textContent).not.toContain('Open StreamPulse support')
   })
 })

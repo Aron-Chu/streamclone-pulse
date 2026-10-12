@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react'
+import { useEffect, useId, useMemo, useState, type MouseEvent, type ReactNode } from 'react'
 import type { SettingsHostSection } from '../shared/messages.ts'
 import { COMMUNITY_LINKS, POLICY_LINKS } from '../shared/portalLinks.ts'
 import { DiscordMark, FeedbackIcon, NewTabArrow } from '../ui/communityIcons.tsx'
@@ -12,7 +12,8 @@ export interface HostNavItem {
 function initialSection(navItems: ReadonlyArray<HostNavItem>): SettingsHostSection {
   if (typeof window === 'undefined') return navItems[0]?.id ?? 'pulse'
   // A place inside a section opens that section (#pulse-background: Pulse, Background & motion).
-  const hash = window.location.hash.replace(/^#/, '').replace(/^pulse-background$/, 'pulse')
+  // Help & Feedback is gone (2026-10-11): an old #help link lands on Updates & Changelog.
+  const hash = window.location.hash.replace(/^#/, '').replace(/^pulse-background$/, 'pulse').replace(/^help$/, 'updates')
   return navItems.some(item => item.id === hash) ? hash as SettingsHostSection : navItems[0]?.id ?? 'pulse'
 }
 
@@ -107,12 +108,12 @@ export function SettingsHostShell({
               </a>
             ))}
           </nav>
-          {/* On every section, Help & Feedback included: the community links never move. */}
+          {/* On every section: the community links never move. */}
           <CommunityCard />
         </div>
 
         <div className="pulse-host-main">
-          {activeSection !== 'supporter' && activeSection !== 'help'
+          {activeSection !== 'supporter'
             ? <SupporterBanner onOpen={() => navigateToSection('supporter')} onPerks={setSupporterPerks} />
             : null}
           {typeof children === 'function' ? children(activeSection, supporterPerks) : children}
@@ -131,24 +132,32 @@ export function SettingsHostShell({
 /**
  * The two community links, under the section list on every section. Both
  * open streampulse.stream pages; the Discord invite lives on the website only.
+ * A two-word subline says which is public and which is private, the one thing
+ * a viewer needs before clicking. It is the link's description, so the name
+ * stays "Join the Discord" / "Send feedback".
  */
 function CommunityCard() {
+  const id = useId()
   return (
     <aside className="pulse-host-community" aria-label="Community">
       <span className="pulse-host-nav-label">Community</span>
-      <a className="pulse-host-community-link" data-community-link="discord" href={COMMUNITY_LINKS.discord} target="_blank" rel="noopener noreferrer">
-        <DiscordMark />
-        <span>Join the Discord</span>
-        <span className="pulse-host-community-sr"> (opens in a new tab)</span>
-        <NewTabArrow />
-      </a>
-      <a className="pulse-host-community-link" data-community-link="feedback" href={COMMUNITY_LINKS.feedback} target="_blank" rel="noopener noreferrer">
-        <FeedbackIcon />
-        <span>Send feedback</span>
-        <span className="pulse-host-community-sr"> (opens in a new tab)</span>
-        <NewTabArrow />
-      </a>
+      <CommunityLink kind="discord" href={COMMUNITY_LINKS.discord} icon={<DiscordMark />} label="Join the Discord" detail="Public server" detailId={`${id}-discord`} />
+      <CommunityLink kind="feedback" href={COMMUNITY_LINKS.feedback} icon={<FeedbackIcon />} label="Send feedback" detail="Private to the team" detailId={`${id}-feedback`} />
     </aside>
+  )
+}
+
+function CommunityLink({ kind, href, icon, label, detail, detailId }: { kind: 'discord' | 'feedback'; href: string; icon: ReactNode; label: string; detail: string; detailId: string }) {
+  return (
+    <a className="pulse-host-community-link" data-community-link={kind} href={href} target="_blank" rel="noopener noreferrer" aria-describedby={detailId}>
+      {icon}
+      <span className="pulse-host-community-copy">
+        <span>{label}</span>
+        <small id={detailId} aria-hidden="true">{detail}</small>
+      </span>
+      <span className="pulse-host-community-sr"> (opens in a new tab)</span>
+      <NewTabArrow />
+    </a>
   )
 }
 
@@ -158,5 +167,4 @@ export const DEFAULT_NAV: ReadonlyArray<HostNavItem> = [
   { id: 'supporter', label: 'Account & Supporter' },
   { id: 'privacy', label: 'Privacy & Data' },
   { id: 'updates', label: 'Updates & Changelog' },
-  { id: 'help', label: 'Help & Feedback' },
 ]
