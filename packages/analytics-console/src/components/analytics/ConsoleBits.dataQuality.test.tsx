@@ -6,6 +6,17 @@ import { DataQualityDisclosure } from './ConsoleBits.tsx'
 afterEach(cleanup)
 
 describe('DataQualityDisclosure', () => {
+  it('shows a neutral placeholder instead of a verdict while there is no data to judge', () => {
+    const { container } = render(<DataQualityDisclosure pending />)
+    const chip = container.querySelector('[data-data-quality-pending]')!
+    expect(chip.textContent).toBe('Data quality: —')
+    expect(chip.className).toContain('min-h-11')
+    expect(chip.className).toContain('text-zinc-500')
+    expect(container.textContent).not.toMatch(/No data/i)
+    // Nothing to disclose yet, so no expandable details.
+    expect(container.querySelector('details')).toBeNull()
+  })
+
   it('presents quality, chat span, viewer samples, and VOD state in one disclosure', () => {
     render(
       <DataQualityDisclosure

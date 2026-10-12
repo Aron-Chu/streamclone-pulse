@@ -71,7 +71,9 @@ describe('session viewer morph chart', () => {
     })
 
     fireEvent.pointerEnter(overlay, { clientX: 120, clientY: 120 })
-    for (const clientX of [120, 180, 240, 300, 360]) {
+    // The console plot spans the whole 1000px SVG; the last move lands on the
+    // second minute (x 333, hit region ±24px).
+    for (const clientX of [120, 180, 240, 300, 330]) {
       fireEvent.mouseMove(overlay, { clientX, clientY: 120 })
     }
     await waitFor(() => expect(svg.getAttribute('data-viewer-state')).toBe('hover-preview'))
@@ -90,7 +92,8 @@ describe('session viewer morph chart', () => {
     fireEvent(window, new Event('resize'))
     await waitFor(() => {
       expect(svg.getAttribute('viewBox')).toBe('0 0 480 400')
-      expect(svg.getAttribute('data-viewer-plot-css-width')).toBe('392.00')
+      // The console plot has no side gutters: it is as wide as the SVG.
+      expect(svg.getAttribute('data-viewer-plot-css-width')).toBe('480.00')
     })
   })
 
@@ -135,7 +138,9 @@ describe('session viewer morph chart', () => {
       ),
     ).map(rect => rect.getAttribute('width'))).not.toEqual(restWidths)
 
-    for (const clientX of [140, 820, 460]) {
+    // Each move lands on a minute's hit region (x 0, 333, 667, 1000 ±24px on
+    // the gutterless console plot), so the preview never drops to rest.
+    for (const clientX of [12, 990, 340]) {
       fireEvent.mouseMove(overlay, { clientX, clientY: 120 })
       await waitFor(() => expect(svg.getAttribute('data-viewer-state')).toBe('hover-preview'))
       expect(before?.getAttribute('d')).toBe(detailD)

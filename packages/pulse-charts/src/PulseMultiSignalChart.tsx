@@ -9,6 +9,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { keepUncrowdedAxisLabels, niceMinuteTickIndices } from "./axisTicks.ts";
 import { parseEmoteKey, reactionAnalyticalOffset, type ChartSelection } from "@streampulse/pulse-core";
 import { chatIntervalSelectionFromActivityBar } from "./chatIntervalSelection.ts";
 import type {
@@ -39,7 +40,7 @@ import {
 import { buildChartHitRegions, chartHitRegionAtX } from "./chartHitRegions.ts";
 import { buildRenderBuckets } from "./renderBuckets.ts";
 import { composeRenderView } from "./renderView.ts";
-import { activityBucketMinutesForWidth, buildActivityTimeBuckets } from "./activityTimeBuckets.ts";
+import { barBucketAt, barLevelRange, buildBarPyramid, pickBarLevel, type BarBucket, type BarLevel } from "./barPyramid.ts";
 import {
   buildReactionLaneGeometry,
   findReactionMomentAtPlotX,
@@ -97,6 +98,14 @@ import {
   type ChartViewport,
 } from "./chartViewport.ts";
 import { useSmoothedChartViewport } from "./useSmoothedChartViewport.ts";
+import {
+  SCALE_CHIP_HEIGHT,
+  SCALE_ROW_EDGE_INSET,
+  placePlotEdgeLabels,
+  polylineObstacles,
+  scaleChipWidth,
+  type PlotObstacle,
+} from "./plotEdgeLabels.ts";
 
 const ChartHoverReadout = memo(function ChartHoverReadout({
   minuteTs,
@@ -527,6 +536,10 @@ type ActivityBarRect = {
   observedRatio: number;
   fullyObserved: boolean;
   peak: { index: number; value: number } | null;
+  /** Time-bucketed bars: slot size in minutes, slot start, and the peak cap (a thin tick at the slot's peak). */
+  step?: number;
+  slotStartMs?: number;
+  cap?: { y: number; height: number } | null;
 };
 
 type ActivityBarHitBar = Pick<ActivityBarRect, "x" | "width" | "hasValue">;
@@ -574,16 +587,52 @@ export function activityBarAtPlotX<T extends ActivityBarHitBar>(
   return region ? bars[region.index] ?? null : null;
 }
 
-/** Opt-in fixed-size, time-aligned activity buckets (see activityTimeBuckets.ts). */
+/**
+ * Opt-in time-aligned activity bars (see barPyramid.ts): one level of the bar
+ * pyramid built once per data load, and which of its series this lane draws.
+ */
 export type ActivityTimeBucketing = {
-  bucketMinutes: number;
-  /** Bucket alignment origin, normally the stream start. */
-  originMs: number | null;
+  level: BarLevel;
+  seriesIndex: number;
 };
 
-function timeBucketActivityBarRects(args: {
-  values: Array<number | null>;
-  timestampMs: Array<number | null>;
+/** Partial time-bucketed bars fade by their measured share, never below 35%. */
+function timeBarOpacity(bar: ActivityBarRect): number {
+  return bar.step != null && !bar.fullyObserved ? Math.max(0.35, bar.observedRatio) : 1;
+}
+
+/**
+ * The time-bucketed bar a readout describes (only above 1-minute bars): its
+ * slot clipped to the loaded minutes, the averages and peaks of chat and
+ * emotes per minute, and how many of its minutes were measured.
+ */
+export type ActivityBarSummary = {
+  step: number;
+  /** Slot start and end (exclusive), clipped to the loaded minutes, in ms and stream offsets. */
+  startMs: number;
+  endMs: number;
+  startOffsetSeconds: number | null;
+  endOffsetSeconds: number | null;
+  observed: number;
+  expected: number;
+  partial: boolean;
+  chat: { avg: number; peak: number } | null;
+  emotes: { avg: number; peak: number } | null;
+};
+
+export type ActivityBarFocus = {
+  /** The bar under the pointer (or the keyboard preview). */
+  hover: ActivityBarSummary | null;
+  /** The bar holding the pinned minute. */
+  pinned: ActivityBarSummary | null;
+};
+
+/** A cap marks a slot whose peak minute stands this far above its average. */
+const ACTIVITY_PEAK_CAP_RATIO = 1.25;
+const ACTIVITY_PEAK_CAP_HEIGHT = 1.5;
+
+/** Exported for tests. */
+export function timeBucketActivityBarRects(args: {
   timeBuckets: ActivityTimeBucketing;
   cadenceMs: number;
   plotWidth: number;
@@ -593,26 +642,29 @@ function timeBucketActivityBarRects(args: {
   spikeThreshold: number;
   barY: (value: number) => { y: number; height: number };
 }): ActivityBarRect[] {
-  const { timeScale, cadenceMs, timeBuckets } = args;
+  const { timeScale, cadenceMs } = args;
+  const { level, seriesIndex: k } = args.timeBuckets;
   const pxPerCadence = args.plotWidth * cadenceMs / Math.max(1, args.domainMs);
-  const slotWidth = pxPerCadence * timeBuckets.bucketMinutes;
+  const slotWidth = pxPerCadence * level.step;
   const gap = Math.min(slotWidth * 0.45, Math.max(1, slotWidth * ACTIVITY_BAR_GAP_RATIO));
-  const buckets = buildActivityTimeBuckets({
-    values: args.values,
-    timestampsMs: args.timestampMs,
-    bucketMinutes: timeBuckets.bucketMinutes,
-    cadenceMs,
-    originMs: timeBuckets.originMs,
-    include: (index) => {
-      const at = args.timestampMs[index];
-      return at != null && at >= timeScale.firstTimestampMs && at <= timeScale.lastTimestampMs;
-    },
-  });
-  return buckets.map((bucket, barIdx) => {
-    // Same centring rule as the budget path: the bar sits over the minutes it
-    // contains, and is exactly as wide as those minutes (less the gap).
-    const startX = timeScale.xForTimestampMs(bucket.firstMs);
-    const endX = timeScale.xForTimestampMs(bucket.lastMs);
+  const [from, to] = barLevelRange(level, timeScale.firstTimestampMs, timeScale.lastTimestampMs);
+  // Slots hold every loaded minute, so a slot at the plot edge reaches past
+  // the view. Place it with an unclamped mapping (the scale's own clamps to
+  // the edge, which shifts the bar inward over its neighbour) and clip the
+  // painted rect to the plot below.
+  const scaleSpanMs = timeScale.lastTimestampMs - timeScale.firstTimestampMs;
+  const xAt = Number.isFinite(scaleSpanMs) && scaleSpanMs > 0
+    ? (timestamp: number) => timeScale.plotStartX + ((timestamp - timeScale.firstTimestampMs) / scaleSpanMs) * timeScale.plotWidth
+    : timeScale.xForTimestampMs;
+  const rects: ActivityBarRect[] = [];
+  for (let index = from; index < to; index += 1) {
+    const bucket = level.buckets[index]!;
+    // This lane has no measured value in the slot (another series did).
+    if ((bucket.peakAt[k] ?? -1) < 0) continue;
+    // Centred on the measured minutes it holds, and exactly as wide as they
+    // span (less the gap): a gap at either end of the slot stays empty.
+    const startX = xAt(bucket.firstMs);
+    const endX = xAt(bucket.lastMs);
     const centerX = startX + Math.max(0, endX - startX) / 2;
     const spanMinutes = Math.max(1, Math.round((bucket.lastMs - bucket.firstMs) / cadenceMs) + 1);
     const nominalWidth = Math.max(
@@ -621,31 +673,40 @@ function timeBucketActivityBarRects(args: {
     );
     const x = Math.max(timeScale.plotStartX, centerX - nominalWidth / 2);
     const widthPx = Math.max(0, Math.min(timeScale.plotEndX, centerX + nominalWidth / 2) - x);
-    // Bars show the bucket mean, the same per-minute rate the lines use. The
-    // peak minute stays attached for selection and disclosure.
-    const value = bucket.average;
+    if (widthPx <= 0) continue;
+    // Bars show the slot mean of measured minutes, the same per-minute rate
+    // the lines use; the peak minute stays attached and gets a cap.
+    const value = bucket.avg[k] ?? 0;
+    const peakValue = bucket.peak[k] ?? value;
     const { y, height } = args.barY(value);
-    const observedRatio = Math.min(1, bucket.observedCount / Math.max(1, bucket.rangeLength));
-    return {
-      key: `tbar-${bucket.startIndex}-${barIdx}`,
+    const cap = level.step > 1 && peakValue > value * ACTIVITY_PEAK_CAP_RATIO
+      ? { y: args.barY(peakValue).y - ACTIVITY_PEAK_CAP_HEIGHT / 2, height: ACTIVITY_PEAK_CAP_HEIGHT }
+      : null;
+    const observedRatio = Math.min(1, bucket.observed / Math.max(1, bucket.expected));
+    rects.push({
+      key: `tbar-${level.step}-${bucket.startMs}`,
       x,
       y,
       width: widthPx,
       height,
       value,
       hasValue: true,
-      peakValue: bucket.peak.value,
+      peakValue,
       isSpike: args.spikeThreshold > 0 && value > args.spikeThreshold,
-      sourceIndex: bucket.peak.index,
-      bucketStartIndex: bucket.startIndex,
-      bucketEndExclusive: bucket.endExclusive,
-      observedCount: bucket.observedCount,
-      rangeLength: bucket.rangeLength,
+      sourceIndex: bucket.peakAt[k]!,
+      bucketStartIndex: bucket.from,
+      bucketEndExclusive: bucket.to,
+      observedCount: bucket.observed,
+      rangeLength: bucket.expected,
       observedRatio,
-      fullyObserved: bucket.observedCount >= bucket.rangeLength,
-      peak: bucket.peak,
-    };
-  });
+      fullyObserved: bucket.observed >= bucket.expected,
+      peak: { index: bucket.peakAt[k]!, value: peakValue },
+      step: level.step,
+      slotStartMs: bucket.startMs,
+      cap,
+    });
+  }
+  return rects;
 }
 
 function activityBarRects(
@@ -680,6 +741,27 @@ function activityBarRects(
     layout,
   );
   const bandBottom = bandBottomOverride ?? zoneBand.bandBottom;
+  if (timeBuckets) {
+    // The pyramid already holds every slot: no per-render pass over minutes.
+    const timeDomainMs = timeScale.lastTimestampMs - timeScale.firstTimestampMs;
+    return timeBucketActivityBarRects({
+      timeBuckets,
+      // Time-bucketed bars are built from minute data.
+      cadenceMs: 60_000,
+      plotWidth,
+      domainMs: Number.isFinite(timeDomainMs) && timeDomainMs > 0 ? timeDomainMs : 60_000 * Math.max(1, n - 1),
+      density,
+      timeScale,
+      spikeThreshold,
+      barY: (value) => {
+        const cy = plotY(value, max, height, padTop, padBottom, zone, rangeMin, layout);
+        return {
+          y: value > 0 ? cy : bandBottom - 1,
+          height: value > 0 ? Math.max(1, bandBottom - cy) : 1,
+        };
+      },
+    });
+  }
   const parseTimestamp = (value: string | undefined) => {
     const parsed = value ? Date.parse(value) : Number.NaN;
     return Number.isFinite(parsed) ? parsed : null;
@@ -711,26 +793,6 @@ function activityBarRects(
   const domainMs = Number.isFinite(timestampDomainMs) && timestampDomainMs > 0
     ? timestampDomainMs
     : cadenceMs * Math.max(1, n - 1);
-  if (timeBuckets) {
-    return timeBucketActivityBarRects({
-      values,
-      timestampMs,
-      timeBuckets,
-      cadenceMs,
-      plotWidth,
-      domainMs,
-      density,
-      timeScale,
-      spikeThreshold,
-      barY: (value) => {
-        const cy = plotY(value, max, height, padTop, padBottom, zone, rangeMin, layout);
-        return {
-          y: value > 0 ? cy : bandBottom - 1,
-          height: value > 0 ? Math.max(1, bandBottom - cy) : 1,
-        };
-      },
-    });
-  }
   // Line continuity includes offscreen halo rows. Aggregate only visible,
   // timestamp-contiguous activity, preserving source indices for inspection.
   const runs: Array<{ startIndex: number; endExclusive: number }> = [];
@@ -1041,6 +1103,12 @@ function linePath(
  * viewport. Ctrl/Meta stay reserved for the browser's own page zoom, and Shift
  * is left to the surrounding navigator rail — so neither is consumed here.
  */
+/**
+ * `modified` (default) zooms on Alt+wheel, `direct` on a plain wheel too, and
+ * `none` never zooms on the wheel, for a parent whose navigator owns wheel zoom.
+ */
+export type ChartWheelZoomMode = 'modified' | 'direct' | 'none'
+
 export function isChartZoomWheelGesture(
   event: Pick<WheelEvent, "altKey" | "ctrlKey" | "metaKey" | "shiftKey">,
 ): boolean {
@@ -1075,7 +1143,7 @@ export function handleMultiSignalWheelEvent(args: {
   anchorSeconds: number
   onViewportChange: (viewport: ChartViewport) => void
   domainStartSeconds?: number
-  wheelZoomMode?: 'modified' | 'direct'
+  wheelZoomMode?: ChartWheelZoomMode
 }): boolean {
   const {
     event,
@@ -1086,6 +1154,8 @@ export function handleMultiSignalWheelEvent(args: {
     domainStartSeconds = 0,
   } = args
   if (durationSeconds <= 0) return false
+  // A parent that zooms through its own navigator leaves the wheel to it.
+  if (args.wheelZoomMode === 'none') return false
   // Session charts opt into direct wheel zoom; other surfaces require Alt.
   if (!isChartZoomWheelGesture(event) && !(args.wheelZoomMode === 'direct' && !event.ctrlKey && !event.metaKey && !event.shiftKey)) return false
   if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) return false
@@ -1153,9 +1223,13 @@ function PulseMultiSignalChartInnerImpl({
   layoutMode = "viewer-led",
   dragPanMode = "off",
   wheelZoomMode = 'modified',
+  onZoomKey,
   lineWeightMode = "fixed",
   activityBucketing = "budget",
   onActivityBucketMinutesChange,
+  onActivityBarFocusChange,
+  liveEdgeLabel = null,
+  liveEdgeTone = "live",
 }: {
   rollups: ChartMinuteRollup[];
   /** Full-resolution viewer source used for idle/detail geometry and moment lookup. */
@@ -1210,7 +1284,12 @@ function PulseMultiSignalChartInnerImpl({
   layoutMode?: ChartLayoutMode;
   /** Optional graph-surface navigation. The extension keeps its existing gesture path. */
   dragPanMode?: ChartDragPanMode;
-  wheelZoomMode?: 'modified' | 'direct';
+  wheelZoomMode?: ChartWheelZoomMode;
+  /**
+   * Replaces the plot's own + / - / 0 zoom keys, so a parent with a navigator
+   * can make them step exactly like its Zoom in / Zoom out / Reset zoom.
+   */
+  onZoomKey?: (action: "in" | "out" | "reset") => void;
   /** Disable viewport easing while the parent rail is being dragged/resized. */
   viewportMotionEnabled?: boolean;
   /** Portal-only opt-in; shared/extension callers retain the fixed stroke contract. */
@@ -1224,12 +1303,32 @@ function PulseMultiSignalChartInnerImpl({
   activityBucketing?: "budget" | "time";
   /** Reports the bucket size in minutes while `activityBucketing` is `time`. */
   onActivityBucketMinutesChange?: (minutes: number | null) => void;
+  /**
+   * With `time` bucketing above 1-minute bars: the hovered and the pinned bar,
+   * reported when either changes (null at 1-minute bars).
+   */
+  onActivityBarFocusChange?: (focus: ActivityBarFocus | null) => void;
+  /**
+   * Portal-only: a short marker drawn above the right end of the plot (never
+   * over it) while the view reaches a live stream's newest minute, e.g.
+   * "Live · updating". Omitted, nothing is drawn.
+   */
+  liveEdgeLabel?: string | null;
+  /**
+   * `live`: a pulsing rose dot (the stream is confirmed live). `unconfirmed`:
+   * a still amber dot, for an open stream whose live status is unconfirmed.
+   */
+  liveEdgeTone?: "live" | "unconfirmed";
 }) {
   const [hover, setHover] = useState<number | null>(null);
   // Index into the per-minute activity-bar series under the pointer. Only set
   // when bars are built from `detailRollups` rather than the thinned `rollups`.
   const [hoverActivityIndex, setHoverActivityIndex] = useState<number | null>(null);
   const hoverActivityIndexRef = useRef<number | null>(null);
+  // Slot start of the time-bucketed bar under the pointer: undefined without
+  // a pointer, null over no bar. Changes only when the pointer crosses a bar.
+  const [pointerBarStartMs, setPointerBarStartMs] = useState<number | null | undefined>(undefined);
+  const pointerBarStartRef = useRef<number | null | undefined>(undefined);
   const [scrubbing, setScrubbing] = useState(false);
   const hoverIndexRef = useRef<number | null>(null);
   const hoverRafRef = useRef<number | null>(null);
@@ -1606,8 +1705,13 @@ function PulseMultiSignalChartInnerImpl({
   // space instead of only reallocating the same 400px between lanes. Because
   // this follows the existing rAF progress, the container grows smoothly.
   const height = baseHeight + Math.round(expandProgress * 120);
-  const padLeft = width < 480 ? 58 : width < 720 ? 64 : 90;
-  const padRight = width < 480 ? 18 : width < 720 ? 24 : 34;
+  // The website console plot spans the card's full content width, so it lines
+  // up with the focus bar above and the overlay and pinned-minute blocks below;
+  // its scale values sit in the row above the plot or as chips inside the plot
+  // edge (placePlotEdgeLabels). The extension's compact chart keeps its
+  // established gutters on the fixed 1000-unit viewBox.
+  const padLeft = variant === "console" ? 0 : width < 480 ? 58 : width < 720 ? 64 : 90;
+  const padRight = variant === "console" ? 0 : width < 480 ? 18 : width < 720 ? 24 : 34;
   const padTop = 34;
   const padBottom = 34;
   const plotWidthPx = width - padLeft - padRight;
@@ -1726,21 +1830,6 @@ function PulseMultiSignalChartInnerImpl({
   );
   // Shared once per rollup change so downstream path/rect memos can hit equality on
   // minuteTs arrays instead of `.map()`-allocating a new array each render.
-  const activityTimeBuckets = useMemo<ActivityTimeBucketing | null>(() => {
-    if (activityBucketing !== "time") return null;
-    const domainMs = timestampScale.lastTimestampMs - timestampScale.firstTimestampMs;
-    const visibleMinutes = Number.isFinite(domainMs) && domainMs > 0 ? domainMs / 60_000 + 1 : 1;
-    return {
-      bucketMinutes: activityBucketMinutesForWidth(visibleMinutes, timestampScale.plotWidth),
-      originMs: Number.isFinite(streamStartMs) ? streamStartMs : null,
-    };
-  }, [activityBucketing, streamStartMs, timestampScale]);
-  const activityBucketMinutes = activityTimeBuckets?.bucketMinutes ?? null;
-  const onActivityBucketMinutesChangeRef = useRef(onActivityBucketMinutesChange);
-  onActivityBucketMinutesChangeRef.current = onActivityBucketMinutesChange;
-  useEffect(() => {
-    onActivityBucketMinutesChangeRef.current?.(activityBucketMinutes);
-  }, [activityBucketMinutes]);
   const rollupMinuteTimestamps = useMemo(
     () => rollups.map((point) => point.minuteTs),
     [rollups],
@@ -1756,39 +1845,113 @@ function PulseMultiSignalChartInnerImpl({
   // Time-bucketed bars are built from the full-resolution minutes. The chart's
   // `rollups` can be a downsampled series (one row every 3–4 minutes on long
   // streams), and grouping those into 5-minute buckets would put one sample in
-  // each bar. Bar indices then refer to `activityBarRollups`.
-  const activityBarRollups = activityBucketing === "time" && detailRollups.length > 0
-    ? detailRollups
-    : rollups;
+  // each bar. They use every loaded minute, not the viewport's slice, so the
+  // bar pyramid is built once per data load. Bar indices then refer to
+  // `activityBarRollups`.
+  const timeBucketed = activityBucketing === "time";
+  const activityBarDetailRollups = timeBucketed && fullDetailRollups.length > 0
+    ? fullDetailRollups
+    : null;
+  const activityBarRollups = activityBarDetailRollups ?? rollups;
   const activityBarsUseDetail = activityBarRollups !== rollups;
-  const activityBarTimestamps = useMemo(
-    () => activityBarsUseDetail
-      ? activityBarRollups.map((point) => point.minuteTs)
-      : rollupMinuteTimestamps,
-    [activityBarRollups, activityBarsUseDetail, rollupMinuteTimestamps],
+  // Keyed on the full-resolution rows alone: the viewport slice (`rollups`)
+  // changes on every zoomed wheel, pan or ease frame and must not rebuild the
+  // pyramid. At full range `rollups` can be the same rows, which flips
+  // `activityBarsUseDetail` but leaves these arrays (and the pyramid) as they were.
+  const activityBarDetailTimestamps = useMemo(
+    () => activityBarDetailRollups?.map((point) => point.minuteTs) ?? null,
+    [activityBarDetailRollups],
   );
+  const activityBarTimestamps = activityBarDetailTimestamps ?? rollupMinuteTimestamps;
   const activityBarChatValues = useMemo(
-    () => activityBarsUseDetail
+    () => timeBucketed
       ? activityBarRollups.map((point) => (point.missing ? null : (point.chatCount ?? null)))
       : null,
-    [activityBarRollups, activityBarsUseDetail],
+    [activityBarRollups, timeBucketed],
   );
   const activityBarEmoteValues = useMemo(
-    () => activityBarsUseDetail
+    () => timeBucketed
       ? activityBarRollups.map((point) => (point.missing ? null : minuteEmoteTotal(point)))
       : null,
-    [activityBarRollups, activityBarsUseDetail],
+    [activityBarRollups, timeBucketed],
   );
   const rollupTimesMs = useMemo(
     () => rollups.map((point) => Date.parse(point.minuteTs)),
     [rollups],
   );
-  const activityBarTimesMs = useMemo(
-    () => activityBarsUseDetail
-      ? activityBarRollups.map((point) => Date.parse(point.minuteTs))
-      : rollupTimesMs,
-    [activityBarRollups, activityBarsUseDetail, rollupTimesMs],
+  const activityBarDetailTimesMs = useMemo(
+    () => activityBarDetailRollups?.map((point) => Date.parse(point.minuteTs)) ?? null,
+    [activityBarDetailRollups],
   );
+  const activityBarTimesMs = activityBarDetailTimesMs ?? rollupTimesMs;
+  // Every bar size, aggregated once per data load: [chat, emotes] averages,
+  // peaks and coverage for slots of 1, 2, 5 ... 240 minutes aligned to the
+  // stream start (the chart's own clock), so slot edges never move.
+  const activityBarLevels = useMemo<BarLevel[] | null>(() => {
+    if (!timeBucketed || !activityBarChatValues || !activityBarEmoteValues) return null;
+    const firstMs = activityBarTimesMs.find((value) => Number.isFinite(value));
+    const originMs = Number.isFinite(streamStartMs) ? streamStartMs : (firstMs ?? 0);
+    return buildBarPyramid(activityBarTimesMs, [activityBarChatValues, activityBarEmoteValues], 60_000, originMs);
+  }, [activityBarChatValues, activityBarEmoteValues, activityBarTimesMs, streamStartMs, timeBucketed]);
+  const activityBarDomain = useMemo(() => {
+    let first = Infinity;
+    let last = -Infinity;
+    for (const at of activityBarTimesMs) {
+      if (!Number.isFinite(at)) continue;
+      if (at < first) first = at;
+      if (at > last) last = at;
+    }
+    return Number.isFinite(first) ? { firstMs: first, endMs: last + 60_000 } : null;
+  }, [activityBarTimesMs]);
+  // The level on screen; a change needs the slot to clear the 5px floor by
+  // 15%, so an easing zoom crosses each level once. The hold applies only at
+  // the same plot width: after a resize (including the first measurement,
+  // which replaces the 1000-unit fallback) the level is picked afresh.
+  const activityBarStepRef = useRef<{ step: number; plotWidth: number } | null>(null);
+  const activityBarLevel = useMemo(() => {
+    if (!activityBarLevels) return null;
+    const spanMs = timestampScale.lastTimestampMs - timestampScale.firstTimestampMs;
+    const held = activityBarStepRef.current;
+    const level = pickBarLevel(
+      activityBarLevels,
+      Number.isFinite(spanMs) && spanMs > 0 ? spanMs : 0,
+      timestampScale.plotWidth,
+      60_000,
+      held && held.plotWidth === timestampScale.plotWidth ? held.step : null,
+    );
+    activityBarStepRef.current = level ? { step: level.step, plotWidth: timestampScale.plotWidth } : null;
+    return level;
+  }, [activityBarLevels, timestampScale]);
+  const chatTimeBuckets = useMemo<ActivityTimeBucketing | null>(
+    () => (activityBarLevel ? { level: activityBarLevel, seriesIndex: 0 } : null),
+    [activityBarLevel],
+  );
+  const emoteTimeBuckets = useMemo<ActivityTimeBucketing | null>(
+    () => (activityBarLevel ? { level: activityBarLevel, seriesIndex: 1 } : null),
+    [activityBarLevel],
+  );
+  const activityBucketMinutes = activityBarLevel?.step ?? null;
+  const onActivityBucketMinutesChangeRef = useRef(onActivityBucketMinutesChange);
+  onActivityBucketMinutesChangeRef.current = onActivityBucketMinutesChange;
+  useEffect(() => {
+    onActivityBucketMinutesChangeRef.current?.(activityBucketMinutes);
+  }, [activityBucketMinutes]);
+  // A level change swaps bars at once; levels nest, so it reads as a split or
+  // a merge. The bar groups fade in briefly from 55% unless motion is off.
+  const barLevelEnterRef = useRef<{ step: number | null; entering: number | null }>({ step: null, entering: null });
+  if (barLevelEnterRef.current.step !== activityBucketMinutes) {
+    const previousStep = barLevelEnterRef.current.step;
+    barLevelEnterRef.current = {
+      step: activityBucketMinutes,
+      entering: previousStep != null && activityBucketMinutes != null && motionEnabled !== false ? activityBucketMinutes : null,
+    };
+  }
+  const barLevelEntering = barLevelEnterRef.current.entering != null
+    && barLevelEnterRef.current.entering === activityBucketMinutes;
+  const handleBarLevelEnterEnd = useCallback((event: { currentTarget: Element }) => {
+    event.currentTarget.classList.remove("is-level-enter");
+    barLevelEnterRef.current.entering = null;
+  }, []);
   /** Chart (`rollups`) index for an activity-bar source index. */
   const rollupIndexForActivityIndex = (index: number): number =>
     activityBarsUseDetail
@@ -2015,14 +2178,14 @@ function PulseMultiSignalChartInnerImpl({
       expandProgress,
       "peak",
       emoteMagnitudeBottom,
-      activityTimeBuckets,
+      emoteTimeBuckets,
     );
   }, [
     activityAxis,
     activityBarEmoteValues,
     activityBarTimestamps,
     activityLayout,
-    activityTimeBuckets,
+    emoteTimeBuckets,
     emoteMagnitudeBottom,
     emotesItem,
     expandProgress,
@@ -2233,13 +2396,13 @@ function PulseMultiSignalChartInnerImpl({
       expandProgress,
       "average",
       undefined,
-      activityTimeBuckets,
+      chatTimeBuckets,
     );
   }, [
     activityBarChatValues,
     activityBarTimestamps,
     activityLayout,
-    activityTimeBuckets,
+    chatTimeBuckets,
     chatItem,
     expandProgress,
     height,
@@ -2348,49 +2511,87 @@ function PulseMultiSignalChartInnerImpl({
   // Keep the dense, static SVG children referentially stable while hover and
   // preview chrome move. React can then skip reconciling hundreds of bars on
   // every distinct bucket transition.
+  // Time-bucketed bars: a slot with fewer measured minutes than it covers is
+  // faded by its share (never below 35%) and marked; a thin cap in the bar's
+  // colour marks a peak minute well above the slot average. Caps are sibling
+  // rects so every bar attribute stays on the bar rect itself.
   const emoteBarElements = useMemo(
-    () => emoteBarRects.map((bar) => (
-      <rect
-        key={bar.key}
-        x={bar.x}
-        y={bar.y}
-        width={bar.width}
-        height={bar.height}
-        rx={0}
-        data-activity-bar="emotes"
-        fill={CHART_THEME.emote.color}
-        opacity={seriesFocusOpacity(
-          "emotes",
-          (bar.hasValue
-            ? (bar.isSpike ? CHART_THEME.emote.barSpike : CHART_THEME.emote.bar)
-            : CHART_THEME.emote.barBaseline) * activityVisualBoost,
-        )}
-      />
-    )),
+    () => emoteBarRects.map((bar) => {
+      const opacity = seriesFocusOpacity(
+        "emotes",
+        (bar.hasValue
+          ? (bar.isSpike ? CHART_THEME.emote.barSpike : CHART_THEME.emote.bar)
+          : CHART_THEME.emote.barBaseline) * activityVisualBoost * timeBarOpacity(bar),
+      );
+      const rect = (
+        <rect
+          key={bar.key}
+          x={bar.x}
+          y={bar.y}
+          width={bar.width}
+          height={bar.height}
+          rx={0}
+          data-activity-bar="emotes"
+          data-bar-partial={bar.step != null && !bar.fullyObserved ? "true" : undefined}
+          fill={CHART_THEME.emote.color}
+          opacity={opacity}
+        />
+      );
+      return bar.cap ? [rect, (
+        <rect
+          key={`${bar.key}-peak`}
+          x={bar.x}
+          y={bar.cap.y}
+          width={bar.width}
+          height={bar.cap.height}
+          data-activity-bar-peak="emotes"
+          fill={CHART_THEME.emote.color}
+          opacity={opacity}
+          pointerEvents="none"
+        />
+      )] : rect;
+    }),
     [activityVisualBoost, emoteBarRects, seriesFocusOpacity],
   );
   const chatBarElements = useMemo(
-    () => chatWhisperBarRects.map((bar) => (
-      <rect
-        key={bar.key}
-        x={bar.x}
-        y={bar.y}
-        width={bar.width}
-        height={bar.height}
-        rx={0}
-        data-activity-bar="chat"
-        data-observed-ratio={bar.observedRatio.toFixed(3)}
-        data-range-length={bar.rangeLength}
-        fill={CHART_THEME.chat.color}
-        opacity={seriesFocusOpacity(
-          "chat",
-          (bar.hasValue
-            ? CHART_THEME.chat.whisperBar
-            : CHART_THEME.chat.whisperBar * 0.6)
-          * (bar.fullyObserved ? 1 : Math.max(0.35, bar.observedRatio)),
-        )}
-      />
-    )),
+    () => chatWhisperBarRects.map((bar) => {
+      const opacity = seriesFocusOpacity(
+        "chat",
+        (bar.hasValue
+          ? CHART_THEME.chat.whisperBar
+          : CHART_THEME.chat.whisperBar * 0.6)
+        * (bar.fullyObserved ? 1 : Math.max(0.35, bar.observedRatio)),
+      );
+      const rect = (
+        <rect
+          key={bar.key}
+          x={bar.x}
+          y={bar.y}
+          width={bar.width}
+          height={bar.height}
+          rx={0}
+          data-activity-bar="chat"
+          data-observed-ratio={bar.observedRatio.toFixed(3)}
+          data-range-length={bar.rangeLength}
+          data-bar-partial={bar.step != null && !bar.fullyObserved ? "true" : undefined}
+          fill={CHART_THEME.chat.color}
+          opacity={opacity}
+        />
+      );
+      return bar.cap ? [rect, (
+        <rect
+          key={`${bar.key}-peak`}
+          x={bar.x}
+          y={bar.cap.y}
+          width={bar.width}
+          height={bar.cap.height}
+          data-activity-bar-peak="chat"
+          fill={CHART_THEME.chat.color}
+          opacity={opacity}
+          pointerEvents="none"
+        />
+      )] : rect;
+    }),
     [chatWhisperBarRects, seriesFocusOpacity],
   );
   const perEmoteOverlayElements = useMemo(
@@ -2584,6 +2785,92 @@ function PulseMultiSignalChartInnerImpl({
     viewerBand.bandBottom -
     ((avgViewers - viewerScaleMin) / viewerScaleSpan) * viewerBand.bandHeight;
   const showAvgLabel = yAvg - yMax > 22 && viewerBand.bandBottom - yAvg > 22;
+  // Console scale values. PEAK always reads in the scale row above the plot;
+  // AVG and MIN keep their place on the viewer scale as chips inside the plot
+  // edge wherever they cover no plotted line, bar or cap, and otherwise join
+  // the scale row. The compact extension chart keeps its gutter labels.
+  const consoleScale = useMemo(() => {
+    if (variant !== "console") return null;
+    const avgValue = count(avgViewers);
+    const minValue = count(viewerScaleMin);
+    const requests = [
+      ...(showAvgLabel
+        ? [{ key: "avg", label: "AVG", value: avgValue, y: yAvg }]
+        : []),
+      ...(viewerScaleMin > 0
+        ? [{ key: "min", label: "MIN", value: minValue, y: viewerBand.bandBottom - SCALE_CHIP_HEIGHT / 2 }]
+        : []),
+    ];
+    const plotLeft = padLeft;
+    const plotRight = width - padRight;
+    const obstacles: PlotObstacle[] = viewerGeometry
+      ? [
+          ...polylineObstacles(viewerGeometry.overviewSegments, primaryLineWidth / 2 + 1),
+          ...polylineObstacles(viewerGeometry.detailSegments, primaryLineWidth / 2 + 1),
+        ]
+      : [];
+    // The live cap is a dashed line on the plot's right edge.
+    if (isLive) obstacles.push({ x0: plotRight - 3, x1: plotRight + 3, y0: padTop, y1: height - padBottom });
+    const placements = placePlotEdgeLabels(
+      requests.map((request) => ({
+        key: request.key,
+        y: request.y,
+        width: scaleChipWidth(request.label, request.value),
+        height: SCALE_CHIP_HEIGHT,
+      })),
+      {
+        plotLeft,
+        plotRight,
+        top: padTop,
+        bottom: Math.min(activityLayout.activityTop, viewerBand.bandBottom + ACTIVITY_ZONE_GAP) - 1,
+        obstacles,
+      },
+    );
+    const chips = requests.flatMap((request, index) => {
+      const placement = placements[index]!;
+      return placement.side ? [{ ...request, ...placement }] : [];
+    });
+    const rowItems = [
+      { key: "peak", label: "PEAK", value: count(viewerPeakReading) },
+      ...requests.filter((_, index) => placements[index]!.side == null),
+    ];
+    return { chips, rowItems };
+  }, [
+    activityLayout.activityTop,
+    avgViewers,
+    height,
+    isLive,
+    padBottom,
+    padLeft,
+    padRight,
+    padTop,
+    primaryLineWidth,
+    showAvgLabel,
+    variant,
+    viewerBand.bandBottom,
+    viewerGeometry,
+    viewerPeakReading,
+    viewerScaleMin,
+    width,
+    yAvg,
+  ]);
+  // The live-edge marker keeps its place at the plot's right end in the top
+  // margin; the scale row stops short of it. On a narrow plot the marker keeps
+  // the part after its lead ("updating", "last data 00:20:29").
+  const scaleRowWidthEstimate = consoleScale
+    ? consoleScale.rowItems.reduce(
+        (total, item) => total + scaleChipWidth(item.label, item.value),
+        0,
+      )
+    : 0;
+  const liveEdgeShownLabel = liveEdgeLabel
+    ? liveEdgeLabel.length * 7.4 > plotWidthPx - 24 - scaleRowWidthEstimate && liveEdgeLabel.includes(" · ")
+      ? liveEdgeLabel.slice(liveEdgeLabel.indexOf(" · ") + 3)
+      : liveEdgeLabel
+    : null;
+  const liveEdgeReserve = liveEdgeShownLabel
+    ? Math.ceil(liveEdgeShownLabel.length * 7.4 + 24) + padRight
+    : 0;
   const hoverActivityRollup = activityBarsUseDetail && hoverActivityIndex != null
     ? activityBarRollups[hoverActivityIndex] ?? null
     : null;
@@ -2719,6 +3006,61 @@ function PulseMultiSignalChartInnerImpl({
     selectedRollup,
     streamStartedAt,
   ]);
+  // Readouts above 1-minute bars: the hovered and the pinned bar. The pointer
+  // names the bar it is over; a keyboard preview names the previewed minute's.
+  const activityBarFocus = useMemo<ActivityBarFocus | null>(() => {
+    const level = activityBarLevel;
+    if (!level || level.step <= 1 || !activityBarDomain) return null;
+    const summarize = (bucket: BarBucket | null): ActivityBarSummary | null => {
+      if (!bucket) return null;
+      const startMs = Math.max(bucket.startMs, activityBarDomain.firstMs);
+      const endMs = Math.min(bucket.startMs + level.slotMs, activityBarDomain.endMs);
+      const offset = (ms: number) => (Number.isFinite(streamStartMs) ? Math.max(0, Math.round((ms - streamStartMs) / 1000)) : null);
+      const lane = (k: number) => ((bucket.peakAt[k] ?? -1) >= 0 ? { avg: bucket.avg[k]!, peak: bucket.peak[k]! } : null);
+      return {
+        step: level.step,
+        startMs,
+        endMs,
+        startOffsetSeconds: offset(startMs),
+        endOffsetSeconds: offset(endMs),
+        observed: bucket.observed,
+        expected: bucket.expected,
+        partial: bucket.observed < bucket.expected,
+        chat: lane(0),
+        emotes: lane(1),
+      };
+    };
+    const atMs = (minuteTs: string | undefined) => (minuteTs ? Date.parse(minuteTs) : Number.NaN);
+    const bucketAt = (ms: number) => (Number.isFinite(ms) ? barBucketAt(level, ms) : null);
+    const hoverMinuteMs = atMs(hoverActivityRollup?.minuteTs ?? (hover != null ? rollups[hover]?.minuteTs : undefined));
+    const hoverBucket = pointerBarStartMs === undefined
+      ? bucketAt(hoverMinuteMs)
+      : pointerBarStartMs === null ? null : bucketAt(pointerBarStartMs);
+    const pinnedMs = typeof selectedOffsetSeconds === "number" && Number.isFinite(selectedOffsetSeconds) && Number.isFinite(streamStartMs)
+      ? streamStartMs + selectedOffsetSeconds * 1000
+      : atMs(selectedRollup?.minuteTs);
+    return { hover: summarize(hoverBucket), pinned: summarize(bucketAt(pinnedMs)) };
+  }, [
+    activityBarDomain,
+    activityBarLevel,
+    hover,
+    hoverActivityRollup,
+    pointerBarStartMs,
+    rollups,
+    selectedOffsetSeconds,
+    selectedRollup,
+    streamStartMs,
+  ]);
+  const activityBarFocusKey = activityBarFocus
+    ? `${activityBarFocus.hover?.step ?? ""}:${activityBarFocus.hover?.startMs ?? ""}|${activityBarFocus.pinned?.step ?? ""}:${activityBarFocus.pinned?.startMs ?? ""}`
+    : "";
+  const onActivityBarFocusChangeRef = useRef(onActivityBarFocusChange);
+  onActivityBarFocusChangeRef.current = onActivityBarFocusChange;
+  const activityBarFocusRef = useRef(activityBarFocus);
+  activityBarFocusRef.current = activityBarFocus;
+  useEffect(() => {
+    onActivityBarFocusChangeRef.current?.(activityBarFocusRef.current);
+  }, [activityBarFocusKey]);
   const pinBand = selectedMarkerX == null
     ? null
     : (activityBarsUseDetail ? activityBandForIndex(selectedActivityIndex) : null)
@@ -2850,6 +3192,21 @@ function PulseMultiSignalChartInnerImpl({
     const plotX = timestampScale.plotStartX + pct * timestampScale.plotWidth;
     const region = chartHitRegionAtX(hoverHitRegions, plotX);
     commitHover(region?.index ?? null, activityHoverAtPlotX(plotX));
+    notePointerBar(plotX);
+  }
+
+  /** Remembers which time-bucketed bar (above 1-minute bars) the pointer is over. */
+  function notePointerBar(plotX: number | null) {
+    let next: number | null | undefined = plotX == null ? undefined : null;
+    if (plotX != null && activityBarLevel && activityBarLevel.step > 1) {
+      const atMs = timestampScale.timestampAtX(plotX);
+      const bucket = atMs == null ? null : barBucketAt(activityBarLevel, atMs);
+      // Over the bar itself: its measured minutes, half a minute either side.
+      if (bucket && atMs! >= bucket.firstMs - 30_000 && atMs! <= bucket.lastMs + 30_000) next = bucket.startMs;
+    }
+    if (pointerBarStartRef.current === next) return;
+    pointerBarStartRef.current = next;
+    setPointerBarStartMs(next);
   }
 
   /**
@@ -2940,6 +3297,20 @@ function PulseMultiSignalChartInnerImpl({
       };
     }
 
+    // With full-resolution bars, hover reads the per-minute row under the
+    // pointer in every lane; a click anywhere must pin that same minute, not
+    // the bucketed bar's peak (which on long streams is minutes away) or the
+    // nearest row of the thinned chart series.
+    const activityHit = activityHoverAtPlotX(plotX);
+    if (activityHit) {
+      return {
+        kind: "chart_minute",
+        canonicalIndex: rollupIndexForActivityIndex(activityHit.index),
+        offsetSeconds:
+          pointOffsetSeconds(activityHit.rollup.minuteTs, streamStartedAt) ?? activityHit.index * 60,
+      };
+    }
+
     if (plotYValue >= emoteBand.bandTop && plotYValue <= emoteMagnitudeBottom) {
       const emote = activityBarAtPlotX(emoteBarRects, plotX);
       if (emote?.peak || emote) {
@@ -3000,6 +3371,7 @@ function PulseMultiSignalChartInnerImpl({
     hoverActivityIndexRef.current = null;
     setHover(null);
     setHoverActivityIndex(null);
+    notePointerBar(null);
     onHoverRollupChange?.(null);
     onPreviewReactionMoment?.(null);
   }
@@ -3107,14 +3479,19 @@ function PulseMultiSignalChartInnerImpl({
         event.key === "-" ||
         event.key === "_" ||
         event.key === "0") &&
+      // Ctrl/Cmd + and - stay the browser's page zoom.
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey &&
       inferredDurationSeconds > 0
     ) {
       event.preventDefault();
-      if (event.key === "0") resetViewport();
-      else
-        zoomViewportByFactor(
-          event.key === "+" || event.key === "=" ? 0.75 : 1.333333,
-        );
+      const action = event.key === "0"
+        ? "reset"
+        : event.key === "+" || event.key === "=" ? "in" : "out";
+      if (onZoomKey) onZoomKey(action);
+      else if (action === "reset") resetViewport();
+      else zoomViewportByFactor(action === "in" ? 0.75 : 1.333333);
       return;
     }
     if (!onSelectRollup || rollups.length === 0) return;
@@ -3224,7 +3601,21 @@ function PulseMultiSignalChartInnerImpl({
     onPreviewReactionMoment?.(
       reactionMomentAtClientPoint(event.clientX, event.clientY, event.currentTarget),
     );
-    scheduleHoverFromClientX(event.clientX, event.currentTarget, true);
+    // A mouse press lands where the last mousemove already put the hover. The
+    // pointer event carries a fractional clientX (at 125% and other scaled
+    // displays) while mousemove and click carry whole pixels, and with
+    // per-minute bars that half pixel can be the next minute: the readout
+    // would jump a minute past the one the click then pins. Reuse the
+    // mousemove position; touch and pen have no mousemove, so they still hover
+    // from the press itself.
+    const pendingMouseX = pendingHoverClientRef.current?.clientX;
+    const pressClientX = activityBarsUseDetail
+      && event.pointerType === "mouse"
+      && pendingMouseX != null
+      && Math.abs(pendingMouseX - event.clientX) < 1
+      ? pendingMouseX
+      : event.clientX;
+    scheduleHoverFromClientX(pressClientX, event.currentTarget, true);
   }
 
   function handlePlotPointerMove(event: ReactPointerEvent<SVGRectElement>) {
@@ -3368,18 +3759,49 @@ function PulseMultiSignalChartInnerImpl({
     >
       {/* Viewport controls deliberately do not live here. An overlay pinned to
           the top-right of the plot covered the viewer peak — the one region the
-          chart exists to show. The console renders them in its chart toolbar
-          (`data-chart-range-row`); keyboard (+ / − / 0) and Alt+wheel still work
+          chart exists to show. The console renders them in the shared
+          ChartNavigator under the plot; keyboard (+ / − / 0) and Alt+wheel still work
           here because the chart owns the gestures, not the buttons. */}
-      {variant === "console" && reactionBarRectsForChart.length > 0 ? (
+      {consoleScale ? (
+        // The console's scale row: the top margin above the plot, from just
+        // inside the plot's left edge up to the live-edge marker on its right.
+        // It stays clear of the focus ring drawn inside the plot's edge.
         <div
-          className="pointer-events-none absolute left-2 top-2 z-10 flex max-w-[calc(100%-1rem)] flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded border border-amber-400/25 bg-zinc-950/70 px-2 py-1 text-xs font-bold tracking-wide text-amber-100 shadow-sm backdrop-blur-sm"
-          data-reaction-legend
-          title="Backend-authored reaction markers use a fixed-height gutter; color shows reason and opacity shows confidence."
+          className="pointer-events-none absolute top-0 z-10 flex min-w-0 items-center gap-x-3 overflow-hidden whitespace-nowrap"
+          style={{
+            height: padTop,
+            left: SCALE_ROW_EDGE_INSET,
+            right: Math.max(liveEdgeReserve, SCALE_ROW_EDGE_INSET),
+          }}
+          data-chart-scale-row
         >
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" aria-hidden="true" />
-          <span>Reaction markers</span>
-          <span className="text-zinc-500">fixed height · reason color · fade = confidence</span>
+          {consoleScale.rowItems.map((item) => (
+            <span
+              key={item.key}
+              className="inline-flex shrink-0 items-baseline gap-1 font-black text-cyan-400"
+              data-chart-scale-value={item.key}
+            >
+              <span className="text-xs uppercase">{item.label}</span>
+              <span className="text-sm">{item.value}</span>
+            </span>
+          ))}
+          {reactionBarRectsForChart.length > 0 ? (
+            <span
+              className="flex min-w-0 items-center gap-x-1.5 rounded border border-amber-400/25 bg-zinc-950/70 px-2 py-1 text-xs font-bold tracking-wide text-amber-100 shadow-sm backdrop-blur-sm"
+              data-reaction-legend
+              title="Backend-authored reaction markers use a fixed-height gutter; color shows reason and opacity shows confidence."
+            >
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" aria-hidden="true" />
+              {/* One line that truncates as a whole: where the row is short (a
+                  phone with the live marker on its right) the description goes
+                  first, then the label ends in an ellipsis instead of being
+                  clipped with none. */}
+              <span className="min-w-0 truncate" data-reaction-legend-label>
+                Reaction markers
+                <span className="ml-1.5 text-zinc-500" data-reaction-legend-detail>fixed height · reason color · fade = confidence</span>
+              </span>
+            </span>
+          ) : null}
         </div>
       ) : null}
       <svg
@@ -3527,10 +3949,12 @@ function PulseMultiSignalChartInnerImpl({
           y2={height - padBottom}
           stroke="rgba(255,255,255,.08)"
           strokeWidth="1"
+          data-chart-x-axis-line
         />
 
-        {/* Left Y-Axis labels */}
-        <g>
+        {/* Left Y-Axis labels (compact extension chart only; the console
+            draws its scale in the row above the plot and as edge chips). */}
+        {variant !== "console" ? <g>
           {/* MAX Label */}
           <text
             x={padLeft - 12}
@@ -3590,7 +4014,32 @@ function PulseMultiSignalChartInnerImpl({
               </text>
             </>
           )}
-        </g>
+        </g> : null}
+
+        {/* Live edge: above the plot's right end, in the top margin, so it
+            never covers a value. */}
+        {liveEdgeLabel ? (
+          <g data-chart-live-edge={liveEdgeLabel} data-chart-live-edge-tone={liveEdgeTone}>
+            <circle
+              cx={width - padRight - 4}
+              cy={padTop - 16}
+              r={3.5}
+              fill={liveEdgeTone === "unconfirmed" ? "#fbbf24" : "#fb7185"}
+              className={motionEnabled && liveEdgeTone === "live" ? "animate-pulse" : undefined}
+            />
+            <text
+              x={width - padRight - 12}
+              y={padTop - 12}
+              textAnchor="end"
+              fill={liveEdgeTone === "unconfirmed" ? "#fcd34d" : "#fda4af"}
+              className="text-xs font-black uppercase"
+            >
+              {/* On a narrow plot keep the part after the lead ("last data
+                  00:20:29"); the dot's colour still says live or unconfirmed. */}
+              {liveEdgeShownLabel}
+            </text>
+          </g>
+        ) : null}
 
         <g
           className="sc-chart-plot"
@@ -3669,7 +4118,15 @@ function PulseMultiSignalChartInnerImpl({
           >
           {/* Dense emote bar histogram — always on, like chat whisper bars.
               Reaction windows live in the gutter below and never replace this. */}
-          {emoteBarElements}
+          {activityBucketMinutes != null ? (
+            <g
+              data-activity-bar-level={activityBucketMinutes}
+              className={barLevelEntering ? "is-level-enter" : undefined}
+              onAnimationEnd={handleBarLevelEnterEnd}
+            >
+              {emoteBarElements}
+            </g>
+          ) : emoteBarElements}
 
           {reactionBarRectsForChart.map((bar) => (
             <rect
@@ -3734,7 +4191,15 @@ function PulseMultiSignalChartInnerImpl({
           ) : null}
 
           {/* Chat whisper bars behind line */}
-          {chatBarElements}
+          {activityBucketMinutes != null ? (
+            <g
+              data-activity-bar-level={activityBucketMinutes}
+              className={barLevelEntering ? "is-level-enter" : undefined}
+              onAnimationEnd={handleBarLevelEnterEnd}
+            >
+              {chatBarElements}
+            </g>
+          ) : chatBarElements}
 
           {/* Chat line */}
           {chatLinePathD ? (
@@ -3868,6 +4333,34 @@ function PulseMultiSignalChartInnerImpl({
           </>
         ))}
 
+        {consoleScale && consoleScale.chips.length > 0 ? (
+          <g aria-hidden="true" pointerEvents="none" data-chart-scale-chips>
+            {consoleScale.chips.map((chip) => (
+              <g key={chip.key} data-chart-scale-chip={chip.key} data-chart-scale-chip-side={chip.side ?? undefined}>
+                <rect
+                  x={chip.x}
+                  y={chip.y}
+                  width={chip.width}
+                  height={chip.height}
+                  rx={3}
+                  fill="rgba(13,13,18,0.82)"
+                  stroke="rgba(34,211,238,0.18)"
+                  strokeWidth="1"
+                />
+                <text
+                  x={chip.x + 6}
+                  y={chip.y + chip.height / 2 + 5}
+                  textAnchor="start"
+                  className="fill-cyan-400/80 text-sm font-black"
+                >
+                  <tspan className="text-xs uppercase">{chip.label}</tspan>
+                  <tspan dx={5}>{chip.value}</tspan>
+                </text>
+              </g>
+            ))}
+          </g>
+        ) : null}
+
         {/* Draw X-axis ticks and time labels. The group is measurable so the
             console can attach its position rail to visible axis content rather
             than the SVG's otherwise invisible footer. */}
@@ -3888,15 +4381,26 @@ function PulseMultiSignalChartInnerImpl({
               : 8;
             const numTicks = Math.min(responsiveTickLimit, axisRollups.length);
             if (numTicks <= 1) return null;
-            const tickIndices = [];
-            for (let i = 0; i < numTicks; i++) {
-              tickIndices.push(
-                Math.round((i / (numTicks - 1)) * (axisRollups.length - 1)),
-              );
+            // Console: whole-minute nice steps from the first visible minute, so
+            // two ticks never land on neighbouring minutes. The extension keeps
+            // its evenly spread ticks on the fixed 1000-unit viewBox.
+            const niceIndices = variant === "console"
+              ? niceMinuteTickIndices(
+                axisRollups.map((point) => pointOffsetSeconds(point.minuteTs, streamStartedAt)),
+                responsiveTickLimit,
+              )
+              : null;
+            const tickIndices: number[] = niceIndices ?? [];
+            if (!niceIndices) {
+              for (let i = 0; i < numTicks; i++) {
+                tickIndices.push(
+                  Math.round((i / (numTicks - 1)) * (axisRollups.length - 1)),
+                );
+              }
             }
-            return tickIndices.map((idx) => {
+            const placedTicks = tickIndices.flatMap((idx) => {
               const item = axisRollups[idx];
-              if (!item) return null;
+              if (!item) return [];
               const x = timestampScale.xForTimestamp(
                 item.minuteTs,
                 idx,
@@ -3907,6 +4411,11 @@ function PulseMultiSignalChartInnerImpl({
               // SVG on phones. Keep it inside; the tick itself stays at its minute.
               const halfLabel = variant === "console" ? label.length * 3.9 + 1 : 0;
               const labelX = halfLabel > 0 ? Math.min(Math.max(x, halfLabel), width - halfLabel) : x;
+              return [{ idx, x, label, labelX, centerX: labelX, halfWidth: halfLabel }];
+            });
+            // Console labels never touch: a label too close to the one before is dropped.
+            const shownTicks = variant === "console" ? keepUncrowdedAxisLabels(placedTicks) : placedTicks;
+            return shownTicks.map(({ idx, x, label, labelX }) => {
               return (
                 <g key={idx} className="opacity-60" data-chart-x-axis-tick="true">
                   <line
@@ -4015,6 +4524,7 @@ function PulseMultiSignalChartInnerImpl({
           minLabelWidth={8}
           highlightedSegmentKey={highlightedGameSegmentKey}
           isLive={isLive}
+          capInsetPx={padRight < 1 ? 1.5 : 0}
         />
 
         {/* Transparent overlay rect for reliable mouse interaction */}
