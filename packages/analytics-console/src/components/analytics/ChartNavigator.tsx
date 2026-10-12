@@ -9,6 +9,8 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react'
+import { useChartScrollZoom } from './chartScrollZoom.ts'
+import { installWheelDebug, noteWheelOutcome } from './chartWheelDebug.ts'
 
 /*
  * Shared chart navigator: the hub's Global activity chart and the channel
@@ -60,6 +62,8 @@ const LocateFixed = navigatorIcon('locate-fixed', [
   ['circle', { cx: '12', cy: '12', r: '3' }],
 ])
 
+export { CHART_SCROLL_ZOOM_STORAGE_KEY, useChartScrollZoom } from './chartScrollZoom.ts'
+
 export interface ChartNavigatorRange {
   startIndex: number
   endIndex: number
@@ -97,8 +101,12 @@ export interface ChartNavigatorProps {
    * the chart widen the view again.
    */
   minVisibleCount?: number
-  scrollZoomEnabled: boolean
-  onScrollZoomChange: (enabled: boolean) => void
+  /**
+   * Whether a plain wheel over the plot zooms. Omitted, the navigator uses the
+   * remembered site-wide preference (useChartScrollZoom), which is on by default.
+   */
+  scrollZoomEnabled?: boolean
+  onScrollZoomChange?: (enabled: boolean) => void
   onChange: (range: ChartNavigatorRange, animate?: boolean) => void
   onDragStart?: () => ChartNavigatorRange
   onReset: () => void
@@ -166,6 +174,43 @@ const WHEEL_NOTCH_MIN_PX = 50
  * event that is not cancelable, so handled events are remembered here instead.
  */
 const handledWheelEvents = new WeakSet<Event>()
+
+/**
+ * Scroll-through guard. A page scroll that sweeps a plot under the pointer
+ * (including trackpad momentum) keeps scrolling the page: while the last wheel
+ * event that no chart took is less than this old, a plain wheel over a plot
+ * goes to the page too, and extends the window. After this much quiet, the
+ * first wheel over the plot zooms. Alt+wheel is never held back.
+ */
+export const WHEEL_SCROLL_THROUGH_MS = 400
+let lastPassedWheelAt = Number.NEGATIVE_INFINITY
+let scrollThroughInstalled = false
+
+function installScrollThroughGuard() {
+  if (scrollThroughInstalled || typeof window === 'undefined') return
+  scrollThroughInstalled = true
+  // Bubble phase on window: every navigator listener has already decided.
+  window.addEventListener('wheel', (event) => {
+    // Taken by a chart, or not a page scroll (browser zoom, or cancelled by
+    // some other handler): the page did not move.
+    if (handledWheelEvents.has(event) || event.defaultPrevented || event.ctrlKey || event.metaKey) return
+    lastPassedWheelAt = event.timeStamp
+  }, { passive: true })
+}
+
+function scrollingThrough(timeStamp: number): boolean {
+  const since = timeStamp - lastPassedWheelAt
+  return since >= 0 && since < WHEEL_SCROLL_THROUGH_MS
+}
+
+/** Test hook: forget the last page-scrolling wheel event. */
+export function resetChartWheelGuard() {
+  lastPassedWheelAt = Number.NEGATIVE_INFINITY
+}
+
+function pointInRect(rect: DOMRect | undefined, x: number, y: number): boolean {
+  return rect != null && rect.width > 0 && x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom
+}
 
 function wheelDeltaPixels(delta: number, deltaMode: number): number {
   if (!Number.isFinite(delta)) return 0
@@ -322,8 +367,8 @@ export function ChartNavigator({
   wheelSurfaceRef,
   wheelAnchor,
   minVisibleCount = 2,
-  scrollZoomEnabled,
-  onScrollZoomChange,
+  scrollZoomEnabled: scrollZoomProp,
+  onScrollZoomChange: onScrollZoomChangeProp,
   onChange,
   onDragStart,
   onReset,
@@ -333,6 +378,9 @@ export function ChartNavigator({
   selectedLabel = 'Show selected bucket',
   readoutNote,
 }: ChartNavigatorProps) {
+  const [storedScrollZoom, setStoredScrollZoom] = useChartScrollZoom()
+  const scrollZoomEnabled = scrollZoomProp ?? storedScrollZoom
+  const onScrollZoomChange = onScrollZoomChangeProp ?? setStoredScrollZoom
   const maxIndex = Math.max(0, pointCount - 1)
   const minCount = minimumCount(pointCount, minVisibleCount)
   // Steps between the first and last visible step at the floor.
@@ -355,6 +403,7 @@ export function ChartNavigator({
   const selectedOutsideView = selectedIndex != null && selectedIndex >= 0 && selectedIndex < pointCount &&
     (selectedIndex < range.startIndex || selectedIndex > range.endIndex)
   const trackRef = useRef<HTMLDivElement>(null)
+  const trackShellRef = useRef<HTMLDivElement>(null)
   const navigatorRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<DragState | null>(null)
   const [draggingMode, setDraggingMode] = useState<DragState['mode'] | null>(null)
@@ -522,26 +571,38 @@ export function ChartNavigator({
     }
   }
 
-  // Plain scrolling stays available until the user explicitly enables Scroll
-  // zoom. Alt+wheel works without that mode. Ctrl+wheel (also how a touchpad
-  // pinch arrives) and Meta+wheel always stay the browser's page zoom.
+  // A plain wheel over the plot (or the navigator track) zooms around the
+  // pointer while Scroll zoom is on, which is the default. Everywhere else the
+  // page scrolls. Alt+wheel zooms in either mode; Shift+wheel and horizontal
+  // swipes pan a zoomed view. Ctrl+wheel (also how a touchpad pinch arrives)
+  // and Meta+wheel always stay the browser's page zoom.
   const wheelGestureRef = useRef<WheelGestureState | null>(null)
-  const handleWheel = (event: WheelEvent, surface: Element) => {
+  /** Time of the last wheel event this navigator took, for the zoom-in floor rule. */
+  const lastHandledWheelAtRef = useRef(Number.NEGATIVE_INFINITY)
+  const handleWheel = (event: WheelEvent, zone: Element | null | undefined, anchor: Element | null | undefined) => {
     // A chart inside the wheel surface may already have zoomed for this event,
     // or the navigator inside this surface already took it.
     if (event.defaultPrevented || handledWheelEvents.has(event)) return
-    if (maxIndex <= 1 || event.ctrlKey || event.metaKey) return
-    const zoomMode = scrollZoomEnabled || event.altKey
-    const rect = surface.getBoundingClientRect()
-    if (!rect || rect.width <= 0) return
+    if (event.ctrlKey || event.metaKey) return noteWheelOutcome(event, 'pass:browser-zoom')
+    if (maxIndex <= 1) return noteWheelOutcome(event, 'pass:no-range')
+    // Over the plot box or the track only, by the pointer's position: markers
+    // and overlays drawn on top of the plot still count as the plot.
+    if (!pointInRect(zone?.getBoundingClientRect(), event.clientX, event.clientY)) {
+      return noteWheelOutcome(event, 'pass:outside-plot')
+    }
+    const rect = (anchor ?? zone)!.getBoundingClientRect()
 
     const deltaX = wheelDeltaPixels(event.deltaX, event.deltaMode)
     const deltaY = wheelDeltaPixels(event.deltaY, event.deltaMode)
     const horizontalIntent = Math.abs(deltaX) > Math.abs(deltaY)
     const shouldPan = event.shiftKey || horizontalIntent
-    if (!zoomMode && !shouldPan) return
+    if (!shouldPan && !scrollZoomEnabled && !event.altKey) return noteWheelOutcome(event, 'pass:off')
     const deltaPixels = shouldPan ? (event.shiftKey ? (deltaY || deltaX) : deltaX) : deltaY
-    if (deltaPixels === 0) return
+    if (deltaPixels === 0) return noteWheelOutcome(event, 'pass:limit')
+    // A page scroll sweeping the plot under the pointer keeps scrolling.
+    if (!shouldPan && !event.altKey && scrollingThrough(event.timeStamp)) {
+      return noteWheelOutcome(event, 'pass:scroll-through')
+    }
 
     const inputRange = inputRangeRef.current
     const previous = wheelGestureRef.current
@@ -560,10 +621,21 @@ export function ChartNavigator({
       deltaPixels,
       anchorRatio: (event.clientX - rect.left) / Math.max(1, rect.width),
     })
-    // At a zoom or pan limit nothing can move: leave the event to the page.
-    if (!result.moved) return
-    handledWheelEvents.add(event)
-    event.preventDefault()
+    const sinceHandled = event.timeStamp - lastHandledWheelAtRef.current
+    const take = () => {
+      handledWheelEvents.add(event)
+      event.preventDefault()
+      lastHandledWheelAtRef.current = event.timeStamp
+      noteWheelOutcome(event, shouldPan ? 'pan' : 'zoom')
+    }
+    if (!result.moved) {
+      // A zoom-in that reaches the floor in the middle of a gesture is taken,
+      // so the page does not jump; a fresh one after a pause goes to the page.
+      // Zooming out at the full range, and panning at an end, always do.
+      if (!shouldPan && deltaPixels < 0 && sinceHandled >= 0 && sinceHandled <= WHEEL_GESTURE_GAP_MS) return take()
+      return noteWheelOutcome(event, 'pass:limit')
+    }
+    take()
     const changed = result.range.startIndex !== inputRange.startIndex || result.range.endIndex !== inputRange.endIndex
     wheelGestureRef.current = {
       start: result.start,
@@ -574,23 +646,42 @@ export function ChartNavigator({
     }
     if (changed) emitRange(result.range)
   }
+  // Listeners stay bound across renders and always call the latest handler.
+  const wheelHandlerRef = useRef(handleWheel)
+  wheelHandlerRef.current = handleWheel
+  const wheelAnchorRef = useRef(wheelAnchor)
+  wheelAnchorRef.current = wheelAnchor
 
   useEffect(() => {
+    installScrollThroughGuard()
+    installWheelDebug()
     const navigator = navigatorRef.current
     if (!navigator) return
-    const surfaces = [navigator, wheelSurfaceRef?.current]
-      .filter((surface): surface is HTMLElement => surface != null)
-      .filter((surface, index, all) => all.indexOf(surface) === index)
-    const listeners = surfaces.map((surface) => {
-      const onWheel = (event: WheelEvent) => handleWheel(
-        event,
-        surface === navigator ? trackRef.current ?? surface : wheelAnchor?.() ?? surface,
-      )
-      surface.addEventListener('wheel', onWheel, { passive: false })
-      return { surface, onWheel }
-    })
-    return () => listeners.forEach(({ surface, onWheel }) => surface.removeEventListener('wheel', onWheel))
+    const onWheel = (event: WheelEvent) =>
+      wheelHandlerRef.current(event, trackShellRef.current, trackRef.current)
+    navigator.addEventListener('wheel', onWheel, { passive: false })
+    return () => navigator.removeEventListener('wheel', onWheel)
+  }, [])
+
+  // The plot surface can be swapped by its chart; rebind only when it is.
+  const boundSurfaceRef = useRef<{ surface: HTMLElement; release: () => void } | null>(null)
+  useEffect(() => {
+    const surface = wheelSurfaceRef?.current ?? null
+    if (boundSurfaceRef.current?.surface === surface) return
+    boundSurfaceRef.current?.release()
+    boundSurfaceRef.current = null
+    if (!surface || surface === navigatorRef.current) return
+    const onWheel = (event: WheelEvent) => {
+      const zone = wheelAnchorRef.current?.() ?? surface
+      wheelHandlerRef.current(event, zone, zone)
+    }
+    surface.addEventListener('wheel', onWheel, { passive: false })
+    boundSurfaceRef.current = { surface, release: () => surface.removeEventListener('wheel', onWheel) }
   })
+  useEffect(() => () => {
+    boundSurfaceRef.current?.release()
+    boundSurfaceRef.current = null
+  }, [])
 
   return (
     <div
@@ -606,16 +697,9 @@ export function ChartNavigator({
       onPointerUp={(event) => finishPointerDrag(event)}
       onPointerCancel={(event) => finishPointerDrag(event, true)}
       onLostPointerCapture={(event) => finishPointerDrag(event, true)}
-      onKeyDownCapture={(event) => {
-        if (event.key === 'Escape' && scrollZoomEnabled) {
-          event.preventDefault()
-          event.stopPropagation()
-          onReset()
-        }
-      }}
     >
       <div className="hx-chart-navigator__bar">
-        <div className="hx-chart-navigator__track-shell">
+        <div ref={trackShellRef} className="hx-chart-navigator__track-shell">
           <div
             ref={trackRef}
             className="hx-chart-navigator__track"
@@ -690,22 +774,23 @@ export function ChartNavigator({
           <div className="hx-chart-navigator__zoom-buttons">
             <button type="button" disabled={visibleCount <= minCount} onClick={() => zoomFromCenter('in')}><Plus size={15} aria-hidden="true" />Zoom in</button>
             <button type="button" disabled={isFullRange} onClick={() => zoomFromCenter('out')}><Minus size={15} aria-hidden="true" />Zoom out</button>
-            <button type="button" disabled={isFullRange && !scrollZoomEnabled} onClick={onReset}><RotateCcw size={15} aria-hidden="true" />Reset zoom</button>
+            <button type="button" disabled={isFullRange} onClick={onReset}><RotateCcw size={15} aria-hidden="true" />Reset zoom</button>
           </div>
           <button
             type="button"
             className="hx-chart-navigator__scroll-toggle"
             aria-pressed={scrollZoomEnabled}
+            title="Remembered in this browser"
             disabled={pointCount <= 2}
             onClick={() => onScrollZoomChange(!scrollZoomEnabled)}
           ><Mouse size={15} aria-hidden="true" />Scroll zoom<span className="hx-chart-navigator__scroll-state" aria-hidden="true">{scrollZoomEnabled ? 'On' : 'Off'}</span></button>
         </div>
       </div>
       <small className="hx-chart-navigator__hint">{scrollZoomEnabled
-        ? 'Scroll zoom is on · Scroll over the chart to zoom · Escape or Reset zoom restores page scrolling'
-        : 'Drag the purple bar to select a time span · Turn on Scroll zoom or hold Alt to zoom with the wheel'} · Shift + scroll to pan</small>
+        ? 'Scroll over the chart to zoom · Shift + scroll to pan · Drag the purple bar to pick a span'
+        : 'Scroll zoom is off: the wheel scrolls the page · Hold Alt and scroll to zoom · Shift + scroll to pan'}</small>
       <span id={hintId} className="sr-only">
-        Drag the purple track to select a loaded time span. Drag the selected window to pan, or use its start and end sliders to resize. Enable Scroll zoom to zoom with the mouse wheel over this chart; otherwise hold Alt while scrolling. Shift plus wheel or a horizontal trackpad swipe pans a zoomed view. Double-click the track, use Reset zoom, or press Escape on either slider to restore the full loaded range and turn Scroll zoom off. Ctrl and Meta wheel gestures remain available for browser zoom.
+        Scroll over the plot to zoom around the pointer while Scroll zoom is on. It is on by default, and your choice is remembered in this browser. When it is off, the wheel scrolls the page and Alt plus wheel zooms. At the full range, scrolling down scrolls the page. Shift plus wheel or a horizontal swipe pans a zoomed view. Ctrl or Command plus wheel zooms the page. With the plot focused, plus, minus and zero zoom in, zoom out and reset. Drag the purple track to select a span, drag the window to pan, or use the start and end sliders. Double-click the track, use Reset zoom, or press Escape to restore the full range.
       </span>
     </div>
   )

@@ -35,10 +35,13 @@ describe('portal session control target CSS', () => {
     )
   })
 
-  it('insets the whole stream navigator to the plot at every width, as on the hub', () => {
+  it('spans the whole stream navigator across the plot, which spans the card, at every width', () => {
+    // The console plot has no side gutters (owner report 2026-10-09: the chart
+    // looked narrower than the blocks around it), so the navigator is not
+    // inset either: one rule, no per-width margins.
     const rules = [...css.matchAll(/\[data-session-chart-navigator\] \.hx-chart-navigator \{([^}]*)\}/g)].map(m => m[1])
-    const margins = rules.map(body => [body.match(/margin-left:\s*(\d+)px/)?.[1], body.match(/margin-right:\s*(\d+)px/)?.[1]].join('/'))
-    expect(margins).toEqual(['58/18', '64/24', '90/34'])
+    const margins = rules.map(body => [body.match(/margin-left:\s*(\d+)(?:px)?;/)?.[1], body.match(/margin-right:\s*(\d+)(?:px)?;/)?.[1]].join('/'))
+    expect(margins).toEqual(['0/0'])
     // No width threshold below which only the track is inset.
     expect(css).not.toMatch(/\[data-session-chart-navigator\] \.hx-chart-navigator__bar \{[^}]*margin-left/)
     expect(css).not.toContain('@container session-chart (min-width: 880px)')

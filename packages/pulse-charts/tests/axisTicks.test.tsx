@@ -35,6 +35,14 @@ describe('niceMinuteTickIndices', () => {
     expect(labelled).toEqual([0, 5, 20, 25, 30])
   })
 
+  it('takes a slightly larger step when gaps would leave only the end labels', () => {
+    // A 12h stream with no data around 4h and 8h, on a 4-tick phone plot: 4h
+    // steps would label only 0 and 12h; 6h steps label the middle too.
+    const offsets = minuteOffsets(749).filter((_, minute) => !(minute > 220 && minute < 260) && !(minute > 460 && minute < 500))
+    const labelled = niceMinuteTickIndices(offsets, 4)!.map(index => (offsets[index]! - 29) / 60)
+    expect(labelled).toEqual([0, 360, 720])
+  })
+
   it('snaps downsampled points to the nearest point on the step', () => {
     // Every third minute of a 90-minute stream.
     const offsets = Array.from({ length: 31 }, (_, index) => 29 + index * 180)

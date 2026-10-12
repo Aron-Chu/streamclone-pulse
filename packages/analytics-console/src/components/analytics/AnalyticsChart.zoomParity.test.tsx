@@ -134,13 +134,18 @@ describe('stream chart zoom matches the Global activity chart', () => {
     fireEvent.keyDown(plot, { key: '=' })
     fireEvent.keyDown(plot, { key: '-' })
     expect(navigatorWindow(container)).toBe(afterButtonOut)
-    // Scroll zoom on, then 0: the same full reset as the button, mode off.
+    // 0: the same full reset as the button; the Scroll zoom choice stays.
     const scrollZoom = screen.getByRole('button', { name: /Scroll zoom/ })
-    fireEvent.click(scrollZoom)
     expect(scrollZoom.getAttribute('aria-pressed')).toBe('true')
     fireEvent.keyDown(plot, { key: '0' })
     expect(navigatorWindow(container)).toBe('0:747')
-    expect(scrollZoom.getAttribute('aria-pressed')).toBe('false')
+    expect(scrollZoom.getAttribute('aria-pressed')).toBe('true')
+    // With Ctrl, Cmd or Alt held, + and - stay the browser's page zoom.
+    for (const modifier of [{ ctrlKey: true }, { metaKey: true }, { altKey: true }]) {
+      expect(fireEvent.keyDown(plot, { key: '+', ...modifier })).toBe(true)
+      expect(fireEvent.keyDown(plot, { key: '-', ...modifier })).toBe(true)
+    }
+    expect(navigatorWindow(container)).toBe('0:747')
     // At the floor, + does nothing (Zoom in is disabled there).
     for (let press = 0; press < 12; press += 1) fireEvent.keyDown(plot, { key: '+' })
     const floor = navigatorWindow(container)
@@ -149,17 +154,18 @@ describe('stream chart zoom matches the Global activity chart', () => {
     expect(navigatorWindow(container)).toBe(floor)
   })
 
-  it('zooms one Alt+wheel notch over the plot by the navigator step, not the plot step', () => {
+  it('zooms one wheel notch over the plot by the navigator step, not the plot step', () => {
     const { container } = renderChart(748)
     const plot = container.querySelector('[data-chart-touch-action]')!
-    vi.spyOn(plot, 'getBoundingClientRect').mockReturnValue({ left: 0, width: 1000, top: 0, height: 300 } as DOMRect)
-    fireEvent.wheel(plot, { deltaY: -100, clientX: 500, altKey: true })
+    vi.spyOn(plot, 'getBoundingClientRect').mockReturnValue({ left: 0, right: 1000, width: 1000, top: 0, bottom: 300, height: 300 } as DOMRect)
+    // Scroll zoom on (the default): a plain notch zooms.
+    fireEvent.wheel(plot, { deltaY: -100, clientX: 500, clientY: 150 })
     // The hub's navigator: round(748 * exp(-0.25)) = 583 of 748.
     expect(spanOf(navigatorWindow(container))).toBe(583)
-    // Scroll zoom on: a plain notch is the same step.
+    // Scroll zoom off: Alt + a notch is the same step.
     fireEvent.click(screen.getByRole('button', { name: 'Reset zoom' }))
     fireEvent.click(screen.getByRole('button', { name: /Scroll zoom/ }))
-    fireEvent.wheel(plot, { deltaY: -100, clientX: 500 })
+    fireEvent.wheel(plot, { deltaY: -100, clientX: 500, clientY: 150, altKey: true })
     expect(spanOf(navigatorWindow(container))).toBe(583)
   })
 })
