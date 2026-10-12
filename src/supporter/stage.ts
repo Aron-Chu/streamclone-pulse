@@ -5,6 +5,8 @@ export interface StageModel {
   tick(dt: number): void
   peak(): void
   onHot(): void
+  /** An idle stage going still again: drop anything that moves on its own. */
+  onRest?(): void
   resize(): void
   /** Under reduced motion, after the settle ticks: leave a finished still frame. */
   settle?(): void
@@ -39,11 +41,17 @@ const REDUCED_MOTION = '(prefers-reduced-motion: reduce)'
  * and never schedules an animation frame. Hover and focus on the stage's
  * button are the lab's `hot`; a peak arrives on the lab's timer.
  *
+ * `idle`: the stage holds its first frame and plays only while its button is
+ * hovered or keyboard-focused, pausing again when that ends; under reduced
+ * motion it never changes.
+ *
  * `stage.dataset.running` says whether frames are being scheduled, and
  * `stage.dataset.peaks` how many peaks have fired.
  */
-export function runStage(stage: HTMLElement, still: boolean, build: (context: StageContext) => StageModel, timing: StageTiming = LAB_TIMING): () => void {
+export function runStage(stage: HTMLElement, still: boolean, build: (context: StageContext) => StageModel, timing: StageTiming = LAB_TIMING, idle = false): () => void {
   let hot = false
+  let hovered = false
+  let focused = false
   let surge = 0
   let clock = 0
   let autoPeakAt = timing.firstPeak
@@ -54,7 +62,8 @@ export function runStage(stage: HTMLElement, still: boolean, build: (context: St
   const timers = new Set<number>()
   const context: StageContext = {
     still,
-    pace: () => clamp(timing.pace + (hot ? 0.32 : 0) + surge * 0.6, 0, 1),
+    // An idle stage plays at the stream's own pace while hovered; it has no faster hover pace.
+    pace: () => clamp(timing.pace + (hot && !idle ? 0.32 : 0) + surge * 0.6, 0, 1),
     hot: () => hot,
     later(run, ms) {
       const id = window.setTimeout(() => { timers.delete(id); if (!stopped) run() }, ms)
@@ -77,7 +86,8 @@ export function runStage(stage: HTMLElement, still: boolean, build: (context: St
     schedule()
   }
   const schedule = () => {
-    if (still || stopped || frame || !inView || document.hidden) return
+    // An idle stage holds its poster frame and runs only while hovered or keyboard-focused.
+    if (still || stopped || frame || !inView || document.hidden || (idle && !hot)) return
     frame = requestAnimationFrame(tick)
     stage.dataset.running = 'true'
   }
@@ -97,18 +107,27 @@ export function runStage(stage: HTMLElement, still: boolean, build: (context: St
   const enter = () => {
     if (hot) return
     hot = true
-    // A still frame shows the hover labels but adds nothing that would move.
-    if (still) model.tick(0)
-    else model.onHot()
+    // A still frame shows the hover labels but adds nothing that would move;
+    // an idle still frame does not change at all.
+    if (still) { if (!idle) model.tick(0) }
+    else { model.onHot(); schedule() }
   }
   const leave = () => {
     hot = false
-    if (still) model.tick(0)
+    if (still) { if (!idle) model.tick(0) }
+    else if (idle) { pause(); model.onRest?.() }
   }
-  host?.addEventListener('pointerenter', enter)
-  host?.addEventListener('pointerleave', leave)
-  host?.addEventListener('focus', enter)
-  host?.addEventListener('blur', leave)
+  // An idle stage stays hot while it is hovered or has keyboard focus (a click's
+  // focus does not count, so a clicked card goes still when the pointer leaves).
+  const keyboardFocus = () => { try { return host?.matches(':focus-visible') ?? false } catch { return true } }
+  const pointerEnter = () => { hovered = true; enter() }
+  const pointerLeave = () => { hovered = false; if (!(idle && focused)) leave() }
+  const focusIn = () => { if (idle && !keyboardFocus()) return; focused = true; enter() }
+  const focusOut = () => { focused = false; if (!(idle && hovered)) leave() }
+  host?.addEventListener('pointerenter', pointerEnter)
+  host?.addEventListener('pointerleave', pointerLeave)
+  host?.addEventListener('focus', focusIn)
+  host?.addEventListener('blur', focusOut)
   let resizeTimer: number | undefined
   const resize = () => { window.clearTimeout(resizeTimer); resizeTimer = window.setTimeout(() => model.resize(), 150) }
   window.addEventListener('resize', resize)
@@ -129,10 +148,10 @@ export function runStage(stage: HTMLElement, still: boolean, build: (context: St
     timers.clear()
     window.clearTimeout(resizeTimer)
     observer?.disconnect()
-    host?.removeEventListener('pointerenter', enter)
-    host?.removeEventListener('pointerleave', leave)
-    host?.removeEventListener('focus', enter)
-    host?.removeEventListener('blur', leave)
+    host?.removeEventListener('pointerenter', pointerEnter)
+    host?.removeEventListener('pointerleave', pointerLeave)
+    host?.removeEventListener('focus', focusIn)
+    host?.removeEventListener('blur', focusOut)
     window.removeEventListener('resize', resize)
     document.removeEventListener('visibilitychange', visibility)
   }

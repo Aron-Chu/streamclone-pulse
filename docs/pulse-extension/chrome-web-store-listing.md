@@ -64,7 +64,7 @@ StreamPulse adds a Pulse panel beside Twitch chat. It charts chat and emote acti
 • Bookmarks that stay in your browser: no account needed.
 • One click to the full public analytics for the channel on streampulse.stream.
 • Honest coverage: when StreamPulse wasn't tracking part of a stream, the chart says so instead of guessing.
-• Help & Feedback in settings: send feedback, join the Discord, read the release notes.
+• In settings: Send feedback, Join the Discord and read the release notes.
 
 Privacy: the extension sends the channel, stream or VOD you're viewing to the StreamPulse API to fetch aggregate activity. It never sends chat messages, your Twitch password or your cookies. Full details: https://streampulse.stream/privacy
 
@@ -106,11 +106,14 @@ Show Twitch chat and emote activity for the stream or VOD you are watching, in a
 | Small promo tile | `store/cws/icons/small-promo-440x280.png` | 440×280 |
 
 The five 0.2.2 screenshots (live chart, Top Moments card, VOD recap, quick
-settings, Help & Feedback) were regenerated on 2026-10-09 from the extension
-RC on the mocked Twitch fixture (synthetic channel, no real streamer or email)
-by `tests/e2e/specs/cws-extension-screenshots.mocked.spec.ts`; see
+settings, and settings with release notes and the Community links) come from
+the mocked Twitch fixture (synthetic channel, no real streamer or email) by
+`tests/e2e/specs/cws-extension-screenshots.mocked.spec.ts`; see
 `store/cws/README.md` for which build each frame used. Mocked captures are not
-live evidence.
+live evidence. Frame 5 was retaken on 2026-10-12 because settings no longer
+has a Help & Feedback section and the Supporter banner is back to master's
+chips; frames 1-4 predate the 2026-10-11 polish, so
+recapture all five from the package `dist/` before the 0.2.2 upload.
 
 ---
 

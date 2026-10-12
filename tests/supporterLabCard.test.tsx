@@ -158,15 +158,31 @@ describe('quick-settings Supporter card shell (content script)', () => {
 })
 
 describe('Your Line, drawn by content/supporter-card.js', () => {
-  it('Anatomy: the lab sample kit, a spotlight line every sixth, no labels over the line, and chat frozen while hovered', async () => {
+  it('Anatomy: the lab sample kit, a spotlight line every sixth and no labels over the line; still at rest, playing only while hovered or keyboard-focused', async () => {
     stubExtension()
     const card = cardStage()
     const stop = mountCard(card.stage, { mode: 'anatomy', finish: null })
     expect(card.stage.dataset.mode).toBe('anatomy')
-    expect(card.stage.dataset.running).toBe('true')
+    // At rest the card holds its poster frame: no frame is scheduled and nothing moves on its own.
+    expect(card.stage.dataset.idle).toBe('true')
+    expect(card.stage.dataset.running).toBe('false')
+    expect(frames).toHaveLength(0)
+    const sevenTv = () => [...card.stage.querySelectorAll<HTMLImageElement>('img')].map(img => img.src).filter(src => src.includes('cdn.7tv.app'))
+    expect(sevenTv().length).toBeGreaterThan(0)
+    expect(sevenTv().every(src => src.endsWith('/2x_static.webp'))).toBe(true)
+    // The painted name's sweep pauses too, until the card is hovered or keyboard-focused.
+    expect(card.stage.querySelector('style')!.textContent).toContain('.pulse-settings-supporter-cta:not(:hover):not(:focus-visible) .spk-chat[data-idle] .spk-paint { animation-play-state: paused; }')
+    card.added()
+    runFrames(300)
+    expect(card.added()).toHaveLength(0)
     // The card reads no storage: there is no emote to choose any more.
     expect(chrome.storage.sync.get).not.toHaveBeenCalled()
     expect(card.host.style.getPropertyValue('--spk-fin')).toBe('#efc96a')
+
+    // Hover plays chat at the stream's pace, with moving emotes; hover no longer freezes it.
+    card.host.dispatchEvent(new Event('pointerenter'))
+    expect(card.stage.dataset.running).toBe('true')
+    expect(sevenTv().every(src => src.endsWith('/2x.webp'))).toBe(true)
     runFrames(300)
     const lines = card.added()
     const mine = lines.filter(line => line.classList.contains('spk-sup'))
@@ -177,18 +193,37 @@ describe('Your Line, drawn by content/supporter-card.js', () => {
       expect(line.querySelector('.spk-name')?.textContent).toBe('you')
       expect(line.querySelector<HTMLImageElement>('img.spk-kit-emote')?.src).toBe('https://cdn.7tv.app/emote/01GAFTZ9K80003DHH026MC7JW0/2x.webp')
     }
-
-    card.host.dispatchEvent(new Event('pointerenter'))
-    expect([...card.stage.querySelectorAll('.spk-cl')].at(-1)?.classList.contains('spk-sup')).toBe(true)
-    runFrames(1)
     // Nothing is drawn over the demo line.
     expect(card.stage.querySelector('.spk-callouts, .spk-co')).toBeNull()
+
+    // Leaving pauses it again, with every emote back on its still frame.
+    card.host.dispatchEvent(new Event('pointerleave'))
+    expect(card.stage.dataset.running).toBe('false')
+    expect(frames).toHaveLength(0)
+    expect(sevenTv().every(src => src.endsWith('/2x_static.webp'))).toBe(true)
     card.added()
     runFrames(200)
     expect(card.added()).toHaveLength(0)
-    card.host.dispatchEvent(new Event('pointerleave'))
-    runFrames(200)
+
+    // Keyboard focus plays it too; a click's focus (not :focus-visible) does not.
+    const matches = card.host.matches.bind(card.host)
+    let keyboard = false
+    card.host.matches = (selector: string) => selector === ':focus-visible' ? keyboard : matches(selector)
+    card.host.dispatchEvent(new Event('focus'))
+    expect(card.stage.dataset.running).toBe('false')
+    card.host.dispatchEvent(new Event('blur'))
+    keyboard = true
+    card.host.dispatchEvent(new Event('focus'))
+    expect(card.stage.dataset.running).toBe('true')
+    runFrames(300)
     expect(card.added().length).toBeGreaterThan(0)
+    // The pointer passing over and away leaves a keyboard-focused card playing.
+    card.host.dispatchEvent(new Event('pointerenter'))
+    card.host.dispatchEvent(new Event('pointerleave'))
+    expect(card.stage.dataset.running).toBe('true')
+    card.host.dispatchEvent(new Event('blur'))
+    expect(card.stage.dataset.running).toBe('false')
+    expect(frames).toHaveLength(0)
     stop()
     expect(card.stage.childElementCount).toBe(0)
     expect(card.host.style.getPropertyValue('--spk-fin')).toBe('')
@@ -260,6 +295,8 @@ describe('Your Line, drawn by content/supporter-card.js', () => {
     stubExtension()
     const card = cardStage()
     const stop = mountCard(card.stage, { mode: 'anatomy', finish: null })
+    // The preview plays while hovered.
+    card.host.dispatchEvent(new Event('pointerenter'))
     runFrames(1500)
     const lines = card.added()
     expect(lines.length).toBeGreaterThan(40)
@@ -285,6 +322,13 @@ describe('Your Line, drawn by content/supporter-card.js', () => {
     stubExtension()
     const card = cardStage()
     const stop = mountCard(card.stage, { mode: 'anatomy', finish: null })
+    // At rest it never starts, shown or not.
+    act(() => { hidden = true; document.dispatchEvent(new Event('visibilitychange')) })
+    act(() => { hidden = false; document.dispatchEvent(new Event('visibilitychange')) })
+    act(() => intersect!([{ isIntersecting: true }]))
+    expect(card.stage.dataset.running).toBe('false')
+    expect(frames).toHaveLength(0)
+    card.host.dispatchEvent(new Event('pointerenter'))
     expect(card.stage.dataset.running).toBe('true')
     act(() => { hidden = true; document.dispatchEvent(new Event('visibilitychange')) })
     expect(card.stage.dataset.running).toBe('false')
@@ -377,6 +421,8 @@ describe('Your Line, drawn by content/supporter-card.js', () => {
       const count = lines.length
       card.host.dispatchEvent(new Event('pointerenter'))
       expect(card.stage.querySelectorAll('.spk-cl')).toHaveLength(count)
+      expect(card.stage.dataset.running).toBe('false')
+      expect([...card.stage.querySelectorAll<HTMLImageElement>('img')].map(img => img.src).filter(src => src.includes('cdn.7tv.app')).every(src => src.endsWith('/2x_static.webp'))).toBe(true)
       expect(card.stage.querySelector('.spk-callouts, .spk-co')).toBeNull()
       expect(card.stage.querySelector('.spk-preview')!.textContent).toBe('Preview · only you see this')
       stop()

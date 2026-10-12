@@ -2180,18 +2180,11 @@ function StreamClipCarousel({ clips, backendUrl, state, onRetry, onSelect }: { c
     if (!element) return
     element.scrollLeft = 0
     updatePosition()
+    // A vertical wheel scrolls the panel, never the rail: the rail pages with
+    // its arrows, the arrow keys, a trackpad swipe or Shift+wheel (native).
     const observer = new ResizeObserver(updatePosition)
     observer.observe(element)
-    const wheel = (event: WheelEvent) => {
-      if (event.ctrlKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return
-      const delta = event.deltaY
-      const end = element.scrollWidth - element.clientWidth
-      if (!delta || end <= 0 || (delta < 0 && element.scrollLeft <= 0) || (delta > 0 && element.scrollLeft >= end - 1)) return
-      event.preventDefault()
-      move(delta < 0 ? -1 : 1)
-    }
-    element.addEventListener('wheel', wheel, { passive: false })
-    return () => { observer.disconnect(); element.removeEventListener('wheel', wheel) }
+    return () => observer.disconnect()
   }, [clips])
   function move(direction: number) {
     const element = rail.current

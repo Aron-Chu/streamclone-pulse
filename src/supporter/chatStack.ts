@@ -10,7 +10,9 @@ import { CHAT_STACK_CSS } from './styles.ts'
  * - `anatomy` (the lab's sidebar pick, for people who are not Supporters):
  *   every sixth line is yours and gets a spotlight; hovering freezes chat so
  *   your line can be read; at a peak, three quick lines then yours. No labels
- *   are drawn over the line, so nothing covers the demo.
+ *   are drawn over the line, so nothing covers the demo. The quick-settings
+ *   preview runs it `idle`: still on its poster frame at rest, playing only
+ *   while hovered or keyboard-focused (so hover does not freeze it there).
  * - `tenure` (Tenure Climb, for people who already support): every fourth
  *   line is yours and its crest pops up one stage, with a chip naming the
  *   stage. The lab cycles all five stages; here the climb stops at the stage
@@ -32,9 +34,17 @@ const YOURS_LINES: Record<ChatMode, ReadonlyArray<string>> = {
   tenure: ['gg', 'still here', 'here again', 'run it back', 'day one'],
 }
 
-export function ChatStack(stage: HTMLElement, context: StageContext, kit: Kit, mode: ChatMode): StageModel {
+export function ChatStack(stage: HTMLElement, context: StageContext, kit: Kit, mode: ChatMode, idle = false): StageModel {
   stage.classList.add('spk-chat')
   const { still } = context
+  // Emotes move only while the stage moves: an idle card's lines drawn at rest
+  // (its poster frame) use 7TV's static frames, and hover swaps them in place.
+  const staticEmotes = () => still || (idle && !context.hot())
+  const swapEmotes = (from: string, to: string) => {
+    for (const img of stage.querySelectorAll<HTMLImageElement>('img[src^="https://cdn.7tv.app/emote/"]')) {
+      if (img.src.endsWith(from)) img.src = img.src.slice(0, -from.length) + to
+    }
+  }
   const LH = 18
   const YOURS = YOURS_LINES[mode]
   const every = mode === 'anatomy' ? 6 : 4
@@ -80,7 +90,7 @@ export function ChatStack(stage: HTMLElement, context: StageContext, kit: Kit, m
     const b = document.createElement('b')
     b.textContent = pick(NAMES)
     b.style.color = pick(NAME_COLORS)
-    el.append(b, ': ', renderWords(pick(LINES), LH, still))
+    el.append(b, ': ', renderWords(pick(LINES), LH, staticEmotes()))
     push(el)
   }
   function addYours(text?: string | null, quiet = false) {
@@ -88,8 +98,8 @@ export function ChatStack(stage: HTMLElement, context: StageContext, kit: Kit, m
     el.className = 'spk-cl spk-sup'
     const tn = mode === 'tenure' ? TENURES[tenureIdx] : null
     const crest = kitCrest(kit, LH - 4, tn ? tn.id : kit.tenure)
-    const emote = lineEmote(LH, still)
-    el.append(crest, kitName(kit), ': ', renderWords(text || pick(YOURS), LH, still), emote)
+    const emote = lineEmote(LH, staticEmotes())
+    el.append(crest, kitName(kit), ': ', renderWords(text || pick(YOURS), LH, staticEmotes()), emote)
     let chip: HTMLSpanElement | null = null
     if (tn) {
       chip = document.createElement('span')
@@ -132,6 +142,7 @@ export function ChatStack(stage: HTMLElement, context: StageContext, kit: Kit, m
     context.later(() => { lines.forEach(ln => ln.classList.remove('spk-dim')); el.classList.remove('spk-sheen') }, 1500)
   }
   function onHot() {
+    if (idle) swapEmotes('/2x_static.webp', '/2x.webp')
     if (mode !== 'anatomy' || lastYours !== lines[lines.length - 1]) addYours()
   }
   function tick(dt: number) {
@@ -139,7 +150,8 @@ export function ChatStack(stage: HTMLElement, context: StageContext, kit: Kit, m
     if (!H) { H = stage.clientHeight; W = stage.clientWidth }
     t += dt
     const p = context.pace()
-    const frozen = mode === 'anatomy' && context.hot()
+    // An idle card plays while hovered, so hover cannot also freeze it.
+    const frozen = !idle && mode === 'anatomy' && context.hot()
     if (t >= nextAt && !frozen) {
       count++
       if (count % every === 0) addYours(); else addOther()
@@ -159,18 +171,24 @@ export function ChatStack(stage: HTMLElement, context: StageContext, kit: Kit, m
     tick,
     peak,
     onHot,
+    onRest: () => swapEmotes('/2x.webp', '/2x_static.webp'),
     resize: () => { H = 0 },
     // A still frame always ends on your line, so it still shows the kit.
     settle: () => { if (lastYours !== lines[lines.length - 1]) addYours() },
   }
 }
 
-export interface ChatStackOptions { mode: ChatMode; kit: Kit }
+/** `idle`: hold the poster frame, play only while hovered or keyboard-focused. */
+export interface ChatStackOptions { mode: ChatMode; kit: Kit; idle?: boolean }
+
+/** Idle card: a peak comes two seconds into a hover, so a short hover still shows one. */
+const IDLE_TIMING = { pace: 0.4, firstPeak: 2, peakEvery: [12, 16] } as const
 
 /** Draws "Your Line" into `stage`; returns its stop. */
-export function mountChatStack(stage: HTMLElement, { mode, kit }: ChatStackOptions): () => void {
+export function mountChatStack(stage: HTMLElement, { mode, kit, idle = false }: ChatStackOptions): () => void {
   const own: Kit = { ...kit }
   for (const [name, value] of Object.entries(finishVars(own.finish))) stage.style.setProperty(name, value)
   stage.dataset.mode = mode
-  return mountStage(stage, CHAT_STACK_CSS, still => runStage(stage, still, context => ChatStack(stage, context, own, mode)))
+  if (idle) stage.dataset.idle = 'true'
+  return mountStage(stage, CHAT_STACK_CSS, still => runStage(stage, still, context => ChatStack(stage, context, own, mode, idle), idle ? IDLE_TIMING : undefined, idle))
 }

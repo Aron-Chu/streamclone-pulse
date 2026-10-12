@@ -1,9 +1,10 @@
 import { useId, useState } from 'react'
-import { allReleases, installedExtensionVersion, type ReleaseEntry } from '../shared/releaseManifest.ts'
+import { allReleases, CURRENT_RELEASE, installedExtensionVersion, type ReleaseEntry } from '../shared/releaseManifest.ts'
 
 type ChangelogCardProps =
   | { variant: 'preview'; limit?: number; maxHighlights?: number }
-  | { variant: 'history' }
+  /** `startCollapsed`: every release starts folded (the settings page leads with the What's new card). */
+  | { variant: 'history'; startCollapsed?: boolean }
 
 const CATEGORY_LABELS = {
   new: 'New',
@@ -93,12 +94,23 @@ function HistoryBody({ entry }: { entry: ReleaseEntry }) {
     <div className="pulse-changelog-body">
       {entry.summary ? <p className="pulse-changelog-summary-copy">{entry.summary}</p> : null}
       {categories.map(category => (
-        <section key={category.key} className="pulse-changelog-category" data-release-category={category.key}>
-          <h3>{category.label}</h3>
+        // New, Improved and Fixed fold to a count; what changed under you and
+        // what is not there yet stay open.
+        <details
+          key={category.key}
+          className="pulse-changelog-category"
+          data-release-category={category.key}
+          open={category.key === 'changed' || category.key === 'knownIssues'}
+        >
+          <summary>
+            <h3>{category.label}</h3>
+            <span className="pulse-changelog-count">{category.items.length}</span>
+            <span className="pulse-changelog-group-chevron" aria-hidden="true">›</span>
+          </summary>
           <ul className="pulse-changelog-list">
             {category.items.map((item, index) => <li key={index}>{item}</li>)}
           </ul>
-        </section>
+        </details>
       ))}
       {details || support ? (
         <div className="pulse-changelog-links">
@@ -169,11 +181,37 @@ export function ChangelogCard(props: ChangelogCardProps) {
           key={entry.version}
           entry={entry}
           isInstalled={entry.version === installed}
-          initiallyOpen={entry.version === installed || (index === 0 && !releases.some(item => item.version === installed))}
+          initiallyOpen={!(props.variant === 'history' && props.startCollapsed) && (entry.version === installed || (index === 0 && !releases.some(item => item.version === installed)))}
           variant={props.variant}
           maxHighlights={maxHighlights}
         />
       ))}
     </div>
+  )
+}
+
+/**
+ * The settings page's What's new: the current version's title and its three
+ * highlights on one screen, above the folded release list. See all changes
+ * opens this version's full notes.
+ */
+export function WhatsNewCard({ onSeeAll }: { onSeeAll: () => void }) {
+  const titleId = useId()
+  const entry = CURRENT_RELEASE
+  if (!entry) return null
+  return (
+    <article className="pulse-whatsnew" data-whatsnew="true" aria-labelledby={titleId}>
+      <header>
+        <span className="pulse-changelog-version">v{entry.version}</span>
+        <span className="pulse-whatsnew-eyebrow">What&rsquo;s new</span>
+      </header>
+      <h3 id={titleId} className="pulse-whatsnew-title">{entry.title}</h3>
+      <ul className="pulse-changelog-list">
+        {releaseHighlights(entry, 3).map((item, index) => <li key={index}>{item}</li>)}
+      </ul>
+      <button type="button" className="pulse-whatsnew-all" data-changelog-see-all="true" onClick={onSeeAll}>
+        See all changes ↓
+      </button>
+    </article>
   )
 }

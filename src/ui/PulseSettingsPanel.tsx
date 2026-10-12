@@ -72,7 +72,7 @@ export function OpenAllSettingsButton({ style }: { style?: CSSProperties }) {
       {/* The worker opens the website's /discord page: no page links ship in the content script. */}
       <button type="button" className="pulse-settings-bottom-bar" data-community-link="discord" style={{ ...style, marginTop: 6 }}
         onClick={() => void sendBackgroundMessage({ type: 'OPEN_COMMUNITY_LINK', link: 'discord' })}>
-        <span>Join the StreamPulse Discord</span>
+        <span>Join the Discord</span>
         <span aria-hidden="true">↗</span>
       </button>
     </>
@@ -250,16 +250,16 @@ export function PulseSettingsPanel({ onBack, channel }: { onBack?: () => void; c
         </QuickGroup>
       </section>
 
-      <details className="pulse-settings-release-preview" data-changelog-preview="true">
-        <summary>
+      {/* An open card, not a disclosure: the three highlights show without a click. */}
+      <section className="pulse-settings-release-preview" data-changelog-preview="true" aria-label="What's new">
+        <header>
           <span className="pulse-settings-release-version">v{RELEASE_PREVIEW.version}</span>
           <span className="pulse-settings-release-title">
             <strong>What&rsquo;s new</strong>
             <small>{RELEASE_PREVIEW.title}</small>
           </span>
-          <span className="pulse-settings-release-chevron" aria-hidden="true">›</span>
-        </summary>
-        <div className="pulse-settings-release-body pulse-tab-fade">
+        </header>
+        <div className="pulse-settings-release-body">
           <ul>
             {RELEASE_PREVIEW.bullets.slice(0, 3).map(item => <li key={item}>{item}</li>)}
           </ul>
@@ -270,10 +270,10 @@ export function PulseSettingsPanel({ onBack, channel }: { onBack?: () => void; c
             disabled={opening}
             onClick={() => void openHost('updates')}
           >
-            View full changelog ↗
+            See all changes ↗
           </button>
         </div>
-      </details>
+      </section>
 
       <button
         type="button"

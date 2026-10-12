@@ -20,7 +20,9 @@ export const mountSupporterCard: SupporterCardMount = (stage, options) => {
   const host = stage.closest<HTMLElement>('.pulse-settings-supporter-cta')
   const vars = Object.entries(finishVars(kit.finish))
   for (const [name, value] of vars) host?.style.setProperty(name, value)
-  const stop = mountChatStack(stage, { mode: options.mode, kit })
+  // The preview (Anatomy) holds its poster frame at rest and plays only while
+  // hovered or keyboard-focused; reduced motion keeps it still throughout.
+  const stop = mountChatStack(stage, { mode: options.mode, kit, idle: options.mode === 'anatomy' })
   return () => {
     stop()
     for (const [name] of vars) host?.style.removeProperty(name)
