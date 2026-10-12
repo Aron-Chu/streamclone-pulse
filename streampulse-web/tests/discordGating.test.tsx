@@ -165,7 +165,7 @@ describe('Discord entry points', () => {
     const line = screen.getByTestId('support-discord-line')
     expect(line.textContent).toContain('Ideas or just want to chat?')
     expect(line.textContent).toContain('Anyone there can read it, so keep account problems in this form.')
-    expect(within(line).getByRole('link', { name: 'Join the public Discord (opens in a new tab)' }).getAttribute('href')).toBe(SHORT_INVITE)
+    expect(within(line).getByRole('link', { name: 'Join the Discord (public, opens in a new tab)' }).getAttribute('href')).toBe(SHORT_INVITE)
   })
 })
 
@@ -233,10 +233,21 @@ describe('feedback and Discord beyond the landing page', () => {
 
   it('lists private feedback and Discord under "Need help?" on /docs', () => {
     vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', SHORT_INVITE)
+    vi.stubEnv('VITE_TURNSTILE_SITE_KEY', '1x00000000000000000000AA')
     render(<MemoryRouter><Docs /></MemoryRouter>)
     const help = screen.getByTestId('docs-help')
     expect(within(help).getByRole('link', { name: 'private feedback' }).getAttribute('href')).toBe('/feedback')
     expect(within(help).getByRole('link', { name: 'Discord (opens in a new tab)' }).getAttribute('href')).toBe(SHORT_INVITE)
+  })
+
+  it('points "Need help?" at the feedback page, not private feedback, before the form opens', () => {
+    vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', SHORT_INVITE)
+    vi.stubEnv('VITE_TURNSTILE_SITE_KEY', '')
+    render(<MemoryRouter><Docs /></MemoryRouter>)
+    const help = screen.getByTestId('docs-help')
+    expect((help.textContent ?? '').replace(/\s+/g, ' ')).toContain('For a bug or an idea, see the feedback page, or ask in the Discord.')
+    expect(within(help).queryByRole('link', { name: 'private feedback' })).toBeNull()
+    expect(within(help).getByRole('link', { name: 'feedback page' }).getAttribute('href')).toBe('/feedback')
   })
 })
 
@@ -248,6 +259,19 @@ describe('/discord page', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Opening the StreamPulse Discord' })).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Join the Discord' }).getAttribute('href')).toBe(SHORT_INVITE)
     expect(redirect).toHaveBeenCalledWith(SHORT_INVITE)
+  })
+
+  it('keeps account problems for the private form only once that form is open', () => {
+    vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', SHORT_INVITE)
+    vi.stubEnv('VITE_TURNSTILE_SITE_KEY', '')
+    const before = render(<MemoryRouter><Discord redirect={vi.fn()} /></MemoryRouter>)
+    expect(screen.getByTestId('discord-page').textContent).toContain('The server is public, so leave out account details and anything personal.')
+    expect(screen.queryByRole('link', { name: 'private feedback form' })).toBeNull()
+    before.unmount()
+    vi.stubEnv('VITE_TURNSTILE_SITE_KEY', '1x00000000000000000000AA')
+    render(<MemoryRouter><Discord redirect={vi.fn()} /></MemoryRouter>)
+    expect(screen.getByTestId('discord-page').textContent).toContain('The server is public, so keep account problems for the private feedback form.')
+    expect(screen.getByRole('link', { name: 'private feedback form' }).getAttribute('href')).toBe('/feedback')
   })
 
   it('says the server is not open yet and points at /feedback without a valid invite', () => {

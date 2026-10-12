@@ -88,12 +88,14 @@ describe('public release routes', () => {
     ).toBeTruthy()
     const body = screen.getByTestId('support-page').textContent ?? ''
     expect(body).toMatch(/for privacy, legal, billing and refund questions/i)
-    expect(body).toMatch(/For bugs and ideas use the private feedback form/)
-    // The mailbox is not called "not support" any more; bugs go to the private form.
+    // This build has no Turnstile key, so the private form is not open yet:
+    // bugs and ideas go to the feedback page, which lists public places to ask.
+    expect(body).toMatch(/For bugs and ideas use the feedback page/)
+    // The mailbox is not called "not support" any more.
     expect(body).not.toMatch(/not a routine product-support mailbox/i)
-    expect(within(screen.getByTestId('support-page').querySelector('#contact') as HTMLElement).getByRole('link', { name: 'private feedback form' }).getAttribute('href')).toBe('/feedback')
-    // The private form is on /feedback; /support links to it.
-    expect(within(screen.getByTestId('support-feedback-link')).getByRole('link', { name: 'Send feedback' }).getAttribute('href')).toBe('/feedback')
+    expect(within(screen.getByTestId('support-page').querySelector('#contact') as HTMLElement).getByRole('link', { name: 'feedback page' }).getAttribute('href')).toBe('/feedback')
+    // The form is on /feedback; /support links to it.
+    expect(within(screen.getByTestId('support-feedback-link')).getByRole('link', { name: 'See where to ask' }).getAttribute('href')).toBe('/feedback')
     expect(screen.queryByTestId('support-form')).toBeNull()
     expect(body).not.toMatch(/Turnstile/i)
     expect(body).not.toMatch(/support@streampulse\.stream/i)
