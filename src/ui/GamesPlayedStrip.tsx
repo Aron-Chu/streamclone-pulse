@@ -10,6 +10,7 @@ import {
 } from '@streampulse/pulse-charts'
 import type { ExtensionGameSegment } from '../shared/messages.ts'
 import { theme } from './theme.ts'
+import { onOutsidePointerDown, usePulsePortalRoot } from './pulsePortalContext.ts'
 import { isRenderableGameName } from './extensionChartAdapter.ts'
 
 export { isRenderableGameName } from './extensionChartAdapter.ts'
@@ -203,6 +204,7 @@ export function GamesPlayedStrip({
   plotPadRight = 0,
 }: GamesPlayedStripProps) {
   const rootRef = useRef<HTMLDivElement | null>(null)
+  const portalRoot = usePulsePortalRoot()
   const trackRef = useRef<HTMLDivElement | null>(null)
   const [activeKey, setActiveKey] = useState<string | null>(null)
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
@@ -289,31 +291,26 @@ export function GamesPlayedStrip({
 
   useEffect(() => {
     if (!selectedKey) return
-    function handlePointerDown(event: PointerEvent) {
-      if (event.defaultPrevented) return
-      const target = event.target as HTMLElement | null
-      if (!target) return
-      if (target.closest('button, a, input, select, [data-chart-action="true"]')) {
-        return
-      }
+    function clear() {
       setSelectedKey(null)
       onSelectKey?.(null)
       onHighlightKey?.(null)
     }
+    // Controls keep the selection; any other press clears it.
+    const stopOutside = onOutsidePointerDown(
+      portalRoot,
+      event => Boolean((event.target as Element | null)?.closest?.('button, a, input, select, [data-chart-action="true"]')),
+      event => { if (!event.defaultPrevented) clear() },
+    )
     function handleKeyDown(event: globalThis.KeyboardEvent) {
-      if (event.key === 'Escape') {
-        setSelectedKey(null)
-        onSelectKey?.(null)
-        onHighlightKey?.(null)
-      }
+      if (event.key === 'Escape') clear()
     }
-    document.addEventListener('pointerdown', handlePointerDown)
     document.addEventListener('keydown', handleKeyDown)
     return () => {
-      document.removeEventListener('pointerdown', handlePointerDown)
+      stopOutside()
       document.removeEventListener('keydown', handleKeyDown)
     }
-  }, [onHighlightKey, onSelectKey, selectedKey])
+  }, [onHighlightKey, onSelectKey, portalRoot, selectedKey])
 
   if (!hasMeaningfulGameSegments(segments, durationSeconds) || !timelineRange || gameSlots.length === 0) {
     return (

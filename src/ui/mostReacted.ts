@@ -258,8 +258,25 @@ function dedupeLiveMomentPoints(
   return accepted.sort((a, b) => a.offsetSeconds - b.offsetSeconds)
 }
 
-/** Prefer backend peaks; fall back to deriveLiveHeat only when peaks field is absent. */
+const heatByPayload = new WeakMap<PulsePayload, LiveHeatResult>()
+
+/**
+ * Prefer backend peaks; fall back to deriveLiveHeat only when peaks field is absent.
+ *
+ * Cached per payload object. The overlay and its sections each ask for the same
+ * payload's heat on every render, and a poll replaces the payload rather than
+ * mutating it, so a new object is the only invalidation needed.
+ */
 export function resolveMostReactedHeat(payload: PulsePayload): LiveHeatResult {
+  let heat = heatByPayload.get(payload)
+  if (!heat) {
+    heat = computeMostReactedHeat(payload)
+    heatByPayload.set(payload, heat)
+  }
+  return heat
+}
+
+function computeMostReactedHeat(payload: PulsePayload): LiveHeatResult {
   const rollups = extensionRollupsForDerivation(payload) as ExtensionRollup[]
 
   if (extensionSupportsPeaks(payload)) {

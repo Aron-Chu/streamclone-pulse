@@ -1,4 +1,5 @@
-import { handleMyMoments } from './myMoments.ts'
+import { handleDeviceBookmarks, handleMyMoments } from './myMoments.ts'
+import { loadHubSnapshot } from './hubSnapshot.ts'
 import {
   addPulseWatchlist,
   createPulseBookmark,
@@ -32,12 +33,16 @@ import {
   isDeviceCredentialLive,
   safeDeviceAuthErrorMessage,
 } from './deviceAuth.ts'
+import { pageAlwaysTracked } from './alwaysTracked.ts'
 import { fetchEmoteImageBytes } from './emoteImageFetch.ts'
 import { isTracked, listTrackedLogins, trackLogin, untrackLogin } from './tracking.ts'
 import type { BackgroundRequest, BackgroundResponse, DeviceAuthStatus, ExtensionCoverageTierResponse, PastVodRow, PulseUpdateMessage, ProtectChannelSyncStatus, ProtectSyncOperation, ProtectSyncState, VodPulseUpdateMessage, WatchlistSyncStatus } from '../shared/messages.ts'
 import { parseBackgroundRequest } from '../shared/parseBackgroundRequest.ts'
 import { openSettingsHost } from './settingsHost.ts'
 import { resumePendingLink, supporterAccount, supporterPayFirst, watchPendingLink } from './supporterAccountRuntime.ts'
+import { supporterAppearanceReply } from './supporterAppearance.ts'
+import { injectSupporterCard } from './supporterCardScript.ts'
+import { twitchSignIn } from './twitchSignInRuntime.ts'
 import {
   EXTENSION_DIAGNOSTICS_INGEST_ENABLED,
   isDiagnosticsConsentEnabled,
@@ -52,8 +57,9 @@ import {
   trackDiagnosticsWork,
   trustedDiagnosticsBuildMeta,
 } from '../shared/extensionDiagnostics.ts'
-import { getBackendUrl, getProtectSyncState, getSessionCoverage, getSessionPulse, isHostedBackendUrl, setAutoUpdateEnabled, cacheSessionPulseIfEnabled, setProtectSyncState, setSessionCoverage, type ProtectSyncStorageState, type PulseCacheWindow } from '../shared/storage.ts'
+import { getBackendUrl, getProtectSyncState, getSessionCoverage, getSessionPulse, getSupporterPaintStyle, isHostedBackendUrl, setAutoUpdateEnabled, cacheSessionPulseIfEnabled, setProtectSyncState, setSessionCoverage, type ProtectSyncStorageState, type PulseCacheWindow } from '../shared/storage.ts'
 import { sanitizePulseErrorMessage } from '../shared/pulseError.ts'
+import { DEFAULT_SUPPORTER_PAINT } from '../shared/supporterPaint.ts'
 import {
   addToWatchlist,
   getWatchlist,
@@ -72,7 +78,7 @@ import { isExtensionPageSender, isSenderAuthorizedForMessage, isSupportedTwitchU
 import { discoverLiveVodIdFromGqlInTab } from './twitchPageGql.ts'
 import {
   awaitPulsePrefetchInFlight,
-  handleTwitchTabNavigation,
+  handleTwitchTabUpdate,
 } from './pulsePrefetch.ts'
 import {
   createPulseCoordinatorState,
@@ -93,6 +99,7 @@ import {
   type AnalyticsEmitEventName,
 } from '../shared/extensionAnalytics.ts'
 import { createExtensionHealthCache } from './extensionHealthCache.ts'
+import { COMMUNITY_LINKS } from '../shared/portalLinks.ts'
 import { getUpdateCheckCapability, requestBrowserUpdateCheck } from './extensionUpdateCheck.ts'
 
 void initPulseDebug()
@@ -759,6 +766,7 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
             const vodPulse = await fetchPulseVod(message.vodId, {
               streamId: message.streamId,
               window: message.window,
+              login: message.login,
             })
             sendResponse({
               type: 'VOD_PULSE_UPDATE',
@@ -798,14 +806,15 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
         }
         case 'GET_ALWAYS_TRACKED': {
           try {
-            const channels = (await hostedBackend())
-              ? await fetchPulseWatchlist()
-              : await fetchAlwaysTracked()
-            // Content pages only need the current channel's status. Do not expose
-            // the complete local or principal-scoped watchlist to page content.
+            // Only the current channel's status; no request without a device key (it could only 401).
             sendResponse({
               type: 'ALWAYS_TRACKED',
-              channels: channels.filter(channel => channel === message.login),
+              channels: await pageAlwaysTracked(message.login, {
+                hosted: hostedBackend,
+                credential: getDeviceCredential,
+                fetchHosted: () => fetchPulseWatchlist(),
+                fetchLocal: fetchAlwaysTracked,
+              }),
             } satisfies BackgroundResponse)
           } catch (err) {
             sendResponse({
@@ -945,12 +954,15 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           return
         }
         case 'SUPPORTER_APPEARANCE': {
-          const entitlement = await supporterAccount.entitlement()
-          const finish = entitlement.state === 'ready' && entitlement.features.includes('supporter.banner.v1') && entitlement.features.includes('supporter.finish.v1') && entitlement.cosmetics?.enabled ? entitlement.cosmetics.finish : null
-          sendResponse({ type: 'SUPPORTER_APPEARANCE', finish, validForMs: finish && entitlement.state === 'ready' ? entitlement.validForMs ?? 0 : 0 } satisfies BackgroundResponse)
+          // Every visible Twitch tab asks about once a minute; they share the worker's read.
+          const entitlement = await supporterAccount.cachedEntitlement()
+          sendResponse(await supporterAppearanceReply(entitlement, () => getSupporterPaintStyle().catch(() => DEFAULT_SUPPORTER_PAINT)) satisfies BackgroundResponse)
           return
         }
         case 'SUPPORTER_ACCOUNT': {
+          // Every disconnect is a user sign-out: silent Twitch sign-in must not
+          // undo it. The marker never blocks the disconnect itself.
+          if (message.action === 'disconnect') await twitchSignIn.markSignedOutByUser().catch(() => undefined)
           const account = await supporterAccount.run(message.action)
           if (account.state === 'pending') watchPendingLink()
           sendResponse({ type: 'SUPPORTER_ACCOUNT', account } satisfies BackgroundResponse)
@@ -978,12 +990,33 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           sendResponse({ type: 'SUPPORTER_FINISH_INTENT', finish } satisfies BackgroundResponse)
           return
         }
+        case 'SUPPORTER_CARD_SCRIPT': {
+          sendResponse({ type: 'SUPPORTER_CARD_SCRIPT', ok: await injectSupporterCard(chrome.scripting, sender) } satisfies BackgroundResponse)
+          return
+        }
+        case 'TWITCH_SIGN_IN': {
+          sendResponse((message.action === 'status'
+            ? await twitchSignIn.status()
+            : message.action === 'sign_out_everywhere'
+              ? await twitchSignIn.signOutEverywhere(message.confirm === true ? 'interactive' : 'silent')
+              : await twitchSignIn.signIn(message.mode, message.forceVerify === true)) satisfies BackgroundResponse)
+          return
+        }
         case 'OPEN_SETTINGS_HOST': {
           try {
             await openSettingsHost(chrome.tabs, path => chrome.runtime.getURL(path), message.section)
             sendResponse({ type: 'OPEN_SETTINGS_HOST', ok: true } satisfies BackgroundResponse)
           } catch {
             sendResponse({ type: 'OPEN_SETTINGS_HOST', ok: false, error: 'settings_host_open_failed' } satisfies BackgroundResponse)
+          }
+          return
+        }
+        case 'OPEN_COMMUNITY_LINK': {
+          try {
+            await chrome.tabs.create({ url: COMMUNITY_LINKS[message.link] })
+            sendResponse({ type: 'OPEN_COMMUNITY_LINK', ok: true } satisfies BackgroundResponse)
+          } catch {
+            sendResponse({ type: 'OPEN_COMMUNITY_LINK', ok: false } satisfies BackgroundResponse)
           }
           return
         }
@@ -1128,12 +1161,22 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           sendResponse({ type: 'SYNC_WATCHLIST', channels, sync: statusFromStorageState(state, channels) } satisfies BackgroundResponse)
           return
         }
+        case 'HUB_SNAPSHOT': {
+          try {
+            sendResponse({ type: 'HUB_SNAPSHOT', snapshot: await loadHubSnapshot() } satisfies BackgroundResponse)
+          } catch (err) {
+            sendResponse({ type: 'HUB_SNAPSHOT', snapshot: null, error: err instanceof Error ? err.message : 'hub_unavailable' } satisfies BackgroundResponse)
+          }
+          return
+        }
         case 'MY_MOMENTS':
         case 'MOMENT_CAPTURE': {
           sendResponse(await handleMyMoments(message, sender))
           return
         }
         case 'LIST_BOOKMARKS': {
+          const device = await handleDeviceBookmarks(message, sender)
+          if (device) { sendResponse(device); return }
           const page = await fetchPulseBookmarks({
             login: message.login,
             streamId: message.streamId,
@@ -1145,6 +1188,8 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           return
         }
         case 'SAVE_BOOKMARK': {
+          const device = await handleDeviceBookmarks(message, sender)
+          if (device) { sendResponse(device); return }
           const item = await createPulseBookmark(message.bookmark)
           sendResponse({ type: 'BOOKMARK', item } satisfies BackgroundResponse)
           return
@@ -1267,7 +1312,9 @@ chrome.runtime.onStartup.addListener(() => {
   })()
 })
 
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener(details => {
+  // The only moment silent Twitch sign-in may later be tried (no-op while the flag is off).
+  if (details?.reason === 'install') void twitchSignIn.markFirstInstall().catch(() => undefined)
   void (async () => {
     const { restrictCredentialStorageAccess } = await import('../shared/storage.ts')
     await restrictCredentialStorageAccess()
@@ -1287,13 +1334,7 @@ void (async () => {
 installBackgroundDiagnosticsEmitters()
 
 chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
-  if (changeInfo.url) {
-    handleTwitchTabNavigation(changeInfo.url)
-    return
-  }
-  if (changeInfo.status === 'complete') {
-    handleTwitchTabNavigation(tab.url)
-  }
+  handleTwitchTabUpdate(changeInfo, tab)
 })
 
 export {}

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { resolveOverlayHostVisibility } from '../src/content/resolveOverlayHostVisibility.ts'
+import {
+  resolveOverlayHostVisibility,
+  SIDEBAR_COMPACT_WIDTH,
+  snapLayoutNeedsRender,
+} from '../src/content/resolveOverlayHostVisibility.ts'
 
 const dockOn = { chatClosedPulseDockEnabled: true } as const
 const dockOff = { chatClosedPulseDockEnabled: false } as const
@@ -115,5 +119,27 @@ describe('resolveOverlayHostVisibility', () => {
       sidebarSnapped: false,
       mode: 'hidden',
     })
+  })
+})
+
+describe('snapLayoutNeedsRender', () => {
+  const layout = (width: number) => ({ panel: { width } })
+
+  it('renders when the sidebar layout appears or disappears', () => {
+    expect(snapLayoutNeedsRender(null, layout(340))).toBe(true)
+    expect(snapLayoutNeedsRender(layout(340), null)).toBe(true)
+    expect(snapLayoutNeedsRender(null, null)).toBe(true)
+  })
+
+  it('only restyles the hosts for a move or resize inside the same width class', () => {
+    expect(snapLayoutNeedsRender(layout(340), layout(340))).toBe(false)
+    expect(snapLayoutNeedsRender(layout(340), layout(300))).toBe(false)
+    expect(snapLayoutNeedsRender(layout(420), layout(500))).toBe(false)
+  })
+
+  it('renders when the panel crosses the compact metrics width', () => {
+    expect(SIDEBAR_COMPACT_WIDTH).toBe(360)
+    expect(snapLayoutNeedsRender(layout(359), layout(360))).toBe(true)
+    expect(snapLayoutNeedsRender(layout(420), layout(340))).toBe(true)
   })
 })

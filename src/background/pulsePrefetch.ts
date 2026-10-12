@@ -79,11 +79,24 @@ export function schedulePulsePrefetch(login: string, window: PulseCacheWindow = 
   inFlight.set(key, task)
 }
 
-export function handleTwitchTabNavigation(url: string | undefined): void {
-  if (!url) return
+/**
+ * Warm the cache for a channel page in the tab the user is looking at. A tab
+ * that loads or navigates in the background (restored sessions, raids,
+ * middle-click) is skipped: its panel fetches when shown, and these anonymous
+ * pulse and coverage GETs would otherwise spend API budget on pages nobody
+ * opened yet. `tab` absent means unknown, which keeps the old behaviour.
+ */
+export function handleTwitchTabNavigation(url: string | undefined, tab?: { active?: boolean }): void {
+  if (!url || tab?.active === false) return
   const login = prefetchChannelLoginFromUrl(url)
   if (!login) return
   schedulePulsePrefetch(login)
+}
+
+/** chrome.tabs.onUpdated: a URL change, or a completed load, of the active tab. */
+export function handleTwitchTabUpdate(changeInfo: { url?: string; status?: string }, tab: { url?: string; active?: boolean }): void {
+  if (changeInfo.url) handleTwitchTabNavigation(changeInfo.url, tab)
+  else if (changeInfo.status === 'complete') handleTwitchTabNavigation(tab.url, tab)
 }
 
 export function resetPulsePrefetchInFlightForTests(): void {

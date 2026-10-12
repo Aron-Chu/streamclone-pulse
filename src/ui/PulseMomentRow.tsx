@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react'
+import { useLayoutEffect, useRef, type CSSProperties } from 'react'
 import {
   LIVE_HEAT_COLLECTING_LABEL,
   displayMomentReasonLabel,
@@ -9,7 +9,20 @@ import {
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
 import { formatMomentMetricsLine } from './momentActivity.ts'
 import { momentReasonLabelStyle } from './momentReasonStyles.ts'
+import { liveHeatPointKey } from './mostReacted.ts'
 import { theme } from './theme.ts'
+
+/**
+ * A list row's React key. Alone in its minute bucket, a moment is keyed by the
+ * bucket, which a refinement poll leaves alone. Sharing it (two refined moments
+ * can), it is keyed by its full identity instead, so a poll can remount its row
+ * but never hand the row and its focus to the other moment.
+ */
+export function momentRowKey(point: LiveHeatPoint, points: LiveHeatPoint[]): string {
+  return points.filter(other => other.offsetSeconds === point.offsetSeconds)[1]
+    ? liveHeatPointKey(undefined, point)
+    : `${point.offsetSeconds}`
+}
 
 export interface PulseMomentRowProps {
   point: LiveHeatPoint
@@ -17,7 +30,8 @@ export interface PulseMomentRowProps {
   selected: boolean
   onSelect: (point: LiveHeatPoint) => void
   onHighlight: (offsetSeconds: number | null) => void
-  scrollRef?: (node: HTMLDivElement | null) => void
+  /** Id of the card above the list that shows the moment a row picks. */
+  controls?: string
 }
 
 export function PulseMomentRow({
@@ -26,15 +40,26 @@ export function PulseMomentRow({
   selected,
   onSelect,
   onHighlight,
-  scrollRef,
+  controls,
 }: PulseMomentRowProps) {
   const clock = momentClockDisplay(point)
   const offsetLabel = clock.text
   const analyticalOffset = reactionAnalyticalOffset(point)
   const collecting = point.collecting
+  const ref = useRef<HTMLButtonElement>(null)
+  // A row that leaves the list while focused (a poll ranks it past the fold,
+  // or the pick it was listed for is cleared) hands focus on to what follows
+  // the list, its Show more control, instead of dropping it.
+  useLayoutEffect(() => {
+    const button = ref.current
+    return () => {
+      if (button && (button.getRootNode() as Document).activeElement === button) {
+        (button.parentElement!.nextElementSibling as HTMLElement | null)?.focus()
+      }
+    }
+  }, [])
   const body = (
     <div
-      ref={scrollRef}
       className={
         collecting
           ? undefined
@@ -97,6 +122,7 @@ export function PulseMomentRow({
 
   return (
     <button
+      ref={ref}
       type="button"
       className="pulse-moment-row-button"
       style={styles.momentButton}
@@ -106,15 +132,14 @@ export function PulseMomentRow({
       // first; removing that card shifts this row before pointer-up and the
       // browser never dispatches the click, losing the selection entirely.
       data-chart-action="true"
-      onClick={event => {
-        onSelect(point)
-        event.currentTarget.blur()
-      }}
+      // Focus stays on the row, so keyboard users keep their place.
+      onClick={() => onSelect(point)}
       onMouseEnter={() => onHighlight(analyticalOffset)}
       onMouseLeave={() => onHighlight(null)}
       onFocus={() => onHighlight(analyticalOffset)}
       onBlur={() => onHighlight(null)}
       aria-pressed={selected}
+      aria-controls={controls}
       aria-label={`Select minute bucket ${offsetLabel}, ${formatMomentMetricsLine(point)}, ${point.reasonLabel}`}
     >
       {body}

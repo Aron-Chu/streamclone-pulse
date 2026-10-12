@@ -27,28 +27,27 @@ type StateCase = {
   restore?: 'pending' | 'expired' | 'conflict'
   setup?: 'unlinked' | 'preparing' | 'fallback' | 'revoked' | 'outage' | 'sandbox'
   checkoutEnabled?: boolean
+  /** The snapshot's optional renewal field; absent means an older server. */
+  renewal?: 'auto' | 'ends'
   alias?: string
 }
 const CASES: StateCase[] = [
-  { name: 'not-a-supporter', journey: 'unlinked', principal: 'Become a Supporter', setup: 'unlinked' },
+  { name: 'not-a-supporter', journey: 'signed-out', principal: 'Supporter details', setup: 'unlinked', alias: 'Twitch sign-in off (stage A): sign-ups are not open, so the signed-out page describes Supporter and offers no purchase.' },
   { name: 'checkout-closed', journey: 'checkout-closed', principal: 'Check sign-up status', status: 'none', checkoutEnabled: false },
   { name: 'preparing-checkout', journey: 'offer', principal: 'Preparing checkout…', status: 'none', setup: 'preparing', alias: 'Transient busy offer. The worker is awaiting the mocked checkout response; the disabled action prevents another request.' },
   { name: 'stripe-open', journey: 'stripe-open', principal: 'Return to Stripe checkout', status: 'none', billing: 'waiting' },
   { name: 'payment-confirming', journey: 'payment-pending', principal: 'Check payment status', status: 'pending', billing: 'confirming' },
   { name: 'still-confirming', journey: 'still-confirming', principal: 'Check payment status', status: 'none', billing: 'still_confirming' },
-  { name: 'active', journey: 'active', principal: 'Manage membership', status: 'active' },
-  { name: 'scheduled-cancellation', journey: 'active', principal: 'Manage membership', status: 'active', alias: 'Active + Access through the authoritative accessUntil. The extension projection has no cancellation-reason/cancelAt field; this image does not prove cancellation was scheduled.' },
+  { name: 'active', journey: 'active', principal: 'Manage subscription', status: 'active', renewal: 'auto', alias: 'Active and renewing: renewal auto with renewsOn gives one Renews on line.' },
+  { name: 'scheduled-cancellation', journey: 'active', principal: 'Manage subscription', status: 'active', renewal: 'ends', alias: 'Active after a cancel at period end: renewal ends with endsOn gives one Cancels on line; Access through stays the authoritative accessUntil.' },
   { name: 'grace', journey: 'grace', principal: 'Update payment method', status: 'grace' },
   { name: 'ended', journey: 'expired', principal: 'Rejoin Supporter', status: 'expired' },
-  { name: 'review-dispute', journey: 'review', principal: 'Manage membership', status: 'review', alias: 'Authoritative review status. The snapshot exposes no dispute-reason field, so this does not prove a dispute.' },
+  { name: 'review-dispute', journey: 'review', principal: 'Manage subscription', status: 'review', alias: 'Authoritative review status. The snapshot exposes no dispute-reason field, so this does not prove a dispute.' },
   { name: 'refunded', journey: 'expired', principal: 'Rejoin Supporter', status: 'expired', alias: 'Expired is the only supported inactive projection. No refund-reason field exists; this image does not prove a refund and must not be labelled a distinct refunded UI.' },
-  { name: 'restore-email-sent', journey: 'restore-pending', principal: 'Check restore status', status: 'none', restore: 'pending', alias: 'Pending restore uses generic anti-enumeration copy. The fixture proves a request is pending, never that an email matched or was delivered.' },
-  { name: 'restore-expired', journey: 'restore-expired', principal: 'Try restore again', status: 'none', restore: 'expired' },
-  { name: 'restore-conflict', journey: 'restore-conflict', principal: 'Contact support', status: 'none', restore: 'conflict' },
-  { name: 'installation-flag-off', journey: 'link-pending', principal: 'Reopen streampulse.stream', setup: 'fallback' },
+  { name: 'tester-connect', journey: 'link-pending', principal: 'Reopen streampulse.stream', setup: 'fallback', alias: 'Invited-tester device link from the closed disclosure. No installation account is created.' },
   { name: 'service-outage', journey: 'membership-unknown', principal: 'Check again', status: 'none', setup: 'outage' },
   { name: 'sandbox-live-mismatch', journey: 'membership-unknown', principal: 'Check again', status: 'active', setup: 'sandbox' },
-  { name: 'revoked-installation', journey: 'relink-required', principal: 'Restore my Supporter', status: 'active', setup: 'revoked' },
+  { name: 'revoked-installation', journey: 'signed-out', principal: 'Supporter details', status: 'active', setup: 'revoked', alias: 'A connection that ended without the user choosing it is explained; no email restore or new payment is offered.' },
 ]
 const VIEWS = [
   { width: 320, height: 900, label: '320', basis: 'extension narrow viewport' },
@@ -62,15 +61,17 @@ const VIEWS = [
 const credential = () => ({ kind: 'linked', accountId: ACCOUNT, deviceId: DEVICE, token: 'a'.repeat(64), refreshToken: 'b'.repeat(64), expiresAt: new Date(Date.now() + 20 * 86_400_000).toISOString(), refreshExpiresAt: new Date(Date.now() + 80 * 86_400_000).toISOString() })
 function snapshot(state: StateCase) {
   const paid = state.status === 'active' || state.status === 'grace'
+  const accessUntil = new Date(Date.now() + 28 * 86_400_000).toISOString()
   return {
     schemaVersion: 1, accountId: ACCOUNT, environment: state.setup === 'sandbox' ? 'sandbox' : 'live', revision: 1,
     status: state.status ?? 'none', checkoutEnabled: state.checkoutEnabled !== false,
     accountKind: 'installation', installationAccountsEnabled: true, restoreEligible: state.status === 'none',
     serverTime: new Date().toISOString(), accessFrom: new Date(Date.now() - 60_000).toISOString(),
-    accessUntil: new Date(Date.now() + 28 * 86_400_000).toISOString(), cacheUntil: new Date(Date.now() + 300_000).toISOString(),
+    accessUntil, cacheUntil: new Date(Date.now() + 300_000).toISOString(),
     supportPeriods: paid ? 1 : 0,
     features: { 'supporter.banner.v1': paid, 'supporter.finish.v1': paid, 'supporter.recognition.v1': paid, 'supporter.chat_badge.v1': paid },
     cosmetics: { enabled: false, finish: 'glass' },
+    ...(state.renewal === 'ends' ? { renewal: 'ends', endsOn: accessUntil } : state.renewal === 'auto' ? { renewal: 'auto', renewsOn: accessUntil } : {}),
   }
 }
 async function seedPrivate(worker: Worker, state: StateCase) {
@@ -170,7 +171,7 @@ for (const state of CASES) {
     const identity = packageIdentity(), storeTarget = ['cws', 'edge', 'firefox'].includes(identity.target)
     const mismatchRepresentable = state.setup !== 'sandbox' || storeTarget
     const expectedJourney = mismatchRepresentable ? state.journey : 'active'
-    const expectedPrincipal = mismatchRepresentable ? state.principal : 'Manage membership'
+    const expectedPrincipal = mismatchRepresentable ? state.principal : 'Manage subscription'
     const membership = snapshot(state)
     const requests: Array<{ path: string; method: string; status: number }> = []
     let releaseCheckout: (() => void) | undefined
@@ -212,13 +213,17 @@ for (const state of CASES) {
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
     const journey = page.locator('.pulse-journey')
-    if (state.setup === 'fallback' || state.setup === 'preparing') {
+    if (state.setup === 'fallback') {
+      await page.getByText('Invited tester? Connect this extension', { exact: true }).click()
+      await page.getByRole('button', { name: 'Connect this extension', exact: true }).click()
+    }
+    if (state.setup === 'preparing') {
       await page.getByRole('button', { name: 'Become a Supporter', exact: true }).click()
-      if (state.setup === 'preparing') await expect.poll(() => checkoutReached).toBe(true)
+      await expect.poll(() => checkoutReached).toBe(true)
     }
     try {
       await expect(journey).toHaveAttribute('data-journey-state', expectedJourney)
-      const principal = journey.getByRole(/^(Reopen|Contact)/.test(expectedPrincipal) ? 'link' : 'button', { name: expectedPrincipal, exact: true })
+      const principal = journey.getByRole(/^(Reopen|Contact|Supporter details)/.test(expectedPrincipal) ? 'link' : 'button', { name: expectedPrincipal, exact: true })
       if (CAPTURE_PHASE === 'after') {
         await expect(principal).toHaveCount(1)
         await expect(principal).toBeVisible()
@@ -252,19 +257,24 @@ for (const state of CASES) {
         await expect(journey.getByRole('button', { name: /Become a Supporter|Rejoin|Start checkout again/ })).toHaveCount(0)
       }
       if (state.name === 'scheduled-cancellation') await expect(journey).toContainText('Access through')
-      if (state.restore === 'pending') {
-        await expect(journey).toContainText('If that email has a recoverable membership')
-        await expect(journey).toContainText('A3B4C5')
+      if (CAPTURE_PHASE === 'after' && state.renewal) {
+        // One line, dated in the page's own locale (short month, no year).
+        const day = await page.evaluate(value => new Date(value).toLocaleDateString([], { month: 'short', day: 'numeric' }), membership.accessUntil)
+        const line = journey.locator('[data-journey-renewal]')
+        await expect(line).toHaveCount(1)
+        await expect(line).toHaveAttribute('data-journey-renewal', state.renewal)
+        await expect(line).toHaveText(state.renewal === 'ends' ? `Cancels on ${day}` : `Renews on ${day}`)
       }
+      // The page never asks for an installation account or an email restore.
+      expect(requests.some(request => request.path === '/v1/account/installations' || request.path === '/v1/account/restores')).toBe(false)
       if (state.setup === 'fallback') {
-        expect(requests.some(request => request.path === '/v1/account/installations' && request.status === 404)).toBe(true)
         expect(requests.some(request => request.path === '/v1/account/device-links' && request.status === 201)).toBe(true)
         expect(requests.some(request => request.path === '/v1/billing/checkout')).toBe(false)
       }
       if (state.setup === 'revoked') {
         expect(requests.some(request => request.path === '/v1/billing/supporter' && request.status === 401)).toBe(true)
-        await expect(journey).toContainText('disconnected from your Pulse account')
-        await expect(journey.getByRole('button', { name: 'Become a Supporter', exact: true })).toHaveCount(0)
+        await expect(journey).toContainText('disconnected from your StreamPulse account')
+        await expect(journey.getByRole('button', { name: /Become a Supporter|Restore my Supporter/ })).toHaveCount(0)
       }
       if (state.setup === 'sandbox' && storeTarget) await expect(journey).toContainText('Supporter is not open in this build yet')
       const views: Array<Record<string, unknown>> = []

@@ -1,24 +1,65 @@
 # Supporter purchase and recovery from the extension
 
-The worker starts an installation account only when a person chooses a Supporter
-action. Browsing Twitch, installing the extension, reading status and previewing
-a finish do not enroll an installation or start a payment.
+## Account journey: Continue with Twitch
 
-With installation accounts enabled, **Become a Supporter** opens the server's
-Stripe Checkout session directly. Stripe collects the email and payment details.
-The extension follows its owned attempt and the server's membership projection;
-a return page or local preference never grants access. An explicitly chosen finish
-applies after verified access, including on an already-open Twitch tab.
+Account & Supporter follows one public account flow (account journey spec,
+closeout 2026-10-08b): **Continue with Twitch** → **Become a Supporter**
+(Stripe Checkout) → **Manage subscription** (Stripe's portal) → **Sign out**.
+Reinstalling, or using another browser, gets Supporter back by signing in with
+the same Twitch account: the server returns the same StreamPulse account and the
+same membership. Free tools never need an account.
 
-**Manage membership** opens the current account's server-created Stripe Customer
-Portal session. **Restore my Supporter** asks for the checkout email, shows the
-same generic response and a six-character comparison code, then waits for
-explicit email-link approval. The person confirms only when the code in their
-extension matches the genuine restore page; this protects against an unsolicited
-restore request. The server supplies the fixed device label.
-The worker receives the restored credential family privately. Accounts with
-billing history are never merged. **Use a StreamPulse website account** preserves
-the secondary email-account connection flow for existing users.
+The build stage comes from `PULSE_EXTENSION_TWITCH_SIGNIN` (see
+`scripts/extension-target.mjs` and `src/shared/twitchSignIn.ts`):
+
+| Stage | Who | Signed out | Signed in |
+|---|---|---|---|
+| `off` (default; every store build today) | everyone | "Supporter sign-ups are not open yet", the price and benefits, **Supporter details** (the /supporter page). No purchase, no email restore, no website-account choice. A closed **Invited tester? Connect this extension** disclosure keeps the existing device link. | Invited testers: status, **Manage subscription** (website billing) and **Sign out**. |
+| `tester` | development and preview builds only; store builds refuse it | **Continue with Twitch**, "Twitch sign-in is open to invited testers right now", device link under **Other ways to connect (testers)** | "Signed in with Twitch as {name}", status, **Become a Supporter** when the server opens Checkout, **Manage subscription**, **Sign out**, **Use a different Twitch account** |
+| `public` | a store build only once that store's manifest requests `identity` (spec E3) | **Continue with Twitch** | as `tester` |
+
+A development build with Twitch on adds `identity` to its generated manifest
+only; the checked-in manifests, the permission allowlist and the store
+permission docs move together in the release that flips a store manifest.
+
+With Twitch on, the worker's Checkout and portal need a signed-in account:
+`ensureSignedIn` replaces `ensureInstallation`, so nothing creates an
+installation account. Checkout uses the device bearer and opens Stripe; Stripe
+collects the billing email, which can differ from the Twitch email. An invited
+tester's email account without a Twitch identity gets the server's
+`browser_sign_in_required` and continues on the website. When the portal answers
+403 `recent_auth_required`, the worker tries one silent Twitch step-up and
+retries once; if that cannot finish, the page asks **Confirm it's you** and a
+click runs the interactive step-up (`portal_confirm`), then retries once. A check
+that names a different Twitch account (`identity_mismatch`) never opens the
+portal. Silent sign-in runs only on a true first install, never after **Sign out**
+or a server `revoked`.
+
+The page never sends `SUPPORTER_RESTORE` and never asks the worker to create an
+installation account. The worker code for installation accounts, email restore
+and device lists below is kept (spec §5: preserve, do not delete), and reachable
+only for an already linked installation account, which production cannot have
+while `PULSE_INSTALLATION_ACCOUNTS_ENABLED` is off.
+
+## Worker internals (installation accounts, kept)
+
+The worker starts an installation account only when asked for a Supporter
+action on an unlinked extension with Twitch sign-in off; the options page no
+longer asks. Browsing Twitch, installing the extension, reading status and
+previewing a finish do not enroll an installation or start a payment.
+
+With installation accounts enabled, Checkout opens the server's Stripe Checkout
+session directly. Stripe collects the email and payment details. The extension
+follows its owned attempt and the server's membership projection; a return page
+or local preference never grants access. An explicitly chosen finish applies
+after verified access, including on an already-open Twitch tab.
+
+Portal management opens the current account's server-created Stripe Customer
+Portal session. The worker's email restore asks for the checkout email, shows
+the same generic response and a six-character comparison code, then waits for
+explicit email-link approval. The server supplies the fixed device label. The
+worker receives the restored credential family privately. Accounts with billing
+history are never merged.
 
 The installation endpoint returns 404 while its feature flag is off. Only that
 pre-enrollment refusal uses the existing website-account journey. Existing email
@@ -55,8 +96,8 @@ status** can explicitly repeat Checkout on the same owned account to recover its
 idempotent server attempt; background reads never repeat the mutation. Recovery
 does not open a provider tab until the person chooses **Return to Stripe checkout**.
 
-Disconnect asks for confirmation while a payment is pending or membership is paid;
-disconnecting does not cancel the subscription or an in-flight payment.
+Sign out asks for confirmation while a payment is pending or membership is paid;
+signing out does not cancel the subscription or an in-flight payment.
 Disconnect or credential loss removes the private provider URL and attempt ID
 from the active journey. If a payment remains uncertain, only a domain-separated
 SHA-256 account fingerprint and the server attempt deadline survive as a
@@ -64,12 +105,12 @@ non-authorizing double-payment precaution. The marker expires at that deadline;
 legacy unbounded markers migrate once to a maximum twenty-four-hour precaution.
 Restoring that account permits an explicit owned check; another restored active
 account can manage its own membership without erasing the earlier uncertainty.
-An unresolved earlier account offers Restore/Connect and support, not another
-payment until its deadline. Owned expired/unpaid or active proof can clear the
+An unresolved earlier account offers support (and, with Twitch on, Continue
+with Twitch with the same account), not another payment until its deadline. Owned expired/unpaid or active proof can clear the
 corresponding marker sooner. Expiry of this local precaution grants no membership
 and does not assert that an earlier payment failed.
-Relink-required settings make recovery primary. Starting a separate membership
-requires a second explicit confirmation and cannot override unresolved payment.
+A connection that ended without the user choosing it is explained; it never
+offers a new payment, an email restore or a website-account choice.
 
 A lost restore-start response is visibly uncertain. Its private random restore
 key survives for at most fifteen minutes; the email does not persist. **Check
@@ -86,7 +127,7 @@ clears it. Uncertain delivery uses the existing key-only check; it never reuses
 the address to resend mail. Preparing a request has its own visible progress state.
 
 Installation accounts can list their own connected extensions and explicitly
-confirm peer revocation. The current browser uses its existing Disconnect action.
+confirm peer revocation. The current browser uses its existing Sign out action.
 The server checks ownership and revokes the peer's whole refresh family. Email
 accounts retain their existing website device-management flow.
 

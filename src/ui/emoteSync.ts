@@ -1,7 +1,8 @@
 import type { EmoteSyncSnapshot } from '../shared/messages.ts'
 
 export function emoteSyncStatusLabel(sync?: EmoteSyncSnapshot): string | undefined {
-  if (!sync?.message) return undefined
+  // A resting "Emotes synced" says nothing to act on: only syncing, stale or failed states speak.
+  if (!sync?.message || sync.state === 'ready') return undefined
   return sync.message
 }
 

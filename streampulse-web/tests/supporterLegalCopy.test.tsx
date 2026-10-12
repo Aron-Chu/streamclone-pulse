@@ -111,6 +111,16 @@ describe('Supporter legal copy', () => {
     expect(body).toMatch(/active for up to 72 hours after the paid period ends/)
   })
 
+  it('Supporter lists the three perks the extension sells: title paint, the tenure crest and emote rain', () => {
+    render(<MemoryRouter><Supporter /></MemoryRouter>)
+    const list = screen.getByRole('heading', { name: 'What Supporter includes' }).nextElementSibling!
+    const items = [...list.querySelectorAll('li')].map(item => item.textContent ?? '')
+    expect(items.some(item => /^Title paint/.test(item))).toBe(true)
+    expect(items.some(item => /^Tenure crest/.test(item))).toBe(true)
+    expect(items.some(item => /^Emote rain/.test(item))).toBe(true)
+    expect(items.join(' ')).not.toMatch(/signature/i)
+  })
+
   it('Supporter says plainly that the 7TV header backdrop moved to Supporter, and no longer promises that nothing free will move', () => {
     render(<MemoryRouter><Supporter /></MemoryRouter>)
     const body = screen.getByTestId('supporter-offer').textContent ?? ''

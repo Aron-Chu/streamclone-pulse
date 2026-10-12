@@ -379,6 +379,16 @@ export default function Privacy() {
             from any Twitch page script. Disconnecting the extension or uninstalling it removes it.
           </li>
           <li>
+            <strong>Extension IndexedDB</strong> (<code>pulse-my-moments-v1</code>) — My Moments data
+            kept only in this browser profile: the moments you watch when you turn on history (off by
+            default, kept for the retention period you choose), the notes you add to saved moments, and
+            bookmarks you save while no account is linked (channel, stream or VOD, time offset and label).
+            None of it is uploaded to StreamPulse or synced through your Chrome profile, and incognito
+            windows neither read it nor add to it. Removing a save, clearing history in My Moments or
+            uninstalling the extension deletes it. Bookmarks saved while an account is linked are
+            stored by StreamPulse with that account.
+          </li>
+          <li>
             <strong>Portal localStorage</strong> — stores recently opened Twitch channel logins
             (<code>sp.hub.recentLogins</code>, capped list), public hub/analytics cache entries keyed by
             backend URL and activity window (<code>sp:publicHub:v1:…</code>, with a staleness hint of about

@@ -15,10 +15,11 @@ export interface ChartSegmentBucket {
   rollupIndex: number
 }
 
+/** A missing bucket scores below any real one, so a quiet real bucket wins a tie with a hole. */
 export function rollupActivityScore(rollup: ExtensionRollup): number {
   const chat = rollup.chatCount ?? 0
   const emotes = minuteEmoteTotal(rollup)
-  return chat * 1000 + emotes * 100
+  return rollup.missing ? -1 : chat * 1000 + emotes * 100
 }
 
 export function maxBarsForWidth(plotWidthPx: number, cap = SEGMENT_CHART_MAX_BARS): number {

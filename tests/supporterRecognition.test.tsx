@@ -156,15 +156,23 @@ describe('supporter recognition', () => {
     }
   })
 
-  it('shows the mark only for a Supporter, and the status pill either way', () => {
+  it('shows the crest and paint only for a Supporter, and the status pill either way', () => {
     const free = render(<StreamPulseTitleBlock statusLabel="Live chart" statusTone="live" />)
-    expect(free.querySelector('svg')).toBeNull()
+    expect(free.querySelector('.pulse-crest')).toBeNull()
+    expect(free.querySelector('h2')!.classList.contains('pulse-paint')).toBe(false)
     expect(free.querySelector('h2')!.textContent).toBe('Stream Pulse')
     expect(free.textContent).toContain('Live chart')
 
-    const supporter = render(<StreamPulseTitleBlock finish="glass" statusLabel="Live chart" statusTone="live" />)
-    expect(supporter.querySelector('svg')).not.toBeNull()
-    expect(supporter.querySelector('path')!.getAttribute('stroke')).toBe(supporterFinish.glass)
+    const supporter = render(<StreamPulseTitleBlock finish="glass" tenure="12m" paint={{ wave: 'aurora', sheen: 'glint' }} statusLabel="Live chart" statusTone="live" />)
+    expect(supporter.querySelector('.pulse-crest')!.getAttribute('data-tenure')).toBe('12m')
+    const title = supporter.querySelector('h2')!
+    expect(title.classList.contains('pulse-paint')).toBe(true)
+    expect(title.dataset).toMatchObject({ finish: 'glass', wave: 'aurora', sheen: 'glint', text: 'Stream Pulse' })
+    expect(supporter.textContent).toContain('Live chart')
+
+    // Before the worker reports a support count, the crest starts at the first stage.
+    const fresh = render(<StreamPulseTitleBlock finish="halo" statusLabel="Live chart" />)
+    expect(fresh.querySelector('.pulse-crest')!.getAttribute('data-tenure')).toBe('new')
   })
 
   it('draws the header mark on the same grid as the badge', () => {

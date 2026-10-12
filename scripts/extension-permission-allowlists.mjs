@@ -13,6 +13,13 @@
  * scripting coverage for non-www Twitch hosts used by channel and mobile
  * surfaces; keep the wildcard until product confirms www-only injection.
  */
+/**
+ * No `identity` while Sign in with Twitch is compiled off
+ * (TWITCH_SIGNIN_ENABLED in src/shared/twitchSignIn.ts): store review rejects
+ * a permission the package never uses. The release that turns the flag on adds
+ * `identity` here, to every manifest, and to the store permission docs
+ * together. Never add `identity.email`.
+ */
 export const ALLOWED_PERMISSIONS = Object.freeze(['storage', 'scripting'])
 
 export const ALLOWED_HOST_PERMISSIONS_STORE = Object.freeze([
