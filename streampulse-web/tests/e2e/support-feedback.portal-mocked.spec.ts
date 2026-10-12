@@ -122,10 +122,10 @@ test.describe('any build', () => {
     await expect(card).toHaveAttribute('data-testid', 'support-feedback-link')
     await expect(card).toBeInViewport()
     // A build without the Turnstile site key (CI) cannot take private
-    // messages, so the card says so instead of promising them.
-    await expect(card).toContainText(/Only the StreamPulse team reads it\.|The private feedback form isn't taking messages right now\./)
+    // messages yet, so the card says the form opens soon instead of promising them.
+    await expect(card).toContainText(/Only the StreamPulse team reads it\.|Our private form opens soon\./)
     await expect(page.getByTestId('support-form')).toHaveCount(0)
-    await card.getByRole('link', { name: 'Send feedback' }).click()
+    await card.getByRole('link', { name: /^(Send feedback|See where to ask)$/ }).click()
     await expect(page).toHaveURL(/\/feedback$/)
     await expect(page.getByRole('heading', { level: 1, name: 'Send feedback' })).toBeVisible()
     const form = page.getByTestId('support-form')
@@ -159,6 +159,32 @@ test.describe('any build', () => {
     await expect(page.getByTestId('feedback-private-note')).toHaveCount(0)
     await expect(page.getByTestId('support-discord-line')).toHaveCount(0)
     await expect(page.getByTestId('support-form-success')).toHaveCount(0)
+    // The site-wide public reset used to strip these borders, so the buttons read as loose text.
+    const buttons = off.locator('.sc-btn--outline')
+    expect(await buttons.count()).toBeGreaterThan(0)
+    for (const button of await buttons.all()) {
+      expect(await button.evaluate(el => [getComputedStyle(el).borderTopWidth, getComputedStyle(el).borderTopStyle])).toEqual(['1px', 'solid'])
+    }
+  })
+
+  test('before the private form opens, /feedback says it opens soon without reading like an outage', async ({ page, baseURL }) => {
+    await mockNetwork(page, baseURL)
+    await page.goto('/feedback')
+    const form = page.getByTestId('support-form')
+    const off = page.getByTestId('support-form-unavailable')
+    await expect(form.or(off)).toBeVisible()
+    test.skip(await form.isVisible(), 'build has VITE_TURNSTILE_SITE_KEY, so the private form is open')
+    await expect(page.getByTestId('feedback-soon-badge')).toHaveText('Form opens soon')
+    await expect(page.getByTestId('feedback-page-sub')).toHaveText('Our private form opens soon. Until then, you can ask in public.')
+    // One message, in the header: the card only lists the public places to ask.
+    await expect(off).not.toContainText(/unavailable|try again later/i)
+    await expect(off.getByRole('button', { name: 'Copy safe diagnostics' })).toHaveCount(0)
+    await expect(off.getByTestId('feedback-public-alternatives')).toContainText('Public alternatives. Anyone can read these')
+    for (const button of await off.locator('.sc-btn--outline').all()) {
+      expect(await button.evaluate(el => getComputedStyle(el).borderTopWidth)).toBe('1px')
+      // Every public button opens a new tab and shows the same outward arrow.
+      await expect(button.locator('svg.lucide-arrow-up-right')).toHaveCount(1)
+    }
   })
 })
 
@@ -268,6 +294,24 @@ test.describe('configured build', () => {
       if (!oneLine || row.overflow > 0 || row.overlap || row.page > 0) wrapped.push(`${width}: ${JSON.stringify(row)}`)
     }
     expect(wrapped).toEqual([])
+  })
+
+  test('keeps the public Discord labelled public under the form and after a failed send', async ({ page, baseURL }) => {
+    // The launch-day labels ("Ask in Discord") are for the closed form only; the real form's wording stays as it was.
+    await page.addInitScript(() => { (window as { __turnstilePasses?: boolean }).__turnstilePasses = true })
+    await mockNetwork(page, baseURL, [{ status: 500, body: { error: 'boom' } }])
+    await openConfiguredFeedback(page)
+    const line = page.getByTestId('support-discord-line')
+    test.skip(await line.count() === 0, 'build has no VITE_PUBLIC_DISCORD_INVITE_URL, so there is no Discord line')
+    await expect(line.getByRole('link', { name: 'Join the public Discord (opens in a new tab)' })).toHaveText('Join the public Discord')
+    await page.getByLabel('Your message').fill('Charts are blank')
+    await page.getByLabel('I consent to submitting this text to StreamPulse support.').check()
+    await page.getByTestId('support-form').locator('button[type="submit"]').click()
+    await expect(page.getByTestId('support-form-error')).toBeVisible()
+    const alternatives = page.getByTestId('feedback-public-alternatives')
+    await expect(alternatives.getByRole('link')).toHaveText(['Open a public issue on GitHub', 'Ask in the public Discord'])
+    await expect(alternatives.getByRole('link', { name: 'Ask in the public Discord (opens in a new tab)' })).toBeVisible()
+    await expect(alternatives).not.toContainText('Ask in Discord')
   })
 
   test.describe('keyboard and screen-reader paths', () => {

@@ -15,6 +15,7 @@ import { HubActivityMomentAnnotations } from '../analytics/HubActivityMomentAnno
 import { classifyMomentMarker, resolveAnnotationCollisions, type HubChartAnnotation } from '../../../lib/hubChartMarkers'
 import { HubChartNavigator, useChartScrollZoom, zoomNavigatorRange, type HubChartNavigatorPreset, type HubChartNavigatorRange } from './HubChartNavigator'
 import { barBucketAt, barLevelRange, buildBarPyramid, pickBarLevel, type BarBucket, type BarLevel } from '@streampulse/pulse-charts/barPyramid'
+import { estimateViewerAxisLabelWidth, placeViewerAxisLabels, type ViewerAxisLinePoint } from '../../../lib/hubViewerAxisLabels'
 import './hub-public-audit.css'
 
 export type { HubActivityRangeOption, HubActivityRangeControl } from './HubRangeMenu'
@@ -176,6 +177,13 @@ const VIEWER_LANE_TOP = 6
 const VIEWER_LANE_BOTTOM = 48
 const ACTIVITY_LANE_TOP = 58
 const ACTIVITY_LANE_BOTTOM = 92
+// Viewer-scale labels inside the plot's left edge (hub-public-audit.css):
+// 0.5rem in, 16px tall with their plate, kept 3px clear of the viewer line
+// and its dark underlay, and moved at most 24px off their tick.
+const VIEWER_AXIS_LABEL_LEFT_PX = 8
+const VIEWER_AXIS_LABEL_HEIGHT_PX = 16
+const VIEWER_AXIS_LABEL_CLEARANCE_PX = 3
+const VIEWER_AXIS_LABEL_MAX_SHIFT_PX = 24
 
 /** Touch-only screens have no hover; tapping selects, so "hover" wording would mislead. */
 const COARSE_POINTER_MQ = '(hover: none) and (pointer: coarse)'
@@ -1153,6 +1161,9 @@ export function HubActivityChart({
       viewerDomainFloor,
       viewerDomainCeil,
       viewerAxisTicks: [viewerDomainCeil, (viewerDomainCeil + viewerDomainFloor) / 2, viewerDomainFloor],
+      // The viewer line as drawn (sampled buckets in view), for placing the scale labels.
+      viewerAxisLine: viewerDisplayPoints.map((point, i): ViewerAxisLinePoint =>
+        i >= visibleStartIndex && i <= visibleEndIndex && viewerSampleMask[i] ? point : null),
       xs,
       lastT,
       timeDomain,
@@ -1240,6 +1251,20 @@ export function HubActivityChart({
   // Destructure before any early return so hook order stays stable across
   // loading → data transitions (React hook rules).
   const { timeDomain } = model
+  // Each scale label stays at its tick, or steps the least distance out of the
+  // viewer line's way; one with no room nearby hides (hubViewerAxisLabels.ts).
+  const viewerAxisLabelPlaces = useMemo(() => placeViewerAxisLabels({
+    tickYs: model.viewerAxisTicks.map((_, i) => VIEWER_LANE_TOP + (i * (VIEWER_LANE_BOTTOM - VIEWER_LANE_TOP)) / 2),
+    labelWidths: model.viewerAxisTicks.map((value) => estimateViewerAxisLabelWidth(compact(value))),
+    line: model.viewerAxisLine,
+    plotWidth: plotSize.width,
+    plotHeight: plotSize.height,
+    labelLeft: VIEWER_AXIS_LABEL_LEFT_PX,
+    labelHeight: VIEWER_AXIS_LABEL_HEIGHT_PX,
+    clearance: VIEWER_AXIS_LABEL_CLEARANCE_PX,
+    maxShift: VIEWER_AXIS_LABEL_MAX_SHIFT_PX,
+    bottomLimit: ACTIVITY_LANE_TOP,
+  }), [model.viewerAxisTicks, model.viewerAxisLine, plotSize.width, plotSize.height])
   const mergedBars = useMemo<HubMergedBar[] | null>(() => {
     if (!barLevel || barLevel.step <= 1) return null
     const [from, to] = barLevelRange(barLevel, timeDomain.start, timeDomain.endExclusive)
@@ -2106,9 +2131,18 @@ export function HubActivityChart({
             />
           ))}
           {viewerSampleCount > 0 ? <div className="hx-viewer-axis-ticks" aria-label="Viewers, automatic scale">
-            {model.viewerAxisTicks.map((value, i) => (
-              <span key={i} style={{ top: `${i * 50}%` }}>{compact(value)}</span>
-            ))}
+            {model.viewerAxisTicks.map((value, i) => {
+              const place = viewerAxisLabelPlaces[i]
+              const offset = place && !place.hidden ? place.offset : 0
+              return (
+                <span
+                  key={i}
+                  data-moved={offset !== 0 ? 'true' : undefined}
+                  data-hidden={place?.hidden ? 'true' : undefined}
+                  style={{ top: offset !== 0 ? `calc(${i * 50}% + ${offset}px)` : `${i * 50}%` }}
+                >{compact(value)}</span>
+              )
+            })}
           </div> : null}
           {!compactAnnotations ? (
             <>

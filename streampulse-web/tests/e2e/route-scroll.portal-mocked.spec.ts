@@ -396,12 +396,17 @@ test('the extension "Release details" destination is a prerendered release-notes
   await expect(page.getByRole('heading', { level: 1, name: 'Release notes' })).toBeVisible()
   // Released versions only: the page starts with the latest release and never shows an
   // "In development" placeholder for the version being built.
-  const { releases } = releaseNotes as { releases: Array<{ version: string; status: string }> }
+  const { releases } = releaseNotes as { releases: Array<{ version: string; status: string; preview?: string[] }> }
   const latestReleased = releases.find((release) => release.status === 'released')
   expect(latestReleased).toBeTruthy()
-  const releaseLabels = page.getByText(/^v[\d.]+ · Released/)
-  await expect(releaseLabels.first()).toBeVisible()
-  await expect(releaseLabels.first()).toContainText(`v${latestReleased!.version} · Released`)
+  // The first section is the latest release. It leads with its highlights card
+  // ("What's new in v…"), or says "v… · Released" when it has no highlights.
+  const firstSection = page.getByTestId('changelog-page').locator('section').first()
+  await expect(firstSection).toBeVisible()
+  await expect(firstSection).toHaveAttribute('id', `v${latestReleased!.version}`)
+  await expect(firstSection).toContainText(latestReleased!.preview?.length
+    ? `What’s new in v${latestReleased!.version}`
+    : `v${latestReleased!.version} · Released`)
   await expect(page.getByText(/In development/)).toHaveCount(0)
   await expect(page.getByText(/· Preview/)).toHaveCount(0)
   await expect(page.getByTestId('not-found')).toHaveCount(0)

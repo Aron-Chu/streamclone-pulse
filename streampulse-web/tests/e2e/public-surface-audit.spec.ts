@@ -111,9 +111,11 @@ test.describe('public surface audit', () => {
     await page.goto('/support')
     const card = page.getByTestId('support-feedback-link')
     await expect(card).toHaveAttribute('id', 'send-feedback')
-    await expect(card.getByRole('link', { name: 'Send feedback' })).toHaveAttribute('href', '/feedback')
+    // "Send feedback" with a configured form; "See where to ask" before the form opens.
+    const cardLink = card.getByRole('link', { name: /^(Send feedback|See where to ask)$/ })
+    await expect(cardLink).toHaveAttribute('href', '/feedback')
     await expect(page.getByRole('heading', { name: 'Extension not appearing on Twitch' })).toBeVisible()
-    await card.getByRole('link', { name: 'Send feedback' }).click()
+    await cardLink.click()
     await expect(page).toHaveURL(/\/feedback$/)
     await expect(page.getByRole('heading', { level: 1, name: 'Send feedback' })).toBeVisible()
     const form = page.getByTestId('support-form')
@@ -123,10 +125,11 @@ test.describe('public surface audit', () => {
       await expect(page.getByText('No account needed.')).toBeVisible()
       await expect(page.getByTestId('feedback-private-note')).toContainText('Only the StreamPulse team reads it')
     }
-    // The audit build has no Turnstile key, so the form says it is unavailable
-    // and the page makes no private-delivery promise or invitation above it.
+    // The audit build has no Turnstile key, so the page says the private form
+    // opens soon and makes no private-delivery promise or invitation above it.
     if (await off.isVisible()) {
-      await expect(page.getByTestId('feedback-page-sub')).toHaveText("Spotted a problem or have an idea? The private form isn't taking messages right now.")
+      await expect(page.getByTestId('feedback-page-sub')).toHaveText('Our private form opens soon. Until then, you can ask in public.')
+      await expect(page.getByTestId('feedback-soon-badge')).toHaveText('Form opens soon')
       await expect(page.getByTestId('feedback-private-badge')).toHaveCount(0)
       await expect(page.getByTestId('feedback-private-note')).toHaveCount(0)
       await expect(page.getByTestId('support-discord-line')).toHaveCount(0)

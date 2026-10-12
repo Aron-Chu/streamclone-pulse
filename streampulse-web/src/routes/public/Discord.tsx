@@ -5,6 +5,7 @@ import { DiscordMark } from '../../ui/components/DiscordMark'
 import { buttonClass } from '../../ui/primitives'
 import { FEEDBACK_PATH } from '../../lib/externalLinks'
 import { discordInviteUrl } from '../../lib/discord'
+import { feedbackSiteKey, supportFormAvailability } from '../../lib/supportForm'
 
 function leaveFor(url: string) {
   window.location.replace(url)
@@ -17,6 +18,7 @@ function leaveFor(url: string) {
  */
 export default function Discord({ redirect = leaveFor }: { redirect?: (url: string) => void }) {
   const invite = discordInviteUrl()
+  const formReady = supportFormAvailability(feedbackSiteKey()) === 'ready'
 
   useEffect(() => {
     if (invite) redirect(invite)
@@ -34,7 +36,12 @@ export default function Discord({ redirect = leaveFor }: { redirect?: (url: stri
                 <DiscordMark size={18} />Join the Discord
               </a>
             </div>
-            <p className="muted">The server is public, so keep account problems for the <Link to={FEEDBACK_PATH}>private feedback form</Link>.</p>
+            {/* Until the private form opens there is nowhere private to send account problems, so the note only warns. */}
+            <p className="muted">
+              {formReady
+                ? <>The server is public, so keep account problems for the <Link to={FEEDBACK_PATH}>private feedback form</Link>.</>
+                : 'The server is public, so leave out account details and anything personal.'}
+            </p>
           </>
         ) : (
           <>

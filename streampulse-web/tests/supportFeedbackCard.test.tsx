@@ -706,14 +706,18 @@ describe('support feedback card', () => {
 })
 
 describe('page outline', () => {
-  it.each(['1x00000000000000000000AA', ''])('puts the /support h1 before the private feedback link card (site key %j)', (key) => {
+  it.each(['1x00000000000000000000AA', ''])('puts the /support h1 before the feedback link card (site key %j)', (key) => {
     vi.stubEnv('VITE_TURNSTILE_SITE_KEY', key)
     render(<MemoryRouter><Support /></MemoryRouter>)
     const headings = [...document.querySelectorAll('h1, h2, h3, h4, h5, h6')]
     expect(headings[0]!.tagName).toBe('H1')
     expect(headings[0]!.textContent).toBe('Support & Troubleshooting')
     expect(document.querySelectorAll('h1')).toHaveLength(1)
-    expect(headings[1]!.textContent).toBe('Send private feedback')
+    // "Private" only while the form can take a message.
+    expect(headings[1]!.textContent).toBe(key ? 'Send private feedback' : 'Send feedback')
+    // The extension is also built for Edge and Firefox, so the subtitle does not say Chrome.
+    expect(screen.getByText('Troubleshooting for the Twitch extension, coverage states, and public analytics portal.')).toBeTruthy()
+    expect(document.querySelector('.support-page__head')!.textContent).not.toContain('Chrome')
   })
 
   it.each(['1x00000000000000000000AA', ''])('gives /feedback one h1 that names the form (site key %j)', (key) => {
@@ -751,16 +755,23 @@ describe('/support link card', () => {
     expect(security.textContent).toMatch(/Do not post vulnerability details in public issues, on Discord or in the feedback form\./)
   })
 
-  it('does not promise private delivery when the build cannot take messages', () => {
+  it('before launch says the private form opens soon and sends readers to where they can ask', () => {
     vi.stubEnv('VITE_TURNSTILE_SITE_KEY', '')
     render(<MemoryRouter><Support /></MemoryRouter>)
     const card = screen.getByTestId('support-feedback-link')
+    expect(within(card).getByRole('heading', { level: 2 }).textContent).toBe('Send feedback')
     expect(screen.getByTestId('support-feedback-link-sub').textContent)
-      .toBe("The private feedback form isn't taking messages right now. The feedback page lists public alternatives.")
-    expect(card.textContent).not.toMatch(/Only the StreamPulse team reads it/)
-    // No lock icon beside copy that says the private form is closed.
+      .toBe('Our private form opens soon. Until then, you can ask in public.')
+    expect(card.textContent).not.toMatch(/Only the StreamPulse team reads it|Send private feedback|isn't taking messages/)
+    // No lock icon beside copy that says the private form is not open yet.
     expect(within(card).queryByTestId('support-feedback-link-lock')).toBeNull()
-    expect(within(card).getByRole('link', { name: 'Send feedback' }).getAttribute('href')).toBe('/feedback')
+    // The button says what the page offers today instead of "Send feedback".
+    expect(within(card).queryByRole('link', { name: /Send feedback/ })).toBeNull()
+    expect(within(card).getByRole('link', { name: 'See where to ask' }).getAttribute('href')).toBe('/feedback')
+    // The contact line no longer calls the closed form private either.
+    const contact = document.getElementById('contact') as HTMLElement
+    expect(contact.textContent).toMatch(/For bugs and ideas use the feedback page\./)
+    expect(within(contact).getByRole('link', { name: 'feedback page' }).getAttribute('href')).toBe('/feedback')
   })
 })
 
@@ -781,15 +792,38 @@ describe('/feedback page', () => {
     expect(screen.getByRole('link', { name: 'Support & Troubleshooting' }).getAttribute('href')).toBe('/support')
   })
 
-  it('shows the unavailable panel with public alternatives when the build has no site key', () => {
+  it('before launch (no site key) lists only the public places to ask, Discord first', () => {
     vi.stubEnv('VITE_TURNSTILE_SITE_KEY', '')
     vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', 'https://discord.gg/sp-test-code')
     render(<MemoryRouter><Feedback /></MemoryRouter>)
     const off = screen.getByTestId('support-form-unavailable')
-    expect(off.textContent).toMatch(/The private feedback form is unavailable right now\./)
     expect(screen.queryByTestId('support-form')).toBeNull()
-    expect(within(off).getByRole('link', { name: 'Ask in the public Discord (opens in a new tab)' }).getAttribute('href')).toBe('https://discord.gg/sp-test-code')
+    // The header says the form opens soon; the card does not repeat an outage message.
+    expect(off.textContent).not.toMatch(/unavailable|try again later/i)
+    expect(within(off).queryByRole('button', { name: 'Copy safe diagnostics' })).toBeNull()
+    expect(within(off).getByTestId('feedback-public-alternatives').textContent).toMatch(/^Public alternatives\. Anyone can read these/)
+    const links = within(off).getAllByRole('link')
+    expect(links.map(link => link.getAttribute('aria-label'))).toEqual([
+      'Ask in Discord (public, opens in a new tab)',
+      'Open a public issue on GitHub (opens in a new tab)',
+    ])
+    expect(links[0]!.textContent).toBe('Ask in Discord')
+    expect(links[0]!.getAttribute('href')).toBe('https://discord.gg/sp-test-code')
+    // Both open in a new tab, so both carry the same outward arrow.
+    for (const link of links) expect(link.querySelector('svg.lucide-arrow-up-right')).toBeTruthy()
+  })
+
+  it('keeps the full unavailable panel, diagnostics included, when a configured build finds the form off', async () => {
+    respondWith(json(503, { error: 'disabled' }))
+    await renderCard()
+    typeMessage('Is this on?')
+    consent()
+    issue('tok-1')
+    send()
+    const off = await screen.findByTestId('support-form-unavailable')
+    expect(off.textContent).toMatch(/The private feedback form is unavailable right now, so your message was not sent\./)
     expect(within(off).getByRole('button', { name: 'Copy safe diagnostics' })).toBeTruthy()
+    expect(screen.queryByTestId('feedback-soon-badge')).toBeNull()
   })
 
   it('drops the private note and the second Discord line while the form is unavailable', () => {
@@ -803,15 +837,22 @@ describe('/feedback page', () => {
       .filter(a => !a.closest('header, footer, nav'))).toHaveLength(1)
   })
 
-  it('does not invite a message in the header while the form is unavailable', () => {
+  it('says the private form opens soon, not that it is down, before launch', () => {
     vi.stubEnv('VITE_TURNSTILE_SITE_KEY', '')
     render(<MemoryRouter><Feedback /></MemoryRouter>)
     expect(screen.getByTestId('support-form-unavailable')).toBeTruthy()
     expect(screen.queryByTestId('feedback-private-badge')).toBeNull()
+    expect(screen.getByTestId('feedback-soon-badge').textContent).toBe('Form opens soon')
     expect(screen.getByTestId('feedback-page-sub').textContent)
-      .toBe("Spotted a problem or have an idea? The private form isn't taking messages right now.")
+      .toBe('Our private form opens soon. Until then, you can ask in public.')
     const head = screen.getByRole('heading', { level: 1 }).parentElement!
-    expect(head.textContent).not.toMatch(/Tell the StreamPulse team here|Private feedback/)
+    expect(head.textContent).not.toMatch(/Tell the StreamPulse team here|Private feedback|isn't taking messages|right now/)
+  })
+
+  it('shows no "opens soon" badge on a configured build', async () => {
+    await renderCard()
+    expect(screen.queryByTestId('feedback-soon-badge')).toBeNull()
+    expect(screen.getByTestId('feedback-private-badge')).toBeTruthy()
   })
 
   it('lists the public Discord once after a failed send, and brings the quiet line back on retry', async () => {
@@ -825,7 +866,16 @@ describe('/feedback page', () => {
     send()
     await screen.findByTestId('support-form-error')
     const alternatives = screen.getByTestId('feedback-public-alternatives')
-    expect(within(alternatives).getByRole('link', { name: 'Ask in the public Discord (opens in a new tab)' })).toBeTruthy()
+    // A configured build keeps its wording after a failed send: GitHub first,
+    // then the Discord labelled public, with no "Ask in Discord" or extra arrow.
+    const publicLinks = within(alternatives).getAllByRole('link')
+    expect(publicLinks.map(link => link.getAttribute('aria-label'))).toEqual([
+      'Open a public issue on GitHub (opens in a new tab)',
+      'Ask in the public Discord (opens in a new tab)',
+    ])
+    expect(publicLinks[1]!.textContent).toBe('Ask in the public Discord')
+    expect(publicLinks[1]!.querySelector('svg.lucide-arrow-up-right')).toBeNull()
+    expect(alternatives.textContent).not.toContain('Ask in Discord')
     expect(screen.queryByTestId('support-discord-line')).toBeNull()
     expect(screen.getAllByRole('link', { name: /Discord/ })
       .filter(a => !a.closest('header, footer, nav'))).toHaveLength(1)
@@ -855,8 +905,12 @@ describe('/feedback page', () => {
     expect(screen.queryByTestId('feedback-private-note')).toBeNull()
     expect(screen.queryByTestId('support-discord-line')).toBeNull()
     expect(screen.queryByTestId('feedback-private-badge')).toBeNull()
+    // A configured build that finds intake off is a real outage, so the header says so.
     expect(screen.getByTestId('feedback-page-sub').textContent).toMatch(/The private form isn't taking messages right now\./)
-    expect(within(off).getByRole('link', { name: 'Ask in the public Discord (opens in a new tab)' })).toBeTruthy()
+    expect(screen.queryByTestId('feedback-soon-badge')).toBeNull()
+    const discordLink = within(off).getByRole('link', { name: 'Ask in the public Discord (opens in a new tab)' })
+    expect(discordLink.textContent).toBe('Ask in the public Discord')
+    expect(off.textContent).not.toContain('Ask in Discord')
   })
 
   it('keeps the private note above a sent case', async () => {

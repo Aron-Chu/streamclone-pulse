@@ -8,8 +8,9 @@ import { feedbackSiteKey, supportFormAvailability } from '../../lib/supportForm'
 import './support.css'
 
 export default function Support() {
-  // A build without the Turnstile site key cannot take private messages, so
-  // the card does not promise them; /feedback then lists public alternatives.
+  // A build without the Turnstile site key cannot take private messages yet, so
+  // the card says the form opens soon and its button says where it goes:
+  // /feedback then lists the public places to ask.
   const formReady = supportFormAvailability(feedbackSiteKey()) === 'ready'
   return (
     <PublicLayout>
@@ -22,25 +23,25 @@ export default function Support() {
             StreamPulse Help & Diagnostic Desk
           </span>
           <h1>Support & Troubleshooting</h1>
-          <p>Troubleshooting for the Twitch Chrome extension, coverage states, and public analytics portal.</p>
+          <p>Troubleshooting for the Twitch extension, coverage states, and public analytics portal.</p>
         </header>
 
         {/* The private form lives on /feedback. This card keeps the
             send-feedback id so older /support#send-feedback links land on it. */}
         <section id="send-feedback" className="feedback-card feedback-link-card" aria-labelledby="feedback-title" data-testid="support-feedback-link">
           <div className="feedback-link-card__text">
-            <h2 id="feedback-title" className="feedback-card__title">Send private feedback</h2>
+            <h2 id="feedback-title" className="feedback-card__title">{formReady ? 'Send private feedback' : 'Send feedback'}</h2>
             <p className="feedback-card__sub" data-testid="support-feedback-link-sub">
               {/* The lock marks a private channel that can take a message; a build
                   that cannot take one says so without it. */}
               {formReady ? <Lock aria-hidden="true" data-testid="support-feedback-link-lock" /> : null}
               {formReady
                 ? 'Report a problem or share an idea. Only the StreamPulse team reads it. No account needed.'
-                : "The private feedback form isn't taking messages right now. The feedback page lists public alternatives."}
+                : 'Our private form opens soon. Until then, you can ask in public.'}
             </p>
           </div>
           <Link className={buttonClass('default', 'lg')} to={FEEDBACK_PATH}>
-            Send feedback<ArrowRight aria-hidden="true" />
+            {formReady ? 'Send feedback' : 'See where to ask'}<ArrowRight aria-hidden="true" />
           </Link>
         </section>
 
@@ -100,7 +101,7 @@ export default function Support() {
             <p>
               Email <a href="mailto:privacy@streampulse.stream" className="text-violet-400 font-bold hover:underline">privacy@streampulse.stream</a> for
               privacy, legal, billing and refund questions. For bugs and ideas use the{' '}
-              <Link to={FEEDBACK_PATH} className="text-violet-400 hover:underline">private feedback form</Link>.
+              <Link to={FEEDBACK_PATH} className="text-violet-400 hover:underline">{formReady ? 'private feedback form' : 'feedback page'}</Link>.
             </p>
             <h3 id="security">Security reports</h3>
             <p className="muted text-xs" data-testid="support-security-report">

@@ -13,40 +13,39 @@
   font-size: 0.75rem;
 }
 
-/* Reserve an external axis gutter without covering the newest measurements. */
+/* Scale values sit inside the plot's left edge, under "Sampled viewers", so
+   the bars, time axis, zoom bar and provider lanes run the full card width. */
 .hubx .hx-chart2[data-chart-layout="viewer-lane"] {
   height: 420px !important;
-  margin-right: 4.25rem;
   overflow: visible;
 }
 .hubx .hx-chart2[data-chart-layout="viewer-lane"] .ylab {
   display: none;
-}
-.hubx .hx-chart2[data-chart-layout="viewer-lane"] .hx-viewer-axis-ticks {
-  inset: 6% -4.25rem 52% auto;
-  width: 4.25rem;
-  padding-left: 0.4rem;
-  border-left: 1px solid hsl(var(--border) / 0.45);
-}
-.hubx .hx-chart2[data-chart-layout="viewer-lane"] .hx-viewer-axis-ticks span {
-  right: 0.35rem;
-  color: hsl(var(--muted-foreground));
-  font-size: 0.75rem;
 }
 @media (max-width: 719px) {
   .hubx .hx-chart2[data-chart-layout="viewer-lane"] {
     height: 360px !important;
   }
 }
-
-/* Keep the time-bearing rows on the same reduced plot width as the chart. */
-.hubx .hx-plot-stack:has(.hx-chart2[data-chart-layout="viewer-lane"]) .hx-chart-navigator,
-.hubx .hx-plot-stack:has(.hx-chart2[data-chart-layout="viewer-lane"]) .hx-axis,
-.hubx .hx-plot-stack:has(.hx-chart2[data-chart-layout="viewer-lane"]) .hx-provider-lanes {
-  margin-right: 4.25rem;
+/* The scale labels never cover the viewer line: the chart moves a label just
+   clear of the line near its tick, or hides it when there is no room close by
+   (hubViewerAxisLabels.ts). Sizes match the chart's estimates: 0.5rem in,
+   16px tall with the plate. */
+.hubx .hx-chart2[data-chart-layout="viewer-lane"] .hx-viewer-axis-ticks {
+  inset: 6% auto 52% 0;
+  width: 4.5rem;
 }
-.hubx .hx-plot-stack:has(.hx-chart2[data-chart-layout="viewer-lane"]) .hx-chart-navigator {
-  width: calc(100% - 4.25rem);
+.hubx .hx-chart2[data-chart-layout="viewer-lane"] .hx-viewer-axis-ticks span {
+  left: 0.5rem;
+  right: auto;
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+  background: hsl(240 10% 6% / 0.78);
+  color: hsl(var(--muted-foreground));
+  font-size: 0.75rem;
+}
+.hubx .hx-chart2[data-chart-layout="viewer-lane"] .hx-viewer-axis-ticks span[data-hidden="true"] {
+  visibility: hidden;
 }
 .hubx.figma-global-activity__hub-chart .hx-chart-header {
   flex-wrap: wrap;

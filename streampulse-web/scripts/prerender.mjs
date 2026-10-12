@@ -144,7 +144,7 @@ const routes = [
     // because it documents the extension rather than the site.
     path: 'changelog',
     title: 'Release Notes — StreamPulse',
-    description: 'What changed in each version of the StreamPulse Chrome extension.',
+    description: 'What changed in each version of the StreamPulse extension.',
     canonicalPath: '/changelog',
     robots: 'noindex,nofollow',
   },

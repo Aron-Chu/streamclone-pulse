@@ -91,7 +91,7 @@ function resolveBasePageMetadata(pathname: string): PageMetadata {
     case '/discord':
       return { title: 'Discord — StreamPulse', description: 'Join the public StreamPulse community on Discord.', canonicalPath: normalizedPath, robots: 'noindex,nofollow' }
     case '/changelog':
-      return { title: 'Release Notes — StreamPulse', description: 'What changed in each version of the StreamPulse Chrome extension.', canonicalPath: normalizedPath, robots: 'noindex,nofollow' }
+      return { title: 'Release Notes — StreamPulse', description: 'What changed in each version of the StreamPulse extension.', canonicalPath: normalizedPath, robots: 'noindex,nofollow' }
     default: {
       if (normalizedPath === '/analytics/moments') {
         return { title: 'Moments — StreamPulse', description: 'Discover measured reactions, review exact sources, and save moments on this device.', canonicalPath: normalizedPath, robots: 'noindex,nofollow' }

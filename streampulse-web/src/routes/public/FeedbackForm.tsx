@@ -134,22 +134,33 @@ function waitPhrase(seconds: number): string {
 /**
  * Places to post in public when the private form cannot take a message. Each
  * one is labelled public, never private: anyone can read what is posted there.
- * Discord shows only when the build has a valid invite.
+ * Discord shows only when the build has a valid invite. Before launch
+ * (`notLaunched`) Discord leads as "Ask in Discord" with the same outward
+ * arrow as GitHub, and the card itself is the only frame, so there is no
+ * dashed box inside it. A configured build (a failed send, or intake off)
+ * keeps its wording as it was: GitHub first, then "Ask in the public Discord".
  */
-function PublicAlternatives({ compact = false }: { compact?: boolean }) {
+function PublicAlternatives({ compact = false, notLaunched = false }: { compact?: boolean; notLaunched?: boolean }) {
   const discord = discordInviteUrl()
+  const size = compact ? 'default' : 'lg'
   return (
-    <div className={`feedback-public${compact ? ' feedback-public--compact' : ''}`} data-testid="feedback-public-alternatives">
+    <div className={`feedback-public${compact ? ' feedback-public--compact' : ''}${notLaunched ? ' feedback-public--plain' : ''}`} data-testid="feedback-public-alternatives">
       <p className="feedback-public__note">
         <strong>Public alternatives.</strong> Anyone can read these, so leave out emails, account details and anything personal.
       </p>
       <div className="feedback-off__actions">
-        <a className={buttonClass('outline', compact ? 'default' : 'lg')} href={PUBLIC_SUPPORT_URL} target="_blank" rel="noopener noreferrer"
+        {discord && notLaunched ? (
+          <a className={buttonClass('outline', size)} href={discord} target="_blank" rel="noopener noreferrer"
+            aria-label="Ask in Discord (public, opens in a new tab)">
+            <DiscordMark size={15} className="feedback-public__discord" />Ask in Discord<ArrowUpRight aria-hidden="true" />
+          </a>
+        ) : null}
+        <a className={buttonClass('outline', size)} href={PUBLIC_SUPPORT_URL} target="_blank" rel="noopener noreferrer"
           aria-label="Open a public issue on GitHub (opens in a new tab)">
           Open a public issue on GitHub<ArrowUpRight aria-hidden="true" />
         </a>
-        {discord ? (
-          <a className={buttonClass('outline', compact ? 'default' : 'lg')} href={discord} target="_blank" rel="noopener noreferrer"
+        {discord && !notLaunched ? (
+          <a className={buttonClass('outline', size)} href={discord} target="_blank" rel="noopener noreferrer"
             aria-label="Ask in the public Discord (opens in a new tab)">
             <DiscordMark size={15} />Ask in the public Discord
           </a>
@@ -159,7 +170,14 @@ function PublicAlternatives({ compact = false }: { compact?: boolean }) {
   )
 }
 
-function UnavailablePanel({ keptMessage, takeFocus = false }: { keptMessage?: string; takeFocus?: boolean }) {
+/**
+ * The card when it cannot take a message. Before launch (`notLaunched`: the
+ * build has no site key) the page header already says the form opens soon, so
+ * the card only lists where to ask in public: no second "unavailable" line and
+ * no diagnostics, since nothing failed. A configured build whose intake is off
+ * keeps the full panel.
+ */
+function UnavailablePanel({ keptMessage, takeFocus = false, notLaunched = false }: { keptMessage?: string; takeFocus?: boolean; notLaunched?: boolean }) {
   const [diagnostics, setDiagnostics] = useState('')
   const [copyStatus, setCopyStatus] = useState('')
   const leadRef = useRef<HTMLParagraphElement | null>(null)
@@ -173,6 +191,13 @@ function UnavailablePanel({ keptMessage, takeFocus = false }: { keptMessage?: st
     setDiagnostics(summary)
     try { await navigator.clipboard.writeText(summary); setCopyStatus('Diagnostics copied. Review before sharing.') }
     catch { setCopyStatus('Copy was unavailable. Select and copy the summary below.') }
+  }
+  if (notLaunched) {
+    return (
+      <div className="feedback-off" data-testid="support-form-unavailable" data-state="not-launched">
+        <PublicAlternatives notLaunched />
+      </div>
+    )
   }
   return (
     <div className="feedback-off" data-testid="support-form-unavailable">
@@ -597,7 +622,8 @@ function FeedbackCard({ siteKey, shell = false, lead, onPhase }: FeedbackCardPro
   }
 
   if (state.kind === 'unavailable') {
-    return <UnavailablePanel keptMessage={message.trim() ? message : undefined} takeFocus={panelTakesFocus} />
+    return <UnavailablePanel keptMessage={message.trim() ? message : undefined} takeFocus={panelTakesFocus}
+      notLaunched={availability === 'unavailable'} />
   }
 
   const sending = state.kind === 'sending'

@@ -10,6 +10,8 @@ import './support.css'
 
 const OPEN_SUB = 'Spotted a problem or have an idea? Tell the StreamPulse team here. No account needed.'
 const CLOSED_SUB = "Spotted a problem or have an idea? The private form isn't taking messages right now."
+/** Before launch: a build without a site key has never had the form open, so it is not an outage. */
+const SOON_SUB = 'Our private form opens soon. Until then, you can ask in public.'
 
 /**
  * /feedback: the private feedback form on its own page. No account is needed;
@@ -24,11 +26,18 @@ const CLOSED_SUB = "Spotted a problem or have an idea? The private form isn't ta
  * also hides whenever the card lists the public alternatives itself (after a
  * failed send as well), so Discord is never offered twice.
  *
+ * A build without a site key (launch day, before the form is switched on)
+ * says the form opens soon under an amber badge instead, and the card lists
+ * only the public places to ask, so the page does not read like an outage.
+ * A configured build whose intake turns out to be off still says the form
+ * isn't taking messages.
+ *
  * In the prerender of a configured build the open copy hides without
  * JavaScript, where the card falls back to its unavailable panel too.
  */
 export default function Feedback() {
   const discord = discordInviteUrl()
+  const notLaunched = supportFormAvailability(feedbackSiteKey()) !== 'ready'
   const [phase, setPhase] = useState<FeedbackPhase>(() => (supportFormAvailability(feedbackSiteKey()) === 'ready' ? 'open' : 'unavailable'))
   const formOpen = phase !== 'unavailable'
   const prerender = typeof window === 'undefined'
@@ -42,6 +51,11 @@ export default function Feedback() {
               <span aria-hidden="true" />
               Private feedback
             </span>
+          ) : notLaunched ? (
+            <span className="support-page__badge support-page__badge--soon" data-testid="feedback-soon-badge">
+              <span aria-hidden="true" />
+              Form opens soon
+            </span>
           ) : null}
           <h1 id="feedback-title">Send feedback</h1>
           {formOpen ? (
@@ -49,7 +63,7 @@ export default function Feedback() {
               <p className={jsOnly} data-testid="feedback-page-sub">{OPEN_SUB}</p>
               {prerender ? <noscript><p>{CLOSED_SUB}</p></noscript> : null}
             </>
-          ) : <p data-testid="feedback-page-sub">{CLOSED_SUB}</p>}
+          ) : <p data-testid="feedback-page-sub">{notLaunched ? SOON_SUB : CLOSED_SUB}</p>}
         </header>
 
         <section id="send-feedback" className="feedback-card" aria-labelledby="feedback-title">
@@ -64,6 +78,8 @@ export default function Feedback() {
           />
         </section>
 
+        {/* Only under the open form, so only in a configured build: its wording
+            stays as it was, with the public Discord visibly labelled public. */}
         {discord && phase === 'open' ? (
           <p className="support-discord-line feedback-js-only" data-testid="support-discord-line">
             Ideas or just want to chat?{' '}

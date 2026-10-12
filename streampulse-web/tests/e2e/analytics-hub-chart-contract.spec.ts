@@ -1,5 +1,89 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Locator } from '@playwright/test'
 import { installHubUxMock } from './helpers/hubUxMock'
+
+/**
+ * The viewer scale sits inside the plot's left edge, under "Sampled viewers",
+ * so the plot and every time row run the full card width (2026-10-11, mockup
+ * chart-width B). Returns where the labels, the plot, the time rows, the bars
+ * and the Pulse Moments card below sit, and how many points of the drawn
+ * viewer line fall under a visible scale label (it must be none).
+ */
+async function viewerLaneGeometry(chart: Locator) {
+  return chart.evaluate((root) => {
+    const svgElement = root.querySelector('svg')!
+    const svg = svgElement.getBoundingClientRect()
+    const stack = root.closest('.hx-plot-stack')!
+    const rows = ['.hx-axis', '.hx-chart-navigator', '.hx-provider-lanes']
+      .map((selector) => stack.querySelector(selector)!.getBoundingClientRect())
+    const bars = Array.from(root.querySelectorAll('.hx-chat-bar')).map((node) => node.getBoundingClientRect()).filter((rect) => rect.width > 0)
+    const card = document.querySelector('.pulse-moments-live--embedded .pulse-moments__leaderboard')!.getBoundingClientRect()
+    const frame = document.querySelector('.figma-global-activity__body')!.getBoundingClientRect()
+    const labels = Array.from(root.querySelectorAll<HTMLElement>('.hx-viewer-axis-ticks span'))
+      .map((node) => ({ rect: node.getBoundingClientRect().toJSON() as DOMRect, visible: getComputedStyle(node).visibility !== 'hidden' }))
+    // Sample every drawn viewer path (solid and dashed) densely and count points under a visible label.
+    const ctm = svgElement.getScreenCTM()!
+    const linePoints: Array<{ x: number; y: number }> = []
+    for (const path of Array.from(root.querySelectorAll<SVGPathElement>('.hx-chart-line--viewers, .hx-chart-line--viewers-sampled'))) {
+      const length = path.getTotalLength()
+      for (let i = 0; i <= 4000; i += 1) {
+        const point = path.getPointAtLength((length * i) / 4000)
+        const screen = new DOMPoint(point.x, point.y).matrixTransform(ctm)
+        linePoints.push({ x: screen.x, y: screen.y })
+      }
+    }
+    // The stroke is 2.25px wide: a point within about a pixel of a plate touches it.
+    const covered = linePoints.filter((point) => labels.some(({ rect, visible }) => visible &&
+      point.x >= rect.left - 1 && point.x <= rect.right + 1 && point.y >= rect.top - 1 && point.y <= rect.bottom + 1)).length
+    return {
+      svg: { left: svg.left, right: svg.right, width: svg.width },
+      rows: rows.map((rect) => ({ left: rect.left, right: rect.right })),
+      bars: bars.length ? { left: Math.min(...bars.map((rect) => rect.left)), right: Math.max(...bars.map((rect) => rect.right)) } : null,
+      card: { left: card.left, right: card.right },
+      frame: { left: frame.left, right: frame.right },
+      labels,
+      linePoints: linePoints.length,
+      covered,
+    }
+  })
+}
+
+type ViewerLaneGeometry = Awaited<ReturnType<typeof viewerLaneGeometry>>
+
+/**
+ * Labels inside the left edge, every time row on the plot's edges, the Moments
+ * card under them. `bars` also checks the outermost bars, for fixtures whose
+ * buckets fill the window (in 30m the first bar starts at its own minute).
+ */
+function expectFullWidthViewerLane(geometry: ViewerLaneGeometry, { bars = true }: { bars?: boolean } = {}) {
+  const { svg } = geometry
+  // Scale labels sit inside the plot's left edge (a 4.5rem column), never in a side gutter.
+  expect(geometry.labels).toHaveLength(3)
+  for (const { rect } of geometry.labels) {
+    expect(rect.height).toBeGreaterThan(0)
+    expect(rect.left).toBeGreaterThanOrEqual(svg.left)
+    expect(rect.right).toBeLessThanOrEqual(svg.left + 72 + 1)
+  }
+  // At least two labels always show, so the scale is readable.
+  expect(geometry.labels.filter((label) => label.visible).length).toBeGreaterThanOrEqual(2)
+  // The time axis, zoom bar and provider lanes share the plot's edges.
+  for (const row of geometry.rows) {
+    expect(Math.abs(row.left - svg.left)).toBeLessThanOrEqual(2)
+    expect(Math.abs(row.right - svg.right)).toBeLessThanOrEqual(2)
+  }
+  // The bars and the plot line up with the Pulse Moments card below, which lines up with the chart frame.
+  expect(geometry.bars).not.toBeNull()
+  if (bars) {
+    expect(Math.abs(geometry.bars!.left - geometry.card.left)).toBeLessThanOrEqual(2)
+    expect(Math.abs(geometry.bars!.right - geometry.card.right)).toBeLessThanOrEqual(2)
+  }
+  expect(Math.abs(svg.left - geometry.card.left)).toBeLessThanOrEqual(2)
+  expect(Math.abs(svg.right - geometry.card.right)).toBeLessThanOrEqual(2)
+  expect(Math.abs(geometry.frame.left - geometry.card.left)).toBeLessThanOrEqual(1)
+  expect(Math.abs(geometry.frame.right - geometry.card.right)).toBeLessThanOrEqual(1)
+  // No scale label covers any part of the viewer line.
+  expect(geometry.linePoints).toBeGreaterThan(0)
+  expect(geometry.covered).toBe(0)
+}
 
 test('hub chart keeps viewers above truthful chat bars with an external hover readout', async ({ page }) => {
   await installHubUxMock(page)
@@ -135,16 +219,7 @@ test('viewer lane remains readable at desktop and mobile widths', async ({ page 
     await expect(chart).toBeVisible()
     await expect(chart).toHaveCSS('height', `${viewport.width < 720 ? 360 : 420}px`)
     await expect(chart.locator('.hx-viewer-axis-ticks span')).toHaveCount(3)
-    const geometry = await chart.evaluate((root) => {
-      const svg = root.querySelector('svg')!.getBoundingClientRect()
-      const ticks = Array.from(root.querySelectorAll<HTMLElement>('.hx-viewer-axis-ticks span')).map((node) => node.getBoundingClientRect())
-      const stack = root.closest('.hx-plot-stack')!
-      const alignedRights = ['.hx-axis', '.hx-chart-navigator', '.hx-provider-lanes']
-        .map((selector) => stack.querySelector(selector)!.getBoundingClientRect().right)
-      return { svgRight: svg.right, ticks, alignedRights }
-    })
-    expect(geometry.ticks.every((rect) => rect.height > 0 && rect.left >= geometry.svgRight - 1 && rect.right <= viewport.width - 8)).toBe(true)
-    expect(geometry.alignedRights.every((right) => Math.abs(right - geometry.svgRight) <= 2)).toBe(true)
+    expectFullWidthViewerLane(await viewerLaneGeometry(chart))
     await expect(chart.locator('..')).toHaveScreenshot(`hub-global-activity-${viewport.width}.png`, {
       animations: 'disabled',
       // Geometry checks above protect clipping; tolerate SVG edge antialiasing.
@@ -153,19 +228,21 @@ test('viewer lane remains readable at desktop and mobile widths', async ({ page 
   }
 })
 
-test('7d diurnal fixture preserves a wide viewer swing without clipping newest data', async ({ page }) => {
+test('7d diurnal fixture keeps a wide viewer swing, with the scale clear of the line and the newest data', async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-09-13T12:00:00Z'))
   await installHubUxMock(page, { diurnal7d: true })
   await page.goto('/analytics?window=7d')
   const chart = page.locator('.figma-global-activity__hub-chart .hx-chart2')
   await expect(chart).toBeVisible()
   await expect(chart.locator('.hx-viewer-axis-ticks span')).toHaveText(['1.4M', '682.5K', '0'])
-  const geometry = await chart.evaluate((root) => {
-    const svg = root.querySelector('svg')!.getBoundingClientRect()
-    const ticks = Array.from(root.querySelectorAll<HTMLElement>('.hx-viewer-axis-ticks span')).map((node) => node.getBoundingClientRect())
-    return { svgRight: svg.right, ticks }
-  })
-  expect(geometry.ticks.every((rect) => rect.left >= geometry.svgRight - 1)).toBe(true)
+  const geometry = await viewerLaneGeometry(chart)
+  expectFullWidthViewerLane(geometry)
+  // Here the oldest stretch of the line runs through 682.5K, so that label
+  // steps just clear of it instead of covering it (mockup B's chip hid it).
+  await expect(chart.locator('.hx-viewer-axis-ticks span').nth(1)).toHaveAttribute('data-moved', 'true')
+  expect(geometry.labels.every(({ visible }) => visible)).toBe(true)
+  // The labels stay at the oldest edge: nothing sits over the newest tenth of the plot.
+  expect(geometry.labels.every(({ rect }) => rect.right < geometry.svg.left + geometry.svg.width * 0.9)).toBe(true)
   await expect(chart.locator('..')).toHaveScreenshot('hub-global-activity-7d-diurnal.png', {
     animations: 'disabled',
     // The plotted paths match; Windows rasterization can shift antialiasing
@@ -173,6 +250,24 @@ test('7d diurnal fixture preserves a wide viewer swing without clipping newest d
     maxDiffPixelRatio: 0.015,
   })
 })
+
+for (const window of ['24h', '7d'] as const) {
+  test(`${window}: the plot and its time rows line up with the Pulse Moments card at 1440 and 1920`, async ({ page }) => {
+    if (window === '7d') await page.clock.setFixedTime(new Date('2026-09-13T12:00:00Z'))
+    await installHubUxMock(page, window === '7d' ? { diurnal7d: true } : {})
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 1920, height: 1080 }]) {
+      await page.setViewportSize(viewport)
+      await page.goto(window === '7d' ? '/analytics?window=7d' : '/analytics')
+      const chart = page.locator('.figma-global-activity__hub-chart .hx-chart2')
+      await expect(chart.locator('.hx-viewer-axis-ticks span')).toHaveCount(3)
+      expectFullWidthViewerLane(await viewerLaneGeometry(chart))
+      // The "Live-session peaks" caption starts on the same column as the card under it.
+      const caption = await page.locator('.pulse-moments-live__sub strong').boundingBox()
+      const card = await page.locator('.pulse-moments-live--embedded .pulse-moments__leaderboard').boundingBox()
+      expect(Math.abs(caption!.x - card!.x)).toBeLessThanOrEqual(1)
+    }
+  })
+}
 
 for (const window of ['30m', '24h', '7d', '1m', '3m', '1y']) {
   test(`all-range viewer layout: ${window} at desktop and mobile widths`, async ({ page }) => {
@@ -190,13 +285,9 @@ for (const window of ['30m', '24h', '7d', '1m', '3m', '1y']) {
       await expect(chart).toHaveCSS('height', `${width < 720 ? 360 : 420}px`)
       await expect(chart.locator('.hx-viewer-axis-ticks span')).toHaveCount(3)
       await expect(page.locator('.hx-axis span')).toHaveCount(width < 720 ? 3 : 8)
+      expectFullWidthViewerLane(await viewerLaneGeometry(chart), { bars: false })
       const geometry = await chart.evaluate((root) => {
-        const svg = root.querySelector('svg')!.getBoundingClientRect()
-        const stack = root.closest('.hx-plot-stack')!
         return {
-          svgRight: svg.right,
-          ticks: Array.from(root.querySelectorAll('.hx-viewer-axis-ticks span')).map((node) => node.getBoundingClientRect().toJSON()),
-          alignedRights: ['.hx-axis', '.hx-chart-navigator', '.hx-provider-lanes'].map((selector) => stack.querySelector(selector)!.getBoundingClientRect().right),
           viewerBounds: Array.from(root.querySelectorAll<SVGGraphicsElement>('.hx-chart-line--viewers')).map((node) => {
             const { y, height } = node.getBBox()
             return { y, height }
@@ -204,8 +295,6 @@ for (const window of ['30m', '24h', '7d', '1m', '3m', '1y']) {
           chatTops: Array.from(root.querySelectorAll<SVGGraphicsElement>('.hx-chat-bar')).map((node) => node.getBBox().y),
         }
       })
-      expect(geometry.ticks.every((rect) => rect.height > 0 && rect.left >= geometry.svgRight - 1 && rect.right <= width - 8)).toBe(true)
-      expect(geometry.alignedRights.every((right) => Math.abs(right - geometry.svgRight) <= 2)).toBe(true)
       expect(geometry.viewerBounds.length).toBeGreaterThan(0)
       expect(geometry.viewerBounds.every((rect) => rect.y >= 6 && rect.y + rect.height <= 48.01)).toBe(true)
       expect(geometry.chatTops.length).toBeGreaterThan(0)
