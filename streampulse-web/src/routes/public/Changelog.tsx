@@ -11,6 +11,7 @@ interface ReleaseNote {
   title: string
   summary: string
   new?: string[]
+  changed?: string[]
   improved?: string[]
   fixed?: string[]
   knownIssues?: string[]
@@ -26,6 +27,7 @@ const RELEASED: ReadonlyArray<ReleaseNote> = NOTES.releases.filter((release) => 
 // Same headings, in the same order, as the extension's changelog card.
 const CATEGORIES = [
   ['new', 'New'],
+  ['changed', 'Changed'],
   ['improved', 'Improved'],
   ['fixed', 'Fixed'],
   ['knownIssues', 'Known limitations'],

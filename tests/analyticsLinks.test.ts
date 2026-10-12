@@ -79,6 +79,39 @@ describe('buildAnalyticsUrl', () => {
   })
 })
 
+describe('moment offsets on analytics links', () => {
+  const web = 'https://streampulse.stream'
+
+  it('keeps offset 0, the first minute, so a "from stream start" link selects it', () => {
+    expect(buildAnalyticsUrl({ webAnalyticsBaseUrl: web, channelLogin: 'xqc', streamId: '319abc', offsetSeconds: 0 }))
+      .toBe('https://streampulse.stream/analytics/xqc/319abc#t=0')
+    expect(resolveStreamAnalyticsHref({ apiBaseUrl: 'https://api.streampulse.stream', channelLogin: 'xqc', streamId: '319abc', offsetSeconds: 0 }))
+      .toBe('https://streampulse.stream/analytics/xqc/319abc#t=0')
+  })
+
+  it('opens the stream itself when no offset is given', () => {
+    expect(resolveStreamAnalyticsHref({ apiBaseUrl: 'https://api.streampulse.stream', channelLogin: 'xqc', streamId: '319abc', offsetSeconds: undefined }))
+      .toBe('https://streampulse.stream/analytics/xqc/319abc')
+    expect(buildAnalyticsUrl({ webAnalyticsBaseUrl: web, channelLogin: 'xqc', streamId: '319abc', offsetSeconds: Number.NaN }))
+      .toBe('https://streampulse.stream/analytics/xqc/319abc')
+    expect(buildAnalyticsUrl({ webAnalyticsBaseUrl: web, channelLogin: 'xqc', streamId: '319abc', offsetSeconds: -5 }))
+      .toBe('https://streampulse.stream/analytics/xqc/319abc')
+  })
+
+  it('never puts a minute on the channel route, which opens the live or latest stream', () => {
+    // Without a stream id the portal picks whichever stream is live or latest,
+    // so `#t` would select that minute in a different stream.
+    for (const offsetSeconds of [0, 754]) {
+      expect(buildAnalyticsUrl({ webAnalyticsBaseUrl: web, channelLogin: 'xqc', offsetSeconds }))
+        .toBe('https://streampulse.stream/analytics/xqc')
+      expect(buildAnalyticsUrl({ webAnalyticsBaseUrl: web, channelLogin: 'xqc', streamId: '  ', offsetSeconds }))
+        .toBe('https://streampulse.stream/analytics/xqc')
+      expect(resolveStreamAnalyticsHref({ apiBaseUrl: 'https://api.streampulse.stream', channelLogin: 'xqc', offsetSeconds }))
+        .toBe('https://streampulse.stream/analytics/xqc')
+    }
+  })
+})
+
 describe('resolveWebAnalyticsHref', () => {
   it('prefixes relative analytics paths with web origin', () => {
     expect(resolveWebAnalyticsHref(

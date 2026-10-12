@@ -76,6 +76,9 @@ let driver
 let installedAddon
 try {
   const service = new firefox.ServiceBuilder().addArguments('--allow-system-access')
+  // Optional fixed geckodriver port for machines that reserve port ranges.
+  const geckodriverPort = Number(process.env.GECKODRIVER_PORT)
+  if (Number.isInteger(geckodriverPort) && geckodriverPort > 0) service.setPort(geckodriverPort)
   driver = await new Builder()
     .forBrowser('firefox')
     .setFirefoxOptions(options)

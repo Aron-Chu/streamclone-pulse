@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
 import {
   LIVE_HEAT_MIN_COMPLETED_ROLLUPS,
@@ -15,9 +15,10 @@ import {
   sortLiveHeatPoints,
   type MomentSortMode,
 } from './mostReacted.ts'
-import { PulseMomentRow } from './PulseMomentRow.tsx'
+import { PulseMomentRow, momentRowKey } from './PulseMomentRow.tsx'
 import { PulseSectionCard } from './PulseSectionCard.tsx'
 import { PulseThemedSelect } from './PulseThemedSelect.tsx'
+import { TopMomentCard } from './TopMomentCard.tsx'
 import { theme } from './theme.ts'
 
 export interface MostReactedSectionProps {
@@ -31,6 +32,11 @@ export interface MostReactedSectionProps {
   onAnalytics: (point: LiveHeatPoint) => void
   onAnalyticsAtOffset?: (offsetSeconds: number) => void
   onHighlightOffset?: (offsetSeconds: number | null) => void
+  /**
+   * Pins a moment, or clears the pin. The pinned moment, picked here or as a
+   * ranked moment on the chart, opens the card above the list; picking its
+   * row again clears the pin.
+   */
   onPinOffset?: (offsetSeconds: number | null) => void
   hasVodContext?: boolean
   demoMode?: boolean
@@ -53,21 +59,18 @@ function resolveJumpLabel(payload: PulsePayload, hasVodContext?: boolean): strin
 export function MostReactedSection({
   payload,
   backendUrl,
-  sidebarFill: _sidebarFill = false,
   pinnedOffsetSeconds = null,
-  chartMinuteSelection: _chartMinuteSelection = null,
-  onJump: _onJump,
-  onJumpToOffset: _onJumpToOffset,
-  onAnalytics: _onAnalytics,
-  onAnalyticsAtOffset: _onAnalyticsAtOffset,
+  onJumpToOffset,
+  onAnalyticsAtOffset,
   onHighlightOffset,
   onPinOffset,
-  hasVodContext: _hasVodContext = false,
+  hasVodContext = false,
   demoMode = false,
 }: MostReactedSectionProps) {
   const heat = resolveMostReactedHeat(payload)
   const [sortMode, setSortMode] = useState<MomentSortMode>('reaction')
   const [listExpanded, setListExpanded] = useState(false)
+  const cardId = useId()
 
   const sortedPoints = useMemo(
     () => sortLiveHeatPoints(heat.points, sortMode),
@@ -86,10 +89,15 @@ export function MostReactedSection({
     ? liveHeatPointKey(payload.streamId, pinnedMomentPoint)
     : null
 
+  // Collapsed, a picked row that ranks past the fold (a poll can push it
+  // there) stays listed at the end, so its row and its focus stay.
   const visiblePoints = listExpanded
     ? sortedPoints
-    : sortedPoints.slice(0, MOST_REACTED_VISIBLE_COUNT)
-  const hiddenPointCount = Math.max(0, sortedPoints.length - MOST_REACTED_VISIBLE_COUNT)
+    : sortedPoints.filter((point, index) => index < MOST_REACTED_VISIBLE_COUNT
+      || liveHeatPointKey(payload.streamId, point) === pinnedMomentKey)
+  // The card above the list shows only a picked moment.
+  const cardPoint = demoMode ? null : pinnedMomentPoint
+  const hiddenPointCount = sortedPoints.length - visiblePoints.length
   const hasExplicitPeaks = payload.peaks !== undefined
   const isCollectingMoments = hasExplicitPeaks && (
     (payload.peaks?.length ?? 0) === 0
@@ -145,53 +153,73 @@ export function MostReactedSection({
           </span>
         </div>
       ) : null}
-      <div style={styles.momentList}>
-        {visiblePoints.map(point => {
-          const selected =
-            pinnedMomentKey != null && liveHeatPointKey(payload.streamId, point) === pinnedMomentKey
-          return (
+      {/*
+        The card, the list and its Show more control share one grid child, so
+        the card's slot never adds or drops a grid gap, and a row that leaves
+        the list hands focus on to Show more (PulseMomentRow).
+      */}
+      <div>
+        <TopMomentCard
+          id={cardId}
+          point={cardPoint}
+          backendUrl={backendUrl}
+          jumpLabel={resolveJumpLabel(payload, hasVodContext)}
+          onJump={next => onJumpToOffset?.(reactionAnalyticalOffset(next))}
+          onAnalytics={next => onAnalyticsAtOffset?.(reactionAnalyticalOffset(next))}
+          onClear={() => onPinOffset?.(null)}
+        />
+        <div style={styles.momentList}>
+          {visiblePoints.map(point => {
+            const selected =
+              pinnedMomentKey != null && liveHeatPointKey(payload.streamId, point) === pinnedMomentKey
+            return (
+              <PulseMomentRow
+                // Stable while the backend refines the moment, so its row (and
+                // its focus) stays mounted through a poll.
+                key={momentRowKey(point, heat.points)}
+                point={point}
+                backendUrl={backendUrl}
+                selected={selected}
+                controls={cardPoint ? cardId : undefined}
+                onHighlight={demoMode ? () => undefined : handleHighlight}
+                // Picking the picked row again closes its card.
+                onSelect={demoMode ? () => undefined : next => {
+                  onPinOffset?.(selected ? null : reactionAnalyticalOffset(next))
+                }}
+              />
+            )
+          })}
+          {heat.collectingPoint ? (
             <PulseMomentRow
-              key={liveHeatPointKey(payload.streamId, point)}
-              point={point}
+              point={heat.collectingPoint}
               backendUrl={backendUrl}
-              selected={selected}
-              onHighlight={demoMode ? () => undefined : handleHighlight}
-              onSelect={demoMode ? () => undefined : next => {
-                if (!selected) onPinOffset?.(reactionAnalyticalOffset(next))
-              }}
+              selected={false}
+              onHighlight={() => {}}
+              onSelect={() => {}}
             />
-          )
-        })}
-        {heat.collectingPoint ? (
-          <PulseMomentRow
-            point={heat.collectingPoint}
-            backendUrl={backendUrl}
-            selected={false}
-            onHighlight={() => {}}
-            onSelect={() => {}}
-          />
+          ) : null}
+        </div>
+        {listExpanded || hiddenPointCount > 0 ? (
+          <button
+            type="button"
+            style={styles.expandButton}
+            disabled={demoMode}
+            data-chart-action="true"
+            data-most-reacted-expand="true"
+            aria-expanded={listExpanded}
+            onClick={demoMode ? undefined : () => setListExpanded(expanded => !expanded)}
+          >
+            <span>
+              {listExpanded
+                ? 'Show less'
+                : `Show ${hiddenPointCount} more moment${hiddenPointCount === 1 ? '' : 's'}`}
+            </span>
+            <span style={styles.expandChevron} aria-hidden="true">
+              {listExpanded ? '▾' : '▸'}
+            </span>
+          </button>
         ) : null}
       </div>
-      {hiddenPointCount > 0 ? (
-        <button
-          type="button"
-          style={styles.expandButton}
-          disabled={demoMode}
-          data-chart-action="true"
-          data-most-reacted-expand="true"
-          aria-expanded={listExpanded}
-          onClick={demoMode ? undefined : () => setListExpanded(expanded => !expanded)}
-        >
-          <span>
-            {listExpanded
-              ? 'Show less'
-              : `Show ${hiddenPointCount} more moment${hiddenPointCount === 1 ? '' : 's'}`}
-          </span>
-          <span style={styles.expandChevron} aria-hidden="true">
-            {listExpanded ? '▾' : '▸'}
-          </span>
-        </button>
-      ) : null}
     </PulseSectionCard>
   )
 }
@@ -219,8 +247,10 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 10,
     fontWeight: 700,
     gap: 4,
-    marginTop: 2,
+    // The section's 12 px grid gap, plus its own 2 px.
+    marginTop: 14,
     padding: '4px 0',
+    width: '100%',
   },
   expandChevron: { fontSize: 9, lineHeight: 1 },
 }

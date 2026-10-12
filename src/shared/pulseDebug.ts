@@ -176,7 +176,7 @@ export function interpretVodDebugBlockers(entries: PulseDebugEntry[]): string | 
     if (helixEnabled === false) {
       parts.push('Backend archive verification is unavailable; live analytics are unaffected')
     } else if (helixEnabled == null) {
-      parts.push('Backend archive capability is unknown; deploy the latest analytics backend')
+      parts.push('Backend archive capability is unknown')
     }
   }
 

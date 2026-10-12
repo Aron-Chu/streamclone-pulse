@@ -36,9 +36,10 @@ import {
   trendSmoothingWindow,
 } from './chartRollupUtils.ts'
 import { prefersReducedMotion } from './motion/useSmoothedScalar.ts'
-import { downsampleRollupsForChart, EXTENSION_CHART_MAX_POINTS, nearestRollupIndex } from './extensionChartPoints.ts'
+import { eventPathIncludesNode, onOutsidePointerDown, usePulsePortalRoot } from './pulsePortalContext.ts'
+import { EXTENSION_CHART_MAX_POINTS, nearestRollupIndex } from './extensionChartPoints.ts'
 import { panDeltaSecondsFromPointer } from './chartPanMath.ts'
-import { FOLLOW_LIVE_EPSILON_SECONDS, MIN_VIEWPORT_SECONDS, viewportBuckets, wheelZoom, zoomViewport, panViewport, type ChartViewport } from './chartViewport.ts'
+import { FOLLOW_LIVE_EPSILON_SECONDS, MIN_VIEWPORT_SECONDS, bucketRollups, viewportBucketRanges, wheelZoom, zoomViewport, panViewport, type ChartViewport } from './chartViewport.ts'
 import {
   chartMomentMarkerKey,
   chartMomentMarkerPresentation,
@@ -410,11 +411,17 @@ function PulseOverviewChartImpl({
 }: PulseOverviewChartProps) {
   const chartId = useId().replace(/:/g, '')
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const portalRoot = usePulsePortalRoot()
   const internalViewport: ChartViewport = externalViewport ?? { startSeconds: 0, endSeconds: Math.max(0, durationSeconds) }
   // Without an external viewport the chart owns sampling: cap the raw timeline so
   // full-range rendering stays bounded while zoom (external viewport) can recover
-  // detail from the raw source.
-  const visibleRollups = useMemo(() => externalViewport ? viewportBuckets(sourceRollups, internalViewport, EXTENSION_CHART_MAX_POINTS) : downsampleRollupsForChart(sourceRollups), [sourceRollups, externalViewport, internalViewport.startSeconds, internalViewport.endSeconds])
+  // detail from the raw source. Past 120 minutes each drawn point is the most
+  // active minute of a bucket; visibleRanges holds each bucket's source span.
+  const visibleRanges = useMemo(
+    () => viewportBucketRanges(sourceRollups, externalViewport ? internalViewport : null, EXTENSION_CHART_MAX_POINTS),
+    [sourceRollups, externalViewport, internalViewport.startSeconds, internalViewport.endSeconds],
+  )
+  const visibleRollups = useMemo(() => bucketRollups(sourceRollups, visibleRanges), [sourceRollups, visibleRanges])
   const rollups = visibleRollups
   // Selection/preview props arrive as indexes into the FULL source rollup list,
   // while everything below renders against the viewport-filtered list.
@@ -552,25 +559,20 @@ function PulseOverviewChartImpl({
     // recreated during polling, but that must not clear an active hover.
   }, [interactionResetKey])
 
-  useEffect(() => {
-    function handlePointerDown(event: PointerEvent): void {
+  useEffect(() => onOutsidePointerDown(
+    portalRoot,
+    event => {
       const boundary = clearSelectionBoundaryRef?.current ?? containerRef.current
-      if (!boundary) return
-      const composedPath = typeof event.composedPath === 'function' ? event.composedPath() : []
-      const isInsideBoundary = composedPath.length > 0
-        ? composedPath.includes(boundary)
-        : boundary.contains(event.target as Node)
-      if (isInsideBoundary) return
       // Portaled dropdown menus and chart-owned controls may sit outside the
       // boundary in the composed tree. They preserve the committed selection.
-      if (isChartActionPointerTarget(event)) return
+      return !boundary || eventPathIncludesNode(event, boundary) || isChartActionPointerTarget(event)
+    },
+    event => {
       if (event.defaultPrevented) return
       clearHoverPreview()
       onClearSelection?.()
-    }
-    document.addEventListener('pointerdown', handlePointerDown)
-    return () => document.removeEventListener('pointerdown', handlePointerDown)
-  }, [clearSelectionBoundaryRef, onClearSelection, onHoverOffsetChange])
+    },
+  ), [clearSelectionBoundaryRef, onClearSelection, onHoverOffsetChange, portalRoot])
 
   useEffect(() => {
     const cancel = () => {
@@ -629,37 +631,45 @@ function PulseOverviewChartImpl({
   )
 
   const trendWindow = useMemo(() => trendSmoothingWindow(rollups.length), [rollups.length])
+  // The stream-start ramp and the carry to Now see the bucket flags so they
+  // never draw over missing buckets; those stay blank under the no-data band.
   const chatTrendValues = useMemo(
     () =>
       rampNullableSeriesFromStreamStart(
         extendSeriesToTrailingEdge(
           smoothNullableSeriesValues(chat, trendWindow),
+          rollups,
         ),
+        rollups,
       ),
-    [chat, trendWindow],
+    [chat, trendWindow, rollups],
   )
   const emoteTrendValues = useMemo(
     () =>
       rampNullableSeriesFromStreamStart(
         extendSeriesToTrailingEdge(
           smoothNullableSeriesValues(emotes, trendWindow),
+          rollups,
         ),
+        rollups,
       ),
-    [emotes, trendWindow],
+    [emotes, trendWindow, rollups],
   )
   const chatDetailValues = useMemo(
     () =>
       rampNullableSeriesFromStreamStart(
-        extendSeriesToTrailingEdge(chat),
+        extendSeriesToTrailingEdge(chat, rollups),
+        rollups,
       ),
-    [chat],
+    [chat, rollups],
   )
   const emoteDetailValues = useMemo(
     () =>
       rampNullableSeriesFromStreamStart(
-        extendSeriesToTrailingEdge(emotes),
+        extendSeriesToTrailingEdge(emotes, rollups),
+        rollups,
       ),
-    [emotes],
+    [emotes, rollups],
   )
 
   const chatMax = useMemo(() => seriesMax(chat), [chat])
@@ -902,23 +912,16 @@ function PulseOverviewChartImpl({
 
   const n = visibleRollups.length
 
-  // Parent selection/preview props are FULL-domain indexes; render them in the
-  // visible viewport domain by offset lookup (visible ⇄ full mapping both ways).
-  const visibleIndexByOffset = useMemo(() => {
-    const map = new Map<number, number>()
-    visibleRollups.forEach((rollup, index) => {
-      if (!map.has(rollup.offsetSeconds)) map.set(rollup.offsetSeconds, index)
-    })
-    return map
-  }, [visibleRollups])
+  // Parent selection/preview props are FULL-domain indexes. A pinned minute
+  // renders on the drawn point of the bucket that contains it, not only when
+  // it is that bucket's drawn minute.
   const visibleIndexFromFull = useCallback(
     (fullIdx: number | null | undefined): number | null => {
       if (fullIdx == null) return null
-      const rollup = sourceRollups[fullIdx]
-      if (!rollup) return null
-      return visibleIndexByOffset.get(rollup.offsetSeconds) ?? null
+      const index = visibleRanges.findIndex(([start, end]) => fullIdx >= start && fullIdx < end)
+      return index < 0 ? null : index
     },
-    [sourceRollups, visibleIndexByOffset],
+    [visibleRanges],
   )
 
   const visibleMomentMarkers = useMemo(() => {
@@ -930,7 +933,13 @@ function PulseOverviewChartImpl({
       .map((peak, rank) => {
         const offsetSeconds = reactionAnalyticalOffset(peak)
         if (offsetSeconds < firstOffset - 60 || offsetSeconds > lastOffset + 60) return null
-        const sourceIndex = nearestRollupIndex(visibleRollups, offsetSeconds)
+        // A pick pins the source bucket that holds the moment (Full) or the
+        // nearest minute (zoomed ranges). The marker sits on the drawn point
+        // holding that bucket, like the lock, and is the pick only when the
+        // pinned bucket is its own, not merely one sharing its drawn point.
+        const near = nearestRollupIndex(sourceRollups, offsetSeconds)
+        const fullIndex = near > 0 && sourceRollups[near]!.offsetSeconds > offsetSeconds ? near - 1 : near
+        const sourceIndex = visibleIndexFromFull(fullIndex) ?? nearestRollupIndex(visibleRollups, offsetSeconds)
         if (sourceIndex < 0) return null
         const signal = chartMomentSignal(peak)
         const band = signal === 'viewers'
@@ -955,6 +964,8 @@ function PulseOverviewChartImpl({
           key: chartMomentMarkerKey(peak.offsetSeconds, peak.score, rank),
           offsetSeconds,
           sourceIndex,
+          fullIndex,
+          pinned: selectedIndex === fullIndex || selectedIndex === near,
           x: interpolatePlotXForOffset(offsetSeconds, visibleRollups, plotWidth),
           y: chartMomentMarkerY({ value, axisMin, axisMax, band }),
           signal,
@@ -976,12 +987,15 @@ function PulseOverviewChartImpl({
     n,
     peakMarkers,
     plotWidth,
+    selectedIndex,
     showPeakMarkers,
+    sourceRollups,
     viewerAxisMax,
     viewerAxisMin,
     viewerBandBottom,
     viewerBandTop,
     viewers,
+    visibleIndexFromFull,
     visibleRollups,
   ])
 
@@ -992,18 +1006,16 @@ function PulseOverviewChartImpl({
     }
   }, [activeMomentMarkerKey, visibleMomentMarkers])
 
-  const handlePeakMarkerClick = useCallback((peak: ExtensionPeak, sourceIndex: number): void => {
+  const handlePeakMarkerClick = useCallback((marker: { peak: ExtensionPeak; fullIndex: number; pinned: boolean }): void => {
     if (onSelectMoment) {
-      onSelectMoment(peak)
+      onSelectMoment(marker.peak)
       return
     }
-    const fullIndex = fullIndexFromVisible(sourceIndex) ?? sourceIndex
     // Selection is sticky. Re-clicking the committed bucket confirms the
     // current inspection instead of silently dismissing it; Close, Escape,
     // or an intentional outside action are the explicit release paths.
-    if (selectedIndex != null && fullIndex === selectedIndex) return
-    onSelectIndex?.(fullIndex)
-  }, [fullIndexFromVisible, onClearSelection, onSelectIndex, onSelectMoment, selectedIndex])
+    if (!marker.pinned) onSelectIndex?.(marker.fullIndex)
+  }, [onSelectIndex, onSelectMoment])
 
   const pinIndex = visibleIndexFromFull(selectedIndex ?? null)
   const previewVisibleIndex = visibleIndexFromFull(previewIndex ?? null)
@@ -1081,9 +1093,11 @@ function PulseOverviewChartImpl({
       const smoothed = smoothSeriesValues(series.values, 3)
       const smoothValues = rampNullableSeriesFromStreamStart(
         smoothed.map(value => (value > 0 ? value : null)),
+        rollups,
       )
       const detailValues = rampNullableSeriesFromStreamStart(
         series.values.map(value => (value > 0 ? value : null)),
+        rollups,
       )
       const normalizedAxisMax = overlaySeriesAxisMax(detailValues, true, traceAxis.max)
       const axisMax = interpolateNumber(traceAxis.max, normalizedAxisMax, normalizationProgress)
@@ -1116,6 +1130,7 @@ function PulseOverviewChartImpl({
     })
   }, [
     dashedOverlays,
+    rollups,
     normalizationProgress,
     traceAxis,
     width,
@@ -1495,7 +1510,9 @@ function PulseOverviewChartImpl({
       hoverFrameRef.current = null
     }
     clearHoverPreview()
-    if (selectedIndex != null && clickedFullIndex === selectedIndex) {
+    // A Top Moments pick pins any source bucket of the locked point, not only
+    // the one it draws, so the locked column releases by drawn point.
+    if (index === pinIndex) {
       onClearSelection?.()
       return
     }
@@ -1751,6 +1768,25 @@ function PulseOverviewChartImpl({
             height={activityBottom - activityTop}
             fill={CHART_INTERACTION.activityFill}
           />
+          {/* Missing buckets get a dim no-data column so a hole never reads as a
+              quiet minute (their bars are 1px at near-zero opacity). A thinned
+              point shades by the share of its source buckets that are missing,
+              so the band marks the same holes as the gap notice. */}
+          {visibleRanges.map(([start, end], index) => {
+            const missingShare = sourceRollups.slice(start, end).filter(point => point.missing).length / (end - start)
+            return missingShare > 0 ? (
+              <rect
+                key={index}
+                x={plotXForIndex(index - 0.5, n, PAD_LEFT, plotWidth)}
+                y={activityTop}
+                width={plotWidth / Math.max(1, n - 1)}
+                height={activityBottom - activityTop}
+                fill={CHART_INTERACTION.gridLine}
+                opacity={0.5 * missingShare}
+                data-chart-no-data=""
+              />
+            ) : null
+          })}
           {pinColumn ? (
             <rect
               x={pinColumn.x}
@@ -2099,7 +2135,8 @@ function PulseOverviewChartImpl({
                 }
                 const fullIndex = fullIndexFromVisible(lockable) ?? lockable
                 clearHoverPreview()
-                if (selectedIndex !== fullIndex) onSelectIndex(fullIndex)
+                // Already locked on this point: keep the pin's own bucket.
+                if (lockable !== pinIndex) onSelectIndex(fullIndex)
               }
               return
             }
@@ -2137,7 +2174,7 @@ function PulseOverviewChartImpl({
         {visibleMomentMarkers.length > 0 ? (
           <g data-chart-moment-markers="true" aria-label="Top moment markers">
             {visibleMomentMarkers.map(marker => {
-              const active = marker.sourceIndex === pinIndex || activeMomentMarkerKey === marker.key
+              const active = marker.pinned || activeMomentMarkerKey === marker.key
               const presentation = chartMomentMarkerPresentation(active)
               const clock = momentClockDisplay(marker.peak)
               const accessibleClock = `minute bucket ${clock.text}`
@@ -2178,13 +2215,13 @@ function PulseOverviewChartImpl({
                   onBlur={() => setActiveMomentMarkerKey(current => current === marker.key ? null : current)}
                   onClick={event => {
                     event.stopPropagation()
-                    handlePeakMarkerClick(marker.peak, marker.sourceIndex)
+                    handlePeakMarkerClick(marker)
                   }}
                   onKeyDown={event => {
                     if ((!onSelectIndex && !onSelectMoment) || (event.key !== 'Enter' && event.key !== ' ')) return
                     event.preventDefault()
                     event.stopPropagation()
-                    handlePeakMarkerClick(marker.peak, marker.sourceIndex)
+                    handlePeakMarkerClick(marker)
                   }}
                 >
                   <title>

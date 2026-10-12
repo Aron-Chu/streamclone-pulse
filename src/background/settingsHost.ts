@@ -1,4 +1,4 @@
-import type { SettingsHostSection } from '../shared/messages.ts'
+import type { SettingsHostSection, SettingsHostTarget } from '../shared/messages.ts'
 
 export type { SettingsHostSection } from '../shared/messages.ts'
 
@@ -10,7 +10,7 @@ export interface SettingsHostTabsApi {
 export async function openSettingsHost(
   tabs: SettingsHostTabsApi,
   getExtensionUrl: (path: string) => string,
-  section: SettingsHostSection = 'pulse',
+  section: SettingsHostTarget = 'pulse',
 ): Promise<void> {
   await tabs.create({ url: `${getExtensionUrl('options/index.html')}#${section}` })
 }

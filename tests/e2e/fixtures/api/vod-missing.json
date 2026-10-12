@@ -1,0 +1,16 @@
+{
+  "mode": "vod",
+  "vodId": "2806037629",
+  "channelLogin": "fixturechan",
+  "channelDisplayName": "fixturechan",
+  "title": "Fixture VOD never indexed",
+  "durationSeconds": 3600,
+  "coverageStatus": "missing",
+  "coverageMessage": "No replay analytics have been indexed for this VOD yet.",
+  "timeline": {
+    "bucketSeconds": 60,
+    "points": []
+  },
+  "topMoments": [],
+  "topEmotes": []
+}

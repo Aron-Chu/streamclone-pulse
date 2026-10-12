@@ -64,13 +64,19 @@ export async function launchExtensionContext(
   const browserChannel = process.env.PULSE_EXTENSION_BROWSER_CHANNEL?.trim() || undefined
   const browserExecutablePath = process.env.PULSE_EXTENSION_BROWSER_EXECUTABLE_PATH?.trim() || undefined
 
+  const loadViaCdp = loadsExtensionViaCdp(browserChannel, browserExecutablePath)
+
   const context = await chromium.launchPersistentContext(userDataDir, {
     channel: browserExecutablePath ? undefined : browserChannel,
     executablePath: browserExecutablePath,
     headless,
+    // Playwright adds --disable-extensions by default; the command-line path
+    // overrides it with --disable-extensions-except, the CDP path must drop it.
+    ignoreDefaultArgs: loadViaCdp ? ['--disable-extensions'] : undefined,
     args: [
-      `--disable-extensions-except=${EXTENSION_DIST_DIR}`,
-      `--load-extension=${EXTENSION_DIST_DIR}`,
+      ...(loadViaCdp
+        ? ['--enable-unsafe-extension-debugging']
+        : [`--disable-extensions-except=${EXTENSION_DIST_DIR}`, `--load-extension=${EXTENSION_DIST_DIR}`]),
       '--disable-blink-features=AutomationControlled',
       // A tab the extension opens with chrome.tabs.create starts navigating
       // before Playwright can route it, so a fixture run would otherwise load
@@ -86,11 +92,39 @@ export async function launchExtensionContext(
     recordVideo: { dir: videoDir, size: viewport },
   })
 
+  if (loadViaCdp) await loadUnpackedExtensionViaCdp(context)
+
   const serviceWorker = await waitForExtensionServiceWorker(context)
   const extensionId = extensionIdFromWorker(serviceWorker)
   const page = context.pages()[0] ?? (await context.newPage())
 
   return { context, page, userDataDir, extensionId, serviceWorker, videoDir }
+}
+
+/**
+ * Branded Google Chrome (137+) ignores --load-extension, so a run on that
+ * channel would never see the extension. Microsoft Edge 155 still honours the
+ * switch (checked 2026-10-10), but takes the same path so both branded channels
+ * load the same way if Edge follows Chrome. They load the unpacked
+ * build through the CDP Extensions domain instead, which the browser exposes
+ * only with --enable-unsafe-extension-debugging over Playwright's debugging
+ * pipe. Chromium, Chrome for Testing and Brave (executable path) keep the
+ * command-line switch.
+ */
+export function loadsExtensionViaCdp(channel: string | undefined, executablePath: string | undefined): boolean {
+  return !executablePath && !!channel && /^(chrome|msedge)(-|$)/.test(channel)
+}
+
+async function loadUnpackedExtensionViaCdp(context: BrowserContext): Promise<void> {
+  const browser = context.browser()
+  if (!browser) throw new Error('Persistent context has no browser handle for the CDP extension load')
+  const session = await browser.newBrowserCDPSession()
+  try {
+    // Forward slashes: the browser rejects some backslash Windows paths here.
+    await session.send('Extensions.loadUnpacked', { path: EXTENSION_DIST_DIR.split(path.sep).join('/') })
+  } finally {
+    await session.detach().catch(() => undefined)
+  }
 }
 
 export async function waitForExtensionServiceWorker(

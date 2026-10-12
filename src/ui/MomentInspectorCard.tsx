@@ -84,6 +84,7 @@ export function MomentInspectorCard({
         onJump={onJump}
         onAnalytics={onAnalytics}
         onClose={onClose}
+        contentKey={timeLabel}
         ariaLabel={`${kind === 'minute' ? 'Selected minute' : 'Selected moment'} at ${timeLabel}`}
       />
     )
