@@ -6,6 +6,7 @@ import Docs from '../src/routes/public/Docs'
 import NotFound from '../src/routes/public/NotFound'
 import Privacy from '../src/routes/public/Privacy'
 import Support from '../src/routes/public/Support'
+import Feedback from '../src/routes/public/Feedback'
 import DashboardShell from '../src/routes/dashboard/DashboardShell'
 import { supportDiagnostics } from '../src/lib/supportDiagnostics'
 
@@ -22,6 +23,18 @@ describe('public release routes', () => {
     expect(document.body.textContent).not.toMatch(/public API.*coming soon/i)
   })
 
+  it('numbers the documentation sections in reading order, matching the table of contents', () => {
+    renderRoute(<Docs />)
+    const numbered = screen.getAllByRole('heading', { level: 2 })
+      .map((heading) => heading.textContent ?? '')
+      .filter((text) => /^\d+\./.test(text))
+      .map((text) => Number.parseInt(text, 10))
+    expect(numbered).toEqual([1, 2, 3])
+    const toc = Array.from(document.querySelectorAll('.public-toc a')).map((link) => link.getAttribute('href'))
+    const sections = Array.from(screen.getByTestId('docs-page').querySelectorAll('section[id]')).map((section) => `#${section.id}`)
+    expect(sections).toEqual(toc)
+  })
+
   it('describes local beta keys as an interface gate, not API authorization', () => {
     renderRoute(<DashboardShell />)
     expect(screen.getByRole('note').textContent).toContain('the server checks access for each request')
@@ -30,8 +43,9 @@ describe('public release routes', () => {
   })
 
   it('offers a public issue path and keeps diagnostics strictly allowlisted', () => {
-    renderRoute(<Support />)
-    expect(screen.getByRole('link', { name: 'Open a public issue on GitHub' }).getAttribute('href')).toBe('https://github.com/Aron-Chu/streamclone-pulse/issues')
+    // A build without a Turnstile key: /feedback offers the labelled public path.
+    renderRoute(<Feedback />)
+    expect(screen.getByRole('link', { name: 'Open a public issue on GitHub (opens in a new tab)' }).getAttribute('href')).toBe('https://github.com/Aron-Chu/streamclone-pulse/issues')
     const diagnostic = supportDiagnostics({ userAgent: 'Chrome/125 token=private email=private', online: true, width: 390, height: 844 })
     expect(diagnostic).toContain('Chrome/125')
     expect(diagnostic).not.toContain('private')
@@ -59,7 +73,7 @@ describe('public release routes', () => {
     expect(body).toMatch(/off by default/i)
     expect(body).toMatch(/Share crash diagnostics/i)
     expect(body).toMatch(/Hosted diagnostics upload is not active/i)
-    expect(body).toMatch(/Website error monitoring \(portal only\)/i)
+    expect(body).toMatch(/Sentry \(website error monitoring\)/i)
     expect(body).not.toMatch(/support@streampulse\.stream/i)
     expect(body).not.toMatch(/security@streampulse\.stream/i)
   })
@@ -88,9 +102,13 @@ describe('public release routes', () => {
       screen.getByTestId('support-page').querySelector('a[href="mailto:privacy@streampulse.stream"]'),
     ).toBeTruthy()
     const body = screen.getByTestId('support-page').textContent ?? ''
-    expect(body).toMatch(/privacy or legal/i)
-    expect(body).toMatch(/not a routine product-support mailbox/i)
-    expect(body).toMatch(/unavailable/i)
+    expect(body).toMatch(/for privacy, legal, billing and refund questions/i)
+    expect(body).toMatch(/For bugs and ideas use the private feedback form/)
+    // The mailbox is not called "not support" any more; bugs go to the private form.
+    expect(body).not.toMatch(/not a routine product-support mailbox/i)
+    expect(within(screen.getByTestId('support-page').querySelector('#contact') as HTMLElement).getByRole('link', { name: 'private feedback form' }).getAttribute('href')).toBe('/feedback')
+    // The private form is on /feedback; /support links to it.
+    expect(within(screen.getByTestId('support-feedback-link')).getByRole('link', { name: 'Send feedback' }).getAttribute('href')).toBe('/feedback')
     expect(screen.queryByTestId('support-form')).toBeNull()
     expect(body).not.toMatch(/Turnstile/i)
     expect(body).not.toMatch(/support@streampulse\.stream/i)

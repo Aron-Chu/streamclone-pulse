@@ -30,3 +30,20 @@
     transition: none !important;
   }
 }
+
+/* Time-bucketed activity bars: a bar size change swaps the bars at once (the
+   sizes nest, so it reads as a split or a merge) and fades them in from 55%. */
+@keyframes sc-bar-level-enter {
+  from { opacity: 0.55; }
+  to { opacity: 1; }
+}
+
+g[data-activity-bar-level].is-level-enter {
+  animation: sc-bar-level-enter 120ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  g[data-activity-bar-level].is-level-enter {
+    animation: none;
+  }
+}

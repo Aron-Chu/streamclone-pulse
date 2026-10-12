@@ -74,9 +74,73 @@ interface PortalStreamRecord {
   vodId?: string
 }
 
+/**
+ * Fresh measurement of an open session, used only when the backend omits the
+ * lifecycle contract (hosted API v0.2.69 and backend master emit no
+ * lifecycleState / lifecycleObservedAt / lifecycleDetectedAt).
+ *
+ * The hub lists a channel as live from the same collector that writes this
+ * stream's minute rows. A minute row that carries viewer samples or chat and
+ * ended within the contract's 120 s freshness bound, on a session the backend
+ * still reports open (`state: live`, `availability.liveDvrState: live`, no end),
+ * is direct evidence that the broadcast is live now. Anything older or weaker
+ * stays unknown: a row left open by a stalled worker never reads as live.
+ */
+export interface PortalMeasuredLiveEvidence {
+  /** Backend `availability.liveDvrState`; when present it must be `live`. */
+  liveDvrState?: string
+  /** Start (ms) of the newest minute row with a viewer sample or chat. */
+  latestMeasuredMinuteMs?: number | null
+}
+
+/** Freshness bound shared with the explicit `confirmed_live` contract. */
+export const PORTAL_LIVE_OBSERVATION_MAX_AGE_MS = 120_000
+
+/** Start (ms) of the newest minute that carries a real observation. */
+export function portalLatestMeasuredMinuteMs(
+  startedAt: string | undefined,
+  minutes: readonly PortalMinutePoint[] | null | undefined,
+): number | null {
+  const startMs = measurementTimeMs(startedAt)
+  if (startMs == null || !minutes?.length) return null
+  let latest: number | null = null
+  for (const minute of minutes) {
+    if (!minute || minute.missing === true || !Number.isFinite(minute.offsetSeconds) || minute.offsetSeconds < 0) continue
+    const observed = (minute.viewerSamples ?? 0) > 0
+      || (minute.viewerLatest ?? 0) > 0
+      || (minute.chatCount ?? 0) > 0
+    if (!observed) continue
+    const minuteMs = startMs + minute.offsetSeconds * 1000
+    if (latest == null || minuteMs > latest) latest = minuteMs
+  }
+  return latest
+}
+
+/**
+ * When the newest observed minute proves the session is live now, the time it
+ * was last observed (the end of that minute, capped at now); otherwise null.
+ */
+export function portalMeasuredLiveObservedMs(
+  stream: PortalStreamRecord | undefined,
+  legacyState: string | undefined,
+  evidence: PortalMeasuredLiveEvidence | undefined,
+  now = Date.now(),
+): number | null {
+  if (!stream || !evidence || stream.lifecycleState) return null
+  if (legacyState !== 'live' || stream.endedAt) return null
+  if (evidence.liveDvrState != null && evidence.liveDvrState !== 'live') return null
+  const minuteMs = evidence.latestMeasuredMinuteMs
+  const start = measurementTimeMs(stream.startedAt)
+  if (minuteMs == null || !Number.isFinite(minuteMs) || start == null || minuteMs < start) return null
+  const observed = Math.min(now, minuteMs + 60_000)
+  if (minuteMs > now || now - observed > PORTAL_LIVE_OBSERVATION_MAX_AGE_MS) return null
+  return observed
+}
+
 export function portalLifecycleDetailState(
   stream: PortalStreamRecord | undefined,
   legacyState: AnalyticsStreamDetail['state'],
+  measured?: PortalMeasuredLiveEvidence,
 ): AnalyticsStreamDetail['state'] {
   if (!stream) return legacyState === 'live' || legacyState === 'historical' ? 'unknown' : legacyState
   const start = measurementTimeMs(stream.startedAt)
@@ -84,27 +148,39 @@ export function portalLifecycleDetailState(
   const detected = measurementTimeMs(stream.lifecycleDetectedAt)
   const now = Date.now()
   if (stream.lifecycleState === 'confirmed_live') {
-    return start != null && observed != null && observed >= start && observed <= now && now - observed <= 120_000 ? 'live' : 'unknown'
+    return start != null && observed != null && observed >= start && observed <= now && now - observed <= PORTAL_LIVE_OBSERVATION_MAX_AGE_MS ? 'live' : 'unknown'
   }
   if (stream.lifecycleState === 'confirmed_ended') {
     return start != null && observed != null && detected != null
       && observed >= start && detected >= observed && detected <= now
       ? 'historical' : 'unknown'
   }
-  // A legacy EndedAt can be the time a worker noticed an old row, not the end
-  // of the broadcast. Only the exact authoritative lifecycle contract can end it.
+  // Without the contract, only a fresh observed minute on an open session can
+  // show live (see portalMeasuredLiveObservedMs). A legacy EndedAt can be the
+  // time a worker noticed an old row, not the end of the broadcast, so nothing
+  // here ends a session.
+  if (portalMeasuredLiveObservedMs(stream, legacyState, measured, now) != null) return 'live'
   return 'unknown'
 }
 
-function portalLifecycleFields(stream: PortalStreamRecord) {
+function portalLifecycleFields(
+  stream: PortalStreamRecord,
+  measured?: { legacyState?: string } & PortalMeasuredLiveEvidence,
+) {
+  const measuredObservedMs = measured
+    ? portalMeasuredLiveObservedMs(stream, measured.legacyState, measured)
+    : null
+  const contractState = portalLifecycleDetailState(stream, 'unknown')
   return {
     startedAt: measurementTimeIso(stream.startedAt) ?? '',
     // Mutable legacy ends must not reach downstream chart/VOD/sidebar code as
     // authoritative boundaries. Offline evidence is an interval, not EndedAt.
     endedAt: undefined,
-    lifecycleState: portalLifecycleDetailState(stream, 'unknown') === 'live' ? 'confirmed_live' as const
-      : portalLifecycleDetailState(stream, 'unknown') === 'historical' ? 'confirmed_ended' as const : 'unknown' as const,
-    lifecycleObservedAt: measurementTimeIso(stream.lifecycleObservedAt),
+    lifecycleState: contractState === 'live' || measuredObservedMs != null ? 'confirmed_live' as const
+      : contractState === 'historical' ? 'confirmed_ended' as const : 'unknown' as const,
+    lifecycleObservedAt: measuredObservedMs != null
+      ? new Date(measuredObservedMs).toISOString()
+      : measurementTimeIso(stream.lifecycleObservedAt),
     lifecycleDetectedAt: measurementTimeIso(stream.lifecycleDetectedAt),
     measuredStartAt: measurementTimeIso(stream.measuredStartAt),
     measuredEndAt: measurementTimeIso(stream.measuredEndAt),
@@ -802,9 +878,14 @@ function portalLiveResponseToAnalytics(
   const chartRollups = rollups.length > 240
     ? downsampleTimeline(rollups, undefined, rollupChartActivityScore)
     : rollups
+  const measured = {
+    legacyState: data.state,
+    liveDvrState: data.availability?.liveDvrState,
+    latestMeasuredMinuteMs: portalLatestMeasuredMinuteMs(stream?.startedAt, data.rollups),
+  }
   return {
     channel: data.channel,
-    state: portalLifecycleDetailState(stream, data.state),
+    state: portalLifecycleDetailState(stream, data.state, measured),
     stream: stream
       ? {
           streamId: stream.streamId,
@@ -815,7 +896,7 @@ function portalLiveResponseToAnalytics(
           viewerSamples: stream.viewerSamples,
           chatMessages: stream.chatMessages,
           vodId: stream.vodId ?? data.vodId,
-          ...portalLifecycleFields(stream),
+          ...portalLifecycleFields(stream, measured),
         }
       : undefined,
     rollups: chartRollups,
@@ -889,9 +970,14 @@ function portalDetailToAnalytics(
     opts?.includeMinutes
     && (opts.minutesFetchFailed || !minutes || rawMinuteCount === 0),
   )
+  const measured = {
+    legacyState: detail.state,
+    liveDvrState: detail.availability?.liveDvrState,
+    latestMeasuredMinuteMs: portalLatestMeasuredMinuteMs(stream?.startedAt, minutes?.minutes),
+  }
   return {
     channel: detail.channel,
-    state: portalLifecycleDetailState(stream, detail.state),
+    state: portalLifecycleDetailState(stream, detail.state, measured),
     stream: stream
       ? {
           streamId: stream.streamId,
@@ -902,7 +988,7 @@ function portalDetailToAnalytics(
           viewerSamples: stream.viewerSamples,
           chatMessages: stream.chatMessages,
           vodId: archive?.vodId,
-          ...portalLifecycleFields(stream),
+          ...portalLifecycleFields(stream, measured),
         }
       : undefined,
     rollups,

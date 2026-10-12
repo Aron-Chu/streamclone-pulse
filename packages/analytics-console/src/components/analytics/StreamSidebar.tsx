@@ -149,7 +149,7 @@ export function StreamSidebar({
               )
               const isSyncingActive = syncBadge === 'syncing'
               const rollupStats = isSyncingActive ? activeRollupStats : null
-              const mobileHiddenClass = !archiveExpanded && rowIndex >= MOBILE_COLLAPSED_ROWS ? 'hidden lg:block' : ''
+              const mobileHiddenClass = !archiveExpanded && rowIndex >= MOBILE_COLLAPSED_ROWS ? 'hidden xl:block' : ''
               const badgeTone =
                 syncBadge === 'syncing'
                   ? 'bg-violet-500/10 text-violet-300'
@@ -226,7 +226,7 @@ export function StreamSidebar({
             type="button"
             onClick={() => setArchiveExpanded((prev) => !prev)}
             aria-expanded={archiveExpanded}
-            className="block w-full border-t border-white/10 px-3 py-2 text-center text-xs font-black uppercase tracking-wide text-zinc-400 transition hover:bg-white/[0.05] hover:text-white lg:hidden"
+            className="block w-full border-t border-white/10 px-3 py-2 text-center text-xs font-black uppercase tracking-wide text-zinc-400 transition hover:bg-white/[0.05] hover:text-white xl:hidden"
           >
             {archiveExpanded ? 'Show fewer streams' : `Show all ${visibleStreams.length} streams`}
           </button>

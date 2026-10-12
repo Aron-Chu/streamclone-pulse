@@ -20,7 +20,7 @@ import { watchMomentHref } from '../../lib/watchHandoff'
 import { formatStreamOffset } from '../../lib/formatStreamOffset'
 import { twitchProfileImageRendition } from '../../lib/twitchProfileImage'
 import { ResilientImage } from '../../ui/components/ResilientImage'
-import { formatMomentDateTime } from '../../lib/liveWire'
+import { formatMomentDateTime, formatMomentOccurrence } from '../../lib/liveWire'
 import { momentComparisonSummary } from '../../lib/momentComparison'
 import { browseLoadedItems, loadedMomentNeighbors, readMomentBrowse } from '../../lib/momentBrowse'
 import { AnalyticsFigmaShell } from '../../ui/components/analytics/AnalyticsFigmaShell'
@@ -241,10 +241,7 @@ function MomentDetail({ moment: suppliedMoment, variant, onClose, saved, onSourc
   const comparison = moment.comparison
   const summary = momentComparisonSummary(comparison, moment.reactionSignal)
   const occurrenceDateTime = formatMomentDateTime(moment.at) ?? formatMomentDateTime(source?.occurrenceAt)
-  const occurrenceLabel = occurrenceDateTime ? new Date(occurrenceDateTime).toLocaleString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit',
-    timeZone: 'UTC', timeZoneName: 'short',
-  }) : null
+  const occurrenceLabel = occurrenceDateTime ? formatMomentOccurrence(occurrenceDateTime) : null
   const reviewing = navigation.position != null
   const measurement = <section className="moments-measurement" aria-label="Moment measurement">
     <div className="moments-measurement-heading"><h3>What happened in chat</h3>{summary ? <span>{summary}</span> : null}</div>

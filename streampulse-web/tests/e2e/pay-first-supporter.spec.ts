@@ -111,10 +111,12 @@ for (const width of [1440, 390]) {
   })
 }
 
-test('public Supporter describes extension-first purchase while paid sign-ups stay closed', async ({ page }) => {
+test('public Supporter describes Continue with Twitch while Supporter sign-ups stay closed', async ({ page }) => {
   await page.goto('/supporter')
   await expect(page.getByRole('link', { name: 'Get the extension', exact: true })).toBeVisible()
-  await expect(page.getByText('Become a Supporter', { exact: true })).toBeVisible()
-  await expect(page.getByTestId('prelaunch-notice')).toContainText('Paid sign-ups are not open yet.')
-  await expect(page.getByRole('link', { name: 'Use a StreamPulse website account' })).toHaveAttribute('href', '/account/billing')
+  await expect(page.getByTestId('supporter-availability')).toContainText('When they open, you’ll choose Continue with Twitch, then pay on Stripe.')
+  await expect(page.getByTestId('prelaunch-notice')).toContainText('Supporter sign-ups are not open yet.')
+  // No competing website-account or email-restore choice on the public page.
+  await expect(page.getByRole('link', { name: 'Use a StreamPulse website account' })).toHaveCount(0)
+  await expect(page.getByText(/Restore my Supporter/)).toHaveCount(0)
 })

@@ -12,6 +12,8 @@ interface ImportMetaEnv {
   readonly VITE_TURNSTILE_SITE_KEY?: string
   /** Activation input: public Discord invite. Without a valid one every Discord link is hidden. */
   readonly VITE_PUBLIC_DISCORD_INVITE_URL?: string
+  /** Launch switch: `on` shows the optional "Seen in chat" Supporter copy (lib/supporterChatBadgesFlag.ts). */
+  readonly VITE_SUPPORTER_CHAT_BADGES?: string
   readonly DEV: boolean
   readonly PROD: boolean
   readonly MODE: string

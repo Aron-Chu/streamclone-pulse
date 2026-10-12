@@ -3,6 +3,8 @@ import { Link, NavLink, useLocation } from 'react-router-dom'
 import { Menu } from 'lucide-react'
 import { BrandMark } from '../BrandMark'
 import { ChromeInstallCta } from '../ChromeInstallCta'
+import { discordInviteUrl } from '../../../lib/discord'
+import { FEEDBACK_PATH } from '../../../lib/externalLinks'
 
 export interface AnalyticsTopNavItem {
   label: string
@@ -34,6 +36,7 @@ export function AnalyticsTopNav({
   const triggerRef = useRef<HTMLButtonElement>(null)
   const panelId = useId()
   const location = useLocation()
+  const discord = discordInviteUrl()
 
   useEffect(() => {
     setIsOpen(false)
@@ -92,13 +95,15 @@ export function AnalyticsTopNav({
               <Menu size={18} aria-hidden="true" />
             </button>
             <div ref={panelRef} id={panelId} className="analytics-topnav__more-links" data-state={isOpen ? 'open' : 'closed'} aria-hidden={!isOpen}>
+              <Link to={FEEDBACK_PATH} onClick={() => closeMenu()}>Send feedback</Link>
+              {discord ? <a href={discord} target="_blank" rel="noopener noreferrer" aria-label="Discord (opens in a new tab)" onClick={() => closeMenu()}>Discord</a> : null}
               <Link to="/docs" onClick={() => closeMenu()}>Extension guide</Link>
               <Link to="/support" onClick={() => closeMenu()}>Support</Link>
               <Link to="/status" onClick={() => closeMenu()}>Service status</Link>
               <Link to="/supporter" onClick={() => closeMenu()}>Pulse Supporter</Link>
-              <Link to="/account/sign-in" onClick={() => closeMenu()}>Account</Link>
-              <Link to="/account/billing" onClick={() => closeMenu()}>Manage membership</Link>
-              <Link to="/account/link-device" onClick={() => closeMenu()}>Link extension</Link>
+              {/* No account entries until Continue with Twitch is public: the sign-in
+                  page is the invited-tester bridge, sign-ups are closed, and extension
+                  connection codes are tester-only. Testers reach them from account pages. */}
               <Link to="/privacy" onClick={() => closeMenu()}>Privacy</Link>
               <Link to="/terms" onClick={() => closeMenu()}>Terms</Link>
               <Link to="/refunds" onClick={() => closeMenu()}>Cancellation and refunds</Link>

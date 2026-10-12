@@ -468,6 +468,8 @@ export function AnalyticsConsole({
   const effectiveSessionNotFound = sessionNotFound || sessionLoadFailed
   // Until the first read settles there is nothing to classify; "Needs sync" would claim an empty session.
   const statCardsPending = effectiveSessionNotFound || sessionResolving || (detailQuery.isLoading && !detail)
+  // Same muted placeholder as the other five cards when there is no span yet.
+  const measuredSpanValue = statCardsPending ? '-' : durationFromDetail(detail)
 
   const handleSelectOffset = useCallback((offsetSeconds: number) => {
     if (!Number.isFinite(offsetSeconds)) return
@@ -869,7 +871,23 @@ export function AnalyticsConsole({
     [layer2Enabled, recapForStream],
   )
   const channelIsLive = useMemo(() => resolveChannelActuallyLive(detail), [detail])
-  const streamVodId = resolveAnalyticsVodId(detail, recapForStream?.vodId) ?? fallbackVodId
+  // A channel StreamPulse has never recorded: the live read settled as
+  // not_collected with no stream, and the stored list settled empty. A dashboard
+  // of "Needs sync" cards, an empty chart and "Updated 1m ago" would read as a
+  // tracked channel with a broken feed, so the page says so plainly instead.
+  // Public portal only: the panel links to portal routes.
+  const channelNotRecorded = mode === 'public'
+    && isLiveRoute
+    && !sessionLoadFailed
+    && !streamsListFailed
+    && liveQuery.isSuccess
+    && liveQuery.data?.state === 'not_collected'
+    && !liveQuery.data?.stream?.streamId
+    && streamsQuery.isSuccess
+    && (streamsQuery.data?.items ?? []).length === 0
+    && !channelIsLive
+    && !isActiveLiveCollector
+  const streamVodId =resolveAnalyticsVodId(detail, recapForStream?.vodId) ?? fallbackVodId
   const hasVerifiedVodAlignment = typeof detail?.vodAlignSeconds === 'number'
     && Number.isFinite(detail.vodAlignSeconds)
   const vodLinkState = useMemo(
@@ -1169,13 +1187,15 @@ export function AnalyticsConsole({
 
   if (!channelLogin) {
     return (
-      <section className="analytics-console" aria-label="Streamclone analytics console">
+      <section className="analytics-console" aria-label="StreamPulse analytics">
         <p className="muted">Missing channel login.</p>
       </section>
     )
   }
 
-  const headerTitle = unresolvedSessionAlias
+  const headerTitle = channelNotRecorded
+    ? channelLogin
+    : unresolvedSessionAlias
     ? `Session date ${streamId} outside loaded results`
     : sessionNotFound
     ? `Session ${streamId} not found`
@@ -1229,6 +1249,7 @@ export function AnalyticsConsole({
               >
                 {channelLogin}
               </Link>
+              {channelNotRecorded ? null : <>
               <span
                 className={`rounded px-2 py-1 ${
                   headerState === 'live'
@@ -1248,8 +1269,13 @@ export function AnalyticsConsole({
                     )}
               </span>
               {mode === 'public' ? (
-                <DataQualityDisclosure detail={detail} summaryMetrics={summaryQuery.data?.metrics} />
+                <DataQualityDisclosure
+                  detail={detail}
+                  summaryMetrics={summaryQuery.data?.metrics}
+                  pending={!detail && (detailQuery.isLoading || sessionResolving || sessionLoadFailed)}
+                />
               ) : null}
+              </>}
             </div>
             <h1
               className="mt-3 truncate text-2xl font-black leading-tight text-white lg:text-3xl"
@@ -1257,7 +1283,7 @@ export function AnalyticsConsole({
             >
               {headerTitle}
             </h1>
-            <div className="mt-2 flex flex-wrap gap-2 text-sm font-bold text-zinc-500">
+            {channelNotRecorded ? null : <div className="mt-2 flex flex-wrap gap-2 text-sm font-bold text-zinc-500">
               {stream?.displayName ? <span>{stream.displayName}</span> : null}
               {stream?.category ? <span>{stream.category}</span> : null}
               {stream?.startedAt ? <span><RelativeTimeText prefix="Started" value={stream.startedAt} /></span> : null}
@@ -1266,9 +1292,9 @@ export function AnalyticsConsole({
                   ? <RelativeTimeText prefix="Refreshed" value={lastRefreshedAt} />
                   : <RelativeTimeText prefix="Updated" value={detail?.updatedAt || undefined} />}
               </span>
-            </div>
+            </div>}
           </div>
-          <div data-session-header-actions className="flex shrink-0 flex-wrap items-center gap-2">
+          {channelNotRecorded ? null : <div data-session-header-actions className="flex shrink-0 flex-wrap items-center gap-2">
             {enableLayoutControls ? (
               <>
                 <button
@@ -1299,10 +1325,11 @@ export function AnalyticsConsole({
             >
               {refreshing ? 'Refreshing…' : 'Refresh data'}
             </button>
-          </div>
+          </div>}
         </header>
+        {channelNotRecorded ? <ChannelNotRecordedPanel login={channelLogin} /> : <>
 
-        <section className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+        <section className="grid grid-cols-2 gap-3 lg:grid-cols-6" data-session-stat-row>
           <StatCard
             label={isHistoricalRoute ? 'Last measured viewers' : 'Current viewers'}
             value={statCardsPending ? '-' : statCardClasses.current.placeholder ?? count(headerStats.current)}
@@ -1330,7 +1357,8 @@ export function AnalyticsConsole({
           />
           <StatCard
             label="Measured span"
-            value={statCardsPending ? '-' : durationFromDetail(detail)}
+            value={measuredSpanValue}
+            tone={measuredSpanValue === '-' ? STAT_PLACEHOLDER_MUTED_CLASS : undefined}
           />
         </section>
 
@@ -1354,11 +1382,30 @@ export function AnalyticsConsole({
             ) : null}
             {!sessionResolving && !effectiveSessionNotFound && !(detailQuery.isLoading && !detail) ? (
             <div className="min-w-0 space-y-4">
-              <CoverageStartBanner
-                offsetSeconds={detail?.coverageStartOffsetSeconds}
-                missingRanges={detail?.availability?.missingRanges}
-                message={detail?.availability?.coverageMessage}
-              />
+              {/* The coverage notice and the session lifecycle row are one-line
+                  facts about the session; wide portal layouts put them side by
+                  side (data-session-status-row), narrow ones stack them. */}
+              <div className="flex min-w-0 flex-col gap-4 empty:hidden [&:empty+*]:!mt-0" data-session-status-row>
+                <CoverageStartBanner
+                  offsetSeconds={detail?.coverageStartOffsetSeconds}
+                  missingRanges={detail?.availability?.missingRanges}
+                  message={detail?.availability?.coverageMessage}
+                />
+                <PastBroadcastBanner
+                  isLiveRoute={isLiveRoute}
+                  isActiveLiveCollector={isActiveLiveCollector}
+                  stream={stream}
+                  syncing={syncing}
+                  hasChartData={
+                    (detail?.rollups ?? []).some(rollupHasMinuteData)
+                    || rollupsHaveViewerData(detail?.rollups ?? [])
+                  }
+                  vodLinkState={vodLinkState}
+                  sessionStreamId={targetQueryStreamId}
+                  channelLogin={channelLogin}
+                  buildSessionPath={buildSessionPath}
+                />
+              </div>
               <StreamQualityBanner
                 diagnosis={qualityDiagnosis}
                 syncing={syncing}
@@ -1377,20 +1424,6 @@ export function AnalyticsConsole({
                   Unable to load session data. Refresh to try again.
                 </p>
               ) : null}
-              <PastBroadcastBanner
-                isLiveRoute={isLiveRoute}
-                isActiveLiveCollector={isActiveLiveCollector}
-                stream={stream}
-                syncing={syncing}
-                hasChartData={
-                  (detail?.rollups ?? []).some(rollupHasMinuteData)
-                  || rollupsHaveViewerData(detail?.rollups ?? [])
-                }
-                vodLinkState={vodLinkState}
-                sessionStreamId={targetQueryStreamId}
-                channelLogin={channelLogin}
-                buildSessionPath={buildSessionPath}
-              />
               {showSessionSignalTape ? (
                 <SessionSignalTape
                   key={`${channelLogin}:${canonicalStreamId || targetQueryStreamId}`}
@@ -1462,7 +1495,8 @@ export function AnalyticsConsole({
                   >
                     open the full VOD
                   </a>
-                  {isLongStreamChart ? ' Long streams (6h+) may feel slower while hovering the chart.' : ''}
+                  {/* Its own sentence, so the long-stream note does not run on. */}
+                  .{isLongStreamChart ? ' Long streams (6h+) may feel slower while hovering the chart.' : ''}
                 </p>
               ) : vodLinkState.detail ? (
                 <p className={`text-xs font-semibold ${vodLinkState.status === 'request_failed' ? 'text-amber-200' : 'text-zinc-400'}`}>
@@ -1622,6 +1656,46 @@ export function AnalyticsConsole({
             </div>
           </RightColumn>
         </div>
+        </>}
+      </div>
+    </section>
+  )
+}
+
+/**
+ * One honest panel for a channel StreamPulse has never recorded, in place of
+ * the stat grid, stream list and chart (which would all be empty placeholders).
+ */
+function ChannelNotRecordedPanel({ login }: { login: string }) {
+  return (
+    <section
+      data-channel-not-recorded
+      aria-labelledby="channel-not-recorded-title"
+      className="rounded border border-white/[0.07] bg-white/[0.025] px-5 py-8 sm:px-8 sm:py-10"
+    >
+      <h2 id="channel-not-recorded-title" className="text-xl font-black leading-tight text-white">
+        StreamPulse hasn&rsquo;t recorded <span className="break-words">{login}</span> yet
+      </h2>
+      <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-zinc-400">
+        StreamPulse measures a list of tracked Twitch channels, and this one has no recorded streams, so
+        there are no viewers, chat or moments to show.{' '}
+        <Link to="/docs#coverage" className="text-violet-300 underline underline-offset-2 hover:text-violet-200">
+          How coverage works
+        </Link>
+      </p>
+      <div className="mt-6 flex flex-wrap gap-3">
+        <Link
+          to="/analytics"
+          className="inline-flex min-h-11 items-center rounded border border-violet-400/40 bg-violet-500/15 px-4 py-2 text-sm font-black text-violet-100 transition hover:bg-violet-500/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+        >
+          Search tracked channels
+        </Link>
+        <Link
+          to="/feedback"
+          className="inline-flex min-h-11 items-center rounded border border-white/15 bg-white/[0.05] px-4 py-2 text-sm font-black text-zinc-200 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+        >
+          Suggest a channel
+        </Link>
       </div>
     </section>
   )

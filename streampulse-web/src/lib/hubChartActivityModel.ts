@@ -4,6 +4,7 @@ import {
   hasMeasuredActivitySignal,
   hubActivityEmoteCount,
   isMeasuredActivityPoint,
+  isViewerCoverageQualified,
   resolveHubActivityChartState,
   type HubActivityChartState,
 } from './hubActivitySummary'
@@ -82,7 +83,10 @@ export function deriveHubChartActivityModel(
   const measuredPointCount = chartPoints.filter(isMeasuredActivityPoint).length
   const signalPointCount = chartPoints.filter(hasMeasuredActivitySignal).length
   for (const point of chartPoints) {
-    if (point.viewers > peakViewers) {
+    // Same rule as the chart's own viewer peak: only fully sampled buckets. A
+    // partial or unknown-coverage bucket counts a different population and
+    // must not become the headline peak beside the chart.
+    if (isViewerCoverageQualified(point) && point.viewers > peakViewers) {
       peakViewers = point.viewers
       peakViewersAt = point.t
     }

@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { AnalyticsStreamDetail } from '../../api.ts'
 import AnalyticsChart from './AnalyticsChart.tsx'
@@ -9,7 +9,7 @@ vi.mock('../../hooks/useConsoleMotion.ts', () => ({
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
-it('accumulates gentle animated wheel input while keeping drag release immediate', () => {
+it('zooms with a plain wheel by default, accumulating gentle animated input, and keeps drag release immediate', () => {
   const frames = new Map<number, FrameRequestCallback>()
   let id = 0
   vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => {
@@ -34,28 +34,34 @@ it('accumulates gentle animated wheel input while keeping drag release immediate
     onSelectEmote={vi.fn()} selectedRollup={null} onSelectRollup={vi.fn()}
     viewMode="overview" onViewModeChange={vi.fn()} />)
   const plot = container.querySelector('[data-chart-touch-action]')!
-  vi.spyOn(plot, 'getBoundingClientRect').mockReturnValue({ left: 0, width: 1000 } as DOMRect)
+  vi.spyOn(plot, 'getBoundingClientRect').mockReturnValue({ left: 0, right: 1000, top: 0, bottom: 300, width: 1000, height: 300 } as DOMRect)
   const range = () => [Number(plot.getAttribute('data-chart-viewport-start')), Number(plot.getAttribute('data-chart-viewport-end'))]
   const initial = range()
-  const wheel = (deltaY: number) => fireEvent.wheel(plot, { deltaY, clientX: 500 })
+  const wheel = (deltaY: number) => fireEvent.wheel(plot, { deltaY, clientX: 500, clientY: 150 })
+  // As on the hub, Scroll zoom is on by default: a plain wheel over the plot zooms.
+  const scrollZoom = screen.getByRole('button', { name: /Scroll zoom/ })
+  expect(scrollZoom.getAttribute('aria-pressed')).toBe('true')
+  // Wheel zoom goes through the shared navigator, as on the hub: each notch
+  // is the hub's step (exp(-100 * 0.0025), about 22% narrower), and notches
+  // sent before the plot finishes easing compose.
   wheel(-100)
   wheel(-100)
   wheel(-100)
   flush()
-  expect(range()).toEqual(initial)
   flush(60)
   const intermediate = range()
   expect(intermediate[1] - intermediate[0]).toBeLessThan(initial[1] - initial[0])
-  flush(150)
+  flush(1000)
   const burst = range()
-  expect(burst[1] - burst[0]).toBeLessThan((initial[1] - initial[0]) * 0.8)
-  expect(burst[1] - burst[0]).toBeGreaterThan((initial[1] - initial[0]) * 0.6)
-  expect((burst[0] + burst[1]) / 2).toBeCloseTo((initial[0] + initial[1]) / 2)
+  const ratio = (burst[1] - burst[0]) / (initial[1] - initial[0])
+  expect(ratio).toBeGreaterThan(0.4)
+  expect(ratio).toBeLessThan(0.55)
+  expect(Math.abs((burst[0] + burst[1]) / 2 - (initial[0] + initial[1]) / 2)).toBeLessThan(90)
   flush()
   expect(range()).toEqual(burst)
   wheel(100)
   flush()
-  flush(150)
+  flush(1000)
   expect(range()[1] - range()[0]).toBeGreaterThan(burst[1] - burst[0])
 
   vi.stubGlobal('PointerEvent', MouseEvent)
@@ -69,5 +75,13 @@ it('accumulates gentle animated wheel input while keeping drag release immediate
   expect(released[0]).toBeLessThan(beforeDrag[0])
   expect(released[1] - released[0]).toBeCloseTo(beforeDrag[1] - beforeDrag[0])
   flush()
+  expect(range()).toEqual(released)
+
+  // With Scroll zoom off, a plain wheel scrolls the page and the plot stays put.
+  fireEvent.click(scrollZoom)
+  expect(scrollZoom.getAttribute('aria-pressed')).toBe('false')
+  expect(wheel(-100)).toBe(true)
+  flush()
+  flush(1000)
   expect(range()).toEqual(released)
 })

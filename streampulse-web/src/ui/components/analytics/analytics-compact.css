@@ -1,0 +1,355 @@
+/*
+ * Compact desktop density for the /analytics hub and channel/stream console.
+ *
+ * Why: at 100% browser zoom the hub spent ~1.2k CSS px on header chrome before
+ * the Global Activity plot started. The owner prefers 75% zoom. His Chrome runs
+ * with Windows display scaling at 125%, so a maximized window is about
+ * 2048x1018 CSS px at 100% and 2731x1357 CSS px at 75%. Zooming out therefore
+ * does two things: it gives 33% more CSS height per screen, and it widens the
+ * hub past the 2200px frame cap (center column 1400 -> 1552 CSS px). This
+ * file addresses only the vertical chrome; it does not reproduce the wider
+ * 75% layout, and on that window the stream page still shows less of its
+ * chart than at 75%.
+ * It removes chrome instead of shrinking the page: no CSS zoom, no
+ * transforms, body/label sizes unchanged (12px minimum label kept), 44px
+ * interactive targets unchanged, chart heights (420/360) unchanged.
+ *
+ * Scope: desktop widths only (>=1100px, where the sidebar layout starts).
+ * Narrower layouts keep their existing mobile/tablet rules. One exception
+ * lives in figma-analytics.css: the shared analytics top bar is 56px (was
+ * 66px) on every analytics page wider than 720px, so it stays the same
+ * height across pages whether or not this file has loaded.
+ * Evidence: streampulse-sdlc artifacts/analytics-compact-2026-10-08/.
+ */
+
+@media (min-width: 1100px) {
+  .figma-analytics {
+    /* Density tokens for this surface. Display sizes are capped instead of
+       tracking the viewport width, which made them hit their maximum on
+       every desktop window. */
+    --fma-compact-section-gap: 0.75rem;
+    --fma-compact-panel-pad-y: 0.65rem;
+    --fma-compact-panel-pad-x: 1.1rem; /* unchanged horizontal inset: keeps chart width */
+    --fma-compact-display: 1.65rem; /* 26.4px page title */
+    --fma-compact-kpi: 2rem;        /* 32px headline KPI */
+    --fma-compact-stat: 1.15rem;    /* 18.4px secondary stat */
+  }
+
+  /* The top bar is 56px (was 66px): keep the sticky sidebar 10px below it. */
+  .figma-analytics .figma-analytics__sidebar {
+    top: 4.125rem;
+    max-height: calc(100vh - 4.875rem);
+  }
+
+  /* Section rhythm */
+  .figma-analytics .figma-analytics__main > [id^="section-"]:not(#section-overview) {
+    margin-top: var(--fma-compact-section-gap);
+  }
+
+  /* Command center header */
+  .figma-analytics .hub-command-header--surface {
+    gap: 0.6rem;
+    padding: var(--fma-compact-panel-pad-y) 1rem;
+  }
+  .figma-analytics .hub-command-header__title {
+    margin-top: 0.2rem;
+    font-size: var(--fma-compact-display);
+    line-height: 1.1;
+  }
+  .figma-analytics .hub-command-header__lede {
+    margin-top: 0.3rem;
+    max-width: 96ch;
+    line-height: 1.45;
+  }
+  .figma-analytics .hub-command-header__body {
+    /* Pool Wire keeps a readable fixed-range column so the KPI side has room
+       for pool scale and window peaks on one row. */
+    grid-template-columns: minmax(0, 1fr) minmax(16rem, 20rem);
+    gap: 1.25rem;
+    padding-top: 0.6rem;
+  }
+  /* Pool scale and window peaks read as one row when there is room; the peak
+     disclosure wraps below on narrower desktop canvases. */
+  .figma-analytics .hub-command-header__metrics {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.75rem 1.75rem;
+  }
+  .figma-analytics .hub-command-header__primary {
+    flex: 0 0 auto;
+    grid-template-columns: repeat(2, minmax(9rem, max-content));
+    gap: 0.75rem 1.75rem;
+  }
+  .figma-analytics .hub-command-header__primary-label {
+    margin-bottom: 0.25rem;
+  }
+  .figma-analytics .hub-command-header__primary-value {
+    font-size: var(--fma-compact-kpi);
+  }
+  .figma-analytics .hub-command-header__metrics > [data-window-peak-disclosure] {
+    flex: 1 1 16rem;
+    min-width: min(100%, 16rem);
+  }
+  .figma-analytics .hub-command-header__peaks {
+    gap: 0.2rem;
+  }
+  .figma-analytics .hub-command-header__peak {
+    padding-top: 0.1rem;
+  }
+  .figma-analytics .hub-command-header__peak-label {
+    margin-bottom: 0.1rem;
+  }
+
+  /* Channel search */
+  .figma-analytics .hub-command-search {
+    margin-top: 0.5rem;
+    padding: 0.45rem 0.6rem;
+  }
+  .figma-analytics .hub-command-search .hx-search--lg .hx-search__field {
+    padding-block: 0.4rem;
+  }
+
+  /* Hottest Live */
+  .figma-analytics .hub-live-rail-section {
+    padding: 0 0 0.35rem;
+  }
+  .figma-analytics .hub-live-rail-section__head {
+    margin-bottom: 0.3rem;
+  }
+  .figma-analytics .hub-live-rail-section > p.muted {
+    margin: 0 0 0.45rem;
+  }
+  .figma-analytics .figma-live-rail__grid {
+    padding-block: 0.2rem 0.35rem;
+  }
+
+  /* Global Activity headline and chart chrome. The 420px plot, the reserved
+     hover readout (now shorter, still clipped-free) and the navigator keep
+     their contract geometry. */
+  .figma-analytics .figma-activity-hub .figma-global-activity__headline {
+    padding: 0.7rem var(--fma-compact-panel-pad-x) 0.45rem;
+  }
+  .figma-analytics .figma-global-activity__peak-row {
+    margin-top: 0.35rem;
+    gap: 0.4rem 1.5rem;
+  }
+  .figma-analytics .figma-global-activity__peak-stat strong {
+    font-size: var(--fma-compact-stat);
+    line-height: 1.3;
+  }
+  .figma-analytics .figma-global-activity__measurement-details {
+    margin-top: 0.3rem;
+    padding-top: 0.2rem;
+  }
+  .figma-analytics .figma-activity-hub .figma-global-activity__chart-note {
+    margin-bottom: 0.4rem;
+    padding: 0 var(--fma-compact-panel-pad-x);
+  }
+  .figma-analytics .figma-activity-hub .figma-global-activity__body {
+    margin: 0 var(--fma-compact-panel-pad-x) 0.7rem;
+  }
+  .figma-analytics .analytics-discovery-layout .figma-global-activity__chart-col {
+    padding-block: 0.5rem;
+  }
+  /* Row 1 holds the interval and the two-line metrics (label + value, 36px);
+     row 2 holds the one-line status. 36 + 28 fits the 65px content box
+     (74px less the 1px top border and 4px padding each side). */
+  .figma-analytics .hubx .hx-chart-header .hx-chart-header__readout {
+    grid-template-rows: 36px 28px;
+    height: 74px;
+    margin-top: 4px;
+    padding: 4px 0;
+  }
+}
+
+@media (min-width: 1536px) {
+  .figma-analytics .figma-analytics__frame--with-right-rail .figma-analytics__right-rail {
+    top: 4.125rem;
+    max-height: calc(100dvh - 4.875rem);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Channel / stream console (/analytics/:login, /analytics/:login/:streamId)
+ * ------------------------------------------------------------------------ */
+@media (min-width: 1100px) {
+  .figma-analytics .broadcast-return {
+    margin-bottom: 0.5rem;
+    padding-block: 0.15rem;
+  }
+
+  .sc-analytics-console [data-analytics-console-shell] > div:first-child {
+    gap: 0.75rem;
+  }
+  .sc-analytics-console .analytics-console header[data-session-header] {
+    gap: 0.6rem;
+    padding-bottom: 0.5rem;
+  }
+  .sc-analytics-console .analytics-console header[data-session-header] h1.truncate {
+    margin-top: 0.5rem;
+    font-size: var(--fma-compact-display, 1.65rem);
+    line-height: 1.12;
+  }
+  .sc-analytics-console .analytics-console header[data-session-header] h1.truncate + div {
+    margin-top: 0.35rem;
+  }
+  .sc-analytics-console .sc-stat-card {
+    padding: 0.5rem 0.75rem;
+  }
+  .sc-analytics-console [data-analytics-console-grid] {
+    gap: 0.75rem;
+  }
+  .sc-analytics-console [data-analytics-center-column] > .space-y-4 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0.75rem;
+  }
+  /* These one-line captions inherited 12px paragraph margins, which made the
+     selection-hint row 40px tall for 16px of text. */
+  .sc-analytics-console [data-chart-selection-hint] {
+    margin-block: 0;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Stream page: fit the session timeline on the first screen (option).
+ *
+ * On the owner's 2048x1018 CSS window (Windows at 125%, browser at 100%) the
+ * 400px timeline started at y=856, so only 162px of it showed; at 75% zoom all
+ * of it does. These rules remove whole rows of chrome above the plot instead
+ * of shrinking anything: one-line facts share a row, the games strip puts its
+ * label beside the box art, the overlay focus chips join the series tabs when
+ * they fit, and the stat cards read label-then-value on one line. The zoom
+ * controls are the shared navigator under the plot, as on the hub. Every
+ * control keeps its 44px target; rows wrap back to the stacked layout when a
+ * card is too narrow. No zoom, no transforms, no font changes.
+ * ------------------------------------------------------------------------ */
+/* Stat cards: label and value on one line, but only when the whole row is
+   wide enough (six cards of about 17rem) for every card to do it, so the row
+   never mixes one-line and two-line cards. */
+.sc-analytics-console [data-session-stat-row] {
+  container-type: inline-size;
+}
+@container (min-width: 105rem) {
+  .sc-analytics-console [data-session-stat-row] > .sc-stat-card {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.125rem 0.75rem;
+    padding-block: 0.4rem;
+  }
+  .sc-analytics-console [data-session-stat-row] .sc-stat-card__value {
+    margin-top: 0;
+    padding-top: 0;
+  }
+}
+
+@media (min-width: 1100px) {
+
+  /* Coverage notice and session lifecycle row side by side. */
+  .sc-analytics-console [data-session-status-row] {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+  .sc-analytics-console [data-session-status-row] > * {
+    display: flex;
+    align-items: center;
+    flex: 0 1 auto;
+  }
+  /* A lifecycle row that holds a 44px link (Watch VOD, Open session page) is
+     tall enough already, so only that row loses its padding; the notice beside
+     it stretches to the same height. A notice or a lifecycle row without a
+     link keeps its own padding, alone or side by side. */
+  .sc-analytics-console [data-session-status-row] > [data-session-lifecycle-row][data-has-action] {
+    padding-block: 0.125rem;
+  }
+  /* The lifecycle row (always last when present) takes the remaining width. */
+  .sc-analytics-console [data-session-status-row] > :last-child {
+    flex: 1 1 auto;
+  }
+
+  /* Games played: the label sits beside the box art instead of above it. */
+  .sc-analytics-console [data-games-played] {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(12rem, max-content) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .sc-analytics-console [data-games-played] > [data-games-played-header] {
+    grid-column: 1;
+    grid-row: 1;
+    border-bottom-width: 0;
+  }
+  .sc-analytics-console [data-games-played] > [data-games-timeline] {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    padding-block: 0.125rem;
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  .sc-analytics-console [data-games-played] [data-games-played-track] {
+    min-height: 72px; /* the 70px box-art targets plus their 1px ring room */
+    padding-block: 1px;
+  }
+  /* The hovered or pinned game sits in the free space under the label: the
+     name on one line, then its time window with the chart-window and pinned
+     marks, wrapping onto a third line when needed. It is positioned inside
+     that grid area (explicit end lines: an absolute item's "auto" end would
+     be the strip's edge), so it never sizes the strip: hovering or pinning a
+     game cannot move the art or the plot, and nothing is cut to one line. */
+  .sc-analytics-console [data-games-played] > [data-games-played-details] {
+    position: absolute;
+    grid-column: 1 / 2;
+    grid-row: 2 / 3;
+    inset: 0;
+    margin: 0;
+    padding: 0 0.25rem 0 0.625rem; /* text lines up with the label */
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    column-gap: 0.25rem;
+    overflow: hidden;
+    white-space: normal;
+    line-height: 0.875rem; /* three 14px lines fit the 42px under the label */
+  }
+  /* Each part stays on one line and wraps as a whole; a part wider than the
+     column (a very long game name) ends in an ellipsis, with the full text in
+     the line's tooltip. */
+  .sc-analytics-console [data-games-played-details] > * {
+    margin: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .sc-analytics-console [data-games-played-details] > [data-games-played-details-name] {
+    flex: 0 0 100%;
+  }
+  .sc-analytics-console [data-games-played-details] > [data-games-played-details-sep] {
+    display: none;
+  }
+
+  /* The chart header block (readouts, range, games) to the focus bar. */
+  .sc-analytics-console [data-chart-header-block] {
+    margin-bottom: 0.5rem;
+  }
+
+  /* Series tabs and overlay focus chips share one row when both fit. The
+     overlay row keeps a top and a left border, pulled 1px outside its box:
+     the bar's overflow clip hides whichever one is not a real separator. */
+  .sc-analytics-console [data-chart-focus-bar] {
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .sc-analytics-console [data-chart-focus-bar] > [data-chart-focus-top-row] {
+    flex: 1 1 auto;
+    max-width: 100%;
+  }
+  .sc-analytics-console [data-chart-focus-bar] > [data-chart-overlay-focus-row] {
+    flex: 1 1 auto;
+    max-width: 100%;
+    margin: -1px 0 0 -1px;
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+  }
+}
