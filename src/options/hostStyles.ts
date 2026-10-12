@@ -399,7 +399,7 @@ const hostStyles = `
   /* ---------- body: section links + content ---------- */
   .pulse-host-body {
     display: grid;
-    /* Rows hug their content: a short section (Help & Feedback) must not spread the stacked rail and content apart. */
+    /* Rows hug their content: a short section must not spread the stacked rail and content apart. */
     align-content: start;
     align-items: start;
     gap: 24px;
@@ -484,22 +484,34 @@ const hostStyles = `
     display: flex;
     font-size: 12px;
     font-weight: 700;
-    gap: 8px;
+    /* 6 and 9, not 8 and 10: with the subline the links still fit the 184 px rail
+       (measured: "Ideas or problems" fits at 390 to 1440 px; "Ideas and problems" did not). */
+    gap: 6px;
     min-height: 36px;
-    padding: 0 10px;
+    padding: 0 9px;
     text-decoration: none;
     transition: background 140ms ease, border-color 140ms ease;
     white-space: nowrap;
   }
   .pulse-host-community-link > svg { flex: none; height: 15px; width: 15px; }
+  /* A short subline under each label says what the link is. At least 4.5:1:
+     #8b8ba0 on the dark link is 5.4:1 (5.1:1 hovered); on Discord Blurple only
+     full white passes (4.6:1, 6.4:1 hovered), so the subline is white there.
+     The label and subline wrap inside the link when they do not fit, instead of
+     running into the new-tab arrow or pushing the card past the rail: Linux has
+     no Inter or Segoe UI and falls back to the much wider DejaVu Sans, and at
+     320 px "Join the Discord" does not fit even in Segoe UI. With Segoe UI both
+     stay on one line from 390 px up. */
+  .pulse-host-community-copy { display: grid; gap: 1px; line-height: 1.2; min-width: 0; overflow-wrap: anywhere; padding: 6px 0; white-space: normal; }
+  .pulse-host-community-copy small { color: ${theme.textMuted}; font-size: 12px; font-weight: 600; }
+  .pulse-host-community-link[data-community-link="discord"] .pulse-host-community-copy small { color: #fff; font-weight: 500; }
   .pulse-host-community-link > svg:last-child { height: 11px; margin-left: auto; opacity: 0.8; width: 11px; }
   .pulse-host-community-link[data-community-link="feedback"] > svg:first-child { color: var(--pulse-accent-soft, #c4b5fd); }
   .pulse-host-community-link:hover { background: #1c1c25; border-color: #3a3a48; }
   /* Discord Blurple with white text: 4.6:1. */
   .pulse-host-community-link[data-community-link="discord"] { background: #5865f2; border-color: #5865f2; color: #fff; }
   .pulse-host-community-link[data-community-link="discord"]:hover { background: #4752c4; border-color: #4752c4; }
-  .pulse-host-community-link:focus-visible,
-  .pulse-settings-help-choice:focus-visible {
+  .pulse-host-community-link:focus-visible {
     outline: 2px solid var(--pulse-accent-light, #a78bfa);
     outline-offset: 2px;
   }
@@ -680,53 +692,6 @@ const hostStyles = `
     height: 14px;
     width: 14px;
   }
-  /* ---------- Help & Feedback: two large choices ---------- */
-  .pulse-settings-help-choices {
-    display: grid;
-    gap: 12px;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  }
-  .pulse-settings-help-choice {
-    align-items: center;
-    background: #111117;
-    border: 1px solid #2a2a36;
-    border-radius: 12px;
-    color: ${theme.textPrimary};
-    display: grid;
-    gap: 14px;
-    grid-template-columns: 40px minmax(0, 1fr) 14px;
-    min-height: 88px;
-    padding: 16px 18px;
-    text-decoration: none;
-    transition: background 140ms ease, border-color 140ms ease;
-  }
-  .pulse-settings-help-choice:hover { background: #17171f; border-color: #3a3a48; }
-  .pulse-settings-help-icon {
-    align-items: center;
-    background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.16);
-    border: 1px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.3);
-    border-radius: 10px;
-    color: var(--pulse-accent-soft, #c4b5fd);
-    display: grid;
-    height: 40px;
-    place-items: center;
-    width: 40px;
-  }
-  .pulse-settings-help-icon svg { height: 22px; width: 22px; }
-  .pulse-settings-help-copy { display: grid; gap: 2px; min-width: 0; }
-  .pulse-settings-help-copy strong { font-size: 15px; font-weight: 800; letter-spacing: -0.01em; line-height: 1.3; }
-  .pulse-settings-help-copy small { color: ${theme.textSecondary}; font-size: 12px; }
-  .pulse-settings-help-choice > svg { color: ${theme.textMuted}; height: 14px; width: 14px; }
-  .pulse-settings-help-choice[data-help-choice="discord"] { background: #5865f2; border-color: #5865f2; color: #fff; }
-  .pulse-settings-help-choice[data-help-choice="discord"]:hover { background: #4752c4; border-color: #4752c4; }
-  .pulse-settings-help-choice[data-help-choice="discord"] .pulse-settings-help-icon { background: rgba(255, 255, 255, 0.16); border-color: rgba(255, 255, 255, 0.22); color: #fff; }
-  .pulse-settings-help-choice[data-help-choice="discord"] small,
-  .pulse-settings-help-choice[data-help-choice="discord"] > svg { color: #fff; }
-  /* Stacked when the rail moves above the content; side by side needs ~560px of content. */
-  @media (max-width: 860px) {
-    .pulse-settings-help-choices { grid-template-columns: minmax(0, 1fr); }
-  }
-
   .pulse-settings-policy-link {
     color: var(--pulse-accent-soft, #c4b5fd);
     font-size: 14px;
@@ -1068,7 +1033,37 @@ const hostStyles = `
     margin-top: 5px;
     width: 4px;
   }
-  .pulse-changelog-category { display: grid; gap: 6px; }
+  /* Each group folds to its count: New, Improved and Fixed start closed; Changed and Known limitations open. */
+  .pulse-changelog-category { border-top: 1px solid rgba(255, 255, 255, 0.055); }
+  .pulse-changelog-category > summary {
+    align-items: center;
+    cursor: pointer;
+    display: flex;
+    gap: 8px;
+    list-style: none;
+    padding: 9px 0;
+  }
+  .pulse-changelog-category > summary::-webkit-details-marker { display: none; }
+  .pulse-changelog-category > summary:hover h3 { filter: brightness(1.2); }
+  .pulse-changelog-category > summary:focus-visible { outline: 2px solid var(--pulse-accent-light, #a78bfa); outline-offset: 2px; }
+  .pulse-changelog-category[open] > .pulse-changelog-list { padding-bottom: 8px; }
+  .pulse-changelog-count {
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 999px;
+    color: ${theme.textMuted};
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1;
+    padding: 3px 7px;
+  }
+  .pulse-changelog-group-chevron {
+    color: ${theme.textMuted};
+    font-size: 18px;
+    line-height: 1;
+    margin-left: auto;
+    transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .pulse-changelog-category[open] .pulse-changelog-group-chevron { transform: rotate(90deg); }
   .pulse-changelog-category h3 {
     color: var(--pulse-accent-soft, #c4b5fd);
     font-size: 12px;
@@ -1080,14 +1075,49 @@ const hostStyles = `
   .pulse-changelog-category[data-release-category="knownIssues"] h3 { color: #fbbf24; }
   .pulse-changelog-links { display: flex; flex-wrap: wrap; gap: 12px; }
   .pulse-changelog-links a { color: var(--pulse-accent-soft, #c4b5fd); font-size: 13px; font-weight: 700; }
+  /* Updates & Changelog leads with this version's title and three highlights. */
+  .pulse-whatsnew {
+    background: linear-gradient(135deg, rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.13), rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.03));
+    border: 1px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.3);
+    border-radius: 12px;
+    display: grid;
+    gap: 10px;
+    padding: 16px 18px;
+  }
+  .pulse-whatsnew header { align-items: center; display: flex; gap: 8px; }
+  .pulse-whatsnew-eyebrow {
+    color: var(--pulse-accent-soft, #c4b5fd);
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+  }
+  .pulse-whatsnew-title { color: ${theme.textPrimary}; font-size: 18px; font-weight: 800; line-height: 1.25; margin: 0; }
+  .pulse-whatsnew .pulse-changelog-list { font-size: 14px; gap: 6px; }
+  .pulse-whatsnew .pulse-changelog-list li::before { margin-top: 8px; }
+  .pulse-whatsnew-all {
+    appearance: none;
+    background: none;
+    border: 0;
+    color: var(--pulse-accent-soft, #c4b5fd);
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    justify-self: start;
+    padding: 2px 0;
+  }
+  .pulse-whatsnew-all:hover { text-decoration: underline; }
+  .pulse-whatsnew-all:focus-visible { outline: 2px solid var(--pulse-accent-light, #a78bfa); outline-offset: 2px; }
+  .pulse-settings-history { scroll-margin-top: 16px; }
 
   @media (prefers-reduced-motion: reduce) {
     .pulse-host-nav a,
     .pulse-host-community-link,
-    .pulse-settings-help-choice,
     .pulse-settings-skip-link,
     .pulse-changelog-release,
     .pulse-changelog-chevron,
+    .pulse-changelog-group-chevron,
     .pulse-changelog-reveal,
     .pulse-settings-choice-card { transition: none; }
     .pulse-settings-section-stage { animation: none; }

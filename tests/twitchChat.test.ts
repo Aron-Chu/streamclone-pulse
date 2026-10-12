@@ -34,6 +34,7 @@ import {
   type SidebarSnapLayout,
 } from '../src/content/twitchChat.ts'
 import { overlayBaseStyles } from '../src/ui/overlayStyles.ts'
+import { resolvePanelBottomY, VOD_CHAT_BOTTOM_RESERVE_PX } from '../src/content/twitchChat.ts'
 import { applyTwitchSidebarChromeHides } from '../src/content/twitchSidebarChrome.ts'
 import {
   computeMessagesAreaRect,
@@ -827,13 +828,22 @@ describe('panel bottom while the composer is missing', () => {
     // The 150 px reserve (column bottom 768 - 150).
     expect(measureSidebarSnapLayout(page.doc)).toMatchObject({ composer: false, panel: { bottom: 618 } })
 
-    // A VOD's chat replay has no composer: its own 48 px reserve.
+    // A VOD's chat replay has no composer: the panel runs to the column bottom.
     page.dom.window.history.pushState(null, '', '/fixturechan/videos/1234567890')
     expect(measureSidebarSnapLayout(page.doc)).toMatchObject({
       path: '/fixturechan/videos/1234567890',
       composer: false,
-      panel: { bottom: 720 },
+      panel: { bottom: 768 },
     })
+  })
+
+  it('covers a VOD’s chat replay strip, while a composer still sets the bottom wherever there is one', () => {
+    // The replay lines Twitch draws under the panel no longer peek out (2026-10-11 polish).
+    expect(VOD_CHAT_BOTTOM_RESERVE_PX).toBe(0)
+    expect(resolvePanelBottomY(900, null, { isVodPage: true })).toBe(900)
+    // A live page keeps its 150 px reserve, and a composer, where Twitch shows one, still wins.
+    expect(resolvePanelBottomY(900, null)).toBe(750)
+    expect(resolvePanelBottomY(900, 840, { isVodPage: true })).toBe(838)
   })
 })
 
@@ -1043,12 +1053,12 @@ describe('observeChatSnapLayout', () => {
     const env = installObserverGlobals(page)
 
     // Open one of its VODs. The observer restarts from the placed live layout,
-    // and the VOD's chat replay has no composer: its 48 px reserve at once.
+    // and the VOD's chat replay has no composer: the column bottom at once.
     page.dom.window.history.pushState(null, '', '/fixturechan/videos/1234567890')
     page.place('composer', null)
     const { seen, stop } = observe(live)
     expect(seen).toHaveLength(1)
-    expect(seen[0]).toMatchObject({ composer: false, panel: { bottom: 720 } })
+    expect(seen[0]).toMatchObject({ composer: false, panel: { bottom: 768 } })
     // Re-measured from its own layout, it stays on the reserve.
     for (let i = 0; i < 16; i += 1) env.tick()
     expect(seen).toHaveLength(1)

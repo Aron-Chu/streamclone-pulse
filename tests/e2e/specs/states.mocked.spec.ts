@@ -286,8 +286,13 @@ test.describe('extension mocked states', () => {
     await expect(settings.locator('input[type="password"]')).toHaveCount(0)
     const releasePreview = settings.locator('[data-changelog-preview="true"]')
     await expect(releasePreview).toBeVisible()
-    await expect(releasePreview).not.toHaveAttribute('open', '')
+    // An open card, not a disclosure: the three highlights and the link show without a click.
+    await expect(releasePreview.locator('summary')).toHaveCount(0)
     await expect(releasePreview.locator('li')).toHaveCount(3)
+    await expect(releasePreview.locator('li').first()).toBeVisible()
+    // The title fits on one line beside the version.
+    const releaseTitle = releasePreview.locator('.pulse-settings-release-title small')
+    expect(await releaseTitle.evaluate(element => element.getBoundingClientRect().height < parseFloat(getComputedStyle(element).fontSize) * 2)).toBe(true)
 
     // Quick controls persist immediately.
     const autoUpdate = settings.getByRole('checkbox', { name: /Refresh live data automatically|Auto-update/ })
@@ -320,12 +325,9 @@ test.describe('extension mocked states', () => {
       return stored.overlayPlacement
     }).toBe('right')
 
-    // The native disclosure expands without another settings implementation.
-    await releasePreview.locator('summary').click()
-    await expect(releasePreview).toHaveAttribute('open', '')
     await expect(settings.locator('[data-settings-host-cta="updates"]')).toBeVisible()
     const settingsHost = extension.context.waitForEvent('page')
-    await settings.getByRole('button', { name: /View full changelog/ }).click()
+    await settings.getByRole('button', { name: /See all changes/ }).click()
     const hostPage = await settingsHost
     await hostPage.waitForLoadState('domcontentloaded')
     await expect(hostPage).toHaveURL(new RegExp(`/options/index\\.html#updates$`))
@@ -339,7 +341,9 @@ test.describe('extension mocked states', () => {
     await expect(hostPage.getByRole('link', { name: 'Updates & Changelog' })).toHaveAttribute('aria-current', 'page')
     await expect(hostPage.getByText('Installed version', { exact: true })).toBeVisible()
     await expect(hostPage.locator('.pulse-changelog-release')).toHaveCount(4)
-    await expect(hostPage.locator('.pulse-changelog-version')).toHaveText(['v0.2.2', 'v0.2.1', 'v0.1.1', 'v0.1.0'])
+    await expect(hostPage.locator('.pulse-changelog-release .pulse-changelog-version')).toHaveText(['v0.2.2', 'v0.2.1', 'v0.1.1', 'v0.1.0'])
+    // What's new leads the page with the version you have.
+    await expect(hostPage.locator('[data-whatsnew="true"] .pulse-changelog-version')).toHaveText('v0.2.2')
 
     // The complete page owns the superset, and shared storage changes are reflected
     // by the already-open Twitch quick controls without reloading either surface.
@@ -453,7 +457,7 @@ test.describe('extension mocked states', () => {
     const settings = extension.page.locator('[data-overlay-settings-panel="true"]')
     await expect(settings).toBeVisible()
     const releasePreview = settings.locator('[data-changelog-preview="true"]')
-    await expect(releasePreview).not.toHaveAttribute('open', '')
+    await expect(releasePreview.locator('li')).toHaveCount(3)
     const settingsShell = extension.page.locator('#streamclone-pulse-root section[aria-label="StreamPulse overlay"]')
     await expect(settingsShell).toBeVisible()
     await expect(settingsShell).toHaveScreenshot('overlay-settings-panel.png', {
@@ -463,8 +467,7 @@ test.describe('extension mocked states', () => {
       caret: 'hide',
       maxDiffPixelRatio: 0.04,
     })
-    await releasePreview.locator('summary').click()
-    await expect(settings.locator('[data-settings-host-cta="updates"]')).toBeVisible()
+    await expect(releasePreview.locator('[data-settings-host-cta="updates"]')).toBeVisible()
     await settings.getByRole('button', { name: 'Back to Pulse' }).click()
     await expect(extension.page.getByRole('combobox', { name: 'Chart time range' })).toBeVisible()
   })
@@ -597,8 +600,26 @@ test.describe('extension mocked states', () => {
     await expect(releases.locator('.pulse-changelog-version')).toHaveText(['v0.2.2', 'v0.2.1', 'v0.1.1', 'v0.1.0'])
     const latestRelease = releases.nth(0)
     const olderRelease = releases.nth(1)
+    // What's new leads: this version's title and three highlights, with every release folded under it.
+    const whatsNew = workspace.locator('[data-whatsnew="true"]')
+    await expect(whatsNew).toBeVisible()
+    await expect(whatsNew.locator('li')).toHaveCount(3)
+    for (let index = 0; index < 4; index += 1) await expect(releases.nth(index)).toHaveAttribute('data-changelog-open', 'false')
+    expect((await whatsNew.boundingBox())!.y).toBeLessThan((await latestRelease.boundingBox())!.y)
+    // See all changes unfolds this version's notes and moves focus there. New, Improved
+    // and Fixed fold to a count; Changed and Known limitations stay open.
+    await whatsNew.getByRole('button', { name: 'See all changes ↓', exact: true }).click()
     await expect(latestRelease).toHaveAttribute('data-changelog-open', 'true')
+    await expect(latestRelease.locator('.pulse-changelog-toggle')).toBeFocused()
     await expect(olderRelease).toHaveAttribute('data-changelog-open', 'false')
+    const groups = latestRelease.locator('details.pulse-changelog-category')
+    await expect(groups.locator('summary h3')).toHaveText(['New', 'Changed', 'Improved', 'Fixed', 'Known limitations'])
+    expect(await groups.evaluateAll(details => details.map(group => (group as HTMLDetailsElement).open))).toEqual([false, true, false, false, true])
+    await expect(latestRelease.locator('[data-release-category="fixed"] .pulse-changelog-count')).toHaveText('8')
+    await latestRelease.locator('[data-release-category="fixed"] summary').click()
+    await expect(latestRelease.locator('[data-release-category="fixed"] li').first()).toBeVisible()
+    await latestRelease.locator('[data-release-category="fixed"] summary').click()
+    await expect(latestRelease.locator('[data-release-category="fixed"] li').first()).toBeHidden()
     const olderToggle = olderRelease.getByRole('button')
     await expect(olderToggle).toHaveAttribute('aria-expanded', 'false')
     const olderReveal = olderRelease.locator('.pulse-changelog-reveal')

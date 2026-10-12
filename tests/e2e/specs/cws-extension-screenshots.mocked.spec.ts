@@ -307,18 +307,25 @@ test.describe('CWS extension-on-Twitch screenshots', () => {
     await writeExactStoreShot(extension.page, '04-quick-settings.png')
   })
 
-  test('05 help and feedback in settings', async ({ extension, prepare }) => {
+  test('05 settings: release notes and community links', async ({ extension, prepare }) => {
     await prepare({ scenario: 'live-ready', twitchKind: 'live' })
     const page = extension.page
     await page.setViewportSize({ width: W, height: H })
-    await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#help`)
-    // Help & Feedback ships with #74. A branch without it has no fifth frame to
-    // take; the store set is captured from the RC, which has every 0.2.2 PR.
-    await expect(page.getByText('Updates & Changelog').first()).toBeVisible()
-    test.skip(await page.getByText('Help & Feedback').count() === 0, 'this build has no Help & Feedback section')
-    await expect(page.getByText('Send feedback', { exact: true }).first()).toBeVisible()
+    // A still frame: the Supporter banner's emotes hold their resting pose
+    // instead of being caught mid-fall.
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#updates`)
+    // Settings has had no Help & Feedback section since 2026-10-11. Updates &
+    // Changelog leads with the What's new card, and the Community card under the
+    // section list holds Join the Discord and Send feedback on every section.
+    await expect(page.getByRole('heading', { name: 'Updates & Changelog', exact: true })).toBeVisible()
+    await expect(page.locator('[data-whatsnew="true"]')).toBeVisible()
+    const community = page.getByRole('complementary', { name: 'Community' })
+    await expect(community.getByRole('link', { name: 'Join the Discord (opens in a new tab)', exact: true })).toBeVisible()
+    await expect(community.getByRole('link', { name: 'Send feedback (opens in a new tab)', exact: true })).toBeVisible()
+    await expect(page.locator('.pulse-supporter-pile').first()).toBeVisible()
     await page.waitForTimeout(1200)
-    await writeExactStoreShot(page, '05-help-feedback.png')
+    await writeExactStoreShot(page, '05-settings-updates.png')
 
     writeFileSync(
       join(OUT, 'manifest.json'),
@@ -328,13 +335,13 @@ test.describe('CWS extension-on-Twitch screenshots', () => {
           dims: { width: W, height: H },
           kind: 'extension_embedded_on_twitch_tv',
           harness: 'tests/e2e/specs/cws-extension-screenshots.mocked.spec.ts',
-          note: 'Real unpacked dist/ content script on *.twitch.tv fixture documents (01-04) and the packaged settings page (05). Synthetic fixture channel; mocked captures are not live evidence. Not the streampulse-web landing tour.',
+          note: 'Real unpacked dist/ content script on *.twitch.tv fixture documents (01-04) and the packaged settings page on Updates & Changelog with the Community card (05). Synthetic fixture channel; mocked captures are not live evidence. Not the streampulse-web landing tour.',
           files: [
             '01-live-pulse.png',
             '02-top-moments.png',
             '03-vod-replay.png',
             '04-quick-settings.png',
-            '05-help-feedback.png',
+            '05-settings-updates.png',
           ],
         },
         null,

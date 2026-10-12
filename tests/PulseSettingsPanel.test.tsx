@@ -40,14 +40,18 @@ describe('PulseSettingsPanel quick workspace', () => {
     expect(html).toContain('Reset appearance and layout to defaults')
     expect(html).toContain('data-settings-connection="true"')
     expect(html).toContain('data-changelog-preview="true"')
-    expect(html).toMatch(/<summary><span class="pulse-settings-release-version">.*?<\/summary>/)
+    // What's new is an open card, not a disclosure: no summary, no chevron, the highlights show at once.
+    expect(html).toMatch(/<section class="pulse-settings-release-preview" data-changelog-preview="true" aria-label="What&#x27;s new"><header><span class="pulse-settings-release-version">.*?<\/header>/)
+    expect(html).not.toContain('pulse-settings-release-chevron')
+    expect(html).not.toContain('<details class="pulse-settings-release-preview"')
     expect(html).toContain('Background &amp; motion')
     expect(html).toContain('data-banner-editor-cta="true"')
     expect(html).not.toContain('<details class="pulse-banner-customize"')
     expect(html).not.toContain('Panel title')
-    expect(html).toContain('pulse-settings-release-body pulse-tab-fade')
+    expect(html).toContain('<div class="pulse-settings-release-body"><ul>')
     expect(html.match(/<li>/g)).toHaveLength(3)
-    expect(html).toContain('View full changelog ↗')
+    expect(html).toContain('See all changes ↗')
+    expect(html).not.toContain('View full changelog')
     expect(html).toContain('data-settings-host-cta="updates"')
     expect(html).not.toContain('Privacy &amp; Data')
     // "Open all settings" is pinned outside the scrolling panel, like the Pulse view's Settings bar.
@@ -66,9 +70,11 @@ describe('PulseSettingsPanel quick workspace', () => {
 
   it('puts a Discord row beside Open all settings that the worker opens, with no page URL in the panel', () => {
     const html = renderToStaticMarkup(<OpenAllSettingsButton />)
-    expect(html).toContain('Join the StreamPulse Discord')
+    // One label for joining, the same as the settings page's Community card.
+    expect(html).toContain('<span>Join the Discord</span>')
+    expect(html).not.toContain('Join the StreamPulse Discord')
     expect(html).toContain('data-community-link="discord"')
-    expect(html.indexOf('Open all settings')).toBeLessThan(html.indexOf('Join the StreamPulse Discord'))
+    expect(html.indexOf('Open all settings')).toBeLessThan(html.indexOf('Join the Discord'))
     expect(html).not.toContain('streampulse.stream/discord')
   })
 

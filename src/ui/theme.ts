@@ -1165,18 +1165,15 @@ export const shadowStyles = `
     font-size: 11px;
   }
   .pulse-settings-release-preview { overflow: hidden; }
-  .pulse-settings-release-preview summary {
+  /* One open card: header and highlights on the same surface, no divider, so it
+     never reads as an expanded disclosure. */
+  .pulse-settings-release-preview > header {
     align-items: center;
-    cursor: pointer;
     display: grid;
     gap: 8px;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    list-style: none;
-    padding: 11px 12px;
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: 11px 12px 0;
   }
-  .pulse-settings-release-chevron{transition:transform 160ms ease}
-  .pulse-settings-release-preview[open] .pulse-settings-release-chevron{transform:rotate(90deg)}
-  .pulse-settings-release-preview summary::-webkit-details-marker { display: none; }
   .pulse-settings-release-version {
     background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.16);
     border-radius: 999px;
@@ -1192,11 +1189,12 @@ export const shadowStyles = `
     font-size: 11px;
   }
   .pulse-settings-release-body {
-    border-top: 1px solid rgba(255, 255, 255, 0.055);
     display: grid;
-    gap: 8px;
-    padding: 9px 10px 10px;
+    gap: 6px;
+    padding: 8px 12px 9px;
   }
+  /* The link lines up with the bullet text, not left of it. */
+  .pulse-settings-release-body > .pulse-link-btn { justify-self: start; margin-left: 16px; }
   .pulse-settings-release-body ul {
     color: ${theme.textMuted};
     font-size: 11px;
@@ -1263,7 +1261,7 @@ export const shadowStyles = `
   .pulse-supporter-cta-head span { color: var(--spk-fin, #efc96a); flex: none; font-size: 11px; font-weight: 700; line-height: 18px; white-space: nowrap; }
   .pulse-supporter-stage { display: block; height: 96px; margin: 6px -14px 0; position: relative; }
   ${/* @__PURE__ */ supporterPaintCss()}
-  .pulse-settings-panel button:not(:disabled):hover,.pulse-settings-release-preview>summary:hover{border-color:var(--pulse-accent-light,#a78bfa);filter:brightness(1.15)}
+  .pulse-settings-panel button:not(:disabled):hover{border-color:var(--pulse-accent-light,#a78bfa);filter:brightness(1.15)}
   .pulse-settings-panel :is(button,input,select,summary):focus-visible{outline:2px solid var(--pulse-accent-light,#a78bfa);outline-offset:3px}
   .pulse-settings-toggle-row {
     align-items: center;
@@ -1578,6 +1576,19 @@ export const shadowStyles = `
     min-height: 0;
     /* Keep chart/rail wheel gestures from chaining into the Twitch page. */
     overscroll-behavior: contain;
+    /* A soft 10 px edge above the Settings bar, so a row cut mid-scroll reads as
+       "more below" instead of covered. Short on purpose: a 28 px fade ghosted
+       whole controls (the range bar, Plot on chart) and made them look disabled;
+       10 px only touches a row the edge already cuts. It matches the body's
+       10 px bottom padding, so at the end of the scroll the fade lies over empty
+       space and the last row is fully clear. */
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 10px), transparent);
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 10px), transparent);
+  }
+  /* A hairline between the scroll area and the pinned Settings bar. */
+  .placement-sidebar.pulse-sidebar-panel .pulse-settings-footer {
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding-top: 6px !important;
   }
   .sidebar-chat-only .pulse-panel-body {
     display: none !important;

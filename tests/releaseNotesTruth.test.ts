@@ -56,6 +56,33 @@ describe('0.2.2 release notes', () => {
     expect(entry('0.2.2').preview).toContain('The 7TV header backdrop moved to Supporter (not open yet).')
   })
 
+  it('lead with the short 0.2.2 draft: title, summary and three highlights (2026-10-11 polish)', () => {
+    // The backdrop sentence and highlight are master's (emote rain stays a Supporter perk, owner decision 2026-10-12).
+    const notes = entry('0.2.2')
+    expect(notes.title).toBe('Whole-stream charts, calmer Top Moments')
+    expect(notes.summary).toBe("Charts cover the whole stream, Top Moments opens a card only when you pick one, bookmarks work without an account, and the popup is redesigned. Also built for Edge and Firefox. The 7TV header backdrop is now a Supporter perk, and accounts and Supporter sign-ups aren't open yet.")
+    expect(notes.preview).toEqual(['Charts cover the whole stream.', 'Top Moments opens a card only when you pick one.', 'The 7TV header backdrop moved to Supporter (not open yet).'])
+    expect(notes.fixed).toEqual(expect.arrayContaining([
+      'Watched moments on VODs are remembered again.',
+      "Replays show their own stream's chart.",
+      'A restarted stream moves the panel to the new stream.',
+      'The popup says when a page has no chat for the panel.',
+    ]))
+  })
+
+  it('say Edge and Firefox are built for, never that a store has them', () => {
+    const notes = text(entry('0.2.2'))
+    expect(entry('0.2.2').new).toContain('Built for Microsoft Edge and Firefox as well as Chrome and Brave.')
+    expect(notes).not.toMatch(/(Edge|Firefox)[^.]*(store|add-ons|Add-ons|available|listed|published)/i)
+  })
+
+  it('name no Help & Feedback section and promise no open private form', () => {
+    const notes = text(entry('0.2.2'))
+    expect(notes).not.toMatch(/Help & Feedback/)
+    expect(notes).not.toMatch(/private feedback|only the (StreamPulse )?team reads/i)
+    expect(entry('0.2.2').new).toContain('Send feedback and Discord links are in settings.')
+  })
+
   it('name the Supporter perks from the one perk list', async () => {
     const perks = (await import('../src/shared/supporter-perks.json')).default
     const supporterLine = entry('0.2.2').new!.find(line => line.startsWith('A Supporter preview'))!
