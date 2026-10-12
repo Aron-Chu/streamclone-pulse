@@ -1578,6 +1578,19 @@ export const shadowStyles = `
     min-height: 0;
     /* Keep chart/rail wheel gestures from chaining into the Twitch page. */
     overscroll-behavior: contain;
+    /* A soft 10 px edge above the Settings bar, so a row cut mid-scroll reads as
+       "more below" instead of covered. Short on purpose: a 28 px fade ghosted
+       whole controls (the range bar, Plot on chart) and made them look disabled;
+       10 px only touches a row the edge already cuts. It matches the body's
+       10 px bottom padding, so at the end of the scroll the fade lies over empty
+       space and the last row is fully clear. */
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 10px), transparent);
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 10px), transparent);
+  }
+  /* A hairline between the scroll area and the pinned Settings bar. */
+  .placement-sidebar.pulse-sidebar-panel .pulse-settings-footer {
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding-top: 6px !important;
   }
   .sidebar-chat-only .pulse-panel-body {
     display: none !important;
