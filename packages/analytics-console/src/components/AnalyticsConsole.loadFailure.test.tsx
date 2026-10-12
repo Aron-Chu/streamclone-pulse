@@ -28,8 +28,12 @@ vi.mock('./analytics/AnalyticsChart.tsx', () => ({
   default: () => <div data-testid="analytics-chart">No recent data</div>,
 }))
 vi.mock('./analytics/ConsoleBits.tsx', () => ({
-  DataQualityDisclosure: () => null,
-  StatCard: ({ label, value }: { label: string; value: string }) => <div data-testid="stat-card">{label}: {value}</div>,
+  DataQualityDisclosure: ({ pending }: { pending?: boolean }) => (
+    <span data-testid="data-quality">{pending ? 'Data quality: —' : 'Data quality: verdict'}</span>
+  ),
+  StatCard: ({ label, value, tone }: { label: string; value: string; tone?: string }) => (
+    <div data-testid="stat-card" data-tone={tone}>{label}: {value}</div>
+  ),
   CoverageStartBanner: () => null,
 }))
 vi.mock('./analytics/MomentReviewPanel.tsx', () => ({ MomentReviewPanel: () => null }))
@@ -145,6 +149,16 @@ describe('AnalyticsConsole channel route load failures', () => {
     for (const card of screen.getAllByTestId('stat-card')) expect(card.textContent).toMatch(/: -$/)
   })
 
+  it('mutes every placeholder dash the same way, Measured span included', async () => {
+    api.getAnalyticsLive.mockImplementation(() => new Promise(() => undefined))
+    renderConsole('/analytics/xqc')
+
+    await waitFor(() => expect(screen.getAllByTestId('stat-card')).toHaveLength(6))
+    const tones = screen.getAllByTestId('stat-card').map(card => card.getAttribute('data-tone'))
+    expect(new Set(tones)).toEqual(new Set(['text-zinc-600 font-semibold']))
+    expect(screen.getAllByTestId('stat-card').at(-1)?.textContent).toBe('Measured span: -')
+  })
+
   it('reports a failed live read as unavailable instead of an empty chart', async () => {
     api.getAnalyticsLive.mockRejectedValue({ kind: 'server', message: 'internal_error', status: 500 })
     renderConsole('/analytics/xqc')
@@ -186,6 +200,38 @@ describe('AnalyticsConsole channel route load failures', () => {
 
     expect(await screen.findByText(/took too long to load\. Refresh to try again\./)).toBeTruthy()
     expect(screen.queryByTestId('analytics-chart')).toBeNull()
+  })
+})
+
+describe('AnalyticsConsole data quality chip without data', () => {
+  const items = [{ streamId: '320567744986', login: 'xqc', startedAt, endedAt: '2026-07-11T20:00:00.000Z' }]
+
+  it('shows a neutral chip, not a verdict, while the session is loading', async () => {
+    api.getAnalyticsStreams.mockResolvedValue({ channel: 'xqc', items, sources: [], updatedAt: 0 })
+    api.getAnalyticsStream.mockImplementation(() => new Promise(() => undefined))
+    renderConsole('/analytics/xqc/320567744986')
+
+    await waitFor(() => expect(api.getAnalyticsStream).toHaveBeenCalled())
+    expect(screen.getByTestId('data-quality').textContent).toBe('Data quality: —')
+  })
+
+  it('shows a neutral chip, not a verdict, after the session request failed', async () => {
+    api.getAnalyticsStreams.mockResolvedValue({ channel: 'xqc', items, sources: [], updatedAt: 0 })
+    api.getAnalyticsStream.mockRejectedValue(serverError)
+    renderConsole('/analytics/xqc/320567744986')
+
+    await screen.findByText(/Unable to load session data for/)
+    expect(screen.getByTestId('data-quality').textContent).toBe('Data quality: —')
+  })
+
+  it('gives the verdict once the session has loaded', async () => {
+    api.getAnalyticsStreams.mockResolvedValue({ channel: 'xqc', items, sources: [], updatedAt: 0 })
+    api.getAnalyticsStream.mockResolvedValue({
+      channel: 'xqc', state: 'historical', stream: items[0], rollups: [], topEmotes: [], sources: [], updatedAt: 0,
+    })
+    renderConsole('/analytics/xqc/320567744986')
+
+    await waitFor(() => expect(screen.getByTestId('data-quality').textContent).toBe('Data quality: verdict'))
   })
 })
 

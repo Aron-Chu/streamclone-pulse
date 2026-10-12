@@ -29,6 +29,7 @@ describe('privacy route', () => {
     expect(screen.getByText(/sp\.hub\.recentLogins/i)).toBeTruthy()
     expect(screen.getByText(/sp:publicHub:v1/i)).toBeTruthy()
     expect(screen.getByText(/sp\.betaKey/i)).toBeTruthy()
+    expect(screen.getByText(/sp\.chart\.scrollZoom\.v1/i)).toBeTruthy()
     expect(screen.getByText(/sp\.backendUrlOverride/i)).toBeTruthy()
   })
 

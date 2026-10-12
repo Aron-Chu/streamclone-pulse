@@ -149,6 +149,8 @@ export default defineConfig({
         'packages/analytics-console/src/chart-navigator.ts',
       ),
       '@streampulse/analytics-console': resolve(pulseRoot, 'packages/analytics-console/src/index.tsx'),
+      // Activity bar pyramid (hub chat bars) without the whole chart package.
+      '@streampulse/pulse-charts/barPyramid': resolve(pulseRoot, 'packages/pulse-charts/src/barPyramid.ts'),
       '@streampulse/pulse-charts': resolve(pulseRoot, 'packages/pulse-charts/src/index.ts'),
       '@streampulse/pulse-core': resolve(pulseRoot, 'packages/pulse-core/src/index.ts'),
       react: resolve(__dirname, 'node_modules/react'),

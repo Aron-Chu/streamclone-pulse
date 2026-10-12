@@ -50,6 +50,8 @@ export function StreamRecapPanel({
     })
   }, [recap.funniestEmoteBurst, rollups, streamStartedAt, topEmotesCatalog])
   const burstEmote = burstHighlight?.emote
+  const burstCode = burstEmote?.code ?? recap.funniestEmoteBurst?.code
+  const burstCount = burstEmote?.count ?? recap.funniestEmoteBurst?.count
   const burstOffsetSeconds =
     burstHighlight?.offsetSeconds ?? recap.funniestEmoteBurst?.offsetSeconds ?? 0
   const canJump = Boolean(onJumpToOffset)
@@ -142,8 +144,10 @@ export function StreamRecapPanel({
                   vodDurationSeconds={vodDurationSeconds}
                   plain={canJump}
                 />
-                {recap.funniestEmoteBurst.code ? ` · ${recap.funniestEmoteBurst.code}` : ''} (
-                {count(recap.funniestEmoteBurst.count)})
+                {/* Same source as the chip and the time: the rollup peak may
+                    replace the backend burst when it is bigger. */}
+                {burstCode ? ` · ${burstCode}` : ''} (
+                {count(burstCount)})
               </span>
             </RecapHighlightButton>
           ) : null}

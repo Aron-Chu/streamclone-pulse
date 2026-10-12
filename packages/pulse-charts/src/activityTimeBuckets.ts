@@ -1,4 +1,10 @@
 /**
+ * @deprecated The session chart now draws its time-bucketed bars from the bar
+ * pyramid (`barPyramid.ts`: `buildBarPyramid`, `pickBarLevel`,
+ * `barLevelRange`), which aggregates every bar size once per data load and
+ * marks partial slots instead of splitting bars at gaps. This module stays
+ * exported, unused, for package API compatibility.
+ *
  * Time-aligned activity buckets for long session charts.
  *
  * The default activity-bar path divides however many visible minutes there are

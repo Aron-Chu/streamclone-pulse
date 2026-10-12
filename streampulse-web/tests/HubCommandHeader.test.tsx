@@ -73,12 +73,30 @@ describe('HubCommandHeader command surface', () => {
 
     expect(screen.getByTestId('live-pool-size')).toBeTruthy()
     expect(screen.getByText('Tracked channels', { exact: true })).toBeTruthy()
-    expect(screen.getByText(/Tracked live viewers/i)).toBeTruthy()
+    expect(screen.getByText('Watching now', { exact: true })).toBeTruthy()
     expect(screen.getByText(/Last 1 day peaks/i)).toBeTruthy()
     expect(screen.getByTestId('hub-command-trust').textContent).toMatch(/IRC COVERAGE/)
     expect(screen.getByTestId('pool-wire')).toBeTruthy()
     expect(screen.getByText('Went live')).toBeTruthy()
     expect(screen.getByText('xQc')).toBeTruthy()
+  })
+
+  it('shows one viewer figure, scoped to the live channels it adds up', () => {
+    const { container } = renderHeader()
+    const figures = container.querySelectorAll('[data-viewer-scope]')
+    expect(figures).toHaveLength(1)
+    const now = figures[0] as HTMLElement
+    expect(now.dataset.viewerScope).toBe('watching-now')
+    expect(now.getAttribute('title')).toMatch(/1 tracked channels live in this snapshot/)
+    expect(now.getAttribute('title')).toMatch(/not comparable/)
+    expect(screen.getByText('on 1 live tracked channels')).toBeTruthy()
+    // The window-peak strip keeps chat and emote rates but no second viewer
+    // number from a different population (the sampled chart line).
+    const peaks = container.querySelector('.hub-command-header__peaks') as HTMLElement
+    expect(peaks.textContent).toContain('Chat/min')
+    expect(peaks.textContent).toContain('Emotes/min')
+    expect(peaks.textContent).not.toMatch(/Viewers/i)
+    expect(peaks.textContent).not.toContain('500K')
   })
 
   it('shows compact POOL Stable copy when Pool Wire has no events', () => {
