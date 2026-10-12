@@ -217,6 +217,11 @@ test('explicit zoom reset preserves the locked bucket and peak scope', async ({ 
 })
 
 test('horizontal trackpad motion pans a zoomed chart while vertical scrolling remains available', async ({ page }) => {
+  // This checks page scrolling beside the pan, so Scroll zoom is off here (it
+  // is on by default since 2026-10-09; the wheel matrix covers that mode).
+  await page.addInitScript(() => {
+    try { window.localStorage.setItem('sp.chart.scrollZoom.v1', 'off') } catch { /* storage blocked */ }
+  })
   await installHubUxMock(page)
   await page.goto('/analytics')
   const chart = page.locator('.figma-global-activity__hub-chart .hx-chart2')

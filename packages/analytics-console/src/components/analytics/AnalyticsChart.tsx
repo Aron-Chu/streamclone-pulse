@@ -26,7 +26,7 @@ import {
   viewportDurationSeconds,
   vodClock,
 } from '@streampulse/pulse-charts'
-import type { ChartReactionPoint, ChartViewport } from '@streampulse/pulse-charts'
+import type { ActivityBarFocus, ActivityBarSummary, ChartReactionPoint, ChartViewport } from '@streampulse/pulse-charts'
 import { classifyLiveEmptyState } from '../../utils/liveEmptyState.ts'
 import { liveWarmupHintLine } from '../../utils/liveCollectionWarmup.ts'
 import { usePlayheadStore } from '../../stores/playheadStore.ts'
@@ -44,7 +44,7 @@ import {
   trimRollupsToWallDuration,
 } from '../../utils/gameSegmentChart.ts'
 import { GamesPlayedStrip } from './GamesPlayedStrip.tsx'
-import { ChartNavigator, zoomNavigatorRange, type ChartNavigatorRange } from './ChartNavigator.tsx'
+import { ChartNavigator, useChartScrollZoom, zoomNavigatorRange, type ChartNavigatorRange } from './ChartNavigator.tsx'
 import {
   sessionNavigatorIndexForOffset,
   sessionNavigatorPointCount,
@@ -52,6 +52,12 @@ import {
   sessionNavigatorRangeForViewport,
   sessionViewportForNavigatorRange,
 } from '../../utils/sessionChartNavigator.ts'
+import {
+  liveEdgeLabel,
+  plotEndMinutes,
+  resolveLiveEdgeMode,
+  rollupsThroughMinute,
+} from '../../utils/chartLiveEdge.ts'
 
 function chartVisibleRangeFromRollups(
   rollups: AnalyticsMinuteRollup[],
@@ -100,11 +106,12 @@ function readoutCount(value: number | null | undefined): string {
 const DATA_PAGER_BUTTON_CLASS = 'min-h-11 rounded border border-white/10 px-3 font-bold text-zinc-300 transition hover:border-white/20 hover:bg-white/[0.06] hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-white/10 disabled:hover:bg-transparent'
 
 /**
- * The session view never shows fewer minutes than the chart's own viewport
- * floor, so the navigator stops there too: Zoom in disables instead of each
- * click being widened back to the floor and nudged a minute right.
+ * The session view never shows less than the chart's own viewport floor (five
+ * minutes, which hold six minute steps), so the navigator stops there too:
+ * Zoom in disables instead of each click being widened back to the floor and
+ * nudged a minute right.
  */
-const NAVIGATOR_MIN_VISIBLE_MINUTES = Math.ceil(MIN_CHART_VIEWPORT_SECONDS / 60)
+const NAVIGATOR_MIN_VISIBLE_STEPS = Math.ceil(MIN_CHART_VIEWPORT_SECONDS / 60) + 1
 
 /** How far back the resting readout may look for a minute with a viewer sample. */
 const RESTING_VIEWER_LOOKBACK_MS = 15 * 60_000
@@ -130,6 +137,17 @@ function ChartHoverReadout({
       {vodClock(minuteTs, streamStartedAt)} · viewers {readoutCount(viewers)} · chat {readoutCount(chatCount)}/min · emotes {readoutCount(emoteTotal)}/min
     </p>
   )
+}
+
+/** "Bar 00:40:00–00:50:00 · 10-min avg · chat 280/min (peak 845) · emotes 98/min (peak 410)". */
+function activityBarReadout(bar: ActivityBarSummary, label = 'Bar'): string {
+  const range = bar.startOffsetSeconds != null && bar.endOffsetSeconds != null
+    ? ` ${formatHeatOffset(bar.startOffsetSeconds)}–${formatHeatOffset(bar.endOffsetSeconds)}`
+    : ''
+  const lane = (label: string, values: ActivityBarSummary['chat']) =>
+    values ? ` · ${label} ${count(Math.round(values.avg))}/min (peak ${count(values.peak)})` : ''
+  const measured = bar.partial ? ` · ${bar.observed} of ${bar.expected} min measured` : ''
+  return `${label}${range} · ${bar.step}-min avg${lane('chat', bar.chat)}${lane('emotes', bar.emotes)}${measured}`
 }
 
 function AnalyticsChart({
@@ -255,10 +273,43 @@ function AnalyticsChart({
     () => streamWallDurationSeconds(detail?.stream),
     [detail?.stream],
   )
-  const rollups = useMemo(() => {
+  const chartedRollups = useMemo(() => {
     const charted = rollupsForChart(allRollups, isLive)
     return trimRollupsToWallDuration(charted, streamStartedAt, wallDurationSeconds)
   }, [allRollups, isLive, streamStartedAt, wallDurationSeconds])
+  // Every measured minute, full resolution when loaded (the table lists these).
+  const allDetailRollups = useMemo(
+    () => (detail?.momentRollups?.length
+      ? trimRollupsToWallDuration(detail.momentRollups, streamStartedAt, wallDurationSeconds)
+      : undefined),
+    [detail?.momentRollups, streamStartedAt, wallDurationSeconds],
+  )
+  // The plot, its time axis and the navigator all end on the newest minute with
+  // data, so the series reach the right edge with the axis and the zoom bar.
+  // On an open stream (confirmed live, or reported live while its status is
+  // unconfirmed) a partial newest minute, still being measured or the one
+  // collection stopped in, is left off the plot (the table still lists it,
+  // marked) and a marker at the edge says how fresh the data is.
+  const liveEdgeMode = resolveLiveEdgeMode(detail, isLive)
+  const liveMeasuredThroughMs = liveEdgeMode && detail?.updatedAt ? detail.updatedAt : null
+  const plotEnd = useMemo(
+    () => plotEndMinutes(allDetailRollups ?? chartedRollups, liveMeasuredThroughMs, liveEdgeMode != null),
+    [allDetailRollups, chartedRollups, liveEdgeMode, liveMeasuredThroughMs],
+  )
+  const plotLastMinute = plotEnd.plotted
+  // The partial minute the plot leaves off, if any, and why. While the live
+  // status is unconfirmed nothing says more data is coming, so it is "partial".
+  const leftOffMinute = plotEnd.leftOff && plotEnd.newest
+    ? { minuteTs: plotEnd.newest.minuteTs, reason: liveEdgeMode === 'unconfirmed' ? 'partial' as const : plotEnd.leftOff }
+    : null
+  const rollups = useMemo(() => {
+    const plotted = rollupsThroughMinute(chartedRollups, plotLastMinute)
+    // A downsampled series may skip the last minute; end it there anyway.
+    if (plotLastMinute && plotted.length > 0 && plotted[plotted.length - 1]!.minuteTs !== plotLastMinute.minuteTs) {
+      plotted.push(plotLastMinute)
+    }
+    return plotted
+  }, [chartedRollups, plotLastMinute])
   const peakViewersFallback = detail?.stream?.peakViewers ?? 0
   const avgViewersFallback = detail?.stream?.avgViewers ?? 0
   const hasSyncedChat = rollups.some(point => !point.missing && (point.chatCount ?? 0) > 0)
@@ -311,11 +362,20 @@ function AnalyticsChart({
   }, [onViewModeChange, plottedEmoteKeys, viewMode])
 
   const chartDurationSeconds = useMemo(() => {
-    // The viewport is in broadcast offsets: end at the last measured minute, not after the span.
+    // The viewport is in broadcast offsets. It ends at the start of the last
+    // plotted minute, where its point and the centre of its bar sit, the way
+    // it starts at the first one; ending a minute later left the newest values
+    // a minute short of the axis end.
     const fromRollups = minuteRollupEndOffsetSeconds(rollups, streamStartedAt)
     const rollupEnd = fromRollups > 0 ? fromRollups : Math.max(rollups.length * 60, 60)
-    return clampGamesDurationSeconds(rollupEnd, wallDurationSeconds)
-  }, [rollups, streamStartedAt, wallDurationSeconds])
+    const startMs = streamStartedAt ? Date.parse(streamStartedAt) : Number.NaN
+    const firstMs = rollups.length > 0 ? Date.parse(rollups[0]!.minuteTs) : Number.NaN
+    const lastMs = plotLastMinute ? Date.parse(plotLastMinute.minuteTs) : Number.NaN
+    const plotEnd = Number.isFinite(startMs) && Number.isFinite(lastMs) && Number.isFinite(firstMs) && lastMs > firstMs
+      ? Math.round((lastMs - startMs) / 1000)
+      : rollupEnd
+    return clampGamesDurationSeconds(plotEnd > 0 ? plotEnd : rollupEnd, wallDurationSeconds)
+  }, [plotLastMinute, rollups, streamStartedAt, wallDurationSeconds])
   const gamesDurationSeconds = useMemo(
     () => resolveGamesTimelineDurationSeconds(games, chartDurationSeconds, wallDurationSeconds, isLive),
     [chartDurationSeconds, games, isLive, wallDurationSeconds],
@@ -330,10 +390,8 @@ function AnalyticsChart({
     [isLive, rollups, streamStartedAt],
   )
   const detailRollups = useMemo(
-    () => (detail?.momentRollups?.length
-      ? trimRollupsToWallDuration(detail.momentRollups, streamStartedAt, wallDurationSeconds)
-      : undefined),
-    [detail?.momentRollups, streamStartedAt, wallDurationSeconds],
+    () => (allDetailRollups ? rollupsThroughMinute(allDetailRollups, plotLastMinute) : undefined),
+    [allDetailRollups, plotLastMinute],
   )
   const chartReactionPoints = useMemo(
     () => reactionMoments ?? heatmapPoints ?? [],
@@ -365,9 +423,11 @@ function AnalyticsChart({
     }),
     [playheadOffsetSeconds, playheadPlaying, playheadStreamId],
   )
-  // Matches the hub: plain wheel scrolls the page until Scroll zoom is on.
-  const [scrollZoomEnabled, setScrollZoomEnabled] = useState(false)
+  // Shared with the hub and remembered in this browser: on by default, so a
+  // plain wheel over the plot zooms.
+  const [scrollZoomEnabled, setScrollZoomEnabled] = useChartScrollZoom()
   const [activityBucketMinutes, setActivityBucketMinutes] = useState<number | null>(null)
+  const [activityBarFocus, setActivityBarFocus] = useState<ActivityBarFocus | null>(null)
   const [dataPage, setDataPage] = useState(0)
   const selectedChartOffsetSeconds = useMemo(() => {
     const explicitOffset = typeof selectedOffsetSeconds === 'number' && Number.isFinite(selectedOffsetSeconds)
@@ -386,7 +446,7 @@ function AnalyticsChart({
   const [chartViewport, setChartViewport] = useState<ChartViewport | null>(null)
   // The table lists every measured minute when the full-resolution series is loaded;
   // `rollups` is the chart's downsampled series.
-  const tableRollups = detailRollups ?? rollups
+  const tableRollups = allDetailRollups ?? chartedRollups
   const dataPageCount = Math.max(1, Math.ceil(tableRollups.length / 120))
   const boundedDataPage = Math.min(dataPage, dataPageCount - 1)
   const dataPageEnd = tableRollups.length - boundedDataPage * 120
@@ -456,6 +516,16 @@ function AnalyticsChart({
     effectiveChartViewport.startSeconds > chartDomainStartSeconds + 1
     || viewportDurationSeconds(effectiveChartViewport) < chartDurationSeconds - chartDomainStartSeconds - 5
   )
+  // The marker belongs to the live edge, so it shows only while the view reaches it.
+  const liveEdgeMarker = liveEdgeMode && plotLastMinute && effectiveChartViewport.endSeconds >= chartDurationSeconds - 1
+    ? liveEdgeLabel({
+      lastMinute: plotLastMinute,
+      measuredThroughMs: liveMeasuredThroughMs,
+      streamStartedAt,
+      formatOffset: formatHeatOffset,
+      mode: liveEdgeMode,
+    })
+    : null
   const selectedOutsideViewport = selectedChartOffsetSeconds != null
     && (
       selectedChartOffsetSeconds < effectiveChartViewport.startSeconds
@@ -489,7 +559,6 @@ function AnalyticsChart({
     && Math.abs(navigatorDirectViewport.startSeconds - effectiveChartViewport.startSeconds) < 0.5
     && Math.abs(navigatorDirectViewport.endSeconds - effectiveChartViewport.endSeconds) < 0.5
   const resetNavigator = useCallback(() => {
-    setScrollZoomEnabled(false)
     setNavigatorDirectViewport(null)
     handleViewportChange(fullChartViewport(chartDurationSeconds, chartDomainStartSeconds))
   }, [chartDomainStartSeconds, chartDurationSeconds, handleViewportChange])
@@ -504,7 +573,7 @@ function AnalyticsChart({
       navigatorRange,
       navigatorFocusIndex,
       action,
-      NAVIGATOR_MIN_VISIBLE_MINUTES,
+      NAVIGATOR_MIN_VISIBLE_STEPS,
     )
     if (next.startIndex === navigatorRange.startIndex && next.endIndex === navigatorRange.endIndex) return
     handleNavigatorChange(next)
@@ -547,6 +616,14 @@ function AnalyticsChart({
     return lastCompleteRollup
   }, [lastCompleteRollup, rollups])
   const hoverPoint = hoverRollup ?? selectedRollup ?? restingRollup ?? rollups[rollups.length - 1] ?? null
+  // Above 1-minute bars the second header row names the hovered bar. While a
+  // minute is pinned, a line of its own under the navigator names the pinned
+  // minute's bar in full (range, chat and emotes average and peak, coverage)
+  // and wraps on narrow screens, where a tap is the only way to read a bar.
+  const hoverBar = activityBarFocus?.hover ?? null
+  const hoverBarReadout = hoverBar ? activityBarReadout(hoverBar) : null
+  const pinnedBar = activityBarFocus?.pinned ?? null
+  const pinnedBarReadout = pinnedBar ? activityBarReadout(pinnedBar, 'Pinned bar') : null
   const toggleActivityExpanded = useCallback(() => {
     setActivityExpanded(value => !value)
   }, [])
@@ -773,15 +850,31 @@ function AnalyticsChart({
             </div>
 
             <div className="flex min-w-0 items-center justify-between gap-2">
-              <p
-                className="min-w-0 truncate text-xs font-bold leading-4 text-zinc-600"
-                data-chart-selection-hint
-                title="Hover previews a minute. Click to select it. Press Escape or use Clear to release the selection."
-              >
-                {selectedRollup
-                  ? `Pinned minute ${selectedMinuteRangeLabel(selectedRollup.minuteTs, streamStartedAt)}${Number.isFinite(selectedOffsetSeconds) ? ` · exact moment ${formatHeatOffset(selectedOffsetSeconds!)}` : ''}${selectedOutsideViewport ? ' · outside visible range · Return below' : ''} · Esc or Clear to release`
-                  : 'Hover to preview a minute · click to select · press Esc to clear'}
-              </p>
+              {hoverBar && hoverBarReadout ? (
+                <p
+                  className="min-w-0 truncate text-xs font-bold leading-4 tabular-nums text-zinc-500"
+                  data-chart-selection-hint
+                  data-chart-bar-readout
+                  data-bar-step={hoverBar.step}
+                  data-bar-start={hoverBar.startMs}
+                  data-bar-partial={hoverBar.partial ? 'true' : 'false'}
+                  title={hoverBarReadout}
+                >
+                  {hoverBarReadout}
+                </p>
+              ) : (
+                <p
+                  className="min-w-0 truncate text-xs font-bold leading-4 text-zinc-600"
+                  data-chart-selection-hint
+                  title={selectedRollup
+                    ? `Pinned minute ${selectedMinuteRangeLabel(selectedRollup.minuteTs, streamStartedAt)}`
+                    : 'Hover previews a minute. Click to select it. Press Escape or use Clear to release the selection.'}
+                >
+                  {selectedRollup
+                    ? `Pinned minute ${selectedMinuteRangeLabel(selectedRollup.minuteTs, streamStartedAt)}${Number.isFinite(selectedOffsetSeconds) ? ` · exact moment ${formatHeatOffset(selectedOffsetSeconds!)}` : ''}${selectedOutsideViewport ? ' · outside visible range · Return below' : ''} · Esc or Clear to release`
+                    : 'Hover to preview a minute · click to select · press Esc to clear'}
+                </p>
+              )}
               {selectedRollup && vodJump && !selectedDetail ? (
                 <a
                   href={vodJump.url}
@@ -933,9 +1026,12 @@ function AnalyticsChart({
         data-session-chart-stack
         ref={chartStackRef}
         onKeyDownCapture={(event) => {
-          // The navigator hint promises Escape turns Scroll zoom off; that must
-          // also hold with focus on the plot, ahead of its Escape clearing the pin.
-          if (event.key !== 'Escape' || !scrollZoomEnabled) return
+          // Escape releases a pin or selection first (the plot's own handler);
+          // with nothing pinned it restores the full range. A navigator slider
+          // keeps its own Escape, which resets the zoom.
+          if (event.key !== 'Escape' || !isChartZoomed) return
+          if (selectedRollup || Number.isFinite(selectedOffsetSeconds)) return
+          if ((event.target as Element | null)?.closest?.('[data-hub-chart-navigator]')) return
           event.preventDefault()
           event.stopPropagation()
           resetNavigator()
@@ -985,6 +1081,9 @@ function AnalyticsChart({
           lineWeightMode="viewport-adaptive"
           activityBucketing="time"
           onActivityBucketMinutesChange={setActivityBucketMinutes}
+          onActivityBarFocusChange={setActivityBarFocus}
+          liveEdgeLabel={liveEdgeMarker}
+          liveEdgeTone={liveEdgeMode === 'unconfirmed' ? 'unconfirmed' : 'live'}
         />
 
         {showPositionRail ? (
@@ -1005,7 +1104,7 @@ function AnalyticsChart({
               selectedIndex={navigatorIndexForOffset(selectedChartOffsetSeconds)}
               wheelSurfaceRef={chartStackRef}
               wheelAnchor={plotWheelAnchor}
-              minVisibleCount={NAVIGATOR_MIN_VISIBLE_MINUTES}
+              minVisibleCount={NAVIGATOR_MIN_VISIBLE_STEPS}
               scrollZoomEnabled={scrollZoomEnabled}
               onScrollZoomChange={setScrollZoomEnabled}
               onChange={handleNavigatorChange}
@@ -1015,16 +1114,32 @@ function AnalyticsChart({
               unitLabel="minutes"
               selectedLabel="Return to selected"
               presets={navigatorPresets}
-              readoutNote={activityBucketMinutes != null && activityBucketMinutes > 1 ? (
+              readoutNote={activityBucketMinutes != null ? (
                 <span
+                  className="inline-block min-w-[15ch] tabular-nums"
                   data-chart-bar-bucket-minutes={activityBucketMinutes}
-                  title={`Each activity bar averages ${activityBucketMinutes} measured minutes so bars stay readable at this width. Gaps are minutes with no measurement.`}
+                  title={activityBucketMinutes > 1
+                    ? `Each activity bar averages the measured minutes in its ${activityBucketMinutes}-minute slot so bars stay readable at this width; a thin cap marks a peak minute well above the average, and a faded bar had unmeasured minutes. Gaps are slots with no measurement.`
+                    : 'One activity bar per measured minute. Gaps are minutes with no measurement.'}
                 >
-                  {`bars ${activityBucketMinutes}-min avg`}
+                  {activityBucketMinutes > 1 ? `bars ${activityBucketMinutes}-min avg` : 'bars per minute'}
                 </span>
               ) : undefined}
             />
           </div>
+        ) : null}
+        {/* Below the plot and its navigator, so pinning a minute or a zoom that
+            changes the bar size never moves the plot or scrolls the page. */}
+        {selectedRollup && pinnedBar && pinnedBarReadout ? (
+          <p
+            className="mt-2 min-w-0 whitespace-normal break-words text-xs font-bold leading-4 tabular-nums text-zinc-500"
+            data-chart-pinned-bar-readout
+            data-bar-step={pinnedBar.step}
+            data-bar-start={pinnedBar.startMs}
+            data-bar-partial={pinnedBar.partial ? 'true' : 'false'}
+          >
+            {pinnedBarReadout}
+          </p>
         ) : null}
       </div>
 
@@ -1094,7 +1209,17 @@ function AnalyticsChart({
               ) : null}
               {pagedDataRows.map((rollup) => (
                 <tr key={rollup.minuteTs} className="border-t border-white/5">
-                  <th scope="row">{vodClock(rollup.minuteTs, streamStartedAt)}</th>
+                  <th scope="row">
+                    {vodClock(rollup.minuteTs, streamStartedAt)}
+                    {/* Partial (still being measured, or the minute collection stopped in); the plot leaves it off. */}
+                    {leftOffMinute && rollup.minuteTs === leftOffMinute.minuteTs
+                      ? (
+                        <span className="font-normal text-zinc-500" data-chart-data-updating={leftOffMinute.reason}>
+                          {leftOffMinute.reason === 'updating' ? ' (updating)' : ' (partial)'}
+                        </span>
+                      )
+                      : null}
+                  </th>
                   <td>{count(viewerReadoutValue(rollup))}</td>
                   <td>{count(rollup.chatCount)}</td>
                   <td>{count(minuteEmoteTotal(rollup))}</td>
