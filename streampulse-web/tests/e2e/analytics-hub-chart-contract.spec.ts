@@ -226,6 +226,29 @@ for (const window of ['30m', '24h', '7d', '1m', '3m', '1y']) {
         expect(Math.abs(plotBox!.y - beforeHover!.y)).toBeLessThan(1)
         expect(Math.abs(plotBox!.height - beforeHover!.height)).toBeLessThan(1)
         expect(await readout.evaluate(el => el.scrollHeight <= el.clientHeight && el.scrollWidth <= el.clientWidth)).toBe(true)
+        // scrollHeight does not catch grid rows that are too short for their
+        // content, so check the parts of the compact desktop readout
+        // (analytics-compact.css, >=1100px): the metrics stay inside the
+        // content box and end above the status line, which ends inside it.
+        // The 390px readout keeps its older rows and is not covered here.
+        if (width < 1100) continue
+        const parts = await readout.evaluate((el) => {
+          const box = el.getBoundingClientRect()
+          const style = getComputedStyle(el)
+          const metrics = el.querySelector('.hx-hover-metrics')!.getBoundingClientRect()
+          const status = el.querySelector('.hx-hover-status')!.getBoundingClientRect()
+          return {
+            contentTop: box.top + parseFloat(style.borderTopWidth) + parseFloat(style.paddingTop),
+            contentBottom: box.bottom - parseFloat(style.borderBottomWidth) - parseFloat(style.paddingBottom),
+            metricsTop: metrics.top,
+            metricsBottom: metrics.bottom,
+            statusTop: status.top,
+            statusBottom: status.bottom,
+          }
+        })
+        expect(parts.metricsTop).toBeGreaterThanOrEqual(parts.contentTop - 0.5)
+        expect(parts.metricsBottom).toBeLessThanOrEqual(parts.statusTop + 0.5)
+        expect(parts.statusBottom).toBeLessThanOrEqual(parts.contentBottom + 0.5)
       }
       await page.mouse.move(0, 0)
       await expect(readout).toBeVisible()

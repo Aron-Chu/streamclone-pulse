@@ -1,10 +1,11 @@
 import { useLayoutEffect, useMemo, useRef } from 'react'
+import { formatHeatOffset } from '@streampulse/pulse-core'
 import { useConsoleMotion } from '../../hooks/useConsoleMotion.ts'
 import type { AnalyticsMinuteRollup, AnalyticsTopEmote, PulseRecapMoment } from '../../apiTypes.ts'
 import type { ReplayHeatmapDetailPoint, ReplayHeatmapPoint } from '../../types/heatmap.ts'
 import { buildSelectedMomentDisplay } from '../../utils/selectedMomentDisplay.ts'
 import type { VodLinkState } from '../../utils/twitchVodUrl.ts'
-import { count, getEmoteImageUrl } from '../../utils/consoleFormat.ts'
+import { count, getEmoteImageUrl, rollupOffsetSeconds } from '../../utils/consoleFormat.ts'
 import { ConsoleEmoteImg } from './ConsoleEmoteImg.tsx'
 import { minuteEmoteTotal } from './chartRollupUtils.ts'
 
@@ -104,7 +105,11 @@ export function SelectedMomentCompactCard({
       <div className="flex flex-wrap items-center gap-x-6 gap-y-4">
         <div className="flex min-w-0 flex-col gap-1">
           {display.offsetStr ? (
-             <span className="font-mono text-base font-semibold tabular-nums text-zinc-100">{display.offsetStr}</span>
+             // The pinned minute on the stream clock (hh:mm:ss), like the readout,
+             // the pin hint and the axis. A Pulse moment matched within 90s keeps
+             // its own time in the region label and the VOD link (offsetStr), so
+             // the "Selected minute" here never names the next minute.
+             <span className="font-mono text-base font-semibold tabular-nums text-zinc-100" data-selected-moment-time>{formatHeatOffset(rollupOffsetSeconds(rollup, startedAt))}</span>
           ) : null}
           <span className="text-xs text-zinc-400">Selected minute</span>
         </div>

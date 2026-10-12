@@ -468,6 +468,8 @@ export function AnalyticsConsole({
   const effectiveSessionNotFound = sessionNotFound || sessionLoadFailed
   // Until the first read settles there is nothing to classify; "Needs sync" would claim an empty session.
   const statCardsPending = effectiveSessionNotFound || sessionResolving || (detailQuery.isLoading && !detail)
+  // Same muted placeholder as the other five cards when there is no span yet.
+  const measuredSpanValue = statCardsPending ? '-' : durationFromDetail(detail)
 
   const handleSelectOffset = useCallback((offsetSeconds: number) => {
     if (!Number.isFinite(offsetSeconds)) return
@@ -1267,7 +1269,11 @@ export function AnalyticsConsole({
                     )}
               </span>
               {mode === 'public' ? (
-                <DataQualityDisclosure detail={detail} summaryMetrics={summaryQuery.data?.metrics} />
+                <DataQualityDisclosure
+                  detail={detail}
+                  summaryMetrics={summaryQuery.data?.metrics}
+                  pending={!detail && (detailQuery.isLoading || sessionResolving || sessionLoadFailed)}
+                />
               ) : null}
               </>}
             </div>
@@ -1323,7 +1329,7 @@ export function AnalyticsConsole({
         </header>
         {channelNotRecorded ? <ChannelNotRecordedPanel login={channelLogin} /> : <>
 
-        <section className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+        <section className="grid grid-cols-2 gap-3 lg:grid-cols-6" data-session-stat-row>
           <StatCard
             label={isHistoricalRoute ? 'Last measured viewers' : 'Current viewers'}
             value={statCardsPending ? '-' : statCardClasses.current.placeholder ?? count(headerStats.current)}
@@ -1351,7 +1357,8 @@ export function AnalyticsConsole({
           />
           <StatCard
             label="Measured span"
-            value={statCardsPending ? '-' : durationFromDetail(detail)}
+            value={measuredSpanValue}
+            tone={measuredSpanValue === '-' ? STAT_PLACEHOLDER_MUTED_CLASS : undefined}
           />
         </section>
 
@@ -1375,11 +1382,30 @@ export function AnalyticsConsole({
             ) : null}
             {!sessionResolving && !effectiveSessionNotFound && !(detailQuery.isLoading && !detail) ? (
             <div className="min-w-0 space-y-4">
-              <CoverageStartBanner
-                offsetSeconds={detail?.coverageStartOffsetSeconds}
-                missingRanges={detail?.availability?.missingRanges}
-                message={detail?.availability?.coverageMessage}
-              />
+              {/* The coverage notice and the session lifecycle row are one-line
+                  facts about the session; wide portal layouts put them side by
+                  side (data-session-status-row), narrow ones stack them. */}
+              <div className="flex min-w-0 flex-col gap-4 empty:hidden [&:empty+*]:!mt-0" data-session-status-row>
+                <CoverageStartBanner
+                  offsetSeconds={detail?.coverageStartOffsetSeconds}
+                  missingRanges={detail?.availability?.missingRanges}
+                  message={detail?.availability?.coverageMessage}
+                />
+                <PastBroadcastBanner
+                  isLiveRoute={isLiveRoute}
+                  isActiveLiveCollector={isActiveLiveCollector}
+                  stream={stream}
+                  syncing={syncing}
+                  hasChartData={
+                    (detail?.rollups ?? []).some(rollupHasMinuteData)
+                    || rollupsHaveViewerData(detail?.rollups ?? [])
+                  }
+                  vodLinkState={vodLinkState}
+                  sessionStreamId={targetQueryStreamId}
+                  channelLogin={channelLogin}
+                  buildSessionPath={buildSessionPath}
+                />
+              </div>
               <StreamQualityBanner
                 diagnosis={qualityDiagnosis}
                 syncing={syncing}
@@ -1398,20 +1424,6 @@ export function AnalyticsConsole({
                   Unable to load session data. Refresh to try again.
                 </p>
               ) : null}
-              <PastBroadcastBanner
-                isLiveRoute={isLiveRoute}
-                isActiveLiveCollector={isActiveLiveCollector}
-                stream={stream}
-                syncing={syncing}
-                hasChartData={
-                  (detail?.rollups ?? []).some(rollupHasMinuteData)
-                  || rollupsHaveViewerData(detail?.rollups ?? [])
-                }
-                vodLinkState={vodLinkState}
-                sessionStreamId={targetQueryStreamId}
-                channelLogin={channelLogin}
-                buildSessionPath={buildSessionPath}
-              />
               {showSessionSignalTape ? (
                 <SessionSignalTape
                   key={`${channelLogin}:${canonicalStreamId || targetQueryStreamId}`}
@@ -1483,7 +1495,8 @@ export function AnalyticsConsole({
                   >
                     open the full VOD
                   </a>
-                  {isLongStreamChart ? ' Long streams (6h+) may feel slower while hovering the chart.' : ''}
+                  {/* Its own sentence, so the long-stream note does not run on. */}
+                  .{isLongStreamChart ? ' Long streams (6h+) may feel slower while hovering the chart.' : ''}
                 </p>
               ) : vodLinkState.detail ? (
                 <p className={`text-xs font-semibold ${vodLinkState.status === 'request_failed' ? 'text-amber-200' : 'text-zinc-400'}`}>

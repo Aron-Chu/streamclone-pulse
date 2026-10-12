@@ -33,7 +33,11 @@ async function scrollToBottom(page: Page) {
   await expect.poll(() => scrollY(page)).toBeGreaterThan(200)
 }
 
-/** The reader wheels back up to the top of the page. */
+/**
+ * The reader wheels back up to the top of the page. The pointer may rest over
+ * the hub chart, whose plot zooms on a plain wheel while Scroll zoom is on (the
+ * default since 2026-10-09), so these page-scroll tests turn it off.
+ */
 async function wheelToTop(page: Page) {
   await page.mouse.move(195, 400)
   await page.mouse.wheel(0, -30_000)
@@ -45,6 +49,13 @@ const ENTRY_IDENTITY = [
   { name: 'with the Navigation API', hidden: false },
   { name: 'without the Navigation API', hidden: true },
 ] as const
+
+/** These tests scroll the page with the wheel, never the chart (see wheelToTop). */
+async function chartScrollZoomOff(page: Page) {
+  await page.addInitScript(() => {
+    try { window.localStorage.setItem('sp.chart.scrollZoom.v1', 'off') } catch { /* storage blocked */ }
+  })
+}
 
 async function useEntryIdentity(page: Page, hidden: boolean) {
   if (hidden) {
@@ -121,6 +132,7 @@ test.describe('in-app navigation scroll', () => {
 for (const identity of ENTRY_IDENTITY) {
   test.describe(`a native #link followed again lands again (${identity.name})`, () => {
     test.beforeEach(async ({ page }) => {
+      await chartScrollZoomOff(page)
       await useEntryIdentity(page, identity.hidden)
     })
 

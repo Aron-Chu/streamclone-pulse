@@ -33,7 +33,7 @@ async function moveInto(page: Page, target: Locator) {
 }
 
 for (const surface of ['plot', 'navigator track'] as const) {
-  test(`Scroll zoom is explicit and wheel zooms the ${surface} without refetching or losing selection`, async ({ page }) => {
+  test(`Scroll zoom is on by default and remembered, and wheel zooms the ${surface} without refetching or losing selection`, async ({ page }) => {
     await page.setViewportSize({ width: 986, height: 676 })
     const dataRequests: string[] = []
     page.on('request', request => {
@@ -43,21 +43,16 @@ for (const surface of ['plot', 'navigator track'] as const) {
     await page.goto('/analytics')
     const plot = page.locator('.figma-global-activity__hub-chart .hx-chart2')
     const navigator = page.getByRole('group', { name: 'Chart navigator', exact: true })
-    const scrollZoom = navigator.getByRole('button', { name: 'Scroll zoom', exact: true })
+    const scrollZoom = navigator.getByRole('button', { name: /^Scroll zoom/ })
     const reset = navigator.getByRole('button', { name: 'Reset zoom', exact: true })
     const target = surface === 'plot' ? plot : navigator.locator('.hx-chart-navigator__track')
     await expect(navigator.getByRole('status')).toContainText('240 of 240 buckets')
-    await expect(scrollZoom).toHaveAttribute('aria-pressed', 'false')
+    // Owner ask (2026-10-09): a plain wheel over the chart zooms by default.
+    await expect(scrollZoom).toHaveAttribute('aria-pressed', 'true')
+    await expect(scrollZoom).toHaveAttribute('title', 'Remembered in this browser')
     await expect(navigator.getByRole('slider', { name: 'Chart view start' })).toBeVisible()
     await expect(navigator.getByRole('slider', { name: 'Chart view end' })).toBeVisible()
     const initial = (await navigator.getAttribute('data-hub-chart-navigator-window'))!
-
-    // With the mode off, a real unmodified wheel scrolls the document.
-    await moveInto(page, target)
-    const beforePageScroll = await page.evaluate(() => window.scrollY)
-    await page.mouse.wheel(0, 150)
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(beforePageScroll)
-    await expect(navigator).toHaveAttribute('data-hub-chart-navigator-window', initial)
 
     const rect = (await plot.boundingBox())!
     await plot.click({ position: { x: rect.width * .5, y: rect.height * .55 } })
@@ -69,8 +64,6 @@ for (const surface of ['plot', 'navigator track'] as const) {
     const selectedBucket = (await selectedTime.getAttribute('datetime'))!
     const barsBefore = await plot.locator('.hx-chat-bar').count()
     const requestsBefore = dataRequests.length
-    await scrollZoom.click()
-    await expect(scrollZoom).toHaveAttribute('aria-pressed', 'true')
     await moveInto(page, target)
     const zoomScrollY = await page.evaluate(() => window.scrollY)
     await page.mouse.wheel(0, -100)
@@ -81,24 +74,47 @@ for (const surface of ['plot', 'navigator track'] as const) {
     await expect(selectedTime).toHaveAttribute('datetime', selectedBucket)
     expect(dataRequests.length).toBe(requestsBefore)
 
+    // Reset restores the full range and keeps the selection and the choice.
     await reset.click()
     await expect(navigator).toHaveAttribute('data-hub-chart-navigator-window', initial)
-    await expect(scrollZoom).toHaveAttribute('aria-pressed', 'false')
+    await expect(scrollZoom).toHaveAttribute('aria-pressed', 'true')
     await expect(reset).toBeDisabled()
     await expect(selected).toHaveText(selectedText)
     await expect(selectedTime).toHaveAttribute('datetime', selectedBucket)
 
-    await scrollZoom.click()
     await moveInto(page, target)
     await page.mouse.wheel(0, -100)
     await expect(navigator).not.toHaveAttribute('data-hub-chart-navigator-window', initial)
-    await (surface === 'plot' ? plot : scrollZoom).focus()
-    await page.keyboard.press('Escape')
+    if (surface === 'plot') {
+      // Escape on the plot releases the selected bucket first, then restores the full range.
+      await plot.focus()
+      await page.keyboard.press('Escape')
+      await expect(page.getByRole('status').filter({ hasText: 'Bucket selection cleared' })).toHaveCount(1)
+      await expect(selected).toBeHidden()
+      await expect(navigator).not.toHaveAttribute('data-hub-chart-navigator-window', initial)
+      await page.keyboard.press('Escape')
+    } else {
+      // Escape on a navigator slider restores the full range and keeps the selection.
+      await navigator.getByRole('slider', { name: 'Chart view start' }).focus()
+      await page.keyboard.press('Escape')
+      await expect(selected).toHaveText(selectedText)
+      await expect(selectedTime).toHaveAttribute('datetime', selectedBucket)
+    }
     await expect(navigator).toHaveAttribute('data-hub-chart-navigator-window', initial)
-    await expect(scrollZoom).toHaveAttribute('aria-pressed', 'false')
-    await expect(selected).toHaveText(selectedText)
-    await expect(selectedTime).toHaveAttribute('datetime', selectedBucket)
+    await expect(scrollZoom).toHaveAttribute('aria-pressed', 'true')
     expect(dataRequests.length).toBe(requestsBefore)
+
+    // Off is remembered across a reload; then a plain wheel scrolls the page.
+    await scrollZoom.click()
+    await expect(scrollZoom).toHaveAttribute('aria-pressed', 'false')
+    await page.reload()
+    await expect(navigator.getByRole('status')).toContainText('240 of 240 buckets')
+    await expect(scrollZoom).toHaveAttribute('aria-pressed', 'false')
+    await moveInto(page, target)
+    const beforePageScroll = await page.evaluate(() => window.scrollY)
+    await page.mouse.wheel(0, 150)
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(beforePageScroll)
+    await expect(navigator).toHaveAttribute('data-hub-chart-navigator-window', initial)
     await assertNoPageOverflow(page)
     await saveProof(navigator, `chart-controls-${surface.replace(' ', '-')}-986`)
   })
@@ -109,14 +125,18 @@ test('Scroll zoom leaves Ctrl and Meta wheel events to browser zoom on both surf
   await page.goto('/analytics')
   const navigator = page.getByRole('group', { name: 'Chart navigator', exact: true })
   await expect(navigator.getByRole('status')).toContainText('240 of 240 buckets')
-  await navigator.getByRole('button', { name: 'Scroll zoom', exact: true }).click()
+  await expect(navigator.getByRole('button', { name: /^Scroll zoom/ })).toHaveAttribute('aria-pressed', 'true')
   const initial = (await navigator.getAttribute('data-hub-chart-navigator-window'))!
   for (const selector of ['.figma-global-activity__hub-chart .hx-chart2', '.hx-chart-navigator__track']) {
     for (const modifier of ['ctrlKey', 'metaKey'] as const) {
       // Dispatch a cancellable DOM event to observe app ownership without
       // changing the browser's own zoom or the next test's viewport.
       const consumed = await page.locator(selector).evaluate((element, key) => {
-        const event = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -100, [key]: true })
+        const rect = element.getBoundingClientRect()
+        const event = new WheelEvent('wheel', {
+          bubbles: true, cancelable: true, deltaY: -100, [key]: true,
+          clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2,
+        })
         element.dispatchEvent(event)
         return event.defaultPrevented
       }, modifier)
@@ -124,6 +144,24 @@ test('Scroll zoom leaves Ctrl and Meta wheel events to browser zoom on both surf
       await expect(navigator).toHaveAttribute('data-hub-chart-navigator-window', initial)
     }
   }
+})
+
+test('on a phone the hub merges its chat bars so each stays readable', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await installHubUxMock(page)
+  await page.goto('/analytics')
+  const navigator = page.getByRole('group', { name: 'Chart navigator', exact: true })
+  await expect(navigator.getByRole('status')).toContainText('240 of 240 buckets')
+  const series = page.locator('.figma-global-activity__hub-chart [data-component="HubActivityBarSeries"]')
+  await expect(series).toHaveAttribute('data-hub-bar-span', /^(2|5|10)$/)
+  const span = Number(await series.getAttribute('data-hub-bar-span'))
+  const bars = series.locator('[data-bar-span]')
+  expect(await bars.count()).toBeLessThanOrEqual(Math.ceil(240 / span) + 1)
+  expect(await bars.count()).toBeGreaterThan(20)
+  const widths = await series.locator('[data-bar-span] .hx-chat-bar').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().width))
+  expect(widths.filter(width => width < 3).length, 'merged bars stay readable').toBeLessThanOrEqual(2)
+  await expect(navigator.locator('[data-chart-bar-bucket-minutes]')).toContainText(/^bars \d+(\.\d)?-(min|h) avg$/)
+  await assertNoPageOverflow(page)
 })
 
 const responsiveCases = [
