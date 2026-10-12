@@ -1,11 +1,11 @@
 import { test, expect } from '../helpers/testFixtures.ts'
 import { openTwitchChannel } from '../helpers/mockTwitch.ts'
 import { waitForPulseRoot } from '../helpers/assertions.ts'
-import { linkDevice, serveMembership, supporterBody, type MembershipStatus } from '../helpers/supporterMembership.ts'
+import { linkDevice, serveMembership, supporterBody } from '../helpers/supporterMembership.ts'
 
 test('a Supporter banner: preferences persist, rain pauses, and narrow layout stays contained', async ({ extension, prepare }, info) => {
   await prepare({ storage: { overlayPlacement: 'sidebar', sidebarTab: 'pulse', overlayMode: 'expanded' } })
-  // Emote rain is a Supporter perk.
+  // A Supporter: the backdrop stays theirs once it becomes a perk.
   await linkDevice(extension.serviceWorker)
   await serveMembership(extension.context, () => supporterBody('active', 2))
   await extension.context.route('https://api.streampulse.stream/v1/channels/*/clips?*', async route => {
@@ -56,14 +56,13 @@ test('a Supporter banner: preferences persist, rain pauses, and narrow layout st
   }
 })
 
-test('emote rain is a Supporter perk: a saved Rain draws nothing without one, stays saved, and returns in grace', async ({ extension, prepare }, info) => {
+test('the 7TV emote backdrop is free until sign-ups open: a saved Rain draws without Supporter, with one note', async ({ extension, prepare }, info) => {
   await prepare({ storage: { overlayPlacement: 'sidebar', sidebarTab: 'pulse', overlayMode: 'expanded' } })
-  // Saved earlier, for instance while this profile was a Supporter.
+  // Saved in 0.2.1, when the backdrop was free; this profile is not a Supporter (a lapsed one).
   const saved = { mode: 'rain', intensity: 45, title: 'Lapsed Pulse' }
   await extension.serviceWorker.evaluate(value => chrome.storage.sync.set({ pulseBanner: value }), saved)
-  let status: MembershipStatus = 'expired'
   await linkDevice(extension.serviceWorker)
-  await serveMembership(extension.context, () => supporterBody(status, 3))
+  await serveMembership(extension.context, () => supporterBody('expired', 3))
 
   await openTwitchChannel(extension.page)
   await waitForPulseRoot(extension.page)
@@ -71,56 +70,45 @@ test('emote rain is a Supporter perk: a saved Rain draws nothing without one, st
   const root = page.locator('#streamclone-pulse-root')
   const backdrop = root.locator('.pulse-personal-panel > .pulse-banner-art')
   await expect(root.getByRole('heading', { name: 'Lapsed Pulse', exact: true })).toBeVisible()
-  await expect(backdrop).toHaveAttribute('data-mode', 'off')
-  await expect(backdrop.locator('img')).toHaveCount(0)
-  await page.screenshot({ path: info.outputPath('rain-locked-overlay.png'), animations: 'disabled' })
+  await expect(backdrop).toHaveAttribute('data-mode', 'rain')
+  await expect(backdrop).toHaveAttribute('data-running', 'true')
+  await expect(backdrop.locator('img')).toHaveCount(6)
+  await page.screenshot({ path: info.outputPath('backdrop-free-overlay.png'), animations: 'disabled' })
 
-  // Quick settings previews what the overlay draws, not the stored choice.
+  // Quick settings previews what the overlay draws, and says once, in amber, that it becomes a perk.
   await root.getByRole('button', { name: 'Open settings', exact: true }).click()
   const preview = root.locator('.pulse-banner-quick-preview')
-  await expect(preview).toHaveAttribute('data-preview-mode', 'off')
-  await expect(preview.locator('img')).toHaveCount(0)
+  await expect(preview).toHaveAttribute('data-preview-mode', 'rain')
+  await expect(preview.locator('small')).toHaveText('7TV emote backdrop: Rain')
+  const quickNote = root.locator('[data-backdrop-note="free"]')
+  await expect(quickNote).toHaveText('Becomes a Supporter perk when sign-ups open.')
+  await expect(quickNote).toHaveCSS('color', 'rgb(252, 211, 77)')
   // A lapsed member is pitched the lab's Your Line · Anatomy card, not a Supporter's Tenure Climb.
   await expect(root.locator('[data-settings-host-cta="supporter"] .pulse-supporter-stage')).toHaveAttribute('data-mode', 'anatomy')
 
-  // Full settings: the title stays free, Still and Rain are locked with a way to the offer.
+  // Full settings: Off, Still, Rain and intensity work for everyone, with the same note.
   const opened = extension.context.waitForEvent('page')
   await root.getByRole('button', { name: 'Edit background in all settings' }).click()
   const settings = await opened
   await settings.waitForLoadState('domcontentloaded')
   // Background & motion opens by itself (#pulse-background); a click on its summary would close it.
   await expect(settings.locator('.pulse-banner-customize')).toHaveJSProperty('open', true)
-  const modes = settings.getByRole('group', { name: '7TV backdrop' })
+  const modes = settings.getByRole('group', { name: '7TV emote backdrop' })
   await expect(modes.getByRole('button')).toHaveCount(3)
-  await expect(modes.getByRole('button', { name: 'Off', exact: true })).toBeEnabled()
-  await expect(modes.getByRole('button', { name: 'Still', exact: true })).toBeDisabled()
-  await expect(modes.getByRole('button', { name: 'Rain', exact: true })).toBeDisabled()
-  const perk = settings.locator('[data-supporter-perk="emote-rain"]')
-  await expect(perk).toContainText('Supporter perk')
-  await expect(perk).toContainText('It moved from free to Supporter in 0.2.2')
-  await settings.getByLabel('Panel title').fill('Renamed Pulse')
+  for (const name of ['Off', 'Still', 'Rain']) await expect(modes.getByRole('button', { name, exact: true })).toBeEnabled()
+  await expect(modes.getByRole('button', { name: 'Rain', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(settings.getByLabel(/Intensity/)).toBeEnabled()
+  await expect(settings.locator('[data-supporter-perk="emote-rain"]')).toHaveCount(0)
+  await expect(settings.locator('.pulse-banner-customize [data-backdrop-note="free"]')).toHaveText('Becomes a Supporter perk when sign-ups open.')
+  await modes.getByRole('button', { name: 'Still', exact: true }).click()
   await settings.getByRole('button', { name: 'Save background', exact: true }).click()
   await expect(settings.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
-  // Saving the free title leaves the Supporter choice exactly as it was.
-  expect(await extension.serviceWorker.evaluate(() => chrome.storage.sync.get('pulseBanner'))).toEqual({ pulseBanner: { ...saved, title: 'Renamed Pulse' } })
-  await settings.screenshot({ path: info.outputPath('rain-locked-settings.png'), fullPage: true, animations: 'disabled' })
-  await perk.getByRole('link', { name: /View Supporter benefits/ }).click()
-  await expect(settings).toHaveURL(/#supporter$/)
+  expect(await extension.serviceWorker.evaluate(() => chrome.storage.sync.get('pulseBanner'))).toEqual({ pulseBanner: { ...saved, mode: 'still' } })
+  await settings.screenshot({ path: info.outputPath('backdrop-free-settings.png'), fullPage: true, animations: 'disabled' })
   await settings.close()
 
-  // A payment retry window still counts: grace brings the saved rain back.
-  // Twitch tabs share the worker's read, and one without perks is re-checked at
-  // the server's cacheUntil; a settings read is always fresh and refreshes it.
-  status = 'grace'
-  const fresh = await extension.context.newPage()
-  await fresh.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
-  expect(await fresh.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_ENTITLEMENT' }))).toMatchObject({ entitlement: { state: 'ready', status: 'grace' } })
-  await fresh.close()
-  await page.reload()
-  await waitForPulseRoot(page)
-  await expect(root.getByRole('heading', { name: 'Renamed Pulse', exact: true })).toBeVisible()
-  await expect(backdrop).toHaveAttribute('data-mode', 'rain')
-  await expect(backdrop).toHaveAttribute('data-running', 'true')
+  // The open panel follows the saved choice.
+  await root.getByRole('button', { name: 'Back to Pulse' }).click()
+  await expect(backdrop).toHaveAttribute('data-mode', 'still')
   await expect(backdrop.locator('img')).toHaveCount(6)
-  await page.screenshot({ path: info.outputPath('rain-grace-overlay.png'), animations: 'disabled' })
 })

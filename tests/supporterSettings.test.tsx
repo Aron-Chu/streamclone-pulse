@@ -79,10 +79,10 @@ describe('supporter settings', () => {
       expect(host.textContent).not.toContain('Concept · not built')
       expect(rows[1].textContent).toContain('Normal chat. Nothing added.')
       expect(host.textContent).toContain('Shown with the sample look')
-      // Your look: paint, wave, sheen and emote rain; rain is a locked perk here.
-      expect([...host.querySelectorAll('.pulse-supporter-look-row > legend')].map(legend => legend.textContent)).toEqual(['Paint', 'Wave', 'Sheen', 'Emote rain'])
-      expect(host.querySelector('[data-supporter-perk="emote-rain"]')?.textContent).toContain('Supporter perk')
-      expect(host.querySelector('[data-supporter-perk="emote-rain"]')?.textContent).toContain('It moved from free to Supporter in 0.2.2')
+      // Your look: paint, wave, sheen and the 7TV emote backdrop, which is free until sign-ups open.
+      expect([...host.querySelectorAll('.pulse-supporter-look-row > legend')].map(legend => legend.textContent)).toEqual(['Paint', 'Wave', 'Sheen', '7TV emote backdrop'])
+      expect(host.querySelector('[data-supporter-perk="emote-rain"]')).toBeNull()
+      expect(host.querySelector('.pulse-supporter-look [data-backdrop-note="free"]')?.textContent).toBe('Becomes a Supporter perk when sign-ups open.')
       // No signature emote anywhere, and the old badge preview is gone.
       expect(host.textContent).not.toMatch(/signature/i)
       expect(host.querySelector('.pulse-supporter-tenure-choices, .pulse-supporter-chat-preview')).toBeNull()
@@ -186,10 +186,12 @@ describe('supporter settings', () => {
       const button = host.querySelector('.pulse-account-link-actions button') as HTMLButtonElement
       expect(button.disabled).toBe(true)
       expect(button.textContent).toContain('Default active')
-      // Emote rain is locked too, and its saved choice untouched: Rain is not shown pressed while rain is off.
-      const locked = host.querySelector('[data-supporter-perks="locked"]')!
-      expect(locked.querySelectorAll('button:disabled')).toHaveLength(3)
-      expect([...locked.querySelectorAll('[aria-pressed="true"]')].map(button => button.textContent)).not.toContain('Rain')
+      // The 7TV emote backdrop is free until sign-ups open, so it is not locked with the finish.
+      expect(host.querySelector('[data-supporter-perks="locked"]')).toBeNull()
+      const backdrop = host.querySelector('[data-supporter-perks="on"]')!
+      expect(backdrop.querySelector('legend')?.textContent).toBe('7TV emote backdrop')
+      expect(backdrop.querySelector('[data-backdrop-note="free"]')?.textContent).toBe('Becomes a Supporter perk when sign-ups open.')
+      expect(backdrop.querySelector('[data-supporter-perk]')).toBeNull()
       // No "Preview: … / Active: …" line: the swatches carry the state.
       expect(host.textContent).not.toMatch(/Preview: |Active: /)
       expect(chipState(host)).toEqual(['Equipped:default'])
@@ -646,7 +648,7 @@ describe('cosmetic save races', () => {
     }
   })
 
-  it('keeps the emote rain choice enabled and focused through its save, and announces each save afresh', async () => {
+  it('keeps the 7TV emote backdrop choice enabled and focused through its save, and announces each save afresh', async () => {
     // Each storage write waits for the test to settle it.
     const writes: Array<{ settle: (ok: boolean) => void }> = []
     const set = vi.fn(() => new Promise<void>((resolve, reject) => { writes.push({ settle: ok => ok ? resolve() : reject(new Error('quota exceeded')) }) }))
@@ -664,7 +666,9 @@ describe('cosmetic save races', () => {
     try {
       await act(async () => root.render(<SupporterCosmeticControls entitlement={entitlement} />))
       const group = host.querySelector<HTMLFieldSetElement>('[data-supporter-perks="on"]')!
-      expect(group.querySelector('legend')?.textContent).toBe('Emote rain')
+      expect(group.querySelector('legend')?.textContent).toBe('7TV emote backdrop')
+      // A verified Supporter already has it: no "becomes a perk" note.
+      expect(group.querySelector('[data-backdrop-note]')).toBeNull()
       const choice = (name: string) => [...group.querySelectorAll('button')].find(button => button.textContent === name)!
       // One live region, present and empty before any save, so each result is announced.
       const status = group.querySelector<HTMLElement>('[role="status"]')!
@@ -683,7 +687,7 @@ describe('cosmetic save races', () => {
       expect(set).toHaveBeenCalledTimes(1)
       await act(async () => writes[0].settle(true))
       expect(group.querySelector('[role="status"]')).toBe(status)
-      expect(status.textContent).toBe('Emote rain saved.')
+      expect(status.textContent).toBe('7TV emote backdrop saved.')
       expect(choice('Still').getAttribute('aria-pressed')).toBe('true')
       expect(group.hasAttribute('aria-busy')).toBe(false)
       expect(document.activeElement).toBe(choice('Still'))
@@ -695,14 +699,14 @@ describe('cosmetic save races', () => {
       expect(status.textContent).toBe('')
       expect(group.querySelectorAll('button:disabled')).toHaveLength(0)
       await act(async () => writes[1].settle(false))
-      expect(status.textContent).toBe('Could not save emote rain. Please try again.')
+      expect(status.textContent).toBe('Could not save the 7TV emote backdrop. Please try again.')
       expect(document.activeElement).toBe(choice('Rain'))
 
       // And a later success is announced again, not left as the old text.
       await act(async () => choice('Rain').click())
       expect(status.textContent).toBe('')
       await act(async () => writes[2].settle(true))
-      expect(status.textContent).toBe('Emote rain saved.')
+      expect(status.textContent).toBe('7TV emote backdrop saved.')
     } finally {
       act(() => root.unmount())
       host.remove()

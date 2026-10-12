@@ -5,19 +5,20 @@ import { PulseSectionCard } from '../ui/PulseSectionCard.tsx'
 import { SUPPORTER_FINISH_OPTIONS } from '../ui/supporterFinish.ts'
 import { usePulseBanner } from '../ui/PulseBanner.tsx'
 import type { PulseBannerPreference } from '../shared/storage.ts'
+import { BACKDROP_FREE, BACKDROP_FREE_NOTE } from '../shared/backdropPolicy.ts'
 import { SupporterPaintStyleFields, useSupporterPaintStyle } from './SupporterPaintStyleFields.tsx'
 
 /**
  * "Your look", direction B of the 2026-10-07 Account & Supporter redesign:
- * paint, wave, sheen and emote rain as rows of tiles. The finish paints the
- * panel title, wave and sheen choose how that paint moves, the tenure crest
- * sits beside it, and emote rain falls behind the panel. The card and "Who sees
+ * paint, wave, sheen and the 7TV emote backdrop as rows of tiles. The finish
+ * paints the panel title, wave and sheen choose how that paint moves, the
+ * tenure crest sits beside it, and the backdrop's emotes fall behind the panel. The card and "Who sees
  * what" above preview the chosen paint (`onDraft`), drawn with the overlay's own
  * paint and crest styles, so nothing promises a look the extension does not
  * render.
  *
- * A finish is checked by the server and saved with Equip; wave, sheen and emote
- * rain save to this browser profile at once. Everyone else may try any paint
+ * A finish is checked by the server and saved with Equip; wave, sheen and the
+ * backdrop save to this browser profile at once. Everyone else may try any paint
  * and choose one to apply when Supporter starts.
  */
 export function SupporterCosmeticControls({ entitlement, onSaved, onDraft }: {
@@ -178,7 +179,7 @@ export function SupporterCosmeticControls({ entitlement, onSaved, onDraft }: {
   return <PulseSectionCard
     title="Your look"
     headingLevel={3}
-    meta={unknown ? undefined : allowed ? 'Wave, sheen and rain save right away' : 'Try paint, wave and sheen. It applies when you support.'}
+    meta={unknown ? undefined : allowed ? 'Wave, sheen and the 7TV emote backdrop save right away' : 'Try paint, wave and sheen. It applies when you support.'}
   >
     <div className="pulse-supporter-look" data-preview-finish={finish ?? 'default'}>
       <fieldset className="pulse-supporter-look-row" disabled={busy}>
@@ -206,7 +207,7 @@ export function SupporterCosmeticControls({ entitlement, onSaved, onDraft }: {
         </div>
       </fieldset>
       <SupporterPaintStyleFields finish={finish} style={paint.style} onChoose={next => void paint.choose(next)} />
-      <EmoteRainField banner={banner} perks={unknown ? undefined : allowed} />
+      <EmoteRainField banner={banner} perks={BACKDROP_FREE || (unknown ? undefined : allowed)} note={BACKDROP_FREE && !(allowed && !unknown)} />
     </div>
     <p className="pulse-supporter-detail" aria-live="polite">{paint.status || 'Wave and sheen save to this browser profile right away and show whenever your finish is equipped.'}</p>
     <div className="pulse-account-link-actions">
@@ -235,16 +236,17 @@ export function SupporterCosmeticControls({ entitlement, onSaved, onDraft }: {
 }
 
 /**
- * Emote rain behind your Pulse panel: off, still or falling. A Supporter perk
- * on the same rule as the backdrop editor: without one it is locked and the
- * saved choice stays as it was; while membership is unknown it waits, neutral.
- * A Supporter's choice saves at once.
+ * The 7TV emote backdrop behind your Pulse panel: off, still or falling. Free
+ * while BACKDROP_FREE, with a note that it becomes a Supporter perk; after that
+ * a perk on the same rule as the backdrop editor: without one it is locked and
+ * the saved choice stays as it was; while membership is unknown it waits,
+ * neutral. A choice saves at once.
  *
  * A save never disables the row: the pressed button would lose keyboard focus
  * to the page. Presses while one saves are ignored instead, and one live region,
  * always present, is cleared when a save starts and then states its result.
  */
-function EmoteRainField({ banner, perks }: { banner: ReturnType<typeof usePulseBanner>; perks: boolean | undefined }) {
+function EmoteRainField({ banner, perks, note }: { banner: ReturnType<typeof usePulseBanner>; perks: boolean | undefined; note: boolean }) {
   const [message, setMessage] = useState('')
   const [saving, setSaving] = useState(false)
   // Locked, the row shows the saved choice: Rain is never pressed while rain is off.
@@ -254,7 +256,7 @@ function EmoteRainField({ banner, perks }: { banner: ReturnType<typeof usePulseB
   useEffect(() => {
     if (!saving || banner.saving) return
     setSaving(false)
-    setMessage(banner.status === 'Saved' ? 'Emote rain saved.' : 'Could not save emote rain. Please try again.')
+    setMessage(banner.status === 'Saved' ? '7TV emote backdrop saved.' : 'Could not save the 7TV emote backdrop. Please try again.')
   }, [saving, banner.saving, banner.status])
   function choose(mode: PulseBannerPreference['mode']) {
     if (!perks || !banner.ready || saving || banner.saving) return
@@ -263,7 +265,7 @@ function EmoteRainField({ banner, perks }: { banner: ReturnType<typeof usePulseB
     void banner.save({ ...banner.value, mode })
   }
   return <fieldset className="pulse-supporter-look-row" disabled={!perks || !banner.ready} aria-busy={perks === undefined || saving || undefined} data-supporter-perks={perks ? 'on' : perks === false ? 'locked' : 'pending'}>
-    <legend>Emote rain</legend>
+    <legend>7TV emote backdrop</legend>
     <div>
       <div className="pulse-supporter-seg">
         {(['off', 'still', 'rain'] as const).map(mode => <button
@@ -274,8 +276,9 @@ function EmoteRainField({ banner, perks }: { banner: ReturnType<typeof usePulseB
           onClick={() => choose(mode)}
         >{mode === 'off' ? 'Off' : mode === 'still' ? 'Still' : 'Rain'}</button>)}
       </div>
+      {note ? <p className="pulse-supporter-detail pulse-backdrop-note" data-backdrop-note="free">{BACKDROP_FREE_NOTE}</p> : null}
       {perks === false
-        ? <p className="pulse-supporter-detail" data-supporter-perk="emote-rain">Emote rain, still or falling, is a Supporter perk. Only you see it. It moved from free to Supporter in 0.2.2, and a backdrop you chose is kept for when you support.</p>
+        ? <p className="pulse-supporter-detail" data-supporter-perk="emote-rain">The 7TV emote backdrop, still or falling, is a Supporter perk. Only you see it. A backdrop you chose is kept for when you support.</p>
         : null}
       <p className="pulse-supporter-detail" role="status" data-emote-rain-status>{message}</p>
     </div>

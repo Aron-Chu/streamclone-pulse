@@ -111,28 +111,28 @@ describe('Supporter legal copy', () => {
     expect(body).toMatch(/active for up to 72 hours after the paid period ends/)
   })
 
-  it('Supporter lists the three perks the extension sells: title paint, the tenure crest and emote rain', () => {
+  it('Supporter lists the three perks the extension sells: title paint, the tenure crest and the 7TV emote backdrop', () => {
     render(<MemoryRouter><Supporter /></MemoryRouter>)
     const list = screen.getByRole('heading', { name: 'What Supporter includes' }).nextElementSibling!
     const items = [...list.querySelectorAll('li')].map(item => item.textContent ?? '')
     expect(items.some(item => /^Title paint/.test(item))).toBe(true)
     expect(items.some(item => /^Tenure crest/.test(item))).toBe(true)
-    expect(items.some(item => /^Emote rain/.test(item))).toBe(true)
+    expect(items.some(item => /^7TV emote backdrop/.test(item))).toBe(true)
     expect(items.join(' ')).not.toMatch(/signature/i)
   })
 
-  it('Supporter says plainly that the 7TV header backdrop moved to Supporter, and no longer promises that nothing free will move', () => {
+  it('Supporter says plainly that the 7TV emote backdrop stays free until sign-ups open, and no longer promises that nothing free will move', () => {
     render(<MemoryRouter><Supporter /></MemoryRouter>)
     const body = screen.getByTestId('supporter-offer').textContent ?? ''
     expect(body).not.toMatch(/none will be moved|nothing free will move|will never be moved/i)
     expect(body).not.toMatch(/clip downloading/i)
-    expect(screen.getByTestId('supporter-moved').textContent).toBe('Emote rain, the 7TV header backdrop, was free up to extension 0.2.1. From 0.2.2 it is a Supporter perk, and a backdrop you saved is kept for when you support. No other free feature moved behind Supporter.')
+    expect(screen.getByTestId('supporter-moved').textContent).toBe('The 7TV emote backdrop stays free until Supporter sign-ups open, then becomes a Supporter perk. A backdrop you saved is kept for when you support. No other free feature moves behind Supporter.')
     expect(body).not.toMatch(/header accent|overlay finishes/i)
   })
 
-  it('Terms names the moved backdrop and no withdrawn perk names', () => {
+  it('Terms says the 7TV emote backdrop stays free until sign-ups open and names no withdrawn perk', () => {
     const body = textOf(Terms, 'terms-of-use')
-    expect(body).toContain('From 0.2.2 it is a Supporter perk')
+    expect(body).toContain('The 7TV emote backdrop stays free until Supporter sign-ups open')
     expect(body).not.toMatch(/header accent|overlay finishes|none will be moved/i)
   })
 

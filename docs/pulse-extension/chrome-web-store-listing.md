@@ -68,7 +68,7 @@ StreamPulse adds a Pulse panel beside Twitch chat. It charts chat and emote acti
 
 Privacy: the extension sends the channel, stream or VOD you're viewing to the StreamPulse API to fetch aggregate activity. It never sends chat messages, your Twitch password or your cookies. Full details: https://streampulse.stream/privacy
 
-Free: every analytics feature is free. An optional Pulse Supporter membership (US$4.99/month, once sign-ups open; they are not open yet) adds cosmetics only you see in your own extension: title paint, a tenure crest, emote rain (the 7TV header backdrop) and a Supporter card.
+Free: every analytics feature is free. An optional Pulse Supporter membership (US$4.99/month, once sign-ups open; they are not open yet) adds cosmetics only you see in your own extension: title paint, a tenure crest, the 7TV emote backdrop (free until sign-ups open) and a Supporter card.
 
 Help: https://streampulse.stream/support · Feedback: https://streampulse.stream/feedback · Release notes: https://streampulse.stream/changelog
 ```

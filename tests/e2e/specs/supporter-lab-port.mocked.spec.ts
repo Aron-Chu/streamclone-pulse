@@ -87,7 +87,7 @@ test('quick settings: non-Supporters get Your Line · Anatomy, injected on deman
   await expect(stage).toHaveAttribute('data-mode', 'anatomy')
   await expect(stage).toHaveAttribute('data-running', 'true')
   await expect(card.locator('.pulse-supporter-cta-head')).toHaveText('Pulse SupporterExplore Supporter ›')
-  await expectStageUncovered(card, 'Explore Supporter', 'Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. Core tools stay free. This card is a preview, shown only in your StreamPulse extension. Twitch chat is unchanged.')
+  await expectStageUncovered(card, 'Explore Supporter', 'Supporter perks: Title paint, Tenure crest, 7TV emote backdrop, Supporter card. Only you see them. Core tools stay free. This card is a preview, shown only in your StreamPulse extension. Twitch chat is unchanged.')
   expect((await card.boundingBox())!.width).toBeLessThanOrEqual(305)
   // A preview, said so in one corner chip; it opens on a poster frame (chatter, then your line), never an empty box.
   await expect(stage.locator('.spk-preview')).toHaveText('Preview · only you see this')
@@ -171,7 +171,7 @@ test('quick settings: Supporters get Tenure Climb up to their own crest, in thei
   await expect(card).toHaveAttribute('data-supporter-verified', 'true')
   await expect(stage).toHaveAttribute('data-mode', 'tenure')
   await expect(card.locator('.pulse-supporter-cta-head')).toHaveText('Pulse SupporterManage Supporter ›')
-  await expectStageUncovered(card, 'Manage Supporter', 'Your Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. Core tools stay free. This card is a preview, shown only in your StreamPulse extension. Twitch chat is unchanged.')
+  await expectStageUncovered(card, 'Manage Supporter', 'Your Supporter perks: Title paint, Tenure crest, 7TV emote backdrop, Supporter card. Only you see them. Core tools stay free. This card is a preview, shown only in your StreamPulse extension. Twitch chat is unchanged.')
 
   // The climb: First signal, Signal set, Steady signal, Year-one crest, then it holds there.
   // A chip a wide emote would reach keeps only its length ("12 mo").
@@ -215,8 +215,10 @@ test('full settings: the staged Crown, the lab sample for non-Supporters, paused
   // Sign-ups are closed in this fixture: no price, and the way in says what it is.
   await expect(banner.locator('.pulse-settings-supporter-banner-eyebrow')).toHaveText('Pulse Supporter')
   await expect(banner.locator('strong')).toHaveText('Your crest lands on top')
-  await expect(banner.locator('.pulse-settings-supporter-perk')).toHaveText(['Title paint', 'Tenure crest', 'Emote rain', 'Supporter card'])
-  await expect(banner.locator('small')).toHaveText('Only you see them. Core tools stay free.')
+  await expect(banner.locator('.pulse-settings-supporter-perk')).toHaveText(['Title paint', 'Tenure crest', '7TV emote backdrop', 'Supporter card'])
+  // The 7TV emote backdrop is free until sign-ups open: an amber line says so.
+  await expect(banner.locator('small')).toHaveText('Only you see them. Core tools stay free. 7TV emote backdrop: free until sign-ups open.')
+  await expect(banner.locator('small em')).toHaveCSS('color', 'rgb(252, 211, 77)')
   await expect(banner.locator('.pulse-settings-supporter-banner-arrow')).toHaveText('See what’s coming →')
   await expect.poll(() => stage.locator('.spk-body').count()).toBeGreaterThanOrEqual(8)
   // Yours is the sample crest, with the small "you" tag riding above it.
@@ -229,8 +231,9 @@ test('full settings: the staged Crown, the lab sample for non-Supporters, paused
   // The pile has the whole right half.
   const [bannerBox, stageBox] = await Promise.all([banner.boundingBox(), stage.boundingBox()])
   expect(stageBox!.x - bannerBox!.x).toBeCloseTo(bannerBox!.width / 2, -1)
+  // 132 px, plus the amber backdrop line while the 7TV emote backdrop is free.
   expect(bannerBox!.height).toBeGreaterThanOrEqual(132)
-  expect(bannerBox!.height).toBeLessThanOrEqual(134)
+  expect(bannerBox!.height).toBeLessThanOrEqual(150)
   for (const src of await stage.locator('img').evaluateAll(images => images.map(image => (image as HTMLImageElement).src))) expect(src).toMatch(EMOTE_SRC)
   expect(await banner.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
   await page.waitForTimeout(2500)
@@ -258,6 +261,18 @@ test('full settings: the staged Crown, the lab sample for non-Supporters, paused
   await expect(stage).toHaveAttribute('data-running', 'false')
   await page.evaluate(() => window.scrollTo(0, 0))
   await expect(stage).toHaveAttribute('data-running', 'true')
+
+  // The whole copy sits inside the banner with room to spare at every width:
+  // the banner grows for the backdrop line or a third chip row, never clips.
+  for (const width of [590, 600, 629, 700, 1280]) {
+    await page.setViewportSize({ width, height: 720 })
+    await page.waitForTimeout(100)
+    expect(await banner.evaluate(element => {
+      const copy = element.querySelector('.pulse-settings-supporter-banner-copy')!.getBoundingClientRect()
+      const box = element.getBoundingClientRect()
+      return Math.min(copy.top - box.top, box.bottom - copy.bottom)
+    }), `copy inset at ${width}`).toBeGreaterThanOrEqual(6)
+  }
 
   // The lab's phone layout: copy on top, the pile along the bottom, nothing scrolling sideways.
   await page.setViewportSize({ width: 400, height: 860 })
@@ -301,7 +316,7 @@ test('full settings: a Supporter’s own crest crowns the pile in their paint, a
   await expect(banner).toHaveCSS('--spk-fin', '#e6a9d6')
   await expect(banner.locator('.pulse-settings-supporter-banner-eyebrow')).toHaveText('Your kit')
   await expect(banner.locator('strong')).toHaveText('Yours lands on top')
-  await expect(banner.locator('.pulse-settings-supporter-perk')).toHaveText(['Halo paint', 'Year-one crest', 'Emote rain', 'Supporter card'])
+  await expect(banner.locator('.pulse-settings-supporter-perk')).toHaveText(['Halo paint', 'Year-one crest', '7TV emote backdrop', 'Supporter card'])
   const you = stage.locator('.spk-you')
   await expect(you.first().locator('.spk-crest')).toHaveAttribute('data-tenure', '12m')
   await expect(you.first().locator('.spk-crest polygon')).toHaveAttribute('stroke', '#e6a9d6')

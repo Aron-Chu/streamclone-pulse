@@ -51,7 +51,7 @@ test('packaged supporter settings stay local, accessible and responsive', async 
   // Who sees what: every perk is yours only, and normal chat for everyone else.
   const who = page.locator('.pulse-supporter-who > li')
   await expect(who.locator('strong')).toHaveText(['You', 'Everyone else on Twitch'])
-  await expect(who.first().locator('[data-supporter-perk-names="true"]')).toHaveText('Title paint · Tenure crest · Emote rain · Supporter card')
+  await expect(who.first().locator('[data-supporter-perk-names="true"]')).toHaveText('Title paint · Tenure crest · 7TV emote backdrop · Supporter card')
   await expect(page.getByText('Concept · not built')).toHaveCount(0)
   await expect(page.getByText('Shown with the sample look')).toBeVisible()
   await page.screenshot({ path: info.outputPath('supporter-settings.png'), fullPage: true, animations: 'disabled' })
@@ -60,8 +60,12 @@ test('packaged supporter settings stay local, accessible and responsive', async 
   await page.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Halo', exact: true }).check()
   await expect(who.first().locator('.pulse-paint').first()).toHaveAttribute('data-finish', 'halo')
   await expect(page.getByText('Shown with the look you’re trying')).toBeVisible()
-  await expect(page.getByRole('group', { name: 'Emote rain' }).getByRole('button')).toHaveCount(3)
-  for (const button of await page.getByRole('group', { name: 'Emote rain' }).getByRole('button').all()) await expect(button).toBeDisabled()
+  // The 7TV emote backdrop is free until Supporter sign-ups open, with one note that says so.
+  const backdrop = page.getByRole('group', { name: '7TV emote backdrop' })
+  await expect(backdrop.getByRole('button')).toHaveCount(3)
+  for (const button of await backdrop.getByRole('button').all()) await expect(button).toBeEnabled()
+  await expect(backdrop.locator('[data-backdrop-note="free"]')).toHaveText('Becomes a Supporter perk when sign-ups open.')
+  await expect(backdrop.locator('[data-backdrop-note="free"]')).toHaveCSS('color', 'rgb(252, 211, 77)')
   await expect(page.getByText(/signature emote/i)).toHaveCount(0)
   await page.screenshot({ path: info.outputPath('supporter-settings-halo.png'), fullPage: true, animations: 'disabled' })
   for (const width of [320, 360, 390, 480, 768]) {
@@ -190,13 +194,13 @@ test('unmounted account backend produces a clear unavailable state', async ({ ex
   await expect(extension.page.getByRole('button', { name: 'Connect this extension', exact: true })).toHaveCount(0)
 })
 
-test('a Supporter’s emote rain choice keeps keyboard focus through its save', async ({ extension, prepare }) => {
+test('a Supporter’s 7TV emote backdrop choice keeps keyboard focus through its save', async ({ extension, prepare }) => {
   await prepare()
   await linkDevice(extension.serviceWorker)
   await serveMembership(extension.context, () => supporterBody('active', 2))
   const page = extension.page
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
-  const rain = page.getByRole('group', { name: 'Emote rain' })
+  const rain = page.getByRole('group', { name: '7TV emote backdrop' })
   await expect(rain).toHaveAttribute('data-supporter-perks', 'on')
   const status = rain.getByRole('status')
   await expect(status).toHaveText('')
@@ -217,7 +221,7 @@ test('a Supporter’s emote rain choice keeps keyboard focus through its save', 
     // Read at once, not retried: a row disabled for the save is enabled again once it ends.
     expect(await rain.evaluate(group => group.querySelectorAll('button:disabled').length)).toBe(0)
     expect(await focused()).toBe(name)
-    await expect(status).toHaveText('Emote rain saved.')
+    await expect(status).toHaveText('7TV emote backdrop saved.')
     await expect(rain.getByRole('button', { name, exact: true })).toHaveAttribute('aria-pressed', 'true')
     expect(await focused()).toBe(name)
   }

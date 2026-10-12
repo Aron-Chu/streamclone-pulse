@@ -7,8 +7,9 @@ type AppearanceReply = Extract<BackgroundResponse, { type: 'SUPPORTER_APPEARANCE
 /**
  * What Twitch tabs and settings may draw for this membership.
  *
- * `perks` follows the same rule as the finish controls, so emote rain is on for
- * exactly the members who may equip a finish, whether or not they equipped one.
+ * `perks` follows the same rule as the finish controls, so the 7TV emote
+ * backdrop (once it is a perk, see BACKDROP_FREE) is on for exactly the members
+ * who may equip a finish, whether or not they equipped one.
  * The crest follows the server's support count and travels with the perks, so
  * the Supporter card can climb to it with or without a finish; wave and sheen
  * are this profile's presentation choice and only travel with a verified

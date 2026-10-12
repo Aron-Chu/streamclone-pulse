@@ -50,10 +50,13 @@ describe('0.2.2 release notes', () => {
     expect(entry('0.2.2').knownIssues).toContain('Accounts and Supporter sign-ups are not open yet. Accounts are coming with Continue with Twitch.')
   })
 
-  it('say plainly that the 7TV header backdrop moved to Supporter', () => {
-    expect(entry('0.2.2').changed?.[0]).toMatch(/^The 7TV header backdrop \(emote rain: Still or Rain behind the panel header\) moved from free to Supporter\./)
-    expect(entry('0.2.2').summary).toContain('The 7TV header backdrop is now a Supporter perk')
-    expect(entry('0.2.2').preview).toContain('The 7TV header backdrop moved to Supporter (not open yet).')
+  it('say plainly that the 7TV emote backdrop stays free until Supporter sign-ups open', () => {
+    // Owner decision 2026-10-11 (BACKDROP_FREE): free for now, a Supporter perk once sign-ups open.
+    const notes = text(entry('0.2.2'))
+    expect(notes).toMatch(/7TV emote backdrop[^.]*stays free until (Supporter )?sign-ups open/)
+    expect(notes).not.toMatch(/moved (from free )?to Supporter|is now a Supporter perk/i)
+    // One name for it: never the old "header backdrop" or "emote rain".
+    expect(notes).not.toMatch(/header backdrop|emote rain/i)
   })
 
   it('name the Supporter perks from the one perk list', async () => {
