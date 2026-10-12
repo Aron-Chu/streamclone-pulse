@@ -323,8 +323,8 @@ export const SIDEBAR_MINI_PANEL_HEIGHT = 72
 export const SIDEBAR_COLLAPSED_PILL_HEIGHT = 52
 /** Reserve space when Twitch input selectors are not found. */
 export const CHAT_BOTTOM_RESERVE_PX = 150
-/** Tighter reserve on VOD watch pages where input chrome is shorter. */
-export const VOD_CHAT_BOTTOM_RESERVE_PX = 48
+/** VOD chat replay has no composer: the panel runs to the column bottom. */
+export const VOD_CHAT_BOTTOM_RESERVE_PX = 0
 export const MIN_PANEL_HEIGHT = 80
 
 /** Twitch's right-hand chat stack: header row, message list and composer. */
