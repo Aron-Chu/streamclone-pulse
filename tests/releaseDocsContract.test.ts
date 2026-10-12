@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { FEEDBACK_DETAIL_NEUTRAL, FEEDBACK_DETAIL_PRIVATE, FEEDBACK_FORM_LIVE } from '../src/shared/feedbackPolicy.ts'
 
 const read = (path: string) => readFileSync(path, 'utf8')
 const extensionVersion = JSON.parse(read('manifest.json')).version as string
@@ -31,5 +32,23 @@ describe('release documentation contract', () => {
     expect(portalStatus).toMatch(/Source\s+and mocked tests alone do not establish either service is operational/)
     expect(portalStatus).toContain('live-mode Stripe Tax registration decision')
     expect(portalStatus).toMatch(/representative\s+checkout tax result/)
+  })
+
+  it('gives one rule for the private feedback form in release.md, the store checklist and the store README (D19)', () => {
+    // The form may stay off at upload; the extension then makes no privacy promise.
+    expect(FEEDBACK_FORM_LIVE).toBe(false)
+    for (const doc of [releasePolicy, storeChecklist]) {
+      expect(doc).toContain('owner decision D19')
+      expect(doc).toContain('`FEEDBACK_FORM_LIVE`')
+      expect(doc).toContain(`"${FEEDBACK_DETAIL_NEUTRAL}"`)
+      expect(doc).toContain(`"${FEEDBACK_DETAIL_PRIVATE}"`)
+      expect(doc).toContain('makes no privacy promise')
+    }
+    expect(storeReadme).toContain('FEEDBACK_FORM_LIVE')
+    // No doc still holds the upload until the form is on.
+    for (const doc of [releasePolicy, storeChecklist, storeReadme]) {
+      expect(doc).not.toMatch(/private feedback form is (?:on|live)\b/)
+      expect(doc).not.toContain('Private. Only the team reads it.')
+    }
   })
 })

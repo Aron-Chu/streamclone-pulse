@@ -1,8 +1,7 @@
 import { SupporterAccountSection } from '../options/SupporterAccountSection.tsx'
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import type { SettingsHostSection } from '../shared/messages.ts'
-import { COMMUNITY_LINKS, POLICY_LINKS } from '../shared/portalLinks.ts'
-import { DiscordMark, FeedbackIcon, NewTabArrow } from './communityIcons.tsx'
+import { POLICY_LINKS } from '../shared/portalLinks.ts'
 import { sendBackgroundMessage } from '../content/bridge.ts'
 import { backgroundErrorMessage } from '../shared/backgroundResponse.ts'
 import {
@@ -230,7 +229,6 @@ export function SettingsWorkspace({
           {visibleSection === 'updates' ? (
             <UpdatesSection settings={administrative} />
           ) : null}
-          {visibleSection === 'help' ? <HelpFeedbackSection /> : null}
           {visibleSection === 'supporter' ? <SupporterAccountSection /> : null}
           {visibleSection === 'developer' ? developerTools : null}
         </div>
@@ -444,49 +442,7 @@ function UpdatesSection({ settings }: { settings: AdministrativeSettings }) {
       </div>
       {settings.updateStatus ? <span className="pulse-settings-hint" role="status">{settings.updateStatus}</span> : null}
       <ChangelogCard variant="history" />
-      {/* Same-page section change: the shell follows the hash, so this lands on Help & Feedback. */}
-      <a className="pulse-settings-policy-link" href="#help" onClick={() => window.scrollTo({ top: 0 })}>Get help or send feedback →</a>
     </section>
-  )
-}
-
-/**
- * Two ways to reach StreamPulse. Both open streampulse.stream: the website's
- * /discord page holds the invite (none ships in the extension) to a public
- * server, and /feedback holds the feedback form. The feedback choice makes no
- * privacy promise: the form can be closed (owner decision D19).
- */
-function HelpFeedbackSection() {
-  return (
-    <section data-settings-section="help" className="pulse-settings-page-section">
-      <SectionIntro eyebrow="Help" title="Help & Feedback" copy="Talk with other viewers in public, or send the team feedback. Both open streampulse.stream." />
-      <div className="pulse-settings-help-choices">
-        <HelpChoice kind="discord" href={COMMUNITY_LINKS.discord} icon={<DiscordMark />} title="Join the StreamPulse Discord" detail="Public server: ideas, help and release news" />
-        <HelpChoice kind="feedback" href={COMMUNITY_LINKS.feedback} icon={<FeedbackIcon />} title="Send feedback" detail="Report a problem or share an idea" />
-      </div>
-    </section>
-  )
-}
-
-function HelpChoice({ kind, href, icon, title, detail }: { kind: 'discord' | 'feedback'; href: string; icon: ReactNode; title: string; detail: string }) {
-  const id = useId()
-  return (
-    <a
-      className="pulse-settings-help-choice"
-      data-help-choice={kind}
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      aria-labelledby={`${id}-title`}
-      aria-describedby={`${id}-detail`}
-    >
-      <span className="pulse-settings-help-icon" aria-hidden="true">{icon}</span>
-      <span className="pulse-settings-help-copy">
-        <strong id={`${id}-title`}>{title}<span className="pulse-host-community-sr"> (opens in a new tab)</span></strong>
-        <small id={`${id}-detail`}>{detail}</small>
-      </span>
-      <NewTabArrow />
-    </a>
   )
 }
 

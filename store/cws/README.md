@@ -43,9 +43,10 @@ Canonical process docs:
   free until Supporter sign-ups open; correct the date if the dashboard shows
   otherwise.
 - 0.2.2 stays `status: "unreleased"` with no `releasedAt` until the packaging
-  commit, which sets `released` and the real submission date (after the
-  private feedback form is live). `package:cws` refuses the notes until then,
-  by design.
+  commit, which sets `released` and the real submission date. `package:cws`
+  refuses the notes until then, by design. The private feedback form may stay
+  off (owner decision D19); see the `FEEDBACK_FORM_LIVE` line in
+  [`docs/pulse-extension/release.md`](../../docs/pulse-extension/release.md).
 - Do not upload a new package unless separately authorized.
 - Existing installs update only after a higher version is uploaded, approved, and rolled out.
 

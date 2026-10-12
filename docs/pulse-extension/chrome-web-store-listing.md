@@ -64,7 +64,7 @@ StreamPulse adds a Pulse panel beside Twitch chat. It charts chat and emote acti
 • Bookmarks that stay in your browser: no account needed.
 • One click to the full public analytics for the channel on streampulse.stream.
 • Honest coverage: when StreamPulse wasn't tracking part of a stream, the chart says so instead of guessing.
-• Help & Feedback in settings: send feedback, join the Discord, read the release notes.
+• In settings: Send feedback, Join the Discord and read the release notes.
 
 Privacy: the extension sends the channel, stream or VOD you're viewing to the StreamPulse API to fetch aggregate activity. It never sends chat messages, your Twitch password or your cookies. Full details: https://streampulse.stream/privacy
 
@@ -110,7 +110,8 @@ settings, Help & Feedback) were regenerated on 2026-10-09 from the extension
 RC on the mocked Twitch fixture (synthetic channel, no real streamer or email)
 by `tests/e2e/specs/cws-extension-screenshots.mocked.spec.ts`; see
 `store/cws/README.md` for which build each frame used. Mocked captures are not
-live evidence.
+live evidence. Settings no longer has a Help & Feedback section (2026-10-11
+polish), so frame 5 needs a new settings shot before the 0.2.2 upload.
 
 ---
 
