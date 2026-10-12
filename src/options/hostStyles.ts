@@ -1032,7 +1032,37 @@ const hostStyles = `
     margin-top: 5px;
     width: 4px;
   }
-  .pulse-changelog-category { display: grid; gap: 6px; }
+  /* Each group folds to its count: New, Improved and Fixed start closed; Changed and Known limitations open. */
+  .pulse-changelog-category { border-top: 1px solid rgba(255, 255, 255, 0.055); }
+  .pulse-changelog-category > summary {
+    align-items: center;
+    cursor: pointer;
+    display: flex;
+    gap: 8px;
+    list-style: none;
+    padding: 9px 0;
+  }
+  .pulse-changelog-category > summary::-webkit-details-marker { display: none; }
+  .pulse-changelog-category > summary:hover h3 { filter: brightness(1.2); }
+  .pulse-changelog-category > summary:focus-visible { outline: 2px solid var(--pulse-accent-light, #a78bfa); outline-offset: 2px; }
+  .pulse-changelog-category[open] > .pulse-changelog-list { padding-bottom: 8px; }
+  .pulse-changelog-count {
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 999px;
+    color: ${theme.textMuted};
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1;
+    padding: 3px 7px;
+  }
+  .pulse-changelog-group-chevron {
+    color: ${theme.textMuted};
+    font-size: 18px;
+    line-height: 1;
+    margin-left: auto;
+    transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .pulse-changelog-category[open] .pulse-changelog-group-chevron { transform: rotate(90deg); }
   .pulse-changelog-category h3 {
     color: var(--pulse-accent-soft, #c4b5fd);
     font-size: 12px;
@@ -1044,6 +1074,41 @@ const hostStyles = `
   .pulse-changelog-category[data-release-category="knownIssues"] h3 { color: #fbbf24; }
   .pulse-changelog-links { display: flex; flex-wrap: wrap; gap: 12px; }
   .pulse-changelog-links a { color: var(--pulse-accent-soft, #c4b5fd); font-size: 13px; font-weight: 700; }
+  /* Updates & Changelog leads with this version's title and three highlights. */
+  .pulse-whatsnew {
+    background: linear-gradient(135deg, rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.13), rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.03));
+    border: 1px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.3);
+    border-radius: 12px;
+    display: grid;
+    gap: 10px;
+    padding: 16px 18px;
+  }
+  .pulse-whatsnew header { align-items: center; display: flex; gap: 8px; }
+  .pulse-whatsnew-eyebrow {
+    color: var(--pulse-accent-soft, #c4b5fd);
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+  }
+  .pulse-whatsnew-title { color: ${theme.textPrimary}; font-size: 18px; font-weight: 800; line-height: 1.25; margin: 0; }
+  .pulse-whatsnew .pulse-changelog-list { font-size: 14px; gap: 6px; }
+  .pulse-whatsnew .pulse-changelog-list li::before { margin-top: 8px; }
+  .pulse-whatsnew-all {
+    appearance: none;
+    background: none;
+    border: 0;
+    color: var(--pulse-accent-soft, #c4b5fd);
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    justify-self: start;
+    padding: 2px 0;
+  }
+  .pulse-whatsnew-all:hover { text-decoration: underline; }
+  .pulse-whatsnew-all:focus-visible { outline: 2px solid var(--pulse-accent-light, #a78bfa); outline-offset: 2px; }
+  .pulse-settings-history { scroll-margin-top: 16px; }
 
   @media (prefers-reduced-motion: reduce) {
     .pulse-host-nav a,
@@ -1051,6 +1116,7 @@ const hostStyles = `
     .pulse-settings-skip-link,
     .pulse-changelog-release,
     .pulse-changelog-chevron,
+    .pulse-changelog-group-chevron,
     .pulse-changelog-reveal,
     .pulse-settings-choice-card { transition: none; }
     .pulse-settings-section-stage { animation: none; }

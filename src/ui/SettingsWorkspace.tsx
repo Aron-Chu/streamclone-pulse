@@ -22,7 +22,7 @@ import { isAnalyticsConsentGranted, setAnalyticsConsentGranted } from '../shared
 import { EXTENSION_ANALYTICS_INGEST_ENABLED } from '../shared/extensionAnalytics.ts'
 import { installedExtensionVersion } from '../shared/releaseManifest.ts'
 import { compactViewerSamplingLabel, summarizeViewerSampling } from '../shared/viewerSamplingStatus.ts'
-import { ChangelogCard } from './ChangelogCard.tsx'
+import { ChangelogCard, WhatsNewCard } from './ChangelogCard.tsx'
 import { ACCENT_THEME_OPTIONS } from './overlayTheme.ts'
 import { ChoicePicker } from './ChoicePicker.tsx'
 import { DENSITY_OPTIONS, PLACEMENT_OPTIONS } from './preferenceOptions.ts'
@@ -425,6 +425,17 @@ function PrivacySection({ settings }: { settings: AdministrativeSettings }) {
 }
 
 function UpdatesSection({ settings }: { settings: AdministrativeSettings }) {
+  // The What's new card leads; the release list starts folded under it. See all
+  // changes unfolds this version's notes, scrolls to them and moves focus there.
+  const [seeAll, setSeeAll] = useState(0)
+  const historyRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const history = historyRef.current
+    if (!seeAll || !history) return
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    history.scrollIntoView?.({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
+    history.querySelector<HTMLElement>('.pulse-changelog-release[data-changelog-open="true"] .pulse-changelog-toggle')?.focus({ preventScroll: true })
+  }, [seeAll])
   return (
     <section data-settings-section="updates" className="pulse-settings-page-section">
       <SectionIntro eyebrow="Release history" title="Updates & Changelog" copy="Review the installed build, check update handling, and inspect every published release note." />
@@ -441,7 +452,10 @@ function UpdatesSection({ settings }: { settings: AdministrativeSettings }) {
         ) : null}
       </div>
       {settings.updateStatus ? <span className="pulse-settings-hint" role="status">{settings.updateStatus}</span> : null}
-      <ChangelogCard variant="history" />
+      <WhatsNewCard onSeeAll={() => setSeeAll(count => count + 1)} />
+      <div ref={historyRef} className="pulse-settings-history">
+        <ChangelogCard key={seeAll} variant="history" startCollapsed={seeAll === 0} />
+      </div>
     </section>
   )
 }
