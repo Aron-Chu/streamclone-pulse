@@ -485,7 +485,7 @@ const hostStyles = `
     font-size: 12px;
     font-weight: 700;
     /* 6 and 9, not 8 and 10: with the subline the links still fit the 184 px rail
-       (measured: "Ideas or problems" fits at 320 to 1440 px; "Ideas and problems" did not). */
+       (measured: "Ideas or problems" fits at 390 to 1440 px; "Ideas and problems" did not). */
     gap: 6px;
     min-height: 36px;
     padding: 0 9px;
@@ -496,8 +496,13 @@ const hostStyles = `
   .pulse-host-community-link > svg { flex: none; height: 15px; width: 15px; }
   /* A short subline under each label says what the link is. At least 4.5:1:
      #8b8ba0 on the dark link is 5.4:1 (5.1:1 hovered); on Discord Blurple only
-     full white passes (4.6:1, 6.4:1 hovered), so the subline is white there. */
-  .pulse-host-community-copy { display: grid; gap: 1px; line-height: 1.2; min-width: 0; padding: 6px 0; }
+     full white passes (4.6:1, 6.4:1 hovered), so the subline is white there.
+     The label and subline wrap inside the link when they do not fit, instead of
+     running into the new-tab arrow or pushing the card past the rail: Linux has
+     no Inter or Segoe UI and falls back to the much wider DejaVu Sans, and at
+     320 px "Join the Discord" does not fit even in Segoe UI. With Segoe UI both
+     stay on one line from 390 px up. */
+  .pulse-host-community-copy { display: grid; gap: 1px; line-height: 1.2; min-width: 0; overflow-wrap: anywhere; padding: 6px 0; white-space: normal; }
   .pulse-host-community-copy small { color: ${theme.textMuted}; font-size: 12px; font-weight: 600; }
   .pulse-host-community-link[data-community-link="discord"] .pulse-host-community-copy small { color: #fff; font-weight: 500; }
   .pulse-host-community-link > svg:last-child { height: 11px; margin-left: auto; opacity: 0.8; width: 11px; }

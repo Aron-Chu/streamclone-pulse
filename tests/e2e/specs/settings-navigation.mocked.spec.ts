@@ -107,20 +107,24 @@ test('Supporter leads settings and section navigation remains consistent at ever
       const navBox = await page.getByRole('navigation', { name: 'Settings sections' }).boundingBox()
       const communityBox = await community.boundingBox()
       expect(communityBox!.y).toBeGreaterThanOrEqual(navBox!.y + navBox!.height)
-      // The sublines never push the card wider than the rail it sits in. The 184 px rail was
-      // measured with the UI fonts (Segoe UI here). Linux CI has neither Inter nor Segoe UI and
-      // falls back to DejaVu Sans, which is much wider: there the card measured 202 px (CI run
-      // 38211670969), and the label "Join the Discord" alone is too wide for the rail. So Linux
-      // only checks the card stays within 20 px of the rail (an open item, not a layout change).
+      // No overflow, text may wrap: the card is never wider than the rail it sits in, and no
+      // label or subline spills out of its link or runs into the new-tab arrow, at every width
+      // and on every platform. Where they do not fit, they wrap inside the link: Linux CI has
+      // neither Inter nor Segoe UI and falls back to the much wider DejaVu Sans (the unwrapped
+      // card measured 202 px there, CI run 38211670969), and at 320 px "Join the Discord"
+      // wraps even with Segoe UI.
       const railWidth = (await page.locator('.pulse-host-rail').boundingBox())!.width
-      expect(communityBox!.width, `${width}px`).toBeLessThanOrEqual(railWidth + (process.platform === 'linux' ? 20 : 0.5))
-      // From 390 px up (the 184 px rail and the 390 px layout the card is designed for), no
-      // label or subline spills out of its link. At 320 px with the Linux CI fonts the label
-      // "Join the Discord" alone runs past its button, so 320 is not checked here.
-      if (width >= 390) {
-        for (const link of await community.getByRole('link').all()) {
-          expect(await link.evaluate(element => element.scrollWidth <= element.clientWidth), `${width}px`).toBe(true)
-        }
+      expect(communityBox!.width, `${width}px`).toBeLessThanOrEqual(railWidth + 0.5)
+      for (const link of await community.getByRole('link').all()) {
+        const fit = await link.evaluate(element => {
+          const copy = element.querySelector<HTMLElement>('.pulse-host-community-copy')!
+          const lines = [...copy.children].map(line => Math.round(line.getBoundingClientRect().height / parseFloat(getComputedStyle(line).lineHeight)))
+          return { link: element.scrollWidth <= element.clientWidth, copy: copy.scrollWidth <= copy.clientWidth, lines }
+        })
+        expect(fit.link && fit.copy, `${width}px`).toBe(true)
+        // With the UI fonts (Segoe UI here) nothing wraps from 390 px up: the 184 px rail and
+        // the 390 px layout look as designed, one line each for the label and the subline.
+        if (process.platform === 'win32' && width >= 390) expect(fit.lines, `${width}px`).toEqual([1, 1])
       }
       if (section !== 'supporter') await expect(banner).toBeVisible()
     }
