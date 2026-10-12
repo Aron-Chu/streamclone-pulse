@@ -24,9 +24,9 @@ export function ActivityViewerSanityBanner({
   if (poolSum <= 0 || peak <= 0 || peak >= poolSum * 0.75) return null
   return (
     <p className="figma-global-activity__sanity-banner" role="note">
-      Chart peak ({compact(peak)} viewers) is lower than the live pool sum ({compact(poolSum)}).
-      Corpus viewer rollups may be sparse for this window; chat and emote lines require an active IRC
-      collector.
+      The chart's peak ({compact(peak)} sampled viewers) is below Watching now ({compact(poolSum)}) because
+      they count different channels: the chart samples a configured roster, Watching now adds up every
+      live tracked channel in this snapshot. Neither is a share of the other.
     </p>
   )
 }
