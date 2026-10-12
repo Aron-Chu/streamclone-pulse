@@ -735,7 +735,14 @@ export function HubActivityChart({
   emoteImages,
 }: HubActivityChartProps) {
   const plotClipId = useId()
+  /** The plot box: it anchors wheel zoom and takes hover, clicks and drags. */
   const wrapRef = useRef<HTMLDivElement>(null)
+  /**
+   * The whole chart (label band, plot, time axis, navigator): its wheel zone
+   * runs from its top edge down to the navigator bar.
+   */
+  const plotStackRef = useRef<HTMLDivElement>(null)
+  const plotWheelAnchor = useCallback(() => wrapRef.current, [])
   const compactAnnotations = useHubChartCompact()
   const [hover, setHover] = useState<number | null>(null)
   const coarsePointer = useCoarsePointer()
@@ -824,8 +831,8 @@ export function HubActivityChart({
   })
   const navigatorTargetRef = useRef(navigatorRange)
   // Shared with the stream chart and remembered in this browser: on by
-  // default, so a plain wheel over the plot zooms. Reset and range changes
-  // never change it.
+  // default, so a plain wheel anywhere over the chart zooms. Reset and range
+  // changes never change it.
   const [scrollZoomEnabled, setScrollZoomEnabled] = useChartScrollZoom()
   const resetNavigator = () => {
     changeNavigatorRange({ startIndex: 0, endIndex: Math.max(0, chartPoints.length - 1) }, false)
@@ -1876,7 +1883,11 @@ export function HubActivityChart({
         </p>
       ) : null}
       <div
+        ref={plotStackRef}
         className="hx-plot-stack"
+        // The wheel zone: the label band, the plot, the time axis and the gap
+        // down to the navigator bar all zoom, edge to edge.
+        data-hub-chart-wheel-zone
         data-hub-compact={compactAnnotations ? 'true' : undefined}
         data-hub-chart-state="ready"
         data-hub-measured-points={measuredChartPointCount}
@@ -1920,6 +1931,7 @@ export function HubActivityChart({
           <div className="hx-plot-stack__plot hx-plot-stack__plot--chart">
             <div
               ref={wrapRef}
+              // The plot box (the name predates the wider wheel zone above).
               data-hub-chart-wheel-surface
               data-hub-chart-scroll-zoom={scrollZoomEnabled ? 'on' : 'off'}
               data-chart-layout="viewer-lane"
@@ -2235,7 +2247,8 @@ export function HubActivityChart({
             windowMinutes,
           )}
           presets={navigatorPresets}
-          wheelSurfaceRef={wrapRef}
+          wheelSurfaceRef={plotStackRef}
+          wheelAnchor={plotWheelAnchor}
           scrollZoomEnabled={scrollZoomEnabled}
           onScrollZoomChange={setScrollZoomEnabled}
           onChange={changeNavigatorRange}

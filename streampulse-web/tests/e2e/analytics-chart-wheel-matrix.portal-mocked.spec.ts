@@ -1,10 +1,18 @@
-import { expect, test, type Locator, type Page } from '@playwright/test'
-import { installHubUxMock } from './helpers/hubUxMock'
+import { expect, test, type Page } from '@playwright/test'
+import { openAnalyticsSession } from './helpers/portalAcceptanceHarness'
 import {
-  buildMinutes,
-  installPortalAcceptanceHarness,
-  openAnalyticsSession,
-} from './helpers/portalAcceptanceHarness'
+  CHART_SURFACES as SURFACES,
+  hubSurface,
+  openStream,
+  resetZoom as reset,
+  SCROLL_ZOOM_STORAGE_KEY as STORAGE_KEY,
+  scrollYOf,
+  scrollZoomToggleOf as toggleOf,
+  setScrollZoom,
+  streamSurface,
+  windowOf,
+  type ChartSurface as Surface,
+} from './helpers/chartWheelSurfaces'
 
 // Owner report (2026-10-09): "zoom still doesn't work on any of the graph with
 // the scroll wheel" (+ and − worked). Both charts share one navigator, and a
@@ -17,92 +25,10 @@ import {
 // e^0.25, however the delta is split into events) and the page stays still;
 // with Scroll zoom off the page scrolls and the chart stays put; Shift+wheel
 // and horizontal swipes pan; Ctrl/Meta+wheel stay the browser's zoom. The page
-// is never trapped: a zoom-out at the full range, a wheel outside the plot,
+// is never trapped: a zoom-out at the full range, a wheel outside the chart,
 // and a page scroll that sweeps the plot under the pointer all scroll the page.
 
 type Mode = 'default' | 'off' | 'alt'
-
-interface Surface {
-  name: 'hub' | 'stream'
-  navigator: Locator
-  plot: Locator
-  full: number
-  /** Lets queued frames and timers run so the plot reaches its target. */
-  settle: () => Promise<void>
-  /** The plot's own visible range, as navigator steps, once settled. */
-  plotSteps: () => Promise<number>
-}
-
-const HUB_BUCKETS = 240
-const STREAM_MINUTES = 748
-const STORAGE_KEY = 'sp.chart.scrollZoom.v1'
-
-async function openHub(page: Page): Promise<Surface> {
-  await installHubUxMock(page)
-  await page.goto('/analytics')
-  return hubSurface(page)
-}
-
-async function hubSurface(page: Page): Promise<Surface> {
-  const navigator = page.locator('.figma-global-activity__hub-chart [data-hub-chart-navigator], [data-hub-chart-navigator]').first()
-  await expect(navigator).toHaveAttribute('data-hub-chart-navigator-window', `0:${HUB_BUCKETS - 1}`, { timeout: 30_000 })
-  const plot = page.locator('[data-hub-chart-wheel-surface]')
-  const stack = page.locator('.hx-plot-stack').first()
-  return {
-    name: 'hub',
-    navigator,
-    plot,
-    full: HUB_BUCKETS,
-    // No fake clock on the hub: frames run; the safety timer lands it regardless.
-    settle: async () => {
-      // Let React commit the last wheel event before comparing.
-      await page.waitForTimeout(50)
-      await expect.poll(async () => {
-        const window = await navigator.getAttribute('data-hub-chart-navigator-window')
-        const plotted = `${await stack.getAttribute('data-hub-chart-viewport-start')}:${await stack.getAttribute('data-hub-chart-viewport-end')}`
-        return plotted === window
-      }, { timeout: 5_000 }).toBe(true)
-    },
-    plotSteps: async () => {
-      const start = Number(await stack.getAttribute('data-hub-chart-viewport-start'))
-      const end = Number(await stack.getAttribute('data-hub-chart-viewport-end'))
-      return end - start + 1
-    },
-  }
-}
-
-async function openStream(page: Page): Promise<Surface> {
-  const harness = await installPortalAcceptanceHarness(page)
-  harness.setMinutesPayload(buildMinutes({ count: STREAM_MINUTES, withEmotes: true }))
-  await openAnalyticsSession(page)
-  return streamSurface(page)
-}
-
-async function streamSurface(page: Page): Promise<Surface> {
-  const navigator = page.locator('[data-session-chart-navigator] [data-hub-chart-navigator]')
-  await expect(navigator).toHaveAttribute('data-hub-chart-navigator-window', `0:${STREAM_MINUTES - 1}`, { timeout: 30_000 })
-  const plot = page.locator('svg[aria-label="Analytics timeline chart"] rect[data-chart-touch-action]')
-  return {
-    name: 'stream',
-    navigator,
-    plot,
-    full: STREAM_MINUTES,
-    // The harness installs a fake clock: run the queued frames and timers.
-    settle: async () => {
-      // Let React commit the last wheel event, then run its frames and timers.
-      await page.waitForTimeout(50)
-      const clock = page.clock as { runFor?: (ms: number) => Promise<void> }
-      if (typeof clock.runFor === 'function') await clock.runFor(600)
-    },
-    plotSteps: async () => {
-      const start = Number(await plot.getAttribute('data-chart-viewport-start'))
-      const end = Number(await plot.getAttribute('data-chart-viewport-end'))
-      return Math.round((end - start) / 60) + 1
-    },
-  }
-}
-
-const SURFACES = { hub: openHub, stream: openStream } as const
 
 /** Wheel profiles: deltas in pixels (CDP, deltaMode 0) or one Firefox-style line event. */
 const ZOOM_PROFILES: Array<{ name: string; deltas?: number[]; lines?: number }> = [
@@ -118,14 +44,6 @@ const ZOOM_PROFILES: Array<{ name: string; deltas?: number[]; lines?: number }> 
 const totalPixels = (profile: (typeof ZOOM_PROFILES)[number]) =>
   profile.lines != null ? profile.lines * (100 / 3) : profile.deltas!.reduce((sum, delta) => sum + delta, 0)
 
-function stepsOf(window: string | null): { start: number; end: number; count: number } {
-  const [start, end] = String(window).split(':').map(Number)
-  return { start: start!, end: end!, count: end! - start! + 1 }
-}
-
-const windowOf = async (surface: Surface) => stepsOf(await surface.navigator.getAttribute('data-hub-chart-navigator-window'))
-const scrollYOf = (page: Page) => page.evaluate(() => window.scrollY)
-
 async function center(page: Page, surface: Surface): Promise<{ x: number; y: number }> {
   await surface.plot.evaluate(element => element.scrollIntoView({ block: 'center', behavior: 'instant' }))
   const box = await surface.plot.boundingBox()
@@ -133,21 +51,6 @@ async function center(page: Page, surface: Surface): Promise<{ x: number; y: num
   const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
   await page.mouse.move(point.x, point.y)
   return point
-}
-
-async function reset(surface: Surface) {
-  const button = surface.navigator.getByRole('button', { name: 'Reset zoom' })
-  if (await button.isEnabled()) await button.click()
-  await surface.settle()
-  await expect(surface.navigator).toHaveAttribute('data-hub-chart-navigator-window', `0:${surface.full - 1}`)
-}
-
-const toggleOf = (surface: Surface) => surface.navigator.getByRole('button', { name: /Scroll zoom/ })
-
-async function setScrollZoom(surface: Surface, on: boolean) {
-  const toggle = toggleOf(surface)
-  if ((await toggle.getAttribute('aria-pressed')) !== String(on)) await toggle.click()
-  await expect(toggle).toHaveAttribute('aria-pressed', String(on))
 }
 
 /** Sends one profile at the pointer. Returns how many line events the page kept (not prevented). */
@@ -363,7 +266,7 @@ for (const [surfaceName, open] of Object.entries(SURFACES)) {
       expect(await scrollYOf(page)).toBe(still)
     })
 
-    test('outside the plot the page scrolls: the navigator buttons, readout and hint', async ({ page }) => {
+    test('below the navigator bar the page scrolls: the navigator buttons, readout and hint', async ({ page }) => {
       const surface = await open(page)
       await reset(surface)
       for (const part of ['.hx-chart-navigator__zoom-buttons button', '.hx-chart-navigator__readout', '.hx-chart-navigator__hint']) {
@@ -447,44 +350,8 @@ for (const [surfaceName, open] of Object.entries(SURFACES)) {
   })
 }
 
-test.describe('stream chart: only the plot box zooms', () => {
-  test.use({ viewport: { width: 1440, height: 900 } })
-
-  test('a wheel over the axis labels, the legend or the games strip scrolls the page', async ({ page }) => {
-    const surface = await openStream(page)
-    await reset(surface)
-    const plot = (await surface.plot.boundingBox())!
-    const stack = page.locator('[data-session-chart-stack]')
-    const spots = await stack.evaluate((element, plotBox) => {
-      const stackBox = element.getBoundingClientRect()
-      const out: Array<{ name: string; x: number; y: number }> = []
-      // The time axis labels sit just under the plot box, inside the stack.
-      out.push({ name: 'axis labels', x: plotBox.x + plotBox.width / 2, y: plotBox.y + plotBox.height + 8 })
-      for (const [name, selector] of [['legend', '[data-chart-focus-bar]'], ['games strip', '[data-games-played]'], ['scale row', '[data-chart-scale-row]']] as const) {
-        const node = document.querySelector(selector)
-        const rect = node?.getBoundingClientRect()
-        if (rect && rect.width > 0 && rect.height > 0) out.push({ name, x: rect.left + Math.min(12, rect.width / 2), y: rect.top + rect.height / 2 })
-      }
-      return { spots: out, stack: { top: stackBox.top, bottom: stackBox.bottom } }
-    }, plot)
-    expect(spots.spots.length).toBeGreaterThanOrEqual(2)
-    for (const spot of spots.spots) {
-      await surface.plot.evaluate(element => element.scrollIntoView({ block: 'center', behavior: 'instant' }))
-      const now = (await surface.plot.boundingBox())!
-      const y = spot.y + (now.y - plot.y)
-      const x = spot.x
-      // Never inside the plot box.
-      expect(y < now.y || y > now.y + now.height || x < now.x || x > now.x + now.width, `${spot.name} is outside the plot box`).toBe(true)
-      await page.mouse.move(x, y)
-      const before = await scrollYOf(page)
-      await page.mouse.wheel(0, -120)
-      await expect.poll(() => scrollYOf(page), { message: `${spot.name} scrolls the page` }).toBeLessThan(before)
-      await surface.settle()
-      await expect(surface.navigator).toHaveAttribute('data-hub-chart-navigator-window', `0:${surface.full - 1}`)
-      await page.waitForTimeout(450)
-    }
-  })
-})
+// Where on each chart the wheel zooms (the whole chart, from the label band
+// down to the navigator bar) is swept in analytics-chart-wheel-zone.portal-mocked.spec.ts.
 
 test.describe('wheel zoom at the owner window (2048x1018 at 125%)', () => {
   test.use({ viewport: { width: 2048, height: 1018 }, deviceScaleFactor: 1.25 })

@@ -6,6 +6,7 @@ import {
   ChartNavigator,
   CHART_SCROLL_ZOOM_STORAGE_KEY,
   resetChartWheelGuard,
+  wheelZoneContains,
   type ChartNavigatorRange,
 } from './ChartNavigator.tsx'
 import { resetChartScrollZoomMemory } from './chartScrollZoom.ts'
@@ -24,11 +25,16 @@ afterEach(() => {
 })
 
 const WIDTH = 1000
+/** The plot box's bottom edge. */
 const PLOT_HEIGHT = 300
+/** The label band above the plot box. */
+const LABEL_BAND = 30
 
 /**
- * A navigator with a wheel surface around it, as on the stream chart: the
- * plot box is the top 300px of the surface; below it sit axis labels.
+ * A navigator with a wheel surface around it, as on both site charts: a
+ * 30px label band (PEAK, LAST DATA) on top, the plot box down to 300px, axis
+ * labels below it, then the navigator bar (336-364px), then its buttons,
+ * readout and hint.
  * Scroll zoom comes from the remembered preference (on by default).
  */
 function Harness({ pointCount, minVisibleCount, testId = 'surface' }: { pointCount: number; minVisibleCount?: number; testId?: string }) {
@@ -69,11 +75,13 @@ function setup(pointCount: number, minVisibleCount?: number) {
   const plot = screen.getByTestId('surface-plot')
   const labels = screen.getByTestId('surface-labels')
   Object.defineProperty(surface, 'getBoundingClientRect', { configurable: true, value: () => rectAt(0, 400) })
-  Object.defineProperty(plot, 'getBoundingClientRect', { configurable: true, value: () => rectAt(0, PLOT_HEIGHT) })
+  Object.defineProperty(plot, 'getBoundingClientRect', { configurable: true, value: () => rectAt(LABEL_BAND, PLOT_HEIGHT - LABEL_BAND) })
   const track = view.container.querySelector('.hx-chart-navigator__track') as HTMLElement
   const trackShell = view.container.querySelector('.hx-chart-navigator__track-shell') as HTMLElement
   Object.defineProperty(track, 'getBoundingClientRect', { configurable: true, value: () => rectAt(340, 20) })
   Object.defineProperty(trackShell, 'getBoundingClientRect', { configurable: true, value: () => rectAt(336, 28) })
+  const bar = view.container.querySelector('.hx-chart-navigator__bar') as HTMLElement
+  Object.defineProperty(bar, 'getBoundingClientRect', { configurable: true, value: () => rectAt(336, 28) })
   const navigator = view.container.querySelector('[data-hub-chart-navigator]') as HTMLElement
   const range = () => navigator.getAttribute('data-hub-chart-navigator-window')!
   const count = () => {
@@ -248,15 +256,37 @@ describe('ChartNavigator wheel matrix', () => {
     expect(fresh.count()).toBeLessThan(240)
   })
 
-  it('leaves a wheel outside the plot box to the page, even inside the chart', () => {
+  it('zooms anywhere from the label band above the plot down to the navigator bar, edge to edge', () => {
+    const { wheel, count, labels, view } = setup(240)
+    const surface = screen.getByTestId('surface')
+    const rangeLabel = view.container.querySelector('.hx-chart-navigator__range') as HTMLElement
+    // Owner report (2026-10-12): the PEAK / LAST DATA band and the time-axis
+    // row scrolled the page, because only the plot box zoomed.
+    const spots: Array<[string, HTMLElement, number, number]> = [
+      ['label band, left edge', labels, 0, 0],
+      ['label band, right edge', labels, WIDTH, 6],
+      ['plot', labels, WIDTH / 2, PLOT_HEIGHT / 2],
+      ['time-axis row', labels, WIDTH / 2, PLOT_HEIGHT + 20],
+      ['gap above the bar', surface, 4, 330],
+      ['bar range label', rangeLabel, WIDTH - 4, 350],
+      ['bottom of the bar', rangeLabel, WIDTH / 2, 364],
+    ]
+    let before = count()
+    for (const [name, target, clientX, clientY] of spots) {
+      expect(wheel({ deltaY: -100, clientX, clientY, target }).defaultPrevented, name).toBe(true)
+      expect(count(), name).toBeLessThan(before)
+      before = count()
+    }
+  })
+
+  it('leaves the navigator buttons, readout and hint below the bar to the page', () => {
     const { wheel, range, labels, view } = setup(240)
-    // Axis labels under the plot (inside the wheel surface).
-    expect(wheel({ deltaY: -100, clientY: PLOT_HEIGHT + 20, target: labels }).defaultPrevented).toBe(false)
-    // The navigator's buttons, readout and hint.
     const zoomIn = screen.getByRole('button', { name: 'Zoom in' })
     expect(wheel({ deltaY: -100, clientY: 380, target: zoomIn }).defaultPrevented).toBe(false)
     const hint = view.container.querySelector('.hx-chart-navigator__hint') as HTMLElement
     expect(wheel({ deltaY: -100, clientY: 390, target: hint }).defaultPrevented).toBe(false)
+    // Below the wheel surface altogether.
+    expect(wheel({ deltaY: -100, clientY: 450, target: labels }).defaultPrevented).toBe(false)
     expect(range()).toBe('0:239')
     // The navigator track is a zoom surface.
     const track = view.container.querySelector('.hx-chart-navigator__track') as HTMLElement
@@ -368,6 +398,50 @@ describe('Scroll zoom preference', () => {
     expect(hint()).toBe('Scroll over the chart to zoom · Shift + scroll to pan · Drag the purple bar to pick a span')
     scrollZoom()
     expect(hint()).toBe('Scroll zoom is off: the wheel scrolls the page · Hold Alt and scroll to zoom · Shift + scroll to pan')
+  })
+})
+
+describe('wheelZoneContains', () => {
+  const box = (left: number, top: number, right: number, bottom: number) => ({
+    left, top, right, bottom, width: right - left, height: bottom - top, x: left, y: top, toJSON: () => ({}),
+  })
+  function zone(surfaceBox: DOMRect, barBox: DOMRect | null, plotBox: DOMRect, barInside = true) {
+    const surface = document.createElement('div')
+    const bar = document.createElement('div')
+    const plot = document.createElement('div')
+    surface.append(plot)
+    if (barInside) surface.append(bar)
+    Object.defineProperty(surface, 'getBoundingClientRect', { value: () => surfaceBox })
+    Object.defineProperty(bar, 'getBoundingClientRect', { value: () => barBox ?? box(0, 0, 0, 0) })
+    Object.defineProperty(plot, 'getBoundingClientRect', { value: () => plotBox })
+    return (x: number, y: number) => wheelZoneContains(surface, barBox ? bar : null, plot, x, y)
+  }
+
+  it('runs from the top of the surface to the bottom of the navigator bar, across its full width', () => {
+    // Surface 0-500 tall; plot 30-300; bar 340-370; buttons and hint below.
+    const inZone = zone(box(0, 0, 1000, 500), box(0, 340, 1000, 370), box(0, 30, 1000, 300))
+    for (const y of [0, 10, 29, 150, 310, 335, 355, 370]) {
+      for (const x of [0, 500, 1000]) expect(inZone(x, y), `${x},${y}`).toBe(true)
+    }
+    for (const [x, y] of [[500, 371], [500, 450], [-1, 150], [1001, 150], [500, -1]]) {
+      expect(inZone(x!, y!), `${x},${y}`).toBe(false)
+    }
+  })
+
+  it('counts the first pixel row of a box on a fractional top (Chrome reports whole-pixel clientY)', () => {
+    const inZone = zone(box(10, 250.22, 990.4, 600), box(10, 560.5, 990.4, 590.7), box(10, 280, 990.4, 540))
+    expect(inZone(10, 250)).toBe(true)
+    expect(inZone(990, 591)).toBe(true)
+    expect(inZone(500, 249)).toBe(false)
+  })
+
+  it('falls back to the surface box when the navigator is not inside it, and always includes the plot', () => {
+    const inZone = zone(box(0, 0, 1000, 300), box(0, 340, 1000, 370), box(0, 40, 1000, 320), false)
+    expect(inZone(500, 10)).toBe(true)
+    // The plot box reaches below the surface.
+    expect(inZone(500, 310)).toBe(true)
+    // The bar outside the surface has its own navigator listener.
+    expect(inZone(500, 355)).toBe(false)
   })
 })
 

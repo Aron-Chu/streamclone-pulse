@@ -585,8 +585,11 @@ function AnalyticsChart({
     navigatorRange.startIndex,
     resetNavigator,
   ])
+  // The whole chart stack is the wheel zone: the label band (PEAK, AVG, LAST
+  // DATA), the plot and its lanes, the time axis and the strip down to the
+  // navigator bar. The plot box only anchors the zoom on the step under the
+  // pointer; it does not limit where the wheel zooms.
   const chartStackRef = useRef<HTMLDivElement>(null)
-  // Wheel zoom anchors on the plot area, not the axis gutters around it.
   const plotWheelAnchor = useCallback(
     () => chartStackRef.current?.querySelector('svg[role="group"] rect[data-chart-touch-action]'),
     [],
