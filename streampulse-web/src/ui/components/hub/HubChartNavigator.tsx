@@ -2,6 +2,7 @@
 // @streampulse/analytics-console so both charts get the same zoom bar.
 export {
   ChartNavigator as HubChartNavigator,
+  useChartScrollZoom,
   zoomNavigatorRange,
   type ChartNavigatorPreset as HubChartNavigatorPreset,
   type ChartNavigatorProps as HubChartNavigatorProps,

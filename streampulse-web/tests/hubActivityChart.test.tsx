@@ -163,7 +163,7 @@ describe('HubActivityChart chat measurement honesty', () => {
     expect(container.querySelector('.hx-chart2--viewer-partial')).toBeTruthy()
     expect(container.textContent).toContain('Viewer samples partial — 1/3 buckets sampled')
     expect(container.textContent).toContain('unsampled buckets remain unknown, not zero viewers')
-    expect(container.textContent).toContain('500 peak viewers · 1/3 coverage-qualified')
+    expect(container.textContent).toContain('500 peak sampled viewers · 1/3 coverage-qualified')
   })
 
   it('renders a dashed sampled trend while reserving the solid trace for contiguous complete coverage', () => {
@@ -264,8 +264,8 @@ describe('HubActivityChart chat measurement honesty', () => {
       channelCount={1}
     />)
     expect(container.querySelectorAll('.hx-chart-line--viewers')).toHaveLength(1)
-    expect(container.textContent).toContain('120 peak viewers')
-    expect(container.textContent).not.toContain('999K peak viewers')
+    expect(container.textContent).toContain('120 peak sampled viewers')
+    expect(container.textContent).not.toContain('999K peak sampled viewers')
   })
 
   it('calms a legacy one-bucket spike without smoothing across a missing bucket', () => {

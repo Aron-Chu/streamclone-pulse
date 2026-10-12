@@ -132,4 +132,18 @@ describe('GamesPlayedStrip live versus offline contract', () => {
     expect(details?.textContent).toMatch(/pinned/i)
     expect(details?.querySelector('img')).toBeNull()
   })
+
+  it('marks the details parts so the wide layout can put the name and the window on separate lines', () => {
+    render(<GamesPlayedStrip games={artAndRepeatFixture} durationSeconds={1200} visibleRange={null} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /Minecraft/i }))
+    const details = document.querySelector('[data-games-played-details]')
+    const name = details?.querySelector('[data-games-played-details-name]')
+    const separator = details?.querySelector('[data-games-played-details-sep]')
+    expect(name?.textContent).toBe('Minecraft')
+    expect(separator?.getAttribute('aria-hidden')).toBe('true')
+    // The name comes first; the window and the pinned mark follow it.
+    expect(details?.firstElementChild).toBe(name)
+    expect(details?.lastElementChild?.textContent).toMatch(/pinned/i)
+  })
 })

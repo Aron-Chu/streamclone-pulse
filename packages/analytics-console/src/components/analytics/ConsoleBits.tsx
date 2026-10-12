@@ -27,9 +27,9 @@ export function StatCard({ label, value, tone }: { label: string; value: string;
   }, [value, motionEnabled])
 
   return (
-    <div className="sc-stat-card rounded border border-white/10 bg-white/[0.035] p-3" data-value-changed={pulse ? 'true' : undefined}>
+    <div className="sc-stat-card flex flex-col rounded border border-white/10 bg-white/[0.035] p-3" data-value-changed={pulse ? 'true' : undefined}>
       <div className="text-xs font-black uppercase text-zinc-400">{label}</div>
-      <div className={`sc-stat-card__value mt-1 truncate text-xl font-black ${tone || 'text-white'}`}>{value}</div>
+      <div className={`sc-stat-card__value mt-auto truncate pt-1 text-xl font-black ${tone || 'text-white'}`}>{value}</div>
     </div>
   )
 }
@@ -37,9 +37,15 @@ export function StatCard({ label, value, tone }: { label: string; value: string;
 export function DataQualityDisclosure({
   detail,
   summaryMetrics,
+  pending = false,
 }: {
   detail?: AnalyticsStreamDetail
   summaryMetrics?: StreamSummaryMetrics
+  /**
+   * The session is still loading or its request failed. There is no data to
+   * judge, so show a neutral placeholder instead of a "No data" verdict.
+   */
+  pending?: boolean
 }) {
   const quality = deriveAnalyticsQualityLabel({
     analyticsQuality: detail?.analyticsQuality,
@@ -62,6 +68,20 @@ export function DataQualityDisclosure({
   const displayedVodState = hasVod ? 'linked'
     : vodState === 'pending_live' && detail?.stream?.lifecycleState !== 'confirmed_live' ? 'unavailable'
       : vodState ? vodState.replace(/_/g, ' ') : 'status unavailable'
+
+  if (pending) {
+    return (
+      <div className="text-xs normal-case">
+        <span
+          className="flex min-h-11 items-center rounded border border-white/10 bg-white/[0.04] px-3 py-2 font-black uppercase text-zinc-500"
+          data-data-quality-pending
+          aria-label="Data quality: not known yet"
+        >
+          Data quality: —
+        </span>
+      </div>
+    )
+  }
 
   return (
     <details className="relative text-xs normal-case" data-data-quality-disclosure>

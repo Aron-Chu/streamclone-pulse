@@ -206,12 +206,21 @@ test.describe('hub audit regression', () => {
     })
   }
 
-  test('ordinary scrolling does not zoom the activity graph', async ({ page }) => {
+  test('a plain wheel zooms the activity graph only while Scroll zoom is on (the default)', async ({ page }) => {
     await page.goto('/analytics')
     const navigator = page.locator('[data-hub-chart-navigator]')
     await expect(navigator).toBeVisible()
     const range = await navigator.getAttribute('data-hub-chart-navigator-window')
     const chart = page.locator('[data-hub-chart-wheel-surface]')
+    // Owner ask (2026-10-09): on by default, a plain wheel over the plot zooms.
+    await chart.hover()
+    await page.mouse.wheel(0, -400)
+    await expect(navigator).not.toHaveAttribute('data-hub-chart-navigator-window', range!)
+    await page.getByRole('button', { name: 'Reset zoom', exact: true }).click()
+    await expect(navigator).toHaveAttribute('data-hub-chart-navigator-window', range!)
+    // Turned off, ordinary scrolling does not zoom; Alt+wheel still does.
+    await navigator.getByRole('button', { name: /^Scroll zoom/ }).click()
+    await expect(navigator.getByRole('button', { name: /^Scroll zoom/ })).toHaveAttribute('aria-pressed', 'false')
     await chart.hover()
     await page.mouse.wheel(0, -400)
     await expect(navigator).toHaveAttribute('data-hub-chart-navigator-window', range!)
@@ -258,6 +267,8 @@ test.describe('hub audit regression', () => {
         expect(box?.height).toBeGreaterThanOrEqual(44)
         expect(box?.width).toBeGreaterThanOrEqual(44)
       }
+      // The compact desktop header keeps the window-peaks disclosure at 44px.
+      expect((await page.locator('[data-window-peak-disclosure] > summary').boundingBox())?.height).toBeGreaterThanOrEqual(44)
       if (width < 768) {
         const anchors = page.locator('.hub-mobile-sections a')
         await expect(anchors).toHaveText(['Overview', 'Hottest Live', 'Moments', 'Emotes', 'Channels'])

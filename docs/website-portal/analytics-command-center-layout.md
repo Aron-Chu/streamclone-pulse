@@ -1,5 +1,83 @@
 # Analytics command center layout
 
+## Compact desktop density (2026-10-08)
+
+The owner preferred the hub at 75% browser zoom ("at 100% it's too fat"). His
+Chrome runs with Windows display scaling at 125%, so a maximized window (about
+2560x1272 device px of content) is CSS 2048x1018 at DPR 1.25 at 100% zoom and CSS
+2731x1357 at DPR 0.9375 at 75%. Zooming out therefore changes two things:
+
+- **Height.** 75% gives 33% more CSS height per screen. Before this change, at
+  100% the Global Activity plot started at y=1282 CSS, below the 1018px fold,
+  and on the stream page only 60 of the 400px timeline was on the first screen
+  (live at 75%: all 400).
+- **Width.** 2731 CSS px crosses the hub's 2200px frame cap and 2048 does not, so
+  at 75% the hub center column is 1552 CSS px wide instead of 1400. The console
+  is 1780 CSS px at both zooms (1820px cap).
+
+This change addresses only the height. From 1100px up, `analytics-compact.css`
+(loaded last by the hub and console views) caps display type with tokens instead
+of `vw` clamps (title 26.4px, KPI 32px, secondary stat 18.4px), puts pool scale and window peaks on one row, tightens panel,
+search and section spacing, shortens the reserved hover readout from 96px to 74px,
+and trims the console header and stat cards. The shared analytics top bar is
+56px instead of 66px (44px links kept); that one change is not limited to 1100px
+and up: it applies on every analytics page (hub, console, Explorer, Moments,
+Newsroom) wider than 720px, so the bar keeps one height across pages.
+
+Unchanged on purpose: section order, the 420/360px plot, 44px targets
+(including the window-peaks disclosure), the 760px inspector docking rule, the
+380px outer rail, body and label sizes (12px minimum), and every layout below
+1100px apart from the top-bar height. No CSS zoom, transforms or density
+setting. It does not reproduce the wider 75% hub, and it does not match 75% on
+the stream page: on the owner's window the stream timeline starts at y=856 CSS at
+100%, with 162 of 400px on the first screen, while live at 75% shows all 400. The
+remaining chrome above that plot is console chart structure (the Games played
+strip, the range row, the tab and overlay rows), which is an owner layout
+decision. Measurements: streampulse-sdlc
+`artifacts/analytics-compact-2026-10-08/` (`owner-window/` for the 125% window).
+
+### Stream page option: whole timeline on the first screen (2026-10-09)
+
+An option on top of the compact density, offered for the owner to accept or
+drop. On the owner's window the stream timeline now starts at y=617 CSS (771
+physical px; live at 75% is 844), so all 400px of it are on the first screen at
+100%. Same plot height, inspector and navigator; rows are merged, not shrunk.
+Two blocks move in the markup, so they move at every width (see the status row
+and the chart header row below):
+
+- **Chart header row.** The hover readout and hint share a row with the range
+  controls, which moved up from their own row above the plot. They are still
+  above the plot and never cover it (#76's rule), and the navigator below the
+  plot is unchanged. In DOM and keyboard order the range controls now come
+  before the games strip and the focus bar, at every width (on phones too).
+  The hover values outlast the viewer-source label when the row is tight.
+  Because this is a markup move, it also lifts the plot below 1100px: at
+  1024-1099px wide (and 200% zoom on the owner window) the plot top moves from
+  965 to 907. At 768px and narrower the plot stays where it was.
+- **Status row.** The coverage notice and the session lifecycle row sit side by
+  side (`data-session-status-row`); below 1100px they stack. The lifecycle row
+  (with Watch VOD) moved up in the markup to join the notice, so at every width
+  it now comes before the stream-quality warning, the sync messages and the
+  "Unable to load session data" alert (on #81 it came after them). Only a
+  lifecycle row that holds a 44px link loses its padding; a notice or a
+  lifecycle row without a link keeps its own, alone or side by side.
+- **Games played.** The label sits beside the box art. The hovered or pinned
+  game sits under the label: the name on one line, then its time window with
+  the chart-window and pinned marks (wrapping to a third line when needed). It
+  is positioned inside that space, so hovering or pinning a game no longer
+  pushes the plot down.
+- **Focus bar.** Series tabs and overlay focus chips share a row when both fit;
+  otherwise the overlay row wraps below as before.
+- **Stat cards.** Label and value on one line when the card is wide enough.
+
+The layout rules are in the last block of `analytics-compact.css` (1100px and
+up). The markup changes are the chart header row and the status-row wrapper,
+plus data hooks for the CSS (`data-session-stat-row`,
+`data-session-lifecycle-row`, `data-has-action`, and the games details name and
+separator) and one class on the hover readout (`shrink-[0.01]`, so the values
+outlast the source label). Evidence: streampulse-sdlc
+`artifacts/closeout-2026-10-08b/followups/stream-compact-option/`.
+
 ## Moments review refinements (2026-09-08)
 
 Follow-up audit implementation: at widths up to600px Moments collapses browse
@@ -639,9 +717,9 @@ The chart owns a client-side `HubChartNavigator` between the time axis and the f
 
 - Purple selection with visible end grips and 44px resize targets; keyboard focus stays visible.
 - Drag the full-range track or outside a zoomed selection to create a brush. Drag the selected window to pan. Drag either handle to resize with a minimum two-bucket span.
-- Scroll zoom is off by default: ordinary vertical wheel motion over the plot or navigator scrolls the page. The explicit Scroll zoom toggle enables cursor-anchored wheel zoom on those surfaces; Alt+wheel also works while the toggle is off. Shift+wheel or horizontal trackpad motion pans a zoomed view. Ctrl/Meta+wheel remains available to browser zoom. The shared `PulseMultiSignalChart` retains its Alt+wheel rule. `preventDefault()` happens only when a surface actually changes its view. Touch surfaces keep `touch-action: pan-y` for the same reason.
+- Scroll zoom is on by default (changed 2026-10-09 at the owner's request; it was off before): a plain vertical wheel over the plot box or the navigator track zooms around the pointer. Everywhere else, including the navigator's buttons, readout and hint, the wheel scrolls the page. The Scroll zoom toggle (`aria-pressed`, title "Remembered in this browser") is the only control that changes the choice; it is stored as `sp.chart.scrollZoom.v1` (`on`/`off`, missing or invalid means on) in localStorage, shared by both site charts and other tabs, and kept in memory when storage is blocked. Off, the wheel scrolls the page and Alt+wheel zooms. Three exceptions keep the page scrollable while it is on: a zoom-out at the full range goes to the page (a wheel-down never traps it); a zoom-in at the floor is consumed only while a gesture continues (1.5 s), so a fresh one after a pause goes to the page; and a plain wheel within 400 ms of a wheel that scrolled the page also scrolls the page (the scroll-through guard, so a page scroll that sweeps the plot under the pointer keeps scrolling). Shift+wheel or horizontal trackpad motion pans a zoomed view. Ctrl/Meta+wheel (and a trackpad pinch) always stays browser zoom. `preventDefault()` happens only when a surface takes the event. Touch surfaces keep `touch-action: pan-y` for the same reason. `?debug=wheel` shows the last 10 wheel events and what the chart did with each (development aid; stores and sends nothing).
 - The header contains the Time window selector and series controls. A single toolbar below the time axis groups Zoom in, Zoom out, Reset zoom and Scroll zoom, beside the visible time span and visible-versus-loaded bucket count. Reset keeps the selected bucket and its moments filter.
-- Arrow keys adjust a focused handle, Shift+Arrow moves five buckets, and Home/End clamp to the domain. Reset, a double-click on the track, or Escape on a slider restores the full loaded range and turns Scroll zoom off. While Scroll zoom is on, Escape from the focused plot or navigator controls does the same. Requested range changes turn the mode off; polling preserves the current viewport and mode.
+- Arrow keys adjust a focused handle, Shift+Arrow moves five buckets, and Home/End clamp to the domain. With the plot focused, +/= zooms in, −/_ zooms out and 0 resets (never with Ctrl, Cmd or Alt, which stay the browser's). Reset zoom (disabled at the full range), a double-click on the track, or Escape on a slider restores the full loaded range. Escape on the plot first releases a selected moment or bucket; with nothing selected it restores the full range. None of these, nor a requested range change, changes the Scroll zoom choice; polling preserves the current viewport.
 - Panning can leave a locked bucket outside the visible span without clearing its investigation. In that state, Show selected bucket recenters the current span around the locked bucket.
 - Pointer cancellation restores the last committed range. All mutations clamp indices and prevent inverted handles.
 - The navigator exposes two ARIA sliders, a concise interaction hint, and a polite visible-range announcement.
@@ -652,8 +730,8 @@ The channel session chart (`AnalyticsChart`) renders the same navigator, now sha
 
 - One navigator step is one stream minute; the readout says "Full stream" / "Zoomed view" and "N of M minutes".
 - The range buttons (−, +, 15m, 1h, 2h, 4h, Full; phones keep 1h, 4h, Full) sit in their own `[data-chart-range-row]` above the plot. Do not float them over the plot: `check:analytics-overlap` fails on an `absolute`/`fixed`/`sticky` range row or one placed after `[data-session-chart-stack]`.
-- Scroll zoom is off by default, as on the hub. Alt+wheel zooms, Shift+wheel pans, and +/−/0 still work when the plot has focus. The navigator ignores wheel events the plot has already consumed, so one gesture never zooms twice.
-- Long streams: the session chart opts into `activityBucketing="time"`. Activity bars group full-resolution minutes into whole 1/2/5/10/15/30/60-minute buckets aligned to the stream start, choosing the smallest bucket that keeps each bar slot at least 4px wide. A bucket only holds consecutive measured minutes, so no bar spans a gap. Bars show the bucket mean, the peak minute stays attached for selection, and the range row discloses "bars N-min avg". The extension does not use this chart, and the default `budget` path is unchanged.
+- Scroll zoom follows the same remembered choice as the hub (on by default). Only the plot box (`rect[data-chart-touch-action]`) and the navigator track are zoom surfaces; a wheel over the axis labels, legend or games strip scrolls the page. Alt+wheel zooms when it is off, Shift+wheel pans, and +/−/0 work when the plot has focus. Escape releases a pin first, then restores the full range. The navigator ignores wheel events the plot has already consumed, so one gesture never zooms twice.
+- Long streams: the session chart opts into `activityBucketing="time"`. Activity bars come from the shared bar pyramid (`@streampulse/pulse-charts` `barPyramid.ts`), built once per data load: slots of 1/2/5/10/15/30/60/120/240 minutes aligned to the stream start. A zoom, pan or resize only picks a level, the shortest slot at least 5px wide (with 15% hysteresis so an easing zoom changes level once), and slices it by binary search. Each bar averages the measured minutes in its slot and spans only those minutes; a slot with no measured minute is a gap. A gap inside a slot is bridged only above 1-minute bars, and that bar is faded by its measured share (never below 35%), marked `data-bar-partial`, and read out as "7 of 10 min measured" (this replaces the 2026-10-08 rule that no bar spans a gap; at 1-minute bars nothing changed). Above 1-minute bars a thin cap in the bar's colour marks a peak minute more than 1.25x the average. The navigator note always shows the level ("bars per minute" or "bars N-min avg"), and hovering a bar names its slot, averages and peaks in the second header row; the header readout above it stays minute-exact. The hub's chat bars use the same pyramid over server buckets (they can never be finer than one server bucket). The default `budget` path is unchanged.
 
 ### Responsive inspector and initial loading (2026-09-30)
 
@@ -907,7 +985,8 @@ verified. Pulse scores show their /100 scale and explain that they rank reaction
 
 The global chart puts detailed coverage text behind a disclosure. Hover previews
 explicitly preserve the pinned interval. Interval labels consistently display the
-exclusive end boundary. Ordinary wheel scrolling moves the page; Alt+wheel zooms,
+exclusive end boundary. Ordinary wheel scrolling moved the page at the time; since
+2026-10-09 a plain wheel over the plot zooms by default (see the navigator section);
 Shift+wheel pans, and a visible Reset zoom control restores the full window.
 The Moments category strip is more compact, and its mobile Filters toggle is
 hidden on desktop.

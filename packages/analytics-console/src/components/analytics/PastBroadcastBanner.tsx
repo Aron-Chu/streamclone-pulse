@@ -46,6 +46,8 @@ export function PastBroadcastBanner({
       <div
         className="rounded border border-white/[0.08] bg-white/[0.025] px-3 py-2.5 text-xs font-semibold text-zinc-300"
         role="status"
+        data-session-lifecycle-row
+        data-has-action={sessionPath || vodUrl ? '' : undefined}
       >
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span>{parts.join(' · ')}</span>
@@ -81,6 +83,8 @@ export function PastBroadcastBanner({
     <div
       className="rounded border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-xs font-semibold text-zinc-400"
       role="status"
+      data-session-lifecycle-row
+      data-has-action={vodUrl ? '' : undefined}
     >
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <span>{parts.join(' · ')}</span>

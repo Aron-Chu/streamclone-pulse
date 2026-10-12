@@ -37,21 +37,23 @@ async function assertNonBlankScreenshot(page: import('@playwright/test').Page, n
 }
 
 /**
- * The range row plus the top of the plot. At 1440px the full-viewport shot
+ * The chart header plus the top of the plot. At 1440px the full-viewport shot
  * stops at the plot's top edge, so controls drifting back over the plot would
- * stay under the 4% tolerance there; in this crop they fill the frame.
+ * stay under the 4% tolerance there; in this crop they fill the frame. The
+ * zoom controls live in the shared navigator under the plot.
  */
 async function assertChartTopScreenshot(page: import('@playwright/test').Page, name: string) {
-  const row = page.locator('[data-chart-range-row]')
+  const row = page.locator('[data-chart-header-row]')
   const stack = page.locator('[data-session-chart-stack]')
   await expect(row).toBeVisible()
+  await expect(page.locator('[data-chart-viewport-controls]')).toHaveCount(0)
   // Centre the row: below the sticky site header, with room for the crop.
   await row.evaluate(element => element.scrollIntoView({ block: 'center' }))
   await page.mouse.move(0, 0)
   const rowBox = await row.boundingBox()
   const stackBox = await stack.boundingBox()
-  if (!rowBox || !stackBox) throw new Error('chart range row or plot is not laid out')
-  // The row must sit wholly above the plot before the crop is worth comparing.
+  if (!rowBox || !stackBox) throw new Error('chart header row or plot is not laid out')
+  // The header must sit wholly above the plot before the crop is worth comparing.
   expect(rowBox.y + rowBox.height).toBeLessThanOrEqual(stackBox.y + 1)
   const left = Math.max(0, Math.min(rowBox.x, stackBox.x) - 8)
   const right = Math.max(rowBox.x + rowBox.width, stackBox.x + stackBox.width) + 8
