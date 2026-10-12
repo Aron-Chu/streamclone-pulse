@@ -23,7 +23,7 @@ export default function Support() {
             StreamPulse Help & Diagnostic Desk
           </span>
           <h1>Support & Troubleshooting</h1>
-          <p>Troubleshooting for the Twitch Chrome extension, coverage states, and public analytics portal.</p>
+          <p>Troubleshooting for the Twitch extension, coverage states, and public analytics portal.</p>
         </header>
 
         {/* The private form lives on /feedback. This card keeps the

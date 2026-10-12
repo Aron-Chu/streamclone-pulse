@@ -715,6 +715,9 @@ describe('page outline', () => {
     expect(document.querySelectorAll('h1')).toHaveLength(1)
     // "Private" only while the form can take a message.
     expect(headings[1]!.textContent).toBe(key ? 'Send private feedback' : 'Send feedback')
+    // The extension is also built for Edge and Firefox, so the subtitle does not say Chrome.
+    expect(screen.getByText('Troubleshooting for the Twitch extension, coverage states, and public analytics portal.')).toBeTruthy()
+    expect(document.querySelector('.support-page__head')!.textContent).not.toContain('Chrome')
   })
 
   it.each(['1x00000000000000000000AA', ''])('gives /feedback one h1 that names the form (site key %j)', (key) => {
