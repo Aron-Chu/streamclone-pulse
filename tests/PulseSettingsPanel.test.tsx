@@ -74,9 +74,11 @@ describe('PulseSettingsPanel quick workspace', () => {
 
   it('puts a Discord row beside Open all settings that the worker opens, with no page URL in the panel', () => {
     const html = renderToStaticMarkup(<OpenAllSettingsButton />)
-    expect(html).toContain('Join the StreamPulse Discord')
+    // One label for joining, the same as the settings page's Community card.
+    expect(html).toContain('<span>Join the Discord</span>')
+    expect(html).not.toContain('Join the StreamPulse Discord')
     expect(html).toContain('data-community-link="discord"')
-    expect(html.indexOf('Open all settings')).toBeLessThan(html.indexOf('Join the StreamPulse Discord'))
+    expect(html.indexOf('Open all settings')).toBeLessThan(html.indexOf('Join the Discord'))
     expect(html).not.toContain('streampulse.stream/discord')
   })
 
