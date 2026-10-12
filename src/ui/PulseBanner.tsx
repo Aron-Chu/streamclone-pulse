@@ -2,7 +2,6 @@ import { useEffect, useId, useRef, useState, type CSSProperties } from 'react'
 import { DEFAULT_PULSE_BANNER, PULSE_BANNER_KEY, getPulseBanner, normalizePulseBanner, setPulseBanner, type PulseBannerPreference } from '../shared/storage.ts'
 import { StreamPulseTitleBlock, streamPulseHeaderChromeSidebar } from './StreamPulseTitleBlock.tsx'
 import { theme } from './theme.ts'
-import { BACKDROP_FREE, BACKDROP_FREE_NOTE } from '../shared/backdropPolicy.ts'
 
 // The same 7TV culture set used by the portal, with static images so motion is
 // entirely controlled by CSS and respects the user's reduced-motion setting.
@@ -48,13 +47,12 @@ export function usePulseBanner() {
 }
 
 /**
- * The 7TV emote backdrop, Still or Rain. Free while BACKDROP_FREE; after that a
- * Supporter perk: without verified perks it draws nothing, whatever an older
- * preference saved, and leaves that choice stored so it returns if the person
- * supports again.
+ * The 7TV backdrop, Still or Rain, is a Supporter perk. Without verified perks
+ * it draws nothing, whatever an older preference saved, and leaves that choice
+ * stored so it returns if the person supports again.
  */
 export function PulseBannerBackdrop({ value, perks, paused = false }: { value: PulseBannerPreference; perks: boolean; paused?: boolean }) {
-  const mode = perks || BACKDROP_FREE ? value.mode : 'off'
+  const mode = perks ? value.mode : 'off'
   const ref = useRef<HTMLDivElement>(null)
   const [visible, setVisible] = useState(false)
   useEffect(() => {
@@ -78,15 +76,13 @@ export function PulseBannerBackdrop({ value, perks, paused = false }: { value: P
 }
 
 /**
- * Panel title and the 7TV emote backdrop. The title is free. Still and Rain are
- * free too while BACKDROP_FREE, with a one-line note that they become a
- * Supporter perk; after that, without a Supporter membership they stay locked
- * and the saved choice is kept, untouched (Reset included), for when the person
- * supports again. `supporter` is undefined until the membership check answers:
- * the perk controls wait, neutral, rather than flashing the lock at a Supporter.
+ * Panel title and the 7TV backdrop. The title is free; Still and Rain are a
+ * Supporter perk, so without one they stay locked and the saved choice is kept,
+ * untouched (Reset included), for when the person supports again. `perks` is
+ * undefined until the membership check answers: the perk controls wait, neutral,
+ * rather than flashing the lock at a Supporter.
  */
-export function PulseBannerControls({ expanded = false, perks: supporter }: { expanded?: boolean; perks: boolean | undefined }) {
-  const perks = BACKDROP_FREE || supporter
+export function PulseBannerControls({ expanded = false, perks }: { expanded?: boolean; perks: boolean | undefined }) {
   const banner = usePulseBanner()
   const [draft, setDraft] = useState(banner.value)
   const id = useId()
@@ -112,16 +108,14 @@ export function PulseBannerControls({ expanded = false, perks: supporter }: { ex
       <fieldset disabled={!banner.ready || banner.saving}>
         <label htmlFor={`${id}-title`}>Panel title</label>
         <input id={`${id}-title`} maxLength={40} placeholder="Stream Pulse" value={draft.title} onChange={event => setDraft({ ...draft, title: event.target.value })} />
-        <span id={`${id}-mode`}>7TV emote backdrop</span>
+        <span id={`${id}-mode`}>7TV backdrop</span>
         <div className="pulse-banner-modes" role="group" aria-labelledby={`${id}-mode`} aria-busy={perks === undefined || undefined}>
           {(['off', 'still', 'rain'] as const).map(mode => <button key={mode} type="button" aria-pressed={draft.mode === mode} disabled={!perks && mode !== 'off'} title={!perks && mode !== 'off' ? 'Supporter perk' : undefined} onClick={() => setDraft({ ...draft, mode })}>{mode === 'off' ? 'Off' : mode === 'still' ? 'Still' : 'Rain'}</button>)}
         </div>
-        {BACKDROP_FREE
-          ? supporter === true ? null : <p className="pulse-supporter-detail pulse-backdrop-note" data-backdrop-note="free">{BACKDROP_FREE_NOTE}</p>
-          : perks !== false ? null : <p className="pulse-supporter-detail" data-supporter-perk="emote-rain">
-            The 7TV emote backdrop, still or falling, is a Supporter perk. Only you see it. A backdrop you chose is kept for when you support.{' '}
-            <a href="#supporter" onClick={() => window.scrollTo?.(0, 0)}>View Supporter benefits →</a>
-          </p>}
+        {perks !== false ? null : <p className="pulse-supporter-detail" data-supporter-perk="emote-rain">
+          Emote rain, still or falling, is a Supporter perk. Only you see it. It moved from free to Supporter in 0.2.2, and a backdrop you chose is kept for when you support.{' '}
+          <a href="#supporter" onClick={() => window.scrollTo?.(0, 0)}>View Supporter benefits →</a>
+        </p>}
         <label htmlFor={`${id}-intensity`}>Intensity <output>{draft.intensity}%</output></label>
         <input id={`${id}-intensity`} type="range" min={10} max={70} step={5} disabled={!perks || draft.mode === 'off'} value={draft.intensity} onChange={event => setDraft({ ...draft, intensity: Number(event.target.value) })} />
         <div className="pulse-banner-save"><button type="submit">{banner.saving ? 'Saving...' : 'Save background'}</button><button type="button" onClick={() => setDraft(reset)}>Reset</button></div>
@@ -134,9 +128,9 @@ export function PulseBannerControls({ expanded = false, perks: supporter }: { ex
 /** The overlay shows what it draws without turning quick settings into an editor. */
 export function PulseBannerQuickPreview({ perks }: { perks: boolean }) {
   const banner = usePulseBanner()
-  const shown = perks || BACKDROP_FREE ? banner.value.mode : 'off'
-  const mode = `7TV emote backdrop: ${shown === 'off' ? 'Off' : shown === 'still' ? 'Still' : 'Rain'}`
-  return <div className="pulse-personal-panel pulse-banner-quick-preview" data-appearance-preview="true" data-preview-mode={shown} role="img" aria-label={`Appearance preview: ${banner.value.title || 'Stream Pulse'}. ${mode}`} style={bannerThemeVariables}>
+  const shown = perks ? banner.value.mode : 'off'
+  const mode = shown === 'off' ? 'Backdrop off' : shown === 'still' ? 'Still 7TV' : '7TV rain'
+  return <div className="pulse-personal-panel pulse-banner-quick-preview" data-appearance-preview="true" data-preview-mode={shown} role="img" aria-label={`Appearance preview: ${banner.value.title || 'Stream Pulse'}, ${mode}`} style={bannerThemeVariables}>
     <PulseBannerBackdrop value={banner.value} perks={perks} />
     <strong>{banner.value.title || 'Stream Pulse'}</strong>
     <small>{mode}</small>

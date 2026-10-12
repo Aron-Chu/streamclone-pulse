@@ -317,8 +317,7 @@ function OverlayMain({
   const [placement, setPlacementState] = useState<OverlayPlacement>('right')
   const [density, setDensityState] = useState<DensityPreference>('comfortable')
   const banner = usePulseBanner()
-  // The 7TV emote backdrop becomes a Supporter perk when sign-ups open (free
-  // until then, see BACKDROP_FREE). The header owns the membership check on the
+  // Emote rain is a Supporter perk. The header owns the membership check on the
   // Pulse view, where the backdrop draws, and reports it here.
   const [supporterPerks, setSupporterPerks] = useState(false)
   const keepPressedInPlace = useKeepPressedInPlace()

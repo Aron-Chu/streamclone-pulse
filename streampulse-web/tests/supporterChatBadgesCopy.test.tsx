@@ -39,10 +39,10 @@ describe('supporter-perks.json Seen in chat entry', () => {
     expect(SUPPORTER_PERKS.seenInChat).toEqual({
       name: 'Seen in chat',
       detail: 'optional: your crest beside your name and your paint on it in Twitch chat, for other StreamPulse viewers. Off until you turn it on.',
-      onlyYou: 'Title paint, the 7TV emote backdrop and the Supporter card show only in your own StreamPulse extension. Seen in chat is the one exception, and only if you turn it on: then other StreamPulse viewers see your crest and paint in chat. People without StreamPulse always see normal Twitch chat.',
+      onlyYou: 'Title paint, emote rain and the Supporter card show only in your own StreamPulse extension. Seen in chat is the one exception, and only if you turn it on: then other StreamPulse viewers see your crest and paint in chat. People without StreamPulse always see normal Twitch chat.',
     })
     // The four private perks are unchanged; Seen in chat is never one of `names`.
-    expect(SUPPORTER_PERKS.names).toEqual(['Title paint', 'Tenure crest', '7TV emote backdrop', 'Supporter card'])
+    expect(SUPPORTER_PERKS.names).toEqual(['Title paint', 'Tenure crest', 'Emote rain', 'Supporter card'])
   })
 })
 

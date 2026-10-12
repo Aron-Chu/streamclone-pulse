@@ -4,7 +4,6 @@ import { mountEmotePile } from '../supporter/emotePile.ts'
 import { FINISHES, SAMPLE_KIT, TENURES, finishVars, kitEmoteSrc, tenureIndex, type Kit } from '../supporter/kit.ts'
 import { PeakMark } from '../ui/PeakMark.tsx'
 import { names as PERK_NAMES } from '../shared/supporter-perks.json'
-import { BACKDROP_FREE } from '../shared/backdropPolicy.ts'
 import { useSupporterAppearanceDetails } from '../ui/useSupporterAppearance.ts'
 
 /** How long the banner waits for the membership answer before showing the sample pile. */
@@ -18,12 +17,8 @@ const PRICE_SHORT = 'US$4.99/mo'
  * runs calmer, with a soft glow at each peak. Every so often your crest drops
  * in on top, bigger and glowing in your paint, with a small "you" tag. The
  * copy names every perk as a chip, in the order of the one perk list
- * (src/shared/supporter-perks.json): title paint, tenure crest, 7TV emote
- * backdrop, Supporter card. While the backdrop is free (BACKDROP_FREE) a second
- * amber line under the copy says so, "7TV emote backdrop: free until sign-ups
- * open.", so the banner never sells what everyone has. It is a line, not a
- * note in the chip: a longer chip wraps the chips to a third row and clips the
- * 132 px banner.
+ * (src/shared/supporter-perks.json): title paint, tenure crest, emote rain,
+ * Supporter card.
  * A Supporter sees their own paint and crest; everyone else sees the lab's
  * sample. The price shows only while paid sign-ups are open (the worker's
  * entitlement says checkoutEnabled); until then nothing here advertises a
@@ -78,10 +73,7 @@ export function SupporterBanner({ onOpen, onPerks }: { onOpen: () => void; onPer
           <span className="pulse-settings-supporter-banner-perks">
             <BannerPerks kit={shown} own={own} />
           </span>
-          <small>
-            {own ? 'Only you see your kit. Core tools stay free.' : 'Only you see them. Core tools stay free.'}
-            {BACKDROP_FREE && !own ? <>{' '}<em className="pulse-settings-supporter-banner-note">7TV emote backdrop: free until sign-ups open.</em></> : null}
-          </small>
+          <small>{own ? 'Only you see your kit. Core tools stay free.' : 'Only you see them. Core tools stay free.'}</small>
         </span>
         <span className="pulse-settings-supporter-banner-arrow">{checkoutOpen || own ? 'View benefits' : 'See what’s coming'} <span aria-hidden="true">→</span></span>
       </button>
@@ -109,9 +101,7 @@ function useCheckoutOpen(): boolean {
 
 /**
  * Every perk as a chip, named and ordered by the one perk list. The sample
- * names them; a Supporter's paint and crest chips name their own kit. The
- * backdrop chip is named like the others; the line under the copy says it is
- * free until sign-ups open.
+ * names them; a Supporter's paint and crest chips name their own kit.
  */
 function BannerPerks({ kit, own }: { kit: Kit; own: boolean }) {
   const finish = own ? kit.finish : SAMPLE_KIT.finish

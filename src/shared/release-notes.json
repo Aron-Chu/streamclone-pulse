@@ -7,11 +7,11 @@
       "status": "unreleased",
       "releasedAt": null,
       "title": "Whole-stream charts, calmer Top Moments",
-      "summary": "Charts cover the whole stream, Top Moments opens a card only when you pick one, bookmarks work without an account, and the popup is redesigned. Also built for Edge and Firefox. Accounts and Supporter sign-ups aren't open yet.",
+      "summary": "Charts cover the whole stream, Top Moments opens a card only when you pick one, bookmarks work without an account, and the popup is redesigned. Also built for Edge and Firefox. The 7TV header backdrop is now a Supporter perk, and accounts and Supporter sign-ups aren't open yet.",
       "preview": [
         "Charts cover the whole stream.",
         "Top Moments opens a card only when you pick one.",
-        "Also built for Edge and Firefox."
+        "The 7TV header backdrop moved to Supporter (not open yet)."
       ],
       "new": [
         "Built for Microsoft Edge and Firefox as well as Chrome and Brave.",
@@ -19,10 +19,10 @@
         "A strength pill on the strongest moment so far shows how far it beat the stream's usual activity, for example 4.2× usual.",
         "Bookmarks work without an account. Without one, they stay in this browser and are never uploaded.",
         "The toolbar popup is redesigned. Away from a stream it lists channels Pulse is charting live, with a Jump back in card for your recent moments and bookmarks.",
-        "A Supporter preview in quick settings and settings shows what Supporter will add: title paint, a tenure crest, the 7TV emote backdrop and a Supporter card, seen only by you. Supporter sign-ups are not open yet."
+        "A Supporter preview in quick settings and settings shows what Supporter will add: title paint, a tenure crest, emote rain and a Supporter card, seen only by you. Supporter sign-ups are not open yet."
       ],
       "changed": [
-        "The 7TV emote backdrop (Still or Rain: 7TV emotes behind the Pulse panel) stays free until Supporter sign-ups open, then becomes a Supporter perk. A backdrop you chose is kept. The panel title and accent themes stay free."
+        "The 7TV header backdrop (emote rain: Still or Rain behind the panel header) moved from free to Supporter. Until Supporter sign-ups open it stays off for everyone, and a backdrop you chose before is kept for when you support. The panel title and accent themes stay free."
       ],
       "improved": [
         "Long streams chart end to end.",

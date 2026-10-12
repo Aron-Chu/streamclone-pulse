@@ -39,9 +39,9 @@ Canonical process docs:
   for the configured dashboard field.
 - Before packaging 0.2.2, open the dashboard **Package** tab and record the
   published 0.2.1's upload date and requested hosts. `release-notes.json`
-  marks 0.2.1 released on 2026-08-31 and says the 7TV emote backdrop stays
-  free until Supporter sign-ups open; correct the date if the dashboard shows
-  otherwise.
+  marks 0.2.1 released on 2026-08-31 and says the 7TV header backdrop was free
+  up to 0.2.1; correct the date, and the "moved" wording, if the dashboard
+  shows otherwise.
 - 0.2.2 stays `status: "unreleased"` with no `releasedAt` until the packaging
   commit, which sets `released` and the real submission date. `package:cws`
   refuses the notes until then, by design. The private feedback form may stay

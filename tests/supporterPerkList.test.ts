@@ -10,7 +10,7 @@ import SUPPORTER_PERKS from '../src/shared/supporter-perks.json'
  */
 describe('Supporter perk list', () => {
   it('names every perk the extension gives, in order', () => {
-    expect(SUPPORTER_PERKS.names).toEqual(['Title paint', 'Tenure crest', '7TV emote backdrop', 'Supporter card'])
+    expect(SUPPORTER_PERKS.names).toEqual(['Title paint', 'Tenure crest', 'Emote rain', 'Supporter card'])
     expect(Object.keys(SUPPORTER_PERKS.details)).toEqual(SUPPORTER_PERKS.names)
   })
 
@@ -18,15 +18,14 @@ describe('Supporter perk list', () => {
     expect(SUPPORTER_PERKS.details).toEqual({
       'Title paint': 'your Pulse panel title painted in a Glass, Etched or Halo finish, with the wave and sheen you pick.',
       'Tenure crest': 'a crest beside your painted title that levels up at 3, 6, 12 and 24 months of support.',
-      // The emotes fall behind the whole panel, not only its header.
-      '7TV emote backdrop': '7TV emotes behind your Pulse panel, still or falling.',
+      'Emote rain': '7TV emotes behind your Pulse panel header, still or falling: the 7TV header backdrop.',
       'Supporter card': 'your own crest and paint on the Supporter card in quick settings and in settings, as private recognition for supporting.',
     })
     expect(SUPPORTER_PERKS.onlyYou).toBe('Only you see them, in your own StreamPulse extension. Nothing is added to chat, and nobody else sees them.')
   })
 
-  it('says plainly that the 7TV emote backdrop stays free until Supporter sign-ups open', () => {
-    expect(SUPPORTER_PERKS.moved).toBe('The 7TV emote backdrop stays free until Supporter sign-ups open, then becomes a Supporter perk. A backdrop you saved is kept for when you support. No other free feature moves behind Supporter.')
+  it('says plainly that the 7TV header backdrop moved to Supporter in 0.2.2', () => {
+    expect(SUPPORTER_PERKS.moved).toBe('Emote rain, the 7TV header backdrop, was free up to extension 0.2.1. From 0.2.2 it is a Supporter perk, and a backdrop you saved is kept for when you support. No other free feature moved behind Supporter.')
   })
 
   it('matches what the code gates: three finishes, the tenure ladder and the backdrop modes', async () => {

@@ -28,15 +28,12 @@ const hostStyles = `
     display: flex;
     font-family: inherit;
     gap: 14px;
-    /* 132 px, growing only when the copy needs more (the amber "7TV emote
-       backdrop: free until sign-ups open." line, or a third chip row in a
-       narrow banner), so nothing is ever clipped. */
+    height: 132px;
     isolation: isolate;
     letter-spacing: 0;
     margin: 0;
-    min-height: 132px;
     overflow: hidden;
-    padding: 8px 18px;
+    padding: 0 18px;
     position: relative;
     text-align: left;
     transition: border-color 300ms;
@@ -59,8 +56,6 @@ const hostStyles = `
   .pulse-settings-supporter-perk { align-items: center; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 999px; color: #e4e4ec; display: inline-flex; font-size: 12px; font-weight: 700; gap: 5px; height: 22px; line-height: 1; padding: 0 8px 0 4px; white-space: nowrap; }
   .pulse-settings-supporter-perk .pulse-crest { height: 15px; width: 15px; }
   .pulse-settings-supporter-perk img { height: 15px; width: auto; }
-  /* "7TV emote backdrop: free until sign-ups open.": a temporary state, in amber, on its own line. */
-  .pulse-settings-supporter-banner-note { color: #fcd34d; display: block; font-style: normal; }
   .pulse-settings-supporter-swatch { border-radius: 50%; display: inline-block; flex: none; height: 13px; width: 13px; }
   .pulse-settings-supporter-banner-arrow { background: rgba(13, 13, 18, 0.8); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 999px; color: var(--spk-fin-core); font-size: 12px; font-weight: 700; padding: 6px 11px; position: absolute; right: 12px; top: 12px; transition: background 200ms, border-color 200ms; white-space: nowrap; z-index: 1; }
   .pulse-settings-supporter-banner[data-supporter-kit="sample"] .pulse-settings-supporter-banner-arrow { background: rgba(var(--spk-fin-rgb), 0.14); border-color: rgba(var(--spk-fin-rgb), 0.45); }

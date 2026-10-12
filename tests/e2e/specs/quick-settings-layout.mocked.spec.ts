@@ -60,7 +60,7 @@ test('quick settings opens on the channel, then Supporter and live controls, wit
   // Background & motion opens by itself and scrolls into view.
   await expect(settings.locator('.pulse-banner-customize')).toHaveJSProperty('open', true)
   await expect(settings.locator('.pulse-banner-customize summary')).toBeInViewport()
-  await expect(settings.getByRole('group', { name: '7TV emote backdrop' }).getByRole('button')).toHaveCount(3)
+  await expect(settings.getByRole('group', { name: '7TV backdrop' }).getByRole('button')).toHaveCount(3)
 })
 
 test('density chosen in quick settings reaches the open panel without a reload', async ({ extension, prepare }) => {

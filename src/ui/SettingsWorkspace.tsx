@@ -187,7 +187,7 @@ export function SettingsWorkspace({
 }: {
   activeSection?: SettingsHostSection
   developerTools?: ReactNode
-  /** Verified by the settings page's Supporter banner; unlocks the 7TV emote backdrop once it is a perk. Undefined until it answers. */
+  /** Verified by the settings page's Supporter banner; unlocks emote rain. Undefined until it answers. */
   supporterPerks?: boolean
 }) {
   const preferences = usePulsePreferences()

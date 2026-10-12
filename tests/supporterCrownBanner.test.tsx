@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 import SUPPORTER_PERKS from '../src/shared/supporter-perks.json'
-import { readFileSync } from 'node:fs'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -122,12 +121,9 @@ describe('full-settings Supporter banner: Crown, staged', () => {
     expect(view.banner().querySelector('.pulse-settings-supporter-banner-eyebrow')?.textContent).toBe('Pulse Supporter')
     expect(view.banner().querySelector('strong')?.textContent).toBe('Your crest lands on top')
     expect(chips(view.banner())).toEqual(SUPPORTER_PERKS.names)
-    expect(chips(view.banner())).toEqual(['Title paint', 'Tenure crest', '7TV emote backdrop', 'Supporter card'])
+    expect(chips(view.banner())).toEqual(['Title paint', 'Tenure crest', 'Emote rain', 'Supporter card'])
     expect(view.banner().querySelector('[data-perk="crest"] .pulse-crest')?.getAttribute('data-tenure')).toBe('12m')
-    // The 7TV emote backdrop is free until sign-ups open, so the banner says so on its own amber line.
-    expect(view.banner().querySelector('small')?.textContent).toBe('Only you see them. Core tools stay free. 7TV emote backdrop: free until sign-ups open.')
-    expect(view.banner().querySelector('small em.pulse-settings-supporter-banner-note')?.textContent).toBe('7TV emote backdrop: free until sign-ups open.')
-    expect(readFileSync('src/options/hostStyles.ts', 'utf8')).toContain('.pulse-settings-supporter-banner-note { color: #fcd34d; display: block;')
+    expect(view.banner().querySelector('small')?.textContent).toBe('Only you see them. Core tools stay free.')
     expect(view.banner().textContent).not.toMatch(/signature/i)
     expect(view.banner().querySelector('.pulse-settings-supporter-banner-arrow')?.textContent).toBe('See what’s coming →')
     expect(view.banner().style.getPropertyValue('--spk-fin')).toBe('#efc96a')
@@ -168,8 +164,7 @@ describe('full-settings Supporter banner: Crown, staged', () => {
     expect(view.banner().style.getPropertyValue('--spk-fin')).toBe('#e6a9d6')
     expect(view.banner().querySelector('.pulse-settings-supporter-banner-eyebrow')?.textContent).toBe('Your kit')
     expect(view.banner().querySelector('strong')?.textContent).toBe('Yours lands on top')
-    // A Supporter's chips name their own kit, and no "free until sign-ups open" line.
-    expect(chips(view.banner())).toEqual(['Halo paint', 'Year-one crest', '7TV emote backdrop', 'Supporter card'])
+    expect(chips(view.banner())).toEqual(['Halo paint', 'Year-one crest', 'Emote rain', 'Supporter card'])
     expect(view.banner().textContent).not.toContain('4.99')
     runFrames(1)
     expect(youImages(view.stage())).toEqual([])
@@ -189,7 +184,7 @@ describe('full-settings Supporter banner: Crown, staged', () => {
     const view = await mount(<SupporterBanner onOpen={() => {}} />)
     expect(view.banner().dataset.supporterKit).toBe('own')
     expect(view.banner().style.getPropertyValue('--spk-fin')).toBe('#2dd4bf')
-    expect(chips(view.banner())).toEqual(['Default paint', 'Signal set', '7TV emote backdrop', 'Supporter card'])
+    expect(chips(view.banner())).toEqual(['Default paint', 'Signal set', 'Emote rain', 'Supporter card'])
     runFrames(1)
     expect(view.stage().querySelector('.spk-you .spk-crest')?.getAttribute('data-tenure')).toBe('3m')
     expect(view.stage().querySelector('.spk-tag .spk-name')?.className).toBe('spk-name')
