@@ -25,8 +25,28 @@ test(`${surface} recap shows clips from its stream and can scroll`, async ({ ext
   expect(await card.evaluate(element => element.getBoundingClientRect().height)).toBeLessThan(205)
   await expect(card).toHaveCSS('border-top-width', '0px')
   await carousel.hover()
-  await extension.page.mouse.wheel(0, 80)
-  await expect.poll(() => carousel.evaluate(element => element.scrollLeft)).toBeGreaterThan(0)
+  // A trackpad swipe (horizontal wheel) pages the rail natively.
+  await extension.page.mouse.wheel(200, 0)
+  // Past the halfway mark, so scroll snap settles on the next card.
+  await expect.poll(() => carousel.evaluate(element => element.scrollLeft)).toBeGreaterThan(100)
+  await extension.page.waitForTimeout(400)
+  // A vertical wheel over the rail scrolls the panel, never the rail. The rail
+  // is the panel's last section, so the panel sits at its end: wheel up.
+  const body = root.locator('.pulse-panel-body')
+  await carousel.hover()
+  const railLeft = await carousel.evaluate(element => element.scrollLeft)
+  const bodyTop = await body.evaluate(element => element.scrollTop)
+  expect(bodyTop).toBeGreaterThan(40)
+  await extension.page.mouse.wheel(0, -80)
+  await expect.poll(() => body.evaluate(element => element.scrollTop)).toBeLessThan(bodyTop)
+  await extension.page.waitForTimeout(300)
+  expect(await carousel.evaluate(element => element.scrollLeft)).toBe(railLeft)
+  // Shift+wheel pages the clips (the browser turns it into a horizontal scroll).
+  await carousel.hover()
+  await extension.page.keyboard.down('Shift')
+  await extension.page.mouse.wheel(0, 120)
+  await extension.page.keyboard.up('Shift')
+  await expect.poll(() => carousel.evaluate(element => element.scrollLeft)).toBeGreaterThan(railLeft)
   await expect(root.getByRole('button', { name: 'Previous clips', exact: true })).toBeEnabled()
   await extension.context.route('https://clips.twitch.tv/**', route => route.fulfill({ body: 'Clip fixture' }))
   const popupPromise = extension.page.waitForEvent('popup')
