@@ -173,6 +173,46 @@ test.describe('extension lifecycle', () => {
     assertNoUncaughtErrors(evidence)
   })
 
+  test('shared clip navigation removes Pulse hosts and returning to a watch page remounts once', async ({
+    extension,
+    prepare,
+    evidence,
+    api,
+  }) => {
+    await prepare({ scenario: 'live-ready', twitchKind: 'live' })
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+
+    const openClip = async (slug: string) => {
+      // Twitch navigates in its page world, so a DOM mutation must drive the
+      // isolated content script's route observer and remove the existing hosts.
+      await extension.page.evaluate(clipSlug => {
+        history.pushState({}, '', `/fixturechan/clip/${clipSlug}`)
+        const comments = document.createElement('main')
+        comments.id = 'clip-comments'
+        comments.textContent = 'Clip comments'
+        document.body.append(comments)
+      }, slug)
+      await expect(extension.page.locator(`#${PULSE_ROOT_ID}`)).toHaveCount(0)
+      await expect(extension.page.locator(`#${PULSE_TABS_ID}`)).toHaveCount(0)
+      await expect(extension.page.locator('#clip-comments')).toBeVisible()
+    }
+
+    await openClip('SomeClipSlug')
+    api.setScenario('vod-ready')
+    await spaNavigate(extension.page, { kind: 'vod', vodId: '2806037629' }, 'vod')
+    await waitForPulseRoot(extension.page)
+    await assertPulseHostsUnique(extension.page)
+    await assertPulseShadowContains(extension.page, /Stream Recap/i)
+
+    await openClip('SecondClipSlug')
+    api.setScenario('live-ready')
+    await spaNavigate(extension.page, { kind: 'channel', login: 'fixturechan' }, 'live')
+    await waitForPulseRoot(extension.page)
+    await assertPulseHostsUnique(extension.page)
+    assertNoUncaughtErrors(evidence)
+  })
+
   test('exactly one Pulse host pair after repeated SPA hops', async ({
     extension,
     prepare,

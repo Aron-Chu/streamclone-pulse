@@ -201,6 +201,54 @@ describe('content entry lifecycle', () => {
     expect(mount.updateOverlayPayload).toHaveBeenCalledWith(null, EXTENSION_RECONNECT_MESSAGE)
   })
 
+  it('RUN-1: shared clip navigation removes the channel/VOD panel and stops live refreshes', async () => {
+    const liveCard = document.createElement('div')
+    liveCard.setAttribute('data-a-target', 'stream-info-card-component')
+    liveCard.textContent = 'LIVE'
+    document.body.append(liveCard)
+    const reply = vi.fn<WorkerReply>(async message => {
+      if (message.type === 'GET_PULSE') {
+        return { type: 'PULSE_UPDATE', login: message.login, payload: livePayload('clipchan', 'stream-clip') }
+      }
+      if (message.type === 'GET_PULSE_VOD') return missingVodReply(message.vodId)
+      return { ok: true }
+    })
+    runtime.reply = reply
+
+    try {
+      await navigate('/clipchan')
+      const options = lastMountOptions('clipchan')
+      expect(options?.livePollStore?.getSnapshot().nextScheduledAt).not.toBeNull()
+      mount.mountOverlay.mockClear()
+      mount.updateOverlayPayload.mockClear()
+      reply.mockClear()
+
+      await navigate('/clipchan/clip/SomeClipSlug')
+      expect(mount.unmountOverlay).toHaveBeenCalled()
+      expect(mount.mountOverlay).not.toHaveBeenCalled()
+      expect(options?.livePollStore?.getSnapshot().nextScheduledAt).toBeNull()
+      await vi.advanceTimersByTimeAsync(40_000)
+      expect(reply.mock.calls.some(([message]) => message.type === 'GET_PULSE')).toBe(false)
+      broadcast({ type: 'PULSE_UPDATE', login: 'clipchan', payload: livePayload('clipchan', 'stream-clip') })
+      expect(mount.updateOverlayPayload).not.toHaveBeenCalled()
+
+      await navigate('/videos/2806037601')
+      expect(lastMountOptions('__vod__:2806037601')).toBeDefined()
+      mount.mountOverlay.mockClear()
+      mount.unmountOverlay.mockClear()
+      reply.mockClear()
+      await navigate('/clipchan/clip/SecondClipSlug')
+      expect(mount.unmountOverlay).toHaveBeenCalled()
+      expect(mount.mountOverlay).not.toHaveBeenCalled()
+      expect(reply.mock.calls.some(([message]) => message.type === 'GET_PULSE' || message.type === 'GET_PULSE_VOD')).toBe(false)
+
+      await navigate('/clipchan')
+      expect(mount.mountOverlay).toHaveBeenCalledWith('clipchan', expect.anything(), expect.objectContaining({ kind: 'channel' }), expect.anything())
+    } finally {
+      liveCard.remove()
+    }
+  })
+
   it('LIFE-2: an invalidated extension context stops the frozen live tab and asks for a reload', async () => {
     const liveCard = document.createElement('div')
     liveCard.setAttribute('data-a-target', 'stream-info-card-component')
