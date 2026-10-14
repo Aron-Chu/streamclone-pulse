@@ -607,14 +607,16 @@ test.describe('extension mocked states', () => {
     for (let index = 0; index < 4; index += 1) await expect(releases.nth(index)).toHaveAttribute('data-changelog-open', 'false')
     expect((await whatsNew.boundingBox())!.y).toBeLessThan((await latestRelease.boundingBox())!.y)
     // See all changes unfolds this version's notes and moves focus there. New, Improved
-    // and Fixed fold to a count; Changed and Known limitations stay open.
+    // and Fixed fold to a count; Known limitations stays open. This release has
+    // no Changed entry: the Supporter preview does not change existing store users.
     await whatsNew.getByRole('button', { name: 'See all changes ↓', exact: true }).click()
     await expect(latestRelease).toHaveAttribute('data-changelog-open', 'true')
     await expect(latestRelease.locator('.pulse-changelog-toggle')).toBeFocused()
     await expect(olderRelease).toHaveAttribute('data-changelog-open', 'false')
     const groups = latestRelease.locator('details.pulse-changelog-category')
-    await expect(groups.locator('summary h3')).toHaveText(['New', 'Changed', 'Improved', 'Fixed', 'Known limitations'])
-    expect(await groups.evaluateAll(details => details.map(group => (group as HTMLDetailsElement).open))).toEqual([false, true, false, false, true])
+    await expect(groups.locator('summary h3')).toHaveText(['New', 'Improved', 'Fixed', 'Known limitations'])
+    await expect(latestRelease.locator('[data-release-category="changed"]')).toHaveCount(0)
+    expect(await groups.evaluateAll(details => details.map(group => (group as HTMLDetailsElement).open))).toEqual([false, false, false, true])
     await expect(latestRelease.locator('[data-release-category="fixed"] .pulse-changelog-count')).toHaveText('8')
     await latestRelease.locator('[data-release-category="fixed"] summary').click()
     await expect(latestRelease.locator('[data-release-category="fixed"] li').first()).toBeVisible()
