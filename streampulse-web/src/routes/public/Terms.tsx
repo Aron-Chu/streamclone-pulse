@@ -8,7 +8,7 @@ import { TermsSeenInChatBullets } from '../../ui/components/SupporterChatBadgeCo
 import { supporterChatBadgesEnabled } from '../../lib/supporterChatBadgesFlag'
 
 /**
- * Terms of use for the portal, the Chrome extension and the Supporter
+ * Terms of use for the portal, the browser extension and the Supporter
  * subscription. Describes current behaviour only — no clause here promises a
  * feature, entity or process that does not exist.
  */
@@ -29,9 +29,9 @@ export default function Terms() {
           </div>
           <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Terms of Use</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            Last updated: October 9, 2026 · Applies to{' '}
+            Last updated: October 13, 2026 · Applies to{' '}
             <code className="font-mono text-zinc-300">streampulse.stream</code>, the StreamPulse
-            Chrome extension, and the Pulse Supporter subscription.
+            browser extension (Chrome, Brave, Edge and Firefox), and the Pulse Supporter subscription.
           </p>
         </header>
 
@@ -52,7 +52,7 @@ export default function Terms() {
         <p>
           StreamPulse shows Twitch stream activity using minute-level aggregates: chat, emote and
           viewer signals, plus coverage state for live streams and VODs. It is provided through this
-          website and an optional Chrome extension. It is a reporting tool, not a source of truth
+          website and an optional browser extension. It is a reporting tool, not a source of truth
           about any channel, and coverage gaps are reported honestly rather than filled in.
         </p>
         <p>

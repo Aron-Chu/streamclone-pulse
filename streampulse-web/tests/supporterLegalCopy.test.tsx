@@ -186,19 +186,20 @@ describe('Supporter legal copy', () => {
   it('Privacy says where Twitch display details are kept on the website and in the extension', () => {
     const body = textOf(Privacy, 'privacy-policy')
     expect(body).toMatch(/not stored on StreamPulse's servers\. On the website, only that\s+browser tab keeps them; in the extension, they're kept for the current browser session/)
-    expect(body).toMatch(/chrome\.storage\.session — short-lived Pulse and coverage caches for the current\s+browser session and, after the extension signs in with Twitch, your Twitch display name\s+and picture/)
+    expect(body).toMatch(/Extension session storage \(storage\.session\) — short-lived Pulse and coverage caches for the current\s+browser session and, after the extension signs in with Twitch, your Twitch display name\s+and picture/)
   })
 
-  // The extension's tester and public builds try one silent Twitch sign-in on a
-  // true first install, with no click (src/options/SupporterJourney.tsx and
-  // src/background/twitchSignIn.ts). Privacy must not say a Twitch proof is sent
-  // only after a click.
-  it('Privacy discloses the extension’s one silent check after a fresh install', () => {
+  // Sign-in is unavailable in 0.2.2. The policy also explains the first-install
+  // check for builds where Continue with Twitch is available, including that a
+  // proof can then be sent without a click.
+  it('Privacy qualifies the first-install Twitch check for builds where sign-in is available', () => {
     const body = textOf(Privacy, 'privacy-policy')
     expect(body).not.toMatch(/Twitch sign-in only if you choose/)
     expect(body).not.toMatch(/sent only when you choose\s+Continue with Twitch\)/)
     expect(body).toMatch(/one check without a window after a\s+fresh install, which can only sign you back in/)
     const check = screen.getByTestId('privacy-extension-first-install').textContent ?? ''
+    expect(check).toMatch(/This check is not active in 0\.2\.2/)
+    expect(check).toMatch(/When Continue with Twitch is available/)
     expect(check).toMatch(/checks once with\s+Twitch, without opening a window/)
     expect(check).toMatch(/This check never creates an account,\s+and it doesn't run again after you sign out/)
     expect(body).toMatch(/sent only when you choose\s+Continue with Twitch or during the one check after a fresh install/)

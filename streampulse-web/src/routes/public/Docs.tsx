@@ -33,15 +33,20 @@ export default function Docs() {
         <section id="extension" aria-labelledby="extension-title" className="mt-8 rounded-xl border border-white/[0.08] bg-white/[0.02] p-6">
           <h2 id="extension-title" className="!mt-0 text-xl font-bold text-white">1. Install the StreamPulse extension</h2>
           <p className="mt-2 text-zinc-300">
-            Install StreamPulse from the official Chrome Web Store listing. Then open a Twitch channel or VOD and switch from <strong>Chat</strong> to <strong>Pulse</strong>.
+            For Chrome and Brave, install StreamPulse from the official Chrome Web Store listing below.
+            Edge and Firefox listings will be linked here once published in Microsoft Edge Add-ons and
+            Firefox Add-ons. Then open a Twitch channel or VOD: <strong>Pulse</strong> opens by default.
+            Use the <strong>Chat / Pulse</strong> switch at the top of Twitch chat to change tabs.
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <ChromeInstallCta className={buttonClass('default', 'sm')} data-cta="chrome-install-docs" />
-            <span className="text-xs text-zinc-500">Desktop Chrome · the extension version shown in the store listing identifies the published package, not the website release.</span>
+            <span className="text-xs text-zinc-500">Desktop Chrome, Brave, Edge and Firefox · the extension version shown in the store listing identifies the published package, not the website release.</span>
           </div>
           <div className="alert alert-warning mt-4">
             <span>
-              <strong>Security Notice:</strong> Do not install StreamPulse packages from third-party download sites. Use only the official Chrome Web Store listing linked above.
+              <strong>Security Notice:</strong> Do not install StreamPulse packages from third-party download sites.
+              Use only official StreamPulse listings linked from this site in the Chrome Web Store,
+              Microsoft Edge Add-ons or Firefox Add-ons. Edge and Firefox links will be added once those listings are published.
             </span>
           </div>
         </section>

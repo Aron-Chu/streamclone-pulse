@@ -50,7 +50,7 @@ export default function Support() {
             <h2 className="!mt-0">Install StreamPulse</h2>
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <ChromeInstallCta className={buttonClass('default', 'sm')} data-cta="chrome-install-support" />
-              <span className="text-xs font-mono text-zinc-500">Official Web Store Build</span>
+              <span className="text-xs font-mono text-zinc-500">Chrome Web Store · Chrome and Brave</span>
             </div>
           </section>
 
@@ -58,14 +58,21 @@ export default function Support() {
             <h2 className="!mt-0">Extension not appearing on Twitch</h2>
             <ol className="mt-3 space-y-2 text-sm text-zinc-300">
               <li>
-                Open <code className="font-mono text-violet-300">chrome://extensions</code> and confirm StreamPulse is enabled.
+                Confirm StreamPulse is enabled in your browser's extension manager: Chrome or Brave —{' '}
+                <code className="font-mono text-violet-300">chrome://extensions</code>; Edge —{' '}
+                <code className="font-mono text-violet-300">edge://extensions</code>; Firefox —{' '}
+                <code className="font-mono text-violet-300">about:addons</code> → <strong>Extensions</strong>.
               </li>
               <li>
-                Turn StreamPulse off and on again, or select <strong>Reload</strong> if that control is available.
+                Turn StreamPulse off and on again. For an unpacked Chrome, Brave or Edge build, select{' '}
+                <strong>Reload</strong> if available. For a temporary Firefox build, open{' '}
+                <code className="font-mono text-violet-300">about:debugging#/runtime/this-firefox</code>{' '}
+                and select <strong>Reload</strong> under StreamPulse.
               </li>
               <li>Hard-refresh the Twitch channel or VOD tab (<kbd className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-xs font-mono">Ctrl+F5</kbd> / <kbd className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-xs font-mono">Cmd+Shift+R</kbd>).</li>
               <li>
-                Open Twitch chat and look for the <strong>Chat / Pulse</strong> switch above the chat input box.
+                Open Twitch chat and look for the <strong>Chat / Pulse</strong> switch at the top of chat.
+                <strong> Pulse</strong> opens by default.
               </li>
             </ol>
           </section>
@@ -83,7 +90,7 @@ export default function Support() {
           <section className="mt-8">
             <h2>What to include in a support request</h2>
             <ul className="space-y-1.5 text-zinc-300 text-sm">
-              <li>Chrome and StreamPulse extension versions.</li>
+              <li>Your browser name and version, and the StreamPulse extension version.</li>
               <li>The Twitch channel or VOD name (typed manually is fine).</li>
               <li>The exact error message and whether the Chat / Pulse switch appears.</li>
             </ul>

@@ -102,7 +102,7 @@ export default function Supporter() {
 
         <h2>What stays free</h2>
         <p>
-          The Chrome extension, Pulse overlays, coverage and backfill status, the public analytics
+          The browser extension, Pulse overlays, coverage and backfill status, the public analytics
           hub, channel and session analytics, and accent themes. None of these are behind Supporter.
         </p>
         <p data-testid="supporter-moved">{SUPPORTER_PERKS.moved}</p>

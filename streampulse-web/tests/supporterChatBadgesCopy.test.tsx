@@ -71,7 +71,7 @@ describe('Seen in chat copy, flag off (before launch)', () => {
 
   it('privacy says chatter identity is never exposed, without exception', () => {
     const body = textOf(Privacy, 'privacy-policy').replace(/\s+/g, ' ')
-    expect(body).toContain('do not expose raw chat messages or chatter identity to users. The extension')
+    expect(body).toContain('do not expose raw chat messages or chatter identity to users.')
     expect(body).not.toMatch(/except the Twitch usernames/)
     expect(body).not.toMatch(/in plain form/)
   })
