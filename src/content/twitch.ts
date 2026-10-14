@@ -32,6 +32,10 @@ export const TWITCH_SYSTEM_ROUTES = new Set([
   // Device activation and the subscribe page (/subs/{login}) are not channels.
   'activate',
   'subs',
+  'collections',
+  'redeem',
+  'embed',
+  'event',
 ])
 
 export type TwitchPageKind = 'channel' | 'vod' | 'non-channel'
@@ -79,6 +83,12 @@ export function parseTwitchPage(pathname: string): TwitchPageContext {
 
   const login = normalizeLogin(head)
   if (!login) {
+    return { kind: 'non-channel', login: null, vodId: null }
+  }
+
+  // Shared clip watch URLs have comments instead of channel chat. Do not
+  // carry the channel overlay or its live poll onto that player.
+  if (parts[1]?.toLowerCase() === 'clip') {
     return { kind: 'non-channel', login: null, vodId: null }
   }
 
