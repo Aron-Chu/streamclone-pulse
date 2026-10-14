@@ -86,14 +86,14 @@ const routes = [
   {
     path: 'privacy',
     title: 'Privacy Policy — StreamPulse',
-    description: 'How the StreamPulse Chrome extension and website observe, send, and store data.',
+    description: 'How the StreamPulse browser extension and website observe, send, and store data.',
     canonicalPath: '/privacy',
     robots: 'index,follow',
   },
   {
     path: 'terms',
     title: 'Terms of Use — StreamPulse',
-    description: 'Terms for the StreamPulse website, Chrome extension, and the Pulse Supporter subscription.',
+    description: 'Terms for the StreamPulse website, browser extension, and the Pulse Supporter subscription.',
     canonicalPath: '/terms',
     robots: 'index,follow',
   },
