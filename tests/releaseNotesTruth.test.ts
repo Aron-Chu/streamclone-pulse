@@ -50,18 +50,20 @@ describe('0.2.2 release notes', () => {
     expect(entry('0.2.2').knownIssues).toContain('Accounts and Supporter sign-ups are not open yet. Accounts are coming with Continue with Twitch.')
   })
 
-  it('say plainly that the 7TV header backdrop moved to Supporter', () => {
-    expect(entry('0.2.2').changed?.[0]).toMatch(/^The 7TV header backdrop \(emote rain: Still or Rain behind the panel header\) moved from free to Supporter\./)
-    expect(entry('0.2.2').summary).toContain('The 7TV header backdrop is now a Supporter perk')
-    expect(entry('0.2.2').preview).toContain('The 7TV header backdrop moved to Supporter (not open yet).')
+  it('describe the Supporter preview without claiming a free perk changed for store users', () => {
+    const notes = entry('0.2.2')
+    expect(notes.changed ?? []).toEqual([])
+    expect(notes.summary).toContain('The 7TV header backdrop is a Supporter perk')
+    expect(notes.preview).toContain('The 7TV header backdrop is a Supporter perk; sign-ups are not open yet.')
+    expect(text(notes)).not.toMatch(/moved from free|moved to Supporter|backdrop is now|backdrop you chose/i)
   })
 
   it('lead with the short 0.2.2 draft: title, summary and three highlights (2026-10-11 polish)', () => {
-    // The backdrop sentence and highlight are master's (emote rain stays a Supporter perk, owner decision 2026-10-12).
+    // UP-1, owner decision 2026-10-13: emote rain stays a Supporter perk; store users never had it free.
     const notes = entry('0.2.2')
     expect(notes.title).toBe('Whole-stream charts, calmer Top Moments')
-    expect(notes.summary).toBe("Charts cover the whole stream, Top Moments opens a card only when you pick one, bookmarks work without an account, and the popup is redesigned. Also built for Edge and Firefox. The 7TV header backdrop is now a Supporter perk, and accounts and Supporter sign-ups aren't open yet.")
-    expect(notes.preview).toEqual(['Charts cover the whole stream.', 'Top Moments opens a card only when you pick one.', 'The 7TV header backdrop moved to Supporter (not open yet).'])
+    expect(notes.summary).toBe("Charts cover the whole stream, Top Moments opens a card only when you pick one, bookmarks work without an account, and the popup is redesigned. Also built for Edge and Firefox. The 7TV header backdrop is a Supporter perk, and accounts and Supporter sign-ups aren't open yet.")
+    expect(notes.preview).toEqual(['Charts cover the whole stream.', 'Top Moments opens a card only when you pick one.', 'The 7TV header backdrop is a Supporter perk; sign-ups are not open yet.'])
     expect(notes.fixed).toEqual(expect.arrayContaining([
       'Watched moments on VODs are remembered again.',
       "Replays show their own stream's chart.",

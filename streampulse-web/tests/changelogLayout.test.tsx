@@ -4,9 +4,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 // /changelog reads the extension's src/shared/release-notes.json, which the
 // extension's release changes. This renders the page with notes shaped like
-// the 0.2.2 release (a Changed group, three highlights, marked released) to
+// the 0.2.2 release (no Changed group, three highlights, marked released) to
 // prove the layout holds for that text as well as for the notes on disk. The
-// Supporter lines are master's 0.2.2 wording.
+// Supporter lines use the owner-approved UP-1 wording.
 vi.mock('../../src/shared/release-notes.json', () => ({
   default: {
     schemaVersion: 1,
@@ -21,11 +21,10 @@ vi.mock('../../src/shared/release-notes.json', () => ({
         preview: [
           'Send feedback and Discord links are in settings.',
           'Top Moments opens a card only when you pick one.',
-          'The 7TV header backdrop moved to Supporter (not open yet).',
+          'The 7TV header backdrop is a Supporter perk; sign-ups are not open yet.',
           'A fourth highlight that the card leaves out.',
         ],
         new: ['Bookmarks work without an account.', 'The toolbar popup is redesigned.'],
-        changed: ['The 7TV header backdrop (emote rain: Still or Rain behind the panel header) moved from free to Supporter. Until Supporter sign-ups open it stays off for everyone, and a backdrop you chose before is kept for when you support. The panel title and accent themes stay free.'],
         improved: ['Long streams chart end to end.'],
         fixed: ['Hiding Pulse in the right dock no longer draws a dark shape.', 'VODs without replay data no longer show a false outage.', 'Retry shows when StreamPulse cannot be reached.'],
         knownIssues: ['Accounts and Supporter sign-ups are not open yet.'],
@@ -65,7 +64,7 @@ describe('/changelog layout with the 0.2.2 notes', () => {
     expect([...card.querySelectorAll('li')].map((item) => item.textContent)).toEqual([
       'Send feedback and Discord links are in settings.',
       'Top Moments opens a card only when you pick one.',
-      'The 7TV header backdrop moved to Supporter (not open yet).',
+      'The 7TV header backdrop is a Supporter perk; sign-ups are not open yet.',
     ])
     expect(within(card).getByRole('link', { name: 'See all changes ↓' }).getAttribute('href')).toBe('#v0.2.2-changes')
     // Only the latest release gets the card; the older one keeps its plain header.
@@ -73,7 +72,7 @@ describe('/changelog layout with the 0.2.2 notes', () => {
     expect(document.getElementById('v0.2.1')!.textContent).toContain('v0.2.1 · Released · Aug 31, 2026')
   })
 
-  it('folds New, Improved and Fixed to counts and keeps Changed and Known limitations open', () => {
+  it('folds New, Improved and Fixed to counts, omits Changed and keeps Known limitations open', () => {
     renderPage()
     const section = document.getElementById('v0.2.2')!
     const groups = [...section.querySelectorAll('details')].map((group) => ({
@@ -85,12 +84,11 @@ describe('/changelog layout with the 0.2.2 notes', () => {
     }))
     expect(groups).toEqual([
       { key: 'new', open: false, label: 'New', count: '2', items: 2 },
-      { key: 'changed', open: true, label: 'Changed', count: '1', items: 1 },
       { key: 'improved', open: false, label: 'Improved', count: '1', items: 1 },
       { key: 'fixed', open: false, label: 'Fixed', count: '3', items: 3 },
       { key: 'knownIssues', open: true, label: 'Known limitations', count: '1', items: 1 },
     ])
-    // The Supporter change is readable without a click.
-    expect(within(section).getByText(/moved from free to Supporter/)).toBeTruthy()
+    expect(section.querySelector('[data-category="changed"]')).toBeNull()
+    expect(section.textContent).not.toMatch(/moved from free to Supporter/)
   })
 })

@@ -105,11 +105,14 @@ export default function Support() {
           {/* Contact Mailbox */}
           <section id="contact" className="mt-8 border-t border-white/[0.08] pt-6">
             <h2>Contact</h2>
+            {/* OWNER CONFIRMED 2026-10-13 (D35): Aron answers billing, cancellation
+                and refund requests within 7 days. Private mailbox routing is ops-owned. */}
             <p>
               Email <a href="mailto:privacy@streampulse.stream" className="text-violet-400 font-bold hover:underline">privacy@streampulse.stream</a> for
               privacy, legal, billing and refund questions. For bugs and ideas use the{' '}
               <Link to={FEEDBACK_PATH} className="text-violet-400 hover:underline">{formReady ? 'private feedback form' : 'feedback page'}</Link>.
             </p>
+            <p>Aron answers billing, cancellation and refund requests within 7 days.</p>
             <h3 id="security">Security reports</h3>
             <p className="muted text-xs" data-testid="support-security-report">
               Report vulnerabilities privately through{' '}

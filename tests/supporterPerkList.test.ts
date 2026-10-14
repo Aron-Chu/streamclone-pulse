@@ -24,8 +24,9 @@ describe('Supporter perk list', () => {
     expect(SUPPORTER_PERKS.onlyYou).toBe('Only you see them, in your own StreamPulse extension. Nothing is added to chat, and nobody else sees them.')
   })
 
-  it('says plainly that the 7TV header backdrop moved to Supporter in 0.2.2', () => {
-    expect(SUPPORTER_PERKS.moved).toBe('Emote rain, the 7TV header backdrop, was free up to extension 0.2.1. From 0.2.2 it is a Supporter perk, and a backdrop you saved is kept for when you support. No other free feature moved behind Supporter.')
+  it('has no claim that a perk moved from free for store users', () => {
+    expect(SUPPORTER_PERKS).not.toHaveProperty('moved')
+    expect(JSON.stringify(SUPPORTER_PERKS)).not.toMatch(/moved from free|was free up to|backdrop you saved/i)
   })
 
   it('matches what the code gates: three finishes, the tenure ladder and the backdrop modes', async () => {

@@ -3,7 +3,7 @@ import { PublicLayout } from '../../ui/components/PublicLayout'
 import { FEEDBACK_PATH, PRIVACY_PATH, REFUNDS_PATH, SECURITY_REPORT_URL, SUPPORTER_PATH } from '../../lib/externalLinks'
 import { discordInviteUrl } from '../../lib/discord'
 import { PrelaunchNotice } from './PrelaunchNotice'
-import { SUPPORTER_PERKS, SupporterPerkItems, supporterOnlyYou } from '../../ui/components/SupporterPerks'
+import { SupporterPerkItems, supporterOnlyYou } from '../../ui/components/SupporterPerks'
 import { TermsSeenInChatBullets } from '../../ui/components/SupporterChatBadgeCopy'
 import { supporterChatBadgesEnabled } from '../../lib/supporterChatBadgesFlag'
 
@@ -122,7 +122,7 @@ export default function Terms() {
             <ul>
               <SupporterPerkItems />
             </ul>
-            {supporterOnlyYou()} {SUPPORTER_PERKS.moved} Nothing else is promised.
+            {supporterOnlyYou()} Nothing else is promised.
           </li>
           {/* Seen in chat copy only once VITE_SUPPORTER_CHAT_BADGES is on (launch day). */}
           {supporterChatBadgesEnabled() ? <TermsSeenInChatBullets /> : (
@@ -215,9 +215,8 @@ export default function Terms() {
         </p>
 
         <h2>Contact</h2>
-        {/* MERGE GATE (memo T1-6): before this page is published, the owner confirms
-            that this mailbox is monitored for billing email, who answers it and the
-            response time. If it is not monitored, replace the address everywhere. */}
+        {/* OWNER CONFIRMED 2026-10-13 (D35): Aron answers billing, cancellation
+            and refund requests within 7 days. Private mailbox routing is ops-owned. */}
         <p data-testid="terms-contact">
           Billing, account and legal questions:{' '}
           <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a>. Product
@@ -228,6 +227,7 @@ export default function Terms() {
           <a href={SECURITY_REPORT_URL} target="_blank" rel="noreferrer noopener">GitHub private vulnerability reporting</a>.
           There is no phone support.
         </p>
+        <p>Aron answers billing, cancellation and refund requests within 7 days.</p>
       </article>
     </PublicLayout>
   )

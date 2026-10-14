@@ -4,6 +4,7 @@ import type { ComponentType } from 'react'
 import { describe, expect, it } from 'vitest'
 import Privacy from '../src/routes/public/Privacy'
 import Refunds from '../src/routes/public/Refunds'
+import Support from '../src/routes/public/Support'
 import Supporter from '../src/routes/public/Supporter'
 import Terms from '../src/routes/public/Terms'
 
@@ -121,19 +122,29 @@ describe('Supporter legal copy', () => {
     expect(items.join(' ')).not.toMatch(/signature/i)
   })
 
-  it('Supporter says plainly that the 7TV header backdrop moved to Supporter, and no longer promises that nothing free will move', () => {
+  it('Supporter keeps the free offer and perk descriptions without claiming a free feature moved', () => {
     render(<MemoryRouter><Supporter /></MemoryRouter>)
     const body = screen.getByTestId('supporter-offer').textContent ?? ''
     expect(body).not.toMatch(/none will be moved|nothing free will move|will never be moved/i)
     expect(body).not.toMatch(/clip downloading/i)
-    expect(screen.getByTestId('supporter-moved').textContent).toBe('Emote rain, the 7TV header backdrop, was free up to extension 0.2.1. From 0.2.2 it is a Supporter perk, and a backdrop you saved is kept for when you support. No other free feature moved behind Supporter.')
+    expect(screen.queryByTestId('supporter-moved')).toBeNull()
+    expect(screen.getByRole('heading', { name: 'What stays free' })).toBeTruthy()
+    expect(body).not.toMatch(/moved from free|was free up to|backdrop you saved/i)
     expect(body).not.toMatch(/header accent|overlay finishes/i)
   })
 
-  it('Terms names the moved backdrop and no withdrawn perk names', () => {
+  it('Terms keeps the backdrop in the perk list without the removed migration claim', () => {
     const body = textOf(Terms, 'terms-of-use')
-    expect(body).toContain('From 0.2.2 it is a Supporter perk')
+    expect(body).toContain('Emote rain: 7TV emotes behind your Pulse panel header, still or falling: the 7TV header backdrop.')
+    expect(body).not.toMatch(/moved from free|was free up to|backdrop you saved/i)
     expect(body).not.toMatch(/header accent|overlay finishes|none will be moved/i)
+  })
+
+  it.each([...pages.map(([name, Page]) => [name, Page] as const), ['Support', Support] as const])('%s states the owner-confirmed billing response time', (_, Page) => {
+    render(<MemoryRouter><Page /></MemoryRouter>)
+    const response = screen.getByText(/Aron answers billing, cancellation and refund requests within 7 days\./)
+    expect(response.textContent).not.toMatch(/refunds? (completed|resolved|processed) within 7 days/i)
+    expect(screen.getAllByRole('link').some(link => link.getAttribute('href') === 'mailto:privacy@streampulse.stream')).toBe(true)
   })
 
   it('Privacy keeps the privacy mailbox and describes the account cookies on the portal origin', () => {

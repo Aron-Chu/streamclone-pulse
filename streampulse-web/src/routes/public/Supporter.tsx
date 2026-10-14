@@ -3,7 +3,7 @@ import { PublicLayout } from '../../ui/components/PublicLayout'
 import { PRIVACY_PATH, REFUNDS_PATH, SUPPORTER_TERMS_PATH } from '../../lib/externalLinks'
 import { PrelaunchNotice } from './PrelaunchNotice'
 import { CHROME_WEB_STORE_LISTING_URL } from '../../lib/publicSiteConfig'
-import { SUPPORTER_PERKS, SupporterPerkItems, supporterOnlyYou } from '../../ui/components/SupporterPerks'
+import { SupporterPerkItems, supporterOnlyYou } from '../../ui/components/SupporterPerks'
 import { SupporterNoTwitchChatBadge, SupporterSeenInChat } from '../../ui/components/SupporterChatBadgeCopy'
 import { supporterChatBadgesEnabled } from '../../lib/supporterChatBadgesFlag'
 
@@ -105,7 +105,6 @@ export default function Supporter() {
           The browser extension, Pulse overlays, coverage and backfill status, the public analytics
           hub, channel and session analytics, and accent themes. None of these are behind Supporter.
         </p>
-        <p data-testid="supporter-moved">{SUPPORTER_PERKS.moved}</p>
 
         <h2 id="subscribe">How to subscribe</h2>
         <div className="rounded-xl border border-white/[0.08] bg-black/20 p-6" data-testid="supporter-availability">
@@ -151,12 +150,13 @@ export default function Supporter() {
         </p>
 
         <h2>Questions</h2>
-        {/* MERGE GATE (memo T1-6): the owner confirms that this mailbox is monitored
-            for billing email, who answers it and the response time, before publication. */}
+        {/* OWNER CONFIRMED 2026-10-13 (D35): Aron answers billing, cancellation
+            and refund requests within 7 days. Private mailbox routing is ops-owned. */}
         <p>
           Billing and account questions: <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a>.
           Product questions and bug reports belong on the <Link to="/support">support page</Link>.
         </p>
+        <p>Aron answers billing, cancellation and refund requests within 7 days.</p>
       </article>
     </PublicLayout>
   )

@@ -222,11 +222,15 @@ export default function Privacy() {
         {/* Feedback form: describes the processing in streampulse-backend
             internal/analytics/portal_support_{cases,adapters,outbox,turnstile,retention}.go
             (origin/master fdc99414) and the website form (streamclone-pulse #77).
-            OWNER GATE: retention below is the backend default
+            OWNER CONFIRMED 2026-10-13 (D33): keep manual deletion for this release.
+            Retention below is the backend default
             (PULSE_SUPPORT_RETENTION_ENABLED=false, PULSE_SUPPORT_RETENTION_DAYS unset),
             so nothing is deleted automatically. If a retention period is approved,
-            change only the "How long it's kept" paragraph. Keep this section identical
-            in PR #82 and PR #78.
+            change only the "How long it's kept" paragraph.
+            OWNER CONFIRMED 2026-10-13 (D34): backend master 569a7dc uses the reply
+            email only as Reply-To for the support email; Linear receives report
+            details without it, and Discord masks email addresses. No policy change
+            is needed for the existing "used only to answer" sentence.
             The staff Discord sentences match backend PR #164
             (claude/support-intake-hardening-20261009, 7af59e8): kind, short reference,
             case ID, time received and the message text with address-like strings masked
@@ -545,15 +549,15 @@ export default function Privacy() {
         </p>
 
         <h2>Contact</h2>
-        {/* MERGE GATE (memo T1-6): before publication the owner confirms that this
-            mailbox is monitored for privacy, account-deletion and billing email, who
-            answers it and the response time. If it is not monitored, replace it everywhere. */}
+        {/* OWNER CONFIRMED 2026-10-13 (D35): Aron answers billing, cancellation
+            and refund requests within 7 days. Private mailbox routing is ops-owned. */}
         <p data-testid="privacy-contact">
           For privacy or legal questions, email{' '}
           <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a> or visit the{' '}
           <Link to="/support">support page</Link>. That mailbox is privacy, legal and billing only —
           not routine product support.
         </p>
+        <p>Aron answers billing, cancellation and refund requests within 7 days.</p>
 
         <h2>Related documents</h2>
         <p>

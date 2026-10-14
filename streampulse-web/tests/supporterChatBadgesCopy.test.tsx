@@ -99,7 +99,7 @@ describe('Seen in chat copy, flag on (launch)', () => {
     render(<MemoryRouter><Terms /></MemoryRouter>)
     const benefits = screen.getByTestId('terms-supporter-benefits')
     expect(Array.from(benefits.querySelectorAll('li')).map(li => li.textContent)).toEqual(expected)
-    expect(benefits.textContent).toContain(`${SUPPORTER_PERKS.seenInChat.onlyYou} ${SUPPORTER_PERKS.moved} Nothing else is promised.`)
+    expect(benefits.textContent).toContain(`${SUPPORTER_PERKS.seenInChat.onlyYou} Nothing else is promised.`)
     expect(supporterPerkNames()).toEqual([...SUPPORTER_PERKS.names, 'Seen in chat'])
   })
 

@@ -11,7 +11,7 @@ export interface ReleaseEntry {
   summary: string
   preview?: string[]
   new?: string[]
-  /** Something that worked one way and now works another, such as a free feature that moved to Supporter. */
+  /** An existing feature that behaves differently in this release. */
   changed?: string[]
   improved?: string[]
   fixed?: string[]
