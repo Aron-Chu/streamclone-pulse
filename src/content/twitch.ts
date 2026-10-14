@@ -339,9 +339,10 @@ export function detectTwitchChannelLive(context: TwitchPageContext, now = Date.n
   // player can come first in DOM order.
   const video = getPrimaryVideo()
   const streamCard = document.querySelector('[data-a-target="stream-info-card-component"]')
-  // Live HLS often reports duration as Infinity. Number.isFinite(Infinity) is false,
-  // so do not gate this branch on isFinite.
-  if ((video && video.duration === Infinity) || /\bLIVE\b/i.test(streamCard?.textContent ?? '')) {
+  // Live HLS reports Infinity in Chromium, but Firefox can expose an unbounded
+  // duration as 9223372036854.775 seconds. Anything above 1e12 seconds (31,000+
+  // years) is a live sentinel, not a real VOD or ad duration.
+  if ((video && (video.duration === Infinity || video.duration > 1e12)) || /\bLIVE\b/i.test(streamCard?.textContent ?? '')) {
     liveReadingLogin = context.login
     liveReadingAt = now
     return true

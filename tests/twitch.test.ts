@@ -68,25 +68,6 @@ describe('parseChannelLogin', () => {
   })
 })
 
-describe('detectTwitchChannelLive Infinity gate', () => {
-  it('documents that Infinity must not be gated on Number.isFinite', () => {
-    // Regression lock for src/content/twitch.ts live video detection.
-    expect(Number.isFinite(Infinity)).toBe(false)
-    expect(Infinity === Infinity).toBe(true)
-  })
-
-  it('source uses duration === Infinity without Number.isFinite', async () => {
-    const fs = await import('node:fs')
-    const path = await import('node:path')
-    const src = fs.readFileSync(
-      path.resolve(__dirname, '../src/content/twitch.ts'),
-      'utf8',
-    )
-    expect(src).toMatch(/video\.duration === Infinity/)
-    expect(src).not.toMatch(/Number\.isFinite\(video\.duration\).*Infinity/)
-  })
-})
-
 describe('detectTwitchChannelLive', () => {
   const channel = { kind: 'channel', login: 'fixturechan', vodId: null } as const
 
@@ -104,16 +85,49 @@ describe('detectTwitchChannelLive', () => {
   }
 
   afterEach(() => {
+    // Clear the held reading so each case starts without a previous live signal.
+    document.body.innerHTML = '<div data-a-target="channel-offline-header"></div>'
+    detectTwitchChannelLive(channel)
     vi.unstubAllGlobals()
   })
 
-  it('reads the main player, not the first video on the page', () => {
-    livePage()
+  it.each([Infinity, 9_223_372_036_854.775])('reads a live main player with duration %s, not an earlier ad', duration => {
+    const page = livePage()
+    Object.defineProperty(page.main, 'duration', { configurable: true, value: duration })
     expect(detectTwitchChannelLive(channel, 1_000)).toBe(true)
   })
 
-  it('holds live through one offline reading and drops on the second tick', () => {
+  it.each([NaN, -Infinity, 0, 30, 21_814, 1e12])('does not treat duration %s as a live broadcast', duration => {
     const page = livePage()
+    Object.defineProperty(page.main, 'duration', { configurable: true, value: duration })
+    expect(detectTwitchChannelLive(channel, 1_000)).toBe(false)
+  })
+
+  it('ignores the Firefox sentinel on a secondary video', () => {
+    const page = livePage()
+    Object.defineProperty(page.ad, 'duration', { configurable: true, value: 9_223_372_036_854.775 })
+    Object.defineProperty(page.main, 'duration', { configurable: true, value: 30 })
+    expect(detectTwitchChannelLive(channel, 1_000)).toBe(false)
+  })
+
+  it('rejects VOD and non-channel contexts even with a Firefox live duration', () => {
+    const page = livePage()
+    Object.defineProperty(page.main, 'duration', { configurable: true, value: 9_223_372_036_854.775 })
+    expect(detectTwitchChannelLive({ ...channel, vodId: '1234567890' }, 1_000)).toBe(false)
+    expect(detectTwitchChannelLive({ kind: 'non-channel', login: null, vodId: null }, 1_000)).toBe(false)
+  })
+
+  it.each(['channel-offline-header', 'channel-offline-still-image'])('lets %s override the Firefox live duration', marker => {
+    const page = livePage()
+    Object.defineProperty(page.main, 'duration', { configurable: true, value: 9_223_372_036_854.775 })
+    expect(detectTwitchChannelLive(channel, 1_000)).toBe(true)
+    page.doc.body.insertAdjacentHTML('beforeend', `<div data-a-target="${marker}"></div>`)
+    expect(detectTwitchChannelLive(channel, 2_000)).toBe(false)
+  })
+
+  it.each([Infinity, 9_223_372_036_854.775])('holds duration %s live through one offline reading and drops on the second tick', duration => {
+    const page = livePage()
+    Object.defineProperty(page.main, 'duration', { configurable: true, value: duration })
     expect(detectTwitchChannelLive(channel, 1_000)).toBe(true)
     // An ad break swaps the main player to a finite clip.
     Object.defineProperty(page.main, 'duration', { configurable: true, value: 30 })
@@ -122,8 +136,9 @@ describe('detectTwitchChannelLive', () => {
     expect(detectTwitchChannelLive(channel, 11_000)).toBe(false)
   })
 
-  it('drops live at once on Twitch offline markers and never carries live to another channel', () => {
+  it.each([Infinity, 9_223_372_036_854.775])('drops duration %s live on offline markers and never carries it to another channel', duration => {
     const page = livePage()
+    Object.defineProperty(page.main, 'duration', { configurable: true, value: duration })
     expect(detectTwitchChannelLive(channel, 1_000)).toBe(true)
     Object.defineProperty(page.main, 'duration', { configurable: true, value: 30 })
     expect(detectTwitchChannelLive({ kind: 'channel', login: 'otherchan', vodId: null }, 2_000)).toBe(false)
