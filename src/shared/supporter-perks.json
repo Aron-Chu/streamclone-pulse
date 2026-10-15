@@ -13,7 +13,6 @@
     "Supporter card": "your own crest and paint on the Supporter card in quick settings and in settings, as private recognition for supporting."
   },
   "onlyYou": "Only you see them, in your own StreamPulse extension. Nothing is added to chat, and nobody else sees them.",
-  "moved": "Emote rain, the 7TV header backdrop, was free up to extension 0.2.1. From 0.2.2 it is a Supporter perk, and a backdrop you saved is kept for when you support. No other free feature moved behind Supporter.",
   "seenInChat": {
     "name": "Seen in chat",
     "detail": "optional: your crest beside your name and your paint on it in Twitch chat, for other StreamPulse viewers. Off until you turn it on.",

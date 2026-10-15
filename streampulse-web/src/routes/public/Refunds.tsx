@@ -32,7 +32,7 @@ export default function Refunds() {
           </div>
           <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Cancellation &amp; Refunds</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            Last updated: September 25, 2026 · Applies to the Pulse Supporter subscription.
+            Last updated: October 13, 2026 · Applies to the Pulse Supporter subscription.
           </p>
         </header>
 
@@ -49,9 +49,8 @@ export default function Refunds() {
         </section>
 
         <h2>Cancelling</h2>
-        {/* MERGE GATE (memo T1-6): email cancellation is offered only if the owner
-            confirms that this mailbox is monitored, who answers it and the response
-            time. If it is not monitored, replace the address everywhere. */}
+        {/* OWNER CONFIRMED 2026-10-13 (D35): Aron answers billing, cancellation
+            and refund requests within 7 days. Private mailbox routing is ops-owned. */}
         <p>
           Cancellation is self-service in the Stripe Customer Portal, reachable through Manage
           subscription in the extension or on your account page once sign-ups open. You can also
@@ -150,7 +149,6 @@ export default function Refunds() {
         </p>
 
         <h2>How to ask</h2>
-        {/* MERGE GATE (memo T1-6): see the note under "Cancelling". */}
         <p>
           Email <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a> from the
           billing email you gave Stripe at checkout, and include the date and amount of the charge or
@@ -158,8 +156,8 @@ export default function Refunds() {
           it is not needed and StreamPulse cannot use it.
         </p>
         <p>
-          Refund requests are answered by a person. There is no automated refund line and no phone
-          support.
+          Aron answers billing, cancellation and refund requests within 7 days. There is no
+          automated refund line and no phone support.
         </p>
 
         <h2>Disputes and chargebacks</h2>

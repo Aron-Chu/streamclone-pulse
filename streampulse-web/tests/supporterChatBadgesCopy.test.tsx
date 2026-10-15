@@ -71,7 +71,7 @@ describe('Seen in chat copy, flag off (before launch)', () => {
 
   it('privacy says chatter identity is never exposed, without exception', () => {
     const body = textOf(Privacy, 'privacy-policy').replace(/\s+/g, ' ')
-    expect(body).toContain('do not expose raw chat messages or chatter identity to users. The extension')
+    expect(body).toContain('do not expose raw chat messages or chatter identity to users.')
     expect(body).not.toMatch(/except the Twitch usernames/)
     expect(body).not.toMatch(/in plain form/)
   })
@@ -99,7 +99,7 @@ describe('Seen in chat copy, flag on (launch)', () => {
     render(<MemoryRouter><Terms /></MemoryRouter>)
     const benefits = screen.getByTestId('terms-supporter-benefits')
     expect(Array.from(benefits.querySelectorAll('li')).map(li => li.textContent)).toEqual(expected)
-    expect(benefits.textContent).toContain(`${SUPPORTER_PERKS.seenInChat.onlyYou} ${SUPPORTER_PERKS.moved} Nothing else is promised.`)
+    expect(benefits.textContent).toContain(`${SUPPORTER_PERKS.seenInChat.onlyYou} Nothing else is promised.`)
     expect(supporterPerkNames()).toEqual([...SUPPORTER_PERKS.names, 'Seen in chat'])
   })
 

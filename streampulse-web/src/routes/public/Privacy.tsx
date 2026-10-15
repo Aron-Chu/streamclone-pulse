@@ -11,7 +11,7 @@ import {
   PrivacySeenInChat,
 } from '../../ui/components/SupporterChatBadgeCopy'
 
-/** Public privacy policy for StreamPulse (portal + Chrome extension). Current behavior only. */
+/** Public privacy policy for StreamPulse (portal + browser extension). Current behavior only. */
 export default function Privacy() {
   return (
     <PublicLayout>
@@ -28,7 +28,7 @@ export default function Privacy() {
           </div>
           <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Privacy Policy</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            Last updated: October 9, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse Chrome extension.
+            Last updated: October 13, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse browser extension (Chrome, Brave, Edge and Firefox).
           </p>
         </header>
 
@@ -39,11 +39,11 @@ export default function Privacy() {
           <p className="text-zinc-300">
             StreamPulse shows Twitch stream activity using minute-level aggregates from the StreamPulse
             API. The extension and public site are rollup-first: they do not expose raw chat messages or
-            chatter identity to users{supporterChatBadgesEnabled() ? PRIVACY_CHATTER_IDENTITY_EXCEPTION : ''}. The extension uses Twitch sign-in only to confirm your Twitch
+            chatter identity to users{supporterChatBadgesEnabled() ? PRIVACY_CHATTER_IDENTITY_EXCEPTION : ''}. Extension Twitch sign-in is not available in 0.2.2. When available, the extension uses Twitch sign-in only to confirm your Twitch
             user ID: when you choose Continue with Twitch, and in one check without a window after a
             fresh install, which can only sign you back in to a StreamPulse account you already have
-            (see Extensions below). Protect enrollment is optional and
-            uses a beta access key once to create a local device credential.
+            (see Extensions below). Protect enrollment is not offered in 0.2.2. Earlier beta enrollment
+            used a beta access key once to create a local device credential.
           </p>
           <p className="text-zinc-300">
             Accounts are optional; free tools work without an account. A StreamPulse account is
@@ -95,7 +95,8 @@ export default function Privacy() {
           does not publish anything about you or start a subscription.
         </p>
         <p data-testid="privacy-extension-first-install">
-          <strong>One check after a fresh install.</strong> The first time you open the extension's
+          <strong>One check after a fresh install.</strong> This check is not active in 0.2.2, where
+          extension Twitch sign-in is unavailable. When Continue with Twitch is available, the first time you open the extension's
           Account &amp; Supporter settings after installing it, the extension checks once with
           Twitch, without opening a window, whether you've used Continue with Twitch before. If
           your browser is signed in to Twitch and that Twitch account already has a StreamPulse
@@ -191,7 +192,7 @@ export default function Privacy() {
 
         <h2>Optional website analytics</h2>
         <p>
-          Website product analytics are separate from Twitch reaction analytics and from the Chrome
+          Website product analytics are separate from Twitch reaction analytics and from the browser
           extension. They are <strong>off by default</strong>. If you opt in through <strong>Analytics
           preferences</strong> in the footer, the website sends PostHog a fixed event for a public page
           category and for clicks on Install or Open Analytics. These events help us understand which
@@ -221,11 +222,15 @@ export default function Privacy() {
         {/* Feedback form: describes the processing in streampulse-backend
             internal/analytics/portal_support_{cases,adapters,outbox,turnstile,retention}.go
             (origin/master fdc99414) and the website form (streamclone-pulse #77).
-            OWNER GATE: retention below is the backend default
+            OWNER CONFIRMED 2026-10-13 (D33): keep manual deletion for this release.
+            Retention below is the backend default
             (PULSE_SUPPORT_RETENTION_ENABLED=false, PULSE_SUPPORT_RETENTION_DAYS unset),
             so nothing is deleted automatically. If a retention period is approved,
-            change only the "How long it's kept" paragraph. Keep this section identical
-            in PR #82 and PR #78.
+            change only the "How long it's kept" paragraph.
+            OWNER CONFIRMED 2026-10-13 (D34): backend master 569a7dc uses the reply
+            email only as Reply-To for the support email; Linear receives report
+            details without it, and Discord masks email addresses. No policy change
+            is needed for the existing "used only to answer" sentence.
             The staff Discord sentences match backend PR #164
             (claude/support-intake-hardening-20261009, 7af59e8): kind, short reference,
             case ID, time received and the message text with address-like strings masked
@@ -298,7 +303,7 @@ export default function Privacy() {
           </p>
         </section>
 
-        <h2>What the Chrome extension observes on Twitch</h2>
+        <h2>What the browser extension observes on Twitch</h2>
         <ul>
           <li>The active Twitch page URL, channel login, and stream or VOD identifiers for the tab you are viewing.</li>
           <li>Page-context Twitch metadata needed to resolve the current live stream or VOD for the overlay.</li>
@@ -311,9 +316,10 @@ export default function Privacy() {
         <p>
            The extension does not request or transmit Twitch cookies, passwords, Twitch OAuth credentials
            (except the one-time sign-in proof described under Your account, sent only when you choose
-           Continue with Twitch or during the one check after a fresh install), raw chat exports, or chatter identities. A beta access key is sent only to the hosted enrollment
+           Continue with Twitch or during the one check after a fresh install, neither available in 0.2.2), raw chat exports, or chatter identities.
+           In earlier beta builds, a beta access key is sent only to the hosted enrollment
            endpoint when you explicitly connect Protect; it is discarded after that request and is not stored
-           or sent with later requests. Page-context Twitch requests may
+           or sent with later requests. Protect enrollment is not offered in 0.2.2. Page-context Twitch requests may
           use your active Twitch browser session through normal browser credential handling. Those requests
           go to Twitch; StreamPulse does not receive your Twitch cookies or Twitch login credentials from
           the extension.
@@ -327,12 +333,13 @@ export default function Privacy() {
           can be returned.
         </p>
         <p>
-           Protect enrollment is a one-time beta flow. The service worker sends the key only to
-           <code>https://api.streampulse.stream/v1/extension/auth/device</code>, then discards it. Later
-           protected watchlist requests use an opaque bearer device token stored locally in the extension's
-           trusted contexts; the token is never placed in Chrome sync storage and is not sent to local or
-           custom backend origins. Without enrollment, a saved channel is only a browser-sync preference and
-           is not represented as server-protected.
+           Protect enrollment is not offered in 0.2.2. Earlier beta builds used a one-time enrollment flow:
+           the service worker sent the key only to
+           <code>https://api.streampulse.stream/v1/extension/auth/device</code>, then discarded it.
+           For an earlier enrollment, protected watchlist requests use an opaque bearer device token stored locally
+           in the extension. The token is never placed in browser sync storage and is not sent to local or custom
+           backend origins. Without enrollment, a saved channel is only a browser-sync preference and is not
+           represented as server-protected.
         </p>
         <p>
           Planned optional extension crash diagnostics are <strong>off by default</strong> and
@@ -355,18 +362,18 @@ export default function Privacy() {
         <h2>What is stored in the browser</h2>
         <ul>
           <li>
-            <strong>chrome.storage.sync</strong> — extension preferences such as theme, color scheme,
+            <strong>Extension sync storage</strong> (<code>storage.sync</code>) — extension preferences such as theme, color scheme,
             overlay placement, chart range, watchlist entries, and related settings that may sync with your
-            Chrome profile.
+            browser profile.
           </li>
           <li>
-            <strong>chrome.storage.session</strong> — short-lived Pulse and coverage caches for the current
+            <strong>Extension session storage</strong> (<code>storage.session</code>) — short-lived Pulse and coverage caches for the current
             browser session and, after the extension signs in with Twitch, your Twitch display name
             and picture for that browser session.
           </li>
           <li>
-             <strong>chrome.storage.local</strong> — the local opaque device token, device identifier, and
-             expiry after Protect enrollment; server-confirmed Protect sync metadata and removal tombstones;
+             <strong>Extension local storage</strong> (<code>storage.local</code>) — the local opaque device token, device identifier, and
+             expiry from earlier Protect enrollment; server-confirmed Protect sync metadata and removal tombstones;
              optional debug log entries only when debug logging is enabled; a versioned diagnostics-consent
              record when you opt in via Options (default off); and a separate versioned analytics-consent
              record when you opt in to anonymous product usage (default off). The one-time beta key is not
@@ -383,7 +390,7 @@ export default function Privacy() {
             kept only in this browser profile: the moments you watch when you turn on history (off by
             default, kept for the retention period you choose), the notes you add to saved moments, and
             bookmarks you save while no account is linked (channel, stream or VOD, time offset and label).
-            None of it is uploaded to StreamPulse or synced through your Chrome profile, and incognito
+            None of it is uploaded to StreamPulse or synced through your browser profile, and incognito
             windows neither read it nor add to it. Removing a save, clearing history in My Moments or
             uninstalling the extension deletes it. Bookmarks saved while an account is linked are
             stored by StreamPulse with that account.
@@ -481,7 +488,7 @@ export default function Privacy() {
             version and the page route, with channel names and stream IDs replaced by
             placeholders. Free-form error text is dropped, and no account, cookie, form entry or
             request body is attached. Account pages have it off. Your IP address is seen by Sentry
-            while a report is sent, as with any web request, and is not stored. The Chrome
+            while a report is sent, as with any web request, and is not stored. The browser
             extension does not use Sentry.
           </li>
         </ul>
@@ -542,15 +549,15 @@ export default function Privacy() {
         </p>
 
         <h2>Contact</h2>
-        {/* MERGE GATE (memo T1-6): before publication the owner confirms that this
-            mailbox is monitored for privacy, account-deletion and billing email, who
-            answers it and the response time. If it is not monitored, replace it everywhere. */}
+        {/* OWNER CONFIRMED 2026-10-13 (D35): Aron answers billing, cancellation
+            and refund requests within 7 days. Private mailbox routing is ops-owned. */}
         <p data-testid="privacy-contact">
           For privacy or legal questions, email{' '}
           <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a> or visit the{' '}
           <Link to="/support">support page</Link>. That mailbox is privacy, legal and billing only —
           not routine product support.
         </p>
+        <p>Aron answers billing, cancellation and refund requests within 7 days.</p>
 
         <h2>Related documents</h2>
         <p>

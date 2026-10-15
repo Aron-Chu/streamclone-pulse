@@ -67,7 +67,7 @@ function resolveBasePageMetadata(pathname: string): PageMetadata {
     case '/privacy':
       return {
         title: 'Privacy Policy — StreamPulse',
-        description: 'How the StreamPulse Chrome extension and website observe, send, and store data.',
+        description: 'How the StreamPulse browser extension and website observe, send, and store data.',
         canonicalPath: '/privacy',
         robots: 'index,follow',
       }
@@ -76,7 +76,7 @@ function resolveBasePageMetadata(pathname: string): PageMetadata {
     case '/supporter/thanks':
         return { title: 'Return to your extension — StreamPulse', description: 'Return to StreamPulse to check your membership after Checkout.', canonicalPath: normalizedPath, robots: 'noindex,nofollow' }
     case '/terms':
-      return { title: 'Terms of Use — StreamPulse', description: 'Terms of use for the StreamPulse website, the StreamPulse Chrome extension and the optional Pulse Supporter subscription.', canonicalPath: normalizedPath, robots: 'index,follow' }
+      return { title: 'Terms of Use — StreamPulse', description: 'Terms of use for the StreamPulse website, the StreamPulse browser extension and the optional Pulse Supporter subscription.', canonicalPath: normalizedPath, robots: 'index,follow' }
     case '/refunds':
       return { title: 'Cancellation and Refunds — StreamPulse', description: 'Manage cancellation, paid access, and refund requests for Pulse Supporter.', canonicalPath: normalizedPath, robots: 'index,follow' }
     case '/support':

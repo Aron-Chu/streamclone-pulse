@@ -101,7 +101,8 @@ describe('frozen Supporter benefit lists', () => {
     const benefits = screen.getByTestId('terms-supporter-benefits')
     expect(Array.from(benefits.querySelectorAll('li')).map(li => li.textContent)).toEqual(PERKS)
     expect(benefits.textContent).toMatch(/^What you get: every Supporter perk the extension gives, the same list\s+as on the Supporter page:/)
-    expect(benefits.textContent).toContain(`${SUPPORTER_PERKS.onlyYou} ${SUPPORTER_PERKS.moved} Nothing else is promised.`)
+    expect(benefits.textContent).toContain(`${SUPPORTER_PERKS.onlyYou} Nothing else is promised.`)
+    expect(benefits.textContent?.trim().endsWith('Nothing else is promised.')).toBe(true)
     const items = Array.from(screen.getByTestId('terms-of-use').querySelectorAll('li')).map(li => li.textContent)
     expect(items).toContain('What you do not get: no public Twitch chat badge — it is not included — and no analytics, coverage or rate-limit changes of any kind.')
   })
@@ -109,6 +110,6 @@ describe('frozen Supporter benefit lists', () => {
   it('pins the shared perk list itself', () => {
     expect(SUPPORTER_PERKS.names).toEqual(['Title paint', 'Tenure crest', 'Emote rain', 'Supporter card'])
     expect(SUPPORTER_PERKS.onlyYou).toBe('Only you see them, in your own StreamPulse extension. Nothing is added to chat, and nobody else sees them.')
-    expect(SUPPORTER_PERKS.moved).toBe('Emote rain, the 7TV header backdrop, was free up to extension 0.2.1. From 0.2.2 it is a Supporter perk, and a backdrop you saved is kept for when you support. No other free feature moved behind Supporter.')
+    expect(SUPPORTER_PERKS).not.toHaveProperty('moved')
   })
 })

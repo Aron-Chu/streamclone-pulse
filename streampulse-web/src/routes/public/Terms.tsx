@@ -3,12 +3,12 @@ import { PublicLayout } from '../../ui/components/PublicLayout'
 import { FEEDBACK_PATH, PRIVACY_PATH, REFUNDS_PATH, SECURITY_REPORT_URL, SUPPORTER_PATH } from '../../lib/externalLinks'
 import { discordInviteUrl } from '../../lib/discord'
 import { PrelaunchNotice } from './PrelaunchNotice'
-import { SUPPORTER_PERKS, SupporterPerkItems, supporterOnlyYou } from '../../ui/components/SupporterPerks'
+import { SupporterPerkItems, supporterOnlyYou } from '../../ui/components/SupporterPerks'
 import { TermsSeenInChatBullets } from '../../ui/components/SupporterChatBadgeCopy'
 import { supporterChatBadgesEnabled } from '../../lib/supporterChatBadgesFlag'
 
 /**
- * Terms of use for the portal, the Chrome extension and the Supporter
+ * Terms of use for the portal, the browser extension and the Supporter
  * subscription. Describes current behaviour only — no clause here promises a
  * feature, entity or process that does not exist.
  */
@@ -29,9 +29,9 @@ export default function Terms() {
           </div>
           <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Terms of Use</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            Last updated: October 9, 2026 · Applies to{' '}
+            Last updated: October 13, 2026 · Applies to{' '}
             <code className="font-mono text-zinc-300">streampulse.stream</code>, the StreamPulse
-            Chrome extension, and the Pulse Supporter subscription.
+            browser extension (Chrome, Brave, Edge and Firefox), and the Pulse Supporter subscription.
           </p>
         </header>
 
@@ -52,7 +52,7 @@ export default function Terms() {
         <p>
           StreamPulse shows Twitch stream activity using minute-level aggregates: chat, emote and
           viewer signals, plus coverage state for live streams and VODs. It is provided through this
-          website and an optional Chrome extension. It is a reporting tool, not a source of truth
+          website and an optional browser extension. It is a reporting tool, not a source of truth
           about any channel, and coverage gaps are reported honestly rather than filled in.
         </p>
         <p>
@@ -122,7 +122,7 @@ export default function Terms() {
             <ul>
               <SupporterPerkItems />
             </ul>
-            {supporterOnlyYou()} {SUPPORTER_PERKS.moved} Nothing else is promised.
+            {supporterOnlyYou()} Nothing else is promised.
           </li>
           {/* Seen in chat copy only once VITE_SUPPORTER_CHAT_BADGES is on (launch day). */}
           {supporterChatBadgesEnabled() ? <TermsSeenInChatBullets /> : (
@@ -215,9 +215,8 @@ export default function Terms() {
         </p>
 
         <h2>Contact</h2>
-        {/* MERGE GATE (memo T1-6): before this page is published, the owner confirms
-            that this mailbox is monitored for billing email, who answers it and the
-            response time. If it is not monitored, replace the address everywhere. */}
+        {/* OWNER CONFIRMED 2026-10-13 (D35): Aron answers billing, cancellation
+            and refund requests within 7 days. Private mailbox routing is ops-owned. */}
         <p data-testid="terms-contact">
           Billing, account and legal questions:{' '}
           <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a>. Product
@@ -228,6 +227,7 @@ export default function Terms() {
           <a href={SECURITY_REPORT_URL} target="_blank" rel="noreferrer noopener">GitHub private vulnerability reporting</a>.
           There is no phone support.
         </p>
+        <p>Aron answers billing, cancellation and refund requests within 7 days.</p>
       </article>
     </PublicLayout>
   )
