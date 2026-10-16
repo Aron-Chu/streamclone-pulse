@@ -5,6 +5,8 @@ import type { ReplayHeatmapPoint } from '../types/heatmap.ts'
 
 export const MOMENTS_INITIAL_VISIBLE = 5
 export const MOMENTS_MAX_VISIBLE = 20
+/** The session page's Moments list, collapsed: the top 3 (Aron 2026-10-15). */
+export const SESSION_MOMENTS_SHOWN = 3
 export const EMOTES_INITIAL_VISIBLE = 3
 
 const MOMENT_DEDUPE_TOLERANCE_SECONDS = 60
@@ -106,6 +108,8 @@ export function useCollapsedList<T>(
     canExpand,
     hiddenCount,
     toggle: () => setExpanded((value) => !value),
+    /** Open or close the list directly (a lock past the collapsed rows opens it). */
+    setExpanded,
   }
 }
 
