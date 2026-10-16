@@ -87,7 +87,7 @@ test('spikes use contrasting symbols and preserve interaction', async ({ extensi
   const marker = extension.page.locator('[data-spike-symbol="diamond"]').first()
   await expect(marker).toBeVisible()
   await expect(marker).toHaveAttribute('fill', '#fbbf24')
-  await expect(marker).toHaveAttribute('stroke', '#111117')
+  await expect(marker).toHaveAttribute('stroke', '#0b0b0f')
   await extension.page.screenshot({ animations: 'disabled', path: info.outputPath('spike-symbols.png') })
   const hit = marker.locator('..')
   await hit.focus()

@@ -12,7 +12,8 @@ export const accentTokens = {
 
 export const theme = {
   bg: '#18181b',
-  bgCanvas: '#111117',
+  /** The options page's black, so the Twitch panel matches full settings. */
+  bgCanvas: '#0b0b0f',
   panel: '#262633',
   panelElevated: '#2a2440',
   panelGlass: 'rgba(17, 17, 23, 0.92)',
@@ -1112,18 +1113,18 @@ export const shadowStyles = `
     align-items: center;
     background: rgba(255, 255, 255, 0.025);
     border: 1px solid ${theme.border};
-    border-radius: 8px;
+    border-radius: 999px;
     color: ${theme.textSecondary};
     display: flex;
-    font-size: 11.5px;
-    font-weight: 600;
+    font-size: 12px;
+    font-weight: 700;
     gap: 6px;
     justify-content: center;
     min-height: 34px;
     padding: 7px 6px;
     transition: background 120ms ease, border-color 120ms ease, color 120ms ease, transform 120ms ease;
   }
-  .pulse-placement-choice { flex-direction: column; gap: 5px; position: relative; padding: 9px 4px 8px; }
+  .pulse-placement-choice { border-radius: 12px; flex-direction: column; gap: 5px; position: relative; padding: 9px 4px 8px; }
   .pulse-placement-choice .pulse-choice-check { position: absolute; right: 6px; top: 5px; }
   .pulse-accent-choice:hover,.pulse-placement-choice:hover,.pulse-density-choice:hover,.pulse-look-choice:hover{transform:translateY(-1px)}
   .pulse-look-choice { padding: 7px 2px; }
@@ -1131,10 +1132,15 @@ export const shadowStyles = `
   .pulse-placement-choice-active,
   .pulse-density-choice-active,
   .pulse-look-choice-active {
-    background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.13);
-    border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.46);
-    color: var(--pulse-accent-ink, #ddd6fe);
+    background: ${theme.panelElevated};
+    border-color: ${theme.accentSoft};
+    box-shadow: inset 0 0 0 1px rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.14);
+    color: ${theme.textPrimary};
   }
+  .pulse-accent-choice:not(.pulse-accent-choice-active):hover,
+  .pulse-placement-choice:not(.pulse-placement-choice-active):hover,
+  .pulse-density-choice:not(.pulse-density-choice-active):hover,
+  .pulse-look-choice:not(.pulse-look-choice-active):hover { border-color: ${theme.accentSoft}; color: ${theme.textPrimary}; }
   .pulse-accent-swatch {
     border-radius: 999px;
     flex: none;
