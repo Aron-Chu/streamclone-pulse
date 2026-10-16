@@ -12,9 +12,15 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const pulseRoot = resolve(__dirname, '..')
 const pulseRootId = pulseRoot.replace(/\\/g, '/').toLowerCase()
 
-/** Module id with the checkout path removed, so chunk rules never match the folder name. */
+/**
+ * Module id with the folders above it removed, so chunk rules never match a folder name.
+ * Packages keep only their path from node_modules/ on, which also covers node_modules
+ * linked in from another checkout.
+ */
 function repoRelativeId(id: string): string {
   const norm = id.replace(/\\/g, '/')
+  const packageAt = norm.lastIndexOf('/node_modules/')
+  if (packageAt >= 0) return norm.slice(packageAt)
   return norm.toLowerCase().startsWith(pulseRootId) ? norm.slice(pulseRootId.length) : norm
 }
 
