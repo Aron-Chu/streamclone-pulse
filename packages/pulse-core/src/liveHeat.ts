@@ -72,6 +72,8 @@ export interface LiveHeatPoint {
   refinementStatus?: string
   refinementConfidence?: number
   reactionScoringVersion?: string
+  /** Backend stream-edge flag ("opening" / "closing"); see isStreamEdgeMoment. */
+  streamEdge?: string
   estimated: boolean
   reason: LiveHeatReason
   reasonLabel: string

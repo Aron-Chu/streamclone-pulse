@@ -1,4 +1,4 @@
-import { reactionAnalyticalOffset } from '@streampulse/pulse-core'
+import { compareStreamEdgeLast, reactionAnalyticalOffset } from '@streampulse/pulse-core'
 import type { ExtensionPeak } from '../shared/messages.ts'
 
 export const MAX_CHART_MOMENT_MARKERS = 12
@@ -113,7 +113,8 @@ export function selectVisibleChartMomentPeaks(
   const inView = peaks
     .filter(peak => Number.isFinite(peak.offsetSeconds) && Number.isFinite(peak.score))
     .sort((left, right) => (
-      momentScore(right) - momentScore(left)
+      compareStreamEdgeLast(left, right)
+      || momentScore(right) - momentScore(left)
       || left.offsetSeconds - right.offsetSeconds
     ))
     .filter(peak => {

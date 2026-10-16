@@ -30,6 +30,16 @@ describe('chart moment marker selection', () => {
     expect(selection.visible[0]?.offsetSeconds).toBe(540)
   })
 
+  it('ranks stream-edge peaks after the rest before capping', () => {
+    const selection = selectVisibleChartMomentPeaks([
+      { ...peak(100, 99), streamEdge: 'opening' },
+      peak(500, 10),
+      peak(700, 8),
+    ], 0, 800, 2)
+
+    expect(selection.visible.map(item => item.offsetSeconds)).toEqual([500, 700])
+  })
+
   it('keeps ranked ordering inside the visible window', () => {
     const selection = selectVisibleChartMomentPeaks([
       peak(1_000, 4),
