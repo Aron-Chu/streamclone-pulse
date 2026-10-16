@@ -1,4 +1,4 @@
-import { mergeRecapMoments as mergeRecapMomentsCore, peaksToLiveHeatPoints } from '@streampulse/pulse-core'
+import { compareStreamEdgeLast, mergeRecapMoments as mergeRecapMomentsCore, peaksToLiveHeatPoints } from '@streampulse/pulse-core'
 import type { LiveHeatPoint, LiveHeatReason } from '@streampulse/pulse-core'
 import type {
   ExtensionEmote,
@@ -146,12 +146,12 @@ export function resolveRecapChartPeakOffsets(
 ): number[] {
   if (topMoments && topMoments.length > 0) {
     return [...topMoments]
-      .sort((a, b) => b.score - a.score)
+      .sort((a, b) => compareStreamEdgeLast(a, b) || b.score - a.score)
       .slice(0, limit)
       .map(moment => moment.offsetSeconds)
   }
   return [...(peaks ?? [])]
-    .sort((a, b) => b.score - a.score)
+    .sort((a, b) => compareStreamEdgeLast(a, b) || b.score - a.score)
     .slice(0, limit)
     .map(peak => peak.offsetSeconds)
 }

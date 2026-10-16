@@ -114,6 +114,22 @@ describe('popup channel summary', () => {
     expect(summary.biggest).toEqual({ label: 'Peak chat', offsetSeconds: 101 * 60 + 50, agoSeconds: 18 * 60 + 10 })
   })
 
+  it('ranks peaks by reaction score and puts hello / goodbye spam last', () => {
+    const summary = summarizeChannel('fixturechan', livePayload({
+      peaks: [
+        { offsetSeconds: 2 * 60, score: 95, reactionScore: 95, reasons: [], dominantSignal: 'chat', reasonLabel: 'Chat spike', streamEdge: 'opening' },
+        { offsetSeconds: 40 * 60, score: 50, compositeScore: 99, reactionScore: 50, reasons: [], dominantSignal: 'chat', reasonLabel: 'Viewer surge' },
+        { offsetSeconds: 60 * 60, score: 80, compositeScore: 60, reactionScore: 80, reasons: [], dominantSignal: 'chat', reasonLabel: 'Peak chat' },
+      ],
+    }), null, NOW)
+    expect(summary.biggest?.offsetSeconds).toBe(60 * 60)
+
+    const onlyEdges = summarizeChannel('fixturechan', livePayload({
+      peaks: [{ offsetSeconds: 2 * 60, score: 95, reasons: [], dominantSignal: 'chat', streamEdge: 'opening' }],
+    }), null, NOW)
+    expect(onlyEdges.biggest?.offsetSeconds).toBe(2 * 60)
+  })
+
   it('summarises a finished stream across its whole length', () => {
     const rollups = Array.from({ length: 96 }, (_, minute) => rollup(minute, minute % 2 ? 10 : 30))
     const summary = summarizeChannel('fixturechan', livePayload({

@@ -317,6 +317,13 @@ describe('sortLiveHeatPoints', () => {
     expect(authoritativeReactionScore({ ...chatSpike, reactionScore: 14 })).toBe(14)
     expect(authoritativeReactionScore({ ...emoteSpike, compositeScore: 27 })).toBe(27)
   })
+
+  it('keeps stream-edge moments last in reaction mode only', () => {
+    const goodbye = { ...chatSpike, offsetSeconds: 9_000, score: 90, chatCount: 900, streamEdge: 'closing' }
+    expect(sortLiveHeatPoints([goodbye, chatSpike, emoteSpike], 'reaction').map(point => point.offsetSeconds))
+      .toEqual([120, 240, 9_000])
+    expect(sortLiveHeatPoints([chatSpike, goodbye], 'chat')[0]?.offsetSeconds).toBe(9_000)
+  })
 })
 
 describe('exact moment identity', () => {
