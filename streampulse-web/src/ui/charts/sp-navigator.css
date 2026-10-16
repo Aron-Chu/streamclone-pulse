@@ -1,0 +1,390 @@
+/*
+ * d3 chart navigator: ChartNavigator with variant="d3" (root classes
+ * `hx-chart-navigator spc-nav`, data-chart-navigator-variant="d3").
+ *
+ * Values are the approved d3-v2 design (design-demos/d3-v2 chart.js renderNav
+ * and shared.css .ch-nav*): a 30px track with the activity silhouette in its
+ * top 22px, a 6px grey rail at y 22-28, the purple window (12% tint over the
+ * silhouette, solid 6px bar on the rail) with 3x18 grips, then one control row
+ * of readout, hint and - / + / Reset / Scroll zoom.
+ *
+ * Every rule is scoped to the d3 root, whose three-part selector outranks the
+ * hub (hub.css, hub-public-audit.css) and session (analytics-tailwind.css)
+ * navigator rules, so the default navigator keeps its look and this file is
+ * the only styling of the d3 one. Hosts import this file next to the chart.
+ */
+
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] {
+  --spc-nav-text-1: var(--sp-text-1, #ededef);
+  --spc-nav-text-2: var(--sp-text-2, #b4b4bb);
+  --spc-nav-text-3: var(--sp-text-3, #8e8e96);
+  --spc-nav-raised: var(--sp-raised, #151517);
+  --spc-nav-accent: var(--sp-accent, #5eead4);
+  --spc-nav-focus: var(--sp-focus, #99f6e4);
+  --spc-nav-radius: var(--sp-r, 8px);
+  --spc-nav-purple: #bf78e2;
+  --spc-nav-window-tint: rgb(191 120 226 / 0.12);
+  --spc-nav-rail: #272728;
+  /* The silhouette's band inside the track (ChartNavigator reads these). */
+  --spc-nav-overview-top: 0px;
+  --spc-nav-overview-height: 22px;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  margin-top: 6px;
+  padding: 0;
+  color: var(--spc-nav-text-2);
+  font-size: var(--sp-fs-body, 14px);
+  line-height: 20px;
+  /* The design's figures are tabular everywhere (shared.css body); the readout counts too. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- track ---------- */
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__bar {
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__track-shell {
+  position: relative;
+  height: 30px;
+  min-width: 0;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__track {
+  position: relative;
+  height: 30px;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  cursor: auto;
+  touch-action: none;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__track::before {
+  content: none;
+  display: none;
+}
+/* The grey rail: a 6px line at y 25 with round caps (they reach 3px past each end). */
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__track-fill {
+  position: absolute;
+  inset-inline: -3px;
+  top: 22px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--spc-nav-rail);
+  transform: none;
+  pointer-events: none;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__overview {
+  display: block;
+}
+/* The window: tint over the silhouette (y 0-22), the solid bar on the rail (y 22-28). */
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__window {
+  position: absolute;
+  top: 0;
+  height: 28px;
+  min-width: 2px;
+  border: 0;
+  background: linear-gradient(to bottom, var(--spc-nav-window-tint) 0 22px, transparent 22px);
+  cursor: grab;
+  touch-action: none;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__window::before {
+  content: '';
+  position: absolute;
+  inset-inline: 0 auto;
+  top: 22px;
+  width: 100%;
+  min-width: 4px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--spc-nav-purple);
+  box-shadow: none;
+  transform: none;
+  pointer-events: none;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'].is-full-range .hx-chart-navigator__window {
+  cursor: grab;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'].is-dragging .hx-chart-navigator__window {
+  cursor: grabbing;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'].is-dragging .hx-chart-navigator__window::before {
+  background: var(--spc-nav-purple);
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .spc-nav__grip {
+  position: absolute;
+  top: 4px;
+  width: 3px;
+  height: 18px;
+  margin-left: -1.5px;
+  border-radius: 1.5px;
+  background: var(--spc-nav-purple);
+  pointer-events: none;
+}
+
+/* Handles: 44x44 hit areas centred on the track (y -7 to 37), as the design's grip targets. */
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__handles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__handle {
+  position: absolute;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: transparent;
+  font-size: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  outline: none;
+  transform: translate(-50%, -50%);
+  cursor: ew-resize;
+  pointer-events: auto;
+  touch-action: none;
+}
+/* No hover mark (the grips are always drawn); keyboard focus rings the grip. */
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__handles .hx-chart-navigator__handle::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 9px;
+  bottom: auto;
+  width: 9px;
+  height: 22px;
+  border-radius: 4px;
+  background: transparent;
+  box-shadow: none;
+  filter: none;
+  outline: 2px solid var(--spc-nav-focus);
+  outline-offset: 0;
+  opacity: 0;
+  transform: translateX(-50%);
+  transition: none;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__handles .hx-chart-navigator__handle:focus-visible::after {
+  opacity: 1;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__range {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------- control row ---------- */
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  min-height: 36px;
+  margin-top: 2px;
+}
+/* One line, never clipped (as the design's .ch-navread: nowrap, sized to its text). */
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__readout {
+  display: block;
+  flex: 0 0 auto;
+  min-width: auto;
+  max-width: none;
+  overflow: visible;
+  white-space: nowrap;
+  color: var(--spc-nav-text-2);
+  font-size: inherit;
+  line-height: 20px;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__readout strong {
+  color: inherit;
+  font-weight: 400;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__time-range {
+  display: none;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__bucket-count {
+  font-size: inherit;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__actions .hx-chart-navigator__hint {
+  display: inline;
+  margin: 0;
+  color: var(--spc-nav-text-3);
+  font-size: var(--sp-fs-label, 12px);
+  line-height: 20px;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__toolbar {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 2px;
+  width: auto;
+  margin-left: auto;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__zoom-buttons {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: auto;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__toolbar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: none;
+  min-width: 0;
+  min-height: 0;
+  height: 32px;
+  margin: 0;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--spc-nav-radius);
+  background: transparent;
+  color: var(--spc-nav-text-2);
+  font: inherit;
+  font-size: var(--sp-fs-body, 14px);
+  font-weight: 500;
+  line-height: 20px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__toolbar button svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.75;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__toolbar .spc-nav__icon-button {
+  width: 32px;
+  padding: 0;
+  font-weight: 400;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__toolbar .spc-nav__icon-button svg {
+  width: 18px;
+  height: 18px;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__toolbar button:hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--spc-nav-raised);
+  color: var(--spc-nav-text-1);
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__toolbar button:focus-visible {
+  outline: 2px solid var(--spc-nav-focus);
+  outline-offset: 2px;
+}
+/* Only the Scroll zoom toggle can be disabled (a chart of two points or fewer); - / + / Reset use aria-disabled and keep their look. */
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__toolbar button:disabled {
+  opacity: 0.4;
+  background: none;
+  cursor: default;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__toolbar .hx-chart-navigator__scroll-toggle {
+  margin-left: 6px;
+  border: 0;
+  background: transparent;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__toolbar .hx-chart-navigator__scroll-toggle[aria-pressed='true'] {
+  color: var(--spc-nav-text-1);
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__scroll-state {
+  color: var(--spc-nav-accent);
+  font-size: inherit;
+  font-weight: inherit;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__scroll-toggle[aria-pressed='false'] .hx-chart-navigator__scroll-state {
+  color: var(--spc-nav-text-3);
+}
+
+/* ---------- session (i) (infoDisclosure; d3-v2 session-original C21, 2026-10-14/15) ----------
+   The hint and Scroll zoom move into a toggletip at the row's end (the
+   design's .info + .pop + .po-zt); Reset keeps its place but hides while the
+   whole range shows (.at-full [data-clutter-at="full-range"]). */
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__toolbar .spc-nav__reset {
+  transition: none;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'].is-full-range .hx-chart-navigator__toolbar .spc-nav__reset {
+  visibility: hidden;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .spc-nav__info {
+  position: relative;
+  display: inline-flex;
+  /* 8 px in the mockup, less the 2 px the 24 px box adds per side */
+  margin-left: 6px;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__toolbar .spc-nav__info-button {
+  /* the mockup's 20 px box grows to 24 px for the 24 px drawn-target floor
+     (audit-session-closure); the glyph stays 15 px, so it looks the same */
+  position: relative;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 50%;
+  color: var(--spc-nav-text-3);
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__toolbar .spc-nav__info-button::after {
+  content: '';
+  position: absolute;
+  inset: -10px;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__toolbar .spc-nav__info-button:hover,
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__toolbar .spc-nav__info-button[aria-expanded='true'] {
+  background: transparent;
+  color: var(--spc-nav-text-1);
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__toolbar .spc-nav__info-button svg {
+  width: 15px;
+  height: 15px;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .spc-nav__pop {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 60;
+  width: max-content;
+  max-width: min(340px, calc(100vw - 32px));
+  padding: 8px 10px;
+  border: 1px solid var(--sp-line-strong, #272728);
+  border-radius: var(--spc-nav-radius);
+  background: var(--sp-popover, #18181b);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
+  color: var(--spc-nav-text-1);
+  font-size: var(--sp-fs-label, 12px);
+  line-height: 16px;
+  white-space: normal;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .spc-nav__pop[hidden] {
+  display: none;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .spc-nav__pop .hx-chart-navigator__hint {
+  display: block;
+  margin: 0;
+  color: var(--spc-nav-text-1);
+  font-size: inherit;
+  line-height: inherit;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__toolbar .spc-nav__pop .hx-chart-navigator__scroll-toggle {
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  height: auto;
+  min-height: 32px;
+  margin: 8px 0 0;
+  padding: 0 8px;
+  border: 1px solid var(--sp-line-strong, #272728);
+  border-radius: 6px;
+  color: var(--spc-nav-text-1);
+  font-size: inherit;
+}
