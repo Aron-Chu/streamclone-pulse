@@ -516,7 +516,7 @@ export function GamesPlayedStrip({
                     <GameArt gameName={segment.gameName} boxArtUrl={segment.boxArtUrl} categoryId={segment.categoryId} />
                   </button>
                   {headerless ? (
-                    <span className="whitespace-nowrap text-[11px] font-semibold leading-[14px] tabular-nums text-zinc-500" aria-hidden="true" data-games-played-run-time>
+                    <span className="whitespace-nowrap text-xs font-semibold leading-[14px] tabular-nums text-zinc-500" aria-hidden="true" data-games-played-run-time>
                       {formatRunTime(slot.visibleEnd - slot.visibleStart)}
                     </span>
                   ) : null}
