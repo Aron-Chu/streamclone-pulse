@@ -45,4 +45,30 @@ describe('StreamSidebar collapse breakpoint', () => {
     fireEvent.click(toggle)
     expect(container.querySelectorAll('.hidden.xl\\:block')).toHaveLength(0)
   })
+
+  it('d3-v2 session page: no live row when switched off, the current row marked and kept in view while collapsed', () => {
+    const props = {
+      login: 'xqc',
+      streams,
+      isLiveView: false,
+      activeID: '205',
+      buildSessionPath: (login: string, id: string) => `/analytics/${login}/${id}`,
+      buildChannelPath: (login: string) => `/analytics/${login}`,
+    }
+    const { container, rerender } = render(<MemoryRouter><StreamSidebar {...props} /></MemoryRouter>)
+    // Default for package consumers: prod's live row stays.
+    expect(container.querySelector('[data-live-current-row]')).not.toBeNull()
+    rerender(<MemoryRouter><StreamSidebar {...props} showLiveRow={false} /></MemoryRouter>)
+    expect(container.querySelector('[data-live-current-row]')).toBeNull()
+    expect(screen.queryByText('Latest indexed session')).toBeNull()
+    const current = container.querySelector<HTMLElement>('[aria-current="page"]')!
+    expect(current.getAttribute('href')).toBe('/analytics/xqc/205')
+    expect(current.className.split(' ')).not.toContain('hidden')
+    // The list box and its scroller carry the hooks the page CSS sizes from 1280 px.
+    expect(container.querySelector('.ssp-sl[data-stream-list] > .ssp-sl-sc')).not.toBeNull()
+    // "Show all" sits under the scroller, not inside it.
+    const toggle = screen.getByRole('button', { name: 'Show all 6 streams' })
+    expect(toggle.closest('.ssp-sl-sc')).toBeNull()
+    expect(toggle.className.split(' ')).toContain('ssp-sl-more')
+  })
 })

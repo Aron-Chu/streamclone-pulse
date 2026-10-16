@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type SyntheticEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type SyntheticEvent, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   mergeRecapMoments,
   momentScoreReasonLabel,
   reactionAnalyticalOffset,
+  recapMomentAnalyticalOffset,
   sanitizeReactionMoment,
 } from '@streampulse/pulse-core'
-import AnalyticsChart, { type AnalyticsViewMode } from './analytics/AnalyticsChart.tsx'
+import AnalyticsChart, { type AnalyticsViewMode, type SessionChartBarLock } from './analytics/AnalyticsChart.tsx'
 import {
   getAnalyticsLive,
   getAnalyticsStream,
@@ -27,6 +28,7 @@ import type { AnalyticsStream, AnalyticsStreamDetail, SyncStatus } from '../apiT
 import type { HeatmapResponse } from '../types/heatmap.ts'
 import { useAnalyticsLive } from '../hooks/useAnalyticsLive.ts'
 import { syncCtaLabel } from '../utils/syncLabel.ts'
+import { SESSION_MOMENTS_SHOWN } from '../utils/momentListDisplay.tsx'
 import { findNearestRollupByOffset, parseDeepLinkOffset, rollupOffsetSeconds } from '../utils/momentSelection.ts'
 import {
   findNearestHeatmapPoint,
@@ -60,13 +62,13 @@ import {
   resolveChartEmoteKeys,
   toggleEmotePlotSelection,
 } from '../utils/emotePlotSelection.ts'
-import { count, displayStreamTitle, duration, durationFromDetail, getLocalDateString, streamStateLabel } from '../utils/consoleFormat.ts'
+import { count, displayStreamTitle, duration, durationFromDetail, getLocalDateString } from '../utils/consoleFormat.ts'
 import { deriveChartGameSegments, gameNameAtOffset } from '../utils/gameSegmentChart.ts'
-import { DataQualityDisclosure, StatCard, CoverageStartBanner } from './analytics/ConsoleBits.tsx'
+import { CoverageStartMetaItem, DataQualityButton, StatCard } from './analytics/ConsoleBits.tsx'
 import { StreamSidebar } from './analytics/StreamSidebar.tsx'
 import { TopEmoteTable } from './analytics/TopEmoteTable.tsx'
 import { MomentReviewPanel } from './analytics/MomentReviewPanel.tsx'
-import { PastBroadcastBanner } from './analytics/PastBroadcastBanner.tsx'
+import { SessionLifecycleMeta } from './analytics/PastBroadcastBanner.tsx'
 import { RelativeTimeText } from './analytics/RelativeTimeText.tsx'
 import { SessionRecapMomentsStrip } from './analytics/SessionRecapMomentsStrip.tsx'
 import { SelectedMomentCompactCard } from './analytics/SelectedMomentCompactCard.tsx'
@@ -80,10 +82,19 @@ import { isTerminalSyncPhase, pollSyncUntilDone } from '../utils/syncPolling.ts'
 import { buildSessionSignals } from '../signals/buildSessionSignals.ts'
 import { SessionSignalTape } from './signals/SessionSignalTape.tsx'
 import { AnalyticsConsoleDataSkeleton } from './AnalyticsConsoleDataSkeleton.tsx'
+import { SessionInfoToggletip } from './analytics/SessionInfoToggletip.tsx'
+import { useSessionColumnFill } from '../hooks/useSessionColumnFill.ts'
+import { sessionStripMoments, stripHasReactionCoverage } from '../utils/sessionStripMoments.ts'
+import { bestMomentInSpan, momentsInBar } from '../utils/sessionBarStrip.ts'
+import { SESSION_OWNER_SWITCHES } from '../sessionOwnerSwitches.ts'
 // Signal tape styles ship as `@streampulse/analytics-console/session-signal-tape.css`:
 // package modules stay CSS-free so plain Node ESM consumers can import them.
 
 type RightPanelTab = 'moments' | 'emotes' | 'status'
+const RIGHT_PANEL_TABS: readonly RightPanelTab[] = ['moments', 'emotes', 'status']
+
+/** d3-v2 session-original: the Moments explainer, behind the (i) beside the tabs. */
+const MOMENTS_TIP = 'Ranked by how strongly chat reacted, not by clip quality.'
 
 interface HistoryStreamItem {
   streamId?: string
@@ -888,8 +899,6 @@ export function AnalyticsConsole({
     && !channelIsLive
     && !isActiveLiveCollector
   const streamVodId =resolveAnalyticsVodId(detail, recapForStream?.vodId) ?? fallbackVodId
-  const hasVerifiedVodAlignment = typeof detail?.vodAlignSeconds === 'number'
-    && Number.isFinite(detail.vodAlignSeconds)
   const vodLinkState = useMemo(
     () =>
       resolveVodLinkState({
@@ -903,18 +912,6 @@ export function AnalyticsConsole({
   )
   // Tiles and totals read every measured minute; `rollups` is the chart's downsampled series.
   const measuredRollups = detail?.momentRollups?.length ? detail.momentRollups : detail?.rollups
-  const rollupCount = detail?.timelineMinutes ?? measuredRollups?.length ?? 0
-  const isLongStreamChart = rollupCount >= 360
-
-  const headerState = detail?.stream?.lifecycleState === 'unknown'
-    ? 'unknown'
-    : channelIsLive || isActiveLiveCollector || sessionIsLive
-    ? 'live'
-    : isHistoricalRoute
-      ? detail?.state && detail.state !== 'live'
-        ? detail.state
-        : 'historical'
-      : detail?.state || (detailQuery.isLoading ? 'loading' : 'not_collected')
 
   const headerStats = useMemo(() => {
     const rollups = measuredRollups ?? []
@@ -1185,6 +1182,83 @@ export function AnalyticsConsole({
 
   const activeSyncStatus = liveSyncStatus ?? syncQuery.data ?? null
 
+  // d3-v2 session-original column fill (useSessionColumnFill): from 1280 px,
+  // with Moments open, the chart grows when the top moment rows run past it.
+  // The list shows the top three (Aron 2026-10-15), so it never adds rows.
+  const centerColumnRef = useRef<HTMLElement | null>(null)
+  const rightColumnRef = useRef<HTMLElement | null>(null)
+  const momentsPanelRef = useRef<HTMLDivElement | null>(null)
+  // The Moments list's ranking (pin N is row N): also what a chart bar locks (F23).
+  const stripMoments = useMemo(() => {
+    if (!recapMomentsAvailable || !recapForStream) return []
+    return sessionStripMoments({
+      recap: recapForStream,
+      hasReactionCoverage: stripHasReactionCoverage(recapForStream),
+      heatmapPoints,
+      streamStartedAt: stream?.startedAt,
+      topEmotesCatalog: detailForRender?.topEmotes,
+    })
+  }, [recapMomentsAvailable, recapForStream, heatmapPoints, stream?.startedAt, detailForRender?.topEmotes])
+  const stripMomentCount = stripMoments.length
+  // Expand adds its own height on top: the fill holds while it is on (fitMoments).
+  const [chartExpanded, setChartExpanded] = useState(false)
+  const columnFill = useSessionColumnFill(
+    { center: centerColumnRef, right: rightColumnRef, momentsPanel: momentsPanelRef },
+    {
+      enabled: !chartFocused && !channelNotRecorded && stripMomentCount > 0,
+      hold: rightPanelTab !== 'moments' || chartExpanded,
+      totalMoments: stripMomentCount,
+      growChart: true,
+      padAllowed: SESSION_OWNER_SWITCHES.columnFillPad,
+      maxRows: SESSION_MOMENTS_SHOWN,
+      revision: `${canonicalStreamId || targetQueryStreamId}:${streamsVisible ? 1 : 0}`,
+    },
+  )
+
+  // F23: a chart bar locks the best ranked moment it holds; the strip lists the bar's moments with their rank.
+  const streamStartMs = stream?.startedAt ? Date.parse(stream.startedAt) : Number.NaN
+  const barSecondsSpan = useCallback(
+    (span: { startMs: number; endMs: number }) => ({
+      startSec: (span.startMs - streamStartMs) / 1000,
+      endSec: (span.endMs - streamStartMs) / 1000,
+    }),
+    [streamStartMs],
+  )
+  const momentOffsetInBar = useCallback(
+    (span: { startMs: number; endMs: number }) => {
+      if (!Number.isFinite(streamStartMs) || !stripMoments.length) return null
+      const best = bestMomentInSpan(stripMoments, barSecondsSpan(span))
+      return best ? recapMomentAnalyticalOffset(best) : null
+    },
+    [barSecondsSpan, streamStartMs, stripMoments],
+  )
+  // A Moments row or pin selects at the moment's own offset; a table or chart minute doesn't.
+  const selectionIsMoment = selectedAnchorOffsetSeconds != null
+    && stripMoments.some(moment => recapMomentAnalyticalOffset(moment) === selectedAnchorOffsetSeconds)
+  // The strip's "N more": the Moments tab with the list open past the collapsed rows.
+  const handleShowMoreMoments = useCallback(() => {
+    handleRightPanelTab('moments')
+    requestAnimationFrame(() => {
+      const more = momentsPanelRef.current?.querySelector<HTMLButtonElement>('[data-moment-list-more][aria-expanded="false"]')
+      more?.click()
+    })
+  }, [handleRightPanelTab])
+
+  // "Data: <label>" in the meta line opens the Status tab (inside the Session
+  // details fold while the chart is focused) and moves focus to it.
+  const handleOpenStatusTab = useCallback(() => {
+    const column = rightColumnRef.current
+    if (column && column.tagName === 'DETAILS') (column as HTMLDetailsElement).open = true
+    handleRightPanelTab('status')
+    requestAnimationFrame(() => {
+      const tab = document.getElementById('session-tab-status')
+      if (!tab) return
+      const calm = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      tab.closest('[data-session-details-tabs]')?.scrollIntoView?.({ block: 'nearest', behavior: calm ? 'auto' : 'smooth' })
+      tab.focus({ preventScroll: true })
+    })
+  }, [handleRightPanelTab])
+
   if (!channelLogin) {
     return (
       <section className="analytics-console" aria-label="StreamPulse analytics">
@@ -1192,6 +1266,8 @@ export function AnalyticsConsole({
       </section>
     )
   }
+
+  const sessionContentReady = !sessionResolving && !effectiveSessionNotFound && !(detailQuery.isLoading && !detail)
 
   const headerTitle = channelNotRecorded
     ? channelLogin
@@ -1213,17 +1289,17 @@ export function AnalyticsConsole({
   const consoleGridClassName = chartFocused
     ? 'grid grid-cols-1 gap-4'
     : streamsVisible
-      ? 'grid grid-cols-1 gap-4 xl:grid-cols-[240px_minmax(0,1fr)_340px] 2xl:grid-cols-[260px_minmax(0,1fr)_380px]'
-      : 'grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_380px]'
+      ? 'grid grid-cols-1 gap-4 xl:grid-cols-[240px_minmax(0,1fr)_340px] 2xl:grid-cols-[260px_minmax(0,1fr)_380px] xl:items-start'
+      : 'grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_380px] xl:items-start'
   const centerColumnClassName = chartFocused
     ? 'order-1 min-w-0'
     : 'order-1 min-w-0 xl:order-2'
   const streamColumnClassName = chartFocused
     ? 'order-2 min-w-0 w-full'
-    : 'order-3 min-w-0 w-full xl:order-1 xl:w-auto'
+    : 'order-3 min-w-0 w-full xl:order-1 xl:w-auto xl:self-stretch'
   const rightColumnClassName = chartFocused
     ? 'order-3 w-full min-w-0 space-y-3'
-    : 'order-2 flex w-full min-w-0 flex-col gap-3 xl:order-3 xl:w-auto'
+    : 'order-2 flex w-full min-w-0 flex-col gap-3 xl:order-3 xl:w-auto xl:self-stretch'
   const StreamColumn = chartFocused ? 'details' : 'aside'
   const RightColumn = chartFocused ? 'details' : 'aside'
 
@@ -1237,101 +1313,115 @@ export function AnalyticsConsole({
       data-shell-nested={shellNested ? 'true' : 'false'}
     >
       <div className="flex w-full flex-col gap-4">
-        <header data-session-header className="flex flex-col gap-3 border-b border-white/[0.07] pb-4 lg:flex-row lg:items-start lg:justify-between">
+        <header data-session-header className="ssp-head flex flex-col gap-3 border-b border-white/[0.07] pb-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 flex-1">
-            <div data-session-header-badges className="flex flex-wrap items-center gap-2 text-xs font-black uppercase text-zinc-500">
-              <Link to="/analytics" className="rounded bg-white/10 px-2 py-1 text-zinc-200 transition hover:bg-white/15">
-                Analytics hub
-              </Link>
-              <Link
-                to={buildChannelPath(channelLogin)}
-                className="rounded bg-violet-400/15 px-2 py-1 text-violet-100 transition hover:bg-violet-400/25"
-              >
-                {channelLogin}
-              </Link>
-              {channelNotRecorded ? null : <>
-              <span
-                className={`rounded px-2 py-1 ${
-                  headerState === 'live'
-                    ? 'bg-red-500/15 text-red-100'
-                    : headerState === 'syncing'
-                      ? 'bg-violet-500/15 text-violet-100'
-                      : headerState === 'historical'
-                        ? 'bg-cyan-500/10 text-cyan-100'
-                        : 'bg-white/10 text-zinc-300'
-                }`}
-              >
-                {sessionLoadFailed
-                  ? 'unavailable'
-                  : streamStateLabel(
-                      (sessionNotFound ? 'not found' : headerState) as AnalyticsStreamDetail['state'] | 'not found' | 'loading',
-                      isHistoricalRoute,
-                    )}
-              </span>
-              {mode === 'public' ? (
-                <DataQualityDisclosure
-                  detail={detail}
-                  summaryMetrics={summaryQuery.data?.metrics}
-                  pending={!detail && (detailQuery.isLoading || sessionResolving || sessionLoadFailed)}
-                />
-              ) : null}
-              </>}
-            </div>
-            <h1
-              className="mt-3 truncate text-2xl font-black leading-tight text-white lg:text-3xl"
-              title={headerTitle}
-            >
+            {/* d3-v2 session-original: no badge row; the hub and channel links are
+                the page's breadcrumb, the live state and data quality are meta items. */}
+            <h1 className="ssp-h1 line-clamp-2 text-2xl font-black leading-[1.08] text-white [overflow-wrap:anywhere] lg:text-[32px]" title={headerTitle}>
               {headerTitle}
             </h1>
-            {channelNotRecorded ? null : <div className="mt-2 flex flex-wrap gap-2 text-sm font-bold text-zinc-500">
-              {stream?.displayName ? <span>{stream.displayName}</span> : null}
-              {stream?.category ? <span>{stream.category}</span> : null}
-              {stream?.startedAt ? <span><RelativeTimeText prefix="Started" value={stream.startedAt} /></span> : null}
-              <span>
-                {lastRefreshedAt
-                  ? <RelativeTimeText prefix="Refreshed" value={lastRefreshedAt} />
-                  : <RelativeTimeText prefix="Updated" value={detail?.updatedAt || undefined} />}
-              </span>
-            </div>}
+            {channelNotRecorded ? null : (
+              <div className="ssp-meta-w" data-session-meta>
+                <div className="ssp-meta">
+                  {stream?.displayName ? <span className="mi">{stream.displayName}</span> : null}
+                  {stream?.category ? <span className="mi">{stream.category}</span> : null}
+                  <SessionLifecycleMeta
+                    isLiveRoute={isLiveRoute}
+                    isActiveLiveCollector={isActiveLiveCollector}
+                    stream={stream}
+                    syncing={syncing}
+                    hasChartData={
+                      (detail?.rollups ?? []).some(rollupHasMinuteData)
+                      || rollupsHaveViewerData(detail?.rollups ?? [])
+                    }
+                    hasVodLink={Boolean(streamVodId)}
+                    sessionStreamId={targetQueryStreamId}
+                    channelLogin={channelLogin}
+                    buildSessionPath={buildSessionPath}
+                  />
+                  <span className="mi" data-session-updated>
+                    {lastRefreshedAt
+                      ? <RelativeTimeText prefix="Refreshed" value={lastRefreshedAt} />
+                      : <RelativeTimeText prefix="Updated" value={detail?.updatedAt || undefined} />}
+                    <button
+                      type="button"
+                      className="ssp-rf"
+                      onClick={() => void handleRefresh()}
+                      disabled={refreshing}
+                      aria-busy={refreshing || undefined}
+                      aria-label="Refresh data"
+                      title="Reload chart and stats from server (does not start a sync job)"
+                      data-session-refresh
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+                        <path d="M21 3v5h-5" />
+                        <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+                        <path d="M8 16H3v5" />
+                      </svg>
+                    </button>
+                  </span>
+                  {sessionContentReady ? (
+                    <CoverageStartMetaItem
+                      offsetSeconds={detail?.coverageStartOffsetSeconds}
+                      missingRanges={detail?.availability?.missingRanges}
+                      message={detail?.availability?.coverageMessage}
+                    />
+                  ) : null}
+                  {streamVodId ? (
+                    <span className="mi">
+                      <a
+                        href={buildTwitchVodUrl(streamVodId)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        data-session-watch-vod
+                      >
+                        Watch VOD
+                      </a>
+                    </span>
+                  ) : null}
+                  {mode === 'public' ? (
+                    <span className="mi">
+                      <DataQualityButton
+                        detail={detail}
+                        summaryMetrics={summaryQuery.data?.metrics}
+                        pending={!detail && (detailQuery.isLoading || sessionResolving || sessionLoadFailed)}
+                        onOpen={handleOpenStatusTab}
+                      />
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            )}
           </div>
-          {channelNotRecorded ? null : <div data-session-header-actions className="flex shrink-0 flex-wrap items-center gap-2">
-            {enableLayoutControls ? (
-              <>
-                <button
-                  type="button"
-                  aria-expanded={streamsVisible}
-                  aria-controls="analytics-console-streams"
-                  onClick={() => setStreamsVisible(value => !value)}
-                  className="min-h-11 rounded border border-white/15 bg-white/[0.05] px-3 py-2 text-xs font-black uppercase text-zinc-200 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
-                >
-                  {streamsVisible ? 'Hide streams' : 'Show streams'}
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={chartFocused}
-                  onClick={() => setChartFocused(value => !value)}
-                  className="min-h-11 rounded border border-violet-400/40 bg-violet-500/10 px-3 py-2 text-xs font-black uppercase text-violet-100 transition hover:bg-violet-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
-                >
-                  {chartFocused ? 'Exit chart focus' : 'Focus chart'}
-                </button>
-              </>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => void handleRefresh()}
-              disabled={refreshing}
-              className="min-h-11 rounded border border-white/15 bg-white/[0.05] px-3 py-2 text-xs font-black uppercase text-zinc-200 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 disabled:opacity-50"
-              title="Reload chart and stats from server (does not start a sync job)"
-            >
-              {refreshing ? 'Refreshing…' : 'Refresh data'}
-            </button>
-          </div>}
+          {channelNotRecorded || !enableLayoutControls ? null : (
+            // Three-column layout tools: from 1280 px only (d3-v2 session-original).
+            <div data-session-header-actions className="ssp-acts hidden shrink-0 flex-wrap items-center gap-2 xl:flex">
+              <button
+                type="button"
+                aria-expanded={streamsVisible}
+                aria-controls="analytics-console-streams"
+                onClick={() => setStreamsVisible(value => !value)}
+                className="ssp-act"
+              >
+                {streamsVisible ? 'Hide streams' : 'Show streams'}
+              </button>
+              <button
+                type="button"
+                aria-pressed={chartFocused}
+                onClick={() => setChartFocused(value => !value)}
+                className="ssp-act ssp-act-focus"
+              >
+                {chartFocused ? 'Exit chart focus' : 'Focus chart'}
+              </button>
+            </div>
+          )}
         </header>
         {channelNotRecorded ? <ChannelNotRecordedPanel login={channelLogin} /> : <>
 
-        <section className="grid grid-cols-2 gap-3 lg:grid-cols-6" data-session-stat-row>
+        <section className="ssp-stats grid grid-cols-2 gap-3 lg:grid-cols-6" data-session-stat-row aria-label="Stream figures">
           <StatCard
-            label={isHistoricalRoute ? 'Last measured viewers' : 'Current viewers'}
+            label={isHistoricalRoute ? 'Latest viewers' : 'Current viewers'}
             value={statCardsPending ? '-' : statCardClasses.current.placeholder ?? count(headerStats.current)}
             tone={statCardClasses.current.muted ? STAT_PLACEHOLDER_MUTED_CLASS : 'text-cyan-300/90'}
           />
@@ -1346,24 +1436,29 @@ export function AnalyticsConsole({
             tone={statCardClasses.peak.muted ? STAT_PLACEHOLDER_MUTED_CLASS : undefined}
           />
           <StatCard
-            label="Measured chat"
+            label="Chat messages"
             value={statCardsPending ? '-' : statCardClasses.chat.placeholder ?? count(headerStats.chat)}
             tone={statCardClasses.chat.muted ? STAT_PLACEHOLDER_MUTED_CLASS : 'text-violet-300/90'}
           />
           <StatCard
-            label="Measured emote uses"
+            label="Emote uses"
             value={statCardsPending ? '-' : statCardClasses.emoteUses.placeholder ?? count(headerStats.emotes)}
             tone={statCardClasses.emoteUses.muted ? STAT_PLACEHOLDER_MUTED_CLASS : 'text-emerald-300/90'}
           />
           <StatCard
-            label="Measured span"
+            label="Time tracked"
             value={measuredSpanValue}
             tone={measuredSpanValue === '-' ? STAT_PLACEHOLDER_MUTED_CLASS : undefined}
           />
         </section>
 
         <div className={consoleGridClassName} data-analytics-console-grid>
-          <section className={centerColumnClassName} data-analytics-center-column>
+          <section
+            ref={centerColumnRef}
+            className={centerColumnClassName}
+            data-analytics-center-column
+            style={columnFill.padPx ? ({ '--ssp-cpad': `${columnFill.padPx}px` } as CSSProperties) : undefined}
+          >
             {sessionResolving || (!effectiveSessionNotFound && detailQuery.isLoading && !detail) ? (
               <AnalyticsConsoleDataSkeleton />
             ) : null}
@@ -1380,32 +1475,8 @@ export function AnalyticsConsole({
                 )}
               </div>
             ) : null}
-            {!sessionResolving && !effectiveSessionNotFound && !(detailQuery.isLoading && !detail) ? (
+            {sessionContentReady ? (
             <div className="min-w-0 space-y-4">
-              {/* The coverage notice and the session lifecycle row are one-line
-                  facts about the session; wide portal layouts put them side by
-                  side (data-session-status-row), narrow ones stack them. */}
-              <div className="flex min-w-0 flex-col gap-4 empty:hidden [&:empty+*]:!mt-0" data-session-status-row>
-                <CoverageStartBanner
-                  offsetSeconds={detail?.coverageStartOffsetSeconds}
-                  missingRanges={detail?.availability?.missingRanges}
-                  message={detail?.availability?.coverageMessage}
-                />
-                <PastBroadcastBanner
-                  isLiveRoute={isLiveRoute}
-                  isActiveLiveCollector={isActiveLiveCollector}
-                  stream={stream}
-                  syncing={syncing}
-                  hasChartData={
-                    (detail?.rollups ?? []).some(rollupHasMinuteData)
-                    || rollupsHaveViewerData(detail?.rollups ?? [])
-                  }
-                  vodLinkState={vodLinkState}
-                  sessionStreamId={targetQueryStreamId}
-                  channelLogin={channelLogin}
-                  buildSessionPath={buildSessionPath}
-                />
-              </div>
               <StreamQualityBanner
                 diagnosis={qualityDiagnosis}
                 syncing={syncing}
@@ -1464,7 +1535,20 @@ export function AnalyticsConsole({
                 heatmapPoints={heatmapPoints}
                 reactionMoments={reactionMoments}
                 vodJump={selectedVodJump}
-                selectedDetail={selectedRollup ? <><SelectedMomentCompactCard
+                viewerCaption={{ peak: headerStats.peak ?? null, avg: headerStats.avg ?? null }}
+                stripPins={recapMomentsAvailable && recapForStream ? { recap: recapForStream, streamStartedAt: stream?.startedAt, heatmapPoints, topEmotesCatalog: detailForRender?.topEmotes, rollups: detail?.momentRollups ?? detail?.rollups ?? [], onSelectOffset: handleJumpToRecapOffset } : null}
+                extraPlotPx={columnFill.extraPlotPx}
+                momentOffsetInBar={momentOffsetInBar}
+                selectionIsMoment={selectionIsMoment}
+                onExpandedChange={setChartExpanded}
+                selectedDetail={selectedRollup ? (bar: SessionChartBarLock | null) => <><SelectedMomentCompactCard
+                  barSpan={bar}
+                  barMoments={bar && Number.isFinite(streamStartMs) ? momentsInBar(stripMoments, barSecondsSpan(bar)) : null}
+                  lockedMomentOffsetSeconds={bar ? selectedOffsetSeconds : null}
+                  onLockMoment={handleJumpToRecapOffset}
+                  onZoomToBar={bar?.zoom}
+                  onShowMoreMoments={stripMoments.length ? handleShowMoreMoments : undefined}
+                  vodRecording={isLive && Boolean(streamVodId)}
                   recapMoment={matchedRecapMoment}
                   vodAlignSeconds={detail?.vodAlignSeconds}
                   vodDurationSeconds={detail?.vodDurationSeconds}
@@ -1475,6 +1559,8 @@ export function AnalyticsConsole({
                   topEmotesCatalog={detailForRender?.topEmotes}
                   heatmapPoint={matchedHeatmapPoint}
                   gameName={selectedGameName}
+                  games={chartGames}
+                  vodId={streamVodId}
                   onClear={() => handleSelectRollup(null)}
                 />{canonicalStreamId && selectedOffsetSeconds != null && Number.isFinite(selectedOffsetSeconds) && selectedOffsetSeconds >= 0
                   ? renderSelectedMomentActions?.({ login: channelLogin, streamId: canonicalStreamId, offsetSeconds: selectedOffsetSeconds,
@@ -1482,23 +1568,9 @@ export function AnalyticsConsole({
                     emotesPerMin: selectedRollup.totalEmoteCount, category: selectedGameName || undefined,
                     label: matchedHeatmapPoint?.reason ? momentScoreReasonLabel(matchedHeatmapPoint.reason) : undefined }) : null}</> : null}
               />
-              {streamVodId ? (
-                <p className="text-xs font-semibold text-zinc-400">
-                  VOD {streamVodId} — {hasVerifiedVodAlignment
-                    ? 'select a moment for a timestamped jump, or '
-                    : 'timestamp alignment is not verified; '}
-                  <a
-                    href={buildTwitchVodUrl(streamVodId)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-violet-300 hover:text-violet-200"
-                  >
-                    open the full VOD
-                  </a>
-                  {/* Its own sentence, so the long-stream note does not run on. */}
-                  .{isLongStreamChart ? ' Long streams (6h+) may feel slower while hovering the chart.' : ''}
-                </p>
-              ) : vodLinkState.detail ? (
+              {/* d3-v2 session-original: "Watch VOD" sits in the meta line; only a
+                  missing VOD still says why under the chart. */}
+              {!streamVodId && vodLinkState.detail ? (
                 <p className={`text-xs font-semibold ${vodLinkState.status === 'request_failed' ? 'text-amber-200' : 'text-zinc-400'}`}>
                   {vodLinkState.status === 'request_failed' ? `${vodLinkState.label} · ` : null}
                   {vodLinkState.detail}
@@ -1527,8 +1599,10 @@ export function AnalyticsConsole({
                   Streams
                 </summary>
               ) : null}
-              <div className={chartFocused ? 'mt-3' : undefined}>
-                <p className="mb-2 text-xs text-zinc-400">Up to 100 recent stored streams</p>
+              <div className={chartFocused ? 'mt-3' : 'contents'}>
+                {SESSION_OWNER_SWITCHES.streamLimitCaption ? (
+                  <p className="mb-2 text-xs text-zinc-400">Up to 100 recent stored streams</p>
+                ) : null}
                 <StreamSidebar
                   login={channelLogin}
                   streams={sidebarStreams}
@@ -1545,8 +1619,9 @@ export function AnalyticsConsole({
                       ? buildSessionPath(channelLogin, canonicalLiveSessionSlug)
                       : buildChannelPath(channelLogin)
                   }
-                  syncedOnly={syncedOnlyFilter}
-                  onSyncedOnlyChange={setSyncedOnlyFilter}
+                  syncedOnly={SESSION_OWNER_SWITCHES.syncedOnlyFilter && syncedOnlyFilter}
+                  onSyncedOnlyChange={SESSION_OWNER_SWITCHES.syncedOnlyFilter ? setSyncedOnlyFilter : undefined}
+                  showLiveRow={SESSION_OWNER_SWITCHES.sidebarLiveRow}
                   buildSessionPath={buildSessionPath}
                   buildChannelPath={buildChannelPath}
                   activeMinutesUnavailable={activeMinutesUnavailable}
@@ -1556,7 +1631,11 @@ export function AnalyticsConsole({
             </StreamColumn>
           ) : null}
 
-          <RightColumn className={rightColumnClassName} data-analytics-right-column>
+          <RightColumn
+            ref={rightColumnRef as never}
+            className={rightColumnClassName}
+            data-analytics-right-column
+          >
             {chartFocused ? (
               <summary className="cursor-pointer rounded border border-white/[0.07] bg-white/[0.025] px-4 py-3 text-xs font-black uppercase text-zinc-300">
                 Session details
@@ -1580,34 +1659,50 @@ export function AnalyticsConsole({
               className="flex w-full min-h-0 flex-1 flex-col overflow-hidden rounded border border-white/[0.07] bg-white/[0.025]"
               data-session-details-tabs
             >
-              <div role="tablist" aria-label="Session details" className="flex shrink-0 border-b border-white/[0.07] text-xs font-black uppercase bg-white/[0.012]">
-                {(['moments', 'emotes', 'status'] as const).map((tab, tabIndex, tabs) => (
-                  <button
-                    key={tab}
-                    id={`session-tab-${tab}`}
-                    type="button"
-                    role="tab"
-                    aria-selected={rightPanelTab === tab}
-                    aria-controls={`session-panel-${tab}`}
-                    tabIndex={rightPanelTab === tab ? 0 : -1}
-                    onClick={() => handleRightPanelTab(tab)}
-                    onKeyDown={(event) => {
-                      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
-                      event.preventDefault()
-                      const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (tabIndex + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length
-                      const next = tabs[nextIndex]!
-                      handleRightPanelTab(next)
-                      document.getElementById(`session-tab-${next}`)?.focus()
-                    }}
-                    className={`min-h-11 flex-1 px-2 py-2 text-center transition border-r border-white/[0.07] last:border-r-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-300 ${
-                      rightPanelTab === tab ? 'bg-white/[0.028] text-zinc-200' : 'text-zinc-500 hover:text-zinc-400'
-                    }`}
-                  >
-                    {tab === 'moments' ? 'Moments' : tab === 'emotes' ? 'Emotes' : 'Status'}
-                  </button>
-                ))}
+              <div className="ssp-tl-w flex shrink-0 border-b border-white/[0.07] bg-white/[0.012]">
+                <div role="tablist" aria-label="Session details" className="ssp-tl flex min-w-0 flex-1 text-xs font-semibold">
+                  {RIGHT_PANEL_TABS.map((tab, tabIndex, tabs) => (
+                    <button
+                      key={tab}
+                      id={`session-tab-${tab}`}
+                      type="button"
+                      role="tab"
+                      aria-selected={rightPanelTab === tab}
+                      aria-controls={`session-panel-${tab}`}
+                      tabIndex={rightPanelTab === tab ? 0 : -1}
+                      onClick={() => handleRightPanelTab(tab)}
+                      onKeyDown={(event) => {
+                        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+                        event.preventDefault()
+                        const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (tabIndex + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length
+                        const next = tabs[nextIndex]!
+                        handleRightPanelTab(next)
+                        document.getElementById(`session-tab-${next}`)?.focus()
+                      }}
+                      className={`ssp-tab min-h-11 flex-1 px-2 py-2 text-center transition border-r border-white/[0.07] last:border-r-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-300 ${
+                        rightPanelTab === tab ? 'bg-white/[0.028] text-zinc-200' : 'text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      {tab === 'moments' ? 'Moments' : tab === 'emotes' ? 'Emotes' : 'Status'}
+                    </button>
+                  ))}
+                </div>
+                {/* The Moments explainer's (i): beside the tabs, outside the tablist, while Moments is open. */}
+                <span className="ssp-tl-i" data-off={rightPanelTab !== 'moments' ? 'true' : undefined}>
+                  <SessionInfoToggletip tip={MOMENTS_TIP} label="About Pulse Moments" />
+                </span>
               </div>
-              <div id={`session-panel-${rightPanelTab}`} role="tabpanel" aria-labelledby={`session-tab-${rightPanelTab}`} tabIndex={0} className="flex min-h-0 flex-1 flex-col p-0">
+              {/* Every panel stays in the page (inactive ones hidden), so a control
+                  pointing at a panel always resolves; only the open one renders its content. */}
+              <div
+                ref={momentsPanelRef}
+                id="session-panel-moments"
+                role="tabpanel"
+                aria-labelledby="session-tab-moments"
+                tabIndex={0}
+                hidden={rightPanelTab !== 'moments'}
+                className={`ssp-tp min-h-0 flex-1 flex-col p-0 ${rightPanelTab === 'moments' ? 'flex' : 'hidden'}`}
+              >
                 {rightPanelTab === 'moments' ? (
                   recapMomentsAvailable && recapForStream ? (
                     <SessionRecapMomentsStrip
@@ -1615,11 +1710,17 @@ export function AnalyticsConsole({
                       streamStartedAt={stream?.startedAt}
                       selectedOffsetSeconds={selectedOffsetSeconds}
                       onSelectOffset={handleJumpToRecapOffset}
+                      onReleaseOffset={() => handleSelectRollup(null)}
                       onPreviewOffset={handlePreviewRecapOffset}
                       layout="rightRail"
                       rollups={detail?.momentRollups ?? detail?.rollups ?? []}
                       heatmapPoints={heatmapPoints}
                       topEmotesCatalog={detailForRender?.topEmotes}
+                      games={chartGames}
+                      vodId={streamVodId}
+                      vodAlignSeconds={detail?.vodAlignSeconds}
+                      vodDurationSeconds={detail?.vodDurationSeconds}
+                      reel={SESSION_OWNER_SWITCHES.momentsReel}
                     />
                   ) : (
                     <MomentReviewPanel
@@ -1635,6 +1736,15 @@ export function AnalyticsConsole({
                     />
                   )
                 ) : null}
+              </div>
+              <div
+                id="session-panel-emotes"
+                role="tabpanel"
+                aria-labelledby="session-tab-emotes"
+                tabIndex={0}
+                hidden={rightPanelTab !== 'emotes'}
+                className={`ssp-tp min-h-0 flex-1 flex-col p-0 ${rightPanelTab === 'emotes' ? 'flex' : 'hidden'}`}
+              >
                 {rightPanelTab === 'emotes' ? (
                   <TopEmoteTable
                     emotes={detailForRender?.topEmotes ?? []}
@@ -1644,8 +1754,17 @@ export function AnalyticsConsole({
                     embedded
                   />
                 ) : null}
+              </div>
+              <div
+                id="session-panel-status"
+                role="tabpanel"
+                aria-labelledby="session-tab-status"
+                tabIndex={0}
+                hidden={rightPanelTab !== 'status'}
+                className={`ssp-tp min-h-0 flex-1 flex-col p-0 ${rightPanelTab === 'status' ? 'flex' : 'hidden'}`}
+              >
                 {rightPanelTab === 'status' && layer2Enabled ? (
-                  <SyncStatusPanel detail={detail} syncStatus={activeSyncStatus} />
+                  <SyncStatusPanel detail={detail} syncStatus={activeSyncStatus} summaryMetrics={summaryQuery.data?.metrics} />
                 ) : rightPanelTab === 'status' ? (
                   <p className="p-4 text-xs font-semibold text-zinc-400">
                     Open a session from the sidebar for sync status and Layer 2 detail.

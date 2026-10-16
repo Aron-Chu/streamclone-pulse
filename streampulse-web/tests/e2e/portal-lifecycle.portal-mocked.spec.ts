@@ -85,12 +85,12 @@ test.describe('portal lifecycle (mocked)', () => {
       .poll(
         async () => {
           await harness.advancePoll(30_000)
-          return page.getByText(/Jump to VOD|open the full VOD|VOD vod_exact/i).count()
+          return page.getByText(/Jump to VOD|open the full VOD|Watch VOD|VOD vod_exact/i).count()
         },
         { timeout: 45_000, intervals: [200, 500, 1000] },
       )
       .toBeGreaterThan(0)
-    await expect(page.getByText(/Jump to VOD|open the full VOD|VOD vod_exact/i).first()).toBeVisible()
+    await expect(page.getByText(/Jump to VOD|open the full VOD|Watch VOD|VOD vod_exact/i).first()).toBeVisible()
     await expect(page.getByText('VOD unavailable')).toHaveCount(0)
 
     const mountAfter = await getMountId(page)

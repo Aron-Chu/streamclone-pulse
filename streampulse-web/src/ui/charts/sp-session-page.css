@@ -1,0 +1,299 @@
+/* Session page shell (U15): meta line, plain stat labels, sticky stream column, column fill,
+   and the shared selection colour --ssc-select. Port of d3-v2 session-original (2026-10-15):
+   MOCK session-original.css "header", "stat cards", "the console grid", ".po-sl", ".po-tabs", ".po-et".
+   Selectors carry .analytics-console (and attributes) so they outrank analytics-console.css,
+   analytics-compact.css and analytics-tailwind.css, which this page shares with the channel route. */
+
+/* ---------- tokens ---------- */
+.analytics-console[data-analytics-console-shell] {
+  /* Owner item 10 (F23 b): the plan's default is prod's amber; the rendered mockup draws teal. */
+  --ssc-select: #5eead4;
+}
+
+/* ---------- frame spacing: the mockup's 16 px rhythm (analytics-compact.css tightens it from 1100 px) ---------- */
+.sc-analytics-console .analytics-console[data-analytics-console-shell] > div:first-child { gap: 1rem; }
+.sc-analytics-console .analytics-console[data-analytics-console-shell] [data-analytics-console-grid] { gap: 1rem; }
+.sc-analytics-console .analytics-console[data-analytics-console-shell] [data-analytics-center-column] > .space-y-4 > :not([hidden]) ~ :not([hidden]) { margin-top: 1rem; }
+
+/* ---------- header: title, meta line | Hide streams, Focus chart ---------- */
+.sc-analytics-console .analytics-console[data-analytics-console-shell] header[data-session-header] {
+  gap: 12px;
+  padding-bottom: 16px;
+}
+.analytics-console[data-analytics-console-shell] header[data-session-header] h1.ssp-h1 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.08;
+  letter-spacing: 0;
+}
+@media (min-width: 1024px) {
+  .analytics-console[data-analytics-console-shell] header[data-session-header] h1.ssp-h1 { font-size: 32px; }
+}
+@media (max-width: 639px) {
+  .analytics-console[data-analytics-console-shell] header[data-session-header] h1.ssp-h1 { font-size: 21.6px; }
+}
+
+/* One meta line: name · game · Started · Updated [refresh] · First 54s not tracked · Watch VOD · Data: Good.
+   Each item draws its own leading dot in a 20 px slot and the line starts 20 px left, so a wrapped line
+   (390 px) never starts with a stray dot; the wrapper clips that slot (6 px clip margin keeps focus rings). */
+.analytics-console .ssp-meta-w {
+  margin-top: 8px;
+  overflow: clip;
+  overflow-clip-margin: 6px;
+}
+.analytics-console .ssp-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  row-gap: 2px;
+  margin-left: -20px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  color: #a1a1aa;
+}
+.analytics-console .ssp-meta > .mi {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  white-space: nowrap;
+}
+.analytics-console .ssp-meta > .mi::before {
+  content: "\00b7";
+  content: "\00b7" / "";
+  flex: none;
+  width: 20px;
+  text-align: center;
+  color: #52525b;
+}
+.analytics-console .ssp-meta a {
+  /* Centred in its 24 px box (the 44 px override below), level with the other items. */
+  display: inline-flex;
+  align-items: center;
+  color: #99f6e4;
+  text-decoration: none;
+}
+.analytics-console .ssp-meta a:hover { color: #fff; }
+/* analytics-tailwind.css makes every header link and button 44 px; the meta line's are 24 px tall. */
+.sc-analytics-console .analytics-console[data-analytics-console-shell] header .ssp-meta :is(a, button) {
+  min-width: 0 !important;
+  min-height: 24px !important;
+}
+.analytics-console[data-analytics-console-shell] header .ssp-meta .ssp-rf {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-left: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: #a1a1aa;
+}
+.analytics-console[data-analytics-console-shell] header .ssp-meta .ssp-rf:hover:not(:disabled) {
+  background: rgb(255 255 255 / 0.06);
+  color: #fff;
+}
+.analytics-console[data-analytics-console-shell] header .ssp-meta .ssp-rf:disabled { opacity: 0.5; cursor: progress; }
+.analytics-console .ssp-rf svg { width: 14px; height: 14px; }
+@media (prefers-reduced-motion: no-preference) {
+  .analytics-console .ssp-rf[aria-busy='true'] svg { animation: ssp-spin 0.9s linear infinite; }
+}
+@keyframes ssp-spin { to { transform: rotate(360deg); } }
+.analytics-console[data-analytics-console-shell] header .ssp-meta .ssp-dqb {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: #a1a1aa;
+  text-decoration: underline dotted rgb(161 161 170 / 0.6);
+  text-underline-offset: 3px;
+}
+.analytics-console[data-analytics-console-shell] header .ssp-meta button.ssp-dqb:hover { color: #fff; }
+.analytics-console[data-analytics-console-shell] header .ssp-meta span.ssp-dqb { text-decoration: none; }
+.analytics-console .ssp-dqb svg { width: 14px; height: 14px; }
+
+/* Hide streams / Focus chart: shown from 1280 px only (the classes hide them below). */
+.sc-analytics-console .analytics-console header[data-session-header] > .ssp-acts { min-width: 0; }
+.sc-analytics-console .analytics-console header[data-session-header] .ssp-act {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid rgb(255 255 255 / 0.15);
+  border-radius: 6px;
+  background: rgb(255 255 255 / 0.05);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  text-transform: none;
+  color: #e4e4e7;
+}
+.sc-analytics-console .analytics-console header[data-session-header] .ssp-act:hover { background: rgb(255 255 255 / 0.1); color: #fff; }
+.sc-analytics-console .analytics-console header[data-session-header] .ssp-act:focus-visible { outline: 2px solid #99f6e4; outline-offset: 0; }
+/* Pressed Focus chart is neutral: violet is chat's colour. */
+.sc-analytics-console .analytics-console header[data-session-header] .ssp-act-focus[aria-pressed='true'] { background: rgb(255 255 255 / 0.12); color: #fff; }
+
+/* ---------- stat cards: the mockup's 12 px boxes; phones: three across, no boxes ---------- */
+.sc-analytics-console .analytics-console[data-analytics-console-shell] [data-session-stat-row] .sc-stat-card { padding: 12px; }
+/* The mockup keeps label over value at every width: undo analytics-compact.css's one-line cards
+   (its @container min-width 105rem rule, about 1680 px of stat row). */
+@container (min-width: 105rem) {
+  .sc-analytics-console .analytics-console[data-analytics-console-shell] [data-session-stat-row] > .sc-stat-card {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 0;
+    padding: 12px;
+  }
+  .sc-analytics-console .analytics-console[data-analytics-console-shell] [data-session-stat-row] .sc-stat-card__value {
+    margin-top: auto;
+    padding-top: 4px;
+  }
+}
+@media (max-width: 639px) {
+  .analytics-console[data-analytics-console-shell] [data-session-stat-row] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px 8px;
+  }
+  .sc-analytics-console .analytics-console[data-analytics-console-shell] [data-session-stat-row] .sc-stat-card {
+    padding: 0;
+    border: 0;
+    background: none;
+  }
+  .analytics-console[data-analytics-console-shell] [data-session-stat-row] .sc-stat-card__label { font-size: 11px; line-height: 14px; }
+  .analytics-console[data-analytics-console-shell] [data-session-stat-row] .sc-stat-card__value { padding-top: 2px; font-size: 16px; line-height: 22px; }
+}
+
+/* ---------- streams column ---------- */
+/* From 1280 px, in the grid, the column stretches to the row but adds nothing to its height (size
+   containment); its box fills it, never taller than the window less 16 px top and bottom, and is sticky,
+   so on a short window it travels with the reader. Every row shows; the hidden-bar list fades at an edge
+   while rows remain past it (--ft / --fb from useEdgeFade).
+   The mockup sticks at 16 px from the window top; the portal's .analytics-topnav (figma-analytics.css)
+   is itself sticky and 56 px tall from 721 px, so the list sticks 16 px below it instead. */
+@media (min-width: 1280px) {
+  .analytics-console[data-analytics-console-shell] { --ssp-stick-top: calc(56px + 16px); }
+  .analytics-console [data-analytics-console-grid] > aside[data-analytics-stream-column] {
+    contain: size;
+    display: flex;
+    flex-direction: column;
+  }
+  .analytics-console [data-analytics-console-grid] > aside[data-analytics-stream-column] .ssp-sl {
+    flex: 1 1 auto;
+    max-height: calc(100vh - var(--ssp-stick-top, 16px) - 16px);
+    position: sticky;
+    top: var(--ssp-stick-top, 16px);
+  }
+  .analytics-console [data-analytics-console-grid] > aside[data-analytics-stream-column] .ssp-sl-sc {
+    scroll-padding-block: 24px;
+    -webkit-mask-image: linear-gradient(#0000, #000 var(--ft, 0px), #000 calc(100% - var(--fb, 0px)), #0000);
+    mask-image: linear-gradient(#0000, #000 var(--ft, 0px), #000 calc(100% - var(--fb, 0px)), #0000);
+  }
+}
+.analytics-console .ssp-sl-sc { scrollbar-width: none; }
+.analytics-console .ssp-sl-sc::-webkit-scrollbar { display: none; }
+
+/* ---------- right column: tabs with the Moments (i), panels that fill ---------- */
+.analytics-console .ssp-tl [role='tab'] {
+  border-radius: 6px 6px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  text-transform: none;
+  color: #a1a1aa;
+}
+.analytics-console .ssp-tl [role='tab']:hover { color: #e4e4e7; }
+.sc-analytics-console .analytics-console .ssp-tl [role='tab'][aria-selected='true'],
+.analytics-console .ssp-tl [role='tab'][aria-selected='true'] {
+  background: rgb(153 246 228 / 0.15);
+  color: #99f6e4;
+  box-shadow: inset 0 -1px 0 rgb(153 246 228 / 0.6);
+}
+.sc-analytics-console .analytics-console .ssp-tl [role='tab']:focus-visible { outline: 2px solid #99f6e4; outline-offset: -2px; }
+.analytics-console .ssp-tl-i {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  border-left: 1px solid rgb(255 255 255 / 0.07);
+}
+.analytics-console .ssp-tl-i[data-off] { visibility: hidden; }
+.sc-analytics-console .analytics-console .ssp-tl-i .ssp-info,
+.analytics-console .ssp-tl-i .ssp-info {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: #8e8e96;
+}
+.analytics-console .ssp-tl-i .ssp-info::after { content: ""; position: absolute; inset: -12px; }
+.analytics-console .ssp-tl-i .ssp-info:hover,
+.analytics-console .ssp-tl-i .ssp-info[aria-expanded='true'] { color: #ededef; }
+.analytics-console .ssp-tl-i .ssp-info:focus-visible { outline: 2px solid #99f6e4; outline-offset: 2px; }
+.analytics-console .ssp-tl-i .ssp-info svg { width: 15px; height: 15px; }
+/* The toggletip's popover lives in <body>, outside the console. */
+.ssp-pop {
+  position: absolute;
+  z-index: 60;
+  max-width: 260px;
+  padding: 8px 10px;
+  border: 1px solid #272728;
+  border-radius: 8px;
+  background: #18181b;
+  color: #ededef;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
+}
+
+/* The Emotes list: a tip, then a header that stays put while the rows scroll. Below 1280 px the list
+   scrolls as one box; from 1280 px, in the grid, it fills its tab and only the rows scroll (size
+   containment: the tab never pushes the columns apart), their edges fading like the stream list's. */
+.analytics-console .ssp-et { max-height: calc(100vh - 14rem); overflow-y: auto; }
+@media (min-width: 1280px) {
+  .analytics-console [data-analytics-console-grid] > aside[data-analytics-right-column] .ssp-et-w {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .analytics-console [data-analytics-console-grid] > aside[data-analytics-right-column] .ssp-et {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    max-height: none;
+    overflow: hidden;
+  }
+  .analytics-console [data-analytics-console-grid] > aside[data-analytics-right-column] .ssp-et-b {
+    flex: 1 1 auto;
+    contain: size;
+    min-height: 225px;
+    overflow-y: auto;
+    scroll-padding-block: 24px;
+    -webkit-mask-image: linear-gradient(#0000, #000 var(--ft, 0px), #000 calc(100% - var(--fb, 0px)), #0000);
+    mask-image: linear-gradient(#0000, #000 var(--ft, 0px), #000 calc(100% - var(--fb, 0px)), #0000);
+  }
+}
+
+/* ---------- column fill: the centre gives up to 12 px inside the chart card (useSessionColumnFill) ---------- */
+@media (min-width: 1280px) {
+  .analytics-console [data-analytics-center-column] .sc-chart-root {
+    padding-bottom: calc(0.75rem + var(--ssp-cpad, 0px));
+  }
+}
