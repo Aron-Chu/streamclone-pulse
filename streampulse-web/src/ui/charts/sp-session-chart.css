@@ -1,0 +1,935 @@
+/*
+ * Session chart part (U8, plan §1.2): the toolbar row, the pin rail, the
+ * category band and the pin marks around SpChart on /analytics/<login>/<id>.
+ * Values follow the pinned d3-designer session.html and shared.css (.tool,
+ * .ro, .seg, .qb, .pins, .pin, .ch-band, .pop.menu). Every selector sits under
+ * .ssc (AnalyticsChart's [data-session-chart-part]); nothing here restyles
+ * the console outside the part. The font is the console's own (F2): only
+ * figures change, to semibold (600, the mockup's readout key weight) tabular
+ * numerals.
+ *
+ * 2026-10-15 (Aron: "the chart looks weird not what the mockup was
+ * showing"): the toolbar, readout, Games posters and minute table follow d3-v2
+ * session-original (.cb-tool, .po-ro, .po-gp-b, .po-md). The toolbar wraps
+ * above the chart at every width (no row under the plot any more) and the
+ * readout is one plain line that ends in an ellipsis.
+ */
+
+.ssc {
+  --sp-canvas: #09090b;
+  --sp-panel: #101012;
+  --sp-raised: #151517;
+  --sp-popover: #18181b;
+  --sp-line: #1d1d1f;
+  --sp-line-strong: #272728;
+  --sp-text-1: #ededef;
+  --sp-text-2: #b4b4bb;
+  --sp-text-3: #8e8e96;
+  --sp-accent: #5eead4;
+  --sp-focus: #99f6e4;
+  /* 2026-10-15 (Aron: prod's colours, d3-v2 session-original F20): prod's
+     cyan viewers, violet chat, emerald emotes (AnalyticsConsole.tsx) */
+  --sp-viewers: #22d3ee;
+  --sp-chat: #a78bfa;
+  --sp-emotes: #34d399;
+  --sp-fs-label: 12px;
+  --sp-fs-body: 14px;
+  --sp-r: 8px;
+  container: ssc / inline-size;
+  position: relative;
+  min-width: 0;
+  color: var(--sp-text-1);
+  font-size: var(--sp-fs-body);
+  line-height: 20px;
+  /* the mockup's body sets tabular numerals for every control and label */
+  font-variant-numeric: tabular-nums;
+}
+
+/* SpChart sets its own series colours on .spc; the session part's win here */
+.ssc .spc {
+  --sp-viewers: #22d3ee;
+  --sp-chat: #a78bfa;
+  --sp-emotes: #34d399;
+}
+
+.ssc button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.ssc :focus-visible {
+  outline: 2px solid var(--sp-focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/*
+ * The portal's 44 px rule for [data-chart-focus-bar] buttons
+ * (analytics-tailwind.css) would make the 40 px toolbar 50 px tall. The
+ * mockup keeps 26/32 px buttons and reaches 44 px hit rows with ::after.
+ */
+.sc-analytics-console .ssc [data-chart-focus-bar] button {
+  min-width: 0 !important;
+  min-height: 0 !important;
+}
+
+/* menu rows keep the mockup's 36 px (.pop.menu button) */
+.sc-analytics-console .ssc .ssc-pop button {
+  min-height: 36px !important;
+}
+
+/* ---- toolbar row (d3-v2 session-original .cb-tool): series, range, Expand
+   and Show on chart all sit above the chart and wrap (at 390: series + range,
+   then Expand + Show on chart) ---- */
+
+.ssc-tool {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  min-height: 40px;
+  min-width: 0;
+}
+
+.ssc-tool .ssc-seg button,
+.ssc-tool .ssc-qb {
+  font-size: 12px;
+}
+
+.ssc-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--sp-r);
+  border: 1px solid var(--sp-line-strong);
+  flex: none;
+}
+
+.ssc .ssc-seg button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--sp-text-2);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* 44 px hit rows on 26 px buttons */
+.ssc .ssc-seg button::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -9px;
+  bottom: -9px;
+}
+
+.ssc .ssc-seg button:hover {
+  color: var(--sp-text-1);
+}
+
+.ssc .ssc-seg button[aria-pressed='true'] {
+  color: var(--sp-text-1);
+  background: var(--sp-raised);
+  box-shadow: inset 0 0 0 1px var(--sp-accent);
+}
+
+.ssc-sw {
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.ssc-seg .ssc-sw {
+  margin-right: 6px;
+}
+
+.ssc-sw-viewers {
+  background: var(--sp-viewers);
+}
+
+.ssc-sw-chat {
+  background: var(--sp-chat);
+}
+
+.ssc-sw-emotes {
+  background: var(--sp-emotes);
+}
+
+/* .sc-analytics-console prefix: the console's own button rule (weight 600) is 0,2,1 */
+.sc-analytics-console .ssc .ssc-qb,
+.ssc .ssc-qb {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: var(--sp-r);
+  color: var(--sp-text-2);
+  font-weight: 500;
+  white-space: nowrap;
+  flex: none;
+}
+
+.ssc .ssc-qb::after {
+  content: '';
+  position: absolute;
+  left: -2px;
+  right: -2px;
+  top: -6px;
+  bottom: -6px;
+}
+
+.ssc .ssc-qb:hover:not(:disabled) {
+  background: var(--sp-raised);
+  color: var(--sp-text-1);
+}
+
+.ssc .ssc-qb[aria-pressed='true'] {
+  color: var(--sp-text-1);
+}
+
+.ssc .ssc-qb:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.ssc-ico {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ---- readout (d3-v2 session-original .po-ro): one plain line, ellipsis ---- */
+
+.ssc-ro {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  color: #a1a1aa;
+}
+
+/* ---- readout line above Games played (d3-v2 session-original .po-ro-row,
+   2026-10-14/15): the readout left the toolbar; Clear ends it while a minute,
+   bar or moment is pinned ---- */
+/* the readout line, then Games played (session-original .po-top: 8 px
+   apart, 12 px above the toolbar) */
+.ssc-head {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin-bottom: 12px;
+}
+
+/* the session's headerless posters are one centred row (session-original
+   .po-gp-track), not analytics-compact.css's label-beside-art grid with its
+   divider */
+.sc-analytics-console [data-games-played].ssc-gp {
+  display: block;
+}
+
+.sc-analytics-console [data-games-played].ssc-gp > [data-games-timeline] {
+  padding-block: 0;
+  border-left: 0;
+}
+
+.sc-analytics-console [data-games-played].ssc-gp [data-games-played-track] {
+  min-height: 74px;
+  padding: 2px;
+}
+
+/* ---- Games played posters (session-original .po-gp-b): no box around them,
+   a 2 px border that lightens on hover and turns teal when pinned ---- */
+.sc-analytics-console .ssc-gp .ssc-gp-b,
+.ssc-gp .ssc-gp-b {
+  width: 52px;
+  height: 70px;
+  padding: 2px;
+  border: 2px solid rgb(255 255 255 / 0.1);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.03);
+  transition: border-color 120ms ease;
+}
+
+.ssc-gp .ssc-gp-b:hover,
+.ssc-gp .ssc-gp-b[data-hl] {
+  border-color: rgb(255 255 255 / 0.3);
+}
+
+.ssc-gp .ssc-gp-b[aria-pressed='true'] {
+  border-color: #5eead4;
+}
+
+.ssc-gp .ssc-gp-b:focus-visible {
+  outline: 2px solid #99f6e4;
+  outline-offset: 1px;
+}
+
+.ssc-ro-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  min-width: 0;
+}
+
+.ssc .ssc-clear {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid rgb(255 255 255 / 0.15);
+  border-radius: 4px;
+  background: rgb(255 255 255 / 0.05);
+  color: #e4e4e7;
+  font-size: var(--sp-fs-label);
+  font-weight: 600;
+  line-height: 14px;
+}
+
+.ssc .ssc-clear::after {
+  content: '';
+  position: absolute;
+  inset: -10px -4px;
+}
+
+.ssc .ssc-clear[hidden] {
+  display: none;
+}
+
+.ssc-ro-tip {
+  color: #52525b;
+}
+
+.ssc-img {
+  display: block;
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  flex: none;
+}
+
+/* ---- overlay control and its menu (session.html .ovl, shared.css .pop.menu) ---- */
+
+.ssc-ovl {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+}
+
+.ssc-ln {
+  width: 12px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--sp-accent);
+}
+
+.ssc-qb[aria-pressed='false'] .ssc-ln {
+  background: var(--sp-text-3);
+}
+
+.ssc-pop {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 60;
+  min-width: 200px;
+  max-width: 340px;
+  padding: 4px;
+  border-radius: var(--sp-r);
+  border: 1px solid var(--sp-line-strong);
+  background: var(--sp-popover);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
+  font-size: var(--sp-fs-body);
+  line-height: 20px;
+}
+
+.sc-analytics-console .ssc .ssc-pop button,
+.ssc .ssc-pop button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--sp-text-1);
+  font-weight: 400;
+  text-align: left;
+}
+
+.ssc .ssc-pop button:hover,
+.ssc .ssc-pop .ssc-act {
+  background: var(--sp-raised);
+}
+
+.ssc-mt {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ssc-sub {
+  margin-left: auto;
+  color: var(--sp-text-3);
+  font-size: var(--sp-fs-label);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ---- Show on chart (d3-v2 session-original .cb-show / .cb-panel, 2026-10-14/15) ---- */
+
+/* the mockup's .cb-show{margin-left:auto}: the series, range and Expand sit
+   left, Show on chart at the row's end */
+.ssc-tool > .ssc-show {
+  margin-left: auto;
+}
+
+.ssc-show {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+
+.ssc .ssc-show > .ssc-qb[aria-expanded='true'] {
+  background: var(--sp-raised);
+  color: var(--sp-text-1);
+}
+
+.ssc-chev {
+  margin-left: -2px;
+  color: var(--sp-text-3);
+}
+
+.ssc-cnt {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #12201f;
+  color: var(--sp-accent);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 18px;
+}
+
+.ssc-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 60;
+  width: 300px;
+  max-width: calc(100vw - 32px);
+  padding: 6px;
+  border: 1px solid var(--sp-line-strong);
+  border-radius: var(--sp-r);
+  background: var(--sp-popover);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
+}
+
+.ssc-panel[hidden] {
+  display: none;
+}
+
+.ssc-panel label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: var(--sp-fs-label);
+  line-height: 16px;
+  color: var(--sp-text-1);
+}
+
+.ssc-panel label:hover {
+  background: var(--sp-raised);
+}
+
+.ssc-show .ssc-panel label > span {
+  display: flex;
+  flex-direction: column;
+}
+
+.ssc-sub2 {
+  color: var(--sp-text-3);
+}
+
+.ssc-panel input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--sp-accent);
+}
+
+/* ---- Emotes on chart, the line under the chart (session-original .po-eo, 2026-10-15) ---- */
+
+.ssc-eo {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  margin-top: 6px;
+  font-size: var(--sp-fs-label);
+  line-height: 16px;
+}
+
+.ssc-eo-t {
+  color: var(--sp-text-3);
+}
+
+.ssc-eo-tok {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  font-weight: 500;
+  color: var(--sp-text-1);
+}
+
+/* each plotted emote carries its trace colour, a 10 x 2 line */
+.ssc-eo-sw {
+  flex: none;
+  width: 10px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--c);
+}
+
+.ssc-eo-img {
+  display: block;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
+.ssc .ssc-eo-x {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-left: -2px;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--sp-text-3);
+}
+
+/* 44 px hit area on the 20 px remove button */
+.ssc .ssc-eo-x::after {
+  content: '';
+  position: absolute;
+  inset: -12px -6px;
+}
+
+.ssc .ssc-eo-x:hover {
+  background: var(--sp-raised);
+  color: var(--sp-text-1);
+}
+
+.sc-analytics-console .ssc .ssc-eo-add,
+.ssc .ssc-eo-add {
+  gap: 4px;
+  margin-left: -6px;
+  font-size: var(--sp-fs-label);
+}
+
+.ssc .ssc-eo-add[aria-expanded='true'] {
+  background: var(--sp-raised);
+  color: var(--sp-text-1);
+}
+
+.ssc-eo-p {
+  right: auto;
+  width: 260px;
+}
+
+.ssc-eo-l {
+  max-height: 308px;
+  overflow-y: auto;
+}
+
+.ssc-eo-p label {
+  min-height: 36px;
+  gap: 8px;
+}
+
+.ssc-eo-p .ssc-eo-c {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.ssc-eo-n {
+  flex: none;
+  color: var(--sp-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.ssc-eo-p label:has(input:disabled) {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ssc-eo-max {
+  margin: 4px 8px 2px;
+  font-size: var(--sp-fs-label);
+  line-height: 16px;
+  color: var(--sp-text-3);
+}
+
+/* the plotted emote lines (SessionChartLayers sessionOverlaysLayer): solid, no bridge */
+.ssc-ovl-line {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-opacity: 0.95;
+  stroke-linejoin: round;
+}
+
+.ssc-ovl-dots {
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+/* ---- chart stack: pins rail, band, marks ---- */
+
+.ssc-stack {
+  position: relative;
+  min-width: 0;
+}
+
+/* the rail sits 6 px under the toolbar: 28 px of pins in SpChart's 34 px top */
+.ssc-pins {
+  position: absolute;
+  top: 6px;
+  left: 0;
+  width: 100%;
+  height: 28px;
+}
+
+.ssc .ssc-pin {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 26px;
+  padding: 0 4px 0 2px;
+  border-radius: 13px;
+  background: var(--sp-canvas);
+  color: var(--sp-text-1);
+  will-change: transform;
+}
+
+.ssc .ssc-pin::after {
+  content: '';
+  position: absolute;
+  left: -4px;
+  right: -4px;
+  top: -10px;
+  bottom: -8px;
+}
+
+.ssc-pn {
+  display: grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--sp-raised);
+  box-shadow: inset 0 0 0 1px var(--sp-line-strong);
+  font-size: var(--sp-fs-label);
+  font-weight: 600;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ssc-pin:hover .ssc-pn {
+  box-shadow: inset 0 0 0 1px var(--sp-text-2);
+}
+
+.ssc-pin[aria-pressed='true'] .ssc-pn {
+  background: var(--sp-accent);
+  color: #09090b;
+  box-shadow: none;
+}
+
+/* category band: text only, click to zoom (shared.css .ch-band) */
+.ssc .ssc-band {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  overflow: hidden;
+  border-right: 1px solid var(--sp-canvas);
+  background: var(--sp-raised);
+  color: var(--sp-text-2);
+  font-size: var(--sp-fs-label);
+  line-height: 18px;
+  white-space: nowrap;
+  cursor: zoom-in;
+}
+
+.ssc .ssc-band::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -6px;
+  bottom: -20px;
+}
+
+.ssc .ssc-band:hover,
+.ssc .ssc-band:focus-visible,
+.ssc .ssc-band[data-active] {
+  color: var(--sp-text-1);
+  background: #1c1c1f;
+}
+
+.ssc-band-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* pin leaders and the strip-hover ghost */
+.ssc-leader,
+.ssc-ghost {
+  fill: none;
+  stroke-width: 1;
+}
+
+.ssc-leader {
+  stroke: var(--sp-text-3);
+  stroke-opacity: 0.6;
+}
+
+.ssc-leader.ssc-leader-on {
+  stroke: var(--sp-accent);
+  stroke-opacity: 1;
+}
+
+.ssc-ghost {
+  stroke: var(--sp-text-2);
+  stroke-opacity: 0.7;
+  stroke-dasharray: 2 3;
+}
+
+/* the one emote on chart: a solid teal line (session.js overlay) */
+.ssc .spc-line-overlay {
+  stroke: var(--sp-accent);
+  stroke-dasharray: none;
+}
+
+/* the navigator's readout line is 12 px, as the mockup's .cb .ch-navread */
+.ssc .hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__readout {
+  font-size: 12px;
+}
+
+/* navigator host stays unpositioned; its readout note */
+.ssc-barnote {
+  color: var(--sp-text-3);
+}
+
+/* ---- the minute data (d3-v2 session-original .po-md, prod's text
+   alternative): no box, a plain 44 px summary row ---- */
+.ssc-md {
+  margin-top: 12px;
+  padding: 0 0 8px;
+}
+
+.ssc-md:not([open]) {
+  padding-bottom: 0;
+}
+
+.sc-analytics-console .ssc-md > summary,
+.ssc-md > summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 16px;
+  color: #d4d4d8;
+  cursor: pointer;
+  list-style: none;
+}
+
+.ssc-md > summary::-webkit-details-marker {
+  display: none;
+}
+
+.ssc-md > summary:focus-visible {
+  outline: 2px solid #99f6e4;
+  outline-offset: 0;
+}
+
+.ssc-md-tw {
+  display: inline-block;
+  width: 12px;
+  margin-right: 4px;
+  font-size: 10px;
+  color: #a1a1aa;
+  transition: transform 0.15s;
+}
+
+.ssc-md[open] .ssc-md-tw {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ssc-md-tw {
+    transition: none;
+  }
+}
+
+.ssc-md-pg {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 16px;
+  color: #a1a1aa;
+  font-variant-numeric: tabular-nums;
+}
+
+.sc-analytics-console .ssc-md-pg button,
+.ssc-md-pg button {
+  min-height: 32px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #d4d4d8;
+}
+
+.ssc-md-pg button:hover:not(:disabled) {
+  color: #fff;
+}
+
+.ssc-md-pg button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.ssc-md-sc {
+  margin-top: 8px;
+  max-height: 288px;
+  overflow: auto;
+}
+
+.ssc-md table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 12px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ssc-md thead tr {
+  color: #71717a;
+}
+
+.ssc-md th {
+  font-weight: 700;
+  padding: 1px;
+}
+
+.ssc-md td {
+  padding: 1px;
+  color: #e4e4e7;
+}
+
+.ssc-md tbody th {
+  color: #e4e4e7;
+}
+
+.ssc-md tbody tr {
+  border-top: 1px solid rgb(255 255 255 / 0.05);
+}
+
+.ssc-md tbody tr[aria-current='true'] {
+  background: rgb(153 246 228 / 0.08);
+}
+
+/* ---- phone (d3-v2 session-original @media max-width 639px): the readout
+   may take two lines; the row keeps two lines' height so hovering never moves
+   the chart ---- */
+@media (max-width: 639px) {
+  .ssc-ro-row {
+    align-items: flex-start;
+  }
+
+  .ssc-ro {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    white-space: normal;
+    min-height: 32px;
+  }
+}
+
+/* ---- a narrow chart (session-original @container cbx 520 / 360 px) ---- */
+@container ssc (max-width: 520px) {
+  .ssc-tool {
+    gap: 8px;
+  }
+
+  .ssc .ssc-tool .ssc-seg button {
+    padding: 0 8px;
+  }
+}
+
+@container ssc (max-width: 360px) {
+  .ssc-seg .ssc-sw {
+    margin-right: 4px;
+  }
+
+  .ssc .ssc-tool .ssc-seg button {
+    padding: 0 6px;
+  }
+}

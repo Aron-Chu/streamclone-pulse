@@ -51,8 +51,9 @@ function detail(args: {
   } as unknown as AnalyticsStreamDetail
 }
 
-function renderChart(data: AnalyticsStreamDetail, isLive: boolean) {
-  return render(
+/** Renders the chart; with liveMarker, ticks Show on chart's Live edge when the stream offers it. */
+function renderChart(data: AnalyticsStreamDetail, isLive: boolean, liveMarker = true) {
+  const view = render(
     <AnalyticsChart
       detail={data}
       isLive={isLive}
@@ -64,41 +65,75 @@ function renderChart(data: AnalyticsStreamDetail, isLive: boolean) {
       onViewModeChange={vi.fn()}
     />,
   )
+  const box = view.container.querySelector<HTMLInputElement>('[data-session-marker="live"]')
+  if (liveMarker && box) fireEvent.click(box)
+  return view
 }
 
-/** x of the last vertex of an SVG path. */
-function lastPathX(d: string | null | undefined): number {
-  const numbers = (d ?? '').match(/-?\d+(?:\.\d+)?/g)?.map(Number) ?? []
-  return numbers[numbers.length - 2] ?? Number.NaN
+/**
+ * Largest x among the M/L/C points of SVG paths (SpChart draws lines in index
+ * units; the session lanes smooth with C, whose control points never pass the end point).
+ */
+function maxPathX(paths: Iterable<string | null | undefined>): number {
+  let max = Number.NaN
+  for (const d of paths) {
+    for (const m of (d ?? '').matchAll(/[MLC]([^MLCZ]*)/g)) {
+      const nums = m[1]!.trim().split(/[\s,]+/).map(Number)
+      for (let i = 0; i + 1 < nums.length; i += 2) {
+        const x = nums[i]!
+        if (!(x <= max)) max = x
+      }
+    }
+  }
+  return max
 }
 
 function geometry(container: HTMLElement) {
   const plot = container.querySelector('[data-chart-touch-action]')!
-  const plotStart = Number(plot.getAttribute('x'))
-  const plotEnd = plotStart + Number(plot.getAttribute('width'))
-  const viewerEnd = lastPathX(container.querySelector('[data-viewer-layer="idle"]')?.getAttribute('d'))
-  // The last bar is centred on the last minute, so its right half is clipped at the plot's end.
-  const bars = [...container.querySelectorAll('rect[data-activity-bar="chat"]')]
-    .map(bar => Number(bar.getAttribute('x')) + Number(bar.getAttribute('width')))
+  const plotEnd = Number(plot.getAttribute('width'))
+  // Bars and lines sit in one group scaled from index units to px:
+  // translate(tx 0) scale(sx 1), so px = tx + sx * index.
+  const scaled = container.querySelector('g[data-spc-scaled]')!
+  const match = /translate\((-?[\d.e+-]+) 0\) scale\((-?[\d.e+-]+) 1\)/.exec(scaled.getAttribute('transform') ?? '')
+  const tx = Number(match?.[1]), sx = Number(match?.[2])
+  const px = (u: number) => tx + sx * u
+  // the viewers lane's line (session-original lanes), not its fill
+  const viewerEnd = px(maxPathX([...container.querySelectorAll('g[data-lane="viewers"] path:not(.spc-lane-fill)')].map(p => p.getAttribute('d'))))
+  // session-original lanes centre each bar in its slot (prod's width rule)
+  const bars = [...container.querySelectorAll('rect.spc-bar')]
+    .map(bar => px(Number(bar.getAttribute('x')) + Number(bar.getAttribute('width')) / 2))
+  const slotMinutes = Number(container.querySelector('[data-bench-plot]')?.getAttribute('data-activity-bucket-minutes')) || 1
   return {
     plotEnd,
+    /** px width of one plotted minute */
+    minutePx: sx,
+    /** px width of one bar slot */
+    slotPx: sx * slotMinutes,
     viewerEnd,
-    lastBarRight: Math.max(...bars),
+    lastBarCentre: Math.max(...bars),
     viewportEnd: Number(plot.getAttribute('data-chart-viewport-end')),
   }
+}
+
+/** Every series reaches the right edge: the last bar is centred in the last slot, the line ends inside the last minute. */
+function expectAtRightEdge(g: ReturnType<typeof geometry>) {
+  expect(Math.abs(g.lastBarCentre - (g.plotEnd - g.slotPx / 2))).toBeLessThan(0.5)
+  expect(g.viewerEnd).toBeGreaterThan(g.plotEnd - g.minutePx)
+  expect(g.viewerEnd).toBeLessThanOrEqual(g.plotEnd + 0.01)
 }
 
 describe('AnalyticsChart live edge', () => {
   it('ends a live plot on the newest finished minute, with every series at the right edge', () => {
     // 21 minutes; the 21st (00:20:00) is still being measured.
     const { container } = renderChart(detail({ minutes: 21, live: true, updatedAt: START + 20 * 60_000 + 25_000 }), true)
-    const { plotEnd, viewerEnd, lastBarRight, viewportEnd } = geometry(container)
-    expect(viewportEnd).toBe(19 * 60)
-    expect(viewerEnd).toBeCloseTo(plotEnd, 0)
-    expect(lastBarRight).toBeCloseTo(plotEnd, 0)
+    const g = geometry(container)
+    expect(g.viewportEnd).toBe(19 * 60)
+    expectAtRightEdge(g)
     // The axis and the navigator describe the same span: 20 plotted minutes.
     const navigator = container.querySelector('[data-hub-chart-navigator]')!
-    expect(navigator.querySelector('.hx-chart-navigator__bucket-count')?.textContent).toBe('20 of 20 minutes · bars per minute')
+    // session-original: "Full stream · 1-min bars" on screen, the counts for screen readers.
+    expect(navigator.querySelector('[data-chart-bar-size-label]')?.textContent).toBe('1-min bars')
+    expect(navigator.querySelector('.hx-chart-navigator__bucket-count')?.textContent).toBe(', 20 of 20 minutes')
     expect(screen.getByRole('slider', { name: 'Chart view end' }).getAttribute('aria-valuetext'))
       .toBe('End 00:19:00; showing 00:00:00 to 00:19:00')
     // An honest marker above the right end says the chart is live.
@@ -107,7 +142,7 @@ describe('AnalyticsChart live edge', () => {
     const updatingRows = [...container.querySelectorAll('[data-chart-data-updating]')]
     expect(updatingRows).toHaveLength(1)
     expect(updatingRows[0]!.closest('tr')?.textContent).toContain('00:20:00')
-    expect(container.textContent).toContain('View measured minute data (21 of 21 minutes)')
+    expect(container.querySelector('[data-chart-data-alternative] > summary')?.textContent).toBe('▸Minute-by-minute table')
   })
 
   it('names the last measured time at the live edge when collection has fallen behind', () => {
@@ -126,20 +161,21 @@ describe('AnalyticsChart live edge', () => {
 
   it('ends an ended plot on its last minute with data, not on empty trailing minutes', () => {
     const { container } = renderChart(detail({ minutes: 30, emptyTail: 3 }), false)
-    const { plotEnd, viewerEnd, lastBarRight, viewportEnd } = geometry(container)
-    expect(viewportEnd).toBe(29 * 60)
-    expect(viewerEnd).toBeCloseTo(plotEnd, 0)
-    expect(lastBarRight).toBeCloseTo(plotEnd, 0)
+    const g = geometry(container)
+    expect(g.viewportEnd).toBe(29 * 60)
+    expectAtRightEdge(g)
     expect(container.querySelector('[data-chart-live-edge]')).toBeNull()
     expect(container.querySelector('[data-chart-data-updating]')).toBeNull()
   })
 
   it('keeps a 12-hour stream aligned at the right edge with bucketed bars', () => {
     const { container } = renderChart(detail({ minutes: 748 }), false)
-    const { plotEnd, viewerEnd, lastBarRight, viewportEnd } = geometry(container)
-    expect(viewportEnd).toBe(747 * 60)
-    expect(viewerEnd).toBeCloseTo(plotEnd, 0)
-    expect(lastBarRight).toBeCloseTo(plotEnd, 0)
+    const g = geometry(container)
+    expect(g.viewportEnd).toBe(747 * 60)
+    // session-original lanes: 748 minutes still fit 1-minute bars on the 944 px plot,
+    // and the last bar sits centred in the last slot
+    expect(Math.abs(g.lastBarCentre - (g.plotEnd - g.slotPx / 2))).toBeLessThan(0.5)
+    expect(Number(container.querySelector('[data-bench-plot]')?.getAttribute('data-activity-bucket-minutes'))).toBe(1)
     expect(container.querySelector('[data-hub-chart-navigator] .hx-chart-navigator__bucket-count')?.textContent)
       .toContain('748 of 748 minutes')
   })
@@ -151,12 +187,11 @@ describe('AnalyticsChart live edge', () => {
     // 15 minutes; the 15th (00:14:00) is the partial minute collection stopped in, read 10 minutes later.
     const data = detail({ minutes: 15, live: true, state: 'live', lifecycleState: 'unknown', updatedAt: START + 25 * 60_000 })
     const { container } = renderChart(data, false)
-    const { plotEnd, viewerEnd, lastBarRight, viewportEnd } = geometry(container)
-    expect(viewportEnd).toBe(13 * 60)
-    expect(viewerEnd).toBeCloseTo(plotEnd, 0)
-    expect(lastBarRight).toBeCloseTo(plotEnd, 0)
+    const g = geometry(container)
+    expect(g.viewportEnd).toBe(13 * 60)
+    expectAtRightEdge(g)
     expect(container.querySelector('[data-hub-chart-navigator] .hx-chart-navigator__bucket-count')?.textContent)
-      .toBe('14 of 14 minutes · bars per minute')
+      .toBe(', 14 of 14 minutes')
     const marker = container.querySelector('[data-chart-live-edge]')
     expect(marker?.textContent).toBe('Unconfirmed · last data 00:14:00')
     expect(marker?.getAttribute('data-chart-live-edge-tone')).toBe('unconfirmed')
@@ -168,11 +203,25 @@ describe('AnalyticsChart live edge', () => {
   it('lines up a confirmed live stream whose newest minute stopped long ago', () => {
     const data = detail({ minutes: 15, live: true, state: 'live', lifecycleState: 'confirmed_live', updatedAt: START + 25 * 60_000 })
     const { container } = renderChart(data, true)
-    const { plotEnd, viewerEnd, viewportEnd } = geometry(container)
-    expect(viewportEnd).toBe(13 * 60)
-    expect(viewerEnd).toBeCloseTo(plotEnd, 0)
+    const g = geometry(container)
+    expect(g.viewportEnd).toBe(13 * 60)
+    expectAtRightEdge(g)
     expect(container.querySelector('[data-chart-live-edge]')?.textContent).toBe('Live · last data 00:14:00')
     expect(container.querySelector('[data-chart-live-edge]')?.getAttribute('data-chart-live-edge-tone')).toBe('live')
+  })
+
+  // d3-v2 session-original: every chart marker is off on each load.
+  it('draws the live edge only with the Show on chart Live edge marker, offered only while there is one', () => {
+    const { container } = renderChart(detail({ minutes: 21, live: true, updatedAt: START + 20 * 60_000 + 25_000 }), true, false)
+    expect(container.querySelector('[data-chart-live-edge]')).toBeNull()
+    const box = container.querySelector<HTMLInputElement>('[data-session-marker="live"]')!
+    expect(box.checked).toBe(false)
+    fireEvent.click(box)
+    expect(container.querySelector('[data-chart-live-edge]')?.textContent).toBe('Live · updating')
+    cleanup()
+    const ended = renderChart(detail({ minutes: 30 }), false, false)
+    expect(ended.container.querySelector('[data-session-marker="live"]')).toBeNull()
+    expect(ended.container.querySelector('[data-session-marker="moments"]')).not.toBeNull()
   })
 
   it('keeps the last minute of a confirmed ended stream, with no marker', () => {

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AnalyticsStreamDetail } from '../../api.ts'
 import AnalyticsChart from './AnalyticsChart.tsx'
 import { ChartNavigator } from './ChartNavigator.tsx'
+import { scrollZoomToggle } from './__fixtures__/sessionChartHarness.ts'
 
 vi.mock('../../hooks/useConsoleMotion.ts', () => ({
   useConsoleMotion: () => ({ motionEnabled: false }),
@@ -135,7 +136,7 @@ describe('stream chart zoom matches the Global activity chart', () => {
     fireEvent.keyDown(plot, { key: '-' })
     expect(navigatorWindow(container)).toBe(afterButtonOut)
     // 0: the same full reset as the button; the Scroll zoom choice stays.
-    const scrollZoom = screen.getByRole('button', { name: /Scroll zoom/ })
+    const scrollZoom = scrollZoomToggle(container)
     expect(scrollZoom.getAttribute('aria-pressed')).toBe('true')
     fireEvent.keyDown(plot, { key: '0' })
     expect(navigatorWindow(container)).toBe('0:747')
@@ -164,7 +165,7 @@ describe('stream chart zoom matches the Global activity chart', () => {
     expect(spanOf(navigatorWindow(container))).toBe(583)
     // Scroll zoom off: Alt + a notch is the same step.
     fireEvent.click(screen.getByRole('button', { name: 'Reset zoom' }))
-    fireEvent.click(screen.getByRole('button', { name: /Scroll zoom/ }))
+    fireEvent.click(scrollZoomToggle(container))
     fireEvent.wheel(plot, { deltaY: -100, clientX: 500, clientY: 150, altKey: true })
     expect(spanOf(navigatorWindow(container))).toBe(583)
   })

@@ -1,6 +1,7 @@
 import { expect, test, type Route } from '@playwright/test'
 
-const LOGIN = 'cashapp-fixture'
+// Twitch logins are [a-z0-9_]: a hyphen routes to Page not found.
+const LOGIN = 'cashapp_fixture'
 const STREAM_ID = 'cashapp-stream'
 const STARTED_AT = '2026-07-27T18:00:00.000Z'
 
@@ -12,7 +13,7 @@ function json(route: Route, body: unknown): Promise<void> {
   })
 }
 
-test('session chart expands from overview to faded-future detail', async ({ page }) => {
+test('a short limited session draws per-minute bars and the hover readout follows the pointer', async ({ page }) => {
   const stream = {
     streamId: STREAM_ID,
     login: LOGIN,
@@ -88,28 +89,27 @@ test('session chart expands from overview to faded-future detail', async ({ page
 
   await page.goto(`/analytics/${LOGIN}/${STREAM_ID}`, { waitUntil: 'domcontentloaded' })
 
-  const chart = page.locator('svg[aria-label="Chat and emote activity timeline with viewer context"]')
+  // d3 session chart (plan §1.2): the Cash App overview/detail transition is
+  // gone. A short limited-quality session draws one bar per measured minute;
+  // hovering reads that minute and leaving the plot restores the resting line.
+  const chart = page.locator('svg[aria-label="Analytics timeline chart"]')
   await expect(chart).toBeVisible()
-  await expect(chart).toHaveAttribute('data-chart-mode', 'overview')
-  await expect(chart.locator('[data-chart-layer="overview"]')).toHaveCount(1)
-  await expect(chart.locator('[data-chart-layer="overview"]')).toHaveAttribute(
-    'data-chart-primary-signals',
-    'chat emotes',
-  )
-  await expect(chart.locator('[data-chart-layer="detail-chrome"]')).toHaveAttribute('opacity', '0')
+  await expect(chart).toHaveAttribute('data-activity-bucket-minutes', '1')
+  const bars = chart.locator('rect.spc-bar')
+  await expect.poll(() => bars.count()).toBeGreaterThan(0)
+  expect(await bars.count()).toBeLessThanOrEqual(minutes.length)
+  await expect(chart.locator('[data-activity-bar-peak]')).toHaveCount(0)
 
-  const box = await chart.boundingBox()
+  const readout = page.locator('[data-session-readout]')
+  const resting = (await readout.textContent()) ?? ''
+  const area = chart.locator('rect[data-chart-touch-action]')
+  await chart.evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }))
+  const box = await area.boundingBox()
   expect(box).toBeTruthy()
-  await chart.hover({ position: { x: box!.width * 0.36, y: box!.height * 0.5 } })
-
-  await expect(chart).toHaveAttribute('data-chart-mode', 'detail')
-  await expect(chart.locator('[data-chart-layer="detail-chrome"]')).toHaveAttribute('opacity', '1')
-  await expect(chart.locator('[data-chart-layer="detail-past"]').first()).toBeVisible()
-  await expect(chart.locator('[data-chart-layer="detail-future"]').first()).toHaveAttribute(
-    'stroke',
-    'rgba(161, 161, 170, 0.58)',
-  )
+  await page.mouse.move(box!.x + box!.width * 0.36, box!.y + box!.height * 0.5)
+  await expect(readout).not.toHaveText(resting)
+  await expect(readout).toContainText(/0:0\d:00/)
 
   await page.mouse.move(2, 2)
-  await expect(chart).toHaveAttribute('data-chart-mode', 'overview')
+  await expect(readout).toHaveText(resting)
 })

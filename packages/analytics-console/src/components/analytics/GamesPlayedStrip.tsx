@@ -37,6 +37,16 @@ export interface GamesPlayedStripProps {
   onSelectKey?: (key: string | null) => void
   /** Live charts may limit the initial rail to the visible chart window. */
   visibleRange?: GamesPlayedVisibleRange | null
+  /**
+   * The session chart (d3-v2 session-original, 2026-10-14/15 declutter): no
+   * "Games played" header row, every game on the rail (no chart-window toggle
+   * to host), and each poster says how long it ran, so the posters read as a
+   * timeline against the chart's game band. The run time is aria-hidden: the
+   * poster's label already carries it. No box around the posters and no
+   * details line under them (the poster's title carries the game and span);
+   * the poster borders follow the mockup's .po-gp-b (sp-session-chart.css).
+   */
+  headerless?: boolean
 }
 
 function formatStreamDuration(durationSeconds: number): string {
@@ -48,9 +58,15 @@ function formatStreamDuration(durationSeconds: number): string {
   return `${total}s`
 }
 
-function formatWindowLabel(startOffset: number, endOffset: number): string {
+/** A poster's run time, rounded to the minute (session-original `fdm`): "49m", "10h 35m". */
+function formatRunTime(durationSeconds: number): string {
+  const total = Math.round(Math.max(0, durationSeconds) / 60)
+  return total < 60 ? `${total}m` : `${Math.floor(total / 60)}h ${total % 60}m`
+}
+
+function formatWindowLabel(startOffset: number, endOffset: number, rounded = false): string {
   const span = Math.max(0, endOffset - startOffset)
-  return `${formatHeatOffset(startOffset)}–${formatHeatOffset(endOffset)} · ${formatStreamDuration(span)}`
+  return `${formatHeatOffset(startOffset)}–${formatHeatOffset(endOffset)} · ${rounded ? formatRunTime(span) : formatStreamDuration(span)}`
 }
 
 function countHiddenAhead(node: HTMLDivElement, total: number): number {
@@ -233,6 +249,7 @@ export function GamesPlayedStrip({
   onHighlightKey,
   onSelectKey,
   visibleRange = null,
+  headerless = false,
 }: GamesPlayedStripProps) {
   const rootRef = useRef<HTMLDivElement | null>(null)
   const trackRef = useRef<HTMLDivElement | null>(null)
@@ -247,7 +264,7 @@ export function GamesPlayedStrip({
     [games, durationSeconds],
   )
 
-  const rangeAware = Boolean(visibleRange)
+  const rangeAware = Boolean(visibleRange) && !headerless
   const inRangeCount = useMemo(() => {
     if (!visibleRange) return allSegments.length
     return allSegments.filter(segment =>
@@ -399,7 +416,7 @@ export function GamesPlayedStrip({
   return (
     <div
       ref={rootRef}
-      className="mb-2 min-w-0 overflow-hidden rounded border border-white/10 bg-white/[0.02]"
+      className={headerless ? 'ssc-gp min-w-0 overflow-hidden' : 'mb-2 min-w-0 overflow-hidden rounded border border-white/10 bg-white/[0.02]'}
       aria-label="Games played"
       onMouseLeave={() => {
         setActiveKey(null)
@@ -416,7 +433,7 @@ export function GamesPlayedStrip({
       }}
       data-games-played
     >
-      <div className="flex min-w-0 items-center justify-between gap-2 border-b border-white/10 px-2.5 py-1.5" data-games-played-header>
+      {headerless ? null : <div className="flex min-w-0 items-center justify-between gap-2 border-b border-white/10 px-2.5 py-1.5" data-games-played-header>
         <span className="shrink-0 text-xs font-black uppercase tracking-wide text-zinc-500">Games played</span>
         <div className="flex min-w-0 items-center gap-1.5" data-games-played-trail>
           {allSegments.length > 1 ? (
@@ -436,9 +453,9 @@ export function GamesPlayedStrip({
             </button>
           ) : null}
         </div>
-      </div>
+      </div>}
 
-      <div className="min-w-0 overflow-hidden px-2.5 py-1.5" data-games-timeline data-timeline-start={timelineRange.startOffset} data-timeline-end={timelineRange.endOffset}>
+      <div className={headerless ? 'min-w-0 overflow-hidden' : 'min-w-0 overflow-hidden px-2.5 py-1.5'} data-games-timeline data-timeline-start={timelineRange.startOffset} data-timeline-end={timelineRange.endOffset}>
         <div className="relative min-w-0 w-full">
           <div
             ref={trackRef}
@@ -453,14 +470,14 @@ export function GamesPlayedStrip({
               const key = gameSegmentKey(segment)
               const selected = selectedKey === key
               const active = highlightedKey === key || selected
-              const title = `${segment.gameName} · ${formatWindowLabel(slot.visibleStart, slot.visibleEnd)}${slot.clipped ? ' · clipped to chart' : ''}`
+              const title = `${segment.gameName} · ${formatWindowLabel(slot.visibleStart, slot.visibleEnd, headerless)}${slot.clipped ? ' · clipped to chart' : ''}`
               const detailsId = `games-played-details-${index}-${key.replace(/[^a-z0-9_-]/gi, '-')}`
 
               return (
-                <div key={`${segment.gameName}-${segment.offsetSeconds}-${index}`} role="listitem" aria-label={title} className="relative shrink-0" style={{ flex: `0 0 ${GAMES_PLAYED_HIT_TARGET_PX}px` }}>
+                <div key={`${segment.gameName}-${segment.offsetSeconds}-${index}`} role="listitem" aria-label={title} className={headerless ? 'relative flex shrink-0 flex-col items-center gap-0.5' : 'relative shrink-0'} style={{ flex: `0 0 ${GAMES_PLAYED_HIT_TARGET_PX}px` }}>
                   <button
                     type="button"
-                    className={`relative flex items-center justify-center rounded-lg border-2 p-0.5 outline-none transition ${
+                    className={headerless ? 'ssc-gp-b relative flex items-center justify-center' : `relative flex items-center justify-center rounded-lg border-2 p-0.5 outline-none transition ${
                       active
                         ? 'border-zinc-300 bg-white/[0.08] shadow-[0_0_0_2px_rgba(255,255,255,.08)]'
                         : slot.clipped
@@ -474,6 +491,7 @@ export function GamesPlayedStrip({
                     aria-describedby={displayedKey === key ? detailsId : undefined}
                     data-games-played-item
                     data-game-key={key}
+                    data-hl={headerless && active ? '' : undefined}
                     onMouseEnter={() => {
                       setActiveKey(key)
                       onHighlightKey?.(key)
@@ -497,6 +515,11 @@ export function GamesPlayedStrip({
                   >
                     <GameArt gameName={segment.gameName} boxArtUrl={segment.boxArtUrl} categoryId={segment.categoryId} />
                   </button>
+                  {headerless ? (
+                    <span className="whitespace-nowrap text-[11px] font-semibold leading-[14px] tabular-nums text-zinc-500" aria-hidden="true" data-games-played-run-time>
+                      {formatRunTime(slot.visibleEnd - slot.visibleStart)}
+                    </span>
+                  ) : null}
                   {displayedKey === key ? <span id={detailsId} role="tooltip" className="sr-only">{title}</span> : null}
                 </div>
               )
@@ -517,7 +540,7 @@ export function GamesPlayedStrip({
         </div>
       </div>
 
-      {displayedSlot ? (
+      {displayedSlot && !headerless ? (
         <div
           className="mx-2.5 mb-1 min-w-0 truncate px-0.5 text-xs font-semibold tabular-nums text-zinc-500"
           data-games-played-details
