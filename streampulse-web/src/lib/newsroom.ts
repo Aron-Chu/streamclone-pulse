@@ -5,10 +5,8 @@ import { absolutizeEmoteAssetUrl } from './emoteAssetUrl'
 import {
   normalizeLiveWireMomentComparison,
   type LiveWireMomentComparison,
-  type LiveWireMetricComparison,
 } from './liveWire'
 import type { HubEmote } from './publicHub'
-import { discoveryMomentHref, fromNewsroomUpdate } from './discoveryMoments'
 
 export const NEWSROOM_SCHEMA_VERSION = 1 as const
 
@@ -152,36 +150,6 @@ export interface FetchNewsroomOptions {
   cursor?: string
   storyId?: string
   signal?: AbortSignal
-}
-
-const NEWSROOM_WINDOWS: readonly NewsroomWindow[] = ['live', '24h', '7d']
-
-/**
- * History is capability-gated because several deployed API revisions only
- * implement the live index. `live` remains available by default; a deployment
- * must explicitly opt into each historical window.
- */
-export function configuredNewsroomWindows(
-  configured = import.meta.env.VITE_PUBLIC_NEWSROOM_WINDOWS,
-): ReadonlySet<NewsroomWindow> {
-  const enabled = new Set<NewsroomWindow>(['live'])
-  if (typeof configured !== 'string') return enabled
-  for (const token of configured.split(',').map((value) => value.trim())) {
-    if (NEWSROOM_WINDOWS.includes(token as NewsroomWindow)) enabled.add(token as NewsroomWindow)
-  }
-  return enabled
-}
-
-export function newsroomWindowAvailability(
-  window: NewsroomWindow,
-  configured?: string,
-): { available: boolean; reason?: string } {
-  if (configuredNewsroomWindows(configured).has(window)) return { available: true }
-  const label = window === '24h' ? '24-hour' : '7-day'
-  return {
-    available: false,
-    reason: `${label} Newsroom history is not available from this portal deployment. Live stories remain available.`,
-  }
 }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -639,64 +607,4 @@ export async function fetchNewsroom(options: FetchNewsroomOptions = {}): Promise
   const envelope = normalizeNewsroomEnvelope(response.data)
   if (!envelope) throw new Error('Malformed newsroom response')
   return envelope
-}
-
-export function newsroomMetricForSignal(
-  comparison: LiveWireMomentComparison,
-  signal: NewsroomSignal,
-): LiveWireMetricComparison | null {
-  if (signal === 'chat') return comparison.chat
-  if (signal === 'emotes') return comparison.emotes
-  const candidates = [comparison.chat, comparison.emotes].filter(
-    (metric) => metric.state === 'ready' || metric.state === 'new_activity',
-  )
-  return candidates.sort((a, b) => (b.multiplier ?? 0) - (a.multiplier ?? 0))[0] ?? null
-}
-
-export function newsroomDataThroughAge(dataThrough: string | undefined, now = Date.now()): string | null {
-  if (!dataThrough) return null
-  const parsed = Date.parse(dataThrough)
-  if (!Number.isFinite(parsed)) return null
-  const minutes = Math.max(0, Math.floor((now - parsed) / 60_000))
-  if (minutes < 1) return 'Data through less than a minute ago.'
-  if (minutes < 60) return `Data through ${minutes}m ago.`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `Data through ${hours}h ago.`
-  return `Data through ${Math.floor(hours / 24)}d ago.`
-}
-
-const NEWSROOM_REASON_COPY: Record<string, string> = {
-  reads_disabled: 'Pulse Newsroom is not enabled for this API release yet.',
-  refresh_not_ready: 'Verified story history is still being prepared.',
-  no_material_stories: 'No verified stream story is developing in this window.',
-  refresh_unavailable: 'Fresh story data could not be reached. The last verified stories are preserved.',
-  query_unavailable: 'Verified stories are temporarily unavailable.',
-  store_unavailable: 'Verified story storage is temporarily unavailable.',
-  not_found: 'Pulse Newsroom is not available from this API release.',
-}
-
-export function newsroomReasonCopy(reason: string | undefined | null): string | undefined {
-  const value = reason?.trim()
-  if (!value) return undefined
-  const normalized = value.toLowerCase()
-  if (NEWSROOM_REASON_COPY[normalized]) return NEWSROOM_REASON_COPY[normalized]
-  if (normalized === 'malformed newsroom response' || normalized.includes('malformed newsroom')) {
-    return 'The Newsroom response did not match the supported public contract.'
-  }
-  if (normalized.includes('404') || normalized.includes('page not found')) {
-    return NEWSROOM_REASON_COPY.not_found
-  }
-  if (/^[a-z0-9_]+$/.test(normalized)) return 'Verified stories are temporarily unavailable.'
-  return value
-}
-
-export interface NewsroomWatchAction {
-  href: string
-  label: 'Review moment'
-}
-
-/** Route one selected story lead through exact-identity source review. */
-export function newsroomWatchAction(story: NewsroomStory): NewsroomWatchAction | null {
-  const moment = fromNewsroomUpdate(story, story.leadUpdate)
-  return moment ? { href: discoveryMomentHref(moment), label: 'Review moment' } : null
 }
