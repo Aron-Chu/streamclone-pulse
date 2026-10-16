@@ -93,16 +93,9 @@ function resolveBasePageMetadata(pathname: string): PageMetadata {
     case '/changelog':
       return { title: 'Release Notes — StreamPulse', description: 'What changed in each version of the StreamPulse extension.', canonicalPath: normalizedPath, robots: 'noindex,nofollow' }
     default: {
-      if (normalizedPath === '/analytics/moments') {
-        return { title: 'Moments — StreamPulse', description: 'Discover measured reactions, review exact sources, and save moments on this device.', canonicalPath: normalizedPath, robots: 'noindex,nofollow' }
-      }
-      if (normalizedPath === '/analytics/explore' || /^\/analytics\/explore\/[^/]+$/.test(normalizedPath)) {
-        return {
-          title: 'Pulse Explorer — StreamPulse',
-          description: 'Browse verified reaction activity by broadcast and inspect measured moments.',
-          canonicalPath: '/analytics/explore',
-          robots: 'noindex,nofollow',
-        }
+      // The retired Explorer only redirects, so it names the page it sends people to.
+      if (normalizedPath === '/analytics/moments' || normalizedPath === '/analytics/explore' || /^\/analytics\/explore\/[^/]+$/.test(normalizedPath)) {
+        return { title: 'Moments — StreamPulse', description: 'Discover measured reactions, review exact sources, and save moments on this device.', canonicalPath: '/analytics/moments', robots: 'noindex,nofollow' }
       }
       if (normalizedPath === '/analytics/newsroom' || /^\/analytics\/newsroom\/[^/]+$/.test(normalizedPath)) {
         return {

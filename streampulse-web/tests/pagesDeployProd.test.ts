@@ -60,10 +60,14 @@ describe('Cloudflare Pages production deployment hygiene', () => {
     expect(redirects).toMatch(/\/analytics\/streams\s+\/analytics\s+301/)
     expect(redirects).toMatch(/\/analytics\/hub\s+\/analytics\s+301/)
     expect(redirects).toMatch(/\/atlas\s+\/analytics\s+301/)
-    // Explorer must reach the SPA (rewrite, not 301) so the client can map
-    // broadcastId/window onto Moments instead of dropping them at the edge.
+    // The retired Explorer list goes to Moments at the edge. Its own query
+    // replaces Explorer's, which Pages would otherwise pass through.
+    for (const path of ['/analytics/explore', '/analytics/explore/']) {
+      expect(redirects.split(/\r?\n/).find(line => line.startsWith(`${path} `))).toBe(`${path} /analytics/moments?view=recent 301`)
+    }
+    // An Explorer broadcast must reach the SPA (rewrite, not 301) so the client
+    // can map its id onto the stream page.
     for (const path of [
-      '/analytics/explore', '/analytics/explore/',
       '/analytics/explore/:broadcastId', '/analytics/explore/:broadcastId/',
       '/analytics/:login', '/analytics/:login/',
       '/analytics/:login/:streamId', '/analytics/:login/:streamId/',
