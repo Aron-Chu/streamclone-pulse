@@ -95,7 +95,8 @@ test('a short limited session draws per-minute bars and the hover readout follow
   const chart = page.locator('svg[aria-label="Analytics timeline chart"]')
   await expect(chart).toBeVisible()
   await expect(chart).toHaveAttribute('data-activity-bucket-minutes', '1')
-  const bars = chart.locator('rect.spc-bar')
+  // Bars draw in two lanes (U12): count the chat lane's, one per measured minute at most.
+  const bars = chart.locator('g[data-lane="chat"] rect.spc-bar')
   await expect.poll(() => bars.count()).toBeGreaterThan(0)
   expect(await bars.count()).toBeLessThanOrEqual(minutes.length)
   await expect(chart.locator('[data-activity-bar-peak]')).toHaveCount(0)

@@ -205,21 +205,25 @@ test.describe('session signal tape', () => {
     await expect(chip).toHaveAttribute('aria-pressed', 'true')
 
     // The 240-second peak is intentionally a normal minute in the 300-point source
-    // timeline: the d3 chart (U1) draws the selected minute as one rule through
-    // that minute's slot, never a neighbouring one, whatever the bar bucketing.
+    // timeline: the session chart draws the selection as the F23 band, snapped out
+    // to the one bar that holds that minute at the current level, never a neighbour.
     const chart = page.locator('svg[aria-label="Analytics timeline chart"]')
-    const marker = chart.locator('path.spc-sel')
+    const marker = chart.locator('rect[data-chart-selband]')
     await expect(marker).toHaveCount(1)
+    await expect(marker).not.toHaveAttribute('data-sliding')
     const area = chart.locator('rect[data-chart-touch-action]')
     const plot = await area.boundingBox()
     const markerBox = await marker.boundingBox()
-    if (!plot || !markerBox) throw new Error('plot or selection rule has no layout box')
+    if (!plot || !markerBox) throw new Error('plot or selection band has no layout box')
     const viewStart = Number(await area.getAttribute('data-chart-viewport-start'))
     const viewEnd = Number(await area.getAttribute('data-chart-viewport-end'))
     const pxPerSecond = plot.width / (viewEnd - viewStart)
+    const barSeconds = Number(await chart.getAttribute('data-activity-bucket-minutes')) * 60
     const expectedX = plot.x + (PEAK_OFFSET_SECONDS + 30 - viewStart) * pxPerSecond
-    // Half a minute either way: a neighbouring minute would sit a whole minute off.
-    expect(Math.abs(markerBox.x + markerBox.width / 2 - expectedX)).toBeLessThan(30 * pxPerSecond)
+    // The band holds the minute and is one bar wide, so a neighbouring bar would leave it out.
+    expect(markerBox.x).toBeLessThanOrEqual(expectedX)
+    expect(markerBox.x + markerBox.width).toBeGreaterThanOrEqual(expectedX)
+    expect(markerBox.width).toBeLessThanOrEqual(barSeconds * pxPerSecond + 1)
 
     await page.evaluate(() => { document.body.style.zoom = '2' })
     const zoomedSizes = await tape.getByRole('button').evaluateAll(buttons =>
