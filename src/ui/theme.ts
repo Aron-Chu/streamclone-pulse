@@ -288,19 +288,6 @@ export const shadowStyles = `
     box-shadow: 0 6px 18px rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.35);
     transform: translateY(-1px);
   }
-  .pulse-recap-highlight-btn {
-    transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease,
-      box-shadow 0.15s ease;
-  }
-  .pulse-recap-highlight-btn:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.07) !important;
-    border-color: rgba(255, 255, 255, 0.22) !important;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.24);
-    transform: translateY(-1px);
-  }
-  .pulse-recap-highlight-btn-selected:hover {
-    border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.55) !important;
-  }
   .pulse-action-chip {
     -webkit-tap-highlight-color: transparent;
     min-height: 40px;
@@ -500,6 +487,13 @@ export const shadowStyles = `
   [data-pulse-hub-cta="true"]::before {
     animation: pulse-hub-cta-sheen 680ms cubic-bezier(0.22, 1, 0.36, 1) 150ms both;
   }
+  .pulse-hub-row { display: flex; gap: 6px; margin: 8px 0 6px; }
+  .pulse-hub-row[data-compact] { margin: 6px 0 4px; }
+  .pulse-analytics-hub-cta > span { display: block; font-size: 12px; font-weight: 900; letter-spacing: 0; line-height: 1.25; }
+  .pulse-hub-row .pulse-analytics-hub-cta { flex: 1; min-width: 0; }
+  .pulse-hub-discord { appearance: none; background: #5865f2; border: 0; border-radius: 9px; color: #fff; cursor: pointer; flex: none; font: inherit; font-size: 12px; font-weight: 900; padding: 0 13px; }
+  .pulse-hub-discord:hover, .pulse-quick-community button:hover { filter: brightness(1.12); }
+  .pulse-hub-discord:focus-visible, .pulse-quick-community button:focus-visible { outline: 2px solid #c9cdfb; outline-offset: 2px; }
   .pulse-chart-zoom-button {
     -webkit-tap-highlight-color: transparent;
     min-height: 24px;
@@ -1052,6 +1046,7 @@ export const shadowStyles = `
     padding: 0 12px;
   }
   .pulse-quick-group-card > :first-child { border-top: 0; }
+  .pulse-settings-control-disabled > div { opacity: 0.6; }
   .pulse-settings-overlay-workspace .pulse-settings-control-block {
     padding: 12px 0;
   }
@@ -1109,9 +1104,11 @@ export const shadowStyles = `
     gap: 6px;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  .pulse-look-picker { display: grid; gap: 6px; grid-auto-columns: minmax(0, 1fr); grid-auto-flow: column; }
   .pulse-accent-choice,
   .pulse-placement-choice,
-  .pulse-density-choice {
+  .pulse-density-choice,
+  .pulse-look-choice {
     align-items: center;
     background: rgba(255, 255, 255, 0.025);
     border: 1px solid ${theme.border};
@@ -1128,10 +1125,12 @@ export const shadowStyles = `
   }
   .pulse-placement-choice { flex-direction: column; gap: 5px; position: relative; padding: 9px 4px 8px; }
   .pulse-placement-choice .pulse-choice-check { position: absolute; right: 6px; top: 5px; }
-  .pulse-accent-choice:hover,.pulse-placement-choice:hover,.pulse-density-choice:hover{transform:translateY(-1px)}
+  .pulse-accent-choice:hover,.pulse-placement-choice:hover,.pulse-density-choice:hover,.pulse-look-choice:hover{transform:translateY(-1px)}
+  .pulse-look-choice { padding: 7px 2px; }
   .pulse-accent-choice-active,
   .pulse-placement-choice-active,
-  .pulse-density-choice-active {
+  .pulse-density-choice-active,
+  .pulse-look-choice-active {
     background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.13);
     border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.46);
     color: var(--pulse-accent-ink, #ddd6fe);
@@ -1164,43 +1163,18 @@ export const shadowStyles = `
     color: ${theme.textMuted};
     font-size: 11px;
   }
-  .pulse-settings-release-preview { overflow: hidden; }
-  /* One open card: header and highlights on the same surface, no divider, so it
-     never reads as an expanded disclosure. */
-  .pulse-settings-release-preview > header {
-    align-items: center;
-    display: grid;
-    gap: 8px;
-    grid-template-columns: auto minmax(0, 1fr);
-    padding: 11px 12px 0;
-  }
+  /* What's new, one line: version, this release's title, and the way to every change. */
+  .pulse-settings-release-preview { align-items: center; color: ${theme.textMuted}; display: flex; font-size: 11px; gap: 8px; line-height: 1.35; padding: 6px 6px 6px 10px; }
+  .pulse-settings-release-preview > span:nth-child(2) { flex: 1; min-width: 0; }
+  .pulse-settings-release-preview strong { color: ${theme.textPrimary}; }
   .pulse-settings-release-version {
     background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.16);
     border-radius: 999px;
     color: var(--pulse-accent-ink, #ddd6fe);
+    flex: none;
     font-size: 10px;
     font-weight: 700;
     padding: 3px 6px;
-  }
-  .pulse-settings-release-title { display: grid; gap: 2px; }
-  .pulse-settings-release-title strong { color: ${theme.textPrimary}; font-size: 12.5px; }
-  .pulse-settings-release-title small {
-    color: ${theme.textMuted};
-    font-size: 11px;
-  }
-  .pulse-settings-release-body {
-    display: grid;
-    gap: 6px;
-    padding: 8px 12px 9px;
-  }
-  /* The link lines up with the bullet text, not left of it. */
-  .pulse-settings-release-body > .pulse-link-btn { justify-self: start; margin-left: 16px; }
-  .pulse-settings-release-body ul {
-    color: ${theme.textMuted};
-    font-size: 11px;
-    line-height: 1.45;
-    margin: 0;
-    padding-left: 16px;
   }
   .pulse-settings-channel {
     align-items: center;
@@ -1734,13 +1708,18 @@ export const shadowStyles = `
      relative in the sidebar, fixed in right/bottom placement, which must stay fixed. */
   .pulse-personal-panel:not(.placement-right):not(.placement-bottom) { position: relative; }
   .pulse-background-preview { background: var(--pulse-banner-canvas); border: 1px solid var(--pulse-banner-border); border-radius: var(--pulse-banner-radius); overflow: hidden; }
-  .pulse-banner-quick-preview { align-items: center; background: var(--pulse-banner-canvas); border: 1px solid var(--pulse-banner-border); border-radius: var(--pulse-banner-radius); color: var(--pulse-banner-text); display: flex; gap: 8px; min-height: 48px; min-width: 0; overflow: hidden; padding: 8px 10px; }
-  .pulse-banner-quick-preview strong { flex: 1 1 auto; font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .pulse-banner-quick-preview small { color: var(--pulse-banner-text-secondary); flex: none; font-size: 10px; }
+  /* Quick settings' Your look strip: the panel title with its paint, crest and emote rain. */
+  .pulse-quick-look { align-items: center; background: ${theme.bgCanvas}; border: 1px solid ${theme.border}; border-radius: 9px; display: flex; gap: 8px; height: 48px; overflow: hidden; padding: 0 12px; position: relative; }
+  .pulse-quick-look strong { font-size: 16px; font-weight: 800; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pulse-quick-look .pulse-banner-art img { height: 24px; width: 24px; }
+  .pulse-quick-chip { border: 1px solid rgba(245, 196, 81, 0.45); border-radius: 999px; color: #f5c451; font-size: 9px; letter-spacing: 0.04em; margin-left: 6px; padding: 1px 6px; vertical-align: 1px; }
+  .pulse-quick-community { display: grid; gap: 6px; grid-template-columns: 3fr 2fr; }
+  .pulse-quick-community button { appearance: none; background: none; border: 1px solid ${theme.border}; border-radius: 10px; color: ${theme.textSecondary}; cursor: pointer; font: inherit; font-size: 12px; font-weight: 800; min-height: 40px; padding: 8px; }
+  .pulse-quick-community .pulse-quick-discord { background: #5865f2; border-color: #5865f2; color: #fff; }
   .pulse-personal-banner { background: transparent; }
   .pulse-banner-art { position: absolute; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; container-type: size; }
-  .pulse-background-preview .pulse-banner-art, .pulse-banner-quick-preview .pulse-banner-art { z-index: 0; }
-  .pulse-background-preview .pulse-banner-copy, .pulse-banner-quick-preview strong, .pulse-banner-quick-preview small { position: relative; z-index: 1; }
+  .pulse-background-preview .pulse-banner-art, .pulse-quick-look .pulse-banner-art { z-index: 0; }
+  .pulse-background-preview .pulse-banner-copy, .pulse-quick-look > :not(.pulse-banner-art) { position: relative; z-index: 1; }
   .pulse-banner-art img { position: absolute; width: 34px; height: 34px; object-fit: contain; transform: rotate(calc(var(--i) * 9deg - 20deg)); opacity: .8; }
   .pulse-banner-art[data-mode="rain"] img { top: 0 !important; animation: pulse-banner-rain linear infinite; animation-play-state: paused; }
   .pulse-banner-art[data-mode="rain"][data-running="true"] img { animation-play-state: running; }

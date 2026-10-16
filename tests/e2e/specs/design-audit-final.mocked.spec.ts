@@ -51,13 +51,13 @@ test.describe('StreamPulse final visual, interaction & failure-state audit', () 
     await expect(chart).toBeVisible()
     await expect.poll(seriesColors).toEqual(semantic)
 
-    // Quick Settings previews the saved appearance (title and 7TV backdrop).
+    // Quick Settings previews the saved appearance (title and Emote rain) in the Your look strip.
     await extension.page.getByRole('button', { name: 'Open settings' }).click()
     const settingsPanel = extension.page.locator('[data-overlay-settings-panel="true"]')
     await expect(settingsPanel).toBeVisible()
-    const preview = settingsPanel.locator('[data-appearance-preview="true"]')
+    const preview = settingsPanel.locator('.pulse-quick-look')
     await expect(preview).toBeVisible()
-    await expect(preview).toHaveAttribute('aria-label', /^Appearance preview: /)
+    await expect(preview.locator('strong')).not.toBeEmpty()
     await saveScreenshot(extension.page, '15-appearance-preview-semantic-colors.png', settingsPanel)
 
     // Switching the accent to Azure must leave the semantic lanes unchanged.
@@ -136,8 +136,9 @@ test.describe('StreamPulse final visual, interaction & failure-state audit', () 
     // Capture initial recap state
     await saveScreenshot(extension.page, '18-recap-progressive-disclosure-initial.png', shell)
 
-    // Click first moment row to open it in the card
-    const momentRow = extension.page.locator(`#${PULSE_ROOT_ID} .pulse-moment-row-button`).first()
+    // Open a moment in the card: on a three-moment recap they all sit in
+    // Catch me up, whose next moments open under it.
+    const momentRow = extension.page.locator(`#${PULSE_ROOT_ID} .pcu-mini`).first()
     await expect(momentRow).toBeVisible()
     await momentRow.click()
 

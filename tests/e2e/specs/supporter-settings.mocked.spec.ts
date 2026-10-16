@@ -17,9 +17,9 @@ test('packaged supporter settings stay local, accessible and responsive', async 
 
   // Your card: the identity that exists (nobody, with Twitch sign-in off), the sample look, and the crest ladder.
   const card = page.getByRole('region', { name: 'Your Supporter card' })
-  // Heading navigation stops at the card (its h3 is visually hidden), between the page's h2 and "Who sees what".
+  // Heading navigation stops at the card (its h3 is visually hidden), between the page's h2 and "Your look".
   await expect(card.getByRole('heading', { level: 3, name: 'Your Supporter card', exact: true })).toHaveCount(1)
-  await expect(page.locator('.pulse-supporter-settings').getByRole('heading')).toHaveText(['Account & Supporter', 'Your Supporter card', 'Who sees what', 'Your look', 'Account'])
+  await expect(page.locator('.pulse-supporter-settings').getByRole('heading')).toHaveText(['Account & Supporter', 'Your Supporter card', 'Your look', 'Account'])
   await expect(card.locator('.pulse-supporter-card-who strong')).toHaveText('Not signed in')
   await expect(card.getByText('Sample look', { exact: true })).toBeVisible()
   // The card names nobody: no Twitch name or picture while Twitch sign-in is off.
@@ -48,20 +48,31 @@ test('packaged supporter settings stay local, accessible and responsive', async 
     return price ? Boolean(price.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING) : null
   })).toBe(true)
 
-  // Who sees what: every perk is yours only, and normal chat for everyone else.
-  const who = page.locator('.pulse-supporter-who > li')
-  await expect(who.locator('strong')).toHaveText(['You', 'Everyone else on Twitch'])
-  await expect(who.first().locator('[data-supporter-perk-names="true"]')).toHaveText('Title paint · Tenure crest · Emote rain · Supporter card')
+  // The Your look studio's preview, pinned above its controls: only you see it (said once), every perk named,
+  // and normal chat for everyone else.
+  const preview = page.locator('[data-supporter-preview]')
+  await expect(preview).toHaveCSS('position', 'sticky')
+  await expect(preview.locator('.pulse-supporter-preview-badge')).toHaveText('Preview · only you see this')
+  await expect(preview.locator('[data-supporter-perk-names="true"]')).toHaveText('Title paint · Tenure crest · Emote rain · Supporter card')
+  await expect(preview).toContainText('Everyone else on Twitch sees normal chat.')
   await expect(page.getByText('Concept · not built')).toHaveCount(0)
-  await expect(page.getByText('Shown with the sample look')).toBeVisible()
+  await expect(preview.getByText('Sample look', { exact: true })).toBeVisible()
+  await expect(preview.locator('.pulse-banner-art')).toHaveAttribute('data-mode', 'rain')
   await page.screenshot({ path: info.outputPath('supporter-settings.png'), fullPage: true, animations: 'disabled' })
 
-  // Trying a paint previews it, and saves nothing.
+  // Trying a paint and Emote rain previews them, and saves nothing (checked after the reload below).
   await page.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Halo', exact: true }).check()
-  await expect(who.first().locator('.pulse-paint').first()).toHaveAttribute('data-finish', 'halo')
-  await expect(page.getByText('Shown with the look you’re trying')).toBeVisible()
-  await expect(page.getByRole('group', { name: 'Emote rain' }).getByRole('button')).toHaveCount(3)
-  for (const button of await page.getByRole('group', { name: 'Emote rain' }).getByRole('button').all()) await expect(button).toBeDisabled()
+  await expect(preview.locator('.pulse-paint').first()).toHaveAttribute('data-finish', 'halo')
+  await expect(preview.getByText('Trying', { exact: true })).toBeVisible()
+  const rain = page.getByRole('group', { name: 'Emote rain' })
+  await expect(rain.getByRole('button')).toHaveCount(3)
+  await rain.getByRole('button', { name: 'Still', exact: true }).click()
+  await expect(rain.getByRole('button', { name: 'Still', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(preview.locator('.pulse-banner-art')).toHaveAttribute('data-mode', 'still')
+  // Scrolled to the last control, the preview is still in view above it.
+  await rain.scrollIntoViewIfNeeded()
+  await page.mouse.wheel(0, 400)
+  await expect(preview).toBeInViewport()
   await expect(page.getByText(/signature emote/i)).toHaveCount(0)
   await page.screenshot({ path: info.outputPath('supporter-settings-halo.png'), fullPage: true, animations: 'disabled' })
   for (const width of [320, 360, 390, 480, 768]) {
@@ -93,7 +104,7 @@ test('Your look tiles work from the keyboard and show where focus is', async ({ 
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
   // Each tile's radio is a 1px transparent input: the tile's focus-within outline is the only focus indicator.
   const tile = (radio: Locator) => radio.locator('xpath=ancestor::label[contains(concat(" ", @class, " "), " pulse-supporter-tile ")][1]')
-  const you = page.locator('.pulse-supporter-who > li').first()
+  const you = page.locator('[data-supporter-preview]')
   const paint = page.getByRole('group', { name: 'Paint' })
   const wave = page.getByRole('group', { name: 'Wave' })
   const sheen = page.getByRole('group', { name: 'Sheen' })
@@ -108,7 +119,7 @@ test('Your look tiles work from the keyboard and show where focus is', async ({ 
   await page.keyboard.press('Shift+Tab')
   await expect(etched).toBeFocused()
   await expect(tile(etched)).toHaveCSS('outline-style', 'solid')
-  // An arrow key moves the choice to the next tile, the outline follows it, and Who sees what previews it.
+  // An arrow key moves the choice to the next tile, the outline follows it, and the preview shows it.
   await page.keyboard.press('ArrowRight')
   const halo = paint.getByRole('radio', { name: 'Halo', exact: true })
   await expect(halo).toBeChecked()
@@ -116,7 +127,7 @@ test('Your look tiles work from the keyboard and show where focus is', async ({ 
   await expect(tile(halo)).toHaveCSS('outline-style', 'solid')
   await expect(tile(etched)).toHaveCSS('outline-style', 'none')
   await expect(you.locator('.pulse-paint').first()).toHaveAttribute('data-finish', 'halo')
-  await expect(page.getByText('Shown with the look you’re trying')).toBeVisible()
+  await expect(you.getByText('Trying', { exact: true })).toBeVisible()
 
   // Tab goes on to the checked Wave tile, then the checked Sheen tile.
   await page.keyboard.press('Tab')

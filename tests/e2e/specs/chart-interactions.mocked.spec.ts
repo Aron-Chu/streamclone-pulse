@@ -305,6 +305,8 @@ test.describe('chart preview/lock interactions', () => {
     await expect(games).toBeVisible()
     expect((await games.boundingBox())?.y ?? Infinity).toBeLessThan((await chart.boundingBox())?.y ?? -Infinity)
 
+    // Catch me up sits above the recap chart; a raw click needs it in view.
+    await chart.scrollIntoViewIfNeeded()
     const box = await chart.boundingBox()
     expect(box).not.toBeNull()
     await extension.page.mouse.click(box!.x + box!.width * 0.5, box!.y + box!.height * 0.5)

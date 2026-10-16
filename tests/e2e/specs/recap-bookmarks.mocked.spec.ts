@@ -14,7 +14,11 @@ for (const surface of ['offline', 'vod'] as const) {
     const library = root.getByRole('button', { name: 'Open My Moments', exact: true })
     await expect(library).toBeVisible()
     await expect(root.locator('[data-moment-action="bookmark"]')).toHaveCount(0)
-    await root.getByRole('button', { name: /^Select minute bucket/ }).first().click()
+    // A chart minute: the VOD's one moment is Catch me up's #1, which only
+    // jumps. End previews the last minute with data and Enter selects it.
+    await root.getByRole('application', { name: /^Chart plot/ }).focus()
+    await page.keyboard.press('End')
+    await page.keyboard.press('Enter')
     const save = root.locator('[data-moment-action="bookmark"]')
     await expect(save).toBeEnabled()
     await expect(root.getByText('Bookmarks stay on this device. No account needed.', { exact: true })).toBeVisible()

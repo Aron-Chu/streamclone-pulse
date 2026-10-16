@@ -17,14 +17,14 @@ function mount(node: React.ReactNode) {
 afterEach(() => { vi.unstubAllGlobals() })
 
 describe('supporter paint settings', () => {
-  it('previews each wave and sheen in the selected finish and reports the choice', () => {
+  it('shows the saved wave and sheen as chosen and reports a new choice', () => {
     const onChoose = vi.fn()
-    const view = mount(<SupporterPaintStyleFields finish="etched" style={{ wave: 'chrome', sheen: 'sweep' }} onChoose={onChoose} />)
-    const samples = [...view.host.querySelectorAll<HTMLElement>('.pulse-supporter-paint-sample')]
-    expect(samples).toHaveLength(8)
-    expect(samples.every(sample => sample.dataset.finish === 'etched')).toBe(true)
-    // Sheen samples show the chosen wave, so each choice previews the real combination.
-    expect(samples.slice(4).every(sample => sample.dataset.wave === 'chrome')).toBe(true)
+    const view = mount(<SupporterPaintStyleFields style={{ wave: 'chrome', sheen: 'sweep' }} onChoose={onChoose} />)
+    const checked = [...view.host.querySelectorAll<HTMLInputElement>('input:checked')].map(input => input.value)
+    expect(checked).toEqual(['wave-chrome', 'sheen-sweep'])
+    // The pills name each choice; the Your look preview above draws it.
+    expect(view.host.querySelectorAll('.pulse-supporter-tile')).toHaveLength(8)
+    expect(view.host.querySelector('.pulse-supporter-paint-sample')).toBeNull()
     act(() => (view.host.querySelector('input[aria-label="Glint sheen"]') as HTMLInputElement).click())
     expect(onChoose).toHaveBeenCalledWith({ wave: 'chrome', sheen: 'glint' })
     act(() => (view.host.querySelector('input[aria-label="Aurora wave"]') as HTMLInputElement).click())

@@ -879,7 +879,7 @@ describe('the price comes before the button that buys it', () => {
 
 describe('Your card is a headed section', () => {
   // Pressing H from the page's h2 must stop at the card, before its name,
-  // ladder, status and action, not skip to "Who sees what" below it.
+  // ladder, status and action, not skip to "Your look" below it.
   it.each<[string, () => SupporterAccountState, () => SupporterEntitlement, string, string]>([
     ['signed-out', () => ({ state: 'signed_out' }), () => ({ state: 'not_linked' }), 'Supporter sign-ups are not open yet', 'Supporter details'],
     ['grace', () => linked, () => ready('grace', { accessUntil: '2026-10-19T12:00:00Z' }), 'Payment needs attention', 'Update payment method'],
@@ -937,10 +937,11 @@ describe('Your card while the account is unknown', () => {
       expect(view.text()).not.toContain('Free tools work without')
       expect(view.buttons()).not.toContain('Sign out')
       await act(async () => answer(linked))
-      expect(yours.name().textContent).toBe(accountReference(ACCOUNT_ID))
+      // The card says "You"; the Account row names the account, masked as the website shows it.
+      expect(yours.name().textContent).toBe('You')
       expect(yours.avatar()).toBe('pulse')
-      expect(yours.name().querySelector('.pulse-paint')?.getAttribute('data-text')).toBe(accountReference(ACCOUNT_ID))
-      expect(accountRow(view.host)).toContain('Connected to this extension')
+      expect(yours.name().querySelector('.pulse-paint')?.getAttribute('data-text')).toBe('You')
+      expect(accountRow(view.host)).toContain(`Connected to this extension · ${accountReference(ACCOUNT_ID)}`)
     } finally { view.cleanup() }
   })
 
@@ -1003,14 +1004,14 @@ describe('Your card states only the membership it knows', () => {
     try {
       const yours = card(view.host)
       expect(view.state()).toBe('membership-loading')
-      expect(yours.name().textContent).toBe(accountReference(ACCOUNT_ID))
+      expect(yours.name().textContent).toBe('You')
       expect(yours.sub()).toBe('StreamPulse account · checking membership…')
       expect(yours.sample()).toBe(false)
       expect(yours.steps()).toEqual(NEUTRAL_LADDER)
       expect(yours.next()).toBe(NEUTRAL_NEXT)
       expect(view.text()).not.toContain('not a Supporter yet')
       await act(async () => answer(ready('active', { supportPeriods: 7, features: PERKS, cosmetics: HALO })))
-      expect(yours.sub()).toBe('Pulse Supporter · 7 months')
+      expect(yours.sub()).toBe('Supporter for 7 months')
       expect(yours.steps()).toEqual(['past', 'past', 'current', 'off', 'off'])
     } finally { view.cleanup() }
   })
@@ -1119,7 +1120,7 @@ describe('change signals and stale reads', () => {
       expect(yours.name().querySelector('.pulse-paint')?.getAttribute('data-finish')).toBe('halo')
       expect(yours.name().querySelector('.pulse-crest')).not.toBeNull()
       expect(yours.root.style.getPropertyValue('--spk-fin')).toBe('#e6a9d6')
-      expect(yours.sub()).toBe('Pulse Supporter · 2 months')
+      expect(yours.sub()).toBe('Supporter for 2 months')
     } finally { view.cleanup() }
   })
 
@@ -1127,7 +1128,7 @@ describe('change signals and stale reads', () => {
     const view = await mount({ account: () => linked, entitlement: () => ready('active', { features: [] }) })
     try {
       const yours = card(view.host)
-      expect(yours.sub()).toBe('Pulse Supporter · 2 months')
+      expect(yours.sub()).toBe('Supporter for 2 months')
       expect(yours.sample()).toBe(false)
       expect(yours.name().querySelector('.pulse-paint')).toBeNull()
     } finally { view.cleanup() }
@@ -1451,7 +1452,7 @@ describe('Continue with Twitch (tester and public stages)', () => {
       expect(view.state()).toBe('signed-out')
       await view.click('Continue with Twitch')
       expect(view.state()).toBe('active')
-      expect(card(view.host).sub()).toBe('Pulse Supporter · 4 months')
+      expect(card(view.host).sub()).toBe('Supporter for 4 months')
       expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
       expect(view.calls('SUPPORTER_RESTORE')).toBe(0)
     } finally { view.cleanup() }

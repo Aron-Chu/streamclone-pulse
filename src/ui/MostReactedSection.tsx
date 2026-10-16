@@ -167,8 +167,9 @@ export function MostReactedSection({
           onJump={next => onJumpToOffset?.(reactionAnalyticalOffset(next))}
           onAnalytics={next => onAnalyticsAtOffset?.(reactionAnalyticalOffset(next))}
           onClear={() => onPinOffset?.(null)}
+          games={payload.games}
         />
-        <div style={styles.momentList}>
+        <div style={styles.momentList} data-pmf-list="true">
           {visiblePoints.map(point => {
             const selected =
               pinnedMomentKey != null && liveHeatPointKey(payload.streamId, point) === pinnedMomentKey

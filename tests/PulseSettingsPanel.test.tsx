@@ -25,40 +25,46 @@ function describedCopy(html: string): string | undefined {
 }
 
 describe('PulseSettingsPanel quick workspace', () => {
-  it('keeps everyday controls inline and the three-item changelog collapsed by default', () => {
+  it('keeps everyday controls inline, with Your look and Moments up top and What\u2019s new on one line', () => {
     const html = renderToStaticMarkup(<PulseSettingsPanel />)
     expect(html).toContain('Refresh live data automatically')
     // The label says what it does; no hint repeats it.
     expect(html).not.toContain('Auto-update activity')
     expect(html).toContain('Accent')
-    expect(html).toContain('Appearance preview')
-    expect(html).toContain('data-appearance-preview="true"')
     expect(html).toContain('Placement')
     expect(html).toContain('Density')
     expect(html).not.toContain('Default chart range')
     expect(html).toContain('Dock when chat is closed')
-    expect(html).toContain('Reset appearance and layout to defaults')
+    expect(html).toContain('Reset appearance and layout')
     expect(html).toContain('data-settings-connection="true"')
-    expect(html).toContain('data-changelog-preview="true"')
-    // What's new is an open card, not a disclosure: no summary, no chevron, the highlights show at once.
-    expect(html).toMatch(/<section class="pulse-settings-release-preview" data-changelog-preview="true" aria-label="What&#x27;s new"><header><span class="pulse-settings-release-version">.*?<\/header>/)
+    // Your look: a live strip, then Emote rain and Paint, then the way to wave, sheen and crest.
+    expect(html).toContain('class="pulse-quick-look"')
+    expect(html).toContain('aria-label="Emote rain"')
+    expect(html).toContain('aria-label="Paint"')
+    for (const choice of ['Off', 'Still', 'Rain', 'Default', 'Glass', 'Etched', 'Halo']) expect(html).toContain(`>${choice}<`)
+    expect(html).toContain('Wave, sheen and crest in all settings ↗')
+    // The old background editor link and its long preview label are gone.
+    expect(html).not.toContain('Background &amp; motion')
+    expect(html).not.toContain('data-banner-editor-cta')
+    expect(html).not.toContain('Appearance preview')
+    expect(html).not.toContain('Panel title')
+    // Moments: two switches and the way to My Moments.
+    expect(html).toContain('Moment pictures')
+    expect(html).toContain('Captured in this tab, never uploaded.')
+    expect(html).toContain('Mark VOD jumps on the chart')
+    expect(html).toContain('My Moments')
+    expect(html).toContain('data-settings-host-cta="moments"')
+    // What's new is one line: the version, the title, and All.
+    expect(html).toMatch(/<section class="pulse-settings-release-preview" data-changelog-preview="true" aria-label="What&#x27;s new"><span class="pulse-settings-release-version">v[^<]+<\/span><span><strong>What’s new:<\/strong> [^<]+<\/span><button[^>]*data-settings-host-cta="updates"[^>]*>All ↗<\/button><\/section>/)
+    expect(html).not.toContain('<li>')
     expect(html).not.toContain('pulse-settings-release-chevron')
     expect(html).not.toContain('<details class="pulse-settings-release-preview"')
-    expect(html).toContain('Background &amp; motion')
-    expect(html).toContain('data-banner-editor-cta="true"')
-    expect(html).not.toContain('<details class="pulse-banner-customize"')
-    expect(html).not.toContain('Panel title')
-    expect(html).toContain('<div class="pulse-settings-release-body"><ul>')
-    expect(html.match(/<li>/g)).toHaveLength(3)
-    expect(html).toContain('See all changes ↗')
-    expect(html).not.toContain('View full changelog')
-    expect(html).toContain('data-settings-host-cta="updates"')
     expect(html).not.toContain('Privacy &amp; Data')
     // "Open all settings" is pinned outside the scrolling panel, like the Pulse view's Settings bar.
     expect(html).not.toContain('Open all settings')
     expect(html).not.toContain('data-settings-host-cta="pulse"')
-    expect(html.indexOf('data-settings-connection="true"')).toBeLessThan(html.indexOf('Refresh live data automatically'))
-    expect(html.indexOf('Refresh live data automatically')).toBeLessThan(html.indexOf('Background &amp; motion'))
+    const order = ['data-settings-connection="true"', 'data-settings-host-cta="supporter"', 'data-community-link="discord"', 'class="pulse-quick-look"', 'Moment pictures', 'Refresh live data automatically', 'Accent', 'data-changelog-preview="true"']
+    for (let index = 1; index < order.length; index++) expect(html.indexOf(order[index - 1]), order[index]).toBeLessThan(html.indexOf(order[index]))
   })
 
   it('pins Open all settings as its own bar that opens the Pulse section', () => {
@@ -68,14 +74,16 @@ describe('PulseSettingsPanel quick workspace', () => {
     expect(html).toContain('class="pulse-settings-bottom-bar"')
   })
 
-  it('puts a Discord row beside Open all settings that the worker opens, with no page URL in the panel', () => {
-    const html = renderToStaticMarkup(<OpenAllSettingsButton />)
+  it('puts Join the Discord and Send feedback under the Supporter card, opened by the worker with no page URL in the panel', () => {
+    const html = renderToStaticMarkup(<PulseSettingsPanel />)
     // One label for joining, the same as the settings page's Community card.
-    expect(html).toContain('<span>Join the Discord</span>')
+    expect(html).toMatch(/<div class="pulse-quick-community"><button type="button" class="pulse-quick-discord" data-community-link="discord">Join the Discord ↗<\/button><button type="button" data-community-link="feedback">Send feedback ↗<\/button><\/div>/)
     expect(html).not.toContain('Join the StreamPulse Discord')
-    expect(html).toContain('data-community-link="discord"')
-    expect(html.indexOf('Open all settings')).toBeLessThan(html.indexOf('Join the Discord'))
     expect(html).not.toContain('streampulse.stream/discord')
+    // The pinned bar is Open all settings alone.
+    const bar = renderToStaticMarkup(<OpenAllSettingsButton />)
+    expect(bar).not.toContain('Discord')
+    expect(bar).not.toContain('data-community-link')
   })
 
   it('opens on the channel being watched, in plain language', () => {
@@ -160,10 +168,12 @@ describe('PulseSettingsPanel quick workspace', () => {
 
   it('groups quick controls into titled cards', () => {
     const html = renderToStaticMarkup(<PulseSettingsPanel />)
-    expect(html.match(/class="pulse-quick-group-card"/g)).toHaveLength(3)
-    for (const title of ['Live data', 'Layout', 'Appearance']) {
+    expect(html.match(/class="pulse-quick-group-card"/g)).toHaveLength(5)
+    for (const title of ['Moments', 'Live data', 'Layout', 'Appearance']) {
       expect(html).toContain(`<h2 class="pulse-quick-group-title">${title}</h2>`)
     }
+    // Your look tells everyone without the perk that trying is free.
+    expect(html).toContain('<h2 class="pulse-quick-group-title">Your look<span class="pulse-quick-chip">Supporter · try free</span></h2>')
   })
 
   /**
