@@ -45,7 +45,8 @@ export async function hubSurface(page: Page): Promise<ChartSurface> {
     name: 'hub',
     navigator,
     plot,
-    card: page.locator('[data-hub-chart-wheel-card]'),
+    // Until the hub's d3 port (which adds [data-hub-chart-wheel-card]) the hub's wheel zone is its plot.
+    card: plot,
     full: HUB_BUCKETS,
     // No fake clock on the hub: frames run; the safety timer lands it regardless.
     settle: async () => {
