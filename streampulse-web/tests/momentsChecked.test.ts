@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { MomentsFeedItem } from '../src/lib/momentsFeed'
 import {
   actOf, ariaOf, checkLines, checkMoment, freshCounts, groupsOf, hms, SERIES_BEFORE, seriesFromSpark, SORTS, sparkBars, stc, streamTime, stripModel,
-  twitchCdnImage, updatedText, usualAt, when,
+  avatarImage, boxArtImage, liveFrameImage, updatedText, usualAt, when,
 } from '../src/lib/momentsChecked'
 
 const fixture = JSON.parse(readFileSync(resolve(__dirname, 'fixtures/moments_feed_v1.json'), 'utf8')) as { generatedAt: number; items: MomentsFeedItem[] }
@@ -30,6 +30,17 @@ describe('checked moments display model', () => {
       if (m.rowX != null) expect([m.item.verdict, m.item.checks.rise?.code]).toEqual(['ok', 'rose'])
       else if (m.item.verdict !== 'ok') expect(m.why).not.toBe('')
     }
+  })
+
+  it('shows only the feed’s ×: none when it sends none', () => {
+    for (const m of pool) expect(m.x).toBe(m.item[m.kind].x)
+    const rose = byId(item => item.verdict === 'ok' && item.checks.rise?.code === 'rose' && item[item.label.kind].x != null)
+    const kind = rose.label.kind
+    const bare = checkMoment({ ...rose, [kind]: { ...rose[kind], x: null } }, NOW)
+    expect(bare.x).toBeNull()
+    expect(bare.rowX).toBeNull()
+    expect(bare.checks.find(c => c.id === 'rise')?.long).not.toMatch(/\d×/)
+    expect([bare, checkMoment(rose, NOW)].sort(SORTS.jump)[0].item.id).toBe(rose.id)
   })
 
   it('words the opening check and keeps its reason for the row', () => {
@@ -126,10 +137,27 @@ describe('checked moments display model', () => {
     expect(counts).toMatchObject({ all: 40, ok: 20, warn: 6, bad: 14 })
   })
 
-  it('loads images from Twitch’s CDN over https only', () => {
-    expect(twitchCdnImage('https://static-cdn.jtvnw.net/ttv-boxart/509672-144x192.jpg')).toBe('https://static-cdn.jtvnw.net/ttv-boxart/509672-144x192.jpg')
-    expect(twitchCdnImage('http://static-cdn.jtvnw.net/a.jpg')).toBeUndefined()
-    expect(twitchCdnImage('https://example.com/a.jpg')).toBeUndefined()
-    expect(twitchCdnImage('javascript:alert(1)')).toBeUndefined()
+  it('loads images only through the repo’s Twitch CDN checks', () => {
+    const cdn = 'https://static-cdn.jtvnw.net'
+    // every image the fixture sends passes
+    for (const item of fixture.items) {
+      if (item.profileImageUrl) expect(avatarImage(item)).toBe(item.profileImageUrl)
+      if (item.category?.boxArtUrl) expect(boxArtImage(item)).toBe(item.category.boxArtUrl)
+      if (item.liveFrameUrl) expect(liveFrameImage(item)).toBe(item.liveFrameUrl)
+    }
+    const avatar = `${cdn}/jtv_user_pictures/a-profile_image-70x70.png`, frame = `${cdn}/previews-ttv/live_user_a-440x248.jpg`
+    for (const bad of ['http://static-cdn.jtvnw.net/jtv_user_pictures/a.png', 'https://example.com/jtv_user_pictures/a.png', 'javascript:alert(1)',
+      `${avatar}?x=1`, `${avatar}#x`, 'https://u:p@static-cdn.jtvnw.net/jtv_user_pictures/a.png', `${cdn}/previews-ttv/a.jpg`]) {
+      expect(avatarImage({ profileImageUrl: bad })).toBeUndefined()
+    }
+    for (const bad of [`${frame}?x=1`, `${frame}#x`, 'https://u@static-cdn.jtvnw.net/previews-ttv/a.jpg', `${cdn}/jtv_user_pictures/a.png`, frame.replace('https', 'http')]) {
+      expect(liveFrameImage({ liveFrameUrl: bad })).toBeUndefined()
+    }
+    expect(avatarImage({ profileImageUrl: avatar })).toBe(avatar)
+    expect(liveFrameImage({ liveFrameUrl: frame })).toBe(frame)
+    // box art only when it is the category's own
+    expect(boxArtImage({ category: { id: '509672', name: 'x', boxArtUrl: `${cdn}/ttv-boxart/509672-144x192.jpg` } })).toBeDefined()
+    expect(boxArtImage({ category: { id: '1', name: 'x', boxArtUrl: `${cdn}/ttv-boxart/509672-144x192.jpg` } })).toBeUndefined()
+    expect(boxArtImage({ category: { id: '509672', name: 'x', boxArtUrl: `${cdn}/ttv-boxart/509672-144x192.jpg?x=1` } })).toBeUndefined()
   })
 })

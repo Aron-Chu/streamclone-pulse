@@ -19,6 +19,46 @@ export async function loadMomentVod(item: MomentsFeedItem, signal: AbortSignal):
   return { vodId, alignSeconds: source.vodOffsetSeconds - item.offsetSeconds }
 }
 
+/**
+ * The page's VODs, for its lifetime: a stream's record is read again only when
+ * no earlier answer covers the moment. The VOD's alignment is the stream's, and
+ * the record bounds it by how much has been archived, so a VOD found for one
+ * moment serves every earlier moment of the stream, and none found for one
+ * serves every later one. A read is shared by whoever asks while it runs and
+ * is not cancelled when one of them goes.
+ */
+export interface MomentVodCache {
+  /** The answer without a read, or undefined when only a read can tell. */
+  peek: (item: MomentsFeedItem) => MomentVod | null | undefined
+  read: (item: MomentsFeedItem) => Promise<MomentVod | null>
+}
+export function momentVodCache(load: (item: MomentsFeedItem) => Promise<MomentVod | null>): MomentVodCache {
+  const known = new Map<string, { vod: MomentVod | null; vodUpTo: number; noneFrom: number }>()
+  const pending = new Map<string, Promise<MomentVod | null>>()
+  const peek = (item: MomentsFeedItem) => {
+    const k = known.get(item.streamId)
+    if (k?.vod && item.offsetSeconds <= k.vodUpTo) return k.vod
+    if (k && item.offsetSeconds >= k.noneFrom) return null
+    return undefined
+  }
+  const read = (item: MomentsFeedItem) => {
+    const hit = peek(item)
+    if (hit !== undefined) return Promise.resolve(hit)
+    let run = pending.get(item.id)
+    if (!run) {
+      run = load(item).then(vod => {
+        const k = known.get(item.streamId) ?? { vod: null, vodUpTo: -1, noneFrom: Infinity }
+        if (vod) { k.vod = vod; k.vodUpTo = Math.max(k.vodUpTo, item.offsetSeconds) } else k.noneFrom = Math.min(k.noneFrom, item.offsetSeconds)
+        known.set(item.streamId, k)
+        return vod
+      }).finally(() => pending.delete(item.id))
+      pending.set(item.id, run)
+    }
+    return run
+  }
+  return { peek, read }
+}
+
 /** Where Play starts: the minute less LEAD seconds, in the VOD. */
 export function vodSeconds(vod: MomentVod, offsetSeconds: number, leadSeconds: number): number {
   return Math.max(0, Math.floor(vod.alignSeconds + offsetSeconds - leadSeconds))

@@ -11,6 +11,8 @@
   --mk-ok:var(--mk-accent);--mk-warn:#e0a63a;--mk-bad:var(--mk-text-3);--mk-det:520px;
   --mk-font:var(--fma-font, Inter, system-ui, sans-serif);
   --mk-r:8px;--mk-dur-quick:120ms;--mk-ease:cubic-bezier(.16,1,.3,1);--mk-gutter:12px;
+  /* the portal header's clearance (at least the mockup's 64 px); the page sets it from the header's height */
+  --mk-top:64px;
   box-sizing:border-box;width:100%;max-width:1600px;min-height:100vh;margin:0 auto;padding:0 var(--mk-gutter) 64px;
   background:var(--mk-canvas);color:var(--mk-text-1);font:400 13px/1.4 var(--mk-font);
   font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;-webkit-font-smoothing:antialiased;font-synthesis:none;color-scheme:dark;
@@ -96,18 +98,21 @@
 .mk-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:0 32px;align-items:start}
 @media (min-width:1180px){
   .mk-grid{grid-template-columns:minmax(0,760px) minmax(var(--mk-det),1fr)}
-  .mk-det{position:sticky;top:72px;max-height:calc(100vh - 88px);overflow:hidden auto;scrollbar-width:none}
+  .mk-det{position:sticky;top:calc(var(--mk-top) + 8px);max-height:calc(100vh - var(--mk-top) - 24px);overflow:hidden auto;scrollbar-width:none}
   .mk-det::-webkit-scrollbar{display:none}
 }
 .mk-listwrap{position:relative}
 .mk-list,.mk-sub{list-style:none;margin:0;padding:0}
-.mk .mk-pill{position:sticky;z-index:3;top:76px;display:block;width:max-content;margin:0 auto -28px;height:28px;padding:0 12px;border-radius:14px;background:var(--mk-accent);color:var(--mk-canvas);font:600 12px/28px var(--mk-font);box-shadow:0 2px 10px rgb(0 0 0 / .45)}
+.mk .mk-pill{position:sticky;z-index:3;top:calc(var(--mk-top) + 12px);display:block;width:max-content;margin:0 auto -28px;height:28px;padding:0 12px;border-radius:14px;background:var(--mk-accent);color:var(--mk-canvas);font:600 12px/28px var(--mk-font);box-shadow:0 2px 10px rgb(0 0 0 / .45)}
 .mk-pill[hidden]{display:none}
 .mk-pill:focus-visible{outline:2px solid var(--mk-focus);outline-offset:2px}
 .mk-foot{margin:12px 0 0!important;padding:0 8px;font:500 12px/16px var(--mk-font);color:var(--mk-text-3)}
 .mk .mk-foot button{color:var(--mk-accent);font-weight:500}
 .mk .mk-foot button:hover{text-decoration:underline;text-underline-offset:3px}
 .mk-empty{padding:24px 8px;color:var(--mk-text-3)}
+.mk-gone{padding:12px 8px;color:var(--mk-text-2)}
+/* a row Tab reaches under the sticky header scrolls clear of it */
+.mk .mk-r{scroll-margin-top:calc(var(--mk-top) + 8px)}
 
 /* one row (the Live feed's v2 row, 60 px here): avatar · who + what / when + why · the minutes · viewers */
 .mk-g{position:relative;border-bottom:1px solid var(--mk-line)}
@@ -168,7 +173,7 @@
 .mk-det{min-width:0}
 .mk-det:empty{display:none}
 .mk-d{padding:0 0 24px}
-.mk-d-media{position:relative;aspect-ratio:16/9;border-radius:var(--mk-r);overflow:hidden;background:var(--mk-panel);box-shadow:inset 0 0 0 1px var(--mk-line);scroll-margin-top:72px}
+.mk-d-media{position:relative;aspect-ratio:16/9;border-radius:var(--mk-r);overflow:hidden;background:var(--mk-panel);box-shadow:inset 0 0 0 1px var(--mk-line);scroll-margin-top:calc(var(--mk-top) + 8px)}
 .mk-d-media>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .mk-d-media::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgb(9 9 11 / 0) 45%,rgb(9 9 11 / .85) 100%);pointer-events:none}
 .mk-d-media.on::after{display:none}
@@ -338,7 +343,7 @@
 .mk-ch .mk-lk-b{fill:rgb(94 234 212 / .08);stroke:rgb(94 234 212 / .55);stroke-width:1}
 .mk-ch .mk-cb.lk{opacity:1}
 .mk-d-read .mk-hint b{color:var(--mk-accent)}
-.mk-mc{margin-top:10px;padding:12px;border:1px solid var(--mk-line-strong);border-radius:8px;background:var(--mk-panel);font-variant-numeric:tabular-nums;scroll-margin:72px 0 12px}
+.mk-mc{margin-top:10px;padding:12px;border:1px solid var(--mk-line-strong);border-radius:8px;background:var(--mk-panel);font-variant-numeric:tabular-nums;scroll-margin:calc(var(--mk-top) + 8px) 0 12px}
 .mk-mc.enter{animation:mk-d-in .18s var(--mk-ease) both}
 .mk-mc-top{display:flex;align-items:center;gap:2px;min-height:28px}
 .mk-mc-s{flex:1;min-width:0;display:flex;align-items:center;gap:6px;color:var(--mk-accent);font:700 12px/16px var(--mk-font);letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

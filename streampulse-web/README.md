@@ -48,8 +48,9 @@ write an invite literal in source — `tests/noDiscordInviteLiterals.test.ts` fa
 `VITE_PUBLIC_MOMENTS_FEED=on` (or `1`) at build time swaps `/analytics/moments` for the checked
 Moments page, which reads `GET /v1/public/moments` (served behind the backend's
 `PULSE_MOMENTS_FEED_ENABLED`). Unset, the default, keeps the current page and never reads the feed.
-When the feed answers with an error (a 404 while the backend flag is off), the current page shows
-instead. `tests/e2e/moments-checked.portal-mocked.spec.ts` runs only against a flag-on build.
+The page draws from the feed's first page and loads the later ones behind it; a later page that
+fails leaves what has loaded. When the first page answers with an error (a 404 while the backend
+flag is off), the current page shows instead. `tests/e2e/moments-checked.portal-mocked.spec.ts` runs only against a flag-on build.
 
 ## Troubleshooting local dev
 

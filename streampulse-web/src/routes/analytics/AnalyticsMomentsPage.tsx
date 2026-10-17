@@ -15,7 +15,7 @@ import { resolveLivePulseMoments } from '../../lib/figmaSessionAnalytics'
 import { fromHubMoment, uniqueDiscoveryMoments,
   checkMomentSource, type DiscoveryMoment, type CheckedMomentSource } from '../../lib/discoveryMoments'
 import { useSavedMoments } from '../../lib/savedDiscoveryMoments'
-import { momentsFeedEnabled } from '../../lib/momentsFeed'
+import { momentsFeedEnabled } from '../../lib/momentsFeedFlag'
 import { refreshedReplayforgeHandoffHref } from '../../lib/replayforgeHandoff'
 import { watchMomentHref } from '../../lib/watchHandoff'
 import { formatStreamOffset } from '../../lib/formatStreamOffset'
@@ -340,14 +340,17 @@ function MomentDetail({ moment: suppliedMoment, variant, onClose, saved, onSourc
 }
 
 // The checked-moments page (moments-r2) reads /v1/public/moments. Off by
-// default: with the flag unset this route is exactly the page below, and
-// with it on the page falls back to that page whenever the feed isn't there.
-const MomentsCheckedPage = lazy(() => import('../../ui/components/moments/checked/MomentsCheckedPage'))
+// default: with VITE_PUBLIC_MOMENTS_FEED unset this route is exactly the page
+// below, and with it `on` (or `1`) the page falls back to that page whenever
+// the feed isn't there. A production build folds the inline test, so a
+// flag-off build drops the checked page and its chunks entirely.
+const MomentsCheckedPage = /* @__PURE__ */ lazy(() => import('../../ui/components/moments/checked/MomentsCheckedPage'))
 
 export default function AnalyticsMomentsPage() {
   const [params] = useSearchParams()
   if (params.get('view') === 'sessions') return <LegacyMomentSession />
-  return momentsFeedEnabled()
+  const feed = import.meta.env.VITE_PUBLIC_MOMENTS_FEED
+  return (import.meta.env.PROD ? feed === 'on' || feed === '1' : momentsFeedEnabled())
     ? <Suspense fallback={null}><MomentsCheckedPage fallback={<MomentsWorkspace />} /></Suspense>
     : <MomentsWorkspace />
 }

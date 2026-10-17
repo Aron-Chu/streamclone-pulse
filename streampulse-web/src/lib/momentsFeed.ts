@@ -11,18 +11,6 @@ import { apiClient, isApiError } from './apiClient'
  */
 export const MOMENTS_FEED_SCHEMA_VERSION = 1
 
-/**
- * Build-time switch for the checked Moments page (VITE_PUBLIC_MOMENTS_FEED).
- * Off unless the build sets it to `on` (or `1`). Off, /analytics/moments is
- * exactly master's page. On, the page reads /v1/public/moments, and falls back
- * to master's page when the feed is not there (404 while the backend flag is
- * off) or does not answer on the first load.
- */
-export function momentsFeedEnabled(): boolean {
-  const value = import.meta.env.VITE_PUBLIC_MOMENTS_FEED
-  return value === 'on' || value === '1'
-}
-
 export type MomentVerdict = 'ok' | 'warn' | 'bad'
 export type MomentCheckLevel = MomentVerdict
 export type MomentMetricKind = 'chat' | 'emotes'
@@ -85,7 +73,8 @@ export interface MomentsFeedResponse {
   coverage: { streamsScored: number; streamsEligible: number }
   total: number
   nextCursor: string | null
-  facets: { verdicts: Record<MomentVerdict, number> }
+  /** Left out of some captures; the page reads only the verdict counts. */
+  facets?: { verdicts?: Record<MomentVerdict, number> }
   items: MomentsFeedItem[]
 }
 
@@ -97,11 +86,17 @@ export interface MomentsFeedItemResponse {
   item: MomentsFeedItem
 }
 
-/** What the page holds after a load or a poll: the moments, newest snapshot first. */
+/** One page as the page uses it: its moments, and the feed's own counts for the whole window. */
 export interface MomentsFeedSnapshot {
   items: MomentsFeedItem[]
   generatedAt: number
   stale: boolean
+  /** Every moment in the window, on all pages (the feed's count, not what has loaded). */
+  total: number
+  /** The window's moments by verdict, when the feed sends its facets. */
+  verdicts: Record<MomentVerdict, number> | null
+  /** The next page; null on the last one. */
+  nextCursor: string | null
 }
 
 const VERDICTS = new Set(['ok', 'warn', 'bad'])
@@ -136,8 +131,6 @@ function feedPage(data: unknown): MomentsFeedResponse {
 }
 
 const PAGE_LIMIT = 50
-/** 6 × 50: more than a busy 12 hours brings (the 2026-10-16 fixture has 120). */
-const MAX_PAGES = 6
 const PAGE_BYTES = 512 * 1024
 export const MOMENTS_WINDOW_MS = 12 * 60 * 60_000
 
@@ -149,42 +142,61 @@ export function momentsFeedFrom(nowMs: number): number {
   return Math.floor((nowMs - MOMENTS_WINDOW_MS) / 600_000) * 600_000
 }
 
-async function readPage(nowMs: number, cursor: string | null, signal?: AbortSignal): Promise<MomentsFeedResponse> {
+async function readPage(nowMs: number, cursor: string | null, signal?: AbortSignal, cache: RequestCache = 'default'): Promise<MomentsFeedSnapshot> {
   const query = new URLSearchParams({ sort: 'new', from: String(momentsFeedFrom(nowMs)), limit: String(PAGE_LIMIT) })
   if (cursor) query.set('cursor', cursor)
   // The feed answers with public, max-age=30 and is edge-cached; the browser may reuse it too.
-  const { data } = await apiClient<unknown>(`/v1/public/moments?${query}`, { signal, timeoutMs: 8000, maxResponseBytes: PAGE_BYTES, cache: 'default' })
-  return feedPage(data)
-}
-
-/**
- * The last 12 hours, newest first, every page (at most MAX_PAGES). A cursor
- * that expires between pages (409: a new snapshot was published) starts the
- * read again once from the first page.
- */
-export async function loadMomentsFeed(nowMs: number, signal?: AbortSignal): Promise<MomentsFeedSnapshot> {
-  for (let attempt = 0; ; attempt += 1) {
-    try {
-      const first = await readPage(nowMs, null, signal)
-      const items = [...first.items]
-      let cursor = first.nextCursor
-      for (let page = 1; cursor && page < MAX_PAGES; page += 1) {
-        const next = await readPage(nowMs, cursor, signal)
-        items.push(...next.items)
-        cursor = next.nextCursor
-      }
-      return { items: dedupe(items), generatedAt: first.generatedAt, stale: first.stale }
-    } catch (error) {
-      if (attempt === 0 && isApiError(error) && error.status === 409) continue
-      throw error
-    }
+  const { data } = await apiClient<unknown>(`/v1/public/moments?${query}`, { signal, timeoutMs: 8000, maxResponseBytes: PAGE_BYTES, cache })
+  const page = feedPage(data)
+  const verdicts = page.facets?.verdicts
+  return {
+    items: page.items, generatedAt: page.generatedAt, stale: page.stale === true,
+    total: finite(page.total) && page.total >= 0 ? page.total : page.items.length,
+    verdicts: verdicts && finite(verdicts.ok) && finite(verdicts.warn) && finite(verdicts.bad) ? { ok: verdicts.ok, warn: verdicts.warn, bad: verdicts.bad } : null,
+    nextCursor: typeof page.nextCursor === 'string' && page.nextCursor ? page.nextCursor : null,
   }
 }
 
+/** The newest page of the last 12 hours: what the page draws first. The rest come from loadMomentsFeedRest. */
+export function loadMomentsFeed(nowMs: number, signal?: AbortSignal): Promise<MomentsFeedSnapshot> {
+  return readPage(nowMs, null, signal)
+}
+
+/**
+ * The pages after the first, one at a time behind the drawn list, each handed
+ * over as it arrives, until the last. A page that fails ends the read and the
+ * page keeps what has arrived. A cursor that expires between pages (409: a new
+ * snapshot was published) starts again once from a fresh first page (`fresh`),
+ * read past the browser's cache so the expired cursor is not handed back.
+ * Resolves true when every page arrived.
+ */
+export async function loadMomentsFeedRest(
+  nowMs: number, cursor: string | null, onPage: (page: MomentsFeedSnapshot, fresh: boolean) => void, signal?: AbortSignal,
+): Promise<boolean> {
+  const seen = new Set<string>()
+  let restarted = false
+  while (cursor) {
+    if (seen.has(cursor)) return false // a cursor that comes back would never end
+    seen.add(cursor)
+    let page: MomentsFeedSnapshot
+    try {
+      page = await readPage(nowMs, cursor, signal)
+      onPage(page, false)
+    } catch (error) {
+      if (restarted || !isApiError(error) || error.status !== 409 || signal?.aborted) return false
+      restarted = true
+      seen.clear()
+      try { page = await readPage(nowMs, null, signal, 'reload') } catch { return false }
+      onPage(page, true)
+    }
+    cursor = page.nextCursor
+  }
+  return true
+}
+
 /** A poll: the newest page only. New and changed moments are merged into what the page holds. */
-export async function pollMomentsFeed(nowMs: number, signal?: AbortSignal): Promise<MomentsFeedSnapshot> {
-  const first = await readPage(nowMs, null, signal)
-  return { items: first.items, generatedAt: first.generatedAt, stale: first.stale }
+export function pollMomentsFeed(nowMs: number, signal?: AbortSignal): Promise<MomentsFeedSnapshot> {
+  return readPage(nowMs, null, signal)
 }
 
 /** One moment by id (a deep link to a moment the list has not loaded). Null when the feed no longer has it. */
@@ -199,9 +211,11 @@ export async function loadMomentsFeedItem(id: string, signal?: AbortSignal): Pro
   }
 }
 
-function dedupe(items: MomentsFeedItem[]): MomentsFeedItem[] {
-  const seen = new Set<string>()
-  return items.filter(item => (seen.has(item.id) ? false : (seen.add(item.id), true)))
+/** Add a later page's moments: only the ones the page doesn't hold (a poll may already have sent a newer copy). */
+export function appendMomentsFeed(held: MomentsFeedItem[], more: MomentsFeedItem[]): MomentsFeedItem[] {
+  const ids = new Set(held.map(item => item.id))
+  const fresh = more.filter(item => (ids.has(item.id) ? false : (ids.add(item.id), true)))
+  return fresh.length ? [...held, ...fresh] : held
 }
 
 /** Merge a poll into what the page holds: a moment the poll sent again is replaced, a new one added. */
@@ -219,4 +233,10 @@ export function mergeMomentsFeed(held: MomentsFeedItem[], polled: MomentsFeedIte
 export function momentsFeedIdFromLegacy(login: string | null, stream: string | null, offset: string | null): string | null {
   if (!login || !stream || offset == null || !/^\d+$/.test(offset) || !/^[a-z0-9_]{1,25}$/i.test(login) || !/^\d{1,30}$/.test(stream)) return null
   return `pulse-${login.toLowerCase()}-${stream}-${Number(offset)}`
+}
+
+/** The stream and offset a feed id names (pulse-{login}-{streamId}-{offsetSeconds}), for a link to a moment the feed no longer has. */
+export function momentsFeedIdParts(id: string): { login: string; streamId: string; offsetSeconds: number } | null {
+  const match = /^pulse-([a-z0-9_]{1,25})-(\d{1,30})-(\d{1,9})$/.exec(id)
+  return match ? { login: match[1], streamId: match[2], offsetSeconds: Number(match[3]) } : null
 }

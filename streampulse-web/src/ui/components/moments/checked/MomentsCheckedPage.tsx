@@ -1,14 +1,18 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { AnalyticsFigmaShell } from '../../analytics/AnalyticsFigmaShell'
 import {
-  isMomentsFeedItem, loadMomentsFeed, loadMomentsFeedItem, mergeMomentsFeed, momentsFeedIdFromLegacy, MOMENTS_WINDOW_MS, pollMomentsFeed,
-  type MomentMetricKind, type MomentsFeedItem, type MomentsFeedSnapshot,
+  appendMomentsFeed, isMomentsFeedItem, loadMomentsFeed, loadMomentsFeedItem, loadMomentsFeedRest, mergeMomentsFeed, momentsFeedIdFromLegacy,
+  momentsFeedIdParts, MOMENTS_WINDOW_MS, pollMomentsFeed, type MomentMetricKind, type MomentsFeedItem, type MomentsFeedSnapshot,
 } from '../../../../lib/momentsFeed'
 import {
-  actOf, ariaOf, checkMoment, clk, freshCounts, fx, groupsOf, int, SORTS, sparkBars, STALE_MS, streamTime, streamWhere, twitchCdnImage,
+  actOf, ariaOf, avatarImage, boxArtImage, checkMoment, clk, freshCounts, fx, groupsOf, int, SORTS, sparkBars, STALE_MS, streamTime, streamWhere,
   updatedText, when, type CheckedMoment, type MomentsSort, type MomentsView,
 } from '../../../../lib/momentsChecked'
+import { loadMomentVod, momentVodCache } from '../../../../lib/momentsFeedVod'
+import { broadcastTimelineHref } from '../../../../lib/momentsNavigation'
+import { headerClear, watchHeaderClear } from './headerClear'
 import { MomentDetail } from './MomentDetail'
 import { MomentAct } from './MomentAct'
 import { ReplayGlyph, SearchGlyph, VdMark, VerdictGlyph } from './glyphs'
@@ -50,15 +54,17 @@ const ini = (name: string) => name.replace(/[^\p{L}\p{N}]/gu, '').slice(0, 2).to
 /**
  * /analytics/moments behind VITE_PUBLIC_MOMENTS_FEED (design: moments-r2,
  * 2026-10-16). Reads /v1/public/moments; every verdict, check and baseline is
- * the backend's. When the feed is not there (404 while the backend flag is
- * off) or the first read fails, the page is the current one, unchanged.
+ * the backend's. The list draws from the feed's first page while the rest load
+ * behind it. When the feed is not there (404 while the backend flag is off) or
+ * the first page fails, the page is the current one, unchanged.
  */
 export default function MomentsCheckedPage({ fallback }: { fallback: ReactNode }) {
-  const [state, setState] = useState<{ status: 'loading' } | { status: 'ready'; snap: MomentsFeedSnapshot; at: number } | { status: 'failed' }>({ status: 'loading' })
+  const [state, setState] = useState<{ status: 'loading' } | ({ status: 'ready' } & Initial) | { status: 'failed' }>({ status: 'loading' })
   useEffect(() => {
     const controller = new AbortController()
-    loadMomentsFeed(Date.now(), controller.signal).then(
-      snap => setState({ status: 'ready', snap, at: Date.now() }),
+    const readAt = Date.now()
+    loadMomentsFeed(readAt, controller.signal).then(
+      snap => setState({ status: 'ready', snap, at: Date.now(), readAt }),
       () => { if (!controller.signal.aborted) setState({ status: 'failed' }) })
     return () => controller.abort()
   }, [])
@@ -68,7 +74,8 @@ export default function MomentsCheckedPage({ fallback }: { fallback: ReactNode }
   </AnalyticsFigmaShell>
 }
 
-interface Initial { snap: MomentsFeedSnapshot; at: number }
+/** The first page, when it came, and the time its read asked from (the later pages ask the same). */
+interface Initial { snap: MomentsFeedSnapshot; at: number; readAt: number }
 
 function CheckedMoments({ initial }: { initial: Initial | null }) {
   const wide = useMatch('(min-width: 1180px)')
@@ -81,6 +88,12 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
   const [items, setItems] = useState<MomentsFeedItem[]>(() => initial?.snap.items ?? [])
   const [loadedAt, setLoadedAt] = useState(() => initial?.at ?? Date.now())
   const [feedStale, setFeedStale] = useState(() => initial?.snap.stale ?? false)
+  /** The feed's own counts for the whole window, from its newest first page: the freshness line says these, not what has loaded. */
+  const [feedCounts, setFeedCounts] = useState(() => (initial ? { total: initial.snap.total, verdicts: initial.snap.verdicts } : null))
+  /** A deep link to a moment the first page did not bring: looked up by id; until it answers, no other moment opens. */
+  /** The later pages are still coming: the line under the list waits for them, so the rows they add don't push it down. */
+  const [restLoading, setRestLoading] = useState(() => !!initial?.snap.nextCursor)
+  const [deepWait, setDeepWait] = useState<'no' | 'pending' | 'gone' | 'failed'>(() => (initial && deepId && !initial.snap.items.some(item => item.id === deepId) ? 'pending' : 'no'))
   const [view, setView] = useState<MomentsView>(() => {
     const asked = query.get('view')
     const deep = deepId ? initial?.snap.items.find(item => item.id === deepId) : undefined
@@ -114,6 +127,7 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
   const keep = useRef<{ key: string; y0: number } | null>(null)
   const focusAfter = useRef<{ row?: string; tick?: string; scrollTo?: string } | null>(deepId && sel ? { scrollTo: deepId } : null)
   const lastOpen = useRef<string | null>(null)
+  const vods = useMemo(() => momentVodCache(item => loadMomentVod(item, new AbortController().signal)), [])
 
   const now = replay ? replay.vnow : clock
   const nowMinute = Math.floor(now / 60_000) * 60_000
@@ -131,14 +145,16 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
   const shown = (m: CheckedMoment) => (shownUntil == null || m.at <= shownUntil) && !held.has(m.key)
   const list = [...pool, ...savedOnly].filter(m => shown(m) && passes(m)).sort(SORTS[sort])
   const groups = groupsOf(list)
-  const selKey = sel != null && list.some(m => m.key === sel) ? sel : wide && list[0] ? list[0].key : null
+  const selKey = sel != null && list.some(m => m.key === sel) ? sel : wide && list[0] && deepWait === 'no' ? list[0].key : null
   const selM = selKey ? find(selKey) : null
   const openSid = selM?.sid ?? null
   const lk = opened.key === selKey ? opened.lk : null
   const metric = opened.key === selKey ? opened.metric : null
   const everything = pool.filter(m => shown(m) && passes(m, true))
   const bad = everything.filter(m => m.item.verdict === 'bad').length
-  const counts = freshCounts(pool.filter(shown))
+  const loadedCounts = freshCounts(pool.filter(shown))
+  // A replay counts what it has shown so far; otherwise the feed's own counts (they hold while later pages load, or if one fails).
+  const counts = !replay && feedCounts ? { ...loadedCounts, all: feedCounts.total, ...(feedCounts.verdicts ?? {}) } : loadedCounts
   const pillN = [...held].filter(key => { const m = byKey.get(key); return m != null && passes(m) }).length
   const cats = useMemo(() => {
     const n = new Map<string, number>()
@@ -174,6 +190,7 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
   const select = (key: string | null, o: { keep?: boolean; focus?: boolean; from?: string } = {}) => {
     const next = !wide && key != null && selKey === key && !o.keep ? null : key // narrow: a second click closes it
     keepPut(next ?? o.from ?? '')
+    setDeepWait(w => (w === 'pending' ? w : 'no'))
     setSel(next)
     setOpened({ key: next, lk: null, metric: null })
     writeUrl(next)
@@ -242,18 +259,34 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
 
   // a deep link to a moment the first page did not bring: one lookup by id
   useEffect(() => {
-    if (!loaded || !deepId || items.some(item => item.id === deepId)) return
+    if (deepWait !== 'pending' || !deepId) return
     const controller = new AbortController()
     loadMomentsFeedItem(deepId, controller.signal).then(item => {
-      if (!item) return
+      if (!item) { setDeepWait('gone'); return }
       setItems(prev => (prev.some(x => x.id === item.id) ? prev : [...prev, item]))
       if (item.verdict === 'bad') setView(v => (v === 'checked' ? 'all' : v))
       setSel(item.id)
+      setDeepWait('no')
       focusAfter.current = { scrollTo: item.id }
-    }, () => undefined)
+    }, () => { if (!controller.signal.aborted) setDeepWait('failed') })
     return () => controller.abort()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loaded])
+  }, [])
+
+  // the later pages, one at a time behind the drawn first one; a page that fails leaves what has loaded
+  useEffect(() => {
+    if (!initial?.snap.nextCursor) return
+    const controller = new AbortController()
+    void loadMomentsFeedRest(initial.readAt, initial.snap.nextCursor, (page, fresh) => {
+      if (fresh) onPoll.current(page) // a new snapshot came out between pages: its first page, as a poll brings it
+      else setItems(prev => appendMomentsFeed(prev, page.items))
+    }, controller.signal).then(() => { if (!controller.signal.aborted) setRestLoading(false) })
+    return () => controller.abort()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // the portal's header: every sticky top, scroll margin and scroll offset clears it
+  useLayoutEffect(() => (mainRef.current ? watchHeaderClear(mainRef.current) : undefined), [])
 
   // "updated … ago" and the rows' times tick every 10 s
   useEffect(() => {
@@ -270,6 +303,7 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
     setLoadedAt(Date.now())
     setClock(Date.now())
     setFeedStale(snap.stale)
+    setFeedCounts({ total: snap.total, verdicts: snap.verdicts })
     if (!added.length) return
     if (holding.current) setHeld(prev => new Set([...prev, ...added]))
     else arrive(added)
@@ -364,7 +398,7 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
       focusAfter.current = null
       if (f.row) { const el = rowEl(f.row); if (el) { el.focus({ preventScroll: true }); inView(el, motion) } }
       if (f.tick) byData(mainRef.current, '.mk-d [data-tick]', 'tick', f.tick)?.focus({ preventScroll: true })
-      if (f.scrollTo) { const el = rowEl(f.scrollTo); if (el) window.scrollBy(0, el.getBoundingClientRect().top - (wide ? window.innerHeight / 3 : 76)) } // narrow: the row under the header, its detail below
+      if (f.scrollTo) { const el = rowEl(f.scrollTo); if (el) window.scrollBy(0, el.getBoundingClientRect().top - (wide ? window.innerHeight / 3 : headerClear() + 12)) } // narrow: the row under the header, its detail below
     }
     lastOpen.current = openSid
   })
@@ -378,11 +412,16 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
     setMetric={value => setOpened(o => ({ key: m.key, metric: value, lk: o.key === m.key ? o.lk : null }))}
     setLk={value => setOpened(o => ({ key: m.key, lk: value, metric: o.key === m.key ? o.metric : null }))}
     saved={saved.has(m.key)} onSave={() => toggleSave(m.key)} onCopy={() => copyLink(m.key)} onOpen={openFromDetail} onClose={closeDetail}
-    motion={motion} phone={phone} say={say} playRef={playRef} />
+    motion={motion} phone={phone} say={say} playRef={playRef} vods={vods} />
   const row = (m: CheckedMoment, more: number, sub: boolean) => <Row m={m} more={more} sub={sub} now={now} current={selKey === m.key}
     onSelect={() => select(m.key, { from: m.key })} />
 
   const stale = !replay && (feedStale || clock - loadedAt > STALE_MS)
+  const deepAt = deepId ? momentsFeedIdParts(deepId) : null
+  const gone = deepWait === 'gone' || deepWait === 'failed'
+    ? <p className="mk-gone" role="status">{deepWait === 'gone' ? 'That moment is no longer here.' : 'That moment couldn’t be loaded.'}
+      {deepAt ? <> <Link to={broadcastTimelineHref(deepAt.login, deepAt.streamId, '/analytics/moments', deepAt.offsetSeconds)}>Open it on the stream’s page</Link></> : null}</p>
+    : null
   const fresh = loaded ? <>
     {replay ? <span className="mk-rpl">Replay: <b>{clk(replay.vnow)}</b>, one poll every 45 s</span> : updatedText(clock - loadedAt)}
     <span className="mk-sep"> · </span>{counts.all} moments in the last 12 hours from {counts.streams} live streams
@@ -433,6 +472,7 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
           onPointerEnter={() => setHolding(true)} onPointerLeave={() => setHolding(false)}
           onFocus={() => setHolding(true)} onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setHolding(false) }}>
           <button className="mk-pill" type="button" hidden={!pillN} onClick={() => release(true)}>{pillN} new ↑</button>
+          {wide ? null : gone}
           <ol className="mk-list" ref={listRef}>
             {loaded && !groups.length ? <li className="mk-empty">{view === 'saved' ? 'Nothing saved yet. Save a moment and it stays here, in this browser.' : 'No moments match.'}</li> : null}
             {groups.map(g => {
@@ -452,12 +492,12 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
             })}
           </ol>
         </div>
-        <p className="mk-foot">
+        {restLoading ? null : <p className="mk-foot">
           {view === 'checked' && bad ? <>{bad} {bad === 1 ? 'moment didn’t hold up and is' : 'moments didn’t hold up and are'} left out. <button type="button" onClick={() => changeView('all')}>Show all {everything.length}</button></>
             : view === 'all' && bad ? `All ${everything.length} moments, with the ${bad} that didn’t hold up.` : null}
-        </p>
+        </p>}
       </section>
-      <aside className="mk-det" aria-label="Selected moment">{wide && selM ? detail(selM) : null}</aside>
+      <aside className="mk-det" aria-label="Selected moment">{wide && selM ? detail(selM) : wide ? gone : null}</aside>
     </div>
     <div className="mk-vh" aria-live="polite">{said}</div>
   </main>
@@ -468,14 +508,14 @@ const byData = (root: HTMLElement | null, sel: string, field: string, value: str
   [...(root?.querySelectorAll<HTMLElement>(sel) ?? [])].find(el => el.dataset[field] === value) ?? null
 
 function inView(el: HTMLElement, motion: boolean) {
-  const r = el.getBoundingClientRect(), top = 64
+  const r = el.getBoundingClientRect(), top = headerClear()
   if (r.top < top) window.scrollBy({ top: r.top - top - 8, behavior: motion ? 'smooth' : 'auto' })
   else if (r.bottom > window.innerHeight - 8) window.scrollBy({ top: r.bottom - window.innerHeight + 8, behavior: motion ? 'smooth' : 'auto' })
 }
 
 /** One row (the Live feed's v2 row): avatar · who + what / when + why · the minutes · viewers. */
 function Row({ m, more, sub, now, current, onSelect }: { m: CheckedMoment; more: number; sub: boolean; now: number; current: boolean; onSelect: () => void }) {
-  const item = m.item, avatar = twitchCdnImage(item.profileImageUrl), box = twitchCdnImage(item.category?.boxArtUrl)
+  const item = m.item, avatar = avatarImage(item), box = boxArtImage(item)
   const full = `${new Date(m.at).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })} · ${streamTime(m, null)} ${streamWhere(null)}`
   const bits: Array<{ key: string; sep?: string; node: ReactNode }> = [
     { key: 'vd', node: <VdMark v={item.verdict} /> },
@@ -500,7 +540,7 @@ function Row({ m, more, sub, now, current, onSelect }: { m: CheckedMoment; more:
       {sparkBars(m).map((b, i) => <rect key={i} x={b.x.toFixed(2)} y={b.y.toFixed(1)} width={b.w.toFixed(2)} height={b.h.toFixed(1)} rx="0.5"
         fill={b.tone === 'mo' ? 'var(--mk-accent)' : kindColour} opacity={b.tone === 'mo' ? 1 : b.tone === 'in' ? 0.5 : 0.28} />)}
     </svg></span>
-    <span className="mk-r-v">{item.viewers != null ? <><b>{int(item.viewers)}</b><span>viewers</span></> : null}</span>
+    <span className="mk-r-v">{item.viewers != null ? <><b>{int(item.viewers)}</b><span>watched</span></> : null}</span>
   </button>
 }
 

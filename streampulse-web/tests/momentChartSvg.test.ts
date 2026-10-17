@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import type { MomentsFeedItem } from '../src/lib/momentsFeed'
 import { checkMoment, SERIES_AFTER, SERIES_BEFORE, seriesFromSpark } from '../src/lib/momentsChecked'
-import { chartRange, chartSvg, compared } from '../src/ui/components/moments/checked/momentChartSvg'
+import { chartElement, chartRange, chartSvg, compared, type ChartDrawing } from '../src/ui/components/moments/checked/momentChartSvg'
 
 const fixture = JSON.parse(readFileSync(resolve(__dirname, 'fixtures/moments_feed_v1.json'), 'utf8')) as { generatedAt: number; items: MomentsFeedItem[] }
 const pool = fixture.items.map(item => checkMoment(item, fixture.generatedAt))
@@ -13,23 +13,22 @@ beforeAll(() => {
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
 })
 
-function texts(html: string) {
-  const host = document.createElement('div')
-  host.innerHTML = html
-  return [...host.querySelectorAll('svg text')].map(t => ({ cls: t.getAttribute('class') ?? '', text: t.textContent ?? '', x: Number(t.getAttribute('x')), y: Number(t.getAttribute('y')) }))
+function texts(d: ChartDrawing) {
+  return d.nodes.filter(n => n.tag === 'text').map(n => ({ cls: n.attrs.class ?? '', text: n.text ?? '', x: Number(n.attrs.x), y: Number(n.attrs.y) }))
 }
+const classes = (d: ChartDrawing) => d.nodes.map(n => n.attrs.class ?? '')
 
 describe('checked moment chart', () => {
   it('draws the sparkline’s minutes, the compared band and its average', () => {
     const m = pool.find(x => compared(x)?.[0] === -16)!
     const s = seriesFromSpark(m)
     expect(chartRange(m, s)[0]).toBe(-16)
-    const { html, geo } = chartSvg(m, s, m.kind, 600, false, null, true)
-    expect(geo.H).toBe(200)
-    expect(html).toContain('class="mk-band"')
-    expect(html).toContain('class="mk-cb mo"')
-    expect(html).toContain('tabindex="0"')
-    const labels = texts(html).map(t => t.text)
+    const drawn = chartSvg(m, s, m.kind, 600, false, null, true)
+    expect(drawn.geo.H).toBe(200)
+    expect(classes(drawn)).toContain('mk-band')
+    expect(classes(drawn)).toContain('mk-cb mo')
+    expect(drawn.attrs.tabindex).toBe('0')
+    const labels = texts(drawn).map(t => t.text)
     expect(labels).toContain('the 15 minutes compared')
     expect(labels.some(t => /^average /.test(t))).toBe(true)
   })
@@ -42,15 +41,15 @@ describe('checked moment chart', () => {
     const phone = chartSvg(m, series, m.kind, 240, true, null, false)
     expect(phone.geo.H).toBe(170)
     expect([phone.geo.lo, phone.geo.hi]).toEqual([-32, 16])
-    expect(texts(phone.html).map(t => t.text)).toContain('15 min compared')
-    expect(texts(chartSvg(m, series, m.kind, 900, false, null, false).html).map(t => t.text)).toContain('the 15 minutes compared')
+    expect(texts(phone).map(t => t.text)).toContain('15 min compared')
+    expect(texts(chartSvg(m, series, m.kind, 900, false, null, false)).map(t => t.text)).toContain('the 15 minutes compared')
   })
 
   it('keeps the moment’s label off the band’s label at every width (R2-5)', () => {
     let checked = 0
     for (const m of pool) {
       for (const width of [240, 330, 420, 600]) {
-        const t = texts(chartSvg(m, seriesFromSpark(m), m.kind, width, width < 400, null, false).html)
+        const t = texts(chartSvg(m, seriesFromSpark(m), m.kind, width, width < 400, null, false))
         const band = t.find(x => /compared$/.test(x.text)), mark = t.find(x => x.cls.includes('mk-an-m'))
         if (!band || !mark) continue
         checked += 1
@@ -65,9 +64,23 @@ describe('checked moment chart', () => {
 
   it('marks a held minute', () => {
     const m = pool[0]
-    const { html } = chartSvg(m, seriesFromSpark(m), m.kind, 600, false, -3, true)
-    expect(html).toContain('data-lk')
-    expect(html).toMatch(/class="mk-cb[^"]* lk" data-i="-3"/)
+    const drawn = chartSvg(m, seriesFromSpark(m), m.kind, 600, false, -3, true)
+    expect(drawn.nodes.some(n => 'data-lk' in n.attrs)).toBe(true)
+    expect(drawn.nodes.find(n => n.attrs['data-i'] === '-3')?.attrs.class).toMatch(/^mk-cb\b.* lk$/)
+  })
+
+  it('builds the chart from elements, with every label as text', () => {
+    const m = pool[0]
+    const drawn = chartSvg(m, seriesFromSpark(m), m.kind, 600, false, null, true)
+    const svg = chartElement(drawn)
+    expect(svg.namespaceURI).toBe('http://www.w3.org/2000/svg')
+    expect(svg.getAttribute('aria-label')).toBe(drawn.attrs['aria-label'])
+    expect(svg.children).toHaveLength(drawn.nodes.length)
+    expect([...svg.querySelectorAll('text')].map(t => t.textContent)).toEqual(texts(drawn).map(t => t.text))
+    // a label is never read as markup
+    const odd = chartElement({ attrs: {}, nodes: [{ tag: 'text', attrs: {}, text: '<img src=x onerror=alert(1)>' }], geo: drawn.geo })
+    expect(odd.querySelector('img')).toBeNull()
+    expect(odd.textContent).toBe('<img src=x onerror=alert(1)>')
   })
 })
 

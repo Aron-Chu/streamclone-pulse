@@ -5,7 +5,7 @@ import {
   type CheckedMoment, type MinuteSeries, type MomentVod,
 } from '../../../../lib/momentsChecked'
 import type { MomentMetricKind } from '../../../../lib/momentsFeed'
-import { atRel, chartSvg, compared, relAt, tAt, tweenBars, type ChartGeo } from './momentChartSvg'
+import { atRel, chartElement, chartSvg, compared, relAt, tAt, tweenBars, type ChartGeo } from './momentChartSvg'
 import { GtGlyph, LtGlyph, PlayGlyph, VdMark, XGlyph } from './glyphs'
 
 interface ChartProps {
@@ -28,8 +28,8 @@ interface ChartProps {
 
 /**
  * The minutes around it (moments-r2 R2-3): the chart, the line under it, and
- * the held minute's card. The chart is drawn as one SVG string, like the
- * mockup, so a hover or a held minute changes it in place without a redraw.
+ * the held minute's card. The chart is one SVG built outside React, like the
+ * mockup's, so a hover or a held minute changes it in place without a redraw.
  */
 export function MomentChart({ m, series, metric, lk, hold, animRef, motion, phone, vod, pool, onPlayAt, onGoto, say }: ChartProps) {
   const box = useRef<HTMLDivElement>(null)
@@ -59,11 +59,11 @@ export function MomentChart({ m, series, metric, lk, hold, animRef, motion, phon
     const prev = new Map([...el.querySelectorAll<SVGRectElement>('rect.mk-cb')].map(b => [b.dataset.i ?? '', [Number(b.getAttribute('y')), Number(b.getAttribute('height'))] as [number, number]]))
     const hadFocus = !!el.firstElementChild && document.activeElement === el.firstElementChild
     const drawn = chartSvg(m, series, metric, width, phone, lkRef.current, true)
-    el.innerHTML = drawn.html
+    const svg = chartElement(drawn)
+    el.replaceChildren(svg)
     geo.current = drawn.geo
-    const svg = el.firstElementChild as SVGSVGElement | null
-    if (hadFocus) svg?.focus({ preventScroll: true })
-    if (svg && motion && animRef.current) tweenBars(svg, animRef.current, prev, drawn.geo.T + drawn.geo.ph)
+    if (hadFocus) svg.focus({ preventScroll: true })
+    if (motion && animRef.current) tweenBars(svg, animRef.current, prev, drawn.geo.T + drawn.geo.ph)
     animRef.current = null
     // A redraw follows the moment's data, not the object: the page rebuilds its moments every minute.
     // eslint-disable-next-line react-hooks/exhaustive-deps

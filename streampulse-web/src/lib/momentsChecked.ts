@@ -1,14 +1,19 @@
 import { sanitizeEmoteImageUrl } from './emoteAssetUrl'
+import { isExactCategoryBoxArt } from './momentCategoryArtwork'
+import { newsroomProfileUrl } from './newsroomProfiles'
 import type { MomentCheckLevel, MomentMetricKind, MomentVerdict, MomentsFeedEmote, MomentsFeedItem } from './momentsFeed'
 
 /**
  * The checked Moments page's display model (design: moments-r2, 2026-10-16).
  *
- * Every verdict, check outcome, label and baseline comes from the feed. This
+ * Every verdict, check outcome, label, × and baseline comes from the feed. This
  * module only words them: the check codes become sentences, and the figures in
- * those sentences are the item's own (perMin, x, baselineMeasuredMinutes) or
- * the mean of its sparkline's baseline slots (the same minutes, -16..-2, the
- * backend compared), never a threshold applied again.
+ * those sentences are the item's own (perMin, x, baselinePerMin,
+ * baselineMeasuredMinutes). Where the feed leaves the baseline out (5 to 9
+ * minutes measured), the sentence quotes the mean of the sparkline's baseline
+ * slots, the same minutes (-16..-2) the checks read, as the feed's contract
+ * words it. No × is worked out here and no threshold is applied again: a
+ * moment the feed sends no × for shows none.
  */
 
 /** Play starts this many seconds before the minute. */
@@ -39,14 +44,14 @@ export interface CheckedMoment {
   startedAt: number
   /** What rose: the label's kind. */
   kind: MomentMetricKind
-  /** The label kind's ×, as sent (or from the same minutes where the feed leaves it out). */
+  /** The label kind's ×, as sent; null when the feed sends none. */
   x: number | null
   /** The row's ×: only for a moment that holds up and rose 1.5× or more (the feed's rise code "rose"). */
   rowX: number | null
   /** The short reason a moment is partly or doesn't hold up. */
   why: string
   checks: CheckLine[]
-  /** Mean of the measured baseline slots (-16..-2 inside the stream), null under 5. */
+  /** The baseline a minute: the feed's, else the mean of the measured slots (-16..-2 inside the stream); null under 5. */
   baseC: number | null
   baseE: number | null
   /** Minutes from the moment where the compared minutes start (-16, or the stream's first whole minute). */
@@ -90,16 +95,25 @@ export function when(t: number, now: number): string {
   return `${sameDay(t, now) ? '' : 'Yesterday '}${clk(t)}`
 }
 
-/** An https image on Twitch's CDN (avatars, box art, live previews), else nothing. */
-export function twitchCdnImage(url: string | undefined): string | undefined {
-  if (!url) return undefined
+/** A Twitch CDN URL with no user, password, query or hash whose path starts with `path`, else nothing. */
+function twitchCdn(value: string | undefined, path: string): string | undefined {
+  if (!value) return undefined
   try {
-    const parsed = new URL(url)
-    return parsed.protocol === 'https:' && parsed.hostname === 'static-cdn.jtvnw.net' ? parsed.href : undefined
+    const url = new URL(value)
+    return url.origin === 'https://static-cdn.jtvnw.net' && url.pathname.startsWith(path) && !url.username && !url.password && !url.search && !url.hash ? url.href : undefined
   } catch {
     return undefined
   }
 }
+/** The channel's avatar (the repo's profile picture check). */
+export const avatarImage = (item: Pick<MomentsFeedItem, 'profileImageUrl'>) => newsroomProfileUrl(item.profileImageUrl)
+/** The game's box art, only when it is that category's own (the repo's box art check). */
+export const boxArtImage = (item: Pick<MomentsFeedItem, 'category'>) => {
+  const art = item.category?.boxArtUrl
+  return art && isExactCategoryBoxArt(art, item.category!.id) ? art : undefined
+}
+/** The stream's live preview frame. */
+export const liveFrameImage = (item: Pick<MomentsFeedItem, 'liveFrameUrl'>) => twitchCdn(item.liveFrameUrl, '/previews-ttv/')
 export const emoteImage = (emote: Pick<MomentsFeedEmote, 'imageUrl'>) => sanitizeEmoteImageUrl(emote.imageUrl)
 
 const mean = (values: number[]) => (values.length ? values.reduce((a, b) => a + b, 0) / values.length : null)
@@ -114,16 +128,12 @@ function baselineSlots(item: MomentsFeedItem, kind: MomentMetricKind): number[] 
   }
   return out
 }
-/** The checks' baseline: the mean of the measured minutes, when there are 5 or more. */
-function sparkBase(item: MomentsFeedItem, kind: MomentMetricKind): number | null {
+/** The baseline a minute: the feed's; where it leaves it out (5 to 9 minutes measured), the mean of those minutes, for the sentences only. */
+function baseOf(item: MomentsFeedItem, kind: MomentMetricKind): number | null {
+  const sent = item[kind].baselinePerMin
+  if (sent != null) return sent
   const slots = baselineSlots(item, kind)
   return slots.length >= 5 ? mean(slots) : null
-}
-/** The ×, as sent; where the feed leaves it out (a baseline of 5 to 9 minutes), the same ratio from the same minutes. */
-function xOf(item: MomentsFeedItem, kind: MomentMetricKind, base: number | null): number | null {
-  const metric = item[kind]
-  if (metric.x != null) return metric.x
-  return metric.perMin != null && base != null && base > 0 ? metric.perMin / base : null
 }
 
 /** What happened, in the feed's words: "spammed" and the emote, "emote burst" with the minute's emotes, "chat burst". */
@@ -144,8 +154,8 @@ export function actOf(item: MomentsFeedItem, big = false): MomentAct {
 export function checkLines(item: MomentsFeedItem): CheckLine[] {
   const out: CheckLine[] = []
   const kind = item.label.kind, word = kind === 'emotes' ? 'emotes' : 'chat', was = kind === 'emotes' ? ' were ' : ' was '
-  const baseC = sparkBase(item, 'chat'), baseE = sparkBase(item, 'emotes'), base = kind === 'emotes' ? baseE : baseC
-  const xc = xOf(item, 'chat', baseC), xe = xOf(item, 'emotes', baseE), x = kind === 'emotes' ? xe : xc
+  const baseC = baseOf(item, 'chat'), baseE = baseOf(item, 'emotes'), base = kind === 'emotes' ? baseE : baseC
+  const xc = item.chat.x, xe = item.emotes.x, x = kind === 'emotes' ? xe : xc
   const chat = item.chat.perMin, val = item[kind].perMin
   const measured = item.baselineMeasuredMinutes ?? baselineSlots(item, 'chat').length
   const expected = 15 - Math.max(0, item.spark.sparkStartIndex)
@@ -179,8 +189,8 @@ export function checkLines(item: MomentsFeedItem): CheckLine[] {
 export function checkMoment(item: MomentsFeedItem, now: number): CheckedMoment {
   const kind = item.label.kind
   const checks = checkLines(item)
-  const baseC = sparkBase(item, 'chat'), baseE = sparkBase(item, 'emotes')
-  const x = xOf(item, kind, kind === 'emotes' ? baseE : baseC)
+  const baseC = baseOf(item, 'chat'), baseE = baseOf(item, 'emotes')
+  const x = item[kind].x
   const worst = checks.find(c => c.lv === item.verdict && c.short)
   const startedAt = item.minuteStart - item.offsetSeconds * 1000
   return {
@@ -227,7 +237,7 @@ export function groupsOf(list: CheckedMoment[]): CheckedMoment[][] {
 export function ariaOf(m: CheckedMoment, now: number, more = 0): string {
   const x = m.rowX != null ? `${fx(m.rowX).replace('×', ' times')} the 15 minutes before` : m.why
   const cat = m.item.category?.name
-  return `${m.name} ${actOf(m.item).text}, ${when(m.at, now)}${x ? `, ${x}` : ''}${cat ? `, ${cat}` : ''}${m.item.viewers != null ? `, ${int(m.item.viewers)} viewers now` : ''}. ${VERDICT_WORD[m.item.verdict]}.${more ? ` ${more} ${more === 1 ? 'earlier moment.' : 'earlier moments.'}` : ''}`
+  return `${m.name} ${actOf(m.item).text}, ${when(m.at, now)}${x ? `, ${x}` : ''}${cat ? `, ${cat}` : ''}${m.item.viewers != null ? `, ${int(m.item.viewers)} watched it` : ''}. ${VERDICT_WORD[m.item.verdict]}.${more ? ` ${more} ${more === 1 ? 'earlier moment.' : 'earlier moments.'}` : ''}`
 }
 
 /** The 25 sparkline bars: the moment in teal, the compared minutes stronger than the rest. */

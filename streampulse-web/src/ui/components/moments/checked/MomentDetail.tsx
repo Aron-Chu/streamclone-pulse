@@ -1,15 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
 import type { MutableRefObject } from 'react'
 import {
-  actOf, checkLines, clk, emoteImage, hms, int, LEAD_S, offAt, sameDay, seriesFromSpark, sortedChecks, streamTime, streamTip, streamWhere,
-  stripModel, twitchCdnImage, verdictLine, VERDICT_WORD, type CheckedMoment, type MinuteSeries, type MomentVod,
+  actOf, avatarImage, boxArtImage, checkLines, clk, emoteImage, hms, int, LEAD_S, liveFrameImage, offAt, sameDay, seriesFromSpark, sortedChecks,
+  streamTime, streamTip, streamWhere, stripModel, verdictLine, VERDICT_WORD, type CheckedMoment, type MinuteSeries, type MomentVod,
 } from '../../../../lib/momentsChecked'
 import type { MomentMetricKind } from '../../../../lib/momentsFeed'
 import { loadMomentMinuteSeries } from '../../../../lib/momentMinuteSeries'
-import { loadMomentVod, vodEmbedSrc, vodSeconds } from '../../../../lib/momentsFeedVod'
+import { vodEmbedSrc, vodSeconds, type MomentVodCache } from '../../../../lib/momentsFeedVod'
 import { MomentChart } from './MomentChart'
 import { MomentAct } from './MomentAct'
 import { BookGlyph, ExtGlyph, LinkGlyph, PlayGlyph, VdMark, VerdictGlyph, XGlyph } from './glyphs'
+import { headerClear } from './headerClear'
+
+/** The detail's reads wait this long for the selection to settle: J held down reads only where it stops. */
+const READ_DELAY_MS = 200
 
 export interface DetailProps {
   m: CheckedMoment
@@ -30,20 +34,23 @@ export interface DetailProps {
   say: (text: string) => void
   /** The page's P key plays the open moment (or its held minute) through this. */
   playRef: MutableRefObject<((rel: number | null) => void) | null>
+  /** The page's VODs, by stream. */
+  vods: MomentVodCache
 }
 
 /**
  * The open moment (moments-r2 detail): the frame and Play, what happened and
  * when (in the stream first, the clock beside it), the verdict, the minutes
  * around it with a held minute, the stream strip, why it counts, and what chat
- * sent. Two reads, for this moment only: its stream record (the VOD) and its
- * minutes (the chart). Until the minutes answer, or if they don't, the chart
- * draws the feed's 25-minute sparkline.
+ * sent. Two reads, for this moment only, once the selection has settled: its
+ * stream record (the VOD; none when the page already knows the stream's) and
+ * its minutes (the chart). Until the minutes answer, or if they don't, the
+ * chart draws the feed's 25-minute sparkline.
  */
 export function MomentDetail(props: DetailProps) {
-  const { m, pool, now, metric, setMetric, lk, setLk, saved, onSave, onCopy, onOpen, onClose, motion, phone, say, playRef } = props
+  const { m, pool, now, metric, setMetric, lk, setLk, saved, onSave, onCopy, onOpen, onClose, motion, phone, say, playRef, vods } = props
   const item = m.item
-  const [vod, setVod] = useState<MomentVod | null>(null)
+  const [vod, setVod] = useState<MomentVod | null>(() => vods.peek(item) ?? null)
   const [minutes, setMinutes] = useState<MinuteSeries | null>(null)
   const [playing, setPlaying] = useState<string | null>(null)
   const [frameFailed, setFrameFailed] = useState(false)
@@ -54,9 +61,11 @@ export function MomentDetail(props: DetailProps) {
   useEffect(() => {
     const controller = new AbortController()
     const moment = { login: item.login.toLowerCase(), streamId: item.streamId, offsetSeconds: item.offsetSeconds, minuteStart: item.minuteStart }
-    loadMomentVod(item, controller.signal).then(setVod, () => { if (!controller.signal.aborted) setVod(null) })
-    loadMomentMinuteSeries(moment, controller.signal).then(series => { if (series) { anim.current = 'morph'; setMinutes(series) } }, () => undefined)
-    return () => controller.abort()
+    const timer = window.setTimeout(() => {
+      if (vods.peek(item) === undefined) vods.read(item).then(v => { if (!controller.signal.aborted) setVod(v) }, () => undefined)
+      loadMomentMinuteSeries(moment, controller.signal).then(series => { if (series) { anim.current = 'morph'; setMinutes(series) } }, () => undefined)
+    }, READ_DELAY_MS)
+    return () => { window.clearTimeout(timer); controller.abort() }
     // One moment, one pair of reads: a poll that sends the same moment again does not read again.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [m.key])
@@ -66,9 +75,9 @@ export function MomentDetail(props: DetailProps) {
   const series = minutes ?? spark.current.series
   const kind = metric ?? m.kind
   const live = item.streamLive
-  const frame = live && !frameFailed ? twitchCdnImage(item.liveFrameUrl) : undefined
-  const boxArt = twitchCdnImage(item.category?.boxArtUrl)
-  const avatar = twitchCdnImage(item.profileImageUrl)
+  const frame = live && !frameFailed ? liveFrameImage(item) : undefined
+  const boxArt = boxArtImage(item)
+  const avatar = avatarImage(item)
 
   const play = (rel: number | null) => {
     if (!vod) return
@@ -79,7 +88,7 @@ export function MomentDetail(props: DetailProps) {
     const el = media.current
     if (rel != null && el) {
       const r = el.getBoundingClientRect()
-      if (r.top < 64 || r.bottom > window.innerHeight) el.scrollIntoView({ block: 'nearest', behavior: motion ? 'smooth' : 'auto' })
+      if (r.top < headerClear() || r.bottom > window.innerHeight) el.scrollIntoView({ block: 'nearest', behavior: motion ? 'smooth' : 'auto' })
     }
   }
   playRef.current = play
@@ -100,7 +109,7 @@ export function MomentDetail(props: DetailProps) {
           {vod ? <button className="mk-d-play" type="button" onClick={() => play(null)}><PlayGlyph />Play from 10 s before</button> : null}
           <div className="mk-d-who">
             {avatar ? <img src={avatar} alt="" /> : null}
-            <span className="mk-d-who-t"><b>{m.name}</b><span className="mk-lv">{live ? <><i />Live now{item.viewers != null ? ` · ${int(item.viewers)} watching` : ''}</> : 'Offline'}</span></span>
+            <span className="mk-d-who-t"><b>{m.name}</b><span className="mk-lv">{live ? <><i />Live now{item.viewers != null ? ` · ${int(item.viewers)} watched it` : ''}</> : 'Offline'}</span></span>
           </div>
         </>}
       <button className="mk-d-x" type="button" aria-label="Close" onClick={onClose}><XGlyph /></button>

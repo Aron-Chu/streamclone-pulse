@@ -8,8 +8,11 @@ import type { MomentMetricKind } from '../../../../lib/momentsFeed'
  * moment (rel 0); the series index is rel + SERIES_BEFORE.
  */
 export interface ChartGeo { lo: number; hi: number; bw: number; T: number; ph: number; W: number; H: number }
+/** One SVG element as data: the chart is built with createElementNS, never from markup. */
+export interface ChartNode { tag: 'line' | 'rect' | 'text'; attrs: Record<string, string>; text?: string }
+export interface ChartDrawing { attrs: Record<string, string>; nodes: ChartNode[]; geo: ChartGeo }
 
-const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string))
+const SVG_NS = 'http://www.w3.org/2000/svg'
 export const seriesOf = (s: MinuteSeries, metric: MomentMetricKind) => (metric === 'emotes' ? s.e : s.c)
 export const atRel = (arr: Array<number | null>, rel: number) => arr[SERIES_BEFORE + rel] ?? null
 export const tAt = (m: CheckedMoment, rel: number) => m.at + rel * 60_000
@@ -37,7 +40,7 @@ function textW(text: string): number {
   return measure ? measure.measureText(text).width : text.length * 6.4
 }
 
-export function chartSvg(m: CheckedMoment, s: MinuteSeries, metric: MomentMetricKind, width: number, phone: boolean, held: number | null, focusable: boolean): { html: string; geo: ChartGeo } {
+export function chartSvg(m: CheckedMoment, s: MinuteSeries, metric: MomentMetricKind, width: number, phone: boolean, held: number | null, focusable: boolean): ChartDrawing {
   const arr = seriesOf(s, metric)
   const Wd = Math.max(240, Math.round(width || 400)), H = phone ? 170 : 200, T = 30, B = 22, ph = H - T - B
   const [lo, hi] = chartRange(m, s), n = hi - lo + 1, bw = Wd / n, gap = Math.max(1, bw * 0.24)
@@ -48,28 +51,28 @@ export function chartSvg(m: CheckedMoment, s: MinuteSeries, metric: MomentMetric
   const X = (rel: number) => (rel - lo) * bw, Y = (v: number) => T + ph - (v / max) * ph
   const win = compared(m), bLo = win ? Math.max(lo, win[0]) : null, bHi = win ? win[1] : null
   const winN = win ? win[1] - win[0] + 1 : 0
-  let g = `<line class="mk-gl" x1="0" x2="${Wd}" y1="${T + ph + 0.5}" y2="${T + ph + 0.5}"/>`
+  const g: ChartNode[] = [{ tag: 'line', attrs: { class: 'mk-gl', x1: '0', x2: String(Wd), y1: String(T + ph + 0.5), y2: String(T + ph + 0.5) } }]
   let bandLab: { x: number; r: number; y: number } | null = null
   if (bLo != null && bHi != null && bHi >= bLo) {
     const bandW = X(bHi) + bw - X(bLo)
     let txt = `the ${winN} minutes compared`
     if (textW(txt) + 4 > bandW) txt = `${winN} min compared` // R2-5: on a phone the long label ran past the band, onto the moment's
     bandLab = { x: X(bLo) + 4, r: X(bLo) + 4 + textW(txt), y: T - 12 }
-    g += `<rect class="mk-band" x="${X(bLo).toFixed(1)}" y="${T - 6}" width="${bandW.toFixed(1)}" height="${ph + 6}"/>`
-    g += `<text class="mk-an2" x="${bandLab.x.toFixed(1)}" y="${bandLab.y}">${txt}</text>`
+    g.push({ tag: 'rect', attrs: { class: 'mk-band', x: X(bLo).toFixed(1), y: String(T - 6), width: bandW.toFixed(1), height: String(ph + 6) } })
+    g.push({ tag: 'text', attrs: { class: 'mk-an2', x: bandLab.x.toFixed(1), y: String(bandLab.y) }, text: txt })
   }
   const lk = held != null && held >= lo && held <= hi ? held : null
-  if (lk != null) g += `<rect class="mk-lk-b" data-lk x="${(X(lk) + 0.5).toFixed(1)}" y="${T - 6}" width="${Math.max(1, bw - 1).toFixed(1)}" height="${ph + 6}" rx="2"/>`
+  if (lk != null) g.push({ tag: 'rect', attrs: { class: 'mk-lk-b', 'data-lk': '', x: (X(lk) + 0.5).toFixed(1), y: String(T - 6), width: Math.max(1, bw - 1).toFixed(1), height: String(ph + 6), rx: '2' } })
   vals.forEach((v, j) => {
     if (v == null) return
     const rel = lo + j, h = Math.max(1, T + ph - Y(v))
     const cls = (rel === 0 ? 'mk-cb mo' : bLo != null && bHi != null && rel >= bLo && rel <= bHi ? 'mk-cb in' : 'mk-cb') + (rel === lk ? ' lk' : '')
-    g += `<rect class="${cls}" data-i="${rel}" x="${(X(rel) + gap / 2).toFixed(1)}" y="${(T + ph - h).toFixed(1)}" width="${Math.max(1, bw - gap).toFixed(1)}" height="${h.toFixed(1)}" rx="1"/>`
+    g.push({ tag: 'rect', attrs: { class: cls, 'data-i': String(rel), x: (X(rel) + gap / 2).toFixed(1), y: (T + ph - h).toFixed(1), width: Math.max(1, bw - gap).toFixed(1), height: h.toFixed(1), rx: '1' } })
   })
   if (base != null && bLo != null && bHi != null) {
     const y = Y(base).toFixed(1)
-    g += `<line class="mk-base" x1="${X(bLo).toFixed(1)}" x2="${(X(bHi) + bw).toFixed(1)}" y1="${y}" y2="${y}"/>`
-    g += `<text class="mk-an2" x="${(X(bLo) + 4).toFixed(1)}" y="${(Y(base) - 5).toFixed(1)}">average ${int(base)}</text>`
+    g.push({ tag: 'line', attrs: { class: 'mk-base', x1: X(bLo).toFixed(1), x2: (X(bHi) + bw).toFixed(1), y1: y, y2: y } })
+    g.push({ tag: 'text', attrs: { class: 'mk-an2', x: (X(bLo) + 4).toFixed(1), y: (Y(base) - 5).toFixed(1) }, text: `average ${int(base)}` })
   }
   // the moment, labelled above its bar; never off the plot, above every bar it spans, and clear of the band's label
   const mv = atRel(arr, 0)
@@ -91,7 +94,7 @@ export function chartSvg(m: CheckedMoment, s: MinuteSeries, metric: MomentMetric
       y = Math.max(12, Y(topOver(x0)) - 7)
       if (hits(x0, y)) y = bandLab.y + 18
     }
-    g += `<text class="mk-an mk-an-m" x="${x0.toFixed(1)}" y="${y.toFixed(1)}">${esc(lab)}</text>`
+    g.push({ tag: 'text', attrs: { class: 'mk-an mk-an-m', x: x0.toFixed(1), y: y.toFixed(1) }, text: lab })
   }
   // ticks every 10 minutes of clock time
   for (let rel = lo; rel <= hi; rel += 1) {
@@ -99,15 +102,29 @@ export function chartSvg(m: CheckedMoment, s: MinuteSeries, metric: MomentMetric
     if (new Date(t).getMinutes() % 10) continue
     const x = X(rel) + bw / 2
     if (x < 16 || x > Wd - 16) continue
-    g += `<text class="mk-tk" text-anchor="middle" x="${x.toFixed(1)}" y="${H - 4}">${esc(tick(t))}</text>`
+    g.push({ tag: 'text', attrs: { class: 'mk-tk', 'text-anchor': 'middle', x: x.toFixed(1), y: String(H - 4) }, text: tick(t) })
   }
-  g += `<line class="mk-cur" data-cur x1="0" x2="0" y1="${T - 6}" y2="${T + ph}" visibility="hidden"/>`
-  g += `<rect data-hit x="0" y="0" width="${Wd}" height="${H}" fill="transparent"/>`
+  g.push({ tag: 'line', attrs: { class: 'mk-cur', 'data-cur': '', x1: '0', x2: '0', y1: String(T - 6), y2: String(T + ph), visibility: 'hidden' } })
+  g.push({ tag: 'rect', attrs: { 'data-hit': '', x: '0', y: '0', width: String(Wd), height: String(H), fill: 'transparent' } })
   const label = `${metric === 'emotes' ? 'Emotes' : 'Chat'} per minute from ${clk(tAt(m, lo))} to ${clk(tAt(m, hi))}. The moment, ${clk(m.at)}, had ${int(mv)}; the ${winN} minutes compared averaged ${int(base)}.${focusable ? ' Click a bar, or use the arrow keys, to hold that minute.' : ''}`
   return {
-    html: `<svg viewBox="0 0 ${Wd} ${H}" width="${Wd}" height="${H}"${focusable ? ' tabindex="0"' : ''} role="img" aria-label="${esc(label)}">${g}</svg>`,
+    attrs: { viewBox: `0 0 ${Wd} ${H}`, width: String(Wd), height: String(H), ...(focusable ? { tabindex: '0' } : {}), role: 'img', 'aria-label': label },
+    nodes: g,
     geo: { lo, hi, bw, T, ph, W: Wd, H },
   }
+}
+
+/** The drawing as an element: every label is text content and every value an attribute. */
+export function chartElement(d: ChartDrawing): SVGSVGElement {
+  const make = (tag: string, attrs: Record<string, string>, text?: string) => {
+    const el = document.createElementNS(SVG_NS, tag)
+    for (const [name, value] of Object.entries(attrs)) el.setAttribute(name, value)
+    if (text != null) el.textContent = text
+    return el
+  }
+  const svg = make('svg', d.attrs) as SVGSVGElement
+  for (const n of d.nodes) svg.appendChild(make(n.tag, n.attrs, n.text))
+  return svg
 }
 
 /** The minute under a pointer. */
