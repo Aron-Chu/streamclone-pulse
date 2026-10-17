@@ -79,6 +79,31 @@ describe('enrichRecapMomentsFromHeatmap', () => {
     expect(enriched[0]?.score).toBeGreaterThanOrEqual(enriched[1]?.score ?? 0)
   })
 
+  it('keeps a backend stream-edge moment below backfilled heatmap moments', () => {
+    const enriched = enrichRecapMomentsFromHeatmap(
+      [{ offsetSeconds: 120, score: 95, reasons: ['chat_spike'], streamEdge: 'opening' }],
+      [
+        {
+          offsetSeconds: 600,
+          durationSeconds: 60,
+          confidence: 0.9,
+          vodId: null,
+          streamId: 'stream-1',
+          minuteTs: '2026-07-07T12:10:00.000Z',
+          score: 60,
+          reason: 'chat_spike',
+          topEmotes: [],
+        },
+      ],
+      '2026-07-07T12:00:00.000Z',
+      undefined,
+      MOMENTS_MAX_VISIBLE,
+      MOMENTS_INITIAL_VISIBLE,
+    )
+
+    expect(enriched.map(moment => moment.offsetSeconds)).toEqual([600, 120])
+  })
+
   it('skips backfill when recap already has enough moments', () => {
     const recap = Array.from({ length: 6 }, (_, index) => ({
       offsetSeconds: index * 120,
