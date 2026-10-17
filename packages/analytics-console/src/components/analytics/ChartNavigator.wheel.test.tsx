@@ -279,18 +279,57 @@ describe('ChartNavigator wheel matrix', () => {
     }
   })
 
-  it('leaves the navigator buttons, readout and hint below the bar to the page', () => {
-    const { wheel, range, labels, view } = setup(240)
+  it('zooms over the navigator buttons, readout and hint too: the whole card is the zone (owner rule 2026-10-13)', () => {
+    const { wheel, count, labels, view } = setup(240)
     const zoomIn = screen.getByRole('button', { name: 'Zoom in' })
-    expect(wheel({ deltaY: -100, clientY: 380, target: zoomIn }).defaultPrevented).toBe(false)
+    let before = count()
+    expect(wheel({ deltaY: -100, clientY: 380, target: zoomIn }).defaultPrevented).toBe(true)
+    expect(count()).toBeLessThan(before)
+    before = count()
     const hint = view.container.querySelector('.hx-chart-navigator__hint') as HTMLElement
-    expect(wheel({ deltaY: -100, clientY: 390, target: hint }).defaultPrevented).toBe(false)
-    // Below the wheel surface altogether.
-    expect(wheel({ deltaY: -100, clientY: 450, target: labels }).defaultPrevented).toBe(false)
-    expect(range()).toBe('0:239')
-    // The navigator track is a zoom surface.
-    const track = view.container.querySelector('.hx-chart-navigator__track') as HTMLElement
-    expect(wheel({ deltaY: -100, clientY: 350, target: track }, 600).defaultPrevented).toBe(true)
+    expect(wheel({ deltaY: -100, clientY: 390, target: hint }).defaultPrevented).toBe(true)
+    expect(count()).toBeLessThan(before)
+    before = count()
+    // Below the wheel surface (the card) altogether, the page keeps the wheel.
+    expect(wheel({ deltaY: -100, clientY: 450, target: labels }, 600).defaultPrevented).toBe(false)
+    expect(count()).toBe(before)
+  })
+
+  it('leaves the wheel to an inner list that can still scroll that way, and zooms once it cannot', () => {
+    const { wheel, count } = setup(240)
+    const surface = screen.getByTestId('surface')
+    const list = document.createElement('div')
+    list.style.overflowY = 'auto'
+    const row = document.createElement('span')
+    list.append(row)
+    surface.append(list)
+    Object.defineProperty(list, 'scrollHeight', { configurable: true, value: 600 })
+    Object.defineProperty(list, 'clientHeight', { configurable: true, value: 200 })
+    list.scrollTop = 100
+    // Room both ways: the list scrolls, the chart stays.
+    expect(wheel({ deltaY: -100, clientY: 380, target: row }).defaultPrevented).toBe(false)
+    expect(wheel({ deltaY: 100, clientY: 380, target: row }, 600).defaultPrevented).toBe(false)
+    expect(count()).toBe(240)
+    // At its top, a wheel up has nowhere to go in the list: the chart zooms.
+    list.scrollTop = 0
+    expect(wheel({ deltaY: -100, clientY: 380, target: row }, 600).defaultPrevented).toBe(true)
+    expect(count()).toBeLessThan(240)
+  })
+
+  it('never lets a wrapper that holds the plot keep the wheel', () => {
+    const { wheel, count } = setup(240)
+    const plot = screen.getByTestId('surface-plot')
+    const surface = screen.getByTestId('surface')
+    // Wrap the plot in a scroller (as a chart's own overflow wrapper would be).
+    const wrapper = document.createElement('div')
+    wrapper.style.overflowY = 'auto'
+    surface.insertBefore(wrapper, plot)
+    wrapper.append(plot)
+    Object.defineProperty(wrapper, 'scrollHeight', { configurable: true, value: 600 })
+    Object.defineProperty(wrapper, 'clientHeight', { configurable: true, value: 200 })
+    wrapper.scrollTop = 100
+    expect(wheel({ deltaY: -100, target: plot }).defaultPrevented).toBe(true)
+    expect(count()).toBeLessThan(240)
   })
 
   it('counts an overlay drawn on top of the plot as the plot', () => {
@@ -417,13 +456,13 @@ describe('wheelZoneContains', () => {
     return (x: number, y: number) => wheelZoneContains(surface, barBox ? bar : null, plot, x, y)
   }
 
-  it('runs from the top of the surface to the bottom of the navigator bar, across its full width', () => {
-    // Surface 0-500 tall; plot 30-300; bar 340-370; buttons and hint below.
+  it('is the whole surface (the chart card), edge to edge, header and footer included', () => {
+    // Surface 0-500 tall; plot 30-300; bar 340-370; buttons and hint below, down to 500.
     const inZone = zone(box(0, 0, 1000, 500), box(0, 340, 1000, 370), box(0, 30, 1000, 300))
-    for (const y of [0, 10, 29, 150, 310, 335, 355, 370]) {
+    for (const y of [0, 10, 29, 150, 310, 335, 355, 370, 371, 450, 500]) {
       for (const x of [0, 500, 1000]) expect(inZone(x, y), `${x},${y}`).toBe(true)
     }
-    for (const [x, y] of [[500, 371], [500, 450], [-1, 150], [1001, 150], [500, -1]]) {
+    for (const [x, y] of [[500, 501], [-1, 150], [1001, 150], [500, -1]]) {
       expect(inZone(x!, y!), `${x},${y}`).toBe(false)
     }
   })

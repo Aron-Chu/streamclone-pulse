@@ -32,7 +32,8 @@ function walkFiles(dir, acc = []) {
     if (stat.isDirectory()) {
       if (name === 'node_modules' || name === 'dist') continue
       walkFiles(path, acc)
-    } else if (/\.(tsx|ts|jsx|js)$/.test(name)) {
+    } else if (/\.(tsx|ts|jsx|js)$/.test(name) && !/\.test\.[jt]sx?$/.test(name)) {
+      // Tests ship no class names; they read SVG attributes such as fill-opacity.
       acc.push(path)
     }
   }

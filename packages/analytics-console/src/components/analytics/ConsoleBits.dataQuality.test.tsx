@@ -1,7 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup } from '@testing-library/react'
-import { DataQualityDisclosure } from './ConsoleBits.tsx'
+import { vi } from 'vitest'
+import { CoverageStartMetaItem, DataQualityButton, DataQualityDisclosure, formatCoverageLead } from './ConsoleBits.tsx'
 
 afterEach(cleanup)
 
@@ -69,5 +70,63 @@ describe('DataQualityDisclosure', () => {
     }} />)
     expect(screen.getByText('VOD:').parentElement?.textContent).toBe('VOD: unavailable')
     expect(screen.queryByText('pending live')).toBeNull()
+  })
+})
+
+describe('DataQualityButton (meta line "Data: <label>")', () => {
+  const goodDetail = {
+    state: 'historical',
+    stream: { streamId: 'good', login: 'xqc' },
+    rollups: [],
+    topEmotes: [],
+    timelineMinutes: 600,
+  } as const
+
+  it('shows a neutral placeholder while pending', () => {
+    const { container } = render(<DataQualityButton pending />)
+    const chip = container.querySelector('[data-data-quality-pending]')!
+    expect(chip.textContent).toBe('Data: —')
+    expect(container.querySelector('button')).toBeNull()
+  })
+
+  it('reads "Data: Good" without a warning mark and opens the Status tab', () => {
+    const onOpen = vi.fn()
+    render(<DataQualityButton detail={goodDetail} summaryMetrics={{ data_coverage_pct: 99, sync_health_state: 'synced' }} onOpen={onOpen} />)
+    const button = screen.getByRole('button', { name: 'Data: Good' })
+    expect(button.getAttribute('aria-controls')).toBe('session-panel-status')
+    expect(button.querySelector('[data-data-quality-warn]')).toBeNull()
+    fireEvent.click(button)
+    expect(onOpen).toHaveBeenCalledTimes(1)
+  })
+
+  it('marks a label other than Good', () => {
+    render(<DataQualityButton detail={{ ...goodDetail, chatCoveragePct: 50 }} summaryMetrics={{ data_coverage_pct: 50 }} />)
+    const button = screen.getByRole('button', { name: 'Data: Partial' })
+    expect(button.querySelector('[data-data-quality-warn]')).not.toBeNull()
+  })
+})
+
+describe('CoverageStartMetaItem ("First 54s not tracked")', () => {
+  it.each([
+    [54, '54s'],
+    [60, '1m'],
+    [125, '2m 5s'],
+  ])('formats %s seconds as %s', (seconds, expected) => {
+    expect(formatCoverageLead(seconds)).toBe(expected)
+  })
+
+  it('keeps the coverage hook and the backend wording as its title', () => {
+    const { container } = render(<CoverageStartMetaItem
+      missingRanges={[{ fromOffsetSeconds: 0, toOffsetSeconds: 54 }]}
+      message="Coverage starts after the first minute."
+    />)
+    const item = container.querySelector('[data-coverage-start]')!
+    expect(item.textContent).toBe('First 54s not tracked')
+    expect(item.getAttribute('title')).toBe('Coverage starts after the first minute.')
+  })
+
+  it('renders nothing without a leading gap', () => {
+    const { container } = render(<CoverageStartMetaItem offsetSeconds={0} />)
+    expect(container.firstChild).toBeNull()
   })
 })

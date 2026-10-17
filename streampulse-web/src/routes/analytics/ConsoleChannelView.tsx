@@ -20,6 +20,14 @@ import '../../ui/components/hub/hub.css'
 import '../../ui/components/hub/hub-public-audit.css'
 // Loaded last: compact desktop density overrides shared with the hub.
 import '../../ui/components/analytics/analytics-compact.css'
+// The session chart part (SpChart, its d3 navigator and the toolbar, pins and band).
+import '../../ui/charts/sp-chart.css'
+import '../../ui/charts/sp-navigator.css'
+import '../../ui/charts/sp-session-chart.css'
+// The rest of the session page (d3-v2 session-original): shell, moment rows, bar strip.
+import '../../ui/charts/sp-session-page.css'
+import '../../ui/charts/sp-session-rows.css'
+import '../../ui/charts/sp-session-strip.css'
 
 setupStreamcloneAnalyticsApi()
 
@@ -56,7 +64,8 @@ export default function ConsoleChannelView() {
       <HubBackendSourceBanner />
       <nav className="broadcast-return" aria-label="Broadcast navigation">
         <Link to={returnTo || fallbackReturn.to} state={returnTo ? { momentsReturn: true } : undefined}>← {returnLabel}</Link>
-        <span>{displayChannel}{streamId ? ' · Stream timeline & moments' : ' · Broadcasts'}</span>
+        {/* d3-v2 session-original: the session page shows only the back link here. */}
+        {streamId ? null : <span>{displayChannel} · Broadcasts</span>}
       </nav>
       <div ref={consoleRef} className="sc-analytics-console">
         <AnalyticsConsole

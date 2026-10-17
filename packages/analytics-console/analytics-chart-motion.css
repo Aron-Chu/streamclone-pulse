@@ -36,6 +36,34 @@
   }
 }
 
+/* Session moment rows (SessionMomentRow, sp-session-rows.css): the same one
+ * glow, 0.34 s, opacity only, but inset in teal, since the row clips its
+ * blurred backdrop (d3-v2 session-original .mpop). The row keeps the
+ * `sc-moment-row-selected` hook; its ::after is the backdrop shade there, so
+ * the outer amber glow above is switched off for it. */
+.ssr-row.sc-moment-row-selected::after {
+  inset: 0;
+  box-shadow: none;
+  opacity: 1;
+  animation: none;
+}
+
+.ssr-mpop {
+  animation: ssr-row-pop 0.34s ease-out;
+}
+
+@keyframes ssr-row-pop {
+  0% {
+    opacity: 0;
+  }
+  45% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 .sc-stat-card[data-value-changed='true'] .sc-stat-card__value {
   animation: sc-stat-pulse 0.22s ease;
 }
@@ -60,6 +88,7 @@
   }
 
   .sc-moment-row-selected::after,
+  .ssr-mpop,
   .sc-stat-card[data-value-changed='true'] .sc-stat-card__value {
     animation: none !important;
   }

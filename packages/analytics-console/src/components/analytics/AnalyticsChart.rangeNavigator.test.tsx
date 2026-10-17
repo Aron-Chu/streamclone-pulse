@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AnalyticsStreamDetail } from '../../api.ts'
 import AnalyticsChart from './AnalyticsChart.tsx'
 import { resetChartWheelGuard } from './ChartNavigator.tsx'
+import { scrollZoomToggle } from './__fixtures__/sessionChartHarness.ts'
 import {
   sessionNavigatorIndexForOffset,
   sessionNavigatorPointCount,
@@ -126,15 +127,44 @@ describe('session navigator mapping', () => {
   })
 })
 
+/** Hold animation frames; flush() runs them until the viewport store settles. */
+function holdFrames() {
+  const frames = new Map<number, FrameRequestCallback>()
+  let frameId = 0
+  let clock = performance.now()
+  vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => {
+    frames.set(++frameId, callback)
+    return frameId
+  })
+  vi.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(key => { frames.delete(key) })
+  return () => {
+    for (let round = 0; round < 100 && frames.size; round += 1) {
+      clock += 1000
+      act(() => {
+        const pending = [...frames.values()]
+        frames.clear()
+        pending.forEach(callback => callback(clock))
+      })
+    }
+  }
+}
+
 describe('AnalyticsChart range controls and navigator', () => {
-  it('has one zoom UI: the shared navigator under the plot', () => {
+  it('has one zoom UI: the shared navigator under the plot, plus the toolbar range seg', () => {
     const { container } = renderChart(91)
-    // The old stream-only range row and its − / + / preset buttons are gone.
+    // The old stream-only range row and its − / + buttons are gone.
     expect(container.querySelector('[data-chart-range-row]')).toBeNull()
     expect(container.querySelector('[data-chart-viewport-controls]')).toBeNull()
     expect(container.querySelector('[data-chart-viewport-readout]')).toBeNull()
-    for (const name of ['Zoom chart in', 'Zoom chart out', '15m', '1h', '2h', '4h', 'Full']) {
+    for (const name of ['Zoom chart in', 'Zoom chart out']) {
       expect(screen.queryByRole('button', { name })).toBeNull()
+    }
+    // Presets live only in the toolbar's one range seg (D1), end-anchored.
+    const seg = container.querySelector<HTMLElement>('[data-session-range-seg]')!
+    for (const name of ['15m', '1h', 'Full']) {
+      const buttons = screen.getAllByRole('button', { name })
+      expect(buttons).toHaveLength(1)
+      expect(seg.contains(buttons[0]!)).toBe(true)
     }
     const navigators = container.querySelectorAll('[data-hub-chart-navigator]')
     expect(navigators).toHaveLength(1)
@@ -144,25 +174,29 @@ describe('AnalyticsChart range controls and navigator', () => {
     expect(plot.compareDocumentPosition(navigators[0]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     const host = container.querySelector<HTMLElement>('[data-session-chart-navigator]')!
     expect(host.className).not.toMatch(/\b(absolute|fixed|sticky)\b/)
+    expect(navigators[0]!.getAttribute('data-chart-navigator-variant')).toBe('d3')
   })
 
-  it('keeps the readouts in the chart header, ahead of the games strip and focus bar', () => {
+  it('keeps the readout line and the games strip above the toolbar, ahead of the plot', () => {
     const { container } = renderChart(91)
-    const header = container.querySelector<HTMLElement>('[data-chart-header-row]')!
-    const readouts = container.querySelector<HTMLElement>('[data-chart-header-readouts]')!
-    expect(header).not.toBeNull()
-    expect(header.contains(readouts)).toBe(true)
-    expect(readouts.contains(container.querySelector('[data-chart-hover-readout-row]'))).toBe(true)
-    expect(readouts.contains(container.querySelector('[data-chart-selection-hint]'))).toBe(true)
-    // The header precedes the focus bar and the plot.
-    const focusBar = container.querySelector('[data-chart-focus-bar]')!
-    const stack = container.querySelector('[data-session-chart-stack]')!
-    expect(header.compareDocumentPosition(focusBar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const card = container.querySelector<HTMLElement>('[data-session-chart-wheel-card]')!
+    const games = container.querySelector<HTMLElement>('[data-chart-header-block]')!
+    const part = container.querySelector<HTMLElement>('[data-session-chart-part]')!
+    // The wheel card wraps the Games played strip and the chart part (D8).
+    expect(card.contains(games)).toBe(true)
+    expect(card.contains(part)).toBe(true)
+    expect(games.compareDocumentPosition(part) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const focusBar = part.querySelector('[data-chart-focus-bar]')!
+    const stack = part.querySelector('[data-session-chart-stack]')!
+    // session-original: the readout line sits above Games played, inside the card.
+    const hint = container.querySelector('[data-chart-selection-hint]')!
+    expect(games.contains(hint)).toBe(true)
+    expect(focusBar.contains(hint)).toBe(false)
     expect(focusBar.compareDocumentPosition(stack) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    // The hover values outlast the viewer-source label when the row is tight.
-    const readoutValues = container.querySelector<HTMLElement>('[data-chart-hover-readout-row] > p')!
-    expect(readoutValues.className).toMatch(/\bshrink-\[0\.01\]/)
-    expect(readoutValues.className).toMatch(/\btruncate\b/)
+    // The banners, selected detail and the minute table stay outside the card.
+    expect(card.contains(container.querySelector('#analytics-chart-help'))).toBe(false)
+    expect(card.contains(container.querySelector('[data-chart-selected-detail-slot]'))).toBe(false)
+    expect(card.contains(container.querySelector('[data-chart-data-alternative]'))).toBe(false)
   })
 
   it('mentions the plot zoom keys only to assistive tech', () => {
@@ -185,7 +219,8 @@ describe('AnalyticsChart range controls and navigator', () => {
     expect(end! - start!).toBe(60 * 60)
     expect(start!).toBeLessThanOrEqual(400 * 60)
     expect(end!).toBeGreaterThan(400 * 60)
-    expect(navigatorHeading(container)).toBe('Zoomed view')
+    // The heading names the span, as on the hub.
+    expect(navigatorHeading(container)).toBe('1 h')
   })
 
   it('hides the navigator below the five-minute interaction threshold', () => {
@@ -194,54 +229,52 @@ describe('AnalyticsChart range controls and navigator', () => {
     expect(container.querySelector('[data-hub-chart-navigator]')).toBeNull()
   })
 
-  it('uses the hub chart navigator under the plot for long streams', () => {
+  it('uses the hub chart navigator (d3) under the plot for long streams', () => {
     const { container } = renderChart(91)
     const host = container.querySelector<HTMLElement>('[data-session-chart-navigator]')!
     expect(host).not.toBeNull()
     expect(host.closest('[data-session-chart-stack]')).not.toBeNull()
-    expect(host.className).toContain('hubx')
     expect(host.getAttribute('data-chart-range-state')).toBe('full')
     const navigator = host.querySelector('[data-hub-chart-navigator]')!
     expect(navigator.getAttribute('aria-label')).toBe('Chart navigator')
     expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:90')
     const start = screen.getByRole('slider', { name: 'Chart view start' })
-    // The plot ends on its last minute (01:30:00), where that minute's point is.
+    // The plot ends on its last minute (01:30:00).
     expect(start.getAttribute('aria-valuetext')).toBe('Start 00:00:00; showing 00:00:00 to 01:30:00')
     expect(screen.getByRole('slider', { name: 'Chart view end' })).not.toBeNull()
     expect(navigator.querySelector('strong')?.textContent).toBe('Full stream')
-    expect(navigator.querySelector('.hx-chart-navigator__bucket-count')?.textContent).toBe('91 of 91 minutes · bars per minute')
+    expect(navigator.querySelector('.hx-chart-navigator__bucket-count')?.textContent).toBe(', 91 of 91 minutes')
+    expect(navigator.querySelector('[data-chart-bar-size-label]')?.textContent).toBe('1-min bars')
     for (const name of ['Zoom in', 'Zoom out', 'Reset zoom']) {
       expect(screen.getByRole('button', { name })).not.toBeNull()
     }
+    // The track draws the stream's activity silhouette (the overview).
+    expect(navigator.querySelector('.hx-chart-navigator__overview')).not.toBeNull()
     // On by default, and remembered in this browser.
-    expect(screen.getByRole('button', { name: /Scroll zoom/ }).getAttribute('aria-pressed')).toBe('true')
+    expect(scrollZoomToggle(container).getAttribute('aria-pressed')).toBe('true')
     expect(container.querySelector('[data-chart-position-rail]')).toBeNull()
   })
 
-  it('keeps the navigator after zooming and thickens the line', () => {
+  it('keeps the navigator after zooming, and names the zoomed span', () => {
     const { container } = renderChart(91)
-    const chart = container.querySelector<SVGElement>('svg[data-chart-line-weight-mode="viewport-adaptive"]')
-    const fullWidth = Number(chart?.getAttribute('data-chart-primary-line-width'))
     fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
     expect(container.querySelector('[data-hub-chart-navigator]')).not.toBeNull()
     expect(container.querySelector('[data-session-chart-navigator]')?.getAttribute('data-chart-range-state'))
       .toBe('zoomed')
-    expect(container.querySelector('[data-hub-chart-navigator] strong')?.textContent).toBe('Zoomed view')
-    const zoomedWidth = Number(chart?.getAttribute('data-chart-primary-line-width'))
-    expect(fullWidth).toBeGreaterThan(0)
-    expect(zoomedWidth).toBeGreaterThan(fullWidth)
-    expect(zoomedWidth).toBeLessThan(2.5)
+    const span = navigatorWindowSpan(container) - 1
+    expect(navigatorHeading(container)).toBe(span < 60 ? `${span} min` : expect.any(String))
   })
 
-  it('moves the plotted x-axis and viewer path, not just the readout', () => {
+  it('moves the plotted x-axis and the drawn range, not just the readout', () => {
     const { container } = renderChart(91)
     const axis = () =>
-      [...container.querySelectorAll('[data-chart-x-axis-label]')].map(node => node.textContent)
-    const viewerPath = () =>
-      container.querySelector('[data-viewer-layer="idle"]')?.getAttribute('d')
+      [...container.querySelectorAll('[data-bench-axis] g')]
+        .filter(tick => tick.getAttribute('visibility') === 'visible')
+        .map(tick => tick.textContent)
+    const transform = () => container.querySelector('g[data-spc-scaled]')?.getAttribute('transform')
 
     const fullAxis = axis()
-    const fullPath = viewerPath()
+    const fullTransform = transform()
     expect(fullAxis.length).toBeGreaterThan(1)
 
     // A click on the track zooms to the first preset (15m on a 91-minute stream).
@@ -249,9 +282,9 @@ describe('AnalyticsChart range controls and navigator', () => {
 
     // The readout updating is not enough — a range control that reports a new
     // window while the plot stays put is worse than no control at all.
-    expect(navigatorHeading(container)).toBe('Zoomed view')
+    expect(navigatorHeading(container)).toBe('15 min')
     expect(axis()).not.toEqual(fullAxis)
-    expect(viewerPath()).not.toBe(fullPath)
+    expect(transform()).not.toBe(fullTransform)
     // 15 minutes long: 16 minute steps.
     expect(navigatorWindowSpan(container)).toBe(16)
   })
@@ -268,30 +301,15 @@ describe('AnalyticsChart range controls and navigator', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Reset zoom' }))
     expect(viewportOf(container)).toEqual([0, 90 * 60])
     // Reset restores the full range and leaves the Scroll zoom choice alone.
-    expect(screen.getByRole('button', { name: /Scroll zoom/ }).getAttribute('aria-pressed')).toBe('true')
-    expect(screen.getByRole('button', { name: 'Reset zoom' }).hasAttribute('disabled')).toBe(true)
+    expect(scrollZoomToggle(container).getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByRole('button', { name: 'Reset zoom' }).getAttribute('aria-disabled')).toBe('true')
     expect(navigatorHeading(container)).toBe('Full stream')
   })
 
   it('keeps the plot under the pointer while the navigator window is dragged with motion on', () => {
     motion.enabled = true
     // Hold every animation frame: a tween would leave the plot on its old range.
-    const frames = new Map<number, FrameRequestCallback>()
-    let frameId = 0
-    vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => {
-      frames.set(++frameId, callback)
-      return frameId
-    })
-    vi.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(key => { frames.delete(key) })
-    const flush = () => {
-      for (let round = 0; round < 4; round += 1) {
-        act(() => {
-          const pending = [...frames.values()]
-          frames.clear()
-          pending.forEach(callback => callback(performance.now() + 1000))
-        })
-      }
-    }
+    const flush = holdFrames()
     const { container } = renderChart(91)
     clickNavigatorTrack(container, 450)
     flush()
@@ -337,7 +355,7 @@ describe('AnalyticsChart range controls and navigator', () => {
     clickNavigatorTrack(container, 450)
     const zoomed = viewportOf(container)
     expect(zoomed).not.toEqual([0, 90 * 60])
-    const scrollZoom = screen.getByRole('button', { name: /Scroll zoom/ })
+    const scrollZoom = scrollZoomToggle(container)
     expect(scrollZoom.getAttribute('aria-pressed')).toBe('true')
     const plot = container.querySelector<HTMLElement>('[data-chart-touch-action]')!
     // A pin exists: Escape clears it and keeps the zoom.
@@ -359,25 +377,10 @@ describe('AnalyticsChart range controls and navigator', () => {
   })
 
   it('zooms with Alt + wheel and pans with Shift + wheel while Scroll zoom is off', () => {
-    const frames = new Map<number, FrameRequestCallback>()
-    let frameId = 0
-    vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => {
-      frames.set(++frameId, callback)
-      return frameId
-    })
-    vi.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(key => { frames.delete(key) })
-    const flush = () => {
-      for (let round = 0; round < 4; round += 1) {
-        act(() => {
-          const pending = [...frames.values()]
-          frames.clear()
-          pending.forEach(callback => callback(performance.now() + 1000))
-        })
-      }
-    }
+    const flush = holdFrames()
     const { container } = renderChart(91)
-    fireEvent.click(screen.getByRole('button', { name: /Scroll zoom/ }))
-    expect(screen.getByRole('button', { name: /Scroll zoom/ }).getAttribute('aria-pressed')).toBe('false')
+    fireEvent.click(scrollZoomToggle(container))
+    expect(scrollZoomToggle(container).getAttribute('aria-pressed')).toBe('false')
     const plot = container.querySelector('[data-chart-touch-action]')!
     const stack = container.querySelector('[data-session-chart-stack]')!
     const box = { left: 0, right: 1000, top: 0, bottom: 300, width: 1000, height: 300 } as DOMRect
@@ -405,111 +408,155 @@ describe('AnalyticsChart range controls and navigator', () => {
     expect(Math.abs((panned[1]! - panned[0]!) - (zoomed[1]! - zoomed[0]!))).toBeLessThan(60)
   })
 
-  it('discloses the activity bar bucket size in the navigator readout on long streams', () => {
-    const { container } = renderChart(748)
-    // jsdom has no layout, so the chart uses its 1000-unit width: 5-minute bars.
-    expect(container.querySelector('svg[data-activity-bucket-minutes]')?.getAttribute('data-activity-bucket-minutes'))
-      .toBe('5')
-    const note = container.querySelector('[data-chart-bar-bucket-minutes]')
-    expect(note?.getAttribute('data-chart-bar-bucket-minutes')).toBe('5')
-    expect(note?.textContent).toContain('bars 5-min avg')
+  it('does not zoom on a wheel event the browser already scrolled (not cancelable), and zooms on the next real one', () => {
+    const flush = holdFrames()
+    const { container } = renderChart(91)
+    const plot = container.querySelector('[data-chart-touch-action]')!
+    const stack = container.querySelector('[data-session-chart-stack]')!
+    const box = { left: 0, right: 1000, top: 0, bottom: 300, width: 1000, height: 300 } as DOMRect
+    vi.spyOn(plot, 'getBoundingClientRect').mockReturnValue(box)
+    vi.spyOn(stack, 'getBoundingClientRect').mockReturnValue({ ...box, bottom: 500, height: 500 } as DOMRect)
+    const full = viewportOf(container)
+
+    // A page scroll that began below the card, now over the plot.
+    const scrolled = new WheelEvent('wheel', { deltaY: -400, clientX: 500, clientY: 150, bubbles: true, cancelable: false })
+    plot.dispatchEvent(scrolled)
+    flush()
+    expect(viewportOf(container)).toEqual(full)
+    resetChartWheelGuard()
+
+    expect(fireEvent.wheel(plot, { deltaY: -400, clientX: 500, clientY: 150 })).toBe(false)
+    flush()
+    const zoomed = viewportOf(container)
+    expect(zoomed[1]! - zoomed[0]!).toBeLessThan(full[1]! - full[0]!)
+  })
+
+  it('discloses the bar size (D2) in the navigator readout on long streams', () => {
+    // jsdom has no layout, so the chart uses its 1000 px fallback (944 px plot):
+    // session-original lanes keep 1-minute bars up to about 1057 minutes there.
+    const { container, unmount } = renderChart(748)
+    const level = () => container.querySelector('[data-bench-plot]')?.getAttribute('data-activity-bucket-minutes')
+    expect(level()).toBe('1')
+    let note = container.querySelector('[data-chart-bar-bucket-minutes]')
+    expect(note?.getAttribute('data-chart-bar-bucket-minutes')).toBe('1')
+    expect(note?.textContent).toBe('1-min bars')
     const readout = container.querySelector('[data-session-chart-navigator] [role="status"]')
     expect(readout?.contains(note!)).toBe(true)
     expect(readout?.querySelector('.hx-chart-navigator__bucket-count')?.textContent)
-      .toBe('748 of 748 minutes · bars 5-min avg')
-    expect(note?.getAttribute('title')).toBe(
-      'Each activity bar averages the measured minutes in its 5-minute slot so bars stay readable at this width; a thin cap marks a peak minute well above the average, and a faded bar had unmeasured minutes. Gaps are slots with no measurement.',
-    )
+      .toBe(', 748 of 748 minutes')
+    unmount()
+    // Longer than that, coarser bars, and the note says which.
+    const long = renderChart(4000)
+    const coarse = long.container.querySelector('[data-bench-plot]')?.getAttribute('data-activity-bucket-minutes')
+    expect(Number(coarse)).toBeGreaterThan(1)
+    note = long.container.querySelector('[data-chart-bar-bucket-minutes]')
+    expect(note?.textContent).toBe(`${coarse}-min bars`)
   })
 
-  it('re-buckets the bars as the view zooms and keeps the note live', () => {
-    const { container } = renderChart(748)
-    const level = () => container.querySelector('svg[data-activity-bucket-minutes]')?.getAttribute('data-activity-bucket-minutes')
+  it('re-buckets the bars as the view zooms and keeps the note live, down to 1-minute bars', () => {
+    // The bar level changes when the viewport settles (the next frame), not mid-gesture.
+    const flush = holdFrames()
+    const { container } = renderChart(4000)
+    flush()
+    const level = () => container.querySelector('[data-bench-plot]')?.getAttribute('data-activity-bucket-minutes')
     const note = () => container.querySelector('[data-chart-bar-bucket-minutes]')
     const levels = [level()]
     const notes = [note()?.textContent]
-    // 748 -> 374 -> 187 -> 94 minutes over the 1000-unit jsdom plot. A level
-    // changes only once its slot clears 5px by 15%, so 374 minutes keep 5-min bars.
-    for (let click = 0; click < 3; click += 1) {
+    for (let click = 0; click < 7; click += 1) {
       fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
+      flush()
       levels.push(level())
       notes.push(note()?.textContent)
     }
-    expect(levels).toEqual(['5', '5', '2', '1'])
-    expect(notes).toEqual(['bars 5-min avg', 'bars 5-min avg', 'bars 2-min avg', 'bars per minute'])
-    expect(note()?.getAttribute('data-chart-bar-bucket-minutes')).toBe('1')
-    // Zooming back out returns to 5-minute bars.
+    // Finer bars as the view narrows, never coarser; ends on 1-minute bars.
+    const minutes = levels.map(Number)
+    for (let index = 1; index < minutes.length; index += 1) expect(minutes[index]!).toBeLessThanOrEqual(minutes[index - 1]!)
+    expect(minutes[minutes.length - 1]).toBe(1)
+    expect(notes[notes.length - 1]).toBe('1-min bars')
+    expect(notes.every((text, index) => text === `${minutes[index]}-min bars`)).toBe(true)
+    // Zooming back out returns to the full-view level.
+    expect(new Set(minutes).size).toBeGreaterThan(2)
     fireEvent.click(screen.getByRole('button', { name: 'Reset zoom' }))
-    expect(level()).toBe('5')
+    flush()
+    expect(level()).toBe(levels[0])
   })
 
-  it('caps busy slots above 1-minute bars and draws no caps at 1-minute bars', () => {
+  it('draws no peak caps at any bar level (F3)', () => {
+    const flush = holdFrames()
     const { container } = renderChart(748)
-    expect(container.querySelectorAll('rect[data-activity-bar-peak]').length).toBeGreaterThan(0)
-    for (const cap of container.querySelectorAll('rect[data-activity-bar-peak]')) {
-      // A sibling of its bar, never a wrapper around it.
-      expect(cap.previousElementSibling?.hasAttribute('data-activity-bar')).toBe(true)
+    flush()
+    const caps = () => container.querySelectorAll('[data-activity-bar-peak], .spc-cap, .spc-peak')
+    expect(container.querySelectorAll('rect.spc-bar').length).toBeGreaterThan(0)
+    expect(caps()).toHaveLength(0)
+    for (let click = 0; click < 5; click += 1) {
+      fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
+      flush()
     }
-    for (let click = 0; click < 3; click += 1) fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
-    expect(container.querySelector('svg[data-activity-bucket-minutes]')?.getAttribute('data-activity-bucket-minutes')).toBe('1')
-    expect(container.querySelectorAll('rect[data-activity-bar-peak]').length).toBe(0)
+    expect(container.querySelector('[data-bench-plot]')?.getAttribute('data-activity-bucket-minutes')).toBe('1')
+    expect(caps()).toHaveLength(0)
   })
 
-  it('names the hovered bar above 1-minute bars in the second header row, and reads minutes exactly at 1-minute bars', () => {
-    const frames = new Map<number, FrameRequestCallback>()
-    let frameId = 0
-    vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => {
-      frames.set(++frameId, callback)
-      return frameId
-    })
-    vi.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(key => { frames.delete(key) })
-    const flush = () => act(() => {
-      const pending = [...frames.values()]
-      frames.clear()
-      pending.forEach(callback => callback(performance.now() + 1000))
-    })
-    const { container } = renderChart(748)
-    const plot = container.querySelector<SVGRectElement>('[data-chart-touch-action]')!
-    vi.spyOn(plot, 'getBoundingClientRect').mockReturnValue({ left: 0, right: 1000, top: 0, bottom: 300, width: 1000, height: 300 } as DOMRect)
-    expect(container.querySelector('svg[data-activity-bucket-minutes]')?.getAttribute('data-activity-bucket-minutes')).toBe('5')
-    const hint = () => container.querySelector<HTMLElement>('[data-chart-selection-hint]')!
-
-    // Minute 42 sits in the 00:40-00:45 bar. Chat there runs 14, 15, 16, 17, 18.
-    fireEvent.pointerEnter(plot)
-    fireEvent.mouseMove(plot, { clientX: (42 / 747) * 1000, clientY: 150 })
+  it('reads the hovered bar in the toolbar readout: its slot and averages above 1-minute bars, the minute at 1-minute bars', () => {
+    const flush = holdFrames()
+    const minutes = 4000
+    const { container } = renderChart(minutes)
     flush()
-    const readout = container.querySelector<HTMLElement>('[data-chart-bar-readout]')!
-    expect(readout).not.toBeNull()
-    expect(readout.getAttribute('data-bar-step')).toBe('5')
-    expect(readout.getAttribute('data-bar-start')).toBe(String(Date.parse('2026-07-31T00:40:00.000Z')))
-    expect(readout.getAttribute('data-bar-partial')).toBe('false')
-    expect(readout.textContent).toMatch(/^Bar 00:40:00–00:45:00 · 5-min avg · chat 16\/min \(peak 18\) · emotes \d+\/min \(peak \d+\)$/)
-    expect(readout.getAttribute('title')).toBe(readout.textContent)
-    // The header readout above it stays minute-exact.
-    expect(container.querySelector('[data-chart-hover-readout-row]')?.textContent).toContain('00:42')
-    expect(container.querySelector('[data-chart-hover-readout-row]')?.textContent).not.toContain('avg')
+    const svg = container.querySelector<SVGSVGElement>('[data-bench-plot]')!
+    vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue({ left: 0, right: 1000, top: 0, bottom: 400, width: 1000, height: 400, x: 0, y: 0 } as DOMRect)
+    const readout = () => container.querySelector<HTMLElement>('[data-session-readout]')!.textContent!.replace(/\s+/g, ' ')
+    const resting = readout()
+    const size = Number(svg.getAttribute('data-activity-bucket-minutes'))
+    expect(size).toBeGreaterThan(1)
 
-    // Leaving the plot restores the usual hint.
-    fireEvent.mouseLeave(plot)
+    // Minute 45 reads its bar's slot and average chat (chat is 10 + minute % 12),
+    // not minute 45 alone (19). 944 px plot.
+    const first = Math.floor(45 / size) * size
+    let sum = 0
+    for (let m = first; m < first + size; m += 1) sum += 10 + (m % 12)
+    const hms = (min: number) => `${Math.floor(min / 60)}:${String(min % 60).padStart(2, '0')}:00`
+    const x = ((45 + 0.5) / minutes) * 944
+    fireEvent.pointerMove(svg, { clientX: x, clientY: 200, pointerType: 'mouse' })
     flush()
+    expect(readout()).toContain(`${hms(first)}–${hms(first + size)} · ${size}-min avg`)
+    expect(readout()).toContain(`chat ${Math.round(sum / size)}/min`)
+    // No "Bar … · 10-min avg · (peak …)" row any more (plan §1.6).
     expect(container.querySelector('[data-chart-bar-readout]')).toBeNull()
-    expect(hint().textContent).toBe('Hover to preview a minute · click to select · press Esc to clear')
 
-    // At 1-minute bars there is no bar summary: the row reads as before.
-    for (let click = 0; click < 3; click += 1) fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
+    fireEvent.pointerLeave(svg)
     flush()
-    expect(container.querySelector('svg[data-activity-bucket-minutes]')?.getAttribute('data-activity-bucket-minutes')).toBe('1')
-    const start = Number(plot.getAttribute('data-chart-viewport-start'))
-    const end = Number(plot.getAttribute('data-chart-viewport-end'))
-    fireEvent.mouseMove(plot, { clientX: 500, clientY: 150 })
-    flush()
-    expect(start).toBeGreaterThan(0)
-    expect(end).toBeLessThan(747 * 60)
-    expect(container.querySelector('[data-chart-bar-readout]')).toBeNull()
-    expect(hint().textContent).toBe('Hover to preview a minute · click to select · press Esc to clear')
+    expect(readout()).toBe(resting)
   })
 
-  it('names the pinned minute\'s bar in full on a line of its own that wraps, not in the truncated hint', () => {
+  it('a click at 1-minute bars selects the minute the readout names', () => {
+    const flush = holdFrames()
+    const detail = detailWithMinutes(748)
+    const onSelectRollup = vi.fn()
+    const { container } = render(
+      <AnalyticsChart detail={detail} selectedEmotes={new Set()} onSelectEmote={vi.fn()} selectedRollup={null}
+        onSelectRollup={onSelectRollup} viewMode="overview" onViewModeChange={vi.fn()} />,
+    )
+    flush()
+    const svg = container.querySelector<SVGSVGElement>('[data-bench-plot]')!
+    vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue({ left: 0, right: 1000, top: 0, bottom: 400, width: 1000, height: 400, x: 0, y: 0 } as DOMRect)
+    expect(svg.getAttribute('data-activity-bucket-minutes')).toBe('1')
+    const readout = () => container.querySelector<HTMLElement>('[data-session-readout]')!.textContent!.replace(/\s+/g, ' ')
+    // Near a minute's left edge: Chrome's click reports whole px (122), the pointer events the
+    // exact x (122.5), and 1-minute bars are ~1.3 px wide here, so the click must hit-test the press.
+    for (const minute of [97, 334, 415]) {
+      const x = ((minute + 0.1) / 748) * 944
+      fireEvent.pointerMove(svg, { clientX: x, clientY: 200, pointerType: 'mouse' })
+      flush()
+      const named = readout().match(/^(\d+):(\d\d):00/)!
+      fireEvent.pointerDown(svg, { clientX: x, clientY: 200, pointerType: 'mouse', button: 0 })
+      fireEvent.click(svg, { clientX: Math.floor(x), clientY: 200 })
+      flush()
+      const picked = onSelectRollup.mock.calls.at(-1)![0] as { minuteTs: string }
+      const pickedMinute = (Date.parse(picked.minuteTs) - Date.parse(detail.stream.startedAt!)) / 60_000
+      expect(pickedMinute, `readout ${named[0]}`).toBe(Number(named[1]) * 60 + Number(named[2]))
+    }
+  })
+
+  it('reads the pinned minute on the toolbar readout, with no separate bar line', () => {
     const detail = detailWithMinutes(748)
     const props = {
       detail,
@@ -520,70 +567,31 @@ describe('AnalyticsChart range controls and navigator', () => {
       onViewModeChange: vi.fn(),
     }
     const { container, rerender } = render(<AnalyticsChart {...props} selectedRollup={null} />)
-    expect(container.querySelector('svg[data-activity-bucket-minutes]')?.getAttribute('data-activity-bucket-minutes')).toBe('5')
-    // No pin, no line.
-    expect(container.querySelector('[data-chart-pinned-bar-readout]')).toBeNull()
-
-    // Minute 42 sits in the 00:40-00:45 bar. Chat there runs 14, 15, 16, 17, 18.
     rerender(<AnalyticsChart {...props} selectedRollup={detail.rollups[42]!} />)
-    const line = container.querySelector<HTMLElement>('[data-chart-pinned-bar-readout]')!
-    expect(line).not.toBeNull()
-    expect(line.textContent).toMatch(/^Pinned bar 00:40:00–00:45:00 · 5-min avg · chat 16\/min \(peak 18\) · emotes \d+\/min \(peak \d+\)$/)
-    expect(line.getAttribute('data-bar-step')).toBe('5')
-    expect(line.getAttribute('data-bar-partial')).toBe('false')
-    // It wraps instead of truncating, and sits below the plot and navigator,
-    // so it never moves the plot.
-    expect(line.className).not.toContain('truncate')
-    expect(line.className).toContain('whitespace-normal')
-    const plot = container.querySelector('svg[data-activity-bucket-minutes]')!
-    expect(plot.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    const navigator = container.querySelector('[data-session-chart-navigator]')
-    if (navigator) expect(navigator.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    // The one-line hint no longer carries a bar suffix.
-    const hint = container.querySelector<HTMLElement>('[data-chart-selection-hint]')!
-    expect(hint.textContent).toMatch(/^Pinned minute 00:42:00–00:43:00 .*Esc or Clear to release$/)
-    expect(hint.textContent).not.toContain('bar')
-
-    // At 1-minute bars the bar is the pinned minute, which the header row
-    // already reads exactly: no bar line.
-    for (let click = 0; click < 3; click += 1) fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
-    expect(container.querySelector('svg[data-activity-bucket-minutes]')?.getAttribute('data-activity-bucket-minutes')).toBe('1')
+    const text = container.querySelector('[data-session-readout]')!.textContent!.replace(/\s+/g, ' ')
+    // Minute 42: chat 10 + 42 % 12 = 16.
+    expect(text).toMatch(/^Pinned 0:42:00 · /)
+    expect(text).toContain('chat 16/min')
     expect(container.querySelector('[data-chart-pinned-bar-readout]')).toBeNull()
+    // The selection band sits on the pinned minute (1-minute bars at 748 minutes).
+    expect(container.querySelector('rect[data-chart-selband]')).not.toBeNull()
   })
 
-  it('offers a VOD jump beside the pinned minute', () => {
+  it('drops the chart-header VOD jump; the selected detail slot keeps the page VOD link', () => {
     const detail = detailWithMinutes(91)
-    const selected = detail.rollups[20]!
-    const { container, rerender } = render(
+    const { container } = render(
       <AnalyticsChart
         detail={detail}
         selectedEmotes={new Set()}
         onSelectEmote={vi.fn()}
-        selectedRollup={null}
+        selectedRollup={detail.rollups[20]!}
         onSelectRollup={vi.fn()}
         viewMode="overview"
         onViewModeChange={vi.fn()}
         vodJump={{ url: 'https://www.twitch.tv/videos/9?t=20m0s', offsetStr: '20m0s', seekOffsetSeconds: 1200 }}
       />,
     )
-    // Nothing pinned yet, so no jump is offered.
     expect(container.querySelector('[data-chart-vod-jump]')).toBeNull()
-
-    rerender(
-      <AnalyticsChart
-        detail={detail}
-        selectedEmotes={new Set()}
-        onSelectEmote={vi.fn()}
-        selectedRollup={selected}
-        onSelectRollup={vi.fn()}
-        viewMode="overview"
-        onViewModeChange={vi.fn()}
-        vodJump={{ url: 'https://www.twitch.tv/videos/9?t=20m0s', offsetStr: '20m0s', seekOffsetSeconds: 1200 }}
-      />,
-    )
-    const jump = container.querySelector<HTMLAnchorElement>('[data-chart-vod-jump]')
-    expect(jump?.getAttribute('href')).toBe('https://www.twitch.tv/videos/9?t=20m0s')
-    expect(jump?.textContent).toContain('20m0s')
   })
 
   it('places selected detail after the graph and before measured data', () => {

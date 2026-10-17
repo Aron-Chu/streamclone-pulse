@@ -25,12 +25,12 @@ const VIEWPORTS = [
 
 async function assertPopulatedSession(page: Page) {
   const expectedCards = [
-    ['Last measured viewers', '11.8K'],
+    ['Latest viewers', '11.8K'],
     ['Average viewers', '10.9K'],
     ['Peak viewers', '11.8K'],
-    ['Measured chat', '39.5K'],
-    ['Measured emote uses', '25.4K'],
-    ['Measured span', '2h 30m'],
+    ['Chat messages', '39.5K'],
+    ['Emote uses', '25.4K'],
+    ['Time tracked', '2h 30m'],
   ] as const
 
   for (const [label, value] of expectedCards) {
@@ -66,32 +66,67 @@ async function recordFonts(page: Page, testInfo: TestInfo, width: number) {
   await testInfo.attach(`computed-fonts-${width}.json`, { path, contentType: 'application/json' })
 }
 
+// Touch targets. Page controls keep 44 x 44 boxes. The d3 session chart
+// (plan §1.2, pinned mock) keeps 26/32 px buttons: its toolbar reaches 44 px
+// tall hit rows through ::after hit areas, and the shared d3 navigator (U2)
+// draws 32 px buttons. Those groups are held to their hit rows and to the
+// WCAG 2.5.8 24 px minimum; the 32 px navigator buttons are an owner question
+// in the U8 report.
+// d3-v2 session-original (U15): the meta line's Refresh icon and "Data: …"
+// are the mockup's 24 px controls (WCAG 2.5.8 minimum); the Moments (i) is a
+// 20 px circle with a 44 px hit area; Hide streams / Focus chart show from
+// 1280 px only.
+type TargetRule = { width: number; height: number; measure: 'box' | 'hit'; minDrawn?: number; fromWidth?: number }
+const PAGE_RULE: TargetRule = { width: 44, height: 44, measure: 'box' }
+
 async function assertTouchTargets(page: Page, width: number) {
   const evidence: Array<{
     group: string
     text?: string
     width: number
     height: number
+    hitWidth: number
+    hitHeight: number
     display: string
     minWidth: string
     minHeight: string
   }> = []
   const targets = [
-    ['header actions', page.locator('.analytics-console header button:visible')],
-    ['session tabs', page.locator('[data-session-details-tabs] [role="tab"]:visible')],
-    ['chart focus', page.locator('[data-chart-focus-bar] button:visible')],
-    ['chart zoom', page.locator('[data-session-chart-navigator] .hx-chart-navigator__toolbar button:visible')],
-    ['data alternative disclosure', page.locator('[data-chart-data-alternative] > summary:visible')],
-    ['minute pagination', page.locator('[data-chart-data-alternative] button:visible')],
-  ] as const
-  for (const [label, locator] of targets) {
+    ['header actions', page.locator('.analytics-console [data-session-header-actions] button:visible'), { ...PAGE_RULE, fromWidth: 1280 }],
+    ['meta line controls', page.locator('.analytics-console [data-session-meta] button:visible'), { width: 24, height: 24, measure: 'box' }],
+    ['moments info', page.locator('[data-session-details-tabs] [data-session-info]:visible'), { width: 44, height: 44, measure: 'hit', minDrawn: 20 }],
+    ['session tabs', page.locator('[data-session-details-tabs] [role="tab"]:visible'), PAGE_RULE],
+    ['chart focus', page.locator('[data-chart-focus-bar] button:visible'), { width: 24, height: 44, measure: 'hit' }],
+    ['chart zoom', page.locator('[data-session-chart-navigator] .hx-chart-navigator__toolbar button:visible'), { width: 32, height: 32, measure: 'hit' }],
+    ['data alternative disclosure', page.locator('[data-chart-data-alternative] > summary:visible'), PAGE_RULE],
+    ['minute pagination', page.locator('[data-chart-data-alternative] button:visible'), PAGE_RULE],
+  ] as const satisfies ReadonlyArray<readonly [string, unknown, TargetRule]>
+  for (const [label, locator, rule] of targets as ReadonlyArray<readonly [string, ReturnType<Page['locator']>, TargetRule]>) {
+    if (rule.fromWidth && width < rule.fromWidth) {
+      await expect(locator, `${label} hidden below ${rule.fromWidth}px (at ${width}px)`).toHaveCount(0)
+      continue
+    }
     await expect(locator.first(), `${label} exists at ${width}px`).toBeVisible()
     const boxes = await locator.evaluateAll(nodes => nodes.map(node => {
       const box = node.getBoundingClientRect()
       const style = getComputedStyle(node)
+      // The hit area: the box plus an absolutely placed ::before / ::after.
+      let left = box.left, right = box.right, top = box.top, bottom = box.bottom
+      for (const pseudo of ['::before', '::after']) {
+        const ps = getComputedStyle(node, pseudo)
+        if (ps.content === 'none' || ps.content === 'normal' || ps.position !== 'absolute' || ps.display === 'none') continue
+        const px = (value: string) => (value.endsWith('px') ? Number.parseFloat(value) : Number.NaN)
+        const [l, r, t, b] = [px(ps.left), px(ps.right), px(ps.top), px(ps.bottom)]
+        if (Number.isFinite(l)) left = Math.min(left, box.left + l)
+        if (Number.isFinite(r)) right = Math.max(right, box.right - r)
+        if (Number.isFinite(t)) top = Math.min(top, box.top + t)
+        if (Number.isFinite(b)) bottom = Math.max(bottom, box.bottom - b)
+      }
       return {
         width: box.width,
         height: box.height,
+        hitWidth: right - left,
+        hitHeight: bottom - top,
         text: node.textContent?.trim(),
         display: style.display,
         minWidth: style.minWidth,
@@ -99,9 +134,11 @@ async function assertTouchTargets(page: Page, width: number) {
       }
     }))
     for (const box of boxes) {
-      const diagnostic = `${box.text} (${box.display}; min ${box.minWidth} × ${box.minHeight})`
-      expect(box.width, `${label} width at ${width}px: ${diagnostic}`).toBeGreaterThanOrEqual(44)
-      expect(box.height, `${label} height at ${width}px: ${diagnostic}`).toBeGreaterThanOrEqual(44)
+      const diagnostic = `${box.text} (${box.display}; min ${box.minWidth} × ${box.minHeight}; hit ${box.hitWidth} × ${box.hitHeight})`
+      const measured = rule.measure === 'hit' ? { width: box.hitWidth, height: box.hitHeight } : box
+      expect(measured.width, `${label} width at ${width}px: ${diagnostic}`).toBeGreaterThanOrEqual(rule.width)
+      expect(measured.height, `${label} height at ${width}px: ${diagnostic}`).toBeGreaterThanOrEqual(rule.height)
+      if (rule.measure === 'hit') expect(Math.min(box.width, box.height), `${label} drawn size at ${width}px: ${diagnostic}`).toBeGreaterThanOrEqual(rule.minDrawn ?? 24)
       evidence.push({ group: label, ...box })
     }
   }
@@ -197,20 +234,35 @@ test.describe('portal session closure acceptance (mocked)', () => {
     await expect(page).toHaveURL(new RegExp(`/analytics/xqc/${PORTAL_STREAM_ID}$`))
     expect(harness.counter.count(`/streams/${PORTAL_STREAM_ID}`)).toBeGreaterThan(0)
     await expect(page.getByRole('heading', { level: 1, name: 'Deterministic portal acceptance fixture' })).toBeVisible()
-    await expect(page.getByText(/Session lifecycle unknown/i).first()).toBeVisible()
+    // d3-v2 session-original: the lifecycle row rides on the meta line's
+    // "Started" item (its title, plus a visually hidden status for screen readers).
+    const lifecycle = page.locator('[data-session-meta] [data-session-lifecycle-row]')
+    await expect(lifecycle).toHaveCount(1)
+    await expect(lifecycle).toHaveAttribute('title', /Session lifecycle unknown/)
+    await expect(lifecycle.getByRole('status')).toHaveText(/Session lifecycle unknown/)
     await expect(page.getByText(/11h 31m|Ended Jul|exact end time/i)).toHaveCount(0)
 
     await assertPopulatedSession(page)
 
-    const quality = page.locator('[data-data-quality-disclosure]')
-    await expect(quality).toHaveCount(1)
-    await quality.locator('summary').click()
-    await expect(quality).toContainText('Chat measured: 99.5% of the timeline')
-    await expect(quality).toContainText('600 samples')
-    await expect(quality).toContainText('VOD: unavailable')
-    await expect(quality).not.toContainText('Broadcast end window')
-    await quality.locator('summary').click()
-    await expect(quality).not.toHaveAttribute('open', '')
+    // The Data quality disclosure is now "Data: <label>" on the meta line; it
+    // opens the Status tab, which lists the same facts.
+    await expect(page.locator('[data-data-quality-disclosure]')).toHaveCount(0)
+    const data = page.locator('[data-session-meta] button[data-data-quality]')
+    await expect(data).toHaveCount(1)
+    const qualityLabel = await data.getAttribute('data-quality-label')
+    expect(qualityLabel).toMatch(/^(Good|Limited|Partial|No data)$/)
+    await expect(data).toHaveText(`Data: ${qualityLabel}`)
+    await data.click()
+    await expect(page.getByRole('tab', { name: 'Status' })).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByRole('tab', { name: 'Status' })).toBeFocused()
+    const facts = page.locator('#session-panel-status [data-data-quality-facts]')
+    await expect(facts).toBeVisible()
+    const fact = (term: string) => facts.locator('div').filter({ has: page.locator('dt', { hasText: term }) }).locator('dd')
+    await expect(fact('Data quality')).toHaveText(qualityLabel!)
+    await expect(fact('Chat coverage')).toHaveText('99.5% of stream minutes')
+    await expect(fact('Viewer samples')).toContainText('600')
+    await expect(fact('VOD')).toHaveText('unavailable')
+    await expect(page.locator('#session-panel-status [data-broadcast-end-window]')).toHaveCount(0)
 
     const tabs = page.getByRole('tab')
     await expect(tabs).toHaveCount(3)

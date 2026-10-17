@@ -54,6 +54,26 @@ describe('streamcloneAnalytics adapter', () => {
     expect(path.includes('detail=true')).toBe(method === 'getReplayHeatmapDetail')
   })
 
+  it('asks the storyboard-thumb route by VOD second and passes its 404 reason and 403 back as data', async () => {
+    const { portalAnalyticsApi } = await import('../src/lib/streamcloneAnalytics')
+    const thumb = { sheetUrl: 'https://d1.cloudfront.net/x/storyboards/1-high-0.jpg', sheetWidth: 1100, sheetHeight: 1240, cropX: 0, cropY: 0, cropW: 220, cropH: 124 }
+    apiClientMock.mockResolvedValueOnce({ data: thumb })
+    await expect(portalAnalyticsApi.getVodStoryboardThumb('2899924626', 3049.7)).resolves.toEqual(thumb)
+    expect(apiClientMock.mock.calls.at(-1)![0]).toBe('/v1/analytics/vods/2899924626/storyboard-thumb?offsetSec=3049')
+    apiClientMock.mockRejectedValueOnce({ kind: 'bad_request', status: 404, message: 'HTTP 404', body: { reason: 'no_storyboard' } })
+    await expect(portalAnalyticsApi.getVodStoryboardThumb('2899924626', 10)).resolves.toEqual({ reason: 'no_storyboard' })
+    apiClientMock.mockRejectedValueOnce({ kind: 'bad_request', status: 403, message: 'HTTP 403' })
+    await expect(portalAnalyticsApi.getVodStoryboardThumb('2899924626', 10)).resolves.toEqual({ statusCode: 403 })
+    apiClientMock.mockRejectedValueOnce({ kind: 'bad_request', status: 404, message: 'HTTP 404', body: { error: '404 page not found' } })
+    await expect(portalAnalyticsApi.getVodStoryboardThumb('2899924626', 10)).resolves.toBeNull()
+    apiClientMock.mockRejectedValueOnce(new Error('unreachable'))
+    await expect(portalAnalyticsApi.getVodStoryboardThumb('2899924626', 10)).resolves.toBeNull()
+    const calls = apiClientMock.mock.calls.length
+    await expect(portalAnalyticsApi.getVodStoryboardThumb('not-a-vod', 10)).resolves.toBeNull()
+    await expect(portalAnalyticsApi.getVodStoryboardThumb('2899924626', -1)).resolves.toBeNull()
+    expect(apiClientMock.mock.calls.length).toBe(calls)
+  })
+
   it('preserves an absent source observation on status cache miss or expiry', async () => {
     getBackendUrlMock.mockReturnValue('https://api.streampulse.stream')
     const { portalAnalyticsApi } = await import('../src/lib/streamcloneAnalytics')

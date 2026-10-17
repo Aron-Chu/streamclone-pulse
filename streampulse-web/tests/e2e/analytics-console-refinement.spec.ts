@@ -5,8 +5,10 @@ for (const width of [390, 768, 1440, 1920]) test(`session controls stay consiste
   await page.setViewportSize({ width, height: 900 })
   await installPortalAcceptanceHarness(page)
   await openAnalyticsSession(page)
-  const overview = page.getByRole('button', { name: 'Overview', exact: true })
+  // d3 toolbar (plan §1.6): the series seg's All replaces the old Overview button.
+  const overview = page.locator('[data-chart-focus-bar]').getByRole('button', { name: 'All', exact: true })
   await expect(overview).toBeVisible()
+  await expect(overview).toHaveAttribute('aria-pressed', 'true')
   expect(await overview.evaluate(el => getComputedStyle(el).textTransform)).toBe('none')
   expect(await overview.evaluate(el => getComputedStyle(el).backgroundColor)).not.toBe('rgb(255, 255, 255)')
   await overview.focus()
