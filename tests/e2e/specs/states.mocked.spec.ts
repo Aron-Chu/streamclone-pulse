@@ -286,13 +286,11 @@ test.describe('extension mocked states', () => {
     await expect(settings.locator('input[type="password"]')).toHaveCount(0)
     const releasePreview = settings.locator('[data-changelog-preview="true"]')
     await expect(releasePreview).toBeVisible()
-    // An open card, not a disclosure: the three highlights and the link show without a click.
+    // One line, not a disclosure: the version, the title and All show without a click.
     await expect(releasePreview.locator('summary')).toHaveCount(0)
-    await expect(releasePreview.locator('li')).toHaveCount(3)
-    await expect(releasePreview.locator('li').first()).toBeVisible()
-    // The title fits on one line beside the version.
-    const releaseTitle = releasePreview.locator('.pulse-settings-release-title small')
-    expect(await releaseTitle.evaluate(element => element.getBoundingClientRect().height < parseFloat(getComputedStyle(element).fontSize) * 2)).toBe(true)
+    await expect(releasePreview.locator('li')).toHaveCount(0)
+    await expect(releasePreview).toContainText('What’s new:')
+    expect(await releasePreview.evaluate(element => element.getBoundingClientRect().height < 48)).toBe(true)
 
     // Quick controls persist immediately.
     const autoUpdate = settings.getByRole('checkbox', { name: /Refresh live data automatically|Auto-update/ })
@@ -327,7 +325,7 @@ test.describe('extension mocked states', () => {
 
     await expect(settings.locator('[data-settings-host-cta="updates"]')).toBeVisible()
     const settingsHost = extension.context.waitForEvent('page')
-    await settings.getByRole('button', { name: /See all changes/ }).click()
+    await settings.locator('[data-settings-host-cta="updates"]').click()
     const hostPage = await settingsHost
     await hostPage.waitForLoadState('domcontentloaded')
     await expect(hostPage).toHaveURL(new RegExp(`/options/index\\.html#updates$`))
@@ -457,7 +455,7 @@ test.describe('extension mocked states', () => {
     const settings = extension.page.locator('[data-overlay-settings-panel="true"]')
     await expect(settings).toBeVisible()
     const releasePreview = settings.locator('[data-changelog-preview="true"]')
-    await expect(releasePreview.locator('li')).toHaveCount(3)
+    await expect(releasePreview).toContainText('What’s new:')
     const settingsShell = extension.page.locator('#streamclone-pulse-root section[aria-label="StreamPulse overlay"]')
     await expect(settingsShell).toBeVisible()
     await expect(settingsShell).toHaveScreenshot('overlay-settings-panel.png', {

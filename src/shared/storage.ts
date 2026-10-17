@@ -20,6 +20,8 @@ export const AUTO_UPDATE_ENABLED_KEY = 'autoUpdateEnabled'
 const THEME_PREFERENCE_KEY = 'themePreference'
 const DENSITY_PREFERENCE_KEY = 'densityPreference'
 const VOD_JUMP_CHART_PIN_KEY = 'vodJumpChartPinEnabled'
+/** Read by content/moment-frames.js too, which drops its frames when this turns off. */
+export const MOMENT_PICTURES_KEY = 'momentPicturesEnabled'
 export { THEME_PREFERENCE_KEY, CHAT_CLOSED_PULSE_DOCK_ENABLED_KEY, DENSITY_PREFERENCE_KEY, VOD_JUMP_CHART_PIN_KEY }
 const DEFAULT_CHART_WINDOW_KEY = 'defaultChartWindow'
 /** Historical v1 flag (legacy sticky → Full). */
@@ -56,6 +58,7 @@ export const DEFAULT_AUTO_TRACK_POLICY: AutoTrackPolicy = 'off'
 export const DEFAULT_THEME_PREFERENCE: ThemePreference = 'aurora'
 export const DEFAULT_DENSITY_PREFERENCE: DensityPreference = 'comfortable'
 export const DEFAULT_VOD_JUMP_CHART_PIN_ENABLED = true
+export const DEFAULT_MOMENT_PICTURES_ENABLED = true
 export const DEFAULT_DEFAULT_CHART_WINDOW: DefaultChartWindow = 'full'
 export const DEFAULT_KEEP_LOCAL_CACHE = true
 
@@ -662,6 +665,17 @@ export async function getVodJumpChartPinEnabled(): Promise<boolean> {
 
 export async function setVodJumpChartPinEnabled(enabled: boolean): Promise<void> {
   await syncStorageSet({ [VOD_JUMP_CHART_PIN_KEY]: Boolean(enabled) })
+}
+
+/** Moment pictures: small frames of what a Twitch tab played, kept in that tab's memory only. */
+export async function getMomentPicturesEnabled(): Promise<boolean> {
+  const stored = await syncStorageGet(MOMENT_PICTURES_KEY)
+  const value = stored[MOMENT_PICTURES_KEY]
+  return value === undefined ? DEFAULT_MOMENT_PICTURES_ENABLED : Boolean(value)
+}
+
+export async function setMomentPicturesEnabled(enabled: boolean): Promise<void> {
+  await syncStorageSet({ [MOMENT_PICTURES_KEY]: Boolean(enabled) })
 }
 
 /**

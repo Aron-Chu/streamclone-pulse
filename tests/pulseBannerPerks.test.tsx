@@ -2,7 +2,8 @@
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { PulseBannerControls, PulseBannerQuickPreview } from '../src/ui/PulseBanner.tsx'
+import { PulseBannerControls } from '../src/ui/PulseBanner.tsx'
+import { QuickLook } from '../src/ui/PulseSettingsPanel.tsx'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -95,19 +96,35 @@ describe('emote rain is a Supporter perk in settings', () => {
     view.unmount()
   })
 
-  it('previews in quick settings only what the overlay draws', async () => {
-    stubSavedBanner()
-    const locked = await mount(<PulseBannerQuickPreview perks={false} />)
-    const lockedPreview = locked.host.querySelector('[data-appearance-preview]')!
-    expect(lockedPreview.getAttribute('data-preview-mode')).toBe('off')
-    expect(lockedPreview.getAttribute('aria-label')).toBe('Appearance preview: My Pulse, Backdrop off')
-    expect(lockedPreview.querySelectorAll('img')).toHaveLength(0)
-    locked.unmount()
-    const supporter = await mount(<PulseBannerQuickPreview perks />)
-    const preview = supporter.host.querySelector('[data-appearance-preview]')!
-    expect(preview.getAttribute('data-preview-mode')).toBe('rain')
-    expect(preview.getAttribute('aria-label')).toBe('Appearance preview: My Pulse, 7TV rain')
-    expect(preview.querySelectorAll('img')).toHaveLength(6)
+  it('starts the quick settings strip on what the overlay draws, and lets anyone try a look without saving it', async () => {
+    const set = stubSavedBanner()
+    const choice = (host: HTMLElement, group: string, name: string) =>
+      [...host.querySelectorAll<HTMLButtonElement>(`[aria-label="${group}"] button`)].find(button => button.textContent === name)!
+    const strip = (host: HTMLElement) => host.querySelector<HTMLElement>('.pulse-quick-look')!
+    // Without the perk the overlay draws no rain, so the strip starts with none, in the default paint.
+    const tryOut = await mount(<QuickLook appearance={null} onOpen={() => {}} />)
+    expect(strip(tryOut.host).querySelectorAll('img')).toHaveLength(0)
+    expect(strip(tryOut.host).querySelector('strong')?.textContent).toBe('My Pulse')
+    expect(strip(tryOut.host).querySelector('.pulse-paint, .pulse-crest')).toBeNull()
+    await act(async () => { choice(tryOut.host, 'Emote rain', 'Rain').click() })
+    await act(async () => { choice(tryOut.host, 'Paint', 'Halo').click() })
+    expect(strip(tryOut.host).querySelector('.pulse-banner-art')?.getAttribute('data-mode')).toBe('rain')
+    expect(strip(tryOut.host).querySelectorAll('img')).toHaveLength(6)
+    expect(strip(tryOut.host).querySelector('strong')?.getAttribute('data-finish')).toBe('halo')
+    expect(strip(tryOut.host).querySelector('.pulse-crest')?.getAttribute('data-tenure')).toBe('new')
+    // A try is never saved.
+    expect(set).not.toHaveBeenCalled()
+    tryOut.unmount()
+    // A Supporter's strip wears their saved rain and paint; Emote rain saves at once, paint is equipped in all settings.
+    const supporter = await mount(<QuickLook appearance={{ finish: 'etched', tenure: '12m', paint: { wave: 'chrome', sheen: 'glint' }, perks: true }} onOpen={() => {}} />)
+    expect(strip(supporter.host).querySelector('.pulse-banner-art')?.getAttribute('data-mode')).toBe('rain')
+    expect(strip(supporter.host).querySelector('strong')?.dataset).toMatchObject({ finish: 'etched', wave: 'chrome', sheen: 'glint' })
+    expect(strip(supporter.host).querySelector('.pulse-crest')?.getAttribute('data-tenure')).toBe('12m')
+    expect(supporter.host.textContent).not.toContain('try free')
+    await act(async () => { choice(supporter.host, 'Emote rain', 'Still').click() })
+    expect(set).toHaveBeenCalledWith({ pulseBanner: { mode: 'still', intensity: 40, title: 'My Pulse' } })
+    await act(async () => { choice(supporter.host, 'Paint', 'Glass').click() })
+    expect(supporter.host.textContent).toContain('Equip Glass in all settings ↗')
     supporter.unmount()
   })
 })

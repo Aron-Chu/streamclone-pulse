@@ -20,6 +20,8 @@ export const buildInputs = [
   'vite.shared.ts',
   'vite.content.config.ts',
   'vite.supporterCard.config.ts',
+  'vite.momentFrames.config.ts',
+  'vite.catchMeUp.config.ts',
   'package.json',
   'package-lock.json',
   'scripts/ensure-packages-built.mjs',

@@ -1,6 +1,8 @@
-import { PulseBannerQuickPreview } from './PulseBanner.tsx'
+import { PulseBannerBackdrop, usePulseBanner } from './PulseBanner.tsx'
+import { openCommunity } from './AnalyticsHubCta.tsx'
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { backgroundErrorMessage, EXTENSION_RECONNECT_MESSAGE } from '../shared/backgroundResponse.ts'
+import { getMomentPicturesEnabled, getVodJumpChartPinEnabled, setMomentPicturesEnabled, setVodJumpChartPinEnabled, type PulseBannerPreference } from '../shared/storage.ts'
 import { sendBackgroundMessage } from '../content/bridge.ts'
 import { readTwitchChannelAvatarUrl } from '../content/twitch.ts'
 import { ACCENT_THEME_OPTIONS } from './overlayTheme.ts'
@@ -69,15 +71,13 @@ export function OpenAllSettingsButton({ style }: { style?: CSSProperties }) {
         <span>{opening ? 'Opening settings…' : 'Open all settings'}</span>
         <span aria-hidden="true">↗</span>
       </button>
-      {/* The worker opens the website's /discord page: no page links ship in the content script. */}
-      <button type="button" className="pulse-settings-bottom-bar" data-community-link="discord" style={{ ...style, marginTop: 6 }}
-        onClick={() => void sendBackgroundMessage({ type: 'OPEN_COMMUNITY_LINK', link: 'discord' })}>
-        <span>Join the Discord</span>
-        <span aria-hidden="true">↗</span>
-      </button>
     </>
   )
 }
+
+const RAIN_OPTIONS = [{ value: 'off', label: 'Off' }, { value: 'still', label: 'Still' }, { value: 'rain', label: 'Rain' }] as const
+const PAINT_OPTIONS = [{ value: 'default', label: 'Default' }, { value: 'glass', label: 'Glass' }, { value: 'etched', label: 'Etched' }, { value: 'halo', label: 'Halo' }] as const
+type Paint = typeof PAINT_OPTIONS[number]['value']
 
 const SURFACE_STATUS: Record<PulsePanelSurfaceState, { tone: 'ok' | 'wait' | 'idle' | 'bad'; copy: (name: string) => string }> = {
   live_tracked: { tone: 'ok', copy: () => 'Pulse is charting this stream live.' },
@@ -180,7 +180,23 @@ export function PulseSettingsPanel({ onBack, channel }: { onBack?: () => void; c
       <SupporterHero appearance={appearance} disabled={opening} onOpen={() => void openHost('supporter')} />
       {openError ? <p className="pulse-settings-hint" role="alert">{openError}</p> : null}
 
+      <div className="pulse-quick-community">
+        <button type="button" className="pulse-quick-discord" data-community-link="discord" onClick={() => openCommunity('discord')}>Join the Discord ↗</button>
+        <button type="button" data-community-link="feedback" onClick={() => openCommunity('feedback')}>Send feedback ↗</button>
+      </div>
+
       <section className="pulse-settings-quick" aria-label="Extension preferences">
+        <QuickLook appearance={appearance} disabled={opening} onOpen={() => void openHost('supporter')} />
+
+        <QuickGroup title="Moments">
+          <StoredToggleRow label="Moment pictures" hint="Captured in this tab, never uploaded." read={getMomentPicturesEnabled} write={setMomentPicturesEnabled} />
+          <StoredToggleRow label="Mark VOD jumps on the chart" read={getVodJumpChartPinEnabled} write={setVodJumpChartPinEnabled} />
+          <div className="pulse-settings-toggle-row pulse-settings-control-block">
+            <span className="pulse-settings-label">My Moments</span>
+            <button type="button" className="pulse-link-btn" data-settings-host-cta="moments" disabled={opening} onClick={() => void openHost('moments')}>Open ↗</button>
+          </div>
+        </QuickGroup>
+
         <QuickGroup title="Live data">
           <ToggleRow
             id="pulse-auto-update"
@@ -240,39 +256,14 @@ export function PulseSettingsPanel({ onBack, channel }: { onBack?: () => void; c
               onChange={next => void preferences.setAccent(next)}
             />
           </div>
-          <div className="pulse-settings-field pulse-settings-control-block">
-            <span className="pulse-settings-label">Background &amp; motion</span>
-            <PulseBannerQuickPreview perks={appearance?.perks === true} />
-            <button type="button" className="pulse-link-btn" data-banner-editor-cta="true" disabled={opening} onClick={() => void openHost('pulse-background')}>
-              Edit background in all settings ↗
-            </button>
-          </div>
         </QuickGroup>
       </section>
 
-      {/* An open card, not a disclosure: the three highlights show without a click. */}
+      {/* One line: this version's title, with every change in all settings. */}
       <section className="pulse-settings-release-preview" data-changelog-preview="true" aria-label="What's new">
-        <header>
-          <span className="pulse-settings-release-version">v{RELEASE_PREVIEW.version}</span>
-          <span className="pulse-settings-release-title">
-            <strong>What&rsquo;s new</strong>
-            <small>{RELEASE_PREVIEW.title}</small>
-          </span>
-        </header>
-        <div className="pulse-settings-release-body">
-          <ul>
-            {RELEASE_PREVIEW.bullets.slice(0, 3).map(item => <li key={item}>{item}</li>)}
-          </ul>
-          <button
-            type="button"
-            className="pulse-link-btn"
-            data-settings-host-cta="updates"
-            disabled={opening}
-            onClick={() => void openHost('updates')}
-          >
-            See all changes ↗
-          </button>
-        </div>
+        <span className="pulse-settings-release-version">v{RELEASE_PREVIEW.version}</span>
+        <span><strong>What&rsquo;s new:</strong> {RELEASE_PREVIEW.title}</span>
+        <button type="button" className="pulse-link-btn" data-settings-host-cta="updates" disabled={opening} onClick={() => void openHost('updates')}>All ↗</button>
       </section>
 
       <button
@@ -280,7 +271,7 @@ export function PulseSettingsPanel({ onBack, channel }: { onBack?: () => void; c
         className="pulse-link-btn pulse-settings-reset"
         onClick={() => void preferences.resetAppearanceAndLayout()}
       >
-        <span aria-hidden="true">↺</span> Reset appearance and layout to defaults
+        <span aria-hidden="true">↺</span> Reset appearance and layout
       </button>
     </div>
   )
@@ -375,13 +366,68 @@ function SupporterCardStage(card: SupporterCardOptions) {
   return <span ref={ref} className="pulse-supporter-stage" aria-hidden="true" />
 }
 
-function QuickGroup({ title, children }: { title: string; children: ReactNode }) {
+function QuickGroup({ title, children }: { title: ReactNode; children: ReactNode }) {
   return (
     <div className="pulse-quick-group">
       <h2 className="pulse-quick-group-title">{title}</h2>
       <div className="pulse-quick-group-card">{children}</div>
     </div>
   )
+}
+
+/**
+ * Emote rain and paint, tried on a strip of the panel header. It starts from
+ * what the panel draws. A Supporter's Emote rain saves at once, like the other
+ * quick settings; anyone else only tries it here, and closing the drawer
+ * undoes the try. Paint is only tried here: the worker takes account changes
+ * from extension pages alone, so it is equipped in all settings.
+ */
+export function QuickLook({ appearance, disabled, onOpen }: { appearance: SupporterAppearance | null; disabled?: boolean; onOpen: () => void }) {
+  const banner = usePulseBanner()
+  const perks = appearance?.perks === true
+  const [rain, setRain] = useState<PulseBannerPreference['mode']>()
+  const [tried, setTried] = useState<Paint>()
+  const worn = appearance?.finish ?? 'default'
+  const paint = tried ?? worn
+  const finish = paint === 'default' ? null : paint
+  const mode = perks ? banner.value.mode : rain ?? 'off'
+  const title = banner.value.title || 'Stream Pulse'
+  return (
+    <QuickGroup title={<>Your look{perks ? null : <span className="pulse-quick-chip">Supporter · try free</span>}</>}>
+      <div className="pulse-settings-control-block">
+        <div className="pulse-quick-look" aria-hidden="true">
+          <PulseBannerBackdrop value={{ ...banner.value, mode }} perks />
+          {finish ? <i className="pulse-crest" data-tenure={appearance?.tenure ?? 'new'} /> : null}
+          <strong className={finish ? 'pulse-paint' : undefined} data-finish={finish ?? undefined} data-wave={appearance?.paint?.wave} data-sheen={appearance?.paint?.sheen} data-text={title}>{title}</strong>
+        </div>
+      </div>
+      <div className="pulse-settings-field pulse-settings-control-block">
+        <span className="pulse-settings-label">Emote rain</span>
+        <ChoicePicker kind="look" variant="compact" groupLabel="Emote rain" options={RAIN_OPTIONS} value={mode}
+          onChange={next => perks ? void banner.save({ ...banner.value, mode: next }) : setRain(next)} />
+      </div>
+      <div className="pulse-settings-field pulse-settings-control-block">
+        <span className="pulse-settings-label">Paint</span>
+        <ChoicePicker kind="look" variant="compact" groupLabel="Paint" options={PAINT_OPTIONS} value={paint} onChange={setTried} />
+      </div>
+      <button type="button" className="pulse-link-btn pulse-settings-control-block" disabled={disabled} onClick={onOpen}>
+        {perks && paint !== worn ? `Equip ${PAINT_OPTIONS.find(option => option.value === paint)?.label} in all settings ↗` : 'Wave, sheen and crest in all settings ↗'}
+      </button>
+    </QuickGroup>
+  )
+}
+
+/** A synced on/off setting the drawer reads once and saves on each change. */
+function StoredToggleRow({ label, hint, read, write }: { label: string; hint?: string; read: () => Promise<boolean>; write: (on: boolean) => Promise<void> }) {
+  const id = useId()
+  const [on, setOn] = useState<boolean>()
+  useEffect(() => {
+    let live = true
+    read().then(value => { if (live) setOn(value) }, () => {})
+    return () => { live = false }
+  }, [read])
+  return <ToggleRow id={id} label={label} hint={hint} checked={on === true} disabled={on === undefined}
+    onChange={next => { setOn(next); write(next).catch(() => setOn(!next)) }} />
 }
 
 function ToggleRow({
@@ -402,8 +448,8 @@ function ToggleRow({
   return (
     <div className={`pulse-settings-toggle-row pulse-settings-control-block${disabled ? ' pulse-settings-control-disabled' : ''}`}>
       <div>
-        <label className="pulse-settings-label" htmlFor={id} style={disabled ? { opacity: 0.6 } : undefined}>{label}</label>
-        {hint ? <span className="pulse-settings-hint" style={disabled ? { opacity: 0.6 } : undefined}>{hint}</span> : null}
+        <label className="pulse-settings-label" htmlFor={id}>{label}</label>
+        {hint ? <span className="pulse-settings-hint">{hint}</span> : null}
       </div>
       <input
         id={id}

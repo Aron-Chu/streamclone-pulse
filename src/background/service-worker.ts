@@ -42,6 +42,8 @@ import { openSettingsHost } from './settingsHost.ts'
 import { resumePendingLink, supporterAccount, supporterPayFirst, watchPendingLink } from './supporterAccountRuntime.ts'
 import { supporterAppearanceReply } from './supporterAppearance.ts'
 import { injectSupporterCard } from './supporterCardScript.ts'
+import { injectMomentFrames } from './momentFramesScript.ts'
+import { injectCatchMeUp } from './catchMeUpScript.ts'
 import { twitchSignIn } from './twitchSignInRuntime.ts'
 import {
   EXTENSION_DIAGNOSTICS_INGEST_ENABLED,
@@ -992,6 +994,14 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
         }
         case 'SUPPORTER_CARD_SCRIPT': {
           sendResponse({ type: 'SUPPORTER_CARD_SCRIPT', ok: await injectSupporterCard(chrome.scripting, sender) } satisfies BackgroundResponse)
+          return
+        }
+        case 'MOMENT_FRAMES_SCRIPT': {
+          sendResponse({ type: 'MOMENT_FRAMES_SCRIPT', ok: await injectMomentFrames(chrome.scripting, sender) } satisfies BackgroundResponse)
+          return
+        }
+        case 'CATCH_ME_UP_SCRIPT': {
+          sendResponse({ type: 'CATCH_ME_UP_SCRIPT', ok: await injectCatchMeUp(chrome.scripting, sender) } satisfies BackgroundResponse)
           return
         }
         case 'TWITCH_SIGN_IN': {

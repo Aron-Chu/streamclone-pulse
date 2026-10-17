@@ -26,6 +26,10 @@ function chromeExtensionPlugin() {
       await viteBuild({ configFile: resolve(__dirname, 'vite.content.config.ts') })
       // The Supporter card's stage, injected on demand; never part of content/twitch.js.
       await viteBuild({ configFile: resolve(__dirname, 'vite.supporterCard.config.ts') })
+      // Moment pictures, injected while Pulse shows; never part of content/twitch.js.
+      await viteBuild({ configFile: resolve(__dirname, 'vite.momentFrames.config.ts') })
+      // A stream recap's Catch me up block, injected with the recap; never part of content/twitch.js.
+      await viteBuild({ configFile: resolve(__dirname, 'vite.catchMeUp.config.ts') })
 
       const dist = resolve(__dirname, 'dist')
       mkdirSync(dist, { recursive: true })

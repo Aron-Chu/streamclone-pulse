@@ -8,7 +8,6 @@ import {
   type SupporterPaintStyle,
 } from '../shared/supporterPaint.ts'
 import { getSupporterPaintStyle, setSupporterPaintStyle } from '../shared/storage.ts'
-import type { SupporterFinishId } from '../ui/supporterFinish.ts'
 
 /**
  * The profile's wave and sheen, saved as soon as they change.
@@ -42,13 +41,11 @@ export function useSupporterPaintStyle() {
   return { style, status, choose }
 }
 
-/** Wave and sheen pickers, as rows of tiles. Each choice previews itself in the selected finish. */
-export function SupporterPaintStyleFields({ finish, style, onChoose }: {
-  finish: SupporterFinishId | null
+/** Wave and sheen pickers, as rows of pills. The Your look preview above shows each choice in the paint being tried. */
+export function SupporterPaintStyleFields({ style, onChoose }: {
   style: SupporterPaintStyle
   onChoose: (next: SupporterPaintStyle) => void
 }) {
-  const sample = finish ?? 'glass'
   return <>
     <fieldset className="pulse-supporter-look-row"><legend>Wave</legend>
       <div className="pulse-supporter-tiles">
@@ -61,7 +58,6 @@ export function SupporterPaintStyleFields({ finish, style, onChoose }: {
             checked={style.wave === option.id}
             onChange={() => onChoose({ ...style, wave: option.id })}
           />
-          <span className="pulse-paint pulse-supporter-paint-sample" data-finish={sample} data-wave={option.id} data-sheen="none" data-text="Aa" aria-hidden="true">Aa</span>
           <small>{option.label}</small>
         </label>)}
       </div>
@@ -77,7 +73,6 @@ export function SupporterPaintStyleFields({ finish, style, onChoose }: {
             checked={style.sheen === option.id}
             onChange={() => onChoose({ ...style, sheen: option.id })}
           />
-          <span className="pulse-paint pulse-supporter-paint-sample" data-finish={sample} data-wave={style.wave} data-sheen={option.id} data-text="Aa" aria-hidden="true">Aa</span>
           <small>{option.label}</small>
         </label>)}
       </div>

@@ -90,6 +90,29 @@ async function openPanel(page: Page, height: number) {
 }
 
 /**
+ * A recap with eight moments: Catch me up shows the best three, and Top
+ * Moments lists the other five once unfolded. Registered before the panel opens.
+ */
+async function routeLongRecap(context: BrowserContext): Promise<void> {
+  const offline = JSON.parse(readFileSync(new URL('../fixtures/api/pulse-offline.json', import.meta.url), 'utf8'))
+  const [first] = offline.recap.topMoments
+  const topMoments = Array.from({ length: 8 }, (_, index) => ({ ...first, offsetSeconds: 1800 + index * 1200, score: 92 - index * 4 }))
+  await context.route('https://api.streampulse.stream/v1/extension/pulse/channels/fixturechan*', async route => {
+    if (new URL(route.request().url()).pathname.endsWith('/fixturechan')) {
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ...offline, recap: { ...offline.recap, topMoments } }) })
+    } else {
+      await route.fallback()
+    }
+  })
+}
+
+/** Unfolds the recap's Top Moments, which start folded under Catch me up. */
+async function unfoldRecapList(root: Locator): Promise<void> {
+  await root.locator('button', { hasText: /^Show \d+ more moments/ }).click()
+  await expect(root.locator('.pulse-moment-row-button').nth(2)).toBeVisible()
+}
+
+/**
  * Nothing is picked for the viewer: the strongest moment is not auto-selected,
  * highlighted or locked on the chart, live or on a VOD, until a pick.
  */
@@ -101,8 +124,10 @@ for (const surface of [
     await prepare({ scenario: surface.scenario, twitchKind: surface.twitchKind, storage: SIDEBAR })
     const { root, rows, card, anyCard } = await openPanel(extension.page, 1000)
     const chart = root.locator('svg[data-testid="pulse-overview-chart"]')
+    // A recap's best moments sit in Catch me up, above its list.
+    const pick = surface.name === 'live' ? rows.first() : root.locator('.pcu-mini').first()
     await expect(chart).toBeVisible()
-    await expect(rows.first()).toBeVisible()
+    await expect(pick).toBeVisible()
     const expectNothingPicked = async () => {
       await expect(anyCard).toHaveCount(0)
       await expect(root.locator('.pulse-moment-row-button[aria-pressed="true"]')).toHaveCount(0)
@@ -110,7 +135,7 @@ for (const surface of [
       await expect(chart).not.toHaveAttribute('data-chart-locked-index')
       await expect(root.locator('[data-chart-readout-state="selected"]')).toHaveCount(0)
       await expect(root.locator('[data-chart-moment-marker-state="active"]')).toHaveCount(0)
-      await expect(root.locator('.pulse-recap-highlight-btn[aria-pressed="true"]')).toHaveCount(0)
+      await expect(root.locator('.pcu-mini[aria-pressed="true"]')).toHaveCount(0)
       await expect(root.locator('.pulse-moment-slot')).toHaveCount(0)
     }
     await expectNothingPicked()
@@ -119,21 +144,22 @@ for (const surface of [
     await expectNothingPicked()
     if (surface.name === 'live') await expect(root.locator('[data-featured-moment="true"]')).toContainText('Biggest moment so far')
 
-    // A pick selects, highlights and locks; picking the row again releases all of it.
-    await rows.first().click()
-    await expect(rows.first()).toHaveAttribute('aria-pressed', 'true')
+    // A pick selects, highlights and locks; picking it again releases all of it.
+    await pick.click()
+    await expect(pick).toHaveAttribute('aria-pressed', 'true')
     await expect(card).toHaveCount(1)
     await expect(chart).toHaveAttribute('data-chart-locked-index', /\d+/)
-    await rows.first().click()
-    await expect(rows.first()).toHaveAttribute('aria-pressed', 'false')
+    await pick.click()
+    await expect(pick).toHaveAttribute('aria-pressed', 'false')
     await expectNothingPicked()
   })
 }
 
 test('nothing shows above Top Moments until a pick; later picks swap the card in place and move nothing', async ({ extension, prepare }) => {
   await prepare({ scenario: 'vod-ready', twitchKind: 'vod', storage: SIDEBAR })
+  await routeLongRecap(extension.context)
   const { root, rows, card, anyCard } = await openPanel(extension.page, 2200)
-  await expect(rows).toHaveCount(3)
+  await unfoldRecapList(root)
   await expect(anyCard).toHaveCount(0)
   await expect(root.getByText('Strongest moment', { exact: true })).toHaveCount(0)
   for (let index = 0; index < 3; index += 1) await expect(rows.nth(index)).not.toHaveAttribute('aria-controls', /.+/)
@@ -221,8 +247,10 @@ for (const surface of [
   for (const at of [0.5, 0.85]) {
     test(`a Top Moments pick opens the card above the list and leaves the row under the pointer (${surface.name}, row at ${at})`, async ({ extension, prepare }) => {
       await prepare({ scenario: surface.scenario, twitchKind: surface.twitchKind, storage: SIDEBAR })
+      if (surface.twitchKind === 'vod') await routeLongRecap(extension.context)
       const page = extension.page
       const { root, body, rows, card, anyCard } = await openPanel(page, surface.height)
+      if (surface.twitchKind === 'vod') await unfoldRecapList(root)
       const row = rows.nth(surface.row)
       await placeInPanel(body, row, at)
       expect(await body.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true)
@@ -291,9 +319,11 @@ for (const surface of [
  */
 test('with Top Moments at the top of the panel, the card opens in view and the row moves as little as possible', async ({ extension, prepare }) => {
   await prepare({ scenario: 'vod-ready', twitchKind: 'vod', storage: SIDEBAR })
+  await routeLongRecap(extension.context)
   const page = extension.page
   // Short enough that the panel can scroll the list up to its top edge.
-  const { body, rows, card } = await openPanel(page, 520)
+  const { root, body, rows, card } = await openPanel(page, 520)
+  await unfoldRecapList(root)
   const row = rows.nth(0)
   // The list starts 40 px below the panel's top edge.
   await row.scrollIntoViewIfNeeded()
@@ -318,7 +348,9 @@ test('with Top Moments at the top of the panel, the card opens in view and the r
 
 test('a wheel right after a low Top Moments pick keeps the scroll the user made', async ({ extension, prepare }) => {
   await prepare({ scenario: 'vod-ready', twitchKind: 'vod', storage: SIDEBAR })
-  const { body, rows, card } = await openPanel(extension.page, 900)
+  await routeLongRecap(extension.context)
+  const { root, body, rows, card } = await openPanel(extension.page, 900)
+  await unfoldRecapList(root)
   const row = rows.nth(1)
   await placeInPanel(body, row, 0.85)
   const rowBox = await box(row)

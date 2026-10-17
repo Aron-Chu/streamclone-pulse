@@ -897,7 +897,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   const connected = linked !== null || renewalWaiting
   // Nobody signed in: Your card above already says "Not signed in", so the Account card has no row repeating it.
   const accountRow: [string, string] | null = signedInWithTwitch ? [profile ? `${ACCOUNT_COPY.signedInWithTwitch} as ${profile.displayName}` : ACCOUNT_COPY.signedInWithTwitch, 'Signing in stores a device credential in this extension. Sign out ends this device’s access and removes its signed-in watched history and notes.']
-    : connected ? ['Connected to this extension', 'An invited tester’s StreamPulse account. Sign out ends this device’s access and removes its signed-in watched history and notes.']
+    : connected ? [linked ? `Connected to this extension · ${accountReference(linked.accountId)}` : 'Connected to this extension', 'An invited tester’s StreamPulse account. Sign out ends this device’s access and removes its signed-in watched history and notes.']
     : identity.kind === 'unknown' ? [identity.reason === 'checking' ? 'Checking the connection…' : 'Connection status unavailable', 'Your free tools still work.']
     : null
   // Invited testers keep the existing device link, closed by default and
