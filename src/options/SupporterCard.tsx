@@ -81,7 +81,7 @@ const isKnown = (status: CardStatus) => status !== 'checking' && status !== 'unk
  * or the renew date and billing.
  *
  * The card is a section headed by a visually hidden h3, so heading navigation
- * stops here between the page's h2 and "Who sees what"; the card's own lines
+ * stops here between the page's h2 and "Your look"; the card's own lines
  * (the name, the membership, the footer's title) stay as drawn.
  */
 export function SupporterCard({ identity, membership, look, children }: {
@@ -140,14 +140,15 @@ function cardName(identity: CardIdentity): string {
     case 'none': return 'Not signed in'
     case 'unknown': return identity.reason === 'checking' ? 'Checking your account…' : 'Account unavailable'
     case 'twitch': return identity.displayName
-    default: return identity.reference ?? 'StreamPulse account'
+    // A StreamPulse account has no public name; its reference stays in Account, not on the card.
+    default: return 'You'
   }
 }
 
 function subline(identity: CardIdentity, membership: CardMembership): string {
   const { status } = membership
   if (identity.kind === 'none') return 'Free tools work without an account.'
-  if (status === 'active' || status === 'grace') return ['Pulse Supporter', membership.months > 0 ? months(membership.months) : null, status === 'grace' ? 'payment due' : null].filter(Boolean).join(' · ')
+  if (status === 'active' || status === 'grace') return [membership.months > 0 ? `Supporter for ${months(membership.months)}` : 'Pulse Supporter', status === 'grace' ? 'payment due' : null].filter(Boolean).join(' · ')
   const line = STATUS_LINE[status]
   if (identity.kind === 'unknown') return isKnown(status) ? line.charAt(0).toUpperCase() + line.slice(1) : 'Your free tools still work.'
   const who = identity.kind === 'twitch' ? 'Signed in with Twitch' : 'StreamPulse account'

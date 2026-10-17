@@ -156,7 +156,6 @@ const hostStyles = `
   .pulse-supporter-policies a { display: inline-flex; align-items: center; box-sizing: border-box; min-width: 44px; min-height: 44px; padding: 0 4px; color: ${theme.textSecondary}; font-weight: 600; }
   .pulse-supporter-policies a:hover { color: var(--pulse-accent-soft, #c4b5fd); }
   .pulse-supporter-policies a:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 3px; }
-  .pulse-supporter-paint-sample { flex: none; font-size: 20px; font-weight: 900; line-height: 1; min-width: 28px; }
   .pulse-supporter-save-status { min-height: 20px; }
   .pulse-supporter-settings input:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 3px; }
 
@@ -219,15 +218,15 @@ const hostStyles = `
   .pulse-supporter-card > .pulse-journey .pulse-journey-facts dd { font-weight: 700; }
   .pulse-supporter-ext { font-size: 0.9em; margin-left: 5px; opacity: 0.8; }
 
-  /* "Who sees what": three rows, the concept one dashed in amber. */
-  .pulse-supporter-who { display: grid; gap: 8px; list-style: none; margin: 0; padding: 0; }
-  .pulse-supporter-who > li { align-items: center; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 10px; display: grid; gap: 8px 14px; grid-template-columns: minmax(0, 170px) minmax(0, 1fr); padding: 10px 12px; }
-  .pulse-supporter-who-label { display: grid; gap: 5px; justify-items: start; min-width: 0; }
-  .pulse-supporter-who-label strong { color: ${theme.textPrimary}; font-size: 13px; font-weight: 800; }
-  .pulse-supporter-who-label small { color: ${theme.textMuted}; font-size: 12px; line-height: 1.35; }
-  .pulse-supporter-vis { align-items: center; border: 1px solid ${theme.border}; border-radius: 999px; color: ${theme.textSecondary}; display: inline-flex; font-size: 12px; font-weight: 800; gap: 5px; letter-spacing: 0.02em; line-height: 1; padding: 4px 8px; white-space: nowrap; }
-  .pulse-supporter-vis svg { flex: none; }
-  .pulse-supporter-who-preview { display: grid; gap: 6px; min-width: 0; }
+  /* The Your look studio's live preview, pinned above its controls while they scroll. */
+  .pulse-supporter-preview { background: ${theme.panel}; border: 1px solid ${theme.border}; border-radius: 12px; box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35); display: grid; gap: 8px; margin: 0 0 14px; padding: 10px; position: sticky; top: 8px; z-index: 2; }
+  .pulse-supporter-preview > [role="img"] { display: grid; gap: 6px; }
+  /* Tall enough for the emote rain to read behind the title. */
+  .pulse-supporter-preview .pulse-supporter-mini-head { align-items: flex-end; display: flex; min-height: 72px; padding-bottom: 9px; }
+  .pulse-supporter-preview-badge { background: rgba(11, 11, 15, 0.82); border: 1px solid ${theme.border}; border-radius: 999px; color: ${theme.textSecondary}; font-size: 12px; font-weight: 800; line-height: 18px; padding: 0 8px; position: absolute; right: 8px; top: 7px; white-space: nowrap; z-index: 3; }
+  .pulse-supporter-preview-foot { align-items: baseline; color: ${theme.textSecondary}; display: flex; flex-wrap: wrap; font-size: 12px; gap: 4px 12px; }
+  .pulse-supporter-preview-foot small { color: ${theme.textMuted}; font-size: 12px; }
+  .pulse-supporter-preview-foot small:last-child { color: ${theme.textSecondary}; font-weight: 800; margin-left: auto; }
   .pulse-supporter-mini-head { background: ${theme.bgCanvas}; border: 1px solid #2a2a36; border-radius: 8px; isolation: isolate; overflow: hidden; padding: 7px 10px; position: relative; }
   .pulse-supporter-mini-head .pulse-banner-art { z-index: 0; }
   .pulse-supporter-mini-head .pulse-banner-art img { height: 24px; width: 24px; }
@@ -242,21 +241,19 @@ const hostStyles = `
   @container pulse-supporter-card (max-width: 520px) {
     .pulse-supporter-card-body { padding: 0 14px; }
   }
-  @media (max-width: 620px) {
-    .pulse-supporter-who > li { grid-template-columns: minmax(0, 1fr); }
-  }
 
-  /* "Your look": paint, wave, sheen and emote rain as rows of tiles. */
+  /* "Your look": paint, wave, sheen and emote rain as rows of pills. */
   .pulse-supporter-look { display: grid; gap: 12px; }
   .pulse-supporter-look-row { align-items: start; border: 0; display: grid; gap: 6px 14px; grid-template-columns: minmax(0, 120px) minmax(0, 1fr); margin: 0; min-width: 0; padding: 0; }
   .pulse-supporter-look-row > legend { color: ${theme.textSecondary}; float: left; font-size: 12px; font-weight: 700; padding: 8px 0 0; }
-  .pulse-supporter-tiles { display: grid; gap: 6px; grid-template-columns: repeat(4, minmax(0, 1fr)); max-width: 420px; }
-  .pulse-supporter-tile { align-items: center; background: rgba(255, 255, 255, 0.024); border: 1px solid ${theme.border}; border-radius: 9px; color: ${theme.textSecondary}; cursor: pointer; display: grid; gap: 1px; justify-items: center; min-height: 54px; min-width: 0; padding: 6px 4px; position: relative; transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease; }
+  .pulse-supporter-tiles { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pulse-supporter-tile { align-items: center; background: rgba(255, 255, 255, 0.024); border: 1px solid ${theme.border}; border-radius: 999px; color: ${theme.textSecondary}; cursor: pointer; display: inline-flex; gap: 6px; min-height: 34px; min-width: 0; padding: 4px 12px; position: relative; transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease; }
   .pulse-supporter-tile:hover { border-color: ${theme.accentSoft}; color: ${theme.textPrimary}; }
   .pulse-supporter-tile:has(:checked) { background: ${theme.panelElevated}; border-color: ${theme.accentSoft}; box-shadow: inset 0 0 0 1px rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.14); color: ${theme.textPrimary}; }
   .pulse-supporter-tile:focus-within { outline: 2px solid ${theme.accentSoft}; outline-offset: 2px; }
   .pulse-supporter-tile input { height: 1px; opacity: 0; position: absolute; width: 1px; }
-  .pulse-supporter-tile .pulse-supporter-paint-sample { font-size: 18px; line-height: 1.1; min-width: 0; }
+  /* A paint's colour, from the kit's finish variables; Default shows your theme accent. */
+  .pulse-supporter-swatch { background: var(--spk-fin, ${theme.accentSoft}); border-radius: 50%; box-shadow: 0 0 8px rgba(var(--spk-fin-rgb, 167, 139, 250), 0.55); flex: none; height: 10px; width: 10px; }
   .pulse-supporter-tile small { font-size: 12px; font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pulse-supporter-tile-chip { background: ${theme.panel}; border: 1px solid ${theme.border}; border-radius: 999px; box-sizing: border-box; color: ${theme.textPrimary}; font-size: 12px; font-weight: 700; line-height: 16px; max-width: 100%; overflow: hidden; padding: 0 6px; pointer-events: none; text-overflow: ellipsis; white-space: nowrap; }
   .pulse-supporter-tile-chip[data-chip="equipped"] { border-color: rgba(45, 212, 191, 0.7); }

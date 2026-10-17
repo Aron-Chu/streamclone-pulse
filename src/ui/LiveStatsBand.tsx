@@ -1513,6 +1513,7 @@ export function LiveStatsBand({
                   onAnalytics={point => onOpenAnalytics?.(reactionAnalyticalOffset(point))}
                   onClear={handleClearChartSelection}
                   viewerUnavailableDetail={viewerUnavailableDetail}
+                  games={payload.games}
                 />
               ) : (
                 <ChartMinuteInspectCard
@@ -1523,6 +1524,7 @@ export function LiveStatsBand({
                   onAnalytics={onOpenAnalytics}
                   onClose={handleClearChartSelection}
                   viewerUnavailableDetail={viewerUnavailableDetail}
+                  games={payload.games}
                 />
               )}
               </div>

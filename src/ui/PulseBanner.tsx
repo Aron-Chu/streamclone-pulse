@@ -124,15 +124,3 @@ export function PulseBannerControls({ expanded = false, perks }: { expanded?: bo
     </form>
   </details>
 }
-
-/** The overlay shows what it draws without turning quick settings into an editor. */
-export function PulseBannerQuickPreview({ perks }: { perks: boolean }) {
-  const banner = usePulseBanner()
-  const shown = perks ? banner.value.mode : 'off'
-  const mode = shown === 'off' ? 'Backdrop off' : shown === 'still' ? 'Still 7TV' : '7TV rain'
-  return <div className="pulse-personal-panel pulse-banner-quick-preview" data-appearance-preview="true" data-preview-mode={shown} role="img" aria-label={`Appearance preview: ${banner.value.title || 'Stream Pulse'}, ${mode}`} style={bannerThemeVariables}>
-    <PulseBannerBackdrop value={banner.value} perks={perks} />
-    <strong>{banner.value.title || 'Stream Pulse'}</strong>
-    <small>{mode}</small>
-  </div>
-}

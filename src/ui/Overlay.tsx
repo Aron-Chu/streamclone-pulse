@@ -98,6 +98,7 @@ import {
 } from './missedMoments.ts'
 import { initPulseDebug, pulseDebug } from '../shared/pulseDebug.ts'
 import { resolveMostReactedHeat } from './mostReacted.ts'
+import { useMomentCapture } from './momentPicture.ts'
 import { StreamRecapSection } from './StreamRecapSection.tsx'
 import { resolveRecapUiState } from './recapUiState.ts'
 import { formatPulseApiError } from './pulseApiErrors.ts'
@@ -714,6 +715,23 @@ function OverlayMain({
   })
   const mostReactedHeat = displayPayload ? resolveMostReactedHeat(displayPayload) : null
   const warming = Boolean(uiIsLive && mostReactedHeat && !mostReactedHeat.visible)
+  // Moment pictures: frames of this tab's player, kept around ranked moments.
+  // A VOD's frames count only on the VOD the analytics belong to.
+  useMomentCapture(
+    {
+      key: payload?.streamId,
+      live: context.kind === 'channel' && uiIsLive,
+      startedAt: payload?.startedAt,
+      vod: context.kind === 'vod' && Boolean(payload?.vodId) && context.vodId === payload?.vodId,
+      vodOriginDeltaSeconds: payload?.vodOriginDeltaSeconds,
+    },
+    [
+      ...(mostReactedHeat?.points ?? []).map(point => point.offsetSeconds),
+      ...(payload?.recap?.topMoments ?? []).map(moment => moment.offsetSeconds),
+      ...(payload?.peaks ?? []).map(peak => peak.offsetSeconds),
+    ],
+    getPrimaryVideo,
+  )
   const panelSections = payload
     ? resolvePulsePanelSections(payload, {
         liveHeatVisible: Boolean(mostReactedHeat?.visible),
@@ -1888,6 +1906,7 @@ function OverlayMain({
               pollError={error ?? null}
               sidebarFill={sidebarSnapped}
               hideHubLink
+              vodPage={isVodPage}
               onJump={jumpMoment}
               onAnalytics={openAnalyticsForMoment}
               onOpenAnalytics={openAnalytics}

@@ -13,6 +13,8 @@ const KNOWN_MESSAGE_TYPES = new Set<string>([
   'SUPPORTER_APPEARANCE',
   'SUPPORTER_FINISH_INTENT',
   'SUPPORTER_CARD_SCRIPT',
+  'MOMENT_FRAMES_SCRIPT',
+  'CATCH_ME_UP_SCRIPT',
   'SUPPORTER_BILLING',
   'SUPPORTER_RESTORE',
   'SUPPORTER_DEVICES',
@@ -266,7 +268,7 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
     case 'OPEN_COMMUNITY_LINK':
       // A fixed link name only; the worker resolves it. Never a caller-controlled URL.
       if (Object.keys(raw).some(key => key !== 'type' && key !== 'link')) return null
-      return raw.link === 'discord' ? { type, link: 'discord' } : null
+      return raw.link === 'discord' || raw.link === 'feedback' ? { type, link: raw.link } : null
     case 'SUPPORTER_ACCOUNT': {
       if (Object.keys(raw).some(key => key !== 'type' && key !== 'action')) return null
       const action = raw.action
@@ -315,6 +317,8 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
     case 'SUPPORTER_APPEARANCE':
     // No file, tab or frame comes from the caller: the worker injects one fixed script into the sender's own frame.
     case 'SUPPORTER_CARD_SCRIPT':
+    case 'MOMENT_FRAMES_SCRIPT':
+    case 'CATCH_ME_UP_SCRIPT':
       return Object.keys(raw).length === 1 ? { type } : null
     case 'GET_DEVICE_AUTH_STATUS':
     case 'ROTATE_DEVICE':

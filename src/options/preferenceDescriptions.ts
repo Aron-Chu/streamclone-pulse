@@ -25,6 +25,8 @@ const DESCRIPTIONS: Record<ChoicePickerKind, Record<string, string>> = {
     right: 'Floating right',
     bottom: 'Floating below',
   },
+  // Quick settings' Your look pickers: compact only, never described.
+  look: {},
 }
 
 /** Attach descriptions by value. A value with no entry simply renders none. */

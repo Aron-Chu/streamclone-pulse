@@ -12,10 +12,11 @@ import { openTwitchChannel } from '../helpers/mockTwitch.ts'
  * the card and the click never selected it. DevTools reads the closed tree
  * here only to observe; the mouse drives the real event path.
  */
-interface DomNode { nodeId: number; nodeName: string; attributes?: string[]; children?: DomNode[]; shadowRoots?: DomNode[]; shadowRootType?: string }
+interface DomNode { nodeId: number; nodeName: string; nodeValue?: string; attributes?: string[]; children?: DomNode[]; shadowRoots?: DomNode[]; shadowRootType?: string }
 const attr = (node: DomNode, name: string) => { const i = node.attributes?.indexOf(name) ?? -1; return i >= 0 ? node.attributes?.[i + 1] : undefined }
 const flatten = (node: DomNode): DomNode[] => [node, ...[...(node.children ?? []), ...(node.shadowRoots ?? [])].flatMap(flatten)]
 const hasClass = (node: DomNode, name: string) => (attr(node, 'class') ?? '').split(/\s+/).includes(name)
+const textOf = (node: DomNode) => flatten(node).map(each => each.nodeValue ?? '').join('')
 
 async function tree(cdp: CDPSession): Promise<DomNode[]> {
   const { root } = await cdp.send('DOM.getDocument', { depth: -1, pierce: true })
@@ -31,10 +32,24 @@ async function centerOf(cdp: CDPSession, node: DomNode, scroll = true): Promise<
 
 test('pressing the next Top Moments row keeps the card and selects that row', async ({ extension, prepare }) => {
   await prepare({ scenario: 'vod-ready', twitchKind: 'vod', storage: { overlayPlacement: 'sidebar', sidebarTab: 'pulse', overlayMode: 'expanded' } })
+  // Eight moments: Catch me up shows three, Top Moments the other five once unfolded.
+  const offline = JSON.parse(readFileSync(new URL('../fixtures/api/pulse-offline.json', import.meta.url), 'utf8'))
+  const topMoments = Array.from({ length: 8 }, (_, index) => ({ ...offline.recap.topMoments[0], offsetSeconds: 1800 + index * 1200, score: 92 - index * 4 }))
+  await extension.context.route('https://api.streampulse.stream/v1/extension/pulse/channels/fixturechan*', async route => {
+    if (new URL(route.request().url()).pathname.endsWith('/fixturechan')) {
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ...offline, recap: { ...offline.recap, topMoments } }) })
+    } else {
+      await route.fallback()
+    }
+  })
   await extension.page.setViewportSize({ width: 1440, height: 2200 })
   const page = extension.page
   await openTwitchChannel(page)
   const cdp = await extension.context.newCDPSession(page)
+  const button = async (pattern: RegExp) => (await tree(cdp)).find(node => node.nodeName === 'BUTTON' && pattern.test(textOf(node)))
+  await expect.poll(async () => Boolean(await button(/^Show \d+ more moments/))).toBe(true)
+  const more = await centerOf(cdp, (await button(/^Show \d+ more moments/))!)
+  await page.mouse.click(more.x, more.y)
   await expect.poll(async () => (await tree(cdp)).filter(node => hasClass(node, 'pulse-moment-row-button')).length).toBeGreaterThan(1)
   const host = (await tree(cdp)).find(node => attr(node, 'id') === 'streamclone-pulse-root' && node.shadowRoots?.length)!
   const target = JSON.parse(readFileSync(join(EXTENSION_DIST_DIR, 'extension-target.json'), 'utf8')).target
@@ -71,5 +86,22 @@ test('pressing the next Top Moments row keeps the card and selects that row', as
   await page.mouse.up()
   await expect.poll(async () => attr((await rows())[1]!, 'aria-pressed')).toBe('true')
   await expect.poll(label).not.toBe(firstLabel)
+  expect(await label()).toMatch(/^Selected moment at /)
+
+  // Catch me up's moments take the same path: a held press on the next one
+  // swaps its card in under the block.
+  const minis = async () => (await tree(cdp)).filter(node => hasClass(node, 'pcu-mini'))
+  const two = await centerOf(cdp, (await minis())[0]!)
+  await page.mouse.click(two.x, two.y)
+  await expect.poll(async () => attr((await minis())[0]!, 'aria-pressed')).toBe('true')
+  const twoLabel = await label()
+  await page.waitForTimeout(400)
+  const three = await centerOf(cdp, (await minis())[1]!)
+  await page.mouse.move(three.x, three.y)
+  await page.mouse.down()
+  await page.waitForTimeout(120)
+  await page.mouse.up()
+  await expect.poll(async () => attr((await minis())[1]!, 'aria-pressed')).toBe('true')
+  await expect.poll(label).not.toBe(twoLabel)
   expect(await label()).toMatch(/^Selected moment at /)
 })

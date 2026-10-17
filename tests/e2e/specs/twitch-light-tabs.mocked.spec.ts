@@ -34,5 +34,5 @@ test('the CHAT/PULSE row follows Twitch light and dark themes', async ({ extensi
 
   await page.evaluate(() => document.documentElement.classList.replace('tw-root--theme-light', 'tw-root--theme-dark'))
   await expect(host).toHaveAttribute('data-twitch-theme', 'dark')
-  await expect(host.locator('section.pulse-sidebar-header-tabs')).toHaveCSS('background-color', 'rgb(17, 17, 23)')
+  await expect(host.locator('section.pulse-sidebar-header-tabs')).toHaveCSS('background-color', 'rgb(11, 11, 15)')
 })

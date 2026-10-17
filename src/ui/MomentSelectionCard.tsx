@@ -1,5 +1,7 @@
 import { useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react'
 import type { ExtensionEmote } from '../shared/messages.ts'
+import type { MomentPictureView } from '../shared/momentFramesContract.ts'
+import { useMomentPicture, type MomentGame } from './momentPicture.ts'
 import { formatCount } from './mostReacted.ts'
 import { overlayGhostChipButton, overlayTextLinkButton } from './momentReasonStyles.ts'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
@@ -34,6 +36,10 @@ export interface MomentSelectionCardProps {
   contentKey?: string
   ariaLabel: string
   style?: CSSProperties
+  /** What the player showed then, when this tab kept frames of it. */
+  picture?: MomentPictureView
+  /** The game on stream at the selected time. */
+  game?: MomentGame
 }
 
 /** Shared presentation for committed ranked-moment and raw-minute selections. */
@@ -56,8 +62,11 @@ export function MomentSelectionCard({
   contentKey,
   ariaLabel,
   style,
+  picture,
+  game,
 }: MomentSelectionCardProps) {
   const contentRef = useRef<HTMLDivElement>(null)
+  const pictureRef = useMomentPicture<HTMLDivElement>(picture)
   const shownKeyRef = useRef(contentKey)
   // The first selection fades in with the card itself; a swap restarts the
   // details' fade on the same nodes (a key remount would drop focus).
@@ -83,6 +92,7 @@ export function MomentSelectionCard({
       onClick={event => event.stopPropagation()}
     >
       <div ref={contentRef}>
+        <div ref={pictureRef} className="pmf-stage" data-moment-picture="true" />
         <div style={styles.header}>
           <span style={styles.kicker}>{label}</span>
           <span style={styles.offset} data-moment-inspector-clock="true">{timeLabel}</span>
@@ -100,6 +110,21 @@ export function MomentSelectionCard({
         </div>
 
         <p style={{ ...styles.detail, ...detailStyle }}>{detail}</p>
+        {game ? (
+          <p style={styles.game} data-moment-game="true" title={`Playing ${game.name}`}>
+            {game.art ? (
+              <img
+                src={game.art}
+                alt=""
+                width={12}
+                height={16}
+                style={styles.gameArt}
+                onError={event => { event.currentTarget.style.display = 'none' }}
+              />
+            ) : null}
+            <span style={styles.gameName}>{game.name}</span>
+          </p>
+        ) : null}
         <p
           style={styles.activity}
           data-moment-inspector-activity="true"
@@ -218,6 +243,18 @@ const styles: Record<string, CSSProperties> = {
     padding: 2,
   },
   detail: { fontWeight: 700, margin: '4px 0 0' },
+  game: {
+    alignItems: 'center',
+    color: theme.textSecondary,
+    display: 'flex',
+    fontSize: 11,
+    fontWeight: 700,
+    gap: 6,
+    margin: '4px 0 0',
+    minWidth: 0,
+  },
+  gameArt: { borderRadius: 2, display: 'block', flexShrink: 0, objectFit: 'cover' },
+  gameName: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   activity: { color: theme.textSecondary, fontSize: 11, fontWeight: 600, margin: '2px 0 8px' },
   list: { display: 'grid', gap: 6, listStyle: 'none', margin: '0 0 10px', padding: 0 },
   item: { alignItems: 'center', display: 'flex', gap: 8, minWidth: 0 },
