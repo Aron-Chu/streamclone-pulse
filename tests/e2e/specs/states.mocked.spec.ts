@@ -733,6 +733,13 @@ test.describe('extension mocked states', () => {
       ])
       return `${stored.overlayPlacement}:${stored.overlayMode}`
     }).toBe('sidebar:collapsed')
+    // TWI-7: the snapped pill covers only the bottom of the column, so the
+    // sidebar chrome hides apply but native chat messages stay readable.
+    await expect(extension.page.locator('#streamclone-pulse-sidebar-hide')).toHaveCount(1)
+    await expect(extension.page.locator('[data-test-selector="chat-scrollable-area"]')).toHaveCSS('visibility', 'visible')
+    // The expanded panel fills the column, so messages are hidden again.
+    await extension.page.getByRole('button', { name: 'Open Pulse panel' }).click()
+    await expect(extension.page.locator('[data-test-selector="chat-scrollable-area"]')).toHaveCSS('visibility', 'hidden')
   })
 
   test('live partial / starting surfaces not-tracked / starting copy', async ({

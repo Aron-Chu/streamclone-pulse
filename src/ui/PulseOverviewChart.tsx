@@ -2112,7 +2112,8 @@ function PulseOverviewChartImpl({
           onClick={handleClick}
           onKeyDown={event => {
             // Escape clears ephemeral hover first, then the committed lock, then
-            // the viewport. It also releases focus so a following Tab is honest.
+            // the viewport. Focus stays on the plot so keyboard and screen-reader
+            // users keep their place.
             if (event.key === 'Escape') {
               event.preventDefault()
               handlePointerLeave()
@@ -2121,7 +2122,6 @@ function PulseOverviewChartImpl({
               } else if (onViewportChange && durationSeconds > 0) {
                 onViewportChange({ startSeconds: coverageStartSeconds, endSeconds: durationSeconds })
               }
-              event.currentTarget.blur()
               return
             }
             // Enter/Space commit the previewed bucket as a lock.

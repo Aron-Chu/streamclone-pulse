@@ -161,6 +161,16 @@ describe('parseBackgroundRequest', () => {
     }
   })
 
+  it('accepts a numeric sender VOD id on LIST_PAST_VODS and rejects anything else (LIFE-4)', () => {
+    expect(parseBackgroundRequest({ type: 'LIST_PAST_VODS', login: 'XQC', liveStreamId: 's1', isLive: true, contextVodId: '987' }))
+      .toEqual({ type: 'LIST_PAST_VODS', login: 'xqc', liveStreamId: 's1', isLive: true, contextVodId: '987' })
+    expect(parseBackgroundRequest({ type: 'LIST_PAST_VODS', login: 'xqc' }))
+      .toEqual({ type: 'LIST_PAST_VODS', login: 'xqc', liveStreamId: undefined, isLive: undefined })
+    for (const contextVodId of ['', 'abc', 987, null]) {
+      expect(parseBackgroundRequest({ type: 'LIST_PAST_VODS', login: 'xqc', contextVodId })).toBeNull()
+    }
+  })
+
   it('accepts APPEND_PULSE_DEBUG and CLEAR_PULSE_DEBUG_LOG', () => {
     expect(parseBackgroundRequest({ type: 'CLEAR_PULSE_DEBUG_LOG' })).toEqual({
       type: 'CLEAR_PULSE_DEBUG_LOG',
