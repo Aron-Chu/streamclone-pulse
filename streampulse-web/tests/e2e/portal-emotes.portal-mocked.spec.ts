@@ -10,7 +10,8 @@ import {
   installPortalAcceptanceHarness,
   openAnalyticsSession,
   openEmotesRail,
-  setChartViewEmotes,
+  plotSessionEmotes,
+  SIX_SESSION_EMOTE_KEYS,
 } from './helpers/portalAcceptanceHarness'
 
 test.describe('portal emote plotting (mocked)', () => {
@@ -57,14 +58,10 @@ test.describe('portal emote plotting (mocked)', () => {
     const bttvCdn = page.locator('img[src*="frankerfacez.com/emote/bt1"], img[src*="cdn.frankerfacez.com"]')
     expect((await bttvCdn.count()) + (await proxyOnly.count())).toBeGreaterThan(0)
 
-    // Chart focus does not add overlays. Choose six session leaders explicitly
-    // and assert that each selected emote produces a real trace.
-    await setChartViewEmotes(page)
-    await page.getByRole('button', { name: /^Emote overlays, 1 active/ }).click()
-    for (const name of ['OMEGALUL', 'Clap', 'Clap', 'NODDERS', 'Sadge']) {
-      await page.getByRole('button', { name: `Plot ${name} on chart`, exact: true }).first().click()
-    }
-    await expect(page.getByRole('button', { name: /^Emote overlays, 6 active/ })).toBeVisible()
+    // The chart starts with the session leader plotted. Add five more from
+    // "Emotes on chart" and assert that each selected emote produces a real trace.
+    await assertEmotePlotLines(page, 1)
+    await plotSessionEmotes(page, SIX_SESSION_EMOTE_KEYS)
     await assertEmotePlotLines(page, 6)
 
     // Stale prune via reload with shrunk catalog.
@@ -93,7 +90,6 @@ test.describe('portal emote plotting (mocked)', () => {
     harness.setMinutesPayload(buildMinutes({ count: 10, withEmotes: true }))
     await page.reload({ waitUntil: 'domcontentloaded' })
     await openEmotesRail(page)
-    await setChartViewEmotes(page)
     await expect(page.getByText('KEKW').first()).toBeVisible()
     await expect(page.getByRole('tabpanel', { name: 'Emotes' })).not.toContainText('RareGhost')
     await assertEmotePlotLines(page, 1)
