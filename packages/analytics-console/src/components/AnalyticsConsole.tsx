@@ -517,11 +517,6 @@ export function AnalyticsConsole({
     layer2LoadMode === 'eager'
     || stagedIdleStreamId === targetQueryStreamId
     || syncEngagedStreamId === targetQueryStreamId
-  const stagedLayer2Enabled =
-    layer2LoadMode === 'eager'
-    || stagedIdleStreamId === targetQueryStreamId
-    || heatmapEngagedStreamId === targetQueryStreamId
-    || syncEngagedStreamId === targetQueryStreamId
 
   useEffect(() => {
     if (
@@ -549,8 +544,8 @@ export function AnalyticsConsole({
   const gamesQuery = useQuery({
     queryKey: ['analytics-console-games', targetQueryStreamId],
     queryFn: () => getStreamGameSegments(targetQueryStreamId),
-    // Game segments are optional enrichment; do not compete with first paint.
-    enabled: Boolean(showGameSegments && targetQueryStreamId && stagedLayer2Enabled),
+    // Not staged: the moment reel's pictures (the page's largest paint) wait on these segments' box art.
+    enabled: Boolean(showGameSegments && targetQueryStreamId),
     staleTime: 60_000,
     refetchInterval: sessionIsLive ? 75_000 : false,
   })
@@ -1268,6 +1263,9 @@ export function AnalyticsConsole({
   }
 
   const sessionContentReady = !sessionResolving && !effectiveSessionNotFound && !(detailQuery.isLoading && !detail)
+  // The first session read is out: the chart skeleton stands in, and the meta line keeps its slot hidden
+  // (its items arrive with the read and would slide across it).
+  const sessionReadPending = sessionResolving || (!effectiveSessionNotFound && detailQuery.isLoading && !detail)
 
   const headerTitle = channelNotRecorded
     ? channelLogin
@@ -1321,7 +1319,7 @@ export function AnalyticsConsole({
               {headerTitle}
             </h1>
             {channelNotRecorded ? null : (
-              <div className="ssp-meta-w" data-session-meta>
+              <div className="ssp-meta-w" data-session-meta data-session-meta-pending={sessionReadPending || undefined}>
                 <div className="ssp-meta">
                   {stream?.displayName ? <span className="mi">{stream.displayName}</span> : null}
                   {stream?.category ? <span className="mi">{stream.category}</span> : null}
@@ -1459,7 +1457,7 @@ export function AnalyticsConsole({
             data-analytics-center-column
             style={columnFill.padPx ? ({ '--ssp-cpad': `${columnFill.padPx}px` } as CSSProperties) : undefined}
           >
-            {sessionResolving || (!effectiveSessionNotFound && detailQuery.isLoading && !detail) ? (
+            {sessionReadPending ? (
               <AnalyticsConsoleDataSkeleton />
             ) : null}
             {effectiveSessionNotFound ? (
@@ -1704,7 +1702,9 @@ export function AnalyticsConsole({
                 className={`ssp-tp min-h-0 flex-1 flex-col p-0 ${rightPanelTab === 'moments' ? 'flex' : 'hidden'}`}
               >
                 {rightPanelTab === 'moments' ? (
-                  recapMomentsAvailable && recapForStream ? (
+                  // While the recap answer is out, no stand-in list: the strip replaces it moments later, and
+                  // scoring it cost ~100 ms of the session's first render on a phone (PR #122 bench).
+                  recapQuery.isLoading ? null : recapMomentsAvailable && recapForStream ? (
                     <SessionRecapMomentsStrip
                       recap={recapForStream}
                       streamStartedAt={stream?.startedAt}

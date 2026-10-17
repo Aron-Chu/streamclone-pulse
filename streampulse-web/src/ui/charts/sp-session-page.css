@@ -41,6 +41,11 @@
   overflow: clip;
   overflow-clip-margin: 6px;
 }
+/* While the first session read is out the line keeps its slot but stays hidden: its items arrive with
+   the read and would slide "Data" and "Updated" across the line (CLS). */
+.analytics-console .ssp-meta-w[data-session-meta-pending] {
+  visibility: hidden;
+}
 .analytics-console .ssp-meta {
   display: flex;
   flex-wrap: wrap;

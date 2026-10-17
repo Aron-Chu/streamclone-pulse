@@ -222,7 +222,7 @@ describe('AnalyticsConsole data skeleton', () => {
     })
     const status = screen.getByRole('status', { name: /loading analytics chart/i })
     expect(status.getAttribute('data-console-skeleton')).toBe('chart')
-    expect(status.className).toMatch(/min-h-96/)
+    expect(status.className).toMatch(/min-h-\[45rem\]/)
     expect(screen.getByRole('heading', { level: 1 })).not.toBeNull()
     expect(screen.queryByRole('alert')).toBeNull()
   })

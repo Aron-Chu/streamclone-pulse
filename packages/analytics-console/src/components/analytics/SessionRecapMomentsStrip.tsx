@@ -278,8 +278,13 @@ export function SessionRecapMomentsStrip({
   // ---- shading: each backdrop row's gradient follows its own text (moment-rows.js shadeRows) ----
   const listRef = useRef<HTMLDivElement | null>(null)
   const hasMoments = moments.length > 0
+  // Shaded in the frame before its paint, not in React's commit, where reading the rows' boxes forced the
+  // page's layout into that task (mobile TBT, PR #122 bench).
   useLayoutEffect(() => {
-    shadeSessionMomentRows(listRef.current)
+    const list = listRef.current
+    if (!list) return
+    const frame = requestAnimationFrame(() => shadeSessionMomentRows(list))
+    return () => cancelAnimationFrame(frame)
   })
   useEffect(() => {
     const list = listRef.current
@@ -290,7 +295,9 @@ export function SessionRecapMomentsStrip({
     observer?.observe(list)
     let live = true
     const fonts = typeof document !== 'undefined' ? document.fonts : undefined
-    fonts?.ready?.then(() => {
+    // Only while a face is still loading: reading `fonts.ready` forces the page's style and layout
+    // into this commit (mobile TBT, PR #122 bench), and the frame's shading already ran.
+    if (fonts?.status === 'loading') fonts.ready.then(() => {
       if (live) shadeSessionMomentRows(list)
     }).catch(() => {})
     return () => {

@@ -232,7 +232,9 @@ export function useSessionColumnFill(
       ? window.matchMedia(`(min-width: ${COLUMN_FILL_MIN_WIDTH}px)`)
       : null
     mq?.addEventListener?.('change', schedule)
-    void document.fonts?.ready?.then(schedule)
+    // Only while a face is still loading: reading `fonts.ready` forces the page's style and layout
+    // into this commit (mobile TBT, PR #122 bench), and a settled set needs no second measure.
+    if (document.fonts?.status === 'loading') void document.fonts.ready.then(schedule)
     schedule()
     return () => {
       observer.disconnect()
@@ -262,20 +264,30 @@ export function useEdgeFade<T extends HTMLElement>(fade = 24): (el: T | null) =>
     detach.current?.()
     detach.current = null
     if (!el) return
+    let frame = 0
     const update = () => {
+      if (frame) cancelAnimationFrame(frame)
+      frame = 0
       const top = el.scrollTop
       const rest = el.scrollHeight - el.clientHeight - top
       el.style.setProperty('--ft', `${Math.round(clamp(top, 0, fade))}px`)
       el.style.setProperty('--fb', `${Math.round(clamp(rest, 0, fade))}px`)
     }
-    update()
+    // The first read and row changes wait for the next frame: reading the scroll height inside React's
+    // commit forces the page's layout into that task (mobile TBT, PR #122 bench).
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(update)
+    }
+    schedule()
     el.addEventListener('scroll', update, { passive: true })
     const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update)
     resize?.observe(el)
     // Rows added or removed change the scroll height without resizing the box.
-    const mutations = typeof MutationObserver === 'undefined' ? null : new MutationObserver(update)
+    const mutations = typeof MutationObserver === 'undefined' ? null : new MutationObserver(schedule)
     mutations?.observe(el, { childList: true, subtree: true })
     detach.current = () => {
+      if (frame) cancelAnimationFrame(frame)
+      frame = 0
       el.removeEventListener('scroll', update)
       resize?.disconnect()
       mutations?.disconnect()

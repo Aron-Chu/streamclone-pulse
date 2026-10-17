@@ -652,7 +652,10 @@ function AnalyticsChart({
     scrollThroughGuard.current = { card, off: () => card.removeEventListener('wheel', onWheel, { capture: true }) }
   })
   useEffect(() => () => scrollThroughGuard.current?.off(), [])
-  const [stackWidth, setStackWidth] = useState(0)
+  // null until the stack is measured (in this commit, before the paint): the plot then draws once at its
+  // width, not first at a stand-in 1000 px and again (two full chart renders in the session's first paint;
+  // mobile TBT and LCP, PR #122 bench).
+  const [stackWidth, setStackWidth] = useState<number | null>(null)
   useLayoutEffect(() => {
     const element = chartStackRef.current
     if (!element) return
@@ -1233,7 +1236,7 @@ function AnalyticsChart({
             onKeyDownCapture={onStackKeyDownCapture}
             onPointerDown={onStackPointerDown}
           >
-            {model ? (
+            {model && stackWidth != null ? (
               <SessionSpChart
                 ref={chartRef}
                 model={model}

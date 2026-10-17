@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { AnalyticsStream } from '../../apiTypes.ts'
 import {
@@ -87,21 +87,27 @@ export function StreamSidebar({
   // The current stream's row starts in view when the list scrolls (from 1280 px
   // every row shows in a capped box): centred when it was out of view, clear of
   // the edge fades. The window itself never scrolls for it (MOCK slReveal).
-  useEffect(() => {
+  // Measured in the frame before its paint, not in React's commit, where the
+  // read forced the page's layout into that task (mobile TBT, PR #122 bench).
+  useLayoutEffect(() => {
     const sc = scrollerRef.current
-    if (!sc || !hasActiveRow || sc.scrollHeight <= sc.clientHeight + 1) return
-    const row = sc.querySelector<HTMLElement>('[aria-current="page"]')
-    if (!row || row.offsetParent === null) return
-    const sb = sc.getBoundingClientRect()
-    const rb = row.getBoundingClientRect()
-    let top = Math.max(sb.top, 0)
-    let bottom = Math.min(sb.bottom, window.innerHeight)
-    if (bottom - top < rb.height + 2 * EDGE_FADE_PX) {
-      top = sb.top
-      bottom = sb.bottom
-    }
-    if (rb.top >= top + (sc.scrollTop > 0 ? EDGE_FADE_PX : 0) && rb.bottom <= bottom - EDGE_FADE_PX) return
-    sc.scrollTop += rb.top - top - Math.max(0, (bottom - top - rb.height) / 2)
+    if (!sc || !hasActiveRow) return
+    const frame = requestAnimationFrame(() => {
+      if (sc.scrollHeight <= sc.clientHeight + 1) return
+      const row = sc.querySelector<HTMLElement>('[aria-current="page"]')
+      if (!row || row.offsetParent === null) return
+      const sb = sc.getBoundingClientRect()
+      const rb = row.getBoundingClientRect()
+      let top = Math.max(sb.top, 0)
+      let bottom = Math.min(sb.bottom, window.innerHeight)
+      if (bottom - top < rb.height + 2 * EDGE_FADE_PX) {
+        top = sb.top
+        bottom = sb.bottom
+      }
+      if (rb.top >= top + (sc.scrollTop > 0 ? EDGE_FADE_PX : 0) && rb.bottom <= bottom - EDGE_FADE_PX) return
+      sc.scrollTop += rb.top - top - Math.max(0, (bottom - top - rb.height) / 2)
+    })
+    return () => cancelAnimationFrame(frame)
   }, [hasActiveRow, activeID, visibleStreams.length])
 
   return (
