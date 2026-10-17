@@ -1,3 +1,4 @@
+import { panelComponentCss } from './panelComponentStyles.ts'
 import { supporterPaintCss } from './supporterPaintStyles.ts'
 
 /** Streamclone obsidian theme tokens (matches web app + Figma handoff). */
@@ -1750,6 +1751,7 @@ export const shadowStyles = `
   .pulse-banner-customize button:disabled { opacity: .5; cursor: default; }
   @keyframes pulse-banner-rain { from { translate: 0 -50px; rotate: -12deg; } to { translate: -12px calc(100cqh + 50px); rotate: 18deg; } }
   @media (prefers-reduced-motion: reduce) { .pulse-banner-art[data-mode="rain"] img { animation: none; top: calc(8% + var(--i) * 15%) !important; } .pulse-banner-customize button { transition: none; } }
+  ${/* @__PURE__ */ panelComponentCss()}
 `
 
 let stylesInjected = false
