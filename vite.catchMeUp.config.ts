@@ -1,0 +1,39 @@
+import { defineConfig } from 'vite'
+import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { extensionResolve, sharedOutput } from './vite.shared.ts'
+
+const root = fileURLToPath(new URL('.', import.meta.url))
+
+/**
+ * content/catch-me-up.js: the top of a stream recap (its story, its #1 moment
+ * and the next two), built on its own so it never counts against the Twitch
+ * content script's size budget. The worker injects it into a Twitch tab with
+ * chrome.scripting when Pulse shows a recap there
+ * (src/background/catchMeUpScript.ts). Framework-free and self-contained:
+ * one IIFE, no shared chunks.
+ */
+export default defineConfig({
+  root,
+  resolve: extensionResolve(),
+  build: {
+    minify: 'terser',
+    terserOptions: {
+      compress: { passes: 2, toplevel: true },
+      mangle: { toplevel: true },
+    },
+    outDir: 'dist',
+    emptyOutDir: false,
+    copyPublicDir: false,
+    rollupOptions: {
+      input: resolve(root, 'src/content/catchMeUp.ts'),
+      output: {
+        ...sharedOutput,
+        entryFileNames: 'content/catch-me-up.js',
+        format: 'iife',
+        inlineDynamicImports: true,
+        name: 'StreamPulseCatchMeUp',
+      },
+    },
+  },
+})

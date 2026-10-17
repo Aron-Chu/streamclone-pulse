@@ -1,5 +1,7 @@
 import type { CSSProperties } from 'react'
 import type { ExtensionEmote } from '../shared/messages.ts'
+import type { MomentPictureView } from '../shared/momentFramesContract.ts'
+import type { MomentGame } from './momentPicture.ts'
 import { formatCount } from './mostReacted.ts'
 import { MomentSelectionCard } from './MomentSelectionCard.tsx'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
@@ -23,6 +25,9 @@ export interface MomentInspectorCardProps {
   onJump?: () => void
   onAnalytics?: () => void
   onClose?: () => void
+  /** Selected cards only: what the player showed then, and the game on stream. */
+  picture?: MomentPictureView
+  game?: MomentGame
 }
 
 function viewerState(viewerCount: number | undefined, viewerSampled: boolean) {
@@ -63,6 +68,8 @@ export function MomentInspectorCard({
   onJump,
   onAnalytics,
   onClose,
+  picture,
+  game,
 }: MomentInspectorCardProps) {
   const viewer = viewerState(viewerCount, viewerSampled)
   const summary = activityLine(chatCount, emoteCount, viewerCount, viewerSampled)
@@ -86,6 +93,8 @@ export function MomentInspectorCard({
         onClose={onClose}
         contentKey={timeLabel}
         ariaLabel={`${kind === 'minute' ? 'Selected minute' : 'Selected moment'} at ${timeLabel}`}
+        picture={picture}
+        game={game}
       />
     )
   }

@@ -122,7 +122,7 @@ test('tester purchase journey needs no codes, refreshes or reloads, and revocati
   approved = true
   await portal.bringToFront()
   await expect(settings.locator('[data-journey-state="offer"]')).toBeVisible({ timeout: 20_000 })
-  await expect(settings.getByText('··1a1b2c', { exact: true })).toBeVisible()
+  await expect(settings.getByText('Connected to this extension · ··1a1b2c')).toBeVisible()
   await settings.bringToFront()
   const checkout = context.waitForEvent('page')
   await settings.locator('a[data-supporter-action="billing"]').click()

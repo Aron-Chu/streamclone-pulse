@@ -44,7 +44,15 @@ test('VOD bookmark reaches the account library and survives reload without dupli
   await openTwitchVod(vod)
   await waitForPulseRoot(vod)
   const root = vod.locator('#streamclone-pulse-root')
-  const select = () => root.getByRole('button', { name: /^Select minute bucket/ }).first().click()
+  // This recap's one moment is Catch me up's #1, which only jumps, so its
+  // minute (00:02) is picked on the chart, the same way after the reload: End
+  // previews the last minute (00:03), ArrowLeft the one before, Enter selects.
+  const select = async () => {
+    await root.getByRole('application', { name: /^Chart plot/ }).focus()
+    await vod.keyboard.press('End')
+    await vod.keyboard.press('ArrowLeft')
+    await vod.keyboard.press('Enter')
+  }
   await select()
   const bookmark = root.locator('[data-moment-action="bookmark"]')
   await bookmark.click()

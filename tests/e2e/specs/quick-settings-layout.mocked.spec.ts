@@ -29,11 +29,18 @@ test('quick settings opens on the channel, then Supporter and live controls, wit
     expect(supporterBox!.y).toBeLessThan(autoUpdateBox!.y)
     expect(allSettingsBox!.y).toBeGreaterThan(connectionBox!.y)
     await expect(panel.locator('[data-settings-host-cta="pulse"]')).toHaveCount(0)
-    await expect(panel.locator('[data-appearance-preview="true"]')).toBeVisible()
+    // Community, Your look and Moments sit between the Supporter card and the live controls.
+    const community = panel.locator('.pulse-quick-community')
+    const look = panel.locator('.pulse-quick-look')
+    const pictures = panel.getByRole('checkbox', { name: 'Moment pictures' })
+    for (const [above, below] of [[supporter, community], [community, look], [look, pictures], [pictures, autoUpdate]] as const) {
+      expect((await above.boundingBox())!.y).toBeLessThan((await below.boundingBox())!.y)
+    }
+    await expect(community.getByRole('button')).toHaveText(['Join the Discord ↗', 'Send feedback ↗'])
     await expect(panel.locator('.pulse-banner-customize')).toHaveCount(0)
-    await expect(panel.locator('[data-banner-editor-cta="true"]')).toBeVisible()
+    await expect(panel.locator('[data-banner-editor-cta="true"]')).toHaveCount(0)
     expect(await panel.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1)
-    for (const name of ['Back to Pulse', 'Reset appearance and layout to defaults']) {
+    for (const name of ['Back to Pulse', 'Reset appearance and layout']) {
       const action = panel.getByRole('button', { name, exact: false })
       expect((await action.boundingBox())!.height).toBeGreaterThanOrEqual(32)
     }
@@ -51,16 +58,14 @@ test('quick settings opens on the channel, then Supporter and live controls, wit
   expect(allPage.url()).toContain('#pulse')
   await allPage.close()
 
+  // Your look's link opens the studio in all settings, its preview in view.
   const opened = extension.context.waitForEvent('page')
-  await panel.locator('[data-banner-editor-cta="true"]').click()
+  await panel.getByRole('button', { name: 'Wave, sheen and crest in all settings ↗' }).click()
   const settings = await opened
   await settings.waitForLoadState('domcontentloaded')
-  expect(settings.url()).toContain('#pulse-background')
-  await expect(settings.locator('.pulse-banner-customize')).toBeVisible()
-  // Background & motion opens by itself and scrolls into view.
-  await expect(settings.locator('.pulse-banner-customize')).toHaveJSProperty('open', true)
-  await expect(settings.locator('.pulse-banner-customize summary')).toBeInViewport()
-  await expect(settings.getByRole('group', { name: '7TV backdrop' }).getByRole('button')).toHaveCount(3)
+  expect(settings.url()).toContain('#supporter')
+  await expect(settings.locator('[data-supporter-preview]')).toBeVisible()
+  await expect(settings.getByRole('group', { name: 'Emote rain' }).getByRole('button')).toHaveCount(3)
 })
 
 test('density chosen in quick settings reaches the open panel without a reload', async ({ extension, prepare }) => {

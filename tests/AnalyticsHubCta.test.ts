@@ -23,7 +23,7 @@ describe('analytics hub CTA theme', () => {
     )
   })
 
-  it('keeps the original single-button label and accent-driven surface', () => {
+  it('keeps the original button label and accent-driven surface, with Discord beside it', () => {
     const html = renderToStaticMarkup(
       createElement(AnalyticsHubCta, { backendUrl: 'https://api.streampulse.stream' }),
     )
@@ -32,6 +32,10 @@ describe('analytics hub CTA theme', () => {
     expect(html).toContain('title="Browse full stream history, tracked channels, and deeper analytics"')
     expect(html).not.toContain('<small')
     expect(html).not.toContain('pulse-action-chip')
+    // Discord sits beside the Hub so it shows every time Pulse opens; the worker opens it, so no page URL ships here.
+    expect(html).toMatch(/<div class="pulse-hub-row"><button[^>]*class="pulse-analytics-hub-cta"[\s\S]*?<\/button><button type="button" class="pulse-hub-discord" data-community-link="discord">Discord<\/button><\/div>/)
+    expect(html).not.toMatch(/https?:\/\//)
+    expect(shadowStyles).toContain('.pulse-hub-discord')
     expect(shadowStyles).toContain('background: linear-gradient(')
     expect(shadowStyles).toContain('rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.22)')
     expect(shadowStyles).toContain('var(--pulse-accent-ink, #ddd6fe)')
