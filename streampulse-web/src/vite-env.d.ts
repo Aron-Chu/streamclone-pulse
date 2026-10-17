@@ -14,6 +14,8 @@ interface ImportMetaEnv {
   readonly VITE_PUBLIC_DISCORD_INVITE_URL?: string
   /** Launch switch: `on` shows the optional "Seen in chat" Supporter copy (lib/supporterChatBadgesFlag.ts). */
   readonly VITE_SUPPORTER_CHAT_BADGES?: string
+  /** Launch switch: `on` serves /analytics/moments from /v1/public/moments, checked (lib/momentsFeed.ts). */
+  readonly VITE_PUBLIC_MOMENTS_FEED?: string
   readonly DEV: boolean
   readonly PROD: boolean
   readonly MODE: string

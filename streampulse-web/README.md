@@ -43,6 +43,14 @@ Set them for the whole `pages:deploy:prod` run (the prerender step reads them to
 write an invite literal in source — `tests/noDiscordInviteLiterals.test.ts` fails on one. Details:
 [`docs/pulse-extension/contracts/activation.md`](../docs/pulse-extension/contracts/activation.md#activation-inputs).
 
+## Checked Moments page (build flag)
+
+`VITE_PUBLIC_MOMENTS_FEED=on` (or `1`) at build time swaps `/analytics/moments` for the checked
+Moments page, which reads `GET /v1/public/moments` (served behind the backend's
+`PULSE_MOMENTS_FEED_ENABLED`). Unset, the default, keeps the current page and never reads the feed.
+When the feed answers with an error (a 404 while the backend flag is off), the current page shows
+instead. `tests/e2e/moments-checked.portal-mocked.spec.ts` runs only against a flag-on build.
+
 ## Troubleshooting local dev
 
 | Symptom | Fix |
