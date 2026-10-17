@@ -10,7 +10,7 @@ import type { ReactNode } from 'react'
  * by `variant`, which selects the existing compact (Twitch rail) or detailed
  * (full page) class families. No new CSS is introduced.
  */
-export type ChoicePickerKind = 'accent' | 'density' | 'placement'
+export type ChoicePickerKind = 'accent' | 'density' | 'placement' | 'look'
 export type ChoicePickerVariant = 'compact' | 'detailed'
 
 export interface ChoiceOption<T extends string> {

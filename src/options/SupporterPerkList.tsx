@@ -3,7 +3,7 @@ import { details, names, onlyYou } from '../shared/supporter-perks.json'
 /**
  * Every Supporter perk the extension gives, from the one list that the
  * website's /supporter page and Terms also render (src/shared/supporter-perks.json).
- * The settings banner chips, quick settings and "Who sees what" name the same
+ * The settings banner chips, quick settings and the Your look preview name the same
  * perks in the same order; tests pin all of them to that file.
  */
 export function SupporterPerkList() {

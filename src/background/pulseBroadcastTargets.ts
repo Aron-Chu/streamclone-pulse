@@ -63,6 +63,10 @@ export const MESSAGE_SENDER_SCOPE: Record<BackgroundRequest['type'], MessageSend
   SUPPORTER_FINISH_INTENT: 'extension-page',
   // A Twitch tab's quick settings asks for the card script in its own frame only.
   SUPPORTER_CARD_SCRIPT: 'twitch-any',
+  // A Twitch tab showing Pulse asks for the moment-pictures script in its own frame only.
+  MOMENT_FRAMES_SCRIPT: 'twitch-any',
+  // A Twitch tab's stream recap asks for the Catch me up script in its own frame only.
+  CATCH_ME_UP_SCRIPT: 'twitch-any',
   ENROLL_DEVICE: 'extension-page',
   GET_DEVICE_AUTH_STATUS: 'extension-page',
   ROTATE_DEVICE: 'extension-page',

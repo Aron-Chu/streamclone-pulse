@@ -5,3 +5,6 @@
  * the sidebar). Its slot holds any taller height it shows until it closes.
  */
 export const MOMENT_CARD_HEIGHT = 195
+
+/** The card's game line (16 px box art and its 4 px margin), reserved when the stream names its games. */
+export const MOMENT_CARD_GAME_LINE_HEIGHT = 20

@@ -9,6 +9,8 @@ export type MessageType =
   | 'SUPPORTER_APPEARANCE'
   | 'SUPPORTER_FINISH_INTENT'
   | 'SUPPORTER_CARD_SCRIPT'
+  | 'MOMENT_FRAMES_SCRIPT'
+  | 'CATCH_ME_UP_SCRIPT'
   | 'SUPPORTER_BILLING'
   | 'SUPPORTER_RESTORE'
   | 'SUPPORTER_DEVICES'
@@ -179,12 +181,12 @@ export interface OpenSettingsHostMessage {
 }
 
 /**
- * Open a fixed community page (the website's /discord) from a Twitch surface.
- * The worker owns the URL, so the content script carries no page links.
+ * Open a fixed community page (the website's /discord or /feedback) from a
+ * Twitch surface. The worker owns the URL, so the content script carries no page links.
  */
 export interface OpenCommunityLinkMessage {
   type: 'OPEN_COMMUNITY_LINK'
-  link: 'discord'
+  link: 'discord' | 'feedback'
 }
 
 export interface EnrollDeviceMessage {
@@ -268,6 +270,9 @@ export type BackgroundRequest =
   | { type: 'SUPPORTER_FINISH_INTENT'; finish?: 'glass' | 'etched' | 'halo' | null }
   /** Injects the quick-settings Supporter card's stage script into the sender's own Twitch tab. */
   | { type: 'SUPPORTER_CARD_SCRIPT' }
+  | { type: 'MOMENT_FRAMES_SCRIPT' }
+  /** Injects the stream recap's Catch me up script into the sender's own Twitch tab. */
+  | { type: 'CATCH_ME_UP_SCRIPT' }
   | TrackMessage
   | UntrackMessage
   | GetPulseMessage
@@ -775,6 +780,8 @@ export type BackgroundResponse =
   | { type: 'SUPPORTER_APPEARANCE'; finish: 'glass' | 'etched' | 'halo' | null; validForMs: number; tenure?: SupporterTenure; paint?: SupporterPaintStyle; perks?: true; unverified?: true }
   | { type: 'SUPPORTER_FINISH_INTENT'; finish: 'glass' | 'etched' | 'halo' | null }
   | { type: 'SUPPORTER_CARD_SCRIPT'; ok: boolean }
+  | { type: 'MOMENT_FRAMES_SCRIPT'; ok: boolean }
+  | { type: 'CATCH_ME_UP_SCRIPT'; ok: boolean }
   | { type: 'DEVICE_AUTH'; status: DeviceAuthStatus }
   | { type: 'PULSE_DEBUG_LOG'; entries: import('./pulseDebug.ts').PulseDebugEntry[] }
   /** `device`: saved without an account; these rows never leave this browser. */

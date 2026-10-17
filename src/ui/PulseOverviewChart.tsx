@@ -2248,7 +2248,7 @@ function PulseOverviewChartImpl({
                     data-spike-symbol="diamond"
                     d={`M ${marker.x} ${marker.y - 5.5} l 5.5 5.5 -5.5 5.5 -5.5 -5.5 Z`}
                     fill="#fbbf24"
-                    stroke="#111117"
+                    stroke="#0b0b0f"
                     strokeWidth="2"
                     opacity="1"
                     pointerEvents="none"

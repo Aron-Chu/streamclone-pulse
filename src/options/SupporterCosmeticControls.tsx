@@ -1,32 +1,39 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { supporterPerksAllowed, type SupporterEntitlement, type SupporterCosmetics } from '../shared/supporterAccount.ts'
-import { SAMPLE_KIT } from '../supporter/kit.ts'
+import { finishVars, SAMPLE_KIT } from '../supporter/kit.ts'
 import { PulseSectionCard } from '../ui/PulseSectionCard.tsx'
 import { SUPPORTER_FINISH_OPTIONS } from '../ui/supporterFinish.ts'
 import { usePulseBanner } from '../ui/PulseBanner.tsx'
 import type { PulseBannerPreference } from '../shared/storage.ts'
+import type { SupporterTenure } from '../shared/supporterPaint.ts'
+import { SupporterLookPreview } from './SupporterLookPreview.tsx'
 import { SupporterPaintStyleFields, useSupporterPaintStyle } from './SupporterPaintStyleFields.tsx'
 
+/** The sample look's emote rain, which anyone may try in the preview. */
+const SAMPLE_RAIN = { mode: 'rain', intensity: 35, title: '' } as const
+
 /**
- * "Your look", direction B of the 2026-10-07 Account & Supporter redesign:
- * paint, wave, sheen and emote rain as rows of tiles. The finish paints the
+ * The "Your look" studio: a live preview pinned above the paint, wave, sheen
+ * and emote rain choices, so every click shows at once. The paint colours the
  * panel title, wave and sheen choose how that paint moves, the tenure crest
- * sits beside it, and emote rain falls behind the panel. The card and "Who sees
- * what" above preview the chosen paint (`onDraft`), drawn with the overlay's own
- * paint and crest styles, so nothing promises a look the extension does not
- * render.
+ * sits beside it, and emote rain falls behind the panel. The preview draws
+ * with the overlay's own paint and crest styles, so nothing promises a look
+ * the extension does not render.
  *
- * A finish is checked by the server and saved with Equip; wave, sheen and emote
- * rain save to this browser profile at once. Everyone else may try any paint
- * and choose one to apply when Supporter starts.
+ * A paint is checked by the server and saved with Equip; wave, sheen and emote
+ * rain save to this browser profile at once. Everyone else may try any look
+ * (emote rain only in the preview) and choose a paint to apply when Supporter
+ * starts.
  */
-export function SupporterCosmeticControls({ entitlement, onSaved, onDraft }: {
+export function SupporterCosmeticControls({ entitlement, tenure, onSaved }: {
   entitlement: SupporterEntitlement | null
+  /** The crest the preview wears: a Supporter's own, or the sample's. */
+  tenure: SupporterTenure
   onSaved?: (cosmetics: SupporterCosmetics) => void
-  /** The paint being tried or worn, for the previews; undefined while membership is unknown. */
-  onDraft?: (finish: SupporterCosmetics['finish'] | null | undefined) => void
 }) {
   const banner = usePulseBanner()
+  // Emote rain tried without the perk: shown in the preview only, never saved.
+  const [rainTry, setRainTry] = useState<PulseBannerPreference['mode']>(SAMPLE_RAIN.mode)
   const paint = useSupporterPaintStyle()
   // Nothing is presumed while the first answer is pending: a finish shown as
   // chosen then is one the person chose.
@@ -89,7 +96,6 @@ export function SupporterCosmeticControls({ entitlement, onSaved, onDraft }: {
     if (!(firstAnswer && chosenWhileChecking.current)) setFinish(cosmetics ? activeFinish : SAMPLE_KIT.finish)
     setNotice('')
   }, [appliedKey])
-  useEffect(() => { onDraft?.(unknown ? undefined : finish) }, [unknown, finish, onDraft])
   // A save in flight belongs to this view only.
   useEffect(() => () => { generation.current++ }, [])
   // Read the saved choice only while it could still matter, and only once.
@@ -160,7 +166,7 @@ export function SupporterCosmeticControls({ entitlement, onSaved, onDraft }: {
         return
       }
       setAppliedFinish(finish)
-      setNotice(finish ? `${selectedLabel} accent equipped.` : 'Default accent restored.')
+      setNotice(finish ? `${selectedLabel} paint equipped.` : 'Default paint restored.')
       savedCosmetics.current = cosmetics
       onSaved?.(cosmetics)
     } catch {
@@ -175,18 +181,28 @@ export function SupporterCosmeticControls({ entitlement, onSaved, onDraft }: {
       }
     }
   }
+  // The preview wears a Supporter's own look, the sample, or a paint being tried; unlabelled while membership is unknown.
+  const shown = unknown ? undefined : finish !== (allowed ? appliedFinish : SAMPLE_KIT.finish) ? 'trying' : allowed ? 'own' : 'sample'
   return <PulseSectionCard
     title="Your look"
     headingLevel={3}
-    meta={unknown ? undefined : allowed ? 'Wave, sheen and rain save right away' : 'Try paint, wave and sheen. It applies when you support.'}
+    className="pulse-supporter-studio"
+    meta={unknown ? undefined : allowed ? 'Wave, sheen and Emote rain save right away' : 'Try any look. Paint, wave and sheen apply when you support.'}
   >
+    <SupporterLookPreview
+      finish={finish}
+      paint={paint.style}
+      tenure={tenure}
+      rain={allowed || unknown ? banner.value : { ...SAMPLE_RAIN, mode: rainTry }}
+      shown={shown}
+    />
     <div className="pulse-supporter-look" data-preview-finish={finish ?? 'default'}>
       <fieldset className="pulse-supporter-look-row" disabled={busy}>
         <legend>Paint</legend>
         <div className="pulse-supporter-tiles">
           <label className="pulse-supporter-tile" title="Your free theme">
             <input type="radio" name="supporter-finish" value="finish-default" aria-label="Default" checked={finish === null} onChange={() => selectFinish(null)} />
-            <span className="pulse-supporter-paint-sample" style={{ color: 'var(--pulse-accent-soft, #c4b5fd)' }} aria-hidden="true">Aa</span>
+            <i className="pulse-supporter-swatch" aria-hidden="true" />
             <small>Default</small>
             {chip(null)}
           </label>
@@ -199,22 +215,22 @@ export function SupporterCosmeticControls({ entitlement, onSaved, onDraft }: {
               checked={finish === option.id}
               onChange={() => selectFinish(option.id)}
             />
-            <span className="pulse-paint pulse-supporter-paint-sample" data-finish={option.id} data-wave="smooth" data-sheen="none" data-text="Aa" aria-hidden="true">Aa</span>
+            <i className="pulse-supporter-swatch" style={finishVars(option.id) as CSSProperties} aria-hidden="true" />
             <small>{option.label}</small>
             {chip(option.id)}
           </label>)}
         </div>
       </fieldset>
-      <SupporterPaintStyleFields finish={finish} style={paint.style} onChoose={next => void paint.choose(next)} />
-      <EmoteRainField banner={banner} perks={unknown ? undefined : allowed} />
+      <SupporterPaintStyleFields style={paint.style} onChoose={next => void paint.choose(next)} />
+      <EmoteRainField banner={banner} perks={unknown ? undefined : allowed} tried={rainTry} onTry={setRainTry} />
     </div>
-    <p className="pulse-supporter-detail" aria-live="polite">{paint.status || 'Wave and sheen save to this browser profile right away and show whenever your finish is equipped.'}</p>
+    <p className="pulse-supporter-detail" aria-live="polite">{paint.status || 'Wave and sheen save to this browser profile right away and show whenever your paint is equipped.'}</p>
     <div className="pulse-account-link-actions">
       {unknown ? (
         <button type="button" disabled>Checking Supporter status…</button>
       ) : allowed ? (
         <button type="button" disabled={busy || unchanged} aria-busy={busy} onClick={() => void save()}>
-          {busy ? 'Saving...' : unchanged ? (finish ? 'Equipped' : 'Default active') : finish ? 'Equip accent' : 'Use default'}
+          {busy ? 'Saving...' : unchanged ? (finish ? 'Equipped' : 'Default active') : finish ? 'Equip paint' : 'Use default'}
         </button>
       ) : finish && finish !== intent ? (
         <button type="button" disabled={intentBusy} aria-busy={intentBusy} onClick={() => void chooseForLater(finish)}>
@@ -228,27 +244,31 @@ export function SupporterCosmeticControls({ entitlement, onSaved, onDraft }: {
     {!allowed && !unknown ? <p className="pulse-supporter-detail" data-supporter-finish-intent={intent ?? 'none'}>
       {intentLabel
         ? `${intentLabel} is applied automatically when your Supporter membership is confirmed. Until then, this is only a preview.`
-        : 'Preview is free. Equipping an accent requires an active linked Supporter membership; you can choose one now to apply automatically once it starts.'}
+        : 'Preview is free. Choose a paint now and it applies when your Supporter membership starts.'}
     </p> : null}
     <p className="pulse-supporter-detail pulse-supporter-save-status" role="status">{notice}</p>
   </PulseSectionCard>
 }
 
 /**
- * Emote rain behind your Pulse panel: off, still or falling. A Supporter perk
- * on the same rule as the backdrop editor: without one it is locked and the
- * saved choice stays as it was; while membership is unknown it waits, neutral.
- * A Supporter's choice saves at once.
+ * Emote rain behind your Pulse panel: off, still or falling. A Supporter's
+ * choice saves at once. Without the perk it is tried in the preview only
+ * (`tried`) and the saved choice stays as it was; while membership is unknown
+ * it waits, neutral.
  *
  * A save never disables the row: the pressed button would lose keyboard focus
  * to the page. Presses while one saves are ignored instead, and one live region,
  * always present, is cleared when a save starts and then states its result.
  */
-function EmoteRainField({ banner, perks }: { banner: ReturnType<typeof usePulseBanner>; perks: boolean | undefined }) {
+function EmoteRainField({ banner, perks, tried, onTry }: {
+  banner: ReturnType<typeof usePulseBanner>
+  perks: boolean | undefined
+  tried: PulseBannerPreference['mode']
+  onTry: (mode: PulseBannerPreference['mode']) => void
+}) {
   const [message, setMessage] = useState('')
   const [saving, setSaving] = useState(false)
-  // Locked, the row shows the saved choice: Rain is never pressed while rain is off.
-  const shown = banner.value.mode
+  const shown = perks === false ? tried : banner.value.mode
   // The shared hook reports the result once its write settles (status and
   // saving change together), so this row reads only the save it started.
   useEffect(() => {
@@ -257,12 +277,13 @@ function EmoteRainField({ banner, perks }: { banner: ReturnType<typeof usePulseB
     setMessage(banner.status === 'Saved' ? 'Emote rain saved.' : 'Could not save emote rain. Please try again.')
   }, [saving, banner.saving, banner.status])
   function choose(mode: PulseBannerPreference['mode']) {
+    if (perks === false) return onTry(mode)
     if (!perks || !banner.ready || saving || banner.saving) return
     setMessage('')
     setSaving(true)
     void banner.save({ ...banner.value, mode })
   }
-  return <fieldset className="pulse-supporter-look-row" disabled={!perks || !banner.ready} aria-busy={perks === undefined || saving || undefined} data-supporter-perks={perks ? 'on' : perks === false ? 'locked' : 'pending'}>
+  return <fieldset className="pulse-supporter-look-row" disabled={perks === undefined || (perks && !banner.ready)} aria-busy={perks === undefined || saving || undefined} data-supporter-perks={perks ? 'on' : perks === false ? 'locked' : 'pending'}>
     <legend>Emote rain</legend>
     <div>
       <div className="pulse-supporter-seg">
@@ -270,12 +291,11 @@ function EmoteRainField({ banner, perks }: { banner: ReturnType<typeof usePulseB
           key={mode}
           type="button"
           aria-pressed={shown === mode}
-          title={perks === false ? 'Supporter perk' : undefined}
           onClick={() => choose(mode)}
         >{mode === 'off' ? 'Off' : mode === 'still' ? 'Still' : 'Rain'}</button>)}
       </div>
       {perks === false
-        ? <p className="pulse-supporter-detail" data-supporter-perk="emote-rain">Emote rain, still or falling, is a Supporter perk. Only you see it. Sign-ups are not open yet.</p>
+        ? <p className="pulse-supporter-detail" data-supporter-perk="emote-rain">Emote rain is a Supporter perk. Sign-ups are not open yet.</p>
         : null}
       <p className="pulse-supporter-detail" role="status" data-emote-rain-status>{message}</p>
     </div>

@@ -16,11 +16,13 @@ test('a Supporter banner: preferences persist, rain pauses, and narrow layout st
   await waitForPulseRoot(extension.page)
   const page = extension.page
   const root = page.locator('#streamclone-pulse-root')
+  // A Supporter's quick settings strip wears their saved rain, with no "try free" chip.
   await root.getByRole('button', { name: 'Open settings', exact: true }).click()
-  const opened = extension.context.waitForEvent('page')
-  await root.getByRole('button', { name: 'Edit background in all settings' }).click()
-  const settings = await opened
-  await settings.waitForLoadState('domcontentloaded')
+  await expect(root.locator('.pulse-quick-look .pulse-banner-art')).toHaveAttribute('data-mode', 'off')
+  await expect(root.locator('.pulse-quick-chip')).toHaveCount(0)
+  // The background editor (the free panel title) lives under Pulse in all settings.
+  const settings = await extension.context.newPage()
+  await settings.goto(`chrome-extension://${extension.extensionId}/options/index.html#pulse-background`)
   // It lands on Pulse with Background & motion already open and in view.
   expect(settings.url()).toContain('#pulse-background')
   await expect(settings.locator('.pulse-banner-customize')).toHaveJSProperty('open', true)
@@ -75,19 +77,26 @@ test('emote rain is a Supporter perk: a saved Rain draws nothing without one, st
   await expect(backdrop.locator('img')).toHaveCount(0)
   await page.screenshot({ path: info.outputPath('rain-locked-overlay.png'), animations: 'disabled' })
 
-  // Quick settings previews what the overlay draws, not the stored choice.
+  // Quick settings' Your look strip starts on what the overlay draws, not the stored choice.
   await root.getByRole('button', { name: 'Open settings', exact: true }).click()
-  const preview = root.locator('.pulse-banner-quick-preview')
-  await expect(preview).toHaveAttribute('data-preview-mode', 'off')
+  const preview = root.locator('.pulse-quick-look')
+  await expect(preview.locator('.pulse-banner-art')).toHaveAttribute('data-mode', 'off')
   await expect(preview.locator('img')).toHaveCount(0)
+  // Trying Rain there draws it in the strip only: the overlay and the saved choice stay as they were.
+  await root.getByRole('group', { name: 'Emote rain' }).getByRole('button', { name: 'Rain', exact: true }).click()
+  await expect(preview.locator('.pulse-banner-art')).toHaveAttribute('data-mode', 'rain')
+  expect(await extension.serviceWorker.evaluate(() => chrome.storage.sync.get('pulseBanner'))).toEqual({ pulseBanner: saved })
   // A lapsed member is pitched the lab's Your Line · Anatomy card, not a Supporter's Tenure Climb.
   await expect(root.locator('[data-settings-host-cta="supporter"] .pulse-supporter-stage')).toHaveAttribute('data-mode', 'anatomy')
 
   // Full settings: the title stays free, Still and Rain are locked with a way to the offer.
+  // The strip's link opens the Your look studio; the background editor lives under Pulse.
   const opened = extension.context.waitForEvent('page')
-  await root.getByRole('button', { name: 'Edit background in all settings' }).click()
+  await root.getByRole('button', { name: 'Wave, sheen and crest in all settings ↗' }).click()
   const settings = await opened
   await settings.waitForLoadState('domcontentloaded')
+  await expect(settings).toHaveURL(/#supporter$/)
+  await settings.goto(settings.url().replace(/#supporter$/, '#pulse-background'))
   // Background & motion opens by itself (#pulse-background); a click on its summary would close it.
   await expect(settings.locator('.pulse-banner-customize')).toHaveJSProperty('open', true)
   const modes = settings.getByRole('group', { name: '7TV backdrop' })
