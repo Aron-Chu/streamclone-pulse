@@ -424,7 +424,7 @@ test.describe('chart preview/lock interactions', () => {
 
     await scrubber.press('Escape')
     await expect.poll(async () => (await probeChart(extension.page)).previewIndex, { timeout: 5_000 }).toBeNull()
-    await expect(scrubber).not.toBeFocused()
+    await expect(scrubber).toBeFocused()
     assertNoUncaughtErrors(evidence)
   })
 
