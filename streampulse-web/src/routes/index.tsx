@@ -17,10 +17,10 @@ import Changelog from './public/Changelog'
 import NotFound from './public/NotFound'
 import { PageErrorBoundary } from '../ui/PortalErrorBoundary'
 import { PublicLayout } from '../ui/components/PublicLayout'
+import { retiredExplorerPath } from '../lib/momentsNavigation'
 
 const AnalyticsLandingPage = lazy(() => import('./analytics/AnalyticsLandingPage'))
 const AnalyticsMomentsPage = lazy(() => import('./analytics/AnalyticsMomentsPage'))
-const AnalyticsExplorerPage = lazy(() => import('./analytics/AnalyticsExplorerPage'))
 const DashboardShell = lazy(() => import('./dashboard/DashboardShell'))
 const DashboardHome = lazy(() => import('./dashboard/Home'))
 const ClipsPage = lazy(() => import('./dashboard/Clips'))
@@ -66,12 +66,10 @@ function AnalyticsAliasRedirect() {
   return <Navigate to={`/analytics${search}${hash}`} replace />
 }
 
-/** Keep old Newsroom links on the working Explorer route, preserving filters and story identity. */
-function NewsroomCompatibilityRedirect() {
-  const { storyId } = useParams<{ storyId?: string }>()
-  const { search, hash } = useLocation()
-  const path = storyId ? `/analytics/explore/${encodeURIComponent(storyId)}` : '/analytics/explore'
-  return <Navigate to={`${path}${search}${hash}`} replace />
+/** Pulse Explorer and the older Newsroom are retired: a broadcast opens its stream page, the rest open Moments. */
+function RetiredExplorerRedirect() {
+  const { broadcastId, storyId } = useParams<{ broadcastId?: string; storyId?: string }>()
+  return <Navigate to={retiredExplorerPath(broadcastId ?? storyId)} replace />
 }
 
 /**
@@ -151,12 +149,10 @@ function PortalRoutes() {
 
         {/* Fixed discovery routes must precede dynamic channel routes. */}
         <Route path="/analytics/moments" element={<AnalyticsMomentsPage />} />
-        <Route path="/analytics/newsroom" element={<NewsroomCompatibilityRedirect />} />
-        <Route path="/analytics/newsroom/:storyId" element={<NewsroomCompatibilityRedirect />} />
-        {/* Keep the production Explorer workflow while its replacement is unavailable.
-            Fixed routes must precede /analytics/:login. */}
-        <Route path="/analytics/explore" element={<AnalyticsExplorerPage />} />
-        <Route path="/analytics/explore/:broadcastId" element={<AnalyticsExplorerPage />} />
+        <Route path="/analytics/newsroom" element={<RetiredExplorerRedirect />} />
+        <Route path="/analytics/newsroom/:storyId" element={<RetiredExplorerRedirect />} />
+        <Route path="/analytics/explore" element={<RetiredExplorerRedirect />} />
+        <Route path="/analytics/explore/:broadcastId" element={<RetiredExplorerRedirect />} />
 
         {/* Public read-only channel analytics — one console; legacy ?figma flags do not select another product. */}
         <Route path="/analytics/:login" element={<ChannelAnalyticsPage />} />
