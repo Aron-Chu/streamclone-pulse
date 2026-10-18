@@ -63,7 +63,7 @@ export function momentMinutesAfterOffset(offsetSeconds: number): number {
  * Date.parse keeps milliseconds only, so a finer remainder (RFC3339Nano) is read
  * from the text.
  */
-function offsetOriginMs(startedAt: unknown, startMs: number): number {
+export function offsetOriginMs(startedAt: unknown, startMs: number): number {
   const finer = typeof startedAt === 'string' && /\.\d{3}\d*[1-9]/.test(startedAt)
   return Math.ceil((startMs + (finer ? 1 : 0)) / 1000) * 1000
 }
@@ -73,7 +73,7 @@ function offsetOriginMs(startedAt: unknown, startMs: number): number {
  * minute itself (stored detections) or the start plus the truncated offset (live and
  * ranked rows), which can fall up to a second before that minute.
  */
-function atMinute(at: number | undefined): number | null {
+export function atMinute(at: number | undefined): number | null {
   return typeof at === 'number' && Number.isFinite(at) && at > 0 ? Math.floor((at + 1000) / 60_000) : null
 }
 
