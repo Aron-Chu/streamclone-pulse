@@ -66,12 +66,11 @@ describe('public page metadata', () => {
     expect(resolvePageMetadata('/analytics/unknownbutvalidname').robots).toBe('noindex,nofollow')
   })
 
-  it('keeps Pulse Explorer as its own page and canonical root', () => {
-    expect(resolvePageMetadata('/analytics/explore')).toMatchObject({
-      title: 'Pulse Explorer — StreamPulse', canonicalPath: '/analytics/explore', robots: 'noindex,nofollow',
-    })
-    expect(resolvePageMetadata('/analytics/explore/pulse-xqc-session-1')).toMatchObject({
-      title: 'Pulse Explorer — StreamPulse', canonicalPath: '/analytics/explore', robots: 'noindex,nofollow',
-    })
+  it('names Moments for the retired Explorer paths it redirects', () => {
+    for (const path of ['/analytics/explore', '/analytics/explore/pulse-xqc-session-1']) {
+      expect(resolvePageMetadata(path)).toMatchObject({
+        title: 'Moments — StreamPulse', canonicalPath: '/analytics/moments', robots: 'noindex,nofollow',
+      })
+    }
   })
 })

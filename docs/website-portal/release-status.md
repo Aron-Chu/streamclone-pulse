@@ -135,8 +135,9 @@ on the chosen release SHA before treating any item as release evidence:
 
 - Landing / hub honesty: no client-invented Pulse / moment scores from `magnitude`, chat+emote formulas, or demo intensity labeled as scoring truth
 - Current route contract: `/analytics` is the Command Center with Live Wire;
-  `/analytics/moments` is the canonical Moments workspace. The separate
-  `/analytics/explore` route remains until its replacement works. `/setup` and
+  `/analytics/moments` is the canonical Moments workspace. Pulse Explorer was
+  retired on 2026-10-16: `/analytics/explore` redirects to Moments and
+  `/analytics/explore/{id}` to the stream page that id names. `/setup` and
   `/login` redirect to `/analytics`.
 - Vitest upgraded to **3.2.7** (root + `streampulse-web`) for GHSA-5xrq-8626-4rwp
 - Public clip `analyticsHref` / `vodHref` sanitization (omit invalid; never rewrite)

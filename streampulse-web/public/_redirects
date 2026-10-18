@@ -42,13 +42,15 @@
 /docs/api /docs#api 301
 /docs/api/ /docs#api 301
 
-# Hosted Explorer links must reach the SPA so the client can map broadcastId and
-# window onto the canonical Moments session view. A static 301 cannot carry that
-# mapping, so this is a rewrite, not a redirect.
+# Pulse Explorer is retired into Moments. Pages passes the request's query to a
+# 301 target unless the target has its own, so ?view=recent (the Latest view)
+# keeps Explorer's filters off Moments.
+/analytics/explore /analytics/moments?view=recent 301
+/analytics/explore/ /analytics/moments?view=recent 301
+# A broadcast id names its stream page, which a static rule cannot split out of
+# one path segment, so these reach the SPA and src/lib/momentsNavigation.ts maps them.
 # Use the canonical asset URL: Pages redirects /analytics/index.html to
 # /analytics/, which would otherwise discard the requested deep-link path.
-/analytics/explore /analytics/ 200
-/analytics/explore/ /analytics/ 200
 /analytics/explore/:broadcastId /analytics/ 200
 /analytics/explore/:broadcastId/ /analytics/ 200
 
