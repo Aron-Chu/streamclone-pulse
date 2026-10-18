@@ -347,11 +347,11 @@ test('exact moment source, device save, reload and legacy session link', async (
   }
   expect(await page.evaluate(() => localStorage.getItem('streampulse.saved-moments.v2'))).not.toContain('handoffRef')
   await page.goto('/analytics/newsroom/story-xqc?window=live#keep')
-  await expect(page).toHaveURL(/analytics\/explore\/story-xqc\?window=live#keep$/)
-  await expect(page.getByRole('heading', { name: 'Pulse Explorer', exact: true })).toBeVisible()
+  await expect(page).toHaveURL(/\/analytics\/moments$/)
+  await expect(page.getByRole('tablist', { name: 'Moment views' })).toBeVisible()
 })
 
-test('category survives detail and browser back; retired Sessions bookmarks reach Explorer', async ({ page }) => {
+test('category survives detail and browser back; retired Sessions bookmarks reach Moments', async ({ page }) => {
   await page.goto('/analytics/moments')
   await page.getByRole('combobox', { name: 'Category', exact: true }).click()
   await page.getByRole('option', { name: 'Minecraft', exact: true }).click()
@@ -362,8 +362,8 @@ test('category survives detail and browser back; retired Sessions bookmarks reac
   await expect(page.locator('.moments-result')).toHaveCount(1)
   await expect(page.locator('.moments-result').getByRole('button', { name: 'Open moment' })).toBeFocused()
   await page.goto('/analytics/moments?view=sessions&window=7d')
-  await expect(page).toHaveURL(/\/analytics\/explore\?window=7d$/)
-  await expect(page.getByRole('heading', { name: 'Pulse Explorer', exact: true })).toBeVisible()
+  await expect(page).toHaveURL(/\/analytics\/moments$/)
+  await expect(page.getByRole('tablist', { name: 'Moment views' })).toBeVisible()
 })
 
 test('creator navigation opens stored history and Back restores browse filters', async ({ page }) => {

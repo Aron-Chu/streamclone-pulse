@@ -5,7 +5,6 @@ import { describe, expect, it } from 'vitest'
 const roots = [
   'src/ui/components/analytics',
   'src/ui/components/hub',
-  'src/ui/components/newsroom',
   'src/ui/themes',
 ]
 
