@@ -31,12 +31,20 @@ export function nearestFrameIndex(frames: readonly StoredFrame[], offset: number
  *
  * Captures roll off after `windowMs` so a long watch costs a few hundred KB,
  * except frames inside a kept span (ranked moments), which stay until the
- * stream changes or `maxKept` pushes the oldest out. Moments surface a minute
- * or two after they happen, so the window must outlast that delay.
+ * stream changes or `maxKept` pushes them out. Moments surface a minute or two
+ * after they happen, so the window must outlast that delay.
+ *
+ * A span stays held after it stops being kept: the backend re-scores a live
+ * stream on every poll, and moments tied near the bottom of its ranked lists
+ * drop out for a poll and come back. At the cap, frames of moments ranked now
+ * outlast the ones that dropped out.
  */
 export class MomentFrameStore {
   private frames: StoredFrame[] = []
+  /** Spans of the moments ranked now. */
   private spans: ReadonlyArray<readonly [number, number]> = []
+  /** Every span kept during this stream, by "from to". */
+  private readonly held = new Map<string, readonly [number, number]>()
   private readonly listeners = new Set<() => void>()
   private key: string | null = null
 
@@ -46,6 +54,7 @@ export class MomentFrameStore {
   useStream(key: string): void {
     if (key === this.key) return
     this.key = key
+    this.held.clear()
     this.clear()
   }
 
@@ -65,6 +74,7 @@ export class MomentFrameStore {
 
   keep(spans: ReadonlyArray<readonly [number, number]>): void {
     this.spans = spans
+    for (const span of spans) this.held.set(`${span[0]} ${span[1]}`, span)
     if (this.prune()) this.emit()
   }
 
@@ -88,8 +98,15 @@ export class MomentFrameStore {
     return () => { this.listeners.delete(listener) }
   }
 
-  private kept(frame: StoredFrame): boolean {
+  private ranked(frame: StoredFrame): boolean {
     return this.spans.some(([from, to]) => frame.offset >= from && frame.offset <= to)
+  }
+
+  private kept(frame: StoredFrame): boolean {
+    for (const [from, to] of this.held.values()) {
+      if (frame.offset >= from && frame.offset <= to) return true
+    }
+    return false
   }
 
   /** Drops expired and over-cap frames; true when any went. */
@@ -101,7 +118,9 @@ export class MomentFrameStore {
       if (frame.at < cutoff) dropped.add(frame)
       return false
     })
-    for (const frame of [...kept].sort((a, b) => a.at - b.at).slice(0, Math.max(0, kept.length - this.options.maxKept))) {
+    // Over the cap, frames of moments no longer ranked go first, then the oldest captures.
+    const rank = (frame: StoredFrame): number => Number(this.ranked(frame))
+    for (const frame of [...kept].sort((a, b) => rank(a) - rank(b) || a.at - b.at).slice(0, Math.max(0, kept.length - this.options.maxKept))) {
       dropped.add(frame)
     }
     if (dropped.size === 0) return false
