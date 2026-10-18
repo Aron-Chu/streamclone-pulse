@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ExtensionEmote, PulseRecapEmote } from '../src/shared/messages.ts'
-import { recapEmoteToExtensionEmote, resolveRecapEmotes, buildRecapEmoteCatalog } from '../src/ui/recapEmotes.ts'
+import { recapEmoteToExtensionEmote, resolveRecapEmotes, resolveStreamTopEmotes, buildRecapEmoteCatalog } from '../src/ui/recapEmotes.ts'
 
 describe('recapEmoteToExtensionEmote', () => {
   it('maps recap fields to extension emote shape', () => {
@@ -88,5 +88,29 @@ describe('buildRecapEmoteCatalog', () => {
     })
     const names = catalog.map(emote => emote.name).sort()
     expect(names).toEqual(['KEKW', 'LUL'])
+  })
+})
+
+describe('resolveStreamTopEmotes (VOD-4)', () => {
+  const sevenTvOnly: PulseRecapEmote[] = [
+    { code: 'WAYTOODANK', count: 129, provider: 'seventv' },
+    { code: 'AlienDance', count: 18, provider: 'seventv' },
+  ]
+
+  it('ranks every provider from the payload over the 7TV-only recap list', () => {
+    const payloadEmotes: ExtensionEmote[] = [
+      { name: 'LETSGO', count: 3_870, provider: 'twitch' },
+      { name: 'KEKW', count: 5_868, provider: 'bttv' },
+      { name: 'WAYTOODANK', count: 129, provider: 'seventv' },
+      { name: 'hasL', count: 5_669, provider: 'twitch' },
+      { name: 'unused', count: 0, provider: 'twitch' },
+    ]
+    const names = resolveStreamTopEmotes({ topEmotes: payloadEmotes }, sevenTvOnly).map(emote => emote.name)
+    expect(names).toEqual(['KEKW', 'hasL', 'LETSGO', 'WAYTOODANK'])
+  })
+
+  it('falls back to the recap list when the payload counted nothing', () => {
+    expect(resolveStreamTopEmotes({ topEmotes: [] }, sevenTvOnly).map(emote => emote.name)).toEqual(['WAYTOODANK', 'AlienDance'])
+    expect(resolveStreamTopEmotes({}, sevenTvOnly).map(emote => emote.name)).toEqual(['WAYTOODANK', 'AlienDance'])
   })
 })

@@ -281,3 +281,28 @@ describe('with Sign in with Twitch compiled off (every store build today)', () =
     expect(sendBackgroundMessage).toHaveBeenLastCalledWith({ type: 'OPEN_SETTINGS_HOST', section: 'supporter' })
   })
 })
+it('PAGE-1: a live save stores the live archive id so My Moments can link the replay', async () => {
+  vi.mocked(sendBackgroundMessage)
+    .mockResolvedValueOnce({ type: 'BOOKMARKS', items: [] })
+    .mockResolvedValueOnce({ type: 'BOOKMARK', item: { ...item, vodId: '2903671992' } })
+  const resolveVodId = vi.fn(async () => '2903671992')
+  await act(async () => root.render(<SavedMoments login="xqc" streamId="123456" selected={point} resolveVodId={resolveVodId} />))
+  await click('Bookmark')
+  expect(resolveVodId).toHaveBeenCalledTimes(1)
+  expect(sendBackgroundMessage).toHaveBeenNthCalledWith(2, expect.objectContaining({
+    type: 'SAVE_BOOKMARK',
+    bookmark: expect.objectContaining({ login: 'xqc', streamId: '123456', vodId: '2903671992', offsetSeconds: 120 }),
+  }))
+})
+it('PAGE-1: a live save without a findable archive still saves, stream-only', async () => {
+  vi.mocked(sendBackgroundMessage)
+    .mockResolvedValueOnce({ type: 'BOOKMARKS', items: [] })
+    .mockResolvedValueOnce({ type: 'BOOKMARK', item })
+  await act(async () => root.render(
+    <SavedMoments login="xqc" streamId="123456" selected={point} resolveVodId={async () => { throw new Error('gql down') }} />,
+  ))
+  await click('Bookmark')
+  const save = vi.mocked(sendBackgroundMessage).mock.calls[1]?.[0] as { bookmark: Record<string, unknown> }
+  expect(save.bookmark).not.toHaveProperty('vodId')
+  expect(host.querySelector('[role="status"]')?.textContent).toContain('Bookmarked at')
+})

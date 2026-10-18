@@ -501,8 +501,11 @@ export function densifyRollupsForTimeline(
           ? 0
           : undefined
       if (viewerCount !== undefined) {
-        viewerSum += viewerCount
-        viewerSamples += Math.max(1, rollup.viewerSamples ?? 0)
+        // viewerCount is already the minute's mean, so weight it by its samples
+        // (adding it once against a 2-sample divisor halved the bucket).
+        const samples = Math.max(1, rollup.viewerSamples ?? 0)
+        viewerSum += viewerCount * samples
+        viewerSamples += samples
       }
       if (rollup.topEmotes?.length) bucketTopEmotes.push(rollup.topEmotes)
     }
