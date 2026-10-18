@@ -40,7 +40,6 @@ export default function ConsoleChannelView() {
     ? { to: `/analytics/${encodeURIComponent(login.trim())}`, label: `All ${displayChannel} broadcasts` }
     : { to: '/analytics', label: 'Analytics hub' }
   const returnLabel = !returnTo ? fallbackReturn.label
-    : returnTo.startsWith('/analytics/explore') ? 'Pulse Explorer'
     : returnView === 'saved' ? 'Saved moments' : returnView === 'history' ? 'Broadcast history' : 'Latest moments'
 
   useEffect(() => {

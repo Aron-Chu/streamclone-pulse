@@ -3,8 +3,11 @@ import { MemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AppRoutes } from '../src/routes/index'
 
-vi.mock('../src/routes/analytics/AnalyticsExplorerPage', () => ({
-  default: () => <main aria-label="Pulse Explorer">Explorer route</main>,
+vi.mock('../src/routes/analytics/AnalyticsMomentsPage', () => ({
+  default: () => <main aria-label="Moments">Moments route</main>,
+}))
+vi.mock('../src/routes/analytics/ChannelAnalyticsPage', () => ({
+  default: () => <main aria-label="Stream page">Stream route</main>,
 }))
 
 const publicPaths = ['/', '/docs', '/status', '/privacy'] as const
@@ -43,11 +46,20 @@ describe('route smoke', () => {
     })
   }
 
-  describe('Pulse Explorer', () => {
-    it.each(['/analytics/explore', '/analytics/explore/pulse-xqc-session-1?window=7d&signal=emotes&state=ended#evidence'])('keeps the Explorer route and its deep-link context at %s', async path => {
+  describe('retired Pulse Explorer', () => {
+    it.each([
+      ['/analytics/explore', '/analytics/moments', 'Moments'],
+      ['/analytics/explore?window=7d&signal=emotes&state=ended&sort=recent&q=chat#evidence', '/analytics/moments', 'Moments'],
+      ['/analytics/explore/pulse-xqc-session-1?window=7d&signal=emotes&state=ended#evidence', '/analytics/xqc/session-1', 'Stream page'],
+      ['/analytics/explore/story-1?window=live', '/analytics/moments', 'Moments'],
+      ['/analytics/explore/pulse-settings-123', '/analytics/moments', 'Moments'],
+      ['/analytics/newsroom?window=24h#evidence', '/analytics/moments', 'Moments'],
+      ['/analytics/newsroom/pulse-lirik-315123?window=live', '/analytics/lirik/315123', 'Stream page'],
+      ['/analytics/newsroom/story-xqc?window=live#keep', '/analytics/moments', 'Moments'],
+    ])('sends %s to %s without its old filters', async (path, target, page) => {
       renderPath(path)
-      expect(await screen.findByRole('main', { name: 'Pulse Explorer' })).toBeTruthy()
-      expect(screen.getByTestId('location').textContent).toBe(path)
+      await waitFor(() => expect(screen.getByTestId('location').textContent).toBe(target))
+      expect(await screen.findByRole('main', { name: page })).toBeTruthy()
     })
   })
 

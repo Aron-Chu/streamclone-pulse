@@ -1648,7 +1648,7 @@ function OverlayMain({
     >
       {panelView === 'pulse' && !sidebarChatOnly && <PulseBannerBackdrop value={banner.value} perks={supporterPerks} />}
       {showSidebarTabs ? (
-        <div className="pulse-sidebar-tabs-wrap" style={styles.sidebarTabsWrap}>
+        <div className="pulse-sidebar-tabs-wrap">
           <PulseSidebarTabs active={resolvedSidebarTab} onChange={tab => void persistSidebarTab(tab)} />
         </div>
       ) : null}
@@ -1719,11 +1719,11 @@ function OverlayMain({
 
       {showHostedOfflineFallback ? (
         <PulseSectionCard title="Channel offline" titleTone="muted" className="pulse-offline-state">
-          <p style={styles.stateText}>
+          <p className="pulse-state-text">
             No live Pulse session or recap is available for <strong>{login}</strong> right now. Check back when they go live, or use Analytics Hub above to browse tracked channels.
           </p>
-          <div style={styles.footerActions}>
-            <button type="button" style={styles.secondaryButton} onClick={() => void refreshPulse()}>
+          <div className="pulse-footer-actions">
+            <button type="button" className="pulse-secondary-button" onClick={() => void refreshPulse()}>
               Refresh
             </button>
           </div>
@@ -1731,13 +1731,13 @@ function OverlayMain({
       ) : null}
 
       {awaitingTrack && !isVodPage && localStackBackend && pulseSupported && !payload?.tracking ? (
-        <section style={styles.trackPrompt}>
-          <p style={styles.stateText}>Track <strong>{login}</strong> to collect live chat and 7TV rollups from your StreamPulse stack.</p>
-          <div style={styles.footerActions}>
-            <button type="button" style={styles.primaryButton} disabled={trackBusy} onClick={() => void startTracking()}>
+        <section className="pulse-track-prompt">
+          <p className="pulse-state-text">Track <strong>{login}</strong> to collect live chat and 7TV rollups from your StreamPulse stack.</p>
+          <div className="pulse-footer-actions">
+            <button type="button" className="pulse-primary-button" disabled={trackBusy} onClick={() => void startTracking()}>
               {trackBusy ? 'Starting…' : 'Track this channel'}
             </button>
-            <button type="button" style={styles.secondaryButton} onClick={openInlineSettings}>Manage watchlist</button>
+            <button type="button" className="pulse-secondary-button" onClick={openInlineSettings}>Manage watchlist</button>
           </div>
         </section>
       ) : null}
@@ -1755,7 +1755,7 @@ function OverlayMain({
       ) : null}
 
       {softStaleRefreshWarning && payload ? (
-        <div role="status" style={styles.softStaleBanner}>
+        <div role="status" className="pulse-soft-stale-banner">
           Live refresh paused briefly — showing last good chart.
         </div>
       ) : null}
@@ -1917,7 +1917,7 @@ function OverlayMain({
             />
           ) : null}
 
-          {notice ? <p style={{ ...styles.notice, ...(notice.kind === 'warn' ? styles.noticeWarn : notice.kind === 'ok' ? styles.noticeOk : {}) }}>{notice.text}</p> : null}
+          {notice ? <p className={`pulse-notice pulse-notice-${notice.kind}`}>{notice.text}</p> : null}
 
           <StreamClipCarousel clips={streamClips} backendUrl={backendUrl} state={streamClipsState} onSelect={selectClip} onRetry={() => void loadTopClip(++topClipRequestRef.current)} />
 
@@ -1941,9 +1941,9 @@ function OverlayMain({
           {sidebarBodyOnly && resolvedPlacement === 'sidebar' ? (
             <PulseSidebarSkeleton hostedBackend={hostedBackend} />
           ) : (
-            <section style={styles.stateBlock}>
-              <h2 style={styles.stateTitle}>Loading Pulse</h2>
-              <p style={styles.stateText}>
+            <section className="pulse-state-block">
+              <h2 className="pulse-state-title">Loading Pulse</h2>
+              <p className="pulse-state-text">
                 {hostedBackend
                   ? 'Fetching live analytics from StreamPulse…'
                   : `Waiting for ${backendUrl}…`}
@@ -1951,8 +1951,8 @@ function OverlayMain({
             </section>
           )}
           {loadStallStage ? (
-            <div style={styles.footerActions}>
-              <button type="button" style={styles.secondaryButton} onClick={() => void refreshPulse()}>Retry</button>
+            <div className="pulse-footer-actions">
+              <button type="button" className="pulse-secondary-button" onClick={() => void refreshPulse()}>Retry</button>
             </div>
           ) : null}
         </>
@@ -1962,12 +1962,11 @@ function OverlayMain({
       </PanelErrorBoundary>
       </div>
       {panelView === 'pulse' && !sidebarChatOnly ? (
-        <div className="pulse-settings-footer" style={styles.settingsFooter}>
+        <div className="pulse-settings-footer">
           <button
             type="button"
             className="pulse-settings-bottom-bar"
             data-pulse-settings-entry="bottom-bar"
-            style={styles.settingsBottomBar}
             aria-label="Open settings"
             title="Settings"
             onClick={() => setPanelView('settings')}
@@ -1979,8 +1978,8 @@ function OverlayMain({
         </div>
       ) : null}
       {panelView === 'settings' && !sidebarChatOnly ? (
-        <div className="pulse-settings-footer" style={styles.settingsFooter}>
-          <OpenAllSettingsButton style={styles.settingsBottomBar} />
+        <div className="pulse-settings-footer">
+          <OpenAllSettingsButton />
         </div>
       ) : null}
     </section>
@@ -2041,11 +2040,9 @@ function StreamPulseHeader({
   const finish = appearance?.finish ?? null
   const perks = appearance?.perks === true
   useEffect(() => onSupporterPerks(perks), [perks, onSupporterPerks])
-  const actionsStyle = sidebarFill ? styles.streamPulseHeaderActionsSidebar : styles.streamPulseHeaderActions
-  const trackButtonStyle = sidebarFill ? styles.trackingButtonFull : styles.trackingButton
-  const trackStreamerStyle = sidebarFill ? styles.trackStreamerButtonFull : styles.trackStreamerButton
-  const autoUpdateStyle = sidebarFill ? styles.autoUpdateLabelFull : styles.autoUpdateLabel
-  const iconRowStyle = sidebarFill ? styles.headerIconRowFull : styles.headerIconRow
+  // Sidebar-filling variants are the same classes with a -full/-sidebar twin.
+  const full = sidebarFill ? '-full' : ''
+  const trackingPillClass = `pulse-tracking-pill${full}`
 
   const statusLabel = pulseSurfaceStatusLabel(surfaceState)
 
@@ -2056,7 +2053,7 @@ function StreamPulseHeader({
       data-supporter-finish={finish ?? undefined}
       title={finish ? 'Pulse Supporter' : undefined}
     >
-      <div className="pulse-banner-copy" style={sidebarFill ? styles.streamPulseHeaderMainSidebar : styles.streamPulseHeaderMain}>
+      <div className={sidebarFill ? 'pulse-banner-copy pulse-header-main-sidebar' : 'pulse-banner-copy pulse-header-main'}>
         <StreamPulseTitleBlock
           title={personalTitle || undefined}
           finish={finish}
@@ -2067,42 +2064,43 @@ function StreamPulseHeader({
           lead={replayLead || undefined}
         />
       </div>
-      <div style={{ ...actionsStyle, ...(hostedBackend && hideUtilityActions ? { display: 'none' } : {}) }}>
+      <div className={sidebarFill ? 'pulse-header-actions-sidebar' : 'pulse-header-actions'} style={hostedBackend && hideUtilityActions ? { display: 'none' } : undefined}>
         {!pulseSupported && !hostedBackend ? (
-          <span style={trackButtonStyle} aria-label="Limited tracked roster">
+          <span className={trackingPillClass} aria-label="Limited tracked roster">
             Limited roster
           </span>
         ) : hostedBackend ? null : pulseLiveAccess === 'full_live' ? (
-          <span style={trackButtonStyle} aria-label="Tracking this streamer">
+          <span className={trackingPillClass} aria-label="Tracking this streamer">
             Tracking
           </span>
         ) : onTrack ? (
-          <button type="button" style={trackStreamerStyle} disabled={trackBusy} onClick={onTrack}>
+          <button type="button" className={`pulse-track-streamer${full}`} disabled={trackBusy} onClick={onTrack}>
             {trackBusy ? 'Starting…' : 'Track streamer'}
           </button>
         ) : (
-          <span style={trackButtonStyle}>{statusLabel}</span>
+          <span className={trackingPillClass}>{statusLabel}</span>
         )}
         {pulseSupported && !hostedBackend ? (
-        <label style={autoUpdateStyle}>
+        <label className={`pulse-auto-update-label${full}`}>
           <span>Auto-updating</span>
           <button
             type="button"
             role="switch"
             aria-checked={autoUpdate}
-            style={{ ...styles.autoUpdateSwitch, background: autoUpdate ? theme.accentStrong : theme.border }}
+            className="pulse-auto-update-switch"
+            style={{ background: autoUpdate ? theme.accentStrong : theme.border }}
             onClick={() => onAutoUpdateChange(!autoUpdate)}
           >
-            <span style={{ ...styles.autoUpdateKnob, left: autoUpdate ? 18 : 2 }} />
+            <span className="pulse-auto-update-knob" style={{ left: autoUpdate ? 18 : 2 }} />
           </button>
         </label>
         ) : null}
-        <div style={iconRowStyle}>
+        <div className={`pulse-header-icons${full}`}>
           {hideUtilityActions ? null : (
             <>
 
-              <button type="button" style={sidebarFill ? styles.headerIconButtonFull : styles.headerIconButton} onClick={onMini} title="Mini mode">Mini</button>
-              <button type="button" style={sidebarFill ? styles.headerIconButtonFull : styles.headerIconButton} onClick={onHide} title="Hide overlay">Hide</button>
+              <button type="button" className={`pulse-header-icon-button${full}`} onClick={onMini} title="Mini mode">Mini</button>
+              <button type="button" className={`pulse-header-icon-button${full}`} onClick={onHide} title="Hide overlay">Hide</button>
             </>
           )}
         </div>
@@ -2173,16 +2171,16 @@ function VodPulseStatusCard({
   const [copied, setCopied] = useState(false)
 
   return (
-    <section className="pulse-vod-state" data-vod-state={state.status} role="status" style={state.status === 'loading' ? styles.vodState : { ...styles.vodState, ...styles.vodStateWarn }}>
-      <h3 style={{ ...styles.vodStateTitle, color: state.status === 'loading' ? '#fafafc' : '#fde68a' }}>{title}</h3>
-      <p style={{ ...styles.stateText, margin: 0 }}>{body}</p>
+    <section className={state.status === 'loading' ? 'pulse-vod-state' : 'pulse-vod-state pulse-vod-state-warn'} data-vod-state={state.status} role="status">
+      <h3 className="pulse-vod-state-title" style={{ color: state.status === 'loading' ? '#fafafc' : '#fde68a' }}>{title}</h3>
+      <p className="pulse-state-text" style={{ margin: 0 }}>{body}</p>
       {state.status === 'loading' ? null : (
         <>
-          <div style={styles.footerActions}>
-            {onRetry && !permanent ? <button type="button" style={styles.primaryButton} onClick={onRetry}>↻ Retry</button> : null}
-            {analyticsHref ? <a href={analyticsHref} target="_blank" rel="noopener noreferrer" style={{ ...styles.secondaryButton, ...styles.vodStateLink }}>Open in Analytics ↗</a> : null}
+          <div className="pulse-footer-actions">
+            {onRetry && !permanent ? <button type="button" className="pulse-primary-button" onClick={onRetry}>↻ Retry</button> : null}
+            {analyticsHref ? <a href={analyticsHref} target="_blank" rel="noopener noreferrer" className="pulse-secondary-button pulse-vod-state-link">Open in Analytics ↗</a> : null}
           </div>
-          {support ? <button type="button" style={styles.vodStateSupport} onClick={() => void navigator.clipboard?.writeText(support).then(() => setCopied(true), () => {})}>{copied ? 'Support details copied' : 'Copy support details'}</button> : null}
+          {support ? <button type="button" className="pulse-vod-state-support" onClick={() => void navigator.clipboard?.writeText(support).then(() => setCopied(true), () => {})}>{copied ? 'Support details copied' : 'Copy support details'}</button> : null}
         </>
       )}
     </section>
@@ -2213,9 +2211,9 @@ function StreamClipCarousel({ clips, backendUrl, state, onRetry, onSelect }: { c
     if (element) element.scrollBy({ left: direction * element.clientWidth * .88, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
   }
   return <section className="pulse-clips-section" aria-label="Top clips from this stream" aria-busy={state === 'loading'}>
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-      <h3 style={styles.clipSpikeHeading}>Top clips <span className="pulse-clips-count">{validClips.length || ''}</span></h3>
-      <div style={{ display: 'flex', gap: 4 }}>
+    <div className="pulse-clips-header">
+      <h3 className="pulse-clips-heading">Top clips <span className="pulse-clips-count">{validClips.length || ''}</span></h3>
+      <div className="pulse-clips-controls">
         <button type="button" className="pulse-clip-control" aria-label="Refresh stream clips" title="Refresh stream clips" disabled={state === 'loading'} onClick={onRetry}>↻</button>
         {validClips.length > 1 && <>
         <button type="button" className="pulse-clip-control" aria-label="Previous clips" title="Previous clips" disabled={position.start} onClick={() => move(-1)}>←</button>
@@ -2223,11 +2221,10 @@ function StreamClipCarousel({ clips, backendUrl, state, onRetry, onSelect }: { c
         </>}
       </div>
     </div>
-    {!validClips.length && <p role="status" style={styles.stateText}>{state === 'loading' ? 'Loading stream clips...' : state === 'error' ? 'Clips could not be loaded. Try refreshing.' : 'No clips available for this stream yet.'}</p>}
+    {!validClips.length && <p role="status" className="pulse-state-text">{state === 'loading' ? 'Loading stream clips...' : state === 'error' ? 'Clips could not be loaded. Try refreshing.' : 'No clips available for this stream yet.'}</p>}
     <div ref={rail} className="pulse-clips-rail" tabIndex={validClips.length ? 0 : -1} aria-label="Stream clips carousel" onScroll={updatePosition}
-      onKeyDown={event => { if (event.target === event.currentTarget && ['ArrowLeft', 'ArrowRight'].includes(event.key)) { event.preventDefault(); move(event.key === 'ArrowLeft' ? -1 : 1) } }}
-      style={{ display: 'flex', gap: 12, overflowX: 'auto', scrollSnapType: 'x mandatory', padding: '10px 0 2px', scrollbarWidth: 'none' }}>
-      {validClips.map(clip => <div key={clip.id} style={{ flex: '0 0 min(232px, 88%)', minWidth: 0, scrollSnapAlign: 'start' }}><ClipSpikeCard clip={clip} backendUrl={backendUrl} onSelect={onSelect} /></div>)}
+      onKeyDown={event => { if (event.target === event.currentTarget && ['ArrowLeft', 'ArrowRight'].includes(event.key)) { event.preventDefault(); move(event.key === 'ArrowLeft' ? -1 : 1) } }}>
+      {validClips.map(clip => <div key={clip.id}><ClipSpikeCard clip={clip} backendUrl={backendUrl} onSelect={onSelect} /></div>)}
     </div>
   </section>
 }
@@ -2246,26 +2243,25 @@ export function ClipSpikeCard({ clip, backendUrl, onSelect }: { clip: ExtensionC
         target="_blank"
         rel="noreferrer"
         referrerPolicy="no-referrer"
-        style={styles.clipSpikeCard}
         aria-label={`${clip.title}, ${formatNumber(clip.viewCount ?? 0)} views, opens on Twitch`}
       >
-        <div className="pulse-clip-thumb" style={styles.clipThumbWrap}>
+        <div className="pulse-clip-thumb">
           {thumbnailUrl ? (
             <img
               src={thumbnailUrl}
               alt={clip.title}
-              style={styles.clipThumb}
+              className="pulse-clip-image"
               loading="lazy"
               referrerPolicy="no-referrer"
             />
           ) : (
-            <div style={styles.clipThumbFallback} />
+            <div className="pulse-clip-image-fallback" />
           )}
-          {duration ? <span style={styles.clipDurationBadge}>{duration}</span> : null}
+          {duration ? <span className="pulse-clip-duration">{duration}</span> : null}
         </div>
-        <div style={styles.clipBody}>
-          <strong style={styles.clipTitle}>{clip.title}</strong>
-          <span style={styles.clipViews}>{formatNumber(clip.viewCount ?? 0)} views</span>
+        <div className="pulse-clip-body">
+          <strong className="pulse-clip-title">{clip.title}</strong>
+          <span className="pulse-clip-views">{formatNumber(clip.viewCount ?? 0)} views</span>
         </div>
       </a>
   )
@@ -2361,9 +2357,9 @@ function WarmingState({
   const statusLabel = coverageTierStatusLabel(coverageTier, tracking)
   if (statusLabel === 'Metadata only — no chat coverage') {
     return (
-      <section style={styles.stateBlock}>
-        <h2 style={styles.stateTitle}>{statusLabel}</h2>
-        <p style={styles.stateText}>
+      <section className="pulse-state-block">
+        <h2 className="pulse-state-title">{statusLabel}</h2>
+        <p className="pulse-state-text">
           Viewer counts may still update, but Pulse isn’t reading this channel’s chat, so there are no moments.
         </p>
       </section>
@@ -2374,17 +2370,17 @@ function WarmingState({
   const lateTracking = coverageStart > PULSE_STREAM_START_TOLERANCE_SEC
   const firstMinutePending = count === 0
   return (
-    <section style={styles.stateBlock}>
-      <h2 style={styles.stateTitle}>{statusLabel}</h2>
-      <p style={styles.stateText}>
+    <section className="pulse-state-block">
+      <h2 className="pulse-state-title">{statusLabel}</h2>
+      <p className="pulse-state-text">
         {firstMinutePending
           ? 'Chat is counted once a minute. The chart and Top Moments fill in on their own.'
           : lateTracking
             ? `StreamPulse is tracking this broadcast (${formatHeatOffset(coverageStart)} in). Top Moments unlock after ${LIVE_HEAT_MIN_COMPLETED_ROLLUPS} completed minutes of chat rollups.`
             : `Collecting chat and emote activity. Top Moments unlock after ${LIVE_HEAT_MIN_COMPLETED_ROLLUPS} completed minutes.`}
       </p>
-      <div className="pulse-shimmer" style={styles.progressTrack}><span style={{ ...styles.progressFill, width: `${progress * 100}%` }} /></div>
-      <p style={styles.muted}>{count} / {LIVE_HEAT_MIN_COMPLETED_ROLLUPS} minutes collected · updates automatically</p>
+      <div className="pulse-shimmer pulse-progress-track"><span className="pulse-progress-fill" style={{ width: `${progress * 100}%` }} /></div>
+      <p className="pulse-warming-count">{count} / {LIVE_HEAT_MIN_COMPLETED_ROLLUPS} minutes collected · updates automatically</p>
     </section>
   )
 }
@@ -2395,26 +2391,26 @@ function BackendError({ backendUrl, error, onRetry, onSettings }: { backendUrl: 
   // worth offering.
   if (error === EXTENSION_RECONNECT_MESSAGE) {
     return (
-      <section style={styles.errorBlock}>
-        <h2 style={styles.errorTitle}>Extension disconnected</h2>
-        <p style={styles.stateText}>This tab lost its connection to StreamPulse, which happens whenever the extension updates or reloads. Refreshing the page reconnects it.</p>
-        <div style={styles.footerActions}>
-          <button type="button" style={styles.secondaryButton} onClick={() => window.location.reload()}>Reload page</button>
+      <section className="pulse-error-block">
+        <h2 className="pulse-error-title">Extension disconnected</h2>
+        <p className="pulse-state-text">This tab lost its connection to StreamPulse, which happens whenever the extension updates or reloads. Refreshing the page reconnects it.</p>
+        <div className="pulse-footer-actions">
+          <button type="button" className="pulse-secondary-button" onClick={() => window.location.reload()}>Reload page</button>
         </div>
       </section>
     )
   }
   return (
-    <section style={styles.errorBlock}>
-      <h2 style={styles.errorTitle}>Can&apos;t reach StreamPulse</h2>
-      <p style={styles.stateText}>
+    <section className="pulse-error-block">
+      <h2 className="pulse-error-title">Can&apos;t reach StreamPulse</h2>
+      <p className="pulse-state-text">
         {isHostedBackendUrl(backendUrl)
           ? 'StreamPulse isn’t responding right now. Try again in a minute.'
           : `No response from ${backendUrl}.`}
       </p>
-      <div style={styles.footerActions}>
-        <button type="button" style={styles.secondaryButton} onClick={onRetry}>Retry</button>
-        <button type="button" style={styles.textButtonLarge} onClick={onSettings}>Open settings</button>
+      <div className="pulse-footer-actions">
+        <button type="button" className="pulse-secondary-button" onClick={onRetry}>Retry</button>
+        <button type="button" className="pulse-text-button-large" onClick={onSettings}>Open settings</button>
       </div>
     </section>
   )
@@ -2424,9 +2420,9 @@ function PulseRefreshError({ error, onRetry }: { error: string; onRetry: () => v
   // An orphaned tab keeps its last chart, but Retry goes through a dead port.
   const reconnect = error === EXTENSION_RECONNECT_MESSAGE
   return (
-    <div role="status" className="pulse-refresh-error" style={styles.refreshError}>
+    <div role="status" className="pulse-refresh-error">
       <span>{formatPulseApiError(error) ?? 'The latest Pulse refresh failed; showing the last good data.'}</span>
-      <button type="button" style={styles.textButtonLarge} onClick={reconnect ? () => window.location.reload() : onRetry}>
+      <button type="button" className="pulse-text-button-large" onClick={reconnect ? () => window.location.reload() : onRetry}>
         {reconnect ? 'Reload page' : 'Retry'}
       </button>
     </div>
@@ -2436,11 +2432,11 @@ function PulseRefreshError({ error, onRetry }: { error: string; onRetry: () => v
 function PulseIdentityMismatchPanel({ login, onRetry }: { login: string; onRetry: () => void }) {
   return (
     <PulseSectionCard title="Stream changed" titleTone="muted" className="pulse-identity-mismatch-state">
-      <p style={styles.stateText}>
+      <p className="pulse-state-text">
         StreamPulse received data for a different broadcast while refreshing <strong>{login}</strong>. The previous stream was not reused.
       </p>
-      <div style={styles.footerActions}>
-        <button type="button" style={styles.secondaryButton} onClick={onRetry}>Refresh current stream</button>
+      <div className="pulse-footer-actions">
+        <button type="button" className="pulse-secondary-button" onClick={onRetry}>Refresh current stream</button>
       </div>
     </PulseSectionCard>
   )
@@ -2461,95 +2457,7 @@ function formatClipDuration(durationSeconds?: number): string | null {
 const styles: Record<string, CSSProperties> = {
   panel: { background: theme.bgCanvas, display: 'flex', flexDirection: 'column', minHeight: 0 },
   panelHidden: { display: 'none' },
-  sidebarTabsWrap: { flexShrink: 0, padding: 8 },
   headerTabsShell: { alignItems: 'center', display: 'flex', height: '100%', justifyContent: 'center', width: '100%' },
   miniHost: { display: 'flex', height: '100%', width: '100%' },
   collapsedHost: { display: 'flex', height: '100%', width: '100%' },
-  muted: { color: '#8b8ba0' },
-  trackPrompt: { background: '#1f1f27', border: '1px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.35)', borderRadius: 12, marginBottom: 14, padding: 14 },
-  textButtonLarge: { background: 'transparent', border: 0, color: 'var(--pulse-accent-soft, #c4b5fd)', cursor: 'pointer', fontSize: 14, fontWeight: 800, padding: '8px 0' },
-  footerActions: { display: 'grid', gap: 10, gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', marginTop: 14 },
-  primaryButton: { background: 'var(--pulse-accent-strong, #7c3aed)', border: 0, borderRadius: 10, color: 'var(--pulse-on-accent, #fff)', cursor: 'pointer', fontWeight: 800, minHeight: 44, padding: '11px 14px' },
-  secondaryButton: { background: '#2b2b32', border: '1px solid #3f3f50', borderRadius: 10, color: '#fafafc', cursor: 'pointer', fontWeight: 800, minHeight: 44, padding: '11px 14px' },
-  stateBlock: { background: '#1f1f27', borderRadius: 12, marginTop: 16, padding: 16 },
-  stateTitle: { fontSize: 18, margin: '0 0 10px' },
-  stateText: { color: '#b7b7c6', fontSize: 13, lineHeight: 1.35, margin: '0 0 14px' },
-  softStaleBanner: {
-    background: 'rgba(212, 160, 23, 0.12)',
-    border: '1px solid rgba(212, 160, 23, 0.35)',
-    borderRadius: 8,
-    color: '#e8d48a',
-    fontSize: 12,
-    lineHeight: 1.35,
-    margin: '0 0 10px',
-    padding: '8px 10px',
-  },
-  vodState: { background: '#1f1f27', border: '1px solid #3f3f50', borderRadius: 12, padding: 14 },
-  vodStateWarn: { background: 'rgba(245, 158, 11, 0.08)', borderColor: 'rgba(251, 191, 36, 0.38)' },
-  vodStateTitle: { fontSize: 15, fontWeight: 700, lineHeight: 1.3, margin: '0 0 6px' },
-  vodStateLink: { alignItems: 'center', boxSizing: 'border-box', display: 'flex', fontSize: 13, justifyContent: 'center', padding: '10px 6px', textDecoration: 'none', whiteSpace: 'nowrap' },
-  vodStateSupport: { background: 'none', border: 0, color: '#a1a1b5', cursor: 'pointer', font: 'inherit', fontSize: 11, margin: '10px 0 0', padding: 0, textDecoration: 'underline' },
-  progressTrack: { background: '#33333d', borderRadius: 999, height: 8, marginBottom: 10, overflow: 'hidden' },
-  progressFill: { background: 'var(--pulse-accent-soft, #a78bfa)', borderRadius: 999, display: 'block', height: '100%' },
-  errorBlock: { background: '#1f1f27', borderRadius: 12, padding: 16 },
-  errorTitle: { color: '#f87171', fontSize: 18, margin: '0 0 10px' },
-  refreshError: {
-    alignItems: 'center',
-    background: 'rgba(245, 158, 11, 0.1)',
-    border: '1px solid rgba(245, 158, 11, 0.28)',
-    borderRadius: 8,
-    color: '#fcd34d',
-    display: 'flex',
-    flexWrap: 'wrap',
-    fontSize: 11,
-    fontWeight: 700,
-    gap: 8,
-    justifyContent: 'space-between',
-    marginBottom: 10,
-    padding: '7px 9px',
-  },
-  notice: { background: '#2a2440', border: '1px solid #3f3f50', borderRadius: 10, color: 'var(--pulse-accent-soft, #c4b5fd)', fontSize: 12, fontWeight: 700, margin: '14px 0 0', padding: '10px 12px' },
-  noticeWarn: { background: 'rgba(249,115,22,0.12)', borderColor: 'rgba(249,115,22,0.35)', color: '#fdba74' },
-  noticeOk: { background: 'rgba(34,197,94,0.12)', borderColor: 'rgba(34,197,94,0.35)', color: '#86efac' },
-  streamPulseHeaderMain: { flex: '1 1 180px', minWidth: 0, width: '100%' },
-  streamPulseHeaderMainSidebar: { flex: '0 0 auto', minWidth: 0, width: '100%' },
-  streamPulseHeaderActions: { alignItems: 'flex-end', display: 'flex', flexDirection: 'column', flexShrink: 0, gap: 8 },
-  streamPulseHeaderActionsSidebar: { alignItems: 'stretch', display: 'flex', flexDirection: 'column', gap: 10, width: '100%' },
-  trackStreamerButton: { background: 'rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.1)', border: '1px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.3)', borderRadius: theme.radiusButton, color: 'var(--pulse-accent-ink, #ddd6fe)', cursor: 'pointer', fontSize: 11, fontWeight: 900, padding: '8px 12px', textTransform: 'uppercase' },
-  trackStreamerButtonFull: { background: 'rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.1)', border: '1px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.3)', borderRadius: theme.radiusButton, color: 'var(--pulse-accent-ink, #ddd6fe)', cursor: 'pointer', fontSize: 11, fontWeight: 900, padding: '10px 12px', textAlign: 'center', textTransform: 'uppercase', width: '100%' },
-  trackingButton: { background: 'rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.22)', border: '1px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.45)', borderRadius: 999, color: 'var(--pulse-accent-soft, #c4b5fd)', display: 'inline-block', fontSize: 10, fontWeight: 900, letterSpacing: '0.04em', padding: '4px 10px', textTransform: 'uppercase' },
-  trackingButtonFull: {
-    alignSelf: 'flex-start',
-    background: 'rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.16)',
-    border: '1px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.35)',
-    borderRadius: 999,
-    color: 'var(--pulse-accent-soft, #c4b5fd)',
-    display: 'inline-block',
-    fontSize: 10,
-    fontWeight: 800,
-    letterSpacing: '0.04em',
-    padding: '4px 10px',
-    textAlign: 'center',
-    textTransform: 'uppercase',
-    width: 'fit-content',
-  },
-  headerIconButton: { alignItems: 'center', background: 'transparent', border: 0, color: theme.textMuted, cursor: 'pointer', display: 'inline-flex', fontSize: 11, fontWeight: 700, justifyContent: 'center', minHeight: 32, minWidth: 44, padding: '4px 8px' },
-  headerIconButtonFull: { alignItems: 'center', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, color: theme.textMuted, cursor: 'pointer', display: 'inline-flex', fontSize: 11, fontWeight: 700, justifyContent: 'center', minHeight: 40, padding: '8px 6px', textAlign: 'center', width: '100%' },
-  autoUpdateLabel: { alignItems: 'center', color: theme.textSecondary, display: 'flex', fontSize: 11, fontWeight: 600, gap: 8 },
-  autoUpdateLabelFull: { alignItems: 'center', color: theme.textSecondary, display: 'flex', fontSize: 11, fontWeight: 600, gap: 8, justifyContent: 'space-between', width: '100%' },
-  autoUpdateSwitch: { border: 0, borderRadius: 999, cursor: 'pointer', flexShrink: 0, height: 22, position: 'relative', width: 36 },
-  autoUpdateKnob: { background: '#fff', borderRadius: 999, height: 18, position: 'absolute', top: 2, width: 18 },
-  headerIconRow: { display: 'flex', flexWrap: 'wrap', gap: 6 },
-  headerIconRowFull: { display: 'grid', gap: 6, gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', width: '100%' },
-  clipSpikeHeading: { color: theme.textSecondary, fontSize: 12, fontWeight: 700, letterSpacing: 0, margin: 0 },
-  clipSpikeCard: { color: theme.textPrimary, display: 'block', borderRadius: 6, textDecoration: 'none' },
-  clipThumbWrap: { aspectRatio: '16 / 9', background: '#18181b', position: 'relative', borderRadius: 6, overflow: 'hidden' },
-  clipThumb: { display: 'block', height: '100%', objectFit: 'cover', width: '100%' },
-  clipThumbFallback: { background: '#18181b', height: '100%', width: '100%' },
-  clipDurationBadge: { background: 'rgba(0,0,0,0.8)', borderRadius: 3, bottom: 6, color: '#fafafc', fontSize: 10, fontWeight: 600, padding: '2px 5px', position: 'absolute', right: 6 },
-  clipBody: { display: 'grid', gap: 4, padding: '8px 2px 2px' },
-  clipTitle: { display: '-webkit-box', fontSize: 12, fontWeight: 600, lineHeight: 1.4, height: '2.8em', overflowWrap: 'anywhere', overflow: 'hidden', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2 },
-  clipViews: { color: theme.textMuted, fontSize: 10, fontWeight: 500 },
-  settingsFooter: { flexShrink: 0, padding: '0 10px 10px' },
-  settingsBottomBar: { alignItems: 'center', background: 'rgba(17, 17, 23, 0.96)', border: `1px solid ${theme.borderAccent}`, borderRadius: 8, boxSizing: 'border-box', color: theme.textSecondary, cursor: 'pointer', display: 'flex', fontSize: 11, fontWeight: 800, gap: 8, justifyContent: 'space-between', marginTop: 0, minHeight: 44, padding: '9px 11px', textAlign: 'left', width: '100%' },
 }

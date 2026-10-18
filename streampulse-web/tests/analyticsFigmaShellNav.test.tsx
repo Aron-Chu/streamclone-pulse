@@ -17,4 +17,18 @@ describe('AnalyticsFigmaShell navigation', () => {
     expect(screen.getByLabelText('StreamPulse analytics home').getAttribute('href')).toBe('/analytics')
     expect(screen.getByRole('link', { name: 'Analytics' }).getAttribute('href')).toBe('/analytics')
   })
+
+  it('links All moments and no longer offers the retired Pulse Explorer', () => {
+    render(
+      <MemoryRouter initialEntries={['/analytics']}>
+        <AnalyticsFigmaShell>
+          <div>hub body</div>
+        </AnalyticsFigmaShell>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByRole('link', { name: 'All moments' }).getAttribute('href')).toBe('/analytics/moments')
+    expect(screen.queryByRole('link', { name: /Pulse Explorer/ })).toBeNull()
+    expect(document.querySelector('a[href^="/analytics/explore"]')).toBeNull()
+  })
 })

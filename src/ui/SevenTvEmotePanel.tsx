@@ -98,8 +98,8 @@ export function SevenTvEmotePanel({
   }
 
   return (
-    <div className="pulse-seven-tv-panel" style={styles.panel}>
-      <div style={styles.headerRow}>
+    <div className="pulse-seven-tv-panel">
+      <div className="pulse-seven-tv-header">
         <button
           type="button"
           className="pulse-seven-tv-toggle"
@@ -108,12 +108,12 @@ export function SevenTvEmotePanel({
           aria-expanded={expanded}
           aria-controls="pulse-emote-picker-list"
         >
-          <span style={styles.toggleLabel}>
+          <span className="pulse-seven-tv-label">
             Plot on chart · {selectedCount}/{selectionLimit}
           </span>
           {!expanded && previewEmotes.length > 0 ? (
             <span
-              style={styles.togglePreview}
+              className="pulse-seven-tv-preview"
               title={`Top emotes: ${previewNames}`}
               aria-label={`Top emotes: ${previewNames}`}
             >
@@ -124,7 +124,8 @@ export function SevenTvEmotePanel({
                   <span
                     key={emoteSelectionKey(emote)}
                     data-emote-picker-preview-image="true"
-                    style={{ ...styles.previewEmote, borderColor: lineColor }}
+                    className="pulse-seven-tv-preview-emote"
+                    style={{ borderColor: lineColor }}
                   >
                     <PulseEmoteImg
                       emote={emote}
@@ -139,14 +140,10 @@ export function SevenTvEmotePanel({
             </span>
           ) : null}
           <span
-            className="pulse-seven-tv-chevron"
+            className={reducedMotion ? 'pulse-seven-tv-chevron pulse-seven-tv-still' : 'pulse-seven-tv-chevron'}
             data-emote-picker-chevron
             data-expanded={expanded ? 'true' : 'false'}
-            style={{
-              ...styles.chevron,
-              ...(reducedMotion ? styles.motionReducedChevron : null),
-              transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)',
-            }}
+            style={{ transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)' }}
             aria-hidden="true"
           >
             ▾
@@ -156,7 +153,7 @@ export function SevenTvEmotePanel({
           <button
             type="button"
             data-emote-picker-clear
-            style={styles.clearButton}
+            className="pulse-seven-tv-clear"
             aria-label="Clear plotted emotes"
             title="Remove all plotted emote lines"
             onClick={event => {
@@ -184,7 +181,6 @@ export function SevenTvEmotePanel({
           <div
             id="pulse-emote-picker-list"
             className="pulse-emote-picker-grid"
-            style={styles.chipGrid}
             data-emote-picker-grid
             role="listbox"
             aria-label={`Plot on chart · ${selectedCount} of ${selectionLimit} selected`}
@@ -207,21 +203,16 @@ export function SevenTvEmotePanel({
                   aria-label={`${emote.name}, ${formatCount(emote.count)} uses. ${hint}`}
                   disabled={disabled}
                   tabIndex={expanded ? 0 : -1}
-                  className={`pulse-seven-tv-chip${selected ? ' pulse-seven-tv-chip-active' : ''}${disabled ? ' pulse-seven-tv-chip-disabled' : ''}`}
-                  style={{
-                    ...styles.chip,
-                    ...(sidebarCompact ? styles.chipCompact : null),
-                    ...(selected ? (() => {
-                      const selIdx = normalizedSelectedKeys.indexOf(key)
-                      const lineColor = selIdx >= 0 ? emoteChartColor(selIdx) : '#a78bfa'
-                      return {
-                        background: `${lineColor}22`,
-                        borderColor: `${lineColor}f2`,
-                        boxShadow: `0 0 0 1px ${lineColor}cc, 0 0 10px ${lineColor}33`,
-                      }
-                    })() : null),
-                    ...(disabled ? styles.chipDisabled : null),
-                  }}
+                  className={`pulse-seven-tv-chip${sidebarCompact ? ' pulse-seven-tv-chip-compact' : ''}${selected ? ' pulse-seven-tv-chip-active' : ''}${disabled ? ' pulse-seven-tv-chip-disabled' : ''}`}
+                  style={selected ? (() => {
+                    const selIdx = normalizedSelectedKeys.indexOf(key)
+                    const lineColor = selIdx >= 0 ? emoteChartColor(selIdx) : '#a78bfa'
+                    return {
+                      background: `${lineColor}22`,
+                      borderColor: `${lineColor}f2`,
+                      boxShadow: `0 0 0 1px ${lineColor}cc, 0 0 10px ${lineColor}33`,
+                    }
+                  })() : undefined}
                   title={`${emote.name} · ${formatCount(emote.count)} uses · ${hint}`}
                   onClick={() => handleChipActivate(emote, activity)}
                 >
@@ -232,7 +223,7 @@ export function SevenTvEmotePanel({
                     height={sidebarCompact ? 20 : 22}
                     style={styles.chipImg}
                   />
-                  <span style={styles.chipCount}>
+                  <span className="pulse-seven-tv-chip-count">
                     {activity === 'loading' ? '…' : formatCount(emote.count)}
                   </span>
                   {selected ? (() => {
@@ -240,7 +231,8 @@ export function SevenTvEmotePanel({
                     const lineColor = selIdx >= 0 ? emoteChartColor(selIdx) : theme.textMuted
                     return (
                       <span
-                        style={{ ...styles.chipSwatch, background: lineColor, boxShadow: `0 0 5px ${lineColor}55` }}
+                        className="pulse-seven-tv-swatch"
+                        style={{ background: lineColor, boxShadow: `0 0 5px ${lineColor}55` }}
                         aria-hidden="true"
                         title={`Chart line: ${lineColor}`}
                       />
@@ -255,7 +247,6 @@ export function SevenTvEmotePanel({
               type="button"
               data-emote-picker-more
               className="pulse-seven-tv-more"
-              style={styles.moreButton}
               aria-expanded={showAll}
               tabIndex={expanded ? 0 : -1}
               onClick={() => setShowAll(current => !current)}
@@ -270,19 +261,7 @@ export function SevenTvEmotePanel({
 }
 
 const styles: Record<string, CSSProperties> = {
-  panel: {
-    background: 'rgba(17, 17, 23, 0.72)',
-    border: '1px solid rgba(103, 232, 249, 0.1)',
-    borderRadius: 10,
-    marginTop: 8,
-    overflow: 'hidden',
-  },
-  headerRow: {
-    alignItems: 'center',
-    display: 'flex',
-    gap: 4,
-    minWidth: 0,
-  },
+  // Inline on purpose: as a class, .pulse-seven-tv-toggle:hover would start tinting it.
   toggle: {
     alignItems: 'center',
     background: 'transparent',
@@ -296,54 +275,7 @@ const styles: Record<string, CSSProperties> = {
     flex: '1 1 auto',
     minWidth: 0,
   },
-  clearButton: {
-    background: 'rgba(139, 92, 246, 0.12)',
-    border: '1px solid rgba(167, 139, 250, 0.3)',
-    borderRadius: 6,
-    color: '#ddd6fe',
-    cursor: 'pointer',
-    flex: '0 0 auto',
-    fontSize: 9,
-    fontWeight: 800,
-    minHeight: 25,
-    padding: '3px 7px',
-  },
-  toggleLabel: {
-    color: theme.textMuted,
-    flexShrink: 0,
-    fontSize: 9,
-    fontWeight: 800,
-    letterSpacing: '0.06em',
-    textTransform: 'uppercase',
-  },
-  togglePreview: {
-    alignItems: 'center',
-    display: 'inline-flex',
-    flex: 1,
-    gap: 5,
-    minWidth: 0,
-  },
-  previewEmote: {
-    alignItems: 'center',
-    background: 'rgba(255, 255, 255, 0.035)',
-    border: '1px solid rgba(255, 255, 255, 0.12)',
-    borderRadius: 5,
-    display: 'inline-flex',
-    flexShrink: 0,
-    height: 22,
-    justifyContent: 'center',
-    width: 22,
-  },
   previewImg: { display: 'block', flexShrink: 0, objectFit: 'contain' },
-  chevron: {
-    color: theme.accentSoft,
-    flexShrink: 0,
-    fontSize: 11,
-    fontWeight: 900,
-    marginLeft: 'auto',
-    transition: 'transform .18s cubic-bezier(.2,0,0,1)',
-  },
-  motionReducedChevron: { transition: 'none' },
   body: {
     borderTop: '0 solid transparent',
     display: 'grid',
@@ -367,50 +299,5 @@ const styles: Record<string, CSSProperties> = {
   },
   motionReduced: { transition: 'none', transform: 'none' },
   bodyInner: { minHeight: 0, overflow: 'hidden' },
-  chipGrid: {
-    alignItems: 'center',
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: 6,
-    minWidth: 0,
-  },
-  chip: {
-    alignItems: 'center',
-    background: 'rgba(255, 255, 255, 0.045)',
-    borderColor: 'rgba(255, 255, 255, 0.12)',
-    borderStyle: 'solid',
-    borderWidth: 1,
-    borderRadius: 999,
-    color: theme.textPrimary,
-    cursor: 'pointer',
-    display: 'inline-flex',
-    flex: '0 1 auto',
-    gap: 5,
-    justifyContent: 'center',
-    minHeight: 30,
-    minWidth: 58,
-    padding: '3px 8px 3px 5px',
-  },
-  chipCompact: { minHeight: 28, minWidth: 54, padding: '3px 7px 3px 4px' },
-  chipDisabled: { cursor: 'not-allowed', opacity: 0.48 },
   chipImg: { display: 'block', flexShrink: 0, objectFit: 'contain' },
-  chipCount: {
-    color: theme.textSecondary,
-    fontSize: 10,
-    fontVariantNumeric: 'tabular-nums',
-    fontWeight: 800,
-    lineHeight: 1,
-  },
-  chipSwatch: { borderRadius: 999, flexShrink: 0, height: 7, width: 7 },
-  moreButton: {
-    background: 'rgba(139, 92, 246, 0.1)',
-    border: '1px solid rgba(167, 139, 250, 0.35)',
-    borderRadius: 999,
-    color: '#c4b5fd',
-    cursor: 'pointer',
-    fontSize: 9,
-    fontWeight: 800,
-    justifySelf: 'center',
-    padding: '5px 10px',
-  },
 }

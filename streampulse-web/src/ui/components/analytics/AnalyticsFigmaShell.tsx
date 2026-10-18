@@ -23,7 +23,6 @@ const NAV_ITEMS = [
   // has a Moments tab scoped to one stream, and two links named the same thing
   // at different scopes read as the same destination.
   { label: 'All moments', to: '/analytics/moments' },
-  { label: 'Pulse Explorer', to: '/analytics/explore' },
 ]
 
 export interface AnalyticsFigmaShellProps {
