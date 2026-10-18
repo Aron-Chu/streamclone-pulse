@@ -77,6 +77,9 @@ export default defineConfig({
     // The content entry is wrapped as a self-contained IIFE, so module-scope
     // names are not part of a public API and can be safely compressed/mangled.
     terserOptions: {
+      // Vite turns on terser's Safari 10 workarounds by default; the extension
+      // ships to Chromium and Firefox only, so they are dead weight here.
+      safari10: false,
       compress: { passes: 3, hoist_funs: true, toplevel: true },
       mangle: { toplevel: true },
     },
