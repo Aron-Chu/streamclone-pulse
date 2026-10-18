@@ -99,8 +99,6 @@ describe('ConsoleChannelView Moments return navigation', () => {
     ['/analytics/moments?view=recent#history', 'Latest moments'],
     ['/analytics/moments?view=saved#history', 'Saved moments'],
     ['/analytics/moments?view=history&year=2026&category=VALORANT#evidence', 'Broadcast history'],
-    ['/analytics/explore/pulse-xqc-session-1?window=7d&sort=recent', 'Pulse Explorer'],
-    ['/analytics/explore?window=24h', 'Pulse Explorer'],
   ])('labels %s from its view and preserves its destination', (returnTo, label) => {
     const query = new URLSearchParams({ returnTo })
     render(
@@ -112,6 +110,18 @@ describe('ConsoleChannelView Moments return navigation', () => {
     )
 
     expect(screen.getByRole('link', { name: new RegExp(`${label}$`) }).getAttribute('href')).toBe(returnTo)
+  })
+
+  it.each(['/analytics/explore/pulse-xqc-session-1?window=7d&sort=recent', '/analytics/explore?window=24h'])('treats an old Explorer return path %s as no return path', returnTo => {
+    render(
+      <MemoryRouter initialEntries={[`/analytics/xqc/2026-07-11?${new URLSearchParams({ returnTo })}`]}>
+        <Routes>
+          <Route path="/analytics/:login/:streamId" element={<ConsoleChannelView />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    expect(screen.getByRole('link', { name: /All xqc broadcasts$/ }).getAttribute('href')).toBe('/analytics/xqc')
+    expect(screen.queryByRole('link', { name: /Pulse Explorer/ })).toBeNull()
   })
 
   it('sends a link without a return path to the creator broadcasts, not global History', () => {

@@ -5,13 +5,11 @@ import {
   assertNoPageHorizontalOverflow,
 } from './helpers/assertions'
 import { installHubUxMock } from './helpers/hubUxMock'
-import { installExplorerMock } from './helpers/explorerMock'
 import { installNewsroomMock, type NewsroomMockMode } from './helpers/newsroomMock'
 
 async function install(page: Parameters<typeof installHubUxMock>[0], mode: NewsroomMockMode = 'ready') {
   await installHubUxMock(page)
   await installNewsroomMock(page, mode)
-  await installExplorerMock(page, mode)
 }
 
 test.describe('Pulse Newsroom and independent Live Wire', () => {
@@ -67,45 +65,6 @@ test.describe('Pulse Newsroom and independent Live Wire', () => {
     await assertNoConsoleErrors(page, errors)
   })
 
-  test('old Newsroom links preserve filters and broadcast identity in Explorer', async ({ page }) => {
-    const newsroomRequests: string[] = []
-    page.on('request', request => {
-      if (/\/v1\/public\/newsroom(?:\?|\/|$)/.test(request.url())) newsroomRequests.push(request.url())
-    })
-    await install(page)
-    await page.goto('/analytics/newsroom?window=live&signal=chat#evidence')
-    await expect(page).toHaveURL('/analytics/explore?window=live&signal=chat#evidence')
-    await expect(page.getByRole('heading', { name: 'Pulse Explorer' })).toBeVisible()
-    await expect(page.locator('.explorer-result').filter({ hasText: 'Lirik' })).toBeVisible()
-    await page.goto('/analytics/newsroom/pulse-lirik-session-2?window=live&signal=chat#evidence')
-    await expect(page).toHaveURL('/analytics/explore/pulse-lirik-session-2?window=live&signal=chat#evidence')
-    await expect(page.getByRole('heading', { name: 'Lirik' })).toBeVisible()
-    expect(newsroomRequests).toEqual([])
-  })
-
-  test('redirected broadcast detail survives refresh and exposes distinct accessible actions', async ({ page }) => {
-    const errors = attachConsoleErrorGuard(page)
-    await install(page)
-    await page.goto('/analytics/newsroom/pulse-xqc-session-1?window=7d&sort=recent')
-    await expect(page).toHaveURL('/analytics/explore/pulse-xqc-session-1?window=7d&sort=recent')
-    await expect(page.getByRole('heading', { name: 'xQc' })).toBeVisible()
-    const actions = page.getByRole('group', { name: 'Broadcast actions' })
-    const analytics = actions.getByRole('link', { name: 'Analytics' })
-    await expect(analytics).toHaveAttribute('href', /\/analytics\/xqc\/stream-xqc-pulse-xqc-session-1\?t=240&returnTo=%2Fanalytics%2Fexplore%2Fpulse-xqc-session-1%3Fwindow%3D7d%26sort%3Drecent$/)
-    await expect(actions.getByRole('link', { name: 'Watch live' })).toHaveAttribute('href', 'https://www.twitch.tv/xqc')
-    await expect(actions.getByRole('button', { name: 'Copy link' })).toBeVisible()
-    await expect(page.locator('.explorer-moments li')).toHaveCount(3)
-
-    await page.reload()
-    await expect(page).toHaveURL('/analytics/explore/pulse-xqc-session-1?window=7d&sort=recent')
-    await expect(page.getByRole('heading', { name: 'xQc' })).toBeVisible()
-    await page.keyboard.press('Escape')
-    await expect(page).toHaveURL('/analytics/explore?window=7d&sort=recent')
-    await page.goBack()
-    await expect(page).toHaveURL('/analytics/explore/pulse-xqc-session-1?window=7d&sort=recent')
-    await assertNoConsoleErrors(page, errors)
-  })
-
   for (const mode of ['empty', 'unavailable', 'malformed'] as const) {
     test(`${mode} state is explicit and never creates a second rail`, async ({ page }) => {
       await install(page, mode)
@@ -118,15 +77,6 @@ test.describe('Pulse Newsroom and independent Live Wire', () => {
       await expect(activity.getByRole('complementary', { name: 'Activity bucket inspector' })).toHaveCount(0)
     })
   }
-
-  test('stale Explorer index preserves broadcasts reached through the old Newsroom link', async ({ page }) => {
-    await install(page, 'stale')
-    await page.goto('/analytics/newsroom')
-    await expect(page).toHaveURL('/analytics/explore')
-    await expect(page.getByRole('status').filter({ hasText: /Fresh activity could not be reached/i })).toBeVisible()
-    await expect(page.locator('.explorer-result').filter({ hasText: 'xQc' })).toBeVisible()
-    await expect(page.getByText('Stale', { exact: true })).toBeVisible()
-  })
 
   for (const width of [390, 768, 1280, 1440, 1600]) {
     test(`keeps chart, bucket inspector, and separate Live Wire responsive at ${width}px`, async ({ page }, testInfo) => {
@@ -179,19 +129,4 @@ test.describe('Pulse Newsroom and independent Live Wire', () => {
       }
     })
   }
-
-  test('an old Newsroom history URL preserves supported Explorer range without requesting the retired API', async ({ page }) => {
-    const explorerRequested: string[] = []
-    const newsroomRequested: string[] = []
-    page.on('request', (request) => {
-      if (/\/v1\/public\/explorer\?/.test(request.url())) explorerRequested.push(new URL(request.url()).searchParams.get('window') ?? '')
-      if (/\/v1\/public\/newsroom\?/.test(request.url())) newsroomRequested.push(request.url())
-    })
-    await install(page)
-    await page.goto('/analytics/newsroom?window=24h&signal=chat')
-    await expect(page).toHaveURL('/analytics/explore?window=24h&signal=chat')
-    await expect(page.getByRole('combobox', { name: 'Range' })).toHaveValue('24h')
-    await expect.poll(() => explorerRequested.includes('24h')).toBe(true)
-    expect(newsroomRequested).toEqual([])
-  })
 })

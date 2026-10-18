@@ -1,7 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
 import { seedBetaKey } from './helpers/auth'
-import { installExplorerMock } from './helpers/explorerMock'
 import { installHubUxMock } from './helpers/hubUxMock'
 // The notes the page is built from; the extension's release step marks versions released.
 import releaseNotes from '../../../src/shared/release-notes.json' with { type: 'json' }
@@ -252,57 +251,6 @@ test.describe('cold-load fragments on analytics routes', () => {
       expect(Math.abs((await topOf(page, '#section-tracked')) - left)).toBeLessThanOrEqual(16)
     })
   }
-
-  test('Explorer honours the skip-link fragment #analytics-main on a cold load', async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 })
-    await installHubUxMock(page)
-    await installExplorerMock(page)
-    await page.goto('/analytics/explore#analytics-main')
-    await expect(page.getByRole('heading', { name: 'Pulse Explorer' })).toBeVisible()
-    await expect.poll(() => topOf(page, '#analytics-main')).toBeLessThanOrEqual(2)
-    expect(await topOf(page, '#analytics-main')).toBeGreaterThanOrEqual(-2)
-  })
-})
-
-test.describe('Explorer list and detail', () => {
-  test('on desktop, opening a broadcast and Escape keep the window where the reader left it', async ({ page }) => {
-    await installHubUxMock(page)
-    await installExplorerMock(page)
-    await page.goto('/analytics/explore')
-    await expect(page.locator('.explorer-result')).toHaveCount(4)
-    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
-    await expect.poll(() => scrollY(page)).toBeGreaterThan(40)
-    const left = await scrollY(page)
-
-    await page.locator('.explorer-result').filter({ hasText: 'lirik' }).click()
-    await expect(page).toHaveURL(/\/analytics\/explore\/pulse-lirik-session-2/)
-    await expect(page.getByRole('heading', { level: 2, name: /lirik/i })).toBeVisible()
-    await page.waitForTimeout(500)
-    expect(Math.abs((await scrollY(page)) - left)).toBeLessThanOrEqual(2)
-
-    await page.keyboard.press('Escape')
-    await expect(page).toHaveURL(/\/analytics\/explore(\?|$)/)
-    await page.waitForTimeout(500)
-    expect(Math.abs((await scrollY(page)) - left)).toBeLessThanOrEqual(2)
-  })
-
-  test('at 390 px a broadcast replaces the list and opens at the top', async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 })
-    await installHubUxMock(page)
-    await installExplorerMock(page)
-    await page.goto('/analytics/explore')
-    const result = page.locator('.explorer-result').filter({ hasText: 'sodapoppin' })
-    await result.scrollIntoViewIfNeeded()
-    await expect.poll(() => scrollY(page)).toBeGreaterThan(200)
-    await result.click()
-    await expect(page).toHaveURL(/\/analytics\/explore\/pulse-soda-session-4/)
-    await expect.poll(() => scrollY(page)).toBe(0)
-    await expect(page.locator('.explorer-results')).toBeHidden()
-
-    await page.getByRole('link', { name: 'Back to broadcasts' }).click()
-    await expect(page).toHaveURL(/\/analytics\/explore(\?|$)/)
-    await expect.poll(() => scrollY(page)).toBe(0)
-  })
 })
 
 test.describe('Back to the Moments list', () => {

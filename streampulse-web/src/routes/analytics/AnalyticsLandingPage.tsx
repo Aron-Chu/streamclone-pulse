@@ -63,7 +63,7 @@ import { useCommandCenterLabels } from "../../ui/providers/AnalyticsThemeProvide
 import { SectionReveal } from "../../ui/motion/useAnalyticsMotion";
 import { useHashScrollHold } from "../../ui/RouteScrollManager";
 import "../../ui/components/analytics/figma-analytics.css";
-import "../../ui/components/newsroom/newsroom.css";
+import "../../ui/components/analytics/hub-landing-layout.css";
 import "../../ui/components/analytics/discovery-layout.css";
 import "../../ui/components/analytics/analytics-interaction.css";
 // Loaded last: compact desktop density overrides for the hub.
@@ -154,7 +154,7 @@ function AnalyticsLandingContent() {
   // Requested range drives the endpoint/range tab; served range owns all bucket
   // geometry so a bounded fallback cannot select or prefetch invented history.
   const servedActivityWindowMinutes = resolveHubActivityChartWindowMinutes(data.activity);
-  // Live Wire and Newsroom may only claim an in-place chart selection when the
+  // Live Wire may only claim an in-place chart selection when the
   // exact bucket survived the same bounding, alignment, and open-tip filtering
   // used by FigmaGlobalActivityPanel. Raw activity rows are not sufficient:
   // legacy payloads can contain rows that the truthful chart model omits.
