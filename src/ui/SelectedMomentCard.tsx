@@ -1,5 +1,7 @@
-import { displayMomentReasonLabel, momentClockDisplay, type LiveHeatPoint } from '@streampulse/pulse-core'
+import { displayMomentReasonLabel, momentClockDisplay, reactionAnalyticalOffset, type LiveHeatPoint } from '@streampulse/pulse-core'
+import type { ExtensionGameSegment } from '../shared/messages.ts'
 import { MomentSelectionCard } from './MomentSelectionCard.tsx'
+import { gameAtOffset, momentPictureView } from './momentPicture.ts'
 import { formatSelectedMomentActivity } from './momentActivity.ts'
 import { momentReasonLabelStyle } from './momentReasonStyles.ts'
 import { liveHeatPointKey } from './mostReacted.ts'
@@ -14,6 +16,8 @@ export interface SelectedMomentCardProps {
   compact?: boolean
   interactionState?: 'preview' | 'selected'
   viewerUnavailableDetail?: string
+  /** The stream's games, to name the one on screen at this moment. */
+  games?: readonly ExtensionGameSegment[]
 }
 
 export function SelectedMomentCard({
@@ -24,6 +28,7 @@ export function SelectedMomentCard({
   onClear,
   jumpLabel = 'Jump',
   viewerUnavailableDetail,
+  games,
 }: SelectedMomentCardProps) {
   const clock = momentClockDisplay(point)
   const offsetLabel = clock.text
@@ -47,6 +52,8 @@ export function SelectedMomentCard({
       style={{ marginBottom: 8 }}
       contentKey={pointIdentity}
       ariaLabel={`Selected moment at ${offsetLabel}${clock.approximate ? ', start of minute bucket' : ''}`}
+      picture={momentPictureView('card', point)}
+      game={gameAtOffset(games, reactionAnalyticalOffset(point))}
     />
   )
 }

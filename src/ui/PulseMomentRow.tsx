@@ -8,6 +8,7 @@ import {
 } from '@streampulse/pulse-core'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
 import { formatMomentMetricsLine } from './momentActivity.ts'
+import { momentPictureView, useMomentPicture } from './momentPicture.ts'
 import { momentReasonLabelStyle } from './momentReasonStyles.ts'
 import { liveHeatPointKey } from './mostReacted.ts'
 import { theme } from './theme.ts'
@@ -47,6 +48,7 @@ export function PulseMomentRow({
   const analyticalOffset = reactionAnalyticalOffset(point)
   const collecting = point.collecting
   const ref = useRef<HTMLButtonElement>(null)
+  const thumbRef = useMomentPicture<HTMLSpanElement>(collecting ? undefined : momentPictureView('thumb', point))
   // A row that leaves the list while focused (a poll ranks it past the fold,
   // or the pick it was listed for is cleared) hands focus on to what follows
   // the list, its Show more control, instead of dropping it.
@@ -79,6 +81,11 @@ export function PulseMomentRow({
           style={styles.momentAccent}
           aria-hidden="true"
         />
+      ) : null}
+      {!collecting ? (
+        // Filled by the moment-pictures script, and hidden until the list has
+        // a picture to show (its stylesheet overrides this inline display).
+        <span ref={thumbRef} className="pmf-thumb" style={styles.thumb} aria-hidden="true" />
       ) : null}
       <div style={styles.momentRowInner}>
         <div style={styles.momentMain}>
@@ -178,6 +185,7 @@ const styles: Record<string, CSSProperties> = {
     flexShrink: 0,
     width: 2,
   },
+  thumb: { display: 'none' },
   momentRowInner: {
     alignItems: 'center',
     display: 'flex',

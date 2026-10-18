@@ -9,8 +9,10 @@ import {
   clearSessionPulseCache,
   countSessionPulseEntries,
   getKeepLocalCache,
+  getMomentPicturesEnabled,
   getVodJumpChartPinEnabled,
   setKeepLocalCache,
+  setMomentPicturesEnabled,
   setVodJumpChartPinEnabled,
 } from '../shared/storage.ts'
 import {
@@ -289,7 +291,13 @@ function PulseExperienceSection({ preferences, health, supporterPerks }: { prefe
           disabled={preferences.placement !== 'sidebar'}
           onChange={preferences.setDock}
         />
-        <VodJumpChartPinToggle />
+        <StoredToggleRow
+          id="settings-vod-jump-chart-pin"
+          label="Show VOD jumps on the chart"
+          hint="Keep playback seeking enabled while optionally pinning the jumped-to offset in the activity chart."
+          read={getVodJumpChartPinEnabled}
+          write={setVodJumpChartPinEnabled}
+        />
       </PulseSectionCard>
 
       <PulseSectionCard title="Appearance & placement" headingLevel={3}>
@@ -335,13 +343,20 @@ function PulseExperienceSection({ preferences, health, supporterPerks }: { prefe
   )
 }
 
-function VodJumpChartPinToggle() {
+/** A switch stored on its own key: loads before it can be flipped, and reverts if saving fails. */
+function StoredToggleRow({ id, label, hint, read, write }: {
+  id: string
+  label: string
+  hint: string
+  read: () => Promise<boolean>
+  write: (enabled: boolean) => Promise<void>
+}) {
   const [enabled, setEnabled] = useState(true)
   const [status, setStatus] = useState('')
   const [loaded, setLoaded] = useState(false)
   useEffect(() => {
     let mounted = true
-    void getVodJumpChartPinEnabled().then(value => {
+    void read().then(value => {
       if (!mounted) return
       setEnabled(value)
       setLoaded(true)
@@ -355,7 +370,7 @@ function VodJumpChartPinToggle() {
     setEnabled(next)
     setStatus('')
     try {
-      await setVodJumpChartPinEnabled(next)
+      await write(next)
       setStatus('Saved')
     } catch {
       setEnabled(previous)
@@ -365,9 +380,9 @@ function VodJumpChartPinToggle() {
   return (
     <>
       <ToggleRow
-        id="settings-vod-jump-chart-pin"
-        label="Show VOD jumps on the chart"
-        hint="Keep playback seeking enabled while optionally pinning the jumped-to offset in the activity chart."
+        id={id}
+        label={label}
+        hint={hint}
         checked={enabled}
         disabled={!loaded}
         onChange={update}
@@ -409,6 +424,13 @@ function PrivacySection({ settings }: { settings: AdministrativeSettings }) {
             {settings.cacheBusy ? 'Clearing…' : 'Clear'}
           </button>
         </div>
+        <StoredToggleRow
+          id="settings-moment-pictures"
+          label="Moment pictures"
+          hint="Keep small frames of what you watch so Top Moments can show what happened. They stay in that tab's memory, are never uploaded, and are gone when you close it. Turning it on applies to Twitch tabs you open or reload after."
+          read={getMomentPicturesEnabled}
+          write={setMomentPicturesEnabled}
+        />
       </PulseSectionCard>
       {(EXTENSION_ANALYTICS_INGEST_ENABLED || EXTENSION_DIAGNOSTICS_INGEST_ENABLED) ? (
         <PulseSectionCard title="Optional sharing" headingLevel={3}>

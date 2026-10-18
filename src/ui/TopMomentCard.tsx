@@ -1,7 +1,9 @@
 import { useRef } from 'react'
 import type { LiveHeatPoint } from '@streampulse/pulse-core'
+import type { ExtensionGameSegment } from '../shared/messages.ts'
 import { MomentCardSlot } from './MomentCardSlot.tsx'
-import { MOMENT_CARD_HEIGHT } from './momentCardLayout.ts'
+import { isRenderableGameName } from './extensionChartAdapter.ts'
+import { MOMENT_CARD_GAME_LINE_HEIGHT, MOMENT_CARD_HEIGHT } from './momentCardLayout.ts'
 import { prefersReducedMotion } from './motion/useSmoothedScalar.ts'
 import { usePinnedCardHold } from './pinnedCardExit.ts'
 import { SelectedMomentCard } from './SelectedMomentCard.tsx'
@@ -16,6 +18,8 @@ export interface TopMomentCardProps {
   onJump: (point: LiveHeatPoint) => void
   onAnalytics: (point: LiveHeatPoint) => void
   onClear: () => void
+  /** The stream's games, to name the one on screen at the picked moment. */
+  games?: readonly ExtensionGameSegment[]
 }
 
 /**
@@ -39,11 +43,15 @@ export function TopMomentCard({ id, point, onClear, ...card }: TopMomentCardProp
   const ref = useRef<HTMLDivElement>(null)
   const shown = usePinnedCardHold(point, prefersReducedMotion())
   if (!shown.point) return null
-  // Clearing hands focus back to the picked row, which the list keeps listed
-  // while it is picked. A row listed past the fold only for the pick leaves
-  // with it and hands focus on to Show more (PulseMomentRow).
+  // A moment between two games' segments shows no game line; the reserve keeps
+  // its card the height of the others.
+  const height = MOMENT_CARD_HEIGHT + (card.games?.some(game => isRenderableGameName(game.gameName)) ? MOMENT_CARD_GAME_LINE_HEIGHT : 0)
+  // Clearing hands focus back to the picked row (or Catch me up's moment),
+  // which shares the card's grid child and stays listed while it is picked.
+  // A row listed past the fold only for the pick leaves with it and hands
+  // focus on to Show more (PulseMomentRow).
   const clear = (): void => {
-    ref.current!.nextElementSibling!.querySelector<HTMLElement>('[aria-pressed="true"]')?.focus()
+    ref.current?.parentElement?.querySelector<HTMLElement>('[aria-pressed="true"]')?.focus()
     onClear()
   }
   return (
@@ -55,7 +63,7 @@ export function TopMomentCard({ id, point, onClear, ...card }: TopMomentCardProp
     >
       <MomentCardSlot exiting={shown.exiting}>
         {/* Moments with no, one or three top emotes all open to one height. */}
-        <div style={{ minHeight: MOMENT_CARD_HEIGHT }}>
+        <div style={{ minHeight: height }}>
           <SelectedMomentCard {...card} point={shown.point} onClear={clear} />
         </div>
       </MomentCardSlot>
