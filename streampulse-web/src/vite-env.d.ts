@@ -14,6 +14,8 @@ interface ImportMetaEnv {
   readonly VITE_PUBLIC_DISCORD_INVITE_URL?: string
   /** Launch switch: `on` shows the optional "Seen in chat" Supporter copy (lib/supporterChatBadgesFlag.ts). */
   readonly VITE_SUPPORTER_CHAT_BADGES?: string
+  /** Build switch: `on` (or `1`) serves the d3-v5 hub on /analytics (read inline so a flag-off build folds it away). Off: the Command Center page. */
+  readonly VITE_PUBLIC_HUB_V5?: string
   readonly DEV: boolean
   readonly PROD: boolean
   readonly MODE: string

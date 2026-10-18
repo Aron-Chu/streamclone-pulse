@@ -1,0 +1,423 @@
+/*
+ * Hub activity card (U6): header row, readout row, chart hooks, stamp and
+ * provider lanes. Values follow the pinned d3-v2 mockup (hub.html #activity
+ * rules and shared.css .rh/.seg/.fig). Every rule sits under .hub-act, the
+ * card's own class; the card is not .hubx and not .hub-d3, so the old hub.css
+ * chart rules and U4's grid rules never reach it. Tokens fall back to the d3
+ * values (hub-d3-tokens.css) because the interim page has no .hub-d3 root.
+ * The chart (sp-chart.css) and the navigator (sp-navigator.css) style themselves.
+ */
+.hub-act {
+  --ha-text-1: var(--sp-text-1, #ededef);
+  --ha-text-2: var(--sp-text-2, #b4b4bb);
+  --ha-text-3: var(--sp-text-3, #8e8e96);
+  --ha-line: var(--sp-line, #1d1d1f);
+  --ha-line-strong: var(--sp-line-strong, #272728);
+  --ha-raised: var(--sp-raised, #151517);
+  --ha-focus: var(--sp-focus, #99f6e4);
+  --ha-accent: #5eead4;
+  --ha-chat: #a78bfa;
+  --ha-emotes: #f7b645;
+  --ha-viewers: #c0c7ce;
+  container: hubact / inline-size;
+  position: relative;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  color: var(--ha-text-1);
+  font: 400 14px/20px var(--sp-font, "Inter", system-ui, sans-serif);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "cv11" 1;
+  -webkit-font-smoothing: antialiased;
+  font-synthesis: none;
+}
+
+.hub-act *,
+.hub-act *::before,
+.hub-act *::after {
+  box-sizing: border-box;
+}
+
+.hub-act :is(button, [tabindex]):focus-visible {
+  outline: 2px solid var(--ha-focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ---------- header row ---------- */
+.hub-act .rh {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 40px;
+  margin: 0;
+  padding: 4px 0 0;
+  border-top: 1px solid var(--ha-line-strong);
+}
+
+.hub-act .rh h2 {
+  margin: 0;
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--ha-text-1);
+  white-space: nowrap;
+}
+
+.hub-act .rh .meta {
+  color: var(--ha-text-3);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.hub-act .hub-act-info {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* window seg (shared.css .seg) */
+.hub-act .seg {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--ha-line-strong);
+  border-radius: 8px;
+}
+
+.hub-act .seg button {
+  position: relative;
+  height: 26px;
+  margin: 0;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--ha-text-2);
+  font: inherit;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.hub-act .seg button::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -9px;
+  bottom: -9px;
+}
+
+.hub-act .seg button:hover {
+  color: var(--ha-text-1);
+}
+
+.hub-act .seg button[aria-pressed="true"] {
+  color: var(--ha-text-1);
+  background: var(--ha-raised);
+  box-shadow: inset 0 0 0 1px var(--ha-accent);
+}
+
+/* series chips (hub.html .toggles / .tg) */
+.hub-act .toggles {
+  display: flex;
+  gap: 4px;
+}
+
+.hub-act .tg {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  margin: 0;
+  padding: 0 10px;
+  border: 1px solid var(--ha-line-strong);
+  border-radius: 8px;
+  background: none;
+  color: var(--ha-text-3);
+  font: inherit;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.hub-act .tg::after {
+  content: "";
+  position: absolute;
+  inset: -8px 0;
+}
+
+.hub-act .tg[aria-pressed="true"] {
+  color: var(--ha-text-1);
+}
+
+.hub-act .sw {
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.hub-act .sw.chat { background: var(--ha-chat); }
+.hub-act .sw.emotes { background: var(--ha-emotes); }
+.hub-act .sw.viewers { background: var(--ha-viewers); }
+
+.hub-act .tg .sw { opacity: 0.35; }
+.hub-act .tg[aria-pressed="true"] .sw { opacity: 1; }
+.hub-act .tg[aria-pressed="false"] .sw {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--ha-text-3);
+  opacity: 1;
+}
+
+/* ---------- readout row (hub.html .lr) ---------- */
+.hub-act .lr {
+  display: grid;
+  grid-template-columns: 128px 190px 190px 336px minmax(0, 1fr);
+  column-gap: 20px;
+  align-items: start;
+  height: 48px;
+  margin: 2px 0 8px;
+}
+
+.hub-act .lr .slot {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.hub-act .lr .l1 {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  height: 30px;
+  white-space: nowrap;
+}
+
+.hub-act .lr .l2 {
+  display: block;
+  height: 16px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ha-text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hub-act .lr .u {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ha-text-2);
+  font-size: 12px;
+}
+
+.hub-act .lr .lv::before {
+  content: "· ";
+  white-space: pre;
+}
+
+.hub-act .lr .tm .l1 {
+  font-weight: 500;
+  align-items: flex-end;
+  padding-bottom: 3px;
+}
+
+.hub-act .lr .te .l1 {
+  align-items: center;
+  gap: 8px;
+}
+
+.hub-act .lr .te img {
+  display: block;
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
+.hub-act .lr .t2 { color: var(--ha-text-2); }
+
+.hub-act .lr .fig {
+  display: inline-block;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 24px;
+  line-height: 28px;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.hub-act .lr .off .fig,
+.hub-act .lr .off .u {
+  opacity: 0.45;
+}
+
+/* ---------- chart hooks, stamp, markers ---------- */
+.hub-act .hx-plot-stack {
+  position: relative;
+  min-width: 0;
+}
+
+/* Box-only hooks over the plot and the time axis (bridge bounds, wheel anchor, specs). */
+.hub-act .hub-act-hook {
+  position: absolute;
+  left: 0;
+  pointer-events: none;
+}
+
+.hub-act .hub-act-stamp {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transform: translateX(-50%);
+  padding: 2px 6px 2px 2px;
+  border-radius: 4px;
+  background: rgb(9 9 11 / 0.86);
+  color: var(--ha-text-1);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.hub-act .hub-act-stamp img {
+  display: block;
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+.hub-act .hub-act-marker {
+  fill: none;
+  stroke: var(--ha-text-3);
+  stroke-width: 1;
+}
+
+.hub-act .hub-act-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 442px;
+  color: var(--ha-text-2);
+  text-align: center;
+}
+
+/* ---------- provider lanes (hub.html .lanes) ---------- */
+.hub-act .lanes {
+  margin-top: 2px;
+  padding-top: 6px;
+  border-top: 1px solid var(--ha-line);
+}
+
+.hub-act .lane {
+  position: relative;
+  height: 22px;
+}
+
+.hub-act .lane svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 20px;
+  overflow: hidden;
+}
+
+.hub-act .lane .lane-base { stroke: var(--ha-line); }
+.hub-act .lane .lane-fill { fill: #8e8e96; fill-opacity: 0.55; }
+
+.hub-act .lane .nm {
+  position: absolute;
+  top: 2px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ha-text-3);
+  white-space: nowrap;
+}
+
+/* ---------- tablet ---------- */
+@media (max-width: 1100px) {
+  .hub-act .lr { grid-template-columns: 120px 180px 180px minmax(0, 1fr); }
+  .hub-act .lr .te { display: none; }
+}
+
+/* Below the design's narrowest phone (360 px) the three chips wrap rather than run past the card. */
+@media (max-width: 359px) {
+  .hub-act .toggles { flex-wrap: wrap; row-gap: 4px; }
+}
+
+/* ---------- phone ---------- */
+@media (max-width: 719px) {
+  .hub-act .rh {
+    flex-wrap: wrap;
+    row-gap: 2px;
+    padding-bottom: 2px;
+  }
+  .hub-act .rh h2 { order: 0; }
+  .hub-act .hub-act-info { order: 1; }
+  .hub-act .seg { order: 2; margin-left: auto; }
+  .hub-act .toggles { order: 3; flex-basis: 100%; }
+  .hub-act .rh .meta { display: none; }
+  .hub-act .tg { padding: 0 8px; }
+  .hub-act .lr .pt { display: none; }
+  .hub-act .lr [data-k="viewers"] .l2 { display: none; }
+  .hub-act .lr .lv { display: block; }
+  .hub-act .lr .lv::before { content: none; }
+  .hub-act .lr {
+    grid-template-columns: 1fr 1fr 1fr;
+    height: auto;
+    row-gap: 2px;
+    column-gap: 10px;
+    margin-bottom: 4px;
+  }
+  .hub-act .lr .tm {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .hub-act .lr .tm .l1 { height: auto; padding: 0; gap: 6px; }
+  .hub-act .lr .tm .l2 { display: inline; }
+  .hub-act .lr .slot:not(.tm) .l1 {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+    height: auto;
+  }
+  .hub-act .lr .fig { font-size: 22px; line-height: 26px; text-align: left; }
+  .hub-act .lr .l2 { white-space: normal; height: auto; }
+  .hub-act .lane .nm {
+    left: 4px !important;
+    padding: 0 4px;
+    border-radius: 3px;
+    background: rgb(9 9 11 / 0.8);
+  }
+  .hub-act .hub-act-state { min-height: 322px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub-act * { transition: none !important; }
+}
+
+/* The loading row sits over the skeleton bars, not in a full-height box. */
+.hub-act .hub-act-state--loading { min-height: 0; padding: 12px 0 0; }
+/* The (i) reads d3 tokens; the interim page has no .hub-d3 root, so give its wrapper the same values. */
+.hub-act .hub-act-info {
+  --sp-text-1: var(--ha-text-1);
+  --sp-text-3: var(--ha-text-3);
+  --sp-focus: var(--ha-focus);
+}
+
+/* The navigator spans the card like the design's .ch-nav; its track and control row keep the plot width (the tick column's padding). */
+.hub-act .spc-navslot {
+  padding-right: 0;
+}
+.hub-act .spc-navslot .hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] {
+  padding-right: var(--spc-tick);
+}

@@ -19,7 +19,14 @@ import { PageErrorBoundary } from '../ui/PortalErrorBoundary'
 import { PublicLayout } from '../ui/components/PublicLayout'
 import { retiredExplorerPath } from '../lib/momentsNavigation'
 
-const AnalyticsLandingPage = lazy(() => import('./analytics/AnalyticsLandingPage'))
+// The d3-v5 hub (VITE_PUBLIC_HUB_V5, PR 1 of 5: data layer + activity chart).
+// Read inline so a production build folds the test: a flag-off build is
+// exactly the Command Center page and never emits the v5 chunk.
+const AnalyticsLandingPage = lazy(() =>
+  import.meta.env.VITE_PUBLIC_HUB_V5 === 'on' || import.meta.env.VITE_PUBLIC_HUB_V5 === '1'
+    ? import('./analytics/AnalyticsHubV5Page')
+    : import('./analytics/AnalyticsLandingPage'),
+)
 const AnalyticsMomentsPage = lazy(() => import('./analytics/AnalyticsMomentsPage'))
 const DashboardShell = lazy(() => import('./dashboard/DashboardShell'))
 const DashboardHome = lazy(() => import('./dashboard/Home'))
