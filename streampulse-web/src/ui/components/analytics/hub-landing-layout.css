@@ -1,0 +1,105 @@
+/* Hub-only layout rules, moved unchanged from the retired newsroom.css.
+   AnalyticsLandingPage imports this file in the same place, so the cascade
+   order is unchanged. */
+
+.figma-global-activity {
+  container-name: global-activity;
+  container-type: inline-size;
+}
+
+/* The bucket inspector shares this slot with the chart. Default to stacked;
+   only the component's actual width—not the viewport—may create two columns. */
+.figma-global-activity__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.figma-global-activity__chart-col {
+  min-width: 0;
+  margin-right: 0;
+}
+
+.figma-global-activity__inspector {
+  position: static;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  height: auto;
+  border-top: 1px solid var(--fma-border);
+  border-left: 0;
+  overflow: visible;
+}
+
+@container global-activity (min-width: 1120px) {
+  .figma-global-activity__body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) clamp(300px, 24cqw, 360px);
+  }
+
+  .figma-global-activity__chart-col {
+    margin-right: 0;
+  }
+
+  .figma-global-activity__inspector {
+    position: static;
+    width: 100%;
+    min-width: 300px;
+    max-width: 360px;
+    height: auto;
+    border-top: 0;
+    border-left: 1px solid color-mix(in srgb, var(--fma-border) 65%, transparent);
+    overflow: visible;
+  }
+}
+
+.hub-live-wire--rail {
+  min-width: 0;
+  padding: 0.2rem;
+  border: 0;
+  background: transparent;
+}
+
+.hub-live-wire--rail .hub-live-wire__rail-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.hub-live-wire--rail .hub-live-wire__event-card {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+}
+
+.hub-live-wire--rail .hub-live-wire__explain {
+  margin-top: 0.65rem;
+}
+
+.hub-live-wire__collection-link,
+.hub-live-wire__about {
+  color: var(--fma-muted);
+  font-size: 0.75rem;
+}
+
+.hub-live-wire__collection-link {
+  align-self: flex-start;
+  text-underline-offset: 0.18rem;
+}
+
+.hub-live-wire__about summary {
+  width: fit-content;
+  cursor: pointer;
+  text-underline-offset: 0.18rem;
+}
+
+.hub-live-wire__about summary:hover,
+.hub-live-wire__collection-link:hover {
+  color: var(--fma-text);
+}
+
+.hub-live-wire__about p {
+  margin: 0.35rem 0 0;
+  color: var(--fma-muted);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
