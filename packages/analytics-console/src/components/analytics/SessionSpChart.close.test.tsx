@@ -84,6 +84,8 @@ function clickMinute(svg: SVGSVGElement, minute: number) {
   const clientX = xOfMinute(minute)
   fireEvent.pointerDown(svg, { clientX, clientY: 200, pointerType: 'mouse' })
   fireEvent.click(svg, { clientX, clientY: 200 })
+  // A detail opened from the plot mounts after the frame that paints the click.
+  frames!.flush()
 }
 
 const detailShown = (container: HTMLElement) => container.querySelector('[data-test-detail]') != null
@@ -112,6 +114,23 @@ describe('SessionSpChart selection closes (A3)', () => {
     expect(spy).toHaveBeenLastCalledWith(null)
     expect(detailShown(container)).toBe(false)
     expect(document.activeElement).toBe(svg)
+  })
+
+  it('a detail opened from the plot mounts after the click frame; a swap keeps it mounted', () => {
+    const { container, svg } = renderConsole({ minutes: 90 })
+    const pointAt = (minute: number) => {
+      const clientX = xOfMinute(minute)
+      fireEvent.pointerDown(svg, { clientX, clientY: 200, pointerType: 'mouse' })
+      fireEvent.click(svg, { clientX, clientY: 200 })
+    }
+    pointAt(20)
+    expect(container.querySelector('[data-session-readout]')?.textContent).toMatch(/^Pinned 0:20:00 · /)
+    expect(detailShown(container)).toBe(false)
+    frames!.step()
+    expect(detailShown(container)).toBe(true)
+    pointAt(40)
+    expect(container.querySelector('[data-session-readout]')?.textContent).toMatch(/^Pinned 0:40:00 · /)
+    expect(detailShown(container)).toBe(true)
   })
 
   it("the readout line's Clear shows while a minute is pinned, closes it, and focus goes back to the plot", () => {
@@ -149,6 +168,7 @@ describe('SessionSpChart selection closes (A3)', () => {
     svg.focus()
     fireEvent.keyDown(svg, { key: 'ArrowLeft' })
     fireEvent.keyDown(svg, { key: 'Enter' })
+    frames!.flush()
     expect(spy).toHaveBeenLastCalledWith(expect.objectContaining({ minuteTs: expect.any(String) }))
     const close = screen.getByRole('button', { name: 'Close' })
     close.focus()
