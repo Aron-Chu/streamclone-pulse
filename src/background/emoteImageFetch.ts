@@ -7,6 +7,8 @@
  * store manifests request no emote CDN host.
  */
 
+import { isDevLoopbackHostname } from '../shared/devHosts.ts'
+
 /** Reject declared or buffered bodies larger than this (5 MiB). */
 export const EMOTE_IMAGE_MAX_BYTES = 5 * 1024 * 1024
 /** Total byte budget for the in-memory SW emote cache (12 MiB). */
@@ -22,9 +24,6 @@ const APPROVED_EMOTE_HOSTS = new Set([
   'cdn.frankerfacez.com',
 ])
 const LOCAL_EMOTE_PATH = /^\/emotes\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/(?:1x|2x|4x)\.webp$/i
-const LOCALHOST = String.fromCharCode(108, 111, 99, 97, 108, 104, 111, 115, 116)
-const LOOPBACK_IPV4 = [127, 0, 0, 1].join('.')
-const LOOPBACK_IPV6 = '::1'
 
 interface CachedEmoteBytes {
   mimeType: string
@@ -50,9 +49,7 @@ export function isApprovedEmoteImageUrl(raw: string): boolean {
       return APPROVED_EMOTE_HOSTS.has(url.hostname.toLowerCase())
     }
     if (url.protocol !== 'http:') return false
-    const hostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase()
-    return (hostname === LOCALHOST || hostname === LOOPBACK_IPV4 || hostname === LOOPBACK_IPV6)
-      && LOCAL_EMOTE_PATH.test(url.pathname)
+    return isDevLoopbackHostname(url.hostname) && LOCAL_EMOTE_PATH.test(url.pathname)
   } catch {
     return false
   }
