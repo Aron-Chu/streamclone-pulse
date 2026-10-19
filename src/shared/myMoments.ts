@@ -6,7 +6,8 @@ export type MyMomentsRequest =
   | { type: 'MY_MOMENTS'; action: 'load' }
   | { type: 'MY_MOMENTS'; action: 'recent' }
   | { type: 'MY_MOMENTS'; action: 'mutate'; scope: string; command: MyMomentsCommand }
-  | { type: 'MOMENT_CAPTURE'; action: 'status' }
+  /** `reference`: the moment a jump or arrival plays, so its picture can be kept (src/background/momentPictures.ts). */
+  | { type: 'MOMENT_CAPTURE'; action: 'status'; reference?: MomentReference }
   | { type: 'MOMENT_CAPTURE'; action: 'record'; epoch: number; reference: MomentReference; watchedSeconds: number }
 /**
  * Why the hosted bookmark list is missing.
@@ -60,6 +61,7 @@ export function validMomentReference(v: unknown): v is MomentReference {
 export function parseMyMoments(raw: Record<string, unknown>): MyMomentsRequest | null {
   if (raw.type === 'MOMENT_CAPTURE') {
     if (raw.action === 'status' && keys(raw, ['type', 'action'])) return { type: raw.type, action: raw.action }
+    if (raw.action === 'status' && keys(raw, ['type', 'action', 'reference']) && validMomentReference(raw.reference)) return { type: raw.type, action: raw.action, reference: raw.reference }
     if (raw.action !== 'record' || !keys(raw, ['type','action','epoch','reference','watchedSeconds'])
       || !Number.isSafeInteger(raw.epoch) || !validMomentReference(raw.reference)
       || typeof raw.watchedSeconds !== 'number' || !Number.isFinite(raw.watchedSeconds)

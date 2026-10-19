@@ -85,7 +85,7 @@ it('shows the minute’s viewers, chat and emotes in Preview, most used emotes f
     const stats = [...dialog.querySelectorAll('.pl-moment-stats > div')].map(item => [item.querySelector('dt')?.textContent, item.querySelector('dd')?.textContent])
     expect(stats).toEqual([['Viewers', (29412).toLocaleString()], ['Chat / min', '817'], ['Emotes / min', '604']])
     expect([...dialog.querySelectorAll('.pl-emote-name strong')].map(name => name.textContent)).toEqual(['LOL', 'LO', 'forsenCD'])
-    // Overview: one line per emote (uses per minute · share of the minute's emote uses); the measuring notes wait in Analysis.
+    // One bar per emote (uses per minute · share of the minute's emote uses); the measuring notes have left Preview.
     expect([...dialog.querySelectorAll('.pl-emote-usage')].map(usage => usage.textContent)).toEqual([`${(224).toLocaleString()}/min · 37%`, '113/min · 19%', '47/min · 8%'])
     for (const text of ['Emote density', 'How these rates are measured', 'About emote usage']) expect(dialog.textContent).not.toContain(text)
     expect(dialog.textContent).not.toContain('Moment stats are unavailable')
@@ -93,14 +93,22 @@ it('shows the minute’s viewers, chat and emotes in Preview, most used emotes f
     for (const text of ['Saved analysis snapshot', 'Selected minute', 'Stream comparison unavailable', 'No current live thumbnail', 'Previewing does not add to History']) {
       expect(dialog.textContent).not.toContain(text)
     }
-    expect(dialog.querySelector('.pl-preview-heading .pl-tag')).toBeNull()
+    expect(dialog.querySelector('.pl-around-head .pl-tag')).toBeNull()
     // Opening Preview reads nothing more.
     expect(page.sendMessage.mock.calls.filter(([message]) => message.type === 'MOMENT_MINUTE')).toHaveLength(1)
-    await act(async () => { [...dialog.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(tab => tab.textContent === 'Analysis')!.click() })
-    for (const text of ['Emote density', 'How these rates are measured', 'About emote usage', `${(224).toLocaleString()} uses / min`]) expect(dialog.textContent).toContain(text)
+    // One screen: no tabs. The chart draws the three measured minutes, the moment's own highlighted.
+    expect(dialog.querySelectorAll('[role="tab"]')).toHaveLength(0)
+    expect([...dialog.querySelectorAll('.pl-around-chart rect[data-minute]')].map(bar => bar.getAttribute('data-minute'))).toEqual(['-1', '0', '1'])
+    expect(dialog.querySelector('.pl-around-chart rect[data-minute="0"]')?.getAttribute('fill')).toMatch(/^url\(#/)
+    // Analysis opens the session page at this minute; no VOD id, so no Clip.
+    expect(dialog.querySelector<HTMLAnchorElement>('.pl-around-actions a[href*="/analytics/"]')?.href).toMatch(/\/analytics\/xqc\/321911879770#t=3884$/)
+    expect([...dialog.querySelectorAll('button')].some(button => button.textContent?.includes('Clip'))).toBe(false)
 
     await page.close()
     const other = await page.preview('Old replay')
     expect(other.textContent).toContain('Moment stats are unavailable; missing values are not zero.')
+    expect(other.querySelector('.pl-around-chart')).toBeNull()
+    // A VOD and no stream: Watch and Clip, but no session page to open.
+    expect([...other.querySelectorAll('.pl-around-actions > *')].map(item => item.textContent?.replace(/[^\x20-\x7e]/g, '').trim())).toEqual(['Watch', 'Clip'])
   } finally { page.cleanup() }
 })

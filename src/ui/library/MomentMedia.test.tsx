@@ -17,21 +17,21 @@ async function render(node: ReactNode) {
 afterEach(async () => { await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren() })
 
 describe('Moment media and statistics', () => {
-  it('labels approximate frames and recovers from expired artwork', async () => {
+  it('labels approximate frames and falls back to the clock on expired artwork', async () => {
     await render(<MomentMedia moment={demoReference} presentation={{ image: { url: 'https://example.com/frame.webp', sampledOffsetSeconds: 6130 } }} />)
     const img = container.querySelector('img')!
     expect(img.alt).toContain('near 01:42:10')
-    expect(container.textContent).toContain('not an archived copy')
+    expect(container.querySelector('.pl-media-clock')?.textContent).toBe('01:42:18')
     await act(async () => img.dispatchEvent(new Event('error')))
-    // Without a frame, Preview has no picture box at all.
     expect(container.querySelector('figure')).toBeNull()
+    expect(container.querySelector('.pl-media-tile')?.textContent).toContain('01:42:18')
   })
   it('shows a list row without a frame as its clock, with no placeholder picture', async () => {
-    await render(<MomentMedia moment={demoReference} compact />)
+    await render(<MomentMedia moment={demoReference} />)
     expect(container.querySelector('.pl-media-tile')?.textContent).toContain('01:42:18')
     expect(container.querySelector('.pl-media-frame')).toBeNull()
     expect(container.textContent).not.toContain('Preview image unavailable')
-    await act(async () => root!.render(<MomentMedia moment={{ ...demoReference, availability: 'unavailable' }} compact />))
+    await act(async () => root!.render(<MomentMedia moment={{ ...demoReference, availability: 'unavailable' }} />))
     expect(container.querySelector('.pl-media-tile')?.textContent).toContain('Source unavailable')
   })
   it('rejects unsafe links and does not invent a baseline', async () => {

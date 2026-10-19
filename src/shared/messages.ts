@@ -10,6 +10,7 @@ export type MessageType =
   | 'SUPPORTER_FINISH_INTENT'
   | 'SUPPORTER_CARD_SCRIPT'
   | 'MOMENT_FRAMES_SCRIPT'
+  | 'MOMENT_PICTURE'
   | 'CATCH_ME_UP_SCRIPT'
   | 'SUPPORTER_BILLING'
   | 'SUPPORTER_RESTORE'
@@ -291,6 +292,8 @@ export type BackgroundRequest =
   /** Injects the quick-settings Supporter card's stage script into the sender's own Twitch tab. */
   | { type: 'SUPPORTER_CARD_SCRIPT' }
   | { type: 'MOMENT_FRAMES_SCRIPT' }
+  /** The frames script asks which pictures the worker wants from its tab, or sends one. */
+  | import('./momentPictureMessages.ts').MomentPictureRequest
   /** Injects the stream recap's Catch me up script into the sender's own Twitch tab. */
   | { type: 'CATCH_ME_UP_SCRIPT' }
   | TrackMessage
@@ -805,6 +808,7 @@ export type BackgroundResponse =
   | { type: 'SUPPORTER_FINISH_INTENT'; finish: 'glass' | 'etched' | 'halo' | null }
   | { type: 'SUPPORTER_CARD_SCRIPT'; ok: boolean }
   | { type: 'MOMENT_FRAMES_SCRIPT'; ok: boolean }
+  | { type: 'MOMENT_PICTURE'; wants?: import('./momentFramesContract.ts').MomentPictureWant[]; ok?: boolean }
   | { type: 'CATCH_ME_UP_SCRIPT'; ok: boolean }
   | { type: 'DEVICE_AUTH'; status: DeviceAuthStatus }
   | { type: 'PULSE_DEBUG_LOG'; entries: import('./pulseDebug.ts').PulseDebugEntry[] }

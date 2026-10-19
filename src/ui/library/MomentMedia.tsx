@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { LibraryIcon } from './LibraryIcon.tsx'
 import { timestamp, type MomentReference } from './model.ts'
 
 /** Ephemeral source projection; never persist expiring media URLs as bookmark identity. */
@@ -13,6 +12,9 @@ export interface MomentPresentation {
 
 export function safePresentationUrl(raw?: string): string | undefined {
   if (!raw) return undefined
+  // A picture kept on this device (src/shared/momentPictureStore.ts), read into this page.
+  const origin = globalThis.location?.origin
+  if (origin && origin !== 'null' && raw.startsWith(`blob:${origin}/`)) return raw
   try {
     const url = new URL(raw)
     if (url.username || url.password) return undefined
@@ -29,24 +31,18 @@ export function safePresentationUrl(raw?: string): string | undefined {
   } catch { return undefined }
 }
 
-export function MomentMedia({ moment, presentation, compact = false }: {
-  moment: MomentReference; presentation?: MomentPresentation; compact?: boolean
-}) {
+/** A list row's picture: the saved frame, or the moment's clock when there is none. */
+export function MomentMedia({ moment, presentation }: { moment: MomentReference; presentation?: MomentPresentation }) {
   const [failedUrl, setFailedUrl] = useState<string | null>(null)
   const src = safePresentationUrl(presentation?.image?.url)
   const sampled = presentation?.image?.sampledOffsetSeconds
   const hasImage = !!src && failedUrl !== src && sampled !== undefined && Number.isFinite(sampled) && sampled >= 0
-  const state = moment.availability === 'unresolved' ? 'Replay not linked' : moment.availability === 'unavailable' ? 'Source unavailable' : 'Preview image unavailable'
-  // With no frame, Preview opens on its numbers and a list row shows only the moment's clock.
-  if (!hasImage && !compact) return null
-  if (!hasImage) return <div className="pl-media-tile"><b>{timestamp(moment.offsetSeconds)}</b>{moment.availability === 'unresolved' || moment.availability === 'unavailable' ? <small>{state}</small> : null}</div>
-  return <figure className={`pl-media ${compact ? 'pl-media-compact' : ''}`}>
+  if (!hasImage) return <div className="pl-media-tile"><b>{timestamp(moment.offsetSeconds)}</b>{moment.availability === 'unresolved' ? <small>Replay not linked</small> : moment.availability === 'unavailable' ? <small>Source unavailable</small> : null}</div>
+  return <figure className="pl-media pl-media-compact">
     <div className="pl-media-frame">
-      {hasImage ? <img src={src} alt={`Stream preview near ${timestamp(sampled!)} — ${presentation?.gameAtMoment ?? moment.channel}`} loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailedUrl(src!)} />
-        : <div className="pl-media-fallback"><LibraryIcon name="preview" /><strong>{state}</strong>{!compact ? <p>No verified frame is available for this timestamp. Your bookmark is still useful.</p> : null}</div>}
+      <img src={src} alt={`Stream preview near ${timestamp(sampled!)} — ${presentation?.gameAtMoment ?? moment.channel}`} loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailedUrl(src!)} />
       <span className="pl-media-clock">{timestamp(moment.offsetSeconds)}</span>
     </div>
-    {!compact && hasImage ? <figcaption className="pl-muted">{`Preview sampled near ${timestamp(sampled!)} · not an archived copy`}</figcaption> : null}
   </figure>
 }
 

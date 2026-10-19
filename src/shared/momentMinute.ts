@@ -118,6 +118,7 @@ export function momentContextFromMinutes(
   return {
     provenance: 'snapshot',
     capturedAt: options.capturedAt,
+    streamStartedAt: startMs,
     coverage: gaps ? 'partial' : 'complete',
     windowLabel: `±${MOMENT_MINUTE_SPAN} min`,
     samples,

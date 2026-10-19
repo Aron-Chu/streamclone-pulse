@@ -1,5 +1,6 @@
 import { normalizeLogin } from './login.ts'
 import { parseMyMoments } from './myMoments.ts'
+import { parseMomentPicture } from './momentPictureMessages.ts'
 import { validBookmarkCursor, validBookmarkPageLimit } from './bookmarkPage.ts'
 import type { BackgroundRequest, CreatePulseBookmarkInput } from './messages.ts'
 
@@ -14,6 +15,7 @@ const KNOWN_MESSAGE_TYPES = new Set<string>([
   'SUPPORTER_FINISH_INTENT',
   'SUPPORTER_CARD_SCRIPT',
   'MOMENT_FRAMES_SCRIPT',
+  'MOMENT_PICTURE',
   'CATCH_ME_UP_SCRIPT',
   'SUPPORTER_BILLING',
   'SUPPORTER_RESTORE',
@@ -219,6 +221,8 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
     case 'MY_MOMENTS':
     case 'MOMENT_CAPTURE':
       return parseMyMoments(raw)
+    case 'MOMENT_PICTURE':
+      return parseMomentPicture(raw)
     case 'LIST_BOOKMARKS': {
       if (raw.contextVodId !== undefined && (typeof raw.contextVodId !== 'string' || !/^\d+$/.test(raw.contextVodId))) return null
       if (raw.limit !== undefined && !validBookmarkPageLimit(raw.limit)) return null

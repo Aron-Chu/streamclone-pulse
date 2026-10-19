@@ -28,7 +28,8 @@ export async function observeMomentPlayback(video: HTMLVideoElement | null, refe
   let cancelled = false
   cancel = () => { cancelled = true }
   if (!video || !Number.isFinite(start) || !Number.isFinite(end) || end - start < 10 || end - start > 120 || !sourceOf(video)) return
-  const status = await chrome.runtime.sendMessage({ type: 'MOMENT_CAPTURE', action: 'status' }).catch(() => null)
+  // The reference lets the worker keep this moment's picture for a save that has none.
+  const status = await chrome.runtime.sendMessage({ type: 'MOMENT_CAPTURE', action: 'status', reference }).catch(() => null)
   if (cancelled || !status?.enabled) return
   const source = sourceOf(video)
   const url = location.href

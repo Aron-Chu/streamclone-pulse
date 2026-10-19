@@ -4,6 +4,10 @@ import type { LibraryCommand, LibraryMoment, LibraryRepository } from '../ui/lib
 import type { MomentContext, MomentContextState } from '../ui/library/MomentPreview.tsx'
 import type { MyMomentsCommand, MyMomentsSnapshot } from '../shared/myMoments.ts'
 import { usePortalOrigin } from './usePortalOrigin.ts'
+import type { MomentPresentation } from '../ui/library/MomentMedia.tsx'
+import { momentIdentity } from '../background/myMomentsStore.ts'
+import { momentPictures, type SavedPicture } from '../shared/momentPictureStore.ts'
+import { getMomentPicturesEnabled } from '../shared/storage.ts'
 
 export function createMyMomentsRepository(): LibraryRepository {
   let scope: string | undefined
@@ -87,13 +91,61 @@ function useMomentMinutes() {
   return { contexts, show }
 }
 
+/**
+ * Pictures kept on this device with the moments a list page shows: the frame
+ * a Twitch tab held when the moment was saved or watched. Read when the page
+ * lists them; their object URLs go when the page closes. A moment that had
+ * none is looked up again the next time it is listed.
+ */
+function useSavedPictures() {
+  const [presentations, setPresentations] = useState<Record<string, MomentPresentation>>({})
+  const found = useRef(new Set<string>())
+  // Pictures this page has shown. A bookmark removed and brought back by Undo
+  // lost its picture with it; this puts it back. Account changes remount the page.
+  const held = useRef(new Map<string, SavedPicture>())
+  const urls = useRef<string[]>([])
+  useEffect(() => () => { for (const url of urls.current) URL.revokeObjectURL(url) }, [])
+  const show = useCallback((moments: readonly LibraryMoment[]) => {
+    const wanted = moments.filter(moment => moment.offsetSeconds !== null && (!found.current.has(moment.id) || held.current.has(momentIdentity(moment))))
+    if (!wanted.length) return
+    void momentPictures.forMoments(wanted.map(momentIdentity)).then(async pictures => {
+      const lost = [...new Set(wanted.map(momentIdentity))].filter(identity => !pictures.has(identity) && held.current.has(identity))
+      if (lost.length && await getMomentPicturesEnabled()) for (const identity of lost) {
+        const picture = held.current.get(identity)!
+        await momentPictures.attach(picture.scope, identity, picture.image, picture.offset, picture.savedAt)
+        // The cap may take it straight back out; then it stays gone.
+        if (await momentPictures.has(picture.scope, identity)) pictures.set(identity, picture)
+        else held.current.delete(identity)
+      }
+      const next: Record<string, MomentPresentation> = {}
+      for (const moment of wanted) {
+        const picture = pictures.get(momentIdentity(moment))
+        if (picture) held.current.set(picture.identity, picture)
+        if (!picture || found.current.has(moment.id)) continue
+        found.current.add(moment.id)
+        const url = URL.createObjectURL(picture.image)
+        urls.current.push(url)
+        next[moment.id] = { image: { url, sampledOffsetSeconds: picture.offset } }
+      }
+      if (Object.keys(next).length) setPresentations(current => ({ ...current, ...next }))
+    }).catch(() => undefined)
+  }, [])
+  return { presentations, show }
+}
+
 function MyMomentsWorkspace({ repository }: { repository: LibraryRepository }) {
   // Analytics links follow the configured API (a local backend opens the local
   // portal), like every other product link here. Keyed by revision above, so a
   // backend switch re-reads the origin.
   const analyticsOrigin = usePortalOrigin()
   const minutes = useMomentMinutes()
-  return <LibraryWorkspace repository={repository} analyticsOrigin={analyticsOrigin} previewContexts={minutes.contexts} onShowMoments={minutes.show} onExport={json => {
+  const pictures = useSavedPictures()
+  const showMoments = useCallback((moments: readonly LibraryMoment[]) => {
+    minutes.show(moments)
+    pictures.show(moments)
+  }, [minutes.show, pictures.show])
+  return <LibraryWorkspace repository={repository} analyticsOrigin={analyticsOrigin} previewContexts={minutes.contexts} presentations={pictures.presentations}
+    onShowMoments={showMoments} onExport={json => {
     const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }))
     const link = document.createElement('a')
     link.href = url; link.download = 'streampulse-my-moments.json'; link.click()

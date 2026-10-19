@@ -667,7 +667,11 @@ export async function setVodJumpChartPinEnabled(enabled: boolean): Promise<void>
   await syncStorageSet({ [VOD_JUMP_CHART_PIN_KEY]: Boolean(enabled) })
 }
 
-/** Moment pictures: small frames of what a Twitch tab played, kept in that tab's memory only. */
+/**
+ * Moment pictures: small frames of what a Twitch tab played, kept in that
+ * tab's memory, and one per saved or watched moment kept on this device
+ * (src/shared/momentPictureStore.ts). Never uploaded.
+ */
 export async function getMomentPicturesEnabled(): Promise<boolean> {
   const stored = await syncStorageGet(MOMENT_PICTURES_KEY)
   const value = stored[MOMENT_PICTURES_KEY]

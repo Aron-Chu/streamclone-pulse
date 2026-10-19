@@ -7,6 +7,9 @@ import type { BackgroundResponse, ListBookmarksMessage, PulseBookmark, RemoveBoo
 import { replayAvailability, type LibraryMoment, type MomentReference } from '../ui/library/model.ts'
 import { addDeviceBookmark, bookmarkIdentity, deletePersonal, momentIdentity as identity, personalTransaction, recordWatched } from './myMomentsStore.ts'
 import { clearAccountHistory, historySyncCheckDue, historySyncView, refreshHistorySync, setAccountRetention, setHistorySync, syncHistoryNow } from './historySync.ts'
+import { handleMomentPicture, wantPicture, type PictureMoment } from './momentPictures.ts'
+import { momentPictures } from '../shared/momentPictureStore.ts'
+import type { MomentPictureRequest } from '../shared/momentPictureMessages.ts'
 
 export { replayAvailability }
 const bookmarkMoment = (b: PulseBookmark, note: string): LibraryMoment => ({ id: b.id, channel: b.login, title: b.label || 'Saved moment', vodId: b.vodId ?? null,
@@ -74,6 +77,10 @@ async function snapshot(scope: string): Promise<MyMomentsSnapshot> {
     if (bookmark) Object.assign(bookmark, { jumpedAt: h.jumpedAt, historyExpiresAt: h.historyExpiresAt })
     else moments.push({ ...h, availability: replayAvailability(h), note: data.notes[h.id] ?? h.note })
   }
+  // A picture goes with the last save or History entry of its moment. Only a
+  // complete list decides: an account's bookmarks must have loaded.
+  if (!scopeAccount(scope) || bookmarksState === 'ready') await momentPictures.reconcile(scope, new Set(moments.map(identity))).catch(() => undefined)
+  if (device) await momentPictures.reconcile(deviceScope(scope), new Set([...device.bookmarks.map(bookmarkIdentity), ...device.history.map(identity)])).catch(() => undefined)
   const historySync = historySyncView(!!scopeAccount(scope), data)
   return { scope, production: true, bookmarksState, bookmarksAvailable: bookmarksState === 'ready', localNotes: data.notes, moments,
     deviceBookmarks: device?.bookmarks.map(b => ({ ...b, notes: device.notes[b.id] ?? '' })) ?? [], collections: [], membership: 'free', preferences: data.preferences,
@@ -137,21 +144,22 @@ export async function removePanelBookmark(message: RemoveBookmarkMessage, sender
   const { scope, held } = await resolveScope()
   const account = scopeAccount(scope)
   if (!privateBrowsing(sender) && !held && !account) {
-    let found = false
+    let found: PulseBookmark | undefined
     await personalTransaction(scope, data => {
-      found = data.bookmarks.some(belongs)
+      found = data.bookmarks.find(belongs)
       return found ? { ...dropNote(data), bookmarks: data.bookmarks.filter(b => b.id !== message.id) } : data
     })
     if (!found) throw new Error('bookmark_not_found')
+    await dropPictureUnlessWatched(scope, bookmarkIdentity(found))
     return { type: 'REMOVE_BOOKMARK', ok: true, device: true }
   }
   let cursor: string | undefined
-  let found = false
+  let found: PulseBookmark | undefined
   const seen = new Set<string>()
   do {
     const page = await fetchPulseBookmarks({ login: message.login, streamId: message.streamId,
       vodId: message.streamId ? undefined : message.vodId, limit: 100, ...(cursor ? { cursor } : {}) }, undefined, account)
-    found = page.items.some(belongs)
+    found = page.items.find(belongs)
     cursor = page.nextCursor
     if (cursor && (seen.has(cursor) || seen.size >= 50)) throw new Error('invalid_bookmark_pagination')
     if (cursor) seen.add(cursor)
@@ -159,8 +167,44 @@ export async function removePanelBookmark(message: RemoveBookmarkMessage, sender
   if (!found) throw new Error('bookmark_not_found')
   // Pinned to the account the scope named, so a switch mid-way fails instead of reaching the next one.
   await deletePulseBookmark(message.id, undefined, account)
-  if (account && !privateBrowsing(sender)) await personalTransaction(scope, data => message.id in data.notes ? dropNote(data) : data)
+  if (account && !privateBrowsing(sender)) {
+    await personalTransaction(scope, data => message.id in data.notes ? dropNote(data) : data)
+    await dropPictureUnlessWatched(scope, bookmarkIdentity(found))
+  }
   return { type: 'REMOVE_BOOKMARK', ok: true }
+}
+/** A removed save's picture goes too, unless History still lists that moment. */
+async function dropPictureUnlessWatched(scope: string, key: string): Promise<void> {
+  try {
+    if (!(await personalTransaction(scope)).history.some(m => identity(m) === key)) await momentPictures.drop(scope, key)
+  } catch { /* it goes at the next My Moments load instead */ }
+}
+/** Whether `scope` still saves `key` or lists it in History, so a watched moment may keep its picture. */
+async function pictureListed(scope: string, key: string, moment: PictureMoment): Promise<boolean> {
+  const data = await personalTransaction(scope)
+  if (data.history.some(m => identity(m) === key) || data.bookmarks.some(b => bookmarkIdentity(b) === key)) return true
+  const account = scopeAccount(scope)
+  if (!account) return false
+  const page = await fetchPulseBookmarks({ login: moment.channel, ...(moment.streamId ? { streamId: moment.streamId } : { vodId: moment.vodId ?? undefined }), limit: 100 }, undefined, account)
+  return page.items.some(b => bookmarkIdentity(b) === key)
+}
+const pictureMoment = (m: MomentReference): PictureMoment => ({ channel: m.channel, vodId: m.vodId, streamId: m.streamId, offsetSeconds: m.offsetSeconds ?? -1 })
+/**
+ * A bookmark saved from a Twitch tab keeps the frame that tab holds of its
+ * moment, if any (Moment pictures on, not a private window). Never fails the save.
+ */
+export async function wantSavedPicture(saved: SaveBookmarkMessage['bookmark'], sender: chrome.runtime.MessageSender): Promise<void> {
+  if (privateBrowsing(sender) || !saved.login) return
+  try {
+    const { scope, held } = await resolveScope()
+    if (held) return
+    const moment = { channel: saved.login, vodId: saved.vodId ?? null, streamId: saved.streamId, offsetSeconds: saved.offsetSeconds }
+    await wantPicture(sender, moment, scope, identity(moment), { owned: true, waitMs: 20_000 })
+  } catch { /* the save stands without a picture */ }
+}
+export async function handlePicture(message: MomentPictureRequest, sender: chrome.runtime.MessageSender) {
+  if (privateBrowsing(sender)) return { type: 'MOMENT_PICTURE' as const, ok: false }
+  return handleMomentPicture(message, sender, pictureListed)
 }
 const reference = (m: MomentReference): MomentReference => ({ id: m.id, channel: m.channel, title: m.title, vodId: m.vodId, streamId: m.streamId,
   offsetSeconds: m.offsetSeconds, availability: replayAvailability(m) })
@@ -224,6 +268,7 @@ async function importDeviceSaves(scope: string, held: boolean, id?: string): Pro
       delete notes[b.id]
       return { ...data, notes, bookmarks: data.bookmarks.filter(item => item.id !== b.id) }
     })
+    await momentPictures.move(deviceScope(scope), scope, key).catch(() => undefined)
     added++
   }
 }
@@ -238,7 +283,11 @@ let queue: Promise<unknown> = Promise.resolve()
 export function forgetAccountScope(accountId: string): Promise<void> {
   // A history push scheduled for the account it just left is dropped too.
   clearTimeout(syncTimer)
-  const run = queue.then(() => deletePersonal(`${DEFAULT_BACKEND_URL}|account:${accountId}`))
+  const scope = `${DEFAULT_BACKEND_URL}|account:${accountId}`
+  const run = queue.then(async () => {
+    await momentPictures.dropScope(scope).catch(() => undefined)
+    await deletePersonal(scope)
+  })
   queue = run.catch(() => undefined)
   return run
 }
@@ -254,6 +303,8 @@ export function handleMyMoments(message: MyMomentsRequest, sender: chrome.runtim
         const account = scopeAccount(scope)
         if (account && historySyncCheckDue(await personalTransaction(scope))) await within(refreshHistorySync(scope, account), 3000)
         const data = await personalTransaction(scope)
+        // A jump or arrival on a saved moment gives the save the picture it lacks.
+        if (message.reference && !held) void wantPicture(sender, pictureMoment(message.reference), scope, identity(message.reference), { owned: false, waitMs: 180_000 }).catch(() => undefined)
         return { type: 'MOMENT_CAPTURE', enabled: data.preferences.captureHistory, epoch: data.epoch }
       }
       const ref = message.reference
@@ -262,6 +313,8 @@ export function handleMyMoments(message: MyMomentsRequest, sender: chrome.runtim
       if (path !== `/videos/${ref.vodId}` && path !== `/${ref.channel.toLowerCase()}`) throw new Error('Source changed')
       await assertScope(scope)
       const saved = await personalTransaction(scope, data => recordWatched(data, { ...ref, id: identity(ref), note: '' }, message.epoch, Date.now()))
+      // History keeps a picture of what was watched, as a save does.
+      if (!held) void wantPicture(sender, pictureMoment(ref), scope, identity(ref), { owned: false, waitMs: 60_000 }).catch(() => undefined)
       const account = scopeAccount(scope)
       if (account && saved.accountSync?.enabled && saved.accountSync.pending.length) syncSoon(scope, account)
       return { ok: true }

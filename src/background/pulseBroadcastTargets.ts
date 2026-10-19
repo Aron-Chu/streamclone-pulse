@@ -65,6 +65,8 @@ export const MESSAGE_SENDER_SCOPE: Record<BackgroundRequest['type'], MessageSend
   SUPPORTER_CARD_SCRIPT: 'twitch-any',
   // A Twitch tab showing Pulse asks for the moment-pictures script in its own frame only.
   MOMENT_FRAMES_SCRIPT: 'twitch-any',
+  // The frames script answers the worker's picture requests for its own tab; the worker checks each (momentPictures.ts).
+  MOMENT_PICTURE: 'twitch-any',
   // A Twitch tab's stream recap asks for the Catch me up script in its own frame only.
   CATCH_ME_UP_SCRIPT: 'twitch-any',
   ENROLL_DEVICE: 'extension-page',
