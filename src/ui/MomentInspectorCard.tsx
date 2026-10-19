@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react'
 import type { ExtensionEmote } from '../shared/messages.ts'
 import type { MomentPictureView } from '../shared/momentFramesContract.ts'
+import type { BookmarkTarget } from './momentBookmarks.tsx'
 import type { MomentGame } from './momentPicture.ts'
 import { formatCount } from './mostReacted.ts'
 import { MomentSelectionCard } from './MomentSelectionCard.tsx'
@@ -28,6 +29,8 @@ export interface MomentInspectorCardProps {
   /** Selected cards only: what the player showed then, and the game on stream. */
   picture?: MomentPictureView
   game?: MomentGame
+  /** Selected cards only: what the card's bookmark saves. */
+  bookmark?: BookmarkTarget
 }
 
 function viewerState(viewerCount: number | undefined, viewerSampled: boolean) {
@@ -70,6 +73,7 @@ export function MomentInspectorCard({
   onClose,
   picture,
   game,
+  bookmark,
 }: MomentInspectorCardProps) {
   const viewer = viewerState(viewerCount, viewerSampled)
   const summary = activityLine(chatCount, emoteCount, viewerCount, viewerSampled)
@@ -95,6 +99,7 @@ export function MomentInspectorCard({
         ariaLabel={`${kind === 'minute' ? 'Selected minute' : 'Selected moment'} at ${timeLabel}`}
         picture={picture}
         game={game}
+        bookmark={bookmark}
       />
     )
   }

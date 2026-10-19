@@ -3,7 +3,7 @@ import { isDeviceCredentialInvalidatedError } from './deviceAuth.ts'
 import { DEFAULT_BACKEND_URL, getBackendUrl } from '../shared/storage.ts'
 import { bindAccountDataForget, supporterAccount } from './supporterAccountRuntime.ts'
 import type { BookmarksState, MyMomentsRecent, MyMomentsRequest, MyMomentsSnapshot } from '../shared/myMoments.ts'
-import type { BackgroundResponse, ListBookmarksMessage, PulseBookmark, SaveBookmarkMessage } from '../shared/messages.ts'
+import type { BackgroundResponse, ListBookmarksMessage, PulseBookmark, RemoveBookmarkMessage, SaveBookmarkMessage } from '../shared/messages.ts'
 import { replayAvailability, type LibraryMoment, type MomentReference } from '../ui/library/model.ts'
 import { addDeviceBookmark, bookmarkIdentity, deletePersonal, momentIdentity as identity, personalTransaction, recordWatched } from './myMomentsStore.ts'
 import { clearAccountHistory, historySyncCheckDue, historySyncView, refreshHistorySync, setAccountRetention, setHistorySync, syncHistoryNow } from './historySync.ts'
@@ -118,6 +118,49 @@ export async function handleDeviceBookmarks(message: ListBookmarksMessage | Save
     .filter(b => (!message.login || b.login === message.login) && (!message.streamId || b.streamId === message.streamId) && (!message.vodId || b.vodId === message.vodId))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
   return { type: 'BOOKMARKS', items: matches.slice(start, start + limit), ...(start + limit < matches.length ? { nextCursor: String(start + limit) } : {}), device: true }
+}
+/**
+ * The Twitch panel's remove (the bookmark on the moment card). Only a bookmark
+ * of the channel, and the stream or VOD, the panel shows, found in that list
+ * first: the list the page may already read and save to. A save kept on this
+ * device leaves this database; an account's leaves the account, and its local
+ * note goes with it, as an unsave in My Moments does.
+ */
+export async function removePanelBookmark(message: RemoveBookmarkMessage, sender: chrome.runtime.MessageSender): Promise<BackgroundResponse> {
+  const belongs = (b: PulseBookmark) => b.id === message.id && b.login === message.login
+    && (message.streamId ? b.streamId === message.streamId : !!message.vodId && b.vodId === message.vodId)
+  const dropNote = (data: Awaited<ReturnType<typeof personalTransaction>>) => {
+    const notes = { ...data.notes }
+    delete notes[message.id]
+    return { ...data, notes }
+  }
+  const { scope, held } = await resolveScope()
+  const account = scopeAccount(scope)
+  if (!privateBrowsing(sender) && !held && !account) {
+    let found = false
+    await personalTransaction(scope, data => {
+      found = data.bookmarks.some(belongs)
+      return found ? { ...dropNote(data), bookmarks: data.bookmarks.filter(b => b.id !== message.id) } : data
+    })
+    if (!found) throw new Error('bookmark_not_found')
+    return { type: 'REMOVE_BOOKMARK', ok: true, device: true }
+  }
+  let cursor: string | undefined
+  let found = false
+  const seen = new Set<string>()
+  do {
+    const page = await fetchPulseBookmarks({ login: message.login, streamId: message.streamId,
+      vodId: message.streamId ? undefined : message.vodId, limit: 100, ...(cursor ? { cursor } : {}) }, undefined, account)
+    found = page.items.some(belongs)
+    cursor = page.nextCursor
+    if (cursor && (seen.has(cursor) || seen.size >= 50)) throw new Error('invalid_bookmark_pagination')
+    if (cursor) seen.add(cursor)
+  } while (!found && cursor)
+  if (!found) throw new Error('bookmark_not_found')
+  // Pinned to the account the scope named, so a switch mid-way fails instead of reaching the next one.
+  await deletePulseBookmark(message.id, undefined, account)
+  if (account && !privateBrowsing(sender)) await personalTransaction(scope, data => message.id in data.notes ? dropNote(data) : data)
+  return { type: 'REMOVE_BOOKMARK', ok: true }
 }
 const reference = (m: MomentReference): MomentReference => ({ id: m.id, channel: m.channel, title: m.title, vodId: m.vodId, streamId: m.streamId,
   offsetSeconds: m.offsetSeconds, availability: replayAvailability(m) })

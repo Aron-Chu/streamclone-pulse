@@ -436,8 +436,9 @@ test('live: ranked picks show in the Top Moments card, chart minutes keep the ch
  */
 test('live: a chart card opening above a pressed clip stays in view and moves the clip as little as possible', async ({ extension, prepare }) => {
   await prepare({ scenario: 'live-ready', twitchKind: 'live', storage: SIDEBAR })
-  // Tall enough to keep the clips in view below the chart and Top Moments.
-  await extension.page.setViewportSize({ width: 1440, height: 1100 })
+  // Tall enough to keep the clips in view below the chart and Top Moments,
+  // short enough that the panel can still scroll the chart up to its top.
+  await extension.page.setViewportSize({ width: 1440, height: 960 })
   const live = JSON.parse(readFileSync(new URL('../fixtures/api/pulse-live-ready.json', import.meta.url), 'utf8'))
   await extension.context.route('https://api.streampulse.stream/v1/extension/pulse/channels/fixturechan*', async route => {
     if (new URL(route.request().url()).pathname.endsWith('/fixturechan')) {

@@ -62,7 +62,8 @@ test('VOD bookmark reaches the account library and survives reload without dupli
   await waitForPulseRoot(vod)
   await select()
   await expect(bookmark, JSON.stringify({ reads, items })).toHaveAttribute('data-moment-save-state', 'saved', { timeout: 5000 })
-  await expect(bookmark).toBeDisabled()
+  // Saved shows as the filled icon, which would remove it; nothing was written again.
+  await expect(bookmark).toHaveAttribute('aria-pressed', 'true')
   expect(writes).toBe(1)
   await library.reload()
   await expect(library.getByRole('listitem').filter({ hasText: 'fixturechan' })).toHaveCount(1)

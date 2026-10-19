@@ -8,7 +8,8 @@ import { DEFAULT_WEB_ANALYTICS_BASE_URL, buildAnalyticsUrl, defaultWebAnalyticsB
 import { COMMUNITY_LINKS } from '../shared/portalLinks.ts'
 import { DiscordMark } from '../ui/communityIcons.tsx'
 import { applyAccentTheme } from '../ui/overlayTheme.ts'
-import { replayUrl } from '../ui/library/model.ts'
+import { replayUrl, type MomentReference } from '../ui/library/model.ts'
+import { rememberMomentArrival } from '../shared/momentArrival.ts'
 import type { HubSnapshot } from '../shared/hubSnapshot.ts'
 import type { MyMomentsRecent } from '../shared/myMoments.ts'
 import { popupStyles } from './popupStyles.ts'
@@ -142,6 +143,13 @@ function PopupApp() {
     window.close()
   }
 
+  // The note is written before the tab opens: the popup closes with it.
+  async function replay(url: string, moment: MomentReference): Promise<void> {
+    await rememberMomentArrival({ vodId: moment.vodId, offsetSeconds: moment.offsetSeconds, source: 'popup',
+      login: moment.channel, streamId: moment.streamId, title: moment.title })
+    await openUrl(url)
+  }
+
   async function openUrl(url: string): Promise<void> {
     try {
       await chrome.tabs.create({ url })
@@ -200,7 +208,7 @@ function PopupApp() {
         </section>
       ) : view ? (
         <>
-          {recent ? <JumpBackIn recent={recent} onReplay={url => void openUrl(url)} onOpenMoments={() => void openSettings('moments')} /> : null}
+          {recent ? <JumpBackIn recent={recent} onReplay={(url, moment) => void replay(url, moment)} onOpenMoments={() => void openSettings('moments')} /> : null}
           {hub.status === 'error' ? (
             <section className="pp-card pp-hero" aria-labelledby="pp-hero-title">
               <h1 id="pp-hero-title">{view.kind === 'browsing' ? 'Pick a stream' : 'Pulse lives beside Twitch chat'}</h1>
@@ -450,7 +458,7 @@ function LinkTile({ label, accessibleName, description, icon, external = false, 
 /** The last moments jumped to on this device, and its saves; only shown when there are some. */
 function JumpBackIn({ recent, onReplay, onOpenMoments }: {
   recent: MyMomentsRecent
-  onReplay: (url: string) => void
+  onReplay: (url: string, moment: MomentReference) => void
   onOpenMoments: () => void
 }) {
   // One row keeps the popup short: the latest replayable moment, else the saves.
@@ -465,7 +473,7 @@ function JumpBackIn({ recent, onReplay, onOpenMoments }: {
       <ul className="pp-jump-list">
         {watched.map(({ moment, url }) => (
           <li key={moment.id}>
-            <button type="button" className="pp-jump" data-popup-action="replay" onClick={() => onReplay(url)}>
+            <button type="button" className="pp-jump" data-popup-action="replay" onClick={() => onReplay(url, moment)}>
               <span className="pp-jump-icon" aria-hidden="true"><BoltIcon /></span>
               <span className="pp-jump-text">
                 <b>{moment.channel} · {moment.title}</b>

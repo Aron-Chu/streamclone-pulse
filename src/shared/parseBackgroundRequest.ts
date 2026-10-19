@@ -33,6 +33,7 @@ const KNOWN_MESSAGE_TYPES = new Set<string>([
   'LIST_BOOKMARKS',
   'SAVE_BOOKMARK',
   'DELETE_BOOKMARK',
+  'REMOVE_BOOKMARK',
   'LIST_WATCHLIST',
   'ADD_WATCHLIST',
   'REMOVE_WATCHLIST',
@@ -246,6 +247,20 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
       const id = requireString(raw.id)
       if (!id) return null
       return { type, id }
+    }
+    case 'REMOVE_BOOKMARK': {
+      const id = requireString(raw.id)
+      const login = requireLogin(raw.login)
+      if (!id || id.length > 200 || !login) return null
+      if (raw.contextVodId !== undefined && (typeof raw.contextVodId !== 'string' || !/^\d+$/.test(raw.contextVodId))) return null
+      return {
+        type,
+        id,
+        login,
+        streamId: optionalString(raw.streamId),
+        vodId: optionalString(raw.vodId),
+        ...(raw.contextVodId !== undefined ? { contextVodId: raw.contextVodId as string } : {}),
+      }
     }
     case 'SET_AUTO_UPDATE': {
       if (typeof raw.enabled !== 'boolean') return null

@@ -163,6 +163,16 @@ describe('parseBackgroundRequest', () => {
     }
   })
 
+  it('parses a panel bookmark removal with its channel and stream identity', () => {
+    expect(parseBackgroundRequest({ type: 'REMOVE_BOOKMARK', id: 'bk', login: 'XQC', streamId: '123', contextVodId: '987' }))
+      .toEqual({ type: 'REMOVE_BOOKMARK', id: 'bk', login: 'xqc', streamId: '123', vodId: undefined, contextVodId: '987' })
+    expect(parseBackgroundRequest({ type: 'REMOVE_BOOKMARK', id: 'bk', login: 'xqc', vodId: '987' }))
+      .toEqual({ type: 'REMOVE_BOOKMARK', id: 'bk', login: 'xqc', streamId: undefined, vodId: '987' })
+    for (const bad of [{ login: 'xqc' }, { id: 'bk' }, { id: 'bk', login: 'a' }, { id: 'a'.repeat(201), login: 'xqc' }, { id: 'bk', login: 'xqc', contextVodId: 'abc' }]) {
+      expect(parseBackgroundRequest({ type: 'REMOVE_BOOKMARK', ...bad })).toBeNull()
+    }
+  })
+
   it('accepts a numeric sender VOD id on LIST_PAST_VODS and rejects anything else (LIFE-4)', () => {
     expect(parseBackgroundRequest({ type: 'LIST_PAST_VODS', login: 'XQC', liveStreamId: 's1', isLive: true, contextVodId: '987' }))
       .toEqual({ type: 'LIST_PAST_VODS', login: 'xqc', liveStreamId: 's1', isLive: true, contextVodId: '987' })

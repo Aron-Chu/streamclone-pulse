@@ -9,6 +9,7 @@ import type { MomentPresentation } from './MomentMedia.tsx'
 import type { BookmarksState } from '../../shared/myMoments.ts'
 import type { PulseBookmark } from '../../shared/messages.ts'
 import { TWITCH_SIGNIN_ENABLED } from '../../shared/twitchSignIn.ts'
+import { rememberMomentArrival } from '../../shared/momentArrival.ts'
 import './library.css'
 
 export interface LibraryWorkspaceProps {
@@ -147,6 +148,13 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
   const currentPage = Math.min(page, pages)
   const pageItems = items.slice((currentPage - 1) * pageSize, currentPage * pageSize)
   const previewMoment = snapshot?.moments.find(moment => moment.id === previewId)
+  // A Watch link leaves a note so the panel in the new tab locks that moment;
+  // 10 s of it playing there then joins History, as after a jump in the panel.
+  const openedLink = (moment: MomentReference) => {
+    void rememberMomentArrival({ vodId: moment.vodId, offsetSeconds: moment.offsetSeconds, source: 'library',
+      login: moment.channel, streamId: moment.streamId, title: moment.title })
+    setLocalNotice(snapshot?.preferences.captureHistory ? 'Opened on Twitch. 10 s of playback there adds it to History.' : 'Opened on Twitch.')
+  }
   const modal = !!editing || !!confirmation || !!previewMoment
   const filtered = Boolean(query.trim() || channel || watchLater)
   async function exportAll() {
@@ -202,7 +210,7 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
             personalWorkspace analyticsOrigin={analyticsOrigin}
             presentation={presentations?.[moment.id]} context={contexts?.[moment.id]}
             onSave={save} onEdit={setEditing} onPreview={moment => setPreviewId(moment.id)} onRemove={moment => setConfirmation({ kind: 'remove', moment })}
-            onOpenLink={() => setLocalNotice('Opened a replay link. This is not a confirmed jump and has not been added to history.')} />)}</ul>
+            onOpenLink={openedLink} />)}</ul>
             : <div className="pl-empty"><h3>{filtered ? 'No matching moments' : view === 'recent' ? 'No history yet' : deviceSaves ? 'No account bookmarks yet' : 'No bookmarks yet'}</h3>
               <p>{filtered ? 'Try a channel name, a word from your note, or clear the filters.'
                 : view === 'recent' ? 'Watch a Pulse moment for at least 10 seconds after a jump. Opening a link alone is not recorded.'
@@ -219,7 +227,7 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
             <ul className="pl-list">{deviceMoments.map(moment => <DeviceSaveItem key={moment.id} moment={moment} busy={library.busy} analyticsOrigin={analyticsOrigin}
               onRemove={moment => setConfirmation({ kind: 'remove', moment })}
               onImport={bookmarksState === 'ready' ? moment => setConfirmation({ kind: 'import', moment }) : undefined}
-              onOpenLink={() => setLocalNotice('Opened a replay link. This is not a confirmed jump and has not been added to history.')} />)}</ul>
+              onOpenLink={openedLink} />)}</ul>
           </section> : null}
         </section>
       </> : <div className="pl-library-results" id={`${id}-panel-storage`} role="tabpanel" aria-labelledby={`${id}-tab-storage`} tabIndex={-1} aria-label="Storage and privacy">
@@ -236,7 +244,7 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
       <p className="pl-footnote">Links and notes only · no video downloads</p>
     </> : null}
     {previewMoment ? <MomentPreview key={previewMoment.id} moment={previewMoment} context={contexts?.[previewMoment.id]} presentation={presentations?.[previewMoment.id]} busy={library.busy} error={library.error} onClose={() => setPreviewId(null)} onSave={save}
-      onOpenLink={() => setLocalNotice('Opened a replay link. Playback is unconfirmed; History was not changed.')} /> : null}
+      onOpenLink={() => openedLink(previewMoment)} /> : null}
     {editing && snapshot ? <MomentEditor personalWorkspace key={editing.id} moment={editing} collections={snapshot.collections} supporter={false} busy={library.busy} error={library.error}
       onClose={() => setEditing(null)} onCommit={note => library.run({ kind: 'edit', id: editing.id, note }, 'Note saved on this device.')} /> : null}
     {confirmation ? <LibraryDialog title={confirmation.kind === 'clear' ? 'Clear history?' : confirmation.kind === 'remove' ? 'Remove bookmark?' : confirmation.kind === 'sync-off' ? 'Stop syncing history?'

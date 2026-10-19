@@ -1,5 +1,5 @@
-import { useEffect, useId, useMemo, useState } from 'react'
-import type { CSSProperties, RefObject } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import type { CSSProperties, ReactNode, RefObject } from 'react'
 import {
   peaksToLiveHeatPoints,
   type LiveHeatPoint,
@@ -41,7 +41,7 @@ import type { FullHistoryRequestResult } from '../shared/fullHistoryAuth.ts'
 import { PulseMomentRow, momentRowKey } from './PulseMomentRow.tsx'
 import { SelectedMomentCard } from './SelectedMomentCard.tsx'
 import { MomentCardSlot } from './MomentCardSlot.tsx'
-import { SavedMoments } from './SavedMoments.tsx'
+import { MyMomentsLink } from './momentBookmarks.tsx'
 import { TopMomentCard, type TopMomentCardProps } from './TopMomentCard.tsx'
 import { usePinnedCardHold } from './pinnedCardExit.ts'
 import { prefersReducedMotion } from './motion/useSmoothedScalar.ts'
@@ -49,6 +49,8 @@ import { theme } from './theme.ts'
 
 export interface StreamRecapSectionProps {
   externalPoint?: LiveHeatPoint | null
+  /** Under the chart: where the viewer came from, while their arrival keeps its minute picked. */
+  arrivalNote?: ReactNode
   payload: PulsePayload
   backendUrl: string
   uiState: RecapUiState
@@ -244,8 +246,32 @@ function RecapMomentsList({
   )
 }
 
+/**
+ * A clip or an arrival picked outside the section opens its minute here. When
+ * it is withdrawn (an arrival unlocked), its pick clears, unless the viewer
+ * has picked something else since.
+ */
+function useExternalPick(
+  point: LiveHeatPoint | null | undefined,
+  selectedKey: string | null,
+  pick: (key: string | null, point?: LiveHeatPoint | null) => void,
+): void {
+  const last = useRef<string | null>(null)
+  useEffect(() => {
+    if (point) {
+      last.current = `clip:${point.offsetSeconds}`
+      pick(last.current, point)
+    } else if (last.current) {
+      if (selectedKey === last.current) pick(null)
+      last.current = null
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only a new external pick acts
+  }, [point])
+}
+
 function RecapReadyContent({
   externalPoint,
+  arrivalNote,
   recap,
   payload,
   backendUrl,
@@ -260,6 +286,7 @@ function RecapReadyContent({
 }: {
   recap: PulseStreamRecap
   externalPoint?: LiveHeatPoint | null
+  arrivalNote?: ReactNode
   payload: PulsePayload
   backendUrl: string
   catalog: ExtensionEmote[]
@@ -295,9 +322,7 @@ function RecapReadyContent({
   }, [payload.streamId])
 
   const selectedMoment = mergedMoments.find(moment => recapMomentKey(payload.streamId, moment) === selectedKey) ?? null
-  useEffect(() => {
-    if (externalPoint) pick(`clip:${externalPoint.offsetSeconds}`, externalPoint)
-  }, [externalPoint])
+  useExternalPick(externalPoint, selectedKey, pick)
   const selectedPoint = selectedMoment
     ? recapMomentToLiveHeatPoint(selectedMoment, catalog, payload.startedAt, rollups, payload.peaks)
     : overridePoint
@@ -413,7 +438,7 @@ function RecapReadyContent({
       />
       {/* One grid child, so the card's slot never adds or drops a grid gap. */}
       <div>
-        <SavedMoments login={payload.login} streamId={payload.streamId} vodId={payload.vodId ?? undefined} selected={selectedPoint} />
+        {arrivalNote}
         {recapCardHold.point ? (
           <MomentCardSlot
             exiting={recapCardHold.exiting}
@@ -476,6 +501,7 @@ function offlinePointKey(point: LiveHeatPoint): string {
 
 function OfflineFallbackContent({
   externalPoint,
+  arrivalNote,
   payload,
   backendUrl,
   coverage,
@@ -489,6 +515,7 @@ function OfflineFallbackContent({
 }: {
   payload: PulsePayload
   externalPoint?: LiveHeatPoint | null
+  arrivalNote?: ReactNode
   backendUrl: string
   coverage?: ExtensionCoverageResponse | null
   sidebarFill?: boolean
@@ -532,9 +559,7 @@ function OfflineFallbackContent({
   const listedPoint = peakPoints.find(point => offlinePointKey(point) === selectedKey)
   const selectedPoint = selectedKey == null ? null : listedPoint ?? overridePoint
 
-  useEffect(() => {
-    if (externalPoint) pick(`clip:${externalPoint.offsetSeconds}`, externalPoint)
-  }, [externalPoint])
+  useExternalPick(externalPoint, selectedKey, pick)
 
   // Hold the card for one exit window so clearing a selection fades and
   // collapses instead of vanishing on the same frame.
@@ -660,7 +685,7 @@ function OfflineFallbackContent({
       />
       {/* One grid child, so the card's slot never adds or drops a grid gap. */}
       <div>
-        <SavedMoments login={payload.login} streamId={payload.streamId} vodId={payload.vodId ?? undefined} selected={selectedPoint} />
+        {arrivalNote}
         {recapCardHold.point ? (
           <MomentCardSlot
             exiting={recapCardHold.exiting}
@@ -742,6 +767,7 @@ function OfflineFallbackContent({
 
 export function StreamRecapSection({
   externalPoint,
+  arrivalNote,
   payload,
   backendUrl,
   uiState,
@@ -811,10 +837,11 @@ export function StreamRecapSection({
   }
 
   return (
-    <PulseSectionCard title={title} meta={cardMeta}>
+    <PulseSectionCard title={title} meta={cardMeta} titleAction={<MyMomentsLink />}>
       {recap ? (
         <RecapReadyContent
           externalPoint={externalPoint}
+          arrivalNote={arrivalNote}
           recap={recap}
           payload={payload}
           backendUrl={backendUrl}
@@ -830,6 +857,7 @@ export function StreamRecapSection({
       ) : (
         <OfflineFallbackContent
           externalPoint={externalPoint}
+          arrivalNote={arrivalNote}
           payload={payload}
           backendUrl={backendUrl}
           coverage={coverage}

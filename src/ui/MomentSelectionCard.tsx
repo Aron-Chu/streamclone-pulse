@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react'
 import type { ExtensionEmote } from '../shared/messages.ts'
 import type { MomentPictureView } from '../shared/momentFramesContract.ts'
+import { BookmarkGlyph, useMomentBookmarks, type BookmarkTarget } from './momentBookmarks.tsx'
 import { useMomentPicture, type MomentGame } from './momentPicture.ts'
 import { formatCount } from './mostReacted.ts'
 import { overlayGhostChipButton, overlayTextLinkButton } from './momentReasonStyles.ts'
@@ -40,6 +41,8 @@ export interface MomentSelectionCardProps {
   picture?: MomentPictureView
   /** The game on stream at the selected time. */
   game?: MomentGame
+  /** What the card's bookmark saves; shown inside the panel's bookmarks only. */
+  bookmark?: BookmarkTarget
 }
 
 /** Shared presentation for committed ranked-moment and raw-minute selections. */
@@ -64,7 +67,11 @@ export function MomentSelectionCard({
   style,
   picture,
   game,
+  bookmark,
 }: MomentSelectionCardProps) {
+  const bookmarks = useMomentBookmarks()
+  const canBookmark = Boolean(bookmark && bookmarks?.canSave)
+  const saved = canBookmark ? bookmarks!.savedFor(bookmark!) != null : false
   const contentRef = useRef<HTMLDivElement>(null)
   const pictureRef = useMomentPicture<HTMLDivElement>(picture)
   const shownKeyRef = useRef(contentKey)
@@ -165,7 +172,7 @@ export function MomentSelectionCard({
           </ul>
         ) : null}
 
-        {onJump || onAnalytics ? (
+        {onJump || onAnalytics || canBookmark ? (
           <div style={styles.actions}>
             {onJump ? (
               <button
@@ -177,6 +184,23 @@ export function MomentSelectionCard({
               >
                 <span aria-hidden="true" style={styles.playIcon} data-selected-moment-play-icon="true">▶</span>
                 {jumpLabel}
+              </button>
+            ) : null}
+            {canBookmark ? (
+              <button
+                type="button"
+                className="pulse-action-chip pulse-card-bookmark"
+                data-moment-inspector-action="bookmark"
+                data-moment-action="bookmark"
+                data-moment-save-state={saved ? 'saved' : bookmarks!.busy ? 'saving' : 'ready'}
+                aria-pressed={saved}
+                aria-busy={bookmarks!.busy}
+                disabled={bookmarks!.busy}
+                title={saved ? 'Remove bookmark' : `Bookmark this ${kind}`}
+                aria-label={saved ? `Remove bookmark at ${timeLabel}` : `Bookmark ${kind} at ${timeLabel}`}
+                onClick={() => bookmarks!.toggle(bookmark!)}
+              >
+                <BookmarkGlyph filled={saved} />
               </button>
             ) : null}
             {onAnalytics ? (

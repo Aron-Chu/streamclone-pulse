@@ -7,6 +7,7 @@ import {
   type LiveHeatPoint,
 } from '@streampulse/pulse-core'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
+import { BookmarkGlyph, useMomentBookmarks } from './momentBookmarks.tsx'
 import { formatMomentMetricsLine } from './momentActivity.ts'
 import { momentPictureView, useMomentPicture } from './momentPicture.ts'
 import { momentReasonLabelStyle } from './momentReasonStyles.ts'
@@ -47,6 +48,8 @@ export function PulseMomentRow({
   const offsetLabel = clock.text
   const analyticalOffset = reactionAnalyticalOffset(point)
   const collecting = point.collecting
+  const bookmarks = useMomentBookmarks()
+  const saved = !collecting && bookmarks?.canSave === true && bookmarks.savedFor({ kind: 'moment', offsetSeconds: analyticalOffset }) != null
   const ref = useRef<HTMLButtonElement>(null)
   const thumbRef = useMomentPicture<HTMLSpanElement>(collecting ? undefined : momentPictureView('thumb', point))
   // A row that leaves the list while focused (a poll ranks it past the fold,
@@ -103,7 +106,7 @@ export function PulseMomentRow({
             {collecting ? 'Collecting minute rollup…' : formatMomentMetricsLine(point)}
           </span>
         </div>
-        {point.topEmotes.length > 0 ? (
+        {point.topEmotes.length > 0 || saved ? (
           <div style={styles.emoteStack}>
             {point.topEmotes.slice(0, 3).map(emote => (
               <span key={emote.key} style={styles.emoteItem} aria-label={emote.name}>
@@ -117,6 +120,11 @@ export function PulseMomentRow({
                 />
               </span>
             ))}
+            {saved ? (
+              <span className="pulse-row-bookmark" data-moment-row-saved="true" title="Bookmarked">
+                <BookmarkGlyph filled size={14} />
+              </span>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -147,7 +155,7 @@ export function PulseMomentRow({
       onBlur={() => onHighlight(null)}
       aria-pressed={selected}
       aria-controls={controls}
-      aria-label={`Select minute bucket ${offsetLabel}, ${formatMomentMetricsLine(point)}, ${point.reasonLabel}`}
+      aria-label={`Select minute bucket ${offsetLabel}, ${formatMomentMetricsLine(point)}, ${point.reasonLabel}${saved ? ', bookmarked' : ''}`}
     >
       {body}
     </button>

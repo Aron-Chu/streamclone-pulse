@@ -31,6 +31,7 @@ export type MessageType =
   | 'MOMENT_CAPTURE'
   | 'SAVE_BOOKMARK'
   | 'DELETE_BOOKMARK'
+  | 'REMOVE_BOOKMARK'
   | 'LIST_WATCHLIST'
   | 'ADD_WATCHLIST'
   | 'REMOVE_WATCHLIST'
@@ -258,6 +259,20 @@ export interface DeleteBookmarkMessage {
   id: string
 }
 
+/**
+ * The Twitch panel's remove. Scoped like a save: the worker removes the
+ * bookmark only when it is one of that channel's (and stream's or VOD's).
+ */
+export interface RemoveBookmarkMessage {
+  type: 'REMOVE_BOOKMARK'
+  id: string
+  login: string
+  streamId?: string
+  vodId?: string
+  /** Sender-page identity only, as on LIST_BOOKMARKS. */
+  contextVodId?: string
+}
+
 export type BackgroundRequest =
   | import('./myMoments.ts').MyMomentsRequest
   | { type: 'SUPPORTER_ACCOUNT'; action: SupporterAccountAction }
@@ -298,6 +313,7 @@ export type BackgroundRequest =
   | ListBookmarksMessage
   | SaveBookmarkMessage
   | DeleteBookmarkMessage
+  | RemoveBookmarkMessage
   | ListWatchlistMessage
   | AddWatchlistMessage
   | RemoveWatchlistMessage
@@ -792,6 +808,7 @@ export type BackgroundResponse =
   | ({ type: 'BOOKMARKS'; device?: true; error?: string } & PulseBookmarkPage)
   | { type: 'BOOKMARK'; item: PulseBookmark; device?: true; error?: string }
   | { type: 'DELETE_BOOKMARK'; ok: boolean; error?: string }
+  | { type: 'REMOVE_BOOKMARK'; ok: boolean; device?: true; error?: string }
   | { type: 'WATCHLIST'; channels: string[]; sync?: WatchlistSyncStatus; error?: string }
   | { type: 'SYNC_WATCHLIST'; channels: string[]; sync?: WatchlistSyncStatus; error?: string }
   | { type: 'PAST_VODS'; items: PastVodRow[]; error?: string }

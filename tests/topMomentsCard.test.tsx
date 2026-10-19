@@ -15,7 +15,7 @@ import { MOMENT_CARD_HEIGHT } from '../src/ui/momentCardLayout.ts'
 import { liveHeatPointKey, resolveMostReactedHeat } from '../src/ui/mostReacted.ts'
 import { SELECTED_MOMENT_CARD_EXIT_MS } from '../src/ui/pinnedCardExit.ts'
 
-// SavedMoments (recap) lists bookmarks through the background worker.
+// The panel's bookmarks are listed through the background worker.
 vi.mock('../src/content/bridge.ts', () => ({
   sendBackgroundMessage: vi.fn(async () => ({ type: 'BOOKMARKS', items: [] })),
 }))

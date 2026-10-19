@@ -95,6 +95,8 @@ export const MESSAGE_SENDER_SCOPE: Record<BackgroundRequest['type'], MessageSend
   LIST_PAST_VODS: 'twitch-channel-or-vod',
   LIST_BOOKMARKS: 'twitch-channel-or-vod',
   SAVE_BOOKMARK: 'twitch-channel-or-vod',
+  // Only a bookmark of that channel, stream or VOD; the worker checks (removePanelBookmark).
+  REMOVE_BOOKMARK: 'twitch-channel-or-vod',
   HEALTH: 'twitch-any',
   GET_UPDATE_CHECK_CAPABILITY: 'twitch-any',
   CHECK_FOR_UPDATE: 'twitch-any',

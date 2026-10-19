@@ -26,7 +26,6 @@ import { ChartReadoutBand, type ChartReadoutMode } from './ChartReadoutBand.tsx'
 import { ChartMinuteInspectCard } from './ChartMinuteInspectCard.tsx'
 import { SelectedMomentCard } from './SelectedMomentCard.tsx'
 import { MomentCardSlot } from './MomentCardSlot.tsx'
-import { SavedMoments } from './SavedMoments.tsx'
 import { resolvePinnedMomentPoint } from './chartSelectedMoment.ts'
 import { usePinnedCardHold } from './pinnedCardExit.ts'
 import {
@@ -110,8 +109,6 @@ export interface LiveStatsBandProps {
   onOpenAnalytics?: (offsetSeconds: number) => void
   onOpenFullAnalytics?: () => void
   onRequestFullTimeline?: () => Promise<FullHistoryRequestResult>
-  /** Live only: the live archive's VOD id, so a bookmark can link its replay. */
-  onResolveArchiveVodId?: () => Promise<string | null>
   onChartWindowChange?: (window: ChartTimelineWindow) => void
   onPinOffset?: (offsetSeconds: number | null) => void
   /** Raw bucket selected on the chart; used when no ranked moment matches it. */
@@ -264,7 +261,6 @@ export function LiveStatsBand({
   onOpenAnalytics,
   onOpenFullAnalytics,
   onRequestFullTimeline,
-  onResolveArchiveVodId,
   onChartWindowChange,
   onPinOffset,
   onChartMinuteSelect,
@@ -1254,7 +1250,7 @@ export function LiveStatsBand({
 
       {!demoMode && featuredMoment && onMomentSelect ? (
         <button type="button" data-featured-moment="true" data-chart-action="true"
-          // Same pairing SavedMoments uses: the chip styles already carry the
+          // Same pairing the card actions use: the chip styles already carry the
           // transition and accent hover, this button just never had the class.
           className="pulse-action-chip pulse-action-chip-primary"
           style={{ ...overlayGhostChipButton, display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', whiteSpace: 'normal' }}
@@ -1598,16 +1594,6 @@ export function LiveStatsBand({
                 </>
               ) : null
             }
-          />
-        ) : null}
-        {!demoMode ? (
-          <SavedMoments
-            login={payload.login}
-            streamId={payload.streamId}
-            vodId={payload.vodId ?? undefined}
-            resolveVodId={onResolveArchiveVodId}
-            selected={selectedMomentPoint}
-            minuteOffsetSeconds={inspectorInput && !inspectorInput.moment ? inspectorInput.rollup.offsetSeconds : null}
           />
         ) : null}
         {rollupGapNotice ? <p style={styles.gapNotice}>{rollupGapNotice}</p> : null}
