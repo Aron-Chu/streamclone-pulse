@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { normalizePublicHub, type PublicHub } from '../src/lib/publicHub'
@@ -359,7 +359,16 @@ describe('compact full-hub snapshot (plan §2.6)', () => {
  * measured sizes there.
  */
 const capturePath = process.env.SP_HUB_CAPTURE_PATH
-describe.skipIf(!capturePath || !existsSync(capturePath))('production hub capture', () => {
+// Read once (no exists/stat check before the read): a missing file skips.
+const capture = (() => {
+  if (!capturePath) return null
+  try {
+    return readFileSync(capturePath)
+  } catch {
+    return null
+  }
+})()
+describe.skipIf(!capture)('production hub capture', () => {
   afterEach(() => vi.unstubAllEnvs())
   beforeEach(() => {
     vi.stubEnv('VITE_PUBLIC_HUB_V5', 'on')
@@ -368,8 +377,8 @@ describe.skipIf(!capturePath || !existsSync(capturePath))('production hub captur
   })
 
   it('stores the 24 h capture under 150 KB and keeps every "× usual" gate after hydrate', () => {
-    const bytes = statSync(capturePath!).size
-    const raw = JSON.parse(readFileSync(capturePath!, 'utf8'))
+    const bytes = capture!.length
+    const raw = JSON.parse(capture!.toString('utf8'))
     raw.generatedAt = new Date().toISOString()
     if (raw.corpusPipeline) raw.corpusPipeline.generatedAt = raw.generatedAt
 

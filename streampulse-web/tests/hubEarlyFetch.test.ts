@@ -225,7 +225,9 @@ describe('hub early fetch: import boundary', () => {
       seen.add(file)
       const source = readFileSync(file, 'utf8')
       for (const [, spec] of source.matchAll(/^\s*(?:import|export)\s[^'"]*?from\s+['"]([^'"]+)['"]/gm)) {
-        expect(spec).not.toMatch(/^@streampulse\/|packages\/|publicHub$/)
+        expect(spec).not.toMatch(/^@streampulse\//)
+        expect(spec).not.toContain('packages/')
+        expect(spec).not.toMatch(/publicHub$/)
         if (spec.startsWith('.')) visit(resolve(file, '..', `${spec.replace(/\.ts$/, '')}.ts`))
       }
     }
