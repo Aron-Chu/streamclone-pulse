@@ -26,7 +26,7 @@ import {
   resolveRecapChartPeakOffsets,
   recapStreamDurationSeconds,
 } from './recapChartPeaks.ts'
-import { buildRecapEmoteCatalog, resolveRecapEmotes } from './recapEmotes.ts'
+import { buildRecapEmoteCatalog, resolveRecapEmotes, resolveStreamTopEmotes } from './recapEmotes.ts'
 import { catchMeUpModel, useCatchMeUp } from './catchMeUp.ts'
 import { pickRecapRollups, recapMomentToLiveHeatPoint } from './recapMomentMetrics.ts'
 import {
@@ -322,7 +322,7 @@ function RecapReadyContent({
     pick(null)
   }
 
-  const topEmotes = resolveRecapEmotes(recap.topEmotes, catalog)
+  const topEmotes = resolveStreamTopEmotes(payload, recap.topEmotes, catalog)
   const chartPeakOffsets = useMemo(
     () => resolveRecapChartPeakOffsets(mergedMoments, payload.peaks),
     [mergedMoments, payload.peaks],
