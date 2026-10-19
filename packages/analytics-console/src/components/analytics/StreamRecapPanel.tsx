@@ -56,6 +56,16 @@ export function StreamRecapPanel({
     burstHighlight?.offsetSeconds ?? recap.funniestEmoteBurst?.offsetSeconds ?? 0
   const canJump = Boolean(onJumpToOffset)
 
+  // No totals, no highlight rows and no emotes: the card would be a bare title. Its moments are not listed here (the
+  // Pulse Moments list below has them), so a recap with moments only draws no card either.
+  if (
+    !hasHeadlineMetric
+    && !recap.biggestChatSpike
+    && !recap.funniestEmoteBurst
+    && topEmotes.length === 0
+  ) {
+    return null
+  }
   if (
     !hasHeadlineMetric
     && topMoments.length === 0
