@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
-import type { CSSProperties } from 'react'
+import type { CSSProperties, ReactElement } from 'react'
+import { createPortal } from 'react-dom'
 import { deriveLiveStats, formatHeatOffset, reactionAnalyticalOffset, toLiveStatsInputFromExtension, type LiveHeatPoint } from '@streampulse/pulse-core'
 import type { ExtensionEmote, ExtensionPeak, PulsePayload, PulseRecapMoment } from '../shared/messages.ts'
 import {
@@ -68,6 +69,13 @@ export interface RecapTimelineChartProps {
   onSelectMoment?: (peak: ExtensionPeak) => boolean
   onClearSelection?: () => void
   onRequestFullRollups?: () => Promise<FullHistoryRequestResult>
+  /**
+   * On a replay: the top moments' offsets, best first. The markers then show
+   * from the start as pins, numbered for these (PulseOverviewChart).
+   */
+  pins?: readonly number[]
+  /** On a replay, Plot on chart draws here (null: not yet) instead of under the chart. */
+  plotHost?: HTMLElement | null
 }
 
 export function RecapTimelineChart({
@@ -83,6 +91,8 @@ export function RecapTimelineChart({
   onSelectMoment,
   onClearSelection,
   onRequestFullRollups,
+  pins,
+  plotHost,
 }: RecapTimelineChartProps) {
   const activation = useMemo(
     () => makeFullHistoryActivation(payload),
@@ -93,7 +103,7 @@ export function RecapTimelineChart({
   const [timelineLoading, setTimelineLoading] = useState(false)
   const [chartHoverOffsetSeconds, setChartHoverOffsetSeconds] = useState<number | null>(null)
   const [selectedEmoteKeys, setSelectedEmoteKeys] = useState<string[]>([])
-  const [showPeakMarkers, setShowPeakMarkers] = useState(false)
+  const [showPeakMarkers, setShowPeakMarkers] = useState(pins != null)
   const [emotePanelExpanded, setEmotePanelExpanded] = useState(false)
   const [focusedSeriesKey, setFocusedSeriesKey] = useState<string | null>(null)
   const fullTimelineRequestedRef = useRef(false)
@@ -211,8 +221,9 @@ export function RecapTimelineChart({
       chartPeakMarkers,
       chartViewportForRender.startSeconds,
       chartViewportForRender.endSeconds,
+      pins ? Infinity : undefined,
     ).visible.length,
-    [chartPeakMarkers, chartViewportForRender.endSeconds, chartViewportForRender.startSeconds],
+    [chartPeakMarkers, chartViewportForRender.endSeconds, chartViewportForRender.startSeconds, pins],
   )
 
   useEffect(() => {
@@ -352,7 +363,7 @@ export function RecapTimelineChart({
   useEffect(() => {
     setChartHoverOffsetSeconds(null)
     setSelectedEmoteKeys([])
-    setShowPeakMarkers(false)
+    setShowPeakMarkers(pins != null)
     setFocusedSeriesKey(null)
   }, [chartIdentity])
 
@@ -648,6 +659,7 @@ export function RecapTimelineChart({
             overlayLines={emoteOverlays}
             peakMarkers={chartPeakMarkers}
             showPeakMarkers={showPeakMarkers}
+            pinOffsets={pins}
             emptyMessage={chartEmpty || 'Loading full stream rollups…'}
             // Full history is enrichment for recap too: keep any recent/partial
             // rollups drawable while the one-shot request is pending or fails.
@@ -675,7 +687,7 @@ export function RecapTimelineChart({
           />
         ) : null}
 
-      {topEmotesForPicker.length > 0 ? (
+      {topEmotesForPicker.length > 0 && plotHost !== null ? portal(
         <div data-chart-action="true">
           <SevenTvEmotePanel
             expanded={emotePanelExpanded}
@@ -692,12 +704,18 @@ export function RecapTimelineChart({
             maxSelected={MAX_PLOTTED_EMOTES}
             rollupsLoading={timelineLoadingFlag}
           />
-        </div>
+        </div>,
+        plotHost,
       ) : null}
 
       {rollupGapNotice ? <p style={styles.gapNotice}>{rollupGapNotice}</p> : null}
     </div>
   )
+}
+
+/** Into `host` when there is one, else in place. */
+function portal(node: ReactElement, host: HTMLElement | undefined): ReactElement {
+  return host ? createPortal(node, host) : node
 }
 
 const styles: Record<string, CSSProperties> = {

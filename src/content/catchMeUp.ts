@@ -6,6 +6,7 @@ import {
   type CatchMeUpBlock,
   type CatchMeUpModel,
   type CatchMeUpMoment,
+  type CatchMeUpParts,
 } from '../shared/catchMeUpContract.ts'
 import { extensionEmoteImageUrls } from '../shared/emoteUrl.ts'
 import type { MomentPictureView } from '../shared/momentFramesContract.ts'
@@ -19,7 +20,9 @@ import { catchMeUpFacts } from './catchMeUpStory.ts'
  * so it never counts against the content script's size budget.
  *
  * It draws the top of the recap: one line of the stream's facts, the #1
- * moment with its picture, and the next two. Pictures are the
+ * moment with its picture, and the next two. On a VOD page, where the chart
+ * comes first, it draws the facts above the chart and the best three under it
+ * as tiles, then Watch best (CatchMeUpParts). Pictures are the
  * frames this tab captured while it played the stream; with none, the block
  * shows no picture rather than another one in its place.
  */
@@ -50,6 +53,31 @@ const CSS = `
 .pcu-mini-text{display:grid;gap:2px;min-width:0;padding:0 2px 2px;color:#8b8ba0;font-size:10.5px;font-weight:600}
 .pcu-mini-text b{color:#fafafc;font-size:11.5px;font-weight:800;font-variant-numeric:tabular-nums}
 .pcu-slot .pulse-moment-slot{margin-top:10px}
+.pcu-part:empty{display:none}
+.pcu-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.pcu-tile{display:grid;align-content:start;gap:4px;min-width:0;padding:0;border:0;background:none;color:#8b8ba0;font:inherit;font-size:10.5px;font-weight:600;line-height:1.3;text-align:left;cursor:pointer}
+.pcu-tile:focus-visible{outline:2px solid rgba(var(--pulse-accent-light-rgb,196,181,253),.95);outline-offset:2px;border-radius:8px}
+.pcu-tile-pic{position:relative;display:grid;place-content:center;justify-items:center;aspect-ratio:16/9;border:1px solid rgba(255,255,255,.08);border-radius:8px;background:rgba(255,255,255,.03);overflow:hidden;color:#fafafc;font-size:11px;font-weight:800;font-variant-numeric:tabular-nums;transition:border-color .15s ease}
+.pcu-tile:hover .pcu-tile-pic{border-color:rgba(255,255,255,.2)}
+.pcu-tile[aria-pressed="true"] .pcu-tile-pic{border-color:transparent;box-shadow:0 0 0 2px rgba(var(--pulse-accent-light-rgb,167,139,250),.9)}
+.pcu-tile-face{position:relative;z-index:1;display:grid;justify-items:center;gap:2px}
+.pcu-tile-face img{width:30px;height:30px;object-fit:contain}
+.pcu-tile .pmf-thumb{display:none}
+.pcu-tile .pmf-thumb[data-has]{display:block;position:absolute;inset:0;width:100%;height:100%;border-radius:0}
+.pcu-tile-pic:has([data-has]){place-content:end start;padding:0 6px 4px}
+.pcu-tile-pic:has([data-has])::after{content:'';position:absolute;inset:45% 0 0;background:linear-gradient(transparent,rgba(0,0,0,.8))}
+.pcu-tile-pic:has([data-has]) .pcu-tile-face{display:flex;align-items:center;gap:4px;text-shadow:0 1px 4px #000}
+.pcu-tile-pic:has([data-has]) img{width:16px;height:16px}
+.pcu-tile-cap{overflow-wrap:anywhere}
+.pcu-tile-cap b{color:#fafafc;font-weight:800;font-variant-numeric:tabular-nums}
+.pcu .pcu-wide{width:100%;justify-content:center;min-height:32px}
+.pcu-more>summary{display:flex;justify-content:space-between;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:rgba(255,255,255,.03);color:#a1a1b2;font-size:11.5px;font-weight:700;list-style:none;cursor:pointer}
+.pcu-more>summary::-webkit-details-marker{display:none}
+.pcu-more>summary::after{content:'▾'}
+.pcu-more[open]>summary{border-color:rgba(255,255,255,.18)}
+.pcu-more[open]>summary::after{transform:rotate(180deg)}
+.pcu-more-in{display:grid;gap:10px;padding-top:10px}
+.pcu-more .pulse-moment-slot{margin-top:4px}
 `
 
 const styledRoots = new WeakSet<Node>()
@@ -95,6 +123,26 @@ function button(text: string, onClick: () => void, primary = false): HTMLButtonE
   return node
 }
 
+/**
+ * Plays the best moments in turn on a VOD page, where every jump seeks this
+ * player; each step waits for the viewer's click.
+ */
+function watchButton(best: CatchMeUpMoment[], actions: CatchMeUpActions, mark = ''): HTMLButtonElement {
+  let next = 0
+  const play = button('', () => {
+    actions.jump(next)
+    next = (next + 1) % best.length
+    paint()
+  })
+  const paint = (): void => {
+    play.textContent = mark + (next === 0
+      ? `Watch best ${best.length}`
+      : `Next: #${next + 1} · ${momentClockDisplay(best[next]!.point).text}`)
+  }
+  paint()
+  return play
+}
+
 function label(moment: CatchMeUpMoment): string {
   return displayMomentReasonLabel(moment.point.reason, moment.point.reasonLabel)
 }
@@ -113,12 +161,14 @@ function headlineNumber(point: LiveHeatPoint): string | null {
   return found ? `${formatCount(found[0])}${found[1]}` : null
 }
 
-function mount(host: HTMLElement, model: CatchMeUpModel, actions: CatchMeUpActions): CatchMeUpBlock {
+function mount(host: HTMLElement, model: CatchMeUpModel, actions: CatchMeUpActions, parts?: CatchMeUpParts): CatchMeUpBlock {
   addStyles(host)
   const facts = catchMeUpFacts(model)
   const best = model.moments.slice(0, 3)
   const top = best[0]
   const frames = globalThis.__pulseMomentFrames
+  const head = parts?.head
+  const tail = parts?.tail
   const pictures: Array<() => void> = []
   const picture = (target: HTMLElement, view: MomentPictureView): void => {
     if (frames) pictures.push(frames.mount(target, view))
@@ -126,10 +176,59 @@ function mount(host: HTMLElement, model: CatchMeUpModel, actions: CatchMeUpActio
   const remove = (): void => {
     pictures.splice(0).forEach(unmount => unmount())
     host.replaceChildren()
+    head?.replaceChildren()
+    tail?.replaceChildren()
   }
   if (!top) {
     remove()
     return { select: () => {}, remove }
+  }
+  /** A moment that opens its card under the block when picked. */
+  const pickable = (moment: CatchMeUpMoment, index: number, className: string): HTMLButtonElement => {
+    const node = element('button', className)
+    node.type = 'button'
+    node.dataset.chartAction = 'true'
+    node.setAttribute('aria-pressed', 'false')
+    node.setAttribute('aria-label', `#${index + 1} moment at ${momentClockDisplay(moment.point).text}, ${label(moment)}, ${formatMomentMetricsLine(moment.point)}`)
+    node.addEventListener('click', () => actions.pick(index))
+    return node
+  }
+
+  if (head && tail) {
+    if (facts) head.replaceChildren(element('p', 'pcu-head', facts))
+    // Each tile is the moment's picture when this tab has one; otherwise its
+    // top emote, large, and its time.
+    const tiles = best.map((moment, index) => {
+      const tile = pickable(moment, index, 'pcu-tile')
+      const thumb = element('span', 'pmf-thumb')
+      thumb.setAttribute('aria-hidden', 'true')
+      picture(thumb, moment.thumb)
+      const emote = moment.point.topEmotes.find(item => item.count > 0)
+      const face = element('span', 'pcu-tile-face')
+      const art = emote && image(extensionEmoteImageUrls(emote, model.backendUrl), '')
+      if (art) face.append(art)
+      face.append(element('b', undefined, momentClockDisplay(moment.point).text))
+      const pic = element('span', 'pcu-tile-pic')
+      pic.append(thumb, face)
+      const caption = element('span', 'pcu-tile-cap')
+      caption.append(element('b', undefined, `#${index + 1}`), ` ${emote ? burst(emote) : label(moment)}`)
+      tile.append(pic, caption)
+      return tile
+    })
+    const row = element('div', 'pcu-tiles')
+    row.append(...tiles)
+    host.replaceChildren(row)
+    if (best.length > 1) {
+      const bar = element('div', 'pcu')
+      const play = watchButton(best, actions, '▶ ')
+      play.classList.add('pcu-wide')
+      bar.append(play)
+      tail.replaceChildren(bar)
+    }
+    return {
+      select: index => tiles.forEach((tile, offset) => tile.setAttribute('aria-pressed', String(offset === index))),
+      remove,
+    }
   }
 
   const pic = element('div', 'pcu-pic')
@@ -158,23 +257,7 @@ function mount(host: HTMLElement, model: CatchMeUpModel, actions: CatchMeUpActio
   }
   const controls = element('div', 'pcu-actions')
   controls.append(button('▶ Jump', () => actions.jump(0), true))
-  // On a VOD page every jump seeks this player, so the best moments can be
-  // watched in turn; each step waits for the viewer's click.
-  if (model.vodPage && best.length > 1) {
-    let next = 0
-    const play = button('', () => {
-      actions.jump(next)
-      next = (next + 1) % best.length
-      paint()
-    })
-    const paint = (): void => {
-      play.textContent = next === 0
-        ? `Watch best ${best.length}`
-        : `Next: #${next + 1} · ${momentClockDisplay(best[next]!.point).text}`
-    }
-    paint()
-    controls.append(play)
-  }
+  if (model.vodPage && best.length > 1) controls.append(watchButton(best, actions))
   body.append(controls)
   const hero = element('div', 'pcu-hero')
   hero.append(pic, body)
@@ -187,11 +270,7 @@ function mount(host: HTMLElement, model: CatchMeUpModel, actions: CatchMeUpActio
   const minis = best.slice(1).map((moment, offset) => {
     const index = offset + 1
     const clock = momentClockDisplay(moment.point).text
-    const mini = element('button', 'pcu-mini')
-    mini.type = 'button'
-    mini.dataset.chartAction = 'true'
-    mini.setAttribute('aria-pressed', 'false')
-    mini.setAttribute('aria-label', `#${index + 1} moment at ${clock}, ${label(moment)}, ${formatMomentMetricsLine(moment.point)}`)
+    const mini = pickable(moment, index, 'pcu-mini')
     const thumb = element('span', 'pmf-thumb')
     thumb.setAttribute('aria-hidden', 'true')
     picture(thumb, moment.thumb)
@@ -200,7 +279,6 @@ function mount(host: HTMLElement, model: CatchMeUpModel, actions: CatchMeUpActio
     const emote = moment.point.topEmotes[0]
     if (emote && emote.count > 0) text.append(element('span', undefined, burst(emote)))
     mini.append(thumb, text)
-    mini.addEventListener('click', () => actions.pick(index))
     return mini
   })
   if (minis.length > 0) {

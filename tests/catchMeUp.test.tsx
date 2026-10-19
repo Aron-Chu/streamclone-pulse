@@ -234,6 +234,36 @@ describe('Catch me up block', () => {
     expect(jump.mock.calls).toEqual([[0], [1], [2]])
   })
 
+  it('on a VOD page with parts, draws the facts above, the best three as tiles and Watch best under them', () => {
+    const element = host()
+    const head = host()
+    const tail = host()
+    const pick = vi.fn()
+    const kekw = { key: 'kekw', name: 'KEKW', count: 212, provider: 'bttv', providerEmoteId: 'kekw1' }
+    const moments = model().moments.map(moment => ({ ...moment, point: { ...moment.point, topEmotes: [kekw] } }))
+    const block = globalThis.__pulseCatchMeUp!.mount(element, model({ vodPage: true, moments }), { jump: vi.fn(), pick }, { head, tail })
+    expect(head.textContent).toBe('Peak 480 chat/min · 20 moments')
+    // No #1 hero: the tiles are the best three.
+    expect(element.querySelector('.pcu-rank')).toBeNull()
+    const tiles = [...element.querySelectorAll<HTMLButtonElement>('.pcu-tile')]
+    expect(tiles.map(tile => tile.querySelector('.pcu-tile-cap')!.textContent)).toEqual(['#1 KEKW ×212', '#2 KEKW ×212', '#3 KEKW ×212'])
+    // Without a picture, a tile is the top emote, large, and the time; no
+    // stand-in picture and no word about the missing one.
+    expect(tiles.map(tile => tile.querySelector('.pcu-tile-face')!.textContent)).toEqual(['02:41', '01:23', '00:20'])
+    expect(tiles.every(tile => tile.querySelector('.pcu-tile-face img') != null)).toBe(true)
+    expect(element.textContent).not.toMatch(/unavailable|no picture/i)
+    tiles[1]!.click()
+    expect(pick).toHaveBeenCalledWith(1)
+    block.select(1)
+    expect(tiles.map(tile => tile.getAttribute('aria-pressed'))).toEqual(['false', 'true', 'false'])
+    const play = tail.querySelector<HTMLButtonElement>('.pcu-btn')!
+    expect(play.textContent).toBe('▶ Watch best 3')
+    play.click()
+    expect(play.textContent).toBe('▶ Next: #2 · 01:23')
+    block.remove()
+    expect([element, head, tail].map(part => part.childElementCount)).toEqual([0, 0, 0])
+  })
+
   it('draws a picture only through the frames script, and removes it with the block', () => {
     const element = host()
     const unmount = vi.fn()
@@ -387,7 +417,82 @@ describe('Stream recap with Catch me up', () => {
   it('offers the best three in turn only on a VOD page', () => {
     expect([...render().querySelectorAll('.pcu-btn')].map(button => button.textContent)).toEqual(['▶ Jump'])
     act(() => reactRoot?.unmount())
-    expect([...render(true).querySelectorAll('.pcu-btn')].map(button => button.textContent)).toEqual(['▶ Jump', 'Watch best 3'])
+    expect([...render(true).querySelectorAll('.pcu-btn')].map(button => button.textContent)).toEqual(['▶ Watch best 3'])
+  })
+
+  /** The recap's shown rows, top to bottom, by what each one is. */
+  const order = (element: HTMLElement) => {
+    const content = element.querySelector<HTMLElement>('.pcu-slot')!.parentElement!
+    return [...content.children].filter(child => !(child as HTMLElement).hidden).map(child => {
+      const has = (selector: string) => child.matches(selector) || child.querySelector(selector) != null
+      if (has('.pcu-slot')) return child.querySelector('.pcu-tiles') ? 'tiles' : 'block'
+      if (has('.pcu-more')) return 'more'
+      if (has('.pcu-head')) return 'facts'
+      if (has('.pcu-wide')) return 'watch'
+      if (has('[data-games-played]')) return 'games'
+      if (has('[data-chart-moment-toggle]')) return 'chart'
+      if (has('[data-pmf-list]')) return 'list'
+      return null
+    }).filter(Boolean)
+  }
+  const games = [
+    { gameName: 'Just Chatting', offsetSeconds: 0, durationSeconds: 1800 },
+    { gameName: 'Minecraft', offsetSeconds: 1800, durationSeconds: 1800 },
+  ]
+
+  it('on a replay, puts the chart first: facts, chart, tiles, Watch best, then More with games, Plot on chart and every moment', () => {
+    const element = render(true, { ...payload, games } as PulsePayload)
+    expect(order(element)).toEqual(['facts', 'chart', 'tiles', 'watch', 'more'])
+    const more = element.querySelector<HTMLDetailsElement>('details.pcu-more')!
+    expect(more.open).toBe(false)
+    expect(more.querySelector('summary')!.textContent).toBe('More')
+    const inside = more.querySelector('.pcu-more-in')!
+    expect(inside.querySelector('[data-games-played]')).not.toBeNull()
+    // Every moment, in time order, with no fold.
+    expect(rows(inside).map(row => row.getAttribute('aria-label')!.match(/\d\d:\d\d/)![0]))
+      .toEqual(['00:05', '00:12', '00:19', '00:26', '00:33', '00:40', '00:47', '00:54'])
+    expect(element.textContent).not.toContain('more moment')
+    expect(element.textContent).not.toContain('Top moments')
+    // The top three are numbered pins; the rest are dots.
+    const pins = [...element.querySelectorAll('[data-chart-pin]')].map(pin => [pin.getAttribute('data-chart-pin'), pin.getAttribute('data-chart-moment-marker-offset')])
+    expect(pins).toEqual(expect.arrayContaining([['1', '300'], ['2', '720'], ['3', '1140']]))
+    expect(pins).toHaveLength(3)
+    expect(element.querySelectorAll('[data-chart-moment-marker="true"]')).toHaveLength(8)
+    expect(element.querySelectorAll('[data-spike-symbol="diamond"]')).toHaveLength(0)
+  })
+
+  it('on a replay, opens a pin’s card under the chart, a tile’s under the tiles and a row’s under its row', () => {
+    const element = render(true)
+    const content = element.querySelector<HTMLElement>('.pcu-slot')!.parentElement!
+    const chartSlot = () => element.querySelector('.pcu-slot')!.previousElementSibling!
+    act(() => element.querySelector('[data-chart-pin="2"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+    expect(chartSlot().querySelector('.pulse-moment-slot')!.textContent).toContain('00:12')
+    expect(element.querySelectorAll('[data-top-moment-card="selected"]')).toHaveLength(0)
+
+    const tiles = [...element.querySelectorAll<HTMLButtonElement>('.pcu-tile')]
+    click(tiles[2]!)
+    const card = element.querySelector('.pcu-slot [data-top-moment-card="selected"]')!
+    expect(card.textContent).toContain('00:19')
+    expect(card.previousElementSibling!.querySelector('.pcu-tiles')).not.toBeNull()
+    expect(tiles[2]!.getAttribute('aria-pressed')).toBe('true')
+    expect(content.querySelectorAll('[data-top-moment-card="selected"]')).toHaveLength(1)
+
+    const list = rows(element.querySelector('.pcu-more')!)
+    click(list[4]!)
+    const rowCard = list[4]!.nextElementSibling!
+    expect(rowCard.getAttribute('data-top-moment-card')).toBe('selected')
+    expect(list[4]!.getAttribute('aria-controls')).toBe(rowCard.id)
+    expect(tiles[2]!.getAttribute('aria-pressed')).toBe('false')
+    click(list[4]!)
+    expect(element.querySelector('.pcu-more [data-top-moment-card="selected"]')).toBeNull()
+  })
+
+  it('keeps the live recap as it was: block, games, chart, then the folded list, with no pins and no More', () => {
+    const element = render(false, { ...payload, games } as PulsePayload)
+    expect(order(element)).toEqual(['block', 'games', 'chart', 'list'])
+    expect(element.querySelector('.pcu-more, .pcu-tiles, [data-chart-pin]')).toBeNull()
+    // Spikes start hidden, as before.
+    expect(element.querySelectorAll('[data-chart-moment-marker="true"]')).toHaveLength(0)
   })
 
   it('draws no Games played strip while the games are unknown, and keeps it out when they arrive later', () => {
