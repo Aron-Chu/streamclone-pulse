@@ -109,7 +109,7 @@ describe('board E: a Watch link lands on its moment', () => {
 
     expect(chip()?.dataset.momentArrival).toBe('library')
     expect(chip()?.textContent).toContain('From My Moments · 01:06:40')
-    expect(card()).not.toBeNull()
+    expect(card()?.getAttribute('aria-label')).toMatch(/^Selected moment at 01:06\b/)
     // Read once: a reload of this tab does not land here again.
     expect(local.has(MOMENT_ARRIVAL_STORAGE_KEY)).toBe(false)
   })
@@ -136,6 +136,19 @@ describe('board E: a Watch link lands on its moment', () => {
     expect(card()).not.toBeNull()
     await settle()
     expect(vi.mocked(sendBackgroundMessage).mock.calls.some(([request]) => (request as { type: string }).type === 'MOMENT_CAPTURE')).toBe(false)
+  })
+
+  it('selects the chart minute the landed second shows under, though buckets start mid-minute', async () => {
+    // This VOD's buckets start at :50, and the chart files each under its
+    // floored minute. 1:06:40 sits in the bucket from 1:05:50, which the chart
+    // shows as 1:05; the minute the viewer sees for 1:06:40 is 1:06.
+    resetMomentArrivalPage(`https://www.twitch.tv/videos/${VOD_ID}?t=1h6m40s`)
+    await open()
+
+    expect(chip()?.textContent).toContain('From link · 01:06:40')
+    expect(card()?.getAttribute('aria-label')).toMatch(/^Selected moment at 01:06\b/)
+    const readout = node.querySelector<HTMLElement>('[data-chart-readout-state="selected"]')
+    expect(readout?.textContent).toContain('01:06:00')
   })
 
   it('takes the nearest minute when the note falls in a gap', async () => {

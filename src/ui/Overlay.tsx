@@ -591,11 +591,18 @@ function OverlayMain({
    */
   async function lockMinuteAt(offset: number, from: PulsePayload, isCurrent: () => boolean, nearest = false): Promise<boolean | null> {
     let source = from
+    // Buckets start where the stream's wall-clock minutes fall, often
+    // mid-minute, and the chart files each under its floored minute. Match on
+    // that grid so the card and readout show the minute the second is in.
+    const minute = (seconds: number) => Math.floor(seconds / 60) * 60
     const findBucket = (data: PulsePayload) => {
       const rows = (data.fullRollups?.length ? data.fullRollups : data.rollups ?? []).filter(row => !row.missing)
-      const inside = rows.find(row => row.offsetSeconds <= offset && offset < row.offsetSeconds + 60)
+      const inside = rows.find(row => minute(row.offsetSeconds) === minute(offset))
       if (inside || !nearest) return inside
-      const gap = (row: ExtensionRollup) => (offset < row.offsetSeconds ? row.offsetSeconds - offset : offset - row.offsetSeconds - 59)
+      const gap = (row: ExtensionRollup) => {
+        const start = minute(row.offsetSeconds)
+        return offset < start ? start - offset : offset - start - 59
+      }
       return rows.filter(row => gap(row) <= ARRIVAL_MATCH_SECONDS).sort((a, b) => gap(a) - gap(b))[0]
     }
     let bucket = findBucket(source)
