@@ -78,7 +78,7 @@ export function panelComponentCss(): string {
   .pulse-games-label-shell { align-items: baseline; display: flex; gap: 6px; flex: 1 1 auto; min-width: 0; overflow: hidden; }
   .pulse-games-name { color: ${theme.textPrimary}; flex: 0 1 auto; font-size: 10px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pulse-games-meta { color: ${theme.textMuted}; flex-shrink: 0; font-size: 9px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .pulse-games-label { color: ${theme.textMuted}; font-size: 9px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+  .pulse-games-label { color: ${theme.textMuted}; font-size: 10px; font-weight: 800; }
   .pulse-games-trail { align-items: center; display: flex; gap: 6px; min-width: 0; flex-shrink: 0; margin-left: auto; }
   .pulse-games-count { color: ${theme.textSecondary}; font-size: 10px; font-variant-numeric: tabular-nums; font-weight: 800; white-space: nowrap; }
   .pulse-games-empty-copy { color: ${theme.textMuted}; font-size: 9px; font-weight: 600; line-height: 1.35; margin: 0; }
@@ -100,7 +100,7 @@ export function panelComponentCss(): string {
   .pulse-seven-tv-panel { background: rgba(17, 17, 23, 0.72); border: 1px solid rgba(103, 232, 249, 0.1); border-radius: 10px; margin-top: 8px; overflow: hidden; }
   .pulse-seven-tv-header { align-items: center; display: flex; gap: 4px; min-width: 0; }
   .pulse-seven-tv-clear { background: rgba(139, 92, 246, 0.12); border: 1px solid rgba(167, 139, 250, 0.3); border-radius: 6px; color: #ddd6fe; cursor: pointer; flex: 0 0 auto; font-size: 9px; font-weight: 800; min-height: 25px; padding: 3px 7px; }
-  .pulse-seven-tv-label { color: ${theme.textMuted}; flex-shrink: 0; font-size: 9px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+  .pulse-seven-tv-label { color: ${theme.textMuted}; flex-shrink: 0; font-size: 10px; font-weight: 800; }
   .pulse-seven-tv-preview { align-items: center; display: inline-flex; flex: 1; gap: 5px; min-width: 0; }
   .pulse-seven-tv-preview-emote { align-items: center; background: rgba(255, 255, 255, 0.035); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 5px; display: inline-flex; flex-shrink: 0; height: 22px; justify-content: center; width: 22px; }
   .pulse-seven-tv-chevron { color: ${theme.accentSoft}; flex-shrink: 0; font-size: 11px; font-weight: 900; margin-left: auto; transition: transform .18s cubic-bezier(.2,0,0,1); }

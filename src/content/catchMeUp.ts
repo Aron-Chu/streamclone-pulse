@@ -1,4 +1,4 @@
-import { displayMomentReasonLabel, momentClockDisplay, type LiveHeatEmote } from '@streampulse/pulse-core'
+import { displayMomentReasonLabel, isEmoteSpikeReason, isViewerSpikeReason, momentClockDisplay, type LiveHeatEmote, type LiveHeatPoint } from '@streampulse/pulse-core'
 import {
   CATCH_ME_UP_READY_EVENT,
   type CatchMeUpActions,
@@ -11,35 +11,33 @@ import { extensionEmoteImageUrls } from '../shared/emoteUrl.ts'
 import type { MomentPictureView } from '../shared/momentFramesContract.ts'
 import { formatMomentMetricsLine } from '../ui/momentActivity.ts'
 import { formatCount } from '../ui/mostReacted.ts'
-import { catchMeUpStory } from './catchMeUpStory.ts'
+import { catchMeUpFacts } from './catchMeUpStory.ts'
 
 /**
  * Entry of `content/catch-me-up.js`, injected by the worker into a Twitch tab
  * whose Pulse panel shows a stream recap (src/background/catchMeUpScript.ts),
  * so it never counts against the content script's size budget.
  *
- * It draws the top of the recap: one line on how the stream went, the #1
- * moment with its picture, the next two, and the totals. Pictures are the
+ * It draws the top of the recap: one line of the stream's facts, the #1
+ * moment with its picture, and the next two. Pictures are the
  * frames this tab captured while it played the stream; with none, the block
  * shows no picture rather than another one in its place.
  */
 
 const CSS = `
 .pcu{display:grid;gap:10px}
-.pcu-head{margin:0;color:#fafafc;font-size:13px;font-weight:600;line-height:1.45}
-.pcu-head em{font-style:normal;font-variant-numeric:tabular-nums;color:var(--pulse-accent-ink,#ddd6fe)}
+.pcu-head{margin:0;color:#e4e4ec;font-size:12px;font-weight:600;line-height:1.45;font-variant-numeric:tabular-nums}
 .pcu-hero{display:grid;border:1px solid rgba(var(--pulse-accent-light-rgb,167,139,250),.22);border-radius:12px;background:rgba(255,255,255,.03);overflow:hidden}
 .pcu-pic{padding:8px 8px 0}
 .pcu-pic:empty{display:none}
 .pcu-body{display:grid;gap:6px;min-width:0;padding:10px 12px 12px}
-.pcu-rank{color:#f97316;font-size:9.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
-.pcu-metrics{color:#a1a1b2;font-size:11px;font-weight:600;font-variant-numeric:tabular-nums}
+.pcu-rank{color:#f97316;font-size:11px;font-weight:800}
+.pcu-metrics{color:#a1a1b2;font-size:11px;font-weight:600;line-height:18px;font-variant-numeric:tabular-nums}
+.pcu-top-emote{display:inline-flex;align-items:center;gap:4px;max-width:100%;vertical-align:top}
+.pcu-top-emote img{flex:none;width:16px;height:16px;object-fit:contain}
 .pcu-game{display:flex;align-items:center;gap:6px;min-width:0;color:#a1a1b2;font-size:11px;font-weight:700}
 .pcu-game img{flex:none;width:15px;height:20px;border-radius:2px;object-fit:cover}
-.pcu-game span,.pcu-emote span,.pcu-mini-text span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pcu-emotes{display:flex;flex-wrap:wrap;gap:4px;min-width:0}
-.pcu-emote{display:inline-flex;align-items:center;gap:4px;max-width:100%;padding:2px 7px 2px 3px;border-radius:999px;background:rgba(255,255,255,.06);color:#a1a1b2;font-size:10.5px;font-weight:700;font-variant-numeric:tabular-nums}
-.pcu-emote img{flex:none;width:18px;height:18px;object-fit:contain}
+.pcu-game span,.pcu-top-emote span,.pcu-mini-text span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pcu-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:2px}
 .pcu .pcu-btn{display:inline-flex;align-items:center;gap:5px;min-height:28px;padding:5px 10px;border:1px solid rgba(255,255,255,.14);border-radius:8px;background:rgba(255,255,255,.04);color:#fafafc;font:inherit;font-size:10.5px;font-weight:800;cursor:pointer}
 .pcu .pcu-btn[data-primary]{background:rgba(var(--pulse-accent-rgb,139,92,246),.2);border-color:rgba(var(--pulse-accent-light-rgb,167,139,250),.46);color:var(--pulse-accent-ink,#ddd6fe)}
@@ -51,8 +49,6 @@ const CSS = `
 .pcu-mini .pmf-thumb{display:none;width:100%;height:auto;aspect-ratio:16/9;border-radius:6px}
 .pcu-mini-text{display:grid;gap:2px;min-width:0;padding:0 2px 2px;color:#8b8ba0;font-size:10.5px;font-weight:600}
 .pcu-mini-text b{color:#fafafc;font-size:11.5px;font-weight:800;font-variant-numeric:tabular-nums}
-.pcu-stats{display:flex;flex-wrap:wrap;gap:2px 10px;margin:0;color:#8b8ba0;font-size:11px;font-weight:600}
-.pcu-stats b{color:#a1a1b2;font-weight:800;font-variant-numeric:tabular-nums}
 .pcu-slot .pulse-moment-slot{margin-top:10px}
 `
 
@@ -107,9 +103,19 @@ function burst(emote: LiveHeatEmote): string {
   return `${emote.name} ×${formatCount(emote.count)}`
 }
 
+/** The one number a moment's label is about: emotes for an emote spike, viewers for a viewer spike, else chat; none rather than zero. */
+function headlineNumber(point: LiveHeatPoint): string | null {
+  const chat: [number, string] = [point.chatCount ?? 0, ' chat/min']
+  const emotes: [number, string] = [point.emoteCount ?? 0, ' emotes/min']
+  const viewers: [number, string] = [point.viewerCount ?? 0, ' viewers']
+  const order = isEmoteSpikeReason(point.reason) ? [emotes, chat, viewers] : isViewerSpikeReason(point.reason) ? [viewers, chat, emotes] : [chat, emotes, viewers]
+  const found = order.find(([value]) => value > 0)
+  return found ? `${formatCount(found[0])}${found[1]}` : null
+}
+
 function mount(host: HTMLElement, model: CatchMeUpModel, actions: CatchMeUpActions): CatchMeUpBlock {
   addStyles(host)
-  const story = catchMeUpStory(model)
+  const facts = catchMeUpFacts(model)
   const best = model.moments.slice(0, 3)
   const top = best[0]
   const frames = globalThis.__pulseMomentFrames
@@ -121,23 +127,27 @@ function mount(host: HTMLElement, model: CatchMeUpModel, actions: CatchMeUpActio
     pictures.splice(0).forEach(unmount => unmount())
     host.replaceChildren()
   }
-  if (!story || !top) {
+  if (!top) {
     remove()
     return { select: () => {}, remove }
   }
 
-  const head = element('p', 'pcu-head')
-  head.append(story.lead, element('em', undefined, story.clock), story.tail)
-  if (story.busiest) head.append(` ${story.busiest}`)
-
   const pic = element('div', 'pcu-pic')
   picture(pic, top.card)
   const body = element('div', 'pcu-body')
-  body.append(
-    element('span', 'pcu-rank', `#1 moment · ${label(top)}`),
-    element('span', 'pcu-metrics', `${momentClockDisplay(top.point).text} · ${formatMomentMetricsLine(top.point)}`),
-  )
-  // As in the story: with one game known, it is the stream's category, which
+  // One stat line: when, what, the number that says so, and the emote chat used most.
+  const line = element('span', 'pcu-metrics', [momentClockDisplay(top.point).text, label(top), headlineNumber(top.point)].filter(Boolean).join(' · '))
+  const emote = top.point.topEmotes.find(item => item.count > 0)
+  if (emote) {
+    const chip = element('span', 'pcu-top-emote')
+    chip.title = burst(emote)
+    const art = image(extensionEmoteImageUrls(emote, model.backendUrl), '')
+    if (art) chip.append(art)
+    chip.append(element('span', undefined, burst(emote)))
+    line.append(' · ', chip)
+  }
+  body.append(element('span', 'pcu-rank', '#1 moment'), line)
+  // With one game known, it is the stream's category, which
   // the page already shows and which need not be the one on screen then.
   if (top.game && model.namesGame) {
     const game = element('div', 'pcu-game')
@@ -145,19 +155,6 @@ function mount(host: HTMLElement, model: CatchMeUpModel, actions: CatchMeUpActio
     if (art) game.append(art)
     game.append(element('span', undefined, top.game.name))
     body.append(game)
-  }
-  const emotes = top.point.topEmotes.filter(emote => emote.count > 0).slice(0, 3)
-  if (emotes.length > 0) {
-    const row = element('div', 'pcu-emotes')
-    for (const emote of emotes) {
-      const chip = element('span', 'pcu-emote')
-      chip.title = burst(emote)
-      const art = image(extensionEmoteImageUrls(emote, model.backendUrl), '')
-      if (art) chip.append(art)
-      chip.append(element('span', undefined, burst(emote)))
-      row.append(chip)
-    }
-    body.append(row)
   }
   const controls = element('div', 'pcu-actions')
   controls.append(button('▶ Jump', () => actions.jump(0), true))
@@ -184,7 +181,8 @@ function mount(host: HTMLElement, model: CatchMeUpModel, actions: CatchMeUpActio
 
   const block = element('section', 'pcu')
   block.setAttribute('aria-label', 'Catch me up')
-  block.append(head, hero)
+  if (facts) block.append(element('p', 'pcu-head', facts))
+  block.append(hero)
 
   const minis = best.slice(1).map((moment, offset) => {
     const index = offset + 1
@@ -212,17 +210,6 @@ function mount(host: HTMLElement, model: CatchMeUpModel, actions: CatchMeUpActio
     pair.append(...minis)
     block.append(pair)
   }
-
-  const stats = element('p', 'pcu-stats')
-  const stat = (value: number, text: string): void => {
-    if (!(value > 0)) return
-    const part = element('span')
-    part.append(element('b', undefined, formatCount(value)), text)
-    stats.append(part)
-  }
-  stat(model.peakChatPerMin, '/min at the busiest')
-  stat(model.momentCount, model.momentCount === 1 ? ' moment' : ' moments')
-  if (stats.childElementCount > 0) block.append(stats)
 
   host.replaceChildren(block)
   return {

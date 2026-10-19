@@ -41,11 +41,15 @@ export function ChartReadoutBand({
   emoteScope = 'minute',
   onClearSelection,
 }: ChartReadoutBandProps) {
-  const title = mode === 'selected'
-    ? 'Selected'
-    : mode === 'preview'
-      ? 'Preview'
-      : 'Chart inspection'
+  // Nothing hovered or picked: one quiet line in the band's usual height, not a row of blanks.
+  if (mode === 'idle') {
+    return (
+      <div className="pulse-chart-readout-band" style={{ ...styles.band, ...styles.idleBand }} data-chart-readout="true" data-chart-readout-state="idle" aria-live="off">
+        <span style={styles.idleHint}>Hover the chart to inspect a minute.</span>
+      </div>
+    )
+  }
+  const title = mode === 'selected' ? 'Selected' : 'Preview'
   const time = typeof offsetSeconds === 'number' && Number.isFinite(offsetSeconds)
     ? formatHeatOffset(offsetSeconds)
     : '—'
@@ -54,7 +58,7 @@ export function ChartReadoutBand({
     : typeof viewerValue === 'number' && Number.isFinite(viewerValue)
       ? formatReadoutNumber(viewerValue)
       : 'Unavailable'
-  const visibleEmotes = mode === 'idle' ? [] : topEmotes.slice(0, 3)
+  const visibleEmotes = topEmotes.slice(0, 3)
   const emoteScopeLabel = emoteScope === 'minute'
     ? 'Top emotes in this minute'
     : 'Stream top emotes; this minute has no emote breakdown'
@@ -64,20 +68,19 @@ export function ChartReadoutBand({
       className="pulse-chart-readout-band"
       style={{
         ...styles.band,
-        cursor: mode !== 'idle' ? 'pointer' : undefined,
+        cursor: 'pointer',
       }}
       data-chart-readout="true"
       data-chart-readout-state={mode}
       aria-live={mode === 'selected' ? 'polite' : 'off'}
       onClick={event => {
-        if (mode === 'idle') return
         const target = event.target as HTMLElement | null
         if (target?.closest('button, a, input, select')) return
         onClearSelection?.()
       }}
     >
       <div
-        key={`${mode}:${offsetSeconds ?? 'idle'}`}
+        key={`${mode}:${offsetSeconds ?? 'none'}`}
         className="pulse-chart-readout-content"
         style={styles.content}
       >
@@ -112,9 +115,6 @@ export function ChartReadoutBand({
                 </span>
               ))}
             </span>
-          ) : null}
-          {mode === 'idle' ? (
-            <span style={styles.hint}>Hover the chart to inspect a minute.</span>
           ) : null}
         </div>
         <div style={styles.metrics} data-chart-readout-metrics="true">
@@ -166,10 +166,8 @@ const styles: Record<string, CSSProperties> = {
   kicker: {
     color: theme.accent2,
     flexShrink: 0,
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: 800,
-    letterSpacing: '0.04em',
-    textTransform: 'uppercase',
   },
   time: {
     color: theme.textPrimary,
@@ -195,14 +193,15 @@ const styles: Record<string, CSSProperties> = {
     width: 18,
   },
   emoteImage: { display: 'block', height: 16, objectFit: 'contain', width: 16 },
-  hint: {
+  idleBand: { alignItems: 'center', justifyItems: 'center' },
+  idleHint: {
     color: theme.textMuted,
-    flex: '1 1 auto',
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: 600,
-    minWidth: 0,
+    maxWidth: '100%',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
   },
   metrics: {
     alignItems: 'center',
@@ -220,10 +219,8 @@ const styles: Record<string, CSSProperties> = {
   metricLabel: {
     color: theme.textMuted,
     flexShrink: 0,
-    fontSize: 9,
-    fontWeight: 800,
-    letterSpacing: '0.02em',
-    textTransform: 'uppercase',
+    fontSize: 10,
+    fontWeight: 700,
   },
   metricValue: {
     color: theme.textSecondary,

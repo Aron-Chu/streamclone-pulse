@@ -23,13 +23,24 @@ describe('Moment media and statistics', () => {
     expect(img.alt).toContain('near 01:42:10')
     expect(container.textContent).toContain('not an archived copy')
     await act(async () => img.dispatchEvent(new Event('error')))
-    expect(container.querySelector('img')).toBeNull()
-    expect(container.textContent).toContain('Preview image unavailable')
+    // Without a frame, Preview has no picture box at all.
+    expect(container.querySelector('figure')).toBeNull()
+  })
+  it('shows a list row without a frame as its clock, with no placeholder picture', async () => {
+    await render(<MomentMedia moment={demoReference} compact />)
+    expect(container.querySelector('.pl-media-tile')?.textContent).toContain('01:42:18')
+    expect(container.querySelector('.pl-media-frame')).toBeNull()
+    expect(container.textContent).not.toContain('Preview image unavailable')
+    await act(async () => root!.render(<MomentMedia moment={{ ...demoReference, availability: 'unavailable' }} compact />))
+    expect(container.querySelector('.pl-media-tile')?.textContent).toContain('Source unavailable')
   })
   it('rejects unsafe links and does not invent a baseline', async () => {
     for (const url of ['javascript:alert(1)', 'https://user:pass@example.com', 'http://example.com', 'broken']) expect(safePresentationUrl(url)).toBeUndefined()
+    // No backend comparison, no line about it.
     await render(<MomentSignal />)
-    expect(container.textContent).toContain('Stream comparison unavailable')
+    expect(container.textContent).toBe('')
+    await act(async () => root!.render(<MomentSignal presentation={{ signal: { label: '3.1× usual chat', basis: 'vs the stream median' } }} />))
+    expect(container.textContent).toContain('3.1× usual chat')
   })
   it('uses a same-minute emote denominator and allows density above 100', async () => {
     expect(emoteShare(156, 520)).toBe('30.0%')
@@ -51,6 +62,14 @@ describe('Moment media and statistics', () => {
     expect(container.textContent).toContain('forsenPls')
     expect(container.textContent).toContain('7TV')
     expect(container.textContent).toContain('156 uses / min')
+  })
+  it('puts each emote on one line in Overview and leaves the measuring notes to Analysis', async () => {
+    const context = demoContexts.two
+    if (context.kind !== 'ready') throw new Error('Missing fixture')
+    expect(emoteShare(156, 520, 0)).toBe('30%')
+    await render(<><MomentStats context={context.value} compact /><MomentEmotes context={context.value} compact /></>)
+    expect(container.querySelector('.pl-emote-usage')?.textContent).toBe('156/min · 30%')
+    for (const text of ['density', 'How these rates are measured', 'About emote usage']) expect(container.textContent).not.toContain(text)
   })
   it('keeps missing viewer counts unavailable, not zero', async () => {
     const context = demoContexts.one

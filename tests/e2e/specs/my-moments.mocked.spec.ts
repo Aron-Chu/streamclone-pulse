@@ -41,6 +41,15 @@ test('packaged My Moments retains notes, separates consent and clears history wi
     }
     await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items})})
   })
+  // PV-1: Preview reads the bookmark's minute from the public minutes route, by stream id and offset, with no credential.
+  const minuteReads: string[] = []
+  await extension.context.route('https://api.streampulse.stream/v1/portal/analytics/streams/*/minutes**', async route => {
+    expect(route.request().headers().authorization).toBeUndefined()
+    minuteReads.push(new URL(route.request().url()).pathname + new URL(route.request().url()).search)
+    await route.fulfill({ status: 200, json: { streamId: '123456789', channel: 'fixturechan', startedAt: '2026-10-18T21:45:00Z', updatedAt: 1,
+      minutes: [{ offsetSeconds: 60, chatCount: 817, totalEmoteCount: 604, viewerAvg: 2941, viewerSamples: 2,
+        topEmotes: [{ name: 'forsenCD', provider: '7tv', count: 47 }, { name: 'LOL', provider: 'twitch', count: 224 }, { name: 'LO', provider: 'ffz', count: 113 }] }] } })
+  })
   const page=extension.page
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#moments`)
   const link = async () => {
@@ -61,6 +70,15 @@ test('packaged My Moments retains notes, separates consent and clears history wi
   await link()
   await expect(page.getByRole('heading',{name:'My Moments',exact:true})).toBeVisible()
   await expect(page.getByText('Saved comeback',{exact:true})).toBeVisible()
+  await page.getByRole('button',{name:'Preview: Saved comeback',exact:true}).click()
+  const preview=page.getByRole('dialog',{name:'Moment preview'})
+  await expect(preview.locator('.pl-moment-stats')).toContainText('2,941')
+  await expect(preview.locator('.pl-moment-stats')).toContainText('817')
+  await expect(preview.locator('.pl-moment-stats')).toContainText('604')
+  await expect(preview.locator('.pl-emote-name strong')).toHaveText(['LOL','LO','forsenCD'])
+  // Each account link remounts the page, so count the distinct reads, not the requests.
+  expect([...new Set(minuteReads)]).toEqual(['/v1/portal/analytics/streams/123456789/minutes?afterOffset=0'])
+  await preview.getByRole('button',{name:'Close Moment preview'}).click()
   await page.getByText('More',{exact:true}).click()
   await page.getByRole('button',{name:'Edit note: Saved comeback'}).click()
   await page.getByLabel('Your note').fill('My note across reload')
@@ -144,4 +162,35 @@ test('packaged My Moments retains notes, separates consent and clears history wi
   const publicStorage = await extension.serviceWorker.evaluate(() => chrome.storage.local.get(null))
   expect(JSON.stringify(publicStorage)).not.toContain(bearer)
   expect(JSON.stringify(publicStorage)).not.toContain('b'.repeat(64))
+})
+
+test('previewing a save with no stream id shows no numbers and reads no minutes', async ({ extension, prepare }) => {
+  await prepare()
+  const minuteReads: string[] = []
+  await extension.context.route('https://api.streampulse.stream/v1/portal/analytics/streams/*/minutes**', async route => {
+    minuteReads.push(route.request().url())
+    await route.fulfill({ status: 200, json: { streamId: '0', channel: 'fixturechan', startedAt: '2026-10-18T21:45:00Z', updatedAt: 1, minutes: [] } })
+  })
+  // A signed-out save from the Twitch page that knows its replay but not its stream.
+  const twitch = await extension.context.newPage()
+  await openTwitchChannel(twitch)
+  const saved = await extension.serviceWorker.evaluate(async () => {
+    const tab = (await chrome.tabs.query({ url: 'https://www.twitch.tv/*' }))[0]
+    const [response] = await chrome.scripting.executeScript({ target: { tabId: tab.id! }, world: 'ISOLATED', func: () => chrome.runtime.sendMessage({
+      type: 'SAVE_BOOKMARK', bookmark: { login: 'fixturechan', vodId: '2806037629', offsetSeconds: 100, label: 'Saved without stream', source: 'extension' } }) })
+    return response.result
+  })
+  expect(saved.item.streamId).toBeUndefined()
+  const page = extension.page
+  await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#moments`)
+  await page.getByRole('button', { name: 'Preview: Saved without stream', exact: true }).click()
+  const preview = page.getByRole('dialog', { name: 'Moment preview' })
+  // The unavailable state, not a grid of zeros.
+  await expect(preview.getByRole('status')).toBeVisible()
+  await expect(preview.locator('.pl-moment-stats, .pl-emote-mix, dd')).toHaveCount(0)
+  expect(await preview.locator('[role="tabpanel"]').innerText()).not.toMatch(/(^|[^\d:.,])0(?![\d:.,])/)
+  await preview.getByRole('tab', { name: 'Analysis', exact: true }).click()
+  await expect(preview.locator('.pl-moment-stats, .pl-emote-mix, dd')).toHaveCount(0)
+  // No stream id, so nothing asks the minutes route.
+  expect(minuteReads).toEqual([])
 })

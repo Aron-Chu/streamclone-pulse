@@ -35,6 +35,7 @@ import { mergeRecapMoments, recapStreamDurationSeconds, rollupToRecapHeatPoint }
 import { SevenTvEmotePanel } from './SevenTvEmotePanel.tsx'
 import { StreamActivityChartHeader } from './StreamActivityChartHeader.tsx'
 import { theme } from './theme.ts'
+import { trackedFromLabel } from './coverageStartHint.ts'
 import { useChartExpansion } from './motion/useChartExpansion.ts'
 import { shouldShowChartRail } from './ChartPositionRail.tsx'
 import { ChartViewportControls } from './ChartViewportControls.tsx'
@@ -177,7 +178,7 @@ export function RecapTimelineChart({
   const firstRollupOffset = sourceRollups[0]?.offsetSeconds ?? 0
   const rollupSinceHint =
     firstRollupOffset > 0
-      ? `Rollups since ${formatHeatOffset(firstRollupOffset)}`
+      ? trackedFromLabel(firstRollupOffset)
       : (!hasFullRollups || fullRollupsMissingStreamPrefix(payload)) && timelineLoading
         ? 'Loading full stream…'
         : null
@@ -709,11 +710,9 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: 8,
     color: theme.textSecondary,
     cursor: 'pointer',
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: 800,
-    letterSpacing: '0.03em',
     padding: '4px 8px',
-    textTransform: 'uppercase',
     whiteSpace: 'nowrap',
   },
   expandButtonActive: {

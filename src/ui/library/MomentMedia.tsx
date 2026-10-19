@@ -37,19 +37,25 @@ export function MomentMedia({ moment, presentation, compact = false }: {
   const sampled = presentation?.image?.sampledOffsetSeconds
   const hasImage = !!src && failedUrl !== src && sampled !== undefined && Number.isFinite(sampled) && sampled >= 0
   const state = moment.availability === 'unresolved' ? 'Replay not linked' : moment.availability === 'unavailable' ? 'Source unavailable' : 'Preview image unavailable'
+  // With no frame, Preview opens on its numbers and a list row shows only the moment's clock.
+  if (!hasImage && !compact) return null
+  if (!hasImage) return <div className="pl-media-tile"><b>{timestamp(moment.offsetSeconds)}</b>{moment.availability === 'unresolved' || moment.availability === 'unavailable' ? <small>{state}</small> : null}</div>
   return <figure className={`pl-media ${compact ? 'pl-media-compact' : ''}`}>
     <div className="pl-media-frame">
       {hasImage ? <img src={src} alt={`Stream preview near ${timestamp(sampled!)} — ${presentation?.gameAtMoment ?? moment.channel}`} loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailedUrl(src!)} />
         : <div className="pl-media-fallback"><LibraryIcon name="preview" /><strong>{state}</strong>{!compact ? <p>No verified frame is available for this timestamp. Your bookmark is still useful.</p> : null}</div>}
       <span className="pl-media-clock">{timestamp(moment.offsetSeconds)}</span>
     </div>
-    {!compact ? <figcaption className="pl-muted">{hasImage ? `Preview sampled near ${timestamp(sampled!)} · not an archived copy` : 'No current live thumbnail is substituted for this earlier moment.'}</figcaption> : null}
+    {!compact && hasImage ? <figcaption className="pl-muted">{`Preview sampled near ${timestamp(sampled!)} · not an archived copy`}</figcaption> : null}
   </figure>
 }
 
+/** The backend's comparison for this moment; nothing when it sends none. */
 export function MomentSignal({ presentation }: { presentation?: MomentPresentation }) {
+  const signal = presentation?.signal
+  if (!signal) return null
   return <div className="pl-moment-signal"><span className="pl-signal-dot" aria-hidden="true" /><div>
-    <strong>{presentation?.signal?.label ?? 'Stream comparison unavailable'}</strong>
-    <p className="pl-muted">{presentation?.signal ? `${presentation.signal.illustrative ? 'Illustrative example · ' : ''}${presentation.signal.basis}` : 'No verified baseline for this moment. Open analysis for measured values.'}</p>
+    <strong>{signal.label}</strong>
+    <p className="pl-muted">{`${signal.illustrative ? 'Illustrative example · ' : ''}${signal.basis}`}</p>
   </div></div>
 }

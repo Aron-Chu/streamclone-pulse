@@ -53,16 +53,17 @@ describe('My Moments frontend', () => {
     await click('Preview')
     expect(container.querySelector('dialog[open]')).toBeTruthy()
     expect(container.textContent).toContain('Illustrative analysis')
-    expect(container.textContent).toContain('No verified frame is available')
+    // No frame: Preview opens on its numbers, with no empty picture box.
+    expect(container.querySelector('dialog .pl-media')).toBeNull()
     expect(container.querySelector('[role="tabpanel"] .pl-signal-bars')).toBeNull()
     expect(container.textContent).toContain('Halloween: The Game')
     expect(container.textContent).not.toContain('Video pending')
     await click('Analysis')
     expect(container.textContent).toContain('297')
     expect(container.textContent).toContain('No AI summary has been generated')
-    await click('Clip workflow')
-    const handoff = [...container.querySelectorAll('button')].find(b => b.textContent?.includes('Open in ReplayForge'))!
-    expect(handoff.disabled).toBe(true)
+    // Clipping is not live: no Clip workflow tab and no ReplayForge handoff button.
+    expect([...container.querySelectorAll('dialog [role="tab"]')].map(tab => tab.textContent)).toEqual(['Overview', 'Analysis'])
+    expect([...container.querySelectorAll('button')].some(b => b.textContent?.includes('Open in ReplayForge'))).toBe(false)
     expect((await repo.load(new AbortController().signal)).moments).toEqual(before.moments)
   })
   it('keeps partial measurements unknown and allows bookmarking directly from history preview', async () => {

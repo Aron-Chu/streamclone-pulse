@@ -26,6 +26,7 @@ const KNOWN_MESSAGE_TYPES = new Set<string>([
   'GET_CLIP',
   'HEALTH',
   'HUB_SNAPSHOT',
+  'MOMENT_MINUTE',
   'GET_UPDATE_CHECK_CAPABILITY',
   'CHECK_FOR_UPDATE',
   'OPEN_SETTINGS_HOST',
@@ -268,6 +269,13 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
     }
     case 'HEALTH':
       return { type, force: optionalBoolean(raw.force) }
+    case 'MOMENT_MINUTE': {
+      // A Twitch stream id and a whole-second offset within a week; nothing else reaches the URL.
+      if (typeof raw.streamId !== 'string' || !/^\d{1,20}$/.test(raw.streamId)) return null
+      const offset = raw.offsetSeconds
+      if (typeof offset !== 'number' || !Number.isInteger(offset) || offset < 0 || offset > 7 * 86_400) return null
+      return { type, streamId: raw.streamId, offsetSeconds: offset }
+    }
     case 'HUB_SNAPSHOT':
     case 'GET_UPDATE_CHECK_CAPABILITY':
     case 'CHECK_FOR_UPDATE':

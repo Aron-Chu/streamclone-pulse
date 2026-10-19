@@ -282,7 +282,9 @@ describe('chart shells and controls', () => {
 
     expect(html).toContain('data-chart-viewer-lane="true"')
     expect(html).toContain('data-chart-viewer-strip-share="0.28"')
-    expect(html).toContain('Unavailable')
+    // Nothing hovered: the readout is one quiet line, not "Viewers Unavailable".
+    expect(html).toContain('Hover the chart to inspect a minute.')
+    expect(html).not.toContain('Unavailable')
   })
 
   it('keeps populated, loading, and empty shells at the same animated height', () => {

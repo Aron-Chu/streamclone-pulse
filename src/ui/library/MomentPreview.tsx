@@ -21,7 +21,10 @@ export type MomentContextState =
   | { kind: 'ready'; value: MomentContext }
   | { kind: 'loading' }
   | { kind: 'unavailable'; reason: string }
-const tabs = ['Overview', 'Analysis', 'Clip workflow'] as const
+const allTabs = ['Overview', 'Analysis', 'Clip workflow'] as const
+/** The ReplayForge clip handoff is not live yet, so Preview does not offer its tab. */
+const CLIP_WORKFLOW_LIVE = false
+const tabs: readonly (typeof allTabs)[number][] = CLIP_WORKFLOW_LIVE ? allTabs : allTabs.filter(name => name !== 'Clip workflow')
 const count = (value: number | null) => value !== null && Number.isFinite(value) && value >= 0 ? value.toLocaleString() : 'Not available'
 
 function SignalBars({ samples }: { samples: MomentContext['samples'] }) {
@@ -51,7 +54,7 @@ export function MomentPreview({ moment, context, presentation, busy, error, onCl
   presentation?: MomentPresentation
   onClose: () => void; onSave: (reference: MomentReference) => void; onOpenLink: () => void
 }) {
-  const [tab, setTab] = useState<(typeof tabs)[number]>('Overview')
+  const [tab, setTab] = useState<(typeof allTabs)[number]>('Overview')
   const buttons = useRef<(HTMLButtonElement | null)[]>([])
   const id = useId(); const url = replayUrl(moment)
   const data = context?.kind === 'ready' ? context.value : undefined
@@ -59,7 +62,7 @@ export function MomentPreview({ moment, context, presentation, busy, error, onCl
   return <LibraryDialog title="Moment preview" onClose={onClose} canClose={!busy}>
     <header className="pl-preview-heading"><span className="pl-eyebrow">{moment.channel} / {timestamp(moment.offsetSeconds)}</span><h3>{moment.title}</h3>
       {presentation?.gameAtMoment ? <p className="pl-moment-identity">{presentation.gameAtMoment}</p> : null}
-      <div className="pl-row"><span className="pl-tag">{moment.savedAt !== undefined ? 'Bookmarked' : 'Not bookmarked'}</span>{data ? <span className="pl-muted">{data.provenance === 'fixture' ? 'Illustrative analysis · fixture data' : 'Saved analysis snapshot'} · {data.coverage === 'partial' ? 'Partial coverage' : 'Covered window'}</span> : null}</div></header>
+      {data?.provenance === 'fixture' ? <p className="pl-muted">Illustrative analysis · fixture data</p> : null}</header>
     <div className="pl-preview-tabs" role="tablist" aria-label="Moment detail views">{tabs.map((name, index) => <button key={name} ref={element => { buttons.current[index] = element }}
       className="pl-button" type="button" role="tab" id={`${id}-tab-${index}`} aria-selected={tab === name} aria-controls={`${id}-panel`} tabIndex={tab === name ? 0 : -1}
       onClick={() => setTab(name)} onKeyDown={event => {
@@ -70,7 +73,7 @@ export function MomentPreview({ moment, context, presentation, busy, error, onCl
       {tab === 'Overview' ? <>
         <MomentMedia moment={moment} presentation={presentation} />
         <MomentSignal presentation={presentation} />
-        {data ? <><MomentStats context={data} /><MomentEmotes context={data} compact /></> : <p className="pl-muted" role="status">{context?.kind === 'loading' ? 'Moment stats are loading.' : 'Moment stats are unavailable; missing values are not zero.'}</p>}
+        {data ? <><MomentStats context={data} compact /><MomentEmotes context={data} compact /></> : <p className="pl-muted" role="status">{context?.kind === 'loading' ? 'Moment stats are loading.' : 'Moment stats are unavailable; missing values are not zero.'}</p>}
         {moment.note ? <blockquote className="pl-preview-note"><span className="pl-eyebrow">YOUR NOTE</span><p>{moment.note}</p></blockquote> : null}
         {analysisUrl ? <a className="pl-analysis-link" href={analysisUrl} target="_blank" rel="noopener noreferrer">View this moment in StreamPulse analysis ↗</a> : null}
       </> : tab === 'Analysis' ? data ? <>
@@ -88,7 +91,6 @@ export function MomentPreview({ moment, context, presentation, busy, error, onCl
     {error ? <p className="pl-error" role="alert">{error}</p> : null}
     <footer className="pl-row pl-preview-actions">{url ? <a className="pl-button pl-primary" href={url} target="_blank" rel="noopener noreferrer" onClick={onOpenLink}><LibraryIcon name="play" />Watch moment <span aria-label="opens in new tab">↗</span></a> : <button type="button" className="pl-button" disabled aria-describedby={`${id}-watch-reason`}>Watch moment</button>}
       <MomentSaveButton moment={moment} busy={busy} onSave={onSave} />
-      {!url ? <span id={`${id}-watch-reason`} className="pl-muted">{moment.availability === 'unresolved' ? 'No verified archive link. This does not mean Twitch is still processing it.' : 'The source cannot currently be played.'}</span> : null}
-      <span className="pl-muted">Previewing does not add to History.</span></footer>
+      {!url ? <span id={`${id}-watch-reason`} className="pl-muted">{moment.availability === 'unresolved' ? 'No verified archive link. This does not mean Twitch is still processing it.' : 'The source cannot currently be played.'}</span> : null}</footer>
   </LibraryDialog>
 }

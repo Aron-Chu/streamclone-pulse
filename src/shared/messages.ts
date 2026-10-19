@@ -22,6 +22,7 @@ export type MessageType =
   | 'GET_CLIP'
   | 'HEALTH'
   | 'HUB_SNAPSHOT'
+  | 'MOMENT_MINUTE'
   | 'GET_UPDATE_CHECK_CAPABILITY'
   | 'CHECK_FOR_UPDATE'
   | 'OPEN_SETTINGS_HOST'
@@ -300,6 +301,8 @@ export type BackgroundRequest =
   | GetClipMessage
   | HealthMessage
   | { type: 'HUB_SNAPSHOT' }
+  /** A saved moment's minute for My Moments' Preview, from the public minutes API. */
+  | { type: 'MOMENT_MINUTE'; streamId: string; offsetSeconds: number }
   | GetUpdateCheckCapabilityMessage
   | CheckForUpdateMessage
   | OpenSettingsHostMessage
@@ -785,6 +788,7 @@ export type BackgroundResponse =
   | { type: 'OPEN_SETTINGS_HOST'; ok: boolean; error?: 'settings_host_open_failed' }
   | { type: 'OPEN_COMMUNITY_LINK'; ok: boolean }
   | { type: 'HUB_SNAPSHOT'; snapshot: import('./hubSnapshot.ts').HubSnapshot | null; error?: string }
+  | { type: 'MOMENT_MINUTE'; context: import('../ui/library/MomentPreview.tsx').MomentContext | null; error?: string }
   | { type: 'MY_MOMENTS_RECENT'; recent: import('./myMoments.ts').MyMomentsRecent }
   | { type: 'SUPPORTER_ACCOUNT'; account: SupporterAccountState }
   | import('./twitchSignIn.ts').TwitchSignInResponse

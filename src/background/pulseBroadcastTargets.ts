@@ -78,6 +78,7 @@ export const MESSAGE_SENDER_SCOPE: Record<BackgroundRequest['type'], MessageSend
   DELETE_BOOKMARK: 'extension-page',
   MY_MOMENTS: 'extension-page',
   HUB_SNAPSHOT: 'extension-page',
+  MOMENT_MINUTE: 'extension-page',
   MOMENT_CAPTURE: 'twitch-any',
   GET_PULSE_DEBUG_LOG: 'extension-page',
   CLEAR_PULSE_DEBUG_LOG: 'extension-page',

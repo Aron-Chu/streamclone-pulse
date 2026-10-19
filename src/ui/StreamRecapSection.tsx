@@ -126,6 +126,7 @@ function RecapGamesStrip({
       highlightedKey={highlightedKey}
       onHighlightKey={onHighlightKey}
       visibleRange={visibleRange}
+      hideWhenUnknown
     />
   )
 }
@@ -232,7 +233,7 @@ function RecapMomentsList({
           })}
         </div>
         {expanded || hiddenCount > 0 ? (
-          <button type="button" className="pulse-secondary-btn" style={styles.momentsExpandButton} data-chart-action="true" onClick={onToggleExpanded}>
+          <button type="button" className="pulse-moment-more" style={styles.momentsExpandButton} data-chart-action="true" onClick={onToggleExpanded}>
             <span>
               {expanded ? 'Show less' : `Show ${hiddenCount} more moment${hiddenCount === 1 ? '' : 's'}`}
             </span>
@@ -411,6 +412,7 @@ function RecapReadyContent({
         card={{ ...card, id: blockCardId, point: fromBlock && selectedMoment ? selectedPoint : null }}
       />
       <RecapGamesStrip
+        key={payload.streamId ?? payload.vodId ?? 'recap'}
         games={recapGames}
         durationSeconds={recapDurationSeconds}
         highlightedKey={recapChartHighlightedGameKey}
@@ -659,6 +661,7 @@ function OfflineFallbackContent({
         card={{ ...cardBase, id: blockCardId, point: (fromBlock && listedPoint) || null }}
       />
       <RecapGamesStrip
+        key={payload.streamId ?? payload.vodId ?? 'recap'}
         games={recapGames}
         durationSeconds={recapDurationSeconds}
         highlightedKey={recapChartHighlightedGameKey}
@@ -735,7 +738,7 @@ function OfflineFallbackContent({
             {momentsExpanded || hiddenPeakCount > 0 ? (
               <button
                 type="button"
-                className="pulse-secondary-btn"
+                className="pulse-moment-more"
                 style={styles.momentsExpandButton}
                 onClick={() => setMomentsExpanded(value => !value)}
               >
@@ -890,20 +893,21 @@ const styles: Record<string, CSSProperties> = {
     marginBottom: 2,
     textTransform: 'uppercase',
   },
+  // The list's last row: a row's box, gap and text inset (padding, accent, gap).
   momentsExpandButton: {
     alignItems: 'center',
-    background: 'transparent',
+    appearance: 'none',
+    background: 'rgba(255, 255, 255, 0.03)',
     border: 0,
+    borderRadius: 6,
     color: theme.accentSoft,
     cursor: 'pointer',
     display: 'flex',
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 700,
     gap: 6,
-    justifyContent: 'center',
-    // The recap's 10 px grid gap.
-    marginTop: 10,
-    padding: '8px 0 0',
+    marginTop: 4,
+    padding: '6px 8px 6px 18px',
     width: '100%',
   },
   momentsExpandChevron: {

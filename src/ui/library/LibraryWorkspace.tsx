@@ -21,6 +21,10 @@ export interface LibraryWorkspaceProps {
   /** Optional display-only analysis projections keyed by canonical moment ID. */
   contexts?: Readonly<Record<string, MomentContextState>>
   presentations?: Readonly<Record<string, MomentPresentation>>
+  /** Like `contexts`, but shown in Preview only; list rows stay as they are. */
+  previewContexts?: Readonly<Record<string, MomentContextState>>
+  /** Called with the moments a Bookmarks or History page lists, each time that page changes. */
+  onShowMoments?: (moments: readonly LibraryMoment[]) => void
   /** Portal origin for moment Analytics links; production when omitted. */
   analyticsOrigin?: string
   /**
@@ -96,7 +100,7 @@ function BookmarksNotice({ state, onRetry, accountsOpen }: { state: BookmarksSta
   )
 }
 
-export function LibraryWorkspace({ repository, initialView = 'saved', onExport, contexts, presentations, analyticsOrigin, now = Date.now, accountsOpen = TWITCH_SIGNIN_ENABLED }: LibraryWorkspaceProps) {
+export function LibraryWorkspace({ repository, initialView = 'saved', onExport, contexts, presentations, previewContexts, onShowMoments, analyticsOrigin, now = Date.now, accountsOpen = TWITCH_SIGNIN_ENABLED }: LibraryWorkspaceProps) {
   const library = useLibrary(repository)
   const [view, setView] = useState<LibraryView>(initialView)
   const [query, setQuery] = useState('')
@@ -148,6 +152,12 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
   const currentPage = Math.min(page, pages)
   const pageItems = items.slice((currentPage - 1) * pageSize, currentPage * pageSize)
   const previewMoment = snapshot?.moments.find(moment => moment.id === previewId)
+  const contentView = view === 'saved' || view === 'recent'
+  // Told once per listed page, not per render: the latest callback and rows ride in a ref.
+  const shown = useRef({ items: pageItems, notify: onShowMoments })
+  shown.current = { items: pageItems, notify: onShowMoments }
+  const shownKey = contentView && pageItems.length ? JSON.stringify(pageItems.map(moment => moment.id)) : ''
+  useEffect(() => { if (shownKey) shown.current.notify?.(shown.current.items) }, [shownKey])
   // A Watch link leaves a note so the panel in the new tab locks that moment;
   // 10 s of it playing there then joins History, as after a jump in the panel.
   const openedLink = (moment: MomentReference) => {
@@ -171,7 +181,6 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
     }
   }
   function save(reference: MomentReference) { void library.run({ kind: 'save', reference }, 'Moment saved. It will remain when history expires.') }
-  const contentView = view === 'saved' || view === 'recent'
   const syncing = snapshot?.historySync?.state === 'on'
   return <main className="pl-library" id="settings-content" tabIndex={-1} aria-label="My Moments settings">
     <div className="pl-page-heading"><div><span className="pl-eyebrow">YOUR MOMENTS · FREE</span><h2 ref={heading} tabIndex={-1}>My Moments</h2>
@@ -243,7 +252,7 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
       </div>}
       <p className="pl-footnote">Links and notes only · no video downloads</p>
     </> : null}
-    {previewMoment ? <MomentPreview key={previewMoment.id} moment={previewMoment} context={contexts?.[previewMoment.id]} presentation={presentations?.[previewMoment.id]} busy={library.busy} error={library.error} onClose={() => setPreviewId(null)} onSave={save}
+    {previewMoment ? <MomentPreview key={previewMoment.id} moment={previewMoment} context={previewContexts?.[previewMoment.id] ?? contexts?.[previewMoment.id]} presentation={presentations?.[previewMoment.id]} busy={library.busy} error={library.error} onClose={() => setPreviewId(null)} onSave={save}
       onOpenLink={() => openedLink(previewMoment)} /> : null}
     {editing && snapshot ? <MomentEditor personalWorkspace key={editing.id} moment={editing} collections={snapshot.collections} supporter={false} busy={library.busy} error={library.error}
       onClose={() => setEditing(null)} onCommit={note => library.run({ kind: 'edit', id: editing.id, note }, 'Note saved on this device.')} /> : null}
