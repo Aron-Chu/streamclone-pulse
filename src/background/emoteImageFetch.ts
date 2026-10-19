@@ -1,6 +1,10 @@
 /**
  * Hardened emote-image fetch for the extension service worker.
  * Content scripts must not fetch CDN bytes directly — they message the SW.
+ *
+ * Development builds only: store builds never proxy emote images
+ * (src/shared/emoteImageProxy.ts), so their worker approves no URL and the
+ * store manifests request no emote CDN host.
  */
 
 /** Reject declared or buffered bodies larger than this (5 MiB). */
@@ -38,13 +42,13 @@ export interface EmoteImageBytes {
 }
 
 export function isApprovedEmoteImageUrl(raw: string): boolean {
+  if (typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__) return false
   try {
     const url = new URL(raw)
     if (url.username || url.password) return false
     if (url.protocol === 'https:' && !url.port) {
       return APPROVED_EMOTE_HOSTS.has(url.hostname.toLowerCase())
     }
-    if (typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__) return false
     if (url.protocol !== 'http:') return false
     const hostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase()
     return (hostname === LOCALHOST || hostname === LOOPBACK_IPV4 || hostname === LOOPBACK_IPV6)
