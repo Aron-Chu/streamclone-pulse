@@ -12,10 +12,12 @@
  * - Per frame nothing renders: the chart, the navigator and the lanes follow
  *   the viewport store by direct writes; React commits only on settle.
  */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react'
 import { Activity } from 'lucide-react'
 import {
   SpChart,
+  barAt,
+  buildSpLevels,
   createSpHoverStore,
   createSpViewportStore,
   overviewPath,
@@ -23,6 +25,7 @@ import {
   type SpHit,
   type SpHoverStore,
   type SpLayer,
+  type SpSelSlide,
   type SpSelection,
   type SpViewportStore,
 } from '@streampulse/pulse-charts/spchart'
@@ -148,6 +151,8 @@ const MIN_VISIBLE_BUCKETS = 2
 const WHEEL_SURFACE_ATTR = 'data-hub-chart-wheel-surface'
 /** pickBarLevel options as the mockup's pickStep: 5 px slots, 0.85 tolerance. */
 const BAR_OPTIONS = { tolerance: 0.85 } as const
+/** R5-8 (Aron 2026-10-15): the session page's sliding band marks the selected bar (190 ms; reduced motion jumps). */
+const SEL_SLIDE: SpSelSlide = {}
 const SERIES_KEYS: readonly CoreSeriesKey[] = ['chat', 'emotes', 'viewers']
 const SERIES_CHIP_LABELS: Record<CoreSeriesKey, string> = {
   chat: 'Chat/min',
@@ -255,7 +260,7 @@ export function hubActivityHeading(minutes: number): string {
 }
 
 export function hubActivityAriaLabel(minutes: number): string {
-  return `Activity, last ${hubActivityWindowLong(minutes)}. Arrow keys move the cursor, plus and minus zoom, 0 resets, Enter selects a bucket.`
+  return `Activity, last ${hubActivityWindowLong(minutes)}. Arrow keys move the cursor, plus and minus zoom, 0 resets, Enter selects a bucket. With a card open, left and right step; Escape closes.`
 }
 
 /** The (i) under "About this chart" (d3-v2 hub.js barText). */
@@ -299,6 +304,12 @@ function useHubChartCompact(): boolean {
 }
 
 const noSelection = () => hubBucketSelectionStore.getServerSnapshot()
+
+type SpBarLevel = ReturnType<typeof buildSpLevels>[number]
+/** The built level whose slot is `minutes` long (the settled level the chart reported), else the finest. */
+function levelAt(levels: readonly SpBarLevel[], minutes: number): SpBarLevel | null {
+  return levels.find((level) => Math.round(level.slotMs / 60_000) === Math.round(minutes)) ?? levels[0] ?? null
+}
 
 /* ---------- header ---------- */
 
@@ -428,6 +439,27 @@ function HubActivityReady({ model, windowMinutes, rangeControl, annotationLane, 
   const plotBoxRef = useRef<HTMLDivElement>(null)
   const modelRef = useRef(model)
   modelRef.current = model
+  // The chart's bar levels (the served grid, UTC-aligned, as SpChart builds them): the card's ‹ › stepper reads them.
+  const levels = useMemo(
+    () => buildSpLevels(model.data, 0, Math.max(1, Math.round((model.bucketMinutes * 60_000) / model.data.stepMs))),
+    [model.data, model.bucketMinutes],
+  )
+  const levelsRef = useRef(levels)
+  levelsRef.current = levels
+  const levelMinutesRef = useRef(levelMinutes)
+  levelMinutesRef.current = levelMinutes
+  /** The bar before or after the one holding `ms` at the settled level (the mockup's step over chart.groups). */
+  const stepFrom = useCallback((ms: number, dir: -1 | 1) => {
+    const level = levelAt(levelsRef.current, levelMinutesRef.current)
+    if (!level) return null
+    const buckets = level.buckets
+    let i = -1
+    for (let k = 0; k < buckets.length && buckets[k]!.startMs <= ms; k += 1) i = k
+    const inside = i >= 0 && ms < buckets[i]!.startMs + level.slotMs
+    const next = buckets[dir > 0 ? i + 1 : inside ? i - 1 : i]
+    const bar = next ? barAt(modelRef.current.data, level, next.from) : null
+    return bar ? { t: bar.startMs, endT: bar.endMs, barMinutes: level.slotMs / 60_000 } : null
+  }, [])
 
   const minVisibleCount = Math.min(MIN_VISIBLE_BUCKETS, model.count)
   const store = useMemo(
@@ -505,6 +537,17 @@ function HubActivityReady({ model, windowMinutes, rangeControl, annotationLane, 
         return Number.isFinite(x) && x >= 0 && x <= width ? x : null
       },
       plotElement: () => plotBoxRef.current,
+      stepBar: stepFrom,
+      zoomToMs(startMs, endMs) {
+        const data = modelRef.current.data
+        const a = Math.round((startMs - data.startMs) / data.stepMs)
+        const b = Math.round((endMs - data.startMs) / data.stepMs)
+        if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) return
+        store.setTarget({ startIndex: Math.max(0, a), endIndex: Math.min(store.getCount() - 1, b) }, { animate: true })
+      },
+      focusPlot() {
+        chartRef.current?.plotElement()?.focus({ preventScroll: true })
+      },
       panToMs(ms) {
         const current = modelRef.current
         const index = Math.floor((ms - current.data.startMs) / current.bucketMs)
@@ -517,7 +560,7 @@ function HubActivityReady({ model, windowMinutes, rangeControl, annotationLane, 
       },
     })
     return dispose
-  }, [store])
+  }, [store, stepFrom])
 
   // The selection: bar highlight here, the card (U7) elsewhere, one store.
   const selection = useSyncExternalStore(hubBucketSelectionStore.subscribe, hubBucketSelectionStore.getSnapshot, noSelection).selection
@@ -577,6 +620,29 @@ function HubActivityReady({ model, windowMinutes, rangeControl, annotationLane, 
   }, [])
   const onLevel = useCallback((minutes: number) => setLevelStep(Math.max(1, Math.round(minutes / modelRef.current.bucketMinutes))), [])
 
+  // A new bar level re-selects the bar that holds the selection at that level (the mockup's onLevel), so the card
+  // always describes a bar the chart draws.
+  useEffect(() => {
+    const selection = hubBucketSelectionStore.getSnapshot().selection
+    const level = levelAt(levels, levelMinutes)
+    if (!selection || !level || Math.round(level.slotMs / 60_000) === Math.round(selection.barMinutes)) return
+    const data = modelRef.current.data
+    const hit = level.buckets.find((b) => b.startMs + level.slotMs > selection.t && b.startMs < selection.endT)
+    const bar = hit ? barAt(data, level, hit.from) : null
+    if (bar) selectHubBucket({ ...selection, t: bar.startMs, endT: bar.endMs, barMinutes: level.slotMs / 60_000 })
+  }, [levels, levelMinutes])
+
+  // With a card open, left and right on the plot step to the next bar (the mockup's card keys); otherwise they move the cursor.
+  const onPlotKeyCapture = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if ((event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
+    const selection = hubBucketSelectionStore.getSnapshot().selection
+    if (!selection || event.target !== chartRef.current?.plotElement()) return
+    event.preventDefault()
+    event.stopPropagation()
+    const next = stepFrom(selection.t, event.key === 'ArrowLeft' ? -1 : 1)
+    if (next) selectHubBucket({ ...next, source: 'keyboard' })
+  }, [stepFrom])
+
   const toggleSeries = useCallback((key: CoreSeriesKey) => {
     setSeries((current) => {
       const next = { ...current, [key]: !current[key] }
@@ -622,7 +688,7 @@ function HubActivityReady({ model, windowMinutes, rangeControl, annotationLane, 
       />
       <HubActivityReadout model={model} hover={hover} series={series} emoteImages={emoteImages} />
       {annotationLane}
-      <div ref={stackRef} className="hx-plot-stack hub-act-stack" data-hub-chart-state="ready" data-hub-chart-wheel-zone="">
+      <div ref={stackRef} className="hx-plot-stack hub-act-stack" data-hub-chart-state="ready" data-hub-chart-wheel-zone="" onKeyDownCapture={onPlotKeyCapture}>
         <SpChart
           ref={chartRef}
           data={model.data}
@@ -637,6 +703,7 @@ function HubActivityReady({ model, windowMinutes, rangeControl, annotationLane, 
           alignMs={0}
           ariaLabel={hubActivityAriaLabel(windowMinutes)}
           selected={selected}
+          selSlide={SEL_SLIDE}
           layers={layers}
           navigator={navigator}
           onBarClick={onBarClick}

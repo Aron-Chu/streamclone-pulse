@@ -26,6 +26,12 @@ const PATHS = {
       <path d="M12 19V5" />
     </>
   ),
+  zoom: (
+    <>
+      <circle cx="11" cy="11" r="6" />
+      <path d="m20 20-4.6-4.6M11 8.5v5M8.5 11h5" />
+    </>
+  ),
 } as const
 
 export type HubV5IconName = keyof typeof PATHS
