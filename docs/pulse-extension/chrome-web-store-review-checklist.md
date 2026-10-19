@@ -70,8 +70,10 @@ Required `permissions`: `storage`, `scripting`
 Required `host_permissions` (store):
 
 - `https://api.streampulse.stream/*`
-- `https://cdn.7tv.app/*`, `https://static-cdn.jtvnw.net/*`, `https://cdn.frankerfacez.com/*`
 - `https://*.twitch.tv/*` (covers Twitch page hosts used for injection/messaging; GQL discovery runs in page MAIN world — there is no separate `https://gql.twitch.tv/*` entry)
+
+No emote or image CDN hosts: the panel shows those images as plain `<img>`
+elements, which need no host permission.
 
 **Must not appear** in the store artifact:
 

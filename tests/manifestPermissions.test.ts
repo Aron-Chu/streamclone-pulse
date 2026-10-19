@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { ALLOWED_PERMISSIONS } from '../scripts/extension-permission-allowlists.mjs'
+import { ALLOWED_PERMISSIONS, permissionAllowlistForTarget } from '../scripts/extension-permission-allowlists.mjs'
 import { TWITCH_SIGNIN_ENABLED } from '../src/shared/twitchSignIn.ts'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -19,13 +19,19 @@ function loadManifest(name: string) {
 }
 
 const EXPECTED_PERMISSIONS = ['storage', 'scripting']
-const EXPECTED_HOST_PERMISSIONS = [
+const EXPECTED_DEVELOPMENT_HOST_PERMISSIONS = [
   'https://api.streampulse.stream/*',
   'https://cdn.7tv.app/*',
   'https://cdn.betterttv.net/*',
   'https://cdn.streampulse.stream/*',
   'https://static-cdn.jtvnw.net/*',
   'https://cdn.frankerfacez.com/*',
+  'https://*.twitch.tv/*',
+]
+// Store builds load emote, avatar and box-art images as plain <img> and fetch
+// no image bytes, so they request only the API and Twitch.
+const EXPECTED_STORE_HOST_PERMISSIONS = [
+  'https://api.streampulse.stream/*',
   'https://*.twitch.tv/*',
 ]
 const EXPECTED_OPTIONAL_HOST_PERMISSIONS = [
@@ -42,7 +48,7 @@ describe('manifest targets', () => {
   it('development keeps localhost under optional_host_permissions only', () => {
     const manifest = loadManifest('development.json')
     expect(manifest.permissions).toEqual(EXPECTED_PERMISSIONS)
-    expect(manifest.host_permissions).toEqual(EXPECTED_HOST_PERMISSIONS)
+    expect(manifest.host_permissions).toEqual(EXPECTED_DEVELOPMENT_HOST_PERMISSIONS)
     expect(manifest.optional_host_permissions).toEqual(EXPECTED_OPTIONAL_HOST_PERMISSIONS)
     for (const host of manifest.host_permissions ?? []) {
       expect(host.includes('localhost') || host.includes('127.0.0.1')).toBe(false)
@@ -53,12 +59,22 @@ describe('manifest targets', () => {
     for (const name of ['cws.json', 'edge.json', 'firefox.json'] as const) {
       const manifest = loadManifest(name)
       expect(manifest.permissions).toEqual(EXPECTED_PERMISSIONS)
-      expect(manifest.host_permissions).toEqual(EXPECTED_HOST_PERMISSIONS)
+      expect(manifest.host_permissions).toEqual(EXPECTED_STORE_HOST_PERMISSIONS)
       expect(manifest.optional_host_permissions ?? []).toEqual([])
       const allHosts = [...(manifest.host_permissions ?? []), ...(manifest.optional_host_permissions ?? [])]
       for (const host of allHosts) {
         expect(host.includes('localhost') || host.includes('127.0.0.1')).toBe(false)
       }
+    }
+  })
+
+  it('package gate allowlist matches each checked-in manifest', () => {
+    for (const target of ['development', 'cws', 'edge', 'firefox'] as const) {
+      const manifest = loadManifest(`${target}.json`)
+      const allow = permissionAllowlistForTarget(target)
+      expect(manifest.permissions, target).toEqual(allow.permissions)
+      expect(manifest.host_permissions, target).toEqual(allow.host_permissions)
+      expect(manifest.optional_host_permissions ?? [], target).toEqual(allow.optional_host_permissions)
     }
   })
 

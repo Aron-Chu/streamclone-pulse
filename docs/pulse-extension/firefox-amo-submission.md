@@ -137,14 +137,18 @@ same SHA-256), and a second Windows build from a fresh shallow clone matched too
 - `content/supporter-card.js` is a packaged file the background injects with
   `scripting.executeScript({ files })` into the Twitch tab only while the
   quick-settings Supporter card is open. It is not remote code.
+  `content/moment-frames.js` (only while Moment pictures is on; it keeps small
+  player stills in the tab's memory) and `content/catch-me-up.js` (when the
+  panel shows a stream recap) are injected the same way.
 - The background reads Twitch's own page state with
   `scripting.executeScript({ world: "MAIN", func })` to find the current
   stream and VOD ids; the functions are bundled, and their results are only ids.
 - The `innerHTML` warnings from AMO's linter are React DOM internals and one
   crest SVG built from fixed constants (`src/supporter/kit.ts`); no page or
   server text reaches `innerHTML`.
-- No remote code, `eval` or `new Function`. Network calls go to
-  `api.streampulse.stream` and the emote image CDNs in `host_permissions`.
+- No remote code, `eval` or `new Function`. The extension's own network calls
+  go to `api.streampulse.stream`; emote, avatar and game images load as plain
+  `<img>` elements, so `host_permissions` lists no image CDN.
 
 ---
 

@@ -908,9 +908,8 @@ export async function openEmotesRail(page: Page): Promise<void> {
 }
 
 /**
- * Six of buildSummary()'s emotes across Twitch, 7TV and FFZ. Emotes on chart and
- * the chart match an emote by name, so the 7TV and BTTV Clap rows share one
- * trace; six traces need six names.
+ * Six of buildSummary()'s emotes across Twitch, 7TV and FFZ (the BTTV Clap is
+ * left out so the six-emote snapshots keep six names).
  */
 export const SIX_SESSION_EMOTE_KEYS = [
   'twitch:KEKW:KEKW',

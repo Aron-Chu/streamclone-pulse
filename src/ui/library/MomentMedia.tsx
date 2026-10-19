@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { timestamp, type MomentReference } from './model.ts'
+import { isDevLoopbackHostname } from '../../shared/devHosts.ts'
 
 /** Ephemeral source projection; never persist expiring media URLs as bookmark identity. */
 export interface MomentPresentation {
@@ -18,16 +19,7 @@ export function safePresentationUrl(raw?: string): string | undefined {
   try {
     const url = new URL(raw)
     if (url.username || url.password) return undefined
-    const localHosts = [
-      String.fromCharCode(108, 111, 99, 97, 108, 104, 111, 115, 116),
-      [
-        String.fromCharCode(49, 50, 55),
-        String.fromCharCode(48),
-        String.fromCharCode(48),
-        String.fromCharCode(49),
-      ].join('.'),
-    ]
-    return url.protocol === 'https:' || (url.protocol === 'http:' && localHosts.includes(url.hostname)) ? url.href : undefined
+    return url.protocol === 'https:' || (url.protocol === 'http:' && isDevLoopbackHostname(url.hostname)) ? url.href : undefined
   } catch { return undefined }
 }
 

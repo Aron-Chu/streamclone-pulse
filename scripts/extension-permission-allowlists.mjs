@@ -22,7 +22,21 @@
  */
 export const ALLOWED_PERMISSIONS = Object.freeze(['storage', 'scripting'])
 
+/**
+ * Store builds fetch only from the StreamPulse API, and the Twitch wildcard
+ * covers the content script, scripting and the popup reading the active tab's
+ * Twitch URL. Emote, avatar and box-art images are plain <img> elements, which
+ * need no host permission, and store builds never fetch image bytes
+ * (src/background/emoteImageFetch.ts). Dropping hosts lowers privilege, so
+ * existing installs update without a permission prompt.
+ */
 export const ALLOWED_HOST_PERMISSIONS_STORE = Object.freeze([
+  'https://api.streampulse.stream/*',
+  'https://*.twitch.tv/*',
+])
+
+/** Development builds keep the emote CDN hosts they have always requested. */
+export const ALLOWED_HOST_PERMISSIONS_DEVELOPMENT = Object.freeze([
   'https://api.streampulse.stream/*',
   'https://cdn.7tv.app/*',
   'https://cdn.betterttv.net/*',
@@ -39,7 +53,9 @@ export const ALLOWED_OPTIONAL_HOST_PERMISSIONS_DEVELOPMENT = Object.freeze([
 
 export function permissionAllowlistForTarget(target) {
   const permissions = [...ALLOWED_PERMISSIONS]
-  const host_permissions = [...ALLOWED_HOST_PERMISSIONS_STORE]
+  const host_permissions = target === 'development'
+    ? [...ALLOWED_HOST_PERMISSIONS_DEVELOPMENT]
+    : [...ALLOWED_HOST_PERMISSIONS_STORE]
   const optional_host_permissions =
     target === 'development' ? [...ALLOWED_OPTIONAL_HOST_PERMISSIONS_DEVELOPMENT] : []
   return { permissions, host_permissions, optional_host_permissions }
