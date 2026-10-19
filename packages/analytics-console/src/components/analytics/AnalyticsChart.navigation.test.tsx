@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { AnalyticsStreamDetail } from '../../api.ts'
 import AnalyticsChart from './AnalyticsChart.tsx'
+import { scrollZoomToggle } from './__fixtures__/sessionChartHarness.ts'
 
 vi.mock('../../hooks/useConsoleMotion.ts', () => ({
   useConsoleMotion: () => ({ motionEnabled: true }),
@@ -39,7 +40,7 @@ it('zooms with a plain wheel by default, accumulating gentle animated input, and
   const initial = range()
   const wheel = (deltaY: number) => fireEvent.wheel(plot, { deltaY, clientX: 500, clientY: 150 })
   // As on the hub, Scroll zoom is on by default: a plain wheel over the plot zooms.
-  const scrollZoom = screen.getByRole('button', { name: /Scroll zoom/ })
+  const scrollZoom = scrollZoomToggle(container)
   expect(scrollZoom.getAttribute('aria-pressed')).toBe('true')
   // Wheel zoom goes through the shared navigator, as on the hub: each notch
   // is the hub's step (exp(-100 * 0.0025), about 22% narrower), and notches

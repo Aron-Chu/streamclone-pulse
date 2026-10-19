@@ -12,9 +12,10 @@ import {
   loadXqcGames,
   openAnalyticsSession,
   openEmotesRail,
+  plotSessionEmotes,
   PORTAL_VOD_ID,
-  setChartViewEmotes,
   PORTAL_STARTED_AT,
+  SIX_SESSION_EMOTE_KEYS,
 } from './helpers/portalAcceptanceHarness'
 
 const ENDED_AT = '2026-07-26T04:00:00.000Z'
@@ -37,22 +38,23 @@ async function assertNonBlankScreenshot(page: import('@playwright/test').Page, n
 }
 
 /**
- * The chart header plus the top of the plot. At 1440px the full-viewport shot
- * stops at the plot's top edge, so controls drifting back over the plot would
- * stay under the 4% tolerance there; in this crop they fill the frame. The
- * zoom controls live in the shared navigator under the plot.
+ * The chart header (readout and games strip) plus the timeline toolbar and the
+ * top of the plot. At 1440px the full-viewport shot stops above the plot, so
+ * controls drifting back over the plot would stay under the 4% tolerance
+ * there; in this crop they fill the frame. The zoom controls live in the
+ * shared navigator under the plot.
  */
 async function assertChartTopScreenshot(page: import('@playwright/test').Page, name: string) {
-  const row = page.locator('[data-chart-header-row]')
+  const row = page.locator('[data-chart-header-block]')
   const stack = page.locator('[data-session-chart-stack]')
   await expect(row).toBeVisible()
   await expect(page.locator('[data-chart-viewport-controls]')).toHaveCount(0)
-  // Centre the row: below the sticky site header, with room for the crop.
+  // Centre the header: below the sticky site header, with room for the crop.
   await row.evaluate(element => element.scrollIntoView({ block: 'center' }))
   await page.mouse.move(0, 0)
   const rowBox = await row.boundingBox()
   const stackBox = await stack.boundingBox()
-  if (!rowBox || !stackBox) throw new Error('chart header row or plot is not laid out')
+  if (!rowBox || !stackBox) throw new Error('chart header or plot is not laid out')
   // The header must sit wholly above the plot before the crop is worth comparing.
   expect(rowBox.y + rowBox.height).toBeLessThanOrEqual(stackBox.y + 1)
   const left = Math.max(0, Math.min(rowBox.x, stackBox.x) - 8)
@@ -86,7 +88,8 @@ test.describe('portal responsive visuals (mocked)', () => {
         await openAnalyticsSession(page)
         const chart = page.getByRole('region', { name: 'Session activity chart' })
         await expect(chart.locator('svg[aria-label="Analytics timeline chart"]')).toBeVisible({ timeout: 25_000 })
-        await expect(chart.locator('path[data-presentation-trend="chat"]')).toHaveCount(1)
+        // The chat lane: one bar per measured minute.
+        await expect(chart.locator('g[data-lane="chat"] rect.spc-bar')).toHaveCount(24)
         await assertNonBlankScreenshot(page, `portal-live-${viewport.name}.png`)
         if (viewport.name === 'narrow') {
           await assertScenarioRegionScreenshot(
@@ -173,7 +176,10 @@ test.describe('portal responsive visuals (mocked)', () => {
           }),
         })
         await openAnalyticsSession(page)
-        await expect(page.getByText(new RegExp(PORTAL_VOD_ID))).toBeVisible({ timeout: 20_000 })
+        // The meta line's "Watch VOD" opens the linked archive.
+        const watchVod = page.locator('[data-session-watch-vod]')
+        await expect(watchVod).toBeVisible({ timeout: 20_000 })
+        await expect(watchVod).toHaveAttribute('href', `https://www.twitch.tv/videos/${PORTAL_VOD_ID}`)
         await assertNonBlankScreenshot(page, `portal-linked-vod-${viewport.name}.png`)
         if (viewport.name === 'narrow') {
           await assertScenarioRegionScreenshot(
@@ -284,12 +290,7 @@ test.describe('portal responsive visuals (mocked)', () => {
         })
         await openAnalyticsSession(page)
         await openEmotesRail(page)
-        await setChartViewEmotes(page)
-        await page.getByRole('button', { name: /^Emote overlays, 1 active/ }).click()
-        for (const name of ['OMEGALUL', 'Clap', 'Clap', 'NODDERS', 'Sadge']) {
-          await page.getByRole('button', { name: `Plot ${name} on chart`, exact: true }).first().click()
-        }
-        await expect(page.getByRole('button', { name: /^Emote overlays, 6 active/ })).toBeVisible()
+        await plotSessionEmotes(page, SIX_SESSION_EMOTE_KEYS)
         await assertEmotePlotLines(page, 6)
         // Park the pointer off the page: the last click would otherwise leave a
         // control mid-hover wherever the scrolled screenshot puts it.

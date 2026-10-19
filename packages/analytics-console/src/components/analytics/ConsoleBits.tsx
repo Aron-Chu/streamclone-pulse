@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import { formatCoveragePercent } from '@streampulse/pulse-core'
 import type { AnalyticsStreamDetail, SourceStatus } from '../../apiTypes.ts'
 import { emoteProviderLabel, emoteProviderTone } from '../../emoteUtils.ts'
@@ -9,6 +9,7 @@ import { resolveAnalyticsVodId } from '../../utils/twitchVodUrl.ts'
 import {
   analyticsQualityChipClass,
   deriveAnalyticsQualityLabel,
+  type AnalyticsQualityLabel,
   type StreamSummaryMetrics,
 } from '../../utils/streamQuality.ts'
 
@@ -28,9 +29,156 @@ export function StatCard({ label, value, tone }: { label: string; value: string;
 
   return (
     <div className="sc-stat-card flex flex-col rounded border border-white/10 bg-white/[0.035] p-3" data-value-changed={pulse ? 'true' : undefined}>
-      <div className="text-xs font-black uppercase text-zinc-400">{label}</div>
+      {/* d3-v2 session-original: plain-case labels (12px, 600). */}
+      <div className="sc-stat-card__label text-xs font-semibold text-zinc-400">{label}</div>
       <div className={`sc-stat-card__value mt-auto truncate pt-1 text-xl font-black ${tone || 'text-white'}`}>{value}</div>
     </div>
+  )
+}
+
+/**
+ * The session's data-quality verdict and the facts behind it, shared by the
+ * meta line's "Data: <label>" button and the Status tab's list (d3-v2
+ * session-original moved the header's Data quality disclosure there).
+ */
+export interface SessionDataQuality {
+  label: AnalyticsQualityLabel
+  chatPct?: number
+  chatSpanMinutes?: number
+  streamSpanMinutes?: number
+  viewerSamples?: number
+  viewerSourceLabel?: string
+  vodState: string
+}
+
+export function deriveSessionDataQuality(
+  detail?: AnalyticsStreamDetail,
+  summaryMetrics?: StreamSummaryMetrics,
+): SessionDataQuality {
+  const label = deriveAnalyticsQualityLabel({
+    analyticsQuality: detail?.analyticsQuality,
+    summaryMetrics,
+    rollupCount: detail?.timelineMinutes ?? detail?.rollups?.length,
+    chatMessages: detail?.stream?.chatMessages,
+    vodId: detail?.vodId ?? detail?.stream?.vodId,
+    chartState: detail?.availability?.chartState,
+    chartUsable: detail?.availability?.chartUsable,
+  })
+  const vodState = (detail?.availability?.vodState ?? '').toLowerCase()
+  const hasVod = Boolean(resolveAnalyticsVodId(detail))
+  return {
+    label,
+    chatPct: detail?.chatCoveragePct ?? detail?.chatCoverage?.coveragePct ?? summaryMetrics?.data_coverage_pct,
+    chatSpanMinutes: detail?.chatCoverage?.chatSpanMinutes,
+    streamSpanMinutes: detail?.chatCoverage?.streamSpanMinutes,
+    viewerSamples: summaryMetrics?.viewerSampleCount ?? detail?.stream?.viewerSamples,
+    viewerSourceLabel: mapViewerSourceBadge(detail?.viewerSource)?.label,
+    // A stale live-archive status must not claim the broadcast is live when
+    // lifecycle evidence is unavailable (or confirms that it ended).
+    vodState: hasVod ? 'linked'
+      : vodState === 'pending_live' && detail?.stream?.lifecycleState !== 'confirmed_live' ? 'unavailable'
+        : vodState ? vodState.replace(/_/g, ' ') : 'unavailable',
+  }
+}
+
+/** The mockup's neutral warning mark for a data-quality label other than Good. */
+export function DataQualityWarnIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
+  return (
+    <svg
+      className={`shrink-0 ${className}`}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      data-data-quality-warn
+    >
+      <path d="M12 3.5 2.5 20h19z" />
+      <path d="M12 10v4.5" />
+      <path d="M12 17.5v.01" />
+    </svg>
+  )
+}
+
+/**
+ * "Data: <label>" in the session meta line. It opens the Status tab, which
+ * holds the facts; a label other than Good carries a neutral warning mark.
+ */
+export function DataQualityButton({
+  detail,
+  summaryMetrics,
+  pending = false,
+  onOpen,
+}: {
+  detail?: AnalyticsStreamDetail
+  summaryMetrics?: StreamSummaryMetrics
+  /** Still loading or failed: a neutral placeholder, never a "No data" verdict. */
+  pending?: boolean
+  onOpen?: (event: MouseEvent<HTMLButtonElement>) => void
+}) {
+  if (pending) {
+    return (
+      <span className="ssp-dqb" data-data-quality-pending aria-label="Data quality: not known yet">
+        Data: —
+      </span>
+    )
+  }
+  const { label } = deriveSessionDataQuality(detail, summaryMetrics)
+  return (
+    <button
+      type="button"
+      className="ssp-dqb"
+      data-data-quality
+      data-quality-label={label}
+      aria-controls="session-panel-status"
+      title="Coverage, viewer samples and the VOD link, in the Status tab"
+      onClick={onOpen}
+    >
+      {label !== 'Good' ? <DataQualityWarnIcon /> : null}
+      Data: {label}
+    </button>
+  )
+}
+
+/** The leading untracked span, as the meta line prints it: "54s", "2m", "2m 5s". */
+export function formatCoverageLead(seconds: number): string {
+  const t = Math.round(seconds)
+  if (t < 60) return `${t}s`
+  const mins = Math.floor(t / 60)
+  const secs = t % 60
+  return secs ? `${mins}m ${secs}s` : `${mins}m`
+}
+
+/** Seconds at the start of the stream that were not tracked, or null. */
+export function resolveCoverageLeadSeconds(
+  offsetSeconds?: number,
+  missingRanges?: Array<{ fromOffsetSeconds: number; toOffsetSeconds: number }>,
+): number | null {
+  const start = missingRanges?.[0]?.toOffsetSeconds ?? offsetSeconds
+  return start == null || !Number.isFinite(start) || start <= 0 ? null : start
+}
+
+/**
+ * "First 54s not tracked" in the session meta line (was the amber coverage
+ * banner). The backend's own wording stays available as the title.
+ */
+export function CoverageStartMetaItem({
+  offsetSeconds,
+  missingRanges,
+  message,
+}: {
+  offsetSeconds?: number
+  missingRanges?: Array<{ fromOffsetSeconds: number; toOffsetSeconds: number }>
+  message?: string
+}) {
+  const start = resolveCoverageLeadSeconds(offsetSeconds, missingRanges)
+  if (start == null) return null
+  return (
+    <span className="mi" data-coverage-start title={message?.trim() || undefined}>
+      {`First ${formatCoverageLead(start)} not tracked`}
+    </span>
   )
 }
 

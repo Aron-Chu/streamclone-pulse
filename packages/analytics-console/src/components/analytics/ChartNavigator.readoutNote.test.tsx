@@ -43,4 +43,35 @@ describe('ChartNavigator readoutNote', () => {
     expect(count.textContent).toBe('240 of 240 buckets · bars 5-min avg')
     expect(count.querySelector('[data-note]')).not.toBeNull()
   })
+
+  it('d3 with readoutCount="screen-reader" reads "<range> · <note>" and keeps the counts for screen readers', () => {
+    const { container } = render(
+      <ChartNavigator
+        variant="d3"
+        pointCount={674}
+        startIndex={0}
+        endIndex={673}
+        startLabel="0:00:00"
+        endLabel="11:13:00"
+        scrollZoomEnabled={false}
+        onScrollZoomChange={vi.fn()}
+        onChange={vi.fn()}
+        onReset={vi.fn()}
+        fullRangeLabel="Full stream"
+        unitLabel="minutes"
+        readoutCount="screen-reader"
+        readoutNote={<span data-note>10-min bars</span>}
+      />,
+    )
+    const readout = container.querySelector('[role="status"]')!
+    expect(readout.querySelector('strong')?.textContent).toBe('Full stream')
+    // the time span is hidden by sp-navigator.css; the visible line is "Full stream · 10-min bars"
+    const seen = [...readout.childNodes]
+      .filter(node => !(node instanceof HTMLElement) || !/time-range|sr-only/.test(node.className))
+      .map(node => node.textContent).join('')
+    expect(seen).toBe('Full stream · 10-min bars')
+    const count = readout.querySelector('.hx-chart-navigator__bucket-count')!
+    expect(count.classList.contains('sr-only')).toBe(true)
+    expect(count.textContent).toBe(', 674 of 674 minutes')
+  })
 })

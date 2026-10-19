@@ -1,11 +1,16 @@
 import type { ChartMinuteRollup } from './types.ts'
 import { formatHeatOffset } from '@streampulse/pulse-core'
 
+// One formatter per page: `toLocaleString()` builds a new Intl.NumberFormat on every call, and the
+// session's minute table calls this 360 times a render (mobile TBT, PR #122 bench). Same output.
+let numberFormat: Intl.NumberFormat | null = null
+
 export function count(value: number | null | undefined) {
   if (value === null || value === undefined) return '-'
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
   if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`
-  return value.toLocaleString()
+  if (!numberFormat) numberFormat = new Intl.NumberFormat()
+  return numberFormat.format(value)
 }
 
 export function clock(value?: string) {

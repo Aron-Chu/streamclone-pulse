@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { AnalyticsStream } from '../../apiTypes.ts'
 import {
@@ -11,6 +11,9 @@ import {
 } from '../../utils/syncedLiveStream.ts'
 import { count, displayStreamTitle, duration, formatDateTime, getLocalDateString } from '../../utils/consoleFormat.ts'
 import { CoreMinuteChartsNotice } from '../CoreMinuteChartsNotice.tsx'
+import { useEdgeFade } from '../../hooks/useSessionColumnFill.ts'
+
+const EDGE_FADE_PX = 24
 
 export function StreamSidebar({
   login,
@@ -33,6 +36,7 @@ export function StreamSidebar({
   loadFailed = false,
   retrying = false,
   onRetry,
+  showLiveRow = true,
 }: {
   login: string
   streams: AnalyticsStream[]
@@ -43,6 +47,11 @@ export function StreamSidebar({
   /** A list request is in flight; the retry stays in place but cannot restart it. */
   retrying?: boolean
   onRetry?: () => void
+  /**
+   * The "Live session" / "Latest indexed session" row above the list. The
+   * d3-v2 session page turns it off (owner switch `sidebarLiveRow`).
+   */
+  showLiveRow?: boolean
   activeID?: string
   isLiveView: boolean
   liveState?: string
@@ -68,9 +77,41 @@ export function StreamSidebar({
   const hasListedLiveSession = Boolean(
     liveStreamId && visibleStreams.some((stream) => stream.streamId === liveStreamId),
   )
+  const fadeRef = useEdgeFade<HTMLDivElement>(EDGE_FADE_PX)
+  const scrollerRef = useRef<HTMLDivElement | null>(null)
+  const setScroller = (el: HTMLDivElement | null) => {
+    scrollerRef.current = el
+    fadeRef(el)
+  }
+  const hasActiveRow = !isLiveView && Boolean(activeID)
+  // The current stream's row starts in view when the list scrolls (from 1280 px
+  // every row shows in a capped box): centred when it was out of view, clear of
+  // the edge fades. The window itself never scrolls for it (MOCK slReveal).
+  // Measured in the frame before its paint, not in React's commit, where the
+  // read forced the page's layout into that task (mobile TBT, PR #122 bench).
+  useLayoutEffect(() => {
+    const sc = scrollerRef.current
+    if (!sc || !hasActiveRow) return
+    const frame = requestAnimationFrame(() => {
+      if (sc.scrollHeight <= sc.clientHeight + 1) return
+      const row = sc.querySelector<HTMLElement>('[aria-current="page"]')
+      if (!row || row.offsetParent === null) return
+      const sb = sc.getBoundingClientRect()
+      const rb = row.getBoundingClientRect()
+      let top = Math.max(sb.top, 0)
+      let bottom = Math.min(sb.bottom, window.innerHeight)
+      if (bottom - top < rb.height + 2 * EDGE_FADE_PX) {
+        top = sb.top
+        bottom = sb.bottom
+      }
+      if (rb.top >= top + (sc.scrollTop > 0 ? EDGE_FADE_PX : 0) && rb.bottom <= bottom - EDGE_FADE_PX) return
+      sc.scrollTop += rb.top - top - Math.max(0, (bottom - top - rb.height) / 2)
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [hasActiveRow, activeID, visibleStreams.length])
 
   return (
-    <div className="flex min-h-0 w-full flex-col overflow-hidden rounded border border-white/10 bg-white/[0.035] xl:max-h-[calc(100vh-12rem)]">
+    <div className="ssp-sl flex min-h-0 w-full flex-col overflow-hidden rounded border border-white/10 bg-white/[0.035]" data-stream-list>
       <div className="flex items-center justify-between border-b border-white/10 px-3 py-2.5">
         <span className="text-xs font-black uppercase tracking-wide text-zinc-500">Streams</span>
         <span className="rounded bg-white/10 px-1.5 py-0.5 text-xs font-black text-zinc-400">
@@ -89,8 +130,8 @@ export function StreamSidebar({
           Synced only (hide stats-only rows)
         </label>
       ) : null}
-      <div className="sc-console-scroll min-h-0 flex-1 overflow-y-auto">
-        {!hasListedLiveSession ? (
+      <div ref={setScroller} className="ssp-sl-sc sc-console-scroll min-h-0 flex-1 overflow-y-auto">
+        {showLiveRow && !hasListedLiveSession ? (
           <Link
             to={liveSessionPath ?? buildChannelPath(login)}
             data-live-current-row
@@ -149,7 +190,8 @@ export function StreamSidebar({
               )
               const isSyncingActive = syncBadge === 'syncing'
               const rollupStats = isSyncingActive ? activeRollupStats : null
-              const mobileHiddenClass = !archiveExpanded && rowIndex >= MOBILE_COLLAPSED_ROWS ? 'hidden xl:block' : ''
+              // The current stream's row stays in view while the list is collapsed (MOCK).
+              const mobileHiddenClass = !archiveExpanded && !isActive && rowIndex >= MOBILE_COLLAPSED_ROWS ? 'hidden xl:block' : ''
               const badgeTone =
                 syncBadge === 'syncing'
                   ? 'bg-violet-500/10 text-violet-300'
@@ -165,6 +207,7 @@ export function StreamSidebar({
                 <Link
                   key={stream.streamId}
                   to={buildSessionPath(login, targetSlug)}
+                  aria-current={isActive ? 'page' : undefined}
                   className={`sc-stream-row block border-l-2 px-3 py-2.5 transition hover:bg-white/[0.05] ${mobileHiddenClass} ${
                     isActive ? 'border-l-cyan-400 bg-cyan-400/10' : 'border-l-transparent'
                   }`}
@@ -221,17 +264,17 @@ export function StreamSidebar({
             })}
           </div>
         )}
-        {hasCollapsibleRows ? (
-          <button
-            type="button"
-            onClick={() => setArchiveExpanded((prev) => !prev)}
-            aria-expanded={archiveExpanded}
-            className="block w-full border-t border-white/10 px-3 py-2 text-center text-xs font-black uppercase tracking-wide text-zinc-400 transition hover:bg-white/[0.05] hover:text-white xl:hidden"
-          >
-            {archiveExpanded ? 'Show fewer streams' : `Show all ${visibleStreams.length} streams`}
-          </button>
-        ) : null}
       </div>
+      {hasCollapsibleRows ? (
+        <button
+          type="button"
+          onClick={() => setArchiveExpanded((prev) => !prev)}
+          aria-expanded={archiveExpanded}
+          className="ssp-sl-more block w-full shrink-0 border-t border-white/10 px-3 py-2 text-center text-xs font-black uppercase tracking-wide text-zinc-400 transition hover:bg-white/[0.05] hover:text-white xl:hidden"
+        >
+          {archiveExpanded ? 'Show fewer streams' : `Show all ${visibleStreams.length} streams`}
+        </button>
+      ) : null}
     </div>
   )
 }

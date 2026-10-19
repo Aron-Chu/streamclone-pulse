@@ -32,19 +32,19 @@ vi.mock('./analytics/AnalyticsChart.tsx', () => ({
   ),
 }))
 vi.mock('./analytics/ConsoleBits.tsx', () => ({
-  DataQualityDisclosure: () => null,
+  DataQualityButton: () => null,
   ChatCoverageBadge: () => null,
   StatCard: () => null,
   ViewerSourceBadge: () => null,
   AnalyticsQualityChip: () => null,
   CoverageFacets: () => null,
-  CoverageStartBanner: () => null,
+  CoverageStartMetaItem: () => null,
   VodAvailabilityChip: () => null,
 }))
 vi.mock('./analytics/StreamSidebar.tsx', () => ({ StreamSidebar: () => null }))
 vi.mock('./analytics/TopEmoteTable.tsx', () => ({ TopEmoteTable: () => null }))
 vi.mock('./analytics/MomentReviewPanel.tsx', () => ({ MomentReviewPanel: () => null }))
-vi.mock('./analytics/PastBroadcastBanner.tsx', () => ({ PastBroadcastBanner: () => <div>Past broadcast</div> }))
+vi.mock('./analytics/PastBroadcastBanner.tsx', () => ({ SessionLifecycleMeta: () => <div>Past broadcast</div> }))
 vi.mock('./analytics/SessionRecapMomentsStrip.tsx', () => ({ SessionRecapMomentsStrip: () => null }))
 vi.mock('./analytics/StreamRecapPanel.tsx', () => ({ StreamRecapPanel: () => null }))
 vi.mock('./analytics/SyncStatusPanel.tsx', () => ({ SyncStatusPanel: () => null }))

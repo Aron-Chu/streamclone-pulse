@@ -21,4 +21,12 @@ describe('StatCard', () => {
     expect(value.className).toMatch(/\bpt-1\b/)
     expect(value.className).not.toMatch(/\bmt-1\b/)
   })
+
+  it('prints its label in plain case (d3-v2 session-original)', () => {
+    const { container } = render(<StatCard label="Emote uses" value="223.0K" />)
+    const label = container.querySelector<HTMLElement>('.sc-stat-card__label')!
+    expect(label.textContent).toBe('Emote uses')
+    expect(label.className).not.toMatch(/\buppercase\b/)
+    expect(label.className).toMatch(/\bfont-semibold\b/)
+  })
 })

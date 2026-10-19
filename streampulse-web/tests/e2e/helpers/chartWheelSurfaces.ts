@@ -16,6 +16,8 @@ export interface ChartSurface {
   navigator: Locator
   /** The plot box. */
   plot: Locator
+  /** The whole chart card: a wheel anywhere over it zooms (owner rule, round 3). */
+  card: Locator
   /** Navigator steps at the full range. */
   full: number
   /** Lets queued frames and timers run so the plot reaches its target. */
@@ -43,6 +45,8 @@ export async function hubSurface(page: Page): Promise<ChartSurface> {
     name: 'hub',
     navigator,
     plot,
+    // Until the hub's d3 port (which adds [data-hub-chart-wheel-card]) the hub's wheel zone is its plot.
+    card: plot,
     full: HUB_BUCKETS,
     // No fake clock on the hub: frames run; the safety timer lands it regardless.
     settle: async () => {
@@ -77,6 +81,7 @@ export async function streamSurface(page: Page): Promise<ChartSurface> {
     name: 'stream',
     navigator,
     plot,
+    card: page.locator('[data-session-chart-wheel-card]'),
     full: STREAM_MINUTES,
     // The harness installs a fake clock: run the queued frames and timers.
     settle: async () => {
@@ -104,16 +109,43 @@ export const windowOf = async (surface: ChartSurface) => stepsOf(await surface.n
 export const scrollYOf = (page: Page) => page.evaluate(() => window.scrollY)
 
 export async function resetZoom(surface: ChartSurface) {
-  const button = surface.navigator.getByRole('button', { name: 'Reset zoom' })
-  if (await button.isEnabled()) await button.click()
+  // At the full range Reset is disabled (hub) or hidden (stream, d3-v2 session-original).
+  if ((await surface.navigator.getAttribute('data-hub-chart-navigator-window')) !== `0:${surface.full - 1}`) {
+    await surface.navigator.getByRole('button', { name: 'Reset zoom' }).click()
+  }
   await surface.settle()
   await expect(surface.navigator).toHaveAttribute('data-hub-chart-navigator-window', `0:${surface.full - 1}`)
 }
 
-export const scrollZoomToggleOf = (surface: ChartSurface) => surface.navigator.getByRole('button', { name: /Scroll zoom/ })
+/**
+ * The Scroll zoom toggle. On the stream chart it sits in the navigator's (i)
+ * popover (d3-v2 session-original), hidden until opened, so this is a plain
+ * selector: it reads the toggle's state whether or not the popover is open.
+ */
+export const scrollZoomToggleOf = (surface: ChartSurface) => surface.navigator.locator('.hx-chart-navigator__scroll-toggle')
+
+/** The stream chart's (i), which holds the hint and Scroll zoom; the hub has none. */
+export const navigatorInfoOf = (surface: ChartSurface) => surface.navigator.locator('[data-chart-navigator-info]')
+
+/** Opens the (i) popover when the chart has one, so its hint and Scroll zoom are visible. */
+export async function openNavigatorInfo(surface: ChartSurface): Promise<boolean> {
+  const info = navigatorInfoOf(surface)
+  if (!(await info.count())) return false
+  if ((await info.getAttribute('aria-expanded')) !== 'true') await info.click()
+  await expect(scrollZoomToggleOf(surface)).toBeVisible()
+  return true
+}
 
 export async function setScrollZoom(surface: ChartSurface, on: boolean) {
   const toggle = scrollZoomToggleOf(surface)
-  if ((await toggle.getAttribute('aria-pressed')) !== String(on)) await toggle.click()
+  if ((await toggle.getAttribute('aria-pressed')) !== String(on)) {
+    const opened = await openNavigatorInfo(surface)
+    await toggle.click()
+    // Escape closes the popover (it never reaches the chart's restore-full-range).
+    if (opened) {
+      await surface.navigator.page().keyboard.press('Escape')
+      await expect(toggle).toBeHidden()
+    }
+  }
   await expect(toggle).toHaveAttribute('aria-pressed', String(on))
 }

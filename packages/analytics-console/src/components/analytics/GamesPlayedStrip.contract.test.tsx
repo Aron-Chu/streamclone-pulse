@@ -64,6 +64,48 @@ describe('GamesPlayedStrip live versus offline contract', () => {
     expect(screen.getByRole('listitem', { name: /Game C/i })).not.toBeNull()
   })
 
+  it('headerless (session chart): no header, every game on the rail, each poster with its run time', () => {
+    const { container } = render(
+      <GamesPlayedStrip
+        games={games}
+        durationSeconds={1800}
+        visibleRange={{ startOffset: 0, endOffset: 900 }}
+        headerless
+      />,
+    )
+    expect(container.querySelector('[data-games-played-header]')).toBeNull()
+    expect(screen.queryByText('Games played')).toBeNull()
+    expect(screen.queryByRole('button', { name: /Show all/i })).toBeNull()
+    expect(screen.getByLabelText('Games played')).not.toBeNull()
+    expect(screen.getAllByRole('listitem').map(item => item.getAttribute('aria-label'))).toEqual([
+      expect.stringMatching(/^Game A/),
+      expect.stringMatching(/^Game B/),
+      expect.stringMatching(/^Game C/),
+    ])
+    const runTimes = [...container.querySelectorAll('[data-games-played-run-time]')]
+    expect(runTimes.map(el => el.textContent)).toEqual(['10m', '10m', '10m'])
+    expect(runTimes.every(el => el.getAttribute('aria-hidden') === 'true')).toBe(true)
+  })
+
+  it('headerless run times round to the minute and stop at the timeline end, like session-original fdm', () => {
+    const { container } = render(
+      <GamesPlayedStrip
+        games={[
+          { gameName: 'Just Chatting', offsetSeconds: 0, durationSeconds: 2_430 },
+          // The games API's last segment can run past the data (a stale live record).
+          { gameName: 'Grand Theft Auto V', offsetSeconds: 2_430, durationSeconds: 125_000 },
+        ]}
+        durationSeconds={38_130}
+        headerless
+      />,
+    )
+    const runTimes = [...container.querySelectorAll('[data-games-played-run-time]')].map(el => el.textContent)
+    // 40.5 min rounds up; 35,700 s is 9h 55m.
+    expect(runTimes).toEqual(['41m', '9h 55m'])
+    expect(screen.getByRole('listitem', { name: /^Grand Theft Auto V/ }).getAttribute('aria-label'))
+      .toBe('Grand Theft Auto V · 00:40:30–10:35:30 · 9h 55m')
+  })
+
   it('is fully expanded with no range toggle for VOD/offline visibleRange=null', () => {
     render(
       <GamesPlayedStrip

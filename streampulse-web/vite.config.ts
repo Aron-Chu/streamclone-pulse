@@ -10,6 +10,19 @@ import { assertBuildOnlyBracesRuntimeBoundary } from '../scripts/ci-portal-npm-a
 const __dirname = dirname(fileURLToPath(import.meta.url))
 /** Extension checkout root (sibling of streampulse-web/) — landing showcase reuses overlay UI. */
 const pulseRoot = resolve(__dirname, '..')
+const pulseRootId = pulseRoot.replace(/\\/g, '/').toLowerCase()
+
+/**
+ * Module id with the folders above it removed, so chunk rules never match a folder name.
+ * Packages keep only their path from node_modules/ on, which also covers node_modules
+ * linked in from another checkout.
+ */
+function repoRelativeId(id: string): string {
+  const norm = id.replace(/\\/g, '/')
+  const packageAt = norm.lastIndexOf('/node_modules/')
+  if (packageAt >= 0) return norm.slice(packageAt)
+  return norm.toLowerCase().startsWith(pulseRootId) ? norm.slice(pulseRootId.length) : norm
+}
 
 /** Guard the actual emitted import graph, not chunk names or total build size. */
 function publicEntryBoundaryPlugin(): Plugin {
@@ -151,6 +164,9 @@ export default defineConfig({
       '@streampulse/analytics-console': resolve(pulseRoot, 'packages/analytics-console/src/index.tsx'),
       // Activity bar pyramid (hub chat bars) without the whole chart package.
       '@streampulse/pulse-charts/barPyramid': resolve(pulseRoot, 'packages/pulse-charts/src/barPyramid.ts'),
+      // Analytics timeline chart core and perf marks; before the bare alias (Vite prefix-matches).
+      '@streampulse/pulse-charts/spchart': resolve(pulseRoot, 'packages/pulse-charts/src/spchart.ts'),
+      '@streampulse/pulse-charts/perfMarks': resolve(pulseRoot, 'packages/pulse-charts/src/perfMarks.ts'),
       '@streampulse/pulse-charts': resolve(pulseRoot, 'packages/pulse-charts/src/index.ts'),
       '@streampulse/pulse-core': resolve(pulseRoot, 'packages/pulse-core/src/index.ts'),
       react: resolve(__dirname, 'node_modules/react'),
@@ -167,11 +183,14 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (!id.includes('node_modules') && !id.includes('packages/')) return
-          if (id.includes('gsap')) return 'vendor-gsap'
+          // Match inside the checkout only: a checkout folder such as
+          // "analytics-d3-20261013" must not send every module to vendor-charts.
+          const rel = repoRelativeId(id)
+          if (!rel.includes('node_modules') && !rel.includes('packages/')) return
+          if (rel.includes('gsap')) return 'vendor-gsap'
           // Let the bundler split analytics at the route boundary. Assigning all
           // console modules to one manual chunk pulled lazy UI into public entry.
-          if (id.includes('recharts') || id.includes('d3-')) return 'vendor-charts'
+          if (rel.includes('recharts') || rel.includes('d3-')) return 'vendor-charts'
         },
       },
     },
