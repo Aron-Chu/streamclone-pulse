@@ -48,14 +48,42 @@ describe('MomentFrameStore', () => {
     expect(revoked).toEqual(['rolled'])
   })
 
-  it('lets a span that stops being kept roll off on the next change', () => {
+  it('holds a moment\'s frames after it drops out of the ranked lists for a poll', () => {
+    // Live re-scoring reshuffles tied moments: 1:24:44 on xQc left the top 20
+    // for one poll after the window and came back without its picture.
     const { store, revoked, tick } = setup({ windowMs: 60_000 })
     store.add(100, 'a')
     store.keep([[80, 200]])
     tick(61_000)
     store.keep([])
-    expect(store.size).toBe(0)
-    expect(revoked).toEqual(['a'])
+    store.add(500, 'b')
+    expect(store.inRange(0, 1_000).map(frame => frame.url)).toEqual(['a', 'b'])
+    store.keep([[80, 200]])
+    expect(store.inRange(80, 200).map(frame => frame.url)).toEqual(['a'])
+    expect(revoked).toEqual([])
+  })
+
+  it('at the cap, drops frames of moments no longer ranked before ranked ones', () => {
+    const { store, revoked, tick } = setup({ maxKept: 2 })
+    store.keep([[0, 150], [250, 400]])
+    store.add(300, 'ranked-old')
+    tick(1)
+    store.add(100, 'dropped-out')
+    store.keep([[250, 400]])
+    tick(1)
+    store.add(320, 'ranked-new')
+    expect(store.inRange(0, 1_000).map(frame => frame.url)).toEqual(['ranked-old', 'ranked-new'])
+    expect(revoked).toEqual(['dropped-out'])
+  })
+
+  it('forgets held moments when the stream changes', () => {
+    const { store, tick } = setup({ windowMs: 60_000 })
+    store.keep([[80, 200]])
+    store.useStream('stream-2')
+    store.add(100, 'other-stream')
+    tick(61_000)
+    store.add(500, 'new')
+    expect(store.inRange(0, 1_000).map(frame => frame.url)).toEqual(['new'])
   })
 
   it('caps kept frames, dropping the oldest captures first', () => {

@@ -517,7 +517,8 @@ function messageLogin(message: BackgroundRequest): string | undefined {
 function isAuthorizedRuntimeSender(message: BackgroundRequest, sender: chrome.runtime.MessageSender): boolean {
   const vodId = message.type === 'SAVE_BOOKMARK' ? message.bookmark.vodId
     : message.type === 'LIST_BOOKMARKS' ? message.contextVodId ?? message.vodId
-      : message.type === 'GET_CLIP' ? message.vodId : undefined
+      : message.type === 'GET_CLIP' ? message.vodId
+        : message.type === 'LIST_PAST_VODS' ? message.contextVodId : undefined
   return isSenderAuthorizedForMessage(message.type, messageLogin(message), sender, chrome.runtime.id, vodId)
 }
 
@@ -1325,21 +1326,14 @@ chrome.runtime.onStartup.addListener(() => {
 chrome.runtime.onInstalled.addListener(details => {
   // The only moment silent Twitch sign-in may later be tried (no-op while the flag is off).
   if (details?.reason === 'install') void twitchSignIn.markFirstInstall().catch(() => undefined)
-  void (async () => {
-    const { restrictCredentialStorageAccess } = await import('../shared/storage.ts')
-    await restrictCredentialStorageAccess()
-    await syncWatchlistToBackend()
-  })()
+  void syncWatchlistToBackend().catch(() => undefined)
 })
 
-void (async () => {
-  try {
-    const { restrictCredentialStorageAccess } = await import('../shared/storage.ts')
-    await restrictCredentialStorageAccess()
-  } catch {
-    // ignore
-  }
-})()
+// No import() in this worker: Chromium forbids it in extension service workers,
+// and Vite's preload helper throws on `document`. storage.local also stays open
+// to content scripts for now (the VOD analytics bridge and the panel's consent
+// and debug reads use it); restrictCredentialStorageAccess waits until those
+// reads go through worker messages.
 
 installBackgroundDiagnosticsEmitters()
 

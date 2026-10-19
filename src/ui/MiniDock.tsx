@@ -41,31 +41,28 @@ export function MiniDock({
 
   return (
     <section
-      className="pulse-mini-dock"
-      style={sidebarFill ? styles.shellSidebar : styles.shell}
+      className={sidebarFill ? 'pulse-mini-dock pulse-mini-dock-sidebar' : 'pulse-mini-dock'}
       aria-label="StreamPulse mini dock"
     >
       <button
         type="button"
         className="pulse-mini-dock-main"
-        style={styles.main}
         onClick={onExpand}
         title="Expand Pulse panel"
       >
         <BrandMark compact />
-        <span style={styles.brand}>Pulse</span>
-        <span style={tracking ? styles.statusLive : styles.statusIdle}>
+        <span className="pulse-mini-brand">Pulse</span>
+        <span className={tracking ? 'pulse-mini-status pulse-mini-status-live' : 'pulse-mini-status'}>
           <span
-            className={tracking && isLive ? 'pulse-live-dot' : undefined}
-            style={tracking ? styles.dotLive : styles.dotIdle}
+            className={`pulse-mini-dot${tracking ? ' pulse-mini-dot-live' : ''}${tracking && isLive ? ' pulse-live-dot' : ''}`}
             aria-hidden
           />
-          <span style={styles.statusText}>{statusLabel}</span>
+          <span className="pulse-mini-status-text">{statusLabel}</span>
         </span>
         <MiniHeatStrip values={heatValues} />
       </button>
 
-      <div style={styles.actions} aria-label="Mini dock controls">
+      <div className="pulse-mini-dock-actions" aria-label="Mini dock controls">
         {!tracking && onTrack ? (
           <button
             type="button"
@@ -124,8 +121,8 @@ export function MiniDock({
 
 function BrandMark({ compact = false }: { compact?: boolean }) {
   return (
-    <span style={compact ? styles.brandMarkCompact : styles.brandMark}>
-      <span style={compact ? styles.brandDotCompact : styles.brandDot} />
+    <span className={compact ? 'pulse-mini-brand-mark pulse-mini-brand-mark-compact' : 'pulse-mini-brand-mark'}>
+      <span className={compact ? 'pulse-mini-brand-dot pulse-mini-brand-dot-compact' : 'pulse-mini-brand-dot'} />
     </span>
   )
 }
@@ -136,24 +133,23 @@ function MiniHeatStrip({ values }: { values: number[] }) {
 
   if (display.every(value => value <= 0)) {
     return (
-      <div style={styles.heatEmpty} aria-hidden>
+      <div className="pulse-mini-heat" aria-hidden>
         {Array.from({ length: MINI_HEAT_BARS }, (_, index) => (
-          <span key={index} style={styles.heatBarGhost} />
+          <span key={index} className="pulse-mini-heat-ghost" />
         ))}
       </div>
     )
   }
 
   return (
-    <div style={styles.heatStrip} aria-hidden>
+    <div className="pulse-mini-heat" aria-hidden>
       {display.map((value, index) => {
         const hot = value >= max * 0.88 && max > 0
         return (
           <span
             key={`${index}-${value}`}
-            className="pulse-bar-grow"
+            className="pulse-bar-grow pulse-mini-heat-bar"
             style={{
-              ...styles.heatBar,
               height: `${Math.max(18, Math.round((value / max) * 100))}%`,
               background: hot
                 ? `linear-gradient(180deg, ${theme.rank1}, #fb7185)`
@@ -189,167 +185,9 @@ function HideIcon() {
   )
 }
 
+// Inline on purpose: as classes, the `.pulse-mini-dock button[title]` hover
+// rule would start tinting these buttons.
 const styles: Record<string, CSSProperties> = {
-  shell: {
-    alignItems: 'center',
-    display: 'flex',
-    gap: 8,
-    height: '100%',
-    minHeight: 52,
-    padding: '6px 8px',
-    width: '100%',
-  },
-  shellSidebar: {
-    alignItems: 'center',
-    display: 'flex',
-    gap: 6,
-    height: '100%',
-    minHeight: 0,
-    padding: '8px 10px',
-    width: '100%',
-  },
-  main: {
-    alignItems: 'center',
-    background: theme.panel,
-    border: `1px solid ${theme.border}`,
-    borderRadius: theme.radiusPanel,
-    color: theme.textPrimary,
-    cursor: 'pointer',
-    display: 'flex',
-    flex: 1,
-    font: theme.font,
-    gap: 10,
-    minWidth: 0,
-    padding: '8px 12px',
-    textAlign: 'left',
-    transition: 'border-color 0.15s ease, background 0.15s ease',
-  },
-  brandMark: {
-    alignItems: 'center',
-    background: theme.accent,
-    borderRadius: 10,
-    display: 'inline-flex',
-    flexShrink: 0,
-    height: 34,
-    justifyContent: 'center',
-    minWidth: 34,
-  },
-  brandMarkCompact: {
-    alignItems: 'center',
-    background: theme.accent,
-    borderRadius: 8,
-    display: 'inline-flex',
-    flexShrink: 0,
-    height: 28,
-    justifyContent: 'center',
-    minWidth: 28,
-  },
-  brandDot: {
-    background: theme.textPrimary,
-    borderRadius: 999,
-    display: 'block',
-    height: 12,
-    width: 12,
-  },
-  brandDotCompact: {
-    background: theme.textPrimary,
-    borderRadius: 999,
-    display: 'block',
-    height: 10,
-    width: 10,
-  },
-  brand: {
-    flexShrink: 0,
-    fontSize: 13,
-    fontWeight: 800,
-    letterSpacing: '-0.01em',
-  },
-  statusLive: {
-    alignItems: 'center',
-    color: theme.liveSoft,
-    display: 'inline-flex',
-    flexShrink: 1,
-    fontSize: 11,
-    fontWeight: 700,
-    gap: 6,
-    minWidth: 0,
-  },
-  statusIdle: {
-    alignItems: 'center',
-    color: theme.textMuted,
-    display: 'inline-flex',
-    flexShrink: 1,
-    fontSize: 11,
-    fontWeight: 600,
-    gap: 6,
-    minWidth: 0,
-  },
-  statusText: {
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  },
-  dotLive: {
-    background: theme.live,
-    borderRadius: 999,
-    display: 'inline-block',
-    flexShrink: 0,
-    height: 7,
-    width: 7,
-  },
-  dotIdle: {
-    background: theme.textMuted,
-    borderRadius: 999,
-    display: 'inline-block',
-    flexShrink: 0,
-    height: 7,
-    width: 7,
-  },
-  heatStrip: {
-    alignItems: 'flex-end',
-    display: 'flex',
-    flex: '1 1 96px',
-    gap: 3,
-    height: 28,
-    justifyContent: 'flex-end',
-    marginLeft: 'auto',
-    maxWidth: 168,
-    minWidth: 72,
-  },
-  heatEmpty: {
-    alignItems: 'flex-end',
-    display: 'flex',
-    flex: '1 1 96px',
-    gap: 3,
-    height: 28,
-    justifyContent: 'flex-end',
-    marginLeft: 'auto',
-    maxWidth: 168,
-    minWidth: 72,
-  },
-  heatBar: {
-    borderRadius: 3,
-    display: 'block',
-    flex: '1 1 4px',
-    maxWidth: 8,
-    minWidth: 3,
-    transformOrigin: 'bottom center',
-  },
-  heatBarGhost: {
-    background: 'rgba(139, 92, 246, 0.14)',
-    borderRadius: 3,
-    display: 'block',
-    flex: '1 1 4px',
-    height: '22%',
-    maxWidth: 8,
-    minWidth: 3,
-  },
-  actions: {
-    alignItems: 'center',
-    display: 'flex',
-    flexShrink: 0,
-    gap: 2,
-  },
   trackButton: {
     background: 'rgba(139, 92, 246, 0.16)',
     border: `1px solid ${theme.borderAccent}`,

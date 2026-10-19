@@ -17,6 +17,8 @@ import { theme } from './theme.ts'
 
 export interface PastVodsSectionProps {
   login: string
+  /** The page's VOD id on a growing live VOD, so the worker accepts the /videos/{id} tab. */
+  vodId?: string | null
   backendUrl: string
   liveStreamId?: string
   isLive?: boolean
@@ -29,6 +31,7 @@ export interface PastVodsSectionProps {
 
 export function PastVodsSection({
   login,
+  vodId,
   backendUrl,
   liveStreamId,
   isLive,
@@ -61,12 +64,13 @@ export function PastVodsSection({
           login,
           liveStreamId,
           isLive,
+          contextVodId: vodId ?? undefined,
         })
         if (!mounted) return
-        if ('type' in res && res.type === 'PAST_VODS') {
-          setRows(res.items)
-          setError(res.error ?? null)
-        }
+        // A refused or dead request is a failed load, never "no stream history".
+        if (!('type' in res) || res.type !== 'PAST_VODS') throw new Error('past_vods_failed')
+        setRows(res.items)
+        setError(res.error ?? null)
       } catch (err) {
         if (!mounted) return
         setRows([])
@@ -78,7 +82,7 @@ export function PastVodsSection({
     return () => {
       mounted = false
     }
-  }, [login, liveStreamId, isLive, demoRows, requestNonce])
+  }, [login, vodId, liveStreamId, isLive, demoRows, requestNonce])
 
   const subtitle = channelOffline
     ? 'Recent broadcasts'

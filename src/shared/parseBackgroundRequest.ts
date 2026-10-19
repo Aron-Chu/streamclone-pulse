@@ -164,11 +164,13 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
     case 'LIST_PAST_VODS': {
       const login = requireLogin(raw.login)
       if (!login) return null
+      if (raw.contextVodId !== undefined && (typeof raw.contextVodId !== 'string' || !/^\d+$/.test(raw.contextVodId))) return null
       return {
         type,
         login,
         liveStreamId: optionalString(raw.liveStreamId),
         isLive: optionalBoolean(raw.isLive),
+        ...(raw.contextVodId !== undefined ? { contextVodId: raw.contextVodId as string } : {}),
       }
     }
     case 'FETCH_EMOTE_IMAGE': {

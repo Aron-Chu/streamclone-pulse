@@ -447,4 +447,71 @@ describe('Overlay load, error and dock states', () => {
       expect(banner?.querySelector('button')?.textContent).toBe('Reload page')
     })
   })
+
+  describe('LIFE-4: a growing live VOD page asks for past streams and clips as that VOD', () => {
+    function liveDvrPayload(): PulsePayload {
+      return { ...livePayload(), mode: 'live_dvr', vodId: '2806037629' } as PulsePayload
+    }
+
+    function sent(type: string): Record<string, unknown> | undefined {
+      return vi.mocked(sendBackgroundMessage).mock.calls
+        .map(([message]) => message as unknown as Record<string, unknown>)
+        .find(message => message.type === type)
+    }
+
+    it('sends the page VOD id with LIST_PAST_VODS and GET_CLIP', async () => {
+      vi.mocked(sendBackgroundMessage).mockClear()
+      await render({ context: VOD, payload: liveDvrPayload(), pageIsLive: true })
+      expect(sent('LIST_PAST_VODS')).toMatchObject({ login: 'fixturechan', contextVodId: '2806037629' })
+      expect(sent('GET_CLIP')).toMatchObject({ login: 'fixturechan', vodId: '2806037629' })
+    })
+
+    it('a channel page still sends no VOD id', async () => {
+      vi.mocked(sendBackgroundMessage).mockClear()
+      await render({ payload: livePayload(), pageIsLive: true })
+      expect(sent('LIST_PAST_VODS')).toMatchObject({ login: 'fixturechan', contextVodId: undefined })
+      expect(sent('GET_CLIP')).toMatchObject({ login: 'fixturechan', vodId: undefined })
+    })
+
+    it('a refused stream-history request reads as a failed load, not "No stream history yet"', async () => {
+      vi.mocked(sendBackgroundMessage).mockImplementation(async () => ({ error: 'unauthorized_sender' }) as never)
+      await render({ context: VOD, payload: liveDvrPayload(), pageIsLive: true })
+      expect(node.querySelector('[data-past-vods-state]')?.getAttribute('data-past-vods-state')).toBe('error')
+      expect(text()).toContain("Couldn't load stream history")
+      expect(text()).not.toContain('No stream history yet')
+      expect(buttons('Retry stream history')).toHaveLength(1)
+    })
+  })
+
+  describe('LIFE-5 / TWI-6: quick settings never names the internal VOD placeholder', () => {
+    async function openSettings(): Promise<void> {
+      const entry = node.querySelector<HTMLButtonElement>('button[data-pulse-settings-entry="bottom-bar"]')
+      expect(entry).not.toBeNull()
+      await act(async () => { entry!.click() })
+      expect(text()).toContain('Quick settings')
+    }
+
+    it('leaves out the channel card while the VOD owner is unknown', async () => {
+      await render({
+        context: VOD,
+        login: '__vod__:2806037629',
+        vodPulse: vodStatus('missing', 'No replay analytics have been indexed for this VOD yet.'),
+        vodPulseLoading: false,
+      })
+      await openSettings()
+      expect(node.querySelector('.pulse-settings-channel')).toBeNull()
+      expect(text()).not.toContain('__vod__')
+    })
+
+    it('still shows the channel card once the VOD names its channel', async () => {
+      await render({
+        context: VOD,
+        login: 'fixturechan',
+        vodPulse: vodStatus('missing', 'No replay analytics have been indexed for this VOD yet.'),
+        vodPulseLoading: false,
+      })
+      await openSettings()
+      expect(node.querySelector('.pulse-settings-channel strong')?.textContent).toBe('fixturechan')
+    })
+  })
 })

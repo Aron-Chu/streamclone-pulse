@@ -130,6 +130,8 @@ export interface ListPastVodsMessage {
   login: string
   liveStreamId?: string
   isLive?: boolean
+  /** Sender-page identity only (a growing live VOD page); never a backend filter. */
+  contextVodId?: string
 }
 
 export interface FetchEmoteImageMessage {
