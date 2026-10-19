@@ -97,9 +97,9 @@ describe('isSenderAuthorizedForMessage', () => {
     expect(isSenderAuthorizedForMessage('GET_PULSE', undefined, directory, extensionId)).toBe(false)
   })
 
-  it('binds VOD clip and bookmark requests to the exact top-frame video', () => {
+  it('binds VOD clip, bookmark and past-stream requests to the exact top-frame video', () => {
     const vod = { id: extensionId, frameId: 0, tab: { url: 'https://www.twitch.tv/videos/123?t=2m' } }
-    for (const type of ['GET_CLIP', 'LIST_BOOKMARKS', 'SAVE_BOOKMARK']) {
+    for (const type of ['GET_CLIP', 'LIST_BOOKMARKS', 'SAVE_BOOKMARK', 'LIST_PAST_VODS']) {
       expect(isSenderAuthorizedForMessage(type, 'xqc', vod, extensionId, '123')).toBe(true)
       expect(isSenderAuthorizedForMessage(type, 'xqc', vod, extensionId, '456')).toBe(false)
       expect(isSenderAuthorizedForMessage(type, 'xqc', vod, extensionId)).toBe(false)

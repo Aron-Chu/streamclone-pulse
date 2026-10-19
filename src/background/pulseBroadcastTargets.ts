@@ -91,7 +91,8 @@ export const MESSAGE_SENDER_SCOPE: Record<BackgroundRequest['type'], MessageSend
   DISCOVER_LIVE_VOD: 'twitch-channel',
   LOAD_MISSED_MOMENTS: 'twitch-channel',
   GET_PULSE_BACKFILL_STATUS: 'twitch-channel',
-  LIST_PAST_VODS: 'twitch-channel',
+  // A growing live VOD page shows the channel's Past streams too.
+  LIST_PAST_VODS: 'twitch-channel-or-vod',
   LIST_BOOKMARKS: 'twitch-channel-or-vod',
   SAVE_BOOKMARK: 'twitch-channel-or-vod',
   HEALTH: 'twitch-any',

@@ -517,7 +517,8 @@ function messageLogin(message: BackgroundRequest): string | undefined {
 function isAuthorizedRuntimeSender(message: BackgroundRequest, sender: chrome.runtime.MessageSender): boolean {
   const vodId = message.type === 'SAVE_BOOKMARK' ? message.bookmark.vodId
     : message.type === 'LIST_BOOKMARKS' ? message.contextVodId ?? message.vodId
-      : message.type === 'GET_CLIP' ? message.vodId : undefined
+      : message.type === 'GET_CLIP' ? message.vodId
+        : message.type === 'LIST_PAST_VODS' ? message.contextVodId : undefined
   return isSenderAuthorizedForMessage(message.type, messageLogin(message), sender, chrome.runtime.id, vodId)
 }
 

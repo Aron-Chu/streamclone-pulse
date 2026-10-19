@@ -1322,7 +1322,8 @@ function OverlayMain({
         startedAt: payload?.startedAt,
         endedAt: payload?.endedAt ?? payload?.latestEndedAt,
         streamId: payload?.streamId,
-        vodId: isVodPage ? context.vodId ?? payload?.vodId ?? undefined : undefined,
+        // Any VOD page, a growing live one too: the worker authorizes a /videos/{id} tab by this id.
+        vodId: context.vodId ?? undefined,
         isLive: payload?.isLive,
       })
       if (!mountedRef.current || !shouldApplyTopClipResponse(requestId, topClipRequestRef.current)) return
@@ -1671,7 +1672,8 @@ function OverlayMain({
         <div key="settings" className="pulse-panel-view-enter pulse-panel-view-settings pulse-panel-view-stack">
           <PulseSettingsPanel
             onBack={() => setPanelView('pulse')}
-            channel={{
+            // An unresolved VOD page has only the internal placeholder, which is not a channel name.
+            channel={login.startsWith('__vod__:') ? undefined : {
               login,
               displayName: coverageTierState?.displayName,
               isLive: uiIsLive,
@@ -1922,6 +1924,7 @@ function OverlayMain({
           {!isVodPage ? (
           <PastVodsSection
             login={login}
+            vodId={context.vodId}
             backendUrl={backendUrl}
             liveStreamId={payload?.streamId}
             isLive={uiIsLive}

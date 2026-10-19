@@ -354,8 +354,9 @@ function applySidebarSnapLayout(): void {
   const pulseTabActive = currentSidebarTab === 'pulse'
   // Pulse owns the body, so hide Twitch's native message chrome while it is
   // active. Chat owns the body, so remove the style entirely and restore all
-  // native banners/messages when the user switches back.
-  applyTwitchSidebarChromeHides(pulseTabActive, pulseTabActive)
+  // native banners/messages when the user switches back. The collapsed and mini
+  // docks cover only the bottom of the column, so chat messages stay readable.
+  applyTwitchSidebarChromeHides(pulseTabActive, pulseTabActive && currentOverlayMode === 'expanded')
   applyFixedRect(tabsHostEl, sidebarLayout.header, true)
 
   const showPanel = pulseTabActive
