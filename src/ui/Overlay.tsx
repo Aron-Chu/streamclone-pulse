@@ -21,7 +21,7 @@ import { StreamPulseTitleBlock, streamPulseHeaderChrome, streamPulseHeaderChrome
 import { PulseBannerBackdrop, usePulseBanner } from './PulseBanner.tsx'
 import { useKeepPressedInPlace } from './keepPressedInPlace.ts'
 import { AnalyticsHubCta } from './AnalyticsHubCta.tsx'
-import { rollupToRecapHeatPoint } from './recapChartPeaks.ts'
+import { recapStreamDurationSeconds, rollupToRecapHeatPoint } from './recapChartPeaks.ts'
 import { buildRecapEmoteCatalog } from './recapEmotes.ts'
 import { PulseSectionCard } from './PulseSectionCard.tsx'
 import { PanelErrorBoundary } from './PanelErrorBoundary.tsx'
@@ -1744,7 +1744,10 @@ function OverlayMain({
         >
       <StreamPulseHeader
         personalTitle={banner.value.title}
-        replayLead={isVodPage ? replayLead(vodPulse) : undefined}
+        replayLead={isVodPage ? replayLead(
+          vodPulse,
+          payload && vodPulse?.streamId && payload.streamId === vodPulse.streamId ? recapStreamDurationSeconds(payload) : undefined,
+        ) : undefined}
         isLive={uiIsLive}
         surfaceState={panelSurfaceState}
         pulseLiveAccess={pulseLiveAccess.state}
@@ -2168,10 +2171,14 @@ const PERMANENT_VOD_STATES = new Set(['stream_not_collected', 'duration_implausi
  * Games played strip is the one place that names games, so the header never
  * names one the recap says it doesn't know. A length over 48 h is not a real
  * stream (see parseExtensionVodPulseResponse) and is left out.
+ *
+ * `recapSeconds` is the recap's own length for this stream: a stream whose
+ * close was recorded hours late (Oct 16 xQc: 19h 43m, a 9h 22m VOD) is cut to
+ * where its chat ends, so the header and the recap say the same length.
  */
-export function replayLead(vod: ExtensionVodPulseResponse | null): string {
+export function replayLead(vod: ExtensionVodPulseResponse | null, recapSeconds?: number): string {
   const started = Date.parse(vod?.startedAt ?? '')
-  const seconds = vod?.durationSeconds ?? 0
+  const seconds = recapSeconds != null && recapSeconds > 0 ? recapSeconds : vod?.durationSeconds ?? 0
   const hours = Math.floor(seconds / 3600)
   return [
     Number.isFinite(started) ? new Date(started).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '',
