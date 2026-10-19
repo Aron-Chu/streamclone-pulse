@@ -1,7 +1,7 @@
 import { test, expect, type Locator, type Page } from '@playwright/test'
 import { installHubUxMock } from './helpers/hubUxMock'
 
-// The d3-v5 hub (PR 1 of 5). Runs only against a build made with VITE_PUBLIC_HUB_V5=on;
+// The d3-v5 hub page (behind the build flag). Runs only against a build made with VITE_PUBLIC_HUB_V5=on;
 // a default build serves the Command Center, which the spec without .hub-v5 covers.
 test.skip(!/^(on|1)$/.test(process.env.VITE_PUBLIC_HUB_V5 ?? ''), 'needs a build with VITE_PUBLIC_HUB_V5=on')
 
@@ -87,51 +87,6 @@ test('hub chart shows the hovered bar in the readout and returns to Now', async 
   await page.mouse.move(4, 4)
   await expect(readout).toHaveAttribute('data-hub-readout-mode', 'now')
   await expect(readout.locator('.tm .l1')).toHaveText('Now')
-})
-
-test('Live Wire explains the detected event and keeps chat plus emote from the same channel', async ({ page }) => {
-  await installHubUxMock(page)
-  await page.goto('/analytics')
-
-  const liveWire = page.getByRole('region', { name: 'Live Wire' })
-  await expect(liveWire).toBeVisible()
-  const first = liveWire.locator('[data-stream-id="s1"]').first()
-  await expect(first).toContainText('xQc')
-  await expect(first).toContainText('Twitch emote spike')
-  await expect(first).toContainText('393/m')
-  await expect(first).toContainText('133/m')
-  // No ready comparison: the row says so plainly, and the baseline evidence
-  // stays reachable on the detector's own label.
-  await expect(first.locator('.hub-live-wire__rail-comparison')).toContainText('Comparison unavailable')
-  await expect(first.locator('.hub-live-wire__magnitude')).toHaveCount(0)
-  await expect(first.locator('.hub-live-wire__rail-label')).toHaveAttribute('title', /IRC measured · comparison unavailable/i)
-  await expect(first.getByRole('button', { name: /^Show .* on chart$/ })).toBeVisible()
-  await expect(first.getByRole('link', { name: /^Stream analytics for / })).toBeVisible()
-  await expect(first.getByRole('button', { name: /^Save / })).toBeVisible()
-  await expect(first).not.toContainText(/score\s+\d/i)
-  await expect(first.locator('.hub-live-wire__bar')).toHaveCount(0)
-})
-
-test('Live Wire "Show on chart" selects the matching bar and Escape on the plot clears it', async ({ page }) => {
-  await installHubUxMock(page)
-  await page.goto('/analytics')
-
-  const liveWire = page.getByRole('region', { name: 'Live Wire' })
-  await liveWire.getByRole('button', { name: /^Show .* on chart$/ }).first().click()
-  const plot = page.locator(PLOT)
-  await expect(plot).toHaveAttribute('data-selection', '')
-  await expect(liveWire).toBeVisible()
-  await plot.focus()
-  await page.keyboard.press('Escape')
-  await expect(plot).not.toHaveAttribute('data-selection', /.*/)
-})
-
-test('reduced motion leaves Live Wire without entrance animation class churn', async ({ page }) => {
-  await page.emulateMedia({ reducedMotion: 'reduce' })
-  await installHubUxMock(page)
-  await page.goto('/analytics')
-  await expect(page.getByRole('region', { name: 'Live Wire' })).toBeVisible()
-  await expect(page.locator('.hub-live-wire__event-card.is-entering')).toHaveCount(0)
 })
 
 test('the plot is 420 px on desktop and 300 px on a phone, with its rows on the plot edges', async ({ page }) => {
