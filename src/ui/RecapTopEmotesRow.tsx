@@ -1,7 +1,6 @@
 import type { CSSProperties } from 'react'
 import type { ExtensionEmote } from '../shared/messages.ts'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
-import { theme } from './theme.ts'
 
 const MAX_RECAP_EMOTES = 4
 
@@ -23,28 +22,28 @@ export function RecapTopEmotesRow({ backendUrl, emotes, compact = false }: Recap
   if (visible.length === 0) return null
 
   return (
-    <div style={compact ? styles.wrapCompact : styles.wrap}>
-      <div style={styles.header}>
-        <span style={styles.title}>Top emotes this stream</span>
-        <span style={styles.hint}>Plot emotes on the chart above.</span>
+    <div className={compact ? 'pulse-rte-compact' : 'pulse-rte'}>
+      <div className="pulse-rte-header">
+        <span className="pulse-rte-title">Top emotes this stream</span>
+        <span className="pulse-rte-hint">Plot emotes on the chart above.</span>
       </div>
-      <div style={compact ? styles.gridCompact : styles.grid}>
+      <div className={compact ? 'pulse-rte-grid-compact' : 'pulse-rte-grid'}>
         {visible.map((emote, index) => (
           <div
             key={emote.id ?? `${emote.name}-${index}`}
-            style={styles.cell}
+            className="pulse-rte-cell"
             title={emote.name}
           >
-            <span style={styles.rank}>{index + 1}</span>
+            <span className="pulse-rte-rank">{index + 1}</span>
             <PulseEmoteImg
               backendUrl={backendUrl}
               emote={emote}
               width={compact ? 24 : 28}
               height={compact ? 24 : 28}
-              style={styles.cellImg}
+              style={cellImgStyle}
             />
-            <span style={styles.cellName}>{emote.name}</span>
-            <span style={styles.cellCount}>{formatEmoteCount(emote.count)}</span>
+            <span className="pulse-rte-name">{emote.name}</span>
+            <span className="pulse-rte-count">{formatEmoteCount(emote.count)}</span>
           </div>
         ))}
       </div>
@@ -52,61 +51,5 @@ export function RecapTopEmotesRow({ backendUrl, emotes, compact = false }: Recap
   )
 }
 
-const styles: Record<string, CSSProperties> = {
-  wrap: { display: 'grid', gap: 6 },
-  wrapCompact: { display: 'grid', gap: 5 },
-  header: { display: 'grid', gap: 2 },
-  title: {
-    color: theme.textMuted,
-    fontSize: 9,
-    fontWeight: 800,
-    letterSpacing: '0.06em',
-    textTransform: 'uppercase',
-  },
-  hint: {
-    color: theme.textMuted,
-    fontSize: 9,
-    fontWeight: 600,
-    lineHeight: 1.35,
-  },
-  grid: { display: 'grid', gap: 6, gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' },
-  gridCompact: { display: 'grid', gap: 5, gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' },
-  cell: {
-    alignItems: 'center',
-    background: 'rgba(255, 255, 255, 0.03)',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
-    borderRadius: 9,
-    color: theme.textPrimary,
-    display: 'flex',
-    gap: 7,
-    minWidth: 0,
-    overflow: 'hidden',
-    padding: '5px 9px 5px 8px',
-  },
-  rank: {
-    color: theme.textMuted,
-    flexShrink: 0,
-    fontSize: 9,
-    fontVariantNumeric: 'tabular-nums',
-    fontWeight: 800,
-    minWidth: 10,
-    textAlign: 'center',
-  },
-  cellImg: { display: 'block', flexShrink: 0, objectFit: 'contain' },
-  cellName: {
-    flex: 1,
-    fontSize: 11,
-    fontWeight: 700,
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  },
-  cellCount: {
-    color: theme.textSecondary,
-    flexShrink: 0,
-    fontSize: 10,
-    fontVariantNumeric: 'tabular-nums',
-    fontWeight: 700,
-  },
-}
+/** Passed on to PulseEmoteImg, which takes a style prop. */
+const cellImgStyle: CSSProperties = { display: 'block', flexShrink: 0, objectFit: 'contain' }

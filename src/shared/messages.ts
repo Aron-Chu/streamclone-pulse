@@ -10,6 +10,7 @@ export type MessageType =
   | 'SUPPORTER_FINISH_INTENT'
   | 'SUPPORTER_CARD_SCRIPT'
   | 'MOMENT_FRAMES_SCRIPT'
+  | 'MOMENT_PICTURE'
   | 'CATCH_ME_UP_SCRIPT'
   | 'SUPPORTER_BILLING'
   | 'SUPPORTER_RESTORE'
@@ -22,6 +23,7 @@ export type MessageType =
   | 'GET_CLIP'
   | 'HEALTH'
   | 'HUB_SNAPSHOT'
+  | 'MOMENT_MINUTE'
   | 'GET_UPDATE_CHECK_CAPABILITY'
   | 'CHECK_FOR_UPDATE'
   | 'OPEN_SETTINGS_HOST'
@@ -290,6 +292,8 @@ export type BackgroundRequest =
   /** Injects the quick-settings Supporter card's stage script into the sender's own Twitch tab. */
   | { type: 'SUPPORTER_CARD_SCRIPT' }
   | { type: 'MOMENT_FRAMES_SCRIPT' }
+  /** The frames script asks which pictures the worker wants from its tab, or sends one. */
+  | import('./momentPictureMessages.ts').MomentPictureRequest
   /** Injects the stream recap's Catch me up script into the sender's own Twitch tab. */
   | { type: 'CATCH_ME_UP_SCRIPT' }
   | TrackMessage
@@ -300,6 +304,8 @@ export type BackgroundRequest =
   | GetClipMessage
   | HealthMessage
   | { type: 'HUB_SNAPSHOT' }
+  /** A saved moment's minute for My Moments' Preview, from the public minutes API. */
+  | { type: 'MOMENT_MINUTE'; streamId: string; offsetSeconds: number }
   | GetUpdateCheckCapabilityMessage
   | CheckForUpdateMessage
   | OpenSettingsHostMessage
@@ -785,6 +791,7 @@ export type BackgroundResponse =
   | { type: 'OPEN_SETTINGS_HOST'; ok: boolean; error?: 'settings_host_open_failed' }
   | { type: 'OPEN_COMMUNITY_LINK'; ok: boolean }
   | { type: 'HUB_SNAPSHOT'; snapshot: import('./hubSnapshot.ts').HubSnapshot | null; error?: string }
+  | { type: 'MOMENT_MINUTE'; context: import('../ui/library/MomentPreview.tsx').MomentContext | null; error?: string }
   | { type: 'MY_MOMENTS_RECENT'; recent: import('./myMoments.ts').MyMomentsRecent }
   | { type: 'SUPPORTER_ACCOUNT'; account: SupporterAccountState }
   | import('./twitchSignIn.ts').TwitchSignInResponse
@@ -801,6 +808,7 @@ export type BackgroundResponse =
   | { type: 'SUPPORTER_FINISH_INTENT'; finish: 'glass' | 'etched' | 'halo' | null }
   | { type: 'SUPPORTER_CARD_SCRIPT'; ok: boolean }
   | { type: 'MOMENT_FRAMES_SCRIPT'; ok: boolean }
+  | { type: 'MOMENT_PICTURE'; wants?: import('./momentFramesContract.ts').MomentPictureWant[]; ok?: boolean }
   | { type: 'CATCH_ME_UP_SCRIPT'; ok: boolean }
   | { type: 'DEVICE_AUTH'; status: DeviceAuthStatus }
   | { type: 'PULSE_DEBUG_LOG'; entries: import('./pulseDebug.ts').PulseDebugEntry[] }

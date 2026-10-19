@@ -153,7 +153,8 @@ export const shadowStyles = `
     outline: none !important;
     box-shadow: none !important;
   }
-  .pulse-moment-row-button:focus-visible {
+  .pulse-moment-row-button:focus-visible,
+  .pulse-moment-more:focus-visible {
     outline: 2px solid rgba(var(--pulse-accent-light-rgb, 196, 181, 253), 0.95) !important;
     outline-offset: 2px;
     box-shadow: 0 0 0 1px rgba(17, 17, 23, 0.95) !important;
@@ -166,7 +167,8 @@ export const shadowStyles = `
       box-shadow var(--pulse-motion-interactive) var(--pulse-ease-standard);
   }
   .pulse-moment-accent{background:rgba(255,255,255,.12);transition:background var(--pulse-motion-interactive) var(--pulse-ease-standard)}
-  .pulse-moment-row-button:hover .pulse-moment-row {
+  .pulse-moment-row-button:hover .pulse-moment-row,
+  .pulse-moment-more:hover {
     box-shadow: inset 0 0 0 1px rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.35) !important;
     background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.08) !important;
   }

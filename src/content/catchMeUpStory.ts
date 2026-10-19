@@ -1,9 +1,9 @@
-import { momentClockDisplay } from '@streampulse/pulse-core'
 import type { CatchMeUpModel } from '../shared/catchMeUpContract.ts'
+import { formatCount } from '../ui/mostReacted.ts'
 
 /**
  * The words of Catch me up: plain arithmetic on the recap the panel already
- * has (its #1 moment, its rollups, its totals). Nothing here ranks or scores.
+ * has (its rollups and totals). Nothing here ranks or scores.
  */
 
 const HALF_HOUR = 1800
@@ -51,28 +51,17 @@ export function busiestHalfHour(
   return Math.max(0, Math.min(Math.floor(bestStart / 60) * 60, Math.floor((durationSeconds - HALF_HOUR) / 60) * 60))
 }
 
-export interface CatchMeUpStory {
-  /** "Chat's biggest moment came at", "02:41:05", " in Just Chatting (KEKW ×212)." */
-  lead: string
-  clock: string
-  tail: string
-  /** "The busiest half hour was 01:30–02:00.", when there is one. */
-  busiest: string | null
-}
-
-export function catchMeUpStory(model: CatchMeUpModel): CatchMeUpStory | null {
-  const top = model.moments[0]
-  if (!top) return null
-  const clock = momentClockDisplay(top.point)
-  const emote = top.point.topEmotes[0]
-  const game = model.namesGame && top.game ? ` in ${top.game.name}` : ''
-  const burst = emote && emote.count > 0 ? ` (${emote.name} ×${emote.count.toLocaleString('en-US')})` : ''
+/**
+ * The block's one fact line: "Busiest half hour 00:06–00:36 · peak 903
+ * chat/min · 20 moments". A stream without a busiest half hour starts at its
+ * peak; a fact that is missing is left out, never shown as zero.
+ */
+export function catchMeUpFacts(model: CatchMeUpModel): string | null {
   const start = busiestHalfHour(model.rollups, model.durationSeconds)
-  return {
-    // A moment known only to its minute is "around" it, as its row's badge says.
-    lead: `Chat's biggest moment came ${clock.approximate ? 'around' : 'at'} `,
-    clock: clock.text,
-    tail: `${game}${burst}.`,
-    busiest: start == null ? null : `The busiest half hour was ${streamClock(start)}–${streamClock(start + HALF_HOUR)}.`,
-  }
+  const line = [
+    start == null ? '' : `busiest half hour ${streamClock(start)}–${streamClock(start + HALF_HOUR)}`,
+    model.peakChatPerMin > 0 ? `peak ${formatCount(model.peakChatPerMin)} chat/min` : '',
+    model.momentCount > 0 ? `${formatCount(model.momentCount)} ${model.momentCount === 1 ? 'moment' : 'moments'}` : '',
+  ].filter(Boolean).join(' · ')
+  return line ? line[0]!.toUpperCase() + line.slice(1) : null
 }

@@ -1,5 +1,6 @@
-import { handleDeviceBookmarks, handleMyMoments, removePanelBookmark } from './myMoments.ts'
+import { handleDeviceBookmarks, handleMyMoments, handlePicture, removePanelBookmark, wantSavedPicture } from './myMoments.ts'
 import { loadHubSnapshot } from './hubSnapshot.ts'
+import { loadMomentMinute } from './momentMinute.ts'
 import {
   addPulseWatchlist,
   createPulseBookmark,
@@ -1184,6 +1185,14 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           }
           return
         }
+        case 'MOMENT_MINUTE': {
+          try {
+            sendResponse({ type: 'MOMENT_MINUTE', context: await loadMomentMinute(message.streamId, message.offsetSeconds) } satisfies BackgroundResponse)
+          } catch (err) {
+            sendResponse({ type: 'MOMENT_MINUTE', context: null, error: err instanceof Error ? err.message : 'minute_unavailable' } satisfies BackgroundResponse)
+          }
+          return
+        }
         case 'MY_MOMENTS':
         case 'MOMENT_CAPTURE': {
           sendResponse(await handleMyMoments(message, sender))
@@ -1204,9 +1213,17 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
         }
         case 'SAVE_BOOKMARK': {
           const device = await handleDeviceBookmarks(message, sender)
-          if (device) { sendResponse(device); return }
-          const item = await createPulseBookmark(message.bookmark)
-          sendResponse({ type: 'BOOKMARK', item } satisfies BackgroundResponse)
+          if (device) {
+            sendResponse(device)
+          } else {
+            const item = await createPulseBookmark(message.bookmark)
+            sendResponse({ type: 'BOOKMARK', item } satisfies BackgroundResponse)
+          }
+          void wantSavedPicture(message.bookmark, sender)
+          return
+        }
+        case 'MOMENT_PICTURE': {
+          sendResponse(await handlePicture(message, sender) satisfies BackgroundResponse)
           return
         }
         case 'DELETE_BOOKMARK': {

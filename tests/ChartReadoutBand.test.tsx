@@ -42,5 +42,8 @@ describe('ChartReadoutBand', () => {
       />,
     )
     expect(markup).not.toContain('data-chart-readout-emotes="true"')
+    // One quiet line: no title, blank clock or "Unavailable" metrics.
+    expect(markup).toContain('Hover the chart to inspect a minute.')
+    for (const text of ['Chart inspection', 'Unavailable', '—', 'data-chart-readout-metrics']) expect(markup).not.toContain(text)
   })
 })
