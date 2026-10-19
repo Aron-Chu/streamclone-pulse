@@ -24,6 +24,9 @@ describe('Chrome Web Store listing copy (0.2.2)', () => {
     for (const permission of manifest.permissions) expect(justifications).toContain(`### ${permission}`)
     for (const host of manifest.host_permissions) expect(justifications).toContain(host)
     expect(justifications).not.toMatch(/localhost|127\.0\.0\.1/)
+    const hostField = section('### Host permissions (one field)')
+    const justifiedHosts = [...new Set(hostField.match(/https:\/\/[^\s:,`]+\/\*/g) ?? [])]
+    expect(justifiedHosts.sort()).toEqual([...manifest.host_permissions].sort())
     expect(manifest.permissions).toEqual(['storage', 'scripting'])
   })
 
@@ -72,6 +75,8 @@ describe('Chrome Web Store listing copy (0.2.2)', () => {
     const scripting = section('### scripting')
     expect(scripting).toContain('gql.twitch.tv')
     expect(scripting).toContain('content/supporter-card.js')
+    expect(scripting).toContain('content/moment-frames.js')
+    expect(scripting).toContain('content/catch-me-up.js')
     expect(scripting).toContain('channel avatar')
     expect(scripting).toContain('does not need this permission')
   })

@@ -1,3 +1,5 @@
+import { isDevLoopbackHostname } from './devHosts.ts'
+
 /** User-facing StreamPulse web analytics origin (portal), not the API/BFF origin. */
 export const DEFAULT_WEB_ANALYTICS_BASE_URL = 'https://streampulse.stream'
 
@@ -5,9 +7,6 @@ export type ExtensionConfig = {
   apiBaseUrl: string
   webAnalyticsBaseUrl: string
 }
-
-const LOCALHOST = String.fromCharCode(108, 111, 99, 97, 108, 104, 111, 115, 116)
-const LOOPBACK_IPV4 = [127, 0, 0, 1].join('.')
 
 /**
  * Exported so `portalLinks.ts` validates product-link origins with exactly this
@@ -20,10 +19,12 @@ export function safeWebAnalyticsOrigin(raw: string): string | null {
     if (parsed.protocol === 'https:' && !parsed.port && parsed.hostname === 'streampulse.stream') {
       return parsed.origin
     }
+    // The local portal dev server, in development builds only.
     if (
-      parsed.protocol === 'http:'
+      !(typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__)
+      && parsed.protocol === 'http:'
       && parsed.port === '5173'
-      && (parsed.hostname === LOCALHOST || parsed.hostname === LOOPBACK_IPV4)
+      && isDevLoopbackHostname(parsed.hostname)
     ) {
       return parsed.origin
     }
@@ -45,7 +46,7 @@ export function defaultWebAnalyticsBaseUrlForApi(apiBaseUrl: string): string {
       const port = parsed.port || (parsed.protocol === 'https:' ? '443' : '80')
       const localBackendPort = '8081'
       const localPortalPort = '5173'
-      if ((host === LOCALHOST || host === LOOPBACK_IPV4) && port === localBackendPort) {
+      if (isDevLoopbackHostname(host) && port === localBackendPort) {
         return `http://${host}:${localPortalPort}`
       }
     } catch {
