@@ -7,7 +7,7 @@ export const COVERAGE_TIER_ACTIVE_LIVE = 'active_live_coverage'
 export const COVERAGE_TIER_WARMING = 'warming'
 
 export type CoverageTierStatusLabel =
-  | 'Chat tracked (IRC)'
+  | 'Chat tracked'
   | 'Warming'
   | 'Metadata only — no chat coverage'
 
@@ -15,7 +15,7 @@ export function coverageTierStatusLabel(
   coverageTier: string | null | undefined,
   tracking = false,
 ): CoverageTierStatusLabel {
-  if (coverageTier === COVERAGE_TIER_ACTIVE_LIVE) return 'Chat tracked (IRC)'
+  if (coverageTier === COVERAGE_TIER_ACTIVE_LIVE) return 'Chat tracked'
   if (coverageTier === COVERAGE_TIER_WARMING) return 'Warming'
   if (coverageTier?.trim()) return 'Metadata only — no chat coverage'
   return tracking ? 'Warming' : 'Metadata only — no chat coverage'
@@ -35,7 +35,7 @@ export interface PulseLiveAccessInput {
   alwaysTrackedLogins?: readonly string[]
   sessionOpenedAtMs?: number | null
   pageIsLive?: boolean
-  /** When true, only active_live_coverage + tracking yields full_live. */
+  /** When true, only active_live_coverage or warming, with tracking, yields full_live. */
   hosted?: boolean
 }
 
@@ -138,6 +138,12 @@ function resolveHostedPulseLiveAccess(input: PulseLiveAccessInput): PulseLiveAcc
   }
 
   if (coverageTier?.coverageTier === COVERAGE_TIER_ACTIVE_LIVE && payload.tracking) {
+    return baseResult('full_live', coverageStartOffsetSeconds, coverageTier)
+  }
+
+  // Warming: chat is being read but no minute is saved yet. Same live view as
+  // an active channel (its warm-up card fills in), never the not-tracked card.
+  if (coverageTier?.coverageTier === COVERAGE_TIER_WARMING && payload.tracking) {
     return baseResult('full_live', coverageStartOffsetSeconds, coverageTier)
   }
 

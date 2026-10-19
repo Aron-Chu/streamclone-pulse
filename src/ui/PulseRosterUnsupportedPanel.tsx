@@ -8,9 +8,9 @@ export interface PulseRosterUnsupportedPanelProps {
 
 export function pulseRosterUnsupportedCopy(login: string): { title: string; body: string; footer: string } {
   return {
-    title: 'Outside tracked roster',
-    body: `${login} is not on StreamPulse's actively tracked channel roster, so live Pulse chat analytics is not available here. We focus IRC rollups on a limited set of high-activity channels while capacity scales.`,
-    footer: 'Check back if this channel is added to the roster later.',
+    title: 'Not on the tracked list',
+    body: `${login} isn’t one of the channels StreamPulse tracks, so there’s no live chart here. We track a set of the busiest channels and add more as we grow.`,
+    footer: 'Check back later.',
   }
 }
 

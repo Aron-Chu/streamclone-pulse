@@ -242,7 +242,7 @@ export function ExtensionSignalChart({
         role="status"
       >
         <span style={styles.emptyText}>
-          {loading ? 'Loading timeline…' : (emptyMessage ?? 'Waiting for chat rollups…')}
+          {loading ? 'Loading timeline…' : (emptyMessage ?? 'Waiting for the first minute of chat…')}
         </span>
       </div>
     )

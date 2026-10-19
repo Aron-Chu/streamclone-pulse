@@ -10,10 +10,10 @@ export interface PulseNotTrackedPanelProps {
 
 function formatPoolLabel(activeCount: number | null, activeLimit: number | null): string | null {
   if (activeCount != null && activeLimit != null && activeLimit > 0) {
-    return `Live IRC pool: ${activeCount}/${activeLimit} channels`
+    return `${activeCount} of ${activeLimit} live spots in use`
   }
   if (activeLimit != null && activeLimit > 0) {
-    return `Live IRC pool: up to ${activeLimit} channels`
+    return `Up to ${activeLimit} live spots`
   }
   return null
 }
@@ -21,7 +21,7 @@ function formatPoolLabel(activeCount: number | null, activeLimit: number | null)
 export function pulseNotTrackedCopy(login: string): { title: string; body: string } {
   return {
     title: 'Not tracked live',
-    body: `${login} is not in StreamPulse’s live IRC pool right now. Live chat analytics is only available for actively tracked channels while we scale capacity.`,
+    body: `StreamPulse isn’t reading ${login}’s chat right now, so there’s no live chart. We chart a limited number of live channels at a time while we add room.`,
   }
 }
 
