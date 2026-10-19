@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { LibraryWorkspace } from '../ui/library/LibraryWorkspace.tsx'
 import type { LibraryCommand, LibraryMoment, LibraryRepository } from '../ui/library/model.ts'
 import type { MomentContext, MomentContextState } from '../ui/library/MomentPreview.tsx'
-import type { MyMomentsCommand, MyMomentsSnapshot } from '../shared/myMoments.ts'
+import { MY_MOMENTS_CHANGED, type MyMomentsCommand, type MyMomentsSnapshot } from '../shared/myMoments.ts'
 import { usePortalOrigin } from './usePortalOrigin.ts'
 import type { MomentPresentation } from '../ui/library/MomentMedia.tsx'
 import { momentIdentity } from '../background/myMomentsStore.ts'
@@ -27,6 +27,14 @@ export function createMyMomentsRepository(): LibraryRepository {
   return {
     load: () => request(),
     execute: command => request(command),
+    subscribe: onChange => {
+      // Only the worker says so; a Twitch tab's content script carries a tab.
+      const heard = (message: unknown, sender: chrome.runtime.MessageSender) => {
+        if ((message as { type?: unknown } | null)?.type === MY_MOMENTS_CHANGED && !sender.tab) onChange()
+      }
+      chrome.runtime.onMessage.addListener(heard)
+      return () => chrome.runtime.onMessage.removeListener(heard)
+    },
     export: async () => {
       const snapshot = await request()
       const bookmarksState = snapshot.bookmarksState

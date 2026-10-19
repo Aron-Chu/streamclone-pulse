@@ -173,6 +173,15 @@ describe('parseBackgroundRequest', () => {
     }
   })
 
+  it('keeps the removed id an Undo save names, and nothing malformed', () => {
+    const bookmark = { login: 'xqc', streamId: '123', offsetSeconds: 120, source: 'extension' }
+    expect(parseBackgroundRequest({ type: 'SAVE_BOOKMARK', bookmark, restoreOf: 'bk' })).toMatchObject({ type: 'SAVE_BOOKMARK', restoreOf: 'bk' })
+    expect(parseBackgroundRequest({ type: 'SAVE_BOOKMARK', bookmark })).not.toHaveProperty('restoreOf')
+    for (const restoreOf of ['', 7, 'a'.repeat(201)]) {
+      expect(parseBackgroundRequest({ type: 'SAVE_BOOKMARK', bookmark, restoreOf })).toBeNull()
+    }
+  })
+
   it('accepts a numeric sender VOD id on LIST_PAST_VODS and rejects anything else (LIFE-4)', () => {
     expect(parseBackgroundRequest({ type: 'LIST_PAST_VODS', login: 'XQC', liveStreamId: 's1', isLive: true, contextVodId: '987' }))
       .toEqual({ type: 'LIST_PAST_VODS', login: 'xqc', liveStreamId: 's1', isLive: true, contextVodId: '987' })

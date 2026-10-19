@@ -255,6 +255,31 @@ describe('My Moments frontend', () => {
     expect(commands).toEqual([{ kind: 'import-device-saves' }])
     expect(container.textContent).toContain('Added to your account.')
   })
+  it('shows a change made elsewhere in place, and never undoes a change made on this page', async () => {
+    let current = createDemoSnapshot('new', 0)
+    let changed!: () => void
+    let pending: ((snapshot: LibrarySnapshot) => void) | undefined
+    const repository: LibraryRepository = {
+      load: () => pending ? new Promise(resolve => { pending = resolve }) : Promise.resolve(structuredClone(current)),
+      execute: async () => { current = { ...current, moments: current.moments.filter(m => m.id !== 'one') }; return structuredClone(current) },
+      export: async () => '',
+      subscribe: onChange => { changed = onChange; return () => undefined },
+    }
+    await render(repository)
+    expect(container.textContent).toContain('No bookmarks yet')
+    current = createDemoSnapshot('ready', 0)
+    await act(async () => { changed(); expect(container.textContent).not.toContain('Loading your moments'); await new Promise(r => setTimeout(r, 5)) })
+    expect(container.textContent).toContain('Halloween: The Game')
+    // A refresh that started before the page's own removal finishes after it.
+    pending = () => undefined
+    await act(async () => { changed(); await Promise.resolve() })
+    const stale = pending!
+    await act(async () => { container.querySelector<HTMLButtonElement>('button[aria-label^="Remove bookmark: Halloween"]')!.click(); await new Promise(r => setTimeout(r, 5)) })
+    await click('Confirm change')
+    expect(container.textContent).not.toContain('Halloween: The Game')
+    await act(async () => { stale(createDemoSnapshot('ready', 0)); await new Promise(r => setTimeout(r, 5)) })
+    expect(container.textContent).not.toContain('Halloween: The Game')
+  })
   it('ignores stale completion after repository/account changes', async () => {
     let finish!: (snapshot: LibrarySnapshot) => void
     const old: LibraryRepository = { load: () => new Promise(resolve => { finish = resolve }), execute: async () => createDemoSnapshot(), export: async () => '' }

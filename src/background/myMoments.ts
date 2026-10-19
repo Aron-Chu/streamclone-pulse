@@ -2,7 +2,7 @@ import { createPulseBookmark, deletePulseBookmark, fetchPulseBookmarks } from '.
 import { isDeviceCredentialInvalidatedError } from './deviceAuth.ts'
 import { DEFAULT_BACKEND_URL, getBackendUrl } from '../shared/storage.ts'
 import { bindAccountDataForget, supporterAccount } from './supporterAccountRuntime.ts'
-import type { BookmarksState, MyMomentsRecent, MyMomentsRequest, MyMomentsSnapshot } from '../shared/myMoments.ts'
+import { MY_MOMENTS_CHANGED, type BookmarksState, type MyMomentsRecent, type MyMomentsRequest, type MyMomentsSnapshot } from '../shared/myMoments.ts'
 import type { BackgroundResponse, ListBookmarksMessage, PulseBookmark, RemoveBookmarkMessage, SaveBookmarkMessage } from '../shared/messages.ts'
 import { replayAvailability, type LibraryMoment, type MomentReference } from '../ui/library/model.ts'
 import { addDeviceBookmark, bookmarkIdentity, deletePersonal, momentIdentity as identity, personalTransaction, recordWatched } from './myMomentsStore.ts'
@@ -131,45 +131,46 @@ export async function handleDeviceBookmarks(message: ListBookmarksMessage | Save
  * of the channel, and the stream or VOD, the panel shows, found in that list
  * first: the list the page may already read and save to. A save kept on this
  * device leaves this database; an account's leaves the account, and its local
- * note goes with it, as an unsave in My Moments does.
+ * note goes with it, as an unsave in My Moments does. Undo can bring that note
+ * back for a short while (restoreRemovedNote).
  */
 export async function removePanelBookmark(message: RemoveBookmarkMessage, sender: chrome.runtime.MessageSender): Promise<BackgroundResponse> {
   const belongs = (b: PulseBookmark) => b.id === message.id && b.login === message.login
     && (message.streamId ? b.streamId === message.streamId : !!message.vodId && b.vodId === message.vodId)
+  const { scope, held } = await resolveScope()
+  const account = scopeAccount(scope)
+  let removed: PulseBookmark | undefined
   const dropNote = (data: Awaited<ReturnType<typeof personalTransaction>>) => {
     const notes = { ...data.notes }
+    if (notes[message.id] && removed) keepRemovedNote(scope, removed, notes[message.id])
     delete notes[message.id]
     return { ...data, notes }
   }
-  const { scope, held } = await resolveScope()
-  const account = scopeAccount(scope)
   if (!privateBrowsing(sender) && !held && !account) {
-    let found: PulseBookmark | undefined
     await personalTransaction(scope, data => {
-      found = data.bookmarks.find(belongs)
-      return found ? { ...dropNote(data), bookmarks: data.bookmarks.filter(b => b.id !== message.id) } : data
+      removed = data.bookmarks.find(belongs)
+      return removed ? { ...dropNote(data), bookmarks: data.bookmarks.filter(b => b.id !== message.id) } : data
     })
-    if (!found) throw new Error('bookmark_not_found')
-    await dropPictureUnlessWatched(scope, bookmarkIdentity(found))
+    if (!removed) throw new Error('bookmark_not_found')
+    await dropPictureUnlessWatched(scope, bookmarkIdentity(removed))
     return { type: 'REMOVE_BOOKMARK', ok: true, device: true }
   }
   let cursor: string | undefined
-  let found: PulseBookmark | undefined
   const seen = new Set<string>()
   do {
     const page = await fetchPulseBookmarks({ login: message.login, streamId: message.streamId,
       vodId: message.streamId ? undefined : message.vodId, limit: 100, ...(cursor ? { cursor } : {}) }, undefined, account)
-    found = page.items.find(belongs)
+    removed = page.items.find(belongs)
     cursor = page.nextCursor
     if (cursor && (seen.has(cursor) || seen.size >= 50)) throw new Error('invalid_bookmark_pagination')
     if (cursor) seen.add(cursor)
-  } while (!found && cursor)
-  if (!found) throw new Error('bookmark_not_found')
+  } while (!removed && cursor)
+  if (!removed) throw new Error('bookmark_not_found')
   // Pinned to the account the scope named, so a switch mid-way fails instead of reaching the next one.
   await deletePulseBookmark(message.id, undefined, account)
   if (account && !privateBrowsing(sender)) {
     await personalTransaction(scope, data => message.id in data.notes ? dropNote(data) : data)
-    await dropPictureUnlessWatched(scope, bookmarkIdentity(found))
+    await dropPictureUnlessWatched(scope, bookmarkIdentity(removed))
   }
   return { type: 'REMOVE_BOOKMARK', ok: true }
 }
@@ -205,6 +206,35 @@ export async function wantSavedPicture(saved: SaveBookmarkMessage['bookmark'], s
 export async function handlePicture(message: MomentPictureRequest, sender: chrome.runtime.MessageSender) {
   if (privateBrowsing(sender)) return { type: 'MOMENT_PICTURE' as const, ok: false }
   return handleMomentPicture(message, sender, pictureListed)
+}
+/** How long the panel's Undo can bring a removed bookmark's note back. */
+const UNDO_NOTE_MS = 2 * 60 * 1000
+/**
+ * Notes the panel's removes took with them, by removed id. Only this worker
+ * holds them: the Twitch page never reads one, a note an account keeps on
+ * this device is never uploaded, and a worker restart forgets them.
+ */
+const removedNotes = new Map<string, { scope: string; key: string; note: string; at: number }>()
+function keepRemovedNote(scope: string, b: PulseBookmark, note: string) {
+  const now = Date.now()
+  for (const [id, kept] of removedNotes) if (now - kept.at > UNDO_NOTE_MS) removedNotes.delete(id)
+  removedNotes.set(b.id, { scope, key: bookmarkIdentity(b), note, at: now })
+}
+/**
+ * The panel's Undo saved a removed bookmark again: the note this device kept
+ * for it moves to the new save, when that is the same moment in the same
+ * scope and the remove was recent. The save stands either way.
+ */
+export async function restoreRemovedNote(removedId: string, item: PulseBookmark, sender: chrome.runtime.MessageSender): Promise<void> {
+  const kept = removedNotes.get(removedId)
+  removedNotes.delete(removedId)
+  if (!kept || privateBrowsing(sender) || Date.now() - kept.at > UNDO_NOTE_MS || kept.key !== bookmarkIdentity(item)) return
+  try {
+    if (kept.scope !== await currentScope()) return
+    await personalTransaction(kept.scope, data => data.notes[item.id] ? data : { ...data, notes: { ...data.notes, [item.id]: kept.note } })
+  } catch {
+    // Only the note stays behind.
+  }
 }
 const reference = (m: MomentReference): MomentReference => ({ id: m.id, channel: m.channel, title: m.title, vodId: m.vodId, streamId: m.streamId,
   offsetSeconds: m.offsetSeconds, availability: replayAvailability(m) })
@@ -315,6 +345,8 @@ export function handleMyMoments(message: MyMomentsRequest, sender: chrome.runtim
       const saved = await personalTransaction(scope, data => recordWatched(data, { ...ref, id: identity(ref), note: '' }, message.epoch, Date.now()))
       // History keeps a picture of what was watched, as a save does.
       if (!held) void wantPicture(sender, pictureMoment(ref), scope, identity(ref), { owned: false, waitMs: 60_000 }).catch(() => undefined)
+      // An open My Moments page shows it without a reload; with none open, nobody listens.
+      void Promise.resolve().then(() => chrome.runtime.sendMessage({ type: MY_MOMENTS_CHANGED })).catch(() => undefined)
       const account = scopeAccount(scope)
       if (account && saved.accountSync?.enabled && saved.accountSync.pending.length) syncSoon(scope, account)
       return { ok: true }

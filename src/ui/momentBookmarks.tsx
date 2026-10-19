@@ -196,8 +196,8 @@ export function MomentBookmarksProvider({ login, streamId, vodId, resolveVodId, 
     }
   }
 
-  async function create(input: CreatePulseBookmarkInput, current: number) {
-    const result = await sendBackgroundMessage({ type: 'SAVE_BOOKMARK', bookmark: input })
+  async function create(input: CreatePulseBookmarkInput, current: number, restoreOf?: string) {
+    const result = await sendBackgroundMessage({ type: 'SAVE_BOOKMARK', bookmark: input, ...(restoreOf ? { restoreOf } : {}) })
     if (current !== generation.current) return null
     if ('error' in result && result.error) throw new Error(result.error)
     if (!('type' in result) || result.type !== 'BOOKMARK') throw new Error('invalid_bookmark_response')
@@ -216,9 +216,11 @@ export function MomentBookmarksProvider({ login, streamId, vodId, resolveVodId, 
     return true
   }
 
+  // The account's note comes back with the save; the worker puts back the note it kept on this device.
   const restore = (item: PulseBookmark) => run(async current => {
     const restored = await create({ login: item.login, ...(item.streamId ? { streamId: item.streamId } : {}),
-      ...(item.vodId ? { vodId: item.vodId } : {}), offsetSeconds: item.offsetSeconds, label: item.label, source: 'extension' }, current)
+      ...(item.vodId ? { vodId: item.vodId } : {}), offsetSeconds: item.offsetSeconds, label: item.label,
+      ...(item.notes ? { notes: item.notes } : {}), source: 'extension' }, current, item.id)
     if (restored) setToast(null)
   })
 

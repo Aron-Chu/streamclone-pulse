@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { bindKeepPressedInPlace } from '../src/ui/keepPressedInPlace.ts'
+import { bindKeepPressedInPlace, revealCardBelow } from '../src/ui/keepPressedInPlace.ts'
 
 /**
  * A panel where a card slot (top `slotTop`) grows by `grown` px above a row.
@@ -255,3 +255,98 @@ describe('keepPressedInPlace with a card closing above the pressed row', () => {
 function runAllFrames() {
   for (let elapsed = 0; elapsed < 1500 && frames.length > 0; elapsed += 16) frame()
 }
+
+describe('revealCardBelow (an arrival)', () => {
+  /** A 500 px panel with the chip at `chipTop` in its content and the card's slot right after it. */
+  function arrival({ chipTop = 600, cardHeight = 0 } = {}) {
+    const scroller = document.createElement('div')
+    scroller.className = 'pulse-panel-body'
+    const chip = document.createElement('div')
+    const slot = document.createElement('div')
+    slot.className = 'pulse-moment-slot'
+    scroller.append(chip, slot)
+    document.body.append(scroller)
+    const layout = { cardHeight }
+    const rect = (top: number, height: number) => ({ top, bottom: top + height, height } as DOMRect)
+    scroller.getBoundingClientRect = () => rect(0, 500)
+    chip.getBoundingClientRect = () => rect(chipTop - scroller.scrollTop, 24)
+    slot.getBoundingClientRect = () => rect(chipTop + 30 - scroller.scrollTop, layout.cardHeight)
+    return { scroller, chip, layout }
+  }
+
+  it('scrolls just far enough for the card, following it while it opens', () => {
+    const { scroller, chip, layout } = arrival()
+    revealCardBelow(chip)
+    frame()
+    // The empty slot starts at 630: 630 + 8 px margin - 500.
+    expect(scroller.scrollTop).toBe(138)
+    layout.cardHeight = 200
+    frame()
+    // Card bottom 830 + 8 - 500.
+    expect(scroller.scrollTop).toBe(338)
+  })
+
+  it('favours the card over the chip when both cannot fit', () => {
+    const { scroller, chip } = arrival({ cardHeight: 480 })
+    revealCardBelow(chip)
+    frame()
+    // Card bottom 1110 + 8 - 500: the chip (at 600) scrolls off, the card's actions show.
+    expect(scroller.scrollTop).toBe(618)
+    expect(chip.getBoundingClientRect().top).toBeLessThan(0)
+  })
+
+  it('ends the visible panel at the bottom edge of the window', () => {
+    vi.stubGlobal('innerHeight', 400)
+    const { scroller, chip } = arrival()
+    revealCardBelow(chip)
+    frame()
+    // The panel runs to 500, the window to 400: 630 + 8 - 400.
+    expect(scroller.scrollTop).toBe(238)
+  })
+
+  it('follows a picture that makes the card taller seconds later', () => {
+    const { scroller, chip, layout } = arrival({ cardHeight: 150 })
+    revealCardBelow(chip)
+    frame()
+    expect(scroller.scrollTop).toBe(288)
+    layout.cardHeight = 330
+    frame(3000)
+    expect(scroller.scrollTop).toBe(468)
+  })
+
+  it('leaves a card already in view alone', () => {
+    const { scroller, chip } = arrival({ chipTop: 100, cardHeight: 200 })
+    revealCardBelow(chip)
+    frame()
+    expect(scroller.scrollTop).toBe(0)
+  })
+
+  it('stops at the viewer\'s first input, and on its own once the card has opened', () => {
+    const first = arrival()
+    revealCardBelow(first.chip)
+    first.scroller.dispatchEvent(new Event('wheel'))
+    frame()
+    expect(first.scroller.scrollTop).toBe(0)
+    expect(frames).toEqual([])
+
+    const second = arrival()
+    revealCardBelow(second.chip)
+    frame(5100)
+    expect(frames).toEqual([])
+    second.layout.cardHeight = 200
+    frame()
+    expect(second.scroller.scrollTop).toBe(138)
+  })
+
+  it('stops when anything else scrolls the panel, such as its scrollbar', () => {
+    const { scroller, chip, layout } = arrival()
+    revealCardBelow(chip)
+    frame()
+    expect(scroller.scrollTop).toBe(138)
+    scroller.scrollTop = 0
+    layout.cardHeight = 200
+    frame()
+    expect(scroller.scrollTop).toBe(0)
+    expect(frames).toEqual([])
+  })
+})

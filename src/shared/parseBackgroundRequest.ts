@@ -246,7 +246,10 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
     case 'SAVE_BOOKMARK': {
       const bookmark = parseBookmarkInput(raw.bookmark)
       if (!bookmark) return null
-      return { type, bookmark }
+      if (raw.restoreOf === undefined) return { type, bookmark }
+      const restoreOf = requireString(raw.restoreOf)
+      if (!restoreOf || restoreOf.length > 200) return null
+      return { type, bookmark, restoreOf }
     }
     case 'DELETE_BOOKMARK': {
       const id = requireString(raw.id)

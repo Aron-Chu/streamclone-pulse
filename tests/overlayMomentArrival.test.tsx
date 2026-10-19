@@ -8,6 +8,7 @@ import type { TwitchPageContext } from '../src/content/twitch.ts'
 import type { ExtensionVodPulseResponse } from '../src/types/vodPulseTypes.ts'
 import { vodPulseToChannelPayload } from '../src/vod/vodPulseToChannelPayload.ts'
 import { MOMENT_ARRIVAL_STORAGE_KEY, resetMomentArrivalPage } from '../src/shared/momentArrival.ts'
+import liveReady from './e2e/fixtures/api/pulse-live-ready.json'
 
 vi.mock('../src/content/bridge.ts', () => ({
   sendBackgroundMessage: vi.fn(async () => ({ ok: false })),
@@ -32,6 +33,12 @@ function finishedVod(): ExtensionVodPulseResponse {
     durationSeconds: 7_800,
     timeline: { bucketSeconds: 60, points },
   } as ExtensionVodPulseResponse
+}
+
+// The VOD of a stream that is still live: the backend answers with the live chart.
+function liveReplay(): ExtensionVodPulseResponse {
+  return { ...liveReady, mode: 'live_dvr', vodId: VOD_ID, channelLogin: 'jerma985', login: 'jerma985', provisional: false,
+    resolutionState: 'live_archive_validated', retryable: false } as unknown as ExtensionVodPulseResponse
 }
 
 function storageWith(items: Map<string, unknown>) {
@@ -87,8 +94,7 @@ describe('board E: a Watch link lands on its moment', () => {
     vi.unstubAllGlobals()
   })
 
-  async function open(): Promise<void> {
-    const vodPulse = finishedVod()
+  async function open(vodPulse = finishedVod()): Promise<void> {
     const payload = vodPulseToChannelPayload(vodPulse, 'jerma985')
     await act(async () => { root.render(<Overlay {...props} payload={payload} vodPulse={vodPulse} vodPulseLoading={false} />) })
     await settle()
@@ -139,6 +145,17 @@ describe('board E: a Watch link lands on its moment', () => {
     // Data starts at 0:50; 0:10 is 40 s before it.
     expect(chip()?.textContent).toContain('From Pulse · 00:00:10')
     expect(card()).not.toBeNull()
+  })
+
+  it('locks the minute on the live chart of a replay that is still live', async () => {
+    local.set(MOMENT_ARRIVAL_STORAGE_KEY, { vodId: VOD_ID, offsetSeconds: 1_230, clock: 'stream', source: 'library', savedAtMs: Date.now() })
+    await open(liveReplay())
+
+    expect(chip()?.textContent).toContain('From My Moments · 00:20:30')
+    // The live chart's own minute card, right after the chip.
+    expect(chip()?.nextElementSibling?.getAttribute('data-chart-inspector-kind')).toBe('minute')
+    expect(node.querySelector('[aria-label^="Selected minute at"]')).not.toBeNull()
+    expect(local.has(MOMENT_ARRIVAL_STORAGE_KEY)).toBe(false)
   })
 
   it('ignores a note for another VOD', async () => {

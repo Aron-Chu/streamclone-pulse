@@ -46,7 +46,7 @@ async function mountPage() {
     return undefined
   })
   vi.stubGlobal('chrome', {
-    runtime: { id: 'test-extension', sendMessage },
+    runtime: { id: 'test-extension', onMessage: { addListener: vi.fn(), removeListener: vi.fn() }, sendMessage },
     storage: {
       sync: { get: vi.fn(async () => ({ backendUrl: 'https://api.streampulse.stream' })), set: vi.fn(async () => undefined) },
       local: { get: vi.fn(async () => ({})), set: vi.fn(async () => undefined) },

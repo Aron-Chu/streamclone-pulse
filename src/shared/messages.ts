@@ -254,6 +254,8 @@ export interface ListBookmarksMessage {
 export interface SaveBookmarkMessage {
   type: 'SAVE_BOOKMARK'
   bookmark: CreatePulseBookmarkInput
+  /** The panel's Undo of a remove: the removed bookmark's id, whose note on this device comes back. */
+  restoreOf?: string
 }
 
 export interface DeleteBookmarkMessage {

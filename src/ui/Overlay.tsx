@@ -19,7 +19,7 @@ import { SettingsGearIcon } from './SettingsGearIcon.tsx'
 import { useSupporterAppearanceDetails } from './useSupporterAppearance.ts'
 import { StreamPulseTitleBlock, streamPulseHeaderChrome, streamPulseHeaderChromeSidebar } from './StreamPulseTitleBlock.tsx'
 import { PulseBannerBackdrop, usePulseBanner } from './PulseBanner.tsx'
-import { useKeepPressedInPlace } from './keepPressedInPlace.ts'
+import { revealCardBelow, useKeepPressedInPlace } from './keepPressedInPlace.ts'
 import { AnalyticsHubCta } from './AnalyticsHubCta.tsx'
 import { rollupToRecapHeatPoint } from './recapChartPeaks.ts'
 import { buildRecapEmoteCatalog } from './recapEmotes.ts'
@@ -856,6 +856,8 @@ function OverlayMain({
     && !hasRecapPanel,
   )
   const canRenderPayload = Boolean(payload && panelSurfaceState !== 'identity_mismatch')
+  // A replay of a stream that is still live shows the live chart: its minute card opens under it.
+  const liveChartShown = canRenderPayload && pulseSupported && pulseLiveAccess.state === 'full_live' && Boolean(panelSections?.showLiveStatsBand)
 
   // Board E: a Watch link that opened this VOD locks its moment's minute, with
   // its card open, and says where the viewer came from until they unlock it.
@@ -876,7 +878,7 @@ function OverlayMain({
   useEffect(() => {
     const found = pendingArrival
     const source = chartSourcePayload
-    if (!found || !source || !canRenderPayload || !isVodPage) return
+    if (!found || !source || !canRenderPayload || !(isVodPage || liveChartShown)) return
     if (source.vodId && source.vodId !== found.vodId) return
     // Wait for the chart: the first payload can come without its minutes.
     if (!(source.fullRollups?.length || source.rollups?.length)) return
@@ -893,7 +895,7 @@ function OverlayMain({
       if (found.source !== 'link') watchArrival(found, at, Math.max(0, at - delta))
     }).catch(() => undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- lockMinuteAt reads this render's state
-  }, [pendingArrival, chartSourcePayload, canRenderPayload, isVodPage, surfaceIdentity])
+  }, [pendingArrival, chartSourcePayload, canRenderPayload, isVodPage, liveChartShown, surfaceIdentity])
 
   /** History counts an arrival once 10 s of it plays, as after a jump in this tab. */
   function watchArrival(found: MomentArrival, at: number, vodSecond: number): void {
@@ -937,6 +939,19 @@ function OverlayMain({
     video.addEventListener('seeked', seeked)
     return () => video.removeEventListener('seeked', seeked)
   }, [arrival, unlockArrival])
+
+  // The chip and card open under the chart, often past the panel's fold:
+  // scroll them into view once, on arrival only.
+  const arrivalChipRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (arrival && arrivalChipRef.current) return revealCardBelow(arrivalChipRef.current)
+  }, [arrival])
+  const arrivalNote = arrival ? (
+    <div ref={arrivalChipRef} className="pulse-arrival" data-moment-arrival={arrival.source} data-chart-action="true">
+      <span>{ARRIVAL_LABEL[arrival.source]} · {formatHeatOffset(arrival.at)}</span>
+      <button type="button" aria-label="Unlock this moment" title="Unlock" onClick={unlockArrival}>×</button>
+    </div>
+  ) : null
   const sidebarChatOnly = showSidebarTabs && resolvedSidebarTab === 'chat'
   const metricsCompact = sidebarSnapped && (panelHostWidth ?? 0) > 0 && (panelHostWidth ?? 0) < SIDEBAR_COMPACT_WIDTH
   const shellClass = [
@@ -2010,6 +2025,7 @@ function OverlayMain({
                   hasVodContext={Boolean(payload?.vodId ?? context.vodId)}
                   coverageTier={coverageTierState?.coverageTier ?? null}
                   liveMetadata={coverageTierState?.liveMetadata ?? null}
+                  arrivalNote={arrivalNote}
                 />
               ) : null}
 
@@ -2080,12 +2096,7 @@ function OverlayMain({
           {panelSections?.showRecap && payload ? (
             <StreamRecapSection
               externalPoint={clipPoint}
-              arrivalNote={arrival ? (
-                <div className="pulse-arrival" data-moment-arrival={arrival.source} data-chart-action="true">
-                  <span>{ARRIVAL_LABEL[arrival.source]} · {formatHeatOffset(arrival.at)}</span>
-                  <button type="button" aria-label="Unlock this moment" title="Unlock" onClick={unlockArrival}>×</button>
-                </div>
-              ) : null}
+              arrivalNote={arrivalNote}
               payload={payload}
               backendUrl={backendUrl}
               uiState={recapUiState === 'partial' ? 'ready' : (recapUiState ?? 'ready')}

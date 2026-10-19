@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState, useCallback } from 'react'
-import type { CSSProperties } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import {
   deriveLiveStats,
   formatHeatOffset,
@@ -133,6 +133,8 @@ export interface LiveStatsBandProps {
   liveMetadata?: LiveViewerMetadata | null
   /** Marketing landing — read-only panel with no navigation or chart pinning. */
   demoMode?: boolean
+  /** Over the minute card: where the viewer came from, on a replay of a stream still live. */
+  arrivalNote?: ReactNode
 }
 
 const CONFIDENCE_STYLES: Record<
@@ -274,6 +276,7 @@ export function LiveStatsBand({
   coverageTier = null,
   liveMetadata = null,
   demoMode = false,
+  arrivalNote,
 }: LiveStatsBandProps) {
   const statsInput = useMemo(
     () => ({
@@ -1491,6 +1494,7 @@ export function LiveStatsBand({
               emoteSyncTone={emoteSyncTone}
             />
           </div>
+          {arrivalNote}
           {inspectorHold.point ? (
             <MomentCardSlot
               exiting={inspectorHold.exiting}

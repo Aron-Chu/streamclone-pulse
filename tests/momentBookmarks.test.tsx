@@ -164,11 +164,24 @@ it('puts a removed bookmark back with Undo', async () => {
   await card()
   await press(bookmark())
   await press(host.querySelector('[data-bookmark-toast-action="undo"]'))
-  expect(calls('SAVE_BOOKMARK')).toEqual([{ type: 'SAVE_BOOKMARK', bookmark: {
+  // The removed id lets the worker put back the note it kept on this device.
+  expect(calls('SAVE_BOOKMARK')).toEqual([{ type: 'SAVE_BOOKMARK', restoreOf: 'one', bookmark: {
     login: 'xqc', streamId: '123456', offsetSeconds: 120, label: 'Chat spike', source: 'extension',
   } }])
   expect(bookmark()?.getAttribute('data-moment-save-state')).toBe('saved')
   expect(toast()).toBeNull()
+})
+
+it('puts an account note back with Undo', async () => {
+  runtime()
+  vi.mocked(sendBackgroundMessage)
+    .mockResolvedValueOnce({ type: 'BOOKMARKS', items: [{ ...item, notes: 'clutch round' }] })
+    .mockResolvedValueOnce({ type: 'REMOVE_BOOKMARK', ok: true })
+    .mockResolvedValueOnce({ type: 'BOOKMARK', item: { ...item, id: 'two', notes: 'clutch round' } })
+  await card()
+  await press(bookmark())
+  await press(host.querySelector('[data-bookmark-toast-action="undo"]'))
+  expect(calls('SAVE_BOOKMARK')).toEqual([expect.objectContaining({ restoreOf: 'one', bookmark: expect.objectContaining({ notes: 'clutch round' }) })])
 })
 
 it('takes a save back with Undo', async () => {

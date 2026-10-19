@@ -9,6 +9,8 @@ export type MyMomentsRequest =
   /** `reference`: the moment a jump or arrival plays, so its picture can be kept (src/background/momentPictures.ts). */
   | { type: 'MOMENT_CAPTURE'; action: 'status'; reference?: MomentReference }
   | { type: 'MOMENT_CAPTURE'; action: 'record'; epoch: number; reference: MomentReference; watchedSeconds: number }
+/** The worker tells open extension pages that My Moments changed elsewhere: a watched moment joined History. */
+export const MY_MOMENTS_CHANGED = 'MY_MOMENTS_CHANGED'
 /**
  * Why the hosted bookmark list is missing.
  *
