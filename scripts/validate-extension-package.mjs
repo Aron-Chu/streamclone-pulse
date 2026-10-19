@@ -21,7 +21,7 @@ import {
 } from './extension-permission-allowlists.mjs'
 import { isStoreTarget, loadManifestForTarget, resolveExtensionTarget } from './extension-target.mjs'
 import { REMOTE_CODE_SCAN_NOTE } from './remote-code-scan.mjs'
-import { scanArchiveEntryBytes } from './archive-byte-scan.mjs'
+import { isBinaryAssetPath, scanArchiveEntryBytes } from './archive-byte-scan.mjs'
 import {
   cleanupExtractDir,
   compareExtractedToDist,
@@ -36,6 +36,7 @@ import { textContainsHostedApiOrigin } from './lib/hosted-api-origin.mjs'
 import { checkDeviceLinkBundles } from './lib/device-link-package.mjs'
 import { findStoreDeveloperMarkers } from './store-artifact-policy.mjs'
 import { evaluateReleaseNotesGate, resolveCiPackageProbe } from './lib/release-notes-gate.mjs'
+import { describeStoreDevHosts } from './lib/dev-host-scan.mjs'
 
 const root = process.cwd()
 const dist = join(root, 'dist')
@@ -231,6 +232,13 @@ function reportArchiveHits(rel, hits) {
   }
 }
 
+/** Store bundles must not spell a development host or port, plainly or encoded. */
+function scanStoreDevHosts(rel, text) {
+  for (const finding of describeStoreDevHosts(text)) {
+    fail(`store artifact spells a development host in ${rel}: ${finding}`)
+  }
+}
+
 function scanTextArtifact(rel, contents, store) {
   const result = scanArchiveEntryBytes(rel, Buffer.from(String(contents ?? ''), 'utf8'), { store })
   reportArchiveHits(rel, result.hits)
@@ -238,6 +246,7 @@ function scanTextArtifact(rel, contents, store) {
     for (const re of DEV_FORBIDDEN_CONTENT) {
       if (re.test(contents)) fail(`store artifact contains development string in ${rel}: ${re}`)
     }
+    scanStoreDevHosts(rel, contents)
   }
 }
 
@@ -249,6 +258,7 @@ function scanArchivedBuffer(rel, buf, store) {
     for (const re of DEV_FORBIDDEN_CONTENT) {
       if (re.test(asText)) fail(`store artifact contains development string in ${rel}: ${re}`)
     }
+    if (!isBinaryAssetPath(rel)) scanStoreDevHosts(rel, asText)
   }
 }
 

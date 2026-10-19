@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { optionsForBoundedActivityFallback } from "../../lib/activityRangeCapabilities";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { useHubRecentLogins } from "../../hooks/useHubRecentLogins";
@@ -48,6 +48,7 @@ import { FigmaEmoteSignalBlock } from "../../ui/components/analytics/FigmaEmoteS
 import {
   ChartSourceBanner,
   FigmaGlobalActivityPanel,
+  type FigmaGlobalActivityPanelProps,
 } from "../../ui/components/analytics/FigmaGlobalActivityPanel";
 import { HubLiveWireFeed } from "../../ui/components/analytics/HubLiveWireFeed";
 import { FigmaLiveChannelRail } from "../../ui/components/analytics/FigmaLiveChannelRail";
@@ -117,7 +118,7 @@ function formatUpdatedAgo(ts: number | null, nowMs: number): string | undefined 
 }
 
 /** Public `/analytics` command-center landing. */
-function AnalyticsLandingContent() {
+function AnalyticsLandingContent({ ActivityPanel }: { ActivityPanel: ComponentType<FigmaGlobalActivityPanelProps> }) {
   const labels = useCommandCenterLabels();
   const [searchParams, setSearchParams] = useSearchParams();
   const { hash } = useLocation();
@@ -666,7 +667,7 @@ function AnalyticsLandingContent() {
             <a className="analytics-discovery__jump" href="#section-live-wire">Jump to Live Wire</a>
             <div className="analytics-discovery-layout">
             <div className="analytics-discovery-layout__chart">
-            <FigmaGlobalActivityPanel
+            <ActivityPanel
               unavailable={measurementsUnavailable}
               hub={data}
               activitySummary={activitySummary}
@@ -808,6 +809,14 @@ function AnalyticsLandingContent() {
   );
 }
 
-export default function AnalyticsLandingPage() {
-  return <AnalyticsLandingContent />;
+export interface AnalyticsLandingPageProps {
+  /**
+   * The activity panel. Default: the Command Center panel. The d3-v5 hub route
+   * (AnalyticsHubV5Page, built only with VITE_PUBLIC_HUB_V5) passes its own.
+   */
+  activityPanel?: ComponentType<FigmaGlobalActivityPanelProps>;
+}
+
+export default function AnalyticsLandingPage({ activityPanel = FigmaGlobalActivityPanel }: AnalyticsLandingPageProps = {}) {
+  return <AnalyticsLandingContent ActivityPanel={activityPanel} />;
 }

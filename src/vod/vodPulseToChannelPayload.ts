@@ -3,6 +3,7 @@ import type {
   ExtensionRollup,
   PulsePayload,
   PulseRecapEmote,
+  PulseUpdateMessage,
   PulseRecapMoment,
   PulseStreamRecap,
 } from '../shared/messages.ts'
@@ -203,4 +204,18 @@ export function vodPulseToChannelPayload(vod: ExtensionVodPulseResponse, fallbac
     rosterEligible: true,
     top500Eligible: true,
   }
+}
+
+/**
+ * A VOD's full-window answer (GET_PULSE_VOD window=full) in the shape of the
+ * channel's Full answer, so the Overlay's full-history path can use it (VOD-5).
+ */
+export function vodFullHistoryUpdate(response: unknown, fallbackLogin?: string): PulseUpdateMessage | null {
+  if (!response || typeof response !== 'object' || !('type' in response) || response.type !== 'VOD_PULSE_UPDATE') {
+    return null
+  }
+  const { vodPulse } = response as { vodPulse?: ExtensionVodPulseResponse | null }
+  const payload = vodPulse ? vodPulseToChannelPayload(vodPulse, fallbackLogin) : null
+  if (!payload) return null
+  return { type: 'PULSE_UPDATE', login: payload.login, payload, ...(payload.streamId ? { streamId: payload.streamId } : {}) }
 }

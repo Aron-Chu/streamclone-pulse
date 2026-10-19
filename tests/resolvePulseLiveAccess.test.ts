@@ -33,7 +33,7 @@ const hostedCap: ExtensionCoverageTierResponse = {
 
 describe('coverageTierStatusLabel', () => {
   it.each([
-    ['active_live_coverage', true, 'Chat tracked (IRC)'],
+    ['active_live_coverage', true, 'Chat tracked'],
     ['warming', true, 'Warming'],
     ['top500_metadata_only', false, 'Metadata only — no chat coverage'],
     [undefined, true, 'Warming'],
@@ -106,6 +106,29 @@ describe('resolvePulseLiveAccess', () => {
           ...hostedCap,
           coverageTier: 'top500_metadata_only',
         },
+      })
+      expect(result.state).toBe('not_tracked')
+    })
+
+    // Warming = chat is being read but no minute is saved yet. The channel is
+    // in the pool, so it gets the live view and its warm-up card, never the
+    // not-tracked card.
+    it('shows full_live for a warming channel that is being tracked', () => {
+      const result = resolvePulseLiveAccess({
+        payload: basePayload({ tracking: true, rollups: [] }),
+        pageIsLive: true,
+        hosted: true,
+        coverageTier: { ...hostedCap, coverageTier: 'warming' },
+      })
+      expect(result.state).toBe('full_live')
+    })
+
+    it('still shows not_tracked for a warming tier the payload says is not tracked', () => {
+      const result = resolvePulseLiveAccess({
+        payload: basePayload({ tracking: false }),
+        pageIsLive: true,
+        hosted: true,
+        coverageTier: { ...hostedCap, coverageTier: 'warming' },
       })
       expect(result.state).toBe('not_tracked')
     })

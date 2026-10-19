@@ -47,10 +47,15 @@ const primaryButtonStyle: CSSProperties = {
  * Bookmark saves exactly what the inspector card shows: the ranked moment when
  * one is selected, otherwise the raw chart minute (no score is sent for it).
  */
-export function SavedMoments({ login, streamId, vodId, selected, minuteOffsetSeconds }: {
+export function SavedMoments({ login, streamId, vodId, selected, minuteOffsetSeconds, resolveVodId }: {
   login: string; streamId?: string; vodId?: string; selected?: LiveHeatPoint | null
   /** Raw chart minute shown by the inspector when no ranked moment is selected. */
   minuteOffsetSeconds?: number | null
+  /**
+   * Live only: finds the live archive's VOD id. A save with only the stream
+   * stays "Replay not linked" in My Moments for good (PAGE-1).
+   */
+  resolveVodId?: () => Promise<string | null>
 }) {
   const [items, setItems] = useState<PulseBookmark[]>([])
   /** From the worker: saves stay on this device, go to the signed-in account, or (private windows) need an account. */
@@ -159,8 +164,12 @@ export function SavedMoments({ login, streamId, vodId, selected, minuteOffsetSec
         if (cursor) seen.add(cursor)
       } while (cursor)
 
+      // Without an archive id the save still goes through, stream-only.
+      const archiveId = validVodId ?? (streamId && resolveVodId ? await resolveVodId().catch(() => null) : null)
+      if (current !== generation.current) return
+      const saveVodId = archiveId && /^\d+$/.test(archiveId) ? archiveId : undefined
       const result = await sendBackgroundMessage({ type: 'SAVE_BOOKMARK', bookmark: {
-        login, streamId, ...(validVodId ? { vodId: validVodId } : {}), offsetSeconds: offset,
+        login, streamId, ...(saveVodId ? { vodId: saveVodId } : {}), offsetSeconds: offset,
         label, source: 'extension',
       } })
       if (current !== generation.current) return

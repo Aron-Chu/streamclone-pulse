@@ -750,6 +750,7 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
               streamId: message.streamId,
               allowWatch,
               explicitFull: window === 'full',
+              fresh: message.fresh === true,
             },
             pulseFetchDeps(),
             pulseCoord,

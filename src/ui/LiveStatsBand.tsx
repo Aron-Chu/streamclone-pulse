@@ -110,6 +110,8 @@ export interface LiveStatsBandProps {
   onOpenAnalytics?: (offsetSeconds: number) => void
   onOpenFullAnalytics?: () => void
   onRequestFullTimeline?: () => Promise<FullHistoryRequestResult>
+  /** Live only: the live archive's VOD id, so a bookmark can link its replay. */
+  onResolveArchiveVodId?: () => Promise<string | null>
   onChartWindowChange?: (window: ChartTimelineWindow) => void
   onPinOffset?: (offsetSeconds: number | null) => void
   /** Raw bucket selected on the chart; used when no ranked moment matches it. */
@@ -262,6 +264,7 @@ export function LiveStatsBand({
   onOpenAnalytics,
   onOpenFullAnalytics,
   onRequestFullTimeline,
+  onResolveArchiveVodId,
   onChartWindowChange,
   onPinOffset,
   onChartMinuteSelect,
@@ -1602,6 +1605,7 @@ export function LiveStatsBand({
             login={payload.login}
             streamId={payload.streamId}
             vodId={payload.vodId ?? undefined}
+            resolveVodId={onResolveArchiveVodId}
             selected={selectedMomentPoint}
             minuteOffsetSeconds={inspectorInput && !inspectorInput.moment ? inspectorInput.rollup.offsetSeconds : null}
           />

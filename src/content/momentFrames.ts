@@ -38,16 +38,24 @@ let enabled = true
 const sources: MomentFrameSource[] = []
 let timer: number | undefined
 
-/** Twitch's ad markers: the "Ad" label and countdown over the player, and its ad overlay. */
+/** Twitch's ad markers: the "Ad" label and countdown over the player. */
 const AD_MARKERS = [
   '[data-a-target="video-ad-label"]',
   '[data-a-target="video-ad-countdown"]',
-  '[data-a-target="ax-overlay"]',
   '[data-test-selector="ad-banner-default-text"]',
 ].join(',')
+/**
+ * Twitch's ad overlay. The player always carries an empty one, ad or not, so it
+ * only counts as an ad once something is drawn inside it.
+ */
+const AD_OVERLAY = '[data-a-target="ax-overlay"]'
 
 export function adShowing(root: ParentNode = document): boolean {
-  return root.querySelector(AD_MARKERS) != null
+  if (root.querySelector(AD_MARKERS) != null) return true
+  for (const overlay of root.querySelectorAll(AD_OVERLAY)) {
+    if (overlay.childElementCount > 0) return true
+  }
+  return false
 }
 
 const canvas = document.createElement('canvas')

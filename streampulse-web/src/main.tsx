@@ -23,11 +23,15 @@ import { captureAccountDeviceCode } from './lib/accountDeviceCode'
 import { captureAccountRestore, isPrivateSupporterRoute } from './lib/accountRestore'
 import { setProductAnalyticsRoute } from './lib/productAnalytics'
 import { routeScrollState } from './lib/routeScroll'
+import { primePublicHub } from './lib/hubEarlyFetch'
 
 captureAccountConfirmation()
 captureAccountDeviceCode()
 captureAccountRestore()
 if (!isPrivateSupporterRoute(window.location.pathname)) initPortalSentry()
+// d3-v5 hub only: start the first hub read while the analytics chunk downloads.
+// Read inline so a flag-off build drops the call and the module.
+if (import.meta.env.VITE_PUBLIC_HUB_V5 === 'on' || import.meta.env.VITE_PUBLIC_HUB_V5 === '1') primePublicHub()
 
 const queryClient = new QueryClient({
   defaultOptions: {
