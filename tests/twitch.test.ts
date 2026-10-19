@@ -103,6 +103,26 @@ describe('detectTwitchChannelLive', () => {
     expect(detectTwitchChannelLive(channel, 1_000)).toBe(false)
   })
 
+  it.each([
+    '<p data-a-target="animated-channel-viewers-count">41,982</p>',
+    '<div class="tw-channel-status-text-indicator"><p>LIVE</p></div>',
+  ])('reads the channel header as live while an ad or player error hides the live duration: %s', header => {
+    const page = livePage()
+    Object.defineProperty(page.main, 'duration', { configurable: true, value: 30 })
+    expect(detectTwitchChannelLive(channel, 1_000)).toBe(false)
+    page.doc.body.insertAdjacentHTML('beforeend', header)
+    expect(detectTwitchChannelLive(channel, 20_000)).toBe(true)
+    page.doc.body.insertAdjacentHTML('beforeend', '<div data-a-target="channel-offline-header"></div>')
+    expect(detectTwitchChannelLive(channel, 21_000)).toBe(false)
+  })
+
+  it('does not read a non-LIVE status indicator as live', () => {
+    const page = livePage()
+    Object.defineProperty(page.main, 'duration', { configurable: true, value: 30 })
+    page.doc.body.insertAdjacentHTML('beforeend', '<div class="tw-channel-status-text-indicator"><p>OFFLINE</p></div>')
+    expect(detectTwitchChannelLive(channel, 1_000)).toBe(false)
+  })
+
   it('ignores the Firefox sentinel on a secondary video', () => {
     const page = livePage()
     Object.defineProperty(page.ad, 'duration', { configurable: true, value: 9_223_372_036_854.775 })

@@ -140,6 +140,7 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
         watch: optionalBoolean(raw.watch),
         window,
         streamId: optionalString(raw.streamId),
+        ...(raw.fresh === true ? { fresh: true } : {}),
       }
     }
     case 'GET_CLIP': {

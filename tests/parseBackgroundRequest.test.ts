@@ -21,6 +21,8 @@ describe('parseBackgroundRequest', () => {
       window: 'full',
       streamId: undefined,
     })
+    expect(parseBackgroundRequest({ type: 'GET_PULSE', login: 'xqc', fresh: true })).toMatchObject({ fresh: true })
+    expect(parseBackgroundRequest({ type: 'GET_PULSE', login: 'xqc', fresh: 'yes' })).not.toHaveProperty('fresh')
     expect(parseBackgroundRequest({ type: 'HEALTH' })).toEqual({ type: 'HEALTH', force: undefined })
     expect(parseBackgroundRequest({ type: 'HEALTH', force: true })).toEqual({ type: 'HEALTH', force: true })
     expect(parseBackgroundRequest({ type: 'GET_UPDATE_CHECK_CAPABILITY' })).toEqual({ type: 'GET_UPDATE_CHECK_CAPABILITY' })

@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import {
   CHART_SURFACES,
+  HUB_V5_BUILD,
   resetZoom,
   scrollYOf,
   scrollZoomToggleOf,
@@ -24,8 +25,9 @@ import {
 // Owner rule (2026-10-13): the wheel zooms anywhere over a chart card, so the
 // card's header rows (readout, games strip, focus rows) and the navigator's
 // buttons and hint zoom too. Only outside the card does the page keep the
-// wheel. The stream chart follows it; on the hub only the shared navigator
-// does until the hub's d3 port brings its header rows along.
+// wheel. The stream chart follows it, and so does the d3-v5 hub (a build with
+// VITE_PUBLIC_HUB_V5=on). On the Command Center hub (the default build) only
+// the shared navigator does.
 
 interface Zone {
   top: number
@@ -230,13 +232,17 @@ for (const [name, open] of Object.entries(CHART_SURFACES)) {
       }
     })
 
-    if (name === 'stream') {
+    if (name === 'stream' || HUB_V5_BUILD) {
       test('the rest of the card zooms too: its header rows, the navigator buttons and the hint', async ({ page }) => {
         const surface = await open(page)
-        // The focus rows, games strip and hover hint, and the navigator's (i) and Zoom in button below the bar.
-        const selectors = ['[data-chart-focus-bar]', '[data-games-played]', '[data-chart-selection-hint]',
-          // The stream chart's hint lives in the navigator's (i) (d3-v2 session-original).
-          '[data-session-chart-navigator] [data-chart-navigator-info]', '[data-session-chart-navigator] .hx-chart-navigator__zoom-buttons button']
+        // The stream page's focus rows, games strip and hover hint; the hub's hover readout and summary line;
+        // on both, the navigator's hint (the stream's (i)) and Zoom in button below the bar.
+        const selectors = name === 'stream'
+          ? ['[data-chart-focus-bar]', '[data-games-played]', '[data-chart-selection-hint]',
+            // The stream chart's hint lives in the navigator's (i) (d3-v2 session-original).
+            '[data-session-chart-navigator] [data-chart-navigator-info]', '[data-session-chart-navigator] .hx-chart-navigator__zoom-buttons button']
+          : ['.figma-global-activity__hub-chart .hx-chart-header__readout', '.figma-global-activity__hub-chart .hx-chart-summary',
+            '.figma-global-activity__hub-chart .hx-chart-navigator__hint', '.figma-global-activity__hub-chart .hx-chart-navigator__zoom-buttons button']
         for (const selector of selectors) {
           await resetZoom(surface)
           const target = page.locator(selector).first()
@@ -257,7 +263,7 @@ for (const [name, open] of Object.entries(CHART_SURFACES)) {
       test('outside the card the page keeps the wheel', async ({ page }) => {
         const surface = await open(page)
         await resetZoom(surface)
-        const card = '[data-session-chart-wheel-card]'
+        const card = name === 'stream' ? '[data-session-chart-wheel-card]' : '[data-hub-chart-wheel-card]'
         // Put the card's top edge 200px down the viewport, then wheel just above it.
         const spot = await page.evaluate((selector) => {
           const element = document.querySelector(selector)!
@@ -279,8 +285,8 @@ for (const [name, open] of Object.entries(CHART_SURFACES)) {
         await expect(surface.navigator).toHaveAttribute('data-hub-chart-navigator-window', `0:${surface.full - 1}`)
       })
     } else {
-      // The hub's readout and summary keep the release-1 rule (they give the page the wheel)
-      // until the hub's d3 port lands; that port brings the hub under the card rule above.
+      // The Command Center hub's readout and summary keep the release-1 rule (they give the page
+      // the wheel). The d3-v5 hub (VITE_PUBLIC_HUB_V5) is under the card rule above.
       test('above the chart the page keeps the wheel', async ({ page }) => {
         const surface = await open(page)
         await resetZoom(surface)

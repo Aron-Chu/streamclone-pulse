@@ -78,6 +78,8 @@ export interface GetPulseMessage {
   window?: 'recent' | 'full'
   /** Reject cached pulse when the viewer moved to a different live stream. */
   streamId?: string
+  /** A Retry the viewer pressed: skip the cache and fetch once. */
+  fresh?: boolean
 }
 
 export interface GetClipMessage {

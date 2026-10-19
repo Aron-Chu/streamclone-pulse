@@ -47,7 +47,7 @@ import { useAnalyticsMotion } from "../../motion/useAnalyticsMotion";
 import { Link } from "react-router-dom";
 import "../hub/hub.css";
 
-function CollectorHealthChip({ hub }: { hub: PublicHub }) {
+export function CollectorHealthChip({ hub }: { hub: PublicHub }) {
   const roster = hub.corpusPipeline.roster;
   const active = roster.collectorTracking || hub.corpusPipeline.collectorActive;
   const expected =
@@ -85,7 +85,7 @@ function CollectorHealthChip({ hub }: { hub: PublicHub }) {
   );
 }
 
-function ActivityHonestyChip({ hub }: { hub: PublicHub }) {
+export function ActivityHonestyChip({ hub }: { hub: PublicHub }) {
   const label = hubActivityHonestyChipLabel(hub.activity);
   if (!label) return null;
   const detail = hubActivityHonestyDetail(hub.activity);
