@@ -1,6 +1,16 @@
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { momentRankAccent, momentReasonChipTone } from '../../utils/momentListDisplay.tsx'
 import { count, getEmoteImageUrl } from '../../utils/consoleFormat.ts'
+import {
+  momentRowHms,
+  momentRowInt,
+  momentRowTwitchTime,
+  type MomentRowSeries,
+  type MomentRowSparkBar,
+} from '../../utils/momentRowDisplay.ts'
+import { alignedVodOffset, buildTwitchVodUrl } from '../../utils/twitchVodUrl.ts'
 import { ConsoleEmoteImg } from './ConsoleEmoteImg.tsx'
+import { MomentRowSpark, momentRowSparkNote } from './MomentRowSpark.tsx'
 
 export interface MomentRowEmote {
   name: string
@@ -180,5 +190,483 @@ export function MomentListLegend() {
       intensity relative to this stream&rsquo;s loudest moment — Pulse ranks reactions, not
       clip quality.
     </p>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Session moment rows: the d3-v2 session-original rows (moment-rows.js and
+// session-original.css "moment rows", 2026-10-15), styled by
+// streampulse-web/src/ui/charts/sp-session-rows.css (`ssr-` classes) and
+// analytics-chart-motion.css (the lock glow). The figures are the backend's:
+// rank, reason and reaction score from the recap, rate and spark from the
+// measured minutes. No client "× usual" (F8).
+//
+// The row's backdrop is the moment's VOD frame in the mockup. Twitch preview
+// frames never load today (F6), so the honest fallback is the blurred box art
+// of the game being played, and no backdrop at all without it. Never a live
+// frame, never a stand-in. When U14's AN/MomentPreviewTile.tsx and
+// AC/utils/vodFrames.ts land, a frame slots into `.ssr-fr` (backdrop) and a
+// sharp `.ssr-slot` window (mockup `.mslot`), and into SessionMomentPlayer's
+// `.ssr-pl-pic`.
+// ---------------------------------------------------------------------------
+
+/** Hover dwell before a row's picture comes up (mouse and pen only). */
+export const MOMENT_ROW_DWELL_MS = 350
+/** The row player starts this many seconds before the moment. */
+export const MOMENT_ROW_VOD_LEAD_SECONDS = 10
+
+export interface SessionMomentRowModel {
+  key: string
+  /** 1-based rank in the strip (pin N is row N). */
+  rank: number
+  /** The moment's analytical offset: the row's identity. */
+  offsetSeconds: number
+  /** "0:50:54" */
+  offsetLabel: string
+  /** "6:37 AM", weekday first on another day. */
+  clockLabel: string | null
+  reasonLabel: string
+  reasonTone: 'emotes' | 'chat' | 'other'
+  series: MomentRowSeries
+  /** Backend reaction score, rounded (reactionScore, else score). */
+  score: number | null
+  /** The measured minute's rate on `series`; null without an exact minute. */
+  rate: number | null
+  spark: MomentRowSparkBar[]
+  game: { name: string; artUrls: string[] } | null
+  emotes: MomentRowEmote[]
+  /** Title of "emote names not captured", when the minute names under 25 % of its uses. */
+  namesNotCaptured: string | null
+  /** No measured minute lines up: the emotes come from the detection snapshot. */
+  snapshotOnly: boolean
+}
+
+function prefersReducedMotion(): boolean {
+  try {
+    return typeof window !== 'undefined'
+      && typeof window.matchMedia === 'function'
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  } catch {
+    return false
+  }
+}
+
+export function MomentPlayIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M8 5.6v12.8a.8.8 0 0 0 1.2.7l10.2-6.4a.8.8 0 0 0 0-1.4L9.2 4.9A.8.8 0 0 0 8 5.6z" fill="currentColor" />
+    </svg>
+  )
+}
+
+/** One emote token (image, name, uses): the rows and the reel. */
+export function SessionMomentToken({ emote }: { emote: MomentRowEmote }) {
+  const src = getEmoteImageUrl(emote)
+  return (
+    <span className="ssr-tok" title={`${emote.name}: ${momentRowInt(emote.count)} uses`}>
+      {src ? (
+        <ConsoleEmoteImg
+          src={src}
+          name={emote.name}
+          width={20}
+          height={20}
+          className="ssr-tok-img"
+          fallbackClassName="ssr-tok-img ssr-tok-ini"
+        />
+      ) : null}
+      {' '}<span className="ssr-tok-c">{emote.name}</span>{' '}
+      <span className="ssr-tok-n">{momentRowInt(emote.count)}</span>
+    </span>
+  )
+}
+
+/**
+ * One session moment row (moment-rows.js rowHtml). `lockMode="strip"`: a
+ * toggle button (`aria-pressed`) that locks the moment on the chart.
+ * `lockMode="row"`: a disclosure (`aria-expanded`) whose detail opens in place.
+ */
+export function SessionMomentRow({
+  model,
+  artUrl,
+  lockMode,
+  locked,
+  expanded = false,
+  detailId,
+  ghost = false,
+  showPlay,
+  pop = 0,
+  onActivate,
+  onHover,
+  onArtError,
+}: {
+  model: SessionMomentRowModel
+  /** The game's box art for the backdrop; null draws no backdrop. */
+  artUrl: string | null
+  lockMode: 'strip' | 'row'
+  /** The moment the chart's selection holds: ring + filled rank. */
+  locked: boolean
+  expanded?: boolean
+  detailId?: string
+  /** A chart pin for this moment is under the pointer. */
+  ghost?: boolean
+  showPlay: boolean
+  /** Changes each time this row becomes the locked one: plays the 0.34 s glow once. */
+  pop?: number
+  onActivate: (play: boolean) => void
+  onHover?: (hovering: boolean) => void
+  onArtError?: (url: string) => void
+}) {
+  const [lit, setLit] = useState(false)
+  const [popDone, setPopDone] = useState(0)
+  const dwell = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const hasBackdrop = Boolean(artUrl)
+
+  useEffect(() => () => clearTimeout(dwell.current), [])
+  useEffect(() => {
+    if (expanded) {
+      clearTimeout(dwell.current)
+      setLit(false)
+    }
+  }, [expanded])
+
+  const showPop = pop > 0 && pop !== popDone && locked && !prefersReducedMotion()
+  const className = [
+    'ssr-row',
+    hasBackdrop ? 'has-art has-bd' : '',
+    locked ? 'lk sc-moment-row-selected' : '',
+    lit ? 'lit' : '',
+    ghost ? 'ghost' : '',
+  ].filter(Boolean).join(' ')
+
+  return (
+    <button
+      type="button"
+      className={className}
+      data-moment-row
+      data-moment-rank={model.rank}
+      data-moment-offset={model.offsetSeconds}
+      aria-pressed={lockMode === 'strip' ? locked : undefined}
+      aria-expanded={lockMode === 'row' ? expanded : undefined}
+      aria-controls={lockMode === 'row' && expanded && detailId ? detailId : undefined}
+      aria-current={lockMode === 'row' && locked ? 'true' : undefined}
+      onClick={(event) => {
+        const target = event.target as Element | null
+        onActivate(Boolean(target?.closest?.('[data-moment-row-play]')))
+      }}
+      onPointerEnter={(event) => {
+        onHover?.(true)
+        clearTimeout(dwell.current)
+        if (event.pointerType === 'touch' || !hasBackdrop || expanded) return
+        dwell.current = setTimeout(() => setLit(true), MOMENT_ROW_DWELL_MS)
+      }}
+      onPointerLeave={() => {
+        clearTimeout(dwell.current)
+        setLit(false)
+        onHover?.(false)
+      }}
+      onFocus={() => onHover?.(true)}
+      onBlur={() => onHover?.(false)}
+    >
+      <span className="ssr-fr" aria-hidden="true">
+        {artUrl ? (
+          <img
+            className="ssr-fr-art"
+            src={artUrl}
+            alt=""
+            decoding="async"
+            referrerPolicy="no-referrer"
+            onError={() => onArtError?.(artUrl)}
+          />
+        ) : null}
+      </span>
+      <span className="ssr-tx">
+        <span className="ssr-m1">
+          <span className="ssr-vh">Moment</span>{' '}
+          <span className="ssr-rk">{model.rank}</span>{' '}
+          <span className="ssr-off">{model.offsetLabel}</span>{' '}
+          {model.clockLabel ? <><span className="ssr-clk">{model.clockLabel}</span>{' '}</> : null}
+          <span className={`ssr-why ${model.reasonTone}`}>
+            <i aria-hidden="true" />
+            {model.reasonLabel}
+          </span>{' '}
+          {model.score == null ? null : (
+            <span className="ssr-sc" title="Reaction score in this stream">
+              <span className="ssr-vh">reaction</span>{' '}score <b>{model.score}</b>{' '}
+              <span className="ssr-vh">in this stream</span>
+            </span>
+          )}
+        </span>
+        <span className="ssr-m2">
+          {model.game ? (
+            <span className="ssr-gm">
+              {artUrl ? (
+                <img
+                  src={artUrl}
+                  alt=""
+                  width={15}
+                  height={20}
+                  decoding="async"
+                  referrerPolicy="no-referrer"
+                  onError={() => onArtError?.(artUrl)}
+                />
+              ) : null}
+              <span className="ssr-gm-n">{model.game.name}</span>
+            </span>
+          ) : null}{' '}
+          {model.namesNotCaptured ? (
+            <span className="ssr-nn" title={model.namesNotCaptured}>emote names not captured</span>
+          ) : model.emotes.length > 0 ? (
+            <span
+              className="ssr-toks"
+              title={model.snapshotOnly
+                ? 'No measured minute lines up with this detection, so the emotes come from the detection window itself.'
+                : undefined}
+            >
+              {model.emotes.map((emote, index) => (
+                <Fragment key={`${emote.key ?? emote.name}-${index}`}>
+                  {index > 0 ? ' ' : null}
+                  <SessionMomentToken emote={emote} />
+                </Fragment>
+              ))}
+            </span>
+          ) : null}
+        </span>
+      </span>{' '}
+      <span className="ssr-ev" title={momentRowSparkNote(model.series)}>
+        {model.rate == null ? null : (
+          <span className="ssr-rt">
+            <b>{momentRowInt(model.rate)}</b>{' '}
+            <span className="u">{model.series === 'chat' ? 'chat' : 'emotes'}/min</span>
+          </span>
+        )}
+        <MomentRowSpark bars={model.spark} series={model.series} />
+      </span>
+      {showPlay ? (
+        <span className="ssr-go" aria-hidden="true" data-moment-row-play>
+          <MomentPlayIcon />
+        </span>
+      ) : null}
+      {showPop ? (
+        <span
+          key={pop}
+          className="ssr-mpop"
+          aria-hidden="true"
+          data-moment-row-pop
+          onAnimationEnd={() => setPopDone(pop)}
+        />
+      ) : null}
+    </button>
+  )
+}
+
+/**
+ * Each row's shade is darkest under its words and rate, open between them and
+ * toward the picture (moment-rows.js shadeRows). Sets the gradient stops as
+ * custom properties on every backdrop row of `list`.
+ */
+export function shadeSessionMomentRows(list: HTMLElement | null): void {
+  if (!list) return
+  list.querySelectorAll<HTMLElement>('.ssr-row.has-bd').forEach((row) => {
+    const b = row.getBoundingClientRect()
+    if (!b.width) return
+    const textEl = row.querySelector('.ssr-tx')
+    const evEl = row.querySelector('.ssr-ev')
+    if (!textEl || !evEl) return
+    const t = textEl.getBoundingClientRect()
+    const e = evEl.getBoundingClientRect()
+    const px = (v: number) => `${Math.round(v - b.left)}px`
+    const ev = e.width > 4
+    const end = b.width + 400
+    const tx = Math.round(t.right + 6 - b.left)
+    const e0 = ev ? Math.round(e.left - 6 - b.left) : end
+    const gap = e0 - tx
+    row.style.setProperty('--t0', t.left - b.left > 40 ? px(t.left - 6) : '0px')
+    row.style.setProperty('--tx', `${tx}px`)
+    row.style.setProperty('--e0', `${gap < 56 ? tx : e0}px`)
+    row.style.setProperty('--ramp', `${gap < 56 ? 0 : Math.min(72, Math.floor(gap / 2))}px`)
+    row.style.setProperty('--e1', ev ? px(e.right + 4) : `${end}px`)
+    // No frame window (`.ssr-slot`) until preview frames load (F6).
+    row.style.setProperty('--rq', '64px')
+  })
+}
+
+function vodClockNote(alignSeconds: number): string {
+  const al = alignSeconds
+  return `VOD time = stream time ${al < 0 ? `− ${-al}` : `+ ${al}`} s${
+    al < 0
+      ? ` (the VOD starts ${-al} s after the stream went live)`
+      : al > 0
+        ? ` (the VOD starts ${al} s before the stream clock's 0:00:00)`
+        : ''
+  }, then ${MOMENT_ROW_VOD_LEAD_SECONDS} s earlier so the moment plays in`
+}
+
+/** The VOD time the row player starts at: aligned offset minus the lead; null when unknown. */
+export function momentRowVodStart(args: {
+  offsetSeconds: number
+  vodId?: string | null
+  vodAlignSeconds?: number | null
+  vodDurationSeconds?: number | null
+}): number | null {
+  if (!args.vodId) return null
+  const v = alignedVodOffset(args.offsetSeconds, args.vodAlignSeconds, args.vodDurationSeconds ?? undefined)
+  return v == null ? null : Math.max(0, v - MOMENT_ROW_VOD_LEAD_SECONDS)
+}
+
+/**
+ * The row's player box (moment-rows.js playerHTML, without a frame: F6). The
+ * Twitch player loads only when Play is pressed. U14's MomentPreviewTile can
+ * replace `.ssr-pl-pic` once frames load.
+ */
+export function SessionMomentPlayer({
+  model,
+  artUrl,
+  vodId,
+  vodAlignSeconds,
+  vodDurationSeconds,
+  vodRecording = false,
+  autoPlay = false,
+  onArtError,
+}: {
+  model: SessionMomentRowModel
+  artUrl: string | null
+  vodId?: string | null
+  vodAlignSeconds?: number | null
+  vodDurationSeconds?: number | null
+  vodRecording?: boolean
+  autoPlay?: boolean
+  onArtError?: (url: string) => void
+}) {
+  const start = momentRowVodStart({ offsetSeconds: model.offsetSeconds, vodId, vodAlignSeconds, vodDurationSeconds })
+  const [playing, setPlaying] = useState(false)
+  const boxRef = useRef<HTMLDivElement | null>(null)
+  const host = typeof window !== 'undefined' ? window.location.hostname : ''
+
+  function play() {
+    if (start == null || !vodId) return
+    if (!host) {
+      window.open(buildTwitchVodUrl(vodId, start), '_blank', 'noopener')
+      return
+    }
+    setPlaying(true)
+  }
+
+  useEffect(() => {
+    if (autoPlay) play()
+    // Play pressed on the row opens the detail playing; later renders never restart it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoPlay])
+
+  useEffect(() => {
+    if (playing) boxRef.current?.focus({ preventScroll: true })
+  }, [playing])
+
+  const loads = "Twitch's player loads only when you press play."
+  return (
+    <div className="ssr-pl">
+      <div
+        ref={boxRef}
+        className={`ssr-pl-box nofr${playing ? ' on' : ''}`}
+        tabIndex={playing ? -1 : undefined}
+        data-moment-player
+      >
+        {playing && start != null && vodId ? (
+          <iframe
+            className="ssr-pl-if"
+            title={`Twitch VOD from ${momentRowHms(start)}`}
+            src={`https://player.twitch.tv/?video=v${encodeURIComponent(vodId)}&time=${momentRowTwitchTime(start)}&parent=${encodeURIComponent(host)}&autoplay=true`}
+            allow="autoplay; fullscreen"
+            allowFullScreen
+          />
+        ) : (
+          <>
+            <span className="ssr-pl-pic" aria-hidden="true">
+              {artUrl ? (
+                <img
+                  className="ssr-pl-bg"
+                  src={artUrl}
+                  alt=""
+                  decoding="async"
+                  referrerPolicy="no-referrer"
+                  onError={() => onArtError?.(artUrl)}
+                />
+              ) : null}
+            </span>
+            {start == null ? (
+              <p className="ssr-pl-msg">{vodId ? "This minute isn't in the VOD yet." : 'No VOD for this stream yet.'}</p>
+            ) : (
+              <button type="button" className="ssr-pl-go" data-moment-play onClick={play}>
+                <MomentPlayIcon />
+                <span>Play VOD from {momentRowHms(start)}</span>
+              </button>
+            )}
+            <p className="ssr-pl-note">
+              <span>{vodRecording ? 'Twitch publishes preview frames when the VOD finishes.' : 'No preview frame for this minute.'}</span>
+              {start == null ? null : <span className="t3">{loads}</span>}
+            </p>
+          </>
+        )}
+      </div>
+      <p className="ssr-pl-cap">
+        {start == null ? null : (
+          <span title={vodClockNote(typeof vodAlignSeconds === 'number' ? vodAlignSeconds : 0)}>
+            On the VOD&rsquo;s clock<span aria-hidden="true"> · </span>
+            <span className="ssr-vh">, </span>
+            {MOMENT_ROW_VOD_LEAD_SECONDS} s before the moment
+          </span>
+        )}
+        {start != null && vodId ? (
+          <span className="act">
+            <a className="ssr-qb" href={buildTwitchVodUrl(vodId, start)} target="_blank" rel="noopener noreferrer">
+              Open on Twitch ↗
+            </a>
+          </span>
+        ) : null}
+      </p>
+    </div>
+  )
+}
+
+/**
+ * The in-place detail under an open row (`lockMode="row"`): the player box
+ * beside the page's selected-minute card. Height animates 200 ms in and out;
+ * reduced motion jumps.
+ */
+export function SessionMomentDetail({
+  id,
+  model,
+  closing = false,
+  children,
+}: {
+  id: string
+  model: SessionMomentRowModel
+  closing?: boolean
+  children: ReactNode
+}) {
+  const ref = useRef<HTMLDivElement | null>(null)
+
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el || prefersReducedMotion() || typeof el.animate !== 'function') return
+    const to = closing ? 0 : el.scrollHeight
+    const from = closing ? el.offsetHeight : 0
+    const animation = el.animate(
+      [{ height: `${from}px` }, { height: `${to}px` }],
+      { duration: 200, easing: 'cubic-bezier(.16,1,.3,1)', fill: closing ? 'forwards' : 'none' },
+    )
+    return () => animation.cancel()
+  }, [closing])
+
+  return (
+    <div
+      ref={ref}
+      id={id}
+      className={`ssr-det${closing ? ' out' : ''}`}
+      role="region"
+      aria-label={`Moment ${model.rank} detail`}
+      data-moment-row-detail
+    >
+      <div className="ssr-det-wrap">{children}</div>
+    </div>
   )
 }

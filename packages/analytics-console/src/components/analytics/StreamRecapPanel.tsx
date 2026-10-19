@@ -86,8 +86,11 @@ export function StreamRecapPanel({
         </div>
       ) : null}
       {recap.biggestChatSpike || recap.funniestEmoteBurst ? (
+        // d3-v2 session-original: one row each, "Biggest spike at 5:18:00 · 757 chat/min" and
+        // "Emote burst at 6:28:00 [emote chip]", with the VOD link beside the row.
         <div
-          className="mt-3 grid gap-2 text-xs leading-relaxed"
+          className="grid gap-1 text-xs leading-relaxed"
+          data-stream-recap-highlights
           onMouseLeave={() => onPreviewOffset?.(null)}
         >
           {recap.biggestChatSpike ? (
@@ -96,7 +99,9 @@ export function StreamRecapPanel({
               offsetSeconds={recap.biggestChatSpike.offsetSeconds}
               onJumpToOffset={onJumpToOffset}
               onPreviewOffset={onPreviewOffset}
-              ariaLabel={`Biggest spike at ${formatHeatOffset(recap.biggestChatSpike.offsetSeconds)}`}
+              ariaLabel={`Biggest spike at ${formatRecapOffset(recap.biggestChatSpike.offsetSeconds)}${
+                recap.biggestChatSpike.chatPerMin != null ? `, ${count(recap.biggestChatSpike.chatPerMin)} chat messages a minute` : ''
+              }`}
               vodLink={(
                 <RecapVodLink
                   offsetSeconds={recap.biggestChatSpike.offsetSeconds}
@@ -106,15 +111,19 @@ export function StreamRecapPanel({
                 />
               )}
             >
-              Biggest spike at{' '}
-              <RecapOffsetTimestamp
-                offsetSeconds={recap.biggestChatSpike.offsetSeconds}
-                vodId={vodId}
-                vodAlignSeconds={vodAlignSeconds}
-                vodDurationSeconds={vodDurationSeconds}
-                plain={canJump}
-              />{' '}
-              ({count(recap.biggestChatSpike.chatPerMin)}/min)
+              <span className="whitespace-nowrap">
+                Biggest spike at{' '}
+                <RecapOffsetTimestamp
+                  offsetSeconds={recap.biggestChatSpike.offsetSeconds}
+                  vodId={vodId}
+                  vodAlignSeconds={vodAlignSeconds}
+                  vodDurationSeconds={vodDurationSeconds}
+                  plain={canJump}
+                />
+              </span>
+              {recap.biggestChatSpike.chatPerMin != null ? (
+                <>{' · '}<span className="whitespace-nowrap">{count(recap.biggestChatSpike.chatPerMin)} chat/min</span></>
+              ) : null}
             </RecapHighlightButton>
           ) : null}
           {recap.funniestEmoteBurst ? (
@@ -123,8 +132,9 @@ export function StreamRecapPanel({
               offsetSeconds={burstOffsetSeconds}
               onJumpToOffset={onJumpToOffset}
               onPreviewOffset={onPreviewOffset}
-              ariaLabel={`Emote burst at ${formatHeatOffset(burstOffsetSeconds)}`}
-              className="flex flex-wrap items-center gap-2"
+              ariaLabel={`Emote burst at ${formatRecapOffset(burstOffsetSeconds)}${burstCode ? `, ${burstCode}` : ''}${
+                burstCount != null ? `, ${count(burstCount)} uses` : ''
+              }`}
               vodLink={(
                 <RecapVodLink
                   offsetSeconds={burstOffsetSeconds}
@@ -134,8 +144,7 @@ export function StreamRecapPanel({
                 />
               )}
             >
-              {burstEmote ? <RecapEmoteChip emote={burstEmote} /> : null}
-              <span className="min-w-0">
+              <span className="whitespace-nowrap">
                 Emote burst at{' '}
                 <RecapOffsetTimestamp
                   offsetSeconds={burstOffsetSeconds}
@@ -144,11 +153,14 @@ export function StreamRecapPanel({
                   vodDurationSeconds={vodDurationSeconds}
                   plain={canJump}
                 />
-                {/* Same source as the chip and the time: the rollup peak may
-                    replace the backend burst when it is bigger. */}
-                {burstCode ? ` · ${burstCode}` : ''} (
-                {count(burstCount)})
               </span>
+              {/* Same source as the time: the rollup peak may replace the
+                  backend burst when it is bigger. */}
+              {burstCode ? (
+                <>{' '}<RecapEmoteChip emote={burstEmote ?? { code: burstCode, count: burstCount ?? 0 }} /></>
+              ) : burstCount != null ? (
+                <>{' · '}<span className="whitespace-nowrap">{count(burstCount)} uses</span></>
+              ) : null}
             </RecapHighlightButton>
           ) : null}
         </div>
@@ -183,7 +195,6 @@ function RecapHighlightButton({
   onJumpToOffset,
   onPreviewOffset,
   ariaLabel,
-  className = '',
   vodLink,
   children,
 }: {
@@ -192,13 +203,12 @@ function RecapHighlightButton({
   onJumpToOffset?: (offsetSeconds: number) => void
   onPreviewOffset?: (offsetSeconds: number | null) => void
   ariaLabel: string
-  className?: string
   /** Shown beside the jump button; a link cannot sit inside it. */
   vodLink?: ReactNode
   children: ReactNode
 }) {
   const baseClass =
-    `w-full min-w-0 min-h-11 rounded px-2 py-2 text-left font-semibold text-zinc-300 transition ${className}`.trim()
+    'min-w-0 flex-1 min-h-11 rounded-md p-2 text-left font-semibold text-zinc-300 transition'
   if (!canJump) {
     return <div className={baseClass}>{children}</div>
   }
@@ -210,13 +220,13 @@ function RecapHighlightButton({
       onMouseEnter={() => onPreviewOffset?.(offsetSeconds)}
       onFocus={() => onPreviewOffset?.(offsetSeconds)}
       onBlur={() => onPreviewOffset?.(null)}
-      className={`${baseClass} cursor-pointer hover:border-white/10 hover:bg-white/[0.04]`}
+      className={`${baseClass} cursor-pointer hover:bg-white/[0.04]`}
     >
       {children}
     </button>
   )
   if (!vodLink) return button
-  return <div className="flex min-w-0 items-center gap-1">{button}{vodLink}</div>
+  return <div className="flex min-w-0 items-center gap-1" data-stream-recap-row>{button}{vodLink}</div>
 }
 
 function recapVodHref(
@@ -249,8 +259,8 @@ function RecapVodLink({
       href={href}
       target="_blank"
       rel="noreferrer"
-      aria-label={`Open ${formatHeatOffset(offsetSeconds)} in the Twitch VOD`}
-      className="inline-flex min-h-11 shrink-0 items-center rounded px-2 text-xs font-black text-cyan-200 underline decoration-cyan-200/40 underline-offset-2 hover:text-cyan-100"
+      aria-label={`Open ${formatRecapOffset(offsetSeconds)} in the Twitch VOD`}
+      className="inline-flex min-h-11 shrink-0 items-center rounded px-2 text-xs font-semibold text-teal-200 no-underline hover:bg-white/[0.04] hover:text-white"
     >
       VOD ↗
     </a>
@@ -272,10 +282,10 @@ export function RecapOffsetTimestamp({
   /** Text only, for use inside a button; the VOD link is rendered beside it. */
   plain?: boolean
 }) {
-  const label = formatHeatOffset(offsetSeconds)
+  const label = formatRecapOffset(offsetSeconds)
   const href = plain ? undefined : recapVodHref(offsetSeconds, vodId, vodAlignSeconds, vodDurationSeconds)
   if (!href) {
-    return <strong className="text-cyan-200">{label}</strong>
+    return <strong className="font-bold tabular-nums text-cyan-200">{label}</strong>
   }
   return (
     <a
@@ -292,6 +302,11 @@ export function RecapOffsetTimestamp({
   )
 }
 
+/** The recap's time label, as the mockup prints it: hours unpadded (6:28:00). */
+export function formatRecapOffset(offsetSeconds: number): string {
+  return formatHeatOffset(offsetSeconds).replace(/^0(?=\d:)/, '')
+}
+
 function RecapEmoteChip({ emote }: { emote: PulseRecapEmote }) {
   const imageUrl = getEmoteImageUrl({
     provider: emote.provider,
@@ -299,7 +314,7 @@ function RecapEmoteChip({ emote }: { emote: PulseRecapEmote }) {
     imageUrl: emote.imageUrl,
   })
   return (
-    <span className="inline-flex shrink-0 items-center gap-1.5 rounded border border-white/[0.1] bg-white/[0.028] px-1.5 py-0.5 text-xs font-bold text-zinc-300">
+    <span className="inline-flex max-w-full items-center gap-1.5 rounded border border-white/[0.1] bg-white/[0.028] px-1.5 py-0.5 align-middle text-xs font-bold leading-4 text-zinc-300" data-stream-recap-burst-chip>
       <span className="grid h-5 w-5 shrink-0 place-items-center rounded bg-black/30 p-0.5">
         <ConsoleEmoteImg
           src={imageUrl}
@@ -308,8 +323,8 @@ function RecapEmoteChip({ emote }: { emote: PulseRecapEmote }) {
           fallbackClassName="inline-flex h-3.5 w-3.5 items-center justify-center rounded bg-white/[0.06] text-xs font-black text-zinc-500"
         />
       </span>
-      <span className="max-w-[6rem] truncate">{emote.code}</span>
-      <span className="font-mono text-zinc-500">{count(emote.count)}</span>
+      <span className="max-w-[6rem] truncate" title={emote.code}>{emote.code}</span>
+      <span className="font-mono font-semibold text-zinc-500">{count(emote.count)}</span>
     </span>
   )
 }

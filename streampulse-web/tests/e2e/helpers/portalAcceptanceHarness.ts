@@ -873,8 +873,12 @@ export async function assertNoUnexpected(harness: PortalHarness): Promise<void> 
   expect(harness.unexpected, `unexpected external requests: ${harness.unexpected.join(', ')}`).toEqual([])
 }
 
+/** One token in "Emotes on chart" and one drawn line in the plot per plotted emote. */
 export async function assertEmotePlotLines(page: Page, expected: number): Promise<void> {
-  const paths = page.locator('path.sc-emote-plot-line')
+  await expect(page.locator('[data-session-emotes-on-chart] [data-session-emote-token]')).toHaveCount(expected, {
+    timeout: 20_000,
+  })
+  const paths = page.locator('[data-bench-plot] path[data-lane-line]')
   await expect(paths).toHaveCount(expected, { timeout: 20_000 })
   const geometries = await paths.evaluateAll((nodes) =>
     nodes.map((n) => {
@@ -903,11 +907,29 @@ export async function openEmotesRail(page: Page): Promise<void> {
   await tab.click()
 }
 
-export async function setChartViewEmotes(page: Page): Promise<void> {
-  // Chart toolbar Overview/Emotes/Spikes — not the right-rail tab.
-  await page
-    .locator('.analytics-console button.rounded')
-    .filter({ hasText: /^Emotes(?:\/min)?(?:\s|$)/i })
-    .first()
-    .click()
+/**
+ * Six of buildSummary()'s emotes across Twitch, 7TV and FFZ. Emotes on chart and
+ * the chart match an emote by name, so the 7TV and BTTV Clap rows share one
+ * trace; six traces need six names.
+ */
+export const SIX_SESSION_EMOTE_KEYS = [
+  'twitch:KEKW:KEKW',
+  'twitch:OMEGALUL:OMEGALUL',
+  '7tv:Clap:Clap',
+  '7tv:NODDERS:NODDERS',
+  '7tv:Sadge:Sadge',
+  'ffz:Pog:Pog',
+] as const
+
+/**
+ * Plot these summary emote keys from "Emotes on chart" under the session chart
+ * (Add emote opens the checklist; keys already plotted stay plotted), then close it.
+ */
+export async function plotSessionEmotes(page: Page, keys: readonly string[]): Promise<void> {
+  const line = page.locator('[data-session-emotes-on-chart]')
+  await line.scrollIntoViewIfNeeded()
+  await line.locator('[data-session-emote-add]').click()
+  for (const key of keys) await line.locator(`[data-session-emote="${key}"]`).check()
+  await page.keyboard.press('Escape')
+  await expect(line.locator('[data-session-emote-add]')).toHaveAttribute('aria-expanded', 'false')
 }

@@ -1,6 +1,7 @@
 import { expect, test, type Page, type Route } from '@playwright/test'
 
-const LOGIN = 'tape-fixture'
+// Twitch logins are [a-z0-9_]: a hyphen routes to Page not found.
+const LOGIN = 'tape_fixture'
 const STREAM_ID = 'stream_fixture_v1'
 const SESSION_PATH = `/analytics/${LOGIN}/${STREAM_ID}`
 const STARTED_AT = '2026-01-01T00:00:00.000Z'
@@ -204,15 +205,25 @@ test.describe('session signal tape', () => {
     await expect(chip).toHaveAttribute('aria-pressed', 'true')
 
     // The 240-second peak is intentionally a normal minute in the 300-point source
-    // timeline, so the chart must interpolate this exact time when its display
-    // series is downsampled rather than silently selecting a neighbouring point.
-    const marker = page.locator('svg[aria-label="Analytics timeline chart"] line[stroke-width="2.5"][stroke-dasharray="4 3"]')
+    // timeline: the session chart draws the selection as the F23 band, snapped out
+    // to the one bar that holds that minute at the current level, never a neighbour.
+    const chart = page.locator('svg[aria-label="Analytics timeline chart"]')
+    const marker = chart.locator('rect[data-chart-selband]')
     await expect(marker).toHaveCount(1)
-    const markerX = Number(await marker.getAttribute('x1'))
-    const expectedX = 90 + (PEAK_OFFSET_SECONDS / 60 / 299) * (1000 - 90 - 34)
-    // Chart-side padding/downsampling can slightly alter the terminal span, but
-    // a neighbouring downsampled minute would be several viewBox units away.
-    expect(Math.abs(markerX - expectedX)).toBeLessThan(1)
+    await expect(marker).not.toHaveAttribute('data-sliding')
+    const area = chart.locator('rect[data-chart-touch-action]')
+    const plot = await area.boundingBox()
+    const markerBox = await marker.boundingBox()
+    if (!plot || !markerBox) throw new Error('plot or selection band has no layout box')
+    const viewStart = Number(await area.getAttribute('data-chart-viewport-start'))
+    const viewEnd = Number(await area.getAttribute('data-chart-viewport-end'))
+    const pxPerSecond = plot.width / (viewEnd - viewStart)
+    const barSeconds = Number(await chart.getAttribute('data-activity-bucket-minutes')) * 60
+    const expectedX = plot.x + (PEAK_OFFSET_SECONDS + 30 - viewStart) * pxPerSecond
+    // The band holds the minute and is one bar wide, so a neighbouring bar would leave it out.
+    expect(markerBox.x).toBeLessThanOrEqual(expectedX)
+    expect(markerBox.x + markerBox.width).toBeGreaterThanOrEqual(expectedX)
+    expect(markerBox.width).toBeLessThanOrEqual(barSeconds * pxPerSecond + 1)
 
     await page.evaluate(() => { document.body.style.zoom = '2' })
     const zoomedSizes = await tape.getByRole('button').evaluateAll(buttons =>

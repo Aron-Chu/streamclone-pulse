@@ -1,0 +1,164 @@
+/*
+ * d3 hub tokens (plan §2.3, README §4 of the pinned d3-v2 mockup, shared.css :root).
+ *
+ * Scoped to the d3 hub root (.hub-d3) and to layers portaled out of it
+ * (.hub-d3-layer: the toggletip popover). Nothing here sets :root.
+ *
+ * Never redefined here (they belong to the chart, U1's sp-chart.css, and to the
+ * page theme): --sp-viewers, --sp-chat, --sp-emotes, --sp-live, --sp-navigator,
+ * --sp-accent. Rules outside .spc read --sp-accent with a #5eead4 fallback.
+ *
+ * F2 (2026-10-13): Inter everywhere with bold tabular figures; no serif.
+ * --sp-serif keeps the name the mockup uses and points at the Inter stack.
+ */
+.hub-d3,
+.hub-d3-layer {
+  /* Surfaces, lines, text */
+  --sp-canvas: #09090b;
+  --sp-panel: #101012;
+  --sp-raised: #151517;
+  --sp-popover: #18181b;
+  --sp-line: #1d1d1f;
+  --sp-line-strong: #272728;
+  --sp-text-1: #ededef;
+  --sp-text-2: #b4b4bb;
+  --sp-text-3: #8e8e96;
+
+  /* Interaction and status (accent itself comes from the theme / chart) */
+  --sp-focus: #99f6e4;
+  --sp-accent-bg: #12201f;
+  --sp-brand: #2dd4bf;
+  --sp-degraded: #fbbf24;
+
+  /* Neutral steps for the provider mix only */
+  --sp-step-1: #8e8e96;
+  --sp-step-2: #5d5d65;
+  --sp-step-3: #3c3c42;
+  --sp-step-4: #2b2b30;
+
+  /* Type: the site's Inter (bundled by themes/analytics-hub-fonts.css, 400-700) */
+  --sp-font: "Inter", system-ui, sans-serif;
+  --sp-serif: var(--sp-font);
+  --sp-fs-label: 12px;
+  --sp-fs-body: 14px;
+  --sp-fs-title: 16px;
+  --sp-fs-figure: 26px;
+
+  /* Space and shape: 4 px grid */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-12: 48px;
+  --sp-r-sm: 4px;
+  --sp-r: 8px;
+  --sp-row: 44px;
+  --sp-row-2: 52px;
+  --sp-row-static: 36px;
+  --sp-control: 32px;
+  --gutter: 24px;
+
+  /* Motion: one easing; reduced motion zeroes every duration */
+  --sp-dur-quick: 120ms;
+  --sp-dur-move: 200ms;
+  --sp-dur-decay: 1200ms;
+  --sp-ease: cubic-bezier(0.16, 1, 0.3, 1);
+
+  color-scheme: dark;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub-d3,
+  .hub-d3-layer {
+    --sp-dur-quick: 0ms;
+    --sp-dur-move: 0ms;
+    --sp-dur-decay: 0ms;
+  }
+}
+
+@media (max-width: 719px) {
+  .hub-d3,
+  .hub-d3-layer {
+    --gutter: 16px;
+  }
+}
+
+/* ---------- toggletip (HubToggletip.tsx): an (i) button, a popover on click ---------- */
+.hub-tip {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  position: relative;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--sp-text-3);
+  font: inherit;
+  cursor: pointer;
+}
+
+/* 44 px hit area on a 20 px control */
+.hub-tip::after {
+  content: "";
+  position: absolute;
+  inset: -12px;
+}
+
+.hub-tip:hover,
+.hub-tip[aria-expanded="true"] {
+  color: var(--sp-text-1);
+}
+
+.hub-tip:focus-visible {
+  outline: 2px solid var(--sp-focus);
+  outline-offset: 2px;
+}
+
+.hub-tip svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.hub-tip-pop {
+  position: absolute;
+  z-index: 60;
+  max-width: 260px;
+  padding: 8px 10px;
+  border: 1px solid var(--sp-line-strong);
+  border-radius: var(--sp-r);
+  background: var(--sp-popover);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
+  color: var(--sp-text-1);
+  font: 400 var(--sp-fs-label) / 16px var(--sp-font);
+  font-variant-numeric: tabular-nums;
+}
+
+.hub-tip-pop a {
+  display: inline-block;
+  margin-top: 4px;
+  color: var(--sp-accent, #5eead4);
+  text-decoration: none;
+}
+
+.hub-tip-pop a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.hub-tip-pop a:focus-visible {
+  outline: 2px solid var(--sp-focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}

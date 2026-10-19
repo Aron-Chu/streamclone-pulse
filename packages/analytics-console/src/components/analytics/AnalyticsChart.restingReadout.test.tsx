@@ -39,7 +39,8 @@ function readout(data: AnalyticsStreamDetail) {
       onViewModeChange={vi.fn()}
     />,
   )
-  return container.querySelector('[data-chart-hover-readout-row] > p')?.textContent
+  // The toolbar's Now readout (session.html #ro): the resting minute while nothing is hovered or pinned.
+  return container.querySelector('[data-session-readout]')?.textContent?.replace(/\s+/g, ' ')
 }
 
 describe('AnalyticsChart resting readout', () => {
@@ -48,7 +49,8 @@ describe('AnalyticsChart resting readout', () => {
     // The newest two minutes have chat but no viewer sample yet.
     rows.push({ viewerAvg: null, chatCount: 118, emote: 60 }, { viewerAvg: null, chatCount: 100, emote: 58 })
     const text = readout(detail(rows))
-    expect(text).toContain('00:29:00')
+    expect(text).toContain('0:29:00')
+    // session-original count(): K with one decimal from a thousand up.
     expect(text).toContain('viewers 24.9K')
     expect(text).not.toContain('viewers -')
     expect(text).not.toContain('viewers —')

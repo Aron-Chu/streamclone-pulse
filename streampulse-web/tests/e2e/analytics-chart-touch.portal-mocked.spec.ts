@@ -58,15 +58,25 @@ for (const device of [
       return { offsetSeconds, row }
     }
 
-    test('a tap on the plot pins the tapped minute', async ({ page }) => {
+    // d3 chart (U1 SpChart): the first tap shows that bar in the readout,
+    // a second tap on the same bar pins it. A tap never opens on the first touch.
+    test('a first tap reads the tapped bar; a second tap on it pins the minute', async ({ page }) => {
       const harness = await installPortalAcceptanceHarness(page)
       harness.setMinutesPayload(buildMinutes({ count: 24, withEmotes: true }))
       await openAnalyticsSession(page)
       const box = await centerPlot(page)
       await expect(page.locator('[data-selected-moment-card]')).toHaveCount(0)
+      const readout = page.locator('[data-session-readout]')
+      const resting = await readout.textContent()
 
-      await page.touchscreen.tap(box.x + box.width * 0.4, box.y + box.height * 0.4)
+      const x = box.x + box.width * 0.4
+      const y = box.y + box.height * 0.4
+      await page.touchscreen.tap(x, y)
+      await expect(readout).not.toHaveText(resting ?? '')
+      await expect(readout).toHaveText(/\d+:\d\d:\d\d/)
+      await expect(page.locator('[data-selected-moment-card]')).toHaveCount(0)
 
+      await page.touchscreen.tap(x, y)
       await expect(page.locator('[data-selected-moment-card]')).toHaveCount(1)
       await assertNoUnexpected(harness)
     })

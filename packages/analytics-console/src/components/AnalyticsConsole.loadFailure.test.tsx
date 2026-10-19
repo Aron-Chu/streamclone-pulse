@@ -28,16 +28,16 @@ vi.mock('./analytics/AnalyticsChart.tsx', () => ({
   default: () => <div data-testid="analytics-chart">No recent data</div>,
 }))
 vi.mock('./analytics/ConsoleBits.tsx', () => ({
-  DataQualityDisclosure: ({ pending }: { pending?: boolean }) => (
+  DataQualityButton: ({ pending }: { pending?: boolean }) => (
     <span data-testid="data-quality">{pending ? 'Data quality: —' : 'Data quality: verdict'}</span>
   ),
   StatCard: ({ label, value, tone }: { label: string; value: string; tone?: string }) => (
     <div data-testid="stat-card" data-tone={tone}>{label}: {value}</div>
   ),
-  CoverageStartBanner: () => null,
+  CoverageStartMetaItem: () => null,
 }))
 vi.mock('./analytics/MomentReviewPanel.tsx', () => ({ MomentReviewPanel: () => null }))
-vi.mock('./analytics/PastBroadcastBanner.tsx', () => ({ PastBroadcastBanner: () => null }))
+vi.mock('./analytics/PastBroadcastBanner.tsx', () => ({ SessionLifecycleMeta: () => null }))
 vi.mock('./analytics/StreamQualityBanner.tsx', () => ({ StreamQualityBanner: () => null }))
 vi.mock('./analytics/TopEmoteTable.tsx', () => ({ TopEmoteTable: () => null }))
 
@@ -152,14 +152,14 @@ describe('AnalyticsConsole channel route load failures', () => {
     for (const card of screen.getAllByTestId('stat-card')) expect(card.textContent).toMatch(/: -$/)
   })
 
-  it('mutes every placeholder dash the same way, Measured span included', async () => {
+  it('mutes every placeholder dash the same way, Time tracked included', async () => {
     api.getAnalyticsLive.mockImplementation(() => new Promise(() => undefined))
     renderConsole('/analytics/xqc')
 
     await waitFor(() => expect(screen.getAllByTestId('stat-card')).toHaveLength(6))
     const tones = screen.getAllByTestId('stat-card').map(card => card.getAttribute('data-tone'))
     expect(new Set(tones)).toEqual(new Set(['text-zinc-600 font-semibold']))
-    expect(screen.getAllByTestId('stat-card').at(-1)?.textContent).toBe('Measured span: -')
+    expect(screen.getAllByTestId('stat-card').at(-1)?.textContent).toBe('Time tracked: -')
   })
 
   it('reports a failed live read as unavailable instead of an empty chart', async () => {
