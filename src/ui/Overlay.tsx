@@ -106,9 +106,10 @@ import { resolveJumpMomentAction } from './jumpMomentAction.ts'
 import type { ChartTimelineWindow } from './chatActivityEmotes.ts'
 import type { ExtensionVodPulseResponse } from '../types/vodPulseTypes.ts'
 import { resolveVodPulseState, MAX_VOD_SECONDS } from '../vod/normalizeVodPulseFetch.ts'
+import { vodFullHistoryUpdate } from '../vod/vodPulseToChannelPayload.ts'
 import { PulseSidebarTabs } from './PulseSidebarTabs.tsx'
 import { safeImageUrl, safeTwitchNavigationUrl } from '../shared/safeUrl.ts'
-import { mergePulsePayload } from '../background/pulsePayloadMerge.ts'
+import { layFullHistoryUnderPoll } from '../background/pulsePayloadMerge.ts'
 import type { LivePollController } from '../content/livePoll.ts'
 
 function coverageErrorMessage(raw: string | null | undefined, fallback: string): string {
@@ -385,11 +386,18 @@ function OverlayMain({
   }, [])
 
   useEffect(() => {
-    backfillOpsRef.current.invalidate()
+    // The chart's effects run before this one, so when a VOD's first payload
+    // arrives its Full request has already begun for the new stream. Only end
+    // operations that belong to another stream (VOD-5).
+    const op = backfillOpsRef.current.current()
+    if (!op || !sameFullHistoryActivation(op.activation, currentActivation())) {
+      backfillOpsRef.current.invalidate()
+    }
     setMissedBusy(false)
     setMissedJob(null)
     setFullTimeline(false)
     setFullHistoryPayload(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset per identity; currentActivation reads this render
   }, [login, payload?.streamId, context.vodId])
 
   useEffect(() => {
@@ -452,12 +460,16 @@ function OverlayMain({
     return null
   }
 
-  /** Transport only — does not mutate busy/Full/payload. `latest` asks for the channel's current stream. */
-  async function fetchPulseTransport(full = false, latest = false): Promise<{
+  /**
+   * Transport only — does not mutate busy/Full/payload. `latest` asks for the
+   * channel's current stream; `fresh` skips the worker's cache (a viewer's Retry).
+   */
+  async function fetchPulseTransport(full = false, latest = false, fresh = false): Promise<{
     response: unknown
     payload: PulsePayload | null
   }> {
     if (context.kind === 'vod' && context.vodId) {
+      if (full) return fetchVodFullTransport(context.vodId)
       await onPulseRefresh?.()
       return { response: null, payload }
     }
@@ -467,12 +479,33 @@ function OverlayMain({
       watch: false,
       window: full ? 'full' : 'recent',
       streamId: latest ? undefined : payload?.streamId,
+      ...(fresh ? { fresh: true } : {}),
     })
     const next =
       response && typeof response === 'object' && 'type' in response && response.type === 'PULSE_UPDATE'
         ? (response as PulseUpdateMessage).payload
         : null
     return { response, payload: next }
+  }
+
+  /**
+   * A VOD's Full request asks for the VOD's own full window and hands it back
+   * shaped like the channel's Full answer. The VOD refresh only polls the
+   * recent window, so a growing VOD's Full chart started late (VOD-5).
+   */
+  async function fetchVodFullTransport(vodId: string): Promise<{
+    response: PulseUpdateMessage | null
+    payload: PulsePayload | null
+  }> {
+    const response = await sendBackgroundMessage({
+      type: 'GET_PULSE_VOD',
+      vodId,
+      streamId: payload?.streamId ?? undefined,
+      window: 'full',
+      login,
+    })
+    const update = vodFullHistoryUpdate(response, login)
+    return { response: update, payload: update?.payload ?? null }
   }
 
   function handleChartWindowChange(window: ChartTimelineWindow): void {
@@ -698,7 +731,7 @@ function OverlayMain({
 
   const chartSourcePayload = useMemo(() => {
     if (!payload || !fullHistoryPayload) return payload
-    return mergePulsePayload(payload, fullHistoryPayload, { source: 'full' })
+    return layFullHistoryUnderPoll(payload, fullHistoryPayload)
   }, [fullHistoryPayload, payload])
   const displayPayload = chartSourcePayload ? pulsePayloadForDisplay(chartSourcePayload, pageIsLive, context) : null
   const uiIsLive = effectivePulseIsLive(payload, pageIsLive, context)
@@ -872,9 +905,13 @@ function OverlayMain({
     if (!op) setTrackBusy(true)
     try {
       // Retry (not Full) asks for the channel's current stream, so it can leave an earlier one.
-      const { response, payload: next } = await fetchPulseTransport(full, !full)
+      // A viewer's Retry skips the worker cache and applies what comes back:
+      // the cached answer was what failed to refresh (STATE-2).
+      const { response, payload: next } = await fetchPulseTransport(full, !full, !op && !full)
       if (op && !tokenIsLive(op)) return null
-      if (full && response) {
+      if (!full && !op && response) {
+        applyPulseResponse(response as PulseUpdateMessage)
+      } else if (full && response) {
         const applied = applyPulseResponse(response as PulseUpdateMessage, op)
         if ((!op || tokenIsLive(op)) && hasValidatedFullHistory(applied, currentActivation())) {
           setFullTimeline(true)
@@ -992,9 +1029,9 @@ function OverlayMain({
     setNotice({ kind: 'warn', text: 'Backfill is taking longer than expected — try again shortly.' })
   }
 
-  async function submitPageVodHint(token?: BackfillOperationToken | null): Promise<string | null> {
-    const op = token ?? backfillOpsRef.current.current()
-    if (!payload?.streamId || payload.vodId) return payload?.vodId ?? null
+  /** The live archive's id for this stream: the page, then Twitch GQL, then stream history. */
+  async function discoverPageVodId(op: BackfillOperationToken | null): Promise<string | null> {
+    if (!payload?.streamId) return null
     const domHint = discoverLiveVodIdFromDom(payload.streamId)
     await pulseDebug('vod.discover.dom', domHint ? 'found archive id in page' : 'no archive id in page html', {
       login,
@@ -1058,7 +1095,15 @@ function OverlayMain({
       }, hint ? 'info' : 'warn')
     }
     if (op && !tokenIsLive(op)) return null
-    if (!hint) return null
+    return hint
+  }
+
+  async function submitPageVodHint(token?: BackfillOperationToken | null): Promise<string | null> {
+    const op = token ?? backfillOpsRef.current.current()
+    if (!payload?.streamId || payload.vodId) return payload?.vodId ?? null
+    const hint = await discoverPageVodId(op)
+    if (op && !tokenIsLive(op)) return null
+    if (!hint || !payload?.streamId) return null
     try {
       const res = await sendBackgroundMessage({
         type: 'HINT_VOD',
@@ -1357,12 +1402,16 @@ function OverlayMain({
     if (vodId) {
       const vodUrl = buildTwitchVodUrl(vodId, offset)
       if (context.kind === 'vod' && context.vodId === vodId) {
-        const result = seekPlaybackOffset(getPrimaryVideo(), offset, { isLive: false })
-        setNotice({
-          kind: 'ok',
-          text: result.ok
-            ? 'Jumped to stream start in the VOD player.'
-            : 'Scrub the VOD player to stream start.',
+        // Twitch's player can take currentTime = 0 and then snap a growing VOD
+        // back to its end, so aim one second in and confirm it held (VOD-3).
+        void seekPlaybackOffsetVerified(getPrimaryVideo(), 1, { isLive: false }).then(result => {
+          if (!mountedRef.current) return
+          setNotice({
+            kind: result.ok ? 'ok' : 'warn',
+            text: result.ok
+              ? 'Jumped to stream start in the VOD player.'
+              : 'Scrub the VOD player to stream start.',
+          })
         })
         return
       }
@@ -1816,6 +1865,8 @@ function OverlayMain({
                   onOpenAnalytics={openAnalytics}
                   onOpenFullAnalytics={() => openAnalytics()}
                   onRequestFullTimeline={requestFullTimeline}
+                  // Lookup only: linking the VOD mid-save would re-key the bookmark row and drop the save.
+                  onResolveArchiveVodId={uiIsLive && context.kind === 'channel' ? () => discoverPageVodId(null) : undefined}
                   onChartWindowChange={handleChartWindowChange}
                   onPinOffset={handleChartPin}
                   onChartMinuteSelect={handleChartMinuteSelect}

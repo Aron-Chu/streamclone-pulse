@@ -726,10 +726,17 @@ export function updateOverlayPayload(
     )
     if (streamMismatch) return
     currentPayload = nextPayload
-    currentOptions = { ...currentOptions, softStaleRefreshWarning: false }
+    // Only new data ends "Live refresh paused": the cache handing back the
+    // same chart while offline is not a recovery (QUAL-2).
+    if (nextPayload !== previousPayload) {
+      currentOptions = { ...currentOptions, softStaleRefreshWarning: false }
+    }
   }
   currentError = resolveOverlayErrorState(currentError, payload, error)
-  if (coverageTier !== undefined) {
+  // null only means the worker had no tier to hand (a failed request, or its
+  // 60 s coverage cache lapsed), not that the channel left the pool. Keep the
+  // last one; mountOverlay resets it when the channel changes (STATE-1/QUAL-2).
+  if (coverageTier) {
     currentCoverageTier = coverageTier
   }
   // Identical poll after merge: skip React work (tabs shell never needed chart payloads).

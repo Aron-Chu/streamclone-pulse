@@ -26,6 +26,12 @@ export interface ChartSurface {
   plotSteps: () => Promise<number>
 }
 
+/**
+ * True when the specs run against a build made with VITE_PUBLIC_HUB_V5=on (the
+ * d3-v5 hub). A default build serves the Command Center hub.
+ */
+export const HUB_V5_BUILD = /^(on|1)$/.test(process.env.VITE_PUBLIC_HUB_V5 ?? '')
+
 export const HUB_BUCKETS = 240
 export const STREAM_MINUTES = 748
 export const SCROLL_ZOOM_STORAGE_KEY = 'sp.chart.scrollZoom.v1'
@@ -45,8 +51,9 @@ export async function hubSurface(page: Page): Promise<ChartSurface> {
     name: 'hub',
     navigator,
     plot,
-    // Until the hub's d3 port (which adds [data-hub-chart-wheel-card]) the hub's wheel zone is its plot.
-    card: plot,
+    // The d3-v5 hub (VITE_PUBLIC_HUB_V5) follows the card rule, like the stream chart.
+    // The Command Center hub keeps its plot as the wheel zone.
+    card: HUB_V5_BUILD ? page.locator('[data-hub-chart-wheel-card]') : plot,
     full: HUB_BUCKETS,
     // No fake clock on the hub: frames run; the safety timer lands it regardless.
     settle: async () => {

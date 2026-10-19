@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
 import { seedBetaKey } from './helpers/auth'
+import { HUB_V5_BUILD } from './helpers/chartWheelSurfaces'
 import { installHubUxMock } from './helpers/hubUxMock'
 
 // OP1-RES-004 / OP1-RES-006 / OP1-RES-007: one malformed input must not
@@ -102,7 +103,8 @@ test.describe('portal crash guards (mocked)', () => {
 
   test('a crashing analytics page keeps the analytics top navigation, and its links recover', async ({ page }) => {
     await installHubUxMock(page)
-    await breakPageModule(page, 'AnalyticsLandingPage')
+    // A VITE_PUBLIC_HUB_V5 build routes /analytics through AnalyticsHubV5Page.
+    await breakPageModule(page, HUB_V5_BUILD ? 'AnalyticsHubV5Page' : 'AnalyticsLandingPage')
     await page.goto('/analytics')
     await expect(page.getByRole('heading', { name: 'Something went wrong' })).toBeVisible()
     await expect(page.locator('.analytics-topnav')).toBeVisible()
