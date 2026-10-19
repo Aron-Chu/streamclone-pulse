@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { LiveHeatPoint } from '@streampulse/pulse-core'
 import { SelectedMomentCard } from '../src/ui/SelectedMomentCard.tsx'
+import { panelRule } from './helpers/panelRule.ts'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -71,9 +72,11 @@ describe('SelectedMomentCard', () => {
     const jump = container.querySelector<HTMLButtonElement>('[data-moment-inspector-action="jump"]')
     const analytics = container.querySelector<HTMLButtonElement>('[data-moment-inspector-action="analytics"]')
     const clear = container.querySelector<HTMLButtonElement>('[aria-label="Clear selected moment"]')
-    expect(actions?.style.justifyContent).toBe('space-between')
+    expect(actions?.classList.contains('pulse-sel-actions')).toBe(true)
+    expect(panelRule('pulse-sel-actions')).toContain(' justify-content: space-between;')
     expect(jump?.querySelector('[data-selected-moment-play-icon="true"]')).not.toBeNull()
-    expect(analytics?.style.marginLeft).toBe('auto')
+    expect(analytics?.classList.contains('pulse-sel-link')).toBe(true)
+    expect(panelRule('pulse-sel-link')).toContain(' margin-left: auto;')
     act(() => jump?.click())
     act(() => analytics?.click())
     act(() => clear?.click())

@@ -14,6 +14,7 @@ import { PulseOverviewChart } from '../src/ui/PulseOverviewChart.tsx'
 import { RecapTimelineChart } from '../src/ui/RecapTimelineChart.tsx'
 import { shadowStyles } from '../src/ui/theme.ts'
 import { ChartViewportControls } from '../src/ui/ChartViewportControls.tsx'
+import { panelRule } from './helpers/panelRule.ts'
 
 interface ProbeProps {
   identity: string
@@ -394,11 +395,13 @@ describe('chart shells and controls', () => {
         if (!button) throw new Error(`chart zoom ${action} control did not render`)
         expect(button.tagName).toBe('BUTTON')
         expect(button.classList.contains('pulse-chart-zoom-button')).toBe(true)
-        expect(button.style.height).toBe('24px')
+        const sized = action === 'reset' ? 'pulse-vp-reset' : 'pulse-vp-zoom'
+        expect(button.classList.contains(sized)).toBe(true)
+        expect(panelRule(sized)).toContain(' height: 24px;')
         if (action === 'reset') {
           expect(button.classList.contains('pulse-chart-zoom-reset')).toBe(true)
         } else {
-          expect(button.style.width).toBe('24px')
+          expect(panelRule(sized)).toContain(' width: 24px;')
         }
       }
     }
