@@ -4,7 +4,7 @@
  * that tab locks the moment's minute with its card open. The panel on that VOD
  * reads it once; it expires on its own after two minutes.
  */
-export const MOMENT_ARRIVAL_STORAGE_KEY = 'sp.momentArrival.v1'
+export const MOMENT_ARRIVAL_STORAGE_KEY = 'sp.momentArrival.v1' // gitleaks:allow (storage key name)
 export const MOMENT_ARRIVAL_TTL_MS = 2 * 60 * 1000
 
 export type MomentArrivalSource = 'library' | 'popup' | 'panel' | 'link'
