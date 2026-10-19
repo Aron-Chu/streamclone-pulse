@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import {
   CHART_SURFACES,
+  HUB_V5_BUILD,
   resetZoom,
   scrollYOf,
   scrollZoomToggleOf,
@@ -20,6 +21,13 @@ import {
 // and including the navigator bar, edge to edge. Scroll zoom stays On by
 // default, Off still gives the page the wheel, Shift+wheel still pans, and at
 // the full range a zoom-out still scrolls the page.
+//
+// Owner rule (2026-10-13): the wheel zooms anywhere over a chart card, so the
+// card's header rows (readout, games strip, focus rows) and the navigator's
+// buttons and hint zoom too. Only outside the card does the page keep the
+// wheel. The stream chart follows it, and so does the d3-v5 hub (a build with
+// VITE_PUBLIC_HUB_V5=on). On the Command Center hub (the default build) only
+// the shared navigator does.
 
 interface Zone {
   top: number
@@ -224,29 +232,83 @@ for (const [name, open] of Object.entries(CHART_SURFACES)) {
       }
     })
 
-    test('above the chart the page keeps the wheel', async ({ page }) => {
-      const surface = await open(page)
-      await resetZoom(surface)
-      // The stream page's series legend and games strip; the hub's hover readout and summary line.
-      const selectors = name === 'stream'
-        ? ['[data-chart-focus-bar]', '[data-games-played]']
-        : ['.figma-global-activity__hub-chart .hx-chart-header__readout', '.figma-global-activity__hub-chart .hx-chart-summary']
-      const zone = await zoneOf(page, surface)
-      for (const selector of selectors) {
-        const target = page.locator(selector).first()
-        await target.evaluate(element => element.scrollIntoView({ block: 'center', behavior: 'instant' }))
-        const box = (await target.boundingBox())!
-        const y = box.y + box.height / 2
-        const pageY = y + await scrollYOf(page)
-        expect(pageY < zone.top || pageY > zone.bottom, `${selector} is outside the chart`).toBe(true)
+    if (name === 'stream' || HUB_V5_BUILD) {
+      test('the rest of the card zooms too: its header rows, the navigator buttons and the hint', async ({ page }) => {
+        const surface = await open(page)
+        // The stream page's focus rows, games strip and hover hint; the hub's hover readout and summary line;
+        // on both, the navigator's hint (the stream's (i)) and Zoom in button below the bar.
+        const selectors = name === 'stream'
+          ? ['[data-chart-focus-bar]', '[data-games-played]', '[data-chart-selection-hint]',
+            // The stream chart's hint lives in the navigator's (i) (d3-v2 session-original).
+            '[data-session-chart-navigator] [data-chart-navigator-info]', '[data-session-chart-navigator] .hx-chart-navigator__zoom-buttons button']
+          : ['.figma-global-activity__hub-chart .hx-chart-header__readout', '.figma-global-activity__hub-chart .hx-chart-summary',
+            '.figma-global-activity__hub-chart .hx-chart-navigator__hint', '.figma-global-activity__hub-chart .hx-chart-navigator__zoom-buttons button']
+        for (const selector of selectors) {
+          await resetZoom(surface)
+          const target = page.locator(selector).first()
+          await target.evaluate(element => element.scrollIntoView({ block: 'center', behavior: 'instant' }))
+          const box = (await target.boundingBox())!
+          const y = box.y + box.height / 2
+          await page.waitForTimeout(450)
+          await page.mouse.move(box.x + Math.min(12, box.width / 2), y)
+          const before = await scrollYOf(page)
+          await page.mouse.wheel(0, -120)
+          await surface.settle()
+          const { count } = await windowOf(surface)
+          expect(count, `${selector} zooms`).toBeLessThan(surface.full)
+          expect(await scrollYOf(page), `${selector} leaves the page still`).toBe(before)
+        }
+      })
+
+      test('outside the card the page keeps the wheel', async ({ page }) => {
+        const surface = await open(page)
+        await resetZoom(surface)
+        const card = name === 'stream' ? '[data-session-chart-wheel-card]' : '[data-hub-chart-wheel-card]'
+        // Put the card's top edge 200px down the viewport, then wheel just above it.
+        const spot = await page.evaluate((selector) => {
+          const element = document.querySelector(selector)!
+          const top = element.getBoundingClientRect().top + window.scrollY
+          window.scrollTo({ top: Math.max(0, top - 200), behavior: 'instant' })
+          const rect = element.getBoundingClientRect()
+          const x = rect.left + 24
+          const y = rect.top - 16
+          const hit = document.elementFromPoint(x, y)
+          return { x, y, scrollY: window.scrollY, outside: Boolean(hit) && !element.contains(hit) }
+        }, card)
+        expect(spot.scrollY, 'there is page to scroll back up').toBeGreaterThan(0)
+        expect(spot.outside, 'the point is outside the card').toBe(true)
         await page.waitForTimeout(450)
-        await page.mouse.move(box.x + Math.min(12, box.width / 2), y)
-        const before = await scrollYOf(page)
+        await page.mouse.move(spot.x, spot.y)
         await page.mouse.wheel(0, -120)
-        await expect.poll(() => scrollYOf(page), { message: `${selector} scrolls the page` }).toBeLessThan(before)
+        await expect.poll(() => scrollYOf(page), { message: 'above the card the page scrolls' }).toBeLessThan(spot.scrollY)
         await surface.settle()
         await expect(surface.navigator).toHaveAttribute('data-hub-chart-navigator-window', `0:${surface.full - 1}`)
-      }
-    })
+      })
+    } else {
+      // The Command Center hub's readout and summary keep the release-1 rule (they give the page
+      // the wheel). The d3-v5 hub (VITE_PUBLIC_HUB_V5) is under the card rule above.
+      test('above the chart the page keeps the wheel', async ({ page }) => {
+        const surface = await open(page)
+        await resetZoom(surface)
+        // The hub's hover readout and summary line.
+        const selectors = ['.figma-global-activity__hub-chart .hx-chart-header__readout', '.figma-global-activity__hub-chart .hx-chart-summary']
+        const zone = await zoneOf(page, surface)
+        for (const selector of selectors) {
+          const target = page.locator(selector).first()
+          await target.evaluate(element => element.scrollIntoView({ block: 'center', behavior: 'instant' }))
+          const box = (await target.boundingBox())!
+          const y = box.y + box.height / 2
+          const pageY = y + await scrollYOf(page)
+          expect(pageY < zone.top || pageY > zone.bottom, `${selector} is outside the chart`).toBe(true)
+          await page.waitForTimeout(450)
+          await page.mouse.move(box.x + Math.min(12, box.width / 2), y)
+          const before = await scrollYOf(page)
+          await page.mouse.wheel(0, -120)
+          await expect.poll(() => scrollYOf(page), { message: `${selector} scrolls the page` }).toBeLessThan(before)
+          await surface.settle()
+          await expect(surface.navigator).toHaveAttribute('data-hub-chart-navigator-window', `0:${surface.full - 1}`)
+        }
+      })
+    }
   })
 }

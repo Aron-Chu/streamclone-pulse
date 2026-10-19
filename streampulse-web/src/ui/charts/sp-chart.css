@@ -1,0 +1,370 @@
+/*
+ * SpChart (@streampulse/pulse-charts/spchart): the analytics timeline chart.
+ * Every selector sits under .spc; none is shared with analytics-chart-motion.css,
+ * pulse-chart-motion.css or sp-navigator.css. Paint values follow the pinned
+ * d3-v2 mockup (chart.js and shared.css). No Tailwind utilities.
+ */
+.spc {
+  --sp-viewers: #c0c7ce;
+  --sp-chat: #a78bfa;
+  --sp-emotes: #f7b645;
+  --sp-live: #ef4444;
+  --sp-navigator: #bf78e2;
+  --sp-accent: #5eead4;
+  /* the selected band (selSlide): the page's --ssc-select, else prod's amber (owner item 10) */
+  --spc-select: var(--ssc-select, #f59e0b);
+  position: relative;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.spc-plot {
+  position: relative;
+}
+
+.spc-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+  touch-action: pan-y;
+}
+
+.spc-svg:focus {
+  outline: none;
+}
+
+.spc-svg:focus-visible {
+  outline: 2px solid var(--sp-focus, #99f6e4);
+  outline-offset: 4px;
+}
+
+/* the nested svg clips the plot to its width */
+.spc-clip {
+  overflow: hidden;
+}
+
+.spc-grid {
+  fill: none;
+  stroke: #1d1d1f;
+}
+
+.spc-tk,
+.spc-axis text {
+  fill: var(--sp-text-3, #8e8e96);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.spc-tk-in {
+  paint-order: stroke;
+  stroke: #09090b;
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+/* chat bars: slot averages; partial slots and bars outside a selection are lighter */
+.spc-bar {
+  fill: rgb(167 139 250 / 0.4);
+}
+
+.spc-bar[data-bar-partial] {
+  fill-opacity: 0.5;
+}
+
+.spc-dim {
+  fill-opacity: 0.4;
+}
+
+.spc-dim[data-bar-partial] {
+  fill-opacity: 0.2;
+}
+
+/* lines: colour and width on the series group, inherited by its paths */
+.spc-line {
+  fill: none;
+  stroke-linejoin: round;
+}
+
+.spc-line-viewers {
+  stroke: var(--sp-viewers);
+  stroke-width: 1.25;
+}
+
+.spc-line-emotes {
+  stroke: var(--sp-emotes);
+  stroke-width: 1.5;
+}
+
+/* one emote's rate: dashed amber (teal is kept for the selection) */
+.spc-line-overlay {
+  stroke: var(--sp-emotes);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 3;
+}
+
+.spc-line-viewers .spc-line-dash {
+  stroke-dasharray: 3 3;
+}
+
+/* a lone measured point: a 3 px round dot */
+.spc-dots {
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: none;
+}
+
+.spc-svg[data-selection] .spc-line-emotes {
+  stroke-opacity: 0.55;
+}
+
+.spc-svg[data-selection] .spc-line-emotes .spc-dots {
+  stroke-opacity: 1;
+}
+
+.spc-hatch-line {
+  stroke: #8e8e96;
+  stroke-opacity: 0.45;
+  stroke-width: 1.5;
+}
+
+.spc-hl-dim {
+  fill: #09090b;
+  fill-opacity: 0.62;
+}
+
+.spc-hl-edge {
+  stroke: #8e8e96;
+  stroke-dasharray: 4 5;
+}
+
+.spc-sel {
+  stroke: var(--sp-accent);
+}
+
+.spc-hov {
+  fill: #fff;
+  fill-opacity: 0.055;
+}
+
+.spc-cross {
+  fill: none;
+  stroke: #b4b4bb;
+}
+
+.spc-live-rule {
+  stroke: var(--sp-live);
+  stroke-opacity: 0.7;
+}
+
+.spc-avg {
+  fill: none;
+  stroke: #8e8e96;
+  stroke-opacity: 0.55;
+  stroke-dasharray: 1 3;
+}
+
+/* overlay: captions, live dot and html layers over the plot */
+.spc-ov {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  pointer-events: none;
+}
+
+.spc-layer {
+  pointer-events: none;
+}
+
+div.spc-layer {
+  position: absolute;
+  left: 0;
+}
+
+.spc-pe {
+  pointer-events: auto;
+}
+
+/* while the view moves: settle layers hide, scaled groups get will-change */
+.spc[data-gesture] [data-spc-settle] {
+  visibility: hidden;
+}
+
+.spc[data-gesture] [data-spc-scaled] {
+  will-change: transform;
+}
+
+.spc-chip {
+  position: absolute;
+  left: 4px;
+  display: block;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: rgb(9 9 11 / 0.86);
+  color: var(--sp-text-2, #b4b4bb);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.spc-avg-sw {
+  display: inline-block;
+  width: 14px;
+  height: 1px;
+  margin: 0 5px 0 10px;
+  vertical-align: middle;
+  background: repeating-linear-gradient(90deg, #8e8e96 0 1px, transparent 1px 4px);
+}
+
+.spc-live {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 50%;
+  background: var(--sp-live);
+}
+
+.spc-live-hollow {
+  background: var(--sp-canvas, #09090b);
+  box-shadow: inset 0 0 0 1.5px var(--sp-live);
+}
+
+/* one ring per new poll value (the span remounts per value) */
+.spc-ring {
+  position: absolute;
+  inset: 0;
+  border: 1.5px solid var(--sp-live);
+  border-radius: 50%;
+  opacity: 0;
+  animation: spc-ring 1.2s cubic-bezier(0.16, 1, 0.3, 1) 1;
+}
+
+@keyframes spc-ring {
+  from {
+    transform: scale(1);
+    opacity: 0.45;
+  }
+
+  to {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+
+.spc-vh {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.spc-top {
+  position: relative;
+}
+
+.spc-top-svg {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+
+.spc-skel {
+  position: absolute;
+  inset: 0;
+}
+
+.spc-axisbox {
+  height: 22px;
+}
+
+.spc-axis {
+  display: block;
+  height: 22px;
+  overflow: visible;
+}
+
+.spc-axis path {
+  stroke: #272728;
+}
+
+/* the navigator spans the plot only, not the value-axis column */
+.spc-navslot {
+  padding-right: var(--spc-tick);
+}
+
+/* ---- lanes mode (session-original): lane colours and opacities come from the lane config ---- */
+.spc-lane-bars .spc-bar {
+  fill: inherit;
+}
+
+/* a lane's max tick mark in the value column (4 x 1 px boxes) */
+.spc-tkmark {
+  fill: #3c3c42;
+  stroke: none;
+}
+
+.spc-lcap {
+  color: var(--sp-text-2, #b4b4bb);
+}
+
+.spc-lcap b {
+  font-weight: 700;
+  color: var(--sp-text-1, #ededef);
+}
+
+.spc-lcap .spc-n {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.spc-lsw {
+  display: inline-block;
+  position: relative;
+  top: -1px;
+  width: 10px;
+  height: 2px;
+  margin-right: 6px;
+  border-radius: 1px;
+  vertical-align: middle;
+}
+
+.spc-lsw-bar {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.spc-sep {
+  margin: 0 5px;
+  color: var(--sp-text-3, #8e8e96);
+}
+
+.spc-lcap .spc-avg-sw-lane {
+  position: relative;
+  top: -1px;
+  margin: 0 5px 0 0;
+}
+
+/* the selected band, sliding between bars: session-original's SEL_BAND (fill .1, stroke .55; prod's amber pin band is .105 / .5) */
+.spc-selband {
+  fill: var(--spc-select);
+  fill-opacity: 0.1;
+  stroke: var(--spc-select);
+  stroke-opacity: 0.55;
+  stroke-width: 1;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spc-ring {
+    animation: none;
+  }
+}

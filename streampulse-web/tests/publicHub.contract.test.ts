@@ -109,4 +109,26 @@ describe('PublicHub portal contract', () => {
       expect(got, `PublicHubMomentsResponse missing ${key}`).toContain(key)
     }
   })
+
+  it('HubLiveChannel carries screener v1 beside the legacy screener (plan §1.5)', () => {
+    const got = interfaceFieldNames(source, 'HubLiveChannel')
+    expect(got).toContain('screener')
+    expect(got).toContain('screenerV1')
+  })
+
+  it('HubActivityPoint exposes every field the bucket card model reads', () => {
+    const got = interfaceFieldNames(source, 'HubActivityPoint')
+    for (const key of [
+      't', 'chat', 'emotes', 'seventv', 'twitch', 'bttv', 'ffz', 'viewers', 'viewerContributors',
+      'viewerExpectedContributors', 'viewerCoverage', 'viewerSourceMismatch', 'providerCoverage',
+      'providerCountsLowerBound', 'hasChatRollup', 'hasViewerRollup', 'gapKind', 'bucketComplete', 'topEmotes',
+    ] as const) {
+      expect(got, `HubActivityPoint missing ${key}`).toContain(key)
+    }
+  })
+
+  it('takes the hub path from hubEarlyFetch instead of a second copy (plan §2.6)', () => {
+    expect(source).toMatch(/export \{ publicHubPath \}/)
+    expect(source).not.toMatch(/function publicHubPath\(/)
+  })
 })

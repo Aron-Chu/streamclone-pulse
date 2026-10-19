@@ -35,13 +35,13 @@ vi.mock('./analytics/AnalyticsChart.tsx', () => ({
   default: () => <div data-testid="analytics-chart" />,
 }))
 vi.mock('./analytics/ConsoleBits.tsx', () => ({
-  DataQualityDisclosure: () => null,
+  DataQualityButton: () => null,
   ChatCoverageBadge: () => null,
   StatCard: () => null,
   ViewerSourceBadge: () => null,
   AnalyticsQualityChip: () => null,
   CoverageFacets: () => null,
-  CoverageStartBanner: () => null,
+  CoverageStartMetaItem: () => null,
   VodAvailabilityChip: () => null,
 }))
 vi.mock('./analytics/StreamSidebar.tsx', () => ({ StreamSidebar: () => null }))
@@ -49,7 +49,7 @@ vi.mock('./analytics/TopEmoteTable.tsx', () => ({ TopEmoteTable: () => null }))
 vi.mock('./analytics/MomentReviewPanel.tsx', () => ({
   MomentReviewPanel: () => <div>Top Moments</div>,
 }))
-vi.mock('./analytics/PastBroadcastBanner.tsx', () => ({ PastBroadcastBanner: () => null }))
+vi.mock('./analytics/PastBroadcastBanner.tsx', () => ({ SessionLifecycleMeta: () => null }))
 vi.mock('./analytics/SessionRecapMomentsStrip.tsx', () => ({
   SessionRecapMomentsStrip: () => <div>Pulse Moments</div>,
 }))

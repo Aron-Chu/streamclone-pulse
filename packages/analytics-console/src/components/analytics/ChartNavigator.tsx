@@ -1,9 +1,12 @@
 import {
+  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
@@ -53,6 +56,11 @@ const Mouse = navigatorIcon('mouse', [
   ['rect', { x: '5', y: '2', width: '14', height: '20', rx: '7' }],
   ['path', { d: 'M12 6v4' }],
 ])
+const Info = navigatorIcon('info', [
+  ['circle', { cx: '12', cy: '12', r: '10' }],
+  ['path', { d: 'M12 16v-4' }],
+  ['path', { d: 'M12 8h.01' }],
+])
 const LocateFixed = navigatorIcon('locate-fixed', [
   ['line', { x1: '2', x2: '5', y1: '12', y2: '12' }],
   ['line', { x1: '19', x2: '22', y1: '12', y2: '12' }],
@@ -74,6 +82,21 @@ export interface ChartNavigatorPreset {
   pointCount: number
 }
 
+/*
+ * The chart core's viewport store (pulse-charts sp core, plan §2.1), declared
+ * here structurally so this package never imports pulse-charts internals. Any
+ * object of this shape works.
+ */
+export interface SpRange { startIndex: number; endIndex: number }
+export interface SpViewportSource { getTarget(): SpRange; getVisual(): SpRange; setTarget(next: SpRange, opts?: { animate?: boolean }): void; subscribeTarget(cb: () => void): () => void; subscribeFrame(cb: (visual: SpRange) => void): () => void; subscribeSettle(cb: (settled: SpRange) => void): () => void }
+
+/** Activity silhouette behind the navigator track: a path `d` drawn in a `width` x `height` box, stretched to the track. */
+export interface ChartNavigatorOverview {
+  d: string
+  width: number
+  height: number
+}
+
 export interface ChartNavigatorProps {
   pointCount: number
   startIndex: number
@@ -90,14 +113,13 @@ export interface ChartNavigatorProps {
   selectedIndex?: number | null
   presets?: ChartNavigatorPreset[]
   /**
-   * The whole chart: the label band above the plot, the plot and its lanes,
-   * the time axis and this navigator. A wheel anywhere from its top edge down
-   * to the bottom of the navigator bar, across its full width, zooms (see
-   * `wheelZoneContains`). Below the bar (buttons, readout, hint) the page
-   * keeps the wheel. It should contain the navigator, so one listener hears
-   * every part of that zone, including the gaps between its rows. Do not pass
-   * the plot here: Chrome decides from the listening element's box whether a
-   * wheel event can be cancelled, so outside it the browser scrolls the page
+   * The chart's card: its header and focus rows, the plot and its lanes, the
+   * time axis and this navigator with its buttons and hint. A wheel anywhere
+   * over it zooms (see `wheelZoneContains`), except over an inner list that can
+   * still scroll that way. It should contain the navigator, so one listener
+   * hears every part of the card, including the gaps between its rows. Do not
+   * pass the plot here: Chrome decides from the listening element's box whether
+   * a wheel event can be cancelled, so outside it the browser scrolls the page
    * before this code runs, whatever the zone check says.
    */
   wheelSurfaceRef?: RefObject<HTMLElement | null>
@@ -136,6 +158,38 @@ export interface ChartNavigatorProps {
    * readout markup is unchanged.
    */
   readoutNote?: ReactNode
+  /**
+   * d3 variant only. 'screen-reader' reads "<range> · <note>" on screen (d3-v2
+   * session-original: "Full stream · 10-min bars") and keeps the step counts
+   * for assistive tech only. Default 'visible' keeps the count line.
+   */
+  readoutCount?: 'visible' | 'screen-reader'
+  /**
+   * The chart's viewport store. When given, the navigator reads the target
+   * range from it (one render per target change), moves the purple window
+   * and writes `data-chart-viewport-start/end` on every store frame without a
+   * React render, and sends wheel, drag, zoom button and track-click changes
+   * to `setTarget`. `onChange` still fires, once per settle, so a host keeps
+   * only the settled range in its state. `startIndex`, `endIndex`,
+   * `controlRange` and `visualRange` are then ignored. Omitted, nothing changes.
+   */
+  viewportSource?: SpViewportSource
+  /** Activity silhouette drawn behind the track (fill #8e8e96 at 28%). */
+  overview?: ChartNavigatorOverview | null
+  /**
+   * 'd3' adds `.spc-nav` (styled only by the site's sp-navigator.css): a flat
+   * purple track with grips and one control row of - / + / Reset / Scroll zoom
+   * with its hint. Omitted, the markup is unchanged.
+   */
+  variant?: 'd3'
+  /**
+   * The session chart (d3-v2 session-original, 2026-10-14/15 declutter C21),
+   * with variant 'd3' only: the hint and Scroll zoom move into an (i) at the
+   * end of the control row (opened by click or Enter, never hover), and Reset
+   * keeps its place but hides while the whole range shows. Omitted (the hub),
+   * the row is unchanged.
+   */
+  infoDisclosure?: boolean
 }
 
 interface DragState {
@@ -198,6 +252,17 @@ export const WHEEL_SCROLL_THROUGH_MS = 400
 let lastPassedWheelAt = Number.NEGATIVE_INFINITY
 let scrollThroughInstalled = false
 
+/**
+ * Wheel gestures read the chart's boxes once, at their first event, and reuse
+ * them until the gesture gap (WHEEL_GESTURE_GAP_MS) or until this number moves:
+ * a scroll anywhere (the page or any list), a window resize, a chart card
+ * resize, or a wheel event the page took (it is about to scroll).
+ */
+let wheelLayoutGeneration = 0
+function bumpWheelLayout() {
+  wheelLayoutGeneration += 1
+}
+
 function installScrollThroughGuard() {
   if (scrollThroughInstalled || typeof window === 'undefined') return
   scrollThroughInstalled = true
@@ -207,7 +272,10 @@ function installScrollThroughGuard() {
     // some other handler): the page did not move.
     if (handledWheelEvents.has(event) || event.defaultPrevented || event.ctrlKey || event.metaKey) return
     lastPassedWheelAt = event.timeStamp
+    bumpWheelLayout()
   }, { passive: true })
+  window.addEventListener('scroll', bumpWheelLayout, { capture: true, passive: true })
+  window.addEventListener('resize', bumpWheelLayout, { passive: true })
 }
 
 function scrollingThrough(timeStamp: number): boolean {
@@ -215,9 +283,22 @@ function scrollingThrough(timeStamp: number): boolean {
   return since >= 0 && since < WHEEL_SCROLL_THROUGH_MS
 }
 
-/** Test hook: forget the last page-scrolling wheel event. */
+/** Test hook: forget the last page-scrolling wheel event (and any boxes a gesture cached). */
 export function resetChartWheelGuard() {
   lastPassedWheelAt = Number.NEGATIVE_INFINITY
+  bumpWheelLayout()
+}
+
+/**
+ * Marks an element whose wheel is never the chart's: an open bucket card
+ * (callout, dock or sheet) placed over or beside the plot. Inside it the wheel
+ * scrolls the card's own list or the page, and never zooms.
+ */
+export const CHART_WHEEL_EXEMPT_ATTRIBUTE = 'data-chart-wheel-exempt'
+
+/** Whether a wheel target sits inside a [data-chart-wheel-exempt] element. */
+export function isChartWheelExempt(target: EventTarget | null | undefined): boolean {
+  return typeof Element !== 'undefined' && target instanceof Element && target.closest(`[${CHART_WHEEL_EXEMPT_ATTRIBUTE}]`) != null
 }
 
 interface Box {
@@ -241,39 +322,165 @@ function pointInRect(rect: Box | undefined, x: number, y: number): boolean {
 
 /**
  * Whether a wheel at (x, y) is over the chart, so it zooms. The zone is the
- * wheel surface's full width, from its top edge down to the bottom of the
- * navigator bar when the surface holds the navigator, else the surface's own
- * box. It is decided by position, not by the event target: labels, lanes,
- * markers and overlays inside the zone all count, and so does the gap between
- * the plot and the bar. The plot box is always inside it.
+ * wheel surface's whole box: the chart's card, from its header and focus rows,
+ * through the plot, every lane and the time axis, down to the navigator with
+ * its buttons, readout and hint, edge to edge. The plot box always counts too.
+ * It is decided by position, not by the event target: labels, lanes, markers,
+ * buttons and overlays inside the card all count. (`bar` is kept for callers;
+ * the zone no longer stops at the navigator bar.)
  *
- * Do not narrow this to the plot box again. That made the label band above
- * the plot and the time-axis row below it scroll the page (2026-10-12).
+ * Do not narrow this again. The plot box alone made the label band and the
+ * time axis scroll the page (2026-10-12); stopping at the navigator bar made
+ * the card's header and footer scroll it (2026-10-13). Owner rule: the wheel
+ * zooms anywhere over a chart card. Only an inner list that can still scroll
+ * the way the wheel goes keeps it (see `innerScrollerTakesWheel`), and so does
+ * anything inside [data-chart-wheel-exempt] (an open bucket card), when the
+ * event target is passed.
  */
 export function wheelZoneContains(
   surface: Element,
-  bar: Element | null | undefined,
+  _bar: Element | null | undefined,
   plot: Element | null | undefined,
   x: number,
   y: number,
+  target?: EventTarget | null,
 ): boolean {
-  const box = surface.getBoundingClientRect()
-  const barBox = bar && surface.contains(bar) ? bar.getBoundingClientRect() : null
-  const zone: Box = barBox && barBox.width > 0 && barBox.bottom > box.top
-    ? {
-        left: Math.min(box.left, barBox.left),
-        right: Math.max(box.right, barBox.right),
-        top: box.top,
-        bottom: barBox.bottom,
-        width: Math.max(box.right, barBox.right) - Math.min(box.left, barBox.left),
-      }
-    : box
-  return pointInRect(zone, x, y) || pointInRect(plot?.getBoundingClientRect(), x, y)
+  return zoneContains(readBox, surface, plot, x, y, target)
+}
+
+function readBox(element: Element): Box {
+  return element.getBoundingClientRect()
+}
+
+function zoneContains(
+  rectOf: (element: Element) => Box,
+  surface: Element,
+  plot: Element | null | undefined,
+  x: number,
+  y: number,
+  target?: EventTarget | null,
+): boolean {
+  if (isChartWheelExempt(target)) return false
+  return pointInRect(rectOf(surface), x, y) || (plot != null && pointInRect(rectOf(plot), x, y))
+}
+
+/**
+ * Whether a scrollable list inside the chart card (the measured-minute table,
+ * a row of focus chips that overflows) should scroll with this wheel instead
+ * of the chart zooming: it lies between the event target and the card, it can
+ * still move the way the wheel goes, and it is not the chart's own wrapper (one
+ * that holds the plot never counts, so the plot always zooms).
+ */
+export function innerScrollerTakesWheel(event: WheelEvent, surface: Element, plot: Element | null | undefined): boolean {
+  if (typeof getComputedStyle !== 'function') return false
+  const { horizontal, delta } = wheelScrollIntent(event)
+  if (delta === 0) return false
+  for (let element = event.target instanceof Element ? event.target : null; element && element !== surface; element = element.parentElement) {
+    if (plot && element.contains(plot)) continue
+    const style = getComputedStyle(element)
+    if (!/(auto|scroll)/.test(horizontal ? style.overflowX : style.overflowY)) continue
+    const room = horizontal ? element.scrollWidth - element.clientWidth : element.scrollHeight - element.clientHeight
+    if (room <= 1) continue
+    const position = horizontal ? element.scrollLeft : element.scrollTop
+    if (delta < 0 ? position > 0.5 : position < room - 0.5) return true
+  }
+  return false
+}
+
+/** Which axis a wheel event scrolls a list along (Shift turns a vertical wheel sideways), and by how much. */
+function wheelScrollIntent(event: WheelEvent): { horizontal: boolean; delta: number } {
+  const deltaX = wheelDeltaPixels(event.deltaX, event.deltaMode)
+  const deltaY = wheelDeltaPixels(event.deltaY, event.deltaMode)
+  const horizontal = event.shiftKey || Math.abs(deltaX) > Math.abs(deltaY)
+  return { horizontal, delta: horizontal ? (event.shiftKey ? (deltaY || deltaX) : deltaX) : deltaY }
 }
 
 function wheelDeltaPixels(delta: number, deltaMode: number): number {
   if (!Number.isFinite(delta)) return 0
   return deltaMode === 1 ? delta * WHEEL_LINE_PX : deltaMode === 2 ? delta * WHEEL_PAGE_PX : delta
+}
+
+/**
+ * One navigator's layout reads for the current wheel gesture. The first event
+ * reads each box it needs (card, plot, track) and the inner-list check; later
+ * events reuse them until the gesture gap passes or wheelLayoutGeneration
+ * moves (scroll, resize, a wheel the page took). A list that could take the
+ * wheel is never cached, because it moves as it scrolls.
+ */
+interface WheelLayoutCache {
+  begin(event: WheelEvent): void
+  rectOf(element: Element): Box
+  innerScrollerTakes(event: WheelEvent, surface: Element, plot: Element | null | undefined): boolean
+}
+
+function createWheelLayoutCache(): WheelLayoutCache {
+  let generation = Number.NaN
+  let lastAt = Number.NEGATIVE_INFINITY
+  const rects = new Map<Element, Box>()
+  const noInnerScroller = new Map<EventTarget, Set<string>>()
+  return {
+    begin(event) {
+      const since = event.timeStamp - lastAt
+      if (generation !== wheelLayoutGeneration || !(since >= 0 && since <= WHEEL_GESTURE_GAP_MS)) {
+        rects.clear()
+        noInnerScroller.clear()
+      }
+      generation = wheelLayoutGeneration
+      lastAt = event.timeStamp
+    },
+    rectOf(element) {
+      let rect = rects.get(element)
+      if (!rect) {
+        rect = element.getBoundingClientRect()
+        rects.set(element, rect)
+      }
+      return rect
+    },
+    innerScrollerTakes(event, surface, plot) {
+      const target = event.target
+      if (!target) return false
+      const { horizontal, delta } = wheelScrollIntent(event)
+      if (delta === 0) return false
+      const key = `${horizontal ? 'x' : 'y'}${delta < 0 ? '-' : '+'}`
+      if (noInnerScroller.get(target)?.has(key)) return false
+      const takes = innerScrollerTakesWheel(event, surface, plot)
+      if (!takes) {
+        const known = noInnerScroller.get(target) ?? new Set<string>()
+        known.add(key)
+        noInnerScroller.set(target, known)
+      }
+      return takes
+    },
+  }
+}
+
+/** The purple window's left edge, right edge and width, in percent of the track. */
+function brushPercents(startIndex: number, endIndex: number, span: number): { left: number; right: number; width: number } {
+  const left = (startIndex / span) * 100
+  const right = (endIndex / span) * 100
+  return { left, right, width: Math.max(1, right - left) }
+}
+
+/** A viewport index for data-chart-viewport-*: fractional while the view eases, at most 3 decimals. */
+function formatViewportIndex(value: number): string {
+  return String(Math.round(value * 1000) / 1000)
+}
+
+const noSourceSubscribe = () => () => {}
+
+/**
+ * The silhouette fills the track unless the site's navigator styles place it
+ * (sp-navigator.css sets the d3 track's 22px band through these variables).
+ */
+const OVERVIEW_STYLE: CSSProperties = {
+  position: 'absolute',
+  left: 0,
+  top: 'var(--spc-nav-overview-top, 0)',
+  width: '100%',
+  height: 'var(--spc-nav-overview-height, 100%)',
+  display: 'block',
+  overflow: 'visible',
+  pointerEvents: 'none',
 }
 
 /**
@@ -436,6 +643,11 @@ export function ChartNavigator({
   unitLabel = 'buckets',
   selectedLabel = 'Show selected bucket',
   readoutNote,
+  readoutCount = 'visible',
+  viewportSource,
+  overview,
+  variant,
+  infoDisclosure = false,
 }: ChartNavigatorProps) {
   const [storedScrollZoom, setStoredScrollZoom] = useChartScrollZoom()
   const scrollZoomEnabled = scrollZoomProp ?? storedScrollZoom
@@ -444,19 +656,54 @@ export function ChartNavigator({
   const minCount = minimumCount(pointCount, minVisibleCount)
   // Steps between the first and last visible step at the floor.
   const minSpan = Math.min(maxIndex, minCount - 1)
-  const range = normalizedRange(pointCount, startIndex, endIndex, minVisibleCount)
+  // With a viewport store, its target is the range (one render per target
+  // change); its eased visual range moves the window per frame, below.
+  const sourceTargetRef = useRef<SpRange | null>(null)
+  const subscribeSourceTarget = useCallback(
+    (onStoreChange: () => void) => viewportSource ? viewportSource.subscribeTarget(onStoreChange) : noSourceSubscribe(),
+    [viewportSource],
+  )
+  const getSourceTarget = useCallback((): SpRange | null => {
+    if (!viewportSource) return null
+    const target = viewportSource.getTarget()
+    const cached = sourceTargetRef.current
+    if (cached && cached.startIndex === target.startIndex && cached.endIndex === target.endIndex) return cached
+    sourceTargetRef.current = { startIndex: target.startIndex, endIndex: target.endIndex }
+    return sourceTargetRef.current
+  }, [viewportSource])
+  const sourceTarget = useSyncExternalStore(subscribeSourceTarget, getSourceTarget, getSourceTarget)
+  const range = normalizedRange(
+    pointCount,
+    sourceTarget?.startIndex ?? startIndex,
+    sourceTarget?.endIndex ?? endIndex,
+    minVisibleCount,
+  )
   const inputRangeRef = useRef(controlRange ?? range)
   useLayoutEffect(() => {
     inputRangeRef.current = controlRange ?? range
   }, [controlRange?.startIndex, controlRange?.endIndex, range.startIndex, range.endIndex])
+  /** The range input composes on: the store's target, or the latest emitted / controlled range. */
+  const readInputRange = (): ChartNavigatorRange => {
+    if (!viewportSource) return inputRangeRef.current
+    const target = viewportSource.getTarget()
+    return normalizedRange(pointCount, target.startIndex, target.endIndex, minVisibleCount)
+  }
   const emitRange = (next: ChartNavigatorRange, animate = true) => {
+    if (viewportSource) {
+      // The store eases to it; onChange follows on settle.
+      viewportSource.setTarget(next, { animate })
+      return
+    }
     inputRangeRef.current = next
     onChange(next, animate)
   }
+  const resetView = () => {
+    viewportSource?.setTarget({ startIndex: 0, endIndex: maxIndex }, { animate: true })
+    onReset()
+  }
   const span = Math.max(1, maxIndex)
-  const left = ((visualRange ?? range).startIndex / span) * 100
-  const right = ((visualRange ?? range).endIndex / span) * 100
-  const width = Math.max(1, right - left)
+  const brushRange = viewportSource ? viewportSource.getVisual() : (visualRange ?? range)
+  const { left, right, width } = brushPercents(brushRange.startIndex, brushRange.endIndex, span)
   const isFullRange = range.startIndex === 0 && range.endIndex === maxIndex
   const visibleCount = range.endIndex - range.startIndex + 1
   const selectedOutsideView = selectedIndex != null && selectedIndex >= 0 && selectedIndex < pointCount &&
@@ -469,6 +716,46 @@ export function ChartNavigator({
   const dragRef = useRef<DragState | null>(null)
   const [draggingMode, setDraggingMode] = useState<DragState['mode'] | null>(null)
   const hintId = useId()
+  const windowRef = useRef<HTMLSpanElement>(null)
+  const startHandleRef = useRef<HTMLButtonElement>(null)
+  const endHandleRef = useRef<HTMLButtonElement>(null)
+  const startGripRef = useRef<HTMLSpanElement>(null)
+  const endGripRef = useRef<HTMLSpanElement>(null)
+
+  // Per store frame: move the window, its handles and grips, and the
+  // data-chart-viewport-* attributes by direct writes (no React render).
+  const paintBrushRef = useRef<(visual: SpRange) => void>(() => {})
+  paintBrushRef.current = (visual) => {
+    const brush = brushPercents(visual.startIndex, visual.endIndex, span)
+    const windowElement = windowRef.current
+    if (windowElement) {
+      windowElement.style.left = `${brush.left}%`
+      windowElement.style.width = `${brush.width}%`
+    }
+    startHandleRef.current?.style.setProperty('left', `clamp(22px, ${brush.left}%, calc(100% - 22px))`)
+    endHandleRef.current?.style.setProperty('left', `clamp(22px, ${brush.right}%, calc(100% - 22px))`)
+    startGripRef.current?.style.setProperty('left', `${brush.left}%`)
+    endGripRef.current?.style.setProperty('left', `${brush.right}%`)
+    const root = navigatorRef.current
+    if (root) {
+      root.setAttribute('data-chart-viewport-start', formatViewportIndex(visual.startIndex))
+      root.setAttribute('data-chart-viewport-end', formatViewportIndex(visual.endIndex))
+    }
+  }
+  useLayoutEffect(() => {
+    if (!viewportSource) return
+    paintBrushRef.current(viewportSource.getVisual())
+    return viewportSource.subscribeFrame((visual) => paintBrushRef.current(visual))
+  }, [viewportSource, span])
+  // The host keeps only the settled range: onChange fires once per settle.
+  const settleRef = useRef<(settled: SpRange) => void>(() => {})
+  settleRef.current = (settled) => {
+    onChange(normalizedRange(pointCount, settled.startIndex, settled.endIndex, minVisibleCount), false)
+  }
+  useEffect(() => {
+    if (!viewportSource) return
+    return viewportSource.subscribeSettle((settled) => settleRef.current(settled))
+  }, [viewportSource])
 
   const globalPointerIndex = (clientX: number, trackLeft: number, trackWidth: number): number =>
     clamp(Math.round(((clientX - trackLeft) / Math.max(1, trackWidth)) * maxIndex), 0, maxIndex)
@@ -516,7 +803,8 @@ export function ChartNavigator({
       )
       next = { startIndex: nextStart, endIndex: nextStart + currentSpan }
     }
-    if (next.startIndex !== range.startIndex || next.endIndex !== range.endIndex) emitRange(next, false)
+    const shown = viewportSource ? readInputRange() : range
+    if (next.startIndex !== shown.startIndex || next.endIndex !== shown.endIndex) emitRange(next, false)
   }
 
   const finishPointerDrag = (event: ReactPointerEvent<HTMLDivElement>, cancelled = false) => {
@@ -552,7 +840,9 @@ export function ChartNavigator({
     if (!rect || rect.width <= 0) return
     event.preventDefault()
     event.stopPropagation()
-    const dragRange = onDragStart?.() ?? range
+    // With a store, the drag starts from its target (onDragStart is still told).
+    const hostDragRange = onDragStart?.()
+    const dragRange = viewportSource ? readInputRange() : (hostDragRange ?? range)
     inputRangeRef.current = dragRange
     dragRef.current = {
       pointerId: event.pointerId,
@@ -575,7 +865,7 @@ export function ChartNavigator({
   }
 
   const moveHandleByKeyboard = (handle: 'start' | 'end', delta: number) => {
-    const inputRange = inputRangeRef.current
+    const inputRange = readInputRange()
     if (handle === 'start') {
       emitRange({
         startIndex: clamp(inputRange.startIndex + delta, 0, Math.max(0, inputRange.endIndex - minSpan)),
@@ -594,7 +884,7 @@ export function ChartNavigator({
   }
 
   const zoomFromCenter = (direction: 'in' | 'out') => {
-    const inputRange = inputRangeRef.current
+    const inputRange = readInputRange()
     const next = zoomNavigatorRange(pointCount, inputRange, focusIndex, direction, minVisibleCount)
     if (next.startIndex !== inputRange.startIndex || next.endIndex !== inputRange.endIndex) emitRange(next)
   }
@@ -609,7 +899,7 @@ export function ChartNavigator({
     event: ReactKeyboardEvent<HTMLButtonElement>,
     handle: 'start' | 'end',
   ) => {
-    const inputRange = inputRangeRef.current
+    const inputRange = readInputRange()
     const step = event.shiftKey ? 5 : 1
     if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
       event.preventDefault()
@@ -628,7 +918,7 @@ export function ChartNavigator({
     } else if (event.key === 'Escape') {
       event.preventDefault()
       event.stopPropagation()
-      onReset()
+      resetView()
     }
   }
 
@@ -641,15 +931,25 @@ export function ChartNavigator({
   const wheelGestureRef = useRef<WheelGestureState | null>(null)
   /** Time of the last wheel event this navigator took, for the zoom-in floor rule. */
   const lastHandledWheelAtRef = useRef(Number.NEGATIVE_INFINITY)
-  const handleWheel = (event: WheelEvent, inZone: (x: number, y: number) => boolean, anchor: Element | null | undefined) => {
+  /** This navigator's layout reads for the current wheel gesture. */
+  const wheelLayoutRef = useRef<WheelLayoutCache | null>(null)
+  wheelLayoutRef.current ??= createWheelLayoutCache()
+  const handleWheel = (
+    event: WheelEvent,
+    inZone: (x: number, y: number) => boolean,
+    anchor: Element | null | undefined,
+    rectOf: (element: Element) => Box,
+  ) => {
     // A chart inside the wheel surface may already have zoomed for this event,
     // or the navigator inside this surface already took it.
     if (event.defaultPrevented || handledWheelEvents.has(event)) return
+    // An open bucket card over or beside the plot keeps its own wheel.
+    if (isChartWheelExempt(event.target)) return noteWheelOutcome(event, 'pass:exempt')
     if (event.ctrlKey || event.metaKey) return noteWheelOutcome(event, 'pass:browser-zoom')
     if (maxIndex <= 1) return noteWheelOutcome(event, 'pass:no-range')
     // By the pointer's position, not the event target.
     if (!anchor || !inZone(event.clientX, event.clientY)) return noteWheelOutcome(event, 'pass:outside-chart')
-    const rect = anchor.getBoundingClientRect()
+    const rect = rectOf(anchor)
 
     const deltaX = wheelDeltaPixels(event.deltaX, event.deltaMode)
     const deltaY = wheelDeltaPixels(event.deltaY, event.deltaMode)
@@ -663,7 +963,7 @@ export function ChartNavigator({
       return noteWheelOutcome(event, 'pass:scroll-through')
     }
 
-    const inputRange = inputRangeRef.current
+    const inputRange = readInputRange()
     const previous = wheelGestureRef.current
     const continues = previous != null
       && previous.pointCount === pointCount
@@ -719,11 +1019,19 @@ export function ChartNavigator({
     // The track zooms around the step under the pointer on the track. Elsewhere
     // in the navigator, the chart's wheel surface (when it holds the navigator)
     // decides.
-    const onWheel = (event: WheelEvent) => wheelHandlerRef.current(
-      event,
-      (x, y) => pointInRect(trackShellRef.current?.getBoundingClientRect(), x, y),
-      trackRef.current,
-    )
+    const onWheel = (event: WheelEvent) => {
+      const layout = wheelLayoutRef.current!
+      layout.begin(event)
+      wheelHandlerRef.current(
+        event,
+        (x, y) => {
+          const shell = trackShellRef.current
+          return shell != null && pointInRect(layout.rectOf(shell), x, y)
+        },
+        trackRef.current,
+        layout.rectOf,
+      )
+    }
     navigator.addEventListener('wheel', onWheel, { passive: false })
     return () => navigator.removeEventListener('wheel', onWheel)
   }, [])
@@ -737,28 +1045,105 @@ export function ChartNavigator({
     boundSurfaceRef.current = null
     if (!surface || surface === navigatorRef.current) return
     const onWheel = (event: WheelEvent) => {
+      if (event.defaultPrevented || handledWheelEvents.has(event)) return
+      if (isChartWheelExempt(event.target)) return noteWheelOutcome(event, 'pass:exempt')
+      const layout = wheelLayoutRef.current!
+      layout.begin(event)
       const plot = wheelAnchorRef.current?.() ?? surface
+      if (layout.innerScrollerTakes(event, surface, plot)) return noteWheelOutcome(event, 'pass:inner-scroll')
       wheelHandlerRef.current(
         event,
-        (x, y) => wheelZoneContains(surface, barRef.current, plot, x, y),
+        (x, y) => zoneContains(layout.rectOf, surface, plot, x, y, event.target),
         plot,
+        layout.rectOf,
       )
     }
     surface.addEventListener('wheel', onWheel, { passive: false })
-    boundSurfaceRef.current = { surface, release: () => surface.removeEventListener('wheel', onWheel) }
+    // A card that changes size (a lane opens, the page reflows) re-measures.
+    const resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(bumpWheelLayout) : null
+    resizeObserver?.observe(surface)
+    boundSurfaceRef.current = {
+      surface,
+      release: () => {
+        surface.removeEventListener('wheel', onWheel)
+        resizeObserver?.disconnect()
+      },
+    }
   })
   useEffect(() => () => {
     boundSurfaceRef.current?.release()
     boundSurfaceRef.current = null
   }, [])
 
+  const isD3 = variant === 'd3'
+  const withInfo = isD3 && infoDisclosure
+  const [infoOpen, setInfoOpen] = useState(false)
+  const infoButtonRef = useRef<HTMLButtonElement>(null)
+  const infoPanelRef = useRef<HTMLDivElement>(null)
+  const scrollToggleRef = useRef<HTMLButtonElement>(null)
+  const resetButtonRef = useRef<HTMLButtonElement>(null)
+  const zoomInButtonRef = useRef<HTMLButtonElement>(null)
+  const infoPanelId = useId()
+  const closeInfo = useCallback((focusButton: boolean) => {
+    setInfoOpen(false)
+    if (focusButton) infoButtonRef.current?.focus()
+  }, [])
+  useEffect(() => {
+    if (!infoOpen) return
+    // Capture, ahead of the chart's own Escape (which restores the full range).
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      event.stopPropagation()
+      const active = document.activeElement
+      closeInfo(!!active && (infoPanelRef.current?.contains(active) || active === infoButtonRef.current))
+    }
+    const onDown = (event: PointerEvent) => {
+      const target = event.target as Node | null
+      if (target && (infoPanelRef.current?.contains(target) || infoButtonRef.current?.contains(target))) return
+      closeInfo(false)
+    }
+    document.addEventListener('keydown', onKey, true)
+    document.addEventListener('pointerdown', onDown, true)
+    return () => {
+      document.removeEventListener('keydown', onKey, true)
+      document.removeEventListener('pointerdown', onDown, true)
+    }
+  }, [closeInfo, infoOpen])
+  // Reset hides at the full range; if it had focus (it was just used), focus
+  // moves to Zoom in before the hidden button drops it to the page.
+  useLayoutEffect(() => {
+    if (withInfo && isFullRange && document.activeElement === resetButtonRef.current) zoomInButtonRef.current?.focus()
+  }, [isFullRange, withInfo])
+  const scrollHint = scrollZoomEnabled
+    ? 'Scroll over the chart to zoom · Shift + scroll to pan · Drag the purple bar to pick a span'
+    : 'Scroll zoom is off: the wheel scrolls the page · Hold Alt and scroll to zoom · Shift + scroll to pan'
+  const hint = <small className="hx-chart-navigator__hint">{scrollHint}</small>
+  const selectedButton = selectedOutsideView
+    ? <button type="button" onClick={(event) => { event.stopPropagation(); showSelectedBucket() }}><LocateFixed size={isD3 ? 16 : 15} aria-hidden="true" />{selectedLabel}</button>
+    : null
+  const scrollToggle = (
+    <button
+      ref={scrollToggleRef}
+      type="button"
+      className="hx-chart-navigator__scroll-toggle"
+      aria-pressed={scrollZoomEnabled}
+      title="Remembered in this browser"
+      disabled={pointCount <= 2}
+      onClick={() => onScrollZoomChange(!scrollZoomEnabled)}
+    >{isD3 ? null : <Mouse size={15} aria-hidden="true" />}Scroll zoom<span className="hx-chart-navigator__scroll-state" aria-hidden="true">{scrollZoomEnabled ? 'On' : 'Off'}</span></button>
+  )
+
   return (
     <div
       ref={navigatorRef}
-      className={`hx-chart-navigator${draggingMode ? ' is-dragging' : ''}${isFullRange ? ' is-full-range' : ''}`}
+      className={`hx-chart-navigator${isD3 ? ' spc-nav' : ''}${draggingMode ? ' is-dragging' : ''}${isFullRange ? ' is-full-range' : ''}`}
       data-hub-chart-navigator
+      data-chart-navigator-variant={variant}
       data-hub-chart-navigator-window={`${range.startIndex}:${range.endIndex}`}
       data-hub-chart-navigator-mode={draggingMode ?? undefined}
+      data-chart-viewport-start={viewportSource ? formatViewportIndex(brushRange.startIndex) : undefined}
+      data-chart-viewport-end={viewportSource ? formatViewportIndex(brushRange.endIndex) : undefined}
       role="group"
       aria-label="Chart navigator"
       aria-describedby={hintId}
@@ -777,12 +1162,26 @@ export function ChartNavigator({
             }}
             onDoubleClick={(event) => {
               event.preventDefault()
-              onReset()
+              resetView()
             }}
             aria-hidden="true"
           >
+            {overview && overview.width > 0 && overview.height > 0 ? (
+              <svg
+                className="hx-chart-navigator__overview"
+                data-chart-navigator-overview
+                viewBox={`0 0 ${overview.width} ${overview.height}`}
+                preserveAspectRatio="none"
+                aria-hidden="true"
+                focusable="false"
+                style={OVERVIEW_STYLE}
+              >
+                <path d={overview.d} fill="#8e8e96" fillOpacity={0.28} />
+              </svg>
+            ) : null}
             <span className="hx-chart-navigator__track-fill" />
             <span
+              ref={windowRef}
               className="hx-chart-navigator__window"
               style={{ left: `${left}%`, width: `${width}%` }}
               onPointerDown={(event) => {
@@ -790,9 +1189,16 @@ export function ChartNavigator({
                 else beginPointerDrag(event, 'window')
               }}
             />
+            {isD3 ? (
+              <>
+                <span ref={startGripRef} className="spc-nav__grip spc-nav__grip--start" style={{ left: `${left}%` }} />
+                <span ref={endGripRef} className="spc-nav__grip spc-nav__grip--end" style={{ left: `${right}%` }} />
+              </>
+            ) : null}
           </div>
           <div className="hx-chart-navigator__handles">
             <button
+              ref={startHandleRef}
               type="button"
               role="slider"
               className="hx-chart-navigator__handle hx-chart-navigator__handle--start"
@@ -810,6 +1216,7 @@ export function ChartNavigator({
               }}
             />
             <button
+              ref={endHandleRef}
               type="button"
               role="slider"
               className="hx-chart-navigator__handle hx-chart-navigator__handle--end"
@@ -832,32 +1239,95 @@ export function ChartNavigator({
           {startLabel} – {endLabel}
         </span>
       </div>
-      <div className="hx-chart-navigator__actions">
-        <div className="hx-chart-navigator__readout" role="status" aria-live="polite">
-          <strong>{isFullRange ? fullRangeLabel : zoomedRangeLabel}</strong>
-          <span className="hx-chart-navigator__time-range">{startLabel} – {endLabel}</span>
-          <span className="hx-chart-navigator__bucket-count">{visibleCount} of {pointCount} {unitLabel}{readoutNote != null ? <> · {readoutNote}</> : null}</span>
-        </div>
-        <div className="hx-chart-navigator__toolbar" role="group" aria-label="Chart view controls">
-          {selectedOutsideView ? <button type="button" onClick={(event) => { event.stopPropagation(); showSelectedBucket() }}><LocateFixed size={15} aria-hidden="true" />{selectedLabel}</button> : null}
-          <div className="hx-chart-navigator__zoom-buttons">
-            <button type="button" disabled={visibleCount <= minCount} onClick={() => zoomFromCenter('in')}><Plus size={15} aria-hidden="true" />Zoom in</button>
-            <button type="button" disabled={isFullRange} onClick={() => zoomFromCenter('out')}><Minus size={15} aria-hidden="true" />Zoom out</button>
-            <button type="button" disabled={isFullRange} onClick={onReset}><RotateCcw size={15} aria-hidden="true" />Reset zoom</button>
+      {isD3 ? (
+        // One row, as the d3 design: readout, hint, then - / + / Reset / Scroll zoom.
+        <div className="hx-chart-navigator__actions">
+          <div className="hx-chart-navigator__readout" role="status" aria-live="polite">
+            <strong>{isFullRange ? fullRangeLabel : zoomedRangeLabel}</strong>
+            <span className="hx-chart-navigator__time-range">{startLabel} – {endLabel}</span>
+            {readoutCount === 'screen-reader' ? (
+              <>
+                {readoutNote != null ? <><span className="spc-nav__sep" aria-hidden="true"> · </span>{readoutNote}</> : null}
+                <span className="hx-chart-navigator__bucket-count sr-only">, {visibleCount} of {pointCount} {unitLabel}</span>
+              </>
+            ) : (
+              <>
+                <span className="spc-nav__sep" aria-hidden="true"> · </span>
+                <span className="hx-chart-navigator__bucket-count">{visibleCount} of {pointCount} {unitLabel}{readoutNote != null ? <> · {readoutNote}</> : null}</span>
+              </>
+            )}
           </div>
-          <button
-            type="button"
-            className="hx-chart-navigator__scroll-toggle"
-            aria-pressed={scrollZoomEnabled}
-            title="Remembered in this browser"
-            disabled={pointCount <= 2}
-            onClick={() => onScrollZoomChange(!scrollZoomEnabled)}
-          ><Mouse size={15} aria-hidden="true" />Scroll zoom<span className="hx-chart-navigator__scroll-state" aria-hidden="true">{scrollZoomEnabled ? 'On' : 'Off'}</span></button>
+          {withInfo ? null : hint}
+          <div className="hx-chart-navigator__toolbar" role="group" aria-label="Chart view controls">
+            {selectedButton}
+            <div className="hx-chart-navigator__zoom-buttons">
+              {/* As the design: the buttons never grey out. One that cannot act says so
+                  to assistive tech (aria-disabled) and does nothing. */}
+              <button type="button" className="spc-nav__icon-button" aria-label="Zoom out" aria-disabled={isFullRange || undefined} onClick={() => { if (!isFullRange) zoomFromCenter('out') }}><Minus size={18} aria-hidden="true" /></button>
+              <button ref={zoomInButtonRef} type="button" className="spc-nav__icon-button" aria-label="Zoom in" aria-disabled={visibleCount <= minCount || undefined} onClick={() => { if (visibleCount > minCount) zoomFromCenter('in') }}><Plus size={18} aria-hidden="true" /></button>
+              <button ref={resetButtonRef} type="button" className={withInfo ? 'spc-nav__reset' : undefined} aria-label="Reset zoom" aria-disabled={isFullRange || undefined} onClick={() => { if (!isFullRange) resetView() }}>Reset</button>
+            </div>
+            {withInfo ? (
+              <span className="spc-nav__info">
+                <button
+                  ref={infoButtonRef}
+                  type="button"
+                  className="spc-nav__info-button"
+                  aria-label="How to zoom and pan the chart"
+                  aria-expanded={infoOpen}
+                  aria-controls={infoPanelId}
+                  data-chart-navigator-info=""
+                  onClick={(event) => {
+                    if (infoOpen) {
+                      closeInfo(false)
+                      return
+                    }
+                    setInfoOpen(true)
+                    // Opened from the keyboard: the toggle is next.
+                    if (event.detail === 0) requestAnimationFrame(() => scrollToggleRef.current?.focus())
+                  }}
+                ><Info size={16} aria-hidden="true" /></button>
+                <div
+                  ref={infoPanelRef}
+                  id={infoPanelId}
+                  className="spc-nav__pop"
+                  role="group"
+                  aria-label="Zoom and pan"
+                  hidden={!infoOpen}
+                  data-chart-navigator-info-panel=""
+                  onBlur={(event) => {
+                    const to = event.relatedTarget as Node | null
+                    if (to && !infoPanelRef.current?.contains(to) && to !== infoButtonRef.current) closeInfo(false)
+                  }}
+                >
+                  {hint}
+                  {scrollToggle}
+                </div>
+              </span>
+            ) : scrollToggle}
+          </div>
         </div>
-      </div>
-      <small className="hx-chart-navigator__hint">{scrollZoomEnabled
-        ? 'Scroll over the chart to zoom · Shift + scroll to pan · Drag the purple bar to pick a span'
-        : 'Scroll zoom is off: the wheel scrolls the page · Hold Alt and scroll to zoom · Shift + scroll to pan'}</small>
+      ) : (
+        <>
+          <div className="hx-chart-navigator__actions">
+            <div className="hx-chart-navigator__readout" role="status" aria-live="polite">
+              <strong>{isFullRange ? fullRangeLabel : zoomedRangeLabel}</strong>
+              <span className="hx-chart-navigator__time-range">{startLabel} – {endLabel}</span>
+              <span className="hx-chart-navigator__bucket-count">{visibleCount} of {pointCount} {unitLabel}{readoutNote != null ? <> · {readoutNote}</> : null}</span>
+            </div>
+            <div className="hx-chart-navigator__toolbar" role="group" aria-label="Chart view controls">
+              {selectedButton}
+              <div className="hx-chart-navigator__zoom-buttons">
+                <button type="button" disabled={visibleCount <= minCount} onClick={() => zoomFromCenter('in')}><Plus size={15} aria-hidden="true" />Zoom in</button>
+                <button type="button" disabled={isFullRange} onClick={() => zoomFromCenter('out')}><Minus size={15} aria-hidden="true" />Zoom out</button>
+                <button type="button" disabled={isFullRange} onClick={resetView}><RotateCcw size={15} aria-hidden="true" />Reset zoom</button>
+              </div>
+              {scrollToggle}
+            </div>
+          </div>
+          {hint}
+        </>
+      )}
       <span id={hintId} className="sr-only">
         Scroll anywhere over the chart, from its labels down to this bar, to zoom around the pointer while Scroll zoom is on. It is on by default, and your choice is remembered in this browser. When it is off, the wheel scrolls the page and Alt plus wheel zooms. At the full range, scrolling down scrolls the page. Shift plus wheel or a horizontal swipe pans a zoomed view. Ctrl or Command plus wheel zooms the page. With the plot focused, plus, minus and zero zoom in, zoom out and reset. Drag the purple track to select a span, drag the window to pan, or use the start and end sliders. Double-click the track, use Reset zoom, or press Escape to restore the full range.
       </span>

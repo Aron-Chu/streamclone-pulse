@@ -29,12 +29,12 @@ vi.mock('./analytics/AnalyticsChart.tsx', () => ({
   default: () => <div data-testid="analytics-chart">No recent data</div>,
 }))
 vi.mock('./analytics/ConsoleBits.tsx', () => ({
-  DataQualityDisclosure: () => <div data-testid="data-quality">Data quality: no data</div>,
+  DataQualityButton: () => <div data-testid="data-quality">Data quality: no data</div>,
   StatCard: ({ label, value }: { label: string; value: string }) => <div data-testid="stat-card">{label}: {value}</div>,
-  CoverageStartBanner: () => null,
+  CoverageStartMetaItem: () => null,
 }))
 vi.mock('./analytics/MomentReviewPanel.tsx', () => ({ MomentReviewPanel: () => null }))
-vi.mock('./analytics/PastBroadcastBanner.tsx', () => ({ PastBroadcastBanner: () => null }))
+vi.mock('./analytics/PastBroadcastBanner.tsx', () => ({ SessionLifecycleMeta: () => null }))
 vi.mock('./analytics/StreamQualityBanner.tsx', () => ({ StreamQualityBanner: () => null }))
 vi.mock('./analytics/TopEmoteTable.tsx', () => ({ TopEmoteTable: () => null }))
 

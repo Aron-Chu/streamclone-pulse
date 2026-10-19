@@ -5,11 +5,15 @@ import { getBackendUrl } from '../src/lib/apiClient'
 import * as publicHubCache from '../src/lib/publicHubCache'
 import {
   clearPublicHubCacheForTests,
+  hasPendingPublicHubCacheWrite,
+  PUBLIC_HUB_CACHE_MAX_CHARS,
   publicHubCacheKey,
   readPublicHubCache,
   writePublicHubCache,
 } from '../src/lib/publicHubCache'
 import { normalizePublicHub, type PublicHub, type PublicHubActivityWindow } from '../src/lib/publicHub'
+import { screenerUsual } from '../src/lib/channelScreenerContract'
+import { resetHubBucketSelectionForTests, setHubGestureActive } from '../src/lib/hubBucketSelection'
 
 const fetchPublicHubBase = vi.fn()
 const fetchPublicHubStatsFallback = vi.fn()
@@ -32,7 +36,7 @@ vi.mock('../src/lib/publicHub', async () => {
   }
 })
 
-import { usePublicHubData } from '../src/hooks/usePublicHubData'
+import { HUB_DATA_MARK, resetHubDataMarkForTests, usePublicHubData } from '../src/hooks/usePublicHubData'
 import { PortalErrorBoundary } from '../src/ui/PortalErrorBoundary'
 
 function sampleHub(poolSize: number): PublicHub {
@@ -66,6 +70,91 @@ function sampleHub(poolSize: number): PublicHub {
       },
     },
   })
+}
+
+function screenerMetricRow(currentPerMin: number, multiplier: number) {
+  return {
+    state: 'ready',
+    currentPerMin,
+    baselinePerMin: Math.round((currentPerMin / multiplier) * 100) / 100,
+    absoluteDeltaPerMin: Math.round((currentPerMin - currentPerMin / multiplier) * 100) / 100,
+    changePct: Math.round((multiplier - 1) * 10_000) / 100,
+    multiplier,
+    currentMeasuredMinutes: 5,
+    currentExpectedMinutes: 5,
+    baselineMeasuredMinutes: 285,
+    baselineExpectedMinutes: 286,
+    baselineCoveragePct: 99.65,
+  }
+}
+
+/** A hub shaped like the 1.2 MB production 24 h body: 240 points with top emotes, 500 rows with screener v1. */
+function fullSizeHub(): PublicHub {
+  const bucketMs = 6 * 60_000
+  const end = Math.floor(Date.now() / bucketMs) * bucketMs
+  const points = Array.from({ length: 240 }, (_, i) => ({
+    t: end - (239 - i) * bucketMs,
+    chat: 50_000 + i * 37,
+    emotes: 20_000 + i * 11,
+    seventv: 6_000 + i,
+    twitch: 13_000 + i,
+    bttv: 160,
+    ffz: 220,
+    viewers: 280_000 + i * 97,
+    providerCountsLowerBound: true,
+    providerCoverage: {
+      seventv: { measured: true, state: 'complete', complete: true },
+      twitch: { measured: true, state: 'partial', lowerBound: true },
+      other: { state: 'partial', lowerBound: true },
+    },
+    viewerContributors: 45,
+    viewerExpectedContributors: 500,
+    viewerCoverage: 'complete',
+    hasChatRollup: true,
+    hasViewerRollup: true,
+    bucketComplete: true,
+    topEmotes: Array.from({ length: 10 }, (_, k) => ({
+      name: `Emote${k}x${i}`,
+      provider: k % 2 ? 'seventv' : 'twitch',
+      imageUrl: `https://cdn.7tv.app/emote/01HC9P5K70000${i}${k}/4x.webp`,
+      count: 1_000 - k * 37,
+    })),
+  }))
+  const liveChannels = Array.from({ length: 500 }, (_, i) => {
+    const chatNow = 4 + ((i * 37) % 400)
+    return {
+      streamId: `10000000${2000 + i}`,
+      login: `channel_${i}`,
+      displayName: `Channel ${i}`,
+      title: `Long running stream title number ${i} with a few words`,
+      category: i % 3 ? 'Just Chatting' : 'Overwatch',
+      profileImageUrl: `https://static-cdn.jtvnw.net/jtv_user_pictures/b532ac95-4050-42cb-${i}-profile_image-300x300.png`,
+      startedAt: new Date(end - 4 * 3_600_000).toISOString(),
+      viewers: 50_000 - i * 97,
+      chatPerMin: chatNow,
+      emotesPerMin: Math.round(chatNow * 0.3),
+      seventvPerMin: Math.round(chatNow * 0.1),
+      coverageState: 'synced',
+      trendPct: (i % 40) - 20,
+      screener: {
+        version: 1,
+        streamId: `10000000${2000 + i}`,
+        measuredAt: end,
+        baselineKind: 'current_stream_measured_average',
+        state: i % 25 === 0 ? 'warming' : 'ready',
+        currentWindow: { start: end - 300_000, end, expectedMinutes: 5, measuredMinutes: 5, coveragePct: 100 },
+        baselineWindow: { start: end - 17_460_000, end: end - 300_000, expectedMinutes: 286, measuredMinutes: 285, coveragePct: 99.65 },
+        evidence: { ircBound: true, chatObservedLast5m: true, rollupAvailable: true, metadataAgeSeconds: 124 },
+        chat: screenerMetricRow(chatNow, 0.5 + (i % 9) * 0.4),
+        emotes: screenerMetricRow(Math.round(chatNow * 0.3), 0.96),
+      },
+    }
+  })
+  return normalizePublicHub({
+    ...sampleHub(500),
+    activity: { points, windowMinutes: 1440, bucketMinutes: 6, channelCount: 500, state: 'ready', source: 'historical_projection' },
+    liveChannels,
+  } as unknown as Partial<PublicHub>)
 }
 
 function hubResult(poolSize: number) {
@@ -121,14 +210,58 @@ function deferredHub() {
   return { promise, resolve, reject }
 }
 
+type IdleCallback = (deadline: IdleDeadline) => void
+type IdleScheduler = (callback: IdleCallback, options?: IdleRequestOptions) => number
+
+const IDLE_DEADLINE = { didTimeout: false, timeRemaining: () => 50 } as IdleDeadline
+
+/** jsdom has no requestIdleCallback; tests install one (synchronous unless a test queues callbacks). */
+function installIdleCallback(schedule: IdleScheduler): void {
+  Object.defineProperty(window, 'requestIdleCallback', { configurable: true, writable: true, value: schedule })
+  Object.defineProperty(window, 'cancelIdleCallback', { configurable: true, writable: true, value: () => {} })
+}
+
+function removeIdleCallback(): void {
+  Reflect.deleteProperty(window, 'requestIdleCallback')
+  Reflect.deleteProperty(window, 'cancelIdleCallback')
+}
+
+function queueIdleCallbacks() {
+  const queued: Array<{ callback: IdleCallback; options?: IdleRequestOptions }> = []
+  installIdleCallback((callback, options) => {
+    queued.push({ callback, options })
+    return queued.length
+  })
+  return {
+    queued,
+    runAll() {
+      for (const entry of queued.splice(0)) entry.callback(IDLE_DEADLINE)
+    },
+  }
+}
+
 describe('usePublicHubData', () => {
   beforeEach(() => {
+    // The d3-v5 data layer (idle cache writes, compact snapshot, screener v1, hub-data mark).
+    // The flag-off Command Center path is covered at the end of this file.
+    vi.stubEnv('VITE_PUBLIC_HUB_V5', 'on')
+    installIdleCallback((callback) => {
+      callback(IDLE_DEADLINE)
+      return 0
+    })
+    resetHubBucketSelectionForTests()
     clearPublicHubCacheForTests()
     fetchPublicHub.mockReset()
     fetchPublicHubBase.mockReset()
     fetchPublicHubStatsFallback.mockReset()
     fetchPublicHubBase.mockResolvedValue(hubDown())
     fetchPublicHubStatsFallback.mockRejectedValue(new Error('Public hub unavailable'))
+  })
+
+  afterEach(() => {
+    removeIdleCallback()
+    resetHubBucketSelectionForTests()
+    vi.unstubAllEnvs()
   })
 
   it('loads, then exposes normalized data with liveEmpty false when channels exist', async () => {
@@ -215,7 +348,7 @@ describe('usePublicHubData', () => {
     it('publishes verified live moments before repair, accepting and caching exactly one final snapshot', async () => {
       const primary = repairHubResult()
       const repair = deferredHub()
-      const persist = vi.spyOn(publicHubCache, 'writePublicHubCacheForCurrentBackend')
+      const persist = vi.spyOn(publicHubCache, 'schedulePublicHubCacheWrite')
       fetchPublicHubBase.mockResolvedValueOnce(primary).mockReturnValueOnce(repair.promise)
       const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
       await waitFor(() => expect(result.current.activityRefreshing).toBe(true))
@@ -1151,5 +1284,169 @@ describe('usePublicHubData', () => {
       expect(fetchPublicHubBase).toHaveBeenCalledTimes(4)
       expect(result.current.data?.poolSize).toBe(6)
     })
+  })
+  describe('idle snapshot persistence and the hub-data mark (plan §2.6, §4.5)', () => {
+    afterEach(() => {
+      vi.restoreAllMocks()
+      setHubGestureActive(false)
+    })
+
+    it('saves the committed snapshot in idle time with a 2 s timeout, not inside the commit', async () => {
+      const idle = queueIdleCallbacks()
+      fetchPublicHubBase.mockResolvedValue(hubResult(17))
+      const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
+      await waitFor(() => expect(result.current.data?.poolSize).toBe(17))
+
+      expect(readPublicHubCache(getBackendUrl(), '24h')).toBeNull()
+      expect(hasPendingPublicHubCacheWrite()).toBe(true)
+      expect(idle.queued).toHaveLength(1)
+      expect(idle.queued[0].options).toEqual({ timeout: 2_000 })
+
+      act(() => idle.runAll())
+      expect(hasPendingPublicHubCacheWrite()).toBe(false)
+      expect(readPublicHubCache(getBackendUrl(), '24h')?.data.poolSize).toBe(17)
+    })
+
+    it('waits while a chart gesture is in progress, then saves once it settles', async () => {
+      fetchPublicHubBase.mockResolvedValue(hubResult(23))
+      setHubGestureActive(true)
+      const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
+      await waitFor(() => expect(result.current.data?.poolSize).toBe(23))
+
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 600)) })
+      expect(readPublicHubCache(getBackendUrl(), '24h')).toBeNull()
+      expect(hasPendingPublicHubCacheWrite()).toBe(true)
+
+      setHubGestureActive(false)
+      await waitFor(() => expect(readPublicHubCache(getBackendUrl(), '24h')?.data.poolSize).toBe(23))
+      expect(hasPendingPublicHubCacheWrite()).toBe(false)
+    })
+
+    it('never parses JSON on the write path, including when it evicts older windows', async () => {
+      writePublicHubCache(getBackendUrl(), '7d', sampleHub(7))
+      writePublicHubCache(getBackendUrl(), '30m', sampleHub(30))
+      const idle = queueIdleCallbacks()
+      fetchPublicHubBase.mockResolvedValue(hubResult(24))
+      const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '24h' }))
+      await waitFor(() => expect(result.current.data?.poolSize).toBe(24))
+
+      const parse = vi.spyOn(JSON, 'parse')
+      act(() => idle.runAll())
+      expect(parse).not.toHaveBeenCalled()
+      parse.mockRestore()
+
+      const keys = Object.keys(localStorage).filter((key) => key.startsWith('sp:publicHub:v1:'))
+      expect(keys).toHaveLength(2)
+      expect(readPublicHubCache(getBackendUrl(), '24h')?.data.poolSize).toBe(24)
+    })
+
+    it('hydrates a repeat mount from the compact snapshot of a full-size hub', async () => {
+      const big = fullSizeHub()
+      fetchPublicHubBase.mockResolvedValue({ data: big, loadSource: 'full' as const, hubEndpointOk: true, status: 200 })
+      const first = renderHook(() => usePublicHubData({ pollMs: 0 }))
+      await waitFor(() => expect(first.result.current.data?.liveChannels).toHaveLength(500))
+
+      const raw = localStorage.getItem(publicHubCacheKey(getBackendUrl(), '24h'))
+      expect(raw).not.toBeNull()
+      expect(raw!.length).toBeLessThanOrEqual(PUBLIC_HUB_CACHE_MAX_CHARS)
+      expect(JSON.parse(raw!).version).toBe(2)
+      first.unmount()
+
+      fetchPublicHubBase.mockReturnValue(new Promise(() => {}))
+      const second = renderHook(() => usePublicHubData({ pollMs: 0 }))
+      const hydrated = second.result.current.data
+      expect(second.result.current.loadSource).toBe('cache')
+      expect(second.result.current.loading).toBe(false)
+      expect(hydrated?.activity.points.map((point) => [point.t, point.chat, point.emotes, point.seventv, point.viewers]))
+        .toEqual(big.activity.points.map((point) => [point.t, point.chat, point.emotes, point.seventv, point.viewers]))
+      expect(hydrated?.activity.points[10].providerCoverage).toEqual(big.activity.points[10].providerCoverage)
+      // Per-point top emotes are not kept; the next network read restores them.
+      expect(hydrated?.activity.points.some((point) => (point.topEmotes?.length ?? 0) > 0)).toBe(false)
+      expect(hydrated?.liveChannels.map((channel) => channel.login)).toEqual(big.liveChannels.map((channel) => channel.login))
+      expect(hydrated?.liveChannels.map((channel) => [channel.viewers, channel.chatPerMin, channel.emotesPerMin]))
+        .toEqual(big.liveChannels.map((channel) => [channel.viewers, channel.chatPerMin, channel.emotesPerMin]))
+      // "× usual" and its tooltip N read the same gated backend values after hydrate.
+      expect(hydrated?.liveChannels.map((channel) => screenerUsual(channel.screenerV1)))
+        .toEqual(big.liveChannels.map((channel) => screenerUsual(channel.screenerV1)))
+      expect(hydrated?.liveChannels.every((channel) => channel.screenerV1?.baselineMeasuredMinutes === 285)).toBe(true)
+      second.unmount()
+    })
+
+    it('marks sp:hub-data once per page load: first full-hub read only', async () => {
+      const marks: string[] = []
+      const original = Object.getOwnPropertyDescriptor(performance, 'mark')
+      Object.defineProperty(performance, 'mark', {
+        configurable: true,
+        writable: true,
+        value: (name: string) => { marks.push(name) },
+      })
+      try {
+        // Earlier tests in this file marked through the real API; start this load clean.
+        performance.clearMarks?.(HUB_DATA_MARK)
+        resetHubDataMarkForTests()
+        fetchPublicHubBase.mockResolvedValue(hubResult(5))
+        const projected = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '30m', projection: 'moments' }))
+        await waitFor(() => expect(projected.result.current.data?.poolSize).toBe(5))
+        expect(marks).toEqual([])
+        projected.unmount()
+
+        const first = renderHook(() => usePublicHubData({ pollMs: 0 }))
+        await waitFor(() => expect(first.result.current.data?.poolSize).toBe(5))
+        expect(marks).toEqual([HUB_DATA_MARK])
+        fetchPublicHubBase.mockResolvedValue(hubResult(6))
+        await act(async () => { first.result.current.refresh() })
+        await waitFor(() => expect(first.result.current.data?.poolSize).toBe(6))
+        first.unmount()
+
+        const again = renderHook(() => usePublicHubData({ pollMs: 0 }))
+        await waitFor(() => expect(fetchPublicHubBase).toHaveBeenCalledTimes(4))
+        await waitFor(() => expect(again.result.current.loadSource).toBe('full'))
+        expect(marks).toEqual([HUB_DATA_MARK])
+        again.unmount()
+      } finally {
+        if (original) Object.defineProperty(performance, 'mark', original)
+        else Reflect.deleteProperty(performance, 'mark')
+        resetHubDataMarkForTests()
+      }
+    })
+  })
+})
+
+describe('usePublicHubData with VITE_PUBLIC_HUB_V5 off (the Command Center path)', () => {
+  beforeEach(() => {
+    vi.stubEnv('VITE_PUBLIC_HUB_V5', '')
+    clearPublicHubCacheForTests()
+    resetHubDataMarkForTests()
+    fetchPublicHub.mockReset()
+    fetchPublicHubBase.mockReset()
+    fetchPublicHubStatsFallback.mockReset()
+    fetchPublicHubStatsFallback.mockRejectedValue(new Error('Public hub unavailable'))
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllEnvs()
+    resetHubDataMarkForTests()
+  })
+
+  it('writes the snapshot straight away (no idle scheduling) as a plain version-1 entry', async () => {
+    const write = vi.spyOn(publicHubCache, 'writePublicHubCacheForCurrentBackend')
+    const schedule = vi.spyOn(publicHubCache, 'schedulePublicHubCacheWrite')
+    fetchPublicHubBase.mockResolvedValue(hubResult(41))
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(41))
+    await waitFor(() => expect(readPublicHubCache(getBackendUrl(), '24h')?.data.poolSize).toBe(41))
+    expect(write).toHaveBeenCalled()
+    expect(schedule).not.toHaveBeenCalled()
+    expect(hasPendingPublicHubCacheWrite()).toBe(false)
+    expect(JSON.parse(localStorage.getItem(publicHubCacheKey(getBackendUrl(), '24h'))!).version).toBe(1)
+  })
+
+  it('sets no sp:hub-data mark', async () => {
+    const mark = vi.spyOn(performance, 'mark')
+    fetchPublicHubBase.mockResolvedValue(hubResult(42))
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(42))
+    expect(mark.mock.calls.filter(([name]) => name === HUB_DATA_MARK)).toEqual([])
   })
 })

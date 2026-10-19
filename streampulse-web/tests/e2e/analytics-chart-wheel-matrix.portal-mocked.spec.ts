@@ -3,6 +3,7 @@ import { openAnalyticsSession } from './helpers/portalAcceptanceHarness'
 import {
   CHART_SURFACES as SURFACES,
   hubSurface,
+  openNavigatorInfo,
   openStream,
   resetZoom as reset,
   SCROLL_ZOOM_STORAGE_KEY as STORAGE_KEY,
@@ -229,16 +230,16 @@ for (const [surfaceName, open] of Object.entries(SURFACES)) {
       const zoomed = await windowOf(surface)
       expect(zoomed.count).toBeLessThan(surface.full)
       await page.waitForTimeout(600)
-      // Park the plot below the pointer, then wheel the page down so the plot
-      // (and the navigator under it) pass up under the pointer.
+      // Park the whole card (the wheel zone) below the pointer, then wheel the page
+      // down so the card, its plot and the navigator pass up under the pointer.
       // Below any sticky site header.
       const pointer = { x: 0, y: 260 }
       await surface.plot.evaluate(element => element.scrollIntoView({ block: 'center', behavior: 'instant' }))
-      const centered = (await surface.plot.boundingBox())!
+      const centered = (await surface.card.boundingBox())!
       await page.evaluate(by => window.scrollBy({ top: by, behavior: 'instant' }), centered.y - (pointer.y + 160))
-      const parked = (await surface.plot.boundingBox())!
-      pointer.x = parked.x + parked.width / 2
-      expect(parked.y, 'the plot starts below the pointer').toBeGreaterThan(pointer.y)
+      const parked = (await surface.card.boundingBox())!
+      pointer.x = (await surface.plot.boundingBox())!.x + (await surface.plot.boundingBox())!.width / 2
+      expect(parked.y, 'the card starts below the pointer').toBeGreaterThan(pointer.y)
       await page.mouse.move(pointer.x, pointer.y)
       const read = await recordWheels(page, PLOT_SELECTOR[surface.name])
       const scrollBefore = await scrollYOf(page)
@@ -266,21 +267,29 @@ for (const [surfaceName, open] of Object.entries(SURFACES)) {
       expect(await scrollYOf(page)).toBe(still)
     })
 
-    test('below the navigator bar the page scrolls: the navigator buttons, readout and hint', async ({ page }) => {
+    // Owner rule (round 3, 2026-10-13): the wheel zooms anywhere over a chart card, so
+    // the navigator's buttons, readout and hint under the bar zoom too (this replaces
+    // "below the navigator bar the page scrolls"). Outside the card the page scrolls
+    // (analytics-chart-wheel-zone spec).
+    test('below the navigator bar the card still zooms: the navigator buttons, readout and hint', async ({ page }) => {
       const surface = await open(page)
-      await reset(surface)
-      for (const part of ['.hx-chart-navigator__zoom-buttons button', '.hx-chart-navigator__readout', '.hx-chart-navigator__hint']) {
+      // The stream chart keeps its hint in the navigator's (i) (d3-v2 session-original).
+      const hint = surface.name === 'stream' ? '[data-chart-navigator-info]' : '.hx-chart-navigator__hint'
+      for (const part of ['.hx-chart-navigator__zoom-buttons button', '.hx-chart-navigator__readout', hint]) {
+        await reset(surface)
+        await page.waitForTimeout(650)
         const target = surface.navigator.locator(part).first()
         await target.evaluate(element => element.scrollIntoView({ block: 'center', behavior: 'instant' }))
         const box = (await target.boundingBox())!
         await page.mouse.move(box.x + Math.min(10, box.width / 2), box.y + box.height / 2)
         const before = await scrollYOf(page)
         await page.mouse.wheel(0, -120)
-        await expect.poll(() => scrollYOf(page), { message: `${part} scrolls the page` }).toBeLessThan(before)
         await surface.settle()
-        await expect(surface.navigator).toHaveAttribute('data-hub-chart-navigator-window', `0:${surface.full - 1}`)
-        await page.waitForTimeout(450)
+        expect((await windowOf(surface)).count, `${part} zooms`).toBeLessThan(surface.full)
+        expect(await scrollYOf(page), `${part} keeps the page still`).toBe(before)
       }
+      await reset(surface)
+      await page.waitForTimeout(650)
       // The navigator track is a zoom surface.
       const track = (await surface.navigator.locator('.hx-chart-navigator__track').boundingBox())!
       await page.mouse.move(track.x + track.width / 2, track.y + track.height / 2)
@@ -299,7 +308,8 @@ for (const [surfaceName, open] of Object.entries(SURFACES)) {
       if (surface.name === 'stream') await openAnalyticsSession(page)
       surface = surface.name === 'hub' ? await hubSurface(page) : await streamSurface(page)
       await expect(toggleOf(surface)).toHaveAttribute('aria-pressed', 'false')
-      // Reset and Escape never change the choice.
+      // Reset and Escape never change the choice (on the stream chart the toggle sits in the (i)).
+      await openNavigatorInfo(surface)
       await toggleOf(surface).focus()
       await page.keyboard.press('Escape')
       await expect(toggleOf(surface)).toHaveAttribute('aria-pressed', 'false')

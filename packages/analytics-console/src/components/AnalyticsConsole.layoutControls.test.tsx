@@ -28,16 +28,16 @@ vi.mock('../hooks/useAnalyticsLive.ts', () => ({
   }),
 }))
 vi.mock('./analytics/AnalyticsChart.tsx', () => ({
-  default: ({ selectedDetail, onSelectRollup }: { selectedDetail?: ReactNode; onSelectRollup: (row: AnalyticsMinuteRollup | null) => void }) => <div data-testid="analytics-chart">Chart<button onClick={() => onSelectRollup(detail().rollups[0])}>Choose measured minute</button>{selectedDetail}</div>,
+  default: ({ selectedDetail, onSelectRollup }: { selectedDetail?: ReactNode | ((bar: null) => ReactNode); onSelectRollup: (row: AnalyticsMinuteRollup | null) => void }) => <div data-testid="analytics-chart">Chart<button onClick={() => onSelectRollup(detail().rollups[0])}>Choose measured minute</button>{typeof selectedDetail === 'function' ? selectedDetail(null) : selectedDetail}</div>,
 }))
 vi.mock('./analytics/ConsoleBits.tsx', () => ({
-  DataQualityDisclosure: () => <span>Data quality</span>,
+  DataQualityButton: () => <span>Data quality</span>,
   ChatCoverageBadge: () => <span>Coverage</span>,
   StatCard: () => null,
   ViewerSourceBadge: () => <span>Viewer source</span>,
   AnalyticsQualityChip: () => <span>Quality</span>,
   CoverageFacets: () => null,
-  CoverageStartBanner: () => null,
+  CoverageStartMetaItem: () => null,
   VodAvailabilityChip: () => null,
 }))
 vi.mock('./analytics/StreamSidebar.tsx', () => ({
@@ -47,7 +47,7 @@ vi.mock('./analytics/TopEmoteTable.tsx', () => ({ TopEmoteTable: () => null }))
 vi.mock('./analytics/MomentReviewPanel.tsx', () => ({
   MomentReviewPanel: () => <div>Moment details</div>,
 }))
-vi.mock('./analytics/PastBroadcastBanner.tsx', () => ({ PastBroadcastBanner: () => null }))
+vi.mock('./analytics/PastBroadcastBanner.tsx', () => ({ SessionLifecycleMeta: () => null }))
 vi.mock('./analytics/SessionRecapMomentsStrip.tsx', () => ({ SessionRecapMomentsStrip: () => null }))
 vi.mock('./analytics/StreamRecapPanel.tsx', () => ({ StreamRecapPanel: () => null }))
 vi.mock('./analytics/SyncStatusPanel.tsx', () => ({
@@ -222,7 +222,7 @@ describe('AnalyticsConsole data skeleton', () => {
     })
     const status = screen.getByRole('status', { name: /loading analytics chart/i })
     expect(status.getAttribute('data-console-skeleton')).toBe('chart')
-    expect(status.className).toMatch(/min-h-96/)
+    expect(status.className).toMatch(/min-h-\[45rem\]/)
     expect(screen.getByRole('heading', { level: 1 })).not.toBeNull()
     expect(screen.queryByRole('alert')).toBeNull()
   })

@@ -35,6 +35,7 @@ describe('stream analytics shares exact archive bounds with Moments', () => {
     const buttons = markup.split('<button').slice(1).map(part => part.slice(0, part.indexOf('</button>')))
     expect(buttons).toHaveLength(2)
     for (const button of buttons) expect(button).not.toContain('<a ')
-    expect(markup).toContain('aria-label="Open 00:04:00 in the Twitch VOD"')
+    // Recap times read h:mm:ss like d3-v2 session-original ("Biggest spike at 5:18:00").
+    expect(markup).toContain('aria-label="Open 0:04:00 in the Twitch VOD"')
   })
 })

@@ -1,12 +1,15 @@
 import { DEFAULT_PRODUCTION_BACKEND_URL } from './auth'
 import { measurementTimeIso, measurementTimeMs } from '@streampulse/pulse-core'
 import { apiClient, getBackendUrl, isApiError, type ApiError } from './apiClient'
-import { SLOW_READ_TIMEOUT_MS } from './portalTimeouts'
+import { hubReadTimeoutMs, publicHubPath, takePrimedPublicHub } from './hubEarlyFetch'
+import type { HubApiWindow } from './hubWindows'
 import { absolutizeEmoteAssetUrl } from './emoteAssetUrl'
 import { resolveBackendSource } from './backendSource'
 import {
   normalizeHubChannelScreenerFields,
+  normalizeHubChannelScreenerV1,
   type HubChannelScreenerFields,
+  type HubChannelScreenerV1,
 } from './channelScreenerContract'
 import {
   normalizeHubEmoteMarket,
@@ -457,6 +460,11 @@ export interface HubLiveChannel {
   togetherWith?: string[]
   /** Backend-owned screener fields — never invent from client poll history. */
   screener?: HubChannelScreenerFields
+  /**
+   * Backend screener v1 (`screener.version === 1`), additive beside the legacy
+   * fields. Read "× usual" only through the gates in channelScreenerContract.ts.
+   */
+  screenerV1?: HubChannelScreenerV1
 }
 
 export type HubMomentKind =
@@ -623,7 +631,7 @@ interface PublicStatusSnapshot {
   }
 }
 
-export type PublicHubActivityWindow = 'all' | '1y' | '6m' | '3m' | '1m' | '7d' | '24h' | '30m' | 'recent'
+export type PublicHubActivityWindow = HubApiWindow
 
 export type PublicHubLoadSource = 'full' | 'stats-fallback' | 'cache'
 
@@ -682,12 +690,8 @@ export interface FetchPublicHubResult {
 
 export type PublicHubProjection = 'moments' | 'tickers'
 
-function publicHubPath(activityWindow?: PublicHubActivityWindow, projection?: PublicHubProjection): string {
-  const params = new URLSearchParams({ activityWindow: activityWindow ?? '24h' })
-  if (projection === 'moments') params.set('include', 'livePulseMoments')
-  if (projection === 'tickers') params.set('include', 'topEmotes,topMovers')
-  return `/v1/public/hub?${params.toString()}`
-}
+// The hub path lives in hubEarlyFetch.ts so the entry chunk can prime it.
+export { publicHubPath }
 
 function publicHubMomentsPath(
   bucketT: number,
@@ -782,11 +786,6 @@ export function hasPublicHubResponseShape(raw: unknown): raw is PublicHubInput {
     Array.isArray(raw.topEmotes) && Array.isArray(raw.topMovers)
 }
 
-/** The 30-minute windows, whose small bodies keep apiClient's default deadline. */
-function isRecentHubWindow(activityWindow?: PublicHubActivityWindow): boolean {
-  return activityWindow === '30m' || activityWindow === 'recent'
-}
-
 /** Primary hub fetch only — no Top-500 readiness fan-out. */
 export async function fetchPublicHubBase(
   signal?: AbortSignal,
@@ -795,10 +794,14 @@ export async function fetchPublicHubBase(
   // The 24h body is ~1.2 MB decoded; a slow network needs longer than the 8 s
   // default. A 30-minute body is small and keeps the default, so a stalled API
   // reaches its error or stats fallback sooner.
-  timeoutMs: number | undefined = isRecentHubWindow(activityWindow) ? undefined : SLOW_READ_TIMEOUT_MS,
+  timeoutMs: number | undefined = hubReadTimeoutMs(activityWindow),
 ): Promise<FetchPublicHubResult> {
   try {
-    const primary = await apiClient<PublicHub>(publicHubPath(activityWindow, projection), { signal, timeoutMs })
+    const path = publicHubPath(activityWindow, projection)
+    // Adopt the request main.tsx primed for this exact path (plan §2.6).
+    // d3-v5 hub only (read inline so a flag-off build drops it): adopt the primed request.
+    const primed = (import.meta.env.VITE_PUBLIC_HUB_V5 === 'on' || import.meta.env.VITE_PUBLIC_HUB_V5 === '1') ? takePrimedPublicHub<PublicHub>(path, signal) : null
+    const primary = await (primed ?? apiClient<PublicHub>(path, { signal, timeoutMs }))
     if (!hasPublicHubResponseShape(primary.data)) {
       throw { kind: 'server', message: 'Public hub returned an incomplete response', status: primary.status, code: 'invalid_hub_response' } satisfies ApiError
     }
@@ -1068,11 +1071,19 @@ function absolutizeLiveChannels(channels: HubLiveChannel[] | undefined): HubLive
   if (!channels) return []
   return channels.filter(hasTextLogin).map((channel) => {
     const screener = normalizeHubChannelScreenerFields(channel.screener)
+    // The wire carries v1 under `screener`; an already-normalized row (cache
+    // hydrate) carries it under `screenerV1`. Both go through the same checks.
+    // d3-v5 hub only (VITE_PUBLIC_HUB_V5): the Command Center rows stay as they were.
+    const screenerV1 = (import.meta.env.VITE_PUBLIC_HUB_V5 === 'on' || import.meta.env.VITE_PUBLIC_HUB_V5 === '1')
+      ? normalizeHubChannelScreenerV1(channel.screener) ??
+        normalizeHubChannelScreenerV1((channel as { screenerV1?: unknown }).screenerV1)
+      : null
     return {
       ...clearWrongTypedText(channel, ['displayName', 'title', 'category', 'streamId', 'hostLogin']),
       startedAt: measurementTimeIso(channel.startedAt),
       profileImageUrl: sanitizeHubProfileImageUrl(channel.profileImageUrl),
       screener: screener ?? undefined,
+      ...(screenerV1 ? { screenerV1 } : {}),
     }
   })
 }

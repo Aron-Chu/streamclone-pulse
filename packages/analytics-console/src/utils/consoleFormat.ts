@@ -5,11 +5,18 @@ import { parseEmoteKey } from '../emoteUtils.ts'
 import { isPlaceholderStreamTitle } from './analyticsStreamRow.ts'
 import { resolveEmoteImageUrl, preferResolvableEmoteUrl } from './emoteImageUrl.ts'
 
+// One formatter each per page: `toLocale*String()` builds a new Intl formatter on every call, and the
+// stream list and minute table call these hundreds of times a render (mobile TBT, PR #122 bench). Same output.
+let numberFormat: Intl.NumberFormat | null = null
+let monthDayFormat: Intl.DateTimeFormat | null = null
+let hourMinuteFormat: Intl.DateTimeFormat | null = null
+
 export function count(value: number | null | undefined): string {
   if (value === null || value === undefined) return '-'
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
   if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`
-  return value.toLocaleString()
+  if (!numberFormat) numberFormat = new Intl.NumberFormat()
+  return numberFormat.format(value)
 }
 
 export function relativeTime(value?: string | number): string {
@@ -37,11 +44,9 @@ export function formatDateTime(value?: string): string {
   const ts = measurementTimeMs(value)
   if (ts == null) return '-'
   const date = new Date(ts)
-  return (
-    date.toLocaleDateString([], { month: 'short', day: 'numeric' }) +
-    ' ' +
-    date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-  )
+  if (!monthDayFormat) monthDayFormat = new Intl.DateTimeFormat([], { month: 'short', day: 'numeric' })
+  if (!hourMinuteFormat) hourMinuteFormat = new Intl.DateTimeFormat([], { hour: 'numeric', minute: '2-digit' })
+  return monthDayFormat.format(date) + ' ' + hourMinuteFormat.format(date)
 }
 
 function formatDurationMinutes(minutes: number): string {

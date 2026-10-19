@@ -130,6 +130,24 @@ export function buildBarPyramid(
 }
 
 /**
+ * Optional density rules for pickBarLevel. Leaving every field out keeps the
+ * plain rule above (5 px floor, no cap, no tolerance, no ceiling).
+ */
+export interface BarLevelOptions {
+  /** Narrowest slot in plot pixels (default BAR_MIN_SLOT_PX). */
+  minSlotPx?: number
+  /** At most about this many bars across the plot: the floor rises to plotWidthPx / maxBars. */
+  maxBars?: number
+  /**
+   * With no level on screen (first paint, resize, full range), a level may
+   * sit at this fraction of the floor (default 1, i.e. no tolerance).
+   */
+  tolerance?: number
+  /** Longest slot in minutes. Lifted only when minSlotPx alone forces a longer one. */
+  maxLevelMinutes?: number
+}
+
+/**
  * The level for a view: the shortest slot at least BAR_MIN_SLOT_PX wide, with
  * hysteresis around `previousStep` (the level on screen now).
  */
@@ -139,17 +157,26 @@ export function pickBarLevel(
   plotWidthPx: number,
   cadenceMs: number,
   previousStep?: number | null,
+  opts: BarLevelOptions = {},
 ): BarLevel | null {
   if (levels.length === 0) return null
   const pxPerSample = plotWidthPx / Math.max(1, visibleSpanMs / cadenceMs + 1)
   const fits = (level: BarLevel, px: number) => level.step * pxPerSample >= px
-  const ideal = levels.find(level => fits(level, BAR_MIN_SLOT_PX)) ?? levels[levels.length - 1]!
+  const floorPx = opts.minSlotPx ?? BAR_MIN_SLOT_PX
+  const minSlotPx = Math.max(floorPx, opts.maxBars ? plotWidthPx / opts.maxBars : 0)
+  const finest = (px: number) => levels.find(level => fits(level, px)) ?? levels[levels.length - 1]!
+  const ideal = finest(minSlotPx)
   const previous = levels.find(level => level.step === previousStep)
-  if (!previous || previous === ideal) return ideal
-  if (ideal.step < previous.step) {
-    return levels.find(level => level.step < previous.step && fits(level, BAR_MIN_SLOT_PX * (1 + BAR_LEVEL_HYSTERESIS))) ?? previous
-  }
-  return fits(previous, BAR_MIN_SLOT_PX * (1 - BAR_LEVEL_HYSTERESIS)) ? previous : ideal
+  let pick: BarLevel
+  if (!previous) pick = finest(minSlotPx * (opts.tolerance ?? 1))
+  else if (previous === ideal) pick = ideal
+  else if (ideal.step < previous.step) {
+    pick = levels.find(level => level.step < previous.step && fits(level, minSlotPx * (1 + BAR_LEVEL_HYSTERESIS))) ?? previous
+  } else pick = fits(previous, minSlotPx * (1 - BAR_LEVEL_HYSTERESIS)) ? previous : ideal
+  const maxSlotMs = (opts.maxLevelMinutes ?? Infinity) * 60_000
+  if (pick.slotMs <= maxSlotMs) return pick
+  const capped = levels.filter(level => level.slotMs <= maxSlotMs).pop()
+  return capped && fits(capped, floorPx) ? capped : finest(floorPx)
 }
 
 /** Index range [from, to) of the buckets whose slots meet [startMs, endMs]. */

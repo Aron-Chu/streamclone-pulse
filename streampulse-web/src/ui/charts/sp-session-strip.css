@@ -1,0 +1,303 @@
+/* Session bar strip (U14): the selected bar under the chart with its VOD preview.
+   Port of d3-v2 session-original bucket strip, F22 (2026-10-15):
+   bucket-card.css (.bkc base + .bkc--below) and session-original.css (.mpl, the
+   moment player's box, and the strip's container rules).
+
+   - The strip is rendered by SelectedMomentCompactCard into AnalyticsChart's
+     selected-detail slot, outside .ssc, so it carries its own --sp-* tokens
+     (prod's series colours, F20, the same as .ssc).
+   - Class names keep the mockup's bkc-/mpl- prefixes, except the mockup's
+     shared .btn/.qb/.ib, which collide with the site's global .btn
+     (global.css): here they are .bkc-btn/.bkc-qb/.bkc-ib.
+   - The font is the console's own (F2); only figures use tabular numerals.
+   - The .mpl-* base rules are unscoped so the moment rows (U11) can reuse
+     MomentPreviewTile / MomentVodPanel; the strip's sizes sit under .bkc--below. */
+
+.bkc-below-host {
+  --sp-canvas: #09090b;
+  --sp-panel: #101012;
+  --sp-raised: #151517;
+  --sp-popover: #18181b;
+  --sp-line: #1d1d1f;
+  --sp-line-strong: #272728;
+  --sp-text-1: #ededef;
+  --sp-text-2: #b4b4bb;
+  --sp-text-3: #8e8e96;
+  --sp-accent: #5eead4;
+  --sp-focus: #99f6e4;
+  --sp-viewers: #22d3ee;
+  --sp-chat: #a78bfa;
+  --sp-emotes: #34d399;
+  --sp-live: #ef4444;
+  --sp-fs-label: 12px;
+  --sp-r: 8px;
+  --sp-dur-quick: 120ms;
+  --sp-ease: cubic-bezier(.16, 1, .3, 1);
+  container: bkc-below / inline-size;
+  min-width: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bkc-below-host { --sp-dur-quick: 0ms; }
+}
+
+/* the mockup's element resets (shared.css), kept at zero specificity so every class below wins */
+:where(.bkc-below-host) button { font: inherit; color: inherit; background: none; border: 0; margin: 0; padding: 0; cursor: pointer; }
+:where(.bkc-below-host) img { display: block; }
+:where(.bkc-below-host) a { color: var(--sp-accent); text-decoration: none; }
+:where(.bkc-below-host) :focus-visible { outline: 2px solid var(--sp-focus); outline-offset: 2px; border-radius: 4px; }
+/* The console's button reset (.sc-analytics-console .analytics-console button: 6 px radius, weight 600)
+   outranks a single class; keep the mockup's shapes and weights. */
+.bkc-below-host .bkc-ib.bkc-ib { border-radius: var(--sp-r); font-weight: 400; }
+.bkc-below-host .bkc-qb.bkc-qb { border-radius: var(--sp-r); font-weight: 500; }
+.bkc-below-host .bkc-mr.bkc-mr { border-radius: 4px; font-weight: 400; }
+.bkc-below-host .bkc-more.bkc-more { border-radius: 4px; font-weight: 400; }
+.mpl .mpl-go.mpl-go { border-radius: 999px; }
+
+/* ---------- card base (bucket-card.css .bkc) ---------- */
+.bkc {
+  position: relative;
+  box-sizing: border-box;
+  color: var(--sp-text-1);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  transition: opacity var(--sp-dur-quick) var(--sp-ease), transform var(--sp-dur-quick) var(--sp-ease);
+}
+.bkc *, .bkc *::before, .bkc *::after { box-sizing: border-box; }
+.bkc p, .bkc h2, .bkc ul { margin: 0; }
+.bkc ul { list-style: none; padding: 0; }
+.bkc.bkc-enter { opacity: 0; transform: translate(0, var(--bkc-dy, 4px)); }
+@media (prefers-reduced-motion: reduce) {
+  .bkc { transition: none; }
+  .bkc.bkc-enter { transform: none; }
+}
+
+/* shared controls (shared.css .ico/.ib/.btn/.qb/.sw), renamed off the site's global .btn */
+.bkc .ico { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.bkc-ib { display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: var(--sp-r); color: var(--sp-text-2); flex: none; }
+.bkc-ib:hover { background: var(--sp-raised); color: var(--sp-text-1); }
+.bkc-ib .ico { width: 18px; height: 18px; }
+.bkc-btn {
+  display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px;
+  border-radius: var(--sp-r); border: 1px solid var(--sp-line-strong);
+  color: var(--sp-text-1); font-weight: 500; white-space: nowrap;
+}
+.bkc-btn:hover { background: var(--sp-raised); text-decoration: none; }
+.bkc-qb { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 8px; border-radius: var(--sp-r); color: var(--sp-text-2); font-weight: 500; white-space: nowrap; }
+.bkc-qb:hover { background: var(--sp-raised); color: var(--sp-text-1); text-decoration: none; }
+.bkc .sw { display: inline-block; width: 8px; height: 8px; border-radius: 2px; flex: none; }
+.bkc .sw.chat { background: var(--sp-chat); }
+.bkc .sw.emotes { background: var(--sp-emotes); }
+.bkc .sw.viewers { background: var(--sp-viewers); }
+
+/* ---------- header: state line + close, then art | time range / clock / game ---------- */
+.bkc-h { display: block; padding-bottom: 12px; border-bottom: 1px solid var(--sp-line); }
+.bkc-top { display: flex; align-items: center; gap: 8px; min-height: 24px; }
+.bkc-s {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px;
+  color: var(--sp-accent); font-size: 12px; line-height: 16px; font-weight: 700;
+  letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.bkc-s::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: var(--sp-accent); flex: none; } /* the chart's locked-bar teal */
+.bkc-id { display: flex; align-items: flex-start; gap: 12px; margin-top: 6px; min-width: 0; }
+.bkc-art { width: 36px; height: 48px; border-radius: 4px; object-fit: cover; flex: none; background: var(--sp-raised); box-shadow: 0 0 0 1px var(--sp-line-strong); }
+.bkc-hl { flex: 1; min-width: 0; }
+.bkc-t {
+  font-weight: 700; font-size: 20px; line-height: 24px; letter-spacing: -.015em;
+  font-variant-numeric: tabular-nums; color: var(--sp-text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.bkc-m { display: flex; align-items: center; flex-wrap: wrap; gap: 0 6px; margin-top: 2px; font-size: 12px; line-height: 16px; color: var(--sp-text-3); }
+.bkc-prog { color: var(--sp-text-2); gap: 6px; }
+.bkc-hatch { width: 16px; height: 12px; flex: none; overflow: hidden; border-radius: 2px; background: var(--sp-raised); }
+.bkc-cat { display: flex; align-items: center; margin-top: 2px; font-size: 14px; line-height: 20px; font-weight: 500; color: var(--sp-text-1); min-width: 0; }
+.bkc-cat span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bkc-cat.bkc-sw2 span { white-space: normal; } /* "A → B at 0:48:31" may wrap rather than lose its time */
+.bkc-x { position: relative; flex: none; margin: -6px -8px -6px 0; }
+.bkc-x::after { content: ""; position: absolute; inset: -6px; }
+
+/* ---------- three figures: stat tiles (label, value, peak/sampling; never "x usual", F8) ---------- */
+.bkc-figs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.bkc-fig { display: flex; flex-direction: column; min-width: 0; padding: 8px; border: 1px solid var(--sp-line-strong); border-radius: 6px; background: var(--sp-panel); }
+.bkc-fl { order: 0; display: flex; align-items: center; gap: 5px; font-size: 12px; line-height: 16px; color: var(--sp-text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bkc-n { order: 1; margin-top: 4px; font-weight: 700; font-size: 18px; line-height: 22px; letter-spacing: -.01em; font-variant-numeric: tabular-nums; color: var(--sp-text-1); }
+.bkc-n.na { color: var(--sp-text-3); }
+.bkc-u { order: 2; display: flex; align-items: center; gap: 2px; margin-top: 2px; font-size: 12px; line-height: 16px; color: var(--sp-text-2); white-space: nowrap; min-width: 0; }
+.bkc-ut { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.bkc-cap { margin-top: 6px; font-size: 12px; line-height: 16px; color: var(--sp-text-3); }
+
+/* ---------- top emotes: one row, each item as wide as its name ---------- */
+.bkc-el { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.bkc-el li { display: grid; grid-template-columns: 28px minmax(0, auto); grid-template-rows: auto auto; column-gap: 8px; align-items: center; min-width: 0; flex: 0 1 auto; }
+.bkc-el img, .bkc-noimg { grid-row: 1 / span 2; width: 28px; height: 28px; object-fit: contain; }
+.bkc-noimg { display: grid; place-items: center; border: 1px solid var(--sp-line-strong); border-radius: 4px; font-size: 12px; line-height: 16px; color: var(--sp-text-3); }
+.bkc-noimg.sm { width: 20px; height: 20px; font-size: 11px; line-height: 14px; }
+.bkc-en { font-size: 14px; line-height: 18px; font-weight: 500; color: var(--sp-text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bkc-ec { font-size: 12px; line-height: 16px; color: var(--sp-text-2); font-variant-numeric: tabular-nums; }
+.bkc-emo .bkc-sl { margin-bottom: 4px; }
+
+/* ---------- section label (sentence case, 12 px) ---------- */
+.bkc-sl { display: flex; align-items: center; gap: 8px; min-height: 20px; font-size: 12px; line-height: 16px; color: var(--sp-text-2); font-weight: 600; }
+.bkc-sl .r { margin-left: auto; color: var(--sp-text-2); font-weight: 400; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+
+/* ---------- moments (the locked one marked) ---------- */
+.bkc .bkc-ml { margin: 2px -6px 0; }
+.bkc-mr { display: flex; align-items: center; gap: 8px; width: 100%; height: 28px; padding: 0 6px; border-radius: 4px; color: var(--sp-text-1); text-align: left; white-space: nowrap; }
+button.bkc-mr:hover { background: var(--sp-raised); }
+.bkc-mr .rk { width: 12px; flex: none; text-align: right; font-size: 12px; color: var(--sp-text-3); }
+.bkc-mr .tm { flex: none; font-weight: 500; }
+.bkc-mr .lb { flex: 1; min-width: 0; color: var(--sp-text-2); overflow: hidden; text-overflow: ellipsis; }
+.bkc-mr .em { display: inline-flex; align-items: center; gap: 4px; flex: none; margin-left: auto; font-size: 12px; color: var(--sp-text-2); }
+.bkc-mr .em img { width: 20px; height: 20px; object-fit: contain; }
+.bkc-mr.lk { background: var(--sp-raised); }
+.bkc-mr.lk .rk { color: var(--sp-accent); font-weight: 700; }
+.bkc-more { position: relative; display: inline-flex; align-items: center; height: 28px; padding: 0 6px; margin: 0 -6px; border-radius: 4px; font-size: 12px; color: var(--sp-text-2); }
+button.bkc-more::after { content: ""; position: absolute; left: 0; right: 0; top: -8px; bottom: -8px; }
+button.bkc-more:hover { color: var(--sp-text-1); background: var(--sp-raised); }
+
+/* ---------- provider split: 7TV and other (= total - 7TV) ---------- */
+.bkc-pv .bkc-sl .r { gap: 6px; }
+.bkc-pv .bkc-sl b { font-weight: 500; color: var(--sp-text-1); }
+
+/* ---------- actions ---------- */
+.bkc-act { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 4px; }
+.bkc-act .ico { width: 14px; height: 14px; }
+.bkc-act .bkc-btn { padding: 0 10px; }
+.bkc-act .bkc-qb { gap: 4px; padding: 0 6px; }
+.bkc-vod { gap: 4px; }
+.bkc-vod .ico { order: 2; color: var(--sp-text-2); }
+
+/* ---------- gap (no measurement) ---------- */
+.bkc-gap { display: flex; align-items: center; gap: 12px; }
+.bkc-gapm .bkc-hatch { width: 40px; height: 28px; }
+.bkc-gt { font-size: 14px; line-height: 20px; color: var(--sp-text-1); font-weight: 500; }
+
+/* ======================================================================================
+   below: a strip in the page's flow under the chart, at every width, so nothing covers the
+   plot. The picture over the time range on the left; figures, emotes, moments and actions
+   on the right. Under 600 px the picture is a thumbnail beside the time; the rest stacks.
+   ====================================================================================== */
+.bkc--below {
+  margin-top: 12px;
+  padding: 12px 16px 14px;
+  background: var(--sp-panel);
+  border: 1px solid var(--sp-line-strong);
+  border-radius: 8px;
+  --bkc-dy: -4px;
+}
+/* AnalyticsChart's slot already adds the 12 px gap under the chart */
+[data-chart-selected-detail] .bkc--below { margin-top: 0; }
+.bkc--below > .bkc-in {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(320px, 1fr);
+  column-gap: 24px;
+  grid-template-areas: "top top" "pv body" "id body" "id act";
+  grid-template-rows: auto auto auto 1fr;
+}
+.bkc--below .bkc-h { display: contents; }
+.bkc--below .bkc-top { grid-area: top; }
+.bkc--below .bkc-pvw { grid-area: pv; min-width: 0; margin-top: 8px; container: bkc-pv / inline-size; }
+.bkc--below .bkc-id { grid-area: id; margin-top: 10px; align-self: start; }
+.bkc--below .bkc-body { grid-area: body; min-width: 0; margin-top: 8px; }
+.bkc--below .bkc-body > * + * { margin-top: 12px; }
+.bkc--below .bkc-emo, .bkc--below .bkc-mom { padding-top: 10px; border-top: 1px solid var(--sp-line); }
+.bkc--below .bkc-act { grid-area: act; align-self: end; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--sp-line); }
+.bkc--below .bkc-in:not(:has(.bkc-pvw)) { grid-template-areas: "top top" "id body" ". body" ". act"; }
+@container bkc-below (min-width: 1000px) {
+  .bkc--below > .bkc-in { grid-template-columns: minmax(0, 420px) minmax(0, 1fr); } /* the picture stops growing */
+}
+@container bkc-below (max-width: 599px) {
+  .bkc--below { padding: 10px 12px 12px; }
+  .bkc--below > .bkc-in {
+    grid-template-columns: 128px minmax(0, 1fr);
+    column-gap: 12px;
+    grid-template-areas: "top top" "pv id" "body body" "act act";
+    grid-template-rows: auto auto auto auto;
+  }
+  .bkc--below .bkc-in:not(:has(.bkc-pvw)) { grid-template-areas: "top top" "id id" "body body" "act act"; }
+  .bkc--below .bkc-in:has(.bkc-pvw) .bkc-art { display: none; } /* the picture beside it already shows the stream */
+  .bkc--below .bkc-id { margin-top: 8px; align-self: center; }
+  .bkc--below .bkc-body { margin-top: 12px; }
+}
+
+/* ======================================================================================
+   The moment player's box (session-original.css .mpl): a storyboard frame or the game's
+   blurred art and the reason, Play over it; Twitch's player replaces it on Play.
+   ====================================================================================== */
+.mpl { min-width: 0; }
+.mpl-box {
+  position: relative; aspect-ratio: 16 / 9; border-radius: 6px; overflow: hidden;
+  background: #000; box-shadow: 0 0 0 1px rgb(255 255 255 / .06);
+}
+.mpl-pic, .mpl-fr { position: absolute; inset: 0; }
+.mpl-fr { background-repeat: no-repeat; }
+.mpl-bg {
+  position: absolute; left: -32px; top: -32px; width: calc(100% + 64px); height: calc(100% + 64px);
+  max-width: none; object-fit: cover; filter: blur(18px) brightness(.42) saturate(1.15);
+}
+.mpl-box.nofr {
+  aspect-ratio: auto; min-height: 132px; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 10px; padding: 16px; text-align: center;
+}
+.mpl-box.nofr > :not(.mpl-pic) { position: relative; }
+.mpl-box.on { aspect-ratio: 16 / 9; display: block; min-height: 0; padding: 0; }
+.mpl-box.on:focus { outline: none; }
+.mpl-box.on:focus-visible { outline: 2px solid var(--sp-focus, #99f6e4); outline-offset: 2px; }
+.mpl .mpl-go {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px 10px 12px; margin: 0;
+  border-radius: 999px; background: rgb(9 9 11 / .82); border: 1px solid rgb(255 255 255 / .18);
+  -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+  color: var(--sp-text-1, #ededef); font: inherit; font-weight: 600; line-height: 20px; white-space: nowrap; cursor: pointer;
+  transition: background var(--sp-dur-quick, 120ms) var(--sp-ease, ease), color var(--sp-dur-quick, 120ms) var(--sp-ease, ease);
+}
+.mpl .mpl-go::after { content: ""; position: absolute; inset: -4px -2px; }
+.mpl .mpl-box.nofr .mpl-go { position: relative; left: auto; top: auto; transform: none; }
+.mpl .mpl-go svg { width: 16px; height: 16px; flex: none; color: var(--sp-accent, #5eead4); }
+.mpl .mpl-go:hover { background: var(--sp-accent, #5eead4); color: #09090b; }
+.mpl .mpl-go:hover svg { color: #09090b; }
+.mpl-note {
+  position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-wrap: wrap; column-gap: 8px; margin: 0;
+  padding: 28px 12px 8px; background: linear-gradient(rgb(0 0 0 / 0), rgb(0 0 0 / .82) 24px);
+  font-size: var(--sp-fs-label, 12px); line-height: 16px; color: var(--sp-text-1, #ededef);
+}
+.mpl-note .t3 { color: var(--sp-text-2, #b4b4bb); }
+.mpl-box.nofr .mpl-note {
+  position: relative; flex-direction: column; align-items: center; row-gap: 2px;
+  padding: 6px 10px; border-radius: 6px; background: rgb(9 9 11 / .62);
+}
+.mpl-if { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.mpl-msg { margin: 0; color: var(--sp-text-2, #b4b4bb); }
+.mpl-box.fr .mpl-msg { position: absolute; left: 0; right: 0; top: 40%; text-align: center; }
+.mpl-cap {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-height: 32px; margin: 6px 0 0;
+  font-size: var(--sp-fs-label, 12px); line-height: 16px; color: var(--sp-text-3, #8e8e96);
+}
+@media (prefers-reduced-motion: reduce) {
+  .mpl .mpl-go { transition: none; }
+}
+
+/* the picture in the strip: the same box with or without a frame; the note never takes the click */
+.bkc--below .mpl-cap { min-height: 0; }
+.bkc--below .mpl-box.nofr { aspect-ratio: 16 / 9; min-height: 0; }
+.bkc--below .mpl-note { pointer-events: none; }
+/* in a picture under 360 px the note keeps only the frame's timing, so Play stays clear */
+@container bkc-pv (max-width: 359px) {
+  .bkc--below .mpl-box.fr .mpl-note > span:first-child { display: none; }
+  .bkc--below .mpl-box.fr .mpl-note { padding-top: 18px; }
+  .bkc--below .mpl-box.nofr { gap: 6px; padding: 8px; }
+  .bkc--below .mpl-box.nofr .mpl-note { padding: 4px 8px; }
+}
+/* under 600 px: a thumbnail; Play keeps only its icon and the note is read out, not shown;
+   pressing Play gives the player the strip's full width */
+@container bkc-below (max-width: 599px) {
+  .bkc--below .mpl-box, .bkc--below .mpl-box.nofr { aspect-ratio: 16 / 9; min-height: 0; padding: 0; gap: 0; }
+  .bkc--below .mpl .mpl-go { padding: 8px; }
+  .bkc--below .mpl .mpl-go span, .bkc--below .mpl-box .mpl-note, .bkc--below .mpl-box.nofr .mpl-note {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; padding: 0;
+  }
+  .bkc--below .mpl-msg { padding: 0 6px; font-size: 11px; line-height: 14px; }
+  .bkc--below .bkc-in:has(.mpl-box.on) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "pv" "id" "body" "act"; }
+  .bkc--below .bkc-in:has(.mpl-box.on) .bkc-art { display: block; }
+}

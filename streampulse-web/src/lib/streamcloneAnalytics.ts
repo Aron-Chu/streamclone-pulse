@@ -1399,8 +1399,22 @@ export const portalAnalyticsApi: AnalyticsApi = {
     }
   },
 
-  async getVodStoryboardThumb(_vodId: string, _offsetSec: number) {
-    return null
+  // The tile under a VOD second (backend internal/analytics/vod_storyboard.go). A 404 names its reason
+  // ({ reason: 'no_storyboard' | 'offset_out_of_range' }) and a 403 means the VOD is still recording;
+  // both go back as data so AC/utils/vodFrames.ts can tell them apart. Anything else is null.
+  async getVodStoryboardThumb(vodId: string, offsetSec: number) {
+    if (!/^\d{6,20}$/.test(vodId) || !Number.isFinite(offsetSec) || offsetSec < 0) return null
+    const params = new URLSearchParams({ offsetSec: String(Math.floor(offsetSec)) })
+    try {
+      const { data } = await apiClient(`/v1/analytics/vods/${encodeURIComponent(vodId)}/storyboard-thumb?${params.toString()}`)
+      return data ?? null
+    } catch (error) {
+      const failure = error && typeof error === 'object' ? error as { status?: unknown; body?: unknown } : {}
+      if (failure.status === 403) return { statusCode: 403 }
+      const reason = failure.body && typeof failure.body === 'object' ? (failure.body as { reason?: unknown }).reason : undefined
+      if (failure.status === 404 && typeof reason === 'string') return { reason }
+      return null
+    }
   },
 
   async getTwitchDayClips(login: string, startedAt: string, endedAt: string) {

@@ -158,20 +158,21 @@ test.describe('portal VOD correctness (mocked)', () => {
     })
 
     await openAnalyticsSession(page)
-    const fullVod = page.getByRole('link', { name: /open the full VOD/i })
+    // d3-v2 session-original: "Watch VOD" sits in the meta line and opens the whole VOD.
+    const fullVod = page.getByRole('link', { name: 'Watch VOD' })
     await expect(fullVod).toBeVisible()
     await expect(fullVod).toHaveAttribute('href', `https://www.twitch.tv/videos/${PORTAL_VOD_ID}`)
-    // The link ends its sentence; any long-stream note starts a new one.
-    await expect(fullVod.locator('xpath=..')).toContainText(/open the full VOD\.(?: Long streams|$)/)
     await expect(page.locator(`a[href*="/videos/${OTHER_VOD_ID}"]`)).toHaveCount(0)
 
-    const moment = page.getByRole('region', { name: 'Pulse moments recap' }).getByRole('button', { name: /00:04:00 into stream/ })
+    const moment = page.getByRole('region', { name: 'Pulse moments recap' }).getByRole('button', { name: /^Moment 1 0:04:00/ })
     await expect(moment).toBeVisible()
     await moment.click()
-    const jump = page.getByRole('link', { name: /Jump to VOD ·/ }).first()
+    const jump = page.getByRole('link', { name: /^Open VOD at / }).first()
     await expect(jump).toBeVisible()
-    // 120-second verified alignment plus the selected 240-second moment.
-    await expect(jump).toHaveAttribute('href', `https://www.twitch.tv/videos/${PORTAL_VOD_ID}?t=6m0s`)
+    // 120-second verified alignment plus the selected 240-second moment, played
+    // 10 s early (the strip's lead-in, session-original momentPlayAt).
+    await expect(jump).toHaveAccessibleName(/^Open VOD at 0:05:50/)
+    await expect(jump).toHaveAttribute('href', `https://www.twitch.tv/videos/${PORTAL_VOD_ID}?t=5m50s`)
 
     // Pending linkage: never opens another session's VOD
     await page.unrouteAll({ behavior: 'ignoreErrors' })
