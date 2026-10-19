@@ -2,12 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { pulseRosterUnsupportedCopy } from '../src/ui/PulseRosterUnsupportedPanel.tsx'
 
 describe('pulseRosterUnsupportedCopy', () => {
-  it('uses roster language without a fixed channel count', () => {
+  it('says the channel is not on the tracked list, without a fixed channel count', () => {
     const copy = pulseRosterUnsupportedCopy('kaicenat')
-    expect(copy.title).toBe('Outside tracked roster')
+    expect(copy.title).toBe('Not on the tracked list')
     expect(copy.body).toContain('kaicenat')
-    expect(copy.body).toMatch(/actively tracked channel roster/i)
+    expect(copy.body).toMatch(/no live chart/i)
     expect(copy.body).not.toMatch(/top.?500/i)
-    expect(copy.footer).toMatch(/added to the roster later/i)
+    expect(copy.body).not.toMatch(/\bIRC\b|roster|rollup/i)
+    expect(copy.footer).toBe('Check back later.')
   })
 })
