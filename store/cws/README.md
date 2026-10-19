@@ -154,11 +154,18 @@ May still include optional localhost hosts for local BFF debugging. That is **no
 | Permission / host | Why retained |
 |-------------------|--------------|
 | `storage` | Settings, short-lived caches, and device-only bookmarks, notes and watched history |
-| `scripting` | MAIN-world page inspection for live/VOD metadata |
+| `scripting` | MAIN-world page inspection for live/VOD metadata; on-demand packaged files (`content/supporter-card.js`, `content/moment-frames.js`, `content/catch-me-up.js`); popup avatar and panel-shown reads |
 | `https://api.streampulse.stream/*` | Hosted Pulse API |
-| `https://cdn.7tv.app/*`, `https://cdn.betterttv.net/*`, `https://static-cdn.jtvnw.net/*`, `https://cdn.frankerfacez.com/*` | Service-worker emote image fetch (7TV, BetterTTV, Twitch CDN, FrankerFaceZ) |
-| `https://cdn.streampulse.stream/*` | StreamPulse-hosted images shown in the panel |
-| `https://*.twitch.tv/*` | Content-script / scripting injection on Twitch hosts (www, m, clips, …). Wildcard also covers `gql.twitch.tv` for extension-origin network access, but GQL discovery runs in page MAIN world without a separate `gql.twitch.tv` host entry. |
+| `https://*.twitch.tv/*` | Content-script / scripting injection on Twitch hosts (www, m, clips, …), and the popup reading the active Twitch tab's URL. Wildcard also covers `gql.twitch.tv` for extension-origin network access, but GQL discovery runs in page MAIN world without a separate `gql.twitch.tv` host entry. |
+
+Not requested by store builds: the emote and image CDNs (`cdn.7tv.app`,
+`cdn.betterttv.net`, `cdn.frankerfacez.com`, `static-cdn.jtvnw.net`,
+`cdn.streampulse.stream`). The panel shows those images as plain `<img>`
+elements, which need no host permission, and only development builds proxy
+local emote images through the worker (`src/background/emoteImageFetch.ts`).
+Chrome's install prompt for the store set reads "Read and change your data on
+all twitch.tv sites and api.streampulse.stream" instead of "Read and change
+your data on a number of websites". The development manifest keeps the CDNs.
 
 **Must exclude from store ZIP:** `http://localhost:8081/*`, `http://127.0.0.1:8081/*`, any other local origins.
 
