@@ -31,6 +31,7 @@ import { peakMinute, summaryClock } from './catchMeUpStory.ts'
 const CSS = `
 .pcu{display:grid;gap:10px}
 .pcu-sum{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;align-items:center}
+.pcu-sum[data-asks]{min-height:63px}
 .pcu-sum:has(>.pcu-sum-cover){grid-template-columns:112px minmax(0,1fr)}
 .pcu-sum-cover{position:relative;aspect-ratio:16/9;border-radius:6px;overflow:hidden;background:repeating-linear-gradient(135deg,rgba(255,255,255,.06) 0 3px,rgba(255,255,255,.02) 3px 7px)}
 .pcu-sum-cover img{display:block;width:100%;height:100%;object-fit:cover}
@@ -178,7 +179,8 @@ function headlineNumber(point: LiveHeatPoint): string | null {
  * length, its title, the games in the order played, and the peak minute, which
  * selects that minute on the chart. The cover and title come from Twitch
  * through the frames script, so with Moment pictures off there are none; the
- * cover's place is kept while they load. Null with nothing to say.
+ * cover's place is kept while they load, and its height after if Twitch has
+ * none, so nothing below moves. Null with nothing to say.
  */
 function summary(model: CatchMeUpModel, actions: CatchMeUpActions, frames: MomentFramesApi | undefined): HTMLElement | null {
   const { vodId, games, withTitle } = model.summary
@@ -187,6 +189,7 @@ function summary(model: CatchMeUpModel, actions: CatchMeUpActions, frames: Momen
   const peakCount = peak?.chatCount ?? model.peakChatPerMin
   if (!asks && games.length === 0 && !(peakCount > 0)) return null
   const box = element('div', 'pcu-sum')
+  box.toggleAttribute('data-asks', asks)
   const text = element('div', 'pcu-sum-text')
   const title = element('div', 'pcu-sum-title')
   title.hidden = true

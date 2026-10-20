@@ -27,9 +27,10 @@ import { MomentFrameStore, nearestFrameIndex, type StoredFrame } from './momentF
  * backend's picture of it (GET /v1/analytics/moments/picture: a Twitch clip or
  * VOD preview of that second), else, in a moment card, the game's box art or
  * chat's top emote; local frames win once the tab has them. The old view stays
- * until a picture has loaded, and stays for good if none does. In the moment
- * card the picture is the card's top, edge to edge and fading into the card,
- * with the card's time, game and close button laid over it.
+ * until a picture has loaded, and stays for good if none does, except that a
+ * card shows its art or emote at once, so it opens at its full height. In the
+ * moment card the picture is the card's top, edge to edge and fading into the
+ * card, with the card's time, game and close button laid over it.
  * While Twitch shows an ad the player is skipped, so an ad never becomes a
  * moment's picture.
  */
@@ -115,6 +116,11 @@ function start(source: MomentFrameSource): () => void {
   }
 }
 
+// A card's picture top is 9/16 of the card's width less its 2 px border, and
+// the card's text overlaps 38 px of it (56 px under a game line). Top Moments'
+// reserve (data-moment-reserve) grows by the rest, as padding outside its
+// min-height that follows the card's width, so its cards still all open to
+// one height.
 const CSS = `
 .pmf-thumb{display:none;position:relative;flex:none;align-self:center;width:48px;height:27px;border-radius:4px;overflow:hidden;background:repeating-linear-gradient(135deg,rgba(255,255,255,.07) 0 3px,rgba(255,255,255,.02) 3px 7px)}
 [data-pmf-pictures] .pmf-thumb{display:block!important}
@@ -152,6 +158,10 @@ const CSS = `
 .pmf-stage[data-top]~.pulse-sel-header .pulse-sel-kicker{color:#c9c9d6;text-shadow:0 1px 2px #000}
 .pmf-stage[data-top]~.pulse-sel-header .pulse-sel-offset{font-size:17px;text-shadow:0 1px 3px #000}
 .pmf-stage[data-top]~.pulse-sel-header .pulse-sel-close{position:absolute;top:-3px;right:-4px;display:grid;place-items:center;width:22px;height:22px;margin:0;padding:0;border-radius:50%;background:rgba(0,0,0,.55);color:#fff}
+[data-moment-reserve]:has(>.pulse-sel>div>.pmf-stage[data-top]){box-sizing:content-box;padding-top:calc(56.25% - 39px)}
+[data-moment-reserve]>.pulse-sel:has(>div>.pmf-stage[data-top]){margin-top:calc(39px - 56.25%)}
+[data-moment-reserve=games]:has(>.pulse-sel>div>.pmf-stage[data-top]){padding-top:calc(56.25% - 57px)}
+[data-moment-reserve=games]>.pulse-sel:has(>div>.pmf-stage[data-top]){margin-top:calc(57px - 56.25%)}
 `
 
 const styledRoots = new WeakSet<Node>()
@@ -239,6 +249,30 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
     return picture
   }
 
+  /** A card's stand-ins, each built once: the game's box art, and chat's top emote. */
+  let art: HTMLElement | null | undefined
+  let emote: HTMLElement | null | undefined
+  const artStandIn = (): HTMLElement | null => {
+    if (art === undefined) {
+      const blur = element('span', 'pmf-art')
+      const box = element('span', 'pmf-box')
+      if (view.art) blur.style.backgroundImage = box.style.backgroundImage = cssUrl(view.art)
+      art = card && view.art ? framed('No VOD · game art', '#a1a1b2', blur, box) : null
+    }
+    return art
+  }
+  const emoteStandIn = (): HTMLElement | null => {
+    if (emote === undefined) {
+      const big = element('img', 'pmf-big')
+      big.alt = ''
+      big.decoding = 'async'
+      big.referrerPolicy = 'no-referrer'
+      if (view.emote) big.src = view.emote
+      emote = card && view.emote ? framed('No VOD · chat’s top emote', '#fbbf24', element('span', 'pmf-glow'), big) : null
+    }
+    return emote
+  }
+
   /**
    * What a moment this tab holds no frames of shows, looked for once needed:
    * Twitch's VOD tile of it, else the backend's picture, else, in a card, the
@@ -265,16 +299,9 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
     const image = remote ? await loaded(remote) : null
     if (image) return framed('Twitch preview', '#38bdf8', image)
     if (!card) return null
-    if (view.art && await loaded(view.art)) {
-      const blur = element('span', 'pmf-art')
-      const box = element('span', 'pmf-box')
-      blur.style.backgroundImage = box.style.backgroundImage = cssUrl(view.art)
-      return framed('No VOD · game art', '#a1a1b2', blur, box)
-    }
-    const emote = view.emote ? await loaded(view.emote) : null
-    if (!emote) return null
-    emote.className = 'pmf-big'
-    return framed('No VOD · chat’s top emote', '#fbbf24', element('span', 'pmf-glow'), emote)
+    if (view.art && await loaded(view.art)) return artStandIn()
+    if (view.emote && await loaded(view.emote)) return emoteStandIn()
+    return null
   }
   /** Undefined until looked for (only once the moment turns out to have no frames). */
   let other: HTMLElement | null | undefined
@@ -371,15 +398,18 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
           if (!gone) render()
         })
       }
-      // The view stays as it was while still looking, so nothing opens and collapses.
-      if (enabled && other === undefined && looking) return
-      const picture = enabled ? other : null
+      // While still looking, a card shows its stand-in, so it opens at its
+      // full height and a VOD tile takes the stand-in's place; anything else
+      // stays as it was, so nothing opens and collapses.
+      const early = enabled && other === undefined && looking
+      if (early && !(card && (artStandIn() ?? emoteStandIn()))) return
+      const picture = early ? artStandIn() ?? emoteStandIn() : enabled ? other : null
       if (card) host.toggleAttribute('data-top', picture != null)
       else {
         host.toggleAttribute('data-has', picture != null)
         host.title = picture ? '' : 'No picture: Pulse only keeps frames from while this tab was playing'
       }
-      host.replaceChildren(...(picture ? [picture] : []))
+      if (host.childNodes.length !== 1 || host.firstChild !== picture) host.replaceChildren(...(picture ? [picture] : []))
       markList(list)
       return
     }

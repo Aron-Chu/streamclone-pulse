@@ -232,6 +232,19 @@ describe('Moment pictures from Twitch, and the card stand-ins', () => {
     unmount()
   })
 
+  it('opens a card on its stand-in at once, at its full height, and puts the VOD tile in its place once found', async () => {
+    vodReplies.set('2905053848', { sheets: [1, 2, 3, 4].map(SHEET), cols: 5, rows: 10, count: 200, interval: 30 })
+    const card = cardHost()
+    const unmount = api.mount(card, { ...CARD, art: ART, emote: EMOTE }, { ...AT, vodId: '2905053848' })
+    expect(card.hasAttribute('data-top')).toBe(true)
+    expect(card.querySelector('.pmf-chip')!.textContent).toBe('No VOD · game art')
+    await load(SHEET(3))
+    expect(card.hasAttribute('data-top')).toBe(true)
+    expect(card.querySelector('.pmf-chip')!.textContent).toBe('Twitch VOD preview')
+    expect(card.querySelector('.pmf-art')).toBeNull()
+    unmount()
+  })
+
   it('opens a card with no picture on blurred box art, else on the emote, and a row on neither', async () => {
     const noStream: MomentPictureAt = { api: 'https://api.streampulse.stream', key: null }
     const card = cardHost()
@@ -249,6 +262,15 @@ describe('Moment pictures from Twitch, and the card stand-ins', () => {
     expect(card.querySelector('img.pmf-big')!.getAttribute('src')).toBe(EMOTE)
     expect(card.querySelector('.pmf-chip')!.textContent).toBe('No VOD · chat’s top emote')
     unmountEmote()
+
+    // Neither loads: the stand-in goes, and the card has no top.
+    const unmountNone = api.mount(card, { ...CARD, art: ART, emote: EMOTE }, noStream)
+    expect(card.hasAttribute('data-top')).toBe(true)
+    await load(ART, 'error')
+    await load(EMOTE, 'error')
+    expect(card.hasAttribute('data-top')).toBe(false)
+    expect(card.childElementCount).toBe(0)
+    unmountNone()
 
     const { host } = thumbHost()
     const before = images.length

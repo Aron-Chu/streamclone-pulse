@@ -15,6 +15,8 @@ import { waitForPulseRoot } from '../helpers/assertions.ts'
  */
 
 const SIDEBAR = { overlayPlacement: 'sidebar', sidebarTab: 'pulse', overlayMode: 'expanded' } as const
+/** A 1×1 PNG, for box art. */
+const PIXEL = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64')
 
 interface Box { x: number; y: number; width: number; height: number }
 
@@ -206,9 +208,13 @@ test('live: the card opens to one height for moments with no, one or three top e
     { ...three, offsetSeconds: 3420, score: 80, topEmotes: three.topEmotes.slice(0, 1) },
     three,
   ]
+  // A game Twitch has box art of, as a real stream's has: every card opens on
+  // the same art top, whatever its emotes.
+  const games = live.games.map((game: { gameName: string }) => (game.gameName === 'League of Legends' ? { ...game, categoryId: '21779' } : game))
+  await extension.context.route('https://static-cdn.jtvnw.net/ttv-boxart/**', route => route.fulfill({ contentType: 'image/png', body: PIXEL }))
   await extension.context.route('https://api.streampulse.stream/v1/extension/pulse/channels/fixturechan*', async route => {
     if (new URL(route.request().url()).pathname.endsWith('/fixturechan')) {
-      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ...live, rollups, peaks }) })
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ...live, rollups, peaks, games }) })
     } else {
       await route.fallback()
     }

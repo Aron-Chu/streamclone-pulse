@@ -191,7 +191,7 @@ describe('Catch me up block', () => {
     const block = globalThis.__pulseCatchMeUp!.mount(element, model(), { jump, pick, minute: vi.fn() })
     // Minutes that do not cover the stream give the recap's peak, with no minute to select.
     expect(element.querySelector('.pcu-sum')!.textContent).toBe('Peak 480 chat/min')
-    expect(element.querySelector('.pcu-sum-link, .pcu-sum-cover')).toBeNull()
+    expect(element.querySelector('.pcu-sum-link, .pcu-sum-cover, .pcu-sum[data-asks]')).toBeNull()
     expect(element.querySelector('.pcu-rank')!.textContent).toBe('#1 moment')
     // Time, label, one number and the top emote.
     expect(element.querySelector('.pcu-metrics')!.textContent).toBe('02:41 · Chat spike · 212 chat/min · KEKW ×212')
@@ -325,6 +325,8 @@ describe('Catch me up block', () => {
       await Promise.resolve()
       await Promise.resolve()
       expect(bare.querySelector('.pcu-sum-cover')).toBeNull()
+      // It keeps the cover's height, so nothing below it moves.
+      expect(bare.querySelector('.pcu-sum')!.hasAttribute('data-asks')).toBe(true)
       expect(bare.querySelector<HTMLElement>('.pcu-sum-title')!.hidden).toBe(true)
     } finally {
       globalThis.__pulseMomentFrames = undefined
