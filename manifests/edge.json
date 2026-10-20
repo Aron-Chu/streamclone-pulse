@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "StreamPulse",
-  "description": "Live Pulse overlay for Twitch channels powered by the StreamPulse analytics API.",
+  "description": "See what Twitch chat reacted to: a live Pulse chart of chat and emote activity, Top Moments you can jump to, and stream recaps.",
   "version": "0.2.2",
   "action": {
     "default_popup": "popup/index.html",
