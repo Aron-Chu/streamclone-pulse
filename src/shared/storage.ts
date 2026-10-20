@@ -20,6 +20,7 @@ export const AUTO_UPDATE_ENABLED_KEY = 'autoUpdateEnabled'
 const THEME_PREFERENCE_KEY = 'themePreference'
 const DENSITY_PREFERENCE_KEY = 'densityPreference'
 const VOD_JUMP_CHART_PIN_KEY = 'vodJumpChartPinEnabled'
+const RECAP_SPIKE_MARKERS_KEY = 'recapSpikeMarkers'
 /** Read by content/moment-frames.js too, which drops its frames when this turns off. */
 export const MOMENT_PICTURES_KEY = 'momentPicturesEnabled'
 export { THEME_PREFERENCE_KEY, CHAT_CLOSED_PULSE_DOCK_ENABLED_KEY, DENSITY_PREFERENCE_KEY, VOD_JUMP_CHART_PIN_KEY }
@@ -661,6 +662,20 @@ export async function getVodJumpChartPinEnabled(): Promise<boolean> {
 
 export async function setVodJumpChartPinEnabled(enabled: boolean): Promise<void> {
   await syncStorageSet({ [VOD_JUMP_CHART_PIN_KEY]: Boolean(enabled) })
+}
+
+/**
+ * The recap chart's Spikes toggle as the viewer last left it, kept for every
+ * recap after. Null until they first press it.
+ */
+export async function getRecapSpikeMarkersChoice(): Promise<boolean | null> {
+  const stored = await syncStorageGet(RECAP_SPIKE_MARKERS_KEY)
+  const value = stored[RECAP_SPIKE_MARKERS_KEY]
+  return typeof value === 'boolean' ? value : null
+}
+
+export async function setRecapSpikeMarkersChoice(on: boolean): Promise<void> {
+  await syncStorageSet({ [RECAP_SPIKE_MARKERS_KEY]: on })
 }
 
 /**

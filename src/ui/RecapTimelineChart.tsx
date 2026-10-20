@@ -10,6 +10,7 @@ import {
   makeFullHistoryActivation,
   type FullHistoryRequestResult,
 } from '../shared/fullHistoryAuth.ts'
+import { getRecapSpikeMarkersChoice, setRecapSpikeMarkersChoice } from '../shared/storage.ts'
 import {
   aggregateChartEmotes,
   buildEmoteOverlaySeries,
@@ -78,6 +79,9 @@ export interface RecapTimelineChartProps {
   plotHost?: HTMLElement | null
 }
 
+/** The viewer's Spikes choice once read (undefined: not yet), so later recaps start with it. */
+let spikeMarkersChoice: boolean | null | undefined
+
 export function RecapTimelineChart({
   payload,
   backendUrl,
@@ -103,7 +107,10 @@ export function RecapTimelineChart({
   const [timelineLoading, setTimelineLoading] = useState(false)
   const [chartHoverOffsetSeconds, setChartHoverOffsetSeconds] = useState<number | null>(null)
   const [selectedEmoteKeys, setSelectedEmoteKeys] = useState<string[]>([])
-  const [showPeakMarkers, setShowPeakMarkers] = useState(pins != null)
+  // Spikes start on where the chart shows pins, until the viewer presses the
+  // toggle; their choice then holds for every recap.
+  const [spikesChoice, setSpikesChoice] = useState<boolean | null>(spikeMarkersChoice ?? null)
+  const showPeakMarkers = spikesChoice ?? pins != null
   const [emotePanelExpanded, setEmotePanelExpanded] = useState(false)
   const [focusedSeriesKey, setFocusedSeriesKey] = useState<string | null>(null)
   const fullTimelineRequestedRef = useRef(false)
@@ -363,9 +370,25 @@ export function RecapTimelineChart({
   useEffect(() => {
     setChartHoverOffsetSeconds(null)
     setSelectedEmoteKeys([])
-    setShowPeakMarkers(pins != null)
     setFocusedSeriesKey(null)
   }, [chartIdentity])
+
+  useEffect(() => {
+    if (spikeMarkersChoice !== undefined) return
+    let mounted = true
+    void getRecapSpikeMarkersChoice().then(choice => {
+      if (spikeMarkersChoice === undefined) spikeMarkersChoice = choice
+      if (mounted) setSpikesChoice(spikeMarkersChoice ?? null)
+    }).catch(() => {})
+    return () => { mounted = false }
+  }, [])
+
+  const toggleSpikeMarkers = useCallback((): void => {
+    const next = !showPeakMarkers
+    spikeMarkersChoice = next
+    setSpikesChoice(next)
+    void setRecapSpikeMarkersChoice(next).catch(() => {})
+  }, [showPeakMarkers])
 
   useEffect(() => {
     setChartViewport(resolveViewport({
@@ -546,7 +569,7 @@ export function RecapTimelineChart({
             title={chartPeakMarkers.length > 0
               ? `${chartPeakMarkerVisibleCount} of ${chartPeakMarkers.length} ranked recap moments in this range`
               : 'No backend spikes are available yet'}
-            onClick={() => setShowPeakMarkers(current => !current)}
+            onClick={toggleSpikeMarkers}
           >
             Spikes{chartPeakMarkers.length > 0 ? ` · ${chartPeakMarkerVisibleCount}` : ''}
           </button>
