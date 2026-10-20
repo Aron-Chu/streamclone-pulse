@@ -188,6 +188,7 @@ function RecapTopMoments({
   items,
   selectedKey,
   card,
+  arrivalNote,
   backendUrl,
   onSelect,
   onHighlight,
@@ -197,6 +198,8 @@ function RecapTopMoments({
   selectedKey: string | null
   /** The card above the list, which shows a moment picked in it. */
   card: TopMomentCardProps
+  /** An arrival's chip, right above the card when the arrival is a ranked moment. */
+  arrivalNote?: ReactNode
   backendUrl: string
   onSelect: (key: string) => void
   onHighlight: (offsetSeconds: number | null) => void
@@ -242,6 +245,7 @@ function RecapTopMoments({
         the list hands focus on to Show more (PulseMomentRow).
       */}
       <div>
+        {arrivalNote}
         <TopMomentCard {...card} />
         <div style={styles.momentList} data-pmf-list="true" onKeyDown={clearOnEscape(card)}>
           {shown.map(({ key, point }) => (
@@ -482,7 +486,7 @@ function RecapReadyContent({
         onRequestFullRollups={onRequestFullRollups}
       />
       <RecapChartCard
-        arrivalNote={arrivalNote}
+        arrivalNote={selectedMoment ? undefined : arrivalNote}
         hold={recapCardHold}
         backendUrl={backendUrl}
         games={payload.games}
@@ -493,6 +497,7 @@ function RecapReadyContent({
       <RecapTopMoments
         items={items}
         selectedKey={selectedKey}
+        arrivalNote={selectedMoment ? arrivalNote : undefined}
         card={{
           id: cardId,
           point: selectedMoment ? selectedPoint : null,
@@ -688,7 +693,7 @@ function OfflineFallbackContent({
         onRequestFullRollups={onRequestFullRollups}
       />
       <RecapChartCard
-        arrivalNote={arrivalNote}
+        arrivalNote={listedPoint ? undefined : arrivalNote}
         hold={recapCardHold}
         backendUrl={backendUrl}
         games={payload.games}
@@ -699,6 +704,7 @@ function OfflineFallbackContent({
       <RecapTopMoments
         items={peakPoints.map(point => ({ key: offlinePointKey(point), point }))}
         selectedKey={selectedKey}
+        arrivalNote={listedPoint ? arrivalNote : undefined}
         card={{
           id: cardId,
           point: listedPoint ?? null,

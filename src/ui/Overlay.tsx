@@ -952,11 +952,13 @@ function OverlayMain({
     return () => video.removeEventListener('seeked', seeked)
   }, [arrival, unlockArrival])
 
-  // The chip and card open under the chart, often past the panel's fold:
-  // scroll them into view once, on arrival only.
+  // The chip and card open below the chart, often past the panel's fold:
+  // scroll them into view once, on arrival only. The chip can move to the
+  // card that opens once the recap matches its minute, so the reveal reads
+  // the ref on every frame.
   const arrivalChipRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    if (arrival && arrivalChipRef.current) return revealCardBelow(arrivalChipRef.current)
+    if (arrival && arrivalChipRef.current) return revealCardBelow(() => arrivalChipRef.current)
   }, [arrival])
   const arrivalNote = arrival ? (
     <div ref={arrivalChipRef} className="pulse-arrival" data-moment-arrival={arrival.source} data-chart-action="true">
