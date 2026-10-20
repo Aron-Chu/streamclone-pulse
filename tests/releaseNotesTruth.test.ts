@@ -39,7 +39,7 @@ describe('0.2.2 release notes', () => {
     expect(entry('0.2.2').knownIssues).toContain('Bookmarks, notes and watched history stay in the browser where you saved them.')
     // My Moments says accounts are coming; the notes must not offer linking one now.
     expect(text(entry('0.2.2'))).not.toMatch(/link an account/i)
-    expect(entry('0.2.2').new).toContain('Bookmarks work without an account. Without one, they stay in this browser and are never uploaded.')
+    expect(entry('0.2.2').new).toContain('Bookmarks work without an account and stay in this browser.')
   })
 
   it('describe no sign-in, device code or account flow this build does not have', () => {
@@ -52,37 +52,36 @@ describe('0.2.2 release notes', () => {
 
   it('describe the Supporter preview without claiming a free perk changed for store users', () => {
     const notes = entry('0.2.2')
-    expect(notes.changed ?? []).toEqual([])
+    // Changed is for what moved under store users; no perk moved, so no Supporter line goes there.
+    expect((notes.changed ?? []).join('\n')).not.toMatch(/Supporter|perk|emote rain|backdrop|paint|crest/i)
     expect(notes.summary).toContain('The 7TV header backdrop is a Supporter perk')
     expect(notes.preview).toContain('The 7TV header backdrop is a Supporter perk; sign-ups are not open yet.')
     expect(text(notes)).not.toMatch(/moved from free|moved to Supporter|backdrop is now|backdrop you chose/i)
   })
 
-  it('lead with the short 0.2.2 draft: title, summary and three highlights (2026-10-11 polish)', () => {
+  it('lead with the short 0.2.2 notes: title, summary and three highlights (2026-10-20 release copy)', () => {
     // UP-1, owner decision 2026-10-13: emote rain stays a Supporter perk; store users never had it free.
     const notes = entry('0.2.2')
-    expect(notes.title).toBe('Whole-stream charts, calmer Top Moments')
-    expect(notes.summary).toBe("Charts cover the whole stream, Top Moments opens a card only when you pick one, bookmarks work without an account, and the popup is redesigned. Also built for Edge and Firefox. The 7TV header backdrop is a Supporter perk, and accounts and Supporter sign-ups aren't open yet.")
-    expect(notes.preview).toEqual(['Charts cover the whole stream.', 'Top Moments opens a card only when you pick one.', 'The 7TV header backdrop is a Supporter perk; sign-ups are not open yet.'])
+    expect(notes.title).toBe('Whole-stream charts and moment pictures')
+    expect(notes.summary).toBe("Whole-stream charts, moment pictures, Catch me up recaps, bookmarks without an account and fewer permissions. The 7TV header backdrop is a Supporter perk, and accounts and Supporter sign-ups aren't open yet.")
+    expect(notes.preview).toEqual(['Charts cover the whole stream.', 'Top Moments shows a picture of what happened.', 'The 7TV header backdrop is a Supporter perk; sign-ups are not open yet.'])
     expect(notes.fixed).toEqual(expect.arrayContaining([
-      'Watched moments on VODs are remembered again.',
-      "Replays show their own stream's chart.",
-      'A restarted stream moves the panel to the new stream.',
-      'The popup says when a page has no chat for the panel.',
+      'Offline channels show as offline, not as live or "Not tracked".',
+      'Watched moments on replays are remembered again.',
     ]))
   })
 
-  it('say Edge and Firefox are built for, never that a store has them', () => {
-    const notes = text(entry('0.2.2'))
-    expect(entry('0.2.2').new).toContain('Built for Microsoft Edge and Firefox as well as Chrome and Brave.')
-    expect(notes).not.toMatch(/(Edge|Firefox)[^.]*(store|add-ons|Add-ons|available|listed|published)/i)
+  it('name no Edge or Firefox store before its listing exists', () => {
+    // M7, 2026-10-20: neither listing exists when the notes are frozen, and the
+    // same notes ship inside the Edge and Firefox packages.
+    expect(text(entry('0.2.2'))).not.toMatch(/Edge|Firefox/)
   })
 
   it('name no Help & Feedback section and promise no open private form', () => {
     const notes = text(entry('0.2.2'))
     expect(notes).not.toMatch(/Help & Feedback/)
     expect(notes).not.toMatch(/private feedback|only the (StreamPulse )?team reads/i)
-    expect(entry('0.2.2').new).toContain('Send feedback and Discord links are in settings.')
+    expect(entry('0.2.2').new).toContain('Join the Discord and Send feedback from quick settings and settings.')
   })
 
   it('name the Supporter perks from the one perk list', async () => {

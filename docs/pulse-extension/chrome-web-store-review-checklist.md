@@ -89,13 +89,12 @@ elements, which need no host permission.
 - [ ] Permission justifications pasted only for permissions present in the store ZIP
 - [ ] Remote code: “No”
 - [ ] Data use disclosure matches Privacy page (current behavior)
-- [ ] Disclose optional one-time Protect enrollment: beta key is discarded, device token is local/trusted-only, and the token is revocable
-- [ ] Distinguish browser-sync saved watchlist entries from server-confirmed Protect rows, including pending DELETE tombstones and backend retention
-- [ ] Disclose separate default-off product analytics consent + PostHog server processing (no identity; ~180-day target) **without claiming activation**
+- [ ] Authentication information: disclose the invite-only device link. An invited tester links the extension with a one-time code; an opaque device credential is then kept in extension storage and sent only to `api.streampulse.stream`. Everyone else: none. (Same as the listing's Privacy practices table.)
+- [ ] Analytics: none in this build. Product analytics and crash diagnostics are off (`EXTENSION_ANALYTICS_INGEST_ENABLED` and `EXTENSION_DIAGNOSTICS_INGEST_ENABLED` are `false`) and settings hides their toggles. Revisit this line in the build that turns either on.
 - [ ] Limited Use affirmed
 - [ ] Listing name / screenshots say **StreamPulse**
 - [ ] Listing / submission / Google approval — owner action only
-- [ ] Publisher-dashboard version + Support URL rechecked by owner (public listing `0.2.1` still linked Support to Twitch on 2026-09-24; set the dashboard field to `https://streampulse.stream/support/`; do not claim dashboard edits from repo docs)
+- [ ] Publisher-dashboard version + Support URL rechecked by owner (public listing `0.2.1` still linked Support to Twitch on 2026-09-24; set the dashboard field to `https://streampulse.stream/support`; do not claim dashboard edits from repo docs)
 
 ### Packaging commands (next candidate)
 

@@ -6,40 +6,50 @@
       "version": "0.2.2",
       "status": "unreleased",
       "releasedAt": null,
-      "title": "Whole-stream charts, calmer Top Moments",
-      "summary": "Charts cover the whole stream, Top Moments opens a card only when you pick one, bookmarks work without an account, and the popup is redesigned. Also built for Edge and Firefox. The 7TV header backdrop is a Supporter perk, and accounts and Supporter sign-ups aren't open yet.",
+      "title": "Whole-stream charts and moment pictures",
+      "summary": "Whole-stream charts, moment pictures, Catch me up recaps, bookmarks without an account and fewer permissions. The 7TV header backdrop is a Supporter perk, and accounts and Supporter sign-ups aren't open yet.",
       "preview": [
         "Charts cover the whole stream.",
-        "Top Moments opens a card only when you pick one.",
+        "Top Moments shows a picture of what happened.",
         "The 7TV header backdrop is a Supporter perk; sign-ups are not open yet."
       ],
       "new": [
-        "Built for Microsoft Edge and Firefox as well as Chrome and Brave.",
-        "Send feedback and Discord links are in settings.",
-        "A strength pill on the strongest moment so far shows how far it beat the stream's usual activity, for example 4.2× usual.",
-        "Bookmarks work without an account. Without one, they stay in this browser and are never uploaded.",
-        "The toolbar popup is redesigned. Away from a stream it lists channels Pulse is charting live, with a Jump back in card for your recent moments and bookmarks.",
-        "A Supporter preview in quick settings and settings shows what Supporter will add: title paint, a tenure crest, emote rain and a Supporter card, seen only by you. Supporter sign-ups are not open yet."
+        "Moment pictures: Top Moments shows what was on screen. Pictures stay in the tab and are never uploaded.",
+        "Catch me up: a short recap of a past stream's best moments.",
+        "Bookmarks work without an account and stay in this browser.",
+        "A strength pill shows how much a moment beat the stream's usual, like 4.2× usual.",
+        "A redesigned toolbar popup with live channels and your recent moments.",
+        "Join the Discord and Send feedback from quick settings and settings.",
+        "A Supporter preview in quick settings and settings shows what Supporter will add: title paint, a tenure crest, emote rain and a Supporter card, seen only by you. Supporter sign-ups are not open yet.",
+        "A new Emerald accent."
+      ],
+      "changed": [
+        "The Default chart range setting is gone. Pick a range on the chart instead.",
+        "The Volt accent is orange everywhere.",
+        "Replay top emotes count every emote provider, not just 7TV."
       ],
       "improved": [
-        "Long streams chart end to end.",
-        "Top Moments opens a moment's card only when you pick one, the row stays under your pointer, and nothing is picked for you.",
-        "Settings are reorganised, and quick settings open on a Watching card for the channel you are on.",
-        "Twitch tabs in the background no longer prefetch Pulse data, and your open Twitch tabs share one Supporter check."
+        "Live charts and Top Moments keep updating while you watch.",
+        "Top Moments opens a card only when you pick one.",
+        "Settings are reorganised, and quick settings opens on the channel you're watching.",
+        "A deeper black panel with pill-style buttons.",
+        "Fewer permissions: StreamPulse asks only for twitch.tv and api.streampulse.stream."
       ],
       "fixed": [
-        "When StreamPulse cannot be reached on first load, Pulse says so and offers Retry instead of showing Loading forever.",
-        "Hiding Pulse in the right or bottom dock no longer draws a large dark shape over the page.",
-        "VODs without replay data no longer show a false outage or raw error codes.",
-        "Analytics links keep a moment in the stream's first minute, and a link without a stream no longer selects a minute in a different stream.",
-        "Watched moments on VODs are remembered again.",
-        "Replays show their own stream's chart.",
-        "A restarted stream moves the panel to the new stream.",
-        "The popup says when a page has no chat for the panel."
+        "Offline channels show as offline, not as live or \"Not tracked\".",
+        "Live streams no longer look offline after an ad, a player error or one failed refresh.",
+        "The viewer line shows the real viewer count.",
+        "Retry works, and Pulse says when StreamPulse can't be reached.",
+        "Replays show the right chart, and From start, Full stream and Past streams work.",
+        "Watched moments on replays are remembered again.",
+        "Pulse no longer hides chat or gets pushed down by a pinned message.",
+        "Pulse stays off clip pages, and two StreamPulse copies no longer clash."
       ],
       "knownIssues": [
         "Accounts and Supporter sign-ups are not open yet. Accounts are coming with Continue with Twitch.",
-        "Bookmarks, notes and watched history stay in the browser where you saved them."
+        "Bookmarks, notes and watched history stay in the browser where you saved them.",
+        "Refresh open Twitch tabs after updating.",
+        "Moment pictures only cover time when the tab was playing."
       ],
       "links": { "details": "/changelog", "support": "/support" }
     },
