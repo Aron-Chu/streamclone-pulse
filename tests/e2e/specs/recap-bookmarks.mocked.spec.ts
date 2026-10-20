@@ -15,8 +15,7 @@ for (const surface of ['offline', 'vod'] as const) {
     const library = root.locator('[data-moment-action="open-library"]:visible').first()
     await expect(library).toHaveText('My Moments')
     await expect(root.locator('[data-moment-action="bookmark"]')).toHaveCount(0)
-    // A chart minute: the VOD's one moment is Catch me up's #1, which only
-    // jumps. End previews the last minute with data and Enter selects it.
+    // A chart minute: End previews the last minute with data and Enter selects it.
     await root.getByRole('application', { name: /^Chart plot/ }).focus()
     await page.keyboard.press('End')
     await page.keyboard.press('Enter')

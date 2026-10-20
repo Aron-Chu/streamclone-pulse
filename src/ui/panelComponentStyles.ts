@@ -227,17 +227,6 @@ export function panelComponentCss(): string {
   .pulse-mr-emotes { align-items: center; display: flex; flex-shrink: 0; gap: 4px; }
   .pulse-mr-emote { align-items: center; display: inline-flex; line-height: 0; }
 
-  .pulse-rte { display: grid; gap: 6px; }
-  .pulse-rte-compact { display: grid; gap: 5px; }
-  .pulse-rte-header { display: grid; gap: 2px; }
-  .pulse-rte-title { color: #8b8ba0; font-size: 9px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
-  .pulse-rte-hint { color: #8b8ba0; font-size: 9px; font-weight: 600; line-height: 1.35; }
-  .pulse-rte-grid { display: grid; gap: 6px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .pulse-rte-grid-compact { display: grid; gap: 5px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .pulse-rte-cell { align-items: center; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 9px; color: #fafafc; display: flex; gap: 7px; min-width: 0; overflow: hidden; padding: 5px 9px 5px 8px; }
-  .pulse-rte-rank { color: #8b8ba0; flex-shrink: 0; font-size: 9px; font-variant-numeric: tabular-nums; font-weight: 800; min-width: 10px; text-align: center; }
-  .pulse-rte-name { flex: 1; font-size: 11px; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .pulse-rte-count { color: #a1a1b2; flex-shrink: 0; font-size: 10px; font-variant-numeric: tabular-nums; font-weight: 700; }
 
   .pulse-pv-loading { background: #262633; border-radius: 10px; height: 88px; margin-top: 4px; }
   .pulse-pv-empty { background: rgba(255, 255, 255, 0.035); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 10px; display: grid; gap: 8px; padding: 14px; text-align: center; }

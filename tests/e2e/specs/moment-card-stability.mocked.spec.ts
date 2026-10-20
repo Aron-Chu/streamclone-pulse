@@ -92,8 +92,8 @@ async function openPanel(page: Page, height: number) {
 }
 
 /**
- * A recap with eight moments: Catch me up shows the best three, and Top
- * Moments lists the other five once unfolded. Registered before the panel opens.
+ * A recap with eight moments: Top Moments lists five, and the other three
+ * once unfolded. Registered before the panel opens.
  */
 async function routeLongRecap(context: BrowserContext): Promise<void> {
   const offline = JSON.parse(readFileSync(new URL('../fixtures/api/pulse-offline.json', import.meta.url), 'utf8'))
@@ -108,10 +108,10 @@ async function routeLongRecap(context: BrowserContext): Promise<void> {
   })
 }
 
-/** Unfolds the recap's Top Moments, which start folded under Catch me up. */
+/** Unfolds the recap's Top Moments past their first five. */
 async function unfoldRecapList(root: Locator): Promise<void> {
   await root.locator('button', { hasText: /^Show \d+ more moments/ }).click()
-  await expect(root.locator('.pulse-moment-row-button').nth(2)).toBeVisible()
+  await expect(root.locator('.pulse-moment-row-button').nth(5)).toBeVisible()
 }
 
 /**
@@ -126,8 +126,7 @@ for (const surface of [
     await prepare({ scenario: surface.scenario, twitchKind: surface.twitchKind, storage: SIDEBAR })
     const { root, rows, card, anyCard } = await openPanel(extension.page, 1000)
     const chart = root.locator('svg[data-testid="pulse-overview-chart"]')
-    // A recap's best moments sit in Catch me up, above its list.
-    const pick = surface.name === 'live' ? rows.first() : root.locator('.pcu-mini').first()
+    const pick = rows.first()
     await expect(chart).toBeVisible()
     await expect(pick).toBeVisible()
     const expectNothingPicked = async () => {
@@ -137,7 +136,6 @@ for (const surface of [
       await expect(chart).not.toHaveAttribute('data-chart-locked-index')
       await expect(root.locator('[data-chart-readout-state="selected"]')).toHaveCount(0)
       await expect(root.locator('[data-chart-moment-marker-state="active"]')).toHaveCount(0)
-      await expect(root.locator('.pcu-mini[aria-pressed="true"]')).toHaveCount(0)
       await expect(root.locator('.pulse-moment-slot')).toHaveCount(0)
     }
     await expectNothingPicked()

@@ -47,7 +47,7 @@ export function TopMomentCard({ id, point, onClear, ...card }: TopMomentCardProp
   // its card the height of the others.
   const games = card.games?.some(game => isRenderableGameName(game.gameName))
   const height = MOMENT_CARD_HEIGHT + (games ? MOMENT_CARD_GAME_LINE_HEIGHT : 0)
-  // Clearing hands focus back to the picked row (or Catch me up's moment),
+  // Clearing hands focus back to the picked row,
   // which shares the card's grid child and stays listed while it is picked.
   // A row listed past the fold only for the pick leaves with it and hands
   // focus on to Show more (PulseMomentRow).

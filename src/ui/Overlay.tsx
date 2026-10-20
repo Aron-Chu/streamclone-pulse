@@ -100,7 +100,7 @@ import {
 import { initPulseDebug, pulseDebug } from '../shared/pulseDebug.ts'
 import { resolveMostReactedHeat } from './mostReacted.ts'
 import { MomentBookmarkToast, MomentBookmarksProvider } from './momentBookmarks.tsx'
-import { useMomentCapture } from './momentPicture.ts'
+import { useArchiveVodId, useMomentCapture } from './momentPicture.ts'
 import { StreamRecapSection } from './StreamRecapSection.tsx'
 import { resolveRecapUiState } from './recapUiState.ts'
 import { formatPulseApiError } from './pulseApiErrors.ts'
@@ -783,6 +783,8 @@ function OverlayMain({
   })
   const mostReactedHeat = displayPayload ? resolveMostReactedHeat(displayPayload) : null
   const warming = Boolean(uiIsLive && mostReactedHeat && !mostReactedHeat.visible)
+  // An ended stream's payload names no VOD; its pictures and cover need it.
+  const archiveVodId = useArchiveVodId(context.login, payload?.streamId, context.kind === 'channel' && !uiIsLive && !payload?.vodId)
   // Moment pictures: frames of this tab's player, kept around ranked moments.
   // A VOD's frames count only on the VOD the analytics belong to.
   useMomentCapture(
@@ -790,7 +792,7 @@ function OverlayMain({
       key: payload?.streamId,
       api: backendUrl,
       login: context.login,
-      vodId: payload?.vodId,
+      vodId: payload?.vodId ?? archiveVodId,
       live: context.kind === 'channel' && uiIsLive,
       startedAt: payload?.startedAt,
       vod: context.kind === 'vod' && Boolean(payload?.vodId) && context.vodId === payload?.vodId,
@@ -2119,6 +2121,7 @@ function OverlayMain({
               sidebarFill={sidebarSnapped}
               hideHubLink
               vodPage={isVodPage}
+              archiveVodId={archiveVodId}
               onJump={jumpMoment}
               onAnalytics={openAnalyticsForMoment}
               onOpenAnalytics={openAnalytics}
