@@ -107,10 +107,10 @@ export function RecapTimelineChart({
   const [timelineLoading, setTimelineLoading] = useState(false)
   const [chartHoverOffsetSeconds, setChartHoverOffsetSeconds] = useState<number | null>(null)
   const [selectedEmoteKeys, setSelectedEmoteKeys] = useState<string[]>([])
-  // Spikes start on where the chart shows pins, until the viewer presses the
-  // toggle; their choice then holds for every recap.
+  // Spikes start off everywhere until the viewer presses the toggle; their
+  // choice then holds for every recap.
   const [spikesChoice, setSpikesChoice] = useState<boolean | null>(spikeMarkersChoice ?? null)
-  const showPeakMarkers = spikesChoice ?? pins != null
+  const showPeakMarkers = spikesChoice ?? false
   const [emotePanelExpanded, setEmotePanelExpanded] = useState(false)
   const [focusedSeriesKey, setFocusedSeriesKey] = useState<string | null>(null)
   const fullTimelineRequestedRef = useRef(false)

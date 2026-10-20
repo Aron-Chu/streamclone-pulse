@@ -203,7 +203,7 @@ export async function wantSavedPicture(saved: SaveBookmarkMessage['bookmark'], s
     await wantPicture(sender, moment, scope, identity(moment), { owned: true, waitMs: 20_000 })
   } catch { /* the save stands without a picture */ }
 }
-export async function handlePicture(message: MomentPictureRequest, sender: chrome.runtime.MessageSender) {
+export async function handlePicture(message: Exclude<MomentPictureRequest, { action: 'vod' }>, sender: chrome.runtime.MessageSender) {
   if (privateBrowsing(sender)) return { type: 'MOMENT_PICTURE' as const, ok: false }
   return handleMomentPicture(message, sender, pictureListed)
 }

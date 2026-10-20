@@ -156,3 +156,44 @@ export async function gqlDiscoverVodInPage(login: string): Promise<GqlPageRespon
 
   return { live: await post(liveQuery), list: await post(listQuery) }
 }
+
+/**
+ * Self-contained for MAIN world injection: Twitch's cover and scrub sheets of
+ * a VOD (src/shared/vodPictures.ts). GQL's `video` first, then the storyboard
+ * index it names, which Twitch serves to its own page only.
+ */
+export async function gqlVodPicturesInPage(vodId: string): Promise<{ video: unknown; index: unknown }> {
+  // Twitch's public web Client-ID, as in gqlDiscoverVodInPage.
+  const clientId = 'kimne78kx3ncx6brgo4mv6wki5h1ko'
+  const maxBytes = 64 * 1024
+
+  async function read(url: string, init: RequestInit = {}): Promise<unknown> {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 10_000)
+    try {
+      const res = await fetch(url, { ...init, credentials: 'omit', signal: controller.signal })
+      if (!res.ok || Number(res.headers.get('content-length') ?? 0) > maxBytes) return null
+      const text = await res.text()
+      return text.length > maxBytes ? null : JSON.parse(text)
+    } catch {
+      return null
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  const body = await read('https://gql.twitch.tv/gql', {
+    method: 'POST',
+    headers: { 'Client-ID': clientId, 'Content-Type': 'text/plain;charset=UTF-8' },
+    body: JSON.stringify({
+      query: 'query PulseVodPictures($id: ID!) { video(id: $id) { title previewThumbnailURL(width: 640, height: 360) seekPreviewsURL } }',
+      variables: { id: vodId },
+    }),
+  }) as { data?: { video?: { seekPreviewsURL?: unknown } | null } } | null
+  const video = body?.data?.video ?? null
+  const index = video?.seekPreviewsURL
+  return {
+    video,
+    index: typeof index === 'string' && /^https:\/\/[\w.-]+\.(cloudfront\.net|twitch\.tv)\//.test(index) ? await read(index) : null,
+  }
+}

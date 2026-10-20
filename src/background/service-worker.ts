@@ -78,7 +78,7 @@ import {
   pulseDebug,
 } from '../shared/pulseDebug.ts'
 import { isExtensionPageSender, isSenderAuthorizedForMessage, isSupportedTwitchUrl, isTrustedTwitchTopFrameSender, tabUrlMatchesPulseLogin } from './pulseBroadcastTargets.ts'
-import { discoverLiveVodIdFromGqlInTab } from './twitchPageGql.ts'
+import { discoverLiveVodIdFromGqlInTab, vodPicturesInTab } from './twitchPageGql.ts'
 import {
   awaitPulsePrefetchInFlight,
   handleTwitchTabUpdate,
@@ -1220,6 +1220,12 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           return
         }
         case 'MOMENT_PICTURE': {
+          if (message.action === 'vod') {
+            // Read in the asking Twitch tab, as Twitch's own page reads them; nothing is kept.
+            const tabId = sender.tab?.id
+            sendResponse({ type: 'MOMENT_PICTURE', vod: tabId == null ? null : await vodPicturesInTab(tabId, message.vodId) } satisfies BackgroundResponse)
+            return
+          }
           sendResponse(await handlePicture(message, sender) satisfies BackgroundResponse)
           return
         }

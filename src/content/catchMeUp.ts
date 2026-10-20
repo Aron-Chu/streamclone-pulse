@@ -9,27 +9,39 @@ import {
   type CatchMeUpParts,
 } from '../shared/catchMeUpContract.ts'
 import { extensionEmoteImageUrls } from '../shared/emoteUrl.ts'
-import type { MomentPictureView } from '../shared/momentFramesContract.ts'
+import type { MomentFramesApi, MomentPictureView } from '../shared/momentFramesContract.ts'
 import { formatMomentMetricsLine } from '../ui/momentActivity.ts'
 import { formatCount } from '../ui/mostReacted.ts'
-import { catchMeUpFacts } from './catchMeUpStory.ts'
+import { peakMinute, summaryClock } from './catchMeUpStory.ts'
 
 /**
  * Entry of `content/catch-me-up.js`, injected by the worker into a Twitch tab
  * whose Pulse panel shows a stream recap (src/background/catchMeUpScript.ts),
  * so it never counts against the content script's size budget.
  *
- * It draws the top of the recap: one line of the stream's facts, the #1
- * moment with its picture, and the next two. On a VOD page, where the chart
- * comes first, it draws the facts above the chart and the best three under it
- * as tiles, then Watch best (CatchMeUpParts). Pictures are the
- * frames this tab captured while it played the stream; with none, the block
- * shows no picture rather than another one in its place.
+ * It draws the top of the recap: a summary of the stream (Twitch's cover and
+ * title, the games in order and the peak minute), the #1 moment with its
+ * picture, and the next two. On a VOD page, where the chart comes first, it
+ * draws the summary above the chart and the best three under it as tiles,
+ * then Watch best (CatchMeUpParts). Pictures come from the frames script: the
+ * frames this tab captured while it played the stream, else Twitch's or the
+ * backend's picture of the moment; with none, the block shows no picture.
  */
 
 const CSS = `
 .pcu{display:grid;gap:10px}
-.pcu-head{margin:0;color:#e4e4ec;font-size:12px;font-weight:600;line-height:1.45;font-variant-numeric:tabular-nums}
+.pcu-sum{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;align-items:center}
+.pcu-sum:has(>.pcu-sum-cover){grid-template-columns:112px minmax(0,1fr)}
+.pcu-sum-cover{position:relative;aspect-ratio:16/9;border-radius:6px;overflow:hidden;background:repeating-linear-gradient(135deg,rgba(255,255,255,.06) 0 3px,rgba(255,255,255,.02) 3px 7px)}
+.pcu-sum-cover img{display:block;width:100%;height:100%;object-fit:cover}
+.pcu-sum-cover span{position:absolute;right:4px;bottom:4px;padding:0 4px;border-radius:3px;background:rgba(0,0,0,.75);color:#fff;font-size:9px;font-weight:800;line-height:14px;font-variant-numeric:tabular-nums}
+.pcu-sum-text{display:grid;gap:1px;min-width:0}
+.pcu-sum-title{overflow:hidden;color:#fafafc;font-size:12.5px;font-weight:800;text-overflow:ellipsis;white-space:nowrap}
+.pcu-sum-games{display:-webkit-box;overflow:hidden;color:#a1a1b2;font-size:11px;font-weight:700;line-height:1.35;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+.pcu-sum-peak{margin-top:2px;color:#c9c9d6;font-size:11px;font-variant-numeric:tabular-nums}
+.pcu-sum-link{padding:0;border:0;background:none;color:#fda4af;font:inherit;font-weight:800;cursor:pointer}
+.pcu-sum-link:hover{text-decoration:underline}
+.pcu-sum-link:focus-visible{outline:2px solid rgba(var(--pulse-accent-light-rgb,196,181,253),.95);outline-offset:2px;border-radius:3px}
 .pcu-hero{display:grid;border:1px solid rgba(var(--pulse-accent-light-rgb,167,139,250),.22);border-radius:12px;background:rgba(255,255,255,.03);overflow:hidden}
 .pcu-pic{padding:8px 8px 0}
 .pcu-pic:empty{display:none}
@@ -161,17 +173,73 @@ function headlineNumber(point: LiveHeatPoint): string | null {
   return found ? `${formatCount(found[0])}${found[1]}` : null
 }
 
+/**
+ * The summary (card board, S1): Twitch's cover of the VOD with the stream's
+ * length, its title, the games in the order played, and the peak minute, which
+ * selects that minute on the chart. The cover and title come from Twitch
+ * through the frames script, so with Moment pictures off there are none; the
+ * cover's place is kept while they load. Null with nothing to say.
+ */
+function summary(model: CatchMeUpModel, actions: CatchMeUpActions, frames: MomentFramesApi | undefined): HTMLElement | null {
+  const { vodId, games, withTitle } = model.summary
+  const asks = Boolean(vodId && frames)
+  const peak = peakMinute(model.rollups, model.durationSeconds)
+  const peakCount = peak?.chatCount ?? model.peakChatPerMin
+  if (!asks && games.length === 0 && !(peakCount > 0)) return null
+  const box = element('div', 'pcu-sum')
+  const text = element('div', 'pcu-sum-text')
+  const title = element('div', 'pcu-sum-title')
+  title.hidden = true
+  text.append(title)
+  if (games.length > 0) {
+    const route = element('div', 'pcu-sum-games', games.join(' → '))
+    route.title = route.textContent!
+    text.append(route)
+  }
+  if (peakCount > 0) {
+    const line = element('div', 'pcu-sum-peak', 'Peak ')
+    const words = `${formatCount(peakCount)} chat/min`
+    if (peak) {
+      const link = element('button', 'pcu-sum-link', `${words} at ${summaryClock(peak.offsetSeconds)}`)
+      link.type = 'button'
+      link.title = 'Select this minute on the chart'
+      link.dataset.chartAction = 'true'
+      link.addEventListener('click', () => actions.minute(peak.offsetSeconds))
+      line.append(link)
+    } else {
+      line.append(words)
+    }
+    text.append(line)
+  }
+  const cover = asks ? element('span', 'pcu-sum-cover') : null
+  if (cover && model.durationSeconds > 0) cover.append(element('span', undefined, summaryClock(model.durationSeconds, true)))
+  box.append(...(cover ? [cover] : []), text)
+  if (asks) {
+    void frames!.vod({ vodId }).then(pictures => {
+      if (withTitle && pictures?.title) {
+        title.textContent = title.title = pictures.title
+        title.hidden = false
+      }
+      const art = pictures?.cover ? image([pictures.cover], '') : null
+      if (!art) return cover?.remove()
+      art.addEventListener('error', () => cover?.remove())
+      cover?.prepend(art)
+    }, () => cover?.remove())
+  }
+  return box
+}
+
 function mount(host: HTMLElement, model: CatchMeUpModel, actions: CatchMeUpActions, parts?: CatchMeUpParts): CatchMeUpBlock {
   addStyles(host)
-  const facts = catchMeUpFacts(model)
   const best = model.moments.slice(0, 3)
   const top = best[0]
   const frames = globalThis.__pulseMomentFrames
+  const facts = summary(model, actions, frames)
   const head = parts?.head
   const tail = parts?.tail
   const pictures: Array<() => void> = []
   const picture = (target: HTMLElement, view: MomentPictureView): void => {
-    if (frames) pictures.push(frames.mount(target, view))
+    if (frames) pictures.push(frames.mount(target, view, model.at))
   }
   const remove = (): void => {
     pictures.splice(0).forEach(unmount => unmount())
@@ -195,7 +263,7 @@ function mount(host: HTMLElement, model: CatchMeUpModel, actions: CatchMeUpActio
   }
 
   if (head && tail) {
-    if (facts) head.replaceChildren(element('p', 'pcu-head', facts))
+    if (facts) head.replaceChildren(facts)
     // Each tile is the moment's picture when this tab has one; otherwise its
     // top emote, large, and its time.
     const tiles = best.map((moment, index) => {
@@ -264,7 +332,7 @@ function mount(host: HTMLElement, model: CatchMeUpModel, actions: CatchMeUpActio
 
   const block = element('section', 'pcu')
   block.setAttribute('aria-label', 'Catch me up')
-  if (facts) block.append(element('p', 'pcu-head', facts))
+  if (facts) block.append(facts)
   block.append(hero)
 
   const minis = best.slice(1).map((moment, offset) => {

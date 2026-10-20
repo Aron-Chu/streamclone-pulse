@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react'
+import { extensionEmoteImageUrls } from '../shared/emoteUrl.ts'
 import type { ExtensionEmote } from '../shared/messages.ts'
 import type { MomentPictureView } from '../shared/momentFramesContract.ts'
 import { BookmarkGlyph, useMomentBookmarks, type BookmarkTarget } from './momentBookmarks.tsx'
@@ -71,7 +72,11 @@ export function MomentSelectionCard({
   const canBookmark = Boolean(bookmark && bookmarks?.canSave)
   const saved = canBookmark ? bookmarks!.savedFor(bookmark!) != null : false
   const contentRef = useRef<HTMLDivElement>(null)
-  const pictureRef = useMomentPicture<HTMLDivElement>(picture)
+  // With no picture of the moment the card opens on the game's box art, or on
+  // chat's top emote for Just Chatting (its box art says nothing).
+  const art = game?.name.toLowerCase() === 'just chatting' ? undefined : game?.art
+  const emote = topEmotes[0] ? extensionEmoteImageUrls(topEmotes[0], backendUrl)[0] : undefined
+  const pictureRef = useMomentPicture<HTMLDivElement>(picture && { ...picture, art, emote })
   const shownKeyRef = useRef(contentKey)
   // The first selection fades in with the card itself; a swap restarts the
   // details' fade on the same nodes (a key remount would drop focus).

@@ -8,7 +8,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { LiveHeatPoint } from '@streampulse/pulse-core'
 import { CATCH_ME_UP_SCRIPT_FILE, injectCatchMeUp } from '../src/background/catchMeUpScript.ts'
 import { MESSAGE_SENDER_SCOPE } from '../src/background/pulseBroadcastTargets.ts'
-import { busiestHalfHour, catchMeUpFacts, streamClock } from '../src/content/catchMeUpStory.ts'
+import { peakMinute, summaryClock } from '../src/content/catchMeUpStory.ts'
 import type { CatchMeUpModel } from '../src/shared/catchMeUpContract.ts'
 import type { PulsePayload } from '../src/shared/messages.ts'
 import { parseBackgroundRequest } from '../src/shared/parseBackgroundRequest.ts'
@@ -58,45 +58,32 @@ function model(fields: Partial<CatchMeUpModel> = {}): CatchMeUpModel {
     namesGame: false,
     backendUrl: 'https://api.example.test',
     vodPage: false,
+    summary: { vodId: null, withTitle: true, games: [] },
     ...fields,
   }
 }
 
 describe('Catch me up story', () => {
-  it('finds the half hour with the most chat, in whole minutes, ending by the stream end', () => {
-    const rollups = Array.from({ length: 120 }, (_, minute) => ({ offsetSeconds: minute * 60, chatCount: minute >= 70 && minute < 100 ? 50 : 5 }))
-    expect(busiestHalfHour(rollups, 7200)).toBe(70 * 60)
-    // A burst in the last minutes still names a full half hour.
-    const late = rollups.map(rollup => ({ ...rollup, chatCount: rollup.offsetSeconds >= 118 * 60 ? 900 : 1 }))
-    expect(busiestHalfHour(late, 7200)).toBe(90 * 60)
+  it('finds the minute with the most chat, the first of a tie', () => {
+    const rollups = Array.from({ length: 120 }, (_, minute) => ({ offsetSeconds: minute * 60, chatCount: minute === 70 || minute === 90 ? 50 : 5 }))
+    expect(peakMinute(rollups, 7200)).toEqual({ offsetSeconds: 70 * 60, chatCount: 50 })
+    expect(peakMinute([{ offsetSeconds: 60, chatCount: 0 }], 120)).toBeNull()
+    expect(peakMinute([], 7200)).toBeNull()
   })
 
-  it('names no half hour for a stream under an hour, or one without chat', () => {
-    const rollups = [{ offsetSeconds: 60, chatCount: 10 }]
-    expect(busiestHalfHour(rollups, 3599)).toBeNull()
-    expect(busiestHalfHour([{ offsetSeconds: 60, chatCount: 0 }], 7200)).toBeNull()
-    expect(busiestHalfHour([], 7200)).toBeNull()
-  })
-
-  it('names no half hour when the minutes cover only part of the stream', () => {
-    const minutes = (from: number, to: number) => Array.from({ length: to - from }, (_, index) => ({ offsetSeconds: (from + index) * 60, chatCount: 10 }))
+  it('names no peak minute when the minutes cover only part of the stream', () => {
+    const minutes = (from: number, to: number) => Array.from({ length: to - from }, (_, index) => ({ offsetSeconds: (from + index) * 60, chatCount: 10 + index }))
     // The first four hours of a 5h10m stream, as a capped history can hold.
-    expect(busiestHalfHour(minutes(0, 239), 18_598)).toBeNull()
+    expect(peakMinute(minutes(0, 239), 18_598)).toBeNull()
     // The last hour only, as a live window holds.
-    expect(busiestHalfHour(minutes(180, 240), 14_400)).toBeNull()
-    expect(busiestHalfHour(minutes(1, 239), 14_400)).toBe(60)
+    expect(peakMinute(minutes(180, 240), 14_400)).toBeNull()
+    expect(peakMinute(minutes(1, 239), 14_400)).toEqual({ offsetSeconds: 238 * 60, chatCount: 247 })
   })
 
-  it('states the busiest half hour, the peak and the moment count on one line', () => {
-    const rollups = Array.from({ length: 180 }, (_, minute) => ({ offsetSeconds: minute * 60, chatCount: minute >= 90 && minute < 120 ? 40 : 2 }))
-    expect(catchMeUpFacts(model({ rollups, durationSeconds: 3 * 3600 }))).toBe('Busiest half hour 01:30–02:00 · peak 480 chat/min · 20 moments')
-    expect(streamClock(9_660)).toBe('02:41')
-  })
-
-  it('starts at the peak without a busiest half hour, and leaves a missing fact out instead of showing zero', () => {
-    expect(catchMeUpFacts(model())).toBe('Peak 480 chat/min · 20 moments')
-    expect(catchMeUpFacts(model({ peakChatPerMin: 0, momentCount: 1 }))).toBe('1 moment')
-    expect(catchMeUpFacts(model({ peakChatPerMin: 0, momentCount: 0 }))).toBeNull()
+  it('writes clocks that cannot read as a time of day', () => {
+    expect(summaryClock(9_240)).toBe('2:34')
+    expect(summaryClock(1_290)).toBe('0:21')
+    expect(summaryClock(15_153, true)).toBe('4:12:33')
   })
 
   it('builds the block from the ranked moments the recap lists', () => {
@@ -112,13 +99,30 @@ describe('Catch me up story', () => {
       peakChatPerMin: 9,
       backendUrl: 'https://api.example.test',
       vodPage: true,
+      vodId: '2905053845',
     })!
     expect(built.moments.map(moment => moment.point.offsetSeconds)).toEqual([600, 1200, 1800])
     expect(built.moments.map(moment => moment.game?.name)).toEqual(['Just Chatting', 'Just Chatting', 'Minecraft'])
     expect(built.moments[0]!.card.kind).toBe('card')
     expect(built.moments[0]!.thumb.kind).toBe('thumb')
     expect(built).toMatchObject({ momentCount: 4, namesGame: true, vodPage: true })
+    expect(built.summary).toEqual({ vodId: '2905053845', withTitle: true, games: ['Just Chatting', 'Minecraft'] })
     expect(catchMeUpModel({ ...built, points: [], games: [] })).toBeNull()
+    // The summary names the games in the order played, a return as a step of its own,
+    // from the recap's checked timeline when it has one.
+    const route = catchMeUpModel({
+      ...built,
+      points,
+      games: [
+        { gameName: 'Minecraft', offsetSeconds: 1500, durationSeconds: 500 },
+        { gameName: 'Just Chatting', offsetSeconds: 0, durationSeconds: 1500 },
+        { gameName: 'Just Chatting', offsetSeconds: 2000, durationSeconds: 1500 },
+        { gameName: 'Elden Ring', offsetSeconds: 3000, durationSeconds: 500 },
+      ],
+      withTitle: false,
+    })!
+    expect(route.summary).toMatchObject({ withTitle: false, games: ['Just Chatting', 'Minecraft', 'Just Chatting', 'Elden Ring'] })
+    expect(catchMeUpModel({ ...built, points, played: [] })!.summary.games).toEqual([])
   })
 })
 
@@ -159,7 +163,7 @@ describe('Catch me up script', () => {
     expect(existsSync(blockBundle), 'dist/content/catch-me-up.js is missing from a build that has twitch.js').toBe(true)
     const content = readFileSync(contentBundle, 'utf8')
     const block = readFileSync(blockBundle, 'utf8')
-    for (const marker of ['busiest half hour ', ' chat/min']) {
+    for (const marker of ['Select this minute on the chart', ' chat/min']) {
       expect(content.includes(marker), `twitch.js must not contain ${marker}`).toBe(false)
       expect(block.includes(marker), `catch-me-up.js must contain ${marker}`).toBe(true)
     }
@@ -180,26 +184,28 @@ describe('Catch me up block', () => {
     return element
   }
 
-  it('shows the fact line, the #1 moment with Jump and the next two, with no picture when this tab has none', () => {
+  it('shows the summary, the #1 moment with Jump and the next two, with no picture when this tab has none', () => {
     const element = host()
     const jump = vi.fn()
     const pick = vi.fn()
-    const block = globalThis.__pulseCatchMeUp!.mount(element, model(), { jump, pick })
-    expect(element.querySelector('.pcu-head')!.textContent).toBe('Peak 480 chat/min · 20 moments')
+    const block = globalThis.__pulseCatchMeUp!.mount(element, model(), { jump, pick, minute: vi.fn() })
+    // Minutes that do not cover the stream give the recap's peak, with no minute to select.
+    expect(element.querySelector('.pcu-sum')!.textContent).toBe('Peak 480 chat/min')
+    expect(element.querySelector('.pcu-sum-link, .pcu-sum-cover')).toBeNull()
     expect(element.querySelector('.pcu-rank')!.textContent).toBe('#1 moment')
     // Time, label, one number and the top emote.
     expect(element.querySelector('.pcu-metrics')!.textContent).toBe('02:41 · Chat spike · 212 chat/min · KEKW ×212')
-    const emoteSpike = globalThis.__pulseCatchMeUp!.mount(host(), model({ moments: [{ ...model().moments[1]!, point: point(5_025, { reason: 'emote_spike', reasonLabel: 'Emote spike', topEmotes: [] }) }] }), { jump, pick })
+    const emoteSpike = globalThis.__pulseCatchMeUp!.mount(host(), model({ moments: [{ ...model().moments[1]!, point: point(5_025, { reason: 'emote_spike', reasonLabel: 'Emote spike', topEmotes: [] }) }] }), { jump, pick, minute: vi.fn() })
     expect(document.querySelectorAll('.pcu-metrics')[1]!.textContent).toBe('01:23 · Emote spike · 80 emotes/min')
     emoteSpike.remove()
     // One game known (a VOD's lone category) is not named as the moment's.
     expect(element.querySelector('.pcu-game')).toBeNull()
-    const several = globalThis.__pulseCatchMeUp!.mount(host(), model({ namesGame: true }), { jump, pick })
+    const several = globalThis.__pulseCatchMeUp!.mount(host(), model({ namesGame: true }), { jump, pick, minute: vi.fn() })
     expect(document.querySelector('.pcu-game')!.textContent).toBe('Just Chatting')
     several.remove()
     expect(element.querySelector('.pcu-pic')!.childElementCount).toBe(0)
     expect(element.querySelectorAll('.pcu-pic img, .pcu-mini img')).toHaveLength(0)
-    // The totals are in the fact line; no second stats line under the block.
+    // No stats line under the block.
     expect(element.querySelector('.pcu-stats')).toBeNull()
     const buttons = [...element.querySelectorAll<HTMLButtonElement>('.pcu-btn')]
     expect(buttons.map(button => button.textContent)).toEqual(['▶ Jump'])
@@ -222,7 +228,7 @@ describe('Catch me up block', () => {
   it('on a VOD page, steps through the best three one click at a time', () => {
     const element = host()
     const jump = vi.fn()
-    globalThis.__pulseCatchMeUp!.mount(element, model({ vodPage: true }), { jump, pick: vi.fn() })
+    globalThis.__pulseCatchMeUp!.mount(element, model({ vodPage: true }), { jump, pick: vi.fn(), minute: vi.fn() })
     const play = [...element.querySelectorAll<HTMLButtonElement>('.pcu-btn')][1]!
     expect(play.textContent).toBe('Watch best 3')
     play.click()
@@ -234,15 +240,15 @@ describe('Catch me up block', () => {
     expect(jump.mock.calls).toEqual([[0], [1], [2]])
   })
 
-  it('on a VOD page with parts, draws the facts above, the best three as tiles and Watch best under them', () => {
+  it('on a VOD page with parts, draws the summary above, the best three as tiles and Watch best under them', () => {
     const element = host()
     const head = host()
     const tail = host()
     const pick = vi.fn()
     const kekw = { key: 'kekw', name: 'KEKW', count: 212, provider: 'bttv', providerEmoteId: 'kekw1' }
     const moments = model().moments.map(moment => ({ ...moment, point: { ...moment.point, topEmotes: [kekw] } }))
-    const block = globalThis.__pulseCatchMeUp!.mount(element, model({ vodPage: true, moments }), { jump: vi.fn(), pick }, { head, tail })
-    expect(head.textContent).toBe('Peak 480 chat/min · 20 moments')
+    const block = globalThis.__pulseCatchMeUp!.mount(element, model({ vodPage: true, moments }), { jump: vi.fn(), pick, minute: vi.fn() }, { head, tail })
+    expect(head.textContent).toBe('Peak 480 chat/min')
     // No #1 hero: the tiles are the best three.
     expect(element.querySelector('.pcu-rank')).toBeNull()
     const tiles = [...element.querySelectorAll<HTMLButtonElement>('.pcu-tile')]
@@ -271,13 +277,55 @@ describe('Catch me up block', () => {
       target.append(document.createElement('img'))
       return unmount
     })
-    globalThis.__pulseMomentFrames = { start: vi.fn(), keep: vi.fn(), mount }
+    globalThis.__pulseMomentFrames = { start: vi.fn(), keep: vi.fn(), mount, vod: vi.fn(async () => null) }
+    const at = { api: 'https://api.example.test', key: 'stream-1', vodId: '2905053845' }
     try {
-      const block = globalThis.__pulseCatchMeUp!.mount(element, model(), { jump: vi.fn(), pick: vi.fn() })
+      const block = globalThis.__pulseCatchMeUp!.mount(element, model({ at }), { jump: vi.fn(), pick: vi.fn(), minute: vi.fn() })
       expect(mount.mock.calls.map(([, view]) => view.kind)).toEqual(['card', 'thumb', 'thumb'])
+      // Each names the stream, so a moment this tab never played can still show Twitch's picture.
+      expect(mount.mock.calls.every(([, , named]) => named === at)).toBe(true)
       expect(element.querySelector('.pcu-pair')!.hasAttribute('data-pmf-list')).toBe(true)
       block.remove()
       expect(unmount).toHaveBeenCalledTimes(3)
+    } finally {
+      globalThis.__pulseMomentFrames = undefined
+    }
+  })
+
+  it("sums the stream up with Twitch's cover and title, the games in order and a peak that selects its minute", async () => {
+    const vod = vi.fn(async () => ({ title: 'GAMING TIME', cover: 'https://static-cdn.jtvnw.net/cf_vods/abc/thumb/thumb0-640x360.jpg', sheets: [], cols: 0, rows: 0, count: 0, interval: 0 }))
+    globalThis.__pulseMomentFrames = { start: vi.fn(), keep: vi.fn(), mount: vi.fn(() => () => undefined), vod }
+    const rollups = Array.from({ length: 180 }, (_, minute) => ({ offsetSeconds: minute * 60, chatCount: minute === 154 ? 903 : 40 }))
+    const summary = { vodId: '2905053845', withTitle: true, games: ['Just Chatting', 'Minecraft'] }
+    try {
+      const minute = vi.fn()
+      const element = host()
+      const block = globalThis.__pulseCatchMeUp!.mount(element, model({ rollups, durationSeconds: 10_800 + 33, summary }), { jump: vi.fn(), pick: vi.fn(), minute })
+      expect(vod).toHaveBeenCalledWith({ vodId: '2905053845' })
+      // The cover's place is kept while Twitch answers; the title waits for it.
+      const cover = element.querySelector('.pcu-sum-cover')!
+      expect(cover.textContent).toBe('3:00:33')
+      expect(element.querySelector<HTMLElement>('.pcu-sum-title')!.hidden).toBe(true)
+      await Promise.resolve()
+      await Promise.resolve()
+      expect(cover.querySelector('img')!.getAttribute('src')).toBe('https://static-cdn.jtvnw.net/cf_vods/abc/thumb/thumb0-640x360.jpg')
+      const title = element.querySelector<HTMLElement>('.pcu-sum-title')!
+      expect([title.hidden, title.textContent]).toEqual([false, 'GAMING TIME'])
+      expect(element.querySelector('.pcu-sum-games')!.textContent).toBe('Just Chatting → Minecraft')
+      const peak = element.querySelector<HTMLButtonElement>('.pcu-sum-link')!
+      expect(peak.parentElement!.textContent).toBe('Peak 903 chat/min at 2:34')
+      peak.click()
+      expect(minute).toHaveBeenCalledWith(154 * 60)
+      block.remove()
+
+      // Where the recap names the title itself, and for a VOD Twitch has no cover of.
+      vod.mockResolvedValueOnce(null as never)
+      const bare = host()
+      globalThis.__pulseCatchMeUp!.mount(bare, model({ rollups, durationSeconds: 10_800, summary: { ...summary, withTitle: false } }), { jump: vi.fn(), pick: vi.fn(), minute })
+      await Promise.resolve()
+      await Promise.resolve()
+      expect(bare.querySelector('.pcu-sum-cover')).toBeNull()
+      expect(bare.querySelector<HTMLElement>('.pcu-sum-title')!.hidden).toBe(true)
     } finally {
       globalThis.__pulseMomentFrames = undefined
     }
@@ -345,12 +393,23 @@ describe('Stream recap with Catch me up', () => {
   }
   const rows = (element: ParentNode) => [...element.querySelectorAll<HTMLButtonElement>('.pulse-moment-row-button')]
   const click = (target: HTMLElement) => act(() => target.click())
+  /** Turns Spikes on or off (they start off); the viewer's last choice carries over from an earlier test. */
+  const setSpikes = (element: ParentNode, on: boolean) => {
+    const toggle = element.querySelector<HTMLElement>('[data-chart-moment-toggle="true"]')!
+    if ((toggle.getAttribute('aria-pressed') === 'true') !== on) click(toggle)
+  }
+  const showSpikes = (element: ParentNode) => setSpikes(element, true)
 
   it('shows the best three in the block, folds the rest under it, and opens a mini’s card under the block', () => {
     const element = render()
     const slot = element.querySelector<HTMLElement>('.pcu-slot')!
     expect(slot.hidden).toBe(false)
-    expect(slot.querySelector('.pcu-head')!.textContent).toMatch(/^Busiest half hour 00:00–00:30 · peak \d+ chat\/min · 8 moments$/)
+    // The summary's peak is the chart's busiest minute (the first of a tie), which it selects.
+    const peak = slot.querySelector<HTMLButtonElement>('.pcu-sum .pcu-sum-link')!
+    expect(peak.parentElement!.textContent).toBe('Peak 20 chat/min at 0:00')
+    click(peak)
+    expect(element.querySelector('[data-moment-inspector-clock="true"]')!.textContent).toMatch(/^00:00/)
+    act(() => element.querySelector<HTMLButtonElement>('.pulse-sel-close')!.click())
     expect(element.textContent).not.toContain('Biggest spike')
     expect(element.textContent).not.toContain('Top moments')
     // The rest start folded; the three above are not listed again.
@@ -427,7 +486,7 @@ describe('Stream recap with Catch me up', () => {
       const has = (selector: string) => child.matches(selector) || child.querySelector(selector) != null
       if (has('.pcu-slot')) return child.querySelector('.pcu-tiles') ? 'tiles' : 'block'
       if (has('.pcu-more')) return 'more'
-      if (has('.pcu-head')) return 'facts'
+      if (has('.pcu-sum')) return 'facts'
       if (has('.pcu-wide')) return 'watch'
       if (has('[data-games-played]')) return 'games'
       if (has('[data-chart-moment-toggle]')) return 'chart'
@@ -453,8 +512,11 @@ describe('Stream recap with Catch me up', () => {
       .toEqual(['00:05', '00:12', '00:19', '00:26', '00:33', '00:40', '00:47', '00:54'])
     expect(element.textContent).not.toContain('more moment')
     expect(element.textContent).not.toContain('Top moments')
-    // The top three are numbered pins; the rest are dots.
-    const pins = [...element.querySelectorAll('[data-chart-pin]')].map(pin => [pin.getAttribute('data-chart-pin'), pin.getAttribute('data-chart-moment-marker-offset')])
+    // Spikes start off, so the chart starts bare; with them on, the top three
+    // are numbered pins and the rest are dots.
+    expect(element.querySelectorAll('[data-chart-pin], [data-chart-moment-marker="true"]')).toHaveLength(0)
+    showSpikes(element)
+    const pins =[...element.querySelectorAll('[data-chart-pin]')].map(pin => [pin.getAttribute('data-chart-pin'), pin.getAttribute('data-chart-moment-marker-offset')])
     expect(pins).toEqual(expect.arrayContaining([['1', '300'], ['2', '720'], ['3', '1140']]))
     expect(pins).toHaveLength(3)
     expect(element.querySelectorAll('[data-chart-moment-marker="true"]')).toHaveLength(8)
@@ -465,6 +527,7 @@ describe('Stream recap with Catch me up', () => {
     const element = render(true)
     const content = element.querySelector<HTMLElement>('.pcu-slot')!.parentElement!
     const chartSlot = () => element.querySelector('.pcu-slot')!.previousElementSibling!
+    showSpikes(element)
     act(() => element.querySelector('[data-chart-pin="2"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true })))
     expect(chartSlot().querySelector('.pulse-moment-slot')!.textContent).toContain('00:12')
     expect(element.querySelectorAll('[data-top-moment-card="selected"]')).toHaveLength(0)
@@ -490,8 +553,9 @@ describe('Stream recap with Catch me up', () => {
   it('keeps the live recap as it was: block, games, chart, then the folded list, with no pins and no More', () => {
     const element = render(false, { ...payload, games } as PulsePayload)
     expect(order(element)).toEqual(['block', 'games', 'chart', 'list'])
+    // With Spikes off (their default, tests/recapSpikesChoice.test.tsx), the chart is bare.
+    setSpikes(element, false)
     expect(element.querySelector('.pcu-more, .pcu-tiles, [data-chart-pin]')).toBeNull()
-    // Spikes start hidden, as before.
     expect(element.querySelectorAll('[data-chart-moment-marker="true"]')).toHaveLength(0)
   })
 

@@ -51,12 +51,19 @@ export function minutePictureView(kind: MomentPictureView['kind'], offsetSeconds
   return { kind, from: offsetSeconds - 10, to: offsetSeconds + 60, peak: offsetSeconds + 30 }
 }
 
+/** The stream Pulse shows, as the frames script needs it, for a picture drawn outside React (Catch me up). */
+export function momentPictureAt(): MomentPictureAt | undefined {
+  if (!pictureAt) return undefined
+  const { api, login, key, vodId, vodOriginDeltaSeconds } = pictureAt
+  return { api, login, key, vodId, vodOriginDeltaSeconds }
+}
+
 /** Fills the returned element with the picture of `view`, when this tab has frames for it. */
 export function useMomentPicture<T extends HTMLElement>(view: MomentPictureView | undefined) {
   const frames = useMomentFrames()
   const ref = useRef<T>(null)
   const at = pictureAt
-  const key = view ? `${view.kind} ${view.from} ${view.to} ${view.peak} ${at?.key}` : ''
+  const key = view ? `${view.kind} ${view.from} ${view.to} ${view.peak} ${view.art} ${view.emote} ${at?.key} ${at?.vodId}` : ''
   useEffect(() => (frames && view && ref.current ? frames.mount(ref.current, view, at) : undefined), [frames, key])
   return ref
 }
