@@ -76,8 +76,14 @@ describe('Twitch callback privacy', () => {
   // Timing entry. Nothing in the portal may read performance entries or ship a
   // real-user-monitoring collector, so that URL never leaves the device.
   it('never reads Navigation Timing or loads a real-user monitoring collector', () => {
+    // Reading the page's own marks by name (the hub's load mark) cannot return
+    // the navigation entry, so only that form of getEntriesByName is allowed.
+    const entryRead = /\bperformance\s*\.\s*getEntries(?:ByType)?\s*\(|\bperformance\s*\.\s*getEntriesByName\s*\((?![\w$.'"-]+\s*,\s*['"]mark['"]\s*\))/
+    expect(entryRead.test("performance.getEntriesByName(HUB_DATA_MARK, 'mark')")).toBe(false)
+    expect(entryRead.test('performance.getEntriesByName(location.href)')).toBe(true)
+    expect(entryRead.test("performance.getEntriesByName(url, 'navigation')")).toBe(true)
     const readers: Array<[string, RegExp]> = [
-      ['performance entry read', /\bperformance\s*\.\s*getEntries(?:ByType|ByName)?\s*\(/],
+      ['performance entry read', entryRead],
       ['PerformanceObserver', /\bPerformanceObserver\b/],
       ['Navigation Timing type', /\bPerformanceNavigationTiming\b/],
       ['legacy timing API', /\bperformance\s*\.\s*(?:timing|navigation)\b/],

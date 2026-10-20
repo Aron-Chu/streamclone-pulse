@@ -46,9 +46,10 @@ afterEach(() => { vi.unstubAllEnvs() })
 describe('with VITE_TWITCH_SIGNIN off (default)', () => {
   beforeEach(() => { vi.stubEnv('VITE_TWITCH_SIGNIN', '') })
 
-  it('keeps the sign-in page exactly as the email form', () => {
+  it('keeps the sign-in page exactly as on master', () => {
     render(<MemoryRouter initialEntries={['/account/sign-in']}><AccountPage /></MemoryRouter>)
-    expect(screen.getByRole('heading', { level: 1, name: 'Sign in to Pulse' })).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 1, name: 'Tester sign-in' })).toBeTruthy()
+    expect(screen.getByTestId('twitch-coming-soon').textContent).toBe('Twitch sign-in is coming soon. Free tools work without an account.')
     expect(screen.getByLabelText('Email address')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Send sign-in link' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: /Twitch/ })).toBeNull()
