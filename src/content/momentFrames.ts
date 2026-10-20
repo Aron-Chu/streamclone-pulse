@@ -4,6 +4,7 @@ import {
   MOMENT_PICTURE_WANTS,
   type MomentFrameSource,
   type MomentFramesApi,
+  type MomentPictureAt,
   type MomentPictureView,
   type MomentPictureWant,
 } from '../shared/momentFramesContract.ts'
@@ -20,6 +21,11 @@ import { MomentFrameStore, nearestFrameIndex, type StoredFrame } from './momentF
  * turning "Moment pictures" off in Settings drops them at once. When a moment
  * is saved or watched from here, the worker asks for its one frame and keeps
  * it on this device with the save (src/background/momentPictures.ts).
+ * A moment this tab holds no frame of shows the backend's picture of it
+ * instead (GET /v1/analytics/moments/picture: a Twitch clip or VOD preview of
+ * that second), so the request names the stream and second on screen; local
+ * frames win once the tab has them. The old view stays until the picture has
+ * loaded, and stays for good if it fails.
  * While Twitch shows an ad the player is skipped, so an ad never becomes a
  * moment's picture.
  */
@@ -38,6 +44,8 @@ const store = new MomentFrameStore({
 })
 
 let enabled = true
+/** Mounted views' renders, rerun when Moment pictures is switched (a backend picture isn't in the store). */
+const views = new Set<() => void>()
 /** Panels asking for frames; the newest one's player is the one kept. */
 const sources: MomentFrameSource[] = []
 let timer: number | undefined
@@ -146,8 +154,67 @@ function element<K extends keyof HTMLElementTagNameMap>(tag: K, className?: stri
   return node
 }
 
-function mount(host: HTMLElement, view: MomentPictureView): () => void {
+/** The last stream a mount named; Catch me up's mounts name none. */
+let lastAt: MomentPictureAt | undefined
+
+/** The backend's JPEG of stream second `t`, or null without a stream id. */
+export function remoteUrl(at: MomentPictureAt | undefined, t: number): string | null {
+  if (!at?.api || !at.key) return null
+  const query = new URLSearchParams({ stream: at.key, t: String(Math.max(0, Math.round(t))) })
+  if (at.login) query.set('login', at.login)
+  if (at.vodId) query.set('vod', at.vodId)
+  return `${at.api.replace(/\/+$/, '')}/v1/analytics/moments/picture?${query}`
+}
+
+function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt): () => void {
   addStyles(host)
+  at = lastAt = at ?? lastAt
+  const remote = remoteUrl(at, view.peak)
+  let remoteFailed = !remote
+  let remoteLoaded = false
+  let remoteImage: HTMLImageElement | undefined
+  let remoteCard: HTMLElement | undefined
+  /**
+   * The backend's picture, while this tab has no frames of the moment. It shows
+   * only once loaded, so a missing picture never opens and then collapses the view.
+   */
+  const showRemote = (): boolean => {
+    if (remoteFailed || !enabled) return false
+    if (!remoteImage) {
+      remoteImage = element('img')
+      remoteImage.alt = ''
+      remoteImage.decoding = 'async'
+      remoteImage.referrerPolicy = 'no-referrer'
+      remoteImage.onload = () => {
+        remoteLoaded = true
+        signature = null
+        render()
+      }
+      remoteImage.onerror = () => {
+        remoteFailed = true
+        signature = null
+        render()
+      }
+      remoteImage.src = remote!
+    }
+    if (!remoteLoaded) return false
+    if (view.kind === 'thumb') {
+      host.toggleAttribute('data-has', true)
+      host.title = ''
+      host.replaceChildren(remoteImage)
+      markList(list)
+    } else {
+      if (!remoteCard) {
+        remoteCard = element('div', 'pmf-pic')
+        remoteCard.style.cursor = 'default'
+        remoteCard.setAttribute('role', 'img')
+        remoteCard.setAttribute('aria-label', `Picture at ${formatHeatOffset(view.peak)}`)
+      }
+      remoteCard.replaceChildren(remoteImage)
+      host.replaceChildren(remoteCard)
+    }
+    return true
+  }
   const list = view.kind === 'thumb' ? host.closest('[data-pmf-list]') : null
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
   let frames: StoredFrame[] = []
@@ -224,11 +291,13 @@ function mount(host: HTMLElement, view: MomentPictureView): () => void {
 
   const render = (): void => {
     const next = enabled ? store.inRange(view.from, view.to) : []
-    const nextSignature = next.map(frame => frame.url).join(' ')
+    // With `enabled`, so turning pictures off also takes down a backend picture.
+    const nextSignature = `${enabled} ${next.map(frame => frame.url).join(' ')}`
     if (nextSignature === signature) return
     signature = nextSignature
     frames = next
     peak = nearestFrameIndex(frames, view.peak)
+    if (frames.length === 0 && showRemote()) return
     if (view.kind === 'thumb') {
       host.toggleAttribute('data-has', frames.length > 0)
       host.title = frames.length > 0 ? '' : 'No picture: Pulse only keeps frames from while this tab was playing'
@@ -259,8 +328,11 @@ function mount(host: HTMLElement, view: MomentPictureView): () => void {
 
   render()
   const unsubscribe = store.subscribe(render)
+  views.add(render)
   return () => {
+    if (remoteImage) remoteImage.onload = remoteImage.onerror = null
     unsubscribe()
+    views.delete(render)
     stopFlip()
     row?.removeEventListener('pointerenter', startFlip)
     row?.removeEventListener('pointerleave', endFlip)
@@ -319,6 +391,7 @@ if (!globalThis.__pulseMomentFrames) {
     if (area !== 'sync' || !(PICTURES_KEY in changes)) return
     enabled = changes[PICTURES_KEY]!.newValue !== false
     if (!enabled) store.clear()
+    for (const render of views) render()
   })
   chrome.runtime?.onMessage?.addListener(message => {
     if (message?.type === MOMENT_PICTURE_WANTS) takeWants(message.wants)

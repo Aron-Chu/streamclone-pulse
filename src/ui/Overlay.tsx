@@ -788,6 +788,9 @@ function OverlayMain({
   useMomentCapture(
     {
       key: payload?.streamId,
+      api: backendUrl,
+      login: context.login,
+      vodId: payload?.vodId,
       live: context.kind === 'channel' && uiIsLive,
       startedAt: payload?.startedAt,
       vod: context.kind === 'vod' && Boolean(payload?.vodId) && context.vodId === payload?.vodId,

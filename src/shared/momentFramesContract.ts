@@ -6,7 +6,8 @@
  * The content script owns the data (which moment, where it starts, which game)
  * and leaves an empty element for each picture; the frames script owns the
  * pixels. Frames stay in the tab's memory and are gone when it closes, except
- * the one the worker asks for when a moment is saved or watched.
+ * the one the worker asks for when a moment is saved or watched. A moment the
+ * tab holds no frame of may show the backend's picture of it (MomentPictureAt).
  */
 
 /** A stream offset the picture is about, and the span it may scrub across. */
@@ -18,6 +19,17 @@ export interface MomentPictureView {
   to: number
   /** The frame shown at rest and marked "peak". */
   peak: number
+}
+
+/** The stream Pulse shows, so the frames script can ask the backend for a picture it holds no frames of. */
+export interface MomentPictureAt {
+  /** The backend Pulse reads from. */
+  api?: string
+  login?: string | null
+  /** The stream id; without one there is no backend picture. */
+  key?: string | null
+  /** A VOD hint; the backend checks it against the stream before use. */
+  vodId?: string | null
 }
 
 export interface MomentFrameSource {
@@ -35,7 +47,7 @@ export interface MomentFramesApi {
   /** Spans whose frames outlive the rolling window, such as ranked moments. */
   keep: (spans: ReadonlyArray<readonly [number, number]>) => void
   /** Draws a picture into an element the caller leaves empty; the returned function removes it. */
-  mount: (element: HTMLElement, view: MomentPictureView) => () => void
+  mount: (element: HTMLElement, view: MomentPictureView, at?: MomentPictureAt) => () => void
 }
 
 /** Fired on window once the frames script has registered itself. */
