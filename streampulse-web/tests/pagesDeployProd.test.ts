@@ -40,9 +40,11 @@ describe('Cloudflare Pages production deployment hygiene', () => {
     const robots = readFileSync(resolve(webRoot, 'public/robots.txt'), 'utf8')
     const sitemap = readFileSync(resolve(webRoot, 'public/sitemap.xml'), 'utf8')
     expect(robots).toContain('Sitemap: https://streampulse.stream/sitemap.xml')
-    for (const path of ['/', '/analytics', '/docs', '/status', '/privacy', '/support']) {
+    for (const path of ['/', '/docs', '/status', '/privacy', '/support']) {
       expect(sitemap).toContain(`<loc>https://streampulse.stream${path}</loc>`)
     }
+    // The hub is the front page; /analytics serves it too, with `/` as its canonical URL.
+    expect(sitemap).not.toContain('<loc>https://streampulse.stream/analytics</loc>')
   })
 
   it('preserves search discovery while opting out of AI model use', () => {

@@ -46,7 +46,9 @@ const queryClient = new QueryClient({
 })
 
 function isPublicAnalyticsPath(pathname: string): boolean {
+  // The front page is the public hub too.
   if (
+    pathname === '/' ||
     pathname === '/analytics' ||
     pathname === '/analytics/streams'
   ) {

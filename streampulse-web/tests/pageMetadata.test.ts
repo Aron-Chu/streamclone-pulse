@@ -25,10 +25,11 @@ describe('public page metadata', () => {
   })
 
   it('canonicalizes analytics aliases without treating them as channel names', () => {
-    for (const path of ['/analytics/hub', '/analytics/emotes', '/analytics/streams', '/atlas']) {
+    // The hub is the front page, so `/` is the canonical URL for /analytics and its aliases.
+    for (const path of ['/', '/analytics', '/analytics/hub', '/analytics/emotes', '/analytics/streams', '/atlas']) {
       expect(resolvePageMetadata(path)).toMatchObject({
         title: 'StreamPulse Analytics',
-        canonicalPath: '/analytics',
+        canonicalPath: '/',
         robots: 'index,follow',
       })
     }

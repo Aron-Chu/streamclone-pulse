@@ -10,19 +10,19 @@ import { AnalyticsThemeProvider } from '../../providers/AnalyticsThemeProvider'
 
 import { AnalyticsHubSidebar } from './AnalyticsHubSidebar'
 
-import { AnalyticsTopNav } from './AnalyticsTopNav'
+import { AnalyticsTopNav, type AnalyticsTopNavItem } from './AnalyticsTopNav'
 
 import { PageErrorBoundary } from '../../PortalErrorBoundary'
 import { discordInviteUrl } from '../../../lib/discord'
 import { FEEDBACK_PATH } from '../../../lib/externalLinks'
 
-const NAV_ITEMS = [
-  { label: 'Home', to: '/', end: true },
-  { label: 'Analytics', to: '/analytics', end: true },
-  // "All moments" rather than "Moments": the session page's right rail already
-  // has a Moments tab scoped to one stream, and two links named the same thing
-  // at different scopes read as the same destination.
-  { label: 'All moments', to: '/analytics/moments' },
+// The site's top bar: the hub is the front page, and /analytics serves the
+// same hub, so Hub stays current there too.
+const NAV_ITEMS: AnalyticsTopNavItem[] = [
+  { label: 'Hub', to: '/', end: true, alsoCurrentOn: ['/analytics'] },
+  { label: 'Moments', to: '/analytics/moments' },
+  { label: 'Extension', to: '/extension' },
+  { label: 'Docs', to: '/docs' },
 ]
 
 export interface AnalyticsFigmaShellProps {

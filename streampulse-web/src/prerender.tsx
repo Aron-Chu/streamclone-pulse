@@ -1,6 +1,5 @@
 import { renderToString } from 'react-dom/server'
 import { StaticRouter } from 'react-router-dom'
-import Landing from './routes/public/Landing'
 import Docs from './routes/public/Docs'
 import Privacy from './routes/public/Privacy'
 import Terms from './routes/public/Terms'
@@ -19,8 +18,7 @@ import { AnalyticsRouteFallback } from './routes/AnalyticsRouteFallback'
 
 /** Render the actual public components, without a network request or private state. */
 export function prerenderPublicPage(path: string): string {
-  const page = path === '/' ? <Landing />
-    : path === '/docs' || path.startsWith('/docs/') ? <Docs />
+  const page = path === '/docs' || path.startsWith('/docs/') ? <Docs />
     : path === '/privacy' ? <Privacy />
     : path === '/terms' ? <Terms />
     : path === '/refunds' ? <Refunds />
@@ -32,7 +30,8 @@ export function prerenderPublicPage(path: string): string {
     : path === '/discord' ? <Discord />
     : path === '/status' ? <Status />
     : path === '/changelog' ? <Changelog />
-    : ['/analytics', '/setup', '/login'].includes(path)
+    // The front page is the hub: it gets the same loading shell as /analytics.
+    : ['/', '/analytics', '/setup', '/login'].includes(path)
       ? <><AnalyticsRouteFallback /><noscript><style>{'[data-analytics-route-skeleton]{display:none}'}</style><PublicLayout><article className="panel public-document"><h1>StreamPulse Analytics</h1>
         <p>Explore aggregate Twitch activity, timestamped moments, emotes, and tracked channels.</p>
         <p>Live measurements load when JavaScript is available. Coverage and freshness are shown with the data.</p>

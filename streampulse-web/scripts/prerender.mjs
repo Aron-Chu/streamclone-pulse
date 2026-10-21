@@ -56,17 +56,19 @@ const routes = [
     robots: 'noindex,nofollow',
   },
   {
+    // The front page is the hub, so it shares the hub's title and description.
     path: '',
-    title: 'StreamPulse — Twitch reaction analytics',
-    description: 'StreamPulse finds Twitch moments through coverage-honest chat, emote, viewer, and VOD analytics.',
+    title: 'StreamPulse Analytics',
+    description: 'Explore aggregate live Twitch activity, Pulse moments, emote signals, and tracked channels.',
     canonicalPath: '/',
     robots: 'index,follow',
   },
   {
+    // The same hub as `/`, kept for existing links; `/` is its canonical URL.
     path: 'analytics',
     title: 'StreamPulse Analytics',
     description: 'Explore aggregate live Twitch activity, Pulse moments, emote signals, and tracked channels.',
-    canonicalPath: '/analytics',
+    canonicalPath: '/',
     robots: 'index,follow',
   },
   {
@@ -191,7 +193,7 @@ function upsertMeta(html, attribute, key, content) {
 function renderShell(metadata) {
   const canonical = new URL(metadata.canonicalPath, origin).toString()
   let html = indexHtml.replace(/<title>[\s\S]*?<\/title>/i, `<title>${metadata.title}</title>`)
-  if (metadata.path === 'analytics' && analyticsCriticalStyles) {
+  if ((metadata.path === '' || metadata.path === 'analytics') && analyticsCriticalStyles) {
     html = html.replace('</head>', `    ${analyticsCriticalStyles}\n  </head>`)
   }
   html = upsertMeta(html, 'name', 'description', metadata.description)
