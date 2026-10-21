@@ -4,8 +4,10 @@ import { useEffect, useRef, useState, type HTMLAttributes } from 'react'
  * The place a selected-moment card occupies.
  *
  * It opens by growing from zero height while the card fades in, then holds the
- * tallest height it has shown until it closes, so clicking from one moment to
- * the next never moves the content below it. `exiting` (from
+ * tallest height it has shown at its width until it closes, so clicking from
+ * one moment to the next never moves the content below it. A new width starts
+ * the hold over: the card lays out again (its 16:9 picture with it), and a
+ * height held from a wider card left an empty band below it. `exiting` (from
  * usePinnedCardHold) collapses it the same way.
  *
  * It clips only while it opens or closes; at rest the card's emote previews
@@ -26,9 +28,21 @@ export function MomentCardSlot({ exiting, children, ...rest }: HTMLAttributes<HT
   useEffect(() => {
     const content = contentRef.current
     if (!content || typeof ResizeObserver === 'undefined') return
+    let width: number | undefined
     const observer = new ResizeObserver(() => {
+      const box = content.getBoundingClientRect()
+      if (Math.round(box.width) === width) {
+        const height = Math.ceil(box.height)
+        setHeldHeight(previous => Math.max(previous, height))
+        return
+      }
+      width = Math.round(box.width)
+      // The card's own height at this width, without the hold.
+      const held = content.style.minHeight
+      content.style.minHeight = ''
       const height = Math.ceil(content.getBoundingClientRect().height)
-      setHeldHeight(previous => Math.max(previous, height))
+      content.style.minHeight = held
+      setHeldHeight(height)
     })
     observer.observe(content)
     return () => observer.disconnect()
