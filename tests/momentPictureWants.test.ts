@@ -121,7 +121,13 @@ describe('picture messages', () => {
     expect(parseBackgroundRequest(frame(-1))).toBeNull()
     expect(parseBackgroundRequest(frame(121, 'not-a-token'))).toBeNull()
     expect(parseBackgroundRequest(frame(121, TOKEN, 'x'.repeat(200_000)))).toBeNull()
-    const twitch = { id: 'ext', url: 'https://www.twitch.tv/xqc', frameId: 0, tab: { id: 1, url: 'https://www.twitch.tv/xqc' } }
+    const vodFrame = { type: 'MOMENT_PICTURE', action: 'vodFrame', vodId: '2906185982', seconds: 1549, height: 160 }
+    expect(parseBackgroundRequest(vodFrame)).toEqual(vodFrame)
+    expect(parseBackgroundRequest({ ...vodFrame, height: 1080 })).toBeNull()
+    expect(parseBackgroundRequest({ ...vodFrame, seconds: -1 })).toBeNull()
+    expect(parseBackgroundRequest({ ...vodFrame, vodId: '../x' })).toBeNull()
+    expect(parseBackgroundRequest({ ...vodFrame, extra: 1 })).toBeNull()
+    const twitch ={ id: 'ext', url: 'https://www.twitch.tv/xqc', frameId: 0, tab: { id: 1, url: 'https://www.twitch.tv/xqc' } }
     expect(isSenderAuthorizedForMessage('MOMENT_PICTURE', undefined, twitch, 'ext')).toBe(true)
     expect(isSenderAuthorizedForMessage('MOMENT_PICTURE', undefined, { ...twitch, url: 'https://example.com/', tab: { id: 1, url: 'https://example.com/' } }, 'ext')).toBe(false)
   })

@@ -67,13 +67,22 @@ export async function installTwitchFixtures(
   // Block noisy third-party assets from live Twitch CDN while keeping URL shape.
   await context.route('https://static.twitchcdn.net/**', route => route.abort())
   await context.route('https://assets.twitch.tv/**', route => route.abort())
-  // Twitch has no pictures of a fixture VOD; a spec that wants some routes them itself.
+  // Twitch knows no fixture channel's archive, and has no pictures, playback
+  // token or video of a fixture VOD; a spec that wants some routes them itself.
+  const gqlAnswers: Array<[RegExp, unknown]> = [
+    [/PulseVodPictures/, { video: null }],
+    [/PulseVodFrameToken/, { videoPlaybackAccessToken: null }],
+    [/PulseLiveArchiveVod|PulseArchiveVod/, { user: null }],
+  ]
   await context.route('https://gql.twitch.tv/gql', async route => {
     const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'POST, OPTIONS' }
     if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors })
-    if (!route.request().postData()?.includes('PulseVodPictures')) return route.fallback()
-    await route.fulfill({ headers: cors, contentType: 'application/json', body: JSON.stringify({ data: { video: null } }) })
+    const query = route.request().postData() ?? ''
+    const answer = gqlAnswers.find(([name]) => name.test(query))
+    if (!answer) return route.fallback()
+    await route.fulfill({ headers: cors, contentType: 'application/json', body: JSON.stringify({ data: answer[1] }) })
   })
+  await context.route(/^https:\/\/[^/]*\.ttvnw\.net\//, route => route.abort())
 
   return {
     setKind(next) {
