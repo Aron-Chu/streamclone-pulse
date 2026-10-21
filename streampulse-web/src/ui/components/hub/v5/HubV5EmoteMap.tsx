@@ -1,8 +1,10 @@
 /**
  * Top emotes as the emote map (R5-13; re-done as r4 A2 on 2026-10-21, mockup
- * emotemap-moments-r4). A treemap in three flat provider fields (Twitch, 7TV,
- * BTTV & FFZ) with 2 px seams; a tile's size is its uses over the window and it
- * shows its picture, then its name and share as room allows. Emotes under 0.9%
+ * emotemap-moments-r4, then restyled as r5 C1 quiet tiles, mockup emotemap-r5).
+ * A treemap in three provider fields (Twitch, 7TV, BTTV & FFZ) on dark tiles
+ * with 2 px seams, each field shown only by a 3 px rule and a faint tint; a
+ * tile's size is its uses over the window and it shows its picture, then its
+ * name and share as room allows (wide, short tiles on one line). Emotes under 0.9%
  * fold into their field's "+N" tile. The legend gives each field's share.
  * Under the map, the ten most used emotes with the last hour against their own
  * pace as a change chip. A click on a tile or a row selects the emote: the list
@@ -65,7 +67,7 @@ function Chg({ c }: { c: EmoteChange }) {
 }
 
 function EmotePic({ a, size }: { a: HubEmoteAgg; size: number }) {
-  const src = emoteImageAt(a.e.imageUrl, 32)
+  const src = emoteImageAt(a.e.imageUrl, size)
   return src ? (
     <img
       src={src}
@@ -313,7 +315,7 @@ export function HubV5EmoteMap({
                   aria-label={aria}
                   onClick={() => select(a.id)}
                 >
-                  {t.chip ? <span className="hv5-em-chip" style={{ width: t.chip, height: t.chip }}><EmotePic a={a} size={Math.round(t.chip * 0.72)} /></span> : null}
+                  {t.pic ? <EmotePic a={a} size={t.pic} /> : null}
                   {t.name || t.val ? (
                     <span className="hv5-em-ft">
                       {t.name ? <span className="hv5-em-nm">{a.e.name}</span> : null}
