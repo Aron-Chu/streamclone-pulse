@@ -1,7 +1,8 @@
 /**
- * The emote map (R5-13, re-done as r4 A2 on 2026-10-21; mockup
- * emotemap-moments-r4): a treemap in three flat provider fields, a tile's size
- * the emote's uses, with a ranked list under it where the last hour against its
+ * The emote map (R5-13, re-done as r4 A2 on 2026-10-21 and restyled as r5 C1
+ * quiet tiles the same day; mockups emotemap-moments-r4, emotemap-r5): a
+ * treemap in three provider fields, a tile's size the emote's uses and its
+ * picture the hero, with a ranked list under it where the last hour against its
  * own pace shows as a change chip. Data: each closed activity interval's top 10 emotes with their counts
  * (activity.points[].topEmotes), added up per emote, so uses outside an emote's
  * top-10 intervals are not in it. Every size, share and pace here is a sum of
@@ -230,14 +231,31 @@ export const EMOTE_FIELDS: readonly EmoteField[] = ['twitch', 'seventv', 'other'
 export const FIELD_NAMES: Record<EmoteField, string> = { twitch: 'Twitch', seventv: '7TV', other: 'BTTV & FFZ' }
 export const fieldOf = (prov: string): EmoteField => (prov === 'twitch' ? 'twitch' : prov === 'seventv' ? 'seventv' : 'other')
 
-/** What a tile can hold: xl and l a chip, the name and the share; m a chip and, from 70 px wide, the name; s a chip; xs nothing (each line only where it fits whole). */
-export type TileSize = 'xl' | 'l' | 'm' | 's' | 'xs'
+/**
+ * What a tile can hold (r5 C1): xl and l the picture over the name and the
+ * share; row (wide and short) the picture, then the name and, from 150 px wide,
+ * the share on one line; m the picture and the name; s the picture; xs nothing.
+ * The tile pads 8 px top and bottom, a name is 18 px and a share 16 px, so each
+ * class's lines fit whole.
+ */
+export type TileSize = 'xl' | 'l' | 'row' | 'm' | 's' | 'xs'
 export function tileSize(w: number, h: number): TileSize {
-  if (w >= 118 && h >= 78) return 'xl'
-  if (w >= 78 && h >= 50) return 'l'
-  if (w >= 46 && h >= 34) return 'm'
-  if (w >= 18 && h >= 18) return 's'
+  if (w >= 118 && h >= 104) return 'xl'
+  if (w >= 84 && h >= 92) return 'l'
+  if (w >= 112 && h >= 36) return 'row'
+  if (w >= 64 && h >= 68) return 'm'
+  if (w >= 21 && h >= 18) return 's'
   return 'xs'
+}
+
+/** The picture's side for a tile of this class and inner size (0: none). */
+export function tilePic(size: TileSize, w: number, h: number): number {
+  if (size === 'xl') return 48
+  if (size === 'l') return 36
+  if (size === 'row') return Math.min(30, h - 10)
+  if (size === 'm') return 28
+  if (size === 's') return Math.round(Math.max(12, Math.min(32, w - 11, h - 6)))
+  return 0
 }
 
 export interface MapField extends Rect { field: EmoteField; name: string; v: number; share: string }
@@ -249,8 +267,8 @@ export interface MapTile extends Rect {
   rank: number
   share: string
   size: TileSize
-  /** The picture chip's side in px (0: none). */
-  chip: number
+  /** The picture's side in px (0: none). */
+  pic: number
   name: boolean
   val: boolean
 }
@@ -329,13 +347,12 @@ export function emoteMapLayout(data: HubEmoteMapData, win: HubEmoteWindow, W: nu
         continue
       }
       const x2 = t.it.x2!
-      const chip = size === 'xl' ? 30 : size === 'l' ? 26 : size === 'm' ? 22 : size === 's' ? Math.round(Math.max(14, Math.min(26, Math.min(w, h) - 6))) : 0
-      // a line of text is 16 px and the tile pads 6 px: a name or share only shows whole
-      const name = (size === 'xl' || size === 'l' || (size === 'm' && w >= 70)) && h >= chip + 12 + 16
-      const val = name && (size === 'xl' || size === 'l') && h >= chip + 12 + 32
+      const pic = tilePic(size, w, h)
+      const name = size === 'xl' || size === 'l' || size === 'row' || size === 'm'
+      const val = size === 'xl' || size === 'l' || (size === 'row' && w >= 150)
       tiles.push({
         kind: 'emote', field, a: x2.a, v: x2.v, rank: rank.get(x2.a.id) ?? 0, share: emoteSharePct((x2.v / total) * 100),
-        size, chip, name, val,
+        size, pic, name, val,
         x: t.x, y: t.y, w: t.w, h: t.h,
       })
     }
