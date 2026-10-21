@@ -28,7 +28,7 @@ export default function Privacy() {
           </div>
           <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Privacy Policy</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            Last updated: October 13, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse browser extension (Chrome, Brave, Edge and Firefox).
+            Last updated: October 19, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse browser extension (Chrome, Brave, Edge and Firefox).
           </p>
         </header>
 
@@ -310,6 +310,18 @@ export default function Privacy() {
           <li>
             Twitch GraphQL requests performed in the Twitch page context when needed to resolve stream or
             VOD identity for Pulse coverage and backfill flows.
+          </li>
+          {/* Moment pictures: src/content/momentFrames.ts and momentFrameStore.ts keep
+              the stills as object URLs in tab memory only; on by default in
+              src/shared/storage.ts. Saved pictures (IndexedDB) are not in this build;
+              change this line when they ship. */}
+          <li data-testid="privacy-moment-pictures">
+            <strong>Moment pictures</strong>, on by default: while the Pulse panel is open on a live
+            stream or VOD and the video is playing, a small still of the Twitch player every few
+            seconds, so Top Moments can show what happened. The stills stay in that tab's memory.
+            They are never written to browser storage or uploaded, and they are gone when you switch
+            streams or close the tab. You can turn them off with the Moment pictures switch in the
+            extension's settings; turning it off drops the stills at once.
           </li>
           {supporterChatBadgesEnabled() ? <PrivacyObservesChatUsernames /> : null}
         </ul>
