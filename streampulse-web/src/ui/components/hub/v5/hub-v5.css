@@ -1060,7 +1060,7 @@
   color: var(--sp-text-3);
 }
 
-/* ---------- 4. Top emotes as the emote map (R5-13, refined R5-17; hub-r5c.css) ---------- */
+/* ---------- 4. Top emotes as the emote map (R5-13; re-done as r4 A2, emotemap-moments-r4) ---------- */
 /* the switch (shared.css .seg) */
 .hv5-seg {
   display: inline-flex;
@@ -1093,171 +1093,146 @@
 .hv5-em-map {
   position: relative;
   flex: 1 0 auto;
-  min-height: var(--em-h, 380px);
-  background: var(--sp-canvas);
-  border-radius: 10px;
+  min-height: var(--em-h, 340px);
+  background: rgb(252 252 254 / 0.03);
+  border-radius: 6px;
   overflow: hidden;
   contain: layout paint;
+  user-select: none;
 }
 .hv5-em-skel { background: var(--sp-panel); }
-/* segments as rounded panels with real gaps */
-.hv5-em-seg {
-  position: absolute;
-  border-radius: 8px;
-  background: #141417;
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.04);
-}
-.hv5-em-sh {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 25px;
-  padding: 5px 9px 0;
-  font: 500 12px/16px var(--sp-font);
-  color: var(--sp-text-3);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.hv5-em-sh b { font-weight: 600; color: var(--sp-text-1); margin-right: 4px; }
+/* r4 A2: three flat provider fields (validated for colour-blind separation on dark), 2 px seams, square corners */
+:is(.hv5-em-map, .hv5-em-lg) [data-field="twitch"] { --fc: #3987e5; }
+:is(.hv5-em-map, .hv5-em-lg) [data-field="seventv"] { --fc: #d95926; }
+:is(.hv5-em-map, .hv5-em-lg) [data-field="other"] { --fc: #199e70; }
 .hub-v5 .hv5-emotes .hv5-em-t {
   position: absolute;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  padding: 0 4px;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 6px;
   overflow: hidden;
-  border: 0;
-  border-radius: 5px;
-  background: #34373f;
+  border-radius: 2px;
+  background: color-mix(in oklab, var(--fc) 72%, #131316);
+  box-shadow: inset 0 0 0 1px rgb(252 252 254 / 0.08);
   color: #fff;
-  font: inherit;
-  cursor: pointer;
-  text-align: center;
-  min-width: 0;
-}
-.hub-v5 .hv5-emotes .hv5-em-t img { flex: none; object-fit: contain; filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.55)); }
-.hv5-em-nm {
-  max-width: 100%;
-  font: 600 var(--fs, 12px)/1.25 var(--sp-font);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-shadow: 0 1px 2px rgb(0 0 0 / 0.6);
-}
-.hv5-em-v {
   font: 500 12px/16px var(--sp-font);
-  color: rgb(255 255 255 / 0.82);
-  font-variant-numeric: tabular-nums;
-  text-shadow: 0 1px 2px rgb(0 0 0 / 0.6);
-}
-/* none (dark neutral), then red quieter … grey as usual … green busier; every tone keeps white 12 px text at 4.5:1 or better */
-:is(.hv5-em-map, .hv5-em-sw, .hv5-ec-dl) [data-tone="0"] { --tone: #222228; }
-:is(.hv5-em-map, .hv5-em-sw, .hv5-ec-dl) [data-tone="1"] { --tone: #a8353a; }
-:is(.hv5-em-map, .hv5-em-sw, .hv5-ec-dl) [data-tone="2"] { --tone: #763a43; }
-:is(.hv5-em-map, .hv5-em-sw, .hv5-ec-dl) [data-tone="3"] { --tone: #3a3e48; }
-:is(.hv5-em-map, .hv5-em-sw, .hv5-ec-dl) [data-tone="4"] { --tone: #285a43; }
-:is(.hv5-em-map, .hv5-em-sw, .hv5-ec-dl) [data-tone="5"] { --tone: #236f44; }
-:is(.hv5-em-map, .hv5-em-sw, .hv5-ec-dl) [data-tone="6"] { --tone: #1f8442; }
-.hub-v5 .hv5-emotes .hv5-em-t[data-tone] {
-  background-color: var(--tone);
-  background-image: linear-gradient(rgb(255 255 255 / 0.07), rgb(255 255 255 / 0) 60%);
-}
-/* a poster-sized tile, captioned like a poster (share, "of uses", name), and the rank chip on the top 3 */
-.hub-v5 .hv5-emotes .hv5-em-cap { justify-content: center; padding: 6px 6px 52px; }
-.hv5-em-cap::after {
-  content: "";
-  position: absolute;
-  inset: 50% 0 0;
-  background: linear-gradient(rgb(0 0 0 / 0), rgb(0 0 0 / 0.38));
-  pointer-events: none;
-}
-.hv5-em-cp {
-  position: absolute;
-  z-index: 1;
-  left: 10px;
-  right: 10px;
-  bottom: 9px;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  column-gap: 5px;
   text-align: left;
+  min-width: 0;
+  transition:
+    left 0.5s cubic-bezier(0.2, 0.7, 0.2, 1),
+    top 0.5s cubic-bezier(0.2, 0.7, 0.2, 1),
+    width 0.5s cubic-bezier(0.2, 0.7, 0.2, 1),
+    height 0.5s cubic-bezier(0.2, 0.7, 0.2, 1),
+    background-color 0.18s;
+  animation: hv5-em-in 0.3s both;
 }
-.hv5-em-cp b { font: 700 20px/24px var(--sp-font); color: #fff; font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px rgb(0 0 0 / 0.5); }
-.hv5-em-cp > span { font: 500 12px/16px var(--sp-font); color: rgb(255 255 255 / 0.78); }
-.hv5-em-cp .hv5-em-nm { flex-basis: 100%; max-width: 100%; font: 600 12px/16px var(--sp-font); color: #fff; }
-.hv5-em-rk {
-  position: absolute;
-  z-index: 1;
-  left: 6px;
-  top: 6px;
-  display: grid;
-  place-items: center;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 5px;
-  border-radius: 5px;
-  background: rgb(0 0 0 / 0.5);
-  font: 600 12px/16px var(--sp-font);
-  color: var(--sp-text-1);
-  font-variant-numeric: tabular-nums;
-}
-.hv5-em-cap .hv5-em-rk { left: 8px; top: 8px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 6px; background: rgb(0 0 0 / 0.6); }
-.hub-v5 .hv5-emotes .hv5-em-t:hover { box-shadow: inset 0 0 0 2px rgb(255 255 255 / 0.85); z-index: 2; }
+.hub-v5 .hv5-emotes .hv5-em-t:hover { background-color: color-mix(in oklab, var(--fc) 84%, #131316); }
+.hub-v5 .hv5-emotes .hv5-em-t[aria-pressed="true"] { box-shadow: inset 0 0 0 2px #fff; z-index: 2; }
 .hub-v5 .hv5-emotes .hv5-em-t:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--sp-focus); z-index: 3; }
-/* the "more" block: one small cell per remaining emote at half strength, so the block reads as one calm field */
-.hub-v5 .hv5-emotes .hv5-em-more { cursor: default; background: transparent; padding: 0; }
-.hub-v5 .hv5-emotes .hv5-em-more:hover { box-shadow: none; }
-.hv5-em-u {
-  position: absolute;
-  display: block;
-  border-radius: 1px;
-  background: color-mix(in srgb, var(--tone, #3a3e48) 52%, #141417);
-  cursor: pointer;
-}
-.hv5-em-u:hover { box-shadow: 0 0 0 1px #fff; z-index: 2; }
-.hv5-em-ml {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  max-width: calc(100% - 8px);
-  padding: 3px 8px;
-  border-radius: 6px;
-  background: rgb(9 9 11 / 0.82);
-  font: 500 12px/16px var(--sp-font);
-  color: var(--sp-text-2);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  pointer-events: none;
-  z-index: 1;
-}
-.hv5-em-ml b { font-weight: 600; color: var(--sp-text-1); }
-/* one line with Taller map: "Last hour: quieter ▮▮▮▮▮▮ busier ▪ none", the thresholds in each swatch's title */
+.hub-v5 .hv5-emotes .hv5-em-s { justify-content: center; align-items: center; padding: 2px; }
+.hub-v5 .hv5-emotes .hv5-em-xs { padding: 0; }
+.hv5-em-chip { display: grid; place-items: center; flex: none; border-radius: 5px; background: rgb(0 0 0 / 0.3); }
+.hub-v5 .hv5-emotes .hv5-em-chip img { width: 72%; height: 72%; object-fit: contain; }
+.hv5-em-ft { width: 100%; min-width: 0; }
+.hv5-em-nm { display: block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hv5-em-v { display: block; color: rgb(255 255 255 / 0.78); }
+/* the "+N" tile: the field's emotes under 0.9%, at half strength */
+.hub-v5 .hv5-emotes .hv5-em-more { cursor: default; background: color-mix(in oklab, var(--fc) 50%, #131316); }
+.hub-v5 .hv5-emotes .hv5-em-more:hover { background-color: color-mix(in oklab, var(--fc) 58%, #131316); }
+.hv5-em-ml { margin: auto; font-weight: 600; color: rgb(255 255 255 / 0.82); }
+@keyframes hv5-em-in { from { opacity: 0; } }
+/* the legend (each field's share) with Taller map */
 .hv5-em-foot {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 12px;
+  gap: 6px 14px;
   min-height: 28px;
   margin-top: 8px;
   font: 500 12px/16px var(--sp-font);
+  color: var(--sp-text-2);
+}
+.hv5-em-lg { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.hv5-em-lg > span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.hv5-em-lg i { display: block; width: 8px; height: 8px; border-radius: 50%; background: var(--fc); }
+.hv5-em-lg b { font-weight: 500; color: var(--sp-text-3); }
+.hub-v5 .hv5-emotes .hv5-em-tall { margin-left: auto; height: 28px; padding: 0 8px; }
+/* the change chip: the last hour against the emote's own pace */
+.hv5-chg {
+  padding: 1px 6px;
+  border-radius: 4px;
+  font: 500 12px/16px var(--sp-font);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.hv5-chg[data-dir="up"] { color: #4cc38a; background: rgb(76 195 138 / 0.1); }
+.hv5-chg[data-dir="dn"] { color: #f0716a; background: rgb(240 113 106 / 0.1); }
+.hv5-chg[data-dir="fl"] { color: var(--sp-text-3); background: rgb(252 252 254 / 0.04); }
+/* the list under the map: the ten most used, or where chat spammed the selected emote */
+.hv5-el { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--sp-line); container-type: inline-size; }
+.hv5-el-h {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  min-height: 28px;
+  margin-bottom: 4px;
+  font: 500 12px/16px var(--sp-font);
   color: var(--sp-text-3);
 }
-.hv5-em-key { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.hv5-em-kt { margin-right: 4px; color: var(--sp-text-2); }
-.hv5-em-sw { display: flex; gap: 2px; }
-.hv5-em-sw i { display: block; width: 14px; height: 10px; border-radius: 2px; background: var(--tone); }
-.hv5-em-kn { display: inline-flex; align-items: center; gap: 5px; margin-left: 6px; }
-.hv5-em-kn i { display: block; width: 10px; height: 10px; border-radius: 2px; background: #222228; box-shadow: inset 0 0 0 1px #3f3f46; }
-.hub-v5 .hv5-emotes .hv5-em-tall { margin-left: auto; height: 28px; padding: 0 8px; }
-@media (max-width: 719px) {
-  .hv5-em-key { flex-wrap: wrap; row-gap: 6px; }
+.hv5-el-h b { font: 600 14px/20px var(--sp-font); color: var(--sp-text-1); }
+.hv5-el-ti { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.hub-v5 .hv5-emotes .hv5-el-ti img { width: 24px; height: 24px; object-fit: contain; }
+.hub-v5 .hv5-emotes .hv5-el-clear { margin-left: auto; height: 26px; padding: 0 6px; border-radius: 4px; color: var(--sp-text-2); }
+.hub-v5 .hv5-emotes .hv5-el-clear:hover { color: var(--sp-text-1); background: var(--sp-raised); }
+.hv5-el-sub,
+.hv5-el-none { font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
+.hub-v5 .hv5-emotes .hv5-el-sub { margin-bottom: 4px; }
+.hub-v5 .hv5-emotes .hv5-el-none { padding: 10px 0; }
+.hub-v5 .hv5-emotes .hv5-el-cols {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-auto-flow: column;
+  grid-template-rows: repeat(5, auto);
+  column-gap: 22px;
+}
+.hv5-el-cols > li { min-width: 0; animation: hv5-el-rise 0.35s both; }
+.hub-v5 .hv5-emotes .hv5-el-r {
+  display: grid;
+  grid-template-columns: 16px 24px minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--sp-line);
+  color: var(--sp-text-1);
+  font: 500 13px/18px var(--sp-font);
+  text-align: left;
+}
+.hub-v5 .hv5-emotes a.hv5-el-r,
+.hub-v5 .hv5-emotes a.hv5-el-r:hover { color: var(--sp-text-1); text-decoration: none; }
+.hub-v5 .hv5-emotes .hv5-el-r:hover .hv5-el-n { text-decoration: underline; text-underline-offset: 3px; }
+.hv5-el-i { font-size: 12px; color: var(--sp-text-3); font-variant-numeric: tabular-nums; }
+.hv5-el-im { display: grid; place-items: center; width: 24px; height: 24px; }
+.hub-v5 .hv5-emotes .hv5-el-im img { max-width: 24px; max-height: 24px; object-fit: contain; }
+.hv5-el-n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hv5-el-n small { margin-left: 6px; font-size: 12px; color: var(--sp-text-3); }
+.hv5-el-v { font-size: 12px; color: var(--sp-text-2); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.hv5-el-x { font-weight: 600; color: var(--hv5-accent); }
+.hv5-el-foot { display: flex; justify-content: flex-end; margin-top: 8px; font: 500 12px/16px var(--sp-font); }
+@keyframes hv5-el-rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+/* two columns only where a name still fits beside its numbers */
+@container (max-width: 559px) {
+  .hub-v5 .hv5-emotes .hv5-el-cols { grid-template-columns: minmax(0, 1fr); grid-auto-flow: row; grid-template-rows: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hub-v5 .hv5-emotes .hv5-em-t,
+  .hv5-el-cols > li { transition: none; animation: none; }
 }
 
 /* the hover cards (emote map, rack): never take the pointer */
@@ -1285,15 +1260,7 @@
 .hv5-ec-dl dt { color: var(--sp-text-3); }
 .hv5-layer .hv5-ec-dl dd { margin: 0; color: var(--sp-text-1); font-variant-numeric: tabular-nums; }
 .hv5-ec-dl dd span { color: var(--sp-text-3); }
-.hv5-ec-dl dd[data-tone] i {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  margin-right: 6px;
-  border-radius: 2px;
-  background: var(--tone);
-  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.25);
-}
+.hv5-ec-dl dd .hv5-chg { margin: 0 2px; }
 .hv5-layer .hv5-ec-f { margin: 8px 0 0; padding-top: 8px; border-top: 1px solid var(--sp-line); color: var(--sp-text-3); }
 /* the game card: box art and the busiest chats */
 .hv5-layer.hv5-gp-card { width: 300px; }

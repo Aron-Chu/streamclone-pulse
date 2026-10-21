@@ -1,18 +1,22 @@
 import { describe, expect, it } from 'vitest'
 import type { HubActivityPoint, HubBucketEmote } from '../src/lib/publicHub'
 import {
+  EMOTE_FOLD_SHARE,
   conveyorEmotes,
   conveyorRng,
+  emoteChange,
   emoteImageAt,
   emoteMapData,
   emoteMapHeight,
   emoteMapLayout,
   emoteMapMeta,
+  emoteMomentRows,
   emotePaceText,
   emoteSharePct,
-  emoteTone,
+  fieldOf,
   nearestTile,
   squarify,
+  tileSize,
 } from '../src/ui/components/hub/v5/hubV5EmoteMapModel'
 
 const T0 = Date.UTC(2026, 9, 19, 12, 0)
@@ -59,13 +63,13 @@ describe('emoteMapData', () => {
     const b = d.emotes.find((e) => e.e.name === 'EmB')!
     const c = d.emotes.find((e) => e.e.name === 'EmC')!
     expect(a.pace).toBeCloseTo(1)
-    expect(emoteTone(a)).toBe(3)
+    expect(emoteChange(a)).toMatchObject({ dir: 'fl', text: '→ +0%' })
     expect(b.isNew).toBe(true)
     expect(b.pace).toBeCloseTo(4)
-    expect(emoteTone(b)).toBe(5)
+    expect(emoteChange(b)).toMatchObject({ dir: 'up', text: 'new' })
     expect(emotePaceText(b)).toBe('new this hour: no top 10 before it')
     expect(c.c1h).toBe(0)
-    expect(emoteTone(c)).toBe(0)
+    expect(emoteChange(c)).toMatchObject({ dir: 'fl', text: '–' })
     expect(emotePaceText(c)).toBe('no top 10 in the last hour')
     expect(emotePaceText(a, d.windowLabel)).toBe('1.0× its 4 h pace')
   })
@@ -76,8 +80,10 @@ describe('emoteMapData', () => {
     expect(emoteMapData([], 6)).toBeNull()
   })
 
-  it('maps pace to seven tones', () => {
-    expect([0.3, 0.6, 1, 1.5, 3, 5].map((pace) => emoteTone({ c1h: 1, pace }))).toEqual([1, 2, 3, 4, 5, 6])
+  it('shows pace as a change chip: flat under 5% either way', () => {
+    const chip = (pace: number) => emoteChange({ c1h: 1, pace, isNew: false }).text
+    expect([0.3, 0.8, 0.97, 1.04, 1.38, 3].map(chip)).toEqual(['↘ −70%', '↘ −20%', '→ −3%', '→ +4%', '↗ +38%', '↗ +200%'])
+    expect(emoteChange({ c1h: 1, pace: 1.38, isNew: false }, '4 h').words).toBe('38% above its 4 h pace')
   })
 })
 
@@ -125,49 +131,88 @@ describe('emoteMapLayout', () => {
   const d = emoteMapData(pts, 6)!
   const W = 800
   const H = emoteMapHeight(W, false, false)
-  const lay = emoteMapLayout(d, 'all', W, H, false)
+  const lay = emoteMapLayout(d, 'all', W, H)
 
-  it('keeps every emote, as a tile or a cell of a "more" block', () => {
+  it('keeps every emote, as a tile or in its field\'s "+N" tile', () => {
     expect(lay.count).toBe(80)
     expect(lay.mores.length).toBeGreaterThan(0)
     expect(lay.tiles.length + lay.mores.reduce((s, m) => s + m.n, 0)).toBe(80)
-    expect(lay.segs.map((s) => s.prov).sort()).toEqual(['seventv', 'twitch'])
+    expect(lay.fields.map((f) => f.field).sort()).toEqual(['seventv', 'twitch'])
+    for (const m of lay.mores) for (const a of m.emotes) expect(fieldOf(a.prov)).toBe(m.field)
   })
 
-  it('stays inside the map and follows the tile rules', () => {
+  it('folds emotes under 0.9% of the map', () => {
+    for (const t of lay.tiles) expect(t.v / lay.total).toBeGreaterThanOrEqual(EMOTE_FOLD_SHARE)
+    for (const m of lay.mores) expect(m.n).toBeGreaterThan(1)
+  })
+
+  it('stays inside the map and follows the size classes', () => {
     for (const t of lay.tiles) {
-      expect(t.x).toBeGreaterThanOrEqual(0)
-      expect(t.y).toBeGreaterThanOrEqual(0)
+      expect(t.x).toBeGreaterThanOrEqual(-1e-6)
+      expect(t.y).toBeGreaterThanOrEqual(-1e-6)
       expect(t.x + t.w).toBeLessThanOrEqual(W + 1e-6)
       expect(t.y + t.h).toBeLessThanOrEqual(H + 1e-6)
-      expect(t.cap).toBe(t.w - 2 >= 110 && t.h - 2 >= 104)
-      if (t.cap) expect(t.name || t.val).toBe(false)
-      expect(t.chip).toBe(t.rank <= 3 && t.w - 2 >= 44 && t.h - 2 >= 44)
-      expect(t.img === 0 || t.img >= 14).toBe(true)
+      expect(t.size).toBe(tileSize(t.w - 2, t.h - 2))
+      if (t.val) expect(t.name && (t.size === 'xl' || t.size === 'l') && t.h - 2 >= t.chip + 44).toBe(true)
+      if (t.name) expect(t.h - 2).toBeGreaterThanOrEqual(t.chip + 28)
+      if (t.size === 's' || t.size === 'xs') expect(t.name).toBe(false)
+      if (t.size === 'xl') expect(t.name && t.val).toBe(true)
+      expect(t.chip === 0).toBe(t.size === 'xs')
     }
-    const top = lay.tiles.find((t) => t.rank === 1)!
-    expect(top.cap).toBe(true)
-    expect(top.chip).toBe(true)
+    expect(lay.tiles.find((t) => t.rank === 1)!.size).toBe('xl')
+    expect(lay.ranked.map((x) => x.v)).toEqual(lay.ranked.map((x) => x.v).slice().sort((a, b) => b - a))
   })
 
   it('shows only emotes from the last hour in the hour view', () => {
-    const hour = emoteMapLayout(d, '1h', W, H, false)
+    const hour = emoteMapLayout(d, '1h', W, H)
     expect(hour.count).toBe(d.emotes.filter((a) => a.c1h > 0).length)
-    expect(emoteMapLayout(d, 'all', 0, H, false).tiles).toEqual([])
+    const none = emoteMapLayout(d, 'all', 0, H)
+    expect(none.tiles).toEqual([])
+    expect(none.ranked).toHaveLength(80)
   })
 
   it('says what the map holds', () => {
-    expect(emoteMapMeta(d, lay, 'all')).toMatch(/^80 emotes · sized by uses · last 36 min · \d+ pictured$/)
+    expect(emoteMapMeta(d, lay, 'all')).toBe('80 emotes · sized by uses · last 36 min')
   })
 })
 
 describe('emoteMapHeight', () => {
   it('follows the width, within bounds, and taller is 1.8× up to 1000', () => {
-    expect(emoteMapHeight(1000, false, false)).toBe(620)
-    expect(emoteMapHeight(400, false, false)).toBe(360)
-    expect(emoteMapHeight(390, true, false)).toBe(410)
-    expect(emoteMapHeight(1000, false, true)).toBe(1000)
-    expect(emoteMapHeight(400, false, true)).toBe(648)
+    expect(emoteMapHeight(1000, false, false)).toBe(460)
+    expect(emoteMapHeight(700, false, false)).toBe(350)
+    expect(emoteMapHeight(400, false, false)).toBe(300)
+    expect(emoteMapHeight(390, true, false)).toBe(351)
+    expect(emoteMapHeight(1000, false, true)).toBe(828)
+    expect(emoteMapHeight(400, false, true)).toBe(540)
+  })
+})
+
+describe('tileSize', () => {
+  it('hides what a tile is too small for', () => {
+    expect(tileSize(120, 80)).toBe('xl')
+    expect(tileSize(117, 80)).toBe('l')
+    expect(tileSize(78, 50)).toBe('l')
+    expect(tileSize(60, 40)).toBe('m')
+    expect(tileSize(30, 30)).toBe('s')
+    expect(tileSize(17, 40)).toBe('xs')
+  })
+})
+
+describe('emoteMomentRows', () => {
+  const lul = { e: { name: 'LUL', provider: 'twitch', count: 1 }, prov: 'twitch' }
+  const row = (name: string, provider: string, cmp: { x: number } | { why: string }, at: number, series: 'chat' | 'emotes' = 'emotes') => ({ series, topEmote: { name, provider }, cmp, at })
+
+  it('keeps emote spikes led by the same provider and name, biggest × first', () => {
+    const rows = [
+      row('LUL', 'twitch', { x: 3.1 }, 1),
+      row('LUL', 'seventv', { x: 9 }, 2),
+      row('LUL', 'twitch', { why: 'new stream' }, 5),
+      row('LUL', 'twitch', { x: 6.4 }, 3),
+      row('LUL', 'twitch', { x: 12 }, 4, 'chat'),
+      { series: 'emotes' as const, topEmote: null, cmp: { x: 20 }, at: 6 },
+    ]
+    expect(emoteMomentRows(rows, lul).map((r) => r.at)).toEqual([3, 1, 5])
+    expect(emoteMomentRows(rows, lul, 1)).toHaveLength(1)
   })
 })
 

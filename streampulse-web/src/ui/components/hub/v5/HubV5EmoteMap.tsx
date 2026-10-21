@@ -1,62 +1,87 @@
 /**
- * Top emotes as the emote map (R5-13, refined R5-17; mockup d3-v5 hub-emap.js
- * and hub-r5c.css). A treemap like a stock-market heat map: the segments are
- * the providers, a tile's size is its uses over the window and its colour the
- * last hour against its own pace. The biggest tiles are captioned like a poster
- * (share, "of uses", name) and the top 3 wear a rank chip; emotes too small for
- * a picture are cells in each segment's "more" block. Hover (or focus, or a
- * click) shows an emote's numbers; arrow keys move to the nearest tile, Home
- * and End to the ends, with one tab stop. 24 h | Last hour switches the window;
- * Taller map gives it 1.8 times the height.
- * The mockup's click also drew the emote on the Activity chart (E4). That needs
- * the shared chart's overlay panel, so a click here shows the card instead.
+ * Top emotes as the emote map (R5-13; re-done as r4 A2 on 2026-10-21, mockup
+ * emotemap-moments-r4). A treemap in three flat provider fields (Twitch, 7TV,
+ * BTTV & FFZ) with 2 px seams; a tile's size is its uses over the window and it
+ * shows its picture, then its name and share as room allows. Emotes under 0.9%
+ * fold into their field's "+N" tile. The legend gives each field's share.
+ * Under the map, the ten most used emotes with the last hour against their own
+ * pace as a change chip. A click on a tile or a row selects the emote: the list
+ * turns into where chat spammed it (the hub's live moments it led), and each
+ * row opens the moment in Moments. Hover (or focus) shows an emote's numbers;
+ * arrow keys move to the nearest tile, Home and End to the ends, with one tab
+ * stop. 24 h | Last hour re-flows the tiles; Taller map gives 1.8 times the
+ * height.
  */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FocusEvent as ReactFocusEvent, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FocusEvent as ReactFocusEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
-import type { HubActivityPoint } from '../../../../lib/publicHub'
+import { Link } from 'react-router-dom'
+import type { HubActivityPoint, HubLivePulseMoment } from '../../../../lib/publicHub'
 import { HubToggletip } from '../d3/HubToggletip'
+import { HubV5Avatar } from './HubV5Avatar'
 import { useMedia } from './HubV5LiveFeed'
 import {
-  EMOTE_TONES,
+  FIELD_NAMES,
+  emoteChange,
   emoteImageAt,
   emoteMapData,
   emoteMapHeight,
   emoteMapLayout,
   emoteMapMeta,
   emoteMapTip,
-  emotePaceText,
+  emoteMapValue,
+  emoteMomentRows,
   emoteSharePct,
-  emoteTone,
   nearestTile,
   providerName,
+  type EmoteChange,
   type HubEmoteAgg,
   type HubEmoteMapData,
   type HubEmoteWindow,
+  type MapLayout,
+  type MapMore,
   type MapTile,
 } from './hubV5EmoteMapModel'
-import { formatHubInt, hubClockRange } from './hubV5Model'
+import { feedAgo } from './hubV5FeedModel'
+import { formatHubInt, formatHubMultiplier, hubClockRange, momentRowAria, momentRowsV5 } from './hubV5Model'
 import { isFocusVisible, placeHubV5Card } from './hubV5HoverCard'
 
 const H_ID = 'hv5-te-h'
 const META_ID = 'hv5-em-meta'
 const HELP_ID = 'hv5-em-help'
 const px = (n: number) => `${n.toFixed(1)}px`
+const MORE = 'more:'
 
-function tileStyle(t: { x: number; y: number; w: number; h: number }, extra?: CSSProperties): CSSProperties {
+function tileStyle(t: { x: number; y: number; w: number; h: number }): CSSProperties {
   return {
     left: px(t.x + 1),
     top: px(t.y + 1),
     width: px(Math.max(1, t.w - 2)),
     height: px(Math.max(1, t.h - 2)),
-    ...(Math.min(t.w, t.h) < 22 ? { borderRadius: 2 } : null),
-    ...extra,
   }
 }
 
+function Chg({ c }: { c: EmoteChange }) {
+  return <span className="hv5-chg" data-dir={c.dir} title={c.words}>{c.text}</span>
+}
+
+function EmotePic({ a, size }: { a: HubEmoteAgg; size: number }) {
+  const src = emoteImageAt(a.e.imageUrl, 32)
+  return src ? (
+    <img
+      src={src}
+      alt=""
+      width={size}
+      height={size}
+      decoding="async"
+      referrerPolicy="no-referrer"
+      onError={(event) => { event.currentTarget.style.visibility = 'hidden' }}
+    />
+  ) : null
+}
+
 function EmoteCard({ a, data, win, total }: { a: HubEmoteAgg; data: HubEmoteMapData; win: HubEmoteWindow; total: number }) {
-  const v = win === 'all' ? a.c24 : a.c1h
+  const v = emoteMapValue(a, win)
   const src = emoteImageAt(a.e.imageUrl, 48)
-  const tone = data.paceOk ? emoteTone(a) : 3
   const slot = data.bucketMinutes * 60_000
   return (
     <>
@@ -65,24 +90,54 @@ function EmoteCard({ a, data, win, total }: { a: HubEmoteAgg; data: HubEmoteMapD
         <span className="hv5-ec-tx"><b>{a.e.name}</b><span>{providerName(a.prov)}</span></span>
       </div>
       <dl className="hv5-ec-dl">
-        <dt>{win === 'all' ? `Uses, ${data.windowLabel}` : 'Uses, last hour'}</dt>
+        <dt>{win === 'all' ? `Uses, last ${data.windowLabel}` : 'Uses, last hour'}</dt>
         <dd>{formatHubInt(v)} <span>· {emoteSharePct(total > 0 ? (v / total) * 100 : 0)} of the map</span></dd>
-        <dt>In a top 10</dt>
-        <dd>{a.n} of {data.intervals} intervals</dd>
         {data.paceOk ? (
           <>
             <dt>Last hour</dt>
-            <dd data-tone={tone}><i />{a.c1h ? <>{formatHubInt(a.c1h)} <span>· {emotePaceText(a, data.windowLabel)}</span></> : emotePaceText(a, data.windowLabel)}</dd>
+            <dd>{formatHubInt(a.c1h)} <Chg c={emoteChange(a, data.windowLabel)} /> <span>vs its pace</span></dd>
           </>
         ) : null}
         <dt>Busiest</dt>
         <dd>{formatHubInt(Math.round(a.peak / data.bucketMinutes))}/min <span>· {hubClockRange(a.peakT, a.peakT + slot)}</span></dd>
+        <dt>In a top 10</dt>
+        <dd>{a.n} <span>of {data.intervals} intervals</span></dd>
       </dl>
     </>
   )
 }
 
-export function HubV5EmoteMap({ points, bucketMinutes, loading }: { points: readonly HubActivityPoint[]; bucketMinutes: number; loading?: boolean }) {
+function MoreCard({ m, total }: { m: MapMore; total: number }) {
+  const names = m.emotes.slice(0, 8).map((a) => a.e.name).join(', ')
+  return (
+    <>
+      <div className="hv5-ec-h">
+        <span className="hv5-ec-tx"><b>{formatHubInt(m.n)} more {FIELD_NAMES[m.field]} emotes</b><span>{names}{m.n > 8 ? ', …' : ''}</span></span>
+      </div>
+      <dl className="hv5-ec-dl">
+        <dt>Uses together</dt>
+        <dd>{formatHubInt(m.v)} <span>· {emoteSharePct(total > 0 ? (m.v / total) * 100 : 0)} of the map</span></dd>
+      </dl>
+    </>
+  )
+}
+
+export function HubV5EmoteMap({
+  points,
+  bucketMinutes,
+  loading,
+  moments = [],
+  avatars,
+  nowMs,
+}: {
+  points: readonly HubActivityPoint[]
+  bucketMinutes: number
+  loading?: boolean
+  /** The hub's live moments: where chat spammed a selected emote. */
+  moments?: readonly HubLivePulseMoment[]
+  avatars?: ReadonlyMap<string, string>
+  nowMs: number
+}) {
   const data = useMemo(() => emoteMapData(points, bucketMinutes), [points, bucketMinutes])
   const phone = useMedia('(max-width: 719px)')
   const [win, setWin] = useState<HubEmoteWindow>('all')
@@ -91,13 +146,14 @@ export function HubV5EmoteMap({ points, bucketMinutes, loading }: { points: read
   const cardRef = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ w: 0, h: 0 })
   const [focusId, setFocusId] = useState<string | null>(null)
-  const [on, setOn] = useState<{ id: string; el: HTMLElement; byClick: boolean } | null>(null)
+  const [sel, setSel] = useState<string | null>(null)
+  const [on, setOn] = useState<{ id: string; el: HTMLElement } | null>(null)
   const timer = useRef<number | undefined>(undefined)
 
   const hourOk = Boolean(data?.paceOk)
   const view: HubEmoteWindow = hourOk ? win : 'all'
   // min-height: the map grows to fill a taller grid row
-  const prefH = size.w ? emoteMapHeight(size.w, phone, tall.on, tall.from) : (phone ? 340 : 380)
+  const prefH = size.w ? emoteMapHeight(size.w, phone, tall.on, tall.from) : (phone ? 320 : 340)
 
   useLayoutEffect(() => {
     const map = mapRef.current
@@ -121,10 +177,11 @@ export function HubV5EmoteMap({ points, bucketMinutes, loading }: { points: read
     }
   }, [data != null])
 
-  const layout = useMemo(
-    () => (data && size.w > 0 && size.h > 0 ? emoteMapLayout(data, view, size.w, size.h, phone) : null),
-    [data, view, size.w, size.h, phone],
-  )
+  const layout: MapLayout | null = useMemo(() => (data ? emoteMapLayout(data, view, size.w, size.h) : null), [data, view, size.w, size.h])
+  const momentRows = useMemo(() => momentRowsV5(moments), [moments])
+  const selAgg = sel ? data?.byId.get(sel) : undefined
+  const selected = selAgg && emoteMapValue(selAgg, view) > 0 ? selAgg : null
+  const spammed = useMemo(() => (selected ? emoteMomentRows(momentRows, selected) : []), [selected, momentRows])
 
   const hide = useCallback(() => {
     window.clearTimeout(timer.current)
@@ -133,48 +190,39 @@ export function HubV5EmoteMap({ points, bucketMinutes, loading }: { points: read
   useEffect(() => () => window.clearTimeout(timer.current), [])
   // a poll or a resize keeps the card on its emote while the emote is still drawn
   useEffect(() => {
-    if (on && (!on.el.isConnected || !data?.byId.has(on.id))) hide()
+    if (on && (!on.el.isConnected || !(on.id.startsWith(MORE) || data?.byId.has(on.id)))) hide()
   }, [layout, data, on, hide])
   useEffect(() => {
     if (!on) return undefined
     const onKey = (event: globalThis.KeyboardEvent) => { if (event.key === 'Escape') hide() }
     const onScroll = () => { if (!mapRef.current?.contains(document.activeElement)) hide() }
-    const onDown = (event: globalThis.PointerEvent) => { if (!(event.target instanceof Node) || !mapRef.current?.contains(event.target)) hide() }
     window.addEventListener('keydown', onKey)
     window.addEventListener('scroll', onScroll, { passive: true, capture: true })
-    document.addEventListener('pointerdown', onDown)
     return () => {
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('scroll', onScroll, { capture: true })
-      document.removeEventListener('pointerdown', onDown)
     }
   }, [on, hide])
   useLayoutEffect(() => {
     if (on && on.el.isConnected && cardRef.current) placeHubV5Card(cardRef.current, on.el)
   }, [on, layout])
 
-  const itemOf = (target: EventTarget | null) => (target instanceof Element ? target.closest<HTMLElement>('button.hv5-em-t, .hv5-em-u') : null)
+  const itemOf = (target: EventTarget | null) => (target instanceof Element ? target.closest<HTMLElement>('.hv5-em-t') : null)
   const onPointerOver = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.pointerType === 'touch') return
     const el = itemOf(event.target)
     if (!el || el === on?.el) return
     window.clearTimeout(timer.current)
     timer.current = window.setTimeout(() => {
-      if (el.isConnected) setOn({ id: el.dataset.eid!, el, byClick: false })
+      if (el.isConnected) setOn({ id: el.dataset.eid!, el })
     }, on ? 0 : 90)
   }
   // touch fires a leave after every tap
   const onPointerLeave = (event: ReactPointerEvent<HTMLDivElement>) => { if (event.pointerType !== 'touch') hide() }
-  const onClick = (event: ReactMouseEvent<HTMLDivElement>) => {
-    const el = itemOf(event.target)
-    if (!el) return
-    window.clearTimeout(timer.current)
-    if (on?.el === el && on.byClick) hide()
-    else setOn({ id: el.dataset.eid!, el, byClick: true })
-  }
+  const select = (id: string) => setSel((prev) => (prev === id ? null : id))
   const onFocus = (event: ReactFocusEvent<HTMLDivElement>) => {
     const el = event.target instanceof Element ? event.target.closest<HTMLElement>('button.hv5-em-t') : null
-    if (el && isFocusVisible(el)) setOn({ id: el.dataset.eid!, el, byClick: false })
+    if (el && isFocusVisible(el)) setOn({ id: el.dataset.eid!, el })
   }
   const onBlur = (event: ReactFocusEvent<HTMLDivElement>) => {
     if (!(event.relatedTarget instanceof Node) || !mapRef.current?.contains(event.relatedTarget)) hide()
@@ -200,9 +248,11 @@ export function HubV5EmoteMap({ points, bucketMinutes, loading }: { points: read
   }
 
   const tabId = layout && tiles.some((t) => t.a.id === focusId) ? focusId : tiles[0]?.a.id ?? null
-  const toneOf = (a: HubEmoteAgg) => (hourOk ? emoteTone(a) : 3)
-  const onAgg = on ? data?.byId.get(on.id) : undefined
+  const onAgg = on && !on.id.startsWith(MORE) ? data?.byId.get(on.id) : undefined
+  const onMore = on?.id.startsWith(MORE) ? layout?.mores.find((m) => `${MORE}${m.field}` === on.id) : undefined
   const meta = data && layout ? emoteMapMeta(data, layout, view) : ''
+  const windowWords = view === 'all' ? `last ${data?.windowLabel ?? '24 h'}` : 'last hour'
+  const shareOf = (v: number) => emoteSharePct(layout && layout.total > 0 ? (v / layout.total) * 100 : 0)
 
   return (
     <section id="emotes" className="hv5-sec hv5-emotes" aria-labelledby={H_ID} aria-busy={loading || undefined}>
@@ -230,80 +280,57 @@ export function HubV5EmoteMap({ points, bucketMinutes, loading }: { points: read
             style={{ '--em-h': `${prefH}px` } as CSSProperties}
             onPointerOver={onPointerOver}
             onPointerLeave={onPointerLeave}
-            onClick={onClick}
             onFocus={onFocus}
             onBlur={onBlur}
             onKeyDown={onKeyDown}
           >
-            {layout?.segs.map((s) => (
-              <div key={s.prov} className="hv5-em-seg" data-prov={s.prov} style={{ left: s.x, top: s.y, width: s.w, height: s.h }} aria-hidden="true">
-                {s.share ? <span className="hv5-em-sh"><b>{s.name}</b> {s.share}</span> : null}
-              </div>
-            ))}
             {layout?.mores.map((m) => (
-              <div key={`more-${m.prov}`} className="hv5-em-t hv5-em-more" role="img" style={tileStyle(m)} aria-label={`${m.n} more ${providerName(m.prov)} emotes, ${m.share} of the map together, each too small for a picture`}>
-                {m.cells.map((c) => (
-                  <i key={c.a.id} className="hv5-em-u" data-eid={c.a.id} data-tone={toneOf(c.a)} style={{ left: px(c.x), top: px(c.y), width: px(c.w), height: px(c.h) }} />
-                ))}
-                {m.label ? <span className="hv5-em-ml"><b>{m.label.n}</b>{m.label.rest}</span> : null}
+              <div
+                key={`${MORE}${m.field}`}
+                className="hv5-em-t hv5-em-more"
+                data-eid={`${MORE}${m.field}`}
+                data-field={m.field}
+                role="img"
+                style={tileStyle(m)}
+                aria-label={`${m.n} more ${FIELD_NAMES[m.field]} emotes, ${m.share} of the map together, each under 0.9%`}
+              >
+                {m.label ? <span className="hv5-em-ml">+{formatHubInt(m.n)}</span> : null}
               </div>
             ))}
             {tiles.map((t) => {
               const a = t.a
-              const src = t.img ? emoteImageAt(a.e.imageUrl, t.img) : ''
-              const aria = `#${t.rank} ${a.e.name}, ${providerName(a.prov)}, ${formatHubInt(t.v)} uses ${view === 'all' ? `in the last ${data.windowLabel}` : 'in the last hour'}, ${t.share} of the map${hourOk ? `, ${emotePaceText(a, data.windowLabel)}` : ''}.`
+              const aria = `#${t.rank} ${a.e.name}, ${providerName(a.prov)}, ${formatHubInt(t.v)} uses in the ${windowWords}, ${t.share} of the map${hourOk ? `, ${emoteChange(a, data.windowLabel).words}` : ''}.`
               return (
                 <button
                   key={a.id}
                   type="button"
-                  className={`hv5-em-t${t.cap ? ' hv5-em-cap' : ''}`}
+                  className={`hv5-em-t hv5-em-${t.size}`}
                   data-eid={a.id}
-                  data-tone={toneOf(a)}
-                  style={tileStyle(t, { '--fs': `${t.fs}px` } as CSSProperties)}
+                  data-field={t.field}
+                  style={tileStyle(t)}
                   tabIndex={a.id === tabId ? 0 : -1}
+                  aria-pressed={selected?.id === a.id}
                   aria-label={aria}
+                  onClick={() => select(a.id)}
                 >
-                  {t.chip ? <span className="hv5-em-rk">{t.rank}</span> : null}
-                  {src ? (
-                    <img
-                      src={src}
-                      alt=""
-                      width={t.img}
-                      height={t.img}
-                      style={{ width: t.img, height: t.img }}
-                      loading="lazy"
-                      decoding="async"
-                      referrerPolicy="no-referrer"
-                      onError={(event) => { event.currentTarget.style.visibility = 'hidden' }}
-                    />
-                  ) : null}
-                  {t.cap ? (
-                    <span className="hv5-em-cp"><b>{t.share}</b><span>of uses</span><span className="hv5-em-nm">{a.e.name}</span></span>
-                  ) : (
-                    <>
+                  {t.chip ? <span className="hv5-em-chip" style={{ width: t.chip, height: t.chip }}><EmotePic a={a} size={Math.round(t.chip * 0.72)} /></span> : null}
+                  {t.name || t.val ? (
+                    <span className="hv5-em-ft">
                       {t.name ? <span className="hv5-em-nm">{a.e.name}</span> : null}
                       {t.val ? <span className="hv5-em-v">{t.share}</span> : null}
-                    </>
-                  )}
+                    </span>
+                  ) : null}
                 </button>
               )
             })}
           </div>
-          <p className="hv5-vh" id={HELP_ID}>Arrow keys move between emotes. Enter shows an emote’s numbers.</p>
+          <p className="hv5-vh" id={HELP_ID}>Arrow keys move between emotes. Enter selects one and lists where chat spammed it.</p>
           <div className="hv5-em-foot">
-            {hourOk ? (
-              <span
-                className="hv5-em-key"
-                role="img"
-                aria-label={`Colour: the last hour against the emote’s own ${data.windowLabel} pace, from quieter (red) through as usual (grey) to busier (green); dark made no top 10 in the last hour.`}
-              >
-                <span className="hv5-em-kt">Last hour:</span>
-                <span className="hv5-em-kw">quieter</span>
-                <span className="hv5-em-sw">{EMOTE_TONES.slice(1).map((x, i) => <i key={x.t} data-tone={i + 1} title={`${x.t}: ${x.d}`} />)}</span>
-                <span className="hv5-em-kw">busier</span>
-                <span className="hv5-em-kn" title={EMOTE_TONES[0]!.d}><i data-tone={0} />none</span>
-              </span>
-            ) : null}
+            <span className="hv5-em-lg">
+              {layout?.fields.map((f) => (
+                <span key={f.field} data-field={f.field}><i aria-hidden="true" />{f.name}<b>{f.share}</b></span>
+              ))}
+            </span>
             <button
               type="button"
               className="hv5-qb hv5-em-tall"
@@ -316,10 +343,69 @@ export function HubV5EmoteMap({ points, bucketMinutes, loading }: { points: read
               {tall.on ? 'Shorter map' : 'Taller map'}
             </button>
           </div>
-          {on && onAgg && layout && typeof document !== 'undefined'
+          <div className="hv5-el">
+            {selected ? (
+              <>
+                <div className="hv5-el-h">
+                  <span className="hv5-el-ti">
+                    <EmotePic a={selected} size={24} />
+                    <b>{selected.e.name}</b>
+                    <span>{shareOf(emoteMapValue(selected, view))} of all uses · {providerName(selected.prov)}</span>
+                  </span>
+                  {hourOk ? <Chg c={emoteChange(selected, data.windowLabel)} /> : null}
+                  <button type="button" className="hv5-el-clear" onClick={() => setSel(null)}>Clear ✕</button>
+                </div>
+                <p className="hv5-el-sub">Where chat spammed {selected.e.name} on streams live now · × is emotes against the 15 minutes before</p>
+                {spammed.length ? (
+                  <ol className="hv5-el-cols" key={`m|${selected.id}`}>
+                    {spammed.map((r, i) => (
+                      <li key={r.key} style={{ animationDelay: `${i * 18}ms` }}>
+                        <Link to={r.href} className="hv5-el-r" aria-label={momentRowAria(r)}>
+                          <span className="hv5-el-i">{i + 1}</span>
+                          <HubV5Avatar login={r.login} name={r.displayName} src={r.moment.profileImageUrl || avatars?.get(r.login)} size={24} />
+                          <span className="hv5-el-n">{r.displayName}<small>{r.moment.category || 'No category'}</small></span>
+                          {'x' in r.cmp ? <span className="hv5-el-v hv5-el-x">{formatHubMultiplier(r.cmp.x)}</span> : <span className="hv5-el-v" title={r.cmp.long}>{r.cmp.why}</span>}
+                          <span className="hv5-el-v">{r.at != null ? feedAgo(r.at, nowMs) : ''}</span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <p className="hv5-el-none">No live moment led with {selected.e.name} right now.</p>
+                )}
+                <div className="hv5-el-foot"><Link to="/analytics/moments">Open in Moments →</Link></div>
+              </>
+            ) : (
+              <>
+                <div className="hv5-el-h">
+                  <b>Most used</b>
+                  <span>share of uses, {windowWords}{hourOk ? ` · ↗↘ last hour vs its ${data.windowLabel} pace` : ''}</span>
+                </div>
+                <ol className="hv5-el-cols" key={`t|${view}`}>
+                  {(layout?.ranked ?? []).slice(0, 10).map((x, i) => (
+                    <li key={x.a.id} style={{ animationDelay: `${i * 18}ms` }}>
+                      <button
+                        type="button"
+                        className="hv5-el-r"
+                        aria-label={`#${i + 1} ${x.a.e.name}, ${providerName(x.a.prov)}, ${shareOf(x.v)} of uses${hourOk ? `, ${emoteChange(x.a, data.windowLabel).words}` : ''}. Shows where chat spammed it.`}
+                        onClick={() => select(x.a.id)}
+                      >
+                        <span className="hv5-el-i">{i + 1}</span>
+                        <span className="hv5-el-im"><EmotePic a={x.a} size={24} /></span>
+                        <span className="hv5-el-n">{x.a.e.name}<small>{providerName(x.a.prov)}</small></span>
+                        <span className="hv5-el-v">{shareOf(x.v)}</span>
+                        {hourOk ? <Chg c={emoteChange(x.a, data.windowLabel)} /> : <span />}
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+              </>
+            )}
+          </div>
+          {(onAgg || onMore) && layout && typeof document !== 'undefined'
             ? createPortal(
               <div ref={cardRef} className="hub-d3-layer hv5-layer hv5-em-card" aria-hidden="true" style={{ left: 0, top: 0, visibility: 'hidden' }}>
-                <EmoteCard a={onAgg} data={data} win={view} total={layout.total} />
+                {onAgg ? <EmoteCard a={onAgg} data={data} win={view} total={layout.total} /> : <MoreCard m={onMore!} total={layout.total} />}
               </div>,
               document.body,
             )
