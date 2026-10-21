@@ -29,49 +29,81 @@ describe('MomentCardSlot', () => {
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
-    act(() => root?.render(<MomentCardSlot exiting={false} data-testid="slot"><p>card</p></MomentCardSlot>))
+    const render = (momentKey: string) => act(() => root?.render(
+      <MomentCardSlot exiting={false} momentKey={momentKey} data-testid="slot"><p>card</p></MomentCardSlot>,
+    ))
+    render('a')
 
     const slot = container.querySelector<HTMLElement>('.pulse-moment-slot')!
-    const content = slot.querySelector<HTMLElement>('.pulse-moment-slot-inner > div')!
-    // `height` is the card's own height; as in a browser, the box is at least the held height.
-    const measure = (height: number, width = 312) => {
-      content.getBoundingClientRect = () => ({ width, height: Math.max(height, parseFloat(content.style.minHeight) || 0) } as DOMRect)
+    const held = slot.querySelector<HTMLElement>('.pulse-moment-slot-inner > div')!
+    const card = held.querySelector<HTMLElement>(':scope > div')!
+    // The card shows moment `key` at its own `height`, then reports its size.
+    const show = (key: string, height: number, width = 312) => {
+      card.getBoundingClientRect = () => ({ width, height } as DOMRect)
+      render(key)
       act(() => notify?.())
     }
-    return { slot, content, measure }
+    return { slot, held, render, show }
   }
 
   it('holds the tallest card height so a shorter next moment does not pull content up', () => {
-    const { slot, content, measure } = renderMeasured()
-    measure(120)
-    expect(content.style.minHeight).toBe('120px')
-    measure(90)
-    expect(content.style.minHeight).toBe('120px')
-    measure(140.2)
-    expect(content.style.minHeight).toBe('141px')
+    const { slot, held, show } = renderMeasured()
+    show('a', 120)
+    expect(held.style.minHeight).toBe('120px')
+    show('b', 90)
+    expect(held.style.minHeight).toBe('120px')
+    show('c', 140.2)
+    expect(held.style.minHeight).toBe('141px')
     expect(slot.getAttribute('data-testid')).toBe('slot')
   })
 
+  it('lets go when the same moment gets shorter, so a lost picture leaves no empty band', () => {
+    const { held, render, show } = renderMeasured()
+    show('a', 331)
+    // Moment pictures turned off: the same moment, without its picture.
+    show('a', 211)
+    expect(held.style.minHeight).toBe('211px')
+    show('a', 331)
+    expect(held.style.minHeight).toBe('331px')
+    // A next moment at the same height reports no resize; its own picture
+    // going away later still counts as that moment getting shorter.
+    render('b')
+    show('b', 211)
+    expect(held.style.minHeight).toBe('211px')
+  })
+
+  it('keeps the hold through a click to a shorter moment that later grows and shrinks', () => {
+    const { held, show } = renderMeasured()
+    show('a', 331)
+    // Its picture is not in yet.
+    show('b', 211)
+    expect(held.style.minHeight).toBe('331px')
+    show('b', 331)
+    expect(held.style.minHeight).toBe('331px')
+    show('b', 211)
+    expect(held.style.minHeight).toBe('211px')
+  })
+
   it('starts the hold over at a new width, so a card that was wider leaves no empty band', () => {
-    const { content, measure } = renderMeasured()
-    measure(330)
-    expect(content.style.minHeight).toBe('330px')
+    const { held, show } = renderMeasured()
+    show('a', 330)
+    expect(held.style.minHeight).toBe('330px')
     // Wider: the 16:9 picture grows with the card.
-    measure(454, 560)
-    expect(content.style.minHeight).toBe('454px')
+    show('a', 454, 560)
+    expect(held.style.minHeight).toBe('454px')
     // Back at the panel's width: the card's own height, not the wide one.
-    measure(330)
-    expect(content.style.minHeight).toBe('330px')
+    show('a', 330)
+    expect(held.style.minHeight).toBe('330px')
     // At that width a shorter next moment is held again.
-    measure(300)
-    expect(content.style.minHeight).toBe('330px')
+    show('b', 300)
+    expect(held.style.minHeight).toBe('330px')
   })
 
   it('collapses through the exit class when the selection clears', () => {
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
-    act(() => root?.render(<MomentCardSlot exiting><p>card</p></MomentCardSlot>))
+    act(() => root?.render(<MomentCardSlot exiting momentKey="a"><p>card</p></MomentCardSlot>))
     expect(container.querySelector('.pulse-moment-slot')?.classList.contains('pulse-moment-slot-exit')).toBe(true)
   })
 })
