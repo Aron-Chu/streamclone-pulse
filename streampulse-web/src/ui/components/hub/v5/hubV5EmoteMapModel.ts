@@ -1,8 +1,9 @@
 /**
- * The emote map (R5-13, re-done as r4 A2 on 2026-10-21 and restyled as r5 C1
- * quiet tiles the same day; mockups emotemap-moments-r4, emotemap-r5): a
- * treemap in three provider fields, a tile's size the emote's uses and its
- * picture the hero, with a ranked list under it where the last hour against its
+ * The emote map (R5-13, re-done as r4 A2 on 2026-10-21, then restyled the
+ * same day as r5 C1 quiet tiles and r6 D2 field frames; mockups
+ * emotemap-moments-r4, emotemap-r5, emotemap-r6): a treemap in three framed
+ * provider fields, a tile's size the emote's uses and its picture the hero,
+ * with a ranked list under it where the last hour against its
  * own pace shows as a change chip. Data: each closed activity interval's top 10 emotes with their counts
  * (activity.points[].topEmotes), added up per emote, so uses outside an emote's
  * top-10 intervals are not in it. Every size, share and pace here is a sum of
@@ -232,7 +233,7 @@ export const FIELD_NAMES: Record<EmoteField, string> = { twitch: 'Twitch', seven
 export const fieldOf = (prov: string): EmoteField => (prov === 'twitch' ? 'twitch' : prov === 'seventv' ? 'seventv' : 'other')
 
 /**
- * What a tile can hold (r5 C1): xl and l the picture over the name and the
+ * What a tile can hold (r5 C1, kept in r6): xl and l the picture over the name and the
  * share; row (wide and short) the picture, then the name and, from 150 px wide,
  * the share on one line; m the picture and the name; s the picture; xs nothing.
  * The tile pads 8 px top and bottom, a name is 18 px and a share 16 px, so each
@@ -254,7 +255,7 @@ export function tilePic(size: TileSize, w: number, h: number): number {
   if (size === 'l') return 36
   if (size === 'row') return Math.min(30, h - 10)
   if (size === 'm') return 28
-  if (size === 's') return Math.round(Math.max(12, Math.min(32, w - 11, h - 6)))
+  if (size === 's') return Math.round(Math.max(12, Math.min(32, w - 6, h - 6)))
   return 0
 }
 
@@ -295,6 +296,8 @@ export interface MapLayout {
 
 /** An emote under this share of the map folds into its field's "+N" tile. */
 export const EMOTE_FOLD_SHARE = 0.009
+/** r6 D2 field frames: a field's tiles sit this far inside it, so its frame shows around them. */
+export const EMOTE_FIELD_INSET = 4
 
 /** The map's height: desktop min(460, max(300, W × 0.5)); phone min(400, max(300, W × 0.9)); taller × 1.8 (≤ 1000). */
 export function emoteMapHeight(width: number, phone: boolean, tall: boolean, tallFrom = 0): number {
@@ -333,9 +336,13 @@ export function emoteMapLayout(data: HubEmoteMapData, win: HubEmoteWindow, W: nu
       keep = keep.concat(rest)
       rest = []
     }
-    const items: Item[] = keep.map((x2) => ({ x2, area: x2.v * scale }))
-    if (rest.length) items.push({ more: rest, area: rest.reduce((s, x) => s + x.v, 0) * scale })
-    for (const t of squarify(items, { x: g.x, y: g.y, w: g.w, h: g.h })) {
+    // the field's frame takes its outer 4 px; its tiles share what is inside
+    const inner = { x: g.x + EMOTE_FIELD_INSET, y: g.y + EMOTE_FIELD_INSET, w: g.w - 2 * EMOTE_FIELD_INSET, h: g.h - 2 * EMOTE_FIELD_INSET }
+    if (inner.w <= 0 || inner.h <= 0) continue
+    const fieldScale = (inner.w * inner.h) / v
+    const items: Item[] = keep.map((x2) => ({ x2, area: x2.v * fieldScale }))
+    if (rest.length) items.push({ more: rest, area: rest.reduce((s, x) => s + x.v, 0) * fieldScale })
+    for (const t of squarify(items, inner)) {
       // 2 px seams: each tile gives up 1 px on every side
       const w = t.w - 2
       const h = t.h - 2
