@@ -1,8 +1,8 @@
 /**
- * The emote map (R5-13, refined R5-17; mockup d3-v5 hub-emap.js): a treemap
- * like a stock-market heat map. Segments are the providers; a tile's size is
- * the emote's uses and its colour the last hour against its own pace over the
- * window. Data: each closed activity interval's top 10 emotes with their counts
+ * The emote map (R5-13, re-done as r4 A2 on 2026-10-21; mockup
+ * emotemap-moments-r4): a treemap in three flat provider fields, a tile's size
+ * the emote's uses, with a ranked list under it where the last hour against its
+ * own pace shows as a change chip. Data: each closed activity interval's top 10 emotes with their counts
  * (activity.points[].topEmotes), added up per emote, so uses outside an emote's
  * top-10 intervals are not in it. Every size, share and pace here is a sum of
  * those sent counts; nothing is estimated.
@@ -115,23 +115,26 @@ export function emoteMapData(points: readonly HubActivityPoint[], bucketMinutes:
   }
 }
 
-/* ---------- colour: 7 tones as on a market map ---------- */
+/* ---------- pace: the last hour against the emote's own pace, as a change chip ---------- */
 
-export const EMOTE_TONES: ReadonlyArray<{ t: string; d: string }> = [
-  { t: 'none', d: 'made no top 10 in the last hour' },
-  { t: '<0.5×', d: 'under half its usual pace' },
-  { t: '<0.8×', d: 'below its usual pace' },
-  { t: '≈1×', d: 'near its usual pace' },
-  { t: '>1.25×', d: 'above its usual pace' },
-  { t: '>2×', d: 'over twice its usual pace' },
-  { t: '>4×', d: 'over 4 times its usual pace' },
-]
+export interface EmoteChange {
+  dir: 'up' | 'dn' | 'fl'
+  /** "↗ +38%", "↘ −20%", "→ +2%", "new", "–". */
+  text: string
+  /** For screen readers and the card. */
+  words: string
+}
 
-/** 0 none (no top 10 in the last hour: a dark neutral, not the strongest red), 1–2 quieter, 3 as usual, 4–6 busier. */
-export function emoteTone(a: Pick<HubEmoteAgg, 'c1h' | 'pace'>): number {
-  if (!a.c1h) return 0
-  const p = a.pace
-  return p < 0.5 ? 1 : p < 0.8 ? 2 : p <= 1.25 ? 3 : p <= 2 ? 4 : p <= 4 ? 5 : 6
+/** Under 5% either way reads as flat; no top 10 this hour is a dash, not −100%. */
+export function emoteChange(a: Pick<HubEmoteAgg, 'c1h' | 'pace' | 'isNew'>, windowLabel = '24 h'): EmoteChange {
+  if (!a.c1h) return { dir: 'fl', text: '–', words: 'no top 10 in the last hour' }
+  if (a.isNew) return { dir: 'up', text: 'new', words: 'new this hour: no top 10 before it' }
+  const d = Math.round((a.pace - 1) * 100)
+  const abs = Math.abs(d)
+  if (abs < 5) return { dir: 'fl', text: `→ ${d < 0 ? '−' : '+'}${abs}%`, words: `about its ${windowLabel} pace` }
+  return d > 0
+    ? { dir: 'up', text: `↗ +${abs}%`, words: `${abs}% above its ${windowLabel} pace` }
+    : { dir: 'dn', text: `↘ −${abs}%`, words: `${abs}% below its ${windowLabel} pace` }
 }
 
 export function emotePaceText(a: Pick<HubEmoteAgg, 'c1h' | 'pace' | 'isNew'>, windowLabel = '24 h'): string {
@@ -214,160 +217,170 @@ export function squarify<T extends { area: number }>(items: readonly T[], rect: 
   return out
 }
 
-/* ---------- the layout ---------- */
+/* ---------- the layout (r4 A2; mockup emotemap-moments-r4) ---------- */
 
 export type HubEmoteWindow = 'all' | '1h'
 
-export interface MapSeg extends Rect { prov: string; name: string; share: string | null }
+/**
+ * Three fields: Twitch, 7TV, and BTTV with FFZ. Four provider hues fail the
+ * colour-blind check once every field can touch every other; three pass.
+ */
+export type EmoteField = 'twitch' | 'seventv' | 'other'
+export const EMOTE_FIELDS: readonly EmoteField[] = ['twitch', 'seventv', 'other']
+export const FIELD_NAMES: Record<EmoteField, string> = { twitch: 'Twitch', seventv: '7TV', other: 'BTTV & FFZ' }
+export const fieldOf = (prov: string): EmoteField => (prov === 'twitch' ? 'twitch' : prov === 'seventv' ? 'seventv' : 'other')
+
+/** What a tile can hold: xl and l a chip, the name and the share; m a chip and, from 70 px wide, the name; s a chip; xs nothing (each line only where it fits whole). */
+export type TileSize = 'xl' | 'l' | 'm' | 's' | 'xs'
+export function tileSize(w: number, h: number): TileSize {
+  if (w >= 118 && h >= 78) return 'xl'
+  if (w >= 78 && h >= 50) return 'l'
+  if (w >= 46 && h >= 34) return 'm'
+  if (w >= 18 && h >= 18) return 's'
+  return 'xs'
+}
+
+export interface MapField extends Rect { field: EmoteField; name: string; v: number; share: string }
 export interface MapTile extends Rect {
   kind: 'emote'
+  field: EmoteField
   a: HubEmoteAgg
   v: number
   rank: number
   share: string
-  /** Poster-sized: share, "of uses", name, bottom left. */
-  cap: boolean
+  size: TileSize
+  /** The picture chip's side in px (0: none). */
+  chip: number
   name: boolean
   val: boolean
-  fs: number
-  /** Picture size in px (0: none). */
-  img: number
-  chip: boolean
 }
-export interface MapCell extends Rect { a: HubEmoteAgg }
 export interface MapMore extends Rect {
   kind: 'more'
-  prov: string
+  field: EmoteField
   n: number
   v: number
   share: string
-  cells: MapCell[]
-  /** "+12 more · 3.1%", shortened to fit; null when nothing fits. */
-  label: { n: string; rest: string } | null
+  emotes: HubEmoteAgg[]
+  /** "+12" fits. */
+  label: boolean
 }
 export interface MapLayout {
-  segs: MapSeg[]
+  fields: MapField[]
   tiles: MapTile[]
   mores: MapMore[]
+  /** Every emote in this view, most used first. */
+  ranked: Array<{ a: HubEmoteAgg; v: number }>
   /** Emotes in this view. */
   count: number
   total: number
 }
 
-const MIN_DESK = 26 * 26
-const MIN_PHONE = 24 * 24
-const SG = 2 // half the gap between segments
-const PAD = 3 // inside a segment
-const HEAD = 22
+/** An emote under this share of the map folds into its field's "+N" tile. */
+export const EMOTE_FOLD_SHARE = 0.009
 
-/** The map's height: desktop min(620, max(360, W × 0.72)); phone min(460, max(340, W × 1.05)); taller × 1.8 (≤ 1000). */
+/** The map's height: desktop min(460, max(300, W × 0.5)); phone min(400, max(300, W × 0.9)); taller × 1.8 (≤ 1000). */
 export function emoteMapHeight(width: number, phone: boolean, tall: boolean, tallFrom = 0): number {
-  const b = phone ? Math.min(460, Math.max(340, width * 1.05)) : Math.min(620, Math.max(360, width * 0.72))
+  const b = phone ? Math.min(400, Math.max(300, width * 0.9)) : Math.min(460, Math.max(300, width * 0.5))
   return Math.round(tall ? Math.min(1000, Math.max(b, tallFrom) * 1.8) : b)
 }
 
-export function emoteMapLayout(data: HubEmoteMapData, win: HubEmoteWindow, W: number, H: number, phone: boolean): MapLayout {
-  const value = (a: HubEmoteAgg) => (win === 'all' ? a.c24 : a.c1h)
-  const items = data.emotes.filter((a) => value(a) > 0).map((a) => ({ a, v: value(a) })).sort((x, y) => y.v - x.v || x.a.id.localeCompare(y.a.id))
-  const total = items.reduce((s, x) => s + x.v, 0)
-  const empty: MapLayout = { segs: [], tiles: [], mores: [], count: items.length, total }
-  if (!items.length || W <= 0 || H <= 0 || total <= 0) return empty
-  const rank = new Map(items.map((x, i) => [x.a.id, i + 1]))
-  const by = new Map<string, typeof items>()
-  for (const x of items) {
-    const list = by.get(x.a.prov)
-    if (list) list.push(x)
-    else by.set(x.a.prov, [x])
-  }
-  const segList = [...by.entries()].map(([prov, xs]) => ({ prov, xs, v: xs.reduce((s, x) => s + x.v, 0) })).sort((p, q) => q.v - p.v)
+export function emoteMapValue(a: HubEmoteAgg, win: HubEmoteWindow): number {
+  return win === 'all' ? a.c24 : a.c1h
+}
+
+export function emoteMapLayout(data: HubEmoteMapData, win: HubEmoteWindow, W: number, H: number): MapLayout {
+  const ranked = data.emotes
+    .map((a) => ({ a, v: emoteMapValue(a, win) }))
+    .filter((x) => x.v > 0)
+    .sort((x, y) => y.v - x.v || x.a.id.localeCompare(y.a.id))
+  const total = ranked.reduce((s, x) => s + x.v, 0)
+  const empty: MapLayout = { fields: [], tiles: [], mores: [], ranked, count: ranked.length, total }
+  if (!ranked.length || W <= 0 || H <= 0 || total <= 0) return empty
+  const rank = new Map(ranked.map((x, i) => [x.a.id, i + 1]))
+  type Item = { area: number; x2?: (typeof ranked)[number]; more?: Array<(typeof ranked)[number]> }
+  const groups = EMOTE_FIELDS.map((field) => {
+    const xs = ranked.filter((x) => fieldOf(x.a.prov) === field)
+    return { field, xs, v: xs.reduce((s, x) => s + x.v, 0) }
+  }).filter((g) => g.v > 0).sort((p, q) => q.v - p.v)
   const scale = (W * H) / total
-  const MIN = phone ? MIN_PHONE : MIN_DESK
-  const segs: MapSeg[] = []
-  type Place = { area: number; x2?: (typeof items)[number]; more?: { n: number; v: number; xs: typeof items } }
-  const raw: Array<Placed<Place> & { prov: string }> = []
-  for (const sr of squarify(segList.map((s) => ({ s, area: s.v * scale })), { x: 0, y: 0, w: W, h: H })) {
-    const s = sr.it.s
-    const x = sr.x + SG
-    const y = sr.y + SG
-    const w = Math.max(0, sr.w - 2 * SG)
-    const h = Math.max(0, sr.h - 2 * SG)
-    const label = h >= 64 && w >= 64
-    const top = label ? HEAD : 0
-    const inner = { x: x + PAD, y: y + PAD + top, w: Math.max(0, w - 2 * PAD), h: Math.max(0, h - 2 * PAD - top) }
-    const A = inner.w * inner.h
-    const ideal = (v: number) => (v / s.v) * A
-    let keep = s.xs.filter((x2) => ideal(x2.v) >= MIN).slice(0, 160)
-    let rest = s.xs.slice(keep.length)
+  const fields: MapField[] = []
+  const tiles: MapTile[] = []
+  const mores: MapMore[] = []
+  for (const g of squarify(groups.map((it) => ({ it, area: it.v * scale })), { x: 0, y: 0, w: W, h: H })) {
+    const { field, xs, v } = g.it.it
+    fields.push({ field, name: FIELD_NAMES[field], v, share: emoteSharePct((v / total) * 100), x: g.x, y: g.y, w: g.w, h: g.h })
+    let keep = xs.filter((x) => x.v / total >= EMOTE_FOLD_SHARE)
+    let rest = xs.slice(keep.length)
     if (rest.length === 1) {
       keep = keep.concat(rest)
       rest = []
     }
-    const place: Place[] = keep.map((x2) => ({ x2, area: ideal(x2.v) }))
-    if (rest.length) {
-      const v = rest.reduce((t, x2) => t + x2.v, 0)
-      place.push({ more: { n: rest.length, v, xs: rest }, area: ideal(v) })
-    }
-    segs.push({ prov: s.prov, name: providerName(s.prov), share: label ? emoteSharePct((s.v / total) * 100) : null, x, y, w, h })
-    for (const r of squarify(place, inner)) raw.push({ ...r, prov: s.prov })
-  }
-  const tiles: MapTile[] = []
-  const mores: MapMore[] = []
-  for (const t of raw.filter((q) => q.w >= 2 && q.h >= 2)) {
-    if (t.it.more) {
-      const m = t.it.more
-      const share = emoteSharePct((m.v / total) * 100)
-      const cw = Math.max(0, t.w - 2)
-      const ch = Math.max(0, t.h - 2)
-      const cells: MapCell[] = []
-      for (const c of squarify(m.xs.map((x2) => ({ x2, area: (x2.v / m.v) * cw * ch })), { x: 0, y: 0, w: cw, h: ch })) {
-        if (c.w < 3 || c.h < 3) continue // under 3 px: left as the segment's background
-        cells.push({ a: c.it.x2.a, x: c.x + 0.5, y: c.y + 0.5, w: Math.max(1, c.w - 1), h: Math.max(1, c.h - 1) })
+    const items: Item[] = keep.map((x2) => ({ x2, area: x2.v * scale }))
+    if (rest.length) items.push({ more: rest, area: rest.reduce((s, x) => s + x.v, 0) * scale })
+    for (const t of squarify(items, { x: g.x, y: g.y, w: g.w, h: g.h })) {
+      // 2 px seams: each tile gives up 1 px on every side
+      const w = t.w - 2
+      const h = t.h - 2
+      if (w < 1 || h < 1) continue
+      const size = tileSize(w, h)
+      if (t.it.more) {
+        const mv = t.it.more.reduce((s, x) => s + x.v, 0)
+        mores.push({ kind: 'more', field, n: t.it.more.length, v: mv, share: emoteSharePct((mv / total) * 100), emotes: t.it.more.map((x) => x.a), label: size !== 'xs', x: t.x, y: t.y, w: t.w, h: t.h })
+        continue
       }
-      // the label drops the share, then the word, rather than be cut off (about 7 px a character at 12 px)
-      const fit = (txt: string) => txt.length * 7 + 18 <= t.w - 8
-      const n0 = `+${formatHubInt(m.n)}`
-      const label = t.h < 28 ? null
-        : fit(`${n0} more · ${share}`) ? { n: n0, rest: ` more · ${share}` }
-          : fit(`${n0} more`) ? { n: n0, rest: ' more' }
-            : fit(n0) ? { n: n0, rest: '' } : null
-      mores.push({ kind: 'more', prov: t.prov, n: m.n, v: m.v, share, cells, label, x: t.x, y: t.y, w: t.w, h: t.h })
-      continue
+      const x2 = t.it.x2!
+      const chip = size === 'xl' ? 30 : size === 'l' ? 26 : size === 'm' ? 22 : size === 's' ? Math.round(Math.max(14, Math.min(26, Math.min(w, h) - 6))) : 0
+      // a line of text is 16 px and the tile pads 6 px: a name or share only shows whole
+      const name = (size === 'xl' || size === 'l' || (size === 'm' && w >= 70)) && h >= chip + 12 + 16
+      const val = name && (size === 'xl' || size === 'l') && h >= chip + 12 + 32
+      tiles.push({
+        kind: 'emote', field, a: x2.a, v: x2.v, rank: rank.get(x2.a.id) ?? 0, share: emoteSharePct((x2.v / total) * 100),
+        size, chip, name, val,
+        x: t.x, y: t.y, w: t.w, h: t.h,
+      })
     }
-    const x2 = t.it.x2!
-    const w = t.w - 2
-    const h = t.h - 2
-    const r = rank.get(x2.a.id) ?? 0
-    const cap = w >= 110 && h >= 104
-    const name = !cap && w >= 64 && h >= 58
-    const val = !cap && w >= 84 && h >= 84
-    const fs = w >= 110 && h >= 100 ? 13 : 12
-    let img = cap ? Math.round(Math.min(w * 0.5, (h - 54) * 0.82, 88)) : Math.round(Math.min(w, h) * (name ? 0.42 : 0.62))
-    if (!cap) img = Math.min(img, 72, h - 8 - (name ? fs + 6 : 0) - (val ? 16 : 0))
-    tiles.push({
-      kind: 'emote', a: x2.a, v: x2.v, rank: r, share: emoteSharePct((x2.v / total) * 100),
-      cap, name, val, fs, img: img >= 14 ? img : 0, chip: r <= 3 && w >= 44 && h >= 44,
-      x: t.x, y: t.y, w: t.w, h: t.h,
-    })
   }
-  return { segs, tiles, mores, count: items.length, total }
+  return { fields, tiles, mores, ranked, count: ranked.length, total }
 }
 
-/** "120 emotes · sized by uses · last 24 h · 64 pictured". */
+/** "120 emotes · sized by uses · last 24 h". */
 export function emoteMapMeta(data: HubEmoteMapData, layout: MapLayout, win: HubEmoteWindow): string {
-  const n = layout.count
-  const shown = layout.tiles.length
-  return `${formatHubInt(n)} emotes · sized by uses · ${win === 'all' ? `last ${data.windowLabel}` : hubClockRange(data.hourFrom, data.t1)}${shown < n ? ` · ${shown} pictured` : ''}`
+  return `${formatHubInt(layout.count)} emotes · sized by uses · ${win === 'all' ? `last ${data.windowLabel}` : hubClockRange(data.hourFrom, data.t1)}`
 }
 
 export function emoteMapTip(data: HubEmoteMapData): string {
   return `The hub sends each ${data.bucketMinutes}-minute interval’s top 10 emotes with their counts (${data.intervals} intervals here). The map adds them up: ${formatHubInt(data.emotes.length)} different emotes made a top 10 in the last ${data.windowLabel}. `
     + 'Uses outside an emote’s top-10 intervals are not sent, so smaller emotes count low'
     + (data.cover != null ? `; the lists hold about ${Math.round(data.cover)}% of all emote uses` : '') + '. '
-    + 'Segments are the providers. Size is uses; the share is of everything on the map. '
+    + 'The three colours are the providers (BTTV and FFZ share one). Size is uses; the share is of everything on the map. Emotes under 0.9% fold into their field’s “+N” tile. '
     + (data.paceOk
-      ? `Colour is the last hour (the last ${data.lastHourIntervals} intervals) against the emote’s own ${data.windowLabel} pace, counted the same way: green is busier than usual, red quieter, dark grey made no top 10 this hour. `
-      : 'The intervals are too long to compare the last hour, so the tiles are not coloured. ')
-    + 'Emotes too small for a picture are the small cells in each segment’s “more” block; hover one for its numbers.'
+      ? `In the list, ↗ and ↘ compare the last hour (the last ${data.lastHourIntervals} intervals) with the emote’s own ${data.windowLabel} pace, counted the same way. `
+      : '')
+    + 'Click an emote to see where chat spammed it.'
+}
+
+/* ---------- where chat spammed an emote: the hub's live moments it led ---------- */
+
+export interface EmoteMomentRowSource {
+  series: 'chat' | 'emotes'
+  topEmote: Pick<HubBucketEmote, 'name' | 'provider'> | null
+  cmp: { x: number } | { why: string }
+  at: number | null
+}
+
+/** The same emote: provider and name (the name alone merged 7TV and BTTV Clap). */
+export function isSameEmote(e: Pick<HubBucketEmote, 'name' | 'provider'>, a: Pick<HubEmoteAgg, 'e' | 'prov'>): boolean {
+  return e.name === a.e.name && (!e.provider || e.provider === a.prov)
+}
+
+/** Emote spikes whose named top emote is this one, biggest × first, then newest. */
+export function emoteMomentRows<T extends EmoteMomentRowSource>(rows: readonly T[], a: Pick<HubEmoteAgg, 'e' | 'prov'>, limit = 10): T[] {
+  const x = (r: T) => ('x' in r.cmp ? r.cmp.x : -1)
+  return rows
+    .filter((r) => r.series === 'emotes' && r.topEmote && isSameEmote(r.topEmote, a))
+    .slice()
+    .sort((p, q) => x(q) - x(p) || (q.at ?? 0) - (p.at ?? 0))
+    .slice(0, limit)
 }
 
 /** The tile an arrow key moves to: the nearest centre in that direction (across counts double). */

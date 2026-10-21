@@ -282,6 +282,9 @@ export default function AnalyticsHubV5Page() {
             points={data.activity.points}
             bucketMinutes={data.activity.bucketMinutes ?? chartActivity.bucketMinutes}
             loading={loadingInitial}
+            moments={data.livePulseMoments}
+            avatars={avatars}
+            nowMs={nowMs}
           />
 
           <HubV5Rack games={games} game={game} onGame={setGame} art={gameArt} avatars={avatars} loading={loadingInitial} />
