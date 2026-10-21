@@ -7,21 +7,23 @@ import {
   momentsFeedIdParts, MOMENTS_WINDOW_MS, pollMomentsFeed, type MomentMetricKind, type MomentsFeedItem, type MomentsFeedSnapshot,
 } from '../../../../lib/momentsFeed'
 import {
-  actOf, ariaOf, avatarImage, boxArtImage, checkMoment, clk, freshCounts, fx, groupsOf, int, SORTS, sparkBars, STALE_MS, streamTime, streamWhere,
-  updatedText, when, type CheckedMoment, type MomentsSort, type MomentsView,
+  actOf, ariaOf, avatarImage, boxArtImage, checkMoment, clk, fx, groupsOf, int, liveFrameImage, SORTS, sparkBars, STALE_MS, streamTime, streamWhere,
+  updatedText, when, type CheckedMoment,
 } from '../../../../lib/momentsChecked'
 import { loadMomentVod, momentVodCache } from '../../../../lib/momentsFeedVod'
 import { broadcastTimelineHref } from '../../../../lib/momentsNavigation'
 import { headerClear, watchHeaderClear } from './headerClear'
 import { MomentDetail } from './MomentDetail'
 import { MomentAct } from './MomentAct'
-import { ReplayGlyph, SearchGlyph, VdMark, VerdictGlyph } from './glyphs'
+import { ReplayGlyph, SearchGlyph } from './glyphs'
 import './moments-checked.css'
 
 /** Polls bring the newest page every 45 s (the feed's demo cadence; its edge cache holds a page for 30 s). */
 const POLL_MS = 45_000
 const SAVED_KEY = 'sp-moments-checked-saved'
 const SAVED_MAX = 200
+/** Latest: the moments that hold up or partly do, newest first (moments-r4 B2: no verdict tiers, filters or orders). Saved: this browser's. */
+type MomentsTab = 'latest' | 'saved'
 
 function useMatch(query: string): boolean {
   return useSyncExternalStore(
@@ -53,7 +55,8 @@ const ini = (name: string) => name.replace(/[^\p{L}\p{N}]/gu, '').slice(0, 2).to
 
 /**
  * /analytics/moments behind VITE_PUBLIC_MOMENTS_FEED (design: moments-r2,
- * 2026-10-16). Reads /v1/public/moments; every verdict, check and baseline is
+ * 2026-10-16, laid out as moments-r4 B2, 2026-10-21: the list with a picture
+ * per row, the open moment beside it from 900 px). Reads /v1/public/moments; every verdict, check and baseline is
  * the backend's. The list draws from the feed's first page while the rest load
  * behind it. When the feed is not there (404 while the backend flag is off) or
  * the first page fails, the page is the current one, unchanged.
@@ -78,7 +81,7 @@ export default function MomentsCheckedPage({ fallback }: { fallback: ReactNode }
 interface Initial { snap: MomentsFeedSnapshot; at: number; readAt: number }
 
 function CheckedMoments({ initial }: { initial: Initial | null }) {
-  const wide = useMatch('(min-width: 1180px)')
+  const wide = useMatch('(min-width: 900px)')
   const phone = useMatch('(max-width: 719px)')
   const motion = !useMatch('(prefers-reduced-motion: reduce)')
   const loaded = initial != null
@@ -88,20 +91,10 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
   const [items, setItems] = useState<MomentsFeedItem[]>(() => initial?.snap.items ?? [])
   const [loadedAt, setLoadedAt] = useState(() => initial?.at ?? Date.now())
   const [feedStale, setFeedStale] = useState(() => initial?.snap.stale ?? false)
-  /** The feed's own counts for the whole window, from its newest first page: the freshness line says these, not what has loaded. */
-  const [feedCounts, setFeedCounts] = useState(() => (initial ? { total: initial.snap.total, verdicts: initial.snap.verdicts } : null))
   /** A deep link to a moment the first page did not bring: looked up by id; until it answers, no other moment opens. */
-  /** The later pages are still coming: the line under the list waits for them, so the rows they add don't push it down. */
-  const [restLoading, setRestLoading] = useState(() => !!initial?.snap.nextCursor)
   const [deepWait, setDeepWait] = useState<'no' | 'pending' | 'gone' | 'failed'>(() => (initial && deepId && !initial.snap.items.some(item => item.id === deepId) ? 'pending' : 'no'))
-  const [view, setView] = useState<MomentsView>(() => {
-    const asked = query.get('view')
-    const deep = deepId ? initial?.snap.items.find(item => item.id === deepId) : undefined
-    return asked === 'saved' ? 'saved' : asked === 'all' || deep?.verdict === 'bad' ? 'all' : 'checked'
-  })
+  const [view, setView] = useState<MomentsTab>(() => (query.get('view') === 'saved' ? 'saved' : 'latest'))
   const [q, setQ] = useState('')
-  const [cat, setCat] = useState('')
-  const [sort, setSort] = useState<MomentsSort>('new')
   const [sel, setSel] = useState<string | null>(() => (deepId && initial?.snap.items.some(item => item.id === deepId) ? deepId : null))
   const [opened, setOpened] = useState<{ key: string | null; lk: number | null; metric: MomentMetricKind | null }>({ key: null, lk: null, metric: null })
   const [saved, setSaved] = useState(readSaved)
@@ -113,7 +106,6 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
   /** During a replay, moments after this time are not shown yet. */
   const [shownUntil, setShownUntil] = useState<number | null>(null)
   const [clock, setClock] = useState(() => Date.now())
-  const [howOpen, setHowOpen] = useState(false)
   const [said, setSaid] = useState('')
 
   const mainRef = useRef<HTMLElement>(null)
@@ -125,7 +117,7 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
   const holding = useRef(false)
   const flipFrom = useRef<Map<string, number> | null>(null)
   const keep = useRef<{ key: string; y0: number } | null>(null)
-  const focusAfter = useRef<{ row?: string; tick?: string; scrollTo?: string } | null>(deepId && sel ? { scrollTo: deepId } : null)
+  const focusAfter = useRef<{ row?: string; scrollTo?: string } | null>(deepId && sel ? { scrollTo: deepId } : null)
   const lastOpen = useRef<string | null>(null)
   const vods = useMemo(() => momentVodCache(item => loadMomentVod(item, new AbortController().signal)), [])
 
@@ -139,28 +131,18 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
   const find = (key: string) => byKey.get(key) ?? savedOnly.find(m => m.key === key) ?? null
 
   const qq = q.trim().toLowerCase()
-  const passes = (m: CheckedMoment, ignoreView = false) =>
-    (ignoreView || (view === 'checked' ? m.item.verdict !== 'bad' : view === 'saved' ? saved.has(m.key) : true))
-    && (!cat || m.item.category?.name === cat) && (!qq || m.find.includes(qq))
+  // Latest leaves out what didn't hold up, except the open moment (a deep link, or a held minute's "a moment here").
+  const passes = (m: CheckedMoment) =>
+    (view === 'saved' ? saved.has(m.key) : m.item.verdict !== 'bad' || m.key === sel) && (!qq || m.find.includes(qq))
   const shown = (m: CheckedMoment) => (shownUntil == null || m.at <= shownUntil) && !held.has(m.key)
-  const list = [...pool, ...savedOnly].filter(m => shown(m) && passes(m)).sort(SORTS[sort])
+  const list = [...pool, ...savedOnly].filter(m => shown(m) && passes(m)).sort(SORTS.new)
   const groups = groupsOf(list)
   const selKey = sel != null && list.some(m => m.key === sel) ? sel : wide && list[0] && deepWait === 'no' ? list[0].key : null
   const selM = selKey ? find(selKey) : null
   const openSid = selM?.sid ?? null
   const lk = opened.key === selKey ? opened.lk : null
   const metric = opened.key === selKey ? opened.metric : null
-  const everything = pool.filter(m => shown(m) && passes(m, true))
-  const bad = everything.filter(m => m.item.verdict === 'bad').length
-  const loadedCounts = freshCounts(pool.filter(shown))
-  // A replay counts what it has shown so far; otherwise the feed's own counts (they hold while later pages load, or if one fails).
-  const counts = !replay && feedCounts ? { ...loadedCounts, all: feedCounts.total, ...(feedCounts.verdicts ?? {}) } : loadedCounts
   const pillN = [...held].filter(key => { const m = byKey.get(key); return m != null && passes(m) }).length
-  const cats = useMemo(() => {
-    const n = new Map<string, number>()
-    for (const m of pool) if (m.item.category) n.set(m.item.category.name, (n.get(m.item.category.name) ?? 0) + 1)
-    return [...n.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-  }, [pool])
 
   const latest = useRef({ items, held, replay, selKey, passes, pool })
   latest.current = { items, held, replay, selKey, passes, pool }
@@ -198,13 +180,8 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
     const m = next ? find(next) : null
     if (m) say(ariaOf(m, now))
   }
-  const changeView = (next: MomentsView) => setView(next)
-  const openFromDetail = (key: string, how: 'tick' | 'goto') => {
-    const m = find(key)
-    if (!m) return
-    if (view === 'checked' && m.item.verdict === 'bad') setView('all')
-    select(key, { keep: true, focus: how === 'goto' })
-    if (how === 'tick') focusAfter.current = { tick: key }
+  const openFromDetail = (key: string) => {
+    if (find(key)) select(key, { keep: true, focus: true })
   }
   const closeDetail = () => {
     const key = selKey
@@ -264,7 +241,6 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
     loadMomentsFeedItem(deepId, controller.signal).then(item => {
       if (!item) { setDeepWait('gone'); return }
       setItems(prev => (prev.some(x => x.id === item.id) ? prev : [...prev, item]))
-      if (item.verdict === 'bad') setView(v => (v === 'checked' ? 'all' : v))
       setSel(item.id)
       setDeepWait('no')
       focusAfter.current = { scrollTo: item.id }
@@ -280,7 +256,7 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
     void loadMomentsFeedRest(initial.readAt, initial.snap.nextCursor, (page, fresh) => {
       if (fresh) onPoll.current(page) // a new snapshot came out between pages: its first page, as a poll brings it
       else setItems(prev => appendMomentsFeed(prev, page.items))
-    }, controller.signal).then(() => { if (!controller.signal.aborted) setRestLoading(false) })
+    }, controller.signal)
     return () => controller.abort()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -303,7 +279,6 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
     setLoadedAt(Date.now())
     setClock(Date.now())
     setFeedStale(snap.stale)
-    setFeedCounts({ total: snap.total, verdicts: snap.verdicts })
     if (!added.length) return
     if (holding.current) setHeld(prev => new Set([...prev, ...added]))
     else arrive(added)
@@ -397,7 +372,6 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
     if (f) {
       focusAfter.current = null
       if (f.row) { const el = rowEl(f.row); if (el) { el.focus({ preventScroll: true }); inView(el, motion) } }
-      if (f.tick) byData(mainRef.current, '.mk-d [data-tick]', 'tick', f.tick)?.focus({ preventScroll: true })
       if (f.scrollTo) { const el = rowEl(f.scrollTo); if (el) window.scrollBy(0, el.getBoundingClientRect().top - (wide ? window.innerHeight / 3 : headerClear() + 12)) } // narrow: the row under the header, its detail below
     }
     lastOpen.current = openSid
@@ -422,45 +396,25 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
     ? <p className="mk-gone" role="status">{deepWait === 'gone' ? 'That moment is no longer here.' : 'That moment couldn’t be loaded.'}
       {deepAt ? <> <Link to={broadcastTimelineHref(deepAt.login, deepAt.streamId, '/analytics/moments', deepAt.offsetSeconds)}>Open it on the stream’s page</Link></> : null}</p>
     : null
-  const fresh = loaded ? <>
-    {replay ? <span className="mk-rpl">Replay: <b>{clk(replay.vnow)}</b>, one poll every 45 s</span> : updatedText(clock - loadedAt)}
-    <span className="mk-sep"> · </span>{counts.all} moments in the last 12 hours from {counts.streams} live streams
-    <span className="mk-sep"> · </span><b>{counts.ok}</b> hold up, <b>{counts.warn}</b> partly, <b>{counts.bad}</b> don’t
-  </> : null
+  const fresh = !loaded ? null
+    : replay ? <span className="mk-rpl">Replay: <b>{clk(replay.vnow)}</b>, one poll every 45 s</span> : updatedText(clock - loadedAt)
 
   return <main ref={mainRef} id="analytics-main" className={`mk${motion ? '' : ' no-motion'}`} tabIndex={-1}>
     <header className="mk-head">
-      <div className="mk-ttl">
-        <h1>Moments</h1>
-        <button className="mk-lnk" type="button" aria-expanded={howOpen} aria-controls="mk-how" onClick={() => setHowOpen(v => !v)}>How we check a moment</button>
-      </div>
-      <p className="mk-lede">Big reactions in live chat. Each one is checked against the stream’s own minutes before it is shown.</p>
-      <p className={`mk-fresh${stale ? ' stale' : ''}${replay ? ' replaying' : ''}`}><span className="mk-dot" ref={dotRef} aria-hidden="true" /><span>{fresh}</span></p>
+      <h1>Moments</h1>
+      <p className="mk-lede">Big reactions in live chat. Each one beat its own stream’s last 15 minutes.</p>
     </header>
-    <section className="mk-how" id="mk-how" hidden={!howOpen} aria-labelledby="mk-how-h">
-      <h2 id="mk-how-h" className="mk-vh">How we check a moment</h2>
-      <HowWeCheck />
-    </section>
 
     <div className="mk-bar" role="search" aria-label="Filter moments">
       <div className="mk-seg" role="group" aria-label="Which moments">
-        <button type="button" aria-pressed={view === 'checked'} onClick={() => changeView('checked')}>Checked</button>
-        <button type="button" aria-pressed={view === 'all'} onClick={() => changeView('all')}>All<span className="mk-seg-n">{loaded ? everything.length : ''}</span></button>
-        <button type="button" aria-pressed={view === 'saved'} onClick={() => changeView('saved')}>Saved<span className="mk-seg-n">{saved.size || ''}</span></button>
+        <button type="button" aria-pressed={view === 'latest'} onClick={() => setView('latest')}>Latest</button>
+        <button type="button" aria-pressed={view === 'saved'} onClick={() => setView('saved')}>Saved ({saved.size})</button>
       </div>
       <label className="mk-srch"><SearchGlyph />
         <input ref={searchRef} type="search" placeholder="Channel, game or emote" aria-label="Search channels, games or emotes" autoComplete="off" value={q} onChange={e => setQ(e.target.value)} />
       </label>
-      <select aria-label="Game" value={cat} onChange={e => setCat(e.target.value)}>
-        <option value="">All games</option>
-        {cats.map(([name, n]) => <option key={name} value={name}>{name} ({n})</option>)}
-      </select>
-      <select aria-label="Order" value={sort} onChange={e => setSort(e.target.value as MomentsSort)}>
-        <option value="new">Newest first</option>
-        <option value="jump">Biggest jump</option>
-        <option value="busy">Busiest chat</option>
-      </select>
       <span className="mk-bar-sp" />
+      <p className={`mk-fresh${stale ? ' stale' : ''}${replay ? ' replaying' : ''}`}><span className="mk-dot" ref={dotRef} aria-hidden="true" /><span>{fresh}</span></p>
       <button className="mk-rp" type="button" aria-pressed={replay != null} disabled={!loaded} onClick={() => (replay ? stopReplay(false) : startReplay())}>
         <ReplayGlyph /><span>{replay ? 'Stop replay' : 'Replay the last hour'}</span>
       </button>
@@ -492,10 +446,6 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
             })}
           </ol>
         </div>
-        {restLoading ? null : <p className="mk-foot">
-          {view === 'checked' && bad ? <>{bad} {bad === 1 ? 'moment didn’t hold up and is' : 'moments didn’t hold up and are'} left out. <button type="button" onClick={() => changeView('all')}>Show all {everything.length}</button></>
-            : view === 'all' && bad ? `All ${everything.length} moments, with the ${bad} that didn’t hold up.` : null}
-        </p>}
       </section>
       <aside className="mk-det" aria-label="Selected moment">{wide && selM ? detail(selM) : wide ? gone : null}</aside>
     </div>
@@ -513,28 +463,24 @@ function inView(el: HTMLElement, motion: boolean) {
   else if (r.bottom > window.innerHeight - 8) window.scrollBy({ top: r.bottom - window.innerHeight + 8, behavior: motion ? 'smooth' : 'auto' })
 }
 
-/** One row (the Live feed's v2 row): avatar · who + what / when + why · the minutes · viewers. */
+/** One row (moments-r4 B2: r2's row with a picture): picture · who + what / × + when + game · the minutes · viewers. */
 function Row({ m, more, sub, now, current, onSelect }: { m: CheckedMoment; more: number; sub: boolean; now: number; current: boolean; onSelect: () => void }) {
-  const item = m.item, avatar = avatarImage(item), box = boxArtImage(item)
+  const item = m.item, box = boxArtImage(item)
   const full = `${new Date(m.at).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })} · ${streamTime(m, null)} ${streamWhere(null)}`
-  const bits: Array<{ key: string; sep?: string; node: ReactNode }> = [
-    { key: 'vd', node: <VdMark v={item.verdict} /> },
-    { key: 'at', node: <time dateTime={new Date(m.at).toISOString()} title={full}>{when(m.at, now)}</time> },
-  ]
+  const bits: Array<{ key: string; sep?: string; node: ReactNode }> = []
   if (m.rowX != null) bits.push({ key: 'x', node: <span className="mk-r-x"><b>{fx(m.rowX)}</b> the 15 min before</span> })
   else if (m.why) bits.push({ key: 'why', node: <span className="mk-r-why">{m.why}</span> })
+  bits.push({ key: 'at', node: <time dateTime={new Date(m.at).toISOString()} title={full}>{when(m.at, now)}</time> })
   if (!sub) {
     if (item.category) bits.push({ key: 'g', sep: 's-g', node: <span className="mk-r-g">{box ? <img src={box} alt="" width={12} height={16} loading="lazy" /> : null}<span>{item.category.name}</span></span> })
     if (more) bits.push({ key: 'more', sep: 's-m', node: <span className="mk-r-more">+{more} earlier</span> })
   }
   const kindColour = m.kind === 'emotes' ? 'var(--mk-emotes)' : 'var(--mk-chat)'
   return <button className="mk-r" type="button" data-key={m.key} aria-current={current} aria-label={ariaOf(m, now, sub ? 0 : more)} onClick={onSelect}>
-    {sub ? null : <span className={`mk-r-av${m.justLive ? ' ring' : ''}`}>
-      {avatar ? <img src={avatar} alt="" width={32} height={32} loading="lazy" /> : <span className="mk-ini">{ini(m.name)}</span>}
-    </span>}
+    {sub ? null : <Thumb m={m} />}
     <span className="mk-r-tx">
       <span className="mk-r-l1">{sub ? null : <span className="mk-r-nm">{m.name}</span>}<MomentAct act={actOf(item)} /></span>
-      <span className="mk-r-l2">{bits.map((b, i) => <Fragment key={b.key}>{i > 1 ? <span className={`mk-sep${b.sep ? ` ${b.sep}` : ''}`} aria-hidden="true">·</span> : null}{b.node}</Fragment>)}</span>
+      <span className="mk-r-l2">{bits.map((b, i) => <Fragment key={b.key}>{i ? <span className={`mk-sep${b.sep ? ` ${b.sep}` : ''}`} aria-hidden="true">·</span> : null}{b.node}</Fragment>)}</span>
     </span>
     <span className="mk-r-sp"><svg viewBox="0 0 72 28" aria-hidden="true">
       {sparkBars(m).map((b, i) => <rect key={i} x={b.x.toFixed(2)} y={b.y.toFixed(1)} width={b.w.toFixed(2)} height={b.h.toFixed(1)} rx="0.5"
@@ -544,19 +490,15 @@ function Row({ m, more, sub, now, current, onSelect }: { m: CheckedMoment; more:
   </button>
 }
 
-/** How we check a moment (the mockup's text, less what compared the page with prod's cards). */
-function HowWeCheck() {
-  return <div className="mk-how-in">
-    <div>
-      <p><b>A moment is one minute when a stream’s chat got much busier than just before.</b> The detector scores every minute of the live channels StreamPulse follows, and each moment is checked against the same stream’s own minutes before it is shown here.</p>
-      <p><b>The × number</b> compares the moment’s minute with the 15 minutes before it, 2 to 16 minutes earlier, so the run-up doesn’t count.</p>
-      <p><b>Times:</b> the h:mm:ss is where it is in the stream (in the VOD when there is one, where Play and Open on Twitch land); the clock time beside it is in your time zone. <b>Play</b> starts 10 seconds before the moment’s minute. <b>Keys:</b> J and K or ↑ ↓ to move, P to play, S to save, / to search, Esc to close. <b>The chart:</b> click a bar to hold that minute; on the chart ← → move it.</p>
-    </div>
-    <ul className="mk-how-ck">
-      <li><VdMark v="ok" /><span><b>Rise.</b> Chat or emotes at 1.5× the 15 minutes before or more holds up; 1.2× to 1.5× is partly; under 1.2× doesn’t hold up.</span></li>
-      <li><VdMark v="warn" /><span><b>Busy enough.</b> At least 10 messages a minute before it. Quieter chats make small changes look huge.</span></li>
-      <li><VdMark v="warn" /><span><b>History.</b> The stream had been live 20 minutes, with 12 of the 15 minutes measured (the backend’s own 20-minute, 80 % rule). Its first 3 minutes never count: an opening always looks like a jump.</span></li>
-      <li><span className="mk-nt"><VerdictGlyph level="note" /></span><span><b>Label.</b> “Emote spike” with flat emotes is renamed from what did rise: “spammed” an emote when one emote led, “emote burst” when several did, “chat burst” for chat.</span></li>
-    </ul>
-  </div>
+/** The row's picture: the stream's live frame while it is live, else its game's art, blurred, under the channel's avatar. */
+function Thumb({ m }: { m: CheckedMoment }) {
+  const item = m.item
+  const [failed, setFailed] = useState(false)
+  const frame = item.streamLive && !failed ? liveFrameImage(item) : undefined
+  if (frame) return <span className="mk-r-th"><img className="mk-r-th-f" src={frame} alt="" width={96} height={54} loading="lazy" onError={() => setFailed(true)} /></span>
+  const box = boxArtImage(item), avatar = avatarImage(item)
+  return <span className="mk-r-th">
+    {box ? <img className="mk-r-th-bx" src={box} alt="" loading="lazy" /> : null}
+    {avatar ? <img className="mk-r-th-av" src={avatar} alt="" width={28} height={28} loading="lazy" /> : <span className="mk-ini">{ini(m.name)}</span>}
+  </span>
 }

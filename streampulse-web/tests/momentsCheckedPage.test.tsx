@@ -89,25 +89,45 @@ describe('Moments page flag', () => {
 describe('checked Moments page', () => {
   beforeEach(() => vi.stubEnv('VITE_PUBLIC_MOMENTS_FEED', 'on'))
 
-  it('lists the moments that hold up, one row per stream, and says how many are left out', async () => {
+  it('lists the latest moments that hold up, one row per stream, a picture each, with no tiers, filters or orders', async () => {
     renderMoments()
     expect(await screen.findByRole('heading', { level: 1, name: 'Moments' })).toBeTruthy()
+    expect(screen.getByText('Big reactions in live chat. Each one beat its own stream’s last 15 minutes.')).toBeTruthy()
     await waitFor(() => expect(rows().length).toBeGreaterThan(0))
     const shown = fixture.items.filter(item => item.verdict !== 'bad')
     expect(rows().length).toBe(new Set(shown.map(item => item.streamId)).size)
     expect(document.querySelectorAll('.mk-list > li.mk-g[data-vd="bad"]')).toHaveLength(0)
-    expect(document.querySelector('.mk-fresh')?.textContent).toMatch(/ · 40 moments in the last 12 hours from \d+ live streams · 20 hold up, 6 partly, 14 don’t$/)
-    const foot = document.querySelector('.mk-foot')!
-    expect(foot.textContent).toMatch(/^14 moments didn’t hold up and are left out\. Show all 40$/)
-    fireEvent.click(within(foot as HTMLElement).getByRole('button', { name: 'Show all 40' }))
-    expect(seg('All').getAttribute('aria-pressed')).toBe('true')
-    expect(rows().length).toBe(new Set(fixture.items.map(item => item.streamId)).size)
+    expect(seg('Latest').getAttribute('aria-pressed')).toBe('true')
+    expect(within(screen.getByRole('group', { name: 'Which moments' })).getAllByRole('button').map(b => b.textContent)).toEqual(['Latest', 'Saved (0)'])
+    expect(document.querySelector('.mk-fresh')?.textContent).toBe('updated just now')
+    // B2 drops the verdict counts, Checked/All, the game and order selects, how we check, and the line under the list
+    expect(screen.queryAllByRole('combobox')).toHaveLength(0)
+    expect(screen.queryByRole('button', { name: 'How we check a moment' })).toBeNull()
+    expect(document.querySelector('.mk-foot')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Replay the last hour' })).toBeTruthy()
+    // every lead row has its picture; the earlier moments under a stream don't
+    expect(document.querySelectorAll('.mk-list > li.mk-g > .mk-r > .mk-r-th')).toHaveLength(rows().length)
     // no per-row reads: the opened moment is the only one that reads its stream and minutes
     expect(feed.vod).not.toHaveBeenCalled()
     expect(feed.minutes).not.toHaveBeenCalled()
   })
 
-  it('draws from the first page with the feed’s counts, then adds the later pages behind it', async () => {
+  it('draws a row’s live frame while the stream is live, and the game’s art under the avatar once it isn’t', async () => {
+    const live = fixture.items.find(item => item.streamLive && item.liveFrameUrl && item.verdict !== 'bad')!
+    const ended = { ...fixture.items.find(item => item.verdict !== 'bad' && item.streamId !== live.streamId)!, streamLive: false }
+    feed.load.mockResolvedValue(snap([live, ended]))
+    renderMoments()
+    await waitFor(() => expect(rows()).toHaveLength(2))
+    const thumb = (key: string) => rows().find(r => r.dataset.key === key)!.querySelector('.mk-r-th')!
+    expect(thumb(live.id).querySelector('img.mk-r-th-f')?.getAttribute('src')).toBe(live.liveFrameUrl)
+    expect(thumb(ended.id).querySelector('img.mk-r-th-f')).toBeNull()
+    expect(thumb(ended.id).querySelector('.mk-r-th-av, .mk-ini')).toBeTruthy()
+    // a frame that fails falls back the same way
+    fireEvent.error(thumb(live.id).querySelector('img.mk-r-th-f')!)
+    expect(thumb(live.id).querySelector('img.mk-r-th-f')).toBeNull()
+  })
+
+  it('draws from the first page, then adds the later pages behind it', async () => {
     // as the feed pages with sort=new: the newest first, the older behind
     const newest = fixture.items.slice().sort((a, b) => b.minuteStart - a.minuteStart)
     const head = newest.slice(0, 12), tail = newest.slice(12)
@@ -120,8 +140,6 @@ describe('checked Moments page', () => {
     await waitFor(() => expect(rows().length).toBeGreaterThan(0))
     expect(feed.rest).toHaveBeenCalledTimes(1)
     expect(feed.rest.mock.calls[0][1]).toBe('c2')
-    // the line says the whole window from the first page on
-    expect(document.querySelector('.mk-fresh')?.textContent).toMatch(/ · 40 moments in the last 12 hours from \d+ live streams · 20 hold up, 6 partly, 14 don’t$/)
     expect(rows()).toHaveLength(headStreams)
     const before = rows().length, keys = rows().map(r => r.dataset.key)
     act(() => page2(snap(tail, { nextCursor: null }), false))
@@ -140,9 +158,9 @@ describe('checked Moments page', () => {
     const first = rows()[0]
     fireEvent.click(first)
     const detail = await opened()
-    expect(within(detail).getByRole('heading', { name: 'Why it counts' })).toBeTruthy()
     expect(within(detail).getByRole('heading', { name: 'The minutes around it' })).toBeTruthy()
-    expect(within(detail).getByRole('link', { name: /Watch live on Twitch/ })).toBeTruthy()
+    expect(within(detail).getByRole('link', { name: 'Watch on Twitch' }).getAttribute('href')).toMatch(/^https:\/\/www\.twitch\.tv\//)
+    expect(within(detail).queryByRole('heading', { name: 'This stream' })).toBeNull()
     await waitFor(() => expect(feed.minutes).toHaveBeenCalledTimes(1))
     expect(feed.vod).toHaveBeenCalledTimes(1)
     expect(new URL(window.location.href).searchParams.get('m')).toBe(first.dataset.key)
@@ -171,13 +189,57 @@ describe('checked Moments page', () => {
     expect(feed.vod.mock.calls[0][0].id).toBe(b.dataset.key)
   })
 
-  it('opens a deep-linked moment that didn’t hold up in All', async () => {
+  it('says why a moment counts behind its verdict chip, and Esc closes that before the moment', async () => {
+    const ok = fixture.items.find(item => item.verdict === 'ok' && item.checks.rise?.code === 'rose' && item[item.label.kind].x != null)!
+    feed.load.mockResolvedValue(snap([ok]))
+    renderMoments()
+    await waitFor(() => expect(rows()).toHaveLength(1))
+    fireEvent.click(rows()[0])
+    const detail = await opened()
+    const chip = within(detail).getByRole('button', { name: 'Holds up: why it counts' })
+    expect(chip.textContent).toBe('Holds up')
+    expect(chip.getAttribute('aria-expanded')).toBe('false')
+    expect(within(detail).queryByRole('heading', { name: 'Why it counts' })).toBeNull()
+    fireEvent.click(chip)
+    expect(chip.getAttribute('aria-expanded')).toBe('true')
+    const pop = document.getElementById(chip.getAttribute('aria-controls')!)!
+    expect(within(pop).getByRole('heading', { name: 'Why it counts' })).toBeTruthy()
+    expect(within(pop).getAllByRole('listitem').length).toBeGreaterThanOrEqual(2)
+    // the open moment's × leads its line
+    expect(detail.querySelector('.mk-d-meta')?.textContent).toMatch(/^\d+(\.\d)?× the 15 minutes before · /)
+    fireEvent.keyDown(chip, { key: 'Escape' })
+    expect(chip.getAttribute('aria-expanded')).toBe('false')
+    expect(document.querySelector('.mk-slot .mk-d')).toBeTruthy() // the moment stays open
+    // a second click closes it too, and so does a press outside it
+    fireEvent.click(chip)
+    fireEvent.click(chip)
+    expect(chip.getAttribute('aria-expanded')).toBe('false')
+    fireEvent.click(chip)
+    fireEvent.pointerDown(document.body)
+    expect(chip.getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('words the chip with the moment’s own verdict when it only partly holds up', async () => {
+    const warn = fixture.items.find(item => item.verdict === 'warn')!
+    feed.load.mockResolvedValue(snap([warn]))
+    renderMoments()
+    await waitFor(() => expect(rows()).toHaveLength(1))
+    fireEvent.click(rows()[0])
+    const detail = await opened()
+    expect(within(detail).getByRole('button', { name: 'Partly: why it counts' })).toBeTruthy()
+  })
+
+  it('opens a deep-linked moment that didn’t hold up in Latest, worded as such', async () => {
     const bad = fixture.items.find(item => item.verdict === 'bad')!
     window.history.replaceState(null, '', `/analytics/moments?m=${bad.id}`)
     renderMoments()
     await waitFor(() => expect(document.querySelector('.mk-d')).toBeTruthy())
-    expect(document.querySelector('.mk-d')?.getAttribute('data-key')).toBe(bad.id)
-    expect(seg('All').getAttribute('aria-pressed')).toBe('true')
+    const detail = document.querySelector<HTMLElement>('.mk-d')!
+    expect(detail.getAttribute('data-key')).toBe(bad.id)
+    expect(seg('Latest').getAttribute('aria-pressed')).toBe('true')
+    expect(rows().some(r => r.dataset.key === bad.id)).toBe(true)
+    fireEvent.click(within(detail).getByRole('button', { name: 'Doesn’t hold up: why it doesn’t count' }))
+    expect(within(detail).getByRole('heading', { name: 'Why it doesn’t count' })).toBeTruthy()
   })
 
   it('says so in one line, with the stream’s page, when a deep-linked moment is gone', async () => {
@@ -203,7 +265,7 @@ describe('checked Moments page', () => {
     renderMoments()
     await waitFor(() => expect(rows().length).toBeGreaterThan(0))
     fireEvent.click(seg('Saved'))
-    expect(seg('Saved').textContent).toBe('Saved1')
+    expect(seg('Saved').textContent).toBe('Saved (1)')
     expect(rows()).toHaveLength(1)
   })
 })
