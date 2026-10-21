@@ -44,9 +44,11 @@ export interface HubV5ChannelsProps {
   /** The game picked in Where chat is, or null. */
   game: string | null
   onClearGame: () => void
+  /** A sort asked for from elsewhere (the Live feed's "+N more in Channels"); a new `id` applies it. */
+  sortRequest?: { id: number; sort: HubChannelSort; dir: 1 | -1 } | null
 }
 
-export const HubV5Channels = forwardRef<HTMLElement, HubV5ChannelsProps>(function HubV5Channels({ live, poolSize, game, onClearGame }, ref) {
+export const HubV5Channels = forwardRef<HTMLElement, HubV5ChannelsProps>(function HubV5Channels({ live, poolSize, game, onClearGame, sortRequest }, ref) {
   const [q, setQ] = useState('')
   const [sort, setSort] = useState<HubChannelSort>('viewers')
   const [dir, setDir] = useState<1 | -1>(-1)
@@ -59,6 +61,13 @@ export const HubV5Channels = forwardRef<HTMLElement, HubV5ChannelsProps>(functio
 
   // A new game (or none) starts again at 10 rows.
   useEffect(() => { setN(PER) }, [game])
+
+  useEffect(() => {
+    if (!sortRequest) return
+    setSort(sortRequest.sort)
+    setDir(sortRequest.dir)
+    setN(PER)
+  }, [sortRequest])
 
   const rows = useMemo(() => channelRows(live, { q, game, sort, dir }), [live, q, game, sort, dir])
   const visible = rows.slice(0, n)
