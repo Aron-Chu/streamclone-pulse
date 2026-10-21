@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { HubActivityPoint, HubBucketEmote } from '../src/lib/publicHub'
 import {
+  EMOTE_FIELD_INSET,
   EMOTE_FOLD_SHARE,
   conveyorEmotes,
   conveyorRng,
@@ -142,6 +143,23 @@ describe('emoteMapLayout', () => {
     for (const m of lay.mores) for (const a of m.emotes) expect(fieldOf(a.prov)).toBe(m.field)
   })
 
+  it('sets each field\'s tiles inside its frame, still sized by uses', () => {
+    const e = 1e-6
+    for (const t of [...lay.tiles, ...lay.mores]) {
+      const f = lay.fields.find((x) => x.field === t.field)!
+      expect(t.x).toBeGreaterThanOrEqual(f.x + EMOTE_FIELD_INSET - e)
+      expect(t.y).toBeGreaterThanOrEqual(f.y + EMOTE_FIELD_INSET - e)
+      expect(t.x + t.w).toBeLessThanOrEqual(f.x + f.w - EMOTE_FIELD_INSET + e)
+      expect(t.y + t.h).toBeLessThanOrEqual(f.y + f.h - EMOTE_FIELD_INSET + e)
+    }
+    // within a field, area still follows uses
+    for (const f of lay.fields) {
+      const own = lay.tiles.filter((t) => t.field === f.field)
+      const per = own.map((t) => (t.w * t.h) / t.v)
+      for (const p of per) expect(p).toBeCloseTo(per[0], 6)
+    }
+  })
+
   it('folds emotes under 0.9% of the map', () => {
     for (const t of lay.tiles) expect(t.v / lay.total).toBeGreaterThanOrEqual(EMOTE_FOLD_SHARE)
     for (const m of lay.mores) expect(m.n).toBeGreaterThan(1)
@@ -213,7 +231,7 @@ describe('tileSize', () => {
     expect(tilePic('row', 140, 36)).toBe(26)
     expect(tilePic('row', 140, 60)).toBe(30)
     expect(tilePic('m', 70, 70)).toBe(28)
-    expect(tilePic('s', 30, 30)).toBe(19)
+    expect(tilePic('s', 30, 30)).toBe(24)
     expect(tilePic('s', 60, 60)).toBe(32)
     expect(tilePic('s', 21, 18)).toBe(12)
     expect(tilePic('xs', 10, 10)).toBe(0)

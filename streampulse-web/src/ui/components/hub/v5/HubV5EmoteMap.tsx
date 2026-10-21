@@ -1,9 +1,10 @@
 /**
  * Top emotes as the emote map (R5-13; re-done as r4 A2 on 2026-10-21, mockup
- * emotemap-moments-r4, then restyled as r5 C1 quiet tiles, mockup emotemap-r5).
- * A treemap in three provider fields (Twitch, 7TV, BTTV & FFZ) on dark tiles
- * with 2 px seams, each field shown only by a 3 px rule and a faint tint; a
- * tile's size is its uses over the window and it shows its picture, then its
+ * emotemap-moments-r4, then restyled as r5 C1 quiet tiles and r6 D2 field
+ * frames, mockups emotemap-r5 and emotemap-r6). A treemap in three provider
+ * fields (Twitch, 7TV, BTTV & FFZ), each in one thin frame in its legend colour
+ * around neutral dark tiles with 2 px seams, so colour marks the group and not
+ * every tile; a tile's size is its uses over the window and it shows its picture, then its
  * name and share as room allows (wide, short tiles on one line). Emotes under 0.9%
  * fold into their field's "+N" tile. The legend gives each field's share.
  * Under the map, the ten most used emotes with the last hour against their own
@@ -286,6 +287,9 @@ export function HubV5EmoteMap({
             onBlur={onBlur}
             onKeyDown={onKeyDown}
           >
+            {layout?.fields.map((f) => (
+              <div key={`ff:${f.field}`} className="hv5-em-ff" data-field={f.field} style={tileStyle(f)} aria-hidden="true" />
+            ))}
             {layout?.mores.map((m) => (
               <div
                 key={`${MORE}${m.field}`}
