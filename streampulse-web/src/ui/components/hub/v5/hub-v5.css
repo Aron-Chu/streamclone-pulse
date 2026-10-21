@@ -1,8 +1,9 @@
 /*
- * The d3-v5 hub page (PR 2 of 5: U4 page layout, U5 lists), behind
- * VITE_PUBLIC_HUB_V5. Ported from the approved round-5 mockup (d3-v5:
- * hub.html inline rules, shared.css, busiest-variants.css Strip, hub-r5.css,
- * hub-r5c.css search rows, hub-r5d.css hero). Every rule sits under .hub-v5
+ * The d3-v5 hub page, behind VITE_PUBLIC_HUB_V5. Ported from the approved
+ * mockup (d3-v5: hub.html inline rules, shared.css, busiest-variants.css
+ * Strip, hub-r5.css, hub-r5c.css search rows and emote map, hub-r5d.css hero,
+ * hub-hero.css conveyor, hub-live.css feed v3, hub-rack.css and hub-r5e.css
+ * Where chat is). Every rule sits under .hub-v5
  * (the page root, with .hub-d3 for the tokens) or .hv5-layer (cards portaled
  * to <body>), with the hv5- prefix. No text under 12 px; no in-page scrollbar.
  * The activity card itself is U6's (hub-activity-d3.css); nothing here
@@ -15,6 +16,7 @@
   --hv5-chat: #a78bfa;
   --hv5-emotes: #f7b645;
   --hv5-live: #ef4444;
+  --hv5-gutter: 24px;
 }
 
 /* the frame is as wide as the mockup's (2200 px, 24 px gutters; 16 px on phones) */
@@ -28,6 +30,7 @@
     padding-left: 16px;
     padding-right: 16px;
   }
+  .hub-v5 { --hv5-gutter: 16px; }
 }
 
 /* ---------- base (mockup shared.css), only on the page's own sections ---------- */
@@ -35,40 +38,40 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   column-gap: 24px;
-  grid-template-areas: "mast" "busy" "act" "intv" "rail" "emo" "games" "chan" "meas";
+  grid-template-areas: "mast" "peek" "busy" "act" "intv" "rail" "emo" "games" "chan" "meas";
   color: var(--sp-text-1);
   font: 400 13px/1.4 var(--sp-font);
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1;
   -webkit-font-smoothing: antialiased;
 }
-.hub-v5 :is(.hv5-mast, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) :is(*, *::before, *::after),
+.hub-v5 :is(.hv5-mast, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) :is(*, *::before, *::after),
 .hv5-layer,
 .hv5-layer :is(*, *::before, *::after) {
   box-sizing: border-box;
 }
-.hub-v5 :is(.hv5-mast, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) :is(h1, h2, h3, p, ol, ul),
+.hub-v5 :is(.hv5-mast, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) :is(h1, h2, h3, p, ol, ul),
 .hv5-layer :is(p, ol, ul) {
   margin: 0;
 }
-.hub-v5 :is(.hv5-mast, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels) img,
+.hub-v5 :is(.hv5-mast, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels) img,
 .hv5-layer img {
   display: block;
 }
-.hub-v5 :is(.hv5-mast, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) a {
+.hub-v5 :is(.hv5-mast, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) a {
   color: var(--hv5-accent);
   text-decoration: none;
 }
-.hub-v5 :is(.hv5-mast, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) a:hover {
+.hub-v5 :is(.hv5-mast, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) a:hover {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
-.hub-v5 :is(.hv5-mast, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) :is(button, input) {
+.hub-v5 :is(.hv5-mast, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) :is(button, input) {
   font: inherit;
   color: inherit;
   letter-spacing: inherit;
 }
-.hub-v5 :is(.hv5-mast, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) button {
+.hub-v5 :is(.hv5-mast, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) button {
   margin: 0;
   padding: 0;
   border: 0;
@@ -107,8 +110,13 @@
 .hv5-busiest { grid-area: busy; margin-top: 8px; }
 .hv5-activity { grid-area: act; margin-top: 16px; min-width: 0; }
 .hv5-latest { grid-area: rail; margin-top: 8px; }
-.hv5-emotes { grid-area: emo; margin-top: 32px; }
-.hv5-games { grid-area: games; margin-top: 32px; }
+.hv5-emotes { grid-area: emo; margin-top: 32px; display: flex; flex-direction: column; }
+.hv5-games { grid-area: games; margin-top: 32px; display: flex; flex-direction: column; container: hv5grk / inline-size; }
+/* phones: a 3-row "Live now" peek under the hero; the full feed stays where it is */
+.hv5-f3-peek { grid-area: peek; display: none; margin-top: 12px; }
+@media (max-width: 719px) {
+  .hv5-f3-peek { display: block; }
+}
 .hv5-channels { grid-area: chan; margin-top: 32px; scroll-margin-top: 72px; }
 .hv5-dis { grid-area: meas; margin-top: 32px; }
 .hv5-sec { min-width: 0; }
@@ -365,7 +373,7 @@
   background: var(--sp-raised);
 }
 .hv5-search .hv5-field:focus-within .hv5-kbd { display: none; }
-.hub-v5 .hv5-hero-go {
+.hub-v5 .hv5-mast .hv5-hero-go {
   flex: none;
   height: 44px;
   padding: 0 20px;
@@ -375,7 +383,7 @@
   font: 600 15px/1 var(--sp-font);
   transition: background-color 0.15s;
 }
-.hub-v5 .hv5-hero-go:hover { background: #99f6e4; }
+.hub-v5 .hv5-mast .hv5-hero-go:hover { background: #99f6e4; }
 .hv5-sugg {
   position: absolute;
   z-index: 45;
@@ -510,7 +518,7 @@
   .hv5-search .hv5-field { height: 56px; padding: 0 6px 0 16px; gap: 10px; border-radius: 14px; }
   .hub-v5 .hv5-search .hv5-field input { font-size: 16px; }
   .hv5-search .hv5-kbd { display: none; }
-  .hub-v5 .hv5-hero-go { height: 44px; padding: 0 14px; font-size: 14px; }
+  .hub-v5 .hv5-mast .hv5-hero-go { height: 44px; padding: 0 14px; font-size: 14px; }
   .hv5-sugg { top: 62px; }
   .hub-v5 .hv5-mast .hv5-hero-try {
     flex-wrap: nowrap;
@@ -523,6 +531,41 @@
   }
   .hv5-hero-try::-webkit-scrollbar { display: none; }
   .hv5-hero-foot { margin-top: 22px; }
+}
+
+/* the conveyor (R5-15, Aron's pick from the hero lab, at Soft; hub-hero.css). Under the title and field, over the glow; it runs
+   into the side gutters so the rows reach the frame's edges. Three masks multiply: a clear oval around the title, search and Try row
+   (HubV5Conveyor sets its size), the left and right edges, and the top and bottom (it fades out before the line under the hero).
+   It fades in once its pictures are drawn. */
+.hv5-hero-fx {
+  position: absolute;
+  z-index: -1;
+  left: calc(-1 * var(--hv5-gutter));
+  right: calc(-1 * var(--hv5-gutter));
+  top: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.hv5-hc-conv {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.9s var(--sp-ease, ease-out);
+  -webkit-mask-image:
+    radial-gradient(ellipse var(--rx, 470px) var(--ry, 190px) at 50% var(--cy, 50%), rgb(0 0 0 / 0.06) 50%, #000 100%),
+    linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent),
+    linear-gradient(transparent, #000 28px, #000 calc(100% - 64px), transparent);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    radial-gradient(ellipse var(--rx, 470px) var(--ry, 190px) at 50% var(--cy, 50%), rgb(0 0 0 / 0.06) 50%, #000 100%),
+    linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent),
+    linear-gradient(transparent, #000 28px, #000 calc(100% - 64px), transparent);
+  mask-composite: intersect;
+}
+.hv5-hc-conv.hv5-on { opacity: 0.72; }
+.hv5-hc-conv canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+@media (prefers-reduced-motion: reduce) {
+  .hv5-hc-conv { transition: none; }
 }
 
 /* ---------- 2. Busiest now: the Strip (busiest-variants.css shared + Tiles + Carousel + Strip) ---------- */
@@ -767,48 +810,162 @@
   .hv5-bzt-t::after { transition: none; }
 }
 
-/* ---------- 3. Moments: who · game · ×, a link each (hub-r5.css) ---------- */
+/* ---------- 3. The live feed v3 (hub-live.css: R5-10 rail, R5-20 v2, v3; the default since 2026-10-17) ---------- */
 .hub-v5 .hv5-mo-all { font-weight: 500; white-space: nowrap; }
-.hub-v5 .hv5-mo-list { list-style: none; margin: 2px 0 0; padding: 0; }
-.hub-v5 .hv5-mo {
+.hv5-feed .hv5-rh,
+.hv5-f3-peek .hv5-rh { flex-wrap: nowrap; }
+.hv5-feed .hv5-rh h2,
+.hv5-f3-peek .hv5-rh h2 { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+/* steady; the dot greys once the data is over 3 minutes old */
+.hv5-fd-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--hv5-live); }
+.hv5-f2-stale .hv5-fd-dot { background: var(--sp-text-3); }
+.hv5-f2-fresh {
+  min-width: 0;
+  margin-left: -2px;
+  font: 500 12px/16px var(--sp-font);
+  color: var(--sp-text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+.hv5-fd-sep { margin: 0 6px; color: var(--sp-text-3); }
+.hub-v5 :is(.hv5-feed, .hv5-f3-peek) :is(.hv5-fd-list, .hv5-fd-sub) { list-style: none; margin: 0; padding: 0; }
+.hub-v5 .hv5-fd-body > .hv5-fd-list:first-child { margin-top: 4px; }
+.hub-v5 :is(.hv5-feed, .hv5-f3-peek) .hv5-fd-quiet { margin: 6px 8px; font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
+/* the list and its "N new" pill, which floats over the top row so nothing moves when it appears */
+.hv5-f2-wrap { position: relative; }
+.hub-v5 .hv5-feed .hv5-f2-pill {
+  position: absolute;
+  z-index: 2;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 14px;
+  background: var(--hv5-accent);
+  color: var(--sp-canvas);
+  font: 600 12px/28px var(--sp-font);
+  box-shadow: 0 2px 10px rgb(0 0 0 / 0.45);
+}
+.hub-v5 .hv5-feed .hv5-f2-pill[hidden] { display: none; }
+.hub-v5 .hv5-f2-pill:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: 2px; }
+
+/* one row: avatar · who + what / when · game · value (52 px) */
+.hub-v5 :is(.hv5-feed, .hv5-f3-peek) .hv5-fd {
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr) auto;
   column-gap: 10px;
   align-items: center;
+  width: 100%;
   height: 52px;
   padding: 0 8px;
+  border: 0;
   border-bottom: 1px solid var(--sp-line);
   border-radius: 4px;
+  background: none;
   color: var(--sp-text-1);
+  font: inherit;
+  text-align: left;
   text-decoration: none;
+  cursor: pointer;
 }
-.hub-v5 .hv5-mo:hover { background: var(--sp-panel); text-decoration: none; }
-.hub-v5 .hv5-mo:hover .hv5-mo-nm { text-decoration: underline; }
-.hub-v5 .hv5-mo:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: -2px; }
-.hv5-mo-tx { display: flex; flex-direction: column; min-width: 0; }
-.hv5-mo-nm {
-  font: 600 13px/18px var(--sp-font);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.hv5-mo-gm {
+.hub-v5 :is(.hv5-feed, .hv5-f3-peek) .hv5-fd:hover { background: var(--sp-panel); text-decoration: none; }
+.hub-v5 :is(.hv5-feed, .hv5-f3-peek) a.hv5-fd:hover .hv5-fd-nm { text-decoration: underline; }
+.hub-v5 :is(.hv5-feed, .hv5-f3-peek) .hv5-fd:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: -2px; }
+.hv5-fd-av { position: relative; display: flex; width: 28px; height: 28px; }
+.hv5-fd-av .hv5-av { width: 28px; height: 28px; }
+.hv5-fd-tx { display: flex; flex-direction: column; min-width: 0; }
+.hv5-fd-l1 { display: flex; align-items: center; gap: 6px; min-width: 0; font: 600 13px/18px var(--sp-font); }
+.hv5-fd-nm { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hv5-fd-l2 {
   display: flex;
   align-items: center;
-  gap: 6px;
   min-width: 0;
   font: 500 12px/16px var(--sp-font);
   color: var(--sp-text-3);
+  white-space: nowrap;
 }
-.hv5-mo-gm img {
+.hv5-fd-l2 time { flex: none; font-variant-numeric: tabular-nums; }
+.hub-v5 .hv5-fd-l2 img {
   flex: none;
   width: 12px;
   height: 16px;
+  margin-right: 6px;
   border-radius: 2px;
   object-fit: cover;
   box-shadow: 0 0 0 1px var(--sp-line-strong);
 }
-.hv5-mo-gm span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hv5-fd-g,
+.hv5-fd-w { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.hv5-fd-w time { font-variant-numeric: tabular-nums; }
+.hv5-mo-x.hv5-sm { font-size: 13px; font-weight: 600; }
+/* what happened: a spike or moment in teal, a stream start in red with a ring, Picking up in purple */
+.hv5-f2-act { flex: none; font-weight: 500; color: var(--sp-text-2); white-space: nowrap; }
+.hv5-f3-spk { color: var(--hv5-accent); }
+.hv5-f2-live { color: var(--hv5-live); }
+.hv5-f2-up { color: var(--hv5-chat); font-weight: 600; }
+.hv5-f3-jump { flex: none; font-weight: 500; color: var(--hv5-chat); white-space: nowrap; }
+.hv5-f2-names { font-weight: 500; color: var(--sp-text-2); }
+.hv5-f2-em { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 45%; font-weight: 600; color: var(--sp-text-1); }
+.hub-v5 .hv5-f2-em img { flex: none; width: 20px; height: 20px; object-fit: contain; }
+.hv5-f2-em span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hv5-f2-x { flex: none; color: var(--hv5-accent); font-variant-numeric: tabular-nums; }
+.hv5-f2-more { flex: none; }
+.hv5-fd-av.hv5-f2-ring::after { content: ""; position: absolute; inset: -3px; border: 2px solid var(--hv5-live); border-radius: 50%; }
+/* the went-live stack and Picking up: a stack of faces that opens a short list */
+.hub-v5 :is(.hv5-feed, .hv5-f3-peek) :is([data-kind="now"], [data-kind="lives"]) > .hv5-fd { grid-template-columns: 40px minmax(0, 1fr) auto; }
+.hv5-fd-stack { display: flex; width: 40px; height: 28px; align-items: center; }
+.hv5-fd-stack .hv5-av { width: 20px; height: 20px; flex: none; border-radius: 50%; box-shadow: 0 0 0 2px var(--sp-canvas); }
+.hv5-fd-stack > * + * { margin-left: -10px; }
+.hv5-fd-end { display: flex; align-items: center; gap: 6px; }
+.hv5-fd-chev { display: flex; color: var(--sp-text-3); transition: transform 0.2s ease-out; }
+.hv5-fd-chev .hv5-ico { width: 16px; height: 16px; }
+.hv5-fd[aria-expanded="true"] .hv5-fd-chev { transform: rotate(180deg); }
+.hub-v5 .hv5-feed .hv5-fd-sub { margin: 0 0 4px 18px; border-left: 1px solid var(--sp-line-strong); }
+.hub-v5 .hv5-feed .hv5-fd-sub[hidden] { display: none; }
+.hub-v5 .hv5-feed .hv5-fd-sub .hv5-fd { grid-template-columns: 22px minmax(0, 1fr) auto; height: 44px; }
+.hv5-fd-sub .hv5-fd-av,
+.hv5-fd-sub .hv5-fd-av .hv5-av { width: 22px; height: 22px; }
+.hv5-fd-sub .hv5-fd-l1 { font-size: 12px; line-height: 16px; }
+.hv5-fd-more { display: flex; justify-content: center; padding: 6px 0 0; }
+.hv5-f2-upmore { padding: 8px 8px 10px 10px; font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
+/* past 30 minutes: the face and the number step back, the words stay readable (one thin rule, no tiers) */
+.hv5-f3-old > .hv5-fd :is(.hv5-fd-av, .hv5-fd-stack, .hv5-mo-v) { opacity: 0.5; }
+.hv5-f3-old > .hv5-fd .hv5-fd-nm { color: var(--sp-text-2); }
+.hv5-f3-rule { display: flex; align-items: center; gap: 8px; margin: 8px 8px 2px; font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
+.hv5-f3-rule::after { content: ""; flex: 1; height: 1px; background: var(--sp-line); }
+.hub-v5 .hv5-feed .hv5-f3-earlier { margin: 8px 8px 0; font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
+.hv5-f3-earlier a { white-space: nowrap; }
+/* ≥ 1536 the rail is sticky; Show more lets the list scroll inside the window (scrollbar hidden) */
+@media (min-width: 1536px) {
+  .hv5-feed.hv5-fd-all .hv5-fd-body {
+    max-height: calc(100vh - 72px - 150px);
+    overflow-y: auto;
+    scrollbar-width: none;
+    overscroll-behavior: contain;
+  }
+  .hv5-feed.hv5-fd-all .hv5-fd-body::-webkit-scrollbar { display: none; }
+}
+@media (max-width: 719px) {
+  .hub-v5 :is(.hv5-feed, .hv5-f3-peek) .hv5-fd { height: 56px; }
+}
+/* a row a poll brings: it opens, slides in and flashes once (backwards fill only, so hover and an open list are untouched after) */
+.hv5-fd-new { animation: hv5-fd-in 0.42s cubic-bezier(0.2, 0.7, 0.2, 1) backwards; overflow: hidden; }
+.hv5-fd-new > .hv5-fd { animation: hv5-fd-flash 1.4s ease-out; }
+.hv5-fd-new[data-kind="live"] > .hv5-fd,
+.hv5-fd-new[data-kind="lives"] > .hv5-fd { animation-name: hv5-fd-flash-live; }
+@keyframes hv5-fd-in { from { max-height: 0; opacity: 0; transform: translateY(-8px); } to { max-height: 56px; opacity: 1; transform: none; } }
+@keyframes hv5-fd-flash { from { background: rgb(94 234 212 / 0.16); } to { background: transparent; } }
+@keyframes hv5-fd-flash-live { from { background: rgb(239 68 68 / 0.16); } to { background: transparent; } }
+@media (prefers-reduced-motion: reduce) {
+  .hv5-fd-new,
+  .hv5-fd-new > .hv5-fd { animation: none !important; }
+  .hv5-fd-chev { transition: none !important; }
+}
+
+/* the moment figures and the moment card (round-5 Moments, now the feed's) */
 .hv5-mo-v {
   display: flex;
   flex-direction: column;
@@ -903,80 +1060,333 @@
   color: var(--sp-text-3);
 }
 
-/* ---------- 4. Top emotes: picture, name over a share bar, share ---------- */
-.hub-v5 .hv5-te5-list,
-.hub-v5 .hv5-gm5-list { list-style: none; margin: 2px 0 0; padding: 0; }
-.hv5-te5 {
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
-  column-gap: 10px;
+/* ---------- 4. Top emotes as the emote map (R5-13, refined R5-17; hub-r5c.css) ---------- */
+/* the switch (shared.css .seg) */
+.hv5-seg {
+  display: inline-flex;
   align-items: center;
-  height: 40px;
-  padding: 0 8px;
-  border-bottom: 1px solid var(--sp-line);
-  border-radius: 4px;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--sp-r);
+  border: 1px solid var(--sp-line-strong);
+  flex: none;
 }
-.hv5-te5-im { display: grid; place-items: center; width: 28px; height: 28px; }
-.hv5-te5-im img { width: 28px; height: 28px; object-fit: contain; }
-.hv5-te5-x { display: block; width: 20px; height: 20px; border-radius: 4px; background: var(--sp-raised); }
-.hv5-te5-tx,
-.hv5-gm5-tx { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.hv5-te5-nm,
-.hv5-gm5-nm {
-  font: 600 13px/16px var(--sp-font);
-  color: var(--sp-text-1);
+.hub-v5 .hv5-seg button {
+  position: relative;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--sp-text-2);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.hub-v5 .hv5-seg button::after { content: ""; position: absolute; left: 0; right: 0; top: -9px; bottom: -9px; }
+.hub-v5 .hv5-seg button:hover { color: var(--sp-text-1); }
+.hub-v5 .hv5-seg button[aria-pressed="true"] { color: var(--sp-text-1); background: var(--sp-raised); box-shadow: inset 0 0 0 1px var(--hv5-accent); }
+/* the same header rhythm in both blocks: title and (i), then the meta on its own line */
+.hv5-em-rh,
+.hv5-gm-rh { flex-wrap: wrap; row-gap: 0; }
+.hv5-em-rh .hv5-end { overflow: visible; }
+.hv5-gm-rh > h2 { display: flex; align-items: center; min-height: 33px; } /* as tall as the switch beside Top emotes */
+.hv5-em-meta,
+.hv5-gm-meta { order: 5; flex-basis: 100%; margin: -4px 0 6px; }
+.hv5-em-map {
+  position: relative;
+  flex: 1 0 auto;
+  min-height: var(--em-h, 380px);
+  background: var(--sp-canvas);
+  border-radius: 10px;
+  overflow: hidden;
+  contain: layout paint;
+}
+.hv5-em-skel { background: var(--sp-panel); }
+/* segments as rounded panels with real gaps */
+.hv5-em-seg {
+  position: absolute;
+  border-radius: 8px;
+  background: #141417;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.04);
+}
+.hv5-em-sh {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 25px;
+  padding: 5px 9px 0;
+  font: 500 12px/16px var(--sp-font);
+  color: var(--sp-text-3);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.hv5-te5-bar,
-.hv5-gm5-bar {
-  display: block;
-  height: 4px;
-  border-radius: 2px;
-  background: rgb(255 255 255 / 0.05);
+.hv5-em-sh b { font-weight: 600; color: var(--sp-text-1); margin-right: 4px; }
+.hub-v5 .hv5-emotes .hv5-em-t {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 0 4px;
   overflow: hidden;
+  border: 0;
+  border-radius: 5px;
+  background: #34373f;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+  text-align: center;
+  min-width: 0;
 }
-.hv5-te5-bar i,
-.hv5-gm5-bar i { display: block; height: 100%; border-radius: 2px; }
-.hv5-te5-bar i { background: var(--hv5-emotes); }
-.hv5-gm5-bar i { background: var(--hv5-chat); }
-.hv5-te5-sh,
-.hv5-gm5-v {
-  min-width: 44px;
-  text-align: right;
-  font: 500 13px/16px var(--sp-font);
-  color: var(--sp-text-2);
+.hub-v5 .hv5-emotes .hv5-em-t img { flex: none; object-fit: contain; filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.55)); }
+.hv5-em-nm {
+  max-width: 100%;
+  font: 600 var(--fs, 12px)/1.25 var(--sp-font);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.6);
+}
+.hv5-em-v {
+  font: 500 12px/16px var(--sp-font);
+  color: rgb(255 255 255 / 0.82);
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.6);
+}
+/* none (dark neutral), then red quieter … grey as usual … green busier; every tone keeps white 12 px text at 4.5:1 or better */
+:is(.hv5-em-map, .hv5-em-sw, .hv5-ec-dl) [data-tone="0"] { --tone: #222228; }
+:is(.hv5-em-map, .hv5-em-sw, .hv5-ec-dl) [data-tone="1"] { --tone: #a8353a; }
+:is(.hv5-em-map, .hv5-em-sw, .hv5-ec-dl) [data-tone="2"] { --tone: #763a43; }
+:is(.hv5-em-map, .hv5-em-sw, .hv5-ec-dl) [data-tone="3"] { --tone: #3a3e48; }
+:is(.hv5-em-map, .hv5-em-sw, .hv5-ec-dl) [data-tone="4"] { --tone: #285a43; }
+:is(.hv5-em-map, .hv5-em-sw, .hv5-ec-dl) [data-tone="5"] { --tone: #236f44; }
+:is(.hv5-em-map, .hv5-em-sw, .hv5-ec-dl) [data-tone="6"] { --tone: #1f8442; }
+.hub-v5 .hv5-emotes .hv5-em-t[data-tone] {
+  background-color: var(--tone);
+  background-image: linear-gradient(rgb(255 255 255 / 0.07), rgb(255 255 255 / 0) 60%);
+}
+/* a poster-sized tile, captioned like a poster (share, "of uses", name), and the rank chip on the top 3 */
+.hub-v5 .hv5-emotes .hv5-em-cap { justify-content: center; padding: 6px 6px 52px; }
+.hv5-em-cap::after {
+  content: "";
+  position: absolute;
+  inset: 50% 0 0;
+  background: linear-gradient(rgb(0 0 0 / 0), rgb(0 0 0 / 0.38));
+  pointer-events: none;
+}
+.hv5-em-cp {
+  position: absolute;
+  z-index: 1;
+  left: 10px;
+  right: 10px;
+  bottom: 9px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 5px;
+  text-align: left;
+}
+.hv5-em-cp b { font: 700 20px/24px var(--sp-font); color: #fff; font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px rgb(0 0 0 / 0.5); }
+.hv5-em-cp > span { font: 500 12px/16px var(--sp-font); color: rgb(255 255 255 / 0.78); }
+.hv5-em-cp .hv5-em-nm { flex-basis: 100%; max-width: 100%; font: 600 12px/16px var(--sp-font); color: #fff; }
+.hv5-em-rk {
+  position: absolute;
+  z-index: 1;
+  left: 6px;
+  top: 6px;
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 5px;
+  background: rgb(0 0 0 / 0.5);
+  font: 600 12px/16px var(--sp-font);
+  color: var(--sp-text-1);
   font-variant-numeric: tabular-nums;
 }
+.hv5-em-cap .hv5-em-rk { left: 8px; top: 8px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 6px; background: rgb(0 0 0 / 0.6); }
+.hub-v5 .hv5-emotes .hv5-em-t:hover { box-shadow: inset 0 0 0 2px rgb(255 255 255 / 0.85); z-index: 2; }
+.hub-v5 .hv5-emotes .hv5-em-t:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--sp-focus); z-index: 3; }
+/* the "more" block: one small cell per remaining emote at half strength, so the block reads as one calm field */
+.hub-v5 .hv5-emotes .hv5-em-more { cursor: default; background: transparent; padding: 0; }
+.hub-v5 .hv5-emotes .hv5-em-more:hover { box-shadow: none; }
+.hv5-em-u {
+  position: absolute;
+  display: block;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--tone, #3a3e48) 52%, #141417);
+  cursor: pointer;
+}
+.hv5-em-u:hover { box-shadow: 0 0 0 1px #fff; z-index: 2; }
+.hv5-em-ml {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  max-width: calc(100% - 8px);
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgb(9 9 11 / 0.82);
+  font: 500 12px/16px var(--sp-font);
+  color: var(--sp-text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  z-index: 1;
+}
+.hv5-em-ml b { font-weight: 600; color: var(--sp-text-1); }
+/* one line with Taller map: "Last hour: quieter ▮▮▮▮▮▮ busier ▪ none", the thresholds in each swatch's title */
+.hv5-em-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  min-height: 28px;
+  margin-top: 8px;
+  font: 500 12px/16px var(--sp-font);
+  color: var(--sp-text-3);
+}
+.hv5-em-key { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.hv5-em-kt { margin-right: 4px; color: var(--sp-text-2); }
+.hv5-em-sw { display: flex; gap: 2px; }
+.hv5-em-sw i { display: block; width: 14px; height: 10px; border-radius: 2px; background: var(--tone); }
+.hv5-em-kn { display: inline-flex; align-items: center; gap: 5px; margin-left: 6px; }
+.hv5-em-kn i { display: block; width: 10px; height: 10px; border-radius: 2px; background: #222228; box-shadow: inset 0 0 0 1px #3f3f46; }
+.hub-v5 .hv5-emotes .hv5-em-tall { margin-left: auto; height: 28px; padding: 0 8px; }
+@media (max-width: 719px) {
+  .hv5-em-key { flex-wrap: wrap; row-gap: 6px; }
+}
 
-/* ---------- 5. Where chat is: name over a chat-share bar, share; a click filters Channels ---------- */
-.hub-v5 .hv5-gm5 {
+/* the hover cards (emote map, rack): never take the pointer */
+.hv5-em-card {
+  position: fixed;
+  z-index: 70;
+  width: 288px;
+  padding: 12px 14px 10px;
+  border-radius: 8px;
+  background: var(--sp-popover);
+  border: 1px solid var(--sp-line-strong);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.45);
+  pointer-events: none;
+  color: var(--sp-text-2);
+  font: 500 12px/16px var(--sp-font);
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+}
+.hv5-ec-h { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.hv5-ec-im { display: grid; place-items: center; width: 40px; height: 40px; flex: none; }
+.hv5-layer .hv5-ec-im img { width: 40px; height: 40px; object-fit: contain; }
+.hv5-ec-tx { display: flex; flex-direction: column; min-width: 0; }
+.hv5-ec-tx b { font: 600 14px/18px var(--sp-font); color: var(--sp-text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hv5-layer .hv5-ec-dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; margin: 0; }
+.hv5-ec-dl dt { color: var(--sp-text-3); }
+.hv5-layer .hv5-ec-dl dd { margin: 0; color: var(--sp-text-1); font-variant-numeric: tabular-nums; }
+.hv5-ec-dl dd span { color: var(--sp-text-3); }
+.hv5-ec-dl dd[data-tone] i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 2px;
+  background: var(--tone);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.25);
+}
+.hv5-layer .hv5-ec-f { margin: 8px 0 0; padding-top: 8px; border-top: 1px solid var(--sp-line); color: var(--sp-text-3); }
+/* the game card: box art and the busiest chats */
+.hv5-layer.hv5-gp-card { width: 300px; }
+.hv5-gc-im { width: 30px; }
+.hv5-layer .hv5-gc-im img { width: 30px; height: 40px; border-radius: 3px; object-fit: cover; box-shadow: 0 4px 12px rgb(0 0 0 / 0.45); }
+.hv5-gc-im > span {
   display: grid;
-  grid-template-columns: 21px minmax(0, 1fr) auto;
-  column-gap: 10px;
+  place-items: center;
+  width: 30px;
+  height: 40px;
+  border-radius: 3px;
+  font: 600 12px/1 var(--sp-font);
+  color: var(--sp-text-3);
+  box-shadow: inset 0 0 0 1px var(--sp-line-strong);
+}
+.hv5-layer .hv5-gc-top { display: flex; flex-direction: column; gap: 4px; }
+.hv5-gc-ch { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.hv5-gc-ch .hv5-av { flex: none; border-radius: 50%; }
+.hv5-gc-ch > span:nth-child(2) { flex: 1; min-width: 0; color: var(--sp-text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hv5-gc-ch > span:last-child { color: var(--sp-text-3); }
+
+/* ---------- 5. Where chat is as the ranked rack (R5-22; hub-rack.css) ---------- */
+/* the block fills its grid row like the map beside it, so the two footers sit on one line */
+.hub-v5 .hv5-games .hv5-gr-list { display: flex; flex-direction: column; flex: 1 0 auto; margin: 2px 0 0; padding: 0; list-style: none; }
+/* 10 rows that share the block's height (48 to 60 px each); the figure column is fixed, so every bar's track ends at the same x */
+.hv5-gr-list li { display: flex; flex: 1 1 48px; max-height: 60px; min-width: 0; }
+.hv5-gr-list li:nth-child(n + 11) { display: none; }
+.hub-v5 .hv5-games .hv5-gr {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 80px;
+  grid-template-rows: auto auto;
+  column-gap: 12px;
+  row-gap: 5px;
+  align-content: center;
   align-items: center;
   width: 100%;
-  height: 40px;
-  padding: 0 8px;
-  border-bottom: 1px solid var(--sp-line);
+  padding: 6px 8px;
+  border: 0;
+  border-top: 1px solid var(--sp-line);
   border-radius: 4px;
-  text-align: left;
+  background: none;
   color: var(--sp-text-1);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
-.hub-v5 .hv5-gm5:hover { background: var(--sp-panel); }
-.hub-v5 .hv5-gm5[aria-pressed="true"] {
-  background: var(--sp-accent-bg);
-  box-shadow: inset 2px 0 0 var(--hv5-accent);
-}
-.hub-v5 .hv5-gm5:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: -2px; }
-.hv5-gm5-art {
-  display: block;
-  width: 21px;
-  height: 28px;
-  border-radius: 2px;
-  background: var(--sp-raised);
+.hub-v5 .hv5-games .hv5-gr-list li:first-child .hv5-gr { border-top-color: transparent; }
+.hv5-gr-art {
+  grid-row: 1 / span 2;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 40px;
+  border-radius: 4px;
   overflow: hidden;
+  background: var(--sp-raised);
+  box-shadow: inset 0 0 0 1px var(--sp-line-strong);
+}
+.hub-v5 .hv5-gr-art img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.hv5-gr-art span { font: 600 12px/1 var(--sp-font); color: var(--sp-text-3); }
+.hv5-gr-nm { min-width: 0; font: 600 13px/18px var(--sp-font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hv5-gr-v { font: 600 13px/18px var(--sp-font); text-align: right; font-variant-numeric: tabular-nums; }
+.hv5-gr-bar { height: 6px; border-radius: 3px; background: var(--sp-line); overflow: hidden; }
+.hv5-gr-bar i { display: block; height: 100%; border-radius: 3px; background: var(--hv5-chat); opacity: 0.85; }
+.hv5-gr-c { font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.hub-v5 .hv5-games .hv5-gr:hover { background: var(--sp-panel); }
+.hv5-gr:hover .hv5-gr-nm { text-decoration: underline; }
+.hub-v5 .hv5-games .hv5-gr:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: -2px; }
+.hub-v5 .hv5-games .hv5-gr[aria-pressed="true"] { background: var(--sp-raised); }
+.hv5-gr[aria-pressed="true"] .hv5-gr-bar i { background: var(--hv5-accent); opacity: 1; }
+.hub-v5 .hv5-games .hv5-gr-foot {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+  margin: auto 0 0;
+  padding-top: 8px;
+  font: 500 12px/16px var(--sp-font);
+  color: var(--sp-text-3);
+}
+.hv5-gr-skel { flex: 1 0 auto; min-height: 480px; margin-top: 2px; border-radius: 8px; background: var(--sp-panel); }
+/* one footer per row count; the block's width picks it */
+.hub-v5 .hv5-games .hv5-gr-f16 { display: none; }
+/* a wide block: 16 games in two columns of 8, ranked down then across */
+@container hv5grk (min-width: 620px) {
+  .hub-v5 .hv5-games .hv5-gr-list { display: grid; grid-auto-flow: column; grid-template-rows: repeat(8, minmax(48px, 1fr)); column-gap: 24px; }
+  .hv5-gr-list li,
+  .hv5-gr-list li:nth-child(n + 11) { display: flex; max-height: none; }
+  .hub-v5 .hv5-games .hv5-gr-list li:nth-child(9) .hv5-gr { border-top-color: transparent; }
+  .hub-v5 .hv5-games .hv5-gr-f10 { display: none; }
+  .hub-v5 .hv5-games .hv5-gr-f16 { display: flex; }
+}
+@media (max-width: 719px) {
+  .hv5-gr-list li { flex-basis: 52px; }
 }
 
 /* ---------- 6. Channels: one short table ---------- */
