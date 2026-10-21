@@ -7,7 +7,7 @@ import { assertNoConsoleErrors, assertNoPageHorizontalOverflow, attachConsoleErr
 import { installHubUxMock } from './helpers/hubUxMock'
 
 /**
- * The checked Moments page (moments-r2) on a build with
+ * The checked Moments page (moments-r2, laid out as moments-r4 B2) on a build with
  * VITE_PUBLIC_MOMENTS_FEED=on. The default build leaves the flag off, so this
  * file skips there; run it against your own preview of a flag-on build:
  *
@@ -97,7 +97,7 @@ const rows = (page: Page) => page.locator('.mk-list .mk-r')
 const streamRows = (page: Page) => page.locator('.mk-list > li.mk-g > .mk-r')
 const seg = (page: Page, name: string) => page.getByRole('group', { name: 'Which moments' }).getByRole('button', { name: new RegExp(`^${name}`) })
 
-test('wide: the moments that hold up, the first one open beside the list', async ({ page }, testInfo) => {
+test('wide: the latest moments, the first one open beside the list', async ({ page }, testInfo) => {
   const errors = attachConsoleErrorGuard(page)
   const reads = await mockFeed(page)
   await page.goto('/analytics/moments')
@@ -116,9 +116,17 @@ test('wide: the moments that hold up, the first one open beside the list', async
   await expect(page.locator('.mk-sub .mk-r')).toHaveCount(fixture.items.filter(x => x.verdict !== 'bad' && x.streamId === openStream).length - 1)
   const detail = page.locator('.mk-det .mk-d')
   await expect(detail).toBeVisible()
+  // the verdict chip's (i) says why it counts (moments-r4 B2: no verdict tiers, filters or orders); Esc closes only that
+  const chip = detail.locator('.mk-hold')
+  await expect(chip).toHaveAttribute('aria-expanded', 'false')
+  await chip.click()
   await expect(detail.getByRole('heading', { name: 'Why it counts' })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(chip).toHaveAttribute('aria-expanded', 'false')
+  await expect(detail).toBeVisible()
   await expect(detail.locator('.mk-ch svg rect.mk-cb.mo')).toHaveCount(1)
-  await expect(page.locator('.mk-foot')).toHaveText(/^14 moments didn’t hold up and are left out\. Show all 40$/)
+  await expect(page.getByRole('combobox')).toHaveCount(0)
+  await expect(page.locator('.mk-foot')).toHaveCount(0)
   // the opened moment reads its stream record and its minutes; no row reads anything
   await expect.poll(() => reads.length).toBe(2)
 
@@ -193,9 +201,7 @@ test('a later page that fails keeps what has loaded', async ({ page }) => {
   await expect.poll(() => reads.feed.filter(c => c === 'c20').length).toBeGreaterThan(0)
   const loaded = new Set(newest.slice(0, PAGE).filter(x => x.verdict !== 'bad').map(x => x.streamId)).size
   await expect(streamRows(page)).toHaveCount(loaded)
-  // the counts are the feed's for the whole window, not what loaded
-  await expect(page.locator('.mk-fresh')).toContainText('40 moments in the last 12 hours')
-  await expect(page.locator('.mk-fresh')).toContainText('20 hold up, 6 partly, 14 don’t')
+  await expect(page.locator('.mk-fresh')).toContainText('updated')
   expect(reads.feed.filter(c => c === 'c40')).toEqual([])
   expect(errors.filter(e => !/status of 503/.test(e))).toEqual([])
 })
@@ -211,12 +217,13 @@ test('a deep link to a moment that is gone says so, with the stream’s page, an
   expect([...reads]).toEqual([])
 })
 
-test('a deep link to a moment that didn’t hold up opens it under All', async ({ page }) => {
+test('a deep link to a moment that didn’t hold up opens it in Latest', async ({ page }) => {
   await mockFeed(page)
   const bad = fixture.items.find(x => x.verdict === 'bad')!
   await page.goto(`/analytics/moments?m=${bad.id}`)
   await expect(page.locator('.mk-det .mk-d')).toHaveAttribute('data-key', bad.id)
-  await expect(seg(page, 'All')).toHaveAttribute('aria-pressed', 'true')
+  await expect(seg(page, 'Latest')).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator(`.mk-list .mk-r[data-key="${bad.id}"]`)).toHaveAttribute('aria-current', 'true')
 })
 
 test('Saved keeps a moment across a reload', async ({ page }) => {

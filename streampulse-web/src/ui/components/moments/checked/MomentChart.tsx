@@ -140,7 +140,8 @@ export function MomentChart({ m, series, metric, lk, hold, animRef, motion, phon
 
   return <>
     <div className="mk-ch-box" ref={box} onMouseMove={onMove} onMouseLeave={() => pointAt(null)} onClick={onClick} onKeyDown={onKeyDown} />
-    <ChartRead m={m} series={series} vod={vod} lk={lk} at={hover} />
+    {/* keyed by the held minute: holding another one rolls the line in */}
+    <ChartRead key={lk ?? 'none'} m={m} series={series} vod={vod} lk={lk} at={hover} />
     {lk != null && geo.current
       ? <HoldCard m={m} series={series} vod={vod} lk={lk} geo={geo.current} motion={motion} pool={pool}
         onStep={(d) => { holdAt(lk + d); if ((d < 0 ? lk + d <= geo.current!.lo : lk + d >= geo.current!.hi)) focusChart() }}
