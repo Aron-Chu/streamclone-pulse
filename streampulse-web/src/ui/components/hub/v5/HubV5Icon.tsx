@@ -8,6 +8,7 @@ const PATHS = {
   ),
   left: <path d="m15 18-6-6 6-6" />,
   right: <path d="m9 18 6-6-6-6" />,
+  down: <path d="m6 9 6 6 6-6" />,
   x: (
     <>
       <path d="M18 6 6 18" />

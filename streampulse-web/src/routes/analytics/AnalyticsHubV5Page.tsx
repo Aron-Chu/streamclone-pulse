@@ -1,10 +1,11 @@
 /**
- * /analytics as the d3-v5 hub (PR 2 of 5: the U4 page layout and U5 lists).
- * Routed only when the build sets VITE_PUBLIC_HUB_V5. Ported from the
- * approved round-5 mockup (d3-v5 hub.html): the search hero, Busiest now, the
- * activity chart, Moments, Top emotes, Where chat is, Channels and one "How
- * this is measured" disclosure on the d3 grid (one column on phones, Moments
- * beside the page from 1100 px).
+ * /analytics as the d3-v5 hub. Routed only when the build sets
+ * VITE_PUBLIC_HUB_V5. Ported from the approved mockup (d3-v5 hub.html): the
+ * search hero with the emote conveyor behind it (R5-15 at Soft), Busiest now,
+ * the activity chart, the live feed (v3, a "Live now" peek under the hero on
+ * phones), Top emotes as the emote map (R5-13), Where chat is as the ranked
+ * rack (R5-22), Channels and one "How this is measured" disclosure on the d3
+ * grid (one column on phones, the feed beside the page from 1536 px).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -26,11 +27,12 @@ import { hubBucketMinutes, pointSpacingMinutes } from '../../ui/components/hub/h
 import { HubV5BarCard } from '../../ui/components/hub/v5/HubV5BarCard'
 import { HubV5Busiest } from '../../ui/components/hub/v5/HubV5Busiest'
 import { HubV5Channels } from '../../ui/components/hub/v5/HubV5Channels'
+import { HubV5EmoteMap } from '../../ui/components/hub/v5/HubV5EmoteMap'
 import { HubV5Hero } from '../../ui/components/hub/v5/HubV5Hero'
 import { HubV5Icon } from '../../ui/components/hub/v5/HubV5Icon'
-import { HubV5TopEmotes, HubV5WhereChatIs } from '../../ui/components/hub/v5/HubV5Lists'
-import { HubV5Moments } from '../../ui/components/hub/v5/HubV5Moments'
-import { whereChatIs } from '../../ui/components/hub/v5/hubV5Model'
+import { HubV5LiveFeed, HubV5LivePeek, useHubLiveFeed } from '../../ui/components/hub/v5/HubV5LiveFeed'
+import { HubV5Rack } from '../../ui/components/hub/v5/HubV5Rack'
+import { HUB_RACK_ROWS, hubCategoryArt, whereChatIs, type HubChannelSort } from '../../ui/components/hub/v5/hubV5Model'
 import { useHashScrollHold } from '../../ui/RouteScrollManager'
 import '../../ui/components/analytics/figma-analytics.css'
 import '../../ui/components/hub/d3/hub-d3-tokens.css'
@@ -146,6 +148,8 @@ export default function AnalyticsHubV5Page() {
   }, [data])
 
   const games = useMemo(() => whereChatIs(data.liveChannels), [data.liveChannels])
+  const gameArt = useMemo(() => hubCategoryArt(data.livePulseMoments), [data.livePulseMoments])
+  const feed = useHubLiveFeed(hub.data ?? null)
   const avatars = useMemo(() => {
     const map = new Map<string, string>()
     for (const c of data.liveChannels) if (c.profileImageUrl) map.set(c.login, c.profileImageUrl)
@@ -154,9 +158,9 @@ export default function AnalyticsHubV5Page() {
 
   const [game, setGameState] = useState<string | null>(null)
   const channelsRef = useRef<HTMLElement>(null)
-  // A game that left the top 10 (a new poll) drops its filter.
+  // A game that left the rack (a new poll) drops its filter.
   useEffect(() => {
-    if (game && !games.top.some((g) => g.name === game)) setGameState(null)
+    if (game && !games.all.slice(0, HUB_RACK_ROWS).some((g) => g.name === game)) setGameState(null)
   }, [game, games])
   const setGame = useCallback((next: string | null) => {
     setGameState(next)
@@ -168,6 +172,14 @@ export default function AnalyticsHubV5Page() {
     if (top > window.innerHeight - 160 || top < 0) {
       section.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' })
     }
+  }, [])
+
+  // The feed's "+N more in Channels": Channels sorted by chat vs own avg, brought into view.
+  const [sortRequest, setSortRequest] = useState<{ id: number; sort: HubChannelSort; dir: 1 | -1 } | null>(null)
+  const showUpInChannels = useCallback(() => {
+    setGameState(null)
+    setSortRequest({ id: Date.now(), sort: 'vs', dir: -1 })
+    channelsRef.current?.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' })
   }, [])
 
   const [measuredBody, setMeasuredBody] = useState<HTMLDivElement | null>(null)
@@ -217,7 +229,9 @@ export default function AnalyticsHubV5Page() {
         <HubBackendSourceBanner />
 
         <div className="hub-v5 hub-d3" data-hub-v5-page="">
-          <HubV5Hero live={data.liveChannels} poolSize={data.poolSize} />
+          <HubV5Hero live={data.liveChannels} poolSize={data.poolSize} points={data.activity.points} />
+
+          <HubV5LivePeek feed={feed} nowMs={nowMs} />
 
           <HubV5Busiest live={data.liveChannels} nowMs={nowMs} loading={loadingInitial} />
 
@@ -262,15 +276,15 @@ export default function AnalyticsHubV5Page() {
             />
           )}
 
-          <HubV5Moments moments={data.livePulseMoments} avatars={avatars} loading={loadingInitial} />
+          <HubV5LiveFeed feed={feed} nowMs={nowMs} loading={loadingInitial} onUpMore={showUpInChannels} />
 
-          <HubV5TopEmotes
-            topEmotes={data.topEmotes}
-            windowMinutes={data.emoteIntel.windowMinutes}
-            uniqueEmotes={data.emoteIntel.uniqueEmotes || undefined}
+          <HubV5EmoteMap
+            points={data.activity.points}
+            bucketMinutes={data.activity.bucketMinutes ?? chartActivity.bucketMinutes}
+            loading={loadingInitial}
           />
 
-          <HubV5WhereChatIs games={games} game={game} onGame={setGame} />
+          <HubV5Rack games={games} game={game} onGame={setGame} art={gameArt} avatars={avatars} loading={loadingInitial} />
 
           <HubV5Channels
             ref={channelsRef}
@@ -278,6 +292,7 @@ export default function AnalyticsHubV5Page() {
             poolSize={data.poolSize}
             game={game}
             onClearGame={() => setGameState(null)}
+            sortRequest={sortRequest}
           />
 
           <details id="measured" className="hv5-sec hv5-dis" ref={measuredRef}>
