@@ -12,6 +12,23 @@ const REASON_LABELS: Record<string, string> = {
   manual: 'Moment',
 }
 
+/**
+ * Backend-flagged stream-edge moments: "opening" or "closing" (hello and
+ * goodbye spam). The backend ranks them after every other moment, so a client
+ * that re-sorts by score must keep them last or they climb back to the top.
+ */
+export function isStreamEdgeMoment(moment: { streamEdge?: string | null }): boolean {
+  return moment.streamEdge === 'opening' || moment.streamEdge === 'closing'
+}
+
+/** Sort step that places stream-edge moments after all others (0 when both match). */
+export function compareStreamEdgeLast(
+  a: { streamEdge?: string | null },
+  b: { streamEdge?: string | null },
+): number {
+  return Number(isStreamEdgeMoment(a)) - Number(isStreamEdgeMoment(b))
+}
+
 const EMOTE_SPIKE_REASONS = new Set([
   'emote_spike',
   'seventv_spike',

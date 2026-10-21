@@ -201,3 +201,13 @@ describe('peaksToLiveHeatPoints', () => {
     assert.equal(extensionSupportsPeaks(null), false)
   })
 })
+
+describe('peaksToLiveHeatPoints stream edges', () => {
+  it('carries the backend stream-edge flag onto the point', () => {
+    const [point] = peaksToLiveHeatPoints(
+      [{ offsetSeconds: 60, score: 50, reasons: ['chat_spike'], dominantSignal: 'chat', streamEdge: 'opening' }],
+      '2026-10-01T12:00:00.000Z',
+    )
+    assert.equal(point?.streamEdge, 'opening')
+  })
+})

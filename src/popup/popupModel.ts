@@ -223,11 +223,15 @@ function latestChatPerMinute(rollups: ExtensionRollup[], currentOffsetSeconds: n
 }
 
 function biggestMoment(payload: PulsePayload | null, isLive: boolean): PopupMoment | null {
-  let best: { score: number; offsetSeconds: number; label: string } | null = null
+  let best: { score: number; edge: boolean; offsetSeconds: number; label: string } | null = null
   for (const peak of payload?.peaks ?? []) {
-    const score = peak.compositeScore ?? peak.score
-    if (!Number.isFinite(score) || (best && score <= best.score)) continue
-    best = { score, offsetSeconds: peak.seekOffsetSeconds ?? peak.offsetSeconds, label: peak.reasonLabel || 'Chat spike' }
+    // The reaction score is what the backend ranks by; hello / goodbye spam
+    // only wins when the stream has nothing else.
+    const score = peak.reactionScore ?? peak.compositeScore ?? peak.score
+    const edge = peak.streamEdge === 'opening' || peak.streamEdge === 'closing'
+    if (!Number.isFinite(score)) continue
+    if (best && (edge === best.edge ? score <= best.score : edge)) continue
+    best = { score, edge, offsetSeconds: peak.seekOffsetSeconds ?? peak.offsetSeconds, label: peak.reasonLabel || 'Chat spike' }
   }
   if (!best || !payload) return null
   return {

@@ -55,6 +55,7 @@ export interface ExtensionPeakLike {
   refinementStatus?: string
   refinementConfidence?: number
   reactionScoringVersion?: string
+  streamEdge?: string
 }
 
 export interface ExtensionPulseLike {
@@ -158,6 +159,7 @@ export function peaksToLiveHeatPoints(
       refinementStatus: peak.refinementStatus,
       refinementConfidence: peak.refinementConfidence,
       reactionScoringVersion: peak.reactionScoringVersion,
+      streamEdge: peak.streamEdge,
     }
   })
 }

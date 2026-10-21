@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { heatmapPointsToMomentCandidates, isEmoteSpikeReason } from '@streampulse/pulse-core'
+import { compareStreamEdgeLast, heatmapPointsToMomentCandidates, isEmoteSpikeReason } from '@streampulse/pulse-core'
 import type { AnalyticsTopEmote, PulseRecapMoment } from '../apiTypes.ts'
 import type { ReplayHeatmapPoint } from '../types/heatmap.ts'
 
@@ -148,6 +148,9 @@ export function enrichRecapMomentsFromHeatmap(
 
   return merged
     .sort((a, b) => {
+      // The backend ranks stream-edge moments (hello / goodbye spam) last.
+      const edge = compareStreamEdgeLast(a, b)
+      if (edge !== 0) return edge
       if (b.score !== a.score) return b.score - a.score
       return a.offsetSeconds - b.offsetSeconds
     })
