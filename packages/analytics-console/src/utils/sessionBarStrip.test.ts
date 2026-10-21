@@ -133,10 +133,16 @@ describe('buildSessionBarStrip', () => {
     expect(JSON.stringify(m)).not.toMatch(/usual/)
   })
 
-  it('a bar without a moment plays from its own start, without lead-in', () => {
+  it('a bar without a moment plays from its own start, without lead-in, and captions the VOD clock', () => {
     const m = buildSessionBarStrip({ ...base, span: { startSec: 2994, endSec: 3054, levelMinutes: 1 }, rollups: [minute(2994)] })
     expect(m.lockedMoment).toBeNull()
-    expect(m.vod).toMatchObject({ playAt: 2989, playVerb: 'Play from', leadCaption: null, subject: 'minute', open: { label: 'Open VOD at 0:49:49' } })
+    // 0:49:54 on the stream = 0:49:49 on the VOD: the caption says so (2026-10-21, "3:33:49" vs "Play from 3:33:43")
+    expect(m.vod).toMatchObject({
+      playAt: 2989, playVerb: 'Play from', leadCaption: { leadSeconds: 0, alignSeconds: -5 }, subject: 'minute',
+      open: { label: 'Open VOD at 0:49:49' },
+    })
+    const same = buildSessionBarStrip({ ...base, vodAlignSeconds: 0, span: { startSec: 2994, endSec: 3054, levelMinutes: 1 }, rollups: [minute(2994)] })
+    expect(same.vod).toMatchObject({ playAt: 2994, leadCaption: null })
   })
 
   it('a wider bar: range title, viewer peak, summed emotes are minimums, partial coverage', () => {

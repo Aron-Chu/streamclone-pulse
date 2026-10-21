@@ -45,9 +45,17 @@ import type { SessionChartModel } from './sessionSpChartModel.ts'
  */
 export const SESSION_BAR_OPTIONS: SpBarOptions = { minSlotPx: 1.05, tolerance: 0.85, rule: 'prod', maxRects: 1500 }
 
-/** Plot height (session-original baseH and Expand): 440, expanded 580 (phones 340 / 420). */
-export function sessionPlotHeight(expanded: boolean, phone: boolean): number {
-  return phone ? (expanded ? 420 : 340) : expanded ? 580 : 440
+/** Window px an expanded desktop plot leaves: the 56 px site nav and 16 px under it (the part's scroll-margin-top),
+ *  the 40 px toolbar, the 22 px time axis, 6 px and the 68 px overview with its footer, and 16 px under the part. */
+export const SESSION_EXPAND_CHROME_PX = 224
+
+/**
+ * Plot height (session-original baseH): 440 (phones 340, expanded 420). Expanded on a desktop it fills the
+ * window less SESSION_EXPAND_CHROME_PX, at least 580 (Aron's pick B2, 2026-10-21).
+ */
+export function sessionPlotHeight(expanded: boolean, phone: boolean, windowHeight = 0): number {
+  if (phone) return expanded ? 420 : 340
+  return expanded ? Math.max(580, Math.round(windowHeight - SESSION_EXPAND_CHROME_PX)) : 440
 }
 
 /** Gap above a lane unless the lane sets its own (session-original laneGap). */
@@ -67,6 +75,7 @@ const OVERLAY_RULE = 'rgb(148 163 184 / .18)'
  * - The plotted emotes: one trace each in prod's per-emote palette, in a shorter
  *   bottom lane with no caption (F24). It shows while `overlays` is non-empty
  *   (the caller passes them with All and Emotes only).
+ * Each lane's scale follows the view frame by frame as it zooms and pans (laneFit).
  * The series segment picks the lanes. Captions: a lane's peak is its busiest
  * measured minute, the viewers peak the header's when given (D5); the avg joins
  * only with Show on chart's Averages (`showAvg`; viewers use the header's avg).
@@ -221,6 +230,7 @@ export const SessionSpChart = forwardRef<SpChartHandle, SessionSpChartProps>(fun
       barOptions={SESSION_BAR_OPTIONS}
       lanes={lanes.length ? lanes : null}
       laneGap={SESSION_LANE_GAP}
+      laneFit
       minHatchPx={SESSION_MIN_HATCH_PX}
       selSlide={selSlide}
       plotHeight={plotHeight}

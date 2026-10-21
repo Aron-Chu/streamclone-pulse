@@ -305,6 +305,13 @@ div.spc-layer {
   fill: inherit;
 }
 
+/* laneFit: a bar's width follows the zoom between settles (--spc-bw, set by the chart per frame), about its centre */
+[data-lane-fit] > .spc-lane-bars > .spc-bar {
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: scaleX(var(--spc-bw, 1));
+}
+
 /* a lane's max tick mark in the value column (4 x 1 px boxes) */
 .spc-tkmark {
   fill: #3c3c42;
@@ -363,8 +370,26 @@ div.spc-layer {
   pointer-events: none;
 }
 
+/* a plotted emote's line wipes in from the left when it mounts (2026-10-21) */
+.spc .spc-line-in {
+  animation: spc-line-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes spc-line-in {
+  from {
+    clip-path: inset(0 100% 0 0);
+    opacity: 0.4;
+  }
+
+  /* inset() cannot interpolate to `none`: end on the full box */
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .spc-ring {
+  .spc-ring,
+  .spc .spc-line-in {
     animation: none;
   }
 }

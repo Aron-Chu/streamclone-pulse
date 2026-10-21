@@ -336,6 +336,14 @@ export interface SpChartProps {
   lanes?: readonly SpLane[] | null
   /** Px between lanes (default 12). */
   laneGap?: number
+  /**
+   * Each lane's value scale follows the view frame by frame as it zooms and
+   * pans: the tallest value in view plus 10 % (laneFitMax), eased on a spring
+   * (about 100 ms), instead of the whole data's max. Each lane clips to its
+   * box, and bar widths follow the zoom too (prod rule). Reduced motion snaps.
+   * Asked for on the session page, 2026-10-21.
+   */
+  laneFit?: boolean
   /** Hatches and lane breaks narrower than this many px are not drawn (lines join across). */
   minHatchPx?: number
   /**

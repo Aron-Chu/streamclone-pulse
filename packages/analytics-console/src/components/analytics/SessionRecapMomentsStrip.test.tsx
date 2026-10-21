@@ -111,22 +111,21 @@ describe('SessionRecapMomentsStrip d3-v2 rows', () => {
     expect(screen.getByRole('button', { name: 'Show 3 more moments' })).toBeTruthy()
   })
 
-  it('shows the game and its blurred box art; a failed image falls to the next candidate, then to none', () => {
+  it('shows the game and its box art cover; a failed image falls to the next candidate, then to none', () => {
     render(<SessionRecapMomentsStrip recap={recapWith(5)} streamStartedAt={START} games={GAMES} onSelectOffset={vi.fn()} />)
     expect(row(1).querySelector('.ssr-gm-n')!.textContent).toBe('Just Chatting')
     expect(row(3).querySelector('.ssr-gm-n')!.textContent).toBe('Grand Theft Auto V')
-    const art = () => row(1).querySelector('img.ssr-fr-art')?.getAttribute('src') ?? null
+    const art = () => row(1).querySelector('.ssr-gm img')?.getAttribute('src') ?? null
     expect(art()).toBe('https://static-cdn.jtvnw.net/ttv-boxart/509658-210x280.jpg')
-    expect(row(1).className).toContain('has-art has-bd')
+    expect(row(1).querySelector('.ssr-fr')).toBeNull()
     const seen = new Set<string>()
     for (let guard = 0; guard < 10 && art(); guard += 1) {
       seen.add(art()!)
-      fireEvent.error(row(1).querySelector('img.ssr-fr-art')!)
+      fireEvent.error(row(1).querySelector('.ssr-gm img')!)
     }
     expect(seen.size).toBeGreaterThan(1)
     expect(Array.from(seen).every((url) => url.startsWith('https://static-cdn.jtvnw.net/ttv-boxart/'))).toBe(true)
     expect(art()).toBeNull()
-    expect(row(1).className).not.toContain('has-bd')
     expect(row(1).querySelector('.ssr-gm-n')!.textContent).toBe('Just Chatting')
   })
 

@@ -873,9 +873,9 @@ export async function assertNoUnexpected(harness: PortalHarness): Promise<void> 
   expect(harness.unexpected, `unexpected external requests: ${harness.unexpected.join(', ')}`).toEqual([])
 }
 
-/** One token in "Emotes on chart" and one drawn line in the plot per plotted emote. */
+/** One icon in the "Emote overlays" bar and one drawn line in the plot per plotted emote. */
 export async function assertEmotePlotLines(page: Page, expected: number): Promise<void> {
-  await expect(page.locator('[data-session-emotes-on-chart] [data-session-emote-token]')).toHaveCount(expected, {
+  await expect(page.locator('[data-chart-overlay-selector] [data-chart-overlay-plotted]')).toHaveCount(expected, {
     timeout: 20_000,
   })
   const paths = page.locator('[data-bench-plot] path[data-lane-line]')
@@ -921,14 +921,29 @@ export const SIX_SESSION_EMOTE_KEYS = [
 ] as const
 
 /**
- * Plot these summary emote keys from "Emotes on chart" under the session chart
- * (Add emote opens the checklist; keys already plotted stay plotted), then close it.
+ * Plot these summary emote keys from the "Emote overlays" panel under the session chart
+ * (Manage opens the chip grid; keys already plotted stay plotted), then collapse it.
  */
 export async function plotSessionEmotes(page: Page, keys: readonly string[]): Promise<void> {
-  const line = page.locator('[data-session-emotes-on-chart]')
-  await line.scrollIntoViewIfNeeded()
-  await line.locator('[data-session-emote-add]').click()
-  for (const key of keys) await line.locator(`[data-session-emote="${key}"]`).check()
-  await page.keyboard.press('Escape')
-  await expect(line.locator('[data-session-emote-add]')).toHaveAttribute('aria-expanded', 'false')
+  await setSessionEmotesPlotted(page, keys, true)
+}
+
+/** Unplot these summary emote keys from the same panel, then collapse it. */
+export async function unplotSessionEmotes(page: Page, keys: readonly string[]): Promise<void> {
+  await setSessionEmotesPlotted(page, keys, false)
+}
+
+async function setSessionEmotesPlotted(page: Page, keys: readonly string[], plotted: boolean): Promise<void> {
+  const strip = page.locator('[data-chart-overlay-selector]')
+  const toggle = strip.locator('[data-chart-overlay-toggle]')
+  const pressed = String(plotted)
+  await strip.scrollIntoViewIfNeeded()
+  await toggle.click()
+  for (const key of keys) {
+    const chip = strip.locator(`[data-chart-overlay-chip="${key}"]`)
+    if ((await chip.getAttribute('aria-pressed')) !== pressed) await chip.click()
+    await expect(chip).toHaveAttribute('aria-pressed', pressed)
+  }
+  await toggle.click()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
 }
