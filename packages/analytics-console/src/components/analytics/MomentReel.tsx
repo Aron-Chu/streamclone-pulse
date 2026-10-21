@@ -6,7 +6,8 @@
  * Each picture is the moment's VOD preview frame (a Twitch storyboard tile, AC/utils/vodFrames.ts) from the tile
  * that holds the moment's minute, so it is near the moment, never the exact second. Moving the pointer across a
  * picture steps through the tiles either side (when the answer says how far apart they are). Without a frame:
- * the game's blurred box art, never a stand-in or a live frame.
+ * the game's box art, whole and sharp, as a cover in the card's corner, never a stand-in or a live frame. (Until
+ * 2026-10-21 it was blurred and zoomed across the card, which read as a broken preview.)
  *
  * Evidence follows F8: the backend reason label and reaction score, no client "× usual".
  * A card is the row's toggle (`aria-pressed`, `data-moment-row`): a click locks the moment on the chart, the
@@ -69,7 +70,7 @@ export function reelScrubStep(position: number): number {
 export interface MomentReelCardProps {
   model: SessionMomentRowModel
   size: 'hero' | 'small'
-  /** The game's box art: the backdrop under (or instead of) the frame. */
+  /** The game's box art: the card's cover while it has no frame. */
   artUrl: string | null
   locked: boolean
   /** A chart pin for this moment is under the pointer. */
@@ -195,18 +196,19 @@ export function MomentReelCard({
       onBlur={() => onHover?.(false)}
     >
       <span className="ssr-rc-pic" aria-hidden="true">
-        {artUrl ? (
-          <img
-            className="ssr-rc-art"
-            src={artUrl}
-            alt=""
-            decoding="async"
-            referrerPolicy="no-referrer"
-            onError={() => onArtError?.(artUrl)}
-          />
-        ) : null}
         {shown ? <span className="ssr-rc-fr" style={frameBackgroundStyle(shown)} data-moment-card-frame /> : null}
       </span>
+      {!shown && artUrl ? (
+        <img
+          className="ssr-rc-cover"
+          src={artUrl}
+          alt=""
+          aria-hidden="true"
+          decoding="async"
+          referrerPolicy="no-referrer"
+          onError={() => onArtError?.(artUrl)}
+        />
+      ) : null}
       {canScrub ? (
         <span className="ssr-rc-bar" aria-hidden="true">
           <i style={{ left: `${((scrub?.position ?? 0.5) * 100).toFixed(1)}%` }} />
@@ -290,5 +292,5 @@ export function reelNote(args: {
       : "Pictures are Twitch's VOD preview frames from near each moment, not the exact second."
   }
   if (reason === 'recording') return 'Twitch publishes preview frames when the VOD finishes.'
-  return hasArt ? "Pictures are the game's box art: no VOD preview frames for this stream." : null
+  return hasArt ? "No VOD preview frames for this stream: the covers are the game's box art." : null
 }

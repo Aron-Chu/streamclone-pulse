@@ -2,9 +2,10 @@
  * The picture box of a moment or a selected bar (mockup `.mpl-box`, d3-v2
  * moment-rows.js playerHTML / session-original.js previewHTML).
  *
- * A VOD storyboard tile cropped with CSS when one exists; otherwise the game's
- * box art, blurred, with the reason there is no frame. Never a stand-in or a
- * live frame. Over it: Play (the caller loads Twitch's player only on click),
+ * A VOD storyboard tile cropped with CSS when one exists; otherwise a plain dark
+ * box with the reason there is no frame (the game's box art sits beside it, in the
+ * strip's caption; until 2026-10-21 it was blurred behind the box too). Never a
+ * stand-in or a live frame. Over it: Play (the caller loads Twitch's player only on click),
  * or a line saying why there is no Play. Shared by the bar strip (U14) and the
  * moment rows (U11). Styles: WEB/src/ui/charts/sp-session-strip.css (`.mpl-*`).
  */
@@ -16,13 +17,6 @@ export type PreviewSubject = 'minute' | 'bar' | 'moment'
 export const PREVIEW_PLAYER_LOADS_COPY = "Twitch's player loads only when you press play."
 export const PREVIEW_RECORDING_COPY = 'Twitch publishes preview frames when the VOD finishes.'
 
-const BOX_ART = /^https:\/\/static-cdn\.jtvnw\.net\/[^"'()\\\s]+$/i
-
-/** Box art is a blurred backdrop only from Twitch's own CDN. */
-export function safePreviewArtUrl(url: string | null | undefined): string | null {
-  return typeof url === 'string' && BOX_ART.test(url) ? url : null
-}
-
 function PlayIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -32,16 +26,14 @@ function PlayIcon() {
 }
 
 export interface MomentPreviewTileProps {
-  /** The storyboard tile; null = no frame (art + reason). */
+  /** The storyboard tile; null = no frame (the reason instead). */
   frame: VodFrame | null
-  /** The frame request is still out: show the art, hold the reason back so it never flips. */
+  /** The frame request is still out: hold the reason back so it never flips. */
   loading?: boolean
   /** What the picture previews; picks the copy ("this minute", "this bar", "the moment"). */
   subject: PreviewSubject
   /** The subject's start on the VOD's clock, for "Preview frame from about N s before …". */
   subjectVodStart?: number | null
-  /** The game's box art (Twitch CDN only), blurred when there is no frame. */
-  artUrl?: string | null
   /** The VOD is still recording (Twitch has no storyboard yet). */
   recording?: boolean
   /** Play's label, e.g. "Play VOD from 0:50:39"; null = no Play, `message` says why. */
@@ -77,7 +69,7 @@ export function previewNoteLines(args: {
 }
 
 export const MomentPreviewTile = forwardRef<HTMLDivElement, MomentPreviewTileProps>(function MomentPreviewTile(
-  { frame, loading, subject, subjectVodStart, artUrl, recording, playLabel, message, onPlay, player },
+  { frame, loading, subject, subjectVodStart, recording, playLabel, message, onPlay, player },
   ref,
 ) {
   if (player) {
@@ -87,7 +79,6 @@ export const MomentPreviewTile = forwardRef<HTMLDivElement, MomentPreviewTilePro
       </div>
     )
   }
-  const art = frame ? null : safePreviewArtUrl(artUrl)
   const canPlay = Boolean(playLabel && onPlay)
   const lines = loading ? [] : previewNoteLines({ frame, subject, subjectVodStart, recording, canPlay })
   return (
@@ -96,13 +87,11 @@ export const MomentPreviewTile = forwardRef<HTMLDivElement, MomentPreviewTilePro
       className={`mpl-box ${frame ? 'fr' : 'nofr'}`}
       data-preview-tile={frame ? 'frame' : loading ? 'loading' : 'fallback'}
     >
-      <span className="mpl-pic" aria-hidden="true">
-        {frame ? (
+      {frame ? (
+        <span className="mpl-pic" aria-hidden="true">
           <span className="mpl-fr" style={frameBackgroundStyle(frame)} data-preview-frame />
-        ) : art ? (
-          <img className="mpl-bg" src={art} alt="" decoding="async" referrerPolicy="no-referrer" data-preview-art />
-        ) : null}
-      </span>
+        </span>
+      ) : null}
       {canPlay ? (
         <button type="button" className="mpl-go" onClick={onPlay} data-preview-play>
           <PlayIcon />

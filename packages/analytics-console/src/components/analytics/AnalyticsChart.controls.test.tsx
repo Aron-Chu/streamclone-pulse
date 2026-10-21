@@ -97,28 +97,27 @@ describe('AnalyticsChart session toolbar', () => {
     expect(screen.getByTestId('harness').getAttribute('data-mode')).toBe('overview')
   })
 
-  // d3-v2 session-original (2026-10-15, Aron): the plotted emotes are one line
-  // under the chart, each in its trace colour with a remove ×, plus Add emote.
-  it('plots emotes from the Emotes on chart line: Add emote checklist, coloured tokens, remove ×', () => {
+  // 2026-10-21 (Aron): the plotted emotes come from the old wide "Emote overlays"
+  // panel under the chart (PlotOnChartStrip), each chip in its trace colour.
+  it('plots emotes from the Emote overlays panel: wide chip grid, coloured lanes, Clear and Restore', () => {
     const { container } = render(<Harness />)
     const selected = () => screen.getByTestId('harness').getAttribute('data-selected-emotes')
-    const line = container.querySelector<HTMLElement>('[data-session-emotes-on-chart]')!
-    expect(line.textContent).toContain('Emotes on chart')
-    expect(line.querySelectorAll('[data-session-emote-token]')).toHaveLength(0)
+    const strip = container.querySelector<HTMLElement>('[data-chart-overlay-selector]')!
+    expect(strip.textContent).toContain('Emote overlays')
+    expect(strip.querySelectorAll('[data-chart-overlay-plotted]')).toHaveLength(0)
     expect(container.querySelector('[data-session-overlay-line], .spc-line-overlay')).toBeNull()
 
-    const add = within(line).getByRole('button', { name: 'Add emote' })
-    expect(add.getAttribute('aria-expanded')).toBe('false')
-    fireEvent.click(add)
-    expect(add.getAttribute('aria-expanded')).toBe('true')
-    const panel = within(line).getByRole('group', { name: 'Emotes on chart' })
-    expect(panel.hidden).toBe(false)
-    expect(panel.hasAttribute('data-chart-wheel-exempt')).toBe(true)
-    const box = (key: string) => panel.querySelector<HTMLInputElement>(`[data-session-emote="${key}"]`)!
-    expect([box('Kappa').checked, box('PogChamp').checked]).toEqual([false, false])
+    const manage = within(strip).getByRole('button', { name: /^Emote overlays/ })
+    expect(manage.getAttribute('aria-expanded')).toBe('false')
+    fireEvent.click(manage)
+    expect(manage.getAttribute('aria-expanded')).toBe('true')
+    expect(strip.hasAttribute('data-chart-wheel-exempt')).toBe(false)
+    expect(document.getElementById(manage.getAttribute('aria-controls')!)!.hasAttribute('data-chart-wheel-exempt')).toBe(true)
+    const chip = (key: string) => strip.querySelector<HTMLButtonElement>(`[data-chart-overlay-chip="${key}"]`)!
+    expect([chip('Kappa').getAttribute('aria-pressed'), chip('PogChamp').getAttribute('aria-pressed')]).toEqual(['false', 'false'])
 
-    fireEvent.click(box('Kappa'))
-    fireEvent.click(box('PogChamp'))
+    fireEvent.click(chip('Kappa'))
+    fireEvent.click(chip('PogChamp'))
     expect(selected()).toBe('Kappa,PogChamp')
     // prod's per-emote palette, in plot order; solid lines, never the core's dashed overlay
     // the emotes lane's lines (session-original lanes), the stroke on each path
@@ -128,24 +127,18 @@ describe('AnalyticsChart session toolbar', () => {
       ['PogChamp', '#fbbf24'],
     ])
     expect(container.querySelector('.spc-line-overlay')).toBeNull()
-    const tokens = [...line.querySelectorAll<HTMLElement>('[data-session-emote-token]')]
-    expect(tokens.map(t => [t.querySelector('.ssc-eo-c')?.textContent, t.style.getPropertyValue('--c')])).toEqual([
-      ['Kappa', '#fb7185'],
-      ['PogChamp', '#fbbf24'],
-    ])
-    expect(panel.querySelector('.ssc-eo-max')).toBeNull()
+    expect([...strip.querySelectorAll('[data-chart-overlay-plotted]')].map(e => e.getAttribute('data-chart-overlay-plotted'))).toEqual(['Kappa', 'PogChamp'])
+    expect(chip('PogChamp').style.boxShadow).toBe('inset 2px 0 0 #fbbf24')
 
-    // Escape closes the list and, from inside it, returns focus to Add emote.
-    box('Kappa').focus()
-    fireEvent.keyDown(box('Kappa'), { key: 'Escape' })
-    expect(panel.hidden).toBe(true)
-    expect(document.activeElement).toBe(add)
-
-    // × removes one; focus lands on Add emote and the colours follow the new order.
-    fireEvent.click(within(line).getByRole('button', { name: 'Remove Kappa from the chart' }))
+    // Unplotting one moves the other into the first colour.
+    fireEvent.click(chip('Kappa'))
     expect(selected()).toBe('PogChamp')
-    expect(document.activeElement).toBe(add)
-    expect(line.querySelector<HTMLElement>('[data-session-emote-token]')?.style.getPropertyValue('--c')).toBe('#fb7185')
+    expect(container.querySelector('path[data-lane-line]')?.getAttribute('stroke')).toBe('#fb7185')
+
+    fireEvent.click(within(strip).getByRole('button', { name: 'Clear emote lanes' }))
+    expect(selected()).toBe('')
+    fireEvent.click(within(strip).getByRole('button', { name: 'Restore default emote lanes' }))
+    expect(selected()).toBe('Kappa')
   })
 
   it('draws the plotted emotes with All and Emotes, not with Chat or Viewers', () => {
@@ -159,8 +152,8 @@ describe('AnalyticsChart session toolbar', () => {
     expect(drawn()).toBe(2)
     fireEvent.click(within(seg).getByRole('button', { name: /Viewers/ }))
     expect(drawn()).toBe(0)
-    // The line under the chart keeps listing them.
-    expect(container.querySelectorAll('[data-session-emote-token]')).toHaveLength(2)
+    // The Emote overlays bar under the chart keeps listing them.
+    expect(container.querySelectorAll('[data-chart-overlay-plotted]')).toHaveLength(2)
   })
 
   it('keeps every chart marker off on load: Show on chart lists Moments and Averages, count on the button', () => {

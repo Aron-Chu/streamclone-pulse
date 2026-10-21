@@ -156,22 +156,37 @@ test.describe('session chart part (d3) at 1440', () => {
     expect((await pageBox(page.locator('[data-session-expand]'))).h).toBe(32)
   })
 
-  test('Expand +140 on the 440 plot (plus the column fill); Moments on: pins rail 28 px with at most 5 pins; band text only; no peak caps', async ({ page }) => {
+  test('Expand fills the window and folds the side columns under the chart, Esc goes back; Moments on: pins rail 28 px with at most 5 pins; band text only; no peak caps', async ({ page }) => {
     await open(page)
     await page.locator(PART).scrollIntoViewIfNeeded()
     // session-original: 440 px, grown by the column fill (fillH, at most 200) so the moment rows end level
     const rest = (await pageBox(page.locator(PLOT))).h
     expect(rest).toBeGreaterThanOrEqual(440)
     expect(rest).toBeLessThanOrEqual(640)
+    await expect(page.locator('aside[data-analytics-stream-column]')).toHaveCount(1)
     const expand = page.locator('[data-session-expand]')
     await expect(expand).toHaveAttribute('aria-pressed', 'false')
     await expand.click()
     await settle(page)
     await expect(expand).toHaveAttribute('aria-pressed', 'true')
-    // the fill holds while expanded
-    expect((await pageBox(page.locator(PLOT))).h).toBe(rest + 140)
+    // B2 (2026-10-21): the plot is the window less 224 px (900 - 224) with no column fill, the side columns
+    // fold into disclosures under the chart, and the part sits 16 px under the 56 px site nav, all of it in view
+    expect((await pageBox(page.locator(PLOT))).h).toBe(676)
+    await expect(page.locator('details[data-analytics-stream-column]')).toHaveCount(1)
+    await expect(page.locator('details[data-analytics-right-column]')).toHaveCount(1)
+    const part = (await page.locator(PART).boundingBox())!
+    expect(Math.round(part.y)).toBe(72)
+    expect(part.y + part.height).toBeLessThanOrEqual(900)
+    await page.keyboard.press('Escape')
+    await settle(page)
+    await expect(expand).toHaveAttribute('aria-pressed', 'false')
+    expect((await pageBox(page.locator(PLOT))).h).toBe(rest)
+    await expect(page.locator('aside[data-analytics-stream-column]')).toHaveCount(1)
     await expand.click()
     await settle(page)
+    await expand.click()
+    await settle(page)
+    await expect(expand).toHaveAttribute('aria-pressed', 'false')
     expect((await pageBox(page.locator(PLOT))).h).toBe(rest)
 
     const pins = page.locator('[data-session-pins]')
@@ -201,7 +216,7 @@ test.describe('session chart part (d3) at 1440', () => {
     await expect(touch).toHaveAttribute('data-chart-viewport-end', /\d/)
   })
 
-  test('Show on chart starts with every marker off; Emotes on chart, under the chart, adds dashed emote lines', async ({ page }) => {
+  test('Show on chart starts with every marker off; Emote overlays, under the chart, adds emote lines', async ({ page }) => {
     await open(page)
     await page.locator(PART).scrollIntoViewIfNeeded()
     const toggle = page.locator(SHOW)
@@ -218,33 +233,33 @@ test.describe('session chart part (d3) at 1440', () => {
     await page.keyboard.press('Escape')
     await expect(toggle).toHaveAttribute('aria-expanded', 'false')
 
-    const line = page.locator('[data-session-emotes-on-chart]')
-    await expect(line).toBeVisible()
-    expect((await pageBox(line)).y).toBeGreaterThan((await pageBox(page.locator(PLOT))).y + (await pageBox(page.locator(PLOT))).h)
-    const tokens = line.locator('[data-session-emote-token]')
+    const strip = page.locator('[data-chart-overlay-selector]')
+    await expect(strip).toBeVisible()
+    expect((await pageBox(strip)).y).toBeGreaterThan((await pageBox(page.locator(PLOT))).y + (await pageBox(page.locator(PLOT))).h)
+    const tokens = strip.locator('[data-chart-overlay-plotted]')
     const drawn = page.locator(`${PLOT} path[data-lane-line]`)
     const before = await tokens.count()
     await expect(drawn).toHaveCount(before)
-    await line.locator('[data-session-emote-add]').click()
-    const box = line.locator('[data-session-emote]:not(:checked):not(:disabled)').first()
-    const key = await box.getAttribute('data-session-emote')
-    await box.check()
+    const manage = strip.locator('[data-chart-overlay-toggle]')
+    await manage.click()
+    await expect(manage).toHaveAttribute('aria-expanded', 'true')
+    const chip = strip.locator('[data-chart-overlay-chip][aria-pressed="false"]:not(:disabled)').first()
+    const key = await chip.getAttribute('data-chart-overlay-chip')
+    await chip.click()
     await settle(page)
     await expect(tokens).toHaveCount(before + 1)
     await expect(drawn).toHaveCount(before + 1)
     expect(await page.locator(`${PLOT} path[data-lane-line="${key}"]`).count()).toBeGreaterThan(0)
     // Emote lines draw only with the All or Emotes/min series.
-    await page.keyboard.press('Escape')
     await page.locator('[data-session-series-seg] button').filter({ hasText: 'Chat/min' }).click()
     await settle(page)
     await expect(drawn).toHaveCount(0)
     await page.locator('[data-session-series-seg] button').filter({ hasText: /^All$/ }).click()
     await settle(page)
     await expect(drawn).toHaveCount(before + 1)
-    await line.locator(`[data-session-emote-remove="${key}"]`).click()
+    await strip.locator(`[data-chart-overlay-chip="${key}"]`).click()
     await settle(page)
     await expect(tokens).toHaveCount(before)
-    await expect(line.locator('[data-session-emote-add]')).toBeFocused()
   })
 
   test('A2/A3: click-only detail; second click, Esc and the clear button close it; focus returns; 0 px shift', async ({ page }) => {

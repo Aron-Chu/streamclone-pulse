@@ -5,7 +5,7 @@
  * translate(tx,0) scale(sx,1) carries bars, lines, hatches, highlight,
  * selection, cursor and the live rule in data units; refs take the axis ticks,
  * the live dot, the hatch pattern and the viewport attributes. Y is fixed from
- * the full-data max. At settle one commit changes the bar level, the bar
+ * the full-data max (laneFit: a y-scale per lane follows the view, see fitApply). At settle one commit changes the bar level, the bar
  * window, tick text and settle layers. No peak caps or ticks are drawn (F3).
  *
  * Lanes mode (props.lanes, opt-in): stacked lanes (lanes.ts) replace the rates
@@ -37,6 +37,7 @@ import { panelY, SP_TICK_COLUMN, spLayout } from './layout.ts'
 import {
   laneBars,
   laneFigure,
+  laneFitMax,
   laneLayout,
   lanePaths,
   laneRawMax,
@@ -128,6 +129,10 @@ const r2 = (v: number) => Math.round(v * 100) / 100
 const o3 = (v: number) => Math.round(v * 1000) / 1000
 
 /** Lane backgrounds, top rules and baselines (plot px; they never move with the view). */
+/** A lane's avg hairline at a scale max, no higher than the lane's data top. */
+const laneAvgD = (b: SpLaneBox, a: number, max: number, PW: number) =>
+  'M0 ' + r1(Math.max(b.dataTop, b.y + b.height - (a / max) * (b.y + b.height - b.dataTop))) + 'H' + PW
+
 const laneStatics = (LB: readonly SpLaneBox[], lanes: readonly SpLane[], PW: number) =>
   LB.map((b, k) => {
     const L = lanes[k]!
@@ -159,6 +164,8 @@ interface Live {
   p: SpChartProps
   top: number
   H: number
+  /** Px per sample at the drawn view. */
+  sx: number
 }
 
 export const SpChart = forwardRef<SpChartHandle, SpChartProps>(function SpChart(p, ref) {
@@ -205,16 +212,26 @@ export const SpChart = forwardRef<SpChartHandle, SpChartProps>(function SpChart(
   const maxes = useMemo(() => (d ? [d.chat, d.emotes, d.overlay, d.viewers].map(v => seriesMax(v, d.coverage)) : [0, 0, 0, 0]), [d])
   const showRates = sChat || sEm || sOv
   const ratesMax = Math.max(sChat ? maxes[0]! : 0, sEm ? maxes[1]! : 0, sOv ? maxes[2]! : 0)
-  const laneRaw = useMemo(() => (d && lanesIn ? lanesIn.map(L => laneRawMax(d, L)) : null), [d, lanesIn])
+  const [view, setView] = useState(() => ({ range: { ...vp.getTarget() }, moving: false }))
+  // laneFit: the drawn lanes fit the last settled view, never a re-window mid-gesture; between settles a y-scale
+  // per lane follows the view (fitApply)
+  const fitRef = useRef(view.range)
+  if (!view.moving) fitRef.current = view.range
+  const fitA = p.laneFit ? fitRef.current.startIndex : 0, fitB = p.laneFit ? fitRef.current.endIndex : Infinity
+  const laneRawNow = useMemo(() => (d && lanesIn ? lanesIn.map(L => laneRawMax(d, L, fitA, fitB)) : null), [d, lanesIn, fitA, fitB])
+  const rawKey = laneRawNow?.join() ?? ''
+  // the same maxima keep the layout (and every lane path) as it is
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const laneRaw = useMemo(() => laneRawNow, [rawKey, lanesIn])
   const laneGap = p.laneGap ?? SP_LANE_GAP
   const layout = useMemo(
     () =>
       W > 0
         ? lanesIn
-          ? laneLayout({ width: W, height: H, tickColumn: tickCol, band: p.band ?? !hub, topPx, gap: laneGap, lanes: lanesIn, raw: laneRaw ?? [] })
+          ? laneLayout({ width: W, height: H, tickColumn: tickCol, band: p.band ?? !hub, topPx, gap: laneGap, lanes: lanesIn, raw: laneRaw ?? [], fit: p.laneFit })
           : spLayout({ width: W, height: H, tickColumn: tickCol, band: p.band ?? !hub, topPx, rates: showRates, viewers: sV, viewersCaption: !!caps?.viewers, ratesMax, viewersMax: maxes[3]! })
         : null,
-    [W, H, tickCol, p.band, hub, topPx, showRates, sV, !!caps?.viewers, ratesMax, maxes, lanesIn, laneRaw, laneGap],
+    [W, H, tickCol, p.band, hub, topPx, showRates, sV, !!caps?.viewers, ratesMax, maxes, lanesIn, laneRaw, laneGap, p.laneFit],
   )
   const LB = layout?.lanes ?? null
   const PW = layout?.plotWidth ?? 0
@@ -224,14 +241,15 @@ export const SpChart = forwardRef<SpChartHandle, SpChartProps>(function SpChart(
   const ready = !!(d && layout && levels.length && (levels[0]!.buckets.length || maxes[3]! > 0))
 
   // ---- settled view, level, bar window ----
-  const [view, setView] = useState(() => ({ range: { ...vp.getTarget() }, moving: false }))
   const range = view.range
   const span = range.endIndex + 1 - range.startIndex
   // mutable state that never renders
   const m = useRef({
-    view, step: 0, pw: 0, tick: [] as string[], attr: '', rewin: false, settling: false, reported: false,
+    view, step: 0, pw: 0, tick: [] as string[], attr: '', bw: '', rewin: false, settling: false, reported: false,
     px: null as number | null, down: null as { x: number; y: number; t: string } | null, seq: undefined as number | undefined,
     live: null as unknown as Live,
+    /** The visual range as of the last frame. */
+    vis: { ...view.range } as SpRange,
   }).current
   m.view = view
   const bo = p.barOptions
@@ -282,6 +300,25 @@ export const SpChart = forwardRef<SpChartHandle, SpChartProps>(function SpChart(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [level, win, R, sChat, sxS, selBar, selU?.[0], selU?.[1], lanesIn, barRule])
 
+  // laneFit: each lane clips to its box, and a group inside the clip takes the lane's y-scale (fitApply)
+  const fitOn = !!p.laneFit
+  const fitEls = useRef(new Map<SVGGElement, string>()).current
+  const barEls = useRef(new Set<SVGGElement>()).current
+  const tkEls = useRef(new Map<SVGTextElement, string>()).current
+  const avgRef = useRef<SVGPathElement>(null)
+  const regBars = (g: SVGGElement | null) => void (g && fitOn && barEls.add(g))
+  const regTk = (key: string) => (el: SVGTextElement | null) => void (el && fitOn && tkEls.set(el, key))
+  const fitLane = (key: string, node: ReactNode) =>
+    fitOn ? (
+      <g key={key} clipPath={'url(#' + uid + 'c' + key + ')'}>
+        <g ref={g => void (g && fitEls.set(g, key))} data-lane-fit="">
+          {node}
+        </g>
+      </g>
+    ) : (
+      node
+    )
+
   // lanes: bars per bar lane over the bar window (one commit per settle, none per frame)
   const laneRects = useMemo(() => {
     if (!lanesIn || !LB || !level || !win || !d) return null
@@ -290,12 +327,13 @@ export const SpChart = forwardRef<SpChartHandle, SpChartProps>(function SpChart(
       const v = L.kind === 'bars' ? laneSeries(d, L) : null
       if (!v) return null
       const rects = laneBars({ values: v, coverage: d.coverage, box: LB[k]!, lane: L, step: level.step, phase: ph, a: win.u0, b: win.u1, sx: sxS, rule: barRule, sel: selS })
-      return (
-        <g key={L.key} className="spc-lane-bars" data-lane={L.key} fill={L.color}>
+      return fitLane(
+        L.key,
+        <g key={L.key} ref={regBars} className="spc-lane-bars" data-lane={L.key} fill={L.color}>
           {rects.map(b => (
             <rect key={b.i} className="spc-bar" x={b.x} y={b.y} width={b.w} height={b.h} fillOpacity={b.op < 1 ? b.op : undefined} data-lane-partial={b.partial ? '' : undefined} />
           ))}
-        </g>
+        </g>,
       )
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -308,6 +346,7 @@ export const SpChart = forwardRef<SpChartHandle, SpChartProps>(function SpChart(
     const ph = slotPhase(d, alignMs, lineStep)
     return lanesIn.map((L, k) => {
       const box = LB[k]!, floor = box.y + box.height
+      // laneFit: values outside the settled view can pass the lane top (each lane clips)
       const y = (v: number) => panelY(box, v)
       const minU = L.bridge === false ? 0 : minLU
       if (L.kind === 'bars') {
@@ -359,12 +398,12 @@ export const SpChart = forwardRef<SpChartHandle, SpChartProps>(function SpChart(
         // a 4 x 1 px filled box, not a hairline stroke (Chromium can drop a 1 px stroke at a fractional page offset)
         if (!inside) marks += 'M' + PW + ' ' + t + 'h4v1h-4Z'
         labels.push(
-          <text key={'l' + b.key} className={inside ? 'spc-tk spc-tk-in' : 'spc-tk'} data-lane={b.key} x={inside ? PW - 6 : PW + 10} y={inside ? r1(t - 5) : r1(t + 4)} textAnchor={inside ? 'end' : undefined}>
+          <text key={'l' + b.key} ref={regTk(b.key)} className={inside ? 'spc-tk spc-tk-in' : 'spc-tk'} data-lane={b.key} x={inside ? PW - 6 : PW + 10} y={inside ? r1(t - 5) : r1(t + 4)} textAnchor={inside ? 'end' : undefined}>
             {laneTick(b.max)}
           </text>,
         )
         const a = L.caption ? L.caption.avg : null
-        if (a != null && Number.isFinite(a)) avg += 'M0 ' + r1(Math.max(b.dataTop, panelY(b, a))) + 'H' + PW
+        if (a != null && Number.isFinite(a)) avg += laneAvgD(b, a, b.max, PW)
       })
       return { grid, avg, labels, marks }
     }
@@ -443,6 +482,15 @@ export const SpChart = forwardRef<SpChartHandle, SpChartProps>(function SpChart(
       const vis = v.endIndex + 1 - v.startIndex
       laneW.forEach((w, el) => (el.isConnected ? el.setAttribute('stroke-width', String(r2(laneWidth(w, vis, L.n)))) : laneW.delete(el)))
     }
+    if (barEls.size && L.level && L.p.barOptions?.rule === 'prod') {
+      // laneFit: a bar's width follows the zoom about its centre (sp-chart.css), as the next settle draws it
+      const st = L.level.step, f = r4(barWidthPx(st * sx, 'prod') / sx / (barWidthPx(st * L.sx, 'prod') / L.sx))
+      const bw = f === 1 ? '' : String(f)
+      if (bw !== m.bw) {
+        m.bw = bw
+        barEls.forEach(g => (g.isConnected ? g.style.setProperty('--spc-bw', bw) : barEls.delete(g)))
+      }
+    }
     patRef.current?.setAttribute('patternTransform', 'scale(' + 1 / sx + ' 1) rotate(45)')
     const dot = dotRef.current, edge = L.p.liveEdge
     if (dot && edge) {
@@ -492,6 +540,101 @@ export const SpChart = forwardRef<SpChartHandle, SpChartProps>(function SpChart(
     rootRef.current?.toggleAttribute('data-gesture', on)
   }
 
+  // ---- laneFit: each lane's y-scale follows the view ----
+  // A lane's target is laneFitMax of its max over the samples in view (x, v and t in log units). The shown max
+  // springs to it, critically damped: ~120 ms when the bars grow, ~70 ms when they shrink, so a value past the
+  // lane top is clipped only briefly. The drawn lanes fit the settled view, and a y-scale about each lane's floor
+  // makes up the difference, so a settle swaps the drawn scale with no jump. Reduced motion snaps.
+  const fit = useRef({
+    x: new Map<string, number>(), v: new Map<string, number>(), t: new Map<string, number>(),
+    at: '', d: null as SpChartData | null, lanes: null as readonly SpLane[] | null | undefined, raf: 0, last: -1,
+  }).current
+  const fitTarget = (r: SpRange) => {
+    const L = m.live, dd = L.d, lanes = L.p.lanes
+    if (!dd || !lanes) return
+    const a = Math.floor(r.startIndex), b = Math.ceil(r.endIndex), at = a + '-' + b
+    if (at === fit.at && dd === fit.d && lanes === fit.lanes) return
+    Object.assign(fit, { at, d: dd, lanes })
+    fit.t.clear()
+    for (const ln of lanes) fit.t.set(ln.key, Math.log(laneFitMax(laneRawMax(dd, ln, a, b))))
+    // a lane that left forgets its spring
+    for (const key of [...fit.x.keys()]) if (!fit.t.has(key)) fit.x.delete(key)
+  }
+  /** Moves each shown max dt s toward its target (dt Infinity jumps); true while one still moves. */
+  const fitStep = (dt: number) => {
+    let on = false
+    fit.t.forEach((t, key) => {
+      const x = fit.x.get(key)
+      if (x == null || dt === Infinity) {
+        fit.x.set(key, t)
+        fit.v.set(key, 0)
+        return
+      }
+      const w = 2 / (t > x ? 0.07 : 0.12), e = w * dt, k = 1 / (1 + e + 0.48 * e * e + 0.235 * e * e * e)
+      const c = x - t, q = ((fit.v.get(key) ?? 0) + w * c) * dt
+      let nx = t + (c + q) * k, nv = ((fit.v.get(key) ?? 0) - w * q) * k
+      if (Math.abs(nx - t) < 1e-3 && Math.abs(nv) < 1e-2) {
+        nx = t
+        nv = 0
+      } else on = true
+      fit.x.set(key, nx)
+      fit.v.set(key, nv)
+    })
+    return on
+  }
+  /** Writes each lane's y-scale, max tick and avg hairline for its shown max. */
+  const fitApply = () => {
+    const L = m.live, LB = L.layout?.lanes, lanes = L.p.lanes
+    if (!LB || !lanes) return
+    const box = (key: string) => LB.find(b => b.key === key)
+    const shown = (b: SpLaneBox) => {
+      const x = fit.x.get(b.key)
+      return x == null ? b.max : Math.exp(x)
+    }
+    fitEls.forEach((key, g) => {
+      const b = box(key)
+      if (!g.isConnected || !b) return void (g.isConnected || fitEls.delete(g))
+      const k = r4(b.max / shown(b)), fl = b.y + b.height
+      if (k === 1) g.removeAttribute('transform')
+      else g.setAttribute('transform', 'matrix(1 0 0 ' + k + ' 0 ' + r2(fl * (1 - k)) + ')')
+    })
+    tkEls.forEach((key, el) => {
+      const b = box(key)
+      if (!el.isConnected || !b) return void (el.isConnected || tkEls.delete(el))
+      const s = laneTick(+shown(b).toPrecision(2))
+      if (el.textContent !== s) el.textContent = s
+    })
+    const av = avgRef.current
+    if (av) {
+      let s = ''
+      LB.forEach((b, k) => {
+        const c = lanes[k]?.caption, a = c ? c.avg : null
+        if (a != null && Number.isFinite(a)) s += laneAvgD(b, a, shown(b), L.layout!.plotWidth)
+      })
+      if (av.getAttribute('d') !== s) av.setAttribute('d', s)
+    }
+  }
+  const fitLoop = (now: number) => {
+    fit.raf = 0
+    const dt = fit.last < 0 ? 1 / 60 : Math.min(0.034, Math.max(0, (now - fit.last) / 1000))
+    fit.last = now
+    fitTarget(m.vis)
+    const on = fitStep(dt)
+    fitApply()
+    if (on || frame.moving) fit.raf = requestAnimationFrame(fitLoop)
+    else fit.last = -1
+  }
+  /** Starts the spring (or snaps under reduced motion or with no rAF). */
+  const fitKick = () => {
+    if (!m.live.p.laneFit || fit.raf) return
+    if (typeof requestAnimationFrame !== 'function' || prefersReducedMotion()) {
+      fitTarget(m.vis)
+      fitStep(Infinity)
+      return fitApply()
+    }
+    fit.raf = requestAnimationFrame(fitLoop)
+  }
+
   // ---- hit testing (no layout read except a cached plot rect) ----
   const hitAt = (i: number, source: SpHit['source']): SpHit | null => {
     const L = m.live, dd = L.d, lv = L.level
@@ -521,12 +664,19 @@ export const SpChart = forwardRef<SpChartHandle, SpChartProps>(function SpChart(
 
   useLayoutEffect(() => {
     const before = m.live?.level?.step
-    m.live = { d, n, layout, level, info, win, fine, ticks, minGap, originMs, p, top, H }
+    m.live = { d, n, layout, level, info, win, fine, ticks, minGap, originMs, p, top, H, sx: sxS }
     m.rewin = false
     m.tick = []
     m.attr = ''
     if (d) frame.setData(d.startMs, d.stepMs)
-    applyFrame(vp.getVisual())
+    applyFrame((m.vis = vp.getVisual()))
+    if (p.laneFit) {
+      // a commit (settle, re-window, data or lanes) keeps each shown max and rescales against the new drawing
+      fitTarget(m.vis)
+      const on = fitStep(0)
+      fitApply()
+      if (on) fitKick()
+    }
     cursor()
     if (m.settling) {
       m.settling = false
@@ -550,6 +700,8 @@ export const SpChart = forwardRef<SpChartHandle, SpChartProps>(function SpChart(
       vp.subscribeFrame(v => {
         if (!frame.moving) gesture(true)
         applyFrame(v, true)
+        m.vis = v
+        fitKick()
       }),
       vp.subscribeSettle(r => {
         const v = m.view
@@ -567,6 +719,8 @@ export const SpChart = forwardRef<SpChartHandle, SpChartProps>(function SpChart(
     return () => offs.forEach(off => off())
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vp, hover])
+
+  useEffect(() => () => void (fit.raf && typeof cancelAnimationFrame === 'function' && cancelAnimationFrame(fit.raf)), [fit])
 
   useEffect(() => {
     const inv = () => void (rectRef.current = null)
@@ -658,22 +812,25 @@ export const SpChart = forwardRef<SpChartHandle, SpChartProps>(function SpChart(
       const area = L.kind === 'area'
       if (L.kind === 'bars') {
         const w = L.trend!.width ?? SP_LANE_WIDTH
-        return (
+        return fitLane(
+          L.key,
           <g key={'t' + L.key} className="spc-lane-trend" data-lane={L.key}>
             {ps[0]!.line && (
               <path ref={regW(w)} d={ps[0]!.line} fill="none" stroke={ps[0]!.color} strokeOpacity={o3((L.trend!.opacity ?? 1) * (selOn ? 0.65 : 1))} strokeWidth={r2(laneWidth(w, span, n))} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
             )}
-          </g>
+          </g>,
         )
       }
       const w = L.width ?? (L.key === 'viewers' ? ([1.25, 1.25] as const) : ([1.5, 1.5] as const))
       const lop = L.lineOpacity != null ? o3(L.lineOpacity * (selOn && !area ? 0.65 : 1)) : selOn && !area ? 0.55 : undefined
-      return (
+      return fitLane(
+        L.key,
         <g key={'l' + L.key} className={'spc-lane-' + L.kind} data-lane={L.key}>
           {ps.map((e, j) => {
             const gid = uid + 'g' + k + '-' + j
             return (
-              <g key={e.key}>
+              // a plotted emote's line draws in from the left when it mounts (sp-chart.css .spc-line-in)
+              <g key={e.key} className={L.lines ? 'spc-line-in' : undefined}>
                 {e.fill && L.gradient && (
                   <defs>
                     <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
@@ -690,7 +847,7 @@ export const SpChart = forwardRef<SpChartHandle, SpChartProps>(function SpChart(
               </g>
             )
           })}
-        </g>
+        </g>,
       )
     })
 
@@ -744,6 +901,13 @@ export const SpChart = forwardRef<SpChartHandle, SpChartProps>(function SpChart(
                 <pattern ref={patRef} id={uid} width="6" height="6" patternUnits="userSpaceOnUse">
                   <path className="spc-hatch-line" d="M0 0V6" />
                 </pattern>
+                {/* laneFit: one clip per lane box, in sample units across x */}
+                {fitOn &&
+                  LB?.map(b => (
+                    <clipPath key={b.key} id={uid + 'c' + b.key}>
+                      <rect x={-n - 1} y={b.y} width={3 * n + 2} height={b.height} />
+                    </clipPath>
+                  ))}
                 <g ref={reg} data-spc-scaled="">
                   <path ref={hovRef} className="spc-hov" />
                   {hatch && <path className="spc-hatch" d={hatch} fill={'url(#' + uid + ')'} />}
@@ -765,7 +929,7 @@ export const SpChart = forwardRef<SpChartHandle, SpChartProps>(function SpChart(
                   {lay(PANELS, 'scaled')}
                 </g>
               </svg>
-              {valueAxis.avg && <path className="spc-avg" d={valueAxis.avg} />}
+              {valueAxis.avg && <path ref={avgRef} className="spc-avg" d={valueAxis.avg} />}
               {valueAxis.marks && <path className="spc-tkmark" d={valueAxis.marks} />}
               {valueAxis.labels}
               <rect ref={touchRef} className="spc-touch" width={PW} height={H} fill="transparent" data-chart-touch-action="pan-y" />

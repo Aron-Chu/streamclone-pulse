@@ -7,11 +7,8 @@
    SessionMomentPlayer, SessionMomentDetail) and SessionRecapMomentsStrip.tsx. The lock glow's keyframes live in
    packages/analytics-console/analytics-chart-motion.css with the console's other motion.
 
-   Left out until preview frames load (F6): the sharp frame window (.mslot) and the frame backdrop (.mfr-i). The backdrop
-   is the game's blurred box art (.has-art) or nothing. */
-
-@property --ssr-sh-t { syntax: '<number>'; inherits: true; initial-value: .58; }
-@property --ssr-sh-o { syntax: '<number>'; inherits: true; initial-value: .18; }
+   Left out until preview frames load (F6): the sharp frame window (.mslot) and the frame backdrop (.mfr-i). The rows
+   draw no backdrop; the game's small cover by its name is their only picture (the blurred box art went 2026-10-21). */
 
 .ssr {
   /* d3-v2 tokens (shared.css), with session-original's emote green; the ring reads the page's selection colour */
@@ -66,9 +63,6 @@
 /* ---------- the row (.mrow) ---------- */
 .ssr-row {
   --rowh: 84px;
-  --slot: calc(var(--rowh) * 220 / 124);
-  --bd: .5; --win: .78; --ssr-sh-t: .58; --ssr-sh-o: .18; --sh-w: .08;
-  --ramp: 72px; --rq: 64px; --t0: 0px; --tx: 60%; --e0: 60%; --e1: 60%;
   position: relative;
   isolation: isolate;
   overflow: hidden;
@@ -88,28 +82,9 @@
   font-weight: 400;
   line-height: 20px;
   cursor: pointer;
-  transition: border-color var(--ssr-dur-quick) var(--ssr-ease), --ssr-sh-t .24s var(--ssr-ease), --ssr-sh-o .24s var(--ssr-ease);
+  transition: border-color var(--ssr-dur-quick) var(--ssr-ease);
 }
-@media (hover: none) { .ssr-row { --win: .9; } }
-.ssr-row.lit, .ssr-row.has-bd:focus-visible { --bd: .84; --win: 1; --ssr-sh-t: .75; --ssr-sh-o: .04; }
 .ssr-list > .ssr-row:first-child { margin-top: 0; }
-.ssr-fr { position: absolute; inset: 0; z-index: -3; overflow: hidden; opacity: var(--bd); pointer-events: none; transition: opacity .24s var(--ssr-ease); }
-.ssr-fr-art { position: absolute; left: -40px; top: -40px; width: calc(100% + 80px); height: calc(100% + 80px); max-width: none; object-fit: cover; filter: blur(14px) saturate(1.9) brightness(1.15); }
-.ssr-fr::after { content: ""; position: absolute; inset: 0; background: rgb(160 160 160); mix-blend-mode: darken; }
-.ssr-row.has-art { --sh-w: .3; }
-.ssr-row.has-bd::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -2;
-  pointer-events: none;
-  background: linear-gradient(90deg,
-    rgb(9 9 11 / var(--sh-w)) 0, rgb(9 9 11 / var(--sh-w)) max(0px, calc(var(--t0) - 28px)),
-    rgb(9 9 11 / var(--ssr-sh-t)) var(--t0), rgb(9 9 11 / var(--ssr-sh-t)) var(--tx),
-    rgb(9 9 11 / var(--ssr-sh-o)) calc(var(--tx) + var(--ramp)), rgb(9 9 11 / var(--ssr-sh-o)) calc(var(--e0) - var(--ramp)),
-    rgb(9 9 11 / var(--ssr-sh-t)) var(--e0), rgb(9 9 11 / var(--ssr-sh-t)) var(--e1),
-    rgb(9 9 11 / var(--sh-w)) calc(var(--e1) + var(--rq)));
-}
 .ssr-tx { flex: 0 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
 .ssr-m1, .ssr-m2 { display: flex; align-items: center; gap: 10px; min-width: 0; white-space: nowrap; }
 .ssr-rk {
@@ -119,7 +94,6 @@
 }
 .ssr-off { font-size: var(--ssr-fs-title); line-height: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .ssr-clk { color: var(--ssr-text-3); font-size: var(--ssr-fs-label); }
-.ssr-row.has-bd .ssr-clk, .ssr-row.has-bd .ssr-nn { color: var(--ssr-text-2); }
 .ssr-why {
   display: inline-flex; align-items: center; gap: 6px; flex: none; height: 22px; padding: 0 8px; border-radius: 11px;
   background: rgb(255 255 255 / .06); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1);
@@ -165,18 +139,17 @@
 
 /* row mode: the open row and its detail (the row never moves) */
 .ssr-row[aria-expanded="true"] { border-color: var(--ssr-accent); border-bottom-color: var(--ssr-line-strong); border-radius: 8px 8px 0 0; box-shadow: 0 0 0 1px var(--ssr-accent); clip-path: inset(-2px -2px 0 -2px); }
-.ssr-row.has-bd[aria-expanded="true"] { --bd: .3; --win: 0; --ssr-sh-t: .58; }
 .ssr-row[aria-expanded="true"] .ssr-ev, .ssr-row[aria-expanded="true"] .ssr-m2 .ssr-toks, .ssr-row[aria-expanded="true"] .ssr-m2 .ssr-nn { display: none; }
 .ssr-row[aria-expanded="true"] .ssr-go { visibility: hidden; }
 .ssr-row[aria-expanded="true"] .ssr-rk { background: var(--ssr-accent); color: #09090b; box-shadow: none; }
 .ssr-row[aria-expanded="true"]:focus-visible { outline-offset: -3px; border-radius: 8px 8px 0 0; }
 
 /* F23: the moment the chart's selection holds: the open row's ring and rank without its detail; one glow when it locks
-   (.ssr-mpop, keyframes in analytics-chart-motion.css; inset, since the row clips its backdrop) */
+   (.ssr-mpop, keyframes in analytics-chart-motion.css; inset, since the row clips its overflow) */
 .ssr-row.lk { border-color: var(--ssr-accent); box-shadow: 0 0 0 1px var(--ssr-accent); }
 .ssr-row.lk .ssr-rk { background: var(--ssr-accent); color: #09090b; box-shadow: none; }
 .ssr-mpop { position: absolute; inset: 0; z-index: 1; border-radius: inherit; pointer-events: none; box-shadow: inset 0 0 22px rgb(94 234 212 / .32); opacity: 0; }
-@media (prefers-reduced-motion: reduce) { .ssr-row, .ssr-go, .ssr-fr { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .ssr-row, .ssr-go { transition: none; } }
 
 .ssr-det { overflow: hidden; background: #0c0c0e; border: 1px solid var(--ssr-accent); border-top: 0; border-radius: 0 0 8px 8px; box-shadow: 0 0 0 1px var(--ssr-accent); clip-path: inset(0 -2px -2px -2px); font-size: 14px; line-height: 20px; }
 .ssr-det.out { border-color: var(--ssr-line); box-shadow: none; }
@@ -216,8 +189,9 @@
 
 /* ---------- the highlight reel (recap-r1 C1, Aron 2026-10-16): the top three as pictures ----------
    Markup: packages/analytics-console/src/components/analytics/MomentReel.tsx. #1 large, #2 and #3 side by side;
-   each the moment's VOD preview frame (a storyboard tile, cropped by background-size/position) over the game's
-   blurred box art. A wide column puts #2 and #3 in a column beside #1. */
+   each the moment's VOD preview frame (a storyboard tile, cropped by background-size/position) or, without one, the
+   game's box art whole and sharp as a cover in the corner (no blur or zoom since 2026-10-21). A wide column puts #2
+   and #3 in a column beside #1. */
 .ssr-reel { display: grid; gap: 6px; }
 .ssr-reel-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .ssr-reel + .ssr-row { margin-top: 6px; }
@@ -242,15 +216,19 @@
   transition: border-color var(--ssr-dur-quick) var(--ssr-ease);
 }
 .ssr-rc-pic { position: absolute; inset: 0; z-index: -2; overflow: hidden; background: radial-gradient(120% 90% at 30% 20%, #1a1a1d 0, #0c0c0e 70%); pointer-events: none; }
-.ssr-rc-art { position: absolute; left: -32px; top: -32px; width: calc(100% + 64px); height: calc(100% + 64px); max-width: none; object-fit: cover; filter: blur(16px) saturate(1.6) brightness(.78); }
+.ssr-rc-cover {
+  position: absolute; right: 12px; top: 12px; z-index: -1; display: block;
+  width: auto; height: min(46%, 144px); max-width: none; aspect-ratio: 3 / 4; object-fit: cover;
+  border-radius: 4px; box-shadow: 0 0 0 1px rgb(255 255 255 / .14), 0 4px 14px rgb(0 0 0 / .5); pointer-events: none;
+}
 .ssr-rc-fr { position: absolute; inset: 0; background-color: #000; animation: ssr-rc-in .16s var(--ssr-ease); }
 @keyframes ssr-rc-in { from { opacity: 0; } to { opacity: 1; } }
-/* the shade under the words: dark at the top (rank) and the bottom (caption), open in between */
+/* the shade under the words over a frame: dark at the top (rank) and the bottom (caption), open in between */
 .ssr-rc::after {
   content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
   background: linear-gradient(180deg, rgb(9 9 11 / .5) 0, rgb(9 9 11 / 0) 30%, rgb(9 9 11 / 0) 38%, rgb(9 9 11 / .9) 100%);
 }
-.ssr-rc.has-art:not(.has-fr)::after { background: linear-gradient(180deg, rgb(9 9 11 / .35) 0, rgb(9 9 11 / .2) 40%, rgb(9 9 11 / .82) 100%); }
+.ssr-rc:not(.has-fr)::after { content: none; }
 .ssr-rc-top { position: absolute; left: 8px; top: 8px; display: flex; align-items: center; gap: 6px; pointer-events: none; }
 .ssr-rc .ssr-rk { background: rgb(9 9 11 / .72); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .16); }
 .ssr-rc-cap { position: absolute; left: 10px; right: 52px; bottom: 9px; display: flex; flex-direction: column; gap: 5px; min-width: 0; pointer-events: none; }
@@ -292,6 +270,7 @@
 .ssr-rc--sm .ssr-go svg { width: 11px; height: 11px; }
 .ssr-rc--sm .ssr-rc-at { top: 8px; right: 38px; }
 .ssr-rc--sm .ssr-rc-bar { left: 8px; right: 8px; top: 32px; }
+.ssr-rc--sm .ssr-rc-cover { top: 6px; right: 38px; height: min(40%, 96px); border-radius: 3px; }
 @media (prefers-reduced-motion: reduce) { .ssr-rc, .ssr-rc-at, .ssr-rc-bar { transition: none; } .ssr-rc-fr { animation: none; } }
 @container ssr-mom (min-width: 641px) {
   .ssr-reel { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
@@ -323,8 +302,8 @@
    outranks a single class; keep the mockup's shapes and the row's regular weight. */
 .ssr .ssr-row.ssr-row { border-radius: 8px; font-weight: 400; }
 .ssr .ssr-rc.ssr-rc { border-radius: 8px; font-weight: 400; }
-/* The page's selected-row glow (analytics-chart-motion.css .sc-moment-row-selected::after) would take the card's
-   shade; the card plays its own inset glow (.ssr-mpop) instead, as the row does. */
+/* The page's selected-row glow (analytics-chart-motion.css .sc-moment-row-selected::after) would take a framed
+   card's shade; the card plays its own inset glow (.ssr-mpop) instead, as the row does. */
 .ssr .ssr-rc.sc-moment-row-selected::after { inset: 0; box-shadow: none; opacity: 1; animation: none; }
 .ssr .ssr-row.ssr-row[aria-expanded="true"] { border-radius: 8px 8px 0 0; }
 .ssr .ssr-more.ssr-more { border-radius: 0; }
