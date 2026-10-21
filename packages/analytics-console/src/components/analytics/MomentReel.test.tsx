@@ -177,14 +177,17 @@ describe('SessionRecapMomentsStrip reel', () => {
     expect(screen.getByText(/one every 4 min 9 s/)).toBeTruthy()
   })
 
-  it('asks for no frame without a verified alignment, and shows the box art with its note', async () => {
+  it('asks for no frame without a verified alignment, and shows the box art as a sharp cover with its note', async () => {
     const get = vi.fn(async (_vod: string, offset: number) => tileFor(offset))
     configure(get)
     render(reel({ vodId: VOD }))
     expect(get).not.toHaveBeenCalled()
     expect(card(1).dataset.momentFrame).toBe('fallback')
-    expect(card(1).querySelector('img.ssr-rc-art')!.getAttribute('src')).toBe(GAMES[0]!.boxArtUrl)
-    expect(screen.getByText("Pictures are the game's box art: no VOD preview frames for this stream.")).toBeTruthy()
+    expect(card(1).querySelector('img.ssr-rc-cover')!.getAttribute('src')).toBe(GAMES[0]!.boxArtUrl)
+    // The cover sits outside the full-bleed picture layer: no blurred, zoomed backdrop (2026-10-21).
+    expect(card(1).querySelector('.ssr-rc-pic img')).toBeNull()
+    expect(card(1).classList.contains('has-art')).toBe(true)
+    expect(screen.getByText("No VOD preview frames for this stream: the covers are the game's box art.")).toBeTruthy()
   })
 
   it('a VOD with no storyboard asks once and falls back to the box art', async () => {

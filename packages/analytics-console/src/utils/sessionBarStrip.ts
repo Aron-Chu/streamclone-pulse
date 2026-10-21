@@ -222,7 +222,10 @@ export interface StripVod {
   playVerb: 'Play VOD from' | 'Play from'
   /** Why there is no Play, in place of the button. */
   message: string | null
-  /** The lead-in caption under the picture (a locked moment). */
+  /**
+   * The VOD-clock caption under the picture: a locked moment's lead-in, or (leadSeconds 0) a bar whose VOD
+   * clock differs from the stream clock in the title, so "Play from" and the title don't look like a mismatch.
+   */
   leadCaption: { leadSeconds: number; alignSeconds: number } | null
   open: { href: string; label: string } | null
   /** The VOD's start on the VOD clock of what the picture previews (for the frame's timing line). */
@@ -447,7 +450,8 @@ export function buildSessionBarStrip(args: {
   } else {
     const jump = vodAt(span.startSec)
     vod = {
-      vodId, playAt: jump ?? null, playVerb: 'Play from', leadCaption: null,
+      vodId, playAt: jump ?? null, playVerb: 'Play from',
+      leadCaption: jump != null && Math.round(align) !== 0 ? { leadSeconds: 0, alignSeconds: align } : null,
       open: jump == null ? { href: buildTwitchVodUrl(vodId), label: 'Open full VOD' }
         : { href: buildTwitchVodUrl(vodId, jump), label: `Open VOD at ${formatStripClock(jump)}` },
       message: jump == null ? "This minute isn't in the VOD yet." : null,

@@ -174,12 +174,11 @@ test.describe('session bar strip at 1440', () => {
     expect(pic.x + pic.width).toBeLessThanOrEqual(body.x)
     expect(Math.abs(pic.width / pic.height - 16 / 9)).toBeLessThan(0.05)
 
-    // no frame from the web client today: the fallback and its reason, never a stand-in frame
+    // no frame from the web client today: a dark box and its reason, never a stand-in frame or blurred art
     await expect(strip.locator('[data-preview-tile]')).toHaveAttribute('data-preview-tile', 'fallback')
     await expect(strip.locator('[data-preview-frame]')).toHaveCount(0)
+    await expect(strip.locator('.mpl-box img')).toHaveCount(0)
     await expect(strip.locator('.mpl-note')).toContainText('No preview frame for this minute.')
-    const art = strip.locator('img[data-preview-art]')
-    if (await art.count()) expect(await art.getAttribute('src')).toMatch(/^https:\/\/static-cdn\.jtvnw\.net\//)
 
     // the figures, and the bar's moment, locked
     await expect(strip.locator('.bkc-fl')).toHaveText(['viewers', 'chat/min', 'emotes/min'])
@@ -275,8 +274,10 @@ test.describe('session bar strip at 390', () => {
     const play = strip.getByRole('button', { name: `Play VOD from ${PLAY_AT}` })
     const pb = await box(play)
     expect(pb.width).toBeLessThanOrEqual(40)
-    // the note is read out, not shown
+    // the note and the VOD clock line are read out, not shown; the title gets the cover's room
     expect(await strip.locator('.mpl-note').evaluate((el) => el.getBoundingClientRect().width)).toBeLessThanOrEqual(1)
+    expect(await strip.locator('.mpl-cap').evaluate((el) => el.getBoundingClientRect().width)).toBeLessThanOrEqual(1)
+    await expect(strip.locator('.bkc-art')).toBeHidden()
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
     expect(overflow).toBeLessThanOrEqual(0)
 
@@ -287,6 +288,8 @@ test.describe('session bar strip at 390', () => {
     const player = await box(strip.locator('iframe.mpl-if'))
     expect(player.width).toBeGreaterThan(300)
     await expect(strip.locator('iframe.mpl-if')).toHaveAttribute('src', PLAYER_SRC)
+    // and the clock line shows under it
+    expect(await strip.locator('.mpl-cap').evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThan(200)
     await assertNoUnexpected(harness)
   })
 })

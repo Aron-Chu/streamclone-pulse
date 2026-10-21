@@ -213,13 +213,13 @@ function Providers({ model }: { model: SessionBarStripModel }) {
   const p = model.providers
   if (!p) return null
   return (
-    <div className="bkc-pv" title="The minutes data splits out 7TV only. Twitch, BTTV and FFZ are in other.">
+    <div className="bkc-pv" title="The minutes data splits out 7TV only, so Twitch, BTTV and FFZ are one number.">
       <p className="bkc-sl">
         <span>By provider, per min</span>
         <span className="r">
           <span>7TV <b>{stripInt(p.sevenTv)}</b></span>
           <span aria-hidden="true">·</span>
-          <span>other <b>{stripInt(p.other)}</b></span>
+          <span>Twitch, BTTV, FFZ <b>{stripInt(p.other)}</b></span>
         </span>
       </p>
     </div>
@@ -424,7 +424,6 @@ export function SelectedMomentCompactCard({
                 loading={frameState.loading}
                 subject={vod.subject}
                 subjectVodStart={vod.subjectVodStart}
-                artUrl={model.category?.artUrl ?? null}
                 recording={recording}
               />
             </div>

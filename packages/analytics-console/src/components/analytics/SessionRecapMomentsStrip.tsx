@@ -15,14 +15,13 @@
  * `reel` (strip mode only; the page passes SESSION_OWNER_SWITCHES.momentsReel):
  * the top three are the highlight reel (MomentReel.tsx, recap-r1 C1, Aron
  * 2026-10-16) instead of rows: #1 large, #2 and #3 side by side, each the
- * moment's VOD preview frame or the game's blurred box art. Rows #4 on open
+ * moment's VOD preview frame or, without one, the game's box art as a sharp cover. Rows #4 on open
  * under it, and the cards lock, release and play exactly as the rows do.
  */
 import {
   useCallback,
   useEffect,
   useId,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -70,7 +69,6 @@ import {
   SessionMomentDetail,
   SessionMomentPlayer,
   SessionMomentRow,
-  shadeSessionMomentRows,
   type SessionMomentRowModel,
 } from './MomentRow.tsx'
 
@@ -143,7 +141,7 @@ export function SessionRecapMomentsStrip({
   /** The locked row clicked again: release that moment's chart lock. */
   onReleaseOffset?: (offsetSeconds: number) => void
   lockMode?: MomentLockMode
-  /** The stream's game segments: each row's game and the blurred box-art backdrop. */
+  /** The stream's game segments: each row's game and its box art (the cover by the name, the reel's cover). */
   games?: MomentRowGameSegment[] | null
   vodId?: string | null
   vodAlignSeconds?: number | null
@@ -275,36 +273,7 @@ export function SessionRecapMomentsStrip({
   const listRows = reelOn ? rows.slice(REEL_SIZE) : rows
   const heroFrame = useVodFrame(validVodId, reelRows[0] ? vodAt(reelRows[0].offsetSeconds + 30) : null)
 
-  // ---- shading: each backdrop row's gradient follows its own text (moment-rows.js shadeRows) ----
-  const listRef = useRef<HTMLDivElement | null>(null)
   const hasMoments = moments.length > 0
-  // Shaded in the frame before its paint, not in React's commit, where reading the rows' boxes forced the
-  // page's layout into that task (mobile TBT, PR #122 bench).
-  useLayoutEffect(() => {
-    const list = listRef.current
-    if (!list) return
-    const frame = requestAnimationFrame(() => shadeSessionMomentRows(list))
-    return () => cancelAnimationFrame(frame)
-  })
-  useEffect(() => {
-    const list = listRef.current
-    if (!list) return
-    const observer = typeof ResizeObserver === 'function'
-      ? new ResizeObserver(() => shadeSessionMomentRows(list))
-      : null
-    observer?.observe(list)
-    let live = true
-    const fonts = typeof document !== 'undefined' ? document.fonts : undefined
-    // Only while a face is still loading: reading `fonts.ready` forces the page's style and layout
-    // into this commit (mobile TBT, PR #122 bench), and the frame's shading already ran.
-    if (fonts?.status === 'loading') fonts.ready.then(() => {
-      if (live) shadeSessionMomentRows(list)
-    }).catch(() => {})
-    return () => {
-      live = false
-      observer?.disconnect()
-    }
-  }, [hasMoments])
 
   if (!hasMoments) return null
 
@@ -424,7 +393,7 @@ export function SessionRecapMomentsStrip({
         </div>
       ) : null}
 
-      <div className="ssr-list" ref={listRef} data-moment-list>
+      <div className="ssr-list" data-moment-list>
         {reelRows.length > 0 ? (
           <div className="ssr-reel" data-moment-reel>
             {reelCard(reelRows[0]!, 'hero')}

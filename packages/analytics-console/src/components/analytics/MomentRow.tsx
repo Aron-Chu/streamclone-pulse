@@ -201,17 +201,13 @@ export function MomentListLegend() {
 // rank, reason and reaction score from the recap, rate and spark from the
 // measured minutes. No client "× usual" (F8).
 //
-// The row's backdrop is the moment's VOD frame in the mockup. Twitch preview
-// frames never load today (F6), so the honest fallback is the blurred box art
-// of the game being played, and no backdrop at all without it. Never a live
-// frame, never a stand-in. When U14's AN/MomentPreviewTile.tsx and
-// AC/utils/vodFrames.ts land, a frame slots into `.ssr-fr` (backdrop) and a
-// sharp `.ssr-slot` window (mockup `.mslot`), and into SessionMomentPlayer's
-// `.ssr-pl-pic`.
+// The row's backdrop is the moment's VOD frame in the mockup. The rows load
+// no frames (F6), so they draw no backdrop: the game's small cover by its name
+// is the only picture. The blurred, zoomed box art that stood in until
+// 2026-10-21 read as a broken preview (Aron: "why is everything blurred").
+// Never a live frame, never a stand-in.
 // ---------------------------------------------------------------------------
 
-/** Hover dwell before a row's picture comes up (mouse and pen only). */
-export const MOMENT_ROW_DWELL_MS = 350
 /** The row player starts this many seconds before the moment. */
 export const MOMENT_ROW_VOD_LEAD_SECONDS = 10
 
@@ -300,7 +296,7 @@ export function SessionMomentRow({
   onArtError,
 }: {
   model: SessionMomentRowModel
-  /** The game's box art for the backdrop; null draws no backdrop. */
+  /** The game's box art, the small cover by its name; null draws none. */
   artUrl: string | null
   lockMode: 'strip' | 'row'
   /** The moment the chart's selection holds: ring + filled rank. */
@@ -316,25 +312,12 @@ export function SessionMomentRow({
   onHover?: (hovering: boolean) => void
   onArtError?: (url: string) => void
 }) {
-  const [lit, setLit] = useState(false)
   const [popDone, setPopDone] = useState(0)
-  const dwell = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const hasBackdrop = Boolean(artUrl)
-
-  useEffect(() => () => clearTimeout(dwell.current), [])
-  useEffect(() => {
-    if (expanded) {
-      clearTimeout(dwell.current)
-      setLit(false)
-    }
-  }, [expanded])
 
   const showPop = pop > 0 && pop !== popDone && locked && !prefersReducedMotion()
   const className = [
     'ssr-row',
-    hasBackdrop ? 'has-art has-bd' : '',
     locked ? 'lk sc-moment-row-selected' : '',
-    lit ? 'lit' : '',
     ghost ? 'ghost' : '',
   ].filter(Boolean).join(' ')
 
@@ -353,32 +336,11 @@ export function SessionMomentRow({
         const target = event.target as Element | null
         onActivate(Boolean(target?.closest?.('[data-moment-row-play]')))
       }}
-      onPointerEnter={(event) => {
-        onHover?.(true)
-        clearTimeout(dwell.current)
-        if (event.pointerType === 'touch' || !hasBackdrop || expanded) return
-        dwell.current = setTimeout(() => setLit(true), MOMENT_ROW_DWELL_MS)
-      }}
-      onPointerLeave={() => {
-        clearTimeout(dwell.current)
-        setLit(false)
-        onHover?.(false)
-      }}
+      onPointerEnter={() => onHover?.(true)}
+      onPointerLeave={() => onHover?.(false)}
       onFocus={() => onHover?.(true)}
       onBlur={() => onHover?.(false)}
     >
-      <span className="ssr-fr" aria-hidden="true">
-        {artUrl ? (
-          <img
-            className="ssr-fr-art"
-            src={artUrl}
-            alt=""
-            decoding="async"
-            referrerPolicy="no-referrer"
-            onError={() => onArtError?.(artUrl)}
-          />
-        ) : null}
-      </span>
       <span className="ssr-tx">
         <span className="ssr-m1">
           <span className="ssr-vh">Moment</span>{' '}
@@ -457,37 +419,6 @@ export function SessionMomentRow({
       ) : null}
     </button>
   )
-}
-
-/**
- * Each row's shade is darkest under its words and rate, open between them and
- * toward the picture (moment-rows.js shadeRows). Sets the gradient stops as
- * custom properties on every backdrop row of `list`.
- */
-export function shadeSessionMomentRows(list: HTMLElement | null): void {
-  if (!list) return
-  list.querySelectorAll<HTMLElement>('.ssr-row.has-bd').forEach((row) => {
-    const b = row.getBoundingClientRect()
-    if (!b.width) return
-    const textEl = row.querySelector('.ssr-tx')
-    const evEl = row.querySelector('.ssr-ev')
-    if (!textEl || !evEl) return
-    const t = textEl.getBoundingClientRect()
-    const e = evEl.getBoundingClientRect()
-    const px = (v: number) => `${Math.round(v - b.left)}px`
-    const ev = e.width > 4
-    const end = b.width + 400
-    const tx = Math.round(t.right + 6 - b.left)
-    const e0 = ev ? Math.round(e.left - 6 - b.left) : end
-    const gap = e0 - tx
-    row.style.setProperty('--t0', t.left - b.left > 40 ? px(t.left - 6) : '0px')
-    row.style.setProperty('--tx', `${tx}px`)
-    row.style.setProperty('--e0', `${gap < 56 ? tx : e0}px`)
-    row.style.setProperty('--ramp', `${gap < 56 ? 0 : Math.min(72, Math.floor(gap / 2))}px`)
-    row.style.setProperty('--e1', ev ? px(e.right + 4) : `${end}px`)
-    // No frame window (`.ssr-slot`) until preview frames load (F6).
-    row.style.setProperty('--rq', '64px')
-  })
 }
 
 function vodClockNote(alignSeconds: number): string {
