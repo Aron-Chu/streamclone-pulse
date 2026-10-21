@@ -3,7 +3,8 @@
  * the default FigmaGlobalActivityPanel, so the page can swap one for the
  * other; the chips under the card are shared with it.
  */
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import {
   bucketMinutes,
   formatActivityWindowLabel,
@@ -22,7 +23,8 @@ import {
   deriveHubChartActivityModel,
   selectHubChartActivityInputs,
 } from "../../../lib/hubChartActivityModel";
-import { HubActivityChart } from "../hub/HubActivityChartV5";
+import { HubActivityChart, type HubActivityBars } from "../hub/HubActivityChartV5";
+import { measuredFacts } from "../hub/v5/hubV5Model";
 import { ActivityViewerSanityBanner } from "./ActivityViewerSanityBanner";
 import {
   hubLiveChannelCount,
@@ -39,6 +41,42 @@ import {
   type FigmaGlobalActivityPanelProps,
 } from "./FigmaGlobalActivityPanel";
 import "../hub/hub.css";
+
+export type HubActivityPanelV5Props = FigmaGlobalActivityPanelProps & {
+  /**
+   * The d3-v5 page's "How this is measured" body (U4). When set, the
+   * measurement notes render there instead of in the details under the card,
+   * and the chart's (i) calls `onOpenMeasured`.
+   */
+  measuredTarget?: HTMLElement | null;
+  onOpenMeasured?: () => void;
+};
+
+/** The mockup's measured notes (d3-v5 hub.js measuredBody); the bars line follows the chart zoom. */
+function HubMeasuredNotes({ hub, bars }: { hub: FigmaGlobalActivityPanelProps["hub"]; bars: HubActivityBars | null }) {
+  const facts = measuredFacts(hub);
+  const step = bars && bars.bucketMinutes > 0 ? Math.max(1, Math.round(bars.levelMinutes / bars.bucketMinutes)) : 1;
+  const bucket = bars?.bucketMinutes ?? hub.activity.bucketMinutes ?? bucketMinutes(resolveHubActivityChartWindowMinutes(hub.activity));
+  return (
+    <ul className="hv5-measured" data-testid="hub-v5-measured-notes">
+      <li>We follow <b>{facts.poolSize.toLocaleString("en-US")}</b> live Twitch channels, not all of Twitch.</li>
+      <li>
+        Chat and emotes are counted in each channel&apos;s chat. 7TV counts are complete; Twitch, BTTV and FFZ counts are minimums in{" "}
+        <b>{facts.lowerBoundBuckets} of {facts.buckets}</b> intervals.
+      </li>
+      {facts.roster != null ? (
+        <li>The viewer line is a sample: each interval adds up viewers on a fixed list of <b>{facts.roster}</b> channels, counting only those live.</li>
+      ) : null}
+      <li data-hub-measured-bars="">
+        Each interval is <b>{bucket} minutes</b>.{" "}
+        {step === 1 ? "At this zoom each bar is one interval." : <>At this zoom each bar averages <b>{step}</b> of them ({step * bucket} min).</>}{" "}
+        Gaps weren&apos;t measured; they&apos;re never zero.
+      </li>
+      <li>&quot;× usual&quot; compares a channel&apos;s latest minutes with its own earlier minutes in the same stream, so channels of any size compare fairly.</li>
+      <li>Collector details: <a href="/status">Service status →</a></li>
+    </ul>
+  );
+}
 
 /**
  * The hub's activity block (U6): the d3 activity card (header, readout, chart,
@@ -60,8 +98,11 @@ export function HubActivityPanelV5({
   activityRefreshing = false,
   accentBucketT = null,
   annotationLane,
-}: FigmaGlobalActivityPanelProps) {
+  measuredTarget,
+  onOpenMeasured,
+}: HubActivityPanelV5Props) {
   const labels = useCommandCenterLabels();
+  const [bars, setBars] = useState<HubActivityBars | null>(null);
   /** The chart's card: the wheel zooms anywhere over it (owner rule). */
   const hubChartCardRef = useRef<HTMLDivElement>(null);
   const detailsRef = useRef<HTMLDetailsElement>(null);
@@ -145,6 +186,31 @@ export function HubActivityPanelV5({
         ? `Showing the measured ${servedLabel} historical projection for tracked channels; sparse buckets remain visible as gaps.`
         : `Showing the served ${servedLabel} tracked-network measurement. Historical projection provenance is not confirmed.`;
 
+  // The honesty lines both layouts keep: the served window, any sanity flag and the collector chips.
+  const statuses: ReactNode = (
+    <>
+      <ActivityViewerSanityBanner
+        hub={hub}
+        chartPeakViewers={peakViewers}
+        chartWindowMinutes={chartInputs.windowMinutes}
+      />
+      <div className="figma-global-activity__measurement-statuses">
+        <ActivityHonestyChip hub={hub} />
+        <CollectorHealthChip hub={hub} />
+      </div>
+      <p className="figma-global-activity__served-window" data-testid="hub-activity-served-window" role="status">
+        {unavailable ? 'Measurement window unavailable.' : fallbackPayloadRepaired
+          ? `${requestedWindowLabel} requested · ${availableWindowLabel} available; older fallback rows were discarded because historical projection is unavailable.`
+          : blockingActivityContractIssue
+          ? `Activity payload withheld: ${blockingActivityContractIssue}.`
+          : livePoolFallback
+          ? `${requestedWindowLabel} requested · ${availableWindowLabel} available; historical projection is unavailable.`
+          : `Showing served ${servedLabel}.`}
+      </p>
+      {honestyDetail ? <p>{honestyDetail}</p> : null}
+    </>
+  );
+
   return (
     <section
       className="figma-global-activity"
@@ -185,9 +251,19 @@ export function HubActivityPanelV5({
           emoteImages={emoteImages}
           bucketMinutes={hub.activity.bucketMinutes}
           providerCoverage={hub.activity.providerCoverage}
-          onOpenMeasured={unavailable ? undefined : openMeasured}
+          onOpenMeasured={unavailable ? undefined : measuredTarget !== undefined ? onOpenMeasured : openMeasured}
+          onBarsChange={setBars}
         />
       </div>
+      {measuredTarget !== undefined ? (
+        measuredTarget ? createPortal(
+          <>
+            {!unavailable ? <HubMeasuredNotes hub={hub} bars={bars} /> : null}
+            {statuses}
+          </>,
+          measuredTarget,
+        ) : null
+      ) : (
       <details ref={detailsRef} className="figma-global-activity__measurement-details">
         <summary>Measurement and coverage details</summary>
         <p className="figma-global-activity__lede muted">{measurementSummary}</p>
@@ -204,27 +280,10 @@ export function HubActivityPanelV5({
             </div>
           </dl>
         ) : null}
-        <ActivityViewerSanityBanner
-          hub={hub}
-          chartPeakViewers={peakViewers}
-          chartWindowMinutes={chartInputs.windowMinutes}
-        />
-        <div className="figma-global-activity__measurement-statuses">
-          <ActivityHonestyChip hub={hub} />
-          <CollectorHealthChip hub={hub} />
-        </div>
-        <p className="figma-global-activity__served-window" data-testid="hub-activity-served-window" role="status">
-          {unavailable ? 'Measurement window unavailable.' : fallbackPayloadRepaired
-            ? `${requestedWindowLabel} requested · ${availableWindowLabel} available; older fallback rows were discarded because historical projection is unavailable.`
-            : blockingActivityContractIssue
-            ? `Activity payload withheld: ${blockingActivityContractIssue}.`
-            : livePoolFallback
-            ? `${requestedWindowLabel} requested · ${availableWindowLabel} available; historical projection is unavailable.`
-            : `Showing served ${servedLabel}.`}
-        </p>
-        {honestyDetail ? <p>{honestyDetail}</p> : null}
+        {statuses}
         {!unavailable ? <p>{chartNote}</p> : null}
       </details>
+      )}
     </section>
   );
 }
