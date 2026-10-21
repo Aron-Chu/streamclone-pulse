@@ -23,6 +23,7 @@ const expected = [
   ['feedback/index.html', 'Send Feedback — StreamPulse', 'index,follow', 'https://streampulse.stream/feedback'],
   ['discord/index.html', 'Discord — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/discord'],
   ['changelog/index.html', 'Release Notes — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/changelog'],
+  ['extension/index.html', 'Browser Extension — StreamPulse', 'index,follow', 'https://streampulse.stream/extension'],
   ['404.html', 'Page not found — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/'],
 ]
 
@@ -100,7 +101,7 @@ for (const relativePath of ['robots.txt', 'sitemap.xml', '_headers', '_redirects
   if (!existsSync(join(dist, relativePath))) failures.push(`${relativePath}: missing`)
 }
 
-for (const route of ['analytics', 'docs', 'status', 'privacy', 'terms', 'refunds', 'supporter', 'support', 'feedback', 'discord', 'changelog']) {
+for (const route of ['analytics', 'docs', 'status', 'privacy', 'terms', 'refunds', 'supporter', 'support', 'feedback', 'discord', 'changelog', 'extension']) {
   const aliasPath = join(dist, `${route}.html`)
   if (!existsSync(aliasPath)) failures.push(`${route}.html: missing clean-route Vite fallback alias`)
 }

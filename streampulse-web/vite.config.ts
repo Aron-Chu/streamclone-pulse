@@ -3,12 +3,12 @@ import react from '@vitejs/plugin-react'
 import { sentryVitePlugin } from '@sentry/vite-plugin'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { extensionUiShimsPlugin } from './src/plugins/extensionUiShims'
+import { extensionDemoAliases, extensionDemoDefines } from './extension-demo.config'
 import { rewriteReactRouterLocalhostPlugin } from './src/plugins/rewriteReactRouterLocalhost'
 import { assertBuildOnlyBracesRuntimeBoundary } from '../scripts/ci-portal-npm-audit-disposition.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-/** Extension checkout root (sibling of streampulse-web/) — landing showcase reuses overlay UI. */
+/** Extension checkout root (sibling of streampulse-web/): the landing and the /extension demo reuse its panel. */
 const pulseRoot = resolve(__dirname, '..')
 const pulseRootId = pulseRoot.replace(/\\/g, '/').toLowerCase()
 
@@ -93,7 +93,6 @@ const viteSentryDsn = process.env.VITE_SENTRY_DSN?.trim()
 
 const plugins = [
   react(),
-  extensionUiShimsPlugin(pulseRoot, __dirname),
   rewriteReactRouterLocalhostPlugin(),
   devConnectSrcPlugin(),
   publicEntryBoundaryPlugin(),
@@ -118,6 +117,8 @@ if (viteSentryDsn && sentryAuth && sentryRelease) {
 
 export default defineConfig({
   plugins,
+  // Build-time constants the extension's panel code reads (the /extension demo).
+  define: extensionDemoDefines(pulseRoot),
   server: {
     proxy: {
       '/v1': {
@@ -143,6 +144,8 @@ export default defineConfig({
       '@': resolve(__dirname, 'src'),
       // Landing ExtensionShowcase bundles real overlay components from this repo's src/ui.
       '@pulse-ext/ui': resolve(pulseRoot, 'src/ui'),
+      // The /extension demo mounts the whole panel (src/demo/DemoPanel.tsx).
+      ...extensionDemoAliases(pulseRoot),
       // In-repo RPR-6 packages (src for Vite HMR; typecheck consumes dist via package exports)
       '@streampulse/analytics-console/analytics-chart-motion.css': resolve(
         pulseRoot,

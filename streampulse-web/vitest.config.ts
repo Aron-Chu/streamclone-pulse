@@ -2,6 +2,7 @@ import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { extensionDemoAliases, extensionDemoDefines } from './extension-demo.config'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const pulseRoot = resolve(__dirname, '..')
@@ -12,6 +13,7 @@ const pulseCoreRoot = resolve(pulseRoot, 'packages/pulse-core')
 
 export default defineConfig({
   plugins: [react()],
+  define: extensionDemoDefines(pulseRoot),
   esbuild: {
     jsx: 'automatic',
   },
@@ -20,6 +22,7 @@ export default defineConfig({
     alias: [
       { find: '@', replacement: resolve(__dirname, 'src') },
       { find: '@pulse-ext/ui', replacement: resolve(pulseRoot, 'src/ui') },
+      ...Object.entries(extensionDemoAliases(pulseRoot)).map(([find, replacement]) => ({ find, replacement })),
       {
         find: '@streampulse/analytics-console/analytics-chart-motion.css',
         replacement: resolve(analyticsConsoleRoot, 'analytics-chart-motion.css'),

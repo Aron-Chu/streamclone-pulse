@@ -1,0 +1,2122 @@
+{
+ "mode": "vod",
+ "vodId": "900000000000000001",
+ "streamId": "demo-stream-0001",
+ "login": "pulse_demo_channel",
+ "channelLogin": "pulse_demo_channel",
+ "channelDisplayName": "Pulse Demo Channel",
+ "title": "Sample stream: chatting, a co-op run and a raid at the end",
+ "startedAt": "2026-10-11T18:00:00.000Z",
+ "durationSeconds": 10800,
+ "coverageStatus": "ready",
+ "coverageMessage": "Replay Pulse ready",
+ "resolutionState": "vod_validated",
+ "retryable": false,
+ "timeline": {
+  "bucketSeconds": 60,
+  "points": [
+   {
+    "offsetSeconds": 60,
+    "chatPerMin": 86,
+    "emotesPerMin": 29,
+    "viewers": 2425,
+    "score": 5
+   },
+   {
+    "offsetSeconds": 120,
+    "chatPerMin": 104,
+    "emotesPerMin": 38,
+    "viewers": 2502,
+    "score": 6
+   },
+   {
+    "offsetSeconds": 180,
+    "chatPerMin": 96,
+    "emotesPerMin": 33,
+    "viewers": 2497,
+    "score": 6
+   },
+   {
+    "offsetSeconds": 240,
+    "chatPerMin": 92,
+    "emotesPerMin": 35,
+    "viewers": 2605,
+    "score": 6
+   },
+   {
+    "offsetSeconds": 300,
+    "chatPerMin": 110,
+    "emotesPerMin": 40,
+    "viewers": 2681,
+    "score": 7
+   },
+   {
+    "offsetSeconds": 360,
+    "chatPerMin": 113,
+    "emotesPerMin": 41,
+    "viewers": 2873,
+    "score": 7
+   },
+   {
+    "offsetSeconds": 420,
+    "chatPerMin": 123,
+    "emotesPerMin": 44,
+    "viewers": 3006,
+    "score": 7
+   },
+   {
+    "offsetSeconds": 480,
+    "chatPerMin": 154,
+    "emotesPerMin": 51,
+    "viewers": 3224,
+    "score": 9
+   },
+   {
+    "offsetSeconds": 540,
+    "chatPerMin": 252,
+    "emotesPerMin": 160,
+    "viewers": 3421,
+    "topEmotes": [
+     {
+      "id": "twitch:30259",
+      "providerEmoteId": "30259",
+      "name": "HeyGuys",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/30259/default/dark/1.0",
+      "count": 74,
+      "provider": "twitch"
+     },
+     {
+      "id": "twitch:64138",
+      "providerEmoteId": "64138",
+      "name": "SeemsGood",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/64138/default/dark/1.0",
+      "count": 34,
+      "provider": "twitch"
+     },
+     {
+      "id": "twitch:25",
+      "providerEmoteId": "25",
+      "name": "Kappa",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/1.0",
+      "count": 18,
+      "provider": "twitch"
+     }
+    ],
+    "score": 15
+   },
+   {
+    "offsetSeconds": 600,
+    "chatPerMin": 172,
+    "emotesPerMin": 90,
+    "viewers": 3511,
+    "topEmotes": [
+     {
+      "id": "twitch:30259",
+      "providerEmoteId": "30259",
+      "name": "HeyGuys",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/30259/default/dark/1.0",
+      "count": 41,
+      "provider": "twitch"
+     },
+     {
+      "id": "twitch:64138",
+      "providerEmoteId": "64138",
+      "name": "SeemsGood",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/64138/default/dark/1.0",
+      "count": 19,
+      "provider": "twitch"
+     },
+     {
+      "id": "twitch:25",
+      "providerEmoteId": "25",
+      "name": "Kappa",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/1.0",
+      "count": 10,
+      "provider": "twitch"
+     }
+    ],
+    "score": 10
+   },
+   {
+    "offsetSeconds": 660,
+    "chatPerMin": 220,
+    "emotesPerMin": 102,
+    "viewers": 3806,
+    "score": 13
+   },
+   {
+    "offsetSeconds": 720,
+    "chatPerMin": 162,
+    "emotesPerMin": 62,
+    "viewers": 3941,
+    "score": 10
+   },
+   {
+    "offsetSeconds": 780,
+    "chatPerMin": 208,
+    "emotesPerMin": 83,
+    "viewers": 4371,
+    "score": 13
+   },
+   {
+    "offsetSeconds": 840,
+    "chatPerMin": 201,
+    "emotesPerMin": 65,
+    "viewers": 4574,
+    "score": 12
+   },
+   {
+    "offsetSeconds": 900,
+    "chatPerMin": 166,
+    "emotesPerMin": 56,
+    "viewers": 4780,
+    "score": 10
+   },
+   {
+    "offsetSeconds": 960,
+    "chatPerMin": 206,
+    "emotesPerMin": 67,
+    "viewers": 5180,
+    "score": 13
+   },
+   {
+    "offsetSeconds": 1020,
+    "chatPerMin": 208,
+    "emotesPerMin": 75,
+    "viewers": 5385,
+    "score": 13
+   },
+   {
+    "offsetSeconds": 1080,
+    "chatPerMin": 220,
+    "emotesPerMin": 76,
+    "viewers": 5501,
+    "score": 13
+   },
+   {
+    "offsetSeconds": 1140,
+    "chatPerMin": 245,
+    "emotesPerMin": 85,
+    "viewers": 6088,
+    "score": 15
+   },
+   {
+    "offsetSeconds": 1200,
+    "chatPerMin": 280,
+    "emotesPerMin": 93,
+    "viewers": 6124,
+    "score": 17
+   },
+   {
+    "offsetSeconds": 1260,
+    "chatPerMin": 270,
+    "emotesPerMin": 88,
+    "viewers": 6309,
+    "score": 16
+   },
+   {
+    "offsetSeconds": 1320,
+    "chatPerMin": 244,
+    "emotesPerMin": 87,
+    "viewers": 6707,
+    "score": 15
+   },
+   {
+    "offsetSeconds": 1380,
+    "chatPerMin": 290,
+    "emotesPerMin": 90,
+    "viewers": 6931,
+    "score": 18
+   },
+   {
+    "offsetSeconds": 1440,
+    "chatPerMin": 312,
+    "emotesPerMin": 95,
+    "viewers": 7141,
+    "score": 19
+   },
+   {
+    "offsetSeconds": 1500,
+    "chatPerMin": 283,
+    "emotesPerMin": 99,
+    "viewers": 7678,
+    "score": 17
+   },
+   {
+    "offsetSeconds": 1560,
+    "chatPerMin": 308,
+    "emotesPerMin": 95,
+    "viewers": 7754,
+    "score": 19
+   },
+   {
+    "offsetSeconds": 1620,
+    "chatPerMin": 281,
+    "emotesPerMin": 101,
+    "viewers": 8104,
+    "score": 17
+   },
+   {
+    "offsetSeconds": 1680,
+    "chatPerMin": 410,
+    "emotesPerMin": 139,
+    "viewers": 8435,
+    "score": 25
+   },
+   {
+    "offsetSeconds": 1740,
+    "chatPerMin": 353,
+    "emotesPerMin": 125,
+    "viewers": 8419,
+    "score": 21
+   },
+   {
+    "offsetSeconds": 1800,
+    "chatPerMin": 427,
+    "emotesPerMin": 149,
+    "viewers": 8919,
+    "score": 26
+   },
+   {
+    "offsetSeconds": 1860,
+    "chatPerMin": 971,
+    "emotesPerMin": 619,
+    "viewers": 8815,
+    "topEmotes": [
+     {
+      "id": "twitch:425618",
+      "providerEmoteId": "425618",
+      "name": "LUL",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/425618/default/dark/1.0",
+      "count": 285,
+      "provider": "twitch"
+     },
+     {
+      "id": "twitch:354",
+      "providerEmoteId": "354",
+      "name": "4Head",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/354/default/dark/1.0",
+      "count": 130,
+      "provider": "twitch"
+     },
+     {
+      "id": "twitch:25",
+      "providerEmoteId": "25",
+      "name": "Kappa",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/1.0",
+      "count": 68,
+      "provider": "twitch"
+     }
+    ],
+    "score": 59
+   },
+   {
+    "offsetSeconds": 1920,
+    "chatPerMin": 779,
+    "emotesPerMin": 438,
+    "viewers": 9480,
+    "topEmotes": [
+     {
+      "id": "twitch:425618",
+      "providerEmoteId": "425618",
+      "name": "LUL",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/425618/default/dark/1.0",
+      "count": 201,
+      "provider": "twitch"
+     },
+     {
+      "id": "twitch:354",
+      "providerEmoteId": "354",
+      "name": "4Head",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/354/default/dark/1.0",
+      "count": 92,
+      "provider": "twitch"
+     },
+     {
+      "id": "twitch:25",
+      "providerEmoteId": "25",
+      "name": "Kappa",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/1.0",
+      "count": 48,
+      "provider": "twitch"
+     }
+    ],
+    "score": 47
+   },
+   {
+    "offsetSeconds": 1980,
+    "chatPerMin": 591,
+    "emotesPerMin": 282,
+    "viewers": 9664,
+    "score": 36
+   },
+   {
+    "offsetSeconds": 2040,
+    "chatPerMin": 592,
+    "emotesPerMin": 250,
+    "viewers": 9633,
+    "score": 36
+   },
+   {
+    "offsetSeconds": 2100,
+    "chatPerMin": 552,
+    "emotesPerMin": 214,
+    "viewers": 9941,
+    "score": 33
+   },
+   {
+    "offsetSeconds": 2160,
+    "chatPerMin": 503,
+    "emotesPerMin": 194,
+    "viewers": 9828,
+    "score": 31
+   },
+   {
+    "offsetSeconds": 2220,
+    "chatPerMin": 422,
+    "emotesPerMin": 138,
+    "viewers": 9985,
+    "score": 26
+   },
+   {
+    "offsetSeconds": 2280,
+    "chatPerMin": 415,
+    "emotesPerMin": 139,
+    "viewers": 10102,
+    "score": 25
+   },
+   {
+    "offsetSeconds": 2340,
+    "chatPerMin": 407,
+    "emotesPerMin": 131,
+    "viewers": 10134,
+    "score": 25
+   },
+   {
+    "offsetSeconds": 2400,
+    "chatPerMin": 499,
+    "emotesPerMin": 152,
+    "viewers": 10281,
+    "score": 30
+   },
+   {
+    "offsetSeconds": 2460,
+    "chatPerMin": 490,
+    "emotesPerMin": 156,
+    "viewers": 10006,
+    "score": 30
+   },
+   {
+    "offsetSeconds": 2520,
+    "chatPerMin": 424,
+    "emotesPerMin": 158,
+    "viewers": 10238,
+    "score": 26
+   },
+   {
+    "offsetSeconds": 2580,
+    "chatPerMin": 401,
+    "emotesPerMin": 135,
+    "viewers": 9961,
+    "score": 24
+   },
+   {
+    "offsetSeconds": 2640,
+    "chatPerMin": 383,
+    "emotesPerMin": 140,
+    "viewers": 10060,
+    "score": 23
+   },
+   {
+    "offsetSeconds": 2700,
+    "chatPerMin": 479,
+    "emotesPerMin": 148,
+    "viewers": 9802,
+    "score": 29
+   },
+   {
+    "offsetSeconds": 2760,
+    "chatPerMin": 417,
+    "emotesPerMin": 132,
+    "viewers": 9942,
+    "score": 25
+   },
+   {
+    "offsetSeconds": 2820,
+    "chatPerMin": 343,
+    "emotesPerMin": 107,
+    "viewers": 9919,
+    "score": 21
+   },
+   {
+    "offsetSeconds": 2880,
+    "chatPerMin": 410,
+    "emotesPerMin": 147,
+    "viewers": 10182,
+    "score": 25
+   },
+   {
+    "offsetSeconds": 2940,
+    "chatPerMin": 436,
+    "emotesPerMin": 159,
+    "viewers": 10280,
+    "score": 26
+   },
+   {
+    "offsetSeconds": 3000,
+    "chatPerMin": 423,
+    "emotesPerMin": 154,
+    "viewers": 10073,
+    "score": 26
+   },
+   {
+    "offsetSeconds": 3060,
+    "chatPerMin": 370,
+    "emotesPerMin": 123,
+    "viewers": 9743,
+    "score": 22
+   },
+   {
+    "offsetSeconds": 3120,
+    "chatPerMin": 1489,
+    "emotesPerMin": 949,
+    "viewers": 9846,
+    "topEmotes": [
+     {
+      "id": "twitch:305954156",
+      "providerEmoteId": "305954156",
+      "name": "PogChamp",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/305954156/default/dark/1.0",
+      "count": 437,
+      "provider": "twitch"
+     },
+     {
+      "id": "twitch:41",
+      "providerEmoteId": "41",
+      "name": "Kreygasm",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/41/default/dark/1.0",
+      "count": 199,
+      "provider": "twitch"
+     },
+     {
+      "id": "twitch:64138",
+      "providerEmoteId": "64138",
+      "name": "SeemsGood",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/64138/default/dark/1.0",
+      "count": 104,
+      "provider": "twitch"
+     }
+    ],
+    "score": 90
+   },
+   {
+    "offsetSeconds": 3180,
+    "chatPerMin": 1020,
+    "emotesPerMin": 522,
+    "viewers": 10037,
+    "topEmotes": [
+     {
+      "id": "twitch:305954156",
+      "providerEmoteId": "305954156",
+      "name": "PogChamp",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/305954156/default/dark/1.0",
+      "count": 240,
+      "provider": "twitch"
+     },
+     {
+      "id": "twitch:41",
+      "providerEmoteId": "41",
+      "name": "Kreygasm",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/41/default/dark/1.0",
+      "count": 110,
+      "provider": "twitch"
+     },
+     {
+      "id": "twitch:64138",
+      "providerEmoteId": "64138",
+      "name": "SeemsGood",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/64138/default/dark/1.0",
+      "count": 57,
+      "provider": "twitch"
+     }
+    ],
+    "score": 62
+   },
+   {
+    "offsetSeconds": 3240,
+    "chatPerMin": 917,
+    "emotesPerMin": 422,
+    "viewers": 10236,
+    "score": 56
+   },
+   {
+    "offsetSeconds": 3300,
+    "chatPerMin": 618,
+    "emotesPerMin": 271,
+    "viewers": 9934,
+    "score": 38
+   },
+   {
+    "offsetSeconds": 3360,
+    "chatPerMin": 487,
+    "emotesPerMin": 168,
+    "viewers": 10148,
+    "score": 30
+   },
+   {
+    "offsetSeconds": 3420,
+    "chatPerMin": 509,
+    "emotesPerMin": 187,
+    "viewers": 10047,
+    "score": 31
+   },
+   {
+    "offsetSeconds": 3480,
+    "chatPerMin": 368,
+    "emotesPerMin": 116,
+    "viewers": 9885,
+    "score": 22
+   },
+   {
+    "offsetSeconds": 3540,
+    "chatPerMin": 480,
+    "emotesPerMin": 165,
+    "viewers": 9917,
+    "score": 29
+   },
+   {
+    "offsetSeconds": 3600,
+    "chatPerMin": 491,
+    "emotesPerMin": 184,
+    "viewers": 10029,
+    "score": 30
+   },
+   {
+    "offsetSeconds": 3660,
+    "chatPerMin": 386,
+    "emotesPerMin": 144,
+    "viewers": 9909,
+    "score": 23
+   },
+   {
+    "offsetSeconds": 3720,
+    "chatPerMin": 398,
+    "emotesPerMin": 134,
+    "viewers": 10261,
+    "score": 24
+   },
+   {
+    "offsetSeconds": 3780,
+    "chatPerMin": 363,
+    "emotesPerMin": 135,
+    "viewers": 10209,
+    "score": 22
+   },
+   {
+    "offsetSeconds": 3840,
+    "chatPerMin": 373,
+    "emotesPerMin": 131,
+    "viewers": 9970,
+    "score": 23
+   },
+   {
+    "offsetSeconds": 3900,
+    "chatPerMin": 439,
+    "emotesPerMin": 141,
+    "viewers": 9871,
+    "score": 27
+   },
+   {
+    "offsetSeconds": 3960,
+    "chatPerMin": 500,
+    "emotesPerMin": 161,
+    "viewers": 10229,
+    "score": 30
+   },
+   {
+    "offsetSeconds": 4020,
+    "chatPerMin": 370,
+    "emotesPerMin": 123,
+    "viewers": 9717,
+    "score": 22
+   },
+   {
+    "offsetSeconds": 4080,
+    "chatPerMin": 395,
+    "emotesPerMin": 120,
+    "viewers": 9886,
+    "score": 24
+   },
+   {
+    "offsetSeconds": 4140,
+    "chatPerMin": 483,
+    "emotesPerMin": 175,
+    "viewers": 9762,
+    "score": 29
+   },
+   {
+    "offsetSeconds": 4200,
+    "chatPerMin": 419,
+    "emotesPerMin": 147,
+    "viewers": 10048,
+    "score": 25
+   },
+   {
+    "offsetSeconds": 4260,
+    "chatPerMin": 447,
+    "emotesPerMin": 165,
+    "viewers": 9804,
+    "score": 27
+   },
+   {
+    "offsetSeconds": 4320,
+    "chatPerMin": 489,
+    "emotesPerMin": 152,
+    "viewers": 9893,
+    "score": 30
+   },
+   {
+    "offsetSeconds": 4380,
+    "chatPerMin": 454,
+    "emotesPerMin": 169,
+    "viewers": 10297,
+    "score": 28
+   },
+   {
+    "offsetSeconds": 4440,
+    "chatPerMin": 859,
+    "emotesPerMin": 599,
+    "viewers": 10149,
+    "topEmotes": [
+     {
+      "id": "twitch:28087",
+      "providerEmoteId": "28087",
+      "name": "WutFace",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/28087/default/dark/1.0",
+      "count": 276,
+      "provider": "twitch"
+     },
+     {
+      "id": "twitch:33",
+      "providerEmoteId": "33",
+      "name": "DansGame",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/33/default/dark/1.0",
+      "count": 126,
+      "provider": "twitch"
+     },
+     {
+      "id": "twitch:425618",
+      "providerEmoteId": "425618",
+      "name": "LUL",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/425618/default/dark/1.0",
+      "count": 66,
+      "provider": "twitch"
+     }
+    ],
+    "score": 52
+   },
+   {
+    "offsetSeconds": 4500,
+    "chatPerMin": 819,
+    "emotesPerMin": 413,
+    "viewers": 10238,
+    "topEmotes": [
+     {
+      "id": "twitch:28087",
+      "providerEmoteId": "28087",
+      "name": "WutFace",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/28087/default/dark/1.0",
+      "count": 190,
+      "provider": "twitch"
+     },
+     {
+      "id": "twitch:33",
+      "providerEmoteId": "33",
+      "name": "DansGame",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/33/default/dark/1.0",
+      "count": 87,
+      "provider": "twitch"
+     },
+     {
+      "id": "twitch:425618",
+      "providerEmoteId": "425618",
+      "name": "LUL",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/425618/default/dark/1.0",
+      "count": 45,
+      "provider": "twitch"
+     }
+    ],
+    "score": 50
+   },
+   {
+    "offsetSeconds": 4560,
+    "chatPerMin": 467,
+    "emotesPerMin": 193,
+    "viewers": 9759,
+    "score": 28
+   },
+   {
+    "offsetSeconds": 4620,
+    "chatPerMin": 423,
+    "emotesPerMin": 160,
+    "viewers": 9752,
+    "score": 26
+   },
+   {
+    "offsetSeconds": 4680,
+    "chatPerMin": 532,
+    "emotesPerMin": 180,
+    "viewers": 9802,
+    "score": 32
+   },
+   {
+    "offsetSeconds": 4740,
+    "chatPerMin": 407,
+    "emotesPerMin": 150,
+    "viewers": 10252,
+    "score": 25
+   },
+   {
+    "offsetSeconds": 4800,
+    "chatPerMin": 353,
+    "emotesPerMin": 123,
+    "viewers": 10035,
+    "score": 21
+   },
+   {
+    "offsetSeconds": 4860,
+    "chatPerMin": 379,
+    "emotesPerMin": 127,
+    "viewers": 10094,
+    "score": 23
+   },
+   {
+    "offsetSeconds": 4920,
+    "chatPerMin": 455,
+    "emotesPerMin": 137,
+    "viewers": 9709,
+    "score": 28
+   },
+   {
+    "offsetSeconds": 4980,
+    "chatPerMin": 368,
+    "emotesPerMin": 120,
+    "viewers": 9768,
+    "score": 22
+   },
+   {
+    "offsetSeconds": 5040,
+    "chatPerMin": 390,
+    "emotesPerMin": 119,
+    "viewers": 10142,
+    "score": 24
+   },
+   {
+    "offsetSeconds": 5100,
+    "chatPerMin": 371,
+    "emotesPerMin": 121,
+    "viewers": 9755,
+    "score": 23
+   },
+   {
+    "offsetSeconds": 5160,
+    "chatPerMin": 386,
+    "emotesPerMin": 121,
+    "viewers": 9813,
+    "score": 23
+   },
+   {
+    "offsetSeconds": 5220,
+    "chatPerMin": 467,
+    "emotesPerMin": 171,
+    "viewers": 10148,
+    "score": 28
+   },
+   {
+    "offsetSeconds": 5280,
+    "chatPerMin": 341,
+    "emotesPerMin": 110,
+    "viewers": 9708,
+    "score": 21
+   },
+   {
+    "offsetSeconds": 5340,
+    "chatPerMin": 497,
+    "emotesPerMin": 172,
+    "viewers": 10189,
+    "score": 30
+   },
+   {
+    "offsetSeconds": 5400,
+    "chatPerMin": 437,
+    "emotesPerMin": 156,
+    "viewers": 10257,
+    "score": 27
+   },
+   {
+    "offsetSeconds": 5460,
+    "chatPerMin": 491,
+    "emotesPerMin": 175,
+    "viewers": 9989,
+    "score": 30
+   },
+   {
+    "offsetSeconds": 5520,
+    "chatPerMin": 368,
+    "emotesPerMin": 115,
+    "viewers": 9709,
+    "score": 22
+   },
+   {
+    "offsetSeconds": 5580,
+    "chatPerMin": 451,
+    "emotesPerMin": 171,
+    "viewers": 9955,
+    "score": 27
+   },
+   {
+    "offsetSeconds": 5640,
+    "chatPerMin": 455,
+    "emotesPerMin": 156,
+    "viewers": 9748,
+    "score": 28
+   },
+   {
+    "offsetSeconds": 5700,
+    "chatPerMin": 493,
+    "emotesPerMin": 164,
+    "viewers": 10285,
+    "score": 30
+   },
+   {
+    "offsetSeconds": 5760,
+    "chatPerMin": 1224,
+    "emotesPerMin": 768,
+    "viewers": 9829,
+    "topEmotes": [
+     {
+      "id": "twitch:58765",
+      "providerEmoteId": "58765",
+      "name": "NotLikeThis",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/58765/default/dark/1.0",
+      "count": 353,
+      "provider": "twitch"
+     },
+     {
+      "id": "twitch:425618",
+      "providerEmoteId": "425618",
+      "name": "LUL",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/425618/default/dark/1.0",
+      "count": 161,
+      "provider": "twitch"
+     },
+     {
+      "id": "twitch:33",
+      "providerEmoteId": "33",
+      "name": "DansGame",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/33/default/dark/1.0",
+      "count": 84,
+      "provider": "twitch"
+     }
+    ],
+    "score": 74
+   },
+   {
+    "offsetSeconds": 5820,
+    "chatPerMin": 978,
+    "emotesPerMin": 486,
+    "viewers": 9840,
+    "topEmotes": [
+     {
+      "id": "twitch:58765",
+      "providerEmoteId": "58765",
+      "name": "NotLikeThis",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/58765/default/dark/1.0",
+      "count": 224,
+      "provider": "twitch"
+     },
+     {
+      "id": "twitch:425618",
+      "providerEmoteId": "425618",
+      "name": "LUL",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/425618/default/dark/1.0",
+      "count": 102,
+      "provider": "twitch"
+     },
+     {
+      "id": "twitch:33",
+      "providerEmoteId": "33",
+      "name": "DansGame",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/33/default/dark/1.0",
+      "count": 53,
+      "provider": "twitch"
+     }
+    ],
+    "score": 59
+   },
+   {
+    "offsetSeconds": 5880,
+    "chatPerMin": 674,
+    "emotesPerMin": 293,
+    "viewers": 10173,
+    "score": 41
+   },
+   {
+    "offsetSeconds": 5940,
+    "chatPerMin": 634,
+    "emotesPerMin": 270,
+    "viewers": 9948,
+    "score": 38
+   },
+   {
+    "offsetSeconds": 6000,
+    "chatPerMin": 445,
+    "emotesPerMin": 183,
+    "viewers": 9711,
+    "score": 27
+   },
+   {
+    "offsetSeconds": 6060,
+    "chatPerMin": 508,
+    "emotesPerMin": 169,
+    "viewers": 10284,
+    "score": 31
+   },
+   {
+    "offsetSeconds": 6120,
+    "chatPerMin": 451,
+    "emotesPerMin": 136,
+    "viewers": 10099,
+    "score": 27
+   },
+   {
+    "offsetSeconds": 6180,
+    "chatPerMin": 489,
+    "emotesPerMin": 181,
+    "viewers": 10022,
+    "score": 30
+   },
+   {
+    "offsetSeconds": 6240,
+    "chatPerMin": 393,
+    "emotesPerMin": 144,
+    "viewers": 9801,
+    "score": 24
+   },
+   {
+    "offsetSeconds": 6300,
+    "chatPerMin": 474,
+    "emotesPerMin": 144,
+    "viewers": 9953,
+    "score": 29
+   },
+   {
+    "offsetSeconds": 6360,
+    "chatPerMin": 443,
+    "emotesPerMin": 141,
+    "viewers": 9842,
+    "score": 27
+   },
+   {
+    "offsetSeconds": 6420,
+    "chatPerMin": 371,
+    "emotesPerMin": 118,
+    "viewers": 10000,
+    "score": 23
+   },
+   {
+    "offsetSeconds": 6480,
+    "chatPerMin": 443,
+    "emotesPerMin": 154,
+    "viewers": 9756,
+    "score": 27
+   },
+   {
+    "offsetSeconds": 6540,
+    "chatPerMin": 432,
+    "emotesPerMin": 158,
+    "viewers": 10137,
+    "score": 26
+   },
+   {
+    "offsetSeconds": 6600,
+    "chatPerMin": 371,
+    "emotesPerMin": 135,
+    "viewers": 9864,
+    "score": 23
+   },
+   {
+    "offsetSeconds": 6660,
+    "chatPerMin": 388,
+    "emotesPerMin": 130,
+    "viewers": 9958,
+    "score": 24
+   },
+   {
+    "offsetSeconds": 6720,
+    "chatPerMin": 394,
+    "emotesPerMin": 135,
+    "viewers": 10177,
+    "score": 24
+   },
+   {
+    "offsetSeconds": 6780,
+    "chatPerMin": 380,
+    "emotesPerMin": 114,
+    "viewers": 10167,
+    "score": 23
+   },
+   {
+    "offsetSeconds": 6840,
+    "chatPerMin": 459,
+    "emotesPerMin": 170,
+    "viewers": 10236,
+    "score": 28
+   },
+   {
+    "offsetSeconds": 6900,
+    "chatPerMin": 447,
+    "emotesPerMin": 145,
+    "viewers": 9816,
+    "score": 27
+   },
+   {
+    "offsetSeconds": 6960,
+    "chatPerMin": 411,
+    "emotesPerMin": 137,
+    "viewers": 9725,
+    "score": 25
+   },
+   {
+    "offsetSeconds": 7020,
+    "chatPerMin": 424,
+    "emotesPerMin": 155,
+    "viewers": 10240,
+    "score": 26
+   },
+   {
+    "offsetSeconds": 7080,
+    "chatPerMin": 715,
+    "emotesPerMin": 492,
+    "viewers": 9784,
+    "topEmotes": [
+     {
+      "id": "twitch:86",
+      "providerEmoteId": "86",
+      "name": "BibleThump",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/86/default/dark/1.0",
+      "count": 226,
+      "provider": "twitch"
+     },
+     {
+      "id": "twitch:58765",
+      "providerEmoteId": "58765",
+      "name": "NotLikeThis",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/58765/default/dark/1.0",
+      "count": 103,
+      "provider": "twitch"
+     },
+     {
+      "id": "twitch:64138",
+      "providerEmoteId": "64138",
+      "name": "SeemsGood",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/64138/default/dark/1.0",
+      "count": 54,
+      "provider": "twitch"
+     }
+    ],
+    "score": 43
+   },
+   {
+    "offsetSeconds": 7140,
+    "chatPerMin": 732,
+    "emotesPerMin": 360,
+    "viewers": 10248,
+    "topEmotes": [
+     {
+      "id": "twitch:86",
+      "providerEmoteId": "86",
+      "name": "BibleThump",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/86/default/dark/1.0",
+      "count": 166,
+      "provider": "twitch"
+     },
+     {
+      "id": "twitch:58765",
+      "providerEmoteId": "58765",
+      "name": "NotLikeThis",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/58765/default/dark/1.0",
+      "count": 76,
+      "provider": "twitch"
+     },
+     {
+      "id": "twitch:64138",
+      "providerEmoteId": "64138",
+      "name": "SeemsGood",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/64138/default/dark/1.0",
+      "count": 40,
+      "provider": "twitch"
+     }
+    ],
+    "score": 44
+   },
+   {
+    "offsetSeconds": 7200,
+    "chatPerMin": 652,
+    "emotesPerMin": 270,
+    "viewers": 10189,
+    "score": 40
+   },
+   {
+    "offsetSeconds": 7260,
+    "chatPerMin": 551,
+    "emotesPerMin": 240,
+    "viewers": 10224,
+    "score": 33
+   },
+   {
+    "offsetSeconds": 7320,
+    "chatPerMin": 476,
+    "emotesPerMin": 166,
+    "viewers": 9862,
+    "score": 29
+   },
+   {
+    "offsetSeconds": 7380,
+    "chatPerMin": 383,
+    "emotesPerMin": 145,
+    "viewers": 9897,
+    "score": 23
+   },
+   {
+    "offsetSeconds": 7440,
+    "chatPerMin": 399,
+    "emotesPerMin": 127,
+    "viewers": 10186,
+    "score": 24
+   },
+   {
+    "offsetSeconds": 7500,
+    "chatPerMin": 363,
+    "emotesPerMin": 109,
+    "viewers": 10198,
+    "score": 22
+   },
+   {
+    "offsetSeconds": 7560,
+    "chatPerMin": 491,
+    "emotesPerMin": 154,
+    "viewers": 10214,
+    "score": 30
+   },
+   {
+    "offsetSeconds": 7620,
+    "chatPerMin": 496,
+    "emotesPerMin": 178,
+    "viewers": 10088,
+    "score": 30
+   },
+   {
+    "offsetSeconds": 7680,
+    "chatPerMin": 485,
+    "emotesPerMin": 149,
+    "viewers": 10190,
+    "score": 29
+   },
+   {
+    "offsetSeconds": 7740,
+    "chatPerMin": 443,
+    "emotesPerMin": 139,
+    "viewers": 10130,
+    "score": 27
+   },
+   {
+    "offsetSeconds": 7800,
+    "chatPerMin": 410,
+    "emotesPerMin": 146,
+    "viewers": 9863,
+    "score": 25
+   },
+   {
+    "offsetSeconds": 7860,
+    "chatPerMin": 502,
+    "emotesPerMin": 174,
+    "viewers": 10259,
+    "score": 30
+   },
+   {
+    "offsetSeconds": 7920,
+    "chatPerMin": 441,
+    "emotesPerMin": 152,
+    "viewers": 9903,
+    "score": 27
+   },
+   {
+    "offsetSeconds": 7980,
+    "chatPerMin": 431,
+    "emotesPerMin": 157,
+    "viewers": 9835,
+    "score": 26
+   },
+   {
+    "offsetSeconds": 8040,
+    "chatPerMin": 453,
+    "emotesPerMin": 168,
+    "viewers": 9914,
+    "score": 27
+   },
+   {
+    "offsetSeconds": 8100,
+    "chatPerMin": 367,
+    "emotesPerMin": 112,
+    "viewers": 10113,
+    "score": 22
+   },
+   {
+    "offsetSeconds": 8160,
+    "chatPerMin": 457,
+    "emotesPerMin": 142,
+    "viewers": 10030,
+    "score": 28
+   },
+   {
+    "offsetSeconds": 8220,
+    "chatPerMin": 456,
+    "emotesPerMin": 165,
+    "viewers": 9836,
+    "score": 28
+   },
+   {
+    "offsetSeconds": 8280,
+    "chatPerMin": 440,
+    "emotesPerMin": 140,
+    "viewers": 9794,
+    "score": 27
+   },
+   {
+    "offsetSeconds": 8340,
+    "chatPerMin": 1648,
+    "emotesPerMin": 1100,
+    "viewers": 9800,
+    "topEmotes": [
+     {
+      "id": "twitch:305954156",
+      "providerEmoteId": "305954156",
+      "name": "PogChamp",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/305954156/default/dark/1.0",
+      "count": 506,
+      "provider": "twitch"
+     },
+     {
+      "id": "twitch:425618",
+      "providerEmoteId": "425618",
+      "name": "LUL",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/425618/default/dark/1.0",
+      "count": 231,
+      "provider": "twitch"
+     },
+     {
+      "id": "twitch:41",
+      "providerEmoteId": "41",
+      "name": "Kreygasm",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/41/default/dark/1.0",
+      "count": 121,
+      "provider": "twitch"
+     }
+    ],
+    "score": 100
+   },
+   {
+    "offsetSeconds": 8400,
+    "chatPerMin": 1380,
+    "emotesPerMin": 725,
+    "viewers": 10272,
+    "topEmotes": [
+     {
+      "id": "twitch:305954156",
+      "providerEmoteId": "305954156",
+      "name": "PogChamp",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/305954156/default/dark/1.0",
+      "count": 334,
+      "provider": "twitch"
+     },
+     {
+      "id": "twitch:425618",
+      "providerEmoteId": "425618",
+      "name": "LUL",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/425618/default/dark/1.0",
+      "count": 152,
+      "provider": "twitch"
+     },
+     {
+      "id": "twitch:41",
+      "providerEmoteId": "41",
+      "name": "Kreygasm",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/41/default/dark/1.0",
+      "count": 80,
+      "provider": "twitch"
+     }
+    ],
+    "score": 84
+   },
+   {
+    "offsetSeconds": 8460,
+    "chatPerMin": 768,
+    "emotesPerMin": 364,
+    "viewers": 9779,
+    "score": 47
+   },
+   {
+    "offsetSeconds": 8520,
+    "chatPerMin": 789,
+    "emotesPerMin": 320,
+    "viewers": 10186,
+    "score": 48
+   },
+   {
+    "offsetSeconds": 8580,
+    "chatPerMin": 593,
+    "emotesPerMin": 208,
+    "viewers": 10062,
+    "score": 36
+   },
+   {
+    "offsetSeconds": 8640,
+    "chatPerMin": 478,
+    "emotesPerMin": 163,
+    "viewers": 10034,
+    "score": 29
+   },
+   {
+    "offsetSeconds": 8700,
+    "chatPerMin": 459,
+    "emotesPerMin": 167,
+    "viewers": 9962,
+    "score": 28
+   },
+   {
+    "offsetSeconds": 8760,
+    "chatPerMin": 413,
+    "emotesPerMin": 132,
+    "viewers": 9998,
+    "score": 25
+   },
+   {
+    "offsetSeconds": 8820,
+    "chatPerMin": 398,
+    "emotesPerMin": 134,
+    "viewers": 10069,
+    "score": 24
+   },
+   {
+    "offsetSeconds": 8880,
+    "chatPerMin": 380,
+    "emotesPerMin": 115,
+    "viewers": 9927,
+    "score": 23
+   },
+   {
+    "offsetSeconds": 8940,
+    "chatPerMin": 436,
+    "emotesPerMin": 147,
+    "viewers": 10277,
+    "score": 26
+   },
+   {
+    "offsetSeconds": 9000,
+    "chatPerMin": 443,
+    "emotesPerMin": 148,
+    "viewers": 9901,
+    "score": 27
+   },
+   {
+    "offsetSeconds": 9060,
+    "chatPerMin": 398,
+    "emotesPerMin": 137,
+    "viewers": 9946,
+    "score": 24
+   },
+   {
+    "offsetSeconds": 9120,
+    "chatPerMin": 450,
+    "emotesPerMin": 145,
+    "viewers": 9805,
+    "score": 27
+   },
+   {
+    "offsetSeconds": 9180,
+    "chatPerMin": 459,
+    "emotesPerMin": 162,
+    "viewers": 9761,
+    "score": 28
+   },
+   {
+    "offsetSeconds": 9240,
+    "chatPerMin": 352,
+    "emotesPerMin": 131,
+    "viewers": 9685,
+    "score": 21
+   },
+   {
+    "offsetSeconds": 9300,
+    "chatPerMin": 437,
+    "emotesPerMin": 147,
+    "viewers": 9820,
+    "score": 27
+   },
+   {
+    "offsetSeconds": 9360,
+    "chatPerMin": 416,
+    "emotesPerMin": 126,
+    "viewers": 9545,
+    "score": 25
+   },
+   {
+    "offsetSeconds": 9420,
+    "chatPerMin": 349,
+    "emotesPerMin": 120,
+    "viewers": 9306,
+    "score": 21
+   },
+   {
+    "offsetSeconds": 9480,
+    "chatPerMin": 405,
+    "emotesPerMin": 144,
+    "viewers": 9209,
+    "score": 25
+   },
+   {
+    "offsetSeconds": 9540,
+    "chatPerMin": 344,
+    "emotesPerMin": 114,
+    "viewers": 9190,
+    "score": 21
+   },
+   {
+    "offsetSeconds": 9600,
+    "chatPerMin": 348,
+    "emotesPerMin": 117,
+    "viewers": 8964,
+    "score": 21
+   },
+   {
+    "offsetSeconds": 9660,
+    "chatPerMin": 454,
+    "emotesPerMin": 155,
+    "viewers": 9230,
+    "score": 28
+   },
+   {
+    "offsetSeconds": 9720,
+    "chatPerMin": 391,
+    "emotesPerMin": 147,
+    "viewers": 8961,
+    "score": 24
+   },
+   {
+    "offsetSeconds": 9780,
+    "chatPerMin": 869,
+    "emotesPerMin": 603,
+    "viewers": 10540,
+    "topEmotes": [
+     {
+      "id": "twitch:30259",
+      "providerEmoteId": "30259",
+      "name": "HeyGuys",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/30259/default/dark/1.0",
+      "count": 277,
+      "provider": "twitch"
+     },
+     {
+      "id": "twitch:305954156",
+      "providerEmoteId": "305954156",
+      "name": "PogChamp",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/305954156/default/dark/1.0",
+      "count": 127,
+      "provider": "twitch"
+     },
+     {
+      "id": "twitch:64138",
+      "providerEmoteId": "64138",
+      "name": "SeemsGood",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/64138/default/dark/1.0",
+      "count": 66,
+      "provider": "twitch"
+     }
+    ],
+    "score": 53
+   },
+   {
+    "offsetSeconds": 9840,
+    "chatPerMin": 637,
+    "emotesPerMin": 320,
+    "viewers": 10657,
+    "topEmotes": [
+     {
+      "id": "twitch:30259",
+      "providerEmoteId": "30259",
+      "name": "HeyGuys",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/30259/default/dark/1.0",
+      "count": 147,
+      "provider": "twitch"
+     },
+     {
+      "id": "twitch:305954156",
+      "providerEmoteId": "305954156",
+      "name": "PogChamp",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/305954156/default/dark/1.0",
+      "count": 67,
+      "provider": "twitch"
+     },
+     {
+      "id": "twitch:64138",
+      "providerEmoteId": "64138",
+      "name": "SeemsGood",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/64138/default/dark/1.0",
+      "count": 35,
+      "provider": "twitch"
+     }
+    ],
+    "score": 39
+   },
+   {
+    "offsetSeconds": 9900,
+    "chatPerMin": 519,
+    "emotesPerMin": 217,
+    "viewers": 10142,
+    "score": 31
+   },
+   {
+    "offsetSeconds": 9960,
+    "chatPerMin": 420,
+    "emotesPerMin": 175,
+    "viewers": 9924,
+    "score": 25
+   },
+   {
+    "offsetSeconds": 10020,
+    "chatPerMin": 385,
+    "emotesPerMin": 141,
+    "viewers": 10021,
+    "score": 23
+   },
+   {
+    "offsetSeconds": 10080,
+    "chatPerMin": 323,
+    "emotesPerMin": 107,
+    "viewers": 9569,
+    "score": 20
+   },
+   {
+    "offsetSeconds": 10140,
+    "chatPerMin": 381,
+    "emotesPerMin": 131,
+    "viewers": 8531,
+    "score": 23
+   },
+   {
+    "offsetSeconds": 10200,
+    "chatPerMin": 349,
+    "emotesPerMin": 109,
+    "viewers": 8254,
+    "score": 21
+   },
+   {
+    "offsetSeconds": 10260,
+    "chatPerMin": 283,
+    "emotesPerMin": 102,
+    "viewers": 8124,
+    "score": 17
+   },
+   {
+    "offsetSeconds": 10320,
+    "chatPerMin": 321,
+    "emotesPerMin": 120,
+    "viewers": 8062,
+    "score": 19
+   },
+   {
+    "offsetSeconds": 10380,
+    "chatPerMin": 297,
+    "emotesPerMin": 99,
+    "viewers": 7914,
+    "score": 18
+   },
+   {
+    "offsetSeconds": 10440,
+    "chatPerMin": 310,
+    "emotesPerMin": 116,
+    "viewers": 7846,
+    "score": 19
+   },
+   {
+    "offsetSeconds": 10500,
+    "chatPerMin": 300,
+    "emotesPerMin": 113,
+    "viewers": 8146,
+    "score": 18
+   },
+   {
+    "offsetSeconds": 10560,
+    "chatPerMin": 353,
+    "emotesPerMin": 128,
+    "viewers": 7762,
+    "score": 21
+   },
+   {
+    "offsetSeconds": 10620,
+    "chatPerMin": 335,
+    "emotesPerMin": 112,
+    "viewers": 7622,
+    "score": 20
+   },
+   {
+    "offsetSeconds": 10680,
+    "chatPerMin": 320,
+    "emotesPerMin": 109,
+    "viewers": 7693,
+    "score": 19
+   },
+   {
+    "offsetSeconds": 10740,
+    "chatPerMin": 336,
+    "emotesPerMin": 124,
+    "viewers": 7623,
+    "score": 20
+   },
+   {
+    "offsetSeconds": 10800,
+    "chatPerMin": 370,
+    "emotesPerMin": 123,
+    "viewers": 7556,
+    "score": 22
+   }
+  ]
+ },
+ "topMoments": [
+  {
+   "offsetSeconds": 8340,
+   "label": "Emote spike",
+   "reason": "twitch_emote_spike",
+   "score": 100,
+   "compositeScore": 100,
+   "reactionScore": 100,
+   "reactionOnsetOffsetSeconds": 8300,
+   "reactionApexOffsetSeconds": 8332,
+   "seekOffsetSeconds": 8285,
+   "precisionSeconds": 10,
+   "refinementStatus": "refined",
+   "chatPerMin": 1648,
+   "emotesPerMin": 1100,
+   "topEmotes": [
+    {
+     "id": "twitch:305954156",
+     "providerEmoteId": "305954156",
+     "name": "PogChamp",
+     "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/305954156/default/dark/1.0",
+     "count": 506,
+     "provider": "twitch"
+    },
+    {
+     "id": "twitch:425618",
+     "providerEmoteId": "425618",
+     "name": "LUL",
+     "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/425618/default/dark/1.0",
+     "count": 231,
+     "provider": "twitch"
+    },
+    {
+     "id": "twitch:41",
+     "providerEmoteId": "41",
+     "name": "Kreygasm",
+     "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/41/default/dark/1.0",
+     "count": 121,
+     "provider": "twitch"
+    }
+   ]
+  },
+  {
+   "offsetSeconds": 3120,
+   "label": "Emote spike",
+   "reason": "twitch_emote_spike",
+   "score": 90,
+   "compositeScore": 90,
+   "reactionScore": 90,
+   "reactionOnsetOffsetSeconds": 3080,
+   "reactionApexOffsetSeconds": 3112,
+   "seekOffsetSeconds": 3065,
+   "precisionSeconds": 10,
+   "refinementStatus": "refined",
+   "chatPerMin": 1489,
+   "emotesPerMin": 949,
+   "topEmotes": [
+    {
+     "id": "twitch:305954156",
+     "providerEmoteId": "305954156",
+     "name": "PogChamp",
+     "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/305954156/default/dark/1.0",
+     "count": 437,
+     "provider": "twitch"
+    },
+    {
+     "id": "twitch:41",
+     "providerEmoteId": "41",
+     "name": "Kreygasm",
+     "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/41/default/dark/1.0",
+     "count": 199,
+     "provider": "twitch"
+    },
+    {
+     "id": "twitch:64138",
+     "providerEmoteId": "64138",
+     "name": "SeemsGood",
+     "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/64138/default/dark/1.0",
+     "count": 104,
+     "provider": "twitch"
+    }
+   ]
+  },
+  {
+   "offsetSeconds": 5760,
+   "label": "Emote spike",
+   "reason": "twitch_emote_spike",
+   "score": 74,
+   "compositeScore": 74,
+   "reactionScore": 74,
+   "reactionOnsetOffsetSeconds": 5720,
+   "reactionApexOffsetSeconds": 5752,
+   "seekOffsetSeconds": 5705,
+   "precisionSeconds": 10,
+   "refinementStatus": "refined",
+   "chatPerMin": 1224,
+   "emotesPerMin": 768,
+   "topEmotes": [
+    {
+     "id": "twitch:58765",
+     "providerEmoteId": "58765",
+     "name": "NotLikeThis",
+     "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/58765/default/dark/1.0",
+     "count": 353,
+     "provider": "twitch"
+    },
+    {
+     "id": "twitch:425618",
+     "providerEmoteId": "425618",
+     "name": "LUL",
+     "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/425618/default/dark/1.0",
+     "count": 161,
+     "provider": "twitch"
+    },
+    {
+     "id": "twitch:33",
+     "providerEmoteId": "33",
+     "name": "DansGame",
+     "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/33/default/dark/1.0",
+     "count": 84,
+     "provider": "twitch"
+    }
+   ]
+  },
+  {
+   "offsetSeconds": 1860,
+   "label": "Emote spike",
+   "reason": "twitch_emote_spike",
+   "score": 59,
+   "compositeScore": 59,
+   "reactionScore": 59,
+   "reactionOnsetOffsetSeconds": 1820,
+   "reactionApexOffsetSeconds": 1852,
+   "seekOffsetSeconds": 1805,
+   "precisionSeconds": 10,
+   "refinementStatus": "refined",
+   "chatPerMin": 971,
+   "emotesPerMin": 619,
+   "topEmotes": [
+    {
+     "id": "twitch:425618",
+     "providerEmoteId": "425618",
+     "name": "LUL",
+     "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/425618/default/dark/1.0",
+     "count": 285,
+     "provider": "twitch"
+    },
+    {
+     "id": "twitch:354",
+     "providerEmoteId": "354",
+     "name": "4Head",
+     "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/354/default/dark/1.0",
+     "count": 130,
+     "provider": "twitch"
+    },
+    {
+     "id": "twitch:25",
+     "providerEmoteId": "25",
+     "name": "Kappa",
+     "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/1.0",
+     "count": 68,
+     "provider": "twitch"
+    }
+   ]
+  },
+  {
+   "offsetSeconds": 9780,
+   "label": "Viewer spike",
+   "reason": "viewer_spike",
+   "score": 53,
+   "compositeScore": 53,
+   "reactionScore": 53,
+   "reactionOnsetOffsetSeconds": 9740,
+   "reactionApexOffsetSeconds": 9772,
+   "seekOffsetSeconds": 9725,
+   "precisionSeconds": 10,
+   "refinementStatus": "refined",
+   "chatPerMin": 869,
+   "emotesPerMin": 603,
+   "topEmotes": [
+    {
+     "id": "twitch:30259",
+     "providerEmoteId": "30259",
+     "name": "HeyGuys",
+     "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/30259/default/dark/1.0",
+     "count": 277,
+     "provider": "twitch"
+    },
+    {
+     "id": "twitch:305954156",
+     "providerEmoteId": "305954156",
+     "name": "PogChamp",
+     "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/305954156/default/dark/1.0",
+     "count": 127,
+     "provider": "twitch"
+    },
+    {
+     "id": "twitch:64138",
+     "providerEmoteId": "64138",
+     "name": "SeemsGood",
+     "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/64138/default/dark/1.0",
+     "count": 66,
+     "provider": "twitch"
+    }
+   ]
+  },
+  {
+   "offsetSeconds": 4440,
+   "label": "Chat spike",
+   "reason": "chat_spike",
+   "score": 52,
+   "compositeScore": 52,
+   "reactionScore": 52,
+   "reactionOnsetOffsetSeconds": 4400,
+   "reactionApexOffsetSeconds": 4432,
+   "seekOffsetSeconds": 4385,
+   "precisionSeconds": 10,
+   "refinementStatus": "refined",
+   "chatPerMin": 859,
+   "emotesPerMin": 599,
+   "topEmotes": [
+    {
+     "id": "twitch:28087",
+     "providerEmoteId": "28087",
+     "name": "WutFace",
+     "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/28087/default/dark/1.0",
+     "count": 276,
+     "provider": "twitch"
+    },
+    {
+     "id": "twitch:33",
+     "providerEmoteId": "33",
+     "name": "DansGame",
+     "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/33/default/dark/1.0",
+     "count": 126,
+     "provider": "twitch"
+    },
+    {
+     "id": "twitch:425618",
+     "providerEmoteId": "425618",
+     "name": "LUL",
+     "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/425618/default/dark/1.0",
+     "count": 66,
+     "provider": "twitch"
+    }
+   ]
+  },
+  {
+   "offsetSeconds": 7080,
+   "label": "Chat spike",
+   "reason": "chat_spike",
+   "score": 43,
+   "compositeScore": 43,
+   "reactionScore": 43,
+   "reactionOnsetOffsetSeconds": 7040,
+   "reactionApexOffsetSeconds": 7072,
+   "seekOffsetSeconds": 7025,
+   "precisionSeconds": 10,
+   "refinementStatus": "refined",
+   "chatPerMin": 715,
+   "emotesPerMin": 492,
+   "topEmotes": [
+    {
+     "id": "twitch:86",
+     "providerEmoteId": "86",
+     "name": "BibleThump",
+     "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/86/default/dark/1.0",
+     "count": 226,
+     "provider": "twitch"
+    },
+    {
+     "id": "twitch:58765",
+     "providerEmoteId": "58765",
+     "name": "NotLikeThis",
+     "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/58765/default/dark/1.0",
+     "count": 103,
+     "provider": "twitch"
+    },
+    {
+     "id": "twitch:64138",
+     "providerEmoteId": "64138",
+     "name": "SeemsGood",
+     "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/64138/default/dark/1.0",
+     "count": 54,
+     "provider": "twitch"
+    }
+   ]
+  },
+  {
+   "offsetSeconds": 540,
+   "label": "Chat spike",
+   "reason": "chat_spike",
+   "score": 15,
+   "compositeScore": 15,
+   "reactionScore": 15,
+   "reactionOnsetOffsetSeconds": 500,
+   "reactionApexOffsetSeconds": 532,
+   "seekOffsetSeconds": 485,
+   "precisionSeconds": 10,
+   "refinementStatus": "refined",
+   "chatPerMin": 252,
+   "emotesPerMin": 160,
+   "topEmotes": [
+    {
+     "id": "twitch:30259",
+     "providerEmoteId": "30259",
+     "name": "HeyGuys",
+     "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/30259/default/dark/1.0",
+     "count": 74,
+     "provider": "twitch"
+    },
+    {
+     "id": "twitch:64138",
+     "providerEmoteId": "64138",
+     "name": "SeemsGood",
+     "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/64138/default/dark/1.0",
+     "count": 34,
+     "provider": "twitch"
+    },
+    {
+     "id": "twitch:25",
+     "providerEmoteId": "25",
+     "name": "Kappa",
+     "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/1.0",
+     "count": 18,
+     "provider": "twitch"
+    }
+   ]
+  }
+ ],
+ "topEmotes": [
+  {
+   "id": "twitch:305954156",
+   "providerEmoteId": "305954156",
+   "name": "PogChamp",
+   "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/305954156/default/dark/1.0",
+   "count": 1919,
+   "provider": "twitch"
+  },
+  {
+   "id": "twitch:425618",
+   "providerEmoteId": "425618",
+   "name": "LUL",
+   "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/425618/default/dark/1.0",
+   "count": 1313,
+   "provider": "twitch"
+  },
+  {
+   "id": "twitch:58765",
+   "providerEmoteId": "58765",
+   "name": "NotLikeThis",
+   "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/58765/default/dark/1.0",
+   "count": 977,
+   "provider": "twitch"
+  },
+  {
+   "id": "twitch:30259",
+   "providerEmoteId": "30259",
+   "name": "HeyGuys",
+   "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/30259/default/dark/1.0",
+   "count": 761,
+   "provider": "twitch"
+  },
+  {
+   "id": "twitch:41",
+   "providerEmoteId": "41",
+   "name": "Kreygasm",
+   "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/41/default/dark/1.0",
+   "count": 682,
+   "provider": "twitch"
+  },
+  {
+   "id": "twitch:86",
+   "providerEmoteId": "86",
+   "name": "BibleThump",
+   "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/86/default/dark/1.0",
+   "count": 598,
+   "provider": "twitch"
+  },
+  {
+   "id": "twitch:28087",
+   "providerEmoteId": "28087",
+   "name": "WutFace",
+   "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/28087/default/dark/1.0",
+   "count": 575,
+   "provider": "twitch"
+  },
+  {
+   "id": "twitch:64138",
+   "providerEmoteId": "64138",
+   "name": "SeemsGood",
+   "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/64138/default/dark/1.0",
+   "count": 573,
+   "provider": "twitch"
+  },
+  {
+   "id": "twitch:33",
+   "providerEmoteId": "33",
+   "name": "DansGame",
+   "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/33/default/dark/1.0",
+   "count": 457,
+   "provider": "twitch"
+  },
+  {
+   "id": "twitch:354",
+   "providerEmoteId": "354",
+   "name": "4Head",
+   "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/354/default/dark/1.0",
+   "count": 284,
+   "provider": "twitch"
+  }
+ ],
+ "games": [
+  {
+   "gameName": "Just Chatting",
+   "categoryId": "509658",
+   "offsetSeconds": 0,
+   "durationSeconds": 1440
+  },
+  {
+   "gameName": "Minecraft",
+   "categoryId": "27471",
+   "offsetSeconds": 1440,
+   "durationSeconds": 9360
+  }
+ ]
+}

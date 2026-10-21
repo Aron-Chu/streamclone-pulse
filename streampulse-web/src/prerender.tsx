@@ -12,6 +12,7 @@ import Feedback from './routes/public/Feedback'
 import Discord from './routes/public/Discord'
 import Status from './routes/public/Status'
 import Changelog from './routes/public/Changelog'
+import Extension from './routes/public/Extension'
 import NotFound from './routes/public/NotFound'
 import { PublicLayout } from './ui/components/PublicLayout'
 import { AnalyticsRouteFallback } from './routes/AnalyticsRouteFallback'
@@ -30,6 +31,7 @@ export function prerenderPublicPage(path: string): string {
     : path === '/discord' ? <Discord />
     : path === '/status' ? <Status />
     : path === '/changelog' ? <Changelog />
+    : path === '/extension' ? <Extension />
     // The front page is the hub: it gets the same loading shell as /analytics.
     : ['/', '/analytics', '/setup', '/login'].includes(path)
       ? <><AnalyticsRouteFallback /><noscript><style>{'[data-analytics-route-skeleton]{display:none}'}</style><PublicLayout><article className="panel public-document"><h1>StreamPulse Analytics</h1>

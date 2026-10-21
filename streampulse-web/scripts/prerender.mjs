@@ -151,6 +151,14 @@ const routes = [
     robots: 'noindex,nofollow',
   },
   {
+    // The extension's page: what it does, and its real panel on a sample stream.
+    path: 'extension',
+    title: 'Browser Extension — StreamPulse',
+    description: 'A free browser extension for Twitch: a live chart of chat, emotes and viewers beside chat, and the moments people reacted to.',
+    canonicalPath: '/extension',
+    robots: 'index,follow',
+  },
+  {
     path: 'setup',
     title: 'StreamPulse Analytics',
     description: 'This legacy StreamPulse route redirects to public analytics.',
