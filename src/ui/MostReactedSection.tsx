@@ -71,6 +71,11 @@ export function MostReactedSection({
     () => sortLiveHeatPoints(heat.points, sortMode),
     [heat.points, sortMode],
   )
+  // The top 3 by reaction show the exact frame from the VOD, as in a recap.
+  const exactKeys = useMemo(
+    () => new Set(sortLiveHeatPoints(heat.points, 'reaction').slice(0, 3).map(point => liveHeatPointKey(payload.streamId, point))),
+    [heat.points, payload.streamId],
+  )
 
   const pinnedMomentPoint = useMemo(
     () =>
@@ -178,6 +183,7 @@ export function MostReactedSection({
                 backendUrl={backendUrl}
                 selected={selected}
                 controls={cardPoint ? cardId : undefined}
+                exact={exactKeys.has(liveHeatPointKey(payload.streamId, point))}
                 onHighlight={demoMode ? () => undefined : handleHighlight}
                 // Picking the picked row again closes its card.
                 onSelect={demoMode ? () => undefined : next => {

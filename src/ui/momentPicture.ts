@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { momentClockDisplay, type LiveHeatPoint } from '@streampulse/pulse-core'
 import { sendBackgroundMessage } from '../content/bridge.ts'
 import { resolveLiveMediaEdge } from '../content/twitch.ts'
@@ -10,6 +10,13 @@ import { isRenderableGameName } from './extensionChartAdapter.ts'
 let asked = false
 /** The stream Pulse shows (useMomentCapture), for the backend pictures the frames script draws. */
 let pictureAt: MomentPictureAt | undefined
+/** Bumped when the stream's key or VOD changes, so mounted pictures look again (a live stream's VOD arrives late). */
+let atVersion = 0
+const atListeners = new Set<() => void>()
+function subscribeAt(listener: () => void): () => void {
+  atListeners.add(listener)
+  return () => { atListeners.delete(listener) }
+}
 
 /**
  * The moment-pictures script (content/moment-frames.js) once the worker has
@@ -39,12 +46,12 @@ export function useMomentFrames(): MomentFramesApi | undefined {
  * Where a moment's picture comes from: a few seconds before chat reacted, when
  * the moment has second-level timing, or across its minute when it has not.
  */
-export function momentPictureView(kind: MomentPictureView['kind'], point: LiveHeatPoint): MomentPictureView {
+export function momentPictureView(kind: MomentPictureView['kind'], point: LiveHeatPoint, exact?: boolean): MomentPictureView {
   const onset = point.reactionOnsetOffsetSeconds
-  if (!momentClockDisplay(point).approximate && onset != null) {
-    return { kind, from: onset - 20, to: onset + 30, peak: onset - 3 }
-  }
-  return minutePictureView(kind, point.offsetSeconds)
+  const view = !momentClockDisplay(point).approximate && onset != null
+    ? { kind, from: onset - 20, to: onset + 30, peak: onset - 3 }
+    : minutePictureView(kind, point.offsetSeconds)
+  return exact ? { ...view, exact } : view
 }
 
 export function minutePictureView(kind: MomentPictureView['kind'], offsetSeconds: number): MomentPictureView {
@@ -72,12 +79,34 @@ export function useArchiveVodId(login: string | null | undefined, streamId: stri
   return ask && found && found.streamId === streamId ? found.vodId : null
 }
 
+/**
+ * The VOD Twitch is recording for a live stream, for the exact frames of its
+ * moments (src/background/vodFrameInject.ts); only an archive that names this
+ * stream counts.
+ */
+export function useLiveVodId(login: string | null | undefined, streamId: string | null | undefined, ask: boolean): string | null {
+  const frames = useMomentFrames()
+  const [found, setFound] = useState<{ streamId: string; vodId: string | null } | null>(null)
+  useEffect(() => {
+    if (!frames || !ask || !login || !streamId) return
+    let live = true
+    void sendBackgroundMessage({ type: 'DISCOVER_LIVE_VOD', login, streamId }).then(response => {
+      if (!live || !('type' in response) || response.type !== 'DISCOVER_LIVE_VOD') return
+      const { vodId, streamId: archiveStream } = response.result
+      setFound({ streamId, vodId: vodId && (!archiveStream || archiveStream === streamId) ? vodId : null })
+    }, () => {})
+    return () => { live = false }
+  }, [frames, ask, login, streamId])
+  return ask && found && found.streamId === streamId ? found.vodId : null
+}
+
 /** Fills the returned element with the picture of `view`, when this tab has frames for it. */
 export function useMomentPicture<T extends HTMLElement>(view: MomentPictureView | undefined) {
   const frames = useMomentFrames()
   const ref = useRef<T>(null)
+  useSyncExternalStore(subscribeAt, () => atVersion, () => atVersion)
   const at = pictureAt
-  const key = view ? `${view.kind} ${view.from} ${view.to} ${view.peak} ${view.art} ${view.emote} ${at?.key} ${at?.vodId}` : ''
+  const key = view ? `${view.kind} ${view.from} ${view.to} ${view.peak} ${view.art} ${view.emote} ${view.exact} ${at?.key} ${at?.vodId}` : ''
   useEffect(() => (frames && view && ref.current ? frames.mount(ref.current, view, at) : undefined), [frames, key])
   return ref
 }
@@ -123,6 +152,10 @@ export interface MomentCaptureStream {
 export function useMomentCapture(stream: MomentCaptureStream, momentOffsets: readonly number[], video: () => HTMLVideoElement | null): void {
   const frames = useMomentFrames()
   pictureAt = stream
+  useEffect(() => {
+    atVersion++
+    for (const listener of atListeners) listener()
+  }, [stream.key, stream.vodId, stream.vodOriginDeltaSeconds])
   const startedAt = Date.parse(stream.startedAt ?? '')
   const delta = Number.isFinite(stream.vodOriginDeltaSeconds) ? stream.vodOriginDeltaSeconds! : 0
   const mode = stream.vod ? 'vod' : stream.live && startedAt > 0 ? 'live' : null
