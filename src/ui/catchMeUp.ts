@@ -93,12 +93,15 @@ export function catchMeUpModel(input: CatchMeUpInput): CatchMeUpModel | null {
  * so the recap leaves its three moments out of the list below. `pending` is
  * true while the script is on its way, so the recap holds its moments back
  * rather than list them and then fold them away; when the script cannot be
- * injected, the recap lists every moment.
+ * injected, the recap lists every moment. On a VOD page the recap also gives
+ * it `head` and `tail` (CatchMeUpParts), and the block draws into all three.
  */
 export function useCatchMeUp<T extends HTMLElement>(model: CatchMeUpModel | null, actions: CatchMeUpActions, picked: number | null) {
   const script = useCatchMeUpScript()
   const frames = useMomentFrames()
   const ref = useRef<T>(null)
+  const head = useRef<T>(null)
+  const tail = useRef<T>(null)
   const block = useRef<CatchMeUpBlock | null>(null)
   const latest = useRef({ model, actions, picked })
   latest.current = { model, actions, picked }
@@ -112,7 +115,7 @@ export function useCatchMeUp<T extends HTMLElement>(model: CatchMeUpModel | null
     const mounted = script.mount(host, current, {
       jump: index => latest.current.actions.jump(index),
       pick: index => latest.current.actions.pick(index),
-    })
+    }, { head: head.current, tail: tail.current })
     mounted.select(latest.current.picked)
     block.current = mounted
     setShown(true)
@@ -123,5 +126,5 @@ export function useCatchMeUp<T extends HTMLElement>(model: CatchMeUpModel | null
     }
   }, [script, frames, key])
   useEffect(() => block.current?.select(picked), [picked])
-  return { ref, shown, pending: script === undefined && model != null }
+  return { ref, head, tail, shown, pending: script === undefined && model != null }
 }

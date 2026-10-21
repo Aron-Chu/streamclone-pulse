@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
-import type { CSSProperties } from 'react'
+import type { CSSProperties, ReactElement } from 'react'
+import { createPortal } from 'react-dom'
 import { deriveLiveStats, formatHeatOffset, reactionAnalyticalOffset, toLiveStatsInputFromExtension, type LiveHeatPoint } from '@streampulse/pulse-core'
 import type { ExtensionEmote, ExtensionPeak, PulsePayload, PulseRecapMoment } from '../shared/messages.ts'
 import {
@@ -9,6 +10,7 @@ import {
   makeFullHistoryActivation,
   type FullHistoryRequestResult,
 } from '../shared/fullHistoryAuth.ts'
+import { getRecapSpikeMarkersChoice, setRecapSpikeMarkersChoice } from '../shared/storage.ts'
 import {
   aggregateChartEmotes,
   buildEmoteOverlaySeries,
@@ -35,6 +37,7 @@ import { mergeRecapMoments, recapStreamDurationSeconds, rollupToRecapHeatPoint }
 import { SevenTvEmotePanel } from './SevenTvEmotePanel.tsx'
 import { StreamActivityChartHeader } from './StreamActivityChartHeader.tsx'
 import { theme } from './theme.ts'
+import { trackedFromLabel } from './coverageStartHint.ts'
 import { useChartExpansion } from './motion/useChartExpansion.ts'
 import { shouldShowChartRail } from './ChartPositionRail.tsx'
 import { ChartViewportControls } from './ChartViewportControls.tsx'
@@ -67,7 +70,17 @@ export interface RecapTimelineChartProps {
   onSelectMoment?: (peak: ExtensionPeak) => boolean
   onClearSelection?: () => void
   onRequestFullRollups?: () => Promise<FullHistoryRequestResult>
+  /**
+   * On a replay: the top moments' offsets, best first. The markers then show
+   * from the start as pins, numbered for these (PulseOverviewChart).
+   */
+  pins?: readonly number[]
+  /** On a replay, Plot on chart draws here (null: not yet) instead of under the chart. */
+  plotHost?: HTMLElement | null
 }
+
+/** The viewer's Spikes choice once read (undefined: not yet), so later recaps start with it. */
+let spikeMarkersChoice: boolean | null | undefined
 
 export function RecapTimelineChart({
   payload,
@@ -82,6 +95,8 @@ export function RecapTimelineChart({
   onSelectMoment,
   onClearSelection,
   onRequestFullRollups,
+  pins,
+  plotHost,
 }: RecapTimelineChartProps) {
   const activation = useMemo(
     () => makeFullHistoryActivation(payload),
@@ -92,7 +107,10 @@ export function RecapTimelineChart({
   const [timelineLoading, setTimelineLoading] = useState(false)
   const [chartHoverOffsetSeconds, setChartHoverOffsetSeconds] = useState<number | null>(null)
   const [selectedEmoteKeys, setSelectedEmoteKeys] = useState<string[]>([])
-  const [showPeakMarkers, setShowPeakMarkers] = useState(false)
+  // Spikes start on where the chart shows pins, until the viewer presses the
+  // toggle; their choice then holds for every recap.
+  const [spikesChoice, setSpikesChoice] = useState<boolean | null>(spikeMarkersChoice ?? null)
+  const showPeakMarkers = spikesChoice ?? pins != null
   const [emotePanelExpanded, setEmotePanelExpanded] = useState(false)
   const [focusedSeriesKey, setFocusedSeriesKey] = useState<string | null>(null)
   const fullTimelineRequestedRef = useRef(false)
@@ -177,7 +195,7 @@ export function RecapTimelineChart({
   const firstRollupOffset = sourceRollups[0]?.offsetSeconds ?? 0
   const rollupSinceHint =
     firstRollupOffset > 0
-      ? `Rollups since ${formatHeatOffset(firstRollupOffset)}`
+      ? trackedFromLabel(firstRollupOffset)
       : (!hasFullRollups || fullRollupsMissingStreamPrefix(payload)) && timelineLoading
         ? 'Loading full stream…'
         : null
@@ -210,8 +228,9 @@ export function RecapTimelineChart({
       chartPeakMarkers,
       chartViewportForRender.startSeconds,
       chartViewportForRender.endSeconds,
+      pins ? Infinity : undefined,
     ).visible.length,
-    [chartPeakMarkers, chartViewportForRender.endSeconds, chartViewportForRender.startSeconds],
+    [chartPeakMarkers, chartViewportForRender.endSeconds, chartViewportForRender.startSeconds, pins],
   )
 
   useEffect(() => {
@@ -351,9 +370,25 @@ export function RecapTimelineChart({
   useEffect(() => {
     setChartHoverOffsetSeconds(null)
     setSelectedEmoteKeys([])
-    setShowPeakMarkers(false)
     setFocusedSeriesKey(null)
   }, [chartIdentity])
+
+  useEffect(() => {
+    if (spikeMarkersChoice !== undefined) return
+    let mounted = true
+    void getRecapSpikeMarkersChoice().then(choice => {
+      if (spikeMarkersChoice === undefined) spikeMarkersChoice = choice
+      if (mounted) setSpikesChoice(spikeMarkersChoice ?? null)
+    }).catch(() => {})
+    return () => { mounted = false }
+  }, [])
+
+  const toggleSpikeMarkers = useCallback((): void => {
+    const next = !showPeakMarkers
+    spikeMarkersChoice = next
+    setSpikesChoice(next)
+    void setRecapSpikeMarkersChoice(next).catch(() => {})
+  }, [showPeakMarkers])
 
   useEffect(() => {
     setChartViewport(resolveViewport({
@@ -534,7 +569,7 @@ export function RecapTimelineChart({
             title={chartPeakMarkers.length > 0
               ? `${chartPeakMarkerVisibleCount} of ${chartPeakMarkers.length} ranked recap moments in this range`
               : 'No backend spikes are available yet'}
-            onClick={() => setShowPeakMarkers(current => !current)}
+            onClick={toggleSpikeMarkers}
           >
             Spikes{chartPeakMarkers.length > 0 ? ` · ${chartPeakMarkerVisibleCount}` : ''}
           </button>
@@ -647,6 +682,7 @@ export function RecapTimelineChart({
             overlayLines={emoteOverlays}
             peakMarkers={chartPeakMarkers}
             showPeakMarkers={showPeakMarkers}
+            pinOffsets={pins}
             emptyMessage={chartEmpty || 'Loading full stream rollups…'}
             // Full history is enrichment for recap too: keep any recent/partial
             // rollups drawable while the one-shot request is pending or fails.
@@ -674,7 +710,7 @@ export function RecapTimelineChart({
           />
         ) : null}
 
-      {topEmotesForPicker.length > 0 ? (
+      {topEmotesForPicker.length > 0 && plotHost !== null ? portal(
         <div data-chart-action="true">
           <SevenTvEmotePanel
             expanded={emotePanelExpanded}
@@ -691,12 +727,18 @@ export function RecapTimelineChart({
             maxSelected={MAX_PLOTTED_EMOTES}
             rollupsLoading={timelineLoadingFlag}
           />
-        </div>
+        </div>,
+        plotHost,
       ) : null}
 
       {rollupGapNotice ? <p style={styles.gapNotice}>{rollupGapNotice}</p> : null}
     </div>
   )
+}
+
+/** Into `host` when there is one, else in place. */
+function portal(node: ReactElement, host: HTMLElement | undefined): ReactElement {
+  return host ? createPortal(node, host) : node
 }
 
 const styles: Record<string, CSSProperties> = {
@@ -709,11 +751,9 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: 8,
     color: theme.textSecondary,
     cursor: 'pointer',
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: 800,
-    letterSpacing: '0.03em',
     padding: '4px 8px',
-    textTransform: 'uppercase',
     whiteSpace: 'nowrap',
   },
   expandButtonActive: {

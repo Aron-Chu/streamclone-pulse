@@ -24,7 +24,7 @@ async function mountPage(backendUrl: string) {
   const stored: Record<string, unknown> = { backendUrl, localBackendOptIn: true }
   const listeners = new Set<(changes: Record<string, chrome.storage.StorageChange>) => void>()
   vi.stubGlobal('chrome', {
-    runtime: { id: 'test-extension', sendMessage: vi.fn(async (message: { type: string }) => message.type === 'MY_MOMENTS' ? { type: 'MY_MOMENTS', snapshot: structuredClone(snapshot) } : undefined) },
+    runtime: { id: 'test-extension', onMessage: { addListener: vi.fn(), removeListener: vi.fn() }, sendMessage: vi.fn(async (message: { type: string }) => message.type === 'MY_MOMENTS' ? { type: 'MY_MOMENTS', snapshot: structuredClone(snapshot) } : undefined) },
     storage: {
       sync: { get: vi.fn(async () => ({ ...stored })), set: vi.fn(async (items: Record<string, unknown>) => { Object.assign(stored, items) }) },
       local: { get: vi.fn(async () => ({})), set: vi.fn(async () => undefined) },

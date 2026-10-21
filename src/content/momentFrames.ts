@@ -1,9 +1,11 @@
 import { formatHeatOffset } from '@streampulse/pulse-core'
 import {
   MOMENT_FRAMES_READY_EVENT,
+  MOMENT_PICTURE_WANTS,
   type MomentFrameSource,
   type MomentFramesApi,
   type MomentPictureView,
+  type MomentPictureWant,
 } from '../shared/momentFramesContract.ts'
 import { MomentFrameStore, nearestFrameIndex, type StoredFrame } from './momentFrameStore.ts'
 
@@ -14,8 +16,10 @@ import { MomentFrameStore, nearestFrameIndex, type StoredFrame } from './momentF
  *
  * It keeps a 320 px JPEG of the player every few seconds, drawn from Twitch's
  * own <video> into a canvas (no permission, and Twitch's media is same-origin
- * to the page). Frames live in this tab's memory only: nothing is stored or
- * uploaded, and turning "Moment pictures" off in Settings drops them at once.
+ * to the page). Frames live in this tab's memory: nothing is uploaded, and
+ * turning "Moment pictures" off in Settings drops them at once. When a moment
+ * is saved or watched from here, the worker asks for its one frame and keeps
+ * it on this device with the save (src/background/momentPictures.ts).
  * While Twitch shows an ad the player is skipped, so an ad never becomes a
  * moment's picture.
  */
@@ -266,6 +270,43 @@ function mount(host: HTMLElement, view: MomentPictureView): () => void {
   }
 }
 
+/** Frames the worker asked for: one each, the one nearest the moment, sent once it is held. */
+let wants: MomentPictureWant[] = []
+const sending = new Set<string>()
+
+function dataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(blob)
+  })
+}
+
+function serveWants(): void {
+  wants = wants.filter(want => want.until > Date.now())
+  const key = sources[sources.length - 1]?.key
+  for (const want of wants) {
+    if (!enabled || sending.has(want.token) || (want.stream && want.stream !== key)) continue
+    const frames = store.inRange(want.from, want.to)
+    const frame = frames[nearestFrameIndex(frames, want.peak)]
+    if (!frame) continue
+    sending.add(want.token)
+    void fetch(frame.url).then(response => response.blob()).then(dataUrl)
+      .then(image => chrome.runtime.sendMessage({ type: 'MOMENT_PICTURE', action: 'frame', token: want.token, image, offset: frame.offset }))
+      .then(() => { wants = wants.filter(other => other.token !== want.token) })
+      .catch(() => undefined)
+      .finally(() => sending.delete(want.token))
+  }
+}
+
+function takeWants(list: unknown): void {
+  if (!Array.isArray(list)) return
+  wants = list.filter((want): want is MomentPictureWant => typeof want?.token === 'string'
+    && [want.from, want.to, want.peak, want.until].every(Number.isFinite))
+  serveWants()
+}
+
 const api: MomentFramesApi = {
   start,
   keep: spans => store.keep(spans),
@@ -279,5 +320,11 @@ if (!globalThis.__pulseMomentFrames) {
     enabled = changes[PICTURES_KEY]!.newValue !== false
     if (!enabled) store.clear()
   })
+  chrome.runtime?.onMessage?.addListener(message => {
+    if (message?.type === MOMENT_PICTURE_WANTS) takeWants(message.wants)
+  })
+  store.subscribe(serveWants)
+  // A save made before this script arrived may already be waiting.
+  void chrome.runtime?.sendMessage({ type: 'MOMENT_PICTURE', action: 'wants' }).then(response => takeWants(response?.wants)).catch(() => undefined)
 }
 window.dispatchEvent(new Event(MOMENT_FRAMES_READY_EVENT))

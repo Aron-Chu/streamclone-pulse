@@ -15,6 +15,7 @@ import {
   sortLiveHeatPoints,
   type MomentSortMode,
 } from './mostReacted.ts'
+import { MyMomentsLink } from './momentBookmarks.tsx'
 import { PulseMomentRow, momentRowKey } from './PulseMomentRow.tsx'
 import { PulseSectionCard } from './PulseSectionCard.tsx'
 import { PulseThemedSelect } from './PulseThemedSelect.tsx'
@@ -117,6 +118,7 @@ export function MostReactedSection({
     <PulseSectionCard
       title={TOP_MOMENTS_TITLE}
       subtitle={TOP_MOMENTS_SUBTITLE}
+      titleAction={demoMode ? undefined : <MyMomentsLink />}
       stackMeta
       meta={
         heat.visible ? (

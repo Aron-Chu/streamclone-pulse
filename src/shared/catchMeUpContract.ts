@@ -37,6 +37,17 @@ export interface CatchMeUpModel {
   vodPage: boolean
 }
 
+/**
+ * On a VOD page the recap puts its chart first, so the block draws in three
+ * places: the facts line in `head` above the chart, the best three as tiles in
+ * the mount's host under it, and Watch best in `tail` under the tiles' card.
+ * Elsewhere both are null and the block draws in its host alone.
+ */
+export interface CatchMeUpParts {
+  head: HTMLElement | null
+  tail: HTMLElement | null
+}
+
 export interface CatchMeUpActions {
   /** Jumps to the moment at `index`, as its card's Jump does. */
   jump: (index: number) => void
@@ -45,14 +56,14 @@ export interface CatchMeUpActions {
 }
 
 export interface CatchMeUpBlock {
-  /** Marks the mini whose card is open under the block, or none. */
+  /** Marks the mini or tile whose card is open under the block, or none. */
   select: (index: number | null) => void
   remove: () => void
 }
 
 export interface CatchMeUpApi {
-  /** Draws the block into an element the caller leaves empty. */
-  mount: (host: HTMLElement, model: CatchMeUpModel, actions: CatchMeUpActions) => CatchMeUpBlock
+  /** Draws the block into elements the caller leaves empty. */
+  mount: (host: HTMLElement, model: CatchMeUpModel, actions: CatchMeUpActions, parts?: CatchMeUpParts) => CatchMeUpBlock
 }
 
 /** Fired on window once the Catch me up script has registered itself. */

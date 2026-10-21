@@ -10,6 +10,8 @@ export function useLibrary(repository: LibraryRepository) {
   const [reload, setReload] = useState(0)
   const session = useRef<AbortController | null>(null)
   const locked = useRef(false)
+  /** Counts this page's own changes, so a reload that started before one never undoes it. */
+  const changes = useRef(0)
   useEffect(() => {
     const controller = new AbortController()
     session.current = controller
@@ -22,10 +24,19 @@ export function useLibrary(repository: LibraryRepository) {
     }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [repository, reload])
+  // A change made elsewhere shows without clearing what is on screen.
+  useEffect(() => repository.subscribe?.(() => {
+    const controller = session.current
+    if (!controller || controller.signal.aborted || locked.current) return
+    const seen = changes.current
+    repository.load(controller.signal).then(value => {
+      if (!controller.signal.aborted && !locked.current && changes.current === seen) setSnapshot(value)
+    }).catch(() => undefined)
+  }), [repository])
   const run = useCallback(async (command: LibraryCommand, message: string): Promise<boolean> => {
     const controller = session.current
     if (!controller || controller.signal.aborted || locked.current) return false
-    locked.current = true; setBusy(true); setError(null); setNotice('')
+    locked.current = true; changes.current++; setBusy(true); setError(null); setNotice('')
     try {
       const next = await repository.execute(command, controller.signal)
       if (controller.signal.aborted) return false

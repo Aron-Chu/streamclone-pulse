@@ -60,6 +60,8 @@ export interface GamesPlayedStripProps {
   visibleRange?: GamesPlayedVisibleRange | null
   plotPadLeft?: number
   plotPadRight?: number
+  /** Draw nothing when the games are unknown (the recap), instead of an "Unavailable" strip. */
+  hideWhenUnknown?: boolean
 }
 
 export function resolveGamesPlayedActivationKey(
@@ -205,6 +207,7 @@ export function GamesPlayedStrip({
   visibleRange = null,
   plotPadLeft = 0,
   plotPadRight = 0,
+  hideWhenUnknown = false,
 }: GamesPlayedStripProps) {
   const rootRef = useRef<HTMLDivElement | null>(null)
   const portalRoot = usePulsePortalRoot()
@@ -315,7 +318,12 @@ export function GamesPlayedStrip({
     }
   }, [onHighlightKey, onSelectKey, portalRoot, selectedKey])
 
-  if (!hasMeaningfulGameSegments(segments, durationSeconds) || !timelineRange || gameSlots.length === 0) {
+  const unknown = !hasMeaningfulGameSegments(segments, durationSeconds) || !timelineRange || gameSlots.length === 0
+  // Decided on the first draw and kept: games that arrive later leave the
+  // strip hidden rather than push the chart and moments below it down.
+  const startedUnknown = useRef(unknown)
+  if (hideWhenUnknown && startedUnknown.current) return null
+  if (unknown) {
     return (
       <div data-games-played data-games-played-empty aria-label="Games played" className="pulse-games">
         <div data-games-played-header className="pulse-games-header">

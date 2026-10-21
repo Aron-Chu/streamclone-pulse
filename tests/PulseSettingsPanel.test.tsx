@@ -50,7 +50,7 @@ describe('PulseSettingsPanel quick workspace', () => {
     expect(html).not.toContain('Panel title')
     // Moments: two switches and the way to My Moments.
     expect(html).toContain('Moment pictures')
-    expect(html).toContain('Captured in this tab, never uploaded.')
+    expect(html).toContain('Kept on this device with your saves, never uploaded.')
     expect(html).toContain('Mark VOD jumps on the chart')
     expect(html).toContain('My Moments')
     expect(html).toContain('data-settings-host-cta="moments"')

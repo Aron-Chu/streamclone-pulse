@@ -3,6 +3,7 @@ import {
   COVERAGE_TIER_ACTIVE_LIVE,
   PULSE_STREAM_START_TOLERANCE_SEC,
   resolveCoverageStartHint,
+  trackedFromLabel,
 } from '../src/ui/coverageStartHint.ts'
 
 describe('resolveCoverageStartHint', () => {
@@ -45,7 +46,7 @@ describe('resolveCoverageStartHint', () => {
       isLive: true,
     })
     expect(outOfCap.tone).toBe('warn')
-    expect(outOfCap.text).toContain('Rollups since')
+    expect(outOfCap.text).toBe('Tracked from 00:03')
 
     const largeGap = resolveCoverageStartHint({
       coverageStartOffsetSeconds: 900,
@@ -66,5 +67,10 @@ describe('resolveCoverageStartHint', () => {
         coverageTier: COVERAGE_TIER_ACTIVE_LIVE,
       }).show,
     ).toBe(false)
+  })
+
+  it('says where tracking starts to the minute, as the moment rows do', () => {
+    expect(trackedFromLabel(260)).toBe('Tracked from 00:04')
+    expect(trackedFromLabel(3_725)).toBe('Tracked from 01:02')
   })
 })
