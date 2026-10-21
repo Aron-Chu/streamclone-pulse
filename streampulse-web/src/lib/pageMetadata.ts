@@ -88,6 +88,8 @@ function resolveBasePageMetadata(pathname: string): PageMetadata {
       return { title: 'Discord — StreamPulse', description: 'Join the public StreamPulse community on Discord.', canonicalPath: normalizedPath, robots: 'noindex,nofollow' }
     case '/changelog':
       return { title: 'Release Notes — StreamPulse', description: 'What changed in each version of the StreamPulse extension.', canonicalPath: normalizedPath, robots: 'noindex,nofollow' }
+    case '/extension':
+      return { title: 'Browser Extension — StreamPulse', description: 'A free browser extension for Twitch: a live chart of chat, emotes and viewers beside chat, and the moments people reacted to.', canonicalPath: '/extension', robots: 'index,follow' }
     default: {
       // The retired Explorer only redirects, so it names the page it sends people to.
       if (normalizedPath === '/analytics/moments' || normalizedPath === '/analytics/explore' || /^\/analytics\/explore\/[^/]+$/.test(normalizedPath)) {
