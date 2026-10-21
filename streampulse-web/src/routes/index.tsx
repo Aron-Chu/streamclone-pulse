@@ -14,6 +14,7 @@ import Support from './public/Support'
 import Feedback from './public/Feedback'
 import Discord from './public/Discord'
 import Changelog from './public/Changelog'
+import Extension from './public/Extension'
 import NotFound from './public/NotFound'
 import { PageErrorBoundary } from '../ui/PortalErrorBoundary'
 import { PublicLayout } from '../ui/components/PublicLayout'
@@ -134,6 +135,7 @@ function PortalRoutes() {
         <Route path="/discord" element={<Discord />} />
         {/* The extension's "Release details" links open this page. */}
         <Route path="/changelog" element={<Changelog />} />
+        <Route path="/extension" element={<Extension />} />
         <Route path="/account/sign-in" element={<AccountPage />} />
         <Route path="/account/settings" element={<AccountSettings />} />
         <Route path="/account/confirm" element={<AccountPage />} />
