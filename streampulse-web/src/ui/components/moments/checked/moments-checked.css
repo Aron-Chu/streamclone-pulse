@@ -1,4 +1,5 @@
-/* The checked Moments page (design: moments-r2, 2026-10-16, artifacts/analytics-redesign-2026-10-11/design-demos/moments-r2).
+/* The checked Moments page (design: moments-r2, 2026-10-16, artifacts/analytics-redesign-2026-10-11/design-demos/moments-r2;
+   laid out as moments-r4 B2, 2026-10-21: a picture per row, the open moment in a sticky column beside the list from 900 px).
    Ported from m2.css and the d3-v5 shared.css controls it sits on. Every class carries the mk- prefix and every token is local
    (--mk-*), so the portal's global .btn and the hub's .bar/.ring/.sw rules never reach in. No text under 12 px, no in-page
    scrollbars, colour only in data (chat purple, emotes amber, the moment teal). */
@@ -8,21 +9,21 @@
   --mk-text-1:#ededef;--mk-text-2:#b4b4bb;--mk-text-3:#8e8e96;
   --mk-accent:#5eead4;--mk-focus:#99f6e4;--mk-accent-bg:#12201f;
   --mk-viewers:#c0c7ce;--mk-chat:#a78bfa;--mk-chat-bar:rgb(167 139 250 / .40);--mk-emotes:#f7b645;--mk-live:#ef4444;
-  --mk-ok:var(--mk-accent);--mk-warn:#e0a63a;--mk-bad:var(--mk-text-3);--mk-det:520px;
+  --mk-ok:var(--mk-accent);--mk-warn:#e0a63a;--mk-bad:var(--mk-text-3);
   --mk-font:var(--fma-font, Inter, system-ui, sans-serif);
   --mk-r:8px;--mk-dur-quick:120ms;--mk-ease:cubic-bezier(.16,1,.3,1);--mk-gutter:12px;
   /* the portal header's clearance (at least the mockup's 64 px); the page sets it from the header's height */
   --mk-top:64px;
-  box-sizing:border-box;width:100%;max-width:1600px;min-height:100vh;margin:0 auto;padding:0 var(--mk-gutter) 64px;
+  box-sizing:border-box;width:100%;max-width:1320px;min-height:100vh;margin:0 auto;padding:0 var(--mk-gutter) 64px;
   background:var(--mk-canvas);color:var(--mk-text-1);font:400 13px/1.4 var(--mk-font);
   font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;-webkit-font-smoothing:antialiased;font-synthesis:none;color-scheme:dark;
 }
 @media (prefers-reduced-motion:reduce){.mk{--mk-dur-quick:0ms}}
 /* the analytics frame pads 12 px a side up to 1479 px and 20 px from 1480 px; with it the page keeps the mockup's 24 px gutter
-   (16 px on phones) and its 1600 px column (1560 inside the frame's 20 px) */
+   (16 px on phones). B2 caps the column at 1320 px, so the list's rows don't stretch past the picture, words and minutes */
 @media (max-width:719px){.mk{--mk-gutter:4px}}
 @media (min-width:720px){.mk{--mk-gutter:12px}}
-@media (min-width:1480px){.mk{--mk-gutter:4px;max-width:1560px}}
+@media (min-width:1480px){.mk{--mk-gutter:4px}}
 .mk:focus{outline:none}
 .mk *,.mk *::before,.mk *::after{box-sizing:border-box}
 .mk img{display:block}
@@ -49,82 +50,65 @@
 .mk-sw{display:inline-block;width:8px;height:8px;border-radius:2px;flex:none}
 .mk-sw.chat{background:var(--mk-chat)}.mk-sw.emotes{background:var(--mk-emotes)}.mk-sw.viewers{background:var(--mk-viewers)}
 
-/* ---------- head ---------- */
-.mk-head{padding:28px 0 12px}
-.mk-ttl{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap}
-.mk-ttl h1{font:600 26px/32px var(--mk-font);letter-spacing:-.015em}
-.mk .mk-lnk{color:var(--mk-accent);font-weight:500}
-.mk .mk-lnk:hover{text-decoration:underline;text-underline-offset:3px}
-.mk-lede{margin-top:6px!important;color:var(--mk-text-2);max-width:84ch}
-.mk-fresh{display:flex;align-items:center;gap:8px;min-height:16px;margin-top:10px!important;font:500 12px/16px var(--mk-font);color:var(--mk-text-3);font-variant-numeric:tabular-nums}
+/* ---------- head: the title and one line beside it ---------- */
+.mk-head{display:flex;align-items:baseline;gap:4px 16px;flex-wrap:wrap;padding:28px 0 12px}
+.mk-head h1{font:600 26px/32px var(--mk-font);letter-spacing:-.015em}
+.mk-lede{flex:1 1 240px;color:var(--mk-text-2);max-width:84ch}
+
+/* ---------- toolbar: Latest | Saved, search, then how fresh the list is and Replay ---------- */
+.mk-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:0 0 12px}
+.mk-bar .mk-seg button{display:inline-flex;align-items:center}
+.mk-srch{display:flex;align-items:center;gap:8px;height:32px;width:260px;padding:0 10px;border:1px solid var(--mk-line-strong);border-radius:var(--mk-r);color:var(--mk-text-3)}
+.mk-srch:focus-within{border-color:var(--mk-accent)}
+.mk-srch svg{width:14px;height:14px;flex:none}
+.mk .mk-srch input{flex:1;min-width:0;height:100%;padding:0;border:0;background:none;outline:none;color:var(--mk-text-1)}
+.mk-srch input::placeholder{color:var(--mk-text-3)}
+.mk-bar-sp{flex:1}
+.mk-fresh{display:flex;align-items:center;gap:8px;min-height:16px;font:500 12px/16px var(--mk-font);color:var(--mk-text-3);font-variant-numeric:tabular-nums;white-space:nowrap}
 .mk-fresh b{font-weight:600;color:var(--mk-text-2)}
 .mk-dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--mk-live)}
 .mk-fresh.stale .mk-dot{background:var(--mk-text-3)}
 .mk-fresh.replaying .mk-rpl{color:var(--mk-accent)}
 .mk-fresh.replaying .mk-dot{background:var(--mk-accent)}
 .mk-sep{margin:0 2px;color:var(--mk-line-strong)}
-
-/* ---------- how we check ---------- */
-.mk-how{margin:4px 0 16px;padding:16px 0;border-top:1px solid var(--mk-line);border-bottom:1px solid var(--mk-line)}
-.mk-how[hidden]{display:none}
-.mk-how-in{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px 40px;max-width:1100px}
-.mk-how-in p{color:var(--mk-text-2);line-height:20px}
-.mk-how-in p+p{margin-top:10px}
-.mk-how-in p b{color:var(--mk-text-1);font-weight:600}
-.mk-how-ck{list-style:none;padding:0;display:grid;gap:8px}
-.mk-how-ck li{display:grid;grid-template-columns:16px minmax(0,1fr);gap:10px;color:var(--mk-text-2);line-height:20px}
-.mk-how-ck li b{color:var(--mk-text-1);font-weight:600}
-@media (max-width:899px){.mk-how-in{grid-template-columns:minmax(0,1fr)}}
-
-/* ---------- toolbar ---------- */
-.mk-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 0;border-top:1px solid var(--mk-line)}
-.mk-bar .mk-seg button{display:inline-flex;align-items:center}
-.mk-seg-n{margin-left:6px;color:var(--mk-text-3);font-variant-numeric:tabular-nums}
-.mk-seg-n:empty{display:none}
-.mk-srch{display:flex;align-items:center;gap:8px;height:32px;width:260px;padding:0 10px;border:1px solid var(--mk-line-strong);border-radius:var(--mk-r);color:var(--mk-text-3)}
-.mk-srch:focus-within{border-color:var(--mk-accent)}
-.mk-srch svg{width:14px;height:14px;flex:none}
-.mk .mk-srch input{flex:1;min-width:0;height:100%;padding:0;border:0;background:none;outline:none;color:var(--mk-text-1)}
-.mk-srch input::placeholder{color:var(--mk-text-3)}
-.mk .mk-bar select{height:32px;padding:0 28px 0 10px;border:1px solid var(--mk-line-strong);border-radius:var(--mk-r);background:var(--mk-canvas) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%238e8e96' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 8px center/12px;color:var(--mk-text-1);appearance:none;cursor:pointer}
-.mk-bar select:focus-visible{outline:2px solid var(--mk-focus);outline-offset:1px}
-.mk-bar-sp{flex:1}
 .mk .mk-rp{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border-radius:var(--mk-r);color:var(--mk-text-2);font-weight:500}
 .mk .mk-rp:hover{color:var(--mk-text-1);background:var(--mk-raised)}
 .mk-rp svg{width:14px;height:14px}
 .mk .mk-rp[aria-pressed="true"]{color:var(--mk-accent)}
 
-/* ---------- list + detail ---------- */
-.mk-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:0 32px;align-items:start}
-@media (min-width:1180px){
-  .mk-grid{grid-template-columns:minmax(0,760px) minmax(var(--mk-det),1fr)}
-  .mk-det{position:sticky;top:calc(var(--mk-top) + 8px);max-height:calc(100vh - var(--mk-top) - 24px);overflow:hidden auto;scrollbar-width:none}
+/* ---------- list + detail: from 900 px the open moment sits beside the list and stays in view ---------- */
+.mk-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:0 24px;align-items:start}
+@media (min-width:900px){
+  .mk-grid{grid-template-columns:minmax(0,1fr) minmax(340px,430px)}
+  .mk-det{position:sticky;top:calc(var(--mk-top) + 8px);max-height:calc(100vh - var(--mk-top) - 24px);overflow:hidden auto;scrollbar-width:none;
+    padding:14px;border:1px solid var(--mk-line);border-radius:10px;background:var(--mk-panel)}
   .mk-det::-webkit-scrollbar{display:none}
+  .mk-det .mk-d{padding-bottom:0}
 }
 .mk-listwrap{position:relative}
 .mk-list,.mk-sub{list-style:none;margin:0;padding:0}
 .mk .mk-pill{position:sticky;z-index:3;top:calc(var(--mk-top) + 12px);display:block;width:max-content;margin:0 auto -28px;height:28px;padding:0 12px;border-radius:14px;background:var(--mk-accent);color:var(--mk-canvas);font:600 12px/28px var(--mk-font);box-shadow:0 2px 10px rgb(0 0 0 / .45)}
 .mk-pill[hidden]{display:none}
 .mk-pill:focus-visible{outline:2px solid var(--mk-focus);outline-offset:2px}
-.mk-foot{margin:12px 0 0!important;padding:0 8px;font:500 12px/16px var(--mk-font);color:var(--mk-text-3)}
-.mk .mk-foot button{color:var(--mk-accent);font-weight:500}
-.mk .mk-foot button:hover{text-decoration:underline;text-underline-offset:3px}
 .mk-empty{padding:24px 8px;color:var(--mk-text-3)}
 .mk-gone{padding:12px 8px;color:var(--mk-text-2)}
 /* a row Tab reaches under the sticky header scrolls clear of it */
 .mk .mk-r{scroll-margin-top:calc(var(--mk-top) + 8px)}
 
-/* one row (the Live feed's v2 row, 60 px here): avatar · who + what / when + why · the minutes · viewers */
+/* one row (moments-r4 B2: r2's row with a picture): picture · who + what / × + when + game · the minutes · viewers */
 .mk-g{position:relative;border-bottom:1px solid var(--mk-line)}
-.mk .mk-r{display:grid;grid-template-columns:32px minmax(0,1fr) 72px 64px;column-gap:12px;align-items:center;width:100%;min-height:60px;padding:8px 8px;border-radius:4px;color:var(--mk-text-1);text-align:left;transition:background var(--mk-dur-quick)}
+.mk .mk-r{position:relative;display:grid;grid-template-columns:96px minmax(0,1fr) 72px 64px;column-gap:14px;align-items:center;width:100%;min-height:70px;padding:8px 10px;border-radius:8px;color:var(--mk-text-1);text-align:left;transition:background var(--mk-dur-quick)}
 .mk .mk-r:hover{background:var(--mk-panel)}
 .mk-r:hover .mk-r-nm{text-decoration:underline;text-underline-offset:3px}
 .mk .mk-r:focus-visible{outline:2px solid var(--mk-focus);outline-offset:-2px}
-.mk .mk-r[aria-current="true"]{background:var(--mk-raised);box-shadow:inset 2px 0 0 var(--mk-accent)}
-.mk-r-av{position:relative;display:flex;width:32px;height:32px}
-.mk-r-av img,.mk-r-av .mk-ini{width:32px;height:32px;border-radius:50%;object-fit:cover;background:var(--mk-raised)}
-.mk-r-av .mk-ini{display:grid;place-items:center;font:600 12px/1 var(--mk-font);color:var(--mk-text-2)}
-.mk-r-av.ring::after{content:"";position:absolute;inset:-3px;border:2px solid var(--mk-live);border-radius:50%}
+.mk .mk-r[aria-current="true"]{background:var(--mk-raised)}
+.mk .mk-r[aria-current="true"]::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:2px;border-radius:2px;background:var(--mk-accent)}
+/* the picture: the live frame, or the game's art blurred under the channel's avatar */
+.mk-r-th{position:relative;display:block;width:96px;aspect-ratio:16/9;border-radius:6px;overflow:hidden;background:var(--mk-panel);box-shadow:inset 0 0 0 1px var(--mk-line)}
+.mk-r-th-f{width:100%;height:100%;object-fit:cover}
+.mk-r-th-bx{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:blur(8px) brightness(.45) saturate(1.2);transform:scale(1.3)}
+.mk-r-th-av,.mk-r-th .mk-ini{position:absolute;left:50%;top:50%;width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;object-fit:cover;box-shadow:0 0 0 2px var(--mk-canvas)}
+.mk-r-th .mk-ini{display:grid;place-items:center;background:var(--mk-raised);font:600 12px/1 var(--mk-font);color:var(--mk-text-2)}
 .mk-r-tx{display:flex;flex-direction:column;gap:2px;min-width:0}
 .mk-r-l1{display:flex;align-items:center;gap:6px;min-width:0;font:600 13px/20px var(--mk-font)}
 .mk-r-nm{flex:none;max-width:45%;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -158,11 +142,18 @@
 .mk-vd svg{width:14px;height:14px}
 .mk-vd-ok{color:var(--mk-ok)}.mk-vd-warn{color:var(--mk-warn)}.mk-vd-bad{color:var(--mk-bad)}
 
-/* earlier moments of the selected channel, under it */
-.mk-sub{margin:0 0 6px 44px!important;border-left:1px solid var(--mk-line-strong)}
+/* earlier moments of the selected channel, under it, lined up with the words */
+.mk-sub{margin:0 0 6px 106px!important;border-left:1px solid var(--mk-line-strong)}
 .mk .mk-sub .mk-r{grid-template-columns:minmax(0,1fr) 72px 64px;min-height:48px;padding:6px 8px 6px 12px}
 .mk-sub .mk-r-l1{font-size:13px}
 .mk-sub .mk-r-v{visibility:hidden}
+
+/* 900 to 1099 px, the list beside the open moment: the minutes give way to the words */
+@media (min-width:900px) and (max-width:1099px){
+  .mk .mk-r{grid-template-columns:96px minmax(0,1fr) 64px}
+  .mk .mk-sub .mk-r{grid-template-columns:minmax(0,1fr) 64px}
+  .mk-r-sp{display:none}
+}
 
 /* rows a poll brings slide in */
 .mk-g.new>.mk-r{animation:mk-in .5s var(--mk-ease)}
@@ -192,19 +183,30 @@
 /* no live frame (the stream ended, or Twitch has no preview): the game's art, blurred, under the channel's name */
 .mk-d-media>img.mk-d-bx{filter:blur(18px) brightness(.45) saturate(1.2);transform:scale(1.25)}
 
-.mk-d-head{padding:16px 0 4px}
-.mk-d-l1{display:flex;align-items:center;gap:8px;min-width:0;font:600 20px/28px var(--mk-font);letter-spacing:-.01em}
-.mk-d-l1 .mk-r-act{font-size:16px}
-.mk-d-l1 .mk-r-em img{width:28px;height:28px}
+.mk-d-head{padding:14px 0 4px}
+.mk-d-l1{display:flex;align-items:center;flex-wrap:wrap;gap:4px 7px;min-width:0;font:600 18px/26px var(--mk-font);letter-spacing:-.01em}
+.mk-d-l1 .mk-r-act{font-size:15px}
+.mk-d-l1 .mk-r-em img{width:26px;height:26px}
 .mk-d-l1 .mk-r-ems img{width:24px;height:24px}
-.mk-d-meta{margin-top:4px!important;color:var(--mk-text-2);font-variant-numeric:tabular-nums}
+.mk-d-meta{margin-top:2px!important;color:var(--mk-text-2);font-variant-numeric:tabular-nums}
 .mk-d-meta .mk-d-st-c{font-weight:600;color:var(--mk-text-1)}
+.mk-d-mx b{font-weight:600;color:var(--mk-text-1)}
+.mk-d[data-vd="ok"] .mk-d-mx b{color:var(--mk-accent)}
 
-.mk-d-vd{display:flex;align-items:center;gap:10px;margin:14px 0 0;padding:10px 12px;border-radius:var(--mk-r);background:var(--mk-panel)}
-.mk-d-vd .mk-vd,.mk-d-vd .mk-vd svg{width:18px;height:18px}
-.mk-d-vd b{font:600 14px/20px var(--mk-font)}
-.mk-d-vd span{color:var(--mk-text-3)}
-.mk-d-vd[data-vd="ok"] b{color:var(--mk-ok)}.mk-d-vd[data-vd="warn"] b{color:var(--mk-warn)}
+/* the verdict chip; its (i) opens why it counts, over what is below */
+.mk-hold-w{position:relative;margin-top:10px}
+.mk .mk-hold{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 6px 0 8px;border-radius:999px!important;border:1px solid var(--mk-line-strong);font:500 12px/16px var(--mk-font);color:var(--mk-text-2)}
+.mk .mk-hold:hover{background:var(--mk-raised)}
+.mk .mk-hold[data-vd="ok"]{border-color:rgb(94 234 212 / .32);background:rgb(94 234 212 / .06);color:var(--mk-ok)}
+.mk .mk-hold[data-vd="warn"]{border-color:rgb(224 166 58 / .35);color:var(--mk-warn)}
+.mk-hold>svg{width:14px;height:14px;opacity:.8}
+.mk-hold[aria-expanded="true"]>svg{opacity:1}
+.mk-pop{position:absolute;z-index:5;left:0;top:calc(100% + 6px);width:min(360px,100%);padding:10px 12px;border:1px solid var(--mk-line-strong);border-radius:8px;background:var(--mk-raised);box-shadow:0 10px 30px rgb(0 0 0 / .5);animation:mk-d-in .16s var(--mk-ease) both}
+.mk-pop[hidden]{display:none}
+.mk-pop h3{margin-bottom:6px!important;font:600 13px/20px var(--mk-font)}
+.mk-pop .mk-d-ck{gap:6px}
+.mk-pop .mk-d-ck li{font-size:12px;line-height:18px}
+.mk-pop .mk-d-ck li .mk-vd,.mk-pop .mk-nt{margin-top:2px}
 
 /* the chart: the minutes around it, the 15 compared shaded, their average dashed, the moment teal */
 .mk-ch{margin:16px 0 0}
@@ -228,7 +230,8 @@
 .mk-ch .mk-an2{fill:var(--mk-text-3);font:500 12px var(--mk-font)}
 .mk-ch .mk-an-m{fill:var(--mk-accent)}
 .mk-ch .mk-cur{stroke:var(--mk-text-3);stroke-width:1}
-.mk-d-read{min-height:20px;margin-top:6px!important;font:500 12px/16px var(--mk-font);color:var(--mk-text-3);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mk-d-read{min-height:20px;margin-top:6px!important;font:500 12px/16px var(--mk-font);color:var(--mk-text-3);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;animation:mk-roll .3s var(--mk-ease) both}
+@keyframes mk-roll{from{opacity:0;transform:translateY(5px)}}
 .mk-d-read b{color:var(--mk-text-1);font-weight:600}
 
 .mk-d-sec{margin-top:18px}
@@ -254,12 +257,13 @@
 .mk .mk-d-acts .mk-btn.pri:hover{text-decoration:none;filter:brightness(1.08);background:var(--mk-accent)}
 .mk-d-acts .mk-btn:hover{text-decoration:none;background:var(--mk-raised)}
 .mk-d-acts .mk-btn svg{width:14px;height:14px}
+.mk-d-acts .mk-btn.pri svg{margin-right:-2px}
 .mk-d-acts .mk-btn[aria-pressed="true"]{color:var(--mk-accent);border-color:var(--mk-accent)!important}
 .mk-d-x{display:none!important}
 
 /* narrow: the detail opens under its row, in the list */
 .mk-slot{list-style:none;padding:8px 0 16px;border-bottom:1px solid var(--mk-line)}
-@media (max-width:1179px){
+@media (max-width:899px){
   .mk .mk-d-x{display:inline-grid!important;position:absolute;z-index:2;top:8px;right:8px;width:32px;height:32px;place-items:center;border-radius:50%;background:rgb(9 9 11 / .7);color:var(--mk-text-1)}
   .mk-d-x svg{width:14px;height:14px}
   .mk-d{position:relative}
@@ -268,53 +272,31 @@
 /* ---------- phone ---------- */
 @media (max-width:719px){
   .mk-head{padding-top:20px}
-  .mk-ttl h1{font-size:22px;line-height:28px}
+  .mk-head h1{font-size:22px;line-height:28px}
   .mk-bar{gap:8px}
   .mk-bar .mk-seg{order:1}
-  .mk .mk-rp{order:2;margin-left:auto}
+  .mk-fresh{order:2;margin-left:auto}
+  .mk .mk-rp{order:3}
   .mk-rp span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
-  .mk-srch{order:3;width:100%}
-  .mk .mk-bar select{order:4;flex:1 1 40%}
+  .mk-srch{order:4;width:100%}
   .mk-bar-sp{display:none}
-  .mk .mk-r{grid-template-columns:28px minmax(0,1fr) 56px;column-gap:10px;padding:8px 4px}
+  .mk .mk-r{grid-template-columns:72px minmax(0,1fr) 56px;column-gap:10px;padding:8px 4px}
   .mk-r-l2 .mk-r-g,.mk-r-l2 .s-g,.mk-r-l2 .s-m{display:none}
   .mk-r-l2 .mk-r-more{margin-left:4px}
   .mk-r-l2{flex-wrap:wrap;row-gap:0}
-  .mk-r-av,.mk-r-av img,.mk-r-av .mk-ini{width:28px;height:28px}
+  .mk-r-th{width:72px}
+  .mk-r-th-av,.mk-r-th .mk-ini{width:24px;height:24px;margin:-12px 0 0 -12px}
   .mk-r-sp{display:none}
-  .mk-sub{margin-left:38px!important}
+  .mk-sub{margin-left:40px!important}
   .mk .mk-sub .mk-r{grid-template-columns:minmax(0,1fr) 56px}
   .mk-r-nm{max-width:52%}
+  /* a phone row has about 225 px for its words: the emote takes the next line rather than shrinking to nothing */
+  .mk-r-l1{flex-wrap:wrap;row-gap:0}
   .mk-d-l1{font-size:17px;line-height:24px;flex-wrap:wrap}
   .mk-ch-box{min-height:170px}
   .mk-ch svg{height:170px}
   .mk-d-em-r{grid-template-columns:24px minmax(0,110px) minmax(0,1fr) 40px}
 }
-
-/* wide: the frame is cropped so the chart, the point of the panel, sits above the fold at 900 px tall; Play opens it to 16:9 */
-@media (min-width:1180px){.mk-d-media{aspect-ratio:16/7}.mk-d-media.on{aspect-ratio:16/9}}
-
-/* ---------- This stream: the channel's moments on the stream's timeline (Explorer's broadcast view, folded in) ---------- */
-.mk-d-st{margin-top:18px}
-.mk-d-st-top{display:flex;align-items:baseline;gap:12px}
-.mk-d-st-top h3{font:600 13px/20px var(--mk-font)}
-.mk-d-st-top span{margin-left:auto;font:500 12px/16px var(--mk-font);color:var(--mk-text-3);text-align:right}
-.mk-d-st-p{position:relative;height:44px;margin:6px 8px 0;border-bottom:1px solid var(--mk-line-strong)}
-.mk .mk-d-st-t{position:absolute;bottom:0;width:14px;height:100%;margin-left:-7px;display:flex;align-items:flex-end;justify-content:center;border-radius:3px}
-.mk-d-st-t i{position:relative;display:block;width:2px;height:var(--h);border-radius:1px 1px 0 0;background:color-mix(in srgb,var(--mk-accent) 45%,transparent);transition:background var(--mk-dur-quick)}
-.mk-d-st-t i::before{content:"";position:absolute;top:-3px;left:50%;width:6px;height:6px;margin-left:-3px;border-radius:50%;background:inherit}
-.mk-d-st-t[data-vd="warn"] i{background:color-mix(in srgb,var(--mk-warn) 75%,transparent)}
-.mk-d-st-t[data-vd="bad"] i{background:var(--mk-text-3);opacity:.55}
-.mk-d-st-t:hover i{background:var(--mk-text-1);opacity:1}
-.mk-d-st-t[aria-current="true"]{z-index:1}
-.mk-d-st-t[aria-current="true"] i{width:3px;background:var(--mk-accent);opacity:1}
-.mk-d-st-t[aria-current="true"] i::before{top:-5px;width:9px;height:9px;margin-left:-4.5px;box-shadow:0 0 0 3px rgb(94 234 212 / .18)}
-.mk-d-st-t:focus-visible{outline:2px solid var(--mk-focus);outline-offset:1px}
-/* the mockup's axis was 11 px; the portal's analytics typography floor is 12 px */
-.mk-d-st-x{position:relative;height:16px;margin:4px 8px 0;font:500 12px/16px var(--mk-font);color:var(--mk-text-3);font-variant-numeric:tabular-nums}
-.mk-d-st-x span{position:absolute;top:0;transform:translateX(-50%);white-space:nowrap}
-.mk-d-st-x span:first-child{left:-8px;transform:none}
-.mk-d-st-x span:last-child{right:-8px;transform:none}
 
 /* ---------- motion: short and quiet; .no-motion (reduced motion) turns all of it off ---------- */
 .mk-d{animation:mk-d-in .2s var(--mk-ease) both}
@@ -326,7 +308,7 @@
 @keyframes mk-fade{from{opacity:0}}
 .mk-ch svg.anim-grow .mk-cb.mo{animation:mk-glow .9s .5s}
 @keyframes mk-glow{35%{filter:drop-shadow(0 0 6px rgb(94 234 212 / .85))}}
-.mk-d-vd[data-vd="ok"] .mk-vd path{stroke-dasharray:10;animation:mk-draw .34s .16s var(--mk-ease) both}
+.mk-hold[data-vd="ok"] .mk-vd path{stroke-dasharray:10;animation:mk-draw .34s .16s var(--mk-ease) both}
 @keyframes mk-draw{from{stroke-dashoffset:10}}
 .mk-pill:not([hidden]){animation:mk-pill-in .22s var(--mk-ease) both}
 @keyframes mk-pill-in{from{opacity:0;transform:translateY(-8px)}}
@@ -376,6 +358,8 @@
 .mk-mc-acts .mk-btn svg{width:12px;height:12px}
 .mk-mc-acts .mk-btn .mk-vd,.mk-mc-acts .mk-btn .mk-vd svg{width:14px;height:14px}
 @media (max-width:719px){.mk-mc{padding:10px}.mk-mc-fig{padding:6px 8px}.mk-mc-n{font-size:16px}.mk-mc-rx{display:none}}
+/* the side panel (at most 430 px) is as narrow as a phone: the label drops "the moment" there too */
+@media (min-width:900px){.mk-det .mk-mc-rx{display:none}}
 
 /* ---------- R2-5 small fixes ---------- */
 /* no jump on load: the empty list holds a screen's height, so what sits under it is already below the fold when the moments arrive */

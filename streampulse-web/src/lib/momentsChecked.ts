@@ -236,8 +236,8 @@ export function groupsOf(list: CheckedMoment[]): CheckedMoment[][] {
 /** The aria label a row and the live region read. */
 export function ariaOf(m: CheckedMoment, now: number, more = 0): string {
   const x = m.rowX != null ? `${fx(m.rowX).replace('×', ' times')} the 15 minutes before` : m.why
-  const cat = m.item.category?.name
-  return `${m.name} ${actOf(m.item).text}, ${when(m.at, now)}${x ? `, ${x}` : ''}${cat ? `, ${cat}` : ''}${m.item.viewers != null ? `, ${int(m.item.viewers)} watched it` : ''}. ${VERDICT_WORD[m.item.verdict]}.${more ? ` ${more} ${more === 1 ? 'earlier moment.' : 'earlier moments.'}` : ''}`
+  const cat = m.item.category?.name, act = actOf(m.item)
+  return `${m.name} ${act.type === 'spammed' ? 'chat ' : ''}${act.text}, ${when(m.at, now)}${x ? `, ${x}` : ''}${cat ? `, ${cat}` : ''}${m.item.viewers != null ? `, ${int(m.item.viewers)} watched it` : ''}. ${VERDICT_WORD[m.item.verdict]}.${more ? ` ${more} ${more === 1 ? 'earlier moment.' : 'earlier moments.'}` : ''}`
 }
 
 /** The 25 sparkline bars: the moment in teal, the compared minutes stronger than the rest. */
