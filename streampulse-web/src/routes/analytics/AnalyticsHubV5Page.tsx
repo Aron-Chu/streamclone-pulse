@@ -13,6 +13,7 @@ import { usePublicHubData } from '../../hooks/usePublicHubData'
 import { getBackendUrl } from '../../lib/apiClient'
 import { backendSourceLabel, resolveBackendSource } from '../../lib/backendSource'
 import { formatActivityWindowLabel, summarizeActivity } from '../../lib/hubActivitySummary'
+import { selectHubChartActivityInputs } from '../../lib/hubChartActivityModel'
 import { isHubActivityLivePoolFallback, resolveHubActivityChartWindowMinutes } from '../../lib/hubActivityHonesty'
 import { normalizePublicHub, type PublicHubActivityWindow } from '../../lib/publicHub'
 import { resolveHubStatus, resolveHubUiState } from '../../lib/hubUiState'
@@ -21,6 +22,8 @@ import { AnalyticsFigmaShell } from '../../ui/components/analytics/AnalyticsFigm
 import { HubActivityPanelV5 } from '../../ui/components/analytics/HubActivityPanelV5'
 import { HubBackendSourceBanner } from '../../ui/components/analytics/HubBackendSourceBanner'
 import { HubDataHealthBanner } from '../../ui/components/hub/HubDataHealthBanner'
+import { hubBucketMinutes, pointSpacingMinutes } from '../../ui/components/hub/hubActivitySpModel'
+import { HubV5BarCard } from '../../ui/components/hub/v5/HubV5BarCard'
 import { HubV5Busiest } from '../../ui/components/hub/v5/HubV5Busiest'
 import { HubV5Channels } from '../../ui/components/hub/v5/HubV5Channels'
 import { HubV5Hero } from '../../ui/components/hub/v5/HubV5Hero'
@@ -132,6 +135,16 @@ export default function AnalyticsHubV5Page() {
     [data.activity.points, data.poolSize, servedActivityWindowMinutes],
   )
 
+  // The bar card reads the points the chart draws, on the chart's bucket grid.
+  const chartActivity = useMemo(() => {
+    const inputs = selectHubChartActivityInputs(data)
+    const ordered = inputs.points.filter((p) => p && Number.isFinite(p.t)).slice().sort((a, b) => a.t - b.t)
+    return {
+      points: inputs.points,
+      bucketMinutes: hubBucketMinutes(inputs.windowMinutes, data.activity.bucketMinutes, pointSpacingMinutes(ordered)),
+    }
+  }, [data])
+
   const games = useMemo(() => whereChatIs(data.liveChannels), [data.liveChannels])
   const avatars = useMemo(() => {
     const map = new Map<string, string>()
@@ -239,6 +252,15 @@ export default function AnalyticsHubV5Page() {
               onOpenMeasured={openMeasured}
             />
           </div>
+
+          {measurementsUnavailable ? null : (
+            <HubV5BarCard
+              points={chartActivity.points}
+              bucketMinutes={chartActivity.bucketMinutes}
+              moments={data.livePulseMoments}
+              avatars={avatars}
+            />
+          )}
 
           <HubV5Moments moments={data.livePulseMoments} avatars={avatars} loading={loadingInitial} />
 

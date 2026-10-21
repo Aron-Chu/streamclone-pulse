@@ -1,0 +1,310 @@
+/*
+ * The d3-v5 hub's bar card (PR 3 of 5: U7), behind VITE_PUBLIC_HUB_V5.
+ * Ported from the approved round-5 mockup: bucket-card.css (base and the
+ * 'below' placement; the anchor, dock, tray and sheet placements were removed
+ * by R5-8) and hub-r5.css (#bk: the stepper, the link rows, the 900 px and
+ * 1200 px layouts). Every rule sits under .hub-v5 .hv5-bk. No text under 12 px.
+ *
+ * The mockup's .bkc-* classes are .hbk-* here: the session page's card
+ * (sp-session-strip.css) styles .bkc-* globally, and its rules would reach
+ * this card after an in-app move from a session page to the hub.
+ */
+
+.hub-v5 .hv5-bk {
+  --hv5-viewers: #c0c7ce;
+  grid-area: intv;
+  position: relative;
+  min-width: 0;
+  container: hbk-below / inline-size;
+}
+
+/* ---------- base (the page's resets do not reach the card) ---------- */
+.hub-v5 .hv5-bk .hbk {
+  position: relative;
+  box-sizing: border-box;
+  color: var(--sp-text-1);
+  font: 400 14px/20px var(--sp-font);
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  transition:
+    opacity 120ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 120ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+/* resets at zero specificity, so the page's .hv5-ib / .hv5-qb keep their padding and hover */
+:where(.hub-v5 .hv5-bk .hbk) :where(*, *::before, *::after) { box-sizing: border-box; }
+:where(.hub-v5 .hv5-bk .hbk) :where(p, h2, ul) { margin: 0; }
+:where(.hub-v5 .hv5-bk .hbk) :where(ul) { list-style: none; padding: 0; }
+:where(.hub-v5 .hv5-bk .hbk) :where(img) { display: block; }
+:where(.hub-v5 .hv5-bk .hbk) :where(button) {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+.hub-v5 .hv5-bk .hbk.hbk-enter,
+.hub-v5 .hv5-bk .hbk.hbk-leave {
+  opacity: 0;
+  transform: translate(0, var(--hbk-dy, 4px));
+}
+.hub-v5 .hv5-bk .hbk.hbk-leave { pointer-events: none; }
+@media (prefers-reduced-motion: reduce) {
+  .hub-v5 .hv5-bk .hbk { transition: none; }
+  .hub-v5 .hv5-bk .hbk.hbk-enter,
+  .hub-v5 .hv5-bk .hbk.hbk-leave { transform: none; }
+}
+.hub-v5 .hv5-bk .hbk .hv5-ico { width: 16px; height: 16px; }
+.hub-v5 .hv5-bk .hbk .hv5-ib .hv5-ico { width: 18px; height: 18px; }
+
+/* ---------- header: the teal state line and close, then the time range and its date ---------- */
+.hub-v5 .hv5-bk .hbk-h { display: block; padding-bottom: 12px; border-bottom: 1px solid var(--sp-line); }
+.hub-v5 .hv5-bk .hbk-top { display: flex; align-items: center; gap: 8px; min-height: 24px; }
+.hub-v5 .hv5-bk .hbk-s {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--hv5-accent);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* the chart draws the selected bar's band in this teal */
+.hub-v5 .hv5-bk .hbk-s::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: var(--hv5-accent); flex: none; }
+.hub-v5 .hv5-bk .hbk-id { display: flex; align-items: flex-start; gap: 12px; margin-top: 6px; min-width: 0; }
+.hub-v5 .hv5-bk .hbk-hl { flex: 1; min-width: 0; }
+.hub-v5 .hv5-bk .hbk-t {
+  font-family: var(--sp-font);
+  font-weight: 700;
+  font-size: 20px;
+  line-height: 24px;
+  letter-spacing: -0.015em;
+  font-variant-numeric: tabular-nums;
+  color: var(--sp-text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hub-v5 .hv5-bk .hbk-m {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--sp-text-3);
+}
+.hub-v5 .hv5-bk .hbk-hatch { width: 16px; height: 12px; flex: none; overflow: hidden; border-radius: 2px; background: var(--sp-raised); }
+.hub-v5 .hv5-bk .hbk-x { position: relative; flex: none; margin: -6px -8px -6px 0; }
+.hub-v5 .hv5-bk .hbk-x::after { content: ""; position: absolute; inset: -6px; }
+
+/* ---------- three figures: prod's stat tiles (label, value, peak or sample line) ---------- */
+.hub-v5 .hv5-bk .hbk-figs { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1fr) minmax(0, 1.3fr); gap: 6px; }
+.hub-v5 .hv5-bk .hbk-fig {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--sp-line-strong);
+  border-radius: 6px;
+  background: var(--sp-panel);
+}
+.hub-v5 .hv5-bk .hbk-fl {
+  order: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--sp-text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hub-v5 .hv5-bk .hbk-sw { display: inline-block; width: 8px; height: 8px; border-radius: 2px; flex: none; }
+.hub-v5 .hv5-bk .hbk-sw.chat { background: var(--hv5-chat); }
+.hub-v5 .hv5-bk .hbk-sw.emotes { background: var(--hv5-emotes); }
+.hub-v5 .hv5-bk .hbk-sw.viewers { background: var(--hv5-viewers); }
+.hub-v5 .hv5-bk .hbk-n {
+  order: 1;
+  margin-top: 4px;
+  font-family: var(--sp-font);
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 22px;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  color: var(--sp-text-1);
+}
+.hub-v5 .hv5-bk .hbk-n.na { color: var(--sp-text-3); }
+.hub-v5 .hv5-bk .hbk-u {
+  order: 2;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--sp-text-2);
+  white-space: nowrap;
+  min-width: 0;
+}
+.hub-v5 .hv5-bk .hbk-ut { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.hub-v5 .hv5-bk .hbk-cap { margin-top: 6px; font-size: 12px; line-height: 16px; color: var(--sp-text-3); }
+
+/* ---------- top emotes: one row, each item as wide as its name ---------- */
+.hub-v5 .hv5-bk .hbk-el { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.hub-v5 .hv5-bk .hbk-el li {
+  display: grid;
+  grid-template-columns: 28px minmax(0, auto);
+  grid-template-rows: auto auto;
+  column-gap: 8px;
+  align-items: center;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.hub-v5 .hv5-bk .hbk-el :is(img, .hbk-noimg) { grid-row: 1 / span 2; width: 28px; height: 28px; object-fit: contain; }
+.hub-v5 .hv5-bk .hbk-noimg {
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--sp-line-strong);
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--sp-text-3);
+}
+.hub-v5 .hv5-bk .hbk-en { font-size: 14px; line-height: 18px; font-weight: 500; color: var(--sp-text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hub-v5 .hv5-bk .hbk-ec { font-size: 12px; line-height: 16px; color: var(--sp-text-2); font-variant-numeric: tabular-nums; }
+.hub-v5 .hv5-bk .hbk-emo .hbk-sl { margin-bottom: 4px; }
+
+/* ---------- section label (sentence case, 12 px) ---------- */
+.hub-v5 .hv5-bk .hbk-sl { display: flex; align-items: center; gap: 8px; min-height: 20px; font-size: 12px; line-height: 16px; color: var(--sp-text-2); font-weight: 600; }
+.hub-v5 .hv5-bk .hbk-sl .r { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-weight: 400; color: var(--sp-text-2); white-space: nowrap; }
+
+/* ---------- moments: who, when and the top emote; each row opens in Moments ---------- */
+.hub-v5 .hv5-bk .hbk-ml { margin: 2px -6px 0; }
+.hub-v5 .hv5-bk .hbk-mr {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: 4px;
+  color: var(--sp-text-1);
+  text-align: left;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.hub-v5 .hv5-bk .hbk-mr:hover { background: var(--sp-raised); text-decoration: none; }
+.hub-v5 .hv5-bk .hbk-mr:focus-visible { outline: 2px solid var(--hv5-accent); outline-offset: -2px; }
+.hub-v5 .hv5-bk .hbk-mr .nm { flex: 1; min-width: 0; font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
+.hub-v5 .hv5-bk .hbk-mr .ck { flex: none; font-size: 12px; color: var(--sp-text-3); }
+.hub-v5 .hv5-bk .hbk-mr .em { display: inline-flex; align-items: center; gap: 4px; flex: none; margin-left: auto; font-size: 12px; color: var(--sp-text-2); }
+.hub-v5 .hv5-bk .hbk-mr .em img { width: 20px; height: 20px; object-fit: contain; }
+
+/* ---------- provider split: 7TV and other (= total - 7TV) ---------- */
+.hub-v5 .hv5-bk .hbk-pv .hbk-sl b { font-weight: 500; color: var(--sp-text-1); }
+
+/* ---------- notes and actions ---------- */
+.hub-v5 .hv5-bk .hbk-notes { font-size: 12px; line-height: 16px; color: var(--sp-text-3); }
+.hub-v5 .hv5-bk .hbk-notes li + li { margin-top: 2px; }
+.hub-v5 .hv5-bk .hbk-nw:empty { display: none; }
+.hub-v5 .hv5-bk .hbk-act { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 4px; }
+.hub-v5 .hv5-bk .hbk-act .hv5-ico { width: 14px; height: 14px; }
+.hub-v5 .hv5-bk .hbk-act .hv5-qb { gap: 4px; padding: 0 6px; }
+/* the stepper: first in the actions row, Zoom to bar after it */
+.hub-v5 .hv5-bk .hv5-step { order: -1; display: inline-flex; align-items: center; gap: 2px; margin-right: auto; font-size: 12px; color: var(--sp-text-2); }
+.hub-v5 .hv5-bk .hv5-step span { padding: 0 4px; white-space: nowrap; }
+.hub-v5 .hv5-bk .hv5-step .hv5-ib { position: relative; width: 28px; height: 28px; }
+.hub-v5 .hv5-bk .hv5-step .hv5-ib::after { content: ""; position: absolute; left: -2px; right: -2px; top: -6px; bottom: -6px; }
+.hub-v5 .hv5-bk .hv5-step .hv5-ib .hv5-ico { width: 18px; height: 18px; }
+
+/* ---------- gap (no measurement) ---------- */
+.hub-v5 .hv5-bk .hbk-gap { display: flex; align-items: center; gap: 12px; }
+.hub-v5 .hv5-bk .hbk-gapm .hbk-hatch { display: block; width: 40px; height: 28px; }
+.hub-v5 .hv5-bk .hbk-gt { font-size: 14px; line-height: 20px; color: var(--sp-text-1); font-weight: 500; }
+.hub-v5 .hv5-bk .hbk-gap .hbk-cap { margin-top: 0; }
+
+/* ======================================================================================
+   below: a strip in the page's flow under the chart, at every width (never a sheet), so nothing covers the plot.
+   The time range on the left; figures, emotes, moments and the actions on the right.
+   ====================================================================================== */
+.hub-v5 .hv5-bk .hbk--below {
+  --hbk-dy: -4px;
+  margin-top: 10px;
+  padding: 12px 16px 14px;
+  background: var(--sp-panel);
+  border: 1px solid var(--sp-line-strong);
+  border-radius: 8px;
+}
+.hub-v5 .hv5-bk .hbk--below > .hbk-in {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(320px, 1fr);
+  column-gap: 24px;
+  grid-template-areas: "top top" "id body" ". body" ". act";
+  grid-template-rows: auto auto auto 1fr;
+}
+.hub-v5 .hv5-bk .hbk--below .hbk-h { display: contents; }
+.hub-v5 .hv5-bk .hbk--below .hbk-top { grid-area: top; }
+.hub-v5 .hv5-bk .hbk--below .hbk-id { grid-area: id; margin-top: 10px; align-self: start; }
+.hub-v5 .hv5-bk .hbk--below .hbk-body { grid-area: body; min-width: 0; margin-top: 8px; }
+.hub-v5 .hv5-bk .hbk--below .hbk-body > * + * { margin-top: 12px; }
+.hub-v5 .hv5-bk .hbk--below :is(.hbk-emo, .hbk-mom) { padding-top: 10px; border-top: 1px solid var(--sp-line); }
+.hub-v5 .hv5-bk .hbk--below .hbk-pv + .hbk-nw { margin-top: 8px; }
+.hub-v5 .hv5-bk .hbk--below .hbk-act { grid-area: act; align-self: end; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--sp-line); }
+@container hbk-below (min-width: 1000px) {
+  .hub-v5 .hv5-bk .hbk--below > .hbk-in { grid-template-columns: minmax(0, 420px) minmax(0, 1fr); }
+}
+@container hbk-below (max-width: 599px) {
+  .hub-v5 .hv5-bk .hbk--below { padding: 10px 12px 12px; }
+  .hub-v5 .hv5-bk .hbk--below > .hbk-in {
+    grid-template-columns: 128px minmax(0, 1fr);
+    column-gap: 12px;
+    grid-template-areas: "top top" "id id" "body body" "act act";
+    grid-template-rows: auto auto auto auto;
+  }
+  .hub-v5 .hv5-bk .hbk--below .hbk-id { margin-top: 8px; align-self: center; }
+  .hub-v5 .hv5-bk .hbk--below .hbk-body { margin-top: 12px; }
+}
+/* 900 px and up: the time range and the actions in a narrow left column, the figures over two lists on the right */
+@container hbk-below (min-width: 900px) {
+  .hub-v5 .hv5-bk .hbk--below > .hbk-in {
+    grid-template-columns: minmax(150px, 200px) minmax(0, 1fr);
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas: "top top" "id body" "act body";
+  }
+  .hub-v5 .hv5-bk .hbk--below .hbk-act { flex-direction: column; align-items: flex-start; gap: 4px; margin-top: 12px; padding-top: 0; border-top: 0; align-self: end; }
+  .hub-v5 .hv5-bk .hbk--below .hv5-step { margin-right: 0; margin-left: -6px; }
+  .hub-v5 .hv5-bk .hbk--below .hbk-zoom { margin-left: -6px; }
+  .hub-v5 .hv5-bk .hbk--below .hbk-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 24px; align-items: start; }
+  .hub-v5 .hv5-bk .hbk--below .hbk-body > * { margin-top: 0; }
+  .hub-v5 .hv5-bk .hbk--below .hbk-fg { grid-column: 1 / -1; grid-row: 1; }
+  .hub-v5 .hv5-bk .hbk--below .hbk-emo { grid-column: 1; grid-row: 2; margin-top: 12px; }
+  .hub-v5 .hv5-bk .hbk--below .hbk-mom { grid-column: 2; grid-row: 2; margin-top: 12px; }
+  .hub-v5 .hv5-bk .hbk--below .hbk-pv { grid-column: 1 / -1; grid-row: 3; margin-top: 8px; }
+  .hub-v5 .hv5-bk .hbk--below .hbk-nw { grid-column: 1 / -1; grid-row: 4; margin-top: 8px; }
+  .hub-v5 .hv5-bk .hbk--below .hbk-gap { grid-column: 1 / -1; }
+  .hub-v5 .hv5-bk .hbk--below .hbk-el { flex-direction: column; align-items: stretch; gap: 6px; }
+  .hub-v5 .hv5-bk .hbk--below .hbk-el li { grid-template-columns: 28px minmax(0, 1fr) auto; grid-template-rows: auto; }
+  .hub-v5 .hv5-bk .hbk--below .hbk-el :is(img, .hbk-noimg) { grid-row: 1; }
+}
+/* 1200 px and up: figures, top emotes and moments side by side */
+@container hbk-below (min-width: 1200px) {
+  .hub-v5 .hv5-bk .hbk--below .hbk-body { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr); }
+  .hub-v5 .hv5-bk .hbk--below .hbk-fg { grid-column: 1; }
+  .hub-v5 .hv5-bk .hbk--below .hbk-emo { grid-column: 2; grid-row: 1 / span 2; margin-top: 0; padding-top: 0; border-top: 0; }
+  .hub-v5 .hv5-bk .hbk--below .hbk-mom { grid-column: 3; grid-row: 1 / span 2; margin-top: 0; padding-top: 0; border-top: 0; }
+  .hub-v5 .hv5-bk .hbk--below .hbk-pv { grid-column: 1; grid-row: 2; }
+  .hub-v5 .hv5-bk .hbk--below .hbk-nw { grid-row: 3; }
+}
