@@ -16,6 +16,8 @@ interface ImportMetaEnv {
   readonly VITE_SUPPORTER_CHAT_BADGES?: string
   /** Build switch: `on` (or `1`) serves the d3-v5 hub on /analytics (read inline so a flag-off build folds it away). Off: the Command Center page. */
   readonly VITE_PUBLIC_HUB_V5?: string
+  /** Launch switch: `on` serves /analytics/moments from /v1/public/moments, checked (lib/momentsFeed.ts). */
+  readonly VITE_PUBLIC_MOMENTS_FEED?: string
   readonly DEV: boolean
   readonly PROD: boolean
   readonly MODE: string
