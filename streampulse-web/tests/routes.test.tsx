@@ -63,6 +63,20 @@ describe('route smoke', () => {
     })
   })
 
+  it('serves the hub at the front page, as at /analytics', async () => {
+    renderPath('/?window=7d')
+    expect(await screen.findByRole('main', { name: /streampulse analytics/i }, { timeout: 10_000 })).toBeTruthy()
+    expect(screen.getByTestId('location').textContent).toBe('/?window=7d')
+  })
+
+  it.each([
+    ['/#demo', '/extension#demo'],
+    ['/?ref=store#demo', '/extension?ref=store#demo'],
+  ])('sends the old landing link %s on to the Extension page', async (path, target) => {
+    renderPath(path)
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe(target))
+  })
+
   it('redirects legacy /setup to analytics', async () => {
     renderPath('/setup')
     // Navigate can resolve after the initial MemoryRouter entry; wait for settlement.

@@ -67,7 +67,8 @@ describe('install CTAs across surfaces', () => {
         </PublicLayout>
       </MemoryRouter>,
     )
-    for (const link of screen.getAllByRole('link', { name: /Add StreamPulse to Chrome/i })) {
+    // The site's top bar says "Add to Chrome", as on the hub.
+    for (const link of screen.getAllByRole('link', { name: /^Add to Chrome$/ })) {
       assertSafeCwsLink(link)
     }
     u1()
@@ -99,7 +100,7 @@ describe('install CTAs across surfaces', () => {
     )
     const header = screen.getByRole('banner')
     expect(header.getAttribute('data-analytics-build')).toBe('command-center-cws-2026-07-22')
-    assertSafeCwsLink(within(header).getByRole('link', { name: /Add StreamPulse to Chrome/i }))
+    assertSafeCwsLink(within(header).getByRole('link', { name: /^Add to Chrome$/ }))
   })
 
   it('keeps install CTAs visible without overflow on mobile and desktop widths', () => {
@@ -114,7 +115,7 @@ describe('install CTAs across surfaces', () => {
     for (const width of [360, 1280]) {
       Object.defineProperty(window, 'innerWidth', { configurable: true, value: width })
       window.dispatchEvent(new Event('resize'))
-      const link = screen.getByRole('link', { name: /Add StreamPulse to Chrome/i })
+      const link = screen.getByRole('link', { name: /^Add to Chrome$/ })
       const nav = container.querySelector('.app-nav')
       expect(link).toBeTruthy()
       expect(link.getAttribute('href')).toBe(CANONICAL)
@@ -143,7 +144,7 @@ describe('analytics routes and admin', () => {
     expect(await screen.findByRole('main', { name: /streampulse analytics/i })).toBeTruthy()
     expect(screen.getByTestId('pathname').textContent).toBe('/analytics')
     expect(document.querySelector('[data-analytics-build="command-center-cws-2026-07-22"]')).toBeTruthy()
-    assertSafeCwsLink(screen.getByRole('link', { name: /Add StreamPulse to Chrome/i }))
+    assertSafeCwsLink(screen.getByRole('link', { name: /^Add to Chrome$/ }))
     unmount()
 
     render(

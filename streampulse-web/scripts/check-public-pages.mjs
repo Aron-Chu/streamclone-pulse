@@ -8,8 +8,9 @@ const root = dirname(fileURLToPath(import.meta.url))
 const dist = join(root, '..', 'dist')
 
 const expected = [
-  ['index.html', 'StreamPulse — Twitch reaction analytics', 'index,follow', 'https://streampulse.stream/'],
-  ['analytics/index.html', 'StreamPulse Analytics', 'index,follow', 'https://streampulse.stream/analytics'],
+  // The front page is the hub; /analytics serves the same page and points to `/`.
+  ['index.html', 'StreamPulse Analytics', 'index,follow', 'https://streampulse.stream/'],
+  ['analytics/index.html', 'StreamPulse Analytics', 'index,follow', 'https://streampulse.stream/'],
   ['docs/index.html', 'Documentation — StreamPulse', 'index,follow', 'https://streampulse.stream/docs'],
   ['status/index.html', 'Service Status — StreamPulse', 'index,follow', 'https://streampulse.stream/status'],
   ['privacy/index.html', 'Privacy Policy — StreamPulse', 'index,follow', 'https://streampulse.stream/privacy'],

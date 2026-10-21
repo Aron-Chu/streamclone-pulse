@@ -75,9 +75,10 @@ describe('privacy route', () => {
 
   it('exposes Privacy and Support links from the public layout', async () => {
     renderPath('/privacy')
-    expect((await screen.findByRole('link', { name: /^privacy$/i })).getAttribute('href')).toBe('/privacy')
-    const navigation = screen.getByRole('navigation', { name: /main navigation/i })
-    expect(within(navigation).getByRole('link', { name: /^support$/i }).getAttribute('href')).toBe('/support')
+    // The top bar is Hub, Moments, Extension, Docs; Privacy and Support sit in the footer.
+    const footer = await screen.findByRole('navigation', { name: /^footer$/i })
+    expect(within(footer).getByRole('link', { name: /^privacy policy$/i }).getAttribute('href')).toBe('/privacy')
+    expect(within(footer).getByRole('link', { name: /^support$/i }).getAttribute('href')).toBe('/support')
   })
 })
 

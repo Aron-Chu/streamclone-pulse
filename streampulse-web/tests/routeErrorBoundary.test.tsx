@@ -100,9 +100,17 @@ describe('route-level error boundary', () => {
     expect(screen.getByRole('navigation', { name: 'Analytics navigation' })).toBeTruthy()
     expectNoSiteLayout(container)
 
-    fireEvent.click(screen.getByRole('link', { name: 'All moments' }))
+    fireEvent.click(screen.getByRole('link', { name: 'Moments' }))
     expect(await screen.findByRole('button', { name: 'Show moments' })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: 'Something went wrong' })).toBeNull()
+  })
+
+  it('keeps the analytics top navigation when the hub throws at the front page', async () => {
+    const { container } = renderAt('/')
+
+    expect(await screen.findByRole('heading', { name: 'Something went wrong' })).toBeTruthy()
+    expect(screen.getByRole('navigation', { name: 'Analytics navigation' })).toBeTruthy()
+    expectNoSiteLayout(container)
   })
 
   it('keeps the mounted analytics header when content inside it throws', async () => {
@@ -117,12 +125,12 @@ describe('route-level error boundary', () => {
     expect(container.querySelector('#analytics-main')?.textContent).toContain('Something went wrong')
   })
 
-  it('recovers when a nav link changes only the query, as All moments does from History', async () => {
+  it('recovers when a nav link changes only the query, as Moments does from History', async () => {
     renderAt('/analytics/moments?view=history')
     fireEvent.click(await screen.findByRole('button', { name: 'Show moments' }))
     expect(await screen.findByRole('heading', { name: 'Something went wrong' })).toBeTruthy()
 
-    fireEvent.click(screen.getByRole('link', { name: 'All moments' }))
+    fireEvent.click(screen.getByRole('link', { name: 'Moments' }))
     expect(await screen.findByRole('button', { name: 'Show moments' })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: 'Something went wrong' })).toBeNull()
   })
@@ -186,7 +194,7 @@ describe('route-level error boundary', () => {
 describe('error reporting', () => {
   it('reports a page reached by an in-app link once', async () => {
     renderAt('/docs')
-    fireEvent.click(await screen.findByRole('link', { name: 'Status' }))
+    fireEvent.click(await screen.findByRole('link', { name: 'System Status' }))
 
     expect(await screen.findByRole('heading', { name: 'Something went wrong' })).toBeTruthy()
     expect(sentry.captureException).toHaveBeenCalledTimes(1)

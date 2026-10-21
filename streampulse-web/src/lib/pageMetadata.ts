@@ -29,13 +29,9 @@ function resolveBasePageMetadata(pathname: string): PageMetadata {
   const normalizedPath = pathname !== '/' ? pathname.replace(/\/+$/, '') : pathname
 
   switch (normalizedPath) {
+    // The front page is the hub. /analytics serves the same page, so `/` is
+    // the canonical URL for both.
     case '/':
-      return {
-        title: 'StreamPulse — Twitch reaction analytics',
-        description: DEFAULT_DESCRIPTION,
-        canonicalPath: '/',
-        robots: 'index,follow',
-      }
     case '/analytics':
     case '/analytics/hub':
     case '/analytics/emotes':
@@ -44,7 +40,7 @@ function resolveBasePageMetadata(pathname: string): PageMetadata {
       return {
         title: 'StreamPulse Analytics',
         description: 'Explore aggregate live Twitch activity, Pulse moments, emote signals, and tracked channels.',
-        canonicalPath: '/analytics',
+        canonicalPath: '/',
         robots: 'index,follow',
       }
     case '/docs':

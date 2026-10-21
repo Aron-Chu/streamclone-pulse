@@ -10,6 +10,8 @@ export interface AnalyticsTopNavItem {
   label: string
   to: string
   end?: boolean
+  /** Other exact paths that serve this item's page (the hub at /analytics). */
+  alsoCurrentOn?: string[]
 }
 
 export interface AnalyticsTopNavStatus {
@@ -37,6 +39,7 @@ export function AnalyticsTopNav({
   const panelId = useId()
   const location = useLocation()
   const discord = discordInviteUrl()
+  const currentPath = location.pathname.replace(/\/+$/, '') || '/'
 
   useEffect(() => {
     setIsOpen(false)
@@ -65,7 +68,7 @@ export function AnalyticsTopNav({
       <a href="#analytics-main" className="analytics-topnav__skip">
         Skip to analytics content
       </a>
-      <Link to="/analytics" className="analytics-topnav__brand" aria-label="StreamPulse analytics home">
+      <Link to="/" className="analytics-topnav__brand" aria-label="StreamPulse analytics home">
         <BrandMark className="analytics-topnav__mark" size={30} />
         <span className="analytics-topnav__brand-copy">
           <strong>
@@ -77,7 +80,11 @@ export function AnalyticsTopNav({
 
       {items.length > 0 ? (
         <nav className="analytics-topnav__links" aria-label={navigationLabel}>
-          {items.map((item) => (
+          {items.map((item) => item.alsoCurrentOn?.includes(currentPath) ? (
+            <Link key={item.to} to={item.to} className="active" aria-current="page">
+              {item.label}
+            </Link>
+          ) : (
             <NavLink key={item.to} to={item.to} end={item.end}>
               {item.label}
             </NavLink>
@@ -113,7 +120,7 @@ export function AnalyticsTopNav({
       ) : null}
 
       <div className="analytics-topnav__actions" aria-label="Analytics utilities">
-        <ChromeInstallCta className="analytics-topnav__install" data-cta="chrome-install-analytics" />
+        <ChromeInstallCta className="analytics-topnav__install" data-cta="chrome-install-analytics">Add to Chrome</ChromeInstallCta>
         {status ? (
           <div
             className={`analytics-topnav__status analytics-topnav__status--${status.tone ?? 'muted'}`}

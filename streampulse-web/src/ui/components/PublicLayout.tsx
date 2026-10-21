@@ -55,12 +55,27 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
           aria-label="Main Navigation" onClick={(event) => {
             if ((event.target as HTMLElement).closest('a')) setMenuOpen(false)
           }}>
+          {/* The site's top bar, as on the hub. Status, Support, Privacy and
+              GitHub stay in the footer. */}
           <NavLink
-            to="/analytics"
+            to="/"
+            end
             onClick={() => capturePublicCta('open_analytics')}
             className={({ isActive }) => `app-nav__link${isActive ? ' is-active' : ''}`}
           >
-            Analytics
+            Hub
+          </NavLink>
+          <NavLink
+            to="/analytics/moments"
+            className={({ isActive }) => `app-nav__link${isActive ? ' is-active' : ''}`}
+          >
+            Moments
+          </NavLink>
+          <NavLink
+            to="/extension"
+            className={({ isActive }) => `app-nav__link${isActive ? ' is-active' : ''}`}
+          >
+            Extension
           </NavLink>
           <NavLink
             to="/docs"
@@ -68,38 +83,12 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
           >
             Docs
           </NavLink>
-          <NavLink
-            to="/status"
-            className={({ isActive }) => `app-nav__link${isActive ? ' is-active' : ''}`}
-          >
-            Status
-          </NavLink>
-          <NavLink
-            to="/support"
-            className={({ isActive }) => `app-nav__link${isActive ? ' is-active' : ''}`}
-          >
-            Support
-          </NavLink>
-          <NavLink
-            to="/privacy"
-            className={({ isActive }) => `app-nav__link${isActive ? ' is-active' : ''}`}
-          >
-            Privacy
-          </NavLink>
-          <a
-            href={GITHUB_REPO_URL}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="app-nav__link"
-          >
-            GitHub
-          </a>
           {discord ? (
             <a href={discord} target="_blank" rel="noopener noreferrer" className="app-nav__discord" aria-label={DISCORD_LABEL}>
               <DiscordMark size={16} />Discord
             </a>
           ) : null}
-          <ChromeInstallCta className="app-nav__install" data-cta="chrome-install-public-nav" />
+          <ChromeInstallCta className="app-nav__install" data-cta="chrome-install-public-nav">Add to Chrome</ChromeInstallCta>
         </nav>
       </header>
       <main className="app-main" id="public-main" tabIndex={-1}><PageErrorBoundary>{children}</PageErrorBoundary></main>
@@ -117,7 +106,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
               contrast floor for small text. */}
           <nav className="app-footer__nav" aria-label="Footer">
             <div className="app-footer__links">
-              <Link to="/analytics" onClick={() => capturePublicCta('open_analytics')}>Analytics Hub</Link>
+              <Link to="/" onClick={() => capturePublicCta('open_analytics')}>Analytics Hub</Link>
               <Link to="/docs">Documentation</Link>
               <Link to="/status">System Status</Link>
               <Link to="/support">Support</Link>

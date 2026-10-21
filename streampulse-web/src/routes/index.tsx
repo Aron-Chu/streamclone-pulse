@@ -2,7 +2,6 @@ import { lazy, Suspense, type ReactNode } from 'react'
 import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { RequireAuth } from './guards'
 import { AnalyticsRouteFallback } from './AnalyticsRouteFallback'
-import Landing from './public/Landing'
 import Docs from './public/Docs'
 import Status from './public/Status'
 import Privacy from './public/Privacy'
@@ -73,6 +72,17 @@ function AnalyticsAliasRedirect() {
   return <Navigate to={`/analytics${search}${hash}`} replace />
 }
 
+/**
+ * The front page is the hub, the same page /analytics serves. The retired
+ * landing's demo now lives on the Extension page, so its old /#demo links
+ * follow it there.
+ */
+function FrontPage() {
+  const { search, hash } = useLocation()
+  if (hash === '#demo') return <Navigate to={`/extension${search}#demo`} replace />
+  return <AnalyticsLandingPage />
+}
+
 /** Pulse Explorer and the older Newsroom are retired: a broadcast opens its stream page, the rest open Moments. */
 function RetiredExplorerRedirect() {
   const { broadcastId, storyId } = useParams<{ broadcastId?: string; storyId?: string }>()
@@ -86,7 +96,7 @@ function RetiredExplorerRedirect() {
  * header, which is always loaded.
  */
 function routeErrorShell(pathname: string, panel: ReactNode, moduleLoadFailed: boolean) {
-  if (moduleLoadFailed || !(pathname === '/analytics' || pathname.startsWith('/analytics/'))) {
+  if (moduleLoadFailed || !(pathname === '/' || pathname === '/analytics' || pathname.startsWith('/analytics/'))) {
     return <PublicLayout>{panel}</PublicLayout>
   }
   return (
@@ -111,7 +121,7 @@ function PortalRoutes() {
   return (
     <Suspense fallback={<AnalyticsRouteFallback />}>
       <Routes>
-        <Route path="/" element={<Landing />} />
+        <Route path="/" element={<FrontPage />} />
         <Route path="/setup" element={<AnalyticsAliasRedirect />} />
         <Route path="/docs" element={<Docs />} />
         <Route path="/docs/getting-started" element={<Navigate to="/docs#extension" replace />} />

@@ -85,14 +85,22 @@ describe('hub early fetch: paths', () => {
     expect(hubReadTimeoutMs('recent')).toBeUndefined()
   })
 
-  it('primes only /analytics, reading the window like the page', () => {
+  it('primes only the hub (/ and /analytics), reading the window like the page', () => {
     expect(primedHubRequestForLocation({ pathname: '/analytics', search: '' })).toEqual({
       path: '/v1/public/hub?activityWindow=24h', activityWindow: '24h', timeoutMs: SLOW_READ_TIMEOUT_MS,
     })
     expect(primedHubRequestForLocation({ pathname: '/analytics/', search: '?window=7d' })?.path).toBe('/v1/public/hub?activityWindow=7d')
     expect(primedHubRequestForLocation({ pathname: '/analytics', search: '?activityWindow=30m' })).toMatchObject({ activityWindow: '30m', timeoutMs: undefined })
     expect(primedHubRequestForLocation({ pathname: '/analytics', search: '?window=bogus' })?.activityWindow).toBe('24h')
-    for (const pathname of ['/', '/analytics/xqc/123', '/moments', '/Analytics', '/analyticsx']) {
+    // The hub is the front page.
+    expect(primedHubRequestForLocation({ pathname: '/', search: '' })).toEqual({
+      path: '/v1/public/hub?activityWindow=24h', activityWindow: '24h', timeoutMs: SLOW_READ_TIMEOUT_MS,
+    })
+    expect(primedHubRequestForLocation({ pathname: '/', search: '?window=7d', hash: '#channels' })?.path).toBe('/v1/public/hub?activityWindow=7d')
+    // Old /#demo links go on to the Extension page, which never reads the hub.
+    expect(primedHubRequestForLocation({ pathname: '/', search: '', hash: '#demo' })).toBeNull()
+    expect(primedHubRequestForLocation({ pathname: '/analytics', search: '', hash: '#demo' })?.activityWindow).toBe('24h')
+    for (const pathname of ['/analytics/xqc/123', '/moments', '/extension', '/Analytics', '/analyticsx']) {
       expect(primedHubRequestForLocation({ pathname, search: '' })).toBeNull()
     }
     expect(primedHubRequestForLocation(null)).toBeNull()
@@ -195,6 +203,17 @@ describe('hub early fetch: parity with the first read on mount (plan §2.6)', ()
       unmount()
     })
   }
+
+  it('adopts the primed request for the front page "/"', async () => {
+    api.apiClient.mockImplementation(async () => ({ data: hubBody(1440), status: 200 }))
+    const primed = primePublicHub({ pathname: '/', search: '' })
+    expect(primed).toBe('/v1/public/hub?activityWindow=24h')
+    const { result, unmount } = renderHook(() => usePublicHubData({ enabled: true, activityWindow: '24h', pollMs: 0 }))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(api.apiClient.mock.calls.filter(([path]) => path === primed)).toHaveLength(1)
+    expect(hasPrimedPublicHub()).toBe(false)
+    unmount()
+  })
 })
 
 describe('hub early fetch: VITE_PUBLIC_HUB_V5 off', () => {

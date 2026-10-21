@@ -16,8 +16,8 @@ export type HubPathProjection = 'moments' | 'tickers'
 /** How long a primed request stays adoptable after it starts. */
 export const PRIMED_HUB_TTL_MS = 10_000
 
-/** The hub page path, without trailing slashes. */
-const HUB_PAGE_PATH = '/analytics'
+/** The hub page paths, without trailing slashes: the front page and /analytics. */
+const HUB_PAGE_PATHS = new Set(['/', '/analytics'])
 
 /** `/v1/public/hub?activityWindow=…[&include=…]` (moved from publicHub.ts). */
 export function publicHubPath(activityWindow?: HubApiWindow, projection?: HubPathProjection): string {
@@ -38,6 +38,7 @@ export function hubReadTimeoutMs(activityWindow?: HubApiWindow): number | undefi
 export interface HubLocationLike {
   pathname: string
   search: string
+  hash?: string
 }
 
 export interface PrimedHubRequest {
@@ -46,11 +47,13 @@ export interface PrimedHubRequest {
   timeoutMs: number | undefined
 }
 
-/** The first request `/analytics` makes on mount, or null on any other route. */
+/** The first request the hub (`/` or `/analytics`) makes on mount, or null on any other route. */
 export function primedHubRequestForLocation(location: HubLocationLike | null | undefined): PrimedHubRequest | null {
   if (!location || typeof location.pathname !== 'string') return null
   const pathname = location.pathname.replace(/\/+$/, '') || '/'
-  if (pathname !== HUB_PAGE_PATH) return null
+  if (!HUB_PAGE_PATHS.has(pathname)) return null
+  // The old landing's /#demo links go on to the Extension page, which never reads the hub.
+  if (pathname === '/' && location.hash === '#demo') return null
   const activityWindow = parseHubWindowParam(location.search)
   return { path: publicHubPath(activityWindow), activityWindow, timeoutMs: hubReadTimeoutMs(activityWindow) }
 }
@@ -71,7 +74,7 @@ function now(): number {
 }
 
 /**
- * Starts the first hub request for `/analytics` once per page load. Returns
+ * Starts the first hub request for the hub (`/` or `/analytics`) once per page load. Returns
  * the primed path, or null when the location is not the hub (or a request is
  * already primed).
  */

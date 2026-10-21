@@ -32,7 +32,7 @@ describe('StreamPulse Peak branding', () => {
       <AnalyticsTopNav items={[{ label: 'Overview', to: '/analytics', end: true }]} />,
     )
     expect(container.querySelector('[data-brand-mark="peak"]')).toBeTruthy()
-    expect(screen.getByRole('link', { name: /streamPulse analytics home/i }).getAttribute('href')).toBe('/analytics')
+    expect(screen.getByRole('link', { name: /streamPulse analytics home/i }).getAttribute('href')).toBe('/')
   })
 
   it('uses Peak branding while preserving every public navigation link', () => {
@@ -42,7 +42,7 @@ describe('StreamPulse Peak branding', () => {
       </PublicLayout>,
     )
     expect(container.querySelector('[data-brand-mark="peak"]')).toBeTruthy()
-    expect(screen.getByRole('link', { name: /^privacy$/i }).getAttribute('href')).toBe('/privacy')
-    expect(screen.getByRole('link', { name: /^analytics$/i }).getAttribute('href')).toBe('/analytics')
+    expect(screen.getByRole('link', { name: /^privacy policy$/i }).getAttribute('href')).toBe('/privacy')
+    expect(screen.getByRole('link', { name: /^hub$/i }).getAttribute('href')).toBe('/')
   })
 })
