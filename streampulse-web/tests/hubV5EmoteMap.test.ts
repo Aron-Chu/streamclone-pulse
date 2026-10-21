@@ -16,6 +16,7 @@ import {
   fieldOf,
   nearestTile,
   squarify,
+  tilePic,
   tileSize,
 } from '../src/ui/components/hub/v5/hubV5EmoteMapModel'
 
@@ -152,12 +153,17 @@ describe('emoteMapLayout', () => {
       expect(t.y).toBeGreaterThanOrEqual(-1e-6)
       expect(t.x + t.w).toBeLessThanOrEqual(W + 1e-6)
       expect(t.y + t.h).toBeLessThanOrEqual(H + 1e-6)
-      expect(t.size).toBe(tileSize(t.w - 2, t.h - 2))
-      if (t.val) expect(t.name && (t.size === 'xl' || t.size === 'l') && t.h - 2 >= t.chip + 44).toBe(true)
-      if (t.name) expect(t.h - 2).toBeGreaterThanOrEqual(t.chip + 28)
+      const w = t.w - 2
+      const h = t.h - 2
+      expect(t.size).toBe(tileSize(w, h))
+      expect(t.pic).toBe(tilePic(t.size, w, h))
+      if (t.val) expect(t.name && (t.size === 'xl' || t.size === 'l' || (t.size === 'row' && w >= 150))).toBe(true)
+      // lines show whole: 8 px pads, the picture, a 4 px gap, an 18 px name, a 16 px share
+      if (t.name && t.size !== 'row') expect(h).toBeGreaterThanOrEqual(16 + t.pic + 4 + 18 + (t.val ? 16 : 0))
+      if (t.size === 'row') expect(h).toBeGreaterThanOrEqual(Math.max(16 + 18, t.pic + 6))
       if (t.size === 's' || t.size === 'xs') expect(t.name).toBe(false)
       if (t.size === 'xl') expect(t.name && t.val).toBe(true)
-      expect(t.chip === 0).toBe(t.size === 'xs')
+      expect(t.pic === 0).toBe(t.size === 'xs')
     }
     expect(lay.tiles.find((t) => t.rank === 1)!.size).toBe('xl')
     expect(lay.ranked.map((x) => x.v)).toEqual(lay.ranked.map((x) => x.v).slice().sort((a, b) => b - a))
@@ -189,12 +195,28 @@ describe('emoteMapHeight', () => {
 
 describe('tileSize', () => {
   it('hides what a tile is too small for', () => {
-    expect(tileSize(120, 80)).toBe('xl')
-    expect(tileSize(117, 80)).toBe('l')
-    expect(tileSize(78, 50)).toBe('l')
-    expect(tileSize(60, 40)).toBe('m')
+    expect(tileSize(120, 104)).toBe('xl')
+    expect(tileSize(117, 104)).toBe('l')
+    expect(tileSize(84, 92)).toBe('l')
+    expect(tileSize(130, 40)).toBe('row')
+    expect(tileSize(120, 80)).toBe('row')
+    expect(tileSize(111, 80)).toBe('m')
+    expect(tileSize(64, 68)).toBe('m')
+    expect(tileSize(60, 40)).toBe('s')
     expect(tileSize(30, 30)).toBe('s')
-    expect(tileSize(17, 40)).toBe('xs')
+    expect(tileSize(20, 40)).toBe('xs')
+  })
+
+  it('gives the picture its class size, a short row or a small tile what fits', () => {
+    expect(tilePic('xl', 200, 200)).toBe(48)
+    expect(tilePic('l', 90, 95)).toBe(36)
+    expect(tilePic('row', 140, 36)).toBe(26)
+    expect(tilePic('row', 140, 60)).toBe(30)
+    expect(tilePic('m', 70, 70)).toBe(28)
+    expect(tilePic('s', 30, 30)).toBe(19)
+    expect(tilePic('s', 60, 60)).toBe(32)
+    expect(tilePic('s', 21, 18)).toBe(12)
+    expect(tilePic('xs', 10, 10)).toBe(0)
   })
 })
 
