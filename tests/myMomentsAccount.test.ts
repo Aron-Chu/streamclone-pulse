@@ -1,8 +1,9 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { handleDeviceBookmarks, handleMyMoments } from '../src/background/myMoments.ts'
+import { handleDeviceBookmarks, handleMyMoments, removePanelBookmark, restoreRemovedNote } from '../src/background/myMoments.ts'
 import { emptyPersonalData, type PersonalData } from '../src/background/myMomentsStore.ts'
+import type { PulseBookmark } from '../src/shared/messages.ts'
 import { MomentListItem } from '../src/ui/library/LibraryPrimitives.tsx'
 import { replayUrl, type LibraryMoment } from '../src/ui/library/model.ts'
 const f = vi.hoisted(() => ({ accountId: 'one' as string | null, pages: vi.fn(), save: vi.fn(), remove: vi.fn(), data: new Map<string, PersonalData>() }))
@@ -182,4 +183,86 @@ it('counts device saves for the popup while an account is linked, without listin
   const { recent } = await handleMyMoments({ type: 'MY_MOMENTS', action: 'recent' }, {}) as { recent: { watched: unknown[]; deviceSaves: number } }
   expect(recent).toMatchObject({ watched: [], deviceSaves: 1 })
   expect(f.pages).not.toHaveBeenCalled()
+})
+const panelRemove = (message: object = {}, sender: chrome.runtime.MessageSender = {}) =>
+  removePanelBookmark({ type: 'REMOVE_BOOKMARK', id: 'bk', login: 'xqc', streamId: '123456', ...message }, sender)
+it('removes a device save from the panel only for its own channel and stream', async () => {
+  f.accountId = null
+  const saved = await deviceSave(120)
+  const id = saved!.item.id
+  await expect(panelRemove({ id, login: 'shroud' })).rejects.toThrow('bookmark_not_found')
+  await expect(panelRemove({ id, streamId: '999999' })).rejects.toThrow('bookmark_not_found')
+  expect(await panelRemove({ id })).toEqual({ type: 'REMOVE_BOOKMARK', ok: true, device: true })
+  expect((await deviceList({ streamId: '123456' })).items).toEqual([])
+  await expect(panelRemove({ id })).rejects.toThrow('bookmark_not_found')
+  expect([f.pages, f.save, f.remove].every(mock => mock.mock.calls.length === 0)).toBe(true)
+})
+it('removes an account save from the panel once it finds it on that stream, dropping its note', async () => {
+  const scope = 'https://api.streampulse.stream|account:one'
+  f.data.set(scope, { ...emptyPersonalData(), notes: { bk: 'gone with it', other: 'kept' } })
+  f.pages.mockResolvedValueOnce({ items: [], nextCursor: 'next' }).mockResolvedValueOnce({ items: [{ ...item, streamId: '123456' }] })
+  expect(await panelRemove()).toEqual({ type: 'REMOVE_BOOKMARK', ok: true })
+  expect(f.pages).toHaveBeenNthCalledWith(1, { login: 'xqc', streamId: '123456', vodId: undefined, limit: 100 }, undefined, 'one')
+  expect(f.pages).toHaveBeenNthCalledWith(2, expect.objectContaining({ cursor: 'next' }), undefined, 'one')
+  expect(f.remove).toHaveBeenCalledWith('bk', undefined, 'one')
+  expect(f.data.get(scope)?.notes).toEqual({ other: 'kept' })
+})
+it('puts the note an account save kept on this device back on Undo, once, without uploading it', async () => {
+  const scope = 'https://api.streampulse.stream|account:one'
+  const removed = { ...item, streamId: '123456' } as PulseBookmark
+  f.data.set(scope, { ...emptyPersonalData(), notes: { bk: 'my private note' } })
+  f.pages.mockResolvedValue({ items: [removed] })
+  await panelRemove()
+  expect(f.data.get(scope)?.notes).toEqual({})
+  // Undo's new save: same moment, new id.
+  await restoreRemovedNote('bk', { ...removed, id: 'bk2' }, {})
+  expect(f.data.get(scope)?.notes).toEqual({ bk2: 'my private note' })
+  await restoreRemovedNote('bk', { ...removed, id: 'bk3' }, {})
+  expect(f.data.get(scope)?.notes).toEqual({ bk2: 'my private note' })
+  expect(f.save).not.toHaveBeenCalled()
+})
+it('keeps a removed note out of another moment, account, private window, or a late Undo', async () => {
+  const scope = 'https://api.streampulse.stream|account:one'
+  const removed = { ...item, streamId: '123456' } as PulseBookmark
+  f.pages.mockResolvedValue({ items: [removed] })
+  const removeWithNote = async () => {
+    f.data.set(scope, { ...emptyPersonalData(), notes: { bk: 'my private note' } })
+    await panelRemove()
+  }
+  await removeWithNote()
+  await restoreRemovedNote('bk', { ...removed, id: 'other', offsetSeconds: 600 }, {})
+  await removeWithNote()
+  await restoreRemovedNote('bk', { ...removed, id: 'private' }, { tab: { incognito: true } as chrome.tabs.Tab })
+  await removeWithNote()
+  f.accountId = 'two'
+  await restoreRemovedNote('bk', { ...removed, id: 'switched' }, {})
+  f.accountId = 'one'
+  await removeWithNote()
+  const later = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 121_000)
+  await restoreRemovedNote('bk', { ...removed, id: 'late' }, {})
+  later.mockRestore()
+  expect(f.data.get(scope)?.notes).toEqual({})
+  expect(f.data.get('https://api.streampulse.stream|account:two')?.notes ?? {}).toEqual({})
+})
+it('puts a device save\'s note back on Undo', async () => {
+  f.accountId = null
+  const scope = 'https://api.streampulse.stream|local'
+  const first = (await deviceSave(120))!.item
+  f.data.set(scope, { ...f.data.get(scope)!, notes: { [first.id]: 'device note' } })
+  await panelRemove({ id: first.id })
+  const again = (await deviceSave(120))!.item
+  expect(again.id).not.toBe(first.id)
+  await restoreRemovedNote(first.id, again as PulseBookmark, {})
+  expect(f.data.get(scope)?.notes).toEqual({ [again.id]: 'device note' })
+})
+it('finds a VOD-only account save by its VOD', async () => {
+  f.pages.mockResolvedValue({ items: [item] })
+  expect(await panelRemove({ streamId: undefined, vodId: '123' })).toEqual({ type: 'REMOVE_BOOKMARK', ok: true })
+  expect(f.pages).toHaveBeenCalledWith(expect.objectContaining({ login: 'xqc', vodId: '123' }), undefined, 'one')
+})
+it('never removes an account save of another channel or stream from the panel', async () => {
+  f.pages.mockResolvedValue({ items: [{ ...item, login: 'shroud', streamId: '123456' }, { ...item, streamId: '999999' }] })
+  await expect(panelRemove()).rejects.toThrow('bookmark_not_found')
+  await expect(panelRemove({ streamId: undefined, vodId: '999' })).rejects.toThrow('bookmark_not_found')
+  expect(f.remove).not.toHaveBeenCalled()
 })

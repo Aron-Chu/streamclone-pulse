@@ -11,6 +11,7 @@ import {
   getKeepLocalCache,
   getMomentPicturesEnabled,
   getVodJumpChartPinEnabled,
+  MOMENT_PICTURES_KEY,
   setKeepLocalCache,
   setMomentPicturesEnabled,
   setVodJumpChartPinEnabled,
@@ -20,6 +21,7 @@ import {
   isDiagnosticsConsentEnabled,
   setDiagnosticsConsentEnabled,
 } from '../shared/diagnosticsConsent.ts'
+import { momentPictures } from '../shared/momentPictureStore.ts'
 import { isAnalyticsConsentGranted, setAnalyticsConsentGranted } from '../shared/analyticsConsent.ts'
 import { EXTENSION_ANALYTICS_INGEST_ENABLED } from '../shared/extensionAnalytics.ts'
 import { installedExtensionVersion } from '../shared/releaseManifest.ts'
@@ -392,6 +394,41 @@ function StoredToggleRow({ id, label, hint, read, write }: {
   )
 }
 
+/**
+ * Turning Moment pictures off keeps no new ones; the pictures already kept
+ * with saves and History stay until removed here (or with their moment).
+ */
+function KeptPicturesOffer() {
+  const [kept, setKept] = useState(0)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    let mounted = true
+    const refresh = () => void Promise.all([getMomentPicturesEnabled(), momentPictures.count()])
+      .then(([on, count]) => { if (mounted) setKept(on ? 0 : count) }).catch(() => undefined)
+    const changed = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
+      if (area === 'sync' && MOMENT_PICTURES_KEY in changes) refresh()
+    }
+    refresh()
+    chrome.storage?.onChanged?.addListener(changed)
+    return () => {
+      mounted = false
+      chrome.storage?.onChanged?.removeListener(changed)
+    }
+  }, [])
+  if (!kept) return null
+  return (
+    <div className="pulse-settings-cache-meta" data-kept-pictures>
+      <span>{kept} saved picture{kept === 1 ? ' is' : 's are'} still kept.</span>
+      <button type="button" className="pulse-link-btn" disabled={busy} onClick={() => {
+        setBusy(true)
+        void momentPictures.clear().then(() => setKept(0)).catch(() => undefined).finally(() => setBusy(false))
+      }}>
+        {busy ? 'Removing…' : 'Remove pictures'}
+      </button>
+    </div>
+  )
+}
+
 function PrivacySection({ settings }: { settings: AdministrativeSettings }) {
   return (
     <section data-settings-section="privacy" className="pulse-settings-page-section">
@@ -427,10 +464,11 @@ function PrivacySection({ settings }: { settings: AdministrativeSettings }) {
         <StoredToggleRow
           id="settings-moment-pictures"
           label="Moment pictures"
-          hint="Keep small frames of what you watch so Top Moments can show what happened. They stay in that tab's memory, are never uploaded, and are gone when you close it. Turning it on applies to Twitch tabs you open or reload after."
+          hint="Frames of what you watch, for Top Moments and kept with your saves and History. On this device only, never uploaded."
           read={getMomentPicturesEnabled}
           write={setMomentPicturesEnabled}
         />
+        <KeptPicturesOffer />
       </PulseSectionCard>
       {(EXTENSION_ANALYTICS_INGEST_ENABLED || EXTENSION_DIAGNOSTICS_INGEST_ENABLED) ? (
         <PulseSectionCard title="Optional sharing" headingLevel={3}>

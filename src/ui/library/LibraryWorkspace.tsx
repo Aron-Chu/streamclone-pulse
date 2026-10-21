@@ -9,6 +9,8 @@ import type { MomentPresentation } from './MomentMedia.tsx'
 import type { BookmarksState } from '../../shared/myMoments.ts'
 import type { PulseBookmark } from '../../shared/messages.ts'
 import { TWITCH_SIGNIN_ENABLED } from '../../shared/twitchSignIn.ts'
+import { rememberMomentArrival } from '../../shared/momentArrival.ts'
+import { buildAnalyticsUrl, DEFAULT_WEB_ANALYTICS_BASE_URL } from '../../shared/analyticsLinks.ts'
 import './library.css'
 
 export interface LibraryWorkspaceProps {
@@ -20,6 +22,10 @@ export interface LibraryWorkspaceProps {
   /** Optional display-only analysis projections keyed by canonical moment ID. */
   contexts?: Readonly<Record<string, MomentContextState>>
   presentations?: Readonly<Record<string, MomentPresentation>>
+  /** Like `contexts`, but shown in Preview only; list rows stay as they are. */
+  previewContexts?: Readonly<Record<string, MomentContextState>>
+  /** Called with the moments a Bookmarks or History page lists, each time that page changes. */
+  onShowMoments?: (moments: readonly LibraryMoment[]) => void
   /** Portal origin for moment Analytics links; production when omitted. */
   analyticsOrigin?: string
   /**
@@ -40,6 +46,13 @@ const views: readonly { id: LibraryView; label: string }[] = [
 type Confirmation = { kind: 'remove'; moment: LibraryMoment } | { kind: 'clear' } | { kind: 'retention'; preferences: LibraryPreferences } | { kind: 'sync-off' }
   /** Add saves made without an account to it: one, or all when `moment` is absent. */
   | { kind: 'import'; moment?: LibraryMoment }
+
+/** Same channel, broadcast and whole second: how the worker matches a bookmark to its history entry. */
+function sameSource(a: MomentReference, b: MomentReference): boolean {
+  const broadcast = a.streamId || a.vodId
+  return !!broadcast && broadcast === (b.streamId || b.vodId) && a.channel.toLowerCase() === b.channel.toLowerCase()
+    && a.offsetSeconds !== null && b.offsetSeconds !== null && Math.floor(a.offsetSeconds) === Math.floor(b.offsetSeconds)
+}
 
 /** Pre-link device saves as rows, newest first. Only the worker's linked snapshot carries any. */
 function deviceSaveMoments(snapshot: LibrarySnapshot | null): LibraryMoment[] {
@@ -95,7 +108,7 @@ function BookmarksNotice({ state, onRetry, accountsOpen }: { state: BookmarksSta
   )
 }
 
-export function LibraryWorkspace({ repository, initialView = 'saved', onExport, contexts, presentations, analyticsOrigin, now = Date.now, accountsOpen = TWITCH_SIGNIN_ENABLED }: LibraryWorkspaceProps) {
+export function LibraryWorkspace({ repository, initialView = 'saved', onExport, contexts, presentations, previewContexts, onShowMoments, analyticsOrigin, now = Date.now, accountsOpen = TWITCH_SIGNIN_ENABLED }: LibraryWorkspaceProps) {
   const library = useLibrary(repository)
   const [view, setView] = useState<LibraryView>(initialView)
   const [query, setQuery] = useState('')
@@ -103,7 +116,11 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
   const [channel, setChannel] = useState('')
   const [page, setPage] = useState(1)
   const [editing, setEditing] = useState<LibraryMoment | null>(null)
-  const [previewId, setPreviewId] = useState<string | null>(null)
+  // Preview follows its moment by source: a save or Undo can bring it back under a new id.
+  const [preview, setPreview] = useState<LibraryMoment | null>(null)
+  // The bookmark Preview just removed, kept for Undo; and one whose note Undo still has to put back.
+  const [removed, setRemoved] = useState<LibraryMoment | null>(null)
+  const [restore, setRestore] = useState<LibraryMoment | null>(null)
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null)
   const [localNotice, setLocalNotice] = useState('')
   const [clock, setClock] = useState(now())
@@ -111,7 +128,7 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
   const tabButtons = useRef<Array<HTMLButtonElement | null>>([])
   const id = useId()
   useEffect(() => {
-    setEditing(null); setPreviewId(null); setConfirmation(null); setQuery(''); setChannel(''); setWatchLater(false); setPage(1); setLocalNotice('')
+    setEditing(null); setPreview(null); setRemoved(null); setRestore(null); setConfirmation(null); setQuery(''); setChannel(''); setWatchLater(false); setPage(1); setLocalNotice('')
   }, [repository])
   useEffect(() => { const timer = window.setInterval(() => setClock(now()), 30_000); return () => window.clearInterval(timer) }, [now])
   useEffect(() => { setPage(1) }, [query, view, channel, watchLater])
@@ -146,7 +163,28 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
   const pages = Math.max(1, Math.ceil(items.length / pageSize))
   const currentPage = Math.min(page, pages)
   const pageItems = items.slice((currentPage - 1) * pageSize, currentPage * pageSize)
-  const previewMoment = snapshot?.moments.find(moment => moment.id === previewId)
+  const previewLive = preview ? snapshot?.moments.find(moment => moment.id === preview.id) ?? snapshot?.moments.find(moment => sameSource(moment, preview)) : undefined
+  // Removed from Preview with nothing left in History: keep showing it, unsaved, for Undo.
+  const previewMoment = previewLive ?? (preview && removed ? { ...removed, savedAt: undefined } : undefined)
+  // Data keyed by the id Preview opened with still describes the moment after it comes back.
+  const previewPresentation = previewMoment && preview ? presentations?.[previewMoment.id] ?? presentations?.[preview.id] : undefined
+  const previewContext = previewMoment && preview ? previewContexts?.[previewMoment.id] ?? contexts?.[previewMoment.id] ?? previewContexts?.[preview.id] ?? contexts?.[preview.id] : undefined
+  // Analysis opens the session page at this minute, the same link as the row's Analytics.
+  const previewAnalysis = previewPresentation?.analysisUrl ?? (previewMoment?.streamId ? buildAnalyticsUrl({ webAnalyticsBaseUrl: analyticsOrigin ?? DEFAULT_WEB_ANALYTICS_BASE_URL,
+    channelLogin: previewMoment.channel, streamId: previewMoment.streamId, offsetSeconds: previewMoment.offsetSeconds ?? undefined }) ?? undefined : undefined)
+  const contentView = view === 'saved' || view === 'recent'
+  // Told once per listed page, not per render: the latest callback and rows ride in a ref.
+  const shown = useRef({ items: pageItems, notify: onShowMoments })
+  shown.current = { items: pageItems, notify: onShowMoments }
+  const shownKey = contentView && pageItems.length ? JSON.stringify(pageItems.map(moment => moment.id)) : ''
+  useEffect(() => { if (shownKey) shown.current.notify?.(shown.current.items) }, [shownKey])
+  // A Watch link leaves a note so the panel in the new tab locks that moment;
+  // 10 s of it playing there then joins History, as after a jump in the panel.
+  const openedLink = (moment: MomentReference) => {
+    void rememberMomentArrival({ vodId: moment.vodId, offsetSeconds: moment.offsetSeconds, source: 'library',
+      login: moment.channel, streamId: moment.streamId, title: moment.title })
+    setLocalNotice(snapshot?.preferences.captureHistory ? 'Opened on Twitch. 10 s of playback there adds it to History.' : 'Opened on Twitch.')
+  }
   const modal = !!editing || !!confirmation || !!previewMoment
   const filtered = Boolean(query.trim() || channel || watchLater)
   async function exportAll() {
@@ -163,7 +201,21 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
     }
   }
   function save(reference: MomentReference) { void library.run({ kind: 'save', reference }, 'Moment saved. It will remain when history expires.') }
-  const contentView = view === 'saved' || view === 'recent'
+  // Removing deletes the bookmark and its note; Undo saves it again and puts the note back.
+  async function removeFromPreview(moment: LibraryMoment) {
+    setRemoved(moment); setRestore(null)
+    if (!await library.run({ kind: 'unsave', id: moment.id }, 'Bookmark removed.')) setRemoved(null)
+  }
+  async function undoRemove() {
+    if (!removed) return
+    if (await library.run({ kind: 'save', reference: removed }, 'Bookmark restored.')) { setRemoved(null); if (removed.note) setRestore(removed) }
+  }
+  useEffect(() => {
+    if (!restore || library.busy) return
+    setRestore(null)
+    const back = snapshot?.moments.find(moment => moment.savedAt !== undefined && sameSource(moment, restore))
+    if (back && back.note !== restore.note) void library.run({ kind: 'edit', id: back.id, note: restore.note }, 'Bookmark restored with its note.')
+  }, [restore, library.busy, library.run, snapshot])
   const syncing = snapshot?.historySync?.state === 'on'
   return <main className="pl-library" id="settings-content" tabIndex={-1} aria-label="My Moments settings">
     <div className="pl-page-heading"><div><span className="pl-eyebrow">YOUR MOMENTS · FREE</span><h2 ref={heading} tabIndex={-1}>My Moments</h2>
@@ -201,8 +253,8 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
           {pageItems.length ? <ul className="pl-list">{pageItems.map(moment => <MomentListItem key={moment.id} moment={moment} recent={view === 'recent'} busy={library.busy}
             personalWorkspace analyticsOrigin={analyticsOrigin}
             presentation={presentations?.[moment.id]} context={contexts?.[moment.id]}
-            onSave={save} onEdit={setEditing} onPreview={moment => setPreviewId(moment.id)} onRemove={moment => setConfirmation({ kind: 'remove', moment })}
-            onOpenLink={() => setLocalNotice('Opened a replay link. This is not a confirmed jump and has not been added to history.')} />)}</ul>
+            onSave={save} onEdit={setEditing} onPreview={moment => { setPreview(moment); setRemoved(null) }} onRemove={moment => setConfirmation({ kind: 'remove', moment })}
+            onOpenLink={openedLink} />)}</ul>
             : <div className="pl-empty"><h3>{filtered ? 'No matching moments' : view === 'recent' ? 'No history yet' : deviceSaves ? 'No account bookmarks yet' : 'No bookmarks yet'}</h3>
               <p>{filtered ? 'Try a channel name, a word from your note, or clear the filters.'
                 : view === 'recent' ? 'Watch a Pulse moment for at least 10 seconds after a jump. Opening a link alone is not recorded.'
@@ -219,7 +271,7 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
             <ul className="pl-list">{deviceMoments.map(moment => <DeviceSaveItem key={moment.id} moment={moment} busy={library.busy} analyticsOrigin={analyticsOrigin}
               onRemove={moment => setConfirmation({ kind: 'remove', moment })}
               onImport={bookmarksState === 'ready' ? moment => setConfirmation({ kind: 'import', moment }) : undefined}
-              onOpenLink={() => setLocalNotice('Opened a replay link. This is not a confirmed jump and has not been added to history.')} />)}</ul>
+              onOpenLink={openedLink} />)}</ul>
           </section> : null}
         </section>
       </> : <div className="pl-library-results" id={`${id}-panel-storage`} role="tabpanel" aria-labelledby={`${id}-tab-storage`} tabIndex={-1} aria-label="Storage and privacy">
@@ -235,8 +287,10 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
       </div>}
       <p className="pl-footnote">Links and notes only · no video downloads</p>
     </> : null}
-    {previewMoment ? <MomentPreview key={previewMoment.id} moment={previewMoment} context={contexts?.[previewMoment.id]} presentation={presentations?.[previewMoment.id]} busy={library.busy} error={library.error} onClose={() => setPreviewId(null)} onSave={save}
-      onOpenLink={() => setLocalNotice('Opened a replay link. Playback is unconfirmed; History was not changed.')} /> : null}
+    {preview && previewMoment ? <MomentPreview key={preview.id} moment={previewMoment} context={previewContext}
+      presentation={previewAnalysis ? { ...previewPresentation, analysisUrl: previewAnalysis } : previewPresentation} busy={library.busy} error={library.error}
+      removed={!!removed} onClose={() => { setPreview(null); setRemoved(null) }} onSave={save} onRemove={moment => void removeFromPreview(moment)} onUndo={() => void undoRemove()}
+      onOpenLink={() => openedLink(previewMoment)} /> : null}
     {editing && snapshot ? <MomentEditor personalWorkspace key={editing.id} moment={editing} collections={snapshot.collections} supporter={false} busy={library.busy} error={library.error}
       onClose={() => setEditing(null)} onCommit={note => library.run({ kind: 'edit', id: editing.id, note }, 'Note saved on this device.')} /> : null}
     {confirmation ? <LibraryDialog title={confirmation.kind === 'clear' ? 'Clear history?' : confirmation.kind === 'remove' ? 'Remove bookmark?' : confirmation.kind === 'sync-off' ? 'Stop syncing history?'
