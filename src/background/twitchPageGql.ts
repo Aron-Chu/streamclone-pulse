@@ -6,7 +6,8 @@ import {
   type GqlVodDiscoveryResult,
 } from '../shared/twitchVodGql.ts'
 import type { PageVodScrapeResult } from '../shared/vodIdPatterns.ts'
-import { gqlDiscoverVodInPage, scrapePageVodState } from './twitchPageInject.ts'
+import { parseVodPictures, type VodPictures } from '../shared/vodPictures.ts'
+import { gqlDiscoverVodInPage, gqlVodPicturesInPage, scrapePageVodState } from './twitchPageInject.ts'
 
 function resultFromPageResponse<T>(
   part: { status: number; json: unknown; error?: string },
@@ -164,5 +165,15 @@ export async function discoverLiveVodIdFromGqlInTab(
   return {
     ...merged,
     streamId: merged.streamId ?? pageScrape?.streamId ?? expected,
+  }
+}
+
+/** Twitch's cover and scrub sheets of `vodId`, read in its Twitch tab; null when Twitch has none or the tab can't be reached. */
+export async function vodPicturesInTab(tabId: number, vodId: string): Promise<VodPictures | null> {
+  try {
+    const page = await runInPageAsync(tabId, gqlVodPicturesInPage, [vodId])
+    return page ? parseVodPictures(page.video, page.index) : null
+  } catch {
+    return null
   }
 }

@@ -93,7 +93,8 @@ test('VOD buckets beside a spike remain independently selectable', async ({ exte
   await openTwitchVod(extension.page)
   await waitForPulseRoot(extension.page)
   const root = extension.page.locator('#streamclone-pulse-root')
-  // A replay shows its spike markers from the start.
+  // A replay's spike markers start off; the viewer turns them on.
+  await root.getByRole('button', { name: 'Show spike markers', exact: true }).click()
   await expect(root.getByRole('button', { name: 'Hide spike markers', exact: true })).toBeVisible()
   const plot = root.locator('[data-chart-scrubber="true"]')
   await plot.focus()

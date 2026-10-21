@@ -6,7 +6,9 @@
  * The content script owns the data (which moment, where it starts, which game)
  * and leaves an empty element for each picture; the frames script owns the
  * pixels. Frames stay in the tab's memory and are gone when it closes, except
- * the one the worker asks for when a moment is saved or watched.
+ * the one the worker asks for when a moment is saved or watched. A moment the
+ * tab holds no frame of shows Twitch's VOD tile of it, else the backend's
+ * picture (MomentPictureAt), else a card's stand-in (`art`, `emote`).
  */
 
 /** A stream offset the picture is about, and the span it may scrub across. */
@@ -18,6 +20,25 @@ export interface MomentPictureView {
   to: number
   /** The frame shown at rest and marked "peak". */
   peak: number
+  /**
+   * A card with no picture of the moment opens on the game's box art, else
+   * on this emote (chat's top one then); without either it has no picture.
+   */
+  art?: string
+  emote?: string
+}
+
+/** The stream Pulse shows, so the frames script can ask the backend for a picture it holds no frames of. */
+export interface MomentPictureAt {
+  /** The backend Pulse reads from. */
+  api?: string
+  login?: string | null
+  /** The stream id; without one there is no backend picture. */
+  key?: string | null
+  /** The stream's VOD: the backend checks it against the stream; Twitch's VOD tiles come from it. */
+  vodId?: string | null
+  /** Where the VOD starts in the stream, in seconds; 0 when unknown. */
+  vodOriginDeltaSeconds?: number
 }
 
 export interface MomentFrameSource {
@@ -35,7 +56,9 @@ export interface MomentFramesApi {
   /** Spans whose frames outlive the rolling window, such as ranked moments. */
   keep: (spans: ReadonlyArray<readonly [number, number]>) => void
   /** Draws a picture into an element the caller leaves empty; the returned function removes it. */
-  mount: (element: HTMLElement, view: MomentPictureView) => () => void
+  mount: (element: HTMLElement, view: MomentPictureView, at?: MomentPictureAt) => () => void
+  /** Twitch's title, cover and scrub sheets of the stream's VOD, asked once per VOD. */
+  vod: (at?: MomentPictureAt) => Promise<import('./vodPictures.ts').VodPictures | null>
 }
 
 /** Fired on window once the frames script has registered itself. */

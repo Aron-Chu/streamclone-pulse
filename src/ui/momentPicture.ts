@@ -3,11 +3,13 @@ import { momentClockDisplay, type LiveHeatPoint } from '@streampulse/pulse-core'
 import { sendBackgroundMessage } from '../content/bridge.ts'
 import { resolveLiveMediaEdge } from '../content/twitch.ts'
 import type { ExtensionGameSegment } from '../shared/messages.ts'
-import { MOMENT_FRAMES_READY_EVENT, type MomentFramesApi, type MomentPictureView } from '../shared/momentFramesContract.ts'
+import { MOMENT_FRAMES_READY_EVENT, type MomentFramesApi, type MomentPictureAt, type MomentPictureView } from '../shared/momentFramesContract.ts'
 import { resolveGameArtCandidates } from './GamesPlayedStrip.tsx'
 import { isRenderableGameName } from './extensionChartAdapter.ts'
 
 let asked = false
+/** The stream Pulse shows (useMomentCapture), for the backend pictures the frames script draws. */
+let pictureAt: MomentPictureAt | undefined
 
 /**
  * The moment-pictures script (content/moment-frames.js) once the worker has
@@ -49,12 +51,20 @@ export function minutePictureView(kind: MomentPictureView['kind'], offsetSeconds
   return { kind, from: offsetSeconds - 10, to: offsetSeconds + 60, peak: offsetSeconds + 30 }
 }
 
+/** The stream Pulse shows, as the frames script needs it, for a picture drawn outside React (Catch me up). */
+export function momentPictureAt(): MomentPictureAt | undefined {
+  if (!pictureAt) return undefined
+  const { api, login, key, vodId, vodOriginDeltaSeconds } = pictureAt
+  return { api, login, key, vodId, vodOriginDeltaSeconds }
+}
+
 /** Fills the returned element with the picture of `view`, when this tab has frames for it. */
 export function useMomentPicture<T extends HTMLElement>(view: MomentPictureView | undefined) {
   const frames = useMomentFrames()
   const ref = useRef<T>(null)
-  const key = view ? `${view.kind} ${view.from} ${view.to} ${view.peak}` : ''
-  useEffect(() => (frames && view && ref.current ? frames.mount(ref.current, view) : undefined), [frames, key])
+  const at = pictureAt
+  const key = view ? `${view.kind} ${view.from} ${view.to} ${view.peak} ${view.art} ${view.emote} ${at?.key} ${at?.vodId}` : ''
+  useEffect(() => (frames && view && ref.current ? frames.mount(ref.current, view, at) : undefined), [frames, key])
   return ref
 }
 
@@ -85,6 +95,10 @@ export interface MomentCaptureStream {
   /** A VOD page: offsets follow the player, shifted by the VOD's start in the stream. */
   vod: boolean
   vodOriginDeltaSeconds?: number
+  /** For the backend's moment pictures. */
+  api?: string
+  login?: string | null
+  vodId?: string | null
 }
 
 /**
@@ -94,6 +108,7 @@ export interface MomentCaptureStream {
  */
 export function useMomentCapture(stream: MomentCaptureStream, momentOffsets: readonly number[], video: () => HTMLVideoElement | null): void {
   const frames = useMomentFrames()
+  pictureAt = stream
   const startedAt = Date.parse(stream.startedAt ?? '')
   const delta = Number.isFinite(stream.vodOriginDeltaSeconds) ? stream.vodOriginDeltaSeconds! : 0
   const mode = stream.vod ? 'vod' : stream.live && startedAt > 0 ? 'live' : null

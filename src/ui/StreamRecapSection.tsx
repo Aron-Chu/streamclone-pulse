@@ -25,6 +25,7 @@ import {
   recapMomentSelectionKey,
   resolveRecapChartPeakOffsets,
   recapStreamDurationSeconds,
+  rollupToRecapHeatPoint,
 } from './recapChartPeaks.ts'
 import { buildRecapEmoteCatalog, resolveRecapEmotes, resolveStreamTopEmotes } from './recapEmotes.ts'
 import { catchMeUpModel, useCatchMeUp } from './catchMeUp.ts'
@@ -392,10 +393,12 @@ function RecapReadyContent({
       points: momentPoints,
       rollups,
       games: payload.games,
+      played: recapGames,
       durationSeconds: recapDurationSeconds,
       peakChatPerMin: recap.peakChatPerMin,
       backendUrl,
       vodPage,
+      vodId: payload.vodId,
     }),
     {
       jump: index => momentPoints[index] && onJump(momentPoints[index]),
@@ -404,6 +407,7 @@ function RecapReadyContent({
         if (from === 'block' && key === selectedKey) clearRecapSelection()
         else pick(key, null, 'block')
       },
+      minute: minutePicker(rollups, payload.startedAt, catalog, pick),
     },
     blockIndex >= 0 && blockIndex < 3 ? blockIndex : null,
   )
@@ -546,6 +550,19 @@ function RecapReadyContent({
   )
 }
 
+/** Selects the chart's minute at `offsetSeconds`, as clicking it there does (the Catch me up summary's peak). */
+function minutePicker(
+  rollups: readonly ExtensionRollup[],
+  startedAt: string | undefined,
+  catalog: ExtensionEmote[],
+  pick: (key: string, point: LiveHeatPoint) => void,
+): (offsetSeconds: number) => void {
+  return offsetSeconds => {
+    const rollup = rollups.find(item => item.offsetSeconds === offsetSeconds)
+    if (rollup) pick(`bucket:${offsetSeconds}`, rollupToRecapHeatPoint(rollup, startedAt, catalog))
+  }
+}
+
 function offlinePointKey(point: LiveHeatPoint): string {
   return `${point.offsetSeconds}:${point.score}`
 }
@@ -666,10 +683,14 @@ function OfflineFallbackContent({
       points: peakPoints,
       rollups,
       games: payload.games,
+      played: recapGames,
       durationSeconds: recapDurationSeconds,
       peakChatPerMin: peakChat,
       backendUrl,
       vodPage,
+      vodId: payload.vodId,
+      // The title already heads this recap.
+      withTitle: !meta?.title,
     }),
     {
       jump: index => peakPoints[index] && onJump(peakPoints[index]),
@@ -678,6 +699,7 @@ function OfflineFallbackContent({
         if (fromBlock && key === selectedKey) clearOfflineSelection()
         else pick(key, null, true)
       },
+      minute: minutePicker(rollups, payload.startedAt, catalog, pick),
     },
     blockIndex >= 0 && blockIndex < 3 ? blockIndex : null,
   )

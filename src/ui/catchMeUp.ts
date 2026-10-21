@@ -10,7 +10,7 @@ import {
 } from '../shared/catchMeUpContract.ts'
 import type { ExtensionGameSegment, ExtensionRollup } from '../shared/messages.ts'
 import { isRenderableGameName } from './extensionChartAdapter.ts'
-import { gameAtOffset, momentPictureView, useMomentFrames } from './momentPicture.ts'
+import { gameAtOffset, momentPictureAt, momentPictureView, useMomentFrames } from './momentPicture.ts'
 
 let loading: Promise<CatchMeUpApi | null> | undefined
 
@@ -61,15 +61,26 @@ export interface CatchMeUpInput {
   points: LiveHeatPoint[]
   rollups: readonly ExtensionRollup[]
   games?: readonly ExtensionGameSegment[]
+  /** The recap's checked game timeline, for the summary's games; `games` when absent. */
+  played?: readonly ExtensionGameSegment[]
   durationSeconds: number
   peakChatPerMin: number
   backendUrl: string
   vodPage: boolean
+  /** The stream's VOD, for Twitch's cover and title in the summary. */
+  vodId?: string | null
+  /** False where the recap names the stream's title itself. */
+  withTitle?: boolean
 }
 
 export function catchMeUpModel(input: CatchMeUpInput): CatchMeUpModel | null {
   if (input.points.length === 0) return null
   const games = new Set((input.games ?? []).map(game => game.gameName).filter(isRenderableGameName))
+  const played = [...(input.played ?? input.games ?? [])]
+    .filter(game => isRenderableGameName(game.gameName))
+    .sort((a, b) => a.offsetSeconds - b.offsetSeconds)
+    .map(game => game.gameName)
+    .filter((name, index, names) => name !== names[index - 1])
   return {
     moments: input.points.slice(0, 3).map(point => ({
       point,
@@ -84,6 +95,8 @@ export function catchMeUpModel(input: CatchMeUpInput): CatchMeUpModel | null {
     namesGame: games.size > 1,
     backendUrl: input.backendUrl,
     vodPage: input.vodPage,
+    summary: { vodId: input.vodId, withTitle: input.withTitle ?? true, games: played },
+    at: momentPictureAt(),
   }
 }
 
@@ -115,6 +128,7 @@ export function useCatchMeUp<T extends HTMLElement>(model: CatchMeUpModel | null
     const mounted = script.mount(host, current, {
       jump: index => latest.current.actions.jump(index),
       pick: index => latest.current.actions.pick(index),
+      minute: offsetSeconds => latest.current.actions.minute(offsetSeconds),
     }, { head: head.current, tail: tail.current })
     mounted.select(latest.current.picked)
     block.current = mounted

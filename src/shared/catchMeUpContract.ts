@@ -1,10 +1,10 @@
 import type { LiveHeatPoint } from '@streampulse/pulse-core'
-import type { MomentPictureView } from './momentFramesContract.ts'
+import type { MomentPictureAt, MomentPictureView } from './momentFramesContract.ts'
 
 /**
  * Contract between the Twitch content script and `content/catch-me-up.js`,
- * the lazily injected script that draws the top of a stream recap: a one-line
- * story of the stream, its #1 moment and the two after it.
+ * the lazily injected script that draws the top of a stream recap: a summary
+ * of the stream (CatchMeUpSummary), its #1 moment and the two after it.
  *
  * The content script owns the data and what a click does (jump, or open the
  * moment's card under the block); the Catch me up script owns the markup.
@@ -24,7 +24,7 @@ export interface CatchMeUpMoment {
 export interface CatchMeUpModel {
   /** Ranked moments, best first; the block shows the first three. */
   moments: CatchMeUpMoment[]
-  /** Minute rollups, for the busiest half hour. */
+  /** Minute rollups, for the peak minute. */
   rollups: ReadonlyArray<{ offsetSeconds: number; chatCount: number }>
   durationSeconds: number
   peakChatPerMin: number
@@ -35,6 +35,23 @@ export interface CatchMeUpModel {
   backendUrl: string
   /** A VOD page: jumps seek this player, so the best three can be played in turn. */
   vodPage: boolean
+  /** The summary at the top of the recap (card board, S1). */
+  summary: CatchMeUpSummary
+  /** The stream Pulse shows, for pictures this tab holds no frames of. */
+  at?: MomentPictureAt
+}
+
+/**
+ * Twitch's cover and title of the stream's VOD (read through the frames
+ * script) and the games in the order played; the Catch me up script adds the
+ * minute with the most chat, which selects that minute on the chart.
+ */
+export interface CatchMeUpSummary {
+  vodId?: string | null
+  /** False where the recap names the stream's title itself. */
+  withTitle: boolean
+  /** Game names, in the order played. */
+  games: string[]
 }
 
 /**
@@ -53,6 +70,8 @@ export interface CatchMeUpActions {
   jump: (index: number) => void
   /** Picks the moment at `index` for the card under the block; picked again, clears it. */
   pick: (index: number) => void
+  /** Selects the chart's minute at `offsetSeconds`, as clicking it there does. */
+  minute: (offsetSeconds: number) => void
 }
 
 export interface CatchMeUpBlock {

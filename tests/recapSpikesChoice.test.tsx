@@ -80,8 +80,8 @@ describe('recap chart Spikes choice', () => {
     return button
   }
 
-  it('starts on where the chart shows pins and off elsewhere until pressed', async () => {
-    expect((await renderChart({ pins: [] })).getAttribute('aria-pressed')).toBe('true')
+  it('starts off everywhere, pins or not, until pressed', async () => {
+    expect((await renderChart({ pins: [] })).getAttribute('aria-pressed')).toBe('false')
     expect((await renderChart({ streamId: 'b' })).getAttribute('aria-pressed')).toBe('false')
     expect(setCalls).toEqual([])
   })
@@ -89,15 +89,15 @@ describe('recap chart Spikes choice', () => {
   it('keeps the pressed choice for every recap after, and stores it', async () => {
     const button = await renderChart({ pins: [] })
     act(() => button.click())
-    expect(button.getAttribute('aria-pressed')).toBe('false')
-    expect(button.getAttribute('aria-label')).toBe('Show spike markers')
-    expect(setCalls).toEqual([{ recapSpikeMarkers: false }])
+    expect(button.getAttribute('aria-pressed')).toBe('true')
+    expect(button.getAttribute('aria-label')).toBe('Hide spike markers')
+    expect(setCalls).toEqual([{ recapSpikeMarkers: true }])
 
     // A new chart, as when the viewer opens another recap.
     act(() => root.unmount())
     root = createRoot(container)
     const next = await renderChart({ pins: [], streamId: 'b' })
-    expect(next.getAttribute('aria-pressed')).toBe('false')
+    expect(next.getAttribute('aria-pressed')).toBe('true')
   })
 
   it('reads the stored choice on a fresh page', async () => {
