@@ -327,6 +327,16 @@ export function resolveSelectedMomentKey(
 
 export type MomentSortMode = 'reaction' | 'chat' | 'emotes'
 
+/** Top moments' Sort, on live and in a recap. */
+export const MOMENT_SORT_OPTIONS: ReadonlyArray<{ value: MomentSortMode; label: string }> = [
+  { value: 'reaction', label: 'Strongest reaction' },
+  { value: 'chat', label: 'Chat activity' },
+  { value: 'emotes', label: 'Emote activity' },
+]
+
+export const TOP_MOMENTS_TITLE = 'Top moments'
+export const TOP_MOMENTS_SUBTITLE = 'Chat and emote spikes'
+
 function isChatSpikeReason(reason: string, reasonLabel?: string): boolean {
   const normalized = reason.trim().toLowerCase()
   if (normalized === 'chat_spike') return true

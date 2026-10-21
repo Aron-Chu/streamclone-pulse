@@ -4,6 +4,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it } from 'vitest'
 import { ChartMinuteInspectCard } from '../src/ui/ChartMinuteInspectCard.tsx'
+import { panelRule } from './helpers/panelRule.ts'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -116,8 +117,11 @@ describe('ChartMinuteInspectCard', () => {
     })
 
     const card = container.querySelector<HTMLElement>('[data-chart-minute-card="true"]')
-    expect(card?.style.background).toBe('rgba(255, 255, 255, 0.025)')
-    expect(card?.style.background).not.toContain('gradient')
+    expect(card?.classList.contains('pulse-sel')).toBe(true)
+    expect(panelRule('pulse-sel')).toContain(' background: rgba(255, 255, 255, 0.025);')
+    expect(panelRule('pulse-sel')).not.toContain('gradient')
+    expect(panelRule('pulse-sel')).not.toContain('height')
+    expect(card?.style.background).toBe('')
     expect(card?.style.minHeight).toBe('')
     expect(card?.textContent).toContain('Minute activity')
     expect(container.querySelector('svg')).toBeNull()
@@ -230,7 +234,8 @@ describe('ChartMinuteInspectCard', () => {
     const row = container.querySelector<HTMLElement>('[data-moment-inspector-emote-row="true"]')
     expect(row?.textContent).toContain('LOL')
     expect(row?.textContent).toContain('1,234 uses')
-    expect((row?.lastElementChild as HTMLElement | null)?.style.flexShrink).toBe('0')
+    expect(row?.lastElementChild?.classList.contains('pulse-sel-uses')).toBe(true)
+    expect(panelRule('pulse-sel-uses')).toContain(' flex-shrink: 0;')
   })
 
   it('offers only Jump and Analytics for a committed raw minute', () => {

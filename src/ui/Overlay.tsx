@@ -19,9 +19,9 @@ import { SettingsGearIcon } from './SettingsGearIcon.tsx'
 import { useSupporterAppearanceDetails } from './useSupporterAppearance.ts'
 import { StreamPulseTitleBlock, streamPulseHeaderChrome, streamPulseHeaderChromeSidebar } from './StreamPulseTitleBlock.tsx'
 import { PulseBannerBackdrop, usePulseBanner } from './PulseBanner.tsx'
-import { useKeepPressedInPlace } from './keepPressedInPlace.ts'
+import { revealCardBelow, useKeepPressedInPlace } from './keepPressedInPlace.ts'
 import { AnalyticsHubCta } from './AnalyticsHubCta.tsx'
-import { rollupToRecapHeatPoint } from './recapChartPeaks.ts'
+import { recapStreamDurationSeconds, rollupToRecapHeatPoint } from './recapChartPeaks.ts'
 import { buildRecapEmoteCatalog } from './recapEmotes.ts'
 import { PulseSectionCard } from './PulseSectionCard.tsx'
 import { PanelErrorBoundary } from './PanelErrorBoundary.tsx'
@@ -48,6 +48,7 @@ import {
 } from '../shared/storage.ts'
 import { buildTwitchVodUrl } from '../shared/pastVods.ts'
 import { rememberVodAnalyticsBridge } from '../shared/vodAnalyticsBridge.ts'
+import { rememberMomentArrival, takeMomentArrival, type MomentArrival } from '../shared/momentArrival.ts'
 import {
   pulseSurfaceStatusLabel,
   resolvePulsePanelSections,
@@ -98,7 +99,8 @@ import {
 } from './missedMoments.ts'
 import { initPulseDebug, pulseDebug } from '../shared/pulseDebug.ts'
 import { resolveMostReactedHeat } from './mostReacted.ts'
-import { useMomentCapture } from './momentPicture.ts'
+import { MomentBookmarkToast, MomentBookmarksProvider } from './momentBookmarks.tsx'
+import { useArchiveVodId, useLiveVodId, useMomentCapture } from './momentPicture.ts'
 import { StreamRecapSection } from './StreamRecapSection.tsx'
 import { resolveRecapUiState } from './recapUiState.ts'
 import { formatPulseApiError } from './pulseApiErrors.ts'
@@ -111,6 +113,17 @@ import { PulseSidebarTabs } from './PulseSidebarTabs.tsx'
 import { safeImageUrl, safeTwitchNavigationUrl } from '../shared/safeUrl.ts'
 import { layFullHistoryUnderPoll } from '../background/pulsePayloadMerge.ts'
 import type { LivePollController } from '../content/livePoll.ts'
+
+/** An arrival locks the nearest minute within this, as saves and pins match. */
+const ARRIVAL_MATCH_SECONDS = 90
+/** Scrubbing further than this from the arrival's moment unlocks it. */
+const ARRIVAL_UNLOCK_SECONDS = 180
+const ARRIVAL_LABEL: Record<MomentArrival['source'], string> = {
+  library: 'From My Moments',
+  popup: 'From My Moments',
+  panel: 'From Pulse',
+  link: 'From link',
+}
 
 function coverageErrorMessage(raw: string | null | undefined, fallback: string): string {
   return formatPulseApiError(raw) ?? fallback
@@ -562,25 +575,47 @@ function OverlayMain({
         setNotice({ kind: 'warn', text: 'This clip could not be matched to this stream.' })
         return
       }
-      const findBucket = (data: PulsePayload) => (data.fullRollups?.length ? data.fullRollups : data.rollups ?? [])
-        .find(row => !row.missing && row.offsetSeconds <= offset && offset < row.offsetSeconds + 60)
-      let bucket = findBucket(source)
-      if (!bucket) {
-        const result = await requestFullTimeline()
-        if (!isCurrent()) return
-        if (result.ok) { source = result.payload; bucket = findBucket(source) }
-      }
-      if (!bucket) {
-        setNotice({ kind: 'warn', text: 'No chart data is available for this clip minute.' })
-        return
-      }
-      setNotice(null)
-      setClipPoint(rollupToRecapHeatPoint(bucket, source.startedAt, buildRecapEmoteCatalog(source)))
-      handleChartPin(bucket.offsetSeconds)
-      handleChartMinuteSelect(bucket)
+      const locked = await lockMinuteAt(offset, source, isCurrent)
+      if (locked === null) return
+      setNotice(locked ? null : { kind: 'warn', text: 'No chart data is available for this clip minute.' })
     } catch {
       if (isCurrent()) setNotice({ kind: 'warn', text: 'Could not load this clip moment. Try again.' })
     }
+  }
+
+  /**
+   * Locks the chart minute holding a stream second, with its card open, as a
+   * picked clip does. An arrival also takes the nearest minute within 90 s
+   * when none holds it. True once locked, false with no chart data there, and
+   * null when the panel moved on meanwhile.
+   */
+  async function lockMinuteAt(offset: number, from: PulsePayload, isCurrent: () => boolean, nearest = false): Promise<boolean | null> {
+    let source = from
+    // Buckets start where the stream's wall-clock minutes fall, often
+    // mid-minute, and the chart files each under its floored minute. Match on
+    // that grid so the card and readout show the minute the second is in.
+    const minute = (seconds: number) => Math.floor(seconds / 60) * 60
+    const findBucket = (data: PulsePayload) => {
+      const rows = (data.fullRollups?.length ? data.fullRollups : data.rollups ?? []).filter(row => !row.missing)
+      const inside = rows.find(row => minute(row.offsetSeconds) === minute(offset))
+      if (inside || !nearest) return inside
+      const gap = (row: ExtensionRollup) => {
+        const start = minute(row.offsetSeconds)
+        return offset < start ? start - offset : offset - start - 59
+      }
+      return rows.filter(row => gap(row) <= ARRIVAL_MATCH_SECONDS).sort((a, b) => gap(a) - gap(b))[0]
+    }
+    let bucket = findBucket(source)
+    if (!bucket) {
+      const result = await requestFullTimeline()
+      if (!isCurrent()) return null
+      if (result.ok) { source = result.payload; bucket = findBucket(source) }
+    }
+    if (!bucket) return false
+    setClipPoint(rollupToRecapHeatPoint(bucket, source.startedAt, buildRecapEmoteCatalog(source)))
+    handleChartPin(bucket.offsetSeconds)
+    handleChartMinuteSelect(bucket)
+    return true
   }
 
   useEffect(() => {
@@ -748,11 +783,18 @@ function OverlayMain({
   })
   const mostReactedHeat = displayPayload ? resolveMostReactedHeat(displayPayload) : null
   const warming = Boolean(uiIsLive && mostReactedHeat && !mostReactedHeat.visible)
+  // An ended stream's payload names no VOD; its pictures and cover need it.
+  const archiveVodId = useArchiveVodId(context.login, payload?.streamId, context.kind === 'channel' && !uiIsLive && !payload?.vodId)
+  // A live stream's payload names no VOD either; exact frames read the one Twitch is recording.
+  const liveVodId = useLiveVodId(context.login, payload?.streamId, context.kind === 'channel' && uiIsLive && !payload?.vodId)
   // Moment pictures: frames of this tab's player, kept around ranked moments.
   // A VOD's frames count only on the VOD the analytics belong to.
   useMomentCapture(
     {
       key: payload?.streamId,
+      api: backendUrl,
+      login: context.login,
+      vodId: payload?.vodId ?? archiveVodId ?? liveVodId,
       live: context.kind === 'channel' && uiIsLive,
       startedAt: payload?.startedAt,
       vod: context.kind === 'vod' && Boolean(payload?.vodId) && context.vodId === payload?.vodId,
@@ -764,6 +806,16 @@ function OverlayMain({
       ...(payload?.peaks ?? []).map(peak => peak.offsetSeconds),
     ],
     getPrimaryVideo,
+  )
+  // The listed moments, so a bookmark near two shows on the nearer one.
+  const bookmarkMomentsKey = [
+    ...(mostReactedHeat?.points ?? []),
+    ...(payload?.recap?.topMoments ?? []),
+    ...(payload?.peaks ?? []),
+  ].map(point => reactionAnalyticalOffset(point)).join(',')
+  const bookmarkMomentOffsets = useMemo(
+    () => (bookmarkMomentsKey ? [...new Set(bookmarkMomentsKey.split(',').map(Number))] : []),
+    [bookmarkMomentsKey],
   )
   const panelSections = payload
     ? resolvePulsePanelSections(payload, {
@@ -818,6 +870,104 @@ function OverlayMain({
     && !hasRecapPanel,
   )
   const canRenderPayload = Boolean(payload && panelSurfaceState !== 'identity_mismatch')
+  // A replay of a stream that is still live shows the live chart: its minute card opens under it.
+  const liveChartShown = canRenderPayload && pulseSupported && pulseLiveAccess.state === 'full_live' && Boolean(panelSections?.showLiveStatsBand)
+
+  // Board E: a Watch link that opened this VOD locks its moment's minute, with
+  // its card open, and says where the viewer came from until they unlock it.
+  const [pendingArrival, setPendingArrival] = useState<MomentArrival | null>(null)
+  const [arrival, setArrival] = useState<{ source: MomentArrival['source']; at: number; vodSecond: number } | null>(null)
+  const [arrivalNotice, setArrivalNotice] = useState<{ key: number; text: string } | null>(null)
+  const arrivalWatchRef = useRef<(() => void) | null>(null)
+  useEffect(() => {
+    setPendingArrival(null)
+    setArrival(null)
+    if (context.kind !== 'vod' || !context.vodId) return
+    let active = true
+    void takeMomentArrival(context.vodId).then(found => { if (active && found) setPendingArrival(found) })
+    return () => { active = false }
+  }, [context.kind, context.vodId])
+  useEffect(() => () => arrivalWatchRef.current?.(), [])
+
+  useEffect(() => {
+    const found = pendingArrival
+    const source = chartSourcePayload
+    if (!found || !source || !canRenderPayload || !(isVodPage || liveChartShown)) return
+    if (source.vodId && source.vodId !== found.vodId) return
+    // Wait for the chart: the first payload can come without its minutes.
+    if (!(source.fullRollups?.length || source.rollups?.length)) return
+    setPendingArrival(null)
+    const surface = surfaceIdentity
+    const isCurrent = () => mountedRef.current && jumpSurfaceRef.current === surface
+    const delta = Number.isFinite(source.vodOriginDeltaSeconds) ? source.vodOriginDeltaSeconds! : 0
+    const at = found.clock === 'stream' ? found.offsetSeconds : found.offsetSeconds + delta
+    void lockMinuteAt(at, source, isCurrent, true).then(locked => {
+      if (!locked || !isCurrent()) return
+      setArrival({ source: found.source, at, vodSecond: Math.max(0, at - delta) })
+      // Only a Pulse link counts toward History; any other timestamped link
+      // is just where the player started.
+      if (found.source !== 'link') watchArrival(found, at, Math.max(0, at - delta))
+    }).catch(() => undefined)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- lockMinuteAt reads this render's state
+  }, [pendingArrival, chartSourcePayload, canRenderPayload, isVodPage, liveChartShown, surfaceIdentity])
+
+  /** History counts an arrival once 10 s of it plays, as after a jump in this tab. */
+  function watchArrival(found: MomentArrival, at: number, vodSecond: number): void {
+    arrivalWatchRef.current?.()
+    const start = Math.max(0, vodSecond - 5)
+    const end = start + 60
+    const deadline = Date.now() + 30_000
+    // Twitch applies ?t= once its player loads; capture starts when it has.
+    const timer = setInterval(() => {
+      const video = getPrimaryVideo()
+      if (!mountedRef.current || Date.now() > deadline) { clearInterval(timer); return }
+      if (!video || video.currentTime < start - 10 || video.currentTime > end) return
+      clearInterval(timer)
+      void observeMomentPlayback(video, { id: 'moment', channel: found.login ?? payload?.login ?? login, title: found.title ?? 'Moment',
+        vodId: found.vodId, streamId: found.streamId ?? payload?.streamId, offsetSeconds: at, availability: 'unresolved' }, start, end, () => {
+        if (mountedRef.current) setArrivalNotice({ key: Date.now(), text: `Added to History · ${formatHeatOffset(at)}` })
+      })
+    }, 500)
+    arrivalWatchRef.current = () => clearInterval(timer)
+  }
+
+  const unlockArrival = useCallback(() => {
+    setArrival(null)
+    setClipPoint(null)
+    handleChartPin(null)
+  }, [handleChartPin])
+
+  // Scrubbing far from the moment unlocks it too. Seeks before the player
+  // first reaches the moment are Twitch applying ?t=, not the viewer.
+  useEffect(() => {
+    if (!arrival) return
+    const video = getPrimaryVideo()
+    if (!video) return
+    let reached = false
+    const seeked = () => {
+      const away = Math.abs(video.currentTime - arrival.vodSecond) > ARRIVAL_UNLOCK_SECONDS
+      if (!away) reached = true
+      else if (reached) unlockArrival()
+    }
+    seeked()
+    video.addEventListener('seeked', seeked)
+    return () => video.removeEventListener('seeked', seeked)
+  }, [arrival, unlockArrival])
+
+  // The chip and card open below the chart, often past the panel's fold:
+  // scroll them into view once, on arrival only. The chip can move to the
+  // card that opens once the recap matches its minute, so the reveal reads
+  // the ref on every frame.
+  const arrivalChipRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (arrival && arrivalChipRef.current) return revealCardBelow(() => arrivalChipRef.current)
+  }, [arrival])
+  const arrivalNote = arrival ? (
+    <div ref={arrivalChipRef} className="pulse-arrival" data-moment-arrival={arrival.source} data-chart-action="true">
+      <span>{ARRIVAL_LABEL[arrival.source]} · {formatHeatOffset(arrival.at)}</span>
+      <button type="button" aria-label="Unlock this moment" title="Unlock" onClick={unlockArrival}>×</button>
+    </div>
+  ) : null
   const sidebarChatOnly = showSidebarTabs && resolvedSidebarTab === 'chat'
   const metricsCompact = sidebarSnapped && (panelHostWidth ?? 0) > 0 && (panelHostWidth ?? 0) < SIDEBAR_COMPACT_WIDTH
   const shellClass = [
@@ -1583,6 +1733,9 @@ function OverlayMain({
       }
 
       if (action.kind === 'open-vod-tab') {
+        // The new tab's panel locks this moment (board E).
+        void rememberMomentArrival({ vodId: action.vodId, offsetSeconds: reactionAnalyticalOffset(point), source: 'panel',
+          login, streamId: payload?.streamId, title: point.reasonLabel })
         if (payload?.streamId) {
           void rememberVodAnalyticsBridge({
             vodId: action.vodId,
@@ -1742,9 +1895,21 @@ function OverlayMain({
               : 'pulse-workspace pulse-panel-view-stack'
           }
         >
+      <MomentBookmarksProvider
+        login={payload && canRenderPayload ? payload.login : ''}
+        streamId={payload?.streamId}
+        vodId={payload?.vodId ?? undefined}
+        // Lookup only: linking the VOD mid-save would re-key the bookmark row and drop the save.
+        resolveVodId={uiIsLive && context.kind === 'channel' ? () => discoverPageVodId(null) : undefined}
+        momentOffsets={bookmarkMomentOffsets}
+        notice={arrivalNotice}
+      >
       <StreamPulseHeader
         personalTitle={banner.value.title}
-        replayLead={isVodPage ? replayLead(vodPulse) : undefined}
+        replayLead={isVodPage ? replayLead(
+          vodPulse,
+          payload && vodPulse?.streamId && payload.streamId === vodPulse.streamId ? recapStreamDurationSeconds(payload) : undefined,
+        ) : undefined}
         isLive={uiIsLive}
         surfaceState={panelSurfaceState}
         pulseLiveAccess={pulseLiveAccess.state}
@@ -1865,8 +2030,6 @@ function OverlayMain({
                   onOpenAnalytics={openAnalytics}
                   onOpenFullAnalytics={() => openAnalytics()}
                   onRequestFullTimeline={requestFullTimeline}
-                  // Lookup only: linking the VOD mid-save would re-key the bookmark row and drop the save.
-                  onResolveArchiveVodId={uiIsLive && context.kind === 'channel' ? () => discoverPageVodId(null) : undefined}
                   onChartWindowChange={handleChartWindowChange}
                   onPinOffset={handleChartPin}
                   onChartMinuteSelect={handleChartMinuteSelect}
@@ -1881,6 +2044,7 @@ function OverlayMain({
                   hasVodContext={Boolean(payload?.vodId ?? context.vodId)}
                   coverageTier={coverageTierState?.coverageTier ?? null}
                   liveMetadata={coverageTierState?.liveMetadata ?? null}
+                  arrivalNote={arrivalNote}
                 />
               ) : null}
 
@@ -1951,6 +2115,7 @@ function OverlayMain({
           {panelSections?.showRecap && payload ? (
             <StreamRecapSection
               externalPoint={clipPoint}
+              arrivalNote={arrivalNote}
               payload={payload}
               backendUrl={backendUrl}
               uiState={recapUiState === 'partial' ? 'ready' : (recapUiState ?? 'ready')}
@@ -1960,6 +2125,7 @@ function OverlayMain({
               sidebarFill={sidebarSnapped}
               hideHubLink
               vodPage={isVodPage}
+              archiveVodId={archiveVodId}
               onJump={jumpMoment}
               onAnalytics={openAnalyticsForMoment}
               onOpenAnalytics={openAnalytics}
@@ -2008,6 +2174,8 @@ function OverlayMain({
           ) : null}
         </>
       ) : null}
+      <MomentBookmarkToast />
+      </MomentBookmarksProvider>
         </div>
       )}
       </PanelErrorBoundary>
@@ -2168,10 +2336,14 @@ const PERMANENT_VOD_STATES = new Set(['stream_not_collected', 'duration_implausi
  * Games played strip is the one place that names games, so the header never
  * names one the recap says it doesn't know. A length over 48 h is not a real
  * stream (see parseExtensionVodPulseResponse) and is left out.
+ *
+ * `recapSeconds` is the recap's own length for this stream: a stream whose
+ * close was recorded hours late (Oct 16 xQc: 19h 43m, a 9h 22m VOD) is cut to
+ * where its chat ends, so the header and the recap say the same length.
  */
-export function replayLead(vod: ExtensionVodPulseResponse | null): string {
+export function replayLead(vod: ExtensionVodPulseResponse | null, recapSeconds?: number): string {
   const started = Date.parse(vod?.startedAt ?? '')
-  const seconds = vod?.durationSeconds ?? 0
+  const seconds = recapSeconds != null && recapSeconds > 0 ? recapSeconds : vod?.durationSeconds ?? 0
   const hours = Math.floor(seconds / 3600)
   return [
     Number.isFinite(started) ? new Date(started).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '',

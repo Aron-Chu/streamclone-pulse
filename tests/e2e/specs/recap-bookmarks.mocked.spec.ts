@@ -11,22 +11,30 @@ for (const surface of ['offline', 'vod'] as const) {
     else await openTwitchChannel(page)
     await waitForPulseRoot(page)
     const root = page.locator('#streamclone-pulse-root')
-    const library = root.getByRole('button', { name: 'Open My Moments', exact: true })
-    await expect(library).toBeVisible()
+    // My Moments sits in a moments heading: Top moments, or the recap's on a VOD.
+    const library = root.locator('[data-moment-action="open-library"]:visible').first()
+    await expect(library).toHaveText('My Moments')
     await expect(root.locator('[data-moment-action="bookmark"]')).toHaveCount(0)
-    // A chart minute: the VOD's one moment is Catch me up's #1, which only
-    // jumps. End previews the last minute with data and Enter selects it.
+    // A chart minute: End previews the last minute with data and Enter selects it.
     await root.getByRole('application', { name: /^Chart plot/ }).focus()
     await page.keyboard.press('End')
     await page.keyboard.press('Enter')
     const save = root.locator('[data-moment-action="bookmark"]')
     await expect(save).toBeEnabled()
-    await expect(root.getByText('Bookmarks stay on this device. No account needed.', { exact: true })).toBeVisible()
+    await expect(save).toHaveAttribute('aria-pressed', 'false')
     await save.click()
     // Signed out, the save stays on this device: no account prompt, no request.
     await expect(save).toHaveAttribute('data-moment-save-state', 'saved')
-    await expect(root.locator('.pulse-moment-action-feedback')).toContainText('Saved on this device at')
-    await expect(root.getByRole('button', { name: 'Connect free account', exact: true })).toHaveCount(0)
+    await expect(save).toHaveAttribute('aria-pressed', 'true')
+    const toast = root.locator('.pulse-bookmark-toast')
+    await expect(toast).toContainText('Saved on this device')
+    await expect(root.locator('[data-moment-action="connect-account"]')).toHaveCount(0)
+    // The same icon removes it, and Undo puts it back.
+    await save.click()
+    await expect(save).toHaveAttribute('data-moment-save-state', 'ready')
+    await expect(toast).toContainText('Removed bookmark at')
+    await toast.locator('[data-bookmark-toast-action="undo"]').click()
+    await expect(save).toHaveAttribute('data-moment-save-state', 'saved')
     const opened = extension.context.waitForEvent('page')
     await library.click()
     const moments = await opened
