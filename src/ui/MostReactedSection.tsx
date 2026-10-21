@@ -9,7 +9,10 @@ import type { PulsePayload } from '../shared/messages.ts'
 import type { ExtensionRollup } from '../shared/messages.ts'
 import { resolvePinnedMomentPoint } from './chartSelectedMoment.ts'
 import {
+  MOMENT_SORT_OPTIONS,
   MOST_REACTED_VISIBLE_COUNT,
+  TOP_MOMENTS_SUBTITLE,
+  TOP_MOMENTS_TITLE,
   liveHeatPointKey,
   resolveMostReactedHeat,
   sortLiveHeatPoints,
@@ -42,15 +45,6 @@ export interface MostReactedSectionProps {
   hasVodContext?: boolean
   demoMode?: boolean
 }
-
-const SORT_OPTIONS: ReadonlyArray<{ value: MomentSortMode; label: string }> = [
-  { value: 'reaction', label: 'Strongest reaction' },
-  { value: 'chat', label: 'Chat activity' },
-  { value: 'emotes', label: 'Emote activity' },
-]
-
-const TOP_MOMENTS_TITLE = 'Top moments'
-const TOP_MOMENTS_SUBTITLE = 'Chat and emote spikes'
 
 function resolveJumpLabel(payload: PulsePayload, hasVodContext?: boolean): string {
   if (hasVodContext || payload.vodId) return 'Jump in VOD'
@@ -129,7 +123,7 @@ export function MostReactedSection({
             <PulseThemedSelect
               label="Sort"
               value={sortMode}
-              options={SORT_OPTIONS}
+              options={MOMENT_SORT_OPTIONS}
               ariaLabel="Sort most reacted moments"
               disabled={demoMode}
               onChange={setSortMode}

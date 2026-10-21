@@ -151,32 +151,48 @@ const REVEAL_MS = 5000
 const REVEAL_STOP = ['wheel', 'touchmove', 'pointerdown', 'keydown'] as const
 
 /**
- * Scroll the panel once so the card opening right after `anchor` (an
+ * Scroll the panel once so the card opening right after `chip` (an
  * arrival's chip) comes into view down to its actions: only as far as the
  * card's bottom needs, so the chip stays when both fit and scrolls off when
  * they don't. The visible part of the panel ends at the window's bottom edge.
  * It follows the card while it grows; nothing in the panel moves, and any
  * input of the viewer's, or any scroll it did not make (the scrollbar), ends it.
+ * A scroll that leaves the chip where it was on screen is the panel's own
+ * scroll anchoring, as when the summary above loads taller than its
+ * placeholder: the reveal goes on from there.
+ * A getter follows the chip when it moves to the card that opens (a recap
+ * opens a ranked moment in Top moments, anything else under the chart).
  */
-export function revealCardBelow(anchor: HTMLElement): () => void {
-  const scroller = anchor.closest<HTMLElement>('.pulse-panel-body')
+export function revealCardBelow(chip: HTMLElement | (() => HTMLElement | null)): () => void {
+  const chipNow = typeof chip === 'function' ? chip : () => chip
+  const scroller = chipNow()?.closest<HTMLElement>('.pulse-panel-body')
   if (!scroller) return () => undefined
   const until = performance.now() + REVEAL_MS
   let frame = 0
   let expected = scroller.scrollTop
+  // Where the chip was on screen after the last frame.
+  let last: { chip: HTMLElement; top: number } | null = null
   const stop = (): void => {
     cancelAnimationFrame(frame)
     for (const type of REVEAL_STOP) scroller.removeEventListener(type, stop, true)
   }
   const tick = (now: number): void => {
-    if (!anchor.isConnected || Math.abs(scroller.scrollTop - expected) > 1) return stop()
-    const card = anchor.nextElementSibling?.matches(SLOT) ? anchor.nextElementSibling : anchor
+    const anchor = chipNow()
+    if (!anchor?.isConnected || !scroller.contains(anchor)) return stop()
+    if (Math.abs(scroller.scrollTop - expected) > 1) {
+      if (last?.chip === anchor && Math.abs(anchor.getBoundingClientRect().top - last.top) > 1) return stop()
+      expected = scroller.scrollTop
+    }
+    // The card's slot follows the chip, or is the first child of what does.
+    const next = anchor.nextElementSibling
+    const card = (next?.matches(SLOT) ? next : next?.querySelector(`:scope > ${SLOT}`)) ?? anchor
     const need = card.getBoundingClientRect().bottom + CARD_TOP_PAD - Math.min(scroller.getBoundingClientRect().bottom, innerHeight)
     if (need >= 1) {
       scroller.scrollTop += need
       // Read back: the panel clamps at its end.
       expected = scroller.scrollTop
     }
+    last = { chip: anchor, top: anchor.getBoundingClientRect().top }
     if (now > until) return stop()
     frame = requestAnimationFrame(tick)
   }

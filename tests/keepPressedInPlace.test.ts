@@ -266,11 +266,12 @@ describe('revealCardBelow (an arrival)', () => {
     slot.className = 'pulse-moment-slot'
     scroller.append(chip, slot)
     document.body.append(scroller)
-    const layout = { cardHeight }
+    // `above` grows the content over the chip, as a summary that loads taller.
+    const layout = { cardHeight, above: 0 }
     const rect = (top: number, height: number) => ({ top, bottom: top + height, height } as DOMRect)
     scroller.getBoundingClientRect = () => rect(0, 500)
-    chip.getBoundingClientRect = () => rect(chipTop - scroller.scrollTop, 24)
-    slot.getBoundingClientRect = () => rect(chipTop + 30 - scroller.scrollTop, layout.cardHeight)
+    chip.getBoundingClientRect = () => rect(chipTop + layout.above - scroller.scrollTop, 24)
+    slot.getBoundingClientRect = () => rect(chipTop + layout.above + 30 - scroller.scrollTop, layout.cardHeight)
     return { scroller, chip, layout }
   }
 
@@ -312,6 +313,51 @@ describe('revealCardBelow (an arrival)', () => {
     layout.cardHeight = 330
     frame(3000)
     expect(scroller.scrollTop).toBe(468)
+  })
+
+  it('finds the slot inside what follows the chip (Top moments\' card)', () => {
+    const { scroller, chip } = arrival({ cardHeight: 200 })
+    const slot = chip.nextElementSibling!
+    const wrapper = document.createElement('div')
+    chip.after(wrapper)
+    wrapper.append(slot)
+    revealCardBelow(chip)
+    frame()
+    // Card bottom 830 + 8 - 500, as with the slot right after the chip.
+    expect(scroller.scrollTop).toBe(338)
+  })
+
+  it('follows the chip when it moves to the card that opens', () => {
+    const { scroller, chip } = arrival({ cardHeight: 200 })
+    // The chip first renders under the chart, with no card after it.
+    const early = document.createElement('div')
+    early.getBoundingClientRect = () => ({ top: 300 - scroller.scrollTop, bottom: 324 - scroller.scrollTop, height: 24 } as DOMRect)
+    scroller.prepend(early)
+    let current: HTMLElement = early
+    revealCardBelow(() => current)
+    frame()
+    expect(scroller.scrollTop).toBe(0)
+    // The recap matches a ranked moment: the chip re-renders above its card.
+    early.remove()
+    current = chip
+    frame()
+    expect(scroller.scrollTop).toBe(338)
+  })
+
+  it('goes on through scroll anchoring when something above loads taller', () => {
+    const { scroller, chip, layout } = arrival({ cardHeight: 150 })
+    revealCardBelow(chip)
+    frame()
+    expect(scroller.scrollTop).toBe(288)
+    // The summary above loads 40 px taller; scroll anchoring keeps the chip in place.
+    layout.above = 40
+    scroller.scrollTop += 40
+    frame()
+    expect(scroller.scrollTop).toBe(328)
+    // The card's picture mounts later and is still followed: 670 + 330 + 8 - 500.
+    layout.cardHeight = 330
+    frame()
+    expect(scroller.scrollTop).toBe(508)
   })
 
   it('leaves a card already in view alone', () => {

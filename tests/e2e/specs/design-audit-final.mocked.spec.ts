@@ -136,9 +136,8 @@ test.describe('StreamPulse final visual, interaction & failure-state audit', () 
     // Capture initial recap state
     await saveScreenshot(extension.page, '18-recap-progressive-disclosure-initial.png', shell)
 
-    // Open a moment in the card: on a three-moment recap they all sit in
-    // Catch me up, whose next moments open under it.
-    const momentRow = extension.page.locator(`#${PULSE_ROOT_ID} .pcu-mini`).first()
+    // Open a moment in the card above the Top Moments list.
+    const momentRow = extension.page.locator(`#${PULSE_ROOT_ID} .pulse-moment-row-button`).first()
     await expect(momentRow).toBeVisible()
     await momentRow.click()
 

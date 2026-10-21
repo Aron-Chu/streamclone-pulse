@@ -51,11 +51,25 @@ export function minutePictureView(kind: MomentPictureView['kind'], offsetSeconds
   return { kind, from: offsetSeconds - 10, to: offsetSeconds + 60, peak: offsetSeconds + 30 }
 }
 
-/** The stream Pulse shows, as the frames script needs it, for a picture drawn outside React (Catch me up). */
-export function momentPictureAt(): MomentPictureAt | undefined {
-  if (!pictureAt) return undefined
-  const { api, login, key, vodId, vodOriginDeltaSeconds } = pictureAt
-  return { api, login, key, vodId, vodOriginDeltaSeconds }
+/**
+ * The VOD of a stream that has ended, from the channel's stream history, for
+ * its pictures and cover: the offline channel page's payload carries no VOD.
+ * Only the row whose stream id matches counts, never the channel's latest VOD.
+ * Asked only while `ask` holds and Moment pictures is on.
+ */
+export function useArchiveVodId(login: string | null | undefined, streamId: string | null | undefined, ask: boolean): string | null {
+  const frames = useMomentFrames()
+  const [found, setFound] = useState<{ streamId: string; vodId: string | null } | null>(null)
+  useEffect(() => {
+    if (!frames || !ask || !login || !streamId) return
+    let live = true
+    void sendBackgroundMessage({ type: 'LIST_PAST_VODS', login, liveStreamId: streamId, isLive: false }).then(history => {
+      if (!live || !('type' in history) || history.type !== 'PAST_VODS') return
+      setFound({ streamId, vodId: history.items.find(item => item.streamId === streamId && item.videoId)?.videoId ?? null })
+    }, () => {})
+    return () => { live = false }
+  }, [frames, ask, login, streamId])
+  return ask && found && found.streamId === streamId ? found.vodId : null
 }
 
 /** Fills the returned element with the picture of `view`, when this tab has frames for it. */

@@ -132,7 +132,7 @@ describe('Moment pictures from the backend', () => {
     unmountCard()
   })
 
-  it('shows a loaded picture as the card top, and Catch me up (which names no stream) reuses the last one', async () => {
+  it('shows a loaded picture as the card top, and a mount that names no stream reuses the last one', async () => {
     const card = cardHost()
     const unmountCard = api.mount(card, CARD, AT)
     expect(card.querySelector('.pmf-pic')).toBeNull()

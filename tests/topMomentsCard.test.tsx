@@ -781,7 +781,6 @@ describe('Stream recap Top moments', () => {
       expect(list.filter(row => row.hasAttribute('aria-controls'))).toHaveLength(0)
       expect(host.querySelector('svg[data-chart-locked-index]')).toBeNull()
       expect(host.querySelector('[data-chart-readout-state="selected"]')).toBeNull()
-      expect(host.querySelectorAll('.pcu-mini[aria-pressed="true"]')).toHaveLength(0)
       expect(selectionCards(host)).toHaveLength(0)
 
       // Picking the first row opens it and locks its minute; picking it again
