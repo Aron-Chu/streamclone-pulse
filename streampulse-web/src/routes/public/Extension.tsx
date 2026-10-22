@@ -9,6 +9,9 @@ import { discordInviteUrl, DISCORD_PATH } from '../../lib/discord'
 import { FEEDBACK_PATH, PRIVACY_PATH } from '../../lib/externalLinks'
 // The extension's own release notes, the file /changelog reads.
 import releaseNotes from '../../../../src/shared/release-notes.json'
+// The old landing page's scroll-driven signal replay, back as a second demo (Aron, 2026-10-21).
+import { LiveSignalScrollGraph } from '../../ui/components/landing/LiveSignalScrollGraph'
+import '../../ui/tokens.css'
 import './extension-page.css'
 
 // The real panel, its styles and the sample stream: one chunk, loaded near the demo.
@@ -120,6 +123,15 @@ export default function Extension() {
             This is the extension&apos;s own panel code, running on a made-up stream: the channel, the numbers and the
             moments are generated. On Twitch, it shows the stream you&apos;re watching.
           </p>
+        </section>
+
+        <section id="signal" className="xp-demo xp-signal" aria-labelledby="xp-signal-title">
+          <div className="xp-demo__head">
+            <span className="xp-pill">Illustrative demo · not live measurements</span>
+            <h2 id="xp-signal-title">See a stream become a signal</h2>
+            <p className="xp-demo__note">Scroll through a sample broadcast: chat, emotes, viewers, and the moments worth revisiting.</p>
+          </div>
+          <LiveSignalScrollGraph />
         </section>
 
         <section className="xp-section" aria-labelledby="xp-features-title">

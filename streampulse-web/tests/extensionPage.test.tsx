@@ -25,12 +25,20 @@ describe('/extension', () => {
     render(<MemoryRouter initialEntries={['/extension']}><AppRoutes /></MemoryRouter>)
     const page = screen.getByTestId('extension-page')
     expect(within(page).getByRole('heading', { level: 1, name: 'See what Twitch chat reacted to' })).toBeTruthy()
-    for (const name of ['Click anything. It’s the real panel.', 'What it does', 'Privacy, in short', 'What’s new', 'Talk to us']) {
+    for (const name of ['Click anything. It’s the real panel.', 'See a stream become a signal', 'What it does', 'Privacy, in short', 'What’s new', 'Talk to us']) {
       expect(within(page).getByRole('heading', { level: 2, name: name.replace('’', "'") })).toBeTruthy()
     }
     for (const title of FEATURES) expect(within(page).getByRole('heading', { level: 3, name: title })).toBeTruthy()
     expect(within(page).getByText(/The demo loads when this part of the page is on screen/)).toBeTruthy()
     expect(document.getElementById('demo')).toBeTruthy()
+  })
+
+  it('follows the real panel with the old landing page’s scroll replay, labelled as illustrative', () => {
+    render(<MemoryRouter initialEntries={['/extension']}><AppRoutes /></MemoryRouter>)
+    const signal = document.getElementById('signal')!
+    expect(document.getElementById('demo')!.compareDocumentPosition(signal) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(within(signal).getByText('Illustrative demo · not live measurements')).toBeTruthy()
+    expect(signal.querySelector('.lsg')).toBeTruthy()
   })
 
   it('installs from the Chrome Web Store listing and links to feedback and the release notes', () => {
@@ -48,6 +56,9 @@ describe('/extension', () => {
     expect(html).toContain('See what Twitch chat reacted to')
     for (const title of FEATURES) expect(html).toContain(title)
     expect(html).toContain('Counts, not chat.')
+    // The replay's static, fully revealed state is in the page before any script runs.
+    expect(html).toContain('See a stream become a signal')
+    expect(html).toContain('Not live backend data')
     expect(html).not.toContain('data-testid="not-found"')
   })
 })
