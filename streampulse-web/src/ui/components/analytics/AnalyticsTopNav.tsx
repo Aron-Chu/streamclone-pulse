@@ -6,6 +6,9 @@ import { BrandMark } from '../BrandMark'
 import { ChromeInstallCta } from '../ChromeInstallCta'
 import { discordInviteUrl } from '../../../lib/discord'
 import { FEEDBACK_PATH } from '../../../lib/externalLinks'
+import { AccountEntry } from '../AccountEntry'
+import { useAccountSession } from '../../../lib/accountSession'
+import { accountHeaderEnabled } from '../../../lib/accountHeaderFlag'
 
 export interface AnalyticsTopNavItem {
   label: string
@@ -65,7 +68,7 @@ export function AnalyticsTopNav({
   }
 
   return (
-    <header className="analytics-topnav" data-analytics-build="command-center-cws-2026-07-22">
+    <header className={accountHeaderEnabled() ? 'analytics-topnav analytics-topnav--account' : 'analytics-topnav'} data-analytics-build="command-center-cws-2026-07-22">
       <a href="#analytics-main" className="analytics-topnav__skip">
         Skip to analytics content
       </a>
@@ -109,6 +112,7 @@ export function AnalyticsTopNav({
               <Link to="/support" onClick={() => closeMenu()}>Support</Link>
               <Link to="/status" onClick={() => closeMenu()}>Service status</Link>
               <Link to="/supporter" onClick={() => closeMenu()}>Pulse Supporter</Link>
+              {accountHeaderEnabled() ? <MenuAccountLink onNavigate={() => closeMenu()} /> : null}
               {/* No account entries until Continue with Twitch is public: the sign-in
                   page is the invited-tester bridge, sign-ups are closed, and extension
                   connection codes are tester-only. Testers reach them from account pages. */}
@@ -139,6 +143,14 @@ export function AnalyticsTopNav({
           </div>
         ) : null}
       </div>
+      {accountHeaderEnabled() ? <AccountEntry variant="analytics" /> : null}
     </header>
   )
+}
+
+/** With the header account entry on, the menu's account link follows the session. */
+function MenuAccountLink({ onNavigate }: { onNavigate: () => void }) {
+  return useAccountSession().status === 'signed_out'
+    ? <Link to="/account/sign-in" onClick={onNavigate}>Sign in</Link>
+    : <Link to="/account/settings" onClick={onNavigate}>Account &amp; devices</Link>
 }

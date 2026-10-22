@@ -1,0 +1,201 @@
+/* Header account entry. Each header maps its own tokens; the component only
+   reads these local properties. */
+.account-entry--analytics {
+  --account-entry-text: var(--fma-text);
+  --account-entry-muted: var(--fma-sub);
+  --account-entry-hover: var(--fma-dim);
+  --account-entry-accent: var(--fma-accent);
+  --account-entry-accent-bg: var(--fma-accent-bg);
+  --account-entry-accent-text: var(--fma-accent-text);
+  --account-entry-border: var(--fma-border);
+  --account-entry-danger: var(--fma-red);
+  /* Same opaque surface as the analytics support menu. */
+  --account-entry-panel: #18181b;
+  --account-entry-radius: 7px;
+  --account-entry-size: 0.82rem;
+  --account-entry-height: 44px;
+  --account-entry-padding: 0.35rem 0.7rem;
+}
+
+.account-entry--public {
+  --account-entry-text: var(--text-primary);
+  --account-entry-muted: var(--text-muted);
+  --account-entry-hover: var(--bg-card-hover);
+  --account-entry-accent: var(--accent-border);
+  --account-entry-accent-bg: var(--accent-dim);
+  --account-entry-accent-text: var(--accent);
+  --account-entry-border: var(--border);
+  --account-entry-danger: var(--live);
+  --account-entry-panel: var(--bg-elevated);
+  --account-entry-radius: var(--radius-button);
+  --account-entry-size: 0.85rem;
+  /* Desktop public links are compact; touch layouts below raise the target. */
+  --account-entry-height: 0;
+  --account-entry-padding: 0.4rem 0.75rem;
+}
+
+@media (max-width: 960px) {
+  .account-entry--public { --account-entry-height: 44px; }
+}
+
+.account-entry {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  min-width: 0;
+}
+
+.account-entry__link,
+.account-entry__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: var(--account-entry-height);
+  padding: var(--account-entry-padding);
+  border: 1px solid transparent;
+  border-radius: var(--account-entry-radius);
+  background: transparent;
+  color: var(--account-entry-muted);
+  font: inherit;
+  font-size: var(--account-entry-size);
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+
+.account-entry__link:hover,
+.account-entry__trigger:hover {
+  color: var(--account-entry-text);
+  background: var(--account-entry-hover);
+}
+
+.account-entry__link--pending { visibility: hidden; }
+.account-entry__trigger { padding-block: 0.3rem; padding-inline: 0.4rem 0.55rem; }
+
+.account-entry__trigger[aria-expanded="true"] {
+  color: var(--account-entry-text);
+  background: var(--account-entry-accent-bg);
+  border-color: var(--account-entry-accent);
+}
+
+.account-entry__avatar {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--account-entry-accent-bg);
+  color: var(--account-entry-accent-text);
+  object-fit: cover;
+}
+
+.account-entry__label {
+  max-width: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.account-entry__chevron {
+  flex: 0 0 auto;
+  transition: transform 0.14s ease;
+}
+
+.account-entry__trigger[aria-expanded="true"] .account-entry__chevron { transform: rotate(180deg); }
+
+.account-entry__hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.account-entry__panel {
+  position: absolute;
+  z-index: 100;
+  top: calc(100% + 4px);
+  right: 0;
+  width: 13.5rem;
+  max-width: calc(100vw - 24px);
+  padding: 6px;
+  border: 1px solid var(--account-entry-border);
+  border-radius: 8px;
+  background: var(--account-entry-panel);
+  box-shadow: 0 12px 32px #0008;
+}
+
+.account-entry__panel [role="menu"] {
+  display: grid;
+  gap: 2px;
+}
+
+.account-entry__panel [role="menuitem"] {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.35rem 0.7rem;
+  border: 0;
+  border-radius: calc(var(--account-entry-radius) - 1px);
+  background: transparent;
+  color: var(--account-entry-muted);
+  font: inherit;
+  font-size: var(--account-entry-size);
+  font-weight: 500;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.account-entry__panel [role="menuitem"]:is(:hover, :focus) {
+  color: var(--account-entry-text);
+  background: var(--account-entry-hover);
+}
+
+.account-entry__panel [role="menuitem"][aria-disabled="true"] { cursor: wait; opacity: 0.7; }
+.account-entry__panel [role="separator"] { height: 1px; margin: 3px 4px; background: var(--account-entry-border); }
+
+.account-entry__error {
+  margin: 6px 2px 2px;
+  padding: 8px 10px;
+  border-left: 2px solid var(--account-entry-danger);
+  color: var(--account-entry-text);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.account-entry--analytics :is(.account-entry__link, .account-entry__trigger, [role="menuitem"]):focus-visible {
+  outline: 2px solid var(--account-entry-accent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 480px) {
+  .account-entry__label { max-width: 6.5rem; }
+}
+
+/* Where the public header is tightest (its phone brand row, and the narrowest
+   desktop row) the label gives up its width but stays the accessible name. */
+@media (max-width: 480px), (min-width: 961px) and (max-width: 1040px) {
+  .account-entry--public .account-entry__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .account-entry--public .account-entry__trigger { padding-inline: 0.5rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .account-entry__link,
+  .account-entry__trigger,
+  .account-entry__chevron { transition: none; }
+}
