@@ -62,7 +62,7 @@ function MomentIntensityBar({ ratio, score }: { ratio: number; score: number }) 
           style={{ width: `${Math.max(6, clamped * 100)}%` }}
         />
       </span>
-      <span className="w-5 text-right text-xs font-black tabular-nums text-zinc-500">
+      <span className="w-5 text-right text-xs font-black tabular-nums text-zinc-400">
         {score}
       </span>
     </span>
@@ -143,14 +143,14 @@ export function MomentRow({
         {model.snapshotOnly ? (
           <span
             title="No measured minute lines up with this detection, so the numbers come from the detection window itself."
-            className="inline-flex shrink-0 rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-xs font-black uppercase text-zinc-500"
+            className="inline-flex shrink-0 rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-xs font-black uppercase text-zinc-400"
           >
             Snapshot
           </span>
         ) : null}
       </div>
 
-      <div className="min-w-0 truncate text-xs font-semibold tabular-nums text-zinc-500">
+      <div className="min-w-0 truncate text-xs font-semibold tabular-nums text-zinc-400">
         {model.statsLine}
       </div>
 
@@ -169,9 +169,9 @@ export function MomentRow({
                 width={14}
                 height={14}
                 className="h-3.5 w-3.5 shrink-0 object-contain"
-                fallbackClassName="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded bg-white/[0.06] text-xs font-black text-zinc-500"
+                fallbackClassName="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded bg-white/[0.06] text-xs font-black text-zinc-400"
               />
-              <span className="text-xs font-bold tabular-nums text-zinc-500">
+              <span className="text-xs font-bold tabular-nums text-zinc-400">
                 {count(emote.count)}
               </span>
             </span>

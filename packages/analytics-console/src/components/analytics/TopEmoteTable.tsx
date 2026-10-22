@@ -35,7 +35,7 @@ export function TopEmoteTable({
       >
         <div>
           <div className="text-sm font-semibold text-zinc-300">No emotes counted</div>
-          <div className="mt-1 text-xs text-zinc-500">
+          <div className="mt-1 text-xs text-zinc-400">
             Collected chat has not matched known emotes yet.
           </div>
         </div>

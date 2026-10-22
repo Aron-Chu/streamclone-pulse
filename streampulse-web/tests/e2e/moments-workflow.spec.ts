@@ -334,7 +334,7 @@ test('exact moment source, device save, reload and legacy session link', async (
   }
   await page.locator('.moments-detail').getByRole('button', { name: 'Save', exact: true }).click()
   await page.getByRole('tab', { name: 'Saved (1)', exact: true }).click()
-  await expect(page.getByText('Saved in this browser · not synced to the extension or your account.')).toBeVisible()
+  await expect(page.getByText('Saved in this browser.')).toBeVisible()
   await page.reload()
   await expect(page.locator('.moments-result')).toHaveCount(1)
   await page.locator('.moments-result').getByRole('button', { name: 'Open moment' }).click()

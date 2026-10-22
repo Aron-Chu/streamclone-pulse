@@ -22,7 +22,7 @@ describe('account settings', () => {
   await waitFor(() => expect(accountRequest).toHaveBeenCalledWith('/devices/revoke', { deviceId: 'device-a' }))
   expect(await screen.findByRole('alert')).toBeTruthy()
   expect((screen.getByRole('button', { name: 'Confirm revocation' }) as HTMLButtonElement).disabled).toBe(false)
-  expect(screen.getByText(/Website saves stay in this browser/)).toBeTruthy()
+  expect(screen.getByText(/Your saves and notes are kept in your account/)).toBeTruthy()
  })
 })
 

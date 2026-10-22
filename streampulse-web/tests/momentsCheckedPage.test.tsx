@@ -299,6 +299,36 @@ describe('checked Moments page', () => {
     expect(rows().map(r => r.dataset.key)).toEqual([old.id])
   })
 
+  it('keeps a save the feed has lost as a plain row under Saved, counted there, with the stream’s page to open it on', async () => {
+    const old = fixture.items.find(item => item.verdict === 'ok')!
+    feed.load.mockResolvedValue(snap(fixture.items.filter(item => item.streamId !== old.streamId)))
+    feed.item.mockResolvedValue(null)
+    toggleSavedMoment(fromHubMoment({ login: old.login, streamId: old.streamId, offsetSeconds: old.offsetSeconds, at: old.minuteStart, label: 'spammed PJSalt' })!)
+    renderMoments()
+    await waitFor(() => expect(seg('Saved').textContent).toBe('Saved (1)'))
+    fireEvent.click(seg('Saved'))
+    const [row] = rows()
+    expect(row.classList.contains('mk-r-gone')).toBe(true)
+    expect(row.querySelector('.mk-r-em')?.textContent).toBe('PJSalt')
+    expect(row.querySelector('.mk-r-sp svg')).toBeNull()
+    expect(within(row).getByText('Gone from the feed')).toBeTruthy()
+    expect(within(row).getByRole('link', { name: 'Open it on the stream’s page' }).getAttribute('href'))
+      .toBe(`/analytics/${old.login}/${old.streamId}?returnTo=%2Fanalytics%2Fmoments#t=${old.offsetSeconds}`)
+  })
+
+  it('does not call a save gone when its lookup fails, and says signed out that saves stay in this browser', async () => {
+    const old = fixture.items.find(item => item.verdict === 'ok')!
+    feed.load.mockResolvedValue(snap(fixture.items.filter(item => item.streamId !== old.streamId)))
+    feed.item.mockRejectedValue(new Error('offline'))
+    toggleSavedMoment(fromHubMoment({ login: old.login, streamId: old.streamId, offsetSeconds: old.offsetSeconds, at: old.minuteStart, label: old.label.text })!)
+    renderMoments()
+    await waitFor(() => expect(feed.item).toHaveBeenCalled())
+    await act(async () => { await Promise.resolve() })
+    expect(seg('Saved').textContent).toBe('Saved (0)')
+    fireEvent.click(seg('Saved'))
+    expect(screen.getByText('Nothing saved yet. Saves stay in this browser until you sign in.')).toBeTruthy()
+  })
+
   it('keeps the moments you opened under Viewed, in this browser, until Clear', async () => {
     const { unmount } = renderMoments()
     await waitFor(() => expect(rows().length).toBeGreaterThan(1))

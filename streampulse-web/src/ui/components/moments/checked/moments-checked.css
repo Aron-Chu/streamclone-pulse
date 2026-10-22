@@ -141,6 +141,13 @@
 .mk-r-vw b{font-weight:600;color:var(--mk-text-2);font-variant-numeric:tabular-nums}
 [data-vd="bad"]>.mk-r .mk-r-nm,[data-vd="bad"]>.mk-r .mk-r-l1{color:var(--mk-text-2)}
 [data-vd="bad"]>.mk-r .mk-r-sp{opacity:.55}
+/* a save the feed can't find (Unavailable saves C, 10-22): a striped empty picture, no minutes, a link where it can still be seen */
+.mk .mk-r-gone:hover{background:none}
+.mk-r-gone:hover .mk-r-nm{text-decoration:none}
+.mk-r-gone .mk-r-th{background:repeating-linear-gradient(135deg,#1c1c25 0 6px,#22222d 6px 12px)}
+.mk-r-gone .mk-r-l2{flex-wrap:wrap;white-space:normal;row-gap:0}
+.mk-r-gone .mk-r-l2 a{color:var(--mk-text-2);text-decoration:underline;text-underline-offset:3px}
+.mk-r-gone .mk-r-l2 a:hover{color:var(--mk-text-1)}
 
 /* the verdict mark: a check, a half disc, a cross. The words are in the row's label and the detail */
 .mk-vd{display:inline-grid;place-items:center;flex:none;width:14px;height:14px}

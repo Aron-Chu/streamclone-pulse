@@ -15,6 +15,7 @@ import { resolveLivePulseMoments } from '../../lib/figmaSessionAnalytics'
 import { fromHubMoment, uniqueDiscoveryMoments,
   checkMomentSource, type DiscoveryMoment, type CheckedMomentSource } from '../../lib/discoveryMoments'
 import { useSavedMoments } from '../../lib/savedDiscoveryMoments'
+import { useAccountSession } from '../../lib/accountSession'
 import { momentsFeedEnabled } from '../../lib/momentsFeedFlag'
 import { refreshedReplayforgeHandoffHref } from '../../lib/replayforgeHandoff'
 import { watchMomentHref } from '../../lib/watchHandoff'
@@ -414,6 +415,7 @@ function MomentsWorkspace() {
   /** Whether a selection is open in the URL as last written, which can be ahead of this render. */
   const reviewingNow = () => isSelectionParams(latestParams.current)
   const saved = useSavedMoments()
+  const accountSession = useAccountSession()
   const [sourceStates, setSourceStates] = useState<Record<string, string>>({})
   const [filtersExpanded, setFiltersExpanded] = useState(false)
   // Keep each view's own URL filters while switching tabs. Latest and Saved
@@ -907,7 +909,7 @@ function MomentsWorkspace() {
     <header className="moments-heading"><div><h1>{historyMode ? 'Moment history' : view === 'saved' ? 'Saved moments' : 'Moments'}</h1><p>{historyMode ? 'Browse recent indexed detections by UTC day and creator.' : view === 'saved' ? 'Your shortlist of reactions to return to.' : 'Catch a reaction. Open its timeline. Keep what matters.'}</p></div><Link to="/analytics">Live activity →</Link></header>
     <nav aria-label="Moment views"><div className={`moments-tabs${viewTabs.length === 4 ? ' moments-tabs-four' : viewTabs.length === 2 ? ' moments-tabs-two' : ''}`} data-view={view} role="tablist" aria-label="Moment views" onKeyDown={onViewTabsKeyDown}><span className="moments-tab-indicator" aria-hidden="true" />{viewTabs.map(tab => <button type="button" role="tab" id={`moments-view-tab-${tab}`} aria-controls="moments-view-panel" aria-selected={view === tab} tabIndex={view === tab ? 0 : -1} key={tab} onClick={() => changeView(tab)}>{tab === 'saved' ? `Saved (${saved.items.length})` : tab === 'recent' ? 'Latest' : tab === 'explore' ? 'Explore' : 'History'}</button>)}</div></nav>
     <div id="moments-view-panel" role="tabpanel" aria-labelledby={`moments-view-tab-${view}`} tabIndex={0}>
-    <p className="moments-muted">{explore ? 'Detector-selected moments from indexed completed broadcasts, ordered by observed IRC chat/min. Coverage is partial; this is not a list of all busy Twitch minutes.' : view === 'saved' ? 'Saved in this browser · not synced to the extension or your account.' : historyMode ? 'Recent indexed completed broadcasts with measured IRC activity. Coverage is partial; older days are not a durable archive.' : <>Latest shows up to 10 high-scoring detections from currently live streams, ordered by occurrence time. A detection may be older than the chart range.{historyAvailable ? <> For earlier broadcasts, open <Link to="/analytics/moments?view=history">History</Link>.</> : null}</>}</p>
+    <p className="moments-muted">{explore ? 'Detector-selected moments from indexed completed broadcasts, ordered by observed IRC chat/min. Coverage is partial; this is not a list of all busy Twitch minutes.' : view === 'saved' ? (accountSession.status === 'signed_in' ? 'Saved to your account.' : 'Saved in this browser.') : historyMode ? 'Recent indexed completed broadcasts with measured IRC activity. Coverage is partial; older days are not a durable archive.' : <>Latest shows up to 10 high-scoring detections from currently live streams, ordered by occurrence time. A detection may be older than the chart range.{historyAvailable ? <> For earlier broadcasts, open <Link to="/analytics/moments?view=history">History</Link>.</> : null}</>}</p>
     {explore ? <RankedExploreControls params={params} now={certifiedClock} indexedRetentionStart={retention.from} certifiedThroughExclusive={retention.throughExclusive} retentionCheckedAt={retention.checkedAt} data={ranked.data} loading={retention.loading || ranked.loading} retained={ranked.retained || Boolean(rankedValidation)} error={retention.error || rankedValidation || ranked.error} invalid={Boolean(rankedValidation)} notDeployed={retention.notDeployed}
       onChange={(values, options) => { leaveSelection(); keepPlaceFor(options); update({ ...resetSelection, ...values, view: 'explore', sort: 'volume', q: null }, options?.replace ?? false) }}
       onReset={() => { leaveSelection(); setRankedClock(new Date()); setParams({ view: 'explore', period: 'latest', sort: 'volume' }) }}

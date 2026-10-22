@@ -132,7 +132,7 @@ export function MomentDetail(props: DetailProps) {
           {vod ? <button className="mk-d-play" type="button" onClick={() => play(null)}><PlayGlyph />Play from 10 s before</button> : null}
           <div className="mk-d-who">
             {avatar ? <img src={avatar} alt="" /> : null}
-            <span className="mk-d-who-t"><b>{m.name}</b><span className="mk-lv">{live ? <><i />Live now{item.viewers != null ? ` · ${int(item.viewers)} viewers` : ''}</> : 'Offline'}</span></span>
+            <span className="mk-d-who-t"><b>{m.name}</b><span className="mk-lv">{live ? <><i />Live now</> : 'Offline'}</span></span>
           </div>
         </>}
       <button className="mk-d-x" type="button" aria-label="Close" onClick={onClose}><XGlyph /></button>

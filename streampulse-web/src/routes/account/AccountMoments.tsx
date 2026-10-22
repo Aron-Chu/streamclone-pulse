@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Bookmark, History } from 'lucide-react'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { AccountFooter } from './AccountFooter'
+import { AccountChecking } from './AccountChecking'
 import { AccountError, accountErrorText } from '../../lib/accountApi'
 import { useAccountSession } from '../../lib/accountSession'
 import { forgetHistory, listHistory, listSaves, momentAnalyticsHref, momentTimestamp, replayHref, type AccountMoment } from '../../lib/accountMoments'
@@ -27,8 +28,8 @@ export default function AccountMoments() {
   return <PublicLayout><section className="pulse-account pulse-account-settings pulse-account-moments" aria-label="My Moments">
     <p className="pulse-account-kicker"><Bookmark size={16} aria-hidden="true" /> StreamPulse account</p>
     <h1>My Moments</h1>
-    <p className="pulse-account-intro">Moments you bookmarked with the extension, and the history you watched if you sync it, from every browser signed in to this account.</p>
-    {session.status === 'checking' ? <p role="status">Checking your sign-in…</p>
+    <p className="pulse-account-intro">Your saves from the site and the extension, and the history you watched if you sync it.</p>
+    {session.status === 'checking' ? <AccountChecking session={session} />
       : session.status === 'signed_out' ? <div className="pulse-account-empty"><p>Sign in to see the moments saved to your account.</p>
         <Link className="pulse-account-button pulse-account-primary" to="/account/sign-in">Sign in to Pulse</Link></div>
       : <>
@@ -126,14 +127,17 @@ function HistoryPanel() {
   </>
 }
 
+/** The act without the feed's verb: "PJSalt", not "spammed PJSalt" (ACC-03, 10-22); older saves still carry it. */
+const momentAct = (title?: string) => (title ?? '').replace(/^spammed\s+/i, '')
+
 function MomentList({ moments, kind }: { moments: AccountMoment[]; kind: 'save' | 'history' }) {
   return <ul className="pulse-account-devices pulse-moments-list">{moments.map(m => {
     const replay = replayHref(m)
     const analytics = momentAnalyticsHref(m)
     return <li key={m.key}>
       <div className="pulse-account-device-details">
-        <strong>{m.title || 'Untitled moment'}</strong>
-        <p className="pulse-account-meta">{m.login} · {momentTimestamp(m.offsetSeconds)} · {kind === 'save' ? 'Saved' : 'Watched'} {when.format(m.at)}</p>
+        <strong>{[m.login, momentAct(m.title)].filter(Boolean).join(' ')}</strong>
+        <p className="pulse-account-meta">{momentTimestamp(m.offsetSeconds)} · {kind === 'save' ? 'Saved' : 'Watched'} {when.format(m.at)}</p>
         {m.notes ? <p className="pulse-moments-note">{m.notes}</p> : null}
       </div>
       <div className="pulse-moments-links">

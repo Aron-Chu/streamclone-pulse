@@ -68,6 +68,21 @@ describe('account session hint', () => {
     expect(consoleWarn).not.toHaveBeenCalled()
   })
 
+  it('says the account cannot be reached when the first check fails, and checks again on Try again', async () => {
+    cookie = CSRF
+    const seen: unknown[] = []
+    function Snapshot() { const session = useAccountSession(); seen.push(session); return null }
+    vi.mocked(accountRequest).mockRejectedValueOnce(new AccountError(500))
+    render(<Snapshot />)
+    await flush()
+    expect(seen.at(-1)).toEqual({ status: 'checking', unreachable: true })
+    let retry: Promise<void> | undefined
+    act(() => { retry = refreshAccountSession() })
+    expect(seen.at(-1)).toEqual({ status: 'checking' })
+    await act(async () => { await retry })
+    expect(seen.at(-1)).toMatchObject({ status: 'signed_in' })
+  })
+
   it('keeps a signed-in session through an outage and asks again on the next focus', async () => {
     cookie = CSRF
     const now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000)

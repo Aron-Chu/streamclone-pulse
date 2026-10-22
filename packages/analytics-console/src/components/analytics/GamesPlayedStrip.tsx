@@ -434,7 +434,7 @@ export function GamesPlayedStrip({
       data-games-played
     >
       {headerless ? null : <div className="flex min-w-0 items-center justify-between gap-2 border-b border-white/10 px-2.5 py-1.5" data-games-played-header>
-        <span className="shrink-0 text-xs font-black uppercase tracking-wide text-zinc-500">Games played</span>
+        <span className="shrink-0 text-xs font-black uppercase tracking-wide text-zinc-400">Games played</span>
         <div className="flex min-w-0 items-center gap-1.5" data-games-played-trail>
           {allSegments.length > 1 ? (
             <span className="rounded-full border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-xs font-black tabular-nums text-zinc-300">
@@ -516,7 +516,7 @@ export function GamesPlayedStrip({
                     <GameArt gameName={segment.gameName} boxArtUrl={segment.boxArtUrl} categoryId={segment.categoryId} />
                   </button>
                   {headerless ? (
-                    <span className="whitespace-nowrap text-xs font-semibold leading-[14px] tabular-nums text-zinc-500" aria-hidden="true" data-games-played-run-time>
+                    <span className="whitespace-nowrap text-xs font-semibold leading-[14px] tabular-nums text-zinc-400" aria-hidden="true" data-games-played-run-time>
                       {formatRunTime(slot.visibleEnd - slot.visibleStart)}
                     </span>
                   ) : null}
@@ -542,7 +542,7 @@ export function GamesPlayedStrip({
 
       {displayedSlot && !headerless ? (
         <div
-          className="mx-2.5 mb-1 min-w-0 truncate px-0.5 text-xs font-semibold tabular-nums text-zinc-500"
+          className="mx-2.5 mb-1 min-w-0 truncate px-0.5 text-xs font-semibold tabular-nums text-zinc-400"
           data-games-played-details
           aria-live="polite"
           title={`${displayedSlot.segment.gameName} · ${formatWindowLabel(displayedSlot.visibleStart, displayedSlot.visibleEnd)}${displayedSlot.clipped ? ' · chart window' : ''}`}

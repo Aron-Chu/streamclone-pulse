@@ -19,7 +19,8 @@ const reduced = () => typeof window !== 'undefined' && typeof window.matchMedia 
 const H_ID = 'hv5-busy-h'
 const TRACK_ID = 'hv5-busy-track'
 
-export function HubV5Busiest({ live, nowMs, loading = false }: { live: readonly HubLiveChannel[]; nowMs: number; loading?: boolean }) {
+/** `unavailable`: the hub request failed, so an empty list says so rather than that no channel qualifies (INT-02). */
+export function HubV5Busiest({ live, nowMs, loading = false, unavailable = false }: { live: readonly HubLiveChannel[]; nowMs: number; loading?: boolean; unavailable?: boolean }) {
   const set = useMemo(() => rankBusiest(live), [live])
   const cue = busiestCue(set, nowMs)
   const rows = set.rows
@@ -197,7 +198,7 @@ export function HubV5Busiest({ live, nowMs, loading = false }: { live: readonly 
         ) : loading ? (
           <div className="hv5-bzs-wait" aria-hidden="true" />
         ) : (
-          <p className="hv5-bzv-none">No synced channel has a full 5-minute window right now.</p>
+          <p className="hv5-bzv-none">{unavailable ? 'Unavailable right now.' : 'No synced channel has a full 5-minute window right now.'}</p>
         )}
       </div>
     </section>

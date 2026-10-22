@@ -3,6 +3,8 @@
 .xp {
   display: grid;
   gap: 56px;
+  /* the demo's ghost cards lean past a phone's edge; clip them rather than scroll the page sideways (INT-03) */
+  overflow-x: clip;
 }
 
 .xp-hero {

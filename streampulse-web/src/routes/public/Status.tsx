@@ -12,7 +12,8 @@ interface PublicStatusPayload {
 }
 interface ExtensionHealthPayload { ok?: boolean; version?: string }
 type ProbeResult<T> = { data: T | null; error: string | null }
-type State = 'operational' | 'degraded' | 'unavailable' | 'unknown'
+/** The backend reports healthy, degraded, critical (an outage) or disabled (off); see corpus_readiness.go. */
+type State = 'operational' | 'degraded' | 'outage' | 'off' | 'unavailable' | 'unknown'
 
 const PORTAL_VERSION_DISPLAY = portalReleaseShort()
 
@@ -22,10 +23,13 @@ function normalizedState(value: unknown): State {
   if (['up', 'ok', 'healthy', 'active', 'operational'].includes(state)) return 'operational'
   if (['down', 'offline', 'failed', 'unavailable'].includes(state)) return 'unavailable'
   if (['degraded', 'partial', 'stale'].includes(state)) return 'degraded'
+  if (state === 'critical') return 'outage'
+  if (state === 'disabled') return 'off'
   return 'unknown'
 }
 function stateLabel(state: State) {
-  return state === 'operational' ? 'Operational' : state === 'degraded' ? 'Degraded' : state === 'unavailable' ? 'Unavailable' : 'Unknown'
+  return state === 'operational' ? 'Operational' : state === 'degraded' ? 'Degraded' : state === 'outage' ? 'Outage' : state === 'off' ? 'Off'
+    : state === 'unavailable' ? 'Unavailable' : 'Unknown'
 }
 function safeDataTime(value?: string): string {
   const timestamp = measurementTimeMs(value)
@@ -70,13 +74,13 @@ export default function Status() {
   const componentStates = Object.values(statusProbe.data?.components ?? {}).map(normalizedState)
   const overall: State = loading ? 'unknown'
     : statusProbe.error || healthProbe.error || componentStates.includes('unavailable') ? 'unavailable'
-    : statusProbe.data?.degraded || healthProbe.data?.ok === false || componentStates.includes('degraded') ? 'degraded'
-    : statusState === 'operational' && healthProbe.data?.ok === true ? 'operational' : statusState === 'operational' ? 'unknown' : statusState
+    : statusProbe.data?.degraded || healthProbe.data?.ok === false || statusState === 'outage' || componentStates.some(state => state === 'degraded' || state === 'outage') ? 'degraded'
+    : statusState === 'operational' && healthProbe.data?.ok === true ? 'operational' : statusState === 'operational' || statusState === 'off' ? 'unknown' : statusState
   const errors = [statusProbe.error, healthProbe.error].filter(Boolean)
   const card = (label: string, state: State, detail: string) => <div className="status-card">
     <div className="status-card__header"><span className="status-card__label">{label}</span><span className="status-card__indicator">
-      <span className={`status-card__dot ${state === 'operational' ? 'status-card__dot--operational' : 'status-card__dot--degraded'}`} />
-      <span className={state === 'operational' ? 'text-emerald-400' : state === 'unknown' ? 'text-zinc-400' : 'text-amber-400'}>{stateLabel(state)}</span>
+      <span className={`status-card__dot status-card__dot--${state === 'operational' || state === 'outage' || state === 'off' ? state : 'degraded'}`} />
+      <span className={state === 'operational' ? 'text-emerald-400' : state === 'outage' ? 'text-red-400' : state === 'unknown' || state === 'off' ? 'text-zinc-400' : 'text-amber-400'}>{stateLabel(state)}</span>
     </span></div><span className="status-card__detail">{detail}</span>
   </div>
 

@@ -1076,7 +1076,7 @@ function AnalyticsChart({
   if (loading && !detail) {
     return (
       <div className="grid min-h-80 place-items-center rounded border border-white/10 bg-[#0d0d12]/50 px-4 text-center">
-        <div className="text-sm font-bold text-zinc-500">Loading chart data…</div>
+        <div className="text-sm font-bold text-zinc-400">Loading chart data…</div>
       </div>
     )
   }
@@ -1086,7 +1086,7 @@ function AnalyticsChart({
       <div className="grid min-h-80 place-items-center rounded border border-white/10 bg-[#0d0d12]/50 backdrop-blur-md px-4 text-center">
         <div>
           <div className="text-base font-black text-zinc-100">Syncing chart data…</div>
-          <div className="mt-1 text-sm font-semibold text-zinc-500 max-w-md">
+          <div className="mt-1 text-sm font-semibold text-zinc-400 max-w-md">
             Viewer minutes appear as soon as TwitchTracker finishes. Chat and emotes fill in segment by segment.
           </div>
           <div className="mt-2 text-xs font-semibold text-zinc-600">
@@ -1112,7 +1112,7 @@ function AnalyticsChart({
         <div className="grid min-h-80 place-items-center rounded border border-white/10 bg-[#0d0d12]/50 backdrop-blur-md px-4 text-center">
           <div>
             <div className="text-base font-black text-zinc-100">Live collector has no minute rollups yet</div>
-            <div className="mt-1 text-sm font-semibold text-zinc-500 max-w-md">
+            <div className="mt-1 text-sm font-semibold text-zinc-400 max-w-md">
               The IRC collector is running but has not written chart minutes for this session. Past synced streams are in the left rail — pick one for full charts, or wait and refresh.
             </div>
             {showRefreshControl ? <button
@@ -1149,7 +1149,7 @@ function AnalyticsChart({
       <div className="grid min-h-80 place-items-center rounded border border-white/10 bg-[#0d0d12]/50 backdrop-blur-md px-4 text-center">
         <div>
           <div className="text-base font-black text-zinc-100">{(isTwitchTracker || canSync) ? 'Chat & Emotes Offline' : 'No minute data'}</div>
-          <div className="mt-1 text-sm font-semibold text-zinc-500 max-w-md">
+          <div className="mt-1 text-sm font-semibold text-zinc-400 max-w-md">
             {(isTwitchTracker || canSync)
               ? 'This stream has TwitchTracker averages only. Sync pulls minute-level viewers, chat, and 7TV data (large VODs can take a few minutes).'
               : 'No minute data was recorded for this stream.'}
@@ -1454,7 +1454,7 @@ function AnalyticsChart({
                     {/* Partial (still being measured, or the minute collection stopped in); the plot leaves it off. */}
                     {leftOffMinute && rollup.minuteTs === leftOffMinute.minuteTs
                       ? (
-                        <span className="font-normal text-zinc-500" data-chart-data-updating={leftOffMinute.reason}>
+                        <span className="font-normal text-zinc-400" data-chart-data-updating={leftOffMinute.reason}>
                           {leftOffMinute.reason === 'updating' ? ' (updating)' : ' (partial)'}
                         </span>
                       )

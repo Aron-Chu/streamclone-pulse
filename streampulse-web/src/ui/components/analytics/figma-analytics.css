@@ -6265,8 +6265,6 @@ button.hub-live-wire__chip {
   font-family: var(--fma-mono);
   font-size: 0.75rem;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
   padding: 0.2rem 0.4rem;
   cursor: pointer;
 }

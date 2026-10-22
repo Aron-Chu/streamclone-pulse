@@ -148,6 +148,7 @@ export function HubV5EmoteMap({
   points,
   bucketMinutes,
   loading,
+  unavailable,
   moments = [],
   avatars,
   nowMs,
@@ -155,6 +156,8 @@ export function HubV5EmoteMap({
   points: readonly HubActivityPoint[]
   bucketMinutes: number
   loading?: boolean
+  /** The hub request failed: the empty line says so (INT-02). */
+  unavailable?: boolean
   /** The hub's live moments: where chat spammed a selected emote. */
   moments?: readonly HubLivePulseMoment[]
   avatars?: ReadonlyMap<string, string>
@@ -701,7 +704,7 @@ export function HubV5EmoteMap({
       ) : loading ? (
         <div className="hv5-em-map hv5-em-skel" aria-hidden="true" />
       ) : (
-        <p className="hv5-none">No emote counts in this window yet.</p>
+        <p className="hv5-none">{unavailable ? 'Unavailable right now.' : 'No emote counts in this window yet.'}</p>
       )}
     </section>
   )

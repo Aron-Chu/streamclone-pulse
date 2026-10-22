@@ -52,12 +52,12 @@ describe('My Moments page', () => {
     vi.mocked(accountRequest).mockImplementation(async path => path === '/me' ? { accountId: 'a' }
       : path === '/saves/list' ? { saves: [save] } : { settings: on, entries: [watched] })
     page()
-    const row = (await screen.findByText('Chat erupts')).closest('li')!
+    const row = (await screen.findByText('xqc Chat erupts')).closest('li')!
     expect(within(row).getByText('the clutch')).toBeTruthy()
     expect(within(row).getByRole('link', { name: 'Replay on Twitch' }).getAttribute('href')).toBe('https://www.twitch.tv/videos/1234567890?t=754s')
     expect(within(row).getByRole('link', { name: 'Open in Pulse' }).getAttribute('href')).toBe('/analytics/xqc/123456#t=754')
     fireEvent.click(screen.getByRole('tab', { name: 'History' }))
-    expect(await screen.findByText('Opening')).toBeTruthy()
+    expect(await screen.findByText('xqc Opening')).toBeTruthy()
     expect(screen.getByText(/Kept for 30 days/)).toBeTruthy()
   })
 
@@ -87,7 +87,7 @@ describe('My Moments page', () => {
     page()
     fireEvent.click(await screen.findByRole('tab', { name: 'History' }))
     fireEvent.click(await screen.findByRole('button', { name: 'More history' }))
-    expect(await screen.findByText('Earlier')).toBeTruthy()
+    expect(await screen.findByText('xqc Earlier')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Forget all history…' }))
     expect(accountRequest).not.toHaveBeenCalledWith('/history/forget', expect.anything())
     fireEvent.click(screen.getByRole('button', { name: 'Forget history' }))

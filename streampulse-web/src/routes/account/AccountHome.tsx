@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { AccountError, accountErrorText, accountRequest, billingRequest } from '../../lib/accountApi'
+import { AccountChecking } from './AccountChecking'
 import { leaveAccountPagesAfterSignOut, signOutAccount, useAccountSession, type AccountProfile } from '../../lib/accountSession'
 import { UnsentSavesError, useAccountSaves, type AccountSave } from '../../lib/accountSaves'
 import { listHistory } from '../../lib/accountMoments'
@@ -18,7 +19,7 @@ import './account-home.css'
 export default function AccountHome() {
   const session = useAccountSession()
   return <PublicLayout><section className="pulse-account pulse-account-home" aria-label="Account">
-    {session.status === 'checking' ? <p role="status">Checking your sign-in…</p>
+    {session.status === 'checking' ? <AccountChecking session={session} />
       : session.status === 'signed_out' ? <div className="account-home__signed-out">
         <h1>Sign in to StreamPulse</h1>
         <p className="pulse-account-intro">Keeps your saves, notes and watched streams together, on the site and in the extension.</p>

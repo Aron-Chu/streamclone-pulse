@@ -38,6 +38,17 @@ describe('public Status', () => {
     expect(screen.getByText('Unknown', { selector: 'dd' })).toBeTruthy()
   })
 
+  it('names critical components an outage and disabled ones off, and keeps the top badge degraded', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(response({ status: 'degraded', degraded: true, components: { api: 'up', coverage: 'critical', corpus: 'disabled' } }))
+      .mockResolvedValueOnce(response({ ok: true })))
+    render(<MemoryRouter><Status /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByText('Degraded Performance')).toBeTruthy())
+    expect(screen.getByText('Outage')).toBeTruthy()
+    expect(screen.getByText('Off')).toBeTruthy()
+    expect(screen.queryByText('Status Unavailable')).toBeNull()
+  })
+
   it('preserves partial probe success instead of fabricating healthy defaults', async () => {
     vi.stubGlobal('fetch', vi.fn()
       .mockResolvedValueOnce(response({}, 503))

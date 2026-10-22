@@ -32,13 +32,15 @@ export type AccountProfile = {
   twitchLinked?: boolean
 }
 export type AccountSession =
-  | { status: 'checking' }
+  /** `unreachable`: the first check failed (not a 401/403), so the session is still unknown and the account can't be reached right now. */
+  | { status: 'checking'; unreachable?: true }
   | { status: 'signed_out' }
   | { status: 'signed_in'; profile: AccountProfile }
 
 export const ACCOUNT_SESSION_REFRESH_MS = 60_000
 
 const CHECKING: AccountSession = { status: 'checking' }
+const UNREACHABLE: AccountSession = { status: 'checking', unreachable: true }
 const SIGNED_OUT: AccountSession = { status: 'signed_out' }
 const SIGNED_IN: AccountSession = { status: 'signed_in', profile: {} }
 
@@ -153,6 +155,8 @@ function settleSignedOut() {
 function request(): Promise<void> {
   const turn = ++generation
   lastRequestAt = Date.now()
+  // Trying again after an outage shows the check again.
+  if (snapshot === UNREACHABLE) publish(CHECKING)
   let tag: string | null = null
   const result = accountRequest('/me').then(
     me => {
@@ -172,8 +176,9 @@ function request(): Promise<void> {
     if (turn !== generation) return
     pending = null
     // An outage says nothing about the session: keep it (and this browser's
-    // copy of the account's saves), and let the next focus ask again.
-    if (next === null) { lastRequestAt = Number.NEGATIVE_INFINITY; return }
+    // copy of the account's saves), and let the next focus ask again. With no
+    // session known yet, the account pages say it can't be reached.
+    if (next === null) { lastRequestAt = Number.NEGATIVE_INFINITY; if (snapshot === CHECKING) publish(UNREACHABLE); return }
     accountTagValue = next === SIGNED_OUT ? null : tag
     publish(next)
   })

@@ -132,6 +132,8 @@
 
 .pulse-account-settings { max-width: 760px; }
 .pulse-account-error { margin-bottom: 24px; }
+.pulse-account-unreachable { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+.pulse-account-unreachable p { margin: 0; }
 
 .pulse-account-session {
   display: flex;

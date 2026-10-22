@@ -413,11 +413,13 @@ export default function Privacy() {
             backend URL and activity window (<code>sp:publicHub:v1:…</code>, with a staleness hint of about
             10 minutes), browser-saved moments and any notes you add to them
             (<code>streampulse.saved-moments.v2</code>; an older <code>v1</code> copy may remain after
-            migration), your optional website analytics choice, your chart Scroll zoom choice
+            migration), the Moments page’s copy of each moment you save (<code>sp-moments-checked-saved</code>), your optional website analytics choice, your chart Scroll zoom choice
             (<code>sp.chart.scrollZoom.v1</code>), and an optional beta key
             (<code>sp.betaKey</code>) when a gated portal feature is
-            used. Saved moments and notes are not synced to your account and remain on this browser after
-            sign-out. Clearing site data for streampulse.stream removes these keys.
+            used. Signed out, saved moments and notes stay on this browser. When you sign in, they are added
+            to your StreamPulse account, and this browser keeps a copy of your account’s list
+            (<code>streampulse.account-saves.v1</code> holds changes waiting to be sent). Signing out sends
+            waiting changes, then removes this browser’s copy; your account keeps the list. Clearing site data for streampulse.stream removes these keys.
           </li>
           <li>
             <strong>Portal sessionStorage</strong> — while a Twitch sign-in is in progress, the
