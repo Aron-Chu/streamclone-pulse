@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { Activity, ArrowRight, History, PanelTopOpen, SlidersHorizontal, Sparkles } from 'lucide-react'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { ChromeInstallCta } from '../../ui/components/ChromeInstallCta'
@@ -89,9 +89,6 @@ function DeferredDemo() {
 export default function Extension() {
   const discord = discordInviteUrl()
   const latestDate = LATEST_RELEASE ? releaseDate(LATEST_RELEASE.releasedAt) : null
-  // Sandbox comparison: the old pinned scroll replay, or one that plays once by itself.
-  const [params] = useSearchParams()
-  const replay = params.get('replay') === 'play' ? 'play' : 'scroll'
 
   return (
     <PublicLayout>
@@ -132,13 +129,9 @@ export default function Extension() {
           <div className="xp-demo__head">
             <span className="xp-pill">Illustrative demo · not live measurements</span>
             <h2 id="xp-signal-title">See a stream become a signal</h2>
-            <p className="xp-demo__note">
-              {replay === 'play'
-                ? 'A sample broadcast plays through once: chat, emotes, viewers, and the moments worth revisiting.'
-                : 'Scroll through a sample broadcast: chat, emotes, viewers, and the moments worth revisiting.'}
-            </p>
+            <p className="xp-demo__note">Scroll through a sample broadcast: chat, emotes, viewers, and the moments worth revisiting.</p>
           </div>
-          <LiveSignalScrollGraph mode={replay} />
+          <LiveSignalScrollGraph />
         </section>
 
         <section className="xp-section" aria-labelledby="xp-features-title">
