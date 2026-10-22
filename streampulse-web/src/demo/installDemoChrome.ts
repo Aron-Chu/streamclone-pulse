@@ -8,6 +8,7 @@
 import { parseExtensionVodPulseResponse } from '@pulse-ext/vod/normalizeVodPulseFetch.ts'
 import releaseNotes from '../../../src/shared/release-notes.json'
 import { createDemoResponder, type DemoVodPulse } from './demoResponder'
+import { installDemoMomentPictures } from './demoMomentPictures'
 import tape from './demoTape.json'
 import { createFakeChrome, installFakeChrome } from './fakeChrome'
 
@@ -38,8 +39,9 @@ export const demoExtensionVersion = String(
 export const demoResponder = createDemoResponder({
   vodPulse: demoVodPulse as unknown as DemoVodPulse,
   version: demoExtensionVersion,
-  // The Catch me up script is bundled with the demo (DemoPanel imports it).
-  loadScript: async () => Boolean((globalThis as { __pulseCatchMeUp?: unknown }).__pulseCatchMeUp),
+  // The Catch me up script is bundled with the demo (DemoPanel imports it); moment pictures are drawn samples.
+  loadScript: async name =>
+    name === 'moment-frames' ? installDemoMomentPictures() : Boolean((globalThis as { __pulseCatchMeUp?: unknown }).__pulseCatchMeUp),
   onOpenSettings: section => hooks.onOpenSettings?.(section),
   onCommunityLink: link => hooks.onCommunityLink?.(link),
 })

@@ -38,7 +38,7 @@ export interface DemoResponderOptions {
   vodPulse: DemoVodPulse
   version: string
   /** Loads a lazy content script (Catch me up) on the page; resolves false when it can't. */
-  loadScript?: (name: 'catch-me-up') => Promise<boolean>
+  loadScript?: (name: 'catch-me-up' | 'moment-frames') => Promise<boolean>
   /** "Open all settings": the extension opens its settings page; the demo tells the page. */
   onOpenSettings?: (section?: string) => void
   /** The panel's Discord and feedback buttons: the extension opens the site's page in a tab. */
@@ -277,8 +277,10 @@ export function createDemoResponder(options: DemoResponderOptions) {
         // No Supporter pieces load on the site.
         return { type: 'SUPPORTER_CARD_SCRIPT', ok: false }
       case 'MOMENT_FRAMES_SCRIPT':
-        // Moment pictures read Twitch frames; the site has none to read.
-        return { type: 'MOMENT_FRAMES_SCRIPT', ok: false }
+        // On Twitch, moment pictures come from the player; the demo shows drawn samples (demoMomentPictures.ts).
+        return (options.loadScript?.('moment-frames') ?? Promise.resolve(false))
+          .catch(() => false)
+          .then(ok => ({ type: 'MOMENT_FRAMES_SCRIPT', ok }))
       case 'CATCH_ME_UP_SCRIPT':
         return (options.loadScript?.('catch-me-up') ?? Promise.resolve(false))
           .catch(() => false)

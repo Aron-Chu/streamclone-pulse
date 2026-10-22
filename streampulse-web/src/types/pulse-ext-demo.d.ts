@@ -84,6 +84,10 @@ declare module '@pulse-ext/content/twitchLayout.ts' {
 /** Side effect only: puts the Catch me up script on globalThis, as its content script does. */
 declare module '@pulse-ext/content/catchMeUp.ts' {}
 
+declare module '@pulse-ext/content/momentFramesStyles.ts' {
+  export const MOMENT_FRAMES_CSS: string
+}
+
 declare module '@pulse-ext/shared/storage.ts' {
   export type ThemePreference = 'aurora' | 'volt' | 'azure' | 'emerald'
   export function getThemePreference(): Promise<ThemePreference>
