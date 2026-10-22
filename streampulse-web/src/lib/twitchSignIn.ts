@@ -60,7 +60,9 @@ export function twitchAuthorizeEndpoint(): string {
   } catch { /* fall through */ }
   return TWITCH_AUTHORIZE
 }
-export const TWITCH_DEFAULT_RETURN = '/account/settings'
+/** A sign-in lands on the Account page; linking Twitch from settings returns there. */
+export const TWITCH_DEFAULT_RETURN = '/account'
+export const TWITCH_LINK_RETURN = '/account/settings'
 
 const SERVER_CODES = new Set<TwitchErrorCode>([
   'pilot_only', 'link_required', 'identity_in_use', 'account_already_linked', 'revoked',
@@ -73,13 +75,13 @@ class TwitchFlowError extends Error {
 }
 
 /**
- * Where a finished flow may land: account settings, or a billing continuation
- * that accountBillingReturnPath already accepts. Anything else (other origins,
- * protocol-relative or encoded paths, extra queries) is refused, so the
- * callback can never become an open redirect.
+ * Where a finished flow may land: the Account page, account settings, or a
+ * billing continuation that accountBillingReturnPath already accepts. Anything
+ * else (other origins, protocol-relative or encoded paths, extra queries) is
+ * refused, so the callback can never become an open redirect.
  */
 export function twitchReturnPath(value: unknown): string | null {
-  if (value === TWITCH_DEFAULT_RETURN) return TWITCH_DEFAULT_RETURN
+  if (value === TWITCH_DEFAULT_RETURN || value === TWITCH_LINK_RETURN) return value
   return accountBillingReturnPath(value)
 }
 
@@ -169,7 +171,7 @@ export async function startTwitchFlow(options: { purpose: TwitchPurpose; returnT
   const now = Date.now()
   const serverExpiry = typeof result.expiresAt === 'string' ? Date.parse(result.expiresAt) : Number.NaN
   const expiresAt = Number.isFinite(serverExpiry) && serverExpiry > now ? Math.min(serverExpiry, now + MAX_FLOW_MS) : now + MAX_FLOW_MS
-  const returnTo = purpose === 'link' ? TWITCH_DEFAULT_RETURN : twitchReturnPath(options.returnTo) ?? TWITCH_DEFAULT_RETURN
+  const returnTo = purpose === 'link' ? TWITCH_LINK_RETURN : twitchReturnPath(options.returnTo) ?? TWITCH_DEFAULT_RETURN
   savePendingFlow({ flowId, flowSecret, purpose, returnTo, expiresAt })
   return authorizeUrl
 }

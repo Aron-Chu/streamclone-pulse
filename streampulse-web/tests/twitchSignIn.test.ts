@@ -125,7 +125,7 @@ describe('callback capture', () => {
 })
 
 describe('return paths (no open redirects)', () => {
-  it.each(['/account/settings', '/account/billing', billingReturn])('accepts %s', path => {
+  it.each(['/account', '/account/settings', '/account/billing', billingReturn])('accepts %s', path => {
     expect(twitchReturnPath(path)).toBe(path)
   })
 
@@ -171,10 +171,12 @@ describe('starting a flow', () => {
     expect(authorizeUrl()).not.toContain(FLOW_SECRET)
   })
 
-  it('drops an untrusted return path and sends a link flow back to settings', async () => {
+  it('lands a sign-in on the Account page, drops an untrusted return path and sends a link flow back to settings', async () => {
     vi.mocked(accountRequest).mockResolvedValue(startResponse())
+    await startTwitchFlow({ purpose: 'signin' })
+    expect(JSON.parse(sessionStorage.getItem('pulse.account.twitchFlow.v1')!).returnTo).toBe('/account')
     await startTwitchFlow({ purpose: 'signin', returnTo: '//evil.example' })
-    expect(JSON.parse(sessionStorage.getItem('pulse.account.twitchFlow.v1')!).returnTo).toBe('/account/settings')
+    expect(JSON.parse(sessionStorage.getItem('pulse.account.twitchFlow.v1')!).returnTo).toBe('/account')
     await startTwitchFlow({ purpose: 'link', returnTo: billingReturn, forceVerify: true })
     expect(accountRequest).toHaveBeenLastCalledWith('/auth/twitch/start', { purpose: 'link', forceVerify: true })
     expect(JSON.parse(sessionStorage.getItem('pulse.account.twitchFlow.v1')!)).toMatchObject({ purpose: 'link', returnTo: '/account/settings' })
