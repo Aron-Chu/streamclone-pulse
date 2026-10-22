@@ -11,6 +11,7 @@ import { AnalyticsThemeProvider } from '../../providers/AnalyticsThemeProvider'
 import { AnalyticsHubSidebar } from './AnalyticsHubSidebar'
 
 import { AnalyticsTopNav, type AnalyticsTopNavItem } from './AnalyticsTopNav'
+import { AnalyticsFindProvider } from './analyticsFindContext'
 
 import { PageErrorBoundary } from '../../PortalErrorBoundary'
 import { discordInviteUrl } from '../../../lib/discord'
@@ -112,7 +113,10 @@ function AnalyticsFigmaShellInner({
 export function AnalyticsFigmaShell(props: AnalyticsFigmaShellProps) {
   return (
     <AnalyticsThemeProvider>
-      <AnalyticsFigmaShellInner {...props} />
+      {/* The top bar's search docks against a hero search in the page (the hub). */}
+      <AnalyticsFindProvider>
+        <AnalyticsFigmaShellInner {...props} />
+      </AnalyticsFindProvider>
     </AnalyticsThemeProvider>
   )
 }

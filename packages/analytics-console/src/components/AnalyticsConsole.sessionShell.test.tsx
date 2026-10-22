@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AnalyticsConsole, type AnalyticsConsoleProps } from './AnalyticsConsole.tsx'
+import { AnalyticsConsole, type AnalyticsConsoleProps, type ConsoleChannelHeadline } from './AnalyticsConsole.tsx'
 
 // d3-v2 session-original page shell (U15): the header, meta line, stat labels,
 // stream column and session tabs. ConsoleBits, PastBroadcastBanner and
@@ -213,5 +213,50 @@ describe('AnalyticsConsole session page shell (d3-v2 session-original)', () => {
     expect(screen.queryByText(/Synced only/)).toBeNull()
     expect(document.querySelector('[data-live-current-row]')).toBeNull()
     expect(screen.getByRole('link', { current: 'page' }).textContent).toContain('Shell fixture')
+  })
+})
+
+describe('AnalyticsConsole channel headline (session-who W1)', () => {
+  it('draws the host headline over the title, which becomes the second line; the meta line drops the name', async () => {
+    const seen: ConsoleChannelHeadline[] = []
+    renderConsole({
+      renderChannelHeadline: (headline) => {
+        seen.push(headline)
+        return <div data-testid="who">{headline.displayName}</div>
+      },
+    })
+    await screen.findByTestId('analytics-chart')
+    await waitFor(() => expect(within(header()).getByRole('link', { name: 'Watch VOD' })).toBeTruthy())
+
+    const who = within(header()).getByTestId('who')
+    const h1 = within(header()).getByRole('heading', { level: 1 })
+    expect(who.compareDocumentPosition(h1) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(h1.textContent).toBe('Shell fixture')
+    expect(h1.classList.contains('ssp-h1--sub')).toBe(true)
+    const items = [...header().querySelectorAll<HTMLElement>('.ssp-meta > .mi')].map(item => item.textContent ?? '')
+    expect(items[0]).toBe('Grand Theft Auto V')
+    expect(items).not.toContain('xQc')
+    expect(seen.at(-1)).toEqual({ login: 'xqc', displayName: 'xQc', live: null, viewingLive: false, broadcasts: 2, broadcastsCapped: false })
+  })
+
+  it("hands over the channel's live broadcast with its session link", async () => {
+    api.getAnalyticsStreams.mockResolvedValue({
+      items: [
+        { streamId: 'now-live', login: 'xqc', title: 'Live one', category: 'Just Chatting', startedAt: new Date(Date.now() - 3_600_000).toISOString(), viewerSamples: 3, chatMessages: 20 },
+        { streamId, login: 'xqc', title: 'Shell fixture', startedAt, endedAt: '2026-07-16T19:00:00.000Z', viewerSamples: 1, chatMessages: 10 },
+      ],
+    })
+    const seen: ConsoleChannelHeadline[] = []
+    renderConsole({
+      buildSessionPath: (login, id) => `/s/${login}/${id}`,
+      renderChannelHeadline: (headline) => {
+        seen.push(headline)
+        return null
+      },
+    })
+    await waitFor(() => expect(seen.at(-1)?.live).toEqual({ streamId: 'now-live', category: 'Just Chatting', href: '/s/xqc/now-live' }))
+    expect(seen.at(-1)?.viewingLive).toBe(false)
+    // A host that draws nothing leaves the title as the headline.
+    expect(within(header()).getByRole('heading', { level: 1 }).classList.contains('ssp-h1--sub')).toBe(false)
   })
 })

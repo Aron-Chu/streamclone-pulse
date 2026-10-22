@@ -33,6 +33,86 @@
   .analytics-console[data-analytics-console-shell] header[data-session-header] h1.ssp-h1 { font-size: 21.6px; }
 }
 
+/* session-who W1 (board session-who-r1): the channel leads (52 px avatar, the name at 32/900, "Live now ·
+   game · N broadcasts"), and the title is the 20/700 second line (SessionChannelHeadline). */
+.analytics-console .ssp-who {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.analytics-console .ssp-who-av {
+  flex: none;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #151517;
+}
+.analytics-console .ssp-who-mono {
+  display: grid;
+  place-items: center;
+  color: #d6d6dc;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+}
+.analytics-console .ssp-who-tx { min-width: 0; }
+.analytics-console .ssp-who-nm {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 900;
+  line-height: 1.08;
+  letter-spacing: -0.01em;
+  color: #fff;
+  overflow-wrap: anywhere;
+}
+.analytics-console .ssp-who-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 18px;
+  margin: 6px 0 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 18px;
+  color: #a1a1aa;
+}
+.analytics-console .ssp-who-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #d4d4d8;
+  text-decoration: none;
+}
+.analytics-console a.ssp-who-live:hover {
+  color: #fff;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.analytics-console .ssp-who-live i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ef4444;
+}
+.analytics-console .ssp-who-sep { color: #52525b; }
+.analytics-console[data-analytics-console-shell] header[data-session-header] h1.ssp-h1.ssp-h1--sub {
+  margin-top: 14px;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 26px;
+  color: #d4d4d8;
+}
+@media (max-width: 700px) {
+  .analytics-console .ssp-who-nm { font-size: 24px; }
+  .analytics-console[data-analytics-console-shell] header[data-session-header] h1.ssp-h1.ssp-h1--sub {
+    margin-top: 10px;
+    font-size: 17px;
+    line-height: 22px;
+  }
+}
+
 /* One meta line: name · game · Started · Updated [refresh] · First 54s not tracked · Watch VOD · Data: Good.
    Each item draws its own leading dot in a 20 px slot and the line starts 20 px left, so a wrapped line
    (390 px) never starts with a stray dot; the wrapper clips that slot (6 px clip margin keeps focus rings). */

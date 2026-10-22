@@ -5,7 +5,9 @@
  * hub-hero.css conveyor, hub-live.css feed v3, hub-rack.css and hub-r5e.css
  * Where chat is). Every rule sits under .hub-v5
  * (the page root, with .hub-d3 for the tokens) or .hv5-layer (cards portaled
- * to <body>), with the hv5- prefix. No text under 12 px; no in-page scrollbar.
+ * to <body>; the top bar's search window is .hv5-layer.analytics-find-pal and
+ * shares the hero search rules), with the hv5- prefix. No text under 12 px; no
+ * in-page scrollbar.
  * The activity card itself is U6's (hub-activity-d3.css); nothing here
  * reaches inside it.
  */
@@ -258,7 +260,7 @@
   min-width: 0;
 }
 .hv5-field:focus-within { border-color: var(--sp-text-3); }
-.hub-v5 .hv5-field input {
+:is(.hub-v5, .analytics-find-pal) .hv5-field input {
   flex: 1;
   min-width: 0;
   height: 100%;
@@ -271,9 +273,9 @@
   color: var(--sp-text-1);
   font-size: 13px;
 }
-.hub-v5 .hv5-field input::placeholder { color: var(--sp-text-3); }
+:is(.hub-v5, .analytics-find-pal) .hv5-field input::placeholder { color: var(--sp-text-3); }
 @media (pointer: coarse) {
-  .hub-v5 .hv5-field input { font-size: 16px; }
+  :is(.hub-v5, .analytics-find-pal) .hv5-field input { font-size: 16px; }
 }
 .hv5-av {
   flex: none;
@@ -361,8 +363,8 @@
   box-shadow: 0 0 0 4px rgb(94 234 212 / 0.16), 0 18px 44px rgb(0 0 0 / 0.42);
 }
 .hv5-search .hv5-field .hv5-ico { width: 22px; height: 22px; }
-.hub-v5 .hv5-search .hv5-field input { font-size: 17px; font-weight: 500; }
-.hub-v5 .hv5-search .hv5-field input::placeholder { color: #a1a1aa; }
+:is(.hub-v5, .analytics-find-pal) .hv5-search .hv5-field input { font-size: 17px; font-weight: 500; }
+:is(.hub-v5, .analytics-find-pal) .hv5-search .hv5-field input::placeholder { color: #a1a1aa; }
 .hv5-search input::-webkit-search-cancel-button { display: none; }
 .hv5-search .hv5-kbd {
   flex: none;
@@ -373,7 +375,7 @@
   background: var(--sp-raised);
 }
 .hv5-search .hv5-field:focus-within .hv5-kbd { display: none; }
-.hub-v5 .hv5-mast .hv5-hero-go {
+:is(.hub-v5 .hv5-mast, .analytics-find-pal) .hv5-hero-go {
   flex: none;
   height: 44px;
   padding: 0 20px;
@@ -383,7 +385,7 @@
   font: 600 15px/1 var(--sp-font);
   transition: background-color 0.15s;
 }
-.hub-v5 .hv5-mast .hv5-hero-go:hover { background: #99f6e4; }
+:is(.hub-v5 .hv5-mast, .analytics-find-pal) .hv5-hero-go:hover { background: #99f6e4; }
 .hv5-sugg {
   position: absolute;
   z-index: 45;
@@ -397,7 +399,7 @@
   box-shadow: 0 22px 50px rgb(0 0 0 / 0.55);
 }
 .hv5-sugg[hidden] { display: none; }
-.hub-v5 .hv5-sugg a {
+:is(.hub-v5, .analytics-find-pal) .hv5-sugg a {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -406,8 +408,8 @@
   border-radius: 9px;
   color: var(--sp-text-1);
 }
-.hub-v5 .hv5-sugg a[aria-selected="true"],
-.hub-v5 .hv5-sugg a:hover {
+:is(.hub-v5, .analytics-find-pal) .hv5-sugg a[aria-selected="true"],
+:is(.hub-v5, .analytics-find-pal) .hv5-sugg a:hover {
   background: var(--sp-raised);
   text-decoration: none;
 }
@@ -440,7 +442,7 @@
   color: var(--sp-text-2);
   font-variant-numeric: tabular-nums;
 }
-.hub-v5 .hv5-sugg a.hv5-sg-open {
+:is(.hub-v5, .analytics-find-pal) .hv5-sugg a.hv5-sg-open {
   margin-top: 4px;
   border-top: 1px solid var(--sp-line);
   border-radius: 0 0 7px 7px;
@@ -516,9 +518,9 @@
   .hub-v5 .hv5-mast .hv5-hero-sub { max-width: 320px; font-size: 14px; line-height: 20px; }
   .hv5-hero-field { margin-top: 18px; }
   .hv5-search .hv5-field { height: 56px; padding: 0 6px 0 16px; gap: 10px; border-radius: 14px; }
-  .hub-v5 .hv5-search .hv5-field input { font-size: 16px; }
+  :is(.hub-v5, .analytics-find-pal) .hv5-search .hv5-field input { font-size: 16px; }
   .hv5-search .hv5-kbd { display: none; }
-  .hub-v5 .hv5-mast .hv5-hero-go { height: 44px; padding: 0 14px; font-size: 14px; }
+  :is(.hub-v5 .hv5-mast, .analytics-find-pal) .hv5-hero-go { height: 44px; padding: 0 14px; font-size: 14px; }
   .hv5-sugg { top: 62px; }
   .hub-v5 .hv5-mast .hv5-hero-try {
     flex-wrap: nowrap;

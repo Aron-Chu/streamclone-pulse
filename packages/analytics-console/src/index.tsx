@@ -38,3 +38,4 @@ export {
   trimRollupsToWallDuration,
 } from './utils/gameSegmentChart.ts'
 export { AnalyticsConsole } from './components/AnalyticsConsole.tsx'
+export type { ConsoleChannelHeadline } from './components/AnalyticsConsole.tsx'
