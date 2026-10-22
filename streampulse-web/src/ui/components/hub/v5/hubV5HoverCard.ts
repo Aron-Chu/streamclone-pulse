@@ -4,8 +4,17 @@
  * side, centred under it (over it when there is no room under); always 8 px
  * inside the window.
  */
-export function placeHubV5Card(card: HTMLElement, el: Element): void {
-  const r = el.getBoundingClientRect()
+export function placeHubV5Card(card: HTMLElement, el: Element, within?: Element | null): void {
+  let r: Pick<DOMRect, 'left' | 'top' | 'right' | 'bottom' | 'width'> = el.getBoundingClientRect()
+  // a zoomed emote tile can be bigger than its map: go by the part on show
+  if (within) {
+    const b = within.getBoundingClientRect()
+    const left = Math.max(r.left, b.left)
+    const top = Math.max(r.top, b.top)
+    const right = Math.min(r.right, b.right)
+    const bottom = Math.min(r.bottom, b.bottom)
+    if (right > left && bottom > top) r = { left, top, right, bottom, width: right - left }
+  }
   const w = card.offsetWidth
   const h = card.offsetHeight
   const m = 8

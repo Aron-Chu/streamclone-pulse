@@ -18,6 +18,9 @@
   --hv5-chat: #a78bfa;
   --hv5-emotes: #f7b645;
   --hv5-live: #ef4444;
+  /* K1 pace heat on the emote map: taking off, cooling (validated on the #17171a tile) */
+  --hv5-rise: #d9733a;
+  --hv5-cool: #5a8be8;
   --hv5-gutter: 24px;
 }
 
@@ -472,26 +475,42 @@
   box-shadow: 0 18px 50px rgb(0 0 0 / 0.45);
   text-align: left;
 }
+/* P2 (10-22): the real panel at full size, its three states crossfading, dots under them */
 .hv5-get-pic {
-  display: flex;
-  height: 124px;
+  position: relative;
+  width: 338px;
+  max-width: 100%;
+  aspect-ratio: 338 / 188;
   overflow: hidden;
   border-radius: 9px;
   background: #0e0e11;
   box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08);
 }
-.hub-v5 .hv5-mast .hv5-get-vid {
-  width: 220px;
+.hub-v5 .hv5-mast .hv5-get-pic img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
   height: 100%;
   object-fit: cover;
-  background: #000;
+  object-position: left top;
+  opacity: 0;
+  transition: opacity 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
-.hv5-get-pan {
-  flex: none;
-  width: 150px;
-  border-left: 1px solid #26262e;
+.hub-v5 .hv5-mast .hv5-get-pic img.on { opacity: 1; }
+.hv5-get-dots {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 7px;
+  display: flex;
+  justify-content: center;
+  gap: 5px;
 }
-.hub-v5 .hv5-mast .hv5-get-pan img { width: 100%; height: auto; }
+.hv5-get-dots i { width: 5px; height: 5px; border-radius: 50%; background: rgb(255 255 255 / 0.28); transition: background-color 0.3s; }
+.hv5-get-dots i.on { background: #fff; }
+@media (prefers-reduced-motion: reduce) {
+  .hub-v5 .hv5-mast .hv5-get-pic img { transition: none; }
+}
 .hv5-get-tx {
   display: flex;
   flex-direction: column;
@@ -591,9 +610,7 @@
   .hub-v5 .hv5-mast .hv5-hero-sub { max-width: 320px; font-size: 14px; line-height: 20px; }
   .hv5-hero-field { margin-top: 18px; }
   .hub-v5 .hv5-mast .hv5-hero-get { grid-template-columns: 1fr; gap: 12px; margin-top: 14px; padding: 10px; }
-  .hv5-get-pic { height: 132px; }
-  .hub-v5 .hv5-mast .hv5-get-vid { flex: 1 1 auto; width: auto; min-width: 0; }
-  .hv5-get-pan { width: 118px; }
+  .hv5-get-pic { justify-self: center; }
   .hub-v5 .hv5-mast .hv5-get-h { font-size: 16px; }
   .hub-v5 .hv5-mast a.hv5-hero-install { justify-content: center; width: 100%; height: 48px; }
   .hv5-get-free { width: 100%; text-align: center; }
@@ -1161,9 +1178,80 @@
   min-height: var(--em-h, 340px);
   border-radius: 6px;
   overflow: hidden;
+  overflow: clip;
   contain: layout paint;
   user-select: none;
+  cursor: zoom-in;
 }
+/* Z1 (10-22): the tiles and frames sit in a view 12 px down, under the field labels on the frames' top line */
+.hv5-em-vp {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  overflow: clip;
+}
+.hv5-em-map[data-zoomed] { cursor: grab; }
+.hv5-em-map.hv5-em-pan,
+.hv5-em-map.hv5-em-pan * { cursor: grabbing; }
+.hub-v5 .hv5-emotes .hv5-em-fl {
+  position: absolute;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 5px;
+  background: var(--sp-canvas, #09090b);
+  color: var(--sp-text-2);
+  font: 600 12px/1 var(--sp-font);
+  white-space: nowrap;
+  transition: opacity 0.2s, color 0.15s, background-color 0.15s;
+}
+.hub-v5 .hv5-emotes .hv5-em-fl:hover { color: var(--sp-text-1); background: var(--sp-raised); }
+.hv5-em-fl i { width: 7px; height: 7px; border-radius: 50%; background: var(--fc); }
+.hv5-em-fl b { font-weight: 500; color: var(--sp-text-3); }
+.hub-v5 .hv5-emotes .hv5-em-map[data-zoomed] .hv5-em-fl { opacity: 0; pointer-events: none; }
+/* a narrow field: the share, or the whole label, stays measurable but off the line */
+.hv5-em-fl[data-fit="name"] > b { position: absolute; visibility: hidden; }
+.hub-v5 .hv5-emotes .hv5-em-fl[data-fit="none"] { visibility: hidden; pointer-events: none; }
+/* where the view is, once zoomed */
+.hv5-em-mini {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 4;
+  width: 96px;
+  border-radius: 5px;
+  background: rgb(11 11 13 / 0.86);
+  box-shadow: 0 0 0 1px var(--sp-line-strong);
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
+}
+.hv5-em-mini[data-on] { opacity: 1; }
+.hv5-em-mini > * { position: absolute; border-radius: 2px; }
+.hv5-em-mini i { background: rgb(252 252 254 / 0.1); }
+.hv5-em-mini b { box-shadow: 0 0 0 1.5px var(--hv5-accent); }
+/* −, +, Reset beside the zoom readout */
+.hv5-em-zoom { display: inline-flex; align-items: center; gap: 4px; }
+.hv5-em-zr { min-width: 34px; text-align: right; font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); font-variant-numeric: tabular-nums; }
+.hub-v5 .hv5-emotes .hv5-em-zb {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 7px;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px var(--sp-line-strong);
+  color: var(--sp-text-2);
+  font-weight: 600;
+}
+.hub-v5 .hv5-emotes .hv5-em-zb:hover:not(:disabled) { background: var(--sp-raised); color: var(--sp-text-1); }
+.hub-v5 .hv5-emotes .hv5-em-zb:disabled { opacity: 0.35; cursor: default; }
 .hv5-em-skel { background: var(--sp-panel); }
 /* the provider colours (validated for colour-blind separation on dark) */
 :is(.hv5-em-map, .hv5-em-lg) [data-field="twitch"] { --fc: #3987e5; }
@@ -1184,6 +1272,8 @@
     height 0.5s cubic-bezier(0.2, 0.7, 0.2, 1);
   animation: hv5-em-in 0.3s both;
 }
+/* K1 (10-22): with pace heat on, the fill carries the meaning and the frames go grey */
+.hv5-em-map[data-heat] .hv5-em-ff { box-shadow: inset 0 0 0 1px rgb(252 252 254 / 0.16); }
 .hub-v5 .hv5-emotes .hv5-em-t {
   position: absolute;
   display: flex;
@@ -1194,7 +1284,7 @@
   padding: 8px;
   overflow: hidden;
   border-radius: 4px;
-  background: #17171a;
+  background: var(--bg, #17171a);
   color: var(--sp-text-1);
   font: 500 12px/16px var(--sp-font);
   text-align: left;
@@ -1208,8 +1298,8 @@
     box-shadow 0.18s;
   animation: hv5-em-in 0.3s both;
 }
-.hub-v5 .hv5-emotes .hv5-em-t:hover { background-color: #1e1e22; box-shadow: inset 0 0 0 1.5px rgb(237 237 239 / 0.35); }
-.hub-v5 .hv5-emotes .hv5-em-t[aria-pressed="true"] { background-color: #222227; box-shadow: inset 0 0 0 2px var(--sp-text-1); z-index: 2; }
+.hub-v5 .hv5-emotes .hv5-em-t:hover { background-color: var(--bgh, #1e1e22); box-shadow: inset 0 0 0 1.5px rgb(237 237 239 / 0.35); }
+.hub-v5 .hv5-emotes .hv5-em-t[aria-pressed="true"] { background-color: var(--bgh, #222227); box-shadow: inset 0 0 0 2px var(--sp-text-1); z-index: 2; }
 .hub-v5 .hv5-emotes .hv5-em-t:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--sp-focus); z-index: 3; }
 .hub-v5 .hv5-emotes .hv5-em-t img {
   display: block;
@@ -1224,10 +1314,10 @@
 .hv5-em-row .hv5-em-ft { display: flex; align-items: baseline; gap: 6px; width: auto; flex: 1 1 auto; }
 .hv5-em-nm { display: block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font: 600 13px/18px var(--sp-font); }
 .hv5-em-v { display: block; flex: none; color: var(--sp-text-3); }
-/* the "+N" tile: the field's emotes under 0.9%, a darker tile */
-.hub-v5 .hv5-emotes .hv5-em-more { cursor: default; padding: 2px; background: #121215; }
-.hub-v5 .hv5-emotes .hv5-em-more:hover { background-color: #17171a; box-shadow: none; }
-.hv5-em-ml { margin: auto; font-weight: 600; color: var(--sp-text-3); }
+/* while zoomed or moving, tiles and frames follow the view at once (the layout's own glide is for re-tiling) */
+.hub-v5 .hv5-emotes .hv5-em-zm .hv5-em-t { transition: background-color 0.18s, box-shadow 0.18s; }
+.hub-v5 .hv5-emotes .hv5-em-zm .hv5-em-ff,
+.hub-v5 .hv5-emotes .hv5-em-zm .hv5-em-t img { transition: none; }
 @keyframes hv5-em-in { from { opacity: 0; } }
 /* the legend (each field's share) with Taller map */
 .hv5-em-foot {
@@ -1240,8 +1330,36 @@
   font: 500 12px/16px var(--sp-font);
   color: var(--sp-text-2);
 }
-.hv5-em-lg { display: flex; flex-wrap: wrap; gap: 4px 14px; }
-.hv5-em-lg > span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+/* K1: cooling to taking off, through the plain tile */
+.hv5-em-heat { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.hv5-em-heat > b {
+  width: 120px;
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--hv5-cool) 48%, #17171a),
+    #17171a 42%,
+    #17171a 58%,
+    color-mix(in oklab, var(--hv5-rise) 48%, #17171a)
+  );
+  box-shadow: inset 0 0 0 1px rgb(252 252 254 / 0.08);
+}
+.hv5-em-heat > span { color: var(--sp-text-3); }
+/* each field's share; a click flies into it */
+.hv5-em-lg { display: flex; flex-wrap: wrap; gap: 4px 6px; }
+.hub-v5 .hv5-emotes .hv5-em-lg > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 5px;
+  color: var(--sp-text-2);
+  font: 500 12px/16px var(--sp-font);
+  white-space: nowrap;
+}
+.hub-v5 .hv5-emotes .hv5-em-lg > button:hover { color: var(--sp-text-1); background: var(--sp-raised); }
 .hv5-em-lg i { display: block; width: 8px; height: 8px; border-radius: 50%; background: var(--fc); }
 .hv5-em-lg b { font-weight: 500; color: var(--sp-text-3); }
 .hub-v5 .hv5-emotes .hv5-em-tall { margin-left: auto; height: 28px; padding: 0 8px; }
@@ -1320,6 +1438,8 @@
   .hub-v5 .hv5-emotes .hv5-em-t,
   .hub-v5 .hv5-emotes .hv5-em-t img,
   .hv5-em-ff,
+  .hub-v5 .hv5-emotes .hv5-em-fl,
+  .hv5-em-mini,
   .hv5-el-cols > li { transition: none; animation: none; }
 }
 
