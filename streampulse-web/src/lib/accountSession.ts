@@ -14,10 +14,12 @@ import { onAccountSessionSignal } from './accountSessionSignal'
  * failure reads as signed out, quietly: nothing is logged or reported, and the
  * account ID in the response is never kept.
  *
- * /me does not say how the person signed in, and the API never stores a Twitch
- * display name or avatar. When a Twitch sign-in or link answers with them, this
- * tab keeps them for display only (sessionStorage), tied to the session they
- * arrived with, and drops them on sign-out or when the session changes.
+ * /me answers with the name and picture from the account's last Twitch
+ * sign-in when the server keeps them (the sandbox backend, 2026-10-21), so a
+ * restart still shows who is signed in. When a Twitch sign-in or link answers
+ * with them, this tab also keeps them for display only (sessionStorage), tied
+ * to the session they arrived with, and drops them on sign-out or when the
+ * session changes.
  */
 
 /** What the header can show about the person. Email sign-in provides neither;
@@ -46,6 +48,7 @@ let snapshot: AccountSession | null = null
 let generation = 0
 let pending: Promise<void> | null = null
 let lastRequestAt = Number.NEGATIVE_INFINITY
+let accountTagValue: string | null = null
 const listeners = new Set<() => void>()
 
 function csrfCookie(): string | null {
@@ -63,6 +66,12 @@ export function hasAccountSessionHint(): boolean {
   return csrfCookie() !== null
 }
 
+function fnv1a(text: string): string {
+  let hash = 0x811c9dc5
+  for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193) >>> 0
+  return hash.toString(16).padStart(8, '0')
+}
+
 /**
  * Names the current session without storing its CSRF value: a 32-bit FNV-1a
  * digest. It only detects that cached display data belongs to another session;
@@ -70,10 +79,16 @@ export function hasAccountSessionHint(): boolean {
  */
 function sessionTag(): string | null {
   const csrf = csrfCookie()
-  if (!csrf) return null
-  let hash = 0x811c9dc5
-  for (let i = 0; i < csrf.length; i++) hash = Math.imul(hash ^ csrf.charCodeAt(i), 0x01000193) >>> 0
-  return hash.toString(16).padStart(8, '0')
+  return csrf ? fnv1a(csrf) : null
+}
+
+/**
+ * The signed-in account, as the same kind of digest: enough for this
+ * browser's copy of the account's saves to notice another account signed in,
+ * without keeping the account ID. Null until /me answers.
+ */
+export function currentAccountTag(): string | null {
+  return accountTagValue
 }
 
 function displayProfile(value: unknown): AccountProfile {
@@ -128,6 +143,7 @@ function publish(next: AccountSession) {
 function settleSignedOut() {
   generation++
   pending = null
+  accountTagValue = null
   forgetTwitchIdentity()
   publish(SIGNED_OUT)
 }
@@ -136,17 +152,25 @@ function settleSignedOut() {
 function request(): Promise<void> {
   const turn = ++generation
   lastRequestAt = Date.now()
+  let tag: string | null = null
   const result = accountRequest('/me').then(
-    me => (typeof me.accountId === 'string'
-      ? signedIn({
+    me => {
+      if (typeof me.accountId !== 'string') return SIGNED_OUT
+      tag = fnv1a(me.accountId)
+      const stored = me.profile && typeof me.profile === 'object'
+        ? displayProfile({ displayName: (me.profile as { displayName?: unknown }).displayName, avatarUrl: (me.profile as { picture?: unknown }).picture })
+        : {}
+      return signedIn({
+        ...stored,
         ...(knownTwitchIdentity() ?? {}),
         ...(Array.isArray(me.signInMethods) && me.signInMethods.includes('twitch') ? { twitchLinked: true } : {}),
       })
-      : SIGNED_OUT),
+    },
     () => SIGNED_OUT,
   ).then(next => {
     if (turn !== generation) return
     pending = null
+    accountTagValue = next === SIGNED_OUT ? null : tag
     publish(next)
   })
   pending = result
@@ -200,11 +224,28 @@ export function refreshAccountSession(): Promise<void> {
   return request()
 }
 
-/** Ends the website session. A session the API no longer recognises is already over. */
-export async function signOutAccount(): Promise<void> {
+/**
+ * Work around sign-out: `before` runs while the session still works (sending
+ * saves that have not reached the account yet) and may throw to stop the
+ * sign-out; `after` clears what this browser kept for the account.
+ */
+export interface SignOutStep { before?: (force: boolean) => Promise<void>; after?: () => void }
+const signOutSteps: SignOutStep[] = []
+export function addSignOutStep(step: SignOutStep): void {
+  signOutSteps.push(step)
+}
+
+/**
+ * Ends the website session. A session the API no longer recognises is already
+ * over. `force` signs out even when a step could not finish (offline, for
+ * example), after the person was told what that loses.
+ */
+export async function signOutAccount({ force = false }: { force?: boolean } = {}): Promise<void> {
+  for (const step of signOutSteps) await step.before?.(force)
   try { await accountRequest('/auth/logout', {}) }
   catch (error) { if (!(error instanceof AccountError && error.status === 401)) throw error }
   settleSignedOut()
+  for (const step of signOutSteps) step.after?.()
 }
 
 /** Account pages hold loaded account data; a full navigation drops it, as Account settings does. */
@@ -214,6 +255,7 @@ export function leaveAccountPagesAfterSignOut(): void {
 
 export function resetAccountSessionForTests(): void {
   generation++
+  accountTagValue = null
   snapshot = null
   pending = null
   lastRequestAt = Number.NEGATIVE_INFINITY

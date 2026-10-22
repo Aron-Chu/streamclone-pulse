@@ -9,6 +9,7 @@ import { FEEDBACK_PATH } from '../../../lib/externalLinks'
 import { AccountEntry } from '../AccountEntry'
 import { useAccountSession } from '../../../lib/accountSession'
 import { accountHeaderEnabled } from '../../../lib/accountHeaderFlag'
+import { accountMomentsEnabled } from '../../../lib/accountMoments'
 
 export interface AnalyticsTopNavItem {
   label: string
@@ -152,5 +153,6 @@ export function AnalyticsTopNav({
 function MenuAccountLink({ onNavigate }: { onNavigate: () => void }) {
   return useAccountSession().status === 'signed_out'
     ? <Link to="/account/sign-in" onClick={onNavigate}>Sign in</Link>
-    : <Link to="/account/settings" onClick={onNavigate}>Account &amp; devices</Link>
+    : accountMomentsEnabled() ? <Link to="/account" onClick={onNavigate}>Account</Link>
+      : <Link to="/account/settings" onClick={onNavigate}>Account &amp; devices</Link>
 }

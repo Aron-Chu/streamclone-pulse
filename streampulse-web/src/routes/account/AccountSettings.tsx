@@ -5,7 +5,8 @@ import { PublicLayout } from '../../ui/components/PublicLayout'
 import { AccountFooter } from './AccountFooter'
 import { accountRequest, accountErrorText, AccountError } from '../../lib/accountApi'
 import { announceAccountSignedOut } from '../../lib/accountSessionSignal'
-import { knownTwitchIdentity, useAccountSession } from '../../lib/accountSession'
+import { knownTwitchIdentity, signOutAccount, useAccountSession } from '../../lib/accountSession'
+import { UnsentSavesError } from '../../lib/accountSaves'
 import { twitchSignInEnabled } from '../../lib/twitchSignInFlag'
 import { beginTwitchFlow, twitchErrorCode, type TwitchErrorCode } from '../../lib/twitchSignIn'
 import { TwitchButton, TwitchErrorNotice, TwitchGlitch } from './TwitchSignIn'
@@ -96,7 +97,13 @@ export default function AccountSettings() {
     if (busy) return
     setBusy(true); setError('')
     try {
-      await accountRequest('/auth/logout', {})
+      // Unsent saves go to the account first; then this browser's copy is cleared.
+      try { await signOutAccount() }
+      catch (failure) {
+        if (!(failure instanceof UnsentSavesError)) throw failure
+        if (!window.confirm(`${failure.count === 1 ? '1 change hasn’t' : `${failure.count} changes haven’t`} reached your account yet. You look offline. Sign out anyway and clear ${failure.count === 1 ? 'it' : 'them'} from this browser?`)) return
+        await signOutAccount({ force: true })
+      }
       // Other open account tabs re-check and stop acting for this account.
       announceAccountSignedOut()
       setIdentity(''); setDevices([]); setConfirm(''); setSignedOut(true)

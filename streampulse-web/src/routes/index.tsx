@@ -20,6 +20,7 @@ import { PublicLayout } from '../ui/components/PublicLayout'
 import { retiredExplorerPath } from '../lib/momentsNavigation'
 import { twitchSignInEnabled } from '../lib/twitchSignInFlag'
 import { accountMomentsEnabled } from '../lib/accountMoments'
+import { AccountSync } from '../ui/components/AccountSync'
 
 // The d3-v5 hub (VITE_PUBLIC_HUB_V5, PR 1 of 5: data layer + activity chart).
 // Read inline so a production build folds the test: a flag-off build is
@@ -39,6 +40,7 @@ const BillingPage = lazy(() => import('./account/BillingPage'))
 const AccountRestore = lazy(() => import('./account/AccountRestore'))
 const AccountTwitchCallback = lazy(() => import('./account/AccountTwitchCallback'))
 const AccountMoments = lazy(() => import('./account/AccountMoments'))
+const AccountHome = lazy(() => import('./account/AccountHome'))
 const ChannelAnalyticsPage = lazy(() => import('./analytics/ChannelAnalyticsPage'))
 const AnalyticsShell = lazy(() =>
   import('../ui/components/analytics/AnalyticsFigmaShell').then((module) => ({ default: module.AnalyticsFigmaShell })),
@@ -118,6 +120,7 @@ export function AppRoutes() {
   return (
     <PageErrorBoundary shell={(panel, moduleLoadFailed) => routeErrorShell(pathname, panel, moduleLoadFailed)}>
       <PortalRoutes />
+      {accountMomentsEnabled() ? <AccountSync /> : null}
     </PageErrorBoundary>
   )
 }
@@ -162,6 +165,9 @@ function PortalRoutes() {
         {twitchSignInEnabled() ? <Route path="/account/twitch/callback" element={<AccountTwitchCallback />} /> : null}
         {/* My Moments (VITE_ACCOUNT_MOMENTS=1); while off, the ordinary 404. */}
         {accountMomentsEnabled() ? <Route path="/account/moments" element={<AccountMoments />} /> : null}
+        {/* The one Account page (A1) and My Moments' short address, with My Moments on. */}
+        {accountMomentsEnabled() ? <Route path="/account" element={<AccountHome />} /> : null}
+        {accountMomentsEnabled() ? <Route path="/moments" element={<Navigate to="/account/moments" replace />} /> : null}
 
         {/* Public analytics is a no-login surface. The legacy beta-key /login
             screen is gone — point old links at the public analytics hub. */}

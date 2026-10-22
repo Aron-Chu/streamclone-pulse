@@ -1,0 +1,31 @@
+/* The one-time toast after this browser's saves joined the account. */
+.account-saves-toast {
+  position: fixed;
+  z-index: 200;
+  bottom: 20px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  padding: 10px 12px;
+  border: 1px solid #1f6b46;
+  border-radius: 10px;
+  background: #0f1f17;
+  box-shadow: 0 16px 40px rgb(0 0 0 / 50%);
+  color: #d1fae5;
+  font-size: 13px;
+  transform: translateX(-50%);
+}
+.account-saves-toast button {
+  min-width: 28px;
+  min-height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #a7f3d0;
+  font: inherit;
+  cursor: pointer;
+}
+.account-saves-toast button:hover { background: rgb(255 255 255 / 6%); }

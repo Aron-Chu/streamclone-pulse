@@ -74,6 +74,8 @@
 }
 
 .account-entry__link--pending { visibility: hidden; }
+.account-entry__link--ghost { border-color: var(--account-entry-border); color: var(--account-entry-text); font-weight: 600; }
+.account-entry__trigger { border-color: var(--account-entry-accent); border-radius: 999px; color: var(--account-entry-text); }
 .account-entry__trigger { padding-block: 0.3rem; padding-inline: 0.4rem 0.55rem; }
 
 .account-entry__trigger[aria-expanded="true"] {

@@ -9,6 +9,8 @@ import {
   type AccountProfile,
 } from '../../lib/accountSession'
 import { accountMomentsEnabled } from '../../lib/accountMoments'
+import { UnsentSavesError } from '../../lib/accountSaves'
+import { SUPPORTER_PATH } from '../../lib/externalLinks'
 import './AccountEntry.css'
 
 export type AccountEntryVariant = 'analytics' | 'public'
@@ -39,11 +41,11 @@ export function AccountEntry({ variant }: { variant: AccountEntryVariant }) {
   // without offering it, so neither state flashes.
   if (session.status === 'checking') {
     return <div className={className} data-account-entry="checking" aria-hidden="true">
-      <span className="account-entry__link account-entry__link--pending">Sign in</span>
+      <span className="account-entry__link account-entry__link--ghost account-entry__link--pending">Sign in</span>
     </div>
   }
   return <div className={className} data-account-entry="signed-out">
-    <Link ref={signIn} to="/account/sign-in" className="account-entry__link">Sign in</Link>
+    <Link ref={signIn} to="/account/sign-in" className="account-entry__link account-entry__link--ghost">Sign in</Link>
   </div>
 }
 
@@ -59,6 +61,8 @@ export function AccountMenuButton({ className, profile, onSignOutStart, onSignOu
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  /** Changes that could not reach the account before sign-out (offline). */
+  const [unsent, setUnsent] = useState(0)
   const root = useRef<HTMLDivElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
   const menu = useRef<HTMLDivElement>(null)
@@ -86,6 +90,7 @@ export function AccountMenuButton({ className, profile, onSignOutStart, onSignOu
   function show(focus: 'first' | 'last') {
     initialFocus.current = focus
     setError('')
+    setUnsent(0)
     setOpen(true)
   }
 
@@ -115,11 +120,12 @@ export function AccountMenuButton({ className, profile, onSignOutStart, onSignOu
     setBusy(true); setError('')
     onSignOutStart?.()
     try {
-      await signOutAccount()
-      if (pathname.startsWith('/account/')) leaveAccountPagesAfterSignOut()
+      await signOutAccount({ force: unsent > 0 })
+      if (pathname === '/account' || pathname.startsWith('/account/')) leaveAccountPagesAfterSignOut()
     } catch (failure) {
       onSignOutFailed?.()
-      setError(accountErrorText(failure))
+      if (failure instanceof UnsentSavesError) setUnsent(failure.count)
+      else setError(accountErrorText(failure))
       setBusy(false)
     }
   }
@@ -154,15 +160,21 @@ export function AccountMenuButton({ className, profile, onSignOutStart, onSignOu
       {open ? (
         <div className="account-entry__panel">
           <div ref={menu} id={menuId} role="menu" aria-labelledby={triggerId} onKeyDown={onMenuKeyDown}>
-            {accountMomentsEnabled() ? <Link role="menuitem" tabIndex={-1} to="/account/moments" onClick={() => setOpen(false)}>My Moments</Link> : null}
-            <Link role="menuitem" tabIndex={-1} to="/account/settings" onClick={() => setOpen(false)}>Account &amp; devices</Link>
-            <Link role="menuitem" tabIndex={-1} to="/account/billing" onClick={() => setOpen(false)}>Membership &amp; billing</Link>
+            {accountMomentsEnabled() ? <>
+              <Link role="menuitem" tabIndex={-1} to="/account/moments" onClick={() => setOpen(false)}>My Moments</Link>
+              <Link role="menuitem" tabIndex={-1} to="/account" onClick={() => setOpen(false)}>Account</Link>
+              <Link role="menuitem" tabIndex={-1} to={SUPPORTER_PATH} onClick={() => setOpen(false)}>Supporter</Link>
+            </> : <>
+              <Link role="menuitem" tabIndex={-1} to="/account/settings" onClick={() => setOpen(false)}>Account &amp; devices</Link>
+              <Link role="menuitem" tabIndex={-1} to="/account/billing" onClick={() => setOpen(false)}>Membership &amp; billing</Link>
+            </>}
             <div role="separator" />
             <button role="menuitem" tabIndex={-1} type="button" aria-disabled={busy || undefined}
               onClick={() => void signOut()}>
-              {busy ? 'Signing out…' : 'Sign out'}
+              {busy ? 'Signing out…' : unsent ? 'Sign out anyway' : 'Sign out'}
             </button>
           </div>
+          {unsent ? <p className="account-entry__error" role="alert">{unsent === 1 ? '1 change hasn’t' : `${unsent} changes haven’t`} reached your account yet. You look offline. Signing out now clears {unsent === 1 ? 'it' : 'them'} from this browser.</p> : null}
           {error ? <p className="account-entry__error" role="alert">{error}</p> : null}
         </div>
       ) : null}

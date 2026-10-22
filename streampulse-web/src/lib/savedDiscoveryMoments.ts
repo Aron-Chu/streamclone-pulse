@@ -5,13 +5,26 @@ import type { LiveWireMetricComparison, LiveWireMomentComparison } from './liveW
 export const SAVED_MOMENTS_KEY = 'streampulse.saved-moments.v2'
 export const LEGACY_SAVED_MOMENTS_KEY = 'streampulse.saved-moments.v1'
 export const SAVED_MOMENTS_LIMIT = 200
+/** Signed in, this list is the browser's copy of the account's, which holds up to 5,000 (accountSaves.ts). */
+export const ACCOUNT_SAVED_MOMENTS_LIMIT = 5000
 export interface SavedMoment extends DiscoveryMoment { savedAt: number; note?: string }
 interface Snapshot { items: SavedMoment[]; warning: string }
 let snapshot: Snapshot = { items: [], warning: '' }
 let initialized = false
 let sessionOnly = false
+/** The stored list is a copy of the signed-in account's list, not this browser's own. */
+let accountCopy = false
 const listeners = new Set<() => void>()
 const publish = () => listeners.forEach(listener => listener())
+/** A save, removal or note made here; the account sync sends it on. */
+export type SavedMomentChange = { kind: 'add' | 'remove' | 'note'; item: SavedMoment }
+const changeListeners = new Set<(change: SavedMomentChange) => void>()
+export function onSavedMomentChange(listener: (change: SavedMomentChange) => void): () => void {
+  changeListeners.add(listener)
+  return () => { changeListeners.delete(listener) }
+}
+const announce = (change: SavedMomentChange) => changeListeners.forEach(listener => listener(change))
+const envelope = (items: SavedMoment[]) => JSON.stringify({ version: 2, legacyMerged: true, ...(accountCopy ? { account: true } : {}), items })
 const cleanText = (value: unknown, limit: number): string | undefined => typeof value === 'string' && value.length <= limit && !/[\u0000-\u001f]/.test(value) ? value : undefined
 const cleanEvidenceTime = (value: unknown): string | undefined => {
   const text = cleanText(value, 40)
@@ -111,9 +124,10 @@ export function savedMomentRecord(moment: DiscoveryMoment & { note?: string }, s
 }
 export function parseSavedMoments(raw: string | null): SavedMoment[] {
   if (!raw) return []
-  if (raw.length > 500_000) throw new Error('Saved data is too large')
+  if (raw.length > 5_000_000) throw new Error('Saved data is too large')
   const envelope = JSON.parse(raw)
-  if (![1, 2].includes(envelope?.version) || !Array.isArray(envelope.items) || envelope.items.length > SAVED_MOMENTS_LIMIT) throw new Error('Unsupported saved data')
+  const limit = envelope?.account === true ? ACCOUNT_SAVED_MOMENTS_LIMIT : SAVED_MOMENTS_LIMIT
+  if (![1, 2].includes(envelope?.version) || !Array.isArray(envelope.items) || envelope.items.length > limit) throw new Error('Unsupported saved data')
   const unique = new Map<string, SavedMoment>()
   for (const row of envelope.items) {
     if (!row || typeof row.label !== 'string' || row.label.length > 300 || !Number.isFinite(row.savedAt) || row.savedAt <= 0) throw new Error('Invalid saved moment')
@@ -156,7 +170,10 @@ function mergeSavedMoments(current: SavedMoment[], legacy: SavedMoment[]): Saved
 function readStored(): { items: SavedMoment[]; migrated: boolean; warning?: string } {
   const current = window.localStorage.getItem(SAVED_MOMENTS_KEY)
   let currentItems: SavedMoment[]
-  try { currentItems = parseSavedMoments(current) }
+  try {
+    currentItems = parseSavedMoments(current)
+    accountCopy = current != null && JSON.parse(current)?.account === true
+  }
   catch {
     // Do not overwrite an unreadable v2 envelope. A readable v1 list is still
     // useful as a session-only backup, including its local notes.
@@ -186,7 +203,7 @@ function loadStored(): Snapshot {
     return { items: stored.items, warning: 'The two saved lists contain more than 200 distinct moments. Both remain visible for this session; stored data was not overwritten.' }
   }
   try {
-    window.localStorage.setItem(SAVED_MOMENTS_KEY, JSON.stringify({ version: 2, legacyMerged: true, items: stored.items }))
+    window.localStorage.setItem(SAVED_MOMENTS_KEY, envelope(stored.items))
     return { items: stored.items, warning: '' }
   } catch {
     sessionOnly = true
@@ -220,10 +237,46 @@ function onStorage(event: StorageEvent) {
 function persist(items: SavedMoment[]) {
   let warning = snapshot.warning
   if (!sessionOnly) {
-    try { window.localStorage.setItem(SAVED_MOMENTS_KEY, JSON.stringify({ version: 2, legacyMerged: true, items })) }
+    try { window.localStorage.setItem(SAVED_MOMENTS_KEY, envelope(items)) }
     catch { sessionOnly = true; warning = 'Storage unavailable. Saves are available for this session only.' }
   }
   snapshot = { items, warning }; publish()
+}
+
+/** This browser's list as it stands, and whether it is the account's copy. */
+export function savedMomentsNow(): { items: SavedMoment[]; account: boolean } {
+  initialize(); refreshStored()
+  return { items: snapshot.items, account: accountCopy }
+}
+/**
+ * Makes the list the account's copy (signed in), or this browser's own again.
+ * Moments already here keep their measured evidence; the account brings the
+ * identity, label, note and save time.
+ */
+export function replaceSavedMoments(items: SavedMoment[], { account }: { account: boolean }): void {
+  initialize(); refreshStored()
+  const here = new Map(snapshot.items.map(item => [item.key, item]))
+  const next = items.slice(0, account ? ACCOUNT_SAVED_MOMENTS_LIMIT : SAVED_MOMENTS_LIMIT).map(item => {
+    const previous = here.get(item.key)
+    return previous ? savedMomentRecord({ ...previous, label: item.label, note: item.note, provenance: 'saved' }, item.savedAt) : item
+  })
+  if (accountCopy === account && JSON.stringify(next) === JSON.stringify(snapshot.items)) return
+  accountCopy = account
+  // A full save is the point of this call, so a list that was session-only
+  // (an unreadable copy) is replaced rather than kept beside it.
+  sessionOnly = false
+  persist(next)
+}
+/** Sign-out (Aron's O1 pick): the account keeps everything, so this browser keeps nothing. */
+export function clearSavedMoments(): void {
+  initialize()
+  try {
+    window.localStorage.removeItem(SAVED_MOMENTS_KEY)
+    window.localStorage.removeItem(LEGACY_SAVED_MOMENTS_KEY)
+  } catch { /* Nothing stored to clear. */ }
+  accountCopy = false
+  sessionOnly = false
+  snapshot = { items: [], warning: '' }; publish()
 }
 export function refreshSavedMoment(moment: DiscoveryMoment): boolean {
   initialize()
@@ -243,16 +296,27 @@ export function refreshSavedMoment(moment: DiscoveryMoment): boolean {
 export function toggleSavedMoment(moment: DiscoveryMoment): string {
   initialize()
   refreshStored()
-  const existing = snapshot.items.some(item => item.key === moment.key)
-  if (existing) { persist(snapshot.items.filter(item => item.key !== moment.key)); return 'Removed from saved moments.' }
-  if (snapshot.items.length >= SAVED_MOMENTS_LIMIT) return '200 saved moments reached. Remove a saved moment before adding another.'
-  persist([savedMomentRecord(moment), ...snapshot.items]); return sessionOnly ? 'Saved for this session only.' : 'Saved on this device.'
+  const existing = snapshot.items.find(item => item.key === moment.key)
+  if (existing) {
+    persist(snapshot.items.filter(item => item.key !== moment.key))
+    announce({ kind: 'remove', item: existing })
+    return 'Removed from saved moments.'
+  }
+  if (accountCopy ? snapshot.items.length >= ACCOUNT_SAVED_MOMENTS_LIMIT : snapshot.items.length >= SAVED_MOMENTS_LIMIT) {
+    return accountCopy ? '5,000 saved moments reached. Remove a saved moment before adding another.' : '200 saved moments reached. Remove a saved moment before adding another.'
+  }
+  const item = savedMomentRecord(moment)
+  persist([item, ...snapshot.items])
+  announce({ kind: 'add', item })
+  return sessionOnly ? 'Saved for this session only.' : accountCopy ? 'Saved to your account.' : 'Saved on this device.'
 }
 export function updateSavedMomentNote(key: string, note: string): string {
   initialize(); refreshStored()
   if (!snapshot.items.some(item => item.key === key)) return 'This moment is no longer saved.'
-  persist(snapshot.items.map(item => item.key === key ? { ...item, note: note.slice(0, 1000) } : item))
-  return sessionOnly ? 'Note saved for this session only.' : 'Note saved on this device.'
+  const items = snapshot.items.map(item => item.key === key ? { ...item, note: note.slice(0, 1000) } : item)
+  persist(items)
+  announce({ kind: 'note', item: items.find(item => item.key === key)! })
+  return sessionOnly ? 'Note saved for this session only.' : accountCopy ? 'Note saved to your account.' : 'Note saved on this device.'
 }
 function subscribe(listener: () => void) {
   if (!listeners.size) window.addEventListener('storage', onStorage)
