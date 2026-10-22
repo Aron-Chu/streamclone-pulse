@@ -67,6 +67,12 @@ export interface TwitchSignInPorts {
   /** Pass Chrome's non-interactive timing options (other browsers reject unknown fields). */
   chromium: boolean
   apiOrigin: string
+  /**
+   * The local sandbox (2026-10-21): a development build pinned to a loopback
+   * account origin signs in at that sandbox's fake Twitch, an https
+   * `*.localhost` page, instead of id.twitch.tv. Never set in a store build.
+   */
+  localAuthorize?: boolean
   /** False when a developer backend override is set: account credentials stay hosted-only. */
   hosted: () => Promise<boolean>
   /** Persisted sign-in markers (never credentials). */
@@ -432,7 +438,8 @@ export class TwitchSignIn {
     try { authorize = new URL(body.authorizeUrl) } catch { return { outcome: 'error' } }
     const params = authorize.searchParams
     const redirectUri = params.get('redirect_uri') ?? ''
-    if (authorize.protocol !== 'https:' || authorize.host !== 'id.twitch.tv' || authorize.pathname !== '/oauth2/authorize'
+    const twitchHost = authorize.host === 'id.twitch.tv' || (this.ports.localAuthorize === true && authorize.hostname.endsWith('.localhost') && !authorize.port)
+    if (authorize.protocol !== 'https:' || !twitchHost || authorize.pathname !== '/oauth2/authorize'
       || authorize.username || authorize.password || authorize.hash
       || params.get('state') !== flowId || params.get('response_type') !== 'id_token' || !redirectUri) return { outcome: 'error' }
     let redirect: URL

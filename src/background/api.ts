@@ -678,9 +678,12 @@ export async function postWatchChannel(login: string, baseUrl?: string): Promise
 async function accountBearerRequest<T>(root: string, path: string, init: RequestInit, consume: (response: Response) => Promise<T>, accountId?: string): Promise<T> {
   // No account bearer may follow a developer override or a redirect. Never
   // fall back to Protect's legacy device credential after account disconnect.
-  if (root !== DEFAULT_BACKEND_URL || await getBackendUrl() !== DEFAULT_BACKEND_URL) throw new Error('account_hosted_only')
+  // A development build pinned to a loopback account origin (the local
+  // sandbox) sends it only there, whichever data backend the panel reads.
+  const pinned = ACCOUNT_BACKEND_URL !== DEFAULT_BACKEND_URL
+  if (!pinned && (root !== DEFAULT_BACKEND_URL || await getBackendUrl() !== DEFAULT_BACKEND_URL)) throw new Error('account_hosted_only')
   const result = await supporterAccount.withCredential(async token => {
-    if (await getBackendUrl() !== root) throw new Error('account_hosted_only')
+    if (!pinned && await getBackendUrl() !== root) throw new Error('account_hosted_only')
     // The bearer goes only to the origin that issued it (production in store builds).
     const response = await fetchWithTimeout(`${ACCOUNT_BACKEND_URL}${path}`, {
       ...init, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -688,7 +691,7 @@ async function accountBearerRequest<T>(root: string, path: string, init: Request
     })
     if (response.status === 401) { await releaseResponse(response); return { status: 401 } }
     const value = await consume(response)
-    if (await getBackendUrl() !== root) throw new Error('account_identity_changed')
+    if (!pinned && await getBackendUrl() !== root) throw new Error('account_identity_changed')
     return { status: response.status, value }
   }, accountId)
   return result.value as T
@@ -752,6 +755,57 @@ export async function deletePulseBookmark(id: string, baseUrl?: string, accountI
       throw new Error(`delete_bookmark ${res.status}`)
     }
     await releaseResponse(res)
+  }, accountId)
+}
+
+/**
+ * One change to the account's save list (`/v1/account/saves/update`), the
+ * call the site makes too: a new save, a note, or a removal. The server keeps
+ * one save per moment (same stream within 90 seconds) and the newest note.
+ */
+export interface AccountSaveChange {
+  id?: string
+  login: string
+  streamId?: string
+  vodId?: string
+  offsetSeconds: number
+  label?: string
+  notes?: string
+  editedAt?: string
+  savedAt?: string
+  source: 'extension'
+  removed?: boolean
+}
+export type AccountSaveOutcome = 'added' | 'updated' | 'kept' | 'removed' | 'missing'
+export interface AccountSavesResult { results: Array<{ outcome: AccountSaveOutcome; save?: PulseBookmark }> }
+
+/** At most 50 changes a call; 409 `save_limit_reached` at 5,000 saves. */
+export async function updateAccountSaves(saves: AccountSaveChange[], accountId: string): Promise<AccountSavesResult> {
+  if (!saves.length || saves.length > 50) throw new Error('invalid_save_batch')
+  const root = await getBackendUrl()
+  return accountBearerRequest(root, '/v1/account/saves/update', { method: 'POST', body: JSON.stringify({ saves }) }, async res => {
+    if (!res.ok) {
+      await releaseResponse(res)
+      throw new Error(res.status === 409 ? 'save_limit_reached' : `saves_update ${res.status}`)
+    }
+    const body = await readJson<unknown>(res, 1048576)
+    const results = body && typeof body === 'object' && Array.isArray((body as { results?: unknown }).results) ? (body as AccountSavesResult).results : null
+    if (!results || results.length !== saves.length) throw new Error('saves_update_invalid')
+    return { results }
+  }, accountId)
+}
+
+/** The account's name and picture from its last Twitch sign-in, when the server keeps them. */
+export async function fetchAccountProfile(accountId: string): Promise<{ displayName: string; picture?: string } | null> {
+  const root = await getBackendUrl()
+  return accountBearerRequest(root, '/v1/account/me', { method: 'GET' }, async res => {
+    if (!res.ok) { await releaseResponse(res); return null }
+    const body = await readJson<{ accountId?: unknown; profile?: { displayName?: unknown; picture?: unknown } }>(res, 64 * 1024)
+    if (body.accountId !== accountId) return null
+    const name = body.profile?.displayName
+    const picture = body.profile?.picture
+    if (typeof name !== 'string' || !name || name.length > 64) return null
+    return { displayName: name, ...(typeof picture === 'string' && /^https:\/\//.test(picture) && picture.length <= 512 ? { picture } : {}) }
   }, accountId)
 }
 

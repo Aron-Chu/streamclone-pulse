@@ -204,6 +204,22 @@ describe('Sign in with Twitch worker flow', () => {
     }
   })
 
+  it('signs in at a local sandbox fake Twitch only when the build is pinned to a loopback account origin', async () => {
+    const local = authorizeUrl(FLOW_ID, REDIRECT, 'twitch.sandbox.localhost')
+    const start = { '/v1/account/auth/twitch/start-device': () => json(201, { flowId: FLOW_ID, flowSecret: FLOW_SECRET, authorizeUrl: local }) }
+    const refused = fixture({ routes: start })
+    expect((await refused.signIn.signIn('interactive')).outcome).toBe('error')
+    expect(refused.launch).not.toHaveBeenCalled()
+    const pinned = fixture({ routes: start, ports: { localAuthorize: true } })
+    expect((await pinned.signIn.signIn('interactive')).outcome).toBe('signed_in')
+    expect(pinned.launch).toHaveBeenCalledWith({ url: local, interactive: true })
+    // Still only https *.localhost on the default port, never another host.
+    for (const url of [authorizeUrl(FLOW_ID, REDIRECT, 'evil.example'), authorizeUrl(FLOW_ID, REDIRECT, 'twitch.sandbox.localhost:8443'), local.replace('https:', 'http:')]) {
+      const f = fixture({ routes: { '/v1/account/auth/twitch/start-device': () => json(201, { flowId: FLOW_ID, flowSecret: FLOW_SECRET, authorizeUrl: url }) }, ports: { localAuthorize: true } })
+      expect((await f.signIn.signIn('interactive')).outcome).toBe('error')
+    }
+  })
+
   it('refuses a redirect configured for another extension ID before opening a window', async () => {
     const f = fixture({ routes: { '/v1/account/auth/twitch/start-device': () => json(201, { flowId: FLOW_ID, flowSecret: FLOW_SECRET, authorizeUrl: authorizeUrl(FLOW_ID, 'https://otherextensionidotherextensionid.chromiumapp.org/') }) } })
     expect((await f.signIn.signIn('interactive')).outcome).toBe('redirect_mismatch')

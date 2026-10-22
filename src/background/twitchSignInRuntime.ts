@@ -1,3 +1,4 @@
+import { DEFAULT_BACKEND_URL } from '../shared/storage.ts'
 import { TWITCH_SIGNIN_ENABLED } from '../shared/twitchSignIn.ts'
 import { ACCOUNT_BACKEND_URL, accountRequestsAllowed, bindTwitchStepUp, supporterAccount, twitchSignInMetaRecord } from './supporterAccountRuntime.ts'
 import { TwitchSignIn, twitchSurface, type WebAuthFlowDetails } from './twitchSignIn.ts'
@@ -32,6 +33,9 @@ export const twitchSignIn = new TwitchSignIn({
   // The same origin as the stored credential and its refresh: a development
   // build pinned to a local backend never signs in against production.
   apiOrigin: ACCOUNT_BACKEND_URL,
+  // Only a build pinned to a loopback origin (development builds only, see
+  // scripts/extension-target.mjs) may sign in at the local sandbox's fake Twitch.
+  localAuthorize: target === 'development' && ACCOUNT_BACKEND_URL !== DEFAULT_BACKEND_URL,
   hosted: accountRequestsAllowed,
   meta: twitchSignInMetaRecord,
   // Display name and avatar live for this browser session only: session

@@ -6,6 +6,8 @@ export type MyMomentsRequest =
   | { type: 'MY_MOMENTS'; action: 'load' }
   | { type: 'MY_MOMENTS'; action: 'recent' }
   | { type: 'MY_MOMENTS'; action: 'mutate'; scope: string; command: MyMomentsCommand }
+  /** The Settings Account card; `flush` is Sign out's first step. */
+  | { type: 'MY_MOMENTS'; action: 'account'; flush?: boolean }
   /** `reference`: the moment a jump or arrival plays, so its picture can be kept (src/background/momentPictures.ts). */
   | { type: 'MOMENT_CAPTURE'; action: 'status'; reference?: MomentReference }
   | { type: 'MOMENT_CAPTURE'; action: 'record'; epoch: number; reference: MomentReference; watchedSeconds: number }
@@ -30,6 +32,29 @@ export interface MyMomentsRecent {
   /** Saves kept on this device without an account. */
   deviceSaves: number
   latestSave: MomentReference | null
+}
+
+/**
+ * The Settings Account card (A1, local sandbox 2026-10-21). `reached`: the
+ * account's saves were read just now. `unsent`: saves, notes and watched
+ * moments this browser holds that have not reached the account. `joined`:
+ * what the last sign-in added, given once.
+ */
+export interface AccountSavesSummary {
+  signedIn: boolean
+  reached: boolean
+  saves: number
+  notes: number
+  syncedAt: number | null
+  unsent: number
+  joined: { saves: number; notes: number } | null
+  profile: { displayName: string; picture?: string } | null
+}
+const plural = (n: number, one: string, many: string) => `${n.toLocaleString('en-US')} ${n === 1 ? one : many}`
+/** The one-time line after sign-in (M1), worded as on the site. */
+export function joinedMessage(moved: { saves: number; notes: number }): string {
+  const parts = [moved.saves ? plural(moved.saves, 'save', 'saves') : '', moved.notes ? plural(moved.notes, 'note', 'notes') : ''].filter(Boolean)
+  return `Added ${parts.join(' and ')} from this browser to your account.`
 }
 
 export interface MyMomentsSnapshot extends LibrarySnapshot {
@@ -72,6 +97,7 @@ export function parseMyMoments(raw: Record<string, unknown>): MyMomentsRequest |
   }
   if (raw.type !== 'MY_MOMENTS') return null
   if ((raw.action === 'load' || raw.action === 'recent') && keys(raw, ['type','action'])) return { type: raw.type, action: raw.action }
+  if (raw.action === 'account' && keys(raw, ['type','action','flush']) && (raw.flush === undefined || typeof raw.flush === 'boolean')) return { type: raw.type, action: raw.action, ...(raw.flush ? { flush: true } : {}) }
   if (raw.action !== 'mutate' || !keys(raw, ['type','action','scope','command']) || typeof raw.scope !== 'string' || raw.scope.length > 500 || !record(raw.command)) return null
   const c = raw.command
   const valid = c.kind === 'save' ? keys(c, ['kind','reference']) && validMomentReference(c.reference)

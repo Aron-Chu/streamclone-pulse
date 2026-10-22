@@ -27,7 +27,17 @@ import { PulseSectionCard } from '../ui/PulseSectionCard.tsx'
 import { SupporterCard, type CardIdentity, type CardLook, type CardStatus } from './SupporterCard.tsx'
 import { TwitchGlitch, twitchOutcomeMessage } from './TwitchAccountConnection.tsx'
 import { usePortalOrigin } from './usePortalOrigin.ts'
+import { joinedMessage, type AccountSavesSummary } from '../shared/myMoments.ts'
+import { DEFAULT_BACKEND_URL } from '../shared/storage.ts'
+import { ACCOUNT_BACKEND_URL } from '../background/accountOrigin.ts'
 import OFFER from '../shared/supporter-offer.json'
+
+/**
+ * Aron's A1 Account row and one save list are tried in the local sandbox
+ * first (2026-10-21): only a build pinned to a loopback account origin shows
+ * them; every other build keeps the StreamPulse row.
+ */
+const SANDBOX_ACCOUNT_CARD = ACCOUNT_BACKEND_URL !== DEFAULT_BACKEND_URL
 
 /**
  * Account and Supporter membership as one journey, drawn as the Account &
@@ -188,7 +198,7 @@ function OfferTerms() {
 /** Twitch reachable only if the worker says so; a dead worker still leaves a working button. */
 const UNKNOWN_TWITCH: TwitchSignInStatus = { enabled: true, available: true, silentEligible: false, profile: null }
 
-export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = TWITCH_SIGNIN_STAGE, children }: {
+export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = TWITCH_SIGNIN_STAGE, accountCard = SANDBOX_ACCOUNT_CARD, children }: {
   /** The membership paid controls may act on: null while a refresh has failed. */
   onEntitlement?: (value: SupporterEntitlement | null) => void
   /** The last confirmed membership on screen, kept through a failed refresh. Display only. */
@@ -197,6 +207,8 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   look?: Omit<CardLook, 'perks'>
   /** Sign in with Twitch build stage; fixed at build time, a prop for tests only. */
   twitchStage?: TwitchSignInStage
+  /** The A1 Account row (local sandbox builds); fixed at build time, a prop for tests only. */
+  accountCard?: boolean
   children?: ReactNode
 } = {}) {
   const portalOrigin = usePortalOrigin()
@@ -386,6 +398,35 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   const pending = DEVICE_LINK_ENABLED && account?.state === 'pending' ? account : null
   const linked = account?.state === 'linked' ? account : null
   useEffect(() => { deviceRequest.current++; setDevices(null); setRevokeDevice(null); setConfirmDisconnect(false); setConfirmIdentity(null) }, [linked?.accountId])
+
+  // The Account card's top row (A1): the account's saves, read through the
+  // worker, which first sends what this browser holds (M1).
+  const [saves, setSaves] = useState<AccountSavesSummary | null>(null)
+  const [joinedLine, setJoinedLine] = useState('')
+  const [unsentWarning, setUnsentWarning] = useState<number | null>(null)
+  const [signingOut, setSigningOut] = useState(false)
+  const [, setTick] = useState(0)
+  const readSaves = useCallback(async (flush = false): Promise<AccountSavesSummary | null> => {
+    try {
+      const response: BackgroundResponse = await chrome.runtime.sendMessage({ type: 'MY_MOMENTS', action: 'account', ...(flush ? { flush: true } : {}) })
+      if (!response || !('type' in response) || response.type !== 'MY_MOMENTS_ACCOUNT') return null
+      setSaves(response.account)
+      if (response.account.joined) setJoinedLine(joinedMessage(response.account.joined))
+      return response.account
+    } catch { return null }
+  }, [])
+  useEffect(() => {
+    setUnsentWarning(null)
+    if (!accountCard || !linked?.accountId) { setSaves(null); return }
+    void readSaves()
+    const timer = window.setInterval(() => setTick(n => n + 1), 30_000)
+    return () => window.clearInterval(timer)
+  }, [accountCard, linked?.accountId, readSaves])
+  useEffect(() => {
+    if (!joinedLine) return
+    const timer = window.setTimeout(() => setJoinedLine(''), 10_000)
+    return () => window.clearTimeout(timer)
+  }, [joinedLine])
   const status = entitlement?.state === 'ready' ? entitlement.status : null
 
   // The worker owns the link schedule and consumes approval when it is due.
@@ -558,6 +599,22 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
     // Sign out lives in the Account card, so its outcome is reported there.
     await run('disconnect', 'account')
     await readBilling()
+  }
+
+  /**
+   * The Account card's Sign out (Aron's O1 pick): first send whatever has not
+   * reached the account, then end this browser's sign-in, which clears its
+   * copy. If something could not be sent (offline), say so before clearing.
+   */
+  async function signOutHere(force = false) {
+    if (!force) {
+      setSigningOut(true)
+      const summary = await readSaves(true)
+      setSigningOut(false)
+      if (!summary || summary.unsent > 0) { setUnsentWarning(summary?.unsent ?? 0); return }
+    }
+    setUnsentWarning(null)
+    await confirmDisconnection()
   }
 
   /**
@@ -905,6 +962,36 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   // never a purchase: "Connect this extension" with Twitch off, "Other ways to
   // connect" beside Continue with Twitch. Firefox builds leave it out.
   const testerBridge = DEVICE_LINK_ENABLED && unlinked && !linkingNotDeployed && billing.state !== 'reconnect_required'
+  // A1 (local sandbox 2026-10-21): with Twitch sign-in on, the Account card
+  // opens with one row, who is signed in, when this browser last synced and
+  // how many saves the account holds, or the sign-in offer. It takes the
+  // place of the StreamPulse row.
+  const a1 = accountCard && twitchOn && (linked !== null || unlinked)
+  const a1Name = profile?.displayName ?? saves?.profile?.displayName ?? (linked ? accountReference(linked.accountId) : '')
+  const a1Picture = profile?.picture ?? saves?.profile?.picture
+  const minutes = saves?.syncedAt ? Math.floor((Date.now() - saves.syncedAt) / 60_000) : null
+  const a1Synced = !saves ? 'Checking your saves…'
+    : !saves.reached ? 'Couldn’t reach your account just now'
+    : minutes === null || minutes < 1 ? 'Synced just now' : `Synced ${minutes} min ago`
+  const a1Saves = saves?.reached ? ` · ${saves.saves.toLocaleString('en-US')} ${saves.saves === 1 ? 'save' : 'saves'}` : ''
+  const a1Row = !a1 ? null : linked ? (
+    <div className="pulse-account-a1" data-account-a1="signed-in">
+      {a1Picture ? <img className="pulse-account-a1-avatar" src={a1Picture} alt="" /> : <span className="pulse-account-a1-avatar" aria-hidden="true">{a1Name.slice(0, 1).toUpperCase()}</span>}
+      <div className="pulse-account-a1-who">
+        <strong>{a1Name}</strong>
+        <small>{a1Synced}{a1Saves}</small>
+      </div>
+      <div className="pulse-account-link-actions">
+        <a href="#moments">My Moments</a>
+        <button type="button" disabled={accountBusy || payBusy || signingIn !== null || signingOut} aria-busy={signingOut || undefined} onClick={() => void signOutHere()}>{signingOut ? 'Sending your saves…' : ACCOUNT_COPY.signOut}</button>
+      </div>
+    </div>
+  ) : (
+    <div className="pulse-account-a1" data-account-a1="signed-out">
+      <p>Sign in to keep your saves on every browser.</p>
+      <div className="pulse-account-link-actions">{continueWithTwitch('a1')}</div>
+    </div>
+  )
 
   return (
     <>
@@ -945,9 +1032,20 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
       {children}
 
       <PulseSectionCard title="Account" headingLevel={3}>
+        {a1Row}
+        {joinedLine ? <p className="pulse-account-a1-joined" role="status">{joinedLine}</p> : null}
+        {unsentWarning !== null ? <div className="pulse-account-a1-warn" role="group" aria-label="Sign out while offline">
+          <p>{unsentWarning > 0
+            ? `${unsentWarning.toLocaleString('en-US')} ${unsentWarning === 1 ? 'change hasn’t' : 'changes haven’t'} reached your account yet; StreamPulse can’t be reached right now. Signing out clears ${unsentWarning === 1 ? 'it' : 'them'} from this browser.`
+            : 'StreamPulse can’t be reached right now, so this browser can’t check that everything reached your account. Signing out clears this browser’s copy.'}</p>
+          <div className="pulse-account-link-actions">
+            <button type="button" disabled={accountBusy} onClick={() => void signOutHere(true)}>Sign out anyway</button>
+            <button type="button" onClick={() => setUnsentWarning(null)}>Stay signed in</button>
+          </div>
+        </div> : null}
         <div className="pulse-supporter-account-rows">
           <dl className="pulse-supporter-rows">
-            {accountRow ? <div data-row="account">
+            {accountRow && !a1 ? <div data-row="account">
               <dt>StreamPulse</dt>
               <dd>
                 {accountRow[0]}

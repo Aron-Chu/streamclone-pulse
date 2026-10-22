@@ -1,8 +1,9 @@
-import { createPulseBookmark, deletePulseBookmark, fetchPulseBookmarks } from './api.ts'
+import { createPulseBookmark, deletePulseBookmark, fetchAccountProfile, fetchPulseBookmarks, updateAccountSaves, type AccountSaveChange } from './api.ts'
 import { isDeviceCredentialInvalidatedError } from './deviceAuth.ts'
 import { DEFAULT_BACKEND_URL, getBackendUrl } from '../shared/storage.ts'
+import { ACCOUNT_BACKEND_URL } from './accountOrigin.ts'
 import { bindAccountDataForget, supporterAccount } from './supporterAccountRuntime.ts'
-import { MY_MOMENTS_CHANGED, type BookmarksState, type MyMomentsRecent, type MyMomentsRequest, type MyMomentsSnapshot } from '../shared/myMoments.ts'
+import { MY_MOMENTS_CHANGED, type AccountSavesSummary, type BookmarksState, type MyMomentsRecent, type MyMomentsRequest, type MyMomentsSnapshot } from '../shared/myMoments.ts'
 import type { BackgroundResponse, ListBookmarksMessage, PulseBookmark, RemoveBookmarkMessage, SaveBookmarkMessage } from '../shared/messages.ts'
 import { replayAvailability, type LibraryMoment, type MomentReference } from '../ui/library/model.ts'
 import { addDeviceBookmark, bookmarkIdentity, deletePersonal, momentIdentity as identity, personalTransaction, recordWatched } from './myMomentsStore.ts'
@@ -30,13 +31,20 @@ const bookmarkMoment = (b: PulseBookmark, note: string): LibraryMoment => ({ id:
  */
 async function resolveScope(): Promise<{ scope: string; held: boolean }> {
   const root = await getBackendUrl()
-  if (root !== DEFAULT_BACKEND_URL) return { scope: `${root}|local`, held: false }
+  if (!PINNED && root !== DEFAULT_BACKEND_URL) return { scope: `${root}|local`, held: false }
+  const home = PINNED ? ACCOUNT_BACKEND_URL : root
   const account = await supporterAccount.run('status')
   const waiting = account.state === 'unavailable' && account.linked === true
   const accountId = account.state === 'linked' ? account.accountId : waiting ? await supporterAccount.localAccountId() : null
-  if (accountId) return { scope: `${root}|account:${accountId}`, held: false }
-  return { scope: `${root}|local`, held: waiting }
+  if (accountId) return { scope: `${home}|account:${accountId}`, held: false }
+  return { scope: `${home}|local`, held: waiting }
 }
+/**
+ * The local sandbox build (a development build pinned to a loopback account
+ * origin): its saves belong to that origin's accounts, whichever data backend
+ * the panel reads, so its scopes are named for the account origin.
+ */
+const PINNED = ACCOUNT_BACKEND_URL !== DEFAULT_BACKEND_URL
 async function currentScope(): Promise<string> { return (await resolveScope()).scope }
 const scopeAccount = (scope: string): string | undefined => scope.split('|account:')[1]
 /** Device saves belong to the backend root, not to whichever account is linked. */
@@ -302,6 +310,129 @@ async function importDeviceSaves(scope: string, held: boolean, id?: string): Pro
     added++
   }
 }
+/** What the last sign-in on this browser added to the account, shown once (Aron's M1 pick). */
+let joined: { saves: number; notes: number } | null = null
+/** When this browser last reached the account's saves. */
+let syncedAt: number | null = null
+const saveRef = (b: Pick<PulseBookmark, 'login' | 'streamId' | 'vodId' | 'offsetSeconds'>) => ({ login: b.login,
+  ...(b.streamId ? { streamId: b.streamId } : {}), ...(b.vodId ? { vodId: b.vodId } : {}), offsetSeconds: Math.floor(b.offsetSeconds) })
+/** The account's saves, every page (at most 5,000). */
+async function accountSaves(scope: string): Promise<PulseBookmark[]> {
+  const items: PulseBookmark[] = []
+  const cursors = new Set<string>()
+  let cursor: string | undefined
+  do {
+    const page = await fetchPulseBookmarks({ limit: 100, cursor }, undefined, scopeAccount(scope))
+    await assertScope(scope)
+    items.push(...page.items)
+    cursor = page.nextCursor
+    if (cursor && (cursors.has(cursor) || items.length >= 5000)) break
+    if (cursor) cursors.add(cursor)
+  } while (cursor)
+  return items
+}
+/**
+ * One list (Aron's M1 pick, local sandbox 2026-10-21): what this browser
+ * holds that the account lacks goes to the account through the same "update
+ * a save" call the site uses. Saves made without an account go with their
+ * notes, and notes kept here for the account's own saves follow them. The
+ * server keeps a moment once (same stream within 90 seconds) and the newest
+ * note. Each leaves this browser only once the account confirms it, so a
+ * failure partway keeps the rest for the next try.
+ */
+async function sendToAccount(scope: string): Promise<{ saves: number; notes: number }> {
+  const account = scopeAccount(scope)
+  if (!account) return { saves: 0, notes: 0 }
+  let saves = 0
+  let notes = 0
+  const device = await personalTransaction(deviceScope(scope))
+  for (let i = 0; i < device.bookmarks.length; i += 50) {
+    const batch = device.bookmarks.slice(i, i + 50)
+    const changes: AccountSaveChange[] = batch.map(b => {
+      const note = (device.notes[b.id] ?? '').slice(0, 1000)
+      return { ...saveRef(b), label: b.label.slice(0, 160), savedAt: b.createdAt, source: 'extension', ...(note ? { notes: note, editedAt: b.updatedAt || b.createdAt } : {}) }
+    })
+    await assertScope(scope)
+    const { results } = await updateAccountSaves(changes, account)
+    results.forEach((result, n) => {
+      if (result.outcome === 'added') saves++
+      if (changes[n].notes && (result.outcome === 'added' || result.outcome === 'updated')) notes++
+    })
+    const sent = new Set(batch.map(b => b.id))
+    await personalTransaction(deviceScope(scope), data => {
+      const left = { ...data.notes }
+      for (const id of sent) delete left[id]
+      return { ...data, notes: left, bookmarks: data.bookmarks.filter(b => !sent.has(b.id)) }
+    })
+    for (const b of batch) await momentPictures.move(deviceScope(scope), scope, bookmarkIdentity(b)).catch(() => undefined)
+  }
+  const here = await personalTransaction(scope)
+  const kept = Object.entries(here.notes).filter(([, note]) => note)
+  if (kept.length) {
+    const byId = new Map((await accountSaves(scope)).map(b => [b.id, b]))
+    const changes: AccountSaveChange[] = kept.filter(([id]) => byId.has(id))
+      .map(([id, note]) => ({ id, ...saveRef(byId.get(id)!), notes: note.slice(0, 1000), editedAt: new Date().toISOString(), source: 'extension' }))
+    for (let i = 0; i < changes.length; i += 50) {
+      const batch = changes.slice(i, i + 50)
+      await assertScope(scope)
+      const { results } = await updateAccountSaves(batch, account)
+      results.forEach(result => { if (result.outcome === 'updated' || result.outcome === 'added') notes++ })
+    }
+    // A note for a save the account no longer has goes with it.
+    await personalTransaction(scope, data => {
+      const left = { ...data.notes }
+      for (const [id, note] of kept) if (left[id] === note) delete left[id]
+      return { ...data, notes: left }
+    })
+  }
+  syncedAt = Date.now()
+  return { saves, notes }
+}
+/** Sign-in just finished: this browser's saves join the account, and the Account card says so once. */
+export function joinAccount(): Promise<void> {
+  const run = queue.then(async () => {
+    const { scope, held } = await resolveScope()
+    if (held || !scopeAccount(scope)) return
+    const moved = await sendToAccount(scope)
+    if (moved.saves || moved.notes) joined = moved
+    void Promise.resolve().then(() => chrome.runtime.sendMessage({ type: MY_MOMENTS_CHANGED })).catch(() => undefined)
+  })
+  queue = run.catch(() => undefined)
+  return run
+}
+/** What this browser still holds for the account: saves made here, notes, watched moments waiting to sync. */
+async function unsentCount(scope: string): Promise<number> {
+  const here = await personalTransaction(scope)
+  const device = await personalTransaction(deviceScope(scope))
+  return device.bookmarks.length + Object.values(here.notes).filter(Boolean).length + (here.accountSync?.enabled ? here.accountSync.pending.length : 0)
+}
+/**
+ * The Settings Account card (Aron's A1 pick): who is signed in, how many saves
+ * the account holds and when this browser last reached them. `flush` is Sign
+ * out's first step (O1): send everything first; what is still unsent is
+ * counted, so the card can warn before this browser's copy is cleared.
+ */
+async function accountSummary(flush: boolean): Promise<AccountSavesSummary> {
+  const { scope, held } = await resolveScope()
+  const account = scopeAccount(scope)
+  if (!account || held) return { signedIn: false, reached: false, saves: 0, notes: 0, syncedAt: null, unsent: 0, joined: null, profile: null }
+  let saves = 0
+  let notes = 0
+  let reached = false
+  try {
+    const moved = await sendToAccount(scope)
+    if (moved.saves || moved.notes) joined = { saves: (joined?.saves ?? 0) + moved.saves, notes: (joined?.notes ?? 0) + moved.notes }
+    if (flush && (await personalTransaction(scope)).accountSync?.enabled) await syncHistoryNow(scope, account)
+    const list = await accountSaves(scope)
+    saves = list.length
+    notes = list.filter(b => b.notes).length
+    reached = true
+  } catch { /* counted as unsent below */ }
+  const profile = await fetchAccountProfile(account).catch(() => null)
+  const shown = flush ? null : joined
+  if (!flush) joined = null
+  return { signedIn: true, reached, saves, notes, syncedAt, unsent: await unsentCount(scope), joined: shown, profile }
+}
 let queue: Promise<unknown> = Promise.resolve()
 /**
  * This device left the account by an explicit, confirmed Sign out or Sign out
@@ -313,7 +444,7 @@ let queue: Promise<unknown> = Promise.resolve()
 export function forgetAccountScope(accountId: string): Promise<void> {
   // A history push scheduled for the account it just left is dropped too.
   clearTimeout(syncTimer)
-  const scope = `${DEFAULT_BACKEND_URL}|account:${accountId}`
+  const scope = `${PINNED ? ACCOUNT_BACKEND_URL : DEFAULT_BACKEND_URL}|account:${accountId}`
   const run = queue.then(async () => {
     await momentPictures.dropScope(scope).catch(() => undefined)
     await deletePersonal(scope)
@@ -358,7 +489,16 @@ export function handleMyMoments(message: MyMomentsRequest, sender: chrome.runtim
       if (account && sync?.enabled && Date.now() - (sync.syncedAt ?? 0) > 120_000) syncSoon(scope, account, 0)
       return { type: 'MY_MOMENTS_RECENT', recent: await recent(scope) }
     }
-    if (message.action === 'load' && scopeAccount(scope)) await within(refreshHistorySync(scope, scopeAccount(scope)!), 6000)
+    if (message.action === 'account') return { type: 'MY_MOMENTS_ACCOUNT', account: await accountSummary(message.flush === true) }
+    if (message.action === 'load' && scopeAccount(scope)) {
+      // Saves made here before signing in join the account (M1), if a sign-in
+      // elsewhere in the extension did not already move them.
+      if (!held) {
+        const moved = await sendToAccount(scope).catch(() => null)
+        if (moved && (moved.saves || moved.notes)) joined = moved
+      }
+      await within(refreshHistorySync(scope, scopeAccount(scope)!), 6000)
+    }
     if (message.action === 'mutate') {
       if (message.scope !== scope) throw new Error('Device connection changed. Reload My Moments.')
       const command = message.command
@@ -392,10 +532,23 @@ export function handleMyMoments(message: MyMomentsRequest, sender: chrome.runtim
         if (!hosted && !onDevice) throw new Error('Bookmark unavailable. Reload before editing.')
         await assertScope(scope)
         if (command.kind === 'unsave' && scopeAccount(scope) && !onDevice) await deletePulseBookmark(command.id, undefined, scopeAccount(scope))
+        // One list (local sandbox): an account save's note goes to the account,
+        // as the site's does. It stays here only while that fails, and goes
+        // with the next sync or Sign out.
+        let sentNote = false
+        const saved = command.kind === 'edit' && scopeAccount(scope) ? all.moments.find(m => m.id === command.id && m.savedAt !== undefined) : undefined
+        if (command.kind === 'edit' && saved) {
+          try {
+            await updateAccountSaves([{ id: saved.id, login: saved.channel, ...(saved.streamId ? { streamId: saved.streamId } : {}), ...(saved.vodId ? { vodId: saved.vodId } : {}),
+              offsetSeconds: Math.floor(saved.offsetSeconds ?? 0), notes: command.note.slice(0, 1000), editedAt: new Date().toISOString(), source: 'extension' }], scopeAccount(scope)!)
+            sentNote = true
+            syncedAt = Date.now()
+          } catch { /* kept below */ }
+        }
         await assertScope(scope)
         await personalTransaction(onDevice ? deviceScope(scope) : scope, data => {
           const notes = { ...data.notes }
-          if (command.kind === 'edit') notes[command.id] = command.note
+          if (command.kind === 'edit' && !sentNote) notes[command.id] = command.note
           else delete notes[command.id]
           return { ...data, notes, bookmarks: command.kind === 'unsave' ? data.bookmarks.filter(b => b.id !== command.id) : data.bookmarks }
         })

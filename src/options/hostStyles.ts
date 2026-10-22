@@ -83,6 +83,16 @@ const hostStyles = `
   .pulse-account-link-actions .pulse-twitch-signin { gap: 8px; border-color: #9146FF; background: #9146FF; color: #FFFFFF; }
   .pulse-account-link-actions .pulse-twitch-signin:hover:not(:disabled) { border-color: #772CE8; background: #772CE8; color: #FFFFFF; }
   .pulse-account-link-actions .pulse-twitch-signin:focus-visible { outline-color: #BF94FF; }
+  /* The Account card's top row (A1, local sandbox 2026-10-21): who, synced, saves, then My Moments and Sign out. */
+  .pulse-account-a1 { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 4px 0 14px; border-bottom: 1px solid ${theme.border}; margin-bottom: 4px; }
+  .pulse-account-a1-avatar { flex: none; width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: linear-gradient(135deg, #9146FF, #22D3EE); color: #FFFFFF; font-weight: 800; object-fit: cover; }
+  .pulse-account-a1-who { flex: 1; min-width: 160px; display: grid; gap: 2px; }
+  .pulse-account-a1-who strong { color: ${theme.textPrimary}; font-size: 15px; overflow-wrap: anywhere; }
+  .pulse-account-a1-who small { color: ${theme.textSecondary}; font-size: 13px; }
+  .pulse-account-a1 > p { flex: 1; min-width: 200px; margin: 0; color: ${theme.textPrimary}; }
+  .pulse-account-a1-joined { margin: 0 0 8px; color: #A7F3D0; font-size: 13px; }
+  .pulse-account-a1-warn { margin: 0 0 10px; padding: 10px 12px; border: 1px solid #7F1D1D; border-radius: 10px; background: #1C1214; }
+  .pulse-account-a1-warn p { margin: 0 0 8px; color: ${theme.textPrimary}; font-size: 13px; }
   .pulse-twitch-glitch { flex: none; }
   .pulse-account-link-actions .pulse-account-quiet-button { border-color: transparent; background: transparent; color: ${theme.textSecondary}; font-weight: 600; }
   .pulse-account-identity { display: flex; align-items: center; gap: 12px; min-width: 0; }

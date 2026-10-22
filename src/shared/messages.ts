@@ -799,6 +799,7 @@ export type BackgroundResponse =
   | { type: 'HUB_SNAPSHOT'; snapshot: import('./hubSnapshot.ts').HubSnapshot | null; error?: string }
   | { type: 'MOMENT_MINUTE'; context: import('../ui/library/MomentPreview.tsx').MomentContext | null; error?: string }
   | { type: 'MY_MOMENTS_RECENT'; recent: import('./myMoments.ts').MyMomentsRecent }
+  | { type: 'MY_MOMENTS_ACCOUNT'; account: import('./myMoments.ts').AccountSavesSummary }
   | { type: 'SUPPORTER_ACCOUNT'; account: SupporterAccountState }
   | import('./twitchSignIn.ts').TwitchSignInResponse
   | { type: 'SUPPORTER_BILLING'; billing: SupporterBillingState }

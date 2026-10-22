@@ -1,4 +1,4 @@
-import { handleDeviceBookmarks, handleMyMoments, handlePicture, removePanelBookmark, restoreRemovedNote, wantSavedPicture } from './myMoments.ts'
+import { handleDeviceBookmarks, handleMyMoments, handlePicture, joinAccount, removePanelBookmark, restoreRemovedNote, wantSavedPicture } from './myMoments.ts'
 import { loadHubSnapshot } from './hubSnapshot.ts'
 import { loadMomentMinute } from './momentMinute.ts'
 import {
@@ -1011,11 +1011,14 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           return
         }
         case 'TWITCH_SIGN_IN': {
-          sendResponse((message.action === 'status'
+          const reply = message.action === 'status'
             ? await twitchSignIn.status()
             : message.action === 'sign_out_everywhere'
               ? await twitchSignIn.signOutEverywhere(message.confirm === true ? 'interactive' : 'silent')
-              : await twitchSignIn.signIn(message.mode, message.forceVerify === true)) satisfies BackgroundResponse)
+              : await twitchSignIn.signIn(message.mode, message.forceVerify === true)
+          // M1 (local sandbox): this browser's saves join the account as sign-in finishes.
+          if (message.action === 'sign_in' && reply.outcome === 'signed_in') await joinAccount().catch(() => undefined)
+          sendResponse(reply satisfies BackgroundResponse)
           return
         }
         case 'OPEN_SETTINGS_HOST': {
