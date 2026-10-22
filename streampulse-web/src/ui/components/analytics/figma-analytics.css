@@ -187,6 +187,82 @@
   font-size: 0.75rem;
 }
 
+/* "Search a streamer" (R5-14, AnalyticsFind; mockup hub-r5d.css .tb-find): a 340 px field centred in
+   the bar from 1360 px, an icon below that (beside the menu on phones). On the hub it shows once the
+   hero field has scrolled under the bar (data-docked). */
+.analytics-find {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 8px 0 12px;
+  border: 1px solid #34343b;
+  border-radius: 10px;
+  background: #141417;
+  color: #a1a1aa;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition: opacity 0.2s, visibility 0.2s, border-color 0.15s;
+}
+.analytics-find svg { width: 16px; height: 16px; flex: none; }
+.analytics-find__kbd {
+  margin-left: auto;
+  padding: 0 6px;
+  border-radius: 5px;
+  background: #202024;
+  font-size: 12px;
+  line-height: 20px;
+}
+.analytics-find:hover { border-color: #52525b; color: #ededef; }
+.analytics-find:focus-visible { outline: 2px solid #99f6e4; outline-offset: 2px; }
+.analytics-find[data-docked="false"] { opacity: 0; visibility: hidden; }
+@media (min-width: 1360px) {
+  .analytics-find { position: absolute; left: 50%; top: 50%; translate: -50% -50%; width: 340px; }
+}
+@media (max-width: 1359px) {
+  .analytics-find { width: 36px; padding: 0; justify-content: center; margin-left: auto; }
+  .analytics-find__l,
+  .analytics-find__kbd { display: none; }
+  .analytics-find svg { width: 18px; height: 18px; }
+  .analytics-find[data-docked="false"] { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .analytics-find { transition: none; }
+}
+
+/* Its search window: the hub's search (hub-v5.css, loaded with the window) over a dimmed page. */
+.analytics-find-pal {
+  position: fixed;
+  inset: 12vh 0 auto;
+  width: min(720px, calc(100vw - 24px));
+  max-width: none;
+  max-height: none;
+  margin: 0 auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--sp-text-1, #ededef);
+  font: 400 13px/1.4 var(--sp-font, inherit);
+  font-variant-numeric: tabular-nums;
+  overflow: visible;
+}
+.analytics-find-pal::backdrop {
+  background: rgb(4 4 6 / 0.66);
+  backdrop-filter: blur(4px);
+}
+.analytics-find-pal :is(button, input) { font: inherit; color: inherit; letter-spacing: inherit; }
+.analytics-find-pal button { margin: 0; padding: 0; border: 0; background: none; cursor: pointer; }
+.analytics-find-pal a { text-decoration: none; }
+.analytics-find-pal :focus-visible { outline: 2px solid var(--sp-focus, #99f6e4); outline-offset: 2px; border-radius: 4px; }
+.analytics-find-pal .hv5-sugg { position: static; margin-top: 8px; }
+@media (max-width: 720px) {
+  .analytics-find-pal { inset: 10px 0 auto; }
+}
+
 .analytics-topnav__actions {
   margin-left: auto;
   display: inline-flex;

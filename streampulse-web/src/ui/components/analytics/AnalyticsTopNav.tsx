@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import { Menu } from 'lucide-react'
+import { AnalyticsFind } from './AnalyticsFind'
 import { BrandMark } from '../BrandMark'
 import { ChromeInstallCta } from '../ChromeInstallCta'
 import { discordInviteUrl } from '../../../lib/discord'
@@ -116,8 +117,10 @@ export function AnalyticsTopNav({
               <Link to="/refunds" onClick={() => closeMenu()}>Cancellation and refunds</Link>
             </div>
           </div>
+          {/* In the links row so a phone keeps it beside the menu; centred in the bar from 1360 px. */}
+          <AnalyticsFind />
         </nav>
-      ) : null}
+      ) : <AnalyticsFind />}
 
       <div className="analytics-topnav__actions" aria-label="Analytics utilities">
         <ChromeInstallCta className="analytics-topnav__install" data-cta="chrome-install-analytics">Add to Chrome</ChromeInstallCta>

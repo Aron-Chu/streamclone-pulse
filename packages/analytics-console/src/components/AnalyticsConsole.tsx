@@ -39,7 +39,7 @@ import {
   STAT_PLACEHOLDER_MUTED_CLASS,
   type StreamCollectionState,
 } from '../utils/statCards.ts'
-import { isActiveLiveCollectorStream, isSyncPrefetchPlaceholder, resolveChannelActuallyLive } from '../utils/analyticsStreamRow.ts'
+import { findOpenLiveStream, isActiveLiveCollectorStream, isSyncPrefetchPlaceholder, resolveChannelActuallyLive } from '../utils/analyticsStreamRow.ts'
 import { analyticsStreamPathSlug, resolveCanonicalLiveSessionTarget } from '../utils/syncedLiveStream.ts'
 import {
   isDateSlugUnresolved,
@@ -132,7 +132,27 @@ export interface AnalyticsConsoleProps {
   buildChannelPath?: (login: string) => string
   /** Host-owned actions for an explicitly selected minute on a resolved stream. */
   renderSelectedMomentActions?: (moment: { login: string; streamId: string; offsetSeconds: number; at?: number; chatPerMin?: number; emotesPerMin?: number; category?: string; label?: string }) => ReactNode
+  /**
+   * Host-drawn channel headline over the title (session-who W1). When set, the title becomes the
+   * page's second line and the meta line drops the channel name.
+   */
+  renderChannelHeadline?: (headline: ConsoleChannelHeadline) => ReactNode
 }
+
+export interface ConsoleChannelHeadline {
+  login: string
+  displayName: string
+  /** The channel's broadcast that is live now (findOpenLiveStream), with its session link. */
+  live: { streamId: string; category?: string; href: string } | null
+  /** This page is that live broadcast. */
+  viewingLive: boolean
+  /** Broadcasts in the channel's list; null until it loads. */
+  broadcasts: number | null
+  /** The list stopped at its limit, so there are at least this many. */
+  broadcastsCapped: boolean
+}
+
+const STREAMS_LIST_LIMIT = 100
 
 function defaultSessionPath(login: string, streamId: string): string {
   return `/analytics/${encodeURIComponent(login)}/${encodeURIComponent(streamId)}`
@@ -160,6 +180,7 @@ export function AnalyticsConsole({
   buildSessionPath = defaultSessionPath,
   buildChannelPath = defaultChannelPath,
   renderSelectedMomentActions,
+  renderChannelHeadline,
 }: AnalyticsConsoleProps = {}) {
   const navigate = useNavigate()
   const location = useLocation()
@@ -239,7 +260,7 @@ export function AnalyticsConsole({
     // both the recent sidebar AND the history used for date-slug resolution —
     // previously two separate fetches to the same /channels/{login}/streams
     // endpoint (limit 20 + limit 100).
-    queryFn: () => getAnalyticsStreams(channelLogin, 100),
+    queryFn: () => getAnalyticsStreams(channelLogin, STREAMS_LIST_LIMIT),
     enabled: Boolean(channelLogin),
     staleTime: 30_000,
     refetchInterval: isLiveRoute ? 30_000 : false,
@@ -1284,6 +1305,19 @@ export function AnalyticsConsole({
     streamsQuery.data?.items?.[0]?.title,
     `${channelLogin} / ${getLocalDateString(stream?.startedAt) || 'session'}`,
       ])
+  const liveStream = findOpenLiveStream(sidebarStreams)
+  const channelHeadline = renderChannelHeadline && channelLogin && !channelNotRecorded
+    ? renderChannelHeadline({
+      login: channelLogin,
+      displayName: stream?.displayName || sidebarStreams[0]?.displayName || channelLogin,
+      live: liveStream
+        ? { streamId: liveStream.streamId, category: liveStream.category, href: buildSessionPath(channelLogin, analyticsStreamPathSlug(liveStream, sidebarStreams)) }
+        : null,
+      viewingLive: Boolean(liveStream && (isLiveRoute || liveStream.streamId === targetQueryStreamId)),
+      broadcasts: streamsQuery.data ? sidebarStreams.length : null,
+      broadcastsCapped: (streamsQuery.data?.items.length ?? 0) >= STREAMS_LIST_LIMIT,
+    })
+    : null
   // Expand (B2, 2026-10-21) lays the page out as Focus chart does: the side columns fold under the chart
   const focusLayout = chartFocused || chartExpanded
   const consoleGridClassName = focusLayout
@@ -1316,14 +1350,16 @@ export function AnalyticsConsole({
         <header data-session-header className="ssp-head flex flex-col gap-3 border-b border-white/[0.07] pb-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 flex-1">
             {/* d3-v2 session-original: no badge row; the hub and channel links are
-                the page's breadcrumb, the live state and data quality are meta items. */}
-            <h1 className="ssp-h1 line-clamp-2 text-2xl font-black leading-[1.08] text-white [overflow-wrap:anywhere] lg:text-[32px]" title={headerTitle}>
+                the page's breadcrumb, the live state and data quality are meta items.
+                session-who W1: a host headline (the channel) leads, and the title is the second line. */}
+            {channelHeadline}
+            <h1 className={`ssp-h1${channelHeadline ? ' ssp-h1--sub' : ''} line-clamp-2 text-2xl font-black leading-[1.08] text-white [overflow-wrap:anywhere] lg:text-[32px]`} title={headerTitle}>
               {headerTitle}
             </h1>
             {channelNotRecorded ? null : (
               <div className="ssp-meta-w" data-session-meta data-session-meta-pending={sessionReadPending || undefined}>
                 <div className="ssp-meta">
-                  {stream?.displayName ? <span className="mi">{stream.displayName}</span> : null}
+                  {stream?.displayName && !channelHeadline ? <span className="mi">{stream.displayName}</span> : null}
                   {stream?.category ? <span className="mi">{stream.category}</span> : null}
                   <SessionLifecycleMeta
                     isLiveRoute={isLiveRoute}

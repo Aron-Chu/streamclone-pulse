@@ -9,6 +9,7 @@ import '@streampulse/analytics-console/session-signal-tape.css'
 import { setupStreamcloneAnalyticsApi, usesLocalAnalyticsBackend } from '../../lib/streamcloneAnalytics'
 import { HubBackendSourceBanner } from '../../ui/components/analytics/HubBackendSourceBanner'
 import { ChannelHubStatusShell } from '../../ui/components/analytics/ChannelHubStatusShell'
+import { SessionChannelHeadline } from '../../ui/components/analytics/SessionChannelHeadline'
 import { useAnalyticsMotion } from '../../ui/motion/useAnalyticsMotion'
 import '../../ui/analytics-tailwind.css'
 import '../../ui/components/analytics/analytics-console.css'
@@ -79,6 +80,7 @@ export default function ConsoleChannelView() {
             const moment = fromHubMoment({ ...selection, label: selection.label || 'Saved stream minute' })
             return moment ? <div className="broadcast-save"><SaveMomentButton moment={moment} contextLabel="selected minute" /><Link to="/analytics/moments?view=saved">View saved moments →</Link></div> : null
           }}
+          renderChannelHeadline={headline => <SessionChannelHeadline headline={headline} />}
         />
       </div>
     </ChannelHubStatusShell>
