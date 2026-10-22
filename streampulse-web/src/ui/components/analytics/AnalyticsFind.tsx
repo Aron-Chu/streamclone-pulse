@@ -73,6 +73,12 @@ export function AnalyticsFind() {
           className="hv5-layer hub-d3-layer analytics-find-pal"
           aria-label="Search a Twitch channel"
           onClose={() => setOpen(false)}
+          // One Escape closes the window, before the search's own Escape (which only folds its list).
+          onKeyDownCapture={(event) => {
+            if (event.key !== 'Escape') return
+            event.preventDefault()
+            setOpen(false)
+          }}
           onClick={(event) => {
             if (event.target === event.currentTarget) setOpen(false)
           }}

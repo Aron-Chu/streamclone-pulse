@@ -29,4 +29,9 @@ describe('findOpenLiveStream (session-who W1 "Live now")', () => {
     expect(findOpenLiveStream([stream({ lifecycleState: 'confirmed_ended' })], now)).toBeUndefined()
     expect(findOpenLiveStream([stream({ lifecycleState: 'confirmed_live', startedAt: hoursAgo(60) })], now)?.streamId).toBe('s')
   })
+
+  it('reads "unknown" (the portal fills it in when the backend sends none) as no verdict', () => {
+    expect(findOpenLiveStream([stream({ lifecycleState: 'unknown' })], now)?.streamId).toBe('s')
+    expect(findOpenLiveStream([stream({ lifecycleState: 'unknown', startedAt: hoursAgo(49) })], now)).toBeUndefined()
+  })
 })
