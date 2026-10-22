@@ -31,12 +31,17 @@
 .lsg__sticky {
   /* Native sticky — `.sp-landing` uses `overflow-x: clip`, which is not a
      scroll container, so this pins against the viewport and stays exactly in
-     step with scroll. (A JS-written transform lands a frame late and drifts.) */
+     step with scroll. (A JS-written transform lands a frame late and drifts.)
+     It pins below the site's sticky header (`--lsg-head`, measured in JS). */
   position: sticky;
-  top: 0;
-  min-height: 100vh;
+  top: var(--lsg-head, 0px);
+  min-height: calc(100vh - var(--lsg-head, 0px));
   display: flex;
   align-items: center;
+}
+/* Short windows: the pinned stage is drawn smaller so all of it fits. */
+.lsg__sticky > .lsg__grid {
+  zoom: var(--lsg-fit, 1);
 }
 .lsg__grid {
   display: grid;
@@ -901,6 +906,37 @@
 .lsg[data-static] .lsg__step .lsg__step-rail::before {
   border-color: var(--tone);
   background: var(--tone);
+}
+
+/* ---- Play mode: scrolls with the page, plays once by itself -------------- */
+.lsg[data-mode='play'] .lsg__scene {
+  height: auto;
+}
+.lsg[data-mode='play'] .lsg__sticky {
+  position: static;
+  min-height: 0;
+}
+.lsg__again {
+  /* Hangs below the panel so it never resizes the stage or its deck. */
+  position: absolute;
+  top: calc(100% + 0.75rem);
+  right: 0;
+  padding: 0.4rem 0.85rem;
+  border: 1px solid hsl(var(--sc-border));
+  border-radius: 999px;
+  background: hsl(var(--sc-card) / 0.6);
+  color: hsl(var(--sc-muted-foreground));
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: opacity 0.3s ease, color 0.15s ease;
+}
+.lsg__again:hover {
+  color: hsl(var(--sc-foreground));
+}
+.lsg__again:disabled {
+  opacity: 0;
+  cursor: default;
 }
 
 @media (prefers-reduced-motion: reduce) {

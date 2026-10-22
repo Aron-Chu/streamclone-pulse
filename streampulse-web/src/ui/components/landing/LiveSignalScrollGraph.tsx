@@ -273,7 +273,17 @@ const fmtInt = (n: number) => n.toLocaleString('en-US')
 
 const clamp01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x)
 
-export function LiveSignalScrollGraph(_props: { hub?: PublicHub | null } = {}) {
+/** How long the replay takes when it plays by itself. */
+const PLAY_MS = 7000
+
+/**
+ * `scroll` (the old landing page): the stage pins and scrolling drives the replay.
+ * `play`: the stage scrolls with the page and the replay plays once by itself when
+ * it comes on screen, with a button to play it again.
+ */
+export type LiveSignalMode = 'scroll' | 'play'
+
+export function LiveSignalScrollGraph({ mode = 'scroll' }: { hub?: PublicHub | null; mode?: LiveSignalMode } = {}) {
   // Landing replay is always the deterministic illustrative demo — never mix live
   // hub aggregates into a surface labeled "not live backend data."
   const model = useMemo(() => buildDemoLiveSignalModel(), [])
@@ -282,6 +292,8 @@ export function LiveSignalScrollGraph(_props: { hub?: PublicHub | null } = {}) {
 
   const rootRef = useRef<HTMLDivElement | null>(null)
   const sceneRef = useRef<HTMLDivElement | null>(null)
+  const gridRef = useRef<HTMLDivElement | null>(null)
+  const panelRef = useRef<HTMLElement | null>(null)
   const viewersRef = useRef<HTMLElement | null>(null)
   const chatRef = useRef<HTMLElement | null>(null)
   const emotesRef = useRef<HTMLElement | null>(null)
@@ -290,34 +302,61 @@ export function LiveSignalScrollGraph(_props: { hub?: PublicHub | null } = {}) {
   // `animate` is false until a motion-allowed browser mounts the component, so
   // SSR / no-JS / reduced-motion render the static final state (data-static).
   const [animate, setAnimate] = useState(false)
+  // Play mode: bumped by "Play again"; `played` shows that button once a run ends.
+  const [runs, setRuns] = useState(0)
+  const [played, setPlayed] = useState(false)
 
   useEffect(() => {
     if (typeof IntersectionObserver === 'undefined' || typeof requestAnimationFrame === 'undefined') return
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)')
+    // A pinned stage needs some width; one that plays by itself scrolls like the page.
     const narrow = window.matchMedia('(max-width: 560px)')
-    const short = window.matchMedia('(max-height: 699px)')
-    const update = () => setAnimate(!reduced.matches && !narrow.matches && !short.matches)
+    const update = () => setAnimate(!reduced.matches && (mode === 'play' || !narrow.matches))
     update()
     reduced.addEventListener('change', update)
     narrow.addEventListener('change', update)
-    short.addEventListener('change', update)
     return () => {
       reduced.removeEventListener('change', update)
       narrow.removeEventListener('change', update)
-      short.removeEventListener('change', update)
     }
-  }, [])
+  }, [mode])
+
+  // A pinned stage taller than the window can't be seen whole, so in a short
+  // window it's drawn smaller to fit below the site's sticky header.
+  useEffect(() => {
+    if (!animate || mode !== 'scroll') return
+    const root = rootRef.current
+    const grid = gridRef.current
+    if (!root || !grid) return
+    const fit = () => {
+      const head = document.querySelector('.app-nav')?.getBoundingClientRect().height ?? 0
+      root.style.setProperty('--lsg-head', `${Math.round(head)}px`)
+      root.style.removeProperty('--lsg-fit')
+      const room = window.innerHeight - head
+      const natural = grid.offsetHeight
+      if (natural > room) root.style.setProperty('--lsg-fit', Math.max(0.55, room / natural).toFixed(3))
+    }
+    fit()
+    window.addEventListener('resize', fit, { passive: true })
+    return () => {
+      window.removeEventListener('resize', fit)
+      root.style.removeProperty('--lsg-fit')
+      root.style.removeProperty('--lsg-head')
+    }
+  }, [animate, mode])
 
   // Scroll engine — only attached in animated mode. The shared scroll-scene
   // engine (same one the extension tour uses) pins the stage with an exact GPU
   // transform and hands us a *smoothed* progress `p`, which we turn into the
   // reveal vars the stylesheet consumes. Smoothing is what makes wheel-step
   // scrolling read as one fluid sweep instead of discrete jumps.
+  // In play mode the same progress comes from a clock instead of the scrollbar.
   useEffect(() => {
     if (!animate) return
     const root = rootRef.current
     const scene = sceneRef.current
-    if (!root || !scene) return
+    const panel = panelRef.current
+    if (!root || !scene || !panel) return
 
     // Cache last-written text so counters only touch the DOM (and trigger
     // layout) when a rounded value actually changes.
@@ -326,9 +365,7 @@ export function LiveSignalScrollGraph(_props: { hub?: PublicHub | null } = {}) {
     let lastEmotes = ''
     let lastCap = ''
 
-    const stop = startScrollScene({
-      scene,
-      onProgress: (p, _raw) => {
+    const apply = (p: number) => {
         const wipe = clamp01(p / 0.72) // left→right playhead reveal
         const sigv = clamp01(p / 0.12) // viewers baseline + counters
         const sigc = clamp01((p - 0.14) / 0.1) // chat bars layer
@@ -372,8 +409,34 @@ export function LiveSignalScrollGraph(_props: { hub?: PublicHub | null } = {}) {
           capRef.current.textContent = capText
           lastCap = capText
         }
-      },
-    })
+    }
+
+    let stop: () => void
+    if (mode === 'scroll') {
+      stop = startScrollScene({ scene, onProgress: (p) => apply(p) })
+    } else {
+      // Starts empty, plays once when at least half the panel is on screen.
+      let raf = 0
+      let start = 0
+      apply(0)
+      const frame = (time: number) => {
+        if (!start) start = time
+        const t = clamp01((time - start) / PLAY_MS)
+        apply(t)
+        if (t < 1) raf = requestAnimationFrame(frame)
+        else setPlayed(true)
+      }
+      const seen = new IntersectionObserver((entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return
+        seen.disconnect()
+        raf = requestAnimationFrame(frame)
+      }, { threshold: 0.5 })
+      seen.observe(panel)
+      stop = () => {
+        seen.disconnect()
+        if (raf) cancelAnimationFrame(raf)
+      }
+    }
     return () => {
       stop()
       for (const name of ['p', 'wipe', 'sigv', 'sigc', 'emo', 'sv', 'emotes', 'moments', 'channels']) {
@@ -381,17 +444,18 @@ export function LiveSignalScrollGraph(_props: { hub?: PublicHub | null } = {}) {
       }
       if (capRef.current) capRef.current.textContent = 'Illustrative analytics replay'
     }
-  }, [animate, kpiViewers, kpiChat, kpiEmotes])
+  }, [animate, mode, runs, kpiViewers, kpiChat, kpiEmotes])
   return (
     <div
       className="lsg"
       ref={rootRef}
       data-beat="5"
+      data-mode={mode}
       {...(animate ? {} : { 'data-static': '' })}
     >
       <div className="lsg__scene" ref={sceneRef}>
         <div className="lsg__sticky">
-          <div className="lsg__grid">
+          <div className="lsg__grid" ref={gridRef}>
             {/* Left: sticky narrative steps (copy lives in BEATS) */}
             <aside className="lsg__narrative" aria-hidden="true">
               <span className="lsg__eyebrow">Illustrative analytics replay</span>
@@ -416,6 +480,7 @@ export function LiveSignalScrollGraph(_props: { hub?: PublicHub | null } = {}) {
 
               <figure
                 className="lsg__panel"
+                ref={panelRef}
                 role="img"
                 aria-label="Illustrative StreamPulse signal map — sample chat-per-minute bars, emote rates, viewer baseline, peak markers, and tracked channels. Not live backend data."
               >
@@ -607,6 +672,19 @@ export function LiveSignalScrollGraph(_props: { hub?: PublicHub | null } = {}) {
                     ))}
                   </div>
                 </div>              </figure>
+              {mode === 'play' && animate ? (
+                <button
+                  type="button"
+                  className="lsg__again"
+                  disabled={!played}
+                  onClick={() => {
+                    setPlayed(false)
+                    setRuns((n) => n + 1)
+                  }}
+                >
+                  ↻ Play again
+                </button>
+              ) : null}
             </div>
           </div>
         </div>

@@ -91,7 +91,9 @@
 .xp-demo__placeholder {
   display: grid;
   place-items: center;
-  height: 660px;
+  width: min(100%, 340px);
+  height: clamp(480px, calc(100vh - 140px), 660px);
+  margin: 0 auto;
   padding: 24px;
   border: 1px dashed var(--border);
   border-radius: var(--radius-panel);
@@ -213,9 +215,6 @@
 
 @media (max-width: 960px) {
   .xp-features { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-@media (max-width: 860px) {
-  .xp-demo__placeholder { height: 520px; }
 }
 @media (max-width: 720px) {
   .xp { gap: 44px; }
