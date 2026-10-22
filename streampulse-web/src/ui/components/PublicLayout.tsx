@@ -84,11 +84,14 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
             Docs
           </NavLink>
           {discord ? (
-            <a href={discord} target="_blank" rel="noopener noreferrer" className="app-nav__discord" aria-label={DISCORD_LABEL}>
-              <DiscordMark size={16} />Discord
+            <a href={discord} target="_blank" rel="noopener noreferrer" className="app-nav__discord" aria-label={DISCORD_LABEL} title="Discord">
+              <DiscordMark size={17} />
             </a>
           ) : null}
-          <ChromeInstallCta className="app-nav__install" data-cta="chrome-install-public-nav">Add to Chrome</ChromeInstallCta>
+          {/* The one filled button in the bar (Aron's H2 pick, 10-21): Discord is an icon beside it. */}
+          <ChromeInstallCta className="app-nav__install" data-cta="chrome-install-public-nav">
+            <span className="chrome-mark" aria-hidden="true" />Add to Chrome
+          </ChromeInstallCta>
         </nav>
       </header>
       <main className="app-main" id="public-main" tabIndex={-1}><PageErrorBoundary>{children}</PageErrorBoundary></main>

@@ -179,7 +179,8 @@ describe('feedback and Discord beyond the landing page', () => {
     const header = document.querySelector('header.app-nav') as HTMLElement
     const button = header.querySelector<HTMLAnchorElement>('a.app-nav__discord')!
     expect(button.getAttribute('href')).toBe(SHORT_INVITE)
-    expect(button.textContent).toBe('Discord')
+    // An icon beside Add to Chrome (H2, 10-21): its name is the aria-label.
+    expect(button.textContent).toBe('')
     expect(button.target).toBe('_blank')
     expect(button.getAttribute('aria-label')).toBe('Join the StreamPulse Discord (opens in a new tab)')
     // The header button sits just before the install button, as on the landing.

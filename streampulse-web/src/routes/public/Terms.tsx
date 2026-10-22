@@ -6,6 +6,7 @@ import { PrelaunchNotice } from './PrelaunchNotice'
 import { SupporterPerkItems, supporterOnlyYou } from '../../ui/components/SupporterPerks'
 import { TermsSeenInChatBullets } from '../../ui/components/SupporterChatBadgeCopy'
 import { supporterChatBadgesEnabled } from '../../lib/supporterChatBadgesFlag'
+import { SUPPORTER_PRICE_DISPLAY, SUPPORTER_PRICE_MONTHLY } from '../../lib/supporterOffer'
 
 /**
  * Terms of use for the portal, the browser extension and the Supporter
@@ -41,7 +42,7 @@ export default function Terms() {
           <h2 className="!mt-0">Summary</h2>
           <p className="text-zinc-300">
             StreamPulse is a free Twitch analytics site and browser extension. Pulse Supporter is an
-            optional subscription of US$4.99 per month that funds development and adds cosmetics — it
+            optional subscription of {SUPPORTER_PRICE_MONTHLY} that funds development and adds cosmetics — it
             does not unlock analytics. Paid sign-ups are not open yet. Once they are, you will be able
             to cancel at any time and keep access until the end of the period you paid for. The
             service is provided as-is, with no uptime guarantee.
@@ -106,7 +107,7 @@ export default function Terms() {
         </p>
         <ul>
           <li>
-            <strong>Price:</strong> US$4.99 per month, charged in US dollars. Taxes are handled as
+            <strong>Price:</strong> {SUPPORTER_PRICE_DISPLAY}. Taxes are handled as
             stated at checkout, and Stripe checkout shows the total before you pay.
           </li>
           <li><strong>Renewal:</strong> it renews automatically each month until you cancel.</li>

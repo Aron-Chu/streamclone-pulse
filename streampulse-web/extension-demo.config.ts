@@ -36,6 +36,8 @@ export function extensionDemoAliases(pulseRoot: string): Record<string, string> 
   return {
     '@pulse-ext/content': resolve(pulseRoot, 'src/content'),
     '@pulse-ext/shared': resolve(pulseRoot, 'src/shared'),
+    // The /supporter preview draws with the extension's own paint, crest and rain code.
+    '@pulse-ext/supporter': resolve(pulseRoot, 'src/supporter'),
     '@pulse-ext/vod': resolve(pulseRoot, 'src/vod'),
   }
 }

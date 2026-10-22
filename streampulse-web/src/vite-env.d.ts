@@ -4,6 +4,7 @@ interface ImportMetaEnv {
   readonly VITE_BACKEND_URL: string
   readonly VITE_PUBLIC_HUB_POLL_MS?: string
   readonly VITE_PORTAL_VERSION?: string
+  readonly VITE_SANDBOX_SITE?: string
   readonly VITE_SENTRY_DSN?: string
   readonly VITE_POSTHOG_PROJECT_TOKEN?: string
   readonly VITE_REPLAYFORGE_UI_ORIGIN?: string

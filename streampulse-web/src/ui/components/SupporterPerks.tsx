@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import perks from '../../../../src/shared/supporter-perks.json'
 import { supporterChatBadgesEnabled } from '../../lib/supporterChatBadgesFlag'
 
@@ -24,16 +25,22 @@ export function supporterPerkNames(): string[] {
   return supporterChatBadgesEnabled() ? [...perks.names, perks.seenInChat.name] : [...perks.names]
 }
 
-export function SupporterPerkItems() {
+/**
+ * `picture` draws a perk's picture at the top of its item (/supporter). It must
+ * add no text to the item, so each item's words stay the shared list's.
+ */
+export function SupporterPerkItems({ picture }: { picture?: (name: string) => ReactNode } = {}) {
   return (
     <>
       {perks.names.map(name => (
         <li key={name} data-perk-name={name}>
+          {picture?.(name)}
           <strong>{name}</strong>: {perks.details[name as keyof typeof perks.details]}
         </li>
       ))}
       {supporterChatBadgesEnabled() ? (
         <li key={perks.seenInChat.name} data-perk-name={perks.seenInChat.name}>
+          {picture?.(perks.seenInChat.name)}
           <strong>{perks.seenInChat.name}</strong>: {perks.seenInChat.detail}
         </li>
       ) : null}

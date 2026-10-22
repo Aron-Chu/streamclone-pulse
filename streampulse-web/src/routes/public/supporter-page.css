@@ -1,0 +1,148 @@
+/* /supporter on about one screen (Aron's S1 pick, 2026-10-21): a hero with the
+   price, the one "not open yet" note and a live preview; perk cards with
+   pictures; the rest of the words in three folds. */
+
+.sp-page { padding: 1.75rem 2rem 1.5rem; }
+
+.sp-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  gap: 1.75rem;
+  align-items: center;
+}
+.sp-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 6px;
+  background: rgba(139, 92, 246, 0.1);
+  padding: 0.25rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #c4b5fd;
+}
+.sp-badge > span { width: 6px; height: 6px; border-radius: 50%; background: #a78bfa; }
+.public-document.sp-page h1 { margin: 0.6rem 0 0; font-size: 2.1rem; font-weight: 900; line-height: 1.15; }
+.public-document .sp-hero__sub { margin: 0.5rem 0 0; color: #a1a1aa; font-size: 0.92rem; line-height: 1.5; }
+
+.sp-price {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.75rem;
+  margin-top: 1rem;
+}
+.sp-price strong { color: #fff; font-size: 1.1rem; font-weight: 800; }
+.sp-price span { color: #a1a1aa; font-size: 0.85rem; }
+.sp-price .btn { margin-left: 0.25rem; }
+
+.sp-notice {
+  margin-top: 0.9rem;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  border-radius: 10px;
+  background: rgba(251, 191, 36, 0.06);
+  padding: 0.65rem 0.85rem;
+}
+.public-document .sp-notice p { margin: 0; color: #fde68a; font-size: 0.85rem; line-height: 1.5; }
+.public-document .sp-notice .sp-notice__more { margin-top: 0.3rem; color: #d4d4d8; font-size: 0.78rem; }
+.public-document .sp-notice strong { color: #fef3c7; }
+
+/* The live preview: the extension's panel header, and buttons to try it. */
+.sp-look { display: grid; gap: 0.6rem; min-width: 0; }
+.sp-look--waiting { min-height: 190px; border: 1px solid var(--border); border-radius: 12px; background: #0b0b0f; }
+.sp-look__stage { min-height: 150px; }
+.sp-look__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: #a1a1aa;
+}
+.sp-look__label { margin: 0 0.15rem 0 0.4rem; font-weight: 600; }
+.sp-look__label:first-child { margin-left: 0; }
+.sp-look__controls button {
+  min-height: 32px;
+  padding: 0 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: transparent;
+  color: #d4d4d8;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sp-look__controls button:hover { border-color: #52525b; color: #fff; }
+.sp-look__controls button[aria-pressed="true"] { border-color: #a78bfa; background: rgba(139, 92, 246, 0.16); color: #fff; }
+
+/* Perk cards: the picture on top, the shared perk words under it. */
+.public-document h2.sp-perks__title { margin: 1.5rem 0 0.6rem; font-size: 1rem; }
+.sp-perks {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.public-document .sp-perks li {
+  margin: 0;
+  max-width: none;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 0 0.85rem 0.75rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: #a1a1aa;
+}
+.public-document .sp-perks li > strong { color: #fff; }
+.sp-perk__pic { height: 96px; margin: 0 -0.85rem 0.65rem; background: #0b0b0f; }
+.public-document .sp-onlyyou { margin: 0.7rem 0 0; color: #a1a1aa; font-size: 0.85rem; max-width: none; }
+
+/* The folds: every other word on the page, unchanged. */
+.sp-fold { margin-top: 0.6rem; border: 1px solid var(--border); border-radius: 10px; background: rgba(0, 0, 0, 0.18); }
+.sp-fold:first-of-type { margin-top: 1.1rem; }
+.sp-fold > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0.4rem 0.9rem;
+  cursor: pointer;
+  list-style: none;
+}
+.sp-fold > summary::-webkit-details-marker { display: none; }
+.sp-fold > summary::before { content: "▸"; color: #71717a; font-size: 0.8rem; transition: transform 0.15s; }
+.sp-fold[open] > summary::before { transform: rotate(90deg); }
+.public-document .sp-fold > summary h2 { margin: 0; font-size: 0.92rem; font-weight: 650; color: #e4e4e7; }
+.sp-fold > :not(summary) { margin-inline: 0.9rem; }
+.sp-fold > :last-child { margin-bottom: 0.9rem; }
+.public-document .sp-fold h3 { margin: 0.9rem 0.9rem 0.3rem; font-size: 0.9rem; }
+.public-document .sp-fold p { font-size: 0.88rem; }
+
+.sp-terms {
+  display: grid;
+  grid-template-columns: 9rem minmax(0, 1fr);
+  gap: 0.45rem 1.5rem;
+  margin-top: 0.4rem;
+  font-size: 0.86rem;
+}
+.sp-terms dt { color: #a1a1aa; font-weight: 700; }
+.sp-terms dd { margin: 0; color: #e4e4e7; }
+.sp-terms .sp-terms__price { color: #fff; font-weight: 700; }
+
+@media (max-width: 960px) {
+  .sp-perks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  .sp-page { padding: 1.1rem; }
+  .sp-hero { grid-template-columns: minmax(0, 1fr); gap: 1.1rem; }
+  .public-document.sp-page h1 { font-size: 1.7rem; }
+  .sp-terms { grid-template-columns: minmax(0, 1fr); gap: 0.15rem; }
+  .sp-terms dd { margin-bottom: 0.4rem; }
+}
+@media (max-width: 480px) {
+  .sp-perks { grid-template-columns: minmax(0, 1fr); }
+}

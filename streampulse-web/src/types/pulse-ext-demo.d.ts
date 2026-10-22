@@ -89,3 +89,40 @@ declare module '@pulse-ext/shared/storage.ts' {
   export function getThemePreference(): Promise<ThemePreference>
   export function themeFromStorageChange(changes: Record<string, { newValue?: unknown }>): ThemePreference | undefined
 }
+
+// The /supporter preview (src/routes/public/SupporterLook.tsx).
+declare module '@pulse-ext/shared/supporterPaint.ts' {
+  export type SupporterTenure = 'new' | '3m' | '6m' | '12m' | '24m'
+  export interface SupporterPaintStyle { wave: 'smooth' | 'ripple' | 'chrome' | 'aurora'; sheen: 'sweep' | 'glint' | 'pulse' | 'none' }
+  export const DEFAULT_SUPPORTER_PAINT: SupporterPaintStyle
+}
+
+declare module '@pulse-ext/supporter/kit.ts' {
+  import type { SupporterTenure } from '@pulse-ext/shared/supporterPaint.ts'
+  export type KitFinish = 'glass' | 'etched' | 'halo'
+  export const SAMPLE_KIT: { name: string; finish: KitFinish; tenure: SupporterTenure }
+  export const FINISHES: Record<KitFinish, { label: string }>
+  export const TENURES: ReadonlyArray<{ id: SupporterTenure; label: string; short: string; title: string }>
+  export function finishVars(finish: KitFinish | null): Record<'--spk-fin' | '--spk-fin-rgb' | '--spk-fin-core', string>
+}
+
+declare module '@pulse-ext/ui/StreamPulseTitleBlock.tsx' {
+  import type { SupporterPaintStyle, SupporterTenure } from '@pulse-ext/shared/supporterPaint.ts'
+  export function StreamPulseTitleBlock(props: {
+    title?: string
+    finish?: 'glass' | 'etched' | 'halo' | null
+    tenure?: SupporterTenure
+    paint?: SupporterPaintStyle
+    statusLabel: string
+    statusTone?: 'idle' | 'live' | 'replay'
+    lead?: string
+  }): import('react').JSX.Element
+}
+
+declare module '@pulse-ext/ui/PulseBanner.tsx' {
+  export function PulseBannerBackdrop(props: {
+    value: { mode: 'off' | 'still' | 'rain'; intensity: number; title: string }
+    perks: boolean
+    paused?: boolean
+  }): import('react').JSX.Element
+}

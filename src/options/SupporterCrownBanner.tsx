@@ -4,12 +4,13 @@ import { mountEmotePile } from '../supporter/emotePile.ts'
 import { FINISHES, SAMPLE_KIT, TENURES, finishVars, kitEmoteSrc, tenureIndex, type Kit } from '../supporter/kit.ts'
 import { PeakMark } from '../ui/PeakMark.tsx'
 import { names as PERK_NAMES } from '../shared/supporter-perks.json'
+import { price as PRICE } from '../shared/supporter-offer.json'
 import { useSupporterAppearanceDetails } from '../ui/useSupporterAppearance.ts'
 
 /** How long the banner waits for the membership answer before showing the sample pile. */
 const SAMPLE_AFTER_MS = 1200
-/** USD only at launch, matching the public /supporter page. */
-const PRICE_SHORT = 'US$4.99/mo'
+/** USD only at launch, from the one offer file the public /supporter page reads too. */
+const PRICE_SHORT = `${PRICE}/mo`
 
 /**
  * The full-settings Supporter banner, "Crown, staged" (direction B of the

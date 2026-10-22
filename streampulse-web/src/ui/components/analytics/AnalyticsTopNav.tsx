@@ -123,7 +123,9 @@ export function AnalyticsTopNav({
       ) : <AnalyticsFind />}
 
       <div className="analytics-topnav__actions" aria-label="Analytics utilities">
-        <ChromeInstallCta className="analytics-topnav__install" data-cta="chrome-install-analytics">Add to Chrome</ChromeInstallCta>
+        <ChromeInstallCta className="analytics-topnav__install" data-cta="chrome-install-analytics">
+          <span className="chrome-mark" aria-hidden="true" />Add to Chrome
+        </ChromeInstallCta>
         {status ? (
           <div
             className={`analytics-topnav__status analytics-topnav__status--${status.tone ?? 'muted'}`}

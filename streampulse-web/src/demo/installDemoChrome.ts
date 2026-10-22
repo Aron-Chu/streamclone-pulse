@@ -29,8 +29,11 @@ export function bindDemoPageHooks(next: DemoPageHooks): () => void {
 /** The tape as the worker hands it to the panel (the same parser the HTTP path ends in). */
 export const demoVodPulse = parseExtensionVodPulseResponse(tape as unknown as Record<string, unknown>)
 
-/** The version of the panel code on this page (the extension's own release notes). */
-export const demoExtensionVersion = String(releaseNotes.currentVersion)
+/** The version people can install (the latest released entry in the extension's own release notes). */
+export const demoExtensionVersion = String(
+  (releaseNotes.releases as Array<{ version: string; status: string }>).find(release => release.status === 'released')?.version ??
+    releaseNotes.currentVersion,
+)
 
 export const demoResponder = createDemoResponder({
   vodPulse: demoVodPulse as unknown as DemoVodPulse,

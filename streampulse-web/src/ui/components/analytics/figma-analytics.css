@@ -70,7 +70,7 @@
   /* 44px links + 0.35rem: a 56px bar instead of 66px on every analytics
      page wider than 720px (the <=720px block below sets its own padding). */
   padding: 0.35rem 1.25rem;
-  background: color-mix(in srgb, var(--fma-bg) 86%, transparent);
+  background: color-mix(in srgb, var(--fma-bg) 96%, transparent);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--fma-border);
 }
@@ -278,13 +278,15 @@
 .analytics-topnav__install {
   display: inline-flex;
   align-items: center;
+  gap: 0.45rem;
   min-height: 44px;
   white-space: nowrap;
   font-size: 0.8rem;
-  font-weight: 650;
-  color: var(--text-primary, #f4f4f5);
+  font-weight: 700;
+  color: #0b0b0f;
   text-decoration: none;
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.14));
+  background: #fff;
+  border: 1px solid #fff;
   border-radius: 0.5rem;
   padding: 0.35rem 0.65rem;
   flex: 0 1 auto;
@@ -292,6 +294,11 @@
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.analytics-topnav__install:hover {
+  color: #0b0b0f;
+  background: #e4e4e7;
+  border-color: #e4e4e7;
 }
 
 .figma-analytics__center--themed {
@@ -9032,3 +9039,8 @@ button.hub-live-wire__chip {
     grid-template-columns: 1fr;
   }
 }
+
+/* The skip-link target: for screen readers, shown only when focused. Here, not in discovery-layout.css,
+   so every analytics page (the hub included) hides it. */
+.analytics-focus-target { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.analytics-focus-target:focus { position: static; width: auto; height: auto; clip-path: none; padding: .5rem; color: var(--fma-accent-text); }

@@ -27,6 +27,7 @@ import { PulseSectionCard } from '../ui/PulseSectionCard.tsx'
 import { SupporterCard, type CardIdentity, type CardLook, type CardStatus } from './SupporterCard.tsx'
 import { TwitchGlitch, twitchOutcomeMessage } from './TwitchAccountConnection.tsx'
 import { usePortalOrigin } from './usePortalOrigin.ts'
+import OFFER from '../shared/supporter-offer.json'
 
 /**
  * Account and Supporter membership as one journey, drawn as the Account &
@@ -52,8 +53,8 @@ import { usePortalOrigin } from './usePortalOrigin.ts'
  * entitlement locally: paid access appears only after the server projects it.
  */
 
-// USD only at launch, matching the public /supporter page.
-const PRICE_DISPLAY = 'US$4.99 / month'
+// USD only at launch, from the one offer file the public /supporter page reads too.
+const PRICE_DISPLAY = `${OFFER.price} / ${OFFER.period}`
 /** Reads after a purchase or payment wait stop after this long; focus still refreshes. */
 export const MEMBERSHIP_WATCH_MS = 15 * 60_000
 /** Backoff for those reads while the page is visible. */

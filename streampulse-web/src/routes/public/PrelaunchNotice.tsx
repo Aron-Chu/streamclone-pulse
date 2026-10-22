@@ -1,6 +1,7 @@
 /**
- * Pre-launch statement shared by the Terms, Refunds, Privacy and Supporter
- * pages, so the four cannot drift apart.
+ * Pre-launch statement shared by the Terms, Refunds and Privacy pages, so they
+ * cannot drift apart. /supporter says it once in its hero, as the same opening
+ * sentence (S1 layout, 2026-10-21).
  *
  * Supporter sign-ups are closed. Nothing on these pages may read as if a membership
  * can be bought today, or as if one has already been sold. Remove this only

@@ -46,6 +46,11 @@ export function isEnvLocalBackendDefault(): boolean {
   return Boolean(envDefault && isLocalDevBackendUrl(envDefault))
 }
 
+/** The local sandbox site build reads its own API on purpose, so it shows no API-source banner. */
+export function isSandboxSiteBuild(): boolean {
+  return import.meta.env.VITE_SANDBOX_SITE === 'true'
+}
+
 export function isNonHostedBackend(url?: string): boolean {
   return resolveBackendSource(url) !== 'hosted'
 }

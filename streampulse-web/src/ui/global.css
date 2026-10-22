@@ -102,7 +102,8 @@ select {
   gap: 1.5rem;
   padding: 0.85rem 1.5rem;
   border-bottom: 1px solid var(--border);
-  background: rgba(9, 9, 11, 0.82);
+  /* Near solid: page headlines must not show through the links. */
+  background: rgba(9, 9, 11, 0.96);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
@@ -161,11 +162,11 @@ select {
   gap: 0.45rem;
   white-space: nowrap;
   font-size: 0.82rem;
-  font-weight: 600;
-  color: #fff;
+  font-weight: 700;
+  color: #0b0b0f;
   text-decoration: none;
-  background: rgba(139, 92, 246, 0.14);
-  border: 1px solid rgba(139, 92, 246, 0.35);
+  background: #fff;
+  border: 1px solid #fff;
   border-radius: var(--radius-button);
   padding: 0.38rem 0.8rem;
   margin-left: 0.5rem;
@@ -173,8 +174,27 @@ select {
 }
 
 .app-nav__install:hover {
-  background: rgba(139, 92, 246, 0.24);
-  border-color: rgba(139, 92, 246, 0.55);
+  color: #0b0b0f;
+  background: #e4e4e7;
+  border-color: #e4e4e7;
+}
+
+/* The Chrome mark on Add to Chrome buttons (top bars, hub hero). */
+.chrome-mark {
+  position: relative;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: conic-gradient(from 30deg, #ea4335 0 33.3%, #34a853 0 66.6%, #fbbc05 0);
+}
+.chrome-mark::after {
+  content: "";
+  position: absolute;
+  inset: 4.5px;
+  border-radius: 50%;
+  background: #4285f4;
+  box-shadow: 0 0 0 1.6px #fff;
 }
 
 /* Elevating Public Document Panel */
@@ -688,25 +708,22 @@ select {
   gap: 0.35rem;
 }
 
-/* Public header Discord button, styled like the landing header's (Blurple).
-   At Menu widths it collapses to a 44px mark beside Menu, as on the landing. */
+/* Public header Discord: a quiet icon beside Add to Chrome, which is the one
+   filled button (H2). At Menu widths it collapses to a 44px mark beside Menu. */
 .app-nav__discord {
   display: inline-flex;
   align-items: center;
-  gap: 0.42rem;
-  white-space: nowrap;
+  justify-content: center;
   margin-left: 0.5rem;
-  padding: 0.38rem 0.7rem 0.38rem 0.6rem;
-  border: 1px solid #5865f2;
+  padding: 0.38rem 0.5rem;
+  border: 1px solid var(--border);
   border-radius: var(--radius-button);
-  background: #5865f2;
-  color: #fff;
-  font-size: 0.82rem;
-  font-weight: 600;
+  background: transparent;
+  color: var(--text-muted);
   text-decoration: none;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
-.app-nav__discord:hover { border-color: #4752c4; background: #4752c4; color: #fff; }
+.app-nav__discord:hover { border-color: #5865f2; background: #5865f2; color: #fff; }
 .app-nav__discord + .app-nav__install { margin-left: 0; }
 .app-nav__discord-icon {
   display: none;

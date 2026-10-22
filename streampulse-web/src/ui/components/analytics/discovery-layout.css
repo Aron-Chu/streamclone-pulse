@@ -204,8 +204,6 @@
 .analytics-discovery-layout { display: block; }
 .analytics-discovery-layout__wire { padding: 0; border: 0; background: transparent; }
 .figma-analytics .figma-analytics__frame.figma-analytics__frame--with-right-rail { max-width: 2200px; }
-.analytics-focus-target { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-.analytics-focus-target:focus { position: static; width: auto; height: auto; clip-path: none; padding: .5rem; color: var(--fma-accent-text); }
 .figma-analytics__frame--with-right-rail .figma-analytics__right-rail {
   display: block; width: 100%; min-width: 0; max-width: none;
   margin: 0; padding: .85rem; border: 1px solid var(--fma-border);
