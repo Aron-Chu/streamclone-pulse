@@ -16,6 +16,7 @@ export function resolveBackendSource(url?: string): BackendSource {
 }
 
 export function backendSourceLabel(source: BackendSource): string {
+  if (source !== 'hosted' && isSandboxSiteBuild()) return 'Sandbox'
   switch (source) {
     case 'hosted':
       return 'Hosted API'

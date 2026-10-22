@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { AlertTriangle, ChevronDown, ChevronRight, Info, RefreshCw } from 'lucide-react'
 import type { HubCorpusPipeline } from '../../../lib/publicHub'
 import type { PublicHubLoadSource } from '../../../lib/publicHub'
-import { backendSourceCaption, resolveBackendSource } from '../../../lib/backendSource'
+import { backendSourceCaption, resolveBackendSource, isSandboxSiteBuild } from '../../../lib/backendSource'
 import type { ActivitySummary } from '../../../lib/hubActivitySummary'
 import './hub-public-audit.css'
 
@@ -108,7 +108,7 @@ export function HubDataHealthBanner({
 
   if (messages.length === 0) return null
 
-  const showBackendCaption = backendUrl && resolveBackendSource(backendUrl) !== 'hosted'
+  const showBackendCaption = backendUrl && resolveBackendSource(backendUrl) !== 'hosted' && !isSandboxSiteBuild()
   const caption = showBackendCaption ? backendSourceCaption(backendUrl) : null
   const primary = messages[0]!
   const extras = messages.slice(1)

@@ -469,7 +469,7 @@
   line-height: 18px;
   color: var(--sp-text-3);
 }
-.hub-v5 .hv5-hero-install {
+.hub-v5 .hv5-mast a.hv5-hero-install {
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -482,7 +482,7 @@
   white-space: nowrap;
   transition: background-color 0.15s;
 }
-.hub-v5 .hv5-hero-install:hover {
+.hub-v5 .hv5-mast a.hv5-hero-install:hover {
   text-decoration: none;
   background: #e4e4e7;
   color: #0b0b0f;
@@ -507,6 +507,7 @@
   max-width: 100%;
   margin-top: 16px;
 }
+.hub-v5 .hv5-mast .hv5-hero-get { margin-top: 14px; }
 .hub-v5 .hv5-mast .hv5-hero-try { margin-top: 16px; }
 .hv5-hero-tl {
   margin-right: 2px;
