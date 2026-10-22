@@ -39,7 +39,7 @@
   display: flex;
   align-items: center;
 }
-/* Short windows: the pinned stage is drawn smaller so all of it fits. */
+/* Short windows: the stage is drawn smaller so all of it fits. */
 .lsg__sticky > .lsg__grid {
   zoom: var(--lsg-fit, 1);
 }
