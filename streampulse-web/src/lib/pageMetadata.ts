@@ -25,7 +25,7 @@ function channelTitle(pathname: string): string | null {
 
 function resolveBasePageMetadata(pathname: string): PageMetadata {
   if (pathname.replace(/\/+$/, '') === '/account/restore') return { title: 'Restore Supporter — StreamPulse', description: 'Confirm a requested Supporter restore for your extension.', canonicalPath: '/account/restore', robots: 'noindex,nofollow' }
-  if (pathname.startsWith('/account/')) return { title: 'Your account — StreamPulse', description: 'Manage your StreamPulse account and connected extension.', canonicalPath: pathname.split(/[?#]/)[0], robots: 'noindex,nofollow' }
+  if (pathname.startsWith('/account/') || pathname.replace(/\/+$/, '') === '/account') return { title: 'Your account — StreamPulse', description: 'Manage your StreamPulse account and connected extension.', canonicalPath: pathname.split(/[?#]/)[0], robots: 'noindex,nofollow' }
   const normalizedPath = pathname !== '/' ? pathname.replace(/\/+$/, '') : pathname
 
   switch (normalizedPath) {
