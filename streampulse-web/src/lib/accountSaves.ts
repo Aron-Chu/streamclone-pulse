@@ -274,6 +274,8 @@ export function startAccountSaves(): void {
         clearSavedMoments()
         try { window.localStorage.removeItem('sp-moments-checked-saved') } catch { /* Nothing to clear. */ }
       }
+      // Viewed (viewedMoments.ts) never joins the account; it goes with this browser's other copies (V1).
+      try { window.localStorage.removeItem('sp-moments-viewed') } catch { /* Nothing to clear. */ }
       writeState(null)
       lastPull = Number.NEGATIVE_INFINITY
       publish({ status: 'idle', saves: [], pending: 0, toast: null })

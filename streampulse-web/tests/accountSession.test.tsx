@@ -148,3 +148,16 @@ describe('signing out', () => {
     expect(screen.getByTestId('session').textContent).toBe('signed_in')
   })
 })
+
+describe('signing out clears this browser’s copies', () => {
+  it('takes the Viewed list with it (V1)', async () => {
+    const { startAccountSaves } = await import('../src/lib/accountSaves')
+    startAccountSaves()
+    window.localStorage.setItem('sp-moments-viewed', '[]')
+    cookie = CSRF
+    render(<Probe />)
+    await flush()
+    await act(async () => { await signOutAccount() })
+    expect(window.localStorage.getItem('sp-moments-viewed')).toBeNull()
+  })
+})

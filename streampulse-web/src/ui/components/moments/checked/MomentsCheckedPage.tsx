@@ -7,11 +7,12 @@ import {
   momentsFeedIdParts, MOMENTS_WINDOW_MS, pollMomentsFeed, type MomentMetricKind, type MomentsFeedItem, type MomentsFeedSnapshot,
 } from '../../../../lib/momentsFeed'
 import {
-  actOf, ariaOf, avatarImage, boxArtImage, checkMoment, clk, fx, groupsOf, int, liveFrameImage, SORTS, sparkBars, STALE_MS, streamTime, streamWhere,
-  updatedText, when, type CheckedMoment,
+  actOf, ariaOf, avatarImage, boxArtImage, checkMoment, clk, fx, groupsOf, int, liveFrameImage, openedWhen, SORTS, SPARK_H, SPARK_W, sparkBars, STALE_MS,
+  streamTime, streamWhere, updatedText, when, type CheckedMoment,
 } from '../../../../lib/momentsChecked'
 import { loadMomentVod, momentVodCache } from '../../../../lib/momentsFeedVod'
 import { toggleSavedMoment, useSavedMoments } from '../../../../lib/savedDiscoveryMoments'
+import { clearViewed, readViewed, recordViewed, VIEWED_DAYS, type ViewedMoment } from '../../../../lib/viewedMoments'
 import { fromHubMoment } from '../../../../lib/discoveryMoments'
 import { broadcastTimelineHref } from '../../../../lib/momentsNavigation'
 import { headerClear, watchHeaderClear } from './headerClear'
@@ -24,8 +25,12 @@ import './moments-checked.css'
 const POLL_MS = 45_000
 const SAVED_KEY = 'sp-moments-checked-saved'
 const SAVED_MAX = 200
-/** Latest: the moments that hold up or partly do, newest first (moments-r4 B2: no verdict tiers, filters or orders). Saved: this browser's. */
-type MomentsTab = 'latest' | 'saved'
+/**
+ * Latest: the moments that hold up or partly do, newest first (moments-r4 B2: no verdict tiers, filters or orders). Saved: this browser's.
+ * Viewed: the moments you opened here, newest opened first, one row each (V1, 10-21).
+ */
+type MomentsTab = 'latest' | 'saved' | 'viewed'
+const TABS: readonly MomentsTab[] = ['latest', 'saved', 'viewed']
 
 function useMatch(query: string): boolean {
   return useSyncExternalStore(
@@ -101,7 +106,10 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
   const [feedStale, setFeedStale] = useState(() => initial?.snap.stale ?? false)
   /** A deep link to a moment the first page did not bring: looked up by id; until it answers, no other moment opens. */
   const [deepWait, setDeepWait] = useState<'no' | 'pending' | 'gone' | 'failed'>(() => (initial && deepId && !initial.snap.items.some(item => item.id === deepId) ? 'pending' : 'no'))
-  const [view, setView] = useState<MomentsTab>(() => (query.get('view') === 'saved' ? 'saved' : 'latest'))
+  const [view, setViewState] = useState<MomentsTab>(() => TABS.find(t => t === query.get('view')) ?? 'latest')
+  const [viewed, setViewed] = useState<ViewedMoment[]>(() => readViewed())
+  /** Viewed's order, taken when the tab opens, so opening a row there doesn't move it under the pointer. */
+  const [viewedOrder, setViewedOrder] = useState<string[]>(() => viewed.map(e => e.item.id))
   const [q, setQ] = useState('')
   const [sel, setSel] = useState<string | null>(() => (deepId && initial?.snap.items.some(item => item.id === deepId) ? deepId : null))
   const [opened, setOpened] = useState<{ key: string | null; lk: number | null; metric: MomentMetricKind | null }>({ key: null, lk: null, metric: null })
@@ -140,15 +148,29 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
   const savedOnly = useMemo(() => [...drawn.values()].filter(item => !byKey.has(item.id) && savedKeys.has(savedKey(item))).map(item => checkMoment({ ...item, streamLive: false }, nowMinute)),
     [drawn, savedKeys, byKey, nowMinute])
   const savedCount = pool.filter(m => isSaved(m.item)).length + savedOnly.length
-  const find = (key: string) => byKey.get(key) ?? savedOnly.find(m => m.key === key) ?? null
+  const openedAt = useMemo(() => new Map(viewed.map(e => [e.item.id, e.at])), [viewed])
+  // a viewed moment that has left the feed: drawn from its kept copy, as an ended stream
+  const viewedOnly = useMemo(() => viewed.filter(e => !byKey.has(e.item.id)).map(e => checkMoment({ ...e.item, streamLive: false }, nowMinute)),
+    [viewed, byKey, nowMinute])
+  const find = (key: string) => byKey.get(key) ?? savedOnly.find(m => m.key === key) ?? viewedOnly.find(m => m.key === key) ?? null
+  const setView = (next: MomentsTab) => {
+    if (next === 'viewed') setViewedOrder(viewed.map(e => e.item.id))
+    setViewState(next)
+  }
+  /** An open you asked for (a click, a key, a link) goes to the top of Viewed. The wide layout's first moment doesn't count. */
+  const noteViewed = (item: MomentsFeedItem) => setViewed(recordViewed(item))
 
   const qq = q.trim().toLowerCase()
   // Latest leaves out what didn't hold up, except the open moment (a deep link, or a held minute's "a moment here").
   const passes = (m: CheckedMoment) =>
-    (view === 'saved' ? isSaved(m.item) : m.item.verdict !== 'bad' || m.key === sel) && (!qq || m.find.includes(qq))
+    (view === 'saved' ? isSaved(m.item) : view === 'viewed' ? openedAt.has(m.key) : m.item.verdict !== 'bad' || m.key === sel) && (!qq || m.find.includes(qq))
   const shown = (m: CheckedMoment) => (shownUntil == null || m.at <= shownUntil) && !held.has(m.key)
-  const list = [...pool, ...(view === 'saved' ? savedOnly : [])].filter(m => shown(m) && passes(m)).sort(SORTS.new)
-  const groups = groupsOf(list)
+  const viewedRank = new Map(viewedOrder.map((id, i) => [id, i]))
+  const byViewed = (a: CheckedMoment, b: CheckedMoment) => (viewedRank.get(a.key) ?? -1) - (viewedRank.get(b.key) ?? -1) // opened since the tab opened: on top
+  const list = view === 'viewed'
+    ? [...pool, ...viewedOnly].filter(m => shown(m) && passes(m)).sort(byViewed)
+    : [...pool, ...(view === 'saved' ? savedOnly : [])].filter(m => shown(m) && passes(m)).sort(SORTS.new)
+  const groups = view === 'viewed' ? list.map(m => [m]) : groupsOf(list)
   const selKey = sel != null && list.some(m => m.key === sel) ? sel : wide && list[0] && deepWait === 'no' ? list[0].key : null
   const selM = selKey ? find(selKey) : null
   const openSid = selM?.sid ?? null
@@ -190,7 +212,7 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
     writeUrl(next)
     if (o.focus && next) focusAfter.current = { row: next }
     const m = next ? find(next) : null
-    if (m) say(ariaOf(m, now))
+    if (m) { say(ariaOf(m, now)); noteViewed(m.item) }
   }
   const openFromDetail = (key: string) => {
     if (find(key)) select(key, { keep: true, focus: true })
@@ -251,6 +273,13 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
     if (!on && (latest.current.held.size || (latest.current.replay == null && shownUntil != null))) release(false)
   }
 
+  // a deep link the first page brought counts as opened
+  useEffect(() => {
+    const m = sel ? byKey.get(sel) : null
+    if (m && sel === deepId) noteViewed(m.item)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // a deep link to a moment the first page did not bring: one lookup by id
   useEffect(() => {
     if (deepWait !== 'pending' || !deepId) return
@@ -259,6 +288,7 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
       if (!item) { setDeepWait('gone'); return }
       setItems(prev => (prev.some(x => x.id === item.id) ? prev : [...prev, item]))
       setSel(item.id)
+      noteViewed(item)
       setDeepWait('no')
       focusAfter.current = { scrollTo: item.id }
     }, () => { if (!controller.signal.aborted) setDeepWait('failed') })
@@ -405,7 +435,7 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
     saved={isSaved(m.item)} onSave={() => toggleSave(m.key)} onCopy={() => copyLink(m.key)} onOpen={openFromDetail} onClose={closeDetail}
     motion={motion} phone={phone} say={say} playRef={playRef} vods={vods} />
   const row = (m: CheckedMoment, more: number, sub: boolean) => <Row m={m} more={more} sub={sub} now={now} current={selKey === m.key}
-    onSelect={() => select(m.key, { from: m.key })} />
+    opened={view === 'viewed' ? openedAt.get(m.key) : undefined} onSelect={() => select(m.key, { from: m.key })} />
 
   const stale = !replay && (feedStale || clock - loadedAt > STALE_MS)
   const deepAt = deepId ? momentsFeedIdParts(deepId) : null
@@ -426,6 +456,7 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
       <div className="mk-seg" role="group" aria-label="Which moments">
         <button type="button" aria-pressed={view === 'latest'} onClick={() => setView('latest')}>Latest</button>
         <button type="button" aria-pressed={view === 'saved'} onClick={() => setView('saved')}>Saved ({savedCount})</button>
+        <button type="button" aria-pressed={view === 'viewed'} onClick={() => setView('viewed')}>Viewed ({viewed.length})</button>
       </div>
       <label className="mk-srch"><SearchGlyph />
         <input ref={searchRef} type="search" placeholder="Channel, game or emote" aria-label="Search channels, games or emotes" autoComplete="off" value={q} onChange={e => setQ(e.target.value)} />
@@ -444,8 +475,11 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
           onFocus={() => setHolding(true)} onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setHolding(false) }}>
           <button className="mk-pill" type="button" hidden={!pillN} onClick={() => release(true)}>{pillN} new ↑</button>
           {wide ? null : gone}
+          {view === 'viewed' && viewed.length ? <p className="mk-vw-note">Moments you opened here, kept in this browser for {VIEWED_DAYS} days.
+            <button type="button" onClick={() => { clearViewed(); setViewed([]); setViewedOrder([]); say('Viewed cleared') }}>Clear</button></p> : null}
           <ol className="mk-list" ref={listRef}>
-            {loaded && !groups.length ? <li className="mk-empty">{view === 'saved' ? 'Nothing saved yet. Save a moment and it stays here, in this browser.' : 'No moments match.'}</li> : null}
+            {loaded && !groups.length ? <li className="mk-empty">{view === 'saved' ? 'Nothing saved yet. Save a moment and it stays here, in this browser.'
+              : view === 'viewed' ? `Nothing viewed yet. Moments you open here stay in this list, in this browser, for ${VIEWED_DAYS} days.` : 'No moments match.'}</li> : null}
             {groups.map(g => {
               const lead = g[0], open = openSid === lead.sid && g.length > 1
               const opening = open && motion && lastOpen.current !== lead.sid
@@ -480,18 +514,25 @@ function inView(el: HTMLElement, motion: boolean) {
   else if (r.bottom > window.innerHeight - 8) window.scrollBy({ top: r.bottom - window.innerHeight + 8, behavior: motion ? 'smooth' : 'auto' })
 }
 
-/** One row (moments-r4 B2: r2's row with a picture): picture · who + what / × + when + game · the minutes · viewers. */
-function Row({ m, more, sub, now, current, onSelect }: { m: CheckedMoment; more: number; sub: boolean; now: number; current: boolean; onSelect: () => void }) {
+/**
+ * One row (moments-r4 B2: r2's row with a picture; tidied as T1, 10-21): picture · who + what / × + game + "N earlier" ·
+ * the minutes · when, over the viewers. Under Viewed, the right column says when you opened it.
+ */
+function Row({ m, more, sub, now, current, opened, onSelect }: {
+  m: CheckedMoment; more: number; sub: boolean; now: number; current: boolean; opened?: number; onSelect: () => void
+}) {
   const item = m.item, box = boxArtImage(item)
   const full = `${new Date(m.at).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })} · ${streamTime(m, null)} ${streamWhere(null)}`
   const bits: Array<{ key: string; sep?: string; node: ReactNode }> = []
   if (m.rowX != null) bits.push({ key: 'x', node: <span className="mk-r-x"><b>{fx(m.rowX)}</b> the 15 min before</span> })
   else if (m.why) bits.push({ key: 'why', node: <span className="mk-r-why">{m.why}</span> })
-  bits.push({ key: 'at', node: <time dateTime={new Date(m.at).toISOString()} title={full}>{when(m.at, now)}</time> })
   if (!sub) {
     if (item.category) bits.push({ key: 'g', sep: 's-g', node: <span className="mk-r-g">{box ? <img src={box} alt="" width={12} height={16} loading="lazy" /> : null}<span>{item.category.name}</span></span> })
-    if (more) bits.push({ key: 'more', sep: 's-m', node: <span className="mk-r-more">+{more} earlier</span> })
+    if (more) bits.push({ key: 'more', sep: 's-m', node: <span className="mk-r-more">{more} earlier</span> })
   }
+  const at = opened != null
+    ? <time className="mk-r-op" dateTime={new Date(opened).toISOString()} title={full}>opened {openedWhen(opened, now)}</time>
+    : <time dateTime={new Date(m.at).toISOString()} title={full}>{when(m.at, now)}</time>
   const kindColour = m.kind === 'emotes' ? 'var(--mk-emotes)' : 'var(--mk-chat)'
   return <button className="mk-r" type="button" data-key={m.key} aria-current={current} aria-label={ariaOf(m, now, sub ? 0 : more)} onClick={onSelect}>
     {sub ? null : <Thumb m={m} />}
@@ -499,11 +540,11 @@ function Row({ m, more, sub, now, current, onSelect }: { m: CheckedMoment; more:
       <span className="mk-r-l1">{sub ? null : <span className="mk-r-nm">{m.name}</span>}<MomentAct act={actOf(item)} /></span>
       <span className="mk-r-l2">{bits.map((b, i) => <Fragment key={b.key}>{i ? <span className={`mk-sep${b.sep ? ` ${b.sep}` : ''}`} aria-hidden="true">·</span> : null}{b.node}</Fragment>)}</span>
     </span>
-    <span className="mk-r-sp"><svg viewBox="0 0 72 28" aria-hidden="true">
+    <span className="mk-r-sp"><svg viewBox={`0 0 ${SPARK_W} ${SPARK_H}`} aria-hidden="true">
       {sparkBars(m).map((b, i) => <rect key={i} x={b.x.toFixed(2)} y={b.y.toFixed(1)} width={b.w.toFixed(2)} height={b.h.toFixed(1)} rx="0.5"
-        fill={b.tone === 'mo' ? 'var(--mk-accent)' : kindColour} opacity={b.tone === 'mo' ? 1 : b.tone === 'in' ? 0.5 : 0.28} />)}
+        fill={b.tone === 'mo' ? 'var(--mk-accent)' : kindColour} opacity={b.tone === 'mo' ? 1 : b.tone === 'in' ? 0.85 : 0.55} />)}
     </svg></span>
-    <span className="mk-r-v">{item.viewers != null ? <><b>{int(item.viewers)}</b><span>watched</span></> : null}</span>
+    <span className="mk-r-v">{at}{!sub && item.viewers != null ? <span className="mk-r-vw"><b>{int(item.viewers)}</b> viewers</span> : null}</span>
   </button>
 }
 

@@ -50,10 +50,10 @@
 .mk-sw{display:inline-block;width:8px;height:8px;border-radius:2px;flex:none}
 .mk-sw.chat{background:var(--mk-chat)}.mk-sw.emotes{background:var(--mk-emotes)}.mk-sw.viewers{background:var(--mk-viewers)}
 
-/* ---------- head: the title and one line beside it ---------- */
-.mk-head{display:flex;align-items:baseline;gap:4px 16px;flex-wrap:wrap;padding:28px 0 12px}
+/* ---------- head: the title, then one line under it (T1, 10-21) ---------- */
+.mk-head{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:28px 0 12px}
 .mk-head h1{font:600 26px/32px var(--mk-font);letter-spacing:-.015em}
-.mk-lede{flex:1 1 240px;color:var(--mk-text-2);max-width:84ch}
+.mk-lede{color:var(--mk-text-2);max-width:84ch}
 
 /* ---------- toolbar: Latest | Saved, search, then how fresh the list is and Replay ---------- */
 .mk-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:0 0 12px}
@@ -97,7 +97,7 @@
 
 /* one row (moments-r4 B2: r2's row with a picture): picture · who + what / × + when + game · the minutes · viewers */
 .mk-g{position:relative;border-bottom:1px solid var(--mk-line)}
-.mk .mk-r{position:relative;display:grid;grid-template-columns:96px minmax(0,1fr) 72px 64px;column-gap:14px;align-items:center;width:100%;min-height:70px;padding:8px 10px;border-radius:8px;color:var(--mk-text-1);text-align:left;transition:background var(--mk-dur-quick)}
+.mk .mk-r{position:relative;display:grid;grid-template-columns:96px minmax(0,1fr) 88px 96px;column-gap:14px;align-items:center;width:100%;min-height:70px;padding:8px 10px;border-radius:8px;color:var(--mk-text-1);text-align:left;transition:background var(--mk-dur-quick)}
 .mk .mk-r:hover{background:var(--mk-panel)}
 .mk-r:hover .mk-r-nm{text-decoration:underline;text-underline-offset:3px}
 .mk .mk-r:focus-visible{outline:2px solid var(--mk-focus);outline-offset:-2px}
@@ -128,12 +128,16 @@
 .mk-r-x b{font-weight:600;color:var(--mk-accent)}
 .mk-r-why{color:var(--mk-warn)}
 [data-vd="bad"] .mk-r-why{color:var(--mk-text-2)}
-.mk-r-more{color:var(--mk-text-2)}
-.mk-r-sp{width:72px;height:28px}
-.mk-r-sp svg{display:block;width:72px;height:28px;overflow:visible}
-.mk-r-v{display:flex;flex-direction:column;align-items:flex-end;line-height:16px}
-.mk-r-v b{font:600 13px/18px var(--mk-font);font-variant-numeric:tabular-nums}
-.mk-r-v span{font:500 12px/16px var(--mk-font);color:var(--mk-text-3)}
+/* "3 earlier ⌄": the stream's earlier moments open under its row */
+.mk-r-more{display:inline-flex;align-items:center;color:var(--mk-text-2)}
+.mk-r-more::after{content:"";width:5px;height:5px;margin:0 2px 3px 7px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg)}
+.mk-r-sp{width:88px;height:32px}
+.mk-r-sp svg{display:block;width:88px;height:32px;overflow:visible}
+/* the right column: when, over the viewers (T1); under Viewed, when you opened it */
+.mk-r-v{display:flex;flex-direction:column;align-items:flex-end;gap:1px;text-align:right}
+.mk-r-v time{font:500 12px/16px var(--mk-font);color:var(--mk-text-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.mk-r-vw{font:500 12px/16px var(--mk-font);color:var(--mk-text-3);white-space:nowrap}
+.mk-r-vw b{font-weight:600;color:var(--mk-text-2);font-variant-numeric:tabular-nums}
 [data-vd="bad"]>.mk-r .mk-r-nm,[data-vd="bad"]>.mk-r .mk-r-l1{color:var(--mk-text-2)}
 [data-vd="bad"]>.mk-r .mk-r-sp{opacity:.55}
 
@@ -144,14 +148,13 @@
 
 /* earlier moments of the selected channel, under it, lined up with the words */
 .mk-sub{margin:0 0 6px 106px!important;border-left:1px solid var(--mk-line-strong)}
-.mk .mk-sub .mk-r{grid-template-columns:minmax(0,1fr) 72px 64px;min-height:48px;padding:6px 8px 6px 12px}
+.mk .mk-sub .mk-r{grid-template-columns:minmax(0,1fr) 88px 96px;min-height:48px;padding:6px 8px 6px 12px}
 .mk-sub .mk-r-l1{font-size:13px}
-.mk-sub .mk-r-v{visibility:hidden}
 
 /* 900 to 1099 px, the list beside the open moment: the minutes give way to the words */
 @media (min-width:900px) and (max-width:1099px){
-  .mk .mk-r{grid-template-columns:96px minmax(0,1fr) 64px}
-  .mk .mk-sub .mk-r{grid-template-columns:minmax(0,1fr) 64px}
+  .mk .mk-r{grid-template-columns:96px minmax(0,1fr) 96px}
+  .mk .mk-sub .mk-r{grid-template-columns:minmax(0,1fr) 96px}
   .mk-r-sp{display:none}
 }
 
@@ -188,7 +191,8 @@
 .mk-d-l1 .mk-r-act{font-size:15px}
 .mk-d-l1 .mk-r-em img{width:26px;height:26px}
 .mk-d-l1 .mk-r-ems img{width:24px;height:24px}
-.mk-d-meta{margin-top:2px!important;color:var(--mk-text-2);font-variant-numeric:tabular-nums}
+.mk-d-meta{display:flex;flex-direction:column;gap:1px;margin-top:2px!important;color:var(--mk-text-2);font-variant-numeric:tabular-nums}
+.mk-d-m2{color:var(--mk-text-3)}
 .mk-d-meta .mk-d-st-c{font-weight:600;color:var(--mk-text-1)}
 .mk-d-mx b{font-weight:600;color:var(--mk-text-1)}
 .mk-d[data-vd="ok"] .mk-d-mx b{color:var(--mk-accent)}
@@ -228,9 +232,13 @@
 .mk-ch .mk-an{fill:var(--mk-text-1);font:600 12px var(--mk-font)}
 .mk-ch .mk-an,.mk-ch .mk-an2{paint-order:stroke;stroke:var(--mk-canvas);stroke-width:4px;stroke-linejoin:round}
 .mk-ch .mk-an2{fill:var(--mk-text-3);font:500 12px var(--mk-font)}
+/* "average N" sits on the bars it averages: a wider dark outline keeps it readable (T1) */
+.mk-ch .mk-an2.mk-avg{fill:var(--mk-text-2);stroke-width:5px}
 .mk-ch .mk-an-m{fill:var(--mk-accent)}
 .mk-ch .mk-cur{stroke:var(--mk-text-3);stroke-width:1}
-.mk-d-read{min-height:20px;margin-top:6px!important;font:500 12px/16px var(--mk-font);color:var(--mk-text-3);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;animation:mk-roll .3s var(--mk-ease) both}
+/* two lines (T1): when and where, then the minute's counts; it wraps rather than cutting off, and keeps two lines' height so it doesn't jump */
+.mk-d-read{min-height:32px;margin-top:6px!important;font:500 12px/16px var(--mk-font);color:var(--mk-text-2);font-variant-numeric:tabular-nums;animation:mk-roll .3s var(--mk-ease) both}
+.mk-d-r2{display:block;color:var(--mk-text-3)}
 @keyframes mk-roll{from{opacity:0;transform:translateY(5px)}}
 .mk-d-read b{color:var(--mk-text-1);font-weight:600}
 
@@ -261,6 +269,11 @@
 .mk-d-acts .mk-btn[aria-pressed="true"]{color:var(--mk-accent);border-color:var(--mk-accent)!important}
 .mk-d-x{display:none!important}
 
+/* Viewed (V1): one line over the list, and Clear */
+.mk-vw-note{display:flex;align-items:center;gap:10px;margin:0 0 6px!important;padding:0 10px;font:500 12px/16px var(--mk-font);color:var(--mk-text-3)}
+.mk .mk-vw-note button{margin-left:auto;color:var(--mk-text-2);text-decoration:underline;text-underline-offset:3px}
+.mk .mk-vw-note button:hover{color:var(--mk-text-1)}
+
 /* narrow: the detail opens under its row, in the list */
 .mk-slot{list-style:none;padding:8px 0 16px;border-bottom:1px solid var(--mk-line)}
 @media (max-width:899px){
@@ -280,15 +293,17 @@
   .mk-rp span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
   .mk-srch{order:4;width:100%}
   .mk-bar-sp{display:none}
-  .mk .mk-r{grid-template-columns:72px minmax(0,1fr) 56px;column-gap:10px;padding:8px 4px}
-  .mk-r-l2 .mk-r-g,.mk-r-l2 .s-g,.mk-r-l2 .s-m{display:none}
-  .mk-r-l2 .mk-r-more{margin-left:4px}
-  .mk-r-l2{flex-wrap:wrap;row-gap:0}
+  /* phones: the time has room without wrapping; the viewers are in the open moment */
+  .mk .mk-r{grid-template-columns:72px minmax(0,1fr) 74px;column-gap:10px;padding:8px 4px}
+  .mk-r-l2 .mk-r-g,.mk-r-l2 .s-g{display:none}
+  .mk-r-vw{display:none}
+  .mk-r-v time.mk-r-op{white-space:normal}
+  .mk-r-l2 .mk-r-x{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
   .mk-r-th{width:72px}
   .mk-r-th-av,.mk-r-th .mk-ini{width:24px;height:24px;margin:-12px 0 0 -12px}
   .mk-r-sp{display:none}
   .mk-sub{margin-left:40px!important}
-  .mk .mk-sub .mk-r{grid-template-columns:minmax(0,1fr) 56px}
+  .mk .mk-sub .mk-r{grid-template-columns:minmax(0,1fr) 74px}
   .mk-r-nm{max-width:52%}
   /* a phone row has about 225 px for its words: the emote takes the next line rather than shrinking to nothing */
   .mk-r-l1{flex-wrap:wrap;row-gap:0}
@@ -364,7 +379,5 @@
 /* ---------- R2-5 small fixes ---------- */
 /* no jump on load: the empty list holds a screen's height, so what sits under it is already below the fold when the moments arrive */
 .mk-list:empty{min-height:100vh}
-/* phones: the line under the chart wraps instead of cutting off the top emote; two lines are kept so it doesn't jump */
-@media (max-width:719px){.mk-d-read{min-height:32px;white-space:normal;overflow:visible}}
 /* touch screens have no arrow keys or Esc */
 @media (hover:none){.mk-d-read .mk-kb{display:none}}

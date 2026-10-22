@@ -95,6 +95,18 @@ export function when(t: number, now: number): string {
   return `${sameDay(t, now) ? '' : 'Yesterday '}${clk(t)}`
 }
 
+/** When you opened a moment, for Viewed: just now, 4 min ago, 2 h ago, yesterday, Mon, then the date. */
+export function openedWhen(t: number, now: number): string {
+  const m = Math.max(0, Math.floor((now - t) / 60_000))
+  if (m < 1) return 'just now'
+  if (m < 60) return `${m} min ago`
+  if (sameDay(t, now)) return `${Math.floor(m / 60)} h ago`
+  const day = (x: number) => { const d = new Date(x); d.setHours(0, 0, 0, 0); return d.getTime() }
+  const days = Math.round((day(now) - day(t)) / 86_400_000)
+  if (days <= 1) return 'yesterday'
+  return new Date(t).toLocaleDateString('en-US', days < 7 ? { weekday: 'short' } : { month: 'short', day: 'numeric' })
+}
+
 /** A Twitch CDN URL with no user, password, query or hash whose path starts with `path`, else nothing. */
 function twitchCdn(value: string | undefined, path: string): string | undefined {
   if (!value) return undefined
@@ -237,19 +249,21 @@ export function groupsOf(list: CheckedMoment[]): CheckedMoment[][] {
 export function ariaOf(m: CheckedMoment, now: number, more = 0): string {
   const x = m.rowX != null ? `${fx(m.rowX).replace('×', ' times')} the 15 minutes before` : m.why
   const cat = m.item.category?.name, act = actOf(m.item)
-  return `${m.name} ${act.type === 'spammed' ? 'chat ' : ''}${act.text}, ${when(m.at, now)}${x ? `, ${x}` : ''}${cat ? `, ${cat}` : ''}${m.item.viewers != null ? `, ${int(m.item.viewers)} watched it` : ''}. ${VERDICT_WORD[m.item.verdict]}.${more ? ` ${more} ${more === 1 ? 'earlier moment.' : 'earlier moments.'}` : ''}`
+  return `${m.name} ${act.type === 'spammed' ? 'chat ' : ''}${act.text}, ${when(m.at, now)}${x ? `, ${x}` : ''}${cat ? `, ${cat}` : ''}${m.item.viewers != null ? `, ${int(m.item.viewers)} viewers` : ''}. ${VERDICT_WORD[m.item.verdict]}.${more ? ` ${more} ${more === 1 ? 'earlier moment.' : 'earlier moments.'}` : ''}`
 }
 
-/** The 25 sparkline bars: the moment in teal, the compared minutes stronger than the rest. */
+/** The 25 sparkline bars: the moment in teal, the compared minutes stronger than the rest (88 × 32, T1 10-21). */
+export const SPARK_W = 88
+export const SPARK_H = 32
 export interface SparkBar { x: number; y: number; w: number; h: number; tone: 'mo' | 'in' | 'out' }
 export function sparkBars(m: CheckedMoment): SparkBar[] {
-  const arr = m.kind === 'emotes' ? m.item.spark.emotes : m.item.spark.chat, mi = m.item.spark.momentIndex, bw = 72 / 25
+  const arr = m.kind === 'emotes' ? m.item.spark.emotes : m.item.spark.chat, mi = m.item.spark.momentIndex, bw = SPARK_W / 25
   const max = Math.max(1, ...arr.filter((v): v is number => v != null))
   const out: SparkBar[] = []
   arr.forEach((v, j) => {
     if (v == null) return
-    const h = Math.max(1, (v / max) * 26), rel = j - mi
-    out.push({ x: j * bw, y: 28 - h, w: Math.max(1, bw - 0.9), h, tone: rel === 0 ? 'mo' : rel >= m.winFrom && rel <= -2 ? 'in' : 'out' })
+    const h = Math.max(1, (v / max) * (SPARK_H - 2)), rel = j - mi
+    out.push({ x: j * bw, y: SPARK_H - h, w: Math.max(1, bw - 0.9), h, tone: rel === 0 ? 'mo' : rel >= m.winFrom && rel <= -2 ? 'in' : 'out' })
   })
   return out
 }

@@ -10,6 +10,8 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import streamPicture from '../../../../demo/pictures/laugh.svg?url'
+import panelPicture from '../../../../demo/pictures/panel-top-moments.png'
 import type { HubActivityPoint, HubLiveChannel } from '../../../../lib/publicHub'
 import { isFindShortcut, useAnalyticsFind } from '../../analytics/analyticsFindContext'
 import { ChromeInstallCta } from '../../ChromeInstallCta'
@@ -28,7 +30,7 @@ export function HubV5Hero({ live, poolSize, points = NO_POINTS }: { live: readon
   const kickerRef = useRef<HTMLParagraphElement>(null)
   const fieldRef = useRef<HTMLDivElement>(null)
   const tryRef = useRef<HTMLParagraphElement>(null)
-  const getRef = useRef<HTMLParagraphElement>(null)
+  const getRef = useRef<HTMLDivElement>(null)
   const footRef = useRef<HTMLDivElement>(null)
   const conveyorRefs = useMemo<HubV5ConveyorRefs>(
     () => ({ mast: mastRef, kicker: kickerRef, field: fieldRef, tryRow: tryRef, getRow: getRef, foot: footRef }),
@@ -94,14 +96,24 @@ export function HubV5Hero({ live, poolSize, points = NO_POINTS }: { live: readon
       <div className="hv5-hero-field" ref={fieldRef}>
         <HubV5SearchBox live={live} inputRef={inputRef} />
       </div>
-      {/* One small row under the search, which stays first (Aron's H2 pick, 10-21). */}
-      <p className="hv5-hero-get" ref={getRef}>
-        <ChromeInstallCta className="hv5-hero-install" data-cta="chrome-install-hub-hero">
-          <span className="chrome-mark" aria-hidden="true" />Add to Chrome
-        </ChromeInstallCta>
-        <span className="hv5-hero-free">Free</span>
-        <span className="hv5-hero-gettext">No account needed. Also works in Edge and Brave.</span>
-      </p>
+      {/* What you get, under the search, which stays first: a picture of the panel beside a stream,
+          one line and one big button (Aron's C1 pick, 10-21; the copy is a draft). */}
+      <div className="hv5-hero-get" ref={getRef}>
+        <div className="hv5-get-pic" aria-hidden="true">
+          <img className="hv5-get-vid" src={streamPicture} alt="" />
+          <span className="hv5-get-pan"><img src={panelPicture} alt="" /></span>
+        </div>
+        <div className="hv5-get-tx">
+          <p className="hv5-get-h">See chat's big moments on Twitch</p>
+          <p className="hv5-get-p">The Pulse panel sits next to Twitch chat and shows the spikes and top moments of the stream you're on.</p>
+          <p className="hv5-get-row">
+            <ChromeInstallCta className="hv5-hero-install" data-cta="chrome-install-hub-hero">
+              <span className="chrome-mark" aria-hidden="true" />Add to Chrome
+            </ChromeInstallCta>
+            <span className="hv5-get-free">Free · no account · also Edge and Brave</span>
+          </p>
+        </div>
+      </div>
       {tryChannels.length ? (
         <p className="hv5-hero-try" ref={tryRef}>
           <span className="hv5-hero-tl">Try</span>
