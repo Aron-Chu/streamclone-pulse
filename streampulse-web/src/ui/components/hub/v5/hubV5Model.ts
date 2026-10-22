@@ -386,7 +386,8 @@ export function momentReasonLabel(kind: string | undefined, label: string | unde
 export const HUB_NAMED_EMOTE_MIN_PCT = 25
 
 export type HubMomentCmp =
-  | { x: number; avg: number | null; mins: number }
+  /** `over`: what the × compares with when it isn't the stream's own average (the Moments list: "the 15 minutes before"). */
+  | { x: number; avg: number | null; mins: number; over?: string }
   | { why: string; long: string }
 
 export interface HubMomentRowV5 {

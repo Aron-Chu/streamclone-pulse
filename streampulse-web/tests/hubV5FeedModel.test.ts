@@ -1,9 +1,13 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import type { HubLiveChannel, HubMoment } from '../src/lib/publicHub'
+import type { MomentsFeedItem } from '../src/lib/momentsFeed'
+import type { HubLiveChannel, HubLivePulseMoment, HubMoment } from '../src/lib/publicHub'
 import type { HubChannelScreenerV1, HubScreenerMetric } from '../src/lib/channelScreenerContract'
 import {
   feedAgo,
   feedCap,
+  feedColumnCap,
   feedFresh,
   feedIsQuiet,
   feedMultiplier,
@@ -169,6 +173,9 @@ describe('feed formatting', () => {
     expect(feedCap(false, false, 900)).toBe(8)
     expect(feedCap(false, true, 1000)).toBe(12)
     expect(feedCap(false, true, 500)).toBe(6)
+    // 1100–1535: what the column beside Top emotes gives, less the rule and Show more
+    expect(feedColumnCap(794)).toBe(14)
+    expect(feedColumnCap(120)).toBe(3)
   })
 
   it('says how long ago, and 10× without the plus', () => {
@@ -193,3 +200,70 @@ function model1() {
   const item = m.items[0]!
   return 'group' in item ? item.group : []
 }
+
+/* ---------- L1: the moment rows from the Moments list ---------- */
+
+const feedFixture = JSON.parse(readFileSync(resolve(__dirname, 'fixtures/moments_feed_v1.json'), 'utf8')) as { items: MomentsFeedItem[] }
+const pick = (test: (item: MomentsFeedItem) => boolean) => {
+  const found = feedFixture.items.find(test)
+  if (!found) throw new Error('fixture lacks the case')
+  return found
+}
+const holds = pick((item) => item.verdict === 'ok' && item.checks.rise?.code === 'rose' && item[item.label.kind].x != null)
+const partly = pick((item) => item.verdict === 'warn')
+const fails = pick((item) => item.verdict === 'bad')
+const at = (item: MomentsFeedItem, login: string, minuteStart: number): MomentsFeedItem =>
+  ({ ...item, id: `pulse-${login}-s-${login}-${item.offsetSeconds}`, login, displayName: login.toUpperCase(), streamId: `s-${login}`, minuteStart })
+
+describe('liveFeedModel with the Moments list', () => {
+  const live = [channel('alpha'), channel('kilo', {}, { multiplier: 1 }), channel('lima', {}, { multiplier: 1 })]
+  const hubMoment = {
+    login: 'mike', displayName: 'MIKE', streamId: 's-mike', at: W1 - 4 * MIN, offsetSeconds: 3600, score: 9, label: 'Chat spike', kind: 'chat_spike', chatPerMin: 90,
+    comparison: { chat: { state: 'ready', multiplier: 3, currentPerMin: 90, baselinePerMin: 30, baselineMeasuredMinutes: 40 } },
+  } as unknown as HubLivePulseMoment
+  const items = [
+    at(holds, 'kilo', W1 - 2 * MIN),
+    at(partly, 'lima', W1 - 40 * MIN),
+    at(fails, 'november', W1 - 5 * MIN),
+    at(holds, 'oscar', W1 - 3 * 60 * MIN), // before the hour
+  ]
+  const withHub = { ...hub(live, [spike('alpha', W1 - 1 * MIN)]), livePulseMoments: [hubMoment] } as LiveFeedInput
+  const model = liveFeedModel(withHub, { items, generatedAt: W1 + 30_000 })
+
+  it('takes its moment rows from the list in the hour, leaving out what does not hold up, and keeps the hub spikes', () => {
+    expect(model.list).toBe(true)
+    expect(model.asOf).toBe(W1 + 30_000)
+    expect(model.events.map((e) => `${e.kind}:${e.login}`)).toEqual(['spike:alpha', 'moment:kilo', 'moment:lima'])
+  })
+
+  it('shows the list’s own × for a moment that holds up, and why for one that partly does', () => {
+    const [kilo, lima] = model.events.filter((e) => e.kind === 'moment')
+    if (kilo?.kind !== 'moment' || lima?.kind !== 'moment') throw new Error('no moments')
+    expect(kilo.x).toBe(holds[holds.label.kind].x)
+    expect(kilo.list).toBe(true)
+    expect(kilo.row.href).toBe(`/analytics/moments?m=pulse-kilo-s-kilo-${holds.offsetSeconds}`)
+    expect(kilo.row.cmp).toMatchObject({ x: holds[holds.label.kind].x, over: 'the 15 minutes before' })
+    expect(lima.x).toBeNull()
+    expect(lima.why).toBeTruthy()
+    expect('why' in lima.row.cmp && lima.row.cmp.why).toBe(lima.why)
+  })
+
+  it('without the list, keeps the hub’s own moment rows', () => {
+    const hubOnly = liveFeedModel(withHub)
+    expect(hubOnly.list).toBe(false)
+    expect(hubOnly.top).toEqual([])
+    expect(hubOnly.events.filter((e) => e.kind === 'moment').map((e) => e.login)).toEqual(['mike'])
+  })
+
+  it('keeps the day’s top moments from before the hour for a quiet hour, one a channel, none from a channel in the hour', () => {
+    const early = [
+      at(holds, 'oscar', W1 - 3 * 60 * MIN),
+      { ...at(holds, 'papa', W1 - 2 * 60 * MIN), [holds.label.kind]: { ...holds[holds.label.kind], x: 9 } } as MomentsFeedItem,
+      at(holds, 'kilo', W1 - 4 * 60 * MIN), // kilo has a row in the hour
+      at(partly, 'quebec', W1 - 2 * 60 * MIN), // no ×: not a top moment
+    ]
+    const m = liveFeedModel(withHub, { items: [...items, ...early], generatedAt: W1 })
+    expect(m.top.map((it) => it.key)).toEqual(['t:papa', 't:oscar'])
+    expect(m.top.every((it) => it.old)).toBe(true)
+  })
+})
