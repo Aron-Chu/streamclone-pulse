@@ -11,6 +11,8 @@ interface ImportMetaEnv {
   readonly VITE_STREAMCLONE_WATCH_ORIGIN?: string
   /** "1" turns on Sign in with Twitch on the website; anything else leaves it off. */
   readonly VITE_TWITCH_SIGNIN?: string
+  /** Sandbox site builds only (VITE_SANDBOX_SITE=true): the fake Twitch's authorize URL, an https *.localhost URL. */
+  readonly VITE_TWITCH_AUTHORIZE_URL?: string
   /** "1" turns on My Moments on the website (account bookmarks and synced history). */
   readonly VITE_ACCOUNT_MOMENTS?: string
   /** "1" turns on the header account entry (Sign in link / account menu); anything else leaves the header as before. */

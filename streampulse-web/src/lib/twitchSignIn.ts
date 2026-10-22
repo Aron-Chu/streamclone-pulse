@@ -1,5 +1,6 @@
 import { AccountError, accountRequest } from './accountApi'
 import { accountBillingReturnPath } from './accountBillingReturn'
+import { isSandboxSiteBuild } from './backendSource'
 import { refreshAccountSession, rememberTwitchIdentity, type AccountProfile } from './accountSession'
 import { announceAccountSignedIn } from './accountSessionSignal'
 import { TWITCH_CALLBACK_PATH, TWITCH_STATE, takeTwitchCallback } from './twitchCallback'
@@ -44,6 +45,21 @@ const FLOW_KEY = 'pulse.account.twitchFlow.v1'
 const FLOW_SECRET = /^[a-f0-9]{64}$/
 const MAX_FLOW_MS = 10 * 60_000
 const TWITCH_AUTHORIZE = 'https://id.twitch.tv/oauth2/authorize'
+
+/**
+ * Twitch's authorize endpoint, or on the local sandbox site build only, the
+ * sandbox's fake Twitch (VITE_TWITCH_AUTHORIZE_URL, an https *.localhost URL;
+ * the API trusts that issuer only for a localhost account origin).
+ */
+export function twitchAuthorizeEndpoint(): string {
+  const sandbox = import.meta.env.VITE_TWITCH_AUTHORIZE_URL
+  if (!isSandboxSiteBuild() || !sandbox) return TWITCH_AUTHORIZE
+  try {
+    const url = new URL(sandbox)
+    if (url.protocol === 'https:' && url.hostname.endsWith('.localhost') && !url.search && !url.hash) return url.origin + url.pathname
+  } catch { /* fall through */ }
+  return TWITCH_AUTHORIZE
+}
 export const TWITCH_DEFAULT_RETURN = '/account/settings'
 
 const SERVER_CODES = new Set<TwitchErrorCode>([
@@ -76,7 +92,7 @@ export function trustedAuthorizeUrl(value: unknown, flowId: string, origin: stri
   if (typeof value !== 'string' || value.length > 4096) return null
   let url: URL
   try { url = new URL(value) } catch { return null }
-  if (url.origin + url.pathname !== TWITCH_AUTHORIZE || url.username || url.password || url.hash) return null
+  if (url.origin + url.pathname !== twitchAuthorizeEndpoint() || url.username || url.password || url.hash) return null
   const one = (key: string) => { const values = url.searchParams.getAll(key); return values.length === 1 ? values[0] : null }
   if (one('state') !== flowId || one('response_type') !== 'id_token' || one('redirect_uri') !== origin + TWITCH_CALLBACK_PATH) return null
   return url.toString()
