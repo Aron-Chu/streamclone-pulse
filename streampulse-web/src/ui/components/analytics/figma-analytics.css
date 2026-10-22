@@ -221,7 +221,8 @@
 .analytics-find:focus-visible { outline: 2px solid #99f6e4; outline-offset: 2px; }
 .analytics-find[data-docked="false"] { opacity: 0; visibility: hidden; }
 @media (min-width: 1360px) {
-  .analytics-find { position: absolute; left: 50%; top: 50%; translate: -50% -50%; width: 340px; }
+  /* 340 px from 1420; narrower below so it clears the nav links (they end near 515 px). */
+  .analytics-find { position: absolute; left: 50%; top: 50%; translate: -50% -50%; width: min(340px, calc(100vw - 1080px)); }
 }
 @media (max-width: 1359px) {
   .analytics-find { width: 36px; padding: 0; justify-content: center; margin-left: auto; }

@@ -42,13 +42,14 @@ function rollupHasActivity(rollup: AnalyticsMinuteRollup): boolean {
 
 /**
  * The channel's live broadcast from its newest-first list: the newest one, when it has no end, is not a
- * sync stub, is confirmed live where the backend says, and started under 48 h ago (an older open row is
- * a recorder that never closed it).
+ * sync stub, and either is confirmed live or, with no verdict from the backend ("unknown" or none),
+ * started under 48 h ago (an older open row is a recorder that never closed it).
  */
 export function findOpenLiveStream(streams: readonly AnalyticsStream[], now = Date.now()): AnalyticsStream | undefined {
   const newest = streams[0]
   if (!newest || newest.endedAt || isSyncPrefetchPlaceholder(newest)) return undefined
-  if (newest.lifecycleState) return newest.lifecycleState === 'confirmed_live' ? newest : undefined
+  if (newest.lifecycleState === 'confirmed_live') return newest
+  if (newest.lifecycleState === 'confirmed_ended') return undefined
   const startedMs = Date.parse(newest.startedAt ?? '')
   if (Number.isFinite(startedMs) && now - startedMs > staleOpenStreamAgeMs) return undefined
   return newest

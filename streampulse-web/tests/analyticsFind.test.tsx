@@ -98,6 +98,16 @@ describe('AnalyticsFind: the top bar search (R5-14)', () => {
     }
   })
 
+  it('closes on one Escape, even with a query typed and its list open', async () => {
+    hubData.usePublicHubData.mockReturnValue({ data: { liveChannels: live } })
+    renderFind()
+    ctrlK()
+    const input = await screen.findByRole('combobox', { name: 'Search any Twitch channel' })
+    fireEvent.change(input, { target: { value: 'ka' } })
+    fireEvent.keyDown(input, { key: 'Escape' })
+    await waitFor(() => expect(dialog().open).toBe(false))
+  })
+
   it('closes when a row is picked', async () => {
     hubData.usePublicHubData.mockReturnValue({ data: { liveChannels: live } })
     renderFind()
