@@ -321,10 +321,10 @@ export function LiveSignalScrollGraph({ mode = 'scroll' }: { hub?: PublicHub | n
     }
   }, [mode])
 
-  // A pinned stage taller than the window can't be seen whole, so in a short
+  // A stage taller than the window can't be watched whole, so in a short
   // window it's drawn smaller to fit below the site's sticky header.
   useEffect(() => {
-    if (!animate || mode !== 'scroll') return
+    if (!animate) return
     const root = rootRef.current
     const grid = gridRef.current
     if (!root || !grid) return
