@@ -10,10 +10,19 @@
  * once) and opens it in Moments. On phones a 3-row "Live now" peek sits under
  * the hero (HubV5LivePeek).
  * The mockup's Replay button was its polling demo; this page polls for real.
+ *
+ * L1 (10-21): where /analytics/moments is the checked page, the moment rows
+ * come from its list, read again with each hub poll. One number a row (× usual);
+ * the rest are in the moment card. From 1100 to 1535 px the list takes the
+ * column's height, and a quiet hour shows the day's top moments under it.
  */
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type MouseEvent, type PointerEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
+import { isApiError } from '../../../../lib/apiClient'
+import { fx } from '../../../../lib/momentsChecked'
+import { pollMomentsFeed } from '../../../../lib/momentsFeed'
+import { momentsFeedEnabled } from '../../../../lib/momentsFeedFlag'
 import type { HubLivePulseMoment, PublicHub } from '../../../../lib/publicHub'
 import { HubToggletip } from '../d3/HubToggletip'
 import '../d3/hub-d3-tokens.css'
@@ -25,10 +34,10 @@ import {
   FEED_STALE_MS,
   FEED_UP_LIST,
   FEED_UP_MIN,
-  FEED_WINDOW_MS,
   feedAgo,
   feedCap,
   feedClockFloor,
+  feedColumnCap,
   feedFresh,
   feedHref,
   feedIsQuiet,
@@ -43,6 +52,7 @@ import {
   type FeedEvent,
   type FeedItem,
   type FeedLive,
+  type FeedMomentsList,
   type LiveFeedModel,
 } from './hubV5FeedModel'
 import {
@@ -95,8 +105,41 @@ export interface HubLiveFeed {
   flush: () => void
 }
 
+/** The checked Moments page is on (read inline so a production build folds it away, as AnalyticsMomentsPage does). */
+function momentsListOn(): boolean {
+  const flag = import.meta.env.VITE_PUBLIC_MOMENTS_FEED
+  return import.meta.env.PROD ? flag === 'on' || flag === '1' : momentsFeedEnabled()
+}
+
+/**
+ * The Moments list's newest page, read on mount and again with each hub poll.
+ * `settled` once the first read answers either way. A 404 (the backend's feed is
+ * off) ends the reads and leaves the hub's own moment rows; another failure keeps
+ * the last list.
+ */
+function useMomentsList(at: string | null): { list: FeedMomentsList | null; settled: boolean } {
+  const [on] = useState(momentsListOn)
+  const [state, setState] = useState<{ list: FeedMomentsList | null; settled: boolean; gone: boolean }>(() => ({ list: null, settled: !on, gone: !on }))
+  const gone = state.gone
+  useEffect(() => {
+    if (gone) return undefined
+    const controller = new AbortController()
+    pollMomentsFeed(Date.now(), controller.signal).then(
+      (snap) => setState({ list: { items: snap.items, generatedAt: snap.generatedAt }, settled: true, gone: false }),
+      (error: unknown) => {
+        if (controller.signal.aborted) return
+        setState((prev) => (isApiError(error) && error.status === 404 ? { list: null, settled: true, gone: true } : { ...prev, settled: true }))
+      },
+    )
+    return () => controller.abort()
+  }, [at, gone])
+  return state
+}
+
 export function useHubLiveFeed(hub: PublicHub | null): HubLiveFeed {
-  const latest = useMemo(() => liveFeedModel(hub), [hub])
+  const moments = useMomentsList(hub?.generatedAt ?? null)
+  // until the list's first answer the feed waits, so its moment rows don't arrive as "new"
+  const latest = useMemo(() => (moments.settled ? liveFeedModel(hub, moments.list) : liveFeedModel(null)), [hub, moments.settled, moments.list])
   const latestRef = useRef(latest)
   latestRef.current = latest
   const held = useRef(false)
@@ -142,19 +185,10 @@ function Ago({ at, nowMs }: { at: number; nowMs: number }) {
   return <time dateTime={new Date(at).toISOString()}>{feedAgo(at, nowMs)}</time>
 }
 
-const SizeFig = ({ add, unit }: { add: number; unit: string }) => (
-  <span className="hv5-mo-v"><span className="hv5-mo-x">+{feedMore(add)}</span><span className="hv5-mo-u">more {unit}/min</span></span>
-)
-const XFig = ({ x, unit }: { x: number; unit: string }) => (
-  <span className="hv5-mo-v"><span className={`hv5-mo-x${isLowMultiplier(x) ? ' lo' : ''}`}>{formatHubMultiplier(x)}</span><span className="hv5-mo-u">{unit} vs avg</span></span>
-)
-const ViewFig = ({ viewers }: { viewers: number | null }) => (
-  viewers != null
-    ? <span className="hv5-mo-v"><span className="hv5-mo-x hv5-sm">{formatHubInt(viewers)}</span><span className="hv5-mo-u">viewers now</span></span>
-    : <span className="hv5-mo-v" />
-)
 const Jump = () => <span className="hv5-f3-jump">chat jumping</span>
+const Viewers = ({ viewers }: { viewers: number | null }) => (viewers != null ? <>{SEP}<span className="hv5-fd-w">{formatHubInt(viewers)} viewers</span></> : null)
 
+/** One number a row (L1): × usual beside the time; a went-live row's is its viewers. The rest are in the aria label and the moment card. */
 function GroupRow({ item, model, nowMs, isNew }: { item: Extract<FeedItem, { group: FeedEvent[] }>; model: LiveFeedModel; nowMs: number; isNew: boolean }) {
   const group = item.group
   const e = group[0]!
@@ -162,14 +196,10 @@ function GroupRow({ item, model, nowMs, isNew }: { item: Extract<FeedItem, { gro
   const cat = e.cat || group.map((x) => x.cat).find(Boolean) || null
   let act: ReactNode
   let mid: ReactNode = null
-  let fig: ReactNode
   if (e.kind === 'spike') {
-    const unit = e.ser === 'chat' ? 'chat' : 'emotes'
     act = <span className="hv5-f2-act hv5-f3-spk">{e.ser === 'chat' ? 'chat spike' : 'emote spike'}</span>
     mid = <span className="hv5-f2-x">{feedMultiplier(e.x)} usual</span>
-    fig = <SizeFig add={e.add} unit={unit} />
   } else if (e.kind === 'moment') {
-    const unit = e.row.series
     const emote = e.act.emote
     act = emote ? (
       <>
@@ -180,14 +210,14 @@ function GroupRow({ item, model, nowMs, isNew }: { item: Extract<FeedItem, { gro
         </span>
       </>
     ) : <span className="hv5-f2-act hv5-f3-spk">{e.act.word}</span>
-    mid = e.x != null ? <span className="hv5-f2-x">{feedMultiplier(e.x)} usual</span> : null
-    fig = e.add != null && e.add > 0 ? <SizeFig add={e.add} unit={unit} /> : e.x != null ? <XFig x={e.x} unit={unit} /> : <span className="hv5-mo-v" />
+    // a Moments-list row writes its × as that page does; one that partly holds up says why instead
+    mid = e.x != null ? <span className="hv5-f2-x">{e.list ? fx(e.x) : feedMultiplier(e.x)} usual</span> : e.why ? <span className="hv5-fd-w">{e.why}</span> : null
   } else {
     act = <span className="hv5-f2-act hv5-f2-live">went live</span>
     // a fresh stream's chat rate is mostly hellos, so it shows only when chat is jumping
-    mid = e.jump ? <><Jump />{e.chat != null && e.chat >= 1 ? <>{SEP}<span className="hv5-fd-w">chat {feedMore(e.chat)}/min</span></> : null}</> : null
-    fig = <ViewFig viewers={e.viewers} />
+    mid = e.jump ? <Jump /> : null
   }
+  const viewers = e.kind === 'live' ? <Viewers viewers={e.viewers} /> : null
   const tip = feedRestTip(group)
   return (
     <li className={`hv5-fd-it${isNew ? ' hv5-fd-new' : ''}${item.old ? ' hv5-f3-old' : ''}`} data-kind={e.kind}>
@@ -207,11 +237,11 @@ function GroupRow({ item, model, nowMs, isNew }: { item: Extract<FeedItem, { gro
           <span className="hv5-fd-l2">
             <Ago at={e.at} nowMs={nowMs} />
             {mid ? <>{SEP}{mid}</> : null}
+            {viewers}
             <Game cat={cat} art={artFor(e, cat, model)} />
             {rest ? <>{SEP}<span className="hv5-f2-more">+{rest} earlier</span></> : null}
           </span>
         </span>
-        {fig}
       </Link>
     </li>
   )
@@ -246,9 +276,8 @@ function LivesRow({ lives, old, model, nowMs, isNew }: { lives: FeedLive[]; old:
               <span className="hv5-fd-av"><HubV5Avatar login={e.login} name={e.name} src={e.avatar} size={22} /></span>
               <span className="hv5-fd-tx">
                 <span className="hv5-fd-l1"><span className="hv5-fd-nm">{e.name}</span>{e.jump ? <Jump /> : null}</span>
-                <span className="hv5-fd-l2"><Ago at={e.at} nowMs={nowMs} /><Game cat={e.cat} art={artFor(null, e.cat, model)} /></span>
+                <span className="hv5-fd-l2"><Ago at={e.at} nowMs={nowMs} /><Viewers viewers={e.viewers} /><Game cat={e.cat} art={artFor(null, e.cat, model)} /></span>
               </span>
-              <ViewFig viewers={e.viewers} />
             </Link>
           </li>
         ))}
@@ -289,7 +318,6 @@ function UpRow({ model, isNew, onUpMore }: { model: LiveFeedModel; isNew: boolea
                 <span className="hv5-fd-l1"><span className="hv5-fd-nm">{x.name}</span></span>
                 <span className="hv5-fd-l2"><span className="hv5-f2-x">{feedMultiplier(x.x)} usual</span><Game cat={x.cat} art={artFor(null, x.cat, model)} /></span>
               </span>
-              <SizeFig add={x.add} unit="chat" />
             </Link>
           </li>
         ))}
@@ -324,7 +352,12 @@ function MomentCard({ row, avatar }: { row: HubMomentRowV5; avatar: string | nul
       </div>
       <div className="hv5-mc-g"><MomentArt moment={m} /><span>{m.category || 'Game not sent'}</span></div>
       <div className="hv5-mc-r"><b>{formatHubRate(row.rate)}</b> {unit}<span className="hv5-mc-l">{row.label}</span></div>
-      {'x' in cmp ? (
+      {'x' in cmp && cmp.over ? (
+        <p className="hv5-mc-x">
+          <b className={isLowMultiplier(cmp.x) ? 'lo' : undefined}>{fx(cmp.x)}</b> {cmp.over}
+          <span>{formatHubRate(cmp.avg)} {unit} on average over the {cmp.mins} measured min before it</span>
+        </p>
+      ) : 'x' in cmp ? (
         <p className="hv5-mc-x">
           <b className={isLowMultiplier(cmp.x) ? 'lo' : undefined}>{formatHubMultiplier(cmp.x)}</b> its own average
           <span>{formatHubRate(cmp.avg)} {unit} on average before this, over {cmp.mins} measured min</span>
@@ -449,23 +482,44 @@ export function HubV5LiveFeed({ feed, nowMs, loading = false, onUpMore }: HubV5L
   const model = feed.shown
   const phone = useMedia('(max-width: 719px)')
   const wide = useMedia('(min-width: 1536px)')
+  const column = useMedia('(min-width: 1100px) and (max-width: 1535px)')
   const innerHeight = useInnerHeight()
   const [showAll, setShowAll] = useState(false)
+  // a Picking up or went-live list is open: the feed grows under it instead of keeping the column's height
+  const [opened, setOpened] = useState(false)
+  const [columnPx, setColumnPx] = useState<number | null>(null)
   const secRef = useRef<HTMLElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
   const hover = useRef(false)
   const focus = useRef(false)
 
+  // 1100–1535 px: the rail takes the height Top emotes and Where chat is give the row (CSS hv5-fd-fit), and its rows fit that
+  const fit = column && !showAll && !opened
+  useEffect(() => {
+    const sec = secRef.current
+    const wrap = wrapRef.current
+    if (!fit || !sec || !wrap || typeof ResizeObserver === 'undefined') return undefined
+    const measure = () => setColumnPx(sec.getBoundingClientRect().bottom - wrap.getBoundingClientRect().top - 4)
+    const observer = new ResizeObserver(measure)
+    observer.observe(sec)
+    measure()
+    return () => observer.disconnect()
+  }, [fit])
+
   const upOn = model.up.length > 0
-  const cap = feedCap(phone, wide, innerHeight)
-  const shown = model.items.slice(0, showAll ? model.items.length : Math.max(0, cap - (upOn ? 1 : 0)))
+  const cap = column && columnPx != null ? feedColumnCap(columnPx) : feedCap(phone, wide, innerHeight)
+  const room = Math.max(0, cap - (upOn ? 1 : 0))
+  const shown = model.items.slice(0, showAll ? model.items.length : room)
   const hidden = model.items.length - shown.length
   const quiet = feedIsQuiet(model)
+  // a quiet hour: the day's top moments under it, in the rows it leaves
+  const filler = quiet ? model.top.slice(0, Math.max(0, room - shown.length)) : []
   const fresh = feed.fresh
   const isNew = (it: FeedItem) => !!fresh && ('group' in it ? fresh.has(it.group[0]!.key) : it.lives.some((e) => fresh.has(e.key)))
 
   const byKey = useMemo(() => {
     const map = new Map<string, { row: HubMomentRowV5; avatar: string | null }>()
+    for (const it of model.top) if ('group' in it) for (const e of it.group) if (e.kind === 'moment') map.set(e.row.key, { row: e.row, avatar: e.avatar })
     for (const e of model.events) if (e.kind === 'moment') map.set(e.row.key, { row: e.row, avatar: e.avatar })
     return map
   }, [model])
@@ -487,10 +541,19 @@ export function HubV5LiveFeed({ feed, nowMs, loading = false, onUpMore }: HubV5L
       ? <GroupRow key={it.key} item={it} model={model} nowMs={nowMs} isNew={isNew(it)} />
       : <LivesRow key={it.key} lives={it.lives} old={it.old} model={model} nowMs={nowMs} isNew={isNew(it)} />)
   }
+  if (filler.length) {
+    rows.push(<li key="rule-top" className="hv5-f3-rule" aria-hidden="true">{ruled ? 'top moments today' : 'earlier today, top moments'}</li>)
+    for (const it of filler) if ('group' in it) rows.push(<GroupRow key={it.key} item={it} model={model} nowMs={nowMs} isNew={false} />)
+  }
 
   const stale = isStale(model.asOf, nowMs)
   return (
-    <aside ref={secRef} id="latest" className={`hv5-sec hv5-latest hv5-feed${showAll ? ' hv5-fd-all' : ''}${stale ? ' hv5-f2-stale' : ''}`} aria-labelledby={H_ID}>
+    <aside
+      ref={secRef}
+      id="latest"
+      className={`hv5-sec hv5-latest hv5-feed${showAll ? ' hv5-fd-all' : ''}${fit ? ' hv5-fd-fit' : ''}${stale ? ' hv5-f2-stale' : ''}`}
+      aria-labelledby={H_ID}
+    >
       <div className="hv5-rh">
         <h2 id={H_ID}><span className="hv5-fd-dot" aria-hidden="true" />Live feed</h2>
         <span className="hv5-f2-fresh">{freshText(model.asOf, nowMs)}</span>
@@ -518,10 +581,12 @@ export function HubV5LiveFeed({ feed, nowMs, loading = false, onUpMore }: HubV5L
         >
           {feed.pending} new ↑
         </button>
-        <div className="hv5-fd-body" {...handlers}>
-          {model.asOf != null && quiet && !upOn ? (
-            <p className="hv5-fd-quiet">Quiet right now{model.items.length ? ` · last event ${feedAgo(model.items[0]!.at, nowMs)}` : ' · nothing in the last hour'}</p>
-          ) : null}
+        <div
+          className="hv5-fd-body"
+          {...handlers}
+          onClick={() => window.requestAnimationFrame(() => setOpened(!!wrapRef.current?.querySelector('.hv5-fd-list [aria-expanded="true"]')))}
+        >
+          {model.asOf != null && !upOn && !rows.length ? <p className="hv5-fd-quiet">Quiet right now · nothing in the last hour</p> : null}
           {upOn || rows.length ? (
             <ol className="hv5-fd-list" aria-labelledby={H_ID}>
               {upOn ? <UpRow model={model} isNew={!!fresh?.has('now')} onUpMore={onUpMore} /> : null}
@@ -543,13 +608,7 @@ export function HubV5LiveFeed({ feed, nowMs, loading = false, onUpMore }: HubV5L
               </button>
             </div>
           ) : null}
-          {model.asOf != null ? (
-            <p className="hv5-f3-earlier">
-              Before {feedClockFloor(model.asOf - FEED_WINDOW_MS)}, and the day’s top moments: <Link to="/analytics/moments">All moments →</Link>
-            </p>
-          ) : loading ? null : (
-            <p className="hv5-none">No live data yet.</p>
-          )}
+          {model.asOf == null && !loading ? <p className="hv5-none">No live data yet.</p> : null}
         </div>
       </div>
       {card}

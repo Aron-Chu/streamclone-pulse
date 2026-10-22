@@ -14,9 +14,16 @@
  *   row; the smaller ones share one.
  * - Picking up: chat 1.5×+ usual with the same floors, ranked by how many
  *   more messages a minute.
+ *
+ * With the Moments list (L1, 10-21: where /analytics/moments is the checked
+ * page), the moment rows are that list's: the same moments, the same × and the
+ * server's checks, nothing scored here. Spikes, went live and Picking up still
+ * come from the hub. A quiet hour shows the day's top moments under it.
  */
-import type { HubEmote, HubLiveChannel, HubMoment, PublicHub } from '../../../../lib/publicHub'
+import type { HubEmote, HubLiveChannel, HubLivePulseMoment, HubMoment, PublicHub } from '../../../../lib/publicHub'
 import { screenerMetricMultiplier, type HubScreenerMetricKey } from '../../../../lib/channelScreenerContract'
+import type { MomentsFeedItem } from '../../../../lib/momentsFeed'
+import { avatarImage, boxArtImage, checkMoment, emoteImage, sameDay, type CheckedMoment } from '../../../../lib/momentsChecked'
 import {
   channelHref,
   formatHubInt,
@@ -119,6 +126,9 @@ export interface FeedMoment extends FeedBase {
   x: number | null
   /** Messages (or emotes) a minute over usual, when the word's number is the moment's own. */
   add: number | null
+  /** From the Moments list: its × is written as that page writes it, and `why` stands in when it sends none. */
+  list?: true
+  why?: string
 }
 export interface FeedLive extends FeedBase {
   kind: 'live'
@@ -153,11 +163,15 @@ export interface FeedLeftOut {
 }
 
 export interface LiveFeedModel {
-  /** The last poll (the hub's generatedAt). Null before the first reply. */
+  /** The last poll (the hub's generatedAt, or the Moments list's when newer). Null before the first reply. */
   asOf: number | null
   /** In the hour, newest first. */
   events: FeedEvent[]
   items: FeedItem[]
+  /** The day's top moments from before the hour, for a quiet hour: by ×, one a channel, none from a channel in the hour. */
+  top: FeedItem[]
+  /** The moment rows are the Moments list's. */
+  list: boolean
   up: FeedUpRow[]
   /** The 5-minute window most Picking up channels share, as sent ("4:20–4:25 PM"). */
   upWindow: string
@@ -169,6 +183,12 @@ export interface LiveFeedModel {
 }
 
 export type LiveFeedInput = Pick<PublicHub, 'generatedAt' | 'liveChannels' | 'moments' | 'livePulseMoments'>
+
+/** The Moments list's newest page (/v1/public/moments), as the Moments page reads it. */
+export interface FeedMomentsList {
+  items: readonly MomentsFeedItem[]
+  generatedAt: number
+}
 
 const EMPTY_LEFT: FeedLeftOut = { spikeUnder: [], spikeNew: [], momStart: 0, momUnder: [], momNoNum: 0 }
 
@@ -185,6 +205,48 @@ function momentAct(row: HubMomentRowV5): FeedAct {
   if (row.label === 'Emote spike' && lead && lead.count >= FEED_SPAM_USES && share >= FEED_SPAM_SHARE) return { word: 'spammed', emote: lead, x: kx }
   const word = row.label === 'Chat spike' ? 'chat burst' : row.label === 'Emote spike' ? 'emote burst' : row.label.toLowerCase()
   return { word, emote: null, x: kx }
+}
+
+/**
+ * A Moments-list moment as a feed row. Every figure is the item's: its label,
+ * the row × the Moments page shows (only for a moment that holds up and rose),
+ * and its 15-minute baseline for the card; the link opens the same moment there.
+ */
+function listMoment(m: CheckedMoment, live: ReadonlyMap<string, HubLiveChannel>): FeedMoment {
+  const item = m.item
+  const login = lo(item.login)
+  const series = m.kind
+  const label = series === 'chat' ? 'Chat spike' : 'Emote spike'
+  const lead = item.topEmotes[0]
+  const emote: HubEmote | null = lead ? { name: lead.name, imageUrl: emoteImage(lead), count: lead.count, sharePct: 0, provider: lead.provider, zeroWidth: lead.zeroWidth, animated: lead.animated } : null
+  const avatar = avatarImage(item) ?? live.get(login)?.profileImageUrl ?? null
+  const moment: HubLivePulseMoment = {
+    offsetSeconds: item.offsetSeconds, score: item.score, label, kind: series === 'chat' ? 'chat_spike' : 'emote_spike',
+    chatPerMin: item.chat.perMin ?? undefined, emotesPerMin: item.emotes.perMin ?? undefined, viewers: item.viewers,
+    topEmotes: emote ? [emote] : [], login, displayName: m.name, profileImageUrl: avatar ?? undefined, streamId: item.streamId,
+    at: item.minuteStart, category: item.category?.name, categoryId: item.category?.id, boxArtUrl: boxArtImage(item),
+  }
+  const rate = item[series].perMin
+  const avg = item[series].baselinePerMin
+  const worst = m.checks.find((c) => c.lv === item.verdict && c.short)
+  const row: HubMomentRowV5 = {
+    moment, key: item.id, login, displayName: m.name, label, series, rate,
+    topEmote: series === 'emotes' ? emote : null,
+    topEmoteName: series === 'emotes' ? emote?.name ?? null : null,
+    cmp: m.rowX != null
+      ? { x: m.rowX, avg, mins: item.baselineMeasuredMinutes ?? 15, over: 'the 15 minutes before' }
+      : { why: m.why || 'not compared', long: worst?.long ?? 'No × came with this moment.' },
+    href: `/analytics/moments?${new URLSearchParams({ m: item.id })}`,
+    at: item.minuteStart,
+  }
+  const spammed = series === 'emotes' && item.label.spammed && emote
+  return {
+    kind: 'moment', at: item.minuteStart, key: `m:${item.id}`, login, name: m.name, cat: item.category?.name || null,
+    streamId: item.streamId, avatar, row,
+    act: spammed ? { word: 'spammed', emote, x: m.rowX } : { word: series === 'chat' ? 'chat burst' : 'emote burst', emote: null, x: m.rowX },
+    x: m.rowX, add: m.rowX != null && rate != null && avg != null ? rate - avg : null,
+    list: true, why: m.rowX == null ? m.why || undefined : undefined,
+  }
 }
 
 /** The event's words for "+N earlier" and the aria label. */
@@ -208,11 +270,16 @@ function commonWindow(rows: readonly HubLiveChannel[]): string {
   return top ? hubClockRange(top.a, top.b) : ''
 }
 
-export function liveFeedModel(hub: LiveFeedInput | null | undefined): LiveFeedModel {
-  const asOf = hub ? Date.parse(hub.generatedAt) : Number.NaN
+export function liveFeedModel(hub: LiveFeedInput | null | undefined, list: FeedMomentsList | null = null): LiveFeedModel {
+  const hubAt = hub ? Date.parse(hub.generatedAt) : Number.NaN
+  const asOf = list && finite(list.generatedAt) ? Math.max(hubAt, list.generatedAt) : hubAt
   const art = hubCategoryArt(hub?.livePulseMoments ?? [])
   if (!hub || !Number.isFinite(asOf)) {
-    return { asOf: null, events: [], items: [], up: [], upWindow: '', art, left: EMPTY_LEFT, spikeSeen: 0, liveCount: 0 }
+    return { asOf: null, events: [], items: [], top: [], list: false, up: [], upWindow: '', art, left: EMPTY_LEFT, spikeSeen: 0, liveCount: 0 }
+  }
+  for (const item of list?.items ?? []) {
+    const boxArt = boxArtImage(item)
+    if (boxArt && item.category && !art.has(item.category.name)) art.set(item.category.name, boxArt)
   }
   const inHour = (t: number | null | undefined): t is number => finite(t) && t <= asOf && asOf - t <= FEED_WINDOW_MS
   const live = new Map(hub.liveChannels.map((c) => [lo(c.login), c]))
@@ -255,9 +322,13 @@ export function liveFeedModel(hub: LiveFeedInput | null | undefined): LiveFeedMo
     }
   }
 
-  // Moments from the hour at 1.5×+ usual
+  // Moments: the Moments list's from the hour (those that hold up or partly do, as its Latest shows them);
+  // without the list, the hub's own from the hour at 1.5×+ usual
   const moments: FeedMoment[] = []
-  for (const row of momentRowsV5(hub.livePulseMoments ?? [])) {
+  for (const item of list?.items ?? []) {
+    if (item.verdict !== 'bad' && inHour(item.minuteStart)) moments.push(listMoment(checkMoment(item, asOf), live))
+  }
+  for (const row of list ? [] : momentRowsV5(hub.livePulseMoments ?? [])) {
     const m = row.moment
     if (!inHour(row.at)) continue
     const raw = m.comparison?.[row.series]
@@ -304,8 +375,23 @@ export function liveFeedModel(hub: LiveFeedInput | null | undefined): LiveFeedMo
   if (small.length) items.push({ key: 'lives', at: small[0]!.at, old: asOf - small[0]!.at > FEED_OLD_MS, lives: small })
   items.sort((a, b) => b.at - a.at)
 
+  // The day's top moments, for a quiet hour: the list's from earlier today that hold up, by their ×
+  const top: FeedItem[] = []
+  const seen = new Set(groups.keys())
+  const best = (list?.items ?? [])
+    .filter((item) => item.minuteStart < asOf - FEED_WINDOW_MS && sameDay(item.minuteStart, asOf))
+    .map((item) => checkMoment(item, asOf))
+    .filter((m) => m.rowX != null)
+    .sort((a, b) => b.rowX! - a.rowX! || b.at - a.at)
+  for (const m of best) {
+    const e = listMoment(m, live)
+    if (seen.has(e.login)) continue
+    seen.add(e.login)
+    top.push({ key: `t:${e.login}`, at: e.at, old: true, group: [e] })
+  }
+
   return {
-    asOf, events, items, up, upWindow: commonWindow(hotChat), art, left,
+    asOf, events, items, top, list: !!list, up, upWindow: commonWindow(hotChat), art, left,
     spikeSeen: spikes.length + left.spikeUnder.length + left.spikeNew.length,
     liveCount: lives.length,
   }
@@ -328,6 +414,11 @@ export function feedFresh(shown: LiveFeedModel, next: LiveFeedModel): Set<string
 /** How many rows fit: phone 6, under 1536 px 8; the sticky rail ≥ 1536 px is sized to the window's height. */
 export function feedCap(phone: boolean, wide: boolean, innerHeight: number): number {
   return phone ? 6 : !wide ? 8 : Math.max(6, Math.floor((innerHeight - 72 - 300) / 52))
+}
+
+/** 1100–1535 px: rows of 52 px that fit the column's `px` under the header, leaving room for the "earlier" rule and "Show N more" (L1). */
+export function feedColumnCap(px: number): number {
+  return Math.max(3, Math.floor((px - 26 - 40) / 52))
 }
 
 export function feedIsQuiet(model: LiveFeedModel): boolean {
@@ -355,7 +446,7 @@ export function feedRowAria(group: readonly FeedEvent[], nowMs: number): string 
     said = `${feedWord(e)}, ${ago}: ${feedMore(e.add)} more ${u} a minute than usual, ${multiplierWords(e.x)} times usual`
   } else if (e.kind === 'moment') {
     const u = e.row.series
-    said = `${feedWord(e)}, ${ago}${e.add != null && e.add > 0 ? `: ${feedMore(e.add)} more ${u} a minute than usual` : ''}${e.x != null ? `, ${multiplierWords(e.x)} times usual` : ''}`
+    said = `${feedWord(e)}, ${ago}${e.add != null && e.add > 0 ? `: ${feedMore(e.add)} more ${u} a minute than usual` : ''}${e.x != null ? `, ${multiplierWords(e.x)} times usual` : e.why ? `, ${e.why}` : ''}`
   } else {
     said = `went live ${ago}${e.chat != null && e.chat >= 1 ? `, chat ${feedMore(e.chat)} a minute` : ''}${e.jump ? ', chat jumping' : ''}${e.viewers != null ? `, ${formatHubInt(e.viewers)} viewers now` : ''}`
   }
@@ -385,10 +476,14 @@ export function feedTip(model: LiveFeedModel): string {
     + `Chat spikes: channels whose chat or emotes jumped over the last 5 minutes against the 5 before, kept only when those 5 minutes also ran at least ${FEED_UP_MIN}× the stream’s own average, at least ${FEED_NOW_MIN} a minute and ${FEED_ADD_MIN} more than usual: ${spikes} of ${model.spikeSeen} here`
     + (left.spikeUnder.length ? `; under ${FEED_UP_MIN}× their usual: ${left.spikeUnder.join(', ')}` : '')
     + (left.spikeNew.length ? `; too new to compare, so their went-live row says “chat jumping”: ${left.spikeNew.join(', ')}` : '') + '. '
-    + 'The big number is how many more messages a minute than usual; the multiplier sits beside the time. '
-    + `Moments: the detector’s moments from the hour at ${FEED_UP_MIN}× usual or more (${moments || 'none this hour'}). `
-    + `Moments in a stream’s first ${FEED_START_MIN} minutes are left out (chat saying hello), and so is any the backend’s own comparison puts under ${FEED_KEEP_MIN}×`
-    + (left.momUnder.length ? ` (${left.momUnder.join('; ')})` : '') + '. The day’s top moments are in All moments. '
+    + 'One number a row, × usual, beside the time; a moment’s other numbers are in its card when you point at it. '
+    + (model.list
+      ? `Moments: the Moments page’s own list, the hour’s moments that hold up or partly do (${moments || 'none this hour'}), with its checks. `
+        + 'The × is the minute against the 15 minutes before, shown when the moment holds up; one that partly holds up says why. '
+        + 'When the hour is quiet, the day’s top moments sit under it. '
+      : `Moments: the detector’s moments from the hour at ${FEED_UP_MIN}× usual or more (${moments || 'none this hour'}). `
+        + `Moments in a stream’s first ${FEED_START_MIN} minutes are left out (chat saying hello), and so is any the backend’s own comparison puts under ${FEED_KEEP_MIN}×`
+        + (left.momUnder.length ? ` (${left.momUnder.join('; ')})` : '') + '. The day’s top moments are in All moments. ')
     + `Went live: every stream that started in the hour (${model.liveCount}). ${formatHubInt(FEED_BIG_VIEWERS)}+ viewers get their own row; the rest share one. `
     + `Picking up: chat at least ${FEED_UP_MIN}× usual${model.upWindow ? ` over ${model.upWindow}` : ''} with the same floors (${model.up.length}, not counting channels with a spike row), ranked by how many more messages a minute. `
     + 'Rows older than 30 minutes fade. Went offline needs a backend event and is not shown.'

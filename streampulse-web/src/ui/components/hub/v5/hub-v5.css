@@ -934,10 +934,10 @@
 .hub-v5 .hv5-feed .hv5-f2-pill[hidden] { display: none; }
 .hub-v5 .hv5-f2-pill:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: 2px; }
 
-/* one row: avatar · who + what / when · game · value (52 px) */
+/* one row: avatar · who + what / when · × usual · game (52 px); one number a row (L1) */
 .hub-v5 :is(.hv5-feed, .hv5-f3-peek) .hv5-fd {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
+  grid-template-columns: 28px minmax(0, 1fr);
   column-gap: 10px;
   align-items: center;
   width: 100%;
@@ -982,7 +982,6 @@
 .hv5-fd-g,
 .hv5-fd-w { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .hv5-fd-w time { font-variant-numeric: tabular-nums; }
-.hv5-mo-x.hv5-sm { font-size: 13px; font-weight: 600; }
 /* what happened: a spike or moment in teal, a stream start in red with a ring, Picking up in purple */
 .hv5-f2-act { flex: none; font-weight: 500; color: var(--sp-text-2); white-space: nowrap; }
 .hv5-f3-spk { color: var(--hv5-accent); }
@@ -1007,19 +1006,21 @@
 .hv5-fd[aria-expanded="true"] .hv5-fd-chev { transform: rotate(180deg); }
 .hub-v5 .hv5-feed .hv5-fd-sub { margin: 0 0 4px 18px; border-left: 1px solid var(--sp-line-strong); }
 .hub-v5 .hv5-feed .hv5-fd-sub[hidden] { display: none; }
-.hub-v5 .hv5-feed .hv5-fd-sub .hv5-fd { grid-template-columns: 22px minmax(0, 1fr) auto; height: 44px; }
+.hub-v5 .hv5-feed .hv5-fd-sub .hv5-fd { grid-template-columns: 22px minmax(0, 1fr); height: 44px; }
 .hv5-fd-sub .hv5-fd-av,
 .hv5-fd-sub .hv5-fd-av .hv5-av { width: 22px; height: 22px; }
 .hv5-fd-sub .hv5-fd-l1 { font-size: 12px; line-height: 16px; }
 .hv5-fd-more { display: flex; justify-content: center; padding: 6px 0 0; }
 .hv5-f2-upmore { padding: 8px 8px 10px 10px; font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
 /* past 30 minutes: the face and the number step back, the words stay readable (one thin rule, no tiers) */
-.hv5-f3-old > .hv5-fd :is(.hv5-fd-av, .hv5-fd-stack, .hv5-mo-v) { opacity: 0.5; }
+.hv5-f3-old > .hv5-fd :is(.hv5-fd-av, .hv5-fd-stack) { opacity: 0.5; }
 .hv5-f3-old > .hv5-fd .hv5-fd-nm { color: var(--sp-text-2); }
 .hv5-f3-rule { display: flex; align-items: center; gap: 8px; margin: 8px 8px 2px; font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
 .hv5-f3-rule::after { content: ""; flex: 1; height: 1px; background: var(--sp-line); }
-.hub-v5 .hv5-feed .hv5-f3-earlier { margin: 8px 8px 0; font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
-.hv5-f3-earlier a { white-space: nowrap; }
+/* 1100–1535 the feed sits beside Top emotes and Where chat is: it takes the height they give the row and fits its rows to it (L1); an open list or Show more lets it grow */
+@media (min-width: 1100px) and (max-width: 1535px) {
+  .hv5-feed.hv5-fd-fit { contain: size; min-height: 432px; }
+}
 /* ≥ 1536 the rail is sticky; Show more lets the list scroll inside the window (scrollbar hidden) */
 @media (min-width: 1536px) {
   .hv5-feed.hv5-fd-all .hv5-fd-body {
@@ -1047,27 +1048,7 @@
   .hv5-fd-chev { transition: none !important; }
 }
 
-/* the moment figures and the moment card (round-5 Moments, now the feed's) */
-.hv5-mo-v {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  min-width: 56px;
-  text-align: right;
-}
-.hv5-mo-x {
-  font: 700 15px/18px var(--sp-font);
-  color: var(--sp-text-1);
-  font-variant-numeric: tabular-nums;
-}
-.hv5-mo-x.lo { color: var(--sp-text-3); }
-.hv5-mo-u,
-.hv5-mo-why {
-  font: 500 12px/16px var(--sp-font);
-  color: var(--sp-text-3);
-  white-space: nowrap;
-}
-
+/* the moment card (round-5 Moments, now the feed's) */
 /* the hover card: never takes the pointer */
 .hv5-mo-card {
   position: fixed;
