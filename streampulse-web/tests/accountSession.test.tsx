@@ -52,19 +52,37 @@ describe('account session hint', () => {
   })
 
   it.each([
-    ['an expired session', new AccountError(401, 'sign_in_required')],
-    ['an outage', new AccountError(503)],
-    ['a network failure', new TypeError('Failed to fetch')],
-  ])('reads %s as signed out without logging', async (_, failure) => {
+    ['an expired session', new AccountError(401, 'sign_in_required'), 'signed_out'],
+    ['a refused session', new AccountError(403), 'signed_out'],
+    ['an outage', new AccountError(503), 'checking'],
+    ['a network failure', new TypeError('Failed to fetch'), 'checking'],
+  ])('reads %s on the first check as %s without logging', async (_, failure, status) => {
     cookie = CSRF
     const consoleError = vi.spyOn(console, 'error')
     const consoleWarn = vi.spyOn(console, 'warn')
     vi.mocked(accountRequest).mockRejectedValue(failure)
     render(<Probe />)
     await flush()
-    expect(screen.getByTestId('session').textContent).toBe('signed_out')
+    expect(screen.getByTestId('session').textContent).toBe(status)
     expect(consoleError).not.toHaveBeenCalled()
     expect(consoleWarn).not.toHaveBeenCalled()
+  })
+
+  it('keeps a signed-in session through an outage and asks again on the next focus', async () => {
+    cookie = CSRF
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000)
+    render(<Probe />)
+    await flush()
+    expect(screen.getByTestId('session').textContent).toBe('signed_in')
+    vi.mocked(accountRequest).mockRejectedValueOnce(new AccountError(500))
+    now.mockReturnValue(1_000_000 + ACCOUNT_SESSION_REFRESH_MS)
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    await flush()
+    expect(screen.getByTestId('session').textContent).toBe('signed_in')
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    await flush()
+    expect(accountRequest).toHaveBeenCalledTimes(3)
+    expect(screen.getByTestId('session').textContent).toBe('signed_in')
   })
 
   it('marks a linked Twitch identity from /me without any name or picture', async () => {
@@ -159,5 +177,51 @@ describe('signing out clears this browser’s copies', () => {
     await flush()
     await act(async () => { await signOutAccount() })
     expect(window.localStorage.getItem('sp-moments-viewed')).toBeNull()
+  })
+})
+
+describe('saves made while /me cannot answer', () => {
+  it('wait in the outbox for the account this copy belongs to, and reach it once /me answers', async () => {
+    const { startAccountSaves, syncAccountSaves } = await import('../src/lib/accountSaves')
+    const { savedMomentsNow, toggleSavedMoment } = await import('../src/lib/savedDiscoveryMoments')
+    const { fromHubMoment } = await import('../src/lib/discoveryMoments')
+    window.localStorage.clear()
+    startAccountSaves()
+    cookie = CSRF
+    let meDown = false
+    const sent: Array<Record<string, unknown>> = []
+    vi.mocked(accountRequest).mockImplementation(async (path, body) => {
+      if (path === '/me') { if (meDown) throw new AccountError(503); return { accountId: 'account-a' } }
+      if (path === '/saves/list') return { saves: [] }
+      if (path === '/saves/update') {
+        const saves = (body as { saves: Array<Record<string, unknown>> }).saves
+        sent.push(...saves)
+        return { results: saves.map(() => ({ outcome: 'added', save: null })) }
+      }
+      return {}
+    })
+    // signed in once: this browser's list is the account's copy
+    const first = render(<Probe />)
+    await flush()
+    await act(async () => { await syncAccountSaves({ force: true }) })
+    expect(savedMomentsNow().account).toBe(true)
+    first.unmount()
+    // a new page while /me is down: the session stays unconfirmed, and a save waits
+    resetAccountSessionForTests()
+    meDown = true
+    render(<Probe />)
+    await flush()
+    expect(screen.getByTestId('session').textContent).toBe('checking')
+    act(() => { toggleSavedMoment(fromHubMoment({ login: 'somestreamer', streamId: '123456', offsetSeconds: 930, label: 'Big one' })!) })
+    await flush()
+    expect(JSON.parse(window.localStorage.getItem('streampulse.account-saves.v1')!).outbox).toHaveLength(1)
+    expect(sent).toHaveLength(0)
+    // /me answers on the next focus; the next sync sends it
+    meDown = false
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    await flush()
+    expect(screen.getByTestId('session').textContent).toBe('signed_in')
+    await act(async () => { await syncAccountSaves({ force: true }) })
+    expect(sent).toMatchObject([{ login: 'somestreamer', streamId: '123456', offsetSeconds: 930 }])
   })
 })

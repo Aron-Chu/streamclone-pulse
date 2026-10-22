@@ -1003,11 +1003,13 @@ export function AnalyticsConsole({
 
   useEffect(() => {
     if (!shouldRedirectLiveRouteToSession || !channelLogin || !liveRouteSessionSlug) return
-    navigate(buildSessionPath(channelLogin, liveRouteSessionSlug), { replace: true })
+    // the hash (#t=120) carries the time a shared link points at
+    navigate(buildSessionPath(channelLogin, liveRouteSessionSlug) + location.hash, { replace: true })
   }, [
     buildSessionPath,
     channelLogin,
     liveRouteSessionSlug,
+    location.hash,
     navigate,
     shouldRedirectLiveRouteToSession,
   ])

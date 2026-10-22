@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import { AccountError, accountRequest } from './accountApi'
-import { addSignOutStep, currentAccountTag } from './accountSession'
+import { addSignOutStep, currentAccountTag, hasAccountSessionHint } from './accountSession'
 import { fromHubMoment } from './discoveryMoments'
 import {
   clearSavedMoments, onSavedMomentChange, replaceSavedMoments, savedMomentRecord, savedMomentsNow,
@@ -234,8 +234,10 @@ export function syncAccountSaves({ force = false }: { force?: boolean } = {}): P
 
 /** Sends one change made here (a save, a removal or a note), or keeps it for the next sync. */
 async function onChange({ kind, item }: SavedMomentChange) {
-  const account = currentAccountTag()
   const state = readState()
+  // A session /me has not confirmed yet (it is slow or down): the change waits
+  // for the account this copy belongs to; another account signing in drops it.
+  const account = currentAccountTag() ?? (hasAccountSessionHint() ? state?.account ?? null : null)
   if (!account || !state || state.account !== account || !savedMomentsNow().account) return
   const next = kind === 'remove' ? change(item, state, { removed: true })
     : kind === 'add' ? change(item, state, { label: item.label.slice(0, 160), savedAt: iso(item.savedAt) })

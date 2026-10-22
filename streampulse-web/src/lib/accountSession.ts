@@ -10,9 +10,10 @@ import { onAccountSessionSignal } from './accountSessionSignal'
  * The session cookie is HttpOnly. The CSRF cookie the API sets beside it is
  * readable, and the two are set, expire and clear together, so a visitor
  * without it is signed out and never sends a request. A visitor with it asks
- * /v1/account/me once per page, again on focus at most once a minute. Any
- * failure reads as signed out, quietly: nothing is logged or reported, and the
- * account ID in the response is never kept.
+ * /v1/account/me once per page, again on focus at most once a minute. A 401 or
+ * 403 reads as signed out; any other failure (an outage, no network) keeps what
+ * the page knew and asks again on the next focus. Either way, quietly: nothing
+ * is logged or reported, and the account ID in the response is never kept.
  *
  * /me answers with the name and picture from the account's last Twitch
  * sign-in when the server keeps them (the sandbox backend, 2026-10-21), so a
@@ -166,10 +167,13 @@ function request(): Promise<void> {
         ...(Array.isArray(me.signInMethods) && me.signInMethods.includes('twitch') ? { twitchLinked: true } : {}),
       })
     },
-    () => SIGNED_OUT,
+    error => (error instanceof AccountError && (error.status === 401 || error.status === 403) ? SIGNED_OUT : null),
   ).then(next => {
     if (turn !== generation) return
     pending = null
+    // An outage says nothing about the session: keep it (and this browser's
+    // copy of the account's saves), and let the next focus ask again.
+    if (next === null) { lastRequestAt = Number.NEGATIVE_INFINITY; return }
     accountTagValue = next === SIGNED_OUT ? null : tag
     publish(next)
   })
