@@ -39,7 +39,7 @@
   display: flex;
   align-items: center;
 }
-/* Short windows: the stage is drawn smaller so all of it fits. */
+/* Short windows: the pinned stage is drawn smaller so all of it fits. */
 .lsg__sticky > .lsg__grid {
   zoom: var(--lsg-fit, 1);
 }
@@ -906,37 +906,6 @@
 .lsg[data-static] .lsg__step .lsg__step-rail::before {
   border-color: var(--tone);
   background: var(--tone);
-}
-
-/* ---- Play mode: scrolls with the page, plays once by itself -------------- */
-.lsg[data-mode='play'] .lsg__scene {
-  height: auto;
-}
-.lsg[data-mode='play'] .lsg__sticky {
-  position: static;
-  min-height: 0;
-}
-.lsg__again {
-  /* Hangs below the panel so it never resizes the stage or its deck. */
-  position: absolute;
-  top: calc(100% + 0.75rem);
-  right: 0;
-  padding: 0.4rem 0.85rem;
-  border: 1px solid hsl(var(--sc-border));
-  border-radius: 999px;
-  background: hsl(var(--sc-card) / 0.6);
-  color: hsl(var(--sc-muted-foreground));
-  font: inherit;
-  font-size: 0.78rem;
-  cursor: pointer;
-  transition: opacity 0.3s ease, color 0.15s ease;
-}
-.lsg__again:hover {
-  color: hsl(var(--sc-foreground));
-}
-.lsg__again:disabled {
-  opacity: 0;
-  cursor: default;
 }
 
 @media (prefers-reduced-motion: reduce) {
