@@ -119,8 +119,9 @@ test('wide: the latest moments, the first one open beside the list', async ({ pa
   await expect(page.locator('.mk-det .mk-d-more button')).toHaveCount(earlier)
   const detail = page.locator('.mk-det .mk-d')
   await expect(detail).toBeVisible()
-  // the verdict chip's (i) says why it counts (moments-r4 B2: no verdict tiers, filters or orders); Esc closes only that
-  const chip = detail.locator('.mk-hold')
+  // the verdict's (i) says why it counts (moments-r4 B2: no verdict tiers, filters or orders); Esc closes only that.
+  // A moment that holds up has it on its × line, the others on their chip (C1, 10-22)
+  const chip = detail.locator('.mk-d-why, .mk-hold')
   await expect(chip).toHaveAttribute('aria-expanded', 'false')
   await chip.click()
   await expect(detail.getByRole('heading', { name: 'Why it counts' })).toBeVisible()

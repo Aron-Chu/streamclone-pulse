@@ -518,7 +518,7 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
     setMetric={value => setOpened(o => ({ key: m.key, metric: value, lk: o.key === m.key ? o.lk : null }))}
     setLk={value => setOpened(o => ({ key: m.key, lk: value, metric: o.key === m.key ? o.metric : null }))}
     saved={isSaved(m.item)} onSave={() => toggleSave(m.key)} onCopy={() => copyLink(m.key)} onOpen={openFromDetail} onClose={closeDetail}
-    motion={motion} phone={phone} say={say} playRef={playRef} vods={vods} moreAll={moreAll} setMoreAll={setMoreAll} />
+    motion={motion} phone={phone} say={say} playRef={playRef} vods={vods} moreAll={moreAll} setMoreAll={setMoreAll} game={game} onGame={pickGame} />
 
   const stale = !replay && (feedStale || clock - loadedAt > STALE_MS)
   const deepAt = deepId ? momentsFeedIdParts(deepId) : null
