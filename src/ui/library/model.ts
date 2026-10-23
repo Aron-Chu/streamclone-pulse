@@ -62,6 +62,8 @@ export interface LibraryRepository {
   execute(command: LibraryCommand, signal: AbortSignal): Promise<LibrarySnapshot>
   /** Export the complete authorized dataset, not just the visible page/search results. */
   export(signal: AbortSignal): Promise<string>
+  /** Calls `onChange` when the data changed elsewhere, such as a moment watched in another tab. Returns the unsubscribe. */
+  subscribe?(onChange: () => void): () => void
 }
 export type LibraryView = 'saved' | 'recent' | 'storage'
 export const NOTE_LIMIT = 1000
