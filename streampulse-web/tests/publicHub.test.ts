@@ -17,7 +17,7 @@ import { coverageMeta, formatStreamUptime } from '../src/ui/components/analytics
 import { loadedCategories } from '../src/ui/components/moments/MomentCategoryBrowser'
 import { primePublicHub, resetPrimedPublicHubForTests } from '../src/lib/hubEarlyFetch'
 import { screenerUsual } from '../src/lib/channelScreenerContract'
-import { SLOW_READ_TIMEOUT_MS } from '../src/lib/portalTimeouts'
+import { HUB_LONG_WINDOW_TIMEOUT_MS } from '../src/lib/portalTimeouts'
 
 it('rejects future and sentinel starts and peaks instead of fabricating a zero uptime', () => {
   for (const time of ['2099-01-01T00:00:00Z', '0001-01-01T00:00:00Z']) {
@@ -782,7 +782,7 @@ describe('fetchPublicHubBase adopts the primed request (plan §2.6)', () => {
     expect(result.hubEndpointOk).toBe(true)
     expect(result.data.poolSize).toBe(3)
     expect(apiClient).toHaveBeenCalledTimes(1)
-    expect(apiClient).toHaveBeenCalledWith('/v1/public/hub?activityWindow=7d', { timeoutMs: SLOW_READ_TIMEOUT_MS })
+    expect(apiClient).toHaveBeenCalledWith('/v1/public/hub?activityWindow=7d', { timeoutMs: HUB_LONG_WINDOW_TIMEOUT_MS })
   })
 
   it('requests on its own for any other path, with its own signal and deadline', async () => {

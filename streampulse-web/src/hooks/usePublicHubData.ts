@@ -60,6 +60,11 @@ export interface PublicHubState {
 const DEFAULT_POLL_MS = Number(import.meta.env.VITE_PUBLIC_HUB_POLL_MS ?? 45_000)
 /** Viewer copy for a hub read that hit its client deadline (never the raw deadline message). */
 export const HUB_TIMEOUT_MESSAGE = 'The hub took too long to respond.'
+/**
+ * How long a cold long-window read runs alone before the 30m view is read to
+ * show meanwhile. A healthy API answers within it, so it costs no extra read.
+ */
+export const HUB_RECENT_VIEW_HEAD_START_MS = 3_000
 
 function canRecoverHubRead(error: unknown): boolean {
   return isApiError(error) &&
@@ -151,6 +156,14 @@ function replaceWithCanonicalRecentActivity(requested: PublicHub, recent: Public
   }
 }
 
+/** A 30m read standing in for a longer requested window: the bounded live-pool fallback. */
+function recentForRequestedWindow(recent: PublicHub, minutes: number): PublicHub {
+  return replaceWithCanonicalRecentActivity({
+    ...recent,
+    activity: { ...recent.activity, windowMinutes: minutes, requestedWindowMinutes: minutes },
+  }, recent)
+}
+
 function withUnavailableActivity(hub: PublicHub): PublicHub {
   return {
     ...hub,
@@ -204,7 +217,8 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
   randomRef.current = random
 
   const applySuccessfulLoad = useCallback(
-    (hub: PublicHub, source: PublicHubLoadSource, endpointOk: boolean) => {
+    // interim: the 30m view shown while the requested window loads; never cached or marked.
+    (hub: PublicHub, source: PublicHubLoadSource, endpointOk: boolean, interim = false) => {
       setData(hub)
       setLoadSource(source)
       setHubEndpointOk(endpointOk)
@@ -216,8 +230,8 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
       hasDataRef.current = true
       setLoadedActivityWindow(activityWindow)
       // Persisted by the effect below once React has committed this snapshot.
-      pendingPersistRef.current = endpointOk ? { hub, activityWindow, projection } : null
-      if (endpointOk && !projection) markHubDataOnce()
+      pendingPersistRef.current = endpointOk && !interim ? { hub, activityWindow, projection } : null
+      if (endpointOk && !interim && !projection) markHubDataOnce()
       consecutiveFailuresRef.current = 0
       nextRetryAfterMsRef.current = null
       retryNotBeforeRef.current = 0
@@ -240,17 +254,40 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
     if (hasDataRef.current) setRefreshing(true)
     else setLoading(true)
 
+    const minutes = WINDOW_MINUTES[activityWindow]
+    // Cold long window: a busy API can take tens of seconds to build it. If it
+    // has not answered after the head start, show the 30m view meanwhile, with
+    // the chart still updating; the requested window's own result settles the load.
+    let stopRecentView = () => {}
+    if (!hasDataRef.current && minutes != null && minutes > 30) {
+      const recentView = new AbortController()
+      const timer = window.setTimeout(() => {
+        void fetchPublicHubBase(recentView.signal, '30m', projection, 8_000).then((recent) => {
+          if (recentView.signal.aborted || !mountedRef.current || !recent.hubEndpointOk) return
+          applySuccessfulLoad(recentForRequestedWindow(recent.data, minutes), recent.loadSource, true, true)
+          setLoading(false)
+          setActivityRepairing(true)
+        }, () => undefined)
+      }, HUB_RECENT_VIEW_HEAD_START_MS)
+      stopRecentView = () => {
+        window.clearTimeout(timer)
+        recentView.abort(new DOMException('requested window settled', 'AbortError'))
+      }
+      controller.signal.addEventListener('abort', stopRecentView, { once: true })
+    }
+
     try {
       // A historical outage must not erase independently available live health.
       // At most one recent-window recovery read; never bypass auth or 429 backoff.
       let base: Awaited<ReturnType<typeof fetchPublicHubBase>>
       try {
         base = await fetchPublicHubBase(controller.signal, activityWindow, projection)
+        stopRecentView()
       } catch (primaryError) {
+        stopRecentView()
         if (controller.signal.aborted || !mountedRef.current) return
         if (!canRecoverHubRead(primaryError)) throw primaryError
         let recent: Awaited<ReturnType<typeof fetchPublicHubBase>> | undefined
-        const minutes = WINDOW_MINUTES[activityWindow]
         if (minutes != null && minutes > 30) {
           try {
             // The small 30m body keeps the 8 s default, so a failed cold load reaches its error sooner.
@@ -261,11 +298,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
         }
         if (controller.signal.aborted || !mountedRef.current) return
         if (recent?.hubEndpointOk && minutes != null) {
-          const recovered = replaceWithCanonicalRecentActivity({
-            ...recent.data,
-            activity: { ...recent.data.activity, windowMinutes: minutes, requestedWindowMinutes: minutes },
-          }, recent.data)
-          applySuccessfulLoad(recovered, recent.loadSource, true)
+          applySuccessfulLoad(recentForRequestedWindow(recent.data, minutes), recent.loadSource, true)
           return
         }
         // Keep an existing measured snapshot instead of replacing it with totals.

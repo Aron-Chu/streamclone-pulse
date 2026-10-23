@@ -12,7 +12,7 @@ import {
   resetPrimedPublicHubForTests,
   takePrimedPublicHub,
 } from '../src/lib/hubEarlyFetch'
-import { SLOW_READ_TIMEOUT_MS } from '../src/lib/portalTimeouts'
+import { HUB_LONG_WINDOW_TIMEOUT_MS } from '../src/lib/portalTimeouts'
 import { parseHubWindowParam } from '../src/lib/hubWindows'
 import { publicHubPath as reexportedPath } from '../src/lib/publicHub'
 import { usePublicHubData } from '../src/hooks/usePublicHubData'
@@ -80,14 +80,14 @@ describe('hub early fetch: paths', () => {
     expect(publicHubPath('30m', 'moments')).toBe('/v1/public/hub?activityWindow=30m&include=livePulseMoments')
     expect(publicHubPath('24h', 'tickers')).toBe('/v1/public/hub?activityWindow=24h&include=topEmotes%2CtopMovers')
     expect(reexportedPath).toBe(publicHubPath)
-    expect(hubReadTimeoutMs('24h')).toBe(SLOW_READ_TIMEOUT_MS)
+    expect(hubReadTimeoutMs('24h')).toBe(HUB_LONG_WINDOW_TIMEOUT_MS)
     expect(hubReadTimeoutMs('30m')).toBeUndefined()
     expect(hubReadTimeoutMs('recent')).toBeUndefined()
   })
 
   it('primes only /analytics, reading the window like the page', () => {
     expect(primedHubRequestForLocation({ pathname: '/analytics', search: '' })).toEqual({
-      path: '/v1/public/hub?activityWindow=24h', activityWindow: '24h', timeoutMs: SLOW_READ_TIMEOUT_MS,
+      path: '/v1/public/hub?activityWindow=24h', activityWindow: '24h', timeoutMs: HUB_LONG_WINDOW_TIMEOUT_MS,
     })
     expect(primedHubRequestForLocation({ pathname: '/analytics/', search: '?window=7d' })?.path).toBe('/v1/public/hub?activityWindow=7d')
     expect(primedHubRequestForLocation({ pathname: '/analytics', search: '?activityWindow=30m' })).toMatchObject({ activityWindow: '30m', timeoutMs: undefined })
@@ -107,7 +107,7 @@ describe('hub early fetch: priming and hand-over', () => {
     expect(primePublicHub({ pathname: '/analytics', search: '?window=7d' })).toBe('/v1/public/hub?activityWindow=7d')
     expect(primePublicHub({ pathname: '/analytics', search: '' })).toBeNull()
     expect(api.apiClient).toHaveBeenCalledTimes(1)
-    expect(api.apiClient).toHaveBeenCalledWith('/v1/public/hub?activityWindow=7d', { timeoutMs: SLOW_READ_TIMEOUT_MS })
+    expect(api.apiClient).toHaveBeenCalledWith('/v1/public/hub?activityWindow=7d', { timeoutMs: HUB_LONG_WINDOW_TIMEOUT_MS })
     expect(hasPrimedPublicHub()).toBe(true)
   })
 
