@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { MomentsFeedItem } from '../src/lib/momentsFeed'
 import {
   actOf, ariaOf, checkLines, checkMoment, freshCounts, groupsOf, hms, SERIES_BEFORE, seriesFromSpark, SORTS, sparkBars, stc, streamTime, stripModel,
-  avatarImage, boxArtImage, liveFrameImage, updatedText, usualAt, when,
+  avatarImage, boxArtImage, liveFrameImage, TOP_BURST_MS, topBursts, updatedText, usualAt, when,
 } from '../src/lib/momentsChecked'
 
 const fixture = JSON.parse(readFileSync(resolve(__dirname, 'fixtures/moments_feed_v1.json'), 'utf8')) as { generatedAt: number; items: MomentsFeedItem[] }
@@ -82,7 +82,22 @@ describe('checked moments display model', () => {
 
   it('reads a row the way the mockup does', () => {
     const m = pool.find(x => x.rowX != null)!
-    expect(ariaOf(m, NOW, 2)).toMatch(new RegExp(`^${m.name} .+ times the 15 minutes before.+Holds up\\. 2 earlier moments\\.$`))
+    // the × says what it counts, as the row does (X1, 10-22)
+    expect(ariaOf(m, NOW, 2)).toMatch(new RegExp(`^${m.name} .+, ${m.kind} \\d+(\\.\\d)? times usual.+Holds up\\. 2 earlier moments\\.$`))
+  })
+
+  it('ranks Top by the feed’s score, one row a burst (T1, 10-22)', () => {
+    const rose = pool.filter(m => m.rowX != null)
+    const lead = rose.slice().sort(SORTS.top)[0]
+    // a weaker minute of the same burst, 2 minutes on; one 6 minutes on is its own burst
+    const near = checkMoment({ ...lead.item, id: `${lead.key}-near`, minuteStart: lead.at + 2 * 60_000, score: lead.item.score - 1 }, NOW)
+    const far = checkMoment({ ...lead.item, id: `${lead.key}-far`, minuteStart: lead.at + 6 * 60_000, score: lead.item.score - 1 }, NOW)
+    const top = topBursts([...rose, near, far])
+    expect(top[0].key).toBe(lead.key)
+    expect(top.map(m => m.key)).not.toContain(near.key)
+    expect(top.map(m => m.key)).toContain(far.key)
+    for (let i = 1; i < top.length; i++) expect(top[i - 1].item.score).toBeGreaterThanOrEqual(top[i].item.score)
+    for (const a of top) for (const b of top) if (a !== b && a.sid === b.sid) expect(Math.abs(a.at - b.at)).toBeGreaterThanOrEqual(TOP_BURST_MS)
   })
 
   it('draws the moment teal and the compared minutes stronger', () => {

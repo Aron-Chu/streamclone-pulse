@@ -9,7 +9,7 @@ import {
 } from '../../../../lib/momentsFeed'
 import {
   actOf, ariaOf, avatarImage, boxArtImage, checkMoment, clk, fx, groupsOf, int, liveFrameImage, openedWhen, SORTS, SPARK_H, SPARK_W, sparkBars, STALE_MS,
-  streamTime, streamWhere, updatedText, when, type CheckedMoment,
+  streamTime, streamWhere, topBursts, updatedText, when, xNoun, type CheckedMoment,
 } from '../../../../lib/momentsChecked'
 import { loadMomentVod, momentVodCache } from '../../../../lib/momentsFeedVod'
 import { toggleSavedMoment, useSavedMoments, type SavedMoment } from '../../../../lib/savedDiscoveryMoments'
@@ -31,9 +31,11 @@ const SAVED_MAX = 200
 /**
  * Latest: the moments that hold up or partly do, newest first (moments-r4 B2: no verdict tiers, filters or orders). Saved: this browser's.
  * Viewed: the moments you opened here, newest opened first, one row each (V1, 10-21).
+ * Top (T1, 10-22): the moments that hold up, strongest first by the feed's score, one row per burst, not grouped by stream.
  */
-type MomentsTab = 'latest' | 'saved' | 'viewed'
-const TABS: readonly MomentsTab[] = ['latest', 'saved', 'viewed']
+type MomentsTab = 'latest' | 'top' | 'saved' | 'viewed'
+const TABS: readonly MomentsTab[] = ['latest', 'top', 'saved', 'viewed']
+const HOURS = MOMENTS_WINDOW_MS / 3_600_000
 
 function useMatch(query: string): boolean {
   return useSyncExternalStore(
@@ -121,6 +123,8 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
   const [viewedOrder, setViewedOrder] = useState<string[]>(() => viewed.map(e => e.item.id))
   const [q, setQ] = useState('')
   const [sel, setSel] = useState<string | null>(() => (deepId && initial?.snap.items.some(item => item.id === deepId) ? deepId : null))
+  /** Streams whose "N earlier" you opened (E1, 10-22): opening a moment no longer opens its stream's list. */
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set())
   const [opened, setOpened] = useState<{ key: string | null; lk: number | null; metric: MomentMetricKind | null }>({ key: null, lk: null, metric: null })
   const [drawn, setDrawn] = useState(readSaved)
   const savedItems = useSavedMoments().items
@@ -149,7 +153,8 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
   const flipFrom = useRef<Map<string, number> | null>(null)
   const keep = useRef<{ key: string; y0: number } | null>(null)
   const focusAfter = useRef<{ row?: string; scrollTo?: string } | null>(deepId && sel ? { scrollTo: deepId } : null)
-  const lastOpen = useRef<string | null>(null)
+  /** The streams whose earlier moments showed last render: a list that just opened slides in. */
+  const lastOpen = useRef<ReadonlySet<string>>(new Set())
   const vods = useMemo(() => momentVodCache(item => loadMomentVod(item, new AbortController().signal)), [])
 
   const now = replay ? replay.vnow : clock
@@ -177,6 +182,7 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
   const find = (key: string) => byKey.get(key) ?? savedOnly.find(m => m.key === key) ?? viewedOnly.find(m => m.key === key) ?? null
   const setView = (next: MomentsTab) => {
     if (next === 'viewed') setViewedOrder(viewed.map(e => e.item.id))
+    if (next === 'top' && replay) stopReplay(false) // the replay plays Latest in time order, which Top doesn't show
     setViewState(next)
   }
   /** An open you asked for (a click, a key, a link) goes to the top of Viewed. The wide layout's first moment doesn't count. */
@@ -184,19 +190,24 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
 
   const qq = q.trim().toLowerCase()
   // Latest leaves out what didn't hold up, except the open moment (a deep link, or a held minute's "a moment here").
+  // Top keeps only the moments that hold up and rose (those with a ×).
   const passes = (m: CheckedMoment) =>
-    (view === 'saved' ? isSaved(m.item) : view === 'viewed' ? openedAt.has(m.key) : m.item.verdict !== 'bad' || m.key === sel) && (!qq || m.find.includes(qq))
+    (view === 'saved' ? isSaved(m.item) : view === 'viewed' ? openedAt.has(m.key) : view === 'top' ? m.rowX != null : m.item.verdict !== 'bad' || m.key === sel) && (!qq || m.find.includes(qq))
   const shown = (m: CheckedMoment) => (shownUntil == null || m.at <= shownUntil) && !held.has(m.key)
   const viewedRank = new Map(viewedOrder.map((id, i) => [id, i]))
   const byViewed = (a: CheckedMoment, b: CheckedMoment) => (viewedRank.get(a.key) ?? -1) - (viewedRank.get(b.key) ?? -1) // opened since the tab opened: on top
   const list = view === 'viewed'
     ? [...pool, ...viewedOnly].filter(m => shown(m) && passes(m)).sort(byViewed)
-    : [...pool, ...(view === 'saved' ? savedOnly : [])].filter(m => shown(m) && passes(m)).sort(SORTS.new)
+    : view === 'top' ? topBursts(pool.filter(m => shown(m) && passes(m)))
+      : [...pool, ...(view === 'saved' ? savedOnly : [])].filter(m => shown(m) && passes(m)).sort(SORTS.new)
   const goneRows = view !== 'saved' ? [] : goneSaves.filter(s => (!qq || `${s.login} ${s.displayName ?? ''} ${s.label} ${s.category ?? ''}`.toLowerCase().includes(qq)))
-  const groups = view === 'viewed' ? list.map(m => [m]) : groupsOf(list)
+  const flat = view === 'viewed' || view === 'top'
+  const groups = flat ? list.map(m => [m]) : groupsOf(list)
   const selKey = sel != null && list.some(m => m.key === sel) ? sel : wide && list[0] && deepWait === 'no' ? list[0].key : null
   const selM = selKey ? find(selKey) : null
-  const openSid = selM?.sid ?? null
+  /** A stream's earlier moments show when you opened them, or when the open moment is one of them (a link, a key, the chart). */
+  const isOpen = (g: CheckedMoment[]) => g.length > 1 && (expanded.has(g[0].sid) || g.some((m, i) => i > 0 && m.key === selKey))
+  const openNow = new Set<string>()
   const lk = opened.key === selKey ? opened.lk : null
   const metric = opened.key === selKey ? opened.metric : null
   const pillN = [...held].filter(key => { const m = byKey.get(key); return m != null && passes(m) }).length
@@ -239,6 +250,19 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
   }
   const openFromDetail = (key: string) => {
     if (find(key)) select(key, { keep: true, focus: true })
+  }
+  /** "N earlier": opens or shuts the stream's earlier moments. Shut with one of them open, the open moment moves to the stream's newest. */
+  const toggleEarlier = (g: CheckedMoment[]) => {
+    const lead = g[0]
+    keepPut(lead.key)
+    if (isOpen(g)) {
+      setExpanded(prev => { const next = new Set(prev); next.delete(lead.sid); return next })
+      if (g.some((m, i) => i > 0 && m.key === selKey)) select(lead.key, { keep: true })
+      say(`${lead.name}’s earlier moments hidden`)
+    } else {
+      setExpanded(prev => new Set(prev).add(lead.sid))
+      say(`${g.length - 1} earlier ${g.length === 2 ? 'moment' : 'moments'} from ${lead.name}`)
+    }
   }
   const closeDetail = () => {
     const key = selKey
@@ -467,10 +491,10 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
     const f = focusAfter.current
     if (f) {
       focusAfter.current = null
-      if (f.row) { const el = rowEl(f.row); if (el) { el.focus({ preventScroll: true }); inView(el, motion) } }
+      if (f.row) { const el = rowEl(f.row); if (el) { (el.querySelector<HTMLElement>('.mk-r-hit') ?? el).focus({ preventScroll: true }); inView(el, motion) } }
       if (f.scrollTo) { const el = rowEl(f.scrollTo); if (el) window.scrollBy(0, el.getBoundingClientRect().top - (wide ? window.innerHeight / 3 : headerClear() + 12)) } // narrow: the row under the header, its detail below
     }
-    lastOpen.current = openSid
+    lastOpen.current = openNow
   })
   useEffect(() => {
     if (!arrived.size) return
@@ -483,8 +507,9 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
     setLk={value => setOpened(o => ({ key: m.key, lk: value, metric: o.key === m.key ? o.metric : null }))}
     saved={isSaved(m.item)} onSave={() => toggleSave(m.key)} onCopy={() => copyLink(m.key)} onOpen={openFromDetail} onClose={closeDetail}
     motion={motion} phone={phone} say={say} playRef={playRef} vods={vods} />
-  const row = (m: CheckedMoment, more: number, sub: boolean) => <Row m={m} more={more} sub={sub} now={now} current={selKey === m.key}
-    opened={view === 'viewed' ? openedAt.get(m.key) : undefined} onSelect={() => select(m.key, { from: m.key })} />
+  const row = (m: CheckedMoment, sub: boolean, g?: CheckedMoment[]) => <Row m={m} more={g ? g.length - 1 : 0} sub={sub} now={now} current={selKey === m.key}
+    opened={view === 'viewed' ? openedAt.get(m.key) : undefined} onSelect={() => select(m.key, { from: m.key })}
+    earlier={g && g.length > 1 ? { open: isOpen(g), controls: subId(m.sid), onToggle: () => toggleEarlier(g) } : undefined} />
 
   const stale = !replay && (feedStale || clock - loadedAt > STALE_MS)
   const deepAt = deepId ? momentsFeedIdParts(deepId) : null
@@ -504,6 +529,7 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
     <div className="mk-bar" role="search" aria-label="Filter moments">
       <div className="mk-seg" role="group" aria-label="Which moments">
         <button type="button" aria-pressed={view === 'latest'} onClick={() => setView('latest')}>Latest</button>
+        <button type="button" aria-pressed={view === 'top'} onClick={() => setView('top')}>Top</button>
         <button type="button" aria-pressed={view === 'saved'} onClick={() => setView('saved')}>Saved ({savedCount})</button>
         <button type="button" aria-pressed={view === 'viewed'} onClick={() => setView('viewed')}>Viewed ({viewed.length})</button>
       </div>
@@ -512,9 +538,9 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
       </label>
       <span className="mk-bar-sp" />
       <p className={`mk-fresh${stale ? ' stale' : ''}${replay ? ' replaying' : ''}`}><span className="mk-dot" ref={dotRef} aria-hidden="true" /><span>{fresh}</span></p>
-      <button className="mk-rp" type="button" aria-pressed={replay != null} disabled={!loaded} onClick={() => (replay ? stopReplay(false) : startReplay())}>
+      {view === 'top' ? null : <button className="mk-rp" type="button" aria-pressed={replay != null} disabled={!loaded} onClick={() => (replay ? stopReplay(false) : startReplay())}>
         <ReplayGlyph /><span>{replay ? 'Stop replay' : 'Replay the last hour'}</span>
-      </button>
+      </button>}
     </div>
 
     <div className="mk-grid">
@@ -524,6 +550,7 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
           onFocus={() => setHolding(true)} onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setHolding(false) }}>
           <button className="mk-pill" type="button" hidden={!pillN} onClick={() => release(true)}>{pillN} new ↑</button>
           {wide ? null : gone}
+          {view === 'top' ? <p className="mk-cap">Top moments in the last {HOURS} hours, strongest first</p> : null}
           {view === 'viewed' && viewed.length ? <p className="mk-vw-note">Moments you opened here, kept in this browser for {VIEWED_DAYS} days.
             <button type="button" onClick={() => { clearViewed(); setViewed([]); setViewedOrder([]); say('Viewed cleared') }}>Clear</button></p> : null}
           <ol className="mk-list" ref={listRef}>
@@ -531,15 +558,17 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
             {loaded && !groups.length && !goneRows.length ? <li className="mk-empty">{view === 'saved' ? (signedOut ? 'Nothing saved yet. Saves stay in this browser until you sign in.' : 'Nothing saved yet.')
               : view === 'viewed' ? `Nothing viewed yet. Moments you open here stay in this list, in this browser, for ${VIEWED_DAYS} days.` : 'No moments match.'}</li> : null}
             {groups.map(g => {
-              const lead = g[0], open = openSid === lead.sid && g.length > 1
-              const opening = open && motion && lastOpen.current !== lead.sid
+              // Viewed and Top are one row a moment, so a stream can have several: those rows go by the moment
+              const lead = g[0], gid = flat ? lead.key : lead.sid, open = isOpen(g)
+              if (open) openNow.add(gid)
+              const opening = open && motion && !lastOpen.current.has(gid)
               const inline = !wide && selM ? selM : null
-              return <li key={lead.sid} className={`mk-g${arrived.has(lead.key) ? ' new' : ''}`} data-sid={lead.sid} data-vd={lead.item.verdict}>
-                {row(lead, g.length - 1, false)}
+              return <li key={gid} className={`mk-g${arrived.has(lead.key) ? ' new' : ''}`} data-sid={gid} data-vd={lead.item.verdict}>
+                {row(lead, false, g)}
                 {inline && inline.key === lead.key ? <div className="mk-slot">{detail(inline)}</div> : null}
-                {open ? <ol className={`mk-sub${opening ? ' opening' : ''}`} aria-label={`Earlier moments from ${lead.name}`}>
+                {open ? <ol className={`mk-sub${opening ? ' opening' : ''}`} id={subId(lead.sid)} aria-label={`Earlier moments from ${lead.name}`}>
                   {g.slice(1).map((m, j) => <Fragment key={m.key}>
-                    <li className="mk-g" data-vd={m.item.verdict} style={{ ['--i' as string]: Math.min(j, 8) }}>{row(m, 0, true)}</li>
+                    <li className="mk-g" data-vd={m.item.verdict} style={{ ['--i' as string]: Math.min(j, 8) }}>{row(m, true)}</li>
                     {inline && inline.key === m.key ? <li className="mk-slot">{detail(inline)}</li> : null}
                   </Fragment>)}
                 </ol> : null}
@@ -565,27 +594,37 @@ function inView(el: HTMLElement, motion: boolean) {
   else if (r.bottom > window.innerHeight - 8) window.scrollBy({ top: r.bottom - window.innerHeight + 8, behavior: motion ? 'smooth' : 'auto' })
 }
 
+/** The id of a stream's earlier-moments list, for its "N earlier" button. */
+const subId = (sid: string) => `mk-sub-${sid.replace(/[^\w-]/g, '_')}`
+
 /**
  * One row (moments-r4 B2: r2's row with a picture; tidied as T1, 10-21): picture · who + what / × + game + "N earlier" ·
- * the minutes · when, over the viewers. Under Viewed, the right column says when you opened it.
+ * the minutes · when, over the viewers. Under Viewed, the right column says when you opened it. A click anywhere opens
+ * the moment; "N earlier" is its own button (E1, 10-22), so the row is a box holding two: the row's own, under
+ * everything, and that one.
  */
-function Row({ m, more, sub, now, current, opened, onSelect }: {
+function Row({ m, more, sub, now, current, opened, onSelect, earlier }: {
   m: CheckedMoment; more: number; sub: boolean; now: number; current: boolean; opened?: number; onSelect: () => void
+  earlier?: { open: boolean; controls: string; onToggle: () => void }
 }) {
   const item = m.item, box = boxArtImage(item)
   const full = `${new Date(m.at).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })} · ${streamTime(m, null)} ${streamWhere(null)}`
   const bits: Array<{ key: string; sep?: string; node: ReactNode }> = []
-  if (m.rowX != null) bits.push({ key: 'x', node: <span className="mk-r-x"><b>{fx(m.rowX)}</b> the 15 min before</span> })
+  // what the × counts, against the feed's word (X1, 10-22): "Emotes 5.7× usual"
+  if (m.rowX != null) bits.push({ key: 'x', node: <span className="mk-r-x"><span className="mk-r-xk">{xNoun(m.kind)}</span> <b>{fx(m.rowX)}</b><span className="mk-r-xu"> usual</span></span> })
   else if (m.why) bits.push({ key: 'why', node: <span className="mk-r-why">{m.why}</span> })
   if (!sub) {
     if (item.category) bits.push({ key: 'g', sep: 's-g', node: <span className="mk-r-g">{box ? <img src={box} alt="" width={12} height={16} loading="lazy" /> : null}<span>{item.category.name}</span></span> })
-    if (more) bits.push({ key: 'more', sep: 's-m', node: <span className="mk-r-more">{more} earlier</span> })
+    if (more && earlier) bits.push({ key: 'more', sep: 's-m', node: <button className="mk-r-more" type="button" aria-expanded={earlier.open} aria-controls={earlier.open ? earlier.controls : undefined}
+      aria-label={`${earlier.open ? 'Hide' : 'Show'} ${more} earlier ${more === 1 ? 'moment' : 'moments'} from ${m.name}`}
+      onClick={e => { e.stopPropagation(); earlier.onToggle() }}>{more} earlier</button> })
   }
   const at = opened != null
     ? <time className="mk-r-op" dateTime={new Date(opened).toISOString()} title={full}>opened {openedWhen(opened, now)}</time>
     : <time dateTime={new Date(m.at).toISOString()} title={full}>{when(m.at, now)}</time>
   const kindColour = m.kind === 'emotes' ? 'var(--mk-emotes)' : 'var(--mk-chat)'
-  return <button className="mk-r" type="button" data-key={m.key} aria-current={current} aria-label={ariaOf(m, now, sub ? 0 : more)} onClick={onSelect}>
+  return <div className="mk-r" data-key={m.key} aria-current={current} onClick={onSelect}>
+    <button className="mk-r-hit" type="button" aria-current={current} aria-label={ariaOf(m, now, sub ? 0 : more)} />
     {sub ? null : <Thumb m={m} />}
     <span className="mk-r-tx">
       <span className="mk-r-l1">{sub ? null : <span className="mk-r-nm">{m.name}</span>}<MomentAct act={actOf(item)} /></span>
@@ -596,7 +635,7 @@ function Row({ m, more, sub, now, current, opened, onSelect }: {
         fill={b.tone === 'mo' ? 'var(--mk-accent)' : kindColour} opacity={b.tone === 'mo' ? 1 : b.tone === 'in' ? 0.85 : 0.55} />)}
     </svg></span>
     <span className="mk-r-v">{at}{!sub && item.viewers != null ? <span className="mk-r-vw"><b>{int(item.viewers)}</b> viewers</span> : null}</span>
-  </button>
+  </div>
 }
 
 /** A saved label without the feed's verb: "PJSalt", not "spammed PJSalt" (ACC-03, 10-22). Older saves keep it, so rows strip it too. */

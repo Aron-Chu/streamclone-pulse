@@ -101,7 +101,11 @@
 .mk .mk-r{position:relative;display:grid;grid-template-columns:96px minmax(0,1fr) 88px 96px;column-gap:14px;align-items:center;width:100%;min-height:70px;padding:8px 10px;border-radius:8px;color:var(--mk-text-1);text-align:left;transition:background var(--mk-dur-quick)}
 .mk .mk-r:hover{background:var(--mk-panel)}
 .mk-r:hover .mk-r-nm{text-decoration:underline;text-underline-offset:3px}
-.mk .mk-r:focus-visible{outline:2px solid var(--mk-focus);outline-offset:-2px}
+/* the row's own button lies over the whole row, so a click anywhere opens it; "N earlier" sits on top of it (E1, 10-22) */
+.mk .mk-r{cursor:pointer}
+.mk .mk-r-gone{cursor:default}
+.mk .mk-r-hit{position:absolute;inset:0;border-radius:8px}
+.mk .mk-r-hit:focus-visible{outline:2px solid var(--mk-focus);outline-offset:-2px;border-radius:8px}
 .mk .mk-r[aria-current="true"]{background:var(--mk-raised)}
 .mk .mk-r[aria-current="true"]::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:2px;border-radius:2px;background:var(--mk-accent)}
 /* the picture: the live frame, or the game's art blurred under the channel's avatar */
@@ -127,11 +131,15 @@
 .mk-r-l2 .mk-r-g img{flex:none;width:12px;height:16px;border-radius:2px;object-fit:cover;box-shadow:0 0 0 1px var(--mk-line-strong)}
 .mk-r-x{color:var(--mk-text-3);font-variant-numeric:tabular-nums}
 .mk-r-x b{font-weight:600;color:var(--mk-accent)}
+/* what the × counts (X1, 10-22): "Emotes 5.7× usual" */
+.mk-r-x .mk-r-xk{font-weight:500;color:var(--mk-text-2)}
 .mk-r-why{color:var(--mk-warn)}
 [data-vd="bad"] .mk-r-why{color:var(--mk-text-2)}
-/* "3 earlier ⌄": the stream's earlier moments open under its row */
-.mk-r-more{display:inline-flex;align-items:center;color:var(--mk-text-2)}
+/* "3 earlier ⌄": its own button (E1, 10-22); the stream's earlier moments open under its row */
+.mk .mk-r-more{position:relative;z-index:1;display:inline-flex;align-items:center;height:22px;margin:-3px -6px;padding:0 6px;border-radius:6px;color:var(--mk-text-2)}
+.mk .mk-r-more:hover{color:var(--mk-text-1);background:var(--mk-line-strong)}
 .mk-r-more::after{content:"";width:5px;height:5px;margin:0 2px 3px 7px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg)}
+.mk-r-more[aria-expanded="true"]::after{margin:3px 2px 0 7px;transform:rotate(-135deg)}
 .mk-r-sp{width:88px;height:32px}
 .mk-r-sp svg{display:block;width:88px;height:32px;overflow:visible}
 /* the right column: when, over the viewers (T1); under Viewed, when you opened it */
@@ -203,6 +211,7 @@
 .mk-d-m2{color:var(--mk-text-3)}
 .mk-d-meta .mk-d-st-c{font-weight:600;color:var(--mk-text-1)}
 .mk-d-mx b{font-weight:600;color:var(--mk-text-1)}
+.mk-d-mx .mk-d-xk{font-weight:500;color:var(--mk-text-1)}
 .mk-d[data-vd="ok"] .mk-d-mx b{color:var(--mk-accent)}
 
 /* the verdict chip; its (i) opens why it counts, over what is below */
@@ -267,7 +276,8 @@
 .mk-d-em-r .mk-n{text-align:right;color:var(--mk-text-2);font-variant-numeric:tabular-nums}
 .mk-d-em-f{margin-top:4px!important;font:500 12px/16px var(--mk-font);color:var(--mk-text-3)}
 
-.mk-d-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px}
+/* under the verdict, above the minutes (A1, 10-22) */
+.mk .mk-d-acts{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 6px}
 .mk-d-acts .mk-btn{height:36px}
 .mk .mk-d-acts .mk-btn.pri{background:var(--mk-accent);border-color:var(--mk-accent)!important;color:var(--mk-canvas);font-weight:600}
 .mk .mk-d-acts .mk-btn.pri:hover{text-decoration:none;filter:brightness(1.08);background:var(--mk-accent)}
@@ -276,6 +286,9 @@
 .mk-d-acts .mk-btn.pri svg{margin-right:-2px}
 .mk-d-acts .mk-btn[aria-pressed="true"]{color:var(--mk-accent);border-color:var(--mk-accent)!important}
 .mk-d-x{display:none!important}
+
+/* Top (T1, 10-22): one line over the list says its order */
+.mk .mk-cap{margin:4px 0 8px;padding:0 10px;font:500 12px/16px var(--mk-font);color:var(--mk-text-3)}
 
 /* Viewed (V1): one line over the list, and Clear */
 .mk-vw-note{display:flex;align-items:center;gap:10px;margin:0 0 6px!important;padding:0 10px;font:500 12px/16px var(--mk-font);color:var(--mk-text-3)}
@@ -320,6 +333,8 @@
   .mk-ch svg{height:170px}
   .mk-d-em-r{grid-template-columns:24px minmax(0,110px) minmax(0,1fr) 40px}
 }
+/* the narrowest phones: "Emotes 4.7×" without "usual", so the line isn't cut off before "N earlier" */
+@media (max-width:479px){.mk-r-xu{display:none}}
 
 /* ---------- motion: short and quiet; .no-motion (reduced motion) turns all of it off ---------- */
 .mk-d{animation:mk-d-in .2s var(--mk-ease) both}

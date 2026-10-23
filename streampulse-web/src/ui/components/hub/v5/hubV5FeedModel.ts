@@ -249,6 +249,11 @@ function listMoment(m: CheckedMoment, live: ReadonlyMap<string, HubLiveChannel>)
   }
 }
 
+/** What a moment row's × counts (X1, 10-22): its series, or chat when an emote spike's chat burst carries chat's ×. */
+export function feedMomentSer(e: FeedMoment): 'chat' | 'emotes' {
+  return e.act.word === 'chat burst' ? 'chat' : e.row.series
+}
+
 /** The event's words for "+N earlier" and the aria label. */
 export function feedWord(e: FeedEvent): string {
   if (e.kind === 'live') return 'went live'
@@ -446,7 +451,7 @@ export function feedRowAria(group: readonly FeedEvent[], nowMs: number): string 
     said = `${feedWord(e)}, ${ago}: ${feedMore(e.add)} more ${u} a minute than usual, ${multiplierWords(e.x)} times usual`
   } else if (e.kind === 'moment') {
     const u = e.row.series
-    said = `${feedWord(e)}, ${ago}${e.add != null && e.add > 0 ? `: ${feedMore(e.add)} more ${u} a minute than usual` : ''}${e.x != null ? `, ${multiplierWords(e.x)} times usual` : e.why ? `, ${e.why}` : ''}`
+    said = `${feedWord(e)}, ${ago}${e.add != null && e.add > 0 ? `: ${feedMore(e.add)} more ${u} a minute than usual` : ''}${e.x != null ? `, ${feedMomentSer(e)} ${multiplierWords(e.x)} times usual` : e.why ? `, ${e.why}` : ''}`
   } else {
     said = `went live ${ago}${e.chat != null && e.chat >= 1 ? `, chat ${feedMore(e.chat)} a minute` : ''}${e.jump ? ', chat jumping' : ''}${e.viewers != null ? `, ${formatHubInt(e.viewers)} viewers now` : ''}`
   }

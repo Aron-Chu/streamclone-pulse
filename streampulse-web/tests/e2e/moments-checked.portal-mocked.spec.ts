@@ -113,7 +113,14 @@ test('wide: the latest moments, the first one open beside the list', async ({ pa
   expect(reads.feed).toEqual(['first', 'c20'])
   const open = await page.locator('.mk-det .mk-d').getAttribute('data-key')
   const openStream = fixture.items.find(x => x.id === open)!.streamId
-  await expect(page.locator('.mk-sub .mk-r')).toHaveCount(fixture.items.filter(x => x.verdict !== 'bad' && x.streamId === openStream).length - 1)
+  // the open stream's earlier moments stay closed until its "N earlier" is pressed (E1, 10-22)
+  await expect(page.locator('.mk-sub')).toHaveCount(0)
+  const earlier = fixture.items.filter(x => x.verdict !== 'bad' && x.streamId === openStream).length - 1
+  if (earlier > 0) {
+    await page.locator(`.mk-list > li.mk-g > .mk-r[data-key="${open}"] .mk-r-more`).click()
+    await expect(page.locator('.mk-sub .mk-r')).toHaveCount(earlier)
+    await expect(page.locator('.mk-det .mk-d')).toHaveAttribute('data-key', open!)
+  }
   const detail = page.locator('.mk-det .mk-d')
   await expect(detail).toBeVisible()
   // the verdict chip's (i) says why it counts (moments-r4 B2: no verdict tiers, filters or orders); Esc closes only that
@@ -140,7 +147,7 @@ test('wide: the latest moments, the first one open beside the list', async ({ pa
   await expect(card).toHaveCount(0)
 
   // J moves to the next row and keeps the list put
-  await rows(page).first().focus()
+  await rows(page).first().locator('.mk-r-hit').focus()
   const second = await rows(page).nth(1).getAttribute('data-key')
   await page.keyboard.press('j')
   await expect(detail).toHaveAttribute('data-key', second!)
@@ -166,9 +173,11 @@ test('phone: a moment opens under its row and a second tap closes it', async ({ 
   testInfo.annotations.push({ type: 'CLS 390', description: shift.toFixed(4) })
   expect(shift).toBeLessThan(0.1)
   await expect(page.locator('.mk-det .mk-d')).toHaveCount(0)
-  const first = rows(page).first()
+  // a tap on the picture: a row's middle can be its "N earlier" (E1, 10-22), which opens only that list
+  const first = rows(page).first().locator('.mk-r-th')
   await first.click()
   await expect(page.locator('.mk-slot .mk-d')).toBeVisible()
+  await expect(page.locator('.mk-sub')).toHaveCount(0)
   await assertNoPageHorizontalOverflow(page)
   await first.click()
   await expect(page.locator('.mk-slot')).toHaveCount(0)
@@ -189,7 +198,7 @@ test('phone: a deep-linked row lands below the portal’s header, and so does Es
   await expect.poll(async () => (await row.boundingBox())!.y).toBeGreaterThanOrEqual(header)
   await page.keyboard.press('Escape')
   await expect(page.locator('.mk-slot')).toHaveCount(0)
-  await expect(row).toBeFocused()
+  await expect(row.locator('.mk-r-hit')).toBeFocused()
   await expect.poll(async () => (await row.boundingBox())!.y).toBeGreaterThanOrEqual(await headerBottom(page))
 })
 

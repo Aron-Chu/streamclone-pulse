@@ -139,9 +139,9 @@ export function MomentDetail(props: DetailProps) {
     </div>
     <div className="mk-d-head">
       <h2 className="mk-d-l1"><span>{m.name}</span><MomentAct act={act} /></h2>
-      {/* × on line 1, then when · into the stream · game on line 2 (T1, 10-21) */}
+      {/* × on line 1, then when · into the stream · game on line 2 (T1, 10-21); the × says what it counts (X1, 10-22) */}
       <p className="mk-d-meta">
-        {x != null ? <span className="mk-d-mx"><b>{fx(x)}</b> the 15 minutes before</span> : null}
+        {x != null ? <span className="mk-d-mx"><span className="mk-d-xk">{m.kind === 'chat' ? 'Chat was' : 'Emotes were'}</span> <b>{fx(x)}</b> the 15 minutes before</span> : null}
         <span className="mk-d-m2">{clk(m.at)}{sameDay(m.at, now) ? '' : ' yesterday'} · <b className="mk-d-st-c" title={streamTip(m, vod)}>{streamTime(m, vod)}</b> {streamWhere(vod)}
           {item.category ? ` · ${item.category.name}` : ''}</span>
       </p>
@@ -157,6 +157,13 @@ export function MomentDetail(props: DetailProps) {
             <span>{c.long}</span></li>)}</ul>
         </div>
       </div>
+    </div>
+    {/* under the verdict, above the minutes (A1, 10-22): on a 900 px window they were below the fold */}
+    <div className="mk-d-acts">
+      <a className="mk-btn pri" href={vod ? `https://www.twitch.tv/videos/${vod.vodId}?t=${hms(vodT)}` : `https://www.twitch.tv/${encodeURIComponent(item.login.toLowerCase())}`}
+        target="_blank" rel="noopener noreferrer">Watch on Twitch<ExtGlyph /></a>
+      <button className="mk-btn" type="button" aria-pressed={saved} onClick={onSave}><BookGlyph />{saved ? 'Saved' : 'Save'}</button>
+      <button className="mk-btn" type="button" onClick={() => { void onCopy().finally(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1600) }) }}><LinkGlyph />{copied ? 'Copied ✓' : 'Copy link'}</button>
     </div>
     <figure className="mk-ch" data-k={kind}>
       <div className="mk-ch-top"><h3>The minutes around it</h3>
@@ -177,11 +184,5 @@ export function MomentDetail(props: DetailProps) {
       })}</div>
       <p className="mk-d-em-f">{int(emTot)} emotes in {int(item.chat.perMin)} messages</p>
     </section> : null}
-    <div className="mk-d-acts">
-      <a className="mk-btn pri" href={vod ? `https://www.twitch.tv/videos/${vod.vodId}?t=${hms(vodT)}` : `https://www.twitch.tv/${encodeURIComponent(item.login.toLowerCase())}`}
-        target="_blank" rel="noopener noreferrer">Watch on Twitch<ExtGlyph /></a>
-      <button className="mk-btn" type="button" aria-pressed={saved} onClick={onSave}><BookGlyph />{saved ? 'Saved' : 'Save'}</button>
-      <button className="mk-btn" type="button" onClick={() => { void onCopy().finally(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1600) }) }}><LinkGlyph />{copied ? 'Copied ✓' : 'Copy link'}</button>
-    </div>
   </article>
 }
