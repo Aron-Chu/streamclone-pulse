@@ -13,7 +13,6 @@ import {
 import { safeImageUrl } from '../shared/safeUrl.ts'
 import { MAX_PAST_STREAM_ROWS } from './chatActivityEmotes.ts'
 import { PulseSectionCard } from './PulseSectionCard.tsx'
-import { theme } from './theme.ts'
 
 export interface PastVodsSectionProps {
   login: string
@@ -113,28 +112,28 @@ export function PastVodsSection({
       title="Past streams"
       subtitle={subtitle}
       meta={loading ? '…' : String(rows.length)}
-      style={styles.section}
+      style={sectionStyle}
     >
       {loading ? (
-        <div className="pulse-shimmer" style={styles.loadingBlock} aria-hidden="true" />
+        <div className="pulse-shimmer pulse-pv-loading" aria-hidden="true" />
       ) : null}
 
       {!loading && rows.length === 0 ? (
-        <div style={styles.emptyBlock} data-past-vods-state={error ? 'error' : 'empty'}>
-          <strong style={styles.emptyTitle}>
+        <div className="pulse-pv-empty" data-past-vods-state={error ? 'error' : 'empty'}>
+          <strong className="pulse-pv-empty-title">
             {error ? "Couldn't load stream history" : 'No stream history yet'}
           </strong>
-          <p style={styles.emptyText}>
+          <p className="pulse-pv-empty-text">
             {error
               ? 'Could not load stream history from StreamPulse.'
               : 'No past streams recorded for this channel.'}
           </p>
           {error ? (
-            <button type="button" className="pulse-past-vod-footer" style={styles.emptyAction} onClick={() => setRequestNonce(value => value + 1)}>
+            <button type="button" className="pulse-past-vod-footer pulse-pv-empty-action" onClick={() => setRequestNonce(value => value + 1)}>
               Retry stream history
             </button>
           ) : null}
-          <button type="button" className="pulse-past-vod-footer" style={styles.emptyAction} onClick={openAllAnalytics}>
+          <button type="button" className="pulse-past-vod-footer pulse-pv-empty-action" onClick={openAllAnalytics}>
             Open full analytics →
           </button>
         </div>
@@ -142,7 +141,7 @@ export function PastVodsSection({
 
       {!loading && rows.length > 0 ? (
         <div className="pulse-past-vod-shell" data-past-vods-state="ready">
-          <div role="list" style={styles.list}>
+          <div role="list" className="pulse-pv-list">
             {visibleRows.map(row => (
                 <PastVodRowCard
                   key={row.streamId}
@@ -189,24 +188,25 @@ function PastVodRowCard({
 
   return (
     <article
-      className="pulse-past-vod-row pulse-past-vod-row-compact"
-      style={styles.row}
+      className="pulse-past-vod-row pulse-past-vod-row-compact pulse-pv-row"
+      // Inline so the landing's one-column override stays masked, as before.
+      style={rowStyle}
       role="listitem"
     >
-      <button type="button" className="pulse-past-vod-main" style={styles.rowMain} onClick={onAnalytics}>
-        <div style={styles.thumbWrap}>
+      <button type="button" className="pulse-past-vod-main pulse-pv-main" onClick={onAnalytics}>
+        <div className="pulse-pv-thumb-wrap">
           {thumb ? (
-            <img src={thumb} alt="" style={styles.thumb} loading="lazy" decoding="async" />
+            <img src={thumb} alt="" className="pulse-pv-thumb" loading="lazy" decoding="async" />
           ) : (
-            <span style={styles.thumbFallback}>VOD</span>
+            <span className="pulse-pv-thumb-fallback">VOD</span>
           )}
         </div>
-        <div style={styles.rowCopy}>
-          <strong className="pulse-past-vod-title" style={styles.rowTitle}>
+        <div className="pulse-pv-copy">
+          <strong className="pulse-past-vod-title pulse-pv-title">
             {row.title}
           </strong>
-          <span className="pulse-past-vod-meta-row" style={styles.rowMetaLine}>
-            <span className={statusClass} style={styles.statusBadge}>
+          <span className="pulse-past-vod-meta-row pulse-pv-meta">
+            <span className={`${statusClass} pulse-pv-status`}>
               {statusLabel}
             </span>
             {[dateLabel, row.category].filter(Boolean).join(' · ')}
@@ -232,84 +232,5 @@ function PastVodRowCard({
   )
 }
 
-const styles: Record<string, CSSProperties> = {
-  section: { marginTop: 16 },
-  loadingBlock: { background: theme.panel, borderRadius: 10, height: 88, marginTop: 4 },
-  emptyBlock: {
-    background: 'rgba(255, 255, 255, 0.035)',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-    borderRadius: 10,
-    display: 'grid',
-    gap: 8,
-    padding: 14,
-    textAlign: 'center',
-  },
-  emptyTitle: { color: theme.textPrimary, fontSize: 13, fontWeight: 800 },
-  emptyText: { color: theme.textSecondary, fontSize: 12, lineHeight: 1.4, margin: 0 },
-  emptyAction: { border: 0, borderRadius: 8, marginTop: 4 },
-  list: { display: 'grid' },
-  row: {
-    alignItems: 'stretch',
-    display: 'grid',
-    gap: 8,
-    gridTemplateColumns: 'minmax(0, 1fr) auto',
-    padding: '8px 10px',
-  },
-  rowMain: {
-    alignItems: 'center',
-    background: 'transparent',
-    border: 0,
-    color: theme.textPrimary,
-    cursor: 'pointer',
-    display: 'flex',
-    gap: 10,
-    minWidth: 0,
-    padding: 0,
-    textAlign: 'left',
-    width: '100%',
-  },
-  thumbWrap: {
-    alignItems: 'center',
-    aspectRatio: '16 / 9',
-    background: '#101014',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-    borderRadius: 6,
-    display: 'flex',
-    flexShrink: 0,
-    justifyContent: 'center',
-    overflow: 'hidden',
-    width: 72,
-  },
-  thumb: { display: 'block', height: '100%', objectFit: 'cover', width: '100%' },
-  thumbFallback: { color: theme.textMuted, fontSize: 10, fontWeight: 900, textTransform: 'uppercase' },
-  rowCopy: { display: 'grid', gap: 4, minWidth: 0, flex: 1 },
-  rowTitle: {
-    display: '-webkit-box',
-    fontSize: 12,
-    fontWeight: 800,
-    lineHeight: 1.35,
-    overflow: 'hidden',
-    WebkitBoxOrient: 'vertical',
-    WebkitLineClamp: 2,
-  },
-  rowMetaLine: {
-    alignItems: 'center',
-    color: theme.textMuted,
-    display: 'flex',
-    flexWrap: 'wrap',
-    fontSize: 11,
-    fontWeight: 600,
-    gap: 6,
-    lineHeight: 1.3,
-  },
-  statusBadge: {
-    display: 'inline-block',
-    flexShrink: 0,
-    fontSize: 10,
-    maxWidth: '100%',
-    overflow: 'hidden',
-    padding: '2px 6px',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  },
-}
+const sectionStyle: CSSProperties = { marginTop: 16 }
+const rowStyle: CSSProperties = { gridTemplateColumns: 'minmax(0, 1fr) auto' }

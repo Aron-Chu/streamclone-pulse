@@ -305,7 +305,7 @@ test.describe('chart preview/lock interactions', () => {
     await expect(games).toBeVisible()
     expect((await games.boundingBox())?.y ?? Infinity).toBeLessThan((await chart.boundingBox())?.y ?? -Infinity)
 
-    // Catch me up sits above the recap chart; a raw click needs it in view.
+    // The recap's summary sits above the chart; a raw click needs it in view.
     await chart.scrollIntoViewIfNeeded()
     const box = await chart.boundingBox()
     expect(box).not.toBeNull()

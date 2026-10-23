@@ -189,7 +189,7 @@ export function PulseSettingsPanel({ onBack, channel }: { onBack?: () => void; c
         <QuickLook appearance={appearance} disabled={opening} onOpen={() => void openHost('supporter')} />
 
         <QuickGroup title="Moments">
-          <StoredToggleRow label="Moment pictures" hint="Captured in this tab, never uploaded." read={getMomentPicturesEnabled} write={setMomentPicturesEnabled} />
+          <StoredToggleRow label="Moment pictures" hint="Kept on this device with your saves, never uploaded." read={getMomentPicturesEnabled} write={setMomentPicturesEnabled} />
           <StoredToggleRow label="Mark VOD jumps on the chart" read={getVodJumpChartPinEnabled} write={setVodJumpChartPinEnabled} />
           <div className="pulse-settings-toggle-row pulse-settings-control-block">
             <span className="pulse-settings-label">My Moments</span>

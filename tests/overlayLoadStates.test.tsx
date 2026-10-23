@@ -12,6 +12,7 @@ import offlinePulse from './e2e/fixtures/api/pulse-offline.json'
 import { EXTENSION_RECONNECT_MESSAGE } from '../src/shared/backgroundResponse.ts'
 import type { PulsePayload } from '../src/shared/messages.ts'
 import type { ExtensionVodPulseResponse } from '../src/types/vodPulseTypes.ts'
+import { vodPulseToChannelPayload } from '../src/vod/vodPulseToChannelPayload.ts'
 import type { TwitchPageContext } from '../src/content/twitch.ts'
 
 vi.mock('../src/content/bridge.ts', () => ({
@@ -283,6 +284,32 @@ describe('Overlay load, error and dock states', () => {
       if (length) expect(lead).toContain(length)
       else expect(lead).not.toMatch(/\d+h \d+m|\d+m/)
       expect(lead).not.toContain('Counter-Strike')
+    })
+
+    // Oct 16 xQc (VOD 2902672687): the stream's close was recorded at 19h 43m,
+    // its chat ends at 9h 26m and Twitch's VOD is 9h 22m. The header said
+    // 19h 43m above a recap that said 9h 26m.
+    it.each([
+      ['this stream', '320853413088', '9h 26m', '19h 43m'],
+      ['another stream', 'other-stream', '19h 43m', '9h 26m'],
+    ] as const)('replay lead takes the recap length when the payload is %s', async (_case, payloadStreamId, shown, hidden) => {
+      const vod = {
+        ...vodStatus('syncing', 'Replay Pulse is syncing this VOD'),
+        coverageStatus: 'partial',
+        streamId: '320853413088',
+        startedAt: '2026-10-16T22:26:40Z',
+        durationSeconds: 71_033,
+        timeline: {
+          bucketSeconds: 60,
+          points: Array.from({ length: 562 }, (_, index) => ({ offsetSeconds: 260 + index * 60, chatPerMin: 200, emotesPerMin: 100, score: 10 })),
+        },
+      } as ExtensionVodPulseResponse
+      const payload = vodPulseToChannelPayload(vod, 'fixturechan')
+      expect(payload).not.toBeNull()
+      await render({ context: VOD, login: 'fixturechan', vodPulse: vod, payload: { ...payload!, streamId: payloadStreamId }, vodPulseLoading: false })
+      const lead = node.querySelector('header.pulse-personal-banner p')?.textContent ?? ''
+      expect(lead).toContain(shown)
+      expect(lead).not.toContain(hidden)
     })
 
     it.each([

@@ -18,9 +18,12 @@ export function MomentSaveButton({ moment, busy = false, onSave }: {
   </button>
 }
 
-/** Native modal supplies focus containment and Escape. Restore focus explicitly for unmount. */
-export function LibraryDialog({ title, children, onClose, canClose = true }: {
-  title: string; children: ReactNode; onClose: () => void; canClose?: boolean
+/**
+ * Native modal supplies focus containment and Escape. Restore focus explicitly for unmount.
+ * `bare` leaves out the title row for a dialog that draws its own header and Close; `title` still names it.
+ */
+export function LibraryDialog({ title, children, onClose, canClose = true, bare = false, className }: {
+  title: string; children: ReactNode; onClose: () => void; canClose?: boolean; bare?: boolean; className?: string
 }) {
   const ref = useRef<HTMLDialogElement>(null)
   const id = useId()
@@ -32,10 +35,10 @@ export function LibraryDialog({ title, children, onClose, canClose = true }: {
     dialog?.showModal()
     return () => { dialog?.close(); if (before?.isConnected) before.focus(); else fallback?.focus() }
   }, [])
-  return <dialog ref={ref} className="pl-dialog pl-library" aria-labelledby={id}
+  return <dialog ref={ref} className={`pl-dialog pl-library${className ? ` ${className}` : ''}`} aria-labelledby={bare ? undefined : id} aria-label={bare ? title : undefined}
     onCancel={event => { event.preventDefault(); if (canClose) closeRef.current() }}>
-    <div className="pl-row pl-between"><h2 id={id}>{title}</h2>
-      <button className="pl-button" type="button" disabled={!canClose} onClick={onClose} aria-label={`Close ${title}`}>Close</button></div>
+    {bare ? null : <div className="pl-row pl-between"><h2 id={id}>{title}</h2>
+      <button className="pl-button" type="button" disabled={!canClose} onClick={onClose} aria-label={`Close ${title}`}>Close</button></div>}
     {children}
   </dialog>
 }
@@ -91,7 +94,7 @@ export function MomentListItem({ moment, personalWorkspace = false, analyticsOri
   const date = recent ? moment.jumpedAt : moment.savedAt
   const analytics = personalWorkspace && moment.streamId ? buildAnalyticsUrl({ webAnalyticsBaseUrl: analyticsOrigin, channelLogin: moment.channel, streamId: moment.streamId, offsetSeconds: moment.offsetSeconds ?? undefined }) : null
   return <li className="pl-moment" data-moment-id={moment.id}>
-    <MomentMedia moment={moment} presentation={presentation} compact />
+    <MomentMedia moment={moment} presentation={presentation} />
     <div className="pl-moment-body"><div className="pl-row"><strong>{moment.title}</strong>
       {recent && moment.savedAt !== undefined ? <span className="pl-tag">Bookmarked</span> : null}</div>
       <p className="pl-moment-identity">{moment.channel}{presentation?.gameAtMoment ? ` · ${presentation.gameAtMoment}` : ''}</p>

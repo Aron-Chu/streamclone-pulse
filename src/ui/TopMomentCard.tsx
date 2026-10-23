@@ -45,8 +45,9 @@ export function TopMomentCard({ id, point, onClear, ...card }: TopMomentCardProp
   if (!shown.point) return null
   // A moment between two games' segments shows no game line; the reserve keeps
   // its card the height of the others.
-  const height = MOMENT_CARD_HEIGHT + (card.games?.some(game => isRenderableGameName(game.gameName)) ? MOMENT_CARD_GAME_LINE_HEIGHT : 0)
-  // Clearing hands focus back to the picked row (or Catch me up's moment),
+  const games = card.games?.some(game => isRenderableGameName(game.gameName))
+  const height = MOMENT_CARD_HEIGHT + (games ? MOMENT_CARD_GAME_LINE_HEIGHT : 0)
+  // Clearing hands focus back to the picked row,
   // which shares the card's grid child and stays listed while it is picked.
   // A row listed past the fold only for the pick leaves with it and hands
   // focus on to Show more (PulseMomentRow).
@@ -62,8 +63,9 @@ export function TopMomentCard({ id, point, onClear, ...card }: TopMomentCardProp
       onKeyDown={event => { if (event.key === 'Escape') clear() }}
     >
       <MomentCardSlot exiting={shown.exiting}>
-        {/* Moments with no, one or three top emotes all open to one height. */}
-        <div style={{ minHeight: height }}>
+        {/* Moments with no, one or three top emotes all open to one height. The
+            frames script adds a picture top's height to it (data-moment-reserve). */}
+        <div data-moment-reserve={games ? 'games' : ''} style={{ minHeight: height }}>
           <SelectedMomentCard {...card} point={shown.point} onClear={clear} />
         </div>
       </MomentCardSlot>

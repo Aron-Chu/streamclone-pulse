@@ -35,3 +35,18 @@ it('does not report a successful mutation when the worker fails', async()=>{
   await repository.load(signal)
   await expect(repository.execute({kind:'clear-history'},signal)).rejects.toThrow('Could not load or save')
 })
+it('hears the worker say My Moments changed, and nothing a Twitch tab sends', ()=>{
+  const listeners=new Set<(message:unknown,sender:{tab?:unknown})=>void>()
+  vi.stubGlobal('chrome',{runtime:{sendMessage:vi.fn(),onMessage:{addListener:(f:never)=>listeners.add(f),removeListener:(f:never)=>listeners.delete(f)}}})
+  const onChange=vi.fn()
+  const unsubscribe=createMyMomentsRepository().subscribe!(onChange)
+  const send=(message:unknown,sender:{tab?:unknown}={})=>{ for(const listener of listeners) listener(message,sender) }
+  send({type:'MY_MOMENTS_CHANGED'},{tab:{id:1}})
+  send({type:'MY_MOMENTS'})
+  send(null)
+  expect(onChange).not.toHaveBeenCalled()
+  send({type:'MY_MOMENTS_CHANGED'})
+  expect(onChange).toHaveBeenCalledTimes(1)
+  unsubscribe()
+  expect(listeners.size).toBe(0)
+})

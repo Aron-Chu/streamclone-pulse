@@ -44,22 +44,6 @@ export function resolveRecapEmotes(
   })
 }
 
-/**
- * "Top emotes this stream". The backend recap counts 7TV emotes only, so a
- * replay showed WAYTOODANK 129 over KEKW 5,868 (VOD-4). The payload's own
- * topEmotes counts every provider, as the website does; the recap list is
- * the fallback when the payload has none.
- */
-export function resolveStreamTopEmotes(
-  payload: Pick<PulsePayload, 'topEmotes'>,
-  recapEmotes: PulseRecapEmote[],
-  catalog?: ExtensionEmote[],
-): ExtensionEmote[] {
-  const counted = (payload.topEmotes ?? []).filter(emote => emote.count > 0)
-  if (counted.length === 0) return resolveRecapEmotes(recapEmotes, catalog)
-  return [...counted].sort((a, b) => b.count - a.count)
-}
-
 /** Merge payload + rollup emotes for recap moment image fallback. */
 export function buildRecapEmoteCatalog(payload: PulsePayload): ExtensionEmote[] {
   const byKey = new Map<string, ExtensionEmote>()
