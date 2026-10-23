@@ -1,11 +1,13 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import type { MutableRefObject } from 'react'
+import { Link } from 'react-router-dom'
 import {
-  actOf, avatarImage, boxArtImage, checkLines, clk, emoteImage, fx, hms, int, LEAD_S, liveFrameImage, offAt, sameDay, seriesFromSpark, sortedChecks,
-  streamTime, streamTip, streamWhere, VERDICT_WORD, type CheckedMoment, type MinuteSeries, type MomentVod,
+  actOf, boxArtImage, checkLines, clk, emoteImage, fx, hms, int, LEAD_S, liveFrameImage, offAt, sameDay, seriesFromSpark, sortedChecks,
+  streamTime, streamTip, VERDICT_WORD, type CheckedMoment, type MinuteSeries, type MomentVod,
 } from '../../../../lib/momentsChecked'
 import type { MomentMetricKind } from '../../../../lib/momentsFeed'
 import { loadMomentMinuteSeries } from '../../../../lib/momentMinuteSeries'
+import { broadcastTimelineHref } from '../../../../lib/momentsNavigation'
 import { vodEmbedSrc, vodSeconds, type MomentVodCache } from '../../../../lib/momentsFeedVod'
 import { MomentChart } from './MomentChart'
 import { MomentAct } from './MomentAct'
@@ -41,19 +43,23 @@ export interface DetailProps {
   /** The stream whose "More from this stream" shows all: the page's, so it stays open from one of its moments to the next. */
   moreAll: string | null
   setMoreAll: (sid: string | null) => void
+  /** The picked game's category id (?game=), and the page's pick: the moment's game shows that game's moments (C1, 10-22). */
+  game: string | null
+  onGame: (id: string) => void
 }
 
 /**
- * The open moment (moments-r2 detail, moments-r4 B2 order): the frame and
- * Play, what happened and when, the verdict as a chip whose (i) opens why it
- * counts, the minutes around it with a held minute, and what chat sent. Two
+ * The open moment (moments-r2 detail, moments-r4 B2 order, C1 trims): the
+ * frame and Play, who (to the stream's page) and what happened, the × with
+ * why it counts behind its (i), when and the game (to its moments), the
+ * verdict as a chip only where it doesn't simply hold up, the minutes around it with a held minute, and what chat sent. Two
  * reads, for this moment only, once the selection has settled: its stream
  * record (the VOD; none when the page already knows the stream's) and its
  * minutes (the chart). Until the minutes answer, or if they don't, the chart
  * draws the feed's 25-minute sparkline.
  */
 export function MomentDetail(props: DetailProps) {
-  const { m, pool, now, metric, setMetric, lk, setLk, saved, onSave, onCopy, onOpen, onClose, motion, phone, say, playRef, vods, moreAll, setMoreAll } = props
+  const { m, pool, now, metric, setMetric, lk, setLk, saved, onSave, onCopy, onOpen, onClose, motion, phone, say, playRef, vods, moreAll, setMoreAll, game, onGame } = props
   const item = m.item
   const [vod, setVod] = useState<MomentVod | null>(() => vods.peek(item) ?? null)
   const [minutes, setMinutes] = useState<MinuteSeries | null>(null)
@@ -102,7 +108,6 @@ export function MomentDetail(props: DetailProps) {
   const live = item.streamLive
   const frame = live && !frameFailed ? liveFrameImage(item) : undefined
   const boxArt = boxArtImage(item)
-  const avatar = avatarImage(item)
 
   const play = (rel: number | null) => {
     if (!vod) return
@@ -126,6 +131,13 @@ export function MomentDetail(props: DetailProps) {
   const x = m.rowX ?? (item.checks.rise?.code === 'partly' ? m.x : null)
   const word = VERDICT_WORD[item.verdict]
   const whyTitle = item.verdict === 'bad' ? 'Why it doesn’t count' : 'Why it counts'
+  // most moments hold up, so the chip only shows where it says something; else why it counts is the ×'s (i) (C1, 10-22)
+  const chip = item.verdict !== 'ok' || x == null
+  const whyProps = { 'aria-expanded': why, 'aria-controls': popId, 'aria-label': `${word}: ${whyTitle.toLowerCase()}`, onClick: () => setWhy(v => !v) }
+  const page = /^\d{1,30}$/.test(item.streamId)
+    ? broadcastTimelineHref(item.login.toLowerCase(), item.streamId, `/analytics/moments?${new URLSearchParams({ m: m.key })}`, item.offsetSeconds) : null
+  const cat = item.category
+  const gameIn = cat ? <>{boxArt ? <img src={boxArt} alt="" /> : null}{cat.name}</> : null
   // the stream's other moments that hold up or partly do, newest first: the list's "N earlier" until M1 (10-22)
   const more = pool.filter(o => o.sid === m.sid && o.key !== m.key && o.item.verdict !== 'bad').sort((a, b) => b.at - a.at)
   const moreOpen = moreAll === m.sid || more.length <= MORE_SHOWN
@@ -139,26 +151,26 @@ export function MomentDetail(props: DetailProps) {
           {frame ? <img src={frame} alt="" onError={() => setFrameFailed(true)} />
             : boxArt ? <img className="mk-d-bx" src={boxArt} alt="" /> : <span className="mk-d-noframe">No live frame</span>}
           {vod ? <button className="mk-d-play" type="button" onClick={() => play(null)}><PlayGlyph />Play from 10 s before</button> : null}
-          <div className="mk-d-who">
-            {avatar ? <img src={avatar} alt="" /> : null}
-            <span className="mk-d-who-t"><b>{m.name}</b><span className="mk-lv">{live ? <><i />Live now</> : 'Offline'}</span></span>
-          </div>
+          {/* the name is right under the picture (C1, 10-22) */}
+          <span className="mk-d-lv">{live ? <><i />Live now</> : 'Offline'}</span>
         </>}
       <button className="mk-d-x" type="button" aria-label="Close" onClick={onClose}><XGlyph /></button>
     </div>
     <div className="mk-d-head">
-      <h2 className="mk-d-l1"><span>{m.name}</span><MomentAct act={act} /></h2>
-      {/* × on line 1, then when · into the stream · game on line 2 (T1, 10-21); the × says what it counts (X1, 10-22) */}
-      <p className="mk-d-meta">
-        {x != null ? <span className="mk-d-mx"><span className="mk-d-xk">{m.kind === 'chat' ? 'Chat was' : 'Emotes were'}</span> <b>{fx(x)}</b> the 15 minutes before</span> : null}
-        <span className="mk-d-m2">{clk(m.at)}{sameDay(m.at, now) ? '' : ' yesterday'} · <b className="mk-d-st-c" title={streamTip(m, vod)}>{streamTime(m, vod)}</b> {streamWhere(vod)}
-          {item.category ? ` · ${item.category.name}` : ''}{item.viewers != null ? ` · ${int(item.viewers)} viewers` : ''}</span>
-      </p>
+      <h2 className="mk-d-l1">{page ? <Link className="mk-d-nm" to={page} title="Open the stream’s page">{m.name}</Link> : <span>{m.name}</span>}<MomentAct act={act} /></h2>
+      {/* × on line 1 in the rows' words, then when · in · game · viewers on line 2 (T1, 10-21; C1, 10-22) */}
       <div className="mk-hold-w" ref={whyRef}>
-        <button ref={chipRef} className="mk-hold" type="button" data-vd={item.verdict} aria-expanded={why} aria-controls={popId}
-          aria-label={`${word}: ${whyTitle.toLowerCase()}`} onClick={() => setWhy(v => !v)}>
+        <p className="mk-d-meta">
+          {x != null ? <span className="mk-d-mx"><b>{fx(x)}</b> <span className="mk-d-xk">more {m.kind === 'chat' ? 'chat' : 'emotes'}</span> than the 15 minutes before
+            {chip ? null : <button ref={chipRef} className="mk-d-why" type="button" {...whyProps}><InfoGlyph /></button>}</span> : null}
+          <span className="mk-d-m2">{clk(m.at)}{sameDay(m.at, now) ? '' : ' yesterday'} · <b className="mk-d-st-c" title={streamTip(m, vod)}>{streamTime(m, vod)}</b> in
+            {cat ? <> · {game === cat.id ? <span className="mk-d-gm">{gameIn}</span>
+              : <button className="mk-d-gm" type="button" aria-label={`Show ${cat.name} moments`} title={`Show ${cat.name} moments`} onClick={() => onGame(cat.id)}>{gameIn}</button>}</> : null}
+            {item.viewers != null ? ` · ${int(item.viewers)} viewers` : ''}</span>
+        </p>
+        {chip ? <button ref={chipRef} className="mk-hold" type="button" data-vd={item.verdict} {...whyProps}>
           <VdMark v={item.verdict} /><span>{word}</span><InfoGlyph />
-        </button>
+        </button> : null}
         <div className="mk-pop" id={popId} hidden={!why}>
           <h3>{whyTitle}</h3>
           <ul className="mk-d-ck">{checks.map(c => <li key={c.id} data-lv={c.lv}>
@@ -184,7 +196,7 @@ export function MomentDetail(props: DetailProps) {
       <MomentChart m={m} series={series} metric={kind} lk={lk} hold={setLk} animRef={anim} motion={motion} phone={phone}
         vod={vod} pool={pool} onPlayAt={play} onGoto={onOpen} say={say} />
     </figure>
-    {item.topEmotes.length ? <section className="mk-d-sec"><h3>What chat sent at {clk(m.at)}</h3>
+    {item.topEmotes.length ? <section className="mk-d-sec"><h3>What chat sent</h3>
       <div className="mk-d-em">{item.topEmotes.map(e => {
         const src = emoteImage(e)
         return <div className="mk-d-em-r" key={e.name}>{src ? <img src={src} alt="" /> : <span />}<b>{e.name}</b>

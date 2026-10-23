@@ -150,8 +150,12 @@ export function MomentChart({ m, series, metric, lk, hold, animRef, motion, phon
   </>
 }
 
-/** The line under the chart: the minute pointed at (two lines: when and where, then its counts; T1, 10-21), or how to move the held one. */
+/**
+ * The line under the chart: the minute pointed at (two lines: when and where, then its counts; T1, 10-21), or how to
+ * move the held one. Nothing while the chart is untouched: it only said the head's line again (C1, 10-22).
+ */
 function ChartRead({ m, series, vod, lk, at }: { m: CheckedMoment; series: MinuteSeries; vod: MomentVod | null; lk: number | null; at: number | null }) {
+  if (at == null && lk == null) return null
   if ((at == null || at === lk) && lk != null) {
     return <p className="mk-d-read" aria-live="off"><span className="mk-hint">Holding <b>{streamTime(m, vod, lk)}</b> ({clk(tAt(m, lk))})<span className="mk-kb"> · ← → move it · Esc lets go</span></span></p>
   }

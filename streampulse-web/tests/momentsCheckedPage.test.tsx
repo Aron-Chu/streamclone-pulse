@@ -301,7 +301,7 @@ describe('checked Moments page', () => {
     expect(feed.vod.mock.calls[0][0].id).toBe(b.dataset.key)
   })
 
-  it('says why a moment counts behind its verdict chip, and Esc closes that before the moment', async () => {
+  it('says why a moment counts behind its ×’s (i), and Esc closes that before the moment', async () => {
     const ok = fixture.items.find(item => item.verdict === 'ok' && item.checks.rise?.code === 'rose' && item[item.label.kind].x != null)!
     feed.load.mockResolvedValue(snap([ok]))
     renderMoments()
@@ -309,7 +309,9 @@ describe('checked Moments page', () => {
     fireEvent.click(rows()[0])
     const detail = await opened()
     const chip = within(detail).getByRole('button', { name: 'Holds up: why it counts' })
-    expect(chip.textContent).toBe('Holds up')
+    // a moment that holds up has no verdict chip: the × line’s (i) says why (C1, 10-22)
+    expect(chip.closest('.mk-d-mx')).toBeTruthy()
+    expect(detail.querySelector('.mk-hold')).toBeNull()
     expect(chip.getAttribute('aria-expanded')).toBe('false')
     expect(within(detail).queryByRole('heading', { name: 'Why it counts' })).toBeNull()
     fireEvent.click(chip)
@@ -317,9 +319,10 @@ describe('checked Moments page', () => {
     const pop = document.getElementById(chip.getAttribute('aria-controls')!)!
     expect(within(pop).getByRole('heading', { name: 'Why it counts' })).toBeTruthy()
     expect(within(pop).getAllByRole('listitem').length).toBeGreaterThanOrEqual(2)
-    // the open moment's × is its first line, saying what it counts (X1, 10-22); when, where in the stream and the game the second
-    expect(detail.querySelector('.mk-d-meta > .mk-d-mx')?.textContent).toBe(`${ok.label.kind === 'chat' ? 'Chat was' : 'Emotes were'} ${fx(ok[ok.label.kind].x!)} the 15 minutes before`)
-    expect(detail.querySelector('.mk-d-meta > .mk-d-m2')?.textContent).toMatch(/into the stream|in the VOD/)
+    // the open moment's × is its first line, in the rows' words (C1, 10-22); when, how far in and the game the second
+    expect(detail.querySelector('.mk-d-meta > .mk-d-mx')?.textContent).toBe(`${fx(ok[ok.label.kind].x!)} more ${ok.label.kind === 'chat' ? 'chat' : 'emotes'} than the 15 minutes before`)
+    expect(detail.querySelector('.mk-d-meta > .mk-d-m2')?.textContent).toMatch(/\d in( · |$)/)
+    expect(detail.textContent).not.toMatch(/into the stream|in the VOD|What chat sent at/)
     // and so does the row's: "8.7× more emotes" (M1, 10-22)
     expect(rows()[0].querySelector('.mk-r-x')?.textContent).toBe(`${fx(ok[ok.label.kind].x!)} more ${ok.label.kind === 'chat' ? 'chat' : 'emotes'}`)
     // Watch on Twitch, Save and Copy link sit under the verdict, above the minutes (A1, 10-22)
@@ -346,7 +349,33 @@ describe('checked Moments page', () => {
     await waitFor(() => expect(rows()).toHaveLength(1))
     fireEvent.click(rows()[0])
     const detail = await opened()
-    expect(within(detail).getByRole('button', { name: 'Partly: why it counts' })).toBeTruthy()
+    expect(within(detail).getByRole('button', { name: 'Partly: why it counts' }).classList.contains('mk-hold')).toBe(true)
+    expect(detail.querySelector('.mk-d-why')).toBeNull()
+  })
+
+  it('opens the stream’s page from the name and that game’s moments from the game (C1, 10-22)', async () => {
+    const ok = fixture.items.find(item => item.verdict === 'ok' && item.category && /^\d+$/.test(item.streamId))!
+    feed.load.mockResolvedValue(snap(fixture.items))
+    renderMoments()
+    await waitFor(() => expect(rows().length).toBeGreaterThan(0))
+    fireEvent.click(rows().find(r => r.dataset.key === ok.id) ?? rows()[0])
+    const detail = await opened()
+    const open = fixture.items.find(item => item.id === detail.getAttribute('data-key'))!
+    const href = detail.querySelector('a.mk-d-nm')!.getAttribute('href')!
+    expect(href.startsWith(`/analytics/${open.login.toLowerCase()}/${open.streamId}?returnTo=`)).toBe(true)
+    expect(new URLSearchParams(href.split('?')[1].split('#')[0]).get('returnTo')).toBe(`/analytics/moments?m=${open.id}`)
+    expect(href.endsWith(`#t=${Math.floor(open.offsetSeconds)}`)).toBe(true)
+    // nothing under the chart until a minute is pointed at or held: it only said the head's line again
+    expect(detail.querySelector('.mk-d-read')).toBeNull()
+    const cat = open.category!
+    fireEvent.click(within(detail).getByRole('button', { name: `Show ${cat.name} moments` }))
+    expect(new URL(window.location.href).searchParams.get('game')).toBe(cat.id)
+    await waitFor(() => expect(within(covers()).getAllByRole('button').find(b => b.getAttribute('aria-pressed') === 'true')?.textContent).toContain(cat.name))
+    // the moment stays open, and its game is no longer a button: it's the one picked
+    const still = document.querySelector<HTMLElement>('.mk-slot .mk-d')!
+    expect(still.getAttribute('data-key')).toBe(open.id)
+    expect(within(still).queryByRole('button', { name: `Show ${cat.name} moments` })).toBeNull()
+    expect(still.querySelector('.mk-d-m2 .mk-d-gm')?.textContent).toBe(cat.name)
   })
 
   it('opens a deep-linked moment that didn’t hold up in Latest, worded as such', async () => {
