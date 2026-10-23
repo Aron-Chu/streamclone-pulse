@@ -15,6 +15,9 @@
  * come from its list, read again with each hub poll. One number a row (× usual);
  * the rest are in the moment card. From 1100 to 1535 px the list takes the
  * column's height, and a quiet hour shows the day's top moments under it.
+ *
+ * F2 (10-22): the feed's games sit as covers under the header; one shows that
+ * game's rows only, again clears it.
  */
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type MouseEvent, type PointerEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
@@ -28,6 +31,7 @@ import { HubToggletip } from '../d3/HubToggletip'
 import '../d3/hub-d3-tokens.css'
 import { HubV5Avatar } from './HubV5Avatar'
 import { HubV5Icon } from './HubV5Icon'
+import { GameArt } from './HubV5Rack'
 import {
   FEED_BIG_VIEWERS,
   FEED_LIVES_LIST,
@@ -38,11 +42,14 @@ import {
   feedCap,
   feedClockFloor,
   feedColumnCap,
+  feedForGame,
   feedFresh,
+  feedGames,
   feedHref,
   feedIsQuiet,
   feedLivesAria,
   feedMomentSer,
+  feedMomentsHref,
   feedMore,
   feedMultiplier,
   feedRestTip,
@@ -51,6 +58,7 @@ import {
   feedUpAria,
   liveFeedModel,
   type FeedEvent,
+  type FeedGame,
   type FeedItem,
   type FeedLive,
   type FeedMomentsList,
@@ -203,13 +211,10 @@ function GroupRow({ item, model, nowMs, isNew }: { item: Extract<FeedItem, { gro
   } else if (e.kind === 'moment') {
     const emote = e.act.emote
     act = emote ? (
-      <>
-        <span className="hv5-f2-act hv5-f3-spk">spammed</span>
-        <span className="hv5-f2-em">
-          {emote.imageUrl ? <img src={emote.imageUrl} alt="" width={20} height={20} decoding="async" referrerPolicy="no-referrer" /> : null}
-          <span>{emote.name}</span>
-        </span>
-      </>
+      <span className="hv5-f2-em">
+        {emote.imageUrl ? <img src={emote.imageUrl} alt="" width={20} height={20} decoding="async" referrerPolicy="no-referrer" /> : null}
+        <span>{emote.name}</span>
+      </span>
     ) : <span className="hv5-f2-act hv5-f3-spk">{e.act.word}</span>
     // a Moments-list row writes its × as that page does; one that partly holds up says why instead.
     // The × says what it counts, as on Moments (X1, 10-22): "emotes 5.7× usual"
@@ -463,6 +468,48 @@ function useMomentCard(byKey: ReadonlyMap<string, { row: HubMomentRowV5; avatar:
   return { handlers, card }
 }
 
+/* ---------- F2: one game at a time ---------- */
+
+function GameStrip({ games, game, onGame }: { games: FeedGame[]; game: string | null; onGame: (game: string | null) => void }) {
+  const stripRef = useRef<HTMLDivElement>(null)
+  const shown = games.length >= 2 || !!game
+  // An up/down wheel scrolls the covers sideways (the scrollbar is hidden). At either end the page scrolls;
+  // sideways swipes and Shift+wheel stay native; Ctrl+wheel stays the browser's zoom.
+  useEffect(() => {
+    const strip = stripRef.current
+    if (!strip) return undefined
+    const onWheel = (event: WheelEvent) => {
+      if (event.ctrlKey || event.shiftKey || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return
+      const max = strip.scrollWidth - strip.clientWidth
+      const dy = event.deltaY * (event.deltaMode === 1 ? 40 : event.deltaMode === 2 ? strip.clientWidth : 1)
+      if (max <= 1 || (dy > 0 && strip.scrollLeft >= max - 1) || (dy < 0 && strip.scrollLeft <= 1)) return
+      event.preventDefault()
+      strip.scrollLeft += dy
+    }
+    strip.addEventListener('wheel', onWheel, { passive: false })
+    return () => strip.removeEventListener('wheel', onWheel)
+  }, [shown])
+  if (!shown) return null
+  return (
+    <div ref={stripRef} className="hv5-fd-games" role="group" aria-label="Show one game">
+      <button className="hv5-fd-gall" type="button" aria-pressed={!game} onClick={() => onGame(null)}>All</button>
+      {games.map((g) => (
+        <button
+          key={g.name}
+          className="hv5-fd-gm"
+          type="button"
+          title={g.name}
+          aria-pressed={g.name === game}
+          aria-label={`${g.name}, ${g.rows} ${g.rows === 1 ? 'row' : 'rows'}`}
+          onClick={() => onGame(g.name === game ? null : g.name)}
+        >
+          <GameArt url={g.art ?? undefined} name={g.name} w={22} h={30} />
+        </button>
+      ))}
+    </div>
+  )
+}
+
 /* ---------- the header's age line ---------- */
 
 function freshText(asOf: number | null, nowMs: number): string {
@@ -483,7 +530,11 @@ export interface HubV5LiveFeedProps {
 }
 
 export function HubV5LiveFeed({ feed, nowMs, loading = false, onUpMore }: HubV5LiveFeedProps) {
-  const model = feed.shown
+  const [game, setGame] = useState<string | null>(null)
+  const model = useMemo(() => feedForGame(feed.shown, game), [feed.shown, game])
+  const games = useMemo(() => feedGames(feed.shown, game), [feed.shown, game])
+  // the picked game, when its id is known: "All moments →" opens Moments on it
+  const linked = game ? games.find((g) => g.name === game && g.id) ?? null : null
   const phone = useMedia('(max-width: 719px)')
   const wide = useMedia('(min-width: 1536px)')
   const column = useMedia('(min-width: 1100px) and (max-width: 1535px)')
@@ -562,8 +613,13 @@ export function HubV5LiveFeed({ feed, nowMs, loading = false, onUpMore }: HubV5L
         <h2 id={H_ID}><span className="hv5-fd-dot" aria-hidden="true" />Live feed</h2>
         <span className="hv5-f2-fresh">{freshText(model.asOf, nowMs)}</span>
         <HubToggletip tip={feedTip(model)} label="About the Live feed" />
-        <span className="hv5-end"><Link className="hv5-mo-all" to="/analytics/moments">All moments →</Link></span>
+        <span className="hv5-end">
+          <Link className={`hv5-mo-all${linked ? ' hv5-mo-game' : ''}`} to={feedMomentsHref(linked)}>
+            {linked ? <><span className="hv5-mo-gm">{linked.name}</span>&nbsp;moments →</> : 'All moments →'}
+          </Link>
+        </span>
       </div>
+      <GameStrip games={games} game={game} onGame={setGame} />
       <div
         ref={wrapRef}
         className="hv5-f2-wrap"
@@ -590,7 +646,7 @@ export function HubV5LiveFeed({ feed, nowMs, loading = false, onUpMore }: HubV5L
           {...handlers}
           onClick={() => window.requestAnimationFrame(() => setOpened(!!wrapRef.current?.querySelector('.hv5-fd-list [aria-expanded="true"]')))}
         >
-          {model.asOf != null && !upOn && !rows.length ? <p className="hv5-fd-quiet">Quiet right now · nothing in the last hour</p> : null}
+          {model.asOf != null && !upOn && !rows.length ? <p className="hv5-fd-quiet">{game ? `Nothing from ${game} in the last hour` : 'Quiet right now · nothing in the last hour'}</p> : null}
           {upOn || rows.length ? (
             <ol className="hv5-fd-list" aria-labelledby={H_ID}>
               {upOn ? <UpRow model={model} isNew={!!fresh?.has('now')} onUpMore={onUpMore} /> : null}

@@ -148,7 +148,7 @@ function baseOf(item: MomentsFeedItem, kind: MomentMetricKind): number | null {
   return slots.length >= 5 ? mean(slots) : null
 }
 
-/** What happened, in the feed's words: "spammed" and the emote, "emote burst" with the minute's emotes, "chat burst". */
+/** What happened, in the feed's words: the emote that led the minute, "emote burst" with the minute's emotes, "chat burst". */
 export function actOf(item: MomentsFeedItem, big = false): MomentAct {
   const lead = item.topEmotes[0]
   if (item.label.kind === 'emotes' && item.label.spammed && lead) return { type: 'spammed', emote: lead, text: item.label.text }
@@ -192,7 +192,7 @@ export function checkLines(item: MomentsFeedItem): CheckLine[] {
   }
   if (item.label.relabelled) {
     const det = kind === 'emotes' ? 'chat' : 'emotes', dx = det === 'emotes' ? xe : xc
-    const shown = item.label.spammed && item.topEmotes[0] ? `"spammed ${item.topEmotes[0].name}"` : `a ${item.label.text}`
+    const shown = item.label.spammed && item.topEmotes[0] ? `a ${item.topEmotes[0].name} burst` : `a ${item.label.text}`
     out.push({ id: 'label', lv: 'note', short: 'relabelled', long: `Detected as ${det === 'emotes' ? 'an emote spike' : 'a chat spike'}, but ${det === 'emotes' ? 'emotes were' : 'chat was'} ${dx != null ? fx(dx) : 'flat'} the minutes before while ${word} rose ${x != null ? fx(x) : 'more'}. Shown as ${shown}.` })
   }
   return out
@@ -264,7 +264,7 @@ export function groupsOf(list: CheckedMoment[]): CheckedMoment[][] {
 export function ariaOf(m: CheckedMoment, now: number, more = 0): string {
   const x = m.rowX != null ? `${xNoun(m.kind).toLowerCase()} ${fx(m.rowX).replace('×', ' times')} usual` : m.why
   const cat = m.item.category?.name, act = actOf(m.item)
-  return `${m.name} ${act.type === 'spammed' ? 'chat ' : ''}${act.text}, ${when(m.at, now)}${x ? `, ${x}` : ''}${cat ? `, ${cat}` : ''}${m.item.viewers != null ? `, ${int(m.item.viewers)} viewers` : ''}. ${VERDICT_WORD[m.item.verdict]}.${more ? ` ${more} ${more === 1 ? 'earlier moment.' : 'earlier moments.'}` : ''}`
+  return `${m.name} ${act.type === 'spammed' ? act.emote.name : act.text}, ${when(m.at, now)}${x ? `, ${x}` : ''}${cat ? `, ${cat}` : ''}${m.item.viewers != null ? `, ${int(m.item.viewers)} viewers` : ''}. ${VERDICT_WORD[m.item.verdict]}.${more ? ` ${more} ${more === 1 ? 'earlier moment.' : 'earlier moments.'}` : ''}`
 }
 
 /** The 25 sparkline bars: the moment in teal, the compared minutes stronger than the rest (88 × 32, T1 10-21). */

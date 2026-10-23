@@ -20,6 +20,8 @@ export interface MomentsFeedChecks { history: MomentsFeedCheck; busy?: MomentsFe
 export interface MomentsFeedLabel { kind: MomentMetricKind; text: string; spammed?: boolean; relabelled?: boolean }
 export interface MomentsFeedMetric { perMin: number | null; baselinePerMin: number | null; x: number | null; state: string }
 export interface MomentsFeedCategory { id: string; name: string; boxArtUrl?: string }
+/** facets.categories: the window's games, most moments first (at most 24; every verdict counted), with each game's live channels. */
+export interface MomentsFeedCategoryFacet { id: string; name: string; boxArtUrl?: string; moments: number; liveChannels: number }
 export interface MomentsFeedEmote { name: string; imageUrl?: string; count: number; provider?: string; zeroWidth?: boolean; animated?: boolean }
 /** 25 one-minute slots, -16..+8 around the moment; slot `momentIndex` (16) is the moment. */
 export interface MomentsFeedSpark {
@@ -73,8 +75,8 @@ export interface MomentsFeedResponse {
   coverage: { streamsScored: number; streamsEligible: number }
   total: number
   nextCursor: string | null
-  /** Left out of some captures; the page reads only the verdict counts. */
-  facets?: { verdicts?: Record<MomentVerdict, number> }
+  /** Left out of some captures; the page reads the verdict counts and the games' live channels. */
+  facets?: { verdicts?: Record<MomentVerdict, number>; categories?: unknown }
   items: MomentsFeedItem[]
 }
 
@@ -95,6 +97,8 @@ export interface MomentsFeedSnapshot {
   total: number
   /** The window's moments by verdict, when the feed sends its facets. */
   verdicts: Record<MomentVerdict, number> | null
+  /** The window's games from the feed's facets (malformed ones left out); null when it sends none. */
+  categories: MomentsFeedCategoryFacet[] | null
   /** The next page; null on the last one. */
   nextCursor: string | null
 }
@@ -119,6 +123,12 @@ export function isMomentsFeedItem(value: unknown): value is MomentsFeedItem {
     && Array.isArray(m.topEmotes) && metric(m.chat) && metric(m.emotes)
     && !!m.spark && slots(m.spark.chat) && slots(m.spark.emotes) && m.spark.momentIndex === 16 && finite(m.spark.sparkStartIndex)
     && !!m.checks && check(m.checks.history) && (m.checks.busy === undefined || check(m.checks.busy)) && (m.checks.rise === undefined || check(m.checks.rise))
+}
+
+const isCategoryFacet = (v: unknown): v is MomentsFeedCategoryFacet => {
+  const c = v as MomentsFeedCategoryFacet
+  return !!c && typeof c === 'object' && typeof c.id === 'string' && c.id.length > 0 && typeof c.name === 'string' && c.name.length > 0
+    && finite(c.moments) && finite(c.liveChannels) && (c.boxArtUrl === undefined || typeof c.boxArtUrl === 'string')
 }
 
 function feedPage(data: unknown): MomentsFeedResponse {
@@ -149,10 +159,12 @@ async function readPage(nowMs: number, cursor: string | null, signal?: AbortSign
   const { data } = await apiClient<unknown>(`/v1/public/moments?${query}`, { signal, timeoutMs: 8000, maxResponseBytes: PAGE_BYTES, cache })
   const page = feedPage(data)
   const verdicts = page.facets?.verdicts
+  const categories = page.facets?.categories
   return {
     items: page.items, generatedAt: page.generatedAt, stale: page.stale === true,
     total: finite(page.total) && page.total >= 0 ? page.total : page.items.length,
     verdicts: verdicts && finite(verdicts.ok) && finite(verdicts.warn) && finite(verdicts.bad) ? { ok: verdicts.ok, warn: verdicts.warn, bad: verdicts.bad } : null,
+    categories: Array.isArray(categories) ? categories.filter(isCategoryFacet) : null,
     nextCursor: typeof page.nextCursor === 'string' && page.nextCursor ? page.nextCursor : null,
   }
 }

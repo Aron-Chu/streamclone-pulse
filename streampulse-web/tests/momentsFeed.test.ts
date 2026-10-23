@@ -54,6 +54,19 @@ describe('moments feed client', () => {
     expect(await loadMomentsFeed(Date.now())).toMatchObject({ total: 1, verdicts: null, nextCursor: null })
   })
 
+  it('reads the feed’s games with their live channels, and drops a malformed one (B2)', async () => {
+    const [a] = fixture.items
+    const ow = { id: '515025', name: 'Overwatch', boxArtUrl: 'https://static-cdn.jtvnw.net/ttv-boxart/515025-144x192.jpg', moments: 8, liveChannels: 41 }
+    const mc = { id: '27471', name: 'Minecraft', moments: 6, liveChannels: 0 }
+    apiClient.mockResolvedValueOnce(page([a], null, { facets: { categories: [ow, mc, { id: '1', name: 'No counts' }, { ...ow, id: '' }, null] } }))
+    expect((await loadMomentsFeed(Date.now())).categories).toEqual([ow, mc])
+    // no facets, or not a list: none, not an empty list
+    apiClient.mockResolvedValueOnce(page([a]))
+    expect((await loadMomentsFeed(Date.now())).categories).toBeNull()
+    apiClient.mockResolvedValueOnce(page([a], null, { facets: { categories: { ow } } }))
+    expect((await loadMomentsFeed(Date.now())).categories).toBeNull()
+  })
+
   it('loads every later page behind it, with no cap', async () => {
     const pages = Array.from({ length: 9 }, (_, i) => page([fixture.items[i]], i < 8 ? `p${i + 3}` : null))
     pages.forEach(p => apiClient.mockResolvedValueOnce(p))

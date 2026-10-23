@@ -434,7 +434,7 @@ export function emoteMapTip(data: HubEmoteMapData): string {
       ? `A tile’s colour is its last hour (the last ${data.lastHourIntervals} intervals) against its own ${data.windowLabel} pace, counted the same way: orange is taking off, blue is cooling, plain is about its pace or under ${PACE_HEAT_MIN_USES} uses. In the list, ↗ and ↘ give the same. The frames are the providers (BTTV and FFZ share one). `
       : 'The three colours are the providers (BTTV and FFZ share one). ')
     + 'Size is uses; the share is of everything on the map. Every emote is on it: scroll or pinch over the map to zoom in, drag to move, double-click to zoom in or out. '
-    + 'Click an emote to see where chat spammed it.'
+    + 'Click an emote to see where it led chat.'
 }
 
 /* ---------- where chat spammed an emote: the hub's live moments it led ---------- */

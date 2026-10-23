@@ -5,8 +5,9 @@ import { AnalyticsFigmaShell } from '../../analytics/AnalyticsFigmaShell'
 import { isApiError } from '../../../../lib/apiClient'
 import {
   appendMomentsFeed, isMomentsFeedItem, loadMomentsFeed, loadMomentsFeedItem, loadMomentsFeedRest, mergeMomentsFeed, momentsFeedIdFromLegacy,
-  momentsFeedIdParts, MOMENTS_WINDOW_MS, pollMomentsFeed, type MomentMetricKind, type MomentsFeedItem, type MomentsFeedSnapshot,
+  momentsFeedIdParts, MOMENTS_WINDOW_MS, pollMomentsFeed, type MomentMetricKind, type MomentsFeedCategoryFacet, type MomentsFeedItem, type MomentsFeedSnapshot,
 } from '../../../../lib/momentsFeed'
+import { momentsGameLabel, momentsGames } from '../../../../lib/momentsGames'
 import {
   actOf, ariaOf, avatarImage, boxArtImage, checkMoment, clk, fx, groupsOf, int, liveFrameImage, openedWhen, SORTS, SPARK_H, SPARK_W, sparkBars, STALE_MS,
   streamTime, streamWhere, topBursts, updatedText, when, xNoun, type CheckedMoment,
@@ -21,7 +22,8 @@ import { broadcastTimelineHref } from '../../../../lib/momentsNavigation'
 import { headerClear, watchHeaderClear } from './headerClear'
 import { MomentDetail } from './MomentDetail'
 import { MomentAct } from './MomentAct'
-import { ReplayGlyph, SearchGlyph } from './glyphs'
+import { MomentsGamesGrid } from './MomentsGamesGrid'
+import { ReplayGlyph, SearchGlyph, XGlyph } from './glyphs'
 import './moments-checked.css'
 
 /** Polls bring the newest page every 45 s (the feed's demo cadence; its edge cache holds a page for 30 s). */
@@ -32,9 +34,10 @@ const SAVED_MAX = 200
  * Latest: the moments that hold up or partly do, newest first (moments-r4 B2: no verdict tiers, filters or orders). Saved: this browser's.
  * Viewed: the moments you opened here, newest opened first, one row each (V1, 10-21).
  * Top (T1, 10-22): the moments that hold up, strongest first by the feed's score, one row per burst, not grouped by stream.
+ * Games (B2, 10-22): the window's games as big covers; one picks the game every list shows (?game=, the chip in the bar).
  */
-type MomentsTab = 'latest' | 'top' | 'saved' | 'viewed'
-const TABS: readonly MomentsTab[] = ['latest', 'top', 'saved', 'viewed']
+type MomentsTab = 'latest' | 'top' | 'games' | 'saved' | 'viewed'
+const TABS: readonly MomentsTab[] = ['latest', 'top', 'games', 'saved', 'viewed']
 const HOURS = MOMENTS_WINDOW_MS / 3_600_000
 
 function useMatch(query: string): boolean {
@@ -122,6 +125,12 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
   /** Viewed's order, taken when the tab opens, so opening a row there doesn't move it under the pointer. */
   const [viewedOrder, setViewedOrder] = useState<string[]>(() => viewed.map(e => e.item.id))
   const [q, setQ] = useState('')
+  /** The picked game's category id: every list shows only its moments. */
+  const [game, setGame] = useState<string | null>(() => { const id = query.get('game'); return id && /^\d{1,20}$/.test(id) ? id : null })
+  /** The Games tab's search: a game's name. */
+  const [gameQ, setGameQ] = useState('')
+  /** The feed's games, for each one's live channels (first page, then each poll). */
+  const [cats, setCats] = useState<MomentsFeedCategoryFacet[] | null>(() => initial?.snap.categories ?? null)
   const [sel, setSel] = useState<string | null>(() => (deepId && initial?.snap.items.some(item => item.id === deepId) ? deepId : null))
   /** Streams whose "N earlier" you opened (E1, 10-22): opening a moment no longer opens its stream's list. */
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set())
@@ -182,9 +191,11 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
   const find = (key: string) => byKey.get(key) ?? savedOnly.find(m => m.key === key) ?? viewedOnly.find(m => m.key === key) ?? null
   const setView = (next: MomentsTab) => {
     if (next === 'viewed') setViewedOrder(viewed.map(e => e.item.id))
-    if (next === 'top' && replay) stopReplay(false) // the replay plays Latest in time order, which Top doesn't show
+    if ((next === 'games' || next === 'top') && replay) stopReplay(false) // the replay plays Latest in time order, which Games and Top don't show
     setViewState(next)
   }
+  const games = useMemo(() => momentsGames(pool, cats), [pool, cats])
+  const gameLabel = game ? momentsGameLabel(game, [...pool, ...savedOnly, ...viewedOnly], cats) : null
   /** An open you asked for (a click, a key, a link) goes to the top of Viewed. The wide layout's first moment doesn't count. */
   const noteViewed = (item: MomentsFeedItem) => setViewed(recordViewed(item))
 
@@ -192,7 +203,8 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
   // Latest leaves out what didn't hold up, except the open moment (a deep link, or a held minute's "a moment here").
   // Top keeps only the moments that hold up and rose (those with a ×).
   const passes = (m: CheckedMoment) =>
-    (view === 'saved' ? isSaved(m.item) : view === 'viewed' ? openedAt.has(m.key) : view === 'top' ? m.rowX != null : m.item.verdict !== 'bad' || m.key === sel) && (!qq || m.find.includes(qq))
+    (view === 'saved' ? isSaved(m.item) : view === 'viewed' ? openedAt.has(m.key) : view === 'top' ? m.rowX != null : m.item.verdict !== 'bad' || m.key === sel)
+    && (!qq || m.find.includes(qq)) && (!game || m.item.category?.id === game)
   const shown = (m: CheckedMoment) => (shownUntil == null || m.at <= shownUntil) && !held.has(m.key)
   const viewedRank = new Map(viewedOrder.map((id, i) => [id, i]))
   const byViewed = (a: CheckedMoment, b: CheckedMoment) => (viewedRank.get(a.key) ?? -1) - (viewedRank.get(b.key) ?? -1) // opened since the tab opened: on top
@@ -200,7 +212,8 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
     ? [...pool, ...viewedOnly].filter(m => shown(m) && passes(m)).sort(byViewed)
     : view === 'top' ? topBursts(pool.filter(m => shown(m) && passes(m)))
       : [...pool, ...(view === 'saved' ? savedOnly : [])].filter(m => shown(m) && passes(m)).sort(SORTS.new)
-  const goneRows = view !== 'saved' ? [] : goneSaves.filter(s => (!qq || `${s.login} ${s.displayName ?? ''} ${s.label} ${s.category ?? ''}`.toLowerCase().includes(qq)))
+  const goneRows = view !== 'saved' ? [] : goneSaves.filter(s => (!qq || `${s.login} ${s.displayName ?? ''} ${s.label} ${s.category ?? ''}`.toLowerCase().includes(qq))
+    && (!game || s.categoryId === game))
   const flat = view === 'viewed' || view === 'top'
   const groups = flat ? list.map(m => [m]) : groupsOf(list)
   const selKey = sel != null && list.some(m => m.key === sel) ? sel : wide && list[0] && deepWait === 'no' ? list[0].key : null
@@ -226,6 +239,28 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
     const tops = new Map<string, number>()
     for (const li of listRef.current?.querySelectorAll<HTMLElement>(':scope > li.mk-g') ?? []) tops.set(li.dataset.sid ?? '', li.getBoundingClientRect().top)
     flipFrom.current = tops
+  }
+  const writeParam = (name: string, value: string | null) => {
+    try {
+      const url = new URL(window.location.href)
+      if (value) url.searchParams.set(name, value)
+      else url.searchParams.delete(name)
+      window.history.replaceState(window.history.state, '', url)
+    } catch { /* no history */ }
+  }
+  /** A Games card: that game in every list, on Latest from the top. */
+  const pickGame = (id: string) => {
+    setGame(id)
+    writeParam('game', id)
+    setGameQ('')
+    setView('latest')
+    window.scrollTo({ top: 0 })
+    say(`Showing ${momentsGameLabel(id, pool, cats)?.name ?? 'one game'}`)
+  }
+  const clearGame = () => {
+    setGame(null)
+    writeParam('game', null)
+    say('Showing every game')
   }
   const writeUrl = (key: string | null) => {
     try {
@@ -399,6 +434,7 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
     setLoadedAt(Date.now())
     setClock(Date.now())
     setFeedStale(snap.stale)
+    if (snap.categories) setCats(snap.categories)
     if (!added.length) return
     if (holding.current) setHeld(prev => new Set([...prev, ...added]))
     else arrive(added)
@@ -517,6 +553,11 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
     ? <p className="mk-gone" role="status">{deepWait === 'gone' ? 'That moment is no longer here.' : 'That moment couldn’t be loaded.'}
       {deepAt ? <> <Link to={broadcastTimelineHref(deepAt.login, deepAt.streamId, '/analytics/moments', deepAt.offsetSeconds)}>Open it on the stream’s page</Link></> : null}</p>
     : null
+  // a picked game with nothing in this list says which game (no search typed; Saved and Viewed only once they hold something)
+  const gameEmpty = !gameLabel || qq ? null
+    : view === 'latest' || view === 'top' ? `No ${gameLabel.name} moments in the last ${HOURS} hours.`
+      : view === 'saved' && savedCount ? `No saved ${gameLabel.name} moments.`
+        : view === 'viewed' && viewed.length ? `No ${gameLabel.name} moments in Viewed.` : null
   const fresh = !loaded ? null
     : replay ? <span className="mk-rpl">Replay: <b>{clk(replay.vnow)}</b>, one poll every 45 s</span> : updatedText(clock - loadedAt)
 
@@ -530,20 +571,28 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
       <div className="mk-seg" role="group" aria-label="Which moments">
         <button type="button" aria-pressed={view === 'latest'} onClick={() => setView('latest')}>Latest</button>
         <button type="button" aria-pressed={view === 'top'} onClick={() => setView('top')}>Top</button>
+        <button type="button" aria-pressed={view === 'games'} onClick={() => setView('games')}>Games</button>
         <button type="button" aria-pressed={view === 'saved'} onClick={() => setView('saved')}>Saved ({savedCount})</button>
         <button type="button" aria-pressed={view === 'viewed'} onClick={() => setView('viewed')}>Viewed ({viewed.length})</button>
       </div>
       <label className="mk-srch"><SearchGlyph />
-        <input ref={searchRef} type="search" placeholder="Channel, game or emote" aria-label="Search channels, games or emotes" autoComplete="off" value={q} onChange={e => setQ(e.target.value)} />
+        {view === 'games'
+          ? <input ref={searchRef} type="search" placeholder="Find a game" aria-label="Find a game" autoComplete="off" value={gameQ} onChange={e => setGameQ(e.target.value)} />
+          : <input ref={searchRef} type="search" placeholder="Channel, game or emote" aria-label="Search channels, games or emotes" autoComplete="off" value={q} onChange={e => setQ(e.target.value)} />}
       </label>
+      {game && view !== 'games' ? <span className="mk-gchip">
+        {gameLabel?.art ? <img src={gameLabel.art} alt="" width={15} height={20} referrerPolicy="no-referrer" /> : null}
+        <span>{gameLabel?.name ?? 'One game'}</span>
+        <button type="button" aria-label={`Show every game, not just ${gameLabel?.name ?? 'this one'}`} onClick={clearGame}><XGlyph /></button>
+      </span> : null}
       <span className="mk-bar-sp" />
       <p className={`mk-fresh${stale ? ' stale' : ''}${replay ? ' replaying' : ''}`}><span className="mk-dot" ref={dotRef} aria-hidden="true" /><span>{fresh}</span></p>
-      {view === 'top' ? null : <button className="mk-rp" type="button" aria-pressed={replay != null} disabled={!loaded} onClick={() => (replay ? stopReplay(false) : startReplay())}>
+      {view === 'games' || view === 'top' ? null : <button className="mk-rp" type="button" aria-pressed={replay != null} disabled={!loaded} onClick={() => (replay ? stopReplay(false) : startReplay())}>
         <ReplayGlyph /><span>{replay ? 'Stop replay' : 'Replay the last hour'}</span>
       </button>}
     </div>
 
-    <div className="mk-grid">
+    {view === 'games' ? <MomentsGamesGrid games={games} q={gameQ} picked={game} loaded={loaded} onPick={pickGame} /> : <div className="mk-grid">
       <section className="mk-col" aria-label="Moments">
         <div className="mk-listwrap" ref={listWrapRef}
           onPointerEnter={() => setHolding(true)} onPointerLeave={() => setHolding(false)}
@@ -555,8 +604,8 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
             <button type="button" onClick={() => { clearViewed(); setViewed([]); setViewedOrder([]); say('Viewed cleared') }}>Clear</button></p> : null}
           <ol className="mk-list" ref={listRef}>
             {onRetry ? <li className="mk-empty"><span role="alert">Moments couldn’t load.</span> <button type="button" onClick={onRetry}>Try again</button></li> : null}
-            {loaded && !groups.length && !goneRows.length ? <li className="mk-empty">{view === 'saved' ? (signedOut ? 'Nothing saved yet. Saves stay in this browser until you sign in.' : 'Nothing saved yet.')
-              : view === 'viewed' ? `Nothing viewed yet. Moments you open here stay in this list, in this browser, for ${VIEWED_DAYS} days.` : 'No moments match.'}</li> : null}
+            {loaded && !groups.length && !goneRows.length ? <li className="mk-empty">{gameEmpty ?? (view === 'saved' ? (signedOut ? 'Nothing saved yet. Saves stay in this browser until you sign in.' : 'Nothing saved yet.')
+              : view === 'viewed' ? `Nothing viewed yet. Moments you open here stay in this list, in this browser, for ${VIEWED_DAYS} days.` : 'No moments match.')}</li> : null}
             {groups.map(g => {
               // Viewed and Top are one row a moment, so a stream can have several: those rows go by the moment
               const lead = g[0], gid = flat ? lead.key : lead.sid, open = isOpen(g)
@@ -579,7 +628,7 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
         </div>
       </section>
       <aside className="mk-det" aria-label="Selected moment">{wide && selM ? detail(selM) : wide ? gone : null}</aside>
-    </div>
+    </div>}
     <div className="mk-vh" aria-live="polite">{said}</div>
   </main>
 }
