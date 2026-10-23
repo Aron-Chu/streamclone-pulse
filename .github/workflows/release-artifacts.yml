@@ -131,6 +131,10 @@ jobs:
             # and deletion. Required status checks are not demanded here because
             # the next step separately requires an exact-SHA force_full CI run.
             release_branch="release/ext-0.2.2-candidate-20261022"
+            if [[ "${tag}" != "v0.2.2" ]]; then
+              echo "::error::only v0.2.2 may be released from ${release_branch} (got ${tag})"
+              exit 1
+            fi
             # The exact remote-tracking ref must exist; otherwise git would fall
             # back to a tag named refs/remotes/origin/<branch>.
             if ! git show-ref --verify --quiet "refs/remotes/origin/${release_branch}"; then
@@ -148,11 +152,17 @@ jobs:
             }
             for rule in pull_request non_fast_forward deletion; do
               if ! jq -e --arg rule "${rule}" 'type == "array" and any(.[]; .type == $rule)' <<<"${rules_json}" >/dev/null; then
-                echo "::error::${release_branch} has no ${rule} rule; add a ruleset on exactly ${release_branch} (not release/*) that requires a pull request, blocks force pushes and restricts deletions"
+                echo "::error::${release_branch} has no ${rule} rule; add a ruleset on exactly ${release_branch} (not release/*) that requires a pull request with squash merges only, blocks force pushes and restricts deletions"
                 exit 1
               fi
             done
-            echo "${resolved} is on origin/${release_branch}, which requires a pull request and blocks force-push and deletion"
+            # Squash only, like master: a merge or rebase would put a PR's
+            # in-between commits on the branch, where any of them could be tagged.
+            if ! jq -e 'type == "array" and any(.[]; .type == "pull_request" and (.parameters.allowed_merge_methods // []) == ["squash"])' <<<"${rules_json}" >/dev/null; then
+              echo "::error::the pull request rule on ${release_branch} must allow squash merges only, like master"
+              exit 1
+            fi
+            echo "${resolved} is on origin/${release_branch}, which requires squash-merged pull requests and blocks force-push and deletion"
           fi
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "source_sha=${resolved}" >> "$GITHUB_OUTPUT"
