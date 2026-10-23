@@ -55,7 +55,7 @@
 .mk-head h1{font:600 26px/32px var(--mk-font);letter-spacing:-.015em}
 .mk-lede{color:var(--mk-text-2);max-width:84ch}
 
-/* ---------- toolbar: Latest | Saved, search, then how fresh the list is and Replay ---------- */
+/* ---------- toolbar (M1, 10-22): Latest | Top | Saved, Replay as a small link, then how fresh the list is and the search ---------- */
 .mk-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:0 0 12px}
 .mk-bar .mk-seg button{display:inline-flex;align-items:center}
 .mk-srch{display:flex;align-items:center;gap:8px;height:32px;width:260px;padding:0 10px;border:1px solid var(--mk-line-strong);border-radius:var(--mk-r);color:var(--mk-text-3)}
@@ -71,29 +71,29 @@
 .mk-fresh.replaying .mk-rpl{color:var(--mk-accent)}
 .mk-fresh.replaying .mk-dot{background:var(--mk-accent)}
 .mk-sep{margin:0 2px;color:var(--mk-line-strong)}
-.mk .mk-rp{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border-radius:var(--mk-r);color:var(--mk-text-2);font-weight:500}
-.mk .mk-rp:hover{color:var(--mk-text-1);background:var(--mk-raised)}
-.mk-rp svg{width:14px;height:14px}
-.mk .mk-rp[aria-pressed="true"]{color:var(--mk-accent)}
+.mk .mk-rp{display:inline-flex;align-items:center;gap:5px;height:32px;padding:0 6px;border-radius:var(--mk-r);color:var(--mk-accent);font-weight:500}
+.mk .mk-rp:hover span{text-decoration:underline;text-underline-offset:3px}
+.mk .mk-rp:disabled{opacity:.5;cursor:default}
+.mk-rp svg{width:13px;height:13px}
 
-/* ---------- the picked game's chip, and the Games tab (B2, 10-22: Twitch's Browse → Categories, big covers) ---------- */
-.mk-gchip{display:inline-flex;align-items:center;gap:6px;max-width:240px;height:28px;padding:0 2px 0 4px;border-radius:7px;background:var(--mk-accent-bg);border:1px solid #2b5f58;color:var(--mk-text-1);font-size:12.5px;font-weight:500;white-space:nowrap}
-.mk-gchip img{width:15px;height:20px;border-radius:2px;object-fit:cover;flex:none}
-.mk-gchip>span{min-width:0;overflow:hidden;text-overflow:ellipsis}
-.mk .mk-gchip button{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:5px;color:var(--mk-text-2);flex:none}
-.mk .mk-gchip button:hover{background:rgb(94 234 212 / .12);color:var(--mk-text-1)}
-.mk-gchip svg{width:12px;height:12px}
-.mk-games{padding:6px 0 24px}
-.mk .mk-games-h{margin:0 0 14px;font:500 12px/16px var(--mk-font);color:var(--mk-text-3)}
-.mk .mk-games-g{list-style:none;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(138px,1fr));gap:22px 16px}
+/* ---------- the games on top (M1, 10-22): B2's covers in one row, "All games" first; it scrolls sideways, scrollbar hidden ---------- */
+.mk .mk-covers{--fade:40px;list-style:none;display:flex;gap:14px;margin:0 0 4px;padding:4px 4px 10px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none}
+.mk-covers::-webkit-scrollbar{display:none}
+.mk-covers.more-r{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - var(--fade)),transparent);mask-image:linear-gradient(to right,#000 calc(100% - var(--fade)),transparent)}
+.mk-covers.more-l{-webkit-mask-image:linear-gradient(to right,transparent,#000 var(--fade));mask-image:linear-gradient(to right,transparent,#000 var(--fade))}
+.mk-covers.more-l.more-r{-webkit-mask-image:linear-gradient(to right,transparent,#000 var(--fade),#000 calc(100% - var(--fade)),transparent);mask-image:linear-gradient(to right,transparent,#000 var(--fade),#000 calc(100% - var(--fade)),transparent)}
+.mk-covers>li{flex:none;width:112px}
 .mk .mk-gc{display:flex;flex-direction:column;align-items:flex-start;width:100%;min-width:0;text-align:left;border-radius:8px}
 .mk-gc-art{display:grid;place-items:center;width:100%;aspect-ratio:3/4;border-radius:6px;overflow:hidden;background:var(--mk-raised);box-shadow:inset 0 0 0 1px var(--mk-line-strong);transition:transform var(--mk-dur-quick) var(--mk-ease)}
 .mk .mk-gc-art img{width:100%;height:100%;object-fit:cover}
 .mk-gc-art span{font:600 20px/1 var(--mk-font);color:var(--mk-text-3)}
+.mk-gc-all .mk-gc-art{background:linear-gradient(160deg,#1b2b29,#121214)}
+.mk .mk-gc-all .mk-gc-art span{padding:0 8px;font:700 15px/1.2 var(--mk-font);color:var(--mk-text-1);text-align:center}
+.mk-gc-wait{display:block;width:100%;aspect-ratio:3/4;border-radius:6px;background:linear-gradient(160deg,var(--mk-raised),var(--mk-panel))}
 .mk-gc:hover .mk-gc-art{transform:translateY(-2px)}
-.mk-gc-nm{display:block;max-width:100%;margin-top:7px;font:600 14px/18px var(--mk-font);color:var(--mk-text-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mk-gc-ct{font:400 12.5px/17px var(--mk-font);color:var(--mk-text-3)}
-.mk-gc-live{display:inline-flex;align-items:center;gap:5px;height:20px;margin-top:6px;padding:0 8px;border-radius:999px;background:var(--mk-raised);border:1px solid var(--mk-line-strong);font:600 12px/1 var(--mk-font);color:var(--mk-text-2)}
+.mk-gc-nm{display:block;max-width:100%;margin-top:7px;font:600 13px/18px var(--mk-font);color:var(--mk-text-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mk-gc-ct{font:400 12px/16px var(--mk-font);color:var(--mk-text-3)}
+.mk-gc-live{display:inline-flex;align-items:center;gap:5px;height:20px;margin-top:5px;padding:0 8px;border-radius:999px;background:var(--mk-raised);border:1px solid var(--mk-line-strong);font:600 12px/1 var(--mk-font);color:var(--mk-text-2)}
 .mk-gc-live i{width:6px;height:6px;border-radius:50%;background:var(--mk-live)}
 .mk-gc[aria-pressed="true"] .mk-gc-art{box-shadow:0 0 0 2px var(--mk-canvas),0 0 0 4px var(--mk-accent)}
 .mk-gc[aria-pressed="true"] .mk-gc-nm{color:var(--mk-accent)}
@@ -109,7 +109,7 @@
   .mk-det .mk-d{padding-bottom:0}
 }
 .mk-listwrap{position:relative}
-.mk-list,.mk-sub{list-style:none;margin:0;padding:0}
+.mk-list{list-style:none;margin:0;padding:0}
 .mk .mk-pill{position:sticky;z-index:3;top:calc(var(--mk-top) + 12px);display:block;width:max-content;margin:0 auto -28px;height:28px;padding:0 12px;border-radius:14px;background:var(--mk-accent);color:var(--mk-canvas);font:600 12px/28px var(--mk-font);box-shadow:0 2px 10px rgb(0 0 0 / .45)}
 .mk-pill[hidden]{display:none}
 .mk-pill:focus-visible{outline:2px solid var(--mk-focus);outline-offset:2px}
@@ -119,12 +119,12 @@
 /* a row Tab reaches under the sticky header scrolls clear of it */
 .mk .mk-r{scroll-margin-top:calc(var(--mk-top) + 8px)}
 
-/* one row (moments-r4 B2: r2's row with a picture): picture · who + what / × + when + game · the minutes · viewers */
+/* one row (M1, 10-22: three things): picture · who + what chat sent / × + game · when */
 .mk-g{position:relative;border-bottom:1px solid var(--mk-line)}
-.mk .mk-r{position:relative;display:grid;grid-template-columns:96px minmax(0,1fr) 88px 96px;column-gap:14px;align-items:center;width:100%;min-height:70px;padding:8px 10px;border-radius:8px;color:var(--mk-text-1);text-align:left;transition:background var(--mk-dur-quick)}
+.mk .mk-r{position:relative;display:grid;grid-template-columns:96px minmax(0,1fr) auto;column-gap:14px;align-items:center;width:100%;min-height:70px;padding:8px 10px;border-radius:8px;color:var(--mk-text-1);text-align:left;transition:background var(--mk-dur-quick)}
 .mk .mk-r:hover{background:var(--mk-panel)}
 .mk-r:hover .mk-r-nm{text-decoration:underline;text-underline-offset:3px}
-/* the row's own button lies over the whole row, so a click anywhere opens it; "N earlier" sits on top of it (E1, 10-22) */
+/* the row's own button lies over the whole row, so a click anywhere opens it */
 .mk .mk-r{cursor:pointer}
 .mk .mk-r-gone{cursor:default}
 .mk .mk-r-hit{position:absolute;inset:0;border-radius:8px}
@@ -149,29 +149,16 @@
 .mk-r-l2{display:flex;align-items:center;gap:6px;min-width:0;font:500 12px/16px var(--mk-font);color:var(--mk-text-3);white-space:nowrap}
 .mk-r-l2>*{flex:none}
 .mk-r-l2 time{font-variant-numeric:tabular-nums}
-.mk-r-l2 .mk-r-g{display:inline-flex;align-items:center;gap:5px;flex:0 1 auto;min-width:0;overflow:hidden}
-.mk-r-l2 .mk-r-g span{min-width:0;overflow:hidden;text-overflow:ellipsis}
-.mk-r-l2 .mk-r-g img{flex:none;width:12px;height:16px;border-radius:2px;object-fit:cover;box-shadow:0 0 0 1px var(--mk-line-strong)}
-.mk-r-x{color:var(--mk-text-3);font-variant-numeric:tabular-nums}
+.mk-r-l2 .mk-r-g{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* "8.7× more emotes" (M1, 10-22) */
+.mk-r-x{color:var(--mk-text-2);font-variant-numeric:tabular-nums}
 .mk-r-x b{font-weight:600;color:var(--mk-accent)}
-/* what the × counts (X1, 10-22): "Emotes 5.7× usual" */
-.mk-r-x .mk-r-xk{font-weight:500;color:var(--mk-text-2)}
 .mk-r-why{color:var(--mk-warn)}
 [data-vd="bad"] .mk-r-why{color:var(--mk-text-2)}
-/* "3 earlier ⌄": its own button (E1, 10-22); the stream's earlier moments open under its row */
-.mk .mk-r-more{position:relative;z-index:1;display:inline-flex;align-items:center;height:22px;margin:-3px -6px;padding:0 6px;border-radius:6px;color:var(--mk-text-2)}
-.mk .mk-r-more:hover{color:var(--mk-text-1);background:var(--mk-line-strong)}
-.mk-r-more::after{content:"";width:5px;height:5px;margin:0 2px 3px 7px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg)}
-.mk-r-more[aria-expanded="true"]::after{margin:3px 2px 0 7px;transform:rotate(-135deg)}
-.mk-r-sp{width:88px;height:32px}
-.mk-r-sp svg{display:block;width:88px;height:32px;overflow:visible}
-/* the right column: when, over the viewers (T1); under Viewed, when you opened it */
-.mk-r-v{display:flex;flex-direction:column;align-items:flex-end;gap:1px;text-align:right}
-.mk-r-v time{font:500 12px/16px var(--mk-font);color:var(--mk-text-2);font-variant-numeric:tabular-nums;white-space:nowrap}
-.mk-r-vw{font:500 12px/16px var(--mk-font);color:var(--mk-text-3);white-space:nowrap}
-.mk-r-vw b{font-weight:600;color:var(--mk-text-2);font-variant-numeric:tabular-nums}
+/* the right column: when; under Viewed, when you opened it */
+.mk-r-v{display:flex;flex-direction:column;align-items:flex-end;text-align:right}
+.mk-r-v time{font:500 12px/16px var(--mk-font);color:var(--mk-text-3);font-variant-numeric:tabular-nums;white-space:nowrap}
 [data-vd="bad"]>.mk-r .mk-r-nm,[data-vd="bad"]>.mk-r .mk-r-l1{color:var(--mk-text-2)}
-[data-vd="bad"]>.mk-r .mk-r-sp{opacity:.55}
 /* a save the feed can't find (Unavailable saves C, 10-22): a striped empty picture, no minutes, a link where it can still be seen */
 .mk .mk-r-gone:hover{background:none}
 .mk-r-gone:hover .mk-r-nm{text-decoration:none}
@@ -184,18 +171,6 @@
 .mk-vd{display:inline-grid;place-items:center;flex:none;width:14px;height:14px}
 .mk-vd svg{width:14px;height:14px}
 .mk-vd-ok{color:var(--mk-ok)}.mk-vd-warn{color:var(--mk-warn)}.mk-vd-bad{color:var(--mk-bad)}
-
-/* earlier moments of the selected channel, under it, lined up with the words */
-.mk-sub{margin:0 0 6px 106px!important;border-left:1px solid var(--mk-line-strong)}
-.mk .mk-sub .mk-r{grid-template-columns:minmax(0,1fr) 88px 96px;min-height:48px;padding:6px 8px 6px 12px}
-.mk-sub .mk-r-l1{font-size:13px}
-
-/* 900 to 1099 px, the list beside the open moment: the minutes give way to the words */
-@media (min-width:900px) and (max-width:1099px){
-  .mk .mk-r{grid-template-columns:96px minmax(0,1fr) 96px}
-  .mk .mk-sub .mk-r{grid-template-columns:minmax(0,1fr) 96px}
-  .mk-r-sp{display:none}
-}
 
 /* rows a poll brings slide in */
 .mk-g.new>.mk-r{animation:mk-in .5s var(--mk-ease)}
@@ -299,6 +274,15 @@
 .mk-d-em-r .mk-n{text-align:right;color:var(--mk-text-2);font-variant-numeric:tabular-nums}
 .mk-d-em-f{margin-top:4px!important;font:500 12px/16px var(--mk-font);color:var(--mk-text-3)}
 
+/* the stream's other moments (M1, 10-22: the list's "N earlier" moved here) */
+.mk-d-more{list-style:none;padding:0;display:grid;gap:2px}
+.mk .mk-d-more button{display:flex;align-items:center;gap:8px;width:calc(100% + 16px);min-height:32px;padding:4px 8px;margin:0 -8px;border-radius:6px;text-align:left;white-space:nowrap;overflow:hidden}
+.mk .mk-d-more button:hover{background:var(--mk-raised)}
+.mk-d-more time{flex:none;min-width:58px;font:500 12px/16px var(--mk-font);color:var(--mk-text-3);font-variant-numeric:tabular-nums}
+.mk-d-more .mk-r-x{margin-left:auto;font-size:12px}
+.mk .mk-d-more-all{margin-top:6px;padding:4px 0;color:var(--mk-accent);font:500 13px/18px var(--mk-font)}
+.mk .mk-d-more-all:hover{text-decoration:underline;text-underline-offset:3px}
+
 /* under the verdict, above the minutes (A1, 10-22) */
 .mk .mk-d-acts{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 6px}
 .mk-d-acts .mk-btn{height:36px}
@@ -313,8 +297,10 @@
 /* Top (T1, 10-22): one line over the list says its order */
 .mk .mk-cap{margin:4px 0 8px;padding:0 10px;font:500 12px/16px var(--mk-font);color:var(--mk-text-3)}
 
-/* Viewed (V1): one line over the list, and Clear */
-.mk-vw-note{display:flex;align-items:center;gap:10px;margin:0 0 6px!important;padding:0 10px;font:500 12px/16px var(--mk-font);color:var(--mk-text-3)}
+/* Saved's two halves (M1, 10-22): Saved | Viewed over the list; Viewed (V1) adds one line and Clear */
+.mk-sv{display:flex;align-items:center;flex-wrap:wrap;gap:6px 14px;margin:2px 0 8px;padding:0 10px}
+.mk-sv .mk-seg button{height:24px;font-size:12.5px}
+.mk-vw-note{display:flex;align-items:center;gap:10px;flex:1;min-width:0;margin:0!important;font:500 12px/16px var(--mk-font);color:var(--mk-text-3)}
 .mk .mk-vw-note button{margin-left:auto;color:var(--mk-text-2);text-decoration:underline;text-underline-offset:3px}
 .mk .mk-vw-note button:hover{color:var(--mk-text-1)}
 
@@ -332,26 +318,23 @@
   .mk-head h1{font-size:22px;line-height:28px}
   .mk-bar{gap:8px}
   .mk-bar .mk-seg{order:1}
-  .mk-fresh{order:2;margin-left:auto}
-  .mk .mk-rp{order:3}
+  .mk .mk-rp{order:2}
   .mk-rp span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  .mk-fresh{order:3;margin-left:auto}
   .mk-srch{order:4;width:100%}
-  .mk-gchip{order:5}
   .mk-bar-sp{display:none}
-  /* Games: three covers a row */
-  .mk .mk-games-g{grid-template-columns:repeat(3,minmax(0,1fr));gap:16px 10px}
-  .mk-gc-nm{font-size:13px}
-  /* phones: the time has room without wrapping; the viewers are in the open moment */
-  .mk .mk-r{grid-template-columns:72px minmax(0,1fr) 74px;column-gap:10px;padding:8px 4px}
+  /* smaller covers, about four on screen */
+  .mk .mk-covers{gap:10px;margin:0 -4px 2px}
+  .mk-covers>li{width:84px}
+  .mk-gc-nm{font-size:12.5px;margin-top:5px}
+  .mk .mk-gc-all .mk-gc-art span{font-size:13px}
+  /* phones: the game and the long time give way; the time is "13m" */
+  .mk .mk-r{grid-template-columns:72px minmax(0,1fr) auto;column-gap:10px;padding:8px 4px}
   .mk-r-l2 .mk-r-g,.mk-r-l2 .s-g{display:none}
-  .mk-r-vw{display:none}
-  .mk-r-v time.mk-r-op{white-space:normal}
+  .mk-r-v time.mk-r-op{white-space:normal;max-width:74px}
   .mk-r-l2 .mk-r-x{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
   .mk-r-th{width:72px}
   .mk-r-th-av,.mk-r-th .mk-ini{width:24px;height:24px;margin:-12px 0 0 -12px}
-  .mk-r-sp{display:none}
-  .mk-sub{margin-left:40px!important}
-  .mk .mk-sub .mk-r{grid-template-columns:minmax(0,1fr) 74px}
   .mk-r-nm{max-width:52%}
   /* a phone row has about 225 px for its words: the emote takes the next line rather than shrinking to nothing */
   .mk-r-l1{flex-wrap:wrap;row-gap:0}
@@ -360,14 +343,10 @@
   .mk-ch svg{height:170px}
   .mk-d-em-r{grid-template-columns:24px minmax(0,110px) minmax(0,1fr) 40px}
 }
-/* the narrowest phones: "Emotes 4.7×" without "usual", so the line isn't cut off before "N earlier" */
-@media (max-width:479px){.mk-r-xu{display:none}}
 
 /* ---------- motion: short and quiet; .no-motion (reduced motion) turns all of it off ---------- */
 .mk-d{animation:mk-d-in .2s var(--mk-ease) both}
 @keyframes mk-d-in{from{opacity:0;transform:translateY(4px)}}
-.mk-sub.opening>li{animation:mk-sub-in .22s var(--mk-ease) both;animation-delay:calc(var(--i, 0) * 22ms)}
-@keyframes mk-sub-in{from{opacity:0;transform:translateY(-6px)}}
 .mk-ch svg.anim-grow :is(.mk-an,.mk-an2,.mk-base){animation:mk-fade .24s .28s both}
 .mk-ch svg.anim-morph :is(.mk-an,.mk-an2,.mk-base){animation:mk-fade .2s .1s both}
 @keyframes mk-fade{from{opacity:0}}

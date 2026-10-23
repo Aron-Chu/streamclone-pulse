@@ -93,7 +93,7 @@ async function cls(page: Page): Promise<number> {
 }
 
 const rows = (page: Page) => page.locator('.mk-list .mk-r')
-/** One per stream: the open stream's earlier moments sit under its row. */
+/** One per stream: the stream's other moments are in its open moment (M1, 10-22). */
 const streamRows = (page: Page) => page.locator('.mk-list > li.mk-g > .mk-r')
 const seg = (page: Page, name: string) => page.getByRole('group', { name: 'Which moments' }).getByRole('button', { name: new RegExp(`^${name}`) })
 
@@ -113,14 +113,10 @@ test('wide: the latest moments, the first one open beside the list', async ({ pa
   expect(reads.feed).toEqual(['first', 'c20'])
   const open = await page.locator('.mk-det .mk-d').getAttribute('data-key')
   const openStream = fixture.items.find(x => x.id === open)!.streamId
-  // the open stream's earlier moments stay closed until its "N earlier" is pressed (E1, 10-22)
-  await expect(page.locator('.mk-sub')).toHaveCount(0)
+  // the games on top (M1, 10-22); the open stream's earlier moments are in the open moment
+  await expect(page.getByRole('list', { name: 'Games, busiest first' })).toBeVisible()
   const earlier = fixture.items.filter(x => x.verdict !== 'bad' && x.streamId === openStream).length - 1
-  if (earlier > 0) {
-    await page.locator(`.mk-list > li.mk-g > .mk-r[data-key="${open}"] .mk-r-more`).click()
-    await expect(page.locator('.mk-sub .mk-r')).toHaveCount(earlier)
-    await expect(page.locator('.mk-det .mk-d')).toHaveAttribute('data-key', open!)
-  }
+  await expect(page.locator('.mk-det .mk-d-more button')).toHaveCount(earlier)
   const detail = page.locator('.mk-det .mk-d')
   await expect(detail).toBeVisible()
   // the verdict chip's (i) says why it counts (moments-r4 B2: no verdict tiers, filters or orders); Esc closes only that
@@ -173,11 +169,9 @@ test('phone: a moment opens under its row and a second tap closes it', async ({ 
   testInfo.annotations.push({ type: 'CLS 390', description: shift.toFixed(4) })
   expect(shift).toBeLessThan(0.1)
   await expect(page.locator('.mk-det .mk-d')).toHaveCount(0)
-  // a tap on the picture: a row's middle can be its "N earlier" (E1, 10-22), which opens only that list
   const first = rows(page).first().locator('.mk-r-th')
   await first.click()
   await expect(page.locator('.mk-slot .mk-d')).toBeVisible()
-  await expect(page.locator('.mk-sub')).toHaveCount(0)
   await assertNoPageHorizontalOverflow(page)
   await first.click()
   await expect(page.locator('.mk-slot')).toHaveCount(0)
@@ -210,7 +204,8 @@ test('a later page that fails keeps what has loaded', async ({ page }) => {
   await expect.poll(() => reads.feed.filter(c => c === 'c20').length).toBeGreaterThan(0)
   const loaded = new Set(newest.slice(0, PAGE).filter(x => x.verdict !== 'bad').map(x => x.streamId)).size
   await expect(streamRows(page)).toHaveCount(loaded)
-  await expect(page.locator('.mk-fresh')).toContainText('updated')
+  // "Live", or how old once it greys (M1, 10-22)
+  await expect(page.locator('.mk-fresh')).toHaveText(/^(Live|updated .+)$/)
   expect(reads.feed.filter(c => c === 'c40')).toEqual([])
   expect(errors.filter(e => !/status of 503/.test(e))).toEqual([])
 })

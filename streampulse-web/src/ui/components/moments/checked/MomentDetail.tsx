@@ -14,6 +14,8 @@ import { headerClear } from './headerClear'
 
 /** The detail's reads wait this long for the selection to settle: J held down reads only where it stops. */
 const READ_DELAY_MS = 200
+/** "More from this stream" shows this many until its "Show all" (10-22). */
+export const MORE_SHOWN = 5
 
 export interface DetailProps {
   m: CheckedMoment
@@ -36,6 +38,9 @@ export interface DetailProps {
   playRef: MutableRefObject<((rel: number | null) => void) | null>
   /** The page's VODs, by stream. */
   vods: MomentVodCache
+  /** The stream whose "More from this stream" shows all: the page's, so it stays open from one of its moments to the next. */
+  moreAll: string | null
+  setMoreAll: (sid: string | null) => void
 }
 
 /**
@@ -48,7 +53,7 @@ export interface DetailProps {
  * draws the feed's 25-minute sparkline.
  */
 export function MomentDetail(props: DetailProps) {
-  const { m, pool, now, metric, setMetric, lk, setLk, saved, onSave, onCopy, onOpen, onClose, motion, phone, say, playRef, vods } = props
+  const { m, pool, now, metric, setMetric, lk, setLk, saved, onSave, onCopy, onOpen, onClose, motion, phone, say, playRef, vods, moreAll, setMoreAll } = props
   const item = m.item
   const [vod, setVod] = useState<MomentVod | null>(() => vods.peek(item) ?? null)
   const [minutes, setMinutes] = useState<MinuteSeries | null>(null)
@@ -121,6 +126,10 @@ export function MomentDetail(props: DetailProps) {
   const x = m.rowX ?? (item.checks.rise?.code === 'partly' ? m.x : null)
   const word = VERDICT_WORD[item.verdict]
   const whyTitle = item.verdict === 'bad' ? 'Why it doesn’t count' : 'Why it counts'
+  // the stream's other moments that hold up or partly do, newest first: the list's "N earlier" until M1 (10-22)
+  const more = pool.filter(o => o.sid === m.sid && o.key !== m.key && o.item.verdict !== 'bad').sort((a, b) => b.at - a.at)
+  const moreOpen = moreAll === m.sid || more.length <= MORE_SHOWN
+  const moreId = useId()
 
   return <article className="mk-d" data-key={m.key} data-vd={item.verdict}>
     <div className={`mk-d-media${playing ? ' on' : ''}`} ref={media}>
@@ -143,7 +152,7 @@ export function MomentDetail(props: DetailProps) {
       <p className="mk-d-meta">
         {x != null ? <span className="mk-d-mx"><span className="mk-d-xk">{m.kind === 'chat' ? 'Chat was' : 'Emotes were'}</span> <b>{fx(x)}</b> the 15 minutes before</span> : null}
         <span className="mk-d-m2">{clk(m.at)}{sameDay(m.at, now) ? '' : ' yesterday'} · <b className="mk-d-st-c" title={streamTip(m, vod)}>{streamTime(m, vod)}</b> {streamWhere(vod)}
-          {item.category ? ` · ${item.category.name}` : ''}</span>
+          {item.category ? ` · ${item.category.name}` : ''}{item.viewers != null ? ` · ${int(item.viewers)} viewers` : ''}</span>
       </p>
       <div className="mk-hold-w" ref={whyRef}>
         <button ref={chipRef} className="mk-hold" type="button" data-vd={item.verdict} aria-expanded={why} aria-controls={popId}
@@ -183,6 +192,17 @@ export function MomentDetail(props: DetailProps) {
           <span className="mk-n">{int(e.count)}</span></div>
       })}</div>
       <p className="mk-d-em-f">{int(emTot)} emotes in {int(item.chat.perMin)} messages</p>
+    </section> : null}
+    {more.length ? <section className="mk-d-sec"><h3>More from this stream</h3>
+      <ul className="mk-d-more" id={moreId}>{(moreOpen ? more : more.slice(0, MORE_SHOWN)).map(o => <li key={o.key}>
+        <button type="button" onClick={() => onOpen(o.key)}>
+          <time dateTime={new Date(o.at).toISOString()}>{clk(o.at)}</time>
+          <MomentAct act={actOf(o.item)} />
+          {o.rowX != null ? <span className="mk-r-x"><b>{fx(o.rowX)}</b> more {o.kind === 'chat' ? 'chat' : 'emotes'}</span> : null}
+        </button>
+      </li>)}</ul>
+      {more.length > MORE_SHOWN ? <button className="mk-d-more-all" type="button" aria-expanded={moreOpen} aria-controls={moreId}
+        onClick={() => setMoreAll(moreOpen ? null : m.sid)}>{moreOpen ? 'Show fewer' : `Show all ${more.length}`}</button> : null}
     </section> : null}
   </article>
 }

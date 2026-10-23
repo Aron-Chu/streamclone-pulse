@@ -9,8 +9,8 @@ import {
 } from '../../../../lib/momentsFeed'
 import { momentsGameLabel, momentsGames } from '../../../../lib/momentsGames'
 import {
-  actOf, ariaOf, avatarImage, boxArtImage, checkMoment, clk, fx, groupsOf, int, liveFrameImage, openedWhen, SORTS, SPARK_H, SPARK_W, sparkBars, STALE_MS,
-  streamTime, streamWhere, topBursts, updatedText, when, xNoun, type CheckedMoment,
+  actOf, ariaOf, avatarImage, boxArtImage, checkMoment, clk, fx, groupsOf, liveFrameImage, openedWhen, SORTS, STALE_MS,
+  streamTime, streamWhere, topBursts, updatedText, when, whenShort, type CheckedMoment,
 } from '../../../../lib/momentsChecked'
 import { loadMomentVod, momentVodCache } from '../../../../lib/momentsFeedVod'
 import { toggleSavedMoment, useSavedMoments, type SavedMoment } from '../../../../lib/savedDiscoveryMoments'
@@ -22,8 +22,8 @@ import { broadcastTimelineHref } from '../../../../lib/momentsNavigation'
 import { headerClear, watchHeaderClear } from './headerClear'
 import { MomentDetail } from './MomentDetail'
 import { MomentAct } from './MomentAct'
-import { MomentsGamesGrid } from './MomentsGamesGrid'
-import { ReplayGlyph, SearchGlyph, XGlyph } from './glyphs'
+import { MomentsGameRow } from './MomentsGameRow'
+import { ReplayGlyph, SearchGlyph } from './glyphs'
 import './moments-checked.css'
 
 /** Polls bring the newest page every 45 s (the feed's demo cadence; its edge cache holds a page for 30 s). */
@@ -34,10 +34,11 @@ const SAVED_MAX = 200
  * Latest: the moments that hold up or partly do, newest first (moments-r4 B2: no verdict tiers, filters or orders). Saved: this browser's.
  * Viewed: the moments you opened here, newest opened first, one row each (V1, 10-21).
  * Top (T1, 10-22): the moments that hold up, strongest first by the feed's score, one row per burst, not grouped by stream.
- * Games (B2, 10-22): the window's games as big covers; one picks the game every list shows (?game=, the chip in the bar).
+ * The tabs are Latest, Top and Saved; Viewed is Saved's other half, behind a switch (M1, 10-22). The window's games sit
+ * over them as big covers, and one picks the game every list shows (?game=; B2's Games tab until M1).
  */
-type MomentsTab = 'latest' | 'top' | 'games' | 'saved' | 'viewed'
-const TABS: readonly MomentsTab[] = ['latest', 'top', 'games', 'saved', 'viewed']
+type MomentsTab = 'latest' | 'top' | 'saved' | 'viewed'
+const TABS: readonly MomentsTab[] = ['latest', 'top', 'saved', 'viewed']
 const HOURS = MOMENTS_WINDOW_MS / 3_600_000
 
 function useMatch(query: string): boolean {
@@ -127,14 +128,11 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
   const [q, setQ] = useState('')
   /** The picked game's category id: every list shows only its moments. */
   const [game, setGame] = useState<string | null>(() => { const id = query.get('game'); return id && /^\d{1,20}$/.test(id) ? id : null })
-  /** The Games tab's search: a game's name. */
-  const [gameQ, setGameQ] = useState('')
   /** The feed's games, for each one's live channels (first page, then each poll). */
   const [cats, setCats] = useState<MomentsFeedCategoryFacet[] | null>(() => initial?.snap.categories ?? null)
   const [sel, setSel] = useState<string | null>(() => (deepId && initial?.snap.items.some(item => item.id === deepId) ? deepId : null))
-  /** Streams whose "N earlier" you opened (E1, 10-22): opening a moment no longer opens its stream's list. */
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set())
   const [opened, setOpened] = useState<{ key: string | null; lk: number | null; metric: MomentMetricKind | null }>({ key: null, lk: null, metric: null })
+  const [moreAll, setMoreAll] = useState<string | null>(null)
   const [drawn, setDrawn] = useState(readSaved)
   const savedItems = useSavedMoments().items
   const signedOut = useAccountSession().status === 'signed_out'
@@ -162,8 +160,6 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
   const flipFrom = useRef<Map<string, number> | null>(null)
   const keep = useRef<{ key: string; y0: number } | null>(null)
   const focusAfter = useRef<{ row?: string; scrollTo?: string } | null>(deepId && sel ? { scrollTo: deepId } : null)
-  /** The streams whose earlier moments showed last render: a list that just opened slides in. */
-  const lastOpen = useRef<ReadonlySet<string>>(new Set())
   const vods = useMemo(() => momentVodCache(item => loadMomentVod(item, new AbortController().signal)), [])
 
   const now = replay ? replay.vnow : clock
@@ -191,10 +187,12 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
   const find = (key: string) => byKey.get(key) ?? savedOnly.find(m => m.key === key) ?? viewedOnly.find(m => m.key === key) ?? null
   const setView = (next: MomentsTab) => {
     if (next === 'viewed') setViewedOrder(viewed.map(e => e.item.id))
-    if ((next === 'games' || next === 'top') && replay) stopReplay(false) // the replay plays Latest in time order, which Games and Top don't show
+    if (next !== 'latest' && replay) stopReplay(false) // the replay plays Latest in time order
     setViewState(next)
   }
   const games = useMemo(() => momentsGames(pool, cats), [pool, cats])
+  /** "All games": every moment Latest can show, with a game or without. */
+  const allCount = useMemo(() => pool.filter(m => m.item.verdict !== 'bad').length, [pool])
   const gameLabel = game ? momentsGameLabel(game, [...pool, ...savedOnly, ...viewedOnly], cats) : null
   /** An open you asked for (a click, a key, a link) goes to the top of Viewed. The wide layout's first moment doesn't count. */
   const noteViewed = (item: MomentsFeedItem) => setViewed(recordViewed(item))
@@ -215,12 +213,12 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
   const goneRows = view !== 'saved' ? [] : goneSaves.filter(s => (!qq || `${s.login} ${s.displayName ?? ''} ${s.label} ${s.category ?? ''}`.toLowerCase().includes(qq))
     && (!game || s.categoryId === game))
   const flat = view === 'viewed' || view === 'top'
+  // one row a stream, its newest; the stream's other moments are in the open moment (M1, 10-22)
   const groups = flat ? list.map(m => [m]) : groupsOf(list)
+  /** Each moment's row: its stream's newest. */
+  const leadOf = new Map(groups.flatMap(g => g.map(m => [m.key, g[0].key] as const)))
   const selKey = sel != null && list.some(m => m.key === sel) ? sel : wide && list[0] && deepWait === 'no' ? list[0].key : null
   const selM = selKey ? find(selKey) : null
-  /** A stream's earlier moments show when you opened them, or when the open moment is one of them (a link, a key, the chart). */
-  const isOpen = (g: CheckedMoment[]) => g.length > 1 && (expanded.has(g[0].sid) || g.some((m, i) => i > 0 && m.key === selKey))
-  const openNow = new Set<string>()
   const lk = opened.key === selKey ? opened.lk : null
   const metric = opened.key === selKey ? opened.metric : null
   const pillN = [...held].filter(key => { const m = byKey.get(key); return m != null && passes(m) }).length
@@ -229,7 +227,7 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
   latest.current = { items, held, replay, selKey, passes, pool }
 
   const say = (text: string) => { setSaid(''); window.setTimeout(() => setSaid(text), 30) }
-  const rowEl = (key: string) => byData(listRef.current, '.mk-r', 'key', key)
+  const rowEl = (key: string) => byData(listRef.current, '.mk-r', 'key', leadOf.get(key) ?? key)
   /** The clicked row stays where it was while things open and close around it. */
   const keepPut = (key: string) => {
     const el = key ? rowEl(key) : null
@@ -248,19 +246,11 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
       window.history.replaceState(window.history.state, '', url)
     } catch { /* no history */ }
   }
-  /** A Games card: that game in every list, on Latest from the top. */
-  const pickGame = (id: string) => {
+  /** A cover: that game in every list; All (null) every game. */
+  const pickGame = (id: string | null) => {
     setGame(id)
     writeParam('game', id)
-    setGameQ('')
-    setView('latest')
-    window.scrollTo({ top: 0 })
-    say(`Showing ${momentsGameLabel(id, pool, cats)?.name ?? 'one game'}`)
-  }
-  const clearGame = () => {
-    setGame(null)
-    writeParam('game', null)
-    say('Showing every game')
+    say(id ? `Showing ${momentsGameLabel(id, pool, cats)?.name ?? 'one game'}` : 'Showing every game')
   }
   const writeUrl = (key: string | null) => {
     try {
@@ -285,19 +275,6 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
   }
   const openFromDetail = (key: string) => {
     if (find(key)) select(key, { keep: true, focus: true })
-  }
-  /** "N earlier": opens or shuts the stream's earlier moments. Shut with one of them open, the open moment moves to the stream's newest. */
-  const toggleEarlier = (g: CheckedMoment[]) => {
-    const lead = g[0]
-    keepPut(lead.key)
-    if (isOpen(g)) {
-      setExpanded(prev => { const next = new Set(prev); next.delete(lead.sid); return next })
-      if (g.some((m, i) => i > 0 && m.key === selKey)) select(lead.key, { keep: true })
-      say(`${lead.name}’s earlier moments hidden`)
-    } else {
-      setExpanded(prev => new Set(prev).add(lead.sid))
-      say(`${g.length - 1} earlier ${g.length === 2 ? 'moment' : 'moments'} from ${lead.name}`)
-    }
   }
   const closeDetail = () => {
     const key = selKey
@@ -494,7 +471,7 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
     if (e.key === '/' && !typing) { e.preventDefault(); searchRef.current?.focus(); return }
     if (typing || e.metaKey || e.ctrlKey || e.altKey) return
     const keys = [...(listRef.current?.querySelectorAll<HTMLElement>('.mk-r[data-key]') ?? [])].map(b => b.dataset.key ?? '')
-    const i = selKey ? keys.indexOf(selKey) : -1
+    const i = selKey ? keys.indexOf(leadOf.get(selKey) ?? selKey) : -1
     if (e.key === 'j' || e.key === 'ArrowDown') { if (keys.length) { e.preventDefault(); select(keys[Math.min(keys.length - 1, i + 1)], { keep: true, focus: true }) } }
     else if (e.key === 'k' || e.key === 'ArrowUp') { if (keys.length) { e.preventDefault(); select(keys[Math.max(0, i < 0 ? 0 : i - 1)], { keep: true, focus: true }) } }
     else if (e.key === 's' && selKey) toggleSave(selKey)
@@ -530,7 +507,6 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
       if (f.row) { const el = rowEl(f.row); if (el) { (el.querySelector<HTMLElement>('.mk-r-hit') ?? el).focus({ preventScroll: true }); inView(el, motion) } }
       if (f.scrollTo) { const el = rowEl(f.scrollTo); if (el) window.scrollBy(0, el.getBoundingClientRect().top - (wide ? window.innerHeight / 3 : headerClear() + 12)) } // narrow: the row under the header, its detail below
     }
-    lastOpen.current = openNow
   })
   useEffect(() => {
     if (!arrived.size) return
@@ -542,10 +518,7 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
     setMetric={value => setOpened(o => ({ key: m.key, metric: value, lk: o.key === m.key ? o.lk : null }))}
     setLk={value => setOpened(o => ({ key: m.key, lk: value, metric: o.key === m.key ? o.metric : null }))}
     saved={isSaved(m.item)} onSave={() => toggleSave(m.key)} onCopy={() => copyLink(m.key)} onOpen={openFromDetail} onClose={closeDetail}
-    motion={motion} phone={phone} say={say} playRef={playRef} vods={vods} />
-  const row = (m: CheckedMoment, sub: boolean, g?: CheckedMoment[]) => <Row m={m} more={g ? g.length - 1 : 0} sub={sub} now={now} current={selKey === m.key}
-    opened={view === 'viewed' ? openedAt.get(m.key) : undefined} onSelect={() => select(m.key, { from: m.key })}
-    earlier={g && g.length > 1 ? { open: isOpen(g), controls: subId(m.sid), onToggle: () => toggleEarlier(g) } : undefined} />
+    motion={motion} phone={phone} say={say} playRef={playRef} vods={vods} moreAll={moreAll} setMoreAll={setMoreAll} />
 
   const stale = !replay && (feedStale || clock - loadedAt > STALE_MS)
   const deepAt = deepId ? momentsFeedIdParts(deepId) : null
@@ -558,41 +531,36 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
     : view === 'latest' || view === 'top' ? `No ${gameLabel.name} moments in the last ${HOURS} hours.`
       : view === 'saved' && savedCount ? `No saved ${gameLabel.name} moments.`
         : view === 'viewed' && viewed.length ? `No ${gameLabel.name} moments in Viewed.` : null
+  // "Live" while the polls keep up (how old, on hover); how old once it greys; the replay's clock while one plays
   const fresh = !loaded ? null
-    : replay ? <span className="mk-rpl">Replay: <b>{clk(replay.vnow)}</b>, one poll every 45 s</span> : updatedText(clock - loadedAt)
+    : replay ? <span className="mk-rpl">Replay: <b>{clk(replay.vnow)}</b>, one poll every 45 s</span> : stale ? updatedText(clock - loadedAt) : 'Live'
 
   return <main ref={mainRef} id="analytics-main" className={`mk${motion ? '' : ' no-motion'}`} tabIndex={-1}>
     <header className="mk-head">
       <h1>Moments</h1>
-      <p className="mk-lede">Big reactions in live chat. Each one beat its own stream’s last 15 minutes.</p>
+      <p className="mk-lede">When a stream’s chat suddenly goes wild. Pick a game to start.</p>
     </header>
+
+    <MomentsGameRow games={games} total={allCount} picked={game} pickedLabel={gameLabel} loaded={loaded} onPick={pickGame} />
 
     <div className="mk-bar" role="search" aria-label="Filter moments">
       <div className="mk-seg" role="group" aria-label="Which moments">
         <button type="button" aria-pressed={view === 'latest'} onClick={() => setView('latest')}>Latest</button>
         <button type="button" aria-pressed={view === 'top'} onClick={() => setView('top')}>Top</button>
-        <button type="button" aria-pressed={view === 'games'} onClick={() => setView('games')}>Games</button>
-        <button type="button" aria-pressed={view === 'saved'} onClick={() => setView('saved')}>Saved ({savedCount})</button>
-        <button type="button" aria-pressed={view === 'viewed'} onClick={() => setView('viewed')}>Viewed ({viewed.length})</button>
+        <button type="button" aria-pressed={view === 'saved' || view === 'viewed'} onClick={() => setView('saved')}>Saved</button>
       </div>
-      <label className="mk-srch"><SearchGlyph />
-        {view === 'games'
-          ? <input ref={searchRef} type="search" placeholder="Find a game" aria-label="Find a game" autoComplete="off" value={gameQ} onChange={e => setGameQ(e.target.value)} />
-          : <input ref={searchRef} type="search" placeholder="Channel, game or emote" aria-label="Search channels, games or emotes" autoComplete="off" value={q} onChange={e => setQ(e.target.value)} />}
-      </label>
-      {game && view !== 'games' ? <span className="mk-gchip">
-        {gameLabel?.art ? <img src={gameLabel.art} alt="" width={15} height={20} referrerPolicy="no-referrer" /> : null}
-        <span>{gameLabel?.name ?? 'One game'}</span>
-        <button type="button" aria-label={`Show every game, not just ${gameLabel?.name ?? 'this one'}`} onClick={clearGame}><XGlyph /></button>
-      </span> : null}
-      <span className="mk-bar-sp" />
-      <p className={`mk-fresh${stale ? ' stale' : ''}${replay ? ' replaying' : ''}`}><span className="mk-dot" ref={dotRef} aria-hidden="true" /><span>{fresh}</span></p>
-      {view === 'games' || view === 'top' ? null : <button className="mk-rp" type="button" aria-pressed={replay != null} disabled={!loaded} onClick={() => (replay ? stopReplay(false) : startReplay())}>
+      {view === 'latest' ? <button className="mk-rp" type="button" aria-pressed={replay != null} disabled={!loaded} onClick={() => (replay ? stopReplay(false) : startReplay())}>
         <ReplayGlyph /><span>{replay ? 'Stop replay' : 'Replay the last hour'}</span>
-      </button>}
+      </button> : null}
+      <span className="mk-bar-sp" />
+      <p className={`mk-fresh${stale ? ' stale' : ''}${replay ? ' replaying' : ''}`} title={loaded && !stale && !replay ? updatedText(clock - loadedAt) : undefined}>
+        <span className="mk-dot" ref={dotRef} aria-hidden="true" /><span>{fresh}</span></p>
+      <label className="mk-srch"><SearchGlyph />
+        <input ref={searchRef} type="search" placeholder="Channel, game or emote" aria-label="Search channels, games or emotes" autoComplete="off" value={q} onChange={e => setQ(e.target.value)} />
+      </label>
     </div>
 
-    {view === 'games' ? <MomentsGamesGrid games={games} q={gameQ} picked={game} loaded={loaded} onPick={pickGame} /> : <div className="mk-grid">
+    <div className="mk-grid">
       <section className="mk-col" aria-label="Moments">
         <div className="mk-listwrap" ref={listWrapRef}
           onPointerEnter={() => setHolding(true)} onPointerLeave={() => setHolding(false)}
@@ -600,27 +568,27 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
           <button className="mk-pill" type="button" hidden={!pillN} onClick={() => release(true)}>{pillN} new ↑</button>
           {wide ? null : gone}
           {view === 'top' ? <p className="mk-cap">Top moments in the last {HOURS} hours, strongest first</p> : null}
-          {view === 'viewed' && viewed.length ? <p className="mk-vw-note">Moments you opened here, kept in this browser for {VIEWED_DAYS} days.
-            <button type="button" onClick={() => { clearViewed(); setViewed([]); setViewedOrder([]); say('Viewed cleared') }}>Clear</button></p> : null}
+          {/* Saved's two halves (M1, 10-22): what you saved, and what you opened here (V1) */}
+          {view === 'saved' || view === 'viewed' ? <div className="mk-sv">
+            <div className="mk-seg" role="group" aria-label="Saved or opened">
+              <button type="button" aria-pressed={view === 'saved'} onClick={() => setView('saved')}>Saved ({savedCount})</button>
+              <button type="button" aria-pressed={view === 'viewed'} onClick={() => setView('viewed')}>Viewed ({viewed.length})</button>
+            </div>
+            {view === 'viewed' && viewed.length ? <p className="mk-vw-note">Opened here, kept in this browser for {VIEWED_DAYS} days.
+              <button type="button" onClick={() => { clearViewed(); setViewed([]); setViewedOrder([]); say('Viewed cleared') }}>Clear</button></p> : null}
+          </div> : null}
           <ol className="mk-list" ref={listRef}>
             {onRetry ? <li className="mk-empty"><span role="alert">Moments couldn’t load.</span> <button type="button" onClick={onRetry}>Try again</button></li> : null}
             {loaded && !groups.length && !goneRows.length ? <li className="mk-empty">{gameEmpty ?? (view === 'saved' ? (signedOut ? 'Nothing saved yet. Saves stay in this browser until you sign in.' : 'Nothing saved yet.')
               : view === 'viewed' ? `Nothing viewed yet. Moments you open here stay in this list, in this browser, for ${VIEWED_DAYS} days.` : 'No moments match.')}</li> : null}
             {groups.map(g => {
               // Viewed and Top are one row a moment, so a stream can have several: those rows go by the moment
-              const lead = g[0], gid = flat ? lead.key : lead.sid, open = isOpen(g)
-              if (open) openNow.add(gid)
-              const opening = open && motion && !lastOpen.current.has(gid)
-              const inline = !wide && selM ? selM : null
+              const lead = g[0], gid = flat ? lead.key : lead.sid
+              const inline = !wide && selM && g.some(m => m.key === selM.key) ? selM : null
               return <li key={gid} className={`mk-g${arrived.has(lead.key) ? ' new' : ''}`} data-sid={gid} data-vd={lead.item.verdict}>
-                {row(lead, false, g)}
-                {inline && inline.key === lead.key ? <div className="mk-slot">{detail(inline)}</div> : null}
-                {open ? <ol className={`mk-sub${opening ? ' opening' : ''}`} id={subId(lead.sid)} aria-label={`Earlier moments from ${lead.name}`}>
-                  {g.slice(1).map((m, j) => <Fragment key={m.key}>
-                    <li className="mk-g" data-vd={m.item.verdict} style={{ ['--i' as string]: Math.min(j, 8) }}>{row(m, true)}</li>
-                    {inline && inline.key === m.key ? <li className="mk-slot">{detail(inline)}</li> : null}
-                  </Fragment>)}
-                </ol> : null}
+                <Row m={lead} more={g.length - 1} now={now} short={phone} current={selKey != null && g.some(m => m.key === selKey)}
+                  opened={view === 'viewed' ? openedAt.get(lead.key) : undefined} onSelect={() => select(lead.key, { from: lead.key })} />
+                {inline ? <div className="mk-slot">{detail(inline)}</div> : null}
               </li>
             })}
             {goneRows.map(saved => <li key={saved.key} className="mk-g"><GoneRow saved={saved} /></li>)}
@@ -628,7 +596,7 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
         </div>
       </section>
       <aside className="mk-det" aria-label="Selected moment">{wide && selM ? detail(selM) : wide ? gone : null}</aside>
-    </div>}
+    </div>
     <div className="mk-vh" aria-live="polite">{said}</div>
   </main>
 }
@@ -643,47 +611,31 @@ function inView(el: HTMLElement, motion: boolean) {
   else if (r.bottom > window.innerHeight - 8) window.scrollBy({ top: r.bottom - window.innerHeight + 8, behavior: motion ? 'smooth' : 'auto' })
 }
 
-/** The id of a stream's earlier-moments list, for its "N earlier" button. */
-const subId = (sid: string) => `mk-sub-${sid.replace(/[^\w-]/g, '_')}`
-
 /**
- * One row (moments-r4 B2: r2's row with a picture; tidied as T1, 10-21): picture · who + what / × + game + "N earlier" ·
- * the minutes · when, over the viewers. Under Viewed, the right column says when you opened it. A click anywhere opens
- * the moment; "N earlier" is its own button (E1, 10-22), so the row is a box holding two: the row's own, under
- * everything, and that one.
+ * One row (M1, 10-22: the B2 row said three things): the picture · who + what chat sent / "8.7× more emotes" + the game ·
+ * when. Under Viewed, the right column says when you opened it; on phones the time is short ("13m") and the game is
+ * left to the open moment. The stream's other moments, its minutes and its viewers are in the open moment.
  */
-function Row({ m, more, sub, now, current, opened, onSelect, earlier }: {
-  m: CheckedMoment; more: number; sub: boolean; now: number; current: boolean; opened?: number; onSelect: () => void
-  earlier?: { open: boolean; controls: string; onToggle: () => void }
+function Row({ m, more, now, short, current, opened, onSelect }: {
+  m: CheckedMoment; more: number; now: number; short: boolean; current: boolean; opened?: number; onSelect: () => void
 }) {
-  const item = m.item, box = boxArtImage(item)
+  const item = m.item
   const full = `${new Date(m.at).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })} · ${streamTime(m, null)} ${streamWhere(null)}`
   const bits: Array<{ key: string; sep?: string; node: ReactNode }> = []
-  // what the × counts, against the feed's word (X1, 10-22): "Emotes 5.7× usual"
-  if (m.rowX != null) bits.push({ key: 'x', node: <span className="mk-r-x"><span className="mk-r-xk">{xNoun(m.kind)}</span> <b>{fx(m.rowX)}</b><span className="mk-r-xu"> usual</span></span> })
+  if (m.rowX != null) bits.push({ key: 'x', node: <span className="mk-r-x"><b>{fx(m.rowX)}</b> more {m.kind === 'chat' ? 'chat' : 'emotes'}</span> })
   else if (m.why) bits.push({ key: 'why', node: <span className="mk-r-why">{m.why}</span> })
-  if (!sub) {
-    if (item.category) bits.push({ key: 'g', sep: 's-g', node: <span className="mk-r-g">{box ? <img src={box} alt="" width={12} height={16} loading="lazy" /> : null}<span>{item.category.name}</span></span> })
-    if (more && earlier) bits.push({ key: 'more', sep: 's-m', node: <button className="mk-r-more" type="button" aria-expanded={earlier.open} aria-controls={earlier.open ? earlier.controls : undefined}
-      aria-label={`${earlier.open ? 'Hide' : 'Show'} ${more} earlier ${more === 1 ? 'moment' : 'moments'} from ${m.name}`}
-      onClick={e => { e.stopPropagation(); earlier.onToggle() }}>{more} earlier</button> })
-  }
+  if (item.category) bits.push({ key: 'g', sep: 's-g', node: <span className="mk-r-g">{item.category.name}</span> })
   const at = opened != null
     ? <time className="mk-r-op" dateTime={new Date(opened).toISOString()} title={full}>opened {openedWhen(opened, now)}</time>
-    : <time dateTime={new Date(m.at).toISOString()} title={full}>{when(m.at, now)}</time>
-  const kindColour = m.kind === 'emotes' ? 'var(--mk-emotes)' : 'var(--mk-chat)'
+    : <time dateTime={new Date(m.at).toISOString()} title={full}>{short ? whenShort(m.at, now) : when(m.at, now)}</time>
   return <div className="mk-r" data-key={m.key} aria-current={current} onClick={onSelect}>
-    <button className="mk-r-hit" type="button" aria-current={current} aria-label={ariaOf(m, now, sub ? 0 : more)} />
-    {sub ? null : <Thumb m={m} />}
+    <button className="mk-r-hit" type="button" aria-current={current} aria-label={ariaOf(m, now, more)} />
+    <Thumb m={m} />
     <span className="mk-r-tx">
-      <span className="mk-r-l1">{sub ? null : <span className="mk-r-nm">{m.name}</span>}<MomentAct act={actOf(item)} /></span>
+      <span className="mk-r-l1"><span className="mk-r-nm">{m.name}</span><MomentAct act={actOf(item)} /></span>
       <span className="mk-r-l2">{bits.map((b, i) => <Fragment key={b.key}>{i ? <span className={`mk-sep${b.sep ? ` ${b.sep}` : ''}`} aria-hidden="true">·</span> : null}{b.node}</Fragment>)}</span>
     </span>
-    <span className="mk-r-sp"><svg viewBox={`0 0 ${SPARK_W} ${SPARK_H}`} aria-hidden="true">
-      {sparkBars(m).map((b, i) => <rect key={i} x={b.x.toFixed(2)} y={b.y.toFixed(1)} width={b.w.toFixed(2)} height={b.h.toFixed(1)} rx="0.5"
-        fill={b.tone === 'mo' ? 'var(--mk-accent)' : kindColour} opacity={b.tone === 'mo' ? 1 : b.tone === 'in' ? 0.85 : 0.55} />)}
-    </svg></span>
-    <span className="mk-r-v">{at}{!sub && item.viewers != null ? <span className="mk-r-vw"><b>{int(item.viewers)}</b> viewers</span> : null}</span>
+    <span className="mk-r-v">{at}</span>
   </div>
 }
 
@@ -706,7 +658,6 @@ function GoneRow({ saved }: { saved: SavedMoment }) {
       <span className="mk-r-l1"><span className="mk-r-nm">{saved.displayName || saved.login}</span><span className="mk-r-em"><span>{momentLabel(saved.label)}</span></span></span>
       <span className="mk-r-l2"><span>Gone from the feed</span>{where ? <><span className="mk-sep" aria-hidden="true">·</span>{where}</> : null}</span>
     </span>
-    <span className="mk-r-sp" />
     <span className="mk-r-v"><time dateTime={at.toISOString()} title={`Saved ${at.toLocaleString('en-US')}`}>{at.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</time></span>
   </div>
 }
