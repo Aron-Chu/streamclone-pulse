@@ -70,6 +70,60 @@ describe('private supporter account coordinator', () => {
     await f.coordinator.run('disconnect')
     expect(f.key()).toBeNull()
   })
+  it('keeps a Twitch sign-in through a dropped refresh connection, then retries after a worker restart', async () => {
+    const old = { ...creds, refreshRetry: true, expiresAt: iso(0) }
+    const f = fixture(old)
+    f.request.mockImplementationOnce(async () => {
+      expect(f.stored()).toMatchObject({ kind: 'refreshing', credentials: { refreshToken: old.refreshToken, refreshRetry: true } })
+      throw new TypeError('Failed to fetch')
+    })
+    const waiting = { state: 'unavailable', reason: 'temporarily_unavailable', linked: true }
+    expect(await f.coordinator.run('status')).toEqual(waiting)
+    expect(f.stored()).not.toHaveProperty('installation')
+    expect(await f.coordinator.localAccountId()).toBe(creds.accountId)
+    expect(await f.coordinator.isInstallationIdentity()).toBe(false)
+    expect(f.identityChanged).not.toHaveBeenCalled()
+    // The worker stopped; a new one waits out the 30 s, then sends the same refresh.
+    const restarted = fixture(f.stored())
+    expect(await restarted.coordinator.run('status')).toEqual(waiting)
+    expect(restarted.request).not.toHaveBeenCalled()
+    restarted.advance(30_000)
+    const next = { ...creds, token: 'e'.repeat(64), refreshToken: 'f'.repeat(64), refreshRetry: true }
+    restarted.request.mockResolvedValueOnce({ status: 200, body: next })
+    expect(await restarted.coordinator.run('status')).toMatchObject({ state: 'linked', accountId: creds.accountId })
+    expect(restarted.request).toHaveBeenCalledExactlyOnceWith('/v1/account/devices/refresh', { refreshToken: old.refreshToken })
+    expect(restarted.stored()).toEqual({ kind: 'linked', token: next.token, refreshToken: next.refreshToken, accountId: creds.accountId, deviceId: creds.deviceId, expiresAt: next.expiresAt, refreshExpiresAt: next.refreshExpiresAt, refreshRetry: true })
+  })
+  it('keeps a Twitch sign-in through refresh server errors, and relinks only after an authoritative rejection', async () => {
+    const f = fixture({ ...creds, refreshRetry: true, expiresAt: iso(0) })
+    f.request.mockResolvedValueOnce({ status: 502, body: null })
+    expect(await f.coordinator.run('status')).toEqual({ state: 'unavailable', reason: 'temporarily_unavailable', linked: true })
+    f.advance(30_000)
+    f.request.mockResolvedValueOnce({ status: 401, body: null })
+    expect(await f.coordinator.run('status')).toEqual({ state: 'relink_required' })
+    expect(f.request).toHaveBeenCalledTimes(2)
+  })
+  it('drops refresh retry when the server stops offering it', async () => {
+    const f = fixture({ ...creds, refreshRetry: true, expiresAt: iso(0) })
+    const next = { ...creds, token: 'e'.repeat(64), refreshToken: 'f'.repeat(64), expiresAt: iso(0) }
+    f.request.mockResolvedValueOnce({ status: 200, body: next })
+    await f.coordinator.run('status')
+    expect(f.stored()).not.toHaveProperty('refreshRetry')
+    f.request.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    expect(await f.coordinator.run('status')).toEqual({ state: 'relink_required' })
+  })
+  it('keeps refresh retry from a Twitch sign-in reply, and a disconnect mid-refresh revokes the kept credentials', async () => {
+    const f = fixture()
+    const body = { ...creds, state: 'approved', refreshRetry: true, expiresAt: iso(0) }
+    expect((await f.coordinator.adopt(body, f.coordinator.identityGeneration)).adopted).toBe(true)
+    expect(f.stored()).toMatchObject({ kind: 'linked', refreshRetry: true })
+    f.request.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    await f.coordinator.run('status')
+    f.request.mockResolvedValueOnce({ status: 204, body: null })
+    expect(await f.coordinator.run('disconnect')).toEqual({ state: 'signed_out' })
+    expect(f.request).toHaveBeenLastCalledWith('/v1/account/devices/disconnect', { token: creds.token })
+    expect(f.stored()).toBeNull()
+  })
   it('serializes bookmark credentials with refresh and binds operations to their account', async () => {
     const f = fixture({ ...creds, expiresAt: iso(0) })
     const next = { ...creds, token: 'e'.repeat(64), refreshToken: 'f'.repeat(64) }

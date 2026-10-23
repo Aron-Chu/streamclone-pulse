@@ -5,7 +5,13 @@ import { DEVICE_LINK_ENABLED } from '../shared/deviceLink.ts'
 type Environment = SupporterScope['environment']
 type Finish = SupporterCosmetics['finish']
 type Pending = { kind: 'pending'; secret: string; code: string; expiresAt: string; nextPoll: number }
-type Linked = { kind: 'linked'; token: string; refreshToken: string; accountId: string; deviceId: string; expiresAt: string; refreshExpiresAt: string; installation?: true }
+/**
+ * `refreshRetry`: the server answers a refresh whose reply was lost again,
+ * with the same pair, for a few minutes, so these credentials survive a
+ * failed attempt (as an installation's do). Absent, a refresh that may have
+ * rotated is never replayed: the server would revoke the device.
+ */
+type Linked = { kind: 'linked'; token: string; refreshToken: string; accountId: string; deviceId: string; expiresAt: string; refreshExpiresAt: string; installation?: true; refreshRetry?: true }
 type PrivateState = Pending | Linked | { kind: 'refreshing'; installation?: true; credentials?: Linked; startedAt?: number; retryAt?: number } | { kind: 'revoking'; token: string } | { kind: 'relink_required' } | null
 /**
  * A finish the user explicitly chose before their membership was verified.
@@ -45,7 +51,7 @@ const object = (value: unknown): Record<string, unknown> => value && typeof valu
 function linked(value: unknown): Linked | null {
   const r = object(value)
   return secret(r.token) && secret(r.refreshToken) && id(r.accountId) && id(r.deviceId) && date(r.expiresAt) && date(r.refreshExpiresAt)
-    ? { kind: 'linked', token: r.token, refreshToken: r.refreshToken, accountId: r.accountId, deviceId: r.deviceId, expiresAt: r.expiresAt, refreshExpiresAt: r.refreshExpiresAt, ...(r.installation === true ? { installation: true } : {}) } : null
+    ? { kind: 'linked', token: r.token, refreshToken: r.refreshToken, accountId: r.accountId, deviceId: r.deviceId, expiresAt: r.expiresAt, refreshExpiresAt: r.refreshExpiresAt, ...(r.installation === true ? { installation: true } : {}), ...(r.refreshRetry === true ? { refreshRetry: true } : {}) } : null
 }
 
 /** Thrown by a request port that refused before any network I/O. */
@@ -142,7 +148,7 @@ function fingerprint(accountId: string, value: SupporterEntitlement): string {
   return JSON.stringify([accountId, value.status, value.accessUntil ?? null, value.features, value.supportPeriods, value.cosmetics ?? null, value.checkoutEnabled === true, value.renewal ?? null, value.renewsOn ?? value.endsOn ?? null])
 }
 
-/** One coordinator per worker; installation refresh retries use the server's bounded idempotency window. */
+/** One coordinator per worker; installation and `refreshRetry` refresh retries use the server's bounded idempotency window. */
 export class SupporterAccountCoordinator {
   private queue: Promise<unknown> = Promise.resolve()
   private generation = 0
@@ -233,7 +239,7 @@ export class SupporterAccountCoordinator {
     const generation = this.generation
     const task = this.queue.then(async (): Promise<SupporterAccountState> => {
       const raw = object(await this.ports.read())
-      const credentials = raw.kind === 'linked' ? linked(raw) : raw.kind === 'refreshing' && raw.installation === true ? linked(raw.credentials) : null
+      const credentials = raw.kind === 'linked' ? linked(raw) : raw.kind === 'refreshing' ? linked(raw.credentials) : null
       if (credentials?.accountId !== accountId) return this.perform('status', generation)
       this.forgetAccount(accountId)
       await this.ports.writeInstallationKey?.(null)
@@ -476,11 +482,11 @@ export class SupporterAccountCoordinator {
   /** Worker lifecycle hint only; never rotates a token or sends a request. */
   async localAccountId(): Promise<string | null> {
     const raw = object(await this.ports.read().catch(() => null))
-    return linked(raw.kind === 'refreshing' && raw.installation === true ? raw.credentials : raw)?.accountId ?? null
+    return linked(raw.kind === 'refreshing' ? raw.credentials : raw)?.accountId ?? null
   }
   async localDeviceId(): Promise<string | null> {
     const raw = object(await this.ports.read().catch(() => null))
-    return linked(raw.kind === 'refreshing' && raw.installation === true ? raw.credentials : raw)?.deviceId ?? null
+    return linked(raw.kind === 'refreshing' ? raw.credentials : raw)?.deviceId ?? null
   }
   /** Distinguish a bootstrap-created identity from an older email-linked account. */
   async isInstallationIdentity(): Promise<boolean> {
@@ -560,7 +566,8 @@ export class SupporterAccountCoordinator {
   private async perform(action: SupporterAccountAction, generation: number): Promise<SupporterAccountState> {
     if (generation !== this.generation) return { state: 'signed_out' }
     const raw = object(await this.ports.read())
-    const credentials = raw.kind === 'linked' ? linked(raw) : raw.kind === 'refreshing' && raw.installation === true ? linked(raw.credentials) : null
+    // A refreshing marker holds credentials only when they may be sent again.
+    const credentials = raw.kind === 'linked' ? linked(raw) : raw.kind === 'refreshing' ? linked(raw.credentials) : null
     if (raw.kind === 'revoking') {
       if (action === 'disconnect' && secret(raw.token)) return this.revoke(raw.token)
       return { state: 'error', revocationPending: true }
@@ -595,19 +602,22 @@ export class SupporterAccountCoordinator {
       if (this.renewalPause?.deviceId === credentials.deviceId && this.now() < this.renewalPause.until) return renewalWaiting()
       const bootstrap = object(await this.ports.readInstallationKey?.())
       const installation = raw.installation === true || bootstrap.state === 'claimed' && secret(bootstrap.key) && (bootstrap.accountId === undefined || bootstrap.accountId === credentials.accountId)
-      const refreshing: PrivateState = installation ? { kind: 'refreshing', installation: true, credentials, startedAt: typeof raw.startedAt === 'number' ? raw.startedAt : this.now(), retryAt: this.now() + 30_000 } : { kind: 'refreshing' }
+      // Kept through the attempt, so a dropped connection or a worker stopped
+      // mid-request retries in 30 s instead of signing out.
+      const retryable = installation || credentials.refreshRetry === true
+      const refreshing: PrivateState = retryable ? { kind: 'refreshing', ...(installation ? { installation: true } : {}), credentials, startedAt: typeof raw.startedAt === 'number' ? raw.startedAt : this.now(), retryAt: this.now() + 30_000 } : { kind: 'refreshing' }
       await this.ports.write(refreshing)
       let result
       try { result = await this.ports.request('/v1/account/devices/refresh', { refreshToken: credentials.refreshToken }) }
       catch (error) {
         if (error instanceof AccountRequestNotSent) return this.keepUnrenewed(credentials, 30_000)
         if (generation !== this.generation) this.revocationUnconfirmed = true
-        if (installation) return renewalWaiting()
+        if (retryable) return renewalWaiting()
         return this.clear('relink_required')
       }
       const retryMs = unattemptedRefreshRetryMs(result)
       if (retryMs) return this.keepUnrenewed(credentials, retryMs)
-      if (installation && (result.status >= 500 || result.status === 408)) return renewalWaiting()
+      if (retryable && (result.status >= 500 || result.status === 408)) return renewalWaiting()
       // A refresh the server rejects outright: the session was revoked.
       if (result.status === 401) return this.rejected(credentials.accountId)
       const next = linked(result.body)
