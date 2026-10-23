@@ -44,6 +44,15 @@ describe('Chrome Web Store listing copy (0.2.2)', () => {
     expect(fields).not.toMatch(/Protect|beta access key|Twitch OAuth|Email address for optional sign-in|free Pulse account/i)
   })
 
+  it('asks the review checklist for no Protect or PostHog disclosure this build does not have', () => {
+    const checklist = readFileSync('docs/pulse-extension/chrome-web-store-review-checklist.md', 'utf8')
+    const start = checklist.indexOf('### Chrome Web Store dashboard (next candidate)')
+    expect(start).toBeGreaterThan(-1)
+    const dashboard = checklist.slice(start, checklist.indexOf('\n### ', start + 1))
+    expect(dashboard).not.toMatch(/Protect|PostHog/)
+    expect(dashboard).not.toContain('streampulse.stream/support/')
+  })
+
   it('points Support at the site support page and keeps the live listing category', () => {
     expect(listing).toContain('| Support URL | `https://streampulse.stream/support` |')
     expect(readme).toContain('**Support URL:** https://streampulse.stream/support')

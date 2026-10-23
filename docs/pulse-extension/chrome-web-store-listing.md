@@ -54,6 +54,11 @@ StreamPulse
 See what Twitch chat reacted to: a live Pulse chart of chat and emote activity, Top Moments you can jump to, and stream recaps.
 ```
 
+This line is the manifest `description` (`manifests/cws.json`, `edge.json`,
+`firefox.json`, `development.json` and the root `manifest.json`). The Chrome
+Web Store and Edge Add-ons show it as the summary; neither has a separate
+summary field.
+
 ### Detailed description
 ```
 StreamPulse adds a Pulse panel beside Twitch chat. It charts chat and emote activity minute by minute, so you can see the moments a stream's audience actually reacted to, and jump straight to them.
