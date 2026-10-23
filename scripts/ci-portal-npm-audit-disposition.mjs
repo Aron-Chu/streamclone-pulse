@@ -46,6 +46,33 @@ const BRACES_BUILD_CHAIN = Object.freeze({
   tailwindcss: { version: '3.4.19', parents: ['chokidar', 'fast-glob', 'micromatch'] },
 })
 
+// Release branch release/ext-0.2.2-candidate-20261022 only. It keeps the tested
+// vite 8.0.16 so the shipped 0.2.2 bytes stay the same; master has the real fix
+// (#145). Remove this when 0.2.2 ships or the branch is retired.
+const VITE_DEV_SERVER_RANGES = Object.freeze(['>=7.0.0 <=7.3.6', '>=8.0.0 <=8.1.5'])
+const VITE_DEV_SERVER_ADVISORIES = Object.freeze(
+  [
+    // [GHSA, severity, title, npm source for the 7.x range, npm source for the 8.x range]
+    ['GHSA-587h-7wmj-h5pm', 'high', 'launch-editor: `fs.existsSync()` existence check can be bypassed on Windows', 1242659, 1242660],
+    ['GHSA-698v-4r3x-3vcv', 'moderate', 'launch-editor: escapeCmdArgs() omits % escaping on Windows', 1242623, 1242624],
+    ['GHSA-r825-w8mm-5pxw', 'moderate', 'launch-editor: Editor CLI flag misinterpretation causing arbitrary command execution for some editors', 1242652, 1242653],
+    ['GHSA-rq7h-c2jc-7f22', 'moderate', 'Vite: Files outside `server.fs.allow` could be served when project paths match system paths on non-Windows machine', 1242731, 1242732],
+    ['GHSA-9jrq-w75r-8gcw', 'low', 'Vite: Cross origin script execution through Vite custom middleware', 1242725, 1242726],
+  ].flatMap(([ghsa, severity, title, ...sources]) =>
+    sources.map((source, index) => Object.freeze({
+      source, name: 'vite', dependency: 'vite', title, severity, ghsa,
+      url: `https://github.com/advisories/${ghsa}`, range: VITE_DEV_SERVER_RANGES[index],
+    })),
+  ),
+)
+// The exact dev-only vite installs, the same in the root and streampulse-web locks.
+const VITE_DEV_SERVER_NODES = Object.freeze({
+  'node_modules/vite': '8.0.16',
+  'node_modules/vite-node/node_modules/vite': '7.3.6',
+  'node_modules/vitest/node_modules/vite': '7.3.6',
+})
+const VITE_DEV_SERVER_LOCKS = Object.freeze(['streamclone-pulse', 'streampulse-web'])
+
 /** @type {ReadonlyArray<{ name: string, ghsa: string, reason: string, parent?: string, advisory: Readonly<Record<string, unknown>> }>} */
 export const DISPOSITIONED_HIGHS = Object.freeze([
   {
@@ -70,6 +97,13 @@ export const DISPOSITIONED_HIGHS = Object.freeze([
     reason:
       'Exact locked Tailwind 3 development-only chain; repository-controlled build globs, no affected module in emitted browser chunks or dependency-free Pages Worker. No patched braces release exists. See docs/evidence/npm-audit-rpr6-2026-07.md.',
   })),
+  {
+    name: 'vite',
+    ghsa: 'GHSA-587h-7wmj-h5pm',
+    advisory: VITE_DEV_SERVER_ADVISORIES[0],
+    reason:
+      'Release branch release/ext-0.2.2-candidate-20261022 only. Dev-server code (launch-editor, custom middleware, server.fs.allow), not in any shipped file. Only the exact dev installs vite 8.0.16 and nested 7.3.6, and only GHSA-587h-7wmj-h5pm, GHSA-698v-4r3x-3vcv, GHSA-r825-w8mm-5pxw, GHSA-rq7h-c2jc-7f22 and GHSA-9jrq-w75r-8gcw. Master has the real fix (#145, vite 8.1.6). Expires when 0.2.2 ships or this branch is retired. See docs/evidence/npm-audit-vite-release-0.2.2-2026-10.md.',
+  },
 ])
 
 function isRecord(value) {
@@ -236,6 +270,24 @@ export function auditHasExactBuildOnlyBracesGhsa(vulns, name, lock) {
   return matchesNode('tailwindcss', new Set())
 }
 
+/**
+ * Release-branch vite disposition. The audit must list exactly the ten reviewed
+ * advisory records (no extra, duplicate or missing one) and exactly the three
+ * reviewed installs, each locked dev-only at its reviewed version.
+ */
+export function auditHasExactViteDevServerAdvisories(vulns, lock) {
+  const info = vulns.vite
+  const nodes = Object.keys(VITE_DEV_SERVER_NODES)
+  if (!VITE_DEV_SERVER_LOCKS.includes(lock?.name) || lock?.packages?.['']?.name !== lock.name) return false
+  if (!isRecord(info) || info.severity !== 'high' || !Array.isArray(info.via) || !Array.isArray(info.nodes)) return false
+  if (info.nodes.length !== nodes.length || !nodes.every((node) => info.nodes.includes(node))) return false
+  if (!nodes.every((node) => lock.packages[node]?.dev === true && lock.packages[node]?.version === VITE_DEV_SERVER_NODES[node])) return false
+  if (info.via.length !== VITE_DEV_SERVER_ADVISORIES.length) return false
+  return VITE_DEV_SERVER_ADVISORIES.every((advisory) =>
+    info.via.filter((entry) => advisoryMetadataMatches(entry, advisory, advisory.severity)).length === 1,
+  )
+}
+
 /** Fail the production build if any reviewed build tool reaches a browser chunk. */
 export function assertBuildOnlyBracesRuntimeBoundary(bundle) {
   const forbidden = new Set()
@@ -302,8 +354,8 @@ function main() {
 
   const allowed = new Map(DISPOSITIONED_HIGHS.map((d) => [d.name, d]))
   // npm audit is invoked from the package directory in both existing CI jobs.
-  // Read its lock only when the build-only disposition is actually needed.
-  const buildOnlyLock = highs.some((hit) => Object.hasOwn(BRACES_BUILD_CHAIN, hit.name))
+  // Read its lock only when a lock-bound disposition is actually needed.
+  const buildOnlyLock = highs.some((hit) => Object.hasOwn(BRACES_BUILD_CHAIN, hit.name) || hit.name === 'vite')
     ? JSON.parse(readFileSync('package-lock.json', 'utf8'))
     : undefined
   /** @type {string[]} */
@@ -316,7 +368,9 @@ function main() {
     }
     const matches = Object.hasOwn(BRACES_BUILD_CHAIN, hit.name)
       ? auditHasExactBuildOnlyBracesGhsa(vulns, hit.name, buildOnlyLock)
-      : auditHasExactGhsa(vulns, hit.name, disp.ghsa, disp.parent, hit.severity, disp.advisory)
+      : hit.name === 'vite'
+        ? auditHasExactViteDevServerAdvisories(vulns, buildOnlyLock)
+        : auditHasExactGhsa(vulns, hit.name, disp.ghsa, disp.parent, hit.severity, disp.advisory)
     if (!matches) {
       unexpected.push(
         `${hit.severity} ${hit.name} (disposition requires exact ${disp.ghsa} with matching advisory metadata)`,

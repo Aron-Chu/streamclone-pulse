@@ -8,7 +8,11 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join as pathJoin } from 'node:path'
-import { auditHasExactBuildOnlyBracesGhsa, assertBuildOnlyBracesRuntimeBoundary } from './ci-portal-npm-audit-disposition.mjs'
+import {
+  auditHasExactBuildOnlyBracesGhsa,
+  assertBuildOnlyBracesRuntimeBoundary,
+  auditHasExactViteDevServerAdvisories,
+} from './ci-portal-npm-audit-disposition.mjs'
 
 const root = pathJoin(dirname(fileURLToPath(import.meta.url)), '..')
 const script = pathJoin(root, 'scripts', 'ci-portal-npm-audit-disposition.mjs')
@@ -101,6 +105,29 @@ rejectChangedBuildOnly('root lock lookalike', (_v, l) => { l.name = 'streamclone
 rejectChangedBuildOnly('mismatched lock identity', (_v, l) => { l.packages[''].name = 'streamclone-pulse' })
 const leafOnly = { braces: buildOnlyFixture.vulnerabilities.braces }
 assert.equal(auditHasExactBuildOnlyBracesGhsa(leafOnly, 'braces', portalLock), false, 'partial chain cannot qualify')
+
+// Release-branch vite disposition: only the reviewed records, installs and locks.
+const viteFixture = JSON.parse(readFileSync(pathJoin(fixtures, 'npm-audit-vite-dev-server.json'), 'utf8'))
+const rootLock = JSON.parse(readFileSync(pathJoin(root, 'package-lock.json'), 'utf8'))
+for (const cwd of [root, pathJoin(root, 'streampulse-web')]) {
+  const vite = run('npm-audit-vite-dev-server.json', ['--npm-exit-code', '1'], cwd)
+  assert.equal(vite.status, 0, vite.stderr)
+}
+function rejectChangedVite(label, change) {
+  const vulns = structuredClone(viteFixture.vulnerabilities)
+  const lock = structuredClone(rootLock)
+  change(vulns, lock)
+  assert.equal(auditHasExactViteDevServerAdvisories(vulns, lock), false, label)
+}
+rejectChangedVite('extra advisory', (v) => v.vite.via.push({ ...v.vite.via[0], source: 1, url: 'https://github.com/advisories/GHSA-other-xxxx-xxxx' }))
+rejectChangedVite('duplicate advisory', (v) => { v.vite.via[1] = v.vite.via[0] })
+rejectChangedVite('missing advisory', (v) => { v.vite.via.pop() })
+rejectChangedVite('changed range', (v) => { v.vite.via[0].range = '>=8.0.0 <=8.9.9' })
+rejectChangedVite('critical severity', (v) => { v.vite.severity = 'critical' })
+rejectChangedVite('extra install', (v) => v.vite.nodes.push('node_modules/other/node_modules/vite'))
+rejectChangedVite('new locked version', (_v, l) => { l.packages['node_modules/vite'].version = '8.0.17' })
+rejectChangedVite('production dependency', (_v, l) => { l.packages['node_modules/vite'].dev = false })
+rejectChangedVite('other lock', (_v, l) => { l.name = 'other'; l.packages[''].name = 'other' })
 
 assert.doesNotThrow(() => assertBuildOnlyBracesRuntimeBoundary({
   'index.js': { type: 'chunk', modules: { '/repo/src/main.tsx': {} } },
