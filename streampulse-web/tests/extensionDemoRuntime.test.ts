@@ -89,15 +89,22 @@ describe('demo responder', () => {
 describe('fake chrome', () => {
   const original = Object.getOwnPropertyDescriptor(globalThis, 'chrome')
   afterEach(() => {
-    if (original) Object.defineProperty(globalThis, 'chrome', original)
+    if (Object.getOwnPropertyDescriptor(globalThis, 'chrome')?.configurable === false) (globalThis as { chrome?: unknown }).chrome = original?.value
+    else if (original) Object.defineProperty(globalThis, 'chrome', original)
     else delete (globalThis as { chrome?: unknown }).chrome
   })
 
-  it('replaces a chrome global that is already there, as in Chromium', () => {
+  it('replaces a chrome global that is already there', () => {
     Object.defineProperty(globalThis, 'chrome', { value: { runtime: undefined }, configurable: true, writable: true })
     const fake = installFakeChrome(createFakeChrome({ responder: () => ({}), version: '1.2.3' }))
     expect((globalThis as { chrome?: unknown }).chrome).toBe(fake)
     expect(fake.runtime.getManifest().version).toBe('1.2.3')
+  })
+
+  it('writes over Chromium’s own chrome, which can’t be redefined', () => {
+    Object.defineProperty(globalThis, 'chrome', { value: { loadTimes: () => ({}) }, configurable: false, writable: true })
+    const fake = installFakeChrome(createFakeChrome({ responder: () => ({}), version: '1.2.3' }))
+    expect((globalThis as { chrome?: unknown }).chrome).toBe(fake)
   })
 
   it('keeps storage in memory and reports changes with their area', async () => {

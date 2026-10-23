@@ -209,8 +209,13 @@ export function createFakeChrome(options: FakeChromeOptions) {
   }
 }
 
-/** Replace `globalThis.chrome` with the fake, whatever is there now. */
+/** Replace `globalThis.chrome` with the fake, whatever is there now. Chrome's own `chrome` can be written but not redefined. */
 export function installFakeChrome(fake: FakeChrome): FakeChrome {
+  const own = Object.getOwnPropertyDescriptor(globalThis, 'chrome')
+  if (own && !own.configurable) {
+    ;(globalThis as { chrome?: unknown }).chrome = fake
+    return fake
+  }
   Object.defineProperty(globalThis, 'chrome', {
     value: fake,
     configurable: true,
