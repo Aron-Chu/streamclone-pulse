@@ -1,4 +1,4 @@
-import { handleDeviceBookmarks, handleMyMoments, handlePicture, removePanelBookmark, restoreRemovedNote, wantSavedPicture } from './myMoments.ts'
+import { bindReplayLookups, handleDeviceBookmarks, handleMyMoments, handlePicture, removePanelBookmark, restoreRemovedNote, wantSavedPicture } from './myMoments.ts'
 import { loadHubSnapshot } from './hubSnapshot.ts'
 import { loadMomentMinute } from './momentMinute.ts'
 import {
@@ -690,6 +690,16 @@ async function listPastVods(
   pastVodsCache.set(key, { rows, fetchedAt: now })
   return rows
 }
+
+// Stream-only bookmarks get their replay when My Moments opens: stream history,
+// then DISCOVER_LIVE_VOD's lookup in an open tab of that channel, if any.
+bindReplayLookups({
+  pastVods: login => listPastVods(login),
+  liveArchive: async (login, streamId) => {
+    const tab = (await chrome.tabs.query({ url: ['*://*.twitch.tv/*'] })).find(item => item.id && tabUrlMatchesPulseLogin(item.url, login))
+    return tab?.id ? discoverLiveVodIdFromGqlInTab(tab.id, login, streamId) : null
+  },
+})
 
 if (chrome.storage?.onChanged) {
   chrome.storage.onChanged.addListener((changes, areaName) => {
