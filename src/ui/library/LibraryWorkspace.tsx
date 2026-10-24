@@ -139,12 +139,16 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
     setView(next); setQuery(''); setChannel(''); setWatchLater(false); setPage(1); setLocalNotice('')
     if (focus === 'heading') heading.current?.focus()
   }
-  function navigateFromTab(index: number, key: string) {
+  function navigateFromTab(index: number, event: { key: string; altKey: boolean; ctrlKey: boolean; metaKey: boolean; preventDefault(): void }) {
+    const { key } = event
     const next = key === 'ArrowRight' ? (index + 1) % views.length
       : key === 'ArrowLeft' ? (index + views.length - 1) % views.length
         : key === 'Home' ? 0
           : key === 'End' ? views.length - 1 : -1
     if (next === -1) return
+    // The key moves between tabs, so the page must not scroll with it too.
+    // A browser shortcut (Alt, Ctrl or Cmd held) keeps its own default.
+    if (!event.altKey && !event.ctrlKey && !event.metaKey) event.preventDefault()
     navigate(views[next].id, 'tab')
     tabButtons.current[next]?.focus()
   }
@@ -230,7 +234,7 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
       ref={element => { tabButtons.current[index] = element }}
       role="tab" id={`${id}-tab-${item.id}`} aria-controls={`${id}-panel-${item.id}`} tabIndex={view === item.id ? 0 : -1}
       className="pl-tab" aria-selected={view === item.id} onClick={() => navigate(item.id)}
-      onKeyDown={event => navigateFromTab(index, event.key)}>{item.label}</button>)}</div>
+      onKeyDown={event => navigateFromTab(index, event)}>{item.label}</button>)}</div>
 
     <div className="pl-feedback" role="status" aria-live="polite" aria-atomic="true">{localNotice || library.notice}</div>
     {library.error && !modal ? <div role="alert" className="pl-warning"><p>{library.error}</p>

@@ -112,6 +112,29 @@ describe('My Moments frontend', () => {
     expect(container.textContent).toContain('Automatic history is off')
     expect(container.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe('History')
   })
+  it('moves between tabs with arrows, Home and End without the page scrolling too', async () => {
+    await render(createDemoRepository('ready', 0))
+    const selected = () => container.querySelector('.pl-tabs [role="tab"][aria-selected="true"]')?.textContent
+    const press = async (key: string, modifiers: KeyboardEventInit = {}) => {
+      const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...modifiers })
+      await act(async () => { (document.activeElement ?? container).dispatchEvent(event); await new Promise(r => setTimeout(r, 5)) })
+      return event.defaultPrevented
+    }
+    container.querySelector<HTMLElement>('.pl-tabs [role="tab"][aria-selected="true"]')!.focus()
+    expect(await press('End')).toBe(true)
+    expect(selected()).toBe('Storage & privacy')
+    expect(await press('Home')).toBe(true)
+    expect(selected()).toBe('Bookmarks')
+    expect(await press('ArrowRight')).toBe(true)
+    expect(selected()).toBe('History')
+    expect(document.activeElement?.textContent).toBe('History')
+    expect(await press('ArrowLeft')).toBe(true)
+    expect(selected()).toBe('Bookmarks')
+    // Keys the tab bar does not use, and browser shortcuts, keep their default.
+    expect(await press('Tab')).toBe(false)
+    expect(await press('ArrowDown')).toBe(false)
+    expect(await press('ArrowLeft', { altKey: true })).toBe(false)
+  })
   it('clears list filters when the account repository changes', async () => {
     const repository = createDemoRepository('ready', 0)
     await render(repository)
