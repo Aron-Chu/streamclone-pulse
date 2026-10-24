@@ -254,6 +254,61 @@ describe('Moment pictures from Twitch, and the card stand-ins', () => {
     unmount()
   })
 
+  it('says so on the stand-in while Twitch is still recording the VOD, and asks again two minutes later', async () => {
+    const id = '2905053849'
+    const at: MomentPictureAt = { api: 'https://api.streampulse.stream', key: null, vodId: id, vodOriginDeltaSeconds: 0 }
+    const asked = () => sendMessage.mock.calls.filter(([message]) => message.vodId === id && message.action === 'vod').length
+    const chip = (card: HTMLElement) => card.querySelector('.pmf-chip')!.textContent
+    vodReplies.set(id, { sheets: [], cols: 0, rows: 0, count: 0, interval: 0, recording: true })
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      const card = cardHost()
+      const unmount = api.mount(card, { ...CARD, emote: EMOTE }, at)
+      // Until Twitch answers, the card can't tell.
+      expect(chip(card)).toBe('No VOD · chat’s top emote')
+      await load(EMOTE)
+      expect(chip(card)).toBe('VOD still recording · chat’s top emote')
+      expect(card.querySelector('.pmf-pic')!.getAttribute('aria-label')).toContain(': VOD still recording · chat’s top emote')
+      unmount()
+
+      // The next card knows at once, and Twitch isn't asked again yet.
+      const again = api.mount(card, { ...CARD, emote: EMOTE }, at)
+      expect(chip(card)).toBe('VOD still recording · chat’s top emote')
+      await load(EMOTE)
+      expect(asked()).toBe(1)
+      again()
+
+      // The stream has ended: two minutes on, Twitch is asked again and the card shows the VOD tile.
+      vodReplies.set(id, { sheets: [1, 2, 3, 4].map(SHEET), cols: 5, rows: 10, count: 200, interval: 30 })
+      vi.setSystemTime(Date.now() + 2 * 60_000 + 1)
+      const ended = api.mount(card, { ...CARD, emote: EMOTE }, at)
+      await load(SHEET(3))
+      expect(asked()).toBe(2)
+      expect(chip(card)).toBe('Twitch VOD preview')
+      ended()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('says so as soon as Twitch answers, while the exact frame is still being read', async () => {
+    const id = '2905053869'
+    vodReplies.set(id, { sheets: [], cols: 0, rows: 0, count: 0, interval: 0, recording: true })
+    const reply = sendMessage.getMockImplementation()!
+    let land: (frame: Awaited<ReturnType<typeof reply>>) => void = () => undefined
+    const frame = new Promise<Awaited<ReturnType<typeof reply>>>(resolve => { land = resolve })
+    sendMessage.mockImplementation(async message => (message.action === 'vodFrame' ? frame : reply(message)))
+    try {
+      const card = cardHost()
+      const unmount = api.mount(card, { ...CARD, emote: EMOTE }, { ...AT, vodId: id })
+      await vi.waitFor(() => expect(card.querySelector('.pmf-chip')!.textContent).toBe('VOD still recording · chat’s top emote'))
+      land({ type: 'MOMENT_PICTURE', frame: null })
+      unmount()
+    } finally {
+      sendMessage.mockImplementation(reply)
+    }
+  })
+
   it('opens a card with no picture on blurred box art, else on the emote, and a row on neither', async () => {
     const noStream: MomentPictureAt = { api: 'https://api.streampulse.stream', key: null }
     const card = cardHost()
