@@ -5,7 +5,8 @@ import { bindAccountDataForget, supporterAccount } from './supporterAccountRunti
 import { MY_MOMENTS_CHANGED, type BookmarksState, type MyMomentsRecent, type MyMomentsRequest, type MyMomentsSnapshot } from '../shared/myMoments.ts'
 import type { BackgroundResponse, ListBookmarksMessage, PulseBookmark, RemoveBookmarkMessage, SaveBookmarkMessage } from '../shared/messages.ts'
 import { replayAvailability, type LibraryMoment, type MomentReference } from '../ui/library/model.ts'
-import { addDeviceBookmark, bookmarkIdentity, deletePersonal, momentIdentity as identity, personalTransaction, recordWatched } from './myMomentsStore.ts'
+import { addDeviceBookmark, bookmarkIdentity, deletePersonal, linkAccountReplays, linkDeviceReplays, momentIdentity as identity, personalTransaction, recordWatched } from './myMomentsStore.ts'
+import { findStreamReplays, streamKey, type ReplayLookups } from './bookmarkReplay.ts'
 import { clearAccountHistory, historySyncCheckDue, historySyncView, refreshHistorySync, setAccountRetention, setHistorySync, syncHistoryNow } from './historySync.ts'
 import { handleMomentPicture, wantPicture, type PictureMoment } from './momentPictures.ts'
 import { momentPictures } from '../shared/momentPictureStore.ts'
@@ -58,7 +59,7 @@ async function snapshot(scope: string): Promise<MyMomentsSnapshot> {
       do {
         const page = await fetchPulseBookmarks({ limit: 100, cursor }, undefined, scopeAccount(scope))
         await assertScope(scope)
-        for (const b of page.items) moments.push(bookmarkMoment(b, data.notes[b.id] ?? b.notes))
+        for (const b of page.items) moments.push(bookmarkMoment(b.vodId ? b : { ...b, vodId: data.replayLinks?.[b.id] }, data.notes[b.id] ?? b.notes))
         cursor = page.nextCursor
         if (cursor && (cursors.has(cursor) || moments.length >= 5000)) throw new Error('Bookmark pagination limit')
         if (cursor) cursors.add(cursor)
@@ -88,10 +89,36 @@ async function snapshot(scope: string): Promise<MyMomentsSnapshot> {
       : historySync.syncedAt ? { kind: 'synced', at: historySync.syncedAt } : { kind: 'syncing', pending: historySync.pending },
     historySync, storage: { usedBytes: new TextEncoder().encode(JSON.stringify(data)).length, limitBytes: 2 * 1048576, persistence: 'unknown' } }
 }
-/** Waits for a sync only so long; a slow one finishes in the background. */
-async function within(work: Promise<void>, ms: number) {
+/** Waits for work only so long; slow work finishes in the background. */
+async function within<T>(work: Promise<T>, ms: number): Promise<T | undefined> {
   let timer: ReturnType<typeof setTimeout> | undefined
-  try { await Promise.race([work, new Promise<void>(resolve => { timer = setTimeout(resolve, ms) })]) } finally { clearTimeout(timer) }
+  try { return await Promise.race([work, new Promise<undefined>(resolve => { timer = setTimeout(() => resolve(undefined), ms) })]) } finally { clearTimeout(timer) }
+}
+let replayLookups: ReplayLookups | undefined
+/** The service worker's archive lookups: stream history and the channel's open tab. */
+export function bindReplayLookups(lookups: ReplayLookups) { replayLookups = lookups }
+/**
+ * Live saves made stream-only ("Replay not linked", PAGE-1) get their stream's
+ * VOD once its archive can be matched: device saves in place, hosted saves as
+ * a link kept beside their notes. A lookup that outlasts the open still stores
+ * its answer, for the next one. Resolves true when it stored something.
+ */
+async function linkReplays(scope: string, view: MyMomentsSnapshot): Promise<boolean> {
+  if (!replayLookups) return false
+  const account = scopeAccount(scope)
+  const hosted = account ? view.moments.filter(m => m.savedAt !== undefined && !m.vodId && m.streamId) : []
+  const device = (await personalTransaction(deviceScope(scope))).bookmarks.filter(b => !b.vodId && b.streamId)
+  const saves = [...hosted.map(m => ({ login: m.channel, streamId: m.streamId!, at: m.savedAt! })),
+    ...device.map(b => ({ login: b.login, streamId: b.streamId!, at: Date.parse(b.createdAt) }))].sort((a, b) => b.at - a.at)
+  if (!saves.length) return false
+  const vods = await findStreamReplays(saves, replayLookups)
+  const links = Object.fromEntries(hosted.flatMap(m => vods.has(streamKey(m.channel, m.streamId!)) ? [[m.id, vods.get(streamKey(m.channel, m.streamId!))!]] : []))
+  const deviceLinked = device.some(b => vods.has(streamKey(b.login, b.streamId!)))
+  if (!deviceLinked && !Object.keys(links).length) return false
+  await assertScope(scope)
+  if (deviceLinked) await personalTransaction(deviceScope(scope), data => linkDeviceReplays(data, vods))
+  if (Object.keys(links).length) await personalTransaction(scope, data => linkAccountReplays(data, links))
+  return true
 }
 let syncTimer: ReturnType<typeof setTimeout> | undefined
 /** Batches the jumps of a viewing session into one push shortly after. */
@@ -359,6 +386,12 @@ export function handleMyMoments(message: MyMomentsRequest, sender: chrome.runtim
       return { type: 'MY_MOMENTS_RECENT', recent: await recent(scope) }
     }
     if (message.action === 'load' && scopeAccount(scope)) await within(refreshHistorySync(scope, scopeAccount(scope)!), 6000)
+    if (message.action === 'load') {
+      const view = await snapshot(scope)
+      // Read again only after a link was stored, which happens once per such save.
+      const linked = await within(linkReplays(scope, view).catch(() => false), 4000)
+      return { type: 'MY_MOMENTS', snapshot: linked ? await snapshot(scope) : view }
+    }
     if (message.action === 'mutate') {
       if (message.scope !== scope) throw new Error('Device connection changed. Reload My Moments.')
       const command = message.command
@@ -395,9 +428,10 @@ export function handleMyMoments(message: MyMomentsRequest, sender: chrome.runtim
         await assertScope(scope)
         await personalTransaction(onDevice ? deviceScope(scope) : scope, data => {
           const notes = { ...data.notes }
+          const replayLinks = { ...data.replayLinks }
           if (command.kind === 'edit') notes[command.id] = command.note
-          else delete notes[command.id]
-          return { ...data, notes, bookmarks: command.kind === 'unsave' ? data.bookmarks.filter(b => b.id !== command.id) : data.bookmarks }
+          else { delete notes[command.id]; delete replayLinks[command.id] }
+          return { ...data, notes, ...(data.replayLinks ? { replayLinks } : {}), bookmarks: command.kind === 'unsave' ? data.bookmarks.filter(b => b.id !== command.id) : data.bookmarks }
         })
       } else if (command.kind === 'history-sync') {
         const account = scopeAccount(scope)
