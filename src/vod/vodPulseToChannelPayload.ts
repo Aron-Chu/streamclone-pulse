@@ -123,6 +123,28 @@ function synthesizeRecap(vod: ExtensionVodPulseResponse, login: string): PulseSt
   }
 }
 
+/**
+ * Drop moments after the stream's last second. A broadcast restarted straight
+ * after the previous one ended can leave the next stream's moments in this
+ * VOD's answer (jynxzi 2906121675: 47 h moments on a 41 h 52 min stream);
+ * they have no frame in this replay and no bucket on its chart.
+ */
+function withinStream<T extends { offsetSeconds: number }>(items: T[], streamEnd: number | null): T[] {
+  return streamEnd == null ? items : items.filter(item => item.offsetSeconds <= streamEnd)
+}
+
+function recapWithinStream(recap: PulseStreamRecap | null, streamEnd: number | null): PulseStreamRecap | null {
+  if (!recap || streamEnd == null) return recap
+  const { biggestChatSpike, funniestEmoteBurst, ...rest } = recap
+  return {
+    ...rest,
+    topMoments: withinStream(recap.topMoments ?? [], streamEnd),
+    clipCandidates: withinStream(recap.clipCandidates ?? [], streamEnd),
+    ...(biggestChatSpike && biggestChatSpike.offsetSeconds <= streamEnd ? { biggestChatSpike } : {}),
+    ...(funniestEmoteBurst && funniestEmoteBurst.offsetSeconds <= streamEnd ? { funniestEmoteBurst } : {}),
+  }
+}
+
 /** Map extension VOD pulse API response into channel PulsePayload for recap UI reuse. */
 export function vodPulseToChannelPayload(vod: ExtensionVodPulseResponse, fallbackLogin?: string): PulsePayload | null {
   if (vod.mode === 'live_dvr') {
@@ -169,10 +191,12 @@ export function vodPulseToChannelPayload(vod: ExtensionVodPulseResponse, fallbac
   if (!login) return null
 
   const rollups = (vod.timeline?.points ?? []).map(timelinePointToRollup)
-  const peaks = (vod.topMoments ?? []).map(vodMomentToPeak)
-  const recap = synthesizeRecap(vod, login)
   const lastOffset = rollups[rollups.length - 1]?.offsetSeconds ?? 0
   const durationSeconds = Math.max(vod.durationSeconds ?? 0, lastOffset + 60)
+  const reportedDuration = Number.isFinite(vod.durationSeconds) && vod.durationSeconds! > 0
+  const streamEnd = reportedDuration || rollups.length > 0 ? durationSeconds : null
+  const peaks = withinStream((vod.topMoments ?? []).map(vodMomentToPeak), streamEnd)
+  const recap = recapWithinStream(synthesizeRecap(vod, login), streamEnd)
   const startedAtMs = Date.parse(vod.startedAt ?? '')
   const endedAtMs = startedAtMs + (vod.durationSeconds ?? 0) * 1000
   const endedAt = Number.isFinite(startedAtMs) && (vod.durationSeconds ?? 0) > 0

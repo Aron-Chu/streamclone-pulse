@@ -98,7 +98,7 @@ function BookmarksNotice({ state, onRetry, accountsOpen }: { state: BookmarksSta
           ? 'Connect a free Pulse account and new bookmarks follow you to any device. Bookmarks, notes and watched history saved here stay on this device.'
           : linkable
             ? 'Saved moments sync through your account so they survive a reinstall. Notes stay on this device, and so does watched history unless you turn on history sync.'
-            : 'No bookmark change was confirmed. Watched history and notes on this device are unaffected.'}
+            : 'Your account bookmarks could not be loaded, so they are not listed here. Nothing was changed; watched history and notes on this device are unaffected.'}
       </p>
       {deviceOnly ? null : <div className="pl-row">
         {linkable ? <a className="pl-button pl-primary" href="#supporter">Connect account</a> : null}
@@ -154,6 +154,9 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
   // they are rather than only counting them.
   const deviceMoments = deviceSaveMoments(snapshot)
   const deviceSaves = deviceMoments.length
+  // The account list did not load: an empty Bookmarks tab would claim there are
+  // none, beside a notice saying they could not be read.
+  const accountListUnknown = bookmarksState === 'error' || bookmarksState === 'expired'
   // Unfiltered population decides whether filters are worth showing at all.
   const population = snapshot ? visibleMoments(snapshot, view, '', '', clock) : []
   const items = snapshot
@@ -255,6 +258,7 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
             presentation={presentations?.[moment.id]} context={contexts?.[moment.id]}
             onSave={save} onEdit={setEditing} onPreview={moment => { setPreview(moment); setRemoved(null) }} onRemove={moment => setConfirmation({ kind: 'remove', moment })}
             onOpenLink={openedLink} />)}</ul>
+            : view === 'saved' && !filtered && accountListUnknown ? null
             : <div className="pl-empty"><h3>{filtered ? 'No matching moments' : view === 'recent' ? 'No history yet' : deviceSaves ? 'No account bookmarks yet' : 'No bookmarks yet'}</h3>
               <p>{filtered ? 'Try a channel name, a word from your note, or clear the filters.'
                 : view === 'recent' ? 'Watch a Pulse moment for at least 10 seconds after a jump. Opening a link alone is not recorded.'

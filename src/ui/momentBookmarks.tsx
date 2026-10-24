@@ -105,6 +105,15 @@ async function firstDeviceSave(): Promise<boolean> {
 const NO_OFFSETS: readonly number[] = []
 
 /**
+ * An ended stream's archive, from stream history (LIST_PAST_VODS): only the
+ * row with this exact stream id, never the channel's latest VOD.
+ */
+export async function endedStreamVodId(login: string, streamId: string): Promise<string | null> {
+  const result = await sendBackgroundMessage({ type: 'LIST_PAST_VODS', login })
+  return 'type' in result && result.type === 'PAST_VODS' ? result.items.find(item => item.streamId === streamId && item.videoId)?.videoId ?? null : null
+}
+
+/**
  * Free, on-demand bookmarks for the panel's moment cards. Account credentials
  * never leave the worker; without an account it keeps saves on this device.
  *
@@ -116,8 +125,9 @@ export function MomentBookmarksProvider({ login, streamId, vodId, resolveVodId, 
   streamId?: string
   vodId?: string
   /**
-   * Live only: finds the live archive's VOD id. A save with only the stream
-   * stays "Replay not linked" in My Moments for good (PAGE-1).
+   * Finds the stream's archive when the page has no VOD id: the live archive,
+   * or an ended stream's (`endedStreamVodId`). A save with only the stream
+   * stays "Replay not linked" until My Moments links it (PAGE-1).
    */
   resolveVodId?: () => Promise<string | null>
   /** The listed moments' offsets, so a save near two goes to the nearer one. */

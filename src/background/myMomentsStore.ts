@@ -2,6 +2,7 @@ import { parseBookmarkPage } from '../shared/bookmarkPage.ts'
 import type { CreatePulseBookmarkInput, PulseBookmark } from '../shared/messages.ts'
 import type { LibraryMoment, LibraryPreferences } from '../ui/library/model.ts'
 import type { AccountHistorySync } from './historySync.ts'
+import { streamKey } from './bookmarkReplay.ts'
 
 export interface PersonalData {
   preferences: LibraryPreferences
@@ -16,6 +17,11 @@ export interface PersonalData {
   bookmarks: PulseBookmark[]
   /** Account scopes only: this browser's side of the account's synced history. */
   accountSync?: AccountHistorySync
+  /**
+   * Account scopes only: the replay found later for a hosted save made
+   * stream-only, by bookmark id. The hosted bookmark itself cannot change.
+   */
+  replayLinks?: Record<string, string>
 }
 export const emptyPersonalData = (): PersonalData => ({ preferences: { captureHistory: false, retentionDays: 30 }, epoch: 0, history: [], notes: {}, bookmarks: [] })
 type MomentKey = { channel: string; vodId: string | null; streamId?: string; offsetSeconds: number | null }
@@ -61,6 +67,25 @@ export function addDeviceBookmark(data: PersonalData, input: Pick<CreatePulseBoo
   if (!bookmark.streamId && !bookmark.vodId) throw new Error('invalid_bookmark_page')
   if (data.bookmarks.some(b => bookmarkIdentity(b) === bookmarkIdentity(bookmark))) return data
   return { ...data, bookmarks: [...data.bookmarks, bookmark] }
+}
+/**
+ * Stream-only device saves take their stream's VOD id once it is known, by
+ * `streamKey`. The row keeps its id and identity (the stream id still
+ * leads it), so nothing is added or re-keyed.
+ */
+export function linkDeviceReplays(data: PersonalData, vods: ReadonlyMap<string, string>): PersonalData {
+  let linked = false
+  const bookmarks = data.bookmarks.map(b => {
+    const vodId = !b.vodId && b.streamId ? vods.get(streamKey(b.login, b.streamId)) : undefined
+    if (!vodId) return b
+    linked = true
+    return { ...b, vodId }
+  })
+  return linked ? { ...data, bookmarks } : data
+}
+/** Keeps the replay found for hosted stream-only saves, by bookmark id; a link already kept stays. */
+export function linkAccountReplays(data: PersonalData, links: Record<string, string>): PersonalData {
+  return { ...data, replayLinks: { ...links, ...data.replayLinks } }
 }
 export function recordWatched(data: PersonalData, moment: LibraryMoment, epoch: number, now: number): PersonalData {
   const next = prunePersonalData(data, now)
