@@ -32,11 +32,13 @@ import { MomentFrameStore, nearestFrameIndex, type StoredFrame } from './momentF
  * scrub sheets Twitch's player shows, src/shared/vodPictures.ts), else the
  * backend's picture of it (GET /v1/analytics/moments/picture: a Twitch clip or
  * VOD preview of that second), else, in a moment card, the game's box art or
- * chat's top emote; local frames win once the tab has them. The old view stays
- * until a picture has loaded, and stays for good if none does, except that a
- * card shows its art or emote at once, so it opens at its full height. In the
- * moment card the picture is the card's top, edge to edge and fading into the
- * card, with the card's time, game and close button laid over it.
+ * chat's top emote, whose chip says why there is no VOD tile (no VOD, or one
+ * Twitch is still recording); local frames win once the tab has them. The old
+ * view stays until a picture has loaded, and stays for good if none does,
+ * except that a card shows its art or emote at once, so it opens at its full
+ * height. In the moment card the picture is the card's top, edge to edge and
+ * fading into the card, with the card's time, game and close button laid over
+ * it.
  * While Twitch shows an ad the player is skipped, so an ad never becomes a
  * moment's picture.
  */
@@ -204,20 +206,35 @@ export function remoteUrl(at: MomentPictureAt | undefined, t: number): string | 
   return `${at.api.replace(/\/+$/, '')}/v1/analytics/moments/picture?${query}`
 }
 
-/** Twitch's pictures of each VOD this tab asked about, asked once per VOD. */
-const vods = new Map<string, Promise<VodPictures | null>>()
+/** How long an answer without scrub sheets stands before Twitch is asked again. */
+const VOD_RETRY_MS = 2 * 60_000
+
+/**
+ * Twitch's pictures of each VOD this tab asked about. A VOD with scrub sheets
+ * is asked about once; one without (still recording, or not found) again after
+ * VOD_RETRY_MS, so its sheets show once the stream has ended.
+ */
+const vods = new Map<string, { found: Promise<VodPictures | null>; until: number }>()
+/** VODs Twitch last said it is still recording. */
+const recording = new Set<string>()
 
 function vod(at?: MomentPictureAt): Promise<VodPictures | null> {
   const id = (at ?? lastAt)?.vodId
   if (!id) return Promise.resolve(null)
-  let found = vods.get(id)
-  if (!found) {
-    found = Promise.resolve()
-      .then(() => chrome.runtime.sendMessage({ type: 'MOMENT_PICTURE', action: 'vod', vodId: id }))
-      .then(response => (response as { vod?: VodPictures | null } | undefined)?.vod ?? null, () => null)
-    vods.set(id, found)
-  }
-  return found
+  const kept = vods.get(id)
+  if (kept && kept.until > Date.now()) return kept.found
+  const asked = { found: Promise.resolve<VodPictures | null>(null), until: Infinity }
+  asked.found = Promise.resolve()
+    .then(() => chrome.runtime.sendMessage({ type: 'MOMENT_PICTURE', action: 'vod', vodId: id }))
+    .then(response => (response as { vod?: VodPictures | null } | undefined)?.vod ?? null, () => null)
+    .then(pictures => {
+      if (!pictures?.sheets.length) asked.until = Date.now() + VOD_RETRY_MS
+      if (pictures?.recording) recording.add(id)
+      else recording.delete(id)
+      return pictures
+    })
+  vods.set(id, asked)
+  return asked.found
 }
 
 /** Most exact frames a tab keeps; the oldest goes first. */
@@ -295,19 +312,27 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
   const card = view.kind === 'card'
   let gone = false
 
+  /** Puts `source` on a card's picture: its chip, and what a screen reader hears. */
+  const name = (picture: HTMLElement, source: string): void => {
+    picture.setAttribute('aria-label', `Picture at ${formatHeatOffset(view.peak)}: ${source}`)
+    picture.querySelector('.pmf-chip')!.textContent = source
+  }
+
   /** A picture not from this tab: as is in a row, or with its source on it in a card. */
   const framed = (source: string, dot: string, ...parts: HTMLElement[]): HTMLElement => {
     if (!card) return parts[0]!
     const picture = element('div', 'pmf-pic')
     picture.style.cursor = 'default'
     picture.setAttribute('role', 'img')
-    picture.setAttribute('aria-label', `Picture at ${formatHeatOffset(view.peak)}: ${source}`)
     const chip = element('span', 'pmf-chip')
-    chip.textContent = source
     chip.style.setProperty('--pmf-dot', dot)
     picture.append(...parts, chip)
+    name(picture, source)
     return picture
   }
+
+  /** A stand-in's chip: why there is no VOD tile, then what it shows instead. */
+  const standIn = (what: string): string => `${at?.vodId && recording.has(at.vodId) ? 'VOD still recording' : 'No VOD'} · ${what}`
 
   /** A card's stand-ins, each built once: the game's box art, and chat's top emote. */
   let art: HTMLElement | null | undefined
@@ -317,7 +342,7 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
       const blur = element('span', 'pmf-art')
       const box = element('span', 'pmf-box')
       if (view.art) blur.style.backgroundImage = box.style.backgroundImage = cssUrl(view.art)
-      art = card && view.art ? framed('No VOD · game art', '#a1a1b2', blur, box) : null
+      art = card && view.art ? framed(standIn('game art'), '#a1a1b2', blur, box) : null
     }
     return art
   }
@@ -328,7 +353,7 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
       big.decoding = 'async'
       big.referrerPolicy = 'no-referrer'
       if (view.emote) big.src = view.emote
-      emote = card && view.emote ? framed('No VOD · chat’s top emote', '#fbbf24', element('span', 'pmf-glow'), big) : null
+      emote = card && view.emote ? framed(standIn('chat’s top emote'), '#fbbf24', element('span', 'pmf-glow'), big) : null
     }
     return emote
   }
@@ -340,6 +365,11 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
    */
   const findOther = async (): Promise<HTMLElement | null> => {
     const asked = vod(at)
+    // The stand-in shown while looking learns whether Twitch is still recording the VOD as soon as Twitch answers.
+    void asked.then(() => {
+      if (art) name(art, standIn('game art'))
+      if (emote) name(emote, standIn('chat’s top emote'))
+    })
     // A card, or a row that asks, first tries the exact frame from the VOD's own video.
     if (card || view.exact) {
       const url = await vodFrame(at, view.peak - (at?.vodOriginDeltaSeconds ?? 0), card ? 360 : 160)

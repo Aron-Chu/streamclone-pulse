@@ -186,7 +186,7 @@ export async function gqlVodPicturesInPage(vodId: string): Promise<{ video: unkn
     method: 'POST',
     headers: { 'Client-ID': clientId, 'Content-Type': 'text/plain;charset=UTF-8' },
     body: JSON.stringify({
-      query: 'query PulseVodPictures($id: ID!) { video(id: $id) { title previewThumbnailURL(width: 640, height: 360) seekPreviewsURL } }',
+      query: 'query PulseVodPictures($id: ID!) { video(id: $id) { title status previewThumbnailURL(width: 640, height: 360) seekPreviewsURL } }',
       variables: { id: vodId },
     }),
   }) as { data?: { video?: { seekPreviewsURL?: unknown } | null } } | null
