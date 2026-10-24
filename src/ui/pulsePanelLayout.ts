@@ -1,5 +1,5 @@
 import type { PulsePayload } from '../shared/messages.ts'
-import { pulseLiveAccessAllowsChart, type PulseLiveAccessState } from './resolvePulseLiveAccess.ts'
+import { isPulseLiveContext, pulseLiveAccessAllowsChart, type PulseLiveAccessState } from './resolvePulseLiveAccess.ts'
 
 export interface PulsePanelSections {
   surfaceState: PulsePanelSurfaceState
@@ -41,12 +41,6 @@ export function isPulseIdentityMismatch(value: string | null | undefined): boole
   return Boolean(value && IDENTITY_MISMATCH_PATTERN.test(value))
 }
 
-function payloadIsLive(payload: PulsePayload | null, pageIsLive: boolean): boolean {
-  if (!payload) return pageIsLive
-  if (payload.recap && !payload.isLive) return false
-  return Boolean(payload.isLive || pageIsLive)
-}
-
 export function resolvePulsePanelSurfaceState({
   payload,
   error = null,
@@ -60,7 +54,7 @@ export function resolvePulsePanelSurfaceState({
   }
   if (!pulseSupported) return 'unsupported'
 
-  const isLive = payloadIsLive(payload, pageIsLive)
+  const isLive = isPulseLiveContext(payload, pageIsLive)
   if (isLive) {
     if (pulseLiveAccess === 'full_live') return 'live_tracked'
     if (pulseLiveAccess === 'late_session') return 'live_late'
@@ -95,16 +89,11 @@ export function resolvePulsePanelSections(
     pulseSupported?: boolean
   },
 ): PulsePanelSections {
-  const backendLive = Boolean(payload?.isLive)
-  const pageLive = Boolean(options.pageIsLive)
   const collecting = Boolean(payload?.tracking)
   const fullLiveAccess = options.pulseLiveAccess
     ? pulseLiveAccessAllowsChart(options.pulseLiveAccess)
     : collecting
-  const hasFinishedRecap = Boolean(payload?.recap && !payload?.isLive)
-  const isLive = hasFinishedRecap
-    ? false
-    : backendLive || (pageLive && payload !== null)
+  const isLive = payload !== null && isPulseLiveContext(payload, Boolean(options.pageIsLive))
   const showRecap = Boolean(payload?.recap && !isLive)
   const surfaceState = resolvePulsePanelSurfaceState({
     payload,

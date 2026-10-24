@@ -67,11 +67,17 @@ export function secondsSinceStreamStartAt(
   return Math.max(0, Math.round((openedAtMs - startMs) / 1000))
 }
 
-function isLiveContext(payload: PulsePayload | null, pageIsLive: boolean): boolean {
+/**
+ * Live when Twitch's page shows it live, or the backend is collecting the
+ * stream now (as effectivePulseIsLive). A stream the backend still has open
+ * but no longer collects is not live while the page reads offline: the
+ * panel says Offline there, never Not tracked.
+ */
+export function isPulseLiveContext(payload: PulsePayload | null, pageIsLive: boolean): boolean {
   if (!payload) return pageIsLive
   if (payload.mode === 'live_dvr') return true
   if (payload.recap && !payload.isLive) return false
-  return Boolean(payload.isLive || pageIsLive)
+  return Boolean(pageIsLive || (payload.isLive && payload.tracking))
 }
 
 function trackedFromStreamStart(coverageStartOffsetSeconds: number): boolean {
@@ -129,7 +135,7 @@ function resolveHostedPulseLiveAccess(input: PulseLiveAccessInput): PulseLiveAcc
     return baseResult('not_in_roster', coverageStartOffsetSeconds, coverageTier)
   }
 
-  if (!isLiveContext(payload, pageIsLive)) {
+  if (!isPulseLiveContext(payload, pageIsLive)) {
     return baseResult('offline', coverageStartOffsetSeconds, coverageTier)
   }
 
@@ -161,7 +167,7 @@ function resolveLocalPulseLiveAccess(input: PulseLiveAccessInput): PulseLiveAcce
     return baseResult('not_in_roster', coverageStartOffsetSeconds, coverageTier)
   }
 
-  if (!isLiveContext(payload, pageIsLive)) {
+  if (!isPulseLiveContext(payload, pageIsLive)) {
     return baseResult('offline', coverageStartOffsetSeconds, coverageTier)
   }
 

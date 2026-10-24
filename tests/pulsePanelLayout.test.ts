@@ -150,6 +150,26 @@ describe('resolvePulsePanelSections', () => {
     expect(sections.surfaceState).toBe('offline_empty')
     expect(sections.showOffline).toBe(true)
   })
+
+  // Real-Twitch check, 2026-10-19: the backend kept an ended stream open as live but no
+  // longer collected it, and the offline channel's panel read "Not tracked".
+  it('shows the offline state for an open stream the backend no longer collects while Twitch reads offline', () => {
+    const stale = basePayload({ isLive: true, tracking: false, recap: null })
+    const offline = resolvePulsePanelSections(stale, { liveHeatVisible: false, warming: false, pageIsLive: false })
+    expect(offline.surfaceState).toBe('offline_empty')
+    expect(offline.showOffline).toBe(true)
+    expect(offline.showWarming).toBe(false)
+    expect(pulseSurfaceStatusLabel(offline.surfaceState)).toBe('Offline')
+
+    const live = resolvePulsePanelSections(stale, {
+      liveHeatVisible: false,
+      warming: false,
+      pageIsLive: true,
+      pulseLiveAccess: 'not_tracked',
+    })
+    expect(live.surfaceState).toBe('live_untracked')
+    expect(live.showOffline).toBe(false)
+  })
 })
 
 describe('resolvePulsePanelSurfaceState', () => {
