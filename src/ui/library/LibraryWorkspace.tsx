@@ -6,8 +6,8 @@ import { hasRecent, replayAvailability, visibleMoments, type HistorySyncView, ty
 import { useLibrary } from './useLibrary.ts'
 import { MomentPreview, type MomentContextState } from './MomentPreview.tsx'
 import type { MomentPresentation } from './MomentMedia.tsx'
-import type { BookmarksState } from '../../shared/myMoments.ts'
-import type { PulseBookmark } from '../../shared/messages.ts'
+import type { BookmarksState, DeviceBookmark } from '../../shared/myMoments.ts'
+import { keptVodOriginDelta } from '../../shared/vodOriginAlignment.ts'
 import { TWITCH_SIGNIN_ENABLED } from '../../shared/twitchSignIn.ts'
 import { rememberMomentArrival } from '../../shared/momentArrival.ts'
 import { buildAnalyticsUrl, DEFAULT_WEB_ANALYTICS_BASE_URL } from '../../shared/analyticsLinks.ts'
@@ -56,13 +56,15 @@ function sameSource(a: MomentReference, b: MomentReference): boolean {
 
 /** Pre-link device saves as rows, newest first. Only the worker's linked snapshot carries any. */
 function deviceSaveMoments(snapshot: LibrarySnapshot | null): LibraryMoment[] {
-  const saves = snapshot && 'deviceBookmarks' in snapshot ? (snapshot as { deviceBookmarks: Partial<PulseBookmark>[] }).deviceBookmarks : []
+  const saves = snapshot && 'deviceBookmarks' in snapshot ? (snapshot as { deviceBookmarks: Partial<DeviceBookmark>[] }).deviceBookmarks : []
   return saves.flatMap(b => {
     if (typeof b.id !== 'string') return []
     const vodId = b.vodId ?? null
     const offsetSeconds = typeof b.offsetSeconds === 'number' ? b.offsetSeconds : null
     const savedAt = Date.parse(b.createdAt ?? '')
+    const delta = vodId ? keptVodOriginDelta(b.vodOriginDeltaSeconds) : undefined
     return [{ id: b.id, channel: b.login ?? '', title: b.label || 'Saved moment', vodId, streamId: b.streamId, offsetSeconds,
+      ...(delta === undefined ? {} : { vodOriginDeltaSeconds: delta }),
       availability: replayAvailability({ vodId, offsetSeconds }), ...(Number.isFinite(savedAt) ? { savedAt } : {}), note: b.notes ?? '' }]
   }).sort((a, b) => (b.savedAt ?? 0) - (a.savedAt ?? 0) || a.id.localeCompare(b.id))
 }

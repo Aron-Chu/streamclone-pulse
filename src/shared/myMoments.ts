@@ -1,5 +1,6 @@
 import type { LibraryCommand, LibrarySnapshot, MomentReference } from '../ui/library/model.ts'
 import type { PulseBookmark } from './messages.ts'
+import { keptVodOriginDelta } from './vodOriginAlignment.ts'
 
 export type MyMomentsCommand = Extract<LibraryCommand, { kind: 'save' | 'unsave' | 'edit' | 'clear-history' | 'preferences' | 'import-device-saves' | 'history-sync' }>
 export type MyMomentsRequest =
@@ -11,6 +12,12 @@ export type MyMomentsRequest =
   | { type: 'MOMENT_CAPTURE'; action: 'record'; epoch: number; reference: MomentReference; watchedSeconds: number }
 /** The worker tells open extension pages that My Moments changed elsewhere: a watched moment joined History. */
 export const MY_MOMENTS_CHANGED = 'MY_MOMENTS_CHANGED'
+/**
+ * A save kept on this device without an account: the hosted bookmark shape an
+ * import posts, plus the VOD origin delta the panel knew when it was saved
+ * (`MomentReference.vodOriginDeltaSeconds`). The delta never leaves the device.
+ */
+export type DeviceBookmark = PulseBookmark & { vodOriginDeltaSeconds?: number }
 /**
  * Why the hosted bookmark list is missing.
  *
@@ -44,13 +51,13 @@ export interface MyMomentsSnapshot extends LibrarySnapshot {
    * Signed out, they are ordinary rows in `moments` and this is empty. Nothing
    * uploads them except an explicit "Add to account" (`import-device-saves`).
    */
-  deviceBookmarks: PulseBookmark[]
+  deviceBookmarks: DeviceBookmark[]
 }
 
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
 const keys = (v: Record<string, unknown>, allowed: string[]) => Object.keys(v).every(k => allowed.includes(k))
 export function validMomentReference(v: unknown): v is MomentReference {
-  if (!record(v) || !keys(v, ['id', 'channel', 'title', 'vodId', 'streamId', 'offsetSeconds', 'availability'])) return false
+  if (!record(v) || !keys(v, ['id', 'channel', 'title', 'vodId', 'streamId', 'offsetSeconds', 'vodOriginDeltaSeconds', 'availability'])) return false
   return typeof v.id === 'string' && v.id.length > 0 && v.id.length <= 200
     && typeof v.channel === 'string' && /^[a-z0-9_]{1,25}$/.test(v.channel)
     && typeof v.title === 'string' && v.title.length <= 200
@@ -58,6 +65,8 @@ export function validMomentReference(v: unknown): v is MomentReference {
     && (v.streamId === undefined || typeof v.streamId === 'string' && /^\d{6,20}$/.test(v.streamId))
     && !!(v.vodId || v.streamId) && typeof v.offsetSeconds === 'number' && Number.isFinite(v.offsetSeconds)
     && v.offsetSeconds >= 0 && v.offsetSeconds <= 604800
+    // A delta belongs to the VOD it was reported for: never without one.
+    && (v.vodOriginDeltaSeconds === undefined || v.vodId !== null && keptVodOriginDelta(v.vodOriginDeltaSeconds) !== undefined)
     && ['available', 'unavailable', 'unresolved'].includes(String(v.availability))
 }
 export function parseMyMoments(raw: Record<string, unknown>): MyMomentsRequest | null {

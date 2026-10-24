@@ -14,8 +14,9 @@ export function createMyMomentsRepository(): LibraryRepository {
   async function request(command?: LibraryCommand): Promise<MyMomentsSnapshot> {
     if (command && (!scope || ['interaction', 'create-collection'].includes(command.kind))) throw new Error('This action is unavailable.')
     if (command?.kind === 'save') {
-      const { id, channel, title, vodId, streamId, offsetSeconds, availability } = command.reference
-      command = { kind: 'save', reference: { id, channel, title, vodId, streamId, offsetSeconds, availability } }
+      const { id, channel, title, vodId, streamId, offsetSeconds, vodOriginDeltaSeconds, availability } = command.reference
+      command = { kind: 'save', reference: { id, channel, title, vodId, streamId, offsetSeconds,
+        ...(vodOriginDeltaSeconds === undefined ? {} : { vodOriginDeltaSeconds }), availability } }
     }
     const result = await chrome.runtime.sendMessage(command
       ? { type: 'MY_MOMENTS', action: 'mutate', scope, command: command as MyMomentsCommand }

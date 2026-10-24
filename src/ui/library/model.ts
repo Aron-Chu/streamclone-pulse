@@ -1,3 +1,5 @@
+import { keptVodOriginDelta } from '../../shared/vodOriginAlignment.ts'
+
 /** UI contract. Production adapters must validate ownership and input at the worker boundary. */
 export interface MomentReference {
   id: string
@@ -7,6 +9,13 @@ export interface MomentReference {
   /** Stable stream identity allows a verified live jump before a VOD exists. */
   streamId?: string
   offsetSeconds: number | null
+  /**
+   * How many seconds `vodId`'s archive starts after the stream did
+   * (`vod.startedAt - stream.startedAt`), as the panel's payload reported it
+   * when the moment was kept. Only with a VOD id, only when non-zero. Absent
+   * on older records and wherever it was not known: the identity mapping.
+   */
+  vodOriginDeltaSeconds?: number
   availability: 'available' | 'unavailable' | 'unresolved'
 }
 export interface LibraryMoment extends MomentReference {
@@ -74,18 +83,26 @@ export function timestamp(seconds: number | null): string {
   const value = Math.floor(seconds)
   return [Math.floor(value / 3600), Math.floor(value / 60) % 60, value % 60].map(v => String(v).padStart(2, '0')).join(':')
 }
+/**
+ * The moment on Twitch. `offsetSeconds` counts from go-live and `?t=` from the
+ * archive start, so a kept origin delta comes off (never below the start), as
+ * the panel's own VOD jumps do. Without one, as on every older record, the two
+ * clocks are taken to agree.
+ */
 export function replayUrl(reference: MomentReference): string | null {
   if (reference.availability !== 'available' || !reference.vodId || !/^\d+$/.test(reference.vodId)
     || reference.offsetSeconds === null || !Number.isFinite(reference.offsetSeconds) || reference.offsetSeconds < 0) return null
-  return `https://www.twitch.tv/videos/${reference.vodId}?t=${Math.floor(reference.offsetSeconds)}s`
+  const delta = keptVodOriginDelta(reference.vodOriginDeltaSeconds) ?? 0
+  return `https://www.twitch.tv/videos/${reference.vodId}?t=${Math.max(0, Math.floor(reference.offsetSeconds) - delta)}s`
 }
 /**
  * Pulse offsets count from go-live; Twitch's `?t=` counts from the archive
  * start. They agree when the archive starts with the stream, the mapping every
  * VOD path uses when the backend reports no origin delta (completed VOD pages,
- * the channel's open-in-VOD jump, the portal's bookmark link). Saved references
- * never carry a delta, so a numeric VOD id is required to address the second;
- * a stream-only reference stays unresolved and keeps its analytics link.
+ * the channel's open-in-VOD jump, the portal's bookmark link). A reference
+ * keeps a delta (`vodOriginDeltaSeconds`) only when the panel knew one. A
+ * numeric VOD id is required to address the second; a stream-only reference
+ * stays unresolved and keeps its analytics link.
  */
 export function replayAvailability(m: Pick<MomentReference, 'vodId' | 'offsetSeconds'>): MomentReference['availability'] {
   return m.vodId && /^\d{6,20}$/.test(m.vodId) && m.offsetSeconds !== null && Number.isFinite(m.offsetSeconds) && m.offsetSeconds >= 0 ? 'available' : 'unresolved'
