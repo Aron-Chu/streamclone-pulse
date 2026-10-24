@@ -8,7 +8,7 @@
  * in the entry chunk and must not pull publicHub.ts or packages/* in.
  */
 import { apiClient, getBackendUrl, type ApiClientResult, type ApiError } from './apiClient'
-import { SLOW_READ_TIMEOUT_MS } from './portalTimeouts'
+import { HUB_LONG_WINDOW_TIMEOUT_MS } from './portalTimeouts'
 import { parseHubWindowParam, type HubApiWindow } from './hubWindows'
 
 export type HubPathProjection = 'moments' | 'tickers'
@@ -28,11 +28,11 @@ export function publicHubPath(activityWindow?: HubApiWindow, projection?: HubPat
 }
 
 /**
- * The 24h-and-longer bodies get the slow-read deadline; the small 30-minute
+ * The 24h-and-longer bodies get the long hub deadline; the small 30-minute
  * bodies keep apiClient's default (undefined).
  */
 export function hubReadTimeoutMs(activityWindow?: HubApiWindow): number | undefined {
-  return activityWindow === '30m' || activityWindow === 'recent' ? undefined : SLOW_READ_TIMEOUT_MS
+  return activityWindow === '30m' || activityWindow === 'recent' ? undefined : HUB_LONG_WINDOW_TIMEOUT_MS
 }
 
 export interface HubLocationLike {

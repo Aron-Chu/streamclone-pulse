@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getBackendUrl } from '../src/lib/apiClient'
 import type { ActivitySummary } from '../src/lib/hubActivitySummary'
 import { normalizePublicHub } from '../src/lib/publicHub'
-import { clearPublicHubCacheForTests, writePublicHubCache } from '../src/lib/publicHubCache'
+import { clearPublicHubCacheForTests, readPublicHubCacheForCurrentBackend, writePublicHubCache } from '../src/lib/publicHubCache'
 import { HubDataHealthBanner } from '../src/ui/components/hub/HubDataHealthBanner'
 
 // OP1-RES-002 / CX-RES-005: a hub read that hits its deadline is named as slow
@@ -21,7 +21,7 @@ vi.mock('../src/lib/publicHub', async () => {
   }
 })
 
-import { HUB_TIMEOUT_MESSAGE, usePublicHubData } from '../src/hooks/usePublicHubData'
+import { HUB_RECENT_VIEW_HEAD_START_MS, HUB_TIMEOUT_MESSAGE, usePublicHubData } from '../src/hooks/usePublicHubData'
 
 const timeout = { kind: 'timeout', message: 'Request deadline exceeded', status: 0 }
 const rateLimited = { kind: 'rate_limited', message: 'Too many requests', status: 429, retryAfterMs: 120_000 }
@@ -142,6 +142,111 @@ describe('hub read timeout', () => {
     const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '24h' }))
     await waitFor(() => expect(result.current.loading).toBe(false))
     expect(result.current.error).toBe('Public hub unavailable')
+  })
+})
+
+// A busy API has taken 24–40 s to build the 24h body. A first visit (nothing
+// cached) shows the 30m view meanwhile; only the 24h result settles the load.
+describe('cold 24h load on a busy API', () => {
+  type HubReply = { data: ReturnType<typeof cachedHub>; loadSource: 'full'; hubEndpointOk: true; status: number }
+  const ok = (data: ReturnType<typeof cachedHub>): HubReply => ({ data, loadSource: 'full', hubEndpointOk: true, status: 200 })
+
+  function recentHub() {
+    const hub = cachedHub()
+    hub.poolSize = 7
+    hub.activity = { ...hub.activity, windowMinutes: 30 }
+    return hub
+  }
+
+  function deferred() {
+    let resolve!: (value: HubReply) => void
+    let reject!: (reason: unknown) => void
+    const promise = new Promise<HubReply>((yes, no) => { resolve = yes; reject = no })
+    return { promise, resolve, reject }
+  }
+
+  async function advance(ms: number) {
+    await act(async () => { await vi.advanceTimersByTimeAsync(ms) })
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    fetchPublicHubBase.mockReset()
+  })
+  afterEach(() => vi.useRealTimers())
+
+  it('shows the 30m view after the head start, then swaps in the 24h snapshot', async () => {
+    const slow = deferred()
+    fetchPublicHubBase.mockImplementationOnce(() => slow.promise).mockResolvedValueOnce(ok(recentHub()))
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '24h' }))
+    await advance(HUB_RECENT_VIEW_HEAD_START_MS - 1)
+    expect(fetchPublicHubBase).toHaveBeenCalledTimes(1)
+    expect(result.current.data).toBeNull()
+
+    await advance(1)
+    expect(fetchPublicHubBase).toHaveBeenCalledTimes(2)
+    expect(fetchPublicHubBase.mock.calls[1]?.[1]).toBe('30m')
+    expect(fetchPublicHubBase.mock.calls[1]?.[3]).toBe(8_000)
+    expect(result.current.loading).toBe(false)
+    expect(result.current.activityRefreshing).toBe(true)
+    expect(result.current.error).toBeNull()
+    expect(result.current.data?.poolSize).toBe(7)
+    expect(result.current.data?.activity).toMatchObject({ windowMinutes: 1440, servedWindowMinutes: 30, source: 'live_pool_fallback' })
+    expect(readPublicHubCacheForCurrentBackend('24h')).toBeNull()
+
+    await act(async () => { slow.resolve(ok(cachedHub())) })
+    expect(result.current.data?.poolSize).toBe(4)
+    expect(result.current.data?.activity.source).toBeUndefined()
+    expect(result.current.activityRefreshing).toBe(false)
+    expect(result.current.pollSequence).toBe(2)
+    expect(readPublicHubCacheForCurrentBackend('24h')?.data.poolSize).toBe(4)
+  })
+
+  it('reads only the 24h window when it answers within the head start', async () => {
+    fetchPublicHubBase.mockImplementationOnce(() => new Promise(resolve => setTimeout(() => resolve(ok(cachedHub())), 1_000)))
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '24h' }))
+    await advance(HUB_RECENT_VIEW_HEAD_START_MS * 2)
+    expect(fetchPublicHubBase).toHaveBeenCalledTimes(1)
+    expect(result.current.data?.poolSize).toBe(4)
+  })
+
+  it('keeps a cached snapshot on screen instead of reading the 30m view', async () => {
+    writePublicHubCache(getBackendUrl(), '24h', cachedHub())
+    fetchPublicHubBase.mockImplementationOnce(() => deferred().promise)
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '24h' }))
+    await advance(HUB_RECENT_VIEW_HEAD_START_MS * 2)
+    expect(fetchPublicHubBase).toHaveBeenCalledTimes(1)
+    expect(result.current.loadSource).toBe('cache')
+  })
+
+  it('drops a 30m view that lands after the 24h snapshot', async () => {
+    const slow = deferred()
+    const recent = deferred()
+    fetchPublicHubBase.mockImplementationOnce(() => slow.promise).mockImplementationOnce(() => recent.promise)
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '24h' }))
+    await advance(HUB_RECENT_VIEW_HEAD_START_MS)
+    const recentSignal = fetchPublicHubBase.mock.calls[1]?.[0] as AbortSignal
+    await act(async () => { slow.resolve(ok(cachedHub())) })
+    expect(recentSignal.aborted).toBe(true)
+    await act(async () => { recent.resolve(ok(recentHub())) })
+    expect(result.current.data?.poolSize).toBe(4)
+    expect(result.current.pollSequence).toBe(1)
+  })
+
+  it('ends on the 30m fallback, as before, when the 24h read times out', async () => {
+    const slow = deferred()
+    fetchPublicHubBase
+      .mockImplementationOnce(() => slow.promise)
+      .mockResolvedValueOnce(ok(recentHub()))
+      .mockResolvedValueOnce(ok(recentHub()))
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '24h' }))
+    await advance(HUB_RECENT_VIEW_HEAD_START_MS)
+    await act(async () => { slow.reject(timeout) })
+    expect(fetchPublicHubBase).toHaveBeenCalledTimes(3)
+    expect(fetchPublicHubBase.mock.calls[2]?.[1]).toBe('30m')
+    expect(result.current.error).toBeNull()
+    expect(result.current.activityRefreshing).toBe(false)
+    expect(result.current.data?.activity).toMatchObject({ servedWindowMinutes: 30, source: 'live_pool_fallback' })
   })
 })
 

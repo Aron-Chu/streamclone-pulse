@@ -3,7 +3,7 @@ import type { AnalyticsStreamDetail } from '@streampulse/analytics-console'
 import { apiClient } from '../src/lib/apiClient'
 import { fetchNewsroom } from '../src/lib/newsroom'
 import { fetchPublicHubBase } from '../src/lib/publicHub'
-import { SLOW_READ_TIMEOUT_MS } from '../src/lib/portalTimeouts'
+import { HUB_LONG_WINDOW_TIMEOUT_MS } from '../src/lib/portalTimeouts'
 import { portalAnalyticsApi } from '../src/lib/streamcloneAnalytics'
 import portalTimingFixture from './fixtures/portal_vod_timing_v1.json'
 
@@ -61,7 +61,7 @@ describe('slow first-paint reads', () => {
   })
 
   it('renders a hub body that arrives after 9 s', async () => {
-    expect(SLOW_READ_TIMEOUT_MS).toBeGreaterThan(9_000)
+    expect(HUB_LONG_WINDOW_TIMEOUT_MS).toBeGreaterThan(9_000)
     stubFetch(() => ({ delayMs: 9_000, body: hubBody }))
     const result = settle(fetchPublicHubBase(undefined, '24h'))
     await vi.advanceTimersByTimeAsync(9_000)
@@ -85,7 +85,14 @@ describe('slow first-paint reads', () => {
     expect(await result).toMatchObject({ ok: false, error: { kind: 'timeout' } })
   })
 
-  it('gives a hub read with no window (24h) the slow-read deadline', async () => {
+  it('renders a 24h hub body that a busy API builds in 40 s', async () => {
+    stubFetch(() => ({ delayMs: 40_000, body: hubBody }))
+    const result = settle(fetchPublicHubBase(undefined, '24h'))
+    await vi.advanceTimersByTimeAsync(40_000)
+    expect(await result).toMatchObject({ ok: true, value: { hubEndpointOk: true } })
+  })
+
+  it('gives a hub read with no window (24h) the long hub deadline', async () => {
     stubFetch(() => ({ delayMs: 9_000, body: hubBody }))
     const result = settle(fetchPublicHubBase())
     await vi.advanceTimersByTimeAsync(9_000)
@@ -93,9 +100,9 @@ describe('slow first-paint reads', () => {
   })
 
   it('still reports a hub body that never arrives as a timeout', async () => {
-    stubFetch(() => ({ delayMs: SLOW_READ_TIMEOUT_MS + 5_000, body: hubBody }))
+    stubFetch(() => ({ delayMs: HUB_LONG_WINDOW_TIMEOUT_MS + 5_000, body: hubBody }))
     const result = settle(fetchPublicHubBase(undefined, '24h'))
-    await vi.advanceTimersByTimeAsync(SLOW_READ_TIMEOUT_MS)
+    await vi.advanceTimersByTimeAsync(HUB_LONG_WINDOW_TIMEOUT_MS)
     expect(await result).toMatchObject({ ok: false, error: { kind: 'timeout' } })
   })
 
