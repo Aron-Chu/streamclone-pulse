@@ -53,6 +53,7 @@ import { buildTwitchVodUrl } from '../shared/pastVods.ts'
 import { rememberVodAnalyticsBridge } from '../shared/vodAnalyticsBridge.ts'
 import { rememberMomentArrival, takeMomentArrival, type MomentArrival } from '../shared/momentArrival.ts'
 import { keptVodOriginDelta } from '../shared/vodOriginAlignment.ts'
+import { jumpHistoryReference, keptMomentSecond } from './keptMoment.ts'
 import {
   pulseSurfaceStatusLabel,
   resolvePulsePanelSections,
@@ -1746,12 +1747,9 @@ function OverlayMain({
         if (point.estimated || point.collecting) return
         const window = reactionMomentWindow(point)
         const start = target + window.startSeconds - reactionLeadInOffset(point, 5)
-        const vodId = jumpVodId ?? context.vodId
-        // The payload's delta is its own VOD's: the entry's link lands where this jump did.
-        const delta = vodId && vodId === payload?.vodId ? keptVodOriginDelta(payload.vodOriginDeltaSeconds) : undefined
-        void observeMomentPlayback(getPrimaryVideo(), { id: 'moment', channel: login, title: point.reasonLabel,
-          vodId, streamId: payload?.streamId, offsetSeconds: point.offsetSeconds,
-          ...(delta === undefined ? {} : { vodOriginDeltaSeconds: delta }), availability: 'unresolved' }, start, start + window.durationSeconds)
+        // Kept at the second its bookmark keeps, so My Moments shows one row for both.
+        void observeMomentPlayback(getPrimaryVideo(), jumpHistoryReference(point, { login, vodId: jumpVodId ?? context.vodId, streamId: payload?.streamId,
+          payloadVodId: payload?.vodId, payloadVodOriginDeltaSeconds: payload?.vodOriginDeltaSeconds }), start, start + window.durationSeconds)
       }
       if (action.kind === 'seek-vod') {
         const result = await seekPlaybackOffsetVerified(getPrimaryVideo(), action.offsetSeconds, { isLive: false })
@@ -1768,7 +1766,7 @@ function OverlayMain({
 
       if (action.kind === 'open-vod-tab') {
         // The new tab's panel locks this moment (board E).
-        void rememberMomentArrival({ vodId: action.vodId, offsetSeconds: reactionAnalyticalOffset(point), source: 'panel',
+        void rememberMomentArrival({ vodId: action.vodId, offsetSeconds: keptMomentSecond(point), source: 'panel',
           login, streamId: payload?.streamId, title: point.reasonLabel })
         if (payload?.streamId) {
           void rememberVodAnalyticsBridge({

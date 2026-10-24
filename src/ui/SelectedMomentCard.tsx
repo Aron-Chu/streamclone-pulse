@@ -5,6 +5,7 @@ import { gameAtOffset, momentPictureView } from './momentPicture.ts'
 import { formatSelectedMomentActivity } from './momentActivity.ts'
 import { momentReasonLabelStyle } from './momentReasonStyles.ts'
 import { liveHeatPointKey } from './mostReacted.ts'
+import { keptMomentSecond } from './keptMoment.ts'
 
 export interface SelectedMomentCardProps {
   point: LiveHeatPoint
@@ -55,7 +56,7 @@ export function SelectedMomentCard({
       ariaLabel={`Selected moment at ${offsetLabel}${clock.approximate ? ', start of minute bucket' : ''}`}
       picture={momentPictureView('card', point)}
       game={gameAtOffset(games, reactionAnalyticalOffset(point))}
-      bookmark={{ kind: 'moment', offsetSeconds: reactionAnalyticalOffset(point), label }}
+      bookmark={{ kind: 'moment', offsetSeconds: keptMomentSecond(point), label }}
     />
   )
 }
