@@ -351,6 +351,43 @@ describe('Exact VOD frames', () => {
   const FRAME = { image: 'data:image/jpeg;base64,/9j/2Q==', width: 640, height: 360, at: 1549 }
   const frameAsks = (id: string) => sendMessage.mock.calls.filter(([message]) => message.vodId === id && message.action === 'vodFrame')
 
+  it('fills an already empty ordinary row when its card reads the exact frame, without another frame request', async () => {
+    const id = '2905053870'
+    const at: MomentPictureAt = { key: null, vodId: id, vodOriginDeltaSeconds: 1500 }
+    vodReplies.set(id, { sheets: [], cols: 0, rows: 0, count: 0, interval: 0, recording: true })
+    frameReplies.set(id, FRAME)
+    const { host, list } = thumbHost()
+    const { host: otherSecond } = thumbHost()
+    const unmountRow = api.mount(host, THUMB, at)
+    const unmountOther = api.mount(otherSecond, { ...THUMB, peak: THUMB.peak + 60 }, at)
+    await settle()
+    expect(host.hasAttribute('data-has')).toBe(false)
+    expect(frameAsks(id)).toHaveLength(0)
+
+    const card = cardHost()
+    const unmountCard = api.mount(card, CARD, at)
+    await settle()
+    const url = `blob:pulse-frame-${made}`
+    for (const image of images.filter(image => image.getAttribute('src') === url)) image.dispatchEvent(new Event('load'))
+    await settle()
+    expect(card.querySelector('.pmf-chip')!.textContent).toBe('Twitch VOD frame')
+    expect(host.querySelector('img')?.getAttribute('src')).toBe(url)
+    expect(host.hasAttribute('data-has')).toBe(true)
+    expect(list.hasAttribute('data-pmf-pictures')).toBe(true)
+    expect(otherSecond.hasAttribute('data-has')).toBe(false)
+    expect(frameAsks(id)).toEqual([[{ type: 'MOMENT_PICTURE', action: 'vodFrame', vodId: id, seconds: 1549, height: 360 }]])
+
+    const { host: later } = thumbHost()
+    const unmountLater = api.mount(later, THUMB, at)
+    await load(url)
+    expect(later.querySelector('img')?.getAttribute('src')).toBe(url)
+    expect(frameAsks(id)).toHaveLength(1)
+    unmountLater()
+    unmountCard()
+    unmountOther()
+    unmountRow()
+  })
+
   it('shows the exact frame on a card, and a small one on a row that asks for it', async () => {
     const id = '2905053850'
     const at: MomentPictureAt = { ...AT, vodId: id, vodOriginDeltaSeconds: 1500 }
@@ -358,7 +395,8 @@ describe('Exact VOD frames', () => {
     frameReplies.set(id, FRAME)
     const card = cardHost()
     const unmount = api.mount(card, CARD, at)
-    await load(`blob:pulse-frame-${made + 1}`)
+    const cardUrl = `blob:pulse-frame-${made + 1}`
+    await load(cardUrl)
     expect(card.querySelector('.pmf-chip')!.textContent).toBe('Twitch VOD frame')
     expect(card.querySelector('.pmf-pic')!.getAttribute('aria-label')).toBe('Picture at 00:50:49: Twitch VOD frame')
     // Stream second 3049 is VOD second 1549.
@@ -372,15 +410,95 @@ describe('Exact VOD frames', () => {
     expect(frameAsks(id)[1]).toEqual([{ type: 'MOMENT_PICTURE', action: 'vodFrame', vodId: id, seconds: 1549, height: 160 }])
     unmountRow()
 
-    // A row that doesn't ask keeps the VOD tile, and a card opened again reuses its frame.
+    // An ordinary row reuses the card's larger frame without asking for one of its own.
     const { host: plain } = thumbHost()
     const unmountPlain = api.mount(plain, THUMB, at)
-    await load(SHEET(2))
+    await load(cardUrl)
+    expect(plain.querySelector('img')!.getAttribute('src')).toBe(cardUrl)
     const again = api.mount(card, CARD, at)
-    await load(`blob:pulse-frame-${made}`)
+    await load(cardUrl)
     expect(frameAsks(id)).toHaveLength(2)
     unmountPlain()
     again()
+  })
+
+  it('drops a shared row frame on VOD release and ignores a late image load after pictures are disabled', async () => {
+    const [first, second] = ['2905053871', '2905053872']
+    const at: MomentPictureAt = { key: null, vodId: first }
+    frameReplies.set(first, FRAME)
+    frameReplies.set(second, FRAME)
+    const card = cardHost()
+    const unmountCard = api.mount(card, CARD, at)
+    const firstUrl = `blob:pulse-frame-${made + 1}`
+    await load(firstUrl)
+    const { host } = thumbHost()
+    const unmountRow = api.mount(host, THUMB, at)
+    await load(firstUrl)
+    expect(host.hasAttribute('data-has')).toBe(true)
+    unmountCard()
+
+    // A different VOD releases the old object URL and its mounted row.
+    const next = api.mount(card, CARD, { key: null, vodId: second })
+    await settle()
+    expect(revokeObjectURL).toHaveBeenCalledWith(firstUrl)
+    expect(host.hasAttribute('data-has')).toBe(false)
+    expect(host.querySelector('img')).toBeNull()
+    const secondUrl = `blob:pulse-frame-${made}`
+    const { host: secondRow } = thumbHost()
+    const unmountSecond = api.mount(secondRow, THUMB, { key: null, vodId: second })
+    await settle()
+    const waiting = requested(secondUrl)!
+    expect(waiting).toBeDefined()
+
+    setPictures(false)
+    waiting.dispatchEvent(new Event('load'))
+    await settle()
+    expect(secondRow.querySelector('img')).toBeNull()
+    expect(revokeObjectURL).toHaveBeenCalledWith(secondUrl)
+    setPictures(true)
+    await settle()
+    expect(secondRow.querySelector('img')).toBeNull()
+    expect(frameAsks(first)).toHaveLength(1)
+    expect(frameAsks(second)).toHaveLength(1)
+    unmountSecond()
+    next()
+    unmountRow()
+  })
+
+  it('uses the kept small frame when a larger pending frame fails, without asking for another', async () => {
+    const id = '2905053873'
+    const at: MomentPictureAt = { key: null, vodId: id }
+    frameReplies.set(id, FRAME)
+    const { host: exact } = thumbHost()
+    const unmountExact = api.mount(exact, { ...THUMB, exact: true }, at)
+    const smallUrl = `blob:pulse-frame-${made + 1}`
+    await load(smallUrl)
+    unmountExact()
+
+    const reply = sendMessage.getMockImplementation()!
+    let land: (frame: Awaited<ReturnType<typeof reply>>) => void = () => undefined
+    const pending = new Promise<Awaited<ReturnType<typeof reply>>>(resolve => { land = resolve })
+    sendMessage.mockImplementation(message => message.action === 'vodFrame' ? pending : reply(message))
+    const unmountCard = api.mount(cardHost(), CARD, at)
+    const { host } = thumbHost()
+    const unmountRow = api.mount(host, THUMB, at)
+    try {
+      await settle()
+      expect(frameAsks(id)).toEqual([
+        [{ type: 'MOMENT_PICTURE', action: 'vodFrame', vodId: id, seconds: THUMB.peak, height: 160 }],
+        [{ type: 'MOMENT_PICTURE', action: 'vodFrame', vodId: id, seconds: THUMB.peak, height: 360 }],
+      ])
+      expect(host.hasAttribute('data-has')).toBe(false)
+      land({ type: 'MOMENT_PICTURE', frame: null })
+      await load(smallUrl)
+      expect(host.querySelector('img')?.getAttribute('src')).toBe(smallUrl)
+      expect(host.hasAttribute('data-has')).toBe(true)
+      expect(frameAsks(id)).toHaveLength(2)
+    } finally {
+      sendMessage.mockImplementation(reply)
+      unmountRow()
+      unmountCard()
+    }
   })
 
   it("falls back to the VOD tile when Twitch gives no frame, and asks again next time", async () => {
