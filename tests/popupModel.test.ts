@@ -114,6 +114,14 @@ describe('popup channel summary', () => {
     expect(summary.biggest).toEqual({ label: 'Peak chat', offsetSeconds: 101 * 60 + 50, agoSeconds: 18 * 60 + 10 })
   })
 
+  it('gives a tied score to the earlier peak whatever order the peaks arrive in', () => {
+    const earlier = { offsetSeconds: 60 * 60, score: 55, reasons: [], dominantSignal: 'seventv' }
+    const later = { offsetSeconds: 100 * 60, score: 55, reasons: [], dominantSignal: 'seventv' }
+    for (const peaks of [[earlier, later], [later, earlier]]) {
+      expect(summarizeChannel('fixturechan', livePayload({ peaks }), null, NOW).biggest?.offsetSeconds).toBe(60 * 60)
+    }
+  })
+
   it('summarises a finished stream across its whole length', () => {
     const rollups = Array.from({ length: 96 }, (_, minute) => rollup(minute, minute % 2 ? 10 : 30))
     const summary = summarizeChannel('fixturechan', livePayload({
