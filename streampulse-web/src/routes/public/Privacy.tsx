@@ -40,9 +40,7 @@ export default function Privacy() {
             StreamPulse shows Twitch stream activity using minute-level aggregates from the StreamPulse
             API. The extension and public site are rollup-first: they do not expose raw chat messages or
             chatter identity to users{supporterChatBadgesEnabled() ? PRIVACY_CHATTER_IDENTITY_EXCEPTION : ''}. Extension Twitch sign-in is not available in 0.2.2. When available, the extension uses Twitch sign-in only to confirm your Twitch
-            user ID: when you choose Continue with Twitch, and in one check without a window after a
-            fresh install, which can only sign you back in to a StreamPulse account you already have
-            (see Extensions below). Protect enrollment is not offered in 0.2.2. Earlier beta enrollment
+            user ID, when you choose Continue with Twitch. Protect enrollment is not offered in 0.2.2. Earlier beta enrollment
             used a beta access key once to create a local device credential.
           </p>
           <p className="text-zinc-300">
@@ -94,16 +92,8 @@ export default function Privacy() {
           code, the device label you approve, and a device credential identifier. Approving a device
           does not publish anything about you or start a subscription.
         </p>
-        <p data-testid="privacy-extension-first-install">
-          <strong>One check after a fresh install.</strong> This check is not active in 0.2.2, where
-          extension Twitch sign-in is unavailable. When Continue with Twitch is available, the first time you open the extension's
-          Account &amp; Supporter settings after installing it, the extension checks once with
-          Twitch, without opening a window, whether you've used Continue with Twitch before. If
-          your browser is signed in to Twitch and that Twitch account already has a StreamPulse
-          account, the extension signs back in to it and keeps your Twitch display name and picture
-          for that browser session. Otherwise nothing changes. This check never creates an account,
-          and it doesn't run again after you sign out.
-        </p>
+        {/* 0.2.2 has no extension Twitch sign-in, so it never runs the silent first-install check
+            (src/background/twitchSignIn.ts). Describe that check again when sign-in ships. */}
 
         {/* Seen in chat copy only once VITE_SUPPORTER_CHAT_BADGES is on (launch day). */}
         {supporterChatBadgesEnabled() ? <PrivacySeenInChat /> : null}
@@ -328,7 +318,7 @@ export default function Privacy() {
         <p>
            The extension does not request or transmit Twitch cookies, passwords, Twitch OAuth credentials
            (except the one-time sign-in proof described under Your account, sent only when you choose
-           Continue with Twitch or during the one check after a fresh install, neither available in 0.2.2), raw chat exports, or chatter identities.
+           Continue with Twitch, not available in 0.2.2), raw chat exports, or chatter identities.
            In earlier beta builds, a beta access key is sent only to the hosted enrollment
            endpoint when you explicitly connect Protect; it is discarded after that request and is not stored
            or sent with later requests. Protect enrollment is not offered in 0.2.2. Page-context Twitch requests may
@@ -465,8 +455,8 @@ export default function Privacy() {
           </li>
           <li data-testid="privacy-third-party-twitch">
             <strong>Twitch</strong> — page context and GraphQL used to identify streams and VODs on
-            twitch.tv, and, only when you choose Continue with Twitch or during the extension's one
-            check after a fresh install, Twitch's sign-in service, which confirms your Twitch user ID
+            twitch.tv, and, only when you choose Continue with Twitch, Twitch's sign-in service, which
+            confirms your Twitch user ID
             to StreamPulse. If you disconnect StreamPulse in your Twitch settings, Twitch sends
             StreamPulse a notification with your Twitch user ID, which StreamPulse uses only to sign
             that account out everywhere and does not store.
