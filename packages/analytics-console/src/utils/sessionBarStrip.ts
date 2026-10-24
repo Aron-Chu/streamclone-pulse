@@ -146,13 +146,27 @@ export function momentPlayAt(
 
 const CLOCK: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' }
 
+/** One formatter per zone: building them is the slow part of a strip built on a bar click. */
+const clockFormats = new Map<string, Intl.DateTimeFormat>()
+const zoneFormats = new Map<string, Intl.DateTimeFormat>()
+
+function cachedFormat(cache: Map<string, Intl.DateTimeFormat>, options: Intl.DateTimeFormatOptions, timeZone?: string): Intl.DateTimeFormat {
+  const key = timeZone ?? ''
+  let format = cache.get(key)
+  if (!format) {
+    format = new Intl.DateTimeFormat('en-US', { ...options, timeZone })
+    cache.set(key, format)
+  }
+  return format
+}
+
 function clockText(ms: number, timeZone?: string): string {
-  return new Date(ms).toLocaleTimeString('en-US', { ...CLOCK, timeZone })
+  return cachedFormat(clockFormats, CLOCK, timeZone).format(new Date(ms))
 }
 
 /** "1:22–1:23 PM" (one day period when both ends share it), card-model.js clockRange. */
 export function stripClockRange(a: number, b: number, timeZone?: string): string {
-  const parts = (ms: number) => new Intl.DateTimeFormat('en-US', { ...CLOCK, timeZone }).formatToParts(new Date(ms))
+  const parts = (ms: number) => cachedFormat(clockFormats, CLOCK, timeZone).formatToParts(new Date(ms))
   const fa = parts(a)
   const fb = parts(b)
   const period = (p: Intl.DateTimeFormatPart[]) => p.find((x) => x.type === 'dayPeriod')?.value
@@ -163,7 +177,7 @@ export function stripClockRange(a: number, b: number, timeZone?: string): string
 
 function zoneLabel(ms: number, timeZone?: string): string {
   try {
-    return new Intl.DateTimeFormat('en-US', { timeZoneName: 'short', timeZone }).formatToParts(new Date(ms))
+    return cachedFormat(zoneFormats, { timeZoneName: 'short' }, timeZone).formatToParts(new Date(ms))
       .find((x) => x.type === 'timeZoneName')?.value ?? ''
   } catch {
     return ''
