@@ -58,7 +58,8 @@ interface GqlPageResponse {
 
 /** Self-contained for MAIN world injection — network GQL (may be blocked by ad blockers). */
 export async function gqlDiscoverVodInPage(login: string): Promise<GqlPageResponse> {
-  const clientId = 'kimne78kx3ncx6brgo4genct28h5qlw'
+  // Twitch's public web Client-ID. A literal on purpose: this runs in the MAIN world with no imports.
+  const clientId = 'kimne78kx3ncx6brgo4mv6wki5h1ko'
   const channel = login.trim().toLowerCase()
   const timeoutMs = 10_000
   const maxBytes = 512 * 1024

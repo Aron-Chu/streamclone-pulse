@@ -68,7 +68,7 @@ export function pulseSurfaceStatusLabel(state: PulsePanelSurfaceState): string {
     case 'loading': return 'Loading'
     case 'error': return 'Unavailable'
     case 'identity_mismatch': return 'Stream changed'
-    case 'unsupported': return 'Limited roster'
+    case 'unsupported': return 'Not listed'
     case 'live_tracked': return 'Live chart'
     case 'live_late': return 'Joined late'
     case 'live_untracked': return 'Not tracked'

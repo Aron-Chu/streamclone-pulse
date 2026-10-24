@@ -207,4 +207,8 @@ describe('resolvePulsePanelSurfaceState', () => {
     expect(pulseSurfaceStatusLabel('offline_recap')).toBe('Replay ready')
     expect(pulseSurfaceStatusLabel('error')).toBe('Unavailable')
   })
+
+  it('labels channels off the tracked list in plain words', () => {
+    expect(pulseSurfaceStatusLabel('unsupported')).toBe('Not listed')
+  })
 })
