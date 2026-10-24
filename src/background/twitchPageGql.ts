@@ -8,6 +8,7 @@ import {
 import type { PageVodScrapeResult } from '../shared/vodIdPatterns.ts'
 import { parseVodPictures, type VodPictures } from '../shared/vodPictures.ts'
 import { gqlDiscoverVodInPage, gqlVodPicturesInPage, scrapePageVodState } from './twitchPageInject.ts'
+import { vodFrameInPage, type VodFrame } from './vodFrameInject.ts'
 
 function resultFromPageResponse<T>(
   part: { status: number; json: unknown; error?: string },
@@ -165,6 +166,17 @@ export async function discoverLiveVodIdFromGqlInTab(
   return {
     ...merged,
     streamId: merged.streamId ?? pageScrape?.streamId ?? expected,
+  }
+}
+
+/** One frame of VOD second `seconds`, read in its Twitch tab as Twitch's player reads it; only a JPEG data URL is accepted back. */
+export async function vodFrameInTab(tabId: number, vodId: string, seconds: number, height: 160 | 360): Promise<VodFrame | { error: string } | null> {
+  try {
+    const page = await runInPageAsync(tabId, vodFrameInPage, [vodId, seconds, height])
+    if (!page || 'error' in page) return page
+    return page.image.startsWith('data:image/jpeg;base64,') && page.image.length < 400_000 ? page : { error: 'bad_image' }
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'inject_failed' }
   }
 }
 

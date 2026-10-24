@@ -98,7 +98,7 @@ function onMomentPage(sender: chrome.runtime.MessageSender, moment: PictureMomen
   } catch { return false }
 }
 
-export async function handleMomentPicture(message: Exclude<MomentPictureRequest, { action: 'vod' }>, sender: chrome.runtime.MessageSender,
+export async function handleMomentPicture(message: Exclude<MomentPictureRequest, { action: 'vod' | 'vodFrame' }>, sender: chrome.runtime.MessageSender,
   listed: (scope: string, identity: string, moment: PictureMoment) => Promise<boolean>, deps: PictureDeps = defaults) {
   const tabId = sender.tab?.id ?? -1
   const frameId = sender.frameId ?? 0

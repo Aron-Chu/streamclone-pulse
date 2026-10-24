@@ -7,7 +7,8 @@
  * and leaves an empty element for each picture; the frames script owns the
  * pixels. Frames stay in the tab's memory and are gone when it closes, except
  * the one the worker asks for when a moment is saved or watched. A moment the
- * tab holds no frame of shows Twitch's VOD tile of it, else the backend's
+ * tab holds no frame of shows, in a card or an `exact` row, the exact frame
+ * from the VOD's video; else Twitch's VOD tile of it, else the backend's
  * picture (MomentPictureAt), else a card's stand-in (`art`, `emote`).
  */
 
@@ -26,6 +27,8 @@ export interface MomentPictureView {
    */
   art?: string
   emote?: string
+  /** A row that shows the exact frame from the VOD's video too, as a card always does. */
+  exact?: boolean
 }
 
 /** The stream Pulse shows, so the frames script can ask the backend for a picture it holds no frames of. */

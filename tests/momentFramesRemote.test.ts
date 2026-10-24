@@ -2,6 +2,7 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MomentFramesApi, MomentPictureAt } from '../src/shared/momentFramesContract.ts'
 import type { VodPictures } from '../src/shared/vodPictures.ts'
+import type { VodFrame } from '../src/background/vodFrameInject.ts'
 
 type StorageListener = (changes: Record<string, { newValue?: unknown }>, area: string) => void
 
@@ -12,8 +13,15 @@ const storageListeners: StorageListener[] = []
 let images: HTMLImageElement[] = []
 /** What the worker answers for each VOD the frames script asks about. */
 const vodReplies = new Map<string, VodPictures | null>()
+/** What the worker answers for an exact frame of each VOD. */
+const frameReplies = new Map<string, VodFrame | { error: string }>()
 const sendMessage = vi.fn(async (message: { action?: string; vodId?: string }) =>
-  message.action === 'vod' ? { type: 'MOMENT_PICTURE', vod: vodReplies.get(message.vodId!) ?? null } : {})
+  message.action === 'vod' ? { type: 'MOMENT_PICTURE', vod: vodReplies.get(message.vodId!) ?? null }
+  : message.action === 'vodFrame' ? { type: 'MOMENT_PICTURE', frame: frameReplies.get(message.vodId!) ?? null }
+  : {})
+/** Object URLs of exact frames, made and released. */
+let made = 0
+const revokeObjectURL = vi.fn()
 
 const AT: MomentPictureAt = { api: 'https://api.streampulse.stream/', key: '319006602597', login: 'forsen', vodId: '2905053845' }
 const PICTURE = 'https://api.streampulse.stream/v1/analytics/moments/picture?stream=319006602597&t=3049&login=forsen&vod=2905053845'
@@ -29,6 +37,7 @@ beforeAll(async () => {
     runtime: { onMessage: { addListener: () => undefined }, sendMessage },
   })
   vi.stubGlobal('matchMedia', () => ({ matches: false }))
+  Object.assign(URL, { createObjectURL: () => `blob:pulse-frame-${++made}`, revokeObjectURL })
   const create = document.createElement.bind(document)
   vi.spyOn(document, 'createElement').mockImplementation(((tag: string, options?: ElementCreationOptions) => {
     const node = create(tag, options)
@@ -203,7 +212,7 @@ describe('Moment pictures from Twitch, and the card stand-ins', () => {
     await settle()
     for (const image of images.filter(image => image.getAttribute('src') === SHEET(3))) image.dispatchEvent(new Event('load'))
     await settle()
-    expect(sendMessage.mock.calls.filter(([message]) => message.vodId === '2905053846')).toEqual([
+    expect(sendMessage.mock.calls.filter(([message]) => message.vodId === '2905053846' && message.action === 'vod')).toEqual([
       [{ type: 'MOMENT_PICTURE', action: 'vod', vodId: '2905053846' }],
     ])
     const sheet = card.querySelector<HTMLImageElement>('.pmf-tile img')!
@@ -279,5 +288,84 @@ describe('Moment pictures from Twitch, and the card stand-ins', () => {
     expect(images.slice(before).some(image => image.getAttribute('src') === ART)).toBe(false)
     expect(host.hasAttribute('data-has')).toBe(false)
     unmountThumb()
+  })
+})
+
+/** Exact frames from the VOD's own video, read in this tab (src/background/vodFrameInject.ts). */
+describe('Exact VOD frames', () => {
+  const FRAME = { image: 'data:image/jpeg;base64,/9j/2Q==', width: 640, height: 360, at: 1549 }
+  const frameAsks = (id: string) => sendMessage.mock.calls.filter(([message]) => message.vodId === id && message.action === 'vodFrame')
+
+  it('shows the exact frame on a card, and a small one on a row that asks for it', async () => {
+    const id = '2905053850'
+    const at: MomentPictureAt = { ...AT, vodId: id, vodOriginDeltaSeconds: 1500 }
+    vodReplies.set(id, { sheets: [1, 2, 3, 4].map(SHEET), cols: 5, rows: 10, count: 200, interval: 30 })
+    frameReplies.set(id, FRAME)
+    const card = cardHost()
+    const unmount = api.mount(card, CARD, at)
+    await load(`blob:pulse-frame-${made + 1}`)
+    expect(card.querySelector('.pmf-chip')!.textContent).toBe('Twitch VOD frame')
+    expect(card.querySelector('.pmf-pic')!.getAttribute('aria-label')).toBe('Picture at 00:50:49: Twitch VOD frame')
+    // Stream second 3049 is VOD second 1549.
+    expect(frameAsks(id)).toEqual([[{ type: 'MOMENT_PICTURE', action: 'vodFrame', vodId: id, seconds: 1549, height: 360 }]])
+    unmount()
+
+    const { host } = thumbHost()
+    const unmountRow = api.mount(host, { ...THUMB, exact: true }, at)
+    await load(`blob:pulse-frame-${made + 1}`)
+    expect(host.hasAttribute('data-has')).toBe(true)
+    expect(frameAsks(id)[1]).toEqual([{ type: 'MOMENT_PICTURE', action: 'vodFrame', vodId: id, seconds: 1549, height: 160 }])
+    unmountRow()
+
+    // A row that doesn't ask keeps the VOD tile, and a card opened again reuses its frame.
+    const { host: plain } = thumbHost()
+    const unmountPlain = api.mount(plain, THUMB, at)
+    await load(SHEET(2))
+    const again = api.mount(card, CARD, at)
+    await load(`blob:pulse-frame-${made}`)
+    expect(frameAsks(id)).toHaveLength(2)
+    unmountPlain()
+    again()
+  })
+
+  it("falls back to the VOD tile when Twitch gives no frame, and asks again next time", async () => {
+    const id = '2905053851'
+    const at: MomentPictureAt = { ...AT, vodId: id }
+    vodReplies.set(id, { sheets: [1, 2, 3, 4].map(SHEET), cols: 5, rows: 10, count: 200, interval: 30 })
+    frameReplies.set(id, { error: 'not_recorded_yet' })
+    const card = cardHost()
+    const unmount = api.mount(card, CARD, at)
+    await load(SHEET(3))
+    expect(card.querySelector('.pmf-chip')!.textContent).toBe('Twitch VOD preview')
+    unmount()
+    const again = api.mount(card, CARD, at)
+    await load(SHEET(3))
+    expect(frameAsks(id)).toHaveLength(2)
+    again()
+  })
+
+  it("releases a VOD's frames when another VOD's are asked for, and when Moment pictures is turned off", async () => {
+    const [first, second] = ['2905053852', '2905053853']
+    frameReplies.set(first, FRAME)
+    frameReplies.set(second, FRAME)
+    const card = cardHost()
+    const unmount = api.mount(card, CARD, { ...AT, vodId: first })
+    const firstUrl = `blob:pulse-frame-${made + 1}`
+    await load(firstUrl)
+    unmount()
+    expect(revokeObjectURL).not.toHaveBeenCalledWith(firstUrl)
+
+    const next = api.mount(card, CARD, { ...AT, vodId: second })
+    const secondUrl = `blob:pulse-frame-${made + 1}`
+    await load(secondUrl)
+    expect(revokeObjectURL).toHaveBeenCalledWith(firstUrl)
+    expect(revokeObjectURL).not.toHaveBeenCalledWith(secondUrl)
+
+    setPictures(false)
+    await settle()
+    expect(revokeObjectURL).toHaveBeenCalledWith(secondUrl)
+    expect(card.childElementCount).toBe(0)
+    setPictures(true)
+    next()
   })
 })

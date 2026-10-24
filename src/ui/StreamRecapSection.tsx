@@ -258,6 +258,8 @@ function RecapTopMoments({
               // Picking the moment the card shows again closes the card.
               onSelect={() => (card.point && key === selectedKey ? card.onClear() : onSelect(key))}
               controls={card.point ? card.id : undefined}
+              // The recap's top 3 by reaction show the exact frame from the VOD.
+              exact={items.slice(0, 3).some(item => item.key === key)}
             />
           ))}
         </div>

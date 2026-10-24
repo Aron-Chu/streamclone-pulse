@@ -33,6 +33,8 @@ export interface PulseMomentRowProps {
   onHighlight: (offsetSeconds: number | null) => void
   /** Id of the card above the list that shows the moment a row picks. */
   controls?: string
+  /** The row's picture is the exact frame from the VOD's video, when this tab has no frame of it. */
+  exact?: boolean
 }
 
 export function PulseMomentRow({
@@ -42,6 +44,7 @@ export function PulseMomentRow({
   onSelect,
   onHighlight,
   controls,
+  exact,
 }: PulseMomentRowProps) {
   const clock = momentClockDisplay(point)
   const offsetLabel = clock.text
@@ -50,7 +53,7 @@ export function PulseMomentRow({
   const bookmarks = useMomentBookmarks()
   const saved = !collecting && bookmarks?.canSave === true && bookmarks.savedFor({ kind: 'moment', offsetSeconds: analyticalOffset }) != null
   const ref = useRef<HTMLButtonElement>(null)
-  const thumbRef = useMomentPicture<HTMLSpanElement>(collecting ? undefined : momentPictureView('thumb', point))
+  const thumbRef = useMomentPicture<HTMLSpanElement>(collecting ? undefined : momentPictureView('thumb', point, exact))
   // A row that leaves the list while focused (a poll ranks it past the fold,
   // or the pick it was listed for is cleared) hands focus on to what follows
   // the list, its Show more control, instead of dropping it.

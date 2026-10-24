@@ -9,6 +9,7 @@ import {
   type MomentPictureWant,
 } from '../shared/momentFramesContract.ts'
 import { vodTile, type VodPictures } from '../shared/vodPictures.ts'
+import type { VodFrame } from '../background/vodFrameInject.ts'
 import { MomentFrameStore, nearestFrameIndex, type StoredFrame } from './momentFrameStore.ts'
 
 /**
@@ -22,7 +23,12 @@ import { MomentFrameStore, nearestFrameIndex, type StoredFrame } from './momentF
  * turning "Moment pictures" off in Settings drops them at once. When a moment
  * is saved or watched from here, the worker asks for its one frame and keeps
  * it on this device with the save (src/background/momentPictures.ts).
- * A moment this tab holds no frame of shows Twitch's own VOD tile of it (the
+ * A moment card, and the top three Top Moments rows, that this tab holds no
+ * frame of first show the exact frame of the moment's second, read from the
+ * VOD's own video in this tab (src/background/vodFrameInject.ts), which works
+ * while Twitch is still recording the VOD. Those frames are this tab's object
+ * URLs only: never stored, uploaded, or given to a save. Otherwise a moment
+ * this tab holds no frame of shows Twitch's own VOD tile of it (the
  * scrub sheets Twitch's player shows, src/shared/vodPictures.ts), else the
  * backend's picture of it (GET /v1/analytics/moments/picture: a Twitch clip or
  * VOD preview of that second), else, in a moment card, the game's box art or
@@ -214,6 +220,60 @@ function vod(at?: MomentPictureAt): Promise<VodPictures | null> {
   return found
 }
 
+/** Most exact frames a tab keeps; the oldest goes first. */
+const MAX_EXACT_FRAMES = 24
+
+/**
+ * Exact frames of seconds of `exactVod`, the VOD this tab last asked about, as
+ * object URLs: one ask per second and size, and a failed ask is asked again
+ * next time. Another VOD's ask, switching Moment pictures off, or a minute
+ * with no picture mounted releases them.
+ */
+const exactFrames = new Map<string, Promise<string | null>>()
+let exactVod: string | undefined
+let exactRelease: number | undefined
+
+function releaseExactFrames(): void {
+  for (const found of exactFrames.values()) void found.then(url => url && URL.revokeObjectURL(url))
+  exactFrames.clear()
+}
+
+function vodFrame(at: MomentPictureAt | undefined, seconds: number, height: 160 | 360): Promise<string | null> {
+  const id = (at ?? lastAt)?.vodId
+  if (!id || !enabled || !(seconds >= 0)) return Promise.resolve(null)
+  if (id !== exactVod) {
+    releaseExactFrames()
+    exactVod = id
+  }
+  const second = Math.round(seconds)
+  const key = `${second} ${height}`
+  let found = exactFrames.get(key)
+  if (!found) {
+    const asked: Promise<string | null> = Promise.resolve()
+      .then(() => chrome.runtime.sendMessage({ type: 'MOMENT_PICTURE', action: 'vodFrame', vodId: id, seconds: second, height }))
+      .then(response => {
+        const frame = (response as { frame?: VodFrame | { error: string } | null } | undefined)?.frame
+        // Released or replaced while Twitch was asked: nothing to keep.
+        if (!frame || !('image' in frame) || exactFrames.get(key) !== asked) return null
+        const binary = atob(frame.image.slice(frame.image.indexOf(',') + 1))
+        const bytes = new Uint8Array(binary.length)
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+        return URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }))
+      }, () => null)
+    void asked.then(url => {
+      if (!url && exactFrames.get(key) === asked) exactFrames.delete(key)
+    })
+    exactFrames.set(key, asked)
+    for (const [old, kept] of exactFrames) {
+      if (exactFrames.size <= MAX_EXACT_FRAMES) break
+      exactFrames.delete(old)
+      void kept.then(url => url && URL.revokeObjectURL(url))
+    }
+    found = asked
+  }
+  return found
+}
+
 /** An image of `url` once it has loaded, or null when it fails; one that fails never shows. */
 function loaded(url: string): Promise<HTMLImageElement | null> {
   const image = element('img')
@@ -279,7 +339,14 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
    * game's box art or chat's top emote. Null when there is none.
    */
   const findOther = async (): Promise<HTMLElement | null> => {
-    const pictures = await vod(at)
+    const asked = vod(at)
+    // A card, or a row that asks, first tries the exact frame from the VOD's own video.
+    if (card || view.exact) {
+      const url = await vodFrame(at, view.peak - (at?.vodOriginDeltaSeconds ?? 0), card ? 360 : 160)
+      const exact = url ? await loaded(url) : null
+      if (exact) return framed('Twitch VOD frame', '#22d3ee', exact)
+    }
+    const pictures = await asked
     const tile = pictures && vodTile(pictures, view.peak - (at?.vodOriginDeltaSeconds ?? 0))
     const sheet = tile && await loaded(tile.sheet)
     if (pictures && tile && sheet) {
@@ -434,10 +501,12 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
   render()
   const unsubscribe = store.subscribe(render)
   views.add(render)
+  window.clearTimeout(exactRelease)
   return () => {
     gone = true
     unsubscribe()
     views.delete(render)
+    if (views.size === 0) exactRelease = window.setTimeout(releaseExactFrames, 60_000)
     stopFlip()
     row?.removeEventListener('pointerenter', startFlip)
     row?.removeEventListener('pointerleave', endFlip)
@@ -497,7 +566,10 @@ if (!globalThis.__pulseMomentFrames) {
   chrome.storage?.onChanged?.addListener((changes, area) => {
     if (area !== 'sync' || !(PICTURES_KEY in changes)) return
     enabled = changes[PICTURES_KEY]!.newValue !== false
-    if (!enabled) store.clear()
+    if (!enabled) {
+      store.clear()
+      releaseExactFrames()
+    }
     for (const render of views) render()
   })
   chrome.runtime?.onMessage?.addListener(message => {
