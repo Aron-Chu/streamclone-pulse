@@ -11,6 +11,23 @@ it('preserves a viewer-only measured tail and ignores missing observations', () 
 })
 
 describe('resolveRecapChartPeakOffsets', () => {
+  it('ranks stream-edge moments after the rest', () => {
+    const offsets = resolveRecapChartPeakOffsets(
+      [
+        { offsetSeconds: 40_000, score: 99, reasons: ['chat_spike'], streamEdge: 'closing' },
+        { offsetSeconds: 300, score: 60, reasons: ['chat_spike'] },
+        { offsetSeconds: 6_000, score: 80, reasons: ['chat_spike'] },
+      ],
+      [{ offsetSeconds: 120, score: 99, reasons: ['chat_spike'], dominantSignal: 'chat', streamEdge: 'opening' }],
+      2,
+    )
+    expect(offsets).toEqual([6_000, 300])
+    expect(resolveRecapChartPeakOffsets(undefined, [
+      { offsetSeconds: 120, score: 99, reasons: ['chat_spike'], dominantSignal: 'chat', streamEdge: 'opening' },
+      { offsetSeconds: 900, score: 30, reasons: ['chat_spike'], dominantSignal: 'chat' },
+    ])).toEqual([900, 120])
+  })
+
   it('prefers recap topMoments offsets sorted by score', () => {
     const offsets = resolveRecapChartPeakOffsets(
       [

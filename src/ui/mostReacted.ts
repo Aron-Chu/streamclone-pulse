@@ -1,4 +1,5 @@
 import {
+  compareStreamEdgeLast,
   deriveLiveHeat,
   displayMomentReasonLabel,
   extensionRollupsForDerivation,
@@ -236,7 +237,8 @@ function dedupeLiveMomentPoints(
   completedRollupCount: number,
 ): LiveHeatPoint[] {
   const ranked = [...points].sort(
-    (a, b) => authoritativeReactionScore(b) - authoritativeReactionScore(a)
+    (a, b) => compareStreamEdgeLast(a, b)
+      || authoritativeReactionScore(b) - authoritativeReactionScore(a)
       || b.score - a.score
       || a.offsetSeconds - b.offsetSeconds,
   )
@@ -381,7 +383,8 @@ export function sortLiveHeatPoints(points: LiveHeatPoint[], mode: MomentSortMode
   } else {
     copy.sort(
       (a, b) =>
-        authoritativeReactionScore(b) - authoritativeReactionScore(a)
+        compareStreamEdgeLast(a, b)
+        || authoritativeReactionScore(b) - authoritativeReactionScore(a)
         || reactionRankValue(b) - reactionRankValue(a)
         || b.score - a.score
         || a.offsetSeconds - b.offsetSeconds,

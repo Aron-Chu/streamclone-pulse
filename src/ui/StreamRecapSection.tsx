@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode, RefObject } from 'react'
 import {
+  compareStreamEdgeLast,
   peaksToLiveHeatPoints,
   type LiveHeatPoint,
 } from '@streampulse/pulse-core'
@@ -578,7 +579,7 @@ function OfflineFallbackContent({
   const peakChat = peaks?.peakChatPerMin ?? 0
   const catalog = buildRecapEmoteCatalog(payload)
   const peakPoints = peaksToLiveHeatPoints(
-    [...(payload.peaks ?? [])].sort((a, b) => b.score - a.score).slice(0, RECAP_MOMENTS_MAX_COUNT) as ExtensionPeak[],
+    [...(payload.peaks ?? [])].sort((a, b) => compareStreamEdgeLast(a, b) || b.score - a.score).slice(0, RECAP_MOMENTS_MAX_COUNT) as ExtensionPeak[],
     payload.startedAt,
     catalog,
   )
