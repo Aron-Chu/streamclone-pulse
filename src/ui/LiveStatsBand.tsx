@@ -1498,6 +1498,7 @@ export function LiveStatsBand({
           {inspectorHold.point ? (
             <MomentCardSlot
               exiting={inspectorHold.exiting}
+              momentKey={inspectorHold.point.rollup.offsetSeconds}
               style={styles.chartInspector}
               data-chart-inspector-owner="activity-chart"
               data-chart-inspector-kind={inspectorHold.point.moment ? 'moment' : 'minute'}
