@@ -170,12 +170,17 @@ describe('My Moments frontend', () => {
     document.body.replaceChildren()
     await render(withState('expired'))
     expect(container.textContent).toContain('Your account link expired')
+    expect(container.textContent).not.toContain('No bookmarks yet')
     expect(container.querySelector('a[href="#supporter"]')).toBeTruthy()
 
     await act(async () => root?.unmount())
     document.body.replaceChildren()
     await render(withState('error'))
     expect(container.textContent).toContain('Could not reach StreamPulse')
+    // A failed read: no "change was confirmed" talk, and no empty state claiming
+    // the account has no bookmarks when it could not be asked.
+    expect(container.textContent).toContain('Your account bookmarks could not be loaded')
+    expect(container.textContent).not.toContain('No bookmarks yet')
     // A transport failure is not something connecting an account will fix.
     expect(container.querySelector('a[href="#supporter"]')).toBeNull()
 
@@ -235,6 +240,10 @@ describe('My Moments frontend', () => {
         execute: async command => { commands.push(command); return { ...snapshot, deviceBookmarks: [] } as unknown as LibrarySnapshot }, export: async () => '' }
     }
     await render(repository('error'))
+    // Device saves still list under the notice; the account side says nothing
+    // rather than "No account bookmarks yet".
+    expect(container.querySelectorAll('[data-device-save="true"]')).toHaveLength(2)
+    expect(container.textContent).not.toContain('No account bookmarks yet')
     expect(container.querySelector('button[aria-label^="Add to your account"]')).toBeNull()
     expect([...container.querySelectorAll('button')].some(b => b.textContent === 'Add all to account')).toBe(false)
     await act(async () => root?.unmount()); document.body.replaceChildren()

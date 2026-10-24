@@ -309,8 +309,10 @@ async function importDeviceSaves(scope: string, held: boolean, id?: string): Pro
       if (!hostedId) {
         const created = await createPulseBookmark({ login: b.login, ...(b.streamId ? { streamId: b.streamId } : {}), ...(b.vodId ? { vodId: b.vodId } : {}),
           offsetSeconds: Math.floor(b.offsetSeconds), label: b.label.slice(0, 160), source: 'extension' }, undefined, account)
-        hostedId = typeof created?.id === 'string' && created.id ? created.id : undefined
-        inAccount.set(key, hostedId ?? '')
+        // A 2xx without the new bookmark's id is no receipt: keep the save here.
+        if (typeof created?.id !== 'string' || !created.id) throw new Error('Bookmark not confirmed')
+        hostedId = created.id
+        inAccount.set(key, hostedId)
       }
     } catch (error) {
       if (error instanceof Error && /connection changed/.test(error.message)) throw error
@@ -369,7 +371,11 @@ export function handleMyMoments(message: MyMomentsRequest, sender: chrome.runtim
       const path = new URL(sender.tab?.url ?? 'https://invalid/').pathname.replace(/\/+$/, '').toLowerCase()
       if (path !== `/videos/${ref.vodId}` && path !== `/${ref.channel.toLowerCase()}`) throw new Error('Source changed')
       await assertScope(scope)
-      const saved = await personalTransaction(scope, data => recordWatched(data, { ...ref, id: identity(ref), note: '' }, message.epoch, Date.now()))
+      const at = Date.now()
+      const saved = await personalTransaction(scope, data => recordWatched(data, { ...ref, id: identity(ref), note: '' }, message.epoch, at))
+      // History turned off, or cleared since the jump: nothing joined it, so the
+      // panel must not say "Added to History".
+      if (!saved.history.some(m => m.id === identity(ref) && m.jumpedAt === at)) return { ok: false }
       // History keeps a picture of what was watched, as a save does.
       if (!held) void wantPicture(sender, pictureMoment(ref), scope, identity(ref), { owned: false, waitMs: 60_000 }).catch(() => undefined)
       // An open My Moments page shows it without a reload; with none open, nobody listens.

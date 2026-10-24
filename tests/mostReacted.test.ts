@@ -319,6 +319,48 @@ describe('sortLiveHeatPoints', () => {
   })
 })
 
+describe('tied reaction scores', () => {
+  // zackrawrr, 2026-10-18: the backend re-scores past minutes as the stream
+  // grows, so the 02:02:55 moment drifted between 56 and 55 while the
+  // 05:06:55 one, with twice the emotes, sat at 55.
+  const leader: ExtensionPeak = {
+    offsetSeconds: 7375,
+    score: 56,
+    reactionScore: 56,
+    reasons: ['seventv_spike'],
+    reasonLabel: 'Emote spike',
+    dominantSignal: 'seventv',
+    chatCount: 462,
+    emoteCount: 214,
+  }
+  const tiedLeader: ExtensionPeak = { ...leader, score: 55, reactionScore: 55 }
+  const runnerUp: ExtensionPeak = {
+    offsetSeconds: 18415,
+    score: 55,
+    reactionScore: 55,
+    reasons: ['seventv_spike'],
+    reasonLabel: 'Emote spike',
+    dominantSignal: 'seventv',
+    chatCount: 703,
+    emoteCount: 445,
+  }
+
+  function topMomentOffset(peaks: ExtensionPeak[]): number | undefined {
+    const heat = resolveMostReactedHeat(makePayload({ peaks, currentOffsetSeconds: 19_000 }))
+    return sortLiveHeatPoints(heat.points, 'reaction')[0]?.offsetSeconds
+  }
+
+  it('keeps the #1 moment when its score drifts into a tie', () => {
+    expect(topMomentOffset([leader, runnerUp])).toBe(7375)
+    expect(topMomentOffset([tiedLeader, runnerUp])).toBe(7375)
+  })
+
+  it('picks the same #1 whatever order tied moments arrive in', () => {
+    expect(topMomentOffset([runnerUp, tiedLeader])).toBe(7375)
+    expect(topMomentOffset([tiedLeader, runnerUp])).toBe(7375)
+  })
+})
+
 describe('exact moment identity', () => {
   const points = [
     {
