@@ -38,9 +38,9 @@
 
 /* Session moment rows (SessionMomentRow, sp-session-rows.css): the same one
  * glow, 0.34 s, opacity only, but inset in teal, since the row clips its
- * blurred backdrop (d3-v2 session-original .mpop). The row keeps the
- * `sc-moment-row-selected` hook; its ::after is the backdrop shade there, so
- * the outer amber glow above is switched off for it. */
+ * overflow (d3-v2 session-original .mpop). The row keeps the
+ * `sc-moment-row-selected` hook, so the outer amber glow above is switched
+ * off for it. */
 .ssr-row.sc-moment-row-selected::after {
   inset: 0;
   box-shadow: none;
@@ -82,6 +82,100 @@
   transition: background 0.16s ease, border-color 0.16s ease;
 }
 
+/* ---- The session page answers every click with motion (2026-10-21) ----
+ * Aron: everything should animate rather than appear instantly. Panels drop
+ * in, popovers grow from their control, an opened table drops in, a tab's
+ * panel and the rows "Show N more" reveals fade in (opacity only: the column
+ * fill measures rows with getBoundingClientRect), the Emote overlays chips
+ * follow their panel 18 ms apart and a newly plotted emote's badge pops.
+ * Fill mode `backwards`, so nothing holds a property after it ends.
+ * Presses and hovers: analytics-console.css. The chart's own motion (Expand,
+ * lanes, plotted lines): AnalyticsChart.tsx and sp-chart.css. */
+.sc-reveal,
+[data-chart-data-alternative][open] > :not(summary) {
+  animation: sc-reveal 0.22s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes sc-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+.ssp-tp,
+.ssr-row {
+  animation: sc-fade-in 0.24s ease-out backwards;
+}
+
+@keyframes sc-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.sc-ov-chip {
+  animation: sc-chip-in 0.26s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  animation-delay: calc(min(var(--i, 0), 14) * 18ms);
+}
+
+@keyframes sc-chip-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.96);
+  }
+}
+
+.sc-ov-pop {
+  animation: sc-badge-pop 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+}
+
+@keyframes sc-badge-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+}
+
+/* Show on chart and the info tip open downward, the zoom help upward. */
+.ssc-panel:not([hidden]),
+.ssp-pop {
+  transform-origin: 100% 0;
+  animation: sc-pop 0.18s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+.ssp-pop {
+  transform-origin: 0 0;
+}
+
+.spc-nav__pop:not([hidden]) {
+  transform-origin: 100% 100%;
+  animation: sc-pop-up 0.18s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes sc-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.97);
+  }
+}
+
+@keyframes sc-pop-up {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.97);
+  }
+}
+
+/* Show on chart's chevron turns over while its panel is open. */
+.ssc-chev {
+  transition: rotate 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ssc-qb[aria-expanded='true'] .ssc-chev {
+  rotate: 180deg;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sc-stream-row {
     transition: none !important;
@@ -89,7 +183,20 @@
 
   .sc-moment-row-selected::after,
   .ssr-mpop,
-  .sc-stat-card[data-value-changed='true'] .sc-stat-card__value {
+  .sc-stat-card[data-value-changed='true'] .sc-stat-card__value,
+  .sc-reveal,
+  [data-chart-data-alternative][open] > :not(summary),
+  .ssp-tp,
+  .ssr-row,
+  .sc-ov-chip,
+  .sc-ov-pop,
+  .ssc-panel,
+  .ssp-pop,
+  .spc-nav__pop {
     animation: none !important;
+  }
+
+  .ssc-chev {
+    transition: none;
   }
 }

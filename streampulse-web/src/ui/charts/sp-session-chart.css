@@ -38,6 +38,8 @@
   container: ssc / inline-size;
   position: relative;
   min-width: 0;
+  /* Expand scrolls the part to the window top: 16 px under the sticky 56 px site nav (2026-10-21) */
+  scroll-margin-top: 72px;
   color: var(--sp-text-1);
   font-size: var(--sp-fs-body);
   line-height: 20px;
@@ -493,127 +495,6 @@
   height: 16px;
   margin: 0;
   accent-color: var(--sp-accent);
-}
-
-/* ---- Emotes on chart, the line under the chart (session-original .po-eo, 2026-10-15) ---- */
-
-.ssc-eo {
-  position: relative;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 14px;
-  margin-top: 6px;
-  font-size: var(--sp-fs-label);
-  line-height: 16px;
-}
-
-.ssc-eo-t {
-  color: var(--sp-text-3);
-}
-
-.ssc-eo-tok {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 32px;
-  font-weight: 500;
-  color: var(--sp-text-1);
-}
-
-/* each plotted emote carries its trace colour, a 10 x 2 line */
-.ssc-eo-sw {
-  flex: none;
-  width: 10px;
-  height: 2px;
-  border-radius: 1px;
-  background: var(--c);
-}
-
-.ssc-eo-img {
-  display: block;
-  flex: none;
-  width: 16px;
-  height: 16px;
-  object-fit: contain;
-}
-
-.ssc .ssc-eo-x {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  margin-left: -2px;
-  border-radius: 4px;
-  font-size: 14px;
-  line-height: 1;
-  color: var(--sp-text-3);
-}
-
-/* 44 px hit area on the 20 px remove button */
-.ssc .ssc-eo-x::after {
-  content: '';
-  position: absolute;
-  inset: -12px -6px;
-}
-
-.ssc .ssc-eo-x:hover {
-  background: var(--sp-raised);
-  color: var(--sp-text-1);
-}
-
-.sc-analytics-console .ssc .ssc-eo-add,
-.ssc .ssc-eo-add {
-  gap: 4px;
-  margin-left: -6px;
-  font-size: var(--sp-fs-label);
-}
-
-.ssc .ssc-eo-add[aria-expanded='true'] {
-  background: var(--sp-raised);
-  color: var(--sp-text-1);
-}
-
-.ssc-eo-p {
-  right: auto;
-  width: 260px;
-}
-
-.ssc-eo-l {
-  max-height: 308px;
-  overflow-y: auto;
-}
-
-.ssc-eo-p label {
-  min-height: 36px;
-  gap: 8px;
-}
-
-.ssc-eo-p .ssc-eo-c {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.ssc-eo-n {
-  flex: none;
-  color: var(--sp-text-3);
-  font-variant-numeric: tabular-nums;
-}
-
-.ssc-eo-p label:has(input:disabled) {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.ssc-eo-max {
-  margin: 4px 8px 2px;
-  font-size: var(--sp-fs-label);
-  line-height: 16px;
-  color: var(--sp-text-3);
 }
 
 /* the plotted emote lines (SessionChartLayers sessionOverlaysLayer): solid, no bridge */

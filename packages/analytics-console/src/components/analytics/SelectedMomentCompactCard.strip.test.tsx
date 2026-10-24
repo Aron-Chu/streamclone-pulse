@@ -90,7 +90,7 @@ describe('SelectedMomentCompactCard (bar strip)', () => {
     expect([...container.querySelectorAll('.bkc-el li')].map((li) => [
       li.querySelector('.bkc-en')?.textContent, li.querySelector('.bkc-ec')?.textContent,
     ])).toEqual([['HUH', '56'], ['LOL', '44'], ['LO', '29']])
-    expect(container.querySelector('.bkc-pv .r')?.textContent).toBe('7TV 218·other 32')
+    expect(container.querySelector('.bkc-pv .r')?.textContent).toBe('7TV 218·Twitch, BTTV, FFZ 32')
     // the locked moment is marked
     const row = container.querySelector('[data-strip-moment="3054"]')
     expect(row?.className).toBe('bkc-mr lk')
@@ -106,11 +106,13 @@ describe('SelectedMomentCompactCard (bar strip)', () => {
     expect(getVodStoryboardThumb).toHaveBeenCalledWith(VOD, 3079)
   })
 
-  it('shows the fallback art and the reason when there is no frame, and loads nothing from Twitch before Play', async () => {
+  it('shows a dark box and the reason when there is no frame, and loads nothing from Twitch before Play', async () => {
     const { container } = renderStrip()
     await act(async () => {})
     expect(container.querySelector('.mpl-box')?.className).toBe('mpl-box nofr')
-    expect(container.querySelector('img.mpl-bg')?.getAttribute('src')).toBe(ART)
+    // no blurred game art behind it (2026-10-21); the art stays sharp in the caption
+    expect(container.querySelector('.mpl-box img')).toBeNull()
+    expect(container.querySelector('img.bkc-art')?.getAttribute('src')).toBe(ART)
     expect(container.querySelector('.mpl-note')?.textContent).toContain('No preview frame for this minute.')
     expect(container.querySelector('iframe')).toBeNull()
     expect(container.innerHTML).not.toContain('player.twitch.tv')
@@ -136,7 +138,8 @@ describe('SelectedMomentCompactCard (bar strip)', () => {
     expect(screen.getByRole('button', { name: 'Play from 0:49:49' })).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Open VOD at 0:49:49' })).toBeTruthy()
     expect(document.querySelector('.bkc-mom .r')?.textContent).toBe('none')
-    expect(document.querySelector('.mpl-cap')).toBeNull()
+    // the title says 0:49:54 (stream clock) and Play 0:49:49 (VOD clock): the caption says why
+    expect(document.querySelector('.mpl-cap span[title]')?.textContent).toBe("On the VOD's clock · , 5\u00a0s behind the stream's")
   })
 
   it('offers no Play and no timed link when the VOD alignment is not verified', async () => {

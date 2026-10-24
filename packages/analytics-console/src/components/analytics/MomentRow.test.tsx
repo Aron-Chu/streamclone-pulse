@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   momentRowClock,
@@ -9,7 +9,6 @@ import {
   momentRowTwitchTime,
 } from '../../utils/momentRowDisplay.ts'
 import {
-  MOMENT_ROW_DWELL_MS,
   SessionMomentPlayer,
   SessionMomentRow,
   momentRowVodStart,
@@ -98,14 +97,15 @@ describe('SessionMomentRow', () => {
     expect(row.getAttribute('data-moment-rank')).toBe('1')
     expect(row.getAttribute('aria-pressed')).toBe('false')
     expect(row.hasAttribute('aria-expanded')).toBe(false)
-    expect(row.className).toBe('ssr-row has-art has-bd')
+    expect(row.className).toBe('ssr-row')
     expect(row.querySelector('.ssr-rk')!.textContent).toBe('1')
     expect(row.querySelector('.ssr-off')!.textContent).toBe('0:50:54')
     expect(row.querySelector('.ssr-why.emotes')!.textContent).toBe('Emote spike')
     expect(row.querySelector('.ssr-sc')!.textContent).toBe('reaction score 56 in this stream')
     expect(row.querySelector('.ssr-gm-n')!.textContent).toBe('Grand Theft Auto V')
     expect(row.querySelector('.ssr-gm img')!.getAttribute('src')).toBe(ART)
-    expect(row.querySelector('.ssr-fr-art')!.getAttribute('src')).toBe(ART)
+    // The small cover by the game's name is the row's only picture: no blurred backdrop (2026-10-21).
+    expect([...row.querySelectorAll('img')].filter((img) => img.getAttribute('src') === ART)).toHaveLength(1)
     expect(row.querySelectorAll('.ssr-tok')).toHaveLength(2)
     expect(row.querySelector('.ssr-tok .ssr-tok-n')!.textContent).toBe('56')
     expect(row.querySelector('.ssr-rt')!.textContent).toBe('250 emotes/min')
@@ -116,11 +116,11 @@ describe('SessionMomentRow', () => {
     expect(row.textContent).not.toMatch(/×|usual/)
   })
 
-  it('draws no backdrop without game art, and never a frame', () => {
+  it('draws no game cover without game art, and never a frame', () => {
     render(<SessionMomentRow model={model({ game: { name: 'Just Chatting', artUrls: [] } })} artUrl={null} lockMode="strip" locked={false} showPlay={false} onActivate={vi.fn()} />)
     const row = screen.getByRole('button')
     expect(row.className).toBe('ssr-row')
-    expect(row.querySelector('img.ssr-fr-art')).toBeNull()
+    expect(row.querySelector('.ssr-gm img')).toBeNull()
     expect(row.querySelector('[data-moment-row-play]')).toBeNull()
     expect(row.querySelector('.ssr-gm-n')!.textContent).toBe('Just Chatting')
   })
@@ -132,19 +132,14 @@ describe('SessionMomentRow', () => {
     expect(document.querySelector('.ssr-tok')).toBeNull()
   })
 
-  it('lifts the backdrop after a 350 ms hover dwell, not on touch', () => {
-    vi.useFakeTimers()
+  it('reports hover for the chart pin, with no backdrop to lift', () => {
     const onHover = vi.fn()
     render(<SessionMomentRow model={model()} artUrl={ART} lockMode="strip" locked={false} showPlay onActivate={vi.fn()} onHover={onHover} />)
     const row = screen.getByRole('button')
     fireEvent.pointerEnter(row, { pointerType: 'mouse' })
     expect(onHover).toHaveBeenLastCalledWith(true)
-    act(() => { vi.advanceTimersByTime(MOMENT_ROW_DWELL_MS - 1) })
-    expect(row.classList.contains('lit')).toBe(false)
-    act(() => { vi.advanceTimersByTime(1) })
-    expect(row.classList.contains('lit')).toBe(true)
+    expect(row.className).toBe('ssr-row')
     fireEvent.pointerLeave(row, { pointerType: 'mouse' })
-    expect(row.classList.contains('lit')).toBe(false)
     expect(onHover).toHaveBeenLastCalledWith(false)
   })
 

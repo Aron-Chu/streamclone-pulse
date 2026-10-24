@@ -12,6 +12,7 @@ import {
   openEmotesRail,
   plotSessionEmotes,
   SIX_SESSION_EMOTE_KEYS,
+  unplotSessionEmotes,
 } from './helpers/portalAcceptanceHarness'
 
 test.describe('portal emote plotting (mocked)', () => {
@@ -58,8 +59,8 @@ test.describe('portal emote plotting (mocked)', () => {
     const bttvCdn = page.locator('img[src*="frankerfacez.com/emote/bt1"], img[src*="cdn.frankerfacez.com"]')
     expect((await bttvCdn.count()) + (await proxyOnly.count())).toBeGreaterThan(0)
 
-    // The chart starts with the session leader plotted. Add five more from
-    // "Emotes on chart" and assert that each selected emote produces a real trace.
+    // The chart starts with the session leader plotted. Add five more from the
+    // "Emote overlays" panel and assert that each selected emote produces a real trace.
     await assertEmotePlotLines(page, 1)
     // The 7TV and BTTV Clap are two emotes: each plots its own trace.
     await plotSessionEmotes(page, ['7tv:Clap:Clap', 'bttv:Clap:Clap'])
@@ -67,7 +68,7 @@ test.describe('portal emote plotting (mocked)', () => {
     for (const key of ['7tv:Clap:Clap', 'bttv:Clap:Clap']) {
       await expect(page.locator(`[data-bench-plot] path[data-lane-line="${key}"]`)).toHaveCount(1)
     }
-    await page.locator('[data-session-emote-remove="bttv:Clap:Clap"]').click()
+    await unplotSessionEmotes(page, ['bttv:Clap:Clap'])
     await assertEmotePlotLines(page, 2)
     await plotSessionEmotes(page, SIX_SESSION_EMOTE_KEYS)
     await assertEmotePlotLines(page, 6)

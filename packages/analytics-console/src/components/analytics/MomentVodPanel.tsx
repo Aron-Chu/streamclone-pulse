@@ -1,6 +1,7 @@
 /**
  * The VOD panel of the bar strip and the moment player (mockup `.mpl`): the
- * preview tile, Play, and the "On the VOD's clock" caption.
+ * preview tile, Play, and the "On the VOD's clock" caption (a moment's lead-in, or
+ * how far a bar's VOD clock sits from the stream clock in the strip's title).
  *
  * Nothing loads from Twitch until the viewer presses Play. Play swaps Twitch's
  * player into the box at `playAt` (seconds on the VOD's clock) with
@@ -31,7 +32,16 @@ export function vodClockNote(alignSeconds: number, leadSeconds: number): string 
   const why = al < 0
     ? ` (the VOD starts ${-al} s after the stream went live)`
     : al > 0 ? ` (the VOD starts ${al} s before the stream clock's 0:00:00)` : ''
-  return `VOD time = stream time ${shift} s${why}, then ${leadSeconds} s earlier so the moment plays in`
+  const lead = leadSeconds > 0 ? `, then ${leadSeconds} s earlier so the moment plays in` : ''
+  return `VOD time = stream time ${shift} s${why}${lead}`
+}
+
+/** The caption's text after "On the VOD's clock": a moment's lead-in, else how far the two clocks sit apart. */
+export function vodClockCaption(alignSeconds: number, leadSeconds: number): string {
+  // a no-break space keeps the number with its unit when the caption wraps
+  if (leadSeconds > 0) return `${leadSeconds}\u00a0s before the moment`
+  const al = Math.round(alignSeconds)
+  return `${Math.abs(al)}\u00a0s ${al < 0 ? 'behind' : 'ahead of'} the stream's`
 }
 
 export interface MomentVodPanelProps extends Omit<MomentPreviewTileProps, 'player' | 'onPlay' | 'playLabel'> {
@@ -40,7 +50,10 @@ export interface MomentVodPanelProps extends Omit<MomentPreviewTileProps, 'playe
   playAt: number | null
   /** e.g. "Play VOD from" (a moment, with lead-in) or "Play from" (a bar). */
   playVerb: string
-  /** The lead-in caption under the box, for a moment: "On the VOD's clock · 10 s before the moment". */
+  /**
+   * The caption under the box: "On the VOD's clock · 10 s before the moment" for a moment, or
+   * "On the VOD's clock · 6 s behind the stream's" for a bar (leadSeconds 0).
+   */
   leadCaption?: { leadSeconds: number; alignSeconds: number } | null
   /** Test hook: the page's hostname. */
   hostname?: () => string
@@ -110,7 +123,7 @@ export function MomentVodPanel({
         <p className="mpl-cap">
           <span title={vodClockNote(leadCaption.alignSeconds, leadCaption.leadSeconds)}>
             On the VOD&apos;s clock<span aria-hidden="true"> · </span><span className="sr-only">, </span>
-            {leadCaption.leadSeconds} s before the moment
+            {vodClockCaption(leadCaption.alignSeconds, leadCaption.leadSeconds)}
           </span>
         </p>
       ) : null}

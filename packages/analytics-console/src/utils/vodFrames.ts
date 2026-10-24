@@ -15,7 +15,7 @@
  * The web client asks the backend's `GET /v1/analytics/vods/{id}/storyboard-thumb`.
  * Today the hosted backend answers 404 `no_storyboard` for every VOD (F6: it
  * asks Twitch for a field that doesn't exist), so every caller shows the
- * fallback (blurred game art and the reason). Never a stand-in or a live frame.
+ * fallback (the game's box art, sharp, and the reason). Never a stand-in or a live frame.
  */
 import { useEffect, useState, type CSSProperties } from 'react'
 import { getConfiguredAnalyticsApi } from '../configureApi.ts'
