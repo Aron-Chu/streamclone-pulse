@@ -208,7 +208,7 @@ describe('Top Moments card (live panel)', () => {
     // whatever the moment shows.
     expect(card.nextElementSibling).toBe(second.parentElement)
     expect(card.querySelector('.pulse-moment-slot')).not.toBeNull()
-    expect(card.querySelector<HTMLElement>('.pulse-moment-slot-inner > div > div')!.style.minHeight).toBe(`${MOMENT_CARD_HEIGHT}px`)
+    expect(card.querySelector<HTMLElement>('[data-moment-reserve]')!.style.minHeight).toBe(`${MOMENT_CARD_HEIGHT}px`)
     // No card opens in the list: the rows are the same buttons.
     expect(rows(host)).toEqual(list)
     expect(second.parentElement!.querySelectorAll('[data-moment-inspector-card]')).toHaveLength(0)

@@ -297,7 +297,7 @@ function RecapChartCard({ arrivalNote, hold, backendUrl, games, onJump, onAnalyt
     <div>
       {arrivalNote}
       {hold.point ? (
-        <MomentCardSlot exiting={hold.exiting} data-chart-inspector-exiting={hold.exiting ? 'true' : undefined}>
+        <MomentCardSlot exiting={hold.exiting} momentKey={hold.point.minuteTs} data-chart-inspector-exiting={hold.exiting ? 'true' : undefined}>
           <div style={styles.slotSpacing}>
             <SelectedMomentCard
               point={hold.point}
