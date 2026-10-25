@@ -114,8 +114,11 @@ function mount(host: HTMLElement, model: CatchMeUpModel, actions: CatchMeUpActio
   const top = best[0]
   const frames = globalThis.__pulseMomentFrames
   const pictures: Array<() => void> = []
+  // Pictures mount once the block is in place: a thumbnail then finds its
+  // list, and the frames script styles the panel rather than the page.
+  const placed: Array<[HTMLElement, MomentPictureView]> = []
   const picture = (target: HTMLElement, view: MomentPictureView): void => {
-    if (frames) pictures.push(frames.mount(target, view))
+    placed.push([target, view])
   }
   const remove = (): void => {
     pictures.splice(0).forEach(unmount => unmount())
@@ -225,6 +228,7 @@ function mount(host: HTMLElement, model: CatchMeUpModel, actions: CatchMeUpActio
   if (stats.childElementCount > 0) block.append(stats)
 
   host.replaceChildren(block)
+  if (frames) for (const [target, view] of placed) pictures.push(frames.mount(target, view))
   return {
     select: index => minis.forEach((mini, offset) => mini.setAttribute('aria-pressed', String(offset + 1 === index))),
     remove,
