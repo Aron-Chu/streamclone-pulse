@@ -236,7 +236,10 @@ describe('Catch me up block', () => {
   it('draws a picture only through the frames script, and removes it with the block', () => {
     const element = host()
     const unmount = vi.fn()
+    // Where each picture sat when the frames script got it: in the page, and in a list.
+    const placed: Array<[boolean, boolean]> = []
     const mount = vi.fn((target: HTMLElement) => {
+      placed.push([target.isConnected, target.closest('[data-pmf-list]') != null])
       target.append(document.createElement('img'))
       return unmount
     })
@@ -245,6 +248,8 @@ describe('Catch me up block', () => {
       const block = globalThis.__pulseCatchMeUp!.mount(element, model(), { jump: vi.fn(), pick: vi.fn() })
       expect(mount.mock.calls.map(([, view]) => view.kind)).toEqual(['card', 'thumb', 'thumb'])
       expect(element.querySelector('.pcu-pair')!.hasAttribute('data-pmf-list')).toBe(true)
+      // The thumbnails reach the script inside their list, so it can show them.
+      expect(placed).toEqual([[true, false], [true, true], [true, true]])
       block.remove()
       expect(unmount).toHaveBeenCalledTimes(3)
     } finally {

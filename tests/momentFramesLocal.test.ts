@@ -234,6 +234,52 @@ describe('Moment pictures from this tab’s captures', () => {
     expect(shown(host)).not.toBe(old)
   })
 
+  it('shows a Catch me up thumbnail once its moment has a frame, styled inside the panel', async () => {
+    await import('../src/content/catchMeUp.ts')
+    const panel = document.createElement('div')
+    document.body.append(panel)
+    const shadow = panel.attachShadow({ mode: 'open' })
+    const host = document.createElement('div')
+    shadow.append(host)
+    const pageStyles = document.head.querySelectorAll('style').length
+    const point = (offsetSeconds: number) => ({
+      minuteTs: '2026-06-11T12:00:00.000Z',
+      offsetSeconds,
+      score: 90,
+      estimated: false,
+      reason: 'chat_spike' as const,
+      reasonLabel: 'Chat spike',
+      chatCount: 212,
+      emoteCount: 0,
+      topEmotes: [],
+      collecting: false,
+    })
+    const moment = (offset: number, view: MomentPictureView) => ({ point: point(offset), card: { ...view, kind: 'card' as const }, thumb: { ...view, kind: 'thumb' as const } })
+    const block = globalThis.__pulseCatchMeUp!.mount(host, {
+      moments: [moment(9_660, { kind: 'card', from: 9_640, to: 9_690, peak: 9_657 }), moment(3_049, THUMB), moment(4_049, OTHER)],
+      rollups: [],
+      durationSeconds: 3 * 3600,
+      peakChatPerMin: 480,
+      momentCount: 20,
+      namesGame: false,
+      backendUrl: 'https://api.example.test',
+      vodPage: true,
+    }, { jump: vi.fn(), pick: vi.fn() })
+    mounted.push(block.remove)
+    const pair = host.querySelector<HTMLElement>('.pcu-pair')!
+    const [played, unplayed] = [...pair.querySelectorAll<HTMLElement>('.pmf-thumb')]
+    expect(pair.hasAttribute('data-pmf-pictures')).toBe(false)
+
+    capture(3049)
+    expect(shown(played!)).toMatch(/^blob:/)
+    expect(shown(unplayed!)).toBeNull()
+    // The list shows its thumbnails, as Top Moments does.
+    expect(pair.hasAttribute('data-pmf-pictures')).toBe(true)
+    // The picture styles land in the panel, never in Twitch's page.
+    expect(document.head.querySelectorAll('style')).toHaveLength(pageStyles)
+    expect([...shadow.querySelectorAll('style')].some(style => style.textContent?.includes('[data-pmf-pictures] .pmf-thumb'))).toBe(true)
+  })
+
   it('draws only this tab’s captures: no worker message, no network request, no other picture source', () => {
     const { host } = thumbHost()
     mount(host, THUMB)
