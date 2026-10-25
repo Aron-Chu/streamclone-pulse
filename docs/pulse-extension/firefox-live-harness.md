@@ -136,6 +136,16 @@ method for any later live readings.
 Existing run 7 Firefox rows and D1 store skips remain unchanged by setup. Formal
 retesting is a separate recorded run against its identified artifact.
 
+## On the 0.2.2 release branch
+
+0.2.2 keeps Moment pictures to frames its own tab played
+(`src/content/momentFrames.ts`). It has no exact VOD frames and no Twitch picture
+lookups, which arrive in 0.2.3. The `pictures-live-row` and `pictures-vod` extras
+wait for a "Twitch VOD frame" card and for pictures of moments the tab never
+played, so a 0.2.2 build is not expected to pass them. Record them as not
+applicable to 0.2.2, never as PASS. Judge 0.2.2 pictures by
+`tests/momentFramesLocal.test.ts` and an observed check of frames the tab played.
+
 ## Official references
 
 - [Firefox functionality in Selenium](https://www.selenium.dev/documentation/webdriver/browsers/firefox/)
