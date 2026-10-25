@@ -37,7 +37,11 @@ test('account SPA and same-origin API use the actual Vite routing configuration'
         host: '127.0.0.1', middlewareMode: true,
         // Only replace the destination; retain the real proxy's routing/header policy.
         proxy: { '/v1': { target: `http://127.0.0.1:${upstream.address().port}` } },
+        // Only the SPA fallback and /v1 proxy are under test: skip the dependency scan and
+        // the background crawl of /src/main.tsx that every HTML response would start.
+        preTransformRequests: false,
       },
+      optimizeDeps: { noDiscovery: true },
     })
     assert.equal(vite.config.server.proxy['/v1'].changeOrigin, false)
     testServer = createHttpServer(vite.middlewares)
