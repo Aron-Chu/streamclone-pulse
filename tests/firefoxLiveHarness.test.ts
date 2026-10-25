@@ -9,6 +9,18 @@ const temporary: string[] = []
 const manifest = JSON.parse(readFileSync(new URL('../manifests/firefox.json', import.meta.url), 'utf8'))
 const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
 
+it('requires Node 24 at the real browser boundary before loading Selenium or launching Firefox', async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(process.versions, 'node')!
+  vi.stubEnv('MOZ_REMOTE_ALLOW_SYSTEM_ACCESS', '0')
+  try {
+    Object.defineProperty(process.versions, 'node', { ...descriptor, value: '22.0.0' })
+    await expect(createFirefoxDriver({ firefoxPath: 'not-launched.exe' })).rejects.toThrow('Node 24 or newer for a real Firefox session')
+  } finally {
+    Object.defineProperty(process.versions, 'node', descriptor)
+    vi.unstubAllEnvs()
+  }
+})
+
 it('refuses an inherited privileged Firefox environment before launching a browser', async () => {
   vi.stubEnv('MOZ_REMOTE_ALLOW_SYSTEM_ACCESS', '1')
   try {

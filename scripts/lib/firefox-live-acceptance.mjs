@@ -206,7 +206,6 @@ export async function runFirefoxAcceptance(config, dependencies = {}) {
   try {
     config.url = validateAcceptanceUrl(config.url ?? 'https://www.twitch.tv/caedrel')
     config.vodUrl = validateAcceptanceUrl(config.vodUrl ?? 'https://www.twitch.tv/videos/2902672687', 'vod')
-    ensure(Number(process.versions.node.split('.')[0]) >= 24, 'Node24 or newer is required')
     const artifact = await deps.verifyArtifact(config.artifactPath)
     result.artifact = { zipPath: artifact.zipPath, sha256: artifact.actualSha256, buildId: artifact.buildId, target: artifact.target,
       addonId: artifact.addonId, sourceRevision: artifact.sourceRevision, declaredPermissions: artifact.manifest.permissions, declaredHosts: artifact.manifest.host_permissions }

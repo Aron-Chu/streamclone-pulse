@@ -20,6 +20,10 @@ installed desktop Firefox. Use a separate worktree of the intended extension
 commit. `npm ci` supplies the existing Selenium, yauzl and yazl dependencies if
 dependencies are not already present.
 
+The browser-free lifecycle unit tests use injected drivers and run on the
+repository's Node.js 22 CI baseline. The Node.js 24 requirement is enforced at
+the real Firefox driver boundary before Selenium or the browser is launched.
+
 Run from that worktree in PowerShell, choosing new output directories:
 
 ```powershell

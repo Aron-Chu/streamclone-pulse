@@ -81,6 +81,7 @@ export async function verifyFirefoxArtifact(artifactPath) {
 
 export async function createFirefoxDriver(config) {
   ensure(!process.env.MOZ_REMOTE_ALLOW_SYSTEM_ACCESS || process.env.MOZ_REMOTE_ALLOW_SYSTEM_ACCESS === '0', 'Privileged Firefox system-access environment is not supported by this harness')
+  ensure(Number(process.versions.node.split('.')[0]) >= 24, 'This harness requires Node 24 or newer for a real Firefox session')
   process.env.SE_AVOID_STATS = 'true'
   process.env.SE_AVOID_BROWSER_DOWNLOAD = 'true'
   const [{ Builder }, { default: firefox }] = await Promise.all([import('selenium-webdriver'), import('selenium-webdriver/firefox.js')])
@@ -195,7 +196,6 @@ export async function runFirefoxLiveHarness(config, dependencies = {}) {
   let failed = false
   try {
     ensure(config.mode === 'setup' || config.mode === 'live', 'Mode must be setup or live')
-    ensure(Number(process.versions.node.split('.')[0]) >= 24, 'This harness requires Node 24 or newer')
     ensure((await stat(config.firefoxPath)).isFile(), 'Installed Firefox binary is not a file')
     const artifact = await verifyFirefoxArtifact(config.artifactPath)
     result.artifact = { verificationPath: path.resolve(config.artifactPath), zipPath: artifact.zipPath, sha256: artifact.actualSha256,
