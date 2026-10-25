@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { readFile, stat, mkdir, writeFile } from 'node:fs/promises'
+import { readFile, stat, open, mkdir, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { createRequire } from 'node:module'
 import path from 'node:path'
@@ -71,8 +71,14 @@ export async function verifyFirefoxArtifact(artifactPath) {
   if (artifact.provenance) ensure(artifact.provenance.packageBuildCommit === artifact.sourceRevision && artifact.provenance.buildId === artifact.buildId, 'Provenance identity mismatch')
   ensure(typeof artifact.zipPath === 'string' && path.isAbsolute(artifact.zipPath) && artifact.zipPath.endsWith('.zip'), 'ZIP path must be an absolute .zip path')
   ensure(/^[a-f0-9]{64}$/i.test(artifact.sha256 ?? ''), 'Missing full ZIP SHA-256')
-  ensure((await stat(artifact.zipPath)).isFile(), 'Artifact ZIP is not a regular file')
-  const bytes = await readFile(artifact.zipPath)
+  const zip = await open(artifact.zipPath, 'r')
+  let bytes
+  try {
+    ensure((await zip.stat()).isFile(), 'Artifact ZIP is not a regular file')
+    bytes = await zip.readFile()
+  } finally {
+    await zip.close()
+  }
   ensure(bytes.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04])), 'Artifact is not a ZIP local-file stream')
   const actualSha256 = hash(bytes)
   ensure(actualSha256 === artifact.sha256.toLowerCase(), 'Artifact ZIP SHA-256 mismatch; prepare/verify it again before testing')
