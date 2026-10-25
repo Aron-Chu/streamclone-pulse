@@ -61,6 +61,14 @@ test.describe('portal emote plotting (mocked)', () => {
     // The chart starts with the session leader plotted. Add five more from
     // "Emotes on chart" and assert that each selected emote produces a real trace.
     await assertEmotePlotLines(page, 1)
+    // The 7TV and BTTV Clap are two emotes: each plots its own trace.
+    await plotSessionEmotes(page, ['7tv:Clap:Clap', 'bttv:Clap:Clap'])
+    await assertEmotePlotLines(page, 3)
+    for (const key of ['7tv:Clap:Clap', 'bttv:Clap:Clap']) {
+      await expect(page.locator(`[data-bench-plot] path[data-lane-line="${key}"]`)).toHaveCount(1)
+    }
+    await page.locator('[data-session-emote-remove="bttv:Clap:Clap"]').click()
+    await assertEmotePlotLines(page, 2)
     await plotSessionEmotes(page, SIX_SESSION_EMOTE_KEYS)
     await assertEmotePlotLines(page, 6)
 

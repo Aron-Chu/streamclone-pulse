@@ -12,6 +12,7 @@ import {
 } from './lib/auth'
 import { initPortalSentry } from './lib/sentry'
 import { PortalErrorBoundary } from './ui/PortalErrorBoundary'
+import { installStaleBuildReload } from './ui/staleBuildReload'
 import { PageMetadata } from './ui/PageMetadata'
 import { RouteScrollManager } from './ui/RouteScrollManager'
 import { shadowStyles } from './ui/theme'
@@ -25,6 +26,8 @@ import { setProductAnalyticsRoute } from './lib/productAnalytics'
 import { routeScrollState } from './lib/routeScroll'
 import { primePublicHub } from './lib/hubEarlyFetch'
 
+// A tab opened before a deploy reloads onto the new build when its next lazy page is gone.
+installStaleBuildReload()
 captureAccountConfirmation()
 captureAccountDeviceCode()
 captureAccountRestore()

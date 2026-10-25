@@ -200,20 +200,17 @@ describe('Supporter legal copy', () => {
     expect(body).toMatch(/Extension session storage \(storage\.session\) — short-lived Pulse and coverage caches for the current\s+browser session and, after the extension signs in with Twitch, your Twitch display name\s+and picture/)
   })
 
-  // Sign-in is unavailable in 0.2.2. The policy also explains the first-install
-  // check for builds where Continue with Twitch is available, including that a
-  // proof can then be sent without a click.
-  it('Privacy qualifies the first-install Twitch check for builds where sign-in is available', () => {
+  // Sign-in is unavailable in 0.2.2, so 0.2.2 never runs the silent first-install
+  // check and the policy doesn't describe it. Sign-in is still stated conditionally.
+  it('Privacy leaves out the first-install Twitch check that 0.2.2 does not run', () => {
     const body = textOf(Privacy, 'privacy-policy')
     expect(body).not.toMatch(/Twitch sign-in only if you choose/)
-    expect(body).not.toMatch(/sent only when you choose\s+Continue with Twitch\)/)
-    expect(body).toMatch(/one check without a window after a\s+fresh install, which can only sign you back in/)
-    const check = screen.getByTestId('privacy-extension-first-install').textContent ?? ''
-    expect(check).toMatch(/This check is not active in 0\.2\.2/)
-    expect(check).toMatch(/When Continue with Twitch is available/)
-    expect(check).toMatch(/checks once with\s+Twitch, without opening a window/)
-    expect(check).toMatch(/This check never creates an account,\s+and it doesn't run again after you sign out/)
-    expect(body).toMatch(/sent only when you choose\s+Continue with Twitch or during the one check after a fresh install/)
+    expect(screen.queryByTestId('privacy-extension-first-install')).toBeNull()
+    expect(body).not.toMatch(/fresh install/)
+    expect(body).toMatch(/Extension Twitch sign-in is not available in 0\.2\.2\. When available, the extension uses Twitch sign-in only to confirm your Twitch\s+user ID, when you choose Continue with Twitch\./)
+    expect(body).toMatch(/sent only when you choose\s+Continue with Twitch, not available in 0\.2\.2\)/)
+    const twitch = screen.getByTestId('privacy-third-party-twitch').textContent ?? ''
+    expect(twitch).toMatch(/only when you choose Continue with Twitch, Twitch's sign-in service/)
   })
 
   it('Privacy describes the server-side extension record and Twitch’s disconnect notification', () => {

@@ -44,9 +44,9 @@ test('VOD bookmark reaches the account library and survives reload without dupli
   await openTwitchVod(vod)
   await waitForPulseRoot(vod)
   const root = vod.locator('#streamclone-pulse-root')
-  // This recap's one moment is Catch me up's #1, which only jumps, so its
-  // minute (00:02) is picked on the chart, the same way after the reload: End
-  // previews the last minute (00:03), ArrowLeft the one before, Enter selects.
+  // This recap's one moment's minute (00:02) is picked on the chart, the same
+  // way after the reload: End previews the last minute (00:03), ArrowLeft the
+  // one before, Enter selects.
   const select = async () => {
     await root.getByRole('application', { name: /^Chart plot/ }).focus()
     await vod.keyboard.press('End')
@@ -62,7 +62,8 @@ test('VOD bookmark reaches the account library and survives reload without dupli
   await waitForPulseRoot(vod)
   await select()
   await expect(bookmark, JSON.stringify({ reads, items })).toHaveAttribute('data-moment-save-state', 'saved', { timeout: 5000 })
-  await expect(bookmark).toBeDisabled()
+  // Saved shows as the filled icon, which would remove it; nothing was written again.
+  await expect(bookmark).toHaveAttribute('aria-pressed', 'true')
   expect(writes).toBe(1)
   await library.reload()
   await expect(library.getByRole('listitem').filter({ hasText: 'fixturechan' })).toHaveCount(1)

@@ -20,6 +20,7 @@ export const AUTO_UPDATE_ENABLED_KEY = 'autoUpdateEnabled'
 const THEME_PREFERENCE_KEY = 'themePreference'
 const DENSITY_PREFERENCE_KEY = 'densityPreference'
 const VOD_JUMP_CHART_PIN_KEY = 'vodJumpChartPinEnabled'
+const RECAP_SPIKE_MARKERS_KEY = 'recapSpikeMarkers'
 /** Read by content/moment-frames.js too, which drops its frames when this turns off. */
 export const MOMENT_PICTURES_KEY = 'momentPicturesEnabled'
 export { THEME_PREFERENCE_KEY, CHAT_CLOSED_PULSE_DOCK_ENABLED_KEY, DENSITY_PREFERENCE_KEY, VOD_JUMP_CHART_PIN_KEY }
@@ -62,19 +63,15 @@ export const DEFAULT_MOMENT_PICTURES_ENABLED = true
 export const DEFAULT_DEFAULT_CHART_WINDOW: DefaultChartWindow = 'full'
 export const DEFAULT_KEEP_LOCAL_CACHE = true
 
-const LOCALHOST = String.fromCharCode(108, 111, 99, 97, 108, 104, 111, 115, 116)
-// Keep development-only origins out of store bundles after minifier constant folding.
-const LOOPBACK_IPV4 = [
-  String.fromCharCode(49, 50, 55),
-  String.fromCharCode(48),
-  String.fromCharCode(48),
-  String.fromCharCode(49),
-].join('.')
-const LOCAL_BACKEND_PORT = String.fromCharCode(56, 48, 56, 49)
-const LEGACY_BACKEND_PORT = String.fromCharCode(56, 48, 57, 48)
-const LOCAL_WORKER_HOST = [108, 97, 112, 116, 111, 112, 119, 111, 114, 107, 101, 114]
-  .map(code => String.fromCharCode(code))
-  .join('')
+// Development-only hosts and ports. Store builds compile them to empty strings
+// (every use below returns first in a store build), so none ships in a store
+// bundle; the package gate fails a store build that still spells one.
+const DEV_BUILD = !(typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__)
+const LOCALHOST = DEV_BUILD ? 'localhost' : ''
+const LOOPBACK_IPV4 = DEV_BUILD ? '127.0.0.1' : ''
+const LOCAL_BACKEND_PORT = DEV_BUILD ? '8081' : ''
+const LEGACY_BACKEND_PORT = DEV_BUILD ? '8090' : ''
+const LOCAL_WORKER_HOST = DEV_BUILD ? 'laptopworker' : ''
 
 /** True when the URL targets the local StreamPulse backend compose (not hosted IRC/API). */
 export function isLocalStackBackendUrl(url: string): boolean {
@@ -667,7 +664,25 @@ export async function setVodJumpChartPinEnabled(enabled: boolean): Promise<void>
   await syncStorageSet({ [VOD_JUMP_CHART_PIN_KEY]: Boolean(enabled) })
 }
 
-/** Moment pictures: small frames of what a Twitch tab played, kept in that tab's memory only. */
+/**
+ * The recap chart's Spikes toggle as the viewer last left it, kept for every
+ * recap after. Null until they first press it.
+ */
+export async function getRecapSpikeMarkersChoice(): Promise<boolean | null> {
+  const stored = await syncStorageGet(RECAP_SPIKE_MARKERS_KEY)
+  const value = stored[RECAP_SPIKE_MARKERS_KEY]
+  return typeof value === 'boolean' ? value : null
+}
+
+export async function setRecapSpikeMarkersChoice(on: boolean): Promise<void> {
+  await syncStorageSet({ [RECAP_SPIKE_MARKERS_KEY]: on })
+}
+
+/**
+ * Moment pictures: small frames of what a Twitch tab played, kept in that
+ * tab's memory, and one per saved or watched moment kept on this device
+ * (src/shared/momentPictureStore.ts). Never uploaded.
+ */
 export async function getMomentPicturesEnabled(): Promise<boolean> {
   const stored = await syncStorageGet(MOMENT_PICTURES_KEY)
   const value = stored[MOMENT_PICTURES_KEY]

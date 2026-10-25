@@ -96,6 +96,8 @@ export async function handleGetPulse(
     allowWatch?: boolean
     forceCoverage?: boolean
     explicitFull?: boolean
+    /** A viewer's Retry: the cache is what failed to refresh, so skip it. */
+    fresh?: boolean
   },
   deps: PulseFetchDeps,
   state: PulseCoordinatorState,
@@ -115,7 +117,7 @@ export async function handleGetPulse(
     explicitFull: args.explicitFull || window === 'full',
   })
 
-  if (cached && !plan.syncFetch) {
+  if (cached && !plan.syncFetch && !args.fresh) {
     const coverage =
       (await deps.getCoverage(args.login)) ?? null
     if (plan.asyncRevalidate) {
@@ -153,7 +155,7 @@ export async function handleGetPulse(
 
   return coalesceInFlight(state.syncInFlight, key, async () => {
     // Re-check cache inside coalesce (second tab may have populated it).
-    const again = await deps.getCached(args.login, window, args.streamId)
+    const again = args.fresh ? null : await deps.getCached(args.login, window, args.streamId)
     if (again) {
       const age2 = now() - again.fetchedAt
       const fresh2 = classifyPulseCacheFreshness(age2)

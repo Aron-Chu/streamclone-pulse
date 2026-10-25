@@ -1,5 +1,5 @@
-import { useEffect, useId, useMemo, useState } from 'react'
-import type { CSSProperties, RefObject } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import type { CSSProperties, ReactNode, RefObject } from 'react'
 import {
   peaksToLiveHeatPoints,
   type LiveHeatPoint,
@@ -19,14 +19,14 @@ import { PulseSectionCard } from './PulseSectionCard.tsx'
 import { RecapAnalyticsNav } from './RecapAnalyticsNav.tsx'
 import { RecapSkeleton } from './RecapSkeleton.tsx'
 import { RecapTimelineChart } from './RecapTimelineChart.tsx'
-import { RecapTopEmotesRow } from './RecapTopEmotesRow.tsx'
 import {
   mergeRecapMoments,
   recapMomentSelectionKey,
   resolveRecapChartPeakOffsets,
   recapStreamDurationSeconds,
+  rollupToRecapHeatPoint,
 } from './recapChartPeaks.ts'
-import { buildRecapEmoteCatalog, resolveRecapEmotes } from './recapEmotes.ts'
+import { buildRecapEmoteCatalog } from './recapEmotes.ts'
 import { catchMeUpModel, useCatchMeUp } from './catchMeUp.ts'
 import { pickRecapRollups, recapMomentToLiveHeatPoint } from './recapMomentMetrics.ts'
 import {
@@ -41,14 +41,25 @@ import type { FullHistoryRequestResult } from '../shared/fullHistoryAuth.ts'
 import { PulseMomentRow, momentRowKey } from './PulseMomentRow.tsx'
 import { SelectedMomentCard } from './SelectedMomentCard.tsx'
 import { MomentCardSlot } from './MomentCardSlot.tsx'
-import { SavedMoments } from './SavedMoments.tsx'
+import { MyMomentsLink } from './momentBookmarks.tsx'
 import { TopMomentCard, type TopMomentCardProps } from './TopMomentCard.tsx'
+import { PulseThemedSelect } from './PulseThemedSelect.tsx'
+import {
+  MOMENT_SORT_OPTIONS,
+  MOST_REACTED_VISIBLE_COUNT,
+  TOP_MOMENTS_SUBTITLE,
+  TOP_MOMENTS_TITLE,
+  sortLiveHeatPoints,
+  type MomentSortMode,
+} from './mostReacted.ts'
 import { usePinnedCardHold } from './pinnedCardExit.ts'
 import { prefersReducedMotion } from './motion/useSmoothedScalar.ts'
 import { theme } from './theme.ts'
 
 export interface StreamRecapSectionProps {
   externalPoint?: LiveHeatPoint | null
+  /** Under the chart: where the viewer came from, while their arrival keeps its minute picked. */
+  arrivalNote?: ReactNode
   payload: PulsePayload
   backendUrl: string
   uiState: RecapUiState
@@ -65,6 +76,8 @@ export interface StreamRecapSectionProps {
   hideHubLink?: boolean
   /** A VOD page, where Jump seeks this player. */
   vodPage?: boolean
+  /** The VOD stream history names for this stream, when the payload names none (useArchiveVodId). */
+  archiveVodId?: string | null
 }
 
 function formatNumber(value: number): string {
@@ -124,33 +137,25 @@ function RecapGamesStrip({
       highlightedKey={highlightedKey}
       onHighlightKey={onHighlightKey}
       visibleRange={visibleRange}
+      hideWhenUnknown
     />
   )
 }
 
-const RECAP_MOMENTS_COLLAPSED_COUNT = 5
 const RECAP_MOMENTS_MAX_COUNT = 20
 
-/**
- * Collapsed, a list shows its first rows, and at the end a picked row past
- * them. Under Catch me up, which shows the best three, the rest start folded.
- */
-function foldMoments<T>(items: T[], expanded: boolean, picked: (item: T) => boolean, collapsed = RECAP_MOMENTS_COLLAPSED_COUNT): T[] {
-  return expanded ? items : items.filter((item, index) => index < collapsed || picked(item))
+interface SummarySlot {
+  ref: RefObject<HTMLDivElement>
+  shown: boolean
+  pending: boolean
 }
 
 /**
- * Catch me up's place (src/ui/catchMeUp.ts) and the card its #2 and #3 open
- * under it, in one grid child so neither adds a grid gap. Hidden until the
- * block is drawn.
+ * The recap's summary (src/ui/catchMeUp.ts). Its place is kept while its
+ * script is on its way, so the chart and the list below never move down.
  */
-function CatchMeUpSlot({ hostRef, shown, card }: { hostRef: RefObject<HTMLDivElement>; shown: boolean; card: TopMomentCardProps }) {
-  return (
-    <div className="pcu-slot" hidden={!shown} onKeyDown={clearOnEscape(card)}>
-      <div ref={hostRef} />
-      <TopMomentCard {...card} />
-    </div>
-  )
+function RecapSummarySlot({ summary }: { summary: SummarySlot }) {
+  return <div ref={summary.ref} hidden={!summary.shown && !summary.pending} style={summary.pending ? styles.summaryReserve : undefined} />
 }
 
 /**
@@ -167,70 +172,99 @@ function clearOnEscape(card: TopMomentCardProps) {
   return (event: { key: string }) => { if (event.key === 'Escape' && card.point) card.onClear() }
 }
 
-function RecapMomentsList({
-  moments,
-  expanded,
-  onToggleExpanded,
-  payload,
-  backendUrl,
-  catalog,
-  rollups,
-  peaks,
+interface RecapMomentItem {
+  /** The selection key the recap picks the moment by. */
+  key: string
+  point: LiveHeatPoint
+}
+
+/**
+ * Top moments, as on live (MostReactedSection): the count and Sort, then the
+ * card of a moment picked in the list or by its spike marker on the chart,
+ * above the first five rows, then Show more. Collapsed, a picked row past the
+ * fold stays listed at the end. Hovering a row marks its minute on the chart.
+ */
+function RecapTopMoments({
+  items,
   selectedKey,
   card,
-  afterCatchMeUp,
+  arrivalNote,
+  backendUrl,
   onSelect,
   onHighlight,
 }: {
-  moments: PulseRecapMoment[]
-  expanded: boolean
-  onToggleExpanded: () => void
-  payload: PulsePayload
-  backendUrl: string
-  catalog: ExtensionEmote[]
-  rollups: ExtensionRollup[]
-  peaks: ExtensionPeak[] | undefined
+  /** Ranked by the recap, strongest first. */
+  items: RecapMomentItem[]
   selectedKey: string | null
   /** The card above the list, which shows a moment picked in it. */
   card: TopMomentCardProps
-  /** Catch me up shows the best three above; these are the rest. */
-  afterCatchMeUp: boolean
+  /** An arrival's chip, right above the card when the arrival is a ranked moment. */
+  arrivalNote?: ReactNode
+  backendUrl: string
   onSelect: (key: string) => void
   onHighlight: (offsetSeconds: number | null) => void
 }) {
-  if (moments.length === 0 && !card.point) return null
-  const shown = foldMoments(moments, expanded, moment => recapMomentKey(payload.streamId, moment) === selectedKey, afterCatchMeUp ? 0 : undefined)
-  const hiddenCount = moments.length - shown.length
+  const [sortMode, setSortMode] = useState<MomentSortMode>('reaction')
+  const [expanded, setExpanded] = useState(false)
+  const sorted = useMemo(() => {
+    if (sortMode === 'reaction') return items
+    const byPoint = new Map(items.map(item => [item.point, item]))
+    return sortLiveHeatPoints(items.map(item => item.point), sortMode).map(point => byPoint.get(point)!)
+  }, [items, sortMode])
+  if (items.length === 0 && !card.point) return null
+  const points = items.map(item => item.point)
+  const shown = expanded ? sorted : sorted.filter((item, index) => index < MOST_REACTED_VISIBLE_COUNT || item.key === selectedKey)
+  const hiddenCount = sorted.length - shown.length
   return (
     <>
-      {afterCatchMeUp ? null : <span style={styles.listCaption}>Top moments</span>}
+      <div style={styles.topHead}>
+        <div style={styles.topHeadMain}>
+          <h4 style={styles.topTitle}>{TOP_MOMENTS_TITLE}</h4>
+          <span style={styles.topSubtitle}>{TOP_MOMENTS_SUBTITLE}</span>
+        </div>
+        {items.length > 0 ? (
+          <div style={styles.topMeta}>
+            <span style={styles.momentCount}>{items.length} moment{items.length === 1 ? '' : 's'}</span>
+            <PulseThemedSelect
+              label="Sort"
+              value={sortMode}
+              options={MOMENT_SORT_OPTIONS}
+              ariaLabel="Sort top moments"
+              onChange={mode => {
+                setSortMode(mode)
+                setExpanded(false)
+                onHighlight(null)
+              }}
+            />
+          </div>
+        ) : null}
+      </div>
       {/*
         The card, the list and its Show more control share one grid child, so
         the card's slot never adds or drops a grid gap, and a row that leaves
         the list hands focus on to Show more (PulseMomentRow).
       */}
       <div>
+        {arrivalNote}
         <TopMomentCard {...card} />
         <div style={styles.momentList} data-pmf-list="true" onKeyDown={clearOnEscape(card)}>
-          {shown.map(moment => {
-            const key = recapMomentKey(payload.streamId, moment)
-            const point = recapMomentToLiveHeatPoint(moment, catalog, payload.startedAt, rollups, peaks)
-            return (
-              <PulseMomentRow
-                key={key}
-                point={point}
-                backendUrl={backendUrl}
-                selected={key === selectedKey}
-                onHighlight={onHighlight}
-                // Picking the moment the card shows again closes the card.
-                onSelect={() => (card.point && key === selectedKey ? card.onClear() : onSelect(key))}
-                controls={card.point ? card.id : undefined}
-              />
-            )
-          })}
+          {shown.map(({ key, point }) => (
+            <PulseMomentRow
+              key={momentRowKey(point, points)}
+              point={point}
+              backendUrl={backendUrl}
+              selected={key === selectedKey}
+              onHighlight={onHighlight}
+              // Picking the moment the card shows again closes the card.
+              onSelect={() => (card.point && key === selectedKey ? card.onClear() : onSelect(key))}
+              controls={card.point ? card.id : undefined}
+              // The recap's top 3 by reaction show the exact frame from the VOD.
+              exact={items.slice(0, 3).some(item => item.key === key)}
+            />
+          ))}
         </div>
         {expanded || hiddenCount > 0 ? (
-          <button type="button" className="pulse-secondary-btn" style={styles.momentsExpandButton} data-chart-action="true" onClick={onToggleExpanded}>
+          <button type="button" className="pulse-moment-more" style={styles.momentsExpandButton} data-chart-action="true" onClick={() => setExpanded(value => !value)}>
             <span>
               {expanded ? 'Show less' : `Show ${hiddenCount} more moment${hiddenCount === 1 ? '' : 's'}`}
             </span>
@@ -244,13 +278,75 @@ function RecapMomentsList({
   )
 }
 
+/**
+ * The card under the chart, for a minute or clip the list does not rank. It is
+ * held for one exit window, so clearing a selection fades and collapses
+ * instead of vanishing on the same frame.
+ */
+function RecapChartCard({ arrivalNote, hold, backendUrl, games, onJump, onAnalytics, onClear }: {
+  arrivalNote?: ReactNode
+  hold: { point: LiveHeatPoint | null; exiting: boolean }
+  backendUrl: string
+  games?: ExtensionGameSegment[]
+  onJump: (point: LiveHeatPoint) => void
+  onAnalytics: (point: LiveHeatPoint) => void
+  onClear: () => void
+}) {
+  // One grid child, so the card's slot never adds or drops a grid gap.
+  return (
+    <div>
+      {arrivalNote}
+      {hold.point ? (
+        <MomentCardSlot exiting={hold.exiting} momentKey={hold.point.minuteTs} data-chart-inspector-exiting={hold.exiting ? 'true' : undefined}>
+          <div style={styles.slotSpacing}>
+            <SelectedMomentCard
+              point={hold.point}
+              backendUrl={backendUrl}
+              compact
+              onJump={onJump}
+              onAnalytics={onAnalytics}
+              onClear={onClear}
+              games={games}
+            />
+          </div>
+        </MomentCardSlot>
+      ) : null}
+    </div>
+  )
+}
+
+/**
+ * A clip or an arrival picked outside the section opens its minute here. When
+ * it is withdrawn (an arrival unlocked), its pick clears, unless the viewer
+ * has picked something else since.
+ */
+function useExternalPick(
+  point: LiveHeatPoint | null | undefined,
+  selectedKey: string | null,
+  pick: (key: string | null, point?: LiveHeatPoint | null) => void,
+): void {
+  const last = useRef<string | null>(null)
+  useEffect(() => {
+    if (point) {
+      last.current = `clip:${point.offsetSeconds}`
+      pick(last.current, point)
+    } else if (last.current) {
+      if (selectedKey === last.current) pick(null)
+      last.current = null
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only a new external pick acts
+  }, [point])
+}
+
 function RecapReadyContent({
   externalPoint,
+  arrivalNote,
   recap,
   payload,
   backendUrl,
   catalog,
   coverage,
+  archiveVodId,
   sidebarFill = false,
   hideHubLink = false,
   vodPage = false,
@@ -260,10 +356,12 @@ function RecapReadyContent({
 }: {
   recap: PulseStreamRecap
   externalPoint?: LiveHeatPoint | null
+  arrivalNote?: ReactNode
   payload: PulsePayload
   backendUrl: string
   catalog: ExtensionEmote[]
   coverage?: ExtensionCoverageResponse | null
+  archiveVodId?: string | null
   sidebarFill?: boolean
   hideHubLink?: boolean
   vodPage?: boolean
@@ -275,7 +373,6 @@ function RecapReadyContent({
     () => mergeRecapMoments(recap, payload.peaks, RECAP_MOMENTS_MAX_COUNT, pickRecapRollups(payload)),
     [recap, payload.peaks],
   )
-  const [momentsExpanded, setMomentsExpanded] = useState(false)
   const [hoveredOffset, setHoveredOffset] = useState<number | null>(null)
   const [hoveredGameKey, setHoveredGameKey] = useState<string | null>(null)
   const rollups = pickRecapRollups(payload)
@@ -283,10 +380,7 @@ function RecapReadyContent({
   // picks something; the strongest moment is not picked for them.
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [overridePoint, setOverridePoint] = useState<LiveHeatPoint | null>(null)
-  // A pick in Catch me up opens its card under the block; any other, above the list.
-  const [fromBlock, setFromBlock] = useState(false)
   const cardId = useId()
-  const blockCardId = useId()
 
   // Another stream starts with nothing picked.
   useEffect(() => {
@@ -295,26 +389,18 @@ function RecapReadyContent({
   }, [payload.streamId])
 
   const selectedMoment = mergedMoments.find(moment => recapMomentKey(payload.streamId, moment) === selectedKey) ?? null
-  useEffect(() => {
-    if (externalPoint) pick(`clip:${externalPoint.offsetSeconds}`, externalPoint)
-  }, [externalPoint])
+  useExternalPick(externalPoint, selectedKey, pick)
   const selectedPoint = selectedMoment
     ? recapMomentToLiveHeatPoint(selectedMoment, catalog, payload.startedAt, rollups, payload.peaks)
     : overridePoint
-  // A minute or clip the list does not rank opens its own card.
-  // Hold it for one exit window so clearing a selection fades and collapses
-  // instead of vanishing on the same frame.
-  const recapCardHold = usePinnedCardHold(
-    selectedMoment ? null : selectedPoint,
-    prefersReducedMotion(),
-  )
+  // A ranked moment shows in Top moments' card; anything else, under the chart.
+  const recapCardHold = usePinnedCardHold(selectedMoment ? null : selectedPoint, prefersReducedMotion())
 
   // Selects a listed moment by its key, or anything else by a key and the
   // point it shows; null clears the selection.
-  function pick(key: string | null, point: LiveHeatPoint | null = null, inBlock = false): void {
+  function pick(key: string | null, point: LiveHeatPoint | null = null): void {
     setSelectedKey(key)
     setOverridePoint(point)
-    setFromBlock(inBlock)
     setHoveredOffset(null)
   }
 
@@ -322,7 +408,6 @@ function RecapReadyContent({
     pick(null)
   }
 
-  const topEmotes = resolveRecapEmotes(recap.topEmotes, catalog)
   const chartPeakOffsets = useMemo(
     () => resolveRecapChartPeakOffsets(mergedMoments, payload.peaks),
     [mergedMoments, payload.peaks],
@@ -346,32 +431,26 @@ function RecapReadyContent({
     setHoveredGameKey(null)
   }, [payload.streamId])
 
-  const momentPoints = useMemo(
-    () => mergedMoments.map(moment => recapMomentToLiveHeatPoint(moment, catalog, payload.startedAt, rollups, payload.peaks)),
-    [mergedMoments, catalog, payload.startedAt, rollups, payload.peaks],
+  const items = useMemo(
+    () => mergedMoments.map(moment => ({
+      key: recapMomentKey(payload.streamId, moment),
+      point: recapMomentToLiveHeatPoint(moment, catalog, payload.startedAt, rollups, payload.peaks),
+    })),
+    [mergedMoments, catalog, payload.streamId, payload.startedAt, rollups, payload.peaks],
   )
-  const blockIndex = fromBlock && selectedMoment ? mergedMoments.indexOf(selectedMoment) : -1
-  const catchMeUp = useCatchMeUp<HTMLDivElement>(
+  const summary = useCatchMeUp<HTMLDivElement>(
     catchMeUpModel({
-      points: momentPoints,
       rollups,
-      games: payload.games,
+      played: recapGames,
+      category: payload.category,
       durationSeconds: recapDurationSeconds,
       peakChatPerMin: recap.peakChatPerMin,
-      backendUrl,
-      vodPage,
+      vodId: payload.vodId ?? archiveVodId,
+      // A VOD page names its VOD's title, from Twitch; a channel page, its last stream's.
+      title: vodPage ? null : coverage?.liveMetadata?.title,
     }),
-    {
-      jump: index => momentPoints[index] && onJump(momentPoints[index]),
-      pick: index => {
-        const key = recapMomentKey(payload.streamId, mergedMoments[index]!)
-        if (fromBlock && key === selectedKey) clearRecapSelection()
-        else pick(key, null, true)
-      },
-    },
-    blockIndex >= 0 && blockIndex < 3 ? blockIndex : null,
+    { minute: minutePicker(rollups, payload.startedAt, catalog, pick) },
   )
-  const card = { backendUrl, onJump, onAnalytics, onClear: clearRecapSelection, games: payload.games }
 
   const duration = formatStreamDuration(recapDurationSeconds)
   const meta = duration
@@ -380,12 +459,9 @@ function RecapReadyContent({
 
   return (
     <div style={styles.recapContent}>
-      <CatchMeUpSlot
-        hostRef={catchMeUp.ref}
-        shown={catchMeUp.shown}
-        card={{ ...card, id: blockCardId, point: fromBlock && selectedMoment ? selectedPoint : null }}
-      />
+      <RecapSummarySlot summary={summary} />
       <RecapGamesStrip
+        key={payload.streamId ?? payload.vodId ?? 'recap'}
         games={recapGames}
         durationSeconds={recapDurationSeconds}
         highlightedKey={recapChartHighlightedGameKey}
@@ -411,50 +487,32 @@ function RecapReadyContent({
         }}
         onRequestFullRollups={onRequestFullRollups}
       />
-      {/* One grid child, so the card's slot never adds or drops a grid gap. */}
-      <div>
-        <SavedMoments login={payload.login} streamId={payload.streamId} vodId={payload.vodId ?? undefined} selected={selectedPoint} />
-        {recapCardHold.point ? (
-          <MomentCardSlot
-            exiting={recapCardHold.exiting}
-            data-chart-inspector-exiting={recapCardHold.exiting ? 'true' : undefined}
-          >
-            <div style={styles.slotSpacing}>
-              <SelectedMomentCard
-                point={recapCardHold.point}
-                backendUrl={backendUrl}
-                compact
-                onJump={onJump}
-                onAnalytics={onAnalytics}
-                onClear={clearRecapSelection}
-                games={payload.games}
-              />
-            </div>
-          </MomentCardSlot>
-        ) : null}
-      </div>
-      {/* Held back while Catch me up loads, so rows never show and then fold away. */}
-      {catchMeUp.pending ? null : <RecapMomentsList
-        moments={catchMeUp.shown ? mergedMoments.slice(3) : mergedMoments}
-        expanded={momentsExpanded}
-        onToggleExpanded={() => setMomentsExpanded(value => !value)}
-        payload={payload}
+      <RecapChartCard
+        arrivalNote={selectedMoment ? undefined : arrivalNote}
+        hold={recapCardHold}
         backendUrl={backendUrl}
-        catalog={catalog}
-        rollups={rollups}
-        peaks={payload.peaks}
+        games={payload.games}
+        onJump={onJump}
+        onAnalytics={onAnalytics}
+        onClear={clearRecapSelection}
+      />
+      <RecapTopMoments
+        items={items}
         selectedKey={selectedKey}
+        arrivalNote={selectedMoment ? arrivalNote : undefined}
         card={{
-          ...card,
           id: cardId,
-          // A ranked moment picked anywhere but Catch me up shows in the card above the list.
-          point: selectedMoment && !fromBlock ? selectedPoint : null,
+          point: selectedMoment ? selectedPoint : null,
+          backendUrl,
+          onJump,
+          onAnalytics,
+          onClear: clearRecapSelection,
+          games: payload.games,
         }}
-        afterCatchMeUp={catchMeUp.shown}
+        backendUrl={backendUrl}
         onSelect={key => pick(key)}
         onHighlight={setHoveredOffset}
-      />}
-      <RecapTopEmotesRow backendUrl={backendUrl} emotes={topEmotes} />
+      />
       <RecapAnalyticsNav
         backendUrl={backendUrl}
         channelLogin={payload.login}
@@ -462,12 +520,22 @@ function RecapReadyContent({
         offsetSeconds={selectedPoint?.offsetSeconds ?? null}
         hideHubLink={hideHubLink}
       />
-      {coverage?.liveMetadata?.title ? (
-        <span style={styles.offlineMeta}>{coverage.liveMetadata.title}</span>
-      ) : null}
       <span style={styles.srOnly}>{meta}</span>
     </div>
   )
+}
+
+/** Selects the chart's minute at `offsetSeconds`, as clicking it there does (the Catch me up summary's peak). */
+function minutePicker(
+  rollups: readonly ExtensionRollup[],
+  startedAt: string | undefined,
+  catalog: ExtensionEmote[],
+  pick: (key: string, point: LiveHeatPoint) => void,
+): (offsetSeconds: number) => void {
+  return offsetSeconds => {
+    const rollup = rollups.find(item => item.offsetSeconds === offsetSeconds)
+    if (rollup) pick(`bucket:${offsetSeconds}`, rollupToRecapHeatPoint(rollup, startedAt, catalog))
+  }
 }
 
 function offlinePointKey(point: LiveHeatPoint): string {
@@ -476,9 +544,11 @@ function offlinePointKey(point: LiveHeatPoint): string {
 
 function OfflineFallbackContent({
   externalPoint,
+  arrivalNote,
   payload,
   backendUrl,
   coverage,
+  archiveVodId,
   sidebarFill = false,
   hideHubLink = false,
   vodPage = false,
@@ -489,8 +559,10 @@ function OfflineFallbackContent({
 }: {
   payload: PulsePayload
   externalPoint?: LiveHeatPoint | null
+  arrivalNote?: ReactNode
   backendUrl: string
   coverage?: ExtensionCoverageResponse | null
+  archiveVodId?: string | null
   sidebarFill?: boolean
   hideHubLink?: boolean
   vodPage?: boolean
@@ -505,24 +577,17 @@ function OfflineFallbackContent({
   const totalMessages = rollups.reduce((sum, rollup) => sum + (rollup.chatCount ?? 0), 0)
   const peakChat = peaks?.peakChatPerMin ?? 0
   const catalog = buildRecapEmoteCatalog(payload)
-  const topEmotes = resolveRecapEmotes(
-    catalog.map(emote => ({ code: emote.name, count: emote.count, provider: emote.provider, id: emote.id, imageUrl: emote.imageUrl })),
-    catalog,
-  ).filter(emote => emote.count > 0).slice(0, 6)
   const peakPoints = peaksToLiveHeatPoints(
     [...(payload.peaks ?? [])].sort((a, b) => b.score - a.score).slice(0, RECAP_MOMENTS_MAX_COUNT) as ExtensionPeak[],
     payload.startedAt,
     catalog,
   )
-  const [momentsExpanded, setMomentsExpanded] = useState(false)
   const [hoveredOffset, setHoveredOffset] = useState<number | null>(null)
   const [hoveredGameKey, setHoveredGameKey] = useState<string | null>(null)
   // As in the recap: nothing is picked until the viewer picks it.
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [overridePoint, setOverridePoint] = useState<LiveHeatPoint | null>(null)
-  const [fromBlock, setFromBlock] = useState(false)
   const cardId = useId()
-  const blockCardId = useId()
 
   useEffect(() => {
     setSelectedKey(null)
@@ -532,29 +597,18 @@ function OfflineFallbackContent({
   const listedPoint = peakPoints.find(point => offlinePointKey(point) === selectedKey)
   const selectedPoint = selectedKey == null ? null : listedPoint ?? overridePoint
 
-  useEffect(() => {
-    if (externalPoint) pick(`clip:${externalPoint.offsetSeconds}`, externalPoint)
-  }, [externalPoint])
+  useExternalPick(externalPoint, selectedKey, pick)
 
-  // Hold the card for one exit window so clearing a selection fades and
-  // collapses instead of vanishing on the same frame.
+  // A listed moment shows in Top moments' card; anything else, under the chart.
   const recapCardHold = usePinnedCardHold(
     listedPoint ? null : selectedPoint,
     prefersReducedMotion(),
   )
-  const cardBase = { backendUrl, onJump, onAnalytics, onClear: clearOfflineSelection, games: payload.games }
-  const card: TopMomentCardProps = {
-    ...cardBase,
-    id: cardId,
-    // A listed moment picked anywhere but Catch me up shows in the card above the list.
-    point: (!fromBlock && listedPoint) || null,
-  }
 
   // As in the recap; null clears the selection.
-  function pick(key: string | null, point: LiveHeatPoint | null = null, inBlock = false): void {
+  function pick(key: string | null, point: LiveHeatPoint | null = null): void {
     setSelectedKey(key)
     setOverridePoint(point)
-    setFromBlock(inBlock)
     setHoveredOffset(null)
   }
 
@@ -584,30 +638,19 @@ function OfflineFallbackContent({
     setHoveredGameKey(null)
   }, [payload.streamId])
 
-  const blockIndex = fromBlock && listedPoint ? peakPoints.indexOf(listedPoint) : -1
-  const catchMeUp = useCatchMeUp<HTMLDivElement>(
+  const summary = useCatchMeUp<HTMLDivElement>(
     catchMeUpModel({
-      points: peakPoints,
       rollups,
-      games: payload.games,
+      played: recapGames,
+      category: payload.category ?? meta?.category,
       durationSeconds: recapDurationSeconds,
       peakChatPerMin: peakChat,
-      backendUrl,
-      vodPage,
+      vodId: payload.vodId ?? archiveVodId,
+      // A VOD page names its VOD's title, from Twitch; a channel page, its last stream's.
+      title: vodPage ? null : meta?.title,
     }),
-    {
-      jump: index => peakPoints[index] && onJump(peakPoints[index]),
-      pick: index => {
-        const key = offlinePointKey(peakPoints[index]!)
-        if (fromBlock && key === selectedKey) clearOfflineSelection()
-        else pick(key, null, true)
-      },
-    },
-    blockIndex >= 0 && blockIndex < 3 ? blockIndex : null,
+    { minute: minutePicker(rollups, payload.startedAt, catalog, pick) },
   )
-  const listPoints = catchMeUp.shown ? peakPoints.slice(3) : peakPoints
-  const shownPeakPoints = foldMoments(listPoints, momentsExpanded, point => offlinePointKey(point) === selectedKey, catchMeUp.shown ? 0 : undefined)
-  const hiddenPeakCount = listPoints.length - shownPeakPoints.length
 
   const duration = formatStreamDuration(recapDurationSeconds)
   const endedAgo = formatRelativeTime(payload.endedAt ?? payload.latestEndedAt)
@@ -617,10 +660,7 @@ function OfflineFallbackContent({
 
   return (
     <div style={styles.recapContent}>
-      {meta?.title ? <div style={styles.offlineTitle}>{meta.title}</div> : null}
-      {payload.category ?? meta?.category ? (
-        <div style={styles.offlineCategory}>{payload.category ?? meta?.category}</div>
-      ) : null}
+      <RecapSummarySlot summary={summary} />
       {peakPoints.length === 0 && (peakChat > 0 || totalMessages > 0) ? (
         <div style={styles.fallbackCta}>
           <button type="button" className="pulse-recap-analytics-cta" style={styles.actionPrimary} onClick={() => onOpenAnalytics()}>
@@ -628,12 +668,8 @@ function OfflineFallbackContent({
           </button>
         </div>
       ) : null}
-      <CatchMeUpSlot
-        hostRef={catchMeUp.ref}
-        shown={catchMeUp.shown}
-        card={{ ...cardBase, id: blockCardId, point: (fromBlock && listedPoint) || null }}
-      />
       <RecapGamesStrip
+        key={payload.streamId ?? payload.vodId ?? 'recap'}
         games={recapGames}
         durationSeconds={recapDurationSeconds}
         highlightedKey={recapChartHighlightedGameKey}
@@ -658,76 +694,32 @@ function OfflineFallbackContent({
         }}
         onRequestFullRollups={onRequestFullRollups}
       />
-      {/* One grid child, so the card's slot never adds or drops a grid gap. */}
-      <div>
-        <SavedMoments login={payload.login} streamId={payload.streamId} vodId={payload.vodId ?? undefined} selected={selectedPoint} />
-        {recapCardHold.point ? (
-          <MomentCardSlot
-            exiting={recapCardHold.exiting}
-            data-chart-inspector-exiting={recapCardHold.exiting ? 'true' : undefined}
-          >
-            <div style={styles.slotSpacing}>
-              <SelectedMomentCard
-                point={recapCardHold.point}
-                backendUrl={backendUrl}
-                compact
-                onJump={onJump}
-                onAnalytics={onAnalytics}
-                onClear={clearOfflineSelection}
-                games={payload.games}
-              />
-            </div>
-          </MomentCardSlot>
-        ) : null}
-      </div>
-      {!catchMeUp.pending && (listPoints.length > 0 || card.point) ? (
-        <>
-          {catchMeUp.shown ? null : <span style={styles.listCaption}>Top moments</span>}
-          {/*
-            The card, the list and its Show more control share one grid child, so
-            the card's slot never adds or drops a grid gap, and a row that leaves
-            the list hands focus on to Show more (PulseMomentRow).
-          */}
-          <div>
-            <TopMomentCard {...card} />
-            <div style={styles.momentList} data-pmf-list="true" onKeyDown={clearOnEscape(card)}>
-              {shownPeakPoints.map(point => {
-                const key = offlinePointKey(point)
-                return (
-                  <PulseMomentRow
-                    key={momentRowKey(point, peakPoints)}
-                    point={point}
-                    backendUrl={backendUrl}
-                    selected={key === selectedKey}
-                    onHighlight={setHoveredOffset}
-                    // Picking the moment the card shows again closes the card.
-                    onSelect={() => (card.point && key === selectedKey ? card.onClear() : pick(key))}
-                    controls={card.point ? card.id : undefined}
-                  />
-                )
-              })}
-            </div>
-            {momentsExpanded || hiddenPeakCount > 0 ? (
-              <button
-                type="button"
-                className="pulse-secondary-btn"
-                style={styles.momentsExpandButton}
-                onClick={() => setMomentsExpanded(value => !value)}
-              >
-                <span>
-                  {momentsExpanded
-                    ? 'Show less'
-                    : `Show ${hiddenPeakCount} more moment${hiddenPeakCount === 1 ? '' : 's'}`}
-                </span>
-                <span style={styles.momentsExpandChevron} aria-hidden="true">
-                  {momentsExpanded ? '▾' : '▸'}
-                </span>
-              </button>
-            ) : null}
-          </div>
-        </>
-      ) : null}
-      <RecapTopEmotesRow backendUrl={backendUrl} emotes={topEmotes} />
+      <RecapChartCard
+        arrivalNote={listedPoint ? undefined : arrivalNote}
+        hold={recapCardHold}
+        backendUrl={backendUrl}
+        games={payload.games}
+        onJump={onJump}
+        onAnalytics={onAnalytics}
+        onClear={clearOfflineSelection}
+      />
+      <RecapTopMoments
+        items={peakPoints.map(point => ({ key: offlinePointKey(point), point }))}
+        selectedKey={selectedKey}
+        arrivalNote={listedPoint ? arrivalNote : undefined}
+        card={{
+          id: cardId,
+          point: listedPoint ?? null,
+          backendUrl,
+          onJump,
+          onAnalytics,
+          onClear: clearOfflineSelection,
+          games: payload.games,
+        }}
+        backendUrl={backendUrl}
+        onSelect={key => pick(key)}
+        onHighlight={setHoveredOffset}
+      />
       <RecapAnalyticsNav
         backendUrl={backendUrl}
         channelLogin={payload.login}
@@ -742,6 +734,7 @@ function OfflineFallbackContent({
 
 export function StreamRecapSection({
   externalPoint,
+  arrivalNote,
   payload,
   backendUrl,
   uiState,
@@ -757,6 +750,7 @@ export function StreamRecapSection({
   sidebarFill = false,
   hideHubLink = false,
   vodPage = false,
+  archiveVodId = null,
 }: StreamRecapSectionProps) {
   if (isLive) return null
 
@@ -811,15 +805,17 @@ export function StreamRecapSection({
   }
 
   return (
-    <PulseSectionCard title={title} meta={cardMeta}>
+    <PulseSectionCard title={title} meta={cardMeta} titleAction={<MyMomentsLink />}>
       {recap ? (
         <RecapReadyContent
           externalPoint={externalPoint}
+          arrivalNote={arrivalNote}
           recap={recap}
           payload={payload}
           backendUrl={backendUrl}
           catalog={catalog}
           coverage={coverage}
+          archiveVodId={archiveVodId}
           sidebarFill={sidebarFill}
           hideHubLink={hideHubLink}
           vodPage={vodPage}
@@ -830,9 +826,11 @@ export function StreamRecapSection({
       ) : (
         <OfflineFallbackContent
           externalPoint={externalPoint}
+          arrivalNote={arrivalNote}
           payload={payload}
           backendUrl={backendUrl}
           coverage={coverage}
+          archiveVodId={archiveVodId}
           sidebarFill={sidebarFill}
           hideHubLink={hideHubLink}
           vodPage={vodPage}
@@ -853,29 +851,29 @@ const styles: Record<string, CSSProperties> = {
   },
   /** The recap grid gap, carried inside the card slot so it animates with it. */
   slotSpacing: { paddingTop: 10 },
-  listCaption: {
-    color: theme.textMuted,
-    display: 'block',
-    fontSize: 9,
-    fontWeight: 800,
-    letterSpacing: '0.06em',
-    marginBottom: 2,
-    textTransform: 'uppercase',
-  },
+  /** The summary's height (catch-me-up.js), kept while its script loads. */
+  summaryReserve: { minHeight: 63 },
+  topHead: { alignItems: 'flex-start', display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', marginBottom: -4, rowGap: 6 },
+  topHeadMain: { display: 'grid', flex: '1 1 140px', gap: 2, minWidth: 0 },
+  topTitle: { color: theme.textPrimary, fontSize: 11, fontWeight: 900, letterSpacing: '0.05em', margin: 0, textTransform: 'uppercase' },
+  topSubtitle: { color: theme.textMuted, fontSize: 11, fontWeight: 600, lineHeight: 1.35 },
+  topMeta: { alignItems: 'center', display: 'flex', gap: 6 },
+  momentCount: { color: theme.textMuted, fontSize: 9, fontVariantNumeric: 'tabular-nums', fontWeight: 700 },
+  // The list's last row: a row's box, gap and text inset (padding, accent, gap).
   momentsExpandButton: {
     alignItems: 'center',
-    background: 'transparent',
+    appearance: 'none',
+    background: 'rgba(255, 255, 255, 0.03)',
     border: 0,
+    borderRadius: 6,
     color: theme.accentSoft,
     cursor: 'pointer',
     display: 'flex',
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 700,
     gap: 6,
-    justifyContent: 'center',
-    // The recap's 10 px grid gap.
-    marginTop: 10,
-    padding: '8px 0 0',
+    marginTop: 4,
+    padding: '6px 8px 6px 18px',
     width: '100%',
   },
   momentsExpandChevron: {
@@ -899,8 +897,6 @@ const styles: Record<string, CSSProperties> = {
     width: 'fit-content',
   },
   emptyText: { color: theme.textMuted, fontSize: 12, lineHeight: 1.5, margin: 0 },
-  offlineTitle: { color: theme.textPrimary, fontSize: 13, fontWeight: 700, lineHeight: 1.35 },
-  offlineCategory: { color: theme.textSecondary, fontSize: 12, fontWeight: 700 },
   offlineMeta: { color: theme.textMuted, fontSize: 11, fontWeight: 600 },
   fallbackCta: { display: 'flex', gap: 8 },
   actionPrimary: {

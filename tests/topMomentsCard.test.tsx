@@ -15,7 +15,7 @@ import { MOMENT_CARD_HEIGHT } from '../src/ui/momentCardLayout.ts'
 import { liveHeatPointKey, resolveMostReactedHeat } from '../src/ui/mostReacted.ts'
 import { SELECTED_MOMENT_CARD_EXIT_MS } from '../src/ui/pinnedCardExit.ts'
 
-// SavedMoments (recap) lists bookmarks through the background worker.
+// The panel's bookmarks are listed through the background worker.
 vi.mock('../src/content/bridge.ts', () => ({
   sendBackgroundMessage: vi.fn(async () => ({ type: 'BOOKMARKS', items: [] })),
 }))
@@ -208,7 +208,7 @@ describe('Top Moments card (live panel)', () => {
     // whatever the moment shows.
     expect(card.nextElementSibling).toBe(second.parentElement)
     expect(card.querySelector('.pulse-moment-slot')).not.toBeNull()
-    expect(card.querySelector<HTMLElement>('.pulse-moment-slot-inner > div > div')!.style.minHeight).toBe(`${MOMENT_CARD_HEIGHT}px`)
+    expect(card.querySelector<HTMLElement>('[data-moment-reserve]')!.style.minHeight).toBe(`${MOMENT_CARD_HEIGHT}px`)
     // No card opens in the list: the rows are the same buttons.
     expect(rows(host)).toEqual(list)
     expect(second.parentElement!.querySelectorAll('[data-moment-inspector-card]')).toHaveLength(0)
@@ -729,6 +729,11 @@ describe('Stream recap Top moments', () => {
   const clickMarker = (host: ParentNode, offsetSeconds: number) => act(() => {
     marker(host, offsetSeconds)!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
   })
+  /** Turns Spikes on; the viewer's last choice carries over from an earlier test. */
+  const showSpikes = (host: ParentNode) => {
+    const toggle = host.querySelector('[data-chart-moment-toggle="true"]')!
+    if (toggle.getAttribute('aria-pressed') !== 'true') click(toggle)
+  }
 
   it('lets the recap chart select a spike marker\'s minute only when no listed moment takes it', () => {
     const chart = (onSelectMoment: (peak: ExtensionPeak) => boolean, onSelectPoint: (point: { offsetSeconds: number }) => void) => (
@@ -745,7 +750,7 @@ describe('Stream recap Top moments', () => {
     const unlisted = vi.fn(() => false)
     const onSelectPoint = vi.fn()
     const host = mount(chart(listed, onSelectPoint))
-    click(host.querySelector('[data-chart-moment-toggle="true"]')!)
+    showSpikes(host)
 
     clickMarker(host, 240)
     expect(listed).toHaveBeenCalledOnce()
@@ -776,7 +781,6 @@ describe('Stream recap Top moments', () => {
       expect(list.filter(row => row.hasAttribute('aria-controls'))).toHaveLength(0)
       expect(host.querySelector('svg[data-chart-locked-index]')).toBeNull()
       expect(host.querySelector('[data-chart-readout-state="selected"]')).toBeNull()
-      expect(host.querySelectorAll('.pcu-mini[aria-pressed="true"]')).toHaveLength(0)
       expect(selectionCards(host)).toHaveLength(0)
 
       // Picking the first row opens it and locks its minute; picking it again
@@ -817,7 +821,7 @@ describe('Stream recap Top moments', () => {
 
       // A spike marker of a listed moment shows it in the card, as in the
       // live panel: its row is pressed and the chart's card closes.
-      click(host.querySelector('[data-chart-moment-toggle="true"]')!)
+      showSpikes(host)
       clickMarker(host, 240)
       expect(topCardLabel(host)).toMatch(/^Selected moment at 00:04/)
       expect(list[1].getAttribute('aria-pressed')).toBe('true')
