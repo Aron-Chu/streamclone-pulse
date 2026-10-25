@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { AcceptanceBlocked, REFRESH_TARGETS, parseAcceptanceArgs, validateAcceptanceUrl, isActualScenePicture,
@@ -18,6 +18,9 @@ function samples(values = [406, 123, 123, 370, 370, 350, 390]) {
   return REFRESH_TARGETS.map((targetSeconds, index) => ({ targetSeconds, elapsedSeconds: targetSeconds + 0.01, chatPerMin: values[index], focused: true, visibility: 'visible', live: true }))
 }
 
+const passingScreenshotAudit = () => ({ files: 1, assignments: 1, uniqueHashes: true, exactlyOnce: true, fullHashesMatch: true })
+const screenshot = (value = 1) => Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, value]).toString('base64')
+
 describe('Finite Firefox acceptance grading', () => {
   it('does not pass a rate that changes early then stays unchanged through the final minute', () => {
     expect(gradeRefreshSamples(samples([10, 20, 30, 30, 30, 30, 30])).status).toBe('BLOCKED')
@@ -30,10 +33,20 @@ describe('Finite Firefox acceptance grading', () => {
   })
 
   it('distinguishes an expected permissions block from a real defect or cleanup failure', () => {
-    expect(gradeAcceptance([{ status: 'PASS' }, { status: 'BLOCKED' }], {})).toEqual({ status: 'BLOCKED', exitCode: 2 })
-    expect(gradeAcceptance([{ status: 'PASS' }], { driverQuit: { status: 'FAIL' } })).toEqual({ status: 'FAIL', exitCode: 1 })
-    expect(gradeAcceptance([{ status: 'FAIL' }, { status: 'BLOCKED' }], {})).toEqual({ status: 'FAIL', exitCode: 1 })
-    expect(gradeAcceptance([{ status: 'PASS' }], { driverQuit: { status: 'PASS' } })).toEqual({ status: 'PASS', exitCode: 0 })
+    expect(gradeAcceptance([{ status: 'PASS' }, { status: 'BLOCKED' }], {}, passingScreenshotAudit())).toEqual({ status: 'BLOCKED', exitCode: 2 })
+    expect(gradeAcceptance([{ status: 'PASS' }], { driverQuit: { status: 'FAIL' } }, passingScreenshotAudit())).toEqual({ status: 'FAIL', exitCode: 1 })
+    expect(gradeAcceptance([{ status: 'FAIL' }, { status: 'BLOCKED' }], {}, passingScreenshotAudit())).toEqual({ status: 'FAIL', exitCode: 1 })
+    expect(gradeAcceptance([{ status: 'PASS' }], { driverQuit: { status: 'PASS' } }, passingScreenshotAudit())).toEqual({ status: 'PASS', exitCode: 0 })
+  })
+
+  it('makes every missing or failed screenshot audit override otherwise passing or blocked rows', () => {
+    const rows = [{ status: 'PASS' }, { status: 'BLOCKED' }]
+    for (const key of ['uniqueHashes', 'exactlyOnce', 'fullHashesMatch']) {
+      expect(gradeAcceptance(rows, {}, { ...passingScreenshotAudit(), [key]: false })).toEqual({ status: 'FAIL', exitCode: 1 })
+    }
+    expect(gradeAcceptance(rows, {}, { ...passingScreenshotAudit(), files: 2 })).toEqual({ status: 'FAIL', exitCode: 1 })
+    expect(gradeAcceptance(rows, {}, { ...passingScreenshotAudit(), errors: [{ error: 'Audit read failed' }] })).toEqual({ status: 'FAIL', exitCode: 1 })
+    expect(gradeAcceptance(rows, {})).toEqual({ status: 'FAIL', exitCode: 1 })
   })
 
   it('does not count loaded game art/emotes or a captured-live chip as an exact VOD scene', () => {
@@ -87,11 +100,11 @@ function fakeRun(options: { removeFailure?: boolean; quitFailure?: boolean; secu
     installAddon: async () => { calls.push('install'); return addonId },
     uninstallAddon: vi.fn(async id => { calls.push(`remove:${id}`); if (options.removeFailure) throw Error('Uninstall failed') }),
     quit: vi.fn(async () => { calls.push('quit'); if (options.quitFailure) throw Error('Quit failed') }),
-    takeScreenshot: async () => Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 1]).toString('base64') }
+    takeScreenshot: vi.fn(async () => screenshot()) }
   const dependencies = { createDriver: async () => driver,
     verifyArtifact: async () => ({ zipPath: path.join(dir, 'local.zip'), actualSha256: 'a'.repeat(64), addonId, buildId: 'dev-2e374f22f95b-clean', target: 'firefox', manifest: { permissions: ['storage', 'scripting'], host_permissions: ['https://*.twitch.tv/*'] } }),
     subscribeLogs: async () => { calls.push('logs'); return { removeListener: async () => calls.push('listener'), closeInspector: async () => calls.push('subscription'), closeBidi: async () => calls.push('socket') } },
-    clock: { now: () => now, sleep: async ms => { now += ms } }, profileExists: async () => false,
+    clock: { now: () => now, sleep: vi.fn(async ms => { now += ms }) }, profileExists: async () => false,
     exercise: async ctx => {
       if (options.securityStop) throw new AcceptanceBlocked('CAPTCHA; stopped without bypass', true)
       for (const id of ['C-build-id', 'C-refresh-0-90-180', 'C-clip', 'pictures-live-row', 'pictures-vod']) await ctx.phase(id, async () => ({ status: 'PASS', reason: 'Fake-driver lifecycle fixture' }))
@@ -130,5 +143,89 @@ describe('Finite Firefox acceptance cleanup', () => {
     expect(run.result.rows.find(row => row.id === 'C-clip').status).toBe('BLOCKED')
     expect(f.driver.uninstallAddon).toHaveBeenCalledExactlyOnceWith('streampulse@streampulse.stream')
     expect(f.driver.quit).toHaveBeenCalledOnce()
+  })
+})
+
+describe('Firefox screenshot evidence integrity', () => {
+  it('retries a duplicate capture and passes its phase only after saving a unique replacement', async () => {
+    const f = fakeRun()
+    f.driver.takeScreenshot.mockResolvedValueOnce(screenshot(1)).mockResolvedValueOnce(screenshot(1)).mockResolvedValueOnce(screenshot(2))
+    f.dependencies.exercise = async ctx => {
+      await ctx.phase('C-refresh-0-90-180', async () => {
+        await ctx.capture('C-refresh-0-90-180', 'refresh-0s')
+        await ctx.capture('C-refresh-0-90-180', 'refresh-90s')
+        return { status: 'PASS', reason: 'Both required unique screenshots saved' }
+      })
+    }
+    const run = await runFirefoxAcceptance(f.config, f.dependencies)
+    const row = run.result.rows.find(item => item.id === 'C-refresh-0-90-180')
+    expect(row.status).toBe('PASS')
+    expect(row.screenshots).toHaveLength(2)
+    expect(f.driver.takeScreenshot).toHaveBeenCalledTimes(3)
+    expect(f.dependencies.clock.sleep).toHaveBeenCalledExactlyOnceWith(250)
+    expect(run.result.events).toContainEqual(expect.objectContaining({ phase: 'duplicate-capture-retry', attempt: 1 }))
+    expect(run.result.screenshotAudit).toMatchObject({ files: 2, assignments: 2, uniqueHashes: true, exactlyOnce: true, fullHashesMatch: true })
+    expect(run.result.rows.find(item => item.id === 'C-permissions').status).toBe('BLOCKED')
+  })
+
+  it('blocks the affected phase after bounded duplicate retries without silently dropping its required image', async () => {
+    const f = fakeRun()
+    f.dependencies.exercise = async ctx => {
+      await ctx.phase('C-refresh-0-90-180', async () => {
+        await ctx.capture('C-refresh-0-90-180', 'refresh-0s')
+        await ctx.capture('C-refresh-0-90-180', 'refresh-90s')
+        return { status: 'PASS', reason: 'Must not be reached after capture exhaustion' }
+      })
+    }
+    const run = await runFirefoxAcceptance(f.config, f.dependencies)
+    const row = run.result.rows.find(item => item.id === 'C-refresh-0-90-180')
+    expect(row.status).toBe('BLOCKED')
+    expect(row.evidence).toContain('unique screenshot')
+    expect(row.evidence).toContain('3 attempts')
+    expect(row.screenshots).toHaveLength(1)
+    expect(f.driver.takeScreenshot).toHaveBeenCalledTimes(4)
+    expect(f.dependencies.clock.sleep).toHaveBeenCalledTimes(2)
+    expect(run.exitCode).toBe(2)
+    expect(f.driver.uninstallAddon).toHaveBeenCalledExactlyOnceWith('streampulse@streampulse.stream')
+    expect(readFileSync(path.join(f.config.evidenceDir, 'REPORT.md'), 'utf8')).toContain('C-refresh-0-90-180 | BLOCKED')
+  })
+
+  it.each(['tampered', 'missing', 'unlisted'] as const)('persists a failed final report when a screenshot is %s', async failure => {
+    const f = fakeRun()
+    f.dependencies.exercise = async ctx => {
+      const image = await ctx.capture('pictures-live-row', 'unit-integrity')
+      await ctx.phase('pictures-live-row', async () => ({ status: 'PASS', reason: 'Browser observation completed before evidence changed' }))
+      const saved = path.join(f.config.evidenceDir, image.name)
+      if (failure === 'tampered') writeFileSync(saved, 'altered image bytes')
+      else if (failure === 'missing') unlinkSync(saved)
+      else writeFileSync(path.join(f.config.evidenceDir, 'unlisted.png'), Buffer.from(screenshot(2), 'base64'))
+    }
+    const run = await runFirefoxAcceptance(f.config, f.dependencies)
+    expect(run.exitCode).toBe(1)
+    expect(run.result.status).toBe('FAIL')
+    expect(run.result.screenshotAudit.status).toBe('FAIL')
+    if (failure === 'unlisted') expect(run.result.screenshotAudit.exactlyOnce).toBe(false)
+    else {
+      expect(run.result.screenshotAudit.fullHashesMatch).toBe(false)
+      expect(run.result.screenshotAudit.errors).toContainEqual(expect.objectContaining({ name: '01-unit-integrity.png' }))
+    }
+    expect(JSON.parse(readFileSync(run.evidencePath, 'utf8')).screenshotAudit.status).toBe('FAIL')
+    const report = readFileSync(path.join(f.config.evidenceDir, 'REPORT.md'), 'utf8')
+    expect(report).toContain('# Firefox finite acceptance: FAIL')
+    expect(report).toContain('Screenshot audit: FAIL')
+    expect(run.result.cleanup.driverQuit.status).toBe('PASS')
+    expect(run.result.rows.find(item => item.id === 'C-permissions').status).toBe('BLOCKED')
+  })
+
+  it('fails final grading when a saved image is assigned to two rows', async () => {
+    const f = fakeRun()
+    f.dependencies.exercise = async ctx => {
+      const image = await ctx.capture('pictures-live-row', 'unit-assignment')
+      ctx.row('pictures-vod').screenshots.push({ ...image })
+    }
+    const run = await runFirefoxAcceptance(f.config, f.dependencies)
+    expect(run.exitCode).toBe(1)
+    expect(run.result.screenshotAudit).toMatchObject({ status: 'FAIL', files: 1, assignments: 2, uniqueHashes: false, exactlyOnce: false })
+    expect(JSON.parse(readFileSync(run.evidencePath, 'utf8')).status).toBe('FAIL')
   })
 })

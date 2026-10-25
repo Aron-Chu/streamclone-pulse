@@ -16,9 +16,12 @@ const sha256 = bytes => createHash('sha256').update(bytes).digest('hex')
 const describeError = error => error instanceof Error ? `${error.name}: ${error.message}` : String(error)
 const ensure = (test, text) => { if (!test) throw new Error(text) }
 const nativeClock = { now: () => performance.now(), sleep: ms => new Promise(resolve => setTimeout(resolve, ms)) }
+const SCREENSHOT_ATTEMPTS = 3
+const SCREENSHOT_RETRY_MS = 250
 export class AcceptanceBlocked extends Error {
   constructor(message, fatal = false) { super(message); this.name = 'AcceptanceBlocked'; this.fatal = fatal }
 }
+class ScreenshotUnavailable extends AcceptanceBlocked {}
 
 export function validateAcceptanceUrl(value, kind = 'live') {
   const url = new URL(value)
@@ -92,10 +95,41 @@ export function classifyLookupLogs(logs) {
   return { rawMatches, identifiedErrors, qualifiedMatches, scope: 'BiDi page/content logs only; background coverage unverified' }
 }
 
-export function gradeAcceptance(rows, cleanup) {
-  if (rows.some(row => row.status === 'FAIL') || Object.values(cleanup).some(item => item?.status === 'FAIL')) return { status: 'FAIL', exitCode: 1 }
+function screenshotAuditPassed(audit) {
+  return !!audit && Number.isInteger(audit.files) && audit.files >= 0 && audit.files === audit.assignments
+    && ['uniqueHashes', 'exactlyOnce', 'fullHashesMatch'].every(key => audit[key] === true)
+    && (!audit.errors || audit.errors.length === 0)
+}
+
+export function gradeAcceptance(rows, cleanup, screenshotAudit) {
+  if (!screenshotAuditPassed(screenshotAudit) || rows.some(row => row.status === 'FAIL') || Object.values(cleanup).some(item => item?.status === 'FAIL')) return { status: 'FAIL', exitCode: 1 }
   if (rows.some(row => row.status !== 'PASS')) return { status: 'BLOCKED', exitCode: 2 }
   return { status: 'PASS', exitCode: 0 }
+}
+
+async function auditScreenshots(evidenceDir, images) {
+  const errors = []
+  let files = []
+  try { files = (await readdir(evidenceDir)).filter(name => name.endsWith('.png')) }
+  catch (error) { errors.push({ error: describeError(error) }) }
+  const matches = await Promise.all(images.map(async image => {
+    try {
+      ensure(typeof image.name === 'string' && path.basename(image.name) === image.name && image.name.endsWith('.png'), 'Invalid screenshot filename')
+      const bytes = await readFile(path.join(evidenceDir, image.name))
+      const match = /^[a-f0-9]{64}$/i.test(image.sha256 ?? '') && sha256(bytes) === image.sha256.toLowerCase()
+      if (!match) errors.push({ name: image.name, error: 'Saved screenshot SHA-256 differs from its assignment' })
+      return match
+    } catch (error) {
+      errors.push({ name: image.name, error: describeError(error) })
+      return false
+    }
+  }))
+  const audit = { files: files.length, assignments: images.length,
+    uniqueHashes: new Set(images.map(image => image.sha256?.toLowerCase())).size === images.length,
+    exactlyOnce: files.every(name => images.filter(image => image.name === name).length === 1) && images.length === files.length,
+    fullHashesMatch: matches.every(Boolean), errors, localOnly: true }
+  audit.status = screenshotAuditPassed(audit) ? 'PASS' : 'FAIL'
+  return audit
 }
 
 async function checkPublicState(ctx) {
@@ -144,18 +178,26 @@ export async function runFirefoxAcceptance(config, dependencies = {}) {
     await rename(path.join(evidenceDir, 'progress.json.tmp'), path.join(evidenceDir, 'progress.json'))
   }
   const capture = async (id, label) => {
-    const bytes = Buffer.from(await driver.takeScreenshot(), 'base64')
-    ensure(bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])), 'Screenshot is not PNG')
-    const assigned = result.rows.flatMap(item => item.screenshots), digest = sha256(bytes)
-    if (assigned.some(item => item.sha256 === digest)) { result.events.push({ phase: 'duplicate-capture-skipped', row: id, label }); await persist(); return null }
-    const image = { name: `${String(assigned.length + 1).padStart(2, '0')}-${label}.png`, sha256: digest }
-    await writeFile(path.join(evidenceDir, image.name), bytes, { flag: 'wx' }); row(id).screenshots.push(image); await persist(); return image
+    for (let attempt = 1; attempt <= SCREENSHOT_ATTEMPTS; attempt++) {
+      const bytes = Buffer.from(await driver.takeScreenshot(), 'base64')
+      ensure(bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])), 'Screenshot is not PNG')
+      const assigned = result.rows.flatMap(item => item.screenshots), digest = sha256(bytes)
+      if (assigned.some(item => item.sha256 === digest)) {
+        result.events.push({ phase: attempt < SCREENSHOT_ATTEMPTS ? 'duplicate-capture-retry' : 'duplicate-capture-exhausted', row: id, label, attempt })
+        await persist()
+        if (attempt === SCREENSHOT_ATTEMPTS) throw new ScreenshotUnavailable(`Required unique screenshot ${label} unavailable after ${SCREENSHOT_ATTEMPTS} attempts`)
+        await deps.clock.sleep(SCREENSHOT_RETRY_MS)
+        continue
+      }
+      const image = { name: `${String(assigned.length + 1).padStart(2, '0')}-${label}.png`, sha256: digest }
+      await writeFile(path.join(evidenceDir, image.name), bytes, { flag: 'wx' }); row(id).screenshots.push(image); await persist(); return image
+    }
   }
   const phase = async (id, action) => {
     try { const data = await action(); Object.assign(row(id), { status: data.status, evidence: data.reason, data }) }
     catch (error) {
       Object.assign(row(id), { status: error instanceof AcceptanceBlocked ? 'BLOCKED' : 'FAIL', evidence: describeError(error) })
-      if (driver) try { await capture(id, `${id.replaceAll(/[^a-z0-9-]/gi, '-')}-failure-state`) } catch (captureError) { row(id).screenshotError = describeError(captureError) }
+      if (driver && !(error instanceof ScreenshotUnavailable)) try { await capture(id, `${id.replaceAll(/[^a-z0-9-]/gi, '-')}-failure-state`) } catch (captureError) { row(id).screenshotError = describeError(captureError) }
       if (error instanceof AcceptanceBlocked && error.fatal) { await persist(); throw error }
     }
     await persist()
@@ -206,13 +248,11 @@ export async function runFirefoxAcceptance(config, dependencies = {}) {
   }
   result.lookupSummary = classifyLookupLogs(result.logs)
   Object.assign(row('page-lookup-errors'), { status: result.lookupSummary.identifiedErrors.length ? 'FAIL' : result.visitedUrls.length && logs ? 'PASS' : 'BLOCKED', evidence: `${result.lookupSummary.identifiedErrors.length} identified lookup errors; ${result.lookupSummary.qualifiedMatches.length} qualified raw matches. Page/content scope only.`, data: result.lookupSummary })
-  const images = result.rows.flatMap(item => item.screenshots), files = (await readdir(evidenceDir)).filter(name => name.endsWith('.png'))
-  const matches = await Promise.all(images.map(async image => sha256(await readFile(path.join(evidenceDir, image.name))) === image.sha256))
-  result.screenshotAudit = { files: files.length, assignments: images.length, uniqueHashes: new Set(images.map(image => image.sha256)).size === images.length,
-    exactlyOnce: files.every(name => images.filter(image => image.name === name).length === 1) && images.length === files.length, fullHashesMatch: matches.every(Boolean), localOnly: true }
-  const graded = gradeAcceptance(result.rows, result.cleanup); result.status = graded.status; result.finishedUtc = new Date().toISOString(); await persist()
+  result.screenshotAudit = await auditScreenshots(evidenceDir, result.rows.flatMap(item => item.screenshots))
+  const graded = gradeAcceptance(result.rows, result.cleanup, result.screenshotAudit); result.status = graded.status; result.finishedUtc = new Date().toISOString(); await persist()
   await writeFile(path.join(evidenceDir, 'page-logs.json'), `${JSON.stringify(result.logs, null, 2)}\n`, { flag: 'wx' })
-  const report = `# Firefox finite acceptance: ${result.status}\n\nBuild: ${result.artifact?.buildId ?? 'unverified'}. Historical run7/D1 unchanged.\n\n| Check | Status | Evidence | Screenshots |\n| --- | --- | --- | --- |\n${result.rows.map(item => `| ${item.id} | ${item.status} | ${item.evidence.replaceAll('|', '\\|')} | ${item.screenshots.map(image => image.name).join(', ')} |`).join('\n')}\n\nCleanup and full image assignments/hashes: progress.json. Images/logs remain local. Actual grants and full background logs remain unverified; no privileged workaround. Scene subject/frame timing requires local visual review.\n`
+  const audit = result.screenshotAudit
+  const report = `# Firefox finite acceptance: ${result.status}\n\nBuild: ${result.artifact?.buildId ?? 'unverified'}. Historical run7/D1 unchanged.\n\n| Check | Status | Evidence | Screenshots |\n| --- | --- | --- | --- |\n${result.rows.map(item => `| ${item.id} | ${item.status} | ${item.evidence.replaceAll('|', '\\|')} | ${item.screenshots.map(image => image.name).join(', ')} |`).join('\n')}\n\nScreenshot audit: ${audit.status}; ${audit.files} files / ${audit.assignments} assignments; unique hashes ${audit.uniqueHashes}; exactly once ${audit.exactlyOnce}; full hashes match ${audit.fullHashesMatch}.\n${audit.errors.map(error => `- ${error.name ?? 'Screenshot directory'}: ${error.error}`).join('\n')}\n\nCleanup and full image assignments/hashes: progress.json. Images/logs remain local. Actual grants and full background logs remain unverified; no privileged workaround. Scene subject/frame timing requires local visual review.\n`
   await writeFile(path.join(evidenceDir, 'REPORT.md'), report, { flag: 'wx' })
   return { exitCode: graded.exitCode, result, evidencePath: path.join(evidenceDir, 'progress.json') }
 }

@@ -90,6 +90,9 @@ check. In the ordinary web-content-only Firefox context, actual runtime
 permission/consent inspection remains BLOCKED. A finite exit `2` is different
 from an idle controller that requires interruption.
 
+Required screenshots must be unique. Capture exhaustion blocks the affected
+check; failed file, hash or assignment audits fail the run.
+
 The harness refuses an inherited privileged system-access environment. Neither
 profile metadata nor the declared manifest is promoted to full runtime-grant
 proof. Firefox's public extension metadata can corroborate identity and removal;
