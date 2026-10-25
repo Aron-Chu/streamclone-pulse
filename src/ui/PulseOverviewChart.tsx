@@ -18,6 +18,7 @@ import {
 import type { ExtensionGameSegment, ExtensionPeak, ExtensionRollup } from '../shared/messages.ts'
 import { activityAxisBoundsFromZero, overlaySeriesAxisMax } from './chatActivityEmotes.ts'
 import type { EmoteOverlaySeries } from './chatActivityEmotes.ts'
+import { recapPinHeads } from './recapPins.ts'
 import { CHART_BAR_ALPHA, CHART_INTERACTION, CHART_THEME, hexToRgba } from './chartTheme.ts'
 import {
   barDisplayAxisMax,
@@ -88,6 +89,12 @@ export interface PulseOverviewChartProps {
   /** Backend-authored top moments; the owning surface controls visibility. */
   peakMarkers?: readonly ExtensionPeak[]
   showPeakMarkers?: boolean
+  /**
+   * A replay's top moments, best first, by their peaks' offsets. Every marker
+   * then shows, as a pin on the chart's top edge: numbered 1–3 for these, a
+   * small dot for the rest (recapPins.ts).
+   */
+  pinOffsets?: readonly number[]
   normalizeOverlaySeries?: boolean
   reducedMotion?: boolean
   focusedSeriesKey?: string | null
@@ -399,6 +406,7 @@ function PulseOverviewChartImpl({
   overlayLines = [],
   peakMarkers = [],
   showPeakMarkers = false,
+  pinOffsets,
   normalizeOverlaySeries = false,
   reducedMotion = false,
   isLive = false,
@@ -928,7 +936,7 @@ function PulseOverviewChartImpl({
     if (!showPeakMarkers || peakMarkers.length === 0 || n === 0) return []
     const firstOffset = visibleRollups[0]?.offsetSeconds ?? internalViewport.startSeconds
     const lastOffset = visibleRollups[n - 1]?.offsetSeconds ?? internalViewport.endSeconds
-    const selectedPeaks = selectVisibleChartMomentPeaks(peakMarkers, firstOffset, lastOffset, MAX_CHART_MOMENT_MARKERS)
+    const selectedPeaks = selectVisibleChartMomentPeaks(peakMarkers, firstOffset, lastOffset, pinOffsets ? Infinity : MAX_CHART_MOMENT_MARKERS)
     return selectedPeaks.visible
       .map((peak, rank) => {
         const offsetSeconds = reactionAnalyticalOffset(peak)
@@ -986,6 +994,7 @@ function PulseOverviewChartImpl({
     internalViewport.startSeconds,
     n,
     peakMarkers,
+    pinOffsets,
     plotWidth,
     selectedIndex,
     showPeakMarkers,
@@ -998,6 +1007,13 @@ function PulseOverviewChartImpl({
     visibleIndexFromFull,
     visibleRollups,
   ])
+
+  const pinHeads = pinOffsets
+    ? recapPinHeads(visibleMomentMarkers, pinOffsets, 8, width - 8)
+    : null
+  // Dots paint first and pin 1 last, so a numbered pin is never under a dot.
+  const paintedMomentMarkers = visibleMomentMarkers.map((marker, index) => ({ marker, pin: pinHeads?.[index] }))
+  if (pinHeads) paintedMomentMarkers.sort((a, b) => (b.pin!.n || 9) - (a.pin!.n || 9))
 
   useEffect(() => {
     if (activeMomentMarkerKey == null) return
@@ -2173,29 +2189,32 @@ function PulseOverviewChartImpl({
             actual interactive targets instead of being covered by the plot. */}
         {visibleMomentMarkers.length > 0 ? (
           <g data-chart-moment-markers="true" aria-label="Top moment markers">
-            {visibleMomentMarkers.map(marker => {
+            {paintedMomentMarkers.map(({ marker, pin }) => {
               const active = marker.pinned || activeMomentMarkerKey === marker.key
               const presentation = chartMomentMarkerPresentation(active)
               const clock = momentClockDisplay(marker.peak)
               const accessibleClock = `minute bucket ${clock.text}`
+              // A pin's head sits on the top edge, a guide down to its minute.
+              const head = pin ? { x: pin.x, y: 8 } : marker
+              const tint = pin?.n ? '#ff4f8b' : '#a78bfa'
               return (
                 <g
                   key={marker.key}
                   opacity={seriesFocusOpacity(focusedSeriesKey, marker.signal, 1)}
                   pointerEvents="none"
                 >
-                  {presentation.showGuide ? (
+                  {pin || presentation.showGuide ? (
                     <line
                       data-chart-moment-marker-guide="true"
-                      data-chart-moment-marker-guide-state="active"
+                      data-chart-moment-marker-guide-state={active ? 'active' : 'resting'}
                       x1={marker.x}
                       x2={marker.x}
-                      y1={crosshairTop}
+                      y1={pin ? 15 : crosshairTop}
                       y2={crosshairBottom}
-                      stroke={marker.color}
+                      stroke={pin ? tint : marker.color}
                       strokeWidth="1"
-                      strokeDasharray={presentation.guideDasharray}
-                      opacity={presentation.guideOpacity}
+                      strokeDasharray={pin ? '2 2' : presentation.guideDasharray}
+                      opacity={pin && !active ? 0.5 : presentation.guideOpacity}
                       pointerEvents="none"
                     />
                   ) : null}
@@ -2204,9 +2223,10 @@ function PulseOverviewChartImpl({
                   data-chart-moment-marker-offset={marker.offsetSeconds}
                   data-chart-moment-marker-precision={marker.peak.precisionSeconds ?? undefined}
                   data-chart-moment-marker-state={active ? 'active' : 'resting'}
+                  data-chart-pin={pin?.n || undefined}
                   role={onSelectIndex || onSelectMoment ? 'button' : undefined}
                   tabIndex={onSelectIndex || onSelectMoment ? 0 : undefined}
-                  aria-label={`${accessibleClock} ${marker.peak.reasonLabel ?? marker.signal} · score ${Math.round(marker.peak.score)}`}
+                  aria-label={`${pin?.n ? `#${pin.n} moment, ` : ''}${accessibleClock} ${marker.peak.reasonLabel ?? marker.signal} · score ${Math.round(marker.peak.score)}`}
                   pointerEvents={onSelectIndex || onSelectMoment ? 'all' : 'none'}
                   style={{ cursor: onSelectIndex || onSelectMoment ? 'pointer' : 'default' }}
                   onMouseEnter={() => setActiveMomentMarkerKey(marker.key)}
@@ -2227,7 +2247,13 @@ function PulseOverviewChartImpl({
                   <title>
                     {accessibleClock} · {marker.peak.reasonLabel ?? marker.signal} · score {Math.round(marker.peak.score)}
                   </title>
-                  {presentation.haloRadius > 0 ? (
+                  {pin ? (
+                    <>
+                      {head.x === marker.x ? null : <line x1={head.x} y1="12" x2={marker.x} y2="15" stroke={tint} />}
+                      <circle cx={head.x} cy="8" r={pin.n ? 7 : active ? 4.5 : 3.5} fill={tint} stroke={active ? '#fff' : '#18181b'} strokeWidth="1.5" />
+                      {pin.n ? <text x={head.x} y="10.8" fill="#fff" fontSize="8" fontWeight="800" textAnchor="middle">{pin.n}</text> : null}
+                    </>
+                  ) : presentation.haloRadius > 0 ? (
                       <circle
                         cx={marker.x}
                         cy={marker.y}
@@ -2238,21 +2264,23 @@ function PulseOverviewChartImpl({
                       />
                   ) : null}
                   <circle
-                    cx={marker.x}
-                    cy={marker.y}
+                    cx={head.x}
+                    cy={head.y}
                     r="9"
                     fill="transparent"
                     pointerEvents="all"
                   />
-                  <path
-                    data-spike-symbol="diamond"
-                    d={`M ${marker.x} ${marker.y - 5.5} l 5.5 5.5 -5.5 5.5 -5.5 -5.5 Z`}
-                    fill="#fbbf24"
-                    stroke="#0b0b0f"
-                    strokeWidth="2"
-                    opacity="1"
-                    pointerEvents="none"
-                  />
+                  {pin ? null : (
+                    <path
+                      data-spike-symbol="diamond"
+                      d={`M ${marker.x} ${marker.y - 5.5} l 5.5 5.5 -5.5 5.5 -5.5 -5.5 Z`}
+                      fill="#fbbf24"
+                      stroke="#0b0b0f"
+                      strokeWidth="2"
+                      opacity="1"
+                      pointerEvents="none"
+                    />
+                  )}
                 </g>
               </g>
               )

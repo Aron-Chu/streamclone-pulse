@@ -1,5 +1,6 @@
 import { normalizeLogin } from './login.ts'
 import { parseMyMoments } from './myMoments.ts'
+import { parseMomentPicture } from './momentPictureMessages.ts'
 import { validBookmarkCursor, validBookmarkPageLimit } from './bookmarkPage.ts'
 import type { BackgroundRequest, CreatePulseBookmarkInput } from './messages.ts'
 
@@ -14,6 +15,7 @@ const KNOWN_MESSAGE_TYPES = new Set<string>([
   'SUPPORTER_FINISH_INTENT',
   'SUPPORTER_CARD_SCRIPT',
   'MOMENT_FRAMES_SCRIPT',
+  'MOMENT_PICTURE',
   'CATCH_ME_UP_SCRIPT',
   'SUPPORTER_BILLING',
   'SUPPORTER_RESTORE',
@@ -26,6 +28,7 @@ const KNOWN_MESSAGE_TYPES = new Set<string>([
   'GET_CLIP',
   'HEALTH',
   'HUB_SNAPSHOT',
+  'MOMENT_MINUTE',
   'GET_UPDATE_CHECK_CAPABILITY',
   'CHECK_FOR_UPDATE',
   'OPEN_SETTINGS_HOST',
@@ -33,6 +36,7 @@ const KNOWN_MESSAGE_TYPES = new Set<string>([
   'LIST_BOOKMARKS',
   'SAVE_BOOKMARK',
   'DELETE_BOOKMARK',
+  'REMOVE_BOOKMARK',
   'LIST_WATCHLIST',
   'ADD_WATCHLIST',
   'REMOVE_WATCHLIST',
@@ -140,6 +144,7 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
         watch: optionalBoolean(raw.watch),
         window,
         streamId: optionalString(raw.streamId),
+        ...(raw.fresh === true ? { fresh: true } : {}),
       }
     }
     case 'GET_CLIP': {
@@ -216,6 +221,8 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
     case 'MY_MOMENTS':
     case 'MOMENT_CAPTURE':
       return parseMyMoments(raw)
+    case 'MOMENT_PICTURE':
+      return parseMomentPicture(raw)
     case 'LIST_BOOKMARKS': {
       if (raw.contextVodId !== undefined && (typeof raw.contextVodId !== 'string' || !/^\d+$/.test(raw.contextVodId))) return null
       if (raw.limit !== undefined && !validBookmarkPageLimit(raw.limit)) return null
@@ -239,12 +246,29 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
     case 'SAVE_BOOKMARK': {
       const bookmark = parseBookmarkInput(raw.bookmark)
       if (!bookmark) return null
-      return { type, bookmark }
+      if (raw.restoreOf === undefined) return { type, bookmark }
+      const restoreOf = requireString(raw.restoreOf)
+      if (!restoreOf || restoreOf.length > 200) return null
+      return { type, bookmark, restoreOf }
     }
     case 'DELETE_BOOKMARK': {
       const id = requireString(raw.id)
       if (!id) return null
       return { type, id }
+    }
+    case 'REMOVE_BOOKMARK': {
+      const id = requireString(raw.id)
+      const login = requireLogin(raw.login)
+      if (!id || id.length > 200 || !login) return null
+      if (raw.contextVodId !== undefined && (typeof raw.contextVodId !== 'string' || !/^\d+$/.test(raw.contextVodId))) return null
+      return {
+        type,
+        id,
+        login,
+        streamId: optionalString(raw.streamId),
+        vodId: optionalString(raw.vodId),
+        ...(raw.contextVodId !== undefined ? { contextVodId: raw.contextVodId as string } : {}),
+      }
     }
     case 'SET_AUTO_UPDATE': {
       if (typeof raw.enabled !== 'boolean') return null
@@ -252,6 +276,13 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
     }
     case 'HEALTH':
       return { type, force: optionalBoolean(raw.force) }
+    case 'MOMENT_MINUTE': {
+      // A Twitch stream id and a whole-second offset within a week; nothing else reaches the URL.
+      if (typeof raw.streamId !== 'string' || !/^\d{1,20}$/.test(raw.streamId)) return null
+      const offset = raw.offsetSeconds
+      if (typeof offset !== 'number' || !Number.isInteger(offset) || offset < 0 || offset > 7 * 86_400) return null
+      return { type, streamId: raw.streamId, offsetSeconds: offset }
+    }
     case 'HUB_SNAPSHOT':
     case 'GET_UPDATE_CHECK_CAPABILITY':
     case 'CHECK_FOR_UPDATE':

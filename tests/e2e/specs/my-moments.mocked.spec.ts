@@ -41,6 +41,15 @@ test('packaged My Moments retains notes, separates consent and clears history wi
     }
     await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items})})
   })
+  // PV-1: Preview reads the bookmark's minute from the public minutes route, by stream id and offset, with no credential.
+  const minuteReads: string[] = []
+  await extension.context.route('https://api.streampulse.stream/v1/portal/analytics/streams/*/minutes**', async route => {
+    expect(route.request().headers().authorization).toBeUndefined()
+    minuteReads.push(new URL(route.request().url()).pathname + new URL(route.request().url()).search)
+    await route.fulfill({ status: 200, json: { streamId: '123456789', channel: 'fixturechan', startedAt: '2026-10-18T21:45:00Z', updatedAt: 1,
+      minutes: [{ offsetSeconds: 60, chatCount: 817, totalEmoteCount: 604, viewerAvg: 2941, viewerSamples: 2,
+        topEmotes: [{ name: 'forsenCD', provider: '7tv', count: 47 }, { name: 'LOL', provider: 'twitch', count: 224 }, { name: 'LO', provider: 'ffz', count: 113 }] }] } })
+  })
   const page=extension.page
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#moments`)
   const link = async () => {
@@ -61,6 +70,15 @@ test('packaged My Moments retains notes, separates consent and clears history wi
   await link()
   await expect(page.getByRole('heading',{name:'My Moments',exact:true})).toBeVisible()
   await expect(page.getByText('Saved comeback',{exact:true})).toBeVisible()
+  await page.getByRole('button',{name:'Preview: Saved comeback',exact:true}).click()
+  const preview=page.getByRole('dialog',{name:'Moment preview'})
+  await expect(preview.locator('.pl-moment-stats')).toContainText('2,941')
+  await expect(preview.locator('.pl-moment-stats')).toContainText('817')
+  await expect(preview.locator('.pl-moment-stats')).toContainText('604')
+  await expect(preview.locator('.pl-emote-name strong')).toHaveText(['LOL','LO','forsenCD'])
+  // Each account link remounts the page, so count the distinct reads, not the requests.
+  expect([...new Set(minuteReads)]).toEqual(['/v1/portal/analytics/streams/123456789/minutes?afterOffset=0'])
+  await preview.getByRole('button',{name:'Close Moment preview'}).click()
   await page.getByText('More',{exact:true}).click()
   await page.getByRole('button',{name:'Edit note: Saved comeback'}).click()
   await page.getByLabel('Your note').fill('My note across reload')
@@ -144,4 +162,82 @@ test('packaged My Moments retains notes, separates consent and clears history wi
   const publicStorage = await extension.serviceWorker.evaluate(() => chrome.storage.local.get(null))
   expect(JSON.stringify(publicStorage)).not.toContain(bearer)
   expect(JSON.stringify(publicStorage)).not.toContain('b'.repeat(64))
+})
+
+test('previewing a save with no stream id shows no numbers and reads no minutes', async ({ extension, prepare }) => {
+  await prepare()
+  const minuteReads: string[] = []
+  await extension.context.route('https://api.streampulse.stream/v1/portal/analytics/streams/*/minutes**', async route => {
+    minuteReads.push(route.request().url())
+    await route.fulfill({ status: 200, json: { streamId: '0', channel: 'fixturechan', startedAt: '2026-10-18T21:45:00Z', updatedAt: 1, minutes: [] } })
+  })
+  // A signed-out save from the Twitch page that knows its replay but not its stream.
+  const twitch = await extension.context.newPage()
+  await openTwitchChannel(twitch)
+  const saved = await extension.serviceWorker.evaluate(async () => {
+    const tab = (await chrome.tabs.query({ url: 'https://www.twitch.tv/*' }))[0]
+    const [response] = await chrome.scripting.executeScript({ target: { tabId: tab.id! }, world: 'ISOLATED', func: () => chrome.runtime.sendMessage({
+      type: 'SAVE_BOOKMARK', bookmark: { login: 'fixturechan', vodId: '2806037629', offsetSeconds: 100, label: 'Saved without stream', source: 'extension' } }) })
+    return response.result
+  })
+  expect(saved.item.streamId).toBeUndefined()
+  const page = extension.page
+  await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#moments`)
+  await page.getByRole('button', { name: 'Preview: Saved without stream', exact: true }).click()
+  const preview = page.getByRole('dialog', { name: 'Moment preview' })
+  // The unavailable state, not a chart or a grid of zeros; one screen, no tabs.
+  await expect(preview.getByRole('status')).toBeVisible()
+  await expect(preview.locator('.pl-moment-stats, .pl-emote-mix, dd, .pl-around-chart, .pl-around-frame, [role="tab"]')).toHaveCount(0)
+  expect(await preview.locator('.pl-around-body').innerText()).not.toMatch(/(^|[^\d:.,])0(?![\d:.,])/)
+  // No stream id: no session page to open. The VOD still clips, from 30 s before the moment.
+  await expect(preview.getByRole('link', { name: /Analysis/ })).toHaveCount(0)
+  await preview.getByRole('button', { name: 'Clip', exact: true }).click()
+  const onTwitch = preview.getByRole('link', { name: /Clip on Twitch/ })
+  await expect(onTwitch).toBeFocused()
+  await expect(onTwitch).toHaveAttribute('href', 'https://www.twitch.tv/videos/2806037629?t=0h01m10s')
+  await expect(onTwitch).toHaveAttribute('target', '_blank')
+  await expect(preview.getByText('Twitch makes the clip, up to 60 s.', { exact: true })).toBeVisible()
+  // The window's controls work from the keyboard.
+  await preview.getByRole('button', { name: '+15 s', exact: true }).focus()
+  await page.keyboard.press('Enter')
+  await expect(onTwitch).toHaveAttribute('href', 'https://www.twitch.tv/videos/2806037629?t=0h01m25s')
+  await preview.getByRole('button', { name: '30 s', exact: true }).focus()
+  await page.keyboard.press('Space')
+  await expect(preview.getByRole('button', { name: '30 s', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await preview.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(preview.getByRole('button', { name: 'Clip', exact: true })).toBeFocused()
+  // No stream id, so nothing asks the minutes route.
+  expect(minuteReads).toEqual([])
+})
+
+test('removing the bookmark in Preview offers Undo, which brings it back with its note', async ({ extension, prepare }) => {
+  await prepare()
+  const twitch = await extension.context.newPage()
+  await openTwitchChannel(twitch)
+  await extension.serviceWorker.evaluate(async () => {
+    const tab = (await chrome.tabs.query({ url: 'https://www.twitch.tv/*' }))[0]
+    await chrome.scripting.executeScript({ target: { tabId: tab.id! }, world: 'ISOLATED', func: () => chrome.runtime.sendMessage({
+      type: 'SAVE_BOOKMARK', bookmark: { login: 'fixturechan', vodId: '2806037629', offsetSeconds: 100, label: 'Undo me', source: 'extension' } }) })
+  })
+  const page = extension.page
+  await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#moments`)
+  await page.getByText('More', { exact: true }).click()
+  await page.getByRole('button', { name: 'Edit note: Undo me', exact: true }).click()
+  await page.getByLabel('Your note').fill('Keep this note')
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click()
+  await expect(page.getByText('Keep this note', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Preview: Undo me', exact: true }).click()
+  const preview = page.getByRole('dialog', { name: 'Moment preview' })
+  // Gone at once, no confirm step; Preview stays on the moment with Undo.
+  await preview.getByRole('button', { name: 'Remove bookmark: Undo me', exact: true }).click()
+  await expect(preview.getByText('Bookmark removed.', { exact: true })).toBeVisible()
+  await expect(preview.getByRole('button', { name: 'Bookmark: Undo me', exact: true })).toBeVisible()
+  await preview.getByRole('button', { name: 'Undo', exact: true }).click()
+  await expect(preview.getByRole('button', { name: 'Remove bookmark: Undo me', exact: true })).toBeVisible()
+  await expect(preview.getByText('Bookmark removed.', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('Bookmark restored with its note.', { exact: true })).toBeAttached()
+  await preview.getByRole('button', { name: 'Close Moment preview', exact: true }).click()
+  await page.reload()
+  await expect(page.getByText('Undo me', { exact: true })).toBeVisible()
+  await expect(page.getByText('Keep this note', { exact: true })).toBeVisible()
 })

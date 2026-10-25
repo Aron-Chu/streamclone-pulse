@@ -51,40 +51,55 @@ describe('My Moments frontend', () => {
     await render(repo)
     const before = await repo.load(new AbortController().signal)
     await click('Preview')
-    expect(container.querySelector('dialog[open]')).toBeTruthy()
-    expect(container.textContent).toContain('Illustrative analysis')
-    expect(container.textContent).toContain('No verified frame is available')
-    expect(container.querySelector('[role="tabpanel"] .pl-signal-bars')).toBeNull()
-    expect(container.textContent).toContain('Halloween: The Game')
-    expect(container.textContent).not.toContain('Video pending')
-    await click('Analysis')
-    expect(container.textContent).toContain('297')
-    expect(container.textContent).toContain('No AI summary has been generated')
-    await click('Clip workflow')
-    const handoff = [...container.querySelectorAll('button')].find(b => b.textContent?.includes('Open in ReplayForge'))!
-    expect(handoff.disabled).toBe(true)
+    const dialog = container.querySelector('dialog[open]')!
+    expect(dialog.getAttribute('aria-label')).toBe('Moment preview')
+    expect(dialog.textContent).toContain('Illustrative analysis')
+    // No frame: Preview opens on the chart, with no picture block at all.
+    expect(dialog.querySelector('.pl-around-frame, .pl-media')).toBeNull()
+    expect(dialog.querySelector('.pl-around-chart svg')).toBeTruthy()
+    expect(dialog.textContent).toContain('328')
+    expect(dialog.textContent).toContain('297')
+    expect(dialog.textContent).not.toContain('Video pending')
+    // One screen: no tabs, no ReplayForge workflow. No VOD id, so no Clip; Analysis opens the session page.
+    expect(dialog.querySelectorAll('[role="tab"]')).toHaveLength(0)
+    expect(dialog.textContent).not.toContain('ReplayForge')
+    expect([...dialog.querySelectorAll('button')].some(b => b.textContent?.includes('Clip'))).toBe(false)
+    expect(dialog.querySelector<HTMLAnchorElement>('a[href^="http://127.0.0.1:5173/analytics/"]')?.textContent).toContain('Analysis')
     expect((await repo.load(new AbortController().signal)).moments).toEqual(before.moments)
   })
   it('keeps partial measurements unknown and allows bookmarking directly from history preview', async () => {
     const repo = createDemoRepository('ready', 0)
     await render(repo)
-    await click('History'); await click('Preview'); await click('Analysis')
-    expect(container.textContent).toContain('Partial coverage')
-    expect(container.querySelector('dialog dd:last-child')?.textContent).toBeTruthy()
-    expect(container.querySelector('dialog')?.textContent).toContain('7TV')
-    expect(container.querySelector('dialog')?.textContent).toContain('30.0% of emote uses')
-    await click('Bookmark')
+    await click('History'); await click('Preview')
+    const dialog = () => container.querySelector('dialog[open]')!
+    // Two of the seven sampled minutes are gaps: no bar, never a zero.
+    expect(dialog().querySelectorAll('.pl-around-chart rect[data-minute]')).toHaveLength(5)
+    expect(dialog().querySelector('.pl-around-tiles dd')?.textContent).toBe((18500).toLocaleString())
+    expect(dialog().textContent).toContain('156/min · 30%')
+    const bookmark = dialog().querySelector<HTMLButtonElement>('button[aria-label^="Bookmark:"]')!
+    expect(bookmark.classList.contains('pl-on')).toBe(false)
+    await act(async () => { bookmark.click(); await new Promise(r => setTimeout(r, 5)) })
     expect((await repo.load(new AbortController().signal)).moments.find(m => m.id === 'two')?.savedAt).toBeTypeOf('number')
-    expect(container.querySelector('dialog')?.textContent).toContain('Bookmarked')
+    expect(dialog().querySelector('button[aria-label^="Remove bookmark:"]')?.classList.contains('pl-on')).toBe(true)
   })
-  it('supports arrow-key navigation through preview tabs', async () => {
-    await render(createDemoRepository('ready', 0)); await click('Preview')
-    // Scoped to the dialog: the page itself now has a tab bar too.
-    const dialog = container.querySelector('dialog[open]')!
-    const first = dialog.querySelector('[role="tab"]')!
-    await act(async () => { first.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })) })
-    expect(dialog.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe('Analysis')
-    expect(document.activeElement?.textContent).toBe('Analysis')
+  it('removes the bookmark from Preview at once and Undo brings it back with its note', async () => {
+    const repo = createDemoRepository('ready', 0)
+    await render(repo)
+    await act(async () => { container.querySelector<HTMLButtonElement>('button[aria-label="Preview: Halloween: The Game · emote reaction"]')!.click() })
+    const dialog = () => container.querySelector('dialog[open]')
+    await act(async () => { dialog()!.querySelector<HTMLButtonElement>('button[aria-label^="Remove bookmark:"]')!.click(); await new Promise(r => setTimeout(r, 5)) })
+    // No confirm step: the bookmark is gone, Preview stays open on the moment and offers Undo.
+    expect((await repo.load(new AbortController().signal)).moments.some(m => m.id === 'one')).toBe(false)
+    expect(dialog()?.querySelector('[role="status"]')?.textContent).toBe('Bookmark removed.')
+    expect(dialog()?.querySelector('h2')?.textContent).toBe('Halloween: The Game · emote reaction')
+    expect(dialog()?.querySelector('button[aria-label^="Bookmark:"]')).toBeTruthy()
+    await click('Undo')
+    await act(async () => { await new Promise(r => setTimeout(r, 10)) })
+    const back = (await repo.load(new AbortController().signal)).moments.find(m => m.id === 'one')
+    expect(back?.savedAt).toBeTypeOf('number')
+    expect(back?.note).toBe('Come back to this part of the Halloween stream.')
+    expect(dialog()?.textContent).not.toContain('Bookmark removed.')
+    expect(dialog()?.querySelector('button[aria-label^="Remove bookmark:"]')).toBeTruthy()
   })
   it('has named regions and a real tab bar', async () => {
     await render(createDemoRepository('ready', 0))
@@ -155,12 +170,17 @@ describe('My Moments frontend', () => {
     document.body.replaceChildren()
     await render(withState('expired'))
     expect(container.textContent).toContain('Your account link expired')
+    expect(container.textContent).not.toContain('No bookmarks yet')
     expect(container.querySelector('a[href="#supporter"]')).toBeTruthy()
 
     await act(async () => root?.unmount())
     document.body.replaceChildren()
     await render(withState('error'))
     expect(container.textContent).toContain('Could not reach StreamPulse')
+    // A failed read: no "change was confirmed" talk, and no empty state claiming
+    // the account has no bookmarks when it could not be asked.
+    expect(container.textContent).toContain('Your account bookmarks could not be loaded')
+    expect(container.textContent).not.toContain('No bookmarks yet')
     // A transport failure is not something connecting an account will fix.
     expect(container.querySelector('a[href="#supporter"]')).toBeNull()
 
@@ -220,6 +240,10 @@ describe('My Moments frontend', () => {
         execute: async command => { commands.push(command); return { ...snapshot, deviceBookmarks: [] } as unknown as LibrarySnapshot }, export: async () => '' }
     }
     await render(repository('error'))
+    // Device saves still list under the notice; the account side says nothing
+    // rather than "No account bookmarks yet".
+    expect(container.querySelectorAll('[data-device-save="true"]')).toHaveLength(2)
+    expect(container.textContent).not.toContain('No account bookmarks yet')
     expect(container.querySelector('button[aria-label^="Add to your account"]')).toBeNull()
     expect([...container.querySelectorAll('button')].some(b => b.textContent === 'Add all to account')).toBe(false)
     await act(async () => root?.unmount()); document.body.replaceChildren()
@@ -239,6 +263,31 @@ describe('My Moments frontend', () => {
     await act(async () => { confirm.click(); await new Promise(r => setTimeout(r, 5)) })
     expect(commands).toEqual([{ kind: 'import-device-saves' }])
     expect(container.textContent).toContain('Added to your account.')
+  })
+  it('shows a change made elsewhere in place, and never undoes a change made on this page', async () => {
+    let current = createDemoSnapshot('new', 0)
+    let changed!: () => void
+    let pending: ((snapshot: LibrarySnapshot) => void) | undefined
+    const repository: LibraryRepository = {
+      load: () => pending ? new Promise(resolve => { pending = resolve }) : Promise.resolve(structuredClone(current)),
+      execute: async () => { current = { ...current, moments: current.moments.filter(m => m.id !== 'one') }; return structuredClone(current) },
+      export: async () => '',
+      subscribe: onChange => { changed = onChange; return () => undefined },
+    }
+    await render(repository)
+    expect(container.textContent).toContain('No bookmarks yet')
+    current = createDemoSnapshot('ready', 0)
+    await act(async () => { changed(); expect(container.textContent).not.toContain('Loading your moments'); await new Promise(r => setTimeout(r, 5)) })
+    expect(container.textContent).toContain('Halloween: The Game')
+    // A refresh that started before the page's own removal finishes after it.
+    pending = () => undefined
+    await act(async () => { changed(); await Promise.resolve() })
+    const stale = pending!
+    await act(async () => { container.querySelector<HTMLButtonElement>('button[aria-label^="Remove bookmark: Halloween"]')!.click(); await new Promise(r => setTimeout(r, 5)) })
+    await click('Confirm change')
+    expect(container.textContent).not.toContain('Halloween: The Game')
+    await act(async () => { stale(createDemoSnapshot('ready', 0)); await new Promise(r => setTimeout(r, 5)) })
+    expect(container.textContent).not.toContain('Halloween: The Game')
   })
   it('ignores stale completion after repository/account changes', async () => {
     let finish!: (snapshot: LibrarySnapshot) => void

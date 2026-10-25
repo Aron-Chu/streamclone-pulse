@@ -113,7 +113,7 @@ export const shadowStyles = `
     100% { opacity: 1; transform: scale(1); }
   }
   @keyframes pulse-moment-feedback {
-    from { opacity: 0; transform: translateY(-3px); }
+    from { opacity: 0; transform: translateY(6px); }
     to { opacity: 1; transform: translateY(0); }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -153,7 +153,8 @@ export const shadowStyles = `
     outline: none !important;
     box-shadow: none !important;
   }
-  .pulse-moment-row-button:focus-visible {
+  .pulse-moment-row-button:focus-visible,
+  .pulse-moment-more:focus-visible {
     outline: 2px solid rgba(var(--pulse-accent-light-rgb, 196, 181, 253), 0.95) !important;
     outline-offset: 2px;
     box-shadow: 0 0 0 1px rgba(17, 17, 23, 0.95) !important;
@@ -166,7 +167,8 @@ export const shadowStyles = `
       box-shadow var(--pulse-motion-interactive) var(--pulse-ease-standard);
   }
   .pulse-moment-accent{background:rgba(255,255,255,.12);transition:background var(--pulse-motion-interactive) var(--pulse-ease-standard)}
-  .pulse-moment-row-button:hover .pulse-moment-row {
+  .pulse-moment-row-button:hover .pulse-moment-row,
+  .pulse-moment-more:hover {
     box-shadow: inset 0 0 0 1px rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.35) !important;
     background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.08) !important;
   }
@@ -396,25 +398,145 @@ export const shadowStyles = `
     opacity: 0.58;
     transform: none !important;
   }
-  .pulse-moment-actions {
-    width: min(100%, 420px);
+  .pulse-card-bookmark {
+    align-items: center;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 9px;
+    color: #a1a1b2;
+    cursor: pointer;
+    display: inline-flex;
+    flex: 0 0 auto;
+    height: 28px;
+    justify-content: center;
+    min-height: 28px;
+    padding: 0;
+    width: 34px;
   }
-  .pulse-moment-actions .pulse-action-chip {
-    min-height: 40px;
+  .pulse-card-bookmark[aria-pressed="true"],
+  .pulse-card-bookmark[aria-pressed="true"]:hover:not(:disabled) {
+    background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.28) !important;
+    border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.7) !important;
+    color: #fff;
   }
-  .pulse-moment-bookmark-button[data-moment-save-state="saved"] {
-    border-color: rgba(52, 211, 153, 0.46) !important;
-    color: #a7f3d0 !important;
-  }
-  .pulse-moment-bookmark-button[data-moment-save-state="saved"] .pulse-moment-bookmark-icon {
+  .pulse-card-bookmark[aria-pressed="true"] svg {
     animation: pulse-moment-saved 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
-    color: #6ee7b7;
   }
-  .pulse-moment-action-feedback {
-    animation: pulse-moment-feedback 160ms ease-out both;
+  .pulse-card-bookmark:focus-visible,
+  .pulse-my-moments-link:focus-visible,
+  .pulse-bookmark-toast button:focus-visible {
+    outline: 2px solid rgba(103, 232, 249, 0.95);
+    outline-offset: 2px;
   }
-  .pulse-moment-action-error {
-    animation: pulse-moment-feedback 160ms ease-out both;
+  .pulse-row-bookmark {
+    color: var(--pulse-accent-ink, #ddd6fe);
+    display: inline-flex;
+    line-height: 0;
+  }
+  .pulse-section-title-row {
+    align-items: baseline;
+    display: flex;
+    gap: 8px;
+    justify-content: space-between;
+    min-width: 0;
+  }
+  .pulse-my-moments-link {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    color: var(--pulse-accent-ink, #ddd6fe);
+    cursor: pointer;
+    display: inline-flex;
+    flex-shrink: 0;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    gap: 4px;
+    padding: 0;
+    white-space: nowrap;
+  }
+  .pulse-my-moments-link:hover {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .pulse-arrival {
+    align-items: center;
+    background: rgba(245, 196, 81, 0.08);
+    border: 1px solid rgba(245, 196, 81, 0.45);
+    border-radius: 999px;
+    color: #fde68a;
+    display: flex;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    gap: 6px;
+    margin-bottom: 6px;
+    max-width: 100%;
+    padding: 2px 4px 2px 10px;
+    width: max-content;
+  }
+  .pulse-arrival span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pulse-arrival button {
+    background: transparent;
+    border: 0;
+    border-radius: 999px;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+    line-height: 1;
+    padding: 2px 6px;
+  }
+  .pulse-arrival button:hover {
+    background: rgba(245, 196, 81, 0.16);
+  }
+  .pulse-arrival button:focus-visible {
+    outline: 2px solid rgba(103, 232, 249, 0.95);
+    outline-offset: 1px;
+  }
+  .pulse-bookmark-toast-anchor {
+    bottom: 0;
+    height: 0;
+    position: sticky;
+    z-index: 30;
+  }
+  .pulse-bookmark-toast {
+    align-items: center;
+    animation: pulse-moment-feedback 180ms ease-out both;
+    background: #1d1d27;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 10px;
+    bottom: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    color: #e4e4e7;
+    display: flex;
+    font-size: 11.5px;
+    gap: 10px;
+    left: 0;
+    padding: 8px 10px;
+    position: absolute;
+    right: 0;
+  }
+  .pulse-bookmark-toast[data-bookmark-toast="error"] {
+    border-color: rgba(248, 113, 113, 0.45);
+  }
+  .pulse-bookmark-toast-text {
+    flex: 1;
+    min-width: 0;
+  }
+  .pulse-bookmark-toast button {
+    background: none;
+    border: 0;
+    color: var(--pulse-accent-ink, #ddd6fe);
+    cursor: pointer;
+    font: inherit;
+    font-weight: 800;
+    padding: 0;
+    white-space: nowrap;
   }
   .pulse-analytics-hub-cta {
     align-items: flex-start;
@@ -775,9 +897,8 @@ export const shadowStyles = `
     .pulse-analytics-hub-cta:active {
       transform: none !important;
     }
-    .pulse-moment-bookmark-button[data-moment-save-state="saved"] .pulse-moment-bookmark-icon,
-    .pulse-moment-action-feedback,
-    .pulse-moment-action-error {
+    .pulse-card-bookmark svg,
+    .pulse-bookmark-toast {
       animation: none !important;
     }
     .pulse-clip-spike-card,.pulse-clip-control{transform:none!important;transition:none!important}

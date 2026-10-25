@@ -1,3 +1,5 @@
+import { isDevLoopbackHostname } from './devHosts.ts'
+
 const TRUSTED_IMAGE_HOSTS = new Set([
   'cdn.7tv.app',
   'cdn.betterttv.net',
@@ -13,12 +15,6 @@ const TRUSTED_TWITCH_NAVIGATION_HOSTS = new Set([
   'clips.twitch.tv',
 ])
 
-// Keep development-only loopback values out of store-target bundle scans while
-// retaining local backend support for development builds.
-const LOCALHOST = String.fromCharCode(108, 111, 99, 97, 108, 104, 111, 115, 116)
-const LOOPBACK_IPV4 = [127, 0, 0, 1].join('.')
-const LOOPBACK_IPV6 = '::1'
-
 function parseHttpUrl(raw: string): URL | null {
   try {
     const parsed = new URL(raw)
@@ -30,13 +26,9 @@ function parseHttpUrl(raw: string): URL | null {
   }
 }
 
+/** A local backend in development builds; store builds have none. */
 function isLocalBackendOrigin(parsed: URL): boolean {
-  const hostname = parsed.hostname.replace(/^\[|\]$/g, '')
-  return parsed.protocol === 'http:' && (
-    hostname === LOCALHOST
-    || hostname === LOOPBACK_IPV4
-    || hostname === LOOPBACK_IPV6
-  )
+  return parsed.protocol === 'http:' && isDevLoopbackHostname(parsed.hostname)
 }
 
 /** Allow only known CDN images or the configured backend's own image/proxy paths. */

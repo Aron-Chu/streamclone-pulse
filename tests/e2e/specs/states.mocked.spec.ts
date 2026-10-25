@@ -742,7 +742,7 @@ test.describe('extension mocked states', () => {
     await expect(extension.page.locator('[data-test-selector="chat-scrollable-area"]')).toHaveCSS('visibility', 'hidden')
   })
 
-  test('live partial / starting surfaces not-tracked / starting copy', async ({
+  test('live partial / warming tier shows the warm-up card in plain words', async ({
     extension,
     prepare,
     evidence,
@@ -750,8 +750,13 @@ test.describe('extension mocked states', () => {
     await prepare({ scenario: 'live-partial', twitchKind: 'live' })
     await openTwitchChannel(extension.page)
     await waitForPulseRoot(extension.page)
-    // Hosted + warming tier shows the not-tracked live path (starting / not yet IRC-active).
-    await assertPulseShadowContains(extension.page, /Not tracked|IRC pool|Partial|Warming|tracking/i)
+    // Hosted + warming tier: chat is being read, so the channel gets the live
+    // view and its warm-up card. This fixture's refresh fails once, and until
+    // the overlay keeps the last coverage tier across a failed refresh, that
+    // failure drops the tier and the plain not-tracked card shows instead.
+    // Neither may use pipeline words.
+    await assertPulseShadowContains(extension.page, /Warming.*3 \/ 5 minutes collected|Not tracked live/)
+    expect(await pulseShadowText(extension.page)).not.toMatch(/IRC pool|IRC chat|rollups are/)
     assertNoUncaughtErrors(evidence)
   })
 

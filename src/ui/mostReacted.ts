@@ -327,6 +327,16 @@ export function resolveSelectedMomentKey(
 
 export type MomentSortMode = 'reaction' | 'chat' | 'emotes'
 
+/** Top moments' Sort, on live and in a recap. */
+export const MOMENT_SORT_OPTIONS: ReadonlyArray<{ value: MomentSortMode; label: string }> = [
+  { value: 'reaction', label: 'Strongest reaction' },
+  { value: 'chat', label: 'Chat activity' },
+  { value: 'emotes', label: 'Emote activity' },
+]
+
+export const TOP_MOMENTS_TITLE = 'Top moments'
+export const TOP_MOMENTS_SUBTITLE = 'Chat and emote spikes'
+
 function isChatSpikeReason(reason: string, reasonLabel?: string): boolean {
   const normalized = reason.trim().toLowerCase()
   if (normalized === 'chat_spike') return true
@@ -369,12 +379,15 @@ export function sortLiveHeatPoints(points: LiveHeatPoint[], mode: MomentSortMode
         || a.offsetSeconds - b.offsetSeconds,
     )
   } else {
+    // A tie goes to the earlier moment, as in the API's own order. The backend
+    // re-scores past minutes as a live stream grows, so a leader can dip into
+    // a tie for one poll; breaking it by volume swapped the #1 moment back and forth.
     copy.sort(
       (a, b) =>
         authoritativeReactionScore(b) - authoritativeReactionScore(a)
+        || a.offsetSeconds - b.offsetSeconds
         || reactionRankValue(b) - reactionRankValue(a)
-        || b.score - a.score
-        || a.offsetSeconds - b.offsetSeconds,
+        || b.score - a.score,
     )
   }
   return copy

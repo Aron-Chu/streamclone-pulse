@@ -21,6 +21,8 @@ describe('parseBackgroundRequest', () => {
       window: 'full',
       streamId: undefined,
     })
+    expect(parseBackgroundRequest({ type: 'GET_PULSE', login: 'xqc', fresh: true })).toMatchObject({ fresh: true })
+    expect(parseBackgroundRequest({ type: 'GET_PULSE', login: 'xqc', fresh: 'yes' })).not.toHaveProperty('fresh')
     expect(parseBackgroundRequest({ type: 'HEALTH' })).toEqual({ type: 'HEALTH', force: undefined })
     expect(parseBackgroundRequest({ type: 'HEALTH', force: true })).toEqual({ type: 'HEALTH', force: true })
     expect(parseBackgroundRequest({ type: 'GET_UPDATE_CHECK_CAPABILITY' })).toEqual({ type: 'GET_UPDATE_CHECK_CAPABILITY' })
@@ -158,6 +160,25 @@ describe('parseBackgroundRequest', () => {
       .toEqual({ type: 'LIST_BOOKMARKS', login: 'xqc', streamId: '123', vodId: undefined, contextVodId: '987' })
     for (const contextVodId of ['', 'abc', 987, null]) {
       expect(parseBackgroundRequest({ type: 'LIST_BOOKMARKS', contextVodId })).toBeNull()
+    }
+  })
+
+  it('parses a panel bookmark removal with its channel and stream identity', () => {
+    expect(parseBackgroundRequest({ type: 'REMOVE_BOOKMARK', id: 'bk', login: 'XQC', streamId: '123', contextVodId: '987' }))
+      .toEqual({ type: 'REMOVE_BOOKMARK', id: 'bk', login: 'xqc', streamId: '123', vodId: undefined, contextVodId: '987' })
+    expect(parseBackgroundRequest({ type: 'REMOVE_BOOKMARK', id: 'bk', login: 'xqc', vodId: '987' }))
+      .toEqual({ type: 'REMOVE_BOOKMARK', id: 'bk', login: 'xqc', streamId: undefined, vodId: '987' })
+    for (const bad of [{ login: 'xqc' }, { id: 'bk' }, { id: 'bk', login: 'a' }, { id: 'a'.repeat(201), login: 'xqc' }, { id: 'bk', login: 'xqc', contextVodId: 'abc' }]) {
+      expect(parseBackgroundRequest({ type: 'REMOVE_BOOKMARK', ...bad })).toBeNull()
+    }
+  })
+
+  it('keeps the removed id an Undo save names, and nothing malformed', () => {
+    const bookmark = { login: 'xqc', streamId: '123', offsetSeconds: 120, source: 'extension' }
+    expect(parseBackgroundRequest({ type: 'SAVE_BOOKMARK', bookmark, restoreOf: 'bk' })).toMatchObject({ type: 'SAVE_BOOKMARK', restoreOf: 'bk' })
+    expect(parseBackgroundRequest({ type: 'SAVE_BOOKMARK', bookmark })).not.toHaveProperty('restoreOf')
+    for (const restoreOf of ['', 7, 'a'.repeat(201)]) {
+      expect(parseBackgroundRequest({ type: 'SAVE_BOOKMARK', bookmark, restoreOf })).toBeNull()
     }
   })
 

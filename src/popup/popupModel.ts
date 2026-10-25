@@ -223,11 +223,13 @@ function latestChatPerMinute(rollups: ExtensionRollup[], currentOffsetSeconds: n
 }
 
 function biggestMoment(payload: PulsePayload | null, isLive: boolean): PopupMoment | null {
-  let best: { score: number; offsetSeconds: number; label: string } | null = null
+  let best: { score: number; at: number; offsetSeconds: number; label: string } | null = null
   for (const peak of payload?.peaks ?? []) {
     const score = peak.compositeScore ?? peak.score
-    if (!Number.isFinite(score) || (best && score <= best.score)) continue
-    best = { score, offsetSeconds: peak.seekOffsetSeconds ?? peak.offsetSeconds, label: peak.reasonLabel || 'Chat spike' }
+    if (!Number.isFinite(score)) continue
+    // A tie goes to the earlier peak, like the panel, whatever order the peaks arrive in.
+    if (best && (score < best.score || (score === best.score && peak.offsetSeconds >= best.at))) continue
+    best = { score, at: peak.offsetSeconds, offsetSeconds: peak.seekOffsetSeconds ?? peak.offsetSeconds, label: peak.reasonLabel || 'Chat spike' }
   }
   if (!best || !payload) return null
   return {

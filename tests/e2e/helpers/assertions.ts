@@ -135,7 +135,8 @@ export async function assertLiveGameCapPresent(page: Page): Promise<void> {
   }).toPass({ timeout: 20_000 })
 }
 
-/** Selected moment card uses "Bookmark" (not legacy "Save"). */
+/** Selected moment card uses "Bookmark" (not legacy "Save"). The card's bookmark is an
+ *  icon, so its aria-label ("Bookmark moment at …") counts as well as button text. */
 export async function assertBookmarkLabel(page: Page): Promise<void> {
   await expect(async () => {
     const labels = await page.evaluate(rootId => {
@@ -143,7 +144,8 @@ export async function assertBookmarkLabel(page: Page): Promise<void> {
       const root = host?.shadowRoot
       if (!root) return []
       return [...root.querySelectorAll('button')]
-        .map(btn => (btn.textContent ?? '').replace(/\s+/g, ' ').trim())
+        .flatMap(btn => [btn.textContent ?? '', btn.getAttribute('aria-label') ?? ''])
+        .map(label => label.replace(/\s+/g, ' ').trim())
         .filter(Boolean)
     }, PULSE_ROOT_ID)
     expect(labels.some(l => l === 'Bookmark' || l.startsWith('Bookmark')), 'Bookmark CTA').toBe(
@@ -163,7 +165,7 @@ export async function clickBookmarkButton(page: Page): Promise<void> {
     const root = host?.shadowRoot
     if (!root) return false
     const btn = [...root.querySelectorAll('button')].find(el => {
-      const t = (el.textContent ?? '').replace(/\s+/g, ' ').trim()
+      const t = (el.getAttribute('aria-label') || el.textContent || '').replace(/\s+/g, ' ').trim()
       return t === 'Bookmark' || t.startsWith('Bookmark')
     })
     if (!btn) return false

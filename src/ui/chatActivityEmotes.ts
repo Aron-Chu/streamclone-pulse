@@ -501,8 +501,11 @@ export function densifyRollupsForTimeline(
           ? 0
           : undefined
       if (viewerCount !== undefined) {
-        viewerSum += viewerCount
-        viewerSamples += Math.max(1, rollup.viewerSamples ?? 0)
+        // viewerCount is already the minute's mean, so weight it by its samples
+        // (adding it once against a 2-sample divisor halved the bucket).
+        const samples = Math.max(1, rollup.viewerSamples ?? 0)
+        viewerSum += viewerCount * samples
+        viewerSamples += samples
       }
       if (rollup.topEmotes?.length) bucketTopEmotes.push(rollup.topEmotes)
     }
@@ -709,9 +712,12 @@ export function findBucketIndexForOffset(
     const end = next ?? start + bucketWidth
     if (targetOffsetSeconds >= start && targetOffsetSeconds < end) return i
   }
+  // One bucket of slack after the end covers a live chart that lags its newest
+  // peak. Anything later is not on this chart: pinning it to the last bucket
+  // showed that minute's numbers under another moment's time.
   const last = chartOffsets.length - 1
   const lastStart = chartOffsets[last]!
-  return targetOffsetSeconds >= lastStart ? last : null
+  return targetOffsetSeconds >= lastStart && targetOffsetSeconds < lastStart + 2 * bucketWidth ? last : null
 }
 
 /** Bucket-aware peak mapping for full-stream densified charts. */

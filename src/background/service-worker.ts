@@ -1,5 +1,6 @@
-import { handleDeviceBookmarks, handleMyMoments } from './myMoments.ts'
+import { bindReplayLookups, handleDeviceBookmarks, handleMyMoments, handlePicture, removePanelBookmark, restoreRemovedNote, wantSavedPicture } from './myMoments.ts'
 import { loadHubSnapshot } from './hubSnapshot.ts'
+import { loadMomentMinute } from './momentMinute.ts'
 import {
   addPulseWatchlist,
   createPulseBookmark,
@@ -77,7 +78,7 @@ import {
   pulseDebug,
 } from '../shared/pulseDebug.ts'
 import { isExtensionPageSender, isSenderAuthorizedForMessage, isSupportedTwitchUrl, isTrustedTwitchTopFrameSender, tabUrlMatchesPulseLogin } from './pulseBroadcastTargets.ts'
-import { discoverLiveVodIdFromGqlInTab } from './twitchPageGql.ts'
+import { discoverLiveVodIdFromGqlInTab, vodFrameInTab, vodPicturesInTab } from './twitchPageGql.ts'
 import {
   awaitPulsePrefetchInFlight,
   handleTwitchTabUpdate,
@@ -509,6 +510,8 @@ function messageLogin(message: BackgroundRequest): string | undefined {
       return message.login
     case 'SAVE_BOOKMARK':
       return message.bookmark.login
+    case 'REMOVE_BOOKMARK':
+      return message.login
     default:
       return undefined
   }
@@ -517,8 +520,9 @@ function messageLogin(message: BackgroundRequest): string | undefined {
 function isAuthorizedRuntimeSender(message: BackgroundRequest, sender: chrome.runtime.MessageSender): boolean {
   const vodId = message.type === 'SAVE_BOOKMARK' ? message.bookmark.vodId
     : message.type === 'LIST_BOOKMARKS' ? message.contextVodId ?? message.vodId
-      : message.type === 'GET_CLIP' ? message.vodId
-        : message.type === 'LIST_PAST_VODS' ? message.contextVodId : undefined
+      : message.type === 'REMOVE_BOOKMARK' ? message.contextVodId ?? message.vodId
+        : message.type === 'GET_CLIP' ? message.vodId
+          : message.type === 'LIST_PAST_VODS' ? message.contextVodId : undefined
   return isSenderAuthorizedForMessage(message.type, messageLogin(message), sender, chrome.runtime.id, vodId)
 }
 
@@ -687,6 +691,16 @@ async function listPastVods(
   return rows
 }
 
+// Stream-only bookmarks get their replay when My Moments opens: stream history,
+// then DISCOVER_LIVE_VOD's lookup in an open tab of that channel, if any.
+bindReplayLookups({
+  pastVods: login => listPastVods(login),
+  liveArchive: async (login, streamId) => {
+    const tab = (await chrome.tabs.query({ url: ['*://*.twitch.tv/*'] })).find(item => item.id && tabUrlMatchesPulseLogin(item.url, login))
+    return tab?.id ? discoverLiveVodIdFromGqlInTab(tab.id, login, streamId) : null
+  },
+})
+
 if (chrome.storage?.onChanged) {
   chrome.storage.onChanged.addListener((changes, areaName) => {
     // autoUpdateEnabled is read by content livePoll; SW does not own recurring timers.
@@ -750,6 +764,7 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
               streamId: message.streamId,
               allowWatch,
               explicitFull: window === 'full',
+              fresh: message.fresh === true,
             },
             pulseFetchDeps(),
             pulseCoord,
@@ -1180,6 +1195,14 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           }
           return
         }
+        case 'MOMENT_MINUTE': {
+          try {
+            sendResponse({ type: 'MOMENT_MINUTE', context: await loadMomentMinute(message.streamId, message.offsetSeconds) } satisfies BackgroundResponse)
+          } catch (err) {
+            sendResponse({ type: 'MOMENT_MINUTE', context: null, error: err instanceof Error ? err.message : 'minute_unavailable' } satisfies BackgroundResponse)
+          }
+          return
+        }
         case 'MY_MOMENTS':
         case 'MOMENT_CAPTURE': {
           sendResponse(await handleMyMoments(message, sender))
@@ -1200,14 +1223,35 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
         }
         case 'SAVE_BOOKMARK': {
           const device = await handleDeviceBookmarks(message, sender)
-          if (device) { sendResponse(device); return }
-          const item = await createPulseBookmark(message.bookmark)
-          sendResponse({ type: 'BOOKMARK', item } satisfies BackgroundResponse)
+          const saved = device ?? { type: 'BOOKMARK', item: await createPulseBookmark(message.bookmark) } satisfies BackgroundResponse
+          if (message.restoreOf && 'item' in saved) await restoreRemovedNote(message.restoreOf, saved.item, sender)
+          sendResponse(saved)
+          void wantSavedPicture(message.bookmark, sender)
+          return
+        }
+        case 'MOMENT_PICTURE': {
+          if (message.action === 'vod') {
+            // Read in the asking Twitch tab, as Twitch's own page reads them; nothing is kept.
+            const tabId = sender.tab?.id
+            sendResponse({ type: 'MOMENT_PICTURE', vod: tabId == null ? null : await vodPicturesInTab(tabId, message.vodId) } satisfies BackgroundResponse)
+            return
+          }
+          if (message.action === 'vodFrame') {
+            // Read in the asking Twitch tab; the JPEG goes back to that tab only.
+            const tabId = sender.tab?.id
+            sendResponse({ type: 'MOMENT_PICTURE', frame: tabId == null ? null : await vodFrameInTab(tabId, message.vodId, message.seconds, message.height) } satisfies BackgroundResponse)
+            return
+          }
+          sendResponse(await handlePicture(message, sender) satisfies BackgroundResponse)
           return
         }
         case 'DELETE_BOOKMARK': {
           await deletePulseBookmark(message.id)
           sendResponse({ type: 'DELETE_BOOKMARK', ok: true } satisfies BackgroundResponse)
+          return
+        }
+        case 'REMOVE_BOOKMARK': {
+          sendResponse(await removePanelBookmark(message, sender))
           return
         }
         case 'SET_AUTO_UPDATE': {

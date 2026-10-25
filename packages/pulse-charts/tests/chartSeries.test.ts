@@ -34,4 +34,22 @@ describe('buildChartSeries plotted emotes', () => {
     const plotted = series.find((item) => item.dashed)
     expect(plotted?.values).toEqual([3, null])
   })
+
+  it('draws a 7TV and a BTTV emote with the same name as two lines with their own counts', () => {
+    const clap: ChartMinuteRollup[] = [
+      { minuteTs: '2026-07-04T18:00:00.000Z', emotes: { 'seventv:Clap:Clap': 7, 'bttv:Clap:Clap': 2 } },
+      { minuteTs: '2026-07-04T18:01:00.000Z', emotes: { 'bttv:Clap:Clap': 5 } },
+    ]
+    const selected = new Set(['seventv:62a3bf57:Clap', 'bttv:55b6f480:Clap'])
+    const lines = buildChartSeries(clap, selected).filter((item) => item.dashed)
+    expect(lines.map((line) => [line.key, line.values])).toEqual([
+      ['seventv:62a3bf57:Clap', [7, null]],
+      ['bttv:55b6f480:Clap', [2, 5]],
+    ])
+  })
+
+  it('still matches a key without a provider by name', () => {
+    const lines = buildChartSeries(rollups, new Set(['o7'])).filter((item) => item.dashed)
+    expect(lines[0]?.values).toEqual([3, null])
+  })
 })

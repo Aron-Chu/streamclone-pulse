@@ -119,9 +119,16 @@ recapture all five from the package `dist/` before the 0.2.2 upload.
 
 ## Permission justifications (0.2.2 store package)
 
-The store manifest (`manifests/cws.json`) requests `storage`, `scripting` and
-the seven hosts below. Before upload, compare them with the published 0.2.1 in
-the dashboard Package tab: this repo has no verified record of that package
+The store manifests (`manifests/cws.json`, and the same lists in `edge.json`
+and `firefox.json`) request `storage`, `scripting` and two hosts:
+`https://api.streampulse.stream/*` and `https://*.twitch.tv/*`. Earlier store
+manifests in this repo also asked for five image CDNs (7TV, BetterTTV,
+FrankerFaceZ, Twitch's static CDN and `cdn.streampulse.stream`); 0.2.2 drops
+them, because the panel shows emote, avatar and game images as ordinary
+images, which need no host permission, and a store build never fetches image
+bytes. Dropping hosts lowers privilege, so existing installs update without a
+new permission prompt. Before upload, compare with the published 0.2.1 in the
+dashboard Package tab: this repo has no verified record of that package
 (`store/cws/README.md`). Paste only these.
 
 ### storage
@@ -131,20 +138,21 @@ Stores your StreamPulse settings (theme, panel placement, chart preferences) in 
 
 ### scripting
 ```
-Used for three things on Twitch tabs, all with code packaged in the extension:
+Used only on Twitch tabs, always with code packaged in the extension:
 1. Finding the current stream's VOD id: a packaged function runs in the Twitch page to read the stream and VOD ids from the page's own data, and if they are missing it asks Twitch's public GraphQL endpoint (gql.twitch.tv) for the live stream's archive VOD id, without cookies.
-2. Loading the Supporter card preview in quick settings on demand (a packaged file, content/supporter-card.js), so it is not part of the always-loaded script.
-3. Reading the channel avatar Twitch already shows, for the toolbar popup.
+2. Loading parts of the panel only when they are needed, so they are not in the always-loaded script. Each is a packaged file run in the extension's isolated world:
+   - content/supporter-card.js: the Supporter card preview, when quick settings shows it.
+   - content/moment-frames.js: Moment pictures, only while that setting is on. It keeps a small still of the Twitch player every few seconds in that tab's memory, so Top Moments can show a picture; nothing is stored or uploaded.
+   - content/catch-me-up.js: the top of a stream recap, when the panel shows a recap.
+3. For the toolbar popup: reading the channel avatar Twitch already shows, and checking whether the Pulse panel is showing on that tab.
 The Pulse panel itself is the declared content script and does not need this permission.
 ```
 
 ### Host permissions (one field)
 ```
-https://*.twitch.tv/*: runs the bundled content script on Twitch channel and VOD pages to show the Pulse panel and identify the channel, stream or VOD being watched. On those pages, a packaged function may ask gql.twitch.tv for the live stream's archive VOD id, without cookies.
-https://api.streampulse.stream/*: fetches aggregate chat and emote activity, Top Moments and coverage for that channel, stream or VOD from the StreamPulse API.
-https://cdn.7tv.app/*, https://cdn.betterttv.net/*, https://cdn.frankerfacez.com/*, https://static-cdn.jtvnw.net/*: loads the 7TV, BetterTTV, FrankerFaceZ and Twitch emote images the panel shows.
-https://cdn.streampulse.stream/*: loads StreamPulse-hosted images shown in the panel.
-No remote code is loaded from any of these hosts.
+https://*.twitch.tv/*: runs the bundled content script on Twitch channel and VOD pages to show the Pulse panel and identify the channel, stream or VOD being watched; lets the packaged scripts described under scripting run on those pages; and lets the toolbar popup see which Twitch page the active tab shows. On those pages, a packaged function may ask gql.twitch.tv for the live stream's archive VOD id, without cookies.
+https://api.streampulse.stream/*: fetches aggregate chat and emote activity, Top Moments and coverage for that channel, stream or VOD from the StreamPulse API. If you link a StreamPulse account (invite-only in this version), it also saves your bookmarks, and your watched history if you turn on sync, to that account.
+Emote, avatar and game images are shown as ordinary images and need no host permission. No remote code is loaded from either host.
 ```
 
 ### Remote code
