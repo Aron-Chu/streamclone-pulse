@@ -66,6 +66,15 @@ async function load(url = PICTURE, event: 'load' | 'error' = 'load'): Promise<vo
   await settle()
 }
 
+/** A card and its subscribed row each load their own image of a shared frame. */
+async function loadAll(url: string): Promise<void> {
+  await settle()
+  const pending = images.filter(image => image.getAttribute('src') === url)
+  expect(pending.length).toBeGreaterThan(0)
+  for (const image of pending) image.dispatchEvent(new Event('load'))
+  await settle()
+}
+
 function thumbHost(): { host: HTMLElement; list: HTMLElement } {
   const list = document.createElement('div')
   list.setAttribute('data-pmf-list', '')
@@ -386,6 +395,142 @@ describe('Exact VOD frames', () => {
     unmountCard()
     unmountOther()
     unmountRow()
+  })
+
+  it('recovers the same ordinary row through its VOD tile after pictures are turned off and on', async () => {
+    const id = '2905053874'
+    const at: MomentPictureAt = { key: null, vodId: id }
+    const sheet = (n: number) => SHEET(n).replace('2905053845', id)
+    vodReplies.set(id, { sheets: [1, 2, 3, 4].map(sheet), cols: 5, rows: 10, count: 200, interval: 30 })
+    frameReplies.set(id, FRAME)
+    const card = cardHost()
+    const unmountCard = api.mount(card, CARD, at)
+    const exactUrl = `blob:pulse-frame-${made + 1}`
+    await loadAll(exactUrl)
+    unmountCard()
+
+    const video = document.createElement('video')
+    Object.defineProperties(video, {
+      paused: { value: false }, seeking: { value: false }, readyState: { value: 2 },
+      videoWidth: { value: 640 }, videoHeight: { value: 360 },
+    })
+    const context = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn() } as unknown as CanvasRenderingContext2D)
+    const blob = vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(callback => callback(new Blob(['local frame'], { type: 'image/jpeg' })))
+    const visibility = vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    let stop: () => void = () => undefined
+    let unmountRow: () => void = () => undefined
+    const { host, list } = thumbHost()
+    try {
+      const localUrl = `blob:pulse-frame-${made + 1}`
+      stop = api.start({ key: id, video: () => video, offset: () => THUMB.peak })
+      vi.advanceTimersByTime(4_000)
+      await settle()
+      unmountRow = api.mount(host, THUMB, at)
+      await loadAll(exactUrl)
+      expect(host.querySelector('img')?.getAttribute('src')).toBe(localUrl)
+      expect(requested(sheet(3))).toBeUndefined()
+
+      setPictures(false)
+      await settle()
+      expect(host.querySelector('img')).toBeNull()
+      expect(revokeObjectURL).toHaveBeenCalledWith(localUrl)
+      expect(revokeObjectURL).toHaveBeenCalledWith(exactUrl)
+
+      setPictures(true)
+      await loadAll(sheet(3))
+      expect(list.querySelector('.pmf-thumb')).toBe(host)
+      expect(host.querySelector('.pmf-tile img')?.getAttribute('src')).toBe(sheet(3))
+      expect(host.hasAttribute('data-has')).toBe(true)
+      expect(frameAsks(id)).toEqual([[{ type: 'MOMENT_PICTURE', action: 'vodFrame', vodId: id, seconds: THUMB.peak, height: 360 }]])
+    } finally {
+      stop()
+      unmountRow()
+      setPictures(true)
+      vi.useRealTimers()
+      visibility.mockRestore()
+      blob.mockRestore()
+      context.mockRestore()
+    }
+  })
+
+  it('shows an ordinary row tile while a shared card frame is pending, then upgrades without another exact request', async () => {
+    const id = '2905053875'
+    const at: MomentPictureAt = { key: null, vodId: id }
+    const sheet = (n: number) => SHEET(n).replace('2905053845', id)
+    vodReplies.set(id, { sheets: [1, 2, 3, 4].map(sheet), cols: 5, rows: 10, count: 200, interval: 30 })
+    const reply = sendMessage.getMockImplementation()!
+    let land: (frame: Awaited<ReturnType<typeof reply>>) => void = () => undefined
+    const pending = new Promise<Awaited<ReturnType<typeof reply>>>(resolve => { land = resolve })
+    sendMessage.mockImplementation(message => message.action === 'vodFrame' && message.vodId === id ? pending : reply(message))
+    const card = cardHost()
+    const unmountCard = api.mount(card, CARD, at)
+    const { host, list } = thumbHost()
+    const unmountRow = api.mount(host, THUMB, at)
+    try {
+      await loadAll(sheet(3))
+      expect(host.querySelector('.pmf-tile img')?.getAttribute('src')).toBe(sheet(3))
+      expect(card.querySelector('.pmf-chip')?.textContent).not.toBe('Twitch VOD frame')
+      expect(frameAsks(id)).toHaveLength(1)
+
+      const exactUrl = `blob:pulse-frame-${made + 1}`
+      land({ type: 'MOMENT_PICTURE', frame: FRAME })
+      await loadAll(exactUrl)
+      expect(card.querySelector('.pmf-chip')?.textContent).toBe('Twitch VOD frame')
+      expect(list.querySelector('.pmf-thumb')).toBe(host)
+      expect(host.querySelector('img')?.getAttribute('src')).toBe(exactUrl)
+      expect(frameAsks(id)).toEqual([[{ type: 'MOMENT_PICTURE', action: 'vodFrame', vodId: id, seconds: THUMB.peak, height: 360 }]])
+      expect(sendMessage.mock.calls.filter(([message]) => message.action === 'vod' && message.vodId === id)).toHaveLength(1)
+    } finally {
+      land({ type: 'MOMENT_PICTURE', frame: null })
+      sendMessage.mockImplementation(reply)
+      unmountRow()
+      unmountCard()
+    }
+  })
+
+  it('evicts the oldest shared exact frame back to its loaded tile without disturbing a retained neighboring row', async () => {
+    const id = '2905053876'
+    const at: MomentPictureAt = { key: null, vodId: id }
+    const sheet = (n: number) => SHEET(n).replace('2905053845', id)
+    vodReplies.set(id, { sheets: [1, 2, 3, 4].map(sheet), cols: 5, rows: 10, count: 200, interval: 30 })
+    frameReplies.set(id, FRAME)
+    const shifted = (index: number) => ({ ...THUMB, from: THUMB.from + index * 60, to: THUMB.to + index * 60, peak: THUMB.peak + index * 60 })
+    const readCard = async (index: number) => {
+      const url = `blob:pulse-frame-${made + 1}`
+      const unmount = api.mount(cardHost(), { ...shifted(index), kind: 'card' }, at)
+      try { await loadAll(url) } finally { unmount() }
+      return url
+    }
+    const { host } = thumbHost()
+    const { host: neighbor } = thumbHost()
+    const unmountRow = api.mount(host, THUMB, at)
+    let unmountNeighbor: () => void = () => undefined
+    try {
+      await loadAll(sheet(3))
+      const firstUrl = await readCard(0)
+      expect(host.querySelector('img')?.getAttribute('src')).toBe(firstUrl)
+      const revokedBefore = revokeObjectURL.mock.calls.length
+
+      unmountNeighbor = api.mount(neighbor, shifted(1), at)
+      await loadAll(sheet(3))
+      const neighborUrl = await readCard(1)
+      expect(neighbor.querySelector('img')?.getAttribute('src')).toBe(neighborUrl)
+      // The first two plus 23 more requests exceed the remote cache's 24 entries.
+      for (let index = 2; index < 25; index++) await readCard(index)
+
+      expect(revokeObjectURL.mock.calls.slice(revokedBefore)).toEqual([[firstUrl]])
+      expect(host.querySelector('.pmf-tile img')?.getAttribute('src')).toBe(sheet(3))
+      expect(host.hasAttribute('data-has')).toBe(true)
+      expect(neighbor.querySelector('img')?.getAttribute('src')).toBe(neighborUrl)
+      expect(revokeObjectURL).not.toHaveBeenCalledWith(neighborUrl)
+      expect(frameAsks(id)).toEqual(Array.from({ length: 25 }, (_, index) => [{
+        type: 'MOMENT_PICTURE', action: 'vodFrame', vodId: id, seconds: THUMB.peak + index * 60, height: 360,
+      }]))
+    } finally {
+      unmountNeighbor()
+      unmountRow()
+    }
   })
 
   it('shows the exact frame on a card, and a small one on a row that asks for it', async () => {

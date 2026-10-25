@@ -498,7 +498,7 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
     peak = nearestFrameIndex(frames, view.peak)
     if (frames.length === 0) {
       stopFlip()
-      if (enabled && other === undefined && !looking && !sharedFrame) {
+      if (enabled && other === undefined && !looking) {
         looking = true
         void findOther().catch(() => null).then(found => {
           other = found
@@ -548,8 +548,9 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
     sharedFrame = found
     if (!found) {
       sharedPicture = null
-      // Releasing a shared frame must not start another lookup for an old VOD.
-      if (!vodId && other === undefined && !looking) other = null
+      // An enabled old-VOD view must not restart its lookup on release. While
+      // pictures are off, leave an unstarted fallback available for re-enabling.
+      if (!vodId && enabled && other === undefined && !looking) other = null
       signature = null
       render()
       return
