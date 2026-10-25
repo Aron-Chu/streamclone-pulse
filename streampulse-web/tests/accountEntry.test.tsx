@@ -171,7 +171,7 @@ describe('header account entry flag (VITE_ACCOUNT_HEADER)', () => {
     expect(analyticsHeader.className).toBe('analytics-topnav')
     expect(analyticsHeader.querySelector('.account-entry')).toBeNull()
     const menu = screen.getByRole('navigation', { name: 'Analytics navigation' })
-    expect(menu.querySelector('a[href="/account/sign-in"]')?.textContent).toBe('Account')
+    expect(menu.querySelector('a[href="/account/sign-in"]')).toBeNull()
     expect(menu.querySelector('a[href="/account/settings"]')).toBeNull()
     expect(accountRequest).not.toHaveBeenCalled()
   })

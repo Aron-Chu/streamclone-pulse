@@ -48,11 +48,11 @@ describe('with VITE_TWITCH_SIGNIN off (default)', () => {
 
   it('keeps the sign-in page exactly as the email form', () => {
     render(<MemoryRouter initialEntries={['/account/sign-in']}><AccountPage /></MemoryRouter>)
-    expect(screen.getByRole('heading', { level: 1, name: 'Sign in to Pulse' })).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 1, name: 'Tester sign-in' })).toBeTruthy()
     expect(screen.getByLabelText('Email address')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Send sign-in link' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: /Twitch/ })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Use email instead' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Email sign-in stays as the backup.' })).toBeNull()
     expect(screen.queryByTestId('twitch-sign-in')).toBeNull()
   })
 
@@ -75,13 +75,13 @@ describe('with VITE_TWITCH_SIGNIN off (default)', () => {
 describe('with VITE_TWITCH_SIGNIN=1', () => {
   beforeEach(() => { vi.stubEnv('VITE_TWITCH_SIGNIN', '1') })
 
-  it('puts Sign in with Twitch above the email form, which waits under “Use email instead”', () => {
+  it('puts Continue with Twitch above the email form, which waits under “Email sign-in stays as the backup.”', () => {
     render(<MemoryRouter initialEntries={['/account/sign-in']}><AccountPage /></MemoryRouter>)
-    const twitch = screen.getByRole('button', { name: 'Sign in with Twitch' })
+    const twitch = screen.getByRole('button', { name: 'Continue with Twitch' })
     expect(twitch.className).toContain('pulse-account-twitch-button')
     expect(twitch.querySelector('svg[aria-hidden="true"]')).toBeTruthy()
     expect(screen.queryByLabelText('Email address')).toBeNull()
-    const toggle = screen.getByRole('button', { name: 'Use email instead' })
+    const toggle = screen.getByRole('button', { name: 'Email sign-in stays as the backup.' })
     expect(toggle.getAttribute('aria-expanded')).toBe('false')
     fireEvent.click(toggle)
     expect(toggle.getAttribute('aria-expanded')).toBe('true')
@@ -94,30 +94,30 @@ describe('with VITE_TWITCH_SIGNIN=1', () => {
   it('opens the email form directly for ?method=email', () => {
     render(<MemoryRouter initialEntries={['/account/sign-in?method=email']}><AccountPage /></MemoryRouter>)
     expect(screen.getByLabelText('Email address')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Sign in with Twitch' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Continue with Twitch' })).toBeTruthy()
   })
 
   it('starts a sign-in carrying only an allowlisted billing return', async () => {
     render(<MemoryRouter initialEntries={[`/account/sign-in?returnTo=${encodeURIComponent(billingReturn)}`]}><AccountPage /></MemoryRouter>)
-    fireEvent.click(screen.getByRole('button', { name: 'Sign in with Twitch' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with Twitch' }))
     await waitFor(() => expect(beginTwitchFlow).toHaveBeenCalledWith({ purpose: 'signin', returnTo: billingReturn }))
     expect((screen.getByRole('button', { name: 'Opening Twitch…' }) as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('ignores a returnTo that is not allowlisted', async () => {
     render(<MemoryRouter initialEntries={[`/account/sign-in?returnTo=${encodeURIComponent('https://evil.example/')}`]}><AccountPage /></MemoryRouter>)
-    fireEvent.click(screen.getByRole('button', { name: 'Sign in with Twitch' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with Twitch' }))
     await waitFor(() => expect(beginTwitchFlow).toHaveBeenCalledWith({ purpose: 'signin', returnTo: null }))
   })
 
   it('explains a failed start and offers email in place', async () => {
     vi.mocked(beginTwitchFlow).mockRejectedValueOnce(new AccountError(404, 'not_found'))
     render(<MemoryRouter initialEntries={['/account/sign-in']}><AccountPage /></MemoryRouter>)
-    fireEvent.click(screen.getByRole('button', { name: 'Sign in with Twitch' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with Twitch' }))
     expect(await screen.findByRole('heading', { name: 'Sign in with Twitch is unavailable' })).toBeTruthy()
-    fireEvent.click(screen.getAllByRole('button', { name: 'Use email instead' })[0]!)
+    fireEvent.click(screen.getByRole('button', { name: 'Use email instead' }))
     expect(screen.getByLabelText('Email address')).toBeTruthy()
-    expect((screen.getByRole('button', { name: 'Sign in with Twitch' }) as HTMLButtonElement).disabled).toBe(false)
+    expect((screen.getByRole('button', { name: 'Continue with Twitch' }) as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('finishes the callback by navigating to the return path with the outcome', async () => {
