@@ -247,12 +247,15 @@ const MAX_EXACT_FRAMES = 24
  * with no picture mounted releases them.
  */
 const exactFrames = new Map<string, Promise<string | null>>()
+/** Ordinary rows reuse a frame a card already asked for; they never start a frame request. */
+const exactRows = new Set<(vodId?: string, second?: number) => void>()
 let exactVod: string | undefined
 let exactRelease: number | undefined
 
 function releaseExactFrames(): void {
   for (const found of exactFrames.values()) void found.then(url => url && URL.revokeObjectURL(url))
   exactFrames.clear()
+  for (const update of exactRows) update()
 }
 
 function vodFrame(at: MomentPictureAt | undefined, seconds: number, height: 160 | 360): Promise<string | null> {
@@ -278,13 +281,17 @@ function vodFrame(at: MomentPictureAt | undefined, seconds: number, height: 160 
         return URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }))
       }, () => null)
     void asked.then(url => {
-      if (!url && exactFrames.get(key) === asked) exactFrames.delete(key)
+      if (exactFrames.get(key) !== asked) return
+      if (!url) exactFrames.delete(key)
+      // A failed larger ask may leave a usable smaller frame for the same second.
+      for (const update of exactRows) update(id, second)
     })
     exactFrames.set(key, asked)
     for (const [old, kept] of exactFrames) {
       if (exactFrames.size <= MAX_EXACT_FRAMES) break
       exactFrames.delete(old)
       void kept.then(url => url && URL.revokeObjectURL(url))
+      for (const update of exactRows) update(id, Number(old.split(' ')[0]))
     }
     found = asked
   }
@@ -403,6 +410,9 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
   /** Undefined until looked for (only once the moment turns out to have no frames). */
   let other: HTMLElement | null | undefined
   let looking = false
+  let sharedFrame: Promise<string | null> | undefined
+  let sharedPicture: HTMLImageElement | null = null
+  let sharedVersion = 0
 
   const list = view.kind === 'thumb' ? host.closest('[data-pmf-list]') : null
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -488,7 +498,7 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
     peak = nearestFrameIndex(frames, view.peak)
     if (frames.length === 0) {
       stopFlip()
-      if (enabled && other === undefined && !looking) {
+      if (enabled && other === undefined && !looking && !sharedFrame) {
         looking = true
         void findOther().catch(() => null).then(found => {
           other = found
@@ -498,9 +508,9 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
       // While still looking, a card shows its stand-in, so it opens at its
       // full height and a VOD tile takes the stand-in's place; anything else
       // stays as it was, so nothing opens and collapses.
-      const early = enabled && other === undefined && looking
+      const early = enabled && !sharedPicture && other === undefined && looking
       if (early && !(card && (artStandIn() ?? emoteStandIn()))) return
-      const picture = early ? artStandIn() ?? emoteStandIn() : enabled ? other : null
+      const picture = early ? artStandIn() ?? emoteStandIn() : enabled ? sharedPicture ?? other : null
       if (card) host.toggleAttribute('data-top', picture != null)
       else {
         host.toggleAttribute('data-has', picture != null)
@@ -528,12 +538,43 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
     show(peak)
   }
 
+  const shareExactFrame = (vodId?: string, second?: number): void => {
+    if (vodId && (vodId !== at?.vodId || second !== Math.round(view.peak - (at?.vodOriginDeltaSeconds ?? 0)))) return
+    const found = vodId && enabled && exactVod === vodId
+      ? exactFrames.get(`${second} 360`) ?? exactFrames.get(`${second} 160`)
+      : undefined
+    if (found === sharedFrame) return
+    const version = ++sharedVersion
+    sharedFrame = found
+    if (!found) {
+      sharedPicture = null
+      // Releasing a shared frame must not start another lookup for an old VOD.
+      if (!vodId && other === undefined && !looking) other = null
+      signature = null
+      render()
+      return
+    }
+    void found.then(url => url ? loaded(url) : null).then(picture => {
+      if (gone || !enabled || version !== sharedVersion) return
+      sharedPicture = picture
+      if (!picture) sharedFrame = undefined
+      signature = null
+      render()
+    })
+  }
+  const sharesExactFrame = !card && !view.exact
+  if (sharesExactFrame) {
+    exactRows.add(shareExactFrame)
+    shareExactFrame(at?.vodId ?? undefined, Math.round(view.peak - (at?.vodOriginDeltaSeconds ?? 0)))
+  }
   render()
   const unsubscribe = store.subscribe(render)
   views.add(render)
   window.clearTimeout(exactRelease)
   return () => {
     gone = true
+    sharedVersion++
+    exactRows.delete(shareExactFrame)
     unsubscribe()
     views.delete(render)
     if (views.size === 0) exactRelease = window.setTimeout(releaseExactFrames, 60_000)
