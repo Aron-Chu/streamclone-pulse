@@ -107,6 +107,49 @@ describe('full-settings Supporter banner: Crown, staged', () => {
     }
   })
 
+  it('reads Checkout again when the worker signals a new account or membership, and drops the price when it closes', async () => {
+    stubExtension(NON_SUPPORTER)
+    let entitlement: unknown = { state: 'ready', status: 'none', checkoutEnabled: false }
+    const listeners = new Set<(changes: Record<string, chrome.storage.StorageChange>, area: string) => void>()
+    const extension = (globalThis as unknown as { chrome: { runtime: { sendMessage: unknown }; storage: { onChanged: unknown } } }).chrome
+    extension.runtime.sendMessage = vi.fn(async (message: { type: string }) => message.type === 'SUPPORTER_APPEARANCE' ? NON_SUPPORTER : message.type === 'SUPPORTER_ENTITLEMENT' ? { type: 'SUPPORTER_ENTITLEMENT', entitlement } : undefined)
+    extension.storage.onChanged = { addListener: (listener: never) => listeners.add(listener), removeListener: (listener: never) => listeners.delete(listener) }
+    const view = await mount(<SupporterBanner onOpen={() => {}} />)
+    const eyebrow = () => view.banner().querySelector('.pulse-settings-supporter-banner-eyebrow')?.textContent
+    const signal = async (key: string, area = 'local') => {
+      await act(async () => { for (const listener of listeners) listener({ [key]: { newValue: 'next', oldValue: 'prev' } }, area) })
+      for (let k = 0; k < 4; k++) await act(async () => { await Promise.resolve() })
+    }
+    expect(eyebrow()).toBe('Pulse Supporter')
+    entitlement = { state: 'ready', status: 'none', checkoutEnabled: true }
+    await signal('pulseSupporterRevision', 'sync')
+    expect(eyebrow()).toBe('Pulse Supporter')
+    await signal('pulseSupporterRevision')
+    expect(eyebrow()).toBe('Pulse Supporter· US$4.99/mo')
+    entitlement = { state: 'not_linked' }
+    await signal('pulseAccountRevision')
+    expect(eyebrow()).toBe('Pulse Supporter')
+  })
+
+  it('drops an open Checkout price when a later worker read throws synchronously', async () => {
+    stubExtension(NON_SUPPORTER)
+    let unavailable = false
+    const listeners = new Set<(changes: Record<string, chrome.storage.StorageChange>, area: string) => void>()
+    const extension = (globalThis as unknown as { chrome: { runtime: { sendMessage: unknown }; storage: { onChanged: unknown } } }).chrome
+    extension.runtime.sendMessage = vi.fn((message: { type: string }) => {
+      if (message.type === 'SUPPORTER_ENTITLEMENT' && unavailable) throw new Error('worker unavailable')
+      return Promise.resolve(message.type === 'SUPPORTER_APPEARANCE' ? NON_SUPPORTER : message.type === 'SUPPORTER_ENTITLEMENT' ? { type: 'SUPPORTER_ENTITLEMENT', entitlement: { state: 'ready', status: 'none', checkoutEnabled: true } } : undefined)
+    })
+    extension.storage.onChanged = { addListener: (listener: never) => listeners.add(listener), removeListener: (listener: never) => listeners.delete(listener) }
+    const view = await mount(<SupporterBanner onOpen={() => {}} />)
+    const eyebrow = () => view.banner().querySelector('.pulse-settings-supporter-banner-eyebrow')?.textContent
+    expect(eyebrow()).toBe('Pulse Supporter· US$4.99/mo')
+    unavailable = true
+    await act(async () => { for (const listener of listeners) listener({ pulseSupporterRevision: { newValue: 'next', oldValue: 'prev' } }, 'local') })
+    expect(eyebrow()).toBe('Pulse Supporter')
+    expect(view.banner().querySelector('.pulse-settings-supporter-banner-arrow')?.textContent).toBe('See what’s coming →')
+  })
+
   it('renders the staged Crown for a non-Supporter: the sample kit, a chip for every perk and the way to the benefits', async () => {
     stubExtension(NON_SUPPORTER)
     const onPerks = vi.fn()

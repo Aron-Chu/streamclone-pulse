@@ -65,7 +65,10 @@ test('emote rain is a Supporter perk: a saved Rain draws nothing without one, st
   await extension.serviceWorker.evaluate(value => chrome.storage.sync.set({ pulseBanner: value }), saved)
   let status: MembershipStatus = 'expired'
   await linkDevice(extension.serviceWorker)
-  await serveMembership(extension.context, () => supporterBody(status, 3))
+  // The same paid period stays fixed across fresh reads. A newly generated end
+  // time would signal a membership change on every read and keep re-checking.
+  const period = supporterBody(status, 3)
+  await serveMembership(extension.context, () => ({ ...supporterBody(status, 3), accessFrom: period.accessFrom, accessUntil: period.accessUntil, checkoutEnabled: false }))
 
   await openTwitchChannel(extension.page)
   await waitForPulseRoot(extension.page)
@@ -106,7 +109,7 @@ test('emote rain is a Supporter perk: a saved Rain draws nothing without one, st
   await expect(modes.getByRole('button', { name: 'Rain', exact: true })).toBeDisabled()
   const perk = settings.locator('[data-supporter-perk="emote-rain"]')
   await expect(perk).toContainText('Supporter perk')
-  await expect(perk).toContainText('Emote rain, still or falling, is a Supporter perk. Only you see it. Sign-ups are not open yet.')
+  await expect(perk).toHaveText("Emote rain is a Supporter perk. Only you see it. Supporter isn't on sale yet. See Supporter →")
   await expect(perk).not.toContainText('moved from free')
   await settings.getByLabel('Panel title').fill('Renamed Pulse')
   await settings.getByRole('button', { name: 'Save background', exact: true }).click()
@@ -114,7 +117,7 @@ test('emote rain is a Supporter perk: a saved Rain draws nothing without one, st
   // Saving the free title leaves the Supporter choice exactly as it was.
   expect(await extension.serviceWorker.evaluate(() => chrome.storage.sync.get('pulseBanner'))).toEqual({ pulseBanner: { ...saved, title: 'Renamed Pulse' } })
   await settings.screenshot({ path: info.outputPath('rain-locked-settings.png'), fullPage: true, animations: 'disabled' })
-  await perk.getByRole('link', { name: /View Supporter benefits/ }).click()
+  await perk.getByRole('link', { name: 'See Supporter →', exact: true }).click()
   await expect(settings).toHaveURL(/#supporter$/)
   await settings.close()
 
@@ -134,3 +137,37 @@ test('emote rain is a Supporter perk: a saved Rain draws nothing without one, st
   await expect(backdrop.locator('img')).toHaveCount(6)
   await page.screenshot({ path: info.outputPath('rain-grace-overlay.png'), animations: 'disabled' })
 })
+
+
+for (const state of ['checking', 'failed'] as const) {
+  test(`background rain keeps the offer line absent while Supporter is ${state}`, async ({ extension, prepare }) => {
+    await prepare()
+    await linkDevice(extension.serviceWorker)
+    let reads = 0
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    await extension.context.route('https://api.streampulse.stream/v1/billing/supporter', async route => {
+      reads++
+      if (state === 'checking') await gate
+      await route.fulfill({ status: 503, json: { error: 'temporarily_unavailable' } })
+    })
+    const settings = extension.page
+    try {
+      await settings.goto(`chrome-extension://${extension.extensionId}/options/index.html#pulse-background`)
+      await expect.poll(() => reads).toBeGreaterThan(0)
+      const background = settings.locator('.pulse-banner-customize')
+      await expect(background).toHaveJSProperty('open', true)
+      await expect(background.getByLabel('Panel title')).toBeEnabled()
+      const modes = background.getByRole('group', { name: '7TV backdrop' })
+      await expect(modes.getByRole('button', { name: 'Still', exact: true })).toBeDisabled()
+      await expect(modes.getByRole('button', { name: 'Rain', exact: true })).toBeDisabled()
+      if (state === 'failed') {
+        const response = await settings.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_ENTITLEMENT' }))
+        expect(response).toMatchObject({ type: 'SUPPORTER_ENTITLEMENT', entitlement: { state: 'unavailable' } })
+      }
+      await expect(background.locator('[data-supporter-perk="emote-rain"]')).toHaveCount(0)
+      await expect(background.getByText("Supporter isn't on sale yet", { exact: false })).toHaveCount(0)
+      await expect(background.getByRole('link', { name: 'See Supporter →', exact: true })).toHaveCount(0)
+    } finally { release() }
+  })
+}
