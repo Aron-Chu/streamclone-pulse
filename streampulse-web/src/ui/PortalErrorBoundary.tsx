@@ -13,7 +13,7 @@ type Props = {
 type State = { hasError: boolean; moduleLoadFailed: boolean }
 
 export function isModuleLoadError(error: unknown): boolean {
-  return error instanceof Error && /Failed to fetch dynamically imported module|Importing a module script failed|Loading chunk .* failed|error loading dynamically imported module/i.test(error.message)
+  return error instanceof Error && /Failed to fetch dynamically imported module|Importing a module script failed|Loading chunk .* failed|error loading dynamically imported module|Unable to preload CSS/i.test(error.message)
 }
 
 /** Drop cached hub snapshots first, so the reload refetches instead of re-hydrating a crash. */

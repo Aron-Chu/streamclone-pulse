@@ -44,6 +44,17 @@ describe('privacy route', () => {
     expect(body).toMatch(/device token stored locally/i)
   })
 
+  it('discloses Moment pictures: on by default, tab memory only, and how to turn them off', async () => {
+    renderPath('/privacy')
+    const line = (await screen.findByTestId('privacy-moment-pictures')).textContent ?? ''
+    expect(line).toMatch(/Moment pictures, on by default/)
+    expect(line).toMatch(/a small still of the Twitch player every few seconds/)
+    expect(line).toMatch(/The stills stay in that tab's memory/)
+    expect(line).toMatch(/never written to browser storage or uploaded/)
+    expect(line).toMatch(/gone when you switch streams or close the tab/)
+    expect(line).toMatch(/Moment pictures switch in the extension's settings; turning it off drops the stills at once/)
+  })
+
   it('avoids internal release-blocker / counsel commentary', async () => {
     renderPath('/privacy')
     await screen.findByTestId('privacy-policy')

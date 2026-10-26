@@ -84,6 +84,15 @@ describe('Add saves made on this device to the account', () => {
     expect(f.data.get(localScope)!.bookmarks.map(b => b.label)).toEqual(['Second'])
   })
 
+  it('keeps a save whose answer names no bookmark, and its note', async () => {
+    const { second } = await twoDeviceSaves()
+    f.pages.mockResolvedValue({ items: [] })
+    f.save.mockResolvedValueOnce(hosted('acct-a', 120)).mockResolvedValueOnce({})
+    await expect(add()).rejects.toThrow('Added 1 of 2 to your account. The rest stay on this device')
+    expect(f.data.get(localScope)!.bookmarks.map(b => b.label)).toEqual(['Second'])
+    expect(f.data.get(localScope)!.notes[second]).toBe('my device note')
+  })
+
   it('posts nothing and keeps everything when the account bookmarks cannot be read', async () => {
     await twoDeviceSaves()
     f.pages.mockRejectedValue(new Error('bookmarks 503'))

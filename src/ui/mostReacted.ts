@@ -379,12 +379,15 @@ export function sortLiveHeatPoints(points: LiveHeatPoint[], mode: MomentSortMode
         || a.offsetSeconds - b.offsetSeconds,
     )
   } else {
+    // A tie goes to the earlier moment, as in the API's own order. The backend
+    // re-scores past minutes as a live stream grows, so a leader can dip into
+    // a tie for one poll; breaking it by volume swapped the #1 moment back and forth.
     copy.sort(
       (a, b) =>
         authoritativeReactionScore(b) - authoritativeReactionScore(a)
+        || a.offsetSeconds - b.offsetSeconds
         || reactionRankValue(b) - reactionRankValue(a)
-        || b.score - a.score
-        || a.offsetSeconds - b.offsetSeconds,
+        || b.score - a.score,
     )
   }
   return copy
