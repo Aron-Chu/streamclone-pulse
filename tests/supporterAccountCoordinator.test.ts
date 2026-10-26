@@ -272,6 +272,24 @@ describe('private supporter account coordinator', () => {
     expect((await restarted.coordinator.run('status')).state).toBe('relink_required')
     expect(restarted.request).not.toHaveBeenCalled()
   })
+  it('marks a Continue with Twitch pair, and keeps the mark through renewal and a worker restart', async () => {
+    const f = fixture(null)
+    expect(await f.coordinator.adopt(creds, f.coordinator.identityGeneration, 'twitch')).toMatchObject({ adopted: true, account: { state: 'linked', twitch: true } })
+    expect(f.stored()).toMatchObject({ kind: 'linked', twitch: true })
+    f.advance(10_000_000)
+    const successor = { ...creds, token: 'e'.repeat(64), refreshToken: 'f'.repeat(64), expiresAt: iso(20_000) }
+    f.request.mockResolvedValueOnce({ status: 200, body: successor })
+    expect(await f.coordinator.run('status')).toEqual({ state: 'linked', accountId: creds.accountId, expiresAt: successor.expiresAt, twitch: true })
+    expect(f.stored()).toMatchObject({ kind: 'linked', twitch: true, token: successor.token })
+    const restarted = fixture(f.stored())
+    restarted.advance(10_000_000)
+    expect(await restarted.coordinator.run('status')).toMatchObject({ state: 'linked', twitch: true })
+    // A device link and a stored record without the mark stay unmarked.
+    const linkedByCode = fixture(null)
+    expect((await linkedByCode.coordinator.adopt(creds, linkedByCode.coordinator.identityGeneration)).account).not.toHaveProperty('twitch')
+    expect(await fixture(creds).coordinator.run('status')).not.toHaveProperty('twitch')
+    expect(await fixture({ ...creds, twitch: 'yes' }).coordinator.run('status')).not.toHaveProperty('twitch')
+  })
   it('never accepts a refresh for another account', async () => {
     const f = fixture({ ...creds, expiresAt: iso(0) })
     f.request.mockResolvedValueOnce({ status: 200, body: { ...creds, accountId: '33333333-3333-4333-8333-333333333333' } })

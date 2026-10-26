@@ -188,7 +188,7 @@ function OfferTerms() {
 const UNKNOWN_TWITCH: TwitchSignInStatus = { enabled: true, available: true, silentEligible: false, profile: null }
 
 export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = TWITCH_SIGNIN_STAGE, children }: {
-  /** The membership paid controls may act on: null while a refresh has failed. */
+  /** The membership paid controls may act on: null while loading, or while a read has failed or the server is down. */
   onEntitlement?: (value: SupporterEntitlement | null) => void
   /** The last confirmed membership on screen, kept through a failed refresh. Display only. */
   onShown?: (value: SupporterEntitlement | null) => void
@@ -239,7 +239,13 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   const shown = useRef<SupporterEntitlement | null>(null)
   const lastAccount = useRef<SupporterAccountState | null>(null)
 
-  useEffect(() => { onEntitlement?.(stale ? null : entitlement) }, [entitlement, stale, onEntitlement])
+  // Paid controls act only on a membership the server answered: a read that
+  // failed, or a server that is down or on another environment, pauses them as
+  // a failed refresh does, rather than presenting a Supporter as someone who
+  // has not joined. A server without Supporter (`not_deployed`) is an answer.
+  const unanswered = entitlement?.state === 'error' || (entitlement?.state === 'unavailable' && entitlement.reason !== 'not_deployed')
+  const usable = stale || unanswered ? null : entitlement
+  useEffect(() => { onEntitlement?.(usable) }, [usable, onEntitlement])
   useEffect(() => { onShown?.(entitlement) }, [entitlement, onShown])
 
   const readEntitlement = useCallback(async (quiet: boolean) => {
@@ -332,12 +338,14 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
     } catch { setTwitch(current => current ?? UNKNOWN_TWITCH) }
   }, [twitchOn])
 
-  // Initial reads, and the worker's non-secret change signals.
+  // Initial reads, and the worker's non-secret change signals. The worker
+  // queues them in order, so who is signed in is asked before the membership
+  // read, which can wait on the network for seconds.
   useEffect(() => {
     void run('status')
+    void readTwitch()
     void readEntitlement(false)
     void readBilling()
-    void readTwitch()
     const changed = (changes: Record<string, chrome.storage.StorageChange>) => {
       if (ACCOUNT_REVISION_KEY in changes || 'backendUrl' in changes || 'localBackendOptIn' in changes) {
         // An old account's pending read must never restore access after a switch.
@@ -347,9 +355,9 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
         setEntitlement(null)
         setStale(false)
         void run('status')
+        void readTwitch()
         void readEntitlement(false)
         void readBilling()
-        void readTwitch()
         return
       }
       if (SUPPORTER_REVISION_KEY in changes) { void readEntitlement(true); void readBilling() }
@@ -674,7 +682,12 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   const twitchStatus = twitch ?? (twitchOn ? null : UNKNOWN_TWITCH)
   const twitchWindow = twitchOn && twitchStatus?.available !== false
   const profile = linked && twitchStatus?.profile ? twitchStatus.profile : null
-  const signedInWithTwitch = linked !== null && (accountKind === 'twitch' || profile !== null)
+  // How this extension signed in is known from the worker's own marker, so it
+  // holds after a browser restart drops the session-only profile and while
+  // the membership read is unavailable.
+  const signedInWithTwitch = linked !== null && (linked.twitch === true || accountKind === 'twitch' || profile !== null)
+  // Until the worker answers the Twitch status, a connection's kind is not known yet.
+  const identityPending = twitchOn && linked !== null && twitch === null
   // Sign out everywhere needs this device's Twitch check, so it is offered only
   // to a Twitch sign-in where the Twitch window can open.
   const everywhereOffered = twitchOn && signedInWithTwitch && twitchWindow
@@ -881,7 +894,9 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
 
   // Only a known account state names an account or says there is none: before
   // the worker answers, or when it cannot, the card and the Account row stay neutral.
-  const identity: CardIdentity = linked ? profile ? { kind: 'twitch', displayName: profile.displayName, ...(profile.picture ? { picture: profile.picture } : {}) } : { kind: 'pulse', reference: accountReference(linked.accountId) }
+  const identity: CardIdentity = linked ? identityPending ? { kind: 'unknown', reason: 'checking' }
+    : profile ? { kind: 'twitch', displayName: profile.displayName, ...(profile.picture ? { picture: profile.picture } : {}) }
+    : signedInWithTwitch ? { kind: 'twitch' } : { kind: 'pulse', reference: accountReference(linked.accountId) }
     : renewalWaiting ? { kind: 'pulse' }
     : !account ? { kind: 'unknown', reason: 'checking' }
     : account.state === 'error' || accountDown ? { kind: 'unknown', reason: 'unavailable' }
@@ -896,9 +911,9 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   const cardLook: CardLook = { finish: look ? look.finish : perks ? equipped : SAMPLE_KIT.finish, paint: look?.paint ?? DEFAULT_SUPPORTER_PAINT, perks }
   const connected = linked !== null || renewalWaiting
   // Nobody signed in: Your card above already says "Not signed in", so the Account card has no row repeating it.
-  const accountRow: [string, string] | null = signedInWithTwitch ? [profile ? `${ACCOUNT_COPY.signedInWithTwitch} as ${profile.displayName}` : ACCOUNT_COPY.signedInWithTwitch, 'Signing in stores a device credential in this extension. Sign out ends this device’s access and removes its signed-in watched history and notes.']
+  const accountRow: [string, string] | null = identity.kind === 'unknown' ? [identity.reason === 'checking' ? 'Checking the connection…' : 'Connection status unavailable', 'Your free tools still work.']
+    : signedInWithTwitch ? [profile ? `${ACCOUNT_COPY.signedInWithTwitch} as ${profile.displayName}` : ACCOUNT_COPY.signedInWithTwitch, 'Signing in stores a device credential in this extension. Sign out ends this device’s access and removes its signed-in watched history and notes.']
     : connected ? [linked ? `Connected to this extension · ${accountReference(linked.accountId)}` : 'Connected to this extension', 'An invited tester’s StreamPulse account. Sign out ends this device’s access and removes its signed-in watched history and notes.']
-    : identity.kind === 'unknown' ? [identity.reason === 'checking' ? 'Checking the connection…' : 'Connection status unavailable', 'Your free tools still work.']
     : null
   // Invited testers keep the existing device link, closed by default and
   // never a purchase: "Connect this extension" with Twitch off, "Other ways to

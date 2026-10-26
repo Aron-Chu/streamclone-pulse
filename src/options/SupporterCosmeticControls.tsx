@@ -25,8 +25,10 @@ const SAMPLE_RAIN = { mode: 'rain', intensity: 35, title: '' } as const
  * (emote rain only in the preview) and choose a paint to apply when Supporter
  * starts.
  */
-export function SupporterCosmeticControls({ entitlement, tenure, onSaved }: {
+export function SupporterCosmeticControls({ entitlement, unavailable = false, tenure, onSaved }: {
   entitlement: SupporterEntitlement | null
+  /** With `entitlement` null: the status could not be read, rather than still loading. */
+  unavailable?: boolean
   /** The crest the preview wears: a Supporter's own, or the sample's. */
   tenure: SupporterTenure
   onSaved?: (cosmetics: SupporterCosmetics) => void
@@ -222,12 +224,12 @@ export function SupporterCosmeticControls({ entitlement, tenure, onSaved }: {
         </div>
       </fieldset>
       <SupporterPaintStyleFields style={paint.style} onChoose={next => void paint.choose(next)} />
-      <EmoteRainField banner={banner} perks={unknown ? undefined : allowed} tried={rainTry} onTry={setRainTry} />
+      <EmoteRainField banner={banner} perks={unknown ? undefined : allowed} checkoutOpen={checkoutOpen} tried={rainTry} onTry={setRainTry} />
     </div>
     <p className="pulse-supporter-detail" aria-live="polite">{paint.status || 'Wave and sheen save to this browser profile right away and show whenever your paint is equipped.'}</p>
     <div className="pulse-account-link-actions">
       {unknown ? (
-        <button type="button" disabled>Checking Supporter status…</button>
+        <button type="button" disabled>{unavailable ? 'Supporter status unavailable' : 'Checking Supporter status…'}</button>
       ) : allowed ? (
         <button type="button" disabled={busy || unchanged} aria-busy={busy} onClick={() => void save()}>
           {busy ? 'Saving...' : unchanged ? (finish ? 'Equipped' : 'Default active') : finish ? 'Equip paint' : 'Use default'}
@@ -260,9 +262,11 @@ export function SupporterCosmeticControls({ entitlement, tenure, onSaved }: {
  * to the page. Presses while one saves are ignored instead, and one live region,
  * always present, is cleared when a save starts and then states its result.
  */
-function EmoteRainField({ banner, perks, tried, onTry }: {
+function EmoteRainField({ banner, perks, checkoutOpen, tried, onTry }: {
   banner: ReturnType<typeof usePulseBanner>
   perks: boolean | undefined
+  /** Paid sign-ups are open: the locked line no longer says they are not. */
+  checkoutOpen: boolean
   tried: PulseBannerPreference['mode']
   onTry: (mode: PulseBannerPreference['mode']) => void
 }) {
@@ -295,7 +299,7 @@ function EmoteRainField({ banner, perks, tried, onTry }: {
         >{mode === 'off' ? 'Off' : mode === 'still' ? 'Still' : 'Rain'}</button>)}
       </div>
       {perks === false
-        ? <p className="pulse-supporter-detail" data-supporter-perk="emote-rain">Emote rain is a Supporter perk. Sign-ups are not open yet.</p>
+        ? <p className="pulse-supporter-detail" data-supporter-perk="emote-rain">{checkoutOpen ? 'Emote rain is a Supporter perk.' : 'Emote rain is a Supporter perk. Sign-ups are not open yet.'}</p>
         : null}
       <p className="pulse-supporter-detail" role="status" data-emote-rain-status>{message}</p>
     </div>

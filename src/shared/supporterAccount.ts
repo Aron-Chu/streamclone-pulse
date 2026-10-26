@@ -77,7 +77,11 @@ export type SupporterAccountState =
   | { state: 'unavailable'; reason: Exclude<SupporterUnavailableReason, 'environment_mismatch'>; linked?: true }
   | { state: 'error'; revocationPending?: boolean }
   | { state: 'pending'; code: string; expiresAt: string; retryAfterSeconds: number }
-  | { state: 'linked'; accountId: string; expiresAt: string }
+  /**
+   * `twitch` marks a connection made by Continue with Twitch. It outlives the
+   * session-only display profile, so a browser restart is still a Twitch sign-in.
+   */
+  | { state: 'linked'; accountId: string; expiresAt: string; twitch?: true }
 
 /**
  * Worker-owned purchase state: provider URLs and all credentials stay private.
