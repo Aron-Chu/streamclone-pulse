@@ -98,7 +98,7 @@ function useCheckoutOpen(): boolean {
         void Promise.resolve(chrome.runtime.sendMessage({ type: 'SUPPORTER_ENTITLEMENT' })).then((reply: { type?: string; entitlement?: { state?: string; checkoutEnabled?: boolean } } | undefined) => {
           if (live && id === request) setOpen(reply?.type === 'SUPPORTER_ENTITLEMENT' && reply.entitlement?.state === 'ready' && reply.entitlement.checkoutEnabled === true)
         }, () => { if (live && id === request) setOpen(false) })
-      } catch { /* no worker: closed */ }
+      } catch { if (live && id === request) setOpen(false) }
     }
     const changed = (changes: Record<string, chrome.storage.StorageChange>, area?: string) => {
       if ((!area || area === 'local') && (ACCOUNT_REVISION_KEY in changes || SUPPORTER_REVISION_KEY in changes)) read()

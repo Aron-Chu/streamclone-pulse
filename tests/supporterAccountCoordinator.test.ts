@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { AccountRequestNotSent, SupporterAccountCoordinator } from '../src/background/supporterAccount.ts'
 import { parseBackgroundRequest } from '../src/shared/parseBackgroundRequest.ts'
 import { MESSAGE_SENDER_SCOPE } from '../src/background/pulseBroadcastTargets.ts'
+import { FINISH_INTENT_TTL_MS } from '../src/shared/supporterAccount.ts'
 
 const now = Date.parse('2026-09-09T12:00:00Z')
 const iso = (seconds: number) => new Date(now + seconds * 1000).toISOString()
@@ -490,6 +491,7 @@ describe('worker-owned journey completion', () => {
       [{ finish: 'halo', setAt: now - 1000 }, snapshot('active', { cacheUntil: iso(-1) }), 'kept'],
       [{ finish: 'halo', setAt: now - 1000, accountId: '33333333-3333-4333-8333-333333333333' }, snapshot('active'), null],
       [{ finish: 'halo', setAt: now - 8 * 86_400_000 }, snapshot('active'), null],
+      [{ finish: 'halo', setAt: Number.NaN }, snapshot('active'), null],
       [{ finish: 'chrome', setAt: now - 1000 }, snapshot('active'), null],
     ]
     for (const [intent, body, expected] of cases) {
@@ -521,6 +523,7 @@ describe('worker-owned journey completion', () => {
     expect(await f.coordinator.setFinishIntent('halo')).toBe('halo')
     expect(f.intent()).toMatchObject({ finish: 'halo', accountId: creds.accountId })
     expect(await f.coordinator.finishIntent()).toBe('halo')
+    expect(await f.coordinator.finishIntentDetails()).toEqual({ finish: 'halo', setAt: now })
     f.request.mockResolvedValueOnce({ status: 200, body: { enabled: true, finish: 'glass' } })
     expect(await f.coordinator.saveCosmetics({ enabled: true, finish: 'glass' })).toBe(true)
     expect(f.intent()).toBeNull()
@@ -532,6 +535,47 @@ describe('worker-owned journey completion', () => {
     const unlinked = journey()
     await unlinked.coordinator.setFinishIntent('halo')
     expect(unlinked.intent()).toEqual({ finish: 'halo', setAt: now })
+  })
+
+  it('projects the original save time without the private account binding, until the seven-day boundary passes', async () => {
+    const intent = { finish: 'etched', setAt: now - 1000, accountId: creds.accountId }
+    const f = journey(creds, intent)
+    expect(await f.coordinator.finishIntentDetails()).toEqual({ finish: 'etched', setAt: now - 1000 })
+    f.advance(FINISH_INTENT_TTL_MS - 1000)
+    expect(await f.coordinator.finishIntentDetails()).toEqual({ finish: 'etched', setAt: now - 1000 })
+    f.advance(1)
+    expect(await f.coordinator.finishIntentDetails()).toBeNull()
+    expect(await f.coordinator.finishIntent()).toBeNull()
+    expect(f.intent()).toEqual(intent)
+    expect(f.request).not.toHaveBeenCalled()
+  })
+
+  it('does not project a missing, malformed, future or expired saved choice', async () => {
+    for (const intent of [
+      null,
+      { finish: 'chrome', setAt: now },
+      { finish: 'halo', setAt: String(now) },
+      { finish: 'halo', setAt: Number.NaN },
+      { finish: 'halo', setAt: Number.POSITIVE_INFINITY },
+      { finish: 'halo', setAt: now + 1 },
+      { finish: 'halo', setAt: now - FINISH_INTENT_TTL_MS - 1 },
+      { finish: 'halo', setAt: now, accountId: 'invalid' },
+    ]) {
+      const f = journey(creds, intent)
+      expect(await f.coordinator.finishIntentDetails()).toBeNull()
+      expect(await f.coordinator.finishIntent()).toBeNull()
+      expect(f.request).not.toHaveBeenCalled()
+    }
+  })
+
+  it('returns null for a failed save even when an earlier choice remains stored', async () => {
+    const earlier = { finish: 'etched', setAt: now - 1000, accountId: creds.accountId }
+    const coordinator = new SupporterAccountCoordinator({
+      read: async () => creds, write: async () => {}, request: vi.fn(), now: () => now,
+      readIntent: async () => earlier, writeIntent: async () => { throw new Error('storage unavailable') },
+    })
+    expect(await coordinator.setFinishIntent('halo')).toBeNull()
+    expect(await coordinator.finishIntentDetails()).toEqual({ finish: 'etched', setAt: now - 1000 })
   })
 
   it('accepts the finish-choice message only in its exact shapes, from extension pages', () => {

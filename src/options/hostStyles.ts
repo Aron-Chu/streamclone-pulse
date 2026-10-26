@@ -79,6 +79,10 @@ const hostStyles = `
   .pulse-account-link-actions button:disabled { opacity: .6; cursor: not-allowed; }
   .pulse-account-link-actions button[aria-busy="true"] { cursor: wait; }
   .pulse-account-link-actions :focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 3px; }
+  .pulse-supporter-remove-intent { display: inline-flex; align-items: center; min-height: 44px; margin-left: 4px; padding: 6px 12px; border: 1px solid ${theme.border}; border-radius: 9px; background: ${theme.panel}; color: ${theme.textPrimary}; font: inherit; font-weight: 700; cursor: pointer; }
+  .pulse-supporter-remove-intent:hover:not(:disabled) { border-color: ${theme.accentSoft}; background: ${theme.panelElevated}; }
+  .pulse-supporter-remove-intent:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 3px; }
+  .pulse-supporter-remove-intent:disabled { opacity: .6; cursor: not-allowed; }
   /* Sign in with Twitch: Twitch brand purple with the white glitch mark. */
   .pulse-account-link-actions .pulse-twitch-signin { gap: 8px; border-color: #9146FF; background: #9146FF; color: #FFFFFF; }
   .pulse-account-link-actions .pulse-twitch-signin:hover:not(:disabled) { border-color: #772CE8; background: #772CE8; color: #FFFFFF; }
@@ -144,6 +148,14 @@ const hostStyles = `
   .pulse-supporter-perks p { margin: 0; }
   .pulse-supporter-perks ul { color: ${theme.textSecondary}; display: grid; font-size: 12px; gap: 3px; line-height: 1.4; margin: 0; padding-left: 18px; }
   .pulse-supporter-perks li b { color: ${theme.textPrimary}; }
+  .pulse-supporter-perks-compact ul { display: flex; flex-wrap: wrap; gap: 4px 14px; list-style: none; padding: 0; }
+  .pulse-supporter-preview-disclosure, .pulse-supporter-help, .pulse-supporter-wave-disclosure { min-width: 0; }
+  .pulse-supporter-preview-disclosure { border-top: 1px solid ${theme.border}; margin: 0 16px; }
+  .pulse-supporter-preview-disclosure > summary, .pulse-supporter-help > summary, .pulse-supporter-wave-disclosure > summary { box-sizing: border-box; color: ${theme.textPrimary}; cursor: pointer; font-size: 13px; font-weight: 700; min-height: 44px; padding: 12px 0; }
+  .pulse-supporter-preview-disclosure > summary:focus-visible, .pulse-supporter-help > summary:focus-visible, .pulse-supporter-wave-disclosure > summary:focus-visible { border-radius: 4px; outline: 2px solid ${theme.accentSoft}; outline-offset: 2px; }
+  .pulse-supporter-preview-content { display: grid; gap: 14px; min-width: 0; padding-bottom: 16px; }
+  .pulse-supporter-preview-content .pulse-supporter-card-ladder { padding: 8px 0; }
+  .pulse-supporter-help > .pulse-supporter-rows { margin: 0 0 10px; }
   /* Policy destinations sit below the offer as a quiet row, not three CTAs. */
   .pulse-supporter-policies {
     display: flex;
@@ -172,7 +184,7 @@ const hostStyles = `
     display: grid;
     margin-bottom: 14px;
     min-width: 0;
-    overflow: hidden;
+    overflow: clip;
     position: relative;
   }
   .pulse-supporter-card-banner { height: 92px; isolation: isolate; overflow: hidden; position: relative; }
