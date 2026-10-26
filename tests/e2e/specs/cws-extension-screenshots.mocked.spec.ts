@@ -9,14 +9,150 @@
  */
 import { test, expect } from '../helpers/testFixtures.ts'
 import { waitForPulseRoot, assertPulseShadowContains, PULSE_ROOT_ID } from '../helpers/assertions.ts'
-import { openTwitchChannel, openTwitchVod } from '../helpers/mockTwitch.ts'
+import { installTwitchFixtures, openTwitchChannel, openTwitchVod, type TwitchFixtureKind } from '../helpers/mockTwitch.ts'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import type { BrowserContext } from '@playwright/test'
 
 const W = 1280
 const H = 800
-const OUT = join(dirname(fileURLToPath(import.meta.url)), '../../../store/cws/screenshots')
+const HERE = dirname(fileURLToPath(import.meta.url))
+const OUT = join(HERE, '../../../store/cws/screenshots')
+const FIXTURES = join(HERE, '../fixtures')
+
+/**
+ * Store frames show a made-up channel and our own emotes
+ * (tests/e2e/fixtures/store-emotes), so no real streamer, emote art or box art
+ * appears in a store listing.
+ */
+const DEMO_LOGIN = 'streampulse_demo'
+const STORE_EMOTES = ['pulseHype', 'lolWave', 'ggClap', 'wowPop', 'pulseLove', 'oofDrop'] as const
+
+function storeEmote(name: typeof STORE_EMOTES[number], count: number) {
+  return { name, count, imageUrl: `https://cdn.7tv.app/emote/${name}/1x.webp`, provider: 'seventv' }
+}
+
+function readApiFixture(file: string): Record<string, unknown> {
+  return JSON.parse(readFileSync(join(FIXTURES, 'api', file), 'utf8')) as Record<string, unknown>
+}
+
+/**
+ * Serves the store emotes and answers every other emote, avatar or box-art
+ * request with 404, so the panel falls back to its own initials.
+ */
+async function routeStoreImages(context: BrowserContext) {
+  for (const host of ['static-cdn.jtvnw.net', 'cdn.betterttv.net', 'cdn.frankerfacez.com']) {
+    await context.route(`https://${host}/**`, route => route.fulfill({ status: 404, body: '' }))
+  }
+  await context.route('https://cdn.7tv.app/**', route => {
+    const name = /\/emote\/([A-Za-z]+)\//.exec(route.request().url())?.[1] ?? ''
+    if (!(STORE_EMOTES as readonly string[]).includes(name)) return route.fulfill({ status: 404, body: '' })
+    return route.fulfill({ status: 200, contentType: 'image/svg+xml', body: readFileSync(join(FIXTURES, 'store-emotes', `${name}.svg`)) })
+  })
+}
+
+/** The Twitch page, API and images of the store's demo channel; call after prepare(). */
+async function useStoreChannel(context: BrowserContext, kind: TwitchFixtureKind) {
+  await installTwitchFixtures(context, { kind, login: DEMO_LOGIN, vodId: '2806037629' })
+  await routeStoreImages(context)
+}
+
+const wave = (minute: number, period: number, phase: number) => (Math.sin((minute / period) * Math.PI * 2 + phase) + 1) / 2
+
+/**
+ * Frames 01, 02 and 04's live stream: two hours twenty in, with five ranked
+ * moments and the store emotes, so the chart and Top Moments are full.
+ */
+const LIVE_MINUTES = 140
+const LIVE_SPIKES: ReadonlyArray<readonly [minute: number, lift: number, reason: string]> = [
+  [57, 3.2, 'chat_spike'],
+  [96, 2.7, 'seventv_spike'],
+  [121, 2.4, 'chat_spike'],
+  [22, 2.1, 'seventv_spike'],
+  [136, 1.9, 'chat_spike'],
+]
+const LIVE_GAMES = [
+  { gameName: 'Just Chatting', offsetSeconds: 0, durationSeconds: 40 * 60 },
+  { gameName: 'Minecraft', offsetSeconds: 40 * 60, durationSeconds: (LIVE_MINUTES - 40) * 60 },
+]
+
+function liveStorePulse(): { pulse: Record<string, unknown>; coverage: Record<string, unknown> } {
+  const startedAt = new Date(Date.now() - LIVE_MINUTES * 60_000).toISOString()
+  const lift = (minute: number) => {
+    const spike = LIVE_SPIKES.find(([at]) => Math.abs(at - minute) <= 1)
+    return !spike ? 1 : spike[0] === minute ? spike[1] : 1 + (spike[1] - 1) / 2
+  }
+  const rollups = Array.from({ length: LIVE_MINUTES + 1 }, (_, minute) => {
+    const chat = Math.round((48 + 30 * wave(minute, 26, 0.4) + 10 * wave(minute, 7, 1.3)) * lift(minute))
+    const emotes = Math.round(chat * (0.34 + 0.12 * wave(minute, 11, 2.1)))
+    return {
+      offsetSeconds: minute * 60,
+      finalized: minute < LIVE_MINUTES,
+      chatCount: chat,
+      totalEmoteCount: emotes,
+      sevenTvEmoteCount: Math.round(emotes * 0.6),
+      viewerCount: Math.round(2100 + 1300 * Math.min(1, minute / 45) - 240 * wave(minute, 61, 0.2)),
+      viewerSamples: 1,
+      topEmotes: [],
+    }
+  })
+  const max = (key: 'chatCount' | 'totalEmoteCount' | 'sevenTvEmoteCount') => Math.max(...rollups.map(r => r[key]))
+  const peaks = LIVE_SPIKES.map(([minute, , reason], index) => {
+    const at = rollups[minute]!
+    const names = index % 2 ? ['lolWave', 'pulseHype', 'oofDrop'] as const : ['pulseHype', 'ggClap', 'wowPop'] as const
+    return {
+      offsetSeconds: minute * 60,
+      score: 96 - index * 7,
+      reasons: [reason],
+      reasonLabel: reason === 'chat_spike' ? 'Chat spike' : 'Emote spike',
+      dominantSignal: reason === 'chat_spike' ? 'chat' : 'seventv',
+      chatCount: at.chatCount,
+      emoteCount: at.totalEmoteCount,
+      topEmotes: names.map((name, rank) => storeEmote(name, Math.round(at.totalEmoteCount * (0.42 - rank * 0.12)))),
+    }
+  })
+  const base = readApiFixture('pulse-live-ready.json')
+  const pulse = {
+    ...base,
+    login: DEMO_LOGIN,
+    startedAt,
+    title: 'Building a castle with chat',
+    category: 'Minecraft',
+    currentOffsetSeconds: LIVE_MINUTES * 60,
+    coverageStartOffsetSeconds: 0,
+    coverage: { ...(base.coverage as object), coverageStartOffsetSeconds: 0, coverageEndOffsetSeconds: LIVE_MINUTES * 60 },
+    topEmotes: [storeEmote('pulseHype', 4210), storeEmote('lolWave', 3380), storeEmote('ggClap', 1960), storeEmote('wowPop', 1240), storeEmote('pulseLove', 870)],
+    // The recent window; Top Moments ranks more than one moment only once it
+    // holds a few completed minutes.
+    rollups: rollups.slice(-30),
+    fullRollups: rollups,
+    lanes: {
+      composite: rollups.map(r => r.chatCount / max('chatCount')),
+      chat: rollups.map(r => r.chatCount / max('chatCount')),
+      seventv: rollups.map(r => r.sevenTvEmoteCount / max('sevenTvEmoteCount')),
+      viewers: rollups.map(r => r.viewerCount),
+    },
+    peaks,
+    games: LIVE_GAMES,
+  }
+  const coverageBase = readApiFixture('coverage-active.json')
+  const coverage = {
+    ...coverageBase,
+    login: DEMO_LOGIN,
+    liveMetadata: { ...(coverageBase.liveMetadata as object), title: pulse.title, category: pulse.category, startedAt, viewerCount: rollups.at(-1)!.viewerCount },
+  }
+  return { pulse, coverage }
+}
+
+/** Replaces the mock API's live channel answers with the store's live stream. */
+async function useStoreLiveStream(context: BrowserContext) {
+  const { pulse, coverage } = liveStorePulse()
+  await context.route(
+    url => url.hostname === 'api.streampulse.stream' && /^\/v1\/extension\/pulse\/channels\/[^/]+(\/coverage)?$/.test(url.pathname),
+    route => route.fulfill({ status: 200, json: new URL(route.request().url()).pathname.endsWith('/coverage') ? coverage : pulse }),
+  )
+}
 
 async function hideAllScrollbars(page: import('@playwright/test').Page) {
   await page.addStyleTag({
@@ -139,13 +275,12 @@ async function writeExactStoreShot(page: import('@playwright/test').Page, filena
 /**
  * Frame 03's past broadcast: the vod-ready fixture stretched to a whole
  * three-hour stream, so the header's date, length and category, the recap and
- * the chart all describe the same broadcast. Synthetic data on the fixture
+ * the chart all describe the same broadcast. Synthetic data on the demo
  * channel; only this frame uses it.
  */
 function replayStoreVod(): Record<string, unknown> {
-  const base = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../fixtures/api/vod-ready.json'), 'utf8')) as Record<string, unknown>
+  const base = readApiFixture('vod-ready.json')
   const minutes = 180
-  const wave = (minute: number, period: number, phase: number) => (Math.sin((minute / period) * Math.PI * 2 + phase) + 1) / 2
   const spikes = new Map([[38, 2.6], [97, 3.4], [151, 2.2]])
   const points = Array.from({ length: minutes }, (_, index) => {
     const minute = index + 1
@@ -159,15 +294,23 @@ function replayStoreVod(): Record<string, unknown> {
       score: Math.min(100, Math.round(chat / 1.6)),
     }
   })
-  const moment = (offsetSeconds: number, label: string) => {
+  // Real reason codes: the recap names each moment from its reason.
+  const moment = (offsetSeconds: number, reason: 'chat_spike' | 'seventv_spike') => {
     const point = points[offsetSeconds / 60 - 1]!
-    return { offsetSeconds, label, reason: 'emote burst', score: point.score, chatPerMin: point.chatPerMin, emotesPerMin: point.emotesPerMin }
+    return {
+      offsetSeconds, label: reason === 'chat_spike' ? 'Chat spike' : 'Emote spike', reason,
+      score: point.score, chatPerMin: point.chatPerMin, emotesPerMin: point.emotesPerMin,
+    }
   }
   return {
     ...base,
+    channelLogin: DEMO_LOGIN,
+    channelDisplayName: DEMO_LOGIN,
+    title: 'Building a castle with chat',
     durationSeconds: minutes * 60,
     timeline: { bucketSeconds: 60, points },
-    topMoments: [moment(97 * 60, 'Chat spike'), moment(38 * 60, 'Emote burst'), moment(151 * 60, 'Chat spike')],
+    topMoments: [moment(97 * 60, 'chat_spike'), moment(38 * 60, 'seventv_spike'), moment(151 * 60, 'chat_spike')],
+    topEmotes: [storeEmote('pulseHype', 3120), storeEmote('lolWave', 2450), storeEmote('ggClap', 1380)],
     games: [
       { gameName: 'Just Chatting', offsetSeconds: 0, durationSeconds: 70 * 60 },
       { gameName: 'Minecraft', offsetSeconds: 70 * 60, durationSeconds: 110 * 60 },
@@ -206,7 +349,9 @@ test.describe('CWS extension-on-Twitch screenshots', () => {
         autoUpdateEnabled: true,
       },
     })
-    await openTwitchChannel(extension.page, 'fixturechan')
+    await useStoreChannel(extension.page.context(), 'live')
+    await useStoreLiveStream(extension.page.context())
+    await openTwitchChannel(extension.page, DEMO_LOGIN)
     await waitForPulseRoot(extension.page)
     await assertPulseShadowContains(extension.page, /Viewers|Chat \/ min|Collecting|1,180|Just Chatting/i)
     // Bring the chart into view and point at a minute, so the readout shows.
@@ -238,7 +383,9 @@ test.describe('CWS extension-on-Twitch screenshots', () => {
         sidebarTab: 'pulse',
       },
     })
-    await openTwitchChannel(extension.page, 'fixturechan')
+    await useStoreChannel(extension.page.context(), 'live')
+    await useStoreLiveStream(extension.page.context())
+    await openTwitchChannel(extension.page, DEMO_LOGIN)
     await waitForPulseRoot(extension.page)
     const root = extension.page.locator(`#${PULSE_ROOT_ID}`)
     // Top Moments opens a card only after a pick, and the row stays put.
@@ -266,16 +413,21 @@ test.describe('CWS extension-on-Twitch screenshots', () => {
       },
     })
     const vod = replayStoreVod()
+    await useStoreChannel(extension.page.context(), 'vod')
     await extension.page.context().route('https://api.streampulse.stream/v1/extension/pulse/vods/**', route => route.fulfill({ status: 200, json: vod }))
     await openTwitchVod(extension.page)
     await waitForPulseRoot(extension.page, 30_000)
     await assertPulseShadowContains(extension.page, /Minecraft/)
-    // Point at the biggest spike, so the chart's readout shows that minute.
-    const chart = extension.page.locator(`#${PULSE_ROOT_ID} svg[data-testid="pulse-overview-chart"]`).first()
+    // Start the frame at the recap, so its summary line, the ranked moments
+    // and the top of the chart all show; point at the biggest spike, so the
+    // chart's readout shows that minute.
+    const root = extension.page.locator(`#${PULSE_ROOT_ID}`)
+    await root.getByText(/^Stream recap$/i).first().evaluate(element => element.scrollIntoView({ block: 'start' }))
+    await extension.page.waitForTimeout(300)
+    const chart = root.locator('svg[data-testid="pulse-overview-chart"]').first()
     const box = await chart.boundingBox()
-    if (box) await extension.page.mouse.move(box.x + box.width * 0.54, box.y + box.height * 0.5)
+    if (box) await extension.page.mouse.move(box.x + box.width * 0.54, Math.min(box.y + box.height * 0.5, H - 130))
     await extension.page.waitForTimeout(400)
-  
     await addCaption(extension.page, 'Recaps for past streams', 'Replay Pulse charts the chat and emotes of a broadcast StreamPulse tracked.')
     await writeExactStoreShot(extension.page, '03-vod-replay.png')
   })
@@ -291,7 +443,12 @@ test.describe('CWS extension-on-Twitch screenshots', () => {
         sidebarTab: 'pulse',
       },
     })
-    await openTwitchChannel(extension.page, 'fixturechan')
+    await useStoreChannel(extension.page.context(), 'live')
+    await useStoreLiveStream(extension.page.context())
+    // A still frame: the Supporter card's chat preview holds whole lines
+    // instead of being caught mid-message.
+    await extension.page.emulateMedia({ reducedMotion: 'reduce' })
+    await openTwitchChannel(extension.page, DEMO_LOGIN)
     await waitForPulseRoot(extension.page)
     const root = extension.page.locator(`#${PULSE_ROOT_ID}`)
     await root.getByRole('button', { name: 'Open settings', exact: true }).click()
