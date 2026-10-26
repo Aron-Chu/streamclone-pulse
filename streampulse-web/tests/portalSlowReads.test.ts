@@ -77,12 +77,20 @@ describe('slow first-paint reads', () => {
     expect(await result).toMatchObject({ ok: false, error: { kind: 'timeout' } })
   })
 
-  it.each(['30m', 'recent'] as const)('keeps the 8 s default for a %s hub read that names no deadline', async (activityWindow) => {
-    // Moments Latest and the landing tickers read the 30m hub with no explicit deadline.
+  it.each(['30m', 'recent'] as const)('keeps the 8 s default for a %s tickers hub read that names no deadline', async (activityWindow) => {
+    // The landing tickers read the 30m hub with no explicit deadline.
     stubFetch(() => ({ delayMs: 9_000, body: { ...hubBody, activity: { ...hubBody.activity, windowMinutes: 30 } } }))
-    const result = settle(fetchPublicHubBase(undefined, activityWindow, 'moments'))
+    const result = settle(fetchPublicHubBase(undefined, activityWindow, 'tickers'))
     await vi.advanceTimersByTimeAsync(8_000)
     expect(await result).toMatchObject({ ok: false, error: { kind: 'timeout' } })
+  })
+
+  it.each(['30m', 'recent'] as const)('renders a %s moments hub read that arrives after 9 s', async (activityWindow) => {
+    // Moments Latest has no fallback read; prod builds this body in 4.5–10 s.
+    stubFetch(() => ({ delayMs: 9_000, body: { ...hubBody, activity: { ...hubBody.activity, windowMinutes: 30 } } }))
+    const result = settle(fetchPublicHubBase(undefined, activityWindow, 'moments'))
+    await vi.advanceTimersByTimeAsync(9_000)
+    expect(await result).toMatchObject({ ok: true, value: { hubEndpointOk: true } })
   })
 
   it('gives a hub read with no window (24h) the slow-read deadline', async () => {
@@ -118,6 +126,13 @@ describe('slow first-paint reads', () => {
     const settled = await result
     expect(settled.ok).toBe(true)
     expect(settled.ok && (settled.value as AnalyticsStreamDetail).state).toBe('not_collected')
+  })
+
+  it('renders a channel streams list that arrives after 9 s', async () => {
+    stubFetch(() => ({ delayMs: 9_000, body: { channel: 'jynxzi', items: [], updatedAt: 0 } }))
+    const result = settle(portalAnalyticsApi.getAnalyticsStreams('jynxzi', 100))
+    await vi.advanceTimersByTimeAsync(9_000)
+    expect(await result).toMatchObject({ ok: true, value: { channel: 'jynxzi', items: [] } })
   })
 
   it('does not cut a legacy session story read at 8 s; the story list keeps 8 s', async () => {

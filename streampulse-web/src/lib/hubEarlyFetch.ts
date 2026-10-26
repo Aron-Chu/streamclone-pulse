@@ -29,9 +29,12 @@ export function publicHubPath(activityWindow?: HubApiWindow, projection?: HubPat
 
 /**
  * The 24h-and-longer bodies get the slow-read deadline; the small 30-minute
- * bodies keep apiClient's default (undefined).
+ * bodies keep apiClient's default (undefined). The moments read is the Moments
+ * page's only source and prod builds it in 4.5–10 s, so it gets the slow
+ * deadline at any window.
  */
-export function hubReadTimeoutMs(activityWindow?: HubApiWindow): number | undefined {
+export function hubReadTimeoutMs(activityWindow?: HubApiWindow, projection?: HubPathProjection): number | undefined {
+  if (projection === 'moments') return SLOW_READ_TIMEOUT_MS
   return activityWindow === '30m' || activityWindow === 'recent' ? undefined : SLOW_READ_TIMEOUT_MS
 }
 
