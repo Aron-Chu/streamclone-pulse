@@ -45,7 +45,7 @@ Build the upload from the release commit only.
 
 ### No device link in Firefox builds (D20)
 
-The Chrome privacy answers for 0.2.2 also cover two opt-in paths: the
+The Chrome privacy answers for 0.2.5 also cover two opt-in paths: the
 invited-tester device link (an opaque device credential) and bookmarks and
 history saved to a linked account. Firefox's manifest declares only
 `browsingActivity`, so Firefox builds leave the device link out (owner
