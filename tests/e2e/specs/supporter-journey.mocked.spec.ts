@@ -109,7 +109,7 @@ test('tester purchase journey needs no codes, refreshes or reloads, and revocati
   const openedTabs = await recordOpenedTabs(settings)
   const opened = context.waitForEvent('page')
   await settings.getByText('Invited tester? Connect this extension', { exact: true }).click()
-  await settings.getByRole('button', { name: 'Connect this extension', exact: true }).click()
+  await settings.getByRole('button', { name: 'Connect tester account', exact: true }).click()
   const portal = await opened
   expect(await openedTabs()).toEqual(['https://streampulse.stream/account/link-device#code=ABCDE12345'])
   await expect(settings.locator('[data-journey-state="link-pending"]')).toBeVisible()

@@ -62,12 +62,12 @@ describe('supporter settings', () => {
       // The journey is the card's footer: one primary action, with the price.
       const journey = card.querySelector<HTMLElement>('.pulse-journey')!
       expect(journey.dataset.journeyState).toBe('signed-out')
-      expect([...journey.querySelectorAll('.pulse-journey-primary')].map(button => button.textContent)).toEqual(['Supporter details'])
+      expect([...journey.querySelectorAll('.pulse-journey-primary')].map(button => button.textContent)).toEqual(['Connect this extension'])
       expect(journey.textContent).toContain("US$4.99 a month")
-      // Status comes from the server. With Twitch sign-in off, a signed-out
-      // install says sign-ups are not open and offers nothing to buy.
-      expect(journey.textContent).toContain("Supporter isn't on sale yet")
-      expect(card.textContent?.match(/Free tools work without an account\./g)).toHaveLength(2)
+      // A signed-out install can explicitly connect to check availability;
+      // it does not claim a server-confirmed offer or start a purchase.
+      expect(journey.textContent).toContain('Supporter availability')
+      expect(card.textContent?.match(/Free tools work without an account\./g)).toHaveLength(1)
       const previewDisclosure = host.querySelector<HTMLDetailsElement>('[data-supporter-preview-disclosure]')!
       expect(previewDisclosure.open).toBe(false)
       expect(previewDisclosure.querySelector('summary')?.textContent).toBe('Preview Supporter looks')
@@ -94,7 +94,7 @@ describe('supporter settings', () => {
       expect(host.textContent).not.toContain('Concept · not built')
       // Your look: paint, wave, sheen and emote rain; rain can be tried here, not saved.
       expect([...host.querySelectorAll('.pulse-supporter-look-row > legend')].map(legend => legend.textContent)).toEqual(['Paint', 'Wave', 'Sheen', 'Emote rain'])
-      expect(host.querySelector('[data-supporter-perk="emote-rain"]')?.textContent).toBe("Emote rain is a Supporter perk. Only you see it. Supporter isn't on sale yet. See Supporter →")
+      expect(host.querySelector('[data-supporter-perk="emote-rain"]')?.textContent).toBe('Emote rain is a Supporter perk. Only you see it. See Supporter →')
       // No signature emote anywhere, and the old badge preview is gone.
       expect(host.textContent).not.toMatch(/signature/i)
       expect(host.querySelector('.pulse-supporter-tenure-choices, .pulse-supporter-chat-preview')).toBeNull()

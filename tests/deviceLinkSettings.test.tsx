@@ -71,7 +71,7 @@ describe('settings without the device link (Firefox)', () => {
   it('offers no way to start a device link, whatever is clicked', async () => {
     for (const state of ['signed_out', 'relink_required', 'expired'] as const) {
       const page = await settings('firefox', { state })
-      expect(page.host.textContent).not.toContain('Connect this extension')
+      expect(page.host.textContent).not.toContain('Connect tester account')
       await page.clickEveryButton()
       expect(page.actions).not.toContain('start')
       expect(page.links().filter(link => link.includes('link-device'))).toEqual([])

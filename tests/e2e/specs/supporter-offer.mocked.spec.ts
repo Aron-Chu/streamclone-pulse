@@ -253,7 +253,7 @@ test.describe('packaged supporter offer', () => {
     await expect(page.getByRole('button', { name: 'Check again', exact: true })).toBeVisible()
   })
 
-  test('a signed-out install explains the closed offer without a purchase, restore or website account', async ({ extension, prepare }) => {
+  test('a signed-out install offers a nonpaid availability check without a purchase, restore or website account', async ({ extension, prepare }) => {
     await prepare({ scenario: 'live-ready' })
     const requests: string[] = []
     for (const path of ['account/installations', 'account/restores', 'account/device-links', 'billing/checkout', 'billing/portal', 'account/auth/twitch/start-device']) {
@@ -262,7 +262,8 @@ test.describe('packaged supporter offer', () => {
     const page = extension.page
     await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
     await expect(page.locator('[data-journey-state="signed-out"]')).toBeVisible()
-    await expect(page.getByText("Supporter isn't on sale yet", { exact: true })).toBeVisible()
+    await expect(page.getByText('Supporter availability', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Connect this extension', exact: true })).toBeVisible()
     await expect(page.getByRole('link', { name: 'Supporter details', exact: true })).toHaveAttribute('href', 'https://streampulse.stream/supporter')
     await expect(page.locator('a[data-supporter-action="billing"]')).toHaveCount(0)
     for (const gone of ['Become a Supporter', 'Restore my Supporter', 'Use a StreamPulse website account', 'Continue with Twitch']) {
@@ -326,7 +327,7 @@ test.describe('packaged supporter offer', () => {
     expect(status).toEqual({ type: 'SUPPORTER_ACCOUNT', account: { state: 'relink_required' } })
 
     await page.getByText('Invited tester? Connect this extension', { exact: true }).click()
-    await page.getByRole('button', { name: 'Connect this extension', exact: true }).click()
+    await page.getByRole('button', { name: 'Connect tester account', exact: true }).click()
     await expect(page.getByText('ABCDE-12345', { exact: true })).toBeVisible()
     await expect(page.getByRole('link', { name: 'Reopen streampulse.stream', exact: true }))
       .toHaveAttribute('href', 'https://streampulse.stream/account/link-device#code=ABCDE12345')

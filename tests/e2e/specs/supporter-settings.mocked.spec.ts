@@ -51,10 +51,10 @@ test('packaged supporter settings stay local, accessible and responsive', async 
   await expect(top).toHaveCSS('background-image', 'none')
   await expect(top.locator('.pulse-banner-art')).toHaveAttribute('data-mode', 'rain')
   await expect(card.locator('.pulse-journey')).toHaveAttribute('data-journey-state', 'signed-out')
-  // Sign-ups are not open: the one action describes Supporter, it does not sell it.
+  // The one action explicitly connects to check availability, without payment.
   const primary = card.locator('.pulse-journey-primary')
-  await expect(primary).toHaveText(['Supporter details'])
-  await expect(card.locator('.pulse-journey')).toContainText("Supporter isn't on sale yet")
+  await expect(primary).toHaveText(['Connect this extension'])
+  await expect(card.locator('.pulse-journey')).toContainText('Supporter availability')
   await expect(page.getByRole('button', { name: /Become a Supporter|Restore my Supporter|Use a StreamPulse website account/ })).toHaveCount(0)
   // The price and that it renews come before the primary action, in reading and Tab order.
   const terms = card.locator('.pulse-supporter-terms')
@@ -234,7 +234,7 @@ test('account settings connect through the packaged worker and disconnect', asyn
   const opened = extension.context.waitForEvent('page')
   // Invited testers only: the device link sits behind a closed disclosure.
   await page.getByText('Invited tester? Connect this extension', { exact: true }).click()
-  await page.getByRole('button', { name: 'Connect this extension', exact: true }).click()
+  await page.getByRole('button', { name: 'Connect tester account', exact: true }).click()
   await opened
   // The worker's code reaches the website in the fragment only; no second click is needed.
   expect(await openedTabs()).toEqual(['https://streampulse.stream/account/link-device#code=ABCDE12345'])
@@ -254,11 +254,11 @@ test('unmounted account backend produces a clear unavailable state', async ({ ex
   await extension.context.route('https://api.streampulse.stream/v1/account/device-links', route => route.fulfill({ status: 404 }))
   await extension.page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
   await extension.page.getByText('Invited tester? Connect this extension', { exact: true }).click()
-  await extension.page.getByRole('button', { name: 'Connect this extension', exact: true }).click()
+  await extension.page.getByRole('button', { name: 'Connect tester account', exact: true }).click()
   await expect(extension.page.getByText('Account sign-in is not available on the server yet. Your free tools still work.')).toBeVisible()
   await expect(extension.page.getByRole('link', { name: 'Reopen streampulse.stream' })).toHaveCount(0)
   // UI-11: linking that is not deployed is explained, not offered again.
-  await expect(extension.page.getByRole('button', { name: 'Connect this extension', exact: true })).toHaveCount(0)
+  await expect(extension.page.getByRole('button', { name: 'Connect tester account', exact: true })).toHaveCount(0)
 })
 
 test('a Supporter’s emote rain choice keeps keyboard focus through its save', async ({ extension, prepare }) => {

@@ -13,7 +13,7 @@ type Restore = { accountId: string; restoreId: string; secret: string; expiresAt
 type RestoreStart = { accountId: string; key: string; until: number; nextRetry: number }
 type PrivateJourney = { billing?: Billing; billingRetryUntil?: number; restoreRetryUntil?: number; restore?: Restore; restoreStart?: RestoreStart; unresolvedAccounts?: UnresolvedAccount[]; restoreResult?: 'restored' | 'expired' | 'conflict' }
 type Result = { status: number; body: unknown; retryAfterMs?: number }
-type BillingAction = 'status' | 'check' | 'checkout' | 'resume' | 'portal' | 'portal_confirm'
+type BillingAction = 'status' | 'check' | 'connect' | 'checkout' | 'resume' | 'portal' | 'portal_confirm'
 type Ports = {
   account: SupporterAccountCoordinator
   request: (path: string, body?: Record<string, unknown>, bearer?: string) => Promise<Result>
@@ -136,6 +136,20 @@ export class SupporterPayFirstCoordinator {
   private async performBilling(action: BillingAction): Promise<SupporterBillingState> {
     await this.reconcileIdentity()
     const value = await this.read()
+    // An explicit connection is nonpaid. Never let it enter the continuation
+    // below, which can poll or recover an existing Checkout attempt.
+    if (action === 'connect') {
+      if (this.ports.twitchSignIn) return { state: 'unavailable' }
+      if (value.billing || value.unresolvedAccounts?.length || value.restore || value.restoreStart) return { state: 'reconnect_required' }
+      const retryAt = Math.max(value.billingRetryUntil ?? 0, value.restoreRetryUntil ?? 0)
+      if (retryAt > this.now()) return { state: 'try_later', retryAt }
+      const connection = await this.ports.account.ensureInstallation('connect')
+      if (connection.state === 'fallback') return { state: 'closed' }
+      if (connection.state !== 'linked') return { state: 'unavailable' }
+      const capability = await this.ports.account.entitlement()
+      if (await this.ports.account.localAccountId() !== connection.accountId || capability.state !== 'ready' || capability.accountKind !== 'installation') return { state: 'unavailable' }
+      return { state: capability.installationAccountsEnabled === true && capability.checkoutEnabled === true ? 'idle' : 'closed' }
+    }
     // Inside a server Retry-After window nothing is sent: a pending payment
     // stays pending, and a new Checkout or portal request waits it out.
     if (value.billingRetryUntil && value.billingRetryUntil > this.now()) {

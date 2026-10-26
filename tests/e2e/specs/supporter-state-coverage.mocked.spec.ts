@@ -32,7 +32,7 @@ type StateCase = {
   alias?: string
 }
 const CASES: StateCase[] = [
-  { name: 'not-a-supporter', journey: 'signed-out', principal: 'Supporter details', setup: 'unlinked', alias: 'Twitch sign-in off (stage A): sign-ups are not open, so the signed-out page describes Supporter and offers no purchase.' },
+  { name: 'not-a-supporter', journey: 'signed-out', principal: 'Connect this extension', setup: 'unlinked', alias: 'The signed-out page offers an explicit nonpaid connection to check availability; no purchase is offered yet.' },
   { name: 'checkout-closed', journey: 'checkout-closed', principal: 'Check again', status: 'none', checkoutEnabled: false },
   { name: 'preparing-checkout', journey: 'offer', principal: 'Preparing checkout…', status: 'none', setup: 'preparing', alias: 'Transient busy offer. The worker is awaiting the mocked checkout response; the disabled action prevents another request.' },
   { name: 'stripe-open', journey: 'stripe-open', principal: 'Return to Stripe checkout', status: 'none', billing: 'waiting' },
@@ -215,7 +215,7 @@ for (const state of CASES) {
     const journey = page.locator('.pulse-journey')
     if (state.setup === 'fallback') {
       await page.getByText('Invited tester? Connect this extension', { exact: true }).click()
-      await page.getByRole('button', { name: 'Connect this extension', exact: true }).click()
+      await page.getByRole('button', { name: 'Connect tester account', exact: true }).click()
     }
     if (state.setup === 'preparing') {
       await page.getByRole('button', { name: 'Become a Supporter', exact: true }).click()
@@ -265,7 +265,7 @@ for (const state of CASES) {
         await expect(line).toHaveAttribute('data-journey-renewal', state.renewal)
         await expect(line).toHaveText(state.renewal === 'ends' ? `Cancels on ${day}` : `Renews on ${day}`)
       }
-      // The page never asks for an installation account or an email restore.
+      // Rendering and status reads never enroll an installation or restore.
       expect(requests.some(request => request.path === '/v1/account/installations' || request.path === '/v1/account/restores')).toBe(false)
       if (state.setup === 'fallback') {
         expect(requests.some(request => request.path === '/v1/account/device-links' && request.status === 201)).toBe(true)
@@ -280,7 +280,7 @@ for (const state of CASES) {
       if (CAPTURE_PHASE === 'after') {
         const studio = page.locator('.pulse-supporter-studio')
         if (state.name === 'checkout-closed' || state.setup === 'unlinked' || state.setup === 'revoked') {
-          await expect(journey).toContainText("Supporter isn't on sale yet")
+          await expect(journey).toContainText(state.setup === 'unlinked' ? 'Supporter availability' : state.setup === 'revoked' ? 'Your connection ended' : "Supporter isn't on sale yet")
           await expect(studio).toContainText("Try a look. Changes here aren't saved.")
           await expect(studio.locator('.pulse-account-link-actions')).toHaveCount(0)
           await expect(studio.locator('[data-supporter-finish-intent]')).toHaveCount(0)
