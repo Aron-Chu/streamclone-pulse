@@ -195,7 +195,7 @@ async function addCaption(page: import('@playwright/test').Page, title: string, 
     mark.style.cssText = 'font-size:20px;font-weight:700;letter-spacing:0.02em;color:#a78bfa;margin-bottom:18px'
     const heading = document.createElement('div')
     heading.textContent = title
-    heading.style.cssText = 'font-size:52px;line-height:1.1;font-weight:700;margin-bottom:18px'
+    heading.style.cssText = 'font-size:52px;line-height:1.1;font-weight:700;margin-bottom:18px;text-wrap:balance'
     const line = document.createElement('div')
     line.textContent = body
     line.style.cssText = 'font-size:24px;line-height:1.4;font-weight:400;color:#d4d4d8'
