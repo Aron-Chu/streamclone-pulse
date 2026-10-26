@@ -48,11 +48,29 @@ const FRAME_WIDTH = 320
 const FLIP_EVERY_MS = 450
 const PICTURES_KEY = 'momentPicturesEnabled'
 
+// A visible card may outlive the rolling store. Keep only its resting and
+// chosen frames usable until the last card releases them.
+const frameUsers = new Map<string, number>()
+const retiredFrames = new Set<string>()
+let streamKey: string | undefined
+
+function releaseFrame(url: string): void {
+  const remaining = (frameUsers.get(url) ?? 0) - 1
+  if (remaining > 0) frameUsers.set(url, remaining)
+  else {
+    frameUsers.delete(url)
+    if (retiredFrames.delete(url)) URL.revokeObjectURL(url)
+  }
+}
+
 const store = new MomentFrameStore({
   windowMs: 6 * 60_000,
   maxKept: 240,
   minGapSeconds: 3,
-  revoke: url => URL.revokeObjectURL(url),
+  revoke: url => {
+    if (frameUsers.has(url)) retiredFrames.add(url)
+    else URL.revokeObjectURL(url)
+  },
   now: () => Date.now(),
 })
 
@@ -62,6 +80,14 @@ const views = new Set<() => void>()
 /** Panels asking for frames; the newest one's player is the one kept. */
 const sources: MomentFrameSource[] = []
 let timer: number | undefined
+
+function useStream(key: string): void {
+  if (key === streamKey) return
+  streamKey = key
+  store.useStream(key)
+  // The store emits nothing if its final frame already expired.
+  views.forEach(render => render())
+}
 
 /** Twitch's ad markers: the "Ad" label and countdown over the player. */
 const AD_MARKERS = [
@@ -111,12 +137,12 @@ function tick(): void {
 
 function start(source: MomentFrameSource): () => void {
   sources.push(source)
-  store.useStream(source.key)
+  useStream(source.key)
   timer ??= window.setInterval(tick, CAPTURE_EVERY_MS)
   return () => {
     const index = sources.indexOf(source)
     if (index >= 0) sources.splice(index, 1)
-    if (sources.length > 0) store.useStream(sources[sources.length - 1]!.key)
+    if (sources.length > 0) useStream(sources[sources.length - 1]!.key)
     else {
       window.clearInterval(timer)
       timer = undefined
@@ -421,6 +447,10 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
   let peak = -1
   let shown = -1
   let flip: number | undefined
+  let pictureStream = streamKey
+  let pinnedPeak: StoredFrame | undefined
+  let chosen: StoredFrame | undefined
+  let held = new Set<StoredFrame>()
   const image = element('img')
   image.alt = ''
   image.decoding = 'async'
@@ -435,7 +465,14 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
     const frame = frames[index]
     if (!frame) return
     shown = index
-    image.src = frame.url
+    if (card) {
+      chosen = frame
+      const nextHeld = new Set([pinnedPeak!, frame])
+      for (const next of nextHeld) if (!held.has(next)) frameUsers.set(next.url, (frameUsers.get(next.url) ?? 0) + 1)
+      for (const previous of held) if (!nextHeld.has(previous)) releaseFrame(previous.url)
+      held = nextHeld
+    }
+    if (image.getAttribute('src') !== frame.url) image.src = frame.url
     if (!figure) return
     time!.textContent = formatHeatOffset(frame.offset)
     badge!.hidden = index !== peak
@@ -443,10 +480,16 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
     rail!.childNodes.forEach((tick, tickIndex) => (tick as HTMLElement).toggleAttribute('data-on', tickIndex === index))
   }
 
+  const choose = (index: number): void => {
+    show(index)
+    // A released, evicted frame must also leave the scrub choices.
+    render()
+  }
+
   const scrubTo = (event: PointerEvent): void => {
     const box = figure!.getBoundingClientRect()
     const share = Math.min(0.999, Math.max(0, (event.clientX - box.left) / box.width))
-    show(Math.floor(share * frames.length))
+    choose(Math.floor(share * frames.length))
   }
 
   const buildCard = (): void => {
@@ -463,12 +506,12 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
     rail.setAttribute('aria-hidden', 'true')
     figure.addEventListener('pointermove', scrubTo)
     figure.addEventListener('pointerdown', scrubTo)
-    figure.addEventListener('pointerleave', () => show(peak))
+    figure.addEventListener('pointerleave', () => choose(peak))
     figure.addEventListener('keydown', event => {
       const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0
       if (!step) return
       event.preventDefault()
-      show(Math.min(frames.length - 1, Math.max(0, shown + step)))
+      choose(Math.min(frames.length - 1, Math.max(0, shown + step)))
     })
   }
 
@@ -489,13 +532,29 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
   row?.addEventListener('pointerleave', endFlip)
 
   const render = (): void => {
+    if (card && (!enabled || pictureStream !== streamKey)) {
+      if (held.size > 0) {
+        host.replaceChildren()
+        host.removeAttribute('data-top')
+      }
+      for (const frame of held) releaseFrame(frame.url)
+      held.clear()
+      pinnedPeak = chosen = undefined
+      pictureStream = streamKey
+      signature = null
+    }
     const next = enabled ? store.inRange(view.from, view.to) : []
+    if (card && enabled) {
+      pinnedPeak ??= next[nearestFrameIndex(next, view.peak)]
+      for (const frame of [pinnedPeak, chosen]) if (frame && !next.includes(frame)) next.push(frame)
+      next.sort((a, b) => a.offset - b.offset)
+    }
     // With `enabled`, so turning pictures off also takes down a picture from elsewhere.
     const nextSignature = `${enabled} ${other === undefined} ${next.map(frame => frame.url).join(' ')}`
     if (nextSignature === signature) return
     signature = nextSignature
     frames = next
-    peak = nearestFrameIndex(frames, view.peak)
+    peak = card && pinnedPeak ? frames.indexOf(pinnedPeak) : nearestFrameIndex(frames, view.peak)
     if (frames.length === 0) {
       stopFlip()
       if (enabled && other === undefined && !looking) {
@@ -528,14 +587,15 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
         return tick
       }))
       host.toggleAttribute('data-top', true)
-      host.replaceChildren(figure!, rail!)
+      // Keep the focused figure attached when a capture extends the rail.
+      if (host.firstChild !== figure) host.replaceChildren(figure!, rail!)
     } else {
       host.toggleAttribute('data-has', true)
       host.title = ''
       host.replaceChildren(image)
       markList(list)
     }
-    show(peak)
+    show(card && chosen ? frames.indexOf(chosen) : peak)
   }
 
   const shareExactFrame = (vodId?: string, second?: number): void => {
@@ -579,6 +639,8 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
     unsubscribe()
     views.delete(render)
     if (views.size === 0) exactRelease = window.setTimeout(releaseExactFrames, 60_000)
+    for (const frame of held) releaseFrame(frame.url)
+    held.clear()
     stopFlip()
     row?.removeEventListener('pointerenter', startFlip)
     row?.removeEventListener('pointerleave', endFlip)
