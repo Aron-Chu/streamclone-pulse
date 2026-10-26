@@ -168,7 +168,8 @@ describe('pay-first settings', () => {
       expect(view.calls('SUPPORTER_ENTITLEMENT')).toBe(2)
       expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
       expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(0)
-      expect(onEntitlement).toHaveBeenLastCalledWith({ state: 'error' })
+      // A failed read is not a membership: paid controls get null and pause.
+      expect(onEntitlement).toHaveBeenLastCalledWith(null)
       expect(view.text()).not.toContain('Supporter active')
       expect(view.create).not.toHaveBeenCalled()
     } finally { view.cleanup() }
@@ -1249,6 +1250,40 @@ describe('Continue with Twitch (tester and public stages)', () => {
       expect(view.buttons()).toContain('Use a different Twitch account')
       expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
       expect(view.write).not.toHaveBeenCalled()
+    } finally { view.cleanup() }
+  })
+
+  it.each<[string, SupporterEntitlement]>([
+    ['billing is off', { state: 'unavailable', reason: 'not_deployed' }],
+    ['the membership read fails', { state: 'error' }],
+    ['the account has no membership', twitchAccount('none', { checkoutEnabled: false })],
+  ])('stays a Twitch sign-in after a browser restart drops the display name, when %s', async (_label, membership) => {
+    const view = await mount({ account: () => ({ ...linked, twitch: true }), entitlement: () => membership, twitch: () => ({ status: twitchStatus(), account: { ...linked, twitch: true } }) }, undefined, 'public')
+    try {
+      expect(card(view.host).name().textContent).toBe('You')
+      expect(card(view.host).avatar()).toBe('twitch')
+      expect(card(view.host).sub()).toContain('Signed in with Twitch')
+      expect(accountRow(view.host)).toContain('Signed in with Twitch')
+      expect(accountRow(view.host)).not.toContain('Connected to this extension')
+      expect(view.text()).not.toContain('invited tester')
+      expect(view.buttons()).toContain('Sign out')
+    } finally { view.cleanup() }
+  })
+
+  it('asks who is signed in before membership, and names no account kind until the worker answers', async () => {
+    let answer!: (value: Omit<TwitchSignInResponse, 'type'>) => void
+    const status = new Promise<Omit<TwitchSignInResponse, 'type'>>(resolve => { answer = resolve })
+    const view = await mount({ account: () => linked, entitlement: () => new Promise<SupporterEntitlement>(() => {}), twitch: () => status }, undefined, 'public')
+    try {
+      const order = view.sendMessage.mock.calls.map(([message]) => message.type === 'SUPPORTER_BILLING' ? null : `${message.type}:${message.action ?? ''}`).filter(Boolean)
+      expect(order.slice(0, 3)).toEqual(['SUPPORTER_ACCOUNT:status', 'TWITCH_SIGN_IN:status', 'SUPPORTER_ENTITLEMENT:'])
+      // A slow membership read never shows a Twitch sign-in as an invited tester's connection.
+      expect(card(view.host).name().textContent).toBe('Checking your account…')
+      expect(accountRow(view.host)).toContain('Checking the connection…')
+      expect(view.text()).not.toContain('invited tester')
+      await act(async () => answer({ status: twitchStatus({ profile: PROFILE }), account: linked }))
+      expect(card(view.host).name().textContent).toBe('PulseViewer')
+      expect(accountRow(view.host)).toContain('Signed in with Twitch as PulseViewer')
     } finally { view.cleanup() }
   })
 

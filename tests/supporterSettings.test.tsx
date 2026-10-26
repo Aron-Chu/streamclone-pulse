@@ -560,7 +560,7 @@ describe('Your card through a failed refresh', () => {
       expect(host.textContent).not.toContain('Sample look')
       expect(host.textContent).not.toContain('Shown with the sample look')
       // Paid controls only act on fresh values, so equipping pauses until a read succeeds.
-      expect([...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Checking Supporter status…')?.disabled).toBe(true)
+      expect([...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Supporter status unavailable')?.disabled).toBe(true)
     } finally {
       act(() => root.unmount())
       host.remove()
@@ -598,6 +598,75 @@ describe('cosmetics while membership is unknown', () => {
       expect(chipState(host)).toEqual(['Equipped:glass', 'Previewing:halo'].sort())
       // Active members never had the pre-purchase choice read for them.
       expect(sendMessage).not.toHaveBeenCalled()
+    } finally {
+      act(() => root.unmount())
+      host.remove()
+      vi.unstubAllGlobals()
+    }
+  })
+})
+
+describe('cosmetics while membership is unavailable', () => {
+  it.each<[string, SupporterEntitlement | Error]>([
+    ['unavailable', { state: 'unavailable', reason: 'temporarily_unavailable' }],
+    ['a failed read', { state: 'error' }],
+    ['an unreachable worker', new Error('worker asleep')],
+  ])('pauses the studio and says so when the status is %s, never offering the pre-purchase choice', async (_label, membership) => {
+    const sendMessage = vi.fn(async (message: { type: string }) => {
+      if (message.type === 'SUPPORTER_ACCOUNT') return { type: 'SUPPORTER_ACCOUNT', account: { state: 'linked', accountId: '11111111-1111-4111-8111-1111111a1b2c', expiresAt: new Date(Date.now() + 86_400_000).toISOString() } }
+      if (message.type === 'SUPPORTER_ENTITLEMENT') { if (membership instanceof Error) throw membership; return { type: 'SUPPORTER_ENTITLEMENT', entitlement: membership } }
+      return undefined
+    })
+    vi.stubGlobal('chrome', { runtime: { sendMessage }, storage: { onChanged: { addListener() {}, removeListener() {} } } })
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => root.render(<SupporterAccountSection />))
+      const paused = [...host.querySelectorAll<HTMLButtonElement>('.pulse-account-link-actions button')].find(button => button.textContent === 'Supporter status unavailable')
+      expect(paused?.disabled).toBe(true)
+      expect(host.textContent).not.toContain('Checking Supporter status…')
+      expect(host.textContent).not.toContain('when Supporter starts')
+      expect(host.textContent).not.toContain('Save for when Supporter opens')
+      expect(host.textContent).not.toContain('Sign-ups are not open yet.')
+    } finally {
+      act(() => root.unmount())
+      host.remove()
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('keeps the pre-purchase choice on a server without Supporter, which is an answer rather than an outage', async () => {
+    vi.stubGlobal('chrome', { runtime: { sendMessage: vi.fn(async (message: { type: string }) => message.type === 'SUPPORTER_ACCOUNT'
+      ? { type: 'SUPPORTER_ACCOUNT', account: { state: 'linked', accountId: '11111111-1111-4111-8111-1111111a1b2c', expiresAt: new Date(Date.now() + 86_400_000).toISOString() } }
+      : message.type === 'SUPPORTER_ENTITLEMENT' ? { type: 'SUPPORTER_ENTITLEMENT', entitlement: { state: 'unavailable', reason: 'not_deployed' } } : undefined) }, storage: { onChanged: { addListener() {}, removeListener() {} } } })
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => root.render(<SupporterAccountSection />))
+      expect(host.textContent).toContain('Save for when Supporter opens')
+      // The footer says the server has no Supporter yet; the studio itself does not pause.
+      expect([...host.querySelectorAll('.pulse-account-link-actions button')].map(button => button.textContent)).not.toContain('Supporter status unavailable')
+    } finally {
+      act(() => root.unmount())
+      host.remove()
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('drops "Sign-ups are not open yet" from the emote rain line once paid sign-ups open', async () => {
+    vi.stubGlobal('chrome', { runtime: { sendMessage: vi.fn() } })
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    const none = (checkoutEnabled: boolean): SupporterEntitlement => ({ state: 'ready', status: 'none', supportPeriods: 0, features: [], checkoutEnabled })
+    const rain = () => host.querySelector('[data-supporter-perk="emote-rain"]')?.textContent
+    try {
+      await act(async () => root.render(<SupporterCosmeticControls entitlement={none(false)} />))
+      expect(rain()).toBe('Emote rain is a Supporter perk. Sign-ups are not open yet.')
+      await act(async () => root.render(<SupporterCosmeticControls entitlement={none(true)} />))
+      expect(rain()).toBe('Emote rain is a Supporter perk.')
     } finally {
       act(() => root.unmount())
       host.remove()

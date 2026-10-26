@@ -26,8 +26,10 @@ const SAMPLE_RAIN = { mode: 'rain', intensity: 35, title: '' } as const
  * (emote rain only in the preview) and choose a paint to apply when Supporter
  * starts.
  */
-export function SupporterCosmeticControls({ entitlement, tenure, onSaved }: {
+export function SupporterCosmeticControls({ entitlement, unavailable = false, tenure, onSaved }: {
   entitlement: SupporterEntitlement | null
+  /** With `entitlement` null: the status could not be read, rather than still loading. */
+  unavailable?: boolean
   /** The crest the preview wears: a Supporter's own, or the sample's. */
   tenure: SupporterTenure
   onSaved?: (cosmetics: SupporterCosmetics) => void
@@ -231,7 +233,7 @@ export function SupporterCosmeticControls({ entitlement, tenure, onSaved }: {
     <p className="pulse-supporter-detail" aria-live="polite">{paint.status || 'Wave and sheen save to this browser profile right away and show whenever your paint is equipped.'}</p>
     <div className="pulse-account-link-actions">
       {unknown ? (
-        <button type="button" disabled>Checking Supporter status…</button>
+        <button type="button" disabled>{unavailable ? 'Supporter status unavailable' : 'Checking Supporter status…'}</button>
       ) : allowed ? (
         <button type="button" disabled={busy || unchanged} aria-busy={busy} onClick={() => void save()}>
           {busy ? 'Saving...' : unchanged ? (finish ? 'Equipped' : 'Default active') : finish ? 'Equip paint' : 'Use default'}

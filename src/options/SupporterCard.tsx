@@ -15,13 +15,14 @@ import type { SupporterFinishId } from '../ui/supporterFinish.ts'
  * account nor its absence. With Continue with Twitch compiled on
  * (`TWITCH_SIGNIN_STAGE` tester or public), the `twitch` kind carries the
  * display-only profile that sign-in returns for this browser session; it is
- * never stored by StreamPulse.
+ * never stored by StreamPulse. After a browser restart that profile is gone
+ * and the kind stays `twitch` with no name.
  */
 export type CardIdentity =
   | { kind: 'none' }
   | { kind: 'unknown'; reason: 'checking' | 'unavailable' }
   | { kind: 'pulse'; reference?: string }
-  | { kind: 'twitch'; displayName: string; picture?: string }
+  | { kind: 'twitch'; displayName?: string; picture?: string }
 
 /**
  * What the card can say about membership: the server's status, or `checking`
@@ -147,7 +148,7 @@ function cardName(identity: CardIdentity): string {
   switch (identity.kind) {
     case 'none': return 'Not signed in'
     case 'unknown': return identity.reason === 'checking' ? 'Checking your account…' : 'Account unavailable'
-    case 'twitch': return identity.displayName
+    case 'twitch': return identity.displayName ?? 'You'
     // A StreamPulse account has no public name; its reference stays in Account, not on the card.
     default: return 'You'
   }
@@ -173,13 +174,13 @@ function nextLine(membership: CardMembership, current: number): ReactNode {
   return <>{now} · <b>{TENURES[current + 1].title}</b> in {months(Math.max(1, next.months - membership.months))}</>
 }
 
-/** The avatar: a neutral silhouette for nobody or an account not known yet, the StreamPulse mark for a StreamPulse account. */
+/** The avatar: a neutral silhouette for nobody or an account not known yet, the StreamPulse mark for an account with no name to show. */
 function CardAvatar({ identity }: { identity: CardIdentity }) {
   return (
     <span className="pulse-supporter-card-avatar" data-identity={identity.kind} aria-hidden="true">
       {identity.kind === 'none' || identity.kind === 'unknown'
         ? <svg width="28" height="28" viewBox="0 0 24 24"><circle cx="12" cy="9" r="4" fill="currentColor" /><path d="M4.5 20c0-4.1 3.4-6.5 7.5-6.5s7.5 2.4 7.5 6.5z" fill="currentColor" /></svg>
-        : identity.kind === 'pulse'
+        : identity.kind === 'pulse' || !identity.displayName
           ? <PeakMark size={30} strokeWidth={1.8} stroke="currentColor" />
           : identity.picture
             ? <img src={identity.picture} alt="" referrerPolicy="no-referrer" />
