@@ -28,7 +28,7 @@ export default function Privacy() {
           </div>
           <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Privacy Policy</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            Last updated: October 19, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse browser extension (Chrome, Brave, Edge and Firefox).
+            Last updated: October 26, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse browser extension (Chrome, Brave, Edge and Firefox).
           </p>
         </header>
 
@@ -39,7 +39,7 @@ export default function Privacy() {
           <p className="text-zinc-300">
             StreamPulse shows Twitch stream activity using minute-level aggregates from the StreamPulse
             API. The extension and public site are rollup-first: they do not expose raw chat messages or
-            chatter identity to users{supporterChatBadgesEnabled() ? PRIVACY_CHATTER_IDENTITY_EXCEPTION : ''}. Extension Twitch sign-in is not available in 0.2.2. When available, the extension uses Twitch sign-in only to confirm your Twitch
+            chatter identity to users{supporterChatBadgesEnabled() ? PRIVACY_CHATTER_IDENTITY_EXCEPTION : ''}. Extension Twitch sign-in is not available in this release. When available, the extension uses Twitch sign-in only to confirm your Twitch
             user ID, when you choose Continue with Twitch. Protect enrollment is not offered in 0.2.2. Earlier beta enrollment
             used a beta access key once to create a local device credential.
           </p>
@@ -92,7 +92,7 @@ export default function Privacy() {
           code, the device label you approve, and a device credential identifier. Approving a device
           does not publish anything about you or start a subscription.
         </p>
-        {/* 0.2.2 has no extension Twitch sign-in, so it never runs the silent first-install check
+        {/* This release has no extension Twitch sign-in, so it never runs the silent first-install check
             (src/background/twitchSignIn.ts). Describe that check again when sign-in ships. */}
 
         {/* Seen in chat copy only once VITE_SUPPORTER_CHAT_BADGES is on (launch day). */}
@@ -318,7 +318,7 @@ export default function Privacy() {
         <p>
            The extension does not request or transmit Twitch cookies, passwords, Twitch OAuth credentials
            (except the one-time sign-in proof described under Your account, sent only when you choose
-           Continue with Twitch, not available in 0.2.2), raw chat exports, or chatter identities.
+           Continue with Twitch, not available in this release), raw chat exports, or chatter identities.
            In earlier beta builds, a beta access key is sent only to the hosted enrollment
            endpoint when you explicitly connect Protect; it is discarded after that request and is not stored
            or sent with later requests. Protect enrollment is not offered in 0.2.2. Page-context Twitch requests may

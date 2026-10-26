@@ -21,7 +21,7 @@ const host = document.createElement('div')
 afterEach(() => host.replaceChildren())
 
 describe('Updates & Changelog layout', () => {
-  it('folds New, Improved and Fixed to counts, omits Changed and keeps Known limitations open', async () => {
+  it('folds New, Improved and Fixed to counts and keeps Changed and Known limitations open', async () => {
     document.body.append(host)
     const root = createRoot(host)
     await act(async () => root.render(<ChangelogCard variant="history" />))
@@ -35,11 +35,11 @@ describe('Updates & Changelog layout', () => {
     }))
     expect(seen).toEqual([
       { key: 'new', open: false, count: String(current.new!.length), items: current.new!.length },
+      { key: 'changed', open: true, count: String(current.changed!.length), items: current.changed!.length },
       { key: 'improved', open: false, count: String(current.improved!.length), items: current.improved!.length },
       { key: 'fixed', open: false, count: String(current.fixed!.length), items: current.fixed!.length },
       { key: 'knownIssues', open: true, count: String(current.knownIssues!.length), items: current.knownIssues!.length },
     ])
-    expect(release.querySelector('[data-release-category="changed"]')).toBeNull()
     // Each heading is a summary: the group opens with a click or Enter.
     expect(groups.every(group => group.querySelector('summary > h3') !== null)).toBe(true)
     act(() => root.unmount())
