@@ -18,6 +18,14 @@ The build stage comes from `PULSE_EXTENSION_TWITCH_SIGNIN` (see
 | `tester` | development and preview builds only; store builds refuse it | **Continue with Twitch**, "Twitch sign-in is open to invited testers right now", device link under **Other ways to connect (testers)** | "Signed in with Twitch as {name}", status, **Become a Supporter** when the server opens Checkout, **Manage subscription**, **Sign out**, **Use a different Twitch account** |
 | `public` | a store build only once that store's manifest requests `identity` (spec E3) | **Continue with Twitch** | as `tester` |
 
+The offer starts compact: status, the monthly price and renewal/cancellation/tax
+terms, all four perk names, and the action for the current state. The card's crest
+ladder, full perk descriptions and cosmetic studio sit under **Preview Supporter
+looks**, collapsed for nonmembers and expanded for active/grace members. Static
+recovery and payment explanations sit under **Account help**. Actual account and
+billing controls, pending/error notices and confirmations stay visible outside
+those disclosures. Opening a preview grants no membership and writes no entitlement.
+
 A development build with Twitch on adds `identity` to its generated manifest
 only; the checked-in manifests, the permission allowlist and the store
 permission docs move together in the release that flips a store manifest.

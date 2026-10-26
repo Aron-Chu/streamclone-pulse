@@ -6,6 +6,7 @@ import { SUPPORTER_FINISH_OPTIONS } from '../ui/supporterFinish.ts'
 import { usePulseBanner } from '../ui/PulseBanner.tsx'
 import type { PulseBannerPreference } from '../shared/storage.ts'
 import type { SupporterTenure } from '../shared/supporterPaint.ts'
+import { TWITCH_SIGNIN_ENABLED } from '../shared/twitchSignIn.ts'
 import { SupporterLookPreview } from './SupporterLookPreview.tsx'
 import { SupporterPaintStyleFields, useSupporterPaintStyle } from './SupporterPaintStyleFields.tsx'
 
@@ -136,6 +137,9 @@ export function SupporterCosmeticControls({ entitlement, tenure, onSaved }: {
   const unchanged = finish === appliedFinish
   // Sign-ups closed: a choice is kept for when Supporter opens, not for a membership that cannot start yet.
   const checkoutOpen = entitlement?.state === 'ready' && entitlement.checkoutEnabled === true
+  const checkoutAvailability = entitlement?.state === 'ready' && typeof entitlement.checkoutEnabled === 'boolean'
+    ? entitlement.checkoutEnabled ? 'open' : 'closed'
+    : entitlement?.state === 'not_linked' && !TWITCH_SIGNIN_ENABLED ? 'closed' : 'unknown'
   /** The swatch's state, as a chip on it: the paint you are trying, and the one in use. */
   const chip = (id: SupporterCosmetics['finish'] | null) => <>
     {id === appliedFinish ? <span className="pulse-supporter-tile-chip" data-chip="equipped">Equipped</span> : null}
@@ -222,7 +226,7 @@ export function SupporterCosmeticControls({ entitlement, tenure, onSaved }: {
         </div>
       </fieldset>
       <SupporterPaintStyleFields style={paint.style} onChoose={next => void paint.choose(next)} />
-      <EmoteRainField banner={banner} perks={unknown ? undefined : allowed} tried={rainTry} onTry={setRainTry} />
+      <EmoteRainField banner={banner} perks={unknown ? undefined : allowed} availability={checkoutAvailability} tried={rainTry} onTry={setRainTry} />
     </div>
     <p className="pulse-supporter-detail" aria-live="polite">{paint.status || 'Wave and sheen save to this browser profile right away and show whenever your paint is equipped.'}</p>
     <div className="pulse-account-link-actions">
@@ -260,9 +264,10 @@ export function SupporterCosmeticControls({ entitlement, tenure, onSaved }: {
  * to the page. Presses while one saves are ignored instead, and one live region,
  * always present, is cleared when a save starts and then states its result.
  */
-function EmoteRainField({ banner, perks, tried, onTry }: {
+function EmoteRainField({ banner, perks, availability, tried, onTry }: {
   banner: ReturnType<typeof usePulseBanner>
   perks: boolean | undefined
+  availability: 'open' | 'closed' | 'unknown'
   tried: PulseBannerPreference['mode']
   onTry: (mode: PulseBannerPreference['mode']) => void
 }) {
@@ -295,7 +300,7 @@ function EmoteRainField({ banner, perks, tried, onTry }: {
         >{mode === 'off' ? 'Off' : mode === 'still' ? 'Still' : 'Rain'}</button>)}
       </div>
       {perks === false
-        ? <p className="pulse-supporter-detail" data-supporter-perk="emote-rain">Emote rain is a Supporter perk. Sign-ups are not open yet.</p>
+        ? <p className="pulse-supporter-detail" data-supporter-perk="emote-rain">{availability === 'unknown' ? 'Preview only.' : availability === 'open' ? 'Emote rain is a Supporter perk. Preview it here.' : 'Preview only until Supporter sign-ups open.'}</p>
         : null}
       <p className="pulse-supporter-detail" role="status" data-emote-rain-status>{message}</p>
     </div>

@@ -17,11 +17,34 @@ test('packaged supporter settings stay local, accessible and responsive', async 
 
   // Your card: the identity that exists (nobody, with Twitch sign-in off), the sample look, and the crest ladder.
   const card = page.getByRole('region', { name: 'Your Supporter card' })
+  const previewDisclosure = page.locator('[data-supporter-preview-disclosure]')
+  await expect(previewDisclosure).toHaveJSProperty('open', false)
+  await expect(page.getByRole('group', { name: 'Paint' })).not.toBeVisible()
+  await expect(card.locator('.pulse-journey-primary')).toBeVisible()
+  const originalViewport = page.viewportSize()
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.screenshot({ path: info.outputPath(`supporter-settings-default-${width}.png`), fullPage: true, animations: 'disabled' })
+  }
+  if (originalViewport) await page.setViewportSize(originalViewport)
+  // Both disclosures use native keyboard behavior; opening them writes no preferences.
+  const help = page.getByText('Account help', { exact: true })
+  await help.focus()
+  await page.keyboard.press('Space')
+  await expect(page.locator('.pulse-supporter-help')).toHaveJSProperty('open', true)
+  await expect(page.locator('[data-row="payments"]')).toBeVisible()
+  await page.keyboard.press('Space')
+  await expect(page.locator('.pulse-supporter-help')).toHaveJSProperty('open', false)
+  const showPreview = page.getByText('Preview Supporter looks', { exact: true })
+  await showPreview.focus()
+  await page.keyboard.press('Space')
+  await expect(previewDisclosure).toHaveJSProperty('open', true)
+  await expect(showPreview).toBeFocused()
   // Heading navigation stops at the card (its h3 is visually hidden), between the page's h2 and "Your look".
   await expect(card.getByRole('heading', { level: 3, name: 'Your Supporter card', exact: true })).toHaveCount(1)
   await expect(page.locator('.pulse-supporter-settings').getByRole('heading')).toHaveText(['Account & Supporter', 'Your Supporter card', 'Your look', 'Account'])
   await expect(card.locator('.pulse-supporter-card-who strong')).toHaveText('Not signed in')
-  await expect(card.getByText('Sample look', { exact: true })).toBeVisible()
+  await expect(card.locator('.pulse-supporter-card-sample')).toHaveText('Sample look')
   // The card names nobody: no Twitch name or picture while Twitch sign-in is off.
   await expect(card.locator('.pulse-supporter-card-who')).not.toContainText('Twitch')
   const ladder = card.getByRole('list', { name: 'Crest ladder' })
@@ -89,6 +112,8 @@ test('packaged supporter settings stay local, accessible and responsive', async 
     await page.screenshot({ path: info.outputPath(`supporter-settings-${width}.png`), fullPage: true, animations: 'disabled' })
   }
   await page.reload()
+  await expect(page.locator('[data-supporter-preview-disclosure]')).toHaveJSProperty('open', false)
+  await page.getByText('Preview Supporter looks', { exact: true }).click()
   await expect(page.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Etched', exact: true })).toBeChecked()
   const after = await extension.serviceWorker.evaluate(() => chrome.storage.sync.get(null))
   expect(after).toEqual(before)
@@ -102,6 +127,7 @@ test('Your look tiles work from the keyboard and show where focus is', async ({ 
   await prepare()
   const page = extension.page
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
+  await page.getByText('Preview Supporter looks', { exact: true }).click()
   // Each tile's radio is a 1px transparent input: the tile's focus-within outline is the only focus indicator.
   const tile = (radio: Locator) => radio.locator('xpath=ancestor::label[contains(concat(" ", @class, " "), " pulse-supporter-tile ")][1]')
   const you = page.locator('[data-supporter-preview]')

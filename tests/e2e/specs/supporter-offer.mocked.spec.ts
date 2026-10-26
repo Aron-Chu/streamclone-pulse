@@ -152,6 +152,8 @@ test.describe('packaged supporter offer', () => {
     await expect(settings.getByText('Halo paint equipped.', { exact: true })).toBeVisible()
     status = 'expired'
     await settings.reload()
+    await expect(settings.locator('[data-supporter-preview-disclosure]')).toHaveJSProperty('open', false)
+    await settings.getByText('Preview Supporter looks', { exact: true }).click()
     await expect(settings.getByRole('button', { name: 'Default active', exact: true })).toBeDisabled()
     await twitch.reload()
     await expectBannerFinish(cdp, null)
@@ -189,9 +191,14 @@ test.describe('packaged supporter offer', () => {
       // A linked account goes straight to its own billing page, never the public offer.
       await expect(action).toHaveAttribute('href', 'https://streampulse.stream/account/billing')
       await expect(page.getByText('··', { exact: false }).first()).toBeVisible()
+      const accountHelp = page.getByText('Account help', { exact: true })
+      await expect(page.locator('.pulse-supporter-help')).toHaveJSProperty('open', false)
+      await accountHelp.click()
       for (const policy of ['/privacy', '/terms#supporter', '/refunds']) {
         await expect(page.locator(`a[href="https://streampulse.stream${policy}"]`).first()).toBeVisible()
       }
+      await accountHelp.click()
+      await expect(page.locator('.pulse-supporter-help')).toHaveJSProperty('open', false)
 
       // The purchase page offers only what ships: no unbuilt chat crest concept.
       await expect(page.getByText('Concept · not built', { exact: true })).toHaveCount(0)

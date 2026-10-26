@@ -144,6 +144,14 @@ const hostStyles = `
   .pulse-supporter-perks p { margin: 0; }
   .pulse-supporter-perks ul { color: ${theme.textSecondary}; display: grid; font-size: 12px; gap: 3px; line-height: 1.4; margin: 0; padding-left: 18px; }
   .pulse-supporter-perks li b { color: ${theme.textPrimary}; }
+  .pulse-supporter-perks-compact ul { display: flex; flex-wrap: wrap; gap: 4px 14px; list-style: none; padding: 0; }
+  .pulse-supporter-preview-disclosure, .pulse-supporter-help { min-width: 0; }
+  .pulse-supporter-preview-disclosure { border-top: 1px solid ${theme.border}; margin: 0 16px; }
+  .pulse-supporter-preview-disclosure > summary, .pulse-supporter-help > summary { box-sizing: border-box; color: ${theme.textPrimary}; cursor: pointer; font-size: 13px; font-weight: 700; min-height: 44px; padding: 12px 0; }
+  .pulse-supporter-preview-disclosure > summary:focus-visible, .pulse-supporter-help > summary:focus-visible { border-radius: 4px; outline: 2px solid ${theme.accentSoft}; outline-offset: 2px; }
+  .pulse-supporter-preview-content { display: grid; gap: 14px; min-width: 0; padding-bottom: 16px; }
+  .pulse-supporter-preview-content .pulse-supporter-card-ladder { padding: 8px 0; }
+  .pulse-supporter-help > .pulse-supporter-rows { margin: 0 0 10px; }
   /* Policy destinations sit below the offer as a quiet row, not three CTAs. */
   .pulse-supporter-policies {
     display: flex;
@@ -172,7 +180,7 @@ const hostStyles = `
     display: grid;
     margin-bottom: 14px;
     min-width: 0;
-    overflow: hidden;
+    overflow: clip;
     position: relative;
   }
   .pulse-supporter-card-banner { height: 92px; isolation: isolate; overflow: hidden; position: relative; }

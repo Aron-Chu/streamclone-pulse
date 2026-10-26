@@ -101,6 +101,7 @@ test('tester purchase journey needs no codes, refreshes or reloads, and revocati
   await settings.bringToFront()
 
   // Optional explicit finish choice before purchase: a preview, nothing equipped.
+  await settings.getByText('Preview Supporter looks', { exact: true }).click()
   await settings.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Halo', exact: true }).check()
   await settings.getByRole('button', { name: 'Save for when Supporter opens', exact: true }).click()
   await expect(settings.locator('[data-supporter-finish-intent="halo"]')).toBeVisible()

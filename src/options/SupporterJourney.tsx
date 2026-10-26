@@ -33,7 +33,8 @@ import { usePortalOrigin } from './usePortalOrigin.ts'
  * Supporter page's "Your card" (direction B of the 2026-10-07 redesign): the
  * card states who you are and your membership, its footer is this journey's
  * status and one primary action, and the Account card closes the page with the
- * sign-in, billing and policies. `children` sit between the two.
+ * sign-in and billing. `children` sit in the card's cosmetic preview disclosure;
+ * static recovery/payment explanations and policies sit under Account help.
  *
  * One public account flow (account journey spec, closeout 2026-10-08b):
  * Continue with Twitch → Become a Supporter (Stripe Checkout through the
@@ -179,7 +180,7 @@ function OfferTerms() {
       <p className="pulse-supporter-terms"><b>{PRICE_DISPLAY}</b><span>renews monthly until you cancel</span><span>cancel any time; access runs to the end of the paid month</span><span>taxes, if any, shown before you pay</span></p>
       {/* "You get" is the one perk list (src/shared/supporter-perks.json) that
           the settings banner, quick settings, /supporter and the Terms share. */}
-      <SupporterPerkList />
+      <SupporterPerkList compact />
     </>
   )
 }
@@ -731,10 +732,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
       // Stage A: nothing to buy and no account to make. The one action says
       // where Supporter is described; testers connect below.
       title = 'Supporter sign-ups are not open yet'
-      body = <>
-        {why ? <p className="pulse-journey-notice">{why}</p> : null}
-        <p>When they open, you'll choose <b>Continue with Twitch</b>, then pay on Stripe. {ACCOUNT_COPY.freeTools}</p>
-      </>
+      body = why ? <p className="pulse-journey-notice">{why}</p> : null
       terms = true
       primary = supporterDetails(true)
     } else {
@@ -911,6 +909,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
         identity={identity}
         membership={{ status: cardStatus, months: periods, tenure: supporterTenureForMonths(periods) }}
         look={cardLook}
+        preview={<><SupporterPerkList />{children}</>}
       >
         <div className="pulse-journey" data-journey-state={state} data-twitch-stage={twitchStage} data-tone={status === 'grace' && state === 'grace' ? 'warn' : undefined}>
           <div className="pulse-journey-row">
@@ -941,8 +940,6 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
         </div>
       </SupporterCard>
 
-      {children}
-
       <PulseSectionCard title="Account" headingLevel={3}>
         <div className="pulse-supporter-account-rows">
           <dl className="pulse-supporter-rows">
@@ -970,6 +967,11 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
                   focus to the page. manage() ignores a press while one is open. */}
               <dd className="pulse-account-link-actions"><button type="button" aria-busy={payBusy || undefined} onClick={() => void manage('account')}>{ACCOUNT_COPY.manageSubscription} <span className="pulse-supporter-ext" aria-hidden="true">↗</span></button></dd>
             </div> : null}
+          </dl>
+          {/* Static explanations stay out of the live account and billing actions. */}
+          <details className="pulse-supporter-help">
+            <summary>Account help</summary>
+            <dl className="pulse-supporter-rows">
             <div data-row="new-browser">
               <dt>New browser</dt>
               {twitchOn
@@ -987,7 +989,14 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
               <dd>Stripe’s customer portal still works with the email you paid with.<small>That changes billing only. It doesn’t move your membership to another Twitch account; contact support and we’ll help.</small></dd>
               <dd />
             </div> : null}
-          </dl>
+            </dl>
+            <p className="pulse-supporter-detail">Core Pulse tools, accent themes, bookmarks, and Twitch clip and VOD links remain free.</p>
+            <p className="pulse-supporter-detail pulse-supporter-policies">
+              <a href={POLICY_LINKS.supporterTerms} target="_blank" rel="noopener noreferrer">Supporter terms</a>
+              <a href={POLICY_LINKS.refunds} target="_blank" rel="noopener noreferrer">Cancellation &amp; refunds</a>
+              <a href={POLICY_LINKS.privacy} target="_blank" rel="noopener noreferrer">Privacy</a>
+            </p>
+          </details>
           {/* Sign out, Manage subscription and revoke report here, beside their
               rows, not in the card footer a screen above. Always present, so
               the outcome is announced when it arrives. */}
@@ -1007,14 +1016,6 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
           </li>)}</ul> : <p role="status">{devicesBusy ? 'Loading connections…' : devices === null ? 'Refresh to see current connections.' : 'Connections could not be loaded.'}</p>}
           <div className="pulse-account-link-actions pulse-journey-actions"><button type="button" disabled={devicesBusy} onClick={() => void listDevices()}>Refresh connections</button>{devices?.state === 'ready' && devices.nextCursor ? <button type="button" disabled={devicesBusy} onClick={() => void listDevices(devices.nextCursor)}>Next connections</button> : null}</div>
         </details> : null}
-        <p className="pulse-supporter-detail">
-          Core Pulse tools, your existing accent themes, moment bookmarks, and links to Twitch clips and VODs remain free.
-        </p>
-        <p className="pulse-supporter-detail pulse-supporter-policies">
-          <a href={POLICY_LINKS.supporterTerms} target="_blank" rel="noopener noreferrer">Supporter terms</a>
-          <a href={POLICY_LINKS.refunds} target="_blank" rel="noopener noreferrer">Cancellation &amp; refunds</a>
-          <a href={POLICY_LINKS.privacy} target="_blank" rel="noopener noreferrer">Privacy</a>
-        </p>
       </PulseSectionCard>
     </>
   )

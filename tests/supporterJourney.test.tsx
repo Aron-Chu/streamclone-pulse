@@ -288,7 +288,7 @@ describe('pay-first settings', () => {
     const peer = '55555555-5555-4555-8555-555555555555'
     const view = await mount({ account: () => linked, entitlement: () => ready('active', { accountKind: 'installation', installationAccountsEnabled: true }), devices: action => action === 'revoke' ? { state: 'revoked' } : { state: 'ready', currentDeviceId: ACCOUNT_ID, devices: [{ id: ACCOUNT_ID, label: 'Chrome extension', createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 900_000).toISOString() }, { id: peer, label: 'Chrome extension', createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 900_000).toISOString() }] } })
     try {
-      const details = view.host.querySelector('details')!
+      const details = view.host.querySelector<HTMLDetailsElement>('.pulse-journey-devices:not([data-tester-bridge])')!
       await act(async () => { details.open = true; details.dispatchEvent(new Event('toggle')) })
       expect(view.buttons().filter(name => name === 'Revoke connection')).toHaveLength(1)
       await view.click('Revoke connection')
@@ -436,7 +436,8 @@ describe('Twitch sign-in off (stage A): signed out', () => {
     try {
       expect(view.state()).toBe('signed-out')
       expect(view.text()).toContain('Supporter sign-ups are not open yet')
-      expect(view.text()).toContain('When they open, you\'ll choose Continue with Twitch, then pay on Stripe. Free tools work without an account.')
+      expect(view.text()).toContain('Free tools work without an account.')
+      expect(view.text()).not.toContain('When they open, you\'ll choose')
       expect(view.text()).toContain('US$4.99 / month')
       // Your card says who is here: nobody, and that is fine. The Account card does not repeat it.
       expect(card(view.host).name().textContent).toBe('Not signed in')
@@ -812,7 +813,7 @@ describe('notices beside the action that caused them', () => {
     const view = await mount({ account: () => linked, entitlement: () => ready('active', { accountKind: 'installation', installationAccountsEnabled: true }), devices: action => action === 'revoke' ? { state: 'error' } : { state: 'ready', currentDeviceId: ACCOUNT_ID, devices: [{ id: ACCOUNT_ID, label: 'Chrome extension', createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 900_000).toISOString() }, { id: peer, label: 'Chrome extension', createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 900_000).toISOString() }] } })
     try {
       const page = sections(view.host)
-      const details = view.host.querySelector('details')!
+      const details = view.host.querySelector<HTMLDetailsElement>('.pulse-journey-devices:not([data-tester-bridge])')!
       await act(async () => { details.open = true; details.dispatchEvent(new Event('toggle')) })
       await view.click('Revoke connection')
       await view.click('Confirm revoke')
@@ -842,9 +843,11 @@ describe('the offer names what the banner sells', () => {
     const view = await mount({ account, entitlement, billing: () => ({ state: 'idle' }) })
     try {
       const list = view.host.querySelector<HTMLElement>('[data-supporter-perks-list="true"]')!
-      expect(list.querySelector('b')?.textContent).toBe('You get')
-      expect([...list.querySelectorAll('li')].map(item => item.textContent)).toEqual(SUPPORTER_PERKS.names.map(name => `${name}: ${SUPPORTER_PERKS.details[name as keyof typeof SUPPORTER_PERKS.details]}`))
-      expect(list.textContent).toContain(SUPPORTER_PERKS.onlyYou)
+      expect([...list.querySelectorAll('li')].map(item => item.textContent)).toEqual(SUPPORTER_PERKS.names)
+      expect(list.textContent).toContain('Only you see these cosmetics. Nothing is added to chat.')
+      const full = view.host.querySelector<HTMLElement>('[data-supporter-preview-disclosure] [data-supporter-perks-list="true"]')!
+      expect([...full.querySelectorAll('li')].map(item => item.textContent)).toEqual(SUPPORTER_PERKS.names.map(name => `${name}: ${SUPPORTER_PERKS.details[name as keyof typeof SUPPORTER_PERKS.details]}`))
+      expect(full.textContent).toContain(SUPPORTER_PERKS.onlyYou)
       expect(list.textContent).not.toMatch(/signature|header accent|concept/i)
     } finally { view.cleanup() }
   })

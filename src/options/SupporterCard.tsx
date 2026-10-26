@@ -76,19 +76,21 @@ const isKnown = (status: CardStatus) => status !== 'checking' && status !== 'unk
  * The Account & Supporter page's lead, direction B "Your card" of the
  * 2026-10-07 redesign: a Twitch-style viewer card with emote rain across its
  * top, the avatar, the name (painted, with the crest, for a Supporter), the
- * membership in one line, and a five-step crest ladder from New to 2 years.
- * The membership journey (`children`) is its footer: the price and one button,
- * or the renew date and billing.
+ * membership in one line and the action for the current account state.
+ * The five-step crest ladder and cosmetic studio share a preview disclosure,
+ * collapsed for nonmembers. The membership journey (`children`) stays visible:
+ * the price and one button, or the renewal date and billing.
  *
  * The card is a section headed by a visually hidden h3, so heading navigation
  * stops here between the page's h2 and "Your look"; the card's own lines
  * (the name, the membership, the footer's title) stay as drawn.
  */
-export function SupporterCard({ identity, membership, look, children }: {
+export function SupporterCard({ identity, membership, look, children, preview }: {
   identity: CardIdentity
   membership: CardMembership
   look: CardLook
   children: ReactNode
+  preview?: ReactNode
 }) {
   const { status } = membership
   const known = isKnown(status)
@@ -119,18 +121,24 @@ export function SupporterCard({ identity, membership, look, children }: {
           <span>{subline(identity, membership)}</span>
         </div>
       </div>
-      <div className="pulse-supporter-card-ladder">
-        <ol className="pulse-supporter-ladder" aria-label="Crest ladder" style={{ '--fill': current > 0 ? current / (LADDER.length - 1) : 0 } as CSSProperties}>
-          {LADDER.map((step, index) => (
-            <li key={step.id} data-tier={step.id} data-step={current < 0 ? (known && index === 0 ? 'start' : 'off') : index < current ? 'past' : index === current ? 'current' : 'off'} aria-current={index === current ? 'step' : undefined}>
-              <span><i className="pulse-crest" data-tenure={step.id} aria-hidden="true" /></span>
-              <small>{step.label}</small>
-            </li>
-          ))}
-        </ol>
-        <p className="pulse-supporter-ladder-next">{nextLine(membership, current)}</p>
-      </div>
       {children}
+      <details className="pulse-supporter-preview-disclosure" data-supporter-preview-disclosure open={isSupporter(status) || undefined}>
+        <summary>Preview Supporter looks</summary>
+        <div className="pulse-supporter-preview-content">
+          <div className="pulse-supporter-card-ladder">
+            <ol className="pulse-supporter-ladder" aria-label="Crest ladder" style={{ '--fill': current > 0 ? current / (LADDER.length - 1) : 0 } as CSSProperties}>
+              {LADDER.map((step, index) => (
+                <li key={step.id} data-tier={step.id} data-step={current < 0 ? (known && index === 0 ? 'start' : 'off') : index < current ? 'past' : index === current ? 'current' : 'off'} aria-current={index === current ? 'step' : undefined}>
+                  <span><i className="pulse-crest" data-tenure={step.id} aria-hidden="true" /></span>
+                  <small>{step.label}</small>
+                </li>
+              ))}
+            </ol>
+            <p className="pulse-supporter-ladder-next">{nextLine(membership, current)}</p>
+          </div>
+          {preview}
+        </div>
+      </details>
     </section>
   )
 }

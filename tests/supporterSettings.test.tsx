@@ -67,7 +67,15 @@ describe('supporter settings', () => {
       // Status comes from the server. With Twitch sign-in off, a signed-out
       // install says sign-ups are not open and offers nothing to buy.
       expect(journey.textContent).toContain('Supporter sign-ups are not open yet')
-      expect(journey.textContent).toContain('Free tools work without an account.')
+      expect(card.textContent?.match(/Free tools work without an account\./g)).toHaveLength(1)
+      const previewDisclosure = host.querySelector<HTMLDetailsElement>('[data-supporter-preview-disclosure]')!
+      expect(previewDisclosure.open).toBe(false)
+      expect(previewDisclosure.querySelector('summary')?.textContent).toBe('Preview Supporter looks')
+      expect(previewDisclosure.contains(journey)).toBe(false)
+      const help = host.querySelector<HTMLDetailsElement>('.pulse-supporter-help')!
+      expect(help.open).toBe(false)
+      expect(help.querySelector('summary')?.textContent).toBe('Account help')
+      expect(help.querySelector('[data-row="payments"]')).not.toBeNull()
       expect(host.textContent).not.toMatch(/Restore my Supporter|website account|Become a Supporter/)
       expect(host.textContent).toContain('remain free')
       // The Your look studio's preview, pinned above its controls: it says once
@@ -86,8 +94,7 @@ describe('supporter settings', () => {
       expect(host.textContent).not.toContain('Concept · not built')
       // Your look: paint, wave, sheen and emote rain; rain can be tried here, not saved.
       expect([...host.querySelectorAll('.pulse-supporter-look-row > legend')].map(legend => legend.textContent)).toEqual(['Paint', 'Wave', 'Sheen', 'Emote rain'])
-      expect(host.querySelector('[data-supporter-perk="emote-rain"]')?.textContent).toContain('Supporter perk')
-      expect(host.querySelector('[data-supporter-perk="emote-rain"]')?.textContent).toBe('Emote rain is a Supporter perk. Sign-ups are not open yet.')
+      expect(host.querySelector('[data-supporter-perk="emote-rain"]')?.textContent).toBe('Preview only until Supporter sign-ups open.')
       // No signature emote anywhere, and the old badge preview is gone.
       expect(host.textContent).not.toMatch(/signature/i)
       expect(host.querySelector('.pulse-supporter-tenure-choices, .pulse-supporter-chat-preview')).toBeNull()
@@ -152,10 +159,41 @@ describe('supporter settings', () => {
       expect(journey.hasAttribute('data-tone')).toBe(false)
       // Billing is one tap away, and nothing about a chat badge is offered as included.
       expect([...host.querySelectorAll('button')].map(button => button.textContent)).toContain('Manage subscription ↗')
+      expect(host.querySelector<HTMLDetailsElement>('[data-supporter-preview-disclosure]')?.open).toBe(true)
+      expect(host.querySelector('[data-row="billing"]')?.closest('.pulse-supporter-help')).toBeNull()
+      expect(host.querySelector('.pulse-journey')?.closest('[data-supporter-preview-disclosure]')).toBeNull()
       expect(host.textContent).not.toContain('Concept · not built')
       expect(host.textContent).not.toContain('US$4.99 / month')
       // An active member's pre-purchase choice is never read.
       expect(sendMessage.mock.calls.map(([message]) => message)).toEqual([{ type: 'SUPPORTER_ACCOUNT', action: 'status' }, { type: 'SUPPORTER_ENTITLEMENT' }, { type: 'SUPPORTER_BILLING', action: 'status' }])
+    } finally {
+      act(() => root.unmount())
+      host.remove()
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it.each<[string, SupporterEntitlement | null, string | null]>([
+    ['open', { state: 'ready', status: 'none', supportPeriods: 0, features: [], checkoutEnabled: true }, 'Emote rain is a Supporter perk. Preview it here.'],
+    ['closed', { state: 'ready', status: 'none', supportPeriods: 0, features: [], checkoutEnabled: false }, 'Preview only until Supporter sign-ups open.'],
+    ['older server', { state: 'ready', status: 'none', supportPeriods: 0, features: [] }, 'Preview only.'],
+    ['failed', { state: 'error' }, 'Preview only.'],
+    ['unavailable', { state: 'unavailable', reason: 'temporarily_unavailable' }, 'Preview only.'],
+    ['pending', null, null],
+  ])('keeps Emote rain availability honest when %s without changing entitlement', async (_name, entitlement, copy) => {
+    const sendMessage = vi.fn(async (_message: { type: string }) => undefined)
+    vi.stubGlobal('chrome', { runtime: { sendMessage } })
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => root.render(<SupporterCosmeticControls entitlement={entitlement} />))
+      expect(host.querySelector('[data-supporter-perk="emote-rain"]')?.textContent ?? null).toBe(copy)
+      if (entitlement === null) {
+        expect(host.querySelector('[data-supporter-perks="pending"]')?.hasAttribute('disabled')).toBe(true)
+        expect(host.textContent).toContain('Checking Supporter status…')
+      }
+      expect(sendMessage.mock.calls.map(([message]) => message)).not.toContainEqual(expect.objectContaining({ type: 'SUPPORTER_COSMETICS' }))
     } finally {
       act(() => root.unmount())
       host.remove()
