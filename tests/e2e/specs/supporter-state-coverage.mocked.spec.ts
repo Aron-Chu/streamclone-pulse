@@ -33,7 +33,7 @@ type StateCase = {
 }
 const CASES: StateCase[] = [
   { name: 'not-a-supporter', journey: 'signed-out', principal: 'Supporter details', setup: 'unlinked', alias: 'Twitch sign-in off (stage A): sign-ups are not open, so the signed-out page describes Supporter and offers no purchase.' },
-  { name: 'checkout-closed', journey: 'checkout-closed', principal: 'Check sign-up status', status: 'none', checkoutEnabled: false },
+  { name: 'checkout-closed', journey: 'checkout-closed', principal: 'Check again', status: 'none', checkoutEnabled: false },
   { name: 'preparing-checkout', journey: 'offer', principal: 'Preparing checkout…', status: 'none', setup: 'preparing', alias: 'Transient busy offer. The worker is awaiting the mocked checkout response; the disabled action prevents another request.' },
   { name: 'stripe-open', journey: 'stripe-open', principal: 'Return to Stripe checkout', status: 'none', billing: 'waiting' },
   { name: 'payment-confirming', journey: 'payment-pending', principal: 'Check payment status', status: 'pending', billing: 'confirming' },
@@ -276,7 +276,30 @@ for (const state of CASES) {
         await expect(journey).toContainText('disconnected from your StreamPulse account')
         await expect(journey.getByRole('button', { name: /Become a Supporter|Restore my Supporter/ })).toHaveCount(0)
       }
-      if (state.setup === 'sandbox' && storeTarget) await expect(journey).toContainText('Supporter is not open in this build yet')
+      if (state.setup === 'sandbox' && storeTarget) await expect(journey).toContainText("Supporter isn't available in this version.")
+      if (CAPTURE_PHASE === 'after') {
+        const studio = page.locator('.pulse-supporter-studio')
+        if (state.name === 'checkout-closed' || state.setup === 'unlinked' || state.setup === 'revoked') {
+          await expect(journey).toContainText("Supporter isn't on sale yet")
+          await expect(studio).toContainText("Try a look. Changes here aren't saved.")
+          await expect(studio.locator('.pulse-account-link-actions')).toHaveCount(0)
+          await expect(studio.locator('[data-supporter-finish-intent]')).toHaveCount(0)
+          await expect(studio.locator('[data-chip]')).toHaveCount(0)
+          await expect(studio.locator('.pulse-supporter-wave-disclosure')).toHaveJSProperty('open', false)
+          await expect(studio.getByText(/^(Trying|Sample look)$/)).toHaveCount(0)
+        }
+        if (expectedJourney === 'membership-unknown') {
+          await page.getByText('Preview Supporter looks', { exact: true }).click()
+          for (const name of ['Paint', 'Wave', 'Sheen', 'Emote rain']) {
+            const group = studio.getByRole('group', { name, exact: true })
+            await expect(group).toHaveJSProperty('disabled', true)
+            for (const control of await group.locator('input, button').all()) await expect(control).toBeDisabled()
+          }
+          await expect(studio.locator('[data-supporter-perk="emote-rain"]')).toHaveCount(0)
+          await expect(studio.locator('[data-chip]')).toHaveCount(0)
+          await expect(studio.getByRole('button', { name: /Equip paint|Save for when|Use .*when Supporter starts|Clear choice/ })).toHaveCount(0)
+        }
+      }
       const views: Array<Record<string, unknown>> = []
       for (const view of VIEWS) {
         await page.setViewportSize({ width: view.width, height: view.height })

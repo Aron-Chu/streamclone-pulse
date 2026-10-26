@@ -110,6 +110,7 @@ async function privateState(worker: WorkerExecution) {
         request.onsuccess = () => resolve(request.result); request.onerror = reject
       })
       const journey = await get('supporter-pay-first'), account = await get('https://api.streampulse.stream')
+      const intent = await get('supporter-finish-intent')
       // No bearer, refresh secret, polling secret or Checkout URL leaves this read.
       return { billing: journey?.billing ? { accountId: journey.billing.accountId, attemptId: journey.billing.attemptId,
         nextPoll: journey.billing.nextPoll, until: journey.billing.until } : null,
@@ -117,7 +118,8 @@ async function privateState(worker: WorkerExecution) {
         restore: journey?.restore ? { accountId: journey.restore.accountId, restoreId: journey.restore.restoreId,
           nextPoll: journey.restore.nextPoll, expiresAt: journey.restore.expiresAt } : null,
         restoreResult: journey?.restoreResult ?? null, accountId: account?.accountId ?? null,
-        restoredTokenMatches: account?.token === 'd'.repeat(64), finishIntentPresent: Boolean(await get('supporter-finish-intent')),
+        restoredTokenMatches: account?.token === 'd'.repeat(64), finishIntentPresent: Boolean(intent),
+        finishIntent: intent ? { finish: intent.finish, setAt: intent.setAt } : null,
         revisions: await chrome.storage.local.get(['pulseAccountRevision', 'pulseSupporterRevision']) }
     } finally { db.close() }
   })
@@ -298,11 +300,23 @@ test('a stopped packaged worker resumes Checkout cooldown and applies the chosen
     })
     await extension.page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
     await extension.page.getByText('Preview Supporter looks', { exact: true }).click()
-    await extension.page.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Halo', exact: true }).check()
-    await extension.page.getByRole('button', { name: 'Save for when Supporter opens', exact: true }).click()
-    // The page offers no purchase while signed out; the kept worker path is started directly.
+    await expect(extension.page.locator('.pulse-supporter-studio .pulse-account-link-actions')).toHaveCount(0)
+    // The worker creates the fixture installation and reads its explicitly open
+    // entitlement before the studio can keep a paint for later application.
     await extension.page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_BILLING', action: 'checkout' }))
     await expect(extension.page.locator('[data-journey-state="stripe-open"]')).toBeVisible()
+    await extension.page.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Halo', exact: true }).check()
+    const beforeChoice = Date.now()
+    await extension.page.getByRole('button', { name: 'Use Halo when Supporter starts', exact: true }).click()
+    await expect(extension.page.locator('[data-supporter-finish-intent="halo"]')).toBeVisible()
+    const choice = await extension.page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_FINISH_INTENT' }))
+    expect(choice).toMatchObject({ type: 'SUPPORTER_FINISH_INTENT', finish: 'halo', setAt: expect.any(Number) })
+    expect(choice.setAt).toBeGreaterThanOrEqual(beforeChoice)
+    expect(choice.setAt).toBeLessThanOrEqual(Date.now())
+    expect(Object.keys(choice).sort()).toEqual(['finish', 'setAt', 'type'])
+    const persistedChoice = (await privateState(extension.serviceWorker)).finishIntent
+    expect(persistedChoice).toEqual({ finish: 'halo', setAt: choice.setAt })
+    trace.checks.savedChoice = { response: choice, persisted: persistedChoice }
     await extension.page.screenshot({ path: info.outputPath('before-worker-stop.png'), fullPage: true })
     await extension.page.goto('about:blank')
     for (const page of extension.context.pages()) if (page !== extension.page) await page.close()
@@ -311,6 +325,7 @@ test('a stopped packaged worker resumes Checkout cooldown and applies the chosen
     await expect.poll(async () => (await privateState(extension.serviceWorker)).billingRetryUntil).toBeGreaterThan(throttled!.responseAt! + COOLDOWN_SECONDS * 1000 - 100)
     const stored = await privateState(extension.serviceWorker)
     expect(stored.billing).toMatchObject({ accountId: ACCOUNT, attemptId: ATTEMPT, nextPoll: stored.billingRetryUntil })
+    expect(stored.finishIntent).toEqual(persistedChoice)
     trace.checks.persistedBeforeRestart = stored
     paid = true
     const fresh = await restart(extension.context, extension.page, extension.serviceWorker, trace)

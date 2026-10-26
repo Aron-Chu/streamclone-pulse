@@ -1,4 +1,4 @@
-import type { SupporterAccountAction, SupporterAccountState, SupporterEntitlement, SupporterStatus, SupporterCosmetics } from '../shared/supporterAccount.ts'
+import { FINISH_INTENT_TTL_MS, type SupporterAccountAction, type SupporterAccountState, type SupporterEntitlement, type SupporterStatus, type SupporterCosmetics, type SupporterFinishIntentDetails } from '../shared/supporterAccount.ts'
 import { supporterAccess, SUPPORTER_FEATURES, type SupporterScope } from '../shared/supporterAccess.ts'
 import { DEVICE_LINK_ENABLED } from '../shared/deviceLink.ts'
 
@@ -14,7 +14,7 @@ type PrivateState = Pending | Linked | { kind: 'refreshing'; installation?: true
  * it never equips an unsolicited cosmetic long after the choice was made.
  */
 export type FinishIntent = { finish: Finish; setAt: number; accountId?: string }
-export const FINISH_INTENT_TTL_MS = 7 * 86_400_000
+export { FINISH_INTENT_TTL_MS } from '../shared/supporterAccount.ts'
 export type InstallationBootstrap = { key: string; state: 'pending' | 'claimed'; accountId?: string }
 type Ports = {
   read: () => Promise<unknown>
@@ -113,7 +113,7 @@ function renewal(body: Record<string, unknown>): Pick<Extract<SupporterEntitleme
 const FINISHES: ReadonlySet<string> = new Set(['glass', 'etched', 'halo'])
 function finishIntent(value: unknown, now: number): FinishIntent | null {
   const r = object(value)
-  if (!FINISHES.has(String(r.finish)) || typeof r.setAt !== 'number' || r.setAt > now || now - r.setAt > FINISH_INTENT_TTL_MS) return null
+  if (!FINISHES.has(String(r.finish)) || typeof r.setAt !== 'number' || !Number.isFinite(r.setAt) || r.setAt > now || now - r.setAt > FINISH_INTENT_TTL_MS) return null
   if (r.accountId !== undefined && !id(r.accountId)) return null
   return { finish: r.finish as Finish, setAt: r.setAt, ...(r.accountId ? { accountId: r.accountId as string } : {}) }
 }
@@ -409,7 +409,13 @@ export class SupporterAccountCoordinator {
 
   /** The optional finish chosen before purchase, or null. Never a credential. */
   async finishIntent(): Promise<Finish | null> {
-    return finishIntent(await this.ports.readIntent?.().catch(() => null), this.now())?.finish ?? null
+    return (await this.finishIntentDetails())?.finish ?? null
+  }
+
+  /** Original save time for settings; the private account binding stays here. */
+  async finishIntentDetails(): Promise<SupporterFinishIntentDetails | null> {
+    const intent = finishIntent(await this.ports.readIntent?.().catch(() => null), this.now())
+    return intent ? { finish: intent.finish, setAt: intent.setAt } : null
   }
 
   /** Record or clear the explicit pre-purchase finish choice for this installation. */

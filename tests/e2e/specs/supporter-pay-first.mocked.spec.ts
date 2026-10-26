@@ -78,14 +78,19 @@ test('worker installation Checkout opens only Stripe, delayed payment activates 
   const initialNavigations = twitchNavigations
   await settings.bringToFront()
   await settings.getByText('Preview Supporter looks', { exact: true }).click()
-  await settings.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Halo', exact: true }).check()
-  await settings.getByRole('button', { name: 'Save for when Supporter opens', exact: true }).click()
+  await expect(settings.locator('.pulse-supporter-studio .pulse-account-link-actions')).toHaveCount(0)
   expect(calls).toEqual([])
   const tabs = await recordTabs(extension.serviceWorker)
   // A signed-out page offers no purchase; the kept worker path is started directly.
   await expect(settings.getByRole('button', { name: 'Become a Supporter', exact: true })).toHaveCount(0)
   await workerCheckout(settings)
   await expect(settings.locator('[data-journey-state="stripe-open"]')).toBeVisible()
+  // The created fixture installation has a ready, explicitly open entitlement.
+  // Keep the choice through the real worker rather than a closed try-on control.
+  await settings.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Halo', exact: true }).check()
+  await settings.getByRole('button', { name: 'Use Halo when Supporter starts', exact: true }).click()
+  await expect(settings.locator('[data-supporter-finish-intent="halo"]')).toBeVisible()
+  await expect(settings.getByText('We keep this choice for 7 days.', { exact: true })).toBeVisible()
   expect(await tabs()).toEqual(['https://checkout.stripe.com/c/pay/cs_test_local_fixture#fidkdWxOYHwnPyd1blppbHNgWmR'])
   await settings.getByRole('button', { name: 'Return to Stripe checkout', exact: true }).click()
   await expect.poll(tabs).toEqual(['https://checkout.stripe.com/c/pay/cs_test_local_fixture#fidkdWxOYHwnPyd1blppbHNgWmR', 'https://checkout.stripe.com/c/pay/cs_test_local_fixture#fidkdWxOYHwnPyd1blppbHNgWmR'])

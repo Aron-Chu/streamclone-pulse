@@ -13,7 +13,7 @@ export function SupporterPerkList({ compact = false }: { compact?: boolean } = {
       <ul>
         {names.map(name => <li key={name} data-perk-name={name}><b>{name}</b>{compact ? null : <>: {details[name as keyof typeof details]}</>}</li>)}
       </ul>
-      <p className="pulse-supporter-detail">{compact ? 'Only you see these cosmetics. Nothing is added to chat.' : onlyYou}</p>
+      <p className="pulse-supporter-detail">{onlyYou}</p>
     </div>
   )
 }

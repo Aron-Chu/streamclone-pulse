@@ -195,11 +195,11 @@ describe('pay-first settings', () => {
       try {
         expect(view.state()).toBe('checkout-closed')
         expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
-        expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Check sign-up status')
-        expect(view.text()).toContain('Return when paid sign-ups open')
+        expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe("Check again")
+        expect(view.text()).toContain("Check back when it goes on sale")
         expect(view.buttons()).not.toContain('Start checkout again')
         expect(view.buttons()).not.toContain('Rejoin Supporter')
-        await view.click('Check sign-up status')
+        await view.click("Check again")
         expect(view.calls('SUPPORTER_ENTITLEMENT')).toBeGreaterThan(1)
         expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
         expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(0)
@@ -229,7 +229,7 @@ describe('pay-first settings', () => {
     ['still_confirming', 'still-confirming', 'Check payment status', 'check'],
     ['reconnect_required', 'previous-payment-unresolved', 'Contact support', 'support'],
     ['review', 'review', 'Contact support', 'support'],
-    ['closed', 'checkout-closed', 'Check sign-up status', 'read'],
+    ['closed', 'checkout-closed', "Check again", 'read'],
     ['unavailable', 'billing-unavailable', 'Try again', 'read'],
     ['error', 'billing-unavailable', 'Try again', 'read'],
   ] as const)('keeps the %s action above an ended installation membership', async (billingState, journeyState, label, action) => {
@@ -241,7 +241,7 @@ describe('pay-first settings', () => {
         expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe(label)
         expect(view.buttons()).not.toContain('Rejoin Supporter')
         expect(view.buttons()).not.toContain('Manage subscription')
-        expect(view.text()).not.toContain('US$4.99 / month')
+        expect(view.text()).not.toContain("US$4.99 a month")
         if (billingState === 'confirming' || billingState === 'still_confirming' || billingState === 'review') expect(view.text()).toContain('Do not pay again')
         if (action === 'support') {
           expect(view.host.querySelector<HTMLAnchorElement>('a.pulse-journey-primary')?.href).toBe('https://streampulse.stream/support')
@@ -375,7 +375,7 @@ describe('pay-first settings', () => {
       membership = ready('active', { installationAccountsEnabled: true }); billing = { state: 'idle' }
       await view.change({ pulseSupporterRevision: { newValue: 'active' } })
       expect(view.state()).toBe('active')
-      expect(view.text()).toContain('You are a Supporter')
+      expect(view.text()).toContain("You're a Supporter")
     } finally { view.cleanup() }
   })
   it('does not render an offer when a worker wait survives a settings reload', async () => {
@@ -403,17 +403,17 @@ describe('pay-first settings', () => {
     try {
       expect(view.state()).toBe('checkout-closed')
       expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
-      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Check sign-up status')
-      await view.click('Check sign-up status')
+      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe("Check again")
+      await view.click("Check again")
       expect(view.calls('SUPPORTER_ENTITLEMENT')).toBeGreaterThan(1)
       expect(view.calls('SUPPORTER_ACCOUNT', 'start')).toBe(0)
       expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
       expect(view.create).not.toHaveBeenCalled()
       expect(view.write).not.toHaveBeenCalled()
-      expect(view.text()).toContain('Supporter sign-ups are not open yet')
+      expect(view.text()).toContain("Supporter isn't on sale yet")
       membership = ready('none', { installationAccountsEnabled: true, checkoutEnabled: true })
       currentBilling = { state: 'idle' }
-      await view.click('Check sign-up status')
+      await view.click("Check again")
       expect(view.state()).toBe('offer')
       expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
     } finally { view.cleanup() }
@@ -436,10 +436,10 @@ describe('Twitch sign-in off (stage A): signed out', () => {
     const view = await mount({ account: () => ({ state: 'signed_out' }), entitlement: () => ({ state: 'not_linked' }) })
     try {
       expect(view.state()).toBe('signed-out')
-      expect(view.text()).toContain('Supporter sign-ups are not open yet')
+      expect(view.text()).toContain("Supporter isn't on sale yet")
       expect(view.text()).toContain('Free tools work without an account.')
       expect(view.text()).not.toContain('When they open, you\'ll choose')
-      expect(view.text()).toContain('US$4.99 / month')
+      expect(view.text()).toContain("US$4.99 a month")
       // Your card says who is here: nobody, and that is fine. The Account card does not repeat it.
       expect(card(view.host).name().textContent).toBe('Not signed in')
       expect(view.host.querySelector('[data-row="account"]')).toBeNull()
@@ -553,11 +553,11 @@ describe('Twitch sign-in off (stage A): signed out', () => {
       membership = ready('pending')
       await act(async () => { await vi.advanceTimersByTimeAsync(MEMBERSHIP_WATCH_DELAYS_MS[0]) })
       expect(view.state()).toBe('payment-pending')
-      expect(view.text()).toContain('you do not need to pay again')
+      expect(view.text()).toContain("Don't pay again")
       membership = ready('active', { accessUntil: '2026-11-01T12:00:00Z', features: ['supporter.banner.v1', 'supporter.finish.v1'] })
       await act(async () => { await vi.advanceTimersByTimeAsync(MEMBERSHIP_WATCH_DELAYS_MS[1] + 10) })
       expect(view.state()).toBe('active')
-      expect(view.text()).toContain('You are a Supporter')
+      expect(view.text()).toContain("You're a Supporter")
       const settled = view.calls('SUPPORTER_ENTITLEMENT')
       await act(async () => { await vi.advanceTimersByTimeAsync(MEMBERSHIP_WATCH_MS) })
       expect(view.calls('SUPPORTER_ENTITLEMENT')).toBe(settled)
@@ -598,7 +598,7 @@ describe('membership states', () => {
       if (label) expect(view.link()?.textContent).toBe(label)
       expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
       if (state === 'checkout-closed') {
-        expect(view.text()).toContain('Supporter sign-ups are not open yet')
+        expect(view.text()).toContain("Supporter isn't on sale yet")
         expect(view.hrefs()).not.toContain('https://streampulse.stream/account/billing')
       }
       if (state === 'grace') {
@@ -607,7 +607,7 @@ describe('membership states', () => {
         expect(view.text()).not.toMatch(/7-day|seven days/)
       }
       if (state === 'active') {
-        expect(view.text()).not.toContain('US$4.99 / month')
+        expect(view.text()).not.toContain("US$4.99 a month")
         expect(view.text()).toContain('2 months')
       }
       // A connected tester always names the account and can sign out.
@@ -619,20 +619,20 @@ describe('membership states', () => {
   })
 
   it.each<[SupporterEntitlement | Error, string]>([
-    [{ state: 'unavailable', reason: 'not_deployed' }, 'not available on the server yet'],
-    [{ state: 'unavailable', reason: 'temporarily_unavailable' }, 'temporarily unavailable'],
-    [{ state: 'unavailable', reason: 'environment_mismatch' }, 'not open in this build yet'],
-    [{ state: 'error' }, 'Could not reach StreamPulse'],
-    [new Error('worker gone'), 'Could not reach StreamPulse'],
+    [{ state: 'unavailable', reason: 'not_deployed' }, "isn't available yet"],
+    [{ state: 'unavailable', reason: 'temporarily_unavailable' }, "briefly unavailable"],
+    [{ state: 'unavailable', reason: 'environment_mismatch' }, "isn't available in this version"],
+    [{ state: 'error' }, "We couldn't check your Supporter status"],
+    [new Error('worker gone'), "We couldn't check your Supporter status"],
   ])('treats an unknown membership as unknown, never as an offer: %s', async (entitlement, copy) => {
     const view = await mount({ account: () => linked, entitlement: () => entitlement })
     try {
       expect(view.state()).toBe('membership-unknown')
       expect(view.text()).toContain(copy)
-      expect(view.text()).toContain('free tools are unaffected')
+      expect(view.text()).toContain("Your free tools still work.")
       expect(view.link()).toBeNull()
       expect(view.text()).not.toContain('Become a Supporter')
-      expect(view.text()).not.toContain('US$4.99 / month')
+      expect(view.text()).not.toContain("US$4.99 a month")
       expect(view.buttons()).toContain('Check again')
       expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
       expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Check again')
@@ -845,7 +845,7 @@ describe('the offer names what the banner sells', () => {
     try {
       const list = view.host.querySelector<HTMLElement>('[data-supporter-perks-list="true"]')!
       expect([...list.querySelectorAll('li')].map(item => item.textContent)).toEqual(SUPPORTER_PERKS.names)
-      expect(list.textContent).toContain('Only you see these cosmetics. Nothing is added to chat.')
+      expect(list.textContent).toContain(SUPPORTER_PERKS.onlyYou)
       const full = view.host.querySelector<HTMLElement>('[data-supporter-preview-disclosure] [data-supporter-perks-list="true"]')!
       expect([...full.querySelectorAll('li')].map(item => item.textContent)).toEqual(SUPPORTER_PERKS.names.map(name => `${name}: ${SUPPORTER_PERKS.details[name as keyof typeof SUPPORTER_PERKS.details]}`))
       expect(full.textContent).toContain(SUPPORTER_PERKS.onlyYou)
@@ -862,7 +862,7 @@ describe('the price comes before the button that buys it', () => {
     ['signed-out', () => ({ state: 'signed_out' }), () => ({ state: 'not_linked' }), 'Supporter details'],
     ['offer', () => linked, () => ready('none', { installationAccountsEnabled: true }), 'Become a Supporter'],
     ['offer', () => linked, () => ready('none'), 'Continue to checkout'],
-    ['checkout-closed', () => linked, () => ready('none', { checkoutEnabled: false }), 'Check sign-up status'],
+    ['checkout-closed', () => linked, () => ready('none', { checkoutEnabled: false }), "Check again"],
     ['expired', () => linked, () => ready('expired'), 'Rejoin Supporter'],
   ])('in the %s state, before "%s"', async (state, account, entitlement, label) => {
     const view = await mount({ account, entitlement })
@@ -871,8 +871,8 @@ describe('the price comes before the button that buys it', () => {
       const primary = view.host.querySelector<HTMLElement>('.pulse-journey-primary')!
       expect(primary.textContent).toBe(label)
       const terms = view.host.querySelector<HTMLElement>('.pulse-supporter-terms')!
-      expect(terms.textContent).toContain('US$4.99 / month')
-      expect(terms.textContent).toContain('renews monthly until you cancel')
+      expect(terms.textContent).toContain("US$4.99 a month")
+      expect(terms.textContent).toContain("renews until you cancel")
       const youGet = view.host.querySelector<HTMLElement>('[data-supporter-perks-list="true"]')!
       for (const line of [terms, youGet]) expect(line.compareDocumentPosition(primary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
       // Beside the button's own column, not after the row that holds it.
@@ -885,7 +885,7 @@ describe('Your card is a headed section', () => {
   // Pressing H from the page's h2 must stop at the card, before its name,
   // ladder, status and action, not skip to "Your look" below it.
   it.each<[string, () => SupporterAccountState, () => SupporterEntitlement, string, string]>([
-    ['signed-out', () => ({ state: 'signed_out' }), () => ({ state: 'not_linked' }), 'Supporter sign-ups are not open yet', 'Supporter details'],
+    ['signed-out', () => ({ state: 'signed_out' }), () => ({ state: 'not_linked' }), "Supporter isn't on sale yet", 'Supporter details'],
     ['grace', () => linked, () => ready('grace', { accessUntil: '2026-10-19T12:00:00Z' }), 'Payment needs attention', 'Update payment method'],
   ])('in the %s state', async (_state, account, entitlement, title, action) => {
     const view = await mount({ account, entitlement })
@@ -1217,7 +1217,7 @@ describe('Continue with Twitch (tester and public stages)', () => {
       for (const gone of ['Become a Supporter', 'Restore my Supporter', 'Use a StreamPulse website account']) expect(view.buttons()).not.toContain(gone)
       // Reinstall and new browsers come back through the same Twitch account.
       expect(view.host.querySelector('[data-row="new-browser"]')?.textContent).toContain('Continue with Twitch with the same Twitch account.')
-      expect(view.host.querySelector('[data-row="lost-twitch"]')?.textContent).toContain('That changes billing only.')
+      expect(view.host.querySelector('[data-row="lost-twitch"]')?.textContent).toContain("Billing changes don't move Supporter to another Twitch account.")
       // A signed-out page never asks the worker for Checkout, a restore, or a silent sign-in it was not offered.
       expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
       expect(view.calls('SUPPORTER_RESTORE')).toBe(0)
@@ -1244,7 +1244,7 @@ describe('Continue with Twitch (tester and public stages)', () => {
       expect(card(view.host).sub()).toContain('Signed in with Twitch')
       // Closed sign-ups: truthful, and no purchase.
       expect(view.state()).toBe('checkout-closed')
-      expect(view.text()).toContain('Supporter sign-ups are not open yet')
+      expect(view.text()).toContain("Supporter isn't on sale yet")
       expect(view.buttons()).not.toContain('Become a Supporter')
       expect(view.buttons()).toContain('Sign out')
       expect(view.buttons()).toContain('Use a different Twitch account')

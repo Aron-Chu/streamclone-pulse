@@ -14,7 +14,7 @@ The build stage comes from `PULSE_EXTENSION_TWITCH_SIGNIN` (see
 
 | Stage | Who | Signed out | Signed in |
 |---|---|---|---|
-| `off` (default; every store build today) | everyone | "Supporter sign-ups are not open yet", the price and benefits, **Supporter details** (the /supporter page). No purchase, no email restore, no website-account choice. A closed **Invited tester? Connect this extension** disclosure keeps the existing device link. | Invited testers: status, **Manage subscription** (website billing) and **Sign out**. |
+| `off` (default; every store build today) | everyone | "Supporter isn't on sale yet", the price and benefits, **Supporter details** (the /supporter page). When it goes on sale, Twitch sign-in precedes Stripe payment. No purchase, no email restore, no website-account choice. A closed **Invited tester? Connect this extension** disclosure keeps the existing device link. | Invited testers: status, **Manage subscription** (website billing) and **Sign out**. |
 | `tester` | development and preview builds only; store builds refuse it | **Continue with Twitch**, "Twitch sign-in is open to invited testers right now", device link under **Other ways to connect (testers)** | "Signed in with Twitch as {name}", status, **Become a Supporter** when the server opens Checkout, **Manage subscription**, **Sign out**, **Use a different Twitch account** |
 | `public` | a store build only once that store's manifest requests `identity` (spec E3) | **Continue with Twitch** | as `tester` |
 
@@ -25,6 +25,18 @@ looks**, collapsed for nonmembers and expanded for active/grace members. Static
 recovery and payment explanations sit under **Account help**. Actual account and
 billing controls, pending/error notices and confirmations stay visible outside
 those disclosures. Opening a preview grants no membership and writes no entitlement.
+
+For a nonmember with checkout known closed, **Your look** is local try-on only:
+Paint and Emote rain stay visible; **Wave and sheen** starts closed. Tries write
+no worker choice or browser preference. Previously saved wave and sheen seed the
+preview. A valid paint saved earlier shows its seven-day expiry and **Remove**;
+it can still apply after verified membership. With checkout open, the existing
+**Use {paint} when Supporter starts** action keeps the choice for seven days.
+Unknown membership, a failed read, a temporary outage or an environment mismatch
+pauses the controls rather than presenting a closed offer. A server without
+Supporter (`not_deployed`) keeps the existing preview and saved-choice controls.
+Generic failures say **We couldn't check your Supporter status**; reasoned
+failures name the reason. Free tools keep working in every state.
 
 A development build with Twitch on adds `identity` to its generated manifest
 only; the checked-in manifests, the permission allowlist and the store

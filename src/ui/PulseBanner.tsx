@@ -1,5 +1,8 @@
-import { useEffect, useId, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, type CSSProperties } from 'react'
 import { DEFAULT_PULSE_BANNER, PULSE_BANNER_KEY, getPulseBanner, normalizePulseBanner, setPulseBanner, type PulseBannerPreference } from '../shared/storage.ts'
+import { ACCOUNT_REVISION_KEY, SUPPORTER_REVISION_KEY, supporterPerksAllowed, type SupporterEntitlement } from '../shared/supporterAccount.ts'
+import { supporterCheckoutAvailability } from '../shared/supporterCheckoutAvailability.ts'
+import type { BackgroundResponse } from '../shared/messages.ts'
 import { StreamPulseTitleBlock, streamPulseHeaderChromeSidebar } from './StreamPulseTitleBlock.tsx'
 import { theme } from './theme.ts'
 
@@ -26,24 +29,87 @@ export function usePulseBanner() {
   const [status, setStatus] = useState('')
   const [ready, setReady] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [loadError, setLoadError] = useState(false)
+  const alive = useRef(false)
+  const loadRequest = useRef(0)
+  const pendingSave = useRef(false)
+  const reload = useCallback(async () => {
+    const request = ++loadRequest.current
+    setReady(false)
+    setLoadError(false)
+    try {
+      const next = await getPulseBanner()
+      if (alive.current && request === loadRequest.current) { setValue(next); setReady(true) }
+    } catch {
+      if (alive.current && request === loadRequest.current) setLoadError(true)
+    }
+  }, [])
   useEffect(() => {
-    let alive = true
-    void getPulseBanner().then(next => { if (alive) { setValue(next); setReady(true) } })
-      .catch(() => { if (alive) setStatus('Could not load banner') })
+    alive.current = true
+    void reload()
     const changes = globalThis.chrome?.storage?.onChanged
     const listener = (items: Record<string, chrome.storage.StorageChange>, area: string) => {
-      if (area === 'sync' && items[PULSE_BANNER_KEY]) setValue(normalizePulseBanner(items[PULSE_BANNER_KEY].newValue))
+      if (area !== 'sync' || !items[PULSE_BANNER_KEY]) return
+      // A newer synced setting wins over an initial read or retry still in flight.
+      loadRequest.current++
+      setValue(normalizePulseBanner(items[PULSE_BANNER_KEY].newValue))
+      setReady(true)
+      setLoadError(false)
     }
     changes?.addListener(listener)
-    return () => { alive = false; changes?.removeListener(listener) }
-  }, [])
+    return () => { alive.current = false; loadRequest.current++; changes?.removeListener(listener) }
+  }, [reload])
   async function save(next: PulseBannerPreference) {
+    if (!ready || pendingSave.current) return
+    pendingSave.current = true
     setSaving(true)
-    try { await setPulseBanner(next); setValue(normalizePulseBanner(next)); setStatus('Saved') }
-    catch { setStatus('Could not save background') }
-    finally { setSaving(false) }
+    setStatus('')
+    try {
+      await setPulseBanner(next)
+      if (alive.current) { setValue(normalizePulseBanner(next)); setStatus('Saved') }
+    } catch {
+      if (alive.current) setStatus("Couldn't save that. Try again.")
+    } finally {
+      pendingSave.current = false
+      if (alive.current) setSaving(false)
+    }
   }
-  return { value, ready, saving, status, save }
+  return { value, ready, saving, status, save, loadError, reload }
+}
+
+/** Keep retry reachable when the setting's controls are paused after a failed read. */
+export function PulseBannerLoadError({ onRetry }: { onRetry: () => void }) {
+  return <p className="pulse-supporter-detail" role="status" data-emote-rain-load-error>
+    Couldn't load your Emote rain setting. <button className="pulse-link-btn" type="button" onClick={onRetry}>Try again</button>
+  </p>
+}
+
+/** Settings alone can read entitlement; no timer or content-script request is needed. */
+function useBannerCheckoutAvailability(perks: boolean | undefined) {
+  const [entitlement, setEntitlement] = useState<SupporterEntitlement | null>(null)
+  useEffect(() => {
+    if (perks !== false) { setEntitlement(null); return }
+    let alive = true
+    let request = 0
+    const read = async () => {
+      const current = ++request
+      setEntitlement(null)
+      try {
+        const response: BackgroundResponse | undefined = await globalThis.chrome?.runtime?.sendMessage?.({ type: 'SUPPORTER_ENTITLEMENT' })
+        if (alive && current === request && response && 'type' in response && response.type === 'SUPPORTER_ENTITLEMENT') setEntitlement(response.entitlement)
+      } catch { /* An unknown check never claims that Supporter is closed. */ }
+    }
+    const changed = (changes: Record<string, chrome.storage.StorageChange>, area?: string) => {
+      const accountChanged = (!area || area === 'local') && (ACCOUNT_REVISION_KEY in changes || SUPPORTER_REVISION_KEY in changes)
+      const backendChanged = (!area || area === 'sync') && ('backendUrl' in changes || 'localBackendOptIn' in changes)
+      if (accountChanged || backendChanged) void read()
+    }
+    const storage = globalThis.chrome?.storage?.onChanged
+    storage?.addListener(changed)
+    void read()
+    return () => { alive = false; request++; storage?.removeListener(changed) }
+  }, [perks])
+  return supporterPerksAllowed(entitlement) ? 'unknown' : supporterCheckoutAvailability(entitlement)
 }
 
 /**
@@ -84,6 +150,7 @@ export function PulseBannerBackdrop({ value, perks, paused = false }: { value: P
  */
 export function PulseBannerControls({ expanded = false, perks }: { expanded?: boolean; perks: boolean | undefined }) {
   const banner = usePulseBanner()
+  const availability = useBannerCheckoutAvailability(perks)
   const [draft, setDraft] = useState(banner.value)
   const id = useId()
   useEffect(() => setDraft(banner.value), [banner.value])
@@ -112,14 +179,15 @@ export function PulseBannerControls({ expanded = false, perks }: { expanded?: bo
         <div className="pulse-banner-modes" role="group" aria-labelledby={`${id}-mode`} aria-busy={perks === undefined || undefined}>
           {(['off', 'still', 'rain'] as const).map(mode => <button key={mode} type="button" aria-pressed={draft.mode === mode} disabled={!perks && mode !== 'off'} title={!perks && mode !== 'off' ? 'Supporter perk' : undefined} onClick={() => setDraft({ ...draft, mode })}>{mode === 'off' ? 'Off' : mode === 'still' ? 'Still' : 'Rain'}</button>)}
         </div>
-        {perks !== false ? null : <p className="pulse-supporter-detail" data-supporter-perk="emote-rain">
-          Emote rain, still or falling, is a Supporter perk. Only you see it. Sign-ups are not open yet.{' '}
-          <a href="#supporter" onClick={() => window.scrollTo?.(0, 0)}>View Supporter benefits →</a>
+        {perks !== false || availability === 'unknown' ? null : <p className="pulse-supporter-detail" data-supporter-perk="emote-rain">
+          Emote rain is a Supporter perk. Only you see it.{availability === 'closed' ? " Supporter isn't on sale yet." : ''}{' '}
+          <a href="#supporter" onClick={() => window.scrollTo?.(0, 0)}>See Supporter →</a>
         </p>}
         <label htmlFor={`${id}-intensity`}>Intensity <output>{draft.intensity}%</output></label>
         <input id={`${id}-intensity`} type="range" min={10} max={70} step={5} disabled={!perks || draft.mode === 'off'} value={draft.intensity} onChange={event => setDraft({ ...draft, intensity: Number(event.target.value) })} />
         <div className="pulse-banner-save"><button type="submit">{banner.saving ? 'Saving...' : 'Save background'}</button><button type="button" onClick={() => setDraft(reset)}>Reset</button></div>
       </fieldset>
+      {banner.loadError ? <PulseBannerLoadError onRetry={() => void banner.reload()} /> : null}
       <span role="status">{banner.status}</span>
     </form>
   </details>
