@@ -57,11 +57,13 @@ describe('/account/sign-in', () => {
 })
 
 describe('/account/billing, signed out', () => {
-  it('points to the tester sign-in and offers no extension-link step', async () => {
+  it('distinguishes extension billing-email access from tester sign-in', async () => {
     stubSignedOut()
     render(<MemoryRouter initialEntries={['/account/billing']}><BillingPage /></MemoryRouter>)
     expect((await screen.findByRole('link', { name: 'Tester sign-in' })).getAttribute('href')).toBe('/account/sign-in?returnTo=%2Faccount%2Fbilling')
-    expect(screen.getByText(/Supporter sign-ups are not open yet\. Invited testers can sign in/)).toBeTruthy()
+    expect(screen.getByText(/Supporter sign-ups are not open yet\. Free tools work without an account/)).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Manage billing by email' }).getAttribute('href')).toMatch(/^https:\/\/billing\.stripe\.com\/p\/login\//)
+    expect(screen.getByText(/Website or tester sign-in does not connect an extension-only membership/)).toBeTruthy()
     expect(screen.queryByRole('link', { name: 'Connect your extension' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Continue with Twitch' })).toBeNull()
   })
