@@ -550,7 +550,7 @@ test.describe('extension mocked states', () => {
   test('packaged internal host mounts the shared workspace with stable keyboard order', async ({
     extension,
     prepare,
-  }) => {
+  }, testInfo) => {
     await prepare({ scenario: 'live-ready', twitchKind: 'live' })
     const host = await extension.context.newPage()
     await host.setViewportSize({ width: 1000, height: 720 })
@@ -649,6 +649,15 @@ test.describe('extension mocked states', () => {
       mask: [host.locator('.pulse-supporter-pile')],
       caret: 'hide',
       maxDiffPixelRatio: 0.04,
+    })
+
+    // Retain the actual dated page for cross-platform release-baseline review,
+    // including when a small date change falls within the visual tolerance.
+    await host.locator('.pulse-host').screenshot({
+      path: testInfo.outputPath('full-settings-changelog-current.png'),
+      animations: 'disabled',
+      mask: [host.locator('.pulse-supporter-pile')],
+      caret: 'hide',
     })
 
     // Visual coverage for the complete page shell and its responsive top nav.
