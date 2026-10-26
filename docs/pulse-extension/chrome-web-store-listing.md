@@ -36,9 +36,9 @@ Do **not** use “Streamclone Pulse” in store-facing fields.
 
 ---
 
-## Next store candidate: 0.2.2 listing fields
+## Next store candidate: 0.2.5 listing fields
 
-Written 2026-10-09 for extension **0.2.2** with Sign in with Twitch compiled
+Written 2026-10-09 for this release (numbered 0.2.5 until 2026-10-26, now **0.2.5**) with Sign in with Twitch compiled
 **off** and Supporter sign-ups **not open**. Every claim below matches that
 build; re-check it before pasting for any later version. All submission gates
 start unchecked. See
@@ -111,7 +111,7 @@ Show Twitch chat and emote activity for the stream or VOD you are watching, in a
 | Store icon | `store/cws/icons/icon128.png` | 128×128 RGBA |
 | Small promo tile | `store/cws/icons/small-promo-440x280.png` | 440×280 |
 
-The five 0.2.2 screenshots (live chart, Top Moments card, VOD recap, quick
+The five 0.2.5 screenshots (live chart, Top Moments card, VOD recap, quick
 settings, and settings with release notes and the Community links) come from
 the mocked Twitch fixture (synthetic channel, no real streamer or email) by
 `tests/e2e/specs/cws-extension-screenshots.mocked.spec.ts`; see
@@ -119,17 +119,17 @@ the mocked Twitch fixture (synthetic channel, no real streamer or email) by
 live evidence. Frame 5 was retaken on 2026-10-12 because settings no longer
 has a Help & Feedback section and the Supporter banner is back to master's
 chips; frames 1-4 predate the 2026-10-11 polish, so
-recapture all five from the package `dist/` before the 0.2.2 upload.
+recapture all five from the package `dist/` before the 0.2.5 upload.
 
 ---
 
-## Permission justifications (0.2.2 store package)
+## Permission justifications (0.2.5 store package)
 
 The store manifests (`manifests/cws.json`, and the same lists in `edge.json`
 and `firefox.json`) request `storage`, `scripting` and two hosts:
 `https://api.streampulse.stream/*` and `https://*.twitch.tv/*`. Earlier store
 manifests in this repo also asked for five image CDNs (7TV, BetterTTV,
-FrankerFaceZ, Twitch's static CDN and `cdn.streampulse.stream`); 0.2.2 drops
+FrankerFaceZ, Twitch's static CDN and `cdn.streampulse.stream`); 0.2.5 drops
 them, because the panel shows emote, avatar and game images as ordinary
 images, which need no host permission, and a store build never fetches image
 bytes. Dropping hosts lowers privilege, so existing installs update without a
@@ -168,22 +168,22 @@ No. All JavaScript is packaged with the extension. No remote JavaScript or WebAs
 
 ---
 
-## Privacy practices (dashboard) for 0.2.2
+## Privacy practices (dashboard) for 0.2.5
 
-| Data category | 0.2.2 answer | What the extension actually does |
+| Data category | 0.2.5 answer | What the extension actually does |
 |---------------|--------------|----------------------------------|
 | Website content | **Yes** | Sends the channel, stream or VOD identifiers of the Twitch page you open to the StreamPulse API to fetch aggregate activity. |
 | Web history | **Yes** (conservative) | That request reveals which Twitch channel, stream or VOD you opened. Watched-moment history stays on the device. |
 | Authentication information | **Yes** (invited testers only) | Invited testers can connect the extension to a StreamPulse account with a one-time code; an opaque device credential is then kept in extension storage and sent only to `api.streampulse.stream`. No passwords are collected. Everyone else: none. |
 | Personally identifiable information | No | No name, email or Twitch identity is collected in this build (Sign in with Twitch is compiled off). |
-| User activity | **Yes** (only with a linked account) | Without an account, bookmarks, notes and watched history stay on the device. If you link a StreamPulse account (invite-only in 0.2.2), your bookmarks are saved to it. |
+| User activity | **Yes** (only with a linked account) | Without an account, bookmarks, notes and watched history stay on the device. If you link a StreamPulse account (invite-only in 0.2.5), your bookmarks are saved to it. |
 | Financial and payment information | No | Supporter checkout happens on Stripe-hosted pages and is not open yet. |
 | Personal communications, health, location | No | Chat messages are never read into or sent by the extension. |
 | Certifications | All three | Not sold to third parties; not used for unrelated purposes; not used for creditworthiness. Matches the Limited Use statement on `/privacy`. |
 
 Account linking needs no extension update, so these answers cover the linked
-path the 0.2.2 package already contains. When Sign in with Twitch ships (0.2.3
-or later), add **Personally identifiable information** (Twitch user ID, display
+path the 0.2.5 package already contains. When Sign in with Twitch ships (a later
+version), add **Personally identifiable information** (Twitch user ID, display
 name and picture) and revisit **Authentication information** and **User
 activity** before that upload.
 
@@ -191,7 +191,7 @@ activity** before that upload.
 
 ## Next candidate submission checklist (all unchecked)
 
-1. [ ] Packaging commit: set 0.2.2 to `status: "released"` with the real submission date in `src/shared/release-notes.json` (it stays unreleased with no date until then; the site's /changelog shows its notes only once it is released), and confirm the published 0.2.1's date and hosts in the dashboard Package tab
+1. [ ] Packaging commit: set 0.2.5 to `status: "released"` with the real submission date in `src/shared/release-notes.json` (it stays unreleased with no date until then; the site's /changelog shows its notes only once it is released), and confirm the published 0.2.1's date and hosts in the dashboard Package tab
 2. [ ] Build store-target package from the release SHA (no localhost hosts)
 3. [ ] Run typecheck, unit tests, packaging, and store-target package validation
 4. [ ] Recapture and review screenshots from that package `dist/`
@@ -200,7 +200,7 @@ activity** before that upload.
 7. [ ] Owner uploads new ZIP + screenshots; pastes listing and permission fields
 8. [ ] Set privacy URL (`/privacy`), Support URL (`/support`), and Limited Use/data disclosures
 9. [ ] Confirm dashboard Support URL matches `https://streampulse.stream/support`
-10. [ ] Submit for review only with owner authorization, with publishing set to manual: the extension's Release details link opens streampulse.stream/changelog, so publish only once that page shows 0.2.2
+10. [ ] Submit for review only with owner authorization, with publishing set to manual: the extension's Release details link opens streampulse.stream/changelog, so publish only once that page shows 0.2.5
 11. [ ] After approval: update public install CTA only if owner authorizes
 
 **Forbidden:** uploading ZIP SHA `ae8d9b835d8459e4b886fad6948e903d6c0c9bae035119ad018cd42fbb253075`.

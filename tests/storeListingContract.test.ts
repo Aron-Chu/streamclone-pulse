@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import perks from '../src/shared/supporter-perks.json'
 
 /**
- * The Chrome Web Store listing copy in the repo matches the 0.2.2 store
+ * The Chrome Web Store listing copy in the repo matches the 0.2.5 store
  * package: every requested host is justified, the Supporter sentence names the
  * one perk list, and the Support URL is the site's support page.
  */
@@ -18,9 +18,9 @@ const section = (heading: string) => {
   return listing.slice(start, next === -1 ? undefined : next)
 }
 
-describe('Chrome Web Store listing copy (0.2.2)', () => {
+describe('Chrome Web Store listing copy (0.2.5)', () => {
   it('justifies every permission and host the store manifest requests, and nothing more', () => {
-    const justifications = section('## Permission justifications (0.2.2 store package)')
+    const justifications = section('## Permission justifications (0.2.5 store package)')
     for (const permission of manifest.permissions) expect(justifications).toContain(`### ${permission}`)
     for (const host of manifest.host_permissions) expect(justifications).toContain(host)
     expect(justifications).not.toMatch(/localhost|127\.0\.0\.1/)
@@ -40,7 +40,7 @@ describe('Chrome Web Store listing copy (0.2.2)', () => {
   })
 
   it('describes no account, Protect enrollment or sign-in this build does not offer', () => {
-    const fields = section('## Next store candidate: 0.2.2 listing fields') + section('## Permission justifications (0.2.2 store package)')
+    const fields = section('## Next store candidate: 0.2.5 listing fields') + section('## Permission justifications (0.2.5 store package)')
     expect(fields).not.toMatch(/Protect|beta access key|Twitch OAuth|Email address for optional sign-in|free Pulse account/i)
   })
 
@@ -73,7 +73,7 @@ describe('Chrome Web Store listing copy (0.2.2)', () => {
     // A linked (invited-tester) account saves bookmarks to /v1/pulse/bookmarks; linking
     // needs no extension update. The package also carries history sync, but no backend
     // has that route yet, so the text leaves it out until the release that adds it.
-    const privacy = section('## Privacy practices (dashboard) for 0.2.2')
+    const privacy = section('## Privacy practices (dashboard) for 0.2.5')
     expect(privacy).toMatch(/\| User activity \| \*\*Yes\*\* \(only with a linked account\) \|/)
     expect(privacy).not.toMatch(/never uploaded in 0\.2\.2/)
     const storage = section('### storage')
