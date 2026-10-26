@@ -78,11 +78,16 @@ describe('Supporter legal copy', () => {
     expect(heading?.textContent).toBe('Pulse Supporter')
   })
 
-  it('Supporter links "contact us" to the privacy mailbox and "Supporter terms" to the Supporter section', () => {
+  it('Supporter links billing help to the public Stripe portal, privacy mailbox and Supporter terms', () => {
     render(<MemoryRouter><Supporter /></MemoryRouter>)
     const contact = screen.getByRole('link', { name: 'contact us' })
     expect(contact.getAttribute('href')).toBe('mailto:privacy@streampulse.stream')
-    expect(screen.getByTestId('supporter-lost-twitch').contains(contact)).toBe(true)
+    expect(screen.getByTestId('supporter-billing-help').contains(contact)).toBe(true)
+    const portal = screen.getByRole('link', { name: 'Stripe’s customer portal' })
+    expect(portal.getAttribute('href')).toBe('https://billing.stripe.com/p/login/fZueVd91paK85MAgKt8AE00')
+    expect(portal.getAttribute('target')).toBe('_blank')
+    expect(portal.getAttribute('rel')?.split(/\s+/)).toEqual(expect.arrayContaining(['noopener', 'noreferrer']))
+    expect(screen.getByTestId('supporter-billing-help').contains(portal)).toBe(true)
     expect(screen.getByRole('link', { name: 'Supporter terms' }).getAttribute('href')).toBe('/terms#supporter')
   })
 
@@ -156,10 +161,11 @@ describe('Supporter legal copy', () => {
     expect(body).not.toMatch(/all set by the StreamPulse API at/)
   })
 
-  it('directs new buyers to the extension and Continue with Twitch, with no competing account choice', () => {
+  it('directs new buyers to a nonpaid extension connection, then a separate offered purchase', () => {
     render(<MemoryRouter><Supporter /></MemoryRouter>)
     expect(screen.getByRole('link', { name: 'Get the extension' }).getAttribute('href')).toMatch(/^https:\/\/chromewebstore\.google\.com\//)
-    expect(screen.getByTestId('supporter-availability').textContent).toMatch(/you’ll choose Continue with Twitch, then pay on Stripe/)
+    expect(screen.getByTestId('supporter-availability').textContent).toMatch(/choose Connect this extension.*This starts no payment/)
+    expect(screen.getByTestId('supporter-availability').textContent).toMatch(/If Become a Supporter is offered, choose it to pay on Stripe/)
     expect(screen.queryByRole('link', { name: 'Use a StreamPulse website account' })).toBeNull()
     expect(screen.queryByRole('link', { name: 'Open account billing' })).toBeNull()
     expect(screen.getByTestId('supporter-offer').textContent).not.toMatch(/Restore my Supporter|restore link/)

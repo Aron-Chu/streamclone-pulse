@@ -111,11 +111,17 @@ for (const width of [1440, 390]) {
   })
 }
 
-test('public Supporter describes Continue with Twitch while Supporter sign-ups stay closed', async ({ page }) => {
+test('public Supporter describes a separate offered purchase after connection while sign-ups stay closed', async ({ page }) => {
   await page.goto('/supporter')
   await expect(page.getByRole('link', { name: 'Get the extension', exact: true })).toBeVisible()
-  await expect(page.getByTestId('supporter-availability')).toContainText('When they open, you’ll choose Continue with Twitch, then pay on Stripe.')
+  await expect(page.getByTestId('supporter-availability')).toContainText('Once available, choose Connect this extension')
+  await expect(page.getByTestId('supporter-availability')).toContainText('This starts no payment.')
+  await expect(page.getByTestId('supporter-availability')).toContainText('If Become a Supporter is offered, choose it to pay on Stripe.')
   await expect(page.getByTestId('prelaunch-notice')).toContainText('Supporter sign-ups are not open yet.')
+  const billingPortal = page.getByRole('link', { name: 'Stripe’s customer portal', exact: true })
+  await expect(billingPortal).toHaveAttribute('href', 'https://billing.stripe.com/p/login/fZueVd91paK85MAgKt8AE00')
+  await expect(billingPortal).toHaveAttribute('target', '_blank')
+  await expect(billingPortal).toHaveAttribute('rel', 'noopener noreferrer')
   // No competing website-account or email-restore choice on the public page.
   await expect(page.getByRole('link', { name: 'Use a StreamPulse website account' })).toHaveCount(0)
   await expect(page.getByText(/Restore my Supporter/)).toHaveCount(0)

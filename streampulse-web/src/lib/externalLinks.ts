@@ -13,6 +13,10 @@ export const PUBLIC_SUPPORT_URL = `${GITHUB_REPO_URL}/issues`
  */
 export const SECURITY_REPORT_URL = `${GITHUB_REPO_URL}/security/advisories/new`
 
+/** Verified public live portal login: billing management only, never Checkout or access recovery. */
+export const STRIPE_CUSTOMER_PORTAL_LOGIN_URL =
+  'https://billing.stripe.com/p/login/fZueVd91paK85MAgKt8AE00' as const
+
 /**
  * First-party policy and offer routes, as in-app paths.
  *

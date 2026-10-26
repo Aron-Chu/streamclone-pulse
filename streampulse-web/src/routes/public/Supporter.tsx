@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
-import { PRIVACY_PATH, REFUNDS_PATH, SUPPORTER_TERMS_PATH } from '../../lib/externalLinks'
+import { PRIVACY_PATH, REFUNDS_PATH, STRIPE_CUSTOMER_PORTAL_LOGIN_URL, SUPPORTER_TERMS_PATH } from '../../lib/externalLinks'
 import { PrelaunchNotice } from './PrelaunchNotice'
 import { CHROME_WEB_STORE_LISTING_URL } from '../../lib/publicSiteConfig'
 import { SupporterPerkItems, supporterOnlyYou } from '../../ui/components/SupporterPerks'
@@ -15,9 +15,9 @@ import { supporterChatBadgesEnabled } from '../../lib/supporterChatBadgesFlag'
  * cancellation. Checkout availability remains server-controlled on the
  * extension; this public page must not guess deployment state.
  *
- * Account wording follows the Continue with Twitch journey (closeout
- * 2026-10-08 spec §3-§4): no website-account or email-restore choice is offered
- * here. The benefit list is the one perk list in src/shared/supporter-perks.json
+ * A browser connection in the extension precedes a separate, server-gated
+ * purchase. No website-account or email-restore choice is offered here.
+ * The benefit list is the one perk list in src/shared/supporter-perks.json
  * (owner decision 2026-10-09, Terms option a): every perk the extension gives,
  * identical to the Terms and the extension.
  *
@@ -109,35 +109,35 @@ export default function Supporter() {
         <h2 id="subscribe">How to subscribe</h2>
         <div className="rounded-xl border border-white/[0.08] bg-black/20 p-6" data-testid="supporter-availability">
           <p className="!mt-0">
-            <strong>Supporter sign-ups are not open yet.</strong> When they open, you&rsquo;ll
-            choose <strong>Continue with Twitch</strong>, then pay on Stripe. Free tools work without
-            an account.
+            <strong>Supporter sign-ups are not open yet.</strong> Once available, choose{' '}
+            <strong>Connect this extension</strong> in the extension&rsquo;s{' '}
+            <strong>Account &amp; Supporter</strong> page. This starts no payment.
           </p>
           <p className="mb-0 flex flex-wrap gap-3">
             <a className="btn btn-primary" href={CHROME_WEB_STORE_LISTING_URL} target="_blank" rel="noopener noreferrer">Get the extension</a>
           </p>
           <p className="mb-0">
-            Stripe asks for a billing email at checkout. It can be different from your Twitch email,
-            and you don&rsquo;t need a separate StreamPulse sign-up.
+            If <strong>Become a Supporter</strong> is offered, choose it to pay on Stripe. No Twitch
+            sign-in or separate StreamPulse sign-up is needed. Stripe asks for a billing email.
           </p>
         </div>
 
         <h2>Managing a membership</h2>
         <p>
-          Once sign-ups open, choose <strong>Manage subscription</strong> in the extension or on your
-          account page. Stripe handles your payment method, invoices and cancellation. Cancelling
+          Once sign-ups open, choose <strong>Manage subscription</strong> in the extension.
+          Stripe handles your payment method, invoices and cancellation. Cancelling
           takes effect at the end of the period you&rsquo;ve already paid for. While Stripe finalizes a
           renewal, a membership may show as active for up to 72 hours after the paid period ends. See{' '}
           <Link to={REFUNDS_PATH}>cancellation and refunds</Link> for the details.
         </p>
         <p data-testid="supporter-reinstall">
-          Reinstalled or on another browser? Continue with Twitch with the same Twitch account and
-          your Supporter status comes back. No code to copy, no email to confirm.
+          Your Supporter connection stays in this browser. Reinstalled or using another browser?
+          Contact billing support to restore a membership.
         </p>
-        <p data-testid="supporter-lost-twitch">
-          Lost access to your Twitch account? You can still cancel or update billing in
-          Stripe&rsquo;s customer portal with the email you paid with. That changes billing only. It
-          doesn&rsquo;t move your membership to another Twitch account;{' '}
+        <p data-testid="supporter-billing-help">
+          You can still cancel or update billing in{' '}
+          <a href={STRIPE_CUSTOMER_PORTAL_LOGIN_URL} target="_blank" rel="noopener noreferrer">Stripe&rsquo;s customer portal</a>{' '}
+          with the email you paid with. Billing changes do not restore extension access;{' '}
           <a href="mailto:privacy@streampulse.stream">contact us</a> and we&rsquo;ll help.
         </p>
 
