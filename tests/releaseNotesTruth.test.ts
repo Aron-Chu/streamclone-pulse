@@ -15,22 +15,13 @@ const entry = (version: string) => releases.find(release => release.version === 
 const text = (release: Entry) => [release.title, release.summary, ...(release.preview ?? []), ...(release.new ?? []), ...(release.changed ?? []), ...(release.improved ?? []), ...(release.fixed ?? []), ...(release.knownIssues ?? [])].join('\n')
 
 describe('0.2.5 release notes', () => {
-  it('stay unreleased, with no date, until the packaging commit sets the real submission date', () => {
-    // Owner decision 2026-10-09: this release waits for the private feedback form, so
-    // its date is not known yet. The date is built into the package and the
-    // website shows a released version's notes, so neither may claim a date early.
-    expect(entry('0.2.5')).toMatchObject({ status: 'unreleased', releasedAt: null })
+  it('are released, dated the day they went to the store, and pass the store packaging gate', () => {
+    // The packaging commit sets the submission date. The date is built into the
+    // package and shown on the website, so it can never be a future or placeholder date.
+    const { status, releasedAt } = entry('0.2.5')
+    expect(status).toBe('released')
+    expect(releasedAt! <= new Date().toISOString().slice(0, 10), `releasedAt ${releasedAt} is in the future`).toBe(true)
     const gate = evaluateReleaseNotesGate({ notes: releaseNotes, version: '0.2.5', storeTarget: true })
-    expect(gate.publishable).toBe(false)
-    expect(gate.failures.join(' ')).toMatch(/still status="unreleased"/)
-  })
-
-  it('pass the store packaging gate once the packaging commit marks them released with a date', () => {
-    const packaged = {
-      ...releaseNotes,
-      releases: releaseNotes.releases.map(release => release.version === '0.2.5' ? { ...release, status: 'released', releasedAt: '2026-10-26' } : release),
-    }
-    const gate = evaluateReleaseNotesGate({ notes: packaged, version: '0.2.5', storeTarget: true })
     expect(gate.failures).toEqual([])
     expect(gate.publishable).toBe(true)
   })
@@ -105,6 +96,6 @@ describe('changelog labels', () => {
     expect(releaseLifecycleLabel({ status: 'released' }, true)).toBe('Installed')
     expect(releaseLifecycleLabel({ status: 'released' }, false)).toBe('Released')
     expect(releaseLifecycleLabel({ status: 'unreleased' }, false)).toBe('Not published')
-    expect(releases.filter(release => release.status !== 'released').map(release => release.version)).toEqual(['0.2.5', '0.1.0'])
+    expect(releases.filter(release => release.status !== 'released').map(release => release.version)).toEqual(['0.1.0'])
   })
 })

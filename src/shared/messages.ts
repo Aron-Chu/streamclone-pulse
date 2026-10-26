@@ -782,7 +782,7 @@ export type BackgroundResponse =
    * `unverified`: the account read failed or is waiting on renewal; keep the last verified state until it expires.
    */
   | { type: 'SUPPORTER_APPEARANCE'; finish: 'glass' | 'etched' | 'halo' | null; validForMs: number; tenure?: SupporterTenure; paint?: SupporterPaintStyle; perks?: true; unverified?: true }
-  | { type: 'SUPPORTER_FINISH_INTENT'; finish: 'glass' | 'etched' | 'halo' | null }
+  | { type: 'SUPPORTER_FINISH_INTENT'; finish: 'glass' | 'etched' | 'halo' | null; setAt?: number }
   | { type: 'SUPPORTER_CARD_SCRIPT'; ok: boolean }
   | { type: 'MOMENT_FRAMES_SCRIPT'; ok: boolean }
   | { type: 'CATCH_ME_UP_SCRIPT'; ok: boolean }

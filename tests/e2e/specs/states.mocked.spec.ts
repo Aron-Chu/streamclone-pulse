@@ -458,6 +458,7 @@ test.describe('extension mocked states', () => {
     await expect(releasePreview).toContainText('What’s new:')
     const settingsShell = extension.page.locator('#streamclone-pulse-root section[aria-label="StreamPulse overlay"]')
     await expect(settingsShell).toBeVisible()
+    await expect(settings.locator('[data-settings-host-cta="supporter"]')).toHaveAccessibleDescription("Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. The chat lines are a preview; Twitch chat doesn't change. Core tools stay free.")
     await expect(settingsShell).toHaveScreenshot('overlay-settings-panel.png', {
       animations: 'disabled',
       // The Supporter card's chat stage is live, scripted motion; its copy and frame stay covered.
@@ -549,7 +550,7 @@ test.describe('extension mocked states', () => {
   test('packaged internal host mounts the shared workspace with stable keyboard order', async ({
     extension,
     prepare,
-  }) => {
+  }, testInfo) => {
     await prepare({ scenario: 'live-ready', twitchKind: 'live' })
     const host = await extension.context.newPage()
     await host.setViewportSize({ width: 1000, height: 720 })
@@ -648,6 +649,15 @@ test.describe('extension mocked states', () => {
       mask: [host.locator('.pulse-supporter-pile')],
       caret: 'hide',
       maxDiffPixelRatio: 0.04,
+    })
+
+    // Retain the actual dated page for cross-platform release-baseline review,
+    // including when a small date change falls within the visual tolerance.
+    await host.locator('.pulse-host').screenshot({
+      path: testInfo.outputPath('full-settings-changelog-current.png'),
+      animations: 'disabled',
+      mask: [host.locator('.pulse-supporter-pile')],
+      caret: 'hide',
     })
 
     // Visual coverage for the complete page shell and its responsive top nav.

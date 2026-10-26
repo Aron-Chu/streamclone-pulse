@@ -32,6 +32,9 @@ export function SupporterAccountSection() {
   // The card wears a Supporter's equipped paint, or the sample.
   const worn = perks ? equipped : SAMPLE_KIT.finish
   const tenure = perks && shown?.state === 'ready' ? supporterTenureForMonths(shown.supportPeriods) : SAMPLE_KIT.tenure
+  // The server answered, but not with a membership the controls can use: the
+  // read failed, is unavailable, or a refresh failed. Loading is the other pause.
+  const unavailable = entitlement === null && shown !== null
 
   return (
     <div className="pulse-supporter-settings">
@@ -40,7 +43,7 @@ export function SupporterAccountSection() {
         <p>Your Supporter card, your look, and billing.</p>
       </div>
       <SupporterJourney onEntitlement={setEntitlement} onShown={setShown} look={{ finish: worn, paint: paint.style }}>
-        <SupporterCosmeticControls entitlement={entitlement} tenure={tenure} onSaved={savedCosmetics} />
+        <SupporterCosmeticControls entitlement={entitlement} unavailable={unavailable} tenure={tenure} onSaved={savedCosmetics} />
       </SupporterJourney>
     </div>
   )

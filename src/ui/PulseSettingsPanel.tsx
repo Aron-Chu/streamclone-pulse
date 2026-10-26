@@ -1,4 +1,4 @@
-import { PulseBannerBackdrop, usePulseBanner } from './PulseBanner.tsx'
+import { PulseBannerBackdrop, PulseBannerLoadError, usePulseBanner } from './PulseBanner.tsx'
 import { openCommunity } from './AnalyticsHubCta.tsx'
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { backgroundErrorMessage, EXTENSION_RECONNECT_MESSAGE } from '../shared/backgroundResponse.ts'
@@ -320,7 +320,7 @@ function ChannelHeader({ channel, name }: { channel: QuickSettingsChannel; name:
 export function SupporterHero({ appearance, disabled, onOpen }: { appearance: SupporterAppearance | null; disabled?: boolean; onOpen: () => void }) {
   const finish = appearance?.finish ?? null
   const descriptionId = useId()
-  const perks = `${appearance ? 'Your Supporter perks' : 'Supporter perks'}: ${SUPPORTER_PERK_NAMES.join(', ')}. Only you see them. Core tools stay free. This card is a preview, shown only in your StreamPulse extension. Twitch chat is unchanged.`
+  const perks = `${appearance ? 'Your Supporter perks' : 'Supporter perks'}: ${SUPPORTER_PERK_NAMES.join(', ')}. Only you see them. The chat lines are a preview; Twitch chat doesn't change. Core tools stay free.`
   return (
     <button
       type="button"
@@ -401,10 +401,15 @@ export function QuickLook({ appearance, disabled, onOpen }: { appearance: Suppor
           <strong className={finish ? 'pulse-paint' : undefined} data-finish={finish ?? undefined} data-wave={appearance?.paint?.wave} data-sheen={appearance?.paint?.sheen} data-text={title}>{title}</strong>
         </div>
       </div>
-      <div className="pulse-settings-field pulse-settings-control-block">
+      <div className="pulse-settings-field pulse-settings-control-block" aria-busy={perks && (!banner.ready || banner.saving) || undefined}>
         <span className="pulse-settings-label">Emote rain</span>
         <ChoicePicker kind="look" variant="compact" groupLabel="Emote rain" options={RAIN_OPTIONS} value={mode}
-          onChange={next => perks ? void banner.save({ ...banner.value, mode: next }) : setRain(next)} />
+          onChange={next => {
+            if (!perks) setRain(next)
+            else if (banner.ready && !banner.saving) void banner.save({ ...banner.value, mode: next })
+          }} />
+        {banner.loadError ? <PulseBannerLoadError onRetry={() => void banner.reload()} /> : null}
+        {banner.status && banner.status !== 'Saved' ? <span role="status">{banner.status}</span> : null}
       </div>
       <div className="pulse-settings-field pulse-settings-control-block">
         <span className="pulse-settings-label">Paint</span>
