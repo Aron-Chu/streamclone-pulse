@@ -295,9 +295,9 @@ jobs:
           VERSION="$(node -p "require('./package.json').version")"
           npm run test:e2e:firefox -- --zip "streampulse-extension-firefox-${VERSION}-ci-probe-not-for-upload.zip"
 
-      # actions/upload-artifact@v4 — failure evidence only
-      - name: Upload Playwright failure evidence
-        if: failure() && needs.guard.outputs.run_e2e == 'true'
+      # Retain dated baseline proof on successful E2E as well as failure evidence.
+      - name: Upload Playwright evidence
+        if: always() && needs.guard.outputs.run_e2e == 'true' && (steps.e2e_run.outcome == 'success' || steps.e2e_run.outcome == 'failure') && hashFiles('test-results/extension/**') != ''
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: extension-e2e-evidence
