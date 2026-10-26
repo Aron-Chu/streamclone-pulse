@@ -13,7 +13,7 @@ on:
         required: true
         type: string
       expected_sha:
-        description: 'Exact protected master commit the tag must resolve to (full SHA)'
+        description: 'Exact commit the tag must resolve to (full SHA): on protected master, or for v0.2.5 on the 0.2.2 release branch'
         required: true
         type: string
       ci_run_id:
@@ -123,27 +123,28 @@ jobs:
             echo "::error::checked-out HEAD is not the exact tag commit ${resolved}"
             exit 1
           fi
-          # Confirm the commit is on master (protected default)
-          if ! git merge-base --is-ancestor "${resolved}" origin/master && \
-             ! git merge-base --is-ancestor "${resolved}" origin/main; then
-            # 0.2.2 release-branch copy only: also accept this one named branch,
+          # Confirm the commit is on master (protected default). Full ref names, so a
+          # tag named like a branch can't stand in for it; there is no main branch.
+          if ! git show-ref --verify --quiet refs/remotes/origin/master || \
+             ! git merge-base --is-ancestor "${resolved}" refs/remotes/origin/master; then
+            # 0.2.5 release-branch copy only (numbered 0.2.2 until 2026-10-26): also accept this one named branch,
             # and only while its rules require a pull request and block force-push
             # and deletion. Required status checks are not demanded here because
             # the next step separately requires an exact-SHA force_full CI run.
             release_branch="release/ext-0.2.2-candidate-20261022"
-            if [[ "${tag}" != "v0.2.2" ]]; then
-              echo "::error::only v0.2.2 may be released from ${release_branch} (got ${tag})"
+            if [[ "${tag}" != "v0.2.5" ]]; then
+              echo "::error::only v0.2.5 may be released from ${release_branch} (got ${tag})"
               exit 1
             fi
             # The exact remote-tracking ref must exist; otherwise git would fall
             # back to a tag named refs/remotes/origin/<branch>.
             if ! git show-ref --verify --quiet "refs/remotes/origin/${release_branch}"; then
-              echo "::error::${resolved} is not an ancestor of origin/master|main, and origin/${release_branch} does not exist"
+              echo "::error::${resolved} is not an ancestor of origin/master, and origin/${release_branch} does not exist"
               exit 1
             fi
             release_sha="$(git rev-parse --verify "refs/remotes/origin/${release_branch}^{commit}")"
             if ! git merge-base --is-ancestor "${resolved}" "${release_sha}"; then
-              echo "::error::${resolved} is not an ancestor of origin/master|main or origin/${release_branch}"
+              echo "::error::${resolved} is not an ancestor of origin/master or origin/${release_branch}"
               exit 1
             fi
             rules_json="$(gh api "repos/${GITHUB_REPOSITORY}/rules/branches/${release_branch//\//%2F}")" || {
