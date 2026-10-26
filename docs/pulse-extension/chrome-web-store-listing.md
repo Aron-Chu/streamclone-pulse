@@ -65,7 +65,8 @@ StreamPulse adds a Pulse panel beside Twitch chat. It charts chat and emote acti
 
 • Live Pulse chart: chat, emote and viewer activity for the whole stream, with a readout for any minute you point at.
 • Top Moments: the strongest reactions, ranked. Pick one to see its card and jump to that point in the stream or VOD.
-• Recaps for VODs: the Pulse chart and Top Moments of a past broadcast StreamPulse tracked.
+• Moment pictures: Top Moments shows what was on screen, from what the Twitch player in your tab showed while you watched. Pictures stay in that tab and are never uploaded. You can turn them off in settings.
+• Catch me up on past streams: a short recap of the best moments, then the Pulse chart and Top Moments of the broadcast. Works for streams StreamPulse tracked.
 • Bookmarks that stay in your browser: no account needed.
 • One click to the full public analytics for the channel on streampulse.stream.
 • Honest coverage: when StreamPulse wasn't tracking part of a stream, the chart says so instead of guessing.
@@ -143,13 +144,13 @@ Stores your StreamPulse settings (theme, panel placement, chart preferences) in 
 
 ### scripting
 ```
-Used only on Twitch tabs, always with code packaged in the extension:
-1. Finding the current stream's VOD id: a packaged function runs in the Twitch page to read the stream and VOD ids from the page's own data, and if they are missing it asks Twitch's public GraphQL endpoint (gql.twitch.tv) for the live stream's archive VOD id, without cookies.
-2. Loading parts of the panel only when they are needed, so they are not in the always-loaded script. Each is a packaged file run in the extension's isolated world:
-   - content/supporter-card.js: the Supporter card preview, when quick settings shows it.
-   - content/moment-frames.js: Moment pictures, only while that setting is on. It keeps a small still of the Twitch player every few seconds in that tab's memory, so Top Moments can show a picture; nothing is stored or uploaded.
-   - content/catch-me-up.js: the top of a stream recap, when the panel shows a recap.
-3. For the toolbar popup: reading the channel avatar Twitch already shows, and checking whether the Pulse panel is showing on that tab.
+Only on Twitch tabs, always with code packaged in the extension:
+1. VOD id: a packaged function runs in the Twitch page to read the stream and VOD ids from the page's own data; if they are missing, it asks Twitch's public GraphQL endpoint (gql.twitch.tv) for the live stream's archive VOD id, without cookies.
+2. Parts of the panel loaded only when needed, each a packaged file run in the extension's isolated world:
+- content/supporter-card.js: the Supporter card preview in quick settings.
+- content/moment-frames.js: Moment pictures, only while that setting is on. It keeps a small still of the player every few seconds in that tab's memory so Top Moments can show a picture; nothing is stored or uploaded.
+- content/catch-me-up.js: the top of a stream recap.
+3. Toolbar popup: reads the channel avatar Twitch already shows and checks whether the Pulse panel is showing on that tab.
 The Pulse panel itself is the declared content script and does not need this permission.
 ```
 
