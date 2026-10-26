@@ -49,7 +49,7 @@ export function parseHarnessArgs(argv) {
 export async function verifyFirefoxArtifact(artifactPath) {
   const artifact = JSON.parse(await readFile(artifactPath, 'utf8'))
   ensure(artifact.schemaVersion === 1 && artifact.localOnly === true, 'Artifact must be schemaVersion 1 and explicitly localOnly')
-  ensure(artifact.target === 'firefox' && artifact.version === '0.2.2' && artifact.addonId === FIREFOX_ADDON_ID, 'Wrong artifact target, version or add-on ID')
+  ensure(artifact.target === 'firefox' && artifact.version === '0.2.5' && artifact.addonId === FIREFOX_ADDON_ID, 'Wrong artifact target, version or add-on ID')
   ensure(/^[a-f0-9]{40}$/i.test(artifact.sourceRevision ?? '') && typeof artifact.buildId === 'string'
     && artifact.buildId.startsWith(`dev-${artifact.sourceRevision.slice(0, 12)}-`), 'Artifact build ID/source revision mismatch')
   ensure(['manifest', 'targetMetadata', 'bundleBuildId', 'provenance'].every(key => artifact.verification?.[key] === true), 'Artifact is missing required ZIP verification proof')

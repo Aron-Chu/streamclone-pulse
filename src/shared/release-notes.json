@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "currentVersion": "0.2.2",
+  "currentVersion": "0.2.5",
   "releases": [
     {
-      "version": "0.2.2",
+      "version": "0.2.5",
       "status": "unreleased",
       "releasedAt": null,
       "title": "Whole-stream charts and moment pictures",
-      "summary": "Whole-stream charts, moment pictures, Catch me up recaps, bookmarks without an account and fewer permissions. The 7TV header backdrop is a Supporter perk, and accounts and Supporter sign-ups aren't open yet.",
+      "summary": "Charts cover the whole stream, Top Moments shows pictures, and Catch me up recaps past streams. The 7TV header backdrop is a Supporter perk, and accounts and Supporter sign-ups aren't open yet.",
       "preview": [
         "Charts cover the whole stream.",
         "Top Moments shows a picture of what happened.",
@@ -17,41 +17,41 @@
         "Moment pictures: Top Moments shows what was on screen. Pictures stay in the tab and are never uploaded.",
         "Catch me up: a short recap of a past stream's best moments.",
         "Bookmarks work without an account and stay in this browser.",
-        "A strength pill shows how much a moment beat the stream's usual, like 4.2× usual.",
-        "A redesigned toolbar popup with live channels and your recent moments.",
+        "Each moment shows how far it beat the stream's usual, like 4.2× usual.",
+        "A new toolbar popup with live channels and your recent moments.",
         "Join the Discord and Send feedback from quick settings and settings.",
-        "A Supporter preview in quick settings and settings shows what Supporter will add: title paint, a tenure crest, emote rain and a Supporter card, seen only by you. Supporter sign-ups are not open yet.",
-        "A new Emerald accent."
+        "A Supporter preview in quick settings and settings shows what Supporter will add: title paint, a tenure crest, emote rain and a Supporter card, seen only by you. Supporter sign-ups are not open yet."
       ],
       "changed": [
         "The Default chart range setting is gone. Pick a range on the chart instead.",
-        "The Volt accent is orange everywhere.",
         "Replay top emotes count every emote provider, not just 7TV."
       ],
       "improved": [
         "Live charts and Top Moments keep updating while you watch.",
         "Top Moments opens a card only when you pick one.",
         "Settings are reorganised, and quick settings opens on the channel you're watching.",
-        "A deeper black panel with pill-style buttons.",
         "Fewer permissions: StreamPulse asks only for twitch.tv and api.streampulse.stream."
       ],
       "fixed": [
         "Offline channels show as offline, not as live or \"Not tracked\".",
-        "Live streams no longer look offline after an ad, a player error or one failed refresh.",
+        "Live streams no longer look offline after an ad or a player error.",
         "The viewer line shows the real viewer count.",
         "Retry works, and Pulse says when StreamPulse can't be reached.",
-        "Replays show the right chart, and From start, Full stream and Past streams work.",
+        "Replays show the right chart and time ranges.",
         "Watched moments on replays are remembered again.",
-        "Pulse no longer hides chat or gets pushed down by a pinned message.",
-        "Pulse stays off clip pages, and two StreamPulse copies no longer clash."
+        "Pulse no longer hides chat, and stays off clip pages."
       ],
       "knownIssues": [
         "Accounts and Supporter sign-ups are not open yet. Accounts are coming with Continue with Twitch.",
         "Bookmarks, notes and watched history stay in the browser where you saved them.",
         "Refresh open Twitch tabs after updating.",
-        "Moment pictures only cover time when the tab was playing."
+        "Moment pictures only cover time this tab was playing, and turning them on needs a tab reload.",
+        "Twitch's chat menus open behind the Pulse panel. Switch to the Chat tab to use them."
       ],
-      "links": { "details": "/changelog", "support": "/support" }
+      "links": {
+        "details": "/changelog",
+        "support": "/support"
+      }
     },
     {
       "version": "0.2.1",
