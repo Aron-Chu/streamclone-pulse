@@ -458,6 +458,7 @@ test.describe('extension mocked states', () => {
     await expect(releasePreview).toContainText('What’s new:')
     const settingsShell = extension.page.locator('#streamclone-pulse-root section[aria-label="StreamPulse overlay"]')
     await expect(settingsShell).toBeVisible()
+    await expect(settings.locator('[data-settings-host-cta="supporter"]')).toHaveAccessibleDescription("Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. The chat lines are a preview; Twitch chat doesn't change. Core tools stay free.")
     await expect(settingsShell).toHaveScreenshot('overlay-settings-panel.png', {
       animations: 'disabled',
       // The Supporter card's chat stage is live, scripted motion; its copy and frame stay covered.

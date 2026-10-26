@@ -87,7 +87,7 @@ test('quick settings: non-Supporters get Your Line · Anatomy, injected on deman
   await expect(stage).toHaveAttribute('data-mode', 'anatomy')
   await expect(stage).toHaveAttribute('data-idle', 'true')
   await expect(card.locator('.pulse-supporter-cta-head')).toHaveText('Pulse SupporterExplore Supporter ›')
-  await expectStageUncovered(card, 'Explore Supporter', 'Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. Core tools stay free. This card is a preview, shown only in your StreamPulse extension. Twitch chat is unchanged.')
+  await expectStageUncovered(card, 'Explore Supporter', "Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. The chat lines are a preview; Twitch chat doesn't change. Core tools stay free.")
   expect((await card.boundingBox())!.width).toBeLessThanOrEqual(305)
   const sizeAtRest = await card.boundingBox()
   // A preview, said so in one corner chip; it opens on a poster frame (chatter, then your line), never an empty box.
@@ -202,7 +202,7 @@ test('quick settings: Supporters get Tenure Climb up to their own crest, in thei
   await expect(card).toHaveAttribute('data-supporter-verified', 'true')
   await expect(stage).toHaveAttribute('data-mode', 'tenure')
   await expect(card.locator('.pulse-supporter-cta-head')).toHaveText('Pulse SupporterManage Supporter ›')
-  await expectStageUncovered(card, 'Manage Supporter', 'Your Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. Core tools stay free. This card is a preview, shown only in your StreamPulse extension. Twitch chat is unchanged.')
+  await expectStageUncovered(card, 'Manage Supporter', "Your Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. The chat lines are a preview; Twitch chat doesn't change. Core tools stay free.")
 
   // The climb: First signal, Signal set, Steady signal, Year-one crest, then it holds there.
   // A chip a wide emote would reach keeps only its length ("12 mo").
