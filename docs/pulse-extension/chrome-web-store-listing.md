@@ -138,7 +138,7 @@ dashboard Package tab: this repo has no verified record of that package
 
 ### storage
 ```
-Stores your StreamPulse settings (theme, panel placement, chart preferences) in chrome.storage.sync; short-lived chart and coverage caches in chrome.storage.session; and your bookmarks, notes and optional watched-moment history in extension storage. These stay on this device unless you link a StreamPulse account (invite-only in this version); a linked account saves bookmarks, and history if you turn on sync, to that account.
+Stores your StreamPulse settings (theme, panel placement, chart preferences) in chrome.storage.sync; short-lived chart and coverage caches in chrome.storage.session; and your bookmarks, notes and optional watched-moment history in extension storage. These stay on this device unless you link a StreamPulse account (invite-only in this version); a linked account saves bookmarks to that account.
 ```
 
 ### scripting
@@ -156,7 +156,7 @@ The Pulse panel itself is the declared content script and does not need this per
 ### Host permissions (one field)
 ```
 https://*.twitch.tv/*: runs the bundled content script on Twitch channel and VOD pages to show the Pulse panel and identify the channel, stream or VOD being watched; lets the packaged scripts described under scripting run on those pages; and lets the toolbar popup see which Twitch page the active tab shows. On those pages, a packaged function may ask gql.twitch.tv for the live stream's archive VOD id, without cookies.
-https://api.streampulse.stream/*: fetches aggregate chat and emote activity, Top Moments and coverage for that channel, stream or VOD from the StreamPulse API. If you link a StreamPulse account (invite-only in this version), it also saves your bookmarks, and your watched history if you turn on sync, to that account.
+https://api.streampulse.stream/*: fetches aggregate chat and emote activity, Top Moments and coverage for that channel, stream or VOD from the StreamPulse API. If you link a StreamPulse account (invite-only in this version), it also saves your bookmarks to that account.
 Emote, avatar and game images are shown as ordinary images and need no host permission. No remote code is loaded from either host.
 ```
 
@@ -172,10 +172,10 @@ No. All JavaScript is packaged with the extension. No remote JavaScript or WebAs
 | Data category | 0.2.2 answer | What the extension actually does |
 |---------------|--------------|----------------------------------|
 | Website content | **Yes** | Sends the channel, stream or VOD identifiers of the Twitch page you open to the StreamPulse API to fetch aggregate activity. |
-| Web history | **Yes** (conservative) | That request reveals which Twitch channel, stream or VOD you opened. Watched-moment history stays on the device unless you link a StreamPulse account (invite-only in 0.2.2) and turn on history sync; then it is saved to that account. |
+| Web history | **Yes** (conservative) | That request reveals which Twitch channel, stream or VOD you opened. Watched-moment history stays on the device. |
 | Authentication information | **Yes** (invited testers only) | Invited testers can connect the extension to a StreamPulse account with a one-time code; an opaque device credential is then kept in extension storage and sent only to `api.streampulse.stream`. No passwords are collected. Everyone else: none. |
 | Personally identifiable information | No | No name, email or Twitch identity is collected in this build (Sign in with Twitch is compiled off). |
-| User activity | **Yes** (only with a linked account) | Without an account, bookmarks, notes and watched history stay on the device. If you link a StreamPulse account (invite-only in 0.2.2), your bookmarks are saved to it, and watched history too if you turn on sync. |
+| User activity | **Yes** (only with a linked account) | Without an account, bookmarks, notes and watched history stay on the device. If you link a StreamPulse account (invite-only in 0.2.2), your bookmarks are saved to it. |
 | Financial and payment information | No | Supporter checkout happens on Stripe-hosted pages and is not open yet. |
 | Personal communications, health, location | No | Chat messages are never read into or sent by the extension. |
 | Certifications | All three | Not sold to third parties; not used for unrelated purposes; not used for creditworthiness. Matches the Limited Use statement on `/privacy`. |
@@ -199,7 +199,7 @@ activity** before that upload.
 7. [ ] Owner uploads new ZIP + screenshots; pastes listing and permission fields
 8. [ ] Set privacy URL (`/privacy`), Support URL (`/support`), and Limited Use/data disclosures
 9. [ ] Confirm dashboard Support URL matches `https://streampulse.stream/support`
-10. [ ] Submit for review only with owner authorization
+10. [ ] Submit for review only with owner authorization, with publishing set to manual: the extension's Release details link opens streampulse.stream/changelog, so publish only once that page shows 0.2.2
 11. [ ] After approval: update public install CTA only if owner authorizes
 
 **Forbidden:** uploading ZIP SHA `ae8d9b835d8459e4b886fad6948e903d6c0c9bae035119ad018cd42fbb253075`.

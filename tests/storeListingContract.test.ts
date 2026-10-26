@@ -70,8 +70,9 @@ describe('Chrome Web Store listing copy (0.2.2)', () => {
   })
 
   it('answers privacy practices for the linked-account path the package contains', () => {
-    // A linked (invited-tester) account saves bookmarks to /v1/pulse/bookmarks and,
-    // with sync on, watched history to the account; linking needs no extension update.
+    // A linked (invited-tester) account saves bookmarks to /v1/pulse/bookmarks; linking
+    // needs no extension update. The package also carries history sync, but no backend
+    // has that route yet, so the text leaves it out until the release that adds it.
     const privacy = section('## Privacy practices (dashboard) for 0.2.2')
     expect(privacy).toMatch(/\| User activity \| \*\*Yes\*\* \(only with a linked account\) \|/)
     expect(privacy).not.toMatch(/never uploaded in 0\.2\.2/)

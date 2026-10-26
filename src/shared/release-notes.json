@@ -49,7 +49,9 @@
         "Accounts and Supporter sign-ups are not open yet. Accounts are coming with Continue with Twitch.",
         "Bookmarks, notes and watched history stay in the browser where you saved them.",
         "Refresh open Twitch tabs after updating.",
-        "Moment pictures only cover time when the tab was playing."
+        "Moment pictures only cover time when the tab was playing.",
+        "Turning Moment pictures on takes effect after you reload the Twitch tab.",
+        "Twitch chat menus (emotes, chat settings) open behind the Pulse panel. Switch to the Chat tab to use them."
       ],
       "links": { "details": "/changelog", "support": "/support" }
     },
