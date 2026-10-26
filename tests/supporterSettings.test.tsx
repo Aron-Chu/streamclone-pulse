@@ -45,7 +45,7 @@ describe('supporter settings', () => {
       expect(card.hasAttribute('aria-label')).toBe(false)
       expect(heading.className).toBe('pulse-visually-hidden')
       expect(card.dataset.supporterCard).toBe('sample')
-      expect(card.querySelector('.pulse-supporter-card-who strong')?.textContent).toBe('Not signed in')
+      expect(card.querySelector('.pulse-supporter-card-who strong')?.textContent).toBe('Not connected')
       expect(card.querySelector('.pulse-supporter-card-avatar')?.getAttribute('data-identity')).toBe('none')
       expect(card.querySelector('.pulse-supporter-card-sample')?.textContent).toBe('Sample look')
       // The card names nobody; the footer says how Supporter will start.

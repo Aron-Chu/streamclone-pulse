@@ -19,7 +19,7 @@ import type { SupporterFinishId } from '../ui/supporterFinish.ts'
  * and the kind stays `twitch` with no name.
  */
 export type CardIdentity =
-  | { kind: 'none' }
+  | { kind: 'none'; connection?: 'installation' }
   | { kind: 'unknown'; reason: 'checking' | 'unavailable' }
   | { kind: 'pulse'; reference?: string }
   | { kind: 'twitch'; displayName?: string; picture?: string }
@@ -146,7 +146,7 @@ export function SupporterCard({ identity, membership, look, children, preview }:
 
 function cardName(identity: CardIdentity): string {
   switch (identity.kind) {
-    case 'none': return 'Not signed in'
+    case 'none': return identity.connection === 'installation' ? 'Not connected' : 'Not signed in'
     case 'unknown': return identity.reason === 'checking' ? 'Checking your account…' : 'Account unavailable'
     case 'twitch': return identity.displayName ?? 'You'
     // A StreamPulse account has no public name; its reference stays in Account, not on the card.

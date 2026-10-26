@@ -82,7 +82,7 @@ export const ACCOUNT_COPY = {
   wrongAccount: 'This subscription belongs to a different Twitch account. Sign out, then Continue with Twitch with the account you subscribed with.',
   confirmEverywhereBody: 'For your security, signing out everywhere needs a Twitch check from the last 10 minutes. Nothing was signed out.',
   // The device link's own words; Firefox builds leave the link out (deviceLink.ts).
-  testerBridge: DEVICE_LINK_ENABLED ? 'Invited tester? Connect this extension' : '',
+  testerBridge: DEVICE_LINK_ENABLED ? 'Invited tester? Connect a tester account' : '',
   otherWays: DEVICE_LINK_ENABLED ? 'Other ways to connect (testers)' : '',
   billingEmail: 'Stripe asks for a billing email at checkout. It can be different from your Twitch email, and you don\'t need a separate StreamPulse sign-up.',
   reinstall: 'Reinstalled or on another browser? Continue with Twitch with the same Twitch account and your Supporter status comes back. No code to copy, no email to confirm.',
@@ -919,7 +919,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
     : renewalWaiting ? { kind: 'pulse' }
     : !account ? { kind: 'unknown', reason: 'checking' }
     : account.state === 'error' || accountDown ? { kind: 'unknown', reason: 'unavailable' }
-    : { kind: 'none' }
+    : !twitchOn && account.state === 'signed_out' ? { kind: 'none', connection: 'installation' } : { kind: 'none' }
   // Likewise the membership: before the server answers, or when it cannot, the
   // card says it is checking or unavailable, never "not a Supporter".
   const cardStatus: CardStatus = status ?? (identity.kind === 'none' ? 'none' : entitlement?.state === 'error' || entitlement?.state === 'unavailable' ? 'unknown' : 'checking')
@@ -929,7 +929,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   const equipped = perks && entitlement?.state === 'ready' && entitlement.cosmetics?.enabled ? entitlement.cosmetics.finish : null
   const cardLook: CardLook = { finish: look ? look.finish : perks ? equipped : SAMPLE_KIT.finish, paint: look?.paint ?? DEFAULT_SUPPORTER_PAINT, perks }
   const connected = linked !== null || renewalWaiting
-  // Nobody signed in: Your card above already says "Not signed in", so the Account card has no row repeating it.
+  // The card already states an absent connection, so the Account row does not repeat it.
   const accountRow: [string, string] | null = identity.kind === 'unknown' ? [identity.reason === 'checking' ? 'Checking the connection…' : 'Connection status unavailable', 'Your free tools still work.']
     : signedInWithTwitch ? [profile ? `${ACCOUNT_COPY.signedInWithTwitch} as ${profile.displayName}` : ACCOUNT_COPY.signedInWithTwitch, 'Signing in stores a device credential in this extension. Sign out ends this device’s access and removes its signed-in watched history and notes.']
     : connected ? [linked ? `Connected to this extension · ${accountReference(linked.accountId)}` : 'Connected to this extension', `${accountKind === 'installation' ? 'Connection saved in this browser.' : 'An invited tester’s StreamPulse account.'} Sign out ends this device’s access and removes its signed-in watched history and notes.`]

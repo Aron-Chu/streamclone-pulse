@@ -442,9 +442,9 @@ describe('Twitch sign-in off (stage A): signed out', () => {
       expect(view.text()).not.toContain('When they open, you\'ll choose')
       expect(view.text()).toContain("US$4.99 a month")
       // Your card says who is here: nobody, and that is fine. The Account card does not repeat it.
-      expect(card(view.host).name().textContent).toBe('Not signed in')
+      expect(card(view.host).name().textContent).toBe('Not connected')
       expect(view.host.querySelector('[data-row="account"]')).toBeNull()
-      expect(view.text().match(/Not signed in/g)).toHaveLength(1)
+      expect(view.text().match(/Not connected/g)).toHaveLength(1)
       const primary = view.host.querySelectorAll<HTMLElement>('.pulse-journey-primary')
       expect(primary).toHaveLength(1)
       expect(primary[0].textContent).toBe('Connect this extension')
@@ -467,7 +467,7 @@ describe('Twitch sign-in off (stage A): signed out', () => {
     try {
       const bridge = view.host.querySelector<HTMLDetailsElement>('details[data-tester-bridge]')!
       expect(bridge.open).toBe(false)
-      expect(bridge.querySelector('summary')?.textContent).toBe('Invited tester? Connect this extension')
+      expect(bridge.querySelector('summary')?.textContent).toBe('Invited tester? Connect a tester account')
       expect(bridge.textContent).toContain('This is not a purchase.')
       await view.click('Connect tester account')
       expect(view.sendMessage).toHaveBeenCalledWith({ type: 'SUPPORTER_ACCOUNT', action: 'start' })
@@ -990,7 +990,7 @@ describe('Your card while the account is unknown', () => {
     const view = await mount({ account: () => account, entitlement: () => ({ state: 'not_linked' }) })
     try {
       const yours = card(view.host)
-      expect(yours.name().textContent).toBe('Not signed in')
+      expect(yours.name().textContent).toBe(account.state === 'signed_out' ? 'Not connected' : 'Not signed in')
       expect(yours.avatar()).toBe('none')
       expect(yours.sub()).toBe('Free tools work without an account.')
       expect(view.host.querySelector('[data-row=\"account\"]')).toBeNull()
@@ -1722,6 +1722,13 @@ describe('explicit nonpaid installation connection', () => {
       expect(view.buttons()).not.toContain('Start checkout again')
       expect(view.buttons()).toContain('Check again')
       expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
+    } finally { view.cleanup() }
+  })
+
+  it.each(['off', 'tester', 'public'] as const)('uses connection wording only for the anonymous installation stage: %s', async stage => {
+    const view = await mount({ account: () => ({ state: 'signed_out' }), entitlement: () => ({ state: 'not_linked' }) }, undefined, stage)
+    try {
+      expect(card(view.host).name().textContent).toBe(stage === 'off' ? 'Not connected' : 'Not signed in')
     } finally { view.cleanup() }
   })
 

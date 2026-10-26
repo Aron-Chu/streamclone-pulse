@@ -271,7 +271,7 @@ test.describe('packaged supporter offer', () => {
     }
     // Invited testers keep the device link, closed and never a purchase.
     await expect(page.locator('details[data-tester-bridge]')).not.toHaveAttribute('open', /.*/)
-    await expect(page.getByText('Invited tester? Connect this extension', { exact: true })).toBeVisible()
+    await expect(page.getByText('Invited tester? Connect a tester account', { exact: true })).toBeVisible()
     expect(requests).toEqual([])
   })
 
@@ -326,7 +326,7 @@ test.describe('packaged supporter offer', () => {
     const status = await page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_ACCOUNT', action: 'status' }))
     expect(status).toEqual({ type: 'SUPPORTER_ACCOUNT', account: { state: 'relink_required' } })
 
-    await page.getByText('Invited tester? Connect this extension', { exact: true }).click()
+    await page.getByText('Invited tester? Connect a tester account', { exact: true }).click()
     await page.getByRole('button', { name: 'Connect tester account', exact: true }).click()
     await expect(page.getByText('ABCDE-12345', { exact: true })).toBeVisible()
     await expect(page.getByRole('link', { name: 'Reopen streampulse.stream', exact: true }))

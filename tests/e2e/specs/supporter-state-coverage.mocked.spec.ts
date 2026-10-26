@@ -214,7 +214,7 @@ for (const state of CASES) {
     await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
     const journey = page.locator('.pulse-journey')
     if (state.setup === 'fallback') {
-      await page.getByText('Invited tester? Connect this extension', { exact: true }).click()
+      await page.getByText('Invited tester? Connect a tester account', { exact: true }).click()
       await page.getByRole('button', { name: 'Connect tester account', exact: true }).click()
     }
     if (state.setup === 'preparing') {
