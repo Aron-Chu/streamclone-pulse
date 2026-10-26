@@ -123,6 +123,17 @@ describe('asking for Moment pictures after enabling them', () => {
     expect(send).toHaveBeenCalledTimes(2)
   })
 
+  it('asks again on the next mount when pictures turned on while no slot was mounted', async () => {
+    await act(async () => root.render(<Slot />))
+    expect(send).toHaveBeenCalledTimes(1)
+    await act(async () => root.render(null))
+    expect(listeners.size).toBe(0)
+    await change(true)
+    expect(send).toHaveBeenCalledTimes(1)
+    await act(async () => root.render(<Slot />))
+    expect(send).toHaveBeenCalledTimes(2)
+  })
+
   it('does not ask for a script already present before mounting', async () => {
     globalThis.__pulseMomentFrames = {
       start: vi.fn(), keep: vi.fn(), mount: vi.fn(), vod: vi.fn(),

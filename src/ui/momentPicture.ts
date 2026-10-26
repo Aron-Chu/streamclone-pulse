@@ -51,7 +51,11 @@ export function useMomentFrames(): MomentFramesApi | undefined {
     if (!asked) askForFrames()
     return () => {
       removeEventListener(MOMENT_FRAMES_READY_EVENT, ready)
-      if (--waitingForFrames === 0) storage?.removeListener(retryFramesOnEnable)
+      if (--waitingForFrames === 0) {
+        storage?.removeListener(retryFramesOnEnable)
+        // Nothing hears the setting now, so the next mount asks again.
+        if (!globalThis.__pulseMomentFrames) asked = false
+      }
     }
   }, [frames])
   return frames
