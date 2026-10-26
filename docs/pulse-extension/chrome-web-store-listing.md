@@ -61,12 +61,12 @@ summary field.
 
 ### Detailed description
 ```
-StreamPulse adds a Pulse panel beside Twitch chat. It charts chat and emote activity minute by minute, so you can see the moments a stream's audience actually reacted to, and jump straight to them.
+Twitch chat stats, right beside chat. StreamPulse adds a Pulse panel that charts chat and emote activity (7TV emotes included) minute by minute, so you can see the moments a stream's audience actually reacted to, and jump straight to them in the stream or VOD.
 
 • Live Pulse chart: chat, emote and viewer activity for the whole stream, with a readout for any minute you point at.
 • Top Moments: the strongest reactions, ranked. Pick one to see its card and jump to that point in the stream or VOD.
 • Moment pictures: Top Moments shows what was on screen, from what the Twitch player in your tab showed while you watched. Pictures stay in that tab and are never uploaded. You can turn them off in settings.
-• Catch me up on past streams: a short recap of the best moments, then the Pulse chart and Top Moments of the broadcast. Works for streams StreamPulse tracked.
+• Catch me up on past streams: a short highlights recap, then the Pulse chart and Top Moments of the broadcast. Works for streams StreamPulse tracked.
 • Bookmarks that stay in your browser: no account needed.
 • One click to the full public analytics for the channel on streampulse.stream.
 • Honest coverage: when StreamPulse wasn't tracking part of a stream, the chart says so instead of guessing.
