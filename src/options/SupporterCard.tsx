@@ -15,13 +15,14 @@ import type { SupporterFinishId } from '../ui/supporterFinish.ts'
  * account nor its absence. With Continue with Twitch compiled on
  * (`TWITCH_SIGNIN_STAGE` tester or public), the `twitch` kind carries the
  * display-only profile that sign-in returns for this browser session; it is
- * never stored by StreamPulse.
+ * never stored by StreamPulse. After a browser restart that profile is gone
+ * and the kind stays `twitch` with no name.
  */
 export type CardIdentity =
-  | { kind: 'none' }
+  | { kind: 'none'; connection?: 'installation' }
   | { kind: 'unknown'; reason: 'checking' | 'unavailable' }
-  | { kind: 'pulse'; reference?: string }
-  | { kind: 'twitch'; displayName: string; picture?: string }
+  | { kind: 'pulse'; reference?: string; connection?: 'installation' }
+  | { kind: 'twitch'; displayName?: string; picture?: string }
 
 /**
  * What the card can say about membership: the server's status, or `checking`
@@ -76,19 +77,21 @@ const isKnown = (status: CardStatus) => status !== 'checking' && status !== 'unk
  * The Account & Supporter page's lead, direction B "Your card" of the
  * 2026-10-07 redesign: a Twitch-style viewer card with emote rain across its
  * top, the avatar, the name (painted, with the crest, for a Supporter), the
- * membership in one line, and a five-step crest ladder from New to 2 years.
- * The membership journey (`children`) is its footer: the price and one button,
- * or the renew date and billing.
+ * membership in one line and the action for the current account state.
+ * The five-step crest ladder and cosmetic studio share a preview disclosure,
+ * collapsed for nonmembers. The membership journey (`children`) stays visible:
+ * the price and one button, or the renewal date and billing.
  *
  * The card is a section headed by a visually hidden h3, so heading navigation
  * stops here between the page's h2 and "Your look"; the card's own lines
  * (the name, the membership, the footer's title) stay as drawn.
  */
-export function SupporterCard({ identity, membership, look, children }: {
+export function SupporterCard({ identity, membership, look, children, preview }: {
   identity: CardIdentity
   membership: CardMembership
   look: CardLook
   children: ReactNode
+  preview?: ReactNode
 }) {
   const { status } = membership
   const known = isKnown(status)
@@ -119,27 +122,33 @@ export function SupporterCard({ identity, membership, look, children }: {
           <span>{subline(identity, membership)}</span>
         </div>
       </div>
-      <div className="pulse-supporter-card-ladder">
-        <ol className="pulse-supporter-ladder" aria-label="Crest ladder" style={{ '--fill': current > 0 ? current / (LADDER.length - 1) : 0 } as CSSProperties}>
-          {LADDER.map((step, index) => (
-            <li key={step.id} data-tier={step.id} data-step={current < 0 ? (known && index === 0 ? 'start' : 'off') : index < current ? 'past' : index === current ? 'current' : 'off'} aria-current={index === current ? 'step' : undefined}>
-              <span><i className="pulse-crest" data-tenure={step.id} aria-hidden="true" /></span>
-              <small>{step.label}</small>
-            </li>
-          ))}
-        </ol>
-        <p className="pulse-supporter-ladder-next">{nextLine(membership, current)}</p>
-      </div>
       {children}
+      <details className="pulse-supporter-preview-disclosure" data-supporter-preview-disclosure open={isSupporter(status) || undefined}>
+        <summary>Preview Supporter looks</summary>
+        <div className="pulse-supporter-preview-content">
+          <div className="pulse-supporter-card-ladder">
+            <ol className="pulse-supporter-ladder" aria-label="Crest ladder" style={{ '--fill': current > 0 ? current / (LADDER.length - 1) : 0 } as CSSProperties}>
+              {LADDER.map((step, index) => (
+                <li key={step.id} data-tier={step.id} data-step={current < 0 ? (known && index === 0 ? 'start' : 'off') : index < current ? 'past' : index === current ? 'current' : 'off'} aria-current={index === current ? 'step' : undefined}>
+                  <span><i className="pulse-crest" data-tenure={step.id} aria-hidden="true" /></span>
+                  <small>{step.label}</small>
+                </li>
+              ))}
+            </ol>
+            <p className="pulse-supporter-ladder-next">{nextLine(membership, current)}</p>
+          </div>
+          {preview}
+        </div>
+      </details>
     </section>
   )
 }
 
 function cardName(identity: CardIdentity): string {
   switch (identity.kind) {
-    case 'none': return 'Not signed in'
+    case 'none': return identity.connection === 'installation' ? 'Not connected' : 'Not signed in'
     case 'unknown': return identity.reason === 'checking' ? 'Checking your account…' : 'Account unavailable'
-    case 'twitch': return identity.displayName
+    case 'twitch': return identity.displayName ?? 'You'
     // A StreamPulse account has no public name; its reference stays in Account, not on the card.
     default: return 'You'
   }
@@ -151,7 +160,7 @@ function subline(identity: CardIdentity, membership: CardMembership): string {
   if (status === 'active' || status === 'grace') return [membership.months > 0 ? `Supporter for ${months(membership.months)}` : 'Pulse Supporter', status === 'grace' ? 'payment due' : null].filter(Boolean).join(' · ')
   const line = STATUS_LINE[status]
   if (identity.kind === 'unknown') return isKnown(status) ? line.charAt(0).toUpperCase() + line.slice(1) : 'Your free tools still work.'
-  const who = identity.kind === 'twitch' ? 'Signed in with Twitch' : 'StreamPulse account'
+  const who = identity.kind === 'twitch' ? 'Signed in with Twitch' : identity.connection === 'installation' ? 'This browser' : 'StreamPulse account'
   return `${who} · ${line}`
 }
 
@@ -165,13 +174,13 @@ function nextLine(membership: CardMembership, current: number): ReactNode {
   return <>{now} · <b>{TENURES[current + 1].title}</b> in {months(Math.max(1, next.months - membership.months))}</>
 }
 
-/** The avatar: a neutral silhouette for nobody or an account not known yet, the StreamPulse mark for a StreamPulse account. */
+/** The avatar: a neutral silhouette for nobody or an account not known yet, the StreamPulse mark for an account with no name to show. */
 function CardAvatar({ identity }: { identity: CardIdentity }) {
   return (
     <span className="pulse-supporter-card-avatar" data-identity={identity.kind} aria-hidden="true">
       {identity.kind === 'none' || identity.kind === 'unknown'
         ? <svg width="28" height="28" viewBox="0 0 24 24"><circle cx="12" cy="9" r="4" fill="currentColor" /><path d="M4.5 20c0-4.1 3.4-6.5 7.5-6.5s7.5 2.4 7.5 6.5z" fill="currentColor" /></svg>
-        : identity.kind === 'pulse'
+        : identity.kind === 'pulse' || !identity.displayName
           ? <PeakMark size={30} strokeWidth={1.8} stroke="currentColor" />
           : identity.picture
             ? <img src={identity.picture} alt="" referrerPolicy="no-referrer" />

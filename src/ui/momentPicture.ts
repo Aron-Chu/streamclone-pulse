@@ -4,10 +4,26 @@ import { sendBackgroundMessage } from '../content/bridge.ts'
 import { resolveLiveMediaEdge } from '../content/twitch.ts'
 import type { ExtensionGameSegment } from '../shared/messages.ts'
 import { MOMENT_FRAMES_READY_EVENT, type MomentFramesApi, type MomentPictureAt, type MomentPictureView } from '../shared/momentFramesContract.ts'
+import { MOMENT_PICTURES_KEY } from '../shared/storage.ts'
 import { resolveGameArtCandidates } from './GamesPlayedStrip.tsx'
 import { isRenderableGameName } from './extensionChartAdapter.ts'
 
 let asked = false
+let waitingForFrames = 0
+
+function askForFrames(): void {
+  if (globalThis.__pulseMomentFrames) return
+  asked = true
+  Promise.resolve()
+    .then(() => sendBackgroundMessage({ type: 'MOMENT_FRAMES_SCRIPT' }))
+    .catch(() => { asked = false })
+}
+
+function retryFramesOnEnable(changes: Record<string, chrome.storage.StorageChange>, area: string): void {
+  const change = changes[MOMENT_PICTURES_KEY]
+  if (area === 'sync' && change?.oldValue === false && change.newValue !== false) askForFrames()
+}
+
 /** The stream Pulse shows (useMomentCapture), for the backend pictures the frames script draws. */
 let pictureAt: MomentPictureAt | undefined
 /** Bumped when the stream's key or VOD changes, so mounted pictures look again (a live stream's VOD arrives late). */
@@ -21,7 +37,7 @@ function subscribeAt(listener: () => void): () => void {
 /**
  * The moment-pictures script (content/moment-frames.js) once the worker has
  * injected it. The first caller asks for it; the worker declines while Moment
- * pictures is off, and every picture slot then stays empty.
+ * pictures is off. Waiting slots share one retry when the setting turns on.
  */
 export function useMomentFrames(): MomentFramesApi | undefined {
   const [frames, setFrames] = useState(() => globalThis.__pulseMomentFrames)
@@ -30,14 +46,13 @@ export function useMomentFrames(): MomentFramesApi | undefined {
     const ready = (): void => setFrames(globalThis.__pulseMomentFrames)
     addEventListener(MOMENT_FRAMES_READY_EVENT, ready)
     ready()
-    if (!asked) {
-      asked = true
-      // A declined request (the setting is off) is not repeated; a failed one is.
-      Promise.resolve()
-        .then(() => sendBackgroundMessage({ type: 'MOMENT_FRAMES_SCRIPT' }))
-        .catch(() => { asked = false })
+    const storage = globalThis.chrome?.storage?.onChanged
+    if (waitingForFrames++ === 0) storage?.addListener(retryFramesOnEnable)
+    if (!asked) askForFrames()
+    return () => {
+      removeEventListener(MOMENT_FRAMES_READY_EVENT, ready)
+      if (--waitingForFrames === 0) storage?.removeListener(retryFramesOnEnable)
     }
-    return () => removeEventListener(MOMENT_FRAMES_READY_EVENT, ready)
   }, [frames])
   return frames
 }

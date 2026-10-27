@@ -1179,7 +1179,8 @@ export const portalAnalyticsApi: AnalyticsApi = {
     const path = usesLocalAnalyticsRoutes()
       ? analyticsPath(`/channels/${encodeURIComponent(login)}/streams?limit=${Math.max(1, limit)}`)
       : portalPath(`/channels/${encodeURIComponent(login)}/streams?limit=${Math.max(1, limit)}`)
-    const { data } = await apiClient<AnalyticsStreamsResponse>(path)
+    // The session page asks for 100 rows; a busy channel takes ~6 s in prod.
+    const { data } = await apiClient<AnalyticsStreamsResponse>(path, { timeoutMs: SLOW_READ_TIMEOUT_MS })
     return { ...data, items: usesLocalAnalyticsRoutes() ? data.items : (data.items ?? []).map(item => ({ ...item, ...portalLifecycleFields(item), ...portalStreamText(item) })), updatedAt: measurementTimeMs(data.updatedAt) ?? 0 }
   },
 

@@ -99,7 +99,7 @@ import {
 } from './missedMoments.ts'
 import { initPulseDebug, pulseDebug } from '../shared/pulseDebug.ts'
 import { resolveMostReactedHeat } from './mostReacted.ts'
-import { MomentBookmarkToast, MomentBookmarksProvider } from './momentBookmarks.tsx'
+import { MomentBookmarkToast, MomentBookmarksProvider, endedStreamVodId } from './momentBookmarks.tsx'
 import { useArchiveVodId, useLiveVodId, useMomentCapture } from './momentPicture.ts'
 import { StreamRecapSection } from './StreamRecapSection.tsx'
 import { resolveRecapUiState } from './recapUiState.ts'
@@ -1900,7 +1900,10 @@ function OverlayMain({
         streamId={payload?.streamId}
         vodId={payload?.vodId ?? undefined}
         // Lookup only: linking the VOD mid-save would re-key the bookmark row and drop the save.
-        resolveVodId={uiIsLive && context.kind === 'channel' ? () => discoverPageVodId(null) : undefined}
+        // Live, the live archive; an ended stream's recap, its row in stream history.
+        resolveVodId={context.kind !== 'channel' ? undefined
+          : uiIsLive ? () => discoverPageVodId(null)
+            : () => (payload?.streamId ? endedStreamVodId(payload.login, payload.streamId) : Promise.resolve(null))}
         momentOffsets={bookmarkMomentOffsets}
         notice={arrivalNotice}
       >

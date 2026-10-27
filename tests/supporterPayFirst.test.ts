@@ -9,7 +9,7 @@ const iso = (delta: number) => new Date(now + delta).toISOString()
 const credentials = { accountId: '22222222-2222-4222-8222-222222222222', deviceId: '11111111-1111-4111-8111-111111111111', token: 'a'.repeat(64), refreshToken: 'b'.repeat(64), expiresAt: iso(86_400_000), refreshExpiresAt: iso(90 * 86_400_000) }
 const attemptId = '33333333-3333-4333-8333-333333333333'
 const restoreId = '44444444-4444-4444-8444-444444444444'
-function fixture() {
+function fixture(twitchSignIn = false) {
   let account: unknown = null, key: unknown = null, journey: unknown = null, clock = now
   let membership: Record<string, unknown> = { schemaVersion: 1, accountId: credentials.accountId, environment: 'live', revision: 1, status: 'none', serverTime: iso(0), accessFrom: iso(-1000), accessUntil: iso(3_600_000), cacheUntil: iso(60_000), features: {}, checkoutEnabled: true, installationAccountsEnabled: true, accountKind: 'installation', restoreEligible: true }
   const request = vi.fn(async (path: string, _body?: Record<string, unknown>, _bearer?: string): Promise<{status: number; body: unknown}> => {
@@ -19,10 +19,194 @@ function fixture() {
   const identityChanged = vi.fn(async () => {})
   const supporter = new SupporterAccountCoordinator({ read: async () => account, write: async value => { account = value }, readInstallationKey: async () => key, writeInstallationKey: async value => { key = value }, request: async (path, body, bearer) => path === '/v1/billing/supporter' ? { status: 200, body: membership } : request(path, body, bearer), now: () => clock, identityChanged })
   const open = vi.fn(async (_url: string) => {})
-  const recreate = () => new SupporterPayFirstCoordinator({ account: supporter, request, read: async () => journey, write: async value => { journey = value }, open, now: () => clock })
+  const recreate = () => new SupporterPayFirstCoordinator({ account: supporter, request, read: async () => journey, write: async value => { journey = value }, open, now: () => clock, twitchSignIn })
   const pay = recreate()
-  return { supporter, pay, recreate, request, open, identityChanged, stored: () => ({ account, key: key && typeof key === 'object' ? (key as { key: string }).key : key, bootstrap: key, journey }), advance: (ms: number) => { clock += ms }, setMembership: (changes: Record<string, unknown>) => { membership = { ...membership, ...changes } } }
+  return { supporter, pay, recreate, request, open, identityChanged, stored: () => ({ account, key: key && typeof key === 'object' ? (key as { key: string }).key : key, bootstrap: key, journey }), advance: (ms: number) => { clock += ms }, setMembership: (changes: Record<string, unknown>) => { membership = { ...membership, ...changes } }, seed: (value: { account?: unknown; journey?: unknown }) => { if ('account' in value) account = value.account; if ('journey' in value) journey = value.journey } }
 }
+
+describe('explicit nonpaid installation connection', () => {
+  it('does not enroll on reads; concurrent explicit connections enroll once without starting payment', async () => {
+    const f = fixture()
+    await f.pay.billing('status')
+    await f.pay.billing('check')
+    await f.supporter.entitlement()
+    expect(f.request).not.toHaveBeenCalled()
+    expect(f.stored().account).toBeNull()
+
+    expect(await Promise.all([f.pay.billing('connect'), f.pay.billing('connect')])).toEqual([{ state: 'idle' }, { state: 'idle' }])
+    expect(f.request.mock.calls.map(([path]) => path)).toEqual(['/v1/account/installations'])
+    expect(await f.supporter.localAccountId()).toBe(credentials.accountId)
+    expect(f.stored().bootstrap).toMatchObject({ state: 'claimed', accountId: credentials.accountId })
+    expect(f.open).not.toHaveBeenCalled()
+    expect(f.stored().journey).not.toHaveProperty('billing')
+    expect(JSON.stringify(await f.pay.billing('connect'))).not.toMatch(/token|installationKey|accountId|aaaa|bbbb/)
+  })
+
+  it.each([
+    [false, false], [false, true], [true, false], [undefined, true], [true, undefined], ['true', true], [true, 'true'],
+  ])('keeps payment closed unless both server flags are literal true: %s / %s', async (checkoutEnabled, installationAccountsEnabled) => {
+    const f = fixture()
+    f.setMembership({ checkoutEnabled, installationAccountsEnabled })
+    expect(await f.pay.billing('connect')).toEqual({ state: 'closed' })
+    expect(await f.supporter.localAccountId()).toBe(credentials.accountId)
+    expect(f.request.mock.calls.map(([path]) => path)).toEqual(['/v1/account/installations'])
+    expect(f.open).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { environment: 'sandbox' },
+    { accountId: '55555555-5555-4555-8555-555555555555' },
+    { schemaVersion: 999 },
+    { accountKind: 'email' },
+    { accountKind: undefined },
+  ])('does not use an unverified or non-installation capability to start payment: %j', async change => {
+    const f = fixture()
+    f.setMembership(change)
+    expect(await f.pay.billing('connect')).toEqual({ state: 'unavailable' })
+    expect(f.request.mock.calls.map(([path]) => path)).toEqual(['/v1/account/installations'])
+    expect(f.open).not.toHaveBeenCalled()
+  })
+
+  it.each([404, 409, 429, 503])('does not fall through to payment or a website when enrollment returns %s', async status => {
+    const f = fixture()
+    f.request.mockResolvedValue({ status, body: status === 409 ? { error: 'installation_initialized' } : null })
+    expect(await f.pay.billing('connect')).toEqual({ state: status === 404 ? 'closed' : 'unavailable' })
+    expect(f.stored().account).toBeNull()
+    expect(f.request).toHaveBeenCalledTimes(1)
+    expect(f.open).not.toHaveBeenCalled()
+  })
+
+  it('keeps a lost connection response nonpaid and permits an explicit retry with the same key', async () => {
+    const f = fixture()
+    f.request.mockRejectedValueOnce(new Error('offline'))
+    expect(await f.pay.billing('connect')).toEqual({ state: 'unavailable' })
+    const firstKey = f.stored().key
+    expect(await f.pay.billing('connect')).toEqual({ state: 'idle' })
+    expect(f.request.mock.calls.map(([path, body]) => [path, body?.installationKey])).toEqual([
+      ['/v1/account/installations', firstKey], ['/v1/account/installations', firstKey],
+    ])
+    expect(f.open).not.toHaveBeenCalled()
+  })
+
+  it('preserves an existing email identity without creating an installation or opening billing', async () => {
+    const f = fixture()
+    const account = { kind: 'linked', ...credentials }
+    f.seed({ account })
+    f.setMembership({ accountKind: 'email' })
+    expect(await f.pay.billing('connect')).toEqual({ state: 'unavailable' })
+    expect(f.stored().account).toEqual(account)
+    expect(f.stored().key).toBeNull()
+    expect(f.request).not.toHaveBeenCalled()
+    expect(f.open).not.toHaveBeenCalled()
+  })
+
+  it('preserves a paid installation identity without starting another payment', async () => {
+    const f = fixture()
+    const account = { kind: 'linked', ...credentials, installation: true }
+    f.seed({ account })
+    f.setMembership({ status: 'active' })
+    expect(await f.pay.billing('connect')).toEqual({ state: 'idle' })
+    expect(f.stored().account).toEqual(account)
+    expect(f.request).not.toHaveBeenCalled()
+    expect(f.open).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { state: 'error' },
+    { state: 'unavailable', reason: 'temporarily_unavailable' },
+    { state: 'unavailable', reason: 'environment_mismatch' },
+    { state: 'not_linked' },
+  ] as const)('keeps payment paused after a connection with an unanswered capability: %j', async capability => {
+    const f = fixture()
+    vi.spyOn(f.supporter, 'entitlement').mockResolvedValueOnce(capability)
+    expect(await f.pay.billing('connect')).toEqual({ state: 'unavailable' })
+    expect(f.request.mock.calls.map(([path]) => path)).toEqual(['/v1/account/installations'])
+    expect(f.open).not.toHaveBeenCalled()
+  })
+
+  it('does not allow a failed capability read to fall through to checkout', async () => {
+    const f = fixture()
+    vi.spyOn(f.supporter, 'entitlement').mockRejectedValueOnce(new Error('offline'))
+    expect(await f.pay.billing('connect')).toEqual({ state: 'unavailable' })
+    expect(f.request.mock.calls.map(([path]) => path)).toEqual(['/v1/account/installations'])
+    expect(f.open).not.toHaveBeenCalled()
+  })
+
+  it('ignores a delayed open capability after the connected identity signs out', async () => {
+    const f = fixture()
+    await f.supporter.ensureInstallation('connect')
+    const capability = await f.supporter.entitlement()
+    let resolveCapability!: (value: typeof capability) => void
+    const read = vi.spyOn(f.supporter, 'entitlement').mockImplementationOnce(() => new Promise(resolve => { resolveCapability = resolve }))
+    f.request.mockResolvedValue({ status: 204, body: null })
+    const connecting = f.pay.billing('connect')
+    await vi.waitFor(() => expect(read).toHaveBeenCalledOnce())
+    await f.supporter.run('disconnect')
+    resolveCapability(capability)
+    expect(await connecting).toEqual({ state: 'unavailable' })
+    expect(f.stored().account).toBeNull()
+    expect(f.request.mock.calls.map(([path]) => path)).toEqual(['/v1/account/installations', '/v1/account/devices/disconnect'])
+    expect(f.open).not.toHaveBeenCalled()
+  })
+
+  it('refuses the installation entry when Twitch sign-in is enabled', async () => {
+    const f = fixture(true)
+    expect(await f.pay.billing('connect')).toEqual({ state: 'unavailable' })
+    expect(f.stored().account).toBeNull()
+    expect(f.request).not.toHaveBeenCalled()
+    expect(f.open).not.toHaveBeenCalled()
+  })
+
+  it.each(['waiting', 'confirming'] as const)('does not poll, recover or reopen an existing %s checkout', async phase => {
+    const f = fixture()
+    f.seed({ account: { kind: 'linked', ...credentials, installation: true }, journey: { billing: { accountId: credentials.accountId, attemptId, phase, until: now + 600_000, watchUntil: now + 600_000, nextPoll: now - 1, ...(phase === 'waiting' ? { url: 'https://checkout.stripe.com/c/pay/owned' } : {}) } } })
+    expect(await f.pay.billing('connect')).toEqual({ state: 'reconnect_required' })
+    expect(f.request).not.toHaveBeenCalled()
+    expect(f.open).not.toHaveBeenCalled()
+    expect(f.stored().journey).toHaveProperty('billing.attemptId', attemptId)
+  })
+
+  it('preserves an unresolved earlier payment without enrolling another identity', async () => {
+    const f = fixture()
+    const barrier = { hash: 'd'.repeat(64), until: now + 600_000 }
+    f.seed({ journey: { unresolvedAccounts: [barrier] } })
+    expect(await f.pay.billing('connect')).toEqual({ state: 'reconnect_required' })
+    expect(f.stored().journey).toHaveProperty('unresolvedAccounts', [barrier])
+    expect(f.stored().account).toBeNull()
+    expect(f.request).not.toHaveBeenCalled()
+    expect(f.open).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { restore: { accountId: credentials.accountId, restoreId, secret: 'c'.repeat(64), comparisonCode: 'A3B4C5', expiresAt: iso(600_000), nextPoll: now - 1, interval: 5000 } },
+    { restoreStart: { accountId: credentials.accountId, key: 'c'.repeat(64), until: now + 600_000, nextRetry: now - 1 } },
+  ])('does not poll or continue restoration when explicitly connecting: %j', async journey => {
+    const f = fixture()
+    const account = { kind: 'linked', ...credentials, installation: true }
+    f.seed({ account, journey })
+    expect(await f.pay.billing('connect')).toEqual({ state: 'reconnect_required' })
+    expect(f.stored().account).toEqual(account)
+    expect(f.request).not.toHaveBeenCalled()
+    expect(f.open).not.toHaveBeenCalled()
+  })
+
+  it.each(['billingRetryUntil', 'restoreRetryUntil'])('respects the existing %s without any enrollment or billing request', async field => {
+    const f = fixture()
+    f.seed({ journey: { [field]: now + 90_000 } })
+    expect(await f.pay.billing('connect')).toEqual({ state: 'try_later', retryAt: now + 90_000 })
+    expect(f.request).not.toHaveBeenCalled()
+    expect(f.open).not.toHaveBeenCalled()
+    expect(f.stored().key).toBeNull()
+  })
+
+  it('accepts only the exact new connection message within the existing extension-page sender scope', () => {
+    expect(parseBackgroundRequest({ type: 'SUPPORTER_BILLING', action: 'connect' })).toEqual({ type: 'SUPPORTER_BILLING', action: 'connect' })
+    expect(MESSAGE_SENDER_SCOPE.SUPPORTER_BILLING).toBe('extension-page')
+    for (const field of ['url', 'token', 'accountId', 'checkoutEnabled', 'installationAccountsEnabled']) {
+      expect(parseBackgroundRequest({ type: 'SUPPORTER_BILLING', action: 'connect', [field]: true })).toBeNull()
+    }
+  })
+})
 
 describe('worker-private pay-first journey', () => {
   it('creates only on interaction, reuses credentials, opens exact Stripe host, and never exposes secrets', async () => {

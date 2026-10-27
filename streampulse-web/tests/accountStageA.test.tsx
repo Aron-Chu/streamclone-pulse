@@ -33,11 +33,11 @@ describe('/supporter', () => {
     expect(body).not.toMatch(/website account/i)
     expect(body).not.toMatch(/Restore my Supporter|restore link|installation/i)
     const availability = screen.getByTestId('supporter-availability').textContent ?? ''
-    expect(availability).toMatch(/^Supporter sign-ups are not open yet\. When they open, you’ll choose Continue with Twitch, then pay on Stripe\. Free tools work without an account\./)
-    expect(availability).toContain('Stripe asks for a billing email at checkout. It can be different from your Twitch email, and you don’t need a separate StreamPulse sign-up.')
-    expect(screen.getByTestId('supporter-reinstall').textContent).toMatch(/Continue with Twitch with the same Twitch account/)
-    // Access recovery after losing Twitch is separate from Stripe billing.
-    expect(screen.getByTestId('supporter-lost-twitch').textContent).toMatch(/That changes billing only\. It doesn’t move your membership to another Twitch account/)
+    expect(availability).toMatch(/^Supporter sign-ups are not open yet\. When they open, choose Become a Supporter in the extension’s Account & Supporter page and pay on Stripe\./)
+    expect(availability).toContain('No Twitch sign-in or separate StreamPulse sign-up is needed. Stripe asks for a billing email.')
+    expect(screen.getByTestId('supporter-reinstall').textContent).toMatch(/Contact billing support to restore a membership/)
+    // Restoring browser access is separate from Stripe billing.
+    expect(screen.getByTestId('supporter-billing-help').textContent).toMatch(/Billing changes do not restore extension access/)
     for (const link of screen.getAllByRole('link')) expect(link.getAttribute('href')).not.toMatch(/^\/account(\/|$)/)
     expect(screen.queryByRole('button', { name: 'Continue with Twitch' })).toBeNull()
   })
@@ -57,11 +57,13 @@ describe('/account/sign-in', () => {
 })
 
 describe('/account/billing, signed out', () => {
-  it('points to the tester sign-in and offers no extension-link step', async () => {
+  it('distinguishes extension billing-email access from tester sign-in', async () => {
     stubSignedOut()
     render(<MemoryRouter initialEntries={['/account/billing']}><BillingPage /></MemoryRouter>)
     expect((await screen.findByRole('link', { name: 'Tester sign-in' })).getAttribute('href')).toBe('/account/sign-in?returnTo=%2Faccount%2Fbilling')
-    expect(screen.getByText(/Supporter sign-ups are not open yet\. Invited testers can sign in/)).toBeTruthy()
+    expect(screen.getByText(/Supporter sign-ups are not open yet\. Free tools work without an account/)).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Manage billing by email' }).getAttribute('href')).toMatch(/^https:\/\/billing\.stripe\.com\/p\/login\//)
+    expect(screen.getByText(/Website or tester sign-in does not connect an extension-only membership/)).toBeTruthy()
     expect(screen.queryByRole('link', { name: 'Connect your extension' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Continue with Twitch' })).toBeNull()
   })

@@ -1,22 +1,42 @@
 # Supporter purchase and recovery from the extension
 
-## Account journey: Continue with Twitch
+## Account connection and purchase
 
-Account & Supporter follows one public account flow (account journey spec,
-closeout 2026-10-08b): **Continue with Twitch** → **Become a Supporter**
-(Stripe Checkout) → **Manage subscription** (Stripe's portal) → **Sign out**.
-Reinstalling, or using another browser, gets Supporter back by signing in with
-the same Twitch account: the server returns the same StreamPulse account and the
-same membership. Free tools never need an account.
+With Twitch sign-in off, one **Become a Supporter** click saves an installation
+key in this browser, reads fresh server capability, and opens Stripe Checkout
+only when sales are open. Otherwise the page says "Supporter isn't on sale yet",
+including on a server with no installation route. Twitch-enabled builds instead
+use **Continue with Twitch** before purchase and restore the same membership by
+signing in with the same Twitch account. Free tools never need an account.
 
 The build stage comes from `PULSE_EXTENSION_TWITCH_SIGNIN` (see
 `scripts/extension-target.mjs` and `src/shared/twitchSignIn.ts`):
 
 | Stage | Who | Signed out | Signed in |
 |---|---|---|---|
-| `off` (default; every store build today) | everyone | "Supporter sign-ups are not open yet", the price and benefits, **Supporter details** (the /supporter page). No purchase, no email restore, no website-account choice. A closed **Invited tester? Connect this extension** disclosure keeps the existing device link. | Invited testers: status, **Manage subscription** (website billing) and **Sign out**. |
+| `off` (default; every store build today) | everyone | **Become a Supporter**: one click saves an installation key and opens Checkout only if the server reports `checkoutEnabled` and `installationAccountsEnabled`; otherwise "Supporter isn't on sale yet". Nothing is sent before the click. No email restore or website-account choice. A closed **Invited tester? Connect a tester account** disclosure keeps the existing device link. | Installation accounts: **Become a Supporter** only after fresh server `checkoutEnabled` and `installationAccountsEnabled` are both true; status, worker **Manage subscription**, **Sign out**. Invited testers retain website billing. |
 | `tester` | development and preview builds only; store builds refuse it | **Continue with Twitch**, "Twitch sign-in is open to invited testers right now", device link under **Other ways to connect (testers)** | "Signed in with Twitch as {name}", status, **Become a Supporter** when the server opens Checkout, **Manage subscription**, **Sign out**, **Use a different Twitch account** |
 | `public` | a store build only once that store's manifest requests `identity` (spec E3) | **Continue with Twitch** | as `tester` |
+
+The offer starts compact: status, the monthly price and renewal/cancellation/tax
+terms, all four perk names, and the action for the current state. The card's crest
+ladder, full perk descriptions and cosmetic studio sit under **Preview Supporter
+looks**, collapsed for nonmembers and expanded for active/grace members. Static
+recovery and payment explanations sit under **Account help**. Actual account and
+billing controls, pending/error notices and confirmations stay visible outside
+those disclosures. Opening a preview grants no membership and writes no entitlement.
+
+For a nonmember with checkout known closed, **Your look** is local try-on only:
+Paint and Emote rain stay visible; **Wave and sheen** starts closed. Tries write
+no worker choice or browser preference. Previously saved wave and sheen seed the
+preview. A valid paint saved earlier shows its seven-day expiry and **Remove**;
+it can still apply after verified membership. With checkout open, the existing
+**Use {paint} when Supporter starts** action keeps the choice for seven days.
+Unknown membership, a failed read, a temporary outage or an environment mismatch
+pauses the controls rather than presenting a closed offer. A server without
+Supporter (`not_deployed`) keeps the existing preview and saved-choice controls.
+Generic failures say **We couldn't check your Supporter status**; reasoned
+failures name the reason. Free tools keep working in every state.
 
 A development build with Twitch on adds `identity` to its generated manifest
 only; the checked-in manifests, the permission allowlist and the store
@@ -35,17 +55,22 @@ that names a different Twitch account (`identity_mismatch`) never opens the
 portal. Silent sign-in runs only on a true first install, never after **Sign out**
 or a server `revoked`.
 
-The page never sends `SUPPORTER_RESTORE` and never asks the worker to create an
-installation account. The worker code for installation accounts, email restore
-and device lists below is kept (spec §5: preserve, do not delete), and reachable
-only for an already linked installation account, which production cannot have
-while `PULSE_INSTALLATION_ACCOUNTS_ENABLED` is off.
+The page never sends `SUPPORTER_RESTORE`. With Twitch off, only the
+**Become a Supporter** click (`SUPPORTER_BILLING checkout`) creates an
+installation connection. Initial, focus, revision and status reads never enroll.
+A 404 on enrollment (a server without installation accounts) is shown as closed,
+not as an error. The server still refuses creation while
+`PULSE_INSTALLATION_ACCOUNTS_ENABLED` is off. The worker's nonpaid
+`SUPPORTER_BILLING connect` action is kept but no page sends it.
+
+An installation connection is specific to this browser. Connecting a new browser
+does not restore a paid membership. Email restore remains absent from this page;
+the sign-out confirmation directs existing installation members to billing support.
 
 ## Worker internals (installation accounts, kept)
 
-The worker starts an installation account only when asked for a Supporter
-action on an unlinked extension with Twitch sign-in off; the options page no
-longer asks. Browsing Twitch, installing the extension, reading status and
+The worker starts an installation account only on an explicit Supporter
+interaction with Twitch sign-in off. Browsing Twitch, installing the extension, reading status and
 previewing a finish do not enroll an installation or start a payment.
 
 With installation accounts enabled, Checkout opens the server's Stripe Checkout

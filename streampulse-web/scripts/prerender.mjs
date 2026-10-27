@@ -16,6 +16,30 @@ const analyticsCriticalStyles = readdirSync(join(dist, 'assets'))
   .filter(name => /^(AnalyticsLandingPage|figma-analytics)-.+\.css$/.test(name))
   .map(name => `<link rel="stylesheet" href="/assets/${name}">`)
   .join('\n    ')
+// Public pages load on demand (src/routes/index.tsx). Each prerendered page
+// preloads its own chunks, so they download beside the entry, not after it.
+const manifest = JSON.parse(readFileSync(join(dist, '.vite', 'manifest.json'), 'utf8'))
+const publicPageSources = {
+  docs: 'Docs', status: 'Status', privacy: 'Privacy', terms: 'Terms', refunds: 'Refunds',
+  supporter: 'Supporter', 'supporter/thanks': 'SupporterThanks', support: 'Support',
+  feedback: 'Feedback', discord: 'Discord', changelog: 'Changelog',
+}
+function chunkFiles(key, files = new Set()) {
+  const chunk = manifest[key]
+  if (!chunk || files.has(chunk.file)) return files
+  files.add(chunk.file)
+  for (const imported of chunk.imports ?? []) chunkFiles(imported, files)
+  return files
+}
+const entryChunks = chunkFiles('index.html')
+function pagePreloads(path) {
+  const page = publicPageSources[path]
+  if (!page) return ''
+  return [...chunkFiles(`src/routes/public/${page}.tsx`)]
+    .filter(file => !entryChunks.has(file))
+    .map(file => `<link rel="modulepreload" crossorigin href="/${file}">`)
+    .join('\n    ')
+}
 // Reuse the Vite source aliases/shims; no second page copy and no browser/network fetch.
 const loaded = await loadConfigFromFile({ command: 'serve', mode: 'production' }, undefined, root)
 if (!loaded) throw new Error('Missing Vite configuration for public prerender')
@@ -194,6 +218,8 @@ function renderShell(metadata) {
   if (metadata.path === 'analytics' && analyticsCriticalStyles) {
     html = html.replace('</head>', `    ${analyticsCriticalStyles}\n  </head>`)
   }
+  const preloads = pagePreloads(metadata.path)
+  if (preloads) html = html.replace('</head>', `    ${preloads}\n  </head>`)
   html = upsertMeta(html, 'name', 'description', metadata.description)
   html = upsertMeta(html, 'name', 'robots', metadata.robots)
   html = upsertMeta(html, 'property', 'og:title', metadata.title)

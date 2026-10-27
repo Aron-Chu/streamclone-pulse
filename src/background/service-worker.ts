@@ -1,4 +1,4 @@
-import { handleDeviceBookmarks, handleMyMoments, handlePicture, removePanelBookmark, restoreRemovedNote, wantSavedPicture } from './myMoments.ts'
+import { bindReplayLookups, handleDeviceBookmarks, handleMyMoments, handlePicture, removePanelBookmark, restoreRemovedNote, wantSavedPicture } from './myMoments.ts'
 import { loadHubSnapshot } from './hubSnapshot.ts'
 import { loadMomentMinute } from './momentMinute.ts'
 import {
@@ -691,6 +691,16 @@ async function listPastVods(
   return rows
 }
 
+// Stream-only bookmarks get their replay when My Moments opens: stream history,
+// then DISCOVER_LIVE_VOD's lookup in an open tab of that channel, if any.
+bindReplayLookups({
+  pastVods: login => listPastVods(login),
+  liveArchive: async (login, streamId) => {
+    const tab = (await chrome.tabs.query({ url: ['*://*.twitch.tv/*'] })).find(item => item.id && tabUrlMatchesPulseLogin(item.url, login))
+    return tab?.id ? discoverLiveVodIdFromGqlInTab(tab.id, login, streamId) : null
+  },
+})
+
 if (chrome.storage?.onChanged) {
   chrome.storage.onChanged.addListener((changes, areaName) => {
     // autoUpdateEnabled is read by content livePoll; SW does not own recurring timers.
@@ -978,7 +988,7 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
         }
         case 'SUPPORTER_BILLING': {
           const billing = await supporterPayFirst.billing(message.action)
-          if (await supporterPayFirst.hasPending()) watchPendingLink()
+          if (message.action !== 'connect' && await supporterPayFirst.hasPending()) watchPendingLink()
           sendResponse({ type: 'SUPPORTER_BILLING', billing } satisfies BackgroundResponse)
           return
         }
@@ -995,7 +1005,8 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
         }
         case 'SUPPORTER_FINISH_INTENT': {
           const finish = message.finish === undefined ? await supporterAccount.finishIntent() : await supporterAccount.setFinishIntent(message.finish)
-          sendResponse({ type: 'SUPPORTER_FINISH_INTENT', finish } satisfies BackgroundResponse)
+          const details = finish === null ? null : await supporterAccount.finishIntentDetails()
+          sendResponse({ type: 'SUPPORTER_FINISH_INTENT', finish, ...(details && details.finish === finish ? { setAt: details.setAt } : {}) } satisfies BackgroundResponse)
           return
         }
         case 'SUPPORTER_CARD_SCRIPT': {

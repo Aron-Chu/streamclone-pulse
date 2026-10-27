@@ -282,7 +282,7 @@ export type BackgroundRequest =
   | { type: 'SUPPORTER_ACCOUNT'; action: SupporterAccountAction }
   | import('./twitchSignIn.ts').TwitchSignInRequest
   /** `portal_confirm`: a click-started Twitch check, then the portal (Twitch sign-in builds only). */
-  | { type: 'SUPPORTER_BILLING'; action: 'status' | 'check' | 'checkout' | 'resume' | 'portal' | 'portal_confirm' }
+  | { type: 'SUPPORTER_BILLING'; action: 'status' | 'check' | 'connect' | 'checkout' | 'resume' | 'portal' | 'portal_confirm' }
   | { type: 'SUPPORTER_RESTORE'; action: 'status' | 'start' | 'check' | 'cancel'; email?: string }
   | { type: 'SUPPORTER_DEVICES'; action: 'list'; cursor?: string }
   | { type: 'SUPPORTER_DEVICES'; action: 'revoke'; deviceId: string }
@@ -807,7 +807,7 @@ export type BackgroundResponse =
    * `unverified`: the account read failed or is waiting on renewal; keep the last verified state until it expires.
    */
   | { type: 'SUPPORTER_APPEARANCE'; finish: 'glass' | 'etched' | 'halo' | null; validForMs: number; tenure?: SupporterTenure; paint?: SupporterPaintStyle; perks?: true; unverified?: true }
-  | { type: 'SUPPORTER_FINISH_INTENT'; finish: 'glass' | 'etched' | 'halo' | null }
+  | { type: 'SUPPORTER_FINISH_INTENT'; finish: 'glass' | 'etched' | 'halo' | null; setAt?: number }
   | { type: 'SUPPORTER_CARD_SCRIPT'; ok: boolean }
   | { type: 'MOMENT_FRAMES_SCRIPT'; ok: boolean }
   | { type: 'MOMENT_PICTURE'; wants?: import('./momentFramesContract.ts').MomentPictureWant[]; ok?: boolean; vod?: import('./vodPictures.ts').VodPictures | null; frame?: import('../background/vodFrameInject.ts').VodFrame | { error: string } | null }

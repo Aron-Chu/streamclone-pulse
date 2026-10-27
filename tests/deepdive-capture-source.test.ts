@@ -13,7 +13,7 @@ vi.mock('../src/shared/storage.ts', () => ({
 vi.mock('../src/background/api.ts', () => ({ createPulseBookmark: vi.fn(), deletePulseBookmark: vi.fn(), fetchPulseBookmarks: vi.fn(), accountHistoryRequest: vi.fn() }))
 vi.mock('../src/background/supporterAccountRuntime.ts', () => ({
   bindAccountDataForget: () => {},
-  supporterAccount: { run: async () => ({ state: 'not_linked' }), localAccountId: async () => null },
+  supporterAccount: { isInstallationIdentity: async () => false, run: async () => ({ state: 'not_linked' }), localAccountId: async () => null },
 }))
 vi.mock('../src/background/myMomentsStore.ts', async importOriginal => {
   const real = await importOriginal<typeof import('../src/background/myMomentsStore.ts')>()
@@ -76,6 +76,24 @@ describe('watched-moment capture source check', () => {
       await expect(record('https://www.twitch.tv/caseoh_', { channel: 'caseoh_', vodId: null, streamId: '318000000001' })).resolves.toEqual({ ok: true })
       await new Promise(r => setTimeout(r, 0))
       expect(sendMessage).toHaveBeenCalledWith({ type: 'MY_MOMENTS_CHANGED' })
+    } finally {
+      vi.stubGlobal('chrome', { extension: { inIncognitoContext: false } })
+    }
+  })
+
+  it('answers ok only when the jump joined History', async () => {
+    const sendMessage = vi.fn(async () => undefined)
+    vi.stubGlobal('chrome', { extension: { inIncognitoContext: false }, runtime: { sendMessage } })
+    const { emptyPersonalData } = await import('../src/background/myMomentsStore.ts')
+    try {
+      // Cleared since the jump started (the epoch moved on): nothing recorded.
+      db.data = { ...emptyPersonalData(), preferences: { captureHistory: true, retentionDays: 30 }, epoch: 6 }
+      await expect(record('https://www.twitch.tv/caseoh_', { channel: 'caseoh_', vodId: null, streamId: '318000000001' })).resolves.toEqual({ ok: false })
+      // Turned off since the jump started.
+      db.data = { ...emptyPersonalData(), preferences: { captureHistory: false, retentionDays: 30 }, epoch: 5 }
+      await expect(record('https://www.twitch.tv/caseoh_', { channel: 'caseoh_', vodId: null, streamId: '318000000001' })).resolves.toEqual({ ok: false })
+      await new Promise(r => setTimeout(r, 0))
+      expect(sendMessage).not.toHaveBeenCalled()
     } finally {
       vi.stubGlobal('chrome', { extension: { inIncognitoContext: false } })
     }

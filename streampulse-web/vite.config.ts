@@ -35,20 +35,26 @@ function publicEntryBoundaryPlugin(): Plugin {
       assertBuildOnlyBracesRuntimeBoundary(bundle)
       const visited = new Set<string>()
       const forbidden = new Set<string>()
-      const visit = (fileName: string) => {
-        if (visited.has(fileName)) return
-        visited.add(fileName)
+      const visit = (fileName: string, into = visited) => {
+        if (into.has(fileName)) return
+        into.add(fileName)
         const chunk = bundle[fileName]
         if (!chunk || chunk.type !== 'chunk') return
         for (const id of Object.keys(chunk.modules)) {
           if (/\/packages\/(?:analytics-console|pulse-charts)\//.test(id.replaceAll('\\', '/'))) forbidden.add(id)
         }
-        for (const dependency of chunk.imports) visit(dependency)
+        for (const dependency of chunk.imports) visit(dependency, into)
       }
       for (const chunk of Object.values(bundle)) if (chunk.type === 'chunk' && chunk.isEntry) visit(chunk.fileName)
-      if (forbidden.size) this.error(`Public entry eagerly imports analytics UI:\n${[...forbidden].join('\n')}`)
+      // The help and legal pages load on demand; their chunks stay free of analytics UI too.
+      const publicPages = new Set<string>()
+      for (const chunk of Object.values(bundle)) {
+        if (chunk.type === 'chunk' && chunk.isDynamicEntry && /\/src\/routes\/public\/[^/]+\.tsx$/.test((chunk.facadeModuleId ?? '').replaceAll('\\', '/'))) visit(chunk.fileName, publicPages)
+      }
+      if (forbidden.size) this.error(`Public entry or page imports analytics UI:\n${[...forbidden].join('\n')}`)
       this.emitFile({ type: 'asset', fileName: 'public-entry-budget.json', source: JSON.stringify({
         staticJavaScript: [...visited].filter(name => name.endsWith('.js')).sort(),
+        publicPageJavaScript: [...publicPages].filter(name => name.endsWith('.js') && !visited.has(name)).sort(),
         analyticsUiModules: [...forbidden],
       }, null, 2) })
     },

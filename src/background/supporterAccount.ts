@@ -1,11 +1,12 @@
-import type { SupporterAccountAction, SupporterAccountState, SupporterEntitlement, SupporterStatus, SupporterCosmetics } from '../shared/supporterAccount.ts'
+import { FINISH_INTENT_TTL_MS, type SupporterAccountAction, type SupporterAccountState, type SupporterEntitlement, type SupporterStatus, type SupporterCosmetics, type SupporterFinishIntentDetails } from '../shared/supporterAccount.ts'
 import { supporterAccess, SUPPORTER_FEATURES, type SupporterScope } from '../shared/supporterAccess.ts'
 import { DEVICE_LINK_ENABLED } from '../shared/deviceLink.ts'
 
 type Environment = SupporterScope['environment']
 type Finish = SupporterCosmetics['finish']
 type Pending = { kind: 'pending'; secret: string; code: string; expiresAt: string; nextPoll: number }
-type Linked = { kind: 'linked'; token: string; refreshToken: string; accountId: string; deviceId: string; expiresAt: string; refreshExpiresAt: string; installation?: true }
+/** `twitch`: a non-secret marker that Continue with Twitch made this pair; renewal keeps it. */
+type Linked = { kind: 'linked'; token: string; refreshToken: string; accountId: string; deviceId: string; expiresAt: string; refreshExpiresAt: string; installation?: true; twitch?: true }
 type PrivateState = Pending | Linked | { kind: 'refreshing'; installation?: true; credentials?: Linked; startedAt?: number; retryAt?: number } | { kind: 'revoking'; token: string } | { kind: 'relink_required' } | null
 /**
  * A finish the user explicitly chose before their membership was verified.
@@ -13,7 +14,7 @@ type PrivateState = Pending | Linked | { kind: 'refreshing'; installation?: true
  * it never equips an unsolicited cosmetic long after the choice was made.
  */
 export type FinishIntent = { finish: Finish; setAt: number; accountId?: string }
-export const FINISH_INTENT_TTL_MS = 7 * 86_400_000
+export { FINISH_INTENT_TTL_MS } from '../shared/supporterAccount.ts'
 export type InstallationBootstrap = { key: string; state: 'pending' | 'claimed'; accountId?: string }
 type Ports = {
   read: () => Promise<unknown>
@@ -45,7 +46,7 @@ const object = (value: unknown): Record<string, unknown> => value && typeof valu
 function linked(value: unknown): Linked | null {
   const r = object(value)
   return secret(r.token) && secret(r.refreshToken) && id(r.accountId) && id(r.deviceId) && date(r.expiresAt) && date(r.refreshExpiresAt)
-    ? { kind: 'linked', token: r.token, refreshToken: r.refreshToken, accountId: r.accountId, deviceId: r.deviceId, expiresAt: r.expiresAt, refreshExpiresAt: r.refreshExpiresAt, ...(r.installation === true ? { installation: true } : {}) } : null
+    ? { kind: 'linked', token: r.token, refreshToken: r.refreshToken, accountId: r.accountId, deviceId: r.deviceId, expiresAt: r.expiresAt, refreshExpiresAt: r.refreshExpiresAt, ...(r.installation === true ? { installation: true } : {}), ...(r.twitch === true ? { twitch: true } : {}) } : null
 }
 
 /** Thrown by a request port that refused before any network I/O. */
@@ -112,7 +113,7 @@ function renewal(body: Record<string, unknown>): Pick<Extract<SupporterEntitleme
 const FINISHES: ReadonlySet<string> = new Set(['glass', 'etched', 'halo'])
 function finishIntent(value: unknown, now: number): FinishIntent | null {
   const r = object(value)
-  if (!FINISHES.has(String(r.finish)) || typeof r.setAt !== 'number' || r.setAt > now || now - r.setAt > FINISH_INTENT_TTL_MS) return null
+  if (!FINISHES.has(String(r.finish)) || typeof r.setAt !== 'number' || !Number.isFinite(r.setAt) || r.setAt > now || now - r.setAt > FINISH_INTENT_TTL_MS) return null
   if (r.accountId !== undefined && !id(r.accountId)) return null
   return { finish: r.finish as Finish, setAt: r.setAt, ...(r.accountId ? { accountId: r.accountId as string } : {}) }
 }
@@ -153,13 +154,17 @@ export class SupporterAccountCoordinator {
   constructor(private ports: Ports) { this.now = ports.now ?? Date.now }
 
   /** First explicit Supporter interaction only; never called from appearance reads. */
-  ensureInstallation(purpose: 'purchase' | 'restore' = 'purchase'): Promise<SupporterAccountState | { state: 'fallback' }> {
+  ensureInstallation(purpose: 'purchase' | 'restore' | 'connect' = 'purchase'): Promise<SupporterAccountState | { state: 'fallback' }> {
     const generation = this.generation
     const task = this.queue.then(async () => {
       const current = await this.perform('status', generation)
+      // A connection click cannot replace an expired/revoked identity. Check
+      // inside the account queue, including cancellation while status waited.
+      if (purpose === 'connect' && (generation !== this.generation || current.state !== 'signed_out')) return generation === this.generation ? current : { state: 'signed_out' } as const
       if (current.state === 'linked' || current.state === 'unavailable' || current.state === 'pending' || current.state === 'error') return current
       if (!this.ports.readInstallationKey || !this.ports.writeInstallationKey) return { state: 'fallback' } as const
       const storedKey = await this.ports.readInstallationKey()
+      if (purpose === 'connect' && generation !== this.generation) return { state: 'signed_out' } as const
       const bootstrap = object(storedKey)
       let key: unknown = secret(bootstrap.key) && (bootstrap.state === 'pending' || bootstrap.state === 'claimed') ? bootstrap.key : secret(storedKey) ? storedKey : null
       // Restore deliberately bootstraps an empty waiting installation. A key
@@ -170,6 +175,7 @@ export class SupporterAccountCoordinator {
         key = Array.from(crypto.getRandomValues(new Uint8Array(32)), byte => byte.toString(16).padStart(2, '0')).join('')
         await this.ports.writeInstallationKey({ key: key as string, state: 'pending' })
       }
+      if (purpose === 'connect' && generation !== this.generation) return { state: 'signed_out' } as const
       const result = await this.ports.request('/v1/account/installations', { installationKey: key, label: 'StreamPulse extension' })
       if (result.status === 404) return { state: 'fallback' } as const
       if (result.status === 409 && object(result.body).error === 'installation_initialized') return { state: 'error' } as const
@@ -258,10 +264,12 @@ export class SupporterAccountCoordinator {
    * Twitch). Serialized with refresh and disconnect, so every existing path
    * then uses it unchanged. A cancel or disconnect since `generation` revokes
    * the new pair instead, and a connection that appeared meanwhile is kept.
+   * `via` records how this extension made the pair (Continue with Twitch).
    */
-  adopt(body: unknown, generation: number): Promise<{ adopted: boolean; account: SupporterAccountState }> {
+  adopt(body: unknown, generation: number, via?: 'twitch'): Promise<{ adopted: boolean; account: SupporterAccountState }> {
     const task = this.queue.then(async (): Promise<{ adopted: boolean; account: SupporterAccountState }> => {
-      const next = object(body).state === 'approved' ? linked(body) : null
+      const issued = object(body).state === 'approved' ? linked(body) : null
+      const next = issued && via === 'twitch' ? { ...issued, twitch: true as const } : issued
       if (!next) return { adopted: false, account: { state: 'error' } }
       const raw = object(await this.ports.read())
       const current = raw.kind === 'linked' ? linked(raw) : null
@@ -406,7 +414,13 @@ export class SupporterAccountCoordinator {
 
   /** The optional finish chosen before purchase, or null. Never a credential. */
   async finishIntent(): Promise<Finish | null> {
-    return finishIntent(await this.ports.readIntent?.().catch(() => null), this.now())?.finish ?? null
+    return (await this.finishIntentDetails())?.finish ?? null
+  }
+
+  /** Original save time for settings; the private account binding stays here. */
+  async finishIntentDetails(): Promise<SupporterFinishIntentDetails | null> {
+    const intent = finishIntent(await this.ports.readIntent?.().catch(() => null), this.now())
+    return intent ? { finish: intent.finish, setAt: intent.setAt } : null
   }
 
   /** Record or clear the explicit pre-purchase finish choice for this installation. */
@@ -614,8 +628,9 @@ export class SupporterAccountCoordinator {
       if (result.status !== 200 || !next || next.accountId !== credentials.accountId || next.deviceId !== credentials.deviceId) return this.clear('relink_required')
       this.renewalPause = null
       if (generation !== this.generation) return this.discardCredential(next)
-      await this.ports.write(installation ? { ...next, installation: true } : next)
-      return this.project(next)
+      const renewed: Linked = { ...next, ...(installation ? { installation: true } : {}), ...(credentials.twitch ? { twitch: true } : {}) }
+      await this.ports.write(renewed)
+      return this.project(renewed)
     }
     // Firefox builds have no device link (deviceLink.ts): no code to poll, and
     // none to start below.
@@ -679,6 +694,6 @@ export class SupporterAccountCoordinator {
     return renewalWaiting()
   }
 
-  private project(value: Linked): SupporterAccountState { return { state: 'linked', accountId: value.accountId, expiresAt: value.expiresAt } }
+  private project(value: Linked): SupporterAccountState { return { state: 'linked', accountId: value.accountId, expiresAt: value.expiresAt, ...(value.twitch ? { twitch: true } : {}) } }
   private projectPending(value: Pending): SupporterAccountState { return { state: 'pending', code: value.code, expiresAt: value.expiresAt, retryAfterSeconds: Math.max(5, Math.ceil((value.nextPoll - this.now()) / 1000)) } }
 }

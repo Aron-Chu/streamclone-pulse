@@ -21,7 +21,7 @@ Nothing here authorizes an upload. The owner uploads and submits.
 | Firefox for Android | Not supported. Leave **Firefox for Android** unchecked on upload; AMO's linter warns that Android needs 142 for the data-collection key, which only matters for an Android listing |
 | Background | `background.scripts` + `type: "module"` (an event page). Chrome and Edge use `background.service_worker` with the same file |
 | Permissions | `storage`, `scripting`; the same host list as Chrome and Edge; no `identity` while Twitch sign-in is off; no optional localhost hosts |
-| Data collection | `data_collection_permissions.required: ["browsingActivity"]`: opening a Twitch channel or VOD sends its identifiers to `api.streampulse.stream` |
+| Data collection | `data_collection_permissions.required: ["browsingActivity", "authenticationInfo", "financialAndPaymentInfo"]`. `browsingActivity`: opening a Twitch channel or VOD sends its identifiers to `api.streampulse.stream`. `authenticationInfo` and `financialAndPaymentInfo`: **Become a Supporter** (from 0.2.6) saves a random key in the browser, registers it with `api.streampulse.stream` and receives a sign-in token, then reads the Supporter membership and payment state (active, renewal date, checkout attempt). Card details are entered on Stripe's page, never in the extension |
 
 `package:firefox` refuses a version whose `src/shared/release-notes.json` entry is
 not `"released"` with a `releasedAt` date, the same as the other store targets.
@@ -36,7 +36,7 @@ Build the upload from the release commit only.
 - Analytics and diagnostics would also need Firefox's own
   `technicalAndInteraction` consent (`src/shared/firefoxDataConsent.ts`). Both
   uploads are compiled off in this release (their toggles are hidden), so the
-  manifest declares only `browsingActivity`. Turning either on later needs
+  manifest does not declare it. Turning either on later needs
   `"optional": ["technicalAndInteraction"]` in the manifest first, or Firefox
   refuses the runtime request.
 - Firefox grants the listed host permissions at install (shown in the install
@@ -47,17 +47,23 @@ Build the upload from the release commit only.
 
 The Chrome privacy answers for 0.2.2 also cover two opt-in paths: the
 invited-tester device link (an opaque device credential) and bookmarks and
-history saved to a linked account. Firefox's manifest declares only
-`browsingActivity`, so Firefox builds leave the device link out (owner
-decision D20). Chrome and Edge keep it.
+history saved to a linked account. Firefox's manifest declares no website
+content or activity collection, so Firefox builds leave the device link out
+(owner decision D20). Chrome and Edge keep it.
+
+**Become a Supporter** is in Firefox builds from 0.2.6. Its connection only
+pays: bookmarks, notes and watched history stay in the browser and are never
+synced (`src/background/myMoments.ts`), so it needs no website content or
+activity category.
 
 - It is compiled out, not hidden. `src/shared/deviceLink.ts` turns it off when
-  the build target is `firefox`, so the Firefox package has no "Connect this
-  extension" button, no link code screen, no `/v1/account/device-links`
+  the build target is `firefox`, so the Firefox package has no "Connect tester
+  account" button, no link code screen, no `/v1/account/device-links`
   requests and no link to the `/account/link-device` page.
 - `scripts/validate-extension-package.mjs` checks the packaged files. A Firefox
   package fails if any bundle contains `/v1/account/device-links`,
-  `/account/link-device` or "Connect this extension". A Chrome, Edge or
+  `/account/link-device`, "Connect tester account" or the older "Connect this
+  extension". A Chrome, Edge or
   development package fails if it lost the link. `npm run package:firefox`
   and CI run this check; `tests/deviceLink.test.ts` and
   `tests/deviceLinkSettings.test.tsx` cover the switch, the worker and the

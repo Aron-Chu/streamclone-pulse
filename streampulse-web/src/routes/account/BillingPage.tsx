@@ -11,7 +11,7 @@ import { AccountSteps, SUPPORTER_JOURNEY_STEPS, accountReference } from './Accou
 import { AccountError, billingRequest } from '../../lib/accountApi'
 import { accountBillingReturnPath, accountBillingSignInHref } from '../../lib/accountBillingReturn'
 import { onAccountSessionSignal } from '../../lib/accountSessionSignal'
-import { SUPPORTER_TERMS_PATH } from '../../lib/externalLinks'
+import { STRIPE_CUSTOMER_PORTAL_LOGIN_URL, SUPPORTER_TERMS_PATH } from '../../lib/externalLinks'
 import './account.css'
 
 export function stripeDestination(value: unknown, kind: 'checkout' | 'portal'): string | null {
@@ -349,9 +349,15 @@ export default function BillingPage() {
     showRefresh = false
   } else if (load === 'signed_out') {
     state = 'signed-out'
-    title = 'Sign in to see your membership'
-    body = <p>{attempt && !cancelled ? 'If you just paid, sign in with the same account you used at checkout to see it confirmed. Don’t start another checkout.' : 'Supporter sign-ups are not open yet. Invited testers can sign in to see their membership. Free tools work without an account.'}</p>
-    primary = <Link className="pulse-account-button pulse-account-primary" to={signInHref}>Tester sign-in</Link>
+    title = 'Manage your Supporter membership'
+    body = <>
+      <p>Supporter sign-ups are not open yet. Free tools work without an account.</p>
+      {attempt && !cancelled ? <p>If you just paid, return to the extension that started checkout, or use Tester sign-in for a website account. Don’t start another checkout.</p> : null}
+      <p>Bought Supporter without Twitch? In the same browser’s extension, open Account &amp; Supporter and choose <strong>Manage subscription</strong>. Website or tester sign-in does not connect an extension-only membership.</p>
+      <p>Reinstalled or using another browser? <a href="mailto:privacy@streampulse.stream">Contact billing support</a> for help with the existing membership. Stripe’s email sign-in manages payments, invoices and cancellation only; it does not restore extension access.</p>
+    </>
+    primary = <a className="pulse-account-button pulse-account-primary" href={STRIPE_CUSTOMER_PORTAL_LOGIN_URL} target="_blank" rel="noopener noreferrer">Manage billing by email</a>
+    secondary = [<Link key="tester-sign-in" className="pulse-account-button" to={signInHref}>Tester sign-in</Link>]
     showRefresh = false
   } else if (load === 'error' || !snapshot) {
     state = 'unavailable'
@@ -438,7 +444,7 @@ export default function BillingPage() {
       </div>
       {facts.length ? <dl className="pulse-membership-facts">{facts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl> : null}
       {terms ? <dl className="pulse-membership-terms"><dt>Price</dt><dd>US$4.99 per month, charged in US dollars</dd><dt>Renews</dt><dd>Monthly, automatically, until you cancel</dd><dt>Includes</dt><dd>{SUPPORTER_PERKS.names.join(', ')}. {supporterChatBadgesEnabled() ? BILLING_SEEN_IN_CHAT_NOTE : 'Only you see them'}</dd><dt>Taxes</dt><dd>Handled as stated at checkout</dd></dl> : null}
-      {reauth ? <div className="pulse-account-note" role="alert"><p>For your security, changing billing needs a sign-in from the last 10 minutes. Nothing was charged.</p><Link className="pulse-account-button pulse-account-primary" to={signInHref}>Sign in again</Link></div> : null}
+      {reauth ? <div className="pulse-account-note" role="alert"><p>Changing billing for this website account needs a sign-in from the last 10 minutes. Nothing was charged.</p><Link className="pulse-account-button pulse-account-primary" to={signInHref}>Sign in again</Link></div> : null}
       {!reauth && (primary || secondary) ? <div className="pulse-account-actions">{primary}{secondary}</div> : null}
       {retrySeconds > 0 && <p role="status">Wait {retrySeconds} seconds before checking again.</p>}
       {status !== 'none' && load === 'ready' && !uncertain ? <p className="pulse-account-meta">Payment details, invoices and cancellation are in the Stripe Customer Portal. Cancellation takes effect at the end of the paid period.</p> : null}

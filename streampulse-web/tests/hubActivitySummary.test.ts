@@ -477,6 +477,43 @@ describe('summarizeActivity', () => {
     expect(summary.pointCount).toBe(1)
     expect(summary.footnote).toContain('1/240 buckets')
   })
+
+  // Live API shape: the 30m window ends at the open current minute, which is not
+  // sent (or sent incomplete), so 29 closed minutes are the whole window.
+  const closedMinutes = (count: number) => {
+    const current = Math.floor(Date.now() / 60_000) * 60_000
+    return Array.from({ length: count }, (_, index) => ({
+      t: current - (count - index) * 60_000,
+      chat: 10,
+      seventv: 1,
+      viewers: 100,
+      hasChatRollup: true,
+      hasViewerRollup: true,
+      bucketComplete: true,
+    }))
+  }
+
+  it('does not count the open current minute of a 30m window as missing', () => {
+    const summary = summarizeActivity(closedMinutes(29), 30, 500)
+    expect(summary.missingBuckets).toBe(0)
+    expect(summary.coveragePct).toBe(100)
+    expect(summary.footnote).toContain('29/29 buckets')
+  })
+
+  it('does not count an incomplete current minute either', () => {
+    const current = Math.floor(Date.now() / 60_000) * 60_000
+    const open = { t: current, chat: 2, seventv: 0, viewers: 100, hasChatRollup: true, hasViewerRollup: true, bucketComplete: false }
+    const summary = summarizeActivity([...closedMinutes(29), open], 30, 500)
+    expect(summary.missingBuckets).toBe(0)
+    expect(summary.footnote).toContain('29/29 buckets')
+  })
+
+  it('still reports a closed minute that is really missing', () => {
+    const points = closedMinutes(29).filter((_, index) => index !== 10)
+    const summary = summarizeActivity(points, 30, 500)
+    expect(summary.missingBuckets).toBe(1)
+    expect(summary.footnote).toContain('28/29 buckets')
+  })
 })
 
 describe('peakActivityEmotesPerMin', () => {

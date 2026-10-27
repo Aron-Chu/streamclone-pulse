@@ -4,7 +4,7 @@ import type { HubActivityPoint } from '../../../lib/publicHub'
 import { activityBucketMs, internalGapCount, maxConnectedGapMs, chartActivityPoints, hubActivityEmoteCount, activityAxisTickIndices, formatActivityAxisTick, resolveChartBucketSelection, hasMeasuredActivitySignal, isMeasuredActivityPoint, resolveHubActivityChartState, assessViewerCoverage, hasViewerSample, isViewerCoverageQualified, isViewerCoveragePartial, hasProviderSample, type HubProviderLaneKey } from '../../../lib/hubActivitySummary'
 import { isActivityGapMarker, isAttestedActivityGap } from '../../../lib/hubActivityHonesty'
 import { hubTimeDomain, hubTimeXPercent } from '../../../lib/hubTimeScale'
-import { useAnalyticsMotion } from '../../motion/useAnalyticsMotion'
+import { useAnalyticsMotionEnabled } from '../../motion/motionEnabled'
 import { CHART_MOTION } from '../../../lib/chartMotion'
 import { compact, getProviderColor } from '../analytics/hubFormat'
 import { EmptyState, Skeleton } from './primitives'
@@ -813,7 +813,7 @@ export function HubActivityChart({
     [points, windowMinutes, livePoolViewerSum],
   )
   const chartPointWindowKey = `${windowMinutes}:${chartPoints.length}:${chartPoints[0]?.t ?? 0}:${chartPoints[chartPoints.length - 1]?.t ?? 0}`
-  const { motionEnabled } = useAnalyticsMotion()
+  const motionEnabled = useAnalyticsMotionEnabled()
   const [reducedMotion, setReducedMotion] = useState(() =>
     typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches,
   )
@@ -2274,7 +2274,7 @@ export function HubActivityChart({
             const sampledBuckets = providerSampleCounts[key]
             const coverageLabel = providerCoverageLabel(
               sampledBuckets,
-              chartPoints.length,
+              expectedBuckets ?? chartPoints.length,
               providerTotalsComplete,
             )
             return (

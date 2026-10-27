@@ -1,19 +1,13 @@
-import { lazy, Suspense, type ReactNode } from 'react'
+import { lazy, Suspense, useState, type ComponentType, type ReactNode } from 'react'
 import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { RequireAuth } from './guards'
 import { AnalyticsRouteFallback } from './AnalyticsRouteFallback'
 import Landing from './public/Landing'
-import Docs from './public/Docs'
-import Status from './public/Status'
-import Privacy from './public/Privacy'
-import Terms from './public/Terms'
-import Refunds from './public/Refunds'
-import Supporter from './public/Supporter'
-import SupporterThanks from './public/SupporterThanks'
-import Support from './public/Support'
-import Feedback from './public/Feedback'
-import Discord from './public/Discord'
-import Changelog from './public/Changelog'
+// The public pages' styles stay in the first stylesheet, in the order the
+// pages brought them when they were imported here: a prerendered page paints
+// styled before its chunk loads, and the cascade is unchanged.
+import './account/account.css'
+import './public/support.css'
 import NotFound from './public/NotFound'
 import { PageErrorBoundary } from '../ui/PortalErrorBoundary'
 import { PublicLayout } from '../ui/components/PublicLayout'
@@ -39,6 +33,55 @@ const ChannelAnalyticsPage = lazy(() => import('./analytics/ChannelAnalyticsPage
 const AnalyticsShell = lazy(() =>
   import('../ui/components/analytics/AnalyticsFigmaShell').then((module) => ({ default: module.AnalyticsFigmaShell })),
 )
+
+/**
+ * A public page loads on demand, so the hub, Moments and stream pages do not
+ * download the help and legal pages. Once its chunk is in it renders at once:
+ * main.tsx loads the opening page before the first render, so a prerendered
+ * page never flashes the loading shell.
+ */
+function onDemandPage(load: () => Promise<{ default: ComponentType }>) {
+  let loaded: ComponentType | null = null
+  const preload = () => load().then((module) => { loaded = module.default })
+  const LazyPage = lazy(() => load().then((module) => { loaded = module.default; return module }))
+  function Page() {
+    const [Ready] = useState(() => loaded)
+    return Ready ? <Ready /> : <LazyPage />
+  }
+  return Object.assign(Page, { preload })
+}
+
+const Docs = onDemandPage(() => import('./public/Docs'))
+const Status = onDemandPage(() => import('./public/Status'))
+const Privacy = onDemandPage(() => import('./public/Privacy'))
+const Terms = onDemandPage(() => import('./public/Terms'))
+const Refunds = onDemandPage(() => import('./public/Refunds'))
+const Supporter = onDemandPage(() => import('./public/Supporter'))
+const SupporterThanks = onDemandPage(() => import('./public/SupporterThanks'))
+const Support = onDemandPage(() => import('./public/Support'))
+const Feedback = onDemandPage(() => import('./public/Feedback'))
+const Discord = onDemandPage(() => import('./public/Discord'))
+const Changelog = onDemandPage(() => import('./public/Changelog'))
+
+const OPENING_PAGES: Record<string, { preload: () => Promise<void> }> = {
+  '/docs': Docs,
+  '/status': Status,
+  '/privacy': Privacy,
+  '/terms': Terms,
+  '/refunds': Refunds,
+  '/supporter': Supporter,
+  '/supporter/thanks': SupporterThanks,
+  '/support': Support,
+  '/feedback': Feedback,
+  '/discord': Discord,
+  '/changelog': Changelog,
+}
+
+/** Load the public page a visit opens on, before the first render. Other paths resolve at once. */
+export function preloadOpeningPage(pathname: string): Promise<void> {
+  const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname
+  return OPENING_PAGES[path]?.preload() ?? Promise.resolve()
+}
 
 /**
  * Backcompat alias: /analytics/:login/s/:streamId → /analytics/:login/:streamId.

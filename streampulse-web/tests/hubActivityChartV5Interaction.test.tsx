@@ -128,6 +128,30 @@ describe('bar click and the shared hub bucket selection', () => {
     expect(5 >= panStart! && 5 <= panEnd!).toBe(true)
   })
 
+  it('steps to the next and previous bar with the arrow keys while a bar is selected (R5-8)', () => {
+    const { click, key } = renderDay()
+    click(100)
+    key('ArrowRight')
+    expect(getHubBucketSelectionSnapshot().selection).toMatchObject({ t: START + 101 * BUCKET, endT: START + 102 * BUCKET, barMinutes: 6, source: 'keyboard' })
+    key('ArrowLeft')
+    key('ArrowLeft')
+    expect(getHubBucketSelectionSnapshot().selection!.t).toBe(START + 99 * BUCKET)
+  })
+
+  it('the bridge steps bars at the chart level, stops at the ends, and zooms to a bar', () => {
+    const { click, navigatorWindow } = renderDay()
+    click(100)
+    const bridge = getHubChartBridge()!
+    expect(bridge.stepBar!(START + 100 * BUCKET, 1)).toEqual({ t: START + 101 * BUCKET, endT: START + 102 * BUCKET, barMinutes: 6 })
+    expect(bridge.stepBar!(START + 100 * BUCKET, -1)).toEqual({ t: START + 99 * BUCKET, endT: START + 100 * BUCKET, barMinutes: 6 })
+    expect(bridge.stepBar!(START + 239 * BUCKET, 1)).toBeNull()
+    expect(bridge.stepBar!(START, -1)).toBeNull()
+    act(() => bridge.zoomToMs!(START + 100 * BUCKET, START + 101 * BUCKET))
+    const [zoomStart, zoomEnd] = navigatorWindow()!.split(':').map(Number)
+    expect(zoomStart).toBe(100)
+    expect(zoomEnd).toBe(101)
+  })
+
   it('drops the selection when the window changes', () => {
     const { click, rerender } = renderDay()
     click(30)
