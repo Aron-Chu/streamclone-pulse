@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type PointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
+import { sanitizeEmoteImageUrl } from '../../../../lib/emoteAssetUrl'
 import type { HubLivePulseMoment } from '../../../../lib/publicHub'
 import { HubToggletip } from '../d3/HubToggletip'
 import '../d3/hub-d3-tokens.css'
@@ -55,6 +56,7 @@ function MomentCard({ row, avatar }: { row: HubMomentRowV5; avatar: string | nul
   const m = row.moment
   const unit = `${metric(row)}/min`
   const cmp = row.cmp
+  const emoteSrc = sanitizeEmoteImageUrl(row.topEmote?.imageUrl)
   return (
     <>
       <div className="hv5-mc-h">
@@ -74,7 +76,7 @@ function MomentCard({ row, avatar }: { row: HubMomentRowV5; avatar: string | nul
       )}
       {row.topEmoteName ? (
         <div className="hv5-mc-e">
-          Top emote {row.topEmote?.imageUrl ? <img src={row.topEmote.imageUrl} alt="" width={20} height={20} decoding="async" /> : null}
+          Top emote {emoteSrc ? <img src={emoteSrc} alt="" width={20} height={20} decoding="async" /> : null}
           <b>{row.topEmoteName}</b>
         </div>
       ) : null}
