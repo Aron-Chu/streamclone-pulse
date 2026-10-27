@@ -68,7 +68,7 @@ function GameCard({ g, rank, of, pressed, art, avatars }: { g: HubGameShare; ran
   )
 }
 
-export function HubV5Rack({ games, game, onGame, art, avatars, loading }: {
+export function HubV5Rack({ games, game, onGame, art, avatars, loading, unavailable }: {
   games: HubWhereChatIs
   game: string | null
   onGame: (game: string | null) => void
@@ -76,6 +76,8 @@ export function HubV5Rack({ games, game, onGame, art, avatars, loading }: {
   art: ReadonlyMap<string, string>
   avatars: ReadonlyMap<string, string>
   loading?: boolean
+  /** The hub request failed: the empty line says so (INT-02). */
+  unavailable?: boolean
 }) {
   const list = games.all.slice(0, HUB_RACK_ROWS)
   const max = list[0]?.chatShare || 1
@@ -170,7 +172,7 @@ export function HubV5Rack({ games, game, onGame, art, avatars, loading }: {
       ) : loading ? (
         <div className="hv5-gr-skel" aria-hidden="true" />
       ) : (
-        <p className="hv5-none">No channel has a full 5-minute window right now.</p>
+        <p className="hv5-none">{unavailable ? 'Unavailable right now.' : 'No channel has a full 5-minute window right now.'}</p>
       )}
       {current && on && typeof document !== 'undefined'
         ? createPortal(

@@ -99,7 +99,12 @@ export default function AnalyticsHubV5Page() {
     : '24h'
   const nowMs = useFreshnessClock()
   const hub = usePublicHubData({ enabled: true, activityWindow })
-  const data = hub.data ?? EMPTY_PUBLIC_HUB
+  // With no measured reply (still loading, an outage, or the stats-only fallback) the activity card names the range picked, not the empty payload's 30 min.
+  const data = useMemo(() => {
+    const base = hub.data ?? EMPTY_PUBLIC_HUB
+    if (hub.data && hub.loadSource !== 'stats-fallback') return base
+    return { ...base, activity: { ...base.activity, windowMinutes: ACTIVITY_WINDOW_MINUTES[activityWindow] ?? base.activity.windowMinutes } }
+  }, [hub.data, hub.loadSource, activityWindow])
   // The requested range drives the range tab; the served range owns the bucket geometry.
   const servedActivityWindowMinutes = resolveHubActivityChartWindowMinutes(data.activity)
 
@@ -233,7 +238,7 @@ export default function AnalyticsHubV5Page() {
 
           <HubV5LivePeek feed={feed} nowMs={nowMs} />
 
-          <HubV5Busiest live={data.liveChannels} nowMs={nowMs} loading={loadingInitial} />
+          <HubV5Busiest live={data.liveChannels} nowMs={nowMs} loading={loadingInitial} unavailable={measurementsUnavailable} />
 
           <div id="activity" className="hv5-sec hv5-activity">
             {hub.error && measurementAvailable && ACTIVITY_WINDOW_MINUTES[activityWindow] !== (data.activity.requestedWindowMinutes ?? data.activity.windowMinutes) ? (
@@ -282,17 +287,19 @@ export default function AnalyticsHubV5Page() {
             points={data.activity.points}
             bucketMinutes={data.activity.bucketMinutes ?? chartActivity.bucketMinutes}
             loading={loadingInitial}
+            unavailable={measurementsUnavailable}
             moments={data.livePulseMoments}
             avatars={avatars}
             nowMs={nowMs}
           />
 
-          <HubV5Rack games={games} game={game} onGame={setGame} art={gameArt} avatars={avatars} loading={loadingInitial} />
+          <HubV5Rack games={games} game={game} onGame={setGame} art={gameArt} avatars={avatars} loading={loadingInitial} unavailable={measurementsUnavailable} />
 
           <HubV5Channels
             ref={channelsRef}
             live={data.liveChannels}
             poolSize={data.poolSize}
+            unavailable={measurementsUnavailable}
             game={game}
             onClearGame={() => setGameState(null)}
             sortRequest={sortRequest}
