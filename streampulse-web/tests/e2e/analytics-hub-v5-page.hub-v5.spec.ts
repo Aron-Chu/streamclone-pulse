@@ -51,31 +51,41 @@ async function noSideScroll(page: Page) {
 
 const box = async (page: Page, selector: string) => (await page.locator(selector).boundingBox())!
 
+// After a resize the strip and the chart re-measure on the next frame and move every row
+// below them, so each layout check retries until the boxes it reads agree.
+const SETTLED = { timeout: 10_000 }
+
 test('sections stack in the mockup order on a phone and sit in their columns on desktop', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.setViewportSize({ width: 390, height: 844 })
   await openV5Hub(page)
   await expect(page.getByRole('heading', { level: 1, name: 'Find your streamer' })).toBeVisible()
   const order = ['.hv5-mast', '#busiest', '#activity', '#latest', '#emotes', '#games', '#channels', '#measured']
-  const tops: number[] = []
-  for (const selector of order) tops.push((await box(page, selector)).y)
-  expect(tops).toEqual([...tops].sort((a, b) => a - b))
+  await expect(async () => {
+    const tops: number[] = []
+    for (const selector of order) tops.push((await box(page, selector)).y)
+    expect(tops).toEqual([...tops].sort((a, b) => a - b))
+  }).toPass(SETTLED)
   await noSideScroll(page)
 
   await page.setViewportSize({ width: 1440, height: 900 })
-  const [latest, emotes, games] = [await box(page, '#latest'), await box(page, '#emotes'), await box(page, '#games')]
-  expect(Math.abs(latest.y - emotes.y)).toBeLessThanOrEqual(1)
-  expect(Math.abs(emotes.y - games.y)).toBeLessThanOrEqual(1)
-  expect(latest.x + latest.width).toBeLessThanOrEqual(emotes.x + 1)
-  expect(emotes.x + emotes.width).toBeLessThanOrEqual(games.x + 1)
+  await expect(async () => {
+    const [latest, emotes, games] = [await box(page, '#latest'), await box(page, '#emotes'), await box(page, '#games')]
+    expect(Math.abs(latest.y - emotes.y)).toBeLessThanOrEqual(1)
+    expect(Math.abs(emotes.y - games.y)).toBeLessThanOrEqual(1)
+    expect(latest.x + latest.width).toBeLessThanOrEqual(emotes.x + 1)
+    expect(emotes.x + emotes.width).toBeLessThanOrEqual(games.x + 1)
+  }).toPass(SETTLED)
   await noSideScroll(page)
 
   await page.setViewportSize({ width: 1920, height: 1000 })
-  const [activity, rail] = [await box(page, '#activity'), await box(page, '#latest')]
-  expect(rail.x).toBeGreaterThanOrEqual(activity.x + activity.width - 1)
-  const [emotesWide, gamesWide] = [await box(page, '#emotes'), await box(page, '#games')]
-  expect(Math.abs(emotesWide.y - gamesWide.y)).toBeLessThanOrEqual(1)
-  expect(emotesWide.y).toBeGreaterThanOrEqual(activity.y + activity.height - 1)
+  await expect(async () => {
+    const [activity, rail] = [await box(page, '#activity'), await box(page, '#latest')]
+    expect(rail.x).toBeGreaterThanOrEqual(activity.x + activity.width - 1)
+    const [emotesWide, gamesWide] = [await box(page, '#emotes'), await box(page, '#games')]
+    expect(Math.abs(emotesWide.y - gamesWide.y)).toBeLessThanOrEqual(1)
+    expect(emotesWide.y).toBeGreaterThanOrEqual(activity.y + activity.height - 1)
+  }).toPass(SETTLED)
   await noSideScroll(page)
 })
 
