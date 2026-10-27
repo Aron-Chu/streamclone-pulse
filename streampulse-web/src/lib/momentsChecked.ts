@@ -227,12 +227,27 @@ const LEVEL_ORDER: Record<CheckLineLevel, number> = { bad: 0, warn: 1, ok: 2, no
 export const sortedChecks = (checks: CheckLine[]) => checks.slice().sort((a, b) => LEVEL_ORDER[a.lv] - LEVEL_ORDER[b.lv])
 
 export type MomentsView = 'checked' | 'all' | 'saved'
-export type MomentsSort = 'new' | 'jump' | 'busy'
+export type MomentsSort = 'new' | 'top' | 'jump' | 'busy'
 export const SORTS: Record<MomentsSort, (a: CheckedMoment, b: CheckedMoment) => number> = {
   new: (a, b) => b.at - a.at || b.item.score - a.item.score,
+  top: (a, b) => b.item.score - a.item.score || b.at - a.at,
   jump: (a, b) => (b.x ?? -1) - (a.x ?? -1) || b.at - a.at,
   busy: (a, b) => (b.item.chat.perMin ?? -1) - (a.item.chat.perMin ?? -1) || b.at - a.at,
 }
+
+/** A stream's moments this close together are one burst: Top shows it once. */
+export const TOP_BURST_MS = 5 * 60_000
+/** Top (T1, 10-22): strongest first by the feed's score, one row per burst (the burst's strongest minute). */
+export function topBursts(list: CheckedMoment[]): CheckedMoment[] {
+  const kept: CheckedMoment[] = []
+  for (const m of list.slice().sort(SORTS.top)) {
+    if (!kept.some(k => k.sid === m.sid && Math.abs(k.at - m.at) < TOP_BURST_MS)) kept.push(m)
+  }
+  return kept
+}
+
+/** What a row's × counts (X1, 10-22): all of chat, or all its emotes, against the stream's last 15 minutes. */
+export const xNoun = (kind: MomentMetricKind) => (kind === 'chat' ? 'Chat' : 'Emotes')
 
 /** One row per stream, in list order; the stream's moments under its newest. */
 export function groupsOf(list: CheckedMoment[]): CheckedMoment[][] {
@@ -247,7 +262,7 @@ export function groupsOf(list: CheckedMoment[]): CheckedMoment[][] {
 
 /** The aria label a row and the live region read. */
 export function ariaOf(m: CheckedMoment, now: number, more = 0): string {
-  const x = m.rowX != null ? `${fx(m.rowX).replace('×', ' times')} the 15 minutes before` : m.why
+  const x = m.rowX != null ? `${xNoun(m.kind).toLowerCase()} ${fx(m.rowX).replace('×', ' times')} usual` : m.why
   const cat = m.item.category?.name, act = actOf(m.item)
   return `${m.name} ${act.type === 'spammed' ? 'chat ' : ''}${act.text}, ${when(m.at, now)}${x ? `, ${x}` : ''}${cat ? `, ${cat}` : ''}${m.item.viewers != null ? `, ${int(m.item.viewers)} viewers` : ''}. ${VERDICT_WORD[m.item.verdict]}.${more ? ` ${more} ${more === 1 ? 'earlier moment.' : 'earlier moments.'}` : ''}`
 }
