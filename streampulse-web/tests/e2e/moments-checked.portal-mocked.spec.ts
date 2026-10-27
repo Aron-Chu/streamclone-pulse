@@ -32,13 +32,21 @@ const verdicts = { ok: 0, warn: 0, bad: 0 } as Record<string, number>
 for (const x of fixture.items) verdicts[x.verdict]++
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64')
 
-async function mockFeed(page: Page, feed: 'ok' | 'off' = 'ok', failPage?: number) {
+/**
+ * 'outage': every read of the first page fails (a 503; the client's one retry gets it too) until the test calls up().
+ * Every host but this preview is answered here or aborted: nothing leaves the machine.
+ */
+async function mockFeed(page: Page, feed: 'ok' | 'off' | 'outage' = 'ok', failPage?: number) {
   const reads: string[] = []
   const feedReads: string[] = []
+  let down = feed === 'outage'
+  await page.route(url => !/^(127\.0\.0\.1|localhost)$/.test(url.hostname), route => route.abort())
   await page.route('**/v1/**', route => route.fulfill({ status: 503, json: { error: 'unmocked_endpoint' } }))
   await installHubUxMock(page)
   await page.route(/\/v1\/public\/discovery\/ranked\/availability(?:\?.*)?$/, route => route.fulfill({ status: 404, contentType: 'text/plain', body: '404 page not found\n' }))
   await page.route('https://static-cdn.jtvnw.net/**', route => route.fulfill({ contentType: 'image/png', body: PNG }))
+  // the fixture's emotes (7TV, BTTV, FFZ and the API's own emote copies) get the same square
+  await page.route(/^https:\/\/(cdn\.7tv\.app|cdn\.betterttv\.net|cdn\.frankerfacez\.com|api\.streampulse\.stream\/emotes)\//, route => route.fulfill({ contentType: 'image/png', body: PNG }))
   // the opened moment's two reads: its stream record (a VOD with verified timing) and its minutes (the feed's sparklines)
   await page.route(/\/v1\/portal\/analytics\/streams\/([^/?]+)(\/minutes)?(\?.*)?$/, route => {
     const url = new URL(route.request().url())
@@ -71,6 +79,7 @@ async function mockFeed(page: Page, feed: 'ok' | 'off' = 'ok', failPage?: number
     }
     const cursor = params.get('cursor')
     feedReads.push(cursor ?? 'first')
+    if (down && !cursor) return route.fulfill({ status: 503, json: { error: 'unavailable' } })
     const from = cursor ? Number(cursor.slice(1)) : 0
     if (failPage != null && from === failPage * PAGE) return route.fulfill({ status: 503, headers: { 'retry-after': '5' }, json: { error: 'unavailable' } })
     const items = newest.slice(from, from + PAGE), next = from + PAGE < newest.length ? `c${from + PAGE}` : null
@@ -78,7 +87,7 @@ async function mockFeed(page: Page, feed: 'ok' | 'off' = 'ok', failPage?: number
   })
   // the fixture's capture time, so "N min ago" reads as it did
   await page.clock.setFixedTime(fixture.generatedAt + 90_000)
-  return Object.assign(reads, { feed: feedReads })
+  return Object.assign(reads, { feed: feedReads, up: () => { down = false } })
 }
 const headerBottom = (page: Page) => page.evaluate(() => document.querySelector('.analytics-topnav')!.getBoundingClientRect().bottom)
 
@@ -100,7 +109,7 @@ const seg = (page: Page, name: string) => page.getByRole('group', { name: 'Which
 test('wide: the latest moments, the first one open beside the list', async ({ page }, testInfo) => {
   const errors = attachConsoleErrorGuard(page)
   const reads = await mockFeed(page)
-  await page.goto('/analytics/moments')
+  await page.goto('/analytics/moments', { waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('heading', { level: 1, name: 'Moments' })).toBeVisible()
   await expect(rows(page).first()).toBeVisible()
   const shift = await cls(page)
@@ -134,8 +143,9 @@ test('wide: the latest moments, the first one open beside the list', async ({ pa
   // the opened moment reads its stream record and its minutes; no row reads anything
   await expect.poll(() => reads.length).toBe(2)
 
-  // hold a minute: the card under the chart, then Esc lets go
+  // hold a minute: the card under the chart, then Esc lets go. At 1440 x 900 the chart starts below the fold
   const svg = detail.locator('.mk-ch svg')
+  await svg.scrollIntoViewIfNeeded()
   const box = (await svg.boundingBox())!
   await page.mouse.click(box.x + box.width * 0.3, box.y + box.height * 0.7)
   const card = page.locator('.mk-mc')
@@ -164,7 +174,7 @@ test('phone: a moment opens under its row and a second tap closes it', async ({ 
   await page.setViewportSize({ width: 390, height: 844 })
   const errors = attachConsoleErrorGuard(page)
   await mockFeed(page)
-  await page.goto('/analytics/moments')
+  await page.goto('/analytics/moments', { waitUntil: 'domcontentloaded' })
   await expect(rows(page).first()).toBeVisible()
   const shift = await cls(page)
   testInfo.annotations.push({ type: 'CLS 390', description: shift.toFixed(4) })
@@ -185,7 +195,7 @@ test('phone: a deep-linked row lands below the portal’s header, and so does Es
   // the newest moment of the sixth stream that holds up: a scroll away
   const order = [...new Set(newest.filter(x => x.verdict !== 'bad').map(x => x.streamId))]
   const target = newest.find(x => x.verdict !== 'bad' && x.streamId === order[5])!
-  await page.goto(`/analytics/moments?m=${target.id}`)
+  await page.goto(`/analytics/moments?m=${target.id}`, { waitUntil: 'domcontentloaded' })
   await expect(page.locator('.mk-slot .mk-d')).toHaveAttribute('data-key', target.id)
   const row = page.locator(`.mk-list .mk-r[data-key="${target.id}"]`)
   const header = await headerBottom(page)
@@ -200,7 +210,7 @@ test('phone: a deep-linked row lands below the portal’s header, and so does Es
 test('a later page that fails keeps what has loaded', async ({ page }) => {
   const errors = attachConsoleErrorGuard(page)
   const reads = await mockFeed(page, 'ok', 1)
-  await page.goto('/analytics/moments')
+  await page.goto('/analytics/moments', { waitUntil: 'domcontentloaded' })
   await expect(rows(page).first()).toBeVisible()
   await expect.poll(() => reads.feed.filter(c => c === 'c20').length).toBeGreaterThan(0)
   const loaded = new Set(newest.slice(0, PAGE).filter(x => x.verdict !== 'bad').map(x => x.streamId)).size
@@ -213,7 +223,7 @@ test('a later page that fails keeps what has loaded', async ({ page }) => {
 
 test('a deep link to a moment that is gone says so, with the stream’s page, and opens nothing else', async ({ page }) => {
   const reads = await mockFeed(page)
-  await page.goto('/analytics/moments?m=pulse-somestreamer-123456-930')
+  await page.goto('/analytics/moments?m=pulse-somestreamer-123456-930', { waitUntil: 'domcontentloaded' })
   const line = page.getByRole('status').filter({ hasText: 'That moment is no longer here.' })
   await expect(line).toBeVisible()
   await expect(line.getByRole('link', { name: 'Open it on the stream’s page' })).toHaveAttribute('href', '/analytics/somestreamer/123456?returnTo=%2Fanalytics%2Fmoments#t=930')
@@ -225,7 +235,7 @@ test('a deep link to a moment that is gone says so, with the stream’s page, an
 test('a deep link to a moment that didn’t hold up opens it in Latest', async ({ page }) => {
   await mockFeed(page)
   const bad = fixture.items.find(x => x.verdict === 'bad')!
-  await page.goto(`/analytics/moments?m=${bad.id}`)
+  await page.goto(`/analytics/moments?m=${bad.id}`, { waitUntil: 'domcontentloaded' })
   await expect(page.locator('.mk-det .mk-d')).toHaveAttribute('data-key', bad.id)
   await expect(seg(page, 'Latest')).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator(`.mk-list .mk-r[data-key="${bad.id}"]`)).toHaveAttribute('aria-current', 'true')
@@ -233,9 +243,9 @@ test('a deep link to a moment that didn’t hold up opens it in Latest', async (
 
 test('Saved keeps a moment across a reload', async ({ page }) => {
   await mockFeed(page)
-  await page.goto('/analytics/moments')
+  await page.goto('/analytics/moments', { waitUntil: 'domcontentloaded' })
   await page.locator('.mk-det').getByRole('button', { name: 'Save' }).click()
-  await page.reload()
+  await page.reload({ waitUntil: 'domcontentloaded' })
   await seg(page, 'Saved').click()
   await expect(streamRows(page)).toHaveCount(1)
 })
@@ -243,9 +253,28 @@ test('Saved keeps a moment across a reload', async ({ page }) => {
 test('with the feed off (404) the page is the current one', async ({ page }) => {
   const errors = attachConsoleErrorGuard(page)
   await mockFeed(page, 'off')
-  await page.goto('/analytics/moments')
+  await page.goto('/analytics/moments', { waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('tab', { name: 'Latest', exact: true })).toBeVisible()
   await expect(page.locator('.mk')).toHaveCount(0)
   // the 404 itself is the only console error the browser logs
   expect(errors.filter(e => !/status of 404/.test(e))).toEqual([])
+})
+
+test('an outage says Moments couldn’t load, keeps the deep link, and Try again opens it', async ({ page }) => {
+  const errors = attachConsoleErrorGuard(page)
+  const reads = await mockFeed(page, 'outage')
+  // a moment down the first page, not the one that opens by itself
+  const target = newest.slice(0, PAGE).filter(x => x.verdict === 'ok').at(-1)!
+  expect(target.id).not.toBe(newest.find(x => x.verdict !== 'bad')!.id)
+  await page.goto(`/analytics/moments?m=${target.id}`, { waitUntil: 'domcontentloaded' })
+  await expect(page.getByRole('alert')).toHaveText('Moments couldn’t load.')
+  // not the current page: an outage isn't the feed being off
+  await expect(page.getByRole('tab', { name: 'Latest', exact: true })).toHaveCount(0)
+  expect(new URL(page.url()).searchParams.get('m')).toBe(target.id)
+  expect(reads.feed.filter(c => c !== 'first')).toEqual([])
+  reads.up()
+  await page.getByRole('button', { name: 'Try again' }).click()
+  await expect(page.locator('.mk-det .mk-d')).toHaveAttribute('data-key', target.id)
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  expect(errors.filter(e => !/status of 503/.test(e))).toEqual([])
 })
