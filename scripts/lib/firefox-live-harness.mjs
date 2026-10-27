@@ -62,7 +62,7 @@ export async function verifyFirefoxArtifact(artifactPath) {
     && sameSet(manifest.host_permissions, ['https://api.streampulse.stream/*', 'https://*.twitch.tv/*']), 'Unexpected Firefox declared permissions or hosts')
   ensure(manifest.content_scripts?.length === 1 && sameSet(manifest.content_scripts[0].matches, ['https://*.twitch.tv/*'])
     && sameSet(manifest.content_scripts[0].js, ['content/twitch.js']), 'Unexpected Firefox content-script target')
-  ensure(sameSet(manifest.browser_specific_settings.gecko.data_collection_permissions?.required, ['browsingActivity']), 'Missing Firefox data-collection declaration')
+  ensure(sameSet(manifest.browser_specific_settings.gecko.data_collection_permissions?.required, ['browsingActivity', 'authenticationInfo', 'financialAndPaymentInfo']), 'Missing Firefox data-collection declaration')
   const entries = artifact.zipEntries
   ensure(Array.isArray(entries) && new Set(entries).size === entries.length && entries.every(entry => typeof entry === 'string'
     && !entry.includes('\\') && !entry.startsWith('/') && !entry.split('/').some(part => part === '..' || part === '')), 'Unsafe or missing ZIP entry inventory')

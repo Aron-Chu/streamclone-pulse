@@ -2,7 +2,8 @@
  * Packaging check for the invited-tester device link (src/shared/deviceLink.ts).
  *
  * Firefox builds compile the link out (owner decision D20 for 0.2.2), because
- * the Firefox manifest declares only `browsingActivity` data collection.
+ * the Firefox manifest declares no website content or activity collection,
+ * which a linked account's synced bookmarks and history would need.
  * Chrome, Edge and development builds keep it. The check reads the packaged
  * JavaScript, so it proves what ships, not what the source intends.
  */
