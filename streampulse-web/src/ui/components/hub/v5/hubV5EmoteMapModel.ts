@@ -4,7 +4,9 @@
  * emotemap-moments-r4, emotemap-r5, emotemap-r6): a treemap in three framed
  * provider fields, a tile's size the emote's uses and its picture the hero,
  * with a ranked list under it where the last hour against its
- * own pace shows as a change chip. Data: each closed activity interval's top 10 emotes with their counts
+ * own pace shows as a change chip. Since the 10-22 board (Z1, K1) every emote
+ * has a tile, the map zooms, and a tile's fill shows that pace too.
+ * Data: each closed activity interval's top 10 emotes with their counts
  * (activity.points[].topEmotes), added up per emote, so uses outside an emote's
  * top-10 intervals are not in it. Every size, share and pace here is a sum of
  * those sent counts; nothing is estimated.
@@ -235,7 +237,8 @@ export const fieldOf = (prov: string): EmoteField => (prov === 'twitch' ? 'twitc
 /**
  * What a tile can hold (r5 C1, kept in r6): xl and l the picture over the name and the
  * share; row (wide and short) the picture, then the name and, from 150 px wide,
- * the share on one line; m the picture and the name; s the picture; xs nothing.
+ * the share on one line; m the picture and the name; s the picture; xs a picture
+ * from 12 px, else nothing.
  * The tile pads 8 px top and bottom, a name is 18 px and a share 16 px, so each
  * class's lines fit whole.
  */
@@ -249,44 +252,50 @@ export function tileSize(w: number, h: number): TileSize {
   return 'xs'
 }
 
-/** The picture's side for a tile of this class and inner size (0: none). */
+/**
+ * The picture's side for a tile of this class and inner size (0: none). An xl
+ * picture grows with its tile up to 112 px (zoomed in, Z1); an xs tile still
+ * shows its picture from 12 px.
+ */
 export function tilePic(size: TileSize, w: number, h: number): number {
-  if (size === 'xl') return 48
+  if (size === 'xl') return Math.min(112, Math.max(48, Math.round(Math.min(w, h) * 0.42)))
   if (size === 'l') return 36
   if (size === 'row') return Math.min(30, h - 10)
   if (size === 'm') return 28
   if (size === 's') return Math.round(Math.max(12, Math.min(32, w - 6, h - 6)))
-  return 0
+  return Math.min(w, h) >= 12 ? Math.round(Math.min(w, h) - 4) : 0
 }
 
-export interface MapField extends Rect { field: EmoteField; name: string; v: number; share: string }
-export interface MapTile extends Rect {
-  kind: 'emote'
-  field: EmoteField
-  a: HubEmoteAgg
-  v: number
-  rank: number
-  share: string
+export interface TileFace {
   size: TileSize
   /** The picture's side in px (0: none). */
   pic: number
   name: boolean
   val: boolean
 }
-export interface MapMore extends Rect {
-  kind: 'more'
+
+/** What a tile shows at this inner size; the map asks again for its size on screen, so zooming in brings names back. */
+export function tileFace(w: number, h: number): TileFace {
+  const size = tileSize(w, h)
+  return {
+    size,
+    pic: tilePic(size, w, h),
+    name: size === 'xl' || size === 'l' || size === 'row' || size === 'm',
+    val: size === 'xl' || size === 'l' || (size === 'row' && w >= 150),
+  }
+}
+
+export interface MapField extends Rect { field: EmoteField; name: string; v: number; share: string }
+export interface MapTile extends Rect, TileFace {
   field: EmoteField
-  n: number
+  a: HubEmoteAgg
   v: number
+  rank: number
   share: string
-  emotes: HubEmoteAgg[]
-  /** "+12" fits. */
-  label: boolean
 }
 export interface MapLayout {
   fields: MapField[]
   tiles: MapTile[]
-  mores: MapMore[]
   /** Every emote in this view, most used first. */
   ranked: Array<{ a: HubEmoteAgg; v: number }>
   /** Emotes in this view. */
@@ -294,8 +303,6 @@ export interface MapLayout {
   total: number
 }
 
-/** An emote under this share of the map folds into its field's "+N" tile. */
-export const EMOTE_FOLD_SHARE = 0.009
 /** r6 D2 field frames: a field's tiles sit this far inside it, so its frame shows around them. */
 export const EMOTE_FIELD_INSET = 4
 
@@ -315,10 +322,9 @@ export function emoteMapLayout(data: HubEmoteMapData, win: HubEmoteWindow, W: nu
     .filter((x) => x.v > 0)
     .sort((x, y) => y.v - x.v || x.a.id.localeCompare(y.a.id))
   const total = ranked.reduce((s, x) => s + x.v, 0)
-  const empty: MapLayout = { fields: [], tiles: [], mores: [], ranked, count: ranked.length, total }
+  const empty: MapLayout = { fields: [], tiles: [], ranked, count: ranked.length, total }
   if (!ranked.length || W <= 0 || H <= 0 || total <= 0) return empty
   const rank = new Map(ranked.map((x, i) => [x.a.id, i + 1]))
-  type Item = { area: number; x2?: (typeof ranked)[number]; more?: Array<(typeof ranked)[number]> }
   const groups = EMOTE_FIELDS.map((field) => {
     const xs = ranked.filter((x) => fieldOf(x.a.prov) === field)
     return { field, xs, v: xs.reduce((s, x) => s + x.v, 0) }
@@ -326,45 +332,93 @@ export function emoteMapLayout(data: HubEmoteMapData, win: HubEmoteWindow, W: nu
   const scale = (W * H) / total
   const fields: MapField[] = []
   const tiles: MapTile[] = []
-  const mores: MapMore[] = []
   for (const g of squarify(groups.map((it) => ({ it, area: it.v * scale })), { x: 0, y: 0, w: W, h: H })) {
     const { field, xs, v } = g.it.it
     fields.push({ field, name: FIELD_NAMES[field], v, share: emoteSharePct((v / total) * 100), x: g.x, y: g.y, w: g.w, h: g.h })
-    let keep = xs.filter((x) => x.v / total >= EMOTE_FOLD_SHARE)
-    let rest = xs.slice(keep.length)
-    if (rest.length === 1) {
-      keep = keep.concat(rest)
-      rest = []
-    }
-    // the field's frame takes its outer 4 px; its tiles share what is inside
-    const inner = { x: g.x + EMOTE_FIELD_INSET, y: g.y + EMOTE_FIELD_INSET, w: g.w - 2 * EMOTE_FIELD_INSET, h: g.h - 2 * EMOTE_FIELD_INSET }
+    // the field's frame takes its outer 4 px (none on a sliver); its tiles share what is inside
+    const inset = g.w > 12 && g.h > 12 ? EMOTE_FIELD_INSET : 0
+    const inner = { x: g.x + inset, y: g.y + inset, w: g.w - 2 * inset, h: g.h - 2 * inset }
     if (inner.w <= 0 || inner.h <= 0) continue
     const fieldScale = (inner.w * inner.h) / v
-    const items: Item[] = keep.map((x2) => ({ x2, area: x2.v * fieldScale }))
-    if (rest.length) items.push({ more: rest, area: rest.reduce((s, x) => s + x.v, 0) * fieldScale })
-    for (const t of squarify(items, inner)) {
-      // 2 px seams: each tile gives up 1 px on every side
-      const w = t.w - 2
-      const h = t.h - 2
-      if (w < 1 || h < 1) continue
-      const size = tileSize(w, h)
-      if (t.it.more) {
-        const mv = t.it.more.reduce((s, x) => s + x.v, 0)
-        mores.push({ kind: 'more', field, n: t.it.more.length, v: mv, share: emoteSharePct((mv / total) * 100), emotes: t.it.more.map((x) => x.a), label: size !== 'xs', x: t.x, y: t.y, w: t.w, h: t.h })
-        continue
-      }
-      const x2 = t.it.x2!
-      const pic = tilePic(size, w, h)
-      const name = size === 'xl' || size === 'l' || size === 'row' || size === 'm'
-      const val = size === 'xl' || size === 'l' || (size === 'row' && w >= 150)
+    // Z1 (10-22): every emote gets its tile, however small; zooming in makes room for it
+    for (const t of squarify(xs.map((x2) => ({ x2, area: x2.v * fieldScale })), inner)) {
+      const x2 = t.it.x2
       tiles.push({
-        kind: 'emote', field, a: x2.a, v: x2.v, rank: rank.get(x2.a.id) ?? 0, share: emoteSharePct((x2.v / total) * 100),
-        size, pic, name, val,
+        field, a: x2.a, v: x2.v, rank: rank.get(x2.a.id) ?? 0, share: emoteSharePct((x2.v / total) * 100),
+        // 2 px seams: each tile gives up 1 px on every side
+        ...tileFace(t.w - 2, t.h - 2),
         x: t.x, y: t.y, w: t.w, h: t.h,
       })
     }
   }
-  return { fields, tiles, mores, ranked, count: ranked.length, total }
+  return { fields, tiles, ranked, count: ranked.length, total }
+}
+
+/* ---------- Z1 zoom (10-22 board): the wheel, a drag, a pinch and fly-to over the map ---------- */
+
+export const EMOTE_ZOOM_MAX = 8
+/** Scale k, then a shift in px: a point at x in the map shows at x × k + tx. */
+export interface MapView { k: number; tx: number; ty: number }
+export const MAP_VIEW_1X: MapView = { k: 1, tx: 0, ty: 0 }
+
+/** Within 1×–8×, and the map always covers the whole view. */
+export function clampMapView(v: MapView, W: number, H: number): MapView {
+  const k = Math.max(1, Math.min(EMOTE_ZOOM_MAX, v.k))
+  return { k, tx: Math.min(0, Math.max(W - W * k, v.tx)), ty: Math.min(0, Math.max(H - H * k, v.ty)) }
+}
+
+/** Zoom to k about a point of the view, which stays where it is. */
+export function zoomMapAt(v: MapView, px: number, py: number, k: number, W: number, H: number): MapView {
+  const k2 = Math.max(1, Math.min(EMOTE_ZOOM_MAX, k))
+  return clampMapView({ k: k2, tx: px - (px - v.tx) * (k2 / v.k), ty: py - (py - v.ty) * (k2 / v.k) }, W, H)
+}
+
+/** Into a field: fitted to the view and at least 2.5×; a field that overflows it starts at its top-left. */
+export function fieldMapView(f: Rect, W: number, H: number): MapView {
+  const k = Math.min(EMOTE_ZOOM_MAX, Math.max(2.5, Math.min(W / f.w, H / f.h) * 0.98))
+  const tx = f.w * k <= W ? -f.x * k + (W - f.w * k) / 2 : -f.x * k
+  const ty = f.h * k <= H ? -f.y * k + (H - f.h * k) / 2 : -f.y * k
+  return clampMapView({ k, tx, ty }, W, H)
+}
+
+/** The same view moved just enough to show the whole rect (centred on it when it is out of sight). */
+export function mapViewShowing(v: MapView, r: Rect, W: number, H: number): MapView {
+  const s = mapRectOnScreen(r, v, W, H)
+  if (s.cl + s.cr + s.ct + s.cb === 0) return v
+  return clampMapView({ k: v.k, tx: W / 2 - (r.x + r.w / 2) * v.k, ty: H / 2 - (r.y + r.h / 2) * v.k }, W, H)
+}
+
+/** A map rect on screen, with how much of it each edge of the view cuts off. */
+export function mapRectOnScreen(r: Rect, v: MapView, W: number, H: number): Rect & { cl: number; ct: number; cr: number; cb: number } {
+  const x = r.x * v.k + v.tx
+  const y = r.y * v.k + v.ty
+  const w = r.w * v.k
+  const h = r.h * v.k
+  return { x, y, w, h, cl: Math.max(0, -x), ct: Math.max(0, -y), cr: Math.max(0, x + w - W), cb: Math.max(0, y + h - H) }
+}
+
+/* ---------- K1 pace heat (10-22 board): a tile's fill is its last hour against its own pace ---------- */
+
+/** Under this many uses in the window, a pace is noise and the tile stays neutral. */
+export const PACE_HEAT_MIN_USES = 30
+
+export interface PaceHeat {
+  dir: 'up' | 'dn'
+  /** Percent of the rising or cooling colour in the tile's fill, 18–58. */
+  mix: number
+}
+
+/**
+ * |log2 pace| past a dead zone of 0.26 (within about ±20% stays neutral), full
+ * at 1.46 (2.75 times or a third). No top 10 this hour stays neutral like its
+ * "–" chip; a new emote is taking off.
+ */
+export function paceHeat(a: Pick<HubEmoteAgg, 'c24' | 'c1h' | 'pace'>): PaceHeat | null {
+  if (a.c24 < PACE_HEAT_MIN_USES || !a.c1h || !(a.pace > 0)) return null
+  const l = Math.log2(a.pace)
+  const over = Math.abs(l) - 0.26
+  if (over < 0) return null
+  return { dir: l > 0 ? 'up' : 'dn', mix: Math.round(18 + Math.min(1, over / 1.2) * 40) }
 }
 
 /** "120 emotes · sized by uses · last 24 h". */
@@ -376,10 +430,10 @@ export function emoteMapTip(data: HubEmoteMapData): string {
   return `The hub sends each ${data.bucketMinutes}-minute interval’s top 10 emotes with their counts (${data.intervals} intervals here). The map adds them up: ${formatHubInt(data.emotes.length)} different emotes made a top 10 in the last ${data.windowLabel}. `
     + 'Uses outside an emote’s top-10 intervals are not sent, so smaller emotes count low'
     + (data.cover != null ? `; the lists hold about ${Math.round(data.cover)}% of all emote uses` : '') + '. '
-    + 'The three colours are the providers (BTTV and FFZ share one). Size is uses; the share is of everything on the map. Emotes under 0.9% fold into their field’s “+N” tile. '
     + (data.paceOk
-      ? `In the list, ↗ and ↘ compare the last hour (the last ${data.lastHourIntervals} intervals) with the emote’s own ${data.windowLabel} pace, counted the same way. `
-      : '')
+      ? `A tile’s colour is its last hour (the last ${data.lastHourIntervals} intervals) against its own ${data.windowLabel} pace, counted the same way: orange is taking off, blue is cooling, plain is about its pace or under ${PACE_HEAT_MIN_USES} uses. In the list, ↗ and ↘ give the same. The frames are the providers (BTTV and FFZ share one). `
+      : 'The three colours are the providers (BTTV and FFZ share one). ')
+    + 'Size is uses; the share is of everything on the map. Every emote is on it: scroll or pinch over the map to zoom in, drag to move, double-click to zoom in or out. '
     + 'Click an emote to see where chat spammed it.'
 }
 

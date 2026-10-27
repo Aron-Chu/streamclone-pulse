@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import type { HubActivityPoint, HubBucketEmote } from '../src/lib/publicHub'
 import {
   EMOTE_FIELD_INSET,
-  EMOTE_FOLD_SHARE,
+  EMOTE_ZOOM_MAX,
+  MAP_VIEW_1X,
+  clampMapView,
   conveyorEmotes,
   conveyorRng,
   emoteChange,
@@ -14,11 +16,17 @@ import {
   emoteMomentRows,
   emotePaceText,
   emoteSharePct,
+  fieldMapView,
   fieldOf,
+  mapRectOnScreen,
+  mapViewShowing,
   nearestTile,
+  paceHeat,
   squarify,
+  tileFace,
   tilePic,
   tileSize,
+  zoomMapAt,
 } from '../src/ui/components/hub/v5/hubV5EmoteMapModel'
 
 const T0 = Date.UTC(2026, 9, 19, 12, 0)
@@ -135,17 +143,16 @@ describe('emoteMapLayout', () => {
   const H = emoteMapHeight(W, false, false)
   const lay = emoteMapLayout(d, 'all', W, H)
 
-  it('keeps every emote, as a tile or in its field\'s "+N" tile', () => {
+  it('gives every emote its own tile, in its provider\'s field', () => {
     expect(lay.count).toBe(80)
-    expect(lay.mores.length).toBeGreaterThan(0)
-    expect(lay.tiles.length + lay.mores.reduce((s, m) => s + m.n, 0)).toBe(80)
+    expect(lay.tiles).toHaveLength(80)
     expect(lay.fields.map((f) => f.field).sort()).toEqual(['seventv', 'twitch'])
-    for (const m of lay.mores) for (const a of m.emotes) expect(fieldOf(a.prov)).toBe(m.field)
+    for (const t of lay.tiles) expect(fieldOf(t.a.prov)).toBe(t.field)
   })
 
   it('sets each field\'s tiles inside its frame, still sized by uses', () => {
     const e = 1e-6
-    for (const t of [...lay.tiles, ...lay.mores]) {
+    for (const t of lay.tiles) {
       const f = lay.fields.find((x) => x.field === t.field)!
       expect(t.x).toBeGreaterThanOrEqual(f.x + EMOTE_FIELD_INSET - e)
       expect(t.y).toBeGreaterThanOrEqual(f.y + EMOTE_FIELD_INSET - e)
@@ -158,11 +165,6 @@ describe('emoteMapLayout', () => {
       const per = own.map((t) => (t.w * t.h) / t.v)
       for (const p of per) expect(p).toBeCloseTo(per[0], 6)
     }
-  })
-
-  it('folds emotes under 0.9% of the map', () => {
-    for (const t of lay.tiles) expect(t.v / lay.total).toBeGreaterThanOrEqual(EMOTE_FOLD_SHARE)
-    for (const m of lay.mores) expect(m.n).toBeGreaterThan(1)
   })
 
   it('stays inside the map and follows the size classes', () => {
@@ -181,7 +183,7 @@ describe('emoteMapLayout', () => {
       if (t.size === 'row') expect(h).toBeGreaterThanOrEqual(Math.max(16 + 18, t.pic + 6))
       if (t.size === 's' || t.size === 'xs') expect(t.name).toBe(false)
       if (t.size === 'xl') expect(t.name && t.val).toBe(true)
-      expect(t.pic === 0).toBe(t.size === 'xs')
+      if (t.size !== 'xs') expect(t.pic).toBeGreaterThan(0)
     }
     expect(lay.tiles.find((t) => t.rank === 1)!.size).toBe('xl')
     expect(lay.ranked.map((x) => x.v)).toEqual(lay.ranked.map((x) => x.v).slice().sort((a, b) => b - a))
@@ -226,7 +228,9 @@ describe('tileSize', () => {
   })
 
   it('gives the picture its class size, a short row or a small tile what fits', () => {
-    expect(tilePic('xl', 200, 200)).toBe(48)
+    expect(tilePic('xl', 118, 104)).toBe(48)
+    expect(tilePic('xl', 200, 200)).toBe(84)
+    expect(tilePic('xl', 400, 300)).toBe(112)
     expect(tilePic('l', 90, 95)).toBe(36)
     expect(tilePic('row', 140, 36)).toBe(26)
     expect(tilePic('row', 140, 60)).toBe(30)
@@ -235,6 +239,84 @@ describe('tileSize', () => {
     expect(tilePic('s', 60, 60)).toBe(32)
     expect(tilePic('s', 21, 18)).toBe(12)
     expect(tilePic('xs', 10, 10)).toBe(0)
+    expect(tilePic('xs', 20, 40)).toBe(16)
+  })
+
+  it('brings the name and share back as a tile grows on screen', () => {
+    expect(tileFace(20, 40)).toEqual({ size: 'xs', pic: 16, name: false, val: false })
+    expect(tileFace(60, 40)).toMatchObject({ size: 's', name: false, val: false })
+    expect(tileFace(64, 68)).toMatchObject({ size: 'm', name: true, val: false })
+    expect(tileFace(130, 40)).toMatchObject({ size: 'row', name: true, val: false })
+    expect(tileFace(160, 40)).toMatchObject({ size: 'row', name: true, val: true })
+    expect(tileFace(300, 300)).toEqual({ size: 'xl', pic: 112, name: true, val: true })
+  })
+})
+
+describe('the map zoom', () => {
+  const W = 800
+  const H = 400
+
+  it('stays within 1×–8×, the map always over the whole view', () => {
+    expect(clampMapView({ k: 0.5, tx: 30, ty: 30 }, W, H)).toEqual(MAP_VIEW_1X)
+    expect(clampMapView({ k: 12, tx: -9000, ty: 50 }, W, H)).toEqual({ k: EMOTE_ZOOM_MAX, tx: W - W * 8, ty: 0 })
+  })
+
+  it('zooms about the pointer, which keeps its spot on the map', () => {
+    const v = zoomMapAt(MAP_VIEW_1X, 200, 100, 2, W, H)
+    expect(v).toEqual({ k: 2, tx: -200, ty: -100 })
+    const v2 = zoomMapAt(v, 600, 300, 4, W, H)
+    expect((600 - v2.tx) / v2.k).toBeCloseTo((600 - v.tx) / v.k)
+    expect((300 - v2.ty) / v2.k).toBeCloseTo((300 - v.ty) / v.k)
+    expect(zoomMapAt(v, 0, 0, 0.2, W, H)).toEqual(MAP_VIEW_1X)
+  })
+
+  it('flies into a field: fitted, at least 2.5×, from its top-left when it overflows', () => {
+    const small = { x: 600, y: 300, w: 100, h: 50 }
+    const v = fieldMapView(small, W, H)
+    expect(v.k).toBeCloseTo(7.84)
+    expect(mapRectOnScreen(small, v, W, H)).toMatchObject({ cl: 0, ct: 0, cr: 0, cb: 0 })
+    expect(mapRectOnScreen(small, v, W, H).x).toBeCloseTo(8)
+    const big = fieldMapView({ x: 0, y: 0, w: 600, h: 400 }, W, H)
+    expect(big.k).toBe(2.5)
+    expect(big.tx).toBeCloseTo(0)
+    expect(big.ty).toBeCloseTo(0)
+  })
+
+  it('moves only as far as it must to show a tile', () => {
+    const v = { k: 2, tx: -200, ty: -100 }
+    expect(mapViewShowing(v, { x: 150, y: 80, w: 20, h: 20 }, W, H)).toBe(v)
+    const off = { x: 700, y: 350, w: 20, h: 20 }
+    const moved = mapViewShowing(v, off, W, H)
+    expect(moved.k).toBe(2)
+    expect(mapRectOnScreen(off, moved, W, H)).toMatchObject({ cl: 0, ct: 0, cr: 0, cb: 0 })
+  })
+
+  it('says how much of a rect each edge of the view cuts off', () => {
+    const v = { k: 2, tx: -50, ty: -20 }
+    expect(mapRectOnScreen({ x: 0, y: 0, w: 100, h: 100 }, v, W, H)).toEqual({ x: -50, y: -20, w: 200, h: 200, cl: 50, ct: 20, cr: 0, cb: 0 })
+    expect(mapRectOnScreen({ x: 350, y: 150, w: 100, h: 100 }, v, W, H)).toMatchObject({ cl: 0, ct: 0, cr: 50, cb: 80 })
+  })
+})
+
+describe('paceHeat', () => {
+  const heat = (pace: number, c24 = 100, c1h = 10) => paceHeat({ c24, c1h, pace })
+
+  it('colours past a dead zone around its own pace, full by 2.75× either way', () => {
+    expect(heat(1)).toBeNull()
+    expect(heat(1.19)).toBeNull()
+    expect(heat(0.84)).toBeNull()
+    expect(heat(1.25)).toEqual({ dir: 'up', mix: 20 })
+    expect(heat(0.5)).toEqual({ dir: 'dn', mix: 43 })
+    expect(heat(2.75)).toEqual({ dir: 'up', mix: 58 })
+    expect(heat(8)).toEqual({ dir: 'up', mix: 58 })
+    expect(heat(1 / 8)).toEqual({ dir: 'dn', mix: 58 })
+  })
+
+  it('leaves a tile plain under 30 uses or with no top 10 this hour', () => {
+    expect(heat(4, 29)).toBeNull()
+    expect(heat(4, 30)).not.toBeNull()
+    expect(heat(4, 100, 0)).toBeNull()
+    expect(heat(0, 100, 5)).toBeNull()
   })
 })
 

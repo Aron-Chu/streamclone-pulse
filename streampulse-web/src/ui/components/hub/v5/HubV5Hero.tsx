@@ -11,8 +11,9 @@
  */
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import streamPicture from '../../../../demo/pictures/laugh.svg?url'
-import panelPicture from '../../../../demo/pictures/panel-top-moments.png'
+import panelChart from '../../../../demo/pictures/panel-chart-2x.webp'
+import panelCard from '../../../../demo/pictures/panel-moment-card-2x.webp'
+import panelMoments from '../../../../demo/pictures/panel-top-moments-2x.webp'
 import type { HubActivityPoint, HubLiveChannel } from '../../../../lib/publicHub'
 import { buildAnalyticsHref } from '../../../../lib/analyticsLinks'
 import { isPlausibleTwitchLogin } from '../../../../lib/normalizeTwitchLogin'
@@ -20,6 +21,7 @@ import { ChromeInstallCta } from '../../ChromeInstallCta'
 import { HubV5Avatar } from './HubV5Avatar'
 import { HubV5Conveyor, type HubV5ConveyorRefs } from './HubV5Conveyor'
 import { HubV5Icon } from './HubV5Icon'
+import { useMedia } from './HubV5LiveFeed'
 import { channelHref, channelsByViewers, formatHubInt, searchChannels, typedLogin } from './hubV5Model'
 
 const IS_MAC = typeof navigator !== 'undefined' && /Mac|iP(hone|ad|od)/.test(navigator.platform || navigator.userAgent)
@@ -33,6 +35,34 @@ interface Option {
 }
 
 const NO_POINTS: readonly HubActivityPoint[] = []
+/** P2 (10-22): 2× captures of the real panel (the sandbox /extension demo): Top moments, the chart, a moment's card. */
+const PANEL_FRAMES = [panelMoments, panelChart, panelCard] as const
+const PANEL_FRAME_MS = 4000
+
+/** The panel's three states crossfading every 4 s; hover holds the one on show; reduced motion keeps the first. */
+function PanelFrames() {
+  const reduce = useMedia('(prefers-reduced-motion: reduce)')
+  const [at, setAt] = useState(0)
+  const [held, setHeld] = useState(false)
+  useEffect(() => {
+    if (reduce || held) return undefined
+    const id = window.setInterval(() => setAt((n) => (n + 1) % PANEL_FRAMES.length), PANEL_FRAME_MS)
+    return () => window.clearInterval(id)
+  }, [reduce, held])
+  const on = reduce ? 0 : at
+  return (
+    <div className="hv5-get-pic" aria-hidden="true" onPointerEnter={() => setHeld(true)} onPointerLeave={() => setHeld(false)}>
+      {PANEL_FRAMES.map((src, i) => (
+        <img key={src} src={src} alt="" width={338} height={188} decoding="async" className={i === on ? 'on' : undefined} />
+      ))}
+      {reduce ? null : (
+        <span className="hv5-get-dots">
+          {PANEL_FRAMES.map((src, i) => <i key={src} className={i === on ? 'on' : undefined} />)}
+        </span>
+      )}
+    </div>
+  )
+}
 
 export function HubV5Hero({ live, poolSize, points = NO_POINTS }: { live: readonly HubLiveChannel[]; poolSize: number; points?: readonly HubActivityPoint[] }) {
   const navigate = useNavigate()
@@ -222,13 +252,10 @@ export function HubV5Hero({ live, poolSize, points = NO_POINTS }: { live: readon
           </div>
         </div>
       </div>
-      {/* What you get, under the search, which stays first: a picture of the panel beside a stream,
-          one line and one big button (Aron's C1 pick, 10-21; the copy is a draft). */}
+      {/* What you get, under the search, which stays first: the real panel, one line and one big
+          button (Aron's C1 pick, 10-21, with the P2 picture, 10-22; the copy is a draft). */}
       <div className="hv5-hero-get" ref={getRef}>
-        <div className="hv5-get-pic" aria-hidden="true">
-          <img className="hv5-get-vid" src={streamPicture} alt="" />
-          <span className="hv5-get-pan"><img src={panelPicture} alt="" /></span>
-        </div>
+        <PanelFrames />
         <div className="hv5-get-tx">
           <p className="hv5-get-h">See chat's big moments on Twitch</p>
           <p className="hv5-get-p">The Pulse panel sits next to Twitch chat and shows the spikes and top moments of the stream you're on.</p>
