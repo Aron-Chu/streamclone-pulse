@@ -114,11 +114,6 @@ export interface HubActivityChartProps {
   providerTotalsComplete?: boolean
   /** Lowercase emote name → image URL, for the readout and the stamp. */
   emoteImages?: Map<string, string>
-  /**
-   * The chart's card (header, readout, plot, navigator, provider lanes): the
-   * wheel zooms anywhere over it. Omitted, the plot stack is the wheel zone.
-   */
-  wheelCardRef?: RefObject<HTMLElement | null>
   /** `activity.bucketMinutes` from the API: the finest bar. */
   bucketMinutes?: number | null
   /** `activity.providerCoverage` from the API: lower-bound flags for the lanes. */
@@ -417,12 +412,11 @@ interface ReadyProps {
   onBucketHover?: (bucketT: number | null) => void
   momentMarkers?: HubActivityMomentMarker[]
   emoteImages?: Map<string, string>
-  wheelCardRef?: RefObject<HTMLElement | null>
   onOpenMeasured?: () => void
   onBarsChange?: (bars: HubActivityBars) => void
 }
 
-function HubActivityReady({ model, windowMinutes, rangeControl, annotationLane, externalBucketT, onBucketHover, momentMarkers, emoteImages, wheelCardRef, onOpenMeasured, onBarsChange }: ReadyProps) {
+function HubActivityReady({ model, windowMinutes, rangeControl, annotationLane, externalBucketT, onBucketHover, momentMarkers, emoteImages, onOpenMeasured, onBarsChange }: ReadyProps) {
   const compact = useHubChartCompact()
   const plotHeight = compact ? PLOT_HEIGHT.compact : PLOT_HEIGHT.wide
   const tickColumn = compact ? TICK_COLUMN.compact : TICK_COLUMN.wide
@@ -663,6 +657,8 @@ function HubActivityReady({ model, windowMinutes, rangeControl, annotationLane, 
   const frame = useCallback(() => chartRef.current?.frame() ?? null, [])
   const wheelAnchor = useCallback(() => plotBoxRef.current, [])
 
+  // The wheel zooms over the graph only (plot, time axis, navigator): over the header,
+  // readout and provider lanes it scrolls the page (Aron 2026-10-15).
   const navigator = (
     <HubActivityNavigator
       model={model}
@@ -670,7 +666,7 @@ function HubActivityReady({ model, windowMinutes, rangeControl, annotationLane, 
       windowMinutes={windowMinutes}
       levelMinutes={levelMinutes}
       minVisibleCount={minVisibleCount}
-      wheelSurfaceRef={wheelCardRef ?? stackRef}
+      wheelSurfaceRef={stackRef}
       wheelAnchor={wheelAnchor}
     />
   )
@@ -750,7 +746,6 @@ export function HubActivityChart({
   onBucketHover,
   momentMarkers,
   emoteImages,
-  wheelCardRef,
   bucketMinutes,
   providerCoverage,
   onOpenMeasured,
@@ -856,7 +851,6 @@ export function HubActivityChart({
       onBucketHover={onBucketHover}
       momentMarkers={momentMarkers}
       emoteImages={emoteImages}
-      wheelCardRef={wheelCardRef}
       onOpenMeasured={onOpenMeasured}
       onBarsChange={onBarsChange}
     />

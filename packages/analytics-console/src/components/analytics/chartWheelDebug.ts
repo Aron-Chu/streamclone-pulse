@@ -46,7 +46,7 @@ function surfaceOf(event: WheelEvent): Row['surface'] {
   const target = event.target instanceof Element ? event.target : null
   if (!target) return 'page'
   if (target.closest('[data-hub-chart-navigator]')) return 'navigator'
-  if (target.closest('[data-hub-chart-wheel-zone], [data-hub-chart-wheel-card]')) return 'hub-chart'
+  if (target.closest('[data-hub-chart-wheel-zone]')) return 'hub-chart'
   if (target.closest('[data-session-chart-stack], [data-session-chart-wheel-card]')) return 'stream-chart'
   return 'page'
 }
