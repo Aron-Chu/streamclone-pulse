@@ -13,6 +13,7 @@
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { Link } from 'react-router-dom'
+import { sanitizeEmoteImageUrl } from '../../../../lib/emoteAssetUrl'
 import type { HubActivityPoint, HubLivePulseMoment } from '../../../../lib/publicHub'
 import { clearHubBucketSelection, getHubChartBridge, hubBucketSelectionStore, selectHubBucket } from '../../../../lib/hubBucketSelection'
 import { HubV5Avatar } from './HubV5Avatar'
@@ -54,11 +55,12 @@ function Fig({ fig }: { fig: HubV5BarFig }) {
   )
 }
 
-/** An emote picture that fails to load becomes the quiet two-letter placeholder. */
+/** An emote picture that fails to load, or whose URL is not an allowlisted https one, becomes the quiet two-letter placeholder. */
 function EmoteImage({ emote }: { emote: HubV5BarEmote }) {
   const [failed, setFailed] = useState(false)
-  if (!emote.imageUrl || failed) return <span className="hbk-noimg" aria-hidden="true">{emote.name.slice(0, 2) || '?'}</span>
-  return <img src={emote.imageUrl} alt="" width={28} height={28} decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} />
+  const src = sanitizeEmoteImageUrl(emote.imageUrl ?? undefined)
+  if (!src || failed) return <span className="hbk-noimg" aria-hidden="true">{emote.name.slice(0, 2) || '?'}</span>
+  return <img src={src} alt="" width={28} height={28} decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} />
 }
 
 function Emotes({ model }: { model: HubV5BarCardModel }) {
@@ -87,6 +89,7 @@ function Emotes({ model }: { model: HubV5BarCardModel }) {
 
 function MomentRow({ item }: { item: HubV5BarMoment }) {
   const te = item.topEmote
+  const teSrc = sanitizeEmoteImageUrl(te?.imageUrl ?? undefined)
   return (
     <li>
       <Link className="hbk-mr" to={item.href} aria-label={item.aria} data-mom-key={item.key}>
@@ -95,7 +98,7 @@ function MomentRow({ item }: { item: HubV5BarMoment }) {
         <span className="ck">{item.clockLabel}</span>
         {te ? (
           <span className="em" title={`${te.name} ×${te.count.toLocaleString('en-US')} in that minute`}>
-            {te.imageUrl ? <img src={te.imageUrl} alt="" width={20} height={20} decoding="async" referrerPolicy="no-referrer" /> : null}
+            {teSrc ? <img src={teSrc} alt="" width={20} height={20} decoding="async" referrerPolicy="no-referrer" /> : null}
             <span className="hv5-vh">{te.name} </span>×{te.count.toLocaleString('en-US')}
           </span>
         ) : null}

@@ -9,6 +9,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Link } from 'react-router-dom'
 import type { HubLiveChannel } from '../../../../lib/publicHub'
+import { twitchProfileImageRendition } from '../../../../lib/twitchProfileImage'
+import { ResilientImage } from '../../ResilientImage'
 import { HubToggletip } from '../d3/HubToggletip'
 import { HubV5Icon } from './HubV5Icon'
 import { busiestAria, busiestCue, busiestTip, hubAvatarTone, hubClock, hubMonogram, rankBusiest } from './hubV5Model'
@@ -18,6 +20,8 @@ const reduced = () => typeof window !== 'undefined' && typeof window.matchMedia 
 
 const H_ID = 'hv5-busy-h'
 const TRACK_ID = 'hv5-busy-track'
+/** A tile's face is 40 % of the tile's height (34–70 px from 390 to 2560 wide), so it asks for Twitch's 150 px rendition; the original is the fallback. */
+const FACE_RENDITION = 150
 
 /** `unavailable`: the hub request failed, so an empty list says so rather than that no channel qualifies (INT-02). */
 export function HubV5Busiest({ live, nowMs, loading = false, unavailable = false }: { live: readonly HubLiveChannel[]; nowMs: number; loading?: boolean; unavailable?: boolean }) {
@@ -179,11 +183,15 @@ export function HubV5Busiest({ live, nowMs, loading = false, unavailable = false
                 <li key={row.login} className="hv5-bzc-it" data-rank={row.rank} data-login={row.login}>
                   <Link className="hv5-bzt-t hv5-bzc-c" to={row.href} aria-label={busiestAria(row, N)} tabIndex={i === rove ? 0 : -1}>
                     <span className="hv5-bzv-face" style={{ background: `radial-gradient(120% 90% at 50% 40%, ${hubAvatarTone(row.login)} 0%, #101012 100%)` }}>
-                      {row.avatar ? (
-                        <img className="hv5-bzv-fa" src={row.avatar} alt="" decoding="async" referrerPolicy="no-referrer" />
-                      ) : (
-                        <span className="hv5-bzv-fa hv5-bzv-fam" aria-hidden="true">{hubMonogram(row.displayName, row.login)}</span>
-                      )}
+                      <ResilientImage
+                        className="hv5-bzv-fa"
+                        src={twitchProfileImageRendition(row.avatar, FACE_RENDITION)}
+                        fallbackSrc={row.avatar}
+                        fallback={<span className="hv5-bzv-fa hv5-bzv-fam" aria-hidden="true">{hubMonogram(row.displayName, row.login)}</span>}
+                        alt=""
+                        decoding="async"
+                        referrerPolicy="no-referrer"
+                      />
                     </span>
                     <span className="hv5-bzt-fig"><b>{row.fig}</b> chat/min</span>
                     <span className="hv5-bzt-cap">
