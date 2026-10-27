@@ -1,10 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { installHubUxMock } from './helpers/hubUxMock'
 
-// The d3-v5 hub (PR 1 of 5). Runs only against a build made with VITE_PUBLIC_HUB_V5=on;
-// a default build serves the Command Center.
-test.skip(!/^(on|1)$/.test(process.env.VITE_PUBLIC_HUB_V5 ?? ''), 'needs a build with VITE_PUBLIC_HUB_V5=on')
-
 // The hub activity card on the shared SpChart core (plan §2.1-§2.3, unit U6):
 // header row (heading, window seg, series chips, bars note, (i)), the Now/hover
 // readout, the plot, the time axis, the d3 navigator and the provider lanes.

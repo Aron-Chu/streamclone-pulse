@@ -242,9 +242,6 @@ function queueIdleCallbacks() {
 
 describe('usePublicHubData', () => {
   beforeEach(() => {
-    // The d3-v5 data layer (idle cache writes, compact snapshot, screener v1, hub-data mark).
-    // The flag-off Command Center path is covered at the end of this file.
-    vi.stubEnv('VITE_PUBLIC_HUB_V5', 'on')
     installIdleCallback((callback) => {
       callback(IDLE_DEADLINE)
       return 0
@@ -261,7 +258,6 @@ describe('usePublicHubData', () => {
   afterEach(() => {
     removeIdleCallback()
     resetHubBucketSelectionForTests()
-    vi.unstubAllEnvs()
   })
 
   it('loads, then exposes normalized data with liveEmpty false when channels exist', async () => {
@@ -1457,44 +1453,5 @@ describe('usePublicHubData', () => {
         resetHubDataMarkForTests()
       }
     })
-  })
-})
-
-describe('usePublicHubData with VITE_PUBLIC_HUB_V5 off (the Command Center path)', () => {
-  beforeEach(() => {
-    vi.stubEnv('VITE_PUBLIC_HUB_V5', '')
-    clearPublicHubCacheForTests()
-    resetHubDataMarkForTests()
-    fetchPublicHub.mockReset()
-    fetchPublicHubBase.mockReset()
-    fetchPublicHubStatsFallback.mockReset()
-    fetchPublicHubStatsFallback.mockRejectedValue(new Error('Public hub unavailable'))
-  })
-
-  afterEach(() => {
-    vi.restoreAllMocks()
-    vi.unstubAllEnvs()
-    resetHubDataMarkForTests()
-  })
-
-  it('writes the snapshot straight away (no idle scheduling) as a plain version-1 entry', async () => {
-    const write = vi.spyOn(publicHubCache, 'writePublicHubCacheForCurrentBackend')
-    const schedule = vi.spyOn(publicHubCache, 'schedulePublicHubCacheWrite')
-    fetchPublicHubBase.mockResolvedValue(hubResult(41))
-    const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
-    await waitFor(() => expect(result.current.data?.poolSize).toBe(41))
-    await waitFor(() => expect(readPublicHubCache(getBackendUrl(), '24h')?.data.poolSize).toBe(41))
-    expect(write).toHaveBeenCalled()
-    expect(schedule).not.toHaveBeenCalled()
-    expect(hasPendingPublicHubCacheWrite()).toBe(false)
-    expect(JSON.parse(localStorage.getItem(publicHubCacheKey(getBackendUrl(), '24h'))!).version).toBe(1)
-  })
-
-  it('sets no sp:hub-data mark', async () => {
-    const mark = vi.spyOn(performance, 'mark')
-    fetchPublicHubBase.mockResolvedValue(hubResult(42))
-    const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
-    await waitFor(() => expect(result.current.data?.poolSize).toBe(42))
-    expect(mark.mock.calls.filter(([name]) => name === HUB_DATA_MARK)).toEqual([])
   })
 })

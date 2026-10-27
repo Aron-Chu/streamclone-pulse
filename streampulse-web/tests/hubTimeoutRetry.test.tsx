@@ -3,7 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getBackendUrl } from '../src/lib/apiClient'
 import type { ActivitySummary } from '../src/lib/hubActivitySummary'
 import { normalizePublicHub } from '../src/lib/publicHub'
-import { clearPublicHubCacheForTests, readPublicHubCacheForCurrentBackend, writePublicHubCache } from '../src/lib/publicHubCache'
+import {
+  clearPublicHubCacheForTests,
+  flushPublicHubCacheWritesForTests,
+  readPublicHubCacheForCurrentBackend,
+  writePublicHubCache,
+} from '../src/lib/publicHubCache'
 import { HubDataHealthBanner } from '../src/ui/components/hub/HubDataHealthBanner'
 
 // OP1-RES-002 / CX-RES-005: a hub read that hits its deadline is named as slow
@@ -159,6 +164,12 @@ describe('cold 24h load on a busy API', () => {
     return hub
   }
 
+  /** The saved 24h snapshot, once the idle-time cache writes have run. */
+  function saved24h() {
+    flushPublicHubCacheWritesForTests()
+    return readPublicHubCacheForCurrentBackend('24h')
+  }
+
   function deferred() {
     let resolve!: (value: HubReply) => void
     let reject!: (reason: unknown) => void
@@ -193,14 +204,14 @@ describe('cold 24h load on a busy API', () => {
     expect(result.current.error).toBeNull()
     expect(result.current.data?.poolSize).toBe(7)
     expect(result.current.data?.activity).toMatchObject({ windowMinutes: 1440, servedWindowMinutes: 30, source: 'live_pool_fallback' })
-    expect(readPublicHubCacheForCurrentBackend('24h')).toBeNull()
+    expect(saved24h()).toBeNull()
 
     await act(async () => { slow.resolve(ok(cachedHub())) })
     expect(result.current.data?.poolSize).toBe(4)
     expect(result.current.data?.activity.source).toBeUndefined()
     expect(result.current.activityRefreshing).toBe(false)
     expect(result.current.pollSequence).toBe(2)
-    expect(readPublicHubCacheForCurrentBackend('24h')?.data.poolSize).toBe(4)
+    expect(saved24h()?.data.poolSize).toBe(4)
   })
 
   it('reads only the 24h window when it answers within the head start', async () => {
@@ -240,7 +251,7 @@ describe('cold 24h load on a busy API', () => {
     const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '24h' }))
     await advance(HUB_RECENT_VIEW_HEAD_START_MS)
     expect(result.current.data?.poolSize).toBe(7)
-    expect(readPublicHubCacheForCurrentBackend('24h')).toBeNull()
+    expect(saved24h()).toBeNull()
 
     await act(async () => { slow.reject(timeout) })
     expect(fetchPublicHubBase).toHaveBeenCalledTimes(2)
@@ -248,7 +259,7 @@ describe('cold 24h load on a busy API', () => {
     expect(result.current.error).toBeNull()
     expect(result.current.activityRefreshing).toBe(false)
     expect(result.current.data?.activity).toMatchObject({ windowMinutes: 1440, servedWindowMinutes: 30, source: 'live_pool_fallback' })
-    expect(readPublicHubCacheForCurrentBackend('24h')?.data.poolSize).toBe(7)
+    expect(saved24h()?.data.poolSize).toBe(7)
   })
 
   it('awaits the 30m view still under way when the 24h read times out', async () => {
@@ -268,7 +279,7 @@ describe('cold 24h load on a busy API', () => {
     expect(result.current.error).toBeNull()
     expect(result.current.data?.activity).toMatchObject({ servedWindowMinutes: 30, source: 'live_pool_fallback' })
     expect(result.current.pollSequence).toBe(1)
-    expect(readPublicHubCacheForCurrentBackend('24h')?.data.poolSize).toBe(7)
+    expect(saved24h()?.data.poolSize).toBe(7)
   })
 
   it('goes to the stats fallback when the 30m view it started failed, reading 30m only once', async () => {
@@ -283,7 +294,7 @@ describe('cold 24h load on a busy API', () => {
     expect(fetchPublicHubBase).toHaveBeenCalledTimes(2)
     expect(fetchPublicHubStatsFallback).toHaveBeenCalledTimes(1)
     expect(result.current.loadSource).toBe('stats-fallback')
-    expect(readPublicHubCacheForCurrentBackend('24h')).toBeNull()
+    expect(saved24h()).toBeNull()
   })
 
   it('stops the 30m view and shows nothing from it when the 24h read is rate limited', async () => {

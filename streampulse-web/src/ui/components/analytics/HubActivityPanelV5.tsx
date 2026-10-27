@@ -1,7 +1,6 @@
 /**
- * The d3-v5 hub activity panel (U6), behind VITE_PUBLIC_HUB_V5. Same props as
- * the default FigmaGlobalActivityPanel, so the page can swap one for the
- * other; the chips under the card are shared with it.
+ * The d3-v5 hub activity panel (U6). Its props and the chips under the card
+ * come from FigmaGlobalActivityPanel.tsx.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";

@@ -1,16 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  buildTopMoversFromLiveChannels,
-  enrichTopMoversWithAvatars,
   fetchPublicHub,
   fetchPublicHubBase,
   fetchPublicHubStatsFallback,
   fetchHistoricalHubMoments,
   hasPublicHubResponseShape,
-  HUB_TOP_MOVERS_CAP,
   normalizePublicHub,
   normalizePublicHubMoments,
-  resolveHubTopMovers,
   sanitizeHubProfileImageUrl,
 } from '../src/lib/publicHub'
 import { coverageMeta, formatStreamUptime } from '../src/ui/components/analytics/hubFormat'
@@ -310,66 +306,6 @@ describe('normalizePublicHub', () => {
       viewerCoverage: 'partial',
     })
     expect(hub.activity.points[1]?.viewerCoverage).toBe('unknown')
-  })
-
-  it('enrichTopMoversWithAvatars joins avatars from live channels', () => {
-    const movers = enrichTopMoversWithAvatars(
-      [{ login: 'xqc', displayName: 'xQc', viewers: 1, seventvPerMin: 1, chatPerMin: 1, trendPct: 0 }],
-      [{
-        login: 'xqc',
-        displayName: 'xQc',
-        viewers: 1,
-        chatPerMin: 1,
-        emotesPerMin: 1,
-        seventvPerMin: 1,
-        coverageState: 'synced',
-        trendPct: 0,
-        profileImageUrl: 'https://cdn.example/xqc.png',
-      }],
-    )
-    expect(movers[0]?.profileImageUrl).toBe('https://cdn.example/xqc.png')
-  })
-
-  it('buildTopMoversFromLiveChannels returns up to the hub cap sorted by emote velocity', () => {
-    const liveChannels = Array.from({ length: 14 }, (_, index) => ({
-      login: `ch${index}`,
-      displayName: `Ch ${index}`,
-      viewers: 1000 - index,
-      chatPerMin: 100 - index,
-      emotesPerMin: 200 - index * 10,
-      seventvPerMin: 50 - index,
-      coverageState: 'synced' as const,
-      trendPct: 0,
-    }))
-    const movers = buildTopMoversFromLiveChannels(liveChannels, HUB_TOP_MOVERS_CAP)
-    expect(movers).toHaveLength(HUB_TOP_MOVERS_CAP)
-    expect(movers[0]?.login).toBe('ch0')
-    expect(movers[11]?.login).toBe('ch11')
-  })
-
-  it('resolveHubTopMovers prefers live-channel rows over legacy 8-row API payloads', () => {
-    const liveChannels = Array.from({ length: 12 }, (_, index) => ({
-      login: `ch${index}`,
-      displayName: `Ch ${index}`,
-      viewers: 1000,
-      chatPerMin: 80,
-      emotesPerMin: 150 - index * 5,
-      seventvPerMin: 40,
-      coverageState: 'synced' as const,
-      trendPct: 0,
-    }))
-    const apiMovers = liveChannels.slice(0, 8).map((channel) => ({
-      login: channel.login,
-      displayName: channel.displayName,
-      viewers: channel.viewers,
-      emotesPerMin: channel.emotesPerMin,
-      seventvPerMin: channel.seventvPerMin,
-      chatPerMin: channel.chatPerMin,
-      trendPct: channel.trendPct,
-    }))
-    const movers = resolveHubTopMovers(apiMovers, liveChannels)
-    expect(movers).toHaveLength(HUB_TOP_MOVERS_CAP)
-    expect(movers[8]?.login).toBe('ch8')
   })
 
   it('promotes critical collector state into coverage', () => {
@@ -719,17 +655,6 @@ describe('screener v1 on hub channel rows (plan §1.5)', () => {
   const channelOf = (extra: Record<string, unknown>) =>
     normalizePublicHub({ liveChannels: [{ ...row, ...extra }] } as unknown as Parameters<typeof normalizePublicHub>[0]).liveChannels[0]
 
-  // screenerV1 is the d3-v5 hub's (VITE_PUBLIC_HUB_V5); the Command Center rows stay as they were.
-  beforeEach(() => vi.stubEnv('VITE_PUBLIC_HUB_V5', 'on'))
-  afterEach(() => vi.unstubAllEnvs())
-
-  it('adds nothing with VITE_PUBLIC_HUB_V5 off', () => {
-    vi.stubEnv('VITE_PUBLIC_HUB_V5', '')
-    const withV1 = channelOf({ screener: v1 })
-    expect('screenerV1' in withV1).toBe(false)
-    expect(withV1).toEqual(channelOf({}))
-  })
-
   it('adds screenerV1 beside the legacy fields and leaves the rest of the row unchanged', () => {
     const plain = channelOf({})
     const withV1 = channelOf({ screener: v1 })
@@ -769,11 +694,9 @@ describe('fetchPublicHubBase adopts the primed request (plan §2.6)', () => {
   })
 
   beforeEach(() => {
-    vi.stubEnv('VITE_PUBLIC_HUB_V5', 'on')
     apiClient.mockReset()
     resetPrimedPublicHubForTests()
   })
-  afterEach(() => vi.unstubAllEnvs())
 
   it('reuses the primed promise for the same path, so the hub is requested once', async () => {
     apiClient.mockResolvedValue({ data: body(), status: 200 })

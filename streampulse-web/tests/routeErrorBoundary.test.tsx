@@ -22,9 +22,9 @@ vi.mock('../src/lib/sentry', async importOriginal => ({
 vi.mock('../src/routes/public/Status', () => ({
   default: () => { throw new TypeError('e?.trim is not a function') },
 }))
-const landingFailure = vi.hoisted(() => ({ message: 'e.login.toLowerCase is not a function' }))
-vi.mock('../src/routes/analytics/AnalyticsLandingPage', () => ({
-  default: () => { throw new TypeError(landingFailure.message) },
+const hubFailure = vi.hoisted(() => ({ message: 'e.login.toLowerCase is not a function' }))
+vi.mock('../src/routes/analytics/AnalyticsHubV5Page', () => ({
+  default: () => { throw new TypeError(hubFailure.message) },
 }))
 vi.mock('../src/routes/analytics/AnalyticsMomentsPage', async () => {
   const { createElement, useState } = await import('react')
@@ -70,7 +70,7 @@ function expectNoSiteLayout(container: HTMLElement) {
 beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {})
   sentry.captureException.mockClear()
-  landingFailure.message = 'e.login.toLowerCase is not a function'
+  hubFailure.message = 'e.login.toLowerCase is not a function'
 })
 afterEach(() => {
   localStorage.clear()
@@ -137,7 +137,7 @@ describe('route-level error boundary', () => {
   })
 
   it('uses the site header when an analytics module fails to load', async () => {
-    landingFailure.message = 'Failed to fetch dynamically imported module: /assets/AnalyticsLandingPage.js'
+    hubFailure.message = 'Failed to fetch dynamically imported module: /assets/AnalyticsHubV5Page.js'
     renderAt('/analytics')
 
     expect(await screen.findByRole('heading', { name: 'This page could not load' })).toBeTruthy()

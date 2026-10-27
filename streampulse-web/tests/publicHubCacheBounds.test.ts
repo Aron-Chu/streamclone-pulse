@@ -1,10 +1,9 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { normalizePublicHub, type PublicHub } from '../src/lib/publicHub'
 import {
   clearPublicHubCacheForTests,
-  LEGACY_PUBLIC_HUB_CACHE_MAX_CHARS,
   PUBLIC_HUB_CACHE_HUB_STALE_MS,
   PUBLIC_HUB_CACHE_MAX_CHARS,
   PUBLIC_HUB_CACHE_STALE_MS,
@@ -37,7 +36,7 @@ describe('bounded public hub persistence', () => {
   })
   it('rejects oversized or future-dated cached input', () => {
     const key = publicHubCacheKey(origin, '30m')
-    localStorage.setItem(key, 'x'.repeat(LEGACY_PUBLIC_HUB_CACHE_MAX_CHARS + 1))
+    localStorage.setItem(key, 'x'.repeat(PUBLIC_HUB_CACHE_MAX_CHARS + 1))
     expect(readPublicHubCache(origin, '30m')).toBeNull()
     writePublicHubCache(origin, '30m', normalizePublicHub({}))
     const entry = JSON.parse(localStorage.getItem(key)!)
@@ -224,46 +223,11 @@ function fullSizeHub(): PublicHub {
   } as never)
 }
 
-describe('VITE_PUBLIC_HUB_V5 off: the Command Center cache is unchanged', () => {
-  beforeEach(() => {
-    vi.stubEnv('VITE_PUBLIC_HUB_V5', '')
-    clearPublicHubCacheForTests()
-    localStorage.clear()
-  })
-  afterEach(() => vi.unstubAllEnvs())
-
-  it('writes plain version-1 snapshots only, keeps per-point top emotes and adds no screenerV1', () => {
-    const hub = fullSizeHub()
-    expect(hub.liveChannels.every(channel => !('screenerV1' in channel))).toBe(true)
-    const size = publicHubCacheEntrySize(hub, '24h', origin)
-    const plainChars = JSON.stringify(hub).length
-    if (plainChars <= LEGACY_PUBLIC_HUB_CACHE_MAX_CHARS - 512) {
-      expect(size?.version).toBe(1)
-      writePublicHubCache(origin, '24h', hub)
-      expect(JSON.parse(localStorage.getItem(publicHubCacheKey(origin, '24h'))!).version).toBe(1)
-      expect(readPublicHubCache(origin, '24h')!.data.activity.points[5].topEmotes).toEqual(hub.activity.points[5].topEmotes)
-    } else {
-      expect(size).toBeNull()
-    }
-  })
-
-  it('never reads a compact (version 2) entry', () => {
-    vi.stubEnv('VITE_PUBLIC_HUB_V5', 'on')
-    writePublicHubCache(origin, '24h', fullSizeHub())
-    expect(JSON.parse(localStorage.getItem(publicHubCacheKey(origin, '24h'))!).version).toBe(2)
-    expect(readPublicHubCache(origin, '24h')).not.toBeNull()
-    vi.stubEnv('VITE_PUBLIC_HUB_V5', '')
-    expect(readPublicHubCache(origin, '24h')).toBeNull()
-  })
-})
-
 describe('compact full-hub snapshot (plan §2.6)', () => {
   beforeEach(() => {
-    vi.stubEnv('VITE_PUBLIC_HUB_V5', 'on')
     clearPublicHubCacheForTests()
     localStorage.clear()
   })
-  afterEach(() => vi.unstubAllEnvs())
 
   it('stores a full-size hub as a compact entry under 150 KB and reads the same rows back', () => {
     const hub = fullSizeHub()
@@ -394,9 +358,7 @@ const capture = (() => {
   }
 })()
 describe.skipIf(!capture)('production hub capture', () => {
-  afterEach(() => vi.unstubAllEnvs())
   beforeEach(() => {
-    vi.stubEnv('VITE_PUBLIC_HUB_V5', 'on')
     clearPublicHubCacheForTests()
     localStorage.clear()
   })

@@ -40,11 +40,6 @@ export function formatMomentOccurrence(dateTime: string, timeZone?: string): str
 
 export type MomentWindowClass = 'live' | 'older' | 'omit'
 
-export interface MomentWindowBuckets<T> {
-  live: T[]
-  older: T[]
-}
-
 export type LiveWireComparisonState =
   | 'ready'
   | 'new_activity'
@@ -103,23 +98,6 @@ export function classifyMomentWindow(
   const ms = resolveMomentAtMs(at)
   if (ms === null || ms > now) return 'omit'
   return now - ms <= windowMs ? 'live' : 'older'
-}
-
-/** Keep the live annotation lane honest while allowing archive consumers to
- * retain older valid detections separately. Invalid and future rows vanish. */
-export function partitionMomentWindow<T extends { at?: number }>(
-  items: T[],
-  now: number,
-  windowMs: number,
-): MomentWindowBuckets<T> {
-  const live: T[] = []
-  const older: T[] = []
-  for (const item of items) {
-    const classification = classifyMomentWindow(item.at, now, windowMs)
-    if (classification === 'live') live.push(item)
-    else if (classification === 'older') older.push(item)
-  }
-  return { live, older }
 }
 
 function objectRecord(value: unknown): Record<string, unknown> | null {

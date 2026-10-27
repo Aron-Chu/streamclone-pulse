@@ -125,13 +125,6 @@ export function hasBucketMomentsCache(
   return readEntry(bucketT, activityWindow) != null
 }
 
-export function readBucketMomentsCache(
-  bucketT: number,
-  activityWindow: PublicHubActivityWindow,
-): FigmaMomentRow[] | undefined {
-  return readEntry(bucketT, activityWindow)?.moments
-}
-
 export function writeBucketMomentsCache(
   bucketT: number,
   activityWindow: PublicHubActivityWindow,

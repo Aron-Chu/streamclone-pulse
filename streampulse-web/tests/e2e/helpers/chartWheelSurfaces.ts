@@ -29,12 +29,6 @@ export interface ChartSurface {
   plotSteps: () => Promise<number>
 }
 
-/**
- * True when the specs run against a build made with VITE_PUBLIC_HUB_V5=on (the
- * d3-v5 hub). A default build serves the Command Center hub.
- */
-export const HUB_V5_BUILD = /^(on|1)$/.test(process.env.VITE_PUBLIC_HUB_V5 ?? '')
-
 export const HUB_BUCKETS = 240
 export const STREAM_MINUTES = 748
 export const SCROLL_ZOOM_STORAGE_KEY = 'sp.chart.scrollZoom.v1'
@@ -54,7 +48,7 @@ export async function hubSurface(page: Page): Promise<ChartSurface> {
     name: 'hub',
     navigator,
     plot,
-    // Both hubs keep the graph as the wheel zone, not the card (owner, 2026-10-15):
+    // The hub keeps the graph as the wheel zone, not the card (owner, 2026-10-15):
     // the header, range tabs and the lanes below give the page the wheel.
     card: plot,
     full: HUB_BUCKETS,

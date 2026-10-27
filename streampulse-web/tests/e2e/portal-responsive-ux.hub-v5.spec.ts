@@ -4,10 +4,6 @@ import { expect, test, type Locator, type Page } from '@playwright/test'
 import { installHubUxMock, type HubUxMockOptions } from './helpers/hubUxMock'
 import { scrollSceneToProgress } from './helpers/scrollTour'
 
-// The d3-v5 hub page (behind the build flag). Runs only against a build made with VITE_PUBLIC_HUB_V5=on;
-// a default build serves the Command Center, which the spec without .hub-v5 covers.
-test.skip(!/^(on|1)$/.test(process.env.VITE_PUBLIC_HUB_V5 ?? ''), 'needs a build with VITE_PUBLIC_HUB_V5=on')
-
 const proofDirectory = process.env.PORTAL_UX_PROOF_DIR
 
 async function saveProof(target: Locator, name: string) {

@@ -1,7 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import {
   CHART_SURFACES,
-  HUB_V5_BUILD,
   resetZoom,
   scrollYOf,
   scrollZoomToggleOf,
@@ -28,10 +27,9 @@ import {
 // wheel. The stream chart follows it.
 //
 // Owner rule (2026-10-15): on the hub "scroll should only work on the graph not
-// like headers or the heatmap below". Both hubs (the Command Center of the
-// default build and the d3-v5 hub of a VITE_PUBLIC_HUB_V5=on build) zoom over
-// the graph only: their header rows, range tabs and the d3-v5 provider lanes
-// below the navigator give the page the wheel.
+// like headers or the heatmap below". The hub zooms over the graph only: its
+// header row, range tabs and the provider lanes below the navigator give the
+// page the wheel.
 
 interface Zone {
   top: number
@@ -48,7 +46,7 @@ interface Zone {
  * bar at the bottom. It does not read the implementation's wheel surface.
  */
 async function zoneOf(page: Page, surface: ChartSurface): Promise<Zone> {
-  return page.evaluate(({ name, hubV5 }): Zone => {
+  return page.evaluate(({ name }): Zone => {
     const box = (selector: string) => {
       const element = document.querySelector(selector)
       const rect = element?.getBoundingClientRect()
@@ -81,23 +79,21 @@ async function zoneOf(page: Page, surface: ChartSurface): Promise<Zone> {
       }
     }
     const plot = must('[data-hub-chart-wheel-surface]')
-    // The d3-v5 hub's graph starts at the plot: its series chips sit in the header row.
-    const labels = hubV5 ? null : box('.hx-chart-axis-labels') ?? must('.hx-chart-series-labels')
+    // The hub's graph starts at the plot: its series chips sit in the header row.
     const axis = must('.hx-axis')
     const bar = must('.figma-global-activity__hub-chart .hx-chart-navigator__bar')
     return {
-      top: labels?.top ?? plot.top,
+      top: plot.top,
       bottom: bar.bottom,
       left: plot.left,
       right: plot.right,
       rows: {
-        ...(labels ? { 'label band (series labels)': middle(labels) } : {}),
         'plot centre': middle(plot),
         'time-axis row': middle(axis),
         'navigator bar': middle(bar),
       },
     }
-  }, { name: surface.name, hubV5: HUB_V5_BUILD })
+  }, { name: surface.name })
 }
 
 /** Scrolls the page so the whole zone sits in the middle of the viewport; returns scrollY. */
@@ -183,8 +179,8 @@ for (const [name, open] of Object.entries(CHART_SURFACES)) {
       await resetZoom(surface)
       const zone = await zoneOf(page, surface)
       const rows = Object.entries(zone.rows).filter(([key]) => /^(label band|time-axis row|navigator bar)/.test(key))
-      // The d3-v5 hub has no label band in its graph.
-      expect(rows).toHaveLength(name === 'hub' && HUB_V5_BUILD ? 2 : 3)
+      // The hub has no label band in its graph.
+      expect(rows).toHaveLength(name === 'hub' ? 2 : 3)
       for (const [label, pageY] of rows) {
         // Let the scroll-through guard forget the previous page scroll.
         await page.waitForTimeout(450)
@@ -202,7 +198,7 @@ for (const [name, open] of Object.entries(CHART_SURFACES)) {
       await resetZoom(surface)
       const zone = await zoneOf(page, surface)
       const spots = Object.entries(zone.rows).filter(([key]) => key.startsWith('label band') || key.startsWith('time-axis'))
-      expect(spots).toHaveLength(name === 'hub' && HUB_V5_BUILD ? 1 : 2)
+      expect(spots).toHaveLength(name === 'hub' ? 1 : 2)
 
       await setScrollZoom(surface, false)
       for (const [label, pageY] of spots) {
@@ -292,10 +288,10 @@ for (const [name, open] of Object.entries(CHART_SURFACES)) {
       test('outside the graph the page keeps the wheel: the header rows above it and the lanes below', async ({ page }) => {
         const surface = await open(page)
         await resetZoom(surface)
-        // The hub's hover readout and summary line; on the d3-v5 hub also its window seg and
-        // series chips in the header row, and the provider lanes below the navigator.
+        // The hub's hover readout and summary line, its window seg and series chips
+        // in the header row, and the provider lanes below the navigator.
         const selectors = ['.hx-chart-header__readout', '.hx-chart-summary',
-          ...(HUB_V5_BUILD ? ['[data-hub-window-seg] button', '[data-hub-series-chip]', '[data-hub-provider-lanes]'] : [])]
+          '[data-hub-window-seg] button', '[data-hub-series-chip]', '[data-hub-provider-lanes]']
           .map(selector => `.figma-global-activity__hub-chart ${selector}`)
         const zone = await zoneOf(page, surface)
         for (const selector of selectors) {

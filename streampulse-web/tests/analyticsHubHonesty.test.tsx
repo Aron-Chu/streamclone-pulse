@@ -1,16 +1,14 @@
 /**
  * Ported unique asserts from excluded full-landing tests
  * (analyticsLandingPage / analyticsHubEmpty) that hung under Vitest.
- * Exercises current hub components — not a full AnalyticsLandingPage mount.
+ * Exercises current hub components — not a full hub page mount.
  */
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_PRODUCTION_BACKEND_URL } from '../src/lib/auth'
 import type { ActivitySummary } from '../src/lib/hubActivitySummary'
-import { hubCorpusPipelineFixture } from '../src/lib/publicHub'
 import { AnalyticsHubSidebar } from '../src/ui/components/analytics/AnalyticsHubSidebar'
-import { FigmaCorpusPipelineBlock } from '../src/ui/components/analytics/FigmaEmoteSignalBlock'
 import { FigmaLiveChannelRail } from '../src/ui/components/analytics/FigmaLiveChannelRail'
 import { HubDataHealthBanner } from '../src/ui/components/hub/HubDataHealthBanner'
 import { COMMAND_CENTER_LABELS } from '../src/ui/themes/commandCenterLabels'
@@ -55,23 +53,6 @@ describe('hub empty / honesty (ported from excluded landing tests)', () => {
     expect(
       screen.queryByText(/add channels to your watchlist to see live analytics/i),
     ).toBeNull()
-  })
-
-  it('renders Live collector readiness heading', () => {
-    render(
-      <FigmaCorpusPipelineBlock
-        pipeline={hubCorpusPipelineFixture({
-          generatedAt: new Date().toISOString(),
-          state: 'healthy',
-          topN: 500,
-          collectorActive: 0,
-          collectorMax: 100,
-        })}
-      />,
-    )
-    expect(
-      screen.getByRole('heading', { name: /Live collector readiness/i }),
-    ).toBeTruthy()
   })
 
   it('shows stats-fallback health banner without exposing hosted API hostname', () => {

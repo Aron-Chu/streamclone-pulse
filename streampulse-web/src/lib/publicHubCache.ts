@@ -19,20 +19,6 @@ export const PUBLIC_HUB_CACHE_HUB_STALE_MS = 6 * 60 * 60 * 1000
  * about 1.2 MB, so larger bodies are stored as the compact projection below.
  */
 export const PUBLIC_HUB_CACHE_MAX_CHARS = 150_000
-/**
- * The Command Center's bound (VITE_PUBLIC_HUB_V5 off): plain version-1
- * snapshots only, as before the d3-v5 hub.
- */
-export const LEGACY_PUBLIC_HUB_CACHE_MAX_CHARS = 750_000
-
-/**
- * The full-hub bound for this build: the compact v5 bound, or the legacy one
- * with the flag off. VITE_PUBLIC_HUB_V5 is read inline in this module so a
- * production build folds it and a flag-off build drops the compact code.
- */
-export function publicHubCacheMaxChars(): number {
-  return (import.meta.env.VITE_PUBLIC_HUB_V5 === 'on' || import.meta.env.VITE_PUBLIC_HUB_V5 === '1') ? PUBLIC_HUB_CACHE_MAX_CHARS : LEGACY_PUBLIC_HUB_CACHE_MAX_CHARS
-}
 const PUBLIC_HUB_PROJECTION_CACHE_MAX_CHARS = 100_000
 export const PUBLIC_HUB_CACHE_MAX_ENTRIES = 2
 /** requestIdleCallback timeout for the persisted snapshot (plan §2.6). */
@@ -289,15 +275,7 @@ function estimatePlainChars(data: PublicHub): number {
     data.livePulseMoments.length * 2_000
 }
 
-/** Flag off: the plain snapshot under the legacy bound, never the compact projection. */
-function preparePlainFullWrite(data: PublicHub): PreparedCacheWrite | null {
-  const plain = JSON.stringify(data)
-  return plain.length <= LEGACY_PUBLIC_HUB_CACHE_MAX_CHARS - 512
-    ? { version: 1, tail: `"data":${plain}}`, generatedAt: data.generatedAt }
-    : null
-}
-
-/** d3-v5 hub: plain when it fits the 150 KB bound, else the compact projection. */
+/** Plain when it fits the 150 KB bound, else the compact projection. */
 function prepareCompactFullWrite(data: PublicHub): PreparedCacheWrite | null {
   if (estimatePlainChars(data) <= PUBLIC_HUB_CACHE_MAX_CHARS * 1.25) {
     const plain = JSON.stringify(data)
@@ -327,9 +305,7 @@ function prepareCompactFullWrite(data: PublicHub): PreparedCacheWrite | null {
 
 function prepareFullWrite(data: PublicHub): PreparedCacheWrite | null {
   if (preparedFull.has(data)) return preparedFull.get(data) ?? null
-  const prepared = import.meta.env.VITE_PUBLIC_HUB_V5 === 'on' || import.meta.env.VITE_PUBLIC_HUB_V5 === '1'
-    ? prepareCompactFullWrite(data)
-    : preparePlainFullWrite(data)
+  const prepared = prepareCompactFullWrite(data)
   preparedFull.set(data, prepared)
   return prepared
 }
@@ -378,11 +354,11 @@ export function readPublicHubCache(
   if (typeof window === 'undefined') return null
   try {
     const raw = window.localStorage.getItem(publicHubCacheKey(backendUrl, activityWindow, projection))
-    if (!raw || raw.length > (projection ? PUBLIC_HUB_PROJECTION_CACHE_MAX_CHARS : publicHubCacheMaxChars())) return null
+    if (!raw || raw.length > (projection ? PUBLIC_HUB_PROJECTION_CACHE_MAX_CHARS : PUBLIC_HUB_CACHE_MAX_CHARS)) return null
     const parsed: unknown = JSON.parse(raw)
     if (!isRecord(parsed)) return null
-    // Version 2 (the compact projection) is the d3-v5 hub's; the flag-off build reads version 1 only.
-    if (parsed.version !== 1 && !(parsed.version === 2 && !projection && (import.meta.env.VITE_PUBLIC_HUB_V5 === 'on' || import.meta.env.VITE_PUBLIC_HUB_V5 === '1'))) return null
+    // Version 2 (the compact projection) is a full-hub entry only.
+    if (parsed.version !== 1 && !(parsed.version === 2 && !projection)) return null
     if (parsed.backendUrl !== normalizeBackendUrl(backendUrl)) return null
     if (parsed.activityWindow !== activityWindow) return null
     if (parsed.projection !== projection) return null
@@ -391,7 +367,7 @@ export function readPublicHubCache(
     if (!hasUsableHubShape(parsed.data)) return null
 
     let input = parsed.data as Partial<PublicHub>
-    if ((import.meta.env.VITE_PUBLIC_HUB_V5 === 'on' || import.meta.env.VITE_PUBLIC_HUB_V5 === '1') && parsed.version === 2) {
+    if (parsed.version === 2) {
       if (!isRecord(parsed.columns)) return null
       const points = decodeColumns(parsed.columns.points)
       const channels = decodeColumns(parsed.columns.liveChannels)
@@ -498,7 +474,7 @@ export function writePublicHubCache(
       projection,
       prepared.generatedAt,
     ) + prepared.tail
-    if (serialized.length > (projection ? PUBLIC_HUB_PROJECTION_CACHE_MAX_CHARS : publicHubCacheMaxChars())) return
+    if (serialized.length > (projection ? PUBLIC_HUB_PROJECTION_CACHE_MAX_CHARS : PUBLIC_HUB_CACHE_MAX_CHARS)) return
     const otherEntries: { key: string; cachedAt: number }[] = []
     for (let i = 0; i < window.localStorage.length; i++) {
       const otherKey = window.localStorage.key(i)
@@ -626,12 +602,4 @@ export function readPublicHubCacheForCurrentBackend(
   projection?: PublicHubProjection,
 ): ReturnType<typeof readPublicHubCache> {
   return readPublicHubCache(getBackendUrl(), activityWindow, projection)
-}
-
-export function writePublicHubCacheForCurrentBackend(
-  activityWindow: PublicHubActivityWindow,
-  data: PublicHub,
-  projection?: PublicHubProjection,
-): void {
-  writePublicHubCache(getBackendUrl(), activityWindow, data, projection)
 }

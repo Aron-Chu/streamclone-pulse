@@ -1,6 +1,6 @@
 /**
- * /analytics as the d3-v5 hub. Routed only when the build sets
- * VITE_PUBLIC_HUB_V5. Ported from the approved mockup (d3-v5 hub.html): the
+ * /analytics as the d3-v5 hub. Ported from the approved mockup (d3-v5
+ * hub.html): the
  * search hero with the emote conveyor behind it (R5-15 at Soft), Busiest now,
  * the activity chart, the live feed (v3, a "Live now" peek under the hero on
  * phones), Top emotes as the emote map (R5-13), Where chat is as the ranked

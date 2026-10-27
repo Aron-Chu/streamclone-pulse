@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   readPublicHubCacheForCurrentBackend,
   schedulePublicHubCacheWrite,
-  writePublicHubCacheForCurrentBackend,
 } from '../lib/publicHubCache'
 import {
   fetchPublicHubBase,
@@ -106,10 +105,9 @@ function hydrateFromCache(activityWindow: PublicHubActivityWindow, projection?: 
 }
 
 function persistSuccessfulHub(activityWindow: PublicHubActivityWindow, hub: PublicHub, projection?: PublicHubProjection) {
-  // d3-v5 hub: idle time, never mid-gesture; the projection is computed once
-  // per snapshot (plan §2.6). Flag off: the Command Center's write, unchanged.
-  if (import.meta.env.VITE_PUBLIC_HUB_V5 === 'on' || import.meta.env.VITE_PUBLIC_HUB_V5 === '1') schedulePublicHubCacheWrite(activityWindow, hub, projection)
-  else writePublicHubCacheForCurrentBackend(activityWindow, hub, projection)
+  // Idle time, never mid-gesture; the projection is computed once per
+  // snapshot (plan §2.6).
+  schedulePublicHubCacheWrite(activityWindow, hub, projection)
 }
 
 /** Performance mark for the first successful full-hub read of this page load (plan §4.5). */
@@ -117,7 +115,7 @@ export const HUB_DATA_MARK = 'sp:hub-data'
 let hubDataMarked = false
 
 function markHubDataOnce(): void {
-  if (hubDataMarked || !(import.meta.env.VITE_PUBLIC_HUB_V5 === 'on' || import.meta.env.VITE_PUBLIC_HUB_V5 === '1')) return
+  if (hubDataMarked) return
   hubDataMarked = true
   try {
     if (typeof performance === 'undefined' || typeof performance.mark !== 'function') return

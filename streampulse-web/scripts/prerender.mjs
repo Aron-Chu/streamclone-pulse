@@ -13,7 +13,7 @@ const indexPath = join(dist, 'index.html')
 const indexHtml = readFileSync(indexPath, 'utf8')
 const origin = 'https://streampulse.stream'
 const analyticsCriticalStyles = readdirSync(join(dist, 'assets'))
-  .filter(name => /^(AnalyticsLandingPage|figma-analytics)-.+\.css$/.test(name))
+  .filter(name => /^figma-analytics-.+\.css$/.test(name))
   .map(name => `<link rel="stylesheet" href="/assets/${name}">`)
   .join('\n    ')
 // Public pages load on demand (src/routes/index.tsx). Each prerendered page
