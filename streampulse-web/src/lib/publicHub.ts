@@ -793,8 +793,9 @@ export async function fetchPublicHubBase(
   projection?: PublicHubProjection,
   // The 24h body is ~1.2 MB decoded; a slow network needs longer than the 8 s
   // default. A 30-minute body is small and keeps the default, so a stalled API
-  // reaches its error or stats fallback sooner.
-  timeoutMs: number | undefined = hubReadTimeoutMs(activityWindow),
+  // reaches its error or stats fallback sooner. The moments read has no
+  // fallback and gets the long deadline too.
+  timeoutMs: number | undefined = hubReadTimeoutMs(activityWindow, projection),
 ): Promise<FetchPublicHubResult> {
   try {
     const path = publicHubPath(activityWindow, projection)
