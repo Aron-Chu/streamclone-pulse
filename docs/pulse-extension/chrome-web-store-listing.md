@@ -142,7 +142,7 @@ Used only on Twitch tabs, always with code packaged in the extension:
 1. Finding the current stream's VOD id: a packaged function runs in the Twitch page to read the stream and VOD ids from the page's own data, and if they are missing it asks Twitch's public GraphQL endpoint (gql.twitch.tv) for the live stream's archive VOD id, without cookies.
 2. Loading parts of the panel only when they are needed, so they are not in the always-loaded script. Each is a packaged file run in the extension's isolated world:
    - content/supporter-card.js: the Supporter card preview, when quick settings shows it.
-   - content/moment-frames.js: Moment pictures, only while that setting is on. It keeps a small still of the Twitch player every few seconds in that tab's memory, so Top Moments can show a picture; nothing is stored or uploaded.
+   - content/moment-frames.js: Moment pictures, only while that setting is on. It keeps a small still of the Twitch player every few seconds in that tab's memory, so Top Moments can show a picture. A saved moment keeps its one picture in the browser; nothing is uploaded.
    - content/catch-me-up.js: the top of a stream recap, when the panel shows a recap.
 3. For the toolbar popup: reading the channel avatar Twitch already shows, and checking whether the Pulse panel is showing on that tab.
 The Pulse panel itself is the declared content script and does not need this permission.
