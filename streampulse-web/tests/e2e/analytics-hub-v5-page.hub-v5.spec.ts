@@ -51,8 +51,8 @@ async function noSideScroll(page: Page) {
 
 const box = async (page: Page, selector: string) => (await page.locator(selector).boundingBox())!
 
-// After a resize the strip and the chart re-measure on the next frame and move every row
-// below them, so each layout check retries until the boxes it reads agree.
+// After a resize the chart re-measures and, a frame later, the search hero grows; every row
+// below moves (about 36 px at 1440), so each layout check retries until the boxes agree.
 const SETTLED = { timeout: 10_000 }
 
 test('sections stack in the mockup order on a phone and sit in their columns on desktop', async ({ page }) => {
