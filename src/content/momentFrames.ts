@@ -48,11 +48,29 @@ const FRAME_WIDTH = 320
 const FLIP_EVERY_MS = 450
 const PICTURES_KEY = 'momentPicturesEnabled'
 
+// A visible card may outlive the rolling store. Keep only its resting and
+// chosen frames usable until the last card releases them.
+const frameUsers = new Map<string, number>()
+const retiredFrames = new Set<string>()
+let streamKey: string | undefined
+
+function releaseFrame(url: string): void {
+  const remaining = (frameUsers.get(url) ?? 0) - 1
+  if (remaining > 0) frameUsers.set(url, remaining)
+  else {
+    frameUsers.delete(url)
+    if (retiredFrames.delete(url)) URL.revokeObjectURL(url)
+  }
+}
+
 const store = new MomentFrameStore({
   windowMs: 6 * 60_000,
   maxKept: 240,
   minGapSeconds: 3,
-  revoke: url => URL.revokeObjectURL(url),
+  revoke: url => {
+    if (frameUsers.has(url)) retiredFrames.add(url)
+    else URL.revokeObjectURL(url)
+  },
   now: () => Date.now(),
 })
 
@@ -62,6 +80,14 @@ const views = new Set<() => void>()
 /** Panels asking for frames; the newest one's player is the one kept. */
 const sources: MomentFrameSource[] = []
 let timer: number | undefined
+
+function useStream(key: string): void {
+  if (key === streamKey) return
+  streamKey = key
+  store.useStream(key)
+  // The store emits nothing if its final frame already expired.
+  views.forEach(render => render())
+}
 
 /** Twitch's ad markers: the "Ad" label and countdown over the player. */
 const AD_MARKERS = [
@@ -111,12 +137,12 @@ function tick(): void {
 
 function start(source: MomentFrameSource): () => void {
   sources.push(source)
-  store.useStream(source.key)
+  useStream(source.key)
   timer ??= window.setInterval(tick, CAPTURE_EVERY_MS)
   return () => {
     const index = sources.indexOf(source)
     if (index >= 0) sources.splice(index, 1)
-    if (sources.length > 0) store.useStream(sources[sources.length - 1]!.key)
+    if (sources.length > 0) useStream(sources[sources.length - 1]!.key)
     else {
       window.clearInterval(timer)
       timer = undefined
@@ -247,12 +273,15 @@ const MAX_EXACT_FRAMES = 24
  * with no picture mounted releases them.
  */
 const exactFrames = new Map<string, Promise<string | null>>()
+/** Ordinary rows reuse a frame a card already asked for; they never start a frame request. */
+const exactRows = new Set<(vodId?: string, second?: number) => void>()
 let exactVod: string | undefined
 let exactRelease: number | undefined
 
 function releaseExactFrames(): void {
   for (const found of exactFrames.values()) void found.then(url => url && URL.revokeObjectURL(url))
   exactFrames.clear()
+  for (const update of exactRows) update()
 }
 
 function vodFrame(at: MomentPictureAt | undefined, seconds: number, height: 160 | 360): Promise<string | null> {
@@ -278,13 +307,17 @@ function vodFrame(at: MomentPictureAt | undefined, seconds: number, height: 160 
         return URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }))
       }, () => null)
     void asked.then(url => {
-      if (!url && exactFrames.get(key) === asked) exactFrames.delete(key)
+      if (exactFrames.get(key) !== asked) return
+      if (!url) exactFrames.delete(key)
+      // A failed larger ask may leave a usable smaller frame for the same second.
+      for (const update of exactRows) update(id, second)
     })
     exactFrames.set(key, asked)
     for (const [old, kept] of exactFrames) {
       if (exactFrames.size <= MAX_EXACT_FRAMES) break
       exactFrames.delete(old)
       void kept.then(url => url && URL.revokeObjectURL(url))
+      for (const update of exactRows) update(id, Number(old.split(' ')[0]))
     }
     found = asked
   }
@@ -403,6 +436,9 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
   /** Undefined until looked for (only once the moment turns out to have no frames). */
   let other: HTMLElement | null | undefined
   let looking = false
+  let sharedFrame: Promise<string | null> | undefined
+  let sharedPicture: HTMLImageElement | null = null
+  let sharedVersion = 0
 
   const list = view.kind === 'thumb' ? host.closest('[data-pmf-list]') : null
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -411,6 +447,10 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
   let peak = -1
   let shown = -1
   let flip: number | undefined
+  let pictureStream = streamKey
+  let pinnedPeak: StoredFrame | undefined
+  let chosen: StoredFrame | undefined
+  let held = new Set<StoredFrame>()
   const image = element('img')
   image.alt = ''
   image.decoding = 'async'
@@ -425,7 +465,14 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
     const frame = frames[index]
     if (!frame) return
     shown = index
-    image.src = frame.url
+    if (card) {
+      chosen = frame
+      const nextHeld = new Set([pinnedPeak!, frame])
+      for (const next of nextHeld) if (!held.has(next)) frameUsers.set(next.url, (frameUsers.get(next.url) ?? 0) + 1)
+      for (const previous of held) if (!nextHeld.has(previous)) releaseFrame(previous.url)
+      held = nextHeld
+    }
+    if (image.getAttribute('src') !== frame.url) image.src = frame.url
     if (!figure) return
     time!.textContent = formatHeatOffset(frame.offset)
     badge!.hidden = index !== peak
@@ -433,10 +480,16 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
     rail!.childNodes.forEach((tick, tickIndex) => (tick as HTMLElement).toggleAttribute('data-on', tickIndex === index))
   }
 
+  const choose = (index: number): void => {
+    show(index)
+    // A released, evicted frame must also leave the scrub choices.
+    render()
+  }
+
   const scrubTo = (event: PointerEvent): void => {
     const box = figure!.getBoundingClientRect()
     const share = Math.min(0.999, Math.max(0, (event.clientX - box.left) / box.width))
-    show(Math.floor(share * frames.length))
+    choose(Math.floor(share * frames.length))
   }
 
   const buildCard = (): void => {
@@ -453,12 +506,12 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
     rail.setAttribute('aria-hidden', 'true')
     figure.addEventListener('pointermove', scrubTo)
     figure.addEventListener('pointerdown', scrubTo)
-    figure.addEventListener('pointerleave', () => show(peak))
+    figure.addEventListener('pointerleave', () => choose(peak))
     figure.addEventListener('keydown', event => {
       const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0
       if (!step) return
       event.preventDefault()
-      show(Math.min(frames.length - 1, Math.max(0, shown + step)))
+      choose(Math.min(frames.length - 1, Math.max(0, shown + step)))
     })
   }
 
@@ -479,13 +532,29 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
   row?.addEventListener('pointerleave', endFlip)
 
   const render = (): void => {
+    if (card && (!enabled || pictureStream !== streamKey)) {
+      if (held.size > 0) {
+        host.replaceChildren()
+        host.removeAttribute('data-top')
+      }
+      for (const frame of held) releaseFrame(frame.url)
+      held.clear()
+      pinnedPeak = chosen = undefined
+      pictureStream = streamKey
+      signature = null
+    }
     const next = enabled ? store.inRange(view.from, view.to) : []
+    if (card && enabled) {
+      pinnedPeak ??= next[nearestFrameIndex(next, view.peak)]
+      for (const frame of [pinnedPeak, chosen]) if (frame && !next.includes(frame)) next.push(frame)
+      next.sort((a, b) => a.offset - b.offset)
+    }
     // With `enabled`, so turning pictures off also takes down a picture from elsewhere.
     const nextSignature = `${enabled} ${other === undefined} ${next.map(frame => frame.url).join(' ')}`
     if (nextSignature === signature) return
     signature = nextSignature
     frames = next
-    peak = nearestFrameIndex(frames, view.peak)
+    peak = card && pinnedPeak ? frames.indexOf(pinnedPeak) : nearestFrameIndex(frames, view.peak)
     if (frames.length === 0) {
       stopFlip()
       if (enabled && other === undefined && !looking) {
@@ -498,9 +567,9 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
       // While still looking, a card shows its stand-in, so it opens at its
       // full height and a VOD tile takes the stand-in's place; anything else
       // stays as it was, so nothing opens and collapses.
-      const early = enabled && other === undefined && looking
+      const early = enabled && !sharedPicture && other === undefined && looking
       if (early && !(card && (artStandIn() ?? emoteStandIn()))) return
-      const picture = early ? artStandIn() ?? emoteStandIn() : enabled ? other : null
+      const picture = early ? artStandIn() ?? emoteStandIn() : enabled ? sharedPicture ?? other : null
       if (card) host.toggleAttribute('data-top', picture != null)
       else {
         host.toggleAttribute('data-has', picture != null)
@@ -518,25 +587,60 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
         return tick
       }))
       host.toggleAttribute('data-top', true)
-      host.replaceChildren(figure!, rail!)
+      // Keep the focused figure attached when a capture extends the rail.
+      if (host.firstChild !== figure) host.replaceChildren(figure!, rail!)
     } else {
       host.toggleAttribute('data-has', true)
       host.title = ''
       host.replaceChildren(image)
       markList(list)
     }
-    show(peak)
+    show(card && chosen ? frames.indexOf(chosen) : peak)
   }
 
+  const shareExactFrame = (vodId?: string, second?: number): void => {
+    if (vodId && (vodId !== at?.vodId || second !== Math.round(view.peak - (at?.vodOriginDeltaSeconds ?? 0)))) return
+    const found = vodId && enabled && exactVod === vodId
+      ? exactFrames.get(`${second} 360`) ?? exactFrames.get(`${second} 160`)
+      : undefined
+    if (found === sharedFrame) return
+    const version = ++sharedVersion
+    sharedFrame = found
+    if (!found) {
+      sharedPicture = null
+      // An enabled old-VOD view must not restart its lookup on release. While
+      // pictures are off, leave an unstarted fallback available for re-enabling.
+      if (!vodId && enabled && other === undefined && !looking) other = null
+      signature = null
+      render()
+      return
+    }
+    void found.then(url => url ? loaded(url) : null).then(picture => {
+      if (gone || !enabled || version !== sharedVersion) return
+      sharedPicture = picture
+      if (!picture) sharedFrame = undefined
+      signature = null
+      render()
+    })
+  }
+  const sharesExactFrame = !card && !view.exact
+  if (sharesExactFrame) {
+    exactRows.add(shareExactFrame)
+    shareExactFrame(at?.vodId ?? undefined, Math.round(view.peak - (at?.vodOriginDeltaSeconds ?? 0)))
+  }
   render()
   const unsubscribe = store.subscribe(render)
   views.add(render)
   window.clearTimeout(exactRelease)
   return () => {
     gone = true
+    sharedVersion++
+    exactRows.delete(shareExactFrame)
     unsubscribe()
     views.delete(render)
     if (views.size === 0) exactRelease = window.setTimeout(releaseExactFrames, 60_000)
+    for (const frame of held) releaseFrame(frame.url)
+    held.clear()
     stopFlip()
     row?.removeEventListener('pointerenter', startFlip)
     row?.removeEventListener('pointerleave', endFlip)

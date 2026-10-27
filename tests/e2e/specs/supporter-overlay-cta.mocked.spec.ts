@@ -28,7 +28,7 @@ test('the overlay offers Supporter as a destination and opens that section', asy
   await expect(cta).toBeVisible()
   await expect(cta).toContainText('Pulse Supporter')
   // The copy is the card's description; its stage is not covered by it.
-  await expect(cta).toHaveAccessibleDescription(/Core tools stay free/)
+  await expect(cta).toHaveAccessibleDescription("Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. The chat lines are a preview; Twitch chat doesn't change. Core tools stay free.")
 
   // The destination sits right under the channel card, above every control.
   const box = await cta.boundingBox()
@@ -53,6 +53,11 @@ test('the overlay offers Supporter as a destination and opens that section', asy
   expect(new URL(settings.url()).protocol).toBe('chrome-extension:')
   expect(settings.url()).toContain('#supporter')
   await expect(settings.locator('[data-settings-section="supporter"], .pulse-supporter-settings').first()).toBeVisible()
+  await expect(settings.locator('.pulse-journey')).toContainText("Supporter isn't on sale yet")
+  const studio = settings.locator('.pulse-supporter-studio')
+  await expect(studio).toContainText("Try a look. Changes here aren't saved.")
+  await expect(studio.locator('.pulse-account-link-actions')).toHaveCount(0)
+  await expect(studio.locator('.pulse-supporter-wave-disclosure')).toHaveJSProperty('open', false)
   await settings.screenshot({
     animations: 'disabled',
     fullPage: true,

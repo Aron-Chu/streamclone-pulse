@@ -5,6 +5,7 @@ import { FINISHES, SAMPLE_KIT, TENURES, finishVars, kitEmoteSrc, tenureIndex, ty
 import { PeakMark } from '../ui/PeakMark.tsx'
 import { names as PERK_NAMES } from '../shared/supporter-perks.json'
 import { useSupporterAppearanceDetails } from '../ui/useSupporterAppearance.ts'
+import { ACCOUNT_REVISION_KEY, SUPPORTER_REVISION_KEY } from '../shared/supporterAccount.ts'
 
 /** How long the banner waits for the membership answer before showing the sample pile. */
 const SAMPLE_AFTER_MS = 1200
@@ -82,19 +83,30 @@ export function SupporterBanner({ onOpen, onPerks }: { onOpen: () => void; onPer
 }
 
 /**
- * Whether paid sign-ups are open, from one worker entitlement read. Unknown,
- * failed or closed all read as closed, so a price never shows by default.
+ * Whether paid sign-ups are open, from the worker's entitlement read, read
+ * again when the worker signals a new account or membership. Unknown, failed
+ * or closed all read as closed, so a price never shows by default.
  */
 function useCheckoutOpen(): boolean {
   const [open, setOpen] = useState(false)
   useEffect(() => {
     let live = true
-    try {
-      void Promise.resolve(chrome.runtime.sendMessage({ type: 'SUPPORTER_ENTITLEMENT' })).then((reply: { type?: string; entitlement?: { state?: string; checkoutEnabled?: boolean } } | undefined) => {
-        if (live && reply?.type === 'SUPPORTER_ENTITLEMENT' && reply.entitlement?.state === 'ready' && reply.entitlement.checkoutEnabled === true) setOpen(true)
-      }, () => {})
-    } catch { /* no worker: closed */ }
-    return () => { live = false }
+    let request = 0
+    const read = () => {
+      const id = ++request
+      try {
+        void Promise.resolve(chrome.runtime.sendMessage({ type: 'SUPPORTER_ENTITLEMENT' })).then((reply: { type?: string; entitlement?: { state?: string; checkoutEnabled?: boolean } } | undefined) => {
+          if (live && id === request) setOpen(reply?.type === 'SUPPORTER_ENTITLEMENT' && reply.entitlement?.state === 'ready' && reply.entitlement.checkoutEnabled === true)
+        }, () => { if (live && id === request) setOpen(false) })
+      } catch { if (live && id === request) setOpen(false) }
+    }
+    const changed = (changes: Record<string, chrome.storage.StorageChange>, area?: string) => {
+      if ((!area || area === 'local') && (ACCOUNT_REVISION_KEY in changes || SUPPORTER_REVISION_KEY in changes)) read()
+    }
+    read()
+    const storage = globalThis.chrome?.storage?.onChanged
+    storage?.addListener(changed)
+    return () => { live = false; storage?.removeListener(changed) }
   }, [])
   return open
 }

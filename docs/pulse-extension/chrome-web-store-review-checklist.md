@@ -57,7 +57,7 @@ Build a **new** candidate only after RPR-2 validation gates. Every gate below st
 - [ ] `https://streampulse.stream/feedback` is deployed (portal before extension) and returns 200. The private feedback form may stay off (owner decision D19): the page then says the form is closed and offers public alternatives, each labelled public. While the form is off, the build keeps `FEEDBACK_FORM_LIVE` false (`src/shared/feedbackPolicy.ts`), so the Settings Community card's "Send feedback" link reads "Ideas or problems" and makes no privacy promise. Only a build made after the form is on may set it true, which changes that subline to "Private to the team"
 - [ ] Contact disclosures use only verified mailboxes (today: `privacy@streampulse.stream`)
 - [ ] Screenshots match the packaged `dist/` for that SHA
-- [ ] Owner authorizes upload; candidate `0.2.2` exceeds the confirmed dashboard version (the public listing reported `0.2.1` on 2026-09-24; verify the dashboard and the owner-reviewed candidate scope)
+- [ ] Owner authorizes upload; candidate `0.2.5` exceeds the confirmed dashboard version (the public listing reported `0.2.1` on 2026-09-24; verify the dashboard and the owner-reviewed candidate scope)
 - [ ] Published `0.2.1` source revision is **unverified** (no commit or tag sets 0.2.1; no attested 0.2.x artifact). Do not present any commit or local ZIP as that package
 - [ ] Support URL / dashboard state rechecked by owner (do not claim dashboard changes from this checklist)
 - [ ] Real unpacked-extension Twitch smoke recorded for the release SHA (mocked Playwright is not live evidence)

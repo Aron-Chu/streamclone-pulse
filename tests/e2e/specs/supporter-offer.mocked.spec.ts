@@ -152,6 +152,8 @@ test.describe('packaged supporter offer', () => {
     await expect(settings.getByText('Halo paint equipped.', { exact: true })).toBeVisible()
     status = 'expired'
     await settings.reload()
+    await expect(settings.locator('[data-supporter-preview-disclosure]')).toHaveJSProperty('open', false)
+    await settings.getByText('Preview Supporter looks', { exact: true }).click()
     await expect(settings.getByRole('button', { name: 'Default active', exact: true })).toBeDisabled()
     await twitch.reload()
     await expectBannerFinish(cdp, null)
@@ -184,14 +186,19 @@ test.describe('packaged supporter offer', () => {
       const action = page.locator('a[data-supporter-action="billing"]')
       const label = { none: 'Continue to checkout', active: 'Manage subscription', grace: 'Update payment method', pending: 'View payment status', review: 'Review membership', expired: 'Rejoin Supporter' }[status]
       await expect(action).toHaveText(label)
-      if (status === 'none' || status === 'expired') await expect(page.getByText('US$4.99 / month')).toBeVisible()
-      else await expect(page.getByText('US$4.99 / month')).toHaveCount(0)
+      if (status === 'none' || status === 'expired') await expect(page.getByText('US$4.99 a month')).toBeVisible()
+      else await expect(page.getByText('US$4.99 a month')).toHaveCount(0)
       // A linked account goes straight to its own billing page, never the public offer.
       await expect(action).toHaveAttribute('href', 'https://streampulse.stream/account/billing')
       await expect(page.getByText('··', { exact: false }).first()).toBeVisible()
+      const accountHelp = page.getByText('Account help', { exact: true })
+      await expect(page.locator('.pulse-supporter-help')).toHaveJSProperty('open', false)
+      await accountHelp.click()
       for (const policy of ['/privacy', '/terms#supporter', '/refunds']) {
         await expect(page.locator(`a[href="https://streampulse.stream${policy}"]`).first()).toBeVisible()
       }
+      await accountHelp.click()
+      await expect(page.locator('.pulse-supporter-help')).toHaveJSProperty('open', false)
 
       // The purchase page offers only what ships: no unbuilt chat crest concept.
       await expect(page.getByText('Concept · not built', { exact: true })).toHaveCount(0)
@@ -215,9 +222,9 @@ test.describe('packaged supporter offer', () => {
     const page = extension.page
     await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
     // An outage is not a missing deployment; say which one it is.
-    await expect(page.getByText('temporarily unavailable')).toBeVisible()
-    await expect(page.getByText('not available on the server yet')).toHaveCount(0)
-    await expect(page.getByText('free tools are unaffected')).toBeVisible()
+    await expect(page.getByText('briefly unavailable')).toBeVisible()
+    await expect(page.getByText("Supporter isn't available yet.")).toHaveCount(0)
+    await expect(page.getByText('Your free tools still work.')).toBeVisible()
     // Never claim membership when the server could not answer.
     await expect(page.getByText('Supporter active')).toHaveCount(0)
     // An unknown status is not an offer (UI-1): no purchase or billing link, only a re-read.
@@ -239,14 +246,14 @@ test.describe('packaged supporter offer', () => {
 
     const page = extension.page
     await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
-    await expect(page.getByText('Supporter is not available on the server yet.', { exact: false })).toBeVisible()
+    await expect(page.getByText("Supporter isn't available yet.", { exact: false })).toBeVisible()
     await expect(page.locator('a[data-supporter-action="billing"]')).toHaveCount(0)
     await expect(page.getByText('Become a Supporter')).toHaveCount(0)
-    await expect(page.getByText('US$4.99 / month')).toHaveCount(0)
+    await expect(page.getByText('US$4.99 a month')).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Check again', exact: true })).toBeVisible()
   })
 
-  test('a signed-out install says sign-ups are not open and offers no purchase, restore or website account', async ({ extension, prepare }) => {
+  test('a signed-out install explains the closed offer without a purchase, restore or website account', async ({ extension, prepare }) => {
     await prepare({ scenario: 'live-ready' })
     const requests: string[] = []
     for (const path of ['account/installations', 'account/restores', 'account/device-links', 'billing/checkout', 'billing/portal', 'account/auth/twitch/start-device']) {
@@ -255,7 +262,7 @@ test.describe('packaged supporter offer', () => {
     const page = extension.page
     await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
     await expect(page.locator('[data-journey-state="signed-out"]')).toBeVisible()
-    await expect(page.getByText('Supporter sign-ups are not open yet', { exact: true })).toBeVisible()
+    await expect(page.getByText("Supporter isn't on sale yet", { exact: true })).toBeVisible()
     await expect(page.getByRole('link', { name: 'Supporter details', exact: true })).toHaveAttribute('href', 'https://streampulse.stream/supporter')
     await expect(page.locator('a[data-supporter-action="billing"]')).toHaveCount(0)
     for (const gone of ['Become a Supporter', 'Restore my Supporter', 'Use a StreamPulse website account', 'Continue with Twitch']) {

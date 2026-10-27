@@ -33,11 +33,12 @@ Generation must not broaden production permissions beyond the audited set.
 `validate:package` is the **development** target only and is not uploadable.
 Do **not** upload until RPR-9.
 
-Working-tree candidate version is **0.2.2** (device bookmarks, the redesigned
-popup, Supporter perks, and Supporter purchase and recovery, plus the earlier
-selected-minute/settings work). Manifests, `package.json`, and the
-current `src/shared/release-notes.json` entry all read `0.2.2`. It remains unreleased;
-local builds and mocked checks do not prove the owner purchase or Store gates.
+Working-tree candidate version is **0.2.5** (whole-stream charts, moment
+pictures, Catch me up, browser bookmarks, the redesigned popup and Supporter
+previews). Manifests, `package.json`, and the current release-notes entry all read
+`0.2.5`. The notes are prepared with submission date **2026-10-26**; this does not
+claim store publication. Accounts and Supporter sign-ups remain closed. Local builds and mocked checks
+do not prove the owner purchase or Store gates.
 The public Chrome Web Store listing reported **0.2.1**
 on 2026-09-24 (its "Updated" date read as 2026-08-31 or 2026-09-01 in separate
 checks; only the publisher dashboard is authoritative), so these newer
@@ -54,7 +55,8 @@ update, and its size (314,509 bytes) does not match the listing's reported
 commit or ZIP as the published 0.2.1 unless the publisher dashboard package is
 matched to it.
 
-The owner-reviewed October 5 closeout scope authorizes the `0.2.2` source bump.
+The October 5 closeout authorized the earlier `0.2.2` source bump. The current
+`0.2.5` submission metadata is prepared for 2026-10-26.
 Publisher dashboard version/support checks and candidate acceptance still gate
 Store submission. No Store package is authorized for upload by this source bump.
 The default chart range is **Full stream**

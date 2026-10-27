@@ -88,7 +88,7 @@ describe('Sign in with Twitch worker flow', () => {
     const f = fixture()
     const response = await f.signIn.signIn('interactive')
     expect(response.outcome).toBe('signed_in')
-    expect(response.account).toEqual({ state: 'linked', accountId: ACCOUNT_ID, expiresAt: pair().expiresAt })
+    expect(response.account).toEqual({ state: 'linked', accountId: ACCOUNT_ID, expiresAt: pair().expiresAt, twitch: true })
     expect(f.bodyOf('/v1/account/auth/twitch/start-device')).toEqual({ surface: 'chrome', purpose: 'signin', mode: 'interactive', forceVerify: false })
     const [, init] = f.calls('/v1/account/auth/twitch/start-device')[0]
     expect(init).toMatchObject({ method: 'POST', credentials: 'omit', redirect: 'error', cache: 'no-store' })
