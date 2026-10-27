@@ -79,7 +79,8 @@ describe('Moments page flag', () => {
     vi.stubEnv('VITE_PUBLIC_MOMENTS_FEED', '1')
     renderMoments()
     expect(await screen.findByRole('heading', { level: 1, name: 'Moments' })).toBeTruthy()
-    expect(feed.load).toHaveBeenCalledTimes(1)
+    // the read starts in an effect, which can run just after the lazy page's heading shows
+    await waitFor(() => expect(feed.load).toHaveBeenCalledTimes(1))
   })
 
   it('falls back to master’s page when the feed is not there (backend flag off)', async () => {
