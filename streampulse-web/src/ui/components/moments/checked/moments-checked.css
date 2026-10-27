@@ -91,6 +91,7 @@
 .mk-pill[hidden]{display:none}
 .mk-pill:focus-visible{outline:2px solid var(--mk-focus);outline-offset:2px}
 .mk-empty{padding:24px 8px;color:var(--mk-text-3)}
+.mk .mk-empty button{color:var(--mk-text-2);text-decoration:underline;text-underline-offset:3px}
 .mk-gone{padding:12px 8px;color:var(--mk-text-2)}
 /* a row Tab reaches under the sticky header scrolls clear of it */
 .mk .mk-r{scroll-margin-top:calc(var(--mk-top) + 8px)}

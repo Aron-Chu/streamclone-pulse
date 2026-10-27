@@ -2,6 +2,7 @@ import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyn
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { AnalyticsFigmaShell } from '../../analytics/AnalyticsFigmaShell'
+import { isApiError } from '../../../../lib/apiClient'
 import {
   appendMomentsFeed, isMomentsFeedItem, loadMomentsFeed, loadMomentsFeedItem, loadMomentsFeedRest, mergeMomentsFeed, momentsFeedIdFromLegacy,
   momentsFeedIdParts, MOMENTS_WINDOW_MS, pollMomentsFeed, type MomentMetricKind, type MomentsFeedItem, type MomentsFeedSnapshot,
@@ -71,29 +72,35 @@ const ini = (name: string) => name.replace(/[^\p{L}\p{N}]/gu, '').slice(0, 2).to
  * 2026-10-16, laid out as moments-r4 B2, 2026-10-21: the list with a picture
  * per row, the open moment beside it from 900 px). Reads /v1/public/moments; every verdict, check and baseline is
  * the backend's. The list draws from the feed's first page while the rest load
- * behind it. When the feed is not there (404 while the backend flag is off) or
- * the first page fails, the page is the current one, unchanged.
+ * behind it. When the feed is not there (404 while the backend flag is off, or
+ * an older feed), the page is the current one, unchanged. A first page that
+ * fails otherwise (an outage) says so here, with Try again, and keeps ?m=.
  */
 export default function MomentsCheckedPage({ fallback }: { fallback: ReactNode }) {
-  const [state, setState] = useState<{ status: 'loading' } | ({ status: 'ready' } & Initial) | { status: 'failed' }>({ status: 'loading' })
+  const [state, setState] = useState<{ status: 'loading' } | ({ status: 'ready' } & Initial) | { status: 'off' } | { status: 'failed' }>({ status: 'loading' })
+  const [tries, setTries] = useState(0)
   useEffect(() => {
     const controller = new AbortController()
     const readAt = Date.now()
     loadMomentsFeed(readAt, controller.signal).then(
       snap => setState({ status: 'ready', snap, at: Date.now(), readAt }),
-      () => { if (!controller.signal.aborted) setState({ status: 'failed' }) })
+      error => {
+        if (controller.signal.aborted) return
+        setState({ status: isApiError(error) && (error.status === 404 || error.code === 'schema') ? 'off' : 'failed' })
+      })
     return () => controller.abort()
-  }, [])
-  if (state.status === 'failed') return <>{fallback}</>
+  }, [tries])
+  if (state.status === 'off') return <>{fallback}</>
+  const retry = () => { setState({ status: 'loading' }); setTries(n => n + 1) }
   return <AnalyticsFigmaShell hideSidebar>
-    <CheckedMoments key={state.status} initial={state.status === 'ready' ? state : null} />
+    <CheckedMoments key={state.status} initial={state.status === 'ready' ? state : null} onRetry={state.status === 'failed' ? retry : undefined} />
   </AnalyticsFigmaShell>
 }
 
 /** The first page, when it came, and the time its read asked from (the later pages ask the same). */
 interface Initial { snap: MomentsFeedSnapshot; at: number; readAt: number }
 
-function CheckedMoments({ initial }: { initial: Initial | null }) {
+function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry?: () => void }) {
   const wide = useMatch('(min-width: 900px)')
   const phone = useMatch('(max-width: 719px)')
   const motion = !useMatch('(prefers-reduced-motion: reduce)')
@@ -296,6 +303,31 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // a save this page holds no copy of (made elsewhere on the site, or before the feed's window): one lookup by id each, one at a time
+  const lookedUp = useRef(new Set<string>())
+  useEffect(() => {
+    if (!loaded) return
+    const held = new Set([...pool.map(m => savedKey(m.item)), ...[...drawn.values()].map(savedKey)])
+    const ids = savedItems.filter(s => !held.has(s.key))
+      .map(s => momentsFeedIdFromLegacy(s.login, s.streamId, String(s.offsetSeconds)))
+      .filter((id): id is string => id != null && !lookedUp.current.has(id))
+      .slice(0, SAVED_MAX)
+    if (!ids.length) return
+    ids.forEach(id => lookedUp.current.add(id))
+    const controller = new AbortController()
+    let done = 0
+    void (async () => {
+      for (const id of ids) {
+        const item = await loadMomentsFeedItem(id, controller.signal).catch(() => null)
+        if (controller.signal.aborted) return
+        done++
+        if (item) setDrawn(prev => { const next = new Map(prev).set(item.id, item); writeSaved(next); return next })
+      }
+    })()
+    // ids not answered yet are asked again by the next run
+    return () => { controller.abort(); ids.slice(done).forEach(id => lookedUp.current.delete(id)) }
+  }, [loaded, savedItems, pool, drawn])
+
   // the later pages, one at a time behind the drawn first one; a page that fails leaves what has loaded
   useEffect(() => {
     if (!initial?.snap.nextCursor) return
@@ -478,6 +510,7 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
           {view === 'viewed' && viewed.length ? <p className="mk-vw-note">Moments you opened here, kept in this browser for {VIEWED_DAYS} days.
             <button type="button" onClick={() => { clearViewed(); setViewed([]); setViewedOrder([]); say('Viewed cleared') }}>Clear</button></p> : null}
           <ol className="mk-list" ref={listRef}>
+            {onRetry ? <li className="mk-empty"><span role="alert">Moments couldn’t load.</span> <button type="button" onClick={onRetry}>Try again</button></li> : null}
             {loaded && !groups.length ? <li className="mk-empty">{view === 'saved' ? 'Nothing saved yet. Save a moment and it stays here, in this browser.'
               : view === 'viewed' ? `Nothing viewed yet. Moments you open here stay in this list, in this browser, for ${VIEWED_DAYS} days.` : 'No moments match.'}</li> : null}
             {groups.map(g => {

@@ -8,6 +8,8 @@ import * as availabilityTransport from '../src/lib/discoveryAvailability'
 import { normalizeApiError } from '../src/lib/apiClient'
 import { clearRankedFeatureCheckForTests } from '../src/hooks/useRankedFeatureAvailability'
 import type { MomentsFeedItem, MomentsFeedSnapshot } from '../src/lib/momentsFeed'
+import { toggleSavedMoment } from '../src/lib/savedDiscoveryMoments'
+import { fromHubMoment } from '../src/lib/discoveryMoments'
 
 const fixture = JSON.parse(readFileSync(resolve(__dirname, 'fixtures/moments_feed_v1.json'), 'utf8')) as { generatedAt: number; items: MomentsFeedItem[] }
 
@@ -83,6 +85,21 @@ describe('Moments page flag', () => {
     expect(await screen.findByRole('tab', { name: 'Latest' })).toBeTruthy()
     expect(document.querySelector('.mk')).toBeNull()
     expect(feed.load).toHaveBeenCalledTimes(1)
+  })
+
+  it('says the feed couldn’t load on an outage, keeps the deep link, and tries again', async () => {
+    vi.stubEnv('VITE_PUBLIC_MOMENTS_FEED', 'on')
+    const target = fixture.items.find(item => item.verdict === 'ok')!
+    window.history.replaceState(null, '', `/analytics/moments?m=${target.id}`)
+    feed.load.mockRejectedValueOnce(normalizeApiError(500, { error: 'internal' }))
+    renderMoments()
+    expect((await screen.findByRole('alert')).textContent).toBe('Moments couldn’t load.')
+    expect(screen.queryByRole('tab', { name: 'Latest' })).toBeNull()
+    expect(new URL(window.location.href).searchParams.get('m')).toBe(target.id)
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    await waitFor(() => expect(document.querySelector('.mk-d')?.getAttribute('data-key')).toBe(target.id))
+    expect(feed.load).toHaveBeenCalledTimes(2)
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 })
 
@@ -268,6 +285,18 @@ describe('checked Moments page', () => {
     fireEvent.click(seg('Saved'))
     expect(seg('Saved').textContent).toBe('Saved (1)')
     expect(rows()).toHaveLength(1)
+  })
+
+  it('looks up a save this page holds no copy of (made elsewhere, past the window) and draws it under Saved', async () => {
+    const old = fixture.items.find(item => item.verdict === 'ok')!
+    feed.load.mockResolvedValue(snap(fixture.items.filter(item => item.streamId !== old.streamId)))
+    feed.item.mockImplementation(async (id: string) => (id === old.id ? old : null))
+    toggleSavedMoment(fromHubMoment({ login: old.login, streamId: old.streamId, offsetSeconds: old.offsetSeconds, at: old.minuteStart, label: old.label.text })!)
+    renderMoments()
+    await waitFor(() => expect(seg('Saved').textContent).toBe('Saved (1)'))
+    expect(feed.item).toHaveBeenCalledWith(old.id, expect.anything())
+    fireEvent.click(seg('Saved'))
+    expect(rows().map(r => r.dataset.key)).toEqual([old.id])
   })
 
   it('keeps the moments you opened under Viewed, in this browser, until Clear', async () => {
