@@ -31,6 +31,7 @@ import {
 import {
   recapMomentAnalyticalOffset,
   recapMomentReasonLabel,
+  type StreamEdges,
 } from '@streampulse/pulse-core'
 import type {
   AnalyticsMinuteRollup,
@@ -128,6 +129,7 @@ export function SessionRecapMomentsStrip({
   vodRecording = false,
   onPlayOffset,
   reel = false,
+  streamEdges,
 }: {
   recap: PulseStreamRecap
   streamStartedAt?: string
@@ -154,13 +156,15 @@ export function SessionRecapMomentsStrip({
   onPlayOffset?: (offsetSeconds: number) => void
   /** Strip mode: the top three as the highlight reel (MomentReel.tsx) instead of rows. */
   reel?: boolean
+  /** The session's stream edges (sessionStreamEdges): hello / goodbye spam ranks last. */
+  streamEdges?: StreamEdges
 }) {
   // Shared with the session chart pins (utils/sessionStripMoments.ts): pin N
   // is row N.
   const hasReactionCoverage = useMemo(() => stripHasReactionCoverage(recap), [recap])
   const moments = useMemo(
-    () => sessionStripMoments({ recap, hasReactionCoverage, heatmapPoints, streamStartedAt, topEmotesCatalog }),
-    [recap, hasReactionCoverage, heatmapPoints, streamStartedAt, topEmotesCatalog],
+    () => sessionStripMoments({ recap, hasReactionCoverage, heatmapPoints, streamStartedAt, topEmotesCatalog, streamEdges }),
+    [recap, hasReactionCoverage, heatmapPoints, streamStartedAt, topEmotesCatalog, streamEdges],
   )
   const offsets = useMemo(() => moments.map(recapMomentAnalyticalOffset), [moments])
   const pinHover = useStripPinHover()

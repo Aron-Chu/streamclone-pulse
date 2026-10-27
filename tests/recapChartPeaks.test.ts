@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { streamEdgesFor } from '@streampulse/pulse-core'
 import { lastActiveRollupOffsetSeconds, resolveRecapChartPeakOffsets, resolveRecapPointFromRollup } from '../src/ui/recapChartPeaks.ts'
 
 it('preserves a viewer-only measured tail and ignores missing observations', () => {
@@ -27,11 +28,11 @@ describe('resolveRecapChartPeakOffsets', () => {
     const offsets = resolveRecapChartPeakOffsets(
       [],
       [
-        { offsetSeconds: 400, score: 60, reasons: ['chat_spike'], dominantSignal: 'chat' },
-        { offsetSeconds: 200, score: 90, reasons: ['emote_spike'], dominantSignal: 'emote' },
+        { offsetSeconds: 700, score: 60, reasons: ['chat_spike'], dominantSignal: 'chat' },
+        { offsetSeconds: 500, score: 90, reasons: ['emote_spike'], dominantSignal: 'emote' },
       ],
     )
-    expect(offsets).toEqual([200, 400])
+    expect(offsets).toEqual([500, 700])
   })
 
   it('respects the limit parameter', () => {
@@ -46,6 +47,31 @@ describe('resolveRecapChartPeakOffsets', () => {
     )
     expect(offsets).toEqual([1, 2])
   })
+
+  it('puts a hello spike marker after the others, even with the top score', () => {
+    const offsets = resolveRecapChartPeakOffsets(
+      [],
+      [
+        { offsetSeconds: 60, score: 99, reasons: ['seventv_spike'], dominantSignal: 'seventv' },
+        { offsetSeconds: 1200, score: 40, reasons: ['chat_spike'], dominantSignal: 'chat' },
+        { offsetSeconds: 2400, score: 50, reasons: ['chat_spike'], dominantSignal: 'chat' },
+      ],
+    )
+    expect(offsets).toEqual([2400, 1200, 60])
+  })
+
+  it('puts a goodbye spike marker last once the stream has ended', () => {
+    const offsets = resolveRecapChartPeakOffsets(
+      [
+        { offsetSeconds: 3500, score: 99, reasons: ['seventv_spike'] },
+        { offsetSeconds: 1800, score: 50, reasons: ['chat_spike'] },
+      ],
+      undefined,
+      8,
+      streamEdgesFor(3600, true),
+    )
+    expect(offsets).toEqual([1800, 3500])
+  })
 })
 
 describe('mergeRecapMoments', () => {
@@ -54,16 +80,16 @@ describe('mergeRecapMoments', () => {
     const merged = mergeRecapMoments(
       {
         topMoments: [
-          { offsetSeconds: 120, score: 80, reasons: ['chat_spike'] },
-          { offsetSeconds: 300, score: 95, reasons: ['emote_spike'] },
+          { offsetSeconds: 420, score: 80, reasons: ['chat_spike'] },
+          { offsetSeconds: 600, score: 95, reasons: ['emote_spike'] },
         ],
-        clipCandidates: [{ offsetSeconds: 600, score: 70, reasons: ['manual'] }],
+        clipCandidates: [{ offsetSeconds: 900, score: 70, reasons: ['manual'] }],
       },
-      [{ offsetSeconds: 122, score: 99, reasons: ['chat_spike'], dominantSignal: 'chat' }],
+      [{ offsetSeconds: 422, score: 99, reasons: ['chat_spike'], dominantSignal: 'chat' }],
       20,
     )
     expect(merged).toHaveLength(3)
-    expect(merged[0]?.offsetSeconds).toBe(122)
+    expect(merged[0]?.offsetSeconds).toBe(422)
     expect(merged[0]?.score).toBe(99)
   })
 
@@ -106,6 +132,23 @@ describe('mergeRecapMoments', () => {
     )
     expect(merged[0]?.offsetSeconds).toBe(6840)
     expect(merged[1]?.offsetSeconds).toBe(2760)
+  })
+
+  it('ranks hello and goodbye spikes last once the stream ended', async () => {
+    const { mergeRecapMoments } = await import('../src/ui/recapChartPeaks.ts')
+    const rollups = Array.from({ length: 61 }, (_, index) => ({ offsetSeconds: index * 60, chatCount: 30, sevenTvEmoteCount: 2 }))
+    const recap = {
+      topMoments: [
+        { offsetSeconds: 60, score: 99, reasons: ['seventv_spike'], chatCount: 300 },
+        { offsetSeconds: 3540, score: 98, reasons: ['seventv_spike'], chatCount: 300 },
+        { offsetSeconds: 1800, score: 60, reasons: ['chat_spike'], chatCount: 120 },
+      ],
+    }
+    const ended = mergeRecapMoments(recap, [], 20, rollups, true)
+    expect(ended.map(moment => [moment.offsetSeconds, moment.streamEdge])).toEqual([[1800, undefined], [60, 'opening'], [3540, 'closing']])
+    // Live, the stream has no end yet: only the opening edge applies.
+    const live = mergeRecapMoments(recap, [], 20, rollups, false)
+    expect(live.map(moment => moment.offsetSeconds)).toEqual([3540, 1800, 60])
   })
 })
 

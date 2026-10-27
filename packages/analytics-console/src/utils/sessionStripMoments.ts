@@ -11,7 +11,12 @@
  * light its strip row without the two sharing a parent.
  */
 import { useSyncExternalStore } from 'react'
-import { mergeRecapMoments } from '@streampulse/pulse-core'
+import {
+  mergeRecapMoments,
+  OPENING_STREAM_EDGE,
+  streamEdgesFor,
+  type StreamEdges,
+} from '@streampulse/pulse-core'
 import type {
   AnalyticsMinuteRollup,
   AnalyticsTopEmote,
@@ -43,6 +48,31 @@ export function stripHasReactionCoverage(recap: PulseStreamRecap): boolean {
   )
 }
 
+/**
+ * The session's stream edges: hello / goodbye spam there ranks after every
+ * other moment. The closing edge counts back from the last minute with chat or
+ * emotes, as the backend's does, and only applies once the stream has ended.
+ * Worked out once per session and handed to the strip, its pins and the chart
+ * markers, so they rank alike.
+ */
+export function sessionStreamEdges(args: {
+  rollups?: AnalyticsMinuteRollup[]
+  streamStartedAt?: string
+  streamEnded: boolean
+}): StreamEdges {
+  const startMs = args.streamStartedAt ? Date.parse(args.streamStartedAt) : NaN
+  if (!args.streamEnded || !Number.isFinite(startMs)) return OPENING_STREAM_EDGE
+  let last = -1
+  for (const rollup of args.rollups ?? []) {
+    if (rollup.missing) continue
+    const emotes = (rollup.totalEmoteCount ?? 0) > 0 ? (rollup.totalEmoteCount ?? 0) : (rollup.seventvEmoteCount ?? 0)
+    if ((rollup.chatCount ?? 0) <= 0 && emotes <= 0) continue
+    const at = Date.parse(rollup.minuteTs)
+    if (Number.isFinite(at)) last = Math.max(last, Math.floor((at - startMs) / 1000))
+  }
+  return streamEdgesFor(last, true)
+}
+
 /** The strip's merged and enriched moment list, in strip rank order. */
 export function sessionStripMoments(args: {
   recap: PulseStreamRecap
@@ -50,12 +80,16 @@ export function sessionStripMoments(args: {
   heatmapPoints?: ReplayHeatmapPoint[]
   streamStartedAt?: string
   topEmotesCatalog?: AnalyticsTopEmote[]
+  /** sessionStreamEdges; the opening edge alone when omitted. */
+  streamEdges?: StreamEdges
 }): PulseRecapMoment[] {
+  const edges = args.streamEdges ?? OPENING_STREAM_EDGE
   const merged = mergeRecapMoments(
     args.recap,
     undefined,
     MOMENTS_MAX_VISIBLE,
     args.hasReactionCoverage,
+    edges,
   )
   return enrichRecapMomentsFromHeatmap(
     merged,
@@ -64,6 +98,7 @@ export function sessionStripMoments(args: {
     args.topEmotesCatalog,
     MOMENTS_MAX_VISIBLE,
     MOMENTS_INITIAL_VISIBLE,
+    edges,
   )
 }
 

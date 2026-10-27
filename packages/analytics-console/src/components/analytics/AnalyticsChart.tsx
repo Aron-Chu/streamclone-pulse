@@ -782,11 +782,12 @@ function AnalyticsChart({
   const stripHeat = stripPins?.heatmapPoints
   const stripCatalog = stripPins?.topEmotesCatalog
   const stripRollups = stripPins?.rollups
+  const stripEdges = stripPins?.streamEdges
   const pins = useMemo(
     () => (stripRecap
-      ? buildSessionPins({ recap: stripRecap, streamStartedAt: stripStart, heatmapPoints: stripHeat, topEmotesCatalog: stripCatalog, rollups: stripRollups, onSelectOffset: noop })
+      ? buildSessionPins({ recap: stripRecap, streamStartedAt: stripStart, heatmapPoints: stripHeat, topEmotesCatalog: stripCatalog, rollups: stripRollups, streamEdges: stripEdges, onSelectOffset: noop })
       : []),
-    [stripCatalog, stripHeat, stripRecap, stripRollups, stripStart],
+    [stripCatalog, stripEdges, stripHeat, stripRecap, stripRollups, stripStart],
   )
   const pinIndex = selectedPinIndex(pins, selectedOffsetSeconds)
   // Focus goes back to what opened the selection when it closes (Esc, ×, a second click).

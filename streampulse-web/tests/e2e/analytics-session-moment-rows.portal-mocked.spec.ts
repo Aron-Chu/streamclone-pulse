@@ -27,6 +27,8 @@ const MORE = '[data-moment-list-more]'
 const CLEAR = 'button[aria-label="Clear selected moment"]'
 const MINUTES = 60
 const OFFSETS = [240, 600, 900, 1200, 1500, 1800, 2100, 2400]
+// The 240 s moment is the best scored, but it is in the stream's first 5 minutes, a hello spike:
+// it ranks after every real moment, so the reel starts at 0:10:00 and 0:04:00 is the last row.
 
 function recap(extra: Record<string, unknown> = {}) {
   return buildRecap({
@@ -59,7 +61,7 @@ async function settle(page: Page, ms = 600) {
   if (typeof clock.runFor === 'function') await clock.runFor(ms)
 }
 
-// 120 s verified alignment (as the bar-strip spec): moment 1 at 240 s asks the tile under VOD 390 s.
+// 120 s verified alignment (as the bar-strip spec): moment 1 at 600 s asks the tile under VOD 750 s.
 const VERIFIED_VOD = {
   vodId: PORTAL_VOD_ID,
   vodAlignSeconds: 120,
@@ -158,12 +160,12 @@ test.describe('session Moments rows (d3-v2) at 1440', () => {
     await expect(page.locator(LIST_ROW)).toHaveCount(0)
 
     const first = row(page, 1)
-    await expect(first.locator('.ssr-off')).toHaveText('0:04:00')
-    await expect(first.locator('.ssr-why')).toHaveText('Emote spike')
-    await expect(row(page, 2).locator('.ssr-why')).toHaveText('Chat spike')
-    await expect(first.locator('.ssr-sc b')).toHaveText('92')
-    await expect(row(page, 3).locator('.ssr-sc b')).toHaveText('86')
-    await expect(first).toHaveAccessibleName(/^Moment 1 0:04:00 /)
+    await expect(first.locator('.ssr-off')).toHaveText('0:10:00')
+    await expect(first.locator('.ssr-why')).toHaveText('Chat spike')
+    await expect(row(page, 2).locator('.ssr-why')).toHaveText('Emote spike')
+    await expect(first.locator('.ssr-sc b')).toHaveText('89')
+    await expect(row(page, 3).locator('.ssr-sc b')).toHaveText('83')
+    await expect(first).toHaveAccessibleName(/^Moment 1 0:10:00 /)
     // F8: the backend label and score only; no rate or spark on a card.
     await expect(page.locator(`${CARD} .ssr-rt, ${CARD} svg.ssr-msp`)).toHaveCount(0)
 
@@ -194,9 +196,12 @@ test.describe('session Moments rows (d3-v2) at 1440', () => {
     await showRest(page)
     const fourth = row(page, 4)
     await expect(fourth).not.toHaveAttribute('data-moment-card')
-    await expect(fourth.locator('.ssr-off')).toHaveText('0:20:00')
-    await expect(fourth.locator('.ssr-rt')).toContainText('chat/min')
-    await expect(row(page, 5).locator('.ssr-rt')).toContainText('emotes/min')
+    await expect(fourth.locator('.ssr-off')).toHaveText('0:25:00')
+    await expect(fourth.locator('.ssr-rt')).toContainText('emotes/min')
+    await expect(row(page, 5).locator('.ssr-rt')).toContainText('chat/min')
+    // The hello spike, scored 92, comes last.
+    await expect(row(page, OFFSETS.length).locator('.ssr-off')).toHaveText('0:04:00')
+    await expect(row(page, OFFSETS.length).locator('.ssr-sc b')).toHaveText('92')
 
     // ±8 min spark: measured minutes around the moment, the moment bar highlighted.
     const bars = await fourth.locator('svg.ssr-msp rect').count()
@@ -336,29 +341,29 @@ test.describe('session Moments rows: game art and dwell', () => {
     await expect(row(page, 2)).toHaveAttribute('data-moment-frame', 'frame')
     await expect(row(page, 3)).toHaveAttribute('data-moment-frame', 'frame')
     // The tile under the middle of each moment's minute, on the VOD's clock (stream + 120 s).
-    for (const offset of [390, 750, 1050]) expect(asked).toContain(offset)
+    for (const offset of [750, 1050, 1350]) expect(asked).toContain(offset)
     const frame = first.locator('[data-moment-card-frame]')
     expect(await frame.evaluate(el => getComputedStyle(el).backgroundImage)).toContain(`${SHEET_HOST}/fixture_xqc/storyboards/${PORTAL_VOD_ID}-high-0.jpg`)
-    // Tile 1 (249-498 s): the chip shows its start on the stream's clock.
-    await expect(first.locator('.ssr-rc-at')).toHaveText('≈ 0:02:09')
+    // Tile 3 (747-996 s): the chip shows its start on the stream's clock.
+    await expect(first.locator('.ssr-rc-at')).toHaveText('≈ 0:10:27')
     await expect(page.locator('[data-moment-reel-note]')).toHaveText(
       "Pictures are Twitch's VOD preview frames, one every 4 min 9 s. Move across one to step through them.",
     )
 
-    // Hover prefetches the tiles either side; the right edge is three tiles on (VOD 1137 s, tile 4).
+    // Hover prefetches the tiles either side; the right edge is three tiles on (VOD 1497 s, tile 6).
     const b = await first.boundingBox()
     if (!b) throw new Error('no layout box')
     await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2)
     await settle(page)
-    for (const offset of [639, 141, 888, 1137]) expect(asked).toContain(offset)
+    for (const offset of [999, 501, 1248, 1497]) expect(asked).toContain(offset)
     await page.mouse.move(b.x + b.width - 2, b.y + b.height / 2)
     await settle(page)
     await expect(first).toHaveClass(/\bscrubbing\b/)
-    await expect(first.locator('.ssr-rc-at')).toHaveText('≈ 0:14:36')
+    await expect(first.locator('.ssr-rc-at')).toHaveText('≈ 0:22:54')
     await page.mouse.move(2, 2)
     await settle(page)
     await expect(first).not.toHaveClass(/\bscrubbing\b/)
-    await expect(first.locator('.ssr-rc-at')).toHaveText('≈ 0:02:09')
+    await expect(first.locator('.ssr-rc-at')).toHaveText('≈ 0:10:27')
   })
 })
 
@@ -370,7 +375,7 @@ test.describe('session Moments rows at 390', () => {
     const list = page.locator(LIST)
     await list.scrollIntoViewIfNeeded()
     const first = row(page, 1)
-    await expect(first.locator('.ssr-off')).toHaveText('0:04:00')
+    await expect(first.locator('.ssr-off')).toHaveText('0:10:00')
     const [hero, two, three] = await Promise.all([1, 2, 3].map(rank => row(page, rank).boundingBox()))
     if (!hero || !two || !three) throw new Error('no layout box')
     expect(Math.abs(two.y - three.y)).toBeLessThan(1)

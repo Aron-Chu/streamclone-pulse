@@ -182,7 +182,8 @@ describe('MostReactedSection', () => {
   })
 
   it('keeps the pinned row listed at the end when it ranks past the fold', () => {
-    const many = Array.from({ length: 8 }, (_, index) => ({ ...peak, offsetSeconds: (index + 1) * 120, score: 99 - index }))
+    // Past the stream's 5-minute opening edge, which ranks last.
+    const many = Array.from({ length: 8 }, (_, index) => ({ ...peak, offsetSeconds: 180 + (index + 1) * 120, score: 99 - index }))
     const render = (pinnedOffsetSeconds: number | null) => renderToStaticMarkup(
       <MostReactedSection
         payload={makePayload({ peaks: many })}
@@ -194,11 +195,11 @@ describe('MostReactedSection', () => {
     )
     // Five rows show before the fold; the seventh-ranked one is pinned.
     expect(render(null).match(/pulse-moment-row-button/g)).toHaveLength(5)
-    const rows = rowsMarkup(render(840)).split('pulse-moment-row-button').slice(1)
+    const rows = rowsMarkup(render(1020)).split('pulse-moment-row-button').slice(1)
     expect(rows).toHaveLength(6)
     expect(rows[5]).toContain('aria-pressed="true"')
-    expect(rows[5]).toContain('Select minute bucket 00:14')
-    expect(render(840)).toContain('Show 2 more moments')
+    expect(rows[5]).toContain('Select minute bucket 00:17')
+    expect(render(1020)).toContain('Show 2 more moments')
   })
 
   it('marks the list disclosure as a chart action so it preserves a locked minute', () => {

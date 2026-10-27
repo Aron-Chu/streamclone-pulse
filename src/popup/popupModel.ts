@@ -1,3 +1,4 @@
+import { extensionPayloadStreamEdges, momentStreamEdge, OPENING_STREAM_EDGE } from '@streampulse/pulse-core'
 import type { ExtensionCoverageTierResponse, ExtensionRollup, PulsePayload } from '../shared/messages.ts'
 
 /** What the active tab is, as far as the toolbar popup cares. */
@@ -223,13 +224,20 @@ function latestChatPerMinute(rollups: ExtensionRollup[], currentOffsetSeconds: n
 }
 
 function biggestMoment(payload: PulsePayload | null, isLive: boolean): PopupMoment | null {
-  let best: { score: number; at: number; offsetSeconds: number; label: string } | null = null
+  let best: { score: number; edge: boolean; at: number; offsetSeconds: number; label: string } | null = null
+  const edges = payload ? extensionPayloadStreamEdges(payload) : OPENING_STREAM_EDGE
   for (const peak of payload?.peaks ?? []) {
     const score = peak.compositeScore ?? peak.score
     if (!Number.isFinite(score)) continue
-    // A tie goes to the earlier peak, like the panel, whatever order the peaks arrive in.
-    if (best && (score < best.score || (score === best.score && peak.offsetSeconds >= best.at))) continue
-    best = { score, at: peak.offsetSeconds, offsetSeconds: peak.seekOffsetSeconds ?? peak.offsetSeconds, label: peak.reasonLabel || 'Chat spike' }
+    // Hello / goodbye spam at the stream's edges only wins when there is nothing else.
+    const edge = momentStreamEdge(peak, edges) !== undefined
+    if (best && edge !== best.edge) {
+      if (edge) continue
+    } else if (best && (score < best.score || (score === best.score && peak.offsetSeconds >= best.at))) {
+      // A tie goes to the earlier peak, like the panel, whatever order the peaks arrive in.
+      continue
+    }
+    best = { score, edge, at: peak.offsetSeconds, offsetSeconds: peak.seekOffsetSeconds ?? peak.offsetSeconds, label: peak.reasonLabel || 'Chat spike' }
   }
   if (!best || !payload) return null
   return {

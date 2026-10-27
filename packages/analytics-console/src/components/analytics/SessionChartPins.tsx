@@ -9,7 +9,7 @@
  * it), and it follows every frame with transform writes only.
  */
 import { useLayoutEffect, useMemo, useRef } from 'react'
-import { recapMomentAnalyticalOffset } from '@streampulse/pulse-core'
+import { recapMomentAnalyticalOffset, type StreamEdges } from '@streampulse/pulse-core'
 import { clusterPins, pinClusterSpan, type SpLayer, type SpLayerContext, type SpViewportSource } from '@streampulse/pulse-charts/spchart'
 import { spMark } from '@streampulse/pulse-charts/perfMarks'
 import type { AnalyticsMinuteRollup, AnalyticsTopEmote, PulseStreamRecap } from '../../api.ts'
@@ -32,6 +32,8 @@ export interface SessionStripPinsSource {
   heatmapPoints?: ReplayHeatmapPoint[]
   topEmotesCatalog?: AnalyticsTopEmote[]
   rollups?: AnalyticsMinuteRollup[]
+  /** The strip's stream edges (sessionStreamEdges). */
+  streamEdges?: StreamEdges
   /** The strip row's click handler. */
   onSelectOffset: (offsetSeconds: number) => void
 }
@@ -60,6 +62,7 @@ export function buildSessionPins(source: SessionStripPinsSource | null | undefin
     heatmapPoints: source.heatmapPoints,
     streamStartedAt: source.streamStartedAt,
     topEmotesCatalog: source.topEmotesCatalog,
+    streamEdges: source.streamEdges,
   }).slice(0, SESSION_PIN_COUNT)
   return moments.map((moment, index) => {
     const offsetSeconds = recapMomentAnalyticalOffset(moment)
