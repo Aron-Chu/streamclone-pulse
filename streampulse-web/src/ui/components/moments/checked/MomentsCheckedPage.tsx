@@ -11,6 +11,8 @@ import {
   updatedText, when, type CheckedMoment,
 } from '../../../../lib/momentsChecked'
 import { loadMomentVod, momentVodCache } from '../../../../lib/momentsFeedVod'
+import { toggleSavedMoment, useSavedMoments } from '../../../../lib/savedDiscoveryMoments'
+import { fromHubMoment } from '../../../../lib/discoveryMoments'
 import { broadcastTimelineHref } from '../../../../lib/momentsNavigation'
 import { headerClear, watchHeaderClear } from './headerClear'
 import { MomentDetail } from './MomentDetail'
@@ -38,7 +40,13 @@ function useMatch(query: string): boolean {
   )
 }
 
-/** Saved moments are kept whole, in this browser, so one stays after it leaves the 12-hour feed. */
+/**
+ * Whether a moment is saved comes from the site's one save list (channel,
+ * stream, second), kept in this browser. This page also keeps a
+ * whole copy of each moment saved here, so one can still be drawn after it
+ * leaves the 12-hour feed.
+ */
+const savedKey = (item: MomentsFeedItem) => JSON.stringify([item.login, item.streamId, item.offsetSeconds])
 function readSaved(): Map<string, MomentsFeedItem> {
   try {
     const raw: unknown = JSON.parse(window.localStorage.getItem(SAVED_KEY) || '[]')
@@ -97,7 +105,10 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
   const [q, setQ] = useState('')
   const [sel, setSel] = useState<string | null>(() => (deepId && initial?.snap.items.some(item => item.id === deepId) ? deepId : null))
   const [opened, setOpened] = useState<{ key: string | null; lk: number | null; metric: MomentMetricKind | null }>({ key: null, lk: null, metric: null })
-  const [saved, setSaved] = useState(readSaved)
+  const [drawn, setDrawn] = useState(readSaved)
+  const savedItems = useSavedMoments().items
+  const savedKeys = useMemo(() => new Set(savedItems.map(item => item.key)), [savedItems])
+  const isSaved = (item: MomentsFeedItem) => savedKeys.has(savedKey(item))
   /** Moments a poll brought while the pointer or focus was in the list: they wait behind the pill. */
   const [held, setHeld] = useState<Set<string>>(() => new Set())
   /** Moments that just arrived: they slide in once. */
@@ -126,16 +137,17 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
   const pool = useMemo(() => items.map(item => checkMoment(item, nowMinute)), [items, nowMinute])
   const byKey = useMemo(() => new Map(pool.map(m => [m.key, m])), [pool])
   // a saved moment that has left the feed: shown under Saved only, as an ended stream
-  const savedOnly = useMemo(() => (view === 'saved' ? [...saved.values()].filter(item => !byKey.has(item.id)).map(item => checkMoment({ ...item, streamLive: false }, nowMinute)) : []),
-    [view, saved, byKey, nowMinute])
+  const savedOnly = useMemo(() => [...drawn.values()].filter(item => !byKey.has(item.id) && savedKeys.has(savedKey(item))).map(item => checkMoment({ ...item, streamLive: false }, nowMinute)),
+    [drawn, savedKeys, byKey, nowMinute])
+  const savedCount = pool.filter(m => isSaved(m.item)).length + savedOnly.length
   const find = (key: string) => byKey.get(key) ?? savedOnly.find(m => m.key === key) ?? null
 
   const qq = q.trim().toLowerCase()
   // Latest leaves out what didn't hold up, except the open moment (a deep link, or a held minute's "a moment here").
   const passes = (m: CheckedMoment) =>
-    (view === 'saved' ? saved.has(m.key) : m.item.verdict !== 'bad' || m.key === sel) && (!qq || m.find.includes(qq))
+    (view === 'saved' ? isSaved(m.item) : m.item.verdict !== 'bad' || m.key === sel) && (!qq || m.find.includes(qq))
   const shown = (m: CheckedMoment) => (shownUntil == null || m.at <= shownUntil) && !held.has(m.key)
-  const list = [...pool, ...savedOnly].filter(m => shown(m) && passes(m)).sort(SORTS.new)
+  const list = [...pool, ...(view === 'saved' ? savedOnly : [])].filter(m => shown(m) && passes(m)).sort(SORTS.new)
   const groups = groupsOf(list)
   const selKey = sel != null && list.some(m => m.key === sel) ? sel : wide && list[0] && deepWait === 'no' ? list[0].key : null
   const selM = selKey ? find(selKey) : null
@@ -193,12 +205,17 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
   const toggleSave = (key: string) => {
     const m = find(key)
     if (!m) return
-    const next = new Map(saved)
-    if (next.has(key)) next.delete(key)
-    else next.set(key, m.item)
-    setSaved(next)
+    const moment = fromHubMoment({ login: m.item.login, streamId: m.item.streamId, offsetSeconds: m.item.offsetSeconds, at: m.item.minuteStart,
+      label: m.item.label.text, displayName: m.item.displayName, category: m.item.category?.name })
+    if (!moment) return
+    const wasSaved = isSaved(m.item)
+    toggleSavedMoment(moment)
+    const next = new Map(drawn)
+    if (wasSaved) next.delete(m.item.id)
+    else next.set(m.item.id, m.item)
+    setDrawn(next)
     writeSaved(next)
-    say(next.has(key) ? 'Saved' : 'Removed from Saved')
+    say(wasSaved ? 'Removed from Saved' : 'Saved')
   }
   const copyLink = async (key: string) => {
     const url = new URL(window.location.href)
@@ -275,7 +292,7 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
   onPoll.current = (snap) => {
     const { items: merged, added } = mergeMomentsFeed(latest.current.items, snap.items)
     const cutoff = Date.now() - MOMENTS_WINDOW_MS - 10 * 60_000
-    setItems(merged.filter(item => item.minuteStart >= cutoff || item.id === latest.current.selKey || saved.has(item.id)))
+    setItems(merged.filter(item => item.minuteStart >= cutoff || item.id === latest.current.selKey || isSaved(item)))
     setLoadedAt(Date.now())
     setClock(Date.now())
     setFeedStale(snap.stale)
@@ -385,7 +402,7 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
   const detail = (m: CheckedMoment) => <MomentDetail key={m.key} m={m} pool={pool} now={now} metric={metric} lk={lk}
     setMetric={value => setOpened(o => ({ key: m.key, metric: value, lk: o.key === m.key ? o.lk : null }))}
     setLk={value => setOpened(o => ({ key: m.key, lk: value, metric: o.key === m.key ? o.metric : null }))}
-    saved={saved.has(m.key)} onSave={() => toggleSave(m.key)} onCopy={() => copyLink(m.key)} onOpen={openFromDetail} onClose={closeDetail}
+    saved={isSaved(m.item)} onSave={() => toggleSave(m.key)} onCopy={() => copyLink(m.key)} onOpen={openFromDetail} onClose={closeDetail}
     motion={motion} phone={phone} say={say} playRef={playRef} vods={vods} />
   const row = (m: CheckedMoment, more: number, sub: boolean) => <Row m={m} more={more} sub={sub} now={now} current={selKey === m.key}
     onSelect={() => select(m.key, { from: m.key })} />
@@ -408,7 +425,7 @@ function CheckedMoments({ initial }: { initial: Initial | null }) {
     <div className="mk-bar" role="search" aria-label="Filter moments">
       <div className="mk-seg" role="group" aria-label="Which moments">
         <button type="button" aria-pressed={view === 'latest'} onClick={() => setView('latest')}>Latest</button>
-        <button type="button" aria-pressed={view === 'saved'} onClick={() => setView('saved')}>Saved ({saved.size})</button>
+        <button type="button" aria-pressed={view === 'saved'} onClick={() => setView('saved')}>Saved ({savedCount})</button>
       </div>
       <label className="mk-srch"><SearchGlyph />
         <input ref={searchRef} type="search" placeholder="Channel, game or emote" aria-label="Search channels, games or emotes" autoComplete="off" value={q} onChange={e => setQ(e.target.value)} />
