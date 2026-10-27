@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, test, type Locator, type Page } from '@playwright/test'
-import { installHubUxMock } from './helpers/hubUxMock'
+import { installHubUxMock, type HubUxMockOptions } from './helpers/hubUxMock'
 import { scrollSceneToProgress } from './helpers/scrollTour'
 
 // The d3-v5 hub page (behind the build flag). Runs only against a build made with VITE_PUBLIC_HUB_V5=on;
@@ -164,6 +164,11 @@ test('on a phone the hub merges its chat bars so each stays readable', async ({ 
   await assertNoPageOverflow(page)
 })
 
+// The Live feed lists a moment from 20 minutes into its stream that rose 1.5x or more over
+// that stream's own average. The mock's moments are 2 and 4 minutes in with no comparison,
+// so the Live feed checks serve the first one an hour in, compared.
+const FEED_MOMENT: HubUxMockOptions = { withComparisons: true, momentOffsets: [3600, 3600] }
+
 const responsiveCases = [
   { width: 390, height: 800, zoom: 1 },
   { width: 768, height: 676, zoom: 1 },
@@ -175,16 +180,17 @@ const responsiveCases = [
 
 for (const { width, height, zoom } of responsiveCases) {
   const size = `${width}x${height}-zoom${zoom}`
-  test(`Moments rows and the Channels table fit at ${size}`, async ({ page }) => {
+  test(`Live feed rows and the Channels table fit at ${size}`, async ({ page }) => {
     await page.setViewportSize({ width, height })
-    await installHubUxMock(page)
+    await installHubUxMock(page, FEED_MOMENT)
     await page.goto('/analytics')
     await page.evaluate(value => { document.documentElement.style.zoom = String(value) }, zoom)
     const latest = page.locator('#latest')
-    await expect(latest.locator('.hv5-mo').first()).toBeVisible()
-    expect(await latest.locator('.hv5-mo').evaluateAll(rows => rows.flatMap(row => {
+    const rows = latest.locator('.hv5-fd-list .hv5-fd')
+    await expect(rows.first()).toBeVisible()
+    expect(await rows.evaluateAll(rows => rows.flatMap(row => {
       const bounds = row.getBoundingClientRect()
-      const value = row.querySelector('.hv5-mo-v')!.getBoundingClientRect()
+      const value = row.querySelector('.hv5-fd-t')!.getBoundingClientRect()
       return value.right <= bounds.right + 1 && value.left >= bounds.left - 1 && bounds.height >= 44 * Number(document.documentElement.style.zoom || 1) - 0.5 ? [] : [row.textContent?.trim()]
     }))).toEqual([])
     const channels = page.locator('#channels')
@@ -192,7 +198,7 @@ for (const { width, height, zoom } of responsiveCases) {
     await expect(table.locator('tbody tr').first()).toBeVisible()
     expect(await table.evaluate(el => el.getBoundingClientRect().right <= el.parentElement!.getBoundingClientRect().right + 1)).toBe(true)
     await assertNoPageOverflow(page)
-    await saveProof(latest, `hub-v5-moments-${size}`)
+    await saveProof(latest, `hub-v5-live-feed-${size}`)
     await saveProof(channels, `hub-v5-channels-${size}`)
   })
 
@@ -251,10 +257,10 @@ test('Homepage animated wipe advances and resizing to short static mode reveals 
   await saveProof(panel.locator('[data-tour-step="1"]'), 'homepage-chart-after-animated-resize-986')
 })
 
-test('Moments and Channels render while a legacy successful history reply awaits minute repair', async ({ page }) => {
+test('the Live feed and Channels render while a legacy successful history reply awaits minute repair', async ({ page }) => {
   let releaseRepair!: () => void
   const gate = new Promise<void>(resolve => { releaseRepair = resolve })
-  await installHubUxMock(page, { legacySuccessfulCoarseFallback: true, recentHubGate: gate })
+  await installHubUxMock(page, { ...FEED_MOMENT, legacySuccessfulCoarseFallback: true, recentHubGate: gate })
   const repairRequested = page.waitForRequest(request => /\/v1\/public\/hub\?/.test(request.url()) && new URL(request.url()).searchParams.get('activityWindow') === '30m')
   await page.goto('/analytics')
   await repairRequested
@@ -262,7 +268,7 @@ test('Moments and Channels render while a legacy successful history reply awaits
     const chart = page.locator('.figma-global-activity__hub-chart')
     await expect(chart.getByText('Loading measured activity…', { exact: true })).toBeVisible()
     await expect(chart.locator('.spc-bar')).toHaveCount(0)
-    const rows = page.locator('#latest .hv5-mo')
+    const rows = page.locator('#latest .hv5-fd-list .hv5-fd')
     await expect(rows.first()).toBeVisible()
     const momentsBefore = await rows.allTextContents()
     const count = page.locator('#channels [data-hv5-channel-count]')
