@@ -122,6 +122,13 @@ export interface HubActivityChartProps {
   providerCoverage?: HubProviderCoverageMap | null
   /** Opens "How this is measured" (the (i) link). */
   onOpenMeasured?: () => void
+  /** The settled bar size, for "How this is measured" (bucket and bar minutes). */
+  onBarsChange?: (bars: HubActivityBars) => void
+}
+
+export interface HubActivityBars {
+  bucketMinutes: number
+  levelMinutes: number
 }
 
 export type CoreSeriesKey = 'viewers' | 'chat' | 'emotes'
@@ -401,9 +408,10 @@ interface ReadyProps {
   emoteImages?: Map<string, string>
   wheelCardRef?: RefObject<HTMLElement | null>
   onOpenMeasured?: () => void
+  onBarsChange?: (bars: HubActivityBars) => void
 }
 
-function HubActivityReady({ model, windowMinutes, rangeControl, annotationLane, externalBucketT, onBucketHover, momentMarkers, emoteImages, wheelCardRef, onOpenMeasured }: ReadyProps) {
+function HubActivityReady({ model, windowMinutes, rangeControl, annotationLane, externalBucketT, onBucketHover, momentMarkers, emoteImages, wheelCardRef, onOpenMeasured, onBarsChange }: ReadyProps) {
   const compact = useHubChartCompact()
   const plotHeight = compact ? PLOT_HEIGHT.compact : PLOT_HEIGHT.wide
   const tickColumn = compact ? TICK_COLUMN.compact : TICK_COLUMN.wide
@@ -411,6 +419,9 @@ function HubActivityReady({ model, windowMinutes, rangeControl, annotationLane, 
   // Buckets per bar at the settled level (onLevel fires when it changes); a new bucket length keeps it.
   const [levelStep, setLevelStep] = useState(1)
   const levelMinutes = levelStep * model.bucketMinutes
+  useEffect(() => {
+    onBarsChange?.({ bucketMinutes: model.bucketMinutes, levelMinutes })
+  }, [onBarsChange, model.bucketMinutes, levelMinutes])
   const chartRef = useRef<SpChartHandle>(null)
   const stackRef = useRef<HTMLDivElement>(null)
   /** Box-only hook with the exact plot box (PW x H): the wheel anchor and the bridge's bounds. */
@@ -676,6 +687,7 @@ export function HubActivityChart({
   bucketMinutes,
   providerCoverage,
   onOpenMeasured,
+  onBarsChange,
 }: HubActivityChartProps) {
   // A new window drops the selection (it belongs to the old grid); so does leaving the page.
   const windowRef = useRef(windowMinutes)
@@ -779,6 +791,7 @@ export function HubActivityChart({
       emoteImages={emoteImages}
       wheelCardRef={wheelCardRef}
       onOpenMeasured={onOpenMeasured}
+      onBarsChange={onBarsChange}
     />
   )
 }

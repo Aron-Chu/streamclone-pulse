@@ -347,10 +347,6 @@
   .hub-act .lr .te { display: none; }
 }
 
-/* Below the design's narrowest phone (360 px) the three chips wrap rather than run past the card. */
-@media (max-width: 359px) {
-  .hub-act .toggles { flex-wrap: wrap; row-gap: 4px; }
-}
 
 /* ---------- phone ---------- */
 @media (max-width: 719px) {
@@ -362,7 +358,10 @@
   .hub-act .rh h2 { order: 0; }
   .hub-act .hub-act-info { order: 1; }
   .hub-act .seg { order: 2; margin-left: auto; }
-  .hub-act .toggles { order: 3; flex-basis: 100%; }
+  /* The chips are 14 px (the mockup's are 13 px), so on a card narrower than
+     their row (390 px phones with the page's 16 px gutters) they wrap rather
+     than run past the card. */
+  .hub-act .toggles { order: 3; flex-basis: 100%; flex-wrap: wrap; row-gap: 4px; }
   .hub-act .rh .meta { display: none; }
   .hub-act .tg { padding: 0 8px; }
   .hub-act .lr .pt { display: none; }
