@@ -33,7 +33,7 @@ describe('/supporter', () => {
     expect(body).not.toMatch(/website account/i)
     expect(body).not.toMatch(/Restore my Supporter|restore link|installation/i)
     const availability = screen.getByTestId('supporter-availability').textContent ?? ''
-    expect(availability).toMatch(/^Supporter sign-ups are not open yet\. When they open, choose Become a Supporter in the extension’s Account & Supporter page and pay on Stripe\./)
+    expect(availability).toMatch(/^Choose Become a Supporter in the extension’s Account & Supporter page and pay on Stripe\./)
     expect(availability).toContain('No Twitch sign-in or separate StreamPulse sign-up is needed. Stripe asks for a billing email.')
     expect(screen.getByTestId('supporter-reinstall').textContent).toMatch(/Contact billing support to restore a membership/)
     // Restoring browser access is separate from Stripe billing.
@@ -61,7 +61,7 @@ describe('/account/billing, signed out', () => {
     stubSignedOut()
     render(<MemoryRouter initialEntries={['/account/billing']}><BillingPage /></MemoryRouter>)
     expect((await screen.findByRole('link', { name: 'Tester sign-in' })).getAttribute('href')).toBe('/account/sign-in?returnTo=%2Faccount%2Fbilling')
-    expect(screen.getByText(/Supporter sign-ups are not open yet\. Free tools work without an account/)).toBeTruthy()
+    expect(screen.getByText(/Become a Supporter from the extension’s Account & Supporter page\. Free tools work without an account/)).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Manage billing by email' }).getAttribute('href')).toMatch(/^https:\/\/billing\.stripe\.com\/p\/login\//)
     expect(screen.getByText(/Website or tester sign-in does not connect an extension-only membership/)).toBeTruthy()
     expect(screen.queryByRole('link', { name: 'Connect your extension' })).toBeNull()

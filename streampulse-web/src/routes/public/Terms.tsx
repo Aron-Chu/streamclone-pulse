@@ -2,7 +2,6 @@ import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { FEEDBACK_PATH, PRIVACY_PATH, REFUNDS_PATH, SECURITY_REPORT_URL, STRIPE_CUSTOMER_PORTAL_LOGIN_URL, SUPPORTER_PATH } from '../../lib/externalLinks'
 import { discordInviteUrl } from '../../lib/discord'
-import { PrelaunchNotice } from './PrelaunchNotice'
 import { SupporterPerkItems, supporterOnlyYou } from '../../ui/components/SupporterPerks'
 import { TermsSeenInChatBullets } from '../../ui/components/SupporterChatBadgeCopy'
 import { supporterChatBadgesEnabled } from '../../lib/supporterChatBadgesFlag'
@@ -35,16 +34,14 @@ export default function Terms() {
           </p>
         </header>
 
-        <PrelaunchNotice />
 
         <section className="mt-8 rounded-xl border border-white/[0.08] bg-black/20 p-6">
           <h2 className="!mt-0">Summary</h2>
           <p className="text-zinc-300">
             StreamPulse is a free Twitch analytics site and browser extension. Pulse Supporter is an
             optional subscription of US$4.99 per month that funds development and adds cosmetics — it
-            does not unlock analytics. Paid sign-ups are not open yet. Once they are, you will be able
-            to cancel at any time and keep access until the end of the period you paid for. The
-            service is provided as-is, with no uptime guarantee.
+            does not unlock analytics. You can cancel at any time and keep access until the end of the
+            period you paid for. The service is provided as-is, with no uptime guarantee.
           </p>
         </section>
 
@@ -68,8 +65,7 @@ export default function Terms() {
         </p>
         <p>
           Core Pulse is free and does not require an account. You can connect the extension without
-          Twitch or a separate StreamPulse sign-up; connecting starts no payment. Once paid sales
-          open, a Supporter purchase is offered separately through Stripe and linked to that extension
+          Twitch or a separate StreamPulse sign-up; connecting starts no payment. A Supporter purchase is offered separately through Stripe and linked to that extension
           connection.
         </p>
         <p>Please do not:</p>
@@ -102,9 +98,8 @@ export default function Terms() {
 
         <h2 id="supporter">Pulse Supporter</h2>
         <p>
-          Supporter is optional, and paid sign-ups are not open yet. Full details are on the{' '}
-          <Link to={SUPPORTER_PATH}>Supporter page</Link>. Once sign-ups open, the terms of the offer
-          are:
+          Supporter is optional. Full details are on the{' '}
+          <Link to={SUPPORTER_PATH}>Supporter page</Link>. The terms of the offer are:
         </p>
         <ul>
           <li>
@@ -176,7 +171,7 @@ export default function Terms() {
 
         <h2>Price and term changes</h2>
         <p>
-          If the Supporter price changes after sign-ups open, members will be notified by email before
+          If the Supporter price changes, members will be notified by email before
           the change takes effect and will be able to cancel before being charged the new amount. A
           price change is never applied retroactively to a month already paid for.
         </p>

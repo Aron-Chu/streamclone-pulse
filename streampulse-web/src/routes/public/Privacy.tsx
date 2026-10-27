@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { REFUNDS_PATH, SUPPORTER_PATH, TERMS_PATH } from '../../lib/externalLinks'
-import { PrelaunchNotice } from './PrelaunchNotice'
 import { supporterChatBadgesEnabled } from '../../lib/supporterChatBadgesFlag'
 import {
   PRIVACY_CHATTER_IDENTITY_EXCEPTION,
@@ -32,7 +31,6 @@ export default function Privacy() {
           </p>
         </header>
 
-        <PrelaunchNotice />
 
         <section className="mt-8 rounded-xl border border-white/[0.08] bg-black/20 p-6">
           <h2 className="!mt-0">Summary</h2>
@@ -47,8 +45,7 @@ export default function Privacy() {
             Accounts are optional; free tools work without an account. When you explicitly connect
             the extension, StreamPulse can create a browser-specific connection without a Twitch
             identity or account email address. Connecting starts no payment. Invited testers may
-            use a separate email account. Supporter sign-ups are not open yet; card
-            details go to Stripe, never to StreamPulse.
+            use a separate email account. Card details go to Stripe, never to StreamPulse.
           </p>
         </section>
 
@@ -108,10 +105,6 @@ export default function Privacy() {
         {supporterChatBadgesEnabled() ? <PrivacySeenInChat /> : null}
 
         <h2>Payment data, if you subscribe</h2>
-        <p>
-          This section describes what happens once paid sign-ups open. Until then, no payment is
-          taken through StreamPulse.
-        </p>
         <p>
           Payments are processed by <strong>Stripe</strong>. Card numbers and CVC are entered on
           Stripe's own hosted pages and go to Stripe — StreamPulse never receives or stores them.

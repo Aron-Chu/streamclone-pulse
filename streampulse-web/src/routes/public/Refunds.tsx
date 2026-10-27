@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { SUPPORTER_PATH, TERMS_PATH } from '../../lib/externalLinks'
-import { PrelaunchNotice } from './PrelaunchNotice'
 
 /**
  * Cancellation and refund policy for Pulse Supporter.
@@ -36,12 +35,11 @@ export default function Refunds() {
           </p>
         </header>
 
-        <PrelaunchNotice />
 
         <section className="mt-8 rounded-xl border border-white/[0.08] bg-black/20 p-6">
           <h2 className="!mt-0">Summary</h2>
           <p className="text-zinc-300">
-            Paid sign-ups are not open yet. Once they are, you can cancel whenever you like and keep
+            You can cancel whenever you like and keep
             access until the end of the period you already paid for. No cancellation fee, no minimum
             term, and no need to ask anyone. If something went wrong — a duplicate charge, a charge
             you did not intend, or a feature that did not work — email and it gets refunded.
@@ -53,7 +51,7 @@ export default function Refunds() {
             and refund requests within 7 days. Private mailbox routing is ops-owned. */}
         <p>
           Cancellation is self-service in the Stripe Customer Portal, reachable through Manage
-          subscription in the extension or on your account page once sign-ups open. You can also
+          subscription in the extension or on your account page. You can also
           cancel by emailing{' '}
           <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a> from the billing
           email you gave Stripe at checkout.

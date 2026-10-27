@@ -10,7 +10,7 @@ import Terms from '../src/routes/public/Terms'
 
 /**
  * The public Supporter pages must describe what the backend actually does
- * (audit LG-2, LG-3, LG-5, LG-6), and say plainly that paid sign-ups are closed.
+ * (audit LG-2, LG-3, LG-5, LG-6). From launch day, none says sign-ups are closed.
  */
 const pages: Array<[string, ComponentType, string]> = [
   ['Terms', Terms, 'terms-of-use'],
@@ -25,11 +25,12 @@ function textOf(Page: ComponentType, testId: string): string {
 }
 
 describe('Supporter legal copy', () => {
-  it.each(pages)('%s states that Supporter sign-ups are not open yet', (_, Page, testId) => {
-    render(<MemoryRouter><Page /></MemoryRouter>)
-    const notice = screen.getByTestId('prelaunch-notice')
-    expect(notice.textContent).toMatch(/^Supporter sign-ups are not open yet\./)
-    expect(screen.getByTestId(testId).contains(notice)).toBe(true)
+  // Fails until the owner's seller, governing-law and consumer-rights text
+  // replaces the pending paragraphs in Terms and Refunds (audit LG-1).
+  it.each(pages)('%s no longer says Supporter sign-ups are closed', (_, Page, testId) => {
+    const body = textOf(Page, testId)
+    expect(screen.queryByTestId('prelaunch-notice')).toBeNull()
+    expect(body).not.toMatch(/not open yet|sign-ups are not open|once (paid )?sign-ups open|before (paid )?sign-ups open|no sale is offered/i)
   })
 
   it.each(pages)('%s makes none of the withdrawn promises', (_, Page, testId) => {
@@ -156,7 +157,7 @@ describe('Supporter legal copy', () => {
     render(<MemoryRouter><Privacy /></MemoryRouter>)
     expect(screen.getByTestId('privacy-contact').querySelector('a[href="mailto:privacy@streampulse.stream"]')).toBeTruthy()
     const body = screen.getByTestId('privacy-policy').textContent ?? ''
-    expect(body).toMatch(/Supporter sign-ups are not open yet; card details go to Stripe, never to StreamPulse/)
+    expect(body).toMatch(/Card details go to Stripe, never to StreamPulse/)
     expect(body).toMatch(/set when you use the account pages on https:\/\/streampulse\.stream/)
     expect(body).not.toMatch(/all set by the StreamPulse API at/)
   })
@@ -164,7 +165,7 @@ describe('Supporter legal copy', () => {
   it('directs new buyers to a nonpaid extension connection, then a separate offered purchase', () => {
     render(<MemoryRouter><Supporter /></MemoryRouter>)
     expect(screen.getByRole('link', { name: 'Get the extension' }).getAttribute('href')).toMatch(/^https:\/\/chromewebstore\.google\.com\//)
-    expect(screen.getByTestId('supporter-availability').textContent).toMatch(/choose Become a Supporter.*and pay on Stripe/)
+    expect(screen.getByTestId('supporter-availability').textContent).toMatch(/Choose Become a Supporter.*and pay on Stripe/)
     expect(screen.getByTestId('supporter-availability').textContent).toMatch(/No Twitch sign-in or separate StreamPulse sign-up is needed/)
     expect(screen.queryByRole('link', { name: 'Use a StreamPulse website account' })).toBeNull()
     expect(screen.queryByRole('link', { name: 'Open account billing' })).toBeNull()
@@ -185,7 +186,6 @@ describe('Supporter legal copy', () => {
     expect(billing).toMatch(/checks the notification's\s+signature and removes contact details before saving the new payment notification/)
     expect(billing).toMatch(/keyed, one-way hash of the billing email as a recovery\s+lookup, rather than the address itself/)
     expect(billing).toMatch(/does not automatically combine accounts\s+or grant Supporter access/)
-    expect(screen.getByTestId('privacy-policy').textContent).toMatch(/This section describes what happens once paid sign-ups open/)
     expect(screen.getByTestId('privacy-installation-account').textContent).toMatch(/Looking at your status does not create a connection/)
     expect(screen.getByTestId('privacy-installation-account').textContent).toMatch(/does not sync My Moments: bookmarks, notes and watched history stay in this browser/)
     const twitch = screen.getByTestId('privacy-continue-with-twitch').textContent ?? ''

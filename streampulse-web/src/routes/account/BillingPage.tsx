@@ -351,7 +351,7 @@ export default function BillingPage() {
     state = 'signed-out'
     title = 'Manage your Supporter membership'
     body = <>
-      <p>Supporter sign-ups are not open yet. Free tools work without an account.</p>
+      <p>Become a Supporter from the extension’s Account &amp; Supporter page. Free tools work without an account.</p>
       {attempt && !cancelled ? <p>If you just paid, return to the extension that started checkout, or use Tester sign-in for a website account. Don’t start another checkout.</p> : null}
       <p>Bought Supporter without Twitch? In the same browser’s extension, open Account &amp; Supporter and choose <strong>Manage subscription</strong>. Website or tester sign-in does not connect an extension-only membership.</p>
       <p>Reinstalled or using another browser? <a href="mailto:privacy@streampulse.stream">Contact billing support</a> for help with the existing membership. Stripe’s email sign-in manages payments, invoices and cancellation only; it does not restore extension access.</p>

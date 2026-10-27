@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { PRIVACY_PATH, REFUNDS_PATH, STRIPE_CUSTOMER_PORTAL_LOGIN_URL, SUPPORTER_TERMS_PATH } from '../../lib/externalLinks'
-import { PrelaunchNotice } from './PrelaunchNotice'
 import { CHROME_WEB_STORE_LISTING_URL } from '../../lib/publicSiteConfig'
 import { SupporterPerkItems, supporterOnlyYou } from '../../ui/components/SupporterPerks'
 import { SupporterNoTwitchChatBadge, SupporterSeenInChat } from '../../ui/components/SupporterChatBadgeCopy'
@@ -47,10 +46,9 @@ export default function Supporter() {
           </p>
         </header>
 
-        <PrelaunchNotice />
 
         <section className="mt-8 rounded-xl border border-violet-500/25 bg-violet-500/[0.06] p-6" data-testid="supporter-terms">
-          <h2 className="!mt-0">The offer, once sign-ups open</h2>
+          <h2 className="!mt-0">The offer</h2>
           <dl className="mt-4 grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-[10rem_minmax(0,1fr)]">
             <dt className="text-sm font-bold text-zinc-400">Price</dt>
             <dd className="m-0 text-sm font-bold text-white">{PRICE_DISPLAY}</dd>
@@ -109,7 +107,7 @@ export default function Supporter() {
         <h2 id="subscribe">How to subscribe</h2>
         <div className="rounded-xl border border-white/[0.08] bg-black/20 p-6" data-testid="supporter-availability">
           <p className="!mt-0">
-            <strong>Supporter sign-ups are not open yet.</strong> When they open, choose{' '}
+            Choose{' '}
             <strong>Become a Supporter</strong> in the extension&rsquo;s{' '}
             <strong>Account &amp; Supporter</strong> page and pay on Stripe.
           </p>
@@ -124,7 +122,7 @@ export default function Supporter() {
 
         <h2>Managing a membership</h2>
         <p>
-          Once sign-ups open, choose <strong>Manage subscription</strong> in the extension.
+          Choose <strong>Manage subscription</strong> in the extension.
           Stripe handles your payment method, invoices and cancellation. Cancelling
           takes effect at the end of the period you&rsquo;ve already paid for. While Stripe finalizes a
           renewal, a membership may show as active for up to 72 hours after the paid period ends. See{' '}
