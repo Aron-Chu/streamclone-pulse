@@ -6,9 +6,18 @@
  * the shared chart's overlay panel and is not part of this page yet, so the
  * emote rows are not buttons.
  */
+import { sanitizeEmoteImageUrl } from '../../../../lib/emoteAssetUrl'
 import type { HubEmote } from '../../../../lib/publicHub'
 import { HubToggletip } from '../d3/HubToggletip'
 import { gameAria, topEmoteRows, topEmotesTip, topEmotesWindowLabel, whereChatIsTip, type HubWhereChatIs } from './hubV5Model'
+
+/** Only an allowlisted https emote URL reaches <img src>; any other gets the empty tile, as a missing one does. */
+function TopEmoteImage({ url }: { url?: string }) {
+  const src = sanitizeEmoteImageUrl(url)
+  return src
+    ? <img src={src} alt="" width={28} height={28} decoding="async" loading="lazy" />
+    : <span className="hv5-te5-x" aria-hidden="true" />
+}
 
 export function HubV5TopEmotes({ topEmotes, windowMinutes, uniqueEmotes }: { topEmotes: readonly HubEmote[]; windowMinutes?: number; uniqueEmotes?: number }) {
   const rows = topEmoteRows(topEmotes)
@@ -24,11 +33,7 @@ export function HubV5TopEmotes({ topEmotes, windowMinutes, uniqueEmotes }: { top
           {rows.map((row) => (
             <li key={row.emote.id ?? `${row.emote.provider ?? ''}|${row.emote.name}`}>
               <div className="hv5-te5">
-                <span className="hv5-te5-im">
-                  {row.emote.imageUrl
-                    ? <img src={row.emote.imageUrl} alt="" width={28} height={28} decoding="async" loading="lazy" />
-                    : <span className="hv5-te5-x" aria-hidden="true" />}
-                </span>
+                <span className="hv5-te5-im"><TopEmoteImage url={row.emote.imageUrl} /></span>
                 <span className="hv5-te5-tx">
                   <span className="hv5-te5-nm">{row.emote.name}</span>
                   <span className="hv5-te5-bar" aria-hidden="true"><i style={{ width: `${row.width.toFixed(1)}%` }} /></span>
