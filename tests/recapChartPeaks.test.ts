@@ -60,7 +60,7 @@ describe('resolveRecapChartPeakOffsets', () => {
     expect(offsets).toEqual([2400, 1200, 60])
   })
 
-  it('puts a goodbye spike marker last with an ended stream's edges', () => {
+  it('puts a goodbye spike marker last once the stream has ended', () => {
     const offsets = resolveRecapChartPeakOffsets(
       [
         { offsetSeconds: 3500, score: 99, reasons: ['seventv_spike'] },
