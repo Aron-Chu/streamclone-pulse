@@ -729,6 +729,23 @@ describe('usePublicHubData', () => {
     expect(result.current.refreshing).toBe(false)
   })
 
+  it('shows a saved copy up to 6 hours old as cached data until the fresh read replaces it', async () => {
+    writePublicHubCache(getBackendUrl(), '24h', sampleHub(8))
+    const key = publicHubCacheKey(getBackendUrl(), '24h')
+    const savedAt = Date.now() - (5 * 60 + 59) * 60_000
+    localStorage.setItem(key, localStorage.getItem(key)!.replace(/"cachedAt":\d+/, `"cachedAt":${savedAt}`))
+    const fresh = deferredHub()
+    fetchPublicHubBase.mockReturnValue(fresh.promise)
+
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
+
+    expect(result.current.data?.poolSize).toBe(8)
+    expect(result.current).toMatchObject({ loading: false, refreshing: true, loadSource: 'cache', cachedAt: savedAt, lastUpdated: savedAt })
+    await act(async () => { fresh.resolve(hubResult(42)) })
+    expect(result.current).toMatchObject({ refreshing: false, loadSource: 'full', cachedAt: null })
+    expect(result.current.data?.poolSize).toBe(42)
+  })
+
   it('shows refreshing while background fetch runs after cache hydration', async () => {
     writePublicHubCache(getBackendUrl(), '24h', sampleHub(8))
     fetchPublicHubBase.mockImplementation(

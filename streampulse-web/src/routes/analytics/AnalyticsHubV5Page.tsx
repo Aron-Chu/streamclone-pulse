@@ -32,7 +32,7 @@ import { HubV5Hero } from '../../ui/components/hub/v5/HubV5Hero'
 import { HubV5Icon } from '../../ui/components/hub/v5/HubV5Icon'
 import { HubV5LiveFeed, HubV5LivePeek, useHubLiveFeed } from '../../ui/components/hub/v5/HubV5LiveFeed'
 import { HubV5Rack } from '../../ui/components/hub/v5/HubV5Rack'
-import { HUB_RACK_ROWS, hubCategoryArt, whereChatIs, type HubChannelSort } from '../../ui/components/hub/v5/hubV5Model'
+import { HUB_RACK_ROWS, hubCategoryArt, hubClock, whereChatIs, type HubChannelSort } from '../../ui/components/hub/v5/hubV5Model'
 import { useHashScrollHold } from '../../ui/RouteScrollManager'
 import '../../ui/components/analytics/figma-analytics.css'
 import '../../ui/components/hub/d3/hub-d3-tokens.css'
@@ -214,9 +214,10 @@ export default function AnalyticsHubV5Page() {
     >
       <main className="figma-analytics__main" aria-label="StreamPulse analytics" data-hub-state={hubUiState}>
         <div id="analytics-main" tabIndex={-1} className="analytics-focus-target">Analytics content</div>
-        {hub.loadSource === 'cache' && hub.refreshing ? (
+        {/* A saved copy can be hours old: it names its time for as long as it is on screen, never reading as live. */}
+        {hub.loadSource === 'cache' && hub.cachedAt != null ? (
           <div className="figma-hub-fallback-banner figma-hub-fallback-banner--info" role="status">
-            Cached snapshot - refreshing...
+            Cached snapshot from {hubClock(hub.cachedAt)}{hub.refreshing ? ' - refreshing...' : ''}
           </div>
         ) : null}
         <HubDataHealthBanner

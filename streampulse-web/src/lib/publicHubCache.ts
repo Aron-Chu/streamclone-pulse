@@ -5,8 +5,14 @@ import { hubActivityContractIssues } from './hubActivityHonesty'
 import { isHubGestureActive } from './hubBucketSelection'
 import { allowPublicHubCacheWritesForTests, clearPublicHubCache, PROJECTION_STORAGE_PREFIX, publicHubCacheWritesStopped, STORAGE_PREFIX } from './publicHubCacheReset'
 
-/** Staleness hint only — cached data may still render while refreshing. */
+/** The oldest saved projection (Moments, home tickers) a page may show while it refreshes. */
 export const PUBLIC_HUB_CACHE_STALE_MS = 10 * 60 * 1000
+/**
+ * The oldest saved hub copy the hub may show, as "Cached data", while it
+ * refreshes: a slow API then leaves a returning visitor the last hub it saw,
+ * not an empty page. The fresh read replaces it as soon as it lands.
+ */
+export const PUBLIC_HUB_CACHE_HUB_STALE_MS = 6 * 60 * 60 * 1000
 
 /**
  * Bound for one full-hub snapshot (plan H11, §2.6). A full 24 h hub body is
@@ -406,7 +412,7 @@ export function readPublicHubCache(
     if (hubActivityContractIssues(data.activity).length > 0) return null
     const cachedAt = parsed.cachedAt
     const generatedAt = typeof parsed.generatedAt === 'string' ? parsed.generatedAt : data.generatedAt
-    const stale = Date.now() - cachedAt > PUBLIC_HUB_CACHE_STALE_MS
+    const stale = Date.now() - cachedAt > (projection ? PUBLIC_HUB_CACHE_STALE_MS : PUBLIC_HUB_CACHE_HUB_STALE_MS)
     if (stale) return null
     return { data, cachedAt, generatedAt, stale }
   } catch {

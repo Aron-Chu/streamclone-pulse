@@ -5,7 +5,9 @@ import { normalizePublicHub, type PublicHub } from '../src/lib/publicHub'
 import {
   clearPublicHubCacheForTests,
   LEGACY_PUBLIC_HUB_CACHE_MAX_CHARS,
+  PUBLIC_HUB_CACHE_HUB_STALE_MS,
   PUBLIC_HUB_CACHE_MAX_CHARS,
+  PUBLIC_HUB_CACHE_STALE_MS,
   publicHubCacheEntrySize,
   readPublicHubCache,
   writePublicHubCache,
@@ -42,6 +44,29 @@ describe('bounded public hub persistence', () => {
     entry.cachedAt = Date.now() + 10 * 60_000
     localStorage.setItem(key, JSON.stringify(entry))
     expect(readPublicHubCache(origin, '30m')).toBeNull()
+  })
+
+  it('shows a saved hub copy up to 6 hours old, and a saved projection up to 10 minutes', () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(1_800_000_000_000)
+      const generatedAt = new Date().toISOString()
+      const hub = normalizePublicHub({ generatedAt, corpusPipeline: { generatedAt, state: 'healthy' } })
+      writePublicHubCache(origin, '24h', hub)
+      writePublicHubCache(origin, '30m', hub, 'moments')
+      expect(PUBLIC_HUB_CACHE_HUB_STALE_MS).toBe(6 * 60 * 60_000)
+      vi.setSystemTime(1_800_000_000_000 + PUBLIC_HUB_CACHE_STALE_MS - 60_000)
+      expect(readPublicHubCache(origin, '30m', 'moments')?.cachedAt).toBe(1_800_000_000_000)
+      vi.setSystemTime(1_800_000_000_000 + PUBLIC_HUB_CACHE_STALE_MS + 60_000)
+      expect(readPublicHubCache(origin, '24h')).not.toBeNull()
+      expect(readPublicHubCache(origin, '30m', 'moments')).toBeNull()
+      vi.setSystemTime(1_800_000_000_000 + (5 * 60 + 59) * 60_000)
+      expect(readPublicHubCache(origin, '24h')?.cachedAt).toBe(1_800_000_000_000)
+      vi.setSystemTime(1_800_000_000_000 + (6 * 60 + 1) * 60_000)
+      expect(readPublicHubCache(origin, '24h')).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('projects a full hub body before persisting a projected snapshot', () => {
