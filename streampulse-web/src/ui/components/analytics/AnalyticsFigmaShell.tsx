@@ -26,6 +26,7 @@ const NAV_ITEMS = [
 ]
 
 export interface AnalyticsFigmaShellProps {
+  /** Only its tone is shown, as the sidebar status dot; the header has no status pill. */
   backendStatus?: { label: string; value: string; tone?: 'ready' | 'degraded' | 'offline' | 'checking' }
   sidebarStatusLabel?: string
   sidebarSections?: Array<{ id: string; label: string; hidden?: boolean }>
@@ -62,18 +63,7 @@ function AnalyticsFigmaShellInner({
 
   return (
     <div className="figma-analytics">
-      <AnalyticsTopNav
-        items={NAV_ITEMS}
-        status={
-          backendStatus
-            ? {
-                label: backendStatus.label,
-                value: backendStatus.value,
-                tone: backendStatus.tone ?? 'muted',
-              }
-            : undefined
-        }
-      />
+      <AnalyticsTopNav items={NAV_ITEMS} />
       <div
         className={`figma-analytics__frame${hideSidebar ? ' figma-analytics__frame--no-sidebar' : ''}${
           rightRail ? ' figma-analytics__frame--with-right-rail' : ''

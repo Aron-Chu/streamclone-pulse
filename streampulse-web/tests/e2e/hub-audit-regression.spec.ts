@@ -262,7 +262,8 @@ test.describe('hub audit regression', () => {
       await expect(page.locator('[data-collection-diagnostics]')).not.toHaveAttribute('open')
       await expect(page.locator('.figma-economy-embed .hx-econstat')).toHaveCount(0)
       expect(await page.getByRole('link', { name: /Skip to.*content/i }).count()).toBe(1)
-      for (const link of await page.locator('.analytics-topnav__links a, .analytics-topnav__install').all()) {
+      // Add to Chrome is hidden at 720px and below, so only a shown one is measured.
+      for (const link of await page.locator('.analytics-topnav__links a, .analytics-topnav__install:visible').all()) {
         const box = await link.boundingBox()
         expect(box?.height).toBeGreaterThanOrEqual(44)
         expect(box?.width).toBeGreaterThanOrEqual(44)

@@ -12,12 +12,11 @@ import { useSearchParams } from 'react-router-dom'
 import { optionsForBoundedActivityFallback } from '../../lib/activityRangeCapabilities'
 import { usePublicHubData } from '../../hooks/usePublicHubData'
 import { getBackendUrl } from '../../lib/apiClient'
-import { backendSourceLabel, resolveBackendSource } from '../../lib/backendSource'
 import { formatActivityWindowLabel, summarizeActivity } from '../../lib/hubActivitySummary'
 import { selectHubChartActivityInputs } from '../../lib/hubChartActivityModel'
 import { isHubActivityLivePoolFallback, resolveHubActivityChartWindowMinutes } from '../../lib/hubActivityHonesty'
 import { normalizePublicHub, type PublicHubActivityWindow } from '../../lib/publicHub'
-import { resolveHubStatus, resolveHubUiState } from '../../lib/hubUiState'
+import { resolveHubUiState } from '../../lib/hubUiState'
 import type { HubActivityRangeOption } from '../../ui/components/hub/HubActivityChart'
 import { AnalyticsFigmaShell } from '../../ui/components/analytics/AnalyticsFigmaShell'
 import { HubActivityPanelV5 } from '../../ui/components/analytics/HubActivityPanelV5'
@@ -198,20 +197,8 @@ export default function AnalyticsHubV5Page() {
     details.querySelector<HTMLElement>('summary')?.focus({ preventScroll: true })
   }, [])
 
-  const backendSource = resolveBackendSource(getBackendUrl())
-  const isHostedBackend = backendSource === 'hosted'
-  const measurementStatus = resolveHubStatus(hub)
-
   return (
-    <AnalyticsFigmaShell
-      backendStatus={
-        isHostedBackend
-          ? { label: 'Status', value: measurementStatus.value, tone: measurementStatus.tone }
-          : { label: 'API', value: backendSourceLabel(backendSource), tone: measurementStatus.tone }
-      }
-      sidebarStatusLabel={isHostedBackend ? measurementStatus.value : backendSourceLabel(backendSource)}
-      hideSidebar
-    >
+    <AnalyticsFigmaShell hideSidebar>
       <main className="figma-analytics__main" aria-label="StreamPulse analytics" data-hub-state={hubUiState}>
         <div id="analytics-main" tabIndex={-1} className="analytics-focus-target">Analytics content</div>
         {/* A saved copy can be hours old: it names its time for as long as it is on screen, never reading as live. */}

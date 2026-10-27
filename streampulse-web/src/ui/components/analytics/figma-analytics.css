@@ -177,16 +177,6 @@
   background: var(--fma-accent-bg);
 }
 
-.analytics-topnav__status {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.3rem 0.7rem;
-  border: 1px solid var(--fma-border);
-  border-radius: var(--sp-radius-md, 7px);
-  font-size: 0.75rem;
-}
-
 .analytics-topnav__actions {
   margin-left: auto;
   display: inline-flex;
@@ -221,29 +211,6 @@
   transition: opacity 0.15s ease;
 }
 
-.analytics-topnav__status span {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: var(--fma-sub);
-}
-
-.analytics-topnav__status small {
-  color: var(--fma-muted);
-  font-family: var(--fma-mono);
-  letter-spacing: 0.04em;
-  font-size: 0.75rem;
-}
-
-.analytics-topnav__status strong {
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
-.analytics-topnav__status--ready span { background: var(--fma-green); }
-.analytics-topnav__status--degraded span { background: var(--fma-amber); }
-.analytics-topnav__status--offline span { background: var(--fma-red); }
-
 /* Reserve the phone navigation row before the webfont arrives. Otherwise its
    slightly wider metrics can push the links down and shift the entire page. */
 @media (max-width: 480px) {
@@ -266,29 +233,10 @@
     padding-inline: 0.55rem;
   }
 
+  /* Add to Chrome is no use on a phone, and on its own it would take a third
+     header row. The hub hero and Moments already drop it the same way. */
   .analytics-topnav__actions {
-    flex: 1 0 100%;
-    margin-left: 0;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 0.5rem;
-  }
-
-  .analytics-topnav__status {
-    min-width: 0;
-    justify-content: center;
-    padding-inline: 0.55rem;
-  }
-
-  /* The status container already has a full accessible label. Keep the compact
-     mobile badge to dot + value so longer truthful states never wrap the nav. */
-  .analytics-topnav__status small {
     display: none;
-  }
-
-  .analytics-topnav__status strong {
-    white-space: nowrap;
-    overflow-wrap: normal;
   }
 }
 

@@ -1,14 +1,10 @@
 import type { ReactNode } from 'react'
-import { usePublicStatusProbe } from '../../../hooks/usePublicStatusProbe'
-import { getBackendUrl } from '../../../lib/apiClient'
-import { resolveBackendSource, backendSourceLabel } from '../../../lib/backendSource'
 import { AnalyticsFigmaShell } from './AnalyticsFigmaShell'
 
 /**
- * Owns lightweight API shell tone for channel analytics routes.
- * Uses `/v1/public/status` once on mount — never interval-polls full `/v1/public/hub`
- * (P4-L05 Phase 1). Pass heavy chart UI as `children` so status updates do not
- * rebuild chart inputs (P4-L03).
+ * Shell for channel analytics routes. It reads nothing itself: service status
+ * is the menu's "Service status" link, not a header pill. Pass heavy chart UI
+ * as `children`.
  */
 export function ChannelHubStatusShell({
   displayChannel,
@@ -22,18 +18,8 @@ export function ChannelHubStatusShell({
   hideSidebar?: boolean
   children: ReactNode
 }) {
-  const probe = usePublicStatusProbe({ enabled: true })
-  const backendSource = resolveBackendSource(getBackendUrl())
-
   return (
-    <AnalyticsFigmaShell
-      hideSidebar={hideSidebar}
-      backendStatus={{
-        label: 'API',
-        value: backendSourceLabel(backendSource),
-        tone: probe.tone,
-      }}
-    >
+    <AnalyticsFigmaShell hideSidebar={hideSidebar}>
       <main
         className={mainClassName ?? 'figma-analytics__main'}
         id="analytics-main"
