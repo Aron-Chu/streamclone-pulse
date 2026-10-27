@@ -155,8 +155,8 @@ export function emoteSharePct(x: number): string {
 /** A sharper picture for a bigger tile (Twitch 2.0/3.0, 7TV 2x/4x). */
 export function emoteImageAt(url: string | undefined, px: number): string {
   if (!url) return ''
-  if (/static-cdn\.jtvnw\.net\/emoticons\/v2\//.test(url)) return url.replace(/\/[123]\.0$/, px > 40 ? '/3.0' : '/2.0')
-  if (/cdn\.7tv\.app\/emote\//.test(url)) return url.replace(/\/[1-4]x\.(webp|avif|png|gif)$/, px > 40 ? '/4x.$1' : '/2x.$1')
+  if (/^https?:\/\/static-cdn\.jtvnw\.net\/emoticons\/v2\//.test(url)) return url.replace(/\/[123]\.0$/, px > 40 ? '/3.0' : '/2.0')
+  if (/^https?:\/\/cdn\.7tv\.app\/emote\//.test(url)) return url.replace(/\/[1-4]x\.(webp|avif|png|gif)$/, px > 40 ? '/4x.$1' : '/2x.$1')
   return url
 }
 

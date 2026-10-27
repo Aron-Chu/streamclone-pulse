@@ -113,6 +113,12 @@ describe('emote formatting', () => {
     expect(emoteImageAt('https://img.test/x.png', 50)).toBe('https://img.test/x.png')
     expect(emoteImageAt(undefined, 50)).toBe('')
   })
+
+  it('only resizes pictures served by Twitch or 7TV themselves', () => {
+    expect(emoteImageAt('https://img.test/static-cdn.jtvnw.net/emoticons/v2/1/default/dark/1.0', 50))
+      .toBe('https://img.test/static-cdn.jtvnw.net/emoticons/v2/1/default/dark/1.0')
+    expect(emoteImageAt('https://img.test/cdn.7tv.app/emote/abc/1x.webp', 50)).toBe('https://img.test/cdn.7tv.app/emote/abc/1x.webp')
+  })
 })
 
 describe('squarify', () => {
