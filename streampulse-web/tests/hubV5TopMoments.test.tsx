@@ -40,7 +40,7 @@ let items = fixture.items
 const listReads = () => feed.load.mock.calls.map((c) => c[0] as MomentsWindowQuery).filter((q) => q.limit > 1)
 const rows = () => [...document.querySelectorAll<HTMLElement>('.hv5-tm-list > .hv5-tm-it')]
 const onGone = vi.fn()
-const view = (at: string, up: () => React.ReactNode = () => null) => (
+const view = (at: string | null, up: () => React.ReactNode = () => null) => (
   <MemoryRouter><div className="hub-v5"><HubV5TopMoments at={at} nowMs={NOW} onGone={onGone} up={up} /></div></MemoryRouter>
 )
 
@@ -141,6 +141,33 @@ describe('hub Top moments', () => {
     feed.load.mockImplementation(() => Promise.reject(normalizeApiError(404, {})))
     render(view('c'))
     await waitFor(() => expect(onGone).toHaveBeenCalled())
+  })
+
+  it('makes one set of reads on first load: the hub first snapshot reads nothing again', async () => {
+    const { rerender } = render(view(null))
+    rerender(view('a'))
+    await waitFor(() => expect(rows().length).toBeGreaterThan(0))
+    await act(async () => {})
+    // the window's list and the four tabs' counts, once each, none of them cut off
+    expect(feed.load).toHaveBeenCalledTimes(5)
+    expect(listReads()).toHaveLength(1)
+    expect(feed.load.mock.calls.every((c) => !(c[1] as AbortSignal).aborted)).toBe(true)
+    // each later hub poll reads them again
+    rerender(view('b'))
+    await waitFor(() => expect(feed.load).toHaveBeenCalledTimes(10))
+    await act(async () => {})
+  })
+
+  it('reads again for the hub first snapshot when a read before it failed', async () => {
+    feed.load.mockImplementationOnce(() => Promise.reject(normalizeApiError(503, {})))
+    const { rerender } = render(view(null))
+    await waitFor(() => expect(feed.load).toHaveBeenCalledTimes(5))
+    await act(async () => {})
+    rerender(view('a'))
+    await waitFor(() => expect(rows().length).toBeGreaterThan(0))
+    await act(async () => {})
+    expect(listReads()).toHaveLength(2)
+    expect(onGone).not.toHaveBeenCalled()
   })
 
   it('keeps the last list when a read fails some other way', async () => {

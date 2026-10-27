@@ -52,6 +52,22 @@ const calm = () => typeof window.matchMedia === 'function' && window.matchMedia(
 interface TopRead { key: string; sort: TopSort; snap: MomentsFeedSnapshot }
 
 /**
+ * The hub poll the reads answer for. Reads made before the hub's first
+ * snapshot answer for that snapshot too, so its arrival reads nothing again
+ * (first load makes one set of Moments reads, not two); a read that failed
+ * by then leaves the snapshot to read again. Each later poll reads again.
+ */
+function useHubPoll(at: string | null): { poll: string | null; failed: () => void } {
+  const early = useRef<{ on: boolean; first: string | null; failed: boolean }>({ on: at === null, first: null, failed: false })
+  const e = early.current
+  if (e.on && e.first === null && at !== null) e.first = at
+  const failed = useCallback(() => {
+    if (early.current.first === null) early.current.failed = true
+  }, [])
+  return { poll: e.on && !e.failed && at === e.first ? null : at, failed }
+}
+
+/**
  * The picked window's first 50 moments, read again with each hub poll (`at`);
  * a window already read since the last poll comes back at once. The tabs'
  * counts are one-moment reads of each window. A 404 (the backend's feed is
@@ -59,14 +75,15 @@ interface TopRead { key: string; sort: TopSort; snap: MomentsFeedSnapshot }
  */
 function useTopMoments(at: string | null, win: TopWindowKey, sort: TopSort, game: string | null, onGone: () => void) {
   const key = `${win}|${sort}|${game ?? ''}`
+  const { poll, failed } = useHubPoll(at)
   const [read, setRead] = useState<TopRead | null>(null)
   const [counts, setCounts] = useState<{ game: string | null; n: Partial<Record<TopWindowKey, number>> }>({ game: null, n: {} })
-  const cache = useRef<{ at: string | null; reads: Map<string, TopRead> }>({ at, reads: new Map() })
+  const cache = useRef<{ poll: string | null; reads: Map<string, TopRead> }>({ poll, reads: new Map() })
   const gone = useRef(onGone)
   gone.current = onGone
 
   useEffect(() => {
-    if (cache.current.at !== at) cache.current = { at, reads: new Map() }
+    if (cache.current.poll !== poll) cache.current = { poll, reads: new Map() }
     const hit = cache.current.reads.get(key)
     if (hit) {
       setRead(hit)
@@ -80,11 +97,13 @@ function useTopMoments(at: string | null, win: TopWindowKey, sort: TopSort, game
         setRead(next)
       },
       (error: unknown) => {
-        if (!controller.signal.aborted && isApiError(error) && error.status === 404) gone.current()
+        if (controller.signal.aborted) return
+        if (isApiError(error) && error.status === 404) gone.current()
+        else failed()
       },
     )
     return () => controller.abort()
-  }, [at, key, win, sort, game])
+  }, [poll, key, win, sort, game, failed])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -92,11 +111,11 @@ function useTopMoments(at: string | null, win: TopWindowKey, sort: TopSort, game
     for (const w of TOP_WINDOWS) {
       loadMomentsWindow({ from: topFrom(now, w.key), sort: 'new', limit: 1, category: game }, controller.signal).then(
         (snap) => setCounts((prev) => ({ game, n: { ...(prev.game === game ? prev.n : {}), [w.key]: topCount(snap) } })),
-        () => undefined,
+        () => { if (!controller.signal.aborted) failed() },
       )
     }
     return () => controller.abort()
-  }, [at, game])
+  }, [poll, game, failed])
 
   return { read, counts: counts.game === game ? counts.n : {} }
 }

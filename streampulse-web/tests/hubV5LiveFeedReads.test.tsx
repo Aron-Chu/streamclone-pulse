@@ -1,20 +1,24 @@
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, render, renderHook, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PublicHub } from '../src/lib/publicHub'
 
 const poll = vi.fn()
+const load = vi.fn()
 vi.mock('../src/lib/momentsFeed', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../src/lib/momentsFeed')>()),
   pollMomentsFeed: (...args: unknown[]) => poll(...args),
+  loadMomentsWindow: (...args: unknown[]) => load(...args),
 }))
 // The feed rows are not under test here: only how often the Moments list is read.
 vi.mock('../src/ui/components/hub/v5/hubV5FeedModel', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../src/ui/components/hub/v5/hubV5FeedModel')>()),
   liveFeedModel: () => ({}),
   feedFresh: () => new Set<string>(),
+  feedForGame: () => ({ up: [] }),
 }))
 
-import { useHubLiveFeed } from '../src/ui/components/hub/v5/HubV5LiveFeed'
+import { HubV5LiveFeed, useHubLiveFeed } from '../src/ui/components/hub/v5/HubV5LiveFeed'
 
 const hubAt = (generatedAt: string) => ({ generatedAt }) as unknown as PublicHub
 const snapshot = { items: [], generatedAt: '2026-10-22T12:00:00Z' }
@@ -22,6 +26,7 @@ const snapshot = { items: [], generatedAt: '2026-10-22T12:00:00Z' }
 beforeEach(() => {
   vi.stubEnv('VITE_PUBLIC_MOMENTS_FEED', '1')
   poll.mockReset()
+  load.mockReset().mockResolvedValue({ items: [], generatedAt: Date.parse(snapshot.generatedAt), stale: false, total: 0, verdicts: { ok: 0, warn: 0, bad: 0 }, categories: [], nextCursor: null })
 })
 
 afterEach(() => {
@@ -60,5 +65,22 @@ describe('hub feed Moments list reads', () => {
     await Promise.resolve()
     rerender({ hub: hubAt('2026-10-22T12:00:00Z') })
     await waitFor(() => expect(poll).toHaveBeenCalledTimes(2))
+  })
+})
+
+describe('hub first load Moments reads', () => {
+  function Rail({ hub }: { hub: PublicHub | null }) {
+    return <HubV5LiveFeed feed={useHubLiveFeed(hub)} nowMs={Date.parse(snapshot.generatedAt)} />
+  }
+
+  it('makes one set: the list once, then Top moments’ window and its four counts once each', async () => {
+    poll.mockResolvedValue(snapshot)
+    const { rerender } = render(<MemoryRouter><Rail hub={null} /></MemoryRouter>)
+    rerender(<MemoryRouter><Rail hub={hubAt('2026-10-22T12:00:00Z')} /></MemoryRouter>)
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(5))
+    await act(async () => {})
+    expect(poll).toHaveBeenCalledTimes(1)
+    expect(load).toHaveBeenCalledTimes(5)
+    expect(load.mock.calls.every((c) => !(c[1] as AbortSignal).aborted)).toBe(true)
   })
 })
