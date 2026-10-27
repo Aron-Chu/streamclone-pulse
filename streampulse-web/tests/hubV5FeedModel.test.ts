@@ -8,9 +8,13 @@ import {
   feedAgo,
   feedCap,
   feedColumnCap,
+  feedForGame,
   feedFresh,
+  feedGameId,
+  feedGames,
   feedIsQuiet,
   feedMomentSer,
+  feedMomentsHref,
   feedMultiplier,
   feedRestTip,
   feedRowAria,
@@ -166,6 +170,49 @@ describe('liveFeedModel', () => {
     const fresh = feedFresh(before, model)
     expect([...fresh].sort()).toEqual(['k:alpha', 'l:echo', 'l:foxtrot', 'l:golf'])
     expect(feedFresh(liveFeedModel(null), model).size).toBe(0)
+  })
+})
+
+describe('one game at a time (F2)', () => {
+  const live = [
+    channel('alpha', { category: 'Elden Ring' }), // spike row
+    channel('bravo', { category: 'Chess' }, { multiplier: 1.6, absoluteDeltaPerMin: 30 }), // Picking up
+    channel('charlie', { category: 'Elden Ring' }, { multiplier: 3, absoluteDeltaPerMin: 90 }), // Picking up
+    channel('echo', { category: 'Chess', startedAt: new Date(W1 - 10 * MIN).toISOString(), viewers: 8000 }, { multiplier: 1 }),
+    channel('foxtrot', { category: 'Chess', startedAt: new Date(W1 - 20 * MIN).toISOString(), viewers: 200 }, { multiplier: 1 }),
+    channel('golf', { category: 'Elden Ring', startedAt: new Date(W1 - 40 * MIN).toISOString(), viewers: 300 }, { multiplier: 1 }),
+    channel('india', { category: 'Elden Ring', startedAt: new Date(W1 - 5 * MIN).toISOString(), viewers: 6000 }, { multiplier: 1 }),
+  ]
+  const model = liveFeedModel(hub(live, [spike('alpha', W1 - 3 * MIN)]))
+
+  it('lists the games the rows name, most rows first, keeping a picked game with none', () => {
+    expect(feedGames(model).map((g) => [g.name, g.rows])).toEqual([['Elden Ring', 4], ['Chess', 3]])
+    expect(feedGames(model, 'Minecraft').at(-1)).toMatchObject({ name: 'Minecraft', rows: 0 })
+  })
+
+  it('keeps only the game’s rows, its share of the went-live row and its Picking up channels', () => {
+    const er = feedForGame(model, 'Elden Ring')
+    expect(er.items.map((it) => it.key)).toEqual(['g:alpha', 'g:india', 'lives'])
+    const shared = er.items[2]!
+    expect('lives' in shared && shared.lives.map((e) => e.login)).toEqual(['golf'])
+    expect(shared.old).toBe(true) // golf started 40 minutes ago
+    expect(er.up.map((u) => u.login)).toEqual(['charlie'])
+    expect(er.events.every((e) => e.cat === 'Elden Ring')).toBe(true)
+    expect(feedForGame(model, 'Minecraft').items).toEqual([])
+    expect(feedForGame(model, null)).toBe(model)
+  })
+
+  it('links the picked game to its Moments (B2’s ?game=), by the id its art names', () => {
+    const art = new Map([['Elden Ring', 'https://static-cdn.jtvnw.net/ttv-boxart/512953_IGDB-52x72.jpg'], ['Chess', 'https://example.com/ttv-boxart/743-52x72.jpg']])
+    const [er, chess] = feedGames({ ...model, art })
+    expect(er).toMatchObject({ name: 'Elden Ring', id: '512953' })
+    expect(chess).toMatchObject({ name: 'Chess', id: null })
+    expect(feedMomentsHref(er)).toBe('/analytics/moments?game=512953')
+    // no id (no art, or art not Twitch's): the whole page
+    expect(feedMomentsHref(chess)).toBe('/analytics/moments')
+    expect(feedMomentsHref(null)).toBe('/analytics/moments')
+    expect(feedGameId('https://static-cdn.jtvnw.net/ttv-boxart/27471-144x192.jpg')).toBe('27471')
+    expect(feedGameId('https://static-cdn.jtvnw.net/ttv-boxart/Minecraft-144x192.jpg')).toBeNull()
   })
 })
 

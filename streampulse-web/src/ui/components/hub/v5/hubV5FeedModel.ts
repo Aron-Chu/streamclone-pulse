@@ -258,7 +258,7 @@ export function feedMomentSer(e: FeedMoment): 'chat' | 'emotes' {
 export function feedWord(e: FeedEvent): string {
   if (e.kind === 'live') return 'went live'
   if (e.kind === 'spike') return e.ser === 'chat' ? 'chat spike' : 'emote spike'
-  return e.act.emote ? `spammed ${e.act.emote.name}` : e.act.word
+  return e.act.emote ? e.act.emote.name : e.act.word
 }
 
 function commonWindow(rows: readonly HubLiveChannel[]): string {
@@ -429,6 +429,74 @@ export function feedColumnCap(px: number): number {
 export function feedIsQuiet(model: LiveFeedModel): boolean {
   const first = model.items[0]
   return model.asOf != null && (!first || model.asOf - first.at > FEED_QUIET_MS)
+}
+
+/* ---------- F2 (10-22): one game at a time ---------- */
+
+/** A row's game, as GroupRow shows it: its newest event's, else the first an older one names. */
+export const feedGroupCat = (group: readonly FeedEvent[]): string | null => group[0]?.cat || group.find((e) => e.cat)?.cat || null
+
+export interface FeedGame {
+  name: string
+  art: string | null
+  /** Its Twitch category id, for the Moments link; null when it has no art. */
+  id: string | null
+  /** Rows it has in the feed (channels, went-live starts, Picking up, the quiet hour's top moments). */
+  rows: number
+}
+
+/** The feed's art is only ever its category's own (publicHub, boxArtImage), so the art names the id. */
+const ART_ID = /^https:\/\/static-cdn\.jtvnw\.net\/ttv-boxart\/(\d{1,20})(?:_IGDB)?-\d+x\d+\.(?:jpe?g|png|webp)$/i
+export const feedGameId = (art: string | null | undefined): string | null => (art ? ART_ID.exec(art)?.[1] ?? null : null)
+
+/** "All moments →": the Moments page on the picked game (B2's ?game=), or whole when its id isn't known. */
+export function feedMomentsHref(game: FeedGame | null | undefined): string {
+  return game?.id ? `/analytics/moments?${new URLSearchParams({ game: game.id })}` : '/analytics/moments'
+}
+
+/**
+ * The games the feed's rows name, most rows first, for the box-art strip over
+ * the list. `keep` (the picked game) stays listed with 0 rows after a poll
+ * leaves it none, so the pick can still be cleared.
+ */
+export function feedGames(model: LiveFeedModel, keep: string | null = null): FeedGame[] {
+  const tally = new Map<string, number>()
+  const add = (cat: string | null) => { if (cat) tally.set(cat, (tally.get(cat) ?? 0) + 1) }
+  for (const it of [...model.items, ...model.top]) {
+    if ('group' in it) add(feedGroupCat(it.group))
+    else for (const e of it.lives) add(e.cat)
+  }
+  for (const u of model.up) add(u.cat)
+  if (keep && !tally.has(keep)) tally.set(keep, 0)
+  return [...tally]
+    .map(([name, rows]) => {
+      const art = model.art.get(name) ?? null
+      return { name, art, id: feedGameId(art), rows }
+    })
+    .sort((a, b) => b.rows - a.rows || a.name.localeCompare(b.name))
+}
+
+/** The feed with only `game`'s rows; null leaves it whole. A shared went-live row keeps that game's starts. */
+export function feedForGame(model: LiveFeedModel, game: string | null): LiveFeedModel {
+  if (!game || model.asOf == null) return model
+  const asOf = model.asOf
+  const items: FeedItem[] = []
+  for (const it of model.items) {
+    if ('group' in it) {
+      if (feedGroupCat(it.group) === game) items.push(it)
+      continue
+    }
+    const lives = it.lives.filter((e) => e.cat === game)
+    if (lives.length) items.push({ ...it, at: lives[0]!.at, old: asOf - lives[0]!.at > FEED_OLD_MS, lives })
+  }
+  items.sort((a, b) => b.at - a.at) // the shared row may now sit at an older start
+  return {
+    ...model,
+    events: model.events.filter((e) => e.cat === game),
+    items,
+    top: model.top.filter((it) => 'group' in it && feedGroupCat(it.group) === game),
+    up: model.up.filter((u) => u.cat === game),
+  }
 }
 
 export function feedHref(e: FeedEvent): string {

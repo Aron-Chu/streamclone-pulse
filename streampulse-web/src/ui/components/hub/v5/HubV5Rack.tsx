@@ -30,7 +30,7 @@ import { isFocusVisible, placeHubV5Card } from './hubV5HoverCard'
 
 const H_ID = 'hv5-gm-h'
 
-function GameArt({ url, name, w, h }: { url: string | undefined; name: string; w: number; h: number }) {
+export function GameArt({ url, name, w, h }: { url: string | undefined; name: string; w: number; h: number }) {
   const [failed, setFailed] = useState(false)
   if (!url || failed) return <span>{gameInitials(name)}</span>
   // three times the box, so the cover stays sharp

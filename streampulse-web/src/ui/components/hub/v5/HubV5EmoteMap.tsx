@@ -12,7 +12,7 @@
  * last hour against its own pace and the frames go grey.
  * Under the map, the ten most used emotes with the last hour against their own
  * pace as a change chip. A click on a tile or a row selects the emote: the list
- * turns into where chat spammed it (the hub's live moments it led), and each
+ * turns into the hub's live moments it led, and each
  * row opens the moment in Moments. Hover (or focus) shows an emote's numbers;
  * arrow keys move to the nearest tile, Home and End to the ends, with one tab
  * stop. 24 h | Last hour re-flows the tiles; Taller map gives 1.8 times the
@@ -158,7 +158,7 @@ export function HubV5EmoteMap({
   loading?: boolean
   /** The hub request failed: the empty line says so (INT-02). */
   unavailable?: boolean
-  /** The hub's live moments: where chat spammed a selected emote. */
+  /** The hub's live moments: where a selected emote led chat. */
   moments?: readonly HubLivePulseMoment[]
   avatars?: ReadonlyMap<string, string>
   nowMs: number
@@ -607,7 +607,7 @@ export function HubV5EmoteMap({
               </div>
             ) : null}
           </div>
-          <p className="hv5-vh" id={HELP_ID}>Arrow keys move between emotes. Enter selects one and lists where chat spammed it.</p>
+          <p className="hv5-vh" id={HELP_ID}>Arrow keys move between emotes. Enter selects one and lists where it led chat.</p>
           <div className="hv5-em-foot">
             {heat ? (
               <span className="hv5-em-heat">
@@ -645,7 +645,7 @@ export function HubV5EmoteMap({
                   {hourOk ? <Chg c={emoteChange(selected, data.windowLabel)} /> : null}
                   <button type="button" className="hv5-el-clear" onClick={() => setSel(null)}>Clear ✕</button>
                 </div>
-                <p className="hv5-el-sub">Where chat spammed {selected.e.name} on streams live now · × is emotes against the 15 minutes before</p>
+                <p className="hv5-el-sub">Where {selected.e.name} led chat on streams live now · × is emotes against the 15 minutes before</p>
                 {spammed.length ? (
                   <ol className="hv5-el-cols" key={`m|${selected.id}`}>
                     {spammed.map((r, i) => (
@@ -677,7 +677,7 @@ export function HubV5EmoteMap({
                       <button
                         type="button"
                         className="hv5-el-r"
-                        aria-label={`#${i + 1} ${x.a.e.name}, ${providerName(x.a.prov)}, ${shareOf(x.v)} of uses${hourOk ? `, ${emoteChange(x.a, data.windowLabel).words}` : ''}. Shows where chat spammed it.`}
+                        aria-label={`#${i + 1} ${x.a.e.name}, ${providerName(x.a.prov)}, ${shareOf(x.v)} of uses${hourOk ? `, ${emoteChange(x.a, data.windowLabel).words}` : ''}. Shows where it led chat.`}
                         onClick={() => select(x.a.id)}
                       >
                         <span className="hv5-el-i">{i + 1}</span>
