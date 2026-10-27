@@ -62,11 +62,10 @@ describe('supporter settings', () => {
       // The journey is the card's footer: one primary action, with the price.
       const journey = card.querySelector<HTMLElement>('.pulse-journey')!
       expect(journey.dataset.journeyState).toBe('signed-out')
-      expect([...journey.querySelectorAll('.pulse-journey-primary')].map(button => button.textContent)).toEqual(['Connect this extension'])
+      expect([...journey.querySelectorAll('.pulse-journey-primary')].map(button => button.textContent)).toEqual(['Become a Supporter'])
       expect(journey.textContent).toContain("US$4.99 a month")
-      // A signed-out install can explicitly connect to check availability;
-      // it does not claim a server-confirmed offer or start a purchase.
-      expect(journey.textContent).toContain('Supporter availability')
+      // One click saves a key and asks the server; nothing starts before it.
+      expect(journey.textContent).toContain('Opens Stripe checkout. No account or sign-up. Saves a key in this browser.')
       expect(card.textContent?.match(/Free tools work without an account\./g)).toHaveLength(1)
       const previewDisclosure = host.querySelector<HTMLDetailsElement>('[data-supporter-preview-disclosure]')!
       expect(previewDisclosure.open).toBe(false)
@@ -76,7 +75,7 @@ describe('supporter settings', () => {
       expect(help.open).toBe(false)
       expect(help.querySelector('summary')?.textContent).toBe('Account help')
       expect(help.querySelector('[data-row="payments"]')).not.toBeNull()
-      expect(host.textContent).not.toMatch(/Restore my Supporter|website account|Become a Supporter/)
+      expect(host.textContent).not.toMatch(/Restore my Supporter|website account|Connect this extension/)
       expect(host.textContent).toContain('remain free')
       // The Your look studio's preview, pinned above its controls: it says once
       // that only you see it, names every perk, and offers nothing unbuilt.

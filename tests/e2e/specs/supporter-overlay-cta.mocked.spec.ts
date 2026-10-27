@@ -53,7 +53,9 @@ test('the overlay offers Supporter as a destination and opens that section', asy
   expect(new URL(settings.url()).protocol).toBe('chrome-extension:')
   expect(settings.url()).toContain('#supporter')
   await expect(settings.locator('[data-settings-section="supporter"], .pulse-supporter-settings').first()).toBeVisible()
-  await expect(settings.locator('.pulse-journey')).toContainText("Supporter isn't on sale yet")
+  // A fresh install lands on the one-button offer; nothing is sent until it is clicked.
+  await expect(settings.locator('.pulse-journey')).toHaveAttribute('data-journey-state', 'signed-out')
+  await expect(settings.locator('.pulse-journey').getByRole('button', { name: 'Become a Supporter', exact: true })).toBeVisible()
   const studio = settings.locator('.pulse-supporter-studio')
   await expect(studio).toContainText("Try a look. Changes here aren't saved.")
   await expect(studio.locator('.pulse-account-link-actions')).toHaveCount(0)

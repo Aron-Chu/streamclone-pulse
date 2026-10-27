@@ -21,7 +21,7 @@ import type { SupporterFinishId } from '../ui/supporterFinish.ts'
 export type CardIdentity =
   | { kind: 'none'; connection?: 'installation' }
   | { kind: 'unknown'; reason: 'checking' | 'unavailable' }
-  | { kind: 'pulse'; reference?: string }
+  | { kind: 'pulse'; reference?: string; connection?: 'installation' }
   | { kind: 'twitch'; displayName?: string; picture?: string }
 
 /**
@@ -160,7 +160,7 @@ function subline(identity: CardIdentity, membership: CardMembership): string {
   if (status === 'active' || status === 'grace') return [membership.months > 0 ? `Supporter for ${months(membership.months)}` : 'Pulse Supporter', status === 'grace' ? 'payment due' : null].filter(Boolean).join(' · ')
   const line = STATUS_LINE[status]
   if (identity.kind === 'unknown') return isKnown(status) ? line.charAt(0).toUpperCase() + line.slice(1) : 'Your free tools still work.'
-  const who = identity.kind === 'twitch' ? 'Signed in with Twitch' : 'StreamPulse account'
+  const who = identity.kind === 'twitch' ? 'Signed in with Twitch' : identity.connection === 'installation' ? 'This browser' : 'StreamPulse account'
   return `${who} · ${line}`
 }
 

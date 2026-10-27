@@ -109,16 +109,16 @@ export default function Supporter() {
         <h2 id="subscribe">How to subscribe</h2>
         <div className="rounded-xl border border-white/[0.08] bg-black/20 p-6" data-testid="supporter-availability">
           <p className="!mt-0">
-            <strong>Supporter sign-ups are not open yet.</strong> Once available, choose{' '}
-            <strong>Connect this extension</strong> in the extension&rsquo;s{' '}
-            <strong>Account &amp; Supporter</strong> page. This starts no payment.
+            <strong>Supporter sign-ups are not open yet.</strong> When they open, choose{' '}
+            <strong>Become a Supporter</strong> in the extension&rsquo;s{' '}
+            <strong>Account &amp; Supporter</strong> page and pay on Stripe.
           </p>
           <p className="mb-0 flex flex-wrap gap-3">
             <a className="btn btn-primary" href={CHROME_WEB_STORE_LISTING_URL} target="_blank" rel="noopener noreferrer">Get the extension</a>
           </p>
           <p className="mb-0">
-            If <strong>Become a Supporter</strong> is offered, choose it to pay on Stripe. No Twitch
-            sign-in or separate StreamPulse sign-up is needed. Stripe asks for a billing email.
+            No Twitch sign-in or separate StreamPulse sign-up is needed. Stripe asks for a billing
+            email.
           </p>
         </div>
 

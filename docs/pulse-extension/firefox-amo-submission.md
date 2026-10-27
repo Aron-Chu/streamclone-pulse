@@ -52,12 +52,13 @@ history saved to a linked account. Firefox's manifest declares only
 decision D20). Chrome and Edge keep it.
 
 - It is compiled out, not hidden. `src/shared/deviceLink.ts` turns it off when
-  the build target is `firefox`, so the Firefox package has no "Connect this
-  extension" button, no link code screen, no `/v1/account/device-links`
+  the build target is `firefox`, so the Firefox package has no "Connect tester
+  account" button, no link code screen, no `/v1/account/device-links`
   requests and no link to the `/account/link-device` page.
 - `scripts/validate-extension-package.mjs` checks the packaged files. A Firefox
   package fails if any bundle contains `/v1/account/device-links`,
-  `/account/link-device` or "Connect this extension". A Chrome, Edge or
+  `/account/link-device`, "Connect tester account" or the older "Connect this
+  extension". A Chrome, Edge or
   development package fails if it lost the link. `npm run package:firefox`
   and CI run this check; `tests/deviceLink.test.ts` and
   `tests/deviceLinkSettings.test.tsx` cover the switch, the worker and the

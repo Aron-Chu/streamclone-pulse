@@ -432,12 +432,11 @@ describe('pay-first settings', () => {
 })
 
 describe('Twitch sign-in off (stage A): signed out', () => {
-  it('offers an explicit nonpaid connection and details without claiming availability', async () => {
+  it('offers one Become a Supporter button and details, and starts nothing before the click', async () => {
     const view = await mount({ account: () => ({ state: 'signed_out' }), entitlement: () => ({ state: 'not_linked' }) })
     try {
       expect(view.state()).toBe('signed-out')
-      expect(view.text()).toContain('Supporter availability')
-      expect(view.text()).toContain('No payment starts.')
+      expect(view.text()).toContain('Opens Stripe checkout. No account or sign-up. Saves a key in this browser.')
       expect(view.text()).toContain('Free tools work without an account.')
       expect(view.text()).not.toContain('When they open, you\'ll choose')
       expect(view.text()).toContain("US$4.99 a month")
@@ -447,13 +446,14 @@ describe('Twitch sign-in off (stage A): signed out', () => {
       expect(view.text().match(/Not connected/g)).toHaveLength(1)
       const primary = view.host.querySelectorAll<HTMLElement>('.pulse-journey-primary')
       expect(primary).toHaveLength(1)
-      expect(primary[0].textContent).toBe('Connect this extension')
+      expect(primary[0].textContent).toBe('Become a Supporter')
       expect(view.hrefs()).toContain('https://streampulse.stream/supporter')
-      for (const gone of ['Become a Supporter', 'Restore my Supporter', 'Use a StreamPulse website account', 'Continue with Twitch']) expect(view.buttons()).not.toContain(gone)
+      for (const gone of ['Connect this extension', 'Restore my Supporter', 'Use a StreamPulse website account', 'Continue with Twitch']) expect(view.buttons()).not.toContain(gone)
       expect(view.host.querySelector('.pulse-journey')?.textContent).not.toMatch(/website account|restore/i)
       expect(view.text()).toContain('Your connection stays in this browser.')
-      // Nothing on this page asks the worker to buy, restore, or sign in with Twitch.
+      // Until the click, nothing asks the worker to buy, restore, or sign in with Twitch.
       expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
+      expect(view.calls('SUPPORTER_BILLING', 'connect')).toBe(0)
       expect(view.calls('SUPPORTER_RESTORE')).toBe(0)
       expect(view.calls('TWITCH_SIGN_IN')).toBe(0)
       expect(view.calls('SUPPORTER_ACCOUNT', 'start')).toBe(0)
@@ -860,7 +860,7 @@ describe('the price comes before the button that buys it', () => {
   // hear the price and that it renews monthly before reaching the purchase
   // button, and at narrow widths the price sits above it.
   it.each<[string, () => SupporterAccountState, () => SupporterEntitlement, string]>([
-    ['signed-out', () => ({ state: 'signed_out' }), () => ({ state: 'not_linked' }), 'Connect this extension'],
+    ['signed-out', () => ({ state: 'signed_out' }), () => ({ state: 'not_linked' }), 'Become a Supporter'],
     ['offer', () => linked, () => ready('none', { installationAccountsEnabled: true }), 'Become a Supporter'],
     ['offer', () => linked, () => ready('none'), 'Continue to checkout'],
     ['checkout-closed', () => linked, () => ready('none', { checkoutEnabled: false }), "Check again"],
@@ -886,7 +886,7 @@ describe('Your card is a headed section', () => {
   // Pressing H from the page's h2 must stop at the card, before its name,
   // ladder, status and action, not skip to "Your look" below it.
   it.each<[string, () => SupporterAccountState, () => SupporterEntitlement, string, string]>([
-    ['signed-out', () => ({ state: 'signed_out' }), () => ({ state: 'not_linked' }), 'Supporter availability', 'Connect this extension'],
+    ['signed-out', () => ({ state: 'signed_out' }), () => ({ state: 'not_linked' }), 'Become a Supporter', 'Become a Supporter'],
     ['grace', () => linked, () => ready('grace', { accessUntil: '2026-10-19T12:00:00Z' }), 'Payment needs attention', 'Update payment method'],
   ])('in the %s state', async (_state, account, entitlement, title, action) => {
     const view = await mount({ account, entitlement })
@@ -1652,54 +1652,64 @@ describe('Sign out everywhere (Twitch sign-in on)', () => {
   })
 })
 
-describe('explicit nonpaid installation connection', () => {
+describe('one Become a Supporter button with Twitch sign-in off', () => {
   it.each([
-    [true, true, 'offer'],
-    [false, true, 'checkout-closed'],
-    [true, false, 'offer'],
-  ] as const)('reads server capability after connecting: checkout=%s installations=%s', async (checkoutEnabled, installationAccountsEnabled, state) => {
-    let connected = false
+    ['waiting', 'stripe-open'],
+    ['closed', 'checkout-closed'],
+    // A server without installation accounts (today's prod) is closed too.
+    ['fallback', 'checkout-closed'],
+    ['unavailable', 'billing-unavailable'],
+  ] as const)('one click asks the worker for checkout and shows its answer: %s', async (answer, state) => {
     const view = await mount({
-      account: () => connected ? linked : { state: 'signed_out' },
-      entitlement: () => connected ? ready('none', { accountKind: 'installation', checkoutEnabled, installationAccountsEnabled }) : { state: 'not_linked' },
-      billing: action => { if (action === 'connect') connected = true; return { state: 'idle' } },
+      account: () => ({ state: 'signed_out' }),
+      entitlement: () => ({ state: 'not_linked' }),
+      billing: action => action === 'checkout' ? { state: answer } as SupporterBillingState : { state: 'idle' },
     })
     try {
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
+      await view.click('Become a Supporter')
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(1)
       expect(view.calls('SUPPORTER_BILLING', 'connect')).toBe(0)
-      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
-      expect(view.buttons()).not.toContain('Become a Supporter')
-      await view.click('Connect this extension')
-      expect(view.calls('SUPPORTER_BILLING', 'connect')).toBe(1)
-      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
       expect(view.state()).toBe(state)
-      expect(view.buttons().includes('Become a Supporter')).toBe(checkoutEnabled && installationAccountsEnabled)
-      expect(view.text()).not.toContain('An invited tester’s StreamPulse account.')
+      // The worker opens Stripe itself; nothing here sends anyone to the website.
       expect(view.create).not.toHaveBeenCalled()
-      if (checkoutEnabled && installationAccountsEnabled) {
-        await view.click('Become a Supporter')
-        expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(1)
+      if (state === 'checkout-closed') {
+        expect(view.text()).toContain("Supporter isn't on sale yet")
+        expect(view.text()).not.toMatch(/could not|error/i)
+        await view.click('Check again')
+        expect(view.state()).toBe('signed-out')
+        expect(view.buttons()).toContain('Become a Supporter')
       }
     } finally { view.cleanup() }
   })
 
-  it('keeps failed connection and unreadable capability nonpaid', async () => {
-    let connected = false
-    let fail = true
+  it('retries a paused checkout with the same one click', async () => {
+    let answer: SupporterBillingState = { state: 'try_later', retryAt: Date.now() - 1 }
     const view = await mount({
-      account: () => connected ? linked : { state: 'signed_out' },
-      entitlement: () => connected ? { state: 'error' } : { state: 'not_linked' },
-      billing: action => { if (action === 'connect') { if (fail) return { state: 'unavailable' }; connected = true }; return { state: 'idle' } },
+      account: () => ({ state: 'signed_out' }),
+      entitlement: () => ({ state: 'not_linked' }),
+      billing: action => action === 'checkout' ? answer : { state: 'idle' },
     })
     try {
-      await view.click('Connect this extension')
-      expect(view.text()).toContain('Could not connect.')
-      expect(view.buttons()).not.toContain('Become a Supporter')
-      fail = false
-      await view.click('Connect this extension')
-      expect(view.state()).toBe('membership-unknown')
-      expect(view.buttons()).not.toContain('Become a Supporter')
-      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
-      expect(view.create).not.toHaveBeenCalled()
+      await view.click('Become a Supporter')
+      expect(view.state()).toBe('try-later')
+      answer = { state: 'closed' }
+      await view.click('Try again')
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(2)
+      expect(view.state()).toBe('checkout-closed')
+    } finally { view.cleanup() }
+  })
+
+  it('calls a key-only connection a connected browser, not an account, while sales are closed', async () => {
+    const view = await mount({ account: () => linked, entitlement: () => ready('none', { accountKind: 'installation', checkoutEnabled: false, installationAccountsEnabled: true }) })
+    try {
+      expect(view.state()).toBe('checkout-closed')
+      expect(view.text()).toContain('This browser is connected. The offer appears here when it goes on sale.')
+      expect(view.text()).not.toContain('Your account is connected.')
+      // A key-only connection has no account to name.
+      expect(card(view.host).name().textContent).toBe('You')
+      expect(view.text()).toContain('This browser · not a Supporter yet')
+      expect(view.text()).not.toContain('StreamPulse account ·')
     } finally { view.cleanup() }
   })
 
@@ -1737,7 +1747,7 @@ describe('explicit nonpaid installation connection', () => {
       const view = await mount({ account: () => ({ state }), entitlement: () => ({ state: 'not_linked' }) })
       try {
         expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Supporter details')
-        expect(view.calls('SUPPORTER_BILLING', 'connect')).toBe(0)
+        expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
       } finally { view.cleanup() }
     }
   })

@@ -51,11 +51,11 @@ test('packaged supporter settings stay local, accessible and responsive', async 
   await expect(top).toHaveCSS('background-image', 'none')
   await expect(top.locator('.pulse-banner-art')).toHaveAttribute('data-mode', 'rain')
   await expect(card.locator('.pulse-journey')).toHaveAttribute('data-journey-state', 'signed-out')
-  // The one action explicitly connects to check availability, without payment.
+  // The one action saves a key and opens Checkout only if sales are open.
   const primary = card.locator('.pulse-journey-primary')
-  await expect(primary).toHaveText(['Connect this extension'])
-  await expect(card.locator('.pulse-journey')).toContainText('Supporter availability')
-  await expect(page.getByRole('button', { name: /Become a Supporter|Restore my Supporter|Use a StreamPulse website account/ })).toHaveCount(0)
+  await expect(primary).toHaveText(['Become a Supporter'])
+  await expect(card.locator('.pulse-journey')).toContainText('Opens Stripe checkout. No account or sign-up. Saves a key in this browser.')
+  await expect(page.getByRole('button', { name: /Connect this extension|Restore my Supporter|Use a StreamPulse website account/ })).toHaveCount(0)
   // The price and that it renews come before the primary action, in reading and Tab order.
   const terms = card.locator('.pulse-supporter-terms')
   await expect(terms).toContainText('US$4.99 a month')
@@ -246,7 +246,9 @@ test('account settings connect through the packaged worker and disconnect', asyn
   await page.getByRole('button', { name: 'Sign out', exact: true }).click()
   await page.getByRole('button', { name: 'Confirm sign out', exact: true }).click()
   await expect(page.locator('[data-journey-state="signed-out"]')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Become a Supporter', exact: true })).toHaveCount(0)
+  // Signed out again, it is the same one-button page as a fresh install.
+  await expect(page.getByRole('button', { name: 'Become a Supporter', exact: true })).toHaveCount(1)
+  await expect(page.getByRole('button', { name: 'Connect this extension', exact: true })).toHaveCount(0)
 })
 
 test('unmounted account backend produces a clear unavailable state', async ({ extension, prepare }) => {

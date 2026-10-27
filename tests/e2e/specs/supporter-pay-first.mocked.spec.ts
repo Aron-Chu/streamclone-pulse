@@ -13,7 +13,7 @@ function snapshot(status: 'none' | 'pending' | 'active', cosmetics = { enabled: 
   return { schemaVersion: 1, accountId, environment: 'live', revision: paid ? 2 : 1, status, checkoutEnabled: true, installationAccountsEnabled: true, accountKind: 'installation', restoreEligible: status === 'none', serverTime: new Date().toISOString(), accessFrom: new Date(Date.now() - 60_000).toISOString(), accessUntil: new Date(Date.now() + 30 * 86_400_000).toISOString(), cacheUntil: new Date(Date.now() + 60_000).toISOString(), supportPeriods: paid ? 1 : 0, features: { 'supporter.banner.v1': paid, 'supporter.finish.v1': paid, 'supporter.recognition.v1': paid }, cosmetics }
 }
 /**
- * The first proof follows the actual nonpaid connection and purchase buttons.
+ * The first proof follows the actual one-click Become a Supporter button.
  * The remaining worker recovery proofs use extension-page messages directly;
  * the page still never sends SUPPORTER_RESTORE.
  */
@@ -42,7 +42,7 @@ async function finish(cdp: CDPSession) {
   return banner ? attr(banner, 'data-supporter-finish') ?? null : undefined
 }
 
-test('explicit connection checks availability before Checkout, delayed payment activates a chosen finish without reload', async ({ extension, prepare }, info) => {
+test('one click saves a key, checks availability and opens Checkout; delayed payment activates a chosen finish without reload', async ({ extension, prepare }, info) => {
   test.setTimeout(100_000)
   await prepare()
   const context = extension.context
@@ -79,17 +79,13 @@ test('explicit connection checks availability before Checkout, delayed payment a
   await expect(settings.locator('.pulse-supporter-studio .pulse-account-link-actions')).toHaveCount(0)
   expect(calls).toEqual([])
   const tabs = await recordTabs(extension.serviceWorker)
-  // Connecting is a distinct, nonpaid click. Only fresh server capability
-  // exposes the subsequent purchase button.
-  await expect(settings.getByRole('button', { name: 'Become a Supporter', exact: true })).toHaveCount(0)
-  await settings.screenshot({ path: info.outputPath('connection-before.png'), fullPage: true, animations: 'disabled' })
-  await settings.getByRole('button', { name: 'Connect this extension', exact: true }).click()
-  await expect(settings.getByRole('button', { name: 'Become a Supporter', exact: true })).toBeVisible()
-  expect(calls).toEqual(['installation'])
-  expect(await tabs()).toEqual([])
-  await settings.screenshot({ path: info.outputPath('connection-available.png'), fullPage: true, animations: 'disabled' })
+  // One click: the worker saves the key, reads fresh server capability, and
+  // opens Checkout only because the fixture says sales are open.
+  await expect(settings.getByRole('button', { name: 'Connect this extension', exact: true })).toHaveCount(0)
+  await settings.screenshot({ path: info.outputPath('one-button-before.png'), fullPage: true, animations: 'disabled' })
   await settings.getByRole('button', { name: 'Become a Supporter', exact: true }).click()
   await expect(settings.locator('[data-journey-state="stripe-open"]')).toBeVisible()
+  expect(calls).toEqual(['installation', 'checkout'])
   // The created fixture installation has a ready, explicitly open entitlement.
   // Keep the choice through the real worker rather than a closed try-on control.
   await settings.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Halo', exact: true }).check()

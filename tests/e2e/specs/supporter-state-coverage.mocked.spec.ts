@@ -32,7 +32,7 @@ type StateCase = {
   alias?: string
 }
 const CASES: StateCase[] = [
-  { name: 'not-a-supporter', journey: 'signed-out', principal: 'Connect this extension', setup: 'unlinked', alias: 'The signed-out page offers an explicit nonpaid connection to check availability; no purchase is offered yet.' },
+  { name: 'not-a-supporter', journey: 'signed-out', principal: 'Become a Supporter', setup: 'unlinked', alias: 'The signed-out page offers one Become a Supporter button; nothing is sent until it is clicked.' },
   { name: 'checkout-closed', journey: 'checkout-closed', principal: 'Check again', status: 'none', checkoutEnabled: false },
   { name: 'preparing-checkout', journey: 'offer', principal: 'Preparing checkout…', status: 'none', setup: 'preparing', alias: 'Transient busy offer. The worker is awaiting the mocked checkout response; the disabled action prevents another request.' },
   { name: 'stripe-open', journey: 'stripe-open', principal: 'Return to Stripe checkout', status: 'none', billing: 'waiting' },
@@ -280,7 +280,7 @@ for (const state of CASES) {
       if (CAPTURE_PHASE === 'after') {
         const studio = page.locator('.pulse-supporter-studio')
         if (state.name === 'checkout-closed' || state.setup === 'unlinked' || state.setup === 'revoked') {
-          await expect(journey).toContainText(state.setup === 'unlinked' ? 'Supporter availability' : state.setup === 'revoked' ? 'Your connection ended' : "Supporter isn't on sale yet")
+          await expect(journey).toContainText(state.setup === 'unlinked' ? 'Opens Stripe checkout.' : state.setup === 'revoked' ? 'Your connection ended' : "Supporter isn't on sale yet")
           await expect(studio).toContainText("Try a look. Changes here aren't saved.")
           await expect(studio.locator('.pulse-account-link-actions')).toHaveCount(0)
           await expect(studio.locator('[data-supporter-finish-intent]')).toHaveCount(0)

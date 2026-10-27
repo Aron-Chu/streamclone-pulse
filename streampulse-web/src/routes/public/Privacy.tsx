@@ -59,7 +59,7 @@ export default function Privacy() {
           profile. StreamPulse stores an internal account identifier, a one-way hash of the
           installation key, device labels, hashed credentials and their expiry, and creation and
           activity times. The installation account has no account email address or Twitch identity.
-          Looking at your status does not create a connection; you must choose Connect this extension.
+          Looking at your status does not create a connection; one is saved only when you choose Become a Supporter.
         </p>
         <p data-testid="privacy-continue-with-twitch">
           <strong>If Continue with Twitch is offered.</strong> StreamPulse asks Twitch only to confirm who you are.

@@ -18,8 +18,11 @@ export const DEVICE_LINK_REQUIRED = [
 /** Strings a build without the device link must not contain at all. */
 export const DEVICE_LINK_FORBIDDEN = [
   ...DEVICE_LINK_REQUIRED,
-  // The settings button that starts the link.
+  // The tester-only settings action and its disclosure, plus the older
+  // button label, which no build should bring back.
   'Connect this extension',
+  'Connect tester account',
+  'Invited tester? Connect a tester account',
 ]
 
 export function deviceLinkShips(target) {

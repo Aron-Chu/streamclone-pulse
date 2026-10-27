@@ -253,7 +253,7 @@ test.describe('packaged supporter offer', () => {
     await expect(page.getByRole('button', { name: 'Check again', exact: true })).toBeVisible()
   })
 
-  test('a signed-out install offers a nonpaid availability check without a purchase, restore or website account', async ({ extension, prepare }) => {
+  test('a signed-out install offers one Become a Supporter button, and no restore or website account, without sending anything', async ({ extension, prepare }) => {
     await prepare({ scenario: 'live-ready' })
     const requests: string[] = []
     for (const path of ['account/installations', 'account/restores', 'account/device-links', 'billing/checkout', 'billing/portal', 'account/auth/twitch/start-device']) {
@@ -262,11 +262,11 @@ test.describe('packaged supporter offer', () => {
     const page = extension.page
     await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
     await expect(page.locator('[data-journey-state="signed-out"]')).toBeVisible()
-    await expect(page.getByText('Supporter availability', { exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Connect this extension', exact: true })).toBeVisible()
+    await expect(page.getByText('Opens Stripe checkout. No account or sign-up. Saves a key in this browser.', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Become a Supporter', exact: true })).toBeVisible()
     await expect(page.getByRole('link', { name: 'Supporter details', exact: true })).toHaveAttribute('href', 'https://streampulse.stream/supporter')
     await expect(page.locator('a[data-supporter-action="billing"]')).toHaveCount(0)
-    for (const gone of ['Become a Supporter', 'Restore my Supporter', 'Use a StreamPulse website account', 'Continue with Twitch']) {
+    for (const gone of ['Connect this extension', 'Restore my Supporter', 'Use a StreamPulse website account', 'Continue with Twitch']) {
       await expect(page.getByRole('button', { name: gone, exact: true })).toHaveCount(0)
     }
     // Invited testers keep the device link, closed and never a purchase.

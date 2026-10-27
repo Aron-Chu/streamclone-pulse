@@ -42,11 +42,13 @@ import { usePortalOrigin } from './usePortalOrigin.ts'
  * server asks) → Sign out. Reinstalling or another browser gets Supporter back
  * by signing in with the same Twitch account.
  *
- * With Twitch sign-in compiled off (today) a signed-out page says Supporter
- * sign-ups are not open yet and offers no purchase: no email restore, no
- * website-account choice, and no installation account. Invited testers keep a
- * closed "Connect this extension" disclosure for the existing device link,
- * except in Firefox builds, which leave the device link out (deviceLink.ts).
+ * With Twitch sign-in compiled off (every store build) a signed-out page
+ * offers one button, Become a Supporter: the worker saves an installation key
+ * in this browser and opens Stripe Checkout only if the server says sales are
+ * open, and otherwise this page says Supporter isn't on sale yet. No email
+ * restore and no website-account choice. Invited testers keep a closed
+ * "Connect a tester account" disclosure for the existing device link, except
+ * in Firefox builds, which leave the device link out (deviceLink.ts).
  *
  * The worker owns credentials, polling secrets and every HTTP request; this
  * page receives safe projections and asks it to act. Nothing here asserts an
@@ -513,19 +515,24 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
     if (result?.state === 'pending') openPortal(deviceLinkWithCode(result.code, portalOrigin))
   }
 
-  /** A separate explicit connection click never starts or resumes a payment. */
-  async function connectInstallation() {
+  /**
+   * One click with Twitch sign-in off: the worker saves this browser's
+   * installation key, reads the server's capability and opens Checkout only
+   * when sales are open. A server without installation accounts is closed too.
+   */
+  async function becomeSupporter() {
     if (twitchOn || account?.state !== 'signed_out' || payInFlight.current || accountInFlight.current) return
-    payInFlight.current = true; setPayBusy(true); setNotice('')
+    payInFlight.current = true; setPayBusy(true); setNotice(''); setIntent('purchase')
     try {
-      const response: BackgroundResponse = await chrome.runtime.sendMessage({ type: 'SUPPORTER_BILLING', action: 'connect' })
-      if (!response || !('type' in response) || response.type !== 'SUPPORTER_BILLING') throw new Error('worker unavailable')
-      // Identity and availability always come from fresh, revision-protected
-      // reads, never from this action's completion or a locally assumed offer.
-      const current = await run('status')
-      await readEntitlement(false)
-      if (!['idle', 'closed'].includes(response.billing.state) || current?.state === 'signed_out') setNotice('Could not connect. Try again when the service is available.')
-    } catch { setNotice('Could not connect. Try again when the service is available.') }
+      const response: BackgroundResponse = await chrome.runtime.sendMessage({ type: 'SUPPORTER_BILLING', action: 'checkout' })
+      if (!response || !('type' in response) || response.type !== 'SUPPORTER_BILLING') { setBilling({ state: 'unavailable' }); return }
+      const result = response.billing
+      setBilling(result.state === 'fallback' ? { state: 'closed' } : result)
+      // Nothing was started: no membership watch, and no automatic retry.
+      if (result.state === 'try_later' || result.state === 'fallback') return
+      await run('status'); await readEntitlement(true)
+      if (result.state !== 'closed') setWatchUntil(Date.now() + MEMBERSHIP_WATCH_MS)
+    } catch { setBilling({ state: 'unavailable' }) }
     finally { payInFlight.current = false; setPayBusy(false) }
   }
 
@@ -759,10 +766,10 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
     const why = signedOutNotice(account.state, twitchOn)
     if (!twitchOn) {
       if (account.state === 'signed_out') {
-        title = 'Supporter availability'
-        body = <p className="pulse-supporter-detail">Saves a connection in this browser. No payment starts.</p>
+        title = ACCOUNT_COPY.becomeSupporter
+        body = <p className="pulse-supporter-detail">Opens Stripe checkout. No account or sign-up. Saves a key in this browser.</p>
         terms = true
-        primary = <button className="pulse-journey-primary" type="button" disabled={payBusy || accountBusy} onClick={() => void connectInstallation()}>{payBusy ? 'Connecting…' : 'Connect this extension'}</button>
+        primary = <button className="pulse-journey-primary" type="button" disabled={payBusy || accountBusy} onClick={() => void becomeSupporter()}>{payBusy ? 'Preparing checkout…' : ACCOUNT_COPY.becomeSupporter}</button>
         secondary = [supporterDetails(false)]
       } else {
         title = 'Your connection ended'
@@ -797,7 +804,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
     if (!checkoutOpen) {
       state = 'checkout-closed'
       title = "Supporter isn't on sale yet"
-      body = <p>{signedInWithTwitch ? 'You’re signed in.' : 'Your account is connected.'} The offer appears here when it goes on sale.</p>
+      body = <p>{signedInWithTwitch ? 'You’re signed in.' : accountKind === 'installation' ? 'This browser is connected.' : 'Your account is connected.'} The offer appears here when it goes on sale.</p>
       primary = <button className="pulse-journey-primary" type="button" disabled={checking} onClick={() => void checkAgain().then(readBilling)}>Check again</button>
       terms = true
     } else if (workerCheckout) {
@@ -889,7 +896,9 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
       const waiting = billing.retryAt > Date.now()
       state = 'try-later'; title = 'Checkout is paused for a moment'
       body = <p>{tryLaterCopy('checkout', billing.retryAt)} Your free tools still work.</p>
-      primary = <button className="pulse-journey-primary" type="button" disabled={payBusy || waiting || !checkoutOpen || !workerCheckout} onClick={() => { setBilling({ state: 'idle' }); void purchase() }}>{waiting ? `Try again after ${retryWaitCopy(billing.retryAt).at}` : 'Try again'}</button>
+      // A signed-out browser retries the one button; it has no capability to read yet.
+      const oneButton = !twitchOn && account?.state === 'signed_out'
+      primary = <button className="pulse-journey-primary" type="button" disabled={payBusy || waiting || !oneButton && (!checkoutOpen || !workerCheckout)} onClick={() => { setBilling({ state: 'idle' }); void (oneButton ? becomeSupporter() : purchase()) }}>{waiting ? `Try again after ${retryWaitCopy(billing.retryAt).at}` : 'Try again'}</button>
     } else { state = 'billing-unavailable'; title = 'Checkout is unavailable'; body = <p>The service could not prepare checkout. Your free tools still work.</p>; primary = <button className="pulse-journey-primary" type="button" disabled={payBusy} onClick={() => { setBilling({ state: 'idle' }); void checkAgain() }}>Try again</button> }
   }
   if (entitlement?.state === 'ready' && entitlement.accountKind === 'installation' && entitlement.installationAccountsEnabled !== true) {
@@ -915,7 +924,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   // the worker answers, or when it cannot, the card and the Account row stay neutral.
   const identity: CardIdentity = linked ? identityPending ? { kind: 'unknown', reason: 'checking' }
     : profile ? { kind: 'twitch', displayName: profile.displayName, ...(profile.picture ? { picture: profile.picture } : {}) }
-    : signedInWithTwitch ? { kind: 'twitch' } : { kind: 'pulse', reference: accountReference(linked.accountId) }
+    : signedInWithTwitch ? { kind: 'twitch' } : { kind: 'pulse', reference: accountReference(linked.accountId), ...(accountKind === 'installation' ? { connection: 'installation' as const } : {}) }
     : renewalWaiting ? { kind: 'pulse' }
     : !account ? { kind: 'unknown', reason: 'checking' }
     : account.state === 'error' || accountDown ? { kind: 'unknown', reason: 'unavailable' }

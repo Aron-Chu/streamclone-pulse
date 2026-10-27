@@ -164,8 +164,8 @@ describe('Supporter legal copy', () => {
   it('directs new buyers to a nonpaid extension connection, then a separate offered purchase', () => {
     render(<MemoryRouter><Supporter /></MemoryRouter>)
     expect(screen.getByRole('link', { name: 'Get the extension' }).getAttribute('href')).toMatch(/^https:\/\/chromewebstore\.google\.com\//)
-    expect(screen.getByTestId('supporter-availability').textContent).toMatch(/choose Connect this extension.*This starts no payment/)
-    expect(screen.getByTestId('supporter-availability').textContent).toMatch(/If Become a Supporter is offered, choose it to pay on Stripe/)
+    expect(screen.getByTestId('supporter-availability').textContent).toMatch(/choose Become a Supporter.*and pay on Stripe/)
+    expect(screen.getByTestId('supporter-availability').textContent).toMatch(/No Twitch sign-in or separate StreamPulse sign-up is needed/)
     expect(screen.queryByRole('link', { name: 'Use a StreamPulse website account' })).toBeNull()
     expect(screen.queryByRole('link', { name: 'Open account billing' })).toBeNull()
     expect(screen.getByTestId('supporter-offer').textContent).not.toMatch(/Restore my Supporter|restore link/)
