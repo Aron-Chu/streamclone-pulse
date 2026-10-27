@@ -50,6 +50,8 @@ export type HubActivityPanelV5Props = FigmaGlobalActivityPanelProps & {
    */
   measuredTarget?: HTMLElement | null;
   onOpenMeasured?: () => void;
+  /** No hub reply has landed yet: the heading names the range picked, not the empty payload's 30 min. */
+  awaitingData?: boolean;
 };
 
 /** The mockup's measured notes (d3-v5 hub.js measuredBody); the bars line follows the chart zoom. */
@@ -100,6 +102,7 @@ export function HubActivityPanelV5({
   annotationLane,
   measuredTarget,
   onOpenMeasured,
+  awaitingData = false,
 }: HubActivityPanelV5Props) {
   const labels = useCommandCenterLabels();
   const [bars, setBars] = useState<HubActivityBars | null>(null);
@@ -231,8 +234,8 @@ export function HubActivityPanelV5({
         <HubActivityChart
           wheelCardRef={hubChartCardRef}
           points={chartInputs.points}
-          // Unavailable, there is no served window: the heading names the range picked (INT-02), not the empty payload's 30 min.
-          windowMinutes={unavailable ? Math.max(1, hub.activity.windowMinutes || 30) : chartInputs.windowMinutes}
+          // Unavailable or not landed yet, there is no served window: the heading names the range picked (INT-02), not the empty payload's 30 min.
+          windowMinutes={unavailable || awaitingData ? Math.max(1, hub.activity.windowMinutes || 30) : chartInputs.windowMinutes}
           channelCount={hub.activity.channelCount}
           poolSize={hub.poolSize}
           livePoolViewerSum={chartInputs.livePoolViewerSum}

@@ -36,7 +36,7 @@ vi.mock('../src/lib/publicHub', async () => {
   }
 })
 
-import { HUB_DATA_MARK, resetHubDataMarkForTests, usePublicHubData } from '../src/hooks/usePublicHubData'
+import { HUB_DATA_MARK, HUB_TIMEOUT_MESSAGE, resetHubDataMarkForTests, usePublicHubData } from '../src/hooks/usePublicHubData'
 import { PortalErrorBoundary } from '../src/ui/PortalErrorBoundary'
 
 function sampleHub(poolSize: number): PublicHub {
@@ -559,6 +559,37 @@ describe('usePublicHubData', () => {
     expect(fetchPublicHubStatsFallback).toHaveBeenCalledTimes(1)
     expect(result.current.loadSource).toBe('stats-fallback')
     expect(result.current.hubEndpointOk).toBe(false)
+  })
+
+  it.each(['moments', 'tickers'] as const)('passes a failed %s projection read on without waiting on totals', async (projection) => {
+    fetchPublicHubBase.mockRejectedValue({ kind: 'timeout', status: 0, message: 'Request deadline exceeded' })
+    fetchPublicHubStatsFallback.mockResolvedValue(statsFallbackResult(0))
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '30m', projection }))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(fetchPublicHubBase).toHaveBeenCalledTimes(1)
+    expect(fetchPublicHubStatsFallback).not.toHaveBeenCalled()
+    expect(result.current.error).toBe(HUB_TIMEOUT_MESSAGE)
+    expect(result.current.data).toBeNull()
+    expect(result.current.loadSource).toBeNull()
+    expect(result.current.hubEndpointOk).toBe(false)
+  })
+
+  it('keeps an unhealthy projection read off totals too', async () => {
+    fetchPublicHubStatsFallback.mockResolvedValue(statsFallbackResult(2))
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '30m', projection: 'moments' }))
+    await waitFor(() => expect(result.current.error).toBe('hub offline'))
+    expect(result.current.loading).toBe(false)
+    expect(result.current.data).toBeNull()
+    expect(fetchPublicHubStatsFallback).not.toHaveBeenCalled()
+  })
+
+  it('still shows totals after a failed read without a projection', async () => {
+    fetchPublicHubBase.mockRejectedValue({ kind: 'timeout', status: 0, message: 'Request deadline exceeded' })
+    fetchPublicHubStatsFallback.mockResolvedValue(statsFallbackResult(0))
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '30m' }))
+    await waitFor(() => expect(result.current.loadSource).toBe('stats-fallback'))
+    expect(fetchPublicHubStatsFallback).toHaveBeenCalledTimes(1)
+    expect(result.current.error).toBeNull()
   })
 
   it('preserves a prior measured snapshot when both window reads fail', async () => {

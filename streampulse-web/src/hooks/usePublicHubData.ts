@@ -269,7 +269,9 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
           return
         }
         // Keep an existing measured snapshot instead of replacing it with totals.
-        if (hasDataRef.current) throw primaryError
+        // A projection read (Moments, home tickers) shows no totals, so it reports
+        // its own error now rather than waiting on /stats it would never show.
+        if (hasDataRef.current || projection) throw primaryError
         const fallback = await fetchPublicHubStatsFallback(controller.signal).catch((fallbackError: unknown) => {
           // When totals are unreachable too, report the slow hub so the timeout stays visible;
           // a typed fallback error (e.g. a 429 with Retry-After) is kept as is.
@@ -322,7 +324,8 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
       }
 
       // On hub failure with existing data: keep stale UI; do not storm fallback.
-      if (hasDataRef.current) {
+      // A projection read has no use for totals either.
+      if (hasDataRef.current || projection) {
         consecutiveFailuresRef.current += 1
         setHubEndpointOk(false)
         setError('hub offline')

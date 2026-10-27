@@ -122,7 +122,7 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/v1/**', route => route.fulfill({ status: 503, json: { error: 'unmocked_endpoint' } }))
   await installHubUxMock(page)
   await installNewsroomMock(page)
-  // Ranked discovery deployed but down keeps History reachable from Latest.
+  // Ranked discovery deployed but down: a bookmarked History shows its unavailable panel.
   await page.route(/\/v1\/public\/discovery\/ranked\/availability(?:\?.*)?$/, route => route.fulfill({ status: 503, json: { error: 'discovery_unavailable' } }))
   await page.route('**/v1/portal/analytics/streams/*', async route => {
     const streamId = new URL(route.request().url()).pathname.split('/').pop()
@@ -366,33 +366,22 @@ test('category survives detail and browser back; retired Sessions bookmarks reac
   await expect(page.getByRole('tablist', { name: 'Moment views' })).toBeVisible()
 })
 
-test('creator navigation opens stored history and Back restores browse filters', async ({ page }) => {
+test('creator links open the channel while History is hidden; a History creator link and Back keep browse filters', async ({ page }) => {
   await page.route('**/v1/public/discovery/ranked?*', route => route.fulfill({ status: 404, json: {} }))
   await page.goto('/analytics/moments')
   await page.getByRole('combobox', { name: 'Category', exact: true }).click()
   await page.getByRole('option', { name: 'Minecraft', exact: true }).click()
   await expect(page.locator('.moments-result')).toHaveCount(1)
-  const creator = page.locator('.moments-result').getByRole('link', { name: /^Browse .* history$/ })
-  const href = await creator.getAttribute('href')
-  const creatorUrl = new URL(href!, 'http://127.0.0.1:5173')
-  expect(creatorUrl.pathname).toBe('/analytics/moments')
-  expect(creatorUrl.searchParams.get('view')).toBe('history')
-  expect(creatorUrl.searchParams.get('scope')).toBe('creator')
-  expect(creatorUrl.searchParams.get('creator')).toBe('xqc')
-  await creator.click()
-  await expect(page).toHaveURL(url => {
-    const next = new URL(url)
-    return next.pathname === '/analytics/moments'
-      && next.searchParams.get('view') === 'history'
-      && next.searchParams.get('scope') === 'creator'
-      && next.searchParams.get('creator') === 'xqc'
-  })
+  // History is not offered while ranked is not deployed: the creator opens their broadcasts.
+  await expect(page.locator('.moments-result').getByRole('link', { name: /^All .+ broadcasts$/ })).toHaveAttribute('href', '/analytics/xqc')
+  await expect(page.locator('.moments-result').getByRole('link', { name: /^Browse .* history$/ })).toHaveCount(0)
+  // A bookmarked History creator link still opens stored history.
+  await page.goto('/analytics/moments?view=history&scope=creator&creator=xqc')
   await expect(page.getByRole('heading', { name: 'History unavailable' })).toBeVisible()
   await expect(page.locator('.moments-detail')).toHaveCount(0)
   await page.goBack()
   await expect(page.getByRole('combobox', { name: 'Category', exact: true })).toHaveText('Minecraft')
   await expect(page.locator('.moments-result')).toHaveCount(1)
-  await expect(creator).toBeFocused()
 })
 
 test('in-page Back does not leave a detail entry that browser Back reopens', async ({ page }) => {
@@ -608,7 +597,7 @@ test('loaded search and ordering survive exact-detail Back and refresh', async (
   await page.getByRole('option', { name: 'Category A–Z', exact: true }).click()
   await page.getByLabel('Find loaded moments').fill('xqc')
   await expect(page.locator('.moments-result')).toHaveCount(1)
-  await expect(page.getByText('For earlier broadcasts, open History.', { exact: false })).toBeVisible()
+  await expect(page.getByText('A detection may be older than the chart range.', { exact: false })).toBeVisible()
   await page.locator('.moments-result').getByRole('button', { name: 'Open moment' }).click()
   await expect(page.getByRole('link', { name: /^Open VOD at/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/123456?t=120s')
   await page.goBack()

@@ -229,13 +229,27 @@ describe('apiClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it('still retries a 503 once when Retry-After is absent or hidden from the page', async () => {
+  it('does not repeat a 503 when Retry-After is absent or hidden from the page', async () => {
     // Cross-origin, the browser hides Retry-After unless the API exposes it through CORS.
     const fetchMock = vi.fn(async () => new Response('{"error":"unavailable"}', { status: 503 }))
     vi.stubGlobal('fetch', fetchMock)
     const error = await apiClient('/v1/public/explorer?window=7d').catch((caught: unknown) => caught)
     expect(error).toMatchObject({ kind: 'server', status: 503 })
     expect((error as { retryAfterMs?: number }).retryAfterMs).toBeUndefined()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([502, 504])('still retries a %i once when Retry-After is absent', async status => {
+    let calls = 0
+    const fetchMock = vi.fn(async () => {
+      calls += 1
+      return calls === 1
+        ? new Response('{"error":"gateway"}', { status })
+        : new Response('{"ok":true}', { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const result = await apiClient('/v1/portal/analytics/streams/s1/summary')
+    expect(result.data).toEqual({ ok: true })
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 

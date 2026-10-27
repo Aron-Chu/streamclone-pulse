@@ -145,7 +145,9 @@ export async function apiClient<T = unknown>(path: string, options: ApiClientOpt
         const error = normalizeApiError(response.status, payload, response.headers.get('Retry-After'))
         // A server that names its own Retry-After has said when to come back; a
         // second request a few hundred ms later would only repeat its answer.
-        if (response.status >= 500 && retryable && attempt === 0 && error.retryAfterMs === undefined) { lastError = error; await abortableSleep(jitter(250), deadline.signal); continue }
+        // A 503 is the API shedding load: it is not asked again either, whether or
+        // not its Retry-After reaches the page (cross-origin, CORS can hide it).
+        if (response.status >= 500 && response.status !== 503 && retryable && attempt === 0 && error.retryAfterMs === undefined) { lastError = error; await abortableSleep(jitter(250), deadline.signal); continue }
         throw error
       }
       return { data: payload as T, cache, status: response.status }

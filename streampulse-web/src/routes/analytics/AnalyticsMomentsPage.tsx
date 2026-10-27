@@ -6,7 +6,6 @@ import LegacyMomentSession from './LegacyMomentSession'
 import { broadcastTimelineHref } from '../../lib/momentsNavigation'
 import { usePublicHubData } from '../../hooks/usePublicHubData'
 import { useRankedDiscovery, useRankedRetention } from '../../hooks/useDiscoveryCatalogue'
-import { useRankedFeatureAvailability } from '../../hooks/useRankedFeatureAvailability'
 import { useMomentProfiles } from '../../hooks/useMomentProfiles'
 import { readRankedScope, readHistoryRankedScope, rankedEmptyMessage, type RankedScope } from '../../lib/discoveryCatalogue'
 import { HistoryExplorerControls } from '../../ui/components/moments/HistoryExplorerControls'
@@ -415,14 +414,6 @@ function MomentsWorkspace() {
     setCheckedArtwork(previous => Object.fromEntries([...Object.entries(previous).filter(([id]) => id !== key).slice(-199), ...(artwork ? [[key, artwork] as const] : [])]))
   }, [])
   const hub = usePublicHubData({ enabled: view === 'recent' && !historyMode, activityWindow: '30m', projection: 'moments' })
-  // Explore and History stay hidden until the ranked backend answers (owner request).
-  // Ranked views reuse their own retention read; Latest and Saved start one deferred
-  // read per session, after Latest's first screen has settled.
-  const rankedFeature = useRankedFeatureAvailability({
-    start: !rankedMode && !(view === 'recent' && hub.loading),
-    observed: !rankedMode ? undefined : retention.notDeployed ? 'not_deployed' : retention.from ? 'ready' : retention.error ? 'unavailable' : undefined,
-  })
-  const rankedTabsShown = rankedFeature === 'ready' || rankedFeature === 'unavailable'
   const feed = useMemo(() => hub.data ? resolveLivePulseMoments(hub.data) : null, [hub.data])
   const recentArtwork = useMemo(() => new Map((hub.data?.livePulseMoments ?? []).flatMap(moment => {
     const adapted = fromHubMoment(moment)
@@ -553,6 +544,9 @@ function MomentsWorkspace() {
   // they never contain moments. Do not present that degraded response as a
   // legitimate empty feed.
   const momentsUnavailable = isMomentsFeedUnavailable(view, hub.loadSource, hub.hubEndpointOk)
+  // With nothing listed, the feed notice takes the skeleton's place and stands in for
+  // the results heading and count, so the page does not jump or say "Moments" twice.
+  const noticeOnly = Boolean(failure || momentsUnavailable) && !displayed.length
   const refreshInFlight = view === 'recent' && hub.refreshing
   const resultsRef = useRef<HTMLHeadingElement>(null)
   const lastSelectedKey = useRef<string | null>(null)
@@ -876,8 +870,9 @@ function MomentsWorkspace() {
   }
   const detail = chosen ? <MomentDetail key={`${chosen.key}:${chosen.publicMomentId || ''}:${openGeneration.current}`} variant={inlineKey ? 'inline' : 'standalone'} moment={chosen} onSourceState={onSourceState} onClose={() => close('row')} saved={view === 'saved' && Boolean(selected)} navigation={loadedMomentNeighbors(displayed, chosen.key)} onNavigate={review}
     continuation={rankedMode && ranked.data ? { loading: ranked.loading, canLoad: ranked.canLoad, limited: ranked.limited, error: ranked.error, load: ranked.loadMore } : undefined} /> : null
-  // A bookmarked ranked view keeps its own tab and honest unavailable panel.
-  const viewTabs = (['explore', 'recent', 'history', 'saved'] as const).filter(tab => rankedTabsShown || tab === view || tab === 'recent' || tab === 'saved')
+  // Explore and History stay hidden while the ranked backend is not deployed (owner
+  // request). A bookmarked ranked view keeps its own tab and honest unavailable panel.
+  const viewTabs = (['explore', 'recent', 'history', 'saved'] as const).filter(tab => tab === view || tab === 'recent' || tab === 'saved')
   const historyAvailable = viewTabs.includes('history')
   function onViewTabsKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
@@ -914,18 +909,17 @@ function MomentsWorkspace() {
       </div>
     </> : null}
     {view === 'recent' && pendingRecent.length ? <button type="button" data-keeps-selection onClick={() => { setVisibleRecent(uniqueDiscoveryMoments([...presentedRecent, ...pendingRecent, ...recent]).slice(0, 200)); setPendingRecent([]) }}>Show {pendingRecent.length} new moment{pendingRecent.length === 1 ? '' : 's'}</button> : null}
-    {failure || momentsUnavailable ? <section className="moments-notice" role="status"><h2>{momentsUnavailable ? 'Live moments temporarily unavailable' : 'Moments could not be refreshed'}</h2><p>{failure ?? 'The live moments endpoint is unavailable. Aggregate health is still available on Live activity.'}</p><button data-keeps-selection disabled={busy || refreshInFlight} onClick={hub.refresh}>{busy || refreshInFlight ? 'Retrying…' : 'Retry'}</button><Link className="moments-back" to="/analytics">Open live activity →</Link></section> : null}
     {feed?.banner && view === 'recent' ? <p role="status">{feed.banner}</p> : null}
     {/* Outside the results, whose aria-busy can hold back announcements while a page loads. */}
     <span className="sr-only" aria-live="polite" aria-atomic="true" data-review-announcement="">{reviewAnnouncement && reviewAnnouncement.key === chosen?.key ? reviewAnnouncement.text : ''}</span>
     {(!rankedMode || retention.from || keepRanking || chosen) ? <div className="moments-layout">
-      <section ref={arrivalRoot} className="moments-results" aria-label="Moment results" aria-busy={busy}><h2 ref={resultsRef} tabIndex={-1}>{rankedMode ? 'Most active detected moments' : 'Moments'} <small>{busy && !displayed.length ? 'Loading…' : rankedMode && !ranked.data ? '' : `${displayed.length} ${rankedMode ? 'loaded' : 'shown'}`}</small></h2>
-        <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{busy && !displayed.length ? 'Loading moments.' : rankedMode && !ranked.data ? '' : `${displayed.length} ${displayed.length === 1 ? 'moment' : 'moments'} ${rankedMode ? 'loaded' : 'shown'}.`}</span>
+      <section ref={arrivalRoot} className="moments-results" aria-label="Moment results" aria-busy={busy}>{noticeOnly ? null : <h2 ref={resultsRef} tabIndex={-1}>{rankedMode ? 'Most active detected moments' : 'Moments'} <small>{busy && !displayed.length ? 'Loading…' : rankedMode && !ranked.data ? '' : `${displayed.length} ${rankedMode ? 'loaded' : 'shown'}`}</small></h2>}
+        <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{noticeOnly ? '' : busy && !displayed.length ? 'Loading moments.' : rankedMode && !ranked.data ? '' : `${displayed.length} ${displayed.length === 1 ? 'moment' : 'moments'} ${rankedMode ? 'loaded' : 'shown'}.`}</span>
         {/* A selection with no row in the list leads the results, above any loading or
             empty state, so a retrying feed never moves it. */}
         <MomentInlineReveal open={standaloneShown} standalone animate={!swapping} id={DETAIL_ID} onInsidePress={markInsidePress}>{standaloneShown ? detail : null}</MomentInlineReveal>
-        {busy ? <p role="status">Loading measured activity…</p> : null}
-        {busy && !displayed.length ? <MomentLoadingSkeleton /> : null}
+        {failure || momentsUnavailable ? <section className="moments-notice" role="status"><h2 ref={noticeOnly ? resultsRef : undefined} tabIndex={noticeOnly ? -1 : undefined}>{momentsUnavailable ? 'Live moments temporarily unavailable' : 'Moments could not be refreshed'}</h2><p>{failure ?? 'The live moments endpoint is unavailable. Aggregate health is still available on Live activity.'}</p><button data-keeps-selection disabled={busy || refreshInFlight} onClick={hub.refresh}>{busy || refreshInFlight ? 'Retrying…' : 'Retry'}</button><Link className="moments-back" to="/analytics">Open live activity →</Link></section> : null}
+        {busy && !displayed.length && !noticeOnly ? <MomentLoadingSkeleton /> : null}
         {rankedMode ? !busy && !ranked.error && !rankedValidation && ranked.data && !displayed.length ? <p role="status">{rankedEmptyMessage(ranked.data)}</p> : null : view === 'saved' && saved.items.length === 0 && !displayed.length ? <div className="moments-empty-saved"><h3>Keep reactions worth returning to</h3><p>Save a moment to build your shortlist here.</p><button type="button" onClick={() => changeView('recent')}>Find moments to save</button></div> : !busy && !failure && !momentsUnavailable && !displayed.length ? <p role="status">{hasBrowseFilters ? 'No moments match these filters.' : 'No available moments.'}</p> : null}
         <div className="moments-result-list">
           {profiledResults.map(moment => {

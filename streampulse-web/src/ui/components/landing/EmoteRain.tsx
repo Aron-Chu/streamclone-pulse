@@ -10,6 +10,11 @@ interface Drop {
   style: CSSProperties
 }
 
+// The three ~3:1 wide emotes were ~1.2 MB of the rain's 2x bytes. Each drop is a
+// small square, so the rain reads the same without them.
+const WIDE_EMOTES = new Set(['degloved', 'widespeedlaugh', 'widereacting'])
+const RAIN_EMOTES = LANDING_EMOTES.filter((emote) => !WIDE_EMOTES.has(emote.name))
+
 /**
  * Decorative emote-rain backdrop — mostly 7TV culture emotes with a few Twitch
  * globals mixed in. Purely presentational (aria-hidden) and disabled under
@@ -18,13 +23,14 @@ interface Drop {
 export function EmoteRain({ count = 18 }: { count?: number }) {
   const drops = useMemo<Drop[]>(() => {
     return Array.from({ length: count }, (_, index) => {
-      const emote = LANDING_EMOTES[index % LANDING_EMOTES.length]!
+      const emote = RAIN_EMOTES[index % RAIN_EMOTES.length]!
       // Stable decorative positions also keep prerender and hydration identical.
       const sample = (salt: number) => ((index * 37 + salt * 61) % 101) / 101
       const size = 1.4 + sample(1) * 1.5
       return {
         name: emote.name,
-        url: landingEmoteImageUrl(emote, '2x'),
+        // Drops stay under ~3rem, faint and blurred, so 1x files are enough.
+        url: landingEmoteImageUrl(emote, '1x'),
         side: index % 2 === 0 ? 'l' : 'r',
         style: {
           // Fraction of the page gutter; landing.css resolves it per side so

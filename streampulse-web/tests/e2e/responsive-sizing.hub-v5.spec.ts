@@ -38,23 +38,18 @@ test('landing heading does not grow when crossing the mobile breakpoint', async 
   expect(after).toBeLessThanOrEqual(before)
 })
 
-test('both landing tours reflow on short viewports and restore animation on resize', async ({ page }) => {
+test('the landing tour reflows on short viewports and restores animation on resize', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.goto('/')
-  for (const selector of ['.sl-xtour', '.lsg']) {
-    await expect(page.locator(selector)).not.toHaveAttribute('data-static')
-  }
+  const tour = page.locator('.sl-xtour')
+  await expect(tour).not.toHaveAttribute('data-static')
   await page.setViewportSize({ width: 1440, height: 450 })
-  for (const selector of ['.sl-xtour', '.lsg']) {
-    await expect(page.locator(selector)).toHaveAttribute('data-static', '')
-  }
+  await expect(tour).toHaveAttribute('data-static', '')
   const panel = page.locator('.pulse-landing-panel')
   expect(await panel.evaluate(el => el.scrollHeight <= el.clientHeight + 2)).toBe(true)
   await page.setViewportSize({ width: 1440, height: 1000 })
-  for (const selector of ['.sl-xtour', '.lsg']) {
-    await expect(page.locator(selector)).not.toHaveAttribute('data-static')
-  }
+  await expect(tour).not.toHaveAttribute('data-static')
 })
 
 test('analytics uses one readable chip per series and the design plot height', async ({ page }) => {

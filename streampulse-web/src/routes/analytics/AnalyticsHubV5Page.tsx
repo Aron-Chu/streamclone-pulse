@@ -253,6 +253,7 @@ export default function AnalyticsHubV5Page() {
               suggestions={[]}
               topEmotes={data.topEmotes}
               loading={loadingInitial || hub.activityRefreshing}
+              awaitingData={loadingInitial}
               activityRefreshing={hub.activityRefreshing}
               updatedAgo={formatUpdatedAgo(hub.lastUpdated, nowMs)}
               rangeControl={{
@@ -300,6 +301,7 @@ export default function AnalyticsHubV5Page() {
             live={data.liveChannels}
             poolSize={data.poolSize}
             unavailable={measurementsUnavailable}
+            loading={loadingInitial}
             game={game}
             onClearGame={() => setGameState(null)}
             sortRequest={sortRequest}

@@ -985,10 +985,12 @@ export function AnalyticsConsole({
     return analyticsStreamPathSlug(liveRouteSessionTarget, sidebarStreams)
   }, [liveRouteSessionTarget, sidebarStreams])
 
+  // Does not wait on the stream list: before it loads, only a live read that
+  // confirms the live stream names a target, and that is the same stream ID the
+  // loaded list would pick. Without one, the target waits for the list.
   const shouldRedirectLiveRouteToSession = Boolean(
     isLiveRoute
     && !detailQuery.isLoading
-    && !streamsQuery.isLoading
     && liveRouteSessionSlug,
   )
 

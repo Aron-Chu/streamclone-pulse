@@ -756,6 +756,22 @@ export function portalMinutesToRollups(
   return { rollups, catalog: Array.from(catalogByKey.values()) }
 }
 
+/**
+ * A stream's /minutes read that never rejects: a failure resolves as `failed`,
+ * so a read the bundle drops is neither an unhandled rejection nor a log line.
+ */
+function startPortalMinutesRead(streamId: string) {
+  const controller = new AbortController()
+  const read = apiClient<PortalStreamMinutesResponse>(portalPath(`/streams/${encodeURIComponent(streamId)}/minutes`), {
+    timeoutMs: PORTAL_MINUTES_TIMEOUT_MS,
+    signal: controller.signal,
+  }).then(
+    (res) => ({ res, failed: false }),
+    () => ({ res: null, failed: true }),
+  )
+  return { read, cancel: () => controller.abort() }
+}
+
 async function fetchPortalStreamBundle(
   streamId: string,
   includeMinutes: boolean,
@@ -764,14 +780,24 @@ async function fetchPortalStreamBundle(
 ) {
   const enrichEmotes = opts?.enrichChannelEmotes === true
   const includeSummary = opts?.includeSummary !== false && includeMinutes
-  const { data: detail } = await apiClient<PortalStreamDetail>(
-    portalPath(`/streams/${encodeURIComponent(streamId)}`),
-    { timeoutMs: SLOW_READ_TIMEOUT_MS },
-  )
+  // The minute read starts with the detail read, not after it, so a slow API
+  // costs the chart one wait instead of two. A bundle that returns without it
+  // (a failed detail or the live fallback below) cancels it unread.
+  const earlyMinutes = includeMinutes ? startPortalMinutesRead(streamId) : null
+  let detail: PortalStreamDetail
+  try {
+    ({ data: detail } = await apiClient<PortalStreamDetail>(
+      portalPath(`/streams/${encodeURIComponent(streamId)}`),
+      { timeoutMs: SLOW_READ_TIMEOUT_MS },
+    ))
+  } catch (error) {
+    earlyMinutes?.cancel()
+    throw error
+  }
 
-  // Resolve identity before starting the expensive minute bundle. A stale
-  // alias on a current-session detail must not make the user wait for (or
-  // render) the previous session's timeline.
+  // Resolve identity before using the minute bundle. A stale alias on a
+  // current-session detail must not make the user wait for (or render) the
+  // previous session's timeline.
   if (
     channelLogin?.trim()
     && detail.stream?.streamId?.trim()
@@ -784,6 +810,7 @@ async function fetchPortalStreamBundle(
       [],
     )
     if (liveFallback) {
+      earlyMinutes?.cancel()
       return {
         detail,
         minutes: null,
@@ -797,18 +824,15 @@ async function fetchPortalStreamBundle(
   }
 
   let minutesFetchFailed = false
-  const minutesPromise = includeMinutes
-    ? apiClient<PortalStreamMinutesResponse>(portalPath(`/streams/${encodeURIComponent(streamId)}/minutes`), {
-        timeoutMs: PORTAL_MINUTES_TIMEOUT_MS,
+  const minutesPromise = earlyMinutes
+    ? earlyMinutes.read.then((outcome) => {
+        if (!outcome.failed) return outcome.res
+        minutesFetchFailed = true
+        if (import.meta.env.DEV) {
+          console.warn(`[streamcloneAnalytics] portal minutes unavailable for stream ${streamId}`)
+        }
+        return null
       })
-        .then((res) => res)
-        .catch(() => {
-          minutesFetchFailed = true
-          if (import.meta.env.DEV) {
-            console.warn(`[streamcloneAnalytics] portal minutes unavailable for stream ${streamId}`)
-          }
-          return null
-        })
     : Promise.resolve(null)
   const summaryPromise = includeSummary
     ? fetchPortalStreamSummary(streamId)
