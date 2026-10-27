@@ -32,7 +32,6 @@ import { fx } from '../../../../lib/momentsChecked'
 import { pollMomentsFeed } from '../../../../lib/momentsFeed'
 import { momentsFeedEnabled } from '../../../../lib/momentsFeedFlag'
 import type { HubLivePulseMoment, PublicHub } from '../../../../lib/publicHub'
-import { twitchProfileImageRendition } from '../../../../lib/twitchProfileImage'
 import { HubToggletip } from '../d3/HubToggletip'
 import '../d3/hub-d3-tokens.css'
 import { HubV5Avatar } from './HubV5Avatar'
@@ -269,7 +268,7 @@ function GroupRow({ item, model, nowMs, isNew }: { item: Extract<FeedItem, { gro
       >
         {cat
           ? <span className="hv5-fd-art"><GameArt url={artFor(e, cat, model) ?? undefined} name={cat} w={30} h={40} /></span>
-          : <span className="hv5-fd-av"><HubV5Avatar login={e.login} name={e.name} src={twitchProfileImageRendition(e.avatar, 70)} size={28} /></span>}
+          : <span className="hv5-fd-av"><HubV5Avatar login={e.login} name={e.name} src={e.avatar} size={28} /></span>}
         <span className="hv5-fd-tx">
           <span className="hv5-fd-l1"><span className="hv5-fd-nm">{e.name}</span>{act}</span>
           <span className="hv5-fd-l2">
@@ -292,7 +291,7 @@ function LivesRow({ lives, old, model, nowMs, isNew }: { lives: FeedLive[]; old:
     <li className={`hv5-fd-it${isNew ? ' hv5-fd-new' : ''}${old ? ' hv5-f3-old' : ''}`} data-kind="lives">
       <button className="hv5-fd" type="button" data-key="lives" aria-expanded={open} aria-controls={id} aria-label={feedLivesAria(lives, nowMs)} onClick={() => setOpen((o) => !o)}>
         <span className="hv5-fd-stack" aria-hidden="true">
-          {lives.slice(0, 3).map((e) => <HubV5Avatar key={e.key} login={e.login} name={e.name} src={twitchProfileImageRendition(e.avatar, 70)} size={22} />)}
+          {lives.slice(0, 3).map((e) => <HubV5Avatar key={e.key} login={e.login} name={e.name} src={e.avatar} size={22} />)}
         </span>
         <span className="hv5-fd-tx">
           <span className="hv5-fd-l1"><span className="hv5-f2-act hv5-f2-live">Went live</span><span className="hv5-fd-nm hv5-f2-names">{n}{what}</span></span>
@@ -309,7 +308,7 @@ function LivesRow({ lives, old, model, nowMs, isNew }: { lives: FeedLive[]; old:
               data-key={e.key}
               aria-label={`${e.name} went live ${feedAgo(e.at, nowMs)}${e.jump ? ', chat jumping' : ''}${e.cat ? `, ${e.cat}` : ''}${e.viewers != null ? `, ${formatHubInt(e.viewers)} viewers now` : ''}. Opens the stream page.`}
             >
-              <span className="hv5-fd-av"><HubV5Avatar login={e.login} name={e.name} src={twitchProfileImageRendition(e.avatar, 70)} size={22} /></span>
+              <span className="hv5-fd-av"><HubV5Avatar login={e.login} name={e.name} src={e.avatar} size={22} /></span>
               <span className="hv5-fd-tx">
                 <span className="hv5-fd-l1"><span className="hv5-fd-nm">{e.name}</span>{e.jump ? <Jump /> : null}</span>
                 <span className="hv5-fd-l2"><Ago at={e.at} nowMs={nowMs} /><Viewers viewers={e.viewers} /><Game cat={e.cat} art={artFor(null, e.cat, model)} /></span>
@@ -332,7 +331,7 @@ function UpRow({ model, isNew, onUpMore }: { model: LiveFeedModel; isNew: boolea
     <li className={`hv5-fd-it${isNew ? ' hv5-fd-new' : ''}`} data-kind="now">
       <button className="hv5-fd" type="button" data-key="now" aria-expanded={open} aria-controls={id} aria-label={feedUpAria(model)} onClick={() => setOpen((o) => !o)}>
         <span className="hv5-fd-stack" aria-hidden="true">
-          {model.up.slice(0, 3).map((x) => <HubV5Avatar key={x.login} login={x.login} name={x.name} src={twitchProfileImageRendition(x.avatar, 70)} size={22} />)}
+          {model.up.slice(0, 3).map((x) => <HubV5Avatar key={x.login} login={x.login} name={x.name} src={x.avatar} size={22} />)}
         </span>
         <span className="hv5-fd-tx">
           <span className="hv5-fd-l1"><span className="hv5-f2-act hv5-f2-up">Picking up</span><span className="hv5-fd-nm hv5-f2-names">{n}{n === 1 ? ' channel' : ' channels'}</span></span>
@@ -349,7 +348,7 @@ function UpRow({ model, isNew, onUpMore }: { model: LiveFeedModel; isNew: boolea
               data-key={`u:${x.login}`}
               aria-label={`${x.name}, picking up: ${feedMore(x.add)} more chat a minute than usual, ${multiplierWords(x.x)} times usual${x.cat ? `, ${x.cat}` : ''}. Opens the stream page.`}
             >
-              <span className="hv5-fd-av"><HubV5Avatar login={x.login} name={x.name} src={twitchProfileImageRendition(x.avatar, 70)} size={22} /></span>
+              <span className="hv5-fd-av"><HubV5Avatar login={x.login} name={x.name} src={x.avatar} size={22} /></span>
               <span className="hv5-fd-tx">
                 <span className="hv5-fd-l1"><span className="hv5-fd-nm">{x.name}</span></span>
                 <span className="hv5-fd-l2"><More x={feedMultiplier(x.x)} ser="chat" /><Game cat={x.cat} art={artFor(null, x.cat, model)} /></span>
@@ -383,7 +382,7 @@ function MomentCard({ row, avatar }: { row: HubMomentRowV5; avatar: string | nul
   return (
     <>
       <div className="hv5-mc-h">
-        <HubV5Avatar login={row.login} name={row.displayName} src={twitchProfileImageRendition(avatar, 70)} size={24} />
+        <HubV5Avatar login={row.login} name={row.displayName} src={avatar} size={24} />
         <span className="hv5-mc-nm">{row.displayName}</span>
         {row.at != null ? <span className="hv5-mc-t">{hubClock(row.at)}</span> : null}
       </div>

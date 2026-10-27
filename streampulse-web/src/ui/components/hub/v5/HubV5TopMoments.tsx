@@ -15,7 +15,6 @@ import { isApiError } from '../../../../lib/apiClient'
 import { avatarImage, boxArtImage, clk, emoteImage, fx, hms, int, LEAD_S, VERDICT_WORD, type CheckedMoment, type MomentVod } from '../../../../lib/momentsChecked'
 import { loadMomentsWindow, type MomentsFeedSnapshot } from '../../../../lib/momentsFeed'
 import { loadMomentVod, momentVodCache, vodSeconds } from '../../../../lib/momentsFeedVod'
-import { twitchProfileImageRendition } from '../../../../lib/twitchProfileImage'
 import { HubToggletip } from '../d3/HubToggletip'
 import '../d3/hub-d3-tokens.css'
 import { HubV5Avatar } from './HubV5Avatar'
@@ -261,7 +260,7 @@ function TopRow({ m, avatar, rank, nowMs, open, isNew, vod, onToggle }: {
       >
         {rank != null ? <span className={`hv5-tm-rk${rank <= 3 ? ' hv5-tm-top' : ''}`} aria-hidden="true">{rank}</span> : null}
         <span className="hv5-tm-cv hv5-tm-face" aria-hidden="true">
-          <HubV5Avatar login={item.login} name={m.name} src={twitchProfileImageRendition(avatar, 70)} size={28} />
+          <HubV5Avatar login={item.login} name={m.name} src={avatar} size={28} />
         </span>
         <span className="hv5-tm-tx" aria-hidden="true">
           <span className="hv5-tm-l1">

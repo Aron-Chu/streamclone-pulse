@@ -23,7 +23,6 @@ import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { sanitizeEmoteImageUrl } from '../../../../lib/emoteAssetUrl'
 import type { HubActivityPoint, HubLivePulseMoment } from '../../../../lib/publicHub'
-import { twitchProfileImageRendition } from '../../../../lib/twitchProfileImage'
 import { HubToggletip } from '../d3/HubToggletip'
 import { HubV5Avatar } from './HubV5Avatar'
 import { useMedia } from './HubV5LiveFeed'
@@ -654,7 +653,7 @@ export function HubV5EmoteMap({
                       <li key={r.key} style={{ animationDelay: `${i * 18}ms` }}>
                         <Link to={r.href} className="hv5-el-r" aria-label={momentRowAria(r)}>
                           <span className="hv5-el-i">{i + 1}</span>
-                          <HubV5Avatar login={r.login} name={r.displayName} src={twitchProfileImageRendition(r.moment.profileImageUrl || avatars?.get(r.login), 70)} size={24} />
+                          <HubV5Avatar login={r.login} name={r.displayName} src={r.moment.profileImageUrl || avatars?.get(r.login)} size={24} />
                           <span className="hv5-el-n">{r.displayName}<small>{r.moment.category || 'No category'}</small></span>
                           {'x' in r.cmp ? <span className="hv5-el-v hv5-el-x">{formatHubMultiplier(r.cmp.x)}</span> : <span className="hv5-el-v" title={r.cmp.long}>{r.cmp.why}</span>}
                           <span className="hv5-el-v">{r.at != null ? feedAgo(r.at, nowMs) : ''}</span>

@@ -11,7 +11,6 @@
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FocusEvent as ReactFocusEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { twitchProfileImageRendition } from '../../../../lib/twitchProfileImage'
 import { HubToggletip } from '../d3/HubToggletip'
 import { HubV5Avatar } from './HubV5Avatar'
 import {
@@ -57,7 +56,7 @@ function GameCard({ g, rank, of, pressed, art, avatars }: { g: HubGameShare; ran
         <dd className="hv5-gc-top">
           {g.rows.slice(0, 3).map((c) => (
             <span key={c.login} className="hv5-gc-ch">
-              <HubV5Avatar login={c.login} name={c.displayName} src={twitchProfileImageRendition(avatars.get(c.login) ?? c.profileImageUrl, 70)} size={20} />
+              <HubV5Avatar login={c.login} name={c.displayName} src={avatars.get(c.login) ?? c.profileImageUrl} size={20} />
               <span>{c.displayName || c.login}</span>
               <span>{formatHubInt(channelChat(c))}/min</span>
             </span>
