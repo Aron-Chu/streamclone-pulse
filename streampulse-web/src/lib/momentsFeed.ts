@@ -157,7 +157,27 @@ async function readPage(nowMs: number, cursor: string | null, signal?: AbortSign
   if (cursor) query.set('cursor', cursor)
   // The feed answers with public, max-age=30 and is edge-cached; the browser may reuse it too.
   const { data } = await apiClient<unknown>(`/v1/public/moments?${query}`, { signal, timeoutMs: 8000, maxResponseBytes: PAGE_BYTES, cache })
-  const page = feedPage(data)
+  return snapshotOf(feedPage(data))
+}
+
+export interface MomentsWindowQuery {
+  /** Epoch ms the window starts. */
+  from: number
+  sort: 'new' | 'top'
+  limit: number
+  /** One game's Twitch category id. */
+  category?: string | null
+}
+
+/** The first page of a window the caller picks (the hub's Top moments: any window, either order, one game). */
+export async function loadMomentsWindow(range: MomentsWindowQuery, signal?: AbortSignal): Promise<MomentsFeedSnapshot> {
+  const query = new URLSearchParams({ sort: range.sort, from: String(range.from), limit: String(Math.max(1, Math.min(PAGE_LIMIT, range.limit))) })
+  if (range.category) query.set('category', range.category)
+  const { data } = await apiClient<unknown>(`/v1/public/moments?${query}`, { signal, timeoutMs: 8000, maxResponseBytes: PAGE_BYTES, cache: 'default' })
+  return snapshotOf(feedPage(data))
+}
+
+function snapshotOf(page: MomentsFeedResponse): MomentsFeedSnapshot {
   const verdicts = page.facets?.verdicts
   const categories = page.facets?.categories
   return {
