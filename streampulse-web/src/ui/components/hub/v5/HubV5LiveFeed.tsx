@@ -18,6 +18,10 @@
  *
  * F2 (10-22): the feed's games sit as covers under the header; one shows that
  * game's rows only, again clears it.
+ *
+ * Games first (L1, 10-22): a channel's row leads with its game's cover and says
+ * "5.0× more emotes · Chess", the time short on the right; the strip's covers
+ * carry their names.
  */
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type MouseEvent, type PointerEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
@@ -54,6 +58,7 @@ import {
   feedMultiplier,
   feedRestTip,
   feedRowAria,
+  feedShort,
   feedTip,
   feedUpAria,
   liveFeedModel,
@@ -196,18 +201,22 @@ function Ago({ at, nowMs }: { at: number; nowMs: number }) {
 
 const Jump = () => <span className="hv5-f3-jump">chat jumping</span>
 const Viewers = ({ viewers }: { viewers: number | null }) => (viewers != null ? <>{SEP}<span className="hv5-fd-w">{formatHubInt(viewers)} viewers</span></> : null)
+/** "5.0× more emotes", as Moments writes it (games first, 10-22). */
+const More = ({ x, ser }: { x: string; ser: 'chat' | 'emotes' }) => <span className="hv5-f2-x"><b>{x}</b> more {ser}</span>
 
-/** One number a row (L1): × usual beside the time; a went-live row's is its viewers. The rest are in the aria label and the moment card. */
+/**
+ * Games first (L1, 10-22): the row leads with its game's cover; then who and what chat sent, "5.0× more emotes" and the
+ * game, and the time on the right ("13m"). A went-live row says its viewers. The rest are in the aria label, the title
+ * ("Earlier: …") and the moment card.
+ */
 function GroupRow({ item, model, nowMs, isNew }: { item: Extract<FeedItem, { group: FeedEvent[] }>; model: LiveFeedModel; nowMs: number; isNew: boolean }) {
   const group = item.group
   const e = group[0]!
-  const rest = group.length - 1
   const cat = e.cat || group.map((x) => x.cat).find(Boolean) || null
-  let act: ReactNode
+  let act: ReactNode = null
   let mid: ReactNode = null
   if (e.kind === 'spike') {
-    act = <span className="hv5-f2-act hv5-f3-spk">{e.ser === 'chat' ? 'chat spike' : 'emote spike'}</span>
-    mid = <span className="hv5-f2-x">{feedMultiplier(e.x)} usual</span>
+    mid = <More x={feedMultiplier(e.x)} ser={e.ser} />
   } else if (e.kind === 'moment') {
     const emote = e.act.emote
     act = emote ? (
@@ -215,18 +224,16 @@ function GroupRow({ item, model, nowMs, isNew }: { item: Extract<FeedItem, { gro
         {emote.imageUrl ? <img src={emote.imageUrl} alt="" width={20} height={20} decoding="async" referrerPolicy="no-referrer" /> : null}
         <span>{emote.name}</span>
       </span>
-    ) : <span className="hv5-f2-act hv5-f3-spk">{e.act.word}</span>
-    // a Moments-list row writes its × as that page does; one that partly holds up says why instead.
-    // The × says what it counts, as on Moments (X1, 10-22): "emotes 5.7× usual"
+    ) : <span className="hv5-f2-act">{e.act.word}</span>
+    // a Moments-list row writes its × as that page does; one that partly holds up says why instead
     mid = e.x != null
-      ? <span className="hv5-f2-x"><span className="hv5-f2-xk">{feedMomentSer(e)}</span> {e.list ? fx(e.x) : feedMultiplier(e.x)} usual</span>
+      ? <More x={e.list ? fx(e.x) : feedMultiplier(e.x)} ser={feedMomentSer(e)} />
       : e.why ? <span className="hv5-fd-w">{e.why}</span> : null
   } else {
     act = <span className="hv5-f2-act hv5-f2-live">went live</span>
     // a fresh stream's chat rate is mostly hellos, so it shows only when chat is jumping
-    mid = e.jump ? <Jump /> : null
+    mid = e.jump ? <Jump /> : e.viewers != null ? <span className="hv5-fd-w">{formatHubInt(e.viewers)} viewers</span> : null
   }
-  const viewers = e.kind === 'live' ? <Viewers viewers={e.viewers} /> : null
   const tip = feedRestTip(group)
   return (
     <li className={`hv5-fd-it${isNew ? ' hv5-fd-new' : ''}${item.old ? ' hv5-f3-old' : ''}`} data-kind={e.kind}>
@@ -238,19 +245,17 @@ function GroupRow({ item, model, nowMs, isNew }: { item: Extract<FeedItem, { gro
         title={tip || undefined}
         aria-label={feedRowAria(group, nowMs)}
       >
-        <span className={`hv5-fd-av${group.some((x) => x.kind === 'live') ? ' hv5-f2-ring' : ''}`}>
-          <HubV5Avatar login={e.login} name={e.name} src={e.avatar} size={28} />
-        </span>
+        {cat
+          ? <span className="hv5-fd-art"><GameArt url={artFor(e, cat, model) ?? undefined} name={cat} w={30} h={40} /></span>
+          : <span className="hv5-fd-av"><HubV5Avatar login={e.login} name={e.name} src={e.avatar} size={28} /></span>}
         <span className="hv5-fd-tx">
           <span className="hv5-fd-l1"><span className="hv5-fd-nm">{e.name}</span>{act}</span>
           <span className="hv5-fd-l2">
-            <Ago at={e.at} nowMs={nowMs} />
-            {mid ? <>{SEP}{mid}</> : null}
-            {viewers}
-            <Game cat={cat} art={artFor(e, cat, model)} />
-            {rest ? <>{SEP}<span className="hv5-f2-more">+{rest} earlier</span></> : null}
+            {mid}
+            {cat ? <>{mid ? SEP : null}<span className="hv5-fd-g">{cat}</span></> : null}
           </span>
         </span>
+        <time className="hv5-fd-t" dateTime={new Date(e.at).toISOString()} title={hubClock(e.at)}>{feedShort(e.at, nowMs)}</time>
       </Link>
     </li>
   )
@@ -325,7 +330,7 @@ function UpRow({ model, isNew, onUpMore }: { model: LiveFeedModel; isNew: boolea
               <span className="hv5-fd-av"><HubV5Avatar login={x.login} name={x.name} src={x.avatar} size={22} /></span>
               <span className="hv5-fd-tx">
                 <span className="hv5-fd-l1"><span className="hv5-fd-nm">{x.name}</span></span>
-                <span className="hv5-fd-l2"><span className="hv5-f2-x">{feedMultiplier(x.x)} usual</span><Game cat={x.cat} art={artFor(null, x.cat, model)} /></span>
+                <span className="hv5-fd-l2"><More x={feedMultiplier(x.x)} ser="chat" /><Game cat={x.cat} art={artFor(null, x.cat, model)} /></span>
               </span>
             </Link>
           </li>
@@ -503,7 +508,8 @@ function GameStrip({ games, game, onGame }: { games: FeedGame[]; game: string | 
           aria-label={`${g.name}, ${g.rows} ${g.rows === 1 ? 'row' : 'rows'}`}
           onClick={() => onGame(g.name === game ? null : g.name)}
         >
-          <GameArt url={g.art ?? undefined} name={g.name} w={22} h={30} />
+          <GameArt url={g.art ?? undefined} name={g.name} w={15} h={20} />
+          <span className="hv5-fd-gn">{g.name}</span>
         </button>
       ))}
     </div>

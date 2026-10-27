@@ -92,6 +92,12 @@ export function feedAgo(at: number, nowMs: number): string {
   return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : hubClock(at)
 }
 
+/** A row's time on the right (games first, 10-22): "now", "13m", "2h". */
+export function feedShort(at: number, nowMs: number): string {
+  const m = Math.max(0, Math.floor((nowMs - at) / 60_000))
+  return m < 1 ? 'now' : m < 60 ? `${m}m` : `${Math.floor(m / 60)}h`
+}
+
 /** The feed says "10×" where the tables say "10×+"; its aria says "at least 10". */
 export const feedMultiplier = (x: number) => (x >= 10 ? '10×' : formatHubMultiplier(x))
 export const feedMore = (n: number) => formatHubInt(Math.round(n))
@@ -549,7 +555,7 @@ export function feedTip(model: LiveFeedModel): string {
     + `Chat spikes: channels whose chat or emotes jumped over the last 5 minutes against the 5 before, kept only when those 5 minutes also ran at least ${FEED_UP_MIN}× the stream’s own average, at least ${FEED_NOW_MIN} a minute and ${FEED_ADD_MIN} more than usual: ${spikes} of ${model.spikeSeen} here`
     + (left.spikeUnder.length ? `; under ${FEED_UP_MIN}× their usual: ${left.spikeUnder.join(', ')}` : '')
     + (left.spikeNew.length ? `; too new to compare, so their went-live row says “chat jumping”: ${left.spikeNew.join(', ')}` : '') + '. '
-    + 'One number a row, × usual, beside the time; a moment’s other numbers are in its card when you point at it. '
+    + 'One number a row, how many times the stream’s usual chat or emotes (“5.0× more emotes”), beside its game; a moment’s other numbers are in its card when you point at it. '
     + (model.list
       ? `Moments: the Moments page’s own list, the hour’s moments that hold up or partly do (${moments || 'none this hour'}), with its checks. `
         + 'The × is the minute against the 15 minutes before, shown when the moment holds up; one that partly holds up says why. '

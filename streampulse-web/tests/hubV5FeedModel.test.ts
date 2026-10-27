@@ -18,6 +18,7 @@ import {
   feedMultiplier,
   feedRestTip,
   feedRowAria,
+  feedShort,
   liveFeedModel,
   liveStartOf,
   screenerHot,
@@ -230,6 +231,8 @@ describe('feed formatting', () => {
   it('says how long ago, and 10× without the plus', () => {
     expect(feedAgo(W1 - 30_000, W1)).toBe('just now')
     expect(feedAgo(W1 - 12 * MIN, W1)).toBe('12 min ago')
+    // a row's time, on its right (L1, 10-22)
+    expect([30_000, 12 * MIN, 125 * MIN].map(ago => feedShort(W1 - ago, W1))).toEqual(['now', '12m', '2h'])
     expect(feedMultiplier(12)).toBe('10×')
     expect(feedMultiplier(2.04)).toBe('2.0×')
   })

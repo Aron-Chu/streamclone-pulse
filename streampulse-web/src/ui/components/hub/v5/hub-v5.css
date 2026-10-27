@@ -933,7 +933,8 @@
   font-variant-numeric: tabular-nums;
 }
 .hv5-fd-sep { margin: 0 6px; color: var(--sp-text-3); }
-/* F2 (10-22): the feed's games as covers under the header, most rows first; the strip scrolls sideways (scrollbar hidden) */
+/* F2 (10-22): the feed's games under the header, most rows first; the strip scrolls sideways (scrollbar hidden).
+   Games first (L1, 10-22): each is a chip, a small cover and the game's name, with "All" first */
 .hv5-fd-games {
   display: flex;
   align-items: center;
@@ -946,33 +947,37 @@
 .hv5-fd-games::-webkit-scrollbar { display: none; }
 .hub-v5 .hv5-fd-games button {
   flex: none;
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 36px;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 168px;
+  height: 28px;
+  padding: 0 9px 0 3px;
+  border: 1px solid var(--sp-line-strong);
+  border-radius: 8px;
   background: none;
+  font: 500 12px/1 var(--sp-font);
+  color: var(--sp-text-2);
+  white-space: nowrap;
   cursor: pointer;
-  opacity: 0.6;
 }
-.hub-v5 .hv5-fd-games button:hover,
-.hub-v5 .hv5-fd-games button[aria-pressed="true"] { opacity: 1; }
-.hub-v5 .hv5-fd-games button[aria-pressed="true"] { border-color: var(--hv5-accent); box-shadow: inset 0 0 0 1px var(--hv5-accent); }
-.hub-v5 .hv5-fd-games .hv5-fd-gall { width: auto; height: 28px; padding: 0 9px; border-color: var(--sp-line-strong); font: 600 12px/1 var(--sp-font); color: var(--sp-text-2); opacity: 1; }
-.hub-v5 .hv5-fd-gm img { display: block; width: 22px; height: 30px; border-radius: 3px; object-fit: cover; }
-.hv5-fd-gm span {
+.hub-v5 .hv5-fd-games button:hover { color: var(--sp-text-1); background: var(--sp-panel); }
+.hub-v5 .hv5-fd-games button[aria-pressed="true"] { border-color: var(--hv5-accent); background: rgb(94 234 212 / 0.08); color: var(--sp-text-1); }
+.hub-v5 .hv5-fd-games .hv5-fd-gall { padding: 0 10px; font-weight: 600; }
+.hub-v5 .hv5-fd-gm img { display: block; flex: none; width: 15px; height: 20px; border-radius: 2px; object-fit: cover; }
+.hv5-fd-gm > span:first-child {
   display: grid;
+  flex: none;
   place-items: center;
-  width: 22px;
-  height: 30px;
-  border-radius: 3px;
+  width: 15px;
+  height: 20px;
+  border-radius: 2px;
   background: var(--sp-raised);
   box-shadow: inset 0 0 0 1px var(--sp-line-strong);
-  font: 600 10px/1 var(--sp-font);
+  font: 600 8px/1 var(--sp-font);
   color: var(--sp-text-3);
 }
+.hv5-fd-gn { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .hub-v5 :is(.hv5-feed, .hv5-f3-peek) :is(.hv5-fd-list, .hv5-fd-sub) { list-style: none; margin: 0; padding: 0; }
 .hub-v5 .hv5-fd-body > .hv5-fd-list:first-child { margin-top: 4px; }
 .hub-v5 :is(.hv5-feed, .hv5-f3-peek) .hv5-fd-quiet { margin: 6px 8px; font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
@@ -995,10 +1000,10 @@
 .hub-v5 .hv5-feed .hv5-f2-pill[hidden] { display: none; }
 .hub-v5 .hv5-f2-pill:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: 2px; }
 
-/* one row: avatar · who + what / when · × usual · game (52 px); one number a row (L1) */
+/* one row (games first, L1 10-22): the game's cover · who + what / "5.0× more emotes" · game · the time (52 px) */
 .hub-v5 :is(.hv5-feed, .hv5-f3-peek) .hv5-fd {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
+  grid-template-columns: 30px minmax(0, 1fr) auto;
   column-gap: 10px;
   align-items: center;
   width: 100%;
@@ -1018,6 +1023,19 @@
 .hub-v5 :is(.hv5-feed, .hv5-f3-peek) a.hv5-fd:hover .hv5-fd-nm { text-decoration: underline; }
 .hub-v5 :is(.hv5-feed, .hv5-f3-peek) .hv5-fd:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: -2px; }
 .hv5-fd-av { position: relative; display: flex; width: 28px; height: 28px; }
+.hv5-fd-art {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 40px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--sp-raised);
+  box-shadow: inset 0 0 0 1px var(--sp-line-strong);
+}
+.hub-v5 .hv5-fd-art img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.hv5-fd-art span { font: 600 10px/1 var(--sp-font); color: var(--sp-text-3); }
+.hv5-fd-t { font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .hv5-fd-av .hv5-av { width: 28px; height: 28px; }
 .hv5-fd-tx { display: flex; flex-direction: column; min-width: 0; }
 .hv5-fd-l1 { display: flex; align-items: center; gap: 6px; min-width: 0; font: 600 13px/18px var(--sp-font); }
@@ -1045,7 +1063,6 @@
 .hv5-fd-w time { font-variant-numeric: tabular-nums; }
 /* what happened: a spike or moment in teal, a stream start in red with a ring, Picking up in purple */
 .hv5-f2-act { flex: none; font-weight: 500; color: var(--sp-text-2); white-space: nowrap; }
-.hv5-f3-spk { color: var(--hv5-accent); }
 .hv5-f2-live { color: var(--hv5-live); }
 .hv5-f2-up { color: var(--hv5-chat); font-weight: 600; }
 .hv5-f3-jump { flex: none; font-weight: 500; color: var(--hv5-chat); white-space: nowrap; }
@@ -1053,11 +1070,9 @@
 .hv5-f2-em { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 45%; font-weight: 600; color: var(--sp-text-1); }
 .hub-v5 .hv5-f2-em img { flex: none; width: 20px; height: 20px; object-fit: contain; }
 .hv5-f2-em span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hv5-f2-x { flex: none; color: var(--hv5-accent); font-variant-numeric: tabular-nums; }
-/* what a moment row's × counts (X1, 10-22): "emotes 5.7× usual" */
-.hv5-f2-xk { color: var(--sp-text-2); font-weight: 500; }
-.hv5-f2-more { flex: none; }
-.hv5-fd-av.hv5-f2-ring::after { content: ""; position: absolute; inset: -3px; border: 2px solid var(--hv5-live); border-radius: 50%; }
+/* "5.0× more emotes" (games first, 10-22: as Moments writes it) */
+.hv5-f2-x { flex: none; color: var(--sp-text-2); font-variant-numeric: tabular-nums; }
+.hv5-f2-x b { font-weight: 600; color: var(--hv5-accent); }
 /* the went-live stack and Picking up: a stack of faces that opens a short list */
 .hub-v5 :is(.hv5-feed, .hv5-f3-peek) :is([data-kind="now"], [data-kind="lives"]) > .hv5-fd { grid-template-columns: 40px minmax(0, 1fr) auto; }
 .hv5-fd-stack { display: flex; width: 40px; height: 28px; align-items: center; }
@@ -1076,7 +1091,7 @@
 .hv5-fd-more { display: flex; justify-content: center; padding: 6px 0 0; }
 .hv5-f2-upmore { padding: 8px 8px 10px 10px; font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
 /* past 30 minutes: the face and the number step back, the words stay readable (one thin rule, no tiers) */
-.hv5-f3-old > .hv5-fd :is(.hv5-fd-av, .hv5-fd-stack) { opacity: 0.5; }
+.hv5-f3-old > .hv5-fd :is(.hv5-fd-av, .hv5-fd-stack, .hv5-fd-art) { opacity: 0.5; }
 .hv5-f3-old > .hv5-fd .hv5-fd-nm { color: var(--sp-text-2); }
 .hv5-f3-rule { display: flex; align-items: center; gap: 8px; margin: 8px 8px 2px; font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
 .hv5-f3-rule::after { content: ""; flex: 1; height: 1px; background: var(--sp-line); }
