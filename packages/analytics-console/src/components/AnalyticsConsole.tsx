@@ -81,7 +81,7 @@ import { diagnoseStreamQuality } from '../utils/streamQuality.ts'
 import { isTerminalSyncPhase, pollSyncUntilDone } from '../utils/syncPolling.ts'
 import { buildSessionSignals } from '../signals/buildSessionSignals.ts'
 import { SessionSignalTape } from './signals/SessionSignalTape.tsx'
-import { AnalyticsConsoleDataSkeleton } from './AnalyticsConsoleDataSkeleton.tsx'
+import { AnalyticsConsoleDataSkeleton, StreamRecapSkeleton } from './AnalyticsConsoleDataSkeleton.tsx'
 import { SessionInfoToggletip } from './analytics/SessionInfoToggletip.tsx'
 import { useSessionColumnFill } from '../hooks/useSessionColumnFill.ts'
 import { sessionStreamEdges, sessionStripMoments, stripHasReactionCoverage } from '../utils/sessionStripMoments.ts'
@@ -1281,6 +1281,11 @@ export function AnalyticsConsole({
   // The first session read is out: the chart skeleton stands in, and the meta line keeps its slot hidden
   // (its items arrive with the read and would slide across it).
   const sessionReadPending = sessionResolving || (!effectiveSessionNotFound && detailQuery.isLoading && !detail)
+  // The recap's slot keeps its height until the recap answer settles, so the Moments tabs under it do not
+  // jump when it lands. The channel route holds the slot too while it may still open the session page.
+  const recapSlotPending = !effectiveSessionNotFound && (layer2Enabled
+    ? recapQuery.isLoading || (recapQuery.isPending && !detail)
+    : detailQuery.isLoading || listsLoading || shouldRedirectLiveRouteToSession)
 
   const headerTitle = channelNotRecorded
     ? channelLogin
@@ -1667,6 +1672,8 @@ export function AnalyticsConsole({
                 onJumpToOffset={handleJumpToRecapOffset}
                 onPreviewOffset={handlePreviewRecapOffset}
               />
+            ) : recapSlotPending ? (
+              <StreamRecapSkeleton />
             ) : null}
             <div
               className="flex w-full min-h-0 flex-1 flex-col overflow-hidden rounded border border-white/[0.07] bg-white/[0.025]"
