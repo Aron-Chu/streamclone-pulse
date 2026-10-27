@@ -1,6 +1,8 @@
 import {
+  compareStreamEdgeLast,
   deriveLiveHeat,
   displayMomentReasonLabel,
+  extensionPayloadStreamEdges,
   extensionRollupsForDerivation,
   extensionSupportsPeaks,
   isEmoteSpikeReason,
@@ -10,6 +12,7 @@ import {
   peaksToLiveHeatPoints,
   reactionAnalyticalOffset,
   toLiveHeatInputFromExtension,
+  withStreamEdges,
   LIVE_HEAT_SUBTITLE,
   type LiveHeatEmote,
   type LiveHeatPoint,
@@ -236,7 +239,8 @@ function dedupeLiveMomentPoints(
   completedRollupCount: number,
 ): LiveHeatPoint[] {
   const ranked = [...points].sort(
-    (a, b) => authoritativeReactionScore(b) - authoritativeReactionScore(a)
+    (a, b) => compareStreamEdgeLast(a, b)
+      || authoritativeReactionScore(b) - authoritativeReactionScore(a)
       || b.score - a.score
       || a.offsetSeconds - b.offsetSeconds,
   )
@@ -289,9 +293,12 @@ function computeMostReactedHeat(payload: PulsePayload): LiveHeatResult {
         subtitle: LIVE_HEAT_SUBTITLE,
       }
     }
-    const finalizedPoints = finalizeMostReactedPoints(
-      peaksToLiveHeatPoints(payload.peaks ?? [], payload.startedAt, payload.topEmotes),
-      rollups,
+    const finalizedPoints = withStreamEdges(
+      finalizeMostReactedPoints(
+        peaksToLiveHeatPoints(payload.peaks ?? [], payload.startedAt, payload.topEmotes),
+        rollups,
+      ),
+      extensionPayloadStreamEdges(payload),
     )
     const points = payload.isLive
       ? dedupeLiveMomentPoints(finalizedPoints, completedRollupCount(payload))
@@ -305,7 +312,7 @@ function computeMostReactedHeat(payload: PulsePayload): LiveHeatResult {
     }
   }
   const derived = deriveLiveHeat(toLiveHeatInputFromExtension(payload))
-  const points = finalizeMostReactedPoints(derived.points, rollups)
+  const points = withStreamEdges(finalizeMostReactedPoints(derived.points, rollups), extensionPayloadStreamEdges(payload))
   return {
     ...derived,
     visible: points.length > 0,
@@ -382,9 +389,11 @@ export function sortLiveHeatPoints(points: LiveHeatPoint[], mode: MomentSortMode
     // A tie goes to the earlier moment, as in the API's own order. The backend
     // re-scores past minutes as a live stream grows, so a leader can dip into
     // a tie for one poll; breaking it by volume swapped the #1 moment back and forth.
+    // Hello / goodbye spam at the stream's edges ranks after every other moment.
     copy.sort(
       (a, b) =>
-        authoritativeReactionScore(b) - authoritativeReactionScore(a)
+        compareStreamEdgeLast(a, b)
+        || authoritativeReactionScore(b) - authoritativeReactionScore(a)
         || a.offsetSeconds - b.offsetSeconds
         || reactionRankValue(b) - reactionRankValue(a)
         || b.score - a.score,

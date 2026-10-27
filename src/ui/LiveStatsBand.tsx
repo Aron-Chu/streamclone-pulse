@@ -711,6 +711,7 @@ export function LiveStatsBand({
       refinementStatus: point.refinementStatus,
       refinementConfidence: point.refinementConfidence,
       reactionScoringVersion: point.reactionScoringVersion,
+      streamEdge: point.streamEdge,
     }))
     return {
       chartPeakMarkers: selected,
