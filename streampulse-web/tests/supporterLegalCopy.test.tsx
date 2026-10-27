@@ -187,6 +187,7 @@ describe('Supporter legal copy', () => {
     expect(billing).toMatch(/does not automatically combine accounts\s+or grant Supporter access/)
     expect(screen.getByTestId('privacy-policy').textContent).toMatch(/This section describes what happens once paid sign-ups open/)
     expect(screen.getByTestId('privacy-installation-account').textContent).toMatch(/Looking at your status does not create a connection/)
+    expect(screen.getByTestId('privacy-installation-account').textContent).toMatch(/does not sync My Moments: bookmarks, notes and watched history stay in this browser/)
     const twitch = screen.getByTestId('privacy-continue-with-twitch').textContent ?? ''
     expect(twitch).toMatch(/keyed hash of your Twitch user ID/)
     expect(twitch).toMatch(/never receives your Twitch password, Twitch email or a\s+Twitch access token/)

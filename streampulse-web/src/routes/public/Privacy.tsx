@@ -60,6 +60,7 @@ export default function Privacy() {
           installation key, device labels, hashed credentials and their expiry, and creation and
           activity times. The installation account has no account email address or Twitch identity.
           Looking at your status does not create a connection; one is saved only when you choose Become a Supporter.
+          This connection does not sync My Moments: bookmarks, notes and watched history stay in this browser.
         </p>
         <p data-testid="privacy-continue-with-twitch">
           <strong>If Continue with Twitch is offered.</strong> StreamPulse asks Twitch only to confirm who you are.
