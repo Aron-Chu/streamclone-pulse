@@ -129,23 +129,34 @@ function momentsListOn(): boolean {
  * The Moments list's newest page, read on mount and again with each hub poll.
  * `settled` once the first read answers either way. A 404 (the backend's feed is
  * off) ends the reads and leaves the hub's own moment rows; another failure keeps
- * the last list.
+ * the last list. The mount read already answers for the hub's first snapshot,
+ * so that snapshot does not read the same page a second time.
  */
 function useMomentsList(at: string | null): { list: FeedMomentsList | null; settled: boolean } {
   const [on] = useState(momentsListOn)
   const [state, setState] = useState<{ list: FeedMomentsList | null; settled: boolean; gone: boolean }>(() => ({ list: null, settled: !on, gone: !on }))
   const gone = state.gone
+  const coversFirstSnapshot = useRef(at === null)
+  const reading = useRef<AbortController | null>(null)
+  useEffect(() => () => reading.current?.abort(), [])
   useEffect(() => {
-    if (gone) return undefined
+    if (gone) return
+    if (at !== null && coversFirstSnapshot.current) {
+      coversFirstSnapshot.current = false
+      return
+    }
+    reading.current?.abort()
     const controller = new AbortController()
+    reading.current = controller
     pollMomentsFeed(Date.now(), controller.signal).then(
       (snap) => setState({ list: { items: snap.items, generatedAt: snap.generatedAt }, settled: true, gone: false }),
       (error: unknown) => {
         if (controller.signal.aborted) return
+        // A failed mount read leaves the hub's first snapshot to try again.
+        coversFirstSnapshot.current = false
         setState((prev) => (isApiError(error) && error.status === 404 ? { list: null, settled: true, gone: true } : { ...prev, settled: true }))
       },
     )
-    return () => controller.abort()
   }, [at, gone])
   return state
 }
