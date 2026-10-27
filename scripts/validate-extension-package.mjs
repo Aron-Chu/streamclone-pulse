@@ -147,7 +147,7 @@ function validateManifest(manifest, target) {
     } else if (
       JSON.stringify(manifest.browser_specific_settings?.gecko?.data_collection_permissions) !==
       JSON.stringify({
-        required: ['browsingActivity'],
+        required: ['browsingActivity', 'authenticationInfo', 'financialAndPaymentInfo'],
       })
     ) {
       fail('Firefox manifest data collection declaration drifted')

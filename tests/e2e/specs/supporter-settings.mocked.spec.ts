@@ -37,7 +37,7 @@ test('packaged supporter settings stay local, accessible and responsive', async 
   // Heading navigation stops at the card (its h3 is visually hidden), between the page's h2 and "Your look".
   await expect(card.getByRole('heading', { level: 3, name: 'Your Supporter card', exact: true })).toHaveCount(1)
   await expect(page.locator('.pulse-supporter-settings').getByRole('heading')).toHaveText(['Account & Supporter', 'Your Supporter card', 'Your look', 'Account'])
-  await expect(card.locator('.pulse-supporter-card-who strong')).toHaveText('Not signed in')
+  await expect(card.locator('.pulse-supporter-card-who strong')).toHaveText('Not connected')
   await expect(card.locator('.pulse-supporter-card-sample')).toHaveText('Sample look')
   // The card names nobody: no Twitch name or picture while Twitch sign-in is off.
   await expect(card.locator('.pulse-supporter-card-who')).not.toContainText('Twitch')
@@ -51,11 +51,11 @@ test('packaged supporter settings stay local, accessible and responsive', async 
   await expect(top).toHaveCSS('background-image', 'none')
   await expect(top.locator('.pulse-banner-art')).toHaveAttribute('data-mode', 'rain')
   await expect(card.locator('.pulse-journey')).toHaveAttribute('data-journey-state', 'signed-out')
-  // Sign-ups are not open: the one action describes Supporter, it does not sell it.
+  // The one action saves a key and opens Checkout only if sales are open.
   const primary = card.locator('.pulse-journey-primary')
-  await expect(primary).toHaveText(['Supporter details'])
-  await expect(card.locator('.pulse-journey')).toContainText("Supporter isn't on sale yet")
-  await expect(page.getByRole('button', { name: /Become a Supporter|Restore my Supporter|Use a StreamPulse website account/ })).toHaveCount(0)
+  await expect(primary).toHaveText(['Become a Supporter'])
+  await expect(card.locator('.pulse-journey')).toContainText('Opens Stripe checkout. No account or sign-up. Saves a key in this browser.')
+  await expect(page.getByRole('button', { name: /Connect this extension|Restore my Supporter|Use a StreamPulse website account/ })).toHaveCount(0)
   // The price and that it renews come before the primary action, in reading and Tab order.
   const terms = card.locator('.pulse-supporter-terms')
   await expect(terms).toContainText('US$4.99 a month')
@@ -233,8 +233,8 @@ test('account settings connect through the packaged worker and disconnect', asyn
   const openedTabs = await recordOpenedTabs(page)
   const opened = extension.context.waitForEvent('page')
   // Invited testers only: the device link sits behind a closed disclosure.
-  await page.getByText('Invited tester? Connect this extension', { exact: true }).click()
-  await page.getByRole('button', { name: 'Connect this extension', exact: true }).click()
+  await page.getByText('Invited tester? Connect a tester account', { exact: true }).click()
+  await page.getByRole('button', { name: 'Connect tester account', exact: true }).click()
   await opened
   // The worker's code reaches the website in the fragment only; no second click is needed.
   expect(await openedTabs()).toEqual(['https://streampulse.stream/account/link-device#code=ABCDE12345'])
@@ -246,19 +246,21 @@ test('account settings connect through the packaged worker and disconnect', asyn
   await page.getByRole('button', { name: 'Sign out', exact: true }).click()
   await page.getByRole('button', { name: 'Confirm sign out', exact: true }).click()
   await expect(page.locator('[data-journey-state="signed-out"]')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Become a Supporter', exact: true })).toHaveCount(0)
+  // Signed out again, it is the same one-button page as a fresh install.
+  await expect(page.getByRole('button', { name: 'Become a Supporter', exact: true })).toHaveCount(1)
+  await expect(page.getByRole('button', { name: 'Connect this extension', exact: true })).toHaveCount(0)
 })
 
 test('unmounted account backend produces a clear unavailable state', async ({ extension, prepare }) => {
   await prepare()
   await extension.context.route('https://api.streampulse.stream/v1/account/device-links', route => route.fulfill({ status: 404 }))
   await extension.page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
-  await extension.page.getByText('Invited tester? Connect this extension', { exact: true }).click()
-  await extension.page.getByRole('button', { name: 'Connect this extension', exact: true }).click()
+  await extension.page.getByText('Invited tester? Connect a tester account', { exact: true }).click()
+  await extension.page.getByRole('button', { name: 'Connect tester account', exact: true }).click()
   await expect(extension.page.getByText('Account sign-in is not available on the server yet. Your free tools still work.')).toBeVisible()
   await expect(extension.page.getByRole('link', { name: 'Reopen streampulse.stream' })).toHaveCount(0)
   // UI-11: linking that is not deployed is explained, not offered again.
-  await expect(extension.page.getByRole('button', { name: 'Connect this extension', exact: true })).toHaveCount(0)
+  await expect(extension.page.getByRole('button', { name: 'Connect tester account', exact: true })).toHaveCount(0)
 })
 
 test('a Supporter’s emote rain choice keeps keyboard focus through its save', async ({ extension, prepare }) => {

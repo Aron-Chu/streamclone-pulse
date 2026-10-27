@@ -4,7 +4,7 @@ import { openTwitchChannel } from '../helpers/mockTwitch.ts'
 
 /**
  * The invited-tester Supporter journey with Twitch sign-in off (stage A),
- * packaged, with fixture APIs only: Connect this extension from the closed
+ * packaged, with fixture APIs only: Connect tester account from the closed
  * tester disclosure → (website sign-in + one approval, simulated by the poll
  * fixture) → Continue to checkout on the website → delayed payment
  * confirmation → membership and a pre-chosen finish reach settings and an
@@ -104,12 +104,14 @@ test('tester purchase journey needs no codes, refreshes or reloads, and revocati
   await settings.getByText('Preview Supporter looks', { exact: true }).click()
   await expect(settings.locator('.pulse-supporter-studio .pulse-account-link-actions')).toHaveCount(0)
 
-  // Signed out, the page sells nothing; an invited tester connects from the closed disclosure.
-  await expect(settings.getByRole('button', { name: 'Become a Supporter', exact: true })).toHaveCount(0)
+  // Signed out, the page offers only the one-click Become a Supporter; an
+  // invited tester connects from the closed disclosure instead.
+  await expect(settings.getByRole('button', { name: 'Become a Supporter', exact: true })).toHaveCount(1)
+  await expect(settings.getByRole('button', { name: 'Connect this extension', exact: true })).toHaveCount(0)
   const openedTabs = await recordOpenedTabs(settings)
   const opened = context.waitForEvent('page')
-  await settings.getByText('Invited tester? Connect this extension', { exact: true }).click()
-  await settings.getByRole('button', { name: 'Connect this extension', exact: true }).click()
+  await settings.getByText('Invited tester? Connect a tester account', { exact: true }).click()
+  await settings.getByRole('button', { name: 'Connect tester account', exact: true }).click()
   const portal = await opened
   expect(await openedTabs()).toEqual(['https://streampulse.stream/account/link-device#code=ABCDE12345'])
   await expect(settings.locator('[data-journey-state="link-pending"]')).toBeVisible()

@@ -13,11 +13,9 @@ function snapshot(status: 'none' | 'pending' | 'active', cosmetics = { enabled: 
   return { schemaVersion: 1, accountId, environment: 'live', revision: paid ? 2 : 1, status, checkoutEnabled: true, installationAccountsEnabled: true, accountKind: 'installation', restoreEligible: status === 'none', serverTime: new Date().toISOString(), accessFrom: new Date(Date.now() - 60_000).toISOString(), accessUntil: new Date(Date.now() + 30 * 86_400_000).toISOString(), cacheUntil: new Date(Date.now() + 60_000).toISOString(), supportPeriods: paid ? 1 : 0, features: { 'supporter.banner.v1': paid, 'supporter.finish.v1': paid, 'supporter.recognition.v1': paid }, cosmetics }
 }
 /**
- * The options page no longer starts an installation account or an email
- * restore (account journey spec, closeout 2026-10-08b: the page never sends
- * SUPPORTER_RESTORE and never asks for an installation). The worker paths are
- * kept, so these packaged proofs start them through the same extension-page
- * message the page used to send, then observe the page and the mock server.
+ * The first proof follows the actual one-click Become a Supporter button.
+ * The remaining worker recovery proofs use extension-page messages directly;
+ * the page still never sends SUPPORTER_RESTORE.
  */
 const workerCheckout = (page: Page) => page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_BILLING', action: 'checkout' }))
 const workerRestore = (page: Page, email = 'payer@example.test') => page.evaluate(address => chrome.runtime.sendMessage({ type: 'SUPPORTER_RESTORE', action: 'start', email: address }), email)
@@ -44,7 +42,7 @@ async function finish(cdp: CDPSession) {
   return banner ? attr(banner, 'data-supporter-finish') ?? null : undefined
 }
 
-test('worker installation Checkout opens only Stripe, delayed payment activates a chosen finish on an already-open Twitch tab without reload', async ({ extension, prepare }, info) => {
+test('one click saves a key, checks availability and opens Checkout; delayed payment activates a chosen finish without reload', async ({ extension, prepare }, info) => {
   test.setTimeout(100_000)
   await prepare()
   const context = extension.context
@@ -81,10 +79,13 @@ test('worker installation Checkout opens only Stripe, delayed payment activates 
   await expect(settings.locator('.pulse-supporter-studio .pulse-account-link-actions')).toHaveCount(0)
   expect(calls).toEqual([])
   const tabs = await recordTabs(extension.serviceWorker)
-  // A signed-out page offers no purchase; the kept worker path is started directly.
-  await expect(settings.getByRole('button', { name: 'Become a Supporter', exact: true })).toHaveCount(0)
-  await workerCheckout(settings)
+  // One click: the worker saves the key, reads fresh server capability, and
+  // opens Checkout only because the fixture says sales are open.
+  await expect(settings.getByRole('button', { name: 'Connect this extension', exact: true })).toHaveCount(0)
+  await settings.screenshot({ path: info.outputPath('one-button-before.png'), fullPage: true, animations: 'disabled' })
+  await settings.getByRole('button', { name: 'Become a Supporter', exact: true }).click()
   await expect(settings.locator('[data-journey-state="stripe-open"]')).toBeVisible()
+  expect(calls).toEqual(['installation', 'checkout'])
   // The created fixture installation has a ready, explicitly open entitlement.
   // Keep the choice through the real worker rather than a closed try-on control.
   await settings.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Halo', exact: true }).check()

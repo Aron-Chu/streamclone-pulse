@@ -5,6 +5,7 @@ import BillingPage, { CONFIRM_DELAYS_S, stripeDestination } from '../src/routes/
 import Supporter from '../src/routes/public/Supporter'
 import { accountBillingSignInHref } from '../src/lib/accountBillingReturn'
 import { retryWaitCopy } from '../src/lib/billingTryLater'
+import { STRIPE_CUSTOMER_PORTAL_LOGIN_URL } from '../src/lib/externalLinks'
 
 const returnPath = '/account/billing/return?attempt=12345678-1234-4234-8234-123456789abc'
 const membership = (status: string, checkoutEnabled = false, extra: Record<string, unknown> = {}) => new Response(JSON.stringify({ schemaVersion: 1, status, checkoutEnabled, ...extra }))
@@ -57,7 +58,7 @@ describe('billing sandbox banner', () => {
   it.each([401, 503])('shows no banner when billing returns HTTP %s', async status => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ environment: 'sandbox' }), { status })))
     render(<MemoryRouter><BillingPage /></MemoryRouter>)
-    expect(await screen.findByRole('heading', { name: status === 401 ? 'Sign in to see your membership' : 'Billing status is unavailable right now' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: status === 401 ? 'Manage your Supporter membership' : 'Billing status is unavailable right now' })).toBeTruthy()
     expect(screen.queryByTestId('billing-sandbox-banner')).toBeNull()
   })
 })
@@ -206,11 +207,23 @@ describe('billing lifecycle view', () => {
     for (const url of ['javascript:alert(1)', 'https://checkout.stripe.com.evil.test/', 'https://user@checkout.stripe.com/', 'http://checkout.stripe.com/']) expect(stripeDestination(url, 'checkout')).toBeNull()
     expect(stripeDestination('https://billing.stripe.com/p/session/test', 'portal')).toBeTruthy()
   })
-  it.each(['/account/billing', returnPath, `${returnPath}&cancelled=1`])('preserves %s when membership requires sign-in', async path => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 401 })))
+  it.each(['/account/billing', returnPath, `${returnPath}&cancelled=1`])('keeps website sign-in return-aware and extension billing separate for %s', async path => {
+    const fetch = vi.fn().mockResolvedValue(new Response('{}', { status: 401 }))
+    vi.stubGlobal('fetch', fetch)
     render(<MemoryRouter initialEntries={[path]}><BillingPage /></MemoryRouter>)
     expect((await screen.findByRole('link', { name: 'Tester sign-in' })).getAttribute('href')).toBe(accountBillingSignInHref(path))
+    const emailBilling = screen.getByRole('link', { name: 'Manage billing by email' })
+    expect(emailBilling.getAttribute('href')).toBe(STRIPE_CUSTOMER_PORTAL_LOGIN_URL)
+    expect(emailBilling.getAttribute('target')).toBe('_blank')
+    expect(emailBilling.getAttribute('rel')).toBe('noopener noreferrer')
+    expect(document.querySelectorAll('.pulse-membership .pulse-account-primary')).toHaveLength(1)
+    expect(emailBilling.classList.contains('pulse-account-primary')).toBe(true)
+    expect(screen.getByRole('link', { name: 'Tester sign-in' }).classList.contains('pulse-account-primary')).toBe(false)
+    expect(screen.getByText(/Website or tester sign-in does not connect an extension-only membership/)).toBeTruthy()
+    expect(screen.getByText(/does not restore extension access/)).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Contact billing support' }).getAttribute('href')).toBe('mailto:privacy@streampulse.stream')
     expect(screen.queryByRole('button', { name: 'Continue to Stripe checkout' })).toBeNull()
+    expect(fetch.mock.calls.every(([, options]) => options.method === 'GET' && options.credentials === 'same-origin')).toBe(true)
   })
 
   it('describes a cancelled Stripe return without implying payment success, and resumes the same checkout', async () => {
@@ -305,7 +318,7 @@ describe('billing lifecycle view', () => {
     const fetch = vi.fn().mockResolvedValue(new Response('{}', { status }))
     vi.stubGlobal('fetch', fetch)
     render(<MemoryRouter initialEntries={['/account/billing/return?attempt=invalid']}><BillingPage /></MemoryRouter>)
-    expect(await screen.findByRole('heading', { name: status === 401 ? 'Sign in to see your membership' : 'Billing status is unavailable right now' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: status === 401 ? 'Manage your Supporter membership' : 'Billing status is unavailable right now' })).toBeTruthy()
     expect(fetch.mock.calls.map(call => call[0])).toEqual(['/v1/billing/supporter'])
     expect(screen.queryByRole('button', { name: 'Manage subscription' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Continue to Stripe checkout' })).toBeNull()
@@ -569,7 +582,7 @@ describe('automatic payment confirmation', () => {
     expect(screen.queryByRole('heading', { name: 'Supporter active' })).toBeNull()
     expect(fetch).toHaveBeenCalledTimes(during)
     await act(async () => { resolve(stage === 'attempt' ? new Response(JSON.stringify({ state: 'pending' })) : membership('active', false, { accountId: 'account-a' })) })
-    expect(screen.getByRole('heading', { name: 'Sign in to see your membership' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Manage your Supporter membership' })).toBeTruthy()
     expect(fetch).toHaveBeenCalledTimes(during + 1)
     expect(fetch.mock.calls.at(-1)?.[0]).toBe(stage === 'attempt' ? attemptPath : '/v1/billing/supporter')
     expect(screen.queryByRole('heading', { name: 'Supporter active' })).toBeNull()
@@ -589,10 +602,10 @@ describe('automatic payment confirmation', () => {
     await act(async () => { window.dispatchEvent(new StorageEvent('storage', { key: 'pulse.account.signedInAt.v1', newValue: null })) })
     await act(async () => { await vi.advanceTimersByTimeAsync(89_999) })
     expect(fetch).toHaveBeenCalledTimes(1)
-    expect(screen.queryByRole('heading', { name: 'Sign in to see your membership' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Manage your Supporter membership' })).toBeNull()
     await act(async () => { await vi.advanceTimersByTimeAsync(1_001) })
     expect(fetch).toHaveBeenCalledTimes(2)
-    expect(screen.getByRole('heading', { name: 'Sign in to see your membership' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Manage your Supporter membership' })).toBeTruthy()
   })
 
   it('honours an invalidated read’s Retry-After before its queued session refresh', async () => {
@@ -611,7 +624,7 @@ describe('automatic payment confirmation', () => {
     expect(fetch).toHaveBeenCalledTimes(2)
     await act(async () => { await vi.advanceTimersByTimeAsync(1_001) })
     expect(fetch).toHaveBeenCalledTimes(3)
-    expect(screen.getByRole('heading', { name: 'Sign in to see your membership' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Manage your Supporter membership' })).toBeTruthy()
   })
 
   it('cancels a queued session refresh after leaving the billing page', async () => {
@@ -643,7 +656,7 @@ describe('automatic payment confirmation', () => {
     await act(async () => { window.dispatchEvent(new StorageEvent('storage', { key: 'pulse.account.signedInAt.v1', newValue: null })) })
     expect(screen.queryByTestId('billing-connected-note')).toBeNull()
     await act(async () => { resolve(membership('active')) })
-    expect(screen.getByRole('heading', { name: 'Sign in to see your membership' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Manage your Supporter membership' })).toBeTruthy()
   })
 
   it('keeps the same account confirmation budget after checking a session hint', async () => {
@@ -902,7 +915,7 @@ describe('no checkout while a payment is uncertain, at any moment', () => {
   it('does not claim a payment exists for a cancelled return when signed out', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 401 })))
     render(<MemoryRouter initialEntries={[`${returnPath}&cancelled=1`]}><BillingPage /></MemoryRouter>)
-    expect(await screen.findByRole('heading', { name: 'Sign in to see your membership' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Manage your Supporter membership' })).toBeTruthy()
     expect(document.body.textContent).not.toMatch(/If you just paid|payment is safe/)
   })
 })
