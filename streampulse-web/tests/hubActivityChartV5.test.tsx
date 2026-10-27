@@ -61,7 +61,7 @@ describe('HubActivityChart: the d3 activity card on SpChart', () => {
     expect(hubActivityHeading(30)).toBe('Activity · last 30 min')
     expect(hubActivityHeading(1440)).toBe('Activity · last 24 h')
     expect(hubActivityHeading(10080)).toBe('Activity · last 7 days')
-    expect(hubActivityAriaLabel(1440)).toBe('Activity, last 24 hours. Arrow keys move the cursor, plus and minus zoom, 0 resets, Enter selects a bucket.')
+    expect(hubActivityAriaLabel(1440)).toBe('Activity, last 24 hours. Arrow keys move the cursor, plus and minus zoom, 0 resets, Enter selects a bucket. With a card open, left and right step; Escape closes.')
     expect(hubActivityTip(6, 1)).toBe('Tracked channels only. Each interval is 6 minutes; one bar each.')
     expect(hubActivityTip(6, 3)).toBe('Tracked channels only. Each interval is 6 minutes; bars average 3.')
     expect(hubSpanLabel(42)).toBe('42 min')
