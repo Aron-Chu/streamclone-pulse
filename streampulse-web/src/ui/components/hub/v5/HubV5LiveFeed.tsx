@@ -42,6 +42,7 @@ import {
   feedHref,
   feedIsQuiet,
   feedLivesAria,
+  feedMomentSer,
   feedMore,
   feedMultiplier,
   feedRestTip,
@@ -210,8 +211,11 @@ function GroupRow({ item, model, nowMs, isNew }: { item: Extract<FeedItem, { gro
         </span>
       </>
     ) : <span className="hv5-f2-act hv5-f3-spk">{e.act.word}</span>
-    // a Moments-list row writes its × as that page does; one that partly holds up says why instead
-    mid = e.x != null ? <span className="hv5-f2-x">{e.list ? fx(e.x) : feedMultiplier(e.x)} usual</span> : e.why ? <span className="hv5-fd-w">{e.why}</span> : null
+    // a Moments-list row writes its × as that page does; one that partly holds up says why instead.
+    // The × says what it counts, as on Moments (X1, 10-22): "emotes 5.7× usual"
+    mid = e.x != null
+      ? <span className="hv5-f2-x"><span className="hv5-f2-xk">{feedMomentSer(e)}</span> {e.list ? fx(e.x) : feedMultiplier(e.x)} usual</span>
+      : e.why ? <span className="hv5-fd-w">{e.why}</span> : null
   } else {
     act = <span className="hv5-f2-act hv5-f2-live">went live</span>
     // a fresh stream's chat rate is mostly hellos, so it shows only when chat is jumping

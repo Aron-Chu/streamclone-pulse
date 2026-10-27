@@ -10,8 +10,10 @@ import {
   feedColumnCap,
   feedFresh,
   feedIsQuiet,
+  feedMomentSer,
   feedMultiplier,
   feedRestTip,
+  feedRowAria,
   liveFeedModel,
   liveStartOf,
   screenerHot,
@@ -246,13 +248,20 @@ describe('liveFeedModel with the Moments list', () => {
     expect(lima.x).toBeNull()
     expect(lima.why).toBeTruthy()
     expect('why' in lima.row.cmp && lima.row.cmp.why).toBe(lima.why)
+    // the × says what it counts, as on Moments (X1, 10-22)
+    expect(feedMomentSer(kilo)).toBe(holds.label.kind)
+    expect(feedRowAria([kilo], W1 + 30_000)).toContain(`, ${holds.label.kind} ${String(holds[holds.label.kind].x).replace(/\.0$/, '')}`)
   })
 
   it('without the list, keeps the hub’s own moment rows', () => {
     const hubOnly = liveFeedModel(withHub)
     expect(hubOnly.list).toBe(false)
     expect(hubOnly.top).toEqual([])
-    expect(hubOnly.events.filter((e) => e.kind === 'moment').map((e) => e.login)).toEqual(['mike'])
+    const moments = hubOnly.events.filter((e) => e.kind === 'moment')
+    expect(moments.map((e) => e.login)).toEqual(['mike'])
+    if (moments[0]?.kind !== 'moment') throw new Error('no moment')
+    expect(feedMomentSer(moments[0])).toBe('chat')
+    expect(feedRowAria(moments, W1 + 30_000)).toBe('MIKE chat burst, 4 min ago: 60 more chat a minute than usual, chat 3.0 times usual. Opens in Moments.')
   })
 
   it('keeps the day’s top moments from before the hour for a quiet hour, one a channel, none from a channel in the hour', () => {

@@ -1010,6 +1010,8 @@
 .hub-v5 .hv5-f2-em img { flex: none; width: 20px; height: 20px; object-fit: contain; }
 .hv5-f2-em span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hv5-f2-x { flex: none; color: var(--hv5-accent); font-variant-numeric: tabular-nums; }
+/* what a moment row's × counts (X1, 10-22): "emotes 5.7× usual" */
+.hv5-f2-xk { color: var(--sp-text-2); font-weight: 500; }
 .hv5-f2-more { flex: none; }
 .hv5-fd-av.hv5-f2-ring::after { content: ""; position: absolute; inset: -3px; border: 2px solid var(--hv5-live); border-radius: 50%; }
 /* the went-live stack and Picking up: a stack of faces that opens a short list */
