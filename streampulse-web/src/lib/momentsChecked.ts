@@ -95,6 +95,12 @@ export function when(t: number, now: number): string {
   return `${sameDay(t, now) ? '' : 'Yesterday '}${clk(t)}`
 }
 
+/** A phone row's time (M1, 10-22): now, 13m, 2h, 3d. */
+export function whenShort(t: number, now: number): string {
+  const m = Math.max(0, Math.floor((now - t) / 60_000))
+  return m < 1 ? 'now' : m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h` : `${Math.floor(m / 1440)}d`
+}
+
 /** When you opened a moment, for Viewed: just now, 4 min ago, 2 h ago, yesterday, Mon, then the date. */
 export function openedWhen(t: number, now: number): string {
   const m = Math.max(0, Math.floor((now - t) / 60_000))

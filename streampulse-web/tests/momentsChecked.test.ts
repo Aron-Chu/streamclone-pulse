@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { MomentsFeedItem } from '../src/lib/momentsFeed'
 import {
   actOf, ariaOf, checkLines, checkMoment, freshCounts, groupsOf, hms, SERIES_BEFORE, seriesFromSpark, SORTS, sparkBars, stc, streamTime, stripModel,
-  avatarImage, boxArtImage, liveFrameImage, TOP_BURST_MS, topBursts, updatedText, usualAt, when,
+  avatarImage, boxArtImage, liveFrameImage, TOP_BURST_MS, topBursts, updatedText, usualAt, when, whenShort,
 } from '../src/lib/momentsChecked'
 
 const fixture = JSON.parse(readFileSync(resolve(__dirname, 'fixtures/moments_feed_v1.json'), 'utf8')) as { generatedAt: number; items: MomentsFeedItem[] }
@@ -143,6 +143,8 @@ describe('checked moments display model', () => {
     expect(streamTime(pool[0], { vodId: '1', alignSeconds: 30 })).toBe(stc(pool[0].item.offsetSeconds + 30))
     expect(when(NOW - 30_000, NOW)).toBe('just now')
     expect(when(NOW - 5 * 60_000, NOW)).toBe('5 min ago')
+    // a phone row's time (M1, 10-22)
+    expect([30_000, 13 * 60_000, 3 * 3_600_000, 2 * 86_400_000].map(ago => whenShort(NOW - ago, NOW))).toEqual(['now', '13m', '3h', '2d'])
     expect(updatedText(35_000)).toBe('updated 30 s ago')
     expect(updatedText(130_000)).toBe('updated 2 min ago')
   })

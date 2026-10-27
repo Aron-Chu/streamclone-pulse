@@ -3,8 +3,8 @@ import type { CheckedMoment } from './momentsChecked'
 import type { MomentsFeedCategoryFacet } from './momentsFeed'
 
 /**
- * The Moments page's Games tab (B2, 2026-10-22: Twitch's Browse → Categories,
- * big covers). A game's count is the moments Latest shows for it (all but the
+ * The Moments page's game covers (B2, 2026-10-22: Twitch's Browse → Categories,
+ * big covers; on top of the page since M1). A game's count is the moments Latest shows for it (all but the
  * ones that don't hold up) among those the page holds, so a card says what its
  * list will show; the feed's own facet counts include those that don't hold up.
  * "N live" is the feed's count of the game's live channels (facets.categories),

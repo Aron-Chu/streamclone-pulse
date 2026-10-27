@@ -39,6 +39,9 @@ const opened = () => waitFor(() => {
   return el!
 })
 const seg = (name: string) => within(screen.getByRole('group', { name: 'Which moments' })).getByRole('button', { name: new RegExp(`^${name}`) })
+// Saved's switch between what you saved and what you opened here (M1, 10-22)
+const sv = (name: string) => within(screen.getByRole('group', { name: 'Saved or opened' })).getByRole('button', { name: new RegExp(`^${name}`) })
+const covers = () => screen.getByRole('list', { name: 'Games, busiest first' })
 
 beforeEach(() => {
   vi.spyOn(availabilityTransport, 'fetchRankedAvailability').mockReturnValue(new Promise(() => {}))
@@ -107,26 +110,31 @@ describe('Moments page flag', () => {
 describe('checked Moments page', () => {
   beforeEach(() => vi.stubEnv('VITE_PUBLIC_MOMENTS_FEED', 'on'))
 
-  it('lists the latest moments that hold up, one row per stream, a picture each, with no tiers, filters or orders', async () => {
+  it('lists the latest moments that hold up, one row per stream, a picture each, under the games, with no tiers, filters or orders', async () => {
     renderMoments()
     expect(await screen.findByRole('heading', { level: 1, name: 'Moments' })).toBeTruthy()
-    expect(screen.getByText('Big reactions in live chat. Each one beat its own stream’s last 15 minutes.')).toBeTruthy()
+    expect(screen.getByText('When a stream’s chat suddenly goes wild. Pick a game to start.')).toBeTruthy()
     await waitFor(() => expect(rows().length).toBeGreaterThan(0))
     const shown = fixture.items.filter(item => item.verdict !== 'bad')
     expect(rows().length).toBe(new Set(shown.map(item => item.streamId)).size)
     expect(document.querySelectorAll('.mk-list > li.mk-g[data-vd="bad"]')).toHaveLength(0)
     expect(seg('Latest').getAttribute('aria-pressed')).toBe('true')
-    expect(within(screen.getByRole('group', { name: 'Which moments' })).getAllByRole('button').map(b => b.textContent)).toEqual(['Latest', 'Top', 'Games', 'Saved (0)', 'Viewed (0)'])
-    // a stream's earlier moments stay closed until its "N earlier" is pressed (E1, 10-22)
-    expect(document.querySelector('.mk-sub')).toBeNull()
-    expect(document.querySelector('.mk-fresh')?.textContent).toBe('updated just now')
+    expect(within(screen.getByRole('group', { name: 'Which moments' })).getAllByRole('button').map(b => b.textContent)).toEqual(['Latest', 'Top', 'Saved'])
+    // the games on top, "All games" first and picked (M1, 10-22)
+    expect(within(covers()).getAllByRole('button')[0].getAttribute('aria-label')).toBe(`All games: ${fixture.items.filter(item => item.verdict !== 'bad').length} moments. Shows every game’s moments.`)
+    expect(within(covers()).getAllByRole('button')[0].getAttribute('aria-pressed')).toBe('true')
+    // a stream's earlier moments are in its open moment, not under its row (M1, 10-22)
+    expect(document.querySelector('.mk-r-more')).toBeNull()
+    expect(document.querySelector('.mk-fresh')?.textContent).toBe('Live')
+    expect(document.querySelector('.mk-fresh')?.getAttribute('title')).toBe('updated just now')
     // B2 drops the verdict counts, Checked/All, the game and order selects, how we check, and the line under the list
     expect(screen.queryAllByRole('combobox')).toHaveLength(0)
     expect(screen.queryByRole('button', { name: 'How we check a moment' })).toBeNull()
     expect(document.querySelector('.mk-foot')).toBeNull()
     expect(screen.getByRole('button', { name: 'Replay the last hour' })).toBeTruthy()
-    // every lead row has its picture; the earlier moments under a stream don't
+    // every row has its picture, and no sparkline (M1, 10-22)
     expect(document.querySelectorAll('.mk-list > li.mk-g > .mk-r > .mk-r-th')).toHaveLength(rows().length)
+    expect(document.querySelector('.mk-list svg')).toBeNull()
     // no per-row reads: the opened moment is the only one that reads its stream and minutes
     expect(feed.vod).not.toHaveBeenCalled()
     expect(feed.minutes).not.toHaveBeenCalled()
@@ -195,39 +203,61 @@ describe('checked Moments page', () => {
     expect(feed.vod).toHaveBeenCalledTimes(1)
   })
 
-  it('opens a stream’s earlier moments only from its "N earlier", and closing them keeps the stream open (E1, 10-22)', async () => {
-    const many = fixture.items.filter(item => item.verdict !== 'bad' && item.streamId === '318959837542')
+  it('keeps a stream’s earlier moments in its open moment, under "More from this stream" (M1, 10-22)', async () => {
+    const many = fixture.items.filter(item => item.verdict !== 'bad' && item.streamId === '318959837542').sort((a, b) => b.minuteStart - a.minuteStart)
     renderMoments()
     await waitFor(() => expect(rows().length).toBeGreaterThan(0))
-    const lead = () => rows().find(r => many.some(item => item.id === r.dataset.key) && !r.closest('.mk-sub'))!
-    // opening the stream's moment leaves its earlier ones closed
-    fireEvent.click(lead())
-    await opened()
-    expect(document.querySelector('.mk-sub')).toBeNull()
-    const more = within(lead()).getByRole('button', { name: `Show ${many.length - 1} earlier moments from ${many[0].displayName || many[0].login}` })
-    expect(more.textContent).toBe(`${many.length - 1} earlier`)
-    expect(more.getAttribute('aria-expanded')).toBe('false')
-    const leadKey = lead().dataset.key
-    fireEvent.click(more)
-    // its own button: the open moment stays the same
-    expect(new URL(window.location.href).searchParams.get('m')).toBe(leadKey)
-    expect(more.getAttribute('aria-expanded')).toBe('true')
-    const sub = document.getElementById(more.getAttribute('aria-controls')!)!
-    expect(sub.querySelectorAll('.mk-r')).toHaveLength(many.length - 1)
-    // an earlier moment opened, then the list closed: the stream's newest is the open one
-    fireEvent.click(sub.querySelector<HTMLElement>('.mk-r')!)
-    expect(new URL(window.location.href).searchParams.get('m')).not.toBe(leadKey)
-    fireEvent.click(within(lead()).getByRole('button', { name: /^Hide \d+ earlier moments from / }))
-    expect(document.querySelector('.mk-sub')).toBeNull()
-    await waitFor(() => expect(new URL(window.location.href).searchParams.get('m')).toBe(leadKey))
+    // one row for the stream, its newest moment; the others are counted for a screen reader only
+    const mine = () => rows().filter(r => many.some(item => item.id === r.dataset.key))
+    expect(mine().map(r => r.dataset.key)).toEqual([many[0].id])
+    expect(mine()[0].querySelector('.mk-r-hit')?.getAttribute('aria-label')).toMatch(new RegExp(` ${many.length - 1} earlier moments\\.$`))
+    fireEvent.click(mine()[0])
+    const detail = await opened()
+    const sec = within(detail).getByRole('heading', { name: 'More from this stream' }).closest('section')!
+    const more = within(sec).getAllByRole('button')
+    expect(more).toHaveLength(many.length - 1)
+    expect(more[1].querySelector('.mk-r-x')?.textContent).toMatch(/^\d+(\.\d)?× more (chat|emotes)$/)
+    // opening one keeps the stream's row the current one, with that moment open under it
+    fireEvent.click(more[1])
+    await waitFor(() => expect(document.querySelector('.mk-slot .mk-d')?.getAttribute('data-key')).toBe(many[2].id))
+    expect(new URL(window.location.href).searchParams.get('m')).toBe(many[2].id)
+    expect(mine()[0].getAttribute('aria-current')).toBe('true')
   })
 
-  it('opens the list of a deep-linked earlier moment, which holds it', async () => {
+  it('shows 5 of a stream’s other moments until "Show all", which stays from one of its moments to the next (10-22)', async () => {
+    const base = fixture.items.filter(item => item.verdict !== 'bad' && item.streamId === '318959837542').sort((a, b) => b.minuteStart - a.minuteStart)
+    const oldest = base[base.length - 1]
+    // three more of the stream's minutes, just after its oldest: 7 others in all
+    const extra = [1, 2, 3].map(i => ({ ...oldest, id: `${oldest.id}-x${i}`, minuteStart: oldest.minuteStart + i * 60_000 }))
+    const others = base.length - 1 + extra.length
+    feed.load.mockResolvedValue(snap([...fixture.items, ...extra]))
+    renderMoments()
+    await waitFor(() => expect(rows().length).toBeGreaterThan(0))
+    fireEvent.click(rows().find(r => r.dataset.key === base[0].id)!)
+    const detail = await opened()
+    const listed = () => document.querySelectorAll<HTMLElement>('.mk-d-more button')
+    expect(listed()).toHaveLength(5)
+    const all = within(detail).getByRole('button', { name: `Show all ${others}` })
+    expect(all.getAttribute('aria-expanded')).toBe('false')
+    fireEvent.click(all)
+    expect(listed()).toHaveLength(others)
+    // one of them opened: its list is whole too, and "Show fewer" folds it back
+    fireEvent.click(listed()[others - 1])
+    await waitFor(() => expect(document.querySelector('.mk-slot .mk-d')?.getAttribute('data-key')).not.toBe(base[0].id))
+    expect(listed()).toHaveLength(others)
+    const fewer = screen.getByRole('button', { name: 'Show fewer' })
+    expect(fewer.getAttribute('aria-expanded')).toBe('true')
+    fireEvent.click(fewer)
+    expect(listed()).toHaveLength(5)
+  })
+
+  it('opens a deep-linked earlier moment under its stream’s row', async () => {
     const many = fixture.items.filter(item => item.verdict !== 'bad' && item.streamId === '318959837542').sort((a, b) => b.minuteStart - a.minuteStart)
     window.history.replaceState(null, '', `/analytics/moments?m=${many[2].id}`)
     renderMoments()
     await waitFor(() => expect(document.querySelector('.mk-d')?.getAttribute('data-key')).toBe(many[2].id))
-    expect(document.querySelectorAll('.mk-sub .mk-r')).toHaveLength(many.length - 1)
+    expect(rows().find(r => r.dataset.key === many[0].id)?.getAttribute('aria-current')).toBe('true')
+    expect(document.querySelectorAll('.mk-d-more button')).toHaveLength(many.length - 1)
   })
 
   it('ranks the moments that hold up and rose under Top, strongest first, one row a burst, with no replay (T1, 10-22)', async () => {
@@ -248,7 +278,7 @@ describe('checked Moments page', () => {
     expect(shown.map(item => item.id)).not.toContain(near.id)
     expect(shown.every(item => rose.includes(item))).toBe(true)
     expect(shown.map(item => item.score)).toEqual(shown.map(item => item.score).sort((a, b) => b - a))
-    // a stream can have several rows here, each its own; none hides others under "N earlier"
+    // a stream can have several rows here, each its own
     expect(new Set(shown.map(item => item.streamId)).size).toBeLessThan(shown.length)
     expect(document.querySelector('.mk-r-more')).toBeNull()
     // Latest is in time order again
@@ -290,8 +320,8 @@ describe('checked Moments page', () => {
     // the open moment's × is its first line, saying what it counts (X1, 10-22); when, where in the stream and the game the second
     expect(detail.querySelector('.mk-d-meta > .mk-d-mx')?.textContent).toBe(`${ok.label.kind === 'chat' ? 'Chat was' : 'Emotes were'} ${fx(ok[ok.label.kind].x!)} the 15 minutes before`)
     expect(detail.querySelector('.mk-d-meta > .mk-d-m2')?.textContent).toMatch(/into the stream|in the VOD/)
-    // and so does the row's: "Emotes 5.7× usual"
-    expect(rows()[0].querySelector('.mk-r-x')?.textContent).toBe(`${ok.label.kind === 'chat' ? 'Chat' : 'Emotes'} ${fx(ok[ok.label.kind].x!)} usual`)
+    // and so does the row's: "8.7× more emotes" (M1, 10-22)
+    expect(rows()[0].querySelector('.mk-r-x')?.textContent).toBe(`${fx(ok[ok.label.kind].x!)} more ${ok.label.kind === 'chat' ? 'chat' : 'emotes'}`)
     // Watch on Twitch, Save and Copy link sit under the verdict, above the minutes (A1, 10-22)
     const acts = detail.querySelector('.mk-d-acts')!
     expect(acts.previousElementSibling?.classList.contains('mk-d-head')).toBe(true)
@@ -350,12 +380,12 @@ describe('checked Moments page', () => {
     fireEvent.click(rows()[0])
     const save = await screen.findByRole('button', { name: 'Save' })
     fireEvent.click(save)
-    expect(screen.getByRole('button', { name: 'Saved' }).getAttribute('aria-pressed')).toBe('true')
+    expect(within(document.querySelector<HTMLElement>('.mk-d')!).getByRole('button', { name: 'Saved' }).getAttribute('aria-pressed')).toBe('true')
     unmount()
     renderMoments()
     await waitFor(() => expect(rows().length).toBeGreaterThan(0))
     fireEvent.click(seg('Saved'))
-    expect(seg('Saved').textContent).toBe('Saved (1)')
+    expect(sv('Saved').textContent).toBe('Saved (1)')
     expect(rows()).toHaveLength(1)
   })
 
@@ -365,9 +395,10 @@ describe('checked Moments page', () => {
     feed.item.mockImplementation(async (id: string) => (id === old.id ? old : null))
     toggleSavedMoment(fromHubMoment({ login: old.login, streamId: old.streamId, offsetSeconds: old.offsetSeconds, at: old.minuteStart, label: old.label.text })!)
     renderMoments()
-    await waitFor(() => expect(seg('Saved').textContent).toBe('Saved (1)'))
-    expect(feed.item).toHaveBeenCalledWith(old.id, expect.anything())
+    await waitFor(() => expect(rows().length).toBeGreaterThan(0))
     fireEvent.click(seg('Saved'))
+    await waitFor(() => expect(sv('Saved').textContent).toBe('Saved (1)'))
+    expect(feed.item).toHaveBeenCalledWith(old.id, expect.anything())
     expect(rows().map(r => r.dataset.key)).toEqual([old.id])
   })
 
@@ -377,12 +408,12 @@ describe('checked Moments page', () => {
     feed.item.mockResolvedValue(null)
     toggleSavedMoment(fromHubMoment({ login: old.login, streamId: old.streamId, offsetSeconds: old.offsetSeconds, at: old.minuteStart, label: 'spammed PJSalt' })!)
     renderMoments()
-    await waitFor(() => expect(seg('Saved').textContent).toBe('Saved (1)'))
+    await waitFor(() => expect(rows().length).toBeGreaterThan(0))
     fireEvent.click(seg('Saved'))
+    await waitFor(() => expect(sv('Saved').textContent).toBe('Saved (1)'))
     const [row] = rows()
     expect(row.classList.contains('mk-r-gone')).toBe(true)
     expect(row.querySelector('.mk-r-em')?.textContent).toBe('PJSalt')
-    expect(row.querySelector('.mk-r-sp svg')).toBeNull()
     expect(within(row).getByText('Gone from the feed')).toBeTruthy()
     expect(within(row).getByRole('link', { name: 'Open it on the stream’s page' }).getAttribute('href'))
       .toBe(`/analytics/${old.login}/${old.streamId}?returnTo=%2Fanalytics%2Fmoments#t=${old.offsetSeconds}`)
@@ -396,91 +427,96 @@ describe('checked Moments page', () => {
     renderMoments()
     await waitFor(() => expect(feed.item).toHaveBeenCalled())
     await act(async () => { await Promise.resolve() })
-    expect(seg('Saved').textContent).toBe('Saved (0)')
     fireEvent.click(seg('Saved'))
+    expect(sv('Saved').textContent).toBe('Saved (0)')
     expect(screen.getByText('Nothing saved yet. Save a moment and it stays here, in this browser.')).toBeTruthy()
   })
 
-  it('keeps the moments you opened under Viewed, in this browser, until Clear', async () => {
+  it('keeps the moments you opened under Saved’s Viewed, in this browser, until Clear', async () => {
     const { unmount } = renderMoments()
     await waitFor(() => expect(rows().length).toBeGreaterThan(1))
-    expect(seg('Viewed').textContent).toBe('Viewed (0)')
     const [first, second] = rows().map(r => r.dataset.key!)
     fireEvent.click(rows()[0])
     await opened()
     fireEvent.click(rows().find(r => r.dataset.key === second)!)
-    expect(seg('Viewed').textContent).toBe('Viewed (2)')
+    fireEvent.click(seg('Saved'))
+    expect(sv('Viewed').textContent).toBe('Viewed (2)')
     unmount()
     renderMoments()
     await waitFor(() => expect(rows().length).toBeGreaterThan(0))
-    fireEvent.click(seg('Viewed'))
+    fireEvent.click(seg('Saved'))
+    fireEvent.click(sv('Viewed'))
+    // Viewed sits inside Saved (M1, 10-22)
+    expect(seg('Saved').getAttribute('aria-pressed')).toBe('true')
+    expect(sv('Viewed').getAttribute('aria-pressed')).toBe('true')
     // newest opened first, one row each, the right column saying when you opened it
     expect(rows().map(r => r.dataset.key)).toEqual([second, first])
     expect(rows()[0].querySelector('.mk-r-v time')?.textContent).toBe('opened just now')
     expect(screen.getByText(/kept in this browser for 30 days/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
-    expect(seg('Viewed').textContent).toBe('Viewed (0)')
+    expect(sv('Viewed').textContent).toBe('Viewed (0)')
     expect(rows()).toHaveLength(0)
     expect(window.localStorage.getItem('sp-moments-viewed')).toBeNull()
   })
 
-  it('shows the games as big covers under Games; a cover shows that game’s moments under Latest (B2)', async () => {
+  it('puts the games on top as covers, busiest first; a cover shows its moments in the list you are on (M1, 10-22)', async () => {
     feed.load.mockResolvedValue(snap(fixture.items, { categories: [
       { id: '515025', name: 'Overwatch', boxArtUrl: 'https://static-cdn.jtvnw.net/ttv-boxart/515025-144x192.jpg', moments: 8, liveChannels: 41 },
     ] }))
     renderMoments()
     await waitFor(() => expect(rows().length).toBeGreaterThan(0))
-    fireEvent.click(seg('Games'))
-    const grid = screen.getByRole('region', { name: 'Games' })
-    const names = () => within(grid).queryAllByRole('button').map(c => c.querySelector('.mk-gc-nm')?.textContent)
-    expect(names().slice(0, 3)).toEqual(['Overwatch', 'Minecraft', 'Grand Theft Auto V'])
-    const [ow, mc] = within(grid).getAllByRole('button')
+    const cards = () => within(covers()).getAllByRole('button')
+    expect(cards().slice(0, 4).map(c => c.querySelector('.mk-gc-nm')?.textContent)).toEqual(['Everything', 'Overwatch', 'Minecraft', 'Grand Theft Auto V'])
+    const [all, ow, mc] = cards()
     expect(ow.getAttribute('aria-label')).toBe('Overwatch: 6 moments, 41 channels live now. Shows its moments.')
+    expect(ow.querySelector('.mk-gc-ct')?.textContent).toBe('6 moments')
     expect(ow.querySelector('.mk-gc-live')?.textContent).toBe('41 live')
     expect(mc.querySelector('.mk-gc-live')).toBeNull()
     expect(ow.querySelector('img')?.getAttribute('src')).toBe('https://static-cdn.jtvnw.net/ttv-boxart/515025-285x380.jpg')
-    // no list and no replay here
-    expect(document.querySelector('.mk-list')).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Replay the last hour' })).toBeNull()
-    // the bar's search finds a game
-    const find = screen.getByRole('searchbox', { name: 'Find a game' })
-    fireEvent.change(find, { target: { value: 'mine' } })
-    expect(names()).toEqual(['Minecraft'])
-    fireEvent.change(find, { target: { value: 'zzz' } })
-    expect(within(grid).getByText('No game matches.')).toBeTruthy()
-    fireEvent.change(find, { target: { value: 'over' } })
-    fireEvent.click(within(grid).getByRole('button', { name: /^Overwatch:/ }))
-    // back on Latest with Overwatch's moments only, the game's chip in the bar and in the link
+    // no Games tab: the covers are always there
+    expect(within(screen.getByRole('group', { name: 'Which moments' })).queryByRole('button', { name: 'Games' })).toBeNull()
+    fireEvent.click(ow)
+    // Overwatch's moments only, still under Latest, and in the link
     expect(seg('Latest').getAttribute('aria-pressed')).toBe('true')
+    expect(ow.getAttribute('aria-pressed')).toBe('true')
+    expect(all.getAttribute('aria-pressed')).toBe('false')
     const owIds = new Set(fixture.items.filter(item => item.category?.id === '515025' && item.verdict !== 'bad').map(item => item.id))
     const owStreams = new Set(fixture.items.filter(item => owIds.has(item.id)).map(item => item.streamId))
     expect(rows()).toHaveLength(owStreams.size)
     expect(rows().every(r => owIds.has(r.dataset.key!))).toBe(true)
-    expect(document.querySelector('.mk-gchip')?.textContent).toBe('Overwatch')
     expect(new URL(window.location.href).searchParams.get('game')).toBe('515025')
-    expect(screen.getByRole('searchbox', { name: 'Search channels, games or emotes' })).toBeTruthy()
-    // the chip's × shows every game again
-    fireEvent.click(screen.getByRole('button', { name: 'Show every game, not just Overwatch' }))
-    expect(document.querySelector('.mk-gchip')).toBeNull()
+    // Top keeps the game
+    fireEvent.click(seg('Top'))
+    expect(rows().every(r => owIds.has(r.dataset.key!))).toBe(true)
+    fireEvent.click(seg('Latest'))
+    // the picked cover pressed again shows every game, as does "All games"
+    expect(ow.getAttribute('aria-label')).toBe('Overwatch: 6 moments, 41 channels live now. Shows every game again.')
+    fireEvent.click(ow)
     expect(new URL(window.location.href).searchParams.get('game')).toBeNull()
     expect(rows()).toHaveLength(new Set(fixture.items.filter(item => item.verdict !== 'bad').map(item => item.streamId)).size)
+    fireEvent.click(mc)
+    expect(new URL(window.location.href).searchParams.get('game')).not.toBeNull()
+    fireEvent.click(all)
+    expect(new URL(window.location.href).searchParams.get('game')).toBeNull()
+    expect(all.getAttribute('aria-pressed')).toBe('true')
   })
 
   it('opens on the game in the link, and says so when that game has nothing to show', async () => {
     window.history.replaceState(null, '', '/analytics/moments?game=515025')
     renderMoments()
     await waitFor(() => expect(rows().length).toBeGreaterThan(0))
-    expect(document.querySelector('.mk-gchip')?.textContent).toBe('Overwatch')
+    expect(within(covers()).getByRole('button', { name: /^Overwatch:/ }).getAttribute('aria-pressed')).toBe('true')
     cleanup()
-    // Counter-Strike's only moment doesn't hold up
+    // Counter-Strike's only moment doesn't hold up: its cover stays, picked, at 0
     window.history.replaceState(null, '', '/analytics/moments?game=32399')
     renderMoments()
     expect(await screen.findByText('No Counter-Strike moments in the last 12 hours.')).toBeTruthy()
+    expect(within(covers()).getByRole('button', { name: /^Counter-Strike: 0 moments\./ }).getAttribute('aria-pressed')).toBe('true')
     cleanup()
     // not a game id: every game
     window.history.replaceState(null, '', '/analytics/moments?game=overwatch')
     renderMoments()
     await waitFor(() => expect(rows().length).toBeGreaterThan(0))
-    expect(document.querySelector('.mk-gchip')).toBeNull()
+    expect(within(covers()).getByRole('button', { name: /^All games:/ }).getAttribute('aria-pressed')).toBe('true')
   })
 })
