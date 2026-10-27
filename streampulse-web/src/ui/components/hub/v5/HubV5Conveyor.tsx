@@ -10,6 +10,7 @@
  * under reduced motion. Decorative: aria-hidden, no numbers, no pointer events.
  */
 import { useEffect, useRef, useState, type RefObject } from 'react'
+import { sanitizeEmoteImageUrl } from '../../../../lib/emoteAssetUrl'
 import type { HubActivityPoint } from '../../../../lib/publicHub'
 import { conveyorEmotes, conveyorRng, type ConveyorEmote } from './hubV5EmoteMapModel'
 
@@ -92,7 +93,10 @@ export function HubV5Conveyor({ points, refs }: { points: readonly HubActivityPo
   // made of the first poll that lists emotes, so later polls never re-bake it
   useEffect(() => {
     if (list.length) return
-    const next = conveyorEmotes(points)
+    const next = conveyorEmotes(points).flatMap((e) => {
+      const url = sanitizeEmoteImageUrl(e.url)
+      return url ? [{ ...e, url }] : []
+    })
     if (next.length) setList(next)
   }, [points, list.length])
 
