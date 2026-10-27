@@ -1,6 +1,6 @@
 /**
  * Post-build prerender: emit static HTML shells for public routes (WEB-002).
- * Dashboard/admin remain SPA-only chunks.
+ * /admin stays SPA-only.
  */
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'

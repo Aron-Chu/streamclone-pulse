@@ -9,7 +9,6 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_PRODUCTION_BACKEND_URL } from '../src/lib/auth'
 import type { ActivitySummary } from '../src/lib/hubActivitySummary'
 import { hubCorpusPipelineFixture } from '../src/lib/publicHub'
-import DashboardHome from '../src/routes/dashboard/Home'
 import { AnalyticsHubSidebar } from '../src/ui/components/analytics/AnalyticsHubSidebar'
 import { FigmaCorpusPipelineBlock } from '../src/ui/components/analytics/FigmaEmoteSignalBlock'
 import { FigmaLiveChannelRail } from '../src/ui/components/analytics/FigmaLiveChannelRail'
@@ -88,25 +87,5 @@ describe('hub empty / honesty (ported from excluded landing tests)', () => {
     expect(screen.getByText(/Hub temporarily unavailable/i)).toBeTruthy()
     expect(screen.queryByText(/Reading Hosted API/i)).toBeNull()
     expect(screen.queryByText(/api\.streampulse\.stream/i)).toBeNull()
-  })
-})
-
-describe('/dashboard quarantine (ported)', () => {
-  it('renders private workspace landing, not the public analytics hub', () => {
-    render(
-      <MemoryRouter>
-        <DashboardHome />
-      </MemoryRouter>,
-    )
-    expect(
-      screen.getByRole('heading', { level: 1, name: /StreamPulse workspace/i }),
-    ).toBeTruthy()
-    expect(screen.getByRole('link', { name: /\/analytics/i })).toBeTruthy()
-    expect(
-      screen.queryByRole('main', { name: /StreamPulse analytics hub/i }),
-    ).toBeNull()
-    expect(
-      screen.queryByText(/Imported VOD sessions never fill this global graph/i),
-    ).toBeNull()
   })
 })

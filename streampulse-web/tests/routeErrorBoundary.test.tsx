@@ -1,6 +1,6 @@
 /**
  * OP1-RES-007 / OP1-RES-006: a page that throws keeps its own header and nav
- * (site, analytics or dashboard), following a nav link recovers, each crash
+ * (site or analytics), following a nav link recovers, each crash
  * is reported once, and "Reload page" drops cached hub snapshots so the
  * reload refetches instead of re-hydrating the crash.
  */
@@ -46,9 +46,6 @@ vi.mock('../src/routes/public/Support', async () => {
   }
   return { default: () => createElement(PublicLayout, null, createElement(Body)) }
 })
-vi.mock('../src/routes/dashboard/Clips', () => ({
-  default: () => { throw new TypeError('candidate.topEmotes.slice(...).map is not a function') },
-}))
 
 import { AppRoutes } from '../src/routes/index'
 import { PortalErrorBoundary, reloadAfterPortalError } from '../src/ui/PortalErrorBoundary'
@@ -139,21 +136,6 @@ describe('route-level error boundary', () => {
     expect(container.querySelector('#public-main')?.textContent).toContain('Something went wrong')
   })
 
-  it('keeps the dashboard header when a dashboard page throws, and its nav recovers', async () => {
-    localStorage.setItem('sp.betaKey', 'test-beta-key')
-    const { container } = renderAt('/dashboard/clips')
-
-    expect(await screen.findByRole('heading', { name: 'Something went wrong' })).toBeTruthy()
-    expect(screen.getByRole('link', { name: 'StreamPulse Dashboard' })).toBeTruthy()
-    expectNoSiteLayout(container)
-    const header = container.querySelector('.app-nav')
-
-    fireEvent.click(screen.getByRole('link', { name: 'Home' }))
-    expect(await screen.findByRole('heading', { name: 'StreamPulse workspace' })).toBeTruthy()
-    expect(screen.queryByRole('heading', { name: 'Something went wrong' })).toBeNull()
-    expect(container.querySelector('.app-nav')).toBe(header)
-  })
-
   it('uses the site header when an analytics module fails to load', async () => {
     landingFailure.message = 'Failed to fetch dynamically imported module: /assets/AnalyticsLandingPage.js'
     renderAt('/analytics')
@@ -193,25 +175,26 @@ describe('error reporting', () => {
   })
 
   it('reports a crash inside a layout once, and the root boundary stays out of it', async () => {
-    localStorage.setItem('sp.betaKey', 'test-beta-key')
     render(
       <PortalErrorBoundary>
-        <MemoryRouter initialEntries={['/dashboard/clips']}>
+        <MemoryRouter initialEntries={['/support']}>
           <AppRoutes />
         </MemoryRouter>
       </PortalErrorBoundary>,
     )
+    fireEvent.click(await screen.findByRole('button', { name: 'Show support' }))
 
-    expect(await screen.findByRole('link', { name: 'StreamPulse Dashboard' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Something went wrong' })).toBeTruthy()
+    expect(screen.getByRole('navigation', { name: 'Main Navigation' })).toBeTruthy()
     expect(screen.getAllByRole('heading', { name: 'Something went wrong' })).toHaveLength(1)
     expect(sentry.captureException).toHaveBeenCalledTimes(1)
   })
 
   it('does not report the same error object twice (a lazy page rethrows its cached failure)', () => {
-    const failure = new TypeError('Failed to fetch dynamically imported module: /assets/Clips.js')
+    const failure = new TypeError('Failed to fetch dynamically imported module: /assets/Status.js')
     const Broken = () => { throw failure }
-    const view = render(<PortalErrorBoundary resetKey="/dashboard/clips"><Broken /></PortalErrorBoundary>)
-    view.rerender(<PortalErrorBoundary resetKey="/dashboard"><Broken /></PortalErrorBoundary>)
+    const view = render(<PortalErrorBoundary resetKey="/status"><Broken /></PortalErrorBoundary>)
+    view.rerender(<PortalErrorBoundary resetKey="/docs"><Broken /></PortalErrorBoundary>)
 
     expect(screen.getByRole('heading', { name: 'This page could not load' })).toBeTruthy()
     expect(sentry.captureException).toHaveBeenCalledTimes(1)

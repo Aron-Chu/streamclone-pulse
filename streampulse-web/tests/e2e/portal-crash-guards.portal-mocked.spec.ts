@@ -1,6 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { seedBetaKey } from './helpers/auth'
 import { HUB_V5_BUILD } from './helpers/chartWheelSurfaces'
 import { installHubUxMock } from './helpers/hubUxMock'
 
@@ -112,19 +111,6 @@ test.describe('portal crash guards (mocked)', () => {
 
     await page.getByRole('navigation', { name: 'Analytics navigation' }).getByRole('link', { name: 'All moments' }).click()
     await expect(page.getByRole('heading', { name: 'Moments', exact: true })).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'Something went wrong' })).toHaveCount(0)
-  })
-
-  test('a crashing dashboard page keeps the dashboard header, and its nav recovers', async ({ page }) => {
-    await seedBetaKey(page)
-    await breakPageModule(page, 'Clips')
-    await page.goto('/dashboard/clips')
-    await expect(page.getByRole('heading', { name: 'Something went wrong' })).toBeVisible()
-    await expect(page.getByRole('link', { name: 'StreamPulse Dashboard' })).toBeVisible()
-    await expectNoSiteLayout(page)
-
-    await page.getByRole('link', { name: 'Home', exact: true }).click()
-    await expect(page.getByRole('heading', { name: 'StreamPulse workspace' })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Something went wrong' })).toHaveCount(0)
   })
 })

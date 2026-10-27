@@ -7,7 +7,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import DashboardHome from "../src/routes/dashboard/Home";
 import AnalyticsLandingPage from "../src/routes/analytics/AnalyticsLandingPage";
 import { RouteScrollManager } from "../src/ui/RouteScrollManager";
 
@@ -410,27 +409,5 @@ describe("/analytics landing (AnalyticsLandingPage)", () => {
     );
     await screen.findByText(/Hub temporarily unavailable/i);
     expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
-  });
-});
-
-describe("/analytics hub (DashboardHome quarantine)", () => {
-  it("renders private workspace landing, not the public analytics hub", async () => {
-    render(
-      <MemoryRouter>
-        <DashboardHome />
-      </MemoryRouter>,
-    );
-
-    expect(
-      await screen.findByRole("heading", {
-        level: 1,
-        name: /StreamPulse workspace/i,
-      }),
-    ).toBeTruthy();
-    expect(screen.getByRole("link", { name: /\/analytics/i })).toBeTruthy();
-    expect(screen.queryByRole("main", { name: /StreamPulse analytics hub/i })).toBeNull();
-    expect(
-      screen.queryByText(/Imported VOD sessions never fill this global graph/i),
-    ).toBeNull();
   });
 });

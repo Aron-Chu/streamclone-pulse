@@ -325,13 +325,6 @@ test('exact moment source, device save, reload and legacy session link', async (
   await expect(page.locator('.moments-result')).toHaveCount(2)
   await page.locator('.moments-result').first().getByRole('button', { name: 'Open moment' }).click()
   await expect(page.getByRole('link', { name: /^Open VOD at/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/123456?t=120s')
-  const prepare = page.getByRole('link', { name: /Prepare clip in ReplayForge/ })
-  if (process.env.VITE_REPLAYFORGE_UI_ORIGIN) {
-    await expect(prepare).toHaveAttribute('href', `${process.env.VITE_REPLAYFORGE_UI_ORIGIN}/handoff/streampulse/cr_Y2NfYWJj`)
-    await expect(prepare).not.toHaveAttribute('href', /cr_c3RhbGU/)
-  } else {
-    await expect(prepare).toHaveCount(0)
-  }
   await page.locator('.moments-detail').getByRole('button', { name: 'Save', exact: true }).click()
   await page.getByRole('tab', { name: 'Saved (1)', exact: true }).click()
   await expect(page.getByText('Saved in this browser · not synced to the extension or your account.')).toBeVisible()
@@ -340,11 +333,6 @@ test('exact moment source, device save, reload and legacy session link', async (
   await page.locator('.moments-result').getByRole('button', { name: 'Open moment' }).click()
   await expect(page.getByRole('link', { name: /^Open VOD at/ })).toBeVisible()
   await expect.poll(() => exactRefreshes.some(url => new URL(url).searchParams.get('momentOffsetSeconds') === '120')).toBe(true)
-  if (process.env.VITE_REPLAYFORGE_UI_ORIGIN) {
-    await expect(page.getByRole('link', { name: /Prepare clip in ReplayForge/ })).toHaveAttribute('href', `${process.env.VITE_REPLAYFORGE_UI_ORIGIN}/handoff/streampulse/cr_Y2NfYWJj`)
-  } else {
-    await expect(page.getByRole('link', { name: /Prepare clip in ReplayForge/ })).toHaveCount(0)
-  }
   expect(await page.evaluate(() => localStorage.getItem('streampulse.saved-moments.v2'))).not.toContain('handoffRef')
   await page.goto('/analytics/newsroom/story-xqc?window=live#keep')
   await expect(page).toHaveURL(/\/analytics\/moments$/)

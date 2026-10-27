@@ -6,7 +6,6 @@ interface ImportMetaEnv {
   readonly VITE_PORTAL_VERSION?: string
   readonly VITE_SENTRY_DSN?: string
   readonly VITE_POSTHOG_PROJECT_TOKEN?: string
-  readonly VITE_REPLAYFORGE_UI_ORIGIN?: string
   readonly VITE_STREAMCLONE_WATCH_ORIGIN?: string
   /** Activation input: Cloudflare Turnstile site key. Without it the support form stays unavailable. */
   readonly VITE_TURNSTILE_SITE_KEY?: string

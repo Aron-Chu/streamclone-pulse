@@ -1,10 +1,10 @@
-import { DEFAULT_BACKEND_URL, getBackendUrlOverride, getBetaKey } from './auth'
+import { DEFAULT_BACKEND_URL, getBackendUrlOverride } from './auth'
 
 export type ApiErrorKind = 'unreachable' | 'aborted' | 'timeout' | 'response_too_large' | 'unauthorized' | 'rate_limited' | 'server' | 'bad_request'
 export interface ApiError { kind: ApiErrorKind; message: string; status: number; code?: string; body?: unknown; hint?: string; retryAfterMs?: number }
 export interface ApiClientOptions extends Omit<RequestInit, 'body'> {
   gated?: boolean
-  /** Body credentials or personal data: enforce the destination without injecting a beta key. */
+  /** Body credentials or personal data: enforce the destination, as for a gated call. */
   sensitive?: boolean
   timeoutMs?: number
   maxResponseBytes?: number
@@ -119,10 +119,9 @@ export async function apiClient<T = unknown>(path: string, options: ApiClientOpt
   const { gated = false, sensitive = false, timeoutMs = DEFAULT_TIMEOUT_MS, maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES, idempotencyKey, headers, body, signal: callerSignal, ...rest } = options
   const url = buildUrl(path)
   const requestHeaders = new Headers(headers)
-  // A caller-supplied credential must obey the same boundary as an injected one.
-  const credentialBearing = gated || sensitive || requestHeaders.has('Authorization') || requestHeaders.has('X-Streamclone-Beta-Key') || rest.credentials === 'include'
+  // A caller-supplied credential must obey the same boundary as a gated call.
+  const credentialBearing = gated || sensitive || requestHeaders.has('Authorization') || rest.credentials === 'include'
   if (credentialBearing) assertCredentialDestination(url)
-  if (gated) { const betaKey = getBetaKey(); if (betaKey) requestHeaders.set('X-Streamclone-Beta-Key', betaKey) }
   if (!requestHeaders.has('Accept')) requestHeaders.set('Accept', 'application/json')
   if (idempotencyKey?.trim()) requestHeaders.set('Idempotency-Key', idempotencyKey.trim())
   let requestBody: BodyInit | undefined
@@ -140,7 +139,6 @@ export async function apiClient<T = unknown>(path: string, options: ApiClientOpt
       const response = await fetch(url, { ...rest, redirect: credentialBearing ? 'error' : rest.redirect, headers: requestHeaders, body: requestBody, cache: rest.cache ?? 'no-store', signal: deadline.signal })
       const payload = await readBody(response, deadline.signal, maxResponseBytes)
       const cache = parseCacheHeader(response.headers.get('X-Cache'))
-      if (response.status === 401) { window.dispatchEvent(new CustomEvent('auth:rejected')); throw normalizeApiError(401, payload, response.headers.get('Retry-After')) }
       if (!response.ok) {
         const error = normalizeApiError(response.status, payload, response.headers.get('Retry-After'))
         // A server that names its own Retry-After has said when to come back; a

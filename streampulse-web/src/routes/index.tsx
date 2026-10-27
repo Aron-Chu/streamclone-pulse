@@ -1,6 +1,5 @@
 import { lazy, Suspense, useState, type ComponentType, type ReactNode } from 'react'
 import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
-import { RequireAuth } from './guards'
 import { AnalyticsRouteFallback } from './AnalyticsRouteFallback'
 import Landing from './public/Landing'
 // The public pages' styles stay in the first stylesheet, in the order the
@@ -22,9 +21,6 @@ const AnalyticsLandingPage = lazy(() =>
     : import('./analytics/AnalyticsLandingPage'),
 )
 const AnalyticsMomentsPage = lazy(() => import('./analytics/AnalyticsMomentsPage'))
-const DashboardShell = lazy(() => import('./dashboard/DashboardShell'))
-const DashboardHome = lazy(() => import('./dashboard/Home'))
-const ClipsPage = lazy(() => import('./dashboard/Clips'))
 const AccountPage = lazy(() => import('./account/AccountPage'))
 const AccountSettings = lazy(() => import('./account/AccountSettings'))
 const BillingPage = lazy(() => import('./account/BillingPage'))
@@ -212,14 +208,6 @@ function PortalRoutes() {
         {/* Short public aliases used by extension/share links. */}
         <Route path="/s/:login" element={<ShortSessionRedirect />} />
         <Route path="/s/:login/:streamId" element={<ShortSessionRedirect />} />
-
-        {/* Dashboard remains a separate, gated product surface. */}
-        <Route element={<RequireAuth />}>
-          <Route path="/dashboard" element={<DashboardShell />}>
-            <Route index element={<DashboardHome />} />
-            <Route path="clips" element={<ClipsPage />} />
-          </Route>
-        </Route>
 
         {/* /admin is not a public operator console. Cloudflare Access for API
             /v1/admin/* remains an external ops/promotion blocker. */}

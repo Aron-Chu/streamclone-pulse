@@ -1,13 +1,12 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { seedBetaKey } from './helpers/auth'
 import { installHubUxMock } from './helpers/hubUxMock'
 // The notes the page is built from; the extension's release step marks versions released.
 import releaseNotes from '../../../src/shared/release-notes.json' with { type: 'json' }
 
 /**
- * Route-change scroll, cold-load fragments, the dashboard narrow menu and the
- * extension's release-notes destination (OP1-FUN-008/001/005/003).
+ * Route-change scroll, cold-load fragments and the extension's release-notes
+ * destination (OP1-FUN-008/001/003).
  */
 
 // Registered first, so the specific mocks installed later take precedence.
@@ -282,57 +281,6 @@ test.describe('Back to the Moments list', () => {
       expect(Math.abs((await scrollY(page)) - left)).toBeLessThanOrEqual(2)
     })
   }
-})
-
-test('a rejected beta key opens the hub at the top, not at the dashboard offset', async ({ page }) => {
-  await seedBetaKey(page, 'test-beta-key')
-  await installHubUxMock(page)
-  await page.setViewportSize({ width: 390, height: 360 })
-  await page.goto('/dashboard')
-  await expect(page.locator('#dashboard-navigation')).toBeAttached()
-  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
-  await expect.poll(() => scrollY(page)).toBeGreaterThan(100)
-  // What apiClient dispatches when a gated read answers 401.
-  await page.evaluate(() => window.dispatchEvent(new CustomEvent('auth:rejected')))
-  await expect(page).toHaveURL(/\/analytics$/)
-  await expect(page.locator('#section-tracked')).toBeVisible()
-  await expect.poll(() => scrollY(page)).toBe(0)
-  await page.waitForTimeout(500)
-  expect(await scrollY(page)).toBe(0)
-})
-
-test.describe('dashboard header at narrow widths', () => {
-  test('Home, Clips and Analytics sit behind a Menu disclosure at 390 px', async ({ page }) => {
-    await seedBetaKey(page, 'test-beta-key')
-    await page.setViewportSize({ width: 390, height: 844 })
-    await page.goto('/dashboard/clips')
-    const menu = page.getByRole('button', { name: 'Menu', exact: true })
-    await expect(menu).toBeVisible()
-    await expect(menu).toHaveAttribute('aria-expanded', 'false')
-    const nav = page.locator('#dashboard-navigation')
-    await expect(nav.getByRole('link', { name: 'Analytics' })).toBeHidden()
-
-    await menu.click()
-    await expect(page.getByRole('button', { name: 'Close menu' })).toHaveAttribute('aria-expanded', 'true')
-    for (const name of ['Home', 'Clips', 'Analytics']) await expect(nav.getByRole('link', { name, exact: true })).toBeVisible()
-    await page.keyboard.press('Escape')
-    await expect(menu).toBeFocused()
-    await expect(nav.getByRole('link', { name: 'Analytics' })).toBeHidden()
-
-    await menu.click()
-    await nav.getByRole('link', { name: 'Analytics' }).click()
-    await expect(page).toHaveURL(/\/analytics$/)
-  })
-
-  test('the full link row stays visible above 960 px with no Menu button', async ({ page }) => {
-    await seedBetaKey(page, 'test-beta-key')
-    await page.setViewportSize({ width: 1440, height: 900 })
-    await page.goto('/dashboard')
-    await expect(page.getByRole('button', { name: 'Menu', exact: true })).toBeHidden()
-    for (const name of ['Home', 'Clips', 'Analytics']) {
-      await expect(page.locator('#dashboard-navigation').getByRole('link', { name, exact: true })).toBeVisible()
-    }
-  })
 })
 
 test('the extension "Release details" destination is a prerendered release-notes page', async ({ page }) => {

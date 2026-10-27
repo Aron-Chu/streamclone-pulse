@@ -56,11 +56,6 @@ const PUBLIC_SCAN_ROOTS = [
   'src/ui/components/landing',
 ]
 
-const EXCLUDE_PATH_PARTS = [
-  `${join('src', 'routes', 'dashboard')}`,
-  `${join('src', 'lib', 'clipCandidates.ts')}`,
-]
-
 const FORBIDDEN = [
   { re: /dashboard\/clips/i, label: 'dashboard/clips link' },
   { re: /\bclip queue\b/i, label: 'clip queue CTA' },
@@ -82,11 +77,6 @@ function walkFiles(dir, acc = []) {
   return acc
 }
 
-function isExcluded(filePath) {
-  const rel = relative(webRoot, filePath)
-  return EXCLUDE_PATH_PARTS.some((part) => rel.includes(part.replace(/\\/g, '/')))
-}
-
 let publicScanFailed = false
 for (const rootRel of PUBLIC_SCAN_ROOTS) {
   const root = join(webRoot, rootRel)
@@ -97,7 +87,6 @@ for (const rootRel of PUBLIC_SCAN_ROOTS) {
     continue
   }
   for (const file of files) {
-    if (isExcluded(file)) continue
     const rel = relative(webRoot, file).replace(/\\/g, '/')
     const text = readFileSync(file, 'utf8')
     for (const { re, label } of FORBIDDEN) {

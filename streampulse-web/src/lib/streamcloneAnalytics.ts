@@ -23,7 +23,6 @@ import { apiClient, getBackendUrl } from './apiClient'
 import { SLOW_READ_TIMEOUT_MS } from './portalTimeouts'
 import { verifiedArchiveMapping } from './verifiedArchiveMapping'
 import { resolveBackendSource } from './backendSource'
-import { hasBetaKey } from './auth'
 import { absolutizeEmoteAssetUrl } from './emoteAssetUrl'
 import { downsampleTimeline, PORTAL_MINUTES_TIMEOUT_MS, rollupChartActivityScore } from './timelineDownsample'
 import { measurementTimeIso, measurementTimeMs } from '@streampulse/pulse-core'
@@ -384,11 +383,7 @@ export function usesLocalAnalyticsBackend(): boolean {
   return resolveBackendSource(getBackendUrl()) === 'local'
 }
 
-/** Bookmarks require a beta-key principal ΓÇö not available on public no-login /analytics. */
-export function portalBookmarksSupported(): boolean {
-  return hasBetaKey()
-}
-
+/** Bookmarks are not available on public no-login /analytics. */
 function bookmarkUnavailableResponse() {
   return {
     items: [] as unknown[],
@@ -1261,10 +1256,7 @@ export const portalAnalyticsApi: AnalyticsApi = {
   },
 
   async getPulseBookmarks(_params?: PulseBookmarkQuery) {
-    if (!portalBookmarksSupported()) {
-      return bookmarkUnavailableResponse()
-    }
-    return { items: [], supported: true as const }
+    return bookmarkUnavailableResponse()
   },
 
   async getPulseStreamRecap(streamId: string): Promise<PulseStreamRecap | null> {
@@ -1283,17 +1275,11 @@ export const portalAnalyticsApi: AnalyticsApi = {
   },
 
   async createPulseBookmark() {
-    if (!portalBookmarksSupported()) {
-      throw new Error('Saved moments are a private beta feature ΓÇö public analytics is read-only.')
-    }
-    throw new Error('Bookmarks require a beta key ΓÇö use the private dashboard.')
+    throw new Error('Saved moments are a private beta feature — public analytics is read-only.')
   },
 
   async deletePulseBookmark() {
-    if (!portalBookmarksSupported()) {
-      throw new Error('Saved moments are a private beta feature ΓÇö public analytics is read-only.')
-    }
-    throw new Error('Bookmarks require a beta key ΓÇö use the private dashboard.')
+    throw new Error('Saved moments are a private beta feature — public analytics is read-only.')
   },
 
   /**
