@@ -339,9 +339,9 @@ test.describe('extension mocked states', () => {
     await expect(hostPage.getByRole('link', { name: 'Updates & Changelog' })).toHaveAttribute('aria-current', 'page')
     await expect(hostPage.getByText('Installed version', { exact: true })).toBeVisible()
     await expect(hostPage.locator('.pulse-changelog-release')).toHaveCount(4)
-    await expect(hostPage.locator('.pulse-changelog-release .pulse-changelog-version')).toHaveText(['v0.2.5', 'v0.2.1', 'v0.1.1', 'v0.1.0'])
+    await expect(hostPage.locator('.pulse-changelog-release .pulse-changelog-version')).toHaveText(['v0.2.6', 'v0.2.1', 'v0.1.1', 'v0.1.0'])
     // What's new leads the page with the version you have.
-    await expect(hostPage.locator('[data-whatsnew="true"] .pulse-changelog-version')).toHaveText('v0.2.5')
+    await expect(hostPage.locator('[data-whatsnew="true"] .pulse-changelog-version')).toHaveText('v0.2.6')
 
     // The complete page owns the superset, and shared storage changes are reflected
     // by the already-open Twitch quick controls without reloading either surface.
@@ -596,7 +596,7 @@ test.describe('extension mocked states', () => {
     await expect(workspace.locator('[data-settings-section]')).toHaveCount(1)
     const releases = workspace.locator('.pulse-changelog-release')
     await expect(releases).toHaveCount(4)
-    await expect(releases.locator('.pulse-changelog-version')).toHaveText(['v0.2.5', 'v0.2.1', 'v0.1.1', 'v0.1.0'])
+    await expect(releases.locator('.pulse-changelog-version')).toHaveText(['v0.2.6', 'v0.2.1', 'v0.1.1', 'v0.1.0'])
     const latestRelease = releases.nth(0)
     const olderRelease = releases.nth(1)
     // What's new leads: this version's title and three highlights, with every release folded under it.

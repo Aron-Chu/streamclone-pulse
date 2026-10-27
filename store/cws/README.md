@@ -37,13 +37,13 @@ Canonical process docs:
   `https://streampulse.stream/support`. The public listing was observed linking
   Support to Twitch on 2026-09-20, but the public scrape is not authoritative
   for the configured dashboard field.
-- Before packaging 0.2.5, open the dashboard **Package** tab and record the
+- Before packaging 0.2.6, open the dashboard **Package** tab and record the
   published 0.2.1's upload date and requested hosts. `release-notes.json`
   marks 0.2.1 released on 2026-08-31; verify that date against the dashboard.
   Store users never had the 7TV header backdrop as a free perk.
-- 0.2.5 notes use `status: "released"` and prepared submission date
-  `2026-10-26`. This satisfies the notes gate, not store publication or owner
-  acceptance. The private feedback form may stay
+- 0.2.6 stays `status: "unreleased"` with no `releasedAt` until the packaging
+  commit, which sets `released` and the real submission date. `package:cws`
+  refuses the notes until then, by design. The private feedback form may stay
   off (owner decision D19); see the `FEEDBACK_FORM_LIVE` line in
   [`docs/pulse-extension/release.md`](../../docs/pulse-extension/release.md).
 - Do not upload a new package unless separately authorized.
@@ -188,8 +188,8 @@ npm run package:development
 npm run validate:package
 ```
 
-Extension source manifests are **0.2.5**, with submission metadata prepared
-for 2026-10-26. This is a source target, not an
+Extension source manifests are **0.2.6**; the submission date is set only by
+the packaging commit. This is a source target, not an
 accepted or uploaded candidate: the public
 listing already reported `0.2.1` on 2026-09-24, and the published package's
 source revision is unverified. Owner must confirm the publisher-dashboard
