@@ -681,6 +681,8 @@ async function accountBearerRequest<T>(root: string, path: string, init: Request
   if (root !== DEFAULT_BACKEND_URL || await getBackendUrl() !== DEFAULT_BACKEND_URL) throw new Error('account_hosted_only')
   const result = await supporterAccount.withCredential(async token => {
     if (await getBackendUrl() !== root) throw new Error('account_hosted_only')
+    // A key-only connection pays for Supporter; its moments and history never leave this browser.
+    if (await supporterAccount.isInstallationIdentity()) throw new Error('account_library_local_only')
     // The bearer goes only to the origin that issued it (production in store builds).
     const response = await fetchWithTimeout(`${ACCOUNT_BACKEND_URL}${path}`, {
       ...init, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },

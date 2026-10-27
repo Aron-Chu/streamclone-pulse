@@ -10,7 +10,7 @@ import type { LibraryMoment } from '../src/ui/library/model.ts'
  */
 const f = vi.hoisted(() => ({ pages: vi.fn(), data: new Map<string, PersonalData>() }))
 vi.mock('../src/background/supporterAccountRuntime.ts', () => ({ bindAccountDataForget: () => undefined,
-  supporterAccount: { run: async () => ({ state: 'linked', accountId: 'one' }) } }))
+  supporterAccount: { isInstallationIdentity: async () => false, run: async () => ({ state: 'linked', accountId: 'one' }) } }))
 vi.mock('../src/background/api.ts', () => ({ fetchPulseBookmarks: f.pages, createPulseBookmark: vi.fn(), deletePulseBookmark: vi.fn(),
   accountHistoryRequest: async () => ({ status: 404, body: { error: 'not_found' } }) }))
 vi.mock('../src/background/myMomentsStore.ts', async original => ({ ...await original<object>(), personalTransaction: async (scope: string, update?: (value: PersonalData) => PersonalData) => {

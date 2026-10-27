@@ -84,8 +84,10 @@ describe('device link package check', () => {
       'firefox build must not contain the device link: "/v1/account/device-links" in background/service-worker.js',
       'firefox build must not contain the device link: "/account/link-device" in options/options.js',
     ])
-    const button = checkDeviceLinkBundles('firefox', { 'options/options.js': 'children:`Connect this extension`' })
-    expect(button.errors).toEqual(['firefox build must not contain the device link: "Connect this extension" in options/options.js'])
+    for (const label of ['Connect this extension', 'Connect tester account', 'Invited tester? Connect a tester account']) {
+      const button = checkDeviceLinkBundles('firefox', { 'options/options.js': `children:${label}` })
+      expect(button.errors).toEqual([`firefox build must not contain the device link: "${label}" in options/options.js`])
+    }
   })
 
   it('fails a Chrome, Edge or development package that lost the link', () => {
