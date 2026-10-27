@@ -177,6 +177,24 @@ select {
   border-color: rgba(139, 92, 246, 0.55);
 }
 
+/* The Chrome mark on Add to Chrome buttons (top bars, hub hero). */
+.chrome-mark {
+  position: relative;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: conic-gradient(from 30deg, #ea4335 0 33.3%, #34a853 0 66.6%, #fbbc05 0);
+}
+.chrome-mark::after {
+  content: "";
+  position: absolute;
+  inset: 4.5px;
+  border-radius: 50%;
+  background: #4285f4;
+  box-shadow: 0 0 0 1.6px #fff;
+}
+
 /* Elevating Public Document Panel */
 .panel {
   background: var(--bg-surface);

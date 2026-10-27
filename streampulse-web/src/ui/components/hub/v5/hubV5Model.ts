@@ -240,6 +240,38 @@ export function gameAria(game: HubGameShare, pressed: boolean): string {
   return `${game.name}: ${game.chatShare.toFixed(1)}% of chat, ${n} ${n === 1 ? 'channel' : 'channels'}. ${pressed ? 'Show all channels again' : 'Show these channels in Channels'}`
 }
 
+/* ---------- Where chat is as a ranked rack (R5-22, mockup hub-rack.js) ---------- */
+
+/** Rows the rack holds: 10 shown, 16 in two columns of 8 when the block is wide. */
+export const HUB_RACK_ROWS = 16
+export const HUB_RACK_NARROW_ROWS = 10
+
+/** "The other 12 games: 8.4% of chat" under the first `shown` rows. */
+export function rackFoot(games: Pick<HubWhereChatIs, 'all'>, shown: number): string {
+  const rest = games.all.slice(shown)
+  const cs = rest.reduce((sum, g) => sum + g.chatShare, 0)
+  return rest.length ? `The other ${rest.length} games: ${cs.toFixed(1)}% of chat` : 'Every game shown'
+}
+
+/** "GT" for "Grand Theft Auto V": the first letters of the first two words. */
+export function gameInitials(name: string): string {
+  return String(name).split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase()
+}
+
+/** Box art by category name, from the moments that carry vetted art (the hub sends none per live channel). */
+export function hubCategoryArt(moments: readonly Pick<HubLivePulseMoment, 'category' | 'boxArtUrl' | 'categoryMetadataRejected'>[]): Map<string, string> {
+  const art = new Map<string, string>()
+  for (const m of moments) {
+    if (m.category && m.boxArtUrl && !m.categoryMetadataRejected && !art.has(m.category)) art.set(m.category, m.boxArtUrl)
+  }
+  return art
+}
+
+/** Twitch box art at another size ("…-52x72.jpg" → "…-90x120.jpg"), so a 30 × 40 cover stays sharp. */
+export function boxArtAt(url: string, w: number, h: number): string {
+  return url.replace(/-\d+x\d+\.(jpe?g|png|webp)$/i, `-${w}x${h}.$1`)
+}
+
 /* ---------- Channels (R5-7) ---------- */
 
 export type HubChannelSort = 'viewers' | 'chat' | 'vs'
@@ -354,7 +386,8 @@ export function momentReasonLabel(kind: string | undefined, label: string | unde
 export const HUB_NAMED_EMOTE_MIN_PCT = 25
 
 export type HubMomentCmp =
-  | { x: number; avg: number | null; mins: number }
+  /** `over`: what the × compares with when it isn't the stream's own average (the Moments list: "the 15 minutes before"). */
+  | { x: number; avg: number | null; mins: number; over?: string }
   | { why: string; long: string }
 
 export interface HubMomentRowV5 {

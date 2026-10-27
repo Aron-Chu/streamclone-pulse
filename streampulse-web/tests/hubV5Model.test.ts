@@ -2,12 +2,15 @@ import { describe, expect, it } from 'vitest'
 import type { HubLiveChannel, HubLivePulseMoment } from '../src/lib/publicHub'
 import type { HubChannelScreenerV1, HubScreenerMetric } from '../src/lib/channelScreenerContract'
 import {
+  boxArtAt,
   busiestCue,
   busiestTip,
   channelRows,
   channelVs,
   formatHubMultiplier,
   formatHubRate,
+  gameInitials,
+  hubCategoryArt,
   hubAvatarTone,
   hubMonogram,
   isLowMultiplier,
@@ -16,6 +19,7 @@ import {
   momentReasonLabel,
   momentRowsV5,
   multiplierWords,
+  rackFoot,
   rankBusiest,
   searchChannels,
   topEmoteRows,
@@ -225,5 +229,33 @@ describe('How this is measured', () => {
       activity: { points: [{ t: 1, providerCountsLowerBound: true, viewerExpectedContributors: 50 }, { t: 2 }] },
     } as never)
     expect(facts).toEqual({ poolSize: 2000, lowerBoundBuckets: 1, buckets: 2, roster: 50 })
+  })
+})
+
+describe('hub v5 rack (Where chat is)', () => {
+  const game = (name: string, chatShare: number) => ({ name, chat: chatShare, viewers: 0, chatShare, viewerShare: 0, rows: [] })
+
+  it('sums the games past the rows shown', () => {
+    const all = [game('Game One', 50), game('Game Two', 30), game('Game Three', 12), game('Game Four', 8)]
+    expect(rackFoot({ all }, 2)).toBe('The other 2 games: 20.0% of chat')
+    expect(rackFoot({ all }, 4)).toBe('Every game shown')
+  })
+
+  it('makes initials from the first two words', () => {
+    expect(gameInitials('Synthetic Racing Game')).toBe('SR')
+    expect(gameInitials('puzzler')).toBe('P')
+    expect(gameInitials('  two   spaces ')).toBe('TS')
+  })
+
+  it('takes vetted box art per category, first one wins', () => {
+    const art = hubCategoryArt([
+      { category: 'Game One', boxArtUrl: 'https://img.test/a-52x72.jpg' },
+      { category: 'Game One', boxArtUrl: 'https://img.test/b-52x72.jpg' },
+      { category: 'Game Two', boxArtUrl: 'https://img.test/c-52x72.jpg', categoryMetadataRejected: true },
+      { category: 'Game Three' },
+    ] as Parameters<typeof hubCategoryArt>[0])
+    expect([...art]).toEqual([['Game One', 'https://img.test/a-52x72.jpg']])
+    expect(boxArtAt('https://img.test/a-52x72.jpg', 90, 120)).toBe('https://img.test/a-90x120.jpg')
+    expect(boxArtAt('https://img.test/a.jpg', 90, 120)).toBe('https://img.test/a.jpg')
   })
 })

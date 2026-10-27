@@ -231,7 +231,8 @@ export function HubActivityPanelV5({
         <HubActivityChart
           wheelCardRef={hubChartCardRef}
           points={chartInputs.points}
-          windowMinutes={chartInputs.windowMinutes}
+          // Unavailable, there is no served window: the heading names the range picked (INT-02), not the empty payload's 30 min.
+          windowMinutes={unavailable ? Math.max(1, hub.activity.windowMinutes || 30) : chartInputs.windowMinutes}
           channelCount={hub.activity.channelCount}
           poolSize={hub.poolSize}
           livePoolViewerSum={chartInputs.livePoolViewerSum}

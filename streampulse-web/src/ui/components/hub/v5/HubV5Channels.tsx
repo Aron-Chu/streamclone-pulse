@@ -41,12 +41,16 @@ function VsCell({ channel }: { channel: HubLiveChannel }) {
 export interface HubV5ChannelsProps {
   live: readonly HubLiveChannel[]
   poolSize: number
+  /** The hub request failed: no count, and the empty table says so (INT-02). */
+  unavailable?: boolean
   /** The game picked in Where chat is, or null. */
   game: string | null
   onClearGame: () => void
+  /** A sort asked for from elsewhere (the Live feed's "+N more in Channels"); a new `id` applies it. */
+  sortRequest?: { id: number; sort: HubChannelSort; dir: 1 | -1 } | null
 }
 
-export const HubV5Channels = forwardRef<HTMLElement, HubV5ChannelsProps>(function HubV5Channels({ live, poolSize, game, onClearGame }, ref) {
+export const HubV5Channels = forwardRef<HTMLElement, HubV5ChannelsProps>(function HubV5Channels({ live, poolSize, unavailable = false, game, onClearGame, sortRequest }, ref) {
   const [q, setQ] = useState('')
   const [sort, setSort] = useState<HubChannelSort>('viewers')
   const [dir, setDir] = useState<1 | -1>(-1)
@@ -59,6 +63,13 @@ export const HubV5Channels = forwardRef<HTMLElement, HubV5ChannelsProps>(functio
 
   // A new game (or none) starts again at 10 rows.
   useEffect(() => { setN(PER) }, [game])
+
+  useEffect(() => {
+    if (!sortRequest) return
+    setSort(sortRequest.sort)
+    setDir(sortRequest.dir)
+    setN(PER)
+  }, [sortRequest])
 
   const rows = useMemo(() => channelRows(live, { q, game, sort, dir }), [live, q, game, sort, dir])
   const visible = rows.slice(0, n)
@@ -96,7 +107,8 @@ export const HubV5Channels = forwardRef<HTMLElement, HubV5ChannelsProps>(functio
     if (!more) sectionRef.current?.scrollIntoView({ block: 'start', behavior: 'auto' })
   }
 
-  const countLabel = game || q
+  const countLabel = unavailable && !live.length ? ''
+    : game || q
     ? `${formatHubInt(rows.length)} ${rows.length === 1 ? 'channel' : 'channels'}`
     : `${formatHubInt(live.length)} of ${formatHubInt(poolSize)} live`
 
@@ -197,7 +209,7 @@ export const HubV5Channels = forwardRef<HTMLElement, HubV5ChannelsProps>(functio
               </tr>
             )
           }) : (
-            <tr><td colSpan={5} className="hv5-ch5-none">No channels match.</td></tr>
+            <tr><td colSpan={5} className="hv5-ch5-none">{unavailable && !live.length ? 'Unavailable right now.' : 'No channels match.'}</td></tr>
           )}
         </tbody>
       </table>
