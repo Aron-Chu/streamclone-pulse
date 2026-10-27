@@ -47,14 +47,18 @@ for (const width of [390, 768, 1080, 1150, 1262, 1440, 1920]) {
     expect(after.height).toBeCloseTo(box.height, 0)
     expect(requests).toHaveLength(0)
     await expect(plot).not.toHaveAttribute('data-selection', /.*/)
+    // The bar card opens under the chart and may scroll it into view, so compare page positions.
+    const pageTop = () => plot.evaluate(el => el.getBoundingClientRect().top + scrollY)
+    const topBefore = await pageTop()
     await page.mouse.click(at(.5).x, at(.5).y)
     await expect(plot).toHaveAttribute('data-selection', '')
     const selected = (await plot.boundingBox())!
-    expect(selected.y).toBeCloseTo(box.y, 0)
+    expect(await pageTop()).toBeCloseTo(topBefore, 0)
     expect(selected.height).toBeCloseTo(box.height, 0)
     expect((await readout.boundingBox())!.height).toBeCloseTo(readoutBefore.height, 0)
     // Hovering elsewhere previews that bar in the readout and keeps the selection.
-    await page.mouse.move(at(.2).x, at(.2).y)
+    const { at: atNow } = await plotArea(page)
+    await page.mouse.move(atNow(.2).x, atNow(.2).y)
     await expect(readout).toHaveAttribute('data-hub-readout-mode', 'hover')
     await expect(plot).toHaveAttribute('data-selection', '')
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
@@ -193,8 +197,10 @@ test('reduced motion: the hover readout and the bar selection appear without ani
   await expect(page.locator(READOUT)).toHaveAttribute('data-hub-readout-mode', 'hover')
   await page.mouse.click(at(.5).x, at(.5).y)
   await expect(plot).toHaveAttribute('data-selection', '')
-  const selection = plot.locator('.spc-sel')
+  // The selection is the sliding band (R5-8); under reduced motion it jumps.
+  const selection = plot.locator('.spc-selband')
   await expect(selection).toHaveCount(1)
+  await expect(selection).not.toHaveAttribute('data-sliding', /.*/)
   expect(await selection.evaluate(el => getComputedStyle(el).animationName)).toBe('none')
   expect(await page.locator(READOUT).evaluate(el => getComputedStyle(el).animationName)).toBe('none')
 })
