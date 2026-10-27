@@ -72,7 +72,7 @@ export function chartSvg(m: CheckedMoment, s: MinuteSeries, metric: MomentMetric
   if (base != null && bLo != null && bHi != null) {
     const y = Y(base).toFixed(1)
     g.push({ tag: 'line', attrs: { class: 'mk-base', x1: X(bLo).toFixed(1), x2: (X(bHi) + bw).toFixed(1), y1: y, y2: y } })
-    g.push({ tag: 'text', attrs: { class: 'mk-an2', x: (X(bLo) + 4).toFixed(1), y: (Y(base) - 5).toFixed(1) }, text: `average ${int(base)}` })
+    g.push({ tag: 'text', attrs: { class: 'mk-an2 mk-avg', x: (X(bLo) + 4).toFixed(1), y: (Y(base) - 5).toFixed(1) }, text: `average ${int(base)}` })
   }
   // the moment, labelled above its bar; never off the plot, above every bar it spans, and clear of the band's label
   const mv = atRel(arr, 0)

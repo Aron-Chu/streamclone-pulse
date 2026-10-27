@@ -98,7 +98,7 @@ describe('checked Moments page', () => {
     expect(rows().length).toBe(new Set(shown.map(item => item.streamId)).size)
     expect(document.querySelectorAll('.mk-list > li.mk-g[data-vd="bad"]')).toHaveLength(0)
     expect(seg('Latest').getAttribute('aria-pressed')).toBe('true')
-    expect(within(screen.getByRole('group', { name: 'Which moments' })).getAllByRole('button').map(b => b.textContent)).toEqual(['Latest', 'Saved (0)'])
+    expect(within(screen.getByRole('group', { name: 'Which moments' })).getAllByRole('button').map(b => b.textContent)).toEqual(['Latest', 'Saved (0)', 'Viewed (0)'])
     expect(document.querySelector('.mk-fresh')?.textContent).toBe('updated just now')
     // B2 drops the verdict counts, Checked/All, the game and order selects, how we check, and the line under the list
     expect(screen.queryAllByRole('combobox')).toHaveLength(0)
@@ -205,8 +205,9 @@ describe('checked Moments page', () => {
     const pop = document.getElementById(chip.getAttribute('aria-controls')!)!
     expect(within(pop).getByRole('heading', { name: 'Why it counts' })).toBeTruthy()
     expect(within(pop).getAllByRole('listitem').length).toBeGreaterThanOrEqual(2)
-    // the open moment's × leads its line
-    expect(detail.querySelector('.mk-d-meta')?.textContent).toMatch(/^\d+(\.\d)?× the 15 minutes before · /)
+    // the open moment's × is its first line; when, where in the stream and the game the second
+    expect(detail.querySelector('.mk-d-meta > .mk-d-mx')?.textContent).toMatch(/^\d+(\.\d)?× the 15 minutes before$/)
+    expect(detail.querySelector('.mk-d-meta > .mk-d-m2')?.textContent).toMatch(/into the stream|in the VOD/)
     fireEvent.keyDown(chip, { key: 'Escape' })
     expect(chip.getAttribute('aria-expanded')).toBe('false')
     expect(document.querySelector('.mk-slot .mk-d')).toBeTruthy() // the moment stays open
@@ -267,5 +268,28 @@ describe('checked Moments page', () => {
     fireEvent.click(seg('Saved'))
     expect(seg('Saved').textContent).toBe('Saved (1)')
     expect(rows()).toHaveLength(1)
+  })
+
+  it('keeps the moments you opened under Viewed, in this browser, until Clear', async () => {
+    const { unmount } = renderMoments()
+    await waitFor(() => expect(rows().length).toBeGreaterThan(1))
+    expect(seg('Viewed').textContent).toBe('Viewed (0)')
+    const [first, second] = rows().map(r => r.dataset.key!)
+    fireEvent.click(rows()[0])
+    await opened()
+    fireEvent.click(rows().find(r => r.dataset.key === second)!)
+    expect(seg('Viewed').textContent).toBe('Viewed (2)')
+    unmount()
+    renderMoments()
+    await waitFor(() => expect(rows().length).toBeGreaterThan(0))
+    fireEvent.click(seg('Viewed'))
+    // newest opened first, one row each, the right column saying when you opened it
+    expect(rows().map(r => r.dataset.key)).toEqual([second, first])
+    expect(rows()[0].querySelector('.mk-r-v time')?.textContent).toBe('opened just now')
+    expect(screen.getByText(/kept in this browser for 30 days/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+    expect(seg('Viewed').textContent).toBe('Viewed (0)')
+    expect(rows()).toHaveLength(0)
+    expect(window.localStorage.getItem('sp-moments-viewed')).toBeNull()
   })
 })

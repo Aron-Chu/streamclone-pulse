@@ -132,17 +132,18 @@ export function MomentDetail(props: DetailProps) {
           {vod ? <button className="mk-d-play" type="button" onClick={() => play(null)}><PlayGlyph />Play from 10 s before</button> : null}
           <div className="mk-d-who">
             {avatar ? <img src={avatar} alt="" /> : null}
-            <span className="mk-d-who-t"><b>{m.name}</b><span className="mk-lv">{live ? <><i />Live now{item.viewers != null ? ` · ${int(item.viewers)} watched it` : ''}</> : 'Offline'}</span></span>
+            <span className="mk-d-who-t"><b>{m.name}</b><span className="mk-lv">{live ? <><i />Live now{item.viewers != null ? ` · ${int(item.viewers)} viewers` : ''}</> : 'Offline'}</span></span>
           </div>
         </>}
       <button className="mk-d-x" type="button" aria-label="Close" onClick={onClose}><XGlyph /></button>
     </div>
     <div className="mk-d-head">
       <h2 className="mk-d-l1"><span>{m.name}</span><MomentAct act={act} /></h2>
+      {/* × on line 1, then when · into the stream · game on line 2 (T1, 10-21) */}
       <p className="mk-d-meta">
-        {x != null ? <><span className="mk-d-mx"><b>{fx(x)}</b> the 15 minutes before</span> · </> : null}
-        {clk(m.at)}{sameDay(m.at, now) ? '' : ' yesterday'} · <b className="mk-d-st-c" title={streamTip(m, vod)}>{streamTime(m, vod)}</b> {streamWhere(vod)}
-        {item.category ? ` · ${item.category.name}` : ''}
+        {x != null ? <span className="mk-d-mx"><b>{fx(x)}</b> the 15 minutes before</span> : null}
+        <span className="mk-d-m2">{clk(m.at)}{sameDay(m.at, now) ? '' : ' yesterday'} · <b className="mk-d-st-c" title={streamTip(m, vod)}>{streamTime(m, vod)}</b> {streamWhere(vod)}
+          {item.category ? ` · ${item.category.name}` : ''}</span>
       </p>
       <div className="mk-hold-w" ref={whyRef}>
         <button ref={chipRef} className="mk-hold" type="button" data-vd={item.verdict} aria-expanded={why} aria-controls={popId}
