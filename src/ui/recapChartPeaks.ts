@@ -1,5 +1,12 @@
-import { mergeRecapMoments as mergeRecapMomentsCore, peaksToLiveHeatPoints } from '@streampulse/pulse-core'
-import type { LiveHeatPoint, LiveHeatReason } from '@streampulse/pulse-core'
+import {
+  compareStreamEdgeLast,
+  extensionRollupStreamEdges,
+  mergeRecapMoments as mergeRecapMomentsCore,
+  momentStreamEdge,
+  OPENING_STREAM_EDGE,
+  peaksToLiveHeatPoints,
+} from '@streampulse/pulse-core'
+import type { LiveHeatPoint, LiveHeatReason, StreamEdges } from '@streampulse/pulse-core'
 import type {
   ExtensionEmote,
   ExtensionPeak,
@@ -96,7 +103,11 @@ export function resolveRecapPointFromRollup(args: {
   return rollupToRecapHeatPoint(args.rollup, args.startedAt, args.catalog)
 }
 
-/** Merge recap moments, clip candidates, and payload peaks into one ranked list (up to limit). */
+/**
+ * Merge recap moments, clip candidates, and payload peaks into one ranked list
+ * (up to limit). Hello / goodbye spam at the stream's edges ranks last; the
+ * closing edge only applies once the stream has ended.
+ */
 export function mergeRecapMoments(
   recap:
     | {
@@ -108,6 +119,7 @@ export function mergeRecapMoments(
   peaks: readonly ExtensionPeak[] | undefined,
   limit = 20,
   rollups: readonly ExtensionRollup[] = [],
+  ended = false,
 ): PulseRecapMoment[] {
   return mergeRecapMomentsCore(
     recap,
@@ -132,28 +144,28 @@ export function mergeRecapMoments(
         count: emote.count,
         provider: emote.provider,
       })),
+      streamEdge: peak.streamEdge,
     })),
     limit,
     streamHasReactionCoverageFromRollups(rollups),
+    extensionRollupStreamEdges(rollups, ended),
   ) as PulseRecapMoment[]
 }
 
-/** Peak dart offsets for recap chart — recap moments first, then payload peaks. */
+/** Peak dart offsets for recap chart — recap moments first, then payload peaks. Stream edges rank last. */
 export function resolveRecapChartPeakOffsets(
   topMoments: readonly PulseRecapMoment[] | undefined,
   peaks: readonly ExtensionPeak[] | undefined,
   limit = 8,
+  edges: StreamEdges = OPENING_STREAM_EDGE,
 ): number[] {
-  if (topMoments && topMoments.length > 0) {
-    return [...topMoments]
-      .sort((a, b) => b.score - a.score)
-      .slice(0, limit)
-      .map(moment => moment.offsetSeconds)
-  }
-  return [...(peaks ?? [])]
-    .sort((a, b) => b.score - a.score)
+  const source: ReadonlyArray<{ offsetSeconds: number; score: number; streamEdge?: string }> =
+    topMoments && topMoments.length > 0 ? topMoments : (peaks ?? [])
+  return source
+    .map(moment => ({ offsetSeconds: moment.offsetSeconds, score: moment.score, streamEdge: momentStreamEdge(moment, edges) }))
+    .sort((a, b) => compareStreamEdgeLast(a, b) || b.score - a.score)
     .slice(0, limit)
-    .map(peak => peak.offsetSeconds)
+    .map(moment => moment.offsetSeconds)
 }
 
 export function lastActiveRollupOffsetSeconds(rollups: readonly ExtensionRollup[]): number {

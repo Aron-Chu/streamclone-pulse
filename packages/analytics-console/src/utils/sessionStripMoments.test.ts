@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
-import { recapMomentAnalyticalOffset } from '@streampulse/pulse-core'
+import { OPENING_STREAM_EDGE, recapMomentAnalyticalOffset, streamEdgesFor } from '@streampulse/pulse-core'
+import type { PulseStreamRecap } from '../apiTypes.ts'
 import {
   getStripPinHover,
   SESSION_PIN_COUNT,
+  sessionStreamEdges,
   sessionStripMoments,
   setStripPinHover,
   stripHasReactionCoverage,
@@ -64,5 +66,45 @@ describe('sessionStripMoments', () => {
     setStripPinHover(null)
     expect(listener).toHaveBeenCalledTimes(2)
     off()
+  })
+})
+
+describe('stream edges on the strip', () => {
+  // An hour-long stream: hello spam at 00:01, goodbye spam at 00:59, and a
+  // smaller real moment at 00:30.
+  const startedAt = '2026-06-11T12:00:00.000Z'
+  const minute = (m: number, chatCount = 30) => ({
+    minuteTs: new Date(Date.parse(startedAt) + m * 60_000).toISOString(),
+    chatCount,
+  })
+  const rollups = Array.from({ length: 61 }, (_, m) => minute(m))
+  const recap: PulseStreamRecap = {
+    streamId: 's',
+    topMoments: [
+      { offsetSeconds: 60, score: 99, reasons: ['emote_spike'], chatCount: 300, emoteCount: 200 },
+      { offsetSeconds: 3_540, score: 98, reasons: ['emote_spike'], chatCount: 300, emoteCount: 200 },
+      { offsetSeconds: 1_800, score: 60, reasons: ['chat_spike'], chatCount: 120, emoteCount: 10 },
+    ],
+  }
+
+  it('ends at the last minute with chat or emotes, and only once the stream ended', () => {
+    const viewersOnly = { ...minute(75, 0), viewerAvg: 500 }
+    expect(sessionStreamEdges({ rollups: [...rollups, viewersOnly], streamStartedAt: startedAt, streamEnded: true }))
+      .toEqual(streamEdgesFor(3_600, true))
+    expect(sessionStreamEdges({ rollups, streamStartedAt: startedAt, streamEnded: false })).toEqual(OPENING_STREAM_EDGE)
+    expect(sessionStreamEdges({ rollups, streamEnded: true })).toEqual(OPENING_STREAM_EDGE)
+  })
+
+  it('ranks hello and goodbye spikes after the real moment', () => {
+    const offsets = (streamEnded: boolean) =>
+      sessionStripMoments({
+        recap,
+        hasReactionCoverage: true,
+        streamStartedAt: startedAt,
+        streamEdges: sessionStreamEdges({ rollups, streamStartedAt: startedAt, streamEnded }),
+      }).map((moment) => moment.offsetSeconds)
+    expect(offsets(true)).toEqual([1_800, 60, 3_540])
+    // Live, only the opening edge applies.
+    expect(offsets(false)).toEqual([3_540, 1_800, 60])
   })
 })

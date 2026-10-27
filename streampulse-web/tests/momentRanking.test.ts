@@ -28,30 +28,46 @@ function recap(overrides: Partial<PortalStreamRecapResponse> = {}): PortalStream
 describe('rankBroadcastMoments', () => {
   it("follows the server's ranking rather than stream order", () => {
     const ranking = rankBroadcastMoments(
-      group(moment(60), moment(600), moment(1_200)),
+      group(moment(360), moment(600), moment(1_200)),
       recap({
         topMoments: [
           { offsetSeconds: 1_200, score: 81, chatCount: 400 },
-          { offsetSeconds: 60, score: 44, chatCount: 90 },
+          { offsetSeconds: 360, score: 44, chatCount: 90 },
           { offsetSeconds: 600, score: 40, chatCount: 70 },
         ],
       }),
     )
     expect(ranking.ordering).toBe('server_score')
-    expect(ranking.ranked.map(row => row.moment.offsetSeconds)).toEqual([1_200, 60, 600])
+    expect(ranking.ranked.map(row => row.moment.offsetSeconds)).toEqual([1_200, 360, 600])
     expect(ranking.ranked.map(row => row.rank)).toEqual([1, 2, 3])
     expect(ranking.remainder).toEqual([])
   })
 
   it('holds back everything past the cap, in stream order', () => {
-    const moments = Array.from({ length: 26 }, (_, index) => moment(index * 300))
+    const moments = Array.from({ length: 26 }, (_, index) => moment(300 + index * 300))
     const ranking = rankBroadcastMoments(
       group(...moments),
       recap({ topMoments: moments.map((row, index) => ({ offsetSeconds: row.offsetSeconds, score: 100 - index, chatCount: 10 })) }),
     )
     expect(ranking.ranked).toHaveLength(TOP_MOMENTS_PER_BROADCAST)
     expect(ranking.remainder).toHaveLength(6)
-    expect(ranking.remainder.map(row => row.offsetSeconds)).toEqual([6_000, 6_300, 6_600, 6_900, 7_200, 7_500])
+    expect(ranking.remainder.map(row => row.offsetSeconds)).toEqual([6_300, 6_600, 6_900, 7_200, 7_500, 7_800])
+  })
+
+  it('ranks hello spam in the first 5 minutes after the rest', () => {
+    const ranking = rankBroadcastMoments(
+      group(moment(60), moment(1_200)),
+      recap({
+        topMoments: [
+          { offsetSeconds: 60, score: 99, chatCount: 900 },
+          { offsetSeconds: 1_200, score: 50, chatCount: 300 },
+        ],
+      }),
+    )
+    expect(ranking.ranked.map(row => [row.moment.offsetSeconds, row.rank])).toEqual([
+      [1_200, 1],
+      [60, 2],
+    ])
   })
 
   it('matches a ranked minute to the nearest loaded detection within tolerance', () => {

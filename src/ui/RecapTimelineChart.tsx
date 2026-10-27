@@ -160,8 +160,8 @@ export function RecapTimelineChart({
   )
 
   const mergedMoments = useMemo(
-    () => mergeRecapMoments(payload.recap, payload.peaks, 20, pickRecapRollups(payload)),
-    [payload.peaks, payload.recap],
+    () => mergeRecapMoments(payload.recap, payload.peaks, 20, pickRecapRollups(payload), !payload.isLive),
+    [payload.peaks, payload.recap, payload.isLive],
   )
 
   const chartPeakMarkers = useMemo<ExtensionPeak[]>(() => {
@@ -186,6 +186,7 @@ export function RecapTimelineChart({
         refinementStatus: moment.refinementStatus,
         refinementConfidence: moment.refinementConfidence,
         reactionScoringVersion: moment.reactionScoringVersion,
+        streamEdge: moment.streamEdge,
       }))
   }, [mergedMoments, peakOffsets])
 

@@ -395,6 +395,8 @@ export interface ExtensionPeak {
   refinementStatus?: string
   refinementConfidence?: number
   reactionScoringVersion?: string
+  /** Backend scoring v2: "opening" / "closing" for hello / goodbye spam, ranked last. */
+  streamEdge?: string
 }
 
 export interface ExtensionLanes {
@@ -542,6 +544,8 @@ export interface PulseRecapMoment {
   refinementStatus?: string
   refinementConfidence?: number
   reactionScoringVersion?: string
+  /** Backend scoring v2: "opening" / "closing" for hello / goodbye spam, ranked last. */
+  streamEdge?: string
 }
 
 export interface PulseStreamRecap {

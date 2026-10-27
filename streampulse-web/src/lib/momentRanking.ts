@@ -84,9 +84,11 @@ function candidateOffsets(recap: PortalStreamRecapResponse): number[] {
  * with a score per minute — so this joins that ranking onto the detections that
  * are actually loaded instead of inventing a client-side one.
  *
- * Nothing here scores, clusters or re-baselines anything. A ranked minute with
- * no loaded detection is skipped rather than fabricated, and ranks stay dense so
- * the list never shows an unexplained gap.
+ * Nothing here scores, clusters or re-baselines anything. The one local rule is
+ * pulse-core's stream edge: hello spam in a stream's first 5 minutes ranks after
+ * the rest, as the backend's scoring v2 does. A ranked minute with no loaded
+ * detection is skipped rather than fabricated, and ranks stay dense so the list
+ * never shows an unexplained gap.
  */
 export function rankBroadcastMoments(
   group: BroadcastGroup,
