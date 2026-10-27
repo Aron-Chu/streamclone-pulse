@@ -44,15 +44,24 @@ describe('privacy route', () => {
     expect(body).toMatch(/device token stored locally/i)
   })
 
-  it('discloses Moment pictures: on by default, tab memory only, and how to turn them off', async () => {
+  it('discloses Moment pictures: on by default, tab memory, saved pictures and how to remove them', async () => {
     renderPath('/privacy')
     const line = (await screen.findByTestId('privacy-moment-pictures')).textContent ?? ''
     expect(line).toMatch(/Moment pictures, on by default/)
     expect(line).toMatch(/a small still of the Twitch player every few seconds/)
     expect(line).toMatch(/The stills stay in that tab's memory/)
-    expect(line).toMatch(/never written to browser storage or uploaded/)
-    expect(line).toMatch(/gone when you switch streams or close the tab/)
-    expect(line).toMatch(/Moment pictures switch in the extension's settings; turning it off drops the stills at once/)
+    expect(line).toMatch(/keeps that one\s+picture with the saved moment in this browser's extension storage/)
+    expect(line).toMatch(/up to 300 pictures or\s+8 MB; the oldest go first/)
+    expect(line).toMatch(/Pictures are never uploaded/)
+    expect(line).toMatch(/drops the stills at once, and you can remove saved pictures in Settings/)
+    expect(line).not.toMatch(/never written to browser storage/)
+  })
+
+  it('discloses the VOD picture reads go to Twitch only', async () => {
+    renderPath('/privacy')
+    const line = (await screen.findByTestId('privacy-vod-frames')).textContent ?? ''
+    expect(line).toMatch(/preview pictures and a small, low-resolution copy of the VOD's video from\s+Twitch/)
+    expect(line).toMatch(/These reads go to Twitch;\s+StreamPulse receives none of them/)
   })
 
   it('avoids internal release-blocker / counsel commentary', async () => {
