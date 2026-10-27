@@ -12,7 +12,7 @@ import {
   streamTime, streamWhere, updatedText, when, type CheckedMoment,
 } from '../../../../lib/momentsChecked'
 import { loadMomentVod, momentVodCache } from '../../../../lib/momentsFeedVod'
-import { toggleSavedMoment, useSavedMoments } from '../../../../lib/savedDiscoveryMoments'
+import { toggleSavedMoment, useSavedMoments, type SavedMoment } from '../../../../lib/savedDiscoveryMoments'
 import { clearViewed, readViewed, recordViewed, VIEWED_DAYS, type ViewedMoment } from '../../../../lib/viewedMoments'
 import { fromHubMoment } from '../../../../lib/discoveryMoments'
 import { broadcastTimelineHref } from '../../../../lib/momentsNavigation'
@@ -122,6 +122,8 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
   const [opened, setOpened] = useState<{ key: string | null; lk: number | null; metric: MomentMetricKind | null }>({ key: null, lk: null, metric: null })
   const [drawn, setDrawn] = useState(readSaved)
   const savedItems = useSavedMoments().items
+  /** Saves whose lookup the feed answered with nothing: gone from it (Unavailable saves C, 10-22). */
+  const [goneIds, setGoneIds] = useState<ReadonlySet<string>>(() => new Set())
   const savedKeys = useMemo(() => new Set(savedItems.map(item => item.key)), [savedItems])
   const isSaved = (item: MomentsFeedItem) => savedKeys.has(savedKey(item))
   /** Moments a poll brought while the pointer or focus was in the list: they wait behind the pill. */
@@ -154,7 +156,17 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
   // a saved moment that has left the feed: shown under Saved only, as an ended stream
   const savedOnly = useMemo(() => [...drawn.values()].filter(item => !byKey.has(item.id) && savedKeys.has(savedKey(item))).map(item => checkMoment({ ...item, streamLive: false }, nowMinute)),
     [drawn, savedKeys, byKey, nowMinute])
-  const savedCount = pool.filter(m => isSaved(m.item)).length + savedOnly.length
+  // a save the feed can't find (gone from it, or never a feed moment): a plain row under Saved, counted there
+  const goneSaves = useMemo(() => {
+    if (!loaded) return []
+    const held = new Set([...pool.map(m => savedKey(m.item)), ...[...drawn.values()].map(savedKey)])
+    return savedItems.filter(s => {
+      if (held.has(s.key)) return false
+      const id = momentsFeedIdFromLegacy(s.login, s.streamId, String(s.offsetSeconds))
+      return id == null || goneIds.has(id)
+    })
+  }, [loaded, pool, drawn, savedItems, goneIds])
+  const savedCount = pool.filter(m => isSaved(m.item)).length + savedOnly.length + goneSaves.length
   const openedAt = useMemo(() => new Map(viewed.map(e => [e.item.id, e.at])), [viewed])
   // a viewed moment that has left the feed: drawn from its kept copy, as an ended stream
   const viewedOnly = useMemo(() => viewed.filter(e => !byKey.has(e.item.id)).map(e => checkMoment({ ...e.item, streamLive: false }, nowMinute)),
@@ -177,6 +189,7 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
   const list = view === 'viewed'
     ? [...pool, ...viewedOnly].filter(m => shown(m) && passes(m)).sort(byViewed)
     : [...pool, ...(view === 'saved' ? savedOnly : [])].filter(m => shown(m) && passes(m)).sort(SORTS.new)
+  const goneRows = view !== 'saved' ? [] : goneSaves.filter(s => (!qq || `${s.login} ${s.displayName ?? ''} ${s.label} ${s.category ?? ''}`.toLowerCase().includes(qq)))
   const groups = view === 'viewed' ? list.map(m => [m]) : groupsOf(list)
   const selKey = sel != null && list.some(m => m.key === sel) ? sel : wide && list[0] && deepWait === 'no' ? list[0].key : null
   const selM = selKey ? find(selKey) : null
@@ -235,7 +248,7 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
     const m = find(key)
     if (!m) return
     const moment = fromHubMoment({ login: m.item.login, streamId: m.item.streamId, offsetSeconds: m.item.offsetSeconds, at: m.item.minuteStart,
-      label: m.item.label.text, displayName: m.item.displayName, category: m.item.category?.name })
+      label: momentLabel(m.item.label.text), displayName: m.item.displayName, category: m.item.category?.name })
     if (!moment) return
     const wasSaved = isSaved(m.item)
     toggleSavedMoment(moment)
@@ -318,10 +331,11 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
     let done = 0
     void (async () => {
       for (const id of ids) {
-        const item = await loadMomentsFeedItem(id, controller.signal).catch(() => null)
+        const item = await loadMomentsFeedItem(id, controller.signal).catch(() => undefined)
         if (controller.signal.aborted) return
         done++
         if (item) setDrawn(prev => { const next = new Map(prev).set(item.id, item); writeSaved(next); return next })
+        else if (item === null) setGoneIds(prev => new Set(prev).add(id))
       }
     })()
     // ids not answered yet are asked again by the next run
@@ -511,7 +525,7 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
             <button type="button" onClick={() => { clearViewed(); setViewed([]); setViewedOrder([]); say('Viewed cleared') }}>Clear</button></p> : null}
           <ol className="mk-list" ref={listRef}>
             {onRetry ? <li className="mk-empty"><span role="alert">Moments couldn’t load.</span> <button type="button" onClick={onRetry}>Try again</button></li> : null}
-            {loaded && !groups.length ? <li className="mk-empty">{view === 'saved' ? 'Nothing saved yet. Save a moment and it stays here, in this browser.'
+            {loaded && !groups.length && !goneRows.length ? <li className="mk-empty">{view === 'saved' ? 'Nothing saved yet. Save a moment and it stays here, in this browser.'
               : view === 'viewed' ? `Nothing viewed yet. Moments you open here stay in this list, in this browser, for ${VIEWED_DAYS} days.` : 'No moments match.'}</li> : null}
             {groups.map(g => {
               const lead = g[0], open = openSid === lead.sid && g.length > 1
@@ -528,6 +542,7 @@ function CheckedMoments({ initial, onRetry }: { initial: Initial | null; onRetry
                 </ol> : null}
               </li>
             })}
+            {goneRows.map(saved => <li key={saved.key} className="mk-g"><GoneRow saved={saved} /></li>)}
           </ol>
         </div>
       </section>
@@ -579,6 +594,28 @@ function Row({ m, more, sub, now, current, opened, onSelect }: {
     </svg></span>
     <span className="mk-r-v">{at}{!sub && item.viewers != null ? <span className="mk-r-vw"><b>{int(item.viewers)}</b> viewers</span> : null}</span>
   </button>
+}
+
+/** A saved label without the feed's verb: "PJSalt", not "spammed PJSalt" (ACC-03, 10-22). Older saves keep it, so rows strip it too. */
+const momentLabel = (label: string) => label.replace(/^spammed\s+/i, '')
+
+/**
+ * A save the feed can't find (Unavailable saves C, 10-22): channel and what happened, an empty picture, no minutes, and
+ * where it can still be seen (the stream's page; a save kept in this browser holds no replay id). The right column says when it was saved.
+ */
+function GoneRow({ saved }: { saved: SavedMoment }) {
+  const where = /^\d{1,30}$/.test(saved.streamId) ? <Link to={broadcastTimelineHref(saved.login, saved.streamId, '/analytics/moments', saved.offsetSeconds)}>Open it on the stream’s page</Link>
+    : null
+  const at = new Date(saved.savedAt)
+  return <div className="mk-r mk-r-gone" data-key={saved.key}>
+    <span className="mk-r-th" aria-hidden="true" />
+    <span className="mk-r-tx">
+      <span className="mk-r-l1"><span className="mk-r-nm">{saved.displayName || saved.login}</span><span className="mk-r-em"><span>{momentLabel(saved.label)}</span></span></span>
+      <span className="mk-r-l2"><span>Gone from the feed</span>{where ? <><span className="mk-sep" aria-hidden="true">·</span>{where}</> : null}</span>
+    </span>
+    <span className="mk-r-sp" />
+    <span className="mk-r-v"><time dateTime={at.toISOString()} title={`Saved ${at.toLocaleString('en-US')}`}>{at.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</time></span>
+  </div>
 }
 
 /** The row's picture: the stream's live frame while it is live, else its game's art, blurred, under the channel's avatar. */
