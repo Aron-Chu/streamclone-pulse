@@ -32,7 +32,7 @@ vi.mock('../src/hooks/usePublicHubData', () => ({ usePublicHubData: () => hub })
 const renderMoments = () => render(<MemoryRouter initialEntries={['/analytics/moments']}><AnalyticsMomentsPage /></MemoryRouter>)
 const rows = () => [...document.querySelectorAll<HTMLElement>('.mk-list .mk-r')]
 const snap = (items: MomentsFeedItem[], more: Partial<MomentsFeedSnapshot> = {}): MomentsFeedSnapshot =>
-  ({ items, generatedAt: fixture.generatedAt, stale: false, total: fixture.items.length, verdicts: null, nextCursor: null, ...more })
+  ({ items, generatedAt: fixture.generatedAt, stale: false, total: fixture.items.length, verdicts: null, categories: null, nextCursor: null, ...more })
 const opened = () => waitFor(() => {
   const el = document.querySelector<HTMLElement>('.mk-slot .mk-d')
   expect(el).toBeTruthy()
@@ -116,7 +116,7 @@ describe('checked Moments page', () => {
     expect(rows().length).toBe(new Set(shown.map(item => item.streamId)).size)
     expect(document.querySelectorAll('.mk-list > li.mk-g[data-vd="bad"]')).toHaveLength(0)
     expect(seg('Latest').getAttribute('aria-pressed')).toBe('true')
-    expect(within(screen.getByRole('group', { name: 'Which moments' })).getAllByRole('button').map(b => b.textContent)).toEqual(['Latest', 'Top', 'Saved (0)', 'Viewed (0)'])
+    expect(within(screen.getByRole('group', { name: 'Which moments' })).getAllByRole('button').map(b => b.textContent)).toEqual(['Latest', 'Top', 'Games', 'Saved (0)', 'Viewed (0)'])
     // a stream's earlier moments stay closed until its "N earlier" is pressed (E1, 10-22)
     expect(document.querySelector('.mk-sub')).toBeNull()
     expect(document.querySelector('.mk-fresh')?.textContent).toBe('updated just now')
@@ -422,5 +422,65 @@ describe('checked Moments page', () => {
     expect(seg('Viewed').textContent).toBe('Viewed (0)')
     expect(rows()).toHaveLength(0)
     expect(window.localStorage.getItem('sp-moments-viewed')).toBeNull()
+  })
+
+  it('shows the games as big covers under Games; a cover shows that game’s moments under Latest (B2)', async () => {
+    feed.load.mockResolvedValue(snap(fixture.items, { categories: [
+      { id: '515025', name: 'Overwatch', boxArtUrl: 'https://static-cdn.jtvnw.net/ttv-boxart/515025-144x192.jpg', moments: 8, liveChannels: 41 },
+    ] }))
+    renderMoments()
+    await waitFor(() => expect(rows().length).toBeGreaterThan(0))
+    fireEvent.click(seg('Games'))
+    const grid = screen.getByRole('region', { name: 'Games' })
+    const names = () => within(grid).queryAllByRole('button').map(c => c.querySelector('.mk-gc-nm')?.textContent)
+    expect(names().slice(0, 3)).toEqual(['Overwatch', 'Minecraft', 'Grand Theft Auto V'])
+    const [ow, mc] = within(grid).getAllByRole('button')
+    expect(ow.getAttribute('aria-label')).toBe('Overwatch: 6 moments, 41 channels live now. Shows its moments.')
+    expect(ow.querySelector('.mk-gc-live')?.textContent).toBe('41 live')
+    expect(mc.querySelector('.mk-gc-live')).toBeNull()
+    expect(ow.querySelector('img')?.getAttribute('src')).toBe('https://static-cdn.jtvnw.net/ttv-boxart/515025-285x380.jpg')
+    // no list and no replay here
+    expect(document.querySelector('.mk-list')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Replay the last hour' })).toBeNull()
+    // the bar's search finds a game
+    const find = screen.getByRole('searchbox', { name: 'Find a game' })
+    fireEvent.change(find, { target: { value: 'mine' } })
+    expect(names()).toEqual(['Minecraft'])
+    fireEvent.change(find, { target: { value: 'zzz' } })
+    expect(within(grid).getByText('No game matches.')).toBeTruthy()
+    fireEvent.change(find, { target: { value: 'over' } })
+    fireEvent.click(within(grid).getByRole('button', { name: /^Overwatch:/ }))
+    // back on Latest with Overwatch's moments only, the game's chip in the bar and in the link
+    expect(seg('Latest').getAttribute('aria-pressed')).toBe('true')
+    const owIds = new Set(fixture.items.filter(item => item.category?.id === '515025' && item.verdict !== 'bad').map(item => item.id))
+    const owStreams = new Set(fixture.items.filter(item => owIds.has(item.id)).map(item => item.streamId))
+    expect(rows()).toHaveLength(owStreams.size)
+    expect(rows().every(r => owIds.has(r.dataset.key!))).toBe(true)
+    expect(document.querySelector('.mk-gchip')?.textContent).toBe('Overwatch')
+    expect(new URL(window.location.href).searchParams.get('game')).toBe('515025')
+    expect(screen.getByRole('searchbox', { name: 'Search channels, games or emotes' })).toBeTruthy()
+    // the chip's × shows every game again
+    fireEvent.click(screen.getByRole('button', { name: 'Show every game, not just Overwatch' }))
+    expect(document.querySelector('.mk-gchip')).toBeNull()
+    expect(new URL(window.location.href).searchParams.get('game')).toBeNull()
+    expect(rows()).toHaveLength(new Set(fixture.items.filter(item => item.verdict !== 'bad').map(item => item.streamId)).size)
+  })
+
+  it('opens on the game in the link, and says so when that game has nothing to show', async () => {
+    window.history.replaceState(null, '', '/analytics/moments?game=515025')
+    renderMoments()
+    await waitFor(() => expect(rows().length).toBeGreaterThan(0))
+    expect(document.querySelector('.mk-gchip')?.textContent).toBe('Overwatch')
+    cleanup()
+    // Counter-Strike's only moment doesn't hold up
+    window.history.replaceState(null, '', '/analytics/moments?game=32399')
+    renderMoments()
+    expect(await screen.findByText('No Counter-Strike moments in the last 12 hours.')).toBeTruthy()
+    cleanup()
+    // not a game id: every game
+    window.history.replaceState(null, '', '/analytics/moments?game=overwatch')
+    renderMoments()
+    await waitFor(() => expect(rows().length).toBeGreaterThan(0))
+    expect(document.querySelector('.mk-gchip')).toBeNull()
   })
 })

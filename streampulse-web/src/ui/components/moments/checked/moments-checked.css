@@ -76,6 +76,29 @@
 .mk-rp svg{width:14px;height:14px}
 .mk .mk-rp[aria-pressed="true"]{color:var(--mk-accent)}
 
+/* ---------- the picked game's chip, and the Games tab (B2, 10-22: Twitch's Browse → Categories, big covers) ---------- */
+.mk-gchip{display:inline-flex;align-items:center;gap:6px;max-width:240px;height:28px;padding:0 2px 0 4px;border-radius:7px;background:var(--mk-accent-bg);border:1px solid #2b5f58;color:var(--mk-text-1);font-size:12.5px;font-weight:500;white-space:nowrap}
+.mk-gchip img{width:15px;height:20px;border-radius:2px;object-fit:cover;flex:none}
+.mk-gchip>span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.mk .mk-gchip button{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:5px;color:var(--mk-text-2);flex:none}
+.mk .mk-gchip button:hover{background:rgb(94 234 212 / .12);color:var(--mk-text-1)}
+.mk-gchip svg{width:12px;height:12px}
+.mk-games{padding:6px 0 24px}
+.mk .mk-games-h{margin:0 0 14px;font:500 12px/16px var(--mk-font);color:var(--mk-text-3)}
+.mk .mk-games-g{list-style:none;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(138px,1fr));gap:22px 16px}
+.mk .mk-gc{display:flex;flex-direction:column;align-items:flex-start;width:100%;min-width:0;text-align:left;border-radius:8px}
+.mk-gc-art{display:grid;place-items:center;width:100%;aspect-ratio:3/4;border-radius:6px;overflow:hidden;background:var(--mk-raised);box-shadow:inset 0 0 0 1px var(--mk-line-strong);transition:transform var(--mk-dur-quick) var(--mk-ease)}
+.mk .mk-gc-art img{width:100%;height:100%;object-fit:cover}
+.mk-gc-art span{font:600 20px/1 var(--mk-font);color:var(--mk-text-3)}
+.mk-gc:hover .mk-gc-art{transform:translateY(-2px)}
+.mk-gc-nm{display:block;max-width:100%;margin-top:7px;font:600 14px/18px var(--mk-font);color:var(--mk-text-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mk-gc-ct{font:400 12.5px/17px var(--mk-font);color:var(--mk-text-3)}
+.mk-gc-live{display:inline-flex;align-items:center;gap:5px;height:20px;margin-top:6px;padding:0 8px;border-radius:999px;background:var(--mk-raised);border:1px solid var(--mk-line-strong);font:600 12px/1 var(--mk-font);color:var(--mk-text-2)}
+.mk-gc-live i{width:6px;height:6px;border-radius:50%;background:var(--mk-live)}
+.mk-gc[aria-pressed="true"] .mk-gc-art{box-shadow:0 0 0 2px var(--mk-canvas),0 0 0 4px var(--mk-accent)}
+.mk-gc[aria-pressed="true"] .mk-gc-nm{color:var(--mk-accent)}
+@media (prefers-reduced-motion:reduce){.mk-gc:hover .mk-gc-art{transform:none}}
+
 /* ---------- list + detail: from 900 px the open moment sits beside the list and stays in view ---------- */
 .mk-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:0 24px;align-items:start}
 @media (min-width:900px){
@@ -313,7 +336,11 @@
   .mk .mk-rp{order:3}
   .mk-rp span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
   .mk-srch{order:4;width:100%}
+  .mk-gchip{order:5}
   .mk-bar-sp{display:none}
+  /* Games: three covers a row */
+  .mk .mk-games-g{grid-template-columns:repeat(3,minmax(0,1fr));gap:16px 10px}
+  .mk-gc-nm{font-size:13px}
   /* phones: the time has room without wrapping; the viewers are in the open moment */
   .mk .mk-r{grid-template-columns:72px minmax(0,1fr) 74px;column-gap:10px;padding:8px 4px}
   .mk-r-l2 .mk-r-g,.mk-r-l2 .s-g{display:none}
