@@ -329,6 +329,9 @@ export function hasProviderSample(point: HubActivityPoint, key: HubProviderLaneK
 /** Mirrors hubActivityMaxPoints in streamclone internal/analytics/hub_overview.go */
 export const HUB_ACTIVITY_MAX_POINTS = 240
 
+/** Mirrors hubActivityWindowMinutes: the live-pool window, which ends at the open current minute. */
+const LIVE_POOL_WINDOW_MINUTES = 30
+
 /**
  * Expected bucket width in minutes for a hub activity window.
  * Matches hubActivityBucketMinutes on the backend.
@@ -683,11 +686,17 @@ export function summarizeActivity(
   // for one bucket; reporting those raw keys produced impossible values such as
   // `161/30 buckets` in the footer.
   const chartPoints = chartActivityPoints(points, safeWindow)
-  const pointCount = chartPoints.filter(isMeasuredActivityPoint).length
+  // The backend's 30-minute live-pool window ends at the still-open current
+  // minute (`trimHubActivityPointsToRecentWindow`). The chart never draws that
+  // minute, and its grid ends at the last closed one, so the grid's oldest slot
+  // lies before the window. Leave both out instead of reporting "1 missing".
+  const openTip = safeWindow <= LIVE_POOL_WINDOW_MINUTES
+  const windowPoints = openTip ? chartPoints.slice(1) : chartPoints
+  const pointCount = windowPoints.filter(isMeasuredActivityPoint).length
   const nonZeroCount = chartPoints.filter(activePoint).length
   const gapCount = internalGapCount(chartPoints, safeWindow)
   const bucket = bucketMinutes(windowMinutes)
-  const expectedBuckets = Math.min(HUB_ACTIVITY_MAX_POINTS, Math.ceil(safeWindow / bucket))
+  const expectedBuckets = Math.min(HUB_ACTIVITY_MAX_POINTS, Math.ceil(safeWindow / bucket)) - (openTip ? 1 : 0)
   const missingBuckets = Math.max(0, expectedBuckets - pointCount)
   const coveragePct = expectedBuckets > 0 ? (pointCount / expectedBuckets) * 100 : 0
   const windowLabel = formatActivityWindowLabel(windowMinutes)
