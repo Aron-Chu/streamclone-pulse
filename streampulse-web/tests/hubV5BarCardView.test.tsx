@@ -44,12 +44,12 @@ function bridge(over: Partial<HubChartBridge> = {}): HubChartBridge {
   }
 }
 
-function renderCard() {
+function renderCard(cardPoints = points, cardMoments = moments) {
   return render(
     <MemoryRouter>
       <div className="hub-v5">
         <input aria-label="Search a streamer" />
-        <HubV5BarCard points={points} bucketMinutes={6} moments={moments} />
+        <HubV5BarCard points={cardPoints} bucketMinutes={6} moments={cardMoments} />
       </div>
     </MemoryRouter>,
   )
@@ -146,5 +146,35 @@ describe('HubV5BarCard (R5-8 option A)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Next bar' }))
     expect(fetchSpy).not.toHaveBeenCalled()
     vi.unstubAllGlobals()
+  })
+})
+
+describe('HubV5BarCard images', () => {
+  const SAFE = 'https://cdn.7tv.app/emote/01HXYZ/1x.webp'
+  const PROFILE = 'https://static-cdn.jtvnw.net/jtv_user_pictures/abc-profile_image-300x300.png'
+  const REJECTED = ['javascript:alert(1)', 'data:image/svg+xml,<svg onload="alert(1)"/>', 'http://cdn.7tv.app/emote/01HXYZ/1x.webp', 'https://evil.example/emote.webp']
+
+  function renderImages(imageUrl: string) {
+    const withImages = points.map((p) => ({ ...p, topEmotes: [{ name: 'KEKW', provider: 'twitch', count: 30, imageUrl }] }))
+    const withEmote = moments.map((m) => ({ ...m, profileImageUrl: PROFILE, topEmotes: [{ name: 'KEKW', count: 44, sharePct: 10, imageUrl }] }))
+    setHubChartBridge(bridge())
+    renderCard(withImages, withEmote)
+    select(0)
+    return { emotes: card()!.querySelector('.hbk-el')!, row: card()!.querySelector('.hbk-mr')! }
+  }
+
+  it('binds an allowlisted emote URL unchanged and asks for the 70 px avatar', () => {
+    const { emotes, row } = renderImages(SAFE)
+    expect(emotes.querySelector('img')!.getAttribute('src')).toBe(SAFE)
+    expect(row.querySelector('.em img')!.getAttribute('src')).toBe(SAFE)
+    expect(row.querySelector('img.hv5-av')!.getAttribute('src')).toBe(PROFILE.replace('300x300', '70x70'))
+  })
+
+  it.each(REJECTED)('draws the placeholder and no emote picture for %s', (url) => {
+    const { emotes, row } = renderImages(url)
+    expect(emotes.querySelector('img')).toBeNull()
+    expect(emotes.querySelector('.hbk-noimg')!.textContent).toBe('KE')
+    expect(row.querySelector('.em img')).toBeNull()
+    expect(row.querySelector('.em')!.textContent).toContain('KEKW')
   })
 })
