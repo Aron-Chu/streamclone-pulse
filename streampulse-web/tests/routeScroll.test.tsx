@@ -3,8 +3,8 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { BrowserRouter, MemoryRouter, NavigationType, Outlet, Route, Router, Routes, useNavigate, type NavigateFunction, type Navigator } from 'react-router-dom'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AppRoutes } from '../src/routes/index'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { AppRoutes, preloadOpeningPage } from '../src/routes/index'
 import { RequireAuth } from '../src/routes/guards'
 import { RouteScrollManager, useHashScrollHold } from '../src/ui/RouteScrollManager'
 import { hashTargetId } from '../src/lib/routeScroll'
@@ -92,6 +92,9 @@ function renderApp(path: string) {
     </MemoryRouter>,
   )
 }
+
+// Public pages load on demand; load them first, as main.tsx does for the page a visit opens on.
+beforeAll(() => Promise.all(['/docs', '/privacy', '/terms', '/refunds', '/support', '/status', '/changelog'].map(preloadOpeningPage)))
 
 beforeEach(() => {
   frames = []

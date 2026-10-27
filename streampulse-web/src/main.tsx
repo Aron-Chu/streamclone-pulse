@@ -2,7 +2,7 @@ import { StrictMode, useEffect, useLayoutEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom'
-import { AppRoutes } from './routes/index'
+import { AppRoutes, preloadOpeningPage } from './routes/index'
 import {
   clearBetaKey,
   clearStaleLocalBackendOverride,
@@ -105,7 +105,11 @@ function applyDevBackendQueryOverride(): void {
 async function bootstrap() {
   applyDevBackendQueryOverride()
   clearStaleLocalBackendOverride()
+  // A public page's chunk downloads while the principal is read. A failed load
+  // is left to the route, which retries and shows its own error.
+  const openingPage = preloadOpeningPage(window.location.pathname).catch(() => undefined)
   if (!isPrivateSupporterRoute(window.location.pathname)) await refreshPrincipal()
+  await openingPage
   const style = document.createElement('style')
   style.textContent = shadowStyles
   document.head.appendChild(style)
