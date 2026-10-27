@@ -81,8 +81,8 @@ const routes = [
   },
   {
     path: '',
-    title: 'StreamPulse — Twitch reaction analytics',
-    description: 'StreamPulse finds Twitch moments through coverage-honest chat, emote, viewer, and VOD analytics.',
+    title: 'StreamPulse: Twitch Chat Stats & Top Moments',
+    description: 'Free Twitch chat and emote stats beside chat, Top Moments with pictures, and Stream Recap for past streams.',
     canonicalPath: '/',
     robots: 'index,follow',
   },
@@ -241,6 +241,22 @@ function renderShell(metadata) {
   html = /<link\s+rel="canonical"[^>]*>/i.test(html)
     ? html.replace(/<link\s+rel="canonical"[^>]*>/i, canonicalTag)
     : html.replace('</head>', `    ${canonicalTag}\n  </head>`)
+  if (metadata.path === '') {
+    const software = {
+      '@context': 'https://schema.org',
+      '@type': 'SoftwareApplication',
+      name: 'StreamPulse: Twitch Chat Stats & Top Moments',
+      applicationCategory: 'BrowserApplication',
+      operatingSystem: 'Chrome',
+      offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+      url: origin,
+      downloadUrl: 'https://chromewebstore.google.com/detail/streampulse/nifgoonpcgmdhiffcpmhndjgkgahnelg',
+      softwareVersion: '0.2.6',
+      description: metadata.description,
+    }
+    const jsonLd = `<script type="application/ld+json">${JSON.stringify(software)}</script>`
+    html = html.replace('</head>', `    ${jsonLd}\n  </head>`)
+  }
   const path = metadata.path == null ? '/404' : `/${metadata.path}`
   const markup = `<div id="root" data-prerendered>${prerenderPublicPage(path)}</div>`
   const boundary = /<!--public-root:start-->[\s\S]*?<!--public-root:end-->/

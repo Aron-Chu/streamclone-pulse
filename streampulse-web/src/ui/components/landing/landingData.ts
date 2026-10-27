@@ -215,7 +215,7 @@ const FALLBACK_EXT: ExtModel = {
   tiles: [
     { label: 'Viewers', value: '22.4K', sub: '+3.1%' },
     { label: 'Chat/min', value: '482', sub: 'live' },
-    { label: '7TV/min', value: '318', sub: '+24%' },
+    { label: 'Emotes/min', value: '318', sub: '+24%' },
   ],
   wavePath: buildWavePath([6, 8, 7, 11, 16, 13, 22, 28, 21, 17, 25, 31, 24, 18, 14, 19], 600, 96),
   reacted: [
@@ -270,7 +270,7 @@ export function buildExtModel(hub: PublicHub | null): ExtModel {
     tiles: [
       { label: 'Viewers', value: compact(top.viewers), sub: signedPct(top.trendPct) },
       { label: 'Chat/min', value: compact(top.chatPerMin), sub: 'live' },
-      { label: '7TV/min', value: compact(top.seventvPerMin), sub: 'live' },
+      { label: 'Emotes/min', value: compact(top.seventvPerMin), sub: 'live' },
     ],
     wavePath,
     reacted: reacted.length > 0 ? reacted : FALLBACK_EXT.reacted,

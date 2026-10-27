@@ -8,7 +8,7 @@ const root = dirname(fileURLToPath(import.meta.url))
 const dist = join(root, '..', 'dist')
 
 const expected = [
-  ['index.html', 'StreamPulse — Twitch reaction analytics', 'index,follow', 'https://streampulse.stream/'],
+  ['index.html', 'StreamPulse: Twitch Chat Stats & Top Moments', 'index,follow', 'https://streampulse.stream/'],
   ['analytics/index.html', 'StreamPulse Analytics', 'index,follow', 'https://streampulse.stream/analytics'],
   ['docs/index.html', 'Documentation — StreamPulse', 'index,follow', 'https://streampulse.stream/docs'],
   ['status/index.html', 'Service Status — StreamPulse', 'index,follow', 'https://streampulse.stream/status'],
@@ -31,7 +31,7 @@ function metaContent(html, attribute, key) {
   // Keys are fixed literals of letters, '_' and ':', so they need no regex escaping.
   const tags = html.match(new RegExp(`<meta\\s+${attribute}="${key}"[^>]*>`, 'gi')) ?? []
   if (tags.length !== 1) return tags.length === 0 ? undefined : null
-  return /content="([^"]*)"/.exec(tags[0])?.[1]
+  return /content="([^"]*)"/.exec(tags[0])?.[1]?.replaceAll('&amp;', '&')
 }
 
 /** Link previews: every page names the shared 1200x630 card and its own title/description. */

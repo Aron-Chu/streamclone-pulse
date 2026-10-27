@@ -15,6 +15,14 @@ export const CHROME_WEB_STORE_EXTENSION_ID = 'nifgoonpcgmdhiffcpmhndjgkgahnelg' 
 export const CHROME_WEB_STORE_LISTING_URL =
   `https://chromewebstore.google.com/detail/streampulse/${CHROME_WEB_STORE_EXTENSION_ID}` as const
 
+export function chromeWebStoreUrlForPage(page: string): string {
+  const medium = page.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'site'
+  const url = new URL(CHROME_WEB_STORE_LISTING_URL)
+  url.searchParams.set('utm_source', 'streampulse.stream')
+  url.searchParams.set('utm_medium', medium)
+  return url.toString()
+}
+
 export const PUBLIC_SITE = {
   hostedApiUrl: STREAM_PULSE_HOSTED_API_URL,
   analyticsUrl: STREAM_PULSE_ANALYTICS_URL,
