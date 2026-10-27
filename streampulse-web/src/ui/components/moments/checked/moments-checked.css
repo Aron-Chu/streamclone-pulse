@@ -1,0 +1,419 @@
+/* The checked Moments page (design: moments-r2, 2026-10-16, artifacts/analytics-redesign-2026-10-11/design-demos/moments-r2;
+   laid out as moments-r4 B2, 2026-10-21: a picture per row, the open moment in a sticky column beside the list from 900 px).
+   Ported from m2.css and the d3-v5 shared.css controls it sits on. Every class carries the mk- prefix and every token is local
+   (--mk-*), so the portal's global .btn and the hub's .bar/.ring/.sw rules never reach in. No text under 12 px, no in-page
+   scrollbars, colour only in data (chat purple, emotes amber, the moment teal). */
+
+.mk{
+  --mk-canvas:#09090b;--mk-panel:#101012;--mk-raised:#151517;--mk-line:#1d1d1f;--mk-line-strong:#272728;
+  --mk-text-1:#ededef;--mk-text-2:#b4b4bb;--mk-text-3:#8e8e96;
+  --mk-accent:#5eead4;--mk-focus:#99f6e4;--mk-accent-bg:#12201f;
+  --mk-viewers:#c0c7ce;--mk-chat:#a78bfa;--mk-chat-bar:rgb(167 139 250 / .40);--mk-emotes:#f7b645;--mk-live:#ef4444;
+  --mk-ok:var(--mk-accent);--mk-warn:#e0a63a;--mk-bad:var(--mk-text-3);
+  --mk-font:var(--fma-font, Inter, system-ui, sans-serif);
+  --mk-r:8px;--mk-dur-quick:120ms;--mk-ease:cubic-bezier(.16,1,.3,1);--mk-gutter:12px;
+  /* the portal header's clearance (at least the mockup's 64 px); the page sets it from the header's height */
+  --mk-top:64px;
+  box-sizing:border-box;width:100%;max-width:1320px;min-height:100vh;margin:0 auto;padding:0 var(--mk-gutter) 64px;
+  background:var(--mk-canvas);color:var(--mk-text-1);font:400 13px/1.4 var(--mk-font);
+  font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;-webkit-font-smoothing:antialiased;font-synthesis:none;color-scheme:dark;
+}
+@media (prefers-reduced-motion:reduce){.mk{--mk-dur-quick:0ms}}
+/* the analytics frame pads 12 px a side up to 1479 px and 20 px from 1480 px; with it the page keeps the mockup's 24 px gutter
+   (16 px on phones). B2 caps the column at 1320 px, so the list's rows don't stretch past the picture, words and minutes */
+@media (max-width:719px){.mk{--mk-gutter:4px}}
+@media (min-width:720px){.mk{--mk-gutter:12px}}
+@media (min-width:1480px){.mk{--mk-gutter:4px}}
+.mk:focus{outline:none}
+.mk *,.mk *::before,.mk *::after{box-sizing:border-box}
+.mk img{display:block}
+.mk a{color:var(--mk-accent);text-decoration:none}
+.mk a:hover{text-decoration:underline;text-underline-offset:3px}
+.mk button,.mk input,.mk select{font:inherit;color:inherit;letter-spacing:inherit}
+.mk button{background:none;border:0;padding:0;margin:0;cursor:pointer;min-height:0;border-radius:0}
+.mk h1,.mk h2,.mk h3,.mk h4,.mk p,.mk ul,.mk ol{margin:0}
+.mk :focus-visible{outline:2px solid var(--mk-focus);outline-offset:2px;border-radius:4px}
+.mk-vh{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ---------- controls (d3-v5 shared.css) ---------- */
+.mk-btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:var(--mk-r);border:1px solid var(--mk-line-strong)!important;color:var(--mk-text-1);font-weight:500;white-space:nowrap}
+.mk-btn:hover{background:var(--mk-raised);text-decoration:none}
+.mk a.mk-btn{color:var(--mk-text-1)}
+.mk-ib{display:inline-grid;place-items:center;width:32px;height:32px;border-radius:var(--mk-r)!important;color:var(--mk-text-2);flex:none}
+.mk-ib:hover{background:var(--mk-raised);color:var(--mk-text-1)}
+.mk-ib:disabled{opacity:.4;cursor:default;background:none}
+.mk-seg{display:inline-flex;align-items:center;gap:2px;padding:2px;border-radius:var(--mk-r);border:1px solid var(--mk-line-strong);flex:none}
+.mk-seg button{position:relative;height:26px;padding:0 10px;border-radius:6px;color:var(--mk-text-2);font-weight:500;white-space:nowrap}
+.mk-seg button::after{content:"";position:absolute;left:0;right:0;top:-9px;bottom:-9px}
+.mk-seg button:hover{color:var(--mk-text-1)}
+.mk-seg button[aria-pressed="true"]{color:var(--mk-text-1);background:var(--mk-raised);box-shadow:inset 0 0 0 1px var(--mk-accent)}
+.mk-sw{display:inline-block;width:8px;height:8px;border-radius:2px;flex:none}
+.mk-sw.chat{background:var(--mk-chat)}.mk-sw.emotes{background:var(--mk-emotes)}.mk-sw.viewers{background:var(--mk-viewers)}
+
+/* ---------- head: the title, then one line under it (T1, 10-21) ---------- */
+.mk-head{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:28px 0 12px}
+.mk-head h1{font:600 26px/32px var(--mk-font);letter-spacing:-.015em}
+.mk-lede{color:var(--mk-text-2);max-width:84ch}
+
+/* ---------- toolbar (M1, 10-22): Latest | Top | Saved, Replay as a small link, then how fresh the list is and the search ---------- */
+.mk-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:0 0 12px}
+.mk-bar .mk-seg button{display:inline-flex;align-items:center}
+.mk-srch{display:flex;align-items:center;gap:8px;height:32px;width:260px;padding:0 10px;border:1px solid var(--mk-line-strong);border-radius:var(--mk-r);color:var(--mk-text-3)}
+.mk-srch:focus-within{border-color:var(--mk-accent)}
+.mk-srch svg{width:14px;height:14px;flex:none}
+.mk .mk-srch input{flex:1;min-width:0;height:100%;padding:0;border:0;background:none;outline:none;color:var(--mk-text-1)}
+.mk-srch input::placeholder{color:var(--mk-text-3)}
+.mk-bar-sp{flex:1}
+.mk-fresh{display:flex;align-items:center;gap:8px;min-height:16px;font:500 12px/16px var(--mk-font);color:var(--mk-text-3);font-variant-numeric:tabular-nums;white-space:nowrap}
+.mk-fresh b{font-weight:600;color:var(--mk-text-2)}
+.mk-dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--mk-live)}
+.mk-fresh.stale .mk-dot{background:var(--mk-text-3)}
+.mk-fresh.replaying .mk-rpl{color:var(--mk-accent)}
+.mk-fresh.replaying .mk-dot{background:var(--mk-accent)}
+.mk-sep{margin:0 2px;color:var(--mk-line-strong)}
+.mk .mk-rp{display:inline-flex;align-items:center;gap:5px;height:32px;padding:0 6px;border-radius:var(--mk-r);color:var(--mk-accent);font-weight:500}
+.mk .mk-rp:hover span{text-decoration:underline;text-underline-offset:3px}
+.mk .mk-rp:disabled{opacity:.5;cursor:default}
+.mk-rp svg{width:13px;height:13px}
+
+/* ---------- the games on top (M1, 10-22): B2's covers in one row, "All games" first; it scrolls sideways, scrollbar hidden ---------- */
+.mk .mk-covers{--fade:40px;list-style:none;display:flex;gap:14px;margin:0 0 4px;padding:4px 4px 10px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none}
+.mk-covers::-webkit-scrollbar{display:none}
+.mk-covers.more-r{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - var(--fade)),transparent);mask-image:linear-gradient(to right,#000 calc(100% - var(--fade)),transparent)}
+.mk-covers.more-l{-webkit-mask-image:linear-gradient(to right,transparent,#000 var(--fade));mask-image:linear-gradient(to right,transparent,#000 var(--fade))}
+.mk-covers.more-l.more-r{-webkit-mask-image:linear-gradient(to right,transparent,#000 var(--fade),#000 calc(100% - var(--fade)),transparent);mask-image:linear-gradient(to right,transparent,#000 var(--fade),#000 calc(100% - var(--fade)),transparent)}
+.mk-covers>li{flex:none;width:112px}
+.mk .mk-gc{display:flex;flex-direction:column;align-items:flex-start;width:100%;min-width:0;text-align:left;border-radius:8px}
+.mk-gc-art{display:grid;place-items:center;width:100%;aspect-ratio:3/4;border-radius:6px;overflow:hidden;background:var(--mk-raised);box-shadow:inset 0 0 0 1px var(--mk-line-strong);transition:transform var(--mk-dur-quick) var(--mk-ease)}
+.mk .mk-gc-art img{width:100%;height:100%;object-fit:cover}
+.mk-gc-art span{font:600 20px/1 var(--mk-font);color:var(--mk-text-3)}
+.mk-gc-all .mk-gc-art{background:linear-gradient(160deg,#1b2b29,#121214)}
+.mk .mk-gc-all .mk-gc-art span{padding:0 8px;font:700 15px/1.2 var(--mk-font);color:var(--mk-text-1);text-align:center}
+.mk-gc-wait{display:block;width:100%;aspect-ratio:3/4;border-radius:6px;background:linear-gradient(160deg,var(--mk-raised),var(--mk-panel))}
+.mk-gc:hover .mk-gc-art{transform:translateY(-2px)}
+.mk-gc-nm{display:block;max-width:100%;margin-top:7px;font:600 13px/18px var(--mk-font);color:var(--mk-text-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mk-gc-ct{font:400 12px/16px var(--mk-font);color:var(--mk-text-3)}
+.mk-gc-live{display:inline-flex;align-items:center;gap:5px;height:20px;margin-top:5px;padding:0 8px;border-radius:999px;background:var(--mk-raised);border:1px solid var(--mk-line-strong);font:600 12px/1 var(--mk-font);color:var(--mk-text-2)}
+.mk-gc-live i{width:6px;height:6px;border-radius:50%;background:var(--mk-live)}
+.mk-gc[aria-pressed="true"] .mk-gc-art{box-shadow:0 0 0 2px var(--mk-canvas),0 0 0 4px var(--mk-accent)}
+.mk-gc[aria-pressed="true"] .mk-gc-nm{color:var(--mk-accent)}
+@media (prefers-reduced-motion:reduce){.mk-gc:hover .mk-gc-art{transform:none}}
+
+/* ---------- list + detail: from 900 px the open moment sits beside the list and stays in view ---------- */
+.mk-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:0 24px;align-items:start}
+@media (min-width:900px){
+  .mk-grid{grid-template-columns:minmax(0,1fr) minmax(340px,430px)}
+  .mk-det{position:sticky;top:calc(var(--mk-top) + 8px);max-height:calc(100vh - var(--mk-top) - 24px);overflow:hidden auto;scrollbar-width:none;
+    padding:14px;border:1px solid var(--mk-line);border-radius:10px;background:var(--mk-panel)}
+  .mk-det::-webkit-scrollbar{display:none}
+  .mk-det .mk-d{padding-bottom:0}
+}
+.mk-listwrap{position:relative}
+.mk-list{list-style:none;margin:0;padding:0}
+.mk .mk-pill{position:sticky;z-index:3;top:calc(var(--mk-top) + 12px);display:block;width:max-content;margin:0 auto -28px;height:28px;padding:0 12px;border-radius:14px;background:var(--mk-accent);color:var(--mk-canvas);font:600 12px/28px var(--mk-font);box-shadow:0 2px 10px rgb(0 0 0 / .45)}
+.mk-pill[hidden]{display:none}
+.mk-pill:focus-visible{outline:2px solid var(--mk-focus);outline-offset:2px}
+.mk-empty{padding:24px 8px;color:var(--mk-text-3)}
+.mk .mk-empty button{color:var(--mk-text-2);text-decoration:underline;text-underline-offset:3px}
+.mk-gone{padding:12px 8px;color:var(--mk-text-2)}
+/* a row Tab reaches under the sticky header scrolls clear of it */
+.mk .mk-r{scroll-margin-top:calc(var(--mk-top) + 8px)}
+
+/* one row (M1, 10-22: three things): picture · who + what chat sent / × + game · when */
+.mk-g{position:relative;border-bottom:1px solid var(--mk-line)}
+.mk .mk-r{position:relative;display:grid;grid-template-columns:96px minmax(0,1fr) auto;column-gap:14px;align-items:center;width:100%;min-height:70px;padding:8px 10px;border-radius:8px;color:var(--mk-text-1);text-align:left;transition:background var(--mk-dur-quick)}
+.mk .mk-r:hover{background:var(--mk-panel)}
+.mk-r:hover .mk-r-nm{text-decoration:underline;text-underline-offset:3px}
+/* the row's own button lies over the whole row, so a click anywhere opens it */
+.mk .mk-r{cursor:pointer}
+.mk .mk-r-gone{cursor:default}
+.mk .mk-r-hit{position:absolute;inset:0;border-radius:8px}
+.mk .mk-r-hit:focus-visible{outline:2px solid var(--mk-focus);outline-offset:-2px;border-radius:8px}
+.mk .mk-r[aria-current="true"]{background:var(--mk-raised)}
+.mk .mk-r[aria-current="true"]::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:2px;border-radius:2px;background:var(--mk-accent)}
+/* the picture: the live frame, or the game's art blurred under the channel's avatar */
+.mk-r-th{position:relative;display:block;width:96px;aspect-ratio:16/9;border-radius:6px;overflow:hidden;background:var(--mk-panel);box-shadow:inset 0 0 0 1px var(--mk-line)}
+.mk-r-th-f{width:100%;height:100%;object-fit:cover}
+.mk-r-th-bx{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:blur(8px) brightness(.45) saturate(1.2);transform:scale(1.3)}
+.mk-r-th-av,.mk-r-th .mk-ini{position:absolute;left:50%;top:50%;width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;object-fit:cover;box-shadow:0 0 0 2px var(--mk-canvas)}
+.mk-r-th .mk-ini{display:grid;place-items:center;background:var(--mk-raised);font:600 12px/1 var(--mk-font);color:var(--mk-text-2)}
+.mk-r-tx{display:flex;flex-direction:column;gap:2px;min-width:0}
+.mk-r-l1{display:flex;align-items:center;gap:6px;min-width:0;font:600 13px/20px var(--mk-font)}
+.mk-r-nm{flex:none;max-width:45%;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mk-r-act{flex:none;font-weight:500;color:var(--mk-text-2);white-space:nowrap}
+.mk-r-em{display:inline-flex;align-items:center;gap:4px;min-width:0;font-weight:600;color:var(--mk-text-1)}
+.mk-r-em img{flex:none;width:20px;height:20px;object-fit:contain}
+.mk-r-em span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mk-r-ems{display:inline-flex;align-items:center;gap:2px;flex:none}
+.mk-r-ems img{width:18px;height:18px;object-fit:contain}
+.mk-r-l2{display:flex;align-items:center;gap:6px;min-width:0;font:500 12px/16px var(--mk-font);color:var(--mk-text-3);white-space:nowrap}
+.mk-r-l2>*{flex:none}
+.mk-r-l2 time{font-variant-numeric:tabular-nums}
+.mk-r-l2 .mk-r-g{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* "8.7× more emotes" (M1, 10-22) */
+.mk-r-x{color:var(--mk-text-2);font-variant-numeric:tabular-nums}
+.mk-r-x b{font-weight:600;color:var(--mk-accent)}
+.mk-r-why{color:var(--mk-warn)}
+[data-vd="bad"] .mk-r-why{color:var(--mk-text-2)}
+/* the right column: when; under Viewed, when you opened it */
+.mk-r-v{display:flex;flex-direction:column;align-items:flex-end;text-align:right}
+.mk-r-v time{font:500 12px/16px var(--mk-font);color:var(--mk-text-3);font-variant-numeric:tabular-nums;white-space:nowrap}
+[data-vd="bad"]>.mk-r .mk-r-nm,[data-vd="bad"]>.mk-r .mk-r-l1{color:var(--mk-text-2)}
+/* a save the feed can't find (Unavailable saves C, 10-22): a striped empty picture, no minutes, a link where it can still be seen */
+.mk .mk-r-gone:hover{background:none}
+.mk-r-gone:hover .mk-r-nm{text-decoration:none}
+.mk-r-gone .mk-r-th{background:repeating-linear-gradient(135deg,#1c1c25 0 6px,#22222d 6px 12px)}
+.mk-r-gone .mk-r-l2{flex-wrap:wrap;white-space:normal;row-gap:0}
+.mk-r-gone .mk-r-l2 a{color:var(--mk-text-2);text-decoration:underline;text-underline-offset:3px}
+.mk-r-gone .mk-r-l2 a:hover{color:var(--mk-text-1)}
+
+/* the verdict mark: a check, a half disc, a cross. The words are in the row's label and the detail */
+.mk-vd{display:inline-grid;place-items:center;flex:none;width:14px;height:14px}
+.mk-vd svg{width:14px;height:14px}
+.mk-vd-ok{color:var(--mk-ok)}.mk-vd-warn{color:var(--mk-warn)}.mk-vd-bad{color:var(--mk-bad)}
+
+/* rows a poll brings slide in */
+.mk-g.new>.mk-r{animation:mk-in .5s var(--mk-ease)}
+@keyframes mk-in{from{opacity:0;transform:translateY(-8px);background:var(--mk-accent-bg)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.mk-g.new>.mk-r{animation:none}}
+
+/* ---------- detail ---------- */
+.mk-det{min-width:0}
+.mk-det:empty{display:none}
+.mk-d{padding:0 0 24px}
+.mk-d-media{position:relative;aspect-ratio:16/9;border-radius:var(--mk-r);overflow:hidden;background:var(--mk-panel);box-shadow:inset 0 0 0 1px var(--mk-line);scroll-margin-top:calc(var(--mk-top) + 8px)}
+.mk-d-media>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.mk-d-media::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgb(9 9 11 / 0) 45%,rgb(9 9 11 / .85) 100%);pointer-events:none}
+.mk-d-media.on::after{display:none}
+.mk-d-media iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+/* Live now / Offline on the picture; the name is under it (C1, 10-22) */
+.mk-d-lv{position:absolute;z-index:1;left:12px;bottom:12px;display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:999px;background:rgb(9 9 11 / .62);color:#fff;font:600 12px/16px var(--mk-font)}
+.mk-d-lv i{width:8px;height:8px;border-radius:50%;background:var(--mk-live)}
+.mk .mk-d-play{position:absolute;z-index:1;left:50%;top:44%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:8px;height:40px;padding:0 16px 0 12px;border-radius:20px;background:rgb(9 9 11 / .72);color:var(--mk-text-1);font-weight:600;white-space:nowrap;box-shadow:0 0 0 1px rgb(255 255 255 / .14);backdrop-filter:blur(4px)}
+.mk .mk-d-play:hover{background:rgb(9 9 11 / .9);text-decoration:none}
+.mk-d-play svg{width:14px;height:14px;color:var(--mk-accent)}
+.mk-d-noframe{position:absolute;inset:0;display:grid;place-items:center;color:var(--mk-text-3)}
+/* no live frame (the stream ended, or Twitch has no preview): the game's art, blurred, under the channel's name */
+.mk-d-media>img.mk-d-bx{filter:blur(18px) brightness(.45) saturate(1.2);transform:scale(1.25)}
+
+.mk-d-head{padding:14px 0 4px}
+.mk-d-l1{display:flex;align-items:center;flex-wrap:wrap;gap:4px 7px;min-width:0;font:600 18px/26px var(--mk-font);letter-spacing:-.01em}
+.mk-d-l1 .mk-r-act{font-size:15px}
+.mk-d-l1 .mk-r-em img{width:26px;height:26px}
+.mk-d-l1 .mk-r-ems img{width:24px;height:24px}
+.mk-d-meta{display:flex;flex-direction:column;gap:1px;margin-top:2px!important;color:var(--mk-text-2);font-variant-numeric:tabular-nums}
+.mk-d-m2{color:var(--mk-text-3)}
+.mk-d-meta .mk-d-st-c{font-weight:600;color:var(--mk-text-1)}
+.mk-d-mx b{font-weight:600;color:var(--mk-text-1)}
+.mk-d-mx .mk-d-xk{font-weight:500;color:var(--mk-text-1)}
+/* the stream's page, and the game's moments (C1, 10-22) */
+.mk .mk-d-nm{color:inherit;text-decoration:underline dashed var(--mk-text-3) 1px;text-underline-offset:5px}
+.mk .mk-d-nm:hover{text-decoration:underline solid var(--mk-text-2) 1px;text-underline-offset:5px}
+.mk-d-gm{display:inline-flex;align-items:center;gap:4px;max-width:100%;vertical-align:bottom;color:var(--mk-text-2)}
+.mk-d-gm img{width:12px;height:16px;flex:none;border-radius:2px;object-fit:cover}
+.mk button.mk-d-gm{text-decoration:underline dashed var(--mk-text-3) 1px;text-underline-offset:4px}
+.mk button.mk-d-gm:hover{color:var(--mk-text-1);text-decoration-style:solid}
+.mk .mk-d-why{display:inline-grid;place-items:center;width:22px;height:22px;margin:-3px 0 -3px 3px;border-radius:50%;color:var(--mk-text-3);vertical-align:middle}
+.mk .mk-d-why:hover,.mk .mk-d-why[aria-expanded="true"]{color:var(--mk-text-1);background:var(--mk-raised)}
+.mk-d-why>svg{width:14px;height:14px}
+.mk-d[data-vd="ok"] .mk-d-mx b{color:var(--mk-accent)}
+
+/* the verdict chip; its (i) opens why it counts, over what is below */
+.mk-hold-w{position:relative}
+.mk-hold-w>.mk-hold{margin-top:10px}
+.mk .mk-hold{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 6px 0 8px;border-radius:999px!important;border:1px solid var(--mk-line-strong);font:500 12px/16px var(--mk-font);color:var(--mk-text-2)}
+.mk .mk-hold:hover{background:var(--mk-raised)}
+.mk .mk-hold[data-vd="ok"]{border-color:rgb(94 234 212 / .32);background:rgb(94 234 212 / .06);color:var(--mk-ok)}
+.mk .mk-hold[data-vd="warn"]{border-color:rgb(224 166 58 / .35);color:var(--mk-warn)}
+.mk-hold>svg{width:14px;height:14px;opacity:.8}
+.mk-hold[aria-expanded="true"]>svg{opacity:1}
+.mk-pop{position:absolute;z-index:5;left:0;top:calc(100% + 6px);width:min(360px,100%);padding:10px 12px;border:1px solid var(--mk-line-strong);border-radius:8px;background:var(--mk-raised);box-shadow:0 10px 30px rgb(0 0 0 / .5);animation:mk-d-in .16s var(--mk-ease) both}
+.mk-pop[hidden]{display:none}
+.mk-pop h3{margin-bottom:6px!important;font:600 13px/20px var(--mk-font)}
+.mk-pop .mk-d-ck{gap:6px}
+.mk-pop .mk-d-ck li{font-size:12px;line-height:18px}
+.mk-pop .mk-d-ck li .mk-vd,.mk-pop .mk-nt{margin-top:2px}
+
+/* the chart: the minutes around it, the 15 compared shaded, their average dashed, the moment teal */
+.mk-ch{margin:16px 0 0}
+.mk-ch-top{display:flex;align-items:center;gap:12px;min-height:32px}
+.mk-ch-top h3{font:600 13px/20px var(--mk-font)}
+.mk-ch-top .mk-seg{margin-left:auto}
+.mk-ch-box{min-height:200px}
+.mk-ch svg{display:block;width:100%;height:200px;overflow:visible}
+.mk-ch .mk-cb{fill:var(--mk-chat-bar)}
+.mk-ch[data-k="emotes"] .mk-cb{fill:rgb(247 182 69 / .38)}
+.mk-ch .mk-cb.in{fill:var(--mk-chat);opacity:.55}
+.mk-ch[data-k="emotes"] .mk-cb.in{fill:var(--mk-emotes)}
+.mk-ch .mk-cb.mo{fill:var(--mk-accent);opacity:1}
+.mk-ch .mk-cb.hv{opacity:1}
+.mk-ch .mk-band{fill:rgb(255 255 255 / .035)}
+.mk-ch .mk-base{stroke:var(--mk-text-2);stroke-width:1.25;stroke-dasharray:4 3}
+.mk-ch .mk-gl{stroke:var(--mk-line)}
+.mk-ch .mk-tk{fill:var(--mk-text-3);font:500 12px var(--mk-font)}
+.mk-ch .mk-an{fill:var(--mk-text-1);font:600 12px var(--mk-font)}
+.mk-ch .mk-an,.mk-ch .mk-an2{paint-order:stroke;stroke:var(--mk-canvas);stroke-width:4px;stroke-linejoin:round}
+.mk-ch .mk-an2{fill:var(--mk-text-3);font:500 12px var(--mk-font)}
+/* "average N" sits on the bars it averages: a wider dark outline keeps it readable (T1) */
+.mk-ch .mk-an2.mk-avg{fill:var(--mk-text-2);stroke-width:5px}
+.mk-ch .mk-an-m{fill:var(--mk-accent)}
+.mk-ch .mk-cur{stroke:var(--mk-text-3);stroke-width:1}
+/* two lines (T1): when and where, then the minute's counts; it wraps rather than cutting off, and keeps two lines' height so it doesn't jump */
+.mk-d-read{min-height:32px;margin-top:6px!important;font:500 12px/16px var(--mk-font);color:var(--mk-text-2);font-variant-numeric:tabular-nums;animation:mk-roll .3s var(--mk-ease) both}
+.mk-d-r2{display:block;color:var(--mk-text-3)}
+@keyframes mk-roll{from{opacity:0;transform:translateY(5px)}}
+.mk-d-read b{color:var(--mk-text-1);font-weight:600}
+
+.mk-d-sec{margin-top:18px}
+.mk-d-sec h3{font:600 13px/20px var(--mk-font);margin-bottom:6px}
+.mk-d-ck{list-style:none;padding:0;display:grid;gap:8px}
+.mk-d-ck li{display:grid;grid-template-columns:16px minmax(0,1fr);gap:10px;color:var(--mk-text-2);line-height:20px}
+.mk-d-ck li .mk-vd{margin-top:3px}
+.mk-nt{display:inline-grid;place-items:center;width:14px;height:14px;margin-top:3px;color:var(--mk-text-3)}
+.mk-nt svg{width:14px;height:14px}
+
+.mk-d-em{display:grid;gap:6px}
+.mk-d-em-r{display:grid;grid-template-columns:24px minmax(0,140px) minmax(0,1fr) 44px;gap:10px;align-items:center}
+.mk-d-em-r img{width:24px;height:24px;object-fit:contain}
+.mk-d-em-r b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mk-d-em-r .mk-bt{height:6px;border-radius:3px;background:var(--mk-line);overflow:hidden}
+.mk-d-em-r .mk-bt i{display:block;height:100%;border-radius:3px;background:var(--mk-emotes);opacity:.85}
+.mk-d-em-r .mk-n{text-align:right;color:var(--mk-text-2);font-variant-numeric:tabular-nums}
+.mk-d-em-f{margin-top:4px!important;font:500 12px/16px var(--mk-font);color:var(--mk-text-3)}
+
+/* the stream's other moments (M1, 10-22: the list's "N earlier" moved here) */
+.mk-d-more{list-style:none;padding:0;display:grid;gap:2px}
+.mk .mk-d-more button{display:flex;align-items:center;gap:8px;width:calc(100% + 16px);min-height:32px;padding:4px 8px;margin:0 -8px;border-radius:6px;text-align:left;white-space:nowrap;overflow:hidden}
+.mk .mk-d-more button:hover{background:var(--mk-raised)}
+.mk-d-more time{flex:none;min-width:58px;font:500 12px/16px var(--mk-font);color:var(--mk-text-3);font-variant-numeric:tabular-nums}
+.mk-d-more .mk-r-x{margin-left:auto;font-size:12px}
+.mk .mk-d-more-all{margin-top:6px;padding:4px 0;color:var(--mk-accent);font:500 13px/18px var(--mk-font)}
+.mk .mk-d-more-all:hover{text-decoration:underline;text-underline-offset:3px}
+
+/* under the verdict, above the minutes (A1, 10-22) */
+.mk .mk-d-acts{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 6px}
+.mk-d-acts .mk-btn{height:36px}
+.mk .mk-d-acts .mk-btn.pri{background:var(--mk-accent);border-color:var(--mk-accent)!important;color:var(--mk-canvas);font-weight:600}
+.mk .mk-d-acts .mk-btn.pri:hover{text-decoration:none;filter:brightness(1.08);background:var(--mk-accent)}
+.mk-d-acts .mk-btn:hover{text-decoration:none;background:var(--mk-raised)}
+.mk-d-acts .mk-btn svg{width:14px;height:14px}
+.mk-d-acts .mk-btn.pri svg{margin-right:-2px}
+.mk-d-acts .mk-btn[aria-pressed="true"]{color:var(--mk-accent);border-color:var(--mk-accent)!important}
+.mk-d-x{display:none!important}
+
+/* Top (T1, 10-22): one line over the list says its order */
+.mk .mk-cap{margin:4px 0 8px;padding:0 10px;font:500 12px/16px var(--mk-font);color:var(--mk-text-3)}
+
+/* Saved's two halves (M1, 10-22): Saved | Viewed over the list; Viewed (V1) adds one line and Clear */
+.mk-sv{display:flex;align-items:center;flex-wrap:wrap;gap:6px 14px;margin:2px 0 8px;padding:0 10px}
+.mk-sv .mk-seg button{height:24px;font-size:12.5px}
+.mk-vw-note{display:flex;align-items:center;gap:10px;flex:1;min-width:0;margin:0!important;font:500 12px/16px var(--mk-font);color:var(--mk-text-3)}
+.mk .mk-vw-note button{margin-left:auto;color:var(--mk-text-2);text-decoration:underline;text-underline-offset:3px}
+.mk .mk-vw-note button:hover{color:var(--mk-text-1)}
+
+/* narrow: the detail opens under its row, in the list */
+.mk-slot{list-style:none;padding:8px 0 16px;border-bottom:1px solid var(--mk-line)}
+@media (max-width:899px){
+  .mk .mk-d-x{display:inline-grid!important;position:absolute;z-index:2;top:8px;right:8px;width:32px;height:32px;place-items:center;border-radius:50%;background:rgb(9 9 11 / .7);color:var(--mk-text-1)}
+  .mk-d-x svg{width:14px;height:14px}
+  .mk-d{position:relative}
+}
+
+/* ---------- phone ---------- */
+@media (max-width:719px){
+  .mk-head{padding-top:20px}
+  .mk-head h1{font-size:22px;line-height:28px}
+  .mk-bar{gap:8px}
+  .mk-bar .mk-seg{order:1}
+  .mk .mk-rp{order:2}
+  .mk-rp span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  .mk-fresh{order:3;margin-left:auto}
+  .mk-srch{order:4;width:100%}
+  .mk-bar-sp{display:none}
+  /* smaller covers, about four on screen */
+  .mk .mk-covers{gap:10px;margin:0 -4px 2px}
+  .mk-covers>li{width:84px}
+  .mk-gc-nm{font-size:12.5px;margin-top:5px}
+  .mk .mk-gc-all .mk-gc-art span{font-size:13px}
+  /* phones: the game and the long time give way; the time is "13m" */
+  .mk .mk-r{grid-template-columns:72px minmax(0,1fr) auto;column-gap:10px;padding:8px 4px}
+  .mk-r-l2 .mk-r-g,.mk-r-l2 .s-g{display:none}
+  .mk-r-v time.mk-r-op{white-space:normal;max-width:74px}
+  .mk-r-l2 .mk-r-x{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  .mk-r-th{width:72px}
+  .mk-r-th-av,.mk-r-th .mk-ini{width:24px;height:24px;margin:-12px 0 0 -12px}
+  .mk-r-nm{max-width:52%}
+  /* a phone row has about 225 px for its words: the emote takes the next line rather than shrinking to nothing */
+  .mk-r-l1{flex-wrap:wrap;row-gap:0}
+  .mk-d-l1{font-size:17px;line-height:24px;flex-wrap:wrap}
+  .mk-ch-box{min-height:170px}
+  .mk-ch svg{height:170px}
+  .mk-d-em-r{grid-template-columns:24px minmax(0,110px) minmax(0,1fr) 40px}
+}
+
+/* ---------- motion: short and quiet; .no-motion (reduced motion) turns all of it off ---------- */
+.mk-d{animation:mk-d-in .2s var(--mk-ease) both}
+@keyframes mk-d-in{from{opacity:0;transform:translateY(4px)}}
+.mk-ch svg.anim-grow :is(.mk-an,.mk-an2,.mk-base){animation:mk-fade .24s .28s both}
+.mk-ch svg.anim-morph :is(.mk-an,.mk-an2,.mk-base){animation:mk-fade .2s .1s both}
+@keyframes mk-fade{from{opacity:0}}
+.mk-ch svg.anim-grow .mk-cb.mo{animation:mk-glow .9s .5s}
+@keyframes mk-glow{35%{filter:drop-shadow(0 0 6px rgb(94 234 212 / .85))}}
+.mk-hold[data-vd="ok"] .mk-vd path{stroke-dasharray:10;animation:mk-draw .34s .16s var(--mk-ease) both}
+@keyframes mk-draw{from{stroke-dashoffset:10}}
+.mk-pill:not([hidden]){animation:mk-pill-in .22s var(--mk-ease) both}
+@keyframes mk-pill-in{from{opacity:0;transform:translateY(-8px)}}
+.mk-dot.ping{animation:mk-ping .7s ease-out}
+.mk-fresh.replaying .mk-dot.ping{animation-name:mk-ping-a}
+@keyframes mk-ping{from{box-shadow:0 0 0 0 rgb(239 68 68 / .6)}to{box-shadow:0 0 0 7px rgb(239 68 68 / 0)}}
+@keyframes mk-ping-a{from{box-shadow:0 0 0 0 rgb(94 234 212 / .6)}to{box-shadow:0 0 0 7px rgb(94 234 212 / 0)}}
+.mk.no-motion *,.mk.no-motion *::before,.mk.no-motion *::after{animation:none!important;transition:none!important}
+
+/* ---------- hold a minute: the analytics page's bar card, one minute at a time ---------- */
+.mk-ch svg[tabindex]{cursor:pointer}
+.mk-ch svg:focus:not(:focus-visible){outline:none} /* Chrome rings a clicked svg; only keyboard focus gets one */
+.mk-ch svg:focus-visible{outline:2px solid var(--mk-focus);outline-offset:4px;border-radius:4px}
+.mk-ch .mk-lk-b{fill:rgb(94 234 212 / .08);stroke:rgb(94 234 212 / .55);stroke-width:1}
+.mk-ch .mk-cb.lk{opacity:1}
+.mk-d-read .mk-hint b{color:var(--mk-accent)}
+.mk-mc{margin-top:10px;padding:12px;border:1px solid var(--mk-line-strong);border-radius:8px;background:var(--mk-panel);font-variant-numeric:tabular-nums;scroll-margin:calc(var(--mk-top) + 8px) 0 12px}
+.mk-mc.enter{animation:mk-d-in .18s var(--mk-ease) both}
+.mk-mc-top{display:flex;align-items:center;gap:2px;min-height:28px}
+.mk-mc-s{flex:1;min-width:0;display:flex;align-items:center;gap:6px;color:var(--mk-accent);font:700 12px/16px var(--mk-font);letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mk-mc-s::before{content:"";width:8px;height:8px;border-radius:2px;box-sizing:border-box;border:1.5px solid var(--mk-accent);background:rgb(94 234 212 / .15);flex:none} /* the chart's held column */
+.mk .mk-mc-ib{width:28px;height:28px}
+.mk-mc-ib svg{width:14px;height:14px}
+.mk-mc-id{display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 10px;margin-top:2px}
+.mk-mc-t{font:700 20px/24px var(--mk-font);letter-spacing:-.015em;color:var(--mk-text-1)}
+.mk-mc-tc{margin-left:8px;font:500 13px/16px var(--mk-font);letter-spacing:0;color:var(--mk-text-3)}
+.mk-mc-m{font:400 12px/16px var(--mk-font);color:var(--mk-text-3)}
+.mk-mc-figs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:10px}
+.mk-mc-fig{display:flex;flex-direction:column;min-width:0;padding:8px;border:1px solid var(--mk-line-strong);border-radius:6px;background:var(--mk-canvas)}
+.mk-mc-fl{display:flex;align-items:center;gap:5px;font:400 12px/16px var(--mk-font);color:var(--mk-text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mk-mc-n{margin-top:4px;font:700 18px/22px var(--mk-font);letter-spacing:-.01em;color:var(--mk-text-1)}
+.mk-mc-n.na{color:var(--mk-text-3)}
+.mk-mc-u{margin-top:2px;font:400 12px/16px var(--mk-font);color:var(--mk-text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mk-mc-u.hi{color:var(--mk-accent);font-weight:600}
+.mk-mc-low{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 24px;margin-top:12px}
+.mk-mc-emw{min-width:0}
+.mk-mc-sl{font:500 12px/16px var(--mk-font);color:var(--mk-text-3);margin-bottom:6px!important}
+.mk-mc-em{list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:6px 18px}
+.mk-mc-em li{display:flex;align-items:center;gap:8px;min-width:0}
+.mk-mc-em img,.mk-mc-noimg{width:24px;height:24px;object-fit:contain;flex:none}
+.mk-mc-em b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px}
+.mk-mc-em span{color:var(--mk-text-2)}
+.mk-mc-none{font:400 12px/16px var(--mk-font);color:var(--mk-text-3)}
+.mk-mc-oth{font:400 13px/20px var(--mk-font);color:var(--mk-text-2)}
+.mk-mc-oth b{color:var(--mk-text-1);font-weight:600}
+.mk-mc-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.mk-mc-acts .mk-btn svg{width:12px;height:12px}
+.mk-mc-acts .mk-btn .mk-vd,.mk-mc-acts .mk-btn .mk-vd svg{width:14px;height:14px}
+@media (max-width:719px){.mk-mc{padding:10px}.mk-mc-fig{padding:6px 8px}.mk-mc-n{font-size:16px}.mk-mc-rx{display:none}}
+/* the side panel (at most 430 px) is as narrow as a phone: the label drops "the moment" there too */
+@media (min-width:900px){.mk-det .mk-mc-rx{display:none}}
+
+/* ---------- R2-5 small fixes ---------- */
+/* no jump on load: the empty list holds a screen's height, so what sits under it is already below the fold when the moments arrive */
+.mk-list:empty{min-height:100vh}
+/* touch screens have no arrow keys or Esc */
+@media (hover:none){.mk-d-read .mk-kb{display:none}}
