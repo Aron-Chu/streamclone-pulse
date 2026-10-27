@@ -154,13 +154,17 @@ export class SupporterAccountCoordinator {
   constructor(private ports: Ports) { this.now = ports.now ?? Date.now }
 
   /** First explicit Supporter interaction only; never called from appearance reads. */
-  ensureInstallation(purpose: 'purchase' | 'restore' = 'purchase'): Promise<SupporterAccountState | { state: 'fallback' }> {
+  ensureInstallation(purpose: 'purchase' | 'restore' | 'connect' = 'purchase'): Promise<SupporterAccountState | { state: 'fallback' }> {
     const generation = this.generation
     const task = this.queue.then(async () => {
       const current = await this.perform('status', generation)
+      // A connection click cannot replace an expired/revoked identity. Check
+      // inside the account queue, including cancellation while status waited.
+      if (purpose === 'connect' && (generation !== this.generation || current.state !== 'signed_out')) return generation === this.generation ? current : { state: 'signed_out' } as const
       if (current.state === 'linked' || current.state === 'unavailable' || current.state === 'pending' || current.state === 'error') return current
       if (!this.ports.readInstallationKey || !this.ports.writeInstallationKey) return { state: 'fallback' } as const
       const storedKey = await this.ports.readInstallationKey()
+      if (purpose === 'connect' && generation !== this.generation) return { state: 'signed_out' } as const
       const bootstrap = object(storedKey)
       let key: unknown = secret(bootstrap.key) && (bootstrap.state === 'pending' || bootstrap.state === 'claimed') ? bootstrap.key : secret(storedKey) ? storedKey : null
       // Restore deliberately bootstraps an empty waiting installation. A key
@@ -171,6 +175,7 @@ export class SupporterAccountCoordinator {
         key = Array.from(crypto.getRandomValues(new Uint8Array(32)), byte => byte.toString(16).padStart(2, '0')).join('')
         await this.ports.writeInstallationKey({ key: key as string, state: 'pending' })
       }
+      if (purpose === 'connect' && generation !== this.generation) return { state: 'signed_out' } as const
       const result = await this.ports.request('/v1/account/installations', { installationKey: key, label: 'StreamPulse extension' })
       if (result.status === 404) return { state: 'fallback' } as const
       if (result.status === 409 && object(result.body).error === 'installation_initialized') return { state: 'error' } as const

@@ -11,7 +11,7 @@ import { emptyPersonalData, type PersonalData } from '../src/background/myMoment
  */
 const f = vi.hoisted(() => ({ forget: undefined as undefined | ((accountId: string) => void), data: new Map<string, PersonalData>(), history: vi.fn() }))
 vi.mock('../src/background/supporterAccountRuntime.ts', () => ({ bindAccountDataForget: (forget: (accountId: string) => void) => { f.forget = forget },
-  supporterAccount: { run: async () => ({ state: 'linked', accountId: 'one' }) } }))
+  supporterAccount: { isInstallationIdentity: async () => false, run: async () => ({ state: 'linked', accountId: 'one' }) } }))
 vi.mock('../src/background/api.ts', () => ({ fetchPulseBookmarks: async () => ({ items: [] }), createPulseBookmark: vi.fn(), deletePulseBookmark: vi.fn(), accountHistoryRequest: f.history }))
 vi.mock('../src/background/myMomentsStore.ts', async original => ({ ...await original<object>(),
   personalTransaction: async (scope: string, update?: (value: PersonalData) => PersonalData) => {

@@ -45,7 +45,7 @@ describe('supporter settings', () => {
       expect(card.hasAttribute('aria-label')).toBe(false)
       expect(heading.className).toBe('pulse-visually-hidden')
       expect(card.dataset.supporterCard).toBe('sample')
-      expect(card.querySelector('.pulse-supporter-card-who strong')?.textContent).toBe('Not signed in')
+      expect(card.querySelector('.pulse-supporter-card-who strong')?.textContent).toBe('Not connected')
       expect(card.querySelector('.pulse-supporter-card-avatar')?.getAttribute('data-identity')).toBe('none')
       expect(card.querySelector('.pulse-supporter-card-sample')?.textContent).toBe('Sample look')
       // The card names nobody; the footer says how Supporter will start.
@@ -62,12 +62,11 @@ describe('supporter settings', () => {
       // The journey is the card's footer: one primary action, with the price.
       const journey = card.querySelector<HTMLElement>('.pulse-journey')!
       expect(journey.dataset.journeyState).toBe('signed-out')
-      expect([...journey.querySelectorAll('.pulse-journey-primary')].map(button => button.textContent)).toEqual(['Supporter details'])
+      expect([...journey.querySelectorAll('.pulse-journey-primary')].map(button => button.textContent)).toEqual(['Become a Supporter'])
       expect(journey.textContent).toContain("US$4.99 a month")
-      // Status comes from the server. With Twitch sign-in off, a signed-out
-      // install says sign-ups are not open and offers nothing to buy.
-      expect(journey.textContent).toContain("Supporter isn't on sale yet")
-      expect(card.textContent?.match(/Free tools work without an account\./g)).toHaveLength(2)
+      // One click saves a key and asks the server; nothing starts before it.
+      expect(journey.textContent).toContain('Opens Stripe checkout. No account or sign-up. Saves a key in this browser.')
+      expect(card.textContent?.match(/Free tools work without an account\./g)).toHaveLength(1)
       const previewDisclosure = host.querySelector<HTMLDetailsElement>('[data-supporter-preview-disclosure]')!
       expect(previewDisclosure.open).toBe(false)
       expect(previewDisclosure.querySelector('summary')?.textContent).toBe('Preview Supporter looks')
@@ -76,7 +75,7 @@ describe('supporter settings', () => {
       expect(help.open).toBe(false)
       expect(help.querySelector('summary')?.textContent).toBe('Account help')
       expect(help.querySelector('[data-row="payments"]')).not.toBeNull()
-      expect(host.textContent).not.toMatch(/Restore my Supporter|website account|Become a Supporter/)
+      expect(host.textContent).not.toMatch(/Restore my Supporter|website account|Connect this extension/)
       expect(host.textContent).toContain('remain free')
       // The Your look studio's preview, pinned above its controls: it says once
       // that only you see it, names every perk, and offers nothing unbuilt.
@@ -94,7 +93,7 @@ describe('supporter settings', () => {
       expect(host.textContent).not.toContain('Concept · not built')
       // Your look: paint, wave, sheen and emote rain; rain can be tried here, not saved.
       expect([...host.querySelectorAll('.pulse-supporter-look-row > legend')].map(legend => legend.textContent)).toEqual(['Paint', 'Wave', 'Sheen', 'Emote rain'])
-      expect(host.querySelector('[data-supporter-perk="emote-rain"]')?.textContent).toBe("Emote rain is a Supporter perk. Only you see it. Supporter isn't on sale yet. See Supporter →")
+      expect(host.querySelector('[data-supporter-perk="emote-rain"]')?.textContent).toBe('Emote rain is a Supporter perk. Only you see it. See Supporter →')
       // No signature emote anywhere, and the old badge preview is gone.
       expect(host.textContent).not.toMatch(/signature/i)
       expect(host.querySelector('.pulse-supporter-tenure-choices, .pulse-supporter-chat-preview')).toBeNull()

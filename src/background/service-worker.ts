@@ -988,7 +988,7 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
         }
         case 'SUPPORTER_BILLING': {
           const billing = await supporterPayFirst.billing(message.action)
-          if (await supporterPayFirst.hasPending()) watchPendingLink()
+          if (message.action !== 'connect' && await supporterPayFirst.hasPending()) watchPendingLink()
           sendResponse({ type: 'SUPPORTER_BILLING', billing } satisfies BackgroundResponse)
           return
         }

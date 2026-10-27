@@ -83,6 +83,9 @@ describe('hub early fetch: paths', () => {
     expect(hubReadTimeoutMs('24h')).toBe(SLOW_READ_TIMEOUT_MS)
     expect(hubReadTimeoutMs('30m')).toBeUndefined()
     expect(hubReadTimeoutMs('recent')).toBeUndefined()
+    expect(hubReadTimeoutMs('30m', 'tickers')).toBeUndefined()
+    expect(hubReadTimeoutMs('30m', 'moments')).toBe(SLOW_READ_TIMEOUT_MS)
+    expect(hubReadTimeoutMs('recent', 'moments')).toBe(SLOW_READ_TIMEOUT_MS)
   })
 
   it('primes only /analytics, reading the window like the page', () => {

@@ -241,7 +241,7 @@ export function SupporterCosmeticControls({ entitlement, unavailable = false, te
         <summary>Wave and sheen</summary>
         <SupporterPaintStyleFields style={paintTry} onChoose={next => { paintTried.current = true; setPaintTry(next) }} />
       </details> : <SupporterPaintStyleFields style={paint.style} disabled={unknown} onChoose={next => { if (!unknown) void paint.choose(next) }} />}
-      <EmoteRainField banner={banner} perks={unknown ? undefined : allowed} availability={checkoutAvailability} tried={rainTry} onTry={setRainTry} />
+      <EmoteRainField banner={banner} perks={unknown ? undefined : allowed} availability={checkoutAvailability} closedOfferKnown={entitlement?.state === 'ready'} tried={rainTry} onTry={setRainTry} />
     </div>
     {banner.loadError ? <PulseBannerLoadError onRetry={() => void banner.reload()} /> : null}
     {tryOnly || unknown ? null : <p className="pulse-supporter-detail" aria-live="polite">{paint.status || 'Wave and sheen save to this browser profile right away and show whenever your paint is equipped.'}</p>}
@@ -285,10 +285,11 @@ export function SupporterCosmeticControls({ entitlement, unavailable = false, te
  * to the page. Presses while one saves are ignored instead, and one live region,
  * always present, is cleared when a save starts and then states its result.
  */
-function EmoteRainField({ banner, perks, availability, tried, onTry }: {
+function EmoteRainField({ banner, perks, availability, closedOfferKnown, tried, onTry }: {
   banner: ReturnType<typeof usePulseBanner>
   perks: boolean | undefined
   availability: 'open' | 'closed' | 'unknown'
+  closedOfferKnown: boolean
   tried: PulseBannerPreference['mode']
   onTry: (mode: PulseBannerPreference['mode']) => void
 }) {
@@ -321,7 +322,7 @@ function EmoteRainField({ banner, perks, availability, tried, onTry }: {
         >{mode === 'off' ? 'Off' : mode === 'still' ? 'Still' : 'Rain'}</button>)}
       </div>
       {perks === false && availability !== 'unknown'
-        ? <p className="pulse-supporter-detail" data-supporter-perk="emote-rain">Emote rain is a Supporter perk. Only you see it. {availability === 'closed' ? "Supporter isn't on sale yet. " : ''}<a href="#supporter" onClick={() => window.scrollTo?.(0, 0)}>See Supporter →</a></p>
+        ? <p className="pulse-supporter-detail" data-supporter-perk="emote-rain">Emote rain is a Supporter perk. Only you see it. {closedOfferKnown && availability === 'closed' ? "Supporter isn't on sale yet. " : ''}<a href="#supporter" onClick={() => window.scrollTo?.(0, 0)}>See Supporter →</a></p>
         : null}
       <p className="pulse-supporter-detail" role="status" data-emote-rain-status>{message}</p>
     </div>

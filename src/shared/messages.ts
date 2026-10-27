@@ -282,7 +282,7 @@ export type BackgroundRequest =
   | { type: 'SUPPORTER_ACCOUNT'; action: SupporterAccountAction }
   | import('./twitchSignIn.ts').TwitchSignInRequest
   /** `portal_confirm`: a click-started Twitch check, then the portal (Twitch sign-in builds only). */
-  | { type: 'SUPPORTER_BILLING'; action: 'status' | 'check' | 'checkout' | 'resume' | 'portal' | 'portal_confirm' }
+  | { type: 'SUPPORTER_BILLING'; action: 'status' | 'check' | 'connect' | 'checkout' | 'resume' | 'portal' | 'portal_confirm' }
   | { type: 'SUPPORTER_RESTORE'; action: 'status' | 'start' | 'check' | 'cancel'; email?: string }
   | { type: 'SUPPORTER_DEVICES'; action: 'list'; cursor?: string }
   | { type: 'SUPPORTER_DEVICES'; action: 'revoke'; deviceId: string }

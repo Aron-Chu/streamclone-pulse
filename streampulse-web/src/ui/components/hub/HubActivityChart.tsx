@@ -2274,7 +2274,7 @@ export function HubActivityChart({
             const sampledBuckets = providerSampleCounts[key]
             const coverageLabel = providerCoverageLabel(
               sampledBuckets,
-              chartPoints.length,
+              expectedBuckets ?? chartPoints.length,
               providerTotalsComplete,
             )
             return (
