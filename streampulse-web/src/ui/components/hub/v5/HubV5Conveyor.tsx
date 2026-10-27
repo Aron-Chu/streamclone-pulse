@@ -27,6 +27,7 @@ export interface HubV5ConveyorRefs {
   kicker: RefObject<HTMLElement | null>
   field: RefObject<HTMLElement | null>
   tryRow: RefObject<HTMLElement | null>
+  getRow?: RefObject<HTMLElement | null>
   foot: RefObject<HTMLElement | null>
 }
 
@@ -145,12 +146,12 @@ export function HubV5Conveyor({ points, refs }: { points: readonly HubActivityPo
       }
       return S.items[0]!
     }
-    // keep the title, search and Try row clear: the mask's clear oval follows them
+    // keep the title, search, Add to Chrome and Try rows clear: the mask's clear oval follows them
     const place = () => {
       const k = refs.kicker.current
       const field = refs.field.current
       if (!k || !field) return
-      const low = [refs.tryRow.current, field].filter((el): el is HTMLElement => Boolean(el && el.getClientRects().length))
+      const low = [refs.tryRow.current, refs.getRow?.current, field].filter((el): el is HTMLElement => Boolean(el && el.getClientRects().length))
       const r = fx.getBoundingClientRect()
       const top = k.getBoundingClientRect().top - r.top
       const bot = Math.max(...low.map((el) => el.getBoundingClientRect().bottom)) - r.top

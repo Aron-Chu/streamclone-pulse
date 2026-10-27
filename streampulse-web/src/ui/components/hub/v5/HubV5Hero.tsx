@@ -14,6 +14,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import type { HubActivityPoint, HubLiveChannel } from '../../../../lib/publicHub'
 import { buildAnalyticsHref } from '../../../../lib/analyticsLinks'
 import { isPlausibleTwitchLogin } from '../../../../lib/normalizeTwitchLogin'
+import { ChromeInstallCta } from '../../ChromeInstallCta'
 import { HubV5Avatar } from './HubV5Avatar'
 import { HubV5Conveyor, type HubV5ConveyorRefs } from './HubV5Conveyor'
 import { HubV5Icon } from './HubV5Icon'
@@ -42,9 +43,10 @@ export function HubV5Hero({ live, poolSize, points = NO_POINTS }: { live: readon
   const kickerRef = useRef<HTMLParagraphElement>(null)
   const fieldRef = useRef<HTMLDivElement>(null)
   const tryRef = useRef<HTMLParagraphElement>(null)
+  const getRef = useRef<HTMLParagraphElement>(null)
   const footRef = useRef<HTMLDivElement>(null)
   const conveyorRefs = useMemo<HubV5ConveyorRefs>(
-    () => ({ mast: mastRef, kicker: kickerRef, field: fieldRef, tryRow: tryRef, foot: footRef }),
+    () => ({ mast: mastRef, kicker: kickerRef, field: fieldRef, tryRow: tryRef, getRow: getRef, foot: footRef }),
     [],
   )
   const blurTimer = useRef<number | undefined>(undefined)
@@ -218,6 +220,14 @@ export function HubV5Hero({ live, poolSize, points = NO_POINTS }: { live: readon
           </div>
         </div>
       </div>
+      {/* One small row under the search, which stays first (Aron's H2 pick, 10-21). */}
+      <p className="hv5-hero-get" ref={getRef}>
+        <ChromeInstallCta className="hv5-hero-install" data-cta="chrome-install-hub-hero">
+          <span className="chrome-mark" aria-hidden="true" />Add to Chrome
+        </ChromeInstallCta>
+        <span className="hv5-hero-free">Free</span>
+        <span className="hv5-hero-gettext">No account needed. Also works in Edge and Brave.</span>
+      </p>
       {tryChannels.length ? (
         <p className="hv5-hero-try" ref={tryRef}>
           <span className="hv5-hero-tl">Try</span>
