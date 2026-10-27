@@ -33,7 +33,8 @@ import { usePortalOrigin } from './usePortalOrigin.ts'
  * Supporter page's "Your card" (direction B of the 2026-10-07 redesign): the
  * card states who you are and your membership, its footer is this journey's
  * status and one primary action, and the Account card closes the page with the
- * sign-in, billing and policies. `children` sit between the two.
+ * sign-in and billing. `children` sit in the card's cosmetic preview disclosure;
+ * static recovery/payment explanations and policies sit under Account help.
  *
  * One public account flow (account journey spec, closeout 2026-10-08b):
  * Continue with Twitch → Become a Supporter (Stripe Checkout through the
@@ -53,7 +54,7 @@ import { usePortalOrigin } from './usePortalOrigin.ts'
  */
 
 // USD only at launch, matching the public /supporter page.
-const PRICE_DISPLAY = 'US$4.99 / month'
+const PRICE_DISPLAY = 'US$4.99 a month'
 /** Reads after a purchase or payment wait stop after this long; focus still refreshes. */
 export const MEMBERSHIP_WATCH_MS = 15 * 60_000
 /** Backoff for those reads while the page is visible. */
@@ -129,9 +130,9 @@ function storeIntent(value: Intent): void {
 }
 
 const UNAVAILABLE_COPY: Record<SupporterUnavailableReason, string> = {
-  not_deployed: 'Supporter is not available on the server yet.',
-  temporarily_unavailable: 'Supporter status is temporarily unavailable. Check again in a moment.',
-  environment_mismatch: 'Supporter is not open in this build yet.',
+  not_deployed: "Supporter isn't available yet.",
+  temporarily_unavailable: 'Supporter status is briefly unavailable. Check again in a moment.',
+  environment_mismatch: "Supporter isn't available in this version.",
 }
 
 /** Why a signed-out page is signed out, when the user did not just choose it. */
@@ -176,10 +177,10 @@ function OfferTerms() {
   return (
     <>
       {/* The card's footer line: the price and its terms in one row, before the action. */}
-      <p className="pulse-supporter-terms"><b>{PRICE_DISPLAY}</b><span>renews monthly until you cancel</span><span>cancel any time; access runs to the end of the paid month</span><span>taxes, if any, shown before you pay</span></p>
+      <p className="pulse-supporter-terms"><b>{PRICE_DISPLAY}</b><span>renews until you cancel</span><span>cancel any time, keep it to the end of the paid month</span><span>tax shown before you pay</span></p>
       {/* "You get" is the one perk list (src/shared/supporter-perks.json) that
           the settings banner, quick settings, /supporter and the Terms share. */}
-      <SupporterPerkList />
+      <SupporterPerkList compact />
     </>
   )
 }
@@ -188,7 +189,7 @@ function OfferTerms() {
 const UNKNOWN_TWITCH: TwitchSignInStatus = { enabled: true, available: true, silentEligible: false, profile: null }
 
 export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = TWITCH_SIGNIN_STAGE, children }: {
-  /** The membership paid controls may act on: null while a refresh has failed. */
+  /** The membership paid controls may act on: null while loading, or while a read has failed or the server is down. */
   onEntitlement?: (value: SupporterEntitlement | null) => void
   /** The last confirmed membership on screen, kept through a failed refresh. Display only. */
   onShown?: (value: SupporterEntitlement | null) => void
@@ -239,7 +240,13 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   const shown = useRef<SupporterEntitlement | null>(null)
   const lastAccount = useRef<SupporterAccountState | null>(null)
 
-  useEffect(() => { onEntitlement?.(stale ? null : entitlement) }, [entitlement, stale, onEntitlement])
+  // Paid controls act only on a membership the server answered: a read that
+  // failed, or a server that is down or on another environment, pauses them as
+  // a failed refresh does, rather than presenting a Supporter as someone who
+  // has not joined. A server without Supporter (`not_deployed`) is an answer.
+  const unanswered = entitlement?.state === 'error' || (entitlement?.state === 'unavailable' && entitlement.reason !== 'not_deployed')
+  const usable = stale || unanswered ? null : entitlement
+  useEffect(() => { onEntitlement?.(usable) }, [usable, onEntitlement])
   useEffect(() => { onShown?.(entitlement) }, [entitlement, onShown])
 
   const readEntitlement = useCallback(async (quiet: boolean) => {
@@ -332,12 +339,14 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
     } catch { setTwitch(current => current ?? UNKNOWN_TWITCH) }
   }, [twitchOn])
 
-  // Initial reads, and the worker's non-secret change signals.
+  // Initial reads, and the worker's non-secret change signals. The worker
+  // queues them in order, so who is signed in is asked before the membership
+  // read, which can wait on the network for seconds.
   useEffect(() => {
     void run('status')
+    void readTwitch()
     void readEntitlement(false)
     void readBilling()
-    void readTwitch()
     const changed = (changes: Record<string, chrome.storage.StorageChange>) => {
       if (ACCOUNT_REVISION_KEY in changes || 'backendUrl' in changes || 'localBackendOptIn' in changes) {
         // An old account's pending read must never restore access after a switch.
@@ -347,9 +356,9 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
         setEntitlement(null)
         setStale(false)
         void run('status')
+        void readTwitch()
         void readEntitlement(false)
         void readBilling()
-        void readTwitch()
         return
       }
       if (SUPPORTER_REVISION_KEY in changes) { void readEntitlement(true); void readBilling() }
@@ -674,7 +683,12 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   const twitchStatus = twitch ?? (twitchOn ? null : UNKNOWN_TWITCH)
   const twitchWindow = twitchOn && twitchStatus?.available !== false
   const profile = linked && twitchStatus?.profile ? twitchStatus.profile : null
-  const signedInWithTwitch = linked !== null && (accountKind === 'twitch' || profile !== null)
+  // How this extension signed in is known from the worker's own marker, so it
+  // holds after a browser restart drops the session-only profile and while
+  // the membership read is unavailable.
+  const signedInWithTwitch = linked !== null && (linked.twitch === true || accountKind === 'twitch' || profile !== null)
+  // Until the worker answers the Twitch status, a connection's kind is not known yet.
+  const identityPending = twitchOn && linked !== null && twitch === null
   // Sign out everywhere needs this device's Twitch check, so it is offered only
   // to a Twitch sign-in where the Twitch window can open.
   const everywhereOffered = twitchOn && signedInWithTwitch && twitchWindow
@@ -730,11 +744,8 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
     if (!twitchOn) {
       // Stage A: nothing to buy and no account to make. The one action says
       // where Supporter is described; testers connect below.
-      title = 'Supporter sign-ups are not open yet'
-      body = <>
-        {why ? <p className="pulse-journey-notice">{why}</p> : null}
-        <p>When they open, you'll choose <b>Continue with Twitch</b>, then pay on Stripe. {ACCOUNT_COPY.freeTools}</p>
-      </>
+      title = "Supporter isn't on sale yet"
+      body = <>{why ? <p className="pulse-journey-notice">{why}</p> : null}<p className="pulse-supporter-detail">When it goes on sale, you'll choose <b>Continue with Twitch</b>, then pay on Stripe. {ACCOUNT_COPY.freeTools}</p></>
       terms = true
       primary = supporterDetails(true)
     } else {
@@ -758,15 +769,15 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
     title = 'Checking Supporter status…'
   } else if (entitlement.state === 'unavailable' || entitlement.state === 'error') {
     state = 'membership-unknown'
-    title = 'Supporter status unavailable'
-    body = <p className="pulse-supporter-detail">{entitlement.state === 'unavailable' && 'reason' in entitlement ? UNAVAILABLE_COPY[entitlement.reason] : 'Could not reach StreamPulse to check Supporter status.'} Your free tools are unaffected.</p>
+    title = entitlement.state === 'error' ? "We couldn't check your Supporter status" : 'Supporter status unavailable'
+    body = <p className="pulse-supporter-detail">{entitlement.state === 'unavailable' ? `${UNAVAILABLE_COPY[entitlement.reason]} ` : ''}Your free tools still work.</p>
     primary = <button className="pulse-journey-primary" type="button" disabled={checking} onClick={() => void checkAgain()}>{checking ? 'Checking…' : 'Check again'}</button>
   } else if (status === 'none') {
     if (!checkoutOpen) {
       state = 'checkout-closed'
-      title = 'Supporter sign-ups are not open yet'
-      body = <p>{signedInWithTwitch ? 'You’re signed in.' : 'Your account is connected.'} The offer appears here when sign-ups open.</p>
-      primary = <button className="pulse-journey-primary" type="button" disabled={checking} onClick={() => void checkAgain().then(readBilling)}>Check sign-up status</button>
+      title = "Supporter isn't on sale yet"
+      body = <p>{signedInWithTwitch ? 'You’re signed in.' : 'Your account is connected.'} The offer appears here when it goes on sale.</p>
+      primary = <button className="pulse-journey-primary" type="button" disabled={checking} onClick={() => void checkAgain().then(readBilling)}>Check again</button>
       terms = true
     } else if (workerCheckout) {
       state = 'offer'; title = 'Become a Pulse Supporter'
@@ -789,14 +800,14 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   } else if (status === 'pending') {
     state = 'payment-pending'
     title = 'Confirming your payment'
-    body = <p>Stripe is still confirming your payment. Supporter turns on here by itself; you do not need to pay again.</p>
+    body = <p>Stripe is still confirming your payment. Supporter turns on by itself. Don't pay again.</p>
     primary = workerBilling
       ? <button className="pulse-journey-primary" type="button" disabled={payBusy} onClick={() => void checkPayment()}>Check payment status</button>
       : <a className="pulse-journey-primary" data-supporter-action="billing" href={billingHref} target="_blank" rel="noopener noreferrer">View payment status</a>
   } else if (status === 'active') {
     state = 'active'
-    title = intent === 'purchase' ? 'You are a Supporter' : 'Supporter active'
-    body = <p>{intent === 'purchase' ? 'Thank you. Your Supporter finishes are unlocked below.' : 'Thank you for supporting Pulse.'}</p>
+    title = intent === 'purchase' ? "You're a Supporter" : 'Supporter active'
+    body = <p>{intent === 'purchase' ? 'Thanks for supporting StreamPulse. Pick a paint below and choose Equip paint to see it on Twitch.' : 'Thank you for supporting Pulse.'}</p>
     primary = <a className="pulse-journey-primary" data-supporter-action="billing" href={billingHref} target="_blank" rel="noopener noreferrer">{ACCOUNT_COPY.manageSubscription}</a>
   } else if (status === 'grace') {
     state = 'grace'
@@ -840,7 +851,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
       title = billing.state === 'confirming' ? 'Confirming your payment' : 'Still confirming your payment'
       body = <p>Your payment status is not confirmed yet. Do not pay again. {billing.state === 'still_confirming' ? 'Check status when you return, or contact support if it stays unresolved.' : 'Supporter turns on here after the server confirms it.'}</p>
       primary = <button className="pulse-journey-primary" type="button" disabled={payBusy} onClick={() => void checkPayment()}>Check payment status</button>
-    } else if (billing.state === 'closed' || (billing.state === 'expired' && entitlement?.state === 'ready' && !checkoutOpen)) { state = 'checkout-closed'; title = 'Supporter sign-ups are not open yet'; body = <p>Your free tools still work. Return when paid sign-ups open.</p>; primary = <button className="pulse-journey-primary" type="button" disabled={checking} onClick={() => void checkAgain().then(readBilling)}>Check sign-up status</button> }
+    } else if (billing.state === 'closed' || (billing.state === 'expired' && entitlement?.state === 'ready' && !checkoutOpen)) { state = 'checkout-closed'; title = "Supporter isn't on sale yet"; body = <p>Your free tools still work. Check back when it goes on sale.</p>; primary = <button className="pulse-journey-primary" type="button" disabled={checking} onClick={() => void checkAgain().then(readBilling)}>Check again</button> }
     else if (billing.state === 'expired') { state = 'checkout-expired'; title = 'Checkout expired'; body = <p>The checkout session ended before completion. You can start a new checkout when ready.</p>; primary = linked ? <button className="pulse-journey-primary" type="button" disabled={payBusy} onClick={() => void purchase()}>Start checkout again</button> : null }
     else if (billing.state === 'review') { state = 'review'; title = 'Membership needs review'; body = <p>A payment needs checking. Do not pay again; contact support for help.</p>; primary = <a className="pulse-journey-primary" href={POLICY_LINKS.support} target="_blank" rel="noopener noreferrer">Contact support</a> }
     else if (billing.state === 'reconnect_required') {
@@ -881,7 +892,9 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
 
   // Only a known account state names an account or says there is none: before
   // the worker answers, or when it cannot, the card and the Account row stay neutral.
-  const identity: CardIdentity = linked ? profile ? { kind: 'twitch', displayName: profile.displayName, ...(profile.picture ? { picture: profile.picture } : {}) } : { kind: 'pulse', reference: accountReference(linked.accountId) }
+  const identity: CardIdentity = linked ? identityPending ? { kind: 'unknown', reason: 'checking' }
+    : profile ? { kind: 'twitch', displayName: profile.displayName, ...(profile.picture ? { picture: profile.picture } : {}) }
+    : signedInWithTwitch ? { kind: 'twitch' } : { kind: 'pulse', reference: accountReference(linked.accountId) }
     : renewalWaiting ? { kind: 'pulse' }
     : !account ? { kind: 'unknown', reason: 'checking' }
     : account.state === 'error' || accountDown ? { kind: 'unknown', reason: 'unavailable' }
@@ -896,9 +909,9 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   const cardLook: CardLook = { finish: look ? look.finish : perks ? equipped : SAMPLE_KIT.finish, paint: look?.paint ?? DEFAULT_SUPPORTER_PAINT, perks }
   const connected = linked !== null || renewalWaiting
   // Nobody signed in: Your card above already says "Not signed in", so the Account card has no row repeating it.
-  const accountRow: [string, string] | null = signedInWithTwitch ? [profile ? `${ACCOUNT_COPY.signedInWithTwitch} as ${profile.displayName}` : ACCOUNT_COPY.signedInWithTwitch, 'Signing in stores a device credential in this extension. Sign out ends this device’s access and removes its signed-in watched history and notes.']
+  const accountRow: [string, string] | null = identity.kind === 'unknown' ? [identity.reason === 'checking' ? 'Checking the connection…' : 'Connection status unavailable', 'Your free tools still work.']
+    : signedInWithTwitch ? [profile ? `${ACCOUNT_COPY.signedInWithTwitch} as ${profile.displayName}` : ACCOUNT_COPY.signedInWithTwitch, 'Signing in stores a device credential in this extension. Sign out ends this device’s access and removes its signed-in watched history and notes.']
     : connected ? [linked ? `Connected to this extension · ${accountReference(linked.accountId)}` : 'Connected to this extension', 'An invited tester’s StreamPulse account. Sign out ends this device’s access and removes its signed-in watched history and notes.']
-    : identity.kind === 'unknown' ? [identity.reason === 'checking' ? 'Checking the connection…' : 'Connection status unavailable', 'Your free tools still work.']
     : null
   // Invited testers keep the existing device link, closed by default and
   // never a purchase: "Connect this extension" with Twitch off, "Other ways to
@@ -911,6 +924,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
         identity={identity}
         membership={{ status: cardStatus, months: periods, tenure: supporterTenureForMonths(periods) }}
         look={cardLook}
+        preview={<><SupporterPerkList />{children}</>}
       >
         <div className="pulse-journey" data-journey-state={state} data-twitch-stage={twitchStage} data-tone={status === 'grace' && state === 'grace' ? 'warn' : undefined}>
           <div className="pulse-journey-row">
@@ -941,8 +955,6 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
         </div>
       </SupporterCard>
 
-      {children}
-
       <PulseSectionCard title="Account" headingLevel={3}>
         <div className="pulse-supporter-account-rows">
           <dl className="pulse-supporter-rows">
@@ -970,6 +982,11 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
                   focus to the page. manage() ignores a press while one is open. */}
               <dd className="pulse-account-link-actions"><button type="button" aria-busy={payBusy || undefined} onClick={() => void manage('account')}>{ACCOUNT_COPY.manageSubscription} <span className="pulse-supporter-ext" aria-hidden="true">↗</span></button></dd>
             </div> : null}
+          </dl>
+          {/* Static explanations stay out of the live account and billing actions. */}
+          <details className="pulse-supporter-help">
+            <summary>Account help</summary>
+            <dl className="pulse-supporter-rows">
             <div data-row="new-browser">
               <dt>New browser</dt>
               {twitchOn
@@ -979,15 +996,22 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
             </div>
             <div data-row="payments">
               <dt>Payments</dt>
-              <dd>Handled by Stripe.<small>Stripe asks for a billing email at checkout; it can be different from your Twitch email. StreamPulse never sees or stores your card number.</small></dd>
+              <dd>Handled by Stripe.<small>Stripe asks for a billing email. It can differ from your Twitch email. Your card details go to Stripe, not StreamPulse.</small></dd>
               <dd />
             </div>
             {twitchOn ? <div data-row="lost-twitch">
               <dt>Lost Twitch access</dt>
-              <dd>Stripe’s customer portal still works with the email you paid with.<small>That changes billing only. It doesn’t move your membership to another Twitch account; contact support and we’ll help.</small></dd>
+              <dd>You can still manage billing in Stripe with the email you paid with.<small>Billing changes don't move Supporter to another Twitch account. Contact support and we'll help.</small></dd>
               <dd />
             </div> : null}
-          </dl>
+            </dl>
+            <p className="pulse-supporter-detail">Core Pulse tools, your existing accent themes, moment bookmarks, and links to Twitch clips and VODs remain free.</p>
+            <p className="pulse-supporter-detail pulse-supporter-policies">
+              <a href={POLICY_LINKS.supporterTerms} target="_blank" rel="noopener noreferrer">Supporter terms</a>
+              <a href={POLICY_LINKS.refunds} target="_blank" rel="noopener noreferrer">Cancellation &amp; refunds</a>
+              <a href={POLICY_LINKS.privacy} target="_blank" rel="noopener noreferrer">Privacy</a>
+            </p>
+          </details>
           {/* Sign out, Manage subscription and revoke report here, beside their
               rows, not in the card footer a screen above. Always present, so
               the outcome is announced when it arrives. */}
@@ -1007,14 +1031,6 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
           </li>)}</ul> : <p role="status">{devicesBusy ? 'Loading connections…' : devices === null ? 'Refresh to see current connections.' : 'Connections could not be loaded.'}</p>}
           <div className="pulse-account-link-actions pulse-journey-actions"><button type="button" disabled={devicesBusy} onClick={() => void listDevices()}>Refresh connections</button>{devices?.state === 'ready' && devices.nextCursor ? <button type="button" disabled={devicesBusy} onClick={() => void listDevices(devices.nextCursor)}>Next connections</button> : null}</div>
         </details> : null}
-        <p className="pulse-supporter-detail">
-          Core Pulse tools, your existing accent themes, moment bookmarks, and links to Twitch clips and VODs remain free.
-        </p>
-        <p className="pulse-supporter-detail pulse-supporter-policies">
-          <a href={POLICY_LINKS.supporterTerms} target="_blank" rel="noopener noreferrer">Supporter terms</a>
-          <a href={POLICY_LINKS.refunds} target="_blank" rel="noopener noreferrer">Cancellation &amp; refunds</a>
-          <a href={POLICY_LINKS.privacy} target="_blank" rel="noopener noreferrer">Privacy</a>
-        </p>
       </PulseSectionCard>
     </>
   )

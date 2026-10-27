@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import { supporterPerksAllowed, type SupporterEntitlement, type SupporterCosmetics } from '../shared/supporterAccount.ts'
+import { FINISH_INTENT_TTL_MS, supporterPerksAllowed, type SupporterEntitlement, type SupporterCosmetics } from '../shared/supporterAccount.ts'
+import { supporterCheckoutAvailability } from '../shared/supporterCheckoutAvailability.ts'
 import { finishVars, SAMPLE_KIT } from '../supporter/kit.ts'
 import { PulseSectionCard } from '../ui/PulseSectionCard.tsx'
 import { SUPPORTER_FINISH_OPTIONS } from '../ui/supporterFinish.ts'
-import { usePulseBanner } from '../ui/PulseBanner.tsx'
+import { PulseBannerLoadError, usePulseBanner } from '../ui/PulseBanner.tsx'
 import type { PulseBannerPreference } from '../shared/storage.ts'
 import type { SupporterTenure } from '../shared/supporterPaint.ts'
 import { SupporterLookPreview } from './SupporterLookPreview.tsx'
@@ -25,8 +26,10 @@ const SAMPLE_RAIN = { mode: 'rain', intensity: 35, title: '' } as const
  * (emote rain only in the preview) and choose a paint to apply when Supporter
  * starts.
  */
-export function SupporterCosmeticControls({ entitlement, tenure, onSaved }: {
+export function SupporterCosmeticControls({ entitlement, unavailable = false, tenure, onSaved }: {
   entitlement: SupporterEntitlement | null
+  /** With `entitlement` null: the status could not be read, rather than still loading. */
+  unavailable?: boolean
   /** The crest the preview wears: a Supporter's own, or the sample's. */
   tenure: SupporterTenure
   onSaved?: (cosmetics: SupporterCosmetics) => void
@@ -35,6 +38,9 @@ export function SupporterCosmeticControls({ entitlement, tenure, onSaved }: {
   // Emote rain tried without the perk: shown in the preview only, never saved.
   const [rainTry, setRainTry] = useState<PulseBannerPreference['mode']>(SAMPLE_RAIN.mode)
   const paint = useSupporterPaintStyle()
+  const [paintTry, setPaintTry] = useState(paint.style)
+  const paintTried = useRef(false)
+  useEffect(() => { if (!paintTried.current) setPaintTry(paint.style) }, [paint.style])
   // Nothing is presumed while the first answer is pending: a finish shown as
   // chosen then is one the person chose.
   const [finish, setFinish] = useState<SupporterCosmetics['finish'] | null>(null)
@@ -47,6 +53,7 @@ export function SupporterCosmeticControls({ entitlement, tenure, onSaved }: {
   // An explicit choice made before membership is verified. The worker keeps it
   // privately and applies it once the server grants Supporter access.
   const [intent, setIntent] = useState<SupporterCosmetics['finish'] | null>(null)
+  const [intentSetAt, setIntentSetAt] = useState<number | null>(null)
   const [intentBusy, setIntentBusy] = useState(false)
   const allowed = supporterPerksAllowed(entitlement)
   const entitlementState = entitlement?.state
@@ -109,6 +116,7 @@ export function SupporterCosmeticControls({ entitlement, tenure, onSaved }: {
       .then(response => {
         if (!mounted.current || response?.type !== 'SUPPORTER_FINISH_INTENT') return
         setIntent(response.finish)
+        setIntentSetAt(typeof response.setAt === 'number' ? response.setAt : null)
         if (response.finish) setFinish(current => current === SAMPLE_KIT.finish ? response.finish : current)
       })
       .catch(() => { /* No saved choice is shown when the worker is unavailable. */ })
@@ -116,13 +124,14 @@ export function SupporterCosmeticControls({ entitlement, tenure, onSaved }: {
   // Once access is verified the worker has applied (and cleared) the choice.
   useEffect(() => { if (allowed) setIntent(null) }, [allowed])
   async function chooseForLater(value: SupporterCosmetics['finish'] | null) {
-    if (intentBusy) return
+    if (intentBusy || unknown || (tryOnly && value !== null)) return
     setIntentBusy(true)
     setNotice('')
     try {
       const response = await chrome.runtime.sendMessage({ type: 'SUPPORTER_FINISH_INTENT', finish: value })
       if (response?.type !== 'SUPPORTER_FINISH_INTENT') throw new Error('worker unavailable')
       setIntent(response.finish)
+      setIntentSetAt(typeof response.setAt === 'number' ? response.setAt : null)
       const label = SUPPORTER_FINISH_OPTIONS.find(option => option.id === response.finish)?.label
       setNotice(response.finish && label ? `${label} will be applied when your Supporter membership is confirmed.` : value === null ? 'Saved choice cleared.' : 'Could not save this choice. Please try again.')
     } catch {
@@ -134,15 +143,21 @@ export function SupporterCosmeticControls({ entitlement, tenure, onSaved }: {
   const selectedLabel = SUPPORTER_FINISH_OPTIONS.find(option => option.id === finish)?.label ?? 'Default'
   const intentLabel = SUPPORTER_FINISH_OPTIONS.find(option => option.id === intent)?.label
   const unchanged = finish === appliedFinish
-  // Sign-ups closed: a choice is kept for when Supporter opens, not for a membership that cannot start yet.
-  const checkoutOpen = entitlement?.state === 'ready' && entitlement.checkoutEnabled === true
+  const checkoutAvailability = supporterCheckoutAvailability(entitlement)
+  const checkoutOpen = checkoutAvailability === 'open'
+  const tryOnly = !allowed && checkoutAvailability === 'closed'
+  const intentExpiresAt = intentSetAt === null ? null : intentSetAt + FINISH_INTENT_TTL_MS
+  const savedEarlier = intentLabel && intentExpiresAt !== null && intentExpiresAt >= Date.now()
+    ? { label: intentLabel, date: new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(intentExpiresAt) }
+    : null
   /** The swatch's state, as a chip on it: the paint you are trying, and the one in use. */
-  const chip = (id: SupporterCosmetics['finish'] | null) => <>
+  const chip = (id: SupporterCosmetics['finish'] | null) => tryOnly || unknown ? null : <>
     {id === appliedFinish ? <span className="pulse-supporter-tile-chip" data-chip="equipped">Equipped</span> : null}
     {id === finish && !unchanged ? <span className="pulse-supporter-tile-chip" data-chip="previewing">Previewing</span> : null}
   </>
 
   function selectFinish(value: typeof finish) {
+    if (unknown) return
     if (lastAppliedKey.current === null) chosenWhileChecking.current = true
     setFinish(value)
     setNotice('')
@@ -187,17 +202,18 @@ export function SupporterCosmeticControls({ entitlement, tenure, onSaved }: {
     title="Your look"
     headingLevel={3}
     className="pulse-supporter-studio"
-    meta={unknown ? undefined : allowed ? 'Wave, sheen and Emote rain save right away' : 'Try any look. Paint, wave and sheen apply when you support.'}
+    meta={unknown ? undefined : tryOnly ? "Try a look. Changes here aren't saved." : allowed ? 'Wave, sheen and Emote rain save right away' : 'Try any look. Paint, wave and sheen apply when you support.'}
   >
     <SupporterLookPreview
       finish={finish}
-      paint={paint.style}
+      paint={tryOnly ? paintTry : paint.style}
       tenure={tenure}
       rain={allowed || unknown ? banner.value : { ...SAMPLE_RAIN, mode: rainTry }}
       shown={shown}
+      hideStateLabel={tryOnly}
     />
     <div className="pulse-supporter-look" data-preview-finish={finish ?? 'default'}>
-      <fieldset className="pulse-supporter-look-row" disabled={busy}>
+      <fieldset className="pulse-supporter-look-row" disabled={busy || unknown}>
         <legend>Paint</legend>
         <div className="pulse-supporter-tiles">
           <label className="pulse-supporter-tile" title="Your free theme">
@@ -221,13 +237,17 @@ export function SupporterCosmeticControls({ entitlement, tenure, onSaved }: {
           </label>)}
         </div>
       </fieldset>
-      <SupporterPaintStyleFields style={paint.style} onChoose={next => void paint.choose(next)} />
-      <EmoteRainField banner={banner} perks={unknown ? undefined : allowed} tried={rainTry} onTry={setRainTry} />
+      {tryOnly ? <details className="pulse-supporter-wave-disclosure">
+        <summary>Wave and sheen</summary>
+        <SupporterPaintStyleFields style={paintTry} onChoose={next => { paintTried.current = true; setPaintTry(next) }} />
+      </details> : <SupporterPaintStyleFields style={paint.style} disabled={unknown} onChoose={next => { if (!unknown) void paint.choose(next) }} />}
+      <EmoteRainField banner={banner} perks={unknown ? undefined : allowed} availability={checkoutAvailability} tried={rainTry} onTry={setRainTry} />
     </div>
-    <p className="pulse-supporter-detail" aria-live="polite">{paint.status || 'Wave and sheen save to this browser profile right away and show whenever your paint is equipped.'}</p>
-    <div className="pulse-account-link-actions">
+    {banner.loadError ? <PulseBannerLoadError onRetry={() => void banner.reload()} /> : null}
+    {tryOnly || unknown ? null : <p className="pulse-supporter-detail" aria-live="polite">{paint.status || 'Wave and sheen save to this browser profile right away and show whenever your paint is equipped.'}</p>}
+    {tryOnly ? null : <div className="pulse-account-link-actions">
       {unknown ? (
-        <button type="button" disabled>Checking Supporter status…</button>
+        <button type="button" disabled>{unavailable ? 'Supporter status unavailable' : 'Checking Supporter status…'}</button>
       ) : allowed ? (
         <button type="button" disabled={busy || unchanged} aria-busy={busy} onClick={() => void save()}>
           {busy ? 'Saving...' : unchanged ? (finish ? 'Equipped' : 'Default active') : finish ? 'Equip paint' : 'Use default'}
@@ -240,8 +260,13 @@ export function SupporterCosmeticControls({ entitlement, tenure, onSaved }: {
         <button type="button" disabled>{!finish ? 'Default active' : checkoutOpen ? `${selectedLabel} chosen` : 'Saved for when Supporter opens'}</button>
       )}
       {!allowed && !unknown && intent ? <button type="button" disabled={intentBusy} onClick={() => void chooseForLater(null)}>Clear choice</button> : null}
-    </div>
-    {!allowed && !unknown ? <p className="pulse-supporter-detail" data-supporter-finish-intent={intent ?? 'none'}>
+    </div>}
+    {!allowed && checkoutOpen ? <p className="pulse-supporter-detail">We keep this choice for 7 days.</p> : null}
+    {tryOnly && savedEarlier ? <p className="pulse-supporter-detail" data-supporter-finish-intent={intent ?? 'none'}>
+      Saved earlier: {savedEarlier.label}, until {savedEarlier.date}.{' '}
+      <button className="pulse-supporter-remove-intent" type="button" disabled={intentBusy} onClick={() => void chooseForLater(null)}>Remove</button>
+    </p> : null}
+    {!allowed && !unknown && !tryOnly ? <p className="pulse-supporter-detail" data-supporter-finish-intent={intent ?? 'none'}>
       {intentLabel
         ? `${intentLabel} is applied automatically when your Supporter membership is confirmed. Until then, this is only a preview.`
         : 'Preview is free. Choose a paint now and it applies when your Supporter membership starts.'}
@@ -260,9 +285,10 @@ export function SupporterCosmeticControls({ entitlement, tenure, onSaved }: {
  * to the page. Presses while one saves are ignored instead, and one live region,
  * always present, is cleared when a save starts and then states its result.
  */
-function EmoteRainField({ banner, perks, tried, onTry }: {
+function EmoteRainField({ banner, perks, availability, tried, onTry }: {
   banner: ReturnType<typeof usePulseBanner>
   perks: boolean | undefined
+  availability: 'open' | 'closed' | 'unknown'
   tried: PulseBannerPreference['mode']
   onTry: (mode: PulseBannerPreference['mode']) => void
 }) {
@@ -274,7 +300,7 @@ function EmoteRainField({ banner, perks, tried, onTry }: {
   useEffect(() => {
     if (!saving || banner.saving) return
     setSaving(false)
-    setMessage(banner.status === 'Saved' ? 'Emote rain saved.' : 'Could not save emote rain. Please try again.')
+    setMessage(banner.status === 'Saved' ? 'Emote rain saved.' : "Couldn't save that. Try again.")
   }, [saving, banner.saving, banner.status])
   function choose(mode: PulseBannerPreference['mode']) {
     if (perks === false) return onTry(mode)
@@ -294,8 +320,8 @@ function EmoteRainField({ banner, perks, tried, onTry }: {
           onClick={() => choose(mode)}
         >{mode === 'off' ? 'Off' : mode === 'still' ? 'Still' : 'Rain'}</button>)}
       </div>
-      {perks === false
-        ? <p className="pulse-supporter-detail" data-supporter-perk="emote-rain">Emote rain is a Supporter perk. Sign-ups are not open yet.</p>
+      {perks === false && availability !== 'unknown'
+        ? <p className="pulse-supporter-detail" data-supporter-perk="emote-rain">Emote rain is a Supporter perk. Only you see it. {availability === 'closed' ? "Supporter isn't on sale yet. " : ''}<a href="#supporter" onClick={() => window.scrollTo?.(0, 0)}>See Supporter →</a></p>
         : null}
       <p className="pulse-supporter-detail" role="status" data-emote-rain-status>{message}</p>
     </div>

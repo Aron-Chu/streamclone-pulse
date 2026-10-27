@@ -37,7 +37,7 @@ export interface WebAuthFlowDetails {
 
 type Account = {
   run(action: SupporterAccountAction): Promise<SupporterAccountState>
-  adopt(body: unknown, generation: number): Promise<{ adopted: boolean; account: SupporterAccountState }>
+  adopt(body: unknown, generation: number, via?: 'twitch'): Promise<{ adopted: boolean; account: SupporterAccountState }>
   withCredential<T extends { status: number }>(operation: (token: string) => Promise<T>, accountId?: string): Promise<T>
   /**
    * Sign out everywhere succeeded: forget this device's credential without
@@ -413,7 +413,7 @@ export class TwitchSignIn {
     } catch (error) { return thrownFailure(error) }
     if (finished.status !== 200) return serverFailure(finished)
     const profile = parseTwitchProfile(object(finished.body).profile)
-    const { adopted, account } = await this.ports.account.adopt(finished.body, generation)
+    const { adopted, account } = await this.ports.account.adopt(finished.body, generation, 'twitch')
     if (!adopted) {
       if (account.state === 'error' && account.revocationPending) return { outcome: 'revocation_pending', account }
       return { outcome: account.state === 'linked' ? 'already_signed_in' : 'error', account }

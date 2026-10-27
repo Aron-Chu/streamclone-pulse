@@ -2,6 +2,11 @@ export type SupporterAccountAction = 'status' | 'start' | 'poll' | 'cancel' | 'd
 export type SupporterCosmetics = { enabled: boolean; finish: 'glass' | 'etched' | 'halo' }
 export type SupporterFinish = SupporterCosmetics['finish']
 
+/** Safe settings projection of an explicit pre-purchase paint choice. */
+export type SupporterFinishIntentDetails = { finish: SupporterFinish; setAt: number }
+/** A saved pre-purchase choice lasts seven days from its original save time. */
+export const FINISH_INTENT_TTL_MS = 7 * 86_400_000
+
 /**
  * Non-secret storage keys whose changes tell open surfaces to re-read through
  * the worker. Neither carries an account ID, credential or projection.
@@ -77,7 +82,11 @@ export type SupporterAccountState =
   | { state: 'unavailable'; reason: Exclude<SupporterUnavailableReason, 'environment_mismatch'>; linked?: true }
   | { state: 'error'; revocationPending?: boolean }
   | { state: 'pending'; code: string; expiresAt: string; retryAfterSeconds: number }
-  | { state: 'linked'; accountId: string; expiresAt: string }
+  /**
+   * `twitch` marks a connection made by Continue with Twitch. It outlives the
+   * session-only display profile, so a browser restart is still a Twitch sign-in.
+   */
+  | { state: 'linked'; accountId: string; expiresAt: string; twitch?: true }
 
 /**
  * Worker-owned purchase state: provider URLs and all credentials stay private.
