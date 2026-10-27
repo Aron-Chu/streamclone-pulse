@@ -49,8 +49,9 @@ write an invite literal in source — `tests/noDiscordInviteLiterals.test.ts` fa
 Moments page, which reads `GET /v1/public/moments` (served behind the backend's
 `PULSE_MOMENTS_FEED_ENABLED`). Unset, the default, keeps the current page and never reads the feed.
 The page draws from the feed's first page and loads the later ones behind it; a later page that
-fails leaves what has loaded. When the first page answers with an error (a 404 while the backend
-flag is off), the current page shows instead. `tests/e2e/moments-checked.portal-mocked.spec.ts` runs only against a flag-on build.
+fails leaves what has loaded. When the first page answers 404 (the backend flag is off) or in a
+shape the page doesn't know, the current page shows instead; any other failure says "Moments
+couldn't load." with Try again. `tests/e2e/moments-checked.portal-mocked.spec.ts` runs only against a flag-on build.
 
 ## Troubleshooting local dev
 
