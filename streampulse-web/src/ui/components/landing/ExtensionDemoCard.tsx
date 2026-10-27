@@ -180,7 +180,7 @@ export function ExtensionDemoCard({
     tiles: [
       { label: 'Viewers', value: '351', sub: '+17 - 5m' },
       { label: 'Chat/min', value: '13', sub: '11.6 avg - 5m' },
-      { label: '7TV/min', value: '11', sub: '7TV share 84%' },
+      { label: 'Emotes/min', value: '11', sub: '7TV share 84%' },
     ],
     wavePath: CHAT_LINE,
     reacted: [],
@@ -188,7 +188,7 @@ export function ExtensionDemoCard({
   const channel = ext.channel
   const viewerTile = ext.tiles[0] ?? { label: 'Viewers', value: '351', sub: '+17 - 5m' }
   const chatTile = ext.tiles[1] ?? { label: 'Chat/min', value: '13', sub: '11.6 avg - 5m' }
-  const tvTile = ext.tiles[2] ?? { label: '7TV/min', value: '11', sub: '7TV share 84%' }
+  const tvTile = ext.tiles[2] ?? { label: 'Emotes/min', value: '11', sub: '7TV share 84%' }
   const synced = ext.syncLabel === 'syncing'
   const syncPill = synced ? 'Synced' : ext.syncLabel
 
@@ -205,7 +205,7 @@ export function ExtensionDemoCard({
       className="sl-ext"
       data-theme={theme}
       role="img"
-      aria-label={`StreamPulse Pulse panel for ${channel} with live data coverage, viewer and chat KPIs, Stream Activity chart, top emotes, most reacted moments, and past VODs`}
+      aria-label={`StreamPulse Pulse panel for ${channel} with live data coverage, viewer and chat KPIs, full-stream Pulse chart, top emotes, moments with pictures, and Stream Recap`}
     >
       <DemoTabRow activeTab={activeTab} onTabChange={onTabChange} />
 
@@ -263,9 +263,9 @@ export function ExtensionDemoCard({
             </div>
             <div className="sl-ext__hint">chat, viewers, emotes - stream time</div>
             <div className="sl-segpair sl-segpair--wide" aria-hidden="true">
-              <i className="is-active">60M</i>
+              <i className="is-active">Full</i>
+              <i>60M</i>
               <i>4H</i>
-              <i>Full</i>
             </div>
             <div className="sl-xlegend2" aria-hidden="true">
               <span>
@@ -275,7 +275,7 @@ export function ExtensionDemoCard({
                 <i className="band" />min-max
               </span>
               <span>
-                <i className="sv" />7TV/min
+                <i className="sv" />Emotes/min
               </span>
             </div>
             <div className="sl-plotrow" aria-hidden="true">

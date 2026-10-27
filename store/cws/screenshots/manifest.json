@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-10-12T08:33:10.356Z",
+  "generatedAt": "2026-10-27T14:00:00.000Z",
   "dims": {
     "width": 1280,
     "height": 800
   },
   "kind": "extension_embedded_on_twitch_tv",
   "harness": "tests/e2e/specs/cws-extension-screenshots.mocked.spec.ts",
-  "note": "Real unpacked dist/ content script on *.twitch.tv fixture documents (01-04) and the packaged settings page on Updates & Changelog with the Community card (05). Synthetic fixture channel; mocked captures are not live evidence. Not the streampulse-web landing tour.",
+  "note": "Real unpacked dist/ content script on the synthetic demo Twitch fixture (01-04) and the packaged settings page on Updates & Changelog with the Community card (05). Captures are generated from extension code and synthetic media; no real streamer footage or account data is used.",
   "files": [
     "01-live-pulse.png",
     "02-top-moments.png",

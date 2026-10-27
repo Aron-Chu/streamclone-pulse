@@ -8,7 +8,7 @@ export interface PageMetadata {
 }
 
 const DEFAULT_DESCRIPTION =
-  'StreamPulse finds Twitch moments through coverage-honest chat, emote, viewer, and VOD analytics.'
+  'StreamPulse adds free chat and emote stats beside Twitch chat, with Top Moments, pictures, and Stream Recap.'
 
 function channelTitle(pathname: string): string | null {
   const match = pathname.match(/^\/analytics\/([^/]+)(?:\/(?:s\/)?[^/]+)?$/)
@@ -31,8 +31,8 @@ function resolveBasePageMetadata(pathname: string): PageMetadata {
   switch (normalizedPath) {
     case '/':
       return {
-        title: 'StreamPulse — Twitch reaction analytics',
-        description: DEFAULT_DESCRIPTION,
+        title: 'StreamPulse: Twitch Chat Stats & Top Moments',
+        description: 'Free Twitch chat and emote stats beside chat, Top Moments with pictures, and Stream Recap for past streams.',
         canonicalPath: '/',
         robots: 'index,follow',
       }

@@ -33,7 +33,11 @@ describe('publicSiteConfig', () => {
 })
 
 function assertSafeCwsLink(anchor: HTMLElement) {
-  expect(anchor.getAttribute('href')).toBe(CANONICAL)
+  const href = anchor.getAttribute('href') ?? ''
+  const parsed = new URL(href)
+  expect(`${parsed.origin}${parsed.pathname}`).toBe(CANONICAL)
+  expect(parsed.searchParams.get('utm_source')).toBe('streampulse.stream')
+  expect(parsed.searchParams.get('utm_medium')).toMatch(/^[a-z0-9-]+$/)
   expect(anchor.getAttribute('target')).toBe('_blank')
   expect(anchor.getAttribute('rel')).toBe('noopener noreferrer')
   expect(anchor.getAttribute('href') ?? '').not.toMatch(/^chrome:/i)
@@ -117,7 +121,7 @@ describe('install CTAs across surfaces', () => {
       const link = screen.getByRole('link', { name: /Add StreamPulse to Chrome/i })
       const nav = container.querySelector('.app-nav')
       expect(link).toBeTruthy()
-      expect(link.getAttribute('href')).toBe(CANONICAL)
+      assertSafeCwsLink(link)
       // Layout contract: CTA is in the nav flex row and does not use fixed overflow-hidden width.
       expect(nav?.contains(link)).toBe(true)
       const style = window.getComputedStyle(link)
