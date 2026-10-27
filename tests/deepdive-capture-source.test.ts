@@ -13,7 +13,7 @@ vi.mock('../src/shared/storage.ts', () => ({
 vi.mock('../src/background/api.ts', () => ({ createPulseBookmark: vi.fn(), deletePulseBookmark: vi.fn(), fetchPulseBookmarks: vi.fn(), accountHistoryRequest: vi.fn() }))
 vi.mock('../src/background/supporterAccountRuntime.ts', () => ({
   bindAccountDataForget: () => {},
-  supporterAccount: { run: async () => ({ state: 'not_linked' }), localAccountId: async () => null },
+  supporterAccount: { isInstallationIdentity: async () => false, run: async () => ({ state: 'not_linked' }), localAccountId: async () => null },
 }))
 vi.mock('../src/background/myMomentsStore.ts', async importOriginal => {
   const real = await importOriginal<typeof import('../src/background/myMomentsStore.ts')>()

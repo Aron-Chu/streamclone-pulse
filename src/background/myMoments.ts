@@ -28,6 +28,9 @@ const bookmarkMoment = (b: PulseBookmark, note: string): LibraryMoment => ({ id:
  * An unconfirmed disconnect (`error` with `revocationPending`) stays local on
  * purpose: its tombstone authorizes nothing and resolves only to signed out,
  * so saves made meanwhile land in the scope the device returns to.
+ *
+ * A key-only connection (Become a Supporter without an account) only pays: its
+ * moments stay in this browser and never sync.
  */
 async function resolveScope(): Promise<{ scope: string; held: boolean }> {
   const root = await getBackendUrl()
@@ -35,6 +38,7 @@ async function resolveScope(): Promise<{ scope: string; held: boolean }> {
   const account = await supporterAccount.run('status')
   const waiting = account.state === 'unavailable' && account.linked === true
   const accountId = account.state === 'linked' ? account.accountId : waiting ? await supporterAccount.localAccountId() : null
+  if (accountId && await supporterAccount.isInstallationIdentity()) return { scope: `${root}|local`, held: false }
   if (accountId) return { scope: `${root}|account:${accountId}`, held: false }
   return { scope: `${root}|local`, held: waiting }
 }

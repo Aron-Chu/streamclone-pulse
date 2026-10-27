@@ -86,6 +86,9 @@ describe('pay-first settings', () => {
       await view.click('Sign out')
       expect(view.calls('SUPPORTER_ACCOUNT', 'disconnect')).toBe(0)
       expect(view.text()).toContain('does not cancel your subscription')
+      // A key-only connection never synced My Moments, so nothing is removed.
+      expect(view.text()).toContain('Your bookmarks, notes and watched history stay in this browser.')
+      expect(view.text()).not.toContain('This removes the watched history')
       await view.click('Stay signed in')
       expect(view.calls('SUPPORTER_ACCOUNT', 'disconnect')).toBe(0)
       expect(view.buttons()).not.toContain('Confirm sign out')
