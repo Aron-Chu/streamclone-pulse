@@ -38,6 +38,7 @@ import '../d3/hub-d3-tokens.css'
 import { HubV5Avatar } from './HubV5Avatar'
 import { HubV5Icon } from './HubV5Icon'
 import { GameArt } from './HubV5Rack'
+import { HubV5TopMoments } from './HubV5TopMoments'
 import {
   FEED_BIG_VIEWERS,
   FEED_LIVES_LIST,
@@ -119,6 +120,12 @@ export interface HubLiveFeed {
   pending: number
   setHeld: (held: boolean) => void
   flush: () => void
+  /** The hub's last poll (Top moments reads its list again with each one). */
+  at: string | null
+  /** The Moments list is on and answering: the rail is Top moments. */
+  list: boolean
+  /** Live channels' pictures by login, for a moment whose list item has none. */
+  avatars: ReadonlyMap<string, string>
 }
 
 /** The checked Moments page is on (read inline so a production build folds it away, as AnalyticsMomentsPage does). */
@@ -134,7 +141,7 @@ function momentsListOn(): boolean {
  * the last list. The mount read already answers for the hub's first snapshot,
  * so that snapshot does not read the same page a second time.
  */
-function useMomentsList(at: string | null): { list: FeedMomentsList | null; settled: boolean } {
+function useMomentsList(at: string | null): { list: FeedMomentsList | null; settled: boolean; gone: boolean } {
   const [on] = useState(momentsListOn)
   const [state, setState] = useState<{ list: FeedMomentsList | null; settled: boolean; gone: boolean }>(() => ({ list: null, settled: !on, gone: !on }))
   const gone = state.gone
@@ -185,7 +192,8 @@ export function useHubLiveFeed(hub: PublicHub | null): HubLiveFeed {
     if (!h) flush()
   }, [flush])
   const pending = state.shown === latest ? 0 : feedFresh(state.shown, latest).size
-  return { shown: state.shown, fresh: state.fresh, pending, setHeld, flush }
+  const avatars = useMemo(() => new Map((hub?.liveChannels ?? []).flatMap((c) => (c.profileImageUrl ? [[c.login.toLowerCase(), c.profileImageUrl] as const] : []))), [hub])
+  return { shown: state.shown, fresh: state.fresh, pending, setHeld, flush, at: hub?.generatedAt ?? null, list: !moments.gone, avatars }
 }
 
 /* ---------- pieces of a row ---------- */
@@ -550,7 +558,7 @@ export interface HubV5LiveFeedProps {
   onUpMore?: () => void
 }
 
-export function HubV5LiveFeed({ feed, nowMs, loading = false, onUpMore }: HubV5LiveFeedProps) {
+function LiveFeedV3({ feed, nowMs, loading = false, onUpMore }: HubV5LiveFeedProps) {
   const [game, setGame] = useState<string | null>(null)
   const model = useMemo(() => feedForGame(feed.shown, game), [feed.shown, game])
   const games = useMemo(() => feedGames(feed.shown, game), [feed.shown, game])
@@ -697,6 +705,30 @@ export function HubV5LiveFeed({ feed, nowMs, loading = false, onUpMore }: HubV5L
   )
 }
 
+/**
+ * The rail: Top moments where the Moments list is on (HubV5TopMoments), the
+ * Live feed above where it is off or its backend 404s. Picking up keeps its row
+ * on top of either.
+ */
+export function HubV5LiveFeed(props: HubV5LiveFeedProps) {
+  const { feed, onUpMore } = props
+  const [topGone, setTopGone] = useState(false)
+  const onGone = useCallback(() => setTopGone(true), [])
+  if (!feed.list || topGone) return <LiveFeedV3 {...props} />
+  return (
+    <HubV5TopMoments
+      at={feed.at}
+      nowMs={props.nowMs}
+      avatars={feed.avatars}
+      onGone={onGone}
+      up={(game) => {
+        const model = feedForGame(feed.shown, game)
+        return model.up.length ? <UpRow model={model} isNew={!!feed.fresh?.has('now')} onUpMore={onUpMore} /> : null
+      }}
+    />
+  )
+}
+
 /** Phones: a 3-row "Live now" peek under the hero (CSS shows it under 720 px); the full feed stays where it is. */
 export function HubV5LivePeek({ feed, nowMs }: { feed: HubLiveFeed; nowMs: number }) {
   const model = feed.shown
@@ -714,7 +746,7 @@ export function HubV5LivePeek({ feed, nowMs }: { feed: HubLiveFeed; nowMs: numbe
       <div className="hv5-rh">
         <h2 id="hv5-pk-h"><span className="hv5-fd-dot" aria-hidden="true" />Live now</h2>
         <span className="hv5-f2-fresh">{freshText(model.asOf, nowMs)}</span>
-        <span className="hv5-end"><a className="hv5-mo-all" href="#latest" onClick={onJump}>Live feed ↓</a></span>
+        <span className="hv5-end"><a className="hv5-mo-all" href="#latest" onClick={onJump}>{feed.list ? 'Top moments ↓' : 'Live feed ↓'}</a></span>
       </div>
       <ol className="hv5-fd-list">
         {groups.length
