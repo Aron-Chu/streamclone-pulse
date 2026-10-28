@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { FEEDBACK_PATH, PRIVACY_PATH, REFUNDS_PATH, SECURITY_REPORT_URL, STRIPE_CUSTOMER_PORTAL_LOGIN_URL, SUPPORTER_PATH } from '../../lib/externalLinks'
 import { discordInviteUrl } from '../../lib/discord'
+import { SUPPORTER_WITHDRAWAL_PATH, supporterWithdrawalEnabled } from '../../lib/supporterWithdrawal'
 import { SupporterPerkItems, supporterOnlyYou } from '../../ui/components/SupporterPerks'
 import { TermsSeenInChatBullets } from '../../ui/components/SupporterChatBadgeCopy'
 import { supporterChatBadgesEnabled } from '../../lib/supporterChatBadgesFlag'
@@ -161,6 +162,7 @@ export default function Terms() {
         </p>
 
         <h2>Selling entity and applicable law</h2>
+        {supporterWithdrawalEnabled() ? <p><Link to={SUPPORTER_WITHDRAWAL_PATH}>Withdraw from contract here</Link>.</p> : null}
         <p data-testid="terms-seller-and-law">
           StreamPulse is run by, and Pulse Supporter is sold by, Aron Chu, 906 North Miller Dr,
           Unit 3099, Tempe, AZ 85288, USA. These terms are governed by the law of Arizona, USA.
@@ -168,9 +170,9 @@ export default function Terms() {
           law where you live. If you live in the EU, the wider European Economic Area or the UK, you
           can withdraw from a new Supporter subscription within 14 days after you subscribe,
           without giving a reason: email{' '}
-          <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a> within that
+          <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a>{supporterWithdrawalEnabled() ? <>{' '}or use the <Link to={SUPPORTER_WITHDRAWAL_PATH}>withdrawal form</Link></> : null} within that
           period. Withdrawing cancels the subscription, the charge is refunded in full within 14 days
-          of your email, and Supporter access ends. Any other statutory right to cancel that you have
+          of your request, and Supporter access ends. Any other statutory right to cancel that you have
           where you live applies as well, on top of the{' '}
           <Link to={REFUNDS_PATH}>cancellation and refund policy</Link>.
         </p>

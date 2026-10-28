@@ -5,6 +5,7 @@ import Docs from './routes/public/Docs'
 import Privacy from './routes/public/Privacy'
 import Terms from './routes/public/Terms'
 import Refunds from './routes/public/Refunds'
+import Withdraw from './routes/public/Withdraw'
 import Supporter from './routes/public/Supporter'
 import SupporterThanks from './routes/public/SupporterThanks'
 import AccountRestore from './routes/account/AccountRestore'
@@ -24,6 +25,7 @@ export function prerenderPublicPage(path: string): string {
     : path === '/privacy' ? <Privacy />
     : path === '/terms' ? <Terms />
     : path === '/refunds' ? <Refunds />
+    : path === '/withdraw' ? <Withdraw />
     : path === '/supporter' ? <Supporter />
     : path === '/supporter/thanks' ? <SupporterThanks />
     : path === '/account/restore' ? <AccountRestore />

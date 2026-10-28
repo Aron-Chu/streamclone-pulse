@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { REFUNDS_PATH, SUPPORTER_PATH, TERMS_PATH } from '../../lib/externalLinks'
 import { supporterChatBadgesEnabled } from '../../lib/supporterChatBadgesFlag'
+import { supporterWithdrawalEnabled } from '../../lib/supporterWithdrawal'
 import {
   PRIVACY_CHATTER_IDENTITY_EXCEPTION,
   PRIVACY_TWITCH_PLAIN_ID_SENTENCE,
@@ -133,6 +134,13 @@ export default function Privacy() {
           These identifiers are treated as private financial references; they are never shown
           publicly or attached to a badge or profile.
         </p>
+        {supporterWithdrawalEnabled() ? <p data-testid="privacy-withdrawal">
+          If you submit an online withdrawal, StreamPulse stores your name, acknowledgement email,
+          subscription details, request and submission time to handle it and send an acknowledgement.
+          The mail service and the private billing inbox receive those details for delivery and handling.
+          A random request key, but no form details, may be kept in this tab to help retry an interrupted submission.
+          Do not include a full card number. The request does not automatically issue a refund.
+        </p> : null}
         <p>
           Provider webhook notifications are stored in a durable queue so a payment event is never
           lost or processed twice. The proposed retention for a raw stored notification is about 30
@@ -455,10 +463,16 @@ export default function Privacy() {
             recorded.
           </li>
           <li data-testid="privacy-third-party-turnstile">
-            <strong>Cloudflare Turnstile (feedback form bot check)</strong> — only on the feedback
-            form. Cloudflare processes your IP address and browser signals to tell people from bots,
+            <strong>Cloudflare Turnstile (feedback form bot check)</strong> —{' '}
+            {supporterWithdrawalEnabled() ? 'on the feedback form and online withdrawal form' : 'only on the feedback form'}.
+            Cloudflare processes your IP address and browser signals to tell people from bots,
             as described under Feedback form.
           </li>
+          {supporterWithdrawalEnabled() ? <li data-testid="privacy-third-party-withdrawal-mail">
+            <strong>Withdrawal mail service and billing inbox</strong> — receive the name, email,
+            subscription details, request and submission time to deliver the acknowledgement and
+            allow StreamPulse to handle it.
+          </li> : null}
           <li data-testid="privacy-third-party-support-mail">
             <strong>Outgoing mail service and support inbox (feedback form only)</strong> — the email
             provider StreamPulse uses to send feedback reports, and the provider that hosts

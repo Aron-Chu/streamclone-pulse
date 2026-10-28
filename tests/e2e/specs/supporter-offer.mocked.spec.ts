@@ -253,7 +253,7 @@ test.describe('packaged supporter offer', () => {
     await expect(page.getByRole('button', { name: 'Check again', exact: true })).toBeVisible()
   })
 
-  test('a signed-out install offers one Become a Supporter button, and no restore or website account, without sending anything', async ({ extension, prepare }) => {
+  test('a signed-out install offers purchase and restore without sending anything until a click', async ({ extension, prepare }) => {
     await prepare({ scenario: 'live-ready' })
     const requests: string[] = []
     for (const path of ['account/installations', 'account/restores', 'account/device-links', 'billing/checkout', 'billing/portal', 'account/auth/twitch/start-device']) {
@@ -264,6 +264,7 @@ test.describe('packaged supporter offer', () => {
     await expect(page.locator('[data-journey-state="signed-out"]')).toBeVisible()
     await expect(page.getByText('Opens Stripe checkout. No account or sign-up. Saves a key in this browser.', { exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Become a Supporter', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Restore existing Supporter', exact: true })).toBeVisible()
     await expect(page.getByRole('link', { name: 'Supporter details', exact: true })).toHaveAttribute('href', 'https://streampulse.stream/supporter')
     await expect(page.locator('a[data-supporter-action="billing"]')).toHaveCount(0)
     for (const gone of ['Connect this extension', 'Restore my Supporter', 'Use a StreamPulse website account', 'Continue with Twitch']) {

@@ -14,7 +14,7 @@ The build stage comes from `PULSE_EXTENSION_TWITCH_SIGNIN` (see
 
 | Stage | Who | Signed out | Signed in |
 |---|---|---|---|
-| `off` (default; every store build today) | everyone | **Become a Supporter**: one click saves an installation key and opens Checkout only if the server reports `checkoutEnabled` and `installationAccountsEnabled`; otherwise "Supporter isn't on sale yet". Nothing is sent before the click. No email restore or website-account choice. A closed **Invited tester? Connect a tester account** disclosure keeps the existing device link. | Installation accounts: **Become a Supporter** only after fresh server `checkoutEnabled` and `installationAccountsEnabled` are both true; status, worker **Manage subscription**, **Sign out**. Invited testers retain website billing. |
+| `off` (default) | everyone | **Become a Supporter** saves an installation key and opens Checkout only if the server reports `checkoutEnabled` and `installationAccountsEnabled`; otherwise "Supporter isn't on sale yet". **Restore existing Supporter** starts an explicit email-confirmed recovery. Nothing is sent before a click. A closed **Invited tester? Connect a tester account** disclosure keeps the existing device link. | Installation accounts: status, worker **Manage subscription**, **Sign out**, and restore only for an empty installation allowed by the server. Invited testers retain website billing. |
 | `tester` | development and preview builds only; store builds refuse it | **Continue with Twitch**, "Twitch sign-in is open to invited testers right now", device link under **Other ways to connect (testers)** | "Signed in with Twitch as {name}", status, **Become a Supporter** when the server opens Checkout, **Manage subscription**, **Sign out**, **Use a different Twitch account** |
 | `public` | a store build only once that store's manifest requests `identity` (spec E3) | **Continue with Twitch** | as `tester` |
 
@@ -55,17 +55,23 @@ that names a different Twitch account (`identity_mismatch`) never opens the
 portal. Silent sign-in runs only on a true first install, never after **Sign out**
 or a server `revoked`.
 
-The page never sends `SUPPORTER_RESTORE`. With Twitch off, only the
-**Become a Supporter** click (`SUPPORTER_BILLING checkout`) creates an
-installation connection. Initial, focus, revision and status reads never enroll.
+With Twitch off, an explicit **Become a Supporter** click (`SUPPORTER_BILLING
+checkout`) or **Restore existing Supporter** submission creates an installation
+connection. Initial, focus, revision and status reads never enroll.
 A 404 on enrollment (a server without installation accounts) is shown as closed,
 not as an error. The server still refuses creation while
 `PULSE_INSTALLATION_ACCOUNTS_ENABLED` is off. The worker's nonpaid
 `SUPPORTER_BILLING connect` action is kept but no page sends it.
 
-An installation connection is specific to this browser. Connecting a new browser
-does not restore a paid membership. Email restore remains absent from this page;
-the sign-out confirmation directs existing installation members to billing support.
+An installation connection is specific to this browser. A person can request an
+email restore on a new browser, compare the code on the confirmation page to the
+extension, then explicitly approve it. The server refreshes the lookup hash from
+the current Stripe customer email and rechecks that email before issuing a
+credential; email changes may take time to reach the lookup. People without
+access to the current mailbox need support. The email address is not persisted by the
+extension. Unknown or ambiguous addresses receive the same waiting message; if a
+link does not arrive, contact support. An in-flight owned payment is checked before
+another purchase or an account merge; restore never combines billing histories.
 
 ## Worker internals (installation accounts, kept)
 

@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { PRIVACY_PATH, REFUNDS_PATH, STRIPE_CUSTOMER_PORTAL_LOGIN_URL, SUPPORTER_TERMS_PATH } from '../../lib/externalLinks'
+import { SUPPORTER_WITHDRAWAL_PATH, supporterWithdrawalEnabled } from '../../lib/supporterWithdrawal'
 import { chromeWebStoreUrlForPage } from '../../lib/publicSiteConfig'
 import { SupporterPerkItems, supporterOnlyYou } from '../../ui/components/SupporterPerks'
 import { SupporterNoTwitchChatBadge, SupporterSeenInChat } from '../../ui/components/SupporterChatBadgeCopy'
@@ -149,6 +150,7 @@ export default function Supporter() {
           <Link to={PRIVACY_PATH}>privacy policy</Link> — the last one covers what an account stores
           and what Stripe receives.
         </p>
+        {supporterWithdrawalEnabled() ? <p><Link to={SUPPORTER_WITHDRAWAL_PATH}>Withdraw from contract here</Link>.</p> : null}
 
         <h2>Questions</h2>
         {/* OWNER CONFIRMED 2026-10-13 (D35): Aron answers billing, cancellation

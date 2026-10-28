@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { STRIPE_CUSTOMER_PORTAL_LOGIN_URL, SUPPORTER_PATH, TERMS_PATH } from '../../lib/externalLinks'
+import { SUPPORTER_WITHDRAWAL_PATH, supporterWithdrawalEnabled } from '../../lib/supporterWithdrawal'
 
 /**
  * Cancellation and refund policy for Pulse Supporter.
@@ -136,10 +137,12 @@ export default function Refunds() {
         </p>
 
         <h2>Consumer cancellation rights</h2>
+        {supporterWithdrawalEnabled() ? <p><Link to={SUPPORTER_WITHDRAWAL_PATH}>Withdraw from contract here</Link>.</p> : null}
         <p>
           If you live in the EU, the wider European Economic Area or the UK, you can withdraw from a
           new Supporter subscription within 14 days after you subscribe, without giving a reason,
-          and get a full refund. To withdraw, email within that period as described under How to ask.
+          and get a full refund. To withdraw, email within that period as described under How to ask
+          {supporterWithdrawalEnabled() ? <>{' '}or use the <Link to={SUPPORTER_WITHDRAWAL_PATH}>withdrawal form</Link></> : null}.
           This is on top of the refunds above. Other places may give you a statutory right to cancel
           too, and nothing here removes a right you have under consumer law that cannot be waived.
           Who sells Supporter, and which law applies, is in the <Link to={TERMS_PATH}>terms of use</Link>.

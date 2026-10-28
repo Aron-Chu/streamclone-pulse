@@ -15,6 +15,7 @@ const expected = [
   ['privacy/index.html', 'Privacy Policy — StreamPulse', 'index,follow', 'https://streampulse.stream/privacy'],
   ['terms/index.html', 'Terms of Use — StreamPulse', 'index,follow', 'https://streampulse.stream/terms'],
   ['refunds/index.html', 'Cancellation and Refunds — StreamPulse', 'index,follow', 'https://streampulse.stream/refunds'],
+  ['withdraw/index.html', 'Withdraw from your contract — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/withdraw'],
   ['supporter/index.html', 'Pulse Supporter — StreamPulse', 'index,follow', 'https://streampulse.stream/supporter'],
   ['supporter/thanks/index.html', 'Return to your extension — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/supporter/thanks'],
   ['account/restore/index.html', 'Restore Supporter — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/account/restore'],
