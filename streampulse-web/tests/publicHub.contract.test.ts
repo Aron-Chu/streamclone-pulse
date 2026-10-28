@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const publicHubPath = resolve(__dirname, '../src/lib/publicHub.ts')
 
-/** KPI / header fields consumed by HubCommandHeader and LiveChannelsMatrix. */
+/** KPI / header fields the hub reads. */
 const GOLDEN_HUB_KPI_INTERFACE_KEYS = [
   'activity',
   'corpus',

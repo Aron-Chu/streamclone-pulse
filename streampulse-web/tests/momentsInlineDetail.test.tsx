@@ -2,9 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AnalyticsMomentsPage from '../src/routes/analytics/AnalyticsMomentsPage'
-import * as availabilityTransport from '../src/lib/discoveryAvailability'
 import * as minuteWindow from '../src/lib/momentMinuteWindow'
-import { clearRankedFeatureCheckForTests } from '../src/hooks/useRankedFeatureAvailability'
 import { fromHubMoment } from '../src/lib/discoveryMoments'
 import { toggleSavedMoment } from '../src/lib/savedDiscoveryMoments'
 import { MomentRow } from '../src/ui/components/moments/MomentRow'
@@ -67,14 +65,12 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn()
   // No test here may touch a network: every transport fails fast.
   vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('network disabled in tests') }))
-  vi.spyOn(availabilityTransport, 'fetchRankedAvailability').mockReturnValue(new Promise(() => {}))
   vi.spyOn(minuteWindow, 'loadMomentMinuteWindow').mockResolvedValue(null)
 })
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
-  clearRankedFeatureCheckForTests()
   stepBack.mode = 'real'
   stepBack.held.length = 0
   window.getSelection()?.removeAllRanges()
@@ -271,9 +267,12 @@ describe('moments open in line', () => {
       view.rerender(<MemoryRouter initialEntries={['/analytics/moments?login=forsen&stream=s9&offset=600']}><AnalyticsMomentsPage /><UrlProbe /></MemoryRouter>)
       expect(document.querySelector('.moments-inline')!.className).toContain('is-open')
       expect(document.querySelector('.moments-inline.is-closing')).toBeNull()
-      // The loading state that returns with each poll renders below the card, never above it.
+      // The failure notice stays below the card through each poll, in the skeleton's place.
       const card = document.getElementById('moments-selected-detail')!
-      expect(card.compareDocumentPosition(document.querySelector('.moments-loading')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      const notice = screen.getByRole('heading', { name: 'Moments could not be refreshed' }).closest('.moments-notice')!
+      expect(card.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      expect(document.querySelector('.moments-loading')).toBeNull()
+      expect(screen.getByRole('button', { name: 'Retrying…' })).toBeTruthy()
     } finally {
       Object.assign(hub, saved)
     }
@@ -298,6 +297,50 @@ describe('moments open in line', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
     await waitFor(() => expect(openDetail()).toBeNull())
     expect(currentUrl).toBe('/analytics/moments')
+  })
+})
+
+describe('the feed notice sits in the results slot', () => {
+  const original = { ...hub }
+  afterEach(() => { Object.assign(hub, original) })
+  const results = () => screen.getByRole('region', { name: 'Moment results' })
+  const headings = () => [...results().querySelectorAll('h2')].map(heading => heading.textContent)
+
+  it('replaces the skeleton, heading and count when nothing is listed', () => {
+    Object.assign(hub, { data: undefined, loading: false, error: 'The hub took too long to respond.' })
+    renderMoments()
+    const notice = within(results()).getByRole('heading', { name: 'Moments could not be refreshed' }).closest('.moments-notice')!
+    expect(notice.parentElement).toBe(results())
+    expect(headings()).toEqual(['Moments could not be refreshed'])
+    expect(results().textContent).not.toContain('0 shown')
+    expect(results().querySelector('.moments-loading')).toBeNull()
+    expect(screen.queryByText('Loading measured activity…')).toBeNull()
+    expect(screen.queryByText('No available moments.')).toBeNull()
+    expect(within(notice as HTMLElement).getByText('The hub took too long to respond.')).toBeTruthy()
+  })
+
+  it('takes focus back from a closed selection in place of the results heading', async () => {
+    Object.assign(hub, { data: undefined, loading: false, error: 'The hub took too long to respond.' })
+    renderMoments('/analytics/moments?login=forsen&stream=s9&offset=600')
+    await waitFor(() => expect(openDetail()).not.toBeNull())
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Moments could not be refreshed' })))
+  })
+
+  it('keeps the six-card skeleton under the results heading for a real load', () => {
+    Object.assign(hub, { data: undefined, loading: true, error: null })
+    renderMoments()
+    expect(headings()).toEqual(['Moments Loading…'])
+    expect(results().querySelectorAll('.moments-loading__card')).toHaveLength(6)
+    expect(screen.queryByText('Loading measured activity…')).toBeNull()
+    expect(document.querySelector('.moments-notice')).toBeNull()
+  })
+
+  it('keeps the heading and count above listed moments when a refresh fails', () => {
+    Object.assign(hub, { error: 'The hub took too long to respond.' })
+    renderMoments()
+    expect(headings()).toEqual(['Moments 2 shown', 'Moments could not be refreshed'])
+    expect(rows()).toHaveLength(2)
   })
 })
 

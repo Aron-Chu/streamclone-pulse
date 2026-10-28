@@ -151,7 +151,7 @@ describe('hub bucket card model: synthetic buckets', () => {
 
     const open = buildHubBucketCardModel({ points: [point(NOON, { bucketComplete: false })], bucketMinutes: 6, t: NOON, format: PHX })!
     expect(open.inProgress).toBe(true)
-    // A legacy point without the flag is not "in progress" (ActivityBucketInspector rule).
+    // A legacy point without the flag is not "in progress" (the old bucket inspector's rule).
     expect(buildHubBucketCardModel({ points: [point(NOON, { bucketComplete: undefined })], bucketMinutes: 6, t: NOON, format: PHX })!.inProgress).toBe(false)
   })
 

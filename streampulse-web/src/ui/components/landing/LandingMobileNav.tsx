@@ -103,12 +103,6 @@ export function LandingMobileNav({
               <a href="#demo" onClick={() => setOpen(false)}>
                 Pulse tab
               </a>
-              <a href="#analysis" onClick={() => setOpen(false)}>
-                Signal replay
-              </a>
-              <a href="#roadmap" onClick={() => setOpen(false)}>
-                Roadmap
-              </a>
               <Link to={docsHref} onClick={() => setOpen(false)}>
                 Docs
               </Link>

@@ -26,3 +26,16 @@ describe('hub cards while the hub request has failed (INT-02)', () => {
     expect(screen.getByText('0 of 500 live')).toBeTruthy()
   })
 })
+
+describe('Channels while the first hub reply is loading', () => {
+  it('shows no count and no empty line, only the busy table', () => {
+    const { container } = render(<MemoryRouter>
+      <HubV5Channels live={[]} poolSize={0} loading game={null} onClearGame={() => {}} />
+    </MemoryRouter>)
+    expect(container.querySelector('[data-hv5-channel-count]')!.textContent).toBe('')
+    expect(screen.queryByText('0 of 0 live')).toBeNull()
+    expect(screen.queryByText('No channels match.')).toBeNull()
+    expect(container.querySelectorAll('tbody tr')).toHaveLength(0)
+    expect(container.querySelector('#channels')!.getAttribute('aria-busy')).toBe('true')
+  })
+})

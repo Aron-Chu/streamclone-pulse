@@ -1,5 +1,3 @@
-export const PORTAL_MINUTES_TIMEOUT_MS = 120_000
-
 /**
  * Opt-in apiClient deadline for the large first-paint reads (24h and longer hub
  * bodies, the Moments hub read, session detail, a channel's streams list,

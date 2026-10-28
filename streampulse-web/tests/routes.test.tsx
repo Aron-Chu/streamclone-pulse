@@ -90,25 +90,10 @@ describe('route smoke', () => {
     expect(screen.queryByRole('heading', { name: /connect streampulse/i })).toBeNull()
   })
 
-  it('sends gated /dashboard to public analytics when there is no beta key', async () => {
-    renderPath('/dashboard')
-    await waitFor(
-      () => {
-        expect(screen.getByTestId('pathname').textContent).toBe('/analytics')
-      },
-      { timeout: 10_000 },
-    )
-    expect(await screen.findByRole('main')).toBeTruthy()
-    expect(screen.queryByRole('heading', { name: /connect streampulse/i })).toBeNull()
-  })
-
-  it('renders private clips dashboard when there is a beta key', async () => {
+  it.each(['/dashboard', '/dashboard/clips'])('answers the removed %s page with the 404, even with an old beta key saved', async path => {
     localStorage.setItem('sp.betaKey', 'secret-one')
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response(JSON.stringify({ items: [] }), { status: 200 })),
-    )
-    renderPath('/dashboard/clips')
-    expect(await screen.findByRole('heading', { name: /streamPulse clips/i })).toBeTruthy()
+    renderPath(path)
+    expect(await screen.findByTestId('not-found')).toBeTruthy()
+    expect(screen.getByTestId('pathname').textContent).toBe(path)
   })
 })

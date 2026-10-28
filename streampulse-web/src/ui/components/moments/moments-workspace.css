@@ -443,6 +443,8 @@ a.moments-creator-link:hover strong { text-decoration: underline; text-underline
 .session-moment-map-links button { font-variant-numeric: tabular-nums; }
 
 .moments-notice { border: 1px solid var(--fma-border, hsl(var(--sc-border))); border-radius: 5px; padding: 12px; background: var(--sp-surface-2, var(--fma-panel)); }
+/* In the results slot the notice stands in for the heading, so keep its gap above the list. */
+.moments-results > .moments-notice { margin-bottom: 14px; }
 .moment-save-control { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .moment-save-control button { min-width: 50px; }
 .moment-save-message { max-width: 300px; overflow-wrap: anywhere; font-size: 12px; }

@@ -247,7 +247,6 @@ test.describe('public surface audit', () => {
     await page.locator('#demo .sl-container > div:nth-child(2)').scrollIntoViewIfNeeded()
     await expect(page.locator('.sl-xtour')).toHaveAttribute('data-static', '')
     await expect(page.getByRole('region', { name: 'StreamPulse Pulse sidebar preview' })).toBeVisible()
-    await expect(page.locator('.lsg')).toHaveAttribute('data-static', '')
     await expectNoHorizontalOverflow(page)
   })
 

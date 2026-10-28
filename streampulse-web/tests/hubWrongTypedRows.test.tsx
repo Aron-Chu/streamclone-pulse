@@ -8,7 +8,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import { normalizePublicHub, type PublicHub } from '../src/lib/publicHub'
 import { fromHubMoment } from '../src/lib/discoveryMoments'
-import AnalyticsLandingPage from '../src/routes/analytics/AnalyticsLandingPage'
+import AnalyticsHubV5Page from '../src/routes/analytics/AnalyticsHubV5Page'
 
 const channel = (login: unknown, extra: Record<string, unknown> = {}) => ({
   login,
@@ -72,13 +72,6 @@ vi.mock('../src/hooks/usePublicHubData', () => ({
     refresh: vi.fn(),
   }),
 }))
-vi.mock('../src/hooks/useHubRecentLogins', () => ({ useHubRecentLogins: () => [] }))
-vi.mock('../src/hooks/useNewsroomData', () => ({
-  useNewsroomData: () => ({
-    data: null, loading: false, refreshing: false, loadingMore: false, error: 'Newsroom unavailable',
-    unavailable: true, announcement: '', refresh: vi.fn(), loadMore: vi.fn(),
-  }),
-}))
 
 describe('hub rows with wrong-typed fields', () => {
   it('drops rows without a text login and clears other wrong-typed text', () => {
@@ -119,10 +112,10 @@ describe('hub rows with wrong-typed fields', () => {
     hostileHub.data = normalizePublicHub(hostileRawHub() as unknown as Parameters<typeof normalizePublicHub>[0])
     render(
       <MemoryRouter>
-        <AnalyticsLandingPage />
+        <AnalyticsHubV5Page />
       </MemoryRouter>,
     )
-    expect(await screen.findByRole('heading', { name: 'Command center' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Find your streamer' })).toBeTruthy()
     expect(screen.getByRole('navigation', { name: 'Analytics navigation' })).toBeTruthy()
     expect(screen.getAllByText('pokimane').length).toBeGreaterThan(0)
   })

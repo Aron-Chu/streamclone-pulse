@@ -25,7 +25,6 @@ export const MOMENTUM_VS_PRIOR_LABEL = 'vs prior window'
 export const MOMENTUM_TITLE =
   'Momentum: chat + emote activity in the recent window compared to the prior window of equal length.'
 export const MOMENTUM_NO_SIGNAL_TITLE = 'Not enough recent chat or emote activity to measure momentum.'
-export const MOMENTUM_COLUMN_TITLE = MOMENTUM_TITLE
 
 /** @deprecated use MOMENTUM_* constants */
 export const TREND_VS_PRIOR_5MIN_LABEL = MOMENTUM_VS_PRIOR_LABEL

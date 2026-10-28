@@ -43,6 +43,8 @@ export interface HubV5ChannelsProps {
   poolSize: number
   /** The hub request failed: no count, and the empty table says so (INT-02). */
   unavailable?: boolean
+  /** The first hub reply has not landed: no count and no empty line yet. */
+  loading?: boolean
   /** The game picked in Where chat is, or null. */
   game: string | null
   onClearGame: () => void
@@ -50,7 +52,7 @@ export interface HubV5ChannelsProps {
   sortRequest?: { id: number; sort: HubChannelSort; dir: 1 | -1 } | null
 }
 
-export const HubV5Channels = forwardRef<HTMLElement, HubV5ChannelsProps>(function HubV5Channels({ live, poolSize, unavailable = false, game, onClearGame, sortRequest }, ref) {
+export const HubV5Channels = forwardRef<HTMLElement, HubV5ChannelsProps>(function HubV5Channels({ live, poolSize, unavailable = false, loading = false, game, onClearGame, sortRequest }, ref) {
   const [q, setQ] = useState('')
   const [sort, setSort] = useState<HubChannelSort>('viewers')
   const [dir, setDir] = useState<1 | -1>(-1)
@@ -107,7 +109,7 @@ export const HubV5Channels = forwardRef<HTMLElement, HubV5ChannelsProps>(functio
     if (!more) sectionRef.current?.scrollIntoView({ block: 'start', behavior: 'auto' })
   }
 
-  const countLabel = unavailable && !live.length ? ''
+  const countLabel = (unavailable || loading) && !live.length ? ''
     : game || q
     ? `${formatHubInt(rows.length)} ${rows.length === 1 ? 'channel' : 'channels'}`
     : `${formatHubInt(live.length)} of ${formatHubInt(poolSize)} live`
@@ -117,6 +119,7 @@ export const HubV5Channels = forwardRef<HTMLElement, HubV5ChannelsProps>(functio
       id="channels"
       className="hv5-sec hv5-channels"
       aria-labelledby="hv5-cn-h"
+      aria-busy={loading || undefined}
       ref={(el) => {
         sectionRef.current = el
         if (typeof ref === 'function') ref(el)
@@ -208,7 +211,7 @@ export const HubV5Channels = forwardRef<HTMLElement, HubV5ChannelsProps>(functio
                 <td className="r"><VsCell channel={c} /></td>
               </tr>
             )
-          }) : (
+          }) : loading ? null : (
             <tr><td colSpan={5} className="hv5-ch5-none">{unavailable && !live.length ? 'Unavailable right now.' : 'No channels match.'}</td></tr>
           )}
         </tbody>

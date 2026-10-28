@@ -1,10 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { installHubUxMock } from './helpers/hubUxMock'
 
-// The d3-v5 hub page (behind the build flag). Runs only against a build made with VITE_PUBLIC_HUB_V5=on;
-// a default build serves the Command Center, which the spec without .hub-v5 covers.
-test.skip(!/^(on|1)$/.test(process.env.VITE_PUBLIC_HUB_V5 ?? ''), 'needs a build with VITE_PUBLIC_HUB_V5=on')
-
 // The bar card (R5-8 option A): a bar click opens a strip under the chart at
 // every width; ‹ › step bars, Zoom to bar zooms the chart, × or Esc closes and
 // gives focus back to the plot. The card reads the hub payload and makes no request.

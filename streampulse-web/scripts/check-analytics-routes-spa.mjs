@@ -43,11 +43,6 @@ if (missing.length > 0) {
   process.exit(1)
 }
 
-if (!source.includes('RequireAuth')) {
-  console.error('Expected RequireAuth wrapper for beta-gated dashboard routes')
-  process.exit(1)
-}
-
 if (!source.includes('<Route path="*" element={<NotFound />}')) {
   console.error('Expected a real public 404 route instead of a catch-all redirect')
   process.exit(1)

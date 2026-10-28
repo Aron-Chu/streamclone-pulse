@@ -1,6 +1,5 @@
 import { test, expect } from '@playwright/test'
 import { installMockApi } from './helpers/mockApi'
-import { seedBetaKey } from './helpers/auth'
 import {
   assertAnimatedTourAdvances,
   assertAnimatedTourHidesPanelScrollbar,
@@ -16,7 +15,6 @@ const SCROLL_THROUGH_STEPS = 8
 test.describe('landing extension showcase parity', () => {
   test.beforeEach(async ({ page }) => {
     await installMockApi(page)
-    await seedBetaKey(page)
   })
 
   for (const beat of TOUR_BEATS) {

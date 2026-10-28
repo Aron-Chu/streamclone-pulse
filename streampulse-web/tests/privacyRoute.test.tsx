@@ -1,6 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
+import { PUBLIC_HUB_CACHE_HUB_STALE_MS, PUBLIC_HUB_CACHE_STALE_MS } from '../src/lib/publicHubCache'
 import { AppRoutes } from '../src/routes/index'
 
 function LocationProbe() {
@@ -28,9 +29,17 @@ describe('privacy route', () => {
     expect(screen.getByText(/storage\.local/i)).toBeTruthy()
     expect(screen.getByText(/sp\.hub\.recentLogins/i)).toBeTruthy()
     expect(screen.getByText(/sp:publicHub:v1/i)).toBeTruthy()
-    expect(screen.getByText(/sp\.betaKey/i)).toBeTruthy()
+    expect(screen.getByText(/sp:publicHubProjection:v1/i)).toBeTruthy()
+    expect(screen.queryByText(/sp\.betaKey/i)).toBeNull()
     expect(screen.getByText(/sp\.chart\.scrollZoom\.v1/i)).toBeTruthy()
     expect(screen.getByText(/sp\.backendUrlOverride/i)).toBeTruthy()
+  })
+
+  it('names the hub and projection cache ages the code uses', async () => {
+    renderPath('/privacy')
+    const body = (await screen.findByTestId('privacy-policy')).textContent ?? ''
+    expect(body).toContain(`for up to about ${PUBLIC_HUB_CACHE_HUB_STALE_MS / 3_600_000} hours`)
+    expect(body).toContain(`used for about ${PUBLIC_HUB_CACHE_STALE_MS / 60_000} minutes`)
   })
 
   it('explains Twitch page-context use without claiming cookie extraction', async () => {
