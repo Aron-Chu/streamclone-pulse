@@ -9,13 +9,10 @@ const navItems: AnalyticsTopNavItem[] = [
 ]
 
 describe('AnalyticsTopNav', () => {
-  it('renders accessible navigation, active state, status, and skip link', () => {
+  it('renders accessible navigation, active state, and skip link', () => {
     render(
       <MemoryRouter initialEntries={['/analytics/streams']}>
-        <AnalyticsTopNav
-          items={navItems}
-          status={{ label: 'Data status', value: 'Ready', tone: 'ready', detail: 'Analytics backend is reachable' }}
-        />
+        <AnalyticsTopNav items={navItems} />
       </MemoryRouter>,
     )
 
@@ -23,22 +20,17 @@ describe('AnalyticsTopNav', () => {
     expect(screen.getByRole('navigation', { name: 'Analytics navigation' })).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Skip to analytics content' }).getAttribute('href')).toBe('#analytics-main')
     expect(screen.getByRole('link', { name: 'Streams' }).getAttribute('aria-current')).toBe('page')
-    expect(screen.getByText('Ready')).toBeTruthy()
-    expect(screen.getByLabelText('Data status: Ready - Analytics backend is reachable')).toBeTruthy()
   })
 
-  it('supports non-ready status tones without changing navigation semantics', () => {
+  it('keeps service status in the menu rather than a header pill', () => {
     render(
       <MemoryRouter>
-        <AnalyticsTopNav
-          items={navItems}
-          status={{ label: 'Data status', value: 'Offline', tone: 'offline', detail: 'Analytics backend is unreachable' }}
-        />
+        <AnalyticsTopNav items={navItems} />
       </MemoryRouter>,
     )
 
-    expect(screen.getByRole('navigation', { name: 'Analytics navigation' })).toBeTruthy()
-    expect(screen.getByLabelText('Data status: Offline - Analytics backend is unreachable')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Support and account' }))
+    expect(screen.getByRole('link', { name: 'Service status' }).getAttribute('href')).toBe('/status')
   })
 
   it('omits empty navigation without losing the brand link', () => {

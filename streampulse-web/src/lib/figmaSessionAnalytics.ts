@@ -2,7 +2,7 @@ import { buildAnalyticsHref } from './analyticsLinks'
 import { apiClient } from './apiClient'
 import { absolutizeEmoteAssetUrl } from './emoteAssetUrl'
 import type { LiveWireMomentComparison } from './liveWire'
-import type { HubFeaturedCoverageRow, HubFeaturedSession, PublicHub } from './publicHub'
+import type { HubFeaturedCoverageRow, PublicHub } from './publicHub'
 import { formatStreamOffset } from './formatStreamOffset'
 import { PORTAL_MINUTES_TIMEOUT_MS } from './timelineDownsample'
 
@@ -161,30 +161,12 @@ function emptySession(reason: string): FigmaSessionViewModel {
   }
 }
 
-export function featuredSessionFromPublicHub(hub: PublicHub): FigmaSessionViewModel {
-  const featured = hub.featuredSession
-  if (!featured || featured.state !== 'ready') {
-    return emptySession(featured?.reason ?? 'no_qualifying_session')
-  }
-  return mapFeaturedSession(featured)
-}
-
 /** Wall-clock ms for a peak from stream start + offset. */
 export function momentAtFromStreamStart(startedAt: string | undefined, offsetSeconds: number): number | undefined {
   if (!startedAt?.trim() || offsetSeconds < 0) return undefined
   const base = Date.parse(startedAt)
   if (!Number.isFinite(base)) return undefined
   return base + offsetSeconds * 1000
-}
-
-export function compareMomentsChronologically(a: FigmaMomentRow, b: FigmaMomentRow): number {
-  const atA = a.at ?? 0
-  const atB = b.at ?? 0
-  if (atB !== atA) return atB - atA
-  const scoreA = a.score ?? 0
-  const scoreB = b.score ?? 0
-  if (scoreB !== scoreA) return scoreB - scoreA
-  return b.offsetSeconds - a.offsetSeconds
 }
 
 export function mapHubPulseMoment(moment: PublicHub['livePulseMoments'][number]): FigmaMomentRow {
@@ -386,74 +368,6 @@ export function livePulseMomentsFromPublicHub(hub: PublicHub): FigmaMomentRow[] 
 
 export function momentRowKey(moment: FigmaMomentRow): string {
   return `${moment.login ?? ''}:${moment.streamId ?? ''}:${moment.offsetSeconds}`
-}
-
-export function mapFeaturedSession(featured: HubFeaturedSession): FigmaSessionViewModel {
-  const login = featured.login ?? ''
-  const streamId = featured.streamId ?? ''
-  const sessionHref =
-    login && streamId ? buildAnalyticsHref({ login, streamId }) : login ? buildAnalyticsHref({ login }) : undefined
-  const vodHref = featured.vodId ? `https://www.twitch.tv/videos/${featured.vodId}` : undefined
-  return {
-    state: 'ready',
-    reason: featured.reason,
-    login,
-    displayName: featured.displayName,
-    streamId,
-    category: featured.category,
-    startedAt: featured.startedAt,
-    vodId: featured.vodId,
-    viewers: featured.viewers,
-    chatPerMin: featured.chatPerMin,
-    seventvPerMin: featured.seventvPerMin,
-    peakCount: featured.peakCount,
-    dataCoveragePct: featured.dataCoveragePct,
-    moments: (featured.topMoments ?? []).map((moment) => ({
-      offsetSeconds: moment.offsetSeconds,
-      score: moment.score,
-      label: moment.label,
-      kind: moment.kind,
-      source: moment.source,
-      chatPerMin: moment.chatPerMin,
-      viewers: moment.viewers,
-      viewerDelta: moment.viewerDelta,
-      topEmoteCode: moment.topEmoteCode,
-      topEmotes: moment.topEmotes?.map((emote) => ({
-        id: emote.id,
-        name: emote.name,
-        provider: emote.provider,
-        count: emote.count,
-        imageUrl: emote.imageUrl,
-        sharePct: emote.sharePct,
-      })),
-      confidence: moment.confidence,
-      vodState: moment.vodState,
-      href:
-        login && streamId
-          ? buildAnalyticsHref({ login, streamId, offsetSeconds: moment.offsetSeconds })
-          : sessionHref,
-    })),
-    chartPoints: (featured.chartPoints ?? []).map((point) => ({
-      offsetSeconds: point.offsetSeconds,
-      chatNorm: point.chatNorm,
-      viewersNorm: point.viewersNorm,
-      emotesNorm: point.emotesNorm,
-      heat: point.heat,
-    })),
-    bursts: (featured.topEmoteBursts ?? []).map((burst) => ({
-      code: burst.code,
-      provider: burst.provider,
-      imageUrl: burst.imageUrl,
-      count: burst.count,
-      deltaPct: burst.deltaPct,
-      peakOffset: burst.peakOffset,
-      peakOffsetSeconds: burst.peakOffsetSeconds,
-      sharePct: burst.sharePct,
-    })),
-    coverageTruth: featured.coverageTruth ?? [],
-    sessionHref,
-    vodHref,
-  }
 }
 
 export async function fetchPortalStreamMinutes(streamId: string): Promise<PortalStreamMinutesResponse | null> {

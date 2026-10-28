@@ -43,7 +43,6 @@ const STATIC_ROUTE_NAMES = new Set([
   '/analytics', '/analytics/streams', '/analytics/moments', '/analytics/explore', '/analytics/newsroom',
   '/account/sign-in', '/account/confirm', '/account/restore', '/account/link-device', '/account/settings',
   '/account/billing', '/account/billing/return',
-  '/dashboard', '/dashboard/clips',
 ])
 
 export function sanitizePortalPath(pathname: string): string {

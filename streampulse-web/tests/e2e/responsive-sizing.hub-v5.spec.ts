@@ -1,10 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { installHubUxMock } from './helpers/hubUxMock'
 
-// The d3-v5 hub page (behind the build flag). Runs only against a build made with VITE_PUBLIC_HUB_V5=on;
-// a default build serves the Command Center, which the spec without .hub-v5 covers.
-test.skip(!/^(on|1)$/.test(process.env.VITE_PUBLIC_HUB_V5 ?? ''), 'needs a build with VITE_PUBLIC_HUB_V5=on')
-
 test('public and analytics route shells reflow across desktop and zoom-sized viewports', async ({ page }, testInfo) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await installHubUxMock(page)
@@ -38,23 +34,18 @@ test('landing heading does not grow when crossing the mobile breakpoint', async 
   expect(after).toBeLessThanOrEqual(before)
 })
 
-test('both landing tours reflow on short viewports and restore animation on resize', async ({ page }) => {
+test('the landing tour reflows on short viewports and restores animation on resize', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.goto('/')
-  for (const selector of ['.sl-xtour', '.lsg']) {
-    await expect(page.locator(selector)).not.toHaveAttribute('data-static')
-  }
+  const tour = page.locator('.sl-xtour')
+  await expect(tour).not.toHaveAttribute('data-static')
   await page.setViewportSize({ width: 1440, height: 450 })
-  for (const selector of ['.sl-xtour', '.lsg']) {
-    await expect(page.locator(selector)).toHaveAttribute('data-static', '')
-  }
+  await expect(tour).toHaveAttribute('data-static', '')
   const panel = page.locator('.pulse-landing-panel')
   expect(await panel.evaluate(el => el.scrollHeight <= el.clientHeight + 2)).toBe(true)
   await page.setViewportSize({ width: 1440, height: 1000 })
-  for (const selector of ['.sl-xtour', '.lsg']) {
-    await expect(page.locator(selector)).not.toHaveAttribute('data-static')
-  }
+  await expect(tour).not.toHaveAttribute('data-static')
 })
 
 test('analytics uses one readable chip per series and the design plot height', async ({ page }) => {

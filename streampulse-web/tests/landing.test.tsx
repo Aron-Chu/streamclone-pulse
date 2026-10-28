@@ -2,6 +2,8 @@ import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import Landing from '../src/routes/public/Landing'
+import { findLandingEmote } from '../src/ui/components/landing/landingEmotes'
+import { prerenderPublicPage } from '../src/prerender'
 
 // Plain-function mocks (not vi.fn) so the global afterEach restoreAllMocks in
 // tests/setup.ts cannot wipe their implementations between cases.
@@ -68,15 +70,33 @@ function renderLanding() {
   )
 }
 
+/** Answers matchMedia as a screen at least 961px wide (or not); restored after each test. */
+function stubWideScreen(wide: boolean) {
+  vi.spyOn(window, 'matchMedia').mockImplementation((query: string): MediaQueryList => ({
+    matches: wide && query === '(min-width: 961px)',
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }))
+}
+
 describe('landing page', () => {
   it('renders all major sections', async () => {
     renderLanding()
     await screen.findByRole('heading', { name: /actually reacted to/i })
 
     expect(screen.getByRole('heading', { name: /pulse tab, feature by feature/i })).toBeTruthy()
-    expect(screen.getByRole('heading', { name: /^roadmap$/i })).toBeTruthy()
     expect(screen.getByRole('heading', { name: /how it works/i })).toBeTruthy()
     expect(screen.getByRole('heading', { name: /^resources$/i })).toBeTruthy()
+    // ReplayForge was dropped, and the Signal replay waits for the /extension page.
+    expect(screen.queryByRole('heading', { name: /^roadmap$/i })).toBeNull()
+    expect(screen.queryByRole('heading', { name: /see a stream become a signal/i })).toBeNull()
+    expect(screen.queryByText(/replayforge/i)).toBeNull()
+    expect(screen.queryByRole('link', { name: /^(roadmap|signal replay)$/i })).toBeNull()
   })
 
   it.each(['#%', '#100%', '#%E0%A4%A'])('ignores a malformed %s link fragment instead of crashing', async (hash) => {
@@ -103,9 +123,12 @@ describe('landing page', () => {
 
     expect(heroScope.getByRole('link', { name: /open analytics/i }).getAttribute('href')).toBe('/analytics')
     const install = heroScope.getByRole('link', { name: /Add StreamPulse to Chrome/i })
-    expect(install.getAttribute('href')).toBe(
+    const installUrl = new URL(install.getAttribute('href') ?? '')
+    expect(`${installUrl.origin}${installUrl.pathname}`).toBe(
       'https://chromewebstore.google.com/detail/streampulse/nifgoonpcgmdhiffcpmhndjgkgahnelg',
     )
+    expect(installUrl.searchParams.get('utm_source')).toBe('streampulse.stream')
+    expect(installUrl.searchParams.get('utm_medium')).toMatch(/^[a-z0-9-]+$/)
     expect(install.getAttribute('target')).toBe('_blank')
     expect(install.getAttribute('rel')).toBe('noopener noreferrer')
   })
@@ -116,10 +139,10 @@ describe('landing page', () => {
     const samples = container.querySelectorAll('details.sl-optional-demo')
     expect(samples).toHaveLength(0)
     expect(container.querySelector('.sl-fx')).not.toBeNull()
-    expect(container.querySelector('.sl-chatbg')).not.toBeNull()
     expect(container.querySelector('main > section:nth-child(2)')?.id).toBe('demo')
-    expect(container.querySelector('main > section:nth-child(3)')?.id).toBe('analysis')
-    expect(container.querySelectorAll('.lsg')).toHaveLength(1)
+    expect(container.querySelector('#analysis')).toBeNull()
+    expect(container.querySelector('#roadmap')).toBeNull()
+    expect(container.querySelectorAll('.lsg')).toHaveLength(0)
     for (const anchor of container.querySelectorAll<HTMLAnchorElement>('a[href^="#"]')) {
       expect(container.querySelector(anchor.getAttribute('href')!)).not.toBeNull()
     }
@@ -134,6 +157,45 @@ describe('landing page', () => {
     expect(navScope.queryByRole('link', { name: /sign in/i })).toBeNull()
     expect(navScope.queryByRole('link', { name: /\/setup/i })).toBeNull()
     expect(navScope.getByRole('link', { name: /open analytics/i }).getAttribute('href')).toBe('/analytics')
+  })
+
+  it('mounts the chat backdrop only on screens at least 961px wide', async () => {
+    stubWideScreen(true)
+    const wide = renderLanding()
+    await screen.findByRole('heading', { name: /actually reacted to/i })
+    expect(wide.container.querySelector('.sl-chatbg')).not.toBeNull()
+    wide.unmount()
+
+    stubWideScreen(false)
+    const narrow = renderLanding()
+    await screen.findByRole('heading', { name: /actually reacted to/i })
+    expect(narrow.container.querySelector('.sl-fx')).not.toBeNull()
+    expect(narrow.container.querySelector('.sl-chatbg')).toBeNull()
+  })
+
+  it('keeps the chat backdrop and the removed sections out of the prerendered page', () => {
+    stubWideScreen(true)
+    const html = prerenderPublicPage('/')
+    expect(html).toContain('sl-fx')
+    expect(html).not.toContain('sl-chatbg')
+    expect(html).not.toContain('id="roadmap"')
+    expect(html).not.toContain('id="analysis"')
+    expect(html).not.toContain('class="lsg')
+  })
+
+  it('rains 1x emote files without the three wide emotes', async () => {
+    const { container } = renderLanding()
+    await screen.findByRole('heading', { name: /actually reacted to/i })
+    const sources = [...container.querySelectorAll<HTMLImageElement>('.sl-em img')].map((img) => img.getAttribute('src') ?? '')
+    expect(sources).toHaveLength(18)
+    for (const src of sources) {
+      expect(src).toMatch(/\/1x\.webp$|\/1\.0$/)
+    }
+    for (const name of ['degloved', 'widespeedlaugh', 'widereacting']) {
+      const id = findLandingEmote(name)?.id
+      expect(id).toBeTruthy()
+      expect(sources.some((src) => src.includes(id!))).toBe(false)
+    }
   })
 
   it('shows the live emote and mover tickers', async () => {

@@ -7,7 +7,6 @@ import {
   formatMomentDateTime,
   normalizeLiveWireMomentComparison,
   normalizeRatePct,
-  partitionMomentWindow,
   resolveMomentAtMs,
 } from '../src/lib/liveWire'
 
@@ -62,21 +61,6 @@ describe('classifyMomentWindow', () => {
     expect(classifyMomentWindow(Number.NaN, now, WINDOW)).toBe('omit')
     expect(classifyMomentWindow(0, now, WINDOW)).toBe('omit')
     expect(classifyMomentWindow(now + 60_000, now, WINDOW)).toBe('omit')
-  })
-})
-
-describe('partitionMomentWindow', () => {
-  const now = 1_700_000_000_000
-
-  it('separates the truthful live lane from older archive detections and omits future rows', () => {
-    const result = partitionMomentWindow([
-      { id: 'live', at: now - 60_000 },
-      { id: 'boundary', at: now - WINDOW },
-      { id: 'older', at: now - WINDOW - 1 },
-      { id: 'future', at: now + 1 },
-    ], now, WINDOW)
-    expect(result.live.map((item) => item.id)).toEqual(['live', 'boundary'])
-    expect(result.older.map((item) => item.id)).toEqual(['older'])
   })
 })
 

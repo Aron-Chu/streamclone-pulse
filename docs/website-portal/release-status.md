@@ -49,7 +49,7 @@ portal GA, Cloudflare Access apply, soak completion, capacity raise, or marketin
 
 | Track | Decision | Notes |
 |-------|----------|-------|
-| Public site + analytics | **SOURCE GREEN / LIVE RECHECK OPEN** | Source tests cover Command Center, CWS CTA, Privacy, Support, robots, and sitemap. A current hosted route smoke must be recorded separately. |
+| Public site + analytics | **SOURCE GREEN / LIVE RECHECK OPEN** | Source tests cover the analytics hub, CWS CTA, Privacy, Support, robots, and sitemap. A current hosted route smoke must be recorded separately. |
 | `moments-readiness` | **BLOCKED** | Local mocked browser checks pass, but the real-data gate has no approved reconciliation manifest, hosted ranked volume is 404, and discovery activity is 503. Do not interpret an unavailable History or Explore panel as a quiet day. |
 | Portal GA | **HOLD** | CSP/HSTS/CWV + Access + soak remain |
 | Extension / Chrome Web Store | **LIVE LISTING / v0.2.6 CANDIDATE HOLD** | The public listing reported `0.2.1` on 2026-09-24, but that package's source revision is unverified. Working-tree manifests read `0.2.6`; no candidate acceptance or upload is claimed. Owner must verify the publisher-dashboard version and Support URL. |
@@ -135,7 +135,7 @@ The source contract includes the following. Re-run the commands recorded below
 on the chosen release SHA before treating any item as release evidence:
 
 - Landing / hub honesty: no client-invented Pulse / moment scores from `magnitude`, chat+emote formulas, or demo intensity labeled as scoring truth
-- Current route contract: `/analytics` is the Command Center with Live Wire;
+- Current route contract: `/analytics` is the d3-v5 hub (the Command Center and its Live Wire are removed);
   `/analytics/moments` is the canonical Moments workspace. Pulse Explorer was
   retired on 2026-10-16: `/analytics/explore` redirects to Moments and
   `/analytics/explore/{id}` to the stream page that id names. `/setup` and

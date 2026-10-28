@@ -4,10 +4,6 @@ import { expect, test, type Locator, type Page } from '@playwright/test'
 import { installHubUxMock, type HubUxMockOptions } from './helpers/hubUxMock'
 import { scrollSceneToProgress } from './helpers/scrollTour'
 
-// The d3-v5 hub page (behind the build flag). Runs only against a build made with VITE_PUBLIC_HUB_V5=on;
-// a default build serves the Command Center, which the spec without .hub-v5 covers.
-test.skip(!/^(on|1)$/.test(process.env.VITE_PUBLIC_HUB_V5 ?? ''), 'needs a build with VITE_PUBLIC_HUB_V5=on')
-
 const proofDirectory = process.env.PORTAL_UX_PROOF_DIR
 
 async function saveProof(target: Locator, name: string) {
@@ -256,6 +252,24 @@ test('Homepage animated wipe advances and resizing to short static mode reveals 
   await assertNoPageOverflow(page)
   await saveProof(panel.locator('[data-tour-step="1"]'), 'homepage-chart-after-animated-resize-986')
 })
+
+for (const width of [360, 390, 768, 1024, 1440]) {
+  test(`the hub header keeps 44px tap targets and no sideways scroll at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await installHubUxMock(page)
+    await page.goto('/analytics')
+    await expect(page.locator('.analytics-topnav')).toBeVisible()
+    // Add to Chrome is hidden at 720px and below, so only a shown one is measured.
+    const targets = await page.locator('.analytics-topnav__links a, .analytics-topnav__install:visible').all()
+    expect(targets.length).toBeGreaterThan(0)
+    for (const target of targets) {
+      const box = await target.boundingBox()
+      expect(box?.height).toBeGreaterThanOrEqual(44)
+      expect(box?.width).toBeGreaterThanOrEqual(44)
+    }
+    await assertNoPageOverflow(page)
+  })
+}
 
 test('the Live feed and Channels render while a legacy successful history reply awaits minute repair', async ({ page }) => {
   let releaseRepair!: () => void

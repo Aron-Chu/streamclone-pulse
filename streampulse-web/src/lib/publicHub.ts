@@ -31,8 +31,6 @@ import { verifiedArchiveArtwork, type ArchiveArtwork } from './archiveArtwork'
  * returns aggregate corpus counts and bounded per-minute activity, never raw
  * rollups, emote maps, or principals.
  */
-/** Matches hubMoversCap in streampulse-backend internal/analytics/hub_overview.go. */
-export const HUB_TOP_MOVERS_CAP = 12
 
 export interface HubCorpus {
   streamsTracked: number
@@ -800,8 +798,7 @@ export async function fetchPublicHubBase(
   try {
     const path = publicHubPath(activityWindow, projection)
     // Adopt the request main.tsx primed for this exact path (plan §2.6).
-    // d3-v5 hub only (read inline so a flag-off build drops it): adopt the primed request.
-    const primed = (import.meta.env.VITE_PUBLIC_HUB_V5 === 'on' || import.meta.env.VITE_PUBLIC_HUB_V5 === '1') ? takePrimedPublicHub<PublicHub>(path, signal) : null
+    const primed = takePrimedPublicHub<PublicHub>(path, signal)
     const primary = await (primed ?? apiClient<PublicHub>(path, { signal, timeoutMs }))
     if (!hasPublicHubResponseShape(primary.data)) {
       throw { kind: 'server', message: 'Public hub returned an incomplete response', status: primary.status, code: 'invalid_hub_response' } satisfies ApiError
@@ -999,86 +996,14 @@ function absolutizeMovers(movers: HubMover[] | undefined): HubMover[] {
   }))
 }
 
-/** Join mover rows with avatars from the live-channel rail when the hub omits profileImageUrl on movers. */
-export function enrichTopMoversWithAvatars(
-  movers: HubMover[],
-  liveChannels: HubLiveChannel[],
-): HubMover[] {
-  const imageByLogin = new Map<string, string>()
-  for (const channel of liveChannels) {
-    if (channel.profileImageUrl) {
-      imageByLogin.set(channel.login.toLowerCase(), channel.profileImageUrl)
-    }
-  }
-  return movers.map((mover) =>
-    mover.profileImageUrl
-      ? mover
-      : { ...mover, profileImageUrl: imageByLogin.get(mover.login.toLowerCase()) },
-  )
-}
-
-function compareMoverVelocity(a: HubMover | HubLiveChannel, b: HubMover | HubLiveChannel): number {
-  const aEmotes = a.emotesPerMin ?? 0
-  const bEmotes = b.emotesPerMin ?? 0
-  if (aEmotes !== bEmotes) return bEmotes - aEmotes
-  if (a.seventvPerMin !== b.seventvPerMin) return b.seventvPerMin - a.seventvPerMin
-  return b.chatPerMin - a.chatPerMin
-}
-
-function liveChannelToMover(channel: HubLiveChannel): HubMover {
-  return {
-    login: channel.login,
-    displayName: channel.displayName,
-    category: channel.category,
-    profileImageUrl: channel.profileImageUrl,
-    viewers: channel.viewers,
-    emotesPerMin: channel.emotesPerMin,
-    seventvPerMin: channel.seventvPerMin,
-    chatPerMin: channel.chatPerMin,
-    trendPct: channel.trendPct,
-    trendSignal: channel.trendSignal,
-  }
-}
-
-/** Rank live hub channels by emote velocity (matches backend topMovers ordering). */
-export function buildTopMoversFromLiveChannels(
-  liveChannels: HubLiveChannel[],
-  cap = HUB_TOP_MOVERS_CAP,
-): HubMover[] {
-  return liveChannels
-    .filter((channel) => (channel.emotesPerMin ?? 0) > 0 || channel.chatPerMin > 0)
-    .sort(compareMoverVelocity)
-    .slice(0, cap)
-    .map(liveChannelToMover)
-}
-
-/**
- * Prefer live-channel velocity rows so the portal can show the full cap even when
- * hosted `/v1/public/hub` still returns a legacy 8-row topMovers payload.
- */
-export function resolveHubTopMovers(
-  apiMovers: HubMover[],
-  liveChannels: HubLiveChannel[],
-  cap = HUB_TOP_MOVERS_CAP,
-): HubMover[] {
-  const fromLive = buildTopMoversFromLiveChannels(liveChannels, cap)
-  if (fromLive.length > 0) {
-    return enrichTopMoversWithAvatars(fromLive, liveChannels)
-  }
-  return enrichTopMoversWithAvatars(apiMovers, liveChannels).slice(0, cap)
-}
-
 function absolutizeLiveChannels(channels: HubLiveChannel[] | undefined): HubLiveChannel[] {
   if (!channels) return []
   return channels.filter(hasTextLogin).map((channel) => {
     const screener = normalizeHubChannelScreenerFields(channel.screener)
     // The wire carries v1 under `screener`; an already-normalized row (cache
     // hydrate) carries it under `screenerV1`. Both go through the same checks.
-    // d3-v5 hub only (VITE_PUBLIC_HUB_V5): the Command Center rows stay as they were.
-    const screenerV1 = (import.meta.env.VITE_PUBLIC_HUB_V5 === 'on' || import.meta.env.VITE_PUBLIC_HUB_V5 === '1')
-      ? normalizeHubChannelScreenerV1(channel.screener) ??
-        normalizeHubChannelScreenerV1((channel as { screenerV1?: unknown }).screenerV1)
-      : null
+    const screenerV1 = normalizeHubChannelScreenerV1(channel.screener) ??
+      normalizeHubChannelScreenerV1((channel as { screenerV1?: unknown }).screenerV1)
     return {
       ...clearWrongTypedText(channel, ['displayName', 'title', 'category', 'streamId', 'hostLogin']),
       startedAt: measurementTimeIso(channel.startedAt),

@@ -1,19 +1,16 @@
 import { expect, test, type Page } from '@playwright/test'
 import { installHubUxMock } from './helpers/hubUxMock'
 
-// The d3-v5 hub (PR 1 of 5). Runs only against a build made with VITE_PUBLIC_HUB_V5=on;
-// a default build serves the Command Center.
-test.skip(!/^(on|1)$/.test(process.env.VITE_PUBLIC_HUB_V5 ?? ''), 'needs a build with VITE_PUBLIC_HUB_V5=on')
-
 // The hub activity card on the shared SpChart core (plan §2.1-§2.3, unit U6):
 // header row (heading, window seg, series chips, bars note, (i)), the Now/hover
 // readout, the plot, the time axis, the d3 navigator and the provider lanes.
-// A-common (plan §3) at the three review viewports: the wheel zooms anywhere
-// over the card with the page still (A4), nothing moves when a bar is picked,
+// A-common (plan §3) at the three review viewports: the wheel zooms over the
+// graph with the page still, and over the header, readout and lanes the page
+// keeps it (A4, owner 2026-10-15), nothing moves when a bar is picked,
 // swapped or released (A2), Esc and a second click release it (A3), no in-page
 // scrollbars (A5) and no sideways page scroll (A6).
 
-const CARD = '[data-bench-chart-card][data-hub-chart-wheel-card]'
+const CARD = '.hub-act[data-bench-chart-card]'
 const PLOT = `${CARD} svg[data-bench-plot]`
 const NAVIGATOR = `${CARD} [data-hub-chart-navigator]`
 
@@ -120,6 +117,9 @@ async function navigatorWindow(page: Page) {
   return page.locator(NAVIGATOR).getAttribute('data-hub-chart-navigator-window')
 }
 
+/** The sweep rows inside the graph (plot, time axis, navigator); the others are the page's (owner, 2026-10-15). */
+const GRAPH_ROWS = new Set(['plot', 'axis', 'track', 'controls'])
+
 /** The 36 sweep points (page coordinates in the viewport) over the card's rows, edge to edge. */
 async function sweepPoints(page: Page) {
   return page.evaluate((selector) => {
@@ -152,7 +152,7 @@ for (const { label, viewport, deviceScaleFactor } of VIEWPORTS) {
   test.describe(`hub activity card at ${label}`, () => {
     test.use({ viewport, deviceScaleFactor })
 
-    test('A4: a wheel notch at each of 36 points over the card zooms and the page stays still', async ({ page }) => {
+    test('A4: a wheel notch over the graph zooms with the page still; over the header, readout and lanes the page keeps it', async ({ page }) => {
       await installHubUxMock(page)
       await openHub(page)
       await bringCardIntoView(page)
@@ -162,7 +162,7 @@ for (const { label, viewport, deviceScaleFactor } of VIEWPORTS) {
       expect(points).toHaveLength(36)
       expect(points.filter((point) => !point.inside).map((point) => point.row)).toEqual([])
       let zoomed = 0
-      for (const point of points) {
+      for (const point of points.filter((point) => GRAPH_ROWS.has(point.row))) {
         await page.mouse.move(point.x, point.y)
         const scrollY = await page.evaluate(() => window.scrollY)
         await page.mouse.wheel(0, -100)
@@ -172,7 +172,26 @@ for (const { label, viewport, deviceScaleFactor } of VIEWPORTS) {
         await page.locator(`${NAVIGATOR} button[aria-label="Reset zoom"]`).evaluate((button: HTMLButtonElement) => button.click())
         await expect.poll(() => navigatorWindow(page)).toBe(full)
       }
-      expect(zoomed).toBe(36)
+      expect(zoomed).toBe(21)
+      // Over the rest of the card no listener takes the wheel: it reaches the page as is.
+      await page.evaluate(() => {
+        const store = window as unknown as { wheelPrevented?: boolean[] }
+        store.wheelPrevented = []
+        window.addEventListener('wheel', (event) => void store.wheelPrevented!.push(event.defaultPrevented))
+      })
+      const scrollY = await page.evaluate(() => window.scrollY)
+      for (const point of points.filter((point) => !GRAPH_ROWS.has(point.row))) {
+        // Back to where the sweep was measured, so the point is still over its row, and let the
+        // scroll-through guard forget the last page scroll: a notch here must not reach the graph
+        // that the page scroll moves under the pointer.
+        await page.evaluate((top) => window.scrollTo({ top, behavior: 'instant' }), scrollY)
+        await page.waitForTimeout(450)
+        await page.mouse.move(point.x, point.y)
+        await page.mouse.wheel(0, -100)
+        if (scrollY > 0) await expect.poll(() => page.evaluate(() => window.scrollY), { message: `${point.row} at ${Math.round(point.x)} scrolls the page` }).toBeLessThan(scrollY)
+        expect(await navigatorWindow(page), `${point.row} at ${Math.round(point.x)}`).toBe(full)
+      }
+      expect(await page.evaluate(() => (window as unknown as { wheelPrevented: boolean[] }).wheelPrevented)).toEqual(Array(15).fill(false))
     })
 
     test('A2/A3: picking, swapping and releasing a bar moves nothing; Esc and a second click release it', async ({ page }) => {

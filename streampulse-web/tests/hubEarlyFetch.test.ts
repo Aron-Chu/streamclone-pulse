@@ -58,8 +58,6 @@ function deferred<T>() {
 }
 
 beforeEach(() => {
-  // The primed hand-over is the d3-v5 hub's (VITE_PUBLIC_HUB_V5); the flag-off case is tested below.
-  vi.stubEnv('VITE_PUBLIC_HUB_V5', 'on')
   resetPrimedPublicHubForTests()
   clearPublicHubCacheForTests()
   localStorage.clear()
@@ -68,7 +66,6 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  vi.unstubAllEnvs()
   vi.useRealTimers()
   resetPrimedPublicHubForTests()
 })
@@ -188,7 +185,7 @@ describe('hub early fetch: parity with the first read on mount (plan §2.6)', ()
       const minutes = { '30m': 30, '24h': 1440, '7d': 10080, '1m': 43200, '3m': 129600, '1y': 525600 }[windowKey]
       api.apiClient.mockImplementation(async (path: string) => ({ data: hubBody(path.includes('=30m') ? 30 : minutes), status: 200 }))
       const primed = primePublicHub({ pathname: '/analytics', search })
-      // The page mounts the hook with the window from the same rule (AnalyticsLandingPage `usePublicHubData({ enabled: true, activityWindow })`).
+      // The page mounts the hook with the window from the same rule (AnalyticsHubV5Page `usePublicHubData({ enabled: true, activityWindow })`).
       const { result, unmount } = renderHook(() => usePublicHubData({ enabled: true, activityWindow: windowKey, pollMs: 0 }))
       await waitFor(() => expect(result.current.loading).toBe(false))
       expect(api.apiClient.mock.calls[0][0]).toBe(primed)
@@ -198,19 +195,6 @@ describe('hub early fetch: parity with the first read on mount (plan §2.6)', ()
       unmount()
     })
   }
-})
-
-describe('hub early fetch: VITE_PUBLIC_HUB_V5 off', () => {
-  it('never adopts a primed request: the hook makes its own read, as before', async () => {
-    vi.stubEnv('VITE_PUBLIC_HUB_V5', '')
-    api.apiClient.mockImplementation(async () => ({ data: hubBody(1440), status: 200 }))
-    const primed = primePublicHub({ pathname: '/analytics', search: '' })
-    const { result, unmount } = renderHook(() => usePublicHubData({ enabled: true, activityWindow: '24h', pollMs: 0 }))
-    await waitFor(() => expect(result.current.loading).toBe(false))
-    expect(api.apiClient.mock.calls.filter(([path]) => path === primed)).toHaveLength(2)
-    expect(hasPrimedPublicHub()).toBe(true)
-    unmount()
-  })
 })
 
 describe('hub early fetch: import boundary', () => {

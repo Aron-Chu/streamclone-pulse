@@ -30,7 +30,7 @@ const TARGETS: RouteTarget[] = [
   {
     slug: 'hub',
     path: '/analytics',
-    readySelector: '.figma-global-activity__hub-chart .hx-chart2, #section-pulse-moments',
+    readySelector: '.figma-global-activity__hub-chart [data-hub-chart-state="ready"]',
     kind: 'hub',
   },
   {
@@ -59,17 +59,12 @@ async function interactHub(page: import('@playwright/test').Page): Promise<void>
     await page.keyboard.press('Escape')
   }
 
-  const chart = page.locator('.figma-global-activity__hub-chart .hx-chart2')
+  const chart = page.locator('.figma-global-activity__hub-chart [data-hub-chart-state="ready"]')
   if (await chart.isVisible().catch(() => false)) {
     const box = await chart.boundingBox()
     if (box) {
       await chart.click({ position: { x: Math.max(8, box.width * 0.55), y: box.height * 0.5 } })
     }
-  }
-
-  const momentRow = page.locator('.pulse-moments__row').first()
-  if (await momentRow.isVisible().catch(() => false)) {
-    await momentRow.click()
   }
 }
 
@@ -105,7 +100,7 @@ for (const viewport of VIEWPORTS) {
         await page.locator(target.readySelector).first().waitFor({ state: 'visible', timeout: 45_000 })
 
         if (target.kind === 'hub') {
-          await assertResponsiveLayout(page, viewport)
+          await assertResponsiveLayout(page)
         } else {
           await expect(page.getByRole('main', { name: /Analytics for xqc/i })).toBeVisible()
         }

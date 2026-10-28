@@ -1,6 +1,6 @@
 /**
  * Post-build prerender: emit static HTML shells for public routes (WEB-002).
- * Dashboard/admin remain SPA-only chunks.
+ * /admin stays SPA-only.
  */
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -13,7 +13,7 @@ const indexPath = join(dist, 'index.html')
 const indexHtml = readFileSync(indexPath, 'utf8')
 const origin = 'https://streampulse.stream'
 const analyticsCriticalStyles = readdirSync(join(dist, 'assets'))
-  .filter(name => /^(AnalyticsLandingPage|figma-analytics)-.+\.css$/.test(name))
+  .filter(name => /^figma-analytics-.+\.css$/.test(name))
   .map(name => `<link rel="stylesheet" href="/assets/${name}">`)
   .join('\n    ')
 // Public pages load on demand (src/routes/index.tsx). Each prerendered page
@@ -81,8 +81,8 @@ const routes = [
   },
   {
     path: '',
-    title: 'StreamPulse — Twitch reaction analytics',
-    description: 'StreamPulse finds Twitch moments through coverage-honest chat, emote, viewer, and VOD analytics.',
+    title: 'StreamPulse: Twitch Chat Stats & Top Moments',
+    description: 'Free Twitch chat and emote stats beside chat, Top Moments with pictures, and Stream Recap for past streams.',
     canonicalPath: '/',
     robots: 'index,follow',
   },
@@ -241,6 +241,22 @@ function renderShell(metadata) {
   html = /<link\s+rel="canonical"[^>]*>/i.test(html)
     ? html.replace(/<link\s+rel="canonical"[^>]*>/i, canonicalTag)
     : html.replace('</head>', `    ${canonicalTag}\n  </head>`)
+  if (metadata.path === '') {
+    const software = {
+      '@context': 'https://schema.org',
+      '@type': 'SoftwareApplication',
+      name: 'StreamPulse: Twitch Chat Stats & Top Moments',
+      applicationCategory: 'BrowserApplication',
+      operatingSystem: 'Chrome',
+      offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+      url: origin,
+      downloadUrl: 'https://chromewebstore.google.com/detail/streampulse/nifgoonpcgmdhiffcpmhndjgkgahnelg',
+      softwareVersion: '0.2.6',
+      description: metadata.description,
+    }
+    const jsonLd = `<script type="application/ld+json">${JSON.stringify(software)}</script>`
+    html = html.replace('</head>', `    ${jsonLd}\n  </head>`)
+  }
   const path = metadata.path == null ? '/404' : `/${metadata.path}`
   const markup = `<div id="root" data-prerendered>${prerenderPublicPage(path)}</div>`
   const boundary = /<!--public-root:start-->[\s\S]*?<!--public-root:end-->/

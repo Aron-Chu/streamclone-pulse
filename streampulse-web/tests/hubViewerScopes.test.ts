@@ -4,7 +4,6 @@ import { deriveHubChartActivityModel, selectHubChartActivityInputs } from '../sr
 import {
   hubSampledViewerExtremes,
   hubViewerScopes,
-  sampledRosterLabel,
   watchingNowDefinition,
 } from '../src/lib/hubViewerScopes'
 
@@ -95,11 +94,5 @@ describe('hub viewer scopes', () => {
     expect(scopes.watchingNow.viewers).toBeGreaterThan(scopes.sampledPeak!.viewers)
     expect(watchingNowDefinition(500)).toMatch(/500 tracked channels live in this snapshot/)
     expect(watchingNowDefinition(500)).toMatch(/not comparable/)
-  })
-
-  it('names the sampled roster only when the backend gave its counts', () => {
-    expect(sampledRosterLabel({ liveChannels: 75, rosterChannels: 500 })).toBe('75 live of 500 sampled channels')
-    expect(sampledRosterLabel({ liveChannels: undefined, rosterChannels: 500 })).toBeNull()
-    expect(sampledRosterLabel(null)).toBeNull()
   })
 })

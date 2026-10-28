@@ -290,7 +290,7 @@ test.describe('configured build', () => {
         const right = document.querySelector<HTMLElement>('.sl-nav__right')!.getBoundingClientRect()
         return { links, overflow: nav.scrollWidth - nav.clientWidth, overlap: menu.right > right.left, page: document.documentElement.scrollWidth - innerWidth }
       })
-      const oneLine = row.links.length === 4 && row.links.every(height => height === row.links[0] && height < 40)
+      const oneLine = row.links.length === 2 && row.links.every(height => height === row.links[0] && height < 40)
       if (!oneLine || row.overflow > 0 || row.overlap || row.page > 0) wrapped.push(`${width}: ${JSON.stringify(row)}`)
     }
     expect(wrapped).toEqual([])

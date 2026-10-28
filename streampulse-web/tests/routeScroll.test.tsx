@@ -1,11 +1,10 @@
 import { StrictMode, useState } from 'react'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
-import { BrowserRouter, MemoryRouter, NavigationType, Outlet, Route, Router, Routes, useNavigate, type NavigateFunction, type Navigator } from 'react-router-dom'
+import { BrowserRouter, MemoryRouter, NavigationType, Route, Router, Routes, useNavigate, type NavigateFunction, type Navigator } from 'react-router-dom'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppRoutes, preloadOpeningPage } from '../src/routes/index'
-import { RequireAuth } from '../src/routes/guards'
 import { RouteScrollManager, useHashScrollHold } from '../src/ui/RouteScrollManager'
 import { hashTargetId } from '../src/lib/routeScroll'
 
@@ -744,31 +743,5 @@ describe('replaced pages (path-changing REPLACE)', () => {
     await settleMicrotasks()
     expect(scrollTo).not.toHaveBeenCalled()
     expect(scrolledElements()).toEqual([document.getElementById('coverage')])
-  })
-
-  it('opens the hub at the top when Back reaches a gated page without its key', async () => {
-    render(
-      <MemoryRouter initialEntries={['/dashboard', '/support']} initialIndex={1}>
-        <NavigateProbe />
-        <RouteScrollManager />
-        <Routes>
-          <Route path="/support" element={<p>Support</p>} />
-          <Route path="/analytics" element={<p>Hub</p>} />
-          <Route element={<RequireAuth />}><Route path="/dashboard" element={<Outlet />} /></Route>
-        </Routes>
-      </MemoryRouter>,
-    )
-    await settleMicrotasks()
-    // The browser restores the dashboard's offset, then the gate redirects.
-    setScrollY(1500)
-    act(() => { navigate(-1) })
-    expect(await screen.findByText('Hub')).toBeTruthy()
-    await settleMicrotasks()
-    expect(scrollTo).toHaveBeenCalledWith(0, 0)
-  })
-
-  it('sends the sign-out redirect to the top of the hub', () => {
-    const main = readFileSync(resolve(import.meta.dirname, '../src/main.tsx'), 'utf8')
-    expect(main).toContain("navigate('/analytics', { replace: true, state: routeScrollState('top') })")
   })
 })

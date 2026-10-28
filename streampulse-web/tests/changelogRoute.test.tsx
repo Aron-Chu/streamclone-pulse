@@ -128,6 +128,7 @@ describe('extension "Release details" destination (OP1-FUN-003)', () => {
     expect(read('scripts/check-public-links.mjs')).toMatch(/EXTERNALLY_PUBLISHED = \[[^\]]*'\/changelog'/)
     // It documents the extension rather than the site, so it is not offered to search engines.
     expect(read('scripts/prerender.mjs')).toMatch(/canonicalPath: '\/changelog',\s+robots: 'noindex,nofollow',/)
-    expect(read('public/sitemap.xml')).not.toContain('/changelog')
+    expect(read('public/sitemap.xml')).toContain('https://streampulse.stream/changelog')
+    expect(read('public/sitemap.xml')).toContain('https://streampulse.stream/discord')
   })
 })

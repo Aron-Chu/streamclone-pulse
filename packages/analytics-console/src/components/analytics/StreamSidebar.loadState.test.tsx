@@ -51,6 +51,24 @@ describe('StreamSidebar list load state', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
+  it('hides the stream count while the first list request is in flight, keeping its place', () => {
+    renderSidebar({ loading: true })
+    const count = document.querySelector('[data-stream-count]')!
+    expect(count.classList.contains('invisible')).toBe(true)
+  })
+
+  it('shows the count once the list settles, empty, failed or loaded', () => {
+    const stream = { streamId: '101', login: 'xqc', startedAt: '2026-07-11T18:00:00.000Z', title: 'Loaded broadcast' } as AnalyticsStream
+    const settled: Array<Partial<Parameters<typeof StreamSidebar>[0]>> = [{}, { loadFailed: true }, { streams: [stream], loading: true }]
+    for (const props of settled) {
+      const view = renderSidebar(props)
+      const count = document.querySelector('[data-stream-count]')!
+      expect(count.classList.contains('invisible')).toBe(false)
+      expect(count.textContent).toBe(String(props.streams?.length ?? 0))
+      view.unmount()
+    }
+  })
+
   it('keeps loaded rows visible when a later refresh fails', () => {
     const stream = { streamId: '101', login: 'xqc', startedAt: '2026-07-11T18:00:00.000Z', title: 'Loaded broadcast' } as AnalyticsStream
     renderSidebar({ streams: [stream], loadFailed: true, onRetry: vi.fn() })

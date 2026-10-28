@@ -12,22 +12,13 @@ export interface AnalyticsTopNavItem {
   end?: boolean
 }
 
-export interface AnalyticsTopNavStatus {
-  label: string
-  value: string
-  detail?: string
-  tone?: 'checking' | 'ready' | 'degraded' | 'offline' | 'syncing' | 'muted'
-}
-
 export interface AnalyticsTopNavProps {
   items: AnalyticsTopNavItem[]
-  status?: AnalyticsTopNavStatus
   navigationLabel?: string
 }
 
 export function AnalyticsTopNav({
   items,
-  status,
   navigationLabel = 'Analytics navigation',
 }: AnalyticsTopNavProps) {
   const [isOpen, setIsOpen] = useState(false)
@@ -114,18 +105,6 @@ export function AnalyticsTopNav({
 
       <div className="analytics-topnav__actions" aria-label="Analytics utilities">
         <ChromeInstallCta className="analytics-topnav__install" data-cta="chrome-install-analytics" />
-        {status ? (
-          <div
-            className={`analytics-topnav__status analytics-topnav__status--${status.tone ?? 'muted'}`}
-            aria-label={`${status.label}: ${status.value}${status.detail ? ` - ${status.detail}` : ''}`}
-            aria-live="polite"
-            title={status.detail}
-          >
-            <span aria-hidden="true" />
-            <small>{status.label}</small>
-            <strong>{status.value}</strong>
-          </div>
-        ) : null}
       </div>
     </header>
   )

@@ -1,5 +1,5 @@
 /*
- * The d3-v5 hub page, behind VITE_PUBLIC_HUB_V5. Ported from the approved
+ * The d3-v5 hub page. Ported from the approved
  * mockup (d3-v5: hub.html inline rules, shared.css, busiest-variants.css
  * Strip, hub-r5.css, hub-r5c.css search rows and emote map, hub-r5d.css hero,
  * hub-hero.css conveyor, hub-live.css feed v3, hub-rack.css and hub-r5e.css
@@ -35,6 +35,11 @@
   }
   .hub-v5 { --hv5-gutter: 16px; }
 }
+
+/* the skip link's "Analytics content" target sits beside .hub-v5 in <main>; the old hub
+   hides it in discovery-layout.css, which this page does not load (same rules) */
+.analytics-focus-target { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.analytics-focus-target:focus { position: static; width: auto; height: auto; clip-path: none; padding: .5rem; color: var(--fma-accent-text); }
 
 /* ---------- base (mockup shared.css), only on the page's own sections ---------- */
 .hub-v5.hub-d3 {

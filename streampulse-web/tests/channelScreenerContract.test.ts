@@ -11,17 +11,9 @@ import {
   screenerMetricMultiplier,
   screenerUsual,
   screenerUsualTooltip,
-  screenerViewLabel,
 } from '../src/lib/channelScreenerContract'
 
 describe('channelScreenerContract', () => {
-  it('labels screener views', () => {
-    expect(screenerViewLabel('overview')).toBe('Overview')
-    expect(screenerViewLabel('momentum')).toBe('Momentum')
-    expect(screenerViewLabel('coverage')).toBe('Coverage')
-    expect(screenerViewLabel('anomalies')).toBe('Anomalies')
-  })
-
   it('accepts server-owned acceleration and anomaly fields', () => {
     const fields = normalizeHubChannelScreenerFields({
       chatAcceleration: 1.5,
