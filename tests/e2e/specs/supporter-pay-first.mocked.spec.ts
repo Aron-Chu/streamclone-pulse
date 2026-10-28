@@ -15,7 +15,7 @@ function snapshot(status: 'none' | 'pending' | 'active', cosmetics = { enabled: 
 /**
  * The first proof follows the actual one-click Become a Supporter button.
  * The remaining worker recovery proofs use extension-page messages directly;
- * the page still never sends SUPPORTER_RESTORE.
+ * additional proofs exercise the extension's customer-facing restore flow.
  */
 const workerCheckout = (page: Page) => page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_BILLING', action: 'checkout' }))
 const workerRestore = (page: Page, email = 'payer@example.test') => page.evaluate(address => chrome.runtime.sendMessage({ type: 'SUPPORTER_RESTORE', action: 'start', email: address }), email)
@@ -41,6 +41,45 @@ async function finish(cdp: CDPSession) {
   const banner = host && find(host, node => node.nodeName === 'HEADER' && (attr(node, 'class') ?? '').split(/\s+/).includes('pulse-personal-banner'))
   return banner ? attr(banner, 'data-supporter-finish') ?? null : undefined
 }
+
+test('a customer restores an existing membership by email without starting checkout', async ({ extension, prepare }, info) => {
+  await prepare()
+  let approved = false, restoreStarts = 0, checkouts = 0, restoreKey = ''
+  const restoredAccount = '55555555-5555-4555-8555-555555555555'
+  await extension.context.route('https://api.streampulse.stream/v1/account/installations', route => route.fulfill({ status: 201, json: credential() }))
+  await extension.context.route('https://api.streampulse.stream/v1/billing/supporter', route => {
+    const isRestored = route.request().headers().authorization === `Bearer ${'d'.repeat(64)}`
+    return route.fulfill({ json: snapshot(isRestored ? 'active' : 'none', undefined, isRestored ? restoredAccount : ACCOUNT) })
+  })
+  await extension.context.route('https://api.streampulse.stream/v1/billing/checkout', route => { checkouts++; return route.fulfill({ status: 500, json: {} }) })
+  await extension.context.route('https://api.streampulse.stream/v1/account/restores', route => {
+    restoreStarts++
+    const body = route.request().postDataJSON()
+    expect(body).toMatchObject({ email: 'payer@example.test', restoreKey: expect.stringMatching(/^[a-f0-9]{64}$/) })
+    restoreKey = body.restoreKey
+    return route.fulfill({ status: 201, json: { restoreId: RESTORE, pollingSecret: 'c'.repeat(64), expiresAt: new Date(Date.now() + 900_000).toISOString(), intervalSeconds: 5, comparisonCode: 'A3B4C5' } })
+  })
+  await extension.context.route('https://api.streampulse.stream/v1/account/restores/poll', route => {
+    expect(route.request().postDataJSON()).toEqual({ restoreId: RESTORE, pollingSecret: 'c'.repeat(64), restoreKey })
+    return route.fulfill({ json: approved ? { state: 'approved', ...credential(restoredAccount, 'd'.repeat(64)) } : { state: 'pending' } })
+  })
+  const page = extension.page
+  await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
+  await page.getByRole('button', { name: 'Restore existing Supporter', exact: true }).click()
+  await page.getByLabel('Stripe billing email').fill('payer@example.test')
+  await page.getByRole('button', { name: 'Send restore link', exact: true }).click()
+  await expect(page.getByText('A3B4C5', { exact: true })).toBeVisible()
+  await expect(page.getByText('payer@example.test')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Become a Supporter', exact: true })).toHaveCount(0)
+  await page.screenshot({ path: info.outputPath('restore-comparison.png'), fullPage: true, animations: 'disabled' })
+  approved = true // Stand-in for confirming the emailed link with the matching code.
+  await expect(page.locator('[data-journey-state="active"]')).toBeVisible({ timeout: 20_000 })
+  expect(restoreStarts).toBe(1)
+  expect(checkouts).toBe(0)
+  const account = await page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_ACCOUNT', action: 'status' }))
+  expect(account.account.accountId).toBe(restoredAccount)
+  expect(JSON.stringify(account)).not.toContain(restoreKey)
+})
 
 test('one click saves a key, checks availability and opens Checkout; delayed payment activates a chosen finish without reload', async ({ extension, prepare }, info) => {
   test.setTimeout(100_000)
@@ -175,7 +214,7 @@ test('the kept worker restore completes privately after email approval even when
     pollTimes.push(Date.now())
     if (approved) approvalCollectedAt = Date.now()
     else pendingPollTimes.push(Date.now())
-    expect(route.request().postDataJSON()).toEqual({ restoreId: RESTORE, pollingSecret: 'c'.repeat(64) })
+    expect(route.request().postDataJSON()).toEqual({ restoreId: RESTORE, pollingSecret: 'c'.repeat(64), restoreKey: expect.stringMatching(/^[a-f0-9]{64}$/) })
     return route.fulfill({ json: approved ? { state: 'approved', ...credential(recoveredAccount, 'd'.repeat(64)) } : { state: 'pending' } })
   })
   await extension.context.route('https://api.streampulse.stream/v1/billing/supporter', route => route.fulfill({ json: snapshot(route.request().headers().authorization === `Bearer ${'d'.repeat(64)}` ? 'active' : 'none', undefined, route.request().headers().authorization === `Bearer ${'d'.repeat(64)}` ? recoveredAccount : ACCOUNT) }))

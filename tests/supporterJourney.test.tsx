@@ -71,6 +71,8 @@ async function mount(worker: Worker, onEntitlement?: (value: SupporterEntitlemen
     hrefs: () => [...host.querySelectorAll('a')].map(anchor => anchor.getAttribute('href') ?? ''),
     buttons: () => [...host.querySelectorAll('button')].map(element => element.textContent ?? ''),
     click: async (name: string) => { const target = button(name); if (!target) throw new Error(`no button ${name}: ${[...host.querySelectorAll('button')].map(b => b.textContent)}`); await act(async () => target.click()) },
+    enterRestoreEmail: async (email: string) => { const input = host.querySelector<HTMLInputElement>('#supporter-restore-email'); if (!input) throw new Error('no restore email input'); await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, email); input.dispatchEvent(new Event('input', { bubbles: true })) }) },
+    submitRestore: async () => { const form = host.querySelector<HTMLFormElement>('.pulse-journey-restore form'); if (!form) throw new Error('no restore form'); await act(async () => form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))) },
     change: async (changes: Record<string, chrome.storage.StorageChange>) => { await act(async () => { for (const listener of listeners) listener(changes) }) },
     calls: (type: string, action?: string) => sendMessage.mock.calls.filter(([message]) => message.type === type && (action === undefined || message.action === action)).length,
     cleanup: () => { act(() => root.unmount()); host.remove() },
@@ -302,13 +304,13 @@ describe('pay-first settings', () => {
       expect(view.text()).toContain('connection was revoked')
     } finally { view.cleanup() }
   })
-  it('explains a sign-out it did not choose without offering email restore, a website account or a new payment', async () => {
+  it('explains an unexpected sign-out and offers recovery without starting a new payment', async () => {
     const view = await mount({ account: () => ({ state: 'relink_required' }), entitlement: () => ({ state: 'not_linked' }), billing: () => ({ state: 'idle' }) })
     try {
       expect(view.text()).toContain('This extension was disconnected from your StreamPulse account.')
       expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Supporter details')
       expect(view.buttons()).not.toContain('Become a Supporter')
-      expect(view.buttons()).not.toContain('Restore my Supporter')
+      expect(view.buttons()).toContain('Restore existing Supporter')
       expect(view.buttons()).not.toContain('Use a StreamPulse website account')
       expect(view.buttons()).not.toContain('Start a new membership')
       expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
@@ -317,7 +319,7 @@ describe('pay-first settings', () => {
   })
   it.each([{ accountKind: 'email' as const, installationAccountsEnabled: true, restoreEligible: true }, { accountKind: 'installation' as const, installationAccountsEnabled: false, restoreEligible: true }, { accountKind: 'installation' as const, installationAccountsEnabled: true, restoreEligible: false }])('hides restore when server capability refuses this account: %s', async capability => {
     const view = await mount({ account: () => linked, entitlement: () => ready('none', capability), billing: () => ({ state: 'idle' }) })
-    try { expect(view.buttons()).not.toContain('Restore my Supporter') } finally { view.cleanup() }
+    try { expect(view.buttons()).not.toContain('Restore existing Supporter') } finally { view.cleanup() }
   })
   it.each(['active', 'grace', 'expired', 'review'])('never sends a known installation to an unrelated website cookie account when billing capability is off: %s', async status => {
     const view = await mount({ account: () => linked, entitlement: () => ready(status, { accountKind: 'installation', installationAccountsEnabled: false }), billing: () => ({ state: 'idle' }) })
@@ -421,15 +423,110 @@ describe('pay-first settings', () => {
       expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
     } finally { view.cleanup() }
   })
-  it('has no email restore form anywhere: no email field, no restore messages', async () => {
+  it('does not read or start email recovery until explicitly requested', async () => {
     for (const account of [{ state: 'signed_out' }, { state: 'relink_required' }, linked] as SupporterAccountState[]) {
       const view = await mount({ account: () => account, entitlement: () => account.state === 'linked' ? ready('none', { accountKind: 'installation', installationAccountsEnabled: true, restoreEligible: true }) : { state: 'not_linked' }, billing: () => ({ state: 'reconnect_required' }), restore: () => ({ state: 'idle' }) })
       try {
         expect(view.host.querySelector('input[type="email"]')).toBeNull()
-        expect(view.text()).not.toMatch(/Restore my Supporter|restore link|email you used at checkout/i)
+        expect(view.text()).not.toMatch(/restore link|email you used at checkout/i)
         expect(view.calls('SUPPORTER_RESTORE')).toBe(0)
         expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
       } finally { view.cleanup() }
+    }
+  })
+  it('lets a signed-out customer request a restore without creating a payment or persisting the email', async () => {
+    const view = await mount({ account: () => ({ state: 'signed_out' }), entitlement: () => ({ state: 'not_linked' }), billing: () => ({ state: 'idle' }), restore: action => action === 'start' ? { state: 'pending', expiresAt: new Date(Date.now() + 900_000).toISOString(), comparisonCode: 'A3B4C5' } : { state: 'idle' } })
+    try {
+      expect(view.calls('SUPPORTER_RESTORE')).toBe(0)
+      await view.click('Restore existing Supporter')
+      expect(view.calls('SUPPORTER_RESTORE', 'status')).toBe(1)
+      expect(view.buttons()).not.toContain('Become a Supporter')
+      await view.enterRestoreEmail('payer@example.test')
+      await view.submitRestore()
+      expect(view.sendMessage).toHaveBeenCalledWith({ type: 'SUPPORTER_RESTORE', action: 'start', email: 'payer@example.test' })
+      expect(view.text()).toContain('A3B4C5')
+      expect(view.text()).toContain('If that email matches a recoverable membership')
+      expect(view.text()).not.toContain('payer@example.test')
+      expect(JSON.stringify(view.write.mock.calls)).not.toContain('payer@example.test')
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
+    } finally { view.cleanup() }
+  })
+  it('recovers an uncertain request by its existing key instead of resending email', async () => {
+    const view = await mount({ account: () => ({ state: 'signed_out' }), entitlement: () => ({ state: 'not_linked' }), billing: () => ({ state: 'idle' }), restore: action => action === 'start' ? { state: 'uncertain' } : action === 'check' ? { state: 'pending', expiresAt: new Date(Date.now() + 900_000).toISOString(), comparisonCode: 'A3B4C5' } : { state: 'idle' } })
+    try {
+      await view.click('Restore existing Supporter')
+      await view.enterRestoreEmail('payer@example.test'); await view.submitRestore()
+      expect(view.buttons()).toContain('Check restore request')
+      expect(view.host.querySelector('input[type="email"]')).toBeNull()
+      await view.click('Check restore request')
+      expect(view.text()).toContain('A3B4C5')
+      expect(view.calls('SUPPORTER_RESTORE', 'start')).toBe(1)
+      expect(view.calls('SUPPORTER_RESTORE', 'check')).toBe(1)
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
+    } finally { view.cleanup() }
+  })
+  it('resumes a pending restore after settings reopens without sending another email', async () => {
+    const view = await mount({ account: () => ({ state: 'signed_out' }), entitlement: () => ({ state: 'not_linked' }), billing: () => ({ state: 'reconnect_required' }), restore: () => ({ state: 'pending', expiresAt: new Date(Date.now() + 900_000).toISOString(), comparisonCode: 'A3B4C5' }) })
+    try {
+      await view.click('Restore existing Supporter')
+      expect(view.text()).toContain('A3B4C5')
+      expect(view.calls('SUPPORTER_RESTORE', 'start')).toBe(0)
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
+    } finally { view.cleanup() }
+  })
+  it('shows the restored account after approval without opening checkout', async () => {
+    let restored = false
+    const view = await mount({ account: () => restored ? linked : { state: 'signed_out' }, entitlement: () => restored ? ready('active', { installationAccountsEnabled: true, restoreEligible: false }) : { state: 'not_linked' }, billing: () => ({ state: 'idle' }), restore: action => {
+      if (action === 'start') return { state: 'pending', expiresAt: new Date(Date.now() + 900_000).toISOString(), comparisonCode: 'A3B4C5' }
+      if (action === 'check') { restored = true; return { state: 'restored' } }
+      return { state: 'idle' }
+    } })
+    try {
+      await view.click('Restore existing Supporter')
+      await view.enterRestoreEmail('payer@example.test'); await view.submitRestore()
+      await view.click('Check restore status')
+      expect(view.state()).toBe('active')
+      expect(view.text()).toContain('Your previous connection was restored')
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
+    } finally { view.cleanup() }
+  })
+  it('asks to check membership if another worker poll already consumed the restore result', async () => {
+    let restored = false
+    const view = await mount({ account: () => restored ? linked : { state: 'signed_out' }, entitlement: () => restored ? ready('active', { installationAccountsEnabled: true, restoreEligible: false }) : { state: 'not_linked' }, billing: () => ({ state: 'idle' }), restore: action => {
+      if (action === 'start') return { state: 'pending', expiresAt: new Date(Date.now() + 900_000).toISOString(), comparisonCode: 'A3B4C5' }
+      if (action === 'check') { restored = true; return { state: 'idle' } }
+      return { state: 'idle' }
+    } })
+    try {
+      await view.click('Restore existing Supporter')
+      await view.enterRestoreEmail('payer@example.test'); await view.submitRestore()
+      await view.click('Check restore status')
+      expect(view.buttons()).toContain('Check Supporter status')
+      expect(view.text()).not.toContain('Your previous connection was restored')
+      await view.click('Check Supporter status')
+      expect(view.state()).toBe('active')
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
+    } finally { view.cleanup() }
+  })
+  it('treats a lost start response as uncertain and never silently sends another email', async () => {
+    const view = await mount({ account: () => ({ state: 'signed_out' }), entitlement: () => ({ state: 'not_linked' }), billing: () => ({ state: 'idle' }), restore: action => {
+      if (action === 'start') throw new Error('lost response')
+      return { state: 'idle' }
+    } })
+    try {
+      await view.click('Restore existing Supporter')
+      await view.enterRestoreEmail('payer@example.test'); await view.submitRestore()
+      expect(view.buttons()).toContain('Check restore request')
+      await view.click('Check restore request')
+      expect(view.buttons()).toContain('Check Supporter status')
+      expect(view.calls('SUPPORTER_RESTORE', 'start')).toBe(1)
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
+    } finally { view.cleanup() }
+  })
+  it('does not offer restore over an owned checkout or a paid account', async () => {
+    for (const [membership, billing] of [[ready('none', { installationAccountsEnabled: true }), { state: 'waiting' }], [ready('active', { installationAccountsEnabled: true, restoreEligible: false }), { state: 'idle' }], [ready('active', { installationAccountsEnabled: true, restoreEligible: true }), { state: 'idle' }], [ready('pending', { installationAccountsEnabled: true, restoreEligible: true }), { state: 'idle' }]] as [SupporterEntitlement, SupporterBillingState][]) {
+      const view = await mount({ account: () => linked, entitlement: () => membership, billing: () => billing, restore: () => ({ state: 'idle' }) })
+      try { expect(view.buttons()).not.toContain('Restore existing Supporter'); expect(view.calls('SUPPORTER_RESTORE')).toBe(0) } finally { view.cleanup() }
     }
   })
 })
@@ -452,7 +549,8 @@ describe('Twitch sign-in off (stage A): signed out', () => {
       expect(primary[0].textContent).toBe('Become a Supporter')
       expect(view.hrefs()).toContain('https://streampulse.stream/supporter')
       for (const gone of ['Connect this extension', 'Restore my Supporter', 'Use a StreamPulse website account', 'Continue with Twitch']) expect(view.buttons()).not.toContain(gone)
-      expect(view.host.querySelector('.pulse-journey')?.textContent).not.toMatch(/website account|restore/i)
+      expect(view.host.querySelector('.pulse-journey')?.textContent).not.toMatch(/website account/i)
+      expect(view.buttons()).toContain('Restore existing Supporter')
       expect(view.text()).toContain('Your connection stays in this browser.')
       // Until the click, nothing asks the worker to buy, restore, or sign in with Twitch.
       expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
