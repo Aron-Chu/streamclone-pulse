@@ -14,7 +14,8 @@ vi.mock('../src/lib/supportForm', async importOriginal => {
   return { ...original, feedbackSiteKey: () => 'test-site-key', ensureTurnstileScript: () => Promise.resolve() }
 })
 
-const key = 'a0b1c2d3-1234-4567-8123-a0b1c2d3e4f5'
+// Public deterministic UUID fixture, never a credential or a real request key.
+const key = '11111111-1111-4111-8111-111111111111'
 let issueToken: ((token: string) => void) | undefined
 const reset = vi.fn(() => { issueToken?.('fresh-token') })
 
