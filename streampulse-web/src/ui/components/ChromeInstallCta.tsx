@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { chromeWebStoreUrlForPage } from '../../lib/publicSiteConfig'
+import { chromeWebStoreUrlForPage, storeLinkPageForPath } from '../../lib/publicSiteConfig'
 import { capturePublicCta } from '../../lib/productAnalytics'
 
 export type ChromeInstallCtaProps = {
@@ -19,7 +19,7 @@ export function ChromeInstallCta({
   children = 'Add StreamPulse to Chrome',
   'data-cta': dataCta = 'chrome-install',
 }: ChromeInstallCtaProps) {
-  const page = typeof window === 'undefined' ? 'home' : window.location.pathname
+  const page = typeof window === 'undefined' ? 'home' : storeLinkPageForPath(window.location.pathname)
   const listingUrl = chromeWebStoreUrlForPage(page)
   return (
     <a
