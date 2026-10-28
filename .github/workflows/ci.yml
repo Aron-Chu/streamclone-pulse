@@ -112,14 +112,14 @@ jobs:
           path: ci-classification/classification.json
           retention-days: 3
 
-  extension:
-    name: extension
+  # Extension work runs as parallel jobs; the `extension` job below joins them
+  # into the single extension result.
+  extension_checks:
+    name: extension checks
     needs: guard
     if: needs.guard.outputs.run_extension == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
-    outputs:
-      e2e_executed: ${{ steps.e2e_proof.outputs.e2e_executed }}
     steps:
       # actions/checkout@v4
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -225,37 +225,6 @@ jobs:
           printf '%s\n' "${ZIP_ENTRIES[@]:0:40}"
           # Do not upload routine CWS ZIPs or dist artifacts.
 
-      - name: Install Playwright Chromium
-        if: needs.guard.outputs.run_e2e == 'true'
-        run: npx playwright install chromium --with-deps
-
-      - name: Mocked extension E2E
-        id: e2e_run
-        if: needs.guard.outputs.run_e2e == 'true'
-        run: xvfb-run --auto-servernum --server-args='-screen 0 1440x900x24' npm run test:e2e:mocked
-
-      # Positive proof only after the E2E step completes successfully (or skipped when not required).
-      - name: Record E2E execution proof
-        id: e2e_proof
-        if: always() && !cancelled()
-        run: |
-          set -euo pipefail
-          required='${{ needs.guard.outputs.run_e2e }}'
-          if [[ "${required}" == "true" ]]; then
-            # Step result is success only when the mocked E2E command exited 0.
-            if [[ "${{ steps.e2e_run.outcome }}" == "success" ]]; then
-              echo "e2e_executed=true" >> "$GITHUB_OUTPUT"
-              echo "e2e_executed=true"
-            else
-              echo "e2e_executed=false" >> "$GITHUB_OUTPUT"
-              echo "e2e_executed=false (e2e outcome=${{ steps.e2e_run.outcome }})"
-              exit 1
-            fi
-          else
-            echo "e2e_executed=skipped" >> "$GITHUB_OUTPUT"
-            echo "e2e_executed=skipped"
-          fi
-
       - name: Store-target package validation
         env:
           # CI package probe: builds and validates every store target even while
@@ -265,7 +234,7 @@ jobs:
           STREAMPULSE_CI_PACKAGE_PROBE: '1'
         run: |
           set -euo pipefail
-          # Rebuilds dist for each store target; keep after E2E so mocked tests use development dist.
+          # Rebuilds dist for each store target. Mocked E2E shards build their own development dist.
           VERSION="$(node -p "require('./package.json').version")"
           npm run package:cws
           npm run package:edge
@@ -295,16 +264,121 @@ jobs:
           VERSION="$(node -p "require('./package.json').version")"
           npm run test:e2e:firefox -- --zip "streampulse-extension-firefox-${VERSION}-ci-probe-not-for-upload.zip"
 
+  extension_e2e:
+    name: extension e2e (${{ matrix.shard }}/${{ strategy.job-total }})
+    needs: guard
+    if: needs.guard.outputs.run_extension == 'true' && needs.guard.outputs.run_e2e == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        # Playwright shards by test count in file order, not by time, and the
+        # slow supporter-* and vod-* specs sort last: on master (10-27, 22m
+        # suite) 3 shards left a 12.6m shard, 4 leave 10.6m. Add a shard when
+        # the slowest one outlasts the portal job.
+        shard: [1, 2, 3, 4]
+    steps:
+      # actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      # actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build in-repo packages
+        run: npm run build:packages
+
+      - name: Build
+        run: npm run build
+
+      - name: Playwright cache key
+        id: playwright_key
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('@playwright/test/package.json').version")"
+          echo "key=playwright-${ImageOS:-unknown}-${ImageVersion:-unknown}-${version}" >> "$GITHUB_OUTPUT"
+
+      # actions/cache@v5 — browsers plus the apt packages behind --with-deps.
+      # The apt download is the slow part: some runs fetch 25 MB at ~120 kB/s.
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |
+            ~/.cache/ms-playwright
+            ~/.cache/playwright-apt
+          key: ${{ steps.playwright_key.outputs.key }}
+
+      - name: Install Playwright Chromium
+        run: |
+          set -euo pipefail
+          if compgen -G "${HOME}/.cache/playwright-apt/*.deb" >/dev/null; then
+            sudo cp "${HOME}"/.cache/playwright-apt/*.deb /var/cache/apt/archives/
+          fi
+          npx playwright install chromium --with-deps
+          mkdir -p "${HOME}/.cache/playwright-apt"
+          cp /var/cache/apt/archives/*.deb "${HOME}/.cache/playwright-apt/" 2>/dev/null || true
+
+      - name: Mocked extension E2E
+        id: e2e_run
+        run: xvfb-run --auto-servernum --server-args='-screen 0 1440x900x24' npm run test:e2e:mocked -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+
       # Retain dated baseline proof on successful E2E as well as failure evidence.
       - name: Upload Playwright evidence
-        if: always() && needs.guard.outputs.run_e2e == 'true' && (steps.e2e_run.outcome == 'success' || steps.e2e_run.outcome == 'failure') && hashFiles('test-results/extension/**') != ''
+        if: always() && (steps.e2e_run.outcome == 'success' || steps.e2e_run.outcome == 'failure') && hashFiles('test-results/extension/**') != ''
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: extension-e2e-evidence
+          name: extension-e2e-evidence-${{ matrix.shard }}
           path: |
             test-results/extension/
             playwright-report/extension/
           retention-days: 3
+
+  # The single extension result: checks plus every mocked E2E shard. The final
+  # gate reads e2e_executed; Release artifacts reads these job names.
+  extension:
+    name: extension
+    needs: [guard, extension_checks, extension_e2e]
+    if: ${{ !cancelled() && needs.guard.outputs.run_extension == 'true' }}
+    runs-on: ubuntu-slim
+    timeout-minutes: 2
+    outputs:
+      e2e_executed: ${{ steps.e2e_proof.outputs.e2e_executed }}
+    steps:
+      # Positive proof only after every E2E shard completes successfully (or skipped when not required).
+      - name: Record E2E execution proof
+        id: e2e_proof
+        run: |
+          set -euo pipefail
+          required='${{ needs.guard.outputs.run_e2e }}'
+          if [[ "${required}" == "true" ]]; then
+            # Matrix result is success only when every shard's mocked E2E command exited 0.
+            if [[ "${{ needs.extension_e2e.result }}" == "success" ]]; then
+              echo "e2e_executed=true" >> "$GITHUB_OUTPUT"
+              echo "e2e_executed=true"
+            else
+              echo "e2e_executed=false" >> "$GITHUB_OUTPUT"
+              echo "e2e_executed=false (e2e shards result=${{ needs.extension_e2e.result }})"
+              exit 1
+            fi
+          else
+            echo "e2e_executed=skipped" >> "$GITHUB_OUTPUT"
+            echo "e2e_executed=skipped"
+          fi
+
+      - name: Extension checks result
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          result='${{ needs.extension_checks.result }}'
+          echo "extension checks result=${result}"
+          test "${result}" = "success"
 
   portal:
     name: portal
@@ -381,10 +455,34 @@ jobs:
             "${audit_json}"
       - run: npm run build:ci
 
+      - name: Playwright cache key
+        id: playwright_key
+        if: needs.guard.outputs.run_portal_e2e == 'true'
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('@playwright/test/package.json').version")"
+          echo "key=playwright-${ImageOS:-unknown}-${ImageVersion:-unknown}-${version}" >> "$GITHUB_OUTPUT"
+
+      # actions/cache@v5 — same cache as the extension E2E shards.
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
+        if: needs.guard.outputs.run_portal_e2e == 'true'
+        with:
+          path: |
+            ~/.cache/ms-playwright
+            ~/.cache/playwright-apt
+          key: ${{ steps.playwright_key.outputs.key }}
+
       # Mocked portal Playwright — Chromium needs ubuntu-latest (not ubuntu-slim).
       - name: Install Playwright Chromium (portal)
         if: needs.guard.outputs.run_portal_e2e == 'true'
-        run: npx playwright install chromium --with-deps
+        run: |
+          set -euo pipefail
+          if compgen -G "${HOME}/.cache/playwright-apt/*.deb" >/dev/null; then
+            sudo cp "${HOME}"/.cache/playwright-apt/*.deb /var/cache/apt/archives/
+          fi
+          npx playwright install chromium --with-deps
+          mkdir -p "${HOME}/.cache/playwright-apt"
+          cp /var/cache/apt/archives/*.deb "${HOME}/.cache/playwright-apt/" 2>/dev/null || true
 
       - name: Mocked portal E2E
         id: portal_e2e_run
