@@ -87,10 +87,11 @@ function validateManifest(manifest, target) {
     ok('REQUIRED: manifest_version is 3')
   }
 
-  if (manifest.name !== 'StreamPulse') {
-    fail(`manifest name must be StreamPulse, got ${JSON.stringify(manifest.name)}`)
+  const expectedName = 'StreamPulse: Twitch Chat Stats & Top Moments'
+  if (manifest.name !== expectedName) {
+    fail(`manifest name must be ${expectedName}, got ${JSON.stringify(manifest.name)}`)
   } else {
-    ok('REQUIRED: manifest name is StreamPulse')
+    ok(`REQUIRED: manifest name is ${expectedName}`)
   }
 
   const expected = loadManifestForTarget(target)

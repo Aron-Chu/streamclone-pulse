@@ -286,7 +286,7 @@ export function assertProductionManifestPermissions(): void {
     name?: string
   }
 
-  expect(manifest.name).toBe('StreamPulse')
+  expect(manifest.name).toBe('StreamPulse: Twitch Chat Stats & Top Moments')
   expect(manifest.permissions ?? []).toEqual([...EXPECTED_MANIFEST_PERMISSIONS])
   expect(manifest.host_permissions ?? []).toEqual([...EXPECTED_HOST_PERMISSIONS])
   expect(manifest.optional_host_permissions ?? []).toEqual([...EXPECTED_OPTIONAL_HOST_PERMISSIONS])

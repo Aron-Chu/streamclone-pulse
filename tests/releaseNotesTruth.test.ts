@@ -5,8 +5,7 @@ import { selectExtensionReleasePreview } from '../scripts/release-preview.ts'
 import { releaseLifecycleLabel } from '../src/ui/ChangelogCard.tsx'
 
 /**
- * Release review 2026-10-09 (A-4): the 0.2.6 notes (numbered 0.2.2 until 2026-10-26, then 0.2.5, which no store
- * published, until 2026-10-27) describe what ships, the store packager accepts them, and the changelog labels say
+ * Release review 2026-10-09 (A-4): the 0.2.6 notes describe what ships, the store packager accepts them, and the changelog labels say
  * which versions the Chrome Web Store published.
  */
 type Entry = { version: string; status: string; releasedAt: string | null; title: string; summary: string; preview?: string[]; new?: string[]; changed?: string[]; improved?: string[]; fixed?: string[]; knownIssues?: string[] }
@@ -15,21 +14,9 @@ const entry = (version: string) => releases.find(release => release.version === 
 const text = (release: Entry) => [release.title, release.summary, ...(release.preview ?? []), ...(release.new ?? []), ...(release.changed ?? []), ...(release.improved ?? []), ...(release.fixed ?? []), ...(release.knownIssues ?? [])].join('\n')
 
 describe('0.2.6 release notes', () => {
-  it('stay unreleased, with no date, until the packaging commit sets the real submission date', () => {
-    // The submission date is Aron's. The date is built into the package and the
-    // website shows a released version's notes, so neither may claim a date early.
-    expect(entry('0.2.6')).toMatchObject({ status: 'unreleased', releasedAt: null })
+  it('are released on the submission date and pass the store packaging gate', () => {
+    expect(entry('0.2.6')).toMatchObject({ status: 'released', releasedAt: '2026-10-27' })
     const gate = evaluateReleaseNotesGate({ notes: releaseNotes, version: '0.2.6', storeTarget: true })
-    expect(gate.publishable).toBe(false)
-    expect(gate.failures.join(' ')).toMatch(/still status="unreleased"/)
-  })
-
-  it('pass the store packaging gate once the packaging commit marks them released with a date', () => {
-    const packaged = {
-      ...releaseNotes,
-      releases: releaseNotes.releases.map(release => release.version === '0.2.6' ? { ...release, status: 'released', releasedAt: '2026-10-27' } : release),
-    }
-    const gate = evaluateReleaseNotesGate({ notes: packaged, version: '0.2.6', storeTarget: true })
     expect(gate.failures).toEqual([])
     expect(gate.publishable).toBe(true)
   })
@@ -112,6 +99,6 @@ describe('changelog labels', () => {
     expect(releaseLifecycleLabel({ status: 'released' }, true)).toBe('Installed')
     expect(releaseLifecycleLabel({ status: 'released' }, false)).toBe('Released')
     expect(releaseLifecycleLabel({ status: 'unreleased' }, false)).toBe('Not published')
-    expect(releases.filter(release => release.status !== 'released').map(release => release.version)).toEqual(['0.2.6', '0.1.0'])
+    expect(releases.filter(release => release.status !== 'released').map(release => release.version)).toEqual(['0.1.0'])
   })
 })

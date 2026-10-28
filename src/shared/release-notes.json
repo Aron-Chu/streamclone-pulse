@@ -4,8 +4,8 @@
   "releases": [
     {
       "version": "0.2.6",
-      "status": "unreleased",
-      "releasedAt": null,
+      "status": "released",
+      "releasedAt": "2026-10-27",
       "title": "Whole-stream charts and moment pictures",
       "summary": "Charts cover the whole stream, Top Moments shows pictures, even of moments you missed, and Stream Recap sums up a past stream. The 7TV header backdrop is a Supporter perk; accounts aren't open and Supporter isn't on sale yet.",
       "preview": [

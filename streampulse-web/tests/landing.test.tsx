@@ -123,9 +123,12 @@ describe('landing page', () => {
 
     expect(heroScope.getByRole('link', { name: /open analytics/i }).getAttribute('href')).toBe('/analytics')
     const install = heroScope.getByRole('link', { name: /Add StreamPulse to Chrome/i })
-    expect(install.getAttribute('href')).toBe(
+    const installUrl = new URL(install.getAttribute('href') ?? '')
+    expect(`${installUrl.origin}${installUrl.pathname}`).toBe(
       'https://chromewebstore.google.com/detail/streampulse/nifgoonpcgmdhiffcpmhndjgkgahnelg',
     )
+    expect(installUrl.searchParams.get('utm_source')).toBe('streampulse.stream')
+    expect(installUrl.searchParams.get('utm_medium')).toMatch(/^[a-z0-9-]+$/)
     expect(install.getAttribute('target')).toBe('_blank')
     expect(install.getAttribute('rel')).toBe('noopener noreferrer')
   })
