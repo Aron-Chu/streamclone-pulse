@@ -1,13 +1,12 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { seedBetaKey } from './helpers/auth'
 import { installHubUxMock } from './helpers/hubUxMock'
 // The notes the page is built from; the extension's release step marks versions released.
 import releaseNotes from '../../../src/shared/release-notes.json' with { type: 'json' }
 
 /**
- * Route-change scroll, cold-load fragments, the dashboard narrow menu and the
- * extension's release-notes destination (OP1-FUN-008/001/005/003).
+ * Route-change scroll, cold-load fragments and the extension's release-notes
+ * destination (OP1-FUN-008/001/003).
  */
 
 // Registered first, so the specific mocks installed later take precedence.
@@ -26,6 +25,18 @@ async function guardNetwork(page: Page, baseURL: string | undefined) {
 const scrollY = (page: Page) => page.evaluate(() => Math.round(window.scrollY))
 const topOf = (page: Page, selector: string) =>
   page.locator(selector).evaluate((element) => Math.round(element.getBoundingClientRect().top))
+
+/**
+ * A followed #link landed: its section is at the top under the sticky top
+ * navigation, or the page is scrolled as far as it goes (a section near the end
+ * of the page, like the hub's Channels, cannot reach the top).
+ */
+const landedOn = (page: Page, selector: string) =>
+  page.locator(selector).evaluate((element) => {
+    const top = element.getBoundingClientRect().top
+    const atEnd = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 2
+    return top >= 0 && (top <= 100 || atEnd)
+  })
 
 async function scrollToBottom(page: Page) {
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
@@ -154,60 +165,18 @@ for (const identity of ENTRY_IDENTITY) {
       expect(await topOf(page, '#extension')).toBeGreaterThanOrEqual(90)
       expect(await topOf(page, '#extension')).toBeLessThanOrEqual(100)
     })
-
-    test('hub section links at 390 px: Tracked, Live rail, then Tracked again', async ({ page }) => {
-      await page.setViewportSize({ width: 390, height: 844 })
-      await installHubUxMock(page)
-      await page.goto('/analytics')
-      await expectEntryIdentity(page, identity.hidden)
-      await expect(page.locator('#section-tracked')).toBeVisible()
-      await page.waitForTimeout(1_500)
-      const sections = page.locator('nav.hub-mobile-sections')
-      await sections.locator('a[href="#section-tracked"]').click()
-      await expect.poll(() => topOf(page, '#section-tracked')).toBeLessThanOrEqual(96)
-      await wheelToTop(page)
-      await sections.locator('a[href="#section-live-rail"]').click()
-      await expect(page).toHaveURL(/#section-live-rail$/)
-      await wheelToTop(page)
-
-      await sections.locator('a[href="#section-tracked"]').click()
-      await expect(page).toHaveURL(/#section-tracked$/)
-      await page.waitForTimeout(1_500)
-      expect(Math.abs((await topOf(page, '#section-tracked')) - 80)).toBeLessThanOrEqual(16)
-    })
-
-    test('N4: cold /analytics#section-tracked, native Live rail, then native Tracked lands at the top', async ({ page }) => {
-      await page.setViewportSize({ width: 390, height: 844 })
-      await installHubUxMock(page)
-      await page.goto('/analytics#section-tracked')
-      await expectEntryIdentity(page, identity.hidden)
-      await expect.poll(() => topOf(page, '#section-tracked')).toBeLessThanOrEqual(96)
-      await page.waitForTimeout(1_500)
-      await wheelToTop(page)
-      const sections = page.locator('nav.hub-mobile-sections')
-      await sections.locator('a[href="#section-live-rail"]').click()
-      await expect(page).toHaveURL(/#section-live-rail$/)
-      await wheelToTop(page)
-
-      await sections.locator('a[href="#section-tracked"]').click()
-      await expect(page).toHaveURL(/#section-tracked$/)
-      await page.waitForTimeout(1_500)
-      expect(Math.abs((await topOf(page, '#section-tracked')) - 80)).toBeLessThanOrEqual(16)
-    })
   })
 }
 
 test.describe('cold-load fragments on analytics routes', () => {
-  for (const path of ['/analytics#section-tracked', '/analytics?window=7d#section-tracked', '/analytics#section-emote-signal']) {
+  for (const path of ['/analytics#channels', '/analytics?window=7d#channels', '/analytics#emotes']) {
     test(`${path} lands on its section once the hub has rendered`, async ({ page }) => {
       await installHubUxMock(page)
       await page.goto(path)
       const id = path.split('#')[1]
       await expect(page.locator(`#${id}`)).toBeVisible()
       await expect.poll(() => scrollY(page)).toBeGreaterThan(300)
-      // Hub sections carry scroll-margin-top: 5.5rem / 5rem under the sticky top navigation.
-      await expect.poll(() => topOf(page, `#${id}`)).toBeLessThanOrEqual(100)
-      expect(await topOf(page, `#${id}`)).toBeGreaterThanOrEqual(0)
+      await expect.poll(() => landedOn(page, `#${id}`)).toBe(true)
     })
   }
 
@@ -217,20 +186,20 @@ test.describe('cold-load fragments on analytics routes', () => {
     ['a cached hub snapshot', ENTRY_IDENTITY[1]],
   ] as const) {
     const named = identity.hidden ? ` (${identity.name})` : ''
-    test(`Back from a channel returns to #section-tracked with ${snapshot}${named}`, async ({ page }) => {
+    test(`Back from a channel returns to #channels with ${snapshot}${named}`, async ({ page }) => {
       await useEntryIdentity(page, identity.hidden)
       await installHubUxMock(page)
-      await page.goto('/analytics#section-tracked')
+      await page.goto('/analytics#channels')
       await expectEntryIdentity(page, identity.hidden)
-      await expect.poll(() => topOf(page, '#section-tracked')).toBeLessThanOrEqual(100)
+      await expect.poll(() => landedOn(page, '#channels')).toBe(true)
       await page.waitForTimeout(1_500)
-      const left = await topOf(page, '#section-tracked')
+      const left = await topOf(page, '#channels')
       expect(left).toBeGreaterThanOrEqual(0)
 
-      await page.locator('#section-tracked a[href^="/analytics/"]').first().click()
+      await page.locator('#channels a[href^="/analytics/"]').first().click()
       await expect(page).toHaveURL(/\/analytics\/[a-z0-9_]+$/)
       // The channel page has replaced the hub (its route chunk loads first).
-      await expect(page.locator('#section-tracked')).toHaveCount(0)
+      await expect(page.locator('#channels')).toHaveCount(0)
       await expect.poll(() => scrollY(page)).toBe(0)
       if (snapshot === 'no cached hub snapshot') {
         await page.evaluate(() => {
@@ -243,12 +212,12 @@ test.describe('cold-load fragments on analytics routes', () => {
         })
       }
       await page.goBack()
-      await expect(page).toHaveURL(/\/analytics#section-tracked$/)
-      await expect.poll(() => topOf(page, '#section-tracked'), { timeout: 10_000 }).toBeGreaterThanOrEqual(left - 16)
-      expect(await topOf(page, '#section-tracked')).toBeLessThanOrEqual(left + 16)
+      await expect(page).toHaveURL(/\/analytics#channels$/)
+      // Back to the place the reader left, once the hub has rendered (the hold waits out the skeleton).
+      await expect.poll(async () => Math.abs((await topOf(page, '#channels')) - left), { timeout: 10_000 }).toBeLessThanOrEqual(16)
       // Still there once the refreshed hub has replaced the snapshot or skeleton.
       await page.waitForTimeout(1_500)
-      expect(Math.abs((await topOf(page, '#section-tracked')) - left)).toBeLessThanOrEqual(16)
+      expect(Math.abs((await topOf(page, '#channels')) - left)).toBeLessThanOrEqual(16)
     })
   }
 })
@@ -282,57 +251,6 @@ test.describe('Back to the Moments list', () => {
       expect(Math.abs((await scrollY(page)) - left)).toBeLessThanOrEqual(2)
     })
   }
-})
-
-test('a rejected beta key opens the hub at the top, not at the dashboard offset', async ({ page }) => {
-  await seedBetaKey(page, 'test-beta-key')
-  await installHubUxMock(page)
-  await page.setViewportSize({ width: 390, height: 360 })
-  await page.goto('/dashboard')
-  await expect(page.locator('#dashboard-navigation')).toBeAttached()
-  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
-  await expect.poll(() => scrollY(page)).toBeGreaterThan(100)
-  // What apiClient dispatches when a gated read answers 401.
-  await page.evaluate(() => window.dispatchEvent(new CustomEvent('auth:rejected')))
-  await expect(page).toHaveURL(/\/analytics$/)
-  await expect(page.locator('#section-tracked')).toBeVisible()
-  await expect.poll(() => scrollY(page)).toBe(0)
-  await page.waitForTimeout(500)
-  expect(await scrollY(page)).toBe(0)
-})
-
-test.describe('dashboard header at narrow widths', () => {
-  test('Home, Clips and Analytics sit behind a Menu disclosure at 390 px', async ({ page }) => {
-    await seedBetaKey(page, 'test-beta-key')
-    await page.setViewportSize({ width: 390, height: 844 })
-    await page.goto('/dashboard/clips')
-    const menu = page.getByRole('button', { name: 'Menu', exact: true })
-    await expect(menu).toBeVisible()
-    await expect(menu).toHaveAttribute('aria-expanded', 'false')
-    const nav = page.locator('#dashboard-navigation')
-    await expect(nav.getByRole('link', { name: 'Analytics' })).toBeHidden()
-
-    await menu.click()
-    await expect(page.getByRole('button', { name: 'Close menu' })).toHaveAttribute('aria-expanded', 'true')
-    for (const name of ['Home', 'Clips', 'Analytics']) await expect(nav.getByRole('link', { name, exact: true })).toBeVisible()
-    await page.keyboard.press('Escape')
-    await expect(menu).toBeFocused()
-    await expect(nav.getByRole('link', { name: 'Analytics' })).toBeHidden()
-
-    await menu.click()
-    await nav.getByRole('link', { name: 'Analytics' }).click()
-    await expect(page).toHaveURL(/\/analytics$/)
-  })
-
-  test('the full link row stays visible above 960 px with no Menu button', async ({ page }) => {
-    await seedBetaKey(page, 'test-beta-key')
-    await page.setViewportSize({ width: 1440, height: 900 })
-    await page.goto('/dashboard')
-    await expect(page.getByRole('button', { name: 'Menu', exact: true })).toBeHidden()
-    for (const name of ['Home', 'Clips', 'Analytics']) {
-      await expect(page.locator('#dashboard-navigation').getByRole('link', { name, exact: true })).toBeVisible()
-    }
-  })
 })
 
 test('the extension "Release details" destination is a prerendered release-notes page', async ({ page }) => {

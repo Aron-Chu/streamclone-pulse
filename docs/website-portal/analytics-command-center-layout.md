@@ -1,5 +1,8 @@
 # Analytics command center layout
 
+> Retired: the Command Center was removed. `/analytics` is the d3-v5 hub
+> (`AnalyticsHubV5Page`); this page is its history.
+
 ## Compact desktop density (2026-10-08)
 
 The owner preferred the hub at 75% browser zoom ("at 100% it's too fat"). His
@@ -178,7 +181,7 @@ card space without presenting fabricated content or an empty-result claim.
 
 | | |
 |---|---|
-| **Status** | Active (2026-07) |
+| **Status** | Retired (`/analytics` is the d3-v5 hub) |
 | **Surface** | `/analytics` hub landing — `AnalyticsLandingPage` + `figma-activity-hub` |
 | **Code** | `streampulse-web/src/routes/analytics/AnalyticsLandingPage.tsx`, `PulseMomentsLivePanel`, `FigmaGlobalActivityPanel` |
 

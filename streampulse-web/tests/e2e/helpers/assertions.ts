@@ -142,20 +142,7 @@ export async function assertNoVisibleScrollbars(
   ).toEqual([])
 }
 
-/** Smoke layout expectations per breakpoint (hub landing). */
-export async function assertResponsiveLayout(page: Page, viewport: ViewportSize): Promise<void> {
-  if (viewport.width < 1100) {
-    await expect(page.locator('.figma-analytics__frame--no-sidebar, .figma-analytics__frame')).toBeVisible()
-    const embeddedGrid = page.locator('.figma-activity-hub .pulse-moments-live--embedded .pulse-moments-live__grid')
-    if ((await embeddedGrid.count()) > 0) {
-      const columnCount = await embeddedGrid.evaluate((el) => {
-        const raw = getComputedStyle(el).gridTemplateColumns.trim()
-        if (!raw || raw === 'none') return 0
-        return raw.split(/\s+/).length
-      })
-      expect(columnCount, 'embedded pulse moments should stack on narrow viewports').toBeLessThanOrEqual(1)
-    }
-  } else {
-    await expect(page.getByRole('navigation', { name: /Analytics sections/i })).toBeVisible()
-  }
+/** Smoke layout expectation for the hub landing: one analytics frame at every width. */
+export async function assertResponsiveLayout(page: Page): Promise<void> {
+  await expect(page.locator('.figma-analytics__frame--no-sidebar, .figma-analytics__frame')).toBeVisible()
 }

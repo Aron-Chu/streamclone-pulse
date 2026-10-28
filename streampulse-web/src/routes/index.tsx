@@ -1,6 +1,5 @@
 import { lazy, Suspense, useState, type ComponentType, type ReactNode } from 'react'
 import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
-import { RequireAuth } from './guards'
 import { AnalyticsRouteFallback } from './AnalyticsRouteFallback'
 import Landing from './public/Landing'
 // The public pages' styles stay in the first stylesheet, in the order the
@@ -13,18 +12,8 @@ import { PageErrorBoundary } from '../ui/PortalErrorBoundary'
 import { PublicLayout } from '../ui/components/PublicLayout'
 import { retiredExplorerPath } from '../lib/momentsNavigation'
 
-// The d3-v5 hub (VITE_PUBLIC_HUB_V5, PR 1 of 5: data layer + activity chart).
-// Read inline so a production build folds the test: a flag-off build is
-// exactly the Command Center page and never emits the v5 chunk.
-const AnalyticsLandingPage = lazy(() =>
-  import.meta.env.VITE_PUBLIC_HUB_V5 === 'on' || import.meta.env.VITE_PUBLIC_HUB_V5 === '1'
-    ? import('./analytics/AnalyticsHubV5Page')
-    : import('./analytics/AnalyticsLandingPage'),
-)
+const AnalyticsHubV5Page = lazy(() => import('./analytics/AnalyticsHubV5Page'))
 const AnalyticsMomentsPage = lazy(() => import('./analytics/AnalyticsMomentsPage'))
-const DashboardShell = lazy(() => import('./dashboard/DashboardShell'))
-const DashboardHome = lazy(() => import('./dashboard/Home'))
-const ClipsPage = lazy(() => import('./dashboard/Clips'))
 const AccountPage = lazy(() => import('./account/AccountPage'))
 const AccountSettings = lazy(() => import('./account/AccountSettings'))
 const BillingPage = lazy(() => import('./account/BillingPage'))
@@ -191,7 +180,7 @@ function PortalRoutes() {
 
         {/* Public aggregate analytics — single landing. /hub kept as a permanent
             redirect so old links/bookmarks resolve to the one analytics page. */}
-        <Route path="/analytics" element={<AnalyticsLandingPage />} />
+        <Route path="/analytics" element={<AnalyticsHubV5Page />} />
         <Route path="/analytics/hub" element={<AnalyticsAliasRedirect />} />
         <Route path="/analytics/emotes" element={<AnalyticsAliasRedirect />} />
         <Route path="/atlas" element={<AnalyticsAliasRedirect />} />
@@ -212,14 +201,6 @@ function PortalRoutes() {
         {/* Short public aliases used by extension/share links. */}
         <Route path="/s/:login" element={<ShortSessionRedirect />} />
         <Route path="/s/:login/:streamId" element={<ShortSessionRedirect />} />
-
-        {/* Dashboard remains a separate, gated product surface. */}
-        <Route element={<RequireAuth />}>
-          <Route path="/dashboard" element={<DashboardShell />}>
-            <Route index element={<DashboardHome />} />
-            <Route path="clips" element={<ClipsPage />} />
-          </Route>
-        </Route>
 
         {/* /admin is not a public operator console. Cloudflare Access for API
             /v1/admin/* remains an external ops/promotion blocker. */}

@@ -14,7 +14,6 @@ import { resolveLivePulseMoments } from '../../lib/figmaSessionAnalytics'
 import { fromHubMoment, uniqueDiscoveryMoments,
   checkMomentSource, type DiscoveryMoment, type CheckedMomentSource } from '../../lib/discoveryMoments'
 import { useSavedMoments } from '../../lib/savedDiscoveryMoments'
-import { refreshedReplayforgeHandoffHref } from '../../lib/replayforgeHandoff'
 import { watchMomentHref } from '../../lib/watchHandoff'
 import { formatStreamOffset } from '../../lib/formatStreamOffset'
 import { twitchProfileImageRendition } from '../../lib/twitchProfileImage'
@@ -208,7 +207,7 @@ function MomentDetail({ moment: suppliedMoment, variant, onClose, saved, onSourc
       if (controller.signal.aborted) return
       if (result.lookupFailed) {
         setError('The source recheck failed. Any visible preview uses the last verified mapping; playback still depends on Twitch.')
-        setSource(previous => previous?.vodHref ? { ...previous, handoffRef: undefined, liveHref: null } : result)
+        setSource(previous => previous?.vodHref ? { ...previous, liveHref: null } : result)
         onSourceState(moment.key, 'Source recheck failed')
         return
       }
@@ -218,7 +217,7 @@ function MomentDetail({ moment: suppliedMoment, variant, onClose, saved, onSourc
       if (result.liveExpiresAt) expiry = setTimeout(() => setSource(current => current ? { ...current, liveHref: null } : null), Math.max(0, result.liveExpiresAt - Date.now()))
     }).catch(() => { if (!controller.signal.aborted) {
       setError('Could not recheck this source. Any visible preview uses the last verified mapping. Retry to check again.')
-      setSource(previous => previous ? { ...previous, handoffRef: undefined, liveHref: null } : null)
+      setSource(previous => previous ? { ...previous, liveHref: null } : null)
       onSourceState(moment.key, 'Source check failed')
     } })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
@@ -235,7 +234,6 @@ function MomentDetail({ moment: suppliedMoment, variant, onClose, saved, onSourc
     }, 60_000)
     return () => clearInterval(timer)
   }, [autoRechecking, automaticChecks, attempt])
-  const handoff = refreshedReplayforgeHandoffHref(source)
   const watchHref = watchMomentHref(moment, source)
   const comparison = moment.comparison
   const summary = momentComparisonSummary(comparison, moment.reactionSignal)
@@ -303,8 +301,6 @@ function MomentDetail({ moment: suppliedMoment, variant, onClose, saved, onSourc
         <div className="moments-actions moments-primary-actions"><SaveMomentButton moment={moment} />
           {source?.vodHref ? <a href={source.vodHref} target="_blank" rel="noopener noreferrer">Open VOD at {formatStreamOffset(source.vodOffsetSeconds ?? moment.offsetSeconds)} ↗</a> : null}
           {source?.vodHref && source.vodOffsetSeconds != null ? <VodOffsetNote broadcastSeconds={moment.offsetSeconds} vodSeconds={source.vodOffsetSeconds} /> : null}
-          {handoff ? <a href={handoff} target="_blank" rel="noopener noreferrer">Prepare clip in ReplayForge ↗</a> : null}
-          {handoff ? <small>ReplayForge requires sign-in and source permission. Opening it does not create a job.</small> : null}
         </div>
         <MomentNote key={moment.key} momentKey={moment.key} />
         <details className="moments-source" open={!source?.vodHref}>

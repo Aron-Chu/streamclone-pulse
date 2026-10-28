@@ -1,6 +1,6 @@
 /**
- * /analytics as the d3-v5 hub. Routed only when the build sets
- * VITE_PUBLIC_HUB_V5. Ported from the approved mockup (d3-v5 hub.html): the
+ * /analytics as the d3-v5 hub. Ported from the approved mockup (d3-v5
+ * hub.html): the
  * search hero with the emote conveyor behind it (R5-15 at Soft), Busiest now,
  * the activity chart, the live feed (v3, a "Live now" peek under the hero on
  * phones), Top emotes as the emote map (R5-13), Where chat is as the ranked
@@ -12,12 +12,11 @@ import { useSearchParams } from 'react-router-dom'
 import { optionsForBoundedActivityFallback } from '../../lib/activityRangeCapabilities'
 import { usePublicHubData } from '../../hooks/usePublicHubData'
 import { getBackendUrl } from '../../lib/apiClient'
-import { backendSourceLabel, resolveBackendSource } from '../../lib/backendSource'
 import { formatActivityWindowLabel, summarizeActivity } from '../../lib/hubActivitySummary'
 import { selectHubChartActivityInputs } from '../../lib/hubChartActivityModel'
 import { isHubActivityLivePoolFallback, resolveHubActivityChartWindowMinutes } from '../../lib/hubActivityHonesty'
 import { normalizePublicHub, type PublicHubActivityWindow } from '../../lib/publicHub'
-import { resolveHubStatus, resolveHubUiState } from '../../lib/hubUiState'
+import { resolveHubUiState } from '../../lib/hubUiState'
 import type { HubActivityRangeOption } from '../../ui/components/hub/HubActivityChart'
 import { AnalyticsFigmaShell } from '../../ui/components/analytics/AnalyticsFigmaShell'
 import { HubActivityPanelV5 } from '../../ui/components/analytics/HubActivityPanelV5'
@@ -32,7 +31,7 @@ import { HubV5Hero } from '../../ui/components/hub/v5/HubV5Hero'
 import { HubV5Icon } from '../../ui/components/hub/v5/HubV5Icon'
 import { HubV5LiveFeed, HubV5LivePeek, useHubLiveFeed } from '../../ui/components/hub/v5/HubV5LiveFeed'
 import { HubV5Rack } from '../../ui/components/hub/v5/HubV5Rack'
-import { HUB_RACK_ROWS, hubCategoryArt, whereChatIs, type HubChannelSort } from '../../ui/components/hub/v5/hubV5Model'
+import { HUB_RACK_ROWS, hubCategoryArt, hubClock, whereChatIs, type HubChannelSort } from '../../ui/components/hub/v5/hubV5Model'
 import { useHashScrollHold } from '../../ui/RouteScrollManager'
 import '../../ui/components/analytics/figma-analytics.css'
 import '../../ui/components/hub/d3/hub-d3-tokens.css'
@@ -198,25 +197,14 @@ export default function AnalyticsHubV5Page() {
     details.querySelector<HTMLElement>('summary')?.focus({ preventScroll: true })
   }, [])
 
-  const backendSource = resolveBackendSource(getBackendUrl())
-  const isHostedBackend = backendSource === 'hosted'
-  const measurementStatus = resolveHubStatus(hub)
-
   return (
-    <AnalyticsFigmaShell
-      backendStatus={
-        isHostedBackend
-          ? { label: 'Status', value: measurementStatus.value, tone: measurementStatus.tone }
-          : { label: 'API', value: backendSourceLabel(backendSource), tone: measurementStatus.tone }
-      }
-      sidebarStatusLabel={isHostedBackend ? measurementStatus.value : backendSourceLabel(backendSource)}
-      hideSidebar
-    >
+    <AnalyticsFigmaShell hideSidebar>
       <main className="figma-analytics__main" aria-label="StreamPulse analytics" data-hub-state={hubUiState}>
         <div id="analytics-main" tabIndex={-1} className="analytics-focus-target">Analytics content</div>
-        {hub.loadSource === 'cache' && hub.refreshing ? (
+        {/* A saved copy can be hours old: it names its time for as long as it is on screen, never reading as live. */}
+        {hub.loadSource === 'cache' && hub.cachedAt != null ? (
           <div className="figma-hub-fallback-banner figma-hub-fallback-banner--info" role="status">
-            Cached snapshot - refreshing...
+            Cached snapshot from {hubClock(hub.cachedAt)}{hub.refreshing ? ' - refreshing...' : ''}
           </div>
         ) : null}
         <HubDataHealthBanner

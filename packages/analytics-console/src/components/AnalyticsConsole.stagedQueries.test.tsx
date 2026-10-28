@@ -79,16 +79,16 @@ const detail = {
   updatedAt: Date.now(),
 }
 
-function renderConsole(layer2LoadMode: 'eager' | 'staged' = 'eager') {
+function renderConsole(layer2LoadMode: 'eager' | 'staged' = 'eager', entry = `/analytics/xqc/${streamId}`) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
   })
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[`/analytics/xqc/${streamId}`]}>
+      <MemoryRouter initialEntries={[entry]}>
         <Routes>
           <Route
-            path="/analytics/:login/:streamId"
+            path="/analytics/:login/:streamId?"
             element={<AnalyticsConsole layer2LoadMode={layer2LoadMode} />}
           />
         </Routes>
@@ -300,5 +300,75 @@ describe('AnalyticsConsole staged Layer 2 queries', () => {
     })
     expect(api.getReplayHeatmap).not.toHaveBeenCalled()
     expect(api.getSyncStatus).not.toHaveBeenCalled()
+  })
+})
+
+describe('AnalyticsConsole Stream Recap slot', () => {
+  function recapSlot() {
+    return document.querySelector('[data-console-skeleton="recap"]')
+  }
+
+  it('holds the slot while the session read is out', async () => {
+    api.getAnalyticsStream.mockImplementation(() => new Promise(() => undefined))
+    renderConsole()
+
+    await waitFor(() => expect(api.getAnalyticsStream).toHaveBeenCalled())
+    expect(recapSlot()).not.toBeNull()
+    expect(api.getPulseStreamRecap).not.toHaveBeenCalled()
+  })
+
+  it('keeps the height of a full recap above the tabs until the recap lands in its place', async () => {
+    let answer: (recap: unknown) => void = () => undefined
+    api.getPulseStreamRecap.mockImplementation(() => new Promise(resolve => { answer = resolve }))
+    renderConsole()
+
+    await waitFor(() => expect(api.getPulseStreamRecap).toHaveBeenCalledWith(streamId))
+    const slot = recapSlot()!
+    expect(slot.className).toMatch(/min-h-\[28\.5rem\]/)
+    expect(slot.getAttribute('aria-hidden')).toBe('true')
+    expect(slot.nextElementSibling?.hasAttribute('data-session-details-tabs')).toBe(true)
+    expect(screen.queryByText('Recap')).toBeNull()
+
+    await act(async () => answer({ streamId, topMoments: [] }))
+    const recap = await screen.findByText('Recap')
+    expect(recap.nextElementSibling?.hasAttribute('data-session-details-tabs')).toBe(true)
+    expect(recapSlot()).toBeNull()
+  })
+
+  it.each([
+    ['fails', () => Promise.reject(new Error('recap unavailable'))],
+    ['has no recap', () => Promise.resolve(null)],
+  ])('gives the slot up when the recap read %s', async (_label, read) => {
+    api.getPulseStreamRecap.mockImplementation(read)
+    renderConsole()
+
+    await screen.findByRole('heading', { name: 'Staging fixture' })
+    await waitFor(() => expect(api.getPulseStreamRecap).toHaveBeenCalled())
+    // A failed read is asked once more (retry: 1) before it settles.
+    await waitFor(() => expect(recapSlot()).toBeNull(), { timeout: 3_000 })
+    expect(screen.queryByText('Recap')).toBeNull()
+    expect(screen.getByRole('tab', { name: 'Moments' })).toBeTruthy()
+  })
+
+  it('holds the slot on the channel route until it opens the session, then fills it with the recap', async () => {
+    let list: (value: unknown) => void = () => undefined
+    api.getAnalyticsStreams.mockImplementation(() => new Promise(resolve => { list = resolve }))
+    renderConsole('eager', '/analytics/xqc')
+
+    await waitFor(() => expect(api.getAnalyticsStreams).toHaveBeenCalled())
+    expect(recapSlot()).not.toBeNull()
+
+    await act(async () => list({ items: [{ streamId, login: 'xqc', startedAt, viewerSamples: 1, chatMessages: 10 }] }))
+    expect(await screen.findByText('Recap')).toBeTruthy()
+    expect(recapSlot()).toBeNull()
+  })
+
+  it('gives the slot up on the channel route when there is no session to open', async () => {
+    api.getAnalyticsStreams.mockResolvedValue({ items: [] })
+    renderConsole('eager', '/analytics/xqc')
+
+    await waitFor(() => expect(api.getAnalyticsStreams).toHaveBeenCalled())
+    await waitFor(() => expect(recapSlot()).toBeNull())
+    expect(screen.queryByText('Recap')).toBeNull()
   })
 })
