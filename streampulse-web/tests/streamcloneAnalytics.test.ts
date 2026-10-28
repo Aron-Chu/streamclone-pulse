@@ -377,6 +377,83 @@ describe('streamcloneAnalytics adapter', () => {
     expect(detail.stream?.startedAt).toBe(new Date(currentStartedAt).toISOString())
     expect(detail.stream?.category).toBe('Mile 27')
     expect(apiClientMock).toHaveBeenCalledWith('/v1/portal/analytics/channels/caseoh_/live')
+    // The minute read that started with the detail read is dropped and cancelled.
+    const minutesCall = apiClientMock.mock.calls.find(([path]) => String(path).endsWith('/minutes'))
+    expect((minutesCall?.[1] as { signal?: AbortSignal } | undefined)?.signal?.aborted).toBe(true)
+  })
+
+  describe('session minute read alongside the detail read', () => {
+    const hostedStream = (path: string) => `/v1/portal/analytics/streams/s1${path}`
+    const startedAt = '2026-08-01T00:00:00.000Z'
+    const detailBody = { channel: 'xqc', state: 'historical', stream: { streamId: 's1', login: 'xqc', startedAt }, sources: [], updatedAt: 0 }
+    const minutesBody = { streamId: 's1', channel: 'xqc', startedAt, minutes: [{ offsetSeconds: 60, chatCount: 5 }], updatedAt: 0 }
+    const pendingUntilAborted = (signal?: AbortSignal) => new Promise((_resolve, reject) => {
+      signal?.addEventListener('abort', () => reject({ kind: 'aborted', message: 'Request was cancelled', status: 0 }), { once: true })
+    })
+
+    it('starts /minutes before the detail read settles and keeps its timeout', async () => {
+      getBackendUrlMock.mockReturnValue('https://api.streampulse.stream')
+      let resolveDetail!: (value: unknown) => void
+      apiClientMock.mockImplementation((path: string) => {
+        if (path === hostedStream('')) return new Promise(done => { resolveDetail = done })
+        if (path === hostedStream('/minutes')) return Promise.resolve({ data: minutesBody })
+        return Promise.reject(new Error(`unexpected ${path}`))
+      })
+      const { portalAnalyticsApi } = await import('../src/lib/streamcloneAnalytics')
+      const { PORTAL_MINUTES_TIMEOUT_MS } = await import('../src/lib/timelineDownsample')
+      const { SLOW_READ_TIMEOUT_MS } = await import('../src/lib/portalTimeouts')
+      const pending = portalAnalyticsApi.getAnalyticsStream('s1', { sparse: false, channel: 'xqc' })
+
+      expect(apiClientMock).toHaveBeenCalledWith(hostedStream('/minutes'), expect.objectContaining({ timeoutMs: PORTAL_MINUTES_TIMEOUT_MS }))
+      expect(apiClientMock).toHaveBeenCalledWith(hostedStream(''), expect.objectContaining({ timeoutMs: SLOW_READ_TIMEOUT_MS }))
+      resolveDetail({ data: detailBody })
+      const detail = await pending as AnalyticsStreamDetail
+      expect(detail.rollups).toHaveLength(1)
+      expect(detail.rollups[0]?.chatCount).toBe(5)
+      expect(detail.minutesUnavailable).toBe(false)
+      expect(apiClientMock).toHaveBeenCalledTimes(2)
+    })
+
+    it('cancels the minute read when the detail read fails, with no second error', async () => {
+      getBackendUrlMock.mockReturnValue('https://api.streampulse.stream')
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      let minutesSignal: AbortSignal | undefined
+      apiClientMock.mockImplementation((path: string, init?: { signal?: AbortSignal }) => {
+        if (path === hostedStream('/minutes')) {
+          minutesSignal = init?.signal
+          return pendingUntilAborted(init?.signal)
+        }
+        return Promise.reject({ kind: 'timeout', message: 'Request deadline exceeded', status: 0 })
+      })
+      const { portalAnalyticsApi } = await import('../src/lib/streamcloneAnalytics')
+
+      await expect(portalAnalyticsApi.getAnalyticsStream('s1', { sparse: false, channel: 'xqc' }))
+        .rejects.toMatchObject({ kind: 'timeout' })
+      expect(minutesSignal?.aborted).toBe(true)
+      await new Promise(resolve => setTimeout(resolve, 0))
+      expect(warn).not.toHaveBeenCalled()
+      expect(error).not.toHaveBeenCalled()
+      warn.mockRestore()
+      error.mockRestore()
+    })
+
+    it('still reports a failed minute read once when the detail read succeeds', async () => {
+      getBackendUrlMock.mockReturnValue('https://api.streampulse.stream')
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      apiClientMock.mockImplementation((path: string) => {
+        if (path === hostedStream('')) return Promise.resolve({ data: detailBody })
+        if (path === hostedStream('/minutes')) return Promise.reject({ kind: 'server', message: 'HTTP 503', status: 503 })
+        return Promise.reject(new Error(`unexpected ${path}`))
+      })
+      const { portalAnalyticsApi } = await import('../src/lib/streamcloneAnalytics')
+
+      const detail = await portalAnalyticsApi.getAnalyticsStream('s1', { sparse: false, channel: 'xqc' }) as AnalyticsStreamDetail
+      expect(detail.minutesUnavailable).toBe(true)
+      expect(detail.rollups).toEqual([])
+      expect(warn.mock.calls.filter(([line]) => String(line).includes('portal minutes unavailable'))).toHaveLength(1)
+      warn.mockRestore()
+    })
   })
 
   it('getAnalyticsLive maps viewerSamples and chatMessages from portal stream record', async () => {

@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router-dom'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import {
   CHROME_WEB_STORE_EXTENSION_ID,
   CHROME_WEB_STORE_LISTING_URL,
@@ -8,6 +8,9 @@ import {
   STREAM_PULSE_ANALYTICS_URL,
   STREAM_PULSE_PRIVACY_URL,
   STREAM_PULSE_SUPPORT_URL,
+  chromeWebStoreUrlForPage,
+  storeLinkPageForPath,
+  type StoreLinkPage,
 } from '../src/lib/publicSiteConfig'
 import { ChromeInstallCta } from '../src/ui/components/ChromeInstallCta'
 import { AppRoutes } from '../src/routes/index'
@@ -33,17 +36,55 @@ describe('publicSiteConfig', () => {
 })
 
 function assertSafeCwsLink(anchor: HTMLElement) {
-  expect(anchor.getAttribute('href')).toBe(CANONICAL)
+  const href = anchor.getAttribute('href') ?? ''
+  const parsed = new URL(href)
+  expect(`${parsed.origin}${parsed.pathname}`).toBe(CANONICAL)
+  expect(parsed.searchParams.get('utm_source')).toBe('streampulse.stream')
+  expect(parsed.searchParams.get('utm_medium')).toMatch(/^[a-z0-9-]+$/)
   expect(anchor.getAttribute('target')).toBe('_blank')
   expect(anchor.getAttribute('rel')).toBe('noopener noreferrer')
   expect(anchor.getAttribute('href') ?? '').not.toMatch(/^chrome:/i)
 }
 
+describe('store link page kind', () => {
+  it('maps a path to a fixed page kind, never the path itself', () => {
+    expect(storeLinkPageForPath('/')).toBe('home')
+    expect(storeLinkPageForPath('')).toBe('home')
+    expect(storeLinkPageForPath('/analytics')).toBe('analytics')
+    expect(storeLinkPageForPath('/analytics/zackrawrr')).toBe('analytics')
+    expect(storeLinkPageForPath('/analytics/zackrawrr/317702962423')).toBe('analytics')
+    expect(storeLinkPageForPath('/s/zackrawrr/317702962423')).toBe('analytics')
+    expect(storeLinkPageForPath('/privacy/')).toBe('privacy')
+    expect(storeLinkPageForPath('/supporter/thanks')).toBe('supporter')
+    expect(storeLinkPageForPath('/account/confirm')).toBe('account')
+    expect(storeLinkPageForPath('/zackrawrr')).toBe('site')
+    expect(storeLinkPageForPath('/Analytics/zackrawrr')).toBe('site')
+  })
+
+  it('never puts an unlisted value in utm_medium', () => {
+    const url = new URL(chromeWebStoreUrlForPage('/analytics/zackrawrr/317702962423' as StoreLinkPage))
+    expect(url.searchParams.get('utm_medium')).toBe('site')
+    expect(new URL(chromeWebStoreUrlForPage('supporter')).searchParams.get('utm_medium')).toBe('supporter')
+  })
+})
+
 describe('ChromeInstallCta', () => {
+  afterEach(() => window.history.replaceState(null, '', '/'))
+
   it('uses the exact canonical CWS listing with safe target/rel', () => {
     render(<ChromeInstallCta />)
     const link = screen.getByRole('link', { name: /Add StreamPulse to Chrome/i })
     assertSafeCwsLink(link)
+  })
+
+  it('keeps the channel and stream id out of the store link on a session page', () => {
+    window.history.replaceState(null, '', '/analytics/zackrawrr/317702962423')
+    render(<ChromeInstallCta />)
+    const link = screen.getByRole('link', { name: /Add StreamPulse to Chrome/i })
+    const href = link.getAttribute('href') ?? ''
+    expect(new URL(href).searchParams.get('utm_medium')).toBe('analytics')
+    expect(href).not.toMatch(/zackrawrr|317702962423/)
+    expect(link.getAttribute('data-cws-listing')).toBe(href)
   })
 })
 
@@ -117,7 +158,7 @@ describe('install CTAs across surfaces', () => {
       const link = screen.getByRole('link', { name: /Add StreamPulse to Chrome/i })
       const nav = container.querySelector('.app-nav')
       expect(link).toBeTruthy()
-      expect(link.getAttribute('href')).toBe(CANONICAL)
+      assertSafeCwsLink(link)
       // Layout contract: CTA is in the nav flex row and does not use fixed overflow-hidden width.
       expect(nav?.contains(link)).toBe(true)
       const style = window.getComputedStyle(link)

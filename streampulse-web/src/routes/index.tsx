@@ -1,36 +1,19 @@
-import { lazy, Suspense, type ReactNode } from 'react'
+import { lazy, Suspense, useState, type ComponentType, type ReactNode } from 'react'
 import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
-import { RequireAuth } from './guards'
 import { AnalyticsRouteFallback } from './AnalyticsRouteFallback'
 import Landing from './public/Landing'
-import Docs from './public/Docs'
-import Status from './public/Status'
-import Privacy from './public/Privacy'
-import Terms from './public/Terms'
-import Refunds from './public/Refunds'
-import Supporter from './public/Supporter'
-import SupporterThanks from './public/SupporterThanks'
-import Support from './public/Support'
-import Feedback from './public/Feedback'
-import Discord from './public/Discord'
-import Changelog from './public/Changelog'
+// The public pages' styles stay in the first stylesheet, in the order the
+// pages brought them when they were imported here: a prerendered page paints
+// styled before its chunk loads, and the cascade is unchanged.
+import './account/account.css'
+import './public/support.css'
 import NotFound from './public/NotFound'
 import { PageErrorBoundary } from '../ui/PortalErrorBoundary'
 import { PublicLayout } from '../ui/components/PublicLayout'
 import { retiredExplorerPath } from '../lib/momentsNavigation'
 
-// The d3-v5 hub (VITE_PUBLIC_HUB_V5, PR 1 of 5: data layer + activity chart).
-// Read inline so a production build folds the test: a flag-off build is
-// exactly the Command Center page and never emits the v5 chunk.
-const AnalyticsLandingPage = lazy(() =>
-  import.meta.env.VITE_PUBLIC_HUB_V5 === 'on' || import.meta.env.VITE_PUBLIC_HUB_V5 === '1'
-    ? import('./analytics/AnalyticsHubV5Page')
-    : import('./analytics/AnalyticsLandingPage'),
-)
+const AnalyticsHubV5Page = lazy(() => import('./analytics/AnalyticsHubV5Page'))
 const AnalyticsMomentsPage = lazy(() => import('./analytics/AnalyticsMomentsPage'))
-const DashboardShell = lazy(() => import('./dashboard/DashboardShell'))
-const DashboardHome = lazy(() => import('./dashboard/Home'))
-const ClipsPage = lazy(() => import('./dashboard/Clips'))
 const AccountPage = lazy(() => import('./account/AccountPage'))
 const AccountSettings = lazy(() => import('./account/AccountSettings'))
 const BillingPage = lazy(() => import('./account/BillingPage'))
@@ -39,6 +22,55 @@ const ChannelAnalyticsPage = lazy(() => import('./analytics/ChannelAnalyticsPage
 const AnalyticsShell = lazy(() =>
   import('../ui/components/analytics/AnalyticsFigmaShell').then((module) => ({ default: module.AnalyticsFigmaShell })),
 )
+
+/**
+ * A public page loads on demand, so the hub, Moments and stream pages do not
+ * download the help and legal pages. Once its chunk is in it renders at once:
+ * main.tsx loads the opening page before the first render, so a prerendered
+ * page never flashes the loading shell.
+ */
+function onDemandPage(load: () => Promise<{ default: ComponentType }>) {
+  let loaded: ComponentType | null = null
+  const preload = () => load().then((module) => { loaded = module.default })
+  const LazyPage = lazy(() => load().then((module) => { loaded = module.default; return module }))
+  function Page() {
+    const [Ready] = useState(() => loaded)
+    return Ready ? <Ready /> : <LazyPage />
+  }
+  return Object.assign(Page, { preload })
+}
+
+const Docs = onDemandPage(() => import('./public/Docs'))
+const Status = onDemandPage(() => import('./public/Status'))
+const Privacy = onDemandPage(() => import('./public/Privacy'))
+const Terms = onDemandPage(() => import('./public/Terms'))
+const Refunds = onDemandPage(() => import('./public/Refunds'))
+const Supporter = onDemandPage(() => import('./public/Supporter'))
+const SupporterThanks = onDemandPage(() => import('./public/SupporterThanks'))
+const Support = onDemandPage(() => import('./public/Support'))
+const Feedback = onDemandPage(() => import('./public/Feedback'))
+const Discord = onDemandPage(() => import('./public/Discord'))
+const Changelog = onDemandPage(() => import('./public/Changelog'))
+
+const OPENING_PAGES: Record<string, { preload: () => Promise<void> }> = {
+  '/docs': Docs,
+  '/status': Status,
+  '/privacy': Privacy,
+  '/terms': Terms,
+  '/refunds': Refunds,
+  '/supporter': Supporter,
+  '/supporter/thanks': SupporterThanks,
+  '/support': Support,
+  '/feedback': Feedback,
+  '/discord': Discord,
+  '/changelog': Changelog,
+}
+
+/** Load the public page a visit opens on, before the first render. Other paths resolve at once. */
+export function preloadOpeningPage(pathname: string): Promise<void> {
+  const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname
+  return OPENING_PAGES[path]?.preload() ?? Promise.resolve()
+}
 
 /**
  * Backcompat alias: /analytics/:login/s/:streamId → /analytics/:login/:streamId.
@@ -148,7 +180,7 @@ function PortalRoutes() {
 
         {/* Public aggregate analytics — single landing. /hub kept as a permanent
             redirect so old links/bookmarks resolve to the one analytics page. */}
-        <Route path="/analytics" element={<AnalyticsLandingPage />} />
+        <Route path="/analytics" element={<AnalyticsHubV5Page />} />
         <Route path="/analytics/hub" element={<AnalyticsAliasRedirect />} />
         <Route path="/analytics/emotes" element={<AnalyticsAliasRedirect />} />
         <Route path="/atlas" element={<AnalyticsAliasRedirect />} />
@@ -169,14 +201,6 @@ function PortalRoutes() {
         {/* Short public aliases used by extension/share links. */}
         <Route path="/s/:login" element={<ShortSessionRedirect />} />
         <Route path="/s/:login/:streamId" element={<ShortSessionRedirect />} />
-
-        {/* Dashboard remains a separate, gated product surface. */}
-        <Route element={<RequireAuth />}>
-          <Route path="/dashboard" element={<DashboardShell />}>
-            <Route index element={<DashboardHome />} />
-            <Route path="clips" element={<ClipsPage />} />
-          </Route>
-        </Route>
 
         {/* /admin is not a public operator console. Cloudflare Access for API
             /v1/admin/* remains an external ops/promotion blocker. */}

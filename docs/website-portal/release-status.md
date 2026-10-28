@@ -24,17 +24,18 @@ local ZIP may be described as the published package. The next upload needs a
 higher version, chosen only after the dashboard version and candidate scope are
 confirmed.
 
-## v0.2.5 working-tree source target (not the published package)
+## v0.2.6 working-tree source target (not the published package)
 
-Extension submission metadata is prepared for 2026-10-26. This does not claim
-store publication or reverify the older portal/deployment status below.
+Extension notes stay unreleased until the packaging commit sets the submission
+date. This does not claim store publication or reverify the older
+portal/deployment status below. 0.2.5 was never published by any store.
 
 The `0.1.3` reliability candidate was never uploaded; its records remain
 historical provenance and are not rewritten.
 
 | Field | Value |
 |-------|-------|
-| Extension source version | `0.2.5` across the extension manifest, root package metadata, release manifests, and root lock metadata; submission date prepared as `2026-10-26`, owner acceptance and publication still pending |
+| Extension source version | `0.2.6` across the extension manifest, root package metadata, release manifests, and root lock metadata; notes unreleased until the packaging commit, owner acceptance and publication still pending |
 | Portal package version | `0.1.3`; this internal package version is independent of the CWS extension candidate |
 | Default chart range | **Full stream** (`defaultChartWindowMigratedToFullV3`); the old `60m` default is historical |
 | Content bundle budget | **Open** — see the bundle-budget gate; must pass before upload |
@@ -48,10 +49,10 @@ portal GA, Cloudflare Access apply, soak completion, capacity raise, or marketin
 
 | Track | Decision | Notes |
 |-------|----------|-------|
-| Public site + analytics | **SOURCE GREEN / LIVE RECHECK OPEN** | Source tests cover Command Center, CWS CTA, Privacy, Support, robots, and sitemap. A current hosted route smoke must be recorded separately. |
+| Public site + analytics | **SOURCE GREEN / LIVE RECHECK OPEN** | Source tests cover the analytics hub, CWS CTA, Privacy, Support, robots, and sitemap. A current hosted route smoke must be recorded separately. |
 | `moments-readiness` | **BLOCKED** | Local mocked browser checks pass, but the real-data gate has no approved reconciliation manifest, hosted ranked volume is 404, and discovery activity is 503. Do not interpret an unavailable History or Explore panel as a quiet day. |
 | Portal GA | **HOLD** | CSP/HSTS/CWV + Access + soak remain |
-| Extension / Chrome Web Store | **LIVE LISTING / v0.2.5 CANDIDATE HOLD** | The public listing reported `0.2.1` on 2026-09-24, but that package's source revision is unverified. Working-tree manifests read `0.2.5`; no candidate acceptance or upload is claimed. Owner must verify the publisher-dashboard version and Support URL. |
+| Extension / Chrome Web Store | **LIVE LISTING / v0.2.6 CANDIDATE HOLD** | The public listing reported `0.2.1` on 2026-09-24, but that package's source revision is unverified. Working-tree manifests read `0.2.6`; no candidate acceptance or upload is claimed. Owner must verify the publisher-dashboard version and Support URL. |
 | Marketing / creator blast | **NO-GO** | HOLD_AT_300 + Access + soak first |
 | Collector capacity | **HOLD_AT_300 / NO_GO_350** | Unchanged |
 
@@ -134,7 +135,7 @@ The source contract includes the following. Re-run the commands recorded below
 on the chosen release SHA before treating any item as release evidence:
 
 - Landing / hub honesty: no client-invented Pulse / moment scores from `magnitude`, chat+emote formulas, or demo intensity labeled as scoring truth
-- Current route contract: `/analytics` is the Command Center with Live Wire;
+- Current route contract: `/analytics` is the d3-v5 hub (the Command Center and its Live Wire are removed);
   `/analytics/moments` is the canonical Moments workspace. Pulse Explorer was
   retired on 2026-10-16: `/analytics/explore` redirects to Moments and
   `/analytics/explore/{id}` to the stream page that id names. `/setup` and

@@ -83,6 +83,8 @@ export interface LiveHeatPoint {
   /** True when the backend supplied an explicit viewer observation, including 0. */
   viewerSampled?: boolean
   viewerDelta?: number
+  /** "opening" / "closing" for hello / goodbye spam, ranked last (see streamEdges.ts). */
+  streamEdge?: string
 }
 
 export interface LiveHeatInput {

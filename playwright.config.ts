@@ -5,7 +5,7 @@ import { defineConfig } from '@playwright/test'
  * Default project is fully mocked (PR gate). Live Twitch is a separate tagged project.
  *
  * Timing notes:
- * - globalTimeout 25m caps hung Chromium/SW inside the 40m CI extension job.
+ * - globalTimeout 25m caps hung Chromium/SW inside each 40m CI extension e2e shard job.
  *   Timing requirement (2026-10-07): the mocked suite is 33 specs / 188 tests,
  *   one worker. Headed under xvfb, CI ran 160 tests in 13.9m with no failures
  *   (master 9a7d205, run 37416118429) and 168 tests in 13.0m (cf88a16, run

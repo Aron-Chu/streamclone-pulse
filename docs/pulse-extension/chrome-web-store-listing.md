@@ -36,17 +36,16 @@ Do **not** use “Streamclone Pulse” in store-facing fields.
 
 ---
 
-## Next store candidate: 0.2.2 listing fields
+## Next store candidate: 0.2.6 listing fields
 
-Written 2026-10-09 for extension **0.2.2** with Sign in with Twitch compiled
-**off** and Supporter sign-ups **not open**. Every claim below matches that
-build; re-check it before pasting for any later version. All submission gates
-start unchecked. See
+Written 2026-10-27 for extension **0.2.6** with Sign in with Twitch compiled
+**off** and Supporter sales **not open**. Every claim below matches that
+build. See
 [`chrome-web-store-review-checklist.md`](./chrome-web-store-review-checklist.md) §B.
 
 ### Item name
 ```
-StreamPulse
+StreamPulse: Twitch Chat Stats & Top Moments
 ```
 
 ### Summary (≤132 characters)
@@ -56,19 +55,20 @@ See what Twitch chat reacted to: a live Pulse chart of chat and emote activity, 
 
 ### Detailed description
 ```
-StreamPulse adds a Pulse panel beside Twitch chat. It charts chat and emote activity minute by minute, so you can see the moments a stream's audience actually reacted to, and jump straight to them.
+Twitch chat stats, right beside chat. StreamPulse adds a Pulse panel that charts chat and emote activity (7TV emotes included) minute by minute, so you can see the moments a stream's audience actually reacted to, and jump straight to them in the stream or VOD.
 
 • Live Pulse chart: chat, emote and viewer activity for the whole stream, with a readout for any minute you point at.
 • Top Moments: the strongest reactions, ranked. Pick one to see its card and jump to that point in the stream or VOD.
-• Recaps for VODs: the Pulse chart and Top Moments of a past broadcast StreamPulse tracked.
-• Bookmarks that stay in your browser: no account needed.
+• Moment pictures: each Top Moment shows what was on screen, even for moments you missed, when Twitch has a VOD of the stream. Pictures are never uploaded, and you can turn them off in settings.
+• Stream Recap for past streams: the stream's summary, its Pulse chart and its Top Moments, like on live. Works for streams StreamPulse tracked.
+• Bookmarks that stay in your browser and keep the moment's picture: no account needed.
 • One click to the full public analytics for the channel on streampulse.stream.
 • Honest coverage: when StreamPulse wasn't tracking part of a stream, the chart says so instead of guessing.
 • In settings: Send feedback, Join the Discord and read the release notes.
 
-Privacy: the extension sends the channel, stream or VOD you're viewing to the StreamPulse API to fetch aggregate activity. It never sends chat messages, your Twitch password or your cookies. Full details: https://streampulse.stream/privacy
+Privacy: the extension sends the channel, stream or VOD you're viewing to the StreamPulse API to fetch aggregate activity. It never sends chat messages, your Twitch password or your cookies. Moment pictures come from your Twitch tab and from Twitch's own VOD; StreamPulse never receives them. Full details: https://streampulse.stream/privacy
 
-Free: every analytics feature is free. An optional Pulse Supporter membership (US$4.99/month, once sign-ups open; they are not open yet) adds cosmetics only you see in your own extension: title paint, a tenure crest, emote rain (the 7TV header backdrop) and a Supporter card.
+Free: every analytics feature is free. An optional Pulse Supporter membership (US$4.99/month) will add cosmetics only you see in your own extension: title paint, a tenure crest, emote rain (the 7TV header backdrop) and a Supporter card. Supporter isn't on sale yet.
 
 Help: https://streampulse.stream/support · Feedback: https://streampulse.stream/feedback · Release notes: https://streampulse.stream/changelog
 ```
@@ -105,7 +105,7 @@ Show Twitch chat and emote activity for the stream or VOD you are watching, in a
 | Store icon | `store/cws/icons/icon128.png` | 128×128 RGBA |
 | Small promo tile | `store/cws/icons/small-promo-440x280.png` | 440×280 |
 
-The five 0.2.2 screenshots (live chart, Top Moments card, VOD recap, quick
+The five 0.2.6 screenshots (live chart, Top Moments card, VOD recap, quick
 settings, and settings with release notes and the Community links) come from
 the mocked Twitch fixture (synthetic channel, no real streamer or email) by
 `tests/e2e/specs/cws-extension-screenshots.mocked.spec.ts`; see
@@ -117,7 +117,7 @@ recapture all five from the package `dist/` before the 0.2.2 upload.
 
 ---
 
-## Permission justifications (0.2.2 store package)
+## Permission justifications (0.2.6 store package)
 
 The store manifests (`manifests/cws.json`, and the same lists in `edge.json`
 and `firefox.json`) request `storage`, `scripting` and two hosts:
@@ -133,25 +133,26 @@ dashboard Package tab: this repo has no verified record of that package
 
 ### storage
 ```
-Stores your StreamPulse settings (theme, panel placement, chart preferences) in chrome.storage.sync; short-lived chart and coverage caches in chrome.storage.session; and your bookmarks, notes and optional watched-moment history in extension storage. These stay on this device unless you link a StreamPulse account (invite-only in this version); a linked account saves bookmarks, and history if you turn on sync, to that account.
+Stores StreamPulse settings (theme, panel placement, chart preferences) in chrome.storage.sync, which the browser may sync between your devices; short-lived chart and coverage caches in chrome.storage.session; and, in the extension's own storage, bookmarks, notes, optional watched-moment history and the picture of each saved moment (up to 300 pictures or 8 MB). If you press Become a Supporter, it also keeps a random key that identifies this install to the StreamPulse API. Bookmarks, history and pictures stay in this browser unless you link an invited-tester StreamPulse account; a linked account can save bookmarks and history to that account.
 ```
 
 ### scripting
 ```
-Used only on Twitch tabs, always with code packaged in the extension:
-1. Finding the current stream's VOD id: a packaged function runs in the Twitch page to read the stream and VOD ids from the page's own data, and if they are missing it asks Twitch's public GraphQL endpoint (gql.twitch.tv) for the live stream's archive VOD id, without cookies.
-2. Loading parts of the panel only when they are needed, so they are not in the always-loaded script. Each is a packaged file run in the extension's isolated world:
-   - content/supporter-card.js: the Supporter card preview, when quick settings shows it.
-   - content/moment-frames.js: Moment pictures, only while that setting is on. It keeps a small still of the Twitch player every few seconds in that tab's memory, so Top Moments can show a picture; nothing is stored or uploaded.
-   - content/catch-me-up.js: the top of a stream recap, when the panel shows a recap.
-3. For the toolbar popup: reading the channel avatar Twitch already shows, and checking whether the Pulse panel is showing on that tab.
+Only on Twitch tabs, with code packaged in the extension:
+1. VOD id: a packaged function in the Twitch page reads the stream and VOD ids from the page's data; if missing, it asks gql.twitch.tv for the archive VOD id, without cookies.
+2. VOD pictures: for moments the tab did not play, a packaged function in the page reads that VOD's preview pictures or a few seconds of a low-resolution copy of its video from Twitch (gql.twitch.tv, usher.ttvnw.net, video servers), without cookies.
+3. Parts of the panel loaded only when needed, each a packaged file in the isolated world:
+- content/supporter-card.js: the Supporter card preview.
+- content/moment-frames.js: Moment pictures, while that setting is on: a small player still every few seconds, kept in tab memory; a saved moment keeps its picture in the browser. Nothing is uploaded.
+- content/catch-me-up.js: the top of a stream recap.
+4. Popup: reads the channel avatar Twitch shows and checks whether the panel is showing.
 The Pulse panel itself is the declared content script and does not need this permission.
 ```
 
 ### Host permissions (one field)
 ```
-https://*.twitch.tv/*: runs the bundled content script on Twitch channel and VOD pages to show the Pulse panel and identify the channel, stream or VOD being watched; lets the packaged scripts described under scripting run on those pages; and lets the toolbar popup see which Twitch page the active tab shows. On those pages, a packaged function may ask gql.twitch.tv for the live stream's archive VOD id, without cookies.
-https://api.streampulse.stream/*: fetches aggregate chat and emote activity, Top Moments and coverage for that channel, stream or VOD from the StreamPulse API. If you link a StreamPulse account (invite-only in this version), it also saves your bookmarks, and your watched history if you turn on sync, to that account.
+https://*.twitch.tv/*: runs the bundled content script on Twitch channel and VOD pages to show the Pulse panel and identify the channel, stream or VOD being watched; lets the packaged scripts described under scripting run there, including the cookie-free VOD picture reads; and lets the toolbar popup see which Twitch page the active tab shows. A packaged function may also ask gql.twitch.tv for the live stream's archive VOD id, without cookies.
+https://api.streampulse.stream/*: fetches aggregate chat and emote activity, Top Moments and coverage for that channel, stream or VOD. If you press Become a Supporter, it registers this install's random key with the API. If you link an invited-tester StreamPulse account, it also saves your bookmarks, and your watched history if you turn on sync, to that account.
 Emote, avatar and game images are shown as ordinary images and need no host permission. No remote code is loaded from either host.
 ```
 
@@ -162,24 +163,21 @@ No. All JavaScript is packaged with the extension. No remote JavaScript or WebAs
 
 ---
 
-## Privacy practices (dashboard) for 0.2.2
+## Privacy practices (dashboard) for 0.2.6
 
-| Data category | 0.2.2 answer | What the extension actually does |
+| Data category | 0.2.6 answer | What the extension actually does |
 |---------------|--------------|----------------------------------|
 | Website content | **Yes** | Sends the channel, stream or VOD identifiers of the Twitch page you open to the StreamPulse API to fetch aggregate activity. |
 | Web history | **Yes** (conservative) | That request reveals which Twitch channel, stream or VOD you opened. Watched-moment history stays on the device unless you link a StreamPulse account (invite-only in 0.2.2) and turn on history sync; then it is saved to that account. |
-| Authentication information | **Yes** (invited testers only) | Invited testers can connect the extension to a StreamPulse account with a one-time code; an opaque device credential is then kept in extension storage and sent only to `api.streampulse.stream`. No passwords are collected. Everyone else: none. |
+| Authentication information | **Yes** (install key only) | The extension keeps a random install key when the Supporter control is used and sends it only to `api.streampulse.stream`; no passwords are collected. |
 | Personally identifiable information | No | No name, email or Twitch identity is collected in this build (Sign in with Twitch is compiled off). |
-| User activity | **Yes** (only with a linked account) | Without an account, bookmarks, notes and watched history stay on the device. If you link a StreamPulse account (invite-only in 0.2.2), your bookmarks are saved to it, and watched history too if you turn on sync. |
-| Financial and payment information | No | Supporter checkout happens on Stripe-hosted pages and is not open yet. |
+| User activity | **Yes** (only with a linked account) | Without an account, bookmarks, notes, watched history and saved pictures stay in the browser. If you link an invited-tester StreamPulse account, bookmarks and watched history can be saved to that account. |
+| Financial and payment information | **Yes** (Supporter control only) | Supporter checkout is Stripe-hosted and is not open yet; the extension never reads card details. |
 | Personal communications, health, location | No | Chat messages are never read into or sent by the extension. |
 | Certifications | All three | Not sold to third parties; not used for unrelated purposes; not used for creditworthiness. Matches the Limited Use statement on `/privacy`. |
 
-Account linking needs no extension update, so these answers cover the linked
-path the 0.2.2 package already contains. When Sign in with Twitch ships (0.2.3
-or later), add **Personally identifiable information** (Twitch user ID, display
-name and picture) and revisit **Authentication information** and **User
-activity** before that upload.
+The package carries the same disclosures in its Firefox manifest. Supporter
+sales remain closed, so no payment form is shown inside the extension.
 
 ---
 

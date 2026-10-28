@@ -81,10 +81,10 @@ import { diagnoseStreamQuality } from '../utils/streamQuality.ts'
 import { isTerminalSyncPhase, pollSyncUntilDone } from '../utils/syncPolling.ts'
 import { buildSessionSignals } from '../signals/buildSessionSignals.ts'
 import { SessionSignalTape } from './signals/SessionSignalTape.tsx'
-import { AnalyticsConsoleDataSkeleton } from './AnalyticsConsoleDataSkeleton.tsx'
+import { AnalyticsConsoleDataSkeleton, StreamRecapSkeleton } from './AnalyticsConsoleDataSkeleton.tsx'
 import { SessionInfoToggletip } from './analytics/SessionInfoToggletip.tsx'
 import { useSessionColumnFill } from '../hooks/useSessionColumnFill.ts'
-import { sessionStripMoments, stripHasReactionCoverage } from '../utils/sessionStripMoments.ts'
+import { sessionStreamEdges, sessionStripMoments, stripHasReactionCoverage } from '../utils/sessionStripMoments.ts'
 import { bestMomentInSpan, momentsInBar } from '../utils/sessionBarStrip.ts'
 import { SESSION_OWNER_SWITCHES } from '../sessionOwnerSwitches.ts'
 // Signal tape styles ship as `@streampulse/analytics-console/session-signal-tape.css`:
@@ -620,15 +620,27 @@ export function AnalyticsConsole({
       ? recapQuery.data
       : null
 
+  // Hello / goodbye spam at the stream's edges ranks last in every moment list
+  // (markers, strip, pins). The closing edge waits until the stream has ended.
+  const sessionRollups = detail?.momentRollups ?? detail?.rollups
+  const sessionEdges = useMemo(
+    () => sessionStreamEdges({
+      rollups: sessionRollups,
+      streamStartedAt: detail?.stream?.startedAt,
+      streamEnded: Boolean(detail?.stream?.endedAt) && !sessionIsLive,
+    }),
+    [detail?.stream?.endedAt, detail?.stream?.startedAt, sessionIsLive, sessionRollups],
+  )
+
   // One source of truth for chart markers: refined recap windows outrank the
   // coarse heatmap, while the heatmap remains the honest fallback when recap
   // refinement is unavailable. This prevents two competing marker sets from
   // rendering at different timestamps in the portal and extension.
   const reactionMoments = useMemo(
     () =>
-      mergeRecapMoments(recapForStream, heatmapPoints ?? [], 40, true)
+      mergeRecapMoments(recapForStream, heatmapPoints ?? [], 40, true, sessionEdges)
         .map((moment) => sanitizeReactionMoment(moment)),
-    [heatmapPoints, recapForStream],
+    [heatmapPoints, recapForStream, sessionEdges],
   )
 
   const isActiveLiveCollector = isActiveLiveCollectorStream(detail?.stream, detail?.state)
@@ -973,10 +985,12 @@ export function AnalyticsConsole({
     return analyticsStreamPathSlug(liveRouteSessionTarget, sidebarStreams)
   }, [liveRouteSessionTarget, sidebarStreams])
 
+  // Does not wait on the stream list: before it loads, only a live read that
+  // confirms the live stream names a target, and that is the same stream ID the
+  // loaded list would pick. Without one, the target waits for the list.
   const shouldRedirectLiveRouteToSession = Boolean(
     isLiveRoute
     && !detailQuery.isLoading
-    && !streamsQuery.isLoading
     && liveRouteSessionSlug,
   )
 
@@ -1192,8 +1206,9 @@ export function AnalyticsConsole({
       heatmapPoints,
       streamStartedAt: stream?.startedAt,
       topEmotesCatalog: detailForRender?.topEmotes,
+      streamEdges: sessionEdges,
     })
-  }, [recapMomentsAvailable, recapForStream, heatmapPoints, stream?.startedAt, detailForRender?.topEmotes])
+  }, [recapMomentsAvailable, recapForStream, heatmapPoints, stream?.startedAt, detailForRender?.topEmotes, sessionEdges])
   const stripMomentCount = stripMoments.length
   // Expand adds its own height on top: the fill holds while it is on (fitMoments).
   const [chartExpanded, setChartExpanded] = useState(false)
@@ -1266,6 +1281,11 @@ export function AnalyticsConsole({
   // The first session read is out: the chart skeleton stands in, and the meta line keeps its slot hidden
   // (its items arrive with the read and would slide across it).
   const sessionReadPending = sessionResolving || (!effectiveSessionNotFound && detailQuery.isLoading && !detail)
+  // The recap's slot keeps its height until the recap answer settles, so the Moments tabs under it do not
+  // jump when it lands. The channel route holds the slot too while it may still open the session page.
+  const recapSlotPending = !effectiveSessionNotFound && (layer2Enabled
+    ? recapQuery.isLoading || (recapQuery.isPending && !detail)
+    : detailQuery.isLoading || listsLoading || shouldRedirectLiveRouteToSession)
 
   const headerTitle = channelNotRecorded
     ? channelLogin
@@ -1534,7 +1554,7 @@ export function AnalyticsConsole({
                 reactionMoments={reactionMoments}
                 vodJump={selectedVodJump}
                 viewerCaption={{ peak: headerStats.peak ?? null, avg: headerStats.avg ?? null }}
-                stripPins={recapMomentsAvailable && recapForStream ? { recap: recapForStream, streamStartedAt: stream?.startedAt, heatmapPoints, topEmotesCatalog: detailForRender?.topEmotes, rollups: detail?.momentRollups ?? detail?.rollups ?? [], onSelectOffset: handleJumpToRecapOffset } : null}
+                stripPins={recapMomentsAvailable && recapForStream ? { recap: recapForStream, streamStartedAt: stream?.startedAt, heatmapPoints, topEmotesCatalog: detailForRender?.topEmotes, rollups: detail?.momentRollups ?? detail?.rollups ?? [], streamEdges: sessionEdges, onSelectOffset: handleJumpToRecapOffset } : null}
                 extraPlotPx={columnFill.extraPlotPx}
                 momentOffsetInBar={momentOffsetInBar}
                 selectionIsMoment={selectionIsMoment}
@@ -1652,6 +1672,8 @@ export function AnalyticsConsole({
                 onJumpToOffset={handleJumpToRecapOffset}
                 onPreviewOffset={handlePreviewRecapOffset}
               />
+            ) : recapSlotPending ? (
+              <StreamRecapSkeleton />
             ) : null}
             <div
               className="flex w-full min-h-0 flex-1 flex-col overflow-hidden rounded border border-white/[0.07] bg-white/[0.025]"
@@ -1721,6 +1743,7 @@ export function AnalyticsConsole({
                       vodAlignSeconds={detail?.vodAlignSeconds}
                       vodDurationSeconds={detail?.vodDurationSeconds}
                       reel={SESSION_OWNER_SWITCHES.momentsReel}
+                      streamEdges={sessionEdges}
                     />
                   ) : (
                     <MomentReviewPanel

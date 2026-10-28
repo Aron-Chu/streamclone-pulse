@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { CHROME_WEB_STORE_LISTING_URL } from '../../lib/publicSiteConfig'
+import { chromeWebStoreUrlForPage, storeLinkPageForPath } from '../../lib/publicSiteConfig'
 import { capturePublicCta } from '../../lib/productAnalytics'
 
 export type ChromeInstallCtaProps = {
@@ -19,14 +19,16 @@ export function ChromeInstallCta({
   children = 'Add StreamPulse to Chrome',
   'data-cta': dataCta = 'chrome-install',
 }: ChromeInstallCtaProps) {
+  const page = typeof window === 'undefined' ? 'home' : storeLinkPageForPath(window.location.pathname)
+  const listingUrl = chromeWebStoreUrlForPage(page)
   return (
     <a
       className={className}
-      href={CHROME_WEB_STORE_LISTING_URL}
+      href={listingUrl}
       target="_blank"
       rel="noopener noreferrer"
       data-cta={dataCta}
-      data-cws-listing={CHROME_WEB_STORE_LISTING_URL}
+      data-cws-listing={listingUrl}
       onClick={() => capturePublicCta('install_extension')}
     >
       {children}

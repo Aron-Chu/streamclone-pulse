@@ -35,7 +35,7 @@ describe('/supporter', () => {
     const availability = screen.getByTestId('supporter-availability').textContent ?? ''
     expect(availability).toMatch(/^Choose Become a Supporter in the extension’s Account & Supporter page and pay on Stripe\./)
     expect(availability).toContain('No Twitch sign-in or separate StreamPulse sign-up is needed. Stripe asks for a billing email.')
-    expect(screen.getByTestId('supporter-reinstall').textContent).toMatch(/Contact billing support to restore a membership/)
+    expect(screen.getByTestId('supporter-reinstall').textContent).toMatch(/if your extension offers Restore existing Supporter/i)
     // Restoring browser access is separate from Stripe billing.
     expect(screen.getByTestId('supporter-billing-help').textContent).toMatch(/Billing changes do not restore extension access/)
     for (const link of screen.getAllByRole('link')) expect(link.getAttribute('href')).not.toMatch(/^\/account(\/|$)/)

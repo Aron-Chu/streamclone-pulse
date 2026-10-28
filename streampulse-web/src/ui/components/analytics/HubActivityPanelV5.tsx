@@ -1,9 +1,8 @@
 /**
- * The d3-v5 hub activity panel (U6), behind VITE_PUBLIC_HUB_V5. Same props as
- * the default FigmaGlobalActivityPanel, so the page can swap one for the
- * other; the chips under the card are shared with it.
+ * The d3-v5 hub activity panel (U6). Its props and the chips under the card
+ * come from FigmaGlobalActivityPanel.tsx.
  */
-import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   bucketMinutes,
@@ -50,6 +49,8 @@ export type HubActivityPanelV5Props = FigmaGlobalActivityPanelProps & {
    */
   measuredTarget?: HTMLElement | null;
   onOpenMeasured?: () => void;
+  /** No hub reply has landed yet: the heading names the range picked, not the empty payload's 30 min. */
+  awaitingData?: boolean;
 };
 
 /** The mockup's measured notes (d3-v5 hub.js measuredBody); the bars line follows the chart zoom. */
@@ -100,11 +101,24 @@ export function HubActivityPanelV5({
   annotationLane,
   measuredTarget,
   onOpenMeasured,
+  awaitingData = false,
 }: HubActivityPanelV5Props) {
   const labels = useCommandCenterLabels();
   const [bars, setBars] = useState<HubActivityBars | null>(null);
-  /** The chart's card: the wheel zooms anywhere over it (owner rule). */
+  /**
+   * The chart's card. The wheel zooms over the graph only (Aron 2026-10-15), but a
+   * wheel listener on the whole card, one that takes nothing, makes Chrome wait for
+   * the page before it scrolls there. Without it a notch over the lanes under the
+   * navigator scrolled the page first, then zoomed the graph it had moved under the pointer.
+   */
   const hubChartCardRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const card = hubChartCardRef.current;
+    if (!card) return;
+    const waitForPage = () => {};
+    card.addEventListener("wheel", waitForPage, { passive: false });
+    return () => card.removeEventListener("wheel", waitForPage);
+  }, []);
   const detailsRef = useRef<HTMLDetailsElement>(null);
   const livePoolFallback = isHubActivityLivePoolFallback(hub.activity);
   const historicalProjection = isHubActivityHistoricalProjection(hub.activity);
@@ -224,14 +238,13 @@ export function HubActivityPanelV5({
       <div
         ref={hubChartCardRef}
         className="figma-global-activity__hub-chart hub-act"
-        data-hub-chart-wheel-card=""
         data-bench-chart-card=""
         data-refreshing={activityRefreshing ? "true" : undefined}
       >
         <HubActivityChart
-          wheelCardRef={hubChartCardRef}
           points={chartInputs.points}
-          windowMinutes={chartInputs.windowMinutes}
+          // Unavailable or not landed yet, there is no served window: the heading names the range picked (INT-02), not the empty payload's 30 min.
+          windowMinutes={unavailable || awaitingData ? Math.max(1, hub.activity.windowMinutes || 30) : chartInputs.windowMinutes}
           channelCount={hub.activity.channelCount}
           poolSize={hub.poolSize}
           livePoolViewerSum={chartInputs.livePoolViewerSum}

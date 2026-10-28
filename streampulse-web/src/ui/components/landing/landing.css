@@ -477,11 +477,14 @@
   text-transform: uppercase;
 }
 
+/* Size and glow used to arrive from LiveSignalScrollGraph.css, which the landing
+   imported for every page; they live here now that the replay left the landing. */
 .sl-dot {
-  width: 0.45rem;
-  height: 0.45rem;
-  border-radius: 999px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
   background: currentColor;
+  box-shadow: 0 0 8px 1px currentColor;
   animation: sl-blink 1.3s infinite;
 }
 
@@ -782,29 +785,14 @@
 
 .sl-feat h3,
 .sl-step h3,
-.sl-rescard h3,
-.sl-rcard h3 { margin: 0; font-size: 1rem; }
+.sl-rescard h3 { margin: 0; font-size: 1rem; }
 .sl-feat p,
 .sl-step p,
-.sl-rescard p,
-.sl-rcard p { margin: 0; color: hsl(var(--sc-muted-foreground)); font-size: 0.86rem; line-height: 1.55; }
+.sl-rescard p { margin: 0; color: hsl(var(--sc-muted-foreground)); font-size: 0.86rem; line-height: 1.55; }
 .sl-rescard { color: inherit; text-decoration: none; }
 .sl-rescard:hover { transform: translateY(-3px); border-color: hsl(var(--sc-chart-2) / 0.55); }
 .sl-res-go { margin-top: auto; color: hsl(var(--sc-chart-2)); font-size: 0.82rem; font-weight: 800; }
 .sl-res-soon { margin-left: 0.5rem; padding: 0.12rem 0.4rem; border-radius: 999px; color: hsl(var(--sc-chart-4)); background: hsl(var(--sc-chart-4) / 0.15); font-size: 0.58rem; font-weight: 900; text-transform: uppercase; }
-
-.sl-road { max-width: 720px; margin: 0 auto; padding: 0; list-style: none; display: grid; gap: 1rem; }
-.sl-ritem { position: relative; padding-left: 2.25rem; }
-.sl-rnode { position: absolute; left: 0; top: 0.5rem; width: 1rem; height: 1rem; border: 2px solid hsl(var(--sc-chart-2)); border-radius: 999px; background: hsl(var(--sc-background)); }
-.sl-rcard { padding: 1.1rem; }
-.sl-rcard__top { display: flex; justify-content: space-between; gap: 0.7rem; margin-bottom: 0.5rem; }
-.sl-rtag,
-.sl-rstat { padding: 0.12rem 0.5rem; border-radius: 999px; font-size: 0.62rem; font-weight: 900; text-transform: uppercase; }
-.sl-rtag { color: hsl(var(--sc-chart-2)); background: hsl(var(--sc-chart-2) / 0.1); }
-.sl-rstat { color: hsl(var(--sc-chart-3)); background: hsl(var(--sc-chart-3) / 0.12); }
-.sl-rstat--planned { color: hsl(var(--sc-muted-foreground)); background: hsl(var(--sc-secondary)); }
-.sl-progbar { position: relative; height: 0.42rem; margin-top: 0.8rem; overflow: hidden; border-radius: 999px; background: hsl(var(--sc-secondary)); }
-.sl-progbar__fill { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: linear-gradient(90deg, hsl(var(--sc-chart-4)), hsl(var(--sc-chart-2))); }
 
 .sl-footer {
   position: relative;
@@ -984,8 +972,7 @@
 }
 
 /* Just above the Menu breakpoint the Discord button leaves the menu links
-   about 14px short, and "Pulse tab" / "Signal replay" wrapped onto two lines
-   (961-974px). Tighten the spacing there instead of dropping a nav item. */
+   about 14px short (961-974px). Tighten the spacing there instead of dropping a nav item. */
 @media (min-width: 961px) and (max-width: 1040px) {
   .sl-nav--discord { gap: 0.75rem; }
   .sl-nav--discord .sl-menu a { padding-inline: 0.55rem; }

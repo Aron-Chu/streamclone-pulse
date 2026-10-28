@@ -21,7 +21,7 @@ describe('release documentation contract', () => {
   })
 
   it('names the current analytics routes without claiming live deployment proof', () => {
-    expect(portalStatus).toContain('`/analytics` is the Command Center with Live Wire')
+    expect(portalStatus).toContain('`/analytics` is the d3-v5 hub (the Command Center and its Live Wire are removed)')
     expect(portalStatus).toContain('`/analytics/moments` is the canonical Moments workspace')
     expect(portalStatus).toContain('SOURCE GREEN / LIVE RECHECK OPEN')
   })

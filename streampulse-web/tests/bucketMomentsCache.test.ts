@@ -7,7 +7,6 @@ import {
   clearBucketMomentsCache,
   clearBucketMomentsMemoryForTests,
   hasBucketMomentsCache,
-  readBucketMomentsCache,
   writeBucketMomentsCache,
 } from '../src/lib/bucketMomentsCache'
 
@@ -47,10 +46,9 @@ describe('bucketMomentsCache', () => {
     writeBucketMomentsCache(1_719_000_000_000, '24h', rows)
 
     expect(hasBucketMomentsCache(1_719_000_000_000, '24h')).toBe(true)
-    expect(readBucketMomentsCache(1_719_000_000_000, '24h')).toEqual(rows)
 
     clearBucketMomentsMemoryForTests()
-    expect(readBucketMomentsCache(1_719_000_000_000, '24h')).toEqual(rows)
+    expect(hasBucketMomentsCache(1_719_000_000_000, '24h')).toBe(true)
   })
 
   it('expires ready entries after the ready TTL', () => {
@@ -58,7 +56,6 @@ describe('bucketMomentsCache', () => {
     vi.advanceTimersByTime(BUCKET_MOMENTS_CACHE_READY_MS + 1)
 
     expect(hasBucketMomentsCache(1_719_000_000_000, '24h')).toBe(false)
-    expect(readBucketMomentsCache(1_719_000_000_000, '24h')).toBeUndefined()
   })
 
   it('expires empty entries after the shorter empty TTL', () => {
@@ -70,8 +67,8 @@ describe('bucketMomentsCache', () => {
 
   it('isolates cache keys by backend URL and activity window', () => {
     writeBucketMomentsCache(100, '24h', [sampleMoment()])
-    expect(readBucketMomentsCache(100, '7d')).toBeUndefined()
-    expect(readBucketMomentsCache(101, '24h')).toBeUndefined()
+    expect(hasBucketMomentsCache(100, '7d')).toBe(false)
+    expect(hasBucketMomentsCache(101, '24h')).toBe(false)
     expect(bucketMomentsCacheKey(100, '24h')).toContain('24h')
   })
 

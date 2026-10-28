@@ -1,13 +1,11 @@
-import { StrictMode, useEffect, useLayoutEffect } from 'react'
+import { StrictMode, useLayoutEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom'
-import { AppRoutes } from './routes/index'
+import { BrowserRouter, useLocation } from 'react-router-dom'
+import { AppRoutes, preloadOpeningPage } from './routes/index'
 import {
-  clearBetaKey,
   clearStaleLocalBackendOverride,
   isAllowedDevBackendQueryOverride,
-  refreshPrincipal,
   setBackendUrlOverride,
 } from './lib/auth'
 import { initPortalSentry } from './lib/sentry'
@@ -23,7 +21,6 @@ import { captureAccountConfirmation } from './lib/accountConfirmation'
 import { captureAccountDeviceCode } from './lib/accountDeviceCode'
 import { captureAccountRestore, isPrivateSupporterRoute } from './lib/accountRestore'
 import { setProductAnalyticsRoute } from './lib/productAnalytics'
-import { routeScrollState } from './lib/routeScroll'
 import { primePublicHub } from './lib/hubEarlyFetch'
 
 // A tab opened before a deploy reloads onto the new build when its next lazy page is gone.
@@ -32,9 +29,8 @@ captureAccountConfirmation()
 captureAccountDeviceCode()
 captureAccountRestore()
 if (!isPrivateSupporterRoute(window.location.pathname)) initPortalSentry()
-// d3-v5 hub only: start the first hub read while the analytics chunk downloads.
-// Read inline so a flag-off build drops the call and the module.
-if (import.meta.env.VITE_PUBLIC_HUB_V5 === 'on' || import.meta.env.VITE_PUBLIC_HUB_V5 === '1') primePublicHub()
+// Start the first hub read while the analytics chunk downloads.
+primePublicHub()
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -44,39 +40,6 @@ const queryClient = new QueryClient({
     },
   },
 })
-
-function isPublicAnalyticsPath(pathname: string): boolean {
-  if (
-    pathname === '/analytics' ||
-    pathname === '/analytics/streams'
-  ) {
-    return true
-  }
-  // /analytics/:channelLogin, /analytics/:channelLogin/:streamId, and the
-  // /s/ backcompat alias are all public, no-login channel surfaces.
-  return /^\/analytics\/[^/]+(?:\/(?:s\/)?[^/]+)?$/.test(pathname)
-}
-
-function AuthRejectedListener() {
-  const navigate = useNavigate()
-  const location = useLocation()
-
-  useEffect(() => {
-    function onRejected() {
-      if (isPublicAnalyticsPath(location.pathname) || isPrivateSupporterRoute(location.pathname)) {
-        return
-      }
-      clearBetaKey()
-      queryClient.clear()
-      // The reader did not choose this page: open it at the top, not at their old place.
-      navigate('/analytics', { replace: true, state: routeScrollState('top') })
-    }
-    window.addEventListener('auth:rejected', onRejected)
-    return () => window.removeEventListener('auth:rejected', onRejected)
-  }, [location.pathname, navigate])
-
-  return null
-}
 
 function ProductAnalyticsRouteObserver() {
   const { pathname } = useLocation()
@@ -105,7 +68,9 @@ function applyDevBackendQueryOverride(): void {
 async function bootstrap() {
   applyDevBackendQueryOverride()
   clearStaleLocalBackendOverride()
-  if (!isPrivateSupporterRoute(window.location.pathname)) await refreshPrincipal()
+  // A failed load of the opening page is left to the route, which retries and
+  // shows its own error.
+  await preloadOpeningPage(window.location.pathname).catch(() => undefined)
   const style = document.createElement('style')
   style.textContent = shadowStyles
   document.head.appendChild(style)
@@ -121,7 +86,6 @@ async function bootstrap() {
           <BrowserRouter>
             <PageMetadata />
             <RouteScrollManager />
-            <AuthRejectedListener />
             <ProductAnalyticsRouteObserver />
             <AppRoutes />
           </BrowserRouter>

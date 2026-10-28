@@ -191,6 +191,12 @@ describe('resolvePulseLiveAccess', () => {
     expect(result.state).toBe('offline')
   })
 
+  it('uses offline state for an open stream the backend no longer collects while Twitch reads offline', () => {
+    const payload = basePayload({ isLive: true, tracking: false })
+    expect(resolvePulseLiveAccess({ payload, pageIsLive: false, hosted: true }).state).toBe('offline')
+    expect(resolvePulseLiveAccess({ payload, pageIsLive: true, hosted: true }).state).toBe('not_tracked')
+  })
+
   it('respects stream start tolerance constant', () => {
     expect(PULSE_STREAM_START_TOLERANCE_SEC).toBe(120)
   })

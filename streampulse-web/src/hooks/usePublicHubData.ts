@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   readPublicHubCacheForCurrentBackend,
   schedulePublicHubCacheWrite,
-  writePublicHubCacheForCurrentBackend,
 } from '../lib/publicHubCache'
 import {
   fetchPublicHubBase,
@@ -60,6 +59,11 @@ export interface PublicHubState {
 const DEFAULT_POLL_MS = Number(import.meta.env.VITE_PUBLIC_HUB_POLL_MS ?? 45_000)
 /** Viewer copy for a hub read that hit its client deadline (never the raw deadline message). */
 export const HUB_TIMEOUT_MESSAGE = 'The hub took too long to respond.'
+/**
+ * How long a cold long-window read runs alone before the 30m view is read to
+ * show meanwhile. A healthy API answers within it, so it costs no extra read.
+ */
+export const HUB_RECENT_VIEW_HEAD_START_MS = 1_000
 
 function canRecoverHubRead(error: unknown): boolean {
   return isApiError(error) &&
@@ -101,10 +105,9 @@ function hydrateFromCache(activityWindow: PublicHubActivityWindow, projection?: 
 }
 
 function persistSuccessfulHub(activityWindow: PublicHubActivityWindow, hub: PublicHub, projection?: PublicHubProjection) {
-  // d3-v5 hub: idle time, never mid-gesture; the projection is computed once
-  // per snapshot (plan §2.6). Flag off: the Command Center's write, unchanged.
-  if (import.meta.env.VITE_PUBLIC_HUB_V5 === 'on' || import.meta.env.VITE_PUBLIC_HUB_V5 === '1') schedulePublicHubCacheWrite(activityWindow, hub, projection)
-  else writePublicHubCacheForCurrentBackend(activityWindow, hub, projection)
+  // Idle time, never mid-gesture; the projection is computed once per
+  // snapshot (plan §2.6).
+  schedulePublicHubCacheWrite(activityWindow, hub, projection)
 }
 
 /** Performance mark for the first successful full-hub read of this page load (plan §4.5). */
@@ -112,7 +115,7 @@ export const HUB_DATA_MARK = 'sp:hub-data'
 let hubDataMarked = false
 
 function markHubDataOnce(): void {
-  if (hubDataMarked || !(import.meta.env.VITE_PUBLIC_HUB_V5 === 'on' || import.meta.env.VITE_PUBLIC_HUB_V5 === '1')) return
+  if (hubDataMarked) return
   hubDataMarked = true
   try {
     if (typeof performance === 'undefined' || typeof performance.mark !== 'function') return
@@ -149,6 +152,14 @@ function replaceWithCanonicalRecentActivity(requested: PublicHub, recent: Public
       bucketMinutes: recent.activity.bucketMinutes ?? 1,
     },
   }
+}
+
+/** A 30m read standing in for a longer requested window: the bounded live-pool fallback. */
+function recentForRequestedWindow(recent: PublicHub, minutes: number): PublicHub {
+  return replaceWithCanonicalRecentActivity({
+    ...recent,
+    activity: { ...recent.activity, windowMinutes: minutes, requestedWindowMinutes: minutes },
+  }, recent)
 }
 
 function withUnavailableActivity(hub: PublicHub): PublicHub {
@@ -204,7 +215,8 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
   randomRef.current = random
 
   const applySuccessfulLoad = useCallback(
-    (hub: PublicHub, source: PublicHubLoadSource, endpointOk: boolean) => {
+    // interim: the 30m view shown while the requested window loads; never cached or marked.
+    (hub: PublicHub, source: PublicHubLoadSource, endpointOk: boolean, interim = false) => {
       setData(hub)
       setLoadSource(source)
       setHubEndpointOk(endpointOk)
@@ -216,8 +228,8 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
       hasDataRef.current = true
       setLoadedActivityWindow(activityWindow)
       // Persisted by the effect below once React has committed this snapshot.
-      pendingPersistRef.current = endpointOk ? { hub, activityWindow, projection } : null
-      if (endpointOk && !projection) markHubDataOnce()
+      pendingPersistRef.current = endpointOk && !interim ? { hub, activityWindow, projection } : null
+      if (endpointOk && !interim && !projection) markHubDataOnce()
       consecutiveFailuresRef.current = 0
       nextRetryAfterMsRef.current = null
       retryNotBeforeRef.current = 0
@@ -240,36 +252,63 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
     if (hasDataRef.current) setRefreshing(true)
     else setLoading(true)
 
+    const minutes = WINDOW_MINUTES[activityWindow]
+    // Cold long window: a busy API can take its whole deadline to build it. If it
+    // has not answered after the head start, show the 30m view meanwhile, with
+    // the chart still updating; the requested window's own result settles the load.
+    let recentView: ReturnType<typeof fetchPublicHubBase> | undefined
+    let recentViewTimer: number | undefined
+    let primaryFailed = false
+    const recentViewController = new AbortController()
+    const stopRecentView = () => {
+      window.clearTimeout(recentViewTimer)
+      recentViewController.abort(new DOMException('requested window settled', 'AbortError'))
+    }
+    if (!hasDataRef.current && minutes != null && minutes > 30) {
+      recentViewTimer = window.setTimeout(() => {
+        recentView = fetchPublicHubBase(recentViewController.signal, '30m', projection, 8_000)
+        void recentView.then((recent) => {
+          // A failed primary takes this reply as its recovery read below.
+          if (primaryFailed || recentViewController.signal.aborted || !mountedRef.current || !recent.hubEndpointOk) return
+          applySuccessfulLoad(recentForRequestedWindow(recent.data, minutes), recent.loadSource, true, true)
+          setLoading(false)
+          setActivityRepairing(true)
+        }, () => undefined)
+      }, HUB_RECENT_VIEW_HEAD_START_MS)
+      controller.signal.addEventListener('abort', stopRecentView, { once: true })
+    }
+
     try {
       // A historical outage must not erase independently available live health.
       // At most one recent-window recovery read; never bypass auth or 429 backoff.
       let base: Awaited<ReturnType<typeof fetchPublicHubBase>>
       try {
         base = await fetchPublicHubBase(controller.signal, activityWindow, projection)
+        stopRecentView()
       } catch (primaryError) {
+        primaryFailed = true
+        window.clearTimeout(recentViewTimer)
         if (controller.signal.aborted || !mountedRef.current) return
         if (!canRecoverHubRead(primaryError)) throw primaryError
         let recent: Awaited<ReturnType<typeof fetchPublicHubBase>> | undefined
-        const minutes = WINDOW_MINUTES[activityWindow]
         if (minutes != null && minutes > 30) {
           try {
+            // A 30m view already read or under way is the recovery read: never a second one.
             // The small 30m body keeps the 8 s default, so a failed cold load reaches its error sooner.
-            recent = await fetchPublicHubBase(controller.signal, '30m', projection, 8_000)
+            recent = await (recentView ?? fetchPublicHubBase(controller.signal, '30m', projection, 8_000))
           } catch (recentError) {
             if (!canRecoverHubRead(recentError)) throw recentError
           }
         }
         if (controller.signal.aborted || !mountedRef.current) return
         if (recent?.hubEndpointOk && minutes != null) {
-          const recovered = replaceWithCanonicalRecentActivity({
-            ...recent.data,
-            activity: { ...recent.data.activity, windowMinutes: minutes, requestedWindowMinutes: minutes },
-          }, recent.data)
-          applySuccessfulLoad(recovered, recent.loadSource, true)
+          applySuccessfulLoad(recentForRequestedWindow(recent.data, minutes), recent.loadSource, true)
           return
         }
         // Keep an existing measured snapshot instead of replacing it with totals.
-        if (hasDataRef.current) throw primaryError
+        // A projection read (Moments, home tickers) shows no totals, so it reports
+        // its own error now rather than waiting on /stats it would never show.
+        if (hasDataRef.current || projection) throw primaryError
         const fallback = await fetchPublicHubStatsFallback(controller.signal).catch((fallbackError: unknown) => {
           // When totals are unreachable too, report the slow hub so the timeout stays visible;
           // a typed fallback error (e.g. a 429 with Retry-After) is kept as is.
@@ -322,7 +361,8 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
       }
 
       // On hub failure with existing data: keep stale UI; do not storm fallback.
-      if (hasDataRef.current) {
+      // A projection read has no use for totals either.
+      if (hasDataRef.current || projection) {
         consecutiveFailuresRef.current += 1
         setHubEndpointOk(false)
         setError('hub offline')
@@ -361,6 +401,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
       // Cache hydrate may have set hubEndpointOk=true; a total network miss must clear it.
       setHubEndpointOk(false)
     } finally {
+      stopRecentView()
       if (controllerRef.current === controller) {
         inFlightRef.current = false
         lastFetchAtRef.current = Date.now()

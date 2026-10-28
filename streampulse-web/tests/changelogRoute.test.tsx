@@ -2,9 +2,9 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import releaseNotes from '../../src/shared/release-notes.json'
-import { AppRoutes } from '../src/routes/index'
+import { AppRoutes, preloadOpeningPage } from '../src/routes/index'
 import { resolvePageMetadata } from '../src/lib/pageMetadata'
 import { prerenderPublicPage } from '../src/prerender'
 
@@ -32,6 +32,8 @@ const webRoot = resolve(import.meta.dirname, '..')
 const read = (path: string) => readFileSync(resolve(webRoot, path), 'utf8')
 
 afterEach(cleanup)
+// Public pages load on demand; load this one first, as main.tsx does for the page a visit opens on.
+beforeAll(() => preloadOpeningPage('/changelog'))
 
 describe('extension "Release details" destination (OP1-FUN-003)', () => {
   it('resolves every published details link to the release notes page, not the 404', () => {
@@ -126,6 +128,7 @@ describe('extension "Release details" destination (OP1-FUN-003)', () => {
     expect(read('scripts/check-public-links.mjs')).toMatch(/EXTERNALLY_PUBLISHED = \[[^\]]*'\/changelog'/)
     // It documents the extension rather than the site, so it is not offered to search engines.
     expect(read('scripts/prerender.mjs')).toMatch(/canonicalPath: '\/changelog',\s+robots: 'noindex,nofollow',/)
-    expect(read('public/sitemap.xml')).not.toContain('/changelog')
+    expect(read('public/sitemap.xml')).toContain('https://streampulse.stream/changelog')
+    expect(read('public/sitemap.xml')).toContain('https://streampulse.stream/discord')
   })
 })

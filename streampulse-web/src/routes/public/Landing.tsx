@@ -9,10 +9,9 @@ import { usePublicHubData } from '../../hooks/usePublicHubData'
 import { LandingMobileNav } from '../../ui/components/landing/LandingMobileNav'
 import { EmoteRain } from '../../ui/components/landing/EmoteRain'
 import { TwitchChatBackdrop } from '../../ui/components/landing/TwitchChatBackdrop'
-import { LiveSignalScrollGraph } from '../../ui/components/landing/LiveSignalScrollGraph'
 import { EmoteTicker } from '../../ui/components/landing/EmoteTicker'
 import { ResourceGrid } from '../../ui/components/landing/ResourceGrid'
-import { RoadmapTimeline } from '../../ui/components/landing/RoadmapTimeline'
+import { useMatchMedia } from '../../ui/hooks/useMatchMedia'
 import { buildEmoteTicker, buildMoverTicker } from '../../ui/components/landing/landingData'
 import { BrandMark } from '../../ui/components/BrandMark'
 import { DiscordMark } from '../../ui/components/DiscordMark'
@@ -40,6 +39,21 @@ function DeferredDemo({ children }: { children: ReactNode }) {
   return <div ref={host}><Suspense fallback={fallback}>{visible ? children : fallback}</Suspense></div>
 }
 
+/** landing.css hides .sl-chatbg at max-width 960px; keep this query in step. */
+const CHAT_BACKDROP_QUERY = '(min-width: 961px)'
+
+/**
+ * The fixed chat backdrop mounts after the page, and only where landing.css
+ * shows it. Hidden by CSS alone, its lazy emote images still downloaded
+ * (~650 KB on phones). It stays out of the prerendered HTML too.
+ */
+function DeferredChatBackdrop() {
+  const wide = useMatchMedia(CHAT_BACKDROP_QUERY)
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
+  return mounted && wide ? <TwitchChatBackdrop /> : null
+}
+
 const DISCORD_LABEL = 'Join the StreamPulse Discord (opens in a new tab)'
 
 function TopNav({ discord }: { discord: string | null }) {
@@ -52,8 +66,6 @@ function TopNav({ discord }: { discord: string | null }) {
         </Link>
         <div className="sl-menu">
           <a href="#demo">Pulse tab</a>
-          <a href="#analysis">Signal replay</a>
-          <a href="#roadmap">Roadmap</a>
           <Link to="/docs">Docs</Link>
         </div>
         <div className="sl-nav__right">
@@ -287,7 +299,7 @@ export default function Landing() {
   return (
     <div className="sp-landing">
       <EmoteRain />
-      <TwitchChatBackdrop />
+      <DeferredChatBackdrop />
       <a className="sl-skip-link" href="#landing-main">Skip to main content</a>
       <TopNav discord={discord} />
       <main id="landing-main" tabIndex={-1} className="sl-main" ref={mainRef}>
@@ -306,17 +318,6 @@ export default function Landing() {
           </div>
         </section>
 
-        <section id="analysis" className="sl-section" aria-labelledby="analysis-title">
-          <div className="sl-container">
-            <div className="sl-section-head" data-reveal>
-              <h2 id="analysis-title">See a stream become a signal</h2>
-              <span className="sl-sample-label">Illustrative product demo · not live measurements</span>
-              <p>Scroll through a sample broadcast: chat, emotes, viewers, and the moments worth revisiting.</p>
-            </div>
-            <LiveSignalScrollGraph />
-          </div>
-        </section>
-
         <section className="sl-section" aria-labelledby="features-title">
           <div className="sl-container">
             <div className="sl-section-head" data-reveal>
@@ -325,20 +326,6 @@ export default function Landing() {
             </div>
             <div data-reveal>
               <FeatureGrid />
-            </div>
-          </div>
-        </section>
-
-        <section id="roadmap" className="sl-section" aria-labelledby="roadmap-title">
-          <div className="sl-container">
-            <div className="sl-section-head" data-reveal>
-              <h2 id="roadmap-title">Roadmap</h2>
-              <p>
-                Available today and the next focused step. ReplayForge is for channel owners clipping their own broadcasts; access remains gated while the authorized moment-to-clip journey is verified.
-              </p>
-            </div>
-            <div data-reveal>
-              <RoadmapTimeline />
             </div>
           </div>
         </section>

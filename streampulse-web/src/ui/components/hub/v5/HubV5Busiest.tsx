@@ -23,7 +23,8 @@ const TRACK_ID = 'hv5-busy-track'
 /** A tile's face is 40 % of the tile's height (34–70 px from 390 to 2560 wide), so it asks for Twitch's 150 px rendition; the original is the fallback. */
 const FACE_RENDITION = 150
 
-export function HubV5Busiest({ live, nowMs, loading = false }: { live: readonly HubLiveChannel[]; nowMs: number; loading?: boolean }) {
+/** `unavailable`: the hub request failed, so an empty list says so rather than that no channel qualifies (INT-02). */
+export function HubV5Busiest({ live, nowMs, loading = false, unavailable = false }: { live: readonly HubLiveChannel[]; nowMs: number; loading?: boolean; unavailable?: boolean }) {
   const set = useMemo(() => rankBusiest(live), [live])
   const cue = busiestCue(set, nowMs)
   const rows = set.rows
@@ -205,7 +206,7 @@ export function HubV5Busiest({ live, nowMs, loading = false }: { live: readonly 
         ) : loading ? (
           <div className="hv5-bzs-wait" aria-hidden="true" />
         ) : (
-          <p className="hv5-bzv-none">No synced channel has a full 5-minute window right now.</p>
+          <p className="hv5-bzv-none">{unavailable ? 'Unavailable right now.' : 'No synced channel has a full 5-minute window right now.'}</p>
         )}
       </div>
     </section>

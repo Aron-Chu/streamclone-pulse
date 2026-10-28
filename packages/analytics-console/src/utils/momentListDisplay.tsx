@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { heatmapPointsToMomentCandidates, isEmoteSpikeReason } from '@streampulse/pulse-core'
+import {
+  compareStreamEdgeLast,
+  heatmapPointsToMomentCandidates,
+  isEmoteSpikeReason,
+  OPENING_STREAM_EDGE,
+  streamEdgeKind,
+  type StreamEdges,
+} from '@streampulse/pulse-core'
 import type { AnalyticsTopEmote, PulseRecapMoment } from '../apiTypes.ts'
 import type { ReplayHeatmapPoint } from '../types/heatmap.ts'
 
@@ -120,6 +127,7 @@ export function enrichRecapMomentsFromHeatmap(
   topEmotesCatalog: AnalyticsTopEmote[] | undefined,
   maxCount: number,
   minBeforeBackfill = MOMENTS_INITIAL_VISIBLE,
+  edges: StreamEdges = OPENING_STREAM_EDGE,
 ): PulseRecapMoment[] {
   if (recapMoments.length >= minBeforeBackfill || !heatmapPoints?.length) {
     return recapMoments.slice(0, maxCount)
@@ -143,11 +151,15 @@ export function enrichRecapMomentsFromHeatmap(
       offsetSeconds: candidate.offsetSeconds,
       score: candidate.score,
       reasons: [candidate.reason],
+      streamEdge: streamEdgeKind(edges, candidate.offsetSeconds),
     })
   }
 
   return merged
     .sort((a, b) => {
+      // Hello / goodbye spam at the stream's edges ranks after every other moment.
+      const edge = compareStreamEdgeLast(a, b)
+      if (edge !== 0) return edge
       if (b.score !== a.score) return b.score - a.score
       return a.offsetSeconds - b.offsetSeconds
     })

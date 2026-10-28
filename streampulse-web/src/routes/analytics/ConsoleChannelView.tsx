@@ -9,15 +9,12 @@ import '@streampulse/analytics-console/session-signal-tape.css'
 import { setupStreamcloneAnalyticsApi, usesLocalAnalyticsBackend } from '../../lib/streamcloneAnalytics'
 import { HubBackendSourceBanner } from '../../ui/components/analytics/HubBackendSourceBanner'
 import { ChannelHubStatusShell } from '../../ui/components/analytics/ChannelHubStatusShell'
-import { useAnalyticsMotion } from '../../ui/motion/useAnalyticsMotion'
+import { settleThemeFade, useAnalyticsMotionEnabled } from '../../ui/motion/motionEnabled'
 import '../../ui/analytics-tailwind.css'
 import '../../ui/components/analytics/analytics-console.css'
 import '../../ui/components/analytics/figma-analytics.css'
 import '@streampulse/analytics-console/analytics-chart-motion.css'
 import '@streampulse/pulse-charts/pulse-chart-motion.css'
-// The session chart reuses the hub's chart navigator and its styles.
-import '../../ui/components/hub/hub.css'
-import '../../ui/components/hub/hub-public-audit.css'
 // Loaded last: compact desktop density overrides shared with the hub.
 import '../../ui/components/analytics/analytics-compact.css'
 // The session chart part (SpChart, its d3 navigator and the toolbar, pins and band).
@@ -40,7 +37,7 @@ export default function ConsoleChannelView() {
   const returnTo = analyticsReturnPath(params.get('returnTo'))
   const returnView = returnTo ? new URL(returnTo, 'https://portal.invalid').searchParams.get('view') : null
   const consoleRef = useRef<HTMLDivElement>(null)
-  const { fadeThemeCenter } = useAnalyticsMotion()
+  const motionEnabled = useAnalyticsMotionEnabled()
   const displayChannel = login.trim() || 'channel'
   // Without a return path (e.g. a shared link) go to this creator's broadcasts,
   // not global History, which may not be available on this server.
@@ -51,8 +48,8 @@ export default function ConsoleChannelView() {
     : returnView === 'saved' ? 'Saved moments' : returnView === 'history' ? 'Broadcast history' : 'Latest moments'
 
   useEffect(() => {
-    fadeThemeCenter(consoleRef.current)
-  }, [fadeThemeCenter, login])
+    settleThemeFade(consoleRef.current, motionEnabled)
+  }, [motionEnabled, login])
 
   return (
     <ChannelHubStatusShell

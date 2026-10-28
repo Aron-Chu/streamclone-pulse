@@ -12,6 +12,8 @@
 /setup/ /analytics/ 301
 /login /analytics 301
 /login/ /analytics/ 301
+/dashboard /analytics 301
+/dashboard/* /analytics 301
 
 # Account pages are private SPA surfaces, not prerendered marketing pages.
 /account/sign-in/ /account/sign-in 301

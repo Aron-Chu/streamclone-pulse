@@ -4,8 +4,6 @@
  * Until those fields exist on `/v1/public/hub`, UI modules that need them stay gated.
  */
 
-export type EmoteMarketView = 'leaders' | 'breadth' | 'concentration' | 'rotation' | 'provider'
-
 export interface HubEmoteMarketWatermark {
   /** Inclusive range start (unix ms). */
   rangeStart: number
@@ -164,15 +162,4 @@ export function normalizeHubEmoteMarket(raw: unknown): HubEmoteMarket | null {
     rotation: rotation && rotation.length > 0 ? rotation : undefined,
     concentration: normalizeConcentration(row.concentration),
   }
-}
-
-export function emoteMarketModuleAvailable(
-  market: HubEmoteMarket | null | undefined,
-  view: EmoteMarketView,
-): boolean {
-  if (view === 'leaders' || view === 'provider' || view === 'concentration') return true
-  if (!market) return false
-  if (view === 'breadth') return (market.breadth?.length ?? 0) > 0
-  if (view === 'rotation') return (market.rotation?.length ?? 0) > 0
-  return false
 }

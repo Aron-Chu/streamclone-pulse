@@ -24,3 +24,20 @@ export function AnalyticsConsoleDataSkeleton() {
     </div>
   )
 }
+
+/**
+ * As tall as a full Stream Recap on desktop and phone (title, two totals, two one-line highlight rows,
+ * five top emotes: 456 px), so the Moments tabs under it do not jump when the recap lands.
+ * Silent: the chart skeleton speaks for the loading page.
+ */
+export function StreamRecapSkeleton() {
+  return (
+    <div
+      aria-hidden="true"
+      data-console-skeleton="recap"
+      className="min-h-[28.5rem] w-full min-w-0 animate-pulse rounded border border-white/[0.07] bg-white/[0.025] p-3"
+    >
+      <div className="h-4 w-28 rounded bg-zinc-800/80" />
+    </div>
+  )
+}

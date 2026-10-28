@@ -28,7 +28,7 @@ export default function Terms() {
           </div>
           <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Terms of Use</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            Last updated: October 26, 2026 · Applies to{' '}
+            Last updated: October 28, 2026 · Applies to{' '}
             <code className="font-mono text-zinc-300">streampulse.stream</code>, the StreamPulse
             browser extension (Chrome, Brave, Edge and Firefox), and the Pulse Supporter subscription.
           </p>
@@ -139,8 +139,11 @@ export default function Terms() {
         <p data-testid="terms-billing-email">
           Stripe uses the email you give at checkout for receipts and billing. An extension-only
           connection is saved in its browser profile; reinstalling or using another browser does not
-          restore it automatically. You can still manage billing through Stripe with the email you
-          paid with. Contact billing support for help with your membership. Billing changes
+          restore it automatically. If your extension offers Restore existing Supporter, choose it
+          and confirm the link sent to your current Stripe billing email. If you changed it recently,
+          you may need to wait before trying again. Contact billing support if you need help,
+          cannot access that email or your version does not offer restore. You can still manage billing
+          through Stripe with your current billing email. Billing changes
           do not move Supporter to another account; starting another checkout is not a recovery step.
         </p>
         <p>
@@ -157,15 +160,19 @@ export default function Terms() {
           <Link to={REFUNDS_PATH}>cancellation and refund policy</Link>.
         </p>
 
-        {/* PENDING OWNER INPUT (audit LG-1, memo L-1): the selling entity, its legal
-            address, the governing law and the statutory rights are facts only the owner
-            can supply, with a legal professional. Never fill them in from anywhere else.
-            They must be stated here before paid sign-ups open. */}
         <h2>Selling entity and applicable law</h2>
-        <p data-testid="terms-pending-owner-input">
-          Paid sign-ups are not open, and no sale is offered through this site today. The selling
-          entity, legal address, governing law and consumer cancellation rights will be stated here
-          before paid sign-ups open.
+        <p data-testid="terms-seller-and-law">
+          StreamPulse is run by, and Pulse Supporter is sold by, Aron Chu, 906 North Miller Dr,
+          Unit 3099, Tempe, AZ 85288, USA. These terms are governed by the law of Arizona, USA.
+          If you are a consumer, that choice of law does not take away the protection of consumer
+          law where you live. If you live in the EU, the wider European Economic Area or the UK, you
+          can withdraw from a new Supporter subscription within 14 days after you subscribe,
+          without giving a reason: email{' '}
+          <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a> within that
+          period. Withdrawing cancels the subscription, the charge is refunded in full within 14 days
+          of your email, and Supporter access ends. Any other statutory right to cancel that you have
+          where you live applies as well, on top of the{' '}
+          <Link to={REFUNDS_PATH}>cancellation and refund policy</Link>.
         </p>
         <p>Nothing on this page limits rights you have under consumer law that cannot be waived.</p>
 

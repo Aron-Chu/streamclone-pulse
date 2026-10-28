@@ -5,15 +5,23 @@
  * filters them; Enter opens the highlighted row, else the exact live channel,
  * else "Open analytics for" a plausible login. / and Ctrl/⌘K focus the field.
  * The mockup's docked top-bar button is not part of this page (the top bar is
- * the shared analytics shell).
+ * the shared analytics shell). Behind it runs the emote conveyor at Soft
+ * (R5-15, HubV5Conveyor); the mockup's hero-motion switch was a proposal aid
+ * and is not ported.
  */
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import type { HubLiveChannel } from '../../../../lib/publicHub'
+import panelChart from '../../../../demo/pictures/panel-chart-2x.webp'
+import panelCard from '../../../../demo/pictures/panel-moment-card-2x.webp'
+import panelMoments from '../../../../demo/pictures/panel-top-moments-2x.webp'
+import type { HubActivityPoint, HubLiveChannel } from '../../../../lib/publicHub'
 import { buildAnalyticsHref } from '../../../../lib/analyticsLinks'
 import { isPlausibleTwitchLogin } from '../../../../lib/normalizeTwitchLogin'
+import { ChromeInstallCta } from '../../ChromeInstallCta'
 import { HubV5Avatar } from './HubV5Avatar'
+import { HubV5Conveyor, type HubV5ConveyorRefs } from './HubV5Conveyor'
 import { HubV5Icon } from './HubV5Icon'
+import { useMedia } from './HubV5LiveFeed'
 import { channelHref, channelsByViewers, formatHubInt, searchChannels, typedLogin } from './hubV5Model'
 
 const IS_MAC = typeof navigator !== 'undefined' && /Mac|iP(hone|ad|od)/.test(navigator.platform || navigator.userAgent)
@@ -26,13 +34,53 @@ interface Option {
   channel: HubLiveChannel | null
 }
 
-export function HubV5Hero({ live, poolSize }: { live: readonly HubLiveChannel[]; poolSize: number }) {
+const NO_POINTS: readonly HubActivityPoint[] = []
+/** P2 (10-22): 2× captures of the real panel (the sandbox /extension demo): Top moments, the chart, a moment's card. */
+const PANEL_FRAMES = [panelMoments, panelChart, panelCard] as const
+const PANEL_FRAME_MS = 4000
+
+/** The panel's three states crossfading every 4 s; hover holds the one on show; reduced motion keeps the first. */
+function PanelFrames() {
+  const reduce = useMedia('(prefers-reduced-motion: reduce)')
+  const [at, setAt] = useState(0)
+  const [held, setHeld] = useState(false)
+  useEffect(() => {
+    if (reduce || held) return undefined
+    const id = window.setInterval(() => setAt((n) => (n + 1) % PANEL_FRAMES.length), PANEL_FRAME_MS)
+    return () => window.clearInterval(id)
+  }, [reduce, held])
+  const on = reduce ? 0 : at
+  return (
+    <div className="hv5-get-pic" aria-hidden="true" onPointerEnter={() => setHeld(true)} onPointerLeave={() => setHeld(false)}>
+      {PANEL_FRAMES.map((src, i) => (
+        <img key={src} src={src} alt="" width={338} height={188} decoding="async" className={i === on ? 'on' : undefined} />
+      ))}
+      {reduce ? null : (
+        <span className="hv5-get-dots">
+          {PANEL_FRAMES.map((src, i) => <i key={src} className={i === on ? 'on' : undefined} />)}
+        </span>
+      )}
+    </div>
+  )
+}
+
+export function HubV5Hero({ live, poolSize, points = NO_POINTS }: { live: readonly HubLiveChannel[]; poolSize: number; points?: readonly HubActivityPoint[] }) {
   const navigate = useNavigate()
   const uid = useId()
   const inputId = `${uid}q`
   const listId = `${uid}sugg`
   const optionId = (i: number) => `${uid}sg${i}`
   const inputRef = useRef<HTMLInputElement>(null)
+  const mastRef = useRef<HTMLElement>(null)
+  const kickerRef = useRef<HTMLParagraphElement>(null)
+  const fieldRef = useRef<HTMLDivElement>(null)
+  const tryRef = useRef<HTMLParagraphElement>(null)
+  const getRef = useRef<HTMLDivElement>(null)
+  const footRef = useRef<HTMLDivElement>(null)
+  const conveyorRefs = useMemo<HubV5ConveyorRefs>(
+    () => ({ mast: mastRef, kicker: kickerRef, field: fieldRef, tryRow: tryRef, getRow: getRef, foot: footRef }),
+    [],
+  )
   const blurTimer = useRef<number | undefined>(undefined)
   const [value, setValue] = useState('')
   const [open, setOpen] = useState(false)
@@ -114,11 +162,12 @@ export function HubV5Hero({ live, poolSize }: { live: readonly HubLiveChannel[];
   const tryChannels = byViewers.slice(0, 5)
 
   return (
-    <header className="hv5-mast">
-      <p className="hv5-hero-k">Analytics</p>
+    <header className="hv5-mast" ref={mastRef}>
+      <HubV5Conveyor points={points} refs={conveyorRefs} />
+      <p className="hv5-hero-k" ref={kickerRef}>Analytics</p>
       <h1 className="hv5-hero-h">Find your streamer</h1>
       <p className="hv5-hero-sub">Chat, emotes and top moments for any Twitch channel, minute by minute.</p>
-      <div className="hv5-hero-field">
+      <div className="hv5-hero-field" ref={fieldRef}>
         <div className="hv5-search" role="search">
           <label className="hv5-field" htmlFor={inputId}>
             <HubV5Icon name="search" />
@@ -203,8 +252,23 @@ export function HubV5Hero({ live, poolSize }: { live: readonly HubLiveChannel[];
           </div>
         </div>
       </div>
+      {/* What you get, under the search, which stays first: the real panel, one line and one big
+          button (Aron's C1 pick, 10-21, with the P2 picture, 10-22; the copy is a draft). */}
+      <div className="hv5-hero-get" ref={getRef}>
+        <PanelFrames />
+        <div className="hv5-get-tx">
+          <p className="hv5-get-h">See chat's big moments on Twitch</p>
+          <p className="hv5-get-p">The Pulse panel sits next to Twitch chat and shows the spikes and top moments of the stream you're on.</p>
+          <p className="hv5-get-row">
+            <ChromeInstallCta className="hv5-hero-install" data-cta="chrome-install-hub-hero">
+              <span className="chrome-mark" aria-hidden="true" />Add to Chrome
+            </ChromeInstallCta>
+            <span className="hv5-get-free">Free · no account · also Edge and Brave</span>
+          </p>
+        </div>
+      </div>
       {tryChannels.length ? (
-        <p className="hv5-hero-try">
+        <p className="hv5-hero-try" ref={tryRef}>
           <span className="hv5-hero-tl">Try</span>
           {tryChannels.map((c) => (
             <Link
@@ -219,7 +283,7 @@ export function HubV5Hero({ live, poolSize }: { live: readonly HubLiveChannel[];
           ))}
         </p>
       ) : null}
-      <div className="hv5-hero-foot">
+      <div className="hv5-hero-foot" ref={footRef}>
         {poolSize > 0 ? <p className="hv5-scope">The hub below covers {formatHubInt(poolSize)} channels we follow · not all of Twitch</p> : null}
       </div>
     </header>

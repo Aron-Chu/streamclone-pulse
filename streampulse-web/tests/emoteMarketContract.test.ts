@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  emoteMarketModuleAvailable,
-  normalizeHubEmoteMarket,
-} from '../src/lib/emoteMarketContract'
+import { normalizeHubEmoteMarket } from '../src/lib/emoteMarketContract'
 
 describe('emoteMarketContract', () => {
   it('rejects payloads without watermark', () => {
@@ -53,8 +50,6 @@ describe('emoteMarketContract', () => {
     expect(market?.watermark.activityWindow).toBe('24h')
     expect(market?.breadth).toHaveLength(1)
     expect(market?.breadth?.[0]?.name).toBe('KEKW')
-    expect(emoteMarketModuleAvailable(market, 'breadth')).toBe(true)
-    expect(emoteMarketModuleAvailable(market, 'rotation')).toBe(true)
   })
 
   it('rejects when every breadth/rotation row is malformed', () => {
@@ -70,12 +65,6 @@ describe('emoteMarketContract', () => {
         rotation: [{ name: 'x', rank: 0, status: 'gainer' }],
       }),
     ).toBeNull()
-  })
-
-  it('gates breadth/rotation without rows; leaders stay available', () => {
-    expect(emoteMarketModuleAvailable(null, 'leaders')).toBe(true)
-    expect(emoteMarketModuleAvailable(null, 'breadth')).toBe(false)
-    expect(emoteMarketModuleAvailable(null, 'rotation')).toBe(false)
   })
 
   it('keeps concentration server-owned and rejects out-of-range shares', () => {

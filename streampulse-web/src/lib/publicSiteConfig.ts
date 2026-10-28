@@ -15,6 +15,35 @@ export const CHROME_WEB_STORE_EXTENSION_ID = 'nifgoonpcgmdhiffcpmhndjgkgahnelg' 
 export const CHROME_WEB_STORE_LISTING_URL =
   `https://chromewebstore.google.com/detail/streampulse/${CHROME_WEB_STORE_EXTENSION_ID}` as const
 
+/**
+ * Fixed utm_medium values for store links. Only the kind of page goes to the store, never the path,
+ * so a channel or stream id in the URL never reaches Google.
+ */
+const STORE_LINK_PAGES = [
+  'home', 'analytics', 'account', 'docs', 'status', 'privacy', 'terms', 'refunds',
+  'supporter', 'support', 'feedback', 'discord', 'changelog', 'site',
+] as const
+export type StoreLinkPage = (typeof STORE_LINK_PAGES)[number]
+
+function isStoreLinkPage(value: string): value is StoreLinkPage {
+  return (STORE_LINK_PAGES as readonly string[]).includes(value)
+}
+
+/** The store-link page kind for a site path: '/' is 'home', /s/* is 'analytics', a listed first segment is itself, else 'site'. */
+export function storeLinkPageForPath(pathname: string): StoreLinkPage {
+  const first = pathname.split('/').find(Boolean) ?? ''
+  if (!first) return 'home'
+  if (first === 's') return 'analytics'
+  return isStoreLinkPage(first) ? first : 'site'
+}
+
+export function chromeWebStoreUrlForPage(page: StoreLinkPage): string {
+  const url = new URL(CHROME_WEB_STORE_LISTING_URL)
+  url.searchParams.set('utm_source', 'streampulse.stream')
+  url.searchParams.set('utm_medium', isStoreLinkPage(page) ? page : 'site')
+  return url.toString()
+}
+
 export const PUBLIC_SITE = {
   hostedApiUrl: STREAM_PULSE_HOSTED_API_URL,
   analyticsUrl: STREAM_PULSE_ANALYTICS_URL,

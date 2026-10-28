@@ -27,7 +27,7 @@ export default function Privacy() {
           </div>
           <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Privacy Policy</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            Last updated: October 26, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse browser extension (Chrome, Brave, Edge and Firefox).
+            Last updated: October 27, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse browser extension (Chrome, Brave, Edge and Firefox).
           </p>
         </header>
 
@@ -38,7 +38,7 @@ export default function Privacy() {
             StreamPulse shows Twitch stream activity using minute-level aggregates from the StreamPulse
             API. The extension and public site are rollup-first: they do not expose raw chat messages or
             chatter identity to users{supporterChatBadgesEnabled() ? PRIVACY_CHATTER_IDENTITY_EXCEPTION : ''}. Extension Twitch sign-in is not available in this release. When available, the extension uses Twitch sign-in only to confirm your Twitch
-            user ID, when you choose Continue with Twitch. Protect enrollment is not offered in 0.2.2. Earlier beta enrollment
+            user ID, when you choose Continue with Twitch. Protect enrollment is not offered in this release. Earlier beta enrollment
             used a beta access key once to create a local device credential.
           </p>
           <p className="text-zinc-300">
@@ -56,7 +56,8 @@ export default function Privacy() {
           profile. StreamPulse stores an internal account identifier, a one-way hash of the
           installation key, device labels, hashed credentials and their expiry, and creation and
           activity times. The installation account has no account email address or Twitch identity.
-          Looking at your status does not create a connection; one is saved only when you choose Become a Supporter.
+          Looking at your status does not create a connection; one is saved only when you choose
+          Become a Supporter or Restore existing Supporter.
           This connection does not sync My Moments: bookmarks, notes and watched history stay in this browser.
         </p>
         <p data-testid="privacy-continue-with-twitch">
@@ -117,7 +118,13 @@ export default function Privacy() {
           signature and removes contact details before saving the new payment notification. For an
           extension-only purchase, it keeps a keyed, one-way hash of the billing email as a recovery
           lookup, rather than the address itself. That lookup does not automatically combine accounts
-          or grant Supporter access. Stripe keeps the billing email for receipts and billing.
+          or grant Supporter access. Stripe keeps the billing email for receipts and billing. If you
+          request a restore, StreamPulse uses the address you enter to look for that keyed hash and,
+          when a recoverable membership matches, to send a confirmation link. The recovery lookup
+          refreshes the hash using your current Stripe billing email and checks that email again
+          before restoring access. Contact support if you cannot access it. The extension does not
+          save that address to its persistent storage; approving the emailed link and matching the code are
+          needed to connect the new browser.
         </p>
         <p>
           What StreamPulse stores is the identifiers and state needed to know whether your membership
@@ -301,16 +308,26 @@ export default function Privacy() {
             VOD identity for Pulse coverage and backfill flows.
           </li>
           {/* Moment pictures: src/content/momentFrames.ts and momentFrameStore.ts keep
-              the stills as object URLs in tab memory only; on by default in
-              src/shared/storage.ts. Saved pictures (IndexedDB) are not in this build;
-              change this line when they ship. */}
+              the stills as object URLs in tab memory; on by default in
+              src/shared/storage.ts. A saved moment keeps its one picture in IndexedDB
+              (src/shared/momentPictureStore.ts, PICTURE_LIMITS), removed from Settings
+              (KeptPicturesOffer in src/ui/SettingsWorkspace.tsx). */}
           <li data-testid="privacy-moment-pictures">
             <strong>Moment pictures</strong>, on by default: while the Pulse panel is open on a live
             stream or VOD and the video is playing, a small still of the Twitch player every few
             seconds, so Top Moments can show what happened. The stills stay in that tab's memory.
-            They are never written to browser storage or uploaded, and they are gone when you switch
-            streams or close the tab. You can turn them off with the Moment pictures switch in the
-            extension's settings; turning it off drops the stills at once.
+            When you bookmark a moment or watch it from History, the extension keeps that one
+            picture with the saved moment in this browser's extension storage (up to 300 pictures or
+            8 MB; the oldest go first). Pictures are never uploaded. Turning Moment pictures off
+            drops the stills at once, and you can remove saved pictures in Settings.
+          </li>
+          {/* VOD pictures: vod() and vodFrame() in src/content/momentFrames.ts, for a moment
+              the tab holds no still of; the reads run in the Twitch page without cookies. */}
+          <li data-testid="privacy-vod-frames">
+            When the tab has no still of a moment, for example on a past stream, the extension may
+            read the VOD's preview pictures and a small, low-resolution copy of the VOD's video from
+            Twitch, in your Twitch tab, to show the frame of that moment. These reads go to Twitch;
+            StreamPulse receives none of them.
           </li>
           {supporterChatBadgesEnabled() ? <PrivacyObservesChatUsernames /> : null}
         </ul>
@@ -320,7 +337,7 @@ export default function Privacy() {
            Continue with Twitch, not available in this release), raw chat exports, or chatter identities.
            In earlier beta builds, a beta access key is sent only to the hosted enrollment
            endpoint when you explicitly connect Protect; it is discarded after that request and is not stored
-           or sent with later requests. Protect enrollment is not offered in 0.2.2. Page-context Twitch requests may
+           or sent with later requests. Protect enrollment is not offered in this release. Page-context Twitch requests may
           use your active Twitch browser session through normal browser credential handling. Those requests
           go to Twitch; StreamPulse does not receive your Twitch cookies or Twitch login credentials from
           the extension.
@@ -334,7 +351,7 @@ export default function Privacy() {
           can be returned.
         </p>
         <p>
-           Protect enrollment is not offered in 0.2.2. Earlier beta builds used a one-time enrollment flow:
+           Protect enrollment is not offered in this release. Earlier beta builds used a one-time enrollment flow:
            the service worker sent the key only to
            <code>https://api.streampulse.stream/v1/extension/auth/device</code>, then discarded it.
            For an earlier enrollment, protected watchlist requests use an opaque bearer device token stored locally
@@ -402,13 +419,13 @@ export default function Privacy() {
           <li>
             <strong>Portal localStorage</strong> — stores recently opened Twitch channel logins
             (<code>sp.hub.recentLogins</code>, capped list), public hub/analytics cache entries keyed by
-            backend URL and activity window (<code>sp:publicHub:v1:…</code>, with a staleness hint of about
-            10 minutes), browser-saved moments and any notes you add to them
+            backend URL and activity window (<code>sp:publicHub:v1:…</code>, a hub copy that may be shown,
+            marked as cached, for up to about 6 hours; <code>sp:publicHubProjection:v1:…</code>, Moments
+            and ticker copies used for about 10 minutes), browser-saved moments and any notes you add to them
             (<code>streampulse.saved-moments.v2</code>; an older <code>v1</code> copy may remain after
-            migration), your optional website analytics choice, your chart Scroll zoom choice
-            (<code>sp.chart.scrollZoom.v1</code>), and an optional beta key
-            (<code>sp.betaKey</code>) when a gated portal feature is
-            used. Saved moments and notes are not synced to your account and remain on this browser after
+            migration), your optional website analytics choice, and your chart Scroll zoom choice
+            (<code>sp.chart.scrollZoom.v1</code>).
+            Saved moments and notes are not synced to your account and remain on this browser after
             sign-out. Clearing site data for streampulse.stream removes these keys.
           </li>
           <li>

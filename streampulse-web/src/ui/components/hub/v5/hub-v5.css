@@ -1,8 +1,9 @@
 /*
- * The d3-v5 hub page (PR 2 of 5: U4 page layout, U5 lists), behind
- * VITE_PUBLIC_HUB_V5. Ported from the approved round-5 mockup (d3-v5:
- * hub.html inline rules, shared.css, busiest-variants.css Strip, hub-r5.css,
- * hub-r5c.css search rows, hub-r5d.css hero). Every rule sits under .hub-v5
+ * The d3-v5 hub page. Ported from the approved
+ * mockup (d3-v5: hub.html inline rules, shared.css, busiest-variants.css
+ * Strip, hub-r5.css, hub-r5c.css search rows and emote map, hub-r5d.css hero,
+ * hub-hero.css conveyor, hub-live.css feed v3, hub-rack.css and hub-r5e.css
+ * Where chat is). Every rule sits under .hub-v5
  * (the page root, with .hub-d3 for the tokens) or .hv5-layer (cards portaled
  * to <body>), with the hv5- prefix. No text under 12 px; no in-page scrollbar.
  * The activity card itself is U6's (hub-activity-d3.css); nothing here
@@ -15,6 +16,10 @@
   --hv5-chat: #a78bfa;
   --hv5-emotes: #f7b645;
   --hv5-live: #ef4444;
+  /* K1 pace heat on the emote map: taking off, cooling (validated on the #17171a tile) */
+  --hv5-rise: #d9733a;
+  --hv5-cool: #5a8be8;
+  --hv5-gutter: 24px;
 }
 
 /* the frame is as wide as the mockup's (2200 px, 24 px gutters; 16 px on phones) */
@@ -28,47 +33,53 @@
     padding-left: 16px;
     padding-right: 16px;
   }
+  .hub-v5 { --hv5-gutter: 16px; }
 }
+
+/* the skip link's "Analytics content" target sits beside .hub-v5 in <main>; the old hub
+   hides it in discovery-layout.css, which this page does not load (same rules) */
+.analytics-focus-target { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.analytics-focus-target:focus { position: static; width: auto; height: auto; clip-path: none; padding: .5rem; color: var(--fma-accent-text); }
 
 /* ---------- base (mockup shared.css), only on the page's own sections ---------- */
 .hub-v5.hub-d3 {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   column-gap: 24px;
-  grid-template-areas: "mast" "busy" "act" "intv" "rail" "emo" "games" "chan" "meas";
+  grid-template-areas: "mast" "peek" "busy" "act" "intv" "rail" "emo" "games" "chan" "meas";
   color: var(--sp-text-1);
   font: 400 13px/1.4 var(--sp-font);
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1;
   -webkit-font-smoothing: antialiased;
 }
-.hub-v5 :is(.hv5-mast, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) :is(*, *::before, *::after),
+.hub-v5 :is(.hv5-mast, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) :is(*, *::before, *::after),
 .hv5-layer,
 .hv5-layer :is(*, *::before, *::after) {
   box-sizing: border-box;
 }
-.hub-v5 :is(.hv5-mast, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) :is(h1, h2, h3, p, ol, ul),
+.hub-v5 :is(.hv5-mast, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) :is(h1, h2, h3, p, ol, ul),
 .hv5-layer :is(p, ol, ul) {
   margin: 0;
 }
-.hub-v5 :is(.hv5-mast, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels) img,
+.hub-v5 :is(.hv5-mast, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels) img,
 .hv5-layer img {
   display: block;
 }
-.hub-v5 :is(.hv5-mast, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) a {
+.hub-v5 :is(.hv5-mast, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) a {
   color: var(--hv5-accent);
   text-decoration: none;
 }
-.hub-v5 :is(.hv5-mast, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) a:hover {
+.hub-v5 :is(.hv5-mast, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) a:hover {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
-.hub-v5 :is(.hv5-mast, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) :is(button, input) {
+.hub-v5 :is(.hv5-mast, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) :is(button, input) {
   font: inherit;
   color: inherit;
   letter-spacing: inherit;
 }
-.hub-v5 :is(.hv5-mast, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) button {
+.hub-v5 :is(.hv5-mast, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) button {
   margin: 0;
   padding: 0;
   border: 0;
@@ -107,8 +118,13 @@
 .hv5-busiest { grid-area: busy; margin-top: 8px; }
 .hv5-activity { grid-area: act; margin-top: 16px; min-width: 0; }
 .hv5-latest { grid-area: rail; margin-top: 8px; }
-.hv5-emotes { grid-area: emo; margin-top: 32px; }
-.hv5-games { grid-area: games; margin-top: 32px; }
+.hv5-emotes { grid-area: emo; margin-top: 32px; display: flex; flex-direction: column; }
+.hv5-games { grid-area: games; margin-top: 32px; display: flex; flex-direction: column; container: hv5grk / inline-size; }
+/* phones: a 3-row "Live now" peek under the hero; the full feed stays where it is */
+.hv5-f3-peek { grid-area: peek; display: none; margin-top: 12px; }
+@media (max-width: 719px) {
+  .hv5-f3-peek { display: block; }
+}
 .hv5-channels { grid-area: chan; margin-top: 32px; scroll-margin-top: 72px; }
 .hv5-dis { grid-area: meas; margin-top: 32px; }
 .hv5-sec { min-width: 0; }
@@ -365,7 +381,7 @@
   background: var(--sp-raised);
 }
 .hv5-search .hv5-field:focus-within .hv5-kbd { display: none; }
-.hub-v5 .hv5-hero-go {
+.hub-v5 .hv5-mast .hv5-hero-go {
   flex: none;
   height: 44px;
   padding: 0 20px;
@@ -375,7 +391,7 @@
   font: 600 15px/1 var(--sp-font);
   transition: background-color 0.15s;
 }
-.hub-v5 .hv5-hero-go:hover { background: #99f6e4; }
+.hub-v5 .hv5-mast .hv5-hero-go:hover { background: #99f6e4; }
 .hv5-sugg {
   position: absolute;
   z-index: 45;
@@ -447,6 +463,94 @@
   line-height: 16px;
   color: var(--sp-text-3);
 }
+/* C1 (10-21): what you get, under the search. A picture of the panel beside a stream, one line,
+   one big button. Opaque so the conveyor doesn't show through. */
+.hv5-hero-get {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 18px;
+  align-items: center;
+  width: min(760px, 100%);
+  padding: 12px;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 14px;
+  background: rgb(16 16 20 / 0.94);
+  box-shadow: 0 18px 50px rgb(0 0 0 / 0.45);
+  text-align: left;
+}
+/* P2 (10-22): the real panel at full size, its three states crossfading, dots under them */
+.hv5-get-pic {
+  position: relative;
+  width: 338px;
+  max-width: 100%;
+  aspect-ratio: 338 / 188;
+  overflow: hidden;
+  border-radius: 9px;
+  background: #0e0e11;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08);
+}
+.hub-v5 .hv5-mast .hv5-get-pic img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: left top;
+  opacity: 0;
+  transition: opacity 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.hub-v5 .hv5-mast .hv5-get-pic img.on { opacity: 1; }
+.hv5-get-dots {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 7px;
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+}
+.hv5-get-dots i { width: 5px; height: 5px; border-radius: 50%; background: rgb(255 255 255 / 0.28); transition: background-color 0.3s; }
+.hv5-get-dots i.on { background: #fff; }
+@media (prefers-reduced-motion: reduce) {
+  .hub-v5 .hv5-mast .hv5-get-pic img { transition: none; }
+}
+.hv5-get-tx {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.hub-v5 .hv5-mast .hv5-get-h { font: 700 17px/22px var(--sp-font); color: var(--sp-text-1); }
+.hub-v5 .hv5-mast .hv5-get-p { font: 500 13px/18px var(--sp-font); color: var(--sp-text-2); }
+.hub-v5 .hv5-mast .hv5-get-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 4px;
+}
+.hub-v5 .hv5-mast a.hv5-hero-install {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 46px;
+  padding: 0 20px;
+  border-radius: 10px;
+  background: #fff;
+  color: #0b0b0f;
+  font: 700 15px/1 var(--sp-font);
+  white-space: nowrap;
+  box-shadow: 0 6px 28px rgb(255 255 255 / 0.14);
+  transition: background-color 0.15s;
+}
+.hub-v5 .hv5-mast a.hv5-hero-install:hover {
+  text-decoration: none;
+  background: #e4e4e7;
+  color: #0b0b0f;
+}
+.hv5-hero-install .chrome-mark { width: 20px; height: 20px; }
+.hv5-hero-install .chrome-mark::after { inset: 5.6px; }
+.hv5-get-free { font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
 .hv5-hero-try {
   display: flex;
   flex-wrap: wrap;
@@ -456,6 +560,7 @@
   max-width: 100%;
   margin-top: 16px;
 }
+.hub-v5 .hv5-mast .hv5-hero-get { margin-top: 16px; }
 .hub-v5 .hv5-mast .hv5-hero-try { margin-top: 16px; }
 .hv5-hero-tl {
   margin-right: 2px;
@@ -507,10 +612,17 @@
   .hub-v5 .hv5-mast .hv5-hero-h { font-size: 28px; line-height: 34px; }
   .hub-v5 .hv5-mast .hv5-hero-sub { max-width: 320px; font-size: 14px; line-height: 20px; }
   .hv5-hero-field { margin-top: 18px; }
+  .hub-v5 .hv5-mast .hv5-hero-get { grid-template-columns: 1fr; gap: 12px; margin-top: 14px; padding: 10px; }
+  .hv5-get-pic { justify-self: center; }
+  .hub-v5 .hv5-mast .hv5-get-h { font-size: 16px; }
+  .hub-v5 .hv5-mast a.hv5-hero-install { justify-content: center; width: 100%; height: 48px; }
+  .hv5-get-free { width: 100%; text-align: center; }
+  /* The hub card is enough on phones: the top bar's full-width Add to Chrome goes here only (C1). */
+  body:has(.hub-v5 .hv5-hero-get) .analytics-topnav__install { display: none; }
   .hv5-search .hv5-field { height: 56px; padding: 0 6px 0 16px; gap: 10px; border-radius: 14px; }
   .hub-v5 .hv5-search .hv5-field input { font-size: 16px; }
   .hv5-search .hv5-kbd { display: none; }
-  .hub-v5 .hv5-hero-go { height: 44px; padding: 0 14px; font-size: 14px; }
+  .hub-v5 .hv5-mast .hv5-hero-go { height: 44px; padding: 0 14px; font-size: 14px; }
   .hv5-sugg { top: 62px; }
   .hub-v5 .hv5-mast .hv5-hero-try {
     flex-wrap: nowrap;
@@ -523,6 +635,41 @@
   }
   .hv5-hero-try::-webkit-scrollbar { display: none; }
   .hv5-hero-foot { margin-top: 22px; }
+}
+
+/* the conveyor (R5-15, Aron's pick from the hero lab, at Soft; hub-hero.css). Under the title and field, over the glow; it runs
+   into the side gutters so the rows reach the frame's edges. Three masks multiply: a clear oval around the title, search and Try row
+   (HubV5Conveyor sets its size), the left and right edges, and the top and bottom (it fades out before the line under the hero).
+   It fades in once its pictures are drawn. */
+.hv5-hero-fx {
+  position: absolute;
+  z-index: -1;
+  left: calc(-1 * var(--hv5-gutter));
+  right: calc(-1 * var(--hv5-gutter));
+  top: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.hv5-hc-conv {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.9s var(--sp-ease, ease-out);
+  -webkit-mask-image:
+    radial-gradient(ellipse var(--rx, 470px) var(--ry, 190px) at 50% var(--cy, 50%), rgb(0 0 0 / 0.06) 50%, #000 100%),
+    linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent),
+    linear-gradient(transparent, #000 28px, #000 calc(100% - 64px), transparent);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    radial-gradient(ellipse var(--rx, 470px) var(--ry, 190px) at 50% var(--cy, 50%), rgb(0 0 0 / 0.06) 50%, #000 100%),
+    linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent),
+    linear-gradient(transparent, #000 28px, #000 calc(100% - 64px), transparent);
+  mask-composite: intersect;
+}
+.hv5-hc-conv.hv5-on { opacity: 0.72; }
+.hv5-hc-conv canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+@media (prefers-reduced-motion: reduce) {
+  .hv5-hc-conv { transition: none; }
 }
 
 /* ---------- 2. Busiest now: the Strip (busiest-variants.css shared + Tiles + Carousel + Strip) ---------- */
@@ -767,68 +914,224 @@
   .hv5-bzt-t::after { transition: none; }
 }
 
-/* ---------- 3. Moments: who · game · ×, a link each (hub-r5.css) ---------- */
+/* ---------- 3. The live feed v3 (hub-live.css: R5-10 rail, R5-20 v2, v3; the default since 2026-10-17) ---------- */
 .hub-v5 .hv5-mo-all { font-weight: 500; white-space: nowrap; }
-.hub-v5 .hv5-mo-list { list-style: none; margin: 2px 0 0; padding: 0; }
-.hub-v5 .hv5-mo {
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
-  column-gap: 10px;
-  align-items: center;
-  height: 52px;
-  padding: 0 8px;
-  border-bottom: 1px solid var(--sp-line);
-  border-radius: 4px;
-  color: var(--sp-text-1);
-  text-decoration: none;
-}
-.hub-v5 .hv5-mo:hover { background: var(--sp-panel); text-decoration: none; }
-.hub-v5 .hv5-mo:hover .hv5-mo-nm { text-decoration: underline; }
-.hub-v5 .hv5-mo:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: -2px; }
-.hv5-mo-tx { display: flex; flex-direction: column; min-width: 0; }
-.hv5-mo-nm {
-  font: 600 13px/18px var(--sp-font);
+/* F2's picked game names the link ("Elden Ring moments →"): the name takes the room the age line leaves, then ellipses */
+.hv5-feed .hv5-rh .hv5-end { flex: 1 1 0; justify-content: flex-end; }
+.hv5-mo-all.hv5-mo-game { display: grid; grid-template-columns: minmax(0, max-content) auto; min-width: 0; }
+.hv5-mo-gm { overflow: hidden; text-overflow: ellipsis; }
+.hv5-feed .hv5-rh,
+.hv5-f3-peek .hv5-rh { flex-wrap: nowrap; }
+.hv5-feed .hv5-rh h2,
+.hv5-f3-peek .hv5-rh h2 { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+/* steady; the dot greys once the data is over 3 minutes old */
+.hv5-fd-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--hv5-live); }
+.hv5-f2-stale .hv5-fd-dot { background: var(--sp-text-3); }
+.hv5-f2-fresh {
+  min-width: 0;
+  margin-left: -2px;
+  font: 500 12px/16px var(--sp-font);
+  color: var(--sp-text-3);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
 }
-.hv5-mo-gm {
+.hv5-fd-sep { margin: 0 6px; color: var(--sp-text-3); }
+/* F2 (10-22): the feed's games under the header, most rows first; the strip scrolls sideways (scrollbar hidden).
+   Games first (L1, 10-22): each is a chip, a small cover and the game's name, with "All" first */
+.hv5-fd-games {
   display: flex;
   align-items: center;
+  gap: 5px;
+  margin: 2px 0 6px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+.hv5-fd-games::-webkit-scrollbar { display: none; }
+.hub-v5 .hv5-fd-games button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
   gap: 6px;
+  max-width: 168px;
+  height: 28px;
+  padding: 0 9px 0 3px;
+  border: 1px solid var(--sp-line-strong);
+  border-radius: 8px;
+  background: none;
+  font: 500 12px/1 var(--sp-font);
+  color: var(--sp-text-2);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.hub-v5 .hv5-fd-games button:hover { color: var(--sp-text-1); background: var(--sp-panel); }
+.hub-v5 .hv5-fd-games button[aria-pressed="true"] { border-color: var(--hv5-accent); background: rgb(94 234 212 / 0.08); color: var(--sp-text-1); }
+.hub-v5 .hv5-fd-games .hv5-fd-gall { padding: 0 10px; font-weight: 600; }
+.hub-v5 .hv5-fd-gm img { display: block; flex: none; width: 15px; height: 20px; border-radius: 2px; object-fit: cover; }
+.hv5-fd-gm > span:first-child {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 15px;
+  height: 20px;
+  border-radius: 2px;
+  background: var(--sp-raised);
+  box-shadow: inset 0 0 0 1px var(--sp-line-strong);
+  font: 600 8px/1 var(--sp-font);
+  color: var(--sp-text-3);
+}
+.hv5-fd-gn { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.hub-v5 :is(.hv5-feed, .hv5-f3-peek) :is(.hv5-fd-list, .hv5-fd-sub) { list-style: none; margin: 0; padding: 0; }
+.hub-v5 .hv5-fd-body > .hv5-fd-list:first-child { margin-top: 4px; }
+.hub-v5 :is(.hv5-feed, .hv5-f3-peek) .hv5-fd-quiet { margin: 6px 8px; font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
+/* the list and its "N new" pill, which floats over the top row so nothing moves when it appears */
+.hv5-f2-wrap { position: relative; }
+.hub-v5 .hv5-feed .hv5-f2-pill {
+  position: absolute;
+  z-index: 2;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 14px;
+  background: var(--hv5-accent);
+  color: var(--sp-canvas);
+  font: 600 12px/28px var(--sp-font);
+  box-shadow: 0 2px 10px rgb(0 0 0 / 0.45);
+}
+.hub-v5 .hv5-feed .hv5-f2-pill[hidden] { display: none; }
+.hub-v5 .hv5-f2-pill:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: 2px; }
+
+/* one row (games first, L1 10-22): the game's cover · who + what / "5.0× more emotes" · game · the time (52 px) */
+.hub-v5 :is(.hv5-feed, .hv5-f3-peek) .hv5-fd {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  column-gap: 10px;
+  align-items: center;
+  width: 100%;
+  height: 52px;
+  padding: 0 8px;
+  border: 0;
+  border-bottom: 1px solid var(--sp-line);
+  border-radius: 4px;
+  background: none;
+  color: var(--sp-text-1);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+.hub-v5 :is(.hv5-feed, .hv5-f3-peek) .hv5-fd:hover { background: var(--sp-panel); text-decoration: none; }
+.hub-v5 :is(.hv5-feed, .hv5-f3-peek) a.hv5-fd:hover .hv5-fd-nm { text-decoration: underline; }
+.hub-v5 :is(.hv5-feed, .hv5-f3-peek) .hv5-fd:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: -2px; }
+.hv5-fd-av { position: relative; display: flex; width: 28px; height: 28px; }
+.hv5-fd-art {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 40px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--sp-raised);
+  box-shadow: inset 0 0 0 1px var(--sp-line-strong);
+}
+.hub-v5 .hv5-fd-art img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.hv5-fd-art span { font: 600 10px/1 var(--sp-font); color: var(--sp-text-3); }
+.hv5-fd-t { font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.hv5-fd-av .hv5-av { width: 28px; height: 28px; }
+.hv5-fd-tx { display: flex; flex-direction: column; min-width: 0; }
+.hv5-fd-l1 { display: flex; align-items: center; gap: 6px; min-width: 0; font: 600 13px/18px var(--sp-font); }
+.hv5-fd-nm { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hv5-fd-l2 {
+  display: flex;
+  align-items: center;
   min-width: 0;
   font: 500 12px/16px var(--sp-font);
   color: var(--sp-text-3);
+  white-space: nowrap;
 }
-.hv5-mo-gm img {
+.hv5-fd-l2 time { flex: none; font-variant-numeric: tabular-nums; }
+.hub-v5 .hv5-fd-l2 img {
   flex: none;
   width: 12px;
   height: 16px;
+  margin-right: 6px;
   border-radius: 2px;
   object-fit: cover;
   box-shadow: 0 0 0 1px var(--sp-line-strong);
 }
-.hv5-mo-gm span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.hv5-mo-v {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  min-width: 56px;
-  text-align: right;
+.hv5-fd-g,
+.hv5-fd-w { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.hv5-fd-w time { font-variant-numeric: tabular-nums; }
+/* what happened: a spike or moment in teal, a stream start in red with a ring, Picking up in purple */
+.hv5-f2-act { flex: none; font-weight: 500; color: var(--sp-text-2); white-space: nowrap; }
+.hv5-f2-live { color: var(--hv5-live); }
+.hv5-f2-up { color: var(--hv5-chat); font-weight: 600; }
+.hv5-f3-jump { flex: none; font-weight: 500; color: var(--hv5-chat); white-space: nowrap; }
+.hv5-f2-names { font-weight: 500; color: var(--sp-text-2); }
+.hv5-f2-em { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 45%; font-weight: 600; color: var(--sp-text-1); }
+.hub-v5 .hv5-f2-em img { flex: none; width: 20px; height: 20px; object-fit: contain; }
+.hv5-f2-em span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* "5.0× more emotes" (games first, 10-22: as Moments writes it) */
+.hv5-f2-x { flex: none; color: var(--sp-text-2); font-variant-numeric: tabular-nums; }
+.hv5-f2-x b { font-weight: 600; color: var(--hv5-accent); }
+/* the went-live stack and Picking up: a stack of faces that opens a short list */
+.hub-v5 :is(.hv5-feed, .hv5-f3-peek) :is([data-kind="now"], [data-kind="lives"]) > .hv5-fd { grid-template-columns: 40px minmax(0, 1fr) auto; }
+.hv5-fd-stack { display: flex; width: 40px; height: 28px; align-items: center; }
+.hv5-fd-stack .hv5-av { width: 20px; height: 20px; flex: none; border-radius: 50%; box-shadow: 0 0 0 2px var(--sp-canvas); }
+.hv5-fd-stack > * + * { margin-left: -10px; }
+.hv5-fd-end { display: flex; align-items: center; gap: 6px; }
+.hv5-fd-chev { display: flex; color: var(--sp-text-3); transition: transform 0.2s ease-out; }
+.hv5-fd-chev .hv5-ico { width: 16px; height: 16px; }
+.hv5-fd[aria-expanded="true"] .hv5-fd-chev { transform: rotate(180deg); }
+.hub-v5 .hv5-feed .hv5-fd-sub { margin: 0 0 4px 18px; border-left: 1px solid var(--sp-line-strong); }
+.hub-v5 .hv5-feed .hv5-fd-sub[hidden] { display: none; }
+.hub-v5 .hv5-feed .hv5-fd-sub .hv5-fd { grid-template-columns: 22px minmax(0, 1fr); height: 44px; }
+.hv5-fd-sub .hv5-fd-av,
+.hv5-fd-sub .hv5-fd-av .hv5-av { width: 22px; height: 22px; }
+.hv5-fd-sub .hv5-fd-l1 { font-size: 12px; line-height: 16px; }
+.hv5-fd-more { display: flex; justify-content: center; padding: 6px 0 0; }
+.hv5-f2-upmore { padding: 8px 8px 10px 10px; font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
+/* past 30 minutes: the face and the number step back, the words stay readable (one thin rule, no tiers) */
+.hv5-f3-old > .hv5-fd :is(.hv5-fd-av, .hv5-fd-stack, .hv5-fd-art) { opacity: 0.5; }
+.hv5-f3-old > .hv5-fd .hv5-fd-nm { color: var(--sp-text-2); }
+.hv5-f3-rule { display: flex; align-items: center; gap: 8px; margin: 8px 8px 2px; font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
+.hv5-f3-rule::after { content: ""; flex: 1; height: 1px; background: var(--sp-line); }
+/* 1100–1535 the feed sits beside Top emotes and Where chat is: it takes the height they give the row and fits its rows to it (L1); an open list or Show more lets it grow */
+@media (min-width: 1100px) and (max-width: 1535px) {
+  .hv5-feed.hv5-fd-fit { contain: size; min-height: 432px; }
 }
-.hv5-mo-x {
-  font: 700 15px/18px var(--sp-font);
-  color: var(--sp-text-1);
-  font-variant-numeric: tabular-nums;
+/* ≥ 1536 the rail is sticky; Show more lets the list scroll inside the window (scrollbar hidden) */
+@media (min-width: 1536px) {
+  .hv5-feed.hv5-fd-all .hv5-fd-body {
+    max-height: calc(100vh - 72px - 150px);
+    overflow-y: auto;
+    scrollbar-width: none;
+    overscroll-behavior: contain;
+  }
+  .hv5-feed.hv5-fd-all .hv5-fd-body::-webkit-scrollbar { display: none; }
 }
-.hv5-mo-x.lo { color: var(--sp-text-3); }
-.hv5-mo-u,
-.hv5-mo-why {
-  font: 500 12px/16px var(--sp-font);
-  color: var(--sp-text-3);
-  white-space: nowrap;
+@media (max-width: 719px) {
+  .hub-v5 :is(.hv5-feed, .hv5-f3-peek) .hv5-fd { height: 56px; }
+}
+/* a row a poll brings: it opens, slides in and flashes once (backwards fill only, so hover and an open list are untouched after) */
+.hv5-fd-new { animation: hv5-fd-in 0.42s cubic-bezier(0.2, 0.7, 0.2, 1) backwards; overflow: hidden; }
+.hv5-fd-new > .hv5-fd { animation: hv5-fd-flash 1.4s ease-out; }
+.hv5-fd-new[data-kind="live"] > .hv5-fd,
+.hv5-fd-new[data-kind="lives"] > .hv5-fd { animation-name: hv5-fd-flash-live; }
+@keyframes hv5-fd-in { from { max-height: 0; opacity: 0; transform: translateY(-8px); } to { max-height: 56px; opacity: 1; transform: none; } }
+@keyframes hv5-fd-flash { from { background: rgb(94 234 212 / 0.16); } to { background: transparent; } }
+@keyframes hv5-fd-flash-live { from { background: rgb(239 68 68 / 0.16); } to { background: transparent; } }
+@media (prefers-reduced-motion: reduce) {
+  .hv5-fd-new,
+  .hv5-fd-new > .hv5-fd { animation: none !important; }
+  .hv5-fd-chev { transition: none !important; }
 }
 
+/* the moment card (round-5 Moments, now the feed's) */
 /* the hover card: never takes the pointer */
 .hv5-mo-card {
   position: fixed;
@@ -903,80 +1206,426 @@
   color: var(--sp-text-3);
 }
 
-/* ---------- 4. Top emotes: picture, name over a share bar, share ---------- */
-.hub-v5 .hv5-te5-list,
-.hub-v5 .hv5-gm5-list { list-style: none; margin: 2px 0 0; padding: 0; }
-.hv5-te5 {
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
-  column-gap: 10px;
+/* ---------- 4. Top emotes as the emote map (R5-13; r4 A2, emotemap-moments-r4; tiles as r5 C1 and r6 D2, emotemap-r5/r6) ---------- */
+/* the switch (shared.css .seg) */
+.hv5-seg {
+  display: inline-flex;
   align-items: center;
-  height: 40px;
-  padding: 0 8px;
-  border-bottom: 1px solid var(--sp-line);
-  border-radius: 4px;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--sp-r);
+  border: 1px solid var(--sp-line-strong);
+  flex: none;
 }
-.hv5-te5-im { display: grid; place-items: center; width: 28px; height: 28px; }
-.hv5-te5-im img { width: 28px; height: 28px; object-fit: contain; }
-.hv5-te5-x { display: block; width: 20px; height: 20px; border-radius: 4px; background: var(--sp-raised); }
-.hv5-te5-tx,
-.hv5-gm5-tx { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.hv5-te5-nm,
-.hv5-gm5-nm {
-  font: 600 13px/16px var(--sp-font);
-  color: var(--sp-text-1);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.hv5-te5-bar,
-.hv5-gm5-bar {
-  display: block;
-  height: 4px;
-  border-radius: 2px;
-  background: rgb(255 255 255 / 0.05);
-  overflow: hidden;
-}
-.hv5-te5-bar i,
-.hv5-gm5-bar i { display: block; height: 100%; border-radius: 2px; }
-.hv5-te5-bar i { background: var(--hv5-emotes); }
-.hv5-gm5-bar i { background: var(--hv5-chat); }
-.hv5-te5-sh,
-.hv5-gm5-v {
-  min-width: 44px;
-  text-align: right;
-  font: 500 13px/16px var(--sp-font);
+.hub-v5 .hv5-seg button {
+  position: relative;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 6px;
   color: var(--sp-text-2);
-  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  white-space: nowrap;
 }
-
-/* ---------- 5. Where chat is: name over a chat-share bar, share; a click filters Channels ---------- */
-.hub-v5 .hv5-gm5 {
+.hub-v5 .hv5-seg button::after { content: ""; position: absolute; left: 0; right: 0; top: -9px; bottom: -9px; }
+.hub-v5 .hv5-seg button:hover { color: var(--sp-text-1); }
+.hub-v5 .hv5-seg button[aria-pressed="true"] { color: var(--sp-text-1); background: var(--sp-raised); box-shadow: inset 0 0 0 1px var(--hv5-accent); }
+/* the same header rhythm in both blocks: title and (i), then the meta on its own line */
+.hv5-em-rh,
+.hv5-gm-rh { flex-wrap: wrap; row-gap: 0; }
+.hv5-em-rh .hv5-end { overflow: visible; }
+.hv5-gm-rh > h2 { display: flex; align-items: center; min-height: 33px; } /* as tall as the switch beside Top emotes */
+.hv5-em-meta,
+.hv5-gm-meta { order: 5; flex-basis: 100%; margin: -4px 0 6px; }
+.hv5-em-map {
+  position: relative;
+  flex: 1 0 auto;
+  min-height: var(--em-h, 340px);
+  border-radius: 6px;
+  overflow: hidden;
+  overflow: clip;
+  contain: layout paint;
+  user-select: none;
+  cursor: zoom-in;
+}
+/* Z1 (10-22): the tiles and frames sit in a view 12 px down, under the field labels on the frames' top line */
+.hv5-em-vp {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  overflow: clip;
+}
+.hv5-em-map[data-zoomed] { cursor: grab; }
+.hv5-em-map.hv5-em-pan,
+.hv5-em-map.hv5-em-pan * { cursor: grabbing; }
+.hub-v5 .hv5-emotes .hv5-em-fl {
+  position: absolute;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 5px;
+  background: var(--sp-canvas, #09090b);
+  color: var(--sp-text-2);
+  font: 600 12px/1 var(--sp-font);
+  white-space: nowrap;
+  transition: opacity 0.2s, color 0.15s, background-color 0.15s;
+}
+.hub-v5 .hv5-emotes .hv5-em-fl:hover { color: var(--sp-text-1); background: var(--sp-raised); }
+.hv5-em-fl i { width: 7px; height: 7px; border-radius: 50%; background: var(--fc); }
+.hv5-em-fl b { font-weight: 500; color: var(--sp-text-3); }
+.hub-v5 .hv5-emotes .hv5-em-map[data-zoomed] .hv5-em-fl { opacity: 0; pointer-events: none; }
+/* a narrow field: the share, or the whole label, stays measurable but off the line */
+.hv5-em-fl[data-fit="name"] > b { position: absolute; visibility: hidden; }
+.hub-v5 .hv5-emotes .hv5-em-fl[data-fit="none"] { visibility: hidden; pointer-events: none; }
+/* where the view is, once zoomed */
+.hv5-em-mini {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 4;
+  width: 96px;
+  border-radius: 5px;
+  background: rgb(11 11 13 / 0.86);
+  box-shadow: 0 0 0 1px var(--sp-line-strong);
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
+}
+.hv5-em-mini[data-on] { opacity: 1; }
+.hv5-em-mini > * { position: absolute; border-radius: 2px; }
+.hv5-em-mini i { background: rgb(252 252 254 / 0.1); }
+.hv5-em-mini b { box-shadow: 0 0 0 1.5px var(--hv5-accent); }
+/* −, +, Reset beside the zoom readout */
+.hv5-em-zoom { display: inline-flex; align-items: center; gap: 4px; }
+.hv5-em-zr { min-width: 34px; text-align: right; font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); font-variant-numeric: tabular-nums; }
+.hub-v5 .hv5-emotes .hv5-em-zb {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 7px;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px var(--sp-line-strong);
+  color: var(--sp-text-2);
+  font-weight: 600;
+}
+.hub-v5 .hv5-emotes .hv5-em-zb:hover:not(:disabled) { background: var(--sp-raised); color: var(--sp-text-1); }
+.hub-v5 .hv5-emotes .hv5-em-zb:disabled { opacity: 0.35; cursor: default; }
+.hv5-em-skel { background: var(--sp-panel); }
+/* the provider colours (validated for colour-blind separation on dark) */
+:is(.hv5-em-map, .hv5-em-lg) [data-field="twitch"] { --fc: #3987e5; }
+:is(.hv5-em-map, .hv5-em-lg) [data-field="seventv"] { --fc: #d95926; }
+:is(.hv5-em-map, .hv5-em-lg) [data-field="other"] { --fc: #199e70; }
+/* r6 D2 field frames: colour marks the group, not every tile. Each provider field sits in one 1.5 px frame
+   in its legend colour (1 px in from the field's edge; the model sets its tiles 4 px in), and the tiles are
+   the neutral dark of the Busiest cards: hover lifts the fill and adds their light ring, selected is a solid ring */
+.hv5-em-ff {
+  position: absolute;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--fc) 75%, transparent);
+  pointer-events: none;
+  transition:
+    left 0.5s cubic-bezier(0.2, 0.7, 0.2, 1),
+    top 0.5s cubic-bezier(0.2, 0.7, 0.2, 1),
+    width 0.5s cubic-bezier(0.2, 0.7, 0.2, 1),
+    height 0.5s cubic-bezier(0.2, 0.7, 0.2, 1);
+  animation: hv5-em-in 0.3s both;
+}
+/* K1 (10-22): with pace heat on, the fill carries the meaning and the frames go grey */
+.hv5-em-map[data-heat] .hv5-em-ff { box-shadow: inset 0 0 0 1px rgb(252 252 254 / 0.16); }
+.hub-v5 .hv5-emotes .hv5-em-t {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 8px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--bg, #17171a);
+  color: var(--sp-text-1);
+  font: 500 12px/16px var(--sp-font);
+  text-align: left;
+  min-width: 0;
+  transition:
+    left 0.5s cubic-bezier(0.2, 0.7, 0.2, 1),
+    top 0.5s cubic-bezier(0.2, 0.7, 0.2, 1),
+    width 0.5s cubic-bezier(0.2, 0.7, 0.2, 1),
+    height 0.5s cubic-bezier(0.2, 0.7, 0.2, 1),
+    background-color 0.18s,
+    box-shadow 0.18s;
+  animation: hv5-em-in 0.3s both;
+}
+.hub-v5 .hv5-emotes .hv5-em-t:hover { background-color: var(--bgh, #1e1e22); box-shadow: inset 0 0 0 1.5px rgb(237 237 239 / 0.35); }
+.hub-v5 .hv5-emotes .hv5-em-t[aria-pressed="true"] { background-color: var(--bgh, #222227); box-shadow: inset 0 0 0 2px var(--sp-text-1); z-index: 2; }
+.hub-v5 .hv5-emotes .hv5-em-t:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--sp-focus); z-index: 3; }
+.hub-v5 .hv5-emotes .hv5-em-t img {
+  display: block;
+  flex: none;
+  object-fit: contain;
+  transition: width 0.5s cubic-bezier(0.2, 0.7, 0.2, 1), height 0.5s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+/* wide, short tiles: the picture, then the name and share on one line */
+.hub-v5 .hv5-emotes .hv5-em-row { flex-direction: row; align-items: center; justify-content: flex-start; gap: 8px; }
+.hub-v5 .hv5-emotes :is(.hv5-em-s, .hv5-em-xs) { justify-content: center; align-items: center; padding: 2px; }
+.hv5-em-ft { width: 100%; min-width: 0; }
+.hv5-em-row .hv5-em-ft { display: flex; align-items: baseline; gap: 6px; width: auto; flex: 1 1 auto; }
+.hv5-em-nm { display: block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font: 600 13px/18px var(--sp-font); }
+.hv5-em-v { display: block; flex: none; color: var(--sp-text-3); }
+/* while zoomed or moving, tiles and frames follow the view at once (the layout's own glide is for re-tiling) */
+.hub-v5 .hv5-emotes .hv5-em-zm .hv5-em-t { transition: background-color 0.18s, box-shadow 0.18s; }
+.hub-v5 .hv5-emotes .hv5-em-zm .hv5-em-ff,
+.hub-v5 .hv5-emotes .hv5-em-zm .hv5-em-t img { transition: none; }
+@keyframes hv5-em-in { from { opacity: 0; } }
+/* the legend (each field's share) with Taller map */
+.hv5-em-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  min-height: 28px;
+  margin-top: 8px;
+  font: 500 12px/16px var(--sp-font);
+  color: var(--sp-text-2);
+}
+/* K1: cooling to taking off, through the plain tile */
+.hv5-em-heat { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.hv5-em-heat > b {
+  width: 120px;
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--hv5-cool) 48%, #17171a),
+    #17171a 42%,
+    #17171a 58%,
+    color-mix(in oklab, var(--hv5-rise) 48%, #17171a)
+  );
+  box-shadow: inset 0 0 0 1px rgb(252 252 254 / 0.08);
+}
+.hv5-em-heat > span { color: var(--sp-text-3); }
+/* each field's share; a click flies into it */
+.hv5-em-lg { display: flex; flex-wrap: wrap; gap: 4px 6px; }
+.hub-v5 .hv5-emotes .hv5-em-lg > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 5px;
+  color: var(--sp-text-2);
+  font: 500 12px/16px var(--sp-font);
+  white-space: nowrap;
+}
+.hub-v5 .hv5-emotes .hv5-em-lg > button:hover { color: var(--sp-text-1); background: var(--sp-raised); }
+.hv5-em-lg i { display: block; width: 8px; height: 8px; border-radius: 50%; background: var(--fc); }
+.hv5-em-lg b { font-weight: 500; color: var(--sp-text-3); }
+.hub-v5 .hv5-emotes .hv5-em-tall { margin-left: auto; height: 28px; padding: 0 8px; }
+/* the change chip: the last hour against the emote's own pace */
+.hv5-chg {
+  padding: 1px 6px;
+  border-radius: 4px;
+  font: 500 12px/16px var(--sp-font);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.hv5-chg[data-dir="up"] { color: #4cc38a; background: rgb(76 195 138 / 0.1); }
+.hv5-chg[data-dir="dn"] { color: #f0716a; background: rgb(240 113 106 / 0.1); }
+.hv5-chg[data-dir="fl"] { color: var(--sp-text-3); background: rgb(252 252 254 / 0.04); }
+/* the list under the map: the ten most used, or where chat spammed the selected emote */
+.hv5-el { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--sp-line); container-type: inline-size; }
+.hv5-el-h {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  min-height: 28px;
+  margin-bottom: 4px;
+  font: 500 12px/16px var(--sp-font);
+  color: var(--sp-text-3);
+}
+.hv5-el-h b { font: 600 14px/20px var(--sp-font); color: var(--sp-text-1); }
+.hv5-el-ti { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.hub-v5 .hv5-emotes .hv5-el-ti img { width: 24px; height: 24px; object-fit: contain; }
+.hub-v5 .hv5-emotes .hv5-el-clear { margin-left: auto; height: 26px; padding: 0 6px; border-radius: 4px; color: var(--sp-text-2); }
+.hub-v5 .hv5-emotes .hv5-el-clear:hover { color: var(--sp-text-1); background: var(--sp-raised); }
+.hv5-el-sub,
+.hv5-el-none { font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
+.hub-v5 .hv5-emotes .hv5-el-sub { margin-bottom: 4px; }
+.hub-v5 .hv5-emotes .hv5-el-none { padding: 10px 0; }
+.hub-v5 .hv5-emotes .hv5-el-cols {
+  list-style: none;
+  padding: 0;
   display: grid;
-  grid-template-columns: 21px minmax(0, 1fr) auto;
-  column-gap: 10px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-auto-flow: column;
+  grid-template-rows: repeat(5, auto);
+  column-gap: 22px;
+}
+.hv5-el-cols > li { min-width: 0; animation: hv5-el-rise 0.35s both; }
+.hub-v5 .hv5-emotes .hv5-el-r {
+  display: grid;
+  grid-template-columns: 16px 24px minmax(0, 1fr) auto auto;
+  gap: 8px;
   align-items: center;
   width: 100%;
-  height: 40px;
-  padding: 0 8px;
+  min-height: 36px;
+  padding: 6px 0;
   border-bottom: 1px solid var(--sp-line);
-  border-radius: 4px;
-  text-align: left;
   color: var(--sp-text-1);
+  font: 500 13px/18px var(--sp-font);
+  text-align: left;
 }
-.hub-v5 .hv5-gm5:hover { background: var(--sp-panel); }
-.hub-v5 .hv5-gm5[aria-pressed="true"] {
-  background: var(--sp-accent-bg);
-  box-shadow: inset 2px 0 0 var(--hv5-accent);
+.hub-v5 .hv5-emotes a.hv5-el-r,
+.hub-v5 .hv5-emotes a.hv5-el-r:hover { color: var(--sp-text-1); text-decoration: none; }
+.hub-v5 .hv5-emotes .hv5-el-r:hover .hv5-el-n { text-decoration: underline; text-underline-offset: 3px; }
+.hv5-el-i { font-size: 12px; color: var(--sp-text-3); font-variant-numeric: tabular-nums; }
+.hv5-el-im { display: grid; place-items: center; width: 24px; height: 24px; }
+.hub-v5 .hv5-emotes .hv5-el-im img { max-width: 24px; max-height: 24px; object-fit: contain; }
+.hv5-el-n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hv5-el-n small { margin-left: 6px; font-size: 12px; color: var(--sp-text-3); }
+.hv5-el-v { font-size: 12px; color: var(--sp-text-2); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.hv5-el-x { font-weight: 600; color: var(--hv5-accent); }
+.hv5-el-foot { display: flex; justify-content: flex-end; margin-top: 8px; font: 500 12px/16px var(--sp-font); }
+@keyframes hv5-el-rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+/* two columns only where a name still fits beside its numbers */
+@container (max-width: 559px) {
+  .hub-v5 .hv5-emotes .hv5-el-cols { grid-template-columns: minmax(0, 1fr); grid-auto-flow: row; grid-template-rows: none; }
 }
-.hub-v5 .hv5-gm5:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: -2px; }
-.hv5-gm5-art {
-  display: block;
-  width: 21px;
-  height: 28px;
-  border-radius: 2px;
-  background: var(--sp-raised);
+@media (prefers-reduced-motion: reduce) {
+  .hub-v5 .hv5-emotes .hv5-em-t,
+  .hub-v5 .hv5-emotes .hv5-em-t img,
+  .hv5-em-ff,
+  .hub-v5 .hv5-emotes .hv5-em-fl,
+  .hv5-em-mini,
+  .hv5-el-cols > li { transition: none; animation: none; }
+}
+
+/* the hover cards (emote map, rack): never take the pointer */
+.hv5-em-card {
+  position: fixed;
+  z-index: 70;
+  width: 288px;
+  padding: 12px 14px 10px;
+  border-radius: 8px;
+  background: var(--sp-popover);
+  border: 1px solid var(--sp-line-strong);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.45);
+  pointer-events: none;
+  color: var(--sp-text-2);
+  font: 500 12px/16px var(--sp-font);
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+}
+.hv5-ec-h { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.hv5-ec-im { display: grid; place-items: center; width: 40px; height: 40px; flex: none; }
+.hv5-layer .hv5-ec-im img { width: 40px; height: 40px; object-fit: contain; }
+.hv5-ec-tx { display: flex; flex-direction: column; min-width: 0; }
+.hv5-ec-tx b { font: 600 14px/18px var(--sp-font); color: var(--sp-text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hv5-layer .hv5-ec-dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; margin: 0; }
+.hv5-ec-dl dt { color: var(--sp-text-3); }
+.hv5-layer .hv5-ec-dl dd { margin: 0; color: var(--sp-text-1); font-variant-numeric: tabular-nums; }
+.hv5-ec-dl dd span { color: var(--sp-text-3); }
+.hv5-ec-dl dd .hv5-chg { margin: 0 2px; }
+.hv5-layer .hv5-ec-f { margin: 8px 0 0; padding-top: 8px; border-top: 1px solid var(--sp-line); color: var(--sp-text-3); }
+/* the game card: box art and the busiest chats */
+.hv5-layer.hv5-gp-card { width: 300px; }
+.hv5-gc-im { width: 30px; }
+.hv5-layer .hv5-gc-im img { width: 30px; height: 40px; border-radius: 3px; object-fit: cover; box-shadow: 0 4px 12px rgb(0 0 0 / 0.45); }
+.hv5-gc-im > span {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 40px;
+  border-radius: 3px;
+  font: 600 12px/1 var(--sp-font);
+  color: var(--sp-text-3);
+  box-shadow: inset 0 0 0 1px var(--sp-line-strong);
+}
+.hv5-layer .hv5-gc-top { display: flex; flex-direction: column; gap: 4px; }
+.hv5-gc-ch { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.hv5-gc-ch .hv5-av { flex: none; border-radius: 50%; }
+.hv5-gc-ch > span:nth-child(2) { flex: 1; min-width: 0; color: var(--sp-text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hv5-gc-ch > span:last-child { color: var(--sp-text-3); }
+
+/* ---------- 5. Where chat is as the ranked rack (R5-22; hub-rack.css) ---------- */
+/* the block fills its grid row like the map beside it, so the two footers sit on one line */
+.hub-v5 .hv5-games .hv5-gr-list { display: flex; flex-direction: column; flex: 1 0 auto; margin: 2px 0 0; padding: 0; list-style: none; }
+/* 10 rows that share the block's height (48 to 60 px each); the figure column is fixed, so every bar's track ends at the same x */
+.hv5-gr-list li { display: flex; flex: 1 1 48px; max-height: 60px; min-width: 0; }
+.hv5-gr-list li:nth-child(n + 11) { display: none; }
+.hub-v5 .hv5-games .hv5-gr {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 80px;
+  grid-template-rows: auto auto;
+  column-gap: 12px;
+  row-gap: 5px;
+  align-content: center;
+  align-items: center;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-top: 1px solid var(--sp-line);
+  border-radius: 4px;
+  background: none;
+  color: var(--sp-text-1);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.hub-v5 .hv5-games .hv5-gr-list li:first-child .hv5-gr { border-top-color: transparent; }
+.hv5-gr-art {
+  grid-row: 1 / span 2;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 40px;
+  border-radius: 4px;
   overflow: hidden;
+  background: var(--sp-raised);
+  box-shadow: inset 0 0 0 1px var(--sp-line-strong);
+}
+.hub-v5 .hv5-gr-art img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.hv5-gr-art span { font: 600 12px/1 var(--sp-font); color: var(--sp-text-3); }
+.hv5-gr-nm { min-width: 0; font: 600 13px/18px var(--sp-font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hv5-gr-v { font: 600 13px/18px var(--sp-font); text-align: right; font-variant-numeric: tabular-nums; }
+.hv5-gr-bar { height: 6px; border-radius: 3px; background: var(--sp-line); overflow: hidden; }
+.hv5-gr-bar i { display: block; height: 100%; border-radius: 3px; background: var(--hv5-chat); opacity: 0.85; }
+.hv5-gr-c { font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.hub-v5 .hv5-games .hv5-gr:hover { background: var(--sp-panel); }
+.hv5-gr:hover .hv5-gr-nm { text-decoration: underline; }
+.hub-v5 .hv5-games .hv5-gr:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: -2px; }
+.hub-v5 .hv5-games .hv5-gr[aria-pressed="true"] { background: var(--sp-raised); }
+.hv5-gr[aria-pressed="true"] .hv5-gr-bar i { background: var(--hv5-accent); opacity: 1; }
+.hub-v5 .hv5-games .hv5-gr-foot {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+  margin: auto 0 0;
+  padding-top: 8px;
+  font: 500 12px/16px var(--sp-font);
+  color: var(--sp-text-3);
+}
+.hv5-gr-skel { flex: 1 0 auto; min-height: 480px; margin-top: 2px; border-radius: 8px; background: var(--sp-panel); }
+/* one footer per row count; the block's width picks it */
+.hub-v5 .hv5-games .hv5-gr-f16 { display: none; }
+/* a wide block: 16 games in two columns of 8, ranked down then across */
+@container hv5grk (min-width: 620px) {
+  .hub-v5 .hv5-games .hv5-gr-list { display: grid; grid-auto-flow: column; grid-template-rows: repeat(8, minmax(48px, 1fr)); column-gap: 24px; }
+  .hv5-gr-list li,
+  .hv5-gr-list li:nth-child(n + 11) { display: flex; max-height: none; }
+  .hub-v5 .hv5-games .hv5-gr-list li:nth-child(9) .hv5-gr { border-top-color: transparent; }
+  .hub-v5 .hv5-games .hv5-gr-f10 { display: none; }
+  .hub-v5 .hv5-games .hv5-gr-f16 { display: flex; }
+}
+@media (max-width: 719px) {
+  .hv5-gr-list li { flex-basis: 52px; }
 }
 
 /* ---------- 6. Channels: one short table ---------- */
@@ -1122,4 +1771,182 @@
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 12px;
+}
+
+/* ---------- 3b. Top moments (F1, 10-25; board artifacts/feed-top20-board-20261025): the feed where the Moments list is on ---------- */
+.hv5-tm-ctl { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 2px 0 8px; }
+/* a radio group whose pill slides to the pick (placed before it may glide, so it does not sweep in on first paint) */
+.hv5-tm-seg { position: relative; isolation: isolate; display: inline-flex; flex: none; padding: 2px; border: 1px solid var(--sp-line); border-radius: 9px; background: rgb(255 255 255 / 0.045); }
+.hub-v5 .hv5-top .hv5-tm-seg button {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 7px;
+  font: 550 12.5px/1 var(--sp-font);
+  color: var(--sp-text-2);
+  white-space: nowrap;
+  transition: color 0.2s;
+}
+.hub-v5 .hv5-top .hv5-tm-sm button { padding: 0 9px; }
+.hv5-tm-seg small { font: 500 10.5px/1 var(--sp-font-mono, ui-monospace, monospace); color: var(--sp-text-3); transition: color 0.2s; }
+.hub-v5 .hv5-top .hv5-tm-seg button[aria-checked="true"] { color: var(--sp-text-1); }
+.hv5-tm-seg button[aria-checked="true"] small { color: var(--hv5-accent); }
+.hub-v5 .hv5-top .hv5-tm-seg button:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: -2px; }
+.hv5-tm-pill {
+  position: absolute;
+  z-index: 0;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  width: 0;
+  border-radius: 7px;
+  background: rgb(255 255 255 / 0.09);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.06), 0 1px 2px rgb(0 0 0 / 0.4);
+}
+.hv5-tm-pill[data-on] { transition: transform 0.32s cubic-bezier(0.2, 0.8, 0.2, 1), width 0.32s cubic-bezier(0.2, 0.8, 0.2, 1); }
+/* a game chip's count: the feed's moments in that game, every verdict */
+.hv5-tm-games small { flex: none; font: 500 10.5px/1 var(--sp-font-mono, ui-monospace, monospace); color: var(--sp-text-3); }
+.hv5-tm-games { mask-image: linear-gradient(90deg, #000 88%, transparent); }
+
+.hub-v5 .hv5-top .hv5-tm-body > .hv5-fd-list:first-child { margin-top: 4px; }
+.hub-v5 .hv5-top .hv5-tm-list { list-style: none; margin: 0; padding: 0; transition: opacity 0.2s; }
+.hub-v5 .hv5-top .hv5-tm-busy { opacity: 0.5; }
+.hv5-tm-it { border-bottom: 1px solid var(--sp-line); }
+.hub-v5 .hv5-top .hv5-tm-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 5px 6px 5px 0;
+  border-radius: 6px;
+  text-align: left;
+  font: 500 13px/1.25 var(--sp-font);
+  color: var(--sp-text-1);
+  transition: background 0.15s;
+}
+.hub-v5 .hv5-top .hv5-tm-row:hover { background: var(--sp-panel); }
+.hub-v5 .hv5-top .hv5-tm-on > .hv5-tm-row { background: rgb(255 255 255 / 0.05); }
+.hub-v5 .hv5-top .hv5-tm-row:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: -2px; }
+.hv5-tm-rk { flex: none; width: 20px; text-align: right; font: 600 12px/1 var(--sp-font-mono, ui-monospace, monospace); color: var(--sp-text-3); font-variant-numeric: tabular-nums; }
+.hv5-tm-rk.hv5-tm-top { color: var(--hv5-accent); }
+.hv5-tm-cv {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 32px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--sp-raised);
+  box-shadow: inset 0 0 0 1px var(--sp-line-strong);
+  font: 600 9px/1 var(--sp-font);
+  color: var(--sp-text-3);
+}
+.hub-v5 .hv5-tm-cv img { width: 100%; height: 100%; object-fit: cover; }
+.hv5-tm-cv.hv5-tm-face { width: 28px; height: 28px; border-radius: 50%; box-shadow: none; }
+/* the game sits on the right, before the time; the time's fixed width keeps the covers in one column */
+.hv5-tm-cv.hv5-tm-gm { width: 18px; height: 24px; border-radius: 2px; }
+.hv5-tm-tx { flex: 1; display: grid; gap: 1px; min-width: 0; }
+.hv5-tm-l1,
+.hv5-tm-l2 { display: flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; }
+.hv5-tm-l1 { height: 18px; }
+.hv5-tm-l2 { font-size: 12px; line-height: 15px; color: var(--sp-text-2); }
+.hv5-tm-l2 .hv5-fd-sep { margin: 0; }
+.hv5-tm-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 600; font-size: 13.5px; }
+.hv5-tm-l1 .hv5-f2-em { font-size: 13px; }
+.hub-v5 .hv5-tm-l1 .hv5-f2-em img { width: 18px; height: 18px; }
+.hv5-tm-t { flex: none; min-width: 28px; margin-left: auto; text-align: right; font-size: 12px; color: var(--sp-text-2); font-variant-numeric: tabular-nums; }
+.hv5-tm-wait li { height: 44px; border-bottom: 1px solid var(--sp-line); background: linear-gradient(90deg, var(--sp-raised), transparent 70%); opacity: 0.5; }
+
+/* the opened row: the clicked row stays put and the minutes around the moment open under it */
+.hv5-tm-det {
+  --c: var(--hv5-emotes);
+  margin: 0 0 8px 30px;
+  padding: 10px 12px 12px;
+  border-left: 2px solid var(--c);
+  border-radius: 0 0 10px 10px;
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.045), rgb(255 255 255 / 0.02));
+  animation: hv5-tm-drop 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.hv5-tm-det[data-s="chat"] { --c: var(--hv5-chat); }
+@keyframes hv5-tm-drop { from { opacity: 0; transform: translateY(-5px); } }
+.hv5-tm-dt { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; font: 500 12.5px/1.4 var(--sp-font); color: var(--sp-text-2); }
+.hv5-tm-dt b { font-size: 18px; font-weight: 650; letter-spacing: -0.01em; color: var(--sp-text-1); font-variant-numeric: tabular-nums; }
+.hv5-tm-ttl { font-weight: 600; color: var(--c); }
+.hv5-tm-why { flex-basis: 100%; color: var(--sp-text-2); }
+.hv5-tm-lv { font-size: 12px; font-weight: 600; color: var(--hv5-live); }
+.hv5-tm-ch { display: block; width: 100%; height: 64px; margin-top: 8px; overflow: visible; }
+.hv5-tm-span { fill: var(--c); opacity: 0.1; }
+.hv5-tm-bl { stroke: var(--sp-text-2); stroke-dasharray: 3 3; stroke-width: 1; opacity: 0.55; vector-effect: non-scaling-stroke; }
+.hv5-tm-ln { fill: none; stroke-width: 1.6; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.hv5-tm-ln[data-s="chat"] { stroke: var(--hv5-chat); }
+.hv5-tm-ln[data-s="emotes"] { stroke: var(--hv5-emotes); }
+.hv5-tm-ar { opacity: 0.16; }
+.hv5-tm-ar[data-s="chat"] { fill: var(--hv5-chat); }
+.hv5-tm-ar[data-s="emotes"] { fill: var(--hv5-emotes); }
+.hv5-tm-ax { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; font: 500 11px/1.3 var(--sp-font); color: var(--sp-text-3); font-variant-numeric: tabular-nums; }
+.hv5-tm-lg { display: inline-flex; align-items: center; gap: 4px; }
+.hv5-tm-lg i { display: inline-block; width: 10px; height: 2px; margin-left: 6px; border-radius: 1px; }
+.hv5-tm-lg i[data-s="chat"] { background: var(--hv5-chat); }
+.hv5-tm-lg i[data-s="emotes"] { background: var(--hv5-emotes); }
+.hv5-tm-lg i.hv5-tm-lgb { height: 0; border-top: 1px dashed var(--sp-text-2); background: none; }
+.hub-v5 .hv5-top .hv5-tm-em { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; padding: 0; list-style: none; }
+.hv5-tm-em li { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px 0 5px; border-radius: 8px; background: rgb(255 255 255 / 0.05); font: 600 12.5px/1 var(--sp-font); color: var(--sp-text-1); }
+.hub-v5 .hv5-tm-em img { width: 22px; height: 22px; object-fit: contain; }
+.hv5-tm-em small { font: 500 11px/1 var(--sp-font-mono, ui-monospace, monospace); color: var(--sp-text-2); }
+.hv5-tm-act { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.hub-v5 .hv5-top .hv5-tm-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--sp-line-strong);
+  border-radius: 8px;
+  font: 600 12.5px/1 var(--sp-font);
+  color: var(--sp-text-1);
+  text-decoration: none;
+}
+.hub-v5 .hv5-top .hv5-tm-btn:hover { background: rgb(255 255 255 / 0.05); text-decoration: none; }
+.hub-v5 .hv5-top .hv5-tm-pri { border-color: var(--hv5-accent); background: var(--hv5-accent); color: #04201b; }
+.hub-v5 .hv5-top .hv5-tm-pri:hover { background: var(--hv5-accent); filter: brightness(1.08); }
+.hub-v5 .hv5-top .hv5-tm-ghost { border-color: transparent; color: var(--sp-text-2); }
+
+/* a quiet window: the next one up, with its count */
+.hub-v5 .hv5-top .hv5-tm-q { margin: 12px 0 4px; padding: 10px 12px; border: 1px dashed var(--sp-line-strong); border-radius: 9px; background: rgb(255 255 255 / 0.03); font: 500 12.5px/1.4 var(--sp-font); color: var(--sp-text-2); }
+.hub-v5 .hv5-top .hv5-tm-lnk { font-weight: 600; color: var(--hv5-accent); }
+.hub-v5 .hv5-top .hv5-tm-lnk:hover { text-decoration: underline; text-underline-offset: 3px; }
+.hv5-tm-ft { display: flex; justify-content: flex-end; align-items: center; padding: 10px 0 0; font: 500 11.5px/1.3 var(--sp-font); color: var(--sp-text-3); }
+.hv5-tm-ft .hv5-fd-sep { margin: 0 6px; }
+.hv5-fd-new > .hv5-tm-row { animation: hv5-fd-flash 1.4s ease-out; }
+/* >= 1536 the rail is sticky: the list scrolls inside the window (scrollbar hidden), its last rows fading under the footer */
+@media (min-width: 1536px) {
+  .hv5-feed.hv5-top { display: flex; flex-direction: column; max-height: calc(100vh - 88px); }
+  .hv5-top .hv5-tm-wrap { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  .hv5-top .hv5-tm-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+    mask-image: linear-gradient(180deg, #000 calc(100% - 28px), transparent);
+  }
+  .hv5-top .hv5-tm-body::-webkit-scrollbar { display: none; }
+}
+@media (max-width: 719px) {
+  .hv5-tm-ctl { flex-wrap: wrap; }
+  .hub-v5 .hv5-top .hv5-tm-row { min-height: 52px; }
+  .hv5-tm-det { margin-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hv5-tm-pill[data-on],
+  .hub-v5 .hv5-top .hv5-tm-seg button,
+  .hub-v5 .hv5-top .hv5-tm-list { transition: none; }
+  .hv5-tm-det,
+  .hv5-fd-new > .hv5-tm-row { animation: none !important; }
 }

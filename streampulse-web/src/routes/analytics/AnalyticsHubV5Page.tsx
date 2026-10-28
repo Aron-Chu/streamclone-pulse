@@ -1,22 +1,22 @@
 /**
- * /analytics as the d3-v5 hub (PR 2 of 5: the U4 page layout and U5 lists).
- * Routed only when the build sets VITE_PUBLIC_HUB_V5. Ported from the
- * approved round-5 mockup (d3-v5 hub.html): the search hero, Busiest now, the
- * activity chart, Moments, Top emotes, Where chat is, Channels and one "How
- * this is measured" disclosure on the d3 grid (one column on phones, Moments
- * beside the page from 1100 px).
+ * /analytics as the d3-v5 hub. Ported from the approved mockup (d3-v5
+ * hub.html): the
+ * search hero with the emote conveyor behind it (R5-15 at Soft), Busiest now,
+ * the activity chart, the live feed (v3, a "Live now" peek under the hero on
+ * phones), Top emotes as the emote map (R5-13), Where chat is as the ranked
+ * rack (R5-22), Channels and one "How this is measured" disclosure on the d3
+ * grid (one column on phones, the feed beside the page from 1536 px).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { optionsForBoundedActivityFallback } from '../../lib/activityRangeCapabilities'
 import { usePublicHubData } from '../../hooks/usePublicHubData'
 import { getBackendUrl } from '../../lib/apiClient'
-import { backendSourceLabel, resolveBackendSource } from '../../lib/backendSource'
 import { formatActivityWindowLabel, summarizeActivity } from '../../lib/hubActivitySummary'
 import { selectHubChartActivityInputs } from '../../lib/hubChartActivityModel'
 import { isHubActivityLivePoolFallback, resolveHubActivityChartWindowMinutes } from '../../lib/hubActivityHonesty'
 import { normalizePublicHub, type PublicHubActivityWindow } from '../../lib/publicHub'
-import { resolveHubStatus, resolveHubUiState } from '../../lib/hubUiState'
+import { resolveHubUiState } from '../../lib/hubUiState'
 import type { HubActivityRangeOption } from '../../ui/components/hub/HubActivityChart'
 import { AnalyticsFigmaShell } from '../../ui/components/analytics/AnalyticsFigmaShell'
 import { HubActivityPanelV5 } from '../../ui/components/analytics/HubActivityPanelV5'
@@ -26,11 +26,12 @@ import { hubBucketMinutes, pointSpacingMinutes } from '../../ui/components/hub/h
 import { HubV5BarCard } from '../../ui/components/hub/v5/HubV5BarCard'
 import { HubV5Busiest } from '../../ui/components/hub/v5/HubV5Busiest'
 import { HubV5Channels } from '../../ui/components/hub/v5/HubV5Channels'
+import { HubV5EmoteMap } from '../../ui/components/hub/v5/HubV5EmoteMap'
 import { HubV5Hero } from '../../ui/components/hub/v5/HubV5Hero'
 import { HubV5Icon } from '../../ui/components/hub/v5/HubV5Icon'
-import { HubV5TopEmotes, HubV5WhereChatIs } from '../../ui/components/hub/v5/HubV5Lists'
-import { HubV5Moments } from '../../ui/components/hub/v5/HubV5Moments'
-import { whereChatIs } from '../../ui/components/hub/v5/hubV5Model'
+import { HubV5LiveFeed, HubV5LivePeek, useHubLiveFeed } from '../../ui/components/hub/v5/HubV5LiveFeed'
+import { HubV5Rack } from '../../ui/components/hub/v5/HubV5Rack'
+import { HUB_RACK_ROWS, hubCategoryArt, hubClock, whereChatIs, type HubChannelSort } from '../../ui/components/hub/v5/hubV5Model'
 import { useHashScrollHold } from '../../ui/RouteScrollManager'
 import '../../ui/components/analytics/figma-analytics.css'
 import '../../ui/components/hub/d3/hub-d3-tokens.css'
@@ -97,7 +98,12 @@ export default function AnalyticsHubV5Page() {
     : '24h'
   const nowMs = useFreshnessClock()
   const hub = usePublicHubData({ enabled: true, activityWindow })
-  const data = hub.data ?? EMPTY_PUBLIC_HUB
+  // With no measured reply (still loading, an outage, or the stats-only fallback) the activity card names the range picked, not the empty payload's 30 min.
+  const data = useMemo(() => {
+    const base = hub.data ?? EMPTY_PUBLIC_HUB
+    if (hub.data && hub.loadSource !== 'stats-fallback') return base
+    return { ...base, activity: { ...base.activity, windowMinutes: ACTIVITY_WINDOW_MINUTES[activityWindow] ?? base.activity.windowMinutes } }
+  }, [hub.data, hub.loadSource, activityWindow])
   // The requested range drives the range tab; the served range owns the bucket geometry.
   const servedActivityWindowMinutes = resolveHubActivityChartWindowMinutes(data.activity)
 
@@ -146,6 +152,8 @@ export default function AnalyticsHubV5Page() {
   }, [data])
 
   const games = useMemo(() => whereChatIs(data.liveChannels), [data.liveChannels])
+  const gameArt = useMemo(() => hubCategoryArt(data.livePulseMoments), [data.livePulseMoments])
+  const feed = useHubLiveFeed(hub.data ?? null)
   const avatars = useMemo(() => {
     const map = new Map<string, string>()
     for (const c of data.liveChannels) if (c.profileImageUrl) map.set(c.login, c.profileImageUrl)
@@ -154,9 +162,9 @@ export default function AnalyticsHubV5Page() {
 
   const [game, setGameState] = useState<string | null>(null)
   const channelsRef = useRef<HTMLElement>(null)
-  // A game that left the top 10 (a new poll) drops its filter.
+  // A game that left the rack (a new poll) drops its filter.
   useEffect(() => {
-    if (game && !games.top.some((g) => g.name === game)) setGameState(null)
+    if (game && !games.all.slice(0, HUB_RACK_ROWS).some((g) => g.name === game)) setGameState(null)
   }, [game, games])
   const setGame = useCallback((next: string | null) => {
     setGameState(next)
@@ -170,6 +178,14 @@ export default function AnalyticsHubV5Page() {
     }
   }, [])
 
+  // The feed's "+N more in Channels": Channels sorted by chat vs own avg, brought into view.
+  const [sortRequest, setSortRequest] = useState<{ id: number; sort: HubChannelSort; dir: 1 | -1 } | null>(null)
+  const showUpInChannels = useCallback(() => {
+    setGameState(null)
+    setSortRequest({ id: Date.now(), sort: 'vs', dir: -1 })
+    channelsRef.current?.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' })
+  }, [])
+
   const [measuredBody, setMeasuredBody] = useState<HTMLDivElement | null>(null)
   const measuredRef = useRef<HTMLDetailsElement>(null)
   // The chart's (i): open "How this is measured" and bring it into view.
@@ -181,25 +197,14 @@ export default function AnalyticsHubV5Page() {
     details.querySelector<HTMLElement>('summary')?.focus({ preventScroll: true })
   }, [])
 
-  const backendSource = resolveBackendSource(getBackendUrl())
-  const isHostedBackend = backendSource === 'hosted'
-  const measurementStatus = resolveHubStatus(hub)
-
   return (
-    <AnalyticsFigmaShell
-      backendStatus={
-        isHostedBackend
-          ? { label: 'Status', value: measurementStatus.value, tone: measurementStatus.tone }
-          : { label: 'API', value: backendSourceLabel(backendSource), tone: measurementStatus.tone }
-      }
-      sidebarStatusLabel={isHostedBackend ? measurementStatus.value : backendSourceLabel(backendSource)}
-      hideSidebar
-    >
+    <AnalyticsFigmaShell hideSidebar>
       <main className="figma-analytics__main" aria-label="StreamPulse analytics" data-hub-state={hubUiState}>
         <div id="analytics-main" tabIndex={-1} className="analytics-focus-target">Analytics content</div>
-        {hub.loadSource === 'cache' && hub.refreshing ? (
+        {/* A saved copy can be hours old: it names its time for as long as it is on screen, never reading as live. */}
+        {hub.loadSource === 'cache' && hub.cachedAt != null ? (
           <div className="figma-hub-fallback-banner figma-hub-fallback-banner--info" role="status">
-            Cached snapshot - refreshing...
+            Cached snapshot from {hubClock(hub.cachedAt)}{hub.refreshing ? ' - refreshing...' : ''}
           </div>
         ) : null}
         <HubDataHealthBanner
@@ -217,9 +222,11 @@ export default function AnalyticsHubV5Page() {
         <HubBackendSourceBanner />
 
         <div className="hub-v5 hub-d3" data-hub-v5-page="">
-          <HubV5Hero live={data.liveChannels} poolSize={data.poolSize} />
+          <HubV5Hero live={data.liveChannels} poolSize={data.poolSize} points={data.activity.points} />
 
-          <HubV5Busiest live={data.liveChannels} nowMs={nowMs} loading={loadingInitial} />
+          <HubV5LivePeek feed={feed} nowMs={nowMs} />
+
+          <HubV5Busiest live={data.liveChannels} nowMs={nowMs} loading={loadingInitial} unavailable={measurementsUnavailable} />
 
           <div id="activity" className="hv5-sec hv5-activity">
             {hub.error && measurementAvailable && ACTIVITY_WINDOW_MINUTES[activityWindow] !== (data.activity.requestedWindowMinutes ?? data.activity.windowMinutes) ? (
@@ -234,6 +241,7 @@ export default function AnalyticsHubV5Page() {
               suggestions={[]}
               topEmotes={data.topEmotes}
               loading={loadingInitial || hub.activityRefreshing}
+              awaitingData={loadingInitial}
               activityRefreshing={hub.activityRefreshing}
               updatedAgo={formatUpdatedAgo(hub.lastUpdated, nowMs)}
               rangeControl={{
@@ -262,22 +270,29 @@ export default function AnalyticsHubV5Page() {
             />
           )}
 
-          <HubV5Moments moments={data.livePulseMoments} avatars={avatars} loading={loadingInitial} />
+          <HubV5LiveFeed feed={feed} nowMs={nowMs} loading={loadingInitial} onUpMore={showUpInChannels} />
 
-          <HubV5TopEmotes
-            topEmotes={data.topEmotes}
-            windowMinutes={data.emoteIntel.windowMinutes}
-            uniqueEmotes={data.emoteIntel.uniqueEmotes || undefined}
+          <HubV5EmoteMap
+            points={data.activity.points}
+            bucketMinutes={data.activity.bucketMinutes ?? chartActivity.bucketMinutes}
+            loading={loadingInitial}
+            unavailable={measurementsUnavailable}
+            moments={data.livePulseMoments}
+            avatars={avatars}
+            nowMs={nowMs}
           />
 
-          <HubV5WhereChatIs games={games} game={game} onGame={setGame} />
+          <HubV5Rack games={games} game={game} onGame={setGame} art={gameArt} avatars={avatars} loading={loadingInitial} unavailable={measurementsUnavailable} />
 
           <HubV5Channels
             ref={channelsRef}
             live={data.liveChannels}
             poolSize={data.poolSize}
+            unavailable={measurementsUnavailable}
+            loading={loadingInitial}
             game={game}
             onClearGame={() => setGameState(null)}
+            sortRequest={sortRequest}
           />
 
           <details id="measured" className="hv5-sec hv5-dis" ref={measuredRef}>

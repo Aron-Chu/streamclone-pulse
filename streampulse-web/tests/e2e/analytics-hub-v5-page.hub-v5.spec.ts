@@ -1,20 +1,21 @@
 import { expect, test, type Page } from '@playwright/test'
-import { installHubUxMock } from './helpers/hubUxMock'
-
-// The d3-v5 hub page (behind the build flag). Runs only against a build made with VITE_PUBLIC_HUB_V5=on;
-// a default build serves the Command Center, which the spec without .hub-v5 covers.
-test.skip(!/^(on|1)$/.test(process.env.VITE_PUBLIC_HUB_V5 ?? ''), 'needs a build with VITE_PUBLIC_HUB_V5=on')
+import { installHubUxMock, type HubUxMockOptions } from './helpers/hubUxMock'
 
 // The page around the chart (d3-v5 mockup, round 5): the search hero, Busiest
-// now, Moments beside or under the chart, Top emotes, Where chat is, Channels
-// and How this is measured. The shared mock has no screener windows, so this
-// spec serves the same reply with one per channel: three games, one channel
-// with viewers only and one whose average is too short to compare.
+// now, the Live feed beside or under the chart, Top emotes, Where chat is,
+// Channels and How this is measured. The shared mock has no screener windows,
+// so this spec serves the same reply with one per channel: three games, one
+// channel with viewers only and one whose average is too short to compare.
 
 const GAMES = ['Just Chatting', 'Just Chatting', 'Just Chatting', 'Minecraft', 'Just Chatting', 'Minecraft', 'Valorant', 'Just Chatting', 'Minecraft', 'Valorant', 'Just Chatting', 'Minecraft', 'Valorant', 'Just Chatting']
 
-async function openV5Hub(page: Page) {
-  await installHubUxMock(page)
+// The Live feed lists a moment from 20 minutes into its stream that rose 1.5x or more over
+// that stream's own average. The mock's moments are 2 and 4 minutes in with no comparison,
+// so a spec that needs a moment row serves the first one an hour in, compared.
+const FEED_MOMENT: HubUxMockOptions = { withComparisons: true, momentOffsets: [3600, 3600] }
+
+async function openV5Hub(page: Page, options: HubUxMockOptions = {}) {
+  await installHubUxMock(page, options)
   const first = page.waitForResponse(response => /\/v1\/public\/hub\?/.test(response.url()))
   await page.goto('/analytics')
   const payload = await (await first).json()
@@ -142,8 +143,8 @@ test('Where chat is filters Channels to one game and the chip clears it', async 
   await page.setViewportSize({ width: 1440, height: 900 })
   await openV5Hub(page)
   const games = page.locator('#games')
-  await expect(games.locator('.hv5-gm5')).toHaveCount(3)
-  await expect(games.locator('.hv5-gm5').first()).toHaveAttribute('data-game', 'Just Chatting')
+  await expect(games.locator('.hv5-gr')).toHaveCount(3)
+  await expect(games.locator('.hv5-gr').first()).toHaveAttribute('data-game', 'Just Chatting')
   const minecraft = games.locator('[data-game="Minecraft"]')
   await minecraft.click()
   await expect(minecraft).toHaveAttribute('aria-pressed', 'true')
@@ -188,11 +189,12 @@ test('Channels sorts, filters, shows more and marks what is not measured', async
   await expect(channels.getByText('No channels match.')).toBeVisible()
 })
 
-test('a Moments row shows its card after a rest and hides it on leave and Escape', async ({ page }) => {
+test('a Live feed moment row shows its card after a rest and hides it on leave and Escape', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
-  await openV5Hub(page)
+  await openV5Hub(page, FEED_MOMENT)
   const latest = page.locator('#latest')
-  const row = latest.locator('.hv5-mo').first()
+  await expect(latest.getByRole('heading', { name: 'Live feed' })).toBeVisible()
+  const row = latest.locator('[data-mom-key]').first()
   await row.scrollIntoViewIfNeeded()
   const card = page.locator('[data-hv5-moment-card]')
   await row.hover()
@@ -210,7 +212,7 @@ test('a Moments row shows its card after a rest and hides it on leave and Escape
   await page.keyboard.press('Escape')
   await expect(card).toHaveCount(0)
   await row.click()
-  await expect(page).toHaveURL(/\/analytics\/moments\?login=xqc&stream=s1&offset=120$/)
+  await expect(page).toHaveURL(/\/analytics\/moments\?login=xqc&stream=s1&offset=3600$/)
 })
 
 test('the chart (i) opens How this is measured with the served-window facts', async ({ page }) => {

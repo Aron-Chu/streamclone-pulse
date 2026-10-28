@@ -1,26 +1,27 @@
 {
   "schemaVersion": 1,
-  "currentVersion": "0.2.5",
+  "currentVersion": "0.2.6",
   "releases": [
     {
-      "version": "0.2.5",
+      "version": "0.2.6",
       "status": "released",
-      "releasedAt": "2026-10-26",
+      "releasedAt": "2026-10-27",
       "title": "Whole-stream charts and moment pictures",
-      "summary": "Charts cover the whole stream, Top Moments shows pictures, and Catch me up recaps past streams. The 7TV header backdrop is a Supporter perk, and accounts and Supporter sign-ups aren't open yet.",
+      "summary": "Charts cover the whole stream, Top Moments shows pictures, even of moments you missed, and Stream Recap sums up a past stream. The 7TV header backdrop is a Supporter perk; accounts aren't open and Supporter isn't on sale yet.",
       "preview": [
         "Charts cover the whole stream.",
-        "Top Moments shows a picture of what happened.",
-        "The 7TV header backdrop is a Supporter perk; sign-ups are not open yet."
+        "Top Moments shows a picture of what happened, even on past streams.",
+        "The 7TV header backdrop is a Supporter perk; Supporter is not on sale yet."
       ],
       "new": [
-        "Moment pictures: Top Moments shows what was on screen. Pictures stay in the tab and are never uploaded.",
-        "Catch me up: a short recap of a past stream's best moments.",
+        "Moment pictures: Top Moments shows what was on screen, even for moments you missed, using the stream's Twitch VOD. Pictures are never uploaded.",
+        "Stream Recap: a past stream's summary, its chart, and its Top moments like on live.",
         "Bookmarks work without an account and stay in this browser.",
+        "Moment cards have a Bookmark button, and a saved moment keeps its picture in this browser.",
         "Each moment shows how far it beat the stream's usual, like 4.2× usual.",
         "A new toolbar popup with live channels and your recent moments.",
         "Join the Discord and Send feedback from quick settings and settings.",
-        "A Supporter preview in quick settings and settings shows what Supporter will add: title paint, a tenure crest, emote rain and a Supporter card, seen only by you. Supporter sign-ups are not open yet."
+        "A Supporter preview in quick settings and settings shows what Supporter will add: title paint, a tenure crest, emote rain and a Supporter card, seen only by you. Supporter isn't on sale yet."
       ],
       "changed": [
         "The Default chart range setting is gone. Pick a range on the chart instead.",
@@ -42,10 +43,10 @@
         "Pulse no longer hides chat, and stays off clip pages."
       ],
       "knownIssues": [
-        "Accounts and Supporter sign-ups are not open yet. Accounts are coming with Continue with Twitch.",
+        "Accounts aren't open yet and Supporter isn't on sale yet. Accounts are coming with Continue with Twitch.",
         "Bookmarks, notes and watched history stay in the browser where you saved them.",
         "Refresh open Twitch tabs after updating.",
-        "Moment pictures only cover time this tab was playing, and turning them on needs a tab reload.",
+        "Moments a tab didn't play get a picture only when Twitch has a VOD of the stream.",
         "Twitch's chat menus open behind the Pulse panel. Switch to the Chat tab to use them."
       ],
       "links": {

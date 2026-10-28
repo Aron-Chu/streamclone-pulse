@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { PRIVACY_PATH, REFUNDS_PATH, STRIPE_CUSTOMER_PORTAL_LOGIN_URL, SUPPORTER_TERMS_PATH } from '../../lib/externalLinks'
-import { CHROME_WEB_STORE_LISTING_URL } from '../../lib/publicSiteConfig'
+import { chromeWebStoreUrlForPage } from '../../lib/publicSiteConfig'
 import { SupporterPerkItems, supporterOnlyYou } from '../../ui/components/SupporterPerks'
 import { SupporterNoTwitchChatBadge, SupporterSeenInChat } from '../../ui/components/SupporterChatBadgeCopy'
 import { supporterChatBadgesEnabled } from '../../lib/supporterChatBadgesFlag'
@@ -112,7 +112,7 @@ export default function Supporter() {
             <strong>Account &amp; Supporter</strong> page and pay on Stripe.
           </p>
           <p className="mb-0 flex flex-wrap gap-3">
-            <a className="btn btn-primary" href={CHROME_WEB_STORE_LISTING_URL} target="_blank" rel="noopener noreferrer">Get the extension</a>
+            <a className="btn btn-primary" href={chromeWebStoreUrlForPage('supporter')} target="_blank" rel="noopener noreferrer">Get the extension</a>
           </p>
           <p className="mb-0">
             No Twitch sign-in or separate StreamPulse sign-up is needed. Stripe asks for a billing
@@ -130,12 +130,15 @@ export default function Supporter() {
         </p>
         <p data-testid="supporter-reinstall">
           Your Supporter connection stays in this browser. Reinstalled or using another browser?
-          Contact billing support to restore a membership.
+          If your extension offers Restore existing Supporter, choose it and confirm the link sent to
+          your current Stripe billing email. If you changed it recently, you may need to wait before
+          trying again. Contact billing support if you need help, cannot access that
+          email or your version does not offer restore.
         </p>
         <p data-testid="supporter-billing-help">
           You can still cancel or update billing in{' '}
           <a href={STRIPE_CUSTOMER_PORTAL_LOGIN_URL} target="_blank" rel="noopener noreferrer">Stripe&rsquo;s customer portal</a>{' '}
-          with the email you paid with. Billing changes do not restore extension access;{' '}
+          with your current billing email. Billing changes do not restore extension access;{' '}
           <a href="mailto:privacy@streampulse.stream">contact us</a> and we&rsquo;ll help.
         </p>
 

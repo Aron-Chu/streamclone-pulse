@@ -122,6 +122,21 @@ describe('popup channel summary', () => {
     }
   })
 
+  it('skips a hello spike in the first five minutes unless nothing else ranked', () => {
+    const hello = { offsetSeconds: 60, score: 99, reasons: [], dominantSignal: 'seventv', reasonLabel: 'Emote spike' }
+    const real = { offsetSeconds: 60 * 60, score: 40, reasons: [], dominantSignal: 'chat', reasonLabel: 'Chat spike' }
+    expect(summarizeChannel('fixturechan', livePayload({ peaks: [hello, real] }), null, NOW).biggest?.offsetSeconds).toBe(60 * 60)
+    expect(summarizeChannel('fixturechan', livePayload({ peaks: [hello] }), null, NOW).biggest?.offsetSeconds).toBe(60)
+  })
+
+  it('skips a goodbye spike in the last ten minutes of a finished stream', () => {
+    const rollups = Array.from({ length: 96 }, (_, minute) => rollup(minute, 20))
+    const goodbye = { offsetSeconds: 94 * 60, score: 99, reasons: [], dominantSignal: 'seventv', reasonLabel: 'Emote spike' }
+    const real = { offsetSeconds: 50 * 60, score: 40, reasons: [], dominantSignal: 'chat', reasonLabel: 'Chat spike' }
+    const ended = livePayload({ isLive: false, endedAt: '2026-10-01T20:00:00.000Z', rollups: [], fullRollups: rollups, peaks: [goodbye, real] })
+    expect(summarizeChannel('fixturechan', ended, null, NOW).biggest?.offsetSeconds).toBe(50 * 60)
+  })
+
   it('summarises a finished stream across its whole length', () => {
     const rollups = Array.from({ length: 96 }, (_, minute) => rollup(minute, minute % 2 ? 10 : 30))
     const summary = summarizeChannel('fixturechan', livePayload({

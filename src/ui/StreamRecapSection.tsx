@@ -1,7 +1,10 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode, RefObject } from 'react'
 import {
+  compareStreamEdgeLast,
+  extensionPayloadStreamEdges,
   peaksToLiveHeatPoints,
+  withStreamEdges,
   type LiveHeatPoint,
 } from '@streampulse/pulse-core'
 import type {
@@ -370,8 +373,8 @@ function RecapReadyContent({
   onRequestFullRollups?: () => Promise<FullHistoryRequestResult>
 }) {
   const mergedMoments = useMemo(
-    () => mergeRecapMoments(recap, payload.peaks, RECAP_MOMENTS_MAX_COUNT, pickRecapRollups(payload)),
-    [recap, payload.peaks],
+    () => mergeRecapMoments(recap, payload.peaks, RECAP_MOMENTS_MAX_COUNT, pickRecapRollups(payload), !payload.isLive),
+    [recap, payload.peaks, payload.isLive],
   )
   const [hoveredOffset, setHoveredOffset] = useState<number | null>(null)
   const [hoveredGameKey, setHoveredGameKey] = useState<string | null>(null)
@@ -578,7 +581,9 @@ function OfflineFallbackContent({
   const peakChat = peaks?.peakChatPerMin ?? 0
   const catalog = buildRecapEmoteCatalog(payload)
   const peakPoints = peaksToLiveHeatPoints(
-    [...(payload.peaks ?? [])].sort((a, b) => b.score - a.score).slice(0, RECAP_MOMENTS_MAX_COUNT) as ExtensionPeak[],
+    withStreamEdges(payload.peaks ?? [], extensionPayloadStreamEdges(payload))
+      .sort((a, b) => compareStreamEdgeLast(a, b) || b.score - a.score)
+      .slice(0, RECAP_MOMENTS_MAX_COUNT) as ExtensionPeak[],
     payload.startedAt,
     catalog,
   )
@@ -616,8 +621,8 @@ function OfflineFallbackContent({
     pick(null)
   }
   const chartPeakOffsets = useMemo(
-    () => resolveRecapChartPeakOffsets(undefined, payload.peaks),
-    [payload.peaks],
+    () => resolveRecapChartPeakOffsets(undefined, payload.peaks, undefined, extensionPayloadStreamEdges(payload)),
+    [payload.peaks, payload.isLive, payload.rollups, payload.fullRollups],
   )
   const recapDurationSeconds = recapStreamDurationSeconds(payload)
   // Reject stale cross-stream timelines before they reach the strip/chart.

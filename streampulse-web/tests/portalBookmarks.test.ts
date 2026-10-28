@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, describe, expect, it } from 'vitest'
-import { setupStreamcloneAnalyticsApi, portalBookmarksSupported } from '../src/lib/streamcloneAnalytics'
+import { setupStreamcloneAnalyticsApi } from '../src/lib/streamcloneAnalytics'
 import { getConfiguredAnalyticsApi } from '@streampulse/analytics-console'
 
 describe('portal bookmarks (public console)', () => {
@@ -10,10 +10,6 @@ describe('portal bookmarks (public console)', () => {
 
   afterEach(() => {
     localStorage.clear()
-  })
-
-  it('reports bookmarks unsupported without beta key', () => {
-    expect(portalBookmarksSupported()).toBe(false)
   })
 
   it('getPulseBookmarks returns explicit unsupported state on public console', async () => {

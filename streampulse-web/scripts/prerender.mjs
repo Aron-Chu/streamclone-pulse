@@ -1,6 +1,6 @@
 /**
  * Post-build prerender: emit static HTML shells for public routes (WEB-002).
- * Dashboard/admin remain SPA-only chunks.
+ * /admin stays SPA-only.
  */
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -13,9 +13,33 @@ const indexPath = join(dist, 'index.html')
 const indexHtml = readFileSync(indexPath, 'utf8')
 const origin = 'https://streampulse.stream'
 const analyticsCriticalStyles = readdirSync(join(dist, 'assets'))
-  .filter(name => /^(AnalyticsLandingPage|figma-analytics)-.+\.css$/.test(name))
+  .filter(name => /^figma-analytics-.+\.css$/.test(name))
   .map(name => `<link rel="stylesheet" href="/assets/${name}">`)
   .join('\n    ')
+// Public pages load on demand (src/routes/index.tsx). Each prerendered page
+// preloads its own chunks, so they download beside the entry, not after it.
+const manifest = JSON.parse(readFileSync(join(dist, '.vite', 'manifest.json'), 'utf8'))
+const publicPageSources = {
+  docs: 'Docs', status: 'Status', privacy: 'Privacy', terms: 'Terms', refunds: 'Refunds',
+  supporter: 'Supporter', 'supporter/thanks': 'SupporterThanks', support: 'Support',
+  feedback: 'Feedback', discord: 'Discord', changelog: 'Changelog',
+}
+function chunkFiles(key, files = new Set()) {
+  const chunk = manifest[key]
+  if (!chunk || files.has(chunk.file)) return files
+  files.add(chunk.file)
+  for (const imported of chunk.imports ?? []) chunkFiles(imported, files)
+  return files
+}
+const entryChunks = chunkFiles('index.html')
+function pagePreloads(path) {
+  const page = publicPageSources[path]
+  if (!page) return ''
+  return [...chunkFiles(`src/routes/public/${page}.tsx`)]
+    .filter(file => !entryChunks.has(file))
+    .map(file => `<link rel="modulepreload" crossorigin href="/${file}">`)
+    .join('\n    ')
+}
 // Reuse the Vite source aliases/shims; no second page copy and no browser/network fetch.
 const loaded = await loadConfigFromFile({ command: 'serve', mode: 'production' }, undefined, root)
 if (!loaded) throw new Error('Missing Vite configuration for public prerender')
@@ -57,8 +81,8 @@ const routes = [
   },
   {
     path: '',
-    title: 'StreamPulse — Twitch reaction analytics',
-    description: 'StreamPulse finds Twitch moments through coverage-honest chat, emote, viewer, and VOD analytics.',
+    title: 'StreamPulse: Twitch Chat Stats & Top Moments',
+    description: 'Free Twitch chat and emote stats beside chat, Top Moments with pictures, and Stream Recap for past streams.',
     canonicalPath: '/',
     robots: 'index,follow',
   },
@@ -194,6 +218,8 @@ function renderShell(metadata) {
   if (metadata.path === 'analytics' && analyticsCriticalStyles) {
     html = html.replace('</head>', `    ${analyticsCriticalStyles}\n  </head>`)
   }
+  const preloads = pagePreloads(metadata.path)
+  if (preloads) html = html.replace('</head>', `    ${preloads}\n  </head>`)
   html = upsertMeta(html, 'name', 'description', metadata.description)
   html = upsertMeta(html, 'name', 'robots', metadata.robots)
   html = upsertMeta(html, 'property', 'og:title', metadata.title)
@@ -215,6 +241,22 @@ function renderShell(metadata) {
   html = /<link\s+rel="canonical"[^>]*>/i.test(html)
     ? html.replace(/<link\s+rel="canonical"[^>]*>/i, canonicalTag)
     : html.replace('</head>', `    ${canonicalTag}\n  </head>`)
+  if (metadata.path === '') {
+    const software = {
+      '@context': 'https://schema.org',
+      '@type': 'SoftwareApplication',
+      name: 'StreamPulse: Twitch Chat Stats & Top Moments',
+      applicationCategory: 'BrowserApplication',
+      operatingSystem: 'Chrome',
+      offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+      url: origin,
+      downloadUrl: 'https://chromewebstore.google.com/detail/streampulse/nifgoonpcgmdhiffcpmhndjgkgahnelg',
+      softwareVersion: '0.2.6',
+      description: metadata.description,
+    }
+    const jsonLd = `<script type="application/ld+json">${JSON.stringify(software)}</script>`
+    html = html.replace('</head>', `    ${jsonLd}\n  </head>`)
+  }
   const path = metadata.path == null ? '/404' : `/${metadata.path}`
   const markup = `<div id="root" data-prerendered>${prerenderPublicPage(path)}</div>`
   const boundary = /<!--public-root:start-->[\s\S]*?<!--public-root:end-->/

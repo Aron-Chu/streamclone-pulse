@@ -1,7 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { seedBetaKey } from './helpers/auth'
-import { HUB_V5_BUILD } from './helpers/chartWheelSurfaces'
 import { installHubUxMock } from './helpers/hubUxMock'
 
 // OP1-RES-004 / OP1-RES-006 / OP1-RES-007: one malformed input must not
@@ -60,7 +58,7 @@ test.describe('portal crash guards (mocked)', () => {
     await page.goto('/analytics')
     // Wait for the hub rows themselves: before they arrive there is nothing to crash.
     await expect(page.getByText('channel5').first()).toBeAttached()
-    await expect(page.getByRole('heading', { name: 'Command center', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Find your streamer', exact: true })).toBeVisible()
     await expect(page.locator('.analytics-topnav')).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Something went wrong' })).toHaveCount(0)
   })
@@ -79,7 +77,7 @@ test.describe('portal crash guards (mocked)', () => {
   test('a cached hub snapshot with a wrong-typed row re-validates on reload instead of crashing', async ({ page }) => {
     await installHubUxMock(page)
     await page.goto('/analytics')
-    await expect(page.getByRole('heading', { name: 'Command center', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Find your streamer', exact: true })).toBeVisible()
     // Stand in for a snapshot persisted by an earlier build before rows were type-checked.
     await expect.poll(() => page.evaluate(() => {
       const key = Object.keys(localStorage).find(name => name.startsWith('sp:publicHub:v1:') && name.endsWith(':24h'))
@@ -95,7 +93,7 @@ test.describe('portal crash guards (mocked)', () => {
     let hubRequests = 0
     await page.route(/\/v1\/public\/hub(\?.*)?$/, () => { hubRequests += 1 })
     await page.reload()
-    await expect(page.getByRole('heading', { name: 'Command center', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Find your streamer', exact: true })).toBeVisible()
     await expect(page.getByText('channel5').first()).toBeAttached()
     await expect(page.getByRole('heading', { name: 'Something went wrong' })).toHaveCount(0)
     await expect.poll(() => hubRequests).toBeGreaterThan(0)
@@ -103,8 +101,7 @@ test.describe('portal crash guards (mocked)', () => {
 
   test('a crashing analytics page keeps the analytics top navigation, and its links recover', async ({ page }) => {
     await installHubUxMock(page)
-    // A VITE_PUBLIC_HUB_V5 build routes /analytics through AnalyticsHubV5Page.
-    await breakPageModule(page, HUB_V5_BUILD ? 'AnalyticsHubV5Page' : 'AnalyticsLandingPage')
+    await breakPageModule(page, 'AnalyticsHubV5Page')
     await page.goto('/analytics')
     await expect(page.getByRole('heading', { name: 'Something went wrong' })).toBeVisible()
     await expect(page.locator('.analytics-topnav')).toBeVisible()
@@ -112,19 +109,6 @@ test.describe('portal crash guards (mocked)', () => {
 
     await page.getByRole('navigation', { name: 'Analytics navigation' }).getByRole('link', { name: 'All moments' }).click()
     await expect(page.getByRole('heading', { name: 'Moments', exact: true })).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'Something went wrong' })).toHaveCount(0)
-  })
-
-  test('a crashing dashboard page keeps the dashboard header, and its nav recovers', async ({ page }) => {
-    await seedBetaKey(page)
-    await breakPageModule(page, 'Clips')
-    await page.goto('/dashboard/clips')
-    await expect(page.getByRole('heading', { name: 'Something went wrong' })).toBeVisible()
-    await expect(page.getByRole('link', { name: 'StreamPulse Dashboard' })).toBeVisible()
-    await expectNoSiteLayout(page)
-
-    await page.getByRole('link', { name: 'Home', exact: true }).click()
-    await expect(page.getByRole('heading', { name: 'StreamPulse workspace' })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Something went wrong' })).toHaveCount(0)
   })
 })

@@ -7,7 +7,6 @@ import NotFound from '../src/routes/public/NotFound'
 import Privacy from '../src/routes/public/Privacy'
 import Support from '../src/routes/public/Support'
 import Feedback from '../src/routes/public/Feedback'
-import DashboardShell from '../src/routes/dashboard/DashboardShell'
 import { supportDiagnostics } from '../src/lib/supportDiagnostics'
 
 function renderRoute(node: ReactNode) {
@@ -33,13 +32,6 @@ describe('public release routes', () => {
     const toc = Array.from(document.querySelectorAll('.public-toc a')).map((link) => link.getAttribute('href'))
     const sections = Array.from(screen.getByTestId('docs-page').querySelectorAll('section[id]')).map((section) => `#${section.id}`)
     expect(sections).toEqual(toc)
-  })
-
-  it('describes local beta keys as an interface gate, not API authorization', () => {
-    renderRoute(<DashboardShell />)
-    expect(screen.getByRole('note').textContent).toContain('the server checks access for each request')
-    expect(screen.getByRole('note').textContent).toContain('local storage')
-    expect(screen.getByRole('note').textContent).toContain('scripts on this origin')
   })
 
   it('offers a public issue path and keeps diagnostics strictly allowlisted', () => {

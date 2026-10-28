@@ -2,7 +2,6 @@ import { expect, type Page, type Route, type Request } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { seedBetaKey } from './auth'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const FIXTURE_DIR = join(__dirname, '../fixtures/portal-acceptance')
@@ -599,8 +598,6 @@ export async function installPortalAcceptanceHarness(
     ;(window as Window & { __SP_PORTAL_MOUNT_COUNT?: number }).__SP_PORTAL_MOUNT_COUNT =
       ((window as Window & { __SP_PORTAL_MOUNT_COUNT?: number }).__SP_PORTAL_MOUNT_COUNT ?? 0) + 1
   })
-
-  await seedBetaKey(page)
 
   // Count mock API / asset hits only in the route handler below — do not
   // double-count via page.on('request') (that broke catalog/summary spam asserts).
