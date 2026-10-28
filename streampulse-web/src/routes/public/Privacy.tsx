@@ -419,8 +419,9 @@ export default function Privacy() {
           <li>
             <strong>Portal localStorage</strong> — stores recently opened Twitch channel logins
             (<code>sp.hub.recentLogins</code>, capped list), public hub/analytics cache entries keyed by
-            backend URL and activity window (<code>sp:publicHub:v1:…</code>, with a staleness hint of about
-            10 minutes), browser-saved moments and any notes you add to them
+            backend URL and activity window (<code>sp:publicHub:v1:…</code>, a hub copy that may be shown,
+            marked as cached, for up to about 6 hours; <code>sp:publicHubProjection:v1:…</code>, Moments
+            and ticker copies used for about 10 minutes), browser-saved moments and any notes you add to them
             (<code>streampulse.saved-moments.v2</code>; an older <code>v1</code> copy may remain after
             migration), your optional website analytics choice, and your chart Scroll zoom choice
             (<code>sp.chart.scrollZoom.v1</code>).
