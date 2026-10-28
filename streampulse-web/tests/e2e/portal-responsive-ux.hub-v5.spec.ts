@@ -253,6 +253,24 @@ test('Homepage animated wipe advances and resizing to short static mode reveals 
   await saveProof(panel.locator('[data-tour-step="1"]'), 'homepage-chart-after-animated-resize-986')
 })
 
+for (const width of [360, 390, 768, 1024, 1440]) {
+  test(`the hub header keeps 44px tap targets and no sideways scroll at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await installHubUxMock(page)
+    await page.goto('/analytics')
+    await expect(page.locator('.analytics-topnav')).toBeVisible()
+    // Add to Chrome is hidden at 720px and below, so only a shown one is measured.
+    const targets = await page.locator('.analytics-topnav__links a, .analytics-topnav__install:visible').all()
+    expect(targets.length).toBeGreaterThan(0)
+    for (const target of targets) {
+      const box = await target.boundingBox()
+      expect(box?.height).toBeGreaterThanOrEqual(44)
+      expect(box?.width).toBeGreaterThanOrEqual(44)
+    }
+    await assertNoPageOverflow(page)
+  })
+}
+
 test('the Live feed and Channels render while a legacy successful history reply awaits minute repair', async ({ page }) => {
   let releaseRepair!: () => void
   const gate = new Promise<void>(resolve => { releaseRepair = resolve })

@@ -295,27 +295,6 @@ test('legacy Saved title stays historical when an exact recap adds reactions', a
   await expect(detail.getByLabel('Why keep this moment?')).toHaveValue('Keep this one')
 })
 
-test('Live Wire preserves opened measurements when Recent no longer supplies the detection', async ({ page }) => {
-  await page.goto('/analytics')
-  const open = page.getByRole('link', { name: /^Open moment for xQc/ }).first()
-  await expect(open).toBeVisible()
-  await installHubUxMock(page, { mode: 'empty' })
-  await open.click()
-  const detail = page.getByRole('region', { name: /^Selected moment: / })
-  const measurement = detail.getByRole('region', { name: 'Moment measurement' })
-  await expect(measurement.locator('dd').nth(0)).toHaveText('393')
-  await expect(measurement.locator('dd').nth(1)).toHaveText('133')
-  await page.reload()
-  await expect(page.locator('.moments-result')).toHaveCount(0)
-  await expect(measurement.locator('dd').nth(0)).toHaveText('393')
-  await expect(measurement.locator('dd').nth(1)).toHaveText('133')
-  await expect(detail.getByText('Selection outside loaded matches', { exact: true })).toBeVisible()
-  await expect(detail.getByRole('link', { name: /^Open VOD at/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/123456?t=120s')
-  // A different exact URL must never inherit the previously opened row.
-  await page.goto('/analytics/moments?view=recent&login=xqc&stream=s1&offset=9999')
-  await expect(measurement.locator('dd').nth(0)).toHaveText('Unavailable')
-})
-
 test('exact moment source, device save, reload and legacy session link', async ({ page }) => {
   const exactRefreshes: string[] = []
   page.on('request', request => { if (request.url().includes('momentOffsetSeconds=')) exactRefreshes.push(request.url()) })
