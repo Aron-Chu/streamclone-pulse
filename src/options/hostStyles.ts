@@ -168,9 +168,9 @@ const hostStyles = `
     padding-top: 10px;
     border-top: 1px solid ${theme.border};
   }
-  .pulse-supporter-policies a { display: inline-flex; align-items: center; box-sizing: border-box; min-width: 44px; min-height: 44px; padding: 0 4px; color: ${theme.textSecondary}; font-weight: 600; }
-  .pulse-supporter-policies a:hover { color: var(--pulse-accent-soft, #c4b5fd); }
-  .pulse-supporter-policies a:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 3px; }
+  .pulse-supporter-policies a, .pulse-supporter-withdrawal-link { display: inline-flex; align-items: center; box-sizing: border-box; min-width: 44px; min-height: 44px; padding: 0 4px; color: ${theme.textSecondary}; font-weight: 600; }
+  .pulse-supporter-policies a:hover, .pulse-supporter-withdrawal-link:hover { color: var(--pulse-accent-soft, #c4b5fd); }
+  .pulse-supporter-policies a:focus-visible, .pulse-supporter-withdrawal-link:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 3px; }
   .pulse-supporter-save-status { min-height: 20px; }
   .pulse-supporter-settings input:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 3px; }
 

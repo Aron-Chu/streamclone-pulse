@@ -1003,7 +1003,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
             setNotice('Your previous connection was restored. Checking Supporter status.')
             void run('status').then(() => readEntitlement(false)).then(readBilling)
           }} /> : null}
-          <p className="pulse-supporter-detail"><a href={POLICY_LINKS.withdrawal} target="_blank" rel="noopener noreferrer">Withdraw from contract here</a></p>
+          <p className="pulse-supporter-detail"><a className="pulse-supporter-withdrawal-link" href={POLICY_LINKS.withdrawal} target="_blank" rel="noopener noreferrer">Withdraw from contract here</a></p>
           {testerBridge ? <details className="pulse-journey-devices" data-tester-bridge="true">
             <summary>{twitchOn ? ACCOUNT_COPY.otherWays : ACCOUNT_COPY.testerBridge}</summary>
             <p className="pulse-supporter-detail">For invited testers with a StreamPulse account: connect this extension with a one-time code from streampulse.stream. This is not a purchase.</p>
