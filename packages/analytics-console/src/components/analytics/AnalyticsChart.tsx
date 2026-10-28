@@ -75,6 +75,7 @@ import { sessionBandSegments } from './SessionChartLayers.tsx'
 import { buildSessionPins, selectedPinIndex, type SessionPin, type SessionStripPinsSource } from './SessionChartPins.tsx'
 import { SessionShowOnChart, SESSION_MARKERS_OFF, type SessionMarkers } from './SessionShowOnChart.tsx'
 import { SessionEmotesOnChart } from './SessionEmotesOnChart.tsx'
+import { openedFromPlot } from './SelectedMomentCompactCard.tsx'
 import { emoteChartColorForKey } from './chartTheme.ts'
 import {
   SessionExpandButton,
@@ -247,6 +248,28 @@ function SessionNavigator({
 function useViewAtEnd(store: SpViewportStore, n: number): boolean {
   const read = useCallback(() => store.getTarget().endIndex >= n - 1, [n, store])
   return useSyncExternalStore(store.subscribeTarget, read, read)
+}
+
+/**
+ * Whether the selected-detail slot shows. A detail opened from the plot (a bar click, tap or Enter) mounts after the
+ * frame that paints the plot's selection: the release is set in that frame's animation callback, and React renders it
+ * in a task after the paint. So the click's frame holds the chart's work only, not the strip's render and first
+ * layout (bar-click INP). With motion on, the strip's first frame is its 0-opacity enter frame either way; with
+ * motion off it shows one frame later. A swap keeps the strip mounted, and a Moments pick or a #t= link opens it at once.
+ */
+function useDetailOpen(open: boolean): boolean {
+  const [held, setHeld] = useState(false)
+  const [wasOpen, setWasOpen] = useState(open)
+  if (open !== wasOpen) {
+    setWasOpen(open)
+    setHeld(open && openedFromPlot() && typeof requestAnimationFrame === 'function')
+  }
+  useEffect(() => {
+    if (!held) return
+    const frame = requestAnimationFrame(() => setHeld(false))
+    return () => cancelAnimationFrame(frame)
+  }, [held])
+  return open && !held
 }
 
 function AnalyticsChart({
@@ -897,6 +920,7 @@ function AnalyticsChart({
     [lockedBar, zoomToLockedBar],
   )
   const selectedDetailNode = typeof selectedDetail === 'function' ? selectedDetail(barLock) : selectedDetail
+  const detailOpen = useDetailOpen(Boolean(selectedDetailNode))
 
   // The plot's + / - / 0 keys step exactly like Zoom in / Zoom out / Reset zoom
   // (the chart core's own step differs, so the stack takes these keys first).
@@ -1289,8 +1313,8 @@ function AnalyticsChart({
       {/* No reserved height: it never stopped the content below from moving (a
           pinned card is taller than any fixed reserve) and left a blank band at
           rest. */}
-      <div className={selectedDetailNode ? 'mt-3' : undefined} data-chart-selected-detail-slot>
-        {selectedDetailNode ? <div data-chart-selected-detail data-chart-action="true">{selectedDetailNode}</div> : null}
+      <div className={detailOpen ? 'mt-3' : undefined} data-chart-selected-detail-slot>
+        {detailOpen ? <div data-chart-selected-detail data-chart-action="true">{selectedDetailNode}</div> : null}
       </div>
 
       {/* d3-v2 session-original .po-md: no box, and no counts in the summary
