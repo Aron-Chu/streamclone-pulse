@@ -10,12 +10,19 @@ export interface ApiClientOptions extends Omit<RequestInit, 'body'> {
   maxResponseBytes?: number
   /** Enables mutation retry only when the server supports this idempotency key. */
   idempotencyKey?: string
+  /**
+   * The origin builds this read slowly (the public hub): a second attempt would
+   * start its build over. None after a 504 (the edge gave up waiting on it), or
+   * once 30 s have passed in this read.
+   */
+  slowOrigin?: boolean
   body?: BodyInit | Record<string, unknown> | null
 }
 export interface ApiClientResult<T> { data: T; cache?: 'HIT' | 'MISS' | 'BYPASS'; status: number }
 
 const DEFAULT_TIMEOUT_MS = 8_000
 const DEFAULT_MAX_RESPONSE_BYTES = 4 * 1024 * 1024
+const SLOW_ORIGIN_RETRY_WINDOW_MS = 30_000
 const SAFE_RETRY_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 const GATED_PATH = /^\/v1\/(?:extension|analytics|portal|pulse)(?:\/|$)/
 
@@ -116,7 +123,7 @@ function parseCacheHeader(value: string | null): ApiClientResult<unknown>['cache
 export function isApiError(value: unknown): value is ApiError { return typeof value === 'object' && value !== null && 'kind' in value && typeof (value as ApiError).kind === 'string' }
 
 export async function apiClient<T = unknown>(path: string, options: ApiClientOptions = {}): Promise<ApiClientResult<T>> {
-  const { gated = false, sensitive = false, timeoutMs = DEFAULT_TIMEOUT_MS, maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES, idempotencyKey, headers, body, signal: callerSignal, ...rest } = options
+  const { gated = false, sensitive = false, timeoutMs = DEFAULT_TIMEOUT_MS, maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES, idempotencyKey, slowOrigin = false, headers, body, signal: callerSignal, ...rest } = options
   const url = buildUrl(path)
   const requestHeaders = new Headers(headers)
   // A caller-supplied credential must obey the same boundary as a gated call.
@@ -133,6 +140,8 @@ export async function apiClient<T = unknown>(path: string, options: ApiClientOpt
   // One budget spans all attempts, backoff and body reads, not a fresh deadline
   // per attempt. Credential-bearing redirects fail closed at the fetch boundary.
   const deadline = deadlineSignal(callerSignal, timeoutMs)
+  const startedAt = Date.now()
+  const slowOriginRetries = () => !slowOrigin || Date.now() - startedAt < SLOW_ORIGIN_RETRY_WINDOW_MS
   try {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
@@ -145,7 +154,8 @@ export async function apiClient<T = unknown>(path: string, options: ApiClientOpt
         // second request a few hundred ms later would only repeat its answer.
         // A 503 is the API shedding load: it is not asked again either, whether or
         // not its Retry-After reaches the page (cross-origin, CORS can hide it).
-        if (response.status >= 500 && response.status !== 503 && retryable && attempt === 0 && error.retryAfterMs === undefined) { lastError = error; await abortableSleep(jitter(250), deadline.signal); continue }
+        if (response.status >= 500 && response.status !== 503 && !(slowOrigin && response.status === 504) && slowOriginRetries() &&
+          retryable && attempt === 0 && error.retryAfterMs === undefined) { lastError = error; await abortableSleep(jitter(250), deadline.signal); continue }
         throw error
       }
       return { data: payload as T, cache, status: response.status }
@@ -153,7 +163,7 @@ export async function apiClient<T = unknown>(path: string, options: ApiClientOpt
       if (isApiError(error)) throw error
       if (deadline.signal.aborted) throw error
       const unreachable: ApiError = { kind: 'unreachable', message: error instanceof Error ? error.message : 'Network error', status: 0 }
-      if (retryable && attempt === 0) { lastError = unreachable; await abortableSleep(jitter(250), deadline.signal); continue }
+      if (retryable && attempt === 0 && slowOriginRetries()) { lastError = unreachable; await abortableSleep(jitter(250), deadline.signal); continue }
       throw lastError ?? unreachable
     }
   }

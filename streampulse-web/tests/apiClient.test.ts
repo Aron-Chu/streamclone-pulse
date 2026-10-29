@@ -245,6 +245,45 @@ describe('apiClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
+  // A second hub request would start the origin's slow build over.
+  it('asks a slow origin once after a 504, a late 502 or a late lost response', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    const fetchMock = vi.fn(async () => new Response('{"error":"gateway"}', { status: 504 }))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(apiClient('/v1/public/hub', { slowOrigin: true })).rejects.toMatchObject({ kind: 'server', status: 504 })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    const late = async (answer: () => Response) => {
+      fetchMock.mockReset()
+      fetchMock.mockImplementation(async () => {
+        await new Promise(resolve => setTimeout(resolve, 30_000))
+        return answer()
+      })
+      const request = apiClient('/v1/public/hub', { slowOrigin: true, timeoutMs: 90_000 }).catch((error: unknown) => error)
+      await vi.advanceTimersByTimeAsync(31_000)
+      return request
+    }
+    expect(await late(() => new Response('{"error":"bad gateway"}', { status: 502 }))).toMatchObject({ kind: 'server', status: 502 })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(await late(() => { throw new TypeError('connection lost') })).toMatchObject({ kind: 'unreachable' })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('still asks a slow origin twice after an early 502 or lost response', async () => {
+    let calls = 0
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      calls += 1
+      if (calls === 1) return new Response('{"error":"bad gateway"}', { status: 502 })
+      if (calls === 2) return new Response('{"ok":1}', { status: 200 })
+      if (calls === 3) throw new TypeError('connection lost')
+      return new Response('{"ok":2}', { status: 200 })
+    }))
+    expect((await apiClient('/v1/public/hub', { slowOrigin: true })).data).toEqual({ ok: 1 })
+    expect((await apiClient('/v1/public/hub', { slowOrigin: true })).data).toEqual({ ok: 2 })
+    expect(calls).toBe(4)
+  })
+
   it('refuses to attach credentials outside the configured origin or API paths', async () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)

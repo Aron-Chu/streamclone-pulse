@@ -11,9 +11,8 @@ import {
 } from '../src/lib/publicHub'
 import { coverageMeta, formatStreamUptime } from '../src/ui/components/analytics/hubFormat'
 import { loadedCategories } from '../src/ui/components/moments/MomentCategoryBrowser'
-import { primePublicHub, resetPrimedPublicHubForTests } from '../src/lib/hubEarlyFetch'
+import { HUB_READ_HARD_CAP_MS, primePublicHub, resetPrimedPublicHubForTests } from '../src/lib/hubEarlyFetch'
 import { screenerUsual } from '../src/lib/channelScreenerContract'
-import { SLOW_READ_TIMEOUT_MS } from '../src/lib/portalTimeouts'
 
 it('rejects future and sentinel starts and peaks instead of fabricating a zero uptime', () => {
   for (const time of ['2099-01-01T00:00:00Z', '0001-01-01T00:00:00Z']) {
@@ -705,7 +704,7 @@ describe('fetchPublicHubBase adopts the primed request (plan §2.6)', () => {
     expect(result.hubEndpointOk).toBe(true)
     expect(result.data.poolSize).toBe(3)
     expect(apiClient).toHaveBeenCalledTimes(1)
-    expect(apiClient).toHaveBeenCalledWith('/v1/public/hub?activityWindow=7d', { timeoutMs: SLOW_READ_TIMEOUT_MS })
+    expect(apiClient).toHaveBeenCalledWith('/v1/public/hub?activityWindow=7d', expect.objectContaining({ timeoutMs: HUB_READ_HARD_CAP_MS, slowOrigin: true }))
   })
 
   it('requests on its own for any other path, with its own signal and deadline', async () => {
@@ -714,6 +713,6 @@ describe('fetchPublicHubBase adopts the primed request (plan §2.6)', () => {
     const controller = new AbortController()
     await fetchPublicHubBase(controller.signal, '30m')
     expect(apiClient).toHaveBeenCalledTimes(2)
-    expect(apiClient).toHaveBeenLastCalledWith('/v1/public/hub?activityWindow=30m', { signal: controller.signal, timeoutMs: undefined })
+    expect(apiClient).toHaveBeenLastCalledWith('/v1/public/hub?activityWindow=30m', { signal: controller.signal, timeoutMs: undefined, slowOrigin: true })
   })
 })
