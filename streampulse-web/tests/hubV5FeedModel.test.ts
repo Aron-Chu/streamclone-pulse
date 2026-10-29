@@ -5,8 +5,12 @@ import type { MomentsFeedItem } from '../src/lib/momentsFeed'
 import type { HubLiveChannel, HubLivePulseMoment, HubMoment } from '../src/lib/publicHub'
 import type { HubChannelScreenerV1, HubScreenerMetric } from '../src/lib/channelScreenerContract'
 import {
+  FEED_LOADING,
+  FEED_STALE_MS,
+  FEED_UNAVAILABLE,
   feedAgo,
   feedCap,
+  feedClockFloor,
   feedColumnCap,
   feedForGame,
   feedFresh,
@@ -16,9 +20,13 @@ import {
   feedMomentSer,
   feedMomentsHref,
   feedMultiplier,
+  feedPeekQuietText,
+  feedQuietText,
   feedRestTip,
   feedRowAria,
   feedShort,
+  feedStale,
+  feedWaitText,
   liveFeedModel,
   liveStartOf,
   screenerHot,
@@ -241,6 +249,69 @@ describe('feed formatting', () => {
     const one = model1()
     expect(feedRestTip(one.slice(0, 1))).toBe('')
     expect(feedRestTip(one)).toMatch(/^Earlier: .+ went live$/)
+  })
+})
+
+describe('the quiet line on old data (Q1, 10-28)', () => {
+  const hour = feedClockFloor(W1)
+
+  it('keeps the current words on fresh data', () => {
+    expect(feedQuietText(null, W1, W1 + 30_000)).toBe('Quiet right now · nothing in the last hour')
+    expect(feedQuietText('Chess', W1, W1 + 30_000)).toBe('Nothing from Chess in the last hour')
+    expect(feedPeekQuietText(W1, W1 + 30_000)).toBe('Quiet right now.')
+  })
+
+  it('names the hour on the feed’s own clock once the data is over 3 minutes old', () => {
+    expect(feedQuietText(null, W1, W1 + 4 * 60 * MIN)).toBe(`Nothing in the hour before ${hour}`)
+    expect(feedQuietText('Chess', W1, W1 + 181_000)).toBe(`Nothing from Chess in the hour before ${hour}`)
+    expect(feedPeekQuietText(W1, W1 + 4 * 60 * MIN)).toBe(`Nothing in the hour before ${hour}.`)
+    // the "as of" time: floored, never rounded up
+    expect(feedQuietText(null, W1 + 59_000, W1 + 4 * 60 * MIN)).toBe(`Nothing in the hour before ${hour}`)
+  })
+
+  it('turns at 3 minutes, the same check that greys the dot', () => {
+    expect(feedStale(W1, W1 + FEED_STALE_MS)).toBe(false)
+    expect(feedStale(W1, W1 + FEED_STALE_MS + 1)).toBe(true)
+    expect(feedStale(null, W1 + 60 * MIN)).toBe(false)
+    expect(feedQuietText(null, W1, W1 + FEED_STALE_MS)).toBe('Quiet right now · nothing in the last hour')
+    expect(feedQuietText(null, W1, W1 + FEED_STALE_MS + 1)).toBe(`Nothing in the hour before ${hour}`)
+  })
+
+  it('names the hour on a saved copy whatever the viewer’s clock says', () => {
+    // a clock behind the server's makes old data look new
+    expect(feedQuietText(null, W1, W1 - 10 * MIN, true)).toBe(`Nothing in the hour before ${hour}`)
+    expect(feedPeekQuietText(W1, W1, true)).toBe(`Nothing in the hour before ${hour}.`)
+  })
+})
+
+describe('the feed’s line with no hub answer behind it (10-28)', () => {
+  const none = liveFeedModel(null)
+  const quiet = liveFeedModel(hub([]))
+  const busy = liveFeedModel(hub([channel('echo', { startedAt: new Date(W1 - 10 * MIN).toISOString(), viewers: 8000 }, { multiplier: 1 })]))
+
+  it('says it is loading while the hub read runs (totals only, or nothing yet)', () => {
+    expect(feedWaitText(none, 'loading')).toBe(FEED_LOADING)
+    expect(FEED_LOADING).toBe('Loading live feed…')
+  })
+
+  it('says unavailable once the read gave up, and never shows an empty feed as a quiet hour', () => {
+    expect(feedWaitText(none, 'unavailable')).toBe(FEED_UNAVAILABLE)
+    expect(FEED_UNAVAILABLE).toBe('Unavailable right now.')
+    // nothing at all and nothing coming (was "No live data yet.")
+    expect(feedWaitText(none, null)).toBe(FEED_UNAVAILABLE)
+    // the first reply, or a feed not built yet, is still coming
+    expect(feedWaitText(none, null, true)).toBe(FEED_LOADING)
+  })
+
+  it('waits on a saved copy with no rows, and shows a saved copy’s rows as they are', () => {
+    expect(feedWaitText(quiet, 'loading')).toBe(FEED_LOADING)
+    expect(feedWaitText(busy, 'loading')).toBeNull()
+    expect(feedWaitText(busy, 'unavailable')).toBeNull()
+  })
+
+  it('leaves a hub answer’s quiet hour to the quiet line', () => {
+    expect(feedWaitText(quiet, null)).toBeNull()
+    expect(feedWaitText(quiet, null, true)).toBeNull()
   })
 })
 

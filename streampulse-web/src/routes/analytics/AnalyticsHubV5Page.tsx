@@ -31,7 +31,8 @@ import { HubV5Hero } from '../../ui/components/hub/v5/HubV5Hero'
 import { HubV5Icon } from '../../ui/components/hub/v5/HubV5Icon'
 import { HubV5LiveFeed, HubV5LivePeek, useHubLiveFeed } from '../../ui/components/hub/v5/HubV5LiveFeed'
 import { HubV5Rack } from '../../ui/components/hub/v5/HubV5Rack'
-import { HUB_RACK_ROWS, hubCategoryArt, hubClock, whereChatIs, type HubChannelSort } from '../../ui/components/hub/v5/hubV5Model'
+import type { FeedWait } from '../../ui/components/hub/v5/hubV5FeedModel'
+import { HUB_RACK_ROWS, hubCategoryArt, hubSavedClock, whereChatIs, type HubChannelSort } from '../../ui/components/hub/v5/hubV5Model'
 import { useHashScrollHold } from '../../ui/RouteScrollManager'
 import '../../ui/components/analytics/figma-analytics.css'
 import '../../ui/components/hub/d3/hub-d3-tokens.css'
@@ -128,9 +129,26 @@ export default function AnalyticsHubV5Page() {
   // A #channels link lands once the sections have their real heights, not on the skeleton.
   useHashScrollHold(loadingInitial)
   const measurementAvailable = Boolean(hub.data && hub.loadSource !== 'stats-fallback')
-  const measurementsUnavailable = !loadingInitial && !measurementAvailable
+  // A hub answer is on screen: not totals only, not a saved copy.
+  const hubAnswered = measurementAvailable && hub.loadSource !== 'cache'
+  // A saved copy can be hours old (S1, 10-28): Busiest now waits for fresh data, the chart says Saved and Channels gives the time.
+  const savedAt = hub.data && hub.loadSource === 'cache' ? hub.cachedAt : null
+  const hubReading = hub.loading || hub.refreshing || hub.hubReadPending
+  // The hub read gave up (or failed) with no hub answer on screen and none under way. Any later read
+  // (a poll, Try again, this window picked again) shows loading again while it runs.
+  const hubGaveUp = !hubAnswered && !hubReading
+  // With nothing measured on screen the cards wait while the hub read runs (to its hard cap), and say
+  // "Unavailable right now." only once it gave up.
+  const measurementsWaiting = !measurementAvailable && !hubGaveUp
+  const measurementsUnavailable = !measurementAvailable && hubGaveUp
+  // The Live feed and its phone peek stay in every state (10-28). With totals only or nothing they wait on any
+  // hub read under way, else say it is unavailable; a saved copy shows its own rows meanwhile, or waits with none.
+  const feedWait: FeedWait = hubAnswered ? null
+    : savedAt != null ? (hubGaveUp ? null : 'loading')
+      : hubGaveUp ? 'unavailable' : 'loading'
+  // A read still under way with nothing on screen is loading, not an error.
   const hubUiState = resolveHubUiState({
-    loading: hub.loading,
+    loading: hub.loading || hub.hubReadPending,
     data: hub.data,
     error: hub.error,
     hubEndpointOk: hub.hubEndpointOk,
@@ -153,7 +171,8 @@ export default function AnalyticsHubV5Page() {
 
   const games = useMemo(() => whereChatIs(data.liveChannels), [data.liveChannels])
   const gameArt = useMemo(() => hubCategoryArt(data.livePulseMoments), [data.livePulseMoments])
-  const feed = useHubLiveFeed(hub.data ?? null)
+  // Never the totals-only fallback: its fresh time and empty hour would read as a quiet hour.
+  const feed = useHubLiveFeed(hub.loadSource === 'stats-fallback' ? null : hub.data ?? null)
   const avatars = useMemo(() => {
     const map = new Map<string, string>()
     for (const c of data.liveChannels) if (c.profileImageUrl) map.set(c.login, c.profileImageUrl)
@@ -201,10 +220,10 @@ export default function AnalyticsHubV5Page() {
     <AnalyticsFigmaShell hideSidebar>
       <main className="figma-analytics__main" aria-label="StreamPulse analytics" data-hub-state={hubUiState}>
         <div id="analytics-main" tabIndex={-1} className="analytics-focus-target">Analytics content</div>
-        {/* A saved copy can be hours old: it names its time for as long as it is on screen, never reading as live. */}
+        {/* A saved copy can be hours old: it names its time, and its day when that is not today (N1), for as long as it is on screen, never reading as live. */}
         {hub.loadSource === 'cache' && hub.cachedAt != null ? (
           <div className="figma-hub-fallback-banner figma-hub-fallback-banner--info" role="status">
-            Cached snapshot from {hubClock(hub.cachedAt)}{hub.refreshing ? ' - refreshing...' : ''}
+            Cached snapshot from {hubSavedClock(hub.cachedAt, nowMs)}{hub.refreshing || hub.hubReadPending ? ' - refreshing...' : ''}
           </div>
         ) : null}
         <HubDataHealthBanner
@@ -217,16 +236,23 @@ export default function AnalyticsHubV5Page() {
           backendUrl={getBackendUrl()}
           loading={loadingInitial || hubUiState === 'loading'}
           onRetry={hub.retryBlocked ? undefined : hub.refresh}
-          retryDisabled={hub.refreshing}
+          retryDisabled={hub.refreshing || hub.hubReadRunning || hub.hubReadPending}
+          pending={hub.hubReadPending}
+          late={hub.hubReadLate}
         />
         <HubBackendSourceBanner />
 
         <div className="hub-v5 hub-d3" data-hub-v5-page="">
           <HubV5Hero live={data.liveChannels} poolSize={data.poolSize} points={data.activity.points} />
 
-          <HubV5LivePeek feed={feed} nowMs={nowMs} />
+          <HubV5LivePeek feed={feed} nowMs={nowMs} loading={loadingInitial} wait={feedWait} savedAt={savedAt} />
 
-          <HubV5Busiest live={data.liveChannels} nowMs={nowMs} loading={loadingInitial} unavailable={measurementsUnavailable} />
+          <HubV5Busiest
+            live={savedAt != null ? EMPTY_PUBLIC_HUB.liveChannels : data.liveChannels}
+            nowMs={nowMs}
+            loading={measurementsWaiting || (savedAt != null && !hubGaveUp)}
+            unavailable={measurementsUnavailable || (savedAt != null && hubGaveUp)}
+          />
 
           <div id="activity" className="hv5-sec hv5-activity">
             {hub.error && measurementAvailable && ACTIVITY_WINDOW_MINUTES[activityWindow] !== (data.activity.requestedWindowMinutes ?? data.activity.windowMinutes) ? (
@@ -240,8 +266,8 @@ export default function AnalyticsHubV5Page() {
               activitySummary={activitySummary}
               suggestions={[]}
               topEmotes={data.topEmotes}
-              loading={loadingInitial || hub.activityRefreshing}
-              awaitingData={loadingInitial}
+              loading={measurementsWaiting || hub.activityRefreshing}
+              awaitingData={measurementsWaiting}
               activityRefreshing={hub.activityRefreshing}
               updatedAgo={formatUpdatedAgo(hub.lastUpdated, nowMs)}
               rangeControl={{
@@ -258,9 +284,11 @@ export default function AnalyticsHubV5Page() {
               activityWindowKey={activityWindow}
               measuredTarget={measuredBody}
               onOpenMeasured={openMeasured}
+              saved={savedAt != null}
             />
           </div>
 
+          {/* Mounted while the hub read runs, so its place is kept for the answer. */}
           {measurementsUnavailable ? null : (
             <HubV5BarCard
               points={chartActivity.points}
@@ -270,26 +298,28 @@ export default function AnalyticsHubV5Page() {
             />
           )}
 
-          <HubV5LiveFeed feed={feed} nowMs={nowMs} loading={loadingInitial} onUpMore={showUpInChannels} />
+          <HubV5LiveFeed feed={feed} nowMs={nowMs} loading={loadingInitial} wait={feedWait} saved={savedAt != null} onUpMore={showUpInChannels} />
 
           <HubV5EmoteMap
             points={data.activity.points}
             bucketMinutes={data.activity.bucketMinutes ?? chartActivity.bucketMinutes}
-            loading={loadingInitial}
+            loading={measurementsWaiting}
             unavailable={measurementsUnavailable}
             moments={data.livePulseMoments}
             avatars={avatars}
             nowMs={nowMs}
           />
 
-          <HubV5Rack games={games} game={game} onGame={setGame} art={gameArt} avatars={avatars} loading={loadingInitial} unavailable={measurementsUnavailable} />
+          <HubV5Rack games={games} game={game} onGame={setGame} art={gameArt} avatars={avatars} loading={measurementsWaiting} unavailable={measurementsUnavailable} />
 
           <HubV5Channels
             ref={channelsRef}
             live={data.liveChannels}
             poolSize={data.poolSize}
             unavailable={measurementsUnavailable}
-            loading={loadingInitial}
+            loading={measurementsWaiting}
+            savedAt={savedAt}
+            nowMs={nowMs}
             game={game}
             onClearGame={() => setGameState(null)}
             sortRequest={sortRequest}

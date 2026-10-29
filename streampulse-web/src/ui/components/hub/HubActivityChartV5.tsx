@@ -122,6 +122,8 @@ export interface HubActivityChartProps {
   onOpenMeasured?: () => void
   /** The settled bar size, for "How this is measured" (bucket and bar minutes). */
   onBarsChange?: (bars: HubActivityBars) => void
+  /** A saved copy is on screen: the readout's rest time reads "Saved" (S1, 10-28). */
+  saved?: boolean
 }
 
 export interface HubActivityBars {
@@ -414,9 +416,10 @@ interface ReadyProps {
   emoteImages?: Map<string, string>
   onOpenMeasured?: () => void
   onBarsChange?: (bars: HubActivityBars) => void
+  saved?: boolean
 }
 
-function HubActivityReady({ model, windowMinutes, rangeControl, annotationLane, externalBucketT, onBucketHover, momentMarkers, emoteImages, onOpenMeasured, onBarsChange }: ReadyProps) {
+function HubActivityReady({ model, windowMinutes, rangeControl, annotationLane, externalBucketT, onBucketHover, momentMarkers, emoteImages, onOpenMeasured, onBarsChange, saved = false }: ReadyProps) {
   const compact = useHubChartCompact()
   const plotHeight = compact ? PLOT_HEIGHT.compact : PLOT_HEIGHT.wide
   const tickColumn = compact ? TICK_COLUMN.compact : TICK_COLUMN.wide
@@ -682,7 +685,7 @@ function HubActivityReady({ model, windowMinutes, rangeControl, annotationLane, 
         levelMinutes={levelMinutes}
         onOpenMeasured={onOpenMeasured}
       />
-      <HubActivityReadout model={model} hover={hover} series={series} emoteImages={emoteImages} />
+      <HubActivityReadout model={model} hover={hover} series={series} emoteImages={emoteImages} saved={saved} />
       {annotationLane}
       <div ref={stackRef} className="hx-plot-stack hub-act-stack" data-hub-chart-state="ready" data-hub-chart-wheel-zone="" onKeyDownCapture={onPlotKeyCapture}>
         <SpChart
@@ -750,6 +753,7 @@ export function HubActivityChart({
   providerCoverage,
   onOpenMeasured,
   onBarsChange,
+  saved,
 }: HubActivityChartProps) {
   // A new window drops the selection (it belongs to the old grid); so does leaving the page.
   const windowRef = useRef(windowMinutes)
@@ -853,6 +857,7 @@ export function HubActivityChart({
       emoteImages={emoteImages}
       onOpenMeasured={onOpenMeasured}
       onBarsChange={onBarsChange}
+      saved={saved}
     />
   )
 }

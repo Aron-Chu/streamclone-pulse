@@ -20,6 +20,10 @@ export interface HubDataHealthBannerProps {
   onRetry?: () => void
   /** A hub request is already in flight; Try again stays in place but cannot restart it. */
   retryDisabled?: boolean
+  /** The hub read still runs with no answer on screen: nothing has failed yet. */
+  pending?: boolean
+  /** That read has missed its deadline: only then is it called slow. */
+  late?: boolean
 }
 
 type HealthMessage = { tone: 'warn' | 'info'; text: string; detail?: string }
@@ -43,14 +47,35 @@ export function HubDataHealthBanner({
   loading = false,
   onRetry,
   retryDisabled = false,
+  pending = false,
+  late = false,
 }: HubDataHealthBannerProps) {
   const [expanded, setExpanded] = useState(false)
+  // Past its deadline, a stand-in on screen, the read runs on: one plain line and no
+  // Try again, which would only start it over. Before the deadline there is nothing new to say:
+  // a fresh read says nothing, and a poll keeps the error or stand-in text of the read before it.
+  if (pending && !error && loadSource !== 'stats-fallback') return null
+  if (pending && late) {
+    return (
+      <div className="hx-health-banner" role="status" aria-live="polite">
+        <div className="hx-health-banner__row hx-health-banner__row--info">
+          <Info aria-hidden="true" size={16} />
+          <div className="hx-health-banner__body">
+            <span>Live data is slow — still loading…</span>
+          </div>
+        </div>
+      </div>
+    )
+  }
   const messages: HealthMessage[] = []
 
   if (error) {
     messages.push({
       tone: 'warn',
-      text: 'Could not refresh hub data. Showing the last loaded snapshot if available.',
+      // Nothing ever loaded (no saved copy, no totals): there is no snapshot to point at.
+      text: loadSource == null
+        ? 'Live data is unavailable right now.'
+        : 'Could not refresh hub data. Showing the last loaded snapshot if available.',
       detail: error,
     })
   }

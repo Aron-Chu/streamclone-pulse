@@ -50,7 +50,7 @@ export const FEED_UP_LIST = 5
 export const FEED_LIVES_LIST = 10
 export const FEED_SPAM_USES = 20
 export const FEED_SPAM_SHARE = 0.25
-/** The dot greys once the data is older than this. */
+/** The dot greys, and the quiet line names its hour, once the data is older than this. */
 export const FEED_STALE_MS = 3 * 60_000
 
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
@@ -435,6 +435,47 @@ export function feedColumnCap(px: number): number {
 export function feedIsQuiet(model: LiveFeedModel): boolean {
   const first = model.items[0]
   return model.asOf != null && (!first || model.asOf - first.at > FEED_QUIET_MS)
+}
+
+/** The data is over 3 minutes old: the dot greys, and the quiet line names its hour. */
+export const feedStale = (asOf: number | null, nowMs: number): boolean => asOf != null && nowMs - asOf > FEED_STALE_MS
+
+/**
+ * The quiet line. Fresh data says "right now"; data over 3 minutes old, or a
+ * saved copy whatever the viewer's clock says, names the hour it covers on the
+ * feed's own clock, the "as of" time (Q1, 10-28).
+ */
+export function feedQuietText(game: string | null, asOf: number, nowMs: number, saved = false): string {
+  if (saved || feedStale(asOf, nowMs)) return `Nothing${game ? ` from ${game}` : ''} in the hour before ${feedClockFloor(asOf)}`
+  return game ? `Nothing from ${game} in the last hour` : 'Quiet right now · nothing in the last hour'
+}
+
+/** The phone peek's quiet line, under the same rule. */
+export function feedPeekQuietText(asOf: number, nowMs: number, saved = false): string {
+  return saved || feedStale(asOf, nowMs) ? `Nothing in the hour before ${feedClockFloor(asOf)}.` : 'Quiet right now.'
+}
+
+export const FEED_LOADING = 'Loading live feed…'
+export const FEED_UNAVAILABLE = 'Unavailable right now.'
+
+/**
+ * What the feed waits on (10-28) while no hub answer stands behind it (totals
+ * only, a saved copy, or nothing yet): 'loading' while the page's hub read
+ * runs, 'unavailable' once it gave up. null: a hub answer, or a saved copy
+ * whose read gave up, shows as it is.
+ */
+export type FeedWait = 'loading' | 'unavailable' | null
+
+/**
+ * The one line the feed and the phone peek show instead of rows and the quiet
+ * line, or null when they show their own. Rows always show (a saved copy's
+ * too). `waiting`: the first reply, or a hub answer whose feed is not built
+ * yet, is still coming. Nothing at all to show is never a quiet hour.
+ */
+export function feedWaitText(model: LiveFeedModel, wait: FeedWait, waiting = false): string | null {
+  if (model.items.length || model.up.length || model.top.length) return null
+  if (wait === 'loading' || (!wait && model.asOf == null && waiting)) return FEED_LOADING
+  return wait === 'unavailable' || model.asOf == null ? FEED_UNAVAILABLE : null
 }
 
 /* ---------- F2 (10-22): one game at a time ---------- */

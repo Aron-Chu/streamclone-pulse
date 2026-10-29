@@ -174,6 +174,13 @@ export function HubV5Busiest({ live, nowMs, loading = false, unavailable = false
                 <HubV5Icon name="right" />
               </button>
             </div>
+          ) : loading ? (
+            // the pager's room while the tiles load: on a phone it takes its own row
+            <div className="hv5-bzc-pg hv5-bzc-pg-wait" aria-hidden="true">
+              <span className="hv5-bzc-pos" />
+              <span className="hv5-ib" />
+              <span className="hv5-ib" />
+            </div>
           ) : null}
         </header>
         {N ? (

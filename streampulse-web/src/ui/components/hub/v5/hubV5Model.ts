@@ -35,6 +35,34 @@ export function hubClock(t: number): string {
   return nearestMinute(t).toLocaleTimeString('en-US', CLOCK)
 }
 
+/** A saved copy's day ("yesterday", "Oct 27"), or null today, and its minute. */
+function savedClockParts(t: number, nowMs: number): { day: string | null; clock: string } {
+  // Never later than now: the saved minute is floored, and a copy stamped ahead of this clock reads as now.
+  const at = new Date(Math.min(t, nowMs))
+  const clock = new Date(Math.floor(at.getTime() / 60_000) * 60_000).toLocaleTimeString('en-US', CLOCK)
+  const now = new Date(nowMs)
+  if (at.toDateString() === now.toDateString()) return { day: null, clock }
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+  if (at.toDateString() === yesterday.toDateString()) return { day: 'yesterday', clock }
+  return { day: at.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), clock }
+}
+
+/**
+ * A saved copy's time (N1, 10-28): "10:50 AM" today, "yesterday, 11:30 PM",
+ * else "Oct 27, 10:50 AM". Its own day and minute, so 11:59:40 PM reads as
+ * 11:59 PM of that day.
+ */
+export function hubSavedClock(t: number, nowMs: number): string {
+  const { day, clock } = savedClockParts(t, nowMs)
+  return day ? `${day}, ${clock}` : clock
+}
+
+/** "at 10:50 AM" today; on another day just "yesterday, 11:30 PM" or "Oct 26, 9:05 PM". */
+export function hubSavedAt(t: number, nowMs: number): string {
+  const { day, clock } = savedClockParts(t, nowMs)
+  return day ? `${day}, ${clock}` : `at ${clock}`
+}
+
 /** "10:45–10:50 AM" (one day period when both share it). */
 export function hubClockRange(a: number, b: number): string {
   const parts = (t: number) => new Intl.DateTimeFormat('en-US', CLOCK).formatToParts(nearestMinute(t))
