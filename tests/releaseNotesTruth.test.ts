@@ -36,6 +36,11 @@ describe('0.2.6 release notes', () => {
     expect(entry('0.2.6').new).toContain('Bookmarks work without an account and stay in this browser.')
   })
 
+  it('word the VOD limitation as "moments you missed", the way the rest of the notes do', () => {
+    expect(entry('0.2.6').knownIssues).toContain('Moments you missed get a picture only if the stream has a Twitch VOD.')
+    expect(text(entry('0.2.6'))).not.toMatch(/a tab didn't play/i)
+  })
+
   it('describe no sign-in, device code or account flow this build does not have', () => {
     const notes = text(entry('0.2.6'))
     for (const gone of [/device code/i, /website sign-in/i, /installation account/i, /credential/i, /recovery/i, /approve this extension/i, /fixed (place|card)/i, /thirty minutes/i, /Become a Supporter opens/i]) {

@@ -155,7 +155,8 @@ const routes = [
   },
   {
     // The extension's "Join Discord" opens this page. It only forwards to the
-    // build-time invite (or says there is none), so it stays out of search.
+    // build-time invite (or says there is none), so it stays out of search and
+    // out of public/sitemap.xml.
     path: 'discord',
     title: 'Discord — StreamPulse',
     description: 'Join the public StreamPulse community on Discord.',
@@ -165,7 +166,8 @@ const routes = [
   {
     // The extension's "Release details" links open this page. It describes only
     // released versions and names the one in development; it is kept out of search
-    // because it documents the extension rather than the site.
+    // (and out of public/sitemap.xml) because it documents the extension rather
+    // than the site.
     path: 'changelog',
     title: 'Release Notes — StreamPulse',
     description: 'What changed in each version of the StreamPulse extension.',

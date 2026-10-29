@@ -126,9 +126,10 @@ describe('extension "Release details" destination (OP1-FUN-003)', () => {
     expect(read('scripts/prerender.mjs')).toMatch(/path: 'changelog',\s+title: 'Release Notes — StreamPulse',/)
     expect(read('scripts/check-public-pages.mjs')).toContain("['changelog/index.html', 'Release Notes — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/changelog']")
     expect(read('scripts/check-public-links.mjs')).toMatch(/EXTERNALLY_PUBLISHED = \[[^\]]*'\/changelog'/)
-    // It documents the extension rather than the site, so it is not offered to search engines.
+    // It documents the extension rather than the site, so it is not offered to search engines:
+    // noindex, and left out of the sitemap so Search Console is not asked to index a noindex page.
     expect(read('scripts/prerender.mjs')).toMatch(/canonicalPath: '\/changelog',\s+robots: 'noindex,nofollow',/)
-    expect(read('public/sitemap.xml')).toContain('https://streampulse.stream/changelog')
-    expect(read('public/sitemap.xml')).toContain('https://streampulse.stream/discord')
+    expect(read('public/sitemap.xml')).not.toContain('https://streampulse.stream/changelog')
+    expect(read('public/sitemap.xml')).not.toContain('https://streampulse.stream/discord')
   })
 })

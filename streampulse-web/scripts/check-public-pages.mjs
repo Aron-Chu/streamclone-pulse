@@ -99,6 +99,14 @@ for (const relativePath of ['robots.txt', 'sitemap.xml', '_headers', '_redirects
   if (!existsSync(join(dist, relativePath))) failures.push(`${relativePath}: missing`)
 }
 
+// A sitemap URL must be a page that asks to be indexed: listing a noindex page is a Search Console error.
+if (existsSync(join(dist, 'sitemap.xml'))) {
+  const indexable = new Set(expected.filter(([, , robots]) => robots === 'index,follow').map(([, , , canonical]) => canonical))
+  for (const [, loc] of readFileSync(join(dist, 'sitemap.xml'), 'utf8').matchAll(/<loc>([^<]+)<\/loc>/g)) {
+    if (!indexable.has(loc)) failures.push(`sitemap.xml: ${loc} is not an indexable page`)
+  }
+}
+
 for (const route of ['analytics', 'docs', 'status', 'privacy', 'terms', 'refunds', 'supporter', 'support', 'feedback', 'discord', 'changelog']) {
   const aliasPath = join(dist, `${route}.html`)
   if (!existsSync(aliasPath)) failures.push(`${route}.html: missing clean-route Vite fallback alias`)
