@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const KEY = 'sp.backendUrlOverride'
@@ -56,5 +58,51 @@ describe('local backend override respects the explicit dev opt-in', () => {
     clearStaleLocalBackendOverride()
 
     expect(sessionStorage.getItem(KEY)).toBe('https://api.streampulse.stream')
+  })
+})
+
+/**
+ * The removed beta-key login left `sp.betaKey` in site storage. Every site
+ * load deletes it, production included, and leaves every other key alone.
+ */
+describe('removed beta-key cleanup', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    vi.resetModules()
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.restoreAllMocks()
+    localStorage.clear()
+  })
+
+  it('clearRemovedBetaKey deletes sp.betaKey and leaves other sp.* keys alone', async () => {
+    vi.stubEnv('PROD', true)
+    const { clearRemovedBetaKey } = await import('../src/lib/auth')
+    localStorage.setItem('sp.betaKey', 'secret-one')
+    localStorage.setItem('sp.hub.recentLogins', '["creator"]')
+    localStorage.setItem('sp:publicHub:v1:x', '{}')
+
+    clearRemovedBetaKey()
+
+    expect(localStorage.getItem('sp.betaKey')).toBeNull()
+    expect(localStorage.getItem('sp.hub.recentLogins')).toBe('["creator"]')
+    expect(localStorage.getItem('sp:publicHub:v1:x')).toBe('{}')
+  })
+
+  it('does not throw when site storage is blocked', async () => {
+    const { clearRemovedBetaKey } = await import('../src/lib/auth')
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new DOMException('blocked', 'SecurityError')
+    })
+
+    expect(() => clearRemovedBetaKey()).not.toThrow()
+  })
+
+  it('runs on every page load from the site bootstrap', () => {
+    const main = readFileSync(resolve(process.cwd(), 'src/main.tsx'), 'utf8')
+    const bootstrap = /async function bootstrap\(\) \{[\s\S]*?\n\}/.exec(main)?.[0] ?? ''
+    expect(bootstrap).toContain('clearRemovedBetaKey()')
   })
 })

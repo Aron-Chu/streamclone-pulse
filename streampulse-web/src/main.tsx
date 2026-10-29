@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, useLocation } from 'react-router-dom'
 import { AppRoutes, preloadOpeningPage } from './routes/index'
 import {
+  clearRemovedBetaKey,
   clearStaleLocalBackendOverride,
   isAllowedDevBackendQueryOverride,
   setBackendUrlOverride,
@@ -68,6 +69,7 @@ function applyDevBackendQueryOverride(): void {
 async function bootstrap() {
   applyDevBackendQueryOverride()
   clearStaleLocalBackendOverride()
+  clearRemovedBetaKey()
   // A failed load of the opening page is left to the route, which retries and
   // shows its own error.
   await preloadOpeningPage(window.location.pathname).catch(() => undefined)

@@ -1,4 +1,6 @@
 const BACKEND_OVERRIDE_KEY = 'sp.backendUrlOverride'
+/** Saved by the removed beta-key login; no build reads it any more. */
+const REMOVED_BETA_KEY = 'sp.betaKey'
 
 export const DEFAULT_PRODUCTION_BACKEND_URL = 'https://api.streampulse.stream'
 const TAILNET_DEV_HOST_PARTS = ['laptop', 'worker'] as const
@@ -75,6 +77,20 @@ export function clearStaleLocalBackendOverride(): void {
     }
   } catch {
     /* ignore */
+  }
+}
+
+/**
+ * Delete the key the removed beta-key login left in site storage, so returning
+ * visitors do not keep a dead secret. Unlike the override cleanup above this
+ * runs in production too. The extension's own beta key lives in
+ * chrome.storage and is not touched here.
+ */
+export function clearRemovedBetaKey(): void {
+  try {
+    localStorage.removeItem(REMOVED_BETA_KEY)
+  } catch {
+    /* storage blocked */
   }
 }
 
