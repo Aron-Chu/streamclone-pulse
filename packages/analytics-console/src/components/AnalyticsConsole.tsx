@@ -40,7 +40,7 @@ import {
   type StreamCollectionState,
 } from '../utils/statCards.ts'
 import { isActiveLiveCollectorStream, isSyncPrefetchPlaceholder, resolveChannelActuallyLive } from '../utils/analyticsStreamRow.ts'
-import { analyticsStreamPathSlug, resolveCanonicalLiveSessionTarget } from '../utils/syncedLiveStream.ts'
+import { analyticsStreamPathSlug, resolveCanonicalLiveSessionTarget, streamHasSyncedMinutes } from '../utils/syncedLiveStream.ts'
 import {
   isDateSlugUnresolved,
   recapMatchesStreamIds,
@@ -144,6 +144,21 @@ function streamBelongsToChannel(detail: AnalyticsStreamDetail, channelLogin: str
   const owner = detail.stream?.login?.trim().toLowerCase()
   const responseChannel = detail.channel?.trim().toLowerCase()
   return Boolean(requested && owner === requested && (!responseChannel || responseChannel === requested))
+}
+
+/**
+ * The live frame's own archive id comes without verified archive timing, so the stand-in drops it.
+ * List-row and recap archive fallbacks still apply, as on the direct route.
+ */
+function withoutUnverifiedArchive(detail: AnalyticsStreamDetail): AnalyticsStreamDetail {
+  return {
+    ...detail,
+    vodId: undefined,
+    vodAlignSeconds: undefined,
+    vodDurationSeconds: undefined,
+    stream: detail.stream ? { ...detail.stream, vodId: undefined } : detail.stream,
+    availability: detail.availability ? { ...detail.availability, vodId: undefined } : detail.availability,
+  }
 }
 
 function defaultChannelPath(login: string): string {
@@ -358,14 +373,27 @@ export function AnalyticsConsole({
   // treating its first row as live suppresses the historical detail query for
   // ended sessions (and leaves the page stuck on an empty live frame).
   const liveActiveStreamId = liveQuery.data?.stream?.streamId || ''
-  // A date-slug redirect can resolve to the session that the live query already
-  // owns. Reuse that payload instead of starting a second historical detail /
-  // minutes waterfall for the same stream id.
-  const currentLiveTarget = Boolean(
+  const liveFrameMatchesTarget = Boolean(
     isHistoricalRoute
     && targetQueryStreamId
     && liveActiveStreamId
     && targetQueryStreamId === liveActiveStreamId,
+  )
+  // A date-slug redirect can resolve to the session that the live query already
+  // owns. Reuse that payload instead of starting a second historical detail /
+  // minutes waterfall for the same stream id, but only while it is confirmed live.
+  const currentLiveTarget = liveFrameMatchesTarget && resolveChannelActuallyLive(liveQuery.data)
+  // An ended stream reached from the channel page: the live frame has no per-minute
+  // emote names and no verified archive timing, so the session read still runs. The
+  // frame (when it belongs to this channel) stands in only if that read fails or
+  // finds nothing.
+  const liveStandInFrame = liveFrameMatchesTarget && !currentLiveTarget && liveQuery.data
+    && streamBelongsToChannel(liveQuery.data, channelLogin)
+    ? liveQuery.data
+    : undefined
+  const liveStandIn = useMemo(
+    () => (liveStandInFrame ? withoutUnverifiedArchive(liveStandInFrame) : undefined),
+    [liveStandInFrame],
   )
 
   const historicalDetailQuery = useQuery({
@@ -393,13 +421,21 @@ export function AnalyticsConsole({
   })
 
   const detailQuery = isLiveRoute || currentLiveTarget ? liveQuery : historicalDetailQuery
-  const rawDetail = (detailQuery.data ?? undefined) as AnalyticsStreamDetail | undefined
+  // Until the session read first answers, the page loads as it does when opened directly (chart
+  // skeleton, meta slot held): showing the frame first would move the page when the read lands.
+  const sessionReadFirstAnswerOut = historicalDetailQuery.isPending
+    && historicalDetailQuery.errorUpdatedAt === 0
+    && historicalDetailQuery.fetchStatus !== 'idle'
+  // What the page shows: the read that owns the detail, else the live frame standing in for it
+  // when that read failed or found nothing.
+  const shownDetail: AnalyticsStreamDetail | undefined = detailQuery.data
+    ?? (sessionReadFirstAnswerOut ? undefined : liveStandIn)
   // A date alias can reuse the live query rather than historicalDetailQuery.
   // Apply the same ownership check to that route before any session data renders.
   const detailOwnershipMismatch = Boolean(
-    isHistoricalRoute && rawDetail && !streamBelongsToChannel(rawDetail, channelLogin),
+    isHistoricalRoute && shownDetail && !streamBelongsToChannel(shownDetail, channelLogin),
   )
-  const baseDetail = detailOwnershipMismatch ? undefined : rawDetail
+  const baseDetail = detailOwnershipMismatch ? undefined : shownDetail
 
   const statusQuery = useQuery({
     queryKey: ['analytics-console-status', targetQueryStreamId, channelLogin],
@@ -961,19 +997,34 @@ export function AnalyticsConsole({
 
   const liveRouteSessionTarget = useMemo(() => {
     if (!isLiveRoute) return undefined
-    return resolveCanonicalLiveSessionTarget(sidebarStreams, {
+    const fromList = resolveCanonicalLiveSessionTarget(sidebarStreams, {
       liveStreamId: detail?.stream?.streamId || liveQuery.data?.stream?.streamId || liveActiveStreamId,
       channelLive: channelIsLive || isActiveLiveCollector,
       channelLogin,
       startedAt: detail?.stream?.startedAt ?? liveQuery.data?.stream?.startedAt,
     })
+    if (fromList || streamsQuery.data) return fromList
+    // Until the list answers, an ended or unconfirmed live read opens its own stream when that is
+    // this channel's measured stream (viewer and chat minutes, not a prefetch stub): the loaded list
+    // opens the same ID. The session URL must name its read without the list (a numeric ID).
+    const live = liveQuery.data
+    const liveStream = live?.stream
+    if (
+      !live
+      || !liveStream?.streamId
+      || !streamBelongsToChannel(live, channelLogin)
+      || !streamHasSyncedMinutes(liveStream)
+      || isSyncPrefetchPlaceholder(liveStream)
+      || resolveTargetQueryStreamId(liveStream.streamId, undefined, undefined, true) !== liveStream.streamId
+    ) return undefined
+    return liveStream
   }, [
     isLiveRoute,
     sidebarStreams,
+    streamsQuery.data,
     detail?.stream?.streamId,
     detail?.stream?.startedAt,
-    liveQuery.data?.stream?.streamId,
-    liveQuery.data?.stream?.startedAt,
+    liveQuery.data,
     liveActiveStreamId,
     channelIsLive,
     isActiveLiveCollector,
@@ -985,9 +1036,10 @@ export function AnalyticsConsole({
     return analyticsStreamPathSlug(liveRouteSessionTarget, sidebarStreams)
   }, [liveRouteSessionTarget, sidebarStreams])
 
-  // Does not wait on the stream list: before it loads, only a live read that
-  // confirms the live stream names a target, and that is the same stream ID the
-  // loaded list would pick. Without one, the target waits for the list.
+  // Does not wait on the stream list: before it answers, a live read that confirms
+  // the live stream, or names this channel's measured ended stream, names the target,
+  // and that is the same stream ID the loaded list would pick. Without one (a channel
+  // not recorded, an unmeasured or another channel's stream), the target waits for the list.
   const shouldRedirectLiveRouteToSession = Boolean(
     isLiveRoute
     && !detailQuery.isLoading
@@ -1071,7 +1123,7 @@ export function AnalyticsConsole({
   }, [minuteTsToRollup])
   const showSessionSignalTape = Boolean(
     layer2Enabled
-    && detailQuery.data
+    && shownDetail
     && !sessionResolving
     && !sessionNotFound,
   )
@@ -1298,8 +1350,9 @@ export function AnalyticsConsole({
     : displayStreamTitle(stream, channelLogin, [
     // When the detail title is a "Syncing..." placeholder, fall back to the real
     // broadcast title from the live frame / matched sidebar record before the
-    // date slug, so a resolved date route shows the actual stream title.
-    liveQuery.data?.stream?.title,
+    // date slug, so a resolved date route shows the actual stream title. A session
+    // route takes the live frame's title only from the frame it shows or stands in with.
+    isLiveRoute || currentLiveTarget ? liveQuery.data?.stream?.title : liveStandIn?.stream?.title,
     matchedStream?.title,
     streamsQuery.data?.items?.[0]?.title,
     `${channelLogin} / ${getLocalDateString(stream?.startedAt) || 'session'}`,
@@ -1439,7 +1492,7 @@ export function AnalyticsConsole({
 
         <section className="ssp-stats grid grid-cols-2 gap-3 lg:grid-cols-6" data-session-stat-row aria-label="Stream figures">
           <StatCard
-            label={isHistoricalRoute ? 'Latest viewers' : 'Current viewers'}
+            label="Latest viewers"
             value={statCardsPending ? '-' : statCardClasses.current.placeholder ?? count(headerStats.current)}
             tone={statCardClasses.current.muted ? STAT_PLACEHOLDER_MUTED_CLASS : 'text-cyan-300/90'}
           />
