@@ -32,7 +32,7 @@ import { HubV5Icon } from '../../ui/components/hub/v5/HubV5Icon'
 import { HubV5LiveFeed, HubV5LivePeek, useHubLiveFeed } from '../../ui/components/hub/v5/HubV5LiveFeed'
 import { HubV5Rack } from '../../ui/components/hub/v5/HubV5Rack'
 import type { FeedWait } from '../../ui/components/hub/v5/hubV5FeedModel'
-import { HUB_RACK_ROWS, hubCategoryArt, hubSavedClock, whereChatIs, type HubChannelSort } from '../../ui/components/hub/v5/hubV5Model'
+import { HUB_RACK_ROWS, hubCategoryArt, hubSavedAt, whereChatIs, type HubChannelSort } from '../../ui/components/hub/v5/hubV5Model'
 import { useHashScrollHold } from '../../ui/RouteScrollManager'
 import '../../ui/components/analytics/figma-analytics.css'
 import '../../ui/components/hub/d3/hub-d3-tokens.css'
@@ -72,6 +72,11 @@ function formatUpdatedAgo(ts: number | null, nowMs: number): string | undefined 
   const min = Math.floor(sec / 60)
   if (min < 60) return `${min}m ago`
   return `${Math.floor(min / 60)}h ago`
+}
+
+/** Save time is not the age of the data inside the saved copy. */
+export function formatCachedSnapshotNotice(cachedAt: number, nowMs: number): string {
+  return `Cached snapshot · Saved ${hubSavedAt(cachedAt, nowMs)}`
 }
 
 const reducedMotion = () => typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -223,7 +228,7 @@ export default function AnalyticsHubV5Page() {
         {/* A saved copy can be hours old: it names its time, and its day when that is not today (N1), for as long as it is on screen, never reading as live. */}
         {hub.loadSource === 'cache' && hub.cachedAt != null ? (
           <div className="figma-hub-fallback-banner figma-hub-fallback-banner--info" role="status">
-            Cached snapshot from {hubSavedClock(hub.cachedAt, nowMs)}{hub.refreshing || hub.hubReadPending ? ' - refreshing...' : ''}
+            {formatCachedSnapshotNotice(hub.cachedAt, nowMs)}{hub.refreshing || hub.hubReadPending ? ' · refreshing...' : ''}
           </div>
         ) : null}
         <HubDataHealthBanner
@@ -231,6 +236,8 @@ export default function AnalyticsHubV5Page() {
           hubEndpointOk={hub.hubEndpointOk}
           activitySummary={activitySummary}
           pipeline={data.corpusPipeline}
+          coverageState={measurementAvailable ? data.coverage.state : undefined}
+          coverageDatabaseOk={measurementAvailable ? data.coverage.databaseOk : undefined}
           liveRosterCount={data.coverage.liveChannels}
           error={hub.error}
           backendUrl={getBackendUrl()}
@@ -269,7 +276,9 @@ export default function AnalyticsHubV5Page() {
               loading={measurementsWaiting || hub.activityRefreshing}
               awaitingData={measurementsWaiting}
               activityRefreshing={hub.activityRefreshing}
-              updatedAgo={formatUpdatedAgo(hub.lastUpdated, nowMs)}
+              updatedAgo={formatUpdatedAgo(hub.dataAsOf, nowMs)}
+              lastAppliedAgo={formatUpdatedAgo(hub.displayedSnapshotAt, nowMs)}
+              lastAppliedFromCache={hub.loadSource === 'cache'}
               rangeControl={{
                 active: activityWindow,
                 options: activityRangeOptions,

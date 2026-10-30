@@ -248,12 +248,13 @@ describe('/analytics on a slow hub API (U8)', () => {
     const saved = hubClock(T0 - 120 * MIN)
     const note = () => document.querySelector('.figma-hub-fallback-banner--info')?.textContent ?? ''
     expect(peek().querySelector('h2')!.textContent).toBe(`Saved ${saved}`)
-    expect(note()).toBe(`Cached snapshot from ${saved} - refreshing...`)
+    expect(note()).toBe(`Cached snapshot · Saved at ${saved} · refreshing...`)
 
     await at(21)
     expect(peek().querySelector('h2')!.textContent).toBe(`Saved ${saved}`)
-    expect(note()).toBe(`Cached snapshot from ${saved} - refreshing...`)
-    expect(bannerText()).toBe('Live data is slow — still loading…')
+    expect(note()).toBe(`Cached snapshot · Saved at ${saved} · refreshing...`)
+    expect(bannerText()).toContain('Live data is slow — still loading…')
+    expect(bannerText()).toContain('Coverage status is unknown in this snapshot')
     expect(enabledRetry()).toBeNull()
 
     await at(41)

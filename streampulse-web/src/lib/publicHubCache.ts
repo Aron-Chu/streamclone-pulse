@@ -1,4 +1,5 @@
 import { getBackendUrl } from './apiClient'
+import { hubDataAsOf } from './hubDataAge'
 import { hasPublicHubResponseShape, normalizePublicHub, type HubActivityPoint, type HubLiveChannel, type PublicHub, type PublicHubActivityWindow, type PublicHubProjection } from './publicHub'
 import type { HubChannelScreenerV1 } from './channelScreenerContract'
 import { hubActivityContractIssues, isHubActivityLivePoolFallback } from './hubActivityHonesty'
@@ -46,6 +47,7 @@ export interface PublicHubCacheEntry {
   activityWindow: PublicHubActivityWindow
   projection?: PublicHubProjection
   generatedAt?: string
+  dataAsOf?: number | null
   data: PublicHub
   columns?: PublicHubCacheColumns
 }
@@ -350,12 +352,14 @@ function entryHead(
   activityWindow: PublicHubActivityWindow,
   projection: PublicHubProjection | undefined,
   generatedAt: string | undefined,
+  dataAsOf?: number | null,
 ): string {
   // Built by hand so `cachedAt` is always the second field: eviction reads it
   // from the prefix instead of parsing other entries.
   let head = `{"version":${version},"cachedAt":${cachedAt},"backendUrl":${JSON.stringify(backendUrl)},"activityWindow":${JSON.stringify(activityWindow)}`
   if (projection !== undefined) head += `,"projection":${JSON.stringify(projection)}`
   if (generatedAt !== undefined) head += `,"generatedAt":${JSON.stringify(generatedAt)}`
+  if (dataAsOf !== undefined) head += `,"dataAsOf":${JSON.stringify(dataAsOf)}`
   return head + ','
 }
 
@@ -371,7 +375,7 @@ export function readPublicHubCache(
   backendUrl: string,
   activityWindow: PublicHubActivityWindow,
   projection?: PublicHubProjection,
-): { data: PublicHub; cachedAt: number; generatedAt?: string; stale: boolean } | null {
+): { data: PublicHub; cachedAt: number; generatedAt?: string; dataAsOf: number | null; stale: boolean } | null {
   if (typeof window === 'undefined') return null
   try {
     const raw = window.localStorage.getItem(publicHubCacheKey(backendUrl, activityWindow, projection))
@@ -419,7 +423,11 @@ export function readPublicHubCache(
       isHubActivityLivePoolFallback(data.activity)
     const stale = Date.now() - cachedAt > (shortLived ? PUBLIC_HUB_CACHE_STALE_MS : PUBLIC_HUB_CACHE_HUB_STALE_MS)
     if (stale) return null
-    return { data, cachedAt, generatedAt, stale }
+    // Legacy entries lack server-age metadata; receipt alone is not freshness.
+    const dataAsOf = 'dataAsOf' in parsed
+      ? typeof parsed.dataAsOf === 'number' && Number.isFinite(parsed.dataAsOf) && parsed.dataAsOf > 0 && parsed.dataAsOf <= Date.now() ? Math.min(parsed.dataAsOf, cachedAt) : null
+      : hubDataAsOf({ generatedAt }, { receivedAt: cachedAt })
+    return { data, cachedAt, generatedAt, dataAsOf, stale }
   } catch {
     return null
   }
@@ -486,15 +494,32 @@ export function writePublicHubCache(
   activityWindow: PublicHubActivityWindow,
   fullData: PublicHub,
   projection?: PublicHubProjection,
+  dataAsOf?: number | null,
 ): void {
   if (typeof window === 'undefined' || publicHubCacheWritesStopped()) return
   try {
     const prepared = prepareWrite(fullData, projection)
     if (!prepared) return
     const key = publicHubCacheKey(backendUrl, activityWindow, projection)
-    // Avoid storage rewrites for an unchanged network snapshot. A stale
-    // timestamp stays stale; receipt time must not invent source freshness.
-    if (window.localStorage.getItem(key)?.endsWith(prepared.tail)) return
+    // An unchanged body does not extend its saved-copy lifetime. A later
+    // trusted measurement may fill a previously unknown data-age anchor.
+    const previous = window.localStorage.getItem(key)
+    if (previous?.endsWith(prepared.tail)) {
+      if (typeof dataAsOf === 'number' && Number.isFinite(dataAsOf) && dataAsOf > 0 && dataAsOf <= Date.now()) {
+        const prefix = previous.slice(0, -prepared.tail.length)
+        // A newer measurement of identical data cannot make the original
+        // saved copy look newer than the time at which it was saved.
+        const originalCachedAt = cachedAtFromPrefix(previous)
+        if (!Number.isFinite(originalCachedAt) || originalCachedAt <= 0 || originalCachedAt > Date.now() + 60_000) return
+        const boundedAsOf = Math.min(dataAsOf, originalCachedAt)
+        if (!/"dataAsOf":/.test(prefix)) {
+          window.localStorage.setItem(key, prefix + `"dataAsOf":${boundedAsOf},` + prepared.tail)
+        } else if (/"dataAsOf":null,/.test(prefix)) {
+          window.localStorage.setItem(key, prefix.replace('"dataAsOf":null,', `"dataAsOf":${boundedAsOf},`) + prepared.tail)
+        }
+      }
+      return
+    }
     const serialized = entryHead(
       prepared.version,
       Date.now(),
@@ -502,6 +527,7 @@ export function writePublicHubCache(
       activityWindow,
       projection,
       prepared.generatedAt,
+      dataAsOf,
     ) + prepared.tail
     if (serialized.length > (projection ? PUBLIC_HUB_PROJECTION_CACHE_MAX_CHARS : PUBLIC_HUB_CACHE_MAX_CHARS)) return
     const otherEntries: { key: string; cachedAt: number }[] = []
@@ -531,6 +557,7 @@ interface PendingCacheWrite {
   activityWindow: PublicHubActivityWindow
   data: PublicHub
   projection?: PublicHubProjection
+  dataAsOf?: number | null
 }
 
 type IdleHandle = { kind: 'idle'; id: number } | { kind: 'timeout'; id: number }
@@ -588,7 +615,7 @@ function runPendingWrites(): void {
   const writes = [...pendingWrites.values()]
   pendingWrites.clear()
   for (const write of writes) {
-    writePublicHubCache(write.backendUrl, write.activityWindow, write.data, write.projection)
+    writePublicHubCache(write.backendUrl, write.activityWindow, write.data, write.projection, write.dataAsOf)
   }
 }
 
@@ -600,10 +627,11 @@ export function schedulePublicHubCacheWrite(
   activityWindow: PublicHubActivityWindow,
   data: PublicHub,
   projection?: PublicHubProjection,
+  dataAsOf?: number | null,
 ): void {
   if (typeof window === 'undefined' || publicHubCacheWritesStopped()) return
   const backendUrl = getBackendUrl()
-  pendingWrites.set(publicHubCacheKey(backendUrl, activityWindow, projection), { backendUrl, activityWindow, data, projection })
+  pendingWrites.set(publicHubCacheKey(backendUrl, activityWindow, projection), { backendUrl, activityWindow, data, projection, dataAsOf })
   ensureWriteScheduled()
 }
 
