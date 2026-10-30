@@ -32,21 +32,25 @@ import { fileURLToPath } from 'node:url'
 import { isDeepStrictEqual } from 'node:util'
 
 export const EXCEPTION_FILE = 'edge-freeze-exception.json'
+export const MIGRATION_EXCEPTION_FILE = 'pages-migration-approval.json'
 export const APEX_PAGES_PROJECT = 'streampulse-web'
-const MIGRATION_PAGES_PROJECT = 'streampulse-main'
+export const MIGRATION_PAGES_PROJECT = 'streampulse-main'
 
 // The expected account is supplied separately by the operator after checking
 // the destination account; no account identifiers belong in source control.
-export function assertApexTargetForWorker(gate, project, env = process.env) {
-  if (!gate.admitted) return
+export function assertApexTargetForWorker(gate, project, webRoot, env = process.env) {
+  if (!gate.admitted && project !== MIGRATION_PAGES_PROJECT) return
+  if (!gate.admitted) fail('the migration project requires the approved Pages Worker')
   const account = env.CLOUDFLARE_ACCOUNT_ID?.trim()
   if (!account) throw new Error('CLOUDFLARE_ACCOUNT_ID is required for a Pages Worker')
   if (project === APEX_PAGES_PROJECT) return
   if (project !== MIGRATION_PAGES_PROJECT) throw new Error('Pages Worker target is not an approved apex project')
   const expected = env.PAGES_DEPLOY_EXPECTED_ACCOUNT_ID?.trim()
   if (!/^[a-f0-9]{32}$/i.test(account) || !/^[a-f0-9]{32}$/i.test(expected || '') || account !== expected) {
-    throw new Error('the migration project requires a verified matching PAGES_DEPLOY_EXPECTED_ACCOUNT_ID')
+    throw new Error('the migration project requires a matching PAGES_DEPLOY_EXPECTED_ACCOUNT_ID')
   }
+  assertNoGitAuthorityEnvironment()
+  assertMergedMigrationApproval(webRoot, gate.admitted)
 }
 const WORKER = '_worker.js'
 const ROUTES = '_routes.json'
@@ -54,12 +58,13 @@ const PIN_FIELDS = ['approval', 'expires', 'routes', 'sha256']
 const ROUTE_CEILING = new Set(['/v1/account/*', '/v1/billing/*'])
 const MAX_EXCEPTION_MS = 90 * 24 * 60 * 60 * 1000
 export const APPROVAL_DOCUMENT = 'docs/superpowers/specs/2026-10-01-cloudflare-edge-freeze-amendment-v2.md'
+export const MIGRATION_APPROVAL_DOCUMENT = 'docs/superpowers/specs/2026-10-30-pages-migration-amendment.md'
 const APPROVAL_REFERENCE = new RegExp(`^streampulse-sdlc@([0-9a-f]{40}):${APPROVAL_DOCUMENT.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`)
 export const WRANGLER_CONFIG_FILES = ['wrangler.json', 'wrangler.jsonc', 'wrangler.toml', '.wrangler/deploy/config.json']
 // Paths (relative to streampulse-web/) that decide what reaches the edge. The
 // production deploy requires each to match origin/master exactly.
 export const EDGE_PATHS = [
-  'public/_worker.js', 'public/_routes.json', EXCEPTION_FILE,
+  'public/_worker.js', 'public/_routes.json', EXCEPTION_FILE, MIGRATION_EXCEPTION_FILE,
   'scripts/check-edge-freeze.mjs', 'scripts/pages-deploy-prod.mjs', 'functions', ...WRANGLER_CONFIG_FILES,
 ]
 
@@ -199,11 +204,7 @@ function assertNoGitAuthorityEnvironment() {
   }
 }
 
-/** Read only immutable Git objects and local remote-tracking ancestry. Never fetch. */
-function assertMergedApproval(webRoot, admitted) {
-  const reference = APPROVAL_REFERENCE.exec(admitted.approval)
-  if (!reference) fail('approval must reference an immutable merged streampulse-sdlc document')
-  const revision = reference[1]
+function canonicalSdlcRoot(webRoot) {
   const common = approvalGit(['rev-parse', '--path-format=absolute', '--git-common-dir'], webRoot)
   if (common.status !== 0 || !common.stdout.trim()) fail('the canonical SDLC checkout cannot be resolved from this product checkout')
   // Linked worktrees resolve through the primary product .git directory, not
@@ -215,14 +216,97 @@ function assertMergedApproval(webRoot, admitted) {
   const urls = remote.stdout?.replace(/\r?\n$/, '').split(/\r?\n/) ?? []
   const canonicalRemote = /^(?:https:\/\/github\.com\/Aron-Chu\/streampulse-sdlc(?:\.git)?|git@github\.com:Aron-Chu\/streampulse-sdlc(?:\.git)?|ssh:\/\/git@github\.com\/Aron-Chu\/streampulse-sdlc(?:\.git)?)$/
   if (remote.status !== 0 || urls.length !== 1 || !canonicalRemote.test(urls[0])) fail('approval requires the canonical streampulse-sdlc origin without embedded credentials')
+  return sdlcRoot
+}
+
+/** Read only immutable Git objects and local remote-tracking ancestry. Never fetch. */
+function readMergedPolicy(webRoot, approval, document, referencePattern) {
+  const reference = referencePattern.exec(approval)
+  if (!reference) fail('approval must reference an immutable merged streampulse-sdlc document')
+  const revision = reference[1]
+  const sdlcRoot = canonicalSdlcRoot(webRoot)
   const object = approvalGit(['rev-parse', '--verify', `${revision}^{commit}`], sdlcRoot)
   const master = approvalGit(['rev-parse', '--verify', 'refs/remotes/origin/master^{commit}'], sdlcRoot)
   if (object.status !== 0 || object.stdout.trim() !== revision || master.status !== 0) fail('approval commit and SDLC origin/master must exist locally')
   if (approvalGit(['merge-base', '--is-ancestor', revision, 'refs/remotes/origin/master'], sdlcRoot).status !== 0) fail('approval commit is not merged into SDLC origin/master')
-  const immutable = approvalGit(['show', `${revision}:${APPROVAL_DOCUMENT}`], sdlcRoot)
-  const current = approvalGit(['show', `refs/remotes/origin/master:${APPROVAL_DOCUMENT}`], sdlcRoot)
+  const immutable = approvalGit(['show', `${revision}:${document}`], sdlcRoot)
+  const current = approvalGit(['show', `refs/remotes/origin/master:${document}`], sdlcRoot)
   if (immutable.status !== 0 || current.status !== 0 || immutable.stdout !== current.stdout) fail('approval document is missing or has been superseded on SDLC origin/master')
-  const blocks = [...immutable.stdout.matchAll(/```edge-approval-json\r?\n([\s\S]*?)\r?\n```/g)]
+  return immutable.stdout
+}
+
+// This comparison is separate so local tests can exercise it without network.
+export function assertFreshPolicyHead(localHead, remoteHead) {
+  if (!/^[0-9a-f]{40}$/.test(localHead) || !/^[0-9a-f]{40}$/.test(remoteHead) || localHead !== remoteHead) {
+    fail('SDLC origin/master must match the current canonical remote head before a migration deploy')
+  }
+}
+
+// The injectable query is used by offline tests; the production entry point
+// below always supplies the fixed GitHub query, with no CLI or env override.
+export function checkRemotePolicyFresh(webRoot, queryRemote) {
+  assertNoGitAuthorityEnvironment()
+  const sdlcRoot = canonicalSdlcRoot(webRoot)
+  const local = approvalGit(['rev-parse', '--verify', 'refs/remotes/origin/master^{commit}'], sdlcRoot)
+  let remote
+  try { remote = queryRemote(sdlcRoot) } catch { fail('cannot verify the current canonical SDLC policy head') }
+  if (local.status !== 0 || !remote || remote.error || remote.status !== 0 || typeof remote.stdout !== 'string') fail('cannot verify the current canonical SDLC policy head')
+  assertFreshPolicyHead(local.stdout.trim(), remote.stdout.trim())
+}
+
+// This child receives the token on stdin, not in arguments, output or a file.
+// Node's direct TLS agent does not honor gh's configurable API host or socket.
+const FIXED_HEAD_QUERY = `
+import https from 'node:https'
+import { readFileSync } from 'node:fs'
+import { rootCertificates } from 'node:tls'
+const token = readFileSync(0, 'utf8').trim()
+if (!token || /\\s/.test(token)) process.exit(1)
+const agent = new https.Agent({ keepAlive: false, rejectUnauthorized: true, ca: rootCertificates })
+const request = https.request({
+  hostname: 'api.github.com', port: 443, path: '/repos/Aron-Chu/streampulse-sdlc/git/ref/heads/master',
+  method: 'GET', agent, rejectUnauthorized: true,
+  headers: { 'User-Agent': 'streampulse-policy-gate', Accept: 'application/vnd.github+json', Authorization: 'Bearer ' + token },
+}, response => {
+  if (response.statusCode !== 200) { response.resume(); process.exitCode = 1; return }
+  let body = ''
+  response.setEncoding('utf8')
+  response.on('data', chunk => { body += chunk; if (body.length > 16384) request.destroy() })
+  response.on('end', () => {
+    try { const sha = JSON.parse(body).object.sha; if (!/^[0-9a-f]{40}$/.test(sha)) throw new Error(); process.stdout.write(sha) }
+    catch { process.exitCode = 1 }
+  })
+})
+request.setTimeout(12000, () => request.destroy())
+request.on('error', () => { process.exitCode = 1 })
+request.end()
+`
+
+// Tokens only authorize reading the fixed repository; they cannot choose the
+// host or policy. Reject ambiguous values rather than silently picking one.
+export function selectPolicyToken(env) {
+  const tokens = Object.entries(env).filter(([name]) => name === 'GH_TOKEN' || name === 'GITHUB_TOKEN').map(([, value]) => value).filter(Boolean)
+  if (!tokens.length || tokens.some(token => typeof token !== 'string' || !/^\S{1,4096}$/.test(token) || token !== tokens[0])) return null
+  return tokens[0]
+}
+
+// A stale local remote-tracking ref cannot prove a policy is still current.
+// Require a token supplied only in the runtime environment, then query the
+// fixed API over verified direct TLS. No gh config, token refresh, redirects,
+// proxy overrides or remote error output are used.
+export function assertRemotePolicyFresh(webRoot) {
+  checkRemotePolicyFresh(webRoot, sdlcRoot => {
+    const entries = Object.entries(process.env)
+    const token = selectPolicyToken(Object.fromEntries(entries))
+    if (!token) return { status: 1 }
+    const env = Object.fromEntries(entries.filter(([name]) => !/^NODE_/i.test(name) && name !== 'GH_TOKEN' && name !== 'GITHUB_TOKEN'))
+    return spawnSync(process.execPath, ['--input-type=module', '-e', FIXED_HEAD_QUERY], { cwd: sdlcRoot, encoding: 'utf8', input: token, env, timeout: 20000, maxBuffer: 16384 })
+  })
+}
+
+function assertMergedApproval(webRoot, admitted) {
+  const text = readMergedPolicy(webRoot, admitted.approval, APPROVAL_DOCUMENT, APPROVAL_REFERENCE)
+  const blocks = [...text.matchAll(/```edge-approval-json\r?\n([\s\S]*?)\r?\n```/g)]
   if (blocks.length !== 1) fail('approval document must contain exactly one edge-approval-json block')
   let policy
   try { policy = JSON.parse(blocks[0][1]) } catch { fail('approval document contains invalid edge-approval-json') }
@@ -230,6 +314,29 @@ function assertMergedApproval(webRoot, admitted) {
     || policy.version !== 2 || policy.status !== 'approved') fail('approval document must be approved amendment version 2')
   if (policy.workerSha256 !== admitted.sha256 || policy.expires !== admitted.expires || !isDeepStrictEqual(policy.routes, admitted.routes)) {
     fail('approval document does not bind the exact Worker SHA-256, routes and expiry')
+  }
+}
+
+function assertMergedMigrationApproval(webRoot, admitted) {
+  if (typeof webRoot !== 'string' || !existsSync(join(webRoot, MIGRATION_EXCEPTION_FILE))) {
+    fail(`the migration project requires ${MIGRATION_EXCEPTION_FILE} with merged approval`)
+  }
+  const pin = readJson(join(webRoot, MIGRATION_EXCEPTION_FILE), MIGRATION_EXCEPTION_FILE)
+  if (!isPlainObject(pin) || !isDeepStrictEqual(Object.keys(pin), ['approval']) || typeof pin.approval !== 'string') {
+    fail(`${MIGRATION_EXCEPTION_FILE} must contain exactly an approval reference`)
+  }
+  const reference = new RegExp(`^streampulse-sdlc@([0-9a-f]{40}):${MIGRATION_APPROVAL_DOCUMENT.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`)
+  const text = readMergedPolicy(webRoot, pin.approval, MIGRATION_APPROVAL_DOCUMENT, reference)
+  const blocks = [...text.matchAll(/```pages-migration-approval-json\r?\n([\s\S]*?)\r?\n```/g)]
+  if (blocks.length !== 1) fail('migration approval document must contain exactly one pages-migration-approval-json block')
+  let policy
+  try { policy = JSON.parse(blocks[0][1]) } catch { fail('migration approval document contains invalid JSON') }
+  if (!isPlainObject(policy) || !isDeepStrictEqual(Object.keys(policy).sort(), ['expires', 'project', 'routes', 'status', 'version', 'workerSha256'])
+    || policy.version !== 1 || policy.status !== 'approved' || policy.project !== MIGRATION_PAGES_PROJECT) {
+    fail('migration approval document must approve only the migration project')
+  }
+  if (policy.workerSha256 !== admitted.sha256 || policy.expires !== admitted.expires || !isDeepStrictEqual(policy.routes, admitted.routes)) {
+    fail('migration approval document does not bind the exact Worker SHA-256, routes and expiry')
   }
 }
 

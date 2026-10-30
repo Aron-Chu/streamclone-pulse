@@ -10,6 +10,9 @@
  * its account, then set PAGES_DEPLOY_EXPECTED_ACCOUNT_ID to the same value.
  * Matching values detect a mismatch; they do not prove the account identity.
  * The destination still requires its own runtime bindings and release approval.
+ * The migration policy freshness check requires GH_TOKEN or GITHUB_TOKEN at
+ * runtime with read access to the private control-plane repository. Supply it
+ * through an approved secret source; do not put its value in files or logs.
  * Until cutover, the hosted-route smoke checks the current apex, not the new
  * project's deployment; verify the destination separately before cutover.
  *
@@ -32,7 +35,7 @@ import { existsSync, readFileSync, readdirSync, unlinkSync, statSync } from 'nod
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { verifyHostedAnalyticsRoutes, verifyHostedAccountRoutes } from './hosted-analytics-route-smoke.mjs'
-import { APEX_PAGES_PROJECT, assertApexTargetForWorker, assertDeploySourceIsOriginMaster, assertEdgeFreeze, describeEdgeFreeze } from './check-edge-freeze.mjs'
+import { APEX_PAGES_PROJECT, MIGRATION_PAGES_PROJECT, assertApexTargetForWorker, assertDeploySourceIsOriginMaster, assertEdgeFreeze, assertRemotePolicyFresh, describeEdgeFreeze } from './check-edge-freeze.mjs'
 import { checkProductionBuildEnv, describeWaivedInputs } from './pages-deploy-env.mjs'
 import { loadEnv } from 'vite'
 
@@ -69,7 +72,8 @@ function edgeCheck(check) {
 // The migration target requires a separately verified matching account value.
 // No account value is printed.
 function requireApexTargetForWorker(gate, project) {
-  edgeCheck(() => assertApexTargetForWorker(gate, project))
+  if (project === MIGRATION_PAGES_PROJECT) edgeCheck(() => assertRemotePolicyFresh(webRoot))
+  edgeCheck(() => assertApexTargetForWorker(gate, project, webRoot))
 }
 
 const sourceGate = edgeCheck(() => assertEdgeFreeze(webRoot, { sourceOnly: true }))
