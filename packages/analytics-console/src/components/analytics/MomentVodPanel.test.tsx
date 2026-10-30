@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { formatClock, MomentVodPanel, twitchPlayerSrc, vodClockNote } from './MomentVodPanel.tsx'
+import { formatClock, MomentVodPanel, twitchPlayerSrc, vodClockCaption, vodClockNote } from './MomentVodPanel.tsx'
 
 afterEach(() => {
   cleanup()
@@ -62,7 +62,7 @@ describe('MomentVodPanel', () => {
       <MomentVodPanel vodId={VOD} playAt={3039} playVerb="Play VOD from" frame={null} subject="moment" leadCaption={{ leadSeconds: 10, alignSeconds: -5 }} />,
     )
     const cap = container.querySelector('.mpl-cap span[title]')
-    expect(cap?.textContent).toBe("On the VOD's clock · , 10 s before the moment")
+    expect(cap?.textContent).toBe("On the VOD's clock · , 10\u00a0s before the moment")
     expect(cap?.getAttribute('title')).toBe(
       'VOD time = stream time − 5 s (the VOD starts 5 s after the stream went live), then 10 s earlier so the moment plays in',
     )
@@ -76,5 +76,9 @@ describe('helpers', () => {
     expect(twitchPlayerSrc(VOD, 59, 'portal.example')).toBe('https://player.twitch.tv/?video=v2899924626&time=59s&parent=portal.example&autoplay=true')
     expect(vodClockNote(0, 10)).toBe('VOD time = stream time + 0 s, then 10 s earlier so the moment plays in')
     expect(vodClockNote(120, 10)).toContain("(the VOD starts 120 s before the stream clock's 0:00:00)")
+    expect(vodClockNote(-6, 0)).toBe('VOD time = stream time − 6 s (the VOD starts 6 s after the stream went live)')
+    expect(vodClockCaption(-5, 10)).toBe('10\u00a0s before the moment')
+    expect(vodClockCaption(-6, 0)).toBe("6\u00a0s behind the stream's")
+    expect(vodClockCaption(120, 0)).toBe("120\u00a0s ahead of the stream's")
   })
 })

@@ -4,7 +4,8 @@ import { act, createRef } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { writeFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { laneFigure, laneLayout, laneTick, laneWidth, snapToSlots } from '../src/sp/lanes.ts'
+import { barWidthPx } from '../src/sp/bars.ts'
+import { laneFigure, laneFitMax, laneLayout, laneRawMax, laneTick, laneWidth, snapToSlots } from '../src/sp/lanes.ts'
 import { SpChart } from '../src/sp/SpChart.tsx'
 import { createSpViewportStore } from '../src/sp/viewportStore.ts'
 import type { SpChartData, SpChartHandle, SpChartProps, SpLane } from '../src/sp/types.ts'
@@ -61,6 +62,12 @@ describe('lanes layout and formats', () => {
     expect(L.viewers).toBeNull()
   })
 
+  it('fits a laneFit max 10 % over the max in view, rounded up to two figures', () => {
+    expect([0, 0.5, 3, 20, 160, 699, 757, 34_282].map(laneFitMax)).toEqual([1, 1, 3.3, 22, 180, 770, 840, 38_000])
+    const L = laneLayout({ width: 1456, height: 440, tickColumn: 56, band: true, topPx: 0, gap: 12, lanes: sessionLanes(data(195)), raw: [34_282, 757, 699, 160], fit: true })
+    expect(L.lanes!.map(b => laneTick(b.max))).toEqual(['38K', '840', '770', '180'])
+  })
+
   it('formats ticks like the mockup (40K, 1.5K, 800) and captions like the stat cards (34.3K, 757)', () => {
     expect([40_000, 1_500, 4_000, 800, 200, 0].map(laneTick)).toEqual(['40K', '1.5K', '4K', '800', '200', '0'])
     expect([34_282, 1_550, 757, 15.5, null].map(laneFigure)).toEqual(['34.3K', '1.6K', '757', '16', '—'])
@@ -70,6 +77,19 @@ describe('lanes layout and formats', () => {
     expect(laneWidth(W2, 675, 675)).toBeCloseTo(1.55)
     expect(laneWidth(W2, 0, 675)).toBeCloseTo(2.15)
     expect(laneWidth(W2, 675 / 4, 675)).toBeCloseTo(1.55 + 0.6 * 0.5)
+  })
+
+  it('takes a lane’s max over its measured samples, within a range when given', () => {
+    const d = data(120)
+    const [, chat, , overlay] = sessionLanes(d)
+    // chat is 20 + (7i mod 34): 53 at minute 29; minutes 0..3 hold 20, 27, 34, 41
+    expect(laneRawMax(d, chat!)).toBe(53)
+    expect(laneRawMax(d, chat!, 0, 3)).toBe(41)
+    // a gap counts nothing, and a range past the end stops at the last sample
+    expect(laneRawMax(d, chat!, 50, 59)).toBe(0)
+    expect(laneRawMax(d, chat!, 118, 1000)).toBe(Math.max(20 + ((118 * 7) % 34), 20 + ((119 * 7) % 34)))
+    // a line lane takes the max over every line
+    expect(laneRawMax(d, overlay!, 0, 10)).toBe(30)
   })
 
   it('snaps a span outward to whole slots at a level', () => {
@@ -141,6 +161,107 @@ describe('SpChart lanes mode', () => {
     expect(q('g.spc-lane-bars[data-lane="emotes"]')!.getAttribute('fill')).toBe('#34d399')
     // chat lane: bars at .12 under the trend, min 1 px tall
     expect(new Set(qa('g.spc-lane-bars[data-lane="chat"] rect').map(r => r.getAttribute('fill-opacity')))).toEqual(new Set(['0.12']))
+  })
+
+  it('draws each lane at the fit of the settled view with laneFit, clipped to its box', () => {
+    const d = data(200, [])
+    for (let i = 0; i < 200; i += 1) d.chat[i] = i >= 100 && i < 104 ? 400 : 20
+    expect(laneRawMax(d, sessionLanes(d)[1]!)).toBe(400)
+    expect(laneRawMax(d, sessionLanes(d)[1]!, 99.4, 99.6)).toBe(400)
+    const ref = show({ data: d, laneFit: true }, { startIndex: 0, endIndex: 99 })
+    const chat = ref.current!.layout()!.lanes![1]!
+    expect(chat.max).toBe(laneFitMax(20))
+    expect(text(q('text.spc-tk[data-lane="chat"]'))).toBe('22')
+    // a bar past the view runs over the lane top, and the lane's clip cuts it there
+    expect(qa('g.spc-lane-bars[data-lane="chat"] rect').some(r => Number(r.getAttribute('y')) < chat.y)).toBe(true)
+    const wrap = q('g.spc-lane-bars[data-lane="chat"]')!.parentElement!.parentElement!
+    const id = /^url\(#(.+)\)$/.exec(wrap.getAttribute('clip-path')!)![1]!
+    const clip = container.querySelector('clipPath[id="' + id + '"] rect')!
+    expect([clip.getAttribute('y'), clip.getAttribute('height')]).toEqual([String(chat.y), String(chat.height)])
+    // the trend shares the lane's clip
+    expect(q('g.spc-lane-trend[data-lane="chat"]')!.parentElement!.parentElement!.getAttribute('clip-path')).toBe('url(#' + id + ')')
+    // at rest no lane is rescaled
+    expect(qa('g[data-lane-fit]').filter(g => g.hasAttribute('transform'))).toHaveLength(0)
+  })
+
+  it('springs each lane to the view per frame, and a settle swaps the drawn scale with no jump (laneFit)', () => {
+    const d = data(200, [])
+    for (let i = 0; i < 200; i += 1) d.chat[i] = i >= 150 ? 400 : 20
+    // the store jumps and settles on its next frame; the chart's spring runs on the page's rAF, both by hand
+    const frames: Array<(now: number) => void> = []
+    const springs: Array<(now: number) => void> = []
+    vi.stubGlobal('requestAnimationFrame', (cb: (now: number) => void) => springs.push(cb))
+    const vp = createSpViewportStore({ count: 200, initial: { startIndex: 0, endIndex: 99 }, reducedMotion: () => true, raf: cb => frames.push(cb), cancelRaf: () => undefined, now: () => 0 })
+    const ref = createRef<SpChartHandle>()
+    act(() =>
+      root!.render(
+        <SpChart ref={ref} data={d} viewport={vp} plotHeight={440} width={1456} barOptions={{ minSlotPx: 1.05, tolerance: 0.85, rule: 'prod', maxRects: 1500 }} lanes={sessionLanes(d)} minHatchPx={6} laneFit />,
+      ),
+    )
+    const chatFit = () => q('g.spc-lane-bars[data-lane="chat"]')!.parentElement!
+    const kOf = () => {
+      const m = /^matrix\(1 0 0 ([\d.]+) 0 (-?[\d.]+)\)$/.exec(chatFit().getAttribute('transform') ?? '')
+      return m ? Number(m[1]) : 1
+    }
+    const lane = () => ref.current!.layout()!.lanes![1]!
+    expect(lane().max).toBe(22)
+    // the mount's one frame marks sp:chart-ready; at rest no spring runs
+    expect(springs).toHaveLength(1)
+    springs.length = 0
+    let now = 0
+    const spring = (count: number) => {
+      for (let i = 0; i < count && springs.length; i += 1) springs.shift()!((now += 16))
+    }
+
+    act(() => vp.setTarget({ startIndex: 100, endIndex: 199 }))
+    expect(springs).toHaveLength(1)
+    spring(3)
+    // mid-gesture the drawn scale stays; the lane shrinks toward the view's 440 on a y-scale about its floor
+    expect(lane().max).toBe(22)
+    const k0 = kOf()
+    expect(k0).toBeLessThan(1)
+    expect(k0).toBeGreaterThan(22 / 440)
+    const floor = lane().y + lane().height
+    expect(chatFit().getAttribute('transform')).toBe('matrix(1 0 0 ' + k0 + ' 0 ' + Math.round(floor * (1 - k0) * 100) / 100 + ')')
+    // the max tick reads the shown scale
+    const shown = 22 / k0
+    expect(text(q('text.spc-tk[data-lane="chat"]'))).toBe(laneTick(+shown.toPrecision(2)))
+    // the emotes lane fits the same either way (max 12)
+    expect(q('g.spc-lane-bars[data-lane="emotes"]')!.parentElement!.hasAttribute('transform')).toBe(false)
+
+    // the settle draws at 440 and rescales by the same shown max: every bar keeps its height on screen
+    act(() => {
+      while (frames.length) frames.shift()!(0)
+    })
+    expect(lane().max).toBe(440)
+    // (k is written to 4 decimals)
+    expect(kOf()).toBeCloseTo(440 / shown, 2)
+
+    spring(60)
+    expect(springs).toHaveLength(0)
+    expect(chatFit().hasAttribute('transform')).toBe(false)
+    expect(text(q('text.spc-tk[data-lane="chat"]'))).toBe('440')
+  })
+
+  it('widens bars with the zoom between settles, about their centres (laneFit, prod rule)', () => {
+    const d = data(600, [])
+    const frames: Array<(now: number) => void> = []
+    const vp = createSpViewportStore({ count: 600, reducedMotion: () => true, raf: cb => frames.push(cb), cancelRaf: () => undefined, now: () => 0 })
+    act(() =>
+      root!.render(
+        <SpChart data={d} viewport={vp} plotHeight={440} width={1456} barOptions={{ minSlotPx: 1.05, tolerance: 0.85, rule: 'prod', maxRects: 1500 }} lanes={sessionLanes(d)} minHatchPx={6} laneFit />,
+      ),
+    )
+    const bw = () => (q('g.spc-lane-bars[data-lane="chat"]') as SVGGElement).style.getPropertyValue('--spc-bw')
+    expect(bw()).toBe('')
+    act(() => vp.setTarget({ startIndex: 0, endIndex: 99 }))
+    // drawn at 1400 / 600 px a minute (1 px bars), shown at 14 px a minute (72 %)
+    const at = (sx: number) => barWidthPx(sx, 'prod') / sx
+    expect(Number(bw())).toBeCloseTo(at(14) / at(1400 / 600), 3)
+    act(() => {
+      while (frames.length) frames.shift()!(0)
+    })
+    expect(bw()).toBe('')
   })
 
   it('marks each lane with one max tick: in the column, or inside the lane head with no column', () => {

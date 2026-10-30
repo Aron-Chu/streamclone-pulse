@@ -28,7 +28,7 @@ vi.mock('../hooks/useAnalyticsLive.ts', () => ({
   }),
 }))
 vi.mock('./analytics/AnalyticsChart.tsx', () => ({
-  default: ({ selectedDetail, onSelectRollup }: { selectedDetail?: ReactNode | ((bar: null) => ReactNode); onSelectRollup: (row: AnalyticsMinuteRollup | null) => void }) => <div data-testid="analytics-chart">Chart<button onClick={() => onSelectRollup(detail().rollups[0])}>Choose measured minute</button>{typeof selectedDetail === 'function' ? selectedDetail(null) : selectedDetail}</div>,
+  default: ({ selectedDetail, onSelectRollup, onExpandedChange }: { selectedDetail?: ReactNode | ((bar: null) => ReactNode); onSelectRollup: (row: AnalyticsMinuteRollup | null) => void; onExpandedChange?: (expanded: boolean) => void }) => <div data-testid="analytics-chart">Chart<button onClick={() => onSelectRollup(detail().rollups[0])}>Choose measured minute</button><button onClick={() => onExpandedChange?.(true)}>Expand chart</button><button onClick={() => onExpandedChange?.(false)}>Collapse chart</button>{typeof selectedDetail === 'function' ? selectedDetail(null) : selectedDetail}</div>,
 }))
 vi.mock('./analytics/ConsoleBits.tsx', () => ({
   DataQualityButton: () => <span>Data quality</span>,
@@ -194,6 +194,27 @@ describe('AnalyticsConsole opt-in layout controls', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Exit chart focus' }))
     expect(screen.getByRole('button', { name: 'Focus chart' }).getAttribute('aria-pressed')).toBe('false')
+    expect(document.querySelector('details#analytics-console-streams')).toBeNull()
+    expect(screen.getByTestId('stream-sidebar')).not.toBeNull()
+  })
+
+  it('folds streams and session details under the chart while the chart is expanded (B2), apart from Focus chart', async () => {
+    renderConsole({ enableLayoutControls: true })
+    expect(await screen.findByRole('heading', { name: 'Layout fixture' })).not.toBeNull()
+    expect(await screen.findByTestId('analytics-chart')).not.toBeNull()
+    expect(document.querySelector('aside[data-analytics-stream-column]')).not.toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand chart' }))
+    const streamsDisclosure = document.querySelector('details#analytics-console-streams')
+    expect(streamsDisclosure).not.toBeNull()
+    expect(screen.getByText('Session details').closest('details')).not.toBeNull()
+    expect(
+      screen.getByTestId('analytics-chart').compareDocumentPosition(streamsDisclosure as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    // the header's Focus chart is its own switch
+    expect(screen.getByRole('button', { name: 'Focus chart' }).getAttribute('aria-pressed')).toBe('false')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse chart' }))
     expect(document.querySelector('details#analytics-console-streams')).toBeNull()
     expect(screen.getByTestId('stream-sidebar')).not.toBeNull()
   })

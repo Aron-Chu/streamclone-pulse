@@ -36,6 +36,7 @@ import {
   buildSpLevels,
   createSpHoverStore,
   createSpViewportStore,
+  SP_EASE,
   type SpBar,
   type SpCaptions,
   type SpChartHandle,
@@ -74,8 +75,7 @@ import { SessionSpChart, sessionPlotHeight } from './SessionSpChart.tsx'
 import { sessionBandSegments } from './SessionChartLayers.tsx'
 import { buildSessionPins, selectedPinIndex, type SessionPin, type SessionStripPinsSource } from './SessionChartPins.tsx'
 import { SessionShowOnChart, SESSION_MARKERS_OFF, type SessionMarkers } from './SessionShowOnChart.tsx'
-import { SessionEmotesOnChart } from './SessionEmotesOnChart.tsx'
-import { emoteChartColorForKey } from './chartTheme.ts'
+import { PlotOnChartStrip } from './PlotOnChartStrip.tsx'
 import {
   SessionExpandButton,
   SessionRangeSeg,
@@ -249,10 +249,49 @@ function useViewAtEnd(store: SpViewportStore, n: number): boolean {
   return useSyncExternalStore(store.subscribeTarget, read, read)
 }
 
+/** The window's inner height, kept current on resize while `on` (Expand fills it). */
+function useWindowHeight(on: boolean): number {
+  const [height, setHeight] = useState(() => (typeof window === 'undefined' ? 0 : window.innerHeight))
+  useEffect(() => {
+    if (!on || typeof window === 'undefined') return
+    const read = () => setHeight(window.innerHeight)
+    read()
+    window.addEventListener('resize', read)
+    return () => window.removeEventListener('resize', read)
+  }, [on])
+  return height
+}
+
+/** Expand's plot height, eased over 260 ms on the viewport's curve; without motion it jumps (2026-10-21). */
+function useEasedPlotHeight(target: number, motion: boolean): number {
+  const [height, setHeight] = useState(target)
+  const shown = useRef(target)
+  useEffect(() => {
+    if (!motion || typeof requestAnimationFrame !== 'function' || shown.current === target) {
+      shown.current = target
+      setHeight(target)
+      return
+    }
+    const from = shown.current
+    let t0: number | null = null
+    let raf = requestAnimationFrame(function step(t) {
+      t0 ??= t
+      const k = Math.min(1, (t - t0) / 260)
+      shown.current = Math.round(from + (target - from) * SP_EASE(k))
+      setHeight(shown.current)
+      if (k < 1) raf = requestAnimationFrame(step)
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [target, motion])
+  return motion ? height : target
+}
+
 function AnalyticsChart({
   detail,
   selectedEmotes,
   onSelectEmote,
+  onClearEmotePlots,
+  onResetEmotePlots,
   selectedRollup,
   selectedOffsetSeconds = null,
   previewOffsetSeconds = null,
@@ -343,18 +382,19 @@ function AnalyticsChart({
   momentOffsetInBar?: (span: { startMs: number; endMs: number }) => number | null
   /** F23: the selection is a Moments row or pin, so it locks the bar holding it (a table minute doesn't). */
   selectionIsMoment?: boolean
-  /** Expand toggled; the column fill holds while expanded (session-original fitMoments). */
+  /** Expand toggled on a desktop: the console folds the side columns under the chart (B2). Phones keep their layout. */
   onExpandedChange?: (expanded: boolean) => void
 }) {
   const [expanded, setExpanded] = useState(false)
-  const onExpandedChangeRef = useRef(onExpandedChange)
-  onExpandedChangeRef.current = onExpandedChange
-  useEffect(() => {
-    onExpandedChangeRef.current?.(expanded)
-  }, [expanded])
   const [hoveredGameKey, setHoveredGameKey] = useState<string | null>(null)
   const { motionEnabled } = useConsoleMotion()
   const phone = useSessionPhone()
+  const onExpandedChangeRef = useRef(onExpandedChange)
+  onExpandedChangeRef.current = onExpandedChange
+  const layoutExpanded = expanded && !phone
+  useEffect(() => {
+    onExpandedChangeRef.current?.(layoutExpanded)
+  }, [layoutExpanded])
 
   useEffect(() => {
     if (!selectedRollup) return
@@ -569,9 +609,8 @@ function AnalyticsChart({
 
   // ---- the chart part (d3 design, plan §1.2 / §2.4) ----
 
-  // The plotted emotes ("Emotes on chart" under the plot), in colour order.
+  // The plotted emotes ("Emote overlays" under the plot), in colour order.
   const plottedKeys = useMemo(() => [...selectedEmotes].slice(0, MAX_PLOTTED_EMOTES), [selectedEmotes])
-  const plottedColor = useCallback((key: string) => emoteChartColorForKey(key, plottedKeys), [plottedKeys])
   const model = useMemo(
     () => buildSessionChartModel({
       rollups: detailRollups ?? rollups,
@@ -679,6 +718,17 @@ function AnalyticsChart({
     () => (model && (seriesKey === 'all' || seriesKey === 'emotes') ? model.overlays : []),
     [model, seriesKey],
   )
+  // A lane added or taken away re-lays the plot at once; it settles in from 45 % so the change reads (2026-10-21).
+  const laneKey = `${seriesKey}:${overlayLines.length > 0}`
+  const laneKeyRef = useRef(laneKey)
+  useEffect(() => {
+    if (laneKeyRef.current === laneKey) return
+    laneKeyRef.current = laneKey
+    const plot = chartStackRef.current?.querySelector<HTMLElement>('.spc-plot')
+    if (motionEnabled && plot && typeof plot.animate === 'function') {
+      plot.animate([{ opacity: 0.45 }, { opacity: 1 }], { duration: 240, easing: 'cubic-bezier(.16, 1, .3, 1)' })
+    }
+  }, [laneKey, motionEnabled])
   const showAvg = markers.avg
   const captions = useMemo<SpCaptions>(() => {
     const peak = viewerCaption?.peak
@@ -970,8 +1020,35 @@ function AnalyticsChart({
     return { moment: null, pinned: null, bar }
   }, [lockedBar, model, pinIndex, pins, selectedRollup])
 
-  const plotHeight = sessionPlotHeight(expanded, phone)
+  const windowHeight = useWindowHeight(expanded)
+  const plotHeight = useEasedPlotHeight(sessionPlotHeight(expanded, phone, windowHeight), motionEnabled)
   const toggleExpanded = useCallback(() => setExpanded(value => !value), [])
+  // Expand fills the screen (Aron's pick B2, 2026-10-21): the console moves the side columns under the chart
+  // (onExpandedChange), the toolbar scrolls up under the site nav once the plot has grown (a smooth scroll that
+  // starts while the page still changes height stops short), and Escape goes back once nothing else on the page
+  // used it (a popover, a selection, a zoom: their document and chart listeners run before this window one).
+  const chartPartRef = useRef<HTMLElement>(null)
+  const selectionHeldRef = useRef(false)
+  selectionHeldRef.current = !!selectedRollup || Number.isFinite(selectedOffsetSeconds)
+  useEffect(() => {
+    if (!expanded) return
+    const timer = phone
+      ? undefined
+      : setTimeout(() => {
+          const part = chartPartRef.current
+          if (part && typeof part.scrollIntoView === 'function') part.scrollIntoView({ block: 'start', behavior: motionEnabled ? 'smooth' : 'instant' })
+        }, motionEnabled ? 280 : 0)
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || selectionHeldRef.current) return
+      setExpanded(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      clearTimeout(timer)
+      window.removeEventListener('keydown', onKey)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- scroll once per Expand, with the motion setting of that moment
+  }, [expanded])
 
   if (loading && !detail) {
     return (
@@ -1216,6 +1293,7 @@ function AnalyticsChart({
         </div>
 
         <section
+          ref={chartPartRef}
           className="ssc"
           data-session-chart-part=""
           data-session-controls="toolbar"
@@ -1275,15 +1353,19 @@ function AnalyticsChart({
               />
             ) : null}
           </div>
-          {model ? (
-            <SessionEmotesOnChart
-              topEmotes={detail?.topEmotes ?? []}
-              plotted={plottedKeys}
-              colorOf={plottedColor}
-              onToggle={onSelectEmote}
-            />
-          ) : null}
         </section>
+        {/* Outside `.ssc`, whose button reset would strip the panel's borders and chips. */}
+        {model ? (
+          <div className="mt-2">
+            <PlotOnChartStrip
+              topEmotes={detail?.topEmotes ?? []}
+              plottedKeys={plottedKeys}
+              onToggleEmote={onSelectEmote}
+              onClear={onClearEmotePlots}
+              onReset={onResetEmotePlots}
+            />
+          </div>
+        ) : null}
       </div>
 
       {/* No reserved height: it never stopped the content below from moving (a

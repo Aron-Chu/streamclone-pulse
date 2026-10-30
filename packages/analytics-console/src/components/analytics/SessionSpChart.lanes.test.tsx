@@ -4,7 +4,7 @@ import type { ComponentProps } from 'react'
 import { createSpHoverStore, createSpViewportStore } from '@streampulse/pulse-charts/spchart'
 import type { AnalyticsMinuteRollup } from '../../api.ts'
 import AnalyticsChart from './AnalyticsChart.tsx'
-import { SessionSpChart, sessionLanes, sessionPlotHeight, type SessionSpChartProps } from './SessionSpChart.tsx'
+import { SESSION_EXPAND_CHROME_PX, SessionSpChart, sessionLanes, sessionPlotHeight, type SessionSpChartProps } from './SessionSpChart.tsx'
 import type { SessionPin } from './SessionChartPins.tsx'
 import { buildSessionChartModel } from './sessionSpChartModel.ts'
 import { HARNESS_STARTED_AT, harnessDetail, holdFrames, setStackWidth, type HeldFrames } from './__fixtures__/sessionChartHarness.ts'
@@ -146,8 +146,12 @@ describe('session lanes (d3-v2 session-original)', () => {
 })
 
 describe('SessionSpChart heights', () => {
-  it('uses 440 / 580 and 340 / 420 on phones', () => {
-    expect([sessionPlotHeight(false, false), sessionPlotHeight(true, false), sessionPlotHeight(false, true), sessionPlotHeight(true, true)]).toEqual([440, 580, 340, 420])
+  it('uses 440, and 340 / 420 on phones; expanded on a desktop it fills the window less the chrome, at least 580 (B2)', () => {
+    expect([sessionPlotHeight(false, false), sessionPlotHeight(false, true), sessionPlotHeight(true, true)]).toEqual([440, 340, 420])
+    expect(SESSION_EXPAND_CHROME_PX).toBe(224)
+    expect([1080, 900, 800, 0].map(h => sessionPlotHeight(true, false, h))).toEqual([856, 676, 580, 580])
+    // the window height leaves a phone's plot as it is
+    expect(sessionPlotHeight(true, true, 1080)).toBe(420)
   })
 
   it('adds extraPlotPx (the column fill) to the plot height, and leaders run to the last lane’s floor', () => {

@@ -14,10 +14,11 @@ import {
 // U11 (plan §1.8, "U11 Moment rows"): the session page's Moments list is the
 // d3-v2 session-original row list (moment-rows.js), not prod's old #N cards.
 // Rows: rank, offset, reason pill, reaction score, game + emote line, rate and
-// a ±8 min spark, blurred game box art behind (F6: never a live frame).
+// a ±8 min spark, no backdrop: the game's small cover is the row's only picture
+// (F6: never a live frame; the blurred box art went 2026-10-21).
 // Since 2026-10-16 the top three are the highlight reel (recap-r1 C1, MomentReel.tsx):
 // #1 a large card, #2 and #3 side by side, each the moment's VOD preview frame or
-// the game's blurred box art; rows start at #4, behind "Show N more moments".
+// the game's box art as a sharp cover; rows start at #4, behind "Show N more moments".
 const LIST = '[data-moment-list]'
 const ROW = '[data-moment-row]'
 const REEL = '[data-moment-reel]'
@@ -186,9 +187,9 @@ test.describe('session Moments rows (d3-v2) at 1440', () => {
     await expect(page.locator('[data-moment-row-pop]')).toHaveCount(0)
     await expect(page.locator('[data-moment-card-frame]')).toHaveCount(0)
     expect(await page.locator(CARD).evaluateAll(els => els.map(el => el.getAttribute('data-moment-frame')))).toEqual(['fallback', 'fallback', 'fallback'])
-    const srcs = await page.locator(`${CARD} img.ssr-rc-art`).evaluateAll(els => els.map(el => el.getAttribute('src') ?? ''))
+    const srcs = await page.locator(`${CARD} img.ssr-rc-cover`).evaluateAll(els => els.map(el => el.getAttribute('src') ?? ''))
     for (const src of srcs) expect(src.startsWith('https://static-cdn.jtvnw.net/ttv-boxart/')).toBe(true)
-    await expect(page.locator('[data-moment-reel-note]')).toHaveText("Pictures are the game's box art: no VOD preview frames for this stream.")
+    await expect(page.locator('[data-moment-reel-note]')).toHaveText("No VOD preview frames for this stream: the covers are the game's box art.")
   })
 
   test('rows from #4 keep the rate and the ±8 min spark', async ({ page }) => {
@@ -219,7 +220,8 @@ test.describe('session Moments rows (d3-v2) at 1440', () => {
     const size = await box(fourth)
     expect(size.h).toBeGreaterThanOrEqual(70)
     expect(size.h).toBeLessThanOrEqual(86)
-    const srcs = await page.locator(`${LIST_ROW} .ssr-fr img, ${LIST_ROW} .ssr-gm img`).evaluateAll(els => els.map(el => el.getAttribute('src') ?? ''))
+    await expect(page.locator(`${LIST_ROW} .ssr-fr`)).toHaveCount(0)
+    const srcs = await page.locator(`${LIST_ROW} .ssr-gm img`).evaluateAll(els => els.map(el => el.getAttribute('src') ?? ''))
     for (const src of srcs) expect(src.startsWith('https://static-cdn.jtvnw.net/ttv-boxart/')).toBe(true)
   })
 
@@ -280,38 +282,31 @@ test.describe('session Moments rows (d3-v2) at 1440', () => {
 
 // These need the page to pass the stream's games (and VOD) to the list: the
 // game line, box-art backdrop, hover dwell and preview frames come from them.
-test.describe('session Moments rows: game art and dwell', () => {
+test.describe('session Moments rows: game art', () => {
   test.use({ viewport: { width: 1440, height: 900 } })
 
-  test('the reel shows the game and its blurred box art; a row hovered 350 ms lights up', async ({ page }) => {
+  test('the reel shows the game and its box art as a sharp, whole cover; rows keep only the small cover', async ({ page }) => {
     await open(page)
     const first = row(page, 1)
     await expect(first.locator('.ssr-rc-gm'), 'the page passes games= to SessionRecapMomentsStrip').toHaveText('Just Chatting')
     await expect(first).toHaveClass(/\bhas-art\b/)
-    const art = first.locator('img.ssr-rc-art')
+    const art = first.locator('img.ssr-rc-cover')
     await expect(art).toHaveAttribute('src', /^https:\/\/static-cdn\.jtvnw\.net\/ttv-boxart\//)
-    expect(await art.evaluate(el => getComputedStyle(el).filter)).toContain('blur(16px)')
+    // No blur and no zoom (2026-10-21): the cover sits inside the card at the box art's own 3:4.
+    expect(await art.evaluate(el => getComputedStyle(el).filter)).toBe('none')
+    const card = (await first.boundingBox())!
+    const cover = (await art.boundingBox())!
+    expect(Math.abs(cover.width / cover.height - 3 / 4)).toBeLessThan(0.03)
+    expect(cover.x).toBeGreaterThanOrEqual(card.x)
+    expect(cover.y).toBeGreaterThanOrEqual(card.y)
+    expect(cover.x + cover.width).toBeLessThanOrEqual(card.x + card.width)
+    expect(cover.y + cover.height).toBeLessThanOrEqual(card.y + card.height)
 
     await showRest(page)
     const fourth = row(page, 4)
     await expect(fourth.locator('.ssr-gm-n')).toHaveText('Just Chatting')
-    await expect(fourth).toHaveClass(/\bhas-bd\b/)
-    const rowArt = fourth.locator('img.ssr-fr-art')
-    await expect(rowArt).toHaveAttribute('src', /^https:\/\/static-cdn\.jtvnw\.net\/ttv-boxart\//)
-    expect(await rowArt.evaluate(el => getComputedStyle(el).filter)).toContain('blur(14px)')
-
-    // Hold the fake clock so the 350 ms dwell is measured on it, not on wall time.
-    const now = await page.evaluate(() => Date.now())
-    await page.clock.pauseAt(now + 1000)
-    await fourth.hover()
-    await page.clock.runFor(340)
-    await expect(fourth).not.toHaveClass(/\blit\b/)
-    await page.clock.runFor(20)
-    await expect(fourth).toHaveClass(/\blit\b/)
-    await page.mouse.move(2, 2)
-    await page.clock.runFor(20)
-    await expect(fourth).not.toHaveClass(/\blit\b/)
-    await page.clock.resume()
+    await expect(fourth.locator('.ssr-fr')).toHaveCount(0)
+    await expect(fourth.locator('.ssr-gm img')).toHaveAttribute('src', /^https:\/\/static-cdn\.jtvnw\.net\/ttv-boxart\//)
   })
 
   test('the play button shows only when the stream has a VOD', async ({ page }) => {

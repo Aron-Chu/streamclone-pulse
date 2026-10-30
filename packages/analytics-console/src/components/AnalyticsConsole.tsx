@@ -1262,13 +1262,13 @@ export function AnalyticsConsole({
     })
   }, [recapMomentsAvailable, recapForStream, heatmapPoints, stream?.startedAt, detailForRender?.topEmotes, sessionEdges])
   const stripMomentCount = stripMoments.length
-  // Expand adds its own height on top: the fill holds while it is on (fitMoments).
+  // Expand (B2, 2026-10-21) moves the side columns under the chart, so there is no column to fill: off while it is on.
   const [chartExpanded, setChartExpanded] = useState(false)
   const columnFill = useSessionColumnFill(
     { center: centerColumnRef, right: rightColumnRef, momentsPanel: momentsPanelRef },
     {
-      enabled: !chartFocused && !channelNotRecorded && stripMomentCount > 0,
-      hold: rightPanelTab !== 'moments' || chartExpanded,
+      enabled: !chartFocused && !chartExpanded && !channelNotRecorded && stripMomentCount > 0,
+      hold: rightPanelTab !== 'moments',
       totalMoments: stripMomentCount,
       growChart: true,
       padAllowed: SESSION_OWNER_SWITCHES.columnFillPad,
@@ -1357,22 +1357,24 @@ export function AnalyticsConsole({
     streamsQuery.data?.items?.[0]?.title,
     `${channelLogin} / ${getLocalDateString(stream?.startedAt) || 'session'}`,
       ])
-  const consoleGridClassName = chartFocused
+  // Expand (B2, 2026-10-21) lays the page out as Focus chart does: the side columns fold under the chart
+  const focusLayout = chartFocused || chartExpanded
+  const consoleGridClassName = focusLayout
     ? 'grid grid-cols-1 gap-4'
     : streamsVisible
       ? 'grid grid-cols-1 gap-4 xl:grid-cols-[240px_minmax(0,1fr)_340px] 2xl:grid-cols-[260px_minmax(0,1fr)_380px] xl:items-start'
       : 'grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_380px] xl:items-start'
-  const centerColumnClassName = chartFocused
+  const centerColumnClassName = focusLayout
     ? 'order-1 min-w-0'
     : 'order-1 min-w-0 xl:order-2'
-  const streamColumnClassName = chartFocused
+  const streamColumnClassName = focusLayout
     ? 'order-2 min-w-0 w-full'
     : 'order-3 min-w-0 w-full xl:order-1 xl:w-auto xl:self-stretch'
-  const rightColumnClassName = chartFocused
+  const rightColumnClassName = focusLayout
     ? 'order-3 w-full min-w-0 space-y-3'
     : 'order-2 flex w-full min-w-0 flex-col gap-3 xl:order-3 xl:w-auto xl:self-stretch'
-  const StreamColumn = chartFocused ? 'details' : 'aside'
-  const RightColumn = chartFocused ? 'details' : 'aside'
+  const StreamColumn = focusLayout ? 'details' : 'aside'
+  const RightColumn = focusLayout ? 'details' : 'aside'
 
   return (
     <section
@@ -1651,12 +1653,12 @@ export function AnalyticsConsole({
             ) : null}
           </section>
 
-          {chartFocused || streamsVisible ? (
+          {focusLayout || streamsVisible ? (
             <StreamColumn
               id="analytics-console-streams"
               className={streamColumnClassName}
               data-analytics-stream-column
-              {...(chartFocused
+              {...(focusLayout
                 ? {
                     open: streamsVisible,
                     onToggle: (event: SyntheticEvent<HTMLDetailsElement>) => {
@@ -1665,12 +1667,12 @@ export function AnalyticsConsole({
                   }
                 : {})}
             >
-              {chartFocused ? (
+              {focusLayout ? (
                 <summary className="cursor-pointer rounded border border-white/[0.07] bg-white/[0.025] px-4 py-3 text-xs font-black uppercase text-zinc-300">
                   Streams
                 </summary>
               ) : null}
-              <div className={chartFocused ? 'mt-3' : 'contents'}>
+              <div className={focusLayout ? 'mt-3' : 'contents'}>
                 {SESSION_OWNER_SWITCHES.streamLimitCaption ? (
                   <p className="mb-2 text-xs text-zinc-400">Up to 100 recent stored streams</p>
                 ) : null}
@@ -1707,12 +1709,12 @@ export function AnalyticsConsole({
             className={rightColumnClassName}
             data-analytics-right-column
           >
-            {chartFocused ? (
+            {focusLayout ? (
               <summary className="cursor-pointer rounded border border-white/[0.07] bg-white/[0.025] px-4 py-3 text-xs font-black uppercase text-zinc-300">
                 Session details
               </summary>
             ) : null}
-            <div className={chartFocused ? 'mt-3 space-y-3' : 'contents'}>
+            <div className={focusLayout ? 'mt-3 space-y-3' : 'contents'}>
             {layer2Enabled && recapForStream ? (
               <StreamRecapPanel
                 recap={recapForStream}

@@ -28,7 +28,11 @@ const detail = {
 
 afterEach(() => cleanup())
 
-function renderChart(selectedRollup: AnalyticsStreamDetail['rollups'][number] | null = null, onSelectRollup = vi.fn()) {
+function renderChart(
+  selectedRollup: AnalyticsStreamDetail['rollups'][number] | null = null,
+  onSelectRollup = vi.fn(),
+  onExpandedChange?: (expanded: boolean) => void,
+) {
   return render(
     <AnalyticsChart
       detail={detail}
@@ -38,8 +42,20 @@ function renderChart(selectedRollup: AnalyticsStreamDetail['rollups'][number] | 
       onSelectRollup={onSelectRollup}
       viewMode="overview"
       onViewModeChange={vi.fn()}
+      onExpandedChange={onExpandedChange}
     />,
   )
+}
+
+/** Runs `run` with the window `height` px tall (Expand fills it). */
+async function withWindowHeight(height: number, run: () => void | Promise<void>) {
+  const own = Object.getOwnPropertyDescriptor(window, 'innerHeight')
+  Object.defineProperty(window, 'innerHeight', { configurable: true, value: height })
+  try {
+    await run()
+  } finally {
+    if (own) Object.defineProperty(window, 'innerHeight', own)
+  }
 }
 
 describe('AnalyticsChart stable regions', () => {
@@ -72,17 +88,18 @@ describe('AnalyticsChart stable regions', () => {
     expect((row.querySelector('[data-session-readout-clear]') as HTMLButtonElement).hidden).toBe(true)
     // No "Games played" header: each poster carries its run time.
     expect(container.querySelector('[data-games-played-header]')).toBeNull()
-    // Spikes, the overlay focus row and the plot-on-chart strip are gone (plan §1.2).
+    // Spikes and the overlay focus row are gone (plan §1.2).
     expect(screen.queryByRole('button', { name: /spikes/i })).toBeNull()
     expect(container.querySelector('[data-chart-overlay-focus-row]')).toBeNull()
-    expect(container.querySelector('[data-chart-overlay-selector]')).toBeNull()
     expect(screen.getAllByRole('button', { name: 'Expand' })).toHaveLength(1)
     expect(container.querySelector('[data-selected-moment-shell]')).toBeNull()
-    // The plotted emotes moved to the Emotes on chart line under the chart (session-original .po-eo).
-    expect(bar.querySelector('[data-session-overlay-toggle], [data-session-emotes-on-chart]')).toBeNull()
-    const line = part.querySelector('[data-session-emotes-on-chart]')!
-    const stack = part.querySelector('[data-session-chart-stack]')!
-    expect(stack.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // The plotted emotes are the wide "Emote overlays" panel under the chart (back 2026-10-21), outside
+    // `section.ssc`, whose button reset would strip its borders and chips.
+    expect(bar.querySelector('[data-session-overlay-toggle], [data-chart-overlay-selector]')).toBeNull()
+    expect(container.querySelector('[data-session-emotes-on-chart]')).toBeNull()
+    const overlays = container.querySelector('[data-chart-overlay-selector]')!
+    expect(overlays.closest('.ssc')).toBeNull()
+    expect(part.compareDocumentPosition(overlays) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('keeps series, range, Expand and Show on chart in the one toolbar row above the plot at every width', () => {
@@ -179,22 +196,55 @@ describe('AnalyticsChart stable regions', () => {
     expect(container.querySelector('[data-activity-peak-cap], .spc-cap')).toBeNull()
   })
 
-  it('expands the plot 440 -> 580 px and back without being forced open', () => {
+  it('expands the plot to the window less the chrome and back, tells the console, and scrolls the part up (B2)', () => withWindowHeight(1080, async () => {
+    const scrolled = vi.fn()
+    const own = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = scrolled
+    try {
+      const onExpandedChange = vi.fn()
+      const { container } = renderChart(null, vi.fn(), onExpandedChange)
+      const plot = () => container.querySelector<HTMLElement>('.spc-plot')!
+      const expand = screen.getByRole('button', { name: 'Expand' })
+      expect(plot().style.height).toBe('440px')
+      expect(expand.getAttribute('aria-pressed')).toBe('false')
+      expect(onExpandedChange).toHaveBeenLastCalledWith(false)
+      fireEvent.click(expand)
+      // 1080 - 224 (nav, toolbar, axis, overview)
+      expect(plot().style.height).toBe('856px')
+      expect(expand.getAttribute('aria-pressed')).toBe('true')
+      expect(onExpandedChange).toHaveBeenLastCalledWith(true)
+      // motion off: the part jumps under the site nav
+      await new Promise(resolve => setTimeout(resolve, 0))
+      expect(scrolled).toHaveBeenCalledTimes(1)
+      expect(scrolled.mock.contexts[0]).toBe(container.querySelector('[data-session-chart-part]'))
+      expect(scrolled).toHaveBeenCalledWith({ block: 'start', behavior: 'instant' })
+      // Expand changes height only: the bars keep their D2 level.
+      const level = container.querySelector('[data-bench-plot]')?.getAttribute('data-activity-bucket-minutes')
+      fireEvent.click(expand)
+      expect(plot().style.height).toBe('440px')
+      expect(expand.getAttribute('aria-pressed')).toBe('false')
+      expect(onExpandedChange).toHaveBeenLastCalledWith(false)
+      expect(container.querySelector('[data-bench-plot]')?.getAttribute('data-activity-bucket-minutes')).toBe(level)
+    } finally {
+      Element.prototype.scrollIntoView = own
+    }
+  }))
+
+  it('goes back on Escape, unless a selected minute takes it first', () => withWindowHeight(900, () => {
     const { container } = renderChart()
     const plot = () => container.querySelector<HTMLElement>('.spc-plot')!
-    const expand = screen.getByRole('button', { name: 'Expand' })
+    fireEvent.click(screen.getByRole('button', { name: 'Expand' }))
+    expect(plot().style.height).toBe('676px')
+    fireEvent.keyDown(document.body, { key: 'Escape' })
     expect(plot().style.height).toBe('440px')
-    expect(expand.getAttribute('aria-pressed')).toBe('false')
-    fireEvent.click(expand)
-    expect(plot().style.height).toBe('580px')
-    expect(expand.getAttribute('aria-pressed')).toBe('true')
-    // Expand changes height only: the bars keep their D2 level.
-    const level = container.querySelector('[data-bench-plot]')?.getAttribute('data-activity-bucket-minutes')
-    fireEvent.click(expand)
-    expect(plot().style.height).toBe('440px')
-    expect(expand.getAttribute('aria-pressed')).toBe('false')
-    expect(container.querySelector('[data-bench-plot]')?.getAttribute('data-activity-bucket-minutes')).toBe(level)
-  })
+    expect(screen.getByRole('button', { name: 'Expand' }).getAttribute('aria-pressed')).toBe('false')
+
+    cleanup()
+    const selected = renderChart(detail.rollups[20]!)
+    fireEvent.click(screen.getByRole('button', { name: 'Expand' }))
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+    expect(selected.container.querySelector<HTMLElement>('.spc-plot')!.style.height).toBe('676px')
+  }))
 
   it('leaves no blank band under the chart while nothing is pinned', () => {
     const { container } = renderChart()
