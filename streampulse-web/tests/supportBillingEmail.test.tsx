@@ -11,6 +11,7 @@ describe('billing email help', () => {
     expect(section.id).toBe('billing-email')
     expect(section.textContent).toContain('Manage subscription and change the email')
     expect(section.textContent).toContain("We'll review your request to stop future renewals")
+    expect(section.textContent).toContain('If the old subscription is still active, you could be charged for both')
     expect(section.textContent).toContain('Never send your full card number, security code or ID')
     expect(section.textContent).not.toContain("it won't renew")
     expect(within(section).getByRole('link', { name: 'privacy@streampulse.stream' }).getAttribute('href')).toBe('mailto:privacy@streampulse.stream')

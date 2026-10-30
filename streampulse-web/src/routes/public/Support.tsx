@@ -108,7 +108,7 @@ export default function Support() {
             <p>
               If not, we can't move the membership. Email{' '}
               <a href="mailto:privacy@streampulse.stream" className="text-violet-400 font-bold hover:underline">privacy@streampulse.stream</a>{' '}
-              with the old billing email, your card's last 4 digits and the date of one charge. We'll review your request to stop future renewals. You can join again with an email you can use.
+              with the old billing email, your card's last 4 digits and the date of one charge. We'll review your request to stop future renewals. You can join again with an email you can use. If the old subscription is still active, you could be charged for both.
             </p>
             <p>Never send your full card number, security code or ID.</p>
             <p>We answer within 7 days. Your bank may also be able to block future charges from STREAMPULSE.</p>
