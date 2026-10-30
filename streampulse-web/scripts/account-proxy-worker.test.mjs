@@ -150,6 +150,7 @@ test('workerd observes normalized dot segments, signs with WebCrypto, and only t
       `
   const structuredLogs = []
   const runtime = new Miniflare({
+    cf: false,
     handleStructuredLogs: log => structuredLogs.push(log.message),
     workers: [{ config: {
       name: 'account-proxy-test', type: 'worker', compatibilityDate: '2026-09-18',
