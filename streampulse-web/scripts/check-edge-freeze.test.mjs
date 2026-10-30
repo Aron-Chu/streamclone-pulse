@@ -8,7 +8,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   APPROVAL_DOCUMENT, EDGE_PATHS, EXCEPTION_FILE, WRANGLER_CONFIG_FILES, assertDeploySourceIsOriginMaster, assertEdgeFreeze,
-  assertEdgeFreezeStructural, pinnedRoutesBytes,
+  assertApexTargetForWorker, assertEdgeFreezeStructural, pinnedRoutesBytes,
 } from './check-edge-freeze.mjs'
 
 const webRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -345,8 +345,27 @@ test('has no environment-variable or CLI bypass, and the deploy runs every edge 
   assert.equal(targetChecks.length, 2)
   assert.ok(targetChecks[0] < build && targetChecks[1] > fullGate && targetChecks[1] < upload)
   const target = deploy.slice(deploy.indexOf('function requireApexTargetForWorker'), deploy.indexOf('const sourceGate'))
-  assert.match(target, /if \(!process\.env\.CLOUDFLARE_ACCOUNT_ID\?\.trim\(\)\) \{\n\s+console\.error\('[^'$`]*'\)\n\s+process\.exit\(1\)/)
+  assert.match(target, /edgeCheck\(\(\) => assertApexTargetForWorker\(gate, project\)\)/)
   assert.doesNotMatch(target, /ALLOW_DIRTY|\$\{process\.env/)
+})
+
+test('an admitted Pages Worker requires an explicit and verified migration target', () => {
+  const worker = { admitted: {} }
+  const source = 'streampulse-web'
+  const destination = 'streampulse-main'
+  const account = 'a'.repeat(32)
+  const other = 'b'.repeat(32)
+  const env = { CLOUDFLARE_ACCOUNT_ID: account, PAGES_DEPLOY_EXPECTED_ACCOUNT_ID: account }
+
+  assert.doesNotThrow(() => assertApexTargetForWorker({ admitted: null }, 'other', {}))
+  assert.throws(() => assertApexTargetForWorker(worker, source, {}), /CLOUDFLARE_ACCOUNT_ID/)
+  assert.doesNotThrow(() => assertApexTargetForWorker(worker, source, env))
+  assert.throws(() => assertApexTargetForWorker(worker, 'other', env), /approved apex project/)
+  assert.throws(() => assertApexTargetForWorker(worker, destination, {}), /CLOUDFLARE_ACCOUNT_ID/)
+  assert.throws(() => assertApexTargetForWorker(worker, destination, { CLOUDFLARE_ACCOUNT_ID: account }), /verified matching/)
+  assert.throws(() => assertApexTargetForWorker(worker, destination, { ...env, PAGES_DEPLOY_EXPECTED_ACCOUNT_ID: other }), /verified matching/)
+  assert.throws(() => assertApexTargetForWorker(worker, destination, { ...env, CLOUDFLARE_ACCOUNT_ID: 'invalid' }), /verified matching/)
+  assert.doesNotThrow(() => assertApexTargetForWorker(worker, destination, env))
 })
 
 test('deploy source must be a fresh origin/master with byte-identical edge files', t => {

@@ -32,6 +32,22 @@ import { fileURLToPath } from 'node:url'
 import { isDeepStrictEqual } from 'node:util'
 
 export const EXCEPTION_FILE = 'edge-freeze-exception.json'
+export const APEX_PAGES_PROJECT = 'streampulse-web'
+const MIGRATION_PAGES_PROJECT = 'streampulse-main'
+
+// The expected account is supplied separately by the operator after checking
+// the destination account; no account identifiers belong in source control.
+export function assertApexTargetForWorker(gate, project, env = process.env) {
+  if (!gate.admitted) return
+  const account = env.CLOUDFLARE_ACCOUNT_ID?.trim()
+  if (!account) throw new Error('CLOUDFLARE_ACCOUNT_ID is required for a Pages Worker')
+  if (project === APEX_PAGES_PROJECT) return
+  if (project !== MIGRATION_PAGES_PROJECT) throw new Error('Pages Worker target is not an approved apex project')
+  const expected = env.PAGES_DEPLOY_EXPECTED_ACCOUNT_ID?.trim()
+  if (!/^[a-f0-9]{32}$/i.test(account) || !/^[a-f0-9]{32}$/i.test(expected || '') || account !== expected) {
+    throw new Error('the migration project requires a verified matching PAGES_DEPLOY_EXPECTED_ACCOUNT_ID')
+  }
+}
 const WORKER = '_worker.js'
 const ROUTES = '_routes.json'
 const PIN_FIELDS = ['approval', 'expires', 'routes', 'sha256']
