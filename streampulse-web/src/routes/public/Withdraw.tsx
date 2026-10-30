@@ -15,6 +15,18 @@ function clean(value: string, limit: number): boolean {
   return Boolean(text) && utf8ByteLength(text) <= limit && !/[\u0000-\u001f\u007f-\u009f]/.test(text)
 }
 
+function safeName(value: string): boolean {
+  const text = value.trim()
+  return !text || (utf8ByteLength(text) <= 200 && /\p{L}/u.test(text) && /^[\p{L}\p{M} .'’,\-]+$/u.test(text))
+}
+
+function purchaseDateValid(value: string): boolean {
+  if (!value) return true
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const parsed = new Date(`${value}T00:00:00Z`)
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value && !value.startsWith('0000')
+}
+
 export default function Withdraw() {
   const enabled = supporterWithdrawalEnabled()
   const siteKey = feedbackSiteKey()
@@ -23,7 +35,7 @@ export default function Withdraw() {
   const [hydrated, setHydrated] = useState(false)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
-  const [contract, setContract] = useState('')
+  const [purchaseDate, setPurchaseDate] = useState('')
   const [phase, setPhase] = useState<Phase>('details')
   const [token, setToken] = useState('')
   const [checkFailed, setCheckFailed] = useState(false)
@@ -75,8 +87,16 @@ export default function Withdraw() {
 
   function showReview(event: FormEvent) {
     event.preventDefault()
-    if (!clean(name, 200) || !clean(email, 254) || !/^[^\s@]+@[^\s@]+$/.test(email.trim()) || !clean(contract, 1000)) {
-      setProblem('Check your name, email and contract details. Each must fit on one line.')
+    if (!safeName(name)) {
+      setProblem('Use letters and common punctuation for your name, or leave it blank. Do not enter card details.')
+      return
+    }
+    if (!clean(email, 254) || !/^[^\s@]+@[^\s@]+$/.test(email.trim()) || /\p{N}(?:[.\-_' ]*\p{N}){11}/u.test(email)) {
+      setProblem('Enter a valid email address without card details.')
+      return
+    }
+    if (!purchaseDateValid(purchaseDate)) {
+      setProblem('Enter a valid purchase date, or leave it blank.')
       return
     }
     setProblem('')
@@ -95,7 +115,7 @@ export default function Withdraw() {
       // retries an uncertain submission with the same key and same details.
       const result = await apiClient<Receipt>('/v1/portal/supporter/withdrawals', {
         method: 'POST', sensitive: true, credentials: 'omit', headers: { 'Idempotency-Key': key },
-        body: { name: name.trim(), email: email.trim(), contract: contract.trim(), turnstile_token: token },
+        body: { name: name.trim(), email: email.trim(), contract: purchaseDate, turnstile_token: token },
         maxResponseBytes: 4096, timeoutMs: 12_000,
       })
       if (!result.data || !/^[0-9a-f-]{36}$/i.test(result.data.reference) || !Number.isFinite(Date.parse(result.data.received_at))) throw new Error('invalid receipt')
@@ -124,7 +144,7 @@ export default function Withdraw() {
     <p className="withdraw-kicker">Pulse Supporter</p>
     <h1 id="withdraw-title">Withdraw from your contract</h1>
     <p>Use this form to tell us you wish to withdraw. You do not need an account or a reason.</p>
-    <p>You can also email <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a>. Do not send your full card number.</p>
+    <p>You can also email <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a>. Do not send your full card number or security code.</p>
     {!hydrated ? <p>Email us instead, or enable JavaScript to check whether the online form is available.</p> : null}
     {hydrated && (!enabled || !siteKey || !key) ? <div className="withdraw-message" role="status">
       The online form is unavailable. Please email us instead; include your name and enough detail to identify the subscription.
@@ -139,23 +159,23 @@ export default function Withdraw() {
         }}>Start a different request</button>
         <p>A different request may create a duplicate if the earlier one was received.</p>
       </div> : null}
-      <label className="feedback-field"><span className="feedback-label">Your name</span>
-        <input className="feedback-input" name="name" autoComplete="name" required value={name} onChange={event => setName(event.target.value)} />
+      <label className="feedback-field"><span className="feedback-label">Your name (optional)</span>
+        <input className="feedback-input" name="name" autoComplete="name" value={name} onChange={event => setName(event.target.value)} />
       </label>
       <label className="feedback-field"><span className="feedback-label">Email for your acknowledgement</span>
         <input className="feedback-input" name="email" type="email" autoComplete="email" required value={email} onChange={event => setEmail(event.target.value)} />
       </label>
-      <label className="feedback-field"><span className="feedback-label">Details to identify the subscription</span>
-        <input className="feedback-input" name="contract" required value={contract} onChange={event => setContract(event.target.value)} aria-describedby="withdraw-contract-hint" />
+      <label className="feedback-field"><span className="feedback-label">Purchase date (optional)</span>
+        <input className="feedback-input" name="purchase-date" type="date" value={purchaseDate} onChange={event => setPurchaseDate(event.target.value)} aria-describedby="withdraw-contract-hint" />
       </label>
-      <p id="withdraw-contract-hint">For example, your Stripe receipt number, billing email or the date and amount paid. Do not include card numbers.</p>
+      <p id="withdraw-contract-hint">We only ask for a name, email and optional purchase date here. Never enter a card number or security code.</p>
       {problem ? <p role="alert">{problem}</p> : null}
       <button type="submit" className={buttonClass('default', 'lg')}>Review withdrawal</button>
     </form> : null}
     {hydrated && enabled && siteKey && key && review ? <div className="withdraw-card" aria-busy={phase === 'sending'}>
       <h2>Review your withdrawal</h2>
       <p>I wish to withdraw from my Pulse Supporter contract.</p>
-      <dl><dt>Name</dt><dd>{name.trim()}</dd><dt>Acknowledgement email</dt><dd>{email.trim()}</dd><dt>Subscription details</dt><dd>{contract.trim()}</dd></dl>
+      <dl><dt>Name</dt><dd>{name.trim() || 'Not provided'}</dd><dt>Acknowledgement email</dt><dd>{email.trim()}</dd><dt>Purchase date</dt><dd>{purchaseDate || 'Not provided'}</dd></dl>
       <div ref={host} aria-label="Security check" />
       {checkFailed ? <p role="alert">The security check could not load. Please email us instead.</p> : null}
       {!token && !checkFailed ? <p role="status">Waiting for the security check.</p> : null}

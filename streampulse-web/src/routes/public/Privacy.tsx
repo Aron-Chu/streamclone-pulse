@@ -135,11 +135,12 @@ export default function Privacy() {
           publicly or attached to a badge or profile.
         </p>
         {supporterWithdrawalEnabled() ? <p data-testid="privacy-withdrawal">
-          If you submit an online withdrawal, StreamPulse stores your name, acknowledgement email,
-          subscription details, request and submission time to handle it and send an acknowledgement.
-          The mail service and the private billing inbox receive those details for delivery and handling.
+          If you submit an online withdrawal, StreamPulse stores your acknowledgement email, any name
+          or purchase date you provide, your request and its submission time to handle it. The mail
+          service and private billing inbox receive your email, withdrawal statement, reference and
+          request time to deliver the acknowledgement and notify StreamPulse.
           A random request key, but no form details, may be kept in this tab to help retry an interrupted submission.
-          Do not include a full card number. The request does not automatically issue a refund.
+          Do not include a full card number or security code. The request does not automatically issue a refund.
         </p> : null}
         <p>
           Provider webhook notifications are stored in a durable queue so a payment event is never
@@ -469,9 +470,9 @@ export default function Privacy() {
             as described under Feedback form.
           </li>
           {supporterWithdrawalEnabled() ? <li data-testid="privacy-third-party-withdrawal-mail">
-            <strong>Withdrawal mail service and billing inbox</strong> — receive the name, email,
-            subscription details, request and submission time to deliver the acknowledgement and
-            allow StreamPulse to handle it.
+            <strong>Withdrawal mail service and billing inbox</strong> — receive your email address,
+            withdrawal statement, request reference and submission time to deliver the acknowledgement
+            and notify StreamPulse.
           </li> : null}
           <li data-testid="privacy-third-party-support-mail">
             <strong>Outgoing mail service and support inbox (feedback form only)</strong> — the email

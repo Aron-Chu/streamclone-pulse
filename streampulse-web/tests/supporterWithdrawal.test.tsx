@@ -33,14 +33,27 @@ afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); delete window.turnst
 
 function show() { render(<MemoryRouter><Withdraw /></MemoryRouter>) }
 async function enterReview() {
-  fireEvent.change(await screen.findByLabelText('Your name'), { target: { value: 'Test Buyer' } })
+  fireEvent.change(await screen.findByLabelText('Your name (optional)'), { target: { value: 'Test Buyer' } })
   fireEvent.change(screen.getByLabelText('Email for your acknowledgement'), { target: { value: 'buyer@example.test' } })
-  fireEvent.change(screen.getByLabelText('Details to identify the subscription'), { target: { value: 'Receipt in_123' } })
+  fireEvent.change(screen.getByLabelText('Purchase date (optional)'), { target: { value: '2026-10-27' } })
   fireEvent.click(screen.getByRole('button', { name: 'Review withdrawal' }))
   await waitFor(() => expect((screen.getByRole('button', { name: 'Confirm withdrawal' }) as HTMLButtonElement).disabled).toBe(false))
 }
 
 describe('Supporter withdrawal', () => {
+  it('rejects obvious card data before a request and permits an optional name and date', async () => {
+    show()
+    fireEvent.change(await screen.findByLabelText('Your name (optional)'), { target: { value: '4111 1111 1111 1111' } })
+    fireEvent.change(screen.getByLabelText('Email for your acknowledgement'), { target: { value: 'buyer@example.test' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Review withdrawal' }))
+    expect(screen.getByRole('alert').textContent).toMatch(/do not enter card details/i)
+    expect(apiClient).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByLabelText('Your name (optional)'), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Review withdrawal' }))
+    expect(await screen.findAllByText('Not provided', { selector: 'dd' })).toHaveLength(2)
+    expect(apiClient).not.toHaveBeenCalled()
+  })
+
   it('never prerenders a form that could send private details in a GET URL', () => {
     const html = renderToString(<StaticRouter location="/withdraw"><Withdraw /></StaticRouter>)
     expect(html).not.toContain('<form')
@@ -60,7 +73,7 @@ describe('Supporter withdrawal', () => {
     expect(apiClient).toHaveBeenCalledTimes(1)
     expect(apiClient).toHaveBeenCalledWith('/v1/portal/supporter/withdrawals', expect.objectContaining({
       method: 'POST', sensitive: true, credentials: 'omit', headers: { 'Idempotency-Key': key },
-      body: { name: 'Test Buyer', email: 'buyer@example.test', contract: 'Receipt in_123', turnstile_token: 'test-token' },
+      body: { name: 'Test Buyer', email: 'buyer@example.test', contract: '2026-10-27', turnstile_token: 'test-token' },
     }))
   })
 
@@ -76,7 +89,7 @@ describe('Supporter withdrawal', () => {
     const calls = vi.mocked(apiClient).mock.calls
     expect(calls).toHaveLength(2)
     expect(calls[0][1]?.headers).toEqual(calls[1][1]?.headers)
-    expect(calls[1][1]?.body).toEqual({ name: 'Test Buyer', email: 'buyer@example.test', contract: 'Receipt in_123', turnstile_token: 'fresh-token' })
+    expect(calls[1][1]?.body).toEqual({ name: 'Test Buyer', email: 'buyer@example.test', contract: '2026-10-27', turnstile_token: 'fresh-token' })
   })
 
   it('reuses only the anonymous request key after the page is reopened', async () => {
@@ -88,7 +101,7 @@ describe('Supporter withdrawal', () => {
     const stored = JSON.stringify(window.sessionStorage)
     expect(stored).toContain(key)
     expect(stored).not.toContain('buyer@example.test')
-    expect(stored).not.toContain('Receipt in_123')
+    expect(stored).not.toContain('2026-10-27')
     first.unmount()
     show()
     expect(await screen.findByText(/earlier request in this tab may have been received/i)).toBeTruthy()

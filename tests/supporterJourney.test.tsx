@@ -441,14 +441,37 @@ describe('pay-first settings', () => {
       await view.click('Restore existing Supporter')
       expect(view.calls('SUPPORTER_RESTORE', 'status')).toBe(1)
       expect(view.buttons()).not.toContain('Become a Supporter')
+      expect(view.buttons()).not.toContain('Manage subscription')
+      expect(view.text()).toContain('Still signed in on the browser you paid in? Open Manage subscription there to change your billing email.')
       await view.enterRestoreEmail('payer@example.test')
       await view.submitRestore()
       expect(view.sendMessage).toHaveBeenCalledWith({ type: 'SUPPORTER_RESTORE', action: 'start', email: 'payer@example.test' })
       expect(view.text()).toContain('A3B4C5')
       expect(view.text()).toContain('If that email matches a recoverable membership')
+      expect(view.host.querySelector<HTMLAnchorElement>('.pulse-journey-restore a')?.href).toBe('https://streampulse.stream/support#billing-email')
       expect(view.text()).not.toContain('payer@example.test')
       expect(JSON.stringify(view.write.mock.calls)).not.toContain('payer@example.test')
       expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
+    } finally { view.cleanup() }
+  })
+  it.each(['signed_out', 'relink_required'] as const)('offers restore and support without subscription management when %s', async state => {
+    const view = await mount({ account: () => ({ state }), entitlement: () => ({ state: 'not_linked' }), billing: () => ({ state: 'idle' }), restore: () => ({ state: 'idle' }) })
+    try {
+      expect(view.buttons()).toContain('Restore existing Supporter')
+      expect(view.buttons()).not.toContain('Manage subscription')
+      await view.click('Restore existing Supporter')
+      expect(view.text()).toContain('Contact support if you cannot access it')
+      expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(0)
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
+    } finally { view.cleanup() }
+  })
+  it.each(['conflict', 'ineligible', 'expired', 'error', 'unavailable', 'uncertain', 'fallback'] as const)('links restore %s help to billing email support', async state => {
+    const view = await mount({ account: () => ({ state: 'signed_out' }), entitlement: () => ({ state: 'not_linked' }), billing: () => ({ state: 'idle' }), restore: () => ({ state }) })
+    try {
+      await view.click('Restore existing Supporter')
+      const link = view.host.querySelector<HTMLAnchorElement>('.pulse-journey-restore a')
+      expect(link?.textContent).toBe('Contact support')
+      expect(link?.href).toBe('https://streampulse.stream/support#billing-email')
     } finally { view.cleanup() }
   })
   it('recovers an uncertain request by its existing key instead of resending email', async () => {
@@ -879,11 +902,14 @@ describe('notices beside the action that caused them', () => {
       expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(1)
       expect(page.accountStatus()?.textContent).toContain(MANAGE_FAILED)
       expect(page.footer()).not.toContain(MANAGE_FAILED)
+      expect(view.state()).toBe('active')
 
       await view.click('Manage subscription')
       expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(2)
       expect(page.footer()).toContain(MANAGE_FAILED)
       expect(page.accountStatus()?.textContent).toBe('')
+      expect(view.state()).toBe('active')
+      expect(view.calls('SUPPORTER_ACCOUNT', 'disconnect')).toBe(0)
     } finally { view.cleanup() }
   })
 

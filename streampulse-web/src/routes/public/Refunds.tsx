@@ -153,8 +153,8 @@ export default function Refunds() {
           Email <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a> and include
           the date and amount of the charge or the invoice number from your Stripe receipt. If possible,
           use your current Stripe billing email. If you cannot access it, contact us anyway; we may
-          ask for other information to verify your request. Please do not include your full card number —
-          it is not needed and StreamPulse cannot use it.
+          ask for other information to verify your request. Please do not include your full card number
+          or security code — they are not needed and StreamPulse cannot use them.
         </p>
         <p>
           Aron answers billing, cancellation and refund requests within 7 days. There is no

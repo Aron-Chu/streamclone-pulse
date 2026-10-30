@@ -74,7 +74,7 @@ export default function Supporter() {
             </dd>
             <dt className="text-sm font-bold text-zinc-400">Payment</dt>
             <dd className="m-0 text-sm text-zinc-200">
-              Handled by Stripe. StreamPulse never sees or stores your card number.
+              Card details are entered directly with Stripe at checkout.
             </dd>
           </dl>
         </section>
