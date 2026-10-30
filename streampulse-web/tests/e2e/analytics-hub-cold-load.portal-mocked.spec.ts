@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './helpers/portalMockedTest'
 import { installHubUxMock } from './helpers/hubUxMock'
 
 // A busy API can take the whole 20 s deadline to build the 24h hub. A first
