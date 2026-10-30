@@ -67,6 +67,7 @@ export function SupporterRestore({ onClose, onRestored, onCheckMembership }: { o
     {view.state === 'loading' ? <p role="status">Checking for an existing restore request…</p> : null}
     {view.state === 'idle' ? <form onSubmit={event => void submit(event)}>
       <p>Enter your current Stripe billing email. If you changed it recently, you may need to wait before trying again. Contact support if you cannot access it. This will not start a payment.</p>
+      <p>Still signed in on the browser you paid in? Open Manage subscription there to change your billing email.</p>
       <label htmlFor="supporter-restore-email">Stripe billing email</label>
       <input id="supporter-restore-email" type="email" autoComplete="email" required maxLength={254} value={email} onChange={event => setEmail(event.target.value)} disabled={busy} />
       <div className="pulse-account-link-actions pulse-journey-actions"><button className="pulse-journey-primary" type="submit" disabled={busy}>{busy ? 'Preparing…' : 'Send restore link'}</button></div>
@@ -90,7 +91,7 @@ export function SupporterRestore({ onClose, onRestored, onCheckMembership }: { o
       {view.state === 'unavailable' ? <button type="button" disabled={busy} onClick={() => void request('status')}>Check again</button> : null}
       {view.state === 'expired' || view.state === 'error' ? <button type="button" disabled={busy} onClick={() => void request('cancel')}>Enter email again</button> : null}
       <button type="button" disabled={busy} onClick={() => void leave()}>Back</button>
-      {view.state !== 'idle' && view.state !== 'loading' ? <a href={POLICY_LINKS.support} target="_blank" rel="noopener noreferrer">Contact support</a> : null}
+      {view.state !== 'idle' && view.state !== 'loading' ? <a href={POLICY_LINKS.supportBillingEmail} target="_blank" rel="noopener noreferrer">Contact support</a> : null}
     </div>
     {view.state === 'pending' || view.state === 'uncertain' ? <p className="pulse-supporter-detail">Going back stops checking this request; the email may still arrive.</p> : null}
   </div>

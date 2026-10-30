@@ -102,6 +102,18 @@ export default function Support() {
             </p>
           </section>
 
+          <section id="billing-email" className="mt-8 border-t border-white/[0.08] pt-6" aria-labelledby="billing-email-title">
+            <h2 id="billing-email-title">Can't get into your billing email?</h2>
+            <p>Still signed in on the browser you paid in? Open Account &amp; Supporter → Manage subscription and change the email. Then use Restore on your new browser.</p>
+            <p>
+              If not, we can't move the membership. Email{' '}
+              <a href="mailto:privacy@streampulse.stream" className="text-violet-400 font-bold hover:underline">privacy@streampulse.stream</a>{' '}
+              with the old billing email, your card's last 4 digits and the date of one charge. We'll review your request to stop future renewals. You can join again with an email you can use.
+            </p>
+            <p>Never send your full card number, security code or ID.</p>
+            <p>We answer within 7 days. Your bank may also be able to block future charges from STREAMPULSE.</p>
+          </section>
+
           {/* Contact Mailbox */}
           <section id="contact" className="mt-8 border-t border-white/[0.08] pt-6">
             <h2>Contact</h2>
