@@ -53,6 +53,9 @@ export type HubActivityPanelV5Props = FigmaGlobalActivityPanelProps & {
   awaitingData?: boolean;
   /** A saved copy is on screen: the readout's rest time reads "Saved", not "Now" (S1, 10-28). */
   saved?: boolean;
+  /** Time this displayed data was loaded or saved, distinct from data age. */
+  lastAppliedAgo?: string;
+  lastAppliedFromCache?: boolean;
 };
 
 /** The mockup's measured notes (d3-v5 hub.js measuredBody); the bars line follows the chart zoom. */
@@ -90,6 +93,9 @@ function HubMeasuredNotes({ hub, bars }: { hub: FigmaGlobalActivityPanelProps["h
 export function HubActivityPanelV5({
   hub,
   activitySummary,
+  updatedAgo,
+  lastAppliedAgo,
+  lastAppliedFromCache = false,
   topEmotes = [],
   loading,
   unavailable = false,
@@ -272,6 +278,11 @@ export function HubActivityPanelV5({
           saved={saved}
         />
       </div>
+      {!awaitingData && !unavailable ? (
+        <p className="figma-global-activity__served-window" data-testid="hub-data-age">
+          {updatedAgo ? `Data from about ${updatedAgo}` : lastAppliedAgo && !activityRefreshing ? `Data age unavailable · ${lastAppliedFromCache ? "Saved" : "Loaded"} ${lastAppliedAgo}` : "Data age unavailable"}
+        </p>
+      ) : null}
       {measuredTarget !== undefined ? (
         measuredTarget ? createPortal(
           <>

@@ -204,9 +204,9 @@ function repairHubResult(poolSize = 3, windowMinutes = 1440) {
 }
 
 function deferredHub() {
-  let resolve!: (value: ReturnType<typeof hubResult>) => void
+  let resolve!: (value: ReturnType<typeof hubResult> & { dataAsOf?: number | null }) => void
   let reject!: (reason: unknown) => void
-  const promise = new Promise<ReturnType<typeof hubResult>>((yes, no) => { resolve = yes; reject = no })
+  const promise = new Promise<ReturnType<typeof hubResult> & { dataAsOf?: number | null }>((yes, no) => { resolve = yes; reject = no })
   return { promise, resolve, reject }
 }
 
@@ -338,6 +338,59 @@ describe('usePublicHubData', () => {
     expect(result.current.data?.activity.points.map((point) => point.chat)).toEqual([12, 18])
   })
 
+  it.each([
+    [120_000, 300_000, 300_000],
+    [300_000, 120_000, 300_000],
+    [120_000, null, null],
+    [null, 120_000, null],
+  ])('uses the oldest known data time for merged long-window and recent reads (%s, %s)', async (baseAge, recentAge, expectedAge) => {
+    const now = Date.now()
+    const base = { ...repairHubResult(), dataAsOf: baseAge === null ? null : now - baseAge }
+    const recent = { ...hubResult(99), dataAsOf: recentAge === null ? null : now - recentAge }
+    recent.data.activity.windowMinutes = 30
+    recent.data.activity.points = [{ t: 1_700_001_000_000, chat: 777, emotes: 3, seventv: 3, viewers: 1200 }]
+    fetchPublicHubBase.mockImplementation((_signal?: AbortSignal, window?: PublicHubActivityWindow) =>
+      Promise.resolve(window === '30m' ? recent : base),
+    )
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '24h' }))
+    await waitFor(() => expect(result.current.activityRefreshing).toBe(false))
+    await waitFor(() => expect(result.current.data?.activity.points[0]?.chat).toBe(777))
+    expect(result.current.dataAsOf).toBe(expectedAge === null ? null : now - expectedAge)
+    publicHubCache.flushPublicHubCacheWritesForTests()
+    expect(readPublicHubCache(getBackendUrl(), '24h')?.dataAsOf).toBe(expectedAge === null ? null : now - expectedAge)
+  })
+
+  it('replaces the interim recent view age with the later long-window answer age', async () => {
+    const pending = deferredHub()
+    const recentAsOf = Date.now() - 60_000
+    const primaryAsOf = recentAsOf - 60_000
+    const recent = { ...hubResult(99), dataAsOf: recentAsOf }
+    recent.data.activity.windowMinutes = 30
+    fetchPublicHubBase.mockImplementation((_signal?: AbortSignal, window?: PublicHubActivityWindow) =>
+      window === '30m' ? Promise.resolve(recent) : pending.promise,
+    )
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '24h' }))
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(99), { timeout: 2500 })
+    expect(result.current.dataAsOf).toBe(recentAsOf)
+    await act(async () => { pending.resolve({ ...hubResult(42), dataAsOf: primaryAsOf }) })
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(42))
+    expect(result.current.dataAsOf).toBe(primaryAsOf)
+  })
+
+  it('preserves the recent recovery response age after a long-window failure', async () => {
+    const asOf = Date.now() - 60_000
+    const recent = { ...hubResult(99), dataAsOf: asOf }
+    recent.data.activity.windowMinutes = 30
+    fetchPublicHubBase.mockImplementation((_signal?: AbortSignal, window?: PublicHubActivityWindow) =>
+      window === '30m' ? Promise.resolve(recent) : Promise.reject({ kind: 'server', status: 503, message: 'unavailable' }),
+    )
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '24h' }))
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(99))
+    expect(result.current.dataAsOf).toBe(asOf)
+    publicHubCache.flushPublicHubCacheWritesForTests()
+    expect(readPublicHubCache(getBackendUrl(), '24h')?.dataAsOf).toBe(asOf)
+  })
+
   describe('independent live lanes during activity repair', () => {
     afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
 
@@ -396,6 +449,31 @@ describe('usePublicHubData', () => {
       expect(result.current.pollSequence).toBe(2)
       expect(result.current.activityRefreshing).toBe(false)
       expect(readPublicHubCache(getBackendUrl(), '24h')?.data.poolSize).toBe(7)
+    })
+
+    it.each(['rate_limited', 'unauthorized'])('associates a new repair shell with its own display time after %s', async kind => {
+      writePublicHubCache(getBackendUrl(), '24h', sampleHub(42))
+      const key = publicHubCacheKey(getBackendUrl(), '24h')
+      const saved = JSON.parse(localStorage.getItem(key)!)
+      const startedAt = Date.now()
+      saved.cachedAt = startedAt - 2 * 60 * 60_000
+      localStorage.setItem(key, JSON.stringify(saved))
+      fetchPublicHubBase.mockResolvedValueOnce(repairHubResult(7))
+        .mockRejectedValueOnce({ kind, status: kind === 'rate_limited' ? 429 : 401, message: 'stop' })
+
+      const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
+      expect(result.current.displayedSnapshotAt).toBe(saved.cachedAt)
+      await waitFor(() => expect(fetchPublicHubBase).toHaveBeenCalledTimes(2))
+      await waitFor(() => expect(result.current.activityRefreshing).toBe(false))
+
+      expect(result.current.data?.poolSize).toBe(7)
+      expect(result.current.loadSource).toBe('full')
+      expect(result.current.displayedSnapshotAt).toBeGreaterThanOrEqual(startedAt)
+      expect(result.current.displayedSnapshotAt).toBeLessThanOrEqual(Date.now())
+      expect(result.current.lastSuccessfulPollAt).toBe(saved.cachedAt)
+      expect(result.current.pollSequence).toBe(1)
+      expect(readPublicHubCache(getBackendUrl(), '24h')?.data.poolSize).toBe(42)
+      expect(fetchPublicHubStatsFallback).not.toHaveBeenCalled()
     })
 
     it.each(['server', 'timeout', 'unreachable', 'unhealthy'])('accepts an honest empty activity projection after %s repair failure', async kind => {
@@ -709,6 +787,43 @@ describe('usePublicHubData', () => {
     expect(result.current.loadSource).toBe('cache')
     expect(result.current.cachedAt).not.toBeNull()
     await waitFor(() => expect(fetchPublicHubBase).toHaveBeenCalled())
+  })
+
+  it('keeps source data age separate from polling and across a six-hour saved copy', async () => {
+    const receipt = Date.now()
+    fetchPublicHubBase.mockResolvedValue({ ...hubResult(42), dataAsOf: receipt - 15 * 60_000 })
+    const { result, unmount } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '24h' }))
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(42))
+    expect(result.current.dataAsOf).toBe(receipt - 15 * 60_000)
+    expect(result.current.lastSuccessfulPollAt).toBeGreaterThanOrEqual(receipt)
+    publicHubCache.flushPublicHubCacheWritesForTests()
+    const key = publicHubCacheKey(getBackendUrl(), '24h')
+    const stored = JSON.parse(localStorage.getItem(key)!)
+    expect(stored.dataAsOf).toBe(receipt - 15 * 60_000)
+    unmount()
+    // Move both anchors together to model an unchanged copy after 5h59m.
+    stored.cachedAt -= (5 * 60 + 59) * 60_000
+    stored.dataAsOf -= (5 * 60 + 59) * 60_000
+    localStorage.setItem(key, JSON.stringify(stored))
+    fetchPublicHubBase.mockReturnValue(new Promise(() => {}))
+    const restored = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '24h' }))
+    expect(restored.result.current.dataAsOf).toBe(stored.dataAsOf)
+    expect(Date.now() - restored.result.current.dataAsOf!).toBeGreaterThanOrEqual((6 * 60 + 14) * 60_000)
+  })
+
+  it.each([undefined, null])('upgrades a legacy or unknown saved age without extending lifetime (%s)', (priorAge) => {
+    const now = Date.now()
+    const hub = sampleHub(8)
+    writePublicHubCache(getBackendUrl(), '24h', hub, undefined, priorAge)
+    const key = publicHubCacheKey(getBackendUrl(), '24h')
+    const previous = JSON.parse(localStorage.getItem(key)!)
+    previous.cachedAt = now - 60_000
+    localStorage.setItem(key, JSON.stringify(previous))
+    writePublicHubCache(getBackendUrl(), '24h', hub, undefined, now - 15_000)
+    const updated = JSON.parse(localStorage.getItem(key)!)
+    expect(updated.cachedAt).toBe(previous.cachedAt)
+    expect(updated.dataAsOf).toBe(previous.cachedAt)
+    expect(readPublicHubCache(getBackendUrl(), '24h')?.dataAsOf).toBe(previous.cachedAt)
   })
 
   it('fetches fresh data after cache hydration', async () => {

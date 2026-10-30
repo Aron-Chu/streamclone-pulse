@@ -280,7 +280,7 @@ describe('a saved copy on screen (S1, Q1, N1, 10-28)', () => {
     expect(busiest.querySelector('.hv5-bzs-wait')).toBeTruthy()
     expect(busiest.querySelector('.hv5-bzc-it')).toBeNull()
     expect(container.querySelector('[data-hv5-channel-count]')!.textContent).toBe(`3 of 500 live at ${hubClock(cachedAt)}`)
-    expect(screen.getByText(`Cached snapshot from ${hubClock(cachedAt)} - refreshing...`)).toBeTruthy()
+    expect(screen.getByText(`Cached snapshot · Saved at ${hubClock(cachedAt)} · refreshing...`)).toBeTruthy()
     // U5: never "Live now" over a saved copy.
     expect(peekEl().querySelector('h2')!.textContent).toBe(`Saved ${hubClock(cachedAt)}`)
   })
@@ -295,7 +295,7 @@ describe('a saved copy on screen (S1, Q1, N1, 10-28)', () => {
     expect(within(container.querySelector<HTMLElement>('#busiest')!).getByText('Unavailable right now.')).toBeTruthy()
     expect(peekEl().querySelector('h2')!.textContent).toBe(`Saved ${hubClock(cachedAt)}`)
     expect(peekEl().hasAttribute('data-wait')).toBe(false)
-    expect(screen.getByText(`Cached snapshot from ${hubClock(cachedAt)}`)).toBeTruthy()
+    expect(screen.getByText(`Cached snapshot · Saved at ${hubClock(cachedAt)}`)).toBeTruthy()
   })
 
   it('shows a saved copy’s own rows while the read runs', () => {
@@ -310,10 +310,28 @@ describe('a saved copy on screen (S1, Q1, N1, 10-28)', () => {
     const late = new Date(2026, 9, 27, 23, 30).getTime()
     setHub({ data: savedCopy(late), loadSource: 'cache', cachedAt: late, lastUpdated: late, hubReadPending: true })
     const { container } = render(page())
-    expect(screen.getByText(`Cached snapshot from yesterday, ${hubClock(late)} - refreshing...`)).toBeTruthy()
-    expect(screen.getByText(/^Cached snapshot from yesterday, 11:30\sPM - refreshing\.\.\.$/)).toBeTruthy()
+    expect(screen.getByText(`Cached snapshot · Saved yesterday, ${hubClock(late)} · refreshing...`)).toBeTruthy()
+    expect(screen.getByText(/^Cached snapshot · Saved yesterday, 11:30\sPM · refreshing\.\.\.$/)).toBeTruthy()
     // U7: no "at" before a day.
     expect(container.querySelector('[data-hv5-channel-count]')!.textContent).toMatch(/^3 of 500 live yesterday, 11:30\sPM$/)
     expect(peekEl().querySelector('h2')!.textContent).toMatch(/^Saved yesterday, 11:30\sPM$/)
+  })
+
+  it('updates the data age without changing the saved-copy live region', () => {
+    vi.useRealTimers()
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] })
+    vi.setSystemTime(NOW)
+    const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    setHub({ data: savedCopy(cachedAt), loadSource: 'cache', cachedAt, lastUpdated: cachedAt,
+      dataAsOf: NOW - 20 * MIN, hubReadPending: true })
+    const { container } = render(page())
+    const notice = container.querySelector<HTMLElement>('.figma-hub-fallback-banner--info')!
+    expect(notice.getAttribute('role')).toBe('status')
+    const originalNotice = notice.textContent
+    expect(screen.getByTestId('hub-data-age').textContent).toBe('Data from about 20m ago')
+    act(() => vi.advanceTimersByTime(MIN))
+    expect(notice.textContent).toBe(originalNotice)
+    expect(screen.getByTestId('hub-data-age').textContent).toBe('Data from about 21m ago')
+    hidden.mockRestore()
   })
 })

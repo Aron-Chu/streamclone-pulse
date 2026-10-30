@@ -18,7 +18,7 @@ export interface ApiClientOptions extends Omit<RequestInit, 'body'> {
   slowOrigin?: boolean
   body?: BodyInit | Record<string, unknown> | null
 }
-export interface ApiClientResult<T> { data: T; cache?: 'HIT' | 'MISS' | 'BYPASS'; status: number }
+export interface ApiClientResult<T> { data: T; cache?: 'HIT' | 'MISS' | 'BYPASS'; status: number; receivedAt?: number; hubCopyAge?: string | null; responseAge?: string | null; responseDate?: string | null; responseCacheControl?: string | null }
 
 const DEFAULT_TIMEOUT_MS = 8_000
 const DEFAULT_MAX_RESPONSE_BYTES = 4 * 1024 * 1024
@@ -146,6 +146,8 @@ export async function apiClient<T = unknown>(path: string, options: ApiClientOpt
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const response = await fetch(url, { ...rest, redirect: credentialBearing ? 'error' : rest.redirect, headers: requestHeaders, body: requestBody, cache: rest.cache ?? 'no-store', signal: deadline.signal })
+      // Capture at headers, so body transfer and adoption of a primed request count toward age.
+      const receivedAt = Date.now()
       const payload = await readBody(response, deadline.signal, maxResponseBytes)
       const cache = parseCacheHeader(response.headers.get('X-Cache'))
       if (!response.ok) {
@@ -158,7 +160,7 @@ export async function apiClient<T = unknown>(path: string, options: ApiClientOpt
           retryable && attempt === 0 && error.retryAfterMs === undefined) { lastError = error; await abortableSleep(jitter(250), deadline.signal); continue }
         throw error
       }
-      return { data: payload as T, cache, status: response.status }
+      return { data: payload as T, cache, status: response.status, receivedAt, hubCopyAge: response.headers.get('x-hub-copy-age-seconds'), responseAge: response.headers.get('age'), responseDate: response.headers.get('date'), responseCacheControl: response.headers.get('cache-control') }
     } catch (error) {
       if (isApiError(error)) throw error
       if (deadline.signal.aborted) throw error

@@ -43,6 +43,51 @@ describe('HubActivityPanelV5 while the first hub reply is loading', () => {
   })
 })
 
+describe('HubActivityPanelV5 data age', () => {
+  const renderAge = (props: { updatedAgo?: string; lastAppliedAgo?: string; lastAppliedFromCache?: boolean; awaitingData?: boolean; unavailable?: boolean; activityRefreshing?: boolean }) => render(<MemoryRouter>
+    <HubActivityPanelV5
+      hub={notLanded}
+      activitySummary={summarizeActivity([], 30, 0)}
+      suggestions={[]}
+      loading={props.awaitingData ?? false}
+      {...props}
+    />
+  </MemoryRouter>)
+
+  it('shows trusted data age rather than the more recent load time', () => {
+    const { getByTestId } = renderAge({ updatedAgo: '15m ago', lastAppliedAgo: '5s ago' })
+    expect(getByTestId('hub-data-age').textContent).toBe('Data from about 15m ago')
+  })
+
+  it('labels load time separately when the underlying data age is unknown', () => {
+    const { getByTestId } = renderAge({ lastAppliedAgo: '5s ago' })
+    expect(getByTestId('hub-data-age').textContent).toBe('Data age unavailable · Loaded 5s ago')
+  })
+
+  it('labels the save time when an age-unknown snapshot was hydrated from cache', () => {
+    const { getByTestId } = renderAge({ lastAppliedAgo: '2h ago', lastAppliedFromCache: true })
+    expect(getByTestId('hub-data-age').textContent).toBe('Data age unavailable · Saved 2h ago')
+  })
+
+  it('does not invent a load or save time when none is available', () => {
+    const { getByTestId } = renderAge({})
+    expect(getByTestId('hub-data-age').textContent).toBe('Data age unavailable')
+  })
+
+  it('does not attribute an earlier load time to a replacement shell while activity is repairing', () => {
+    const { getByTestId } = renderAge({ lastAppliedAgo: '2h ago', activityRefreshing: true })
+    expect(getByTestId('hub-data-age').textContent).toBe('Data age unavailable')
+  })
+
+  it('does not show an age label before data arrives or when unavailable', () => {
+    const loading = renderAge({ awaitingData: true, lastAppliedAgo: '5s ago' })
+    expect(loading.queryByTestId('hub-data-age')).toBeNull()
+    loading.unmount()
+    const unavailable = renderAge({ unavailable: true, lastAppliedAgo: '5s ago' })
+    expect(unavailable.queryByTestId('hub-data-age')).toBeNull()
+  })
+})
+
 const BUCKET = 6 * 60_000
 const START = Date.UTC(2026, 9, 13, 18, 0, 0) - 239 * BUCKET
 const BOX_WIDTH = 1600

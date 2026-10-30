@@ -15,6 +15,7 @@ import { hubActivityNeedsRecentFallback } from '../lib/hubActivityHonesty'
 import { HUB_READ_HARD_CAP_MS, hubReadTimeoutMs } from '../lib/hubEarlyFetch'
 import { computeJitteredDelayMs } from '../lib/pollDelay'
 import { isApiError } from '../lib/apiClient'
+import { hubDataAsOf, olderHubDataAsOf } from '../lib/hubDataAge'
 
 export interface UsePublicHubOptions {
   /** Poll cadence in ms. Matches the backend cache TTL (~30s) by default. */
@@ -43,6 +44,10 @@ export interface PublicHubState {
    * Does not advance while the API is failing — use for trust-line "UPDATED … AGO".
    */
   lastUpdated: number | null
+  /** Local apply time or saved-copy timestamp associated with the displayed data. */
+  displayedSnapshotAt: number | null
+  /** Browser-clock anchor for the oldest displayed data, independent of receipt. */
+  dataAsOf: number | null
   /** Alias of lastUpdated — last successful poll receipt time. */
   lastSuccessfulPollAt: number | null
   /**
@@ -118,6 +123,7 @@ function hydrateFromCache(activityWindow: PublicHubActivityWindow, projection?: 
       loadSource: null as PublicHubLoadSource | null,
       hubEndpointOk: false,
       lastUpdated: null as number | null,
+      dataAsOf: null as number | null,
       cachedAt: null as number | null,
       hasData: false,
       loadedActivityWindow: null as PublicHubActivityWindow | null,
@@ -130,16 +136,17 @@ function hydrateFromCache(activityWindow: PublicHubActivityWindow, projection?: 
     // Cache implies a prior successful hub payload — do not start as "endpoint failed".
     hubEndpointOk: true,
     lastUpdated: cached.cachedAt,
+    dataAsOf: cached.dataAsOf,
     cachedAt: cached.cachedAt,
     hasData: true,
     loadedActivityWindow: activityWindow,
   }
 }
 
-function persistSuccessfulHub(activityWindow: PublicHubActivityWindow, hub: PublicHub, projection?: PublicHubProjection) {
+function persistSuccessfulHub(activityWindow: PublicHubActivityWindow, hub: PublicHub, projection?: PublicHubProjection, dataAsOf?: number | null) {
   // Idle time, never mid-gesture; the projection is computed once per
   // snapshot (plan §2.6).
-  schedulePublicHubCacheWrite(activityWindow, hub, projection)
+  schedulePublicHubCacheWrite(activityWindow, hub, projection, dataAsOf)
 }
 
 /** Performance mark for the first successful full-hub read of this page load (plan §4.5). */
@@ -224,6 +231,8 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
   const [loadSource, setLoadSource] = useState<PublicHubLoadSource | null>(() => initial.loadSource)
   const [hubEndpointOk, setHubEndpointOk] = useState(() => initial.hubEndpointOk)
   const [lastUpdated, setLastUpdated] = useState<number | null>(() => initial.lastUpdated)
+  const [displayedSnapshotAt, setDisplayedSnapshotAt] = useState<number | null>(() => initial.lastUpdated)
+  const [dataAsOf, setDataAsOf] = useState<number | null>(() => initial.dataAsOf)
   const [cachedAt, setCachedAt] = useState<number | null>(() => initial.cachedAt)
   const [pollSequence, setPollSequence] = useState(() => (initial.hasData ? 1 : 0))
   const [loadedActivityWindow, setLoadedActivityWindow] = useState<PublicHubActivityWindow | null>(
@@ -258,20 +267,23 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
   const retryNotBeforeRef = useRef(0)
   // Ends retryBlocked when the server's pause ends, whether or not a read runs then.
   const unblockTimerRef = useRef<number>()
-  const pendingPersistRef = useRef<{ hub: PublicHub; activityWindow: PublicHubActivityWindow; projection?: PublicHubProjection } | null>(null)
+  const pendingPersistRef = useRef<{ hub: PublicHub; activityWindow: PublicHubActivityWindow; projection?: PublicHubProjection; dataAsOf: number | null } | null>(null)
   const randomRef = useRef(random)
   randomRef.current = random
 
   const applySuccessfulLoad = useCallback(
     // interim: the 30m view shown while the requested window loads; never cached or marked.
-    (hub: PublicHub, source: PublicHubLoadSource, endpointOk: boolean, interim = false) => {
+    (hub: PublicHub, source: PublicHubLoadSource, endpointOk: boolean, interim = false, asOf: number | null = hubDataAsOf(hub, {})) => {
+      const appliedAt = Date.now()
       setData(hub)
       setLoadSource(source)
       setHubEndpointOk(endpointOk)
       setError(null)
       // A Retry-After from the stand-in's read ends with this answer.
       setRetryBlocked(false)
-      setLastUpdated(Date.now())
+      setLastUpdated(appliedAt)
+      setDisplayedSnapshotAt(appliedAt)
+      setDataAsOf(asOf)
       setCachedAt(null)
       pollSequenceRef.current += 1
       setPollSequence(pollSequenceRef.current)
@@ -279,7 +291,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
       if (endpointOk) networkAppliedRef.current = true
       setLoadedActivityWindow(activityWindow)
       // Persisted by the effect below once React has committed this snapshot.
-      pendingPersistRef.current = endpointOk && !interim ? { hub, activityWindow, projection } : null
+      pendingPersistRef.current = endpointOk && !interim ? { hub, activityWindow, projection, dataAsOf: asOf } : null
       if (endpointOk && !interim && !projection) markHubDataOnce()
       consecutiveFailuresRef.current = 0
       nextRetryAfterMsRef.current = null
@@ -350,7 +362,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
         void recentView.then((recent) => {
           recentSettled = true
           if (recovering || sideReads.signal.aborted || !current() || !recent.hubEndpointOk) return
-          applySuccessfulLoad(recentForRequestedWindow(recent.data, minutes), recent.loadSource, true, !pastDeadline)
+          applySuccessfulLoad(recentForRequestedWindow(recent.data, minutes), recent.loadSource, true, !pastDeadline, recent.dataAsOf ?? null)
           recentShown = true
           setLoading(false)
           setActivityRepairing(true)
@@ -389,7 +401,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
       }
       if (sideReads.signal.aborted || !current()) return null
       if (recent?.hubEndpointOk && minutes != null) {
-        return { hub: recentForRequestedWindow(recent.data, minutes), source: recent.loadSource, endpointOk: true }
+        return { hub: recentForRequestedWindow(recent.data, minutes), source: recent.loadSource, endpointOk: true, dataAsOf: recent.dataAsOf ?? null }
       }
       // Keep an existing measured snapshot instead of replacing it with totals.
       // A projection read (Moments, home tickers) shows no totals, so it reports
@@ -403,7 +415,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
         throw isApiError(primaryError) && primaryError.kind === 'timeout' && !isApiError(fallbackError) ? primaryError : fallbackError
       })
       if (!fallback || recentShown || sideReads.signal.aborted || !current()) return null
-      return { hub: fallback.data, source: fallback.loadSource, endpointOk: false }
+      return { hub: fallback.data, source: fallback.loadSource, endpointOk: false, dataAsOf: null }
     }
 
     // Honor server Retry-After when present; never shorten below healthy cadence.
@@ -451,7 +463,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
         standIn = recover(HUB_DEADLINE_MISSED, false).then(
           (shown) => {
             if (!shown || sideReads.signal.aborted || !current()) return
-            applySuccessfulLoad(shown.hub, shown.source, shown.endpointOk)
+            applySuccessfulLoad(shown.hub, shown.source, shown.endpointOk, false, shown.dataAsOf)
             // A 30m view stands in for the requested window: its chart says it is updating, as on a cold load.
             if (shown.endpointOk) setActivityRepairing(true)
           },
@@ -481,7 +493,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
           return
         }
         const shown = await recover(primaryError, true)
-        if (shown) applySuccessfulLoad(shown.hub, shown.source, shown.endpointOk)
+        if (shown) applySuccessfulLoad(shown.hub, shown.source, shown.endpointOk, false, shown.dataAsOf)
         return
       }
       if (!current()) return
@@ -494,6 +506,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
 
       if (base.hubEndpointOk) {
         let next = base.data
+        let nextAsOf = base.dataAsOf ?? null
         // Older hosted instances returned coarse long-window rows while
         // claiming a 30m fallback. Fetch the canonical 30m endpoint so the
         // chart never presents repeated aggregates as minute activity.
@@ -503,6 +516,8 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
           // only the final snapshot advances freshness, sequence, and cache.
           const withheld = withUnavailableActivity(base.data)
           setData(withheld)
+          setDisplayedSnapshotAt(Date.now())
+          setDataAsOf(nextAsOf)
           setLoadSource(base.loadSource)
           setHubEndpointOk(true)
           setError(null)
@@ -516,6 +531,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
             const recent = await fetchPublicHubBase(controller.signal, '30m', projection, 8_000)
             if (recent.hubEndpointOk) {
               next = replaceWithCanonicalRecentActivity(base.data, recent.data)
+              nextAsOf = olderHubDataAsOf(nextAsOf, recent.dataAsOf ?? null)
             } else {
               next = withheld
             }
@@ -529,7 +545,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
           }
         }
         if (!current()) return
-        applySuccessfulLoad(next, base.loadSource, true)
+        applySuccessfulLoad(next, base.loadSource, true, false, nextAsOf)
         return
       }
 
@@ -589,7 +605,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
     const pending = pendingPersistRef.current
     if (!pending) return
     pendingPersistRef.current = null
-    persistSuccessfulHub(pending.activityWindow, pending.hub, pending.projection)
+    persistSuccessfulHub(pending.activityWindow, pending.hub, pending.projection, pending.dataAsOf)
   }, [pollSequence])
 
   useEffect(() => {
@@ -602,6 +618,8 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
       setLoadSource('cache')
       setHubEndpointOk(true)
       setLastUpdated(cached.cachedAt)
+      setDisplayedSnapshotAt(cached.cachedAt)
+      setDataAsOf(cached.dataAsOf)
       setCachedAt(cached.cachedAt)
       pollSequenceRef.current += 1
       setPollSequence(pollSequenceRef.current)
@@ -711,6 +729,8 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
     hubEndpointOk,
     liveEmpty: Boolean(data) && (data?.poolSize ?? 0) === 0,
     lastUpdated,
+    displayedSnapshotAt,
+    dataAsOf,
     lastSuccessfulPollAt: lastUpdated,
     pollSequence,
     cachedAt,
