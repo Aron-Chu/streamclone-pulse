@@ -21,6 +21,7 @@ import {
   formatHubMultiplier,
   formatHubRate,
   hasFullChatWindow,
+  hubSavedAt,
   isLowMultiplier,
   multiplierWords,
   type HubChannelSort,
@@ -45,6 +46,10 @@ export interface HubV5ChannelsProps {
   unavailable?: boolean
   /** The first hub reply has not landed: no count and no empty line yet. */
   loading?: boolean
+  /** When the saved copy on screen was saved (S1, 10-28): the live count gives its time, "212 of 500 live at 10:50 AM". */
+  savedAt?: number | null
+  /** The page's clock, for the saved time's day. */
+  nowMs?: number
   /** The game picked in Where chat is, or null. */
   game: string | null
   onClearGame: () => void
@@ -52,7 +57,7 @@ export interface HubV5ChannelsProps {
   sortRequest?: { id: number; sort: HubChannelSort; dir: 1 | -1 } | null
 }
 
-export const HubV5Channels = forwardRef<HTMLElement, HubV5ChannelsProps>(function HubV5Channels({ live, poolSize, unavailable = false, loading = false, game, onClearGame, sortRequest }, ref) {
+export const HubV5Channels = forwardRef<HTMLElement, HubV5ChannelsProps>(function HubV5Channels({ live, poolSize, unavailable = false, loading = false, savedAt = null, nowMs, game, onClearGame, sortRequest }, ref) {
   const [q, setQ] = useState('')
   const [sort, setSort] = useState<HubChannelSort>('viewers')
   const [dir, setDir] = useState<1 | -1>(-1)
@@ -112,7 +117,7 @@ export const HubV5Channels = forwardRef<HTMLElement, HubV5ChannelsProps>(functio
   const countLabel = (unavailable || loading) && !live.length ? ''
     : game || q
     ? `${formatHubInt(rows.length)} ${rows.length === 1 ? 'channel' : 'channels'}`
-    : `${formatHubInt(live.length)} of ${formatHubInt(poolSize)} live`
+    : `${formatHubInt(live.length)} of ${formatHubInt(poolSize)} live${savedAt != null ? ` ${hubSavedAt(savedAt, nowMs ?? Date.now())}` : ''}`
 
   return (
     <section

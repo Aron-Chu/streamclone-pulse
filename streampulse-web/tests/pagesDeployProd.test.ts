@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { resolvePageMetadata } from '../src/lib/pageMetadata'
 
 const webRoot = resolve(import.meta.dirname, '..')
 const deploymentScript = readFileSync(resolve(webRoot, 'scripts/pages-deploy-prod.mjs'), 'utf8')
@@ -42,6 +43,18 @@ describe('Cloudflare Pages production deployment hygiene', () => {
     expect(robots).toContain('Sitemap: https://streampulse.stream/sitemap.xml')
     for (const path of ['/', '/analytics', '/docs', '/status', '/privacy', '/support']) {
       expect(sitemap).toContain(`<loc>https://streampulse.stream${path}</loc>`)
+    }
+  })
+
+  it('lists only pages that ask to be indexed, so Search Console reports no "submitted URL marked noindex"', () => {
+    const sitemap = readFileSync(resolve(webRoot, 'public/sitemap.xml'), 'utf8')
+    const paths = [...sitemap.matchAll(/<loc>https:\/\/streampulse\.stream(\/[^<]*)<\/loc>/g)].map(match => match[1])
+    expect(paths.length).toBeGreaterThan(0)
+    for (const path of paths) expect(resolvePageMetadata(path).robots, path).toBe('index,follow')
+    // Kept out of search on purpose: the Discord page only forwards to the invite, the changelog documents the extension.
+    for (const path of ['/changelog', '/discord']) {
+      expect(resolvePageMetadata(path).robots).toBe('noindex,nofollow')
+      expect(paths).not.toContain(path)
     }
   })
 

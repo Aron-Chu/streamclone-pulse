@@ -12,8 +12,11 @@ artifact names. Renaming them would break upgrades or contracts.
 | Style root `#streamclone-pulse-styles` | `src/ui/theme.ts` | CSS isolation id |
 | HTTP header `X-Streamclone-Beta-Key` | `src/background/api.ts` + BFF | Backend contract |
 | Storage key `betaKey` | `chrome.storage` | Installed-user settings |
-| Portal keys `sp.betaKey`, `sp.backendUrlOverride` | `streampulse-web` localStorage | Existing portal sessions |
+| Portal key `sp.backendUrlOverride` | `streampulse-web` sessionStorage | Dev-only backend override; production ignores it |
 | ZIP / CI names containing `streamclone-pulse` | packaging scripts (if present) | Historical artifact naming |
 | Repo folder / GitHub `streamclone-pulse` | Git remote | Repository identity |
+
+Removed: the portal's `sp.betaKey` localStorage key. The beta-key login is gone, and
+the site deletes the key on every load.
 
 When adding new user-visible strings, prefer **StreamPulse**.

@@ -799,7 +799,7 @@ export async function fetchPublicHubBase(
     const path = publicHubPath(activityWindow, projection)
     // Adopt the request main.tsx primed for this exact path (plan §2.6).
     const primed = takePrimedPublicHub<PublicHub>(path, signal)
-    const primary = await (primed ?? apiClient<PublicHub>(path, { signal, timeoutMs }))
+    const primary = await (primed ?? apiClient<PublicHub>(path, { signal, timeoutMs, slowOrigin: true }))
     if (!hasPublicHubResponseShape(primary.data)) {
       throw { kind: 'server', message: 'Public hub returned an incomplete response', status: primary.status, code: 'invalid_hub_response' } satisfies ApiError
     }

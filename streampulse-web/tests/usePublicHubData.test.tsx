@@ -742,6 +742,21 @@ describe('usePublicHubData', () => {
     expect(result.current.data?.poolSize).toBe(42)
   })
 
+  it.each([
+    ['a 24h copy that is a 30m live-pool fallback', '24h'],
+    ['a 30m tab copy', '30m'],
+  ] as const)('does not show %s saved 30 minutes ago', async (_label, window) => {
+    writePublicHubCache(getBackendUrl(), window, window === '24h' ? repairHubResult(8).data : sampleHub(8))
+    const key = publicHubCacheKey(getBackendUrl(), window)
+    const savedAt = Date.now() - 30 * 60_000
+    localStorage.setItem(key, localStorage.getItem(key)!.replace(/"cachedAt":\d+/, `"cachedAt":${savedAt}`))
+    fetchPublicHubBase.mockReturnValue(deferredHub().promise)
+
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: window }))
+
+    expect(result.current).toMatchObject({ data: null, loading: true, loadSource: null, cachedAt: null })
+  })
+
   it('shows refreshing while background fetch runs after cache hydration', async () => {
     writePublicHubCache(getBackendUrl(), '24h', sampleHub(8))
     fetchPublicHubBase.mockImplementation(
@@ -759,7 +774,8 @@ describe('usePublicHubData', () => {
     expect(result.current.data?.poolSize).toBe(42)
   })
 
-  it('manual refresh aborts an in-flight fetch and applies the latest result', async () => {
+  // D3 (10-28): the origin may still be building the read; starting over would only push its answer back.
+  it('manual refresh waits on the read under way instead of starting it over', async () => {
     let resolveFirst: ((value: ReturnType<typeof hubResult>) => void) | undefined
     fetchPublicHubBase
       .mockImplementationOnce(
@@ -773,8 +789,15 @@ describe('usePublicHubData', () => {
     const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
     await waitFor(() => expect(fetchPublicHubBase).toHaveBeenCalledTimes(1))
 
-    result.current.refresh()
-    resolveFirst?.(hubResult(1))
+    act(() => result.current.refresh())
+    expect(result.current.loading).toBe(true)
+    expect((fetchPublicHubBase.mock.calls[0][0] as AbortSignal).aborted).toBe(false)
+    await act(async () => { resolveFirst?.(hubResult(1)) })
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(1))
+    expect(fetchPublicHubBase).toHaveBeenCalledTimes(1)
+
+    // Once it has settled, refresh reads anew.
+    await act(async () => { result.current.refresh() })
     await waitFor(() => expect(result.current.data?.poolSize).toBe(99))
     expect(fetchPublicHubBase).toHaveBeenCalledTimes(2)
   })
@@ -1292,10 +1315,8 @@ describe('usePublicHubData', () => {
       const pressed = deferredHub()
       fetchPublicHubBase
         .mockResolvedValueOnce(hubResult(5))
-        // The poll in flight when Try again is pressed; the press aborts it.
-        .mockImplementationOnce((signal: AbortSignal) => new Promise((_, reject) => {
-          signal.addEventListener('abort', () => reject(signal.reason))
-        }))
+        // A healthy poll, settled before Try again is pressed (a press waits on a read under way).
+        .mockResolvedValueOnce(hubResult(5))
         .mockImplementationOnce(() => pressed.promise)
         .mockResolvedValue(hubResult(6))
       // random 0: a healthy poll comes 15% early, every 38.25 s.
@@ -1305,7 +1326,7 @@ describe('usePublicHubData', () => {
       await act(async () => { await vi.advanceTimersByTimeAsync(38_250) })
       expect(fetchPublicHubBase).toHaveBeenCalledTimes(2)
 
-      // The aborted poll arms the next one 38.25 s out; then the pressed read names a 60 s pause.
+      // The poll arms the next one 38.25 s out; then the pressed read names a 60 s pause.
       await act(async () => {
         result.current.refresh()
         await vi.advanceTimersByTimeAsync(1_000)

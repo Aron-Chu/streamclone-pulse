@@ -11,6 +11,9 @@ import {
   formatHubRate,
   gameInitials,
   hubCategoryArt,
+  hubClock,
+  hubSavedAt,
+  hubSavedClock,
   hubAvatarTone,
   hubMonogram,
   isLowMultiplier,
@@ -94,6 +97,37 @@ describe('hub v5 formatting', () => {
     expect(hubAvatarTone('xqc')).toBe(hubAvatarTone('xqc'))
     expect(hubMonogram('Kai Cenat', 'kaicenat')).toBe('KA')
     expect(hubMonogram(undefined, '__')).toBe('?')
+  })
+})
+
+describe('a saved copy’s time (N1, 10-28)', () => {
+  const at = (d: number, h: number, m: number, s = 0) => new Date(2026, 9, d, h, m, s).getTime()
+
+  it('keeps today’s plain clock', () => {
+    expect(hubSavedClock(at(28, 10, 50), at(28, 11, 5))).toBe(hubClock(at(28, 10, 50)))
+    expect(hubSavedClock(at(28, 10, 50), at(28, 11, 5))).toMatch(/^10:50\sAM$/)
+  })
+
+  it('says the day when it is not today', () => {
+    expect(hubSavedClock(at(27, 23, 30), at(28, 2, 0))).toBe(`yesterday, ${hubClock(at(27, 23, 30))}`)
+    expect(hubSavedClock(at(27, 23, 30), at(28, 2, 0))).toMatch(/^yesterday, 11:30\sPM$/)
+    expect(hubSavedClock(at(26, 10, 50), at(28, 9, 0))).toBe(`Oct 26, ${hubClock(at(26, 10, 50))}`)
+    // across a year end
+    const nye = new Date(2026, 11, 31, 23, 0).getTime()
+    expect(hubSavedClock(nye, new Date(2027, 0, 1, 1, 0).getTime())).toBe(`yesterday, ${hubClock(nye)}`)
+  })
+
+  it('takes the day and minute it was saved, never a time later than now', () => {
+    expect(hubSavedClock(at(27, 23, 59, 40), at(28, 0, 5))).toMatch(/^yesterday, 11:59\sPM$/)
+    expect(hubSavedClock(at(28, 10, 50, 40), at(28, 10, 50, 50))).toMatch(/^10:50\sAM$/)
+    // A copy stamped ahead of this clock reads as now.
+    expect(hubSavedClock(at(28, 10, 52), at(28, 10, 50, 30))).toMatch(/^10:50\sAM$/)
+  })
+
+  it('reads in Channels as "at" a time today, else the day and time', () => {
+    expect(hubSavedAt(at(28, 10, 50), at(28, 11, 5))).toMatch(/^at 10:50\sAM$/)
+    expect(hubSavedAt(at(27, 23, 30), at(28, 2, 0))).toMatch(/^yesterday, 11:30\sPM$/)
+    expect(hubSavedAt(at(26, 21, 5), at(28, 9, 0))).toMatch(/^Oct 26, 9:05\sPM$/)
   })
 })
 

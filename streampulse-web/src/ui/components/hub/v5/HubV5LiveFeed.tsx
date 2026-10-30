@@ -22,6 +22,12 @@
  * Games first (L1, 10-22): a channel's row leads with its game's cover and says
  * "5.0× more emotes · Chess", the time short on the right; the strip's covers
  * carry their names.
+ *
+ * 10-28: the feed and the peek stay in every state. With no hub answer behind
+ * them (totals only, a saved copy with no rows, or nothing yet) they say
+ * "Loading live feed…" while the hub read runs and "Unavailable right now."
+ * once it gave up, never a quiet hour. Data over 3 minutes old names the hour
+ * its quiet line covers (Q1).
  */
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type MouseEvent, type PointerEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
@@ -41,7 +47,6 @@ import { HubV5TopMoments } from './HubV5TopMoments'
 import {
   FEED_BIG_VIEWERS,
   FEED_LIVES_LIST,
-  FEED_STALE_MS,
   FEED_UP_LIST,
   FEED_UP_MIN,
   feedAgo,
@@ -58,17 +63,22 @@ import {
   feedMomentsHref,
   feedMore,
   feedMultiplier,
+  feedPeekQuietText,
+  feedQuietText,
   feedRestTip,
   feedRowAria,
   feedShort,
+  feedStale,
   feedTip,
   feedUpAria,
+  feedWaitText,
   liveFeedModel,
   type FeedEvent,
   type FeedGame,
   type FeedItem,
   type FeedLive,
   type FeedMomentsList,
+  type FeedWait,
   type LiveFeedModel,
 } from './hubV5FeedModel'
 import {
@@ -77,6 +87,7 @@ import {
   formatHubMultiplier,
   formatHubRate,
   hubClock,
+  hubSavedClock,
   isLowMultiplier,
   multiplierWords,
   type HubMomentRowV5,
@@ -177,6 +188,8 @@ export function useHubLiveFeed(hub: PublicHub | null): HubLiveFeed {
   latestRef.current = latest
   const held = useRef(false)
   const [state, setState] = useState<{ shown: LiveFeedModel; fresh: ReadonlySet<string> | null }>(() => ({ shown: latest, fresh: null }))
+  const shownRef = useRef(state.shown)
+  shownRef.current = state.shown
   const flush = useCallback(() => {
     setState((prev) => {
       const next = latestRef.current
@@ -185,7 +198,11 @@ export function useHubLiveFeed(hub: PublicHub | null): HubLiveFeed {
       return { shown: next, fresh: fresh.size ? fresh : null }
     })
   }, [])
-  useEffect(() => { if (!held.current) flush() }, [latest, flush])
+  // A feed with no rows has nothing to hold still: the hub's answer shows at once, pointer in the list or not.
+  useEffect(() => {
+    const shown = shownRef.current
+    if (!held.current || !(shown.items.length || shown.up.length || shown.top.length)) flush()
+  }, [latest, flush])
   const setHeld = useCallback((h: boolean) => {
     held.current = h
     if (!h) flush()
@@ -545,7 +562,6 @@ function freshText(asOf: number | null, nowMs: number): string {
   const s = Math.round((nowMs - asOf) / 1000)
   return `as of ${feedClockFloor(asOf)}${s >= 60 ? ` · ${Math.floor(s / 60)} min old` : ''}`
 }
-const isStale = (asOf: number | null, nowMs: number) => asOf != null && nowMs - asOf > FEED_STALE_MS
 
 /* ---------- the rail ---------- */
 
@@ -553,11 +569,19 @@ export interface HubV5LiveFeedProps {
   feed: HubLiveFeed
   nowMs: number
   loading?: boolean
+  /**
+   * No hub answer behind the feed (totals only, a saved copy, or nothing):
+   * 'loading' while the hub read runs, 'unavailable' once it gave up. With no
+   * rows the feed says so in one line, with a grey dot and no time or (i).
+   */
+  wait?: FeedWait
+  /** A saved copy is on screen: its quiet line names its hour. */
+  saved?: boolean
   /** "+N more in Channels": sort Channels by chat vs own avg and bring it into view. */
   onUpMore?: () => void
 }
 
-function LiveFeedV3({ feed, nowMs, loading = false, onUpMore }: HubV5LiveFeedProps) {
+function LiveFeedV3({ feed, nowMs, loading = false, wait = null, saved = false, onUpMore }: HubV5LiveFeedProps) {
   const [game, setGame] = useState<string | null>(null)
   const model = useMemo(() => feedForGame(feed.shown, game), [feed.shown, game])
   const games = useMemo(() => feedGames(feed.shown, game), [feed.shown, game])
@@ -629,7 +653,9 @@ function LiveFeedV3({ feed, nowMs, loading = false, onUpMore }: HubV5LiveFeedPro
     for (const it of filler) if ('group' in it) rows.push(<GroupRow key={it.key} item={it} model={model} nowMs={nowMs} isNew={false} />)
   }
 
-  const stale = isStale(model.asOf, nowMs)
+  // Nothing behind the feed to show: one line, a grey dot, no time and no (i).
+  const waitLine = feedWaitText(feed.shown, wait, loading || feed.at != null)
+  const stale = waitLine != null || feedStale(model.asOf, nowMs)
   return (
     <aside
       ref={secRef}
@@ -639,8 +665,8 @@ function LiveFeedV3({ feed, nowMs, loading = false, onUpMore }: HubV5LiveFeedPro
     >
       <div className="hv5-rh">
         <h2 id={H_ID}><span className="hv5-fd-dot" aria-hidden="true" />Live feed</h2>
-        <span className="hv5-f2-fresh">{freshText(model.asOf, nowMs)}</span>
-        <HubToggletip tip={feedTip(model)} label="About the Live feed" />
+        <span className="hv5-f2-fresh">{waitLine ? '' : freshText(model.asOf, nowMs)}</span>
+        {waitLine ? null : <HubToggletip tip={feedTip(model)} label="About the Live feed" />}
         <span className="hv5-end">
           <Link className={`hv5-mo-all${linked ? ' hv5-mo-game' : ''}`} to={feedMomentsHref(linked)}>
             {linked ? <><span className="hv5-mo-gm">{linked.name}</span>&nbsp;moments →</> : 'All moments →'}
@@ -674,7 +700,7 @@ function LiveFeedV3({ feed, nowMs, loading = false, onUpMore }: HubV5LiveFeedPro
           {...handlers}
           onClick={() => window.requestAnimationFrame(() => setOpened(!!wrapRef.current?.querySelector('.hv5-fd-list [aria-expanded="true"]')))}
         >
-          {model.asOf != null && !upOn && !rows.length ? <p className="hv5-fd-quiet">{game ? `Nothing from ${game} in the last hour` : 'Quiet right now · nothing in the last hour'}</p> : null}
+          {model.asOf != null && !waitLine && !upOn && !rows.length ? <p className="hv5-fd-quiet">{feedQuietText(game, model.asOf, nowMs, saved)}</p> : null}
           {upOn || rows.length ? (
             <ol className="hv5-fd-list" aria-labelledby={H_ID}>
               {upOn ? <UpRow model={model} isNew={!!fresh?.has('now')} onUpMore={onUpMore} /> : null}
@@ -696,7 +722,7 @@ function LiveFeedV3({ feed, nowMs, loading = false, onUpMore }: HubV5LiveFeedPro
               </button>
             </div>
           ) : null}
-          {model.asOf == null && !loading ? <p className="hv5-none">No live data yet.</p> : null}
+          {waitLine ? <p className="hv5-none">{waitLine}</p> : null}
         </div>
       </div>
       {card}
@@ -728,11 +754,19 @@ export function HubV5LiveFeed(props: HubV5LiveFeedProps) {
   )
 }
 
-/** Phones: a 3-row "Live now" peek under the hero (CSS shows it under 720 px); the full feed stays where it is. */
-export function HubV5LivePeek({ feed, nowMs }: { feed: HubLiveFeed; nowMs: number }) {
+/**
+ * Phones: a 3-row "Live now" peek under the hero (CSS shows it under 720 px); the full feed stays where it is.
+ * It stays in every state (10-28): with nothing behind the feed it says what the rail says. On a saved copy
+ * it is headed with the copy's time, never "Live now".
+ */
+export function HubV5LivePeek({ feed, nowMs, loading = false, wait = null, savedAt = null }: Pick<HubV5LiveFeedProps, 'feed' | 'nowMs' | 'loading' | 'wait'> & {
+  /** A saved copy is on screen, saved at this time. */
+  savedAt?: number | null
+}) {
+  const saved = savedAt != null
   const model = feed.shown
   const groups = model.items.filter((it): it is Extract<FeedItem, { group: FeedEvent[] }> => 'group' in it).slice(0, 3)
-  if (model.asOf == null) return null
+  const waitLine = feedWaitText(model, wait, loading || feed.at != null)
   const onJump = (event: MouseEvent<HTMLAnchorElement>) => {
     const target = document.getElementById('latest')
     if (!target) return
@@ -741,16 +775,23 @@ export function HubV5LivePeek({ feed, nowMs }: { feed: HubLiveFeed; nowMs: numbe
     target.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' })
   }
   return (
-    <section className={`hv5-sec hv5-f3-peek${isStale(model.asOf, nowMs) ? ' hv5-f2-stale' : ''}`} aria-labelledby="hv5-pk-h">
+    <section
+      className={`hv5-sec hv5-f3-peek${waitLine != null || feedStale(model.asOf, nowMs) ? ' hv5-f2-stale' : ''}`}
+      aria-labelledby="hv5-pk-h"
+      // Keeps the three rows' height while it waits (hub-v5.css), so they land without a shift.
+      data-wait={waitLine != null ? '' : undefined}
+    >
       <div className="hv5-rh">
-        <h2 id="hv5-pk-h"><span className="hv5-fd-dot" aria-hidden="true" />Live now</h2>
-        <span className="hv5-f2-fresh">{freshText(model.asOf, nowMs)}</span>
+        <h2 id="hv5-pk-h"><span className="hv5-fd-dot" aria-hidden="true" />{saved ? `Saved ${hubSavedClock(savedAt, nowMs)}` : 'Live now'}</h2>
+        <span className="hv5-f2-fresh">{waitLine ? '' : freshText(model.asOf, nowMs)}</span>
         <span className="hv5-end"><a className="hv5-mo-all" href="#latest" onClick={onJump}>{feed.list ? 'Top moments ↓' : 'Live feed ↓'}</a></span>
       </div>
       <ol className="hv5-fd-list">
-        {groups.length
-          ? groups.map((it) => <GroupRow key={it.key} item={{ ...it, old: false }} model={model} nowMs={nowMs} isNew={false} />)
-          : <li className="hv5-fd-quiet">Quiet right now.</li>}
+        {waitLine || model.asOf == null
+          ? <li className="hv5-fd-quiet">{waitLine}</li>
+          : groups.length
+            ? groups.map((it) => <GroupRow key={it.key} item={{ ...it, old: false }} model={model} nowMs={nowMs} isNew={false} />)
+            : <li className="hv5-fd-quiet">{feedPeekQuietText(model.asOf, nowMs, saved)}</li>}
       </ol>
     </section>
   )

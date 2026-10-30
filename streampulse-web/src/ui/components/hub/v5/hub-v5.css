@@ -124,6 +124,8 @@
 .hv5-f3-peek { grid-area: peek; display: none; margin-top: 12px; }
 @media (max-width: 719px) {
   .hv5-f3-peek { display: block; }
+  /* while it waits, the height its rows land in: the 40 px head and three 56 px rows (.hv5-rh, .hv5-fd) */
+  .hv5-f3-peek[data-wait] { min-height: 208px; }
 }
 .hv5-channels { grid-area: chan; margin-top: 32px; scroll-margin-top: 72px; }
 .hv5-dis { grid-area: meas; margin-top: 32px; }
@@ -839,6 +841,7 @@
 }
 .hub-v5 .hv5-bzc-pg .hv5-ib[aria-disabled="true"] { opacity: 0.35; cursor: default; }
 .hub-v5 .hv5-bzc-pg .hv5-ib[aria-disabled="true"]:hover { background: none; color: var(--sp-text-2); }
+.hv5-bzc-pg-wait { visibility: hidden; }
 @container hv5bzv (max-width: 639px) {
   .hv5-bzc-pg { order: 10; margin-left: auto; }
 }

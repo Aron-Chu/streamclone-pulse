@@ -45,8 +45,8 @@ function liveText(live: number, roster: number | null, approximate: boolean): st
   return `${approximate ? '≈' : ''}${formatHubCardInt(live)}${roster != null ? ` of ${formatHubCardInt(roster)}` : ''} live`
 }
 
-/** What the row shows at rest (bar null) or over a bar. */
-export function hubReadoutView(model: HubActivitySpModel, bar: SpBar | null): HubReadoutView | null {
+/** What the row shows at rest (bar null) or over a bar. `saved`: a saved copy is on screen, so the rest time says "Saved", not "Now" (S1, 10-28). */
+export function hubReadoutView(model: HubActivitySpModel, bar: SpBar | null, saved = false): HubReadoutView | null {
   if (bar) {
     const channels = barViewerChannels(model, bar.fromIndex, bar.toIndex)
     const top = barTopEmotes(model, bar.fromIndex, bar.toIndex, 3)
@@ -73,7 +73,7 @@ export function hubReadoutView(model: HubActivitySpModel, bar: SpBar | null): Hu
   const topEmote = sortedTopEmotes(latest.point)[0]
   return {
     mode: 'now',
-    time: 'Now',
+    time: saved ? 'Saved' : 'Now',
     time2: hubCardClockRange(latest.t, latest.t + model.bucketMs),
     chat: formatHubCardInt(latest.chat),
     chatPeak: peak(model.peakChat),
@@ -103,13 +103,15 @@ export interface HubActivityReadoutProps {
   hover: SpHoverStore
   series: HubReadoutSeries
   emoteImages?: ReadonlyMap<string, string> | null
+  /** A saved copy is on screen: the rest time reads "Saved". */
+  saved?: boolean
 }
 
 const noHit = () => null
 
-export function HubActivityReadout({ model, hover, series, emoteImages }: HubActivityReadoutProps) {
+export function HubActivityReadout({ model, hover, series, emoteImages, saved = false }: HubActivityReadoutProps) {
   const hit = useSyncExternalStore(hover.subscribe, hover.get, noHit)
-  const view = hubReadoutView(model, hit?.bar ?? null)
+  const view = hubReadoutView(model, hit?.bar ?? null, saved)
   if (!view) return <div className="lr hx-chart-header__readout" data-hub-readout="" aria-hidden="true" />
   const slot = (key: keyof HubReadoutSeries) => (series[key] ? 'slot' : 'slot off')
   const single = view.mode === 'now' ? view.top[0] : null

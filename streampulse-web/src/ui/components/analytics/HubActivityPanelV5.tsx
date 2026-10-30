@@ -51,6 +51,8 @@ export type HubActivityPanelV5Props = FigmaGlobalActivityPanelProps & {
   onOpenMeasured?: () => void;
   /** No hub reply has landed yet: the heading names the range picked, not the empty payload's 30 min. */
   awaitingData?: boolean;
+  /** A saved copy is on screen: the readout's rest time reads "Saved", not "Now" (S1, 10-28). */
+  saved?: boolean;
 };
 
 /** The mockup's measured notes (d3-v5 hub.js measuredBody); the bars line follows the chart zoom. */
@@ -102,6 +104,7 @@ export function HubActivityPanelV5({
   measuredTarget,
   onOpenMeasured,
   awaitingData = false,
+  saved = false,
 }: HubActivityPanelV5Props) {
   const labels = useCommandCenterLabels();
   const [bars, setBars] = useState<HubActivityBars | null>(null);
@@ -266,6 +269,7 @@ export function HubActivityPanelV5({
           providerCoverage={hub.activity.providerCoverage}
           onOpenMeasured={unavailable ? undefined : measuredTarget !== undefined ? onOpenMeasured : openMeasured}
           onBarsChange={setBars}
+          saved={saved}
         />
       </div>
       {measuredTarget !== undefined ? (

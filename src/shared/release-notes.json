@@ -46,7 +46,7 @@
         "Accounts aren't open yet and Supporter isn't on sale yet. Accounts are coming with Continue with Twitch.",
         "Bookmarks, notes and watched history stay in the browser where you saved them.",
         "Refresh open Twitch tabs after updating.",
-        "Moments a tab didn't play get a picture only when Twitch has a VOD of the stream.",
+        "Moments you missed get a picture only if the stream has a Twitch VOD.",
         "Twitch's chat menus open behind the Pulse panel. Switch to the Chat tab to use them."
       ],
       "links": {
