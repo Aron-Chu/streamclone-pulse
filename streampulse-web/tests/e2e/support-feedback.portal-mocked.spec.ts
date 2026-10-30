@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from '@playwright/test'
+import { expect, test, type Page, type Route } from './helpers/portalMockedTest'
 
 /**
  * The private feedback form on /feedback (and the /support card that links to

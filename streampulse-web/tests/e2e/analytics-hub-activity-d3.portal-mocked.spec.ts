@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './helpers/portalMockedTest'
 import { installHubUxMock } from './helpers/hubUxMock'
 
 // The hub activity card on the shared SpChart core (plan §2.1-§2.3, unit U6):
