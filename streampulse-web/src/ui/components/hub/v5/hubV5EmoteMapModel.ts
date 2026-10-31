@@ -10,8 +10,11 @@
  * (activity.points[].topEmotes), added up per emote, so uses outside an emote's
  * top-10 intervals are not in it. Every size, share and pace here is a sum of
  * those sent counts; nothing is estimated.
+ * Since the 10-30 board (W1, C1) chips re-cut the same counts to a shorter
+ * window, and a selected emote shows them per interval with its busiest one,
+ * whose streams one hub/moments read lists.
  */
-import type { HubActivityPoint, HubBucketEmote } from '../../../../lib/publicHub'
+import type { HubActivityPoint, HubBucketEmote, HubLivePulseMoment } from '../../../../lib/publicHub'
 import { formatHubInt, hubClockRange } from './hubV5Model'
 
 export interface HubEmoteAgg {
@@ -30,12 +33,16 @@ export interface HubEmoteAgg {
   pace: number
   /** In a top 10 this hour and never before it. */
   isNew: boolean
+  /** Its count in each interval it made a top 10 in, oldest first: the chips and the timeline cut these. */
+  series: Array<{ t: number; c: number }>
 }
 
 export interface HubEmoteMapData {
   emotes: HubEmoteAgg[]
   byId: ReadonlyMap<string, HubEmoteAgg>
   intervals: number
+  /** Each closed interval's start, oldest first. */
+  times: number[]
   lastHourIntervals: number
   t0: number
   t1: number
@@ -88,9 +95,10 @@ export function emoteMapData(points: readonly HubActivityPoint[], bucketMinutes:
       if (!e || !e.name || !Number.isFinite(e.count) || e.count <= 0) continue
       const id = emoteMapId(e)
       let a = agg.get(id)
-      if (!a) agg.set(id, (a = { id, e, prov: e.provider || 'other', c24: 0, c1h: 0, n: 0, peak: 0, peakT: 0, pace: 0, isNew: false }))
+      if (!a) agg.set(id, (a = { id, e, prov: e.provider || 'other', c24: 0, c1h: 0, n: 0, peak: 0, peakT: 0, pace: 0, isNew: false, series: [] }))
       a.c24 += e.count
       a.n += 1
+      a.series.push({ t: p.t, c: e.count })
       all += e.count
       if (inHour) a.c1h += e.count
       if (e.count > a.peak) {
@@ -108,6 +116,7 @@ export function emoteMapData(points: readonly HubActivityPoint[], bucketMinutes:
     emotes,
     byId: agg,
     intervals: nbt,
+    times: closed.map((p) => p.t),
     lastHourIntervals: lastN,
     t0,
     t1,
@@ -221,9 +230,68 @@ export function squarify<T extends { area: number }>(items: readonly T[], rect: 
   return out
 }
 
-/* ---------- the layout (r4 A2; mockup emotemap-moments-r4) ---------- */
+/* ---------- W1 window chips (10-30 board): the standard stops that fit the loaded answer ---------- */
 
-export type HubEmoteWindow = 'all' | '1h'
+/** 'all' is the whole answer; a number is its last that many minutes, cut on interval edges. */
+export type HubEmoteWindow = 'all' | number
+
+export interface EmoteChip { win: HubEmoteWindow; label: string }
+
+/** The page's window names, and the shorter stops under them. */
+const STOPS: ReadonlyArray<{ m: number; label: string }> = [
+  { m: 5, label: '5m' }, { m: 15, label: '15m' }, { m: 30, label: '30m' }, { m: 60, label: '1h' }, { m: 360, label: '6h' },
+  { m: 1440, label: '24h' }, { m: 10_080, label: '7d' }, { m: 43_200, label: '1mo' }, { m: 129_600, label: '3mo' }, { m: 525_600, label: '1 year' },
+]
+
+/** A span no stop names, in the same short style ("10h", "12d"). */
+function chipLabel(minutes: number): string {
+  if (minutes < 120) return `${Math.round(minutes)}m`
+  if (minutes < 2880) return `${Math.round(minutes / 60)}h`
+  return `${Math.round(minutes / 1440)}d`
+}
+
+/**
+ * The chips: the 3 longest stops that hold at least 4 intervals, are shorter
+ * than the answer and not named like it, then the whole answer, named by its
+ * stop (30m · 1h · 6h · 24h; 5m · 15m · 30m on the live-pool fallback). One
+ * chip is no choice, so none.
+ */
+export function emoteMapChips(data: Pick<HubEmoteMapData, 't0' | 't1' | 'bucketMinutes'>): EmoteChip[] {
+  const span = (data.t1 - data.t0) / 60_000
+  const near = Math.max(2 * data.bucketMinutes, span * 0.05)
+  const all = STOPS.find((s) => Math.abs(s.m - span) <= near)?.label ?? chipLabel(span)
+  // a 6h stop beside a 6.4 h answer named "6h" would be two chips with one name
+  const chips: EmoteChip[] = STOPS
+    .filter((s) => s.m >= 4 * data.bucketMinutes && s.m < span - near && s.label !== all)
+    .slice(-3)
+    .map((s) => ({ win: s.m, label: s.label }))
+  return chips.length ? [...chips, { win: 'all', label: all }] : []
+}
+
+/** Where a window starts: the intervals that start at or after it are in it. */
+export function emoteWindowFrom(data: Pick<HubEmoteMapData, 't0' | 't1'>, win: HubEmoteWindow): number {
+  return win === 'all' ? data.t0 : Math.max(data.t0, data.t1 - win * 60_000)
+}
+
+/** The minutes a window covers: whole intervals, so 6h on 42-minute intervals is 5.6 h. */
+export function emoteWindowMinutes(data: Pick<HubEmoteMapData, 't0' | 't1' | 'bucketMinutes'>, win: HubEmoteWindow): number {
+  const span = (data.t1 - data.t0) / 60_000
+  return win === 'all' ? span : Math.min(span, Math.floor(win / data.bucketMinutes) * data.bucketMinutes)
+}
+
+/** "24 h", "1 h", "30 min", "6 days": the span a window covers. */
+export function emoteWindowLabel(data: HubEmoteMapData, win: HubEmoteWindow): string {
+  if (win === 'all') return data.windowLabel
+  const m = emoteWindowMinutes(data, win)
+  return m === 60 ? '1 h' : windowLabel(m, data.bucketMinutes)
+}
+
+/** "last 24 h", "last hour", "last 30 min": for the list, the tiles and the cards. */
+export function emoteWindowWords(data: HubEmoteMapData, win: HubEmoteWindow): string {
+  return win !== 'all' && emoteWindowMinutes(data, win) === 60 ? 'last hour' : `last ${emoteWindowLabel(data, win)}`
+}
+
+/* ---------- the layout (r4 A2; mockup emotemap-moments-r4) ---------- */
 
 /**
  * Three fields: Twitch, 7TV, and BTTV with FFZ. Four provider hues fail the
@@ -312,13 +380,35 @@ export function emoteMapHeight(width: number, phone: boolean, tall: boolean, tal
   return Math.round(tall ? Math.min(1000, Math.max(b, tallFrom) * 1.8) : b)
 }
 
-export function emoteMapValue(a: HubEmoteAgg, win: HubEmoteWindow): number {
-  return win === 'all' ? a.c24 : a.c1h
+/** Its uses in a window: the whole answer, or its counts from the window's start on. */
+export function emoteMapValue(a: HubEmoteAgg, win: HubEmoteWindow, data: Pick<HubEmoteMapData, 't0' | 't1'>): number {
+  if (win === 'all') return a.c24
+  const from = emoteWindowFrom(data, win)
+  let v = 0
+  for (const x of a.series) if (x.t >= from) v += x.c
+  return v
+}
+
+/** Its numbers in a window for the hover card: uses, its busiest interval (the first if tied) and its top-10 intervals. */
+export function emoteInWindow(data: HubEmoteMapData, a: HubEmoteAgg, win: HubEmoteWindow): { v: number; peak: number; peakT: number; n: number; intervals: number } {
+  if (win === 'all') return { v: a.c24, peak: a.peak, peakT: a.peakT, n: a.n, intervals: data.intervals }
+  const from = emoteWindowFrom(data, win)
+  const out = { v: 0, peak: 0, peakT: 0, n: 0, intervals: data.times.filter((t) => t >= from).length }
+  for (const x of a.series) {
+    if (x.t < from) continue
+    out.v += x.c
+    out.n += 1
+    if (x.c > out.peak) {
+      out.peak = x.c
+      out.peakT = x.t
+    }
+  }
+  return out
 }
 
 export function emoteMapLayout(data: HubEmoteMapData, win: HubEmoteWindow, W: number, H: number): MapLayout {
   const ranked = data.emotes
-    .map((a) => ({ a, v: emoteMapValue(a, win) }))
+    .map((a) => ({ a, v: emoteMapValue(a, win, data) }))
     .filter((x) => x.v > 0)
     .sort((x, y) => y.v - x.v || x.a.id.localeCompare(y.a.id))
   const total = ranked.reduce((s, x) => s + x.v, 0)
@@ -421,9 +511,18 @@ export function paceHeat(a: Pick<HubEmoteAgg, 'c24' | 'c1h' | 'pace'>): PaceHeat
   return { dir: l > 0 ? 'up' : 'dn', mix: Math.round(18 + Math.min(1, over / 1.2) * 40) }
 }
 
-/** "120 emotes · sized by uses · last 24 h". */
-export function emoteMapMeta(data: HubEmoteMapData, layout: MapLayout, win: HubEmoteWindow): string {
-  return `${formatHubInt(layout.count)} emotes · sized by uses · ${win === 'all' ? `last ${data.windowLabel}` : hubClockRange(data.hourFrom, data.t1)}`
+/**
+ * "120 emotes · sized by uses · last 24 h". A chip under a day gives its clock
+ * span, since its cut lands on interval edges (the 24h chip of a 7-day answer,
+ * 23.8 h on 42-minute intervals, still reads "last 24 h"). While the backend
+ * serves its live-pool fallback the line says the longer history is behind
+ * instead (IRC-2 pick A's words), then the span.
+ */
+export function emoteMapMeta(data: HubEmoteMapData, layout: MapLayout, win: HubEmoteWindow, behind?: string | null): string {
+  const span = win !== 'all' && win < 1440
+    ? hubClockRange(data.t1 - emoteWindowMinutes(data, win) * 60_000, data.t1)
+    : emoteWindowWords(data, win)
+  return behind ? `${behind} · ${span}` : `${formatHubInt(layout.count)} ${layout.count === 1 ? 'emote' : 'emotes'} · sized by uses · ${span}`
 }
 
 export function emoteMapTip(data: HubEmoteMapData): string {
@@ -434,7 +533,99 @@ export function emoteMapTip(data: HubEmoteMapData): string {
       ? `A tile’s colour is its last hour (the last ${data.lastHourIntervals} intervals) against its own ${data.windowLabel} pace, counted the same way: orange is taking off, blue is cooling, plain is about its pace or under ${PACE_HEAT_MIN_USES} uses. In the list, ↗ and ↘ give the same. The frames are the providers (BTTV and FFZ share one). `
       : 'The three colours are the providers (BTTV and FFZ share one). ')
     + 'Size is uses; the share is of everything on the map. Every emote is on it: scroll or pinch over the map to zoom in, drag to move, double-click to zoom in or out. '
-    + 'Click an emote to see where it led chat.'
+    + 'The window chips add up only the last intervals of the same lists. '
+    + 'Click an emote to see its uses per interval, the busiest one marked, and the streams in that interval that had it in their top 3.'
+}
+
+/* ---------- C1 (10-30 board): a selected emote's spike, and who drove it ---------- */
+
+export interface EmoteSpike {
+  /**
+   * One bar per interval of the window, oldest first: its count, null where it
+   * made no top 10, undefined where the hub sent no list at all (an outage, not
+   * a quiet emote).
+   */
+  bars: Array<number | null | undefined>
+  /** The busiest bar (-1: none; the first if tied), its interval's start and its count. */
+  peak: number
+  peakT: number
+  peakCount: number
+}
+
+export function emoteSpike(data: HubEmoteMapData, a: HubEmoteAgg, win: HubEmoteWindow): EmoteSpike {
+  const slot = data.bucketMinutes * 60_000
+  const n = Math.max(1, Math.round(emoteWindowMinutes(data, win) / data.bucketMinutes))
+  const start = data.t1 - n * slot
+  const from = emoteWindowFrom(data, win)
+  const at = (t: number) => Math.min(n - 1, Math.max(0, Math.floor((t - start) / slot)))
+  const bars: Array<number | null | undefined> = Array.from({ length: n }, () => undefined)
+  for (const t of data.times) if (t >= from) bars[at(t)] = null
+  const starts: number[] = []
+  for (const x of a.series) {
+    if (x.t < from) continue
+    const i = at(x.t)
+    bars[i] = (bars[i] ?? 0) + x.c
+    starts[i] = x.t
+  }
+  let peak = -1
+  for (let i = 0; i < n; i += 1) if (bars[i] != null && (peak < 0 || bars[i]! > bars[peak]!)) peak = i
+  return { bars, peak, peakT: peak >= 0 ? starts[peak]! : 0, peakCount: peak >= 0 ? bars[peak]! : 0 }
+}
+
+const DAY: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' }
+
+/** "Oct 12", "Oct 12–13", "Sep 30–Oct 2": the days from a to b. */
+function dayRange(a: number, b: number): string {
+  const da = new Date(a)
+  const db = new Date(b)
+  if (da.toDateString() === db.toDateString()) return da.toLocaleDateString('en-US', DAY)
+  const sameMonth = da.getMonth() === db.getMonth() && da.getFullYear() === db.getFullYear()
+  return `${da.toLocaleDateString('en-US', DAY)}–${sameMonth ? db.getDate() : db.toLocaleDateString('en-US', DAY)}`
+}
+
+/**
+ * When an interval was: its clock span in a window of a day or less
+ * ("2:00–2:06 PM"), with its day in a longer one ("Oct 24, 7:00–7:42 PM"), and
+ * its days when an interval is a day or longer ("Oct 12–13").
+ */
+export function emoteIntervalLabel(data: Pick<HubEmoteMapData, 't0' | 't1' | 'bucketMinutes'>, win: HubEmoteWindow, t: number): string {
+  const end = t + data.bucketMinutes * 60_000
+  if (data.bucketMinutes >= 1440) return dayRange(t, end - 1)
+  const clock = hubClockRange(t, end)
+  return emoteWindowMinutes(data, win) > 1440 + data.bucketMinutes ? `${new Date(t).toLocaleDateString('en-US', DAY)}, ${clock}` : clock
+}
+
+/** Uses a minute over an interval: "936", "12", "4.2", "<0.1" (a long interval never reads 0). */
+export function emotePerMinute(count: number, bucketMinutes: number): string {
+  const r = count / Math.max(1, bucketMinutes)
+  if (r >= 9.95) return formatHubInt(Math.round(r))
+  if (r >= 0.05) return String(Math.round(r * 10) / 10)
+  return r > 0 ? '<0.1' : '0'
+}
+
+export interface EmoteDriver {
+  m: HubLivePulseMoment
+  /** The stream's uses of this emote in that minute. */
+  uses: number
+}
+
+/**
+ * C1's "Who drove it": of an interval's busiest chats (hub/moments, one row a
+ * stream), those with this emote in their top 3, matched by provider and name;
+ * most uses first, one row a channel.
+ */
+export function emoteDrivers(rows: readonly HubLivePulseMoment[], a: Pick<HubEmoteAgg, 'e' | 'prov'>, limit = 5): EmoteDriver[] {
+  const best = new Map<string, EmoteDriver>()
+  for (const m of rows) {
+    if (!m?.login) continue
+    const hit = (m.topEmotes ?? []).slice(0, 3).find((e) => e?.name && isSameEmote(e, a))
+    const uses = hit && Number.isFinite(hit.count) ? hit.count : 0
+    if (uses <= 0) continue
+    const key = m.login.toLowerCase()
+    const was = best.get(key)
+    if (!was || uses > was.uses) best.set(key, { m, uses })
+  }
+  return [...best.values()].sort((p, q) => q.uses - p.uses || (q.m.at ?? 0) - (p.m.at ?? 0)).slice(0, limit)
 }
 
 /* ---------- where chat spammed an emote: the hub's live moments it led ---------- */
