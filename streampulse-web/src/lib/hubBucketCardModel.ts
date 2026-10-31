@@ -45,7 +45,7 @@ export interface HubCardTile {
   secondLine: string | null
   /** Hover text with the full sample note and the peak. */
   tooltip: string | null
-  /** Viewers only: the full sample sentence ("≈45 of 500 live · 1 of 2 intervals not a full sample"). */
+  /** Viewers only: the full sample sentence ("≈45 live · 1 of 2 intervals not a full sample"). */
   sub: string | null
 }
 
@@ -416,14 +416,13 @@ export function buildHubBucketCardModel(input: HubBucketCardInput): HubBucketCar
   const viewers = viewerRows.length ? sum(viewerRows, point => point.viewers) / viewerRows.length : null
   const liveRows = viewerRows.filter(point => finite(point.viewerContributors))
   const live = liveRows.length ? sum(liveRows, point => point.viewerContributors as number) / liveRows.length : null
-  const expected = viewerRows.find(point => finite(point.viewerExpectedContributors))?.viewerExpectedContributors ?? null
   let viewerSub: string
   if (!viewerRows.length) {
     viewerSub = 'Not a full sample'
   } else {
     const approx = viewerRows.length > 1 ? '≈' : ''
     const parts: string[] = []
-    if (live != null) parts.push(`${approx}${Math.round(live)}${expected != null ? ` of ${expected}` : ''} live`)
+    if (live != null) parts.push(`${approx}${Math.round(live)} live`)
     if (viewerRows.length < members.length) {
       parts.push(`${members.length - viewerRows.length} of ${members.length} intervals not a full sample`)
     }

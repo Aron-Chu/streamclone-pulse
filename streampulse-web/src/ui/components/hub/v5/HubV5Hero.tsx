@@ -25,7 +25,7 @@ import { HubV5Icon } from './HubV5Icon'
 import { channelHref, channelsByViewers, formatHubInt, searchChannels, typedLogin } from './hubV5Model'
 
 const IS_MAC = typeof navigator !== 'undefined' && /Mac|iP(hone|ad|od)/.test(navigator.platform || navigator.userAgent)
-const PLACEHOLDER = 'Search any Twitch channel'
+const PLACEHOLDER = 'Search a channel'
 const BLUR_CLOSE_MS = 150
 
 interface Option {
@@ -166,7 +166,7 @@ export function HubV5Hero({ live, poolSize, points = NO_POINTS }: { live: readon
       <HubV5Conveyor points={points} refs={conveyorRefs} />
       <p className="hv5-hero-k" ref={kickerRef}>Analytics</p>
       <h1 className="hv5-hero-h">Find your streamer</h1>
-      <p className="hv5-hero-sub">Chat, emotes and top moments for any Twitch channel, minute by minute.</p>
+      <p className="hv5-hero-sub">Chat, emotes and top moments for Twitch&apos;s busiest channels, minute by minute.</p>
       <div className="hv5-hero-field" ref={fieldRef}>
         <div className="hv5-search" role="search">
           <label className="hv5-field" htmlFor={inputId}>
@@ -284,7 +284,7 @@ export function HubV5Hero({ live, poolSize, points = NO_POINTS }: { live: readon
         </p>
       ) : null}
       <div className="hv5-hero-foot" ref={footRef}>
-        {poolSize > 0 ? <p className="hv5-scope">The hub below covers {formatHubInt(poolSize)} channels we follow · not all of Twitch</p> : null}
+        {poolSize > 0 ? <p className="hv5-scope">The hub below covers Twitch&apos;s busiest channels · not all of Twitch</p> : null}
       </div>
     </header>
   )

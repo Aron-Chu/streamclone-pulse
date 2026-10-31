@@ -29,7 +29,7 @@ export interface HubReadoutView {
   emotes: string
   emotesPeak: HubReadoutPeak | null
   viewers: string
-  /** "N of M live" (≈ when it is a mean over several buckets), or ''. */
+  /** "N live" (≈ when it is a mean over several buckets), or ''. */
   live: string
   viewers2: string
   top: HubBucketEmote[]
@@ -41,8 +41,8 @@ const atLeast = (lowerBound: boolean, text: string) => (lowerBound && text !== '
 
 const dateShort = (ms: number) => new Date(ms).toLocaleDateString([], { month: 'short', day: 'numeric' })
 
-function liveText(live: number, roster: number | null, approximate: boolean): string {
-  return `${approximate ? '≈' : ''}${formatHubCardInt(live)}${roster != null ? ` of ${formatHubCardInt(roster)}` : ''} live`
+function liveText(live: number, approximate: boolean): string {
+  return `${approximate ? '≈' : ''}${formatHubCardInt(live)} live`
 }
 
 /** What the row shows at rest (bar null) or over a bar. `saved`: a saved copy is on screen, so the rest time says "Saved", not "Now" (S1, 10-28). */
@@ -59,7 +59,7 @@ export function hubReadoutView(model: HubActivitySpModel, bar: SpBar | null, sav
       emotes: atLeast(emotesLowerBoundIn(model, bar.fromIndex, bar.toIndex), formatHubCardInt(bar.emotes)),
       emotesPeak: null,
       viewers: formatHubCardInt(bar.viewers),
-      live: channels ? liveText(channels.live, channels.roster, channels.members > 1) : '',
+      live: channels ? liveText(channels.live, channels.members > 1) : '',
       viewers2: bar.viewers == null ? 'Not a full sample' : '',
       top,
       top2: top.map((emote) => emote.name).join(' · '),
@@ -80,7 +80,7 @@ export function hubReadoutView(model: HubActivitySpModel, bar: SpBar | null, sav
     emotes: atLeast(model.emotesLowerBound[latest.index] === 1, formatHubCardInt(latest.emotes)),
     emotesPeak: peak(model.peakEmotes, true),
     viewers: formatHubCardInt(latest.viewers),
-    live: latest.live != null ? liveText(latest.live, latest.roster, false) : '',
+    live: latest.live != null ? liveText(latest.live, false) : '',
     viewers2: pv ? `peak ${formatHubCardInt(pv.value)} · ${hubCardClock(pv.t)}${pv.live != null ? ` · ${formatHubCardInt(pv.live)} live` : ''}` : '',
     top: topEmote && topEmote.count > 0 ? [topEmote] : [],
     top2: 'top emote',
