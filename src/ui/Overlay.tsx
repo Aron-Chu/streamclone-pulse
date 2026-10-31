@@ -29,15 +29,18 @@ import type { ExtensionClip, ExtensionCoverageTierResponse, ExtensionRollup, Pul
 import { buildHubAnalyticsUrl, defaultWebAnalyticsBaseUrlForApi, openStreamAnalytics, resolveStreamAnalyticsHref } from '../shared/analyticsLinks.ts'
 import {
   DEFAULT_BACKEND_URL,
+  FIRST_RUN_LINE_DISMISSED_KEY,
   getAutoUpdateEnabled,
   getBackendUrl,
   densityFromStorageChange,
   getDensityPreference,
+  getFirstRunLineDismissed,
   getVodJumpChartPinEnabled,
   getOverlayDisplayPreferences,
   getSidebarTab,
   isHostedBackendUrl,
   isLocalStackBackendUrl,
+  setFirstRunLineDismissed,
   setOverlayMode,
   setSidebarTab,
   type DensityPreference,
@@ -360,6 +363,8 @@ function OverlayMain({
   const [panelView, setPanelView] = useState<'pulse' | 'settings'>('pulse')
   const [chartPinOffset, setChartPinOffset] = useState<number | null>(null)
   const [vodJumpChartPinEnabled, setVodJumpChartPinEnabled] = useState(true)
+  // Hidden until storage says the reader hasn't dismissed it.
+  const [firstRunLine, setFirstRunLine] = useState(false)
   const [mostReactedPinOffset, setMostReactedPinOffset] = useState<number | null>(null)
   const [mostReactedPreviewOffset, setMostReactedPreviewOffset] = useState<number | null>(null)
   const [chartMinuteSelection, setChartMinuteSelection] = useState<ExtensionRollup | null>(null)
@@ -679,6 +684,9 @@ function OverlayMain({
       void getVodJumpChartPinEnabled().then(value => {
         if (mounted) setVodJumpChartPinEnabled(value)
       })
+      void getFirstRunLineDismissed().then(dismissed => {
+        if (mounted) setFirstRunLine(!dismissed)
+      })
       if (backendId === backendRequestId) setBackendUrlState(storedBackend)
       if (!controlledSidebarTab && storedSidebarTab != null && tabId === tabRequestId) {
         setSidebarTabState(storedSidebarTab)
@@ -721,6 +729,8 @@ function OverlayMain({
           if (mounted) setVodJumpChartPinEnabled(value)
         })
       }
+      // Dismissed in another tab: gone here too.
+      if (changes[FIRST_RUN_LINE_DISMISSED_KEY]?.newValue === true) setFirstRunLine(false)
     }
     if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
       chrome.storage.onChanged.addListener(storageHandler)
@@ -1944,6 +1954,17 @@ function OverlayMain({
         onHide={() => void hideOverlay()}
         onSupporterPerks={setSupporterPerks}
       />
+
+      {/* Once, in the sidebar where the Chat tab is: what Pulse is, and the way back to chat. */}
+      {firstRunLine && (sidebarBodyOnly || showSidebarTabs) && !sidebarChatOnly && !nothingToChart ? (
+        <p className="pulse-state-text" data-pulse-first-run="true">
+          Pulse charts this stream’s chat. Click Chat for Twitch chat.{' '}
+          <button type="button" className="pulse-link-btn" onClick={() => {
+            setFirstRunLine(false)
+            void setFirstRunLineDismissed().catch(() => undefined)
+          }}>Dismiss</button>
+        </p>
+      ) : null}
 
       {panelView === 'pulse' && !sidebarChatOnly ? (
         <AnalyticsHubCta backendUrl={backendUrl} compact />
