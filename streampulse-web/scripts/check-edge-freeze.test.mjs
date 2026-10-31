@@ -403,7 +403,7 @@ test('migration policy lookup requires an unambiguous runtime token without maki
   assert.equal(selectPolicyToken({ GH_TOKEN: 'has whitespace' }), null)
 })
 
-test('an admitted Pages Worker requires matching operator-supplied migration account values', () => {
+test('an admitted Pages Worker requires matching operator-supplied migration account values', t => {
   const worker = { admitted: {} }
   const source = 'streampulse-web'
   const destination = 'streampulse-main'
@@ -420,7 +420,9 @@ test('an admitted Pages Worker requires matching operator-supplied migration acc
   assert.throws(() => assertApexTargetForWorker(worker, destination, webRoot, { CLOUDFLARE_ACCOUNT_ID: account }), /requires a matching/)
   assert.throws(() => assertApexTargetForWorker(worker, destination, webRoot, { ...env, PAGES_DEPLOY_EXPECTED_ACCOUNT_ID: other }), /requires a matching/)
   assert.throws(() => assertApexTargetForWorker(worker, destination, webRoot, { ...env, CLOUDFLARE_ACCOUNT_ID: 'invalid' }), /requires a matching/)
-  assert.throws(() => assertApexTargetForWorker(worker, destination, webRoot, env), /requires pages-migration-approval.json/)
+  const missingPinRoot = mkdtempSync(join(tmpdir(), 'pulse-missing-migration-pin-'))
+  t.after(() => rmSync(missingPinRoot, { recursive: true, force: true }))
+  assert.throws(() => assertApexTargetForWorker(worker, destination, missingPinRoot, env), /requires pages-migration-approval.json/)
 })
 
 function addMigrationApproval(f, overrides = {}, { merged = true } = {}) {
