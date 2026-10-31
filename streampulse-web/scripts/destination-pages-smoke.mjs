@@ -7,11 +7,14 @@ import { fileURLToPath } from 'node:url'
 import { Agent, request } from 'node:https'
 import { isIP } from 'node:net'
 import { Readable } from 'node:stream'
+import { setTimeout as delay } from 'node:timers/promises'
 
 const TARGET_PROJECT = 'streampulse-main'
 const MAX_EVIDENCE_BYTES = 65536
 const PREVIEW_ROUTES = ['/', '/analytics', '/account/settings']
 const RELAY_PATH = '/v1/account/me'
+const PROPAGATION_BUDGET_MS = 45000
+const RETRY_DELAYS_MS = [2000, 4000, 8000]
 
 function fail(code) {
   throw new Error(code)
@@ -68,19 +71,30 @@ export function destinationOrigin(evidence, expected) {
   return origin
 }
 
-function noRedirect(response) {
-  if (response.redirected || (response.status >= 300 && response.status < 400) || response.headers.has('location')) fail('unexpected-redirect')
+async function noRedirect(response) {
+  if (response.redirected || (response.status >= 300 && response.status < 400) || response.headers.has('location')) {
+    await response.body?.cancel().catch(() => {})
+    fail('unexpected-redirect')
+  }
+}
+
+function requestSignal(signal) {
+  const timeout = AbortSignal.timeout(15000)
+  return signal ? AbortSignal.any([signal, timeout]) : timeout
 }
 
 /** Checks a preview deployment only; this cannot prove a working signed relay. */
-export async function verifyDestinationPreview({ evidence, expected, fetchImpl = directFetch }) {
+export async function verifyDestinationPreview({ evidence, expected, fetchImpl = directFetch, signal }) {
   const origin = destinationOrigin(evidence, expected)
   for (const path of PREVIEW_ROUTES) {
     let response
-    try { response = await fetchImpl(new URL(path, origin), { method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(15000) }) }
+    try { response = await fetchImpl(new URL(path, origin), { method: 'GET', redirect: 'manual', signal: requestSignal(signal) }) }
     catch { fail('preview-request-failed') }
-    noRedirect(response)
-    if (response.status !== 200 || !/^text\/html(?:;|$)/i.test(response.headers.get('content-type') ?? '')) fail('preview-document-invalid')
+    await noRedirect(response)
+    if (response.status !== 200 || !/^text\/html(?:;|$)/i.test(response.headers.get('content-type') ?? '')) {
+      await response.body?.cancel().catch(() => {})
+      fail('preview-document-invalid')
+    }
     let body
     try {
       const reader = response.body?.getReader()
@@ -99,15 +113,46 @@ export async function verifyDestinationPreview({ evidence, expected, fetchImpl =
     if (!/<html\b/i.test(body) || !/StreamPulse/i.test(body) || !/<div\s+id=["']root["']/i.test(body) || !/<script\b[^>]*\btype=["']module["']/i.test(body)) fail('preview-document-invalid')
   }
   let response
-  try { response = await fetchImpl(new URL(RELAY_PATH, origin), { method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(15000) }) }
+  try { response = await fetchImpl(new URL(RELAY_PATH, origin), { method: 'GET', redirect: 'manual', signal: requestSignal(signal) }) }
   catch { fail('preview-relay-request-failed') }
-  noRedirect(response)
+  await noRedirect(response)
   const correlation = response.headers.get('x-correlation-id') ?? ''
   if (response.status !== 403 || !/^[a-f0-9]{32}$/.test(correlation) || !/no-store/i.test(response.headers.get('cache-control') ?? '') || response.headers.has('set-cookie')) {
+    await response.body?.cancel().catch(() => {})
     fail('preview-relay-refusal-invalid')
   }
   await response.body?.cancel().catch(() => {})
   return { previewRoutes: PREVIEW_ROUTES.length, relayRefusedOnPreview: true, signedRelayVerified: false }
+}
+
+/** Briefly tolerate post-upload propagation without weakening any smoke check. */
+export async function verifyDestinationPreviewWithRetry({ waitImpl = delay, now = () => performance.now(), onRetry = () => {}, ...options }) {
+  // Reject identity errors before any delay or network request.
+  destinationOrigin(options.evidence, options.expected)
+  const started = now()
+  const deadline = AbortSignal.timeout(PROPAGATION_BUDGET_MS)
+  const expired = () => deadline.aborted || now() - started >= PROPAGATION_BUDGET_MS
+  const wait = async (milliseconds) => {
+    if (expired() || milliseconds >= PROPAGATION_BUDGET_MS - (now() - started)) fail('preview-propagation-timeout')
+    try { await waitImpl(milliseconds, undefined, { signal: deadline }) }
+    catch { fail('preview-propagation-timeout') }
+    if (expired()) fail('preview-propagation-timeout')
+  }
+  const retryable = new Set(['preview-request-failed', 'preview-document-invalid', 'preview-relay-request-failed', 'preview-relay-refusal-invalid'])
+  await wait(2000)
+  for (let attempt = 0; ; attempt++) {
+    if (expired()) fail('preview-propagation-timeout')
+    try {
+      const result = await verifyDestinationPreview({ ...options, signal: deadline })
+      if (expired()) fail('preview-propagation-timeout')
+      return { ...result, attempts: attempt + 1 }
+    } catch (error) {
+      if (expired()) fail('preview-propagation-timeout')
+      if (!retryable.has(error?.message) || attempt >= RETRY_DELAYS_MS.length) throw error
+      onRetry({ nextAttempt: attempt + 2, reason: error.message })
+      await wait(RETRY_DELAYS_MS[attempt])
+    }
+  }
 }
 
 async function main() {
@@ -127,13 +172,13 @@ async function main() {
     deploymentUrl: process.env.PAGES_SMOKE_EXPECTED_DEPLOYMENT_URL,
     canonicalOrigin: process.env.PAGES_SMOKE_CANONICAL_ORIGIN,
   }
-  const result = await verifyDestinationPreview({ evidence, expected })
-  console.log(`preview smoke passed: ${result.previewRoutes} routes; relay refused preview origin; signed relay not verified`)
+  const result = await verifyDestinationPreviewWithRetry({ evidence, expected, onRetry: ({ nextAttempt, reason }) => console.log(`preview smoke retry: attempt ${nextAttempt}; ${reason}`) })
+  console.log(`preview smoke passed: ${result.previewRoutes} routes; ${result.attempts} attempt(s); relay refused preview origin; signed relay not verified`)
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try { await main() } catch (error) {
-    const known = new Set(['network-not-enabled', 'evidence-too-large', 'invalid-evidence', 'invalid-deployment-url', 'account-mismatch', 'project-mismatch', 'deployment-mismatch', 'deployment-not-ready', 'deployment-url-mismatch', 'canonical-origin-is-not-preview', 'unexpected-redirect', 'preview-request-failed', 'preview-document-invalid', 'preview-relay-request-failed', 'preview-relay-refusal-invalid'])
+    const known = new Set(['network-not-enabled', 'evidence-too-large', 'invalid-evidence', 'invalid-deployment-url', 'account-mismatch', 'project-mismatch', 'deployment-mismatch', 'deployment-not-ready', 'deployment-url-mismatch', 'canonical-origin-is-not-preview', 'unexpected-redirect', 'preview-request-failed', 'preview-document-invalid', 'preview-relay-request-failed', 'preview-relay-refusal-invalid', 'preview-propagation-timeout'])
     console.error(`destination preview smoke failed: ${known.has(error?.message) ? error.message : 'unexpected-error'}`)
     process.exitCode = 1
   }
