@@ -26,6 +26,10 @@ const BACKOFF_MAX_MS = 120_000
 const DEFAULT_INTERVAL_MS = 30_000
 const MIN_INTERVAL_MS = 15_000
 const MAX_ERROR_LENGTH = 120
+/** A background tab polls nothing; the poll it skipped runs when it shows again. */
+function pageHidden(): boolean {
+  return typeof document !== 'undefined' && document.visibilityState === 'hidden'
+}
 
 /** Compute next poll delay with jitter and capped exponential backoff after failures. */
 export function computeLivePollDelayMs(
@@ -135,7 +139,7 @@ export function createLivePollController(
   }
 
   function canRun(): boolean {
-    return shouldRunLivePoll({
+    return !pageHidden() && shouldRunLivePoll({
       activeLogin,
       context: readContext(),
       autoUpdate,
@@ -238,6 +242,15 @@ export function createLivePollController(
         scheduleNext()
       }
     }
+  }
+
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+      // Shown again: run the poll skipped while hidden, once, right away. A
+      // poll still on its timer was not skipped, so it just keeps its time.
+      if (timer || tickInFlight || !canRun()) return
+      void tick()
+    })
   }
 
   return {

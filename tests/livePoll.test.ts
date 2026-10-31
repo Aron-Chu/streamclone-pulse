@@ -59,8 +59,21 @@ describe('createLivePollController', () => {
     controller = undefined
     vi.clearAllTimers()
     vi.restoreAllMocks()
+    vi.unstubAllGlobals()
     vi.useRealTimers()
   })
+
+  /** A page whose tab can be hidden and shown again; set up before the controller. */
+  function tabPage() {
+    const page = Object.assign(new EventTarget(), { visibilityState: 'visible' as DocumentVisibilityState })
+    vi.stubGlobal('document', page)
+    return {
+      set(state: DocumentVisibilityState) {
+        page.visibilityState = state
+        page.dispatchEvent(new Event('visibilitychange'))
+      },
+    }
+  }
 
   async function successfulBridge() {
     const { sendBackgroundMessage } = await import('../src/content/bridge.ts')
@@ -190,6 +203,59 @@ describe('createLivePollController', () => {
       consecutiveFailures: 0,
       lastError: null,
     })
+  })
+
+  it('polls nothing while the tab is hidden, then once right away when it shows again', async () => {
+    const tab = tabPage()
+    const send = await successfulBridge()
+    controller = createLivePollController(() => liveChannel)
+    controller.configure({ enabled: true, intervalMs: 30_000 })
+    controller.sync('xqc', liveChannel, true, true)
+    await vi.advanceTimersByTimeAsync(30_000)
+    await flush()
+    expect(send).toHaveBeenCalledTimes(1)
+
+    tab.set('hidden')
+    await vi.advanceTimersByTimeAsync(5 * 60_000)
+    await flush()
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(controller.getSnapshot()).toMatchObject({ phase: 'idle', nextScheduledAt: null })
+    // A broadcast while hidden doesn't restart the poll either.
+    controller.sync('xqc', liveChannel, true, true)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(send).toHaveBeenCalledTimes(1)
+
+    tab.set('visible')
+    await flush()
+    expect(send).toHaveBeenCalledTimes(2)
+    tab.set('visible')
+    await flush()
+    expect(send).toHaveBeenCalledTimes(2)
+    expect(controller.getSnapshot().phase).toBe('scheduled')
+
+    // Back on the chart cadence.
+    await vi.advanceTimersByTimeAsync(30_000)
+    await flush()
+    expect(send).toHaveBeenCalledTimes(3)
+  })
+
+  it('adds no poll for a quick hide that skipped none', async () => {
+    const tab = tabPage()
+    const send = await successfulBridge()
+    controller = createLivePollController(() => liveChannel)
+    controller.configure({ enabled: true, intervalMs: 30_000 })
+    controller.sync('xqc', liveChannel, true, true)
+
+    await vi.advanceTimersByTimeAsync(10_000)
+    tab.set('hidden')
+    await vi.advanceTimersByTimeAsync(5_000)
+    tab.set('visible')
+    await flush()
+    expect(send).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(15_000)
+    await flush()
+    expect(send).toHaveBeenCalledTimes(1)
   })
 
   it('keeps recurring polls recent after setPollWindow(full)', async () => {
