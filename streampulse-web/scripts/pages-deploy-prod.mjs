@@ -4,10 +4,17 @@
  *
  * Auth: CLOUDFLARE_API_TOKEN **or** logged-in wrangler OAuth (`wrangler login`).
  *
- * Account: set CLOUDFLARE_ACCOUNT_ID to the Gmail account that owns apex
- * `streampulse.stream` (Pages project `streampulse-web`). A second same-named
- * project on the ASU account serves `app.streampulse.stream` only — deploying
- * without the apex account ID silently updates the wrong project.
+ * Account: set CLOUDFLARE_ACCOUNT_ID to the verified account for the target.
+ * The existing apex project is the default. For the migration destination,
+ * set CLOUDFLARE_PAGES_PROJECT to streampulse-main and independently verify
+ * its account, then set PAGES_DEPLOY_EXPECTED_ACCOUNT_ID to the same value.
+ * Matching values detect a mismatch; they do not prove the account identity.
+ * The destination still requires its own runtime bindings and release approval.
+ * The migration policy freshness check requires GH_TOKEN or GITHUB_TOKEN at
+ * runtime with read access to the private control-plane repository. Supply it
+ * through an approved secret source; do not put its value in files or logs.
+ * Until cutover, the hosted-route smoke checks the current apex, not the new
+ * project's deployment; verify the destination separately before cutover.
  *
  * Refuses to build unless every production input in pages-deploy-env.mjs is set
  * and well formed: VITE_SENTRY_DSN, VITE_POSTHOG_PROJECT_TOKEN,
@@ -28,7 +35,7 @@ import { existsSync, readFileSync, readdirSync, unlinkSync, statSync } from 'nod
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { verifyHostedAnalyticsRoutes, verifyHostedAccountRoutes } from './hosted-analytics-route-smoke.mjs'
-import { assertDeploySourceIsOriginMaster, assertEdgeFreeze, describeEdgeFreeze } from './check-edge-freeze.mjs'
+import { APEX_PAGES_PROJECT, MIGRATION_PAGES_PROJECT, assertApexTargetForWorker, assertDeploySourceIsOriginMaster, assertEdgeFreeze, assertRemotePolicyFresh, describeEdgeFreeze } from './check-edge-freeze.mjs'
 import { checkProductionBuildEnv, describeWaivedInputs } from './pages-deploy-env.mjs'
 import { loadEnv } from 'vite'
 
@@ -61,21 +68,12 @@ function edgeCheck(check) {
   }
 }
 
-// A second same-named Pages project on another account serves app.* only, and
-// the edge-freeze amendment forbids a Worker there. Without an explicit account
-// wrangler may reuse a cached or interactive one, so an admitted Worker needs
-// CLOUDFLARE_ACCOUNT_ID and the apex project name. The account ID is never printed.
-const APEX_PAGES_PROJECT = 'streampulse-web'
+// An admitted Worker needs an explicit account and an approved apex project.
+// The migration target requires a separately verified matching account value.
+// No account value is printed.
 function requireApexTargetForWorker(gate, project) {
-  if (!gate.admitted) return
-  if (!process.env.CLOUDFLARE_ACCOUNT_ID?.trim()) {
-    console.error('pages:deploy:prod: CLOUDFLARE_ACCOUNT_ID is required when a Pages Worker is admitted; set it to the account that owns apex streampulse.stream')
-    process.exit(1)
-  }
-  if (project !== APEX_PAGES_PROJECT) {
-    console.error(`pages:deploy:prod: a Pages Worker may be deployed only to the apex project ${APEX_PAGES_PROJECT}`)
-    process.exit(1)
-  }
+  if (project === MIGRATION_PAGES_PROJECT) edgeCheck(() => assertRemotePolicyFresh(webRoot))
+  edgeCheck(() => assertApexTargetForWorker(gate, project, webRoot))
 }
 
 const sourceGate = edgeCheck(() => assertEdgeFreeze(webRoot, { sourceOnly: true }))
@@ -238,7 +236,7 @@ if (!hasApiToken) {
 const deployArgs = ['pages', 'deploy', 'dist', '--project-name', projectName, '--branch', 'master']
 if (!process.env.CLOUDFLARE_ACCOUNT_ID?.trim()) {
   console.warn(
-    'pages:deploy:prod: CLOUDFLARE_ACCOUNT_ID unset; wrangler may deploy the ASU app.* project instead of apex — set the Gmail account id that owns streampulse.stream',
+    'pages:deploy:prod: CLOUDFLARE_ACCOUNT_ID unset; wrangler may select the wrong account — set the verified account for the target',
   )
 }
 
