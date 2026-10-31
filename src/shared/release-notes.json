@@ -1,7 +1,33 @@
 {
   "schemaVersion": 1,
-  "currentVersion": "0.2.6",
+  "currentVersion": "0.2.7",
   "releases": [
+    {
+      "version": "0.2.7",
+      "status": "unreleased",
+      "releasedAt": null,
+      "title": "Supporter recovery and account fixes",
+      "summary": "This update prepares email recovery for Supporters and improves the way a browser handles an ended subscription. Supporter sales remain closed until launch.",
+      "preview": [
+        "Restore an existing Supporter subscription with your billing email when accounts are available.",
+        "An ended subscription can be rejoined without a stale checkout warning.",
+        "Supporter sales remain closed until launch."
+      ],
+      "new": [
+        "When available, restore Supporter on another browser using a verification link sent to your current billing email."
+      ],
+      "fixed": [
+        "After a subscription ends and a refund is processed, the rejoin flow can clear an outdated checkout warning."
+      ],
+      "knownIssues": [
+        "Supporter sales remain closed until StreamPulse opens them.",
+        "Bookmarks, notes and watched history stay in the browser where you saved them."
+      ],
+      "links": {
+        "details": "/changelog",
+        "support": "/support"
+      }
+    },
     {
       "version": "0.2.6",
       "status": "released",

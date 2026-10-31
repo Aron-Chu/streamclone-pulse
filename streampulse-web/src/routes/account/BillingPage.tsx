@@ -12,6 +12,7 @@ import { AccountError, billingRequest } from '../../lib/accountApi'
 import { accountBillingReturnPath, accountBillingSignInHref } from '../../lib/accountBillingReturn'
 import { onAccountSessionSignal } from '../../lib/accountSessionSignal'
 import { STRIPE_CUSTOMER_PORTAL_LOGIN_URL, SUPPORTER_TERMS_PATH } from '../../lib/externalLinks'
+import { SUPPORTER_WITHDRAWAL_PATH, supporterWithdrawalEnabled } from '../../lib/supporterWithdrawal'
 import './account.css'
 
 export function stripeDestination(value: unknown, kind: 'checkout' | 'portal'): string | null {
@@ -351,10 +352,10 @@ export default function BillingPage() {
     state = 'signed-out'
     title = 'Manage your Supporter membership'
     body = <>
-      <p>Supporter sign-ups are not open yet. Free tools work without an account.</p>
+      <p>Become a Supporter from the extension’s Account &amp; Supporter page. Free tools work without an account.</p>
       {attempt && !cancelled ? <p>If you just paid, return to the extension that started checkout, or use Tester sign-in for a website account. Don’t start another checkout.</p> : null}
       <p>Bought Supporter without Twitch? In the same browser’s extension, open Account &amp; Supporter and choose <strong>Manage subscription</strong>. Website or tester sign-in does not connect an extension-only membership.</p>
-      <p>Reinstalled or using another browser? <a href="mailto:privacy@streampulse.stream">Contact billing support</a> for help with the existing membership. Stripe’s email sign-in manages payments, invoices and cancellation only; it does not restore extension access.</p>
+      <p>Reinstalled or using another browser? If your extension offers <strong>Restore existing Supporter</strong>, choose it and confirm the link sent to your current Stripe billing email. If you changed the email recently, you may need to wait before trying again. <a href="mailto:privacy@streampulse.stream">Contact billing support</a> if you need help, cannot access that email or your version does not offer restore. Stripe’s email sign-in manages payments, invoices and cancellation only; it does not restore extension access.</p>
     </>
     primary = <a className="pulse-account-button pulse-account-primary" href={STRIPE_CUSTOMER_PORTAL_LOGIN_URL} target="_blank" rel="noopener noreferrer">Manage billing by email</a>
     secondary = [<Link key="tester-sign-in" className="pulse-account-button" to={signInHref}>Tester sign-in</Link>]
@@ -450,7 +451,7 @@ export default function BillingPage() {
       {status !== 'none' && load === 'ready' && !uncertain ? <p className="pulse-account-meta">Payment details, invoices and cancellation are in the Stripe Customer Portal. Cancellation takes effect at the end of the paid period.</p> : null}
       {!reauth && showRefresh ? <button className="pulse-account-text-button" type="button" disabled={readBusy} onClick={() => void checkAgain()}>{busy ? 'Checking…' : 'Refresh status'}</button> : null}
     </div>
-    <p className="pulse-account-links">{load !== 'signed_out' ? <><Link to="/account/link-device">Connect your extension</Link><span aria-hidden="true">·</span></> : null}<Link to={SUPPORTER_TERMS_PATH}>Supporter terms</Link><span aria-hidden="true">·</span><Link to="/refunds">Cancellation and refunds</Link><span aria-hidden="true">·</span><Link to="/support">Support</Link></p>
+    <p className="pulse-account-links">{load !== 'signed_out' ? <><Link to="/account/link-device">Connect your extension</Link><span aria-hidden="true">·</span></> : null}<Link to={SUPPORTER_TERMS_PATH}>Supporter terms</Link><span aria-hidden="true">·</span><Link to="/refunds">Cancellation and refunds</Link>{supporterWithdrawalEnabled() ? <><span aria-hidden="true">·</span><Link to={SUPPORTER_WITHDRAWAL_PATH}>Withdraw from contract here</Link></> : null}<span aria-hidden="true">·</span><Link to="/support">Support</Link></p>
     <AccountFooter current="billing" />
   </section></PublicLayout>
 }

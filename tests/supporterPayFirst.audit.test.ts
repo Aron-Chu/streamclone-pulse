@@ -162,7 +162,8 @@ describe('audited pay-first recovery', () => {
     f.request.mockResolvedValueOnce({ status: 201, body: { restoreId, pollingSecret: 'c'.repeat(64), expiresAt: iso(900_000), intervalSeconds: 5, comparisonCode: 'A3B4C5' } })
     expect(await f.recreate().restore('check')).toMatchObject({ state: 'pending', comparisonCode: 'A3B4C5' })
     expect(f.request).toHaveBeenLastCalledWith('/v1/account/restores', { restoreKey: initial.restoreKey }, credentials.token)
-    expect(JSON.stringify(f.stored())).not.toContain(String(initial.restoreKey))
+    expect(f.stored()).toMatchObject({ restore: { key: initial.restoreKey } })
+    expect(JSON.stringify(await f.pay.restore('status'))).not.toContain(String(initial.restoreKey))
   })
   it('does not clear unknown payment uncertainty merely because twenty-four hours passed', async () => {
     const f = fixture()
@@ -194,6 +195,38 @@ describe('audited pay-first recovery', () => {
     f.request.mockResolvedValueOnce({ status: 200, body: { attemptId, state: 'expired', expiresAt: iso(4000) } })
     expect(await f.pay.billing('check')).toEqual({ state: 'expired' })
     expect(JSON.stringify(f.stored())).not.toContain('checkout.stripe')
+  })
+  it('clears a completed owned checkout after its membership has ended, allowing a deliberate rejoin', async () => {
+    const f = fixture()
+    f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 200, body: { attemptId, url: 'https://checkout.stripe.com/c/pay/local', expiresAt: iso(86_400_000) } })
+    await f.pay.billing('checkout')
+    f.advance(31 * 60_000)
+    f.setMembership({ status: 'expired', restoreEligible: false })
+    f.request.mockResolvedValueOnce({ status: 200, body: { attemptId, state: 'active', expiresAt: iso(86_400_000) } })
+    expect(await f.pay.billing('check')).toEqual({ state: 'idle' })
+    expect(f.stored()).not.toHaveProperty('billing')
+    expect(f.request.mock.calls.filter(([path]) => path === '/v1/billing/checkout')).toHaveLength(1)
+
+    f.request.mockResolvedValueOnce({ status: 200, body: { attemptId: '55555555-5555-4555-8555-555555555555', url: 'https://checkout.stripe.com/c/pay/rejoin', expiresAt: iso(86_400_000) } })
+    expect(await f.pay.billing('checkout')).toMatchObject({ state: 'waiting' })
+    expect(f.request.mock.calls.filter(([path]) => path === '/v1/billing/checkout')).toHaveLength(2)
+  })
+  it.each([
+    ['an open checkout', { attemptId, state: 'open' }, 'expired'],
+    ['a pending checkout', { attemptId, state: 'pending' }, 'expired'],
+    ['another checkout', { attemptId: '55555555-5555-4555-8555-555555555555', state: 'active' }, 'expired'],
+    ['membership without a paid history', { attemptId, state: 'active' }, 'none'],
+    ['membership pending settlement', { attemptId, state: 'active' }, 'pending'],
+  ])('keeps the payment barrier for %s', async (_label, attempt, status) => {
+    const f = fixture()
+    f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 200, body: { attemptId, url: 'https://checkout.stripe.com/c/pay/local', expiresAt: iso(86_400_000) } })
+    await f.pay.billing('checkout'); f.advance(31 * 60_000)
+    f.setMembership({ status })
+    f.request.mockResolvedValueOnce({ status: 200, body: attempt })
+    const result = await f.pay.billing('check')
+    expect(['waiting', 'confirming', 'still_confirming']).toContain(result.state)
+    expect(f.stored()).toHaveProperty('billing')
+    expect(f.request.mock.calls.filter(([path]) => path === '/v1/billing/checkout')).toHaveLength(1)
   })
   it('honors bounded Retry-After on explicit billing checks and repeated purchase clicks', async () => {
     const f = fixture()

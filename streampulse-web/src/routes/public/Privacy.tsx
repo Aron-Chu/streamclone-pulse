@@ -1,8 +1,8 @@
 import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { REFUNDS_PATH, SUPPORTER_PATH, TERMS_PATH } from '../../lib/externalLinks'
-import { PrelaunchNotice } from './PrelaunchNotice'
 import { supporterChatBadgesEnabled } from '../../lib/supporterChatBadgesFlag'
+import { supporterWithdrawalEnabled } from '../../lib/supporterWithdrawal'
 import {
   PRIVACY_CHATTER_IDENTITY_EXCEPTION,
   PRIVACY_TWITCH_PLAIN_ID_SENTENCE,
@@ -32,7 +32,6 @@ export default function Privacy() {
           </p>
         </header>
 
-        <PrelaunchNotice />
 
         <section className="mt-8 rounded-xl border border-white/[0.08] bg-black/20 p-6">
           <h2 className="!mt-0">Summary</h2>
@@ -47,8 +46,7 @@ export default function Privacy() {
             Accounts are optional; free tools work without an account. When you explicitly connect
             the extension, StreamPulse can create a browser-specific connection without a Twitch
             identity or account email address. Connecting starts no payment. Invited testers may
-            use a separate email account. Supporter sign-ups are not open yet; card
-            details go to Stripe, never to StreamPulse.
+            use a separate email account. Card details go to Stripe, never to StreamPulse.
           </p>
         </section>
 
@@ -59,7 +57,8 @@ export default function Privacy() {
           profile. StreamPulse stores an internal account identifier, a one-way hash of the
           installation key, device labels, hashed credentials and their expiry, and creation and
           activity times. The installation account has no account email address or Twitch identity.
-          Looking at your status does not create a connection; one is saved only when you choose Become a Supporter.
+          Looking at your status does not create a connection; one is saved only when you choose
+          Become a Supporter or Restore existing Supporter.
           This connection does not sync My Moments: bookmarks, notes and watched history stay in this browser.
         </p>
         <p data-testid="privacy-continue-with-twitch">
@@ -109,10 +108,6 @@ export default function Privacy() {
 
         <h2>Payment data, if you subscribe</h2>
         <p>
-          This section describes what happens once paid sign-ups open. Until then, no payment is
-          taken through StreamPulse.
-        </p>
-        <p>
           Payments are processed by <strong>Stripe</strong>. Card numbers and CVC are entered on
           Stripe's own hosted pages and go to Stripe — StreamPulse never receives or stores them.
         </p>
@@ -124,7 +119,13 @@ export default function Privacy() {
           signature and removes contact details before saving the new payment notification. For an
           extension-only purchase, it keeps a keyed, one-way hash of the billing email as a recovery
           lookup, rather than the address itself. That lookup does not automatically combine accounts
-          or grant Supporter access. Stripe keeps the billing email for receipts and billing.
+          or grant Supporter access. Stripe keeps the billing email for receipts and billing. If you
+          request a restore, StreamPulse uses the address you enter to look for that keyed hash and,
+          when a recoverable membership matches, to send a confirmation link. The recovery lookup
+          refreshes the hash using your current Stripe billing email and checks that email again
+          before restoring access. Contact support if you cannot access it. The extension does not
+          save that address to its persistent storage; approving the emailed link and matching the code are
+          needed to connect the new browser.
         </p>
         <p>
           What StreamPulse stores is the identifiers and state needed to know whether your membership
@@ -133,6 +134,14 @@ export default function Privacy() {
           These identifiers are treated as private financial references; they are never shown
           publicly or attached to a badge or profile.
         </p>
+        {supporterWithdrawalEnabled() ? <p data-testid="privacy-withdrawal">
+          If you submit an online withdrawal, StreamPulse stores your acknowledgement email, any name
+          or purchase date you provide, your request and its submission time to handle it. The mail
+          service and private billing inbox receive your email, withdrawal statement, reference and
+          request time to deliver the acknowledgement and notify StreamPulse.
+          A random request key, but no form details, may be kept in this tab to help retry an interrupted submission.
+          Do not include a full card number or security code. The request does not automatically issue a refund.
+        </p> : null}
         <p>
           Provider webhook notifications are stored in a durable queue so a payment event is never
           lost or processed twice. The proposed retention for a raw stored notification is about 30
@@ -455,10 +464,16 @@ export default function Privacy() {
             recorded.
           </li>
           <li data-testid="privacy-third-party-turnstile">
-            <strong>Cloudflare Turnstile (feedback form bot check)</strong> — only on the feedback
-            form. Cloudflare processes your IP address and browser signals to tell people from bots,
+            <strong>Cloudflare Turnstile (feedback form bot check)</strong> —{' '}
+            {supporterWithdrawalEnabled() ? 'on the feedback form and online withdrawal form' : 'only on the feedback form'}.
+            Cloudflare processes your IP address and browser signals to tell people from bots,
             as described under Feedback form.
           </li>
+          {supporterWithdrawalEnabled() ? <li data-testid="privacy-third-party-withdrawal-mail">
+            <strong>Withdrawal mail service and billing inbox</strong> — receive your email address,
+            withdrawal statement, request reference and submission time to deliver the acknowledgement
+            and notify StreamPulse.
+          </li> : null}
           <li data-testid="privacy-third-party-support-mail">
             <strong>Outgoing mail service and support inbox (feedback form only)</strong> — the email
             provider StreamPulse uses to send feedback reports, and the provider that hosts
