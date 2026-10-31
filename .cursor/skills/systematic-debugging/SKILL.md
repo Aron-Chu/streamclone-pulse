@@ -113,7 +113,3 @@ Data from debugging practice:
 - Random-fix approach: 2-3 hours of back-and-forth
 - First-fix success rate: 95% vs 40%
 - New bugs introduced: nearly zero vs frequent
-
-## BaJie-MCP integration notes
-
-This skill is used by the BaJie-MCP control center when dispatching tasks. When the control center dispatches a bug-fix task to the bug_fix role, it attaches a `[SKILL: systematic-debugging]` hint.

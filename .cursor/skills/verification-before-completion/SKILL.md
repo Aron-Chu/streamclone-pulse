@@ -149,7 +149,3 @@ Claiming "fixed in extension" without a fresh `npm run build` is a stale-bundle 
 Run the command. Read the output. Only then claim the result.
 
 This is non-negotiable.
-
-## BaJie-MCP integration notes
-
-This skill is used by all BaJie-MCP execution roles before reporting results via `send_to_session(messageType:"result")`. When the control center aggregates results, it checks whether verification evidence is attached.
