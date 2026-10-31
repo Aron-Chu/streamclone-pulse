@@ -55,7 +55,7 @@ export interface HubV5ChannelsProps {
   /** The game picked in Where chat is, or null. */
   game: string | null
   onClearGame: () => void
-  /** A sort asked for from elsewhere (the Live feed's "+N more in Channels"); a new `id` applies it. */
+  /** A sort asked for from elsewhere (Picking up's "+N more in Channels"); a new `id` applies it. */
   sortRequest?: { id: number; sort: HubChannelSort; dir: 1 | -1 } | null
   /** The window of the hub answer on screen (the old one while a new range loads); on 30m and 24h a screener outage fills Chat/min with the recent average (up to 35 min) (candidate, 10-30). */
   windowKey?: string

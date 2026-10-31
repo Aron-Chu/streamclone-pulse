@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { installHubUxMock, READY_FEATURED_SESSION, type HubUxMockOptions } from './helpers/hubUxMock'
 
 // The page around the chart (d3-v5 mockup, round 5): the search hero, Busiest
-// now, the Featured stream under it, the Live feed beside or under the chart,
+// now, the Featured stream under it, Top moments today beside or under the chart,
 // Top emotes, Where chat is, Channels and How this is measured. The shared mock
 // has no screener windows, so this spec serves the same reply with one per
 // channel: three games, one channel with viewers only and one whose average is
@@ -11,10 +11,10 @@ import { installHubUxMock, READY_FEATURED_SESSION, type HubUxMockOptions } from 
 
 const GAMES = ['Just Chatting', 'Just Chatting', 'Just Chatting', 'Minecraft', 'Just Chatting', 'Minecraft', 'Valorant', 'Just Chatting', 'Minecraft', 'Valorant', 'Just Chatting', 'Minecraft', 'Valorant', 'Just Chatting']
 
-// The Live feed lists a moment from 20 minutes into its stream that rose 1.5x or more over
-// that stream's own average. The mock's moments are 2 and 4 minutes in with no comparison,
-// so a spec that needs a moment row serves the first one an hour in, compared.
-const FEED_MOMENT: HubUxMockOptions = { withComparisons: true, momentOffsets: [3600, 3600] }
+// Top moments today lists, from the hub, a moment from 20 minutes into its stream that rose
+// 1.5x or more over that stream's own average. The mock's moments are 2 and 4 minutes in with
+// no comparison, so a spec that needs a moment row serves the first one an hour in, compared.
+const TOP_MOMENT: HubUxMockOptions = { withComparisons: true, momentOffsets: [3600, 3600] }
 
 async function openV5Hub(page: Page, options: HubUxMockOptions = {}) {
   await installHubUxMock(page, { featuredSession: READY_FEATURED_SESSION, ...options })
@@ -209,6 +209,32 @@ test('Busiest now ranks by chat, pages with the buttons and moves focus with the
   await noSideScroll(page)
 })
 
+// Twitch's live pictures (mockup §5, 10-31): previews-ttv answers a channel that isn't live with Twitch's offline
+// picture, so the page compares each live picture with it. Here only xQc is live on Twitch; both answers carry
+// CORS headers, as Twitch's do. Two 1x1 pictures that draw different pixels.
+const LIVE_PICTURE = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
+const OFFLINE_PICTURE = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNISUkBAAJcAS1bGyRYAAAAAElFTkSuQmCC', 'base64')
+
+test('Busiest now shows Twitch’s live picture while Live and keeps the face for a channel Twitch shows offline', async ({ page }) => {
+  await page.route(/^https:\/\/static-cdn\.jtvnw\.net\/(previews-ttv\/|ttv-static\/404_preview-)/, (route) => route.fulfill({
+    status: 200,
+    contentType: 'image/png',
+    headers: { 'access-control-allow-origin': '*' },
+    body: route.request().url().includes('/previews-ttv/live_user_xqc-') ? LIVE_PICTURE : OFFLINE_PICTURE,
+  }))
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await openV5Hub(page)
+  const tiles = page.locator('#busiest .hv5-bzc-it')
+  await expect(tiles.first()).toHaveAttribute('data-login', 'xqc')
+  await expect(tiles.first().locator('img.hv5-bzv-prev[data-shown]')).toBeVisible()
+  await expect(tiles.first().locator('img.hv5-bzv-prev')).toHaveAttribute('src', /\/previews-ttv\/live_user_xqc-440x248\.jpg\?t=\d+$/)
+  await expect(tiles.first().locator('a')).toHaveAttribute('aria-label', /\. Twitch’s live picture, can be a few minutes old\.$/)
+  // the second channel's picture is Twitch's offline one: its face stays
+  await expect(tiles.nth(1).locator('img.hv5-bzv-prev')).toHaveCount(0)
+  await expect(tiles.nth(1).locator('a')).toHaveAttribute('aria-label', /\. Profile picture\.$/)
+  await noSideScroll(page)
+})
+
 test('Where chat is filters Channels to one game and the chip clears it', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await openV5Hub(page)
@@ -259,29 +285,39 @@ test('Channels sorts, filters, shows more and marks what is not measured', async
   await expect(channels.getByText('No channels match.')).toBeVisible()
 })
 
-test('a Live feed moment row shows its card after a rest and hides it on leave and Escape', async ({ page }) => {
+test('a Top moments row opens under itself, closes on a second click and Escape, and links to the minute', async ({ page }) => {
+  // No drop-in, so the opened numbers are measured where they settle.
+  await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.setViewportSize({ width: 1440, height: 900 })
-  await openV5Hub(page, FEED_MOMENT)
+  await openV5Hub(page, TOP_MOMENT)
+  // The opened row's one stream-record read: a VOD with verified timing, so Watch lands on the minute.
+  await page.route(/\/v1\/portal\/analytics\/streams\/s1(\?.*)?$/, route => route.fulfill({
+    json: { channel: 'xqc', vodId: '2000000001', vodAlignSeconds: 30, vodDurationSeconds: 7200, vodTiming: { state: 'verified' }, stream: { streamId: 's1', login: 'xqc' } },
+  }))
   const latest = page.locator('#latest')
-  await expect(latest.getByRole('heading', { name: 'Live feed' })).toBeVisible()
-  const row = latest.locator('[data-mom-key]').first()
+  await expect(latest.getByRole('heading', { name: 'Top moments today' })).toBeVisible()
+  const item = latest.locator('.hv5-tm-list > .hv5-tm-it').first()
+  const row = item.locator('.hv5-tm-row')
   await row.scrollIntoViewIfNeeded()
-  const card = page.locator('[data-hv5-moment-card]')
-  await row.hover()
-  await expect(card).toBeVisible()
-  await expect(card).toContainText('xQc')
-  await expect(card).toContainText('Click to open in Moments')
-  const rowBox = (await row.boundingBox())!
-  const cardBox = (await card.boundingBox())!
-  // Beside the row, never over it, so the row keeps the click.
-  expect(cardBox.x >= rowBox.x + rowBox.width - 1 || cardBox.x + cardBox.width <= rowBox.x + 1 || cardBox.y >= rowBox.y + rowBox.height - 1 || cardBox.y + cardBox.height <= rowBox.y + 1).toBe(true)
-  await page.mouse.move(4, 4)
-  await expect(card).toHaveCount(0)
-  await row.hover()
-  await expect(card).toBeVisible()
-  await page.keyboard.press('Escape')
-  await expect(card).toHaveCount(0)
+  await expect(row).toContainText('xQc')
+  await expect(row).toHaveAttribute('aria-expanded', 'false')
+  const open = item.locator('.hv5-tm-det')
   await row.click()
+  await expect(open).toBeVisible()
+  await expect(row).toHaveAttribute('aria-expanded', 'true')
+  // Under the row, never over it, so the row keeps the click.
+  const rowBox = (await row.boundingBox())!
+  expect((await open.boundingBox())!.y).toBeGreaterThanOrEqual(rowBox.y + rowBox.height - 1)
+  // An hour in plus the VOD's 30 s, from 10 s before, as Moments plays it.
+  await expect(open.getByRole('link', { name: /^Watch the moment/ })).toHaveAttribute('href', /\/videos\/2000000001\?t=1h0m20s$/)
+  await row.click()
+  await expect(open).toHaveCount(0)
+  await row.click()
+  await expect(open).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(open).toHaveCount(0)
+  await row.click()
+  await open.getByRole('link', { name: 'Open in Moments' }).click()
   await expect(page).toHaveURL(/\/analytics\/moments\?login=xqc&stream=s1&offset=3600$/)
 })
 

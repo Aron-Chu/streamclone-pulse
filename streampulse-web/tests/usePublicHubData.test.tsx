@@ -1465,6 +1465,54 @@ describe('usePublicHubData', () => {
       expect(result.current.data?.poolSize).toBe(6)
     })
   })
+  // The hub rail reads the Moments list once for each hub read, answered or not (useTopToday's attempt).
+  describe('pollAttempt', () => {
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('counts a read that failed, and Try again', async () => {
+      fetchPublicHubBase.mockRejectedValue({ kind: 'server', status: 503, message: 'unavailable' })
+      const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
+      await waitFor(() => expect(result.current.loading).toBe(false))
+      expect(result.current.data?.poolSize).not.toBe(5)
+      expect(result.current.pollAttempt).toBe(1)
+
+      fetchPublicHubBase.mockResolvedValue(hubResult(5))
+      await act(async () => { result.current.refresh() })
+      await waitFor(() => expect(result.current.data?.poolSize).toBe(5))
+      expect(result.current.pollAttempt).toBe(2)
+    })
+
+    it('does not count Try again while a read runs: it waits on that read', async () => {
+      const first = deferredHub()
+      fetchPublicHubBase.mockImplementation(() => first.promise)
+      const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
+      expect(result.current.pollAttempt).toBe(1)
+      act(() => result.current.refresh())
+      expect(result.current.pollAttempt).toBe(1)
+      await act(async () => { first.resolve(hubResult(5)) })
+      await waitFor(() => expect(result.current.data?.poolSize).toBe(5))
+      expect(result.current.pollAttempt).toBe(1)
+    })
+
+    it('does not count a Try again or a poll inside a Retry-After pause', async () => {
+      vi.useFakeTimers()
+      fetchPublicHubBase.mockRejectedValueOnce({ kind: 'rate_limited', status: 429, message: 'wait', retryAfterMs: 75_000 })
+        .mockResolvedValue(hubResult(5))
+      const { result } = renderHook(() => usePublicHubData({ pollMs: 45_000, random: () => 0.5 }))
+      await act(async () => { await Promise.resolve() })
+      expect(result.current.pollAttempt).toBe(1)
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(45_000)
+        result.current.refresh()
+      })
+      expect(result.current.pollAttempt).toBe(1)
+      await act(async () => { await vi.advanceTimersByTimeAsync(30_000) })
+      expect(result.current.pollAttempt).toBe(2)
+      expect(result.current.data?.poolSize).toBe(5)
+    })
+  })
   describe('idle snapshot persistence and the hub-data mark (plan §2.6, §4.5)', () => {
     afterEach(() => {
       vi.restoreAllMocks()

@@ -62,6 +62,7 @@ function setHub(over: Record<string, unknown>) {
     lastUpdated: null,
     lastSuccessfulPollAt: null,
     pollSequence: 1,
+    pollAttempt: 0,
     cachedAt: null,
     retryBlocked: false,
     hubReadPending: false,

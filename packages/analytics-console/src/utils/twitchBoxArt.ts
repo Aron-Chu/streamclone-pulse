@@ -11,6 +11,11 @@
  * compares a small downscaled signature of the two. Anything it cannot read
  * (no canvas, a tainted canvas, a reference that fails to load) keeps the
  * picture: it only ever removes a cover it has proven is the placeholder.
+ *
+ * Live pictures have the same trap (10-31): previews-ttv answers a channel
+ * that isn't live with a 302 to ttv-static/404_preview-{w}x{h}.jpg (CORS
+ * headers on both), so `isTwitchOfflinePreview` runs the same check against
+ * that picture.
  */
 
 const BOX_ART_ORIGIN = 'https://static-cdn.jtvnw.net'
@@ -44,6 +49,11 @@ export function twitchPlaceholderBoxArtUrl(width: number, height: number): strin
   return `${BOX_ART_ORIGIN}/ttv-static/404_boxart-${width}x${height}.jpg`
 }
 
+/** Twitch's offline picture at a size: what previews-ttv shows for a channel that isn't live. */
+export function twitchOfflinePreviewUrl(width: number, height: number): string {
+  return `${BOX_ART_ORIGIN}/ttv-static/404_preview-${width}x${height}.jpg`
+}
+
 /** Same picture: same length and a mean channel difference within tolerance. */
 export function boxArtSignaturesMatch(
   a: ArrayLike<number>,
@@ -61,6 +71,8 @@ export interface TwitchPlaceholderCheckDeps {
   loadReference(url: string): Promise<HTMLImageElement | null>
   /** RGB samples of a loaded picture; null (or a throw) when it cannot be read. */
   signatureOf(img: HTMLImageElement): ArrayLike<number> | null
+  /** Twitch's placeholder at a size (default: the "?" cover). */
+  placeholderUrl?(width: number, height: number): string
 }
 
 function safeSignature(deps: TwitchPlaceholderCheckDeps, img: HTMLImageElement): ArrayLike<number> | null {
@@ -75,8 +87,9 @@ function safeSignature(deps: TwitchPlaceholderCheckDeps, img: HTMLImageElement):
 export function createTwitchPlaceholderCheck(deps: TwitchPlaceholderCheckDeps): (img: HTMLImageElement) => Promise<boolean> {
   // One reference per size; a failed one is dropped so the next check tries again.
   const references = new Map<string, Promise<ArrayLike<number> | null>>()
+  const placeholderAt = deps.placeholderUrl ?? twitchPlaceholderBoxArtUrl
   const referenceFor = (width: number, height: number) => {
-    const url = twitchPlaceholderBoxArtUrl(width, height)
+    const url = placeholderAt(width, height)
     let pending = references.get(url)
     if (!pending) {
       pending = deps.loadReference(url)
@@ -146,4 +159,14 @@ function canvasSignature(img: HTMLImageElement): Uint8ClampedArray | null {
 export const isTwitchPlaceholderBoxArt = createTwitchPlaceholderCheck({
   loadReference: loadCorsImage,
   signatureOf: canvasSignature,
+})
+
+/**
+ * True only when a loaded live picture (crossOrigin="anonymous") draws the
+ * same pixels as Twitch's offline picture at its size; false keeps it.
+ */
+export const isTwitchOfflinePreview = createTwitchPlaceholderCheck({
+  loadReference: loadCorsImage,
+  signatureOf: canvasSignature,
+  placeholderUrl: twitchOfflinePreviewUrl,
 })

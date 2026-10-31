@@ -55,6 +55,11 @@ export interface PublicHubState {
    * Pool Wire and other reducers must consume each sequence at most once.
    */
   pollSequence: number
+  /**
+   * Counts hub reads started (poll, Try again, back to the tab), answered or
+   * not, so a reader that rides the hub's polls keeps going while the hub fails.
+   */
+  pollAttempt: number
   /** When data was read from browser cache (ms since epoch). */
   cachedAt: number | null
   /** A server Retry-After window is active; refresh() waits for it to end. */
@@ -240,6 +245,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
   const [dataAsOf, setDataAsOf] = useState<number | null>(() => initial.dataAsOf)
   const [cachedAt, setCachedAt] = useState<number | null>(() => initial.cachedAt)
   const [pollSequence, setPollSequence] = useState(() => (initial.hasData ? 1 : 0))
+  const [pollAttempt, setPollAttempt] = useState(0)
   const [loadedActivityWindow, setLoadedActivityWindow] = useState<PublicHubActivityWindow | null>(
     () => initial.loadedActivityWindow,
   )
@@ -321,6 +327,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
       return
     }
     if (inFlightRef.current && !force) return
+    setPollAttempt((n) => n + 1)
     setRetryBlocked(false)
 
     controllerRef.current?.abort(new DOMException('superseded by new request', 'AbortError'))
@@ -738,6 +745,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
     dataAsOf,
     lastSuccessfulPollAt: lastUpdated,
     pollSequence,
+    pollAttempt,
     cachedAt,
     retryBlocked,
     hubReadPending: enabled && (hubReadRunning || settledKey !== loadKey) &&

@@ -12,10 +12,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getBackendUrl } from '../src/lib/apiClient'
 import type { HubChannelScreenerV1 } from '../src/lib/channelScreenerContract'
 import { primePublicHub, resetPrimedPublicHubForTests } from '../src/lib/hubEarlyFetch'
-import { normalizePublicHub, type HubLiveChannel, type HubMoment, type PublicHub } from '../src/lib/publicHub'
+import { normalizePublicHub, type HubLiveChannel, type HubLivePulseMoment, type HubMoment, type PublicHub } from '../src/lib/publicHub'
 import { clearPublicHubCacheForTests, writePublicHubCache } from '../src/lib/publicHubCache'
 import AnalyticsHubV5Page from '../src/routes/analytics/AnalyticsHubV5Page'
-import { hubClock } from '../src/ui/components/hub/v5/hubV5Model'
+import { TOP_NONE } from '../src/ui/components/hub/v5/HubV5TopMoments'
+import { hubClock, hubSavedClock } from '../src/ui/components/hub/v5/hubV5Model'
 
 const MIN = 60_000
 const T0 = new Date(2026, 9, 28, 10, 55).getTime()
@@ -53,7 +54,21 @@ const channel = (login: string, over: Partial<HubLiveChannel> = {}): HubLiveChan
   ...over,
 }) as HubLiveChannel
 
-/** A hub body with one feed row: `who`'s chat spike, on the screener's word. */
+/** A whole comparison as the hub sends it, so the page's reader keeps it: chat 3× the 40 minutes before `at`. */
+function comparison(at: number) {
+  const end = Math.floor(at / MIN) * MIN
+  const sample = { currentMeasuredMinutes: 1, currentExpectedMinutes: 1, baselineMeasuredMinutes: 40, baselineExpectedMinutes: 40, baselineCoveragePct: 100 }
+  return {
+    baselineKind: 'current_stream_measured_average_before_event',
+    eventAt: at,
+    baselineWindow: { start: end - 40 * MIN, end, expectedMinutes: 40, measuredMinutes: 40, coveragePct: 100 },
+    chat: { state: 'ready', currentPerMin: 300, baselinePerMin: 100, absoluteDeltaPerMin: 200, changePct: 200, multiplier: 3, ...sample },
+    emotes: { state: 'ready', currentPerMin: 40, baselinePerMin: 40, absoluteDeltaPerMin: 0, changePct: 0, multiplier: 1, ...sample },
+    evidence: { ircBound: true, eventRollupAvailable: true, baselineMeasuredMinutes: 40, baselineExpectedMinutes: 40, baselineCoveragePct: 100 },
+  }
+}
+
+/** A hub body with one Top moments row: `who`'s chat at 3× its own average, an hour in. */
 function hubBody(asOf: number, who: string, windowMinutes = 1440): PublicHub {
   const base = normalizePublicHub(null)
   return {
@@ -61,8 +76,12 @@ function hubBody(asOf: number, who: string, windowMinutes = 1440): PublicHub {
     generatedAt: iso(asOf),
     poolSize: 500,
     activity: { ...base.activity, windowMinutes, channelCount: 1, points: [] },
-    liveChannels: [channel(who, { startedAt: iso(asOf - 9 * MIN), viewers: 7000, screenerV1: screener(asOf) })],
+    liveChannels: [channel(who, { startedAt: iso(asOf - 62 * MIN), viewers: 7000, screenerV1: screener(asOf) })],
     moments: [{ kind: 'chat_spike', login: who, displayName: who.toUpperCase(), label: 'Chat spike', at: asOf - 2 * MIN } as HubMoment],
+    livePulseMoments: [{
+      login: who, displayName: who.toUpperCase(), streamId: `s-${who}`, offsetSeconds: 3600, at: asOf - 2 * MIN, score: 80, label: 'Chat spike',
+      chatPerMin: 300, emotesPerMin: 40, category: 'Just Chatting', comparison: comparison(asOf - 2 * MIN),
+    } as unknown as HubLivePulseMoment],
   } as PublicHub
 }
 
@@ -137,16 +156,26 @@ async function at(sec: number) {
   await act(async () => { await vi.advanceTimersByTimeAsync(Math.max(0, T0 + sec * 1000 - Date.now())) })
 }
 
-/** The feed and its phone peek both say `line`, and nothing else stands in for rows. */
-function expectFeedSays(line: string) {
-  expect(within(rail()).getByText(line)).toBeTruthy()
-  expect(within(peek()).getByText(line)).toBeTruthy()
+/** Top moments today and its phone peek wait in grey rows, and nothing stands in for them. */
+function expectTopLoading() {
+  expect(within(rail()).getByRole('status').textContent).toBe('Loading top moments')
+  expect(rail().querySelector('.hv5-tm-it')).toBeNull()
+  expect(peek().hasAttribute('data-wait')).toBe(true)
 }
 
-function expectFeedRows(who: string) {
-  expect(within(rail()).getAllByText(who).length).toBeGreaterThan(0)
-  expect(within(peek()).getAllByText(who).length).toBeGreaterThan(0)
-  expect(document.body.textContent).not.toContain('Loading live feed…')
+/** Both say "Unavailable right now."; the one Try again is the banner's (Q5b). */
+function expectTopUnavailable() {
+  expect(rail().querySelector('.hv5-tm-q')!.textContent).toBe(TOP_NONE)
+  expect(within(rail()).queryByRole('button', { name: 'Try again' })).toBeNull()
+  expect([...document.querySelectorAll('button')].filter((b) => b.textContent?.includes('Try again'))).toHaveLength(1)
+  expect(within(peek()).getByText(TOP_NONE)).toBeTruthy()
+  expect(within(rail()).queryByRole('status')).toBeNull()
+}
+
+function expectTopRows(who: string) {
+  expect(within(rail()).getByRole('button', { name: new RegExp(`^1\\. ${who}, chat 3\\.0 times usual`) })).toBeTruthy()
+  expect(within(peek()).getByRole('button', { name: new RegExp(`^1\\. ${who}, `) })).toBeTruthy()
+  expect(within(rail()).queryByRole('status')).toBeNull()
   expect(peek().hasAttribute('data-wait')).toBe(false)
 }
 
@@ -178,18 +207,17 @@ afterEach(() => {
 })
 
 describe('/analytics on a slow hub API (U8)', () => {
-  it('first visit, the 24h read answers at 40 s: the feed loads, then shows its rows, from one request', async () => {
+  it('first visit, the 24h read answers at 40 s: Top moments loads, then shows its rows, from one request', async () => {
     plan = { hub24: [40_000], hub30: [-1] }
     render(page())
     await at(10)
-    expectFeedSays('Loading live feed…')
+    expectTopLoading()
     expect(bannerText()).toBe('')
     expectCardsWaiting()
 
     for (const sec of [21, 39]) {
       await at(sec)
-      expectFeedSays('Loading live feed…')
-      expect(peek().hasAttribute('data-wait')).toBe(true)
+      expectTopLoading()
       // Past the deadline: one plain line, and no Try again to start the read over.
       expect(bannerText()).toBe('Live data is slow — still loading…')
       expect(enabledRetry()).toBeNull()
@@ -197,26 +225,26 @@ describe('/analytics on a slow hub API (U8)', () => {
     }
 
     await at(41)
-    expectFeedRows('ALPHA')
+    expectTopRows('ALPHA')
     expect(bannerText()).not.toContain('slow')
     expect(requests('24h')).toBe(1)
     expect(requests('30m')).toBe(1)
   })
 
-  it('both reads hit the hard cap: unavailable at last, the feed and peek still on screen', async () => {
+  it('both reads hit the hard cap: unavailable at last, Top moments and its peek still on screen', async () => {
     plan = { hub24: [-1], hub30: [-1] }
     render(page())
     for (const sec of [21, 89]) {
       await at(sec)
-      expectFeedSays('Loading live feed…')
+      expectTopLoading()
       expect(bannerText()).toBe('Live data is slow — still loading…')
       expect(enabledRetry()).toBeNull()
       expectCardsWaiting()
     }
 
     await at(92)
-    expectFeedSays('Unavailable right now.')
-    expect(peek().querySelector('h2')!.textContent).toBe('Live now')
+    expectTopUnavailable()
+    expect(peek().querySelector('h2')!.textContent).toBe('Top today')
     expect(within(document.querySelector<HTMLElement>('#busiest')!).getByText('Unavailable right now.')).toBeTruthy()
     expect(document.body.textContent).toContain('Measured activity unavailable')
     expect(bannerText()).toContain('Hub temporarily unavailable')
@@ -230,16 +258,16 @@ describe('/analytics on a slow hub API (U8)', () => {
     plan = { hub24: [{ ms: 35_000, status: 504 }], hub30: [50_000] }
     render(page())
     await at(36)
-    expectFeedSays('Loading live feed…')
+    expectTopLoading()
     expect(requests('24h')).toBe(1)
 
     await at(52)
-    expectFeedRows('THIRTY')
+    expectTopRows('THIRTY')
     expect(requests('24h')).toBe(1)
     expect(requests('30m')).toBe(1)
   })
 
-  it('a saved copy two hours old: headed with its time, refreshing, then the hub answer', async () => {
+  it('a saved copy two hours old: its rows with its time, refreshing, then the hub answer', async () => {
     vi.setSystemTime(T0 - 120 * MIN)
     writePublicHubCache(getBackendUrl(), '24h', savedBody(Date.now(), 'bravo'))
     vi.setSystemTime(T0)
@@ -247,19 +275,21 @@ describe('/analytics on a slow hub API (U8)', () => {
     render(page())
     const saved = hubClock(T0 - 120 * MIN)
     const note = () => document.querySelector('.figma-hub-fallback-banner--info')?.textContent ?? ''
-    expect(peek().querySelector('h2')!.textContent).toBe(`Saved ${saved}`)
+    const fresh = () => peek().querySelector('.hv5-f2-fresh')!.textContent
+    expectTopRows('BRAVO')
+    expect(fresh()).toBe(`Saved ${hubSavedClock(T0 - 120 * MIN, T0)}`)
     expect(note()).toBe(`Cached snapshot · Saved at ${saved} · refreshing...`)
 
     await at(21)
-    expect(peek().querySelector('h2')!.textContent).toBe(`Saved ${saved}`)
+    expect(fresh()).toBe(`Saved ${hubSavedClock(T0 - 120 * MIN, Date.now())}`)
     expect(note()).toBe(`Cached snapshot · Saved at ${saved} · refreshing...`)
     expect(bannerText()).toContain('Live data is slow — still loading…')
     expect(bannerText()).toContain('Coverage status is unknown in this snapshot')
     expect(enabledRetry()).toBeNull()
 
     await at(41)
-    expectFeedRows('ALPHA')
-    expect(peek().querySelector('h2')!.textContent).toBe('Live now')
+    expectTopRows('ALPHA')
+    expect(fresh()).toMatch(/^as of /)
     expect(note()).toBe('')
     expect(requests('24h')).toBe(1)
   })
@@ -270,9 +300,9 @@ describe('/analytics on a slow hub API (U8)', () => {
     primePublicHub({ pathname: '/analytics', search: '' })
     render(page(true))
     await at(21)
-    expectFeedSays('Loading live feed…')
+    expectTopLoading()
     await at(41)
-    expectFeedRows('ALPHA')
+    expectTopRows('ALPHA')
     expect(requests('24h')).toBe(1)
   })
 })

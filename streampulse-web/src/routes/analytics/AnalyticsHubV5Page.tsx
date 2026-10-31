@@ -2,10 +2,10 @@
  * /analytics as the d3-v5 hub. Ported from the approved mockup (d3-v5
  * hub.html): the
  * search hero with the emote conveyor behind it (R5-15 at Soft), Busiest now,
- * the activity chart, the live feed (v3, a "Live now" peek under the hero on
- * phones), Top emotes as the emote map (R5-13), Where chat is as the ranked
- * rack (R5-22), Channels and one "How this is measured" disclosure on the d3
- * grid (one column on phones, the feed beside the page from 1536 px).
+ * the activity chart, Top moments today (D1, 10-30; a "Top today" peek under
+ * the hero on phones), Top emotes as the emote map (R5-13), Where chat is as
+ * the ranked rack (R5-22), Channels and one "How this is measured" disclosure
+ * on the d3 grid (one column on phones, the rail beside the page from 1536 px).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -29,10 +29,9 @@ import { HubV5Channels } from '../../ui/components/hub/v5/HubV5Channels'
 import { HubV5EmoteMap } from '../../ui/components/hub/v5/HubV5EmoteMap'
 import { HubV5Hero } from '../../ui/components/hub/v5/HubV5Hero'
 import { HubV5Icon } from '../../ui/components/hub/v5/HubV5Icon'
-import { HubV5LiveFeed, HubV5LivePeek, useHubLiveFeed } from '../../ui/components/hub/v5/HubV5LiveFeed'
 import { HubV5MostChat, mostChatModel } from '../../ui/components/hub/v5/HubV5MostChat'
 import { HubV5Rack } from '../../ui/components/hub/v5/HubV5Rack'
-import type { FeedWait } from '../../ui/components/hub/v5/hubV5FeedModel'
+import { HubV5TopMoments, HubV5TopPeek, useTopToday } from '../../ui/components/hub/v5/HubV5TopMoments'
 import { HUB_BUSIEST_COUNT, HUB_RACK_ROWS, hubCategoryArt, hubChatBasis, hubSavedAt, rankBusiest, whereChatIs, type HubChannelSort } from '../../ui/components/hub/v5/hubV5Model'
 import { useHashScrollHold } from '../../ui/RouteScrollManager'
 import '../../ui/components/analytics/figma-analytics.css'
@@ -147,11 +146,6 @@ export default function AnalyticsHubV5Page() {
   // "Unavailable right now." only once it gave up.
   const measurementsWaiting = !measurementAvailable && !hubGaveUp
   const measurementsUnavailable = !measurementAvailable && hubGaveUp
-  // The Live feed and its phone peek stay in every state (10-28). With totals only or nothing they wait on any
-  // hub read under way, else say it is unavailable; a saved copy shows its own rows meanwhile, or waits with none.
-  const feedWait: FeedWait = hubAnswered ? null
-    : savedAt != null ? (hubGaveUp ? null : 'loading')
-      : hubGaveUp ? 'unavailable' : 'loading'
   // A read still under way with nothing on screen is loading, not an error.
   const hubUiState = resolveHubUiState({
     loading: hub.loading || hub.hubReadPending,
@@ -181,8 +175,15 @@ export default function AnalyticsHubV5Page() {
     .find((key) => ACTIVITY_WINDOW_MINUTES[key] === (data.activity.requestedWindowMinutes ?? data.activity.windowMinutes))
   const games = useMemo(() => whereChatIs(data.liveChannels, undefined, answerWindow), [data.liveChannels, answerWindow])
   const gameArt = useMemo(() => hubCategoryArt(data.livePulseMoments), [data.livePulseMoments])
-  // Never the totals-only fallback: its fresh time and empty hour would read as a quiet hour.
-  const feed = useHubLiveFeed(hub.loadSource === 'stats-fallback' ? null : hub.data ?? null)
+  // Top moments today and its phone peek stay in every state: the Moments list, a hub answer or a saved copy (never
+  // totals only), waiting on any hub read under way, else unavailable. The list is read with each hub read, answered or not.
+  const top = useTopToday({
+    hub: hubAnswered || savedAt != null ? hub.data : null,
+    savedAt,
+    reading: !hubGaveUp,
+    attempt: hub.pollAttempt,
+    nowMs,
+  })
   const avatars = useMemo(() => {
     const map = new Map<string, string>()
     for (const c of data.liveChannels) if (c.profileImageUrl) map.set(c.login, c.profileImageUrl)
@@ -224,7 +225,7 @@ export default function AnalyticsHubV5Page() {
     }
   }, [])
 
-  // The feed's "+N more in Channels": Channels sorted by chat vs own avg, brought into view.
+  // Picking up's "+N more in Channels": Channels sorted by chat vs own avg, brought into view.
   const [sortRequest, setSortRequest] = useState<{ id: number; sort: HubChannelSort; dir: 1 | -1 } | null>(null)
   const showUpInChannels = useCallback(() => {
     setGameState(null)
@@ -274,7 +275,7 @@ export default function AnalyticsHubV5Page() {
         <div className="hub-v5 hub-d3" data-hub-v5-page="">
           <HubV5Hero live={data.liveChannels} poolSize={data.poolSize} points={data.activity.points} />
 
-          <HubV5LivePeek feed={feed} nowMs={nowMs} loading={loadingInitial} wait={feedWait} savedAt={savedAt} />
+          <HubV5TopPeek top={top} nowMs={nowMs} />
 
           <HubV5Busiest
             live={savedAt != null ? EMPTY_PUBLIC_HUB.liveChannels : data.liveChannels}
@@ -333,7 +334,7 @@ export default function AnalyticsHubV5Page() {
             />
           )}
 
-          <HubV5LiveFeed feed={feed} nowMs={nowMs} loading={loadingInitial} wait={feedWait} saved={savedAt != null} onUpMore={showUpInChannels} />
+          <HubV5TopMoments top={top} nowMs={nowMs} onUpMore={showUpInChannels} />
 
           <HubV5EmoteMap
             points={data.activity.points}

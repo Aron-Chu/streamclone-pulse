@@ -279,7 +279,7 @@ function BarCardView({ model }: { model: HubV5BarCardModel | null }) {
     return () => window.clearTimeout(id)
   }, [leaving])
 
-  // Esc closes the card from anywhere but a text field; an open moment hover card closes first.
+  // Esc closes the card from anywhere but a text field; an open Top moments row closes first.
   const isOpen = model != null
   useEffect(() => {
     if (!isOpen) return undefined
@@ -287,7 +287,6 @@ function BarCardView({ model }: { model: HubV5BarCardModel | null }) {
       if (event.key !== 'Escape' || event.defaultPrevented) return
       const target = event.target as Element | null
       if (target?.closest?.('input, textarea, select, [contenteditable="true"]')) return
-      if (document.querySelector('[data-hv5-moment-card]')) return
       event.preventDefault()
       clearHubBucketSelection()
     }

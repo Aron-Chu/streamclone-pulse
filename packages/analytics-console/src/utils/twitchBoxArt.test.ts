@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   boxArtSignaturesMatch,
   createTwitchPlaceholderCheck,
+  isTwitchOfflinePreview,
   isTwitchPlaceholderBoxArt,
   twitchBoxArtByName,
+  twitchOfflinePreviewUrl,
   twitchPlaceholderBoxArtUrl,
 } from './twitchBoxArt.ts'
 
@@ -38,6 +40,10 @@ describe('twitchBoxArtByName (GP-8)', () => {
 
   it("names Twitch's own 404 picture at the same size", () => {
     expect(twitchPlaceholderBoxArtUrl(144, 192)).toBe('https://static-cdn.jtvnw.net/ttv-static/404_boxart-144x192.jpg')
+  })
+
+  it("names Twitch's offline picture, where previews-ttv sends a channel that isn't live (10-31)", () => {
+    expect(twitchOfflinePreviewUrl(440, 248)).toBe('https://static-cdn.jtvnw.net/ttv-static/404_preview-440x248.jpg')
   })
 })
 
@@ -107,6 +113,31 @@ describe('isTwitchPlaceholderBoxArt decision (stubbed canvas)', () => {
   it('the default check keeps the picture in jsdom, which has no canvas', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
     await expect(isTwitchPlaceholderBoxArt(loadedImage(144, 192))).resolves.toBe(false)
+    error.mockRestore()
+  })
+})
+
+describe('isTwitchOfflinePreview decision (stubbed canvas, 10-31)', () => {
+  it("compares a live picture with Twitch's offline picture at its size", async () => {
+    const loadReference = vi.fn(async (_url: string) => loadedImage(440, 248) as HTMLImageElement | null)
+    const isOffline = createTwitchPlaceholderCheck({ loadReference, signatureOf: vi.fn(() => GREY), placeholderUrl: twitchOfflinePreviewUrl })
+    await expect(isOffline(loadedImage(440, 248))).resolves.toBe(true)
+    expect(loadReference).toHaveBeenCalledWith('https://static-cdn.jtvnw.net/ttv-static/404_preview-440x248.jpg')
+  })
+
+  it('keeps a live picture (false) that draws other pixels', async () => {
+    const reference = loadedImage(640, 360)
+    const isOffline = createTwitchPlaceholderCheck({
+      loadReference: vi.fn(async () => reference),
+      signatureOf: vi.fn((img: HTMLImageElement) => (img === reference ? GREY : COVER)),
+      placeholderUrl: twitchOfflinePreviewUrl,
+    })
+    await expect(isOffline(loadedImage(640, 360))).resolves.toBe(false)
+  })
+
+  it('the default check keeps the picture in jsdom, which has no canvas', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    await expect(isTwitchOfflinePreview(loadedImage(440, 248))).resolves.toBe(false)
     error.mockRestore()
   })
 })

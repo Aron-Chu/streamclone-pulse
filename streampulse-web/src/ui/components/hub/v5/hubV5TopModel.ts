@@ -1,81 +1,58 @@
 /**
- * Top moments (F1, 10-25): where the Moments list is on, the hub's feed is one
- * ranked list of that list's moments over a window you pick (1 h, 6 h, 24 h,
- * 7 d), strongest first or newest first, one game at a time. Pure functions
- * over /v1/public/moments pages: every figure is the feed's, nothing is scored
- * here, and both orders keep the Moments page's own rules.
+ * Top moments today (D1 C1 F1 O1, 10-30; board artifacts/moments-top-today-20261030):
+ * the hub's rail is always the day's strongest moments, the last 24 hours, up
+ * to 20, strongest first. Pure functions over one of two sources, never both
+ * in one list:
  *
- * - Top: the moments that hold up and rose (those with a ×), one per burst,
- *   by the feed's score, as Moments' Top shows them.
- * - Latest: every moment that holds up or partly does, newest first, as
- *   Moments' Latest shows them.
+ * - The Moments list (/v1/public/moments, where it is on and answers): its
+ *   moments that hold up and rose (those with a ×), one per burst, by the
+ *   feed's score, as Moments' Top shows them. Every figure is the feed's.
+ * - Otherwise the hub's own moments, on streams live now (it sends up to 10):
+ *   none older than 24 hours by the hub's clock (a long stream sends peaks
+ *   from its whole session), none from a stream's first 20 minutes, only a
+ *   ready × of 1.5 or more; a
+ *   minute two channels counted the same emotes in is one row, one row per
+ *   burst, strongest × first.
  */
-import { boxArtImage, checkMoment, clk, fx, SORTS, topBursts, type CheckedMoment } from '../../../../lib/momentsChecked'
-import type { MomentsFeedCategoryFacet, MomentsFeedSnapshot } from '../../../../lib/momentsFeed'
+import { sanitizeEmoteImageUrl } from '../../../../lib/emoteAssetUrl'
+import { avatarImage, boxArtImage, checkMoment, clk, emoteImage, fx, topBursts, TOP_BURST_MS, when, type CheckedMoment } from '../../../../lib/momentsChecked'
+import { momentsFeedFrom, type MomentsFeedCategoryFacet, type MomentsFeedSnapshot } from '../../../../lib/momentsFeed'
+import type { MomentVodRef } from '../../../../lib/momentsFeedVod'
+import type { PublicHub } from '../../../../lib/publicHub'
+import { hubCategoryArt, momentRowsV5 } from './hubV5Model'
 
-export type TopWindowKey = '1h' | '6h' | '24h' | '7d'
-export type TopSort = 'top' | 'new'
-export interface TopWindow {
-  key: TopWindowKey
-  /** The tab's label. */
-  short: string
-  /** "the last 6 hours" */
-  words: string
-  ms: number
-}
-
-const HOUR = 60 * 60_000
-export const TOP_WINDOWS: readonly TopWindow[] = [
-  { key: '1h', short: '1 h', words: 'the last hour', ms: HOUR },
-  { key: '6h', short: '6 h', words: 'the last 6 hours', ms: 6 * HOUR },
-  { key: '24h', short: '24 h', words: 'the last 24 hours', ms: 24 * HOUR },
-  { key: '7d', short: '7 d', words: 'the last 7 days', ms: 7 * 24 * HOUR },
-]
-export const TOP_DEFAULT_WINDOW: TopWindowKey = '24h'
 /** Rows the list shows. */
 export const TOP_ROWS = 20
-/** Moments read for a window: enough that 20 remain after Top's checks and bursts. */
+/** Moments read: enough that 20 remain after Top's bursts. */
 export const TOP_READ = 50
-/** Under this many rows the list offers the next window up. */
-export const TOP_FEW = 10
+/** "Today": the last 24 hours. */
+export const TOP_DAY_MS = 24 * 60 * 60_000
+/** A list read that failed leaves its last answer up, greyed, this long; then the hub's rows stand in. */
+export const TOP_KEEP_MS = 15 * 60_000
+/** Hub rows: none from a stream's first 20 minutes (too soon for its own average), and a ready × of at least 1.5. */
+export const TOP_START_MIN = 20
+export const TOP_MIN_X = 1.5
 
-export const topWindow = (key: TopWindowKey): TopWindow => TOP_WINDOWS.find((w) => w.key === key) ?? TOP_WINDOWS[2]!
-export function topNextWindow(key: TopWindowKey): TopWindow | null {
-  const i = TOP_WINDOWS.findIndex((w) => w.key === key)
-  return TOP_WINDOWS[i + 1] ?? null
-}
+/** `from` for the last 24 hours, floored to 10 minutes so readers in the same 10 minutes share one cached URL. */
+export const topFrom = (nowMs: number) => momentsFeedFrom(nowMs, TOP_DAY_MS)
 
-/** `from` for a window, floored to the minute so readers in the same minute ask for the same URL (the edge caches it). */
-export function topFrom(nowMs: number, key: TopWindowKey): number {
-  return Math.floor((nowMs - topWindow(key).ms) / 60_000) * 60_000
-}
-
-/** The window's moments as the list shows them, at most 20 (see the top of this file). */
-export function topRows(items: MomentsFeedSnapshot['items'], sort: TopSort, nowMs: number): CheckedMoment[] {
-  const all = items.map((item) => checkMoment(item, nowMs))
-  const rows = sort === 'top'
-    ? topBursts(all.filter((m) => m.rowX != null))
-    : all.filter((m) => m.item.verdict !== 'bad').sort(SORTS.new)
-  return rows.slice(0, TOP_ROWS)
-}
-
-/** A window's count on its tab: the moments that hold up or partly do (what Latest can show); the feed's total when it sends no verdicts. */
+/** The day's moments that hold up (the footer's "of M"); the feed's total when it sends no verdicts. */
 export function topCount(snap: Pick<MomentsFeedSnapshot, 'total' | 'verdicts'>): number {
-  return snap.verdicts ? snap.verdicts.ok + snap.verdicts.warn : snap.total
+  return snap.verdicts ? snap.verdicts.ok : snap.total
 }
 
 export interface TopGame {
   id: string
   name: string
   art: string | null
-  /** The window's moments in that game, every verdict counted (the feed's facet). */
+  /** The day's moments in that game that hold up (the feed's facet, read with verdict=ok). */
   moments: number
 }
 
 /**
- * The window's games for the chips, most moments first, as the feed's facets
- * send them. `keep` (the picked game) stays listed with 0 after a new window
- * leaves it none, so the pick can still be cleared.
+ * The day's games for the chips, most moments first, as the feed's facets send
+ * them. `keep` (the picked game) stays listed with 0 after a read leaves it
+ * none, so the pick can still be cleared.
  */
 export function topGames(categories: readonly MomentsFeedCategoryFacet[] | null | undefined, keep: TopGame | null = null): TopGame[] {
   const games = (categories ?? [])
@@ -85,40 +62,130 @@ export function topGames(categories: readonly MomentsFeedCategoryFacet[] | null 
   return games
 }
 
-/** A row's time on the right: "now", "13m", "2h", "3d". */
-export function topAgo(at: number, nowMs: number): string {
-  const m = Math.max(0, Math.floor((nowMs - at) / 60_000))
-  if (m < 1) return 'now'
-  if (m < 60) return `${m}m`
-  const h = Math.floor(m / 60)
-  return h < 24 ? `${h}h` : `${Math.floor(h / 24)}d`
-}
-
-/** "see all": the Moments page in the same order, on the picked game. */
-export function topMomentsHref(sort: TopSort, gameId: string | null): string {
-  const query = new URLSearchParams()
-  if (sort === 'top') query.set('view', 'top')
+/** "Every moment →": the Moments page's Top, on the picked game. */
+export function topMomentsHref(gameId: string | null): string {
+  const query = new URLSearchParams({ view: 'top' })
   if (gameId) query.set('game', gameId)
-  const q = query.toString()
-  return q ? `/analytics/moments?${q}` : '/analytics/moments'
+  return `/analytics/moments?${query}`
 }
 
-/** The emote a row names: the minute's top emote, for an emote moment. */
-export const topEmote = (m: CheckedMoment) => (m.kind === 'emotes' ? m.item.topEmotes[0] ?? null : null)
-
-function agoWords(at: number, nowMs: number): string {
-  const m = Math.max(0, Math.floor((nowMs - at) / 60_000))
-  if (m < 1) return 'just now'
-  if (m < 60) return `${m} min ago`
-  const h = Math.floor(m / 60)
-  return h < 24 ? `${h} ${h === 1 ? 'hour' : 'hours'} ago` : `${Math.floor(h / 24)} ${Math.floor(h / 24) === 1 ? 'day' : 'days'} ago`
+export interface TopEmote {
+  name: string
+  imageUrl: string | undefined
+  count: number
 }
 
-export function topRowAria(m: CheckedMoment, rank: number | null, nowMs: number, open: boolean): string {
-  const emote = topEmote(m)
-  const x = m.rowX != null ? `${m.kind} ${fx(m.rowX).replace('×', ' times')} usual` : m.why
-  const cat = m.item.category?.name
-  return `${rank != null ? `${rank}. ` : ''}${m.name}${emote ? `, ${emote.name}` : ''}${x ? `, ${x}` : ''}${cat ? `, ${cat}` : ''}, ${agoWords(m.at, nowMs)} at ${clk(m.at)}. ${open ? 'Hide' : 'Show'} the minutes around it.`
+/** One row, from either source; it names its moment as a VOD lookup does (momentVods). */
+export interface TopRowData extends MomentVodRef {
+  /** Lowercase. */
+  login: string
+  name: string
+  /** The source's picture; the page's live channels fill a missing one. */
+  avatar: string | null
+  /** What rose. */
+  kind: 'chat' | 'emotes'
+  x: number
+  /** Epoch ms of the moment's minute. */
+  at: number
+  game: string | null
+  art: string | null
+  /** The minute's top emote, for an emote moment. */
+  emote: TopEmote | null
+  /** Its top emotes, at most 3, for the opened row. */
+  emotes: TopEmote[]
+  /** The moment's series a minute, and the usual the × compares it with. */
+  rate: number | null
+  usual: number | null
+  viewers: number | null
+  /** The stream is still live. */
+  live: boolean
+  /** Opens the moment in Moments. */
+  href: string
+  /** Other channels that counted the same emotes in the same minute, folded into this row. */
+  also: string[]
+  /** The Moments list's moment, with the minutes around it; null for a hub row. */
+  checked: CheckedMoment | null
+}
+
+function feedRow(m: CheckedMoment): TopRowData {
+  const item = m.item
+  const emotes = item.topEmotes.slice(0, 3).map((e) => ({ name: e.name, imageUrl: emoteImage(e), count: e.count }))
+  return {
+    id: item.id, login: item.login.toLowerCase(), name: m.name, streamId: item.streamId, offsetSeconds: item.offsetSeconds,
+    avatar: avatarImage(item) ?? null, kind: m.kind, x: m.rowX!, at: m.at,
+    game: item.category?.name || null, art: boxArtImage(item) ?? null,
+    emote: m.kind === 'emotes' ? emotes[0] ?? null : null, emotes,
+    rate: item[m.kind].perMin, usual: m.kind === 'chat' ? m.baseC : m.baseE, viewers: item.viewers ?? null, live: item.streamLive,
+    href: `/analytics/moments?${new URLSearchParams({ m: item.id })}`, also: [], checked: m,
+  }
+}
+
+/** The Moments list's answer as rows: the moments that hold up and rose, one per burst, by the feed's score, at most 20. */
+export function topFeedRows(snap: Pick<MomentsFeedSnapshot, 'items' | 'generatedAt'>): TopRowData[] {
+  return topBursts(snap.items.map((item) => checkMoment(item, snap.generatedAt)).filter((m) => m.rowX != null))
+    .slice(0, TOP_ROWS)
+    .map(feedRow)
+}
+
+/** The hub's moments as rows, under the rules at the top of this file. */
+export function hubTopRows(hub: Pick<PublicHub, 'liveChannels' | 'livePulseMoments' | 'generatedAt'> | null | undefined): TopRowData[] {
+  if (!hub) return []
+  const live = new Map(hub.liveChannels.map((c) => [c.login.toLowerCase(), c]))
+  const art = hubCategoryArt(hub.livePulseMoments ?? [])
+  // the last 24 hours by the answer's own clock (no clock: none left out)
+  const from = Date.parse(hub.generatedAt) - TOP_DAY_MS
+  const gated = momentRowsV5(hub.livePulseMoments ?? []).flatMap((row) => {
+    const x = 'x' in row.cmp ? row.cmp.x : null
+    return row.at != null && !(row.at < from) && (row.moment.offsetSeconds || 0) / 60 >= TOP_START_MIN && x != null && x >= TOP_MIN_X ? [{ row, x, at: row.at }] : []
+  }).sort((a, b) => b.x - a.x || b.at - a.at)
+  const kept: TopRowData[] = []
+  const twins = new Map<string, TopRowData>()
+  for (const { row, x, at } of gated) {
+    const m = row.moment
+    const login = row.login.toLowerCase()
+    const c = live.get(login)
+    const streamId = m.streamId || c?.streamId || ''
+    // a minute two channels counted the same emotes in is one row, under the stronger ×
+    const counts = (m.topEmotes ?? []).map((e) => `${e.name}:${e.count}`).join('|')
+    const twinKey = `${Math.floor(at / 60_000)}|${counts}`
+    const twin = counts ? twins.get(twinKey) : undefined
+    if (twin) {
+      if (twin.login !== login && !twin.also.includes(row.displayName)) twin.also.push(row.displayName)
+      continue
+    }
+    // one row per burst: the stream's strongest minute within 5 minutes
+    if (kept.some((k) => k.login === login && k.streamId === streamId && Math.abs(k.at - at) < TOP_BURST_MS)) continue
+    const emotes = (m.topEmotes ?? []).slice().sort((a, b) => (b.count || 0) - (a.count || 0)).slice(0, 3)
+      .map((e) => ({ name: e.name, imageUrl: sanitizeEmoteImageUrl(e.imageUrl), count: e.count || 0 }))
+    const top = row.series === 'emotes' && row.topEmote ? row.topEmote : null
+    const next: TopRowData = {
+      id: row.key, login, name: row.displayName, streamId, offsetSeconds: m.offsetSeconds || 0,
+      avatar: m.profileImageUrl || c?.profileImageUrl || null, kind: row.series, x, at,
+      game: m.category || null,
+      art: m.categoryMetadataRejected ? null : m.boxArtUrl || (m.category ? art.get(m.category) ?? null : null),
+      emote: top ? { name: row.topEmoteName ?? top.name, imageUrl: sanitizeEmoteImageUrl(top.imageUrl), count: top.count || 0 } : null, emotes,
+      rate: row.rate, usual: 'x' in row.cmp ? row.cmp.avg : null, viewers: Number.isFinite(m.viewers) ? m.viewers! : null, live: !!c,
+      href: row.href, also: [], checked: null,
+    }
+    if (counts) twins.set(twinKey, next)
+    kept.push(next)
+    if (kept.length === TOP_ROWS) break
+  }
+  return kept
+}
+
+/** A row's label; `open` null for the phone peek, whose rows open in the rail. */
+export function topRowAria(row: TopRowData, rank: number, nowMs: number, open: boolean | null): string {
+  const x = `${row.kind} ${fx(row.x).replace('×', ' times')} usual`
+  const t = `${when(row.at, nowMs)}${nowMs - row.at < 60 * 60_000 ? ` at ${clk(row.at)}` : ''}`
+  const act = open == null ? 'Open it in Top moments below' : `${open ? 'Hide' : 'Show'} ${row.checked ? 'the minutes around it' : 'its numbers and links'}`
+  return `${rank}. ${row.name}${row.emote ? `, ${row.emote.name}` : ''}, ${x}${row.game ? `, ${row.game}` : ''}`
+    + `${row.also.length ? `, the same emotes on ${row.also.join(', ')}` : ''}, ${t}. ${act}.`
+}
+
+/** 1100–1535 px: rows of 45 px that fit the column's `px` under the header, beside Picking up, "Show N more" and the footer. */
+export function topColumnCap(px: number, up: boolean): number {
+  return Math.max(3, Math.floor((px - (up ? 56 : 0) - 40 - 26) / 45))
 }
 
 /* ---------- the opened row's chart ---------- */
