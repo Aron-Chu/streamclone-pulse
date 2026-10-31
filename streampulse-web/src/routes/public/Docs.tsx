@@ -59,7 +59,7 @@ export default function Docs() {
             signals without exposing raw chat or chatter identities.
           </p>
           <ol className="mt-3 space-y-2">
-            <li>Start with Overview, then explore Moments, Emotes, or Channels.</li>
+            <li>Search a channel, or pick one under Busiest now.</li>
             <li>Check the displayed time window and coverage before comparing numbers.</li>
             <li>Open a moment to inspect its stream timestamp. Video may be pending or unavailable even when analytics exist.</li>
             <li>Share the timestamped stream link to return to the same broadcast and moment.</li>
