@@ -1,4 +1,6 @@
 import type { PublicHub } from '../../../lib/publicHub'
+import { emoteDisplaySrc } from '../../../lib/emoteAssetUrl'
+import { twitchProfileImageRendition } from '../../../lib/twitchProfileImage'
 import {
   LANDING_EMOTES,
   findLandingEmote,
@@ -49,21 +51,32 @@ export interface TickerItem {
   tone: Tone
   /** Emote (7TV) or channel-avatar image URL rendered as the visual lead. */
   image?: string
+  /** The full-size file behind a resized `image`, tried once if the smaller one fails. */
+  imageFallback?: string
 }
+
+/** The strip draws every lead picture at this size (1.25rem), so it asks for files to match. */
+export const TICKER_PICTURE_PX = 20
 
 const EMOTE_BY_NAME = new Map<string, (typeof LANDING_EMOTES)[number]>(
   LANDING_EMOTES.map((emote) => [emote.name.toLowerCase(), emote]),
 )
 
 /** Resolve a landing CDN image for a known emote name (undefined if unmapped). */
-function emoteImageByName(name: string): string | undefined {
+function emoteImageByName(name: string, size: '1x' | '2x' = '2x'): string | undefined {
   const emote = EMOTE_BY_NAME.get(name.trim().toLowerCase())
-  return emote ? landingEmoteImageUrl(emote) : undefined
+  return emote ? landingEmoteImageUrl(emote, size) : undefined
 }
 
 function nameOf(login: string, displayName?: string): string {
   const name = (displayName ?? '').trim()
   return name.length > 0 ? name : login
+}
+
+/** The emote's own picture, else the landing emote of that name, at the size the strip draws it. */
+function tickerEmoteImage(name: string, imageUrl: string | undefined): string | undefined {
+  return emoteDisplaySrc(imageUrl, TICKER_PICTURE_PX)
+    ?? emoteDisplaySrc(emoteImageByName(name, '1x'), TICKER_PICTURE_PX)
 }
 
 export function buildEmoteTicker(hub: PublicHub | null): TickerItem[] {
@@ -75,7 +88,7 @@ export function buildEmoteTicker(hub: PublicHub | null): TickerItem[] {
     value: compact(emote.count),
     delta: emote.sharePct > 0 ? `${emote.sharePct.toFixed(1)}%` : undefined,
     tone: 'up' as Tone,
-    image: emote.imageUrl ?? emoteImageByName(emote.name),
+    image: tickerEmoteImage(emote.name, emote.imageUrl),
   }))
 }
 
@@ -108,7 +121,8 @@ export function buildMoverTicker(hub: PublicHub | null): TickerItem[] {
       value: `${compact(mover.seventvPerMin)}/min`,
       delta: signedPct(mover.trendPct),
       tone: mover.trendPct > 1 ? 'up' : mover.trendPct < -1 ? 'dn' : 'flat',
-      image: mover.profileImageUrl,
+      image: twitchProfileImageRendition(mover.profileImageUrl, 70),
+      imageFallback: mover.profileImageUrl,
     }
   })
 }

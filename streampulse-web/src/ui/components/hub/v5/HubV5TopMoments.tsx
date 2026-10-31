@@ -29,6 +29,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { isApiError } from '../../../../lib/apiClient'
+import { emoteDisplaySrc } from '../../../../lib/emoteAssetUrl'
 import { clk, fx, hms, int, LEAD_S, whenShort, type MomentVod } from '../../../../lib/momentsChecked'
 import { loadMomentsWindow, type MomentsFeedCategoryFacet, type MomentsFeedSnapshot } from '../../../../lib/momentsFeed'
 import { momentsFeedEnabled } from '../../../../lib/momentsFeedFlag'
@@ -411,12 +412,15 @@ function TopDetail({ row, id, vod, live }: { row: TopRowData; id: string; vod: M
       ) : null}
       {row.emotes.length ? (
         <ul className="hv5-tm-em" aria-label="Top emotes that minute">
-          {row.emotes.map((e) => (
-            <li key={e.name}>
-              {e.imageUrl ? <img src={e.imageUrl} alt="" width={22} height={22} decoding="async" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.style.display = 'none' }} /> : null}
-              <span>{e.name}</span><small>{int(e.count)}</small>
-            </li>
-          ))}
+          {row.emotes.map((e) => {
+            const src = emoteDisplaySrc(e.imageUrl, 22)
+            return (
+              <li key={e.name}>
+                {src ? <img src={src} alt="" width={22} height={22} decoding="async" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.style.display = 'none' }} /> : null}
+                <span>{e.name}</span><small>{int(e.count)}</small>
+              </li>
+            )
+          })}
         </ul>
       ) : null}
       <div className="hv5-tm-act">
@@ -430,6 +434,7 @@ function TopDetail({ row, id, vod, live }: { row: TopRowData; id: string; vod: M
 
 /** What a row shows (F1's look): rank, the channel's picture, who and the emote, "6.2× more emotes", the game's cover, the time. */
 function RowFace({ row, avatar, rank, nowMs }: { row: TopRowData; avatar: string | null; rank: number; nowMs: number }) {
+  const emoteSrc = emoteDisplaySrc(row.emote?.imageUrl, 18)
   return (
     <>
       <span className={`hv5-tm-rk${rank <= 3 ? ' hv5-tm-top' : ''}`} aria-hidden="true">{rank}</span>
@@ -441,7 +446,7 @@ function RowFace({ row, avatar, rank, nowMs }: { row: TopRowData; avatar: string
           <span className="hv5-tm-nm">{row.name}</span>
           {row.emote ? (
             <span className="hv5-f2-em">
-              {row.emote.imageUrl ? <img src={row.emote.imageUrl} alt="" width={18} height={18} decoding="async" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.style.display = 'none' }} /> : null}
+              {emoteSrc ? <img src={emoteSrc} alt="" width={18} height={18} decoding="async" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.style.display = 'none' }} /> : null}
               <span>{row.emote.name}</span>
             </span>
           ) : null}

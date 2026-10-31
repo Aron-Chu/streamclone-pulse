@@ -8,6 +8,7 @@ import {
   isBackendEmoteProxyUrl,
   preferResolvableEmoteUrl,
   sanitizeEmoteImageUrl,
+  staticTwitchEmoteUrl,
 } from '../src/lib/emoteAssetUrl'
 import {
   buildEmoteLookup,
@@ -91,7 +92,11 @@ describe('emoteUrlForScale / emoteSrcSet', () => {
     expect(emoteUrlForScale(base, '1x')).toBe('https://cdn.7tv.app/emote/abc/1x.webp')
     expect(emoteUrlForScale(base, '2x')).toBe('https://cdn.7tv.app/emote/abc/2x.webp')
     expect(emoteUrlForScale(base, '4x')).toBe('https://cdn.7tv.app/emote/abc/4x.webp')
+    // An ordinary card/row picture stops at 2x; the 4x file is for a picture drawn 64 px or wider.
     expect(emoteSrcSet(base)).toBe(
+      'https://cdn.7tv.app/emote/abc/1x.webp 1x, https://cdn.7tv.app/emote/abc/2x.webp 2x',
+    )
+    expect(emoteSrcSet(base, 64)).toBe(
       'https://cdn.7tv.app/emote/abc/1x.webp 1x, https://cdn.7tv.app/emote/abc/2x.webp 2x, https://cdn.7tv.app/emote/abc/4x.webp 4x',
     )
   })
@@ -111,12 +116,23 @@ describe('emoteUrlForScale / emoteSrcSet', () => {
     expect(emoteUrlForScale(base, '2x')).toBe('https://cdn.frankerfacez.com/emote/12345/2')
     expect(emoteUrlForScale(base, '4x')).toBe('https://cdn.frankerfacez.com/emote/12345/4')
     expect(emoteSrcSet(base)).toContain('1x')
-    expect(emoteSrcSet(base)).toContain('4x')
+    expect(emoteSrcSet(base)).not.toContain('4x')
+    expect(emoteSrcSet(base, 72)).toContain('4x')
   })
 
   it('defaults small display src to 1x not 4x', () => {
     const base = 'https://cdn.7tv.app/emote/abc/4x.webp'
     expect(emoteDisplaySrc(base, 28)).toBe('https://cdn.7tv.app/emote/abc/1x.webp')
+  })
+
+  it("uses Twitch's still file at 20 px or less and the animated one above that", () => {
+    const base = 'https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_abc/default/dark/2.0'
+    expect(staticTwitchEmoteUrl(base)).toBe('https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_abc/static/dark/2.0')
+    expect(staticTwitchEmoteUrl('https://cdn.7tv.app/emote/abc/1x.webp')).toBe('https://cdn.7tv.app/emote/abc/1x.webp')
+    expect(staticTwitchEmoteUrl('https://evil.example/emoticons/v2/x/default/dark/2.0')).toBe('https://evil.example/emoticons/v2/x/default/dark/2.0')
+    expect(staticTwitchEmoteUrl(undefined)).toBeUndefined()
+    expect(emoteDisplaySrc(base, 20)).toBe('https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_abc/static/dark/1.0')
+    expect(emoteDisplaySrc(base, 24)).toBe('https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_abc/default/dark/1.0')
   })
 })
 

@@ -10,6 +10,7 @@
 import { useSyncExternalStore, type ReactNode } from 'react'
 import type { SpBar, SpHoverStore } from '@streampulse/pulse-charts/spchart'
 import type { HubBucketEmote } from '../../../lib/publicHub'
+import { emoteDisplaySrc } from '../../../lib/emoteAssetUrl'
 import { formatHubCardInt, hubCardClock, hubCardClockRange } from '../../../lib/hubBucketCardModel'
 import { barTopEmotes, barViewerChannels, emotesLowerBoundIn, sortedTopEmotes, type HubActivitySpModel } from './hubActivitySpModel'
 
@@ -88,7 +89,7 @@ export function hubReadoutView(model: HubActivitySpModel, bar: SpBar | null, sav
 }
 
 function emoteImage(emote: HubBucketEmote, emoteImages?: ReadonlyMap<string, string> | null): ReactNode {
-  const src = emote.imageUrl || emoteImages?.get(emote.name.toLowerCase())
+  const src = emoteDisplaySrc(emote.imageUrl || emoteImages?.get(emote.name.toLowerCase()), 24)
   if (!src) return null
   return <img key={emote.name} src={src} alt={emote.name} width={24} height={24} decoding="async" referrerPolicy="no-referrer" />
 }
