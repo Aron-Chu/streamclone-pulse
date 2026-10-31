@@ -332,3 +332,41 @@ test('the chart (i) opens How this is measured with the served-window facts', as
   await expect(measured.locator('summary')).toBeFocused()
   await expect(measured.locator('.hv5-dis-body li').first()).toBeVisible()
 })
+
+// The buckets rule (board pick 5): below 95% of the chart's buckets, one grey line directly under the
+// chart; 95% or more, nothing; and never an amber "Activity coverage ... buckets" row in the banner.
+async function openHubKeepingBuckets(page: Page, keep: (index: number) => boolean) {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await installHubUxMock(page, { keepActivityBucket: keep })
+  await page.goto('/analytics')
+  await expect(page.locator('.figma-global-activity__hub-chart h2')).toHaveText('Activity · last 24 h')
+  await expect(page.getByTestId('hub-data-age')).toBeVisible()
+}
+
+test("below 95% of the chart's buckets, one grey line sits directly under the chart and nothing amber says buckets", async ({ page }) => {
+  await openHubKeepingBuckets(page, index => index % 10 !== 5)
+  const note = page.getByTestId('hub-minutes-missing-note')
+  await expect(note).toHaveText('A few minutes are missing from this chart.')
+  const chart = (await box(page, '.figma-global-activity__hub-chart'))
+  const noteBox = (await note.boundingBox())!
+  // Directly under the chart card (the caption style tucks its top 3 px up under the card's edge),
+  // above the data age line, in the grey caption colour.
+  expect(noteBox.y).toBeGreaterThanOrEqual(chart.y + chart.height - 4)
+  expect(noteBox.y - (chart.y + chart.height)).toBeLessThan(24)
+  expect((await box(page, '[data-testid="hub-data-age"]')).y).toBeGreaterThan(noteBox.y)
+  expect(await note.evaluate(element => getComputedStyle(element).color)).toBe('rgba(255, 255, 255, 0.62)')
+  await expect(page.locator('.hx-health-banner').getByText(/Activity coverage|buckets|rollups/)).toHaveCount(0)
+  await expect(page.getByText(/Activity coverage/)).toHaveCount(0)
+})
+
+test("at 95% or more of the chart's buckets, the page says nothing about buckets", async ({ page }) => {
+  await openHubKeepingBuckets(page, index => index % 48 !== 5)
+  await expect(page.getByTestId('hub-minutes-missing-note')).toHaveCount(0)
+  await expect(page.getByText(/Activity coverage|buckets missing|A few minutes/)).toHaveCount(0)
+})
+
+test('with every bucket there, the page says nothing about buckets either', async ({ page }) => {
+  await openHubKeepingBuckets(page, () => true)
+  await expect(page.getByTestId('hub-minutes-missing-note')).toHaveCount(0)
+  await expect(page.getByText(/Activity coverage|buckets missing|A few minutes/)).toHaveCount(0)
+})

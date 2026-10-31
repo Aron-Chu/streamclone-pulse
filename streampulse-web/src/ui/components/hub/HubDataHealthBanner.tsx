@@ -40,18 +40,6 @@ export function formatCoveragePercent(pointCount: number, expectedBuckets: numbe
   return `${(Math.floor((measured / expected) * 1_000) / 10).toFixed(1)}%`
 }
 
-/** From this share of the window's buckets on, a few missing ones are a grey note, not an amber warning. */
-export const QUIET_COVERAGE_RATIO = 0.95
-
-/** The one grey line that replaces the amber buckets line at or above QUIET_COVERAGE_RATIO. */
-export const MINUTES_MISSING_NOTE = 'A few minutes are missing from this chart.'
-
-export function isQuietCoverage(pointCount: number, expectedBuckets: number): boolean {
-  const expected = Math.floor(expectedBuckets)
-  if (!(expected > 0)) return false
-  return Math.max(0, Math.floor(pointCount)) >= expected * QUIET_COVERAGE_RATIO
-}
-
 export function HubDataHealthBanner({
   loadSource,
   hubEndpointOk,
@@ -111,7 +99,6 @@ export function HubDataHealthBanner({
   }
 
   // Coverage / IRC details — only after load settles (avoid false 0/240 on first paint).
-  let minutesMissingNote = false
   if (!loading && !slowPending) {
     if (activitySummary.gapCount > 0) {
       messages.push({
@@ -122,20 +109,8 @@ export function HubDataHealthBanner({
       })
     }
 
-    if (activitySummary.expectedBuckets > 0 && activitySummary.missingBuckets > 0) {
-      if (isQuietCoverage(activitySummary.pointCount, activitySummary.expectedBuckets)) {
-        // 95% or more of the window is there: one grey line below the rest, and none
-        // when the gap row above already says minutes are missing.
-        minutesMissingNote = activitySummary.gapCount <= 0
-      } else {
-        const pct = formatCoveragePercent(activitySummary.pointCount, activitySummary.expectedBuckets)
-        messages.push({
-          tone: 'warn',
-          text: `Activity coverage ${pct} for this window (${activitySummary.pointCount}/${activitySummary.expectedBuckets} buckets).`,
-          detail: `${activitySummary.missingBuckets} bucket${activitySummary.missingBuckets === 1 ? '' : 's'} missing from stored rollups.`,
-        })
-      }
-    }
+    // Missing buckets have no row here. The chart says so itself, in one grey line under it
+    // (showsMinutesMissingNote), and only below 95%.
 
     // The normalizer uses a zero-filled defensive shape when the pipeline is
     // absent; that is not evidence that live tracking is limited.
@@ -180,7 +155,7 @@ export function HubDataHealthBanner({
 
   const databaseWarning = !loading && coverageState != null && coverageDatabaseOk === false
 
-  if (messages.length === 0 && !coverageText && !pipelineUnknown && !databaseWarning && !minutesMissingNote) return null
+  if (messages.length === 0 && !coverageText && !pipelineUnknown && !databaseWarning) return null
 
   const showBackendCaption = backendUrl && resolveBackendSource(backendUrl) !== 'hosted'
   const caption = showBackendCaption ? backendSourceCaption(backendUrl) : null
@@ -254,12 +229,6 @@ export function HubDataHealthBanner({
             )
           })
         : null}
-      {minutesMissingNote ? (
-        <div className="hx-health-banner__row hx-health-banner__row--info" data-testid="hub-minutes-missing-note">
-          <Info aria-hidden="true" size={16} />
-          <div className="hx-health-banner__body"><span>{MINUTES_MISSING_NOTE}</span></div>
-        </div>
-      ) : null}
       {caption ? <div className="hx-health-banner__caption muted">{caption}</div> : null}
     </div>
   )

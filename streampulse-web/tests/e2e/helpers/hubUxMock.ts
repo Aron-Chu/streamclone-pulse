@@ -108,6 +108,8 @@ export type HubUxMockOptions = {
   extraPulseMoments?: Array<{ login: string; streamId: string; offsetSeconds: number; label: string; minutesBefore: number }>
   /** The hub's featured stream (default: none qualifies, so the Featured stream card stays off). */
   featuredSession?: unknown
+  /** Serves the 24h activity without the buckets this returns false for (index from the oldest): a window the collector missed. */
+  keepActivityBucket?: (index: number) => boolean
 }
 
 /**
@@ -240,6 +242,9 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
       ...activityPoints[activityPoints.length - 1],
       t: Math.floor(now / 60_000) * 60_000 - (30 - i) * 60_000,
     })) : activityPoints
+    const answeredPoints = options.keepActivityBucket && !servingRecent
+      ? servedPoints.filter((_, index) => options.keepActivityBucket!(index))
+      : servedPoints
     if (hubDelayMs > 0) {
       await new Promise((resolve) => setTimeout(resolve, hubDelayMs))
     }
@@ -293,7 +298,7 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
           },
         },
         activity: {
-          points: servedPoints,
+          points: answeredPoints,
           windowMinutes: legacyCoarse ? requestedMinutes : servedWindowMinutes,
           servedWindowMinutes,
           bucketMinutes,
