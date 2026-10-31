@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import type { Page } from '@playwright/test'
 import { test, expect } from '../helpers/testFixtures.ts'
 import {
@@ -94,6 +95,45 @@ test.describe('extension mocked states', () => {
       // leave the user looking at a blank/recent fallback chart.
       await assertPulseShadowContains(extension.page, /Full stream|Available coverage|Range/i)
     }
+    assertNoUncaughtErrors(evidence)
+  })
+
+  test('a channel Pulse does not chart opens on Chat without saving it, and Pulse says why', async ({
+    extension,
+    prepare,
+    evidence,
+  }) => {
+    await prepare({ scenario: 'live-ready', twitchKind: 'live', storage: { sidebarTab: 'pulse' } })
+    const fixture = JSON.parse(readFileSync(new URL('../fixtures/api/pulse-live-ready.json', import.meta.url), 'utf8'))
+    await extension.context.route(
+      'https://api.streampulse.stream/v1/extension/pulse/channels/fixturechan*',
+      async route => {
+        if (new URL(route.request().url()).pathname.endsWith('/fixturechan')) {
+          await route.fulfill({ json: { ...fixture, rosterEligible: false } })
+        } else {
+          await route.fallback()
+        }
+      },
+    )
+    await openTwitchChannel(extension.page)
+
+    const chatTab = extension.page.getByRole('tab', { name: 'Chat', exact: true })
+    const pulseTab = extension.page.getByRole('tab', { name: 'Pulse', exact: true })
+    const panel = extension.page.locator('#streamclone-pulse-root')
+    const savedTab = async () => (await readExtensionStorage(extension.serviceWorker, ['sidebarTab'])).sidebarTab
+    // The saved tab is Pulse, so only the off-list answer can put Chat on screen.
+    await expect(chatTab).toHaveAttribute('aria-selected', 'true')
+    await expect(panel).toBeHidden()
+    expect(await savedTab()).toBe('pulse')
+
+    // Pulse still opens on a click, to one card that says why, with the way back.
+    await pulseTab.click()
+    await expect(pulseTab).toHaveAttribute('aria-selected', 'true')
+    await assertPulseShadowContains(extension.page, /Not charted\s*StreamPulse only charts Twitch’s busiest channels\./)
+    await extension.page.getByRole('button', { name: 'Back to chat', exact: true }).click()
+    await expect(chatTab).toHaveAttribute('aria-selected', 'true')
+    await expect(panel).toBeHidden()
+    expect(await savedTab()).toBe('pulse')
     assertNoUncaughtErrors(evidence)
   })
 
