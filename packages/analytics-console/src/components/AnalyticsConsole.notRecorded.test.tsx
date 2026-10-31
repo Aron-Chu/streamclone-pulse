@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AnalyticsConsole } from './AnalyticsConsole.tsx'
+import { AnalyticsConsole, type AnalyticsConsoleProps } from './AnalyticsConsole.tsx'
 
 // A channel StreamPulse has never recorded (live read not_collected, stored list
 // empty) shows one plain panel, not an empty dashboard with "Needs sync" cards,
@@ -48,7 +48,7 @@ function NavigateGrab() {
   return null
 }
 
-function renderConsole(route: string) {
+function renderConsole(route: string, props: AnalyticsConsoleProps = {}) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
   })
@@ -57,7 +57,7 @@ function renderConsole(route: string) {
       <MemoryRouter initialEntries={[route]}>
         <NavigateGrab />
         <Routes>
-          <Route path="/analytics/:login/:streamId?" element={<AnalyticsConsole />} />
+          <Route path="/analytics/:login/:streamId?" element={<AnalyticsConsole {...props} />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -110,6 +110,21 @@ describe('AnalyticsConsole: a channel StreamPulse has never recorded', () => {
     expect(screen.queryByRole('button', { name: 'Refresh data' })).toBeNull()
     expect(document.body.textContent).not.toMatch(/Streamclone/i)
     expect(screen.getByRole('region', { name: 'Analytics for sp_untracked' })).toBeTruthy()
+  })
+
+  it('points "Suggest a channel" straight at the public Discord when the host says the form is not open', async () => {
+    api.getAnalyticsStreams.mockResolvedValue({ channel: 'sp_untracked', items: [], sources: [], updatedAt: Date.now() })
+    renderConsole('/analytics/sp_untracked', { suggestChannel: { href: 'https://discord.gg/streampulse', label: 'Suggest it in Discord (public)' } })
+
+    const panel = await screen.findByRole('region', { name: "StreamPulse hasn’t recorded sp_untracked yet" })
+    const suggest = within(panel).getByRole('link', { name: 'Suggest it in Discord (public) (opens in a new tab)' })
+    expect(suggest.getAttribute('href')).toBe('https://discord.gg/streampulse')
+    expect(suggest.getAttribute('target')).toBe('_blank')
+    expect(suggest.getAttribute('rel')).toBe('noopener noreferrer')
+    expect(suggest.textContent).toBe('Suggest it in Discord (public)')
+    // The other two links are as before, and no link still says "Suggest a channel".
+    expect(within(panel).getByRole('link', { name: 'Search tracked channels' }).getAttribute('href')).toBe('/analytics')
+    expect(within(panel).queryByRole('link', { name: 'Suggest a channel' })).toBeNull()
   })
 
   it('keeps the dashboard for a channel with stored streams', async () => {
