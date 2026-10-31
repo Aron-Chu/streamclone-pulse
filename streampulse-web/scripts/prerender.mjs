@@ -20,7 +20,7 @@ const analyticsCriticalStyles = readdirSync(join(dist, 'assets'))
 // preloads its own chunks, so they download beside the entry, not after it.
 const manifest = JSON.parse(readFileSync(join(dist, '.vite', 'manifest.json'), 'utf8'))
 const publicPageSources = {
-  docs: 'Docs', status: 'Status', privacy: 'Privacy', terms: 'Terms', refunds: 'Refunds',
+  docs: 'Docs', status: 'Status', privacy: 'Privacy', terms: 'Terms', refunds: 'Refunds', withdraw: 'Withdraw',
   supporter: 'Supporter', 'supporter/thanks': 'SupporterThanks', support: 'Support',
   feedback: 'Feedback', discord: 'Discord', changelog: 'Changelog',
 }
@@ -129,6 +129,13 @@ const routes = [
     description: 'How to cancel Pulse Supporter and when a charge is refunded.',
     canonicalPath: '/refunds',
     robots: 'index,follow',
+  },
+  {
+    path: 'withdraw',
+    title: 'Withdraw from your contract — StreamPulse',
+    description: 'Send a withdrawal request for your Pulse Supporter subscription.',
+    canonicalPath: '/withdraw',
+    robots: 'noindex,nofollow',
   },
   {
     path: 'supporter',

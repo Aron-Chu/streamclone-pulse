@@ -45,6 +45,7 @@ const Status = onDemandPage(() => import('./public/Status'))
 const Privacy = onDemandPage(() => import('./public/Privacy'))
 const Terms = onDemandPage(() => import('./public/Terms'))
 const Refunds = onDemandPage(() => import('./public/Refunds'))
+const Withdraw = onDemandPage(() => import('./public/Withdraw'))
 const Supporter = onDemandPage(() => import('./public/Supporter'))
 const SupporterThanks = onDemandPage(() => import('./public/SupporterThanks'))
 const Support = onDemandPage(() => import('./public/Support'))
@@ -58,6 +59,7 @@ const OPENING_PAGES: Record<string, { preload: () => Promise<void> }> = {
   '/privacy': Privacy,
   '/terms': Terms,
   '/refunds': Refunds,
+  '/withdraw': Withdraw,
   '/supporter': Supporter,
   '/supporter/thanks': SupporterThanks,
   '/support': Support,
@@ -154,6 +156,7 @@ function PortalRoutes() {
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/terms" element={<Terms />} />
         <Route path="/refunds" element={<Refunds />} />
+        <Route path="/withdraw" element={<Withdraw />} />
         {/* Public offer page. The extension's Supporter card links here, so it
             must stay a real route — never a redirect into a gated surface. */}
         <Route path="/supporter" element={<Supporter />} />

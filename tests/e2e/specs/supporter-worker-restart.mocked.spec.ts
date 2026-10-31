@@ -379,7 +379,7 @@ test('a stopped packaged worker resumes the exact private restore and respects i
     let throttled: Call | undefined
     await extension.context.route(`${API}/v1/account/restores/poll`, async route => {
       const entry = call(route, trace); expect(entry.method).toBe('POST')
-      expect(entry.body).toEqual({ restoreId: RESTORE, pollingSecret: SECRET })
+      expect(entry.body).toEqual({ restoreId: RESTORE, pollingSecret: SECRET, restoreKey: expect.stringMatching(/^[a-f0-9]{64}$/) })
       if (!throttled) { throttled = entry; await respond(route, entry, { error: 'rate_limited' }, 429, COOLDOWN_SECONDS) }
       else {
         if (approved) restored = true
@@ -442,7 +442,7 @@ test('a restarted packaged worker stops a restore at its real fixture expiry wit
         expiresAt: new Date(expiresAt).toISOString(), intervalSeconds: 5 }, 201)
     })
     await extension.context.route(`${API}/v1/account/restores/poll`, async route => {
-      const entry = call(route, trace); expect(entry.body).toEqual({ restoreId: RESTORE, pollingSecret: SECRET })
+      const entry = call(route, trace); expect(entry.body).toEqual({ restoreId: RESTORE, pollingSecret: SECRET, restoreKey: expect.stringMatching(/^[a-f0-9]{64}$/) })
       await respond(route, entry, { state: 'pending' })
     })
     await extension.page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)

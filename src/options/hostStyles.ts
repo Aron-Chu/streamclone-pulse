@@ -124,6 +124,9 @@ const hostStyles = `
   .pulse-account-link-code { font-variant-numeric: tabular-nums; font-weight: 700; letter-spacing: .08em; color: ${theme.textPrimary}; user-select: all; }
   .pulse-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .pulse-journey-restore { display: grid; gap: 8px; min-width: 0; }
+  .pulse-journey-restore form { display: grid; gap: 8px; }
+  .pulse-restore-wait { display: grid; gap: 8px; }
+  .pulse-restore-wait .pulse-account-link-code { font-size: 20px; letter-spacing: .16em; }
   .pulse-journey-restore label { font-size: 12px; color: ${theme.textSecondary}; }
   .pulse-journey-restore input { box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; border: 1px solid ${theme.border}; border-radius: 8px; background: ${theme.panel}; color: ${theme.textPrimary}; padding: 10px 12px; font: inherit; }
   .pulse-journey-restore input:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 2px; }
@@ -165,9 +168,9 @@ const hostStyles = `
     padding-top: 10px;
     border-top: 1px solid ${theme.border};
   }
-  .pulse-supporter-policies a { display: inline-flex; align-items: center; box-sizing: border-box; min-width: 44px; min-height: 44px; padding: 0 4px; color: ${theme.textSecondary}; font-weight: 600; }
-  .pulse-supporter-policies a:hover { color: var(--pulse-accent-soft, #c4b5fd); }
-  .pulse-supporter-policies a:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 3px; }
+  .pulse-supporter-policies a, .pulse-supporter-withdrawal-link { display: inline-flex; align-items: center; box-sizing: border-box; min-width: 44px; min-height: 44px; padding: 0 4px; color: ${theme.textSecondary}; font-weight: 600; }
+  .pulse-supporter-policies a:hover, .pulse-supporter-withdrawal-link:hover { color: var(--pulse-accent-soft, #c4b5fd); }
+  .pulse-supporter-policies a:focus-visible, .pulse-supporter-withdrawal-link:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 3px; }
   .pulse-supporter-save-status { min-height: 20px; }
   .pulse-supporter-settings input:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 3px; }
 
