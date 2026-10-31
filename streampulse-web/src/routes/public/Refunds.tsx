@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
-import { SUPPORTER_PATH, TERMS_PATH } from '../../lib/externalLinks'
-import { PrelaunchNotice } from './PrelaunchNotice'
+import { STRIPE_CUSTOMER_PORTAL_LOGIN_URL, SUPPORTER_PATH, TERMS_PATH } from '../../lib/externalLinks'
 
 /**
  * Cancellation and refund policy for Pulse Supporter.
@@ -32,16 +31,15 @@ export default function Refunds() {
           </div>
           <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Cancellation &amp; Refunds</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            Last updated: October 13, 2026 · Applies to the Pulse Supporter subscription.
+            Last updated: October 28, 2026 · Applies to the Pulse Supporter subscription.
           </p>
         </header>
 
-        <PrelaunchNotice />
 
         <section className="mt-8 rounded-xl border border-white/[0.08] bg-black/20 p-6">
           <h2 className="!mt-0">Summary</h2>
           <p className="text-zinc-300">
-            Paid sign-ups are not open yet. Once they are, you can cancel whenever you like and keep
+            You can cancel whenever you like and keep
             access until the end of the period you already paid for. No cancellation fee, no minimum
             term, and no need to ask anyone. If something went wrong — a duplicate charge, a charge
             you did not intend, or a feature that did not work — email and it gets refunded.
@@ -53,10 +51,11 @@ export default function Refunds() {
             and refund requests within 7 days. Private mailbox routing is ops-owned. */}
         <p>
           Cancellation is self-service in the Stripe Customer Portal, reachable through Manage
-          subscription in the extension or on your account page once sign-ups open. You can also
-          cancel by emailing{' '}
-          <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a> from the billing
-          email you gave Stripe at checkout.
+          subscription in the connected extension or through{' '}
+          <a href={STRIPE_CUSTOMER_PORTAL_LOGIN_URL} target="_blank" rel="noopener noreferrer">Stripe's billing-email portal</a>.
+          You can also ask to cancel by emailing{' '}
+          <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a>. If possible,
+          use your current Stripe billing email so we can find your subscription.
         </p>
         <ul>
           <li>Cancelling takes effect at the end of the period you have already paid for.</li>
@@ -136,23 +135,22 @@ export default function Refunds() {
           answer is a real answer, not a form.
         </p>
 
-        {/* PENDING OWNER INPUT (audit LG-1, memo L-1): the statutory cancellation
-            rights depend on the selling entity and jurisdiction, which only the owner
-            can supply with a legal professional. Do not fill them in from elsewhere. */}
         <h2>Consumer cancellation rights</h2>
         <p>
-          Some places give you a statutory right to cancel a new online purchase within a set period,
-          separate from this policy. Nothing here removes a right you have under consumer law that
-          cannot be waived. Paid sign-ups are not open yet. The specific statutory rights that apply
-          to you are pending and will be stated in the <Link to={TERMS_PATH}>terms of use</Link>{' '}
-          before sign-ups open.
+          If you live in the EU, the wider European Economic Area or the UK, you can withdraw from a
+          new Supporter subscription within 14 days after you subscribe, without giving a reason,
+          and get a full refund. To withdraw, email within that period as described under How to ask.
+          This is on top of the refunds above. Other places may give you a statutory right to cancel
+          too, and nothing here removes a right you have under consumer law that cannot be waived.
+          Who sells Supporter, and which law applies, is in the <Link to={TERMS_PATH}>terms of use</Link>.
         </p>
 
         <h2>How to ask</h2>
         <p>
-          Email <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a> from the
-          billing email you gave Stripe at checkout, and include the date and amount of the charge or
-          the invoice number from your Stripe receipt. Please do not include your full card number —
+          Email <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a> and include
+          the date and amount of the charge or the invoice number from your Stripe receipt. If possible,
+          use your current Stripe billing email. If you cannot access it, contact us anyway; we may
+          ask for other information to verify your request. Please do not include your full card number —
           it is not needed and StreamPulse cannot use it.
         </p>
         <p>

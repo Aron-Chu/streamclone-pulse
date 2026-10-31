@@ -10,7 +10,7 @@ import Terms from '../src/routes/public/Terms'
 
 /**
  * The public Supporter pages must describe what the backend actually does
- * (audit LG-2, LG-3, LG-5, LG-6), and say plainly that paid sign-ups are closed.
+ * (audit LG-2, LG-3, LG-5, LG-6). From launch day, none says sign-ups are closed.
  */
 const pages: Array<[string, ComponentType, string]> = [
   ['Terms', Terms, 'terms-of-use'],
@@ -25,11 +25,12 @@ function textOf(Page: ComponentType, testId: string): string {
 }
 
 describe('Supporter legal copy', () => {
-  it.each(pages)('%s states that Supporter sign-ups are not open yet', (_, Page, testId) => {
-    render(<MemoryRouter><Page /></MemoryRouter>)
-    const notice = screen.getByTestId('prelaunch-notice')
-    expect(notice.textContent).toMatch(/^Supporter sign-ups are not open yet\./)
-    expect(screen.getByTestId(testId).contains(notice)).toBe(true)
+  // Fails until the owner's seller, governing-law and consumer-rights text
+  // replaces the pending paragraphs in Terms and Refunds (audit LG-1).
+  it.each(pages)('%s no longer says Supporter sign-ups are closed', (_, Page, testId) => {
+    const body = textOf(Page, testId)
+    expect(screen.queryByTestId('prelaunch-notice')).toBeNull()
+    expect(body).not.toMatch(/not open yet|sign-ups are not open|once (paid )?sign-ups open|before (paid )?sign-ups open|no sale is offered/i)
   })
 
   it.each(pages)('%s makes none of the withdrawn promises', (_, Page, testId) => {
@@ -62,14 +63,14 @@ describe('Supporter legal copy', () => {
     expect(body).toMatch(/no public Twitch chat badge — it is not included/)
   })
 
-  it('Terms says in one sentence that the selling entity, address and law are stated before sign-ups open', () => {
+  it('Terms states the owner-provided seller, public address and governing law', () => {
     render(<MemoryRouter><Terms /></MemoryRouter>)
-    const pending = screen.getByTestId('terms-pending-owner-input')
-    expect(pending.textContent?.replace(/\s+/g, ' ')).toContain(
-      'The selling entity, legal address, governing law and consumer cancellation rights will be stated here before paid sign-ups open.',
-    )
-    // No table of four "Pending" rows: one sentence says it once.
-    expect(screen.getByTestId('terms-of-use').textContent).not.toMatch(/Pending — not yet stated/)
+    const seller = screen.getByTestId('terms-seller-and-law').textContent?.replace(/\s+/g, ' ') ?? ''
+    expect(seller).toContain('Aron Chu, 906 North Miller Dr, Unit 3099, Tempe, AZ 85288, USA.')
+    expect(seller).toContain('governed by the law of Arizona, USA')
+    expect(seller).toMatch(/EU.*European Economic Area.*UK.*within 14 days/)
+    expect(seller).toContain('refunded in full within 14 days')
+    expect(seller).not.toMatch(/\[(SELLER|GOVERNING)/)
   })
 
   it('Terms gives the Pulse Supporter section an anchor the extension links to (/terms#supporter)', () => {
@@ -156,7 +157,7 @@ describe('Supporter legal copy', () => {
     render(<MemoryRouter><Privacy /></MemoryRouter>)
     expect(screen.getByTestId('privacy-contact').querySelector('a[href="mailto:privacy@streampulse.stream"]')).toBeTruthy()
     const body = screen.getByTestId('privacy-policy').textContent ?? ''
-    expect(body).toMatch(/Supporter sign-ups are not open yet; card details go to Stripe, never to StreamPulse/)
+    expect(body).toMatch(/Card details go to Stripe, never to StreamPulse/)
     expect(body).toMatch(/set when you use the account pages on https:\/\/streampulse\.stream/)
     expect(body).not.toMatch(/all set by the StreamPulse API at/)
   })
@@ -164,7 +165,7 @@ describe('Supporter legal copy', () => {
   it('directs new buyers to a nonpaid extension connection, then a separate offered purchase', () => {
     render(<MemoryRouter><Supporter /></MemoryRouter>)
     expect(screen.getByRole('link', { name: 'Get the extension' }).getAttribute('href')).toMatch(/^https:\/\/chromewebstore\.google\.com\//)
-    expect(screen.getByTestId('supporter-availability').textContent).toMatch(/choose Become a Supporter.*and pay on Stripe/)
+    expect(screen.getByTestId('supporter-availability').textContent).toMatch(/Choose Become a Supporter.*and pay on Stripe/)
     expect(screen.getByTestId('supporter-availability').textContent).toMatch(/No Twitch sign-in or separate StreamPulse sign-up is needed/)
     expect(screen.queryByRole('link', { name: 'Use a StreamPulse website account' })).toBeNull()
     expect(screen.queryByRole('link', { name: 'Open account billing' })).toBeNull()
@@ -185,8 +186,8 @@ describe('Supporter legal copy', () => {
     expect(billing).toMatch(/checks the notification's\s+signature and removes contact details before saving the new payment notification/)
     expect(billing).toMatch(/keyed, one-way hash of the billing email as a recovery\s+lookup, rather than the address itself/)
     expect(billing).toMatch(/does not automatically combine accounts\s+or grant Supporter access/)
-    expect(screen.getByTestId('privacy-policy').textContent).toMatch(/This section describes what happens once paid sign-ups open/)
     expect(screen.getByTestId('privacy-installation-account').textContent).toMatch(/Looking at your status does not create a connection/)
+    expect(screen.getByTestId('privacy-installation-account').textContent).toMatch(/Restore existing Supporter/)
     expect(screen.getByTestId('privacy-installation-account').textContent).toMatch(/does not sync My Moments: bookmarks, notes and watched history stay in this browser/)
     const twitch = screen.getByTestId('privacy-continue-with-twitch').textContent ?? ''
     expect(twitch).toMatch(/keyed hash of your Twitch user ID/)
@@ -197,7 +198,8 @@ describe('Supporter legal copy', () => {
     render(<MemoryRouter><Terms /></MemoryRouter>)
     const billing = screen.getByTestId('terms-billing-email').textContent ?? ''
     expect(billing).toMatch(/reinstalling or using another browser does not\s+restore it automatically/)
-    expect(billing).toMatch(/manage billing through Stripe with the email you\s+paid with/)
+    expect(billing).toMatch(/your extension offers Restore existing Supporter/)
+    expect(billing).toMatch(/manage billing\s+through Stripe with your current billing email/)
     expect(billing).toMatch(/Billing changes\s+do not move Supporter to another account/)
     expect(screen.getByTestId('terms-your-account').textContent).toMatch(/private credentials saved in your browser profile/)
     expect(screen.getByRole('link', { name: "Stripe's billing-email portal" }).getAttribute('href')).toMatch(/^https:\/\/billing\.stripe\.com\/p\/login\//)
@@ -234,9 +236,11 @@ describe('Supporter legal copy', () => {
     expect(twitch).toMatch(/only to sign\s+that account out everywhere and does not store/)
   })
 
-  it('Refunds asks for requests from the billing email given to Stripe, not an account address', () => {
+  it('Refunds offers the current Stripe billing email as a helpful identifier, not a barrier', () => {
     const body = textOf(Refunds, 'refund-policy')
     expect(body).not.toMatch(/address on the account/)
-    expect(body.match(/from the billing\s+email you gave Stripe at checkout/g)).toHaveLength(2)
+    expect(body.match(/use your current Stripe billing email/g)).toHaveLength(2)
+    expect(body).toMatch(/If you cannot access it, contact us anyway/)
+    expect(body).toMatch(/European Economic Area or the UK.*withdraw.*within 14 days.*full refund/)
   })
 })
