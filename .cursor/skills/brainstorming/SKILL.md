@@ -100,7 +100,3 @@ After the spec self-check, ask the user to review the written spec before contin
 - **Explore alternatives** — always propose 2-3 approaches before deciding
 - **Incremental validation** — present the design, get approval, then continue
 - **Stay flexible** — go back and clarify whenever something is unclear
-
-## BaJie-MCP integration notes
-
-This skill is used by the BaJie-MCP control center when dispatching tasks. When the control center dispatches a requirements-analysis task to product_mgr / fullstack_dev, it attaches a `[SKILL: brainstorming]` hint, and the receiver should follow this skill's process.
