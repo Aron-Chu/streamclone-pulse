@@ -35,6 +35,28 @@ export const EXCEPTION_FILE = 'edge-freeze-exception.json'
 export const MIGRATION_EXCEPTION_FILE = 'pages-migration-approval.json'
 export const APEX_PAGES_PROJECT = 'streampulse-web'
 export const MIGRATION_PAGES_PROJECT = 'streampulse-main'
+export const PRODUCTION_PAGES_ACCOUNT_SHA256 = '6675efe08c02fc8f0b4b6013cc1e59bc0942051293270aa5e596d33a9dc76465'
+
+// The production CLI always uses this reviewed digest; there is no env/CLI
+// override. The optional trusted digest allows synthetic policies in unit tests.
+export function assertProductionPagesTarget(env = process.env, accountSha256 = PRODUCTION_PAGES_ACCOUNT_SHA256) {
+  const project = env.CLOUDFLARE_PAGES_PROJECT?.trim()
+  if (project !== MIGRATION_PAGES_PROJECT) {
+    throw new Error('CLOUDFLARE_PAGES_PROJECT must explicitly select streampulse-main for production')
+  }
+  const account = env.CLOUDFLARE_ACCOUNT_ID?.trim()
+  if (!/^[a-f0-9]{32}$/.test(account || '')) {
+    throw new Error('CLOUDFLARE_ACCOUNT_ID must explicitly identify the production account')
+  }
+  const expected = env.PAGES_DEPLOY_EXPECTED_ACCOUNT_ID?.trim()
+  if (!/^[a-f0-9]{32}$/.test(expected || '') || expected !== account) {
+    throw new Error('PAGES_DEPLOY_EXPECTED_ACCOUNT_ID must match the independently verified production account')
+  }
+  if (createHash('sha256').update(account).digest('hex') !== accountSha256) {
+    throw new Error('the selected Pages account does not match the reviewed production account')
+  }
+  return { project, account }
+}
 
 // The expected account is supplied separately by the operator after checking
 // the destination account; no account identifiers belong in source control.

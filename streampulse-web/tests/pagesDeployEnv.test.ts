@@ -102,15 +102,18 @@ describe('production deploy build inputs', () => {
     const script = readFileSync(resolve(webRoot, 'scripts/pages-deploy-prod.mjs'), 'utf8')
     const guard = script.indexOf('checkProductionBuildEnv(productionEnv)')
     expect(guard).toBeGreaterThan(0)
-    for (const step of ["console.log('Running production deploy gates')", "run('npx', ['vite', 'build']", 'run(localWrangler, deployArgs)']) {
+    const targetGuard = script.indexOf('const productionTarget = edgeCheck(() => assertProductionPagesTarget())')
+    expect(targetGuard).toBeGreaterThan(0)
+    expect(targetGuard).toBeLessThan(guard)
+    for (const step of ["console.log('Running production deploy gates')", "run('npx', ['vite', 'build']", 'run(localWrangler, deployArgs,']) {
       expect(script.indexOf(step), step).toBeGreaterThan(guard)
     }
     expect(script).toContain("loadEnv('production', webRoot, ['VITE_'])")
   })
 
-  it('exits before building when the deploy runs from a fresh shell', () => {
-    // Empty values override any local .env.production file (Vite gives the shell
-    // precedence), so this can never reach a build or an upload.
+  it('exits before build-input loading when a fresh shell has no production target', () => {
+    // Target validation comes first. Build-input failures and waivers are
+    // covered above; this child must stop before loading inputs or uploading.
     const env: Record<string, string> = { ...process.env } as Record<string, string>
     for (const input of inputs) {
       env[input.name] = ''
@@ -118,11 +121,14 @@ describe('production deploy build inputs', () => {
     }
     env.VITE_BACKEND_URL = 'https://api.streampulse.stream'
     env.CLOUDFLARE_API_TOKEN = ''
+    env.CLOUDFLARE_PAGES_PROJECT = ''
+    env.CLOUDFLARE_ACCOUNT_ID = ''
+    env.PAGES_DEPLOY_EXPECTED_ACCOUNT_ID = ''
     env.SENTRY_AUTH_TOKEN = ''
     const result = spawnSync(process.execPath, ['scripts/pages-deploy-prod.mjs'], { cwd: webRoot, env, encoding: 'utf8', timeout: 60_000 })
     expect(result.status).toBe(1)
-    expect(result.stderr).toContain('refuses to build production without its build inputs')
-    for (const input of inputs) expect(result.stderr).toContain(input.name)
+    expect(result.stderr.trim()).toBe('pages:deploy:prod: CLOUDFLARE_PAGES_PROJECT must explicitly select streampulse-main for production')
+    expect(result.stdout).toBe('')
     expect(result.stdout).not.toContain('Running production deploy gates')
     expect(result.stdout).not.toContain('Deploying git SHA')
   })
