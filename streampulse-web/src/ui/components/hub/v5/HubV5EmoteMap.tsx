@@ -106,8 +106,8 @@ function Chg({ c }: { c: EmoteChange }) {
 }
 
 /** The picture at its size; a sharper file is loaded before it replaces the one on show, so nothing blinks. */
-function EmotePic({ a, size }: { a: HubEmoteAgg; size: number }) {
-  const want = sanitizeEmoteImageUrl(emoteImageAt(a.e.imageUrl, size))
+function EmotePic({ a, size, zoomed = false }: { a: HubEmoteAgg; size: number; zoomed?: boolean }) {
+  const want = sanitizeEmoteImageUrl(emoteImageAt(a.e.imageUrl, size, zoomed))
   const [src, setSrc] = useState(want)
   useEffect(() => {
     if (!want || want === src) return undefined
@@ -711,7 +711,7 @@ export function HubV5EmoteMap({
                       select(a.id)
                     }}
                   >
-                    {face.pic ? <EmotePic a={a} size={face.pic} /> : null}
+                    {face.pic ? <EmotePic a={a} size={face.pic} zoomed={zoomed} /> : null}
                     {face.name || face.val ? (
                       <span className="hv5-em-ft">
                         {face.name ? <span className="hv5-em-nm">{a.e.name}</span> : null}

@@ -130,11 +130,11 @@ test.describe('in-app navigation scroll', () => {
     await expect(details).not.toHaveAttribute('open', '')
   })
 
-  test('the landing Developer reference card opens the collapsed #api section', async ({ page }) => {
+  test('the home page has no Developer reference card; /docs/api still opens the collapsed #api section', async ({ page }) => {
     await page.goto('/')
-    const card = page.locator('a.sl-rescard[href="/docs#api"]')
-    await card.scrollIntoViewIfNeeded()
-    await card.click()
+    await expect(page.locator('a.sl-rescard')).toHaveCount(2)
+    await expect(page.locator('a.sl-rescard[href="/docs#api"]')).toHaveCount(0)
+    await page.goto('/docs/api')
     await expect(page).toHaveURL(/\/docs#api$/)
     await expect(page.locator('details:has(#api)')).toHaveAttribute('open', '')
     await expect(page.locator('#api')).toBeInViewport()

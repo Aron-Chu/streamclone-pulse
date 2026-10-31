@@ -13,7 +13,7 @@ import { optionsForBoundedActivityFallback } from '../../lib/activityRangeCapabi
 import { usePublicHubData } from '../../hooks/usePublicHubData'
 import { getBackendUrl } from '../../lib/apiClient'
 import { hubActivityBehindWords } from '../../lib/hubActivityFallbackLine'
-import { activityBucketMs, formatActivityWindowLabel, summarizeActivity } from '../../lib/hubActivitySummary'
+import { activityBucketMs, formatActivityWindowLabel, showsMinutesMissingNote, summarizeActivity } from '../../lib/hubActivitySummary'
 import { selectHubChartActivityInputs } from '../../lib/hubChartActivityModel'
 import { isHubActivityLivePoolFallback, resolveHubActivityChartWindowMinutes } from '../../lib/hubActivityHonesty'
 import { normalizePublicHub, type PublicHubActivityWindow } from '../../lib/publicHub'
@@ -159,6 +159,9 @@ export default function AnalyticsHubV5Page() {
     () => summarizeActivity(data.activity.points, servedActivityWindowMinutes, data.poolSize),
     [data.activity.points, data.poolSize, servedActivityWindowMinutes],
   )
+  // The health banner and the note under the chart judge "settled" alike: first paint and a read past its deadline are not.
+  const hubSettling = loadingInitial || hubUiState === 'loading'
+  const minutesMissingNote = showsMinutesMissingNote(activitySummary, !hubSettling && !(hub.hubReadPending && hub.hubReadLate))
 
   // The bar card reads the points the chart draws, on the chart's bucket grid.
   const chartActivity = useMemo(() => {
@@ -269,7 +272,7 @@ export default function AnalyticsHubV5Page() {
           liveRosterCount={data.coverage.liveChannels}
           error={hub.error}
           backendUrl={getBackendUrl()}
-          loading={loadingInitial || hubUiState === 'loading'}
+          loading={hubSettling}
           onRetry={hub.retryBlocked ? undefined : hub.refresh}
           retryDisabled={hub.refreshing || hub.hubReadRunning || hub.hubReadPending}
           pending={hub.hubReadPending}
@@ -326,6 +329,7 @@ export default function AnalyticsHubV5Page() {
               measuredTarget={measuredBody}
               onOpenMeasured={openMeasured}
               saved={savedAt != null}
+              minutesMissingNote={minutesMissingNote}
             />
           </div>
 

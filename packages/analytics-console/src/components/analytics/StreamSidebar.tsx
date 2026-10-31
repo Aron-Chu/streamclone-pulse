@@ -227,7 +227,7 @@ export function StreamSidebar({
   return (
     <div className="ssp-sl flex min-h-0 w-full flex-col overflow-hidden rounded border border-white/10 bg-white/[0.035]" data-stream-list>
       <div className="flex items-center justify-between border-b border-white/10 px-3 py-2.5">
-        <span className="text-xs font-black uppercase tracking-wide text-zinc-500">Streams</span>
+        <span className="text-xs font-black uppercase tracking-wide text-zinc-400">Streams</span>
         {/* Hidden, not removed, while the first list request is in flight: "0" would
             read as an empty channel, and the header keeps its height. */}
         <span
@@ -266,17 +266,17 @@ export function StreamSidebar({
                 {liveState === 'live' ? 'Live session' : 'Latest indexed session'}
               </span>
             </div>
-            <div className="mt-1 text-xs font-semibold text-zinc-500">
+            <div className="mt-1 text-xs font-semibold text-zinc-400">
               {liveState === 'live' ? 'Live tracking' : 'No live session confirmed'}
             </div>
           </Link>
         ) : null}
         {streams.length === 0 && loading ? (
-          <div role="status" className="px-3 py-4 text-center text-xs font-semibold text-zinc-500">
+          <div role="status" className="px-3 py-4 text-center text-xs font-semibold text-zinc-400">
             Loading streams…
           </div>
         ) : streams.length === 0 && loadFailed ? (
-          <div role="alert" className="px-3 py-4 text-center text-xs font-semibold text-zinc-500">
+          <div role="alert" className="px-3 py-4 text-center text-xs font-semibold text-zinc-400">
             Couldn&apos;t load streams.
             {onRetry ? (
               <button
@@ -290,11 +290,11 @@ export function StreamSidebar({
             ) : null}
           </div>
         ) : streams.length === 0 ? (
-          <div className="px-3 py-4 text-center text-xs font-semibold text-zinc-500">
+          <div className="px-3 py-4 text-center text-xs font-semibold text-zinc-400">
             No past streams indexed yet.
           </div>
         ) : visibleStreams.length === 0 ? (
-          <div className="px-3 py-4 text-center text-xs font-semibold text-zinc-500">
+          <div className="px-3 py-4 text-center text-xs font-semibold text-zinc-400">
             No synced streams match this filter. Turn off &quot;Synced only&quot; to see stats-only sessions.
           </div>
         ) : (
@@ -332,7 +332,7 @@ export function StreamSidebar({
                     isActive ? 'border-l-cyan-400 bg-cyan-400/10' : 'border-l-transparent'
                   }`}
                 >
-                  <div className="text-xs font-black uppercase tracking-wide text-zinc-500">
+                  <div className="text-xs font-black uppercase tracking-wide text-zinc-400">
                     {formatDateTime(stream.startedAt)}
                   </div>
                   <div
@@ -368,7 +368,7 @@ export function StreamSidebar({
                       { key: 'avg', text: `avg ${count(rollupStats?.avg ?? stream.avgViewers)}`, missing: count(rollupStats?.avg ?? stream.avgViewers) === '-' },
                       { key: 'peak', text: `peak ${count(rollupStats?.peak ?? stream.peakViewers)}`, missing: count(rollupStats?.peak ?? stream.peakViewers) === '-' },
                     ].filter(fact => !fact.missing)
-                    return facts.length ? <div className="mt-1.5 grid grid-cols-3 gap-1 text-xs font-bold text-zinc-500">
+                    return facts.length ? <div className="mt-1.5 grid grid-cols-3 gap-1 text-xs font-bold text-zinc-400">
                       {facts.map(fact => <span key={fact.key} title={fact.title}>{fact.text}</span>)}
                     </div> : null
                   })()}

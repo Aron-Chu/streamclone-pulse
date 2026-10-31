@@ -14,6 +14,9 @@ export function StreamQualityBanner({
   onSyncViewers?: () => void
 }) {
   if (!diagnosis) return null
+  // "Refresh data reloads charts … use sync actions below" is a note for whoever
+  // runs the sync actions. Visitors have none, so for them it points at nothing.
+  if (diagnosis.issues.includes('refresh_only_hint') && !canSync) return null
 
   const tone =
     diagnosis.issues.includes('syncing')

@@ -91,6 +91,7 @@ import { resolveMomentVodJump } from '../utils/selectedMomentDisplay.ts'
 import { SyncStatusPanel } from './analytics/SyncStatusPanel.tsx'
 import { StreamQualityBanner } from './analytics/StreamQualityBanner.tsx'
 import { diagnoseStreamQuality, sessionDataQualityLabel } from '../utils/streamQuality.ts'
+import { sessionEndedAtMs } from '../utils/sessionEnd.ts'
 import { isTerminalSyncPhase, pollSyncUntilDone } from '../utils/syncPolling.ts'
 import { buildSessionSignals } from '../signals/buildSessionSignals.ts'
 import { SessionSignalTape } from './signals/SessionSignalTape.tsx'
@@ -149,6 +150,12 @@ export interface AnalyticsConsoleProps {
   enableSyncActions?: boolean
   buildSessionPath?: (login: string, streamId: string) => string
   buildChannelPath?: (login: string) => string
+  /**
+   * Where "Suggest a channel" goes on a channel StreamPulse has not recorded.
+   * By default the site's /feedback page; a host whose feedback form is not open
+   * can point it straight at its public Discord instead (an outside link).
+   */
+  suggestChannel?: { href: string; label: string }
   /** Host-owned actions for an explicitly selected minute on a resolved stream. */
   renderSelectedMomentActions?: (moment: { login: string; streamId: string; offsetSeconds: number; at?: number; chatPerMin?: number; emotesPerMin?: number; category?: string; label?: string }) => ReactNode
 }
@@ -193,6 +200,7 @@ export function AnalyticsConsole({
   enableSyncActions = false,
   buildSessionPath = defaultSessionPath,
   buildChannelPath = defaultChannelPath,
+  suggestChannel,
   renderSelectedMomentActions,
 }: AnalyticsConsoleProps = {}) {
   const navigate = useNavigate()
@@ -1021,6 +1029,9 @@ export function AnalyticsConsole({
   ])
 
   const stream = detail?.stream
+  // An ended stream names its end ("Ended 31h ago", "Viewers at end") instead of
+  // the read time, which reads as live. Refresh data stays: ended data still changes.
+  const sessionEndedAt = sessionEndedAtMs(stream, sessionIsLive)
   const fallbackVodId = useMemo(
     () =>
       resolveSessionFallbackVodId({
@@ -1538,7 +1549,9 @@ export function AnalyticsConsole({
                   <span className="mi" data-session-updated>
                     {lastRefreshedAt
                       ? <RelativeTimeText prefix="Refreshed" value={lastRefreshedAt} />
-                      : <RelativeTimeText prefix="Updated" value={sessionUpdatedAt} />}
+                      : sessionEndedAt != null
+                        ? <RelativeTimeText prefix="Ended" value={sessionEndedAt} />
+                        : <RelativeTimeText prefix="Updated" value={sessionUpdatedAt} />}
                     <button
                       type="button"
                       className="ssp-rf"
@@ -1613,11 +1626,11 @@ export function AnalyticsConsole({
             </div>
           )}
         </header>
-        {channelNotRecorded ? <ChannelNotRecordedPanel login={channelLogin} /> : <>
+        {channelNotRecorded ? <ChannelNotRecordedPanel login={channelLogin} suggest={suggestChannel} /> : <>
 
         <section className="ssp-stats grid grid-cols-2 gap-3 lg:grid-cols-6" data-session-stat-row aria-label="Stream figures">
           <StatCard
-            label="Latest viewers"
+            label={sessionEndedAt != null ? 'Viewers at end' : 'Latest viewers'}
             value={statCardsPending ? '-' : statCardClasses.current.placeholder ?? count(headerStats.current)}
             tone={statCardClasses.current.muted ? STAT_PLACEHOLDER_MUTED_CLASS : 'text-cyan-300/90'}
           />
@@ -1990,7 +2003,7 @@ export function AnalyticsConsole({
  * One honest panel for a channel StreamPulse has never recorded, in place of
  * the stat grid, stream list and chart (which would all be empty placeholders).
  */
-function ChannelNotRecordedPanel({ login }: { login: string }) {
+function ChannelNotRecordedPanel({ login, suggest }: { login: string; suggest?: { href: string; label: string } }) {
   return (
     <section
       data-channel-not-recorded
@@ -2014,12 +2027,24 @@ function ChannelNotRecordedPanel({ login }: { login: string }) {
         >
           Search tracked channels
         </Link>
-        <Link
-          to="/feedback"
-          className="inline-flex min-h-11 items-center rounded border border-white/15 bg-white/[0.05] px-4 py-2 text-sm font-black text-zinc-200 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
-        >
-          Suggest a channel
-        </Link>
+        {suggest ? (
+          <a
+            href={suggest.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`${suggest.label} (opens in a new tab)`}
+            className="inline-flex min-h-11 items-center rounded border border-white/15 bg-white/[0.05] px-4 py-2 text-sm font-black text-zinc-200 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+          >
+            {suggest.label}
+          </a>
+        ) : (
+          <Link
+            to="/feedback"
+            className="inline-flex min-h-11 items-center rounded border border-white/15 bg-white/[0.05] px-4 py-2 text-sm font-black text-zinc-200 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+          >
+            Suggest a channel
+          </Link>
+        )}
       </div>
     </section>
   )

@@ -40,7 +40,7 @@ export default function Docs() {
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <ChromeInstallCta className={buttonClass('default', 'sm')} data-cta="chrome-install-docs" />
-            <span className="text-xs text-zinc-500">Desktop Chrome, Brave, Edge and Firefox · the extension version shown in the store listing identifies the published package, not the website release.</span>
+            <span className="text-xs text-zinc-400">Desktop Chrome, Brave, Edge and Firefox · the extension version shown in the store listing identifies the published package, not the website release.</span>
           </div>
           <div className="alert alert-warning mt-4">
             <span>
@@ -59,7 +59,7 @@ export default function Docs() {
             signals without exposing raw chat or chatter identities.
           </p>
           <ol className="mt-3 space-y-2">
-            <li>Start with Overview, then explore Moments, Emotes, or Channels.</li>
+            <li>Search a channel, or pick one under Busiest now.</li>
             <li>Check the displayed time window and coverage before comparing numbers.</li>
             <li>Open a moment to inspect its stream timestamp. Video may be pending or unavailable even when analytics exist.</li>
             <li>Share the timestamped stream link to return to the same broadcast and moment.</li>

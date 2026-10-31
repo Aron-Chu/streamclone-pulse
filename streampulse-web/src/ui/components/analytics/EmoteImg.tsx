@@ -46,7 +46,7 @@ export function EmoteImg({
   const [failedSource, setFailedSource] = useState<string>()
   const cssPx = displayPx ?? width ?? 28
   const safeSrc = sanitizeEmoteImageUrl(emoteDisplaySrc(src, cssPx))
-  const safeSrcSet = sanitizeEmoteSrcSet(emoteSrcSet(src))
+  const safeSrcSet = sanitizeEmoteSrcSet(emoteSrcSet(src, cssPx))
   const sourceKey = `${safeSrc ?? ''}|${safeSrcSet ?? ''}`
   if (!safeSrc || failedSource === sourceKey) {
     if (hideFallbackText) {

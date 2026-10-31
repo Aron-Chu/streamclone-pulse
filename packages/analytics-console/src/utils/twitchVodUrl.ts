@@ -141,7 +141,7 @@ export function resolveVodLinkState(input: {
     return {
       status: 'syncing',
       label: 'Waiting for Twitch VOD',
-      detail: lifecycleUnknown ? 'Waiting for an archive link. Broadcast lifecycle remains unknown.' : vodMessage || 'Waiting for Twitch VOD publication.',
+      detail: lifecycleUnknown ? 'Looking for the replay link…' : vodMessage || 'Waiting for Twitch VOD publication.',
     }
   }
 

@@ -37,8 +37,6 @@ afterEach(() => {
 })
 
 const SAFE = 'https://cdn.7tv.app/emote/01HXYZ/1x.webp'
-/** What the emote map binds for a 24 px picture: the same file at 2x. */
-const SAFE_2X = 'https://cdn.7tv.app/emote/01HXYZ/2x.webp'
 const PROFILE = 'https://static-cdn.jtvnw.net/jtv_user_pictures/abc-profile_image-300x300.png'
 const PROFILE_70 = 'https://static-cdn.jtvnw.net/jtv_user_pictures/abc-profile_image-70x70.png'
 const PROFILE_150 = 'https://static-cdn.jtvnw.net/jtv_user_pictures/abc-profile_image-150x150.png'
@@ -191,9 +189,10 @@ describe('Emote map pictures', () => {
 
   it('Most used and a selected emote bind an allowlisted https URL at their size; its moments ask for the 70 px avatar', () => {
     const { container } = renderMap(SAFE)
-    expect(imgSrcs(container.querySelector('.hv5-el-cols')!)).toEqual([SAFE_2X])
+    // A 24 px picture asks for the smallest file (1x), not a sharper one.
+    expect(imgSrcs(container.querySelector('.hv5-el-cols')!)).toEqual([SAFE])
     fireEvent.click(container.querySelector('.hv5-el-cols button')!)
-    expect(imgSrcs(container.querySelector('.hv5-el-ti')!)).toEqual([SAFE_2X])
+    expect(imgSrcs(container.querySelector('.hv5-el-ti')!)).toEqual([SAFE])
     expect(imgSrcs(container.querySelector('.hv5-el-cols')!)).toEqual([PROFILE_70])
   })
 

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Activity, ArrowRight, BookOpen, TerminalSquare, type LucideIcon } from 'lucide-react'
+import { Activity, ArrowRight, BookOpen, type LucideIcon } from 'lucide-react'
 
 interface ResourceLink {
   to: string
@@ -23,10 +23,6 @@ const LINKS: ResourceLink[] = [
     title: 'System status',
     copy: 'Available service health and coverage measurements, with their last update time.',
     cta: 'View status',
-  },
-  {
-    to: '/docs#api', icon: TerminalSquare, title: 'Developer reference',
-    copy: 'Read-only aggregate endpoints and the boundaries of the public API.', cta: 'View reference',
   },
 ]
 

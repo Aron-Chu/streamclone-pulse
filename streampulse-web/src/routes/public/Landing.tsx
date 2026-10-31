@@ -1,7 +1,7 @@
 ﻿import { useEffect, useMemo, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { lazy, Suspense, useState, type ReactNode } from 'react'
-import { ArrowRight, ArrowUpRight, BookOpen, LineChart, PanelTopOpen, Radio, ShieldCheck, Sparkles } from 'lucide-react'
+import { ArrowRight, ArrowUpRight, LineChart, PanelTopOpen, Radio, ShieldCheck, Sparkles } from 'lucide-react'
 import '../../ui/tokens.css'
 import '../../ui/components/landing/landing.css'
 import { buttonClass } from '../../ui/primitives'
@@ -186,18 +186,18 @@ function HowItWorks() {
 function FeatureGrid() {
   const features = [
     {
-      icon: ShieldCheck,
-      title: 'Coverage honesty',
-      copy: 'Live pages distinguish no pulse, stats-only, chat-synced, and full-pulse states instead of filling gaps client-side.',
-    },
-    {
       icon: LineChart,
-      title: 'Backend-scored peaks',
-      copy: 'Pulse scores, emote bursts, and stream ledgers stay server-authored so every surface reports the same truth.',
+      title: 'See when chat explodes',
+      copy: 'Chat, viewers and emote reactions, minute by minute.',
     },
     {
-      icon: BookOpen,
-      title: 'Public-safe analytics',
+      icon: Sparkles,
+      title: 'Jump to the moment',
+      copy: 'Open a moment, then jump to its replay when video is available.',
+    },
+    {
+      icon: ShieldCheck,
+      title: 'We never show who said what',
       copy: 'Global and hub views expose aggregate signals only: no raw chat, user IDs, or chatter-level rankings.',
     },
   ]
@@ -240,7 +240,7 @@ function Footer({ discord }: { discord: string | null }) {
           <AnalyticsPreferences />
           <a href={GITHUB_REPO_URL} target="_blank" rel="noreferrer noopener">GitHub</a>
         </div>
-        <small>Public analytics for StreamPulse. Aggregate-first, coverage-honest, and Twitch-native.</small>
+        <small>Public analytics for StreamPulse.</small>
       </div>
     </footer>
   )
@@ -322,7 +322,6 @@ export default function Landing() {
           <div className="sl-container">
             <div className="sl-section-head" data-reveal>
               <h2 id="features-title">Designed around trust, not mystery scores</h2>
-              <p>Coverage state, backfill state, and Pulse peaks come from the backend source of truth.</p>
             </div>
             <div data-reveal>
               <FeatureGrid />

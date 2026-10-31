@@ -117,13 +117,38 @@ describe('emote formatting', () => {
     expect(emoteSharePct(0.05)).toBe('<0.1%')
   })
 
-  it('asks for a sharper picture for a bigger tile', () => {
-    const tw = 'https://static-cdn.jtvnw.net/emoticons/v2/123/default/dark/1.0'
-    expect(emoteImageAt(tw, 50)).toBe('https://static-cdn.jtvnw.net/emoticons/v2/123/default/dark/3.0')
+  it('asks for the picture size that matches how big the tile draws it', () => {
+    const tw = 'https://static-cdn.jtvnw.net/emoticons/v2/123/default/dark/2.0'
+    const sv = 'https://cdn.7tv.app/emote/abc/4x.webp'
+    // Up to 28 px: Twitch 1.0 / 7TV 1x. Above it: 2.0 / 2x.
+    expect(emoteImageAt(tw, 28)).toBe('https://static-cdn.jtvnw.net/emoticons/v2/123/default/dark/1.0')
     expect(emoteImageAt(tw, 30)).toBe('https://static-cdn.jtvnw.net/emoticons/v2/123/default/dark/2.0')
-    expect(emoteImageAt('https://cdn.7tv.app/emote/abc/1x.webp', 50)).toBe('https://cdn.7tv.app/emote/abc/4x.webp')
+    expect(emoteImageAt(tw, 50)).toBe('https://static-cdn.jtvnw.net/emoticons/v2/123/default/dark/2.0')
+    expect(emoteImageAt(sv, 28)).toBe('https://cdn.7tv.app/emote/abc/1x.webp')
+    expect(emoteImageAt(sv, 30)).toBe('https://cdn.7tv.app/emote/abc/2x.webp')
+    expect(emoteImageAt(sv, 112)).toBe('https://cdn.7tv.app/emote/abc/2x.webp')
     expect(emoteImageAt('https://img.test/x.png', 50)).toBe('https://img.test/x.png')
     expect(emoteImageAt(undefined, 50)).toBe('')
+  })
+
+  it("uses Twitch's still picture, not the animated one, up to 20 px", () => {
+    const tw = 'https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_abc/default/dark/2.0'
+    expect(emoteImageAt(tw, 12)).toBe('https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_abc/static/dark/1.0')
+    expect(emoteImageAt(tw, 20)).toBe('https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_abc/static/dark/1.0')
+    expect(emoteImageAt(tw, 21)).toBe('https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_abc/default/dark/1.0')
+    expect(emoteImageAt(tw, 36)).toBe('https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_abc/default/dark/2.0')
+    // 7TV has no still variant to ask for: its smallest file stands.
+    expect(emoteImageAt('https://cdn.7tv.app/emote/abc/4x.webp', 12)).toBe('https://cdn.7tv.app/emote/abc/1x.webp')
+  })
+
+  it('keeps the biggest files (Twitch 3.0, 7TV 4x) for a zoomed-in map only', () => {
+    const tw = 'https://static-cdn.jtvnw.net/emoticons/v2/123/default/dark/1.0'
+    const sv = 'https://cdn.7tv.app/emote/abc/1x.webp'
+    expect(emoteImageAt(tw, 112, true)).toBe('https://static-cdn.jtvnw.net/emoticons/v2/123/default/dark/3.0')
+    expect(emoteImageAt(tw, 56, true)).toBe('https://static-cdn.jtvnw.net/emoticons/v2/123/default/dark/2.0')
+    expect(emoteImageAt(sv, 112, true)).toBe('https://cdn.7tv.app/emote/abc/4x.webp')
+    expect(emoteImageAt(sv, 64, true)).toBe('https://cdn.7tv.app/emote/abc/2x.webp')
+    expect(emoteImageAt(sv, 24, true)).toBe('https://cdn.7tv.app/emote/abc/1x.webp')
   })
 
   it('only resizes pictures served by Twitch or 7TV themselves', () => {

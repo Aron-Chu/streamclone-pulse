@@ -109,14 +109,8 @@ export function HubDataHealthBanner({
       })
     }
 
-    if (activitySummary.expectedBuckets > 0 && activitySummary.missingBuckets > 0) {
-      const pct = formatCoveragePercent(activitySummary.pointCount, activitySummary.expectedBuckets)
-      messages.push({
-        tone: 'warn',
-        text: `Activity coverage ${pct} for this window (${activitySummary.pointCount}/${activitySummary.expectedBuckets} buckets).`,
-        detail: `${activitySummary.missingBuckets} bucket${activitySummary.missingBuckets === 1 ? '' : 's'} missing from stored rollups.`,
-      })
-    }
+    // Missing buckets have no row here. The chart says so itself, in one grey line under it
+    // (showsMinutesMissingNote), and only below 95%.
 
     // The normalizer uses a zero-filled defensive shape when the pipeline is
     // absent; that is not evidence that live tracking is limited.

@@ -113,7 +113,8 @@ test.describe('analytics session page shell, d3-v2 session-original (mocked)', (
     expect(texts[0]).toBe('xQc')
     expect(texts[1]).toBe('Just Chatting')
     expect(texts[2]).toMatch(/^Started /)
-    expect(texts[3]).toMatch(/^(Updated|Refreshed) /)
+    // An ended stream names its end ("Ended 12h ago"); the read time is for live and unknown sessions.
+    expect(texts[3]).toMatch(/^(Ended|Updated|Refreshed) /)
     expect(texts[4]).toBe('First 54s not tracked')
     expect(texts[5]).toBe('Watch VOD')
     expect(texts[6]).toMatch(/^Data: (Good|Limited|Partial|No data)$/)
@@ -126,7 +127,7 @@ test.describe('analytics session page shell, d3-v2 session-original (mocked)', (
     await expect(vod).toHaveAttribute('href', `https://www.twitch.tv/videos/${PORTAL_VOD_ID}`)
     await expect(vod).toHaveAttribute('target', '_blank')
 
-    // "Refresh data" is the icon beside "Updated", not a text button.
+    // "Refresh data" is the icon beside "Ended" / "Updated", not a text button.
     const refresh = page.getByRole('button', { name: 'Refresh data' })
     await expect(refresh).toHaveCount(1)
     await expect(refresh).toHaveText('')
@@ -141,7 +142,8 @@ test.describe('analytics session page shell, d3-v2 session-original (mocked)', (
     expect(Math.abs(actionsBox!.y - titleBox!.y)).toBeLessThanOrEqual(12)
 
     const labels = await page.locator('[data-session-stat-row] .sc-stat-card__label').allTextContents()
-    expect(labels).toEqual(['Latest viewers', 'Average viewers', 'Peak viewers', 'Chat messages', 'Emote uses', 'Time tracked'])
+    // This fixture is an ended stream, so its first figure is the viewers at the end.
+    expect(labels).toEqual(['Viewers at end', 'Average viewers', 'Peak viewers', 'Chat messages', 'Emote uses', 'Time tracked'])
 
     await expect(page.getByText('Up to 100 recent stored streams')).toHaveCount(0)
     await expect(page.getByText(/Synced only/)).toHaveCount(0)

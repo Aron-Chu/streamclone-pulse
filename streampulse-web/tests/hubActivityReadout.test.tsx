@@ -71,7 +71,7 @@ describe('hubReadoutView', () => {
     expect(view.chat).toBe(formatHubCardInt(119))
     expect(view.chatPeak).toEqual({ value: formatHubCardInt(119), at: hubCardClock(model.peakChat!.t) })
     expect(view.viewers2).toBe(`peak ${formatHubCardInt(350_000)} · ${hubCardClock(model.data.startMs + 7 * model.bucketMs)} · 97 live`)
-    expect(view.live).toBe('109 of 120 live')
+    expect(view.live).toBe('109 live')
     expect(view.top.map((emote) => emote.name)).toEqual(['Pog'])
     expect(view.top2).toBe('top emote')
   })
@@ -82,7 +82,7 @@ describe('hubReadoutView', () => {
     expect(view.time).toBe(hubCardClockRange(model.data.startMs + 2 * model.bucketMs, model.data.startMs + 4 * model.bucketMs))
     expect(view.chat).toBe('123')
     expect(view.chatPeak).toBeNull()
-    expect(view.live).toBe('≈93 of 120 live')
+    expect(view.live).toBe('≈93 live')
     expect(view.top2).toBe('KEKW')
   })
 

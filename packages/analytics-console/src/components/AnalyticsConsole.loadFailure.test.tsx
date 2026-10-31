@@ -163,7 +163,7 @@ describe('AnalyticsConsole channel route load failures', () => {
 
     await waitFor(() => expect(screen.getAllByTestId('stat-card')).toHaveLength(6))
     const tones = screen.getAllByTestId('stat-card').map(card => card.getAttribute('data-tone'))
-    expect(new Set(tones)).toEqual(new Set(['text-zinc-600 font-semibold']))
+    expect(new Set(tones)).toEqual(new Set(['text-zinc-400 font-semibold']))
     expect(screen.getAllByTestId('stat-card').at(-1)?.textContent).toBe('Time tracked: -')
   })
 

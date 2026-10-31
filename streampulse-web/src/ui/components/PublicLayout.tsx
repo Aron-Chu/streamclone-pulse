@@ -108,8 +108,8 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-2">
             <BrandMark size={20} />
             <span className="font-bold text-zinc-300">StreamPulse</span>
-            <span className="text-zinc-600">·</span>
-            <span className="text-xs text-zinc-500">Twitch reaction analytics</span>
+            <span className="text-zinc-400">·</span>
+            <span className="text-xs text-zinc-400">Twitch reaction analytics</span>
           </div>
           {/* Two rows rather than nine links in one: product destinations and
               policy documents are different errands. Both rows keep the same

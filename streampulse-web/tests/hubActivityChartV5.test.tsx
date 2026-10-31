@@ -142,6 +142,24 @@ describe('HubActivityChart: the d3 activity card on SpChart', () => {
     expect(container.querySelector('[data-hub-stamp]')).toBeNull()
   })
 
+  it("draws the stamp's 20 px picture from the smallest file, a still one for Twitch", async () => {
+    const stampPicture = async (imageUrl: string) => {
+      const points = day((index) => (index === 120 ? { chat: 900 * 6, topEmotes: [{ name: 'OMEGALUL', count: 3_327, imageUrl }] } : {}))
+      const view = render(<HubActivityChart points={points} windowMinutes={1440} channelCount={100} bucketMinutes={6} />)
+      const stamp = await view.findByRole('img', { name: 'OMEGALUL: 3,327 uses in 6 min' })
+      const img = stamp.querySelector('img')
+      const drawn = { src: img?.getAttribute('src'), width: img?.getAttribute('width') }
+      view.unmount()
+      return drawn
+    }
+    expect(await stampPicture('https://cdn.7tv.app/emote/01ABC/4x.webp'))
+      .toEqual({ src: 'https://cdn.7tv.app/emote/01ABC/1x.webp', width: '20' })
+    expect(await stampPicture('https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/2.0'))
+      .toEqual({ src: 'https://static-cdn.jtvnw.net/emoticons/v2/25/static/dark/1.0', width: '20' })
+    // A host off the allowlist draws no picture at all.
+    expect(await stampPicture('https://evil.example/x.webp')).toEqual({ src: undefined, width: undefined })
+  })
+
   it('draws two provider lanes under the navigator, aligned to the plot', () => {
     const { container } = render(<HubActivityChart points={day()} windowMinutes={1440} channelCount={100} bucketMinutes={6} />)
     const lanes = container.querySelector('[data-hub-provider-lanes]')!

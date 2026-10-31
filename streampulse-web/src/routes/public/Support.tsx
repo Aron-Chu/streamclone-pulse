@@ -50,7 +50,7 @@ export default function Support() {
             <h2 className="!mt-0">Install StreamPulse</h2>
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <ChromeInstallCta className={buttonClass('default', 'sm')} data-cta="chrome-install-support" />
-              <span className="text-xs font-mono text-zinc-500">Chrome Web Store · Chrome and Brave</span>
+              <span className="text-xs font-mono text-zinc-400">Chrome Web Store · Chrome and Brave</span>
             </div>
           </section>
 

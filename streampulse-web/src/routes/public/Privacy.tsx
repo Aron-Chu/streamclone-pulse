@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
+import { FoldedSections } from '../../ui/components/FoldedSections'
 import { REFUNDS_PATH, SUPPORTER_PATH, TERMS_PATH } from '../../lib/externalLinks'
 import { PrelaunchNotice } from './PrelaunchNotice'
 import { supporterChatBadgesEnabled } from '../../lib/supporterChatBadgesFlag'
@@ -52,6 +53,8 @@ export default function Privacy() {
           </p>
         </section>
 
+        {/* Each h2 below opens a section that folds under its heading (FoldedSections). */}
+        <FoldedSections>
         <h2>Your account, if you create one</h2>
         <p data-testid="privacy-installation-account">
           <strong>Extension-only connections.</strong> The extension generates a random installation
@@ -588,6 +591,7 @@ export default function Privacy() {
 
         <h2>Changes</h2>
         <p>Material changes to this policy will be reflected on this page with an updated date.</p>
+        </FoldedSections>
       </article>
     </PublicLayout>
   )

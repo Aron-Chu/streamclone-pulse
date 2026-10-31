@@ -716,3 +716,34 @@ export function summarizeActivity(
     footnote,
   }
 }
+
+/** From this share of a window's buckets on, a few missing ones are not worth a line. */
+export const QUIET_COVERAGE_RATIO = 0.95
+
+/** The one grey line under the hub chart when its window is missing more than that. */
+export const MINUTES_MISSING_NOTE = 'A few minutes are missing from this chart.'
+
+/** True when 95% or more of the expected buckets are measured. */
+export function isQuietCoverage(pointCount: number, expectedBuckets: number): boolean {
+  const expected = Math.floor(expectedBuckets)
+  if (!(expected > 0)) return false
+  return Math.max(0, Math.floor(pointCount)) >= expected * QUIET_COVERAGE_RATIO
+}
+
+/**
+ * Whether the grey "A few minutes are missing from this chart." line shows under the
+ * hub chart: only once the read has settled (never on first paint), only for a chart
+ * that has measured buckets, and only below 95% of them. The health banner's gap row
+ * already says minutes are missing, so when it shows this line stays out.
+ */
+export function showsMinutesMissingNote(
+  summary: Pick<ActivitySummary, 'pointCount' | 'expectedBuckets' | 'missingBuckets' | 'gapCount'>,
+  settled: boolean,
+): boolean {
+  return settled
+    && summary.expectedBuckets > 0
+    && summary.missingBuckets > 0
+    && summary.pointCount > 0
+    && summary.gapCount <= 0
+    && !isQuietCoverage(summary.pointCount, summary.expectedBuckets)
+}

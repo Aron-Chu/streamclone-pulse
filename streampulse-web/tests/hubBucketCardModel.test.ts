@@ -95,7 +95,7 @@ describe('hub bucket card model: synthetic buckets', () => {
     // One bucket has no "busiest bucket inside the bar".
     expect(model.tiles[0].peak).toBeNull()
     expect(model.tiles[0].secondLine).toBeNull()
-    expect(model.tiles[2].secondLine).toBe('44 of 500 live')
+    expect(model.tiles[2].secondLine).toBe('44 live')
     expect(model.coverage).toEqual({ label: 'Full 6 min', partial: false, minutesMeasured: 6, minutesTotal: 6 })
     expect(model.topEmotesExact).toBe(true)
     expect(model.topEmotes.map(emote => [emote.name, emote.rateText])).toEqual([['LUL', '10'], ['om', '0.3']])
@@ -110,7 +110,7 @@ describe('hub bucket card model: synthetic buckets', () => {
     expect(model.tiles[0].value).toBe(Math.round((600 + 660) / 12))
     expect(model.tiles[0].peak).toMatchObject({ value: 110, t: NOON + 6 * MIN, clockLabel: '12:06 PM' })
     expect(model.tiles[0].secondLine).toBe('peak 110 at 12:06 PM')
-    expect(model.tiles[2].secondLine).toBe('≈45 of 500 live')
+    expect(model.tiles[2].secondLine).toBe('≈45 live')
     expect(model.tiles[2].peak?.value).toBe(281_000)
     expect(model.topEmotesExact).toBe(false)
     expect(model.topEmotes[0]).toMatchObject({ name: 'LUL', count: 120, perMin: 10, rateText: '≥10' })
@@ -134,8 +134,8 @@ describe('hub bucket card model: synthetic buckets', () => {
     const mixed = [point(NOON), point(NOON + 6 * MIN, { viewerCoverage: undefined, viewers: 1_097_952 })]
     const model = buildHubBucketCardModel({ points: mixed, bucketMinutes: 6, t: NOON, endT: NOON + 12 * MIN, format: PHX })!
     expect(model.tiles[2].value).toBe(280_000)
-    expect(model.tiles[2].sub).toBe('45 of 500 live · 1 of 2 intervals not a full sample')
-    expect(model.tiles[2].secondLine).toBe('45 of 500 live')
+    expect(model.tiles[2].sub).toBe('45 live · 1 of 2 intervals not a full sample')
+    expect(model.tiles[2].secondLine).toBe('45 live')
     const unqualified = buildHubBucketCardModel({ points: [point(NOON, { viewerCoverage: undefined })], bucketMinutes: 6, t: NOON, format: PHX })!
     expect(unqualified.tiles[2].value).toBeNull()
     expect(unqualified.tiles[2].secondLine).toBe('Not a full sample')
