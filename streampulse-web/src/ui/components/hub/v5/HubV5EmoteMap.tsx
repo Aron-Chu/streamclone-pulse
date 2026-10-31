@@ -11,17 +11,21 @@
  * follows its size on screen. With a pace to compare (K1), a tile's fill is its
  * last hour against its own pace and the frames go grey.
  * Under the map, the ten most used emotes with the last hour against their own
- * pace as a change chip. A click on a tile or a row selects the emote: the list
- * turns into the hub's live moments it led, and each
- * row opens the moment in Moments. Hover (or focus) shows an emote's numbers;
+ * pace as a change chip. A click on a tile or a row selects the emote (C1,
+ * 10-30 board): the list turns into its uses per interval with the busiest one
+ * marked, the streams in that interval that had it in their top 3 (one
+ * hub/moments read, cached), then the hub's live moments it led; each row
+ * opens its minute in Moments. Hover (or focus) shows an emote's numbers;
  * arrow keys move to the nearest tile, Home and End to the ends, with one tab
- * stop. 24 h | Last hour re-flows the tiles; Taller map gives 1.8 times the
- * height.
+ * stop. The window chips (W1, 10-30 board) re-cut the tiles from the same
+ * answer; Taller map gives 1.8 times the height.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FocusEvent as ReactFocusEvent, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { sanitizeEmoteImageUrl } from '../../../../lib/emoteAssetUrl'
+import { loadHubIntervalMoments, readHubIntervalMoments, type HubIntervalMomentsState, type HubIntervalRequest } from '../../../../lib/hubIntervalMoments'
+import type { HubApiWindow } from '../../../../lib/hubWindows'
 import type { HubActivityPoint, HubLivePulseMoment } from '../../../../lib/publicHub'
 import { useMatchMedia } from '../../../hooks/useMatchMedia'
 import { HubToggletip } from '../d3/HubToggletip'
@@ -31,7 +35,11 @@ import {
   MAP_VIEW_1X,
   clampMapView,
   emoteChange,
+  emoteDrivers,
   emoteImageAt,
+  emoteInWindow,
+  emoteIntervalLabel,
+  emoteMapChips,
   emoteMapData,
   emoteMapHeight,
   emoteMapLayout,
@@ -40,6 +48,10 @@ import {
   emoteMapValue,
   emoteMomentRows,
   emoteSharePct,
+  emotePerMinute,
+  emoteSpike,
+  emoteWindowLabel,
+  emoteWindowWords,
   fieldMapView,
   mapRectOnScreen,
   mapViewShowing,
@@ -49,6 +61,8 @@ import {
   tileFace,
   zoomMapAt,
   type EmoteChange,
+  type EmoteDriver,
+  type EmoteSpike,
   type HubEmoteAgg,
   type HubEmoteMapData,
   type HubEmoteWindow,
@@ -58,7 +72,7 @@ import {
   type MapView,
 } from './hubV5EmoteMapModel'
 import { feedAgo } from './hubV5FeedModel'
-import { formatHubInt, formatHubMultiplier, hubClockRange, momentRowAria, momentRowsV5 } from './hubV5Model'
+import { formatHubInt, formatHubMultiplier, hubClock, momentHref, momentRowAria, momentRowKey, momentRowsV5 } from './hubV5Model'
 import { isFocusVisible, placeHubV5Card } from './hubV5HoverCard'
 
 const H_ID = 'hv5-te-h'
@@ -118,9 +132,8 @@ function EmotePic({ a, size }: { a: HubEmoteAgg; size: number }) {
 }
 
 function EmoteCard({ a, data, win, total }: { a: HubEmoteAgg; data: HubEmoteMapData; win: HubEmoteWindow; total: number }) {
-  const v = emoteMapValue(a, win)
+  const w = emoteInWindow(data, a, win)
   const src = sanitizeEmoteImageUrl(emoteImageAt(a.e.imageUrl, 48))
-  const slot = data.bucketMinutes * 60_000
   return (
     <>
       <div className="hv5-ec-h">
@@ -128,8 +141,8 @@ function EmoteCard({ a, data, win, total }: { a: HubEmoteAgg; data: HubEmoteMapD
         <span className="hv5-ec-tx"><b>{a.e.name}</b><span>{providerName(a.prov)}</span></span>
       </div>
       <dl className="hv5-ec-dl">
-        <dt>{win === 'all' ? `Uses, last ${data.windowLabel}` : 'Uses, last hour'}</dt>
-        <dd>{formatHubInt(v)} <span>· {emoteSharePct(total > 0 ? (v / total) * 100 : 0)} of the map</span></dd>
+        <dt>Uses, {emoteWindowWords(data, win)}</dt>
+        <dd>{formatHubInt(w.v)} <span>· {emoteSharePct(total > 0 ? (w.v / total) * 100 : 0)} of the map</span></dd>
         {data.paceOk ? (
           <>
             <dt>Last hour</dt>
@@ -137,11 +150,106 @@ function EmoteCard({ a, data, win, total }: { a: HubEmoteAgg; data: HubEmoteMapD
           </>
         ) : null}
         <dt>Busiest</dt>
-        <dd>{formatHubInt(Math.round(a.peak / data.bucketMinutes))}/min <span>· {hubClockRange(a.peakT, a.peakT + slot)}</span></dd>
+        <dd>{emotePerMinute(w.peak, data.bucketMinutes)}/min <span>· {emoteIntervalLabel(data, win, w.peakT)}</span></dd>
         <dt>In a top 10</dt>
-        <dd>{a.n} <span>of {data.intervals} intervals</span></dd>
+        <dd>{w.n} <span>of {w.intervals} intervals</span></dd>
       </dl>
     </>
+  )
+}
+
+const BARS_H = 40
+
+/**
+ * C1's timeline: a bar per interval of the window, the busiest marked, a faint
+ * tick where it made no top 10, nothing where the hub sent no list.
+ */
+function SpikeBars({ spike, label }: { spike: EmoteSpike; label: string }) {
+  const n = spike.bars.length
+  const pad = n > 120 ? 0.08 : 0.14
+  return (
+    <svg className="hv5-es-bars" viewBox={`0 0 ${n} ${BARS_H}`} preserveAspectRatio="none" role="img" aria-label={label}>
+      {spike.bars.map((c, i) => {
+        if (c === undefined) return null
+        if (c === null) return <rect key={i} className="hv5-es-gap" x={i + pad} y={BARS_H - 1} width={1 - 2 * pad} height={1} />
+        const h = spike.peakCount > 0 ? Math.max(2, (c / spike.peakCount) * BARS_H) : 2
+        return <rect key={i} className={i === spike.peak ? 'hv5-es-hi' : undefined} x={i + pad} y={BARS_H - h} width={1 - 2 * pad} height={h} />
+      })}
+    </svg>
+  )
+}
+
+function driverAria(d: EmoteDriver, emote: string): string {
+  const name = d.m.displayName || d.m.login
+  const when = d.m.at != null ? ` at ${hubClock(d.m.at)}` : ''
+  return `${name}, ${d.m.category || 'game not sent'}, ${formatHubInt(d.uses)} ${emote} uses in its busiest minute${when}. Opens that minute in Moments.`
+}
+
+/**
+ * C1's "Who drove it": one hub/moments read for the busiest interval, through
+ * the tab cache the chart's interval list shares (30 min), keeping the
+ * streams that had the emote in their top 3. Rows carry no ×: they come with no
+ * comparison. One status line says each state, so a screen reader hears the
+ * rows land or the read fail.
+ */
+function EmoteDrivers({ a, peakT, bucketMinutes, intervalWindow, behind, avatars }: {
+  a: HubEmoteAgg
+  peakT: number
+  bucketMinutes: number
+  intervalWindow: HubApiWindow
+  /** The backend serves its live-pool fallback: an empty read means the interval isn't in yet. */
+  behind?: boolean
+  avatars?: ReadonlyMap<string, string>
+}) {
+  const request = useMemo<HubIntervalRequest>(() => ({ t: peakT, activityWindow: intervalWindow, bucketMinutes }), [peakT, intervalWindow, bucketMinutes])
+  const key = `${intervalWindow}|${bucketMinutes}|${peakT}`
+  // the cache first, so a read from the last 30 minutes shows on the first frame
+  const cached = useMemo(() => readHubIntervalMoments(request), [request])
+  const [got, setGot] = useState<{ key: string; s: HubIntervalMomentsState } | null>(null)
+  const state = got?.key === key ? got.s : cached
+  useEffect(() => {
+    if (readHubIntervalMoments(request)) return undefined
+    const ctrl = new AbortController()
+    const put = (s: HubIntervalMomentsState) => { if (!ctrl.signal.aborted) setGot({ key, s }) }
+    loadHubIntervalMoments(request, { signal: ctrl.signal, onProgress: put })
+      .then(put, (error: unknown) => put({ status: 'error', error, retryAfterMs: null, bucketsRead: 0, bucketsTotal: 1 }))
+    return () => ctrl.abort()
+  }, [request, key])
+
+  const loading = !state || state.status === 'loading'
+  const drivers = state?.status === 'ready' ? emoteDrivers(state.rows, a) : []
+  // the page's own window decides the read: a chip can't make it shorter
+  const note = !state || state.status === 'loading' ? null
+    : state.status === 'zoom-in' ? 'Set the time window to 7 days or less to see streams.'
+      : state.status === 'error' || state.status === 'unavailable' ? 'Couldn’t load the streams for that interval.'
+        : state.status === 'empty' ? (behind ? 'The streams for that interval aren’t in yet.' : 'No streams were listed for that interval.')
+          : drivers.length ? null : `None of the busiest chats in that interval had ${a.e.name} in their top 3.`
+  const say = loading
+    ? 'Loading the streams for that interval.'
+    : note ?? `${drivers.length} ${drivers.length === 1 ? 'stream' : 'streams'} in that interval had ${a.e.name} in their top 3.`
+  return (
+    <div aria-busy={loading || undefined}>
+      <p className={note ? 'hv5-el-none' : 'hv5-vh'} role="status">{say}</p>
+      {loading ? (
+        <ol className="hv5-el-cols hv5-es-rows" aria-hidden="true">
+          {[0, 1, 2].map((i) => <li key={i} className="hv5-es-ph" />)}
+        </ol>
+      ) : drivers.length ? (
+        <ol className="hv5-el-cols hv5-es-rows" key={key}>
+          {drivers.map((d, i) => (
+            <li key={momentRowKey(d.m)} style={{ animationDelay: `${i * 18}ms` }}>
+              <Link to={momentHref(d.m)} className="hv5-el-r" aria-label={driverAria(d, a.e.name)}>
+                <span className="hv5-el-i">{i + 1}</span>
+                <HubV5Avatar login={d.m.login!} name={d.m.displayName || d.m.login!} src={d.m.profileImageUrl || avatars?.get(d.m.login!)} size={24} />
+                <span className="hv5-el-n">{d.m.displayName || d.m.login}<small>{d.m.category || 'No category'}</small></span>
+                <span className="hv5-el-v hv5-es-uses">{formatHubInt(d.uses)} uses</span>
+                <span className="hv5-el-v hv5-es-at">{d.m.at != null ? `▶ ${hubClock(d.m.at)}` : ''}</span>
+              </Link>
+            </li>
+          ))}
+        </ol>
+      ) : null}
+    </div>
   )
 }
 
@@ -153,6 +261,8 @@ export function HubV5EmoteMap({
   moments = [],
   avatars,
   nowMs,
+  intervalWindow,
+  historyBehind,
 }: {
   points: readonly HubActivityPoint[]
   bucketMinutes: number
@@ -163,11 +273,16 @@ export function HubV5EmoteMap({
   moments?: readonly HubLivePulseMoment[]
   avatars?: ReadonlyMap<string, string>
   nowMs: number
+  /** The window whose bucket grid the answer uses (30m on the live-pool fallback): C1 reads its busiest interval on it. No read without one. */
+  intervalWindow?: HubApiWindow
+  /** "24-hour history is behind right now" while the backend serves its live-pool fallback (the chart's IRC-2 pick A words). */
+  historyBehind?: string | null
 }) {
   const data = useMemo(() => emoteMapData(points, bucketMinutes), [points, bucketMinutes])
   const phone = useMatchMedia('(max-width: 719px)')
   const reduce = useMatchMedia('(prefers-reduced-motion: reduce)')
   const [win, setWin] = useState<HubEmoteWindow>('all')
+  const chips = useMemo(() => (data ? emoteMapChips(data) : []), [data])
   const [tall, setTall] = useState<{ on: boolean; from: number }>({ on: false, from: 0 })
   const mapRef = useRef<HTMLDivElement>(null)
   const vpRef = useRef<HTMLDivElement>(null)
@@ -192,7 +307,8 @@ export function HubV5EmoteMap({
 
   const hourOk = Boolean(data?.paceOk)
   const heat = hourOk
-  const view: HubEmoteWindow = hourOk ? win : 'all'
+  // a chip this answer no longer has (another page window) falls back to the whole answer
+  const view: HubEmoteWindow = chips.some((c) => c.win === win) ? win : 'all'
   // min-height: the map grows to fill a taller grid row
   const prefH = size.w ? emoteMapHeight(size.w, phone, tall.on, tall.from) : (phone ? 320 : 340)
   const W = size.w
@@ -253,8 +369,9 @@ export function HubV5EmoteMap({
   }, [layout, heat])
   const momentRows = useMemo(() => momentRowsV5(moments), [moments])
   const selAgg = sel ? data?.byId.get(sel) : undefined
-  const selected = selAgg && emoteMapValue(selAgg, view) > 0 ? selAgg : null
+  const selected = selAgg && data && emoteMapValue(selAgg, view, data) > 0 ? selAgg : null
   const spammed = useMemo(() => (selected ? emoteMomentRows(momentRows, selected) : []), [selected, momentRows])
+  const spike = useMemo(() => (selected && data ? emoteSpike(data, selected, view) : null), [data, selected, view])
 
   const hide = useCallback(() => {
     window.clearTimeout(timer.current)
@@ -488,9 +605,14 @@ export function HubV5EmoteMap({
 
   const tabId = layout && tiles.some((t) => t.a.id === focusId) ? focusId : tiles[0]?.a.id ?? null
   const onAgg = on ? data?.byId.get(on.id) : undefined
-  const meta = data && layout ? emoteMapMeta(data, layout, view) : ''
-  const windowWords = view === 'all' ? `last ${data?.windowLabel ?? '24 h'}` : 'last hour'
+  const meta = data && layout ? emoteMapMeta(data, layout, view, historyBehind) : ''
+  const windowWords = data ? emoteWindowWords(data, view) : 'last 24 h'
   const shareOf = (v: number) => emoteSharePct(layout && layout.total > 0 ? (v / layout.total) * 100 : 0)
+  const slot = (data?.bucketMinutes ?? 0) * 60_000
+  const busiest = data && spike && spike.peak >= 0 ? emoteIntervalLabel(data, view, spike.peakT) : null
+  const busiestRate = data && spike ? emotePerMinute(spike.peakCount, data.bucketMinutes) : ''
+  // the timeline ends at the last closed interval: "now" only while that is recent, as on a saved copy it is not
+  const fresh = data ? nowMs - data.t1 <= 2 * slot + 60_000 : false
 
   return (
     <section id="emotes" className="hv5-sec hv5-emotes" aria-labelledby={H_ID} aria-busy={loading || undefined}>
@@ -505,10 +627,11 @@ export function HubV5EmoteMap({
               <button type="button" className="hv5-em-zb" aria-label="Zoom in" disabled={zoom.k >= EMOTE_ZOOM_MAX - 1e-3} onClick={() => zoomBy(1.6)}>+</button>
               <button type="button" className="hv5-em-zb" disabled={!zoomed} onClick={resetZoom}>Reset</button>
             </span>
-            {hourOk ? (
+            {chips.length ? (
               <span className="hv5-seg" role="group" aria-label="Emote map window">
-                <button type="button" aria-pressed={win === 'all'} onClick={() => { hide(); setWin('all') }}>{data.windowLabel}</button>
-                <button type="button" aria-pressed={win === '1h'} onClick={() => { hide(); setWin('1h') }}>Last hour</button>
+                {chips.map((c) => (
+                  <button key={String(c.win)} type="button" aria-pressed={view === c.win} onClick={() => { hide(); setWin(c.win) }}>{c.label}</button>
+                ))}
               </span>
             ) : null}
           </span>
@@ -608,7 +731,7 @@ export function HubV5EmoteMap({
               </div>
             ) : null}
           </div>
-          <p className="hv5-vh" id={HELP_ID}>Arrow keys move between emotes. Enter selects one and lists where it led chat.</p>
+          <p className="hv5-vh" id={HELP_ID}>Arrow keys move between emotes. Enter selects one and shows its busiest interval and the streams behind it.</p>
           <div className="hv5-em-foot">
             {heat ? (
               <span className="hv5-em-heat">
@@ -641,29 +764,57 @@ export function HubV5EmoteMap({
                   <span className="hv5-el-ti">
                     <EmotePic a={selected} size={24} />
                     <b>{selected.e.name}</b>
-                    <span>{shareOf(emoteMapValue(selected, view))} of all uses · {providerName(selected.prov)}</span>
+                    <span>{shareOf(emoteMapValue(selected, view, data))} of all uses · {providerName(selected.prov)}</span>
                   </span>
                   {hourOk ? <Chg c={emoteChange(selected, data.windowLabel)} /> : null}
                   <button type="button" className="hv5-el-clear" onClick={() => setSel(null)}>Clear ✕</button>
                 </div>
-                <p className="hv5-el-sub">Where {selected.e.name} led chat on streams live now · × is emotes against the 15 minutes before</p>
+                {spike ? (
+                  <div className="hv5-es">
+                    <SpikeBars
+                      spike={spike}
+                      label={`${selected.e.name} uses per interval, ${windowWords}${busiest ? `, busiest ${busiest} at ${busiestRate} a minute` : ''}`}
+                    />
+                    <div className="hv5-es-ax" aria-hidden="true">
+                      <span>{emoteWindowLabel(data, view)} {fresh ? 'ago' : 'earlier'}</span>
+                      {busiest ? <span className="hv5-es-pk">Busiest {busiest} · {busiestRate} a minute</span> : null}
+                      <span>{fresh ? 'now' : hubClock(data.t1)}</span>
+                    </div>
+                  </div>
+                ) : null}
+                {spike && busiest && intervalWindow ? (
+                  <>
+                    <p className="hv5-el-sub"><b>Who drove it</b> · streams in that interval with {selected.e.name} in their top 3</p>
+                    <EmoteDrivers
+                      key={`${selected.id}|${spike.peakT}`}
+                      a={selected}
+                      peakT={spike.peakT}
+                      bucketMinutes={data.bucketMinutes}
+                      intervalWindow={intervalWindow}
+                      behind={Boolean(historyBehind)}
+                      avatars={avatars}
+                    />
+                  </>
+                ) : null}
+                {/* the live moments it led stay, under the streams, when there are any (C1) */}
                 {spammed.length ? (
-                  <ol className="hv5-el-cols" key={`m|${selected.id}`}>
-                    {spammed.map((r, i) => (
-                      <li key={r.key} style={{ animationDelay: `${i * 18}ms` }}>
-                        <Link to={r.href} className="hv5-el-r" aria-label={momentRowAria(r)}>
-                          <span className="hv5-el-i">{i + 1}</span>
-                          <HubV5Avatar login={r.login} name={r.displayName} src={r.moment.profileImageUrl || avatars?.get(r.login)} size={24} />
-                          <span className="hv5-el-n">{r.displayName}<small>{r.moment.category || 'No category'}</small></span>
-                          {'x' in r.cmp ? <span className="hv5-el-v hv5-el-x">{formatHubMultiplier(r.cmp.x)}</span> : <span className="hv5-el-v" title={r.cmp.long}>{r.cmp.why}</span>}
-                          <span className="hv5-el-v">{r.at != null ? feedAgo(r.at, nowMs) : ''}</span>
-                        </Link>
-                      </li>
-                    ))}
-                  </ol>
-                ) : (
-                  <p className="hv5-el-none">No live moment led with {selected.e.name} right now.</p>
-                )}
+                  <>
+                    <p className="hv5-el-sub hv5-es-live">Where {selected.e.name} led chat on streams live now · × is emotes against the 15 minutes before</p>
+                    <ol className="hv5-el-cols" key={`m|${selected.id}`}>
+                      {spammed.map((r, i) => (
+                        <li key={r.key} style={{ animationDelay: `${i * 18}ms` }}>
+                          <Link to={r.href} className="hv5-el-r" aria-label={momentRowAria(r)}>
+                            <span className="hv5-el-i">{i + 1}</span>
+                            <HubV5Avatar login={r.login} name={r.displayName} src={r.moment.profileImageUrl || avatars?.get(r.login)} size={24} />
+                            <span className="hv5-el-n">{r.displayName}<small>{r.moment.category || 'No category'}</small></span>
+                            {'x' in r.cmp ? <span className="hv5-el-v hv5-el-x">{formatHubMultiplier(r.cmp.x)}</span> : <span className="hv5-el-v" title={r.cmp.long}>{r.cmp.why}</span>}
+                            <span className="hv5-el-v">{r.at != null ? feedAgo(r.at, nowMs) : ''}</span>
+                          </Link>
+                        </li>
+                      ))}
+                    </ol>
+                  </>
+                ) : null}
                 <div className="hv5-el-foot"><Link to="/analytics/moments">Open in Moments →</Link></div>
               </>
             ) : (
@@ -678,7 +829,7 @@ export function HubV5EmoteMap({
                       <button
                         type="button"
                         className="hv5-el-r"
-                        aria-label={`#${i + 1} ${x.a.e.name}, ${providerName(x.a.prov)}, ${shareOf(x.v)} of uses${hourOk ? `, ${emoteChange(x.a, data.windowLabel).words}` : ''}. Shows where it led chat.`}
+                        aria-label={`#${i + 1} ${x.a.e.name}, ${providerName(x.a.prov)}, ${shareOf(x.v)} of uses${hourOk ? `, ${emoteChange(x.a, data.windowLabel).words}` : ''}. Shows its busiest interval and the streams behind it.`}
                         onClick={() => select(x.a.id)}
                       >
                         <span className="hv5-el-i">{i + 1}</span>

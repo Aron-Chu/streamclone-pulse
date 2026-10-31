@@ -1218,6 +1218,8 @@
 .hv5-em-rh,
 .hv5-gm-rh { flex-wrap: wrap; row-gap: 0; }
 .hv5-em-rh .hv5-end { overflow: visible; }
+/* a narrow card puts the window chips under the zoom (W1, 10-30: "1 year" is the widest chip) */
+.hv5-em-rh .hv5-end { flex-wrap: wrap; justify-content: flex-end; row-gap: 6px; }
 .hv5-gm-rh > h2 { display: flex; align-items: center; min-height: 33px; } /* as tall as the switch beside Top emotes */
 .hv5-em-meta,
 .hv5-gm-meta { order: 5; flex-basis: 100%; margin: -4px 0 6px; }
@@ -1479,6 +1481,36 @@
 .hv5-el-x { font-weight: 600; color: var(--hv5-accent); }
 .hv5-el-foot { display: flex; justify-content: flex-end; margin-top: 8px; font: 500 12px/16px var(--sp-font); }
 @keyframes hv5-el-rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+/* C1 (10-30 board): a selected emote's uses per interval with the busiest marked, then who drove it */
+.hv5-es { margin: 2px 0 10px; }
+.hv5-es-bars { display: block; width: 100%; height: 40px; }
+/* plain bars 3:1 against the panel; the busiest bar is the full accent */
+.hv5-es-bars rect { fill: color-mix(in oklab, var(--hv5-accent) 46%, var(--sp-raised)); }
+.hv5-es-bars rect.hv5-es-hi { fill: var(--hv5-accent); }
+.hv5-es-bars rect.hv5-es-gap { fill: var(--sp-line-strong); }
+.hv5-es-ax {
+  display: flex;
+  justify-content: space-between;
+  gap: 2px 10px;
+  margin-top: 4px;
+  font: 500 12px/16px var(--sp-font);
+  color: var(--sp-text-3);
+  font-variant-numeric: tabular-nums;
+}
+.hv5-es-ax span { white-space: nowrap; }
+.hv5-es-pk { color: var(--hv5-accent); }
+.hv5-el-sub b { font-weight: 600; color: var(--sp-text-1); }
+.hub-v5 .hv5-emotes .hv5-es-live { margin-top: 12px; }
+.hub-v5 .hv5-emotes .hv5-es-rows { grid-template-rows: repeat(3, auto); }
+.hv5-es-at { color: var(--hv5-accent); }
+.hv5-es-ph { display: flex; align-items: center; height: 36px; border-bottom: 1px solid var(--sp-line); }
+.hv5-es-ph::before { content: ""; width: 60%; height: 10px; border-radius: 4px; background: var(--sp-line-strong); animation: hv5-es-wait 1.2s ease-in-out infinite alternate; }
+@keyframes hv5-es-wait { from { opacity: 0.5; } to { opacity: 1; } }
+/* a narrow card puts the busiest interval on its own line under the ends */
+@container (max-width: 419px) {
+  .hv5-es-ax { flex-wrap: wrap; }
+  .hv5-es-pk { order: 3; flex-basis: 100%; }
+}
 /* two columns only where a name still fits beside its numbers */
 @container (max-width: 559px) {
   .hub-v5 .hv5-emotes .hv5-el-cols { grid-template-columns: minmax(0, 1fr); grid-auto-flow: row; grid-template-rows: none; }
@@ -1489,7 +1521,8 @@
   .hv5-em-ff,
   .hub-v5 .hv5-emotes .hv5-em-fl,
   .hv5-em-mini,
-  .hv5-el-cols > li { transition: none; animation: none; }
+  .hv5-el-cols > li,
+  .hv5-es-ph::before { transition: none; animation: none; }
 }
 
 /* the hover cards (emote map, rack): never take the pointer */

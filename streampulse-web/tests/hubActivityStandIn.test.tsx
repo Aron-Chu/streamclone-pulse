@@ -12,7 +12,7 @@ import {
   isHubActivityLivePoolFallback,
   isHubActivityStandIn,
 } from '../src/lib/hubActivityHonesty'
-import { hubActivityFallbackLine } from '../src/lib/hubActivityFallbackLine'
+import { hubActivityBehindWords, hubActivityFallbackLine } from '../src/lib/hubActivityFallbackLine'
 import { normalizePublicHub, type HubActivity, type HubCorpusPipeline, type HubIngest, type PublicHub } from '../src/lib/publicHub'
 import { resetHubBucketSelectionForTests } from '../src/lib/hubBucketSelection'
 import { HubActivityPanelV5 } from '../src/ui/components/analytics/HubActivityPanelV5'
@@ -58,6 +58,11 @@ describe('the backend fallback line (IRC-2 candidate, pick A, 10-30)', () => {
     expect(hubActivityFallbackLine(backendFallback)).toBe('24-hour history is behind right now. Showing the last 30 minutes, live.')
     expect(hubActivityFallbackLine({ ...backendFallback, windowMinutes: 10080, requestedWindowMinutes: 10080 })).toBe('7-day history is behind right now. Showing the last 30 minutes, live.')
     expect(hubActivityFallbackLine(standIn)).toBeNull()
+  })
+
+  it('lends its first half to the emote map (W1, 10-30)', () => {
+    expect(hubActivityBehindWords(backendFallback)).toBe('24-hour history is behind right now')
+    expect(hubActivityBehindWords(standIn)).toBeNull()
   })
 })
 

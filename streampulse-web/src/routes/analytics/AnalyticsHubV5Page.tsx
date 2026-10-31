@@ -12,7 +12,8 @@ import { useSearchParams } from 'react-router-dom'
 import { optionsForBoundedActivityFallback } from '../../lib/activityRangeCapabilities'
 import { usePublicHubData } from '../../hooks/usePublicHubData'
 import { getBackendUrl } from '../../lib/apiClient'
-import { formatActivityWindowLabel, summarizeActivity } from '../../lib/hubActivitySummary'
+import { hubActivityBehindWords } from '../../lib/hubActivityFallbackLine'
+import { activityBucketMs, formatActivityWindowLabel, summarizeActivity } from '../../lib/hubActivitySummary'
 import { selectHubChartActivityInputs } from '../../lib/hubChartActivityModel'
 import { isHubActivityLivePoolFallback, resolveHubActivityChartWindowMinutes } from '../../lib/hubActivityHonesty'
 import { normalizePublicHub, type PublicHubActivityWindow } from '../../lib/publicHub'
@@ -173,6 +174,10 @@ export default function AnalyticsHubV5Page() {
   // follows the answer, not the tab: a 1y answer's long averages are never called recent (review 10-30).
   const answerWindow = Object.keys(ACTIVITY_WINDOW_MINUTES)
     .find((key) => ACTIVITY_WINDOW_MINUTES[key] === (data.activity.requestedWindowMinutes ?? data.activity.windowMinutes))
+  // The emote map's interval read (C1, 10-30) asks on the bucket grid the answer uses: 30m on the live-pool fallback.
+  const emoteBucketMinutes = data.activity.bucketMinutes ?? chartActivity.bucketMinutes
+  const emoteIntervalWindow = (Object.keys(ACTIVITY_WINDOW_MINUTES) as PublicHubActivityWindow[])
+    .find((key) => activityBucketMs(ACTIVITY_WINDOW_MINUTES[key]!) === emoteBucketMinutes * 60_000)
   const games = useMemo(() => whereChatIs(data.liveChannels, undefined, answerWindow), [data.liveChannels, answerWindow])
   const gameArt = useMemo(() => hubCategoryArt(data.livePulseMoments), [data.livePulseMoments])
   // Top moments today and its phone peek stay in every state: the Moments list, a hub answer or a saved copy (never
@@ -337,13 +342,15 @@ export default function AnalyticsHubV5Page() {
           <HubV5TopMoments top={top} nowMs={nowMs} onUpMore={showUpInChannels} />
 
           <HubV5EmoteMap
-            points={data.activity.points}
-            bucketMinutes={data.activity.bucketMinutes ?? chartActivity.bucketMinutes}
+            points={chartActivity.points}
+            bucketMinutes={emoteBucketMinutes}
             loading={measurementsWaiting}
             unavailable={measurementsUnavailable}
             moments={data.livePulseMoments}
             avatars={avatars}
             nowMs={nowMs}
+            intervalWindow={emoteIntervalWindow}
+            historyBehind={hubActivityBehindWords(data.activity)}
           />
 
           <HubV5Rack games={games} game={game} onGame={setGame} art={gameArt} avatars={avatars} loading={measurementsWaiting} unavailable={measurementsUnavailable} />

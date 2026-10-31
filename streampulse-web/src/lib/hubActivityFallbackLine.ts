@@ -18,8 +18,14 @@ function requestedHistoryWords(activity: HubActivity): string {
   return `${minutes}-minute`
 }
 
+/** "24-hour history is behind right now": the line's first half, which the emote map's meta leads with (W1, 10-30). Null for anything else. */
+export function hubActivityBehindWords(activity: HubActivity): string | null {
+  if (!isHubActivityBackendFallback(activity)) return null
+  return `${requestedHistoryWords(activity)} history is behind right now`
+}
+
 /** The line under the activity header for the backend's fallback. Null for anything else. */
 export function hubActivityFallbackLine(activity: HubActivity): string | null {
-  if (!isHubActivityBackendFallback(activity)) return null
-  return `${requestedHistoryWords(activity)} history is behind right now. Showing ${hubActivityLastServedWords(activity)}, live.`
+  const behind = hubActivityBehindWords(activity)
+  return behind ? `${behind}. Showing ${hubActivityLastServedWords(activity)}, live.` : null
 }
