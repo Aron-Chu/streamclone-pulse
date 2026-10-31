@@ -26,6 +26,12 @@ const BACKOFF_MAX_MS = 120_000
 const DEFAULT_INTERVAL_MS = 30_000
 const MIN_INTERVAL_MS = 15_000
 const MAX_ERROR_LENGTH = 120
+/**
+ * A channel StreamPulse doesn't chart is rechecked this often, not on the
+ * chart cadence. Navigation rechecks it too: each channel visit loads afresh.
+ */
+export const UNCHARTED_RECHECK_MS = 10 * 60_000
+
 /** A background tab polls nothing; the poll it skipped runs when it shows again. */
 function pageHidden(): boolean {
   return typeof document !== 'undefined' && document.visibilityState === 'hidden'
@@ -68,6 +74,8 @@ export type LivePollController = {
     context: TwitchPageContext,
     tracking?: boolean,
     hosted?: boolean,
+    /** Not charted (off the list): recheck every UNCHARTED_RECHECK_MS instead. */
+    uncharted?: boolean,
   ) => void
   /** The only operation allowed to give false -> true immediate-fetch semantics. */
   setEnabled: (enabled: boolean) => void
@@ -110,6 +118,7 @@ export function createLivePollController(
   let activeLogin: string | null = null
   let collecting = false
   let hostedBackend = true
+  let uncharted = false
   let snapshot: LivePollSnapshot = {
     phase: 'paused',
     enabled: false,
@@ -169,7 +178,7 @@ export function createLivePollController(
       publishInactive()
       return
     }
-    const delayMs = computeLivePollDelayMs(intervalMs, snapshot.consecutiveFailures)
+    const delayMs = uncharted ? UNCHARTED_RECHECK_MS : computeLivePollDelayMs(intervalMs, snapshot.consecutiveFailures)
     const nextScheduledAt = now() + delayMs
     publish({
       phase: snapshot.consecutiveFailures > 0 ? 'retrying' : 'scheduled',
@@ -269,8 +278,11 @@ export function createLivePollController(
         publish({ enabled: true })
       }
     },
-    sync(login: string | null, _context: TwitchPageContext, tracking = false, hosted = true) {
+    sync(login: string | null, _context: TwitchPageContext, tracking = false, hosted = true, nextUncharted = false) {
       const loginChanged = activeLogin !== login
+      // Charted <-> not charted changes the cadence, so the pending timer goes.
+      if (nextUncharted !== uncharted) stopTimer()
+      uncharted = nextUncharted
       if (loginChanged) {
         lifecycleGeneration += 1
         stopTimer()
@@ -335,6 +347,7 @@ export function createLivePollController(
       lifecycleGeneration += 1
       activeLogin = null
       collecting = false
+      uncharted = false
       immediateFollowUp = false
       stopTimer()
       publish({

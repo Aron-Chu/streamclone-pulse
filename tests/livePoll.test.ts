@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  UNCHARTED_RECHECK_MS,
   computeLivePollDelayMs,
   createLivePollController,
   shouldRunLivePoll,
@@ -256,6 +257,39 @@ describe('createLivePollController', () => {
     await vi.advanceTimersByTimeAsync(15_000)
     await flush()
     expect(send).toHaveBeenCalledTimes(1)
+  })
+
+  it('rechecks a channel off the list every 10 minutes, not on the chart cadence', async () => {
+    const send = await successfulBridge()
+    controller = createLivePollController(() => liveChannel)
+    controller.configure({ enabled: true, intervalMs: 30_000 })
+    controller.sync('xqc', liveChannel, false, true, true)
+    expect(controller.getSnapshot().nextScheduledAt).toBe(Date.now() + UNCHARTED_RECHECK_MS)
+    expect(UNCHARTED_RECHECK_MS).toBe(10 * 60_000)
+
+    await vi.advanceTimersByTimeAsync(UNCHARTED_RECHECK_MS - 1)
+    await flush()
+    expect(send).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    await flush()
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(send).toHaveBeenLastCalledWith({ type: 'GET_PULSE', login: 'xqc', watch: false, window: 'recent' })
+
+    // Syncs from broadcasts keep the 10-minute timer.
+    await vi.advanceTimersByTimeAsync(60_000)
+    controller.sync('xqc', liveChannel, false, true, true)
+    expect(controller.getSnapshot().nextScheduledAt).toBe(Date.now() + UNCHARTED_RECHECK_MS - 60_000)
+
+    // The recheck found it charted: back on the chart cadence.
+    controller.sync('xqc', liveChannel, true, true, false)
+    expect(controller.getSnapshot().nextScheduledAt).toBe(Date.now() + 30_000)
+    await vi.advanceTimersByTimeAsync(30_000)
+    await flush()
+    expect(send).toHaveBeenCalledTimes(2)
+
+    // And off the list again: the 30 s timer gives way to the recheck.
+    controller.sync('xqc', liveChannel, false, true, true)
+    expect(controller.getSnapshot().nextScheduledAt).toBe(Date.now() + UNCHARTED_RECHECK_MS)
   })
 
   it('keeps recurring polls recent after setPollWindow(full)', async () => {
