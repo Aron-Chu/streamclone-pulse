@@ -826,6 +826,8 @@
   transition: opacity var(--sp-dur-quick);
 }
 .hv5-bzv-prev[data-shown] { opacity: 1; }
+/* the next picture waits under the proven one, fully drawn, so the swap is a cut and never shows the face */
+.hv5-bzv-prev[data-under] { opacity: 1; transition: none; }
 /* over a live picture, the caption's small face (mockup .bzt-cap .bzv-av) */
 .hv5-bzt-cap.hf { grid-template-columns: auto minmax(0, 1fr); column-gap: 6px; }
 .hv5-bzv-av {

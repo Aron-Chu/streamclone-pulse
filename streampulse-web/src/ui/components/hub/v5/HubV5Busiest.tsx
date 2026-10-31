@@ -7,7 +7,7 @@
  * Pictures (mockup §5, Aron 10-31): while the numbers are Live, each tile shows
  * Twitch's live picture over its face tile; otherwise the face tile.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { liveNowPreviewUrl } from '../../../../../../packages/analytics-console/src/components/analytics/LiveNowTile.tsx'
 import { isTwitchOfflinePreview } from '../../../../../../packages/analytics-console/src/utils/twitchBoxArt.ts'
@@ -36,19 +36,21 @@ const livePictureSize = (): readonly [number, number] =>
  * One tile. While `pictures` (live 5-minute numbers), Twitch's live picture covers the face tile once it has loaded
  * and proven not to be Twitch's offline picture (an offline channel's URL answers with that picture, not an error).
  * The URL moves to a new 5-minute bucket (`liveNowPreviewUrl`, as the stream page's Live now tile), and the last
- * proven picture stays up while the next one is checked. A failed or offline picture drops back to the face tile
- * until the next bucket, and a check that ends after its bucket has passed changes nothing. Over a live picture the
- * caption adds the small face, only from a real profile image.
+ * proven picture stays up while the next one is checked under it, fully drawn, so the swap never shows the face.
+ * A failed or offline picture drops back to the face tile until the next bucket, and a check that ends after its
+ * bucket has passed changes nothing. Over a live picture the caption adds the small face, only from a real profile
+ * image (one that failed is tried again when the profile image changes).
  */
 function BusiestTile({ row, total, tab, pictures, nowMs }: { row: HubBusiestRow; total: number; tab: boolean; pictures: boolean; nowMs: number }) {
   const [width, height] = livePictureSize()
   const src = pictures ? liveNowPreviewUrl(row.login, nowMs, width, height) : null
   const [shown, setShown] = useState<string | null>(null)
   const [failed, setFailed] = useState<string | null>(null)
-  const [smallFaceFailed, setSmallFaceFailed] = useState(false)
+  const [failedSmallFace, setFailedSmallFace] = useState<string | null>(null)
   const current = useRef(src)
+  // a layout effect, so the new picture's load (a later task) never finds the old URL here and drops its check
+  useLayoutEffect(() => { current.current = src }, [src])
   useEffect(() => {
-    current.current = src
     if (!src) setShown(null)
   }, [src])
   const settle = (pic: string, ok: boolean) => {
@@ -58,7 +60,7 @@ function BusiestTile({ row, total, tab, pictures, nowMs }: { row: HubBusiestRow;
   }
   const visible = src != null ? shown : null
   const checking = src != null && src !== shown && src !== failed ? src : null
-  const smallFace = visible != null && !!row.avatar && !smallFaceFailed
+  const smallFace = visible != null && !!row.avatar && failedSmallFace !== row.avatar
   return (
     <Link className="hv5-bzt-t hv5-bzc-c" to={row.href} aria-label={busiestAria(row, total, !!visible)} tabIndex={tab ? 0 : -1}>
       <span className="hv5-bzv-face" style={{ background: `radial-gradient(120% 90% at 50% 40%, ${hubAvatarTone(row.login)} 0%, #101012 100%)` }}>
@@ -72,11 +74,13 @@ function BusiestTile({ row, total, tab, pictures, nowMs }: { row: HubBusiestRow;
           referrerPolicy="no-referrer"
         />
       </span>
-      {[visible, checking].map((pic) => pic && (
+      {/* the next picture first, so it waits under the proven one; React 18 sets props in this order, so
+          loading, crossOrigin and referrerPolicy come before src (set after it, they restart the request,
+          and Firefox ignores a late loading="lazy") */}
+      {[checking, visible].map((pic) => pic && (
         <img
           key={pic}
           className="hv5-bzv-prev"
-          src={pic}
           alt=""
           width={width}
           height={height}
@@ -84,7 +88,9 @@ function BusiestTile({ row, total, tab, pictures, nowMs }: { row: HubBusiestRow;
           loading="lazy"
           crossOrigin="anonymous"
           referrerPolicy="no-referrer"
+          src={pic}
           data-shown={pic === visible ? '' : undefined}
+          data-under={pic !== visible && visible != null ? '' : undefined}
           onLoad={pic === visible ? undefined : (event) => {
             void isTwitchOfflinePreview(event.currentTarget)
               .then((offline) => settle(pic, !offline))
@@ -101,7 +107,7 @@ function BusiestTile({ row, total, tab, pictures, nowMs }: { row: HubBusiestRow;
             src={twitchProfileImageRendition(row.avatar, SMALL_FACE_RENDITION)}
             fallbackSrc={row.avatar}
             fallback={null}
-            onError={() => setSmallFaceFailed(true)}
+            onError={() => setFailedSmallFace(row.avatar)}
             alt=""
             width={20}
             height={20}
