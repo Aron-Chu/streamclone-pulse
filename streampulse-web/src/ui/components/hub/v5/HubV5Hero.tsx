@@ -17,11 +17,11 @@ import panelMoments from '../../../../demo/pictures/panel-top-moments-2x.webp'
 import type { HubActivityPoint, HubLiveChannel } from '../../../../lib/publicHub'
 import { buildAnalyticsHref } from '../../../../lib/analyticsLinks'
 import { isPlausibleTwitchLogin } from '../../../../lib/normalizeTwitchLogin'
+import { useMatchMedia } from '../../../hooks/useMatchMedia'
 import { ChromeInstallCta } from '../../ChromeInstallCta'
 import { HubV5Avatar } from './HubV5Avatar'
 import { HubV5Conveyor, type HubV5ConveyorRefs } from './HubV5Conveyor'
 import { HubV5Icon } from './HubV5Icon'
-import { useMedia } from './HubV5LiveFeed'
 import { channelHref, channelsByViewers, formatHubInt, searchChannels, typedLogin } from './hubV5Model'
 
 const IS_MAC = typeof navigator !== 'undefined' && /Mac|iP(hone|ad|od)/.test(navigator.platform || navigator.userAgent)
@@ -41,7 +41,7 @@ const PANEL_FRAME_MS = 4000
 
 /** The panel's three states crossfading every 4 s; hover holds the one on show; reduced motion keeps the first. */
 function PanelFrames() {
-  const reduce = useMedia('(prefers-reduced-motion: reduce)')
+  const reduce = useMatchMedia('(prefers-reduced-motion: reduce)')
   const [at, setAt] = useState(0)
   const [held, setHeld] = useState(false)
   useEffect(() => {

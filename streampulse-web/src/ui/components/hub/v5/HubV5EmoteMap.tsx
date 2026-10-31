@@ -23,9 +23,9 @@ import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { sanitizeEmoteImageUrl } from '../../../../lib/emoteAssetUrl'
 import type { HubActivityPoint, HubLivePulseMoment } from '../../../../lib/publicHub'
+import { useMatchMedia } from '../../../hooks/useMatchMedia'
 import { HubToggletip } from '../d3/HubToggletip'
 import { HubV5Avatar } from './HubV5Avatar'
-import { useMedia } from './HubV5LiveFeed'
 import {
   EMOTE_ZOOM_MAX,
   MAP_VIEW_1X,
@@ -165,8 +165,8 @@ export function HubV5EmoteMap({
   nowMs: number
 }) {
   const data = useMemo(() => emoteMapData(points, bucketMinutes), [points, bucketMinutes])
-  const phone = useMedia('(max-width: 719px)')
-  const reduce = useMedia('(prefers-reduced-motion: reduce)')
+  const phone = useMatchMedia('(max-width: 719px)')
+  const reduce = useMatchMedia('(prefers-reduced-motion: reduce)')
   const [win, setWin] = useState<HubEmoteWindow>('all')
   const [tall, setTall] = useState<{ on: boolean; from: number }>({ on: false, from: 0 })
   const mapRef = useRef<HTMLDivElement>(null)

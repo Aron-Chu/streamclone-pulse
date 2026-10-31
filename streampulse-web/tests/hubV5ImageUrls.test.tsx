@@ -9,9 +9,8 @@ import { HubV5Avatar } from '../src/ui/components/hub/v5/HubV5Avatar'
 import { HubV5Busiest } from '../src/ui/components/hub/v5/HubV5Busiest'
 import { HubV5Conveyor, type HubV5ConveyorRefs } from '../src/ui/components/hub/v5/HubV5Conveyor'
 import { HubV5EmoteMap } from '../src/ui/components/hub/v5/HubV5EmoteMap'
-import { HubV5LiveFeed, useHubLiveFeed } from '../src/ui/components/hub/v5/HubV5LiveFeed'
 import { HubV5Rack } from '../src/ui/components/hub/v5/HubV5Rack'
-import { HubV5TopMoments } from '../src/ui/components/hub/v5/HubV5TopMoments'
+import { HubV5TopMoments, useTopToday } from '../src/ui/components/hub/v5/HubV5TopMoments'
 import type { HubWhereChatIs } from '../src/ui/components/hub/v5/hubV5Model'
 
 // The sanitizer resolves relative URLs against the backend, so the tests pin it.
@@ -19,7 +18,7 @@ vi.mock('../src/lib/apiClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../src/lib/apiClient')>()),
   getBackendUrl: () => 'https://api.streampulse.stream',
 }))
-// Top moments reads its list here; the Live feed's Moments list is off (no flag), so its rail is the Live feed.
+// Top moments reads the Moments list where a test turns the switch on; otherwise its rows are the hub's.
 const feed = vi.hoisted(() => ({ load: vi.fn() }))
 vi.mock('../src/lib/momentsFeed', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../src/lib/momentsFeed')>()),
@@ -27,13 +26,14 @@ vi.mock('../src/lib/momentsFeed', async (importOriginal) => ({
 }))
 vi.mock('../src/lib/momentsFeedVod', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../src/lib/momentsFeedVod')>()),
-  loadMomentVod: () => Promise.resolve(null),
+  momentVods: { peek: () => undefined, read: () => Promise.resolve(null) },
 }))
 
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
   vi.useRealTimers()
+  vi.unstubAllEnvs()
 })
 
 const SAFE = 'https://cdn.7tv.app/emote/01HXYZ/1x.webp'
@@ -106,60 +106,55 @@ describe('HubV5Avatar', () => {
   })
 })
 
-describe('Live feed images', () => {
-  function Feed({ hub }: { hub: PublicHub }) {
-    return <HubV5LiveFeed feed={useHubLiveFeed(hub)} nowMs={W1} />
-  }
-  function renderFeed(imageUrl: string | undefined) {
+function Top({ hub, nowMs }: { hub: PublicHub | null; nowMs: number }) {
+  const top = useTopToday({ hub, savedAt: null, reading: true, attempt: 1, nowMs })
+  return <HubV5TopMoments top={top} nowMs={nowMs} />
+}
+const topRow = () => document.querySelector<HTMLElement>('#latest .hv5-tm-list > .hv5-tm-it')
+
+describe('Top moments images from the hub', () => {
+  function renderHubTop(imageUrl: string | undefined) {
     const hub = { generatedAt: new Date(W1).toISOString(), liveChannels: [], moments: [], livePulseMoments: [pulse(imageUrl)] } as unknown as PublicHub
-    const { container } = render(<MemoryRouter><div className="hub-v5"><Feed hub={hub} /></div></MemoryRouter>)
-    const row = container.querySelector<HTMLElement>('#latest [data-mom-key]')
-    expect(row).not.toBeNull()
-    return row!
-  }
-  function openCard(row: HTMLElement) {
-    focusVisible()
-    act(() => row.focus())
-    const card = document.querySelector('[data-hv5-moment-card]')
-    expect(card).not.toBeNull()
-    return card!
+    render(<MemoryRouter><div className="hub-v5"><Top hub={hub} nowMs={W1} /></div></MemoryRouter>)
+    expect(topRow()).not.toBeNull()
+    return topRow()!
   }
 
-  it('a moment row and its card ask for the 70 px avatar and bind an allowlisted emote URL unchanged', () => {
-    const row = renderFeed(SAFE)
-    expect(imgSrcs(row.querySelector('.hv5-fd-av')!)).toEqual([PROFILE_70])
+  it('a row and its open numbers ask for the 70 px avatar and bind an allowlisted emote URL unchanged', async () => {
+    const row = renderHubTop(SAFE)
+    expect(imgSrcs(row.querySelector('.hv5-tm-face')!)).toEqual([PROFILE_70])
     expect(imgSrcs(row.querySelector('.hv5-f2-em')!)).toEqual([SAFE])
-    const card = openCard(row)
-    expect(imgSrcs(card.querySelector('.hv5-mc-h')!)).toEqual([PROFILE_70])
-    expect(imgSrcs(card.querySelector('.hv5-mc-e')!)).toEqual([SAFE])
-    fireEvent.error(row.querySelector('.hv5-fd-av img')!)
-    expect(imgSrcs(row.querySelector('.hv5-fd-av')!)).toEqual([PROFILE])
+    await act(async () => { fireEvent.click(row.querySelector('button')!) })
+    expect(imgSrcs(row.querySelector('.hv5-tm-em')!)).toEqual([SAFE])
+    fireEvent.error(row.querySelector('.hv5-tm-face img')!)
+    expect(imgSrcs(row.querySelector('.hv5-tm-face')!)).toEqual([PROFILE])
   })
 
-  it.each(REJECTED)('the row and the card name the emote without a picture for %s', (_label, url) => {
-    const row = renderFeed(url)
+  it.each(REJECTED)('a row and its open numbers name the emote without a picture for %s', async (_label, url) => {
+    const row = renderHubTop(url)
     const em = row.querySelector('.hv5-f2-em')!
     expect(em.querySelector('img')).toBeNull()
     expect(em.textContent).toBe('KEKW')
-    const line = openCard(row).querySelector('.hv5-mc-e')!
-    expect(line.querySelector('img')).toBeNull()
-    expect(line.textContent).toContain('KEKW')
+    await act(async () => { fireEvent.click(row.querySelector('button')!) })
+    expect(row.querySelector('.hv5-tm-em img')).toBeNull()
+    expect(row.querySelector('.hv5-tm-em')!.textContent).toContain('KEKW')
   })
 })
 
-describe('Top moments images', () => {
+describe('Top moments images from the Moments list', () => {
   const fixture = JSON.parse(readFileSync(resolve(__dirname, 'fixtures/moments_feed_v1.json'), 'utf8')) as { items: MomentsFeedItem[] }
   const base = fixture.items.find((i) => i.verdict === 'ok' && i.label.kind === 'emotes')!
   const NOW = base.minuteStart + 10 * MIN
   function renderTop(imageUrl: string | undefined) {
+    vi.stubEnv('VITE_PUBLIC_MOMENTS_FEED', '1')
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(NOW)
     const item: MomentsFeedItem = { ...base, profileImageUrl: PROFILE, topEmotes: [{ name: 'KEKW', count: 80, imageUrl, provider: '7tv' }] }
     const snap = { items: [item], generatedAt: NOW, stale: false, total: 1, verdicts: { ok: 1, warn: 0, bad: 0 }, categories: [], nextCursor: null } as MomentsFeedSnapshot
     feed.load.mockReset().mockResolvedValue(snap)
-    render(<MemoryRouter><div className="hub-v5"><HubV5TopMoments at="a" nowMs={NOW} onGone={() => {}} up={() => null} /></div></MemoryRouter>)
+    render(<MemoryRouter><div className="hub-v5"><Top hub={null} nowMs={NOW} /></div></MemoryRouter>)
   }
-  const row = () => document.querySelector<HTMLElement>('.hv5-tm-list > .hv5-tm-it')
+  const row = topRow
 
   it('a row and its open minute ask for the 70 px avatar and bind an allowlisted emote URL unchanged', async () => {
     renderTop(SAFE)

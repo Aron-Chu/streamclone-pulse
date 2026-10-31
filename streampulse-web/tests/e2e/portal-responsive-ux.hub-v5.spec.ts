@@ -160,10 +160,10 @@ test('on a phone the hub merges its chat bars so each stays readable', async ({ 
   await assertNoPageOverflow(page)
 })
 
-// The Live feed lists a moment from 20 minutes into its stream that rose 1.5x or more over
-// that stream's own average. The mock's moments are 2 and 4 minutes in with no comparison,
-// so the Live feed checks serve the first one an hour in, compared.
-const FEED_MOMENT: HubUxMockOptions = { withComparisons: true, momentOffsets: [3600, 3600] }
+// Top moments today lists, from the hub, a moment from 20 minutes into its stream that rose
+// 1.5x or more over that stream's own average. The mock's moments are 2 and 4 minutes in with
+// no comparison, so the Top moments checks serve the first one an hour in, compared.
+const TOP_MOMENT: HubUxMockOptions = { withComparisons: true, momentOffsets: [3600, 3600] }
 
 const responsiveCases = [
   { width: 390, height: 800, zoom: 1 },
@@ -176,17 +176,17 @@ const responsiveCases = [
 
 for (const { width, height, zoom } of responsiveCases) {
   const size = `${width}x${height}-zoom${zoom}`
-  test(`Live feed rows and the Channels table fit at ${size}`, async ({ page }) => {
+  test(`Top moments rows and the Channels table fit at ${size}`, async ({ page }) => {
     await page.setViewportSize({ width, height })
-    await installHubUxMock(page, FEED_MOMENT)
+    await installHubUxMock(page, TOP_MOMENT)
     await page.goto('/analytics')
     await page.evaluate(value => { document.documentElement.style.zoom = String(value) }, zoom)
     const latest = page.locator('#latest')
-    const rows = latest.locator('.hv5-fd-list .hv5-fd')
+    const rows = latest.locator('.hv5-tm-list > .hv5-tm-it')
     await expect(rows.first()).toBeVisible()
     expect(await rows.evaluateAll(rows => rows.flatMap(row => {
       const bounds = row.getBoundingClientRect()
-      const value = row.querySelector('.hv5-fd-t')!.getBoundingClientRect()
+      const value = row.querySelector('.hv5-tm-t')!.getBoundingClientRect()
       return value.right <= bounds.right + 1 && value.left >= bounds.left - 1 && bounds.height >= 44 * Number(document.documentElement.style.zoom || 1) - 0.5 ? [] : [row.textContent?.trim()]
     }))).toEqual([])
     const channels = page.locator('#channels')
@@ -194,7 +194,7 @@ for (const { width, height, zoom } of responsiveCases) {
     await expect(table.locator('tbody tr').first()).toBeVisible()
     expect(await table.evaluate(el => el.getBoundingClientRect().right <= el.parentElement!.getBoundingClientRect().right + 1)).toBe(true)
     await assertNoPageOverflow(page)
-    await saveProof(latest, `hub-v5-live-feed-${size}`)
+    await saveProof(latest, `hub-v5-top-moments-${size}`)
     await saveProof(channels, `hub-v5-channels-${size}`)
   })
 
@@ -271,10 +271,10 @@ for (const width of [360, 390, 768, 1024, 1440]) {
   })
 }
 
-test('the Live feed and Channels render while a legacy successful history reply awaits minute repair', async ({ page }) => {
+test('Top moments and Channels render while a legacy successful history reply awaits minute repair', async ({ page }) => {
   let releaseRepair!: () => void
   const gate = new Promise<void>(resolve => { releaseRepair = resolve })
-  await installHubUxMock(page, { ...FEED_MOMENT, legacySuccessfulCoarseFallback: true, recentHubGate: gate })
+  await installHubUxMock(page, { ...TOP_MOMENT, legacySuccessfulCoarseFallback: true, recentHubGate: gate })
   const repairRequested = page.waitForRequest(request => /\/v1\/public\/hub\?/.test(request.url()) && new URL(request.url()).searchParams.get('activityWindow') === '30m')
   await page.goto('/analytics')
   await repairRequested
@@ -282,7 +282,7 @@ test('the Live feed and Channels render while a legacy successful history reply 
     const chart = page.locator('.figma-global-activity__hub-chart')
     await expect(chart.getByText('Loading measured activity…', { exact: true })).toBeVisible()
     await expect(chart.locator('.spc-bar')).toHaveCount(0)
-    const rows = page.locator('#latest .hv5-fd-list .hv5-fd')
+    const rows = page.locator('#latest .hv5-tm-list > .hv5-tm-it')
     await expect(rows.first()).toBeVisible()
     const momentsBefore = await rows.allTextContents()
     const count = page.locator('#channels [data-hv5-channel-count]')
