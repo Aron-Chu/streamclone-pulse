@@ -4,6 +4,7 @@ import type { HubChannelScreenerV1, HubScreenerMetric } from '../src/lib/channel
 import {
   boxArtAt,
   busiestCue,
+  busiestShowsPictures,
   busiestTip,
   channelRows,
   channelVs,
@@ -159,6 +160,14 @@ describe('Busiest now', () => {
     expect(set.rows).toEqual([])
     expect(Number.isNaN(set.windowEnd)).toBe(true)
     expect(busiestCue(set, W1)).toBe('stale')
+  })
+
+  it('shows Twitch live pictures only beside live 5-minute numbers (mockup §5, 10-31)', () => {
+    const set = rankBusiest([channel('a', {}, { currentPerMin: 300 })])
+    expect(busiestShowsPictures(set, busiestCue(set, W1 + 60_000))).toBe(true)
+    expect(busiestShowsPictures(set, busiestCue(set, W1 + 10 * 60_000))).toBe(false)
+    expect(busiestShowsPictures({ ...set, basis: 'avg_35' }, 'live')).toBe(false)
+    expect(busiestTip(set, 'live').split('\n').at(-1)).toBe('Live means numbers under 3 minutes old. While they are, each tile shows Twitch’s live picture, which can be a few minutes old; a channel Twitch has no picture for shows its profile picture.')
   })
 })
 

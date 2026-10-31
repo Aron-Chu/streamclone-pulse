@@ -290,7 +290,7 @@ describe('Busiest now faces', () => {
 
   it('a channel without a picture keeps the monogram', () => {
     const { container } = render(<MemoryRouter><HubV5Busiest live={live(undefined)} nowMs={W1} /></MemoryRouter>)
-    expect(container.querySelector('.hv5-bzc-it img')).toBeNull()
+    expect(container.querySelector('.hv5-bzc-it img.hv5-bzv-fa')).toBeNull()
     expect(container.querySelector('.hv5-bzv-fam')).not.toBeNull()
   })
 })

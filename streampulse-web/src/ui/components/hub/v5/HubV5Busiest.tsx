@@ -4,16 +4,19 @@
  * 5.5 tiles in view, ‹ › in the header, edge fades, no auto-advance and one
  * roving tab stop (arrow keys, Home, End). An up/down wheel over the strip
  * moves it one tile per notch; at either end the page scrolls as usual.
- * Prod saves no live previews, so every tile is the channel's face tile.
+ * Pictures (mockup §5, Aron 10-31): while the numbers are Live, each tile shows
+ * Twitch's live picture over its face tile; otherwise the face tile.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Link } from 'react-router-dom'
+import { liveNowPreviewUrl } from '../../../../../../packages/analytics-console/src/components/analytics/LiveNowTile.tsx'
+import { isTwitchOfflinePreview } from '../../../../../../packages/analytics-console/src/utils/twitchBoxArt.ts'
 import type { HubLiveChannel } from '../../../../lib/publicHub'
 import { twitchProfileImageRendition } from '../../../../lib/twitchProfileImage'
 import { ResilientImage } from '../../ResilientImage'
 import { HubToggletip } from '../d3/HubToggletip'
 import { HubV5Icon } from './HubV5Icon'
-import { HUB_BUSIEST_COUNT, HUB_CHAT_COUNTS_DOWN, busiestAria, busiestCue, busiestTip, hubAvatarTone, hubChatBasis, hubClock, hubMonogram, rankBusiest, screenerDown } from './hubV5Model'
+import { HUB_BUSIEST_COUNT, HUB_CHAT_COUNTS_DOWN, busiestAria, busiestCue, busiestShowsPictures, busiestTip, hubAvatarTone, hubChatBasis, hubClock, hubMonogram, rankBusiest, screenerDown, type HubBusiestRow } from './hubV5Model'
 
 const reduced = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function'
   && window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -22,6 +25,96 @@ const H_ID = 'hv5-busy-h'
 const TRACK_ID = 'hv5-busy-track'
 /** A tile's face is 40 % of the tile's height (34–70 px from 390 to 2560 wide), so it asks for Twitch's 150 px rendition; the original is the fallback. */
 const FACE_RENDITION = 150
+/** The caption's small face is 16–20 px. */
+const SMALL_FACE_RENDITION = 70
+
+/** Twitch's live picture size: 440×248, or 640×360 at a pixel ratio of 2 or more (mockup build note, 10-15). */
+const livePictureSize = (): readonly [number, number] =>
+  typeof window !== 'undefined' && window.devicePixelRatio >= 2 ? [640, 360] : [440, 248]
+
+/**
+ * One tile. While `pictures` (live 5-minute numbers), Twitch's live picture covers the face tile once it has loaded
+ * and proven not to be Twitch's offline picture (an offline channel's URL answers with that picture, not an error).
+ * The URL moves to a new 5-minute bucket (`liveNowPreviewUrl`, as the stream page's Live now tile), and the last
+ * proven picture stays up while the next one is checked. A failed or offline picture drops back to the face tile
+ * until the next bucket, and a check that ends after its bucket has passed changes nothing. Over a live picture the
+ * caption adds the small face, only from a real profile image.
+ */
+function BusiestTile({ row, total, tab, pictures, nowMs }: { row: HubBusiestRow; total: number; tab: boolean; pictures: boolean; nowMs: number }) {
+  const [width, height] = livePictureSize()
+  const src = pictures ? liveNowPreviewUrl(row.login, nowMs, width, height) : null
+  const [shown, setShown] = useState<string | null>(null)
+  const [failed, setFailed] = useState<string | null>(null)
+  const [smallFaceFailed, setSmallFaceFailed] = useState(false)
+  const current = useRef(src)
+  useEffect(() => {
+    current.current = src
+    if (!src) setShown(null)
+  }, [src])
+  const settle = (pic: string, ok: boolean) => {
+    if (current.current !== pic) return
+    setShown(ok ? pic : null)
+    if (!ok) setFailed(pic)
+  }
+  const visible = src != null ? shown : null
+  const checking = src != null && src !== shown && src !== failed ? src : null
+  const smallFace = visible != null && !!row.avatar && !smallFaceFailed
+  return (
+    <Link className="hv5-bzt-t hv5-bzc-c" to={row.href} aria-label={busiestAria(row, total, !!visible)} tabIndex={tab ? 0 : -1}>
+      <span className="hv5-bzv-face" style={{ background: `radial-gradient(120% 90% at 50% 40%, ${hubAvatarTone(row.login)} 0%, #101012 100%)` }}>
+        <ResilientImage
+          className="hv5-bzv-fa"
+          src={twitchProfileImageRendition(row.avatar, FACE_RENDITION)}
+          fallbackSrc={row.avatar}
+          fallback={<span className="hv5-bzv-fa hv5-bzv-fam" aria-hidden="true">{hubMonogram(row.displayName, row.login)}</span>}
+          alt=""
+          decoding="async"
+          referrerPolicy="no-referrer"
+        />
+      </span>
+      {[visible, checking].map((pic) => pic && (
+        <img
+          key={pic}
+          className="hv5-bzv-prev"
+          src={pic}
+          alt=""
+          width={width}
+          height={height}
+          decoding="async"
+          loading="lazy"
+          crossOrigin="anonymous"
+          referrerPolicy="no-referrer"
+          data-shown={pic === visible ? '' : undefined}
+          onLoad={pic === visible ? undefined : (event) => {
+            void isTwitchOfflinePreview(event.currentTarget)
+              .then((offline) => settle(pic, !offline))
+              .catch(() => settle(pic, true))
+          }}
+          onError={() => settle(pic, false)}
+        />
+      ))}
+      <span className="hv5-bzt-fig"><b>{row.fig}</b> chat/min</span>
+      <span className={`hv5-bzt-cap${smallFace ? ' hf' : ''}`}>
+        {smallFace ? (
+          <ResilientImage
+            className="hv5-bzv-av"
+            src={twitchProfileImageRendition(row.avatar, SMALL_FACE_RENDITION)}
+            fallbackSrc={row.avatar}
+            fallback={null}
+            onError={() => setSmallFaceFailed(true)}
+            alt=""
+            width={20}
+            height={20}
+            decoding="async"
+            referrerPolicy="no-referrer"
+          />
+        ) : null}
+        <span className="hv5-bzt-nm">{row.displayName}</span>
+        <span className="hv5-bzt-cat">{row.category || 'No category'}</span>
+      </span>
+    </Link>
+  )
+}
 
 /**
  * `unavailable`: the hub request failed, so an empty list says so rather than that no channel qualifies (INT-02).
@@ -32,6 +125,7 @@ export function HubV5Busiest({ live, nowMs, loading = false, unavailable = false
   // the recent average is never "Live" (candidate, 10-30)
   const avg = set.basis === 'avg_35'
   const cue = busiestCue(set, nowMs)
+  const pictures = busiestShowsPictures(set, cue)
   const rows = set.rows
   const N = rows.length
   const trackRef = useRef<HTMLOListElement>(null)
@@ -198,24 +292,7 @@ export function HubV5Busiest({ live, nowMs, loading = false, unavailable = false
             <ol ref={trackRef} id={TRACK_ID} className="hv5-bzc-track" aria-labelledby={H_ID} onKeyDown={onTrackKeyDown}>
               {rows.map((row, i) => (
                 <li key={row.login} className="hv5-bzc-it" data-rank={row.rank} data-login={row.login}>
-                  <Link className="hv5-bzt-t hv5-bzc-c" to={row.href} aria-label={busiestAria(row, N)} tabIndex={i === rove ? 0 : -1}>
-                    <span className="hv5-bzv-face" style={{ background: `radial-gradient(120% 90% at 50% 40%, ${hubAvatarTone(row.login)} 0%, #101012 100%)` }}>
-                      <ResilientImage
-                        className="hv5-bzv-fa"
-                        src={twitchProfileImageRendition(row.avatar, FACE_RENDITION)}
-                        fallbackSrc={row.avatar}
-                        fallback={<span className="hv5-bzv-fa hv5-bzv-fam" aria-hidden="true">{hubMonogram(row.displayName, row.login)}</span>}
-                        alt=""
-                        decoding="async"
-                        referrerPolicy="no-referrer"
-                      />
-                    </span>
-                    <span className="hv5-bzt-fig"><b>{row.fig}</b> chat/min</span>
-                    <span className="hv5-bzt-cap">
-                      <span className="hv5-bzt-nm">{row.displayName}</span>
-                      <span className="hv5-bzt-cat">{row.category || 'No category'}</span>
-                    </span>
-                  </Link>
+                  <BusiestTile row={row} total={N} tab={i === rove} pictures={pictures} nowMs={nowMs} />
                 </li>
               ))}
             </ol>

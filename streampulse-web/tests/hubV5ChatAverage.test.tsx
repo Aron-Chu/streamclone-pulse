@@ -111,7 +111,8 @@ describe('the lists on the recent average (HUB-1 candidate, 10-30)', () => {
     const tip = busiestTip(set, 'stale')
     expect(tip.split('\n')[0]).toBe('The 5-minute counts did not load, so this ranks channels by recent average chat per minute: up to the last 35 minutes, counting only minutes with data and the current unfinished minute, so it can cover much less; ties go to more viewers.')
     expect(tip).not.toMatch(/last full 5-minute window|Live means|over the last 35 minutes/)
-    expect(busiestAria(set.rows[2]!, set.rows.length)).toBe('xQc, 244 chat messages per minute, recent average, Grand Theft Auto V, rank 3 of 6. Profile picture, no live preview saved.')
+    expect(tip.split('\n').at(-1)).toBe('Live pictures show only beside the 5-minute counts, so each channel shows its profile picture.')
+    expect(busiestAria(set.rows[2]!, set.rows.length)).toBe('xQc, 244 chat messages per minute, recent average, Grand Theft Auto V, rank 3 of 6. Profile picture.')
     expect(busiestAria(set.rows[0]!, set.rows.length)).not.toMatch(FIXED_35)
   })
 
@@ -154,6 +155,8 @@ describe('the sections on the recent average (HUB-1 candidate, 10-30)', () => {
     expect([...container.querySelectorAll('[data-login]')].map((el) => el.getAttribute('data-login'))).toEqual(
       ['yuyuta0702', 'aldo_geo', 'xqc', 'supertf', 'yourragegaming', 'summit1g'],
     )
+    // Twitch's live pictures go only beside the 5-minute counts (10-31)
+    expect(container.querySelector('.hv5-bzv-prev')).toBeNull()
   })
 
   it('Busiest now stays empty with the outage line on 7d', () => {

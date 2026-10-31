@@ -209,6 +209,32 @@ test('Busiest now ranks by chat, pages with the buttons and moves focus with the
   await noSideScroll(page)
 })
 
+// Twitch's live pictures (mockup §5, 10-31): previews-ttv answers a channel that isn't live with Twitch's offline
+// picture, so the page compares each live picture with it. Here only xQc is live on Twitch; both answers carry
+// CORS headers, as Twitch's do. Two 1x1 pictures that draw different pixels.
+const LIVE_PICTURE = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
+const OFFLINE_PICTURE = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNISUkBAAJcAS1bGyRYAAAAAElFTkSuQmCC', 'base64')
+
+test('Busiest now shows Twitch’s live picture while Live and keeps the face for a channel Twitch shows offline', async ({ page }) => {
+  await page.route(/^https:\/\/static-cdn\.jtvnw\.net\/(previews-ttv\/|ttv-static\/404_preview-)/, (route) => route.fulfill({
+    status: 200,
+    contentType: 'image/png',
+    headers: { 'access-control-allow-origin': '*' },
+    body: route.request().url().includes('/previews-ttv/live_user_xqc-') ? LIVE_PICTURE : OFFLINE_PICTURE,
+  }))
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await openV5Hub(page)
+  const tiles = page.locator('#busiest .hv5-bzc-it')
+  await expect(tiles.first()).toHaveAttribute('data-login', 'xqc')
+  await expect(tiles.first().locator('img.hv5-bzv-prev[data-shown]')).toBeVisible()
+  await expect(tiles.first().locator('img.hv5-bzv-prev')).toHaveAttribute('src', /\/previews-ttv\/live_user_xqc-440x248\.jpg\?t=\d+$/)
+  await expect(tiles.first().locator('a')).toHaveAttribute('aria-label', /\. Twitch’s live picture, can be a few minutes old\.$/)
+  // the second channel's picture is Twitch's offline one: its face stays
+  await expect(tiles.nth(1).locator('img.hv5-bzv-prev')).toHaveCount(0)
+  await expect(tiles.nth(1).locator('a')).toHaveAttribute('aria-label', /\. Profile picture\.$/)
+  await noSideScroll(page)
+})
+
 test('Where chat is filters Channels to one game and the chip clears it', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await openV5Hub(page)

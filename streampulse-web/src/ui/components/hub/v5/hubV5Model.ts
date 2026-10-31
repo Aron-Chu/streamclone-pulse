@@ -266,6 +266,11 @@ export function busiestCue(set: HubBusiestSet, nowMs: number): HubBusiestCue {
   return finite(set.windowEnd) && nowMs - set.windowEnd <= HUB_LIVE_MS ? 'live' : 'stale'
 }
 
+/** Twitch's live pictures show only beside live 5-minute numbers (mockup §5); the recent average and old numbers get faces. */
+export function busiestShowsPictures(set: HubBusiestSet, cue: HubBusiestCue): boolean {
+  return set.basis !== 'avg_35' && cue === 'live'
+}
+
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 
 /** The (i): one paragraph per line. */
@@ -278,7 +283,7 @@ export function busiestTip(set: HubBusiestSet, cue: HubBusiestCue): string {
     ? `${set.eligible} of ${set.synced} synced channels have that full window; ${set.noWindow}${set.noWindow === 1 ? ' doesn’t yet and is left out.' : ' don’t yet and are left out.'}`
     : `All ${set.synced} synced channels have that full window.`)
   if (set.otherWindow > 0) lines.push(`${count(set.otherWindow, 'channel', 'channels')} reported a different window and ${set.otherWindow === 1 ? 'is' : 'are'} left out.`)
-  lines.push('Live means numbers under 3 minutes old. No live preview is checked, so each channel shows its profile picture.')
+  lines.push('Live means numbers under 3 minutes old. While they are, each tile shows Twitch’s live picture, which can be a few minutes old; a channel Twitch has no picture for shows its profile picture.')
   return lines.join('\n')
 }
 
@@ -289,14 +294,16 @@ function busiestAverageTip(set: HubBusiestSet): string {
     set.noWindow > 0
       ? `${set.eligible} of ${set.synced} synced channels have a chat average; ${set.noWindow}${set.noWindow === 1 ? ' doesn’t and is left out.' : ' don’t and are left out.'}`
       : `All ${set.synced} synced channels have a chat average.`,
-    'No live preview is checked, so each channel shows its profile picture.',
+    'Live pictures show only beside the 5-minute counts, so each channel shows its profile picture.',
   ].join('\n')
 }
 
-export function busiestAria(row: HubBusiestRow, total: number): string {
+/** `livePicture`: the tile shows Twitch's live picture (checked), not the face tile. */
+export function busiestAria(row: HubBusiestRow, total: number, livePicture = false): string {
   // the recent average says so, with no fixed span (candidate, 10-30)
   const basis = row.basis === 'avg_35' ? ', recent average' : ''
-  return `${row.displayName}, ${row.fig} chat messages per minute${basis}, ${row.category || 'No category'}, rank ${row.rank} of ${total}. Profile picture, no live preview saved.`
+  const picture = livePicture ? 'Twitch’s live picture, can be a few minutes old.' : 'Profile picture.'
+  return `${row.displayName}, ${row.fig} chat messages per minute${basis}, ${row.category || 'No category'}, rank ${row.rank} of ${total}. ${picture}`
 }
 
 /* ---------- Where chat is (R5-6, the round-5 list) ---------- */

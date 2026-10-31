@@ -814,8 +814,32 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Twitch's live picture over the face tile (mockup §5): it stays clear until checked, so the face shows meanwhile */
+.hv5-bzv-prev {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  opacity: 0;
+  transition: opacity var(--sp-dur-quick);
+}
+.hv5-bzv-prev[data-shown] { opacity: 1; }
+/* over a live picture, the caption's small face (mockup .bzt-cap .bzv-av) */
+.hv5-bzt-cap.hf { grid-template-columns: auto minmax(0, 1fr); column-gap: 6px; }
+.hv5-bzv-av {
+  grid-row: 1 / 3;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  object-fit: cover;
+}
 @container hv5bzv (max-width: 559px) {
   .hv5-bzt-cap { padding: 16px 6px 5px; }
+  .hv5-bzt-cap.hf { column-gap: 5px; }
+  .hv5-bzv-av { width: 16px; height: 16px; }
   .hv5-bzt-nm { font-size: 12px; line-height: 15px; }
 }
 /* each tile answers its own width: under 180 px the caption keeps only the name on a shorter scrim
@@ -826,7 +850,8 @@
     padding: 7px 6px 2px;
     background: linear-gradient(to top, rgb(9 9 11 / 0.9) 0, rgb(9 9 11 / 0.62) 60%, rgb(9 9 11 / 0) 100%);
   }
-  .hv5-bzt-cat { display: none; }
+  .hv5-bzt-cat, .hv5-bzv-av { display: none; }
+  .hv5-bzt-cap.hf { grid-template-columns: minmax(0, 1fr); }
   .hv5-bzt-nm { font-size: 12px; line-height: 15px; }
 }
 /* the pager: position and ‹ › in the header */
@@ -915,7 +940,7 @@
   background: linear-gradient(90deg, var(--sp-raised), var(--sp-panel));
 }
 @media (prefers-reduced-motion: reduce) {
-  .hv5-bzt-t::after { transition: none; }
+  .hv5-bzt-t::after, .hv5-bzv-prev { transition: none; }
 }
 
 /* ---------- 2b. Featured stream (picks I1 and I1b, 10-30; board artifacts/session-hub-gaps-20261030): the featured stream under Busiest now ---------- */
