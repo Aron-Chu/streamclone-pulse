@@ -11,7 +11,7 @@ import {
   type PublicHubLoadSource,
   type PublicHubProjection,
 } from '../lib/publicHub'
-import { hubActivityNeedsRecentFallback } from '../lib/hubActivityHonesty'
+import { HUB_ACTIVITY_REASON_PORTAL_STAND_IN, hubActivityNeedsRecentFallback } from '../lib/hubActivityHonesty'
 import { HUB_READ_HARD_CAP_MS, hubReadTimeoutMs } from '../lib/hubEarlyFetch'
 import { computeJitteredDelayMs } from '../lib/pollDelay'
 import { isApiError } from '../lib/apiClient'
@@ -55,6 +55,11 @@ export interface PublicHubState {
    * Pool Wire and other reducers must consume each sequence at most once.
    */
   pollSequence: number
+  /**
+   * Counts hub reads started (poll, Try again, back to the tab), answered or
+   * not, so a reader that rides the hub's polls keeps going while the hub fails.
+   */
+  pollAttempt: number
   /** When data was read from browser cache (ms since epoch). */
   cachedAt: number | null
   /** A server Retry-After window is active; refresh() waits for it to end. */
@@ -170,7 +175,12 @@ export function resetHubDataMarkForTests(): void {
   hubDataMarked = false
 }
 
-function replaceWithCanonicalRecentActivity(requested: PublicHub, recent: PublicHub): PublicHub {
+/**
+ * `reason`: the backend's own when it served the fallback; the portal's
+ * stand-in reason when the portal's 30m read stands in (fix, 10-30), so the
+ * page never claims a cause the backend did not send.
+ */
+function replaceWithCanonicalRecentActivity(requested: PublicHub, recent: PublicHub, reason = 'historical_projection_unavailable'): PublicHub {
   const requestedActivity = requested.activity
   return {
     ...requested,
@@ -187,18 +197,18 @@ function replaceWithCanonicalRecentActivity(requested: PublicHub, recent: Public
       availableWindowMinutes: 30,
       state: 'degraded',
       source: 'live_pool_fallback',
-      reason: 'historical_projection_unavailable',
+      reason,
       bucketMinutes: recent.activity.bucketMinutes ?? 1,
     },
   }
 }
 
-/** A 30m read standing in for a longer requested window: the bounded live-pool fallback. */
+/** A 30m read standing in for a longer requested window: the bounded live-pool view, tagged as the portal's stand-in (fix, 10-30). */
 function recentForRequestedWindow(recent: PublicHub, minutes: number): PublicHub {
   return replaceWithCanonicalRecentActivity({
     ...recent,
     activity: { ...recent.activity, windowMinutes: minutes, requestedWindowMinutes: minutes },
-  }, recent)
+  }, recent, HUB_ACTIVITY_REASON_PORTAL_STAND_IN)
 }
 
 function withUnavailableActivity(hub: PublicHub): PublicHub {
@@ -235,6 +245,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
   const [dataAsOf, setDataAsOf] = useState<number | null>(() => initial.dataAsOf)
   const [cachedAt, setCachedAt] = useState<number | null>(() => initial.cachedAt)
   const [pollSequence, setPollSequence] = useState(() => (initial.hasData ? 1 : 0))
+  const [pollAttempt, setPollAttempt] = useState(0)
   const [loadedActivityWindow, setLoadedActivityWindow] = useState<PublicHubActivityWindow | null>(
     () => initial.loadedActivityWindow,
   )
@@ -316,6 +327,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
       return
     }
     if (inFlightRef.current && !force) return
+    setPollAttempt((n) => n + 1)
     setRetryBlocked(false)
 
     controllerRef.current?.abort(new DOMException('superseded by new request', 'AbortError'))
@@ -733,6 +745,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
     dataAsOf,
     lastSuccessfulPollAt: lastUpdated,
     pollSequence,
+    pollAttempt,
     cachedAt,
     retryBlocked,
     hubReadPending: enabled && (hubReadRunning || settledKey !== loadKey) &&

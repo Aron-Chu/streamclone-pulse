@@ -19,6 +19,12 @@ const TINY_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
   'base64',
 )
+// Twitch's grey "?" cover (ttv-static/404_boxart-*) is its own picture. The page
+// compares covers against it, so it must not draw the same pixels as TINY_PNG.
+const PLACEHOLDER_BOX_ART_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNISUkBAAJcAS1bGyRYAAAAAElFTkSuQmCC',
+  'base64',
+)
 
 const ALLOWED_NAV_HOSTS = new Set(['127.0.0.1', 'localhost'])
 const MOCK_API_HOSTS = new Set(['api.streampulse.stream'])
@@ -643,7 +649,7 @@ export async function installPortalAcceptanceHarness(
       await route.fulfill({
         status: 200,
         contentType: 'image/png',
-        body: TINY_PNG,
+        body: parsed.pathname.startsWith('/ttv-static/404_boxart') ? PLACEHOLDER_BOX_ART_PNG : TINY_PNG,
       })
       return
     }

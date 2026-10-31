@@ -14,10 +14,13 @@ import {
   hubActivityHonestyEmptyCopy,
   hubActivityContractIssues,
   hubActivityPointsWithinServedWindow,
+  hubActivityStandInLine,
   isHubActivityHistoricalProjection,
   isHubActivityLivePoolFallback,
+  isHubActivityStandIn,
   resolveHubActivityChartWindowMinutes,
 } from "../../../lib/hubActivityHonesty";
+import { hubActivityFallbackLine } from "../../../lib/hubActivityFallbackLine";
 import {
   deriveHubChartActivityModel,
   selectHubChartActivityInputs,
@@ -40,6 +43,7 @@ import {
   type FigmaGlobalActivityPanelProps,
 } from "./FigmaGlobalActivityPanel";
 import "../hub/hub.css";
+import "./hub-activity-fallback-line.css";
 
 export type HubActivityPanelV5Props = FigmaGlobalActivityPanelProps & {
   /**
@@ -130,6 +134,12 @@ export function HubActivityPanelV5({
   }, []);
   const detailsRef = useRef<HTMLDetailsElement>(null);
   const livePoolFallback = isHubActivityLivePoolFallback(hub.activity);
+  // The portal's own 30m stand-in: loading or did not load, never the backend's reason (fix, 10-30).
+  const standIn = isHubActivityStandIn(hub.activity);
+  const standInLine = hubActivityStandInLine(hub.activity, activityRefreshing);
+  // IRC-2 pick A: the backend's fallback says history is behind, under the header (candidate, 10-30).
+  const fallbackLine = hubActivityFallbackLine(hub.activity);
+  const activityLine = unavailable ? null : standInLine ?? fallbackLine;
   const historicalProjection = isHubActivityHistoricalProjection(hub.activity);
   const servedLabel = formatHubActivityServedLabel(hub.activity);
   const honestyDetail = hubActivityHonestyDetail(hub.activity);
@@ -222,12 +232,13 @@ export function HubActivityPanelV5({
         <CollectorHealthChip hub={hub} />
       </div>
       <p className="figma-global-activity__served-window" data-testid="hub-activity-served-window" role="status">
+        {/* the stand-in names no cause (fix, 10-30) */}
         {unavailable ? 'Measurement window unavailable.' : fallbackPayloadRepaired
-          ? `${requestedWindowLabel} requested · ${availableWindowLabel} available; older fallback rows were discarded because historical projection is unavailable.`
+          ? `${requestedWindowLabel} requested · ${availableWindowLabel} available; older fallback rows were discarded${standIn ? '' : ' because historical projection is unavailable'}.`
           : blockingActivityContractIssue
           ? `Activity payload withheld: ${blockingActivityContractIssue}.`
           : livePoolFallback
-          ? `${requestedWindowLabel} requested · ${availableWindowLabel} available; historical projection is unavailable.`
+          ? `${requestedWindowLabel} requested · ${availableWindowLabel} available${standIn ? '.' : '; historical projection is unavailable.'}`
           : `Showing served ${servedLabel}.`}
       </p>
       {honestyDetail ? <p>{honestyDetail}</p> : null}
@@ -263,7 +274,8 @@ export function HubActivityPanelV5({
           dataIssue={blockingActivityContractIssue}
           loading={loading}
           rangeControl={rangeControl}
-          annotationLane={annotationLane}
+          // one plain line under the header for a stand-in or the backend's fallback (fix + candidate, 10-30)
+          annotationLane={activityLine ? <><p className="hub-act-fallback-line" data-hub-activity-line={standIn ? "stand-in" : "fallback"}>{activityLine}</p>{annotationLane}</> : annotationLane}
           emptyTitle={unavailable ? 'Measured activity unavailable' : honestyEmpty?.title}
           emptyDescription={unavailable ? 'The hub could not supply a measured snapshot. This is not evidence of an empty or inactive pool.' : honestyEmpty?.description}
           selectedBucketT={selectedBucketT}

@@ -78,6 +78,8 @@ export interface HubV5BarCardModel {
   topEmotes: HubV5BarEmote[]
   /** None of the shown emotes is a minimum. */
   topEmotesExact: boolean
+  /** The Top emotes line when no emote is listed; "none named" only for a bar that counted zero emotes (pick 12A, 10-30). */
+  topEmotesNote: string | null
   moments: { items: HubV5BarMoment[]; total: number; note: string | null }
   /** 7TV and other (the emotes total minus 7TV), only when every bucket certifies its provider counts. */
   providers: { sevenTv: number; other: number } | null
@@ -244,6 +246,9 @@ export function buildHubV5BarCard(input: HubV5BarCardInput): HubV5BarCardModel |
       title: `${e.name}: ${topEmotesExact ? '' : 'at least '}${formatHubCardInt(e.count)} uses in this bucket, ${topEmotesExact ? '' : '≥'}${formatHubCardRate(e.perMin)}/min`,
     }
   })
+  // A bar that counted emotes but whose reply sent no names (the 24h fallback's newest
+  // minute) did not name none; the emotes/min tile's figure decides (pick 12A, 10-30).
+  const topEmotesNote = topEmotes.length ? null : emotes === 0 ? 'none named in this bucket' : 'names not in this update'
 
   // Detected moments inside the bar (the hub sends its highest-scoring ones); each row opens in Moments.
   const lane = hubV5ChartMoments(input.points, minutesPerBucket, input.moments)
@@ -307,6 +312,7 @@ export function buildHubV5BarCard(input: HubV5BarCardInput): HubV5BarCardModel |
     figs,
     topEmotes,
     topEmotesExact,
+    topEmotesNote,
     moments,
     providers,
     notes,

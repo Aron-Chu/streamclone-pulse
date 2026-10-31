@@ -1,0 +1,12 @@
+/*
+ * The one plain line under the hub activity header (10-30): the portal's 30m
+ * stand-in (IRC-10 fix) or the backend's live-pool fallback (IRC-2 pick A,
+ * candidate). Same size and colour as the hub's other meta text.
+ */
+.hub-act-fallback-line {
+  margin: 2px 0 8px;
+  color: var(--sp-text-2, var(--muted-foreground));
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+}

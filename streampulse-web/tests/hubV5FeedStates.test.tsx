@@ -1,21 +1,23 @@
 /**
- * /analytics with no hub answer on screen (10-28): the Live feed and its phone
- * peek stay in every state. Totals only or nothing: "Loading live feed…" while
- * a hub read runs, "Unavailable right now." once it gave up, never a quiet
- * hour; the cards wait with it and keep "Unavailable right now." through a
- * later poll's read (U1, U2). A saved copy waits with no rows, then names its
- * hour (Q1); Busiest now waits on it, Channels says when its count was live
- * (S1, U7) and the peek is headed with its time (U5); the note says its day
- * (N1). The hub hook is mocked and fetch never answers: no live API.
+ * /analytics with no hub answer on screen (10-28): Top moments today and its
+ * phone peek stay in every state (the Moments list is off here, so their rows
+ * are the hub's). Totals only or nothing: grey rows while a hub read runs,
+ * "Unavailable right now." once it gave up, with the banner's Try again (the
+ * rail has none of its own, Q5b); the cards wait with it and keep
+ * "Unavailable right now." through a later poll's read (U1, U2).
+ * A saved copy waits with no rows, then says it has none as of when it was
+ * saved (Q1b); Busiest now waits on it, Channels says when its count was live (S1,
+ * U7); the note says its day (N1). The hub hook is mocked and fetch never
+ * answers: no live API.
  */
-import { act, cleanup, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, useNavigate } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { normalizePublicHub, type HubLiveChannel, type HubMoment, type PublicHub } from '../src/lib/publicHub'
+import { normalizePublicHub, type HubLiveChannel, type HubLivePulseMoment, type HubMoment, type PublicHub } from '../src/lib/publicHub'
 import type { HubChannelScreenerV1 } from '../src/lib/channelScreenerContract'
 import AnalyticsHubV5Page from '../src/routes/analytics/AnalyticsHubV5Page'
-import { feedClockFloor } from '../src/ui/components/hub/v5/hubV5FeedModel'
-import { hubClock } from '../src/ui/components/hub/v5/hubV5Model'
+import { TOP_HUB_EMPTY, TOP_NONE, topSavedLine } from '../src/ui/components/hub/v5/HubV5TopMoments'
+import { hubClock, hubSavedClock } from '../src/ui/components/hub/v5/hubV5Model'
 
 const MIN = 60_000
 const NOW = new Date(2026, 9, 28, 10, 55).getTime()
@@ -37,6 +39,7 @@ function setHub(over: Record<string, unknown>) {
     lastUpdated: null,
     lastSuccessfulPollAt: null,
     pollSequence: 1,
+    pollAttempt: 0,
     cachedAt: null,
     retryBlocked: false,
     hubReadPending: false,
@@ -79,14 +82,19 @@ const channel = (login: string, over: Partial<HubLiveChannel> = {}): HubLiveChan
   ...over,
 }) as HubLiveChannel
 
-const hubWith = (asOf: number, liveChannels: HubLiveChannel[] = [], moments: HubMoment[] = []): PublicHub =>
-  ({ ...normalizePublicHub(null), generatedAt: iso(asOf), poolSize: 500, liveChannels, moments }) as PublicHub
+const hubWith = (asOf: number, liveChannels: HubLiveChannel[] = [], moments: HubMoment[] = [], livePulseMoments: HubLivePulseMoment[] = []): PublicHub =>
+  ({ ...normalizePublicHub(null), generatedAt: iso(asOf), poolSize: 500, liveChannels, moments, livePulseMoments }) as PublicHub
 
-/** A hub answer with one row: ALPHA's chat spike, on the screener's word. */
+/** A hub answer with one row: ALPHA's chat at 3× its own average, an hour in. */
 const answered = (asOf = NOW - 20_000) => hubWith(
   asOf,
-  [channel('alpha', { startedAt: iso(asOf - 9 * MIN), viewers: 7000, screenerV1: screener(asOf) })],
+  [channel('alpha', { startedAt: iso(asOf - 62 * MIN), viewers: 7000, screenerV1: screener(asOf) })],
   [{ kind: 'chat_spike', login: 'alpha', displayName: 'ALPHA', label: 'Chat spike', at: asOf - 2 * MIN } as HubMoment],
+  [{
+    login: 'alpha', displayName: 'ALPHA', streamId: 's-alpha', offsetSeconds: 3600, at: asOf - 2 * MIN, score: 80, label: 'Chat spike',
+    chatPerMin: 300, emotesPerMin: 40, category: 'Just Chatting',
+    comparison: { chat: { state: 'ready', currentPerMin: 300, baselinePerMin: 100, multiplier: 3, baselineMeasuredMinutes: 40 } },
+  } as HubLivePulseMoment],
 )
 /** The stats-only fallback: a fresh time, totals, and no rows at all. */
 const totalsOnly = () => hubWith(NOW - 20_000)
@@ -98,19 +106,38 @@ const rail = () => within(document.getElementById('latest')!)
 const railEl = () => document.getElementById('latest')!
 const peekEl = () => document.querySelector<HTMLElement>('.hv5-f3-peek')!
 
-function expectWaiting(line: string) {
+/** Nothing to show yet: grey rows, grey dot, no time, no (i), never "none yet". */
+function expectLoading() {
   // U6: the phone peek keeps its rows' height while it waits.
   expect(peekEl().hasAttribute('data-wait')).toBe(true)
+  expect(railEl().querySelector('.hv5-tm-wait')!.getAttribute('aria-busy')).toBe('true')
+  expect(rail().getByRole('status').textContent).toBe('Loading top moments')
+  expect(railEl().querySelector('.hv5-tm-it')).toBeNull()
   for (const el of [railEl(), peekEl()]) {
-    expect(el).toBeTruthy()
-    expect(within(el).getByText(line)).toBeTruthy()
-    // grey dot, no time, no (i), and never a quiet hour
     expect(el.className).toContain('hv5-f2-stale')
     expect(el.querySelector('.hv5-f2-fresh')!.textContent).toBe('')
-    expect(within(el).queryByText(/^Quiet right now/)).toBeNull()
-    expect(within(el).queryByText(/^Nothing /)).toBeNull()
+    expect(within(el).queryByText(TOP_NONE)).toBeNull()
+    expect(within(el).queryByText(/^No standout moments/)).toBeNull()
   }
-  expect(rail().queryByRole('button', { name: 'About the Live feed' })).toBeNull()
+  expect(rail().queryByRole('button', { name: 'About Top moments today' })).toBeNull()
+}
+
+const bannerTryAgain = () => within(document.querySelector<HTMLElement>('.hx-health-banner')!).getByRole('button', { name: 'Try again' }) as HTMLButtonElement
+
+/** The hub read gave up with nothing to show: "Unavailable right now.", and the banner's Try again reads the hub again (Q5b: one button). */
+function expectUnavailable() {
+  expect(peekEl().hasAttribute('data-wait')).toBe(false)
+  expect(within(peekEl()).getByText(TOP_NONE)).toBeTruthy()
+  expect(railEl().querySelector('.hv5-tm-q')!.textContent).toBe(TOP_NONE)
+  expect(rail().queryByRole('button', { name: 'Try again' })).toBeNull()
+  expect(screen.getAllByRole('button', { name: 'Try again' })).toHaveLength(1)
+  expect(bannerTryAgain()).toBeTruthy()
+  expect(rail().queryByRole('status')).toBeNull()
+  for (const el of [railEl(), peekEl()]) {
+    expect(el.className).toContain('hv5-f2-stale')
+    expect(el.querySelector('.hv5-f2-fresh')!.textContent).toBe('')
+  }
+  expect(rail().queryByRole('button', { name: 'About Top moments today' })).toBeNull()
 }
 
 /** The cards once the hub read gave up: Busiest now, the chart and Channels. */
@@ -141,14 +168,15 @@ const banner = () => document.querySelector('.hx-health-banner')?.textContent ??
 
 function expectRows() {
   expect(peekEl().hasAttribute('data-wait')).toBe(false)
-  expect(peekEl().querySelector('h2')!.textContent).toBe('Live now')
-  expect(rail().getAllByText('ALPHA').length).toBeGreaterThan(0)
-  expect(within(peekEl()).getAllByText('ALPHA').length).toBeGreaterThan(0)
+  expect(peekEl().querySelector('h2')!.textContent).toBe('Top today')
+  expect(rail().getByRole('button', { name: /^1\. ALPHA, chat 3\.0 times usual, Just Chatting, 2 min ago at / })).toBeTruthy()
+  expect(within(peekEl()).getByRole('button', { name: /^1\. ALPHA, .+ Open it in Top moments below\.$/ })).toBeTruthy()
   expect(railEl().className).not.toContain('hv5-f2-stale')
   expect(railEl().querySelector('.hv5-f2-fresh')!.textContent).toMatch(/^as of /)
-  expect(rail().getByRole('button', { name: 'About the Live feed' })).toBeTruthy()
-  expect(screen.queryByText('Loading live feed…')).toBeNull()
-  expect(rail().queryByText('Unavailable right now.')).toBeNull()
+  expect(rail().getByRole('button', { name: 'About Top moments today' })).toBeTruthy()
+  expect(railEl().querySelector('.hv5-tm-q')!.textContent).toBe('That’s all on streams live now. Every moment today →')
+  expect(rail().queryByRole('status')).toBeNull()
+  expect(rail().queryByText(TOP_NONE)).toBeNull()
 }
 
 beforeEach(() => {
@@ -166,11 +194,11 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('the Live feed with totals only or nothing (10-28)', () => {
+describe('Top moments today with totals only or nothing (10-28)', () => {
   it('says it is loading while the hub read runs, then shows the hub answer with no extra click', () => {
     setHub({ data: totalsOnly(), loadSource: 'stats-fallback', hubReadPending: true, hubReadRunning: true, hubReadLate: true })
     const { container, rerender } = render(page())
-    expectWaiting('Loading live feed…')
+    expectLoading()
     expectCardsWaiting(container)
     // U4: nothing has failed yet, so no error and no Try again.
     expect(banner()).toBe('Live data is slow — still loading…')
@@ -184,18 +212,18 @@ describe('the Live feed with totals only or nothing (10-28)', () => {
   it('says unavailable once the hub read gave up; a later poll’s read shows loading everywhere, slow only past its deadline', () => {
     setHub({ data: totalsOnly(), loadSource: 'stats-fallback', hubReadPending: false })
     const { container, rerender } = render(page())
-    expectWaiting('Unavailable right now.')
+    expectUnavailable()
     expectCardsUnavailable(container)
     expect(banner()).toContain('Hub temporarily unavailable')
-    expect((screen.getByRole('button', { name: 'Try again' }) as HTMLButtonElement).disabled).toBe(false)
+    expect(bannerTryAgain().disabled).toBe(false)
 
     // A poll's read: the feed and the cards wait on it; the banner keeps its text, Try again waits too.
     setHub({ data: totalsOnly(), loadSource: 'stats-fallback', refreshing: true, hubReadPending: true, hubReadRunning: true })
     rerender(page())
-    expectWaiting('Loading live feed…')
+    expectLoading()
     expectCardsWaiting(container)
     expect(banner()).toContain('Hub temporarily unavailable')
-    expect((screen.getByRole('button', { name: 'Try again' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(bannerTryAgain().disabled).toBe(true)
 
     // Past its deadline it is called slow.
     setHub({ data: totalsOnly(), loadSource: 'stats-fallback', hubReadPending: true, hubReadRunning: true, hubReadLate: true })
@@ -205,7 +233,7 @@ describe('the Live feed with totals only or nothing (10-28)', () => {
     // The read ended with no answer: back to unavailable.
     setHub({ data: totalsOnly(), loadSource: 'stats-fallback', hubReadPending: false })
     rerender(page())
-    expectWaiting('Unavailable right now.')
+    expectUnavailable()
     expectCardsUnavailable(container)
 
     setHub({ data: answered(), loadSource: 'full', hubReadPending: false })
@@ -213,11 +241,18 @@ describe('the Live feed with totals only or nothing (10-28)', () => {
     expectRows()
   })
 
+  it('says unavailable with no Try again anywhere while the server asks to wait', () => {
+    setHub({ data: totalsOnly(), loadSource: 'stats-fallback', hubReadPending: false, retryBlocked: true })
+    render(page())
+    expect(railEl().querySelector('.hv5-tm-q')!.textContent).toBe(TOP_NONE)
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull()
+  })
+
   // U2: a read under way that the hook does not yet count as pending never reads as given up.
   it('never says unavailable while a first read loads', () => {
     setHub({ loading: true, hubReadPending: false })
     const { container } = render(page())
-    expectWaiting('Loading live feed…')
+    expectLoading()
     expectCardsWaiting(container)
   })
 
@@ -234,18 +269,18 @@ describe('the Live feed with totals only or nothing (10-28)', () => {
 
     setHub({ data: totalsOnly(), loadSource: 'stats-fallback', refreshing: true, hubReadPending: true })
     act(() => go('/analytics?window=7d'))
-    expectWaiting('Loading live feed…')
+    expectLoading()
     expectCardsWaiting(container)
   })
 
   it('waits on the first read and says unavailable when both reads failed', () => {
     setHub({ loading: true, hubReadPending: true })
     const { rerender } = render(page())
-    expectWaiting('Loading live feed…')
+    expectLoading()
 
     setHub({ error: 'Hub unavailable', hubEndpointOk: false, hubReadPending: false })
     rerender(page())
-    expectWaiting('Unavailable right now.')
+    expectUnavailable()
     expect(screen.queryByText('No live data yet.')).toBeNull()
     // Nothing ever loaded: no "last loaded snapshot" to point at.
     expect(banner()).toContain('Live data is unavailable right now.')
@@ -257,43 +292,55 @@ describe('the Live feed with totals only or nothing (10-28)', () => {
     setHub({ error: 'The hub took too long to respond.', hubEndpointOk: false, hubReadPending: true, hubReadRunning: true, hubReadLate: true })
     render(page())
     expect(document.querySelector('main[data-hub-state]')!.getAttribute('data-hub-state')).toBe('loading')
-    expectWaiting('Loading live feed…')
+    expectLoading()
   })
 
-  it('keeps the quiet hour for a hub answer that has no rows', () => {
+  it('says none yet for a hub answer with no standout moments, and keeps the link', () => {
     setHub({ data: hubWith(NOW - 20_000), loadSource: 'full' })
     render(page())
-    expect(rail().getByText('Quiet right now · nothing in the last hour')).toBeTruthy()
-    expect(within(peekEl()).getByText('Quiet right now.')).toBeTruthy()
+    expect(railEl().querySelector('.hv5-tm-q')!.textContent).toBe(`${TOP_HUB_EMPTY} Every moment today →`)
+    expect(rail().getByRole('link', { name: 'Every moment today →' }).getAttribute('href')).toBe('/analytics/moments?view=top')
+    expect(within(peekEl()).getByText(TOP_HUB_EMPTY)).toBeTruthy()
     expect(railEl().className).not.toContain('hv5-f2-stale')
+    expect(rail().getByRole('button', { name: 'About Top moments today' })).toBeTruthy()
   })
 })
 
 describe('a saved copy on screen (S1, Q1, N1, 10-28)', () => {
   const cachedAt = new Date(2026, 9, 28, 10, 50).getTime()
 
-  it('waits on the hub read: feed and peek loading, Busiest now waiting, Channels timed', () => {
+  it('waits on the hub read: the rail and peek loading, Busiest now waiting, Channels timed', () => {
     setHub({ data: savedCopy(cachedAt), loadSource: 'cache', cachedAt, lastUpdated: cachedAt, hubReadPending: true })
     const { container } = render(page())
-    expectWaiting('Loading live feed…')
+    expectLoading()
     const busiest = container.querySelector('#busiest')!
     expect(busiest.querySelector('.hv5-bzs-wait')).toBeTruthy()
     expect(busiest.querySelector('.hv5-bzc-it')).toBeNull()
     expect(container.querySelector('[data-hv5-channel-count]')!.textContent).toBe(`3 of 500 live at ${hubClock(cachedAt)}`)
     expect(screen.getByText(`Cached snapshot · Saved at ${hubClock(cachedAt)} · refreshing...`)).toBeTruthy()
-    // U5: never "Live now" over a saved copy.
-    expect(peekEl().querySelector('h2')!.textContent).toBe(`Saved ${hubClock(cachedAt)}`)
+    expect(peekEl().querySelector('h2')!.textContent).toBe('Top today')
   })
 
-  it('names the saved hour once the read gave up, and Busiest now says it is unavailable', () => {
+  it('says the saved copy has none as of its time once the read gave up (Q1b), and Busiest now says it is unavailable', () => {
     setHub({ data: savedCopy(cachedAt), loadSource: 'cache', cachedAt, lastUpdated: cachedAt, hubReadPending: false })
     const { container } = render(page())
-    const hour = feedClockFloor(cachedAt)
-    expect(rail().getByText(`Nothing in the hour before ${hour}`)).toBeTruthy()
-    expect(within(peekEl()).getByText(`Nothing in the hour before ${hour}.`)).toBeTruthy()
-    expect(screen.queryByText(/^Quiet right now/)).toBeNull()
+    const none = topSavedLine(0, hubSavedClock(cachedAt, NOW))
+    expect(none).toMatch(/^No standout moments as of 10:50\sAM\.$/)
+    expect(railEl().querySelector('.hv5-tm-q')!.textContent).toBe(`${none} Every moment today →`)
+    expect(within(peekEl()).getByText(none)).toBeTruthy()
+    expect(within(railEl()).queryByText(TOP_HUB_EMPTY)).toBeNull()
+    fireEvent.click(rail().getByRole('button', { name: 'About Top moments today' }))
+    const tip = document.querySelector('[data-hub-toggletip-pop]')!.textContent!
+    expect(tip).toMatch(/on streams that were live at 10:50\sAM: /)
+    expect(tip).not.toContain('live now')
+    // its rows stay as saved: the tip doesn't say ended streams drop out
+    expect(tip).not.toContain('drop out')
+    for (const el of [railEl(), peekEl()]) {
+      // a saved copy is never live: grey dot, and the time it was saved
+      expect(el.className).toContain('hv5-f2-stale')
+      expect(el.querySelector('.hv5-f2-fresh')!.textContent).toBe(`Saved ${hubSavedClock(cachedAt, NOW)}`)
+    }
     expect(within(container.querySelector<HTMLElement>('#busiest')!).getByText('Unavailable right now.')).toBeTruthy()
-    expect(peekEl().querySelector('h2')!.textContent).toBe(`Saved ${hubClock(cachedAt)}`)
     expect(peekEl().hasAttribute('data-wait')).toBe(false)
     expect(screen.getByText(`Cached snapshot · Saved at ${hubClock(cachedAt)}`)).toBeTruthy()
   })
@@ -302,8 +349,16 @@ describe('a saved copy on screen (S1, Q1, N1, 10-28)', () => {
     const at = NOW - 10 * MIN
     setHub({ data: answered(at), loadSource: 'cache', cachedAt: at, lastUpdated: at, hubReadPending: true })
     render(page())
-    expect(rail().getAllByText('ALPHA').length).toBeGreaterThan(0)
-    expect(screen.queryByText('Loading live feed…')).toBeNull()
+    expect(rail().getByRole('button', { name: /^1\. ALPHA, / })).toBeTruthy()
+    expect(railEl().querySelector('.hv5-f2-fresh')!.textContent).toBe(`Saved ${hubSavedClock(at, NOW)}`)
+    expect(rail().queryByRole('status')).toBeNull()
+    // Q1b: its last line says as of when it was saved, not "on streams live now"
+    expect(railEl().querySelector('.hv5-tm-q')!.textContent).toBe(`${topSavedLine(1, hubSavedClock(at, NOW))} Every moment today →`)
+    expect(railEl().querySelector('.hv5-tm-q')!.textContent).toMatch(/^That’s all as of \d{1,2}:\d\d\s[AP]M\. /)
+    // the copy's streams may have ended since: an opened row never says live now
+    fireEvent.click(rail().getByRole('button', { name: /^1\. ALPHA, / }))
+    expect(railEl().querySelector('.hv5-tm-det')).toBeTruthy()
+    expect(railEl().querySelector('.hv5-tm-lv')).toBeNull()
   })
 
   it('says the day on a copy saved before today', () => {
@@ -314,7 +369,21 @@ describe('a saved copy on screen (S1, Q1, N1, 10-28)', () => {
     expect(screen.getByText(/^Cached snapshot · Saved yesterday, 11:30\sPM · refreshing\.\.\.$/)).toBeTruthy()
     // U7: no "at" before a day.
     expect(container.querySelector('[data-hv5-channel-count]')!.textContent).toMatch(/^3 of 500 live yesterday, 11:30\sPM$/)
-    expect(peekEl().querySelector('h2')!.textContent).toMatch(/^Saved yesterday, 11:30\sPM$/)
+  })
+
+  it('says the day in the rail’s last line and (i) on a copy saved before today (Q1b)', () => {
+    const late = new Date(2026, 9, 27, 23, 30).getTime()
+    setHub({ data: savedCopy(late), loadSource: 'cache', cachedAt: late, lastUpdated: late, hubReadPending: false })
+    const { unmount } = render(page())
+    expect(railEl().querySelector('.hv5-tm-q')!.textContent).toMatch(/^No standout moments as of yesterday, 11:30\sPM\. Every moment today →$/)
+    expect(within(peekEl()).getByText(/^No standout moments as of yesterday, 11:30\sPM\.$/)).toBeTruthy()
+    fireEvent.click(rail().getByRole('button', { name: 'About Top moments today' }))
+    expect(document.querySelector('[data-hub-toggletip-pop]')!.textContent).toMatch(/ on streams that were live yesterday, 11:30\sPM: /)
+    unmount()
+    setHub({ data: answered(late), loadSource: 'cache', cachedAt: late, lastUpdated: late, hubReadPending: false })
+    render(page())
+    expect(rail().getByRole('button', { name: /^1\. ALPHA, / })).toBeTruthy()
+    expect(railEl().querySelector('.hv5-tm-q')!.textContent).toMatch(/^That’s all as of yesterday, 11:30\sPM\. Every moment today →$/)
   })
 
   it('updates the data age without changing the saved-copy live region', () => {

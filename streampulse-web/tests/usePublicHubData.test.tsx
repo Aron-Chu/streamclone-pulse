@@ -1465,6 +1465,54 @@ describe('usePublicHubData', () => {
       expect(result.current.data?.poolSize).toBe(6)
     })
   })
+  // The hub rail reads the Moments list once for each hub read, answered or not (useTopToday's attempt).
+  describe('pollAttempt', () => {
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('counts a read that failed, and Try again', async () => {
+      fetchPublicHubBase.mockRejectedValue({ kind: 'server', status: 503, message: 'unavailable' })
+      const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
+      await waitFor(() => expect(result.current.loading).toBe(false))
+      expect(result.current.data?.poolSize).not.toBe(5)
+      expect(result.current.pollAttempt).toBe(1)
+
+      fetchPublicHubBase.mockResolvedValue(hubResult(5))
+      await act(async () => { result.current.refresh() })
+      await waitFor(() => expect(result.current.data?.poolSize).toBe(5))
+      expect(result.current.pollAttempt).toBe(2)
+    })
+
+    it('does not count Try again while a read runs: it waits on that read', async () => {
+      const first = deferredHub()
+      fetchPublicHubBase.mockImplementation(() => first.promise)
+      const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
+      expect(result.current.pollAttempt).toBe(1)
+      act(() => result.current.refresh())
+      expect(result.current.pollAttempt).toBe(1)
+      await act(async () => { first.resolve(hubResult(5)) })
+      await waitFor(() => expect(result.current.data?.poolSize).toBe(5))
+      expect(result.current.pollAttempt).toBe(1)
+    })
+
+    it('does not count a Try again or a poll inside a Retry-After pause', async () => {
+      vi.useFakeTimers()
+      fetchPublicHubBase.mockRejectedValueOnce({ kind: 'rate_limited', status: 429, message: 'wait', retryAfterMs: 75_000 })
+        .mockResolvedValue(hubResult(5))
+      const { result } = renderHook(() => usePublicHubData({ pollMs: 45_000, random: () => 0.5 }))
+      await act(async () => { await Promise.resolve() })
+      expect(result.current.pollAttempt).toBe(1)
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(45_000)
+        result.current.refresh()
+      })
+      expect(result.current.pollAttempt).toBe(1)
+      await act(async () => { await vi.advanceTimersByTimeAsync(30_000) })
+      expect(result.current.pollAttempt).toBe(2)
+      expect(result.current.data?.poolSize).toBe(5)
+    })
+  })
   describe('idle snapshot persistence and the hub-data mark (plan §2.6, §4.5)', () => {
     afterEach(() => {
       vi.restoreAllMocks()
@@ -1589,5 +1637,66 @@ describe('usePublicHubData', () => {
         resetHubDataMarkForTests()
       }
     })
+  })
+})
+
+// IRC-10 (fix, 10-30): the portal's own 30m read standing in for a longer window is tagged as such. It never
+// carries the backend's historical_projection_unavailable, which only a backend fallback may state.
+describe('usePublicHubData stand-in reason (IRC-10 fix, 10-30)', () => {
+  beforeEach(() => {
+    installIdleCallback((callback) => {
+      callback(IDLE_DEADLINE)
+      return 0
+    })
+    resetHubBucketSelectionForTests()
+    clearPublicHubCacheForTests()
+    fetchPublicHubBase.mockReset()
+    fetchPublicHubStatsFallback.mockReset()
+    fetchPublicHubStatsFallback.mockRejectedValue(new Error('Public hub unavailable'))
+  })
+
+  afterEach(() => {
+    removeIdleCallback()
+    resetHubBucketSelectionForTests()
+  })
+
+  const recentRead = () => {
+    const recent = hubResult(99)
+    recent.data.activity.windowMinutes = 30
+    return recent
+  }
+
+  it('tags the early 30m view as the portal stand-in while the long window loads', async () => {
+    const pending = deferredHub()
+    fetchPublicHubBase.mockImplementation((_signal?: AbortSignal, window?: PublicHubActivityWindow) =>
+      window === '30m' ? Promise.resolve(recentRead()) : pending.promise,
+    )
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '24h' }))
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(99), { timeout: 2500 })
+    expect(result.current.activityRefreshing).toBe(true)
+    expect(result.current.data?.activity).toMatchObject({ source: 'live_pool_fallback', reason: 'portal_stand_in', requestedWindowMinutes: 1440 })
+    await act(async () => { pending.resolve(hubResult(42)) })
+  })
+
+  it('tags the recovery after a failed long-window read as the portal stand-in, saved copy included', async () => {
+    fetchPublicHubBase.mockImplementation((_signal?: AbortSignal, window?: PublicHubActivityWindow) =>
+      window === '30m' ? Promise.resolve(recentRead()) : Promise.reject({ kind: 'server', status: 503, message: 'unavailable' }),
+    )
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '24h' }))
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(99))
+    await waitFor(() => expect(result.current.activityRefreshing).toBe(false))
+    expect(result.current.data?.activity).toMatchObject({ source: 'live_pool_fallback', reason: 'portal_stand_in' })
+    publicHubCache.flushPublicHubCacheWritesForTests()
+    expect(readPublicHubCache(getBackendUrl(), '24h')?.data.activity.reason).toBe('portal_stand_in')
+  })
+
+  it('keeps the backend reason when the backend itself sent the fallback', async () => {
+    fetchPublicHubBase.mockImplementation((_signal?: AbortSignal, window?: PublicHubActivityWindow) =>
+      Promise.resolve(window === '30m' ? recentRead() : repairHubResult()),
+    )
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '24h' }))
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(3))
+    await waitFor(() => expect(result.current.activityRefreshing).toBe(false))
+    expect(result.current.data?.activity).toMatchObject({ source: 'live_pool_fallback', reason: 'historical_projection_unavailable' })
   })
 })

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { HubActivityPoint, HubBucketEmote } from '../src/lib/publicHub'
+import type { HubActivityPoint, HubBucketEmote, HubLivePulseMoment } from '../src/lib/publicHub'
+import { hubClockRange } from '../src/ui/components/hub/v5/hubV5Model'
 import {
   EMOTE_FIELD_INSET,
   EMOTE_ZOOM_MAX,
@@ -8,13 +9,24 @@ import {
   conveyorEmotes,
   conveyorRng,
   emoteChange,
+  emoteDrivers,
   emoteImageAt,
+  emoteInWindow,
+  emoteIntervalLabel,
+  emoteMapChips,
   emoteMapData,
   emoteMapHeight,
   emoteMapLayout,
   emoteMapMeta,
+  emoteMapValue,
   emoteMomentRows,
+  emoteSpike,
+  emoteWindowFrom,
+  emoteWindowLabel,
+  emoteWindowMinutes,
+  emoteWindowWords,
   emotePaceText,
+  emotePerMinute,
   emoteSharePct,
   fieldMapView,
   fieldOf,
@@ -196,7 +208,7 @@ describe('emoteMapLayout', () => {
   })
 
   it('shows only emotes from the last hour in the hour view', () => {
-    const hour = emoteMapLayout(d, '1h', W, H)
+    const hour = emoteMapLayout(d, 60, W, H)
     expect(hour.count).toBe(d.emotes.filter((a) => a.c1h > 0).length)
     const none = emoteMapLayout(d, 'all', 0, H)
     expect(none.tiles).toEqual([])
@@ -205,6 +217,168 @@ describe('emoteMapLayout', () => {
 
   it('says what the map holds', () => {
     expect(emoteMapMeta(d, lay, 'all')).toBe('80 emotes · sized by uses · last 36 min')
+    // a chip under a day shows its clock span, as the last-hour view did
+    expect(emoteMapMeta(d, lay, 30)).toBe(`80 emotes · sized by uses · ${hubClockRange(d.t1 - 30 * MIN, d.t1)}`)
+  })
+})
+
+/** `closed` closed intervals of `bm` minutes, one emote each, then the open live edge. */
+function answer(closed: number, bm: number): HubActivityPoint[] {
+  const pts = Array.from({ length: closed }, (_, i) => point(i, bm, [em('EmA', 'twitch', 10)]))
+  pts.push(point(closed, bm, [em('EmA', 'twitch', 999)], { bucketComplete: false }))
+  return pts
+}
+
+describe('the window chips (W1, 10-30)', () => {
+  const chips = (closed: number, bm: number) => emoteMapChips(emoteMapData(answer(closed, bm), bm)!).map((c) => c.label)
+
+  it('offers the 3 longest stops under the answer, then the whole answer by its stop', () => {
+    expect(chips(239, 6)).toEqual(['30m', '1h', '6h', '24h'])
+    expect(chips(240, 42)).toEqual(['6h', '24h', '7d'])
+    expect(chips(240, 180)).toEqual(['24h', '7d', '1mo'])
+    expect(chips(240, 540)).toEqual(['7d', '1mo', '3mo'])
+    expect(chips(240, 2190)).toEqual(['7d', '1mo', '3mo', '1 year'])
+  })
+
+  it('cuts the 30 minutes the live-pool fallback has', () => {
+    expect(chips(30, 1)).toEqual(['5m', '15m', '30m'])
+    expect(chips(29, 1)).toEqual(['5m', '15m', '30m'])
+  })
+
+  it('names a span no stop names in the same short style, and shows no lone chip', () => {
+    expect(chips(30, 6)).toEqual(['30m', '1h', '3h'])
+    expect(chips(8, 30)).toEqual([])
+    expect(chips(3, 1)).toEqual([])
+  })
+
+  it('never shows two chips with one name: a stop named like the answer gives way to it', () => {
+    // 6.4 h and 7.4 days: too far from 6h and 7d to be them, but named like them
+    expect(chips(64, 6)).toEqual(['30m', '1h', '6h'])
+    expect(chips(59, 180)).toEqual(['24h', '7d'])
+  })
+
+  it('reads "last 24 h" for the 24h chip of a 7-day answer, and one emote as one', () => {
+    const week = emoteMapData(answer(240, 42), 42)!
+    expect(emoteMapMeta(week, emoteMapLayout(week, 1440, 800, 400), 1440)).toBe('1 emote · sized by uses · last 24 h')
+  })
+
+  it('leads with the chart\'s behind words on the fallback', () => {
+    const fb = emoteMapData(answer(30, 1), 1)!
+    expect(emoteMapMeta(fb, emoteMapLayout(fb, 'all', 800, 400), 'all', '24-hour history is behind right now'))
+      .toBe('24-hour history is behind right now · last 30 min')
+  })
+})
+
+describe('a window cut (W1, 10-30)', () => {
+  const d = emoteMapData(fourHours(), 30)!
+  const a = d.emotes.find((e) => e.e.name === 'EmA' && e.prov === 'twitch')!
+  const b = d.emotes.find((e) => e.e.name === 'EmB')!
+  const c = d.emotes.find((e) => e.e.name === 'EmC')!
+
+  it('adds up only the intervals that start inside it', () => {
+    expect(emoteWindowFrom(d, 60)).toBe(d.t1 - 60 * MIN)
+    expect(emoteWindowFrom(d, 10_080)).toBe(d.t0)
+    expect([a, b, c].map((x) => emoteMapValue(x, 60, d))).toEqual([20, 10, 0])
+    expect([a, b, c].map((x) => emoteMapValue(x, 'all', d))).toEqual([80, 10, 48])
+    expect(emoteMapLayout(d, 60, 800, 400).ranked.map((x) => x.a.e.name)).toEqual(['EmA', 'EmB'])
+  })
+
+  it('gives the hover card the window\'s uses, busiest interval and top-10 count', () => {
+    expect(emoteInWindow(d, a, 60)).toEqual({ v: 20, peak: 10, peakT: T0 + 6 * 30 * MIN, n: 2, intervals: 2 })
+    expect(emoteInWindow(d, a, 'all')).toEqual({ v: 80, peak: 10, peakT: T0, n: 8, intervals: 8 })
+    expect(emoteInWindow(d, c, 60)).toMatchObject({ v: 0, n: 0, intervals: 2 })
+  })
+
+  it('covers whole intervals and names the span', () => {
+    expect(emoteWindowMinutes(d, 60)).toBe(60)
+    expect(emoteWindowMinutes(d, 45)).toBe(30)
+    expect(emoteWindowMinutes(d, 'all')).toBe(240)
+    expect(emoteWindowWords(d, 60)).toBe('last hour')
+    expect(emoteWindowLabel(d, 60)).toBe('1 h')
+    expect(emoteWindowLabel(d, 30)).toBe('30 min')
+    expect(emoteWindowWords(d, 'all')).toBe('last 4 h')
+    const week = emoteMapData(answer(240, 42), 42)!
+    expect(emoteWindowMinutes(week, 360)).toBe(336)
+    expect(emoteWindowLabel(week, 360)).toBe('6 h')
+    expect(emoteWindowWords(week, 1440)).toBe('last 24 h')
+  })
+})
+
+describe('the spike bars (C1, 10-30)', () => {
+  // 20 six-minute intervals; Pog made a top 10 in five of them, twice at 12
+  const pog: Record<number, number> = { 2: 4, 3: 12, 5: 12, 9: 7, 17: 9 }
+  const d = emoteMapData(Array.from({ length: 20 }, (_, i) => point(i, 6, [em('Fill', 'twitch', 50), ...(pog[i] ? [em('Pog', 'seventv', pog[i]!)] : [])])), 6)!
+  const p = d.emotes.find((e) => e.e.name === 'Pog')!
+
+  it('draws one bar per interval, a gap where it made no top 10, the first busiest marked', () => {
+    const s = emoteSpike(d, p, 'all')
+    expect(s.bars).toHaveLength(20)
+    expect(s.bars.slice(0, 6)).toEqual([null, null, 4, 12, null, 12])
+    expect(s).toMatchObject({ peak: 3, peakT: T0 + 3 * 6 * MIN, peakCount: 12 })
+  })
+
+  it('re-cuts to the chip, and marks nothing when the window has none', () => {
+    const s = emoteSpike(d, p, 30)
+    expect(s.bars).toEqual([null, null, 9, null, null])
+    expect(s).toMatchObject({ peak: 2, peakT: T0 + 17 * 6 * MIN, peakCount: 9 })
+    expect(emoteSpike(d, p, 15)).toEqual({ bars: [null, null], peak: -1, peakT: 0, peakCount: 0 })
+  })
+})
+
+describe('the busiest interval in words (C1, 10-30)', () => {
+  // local noon, so the day is the same in every time zone
+  const noon = new Date(2026, 9, 12, 12, 0).getTime()
+  const day = emoteMapData(answer(239, 6), 6)!
+  const week = emoteMapData(answer(240, 42), 42)!
+
+  it('gives its clock in a day or less, its day too in a longer window, and its days when it is a day or longer', () => {
+    expect(emoteIntervalLabel(day, 'all', noon)).toBe(hubClockRange(noon, noon + 6 * MIN))
+    expect(emoteIntervalLabel(week, 1440, noon)).toBe(hubClockRange(noon, noon + 42 * MIN))
+    expect(emoteIntervalLabel(week, 'all', noon)).toBe(`Oct 12, ${hubClockRange(noon, noon + 42 * MIN)}`)
+    expect(emoteIntervalLabel({ ...week, bucketMinutes: 1440 }, 'all', new Date(2026, 9, 12).getTime())).toBe('Oct 12')
+    expect(emoteIntervalLabel({ ...week, bucketMinutes: 2190 }, 'all', noon)).toBe('Oct 12–14')
+    expect(emoteIntervalLabel({ ...week, bucketMinutes: 2190 }, 'all', new Date(2026, 8, 30, 12, 0).getTime())).toBe('Sep 30–Oct 2')
+  })
+
+  it('gives uses a minute: whole from 10, one decimal under, never 0 when it had uses', () => {
+    expect(emotePerMinute(5616, 6)).toBe('936')
+    expect(emotePerMinute(60, 6)).toBe('10')
+    expect(emotePerMinute(59, 6)).toBe('9.8')
+    expect(emotePerMinute(25, 6)).toBe('4.2')
+    expect(emotePerMinute(100, 2190)).toBe('<0.1')
+    expect(emotePerMinute(0, 6)).toBe('0')
+  })
+})
+
+describe('who drove it (C1, 10-30)', () => {
+  const clap = { e: { name: 'Clap', provider: 'seventv', count: 1 }, prov: 'seventv' }
+  const row = (login: string, at: number, top: Array<[string, string | undefined, number]>): HubLivePulseMoment => ({
+    offsetSeconds: 60,
+    score: 1,
+    label: 'Chat peak',
+    login,
+    displayName: login,
+    at,
+    topEmotes: top.map(([name, provider, count]) => ({ name, provider, count, sharePct: 0 })),
+  })
+
+  it('keeps streams with the emote in their top 3, by provider and name, most uses first, one row a channel', () => {
+    const rows = [
+      row('alpha', 1, [['Clap', 'seventv', 40], ['LUL', 'twitch', 30]]),
+      row('bravo', 2, [['LUL', 'twitch', 90], ['KEKW', 'bttv', 80], ['OMEGALUL', 'seventv', 70], ['Clap', 'seventv', 60]]),
+      row('charlie', 3, [['Clap', 'bttv', 99]]),
+      row('delta', 4, [['Pog', 'twitch', 50], ['Clap', 'seventv', 55]]),
+      row('Alpha', 5, [['Clap', 'seventv', 45]]),
+      row('echo', 6, [['Clap', undefined, 20]]),
+      row('', 7, [['Clap', 'seventv', 99]]),
+    ]
+    expect(emoteDrivers(rows, clap).map((x) => [x.m.login, x.uses])).toEqual([['delta', 55], ['Alpha', 45], ['echo', 20]])
+  })
+
+  it('lists at most 5, the newer first on a tie', () => {
+    const many = Array.from({ length: 7 }, (_, i) => row(`s${i}`, i, [['Clap', 'seventv', 10]]))
+    expect(emoteDrivers(many, clap).map((x) => x.m.login)).toEqual(['s6', 's5', 's4', 's3', 's2'])
+    expect(emoteDrivers([row('x', 1, [['Clap', 'seventv', 0]])], clap)).toEqual([])
   })
 })
 

@@ -119,6 +119,55 @@ export function hasFullChatWindow(c: HubLiveChannel): boolean {
 
 const chatNow = (c: HubLiveChannel) => c.screenerV1!.chat!.currentPerMin
 
+/** The backend's reasons for a screener its own history read could not build (hub_screener.go). */
+const SCREENER_READ_FAILED = new Set(['history_query_unavailable', 'history_store_unavailable'])
+
+/** The screener's reason for a row, the chat metric's first. */
+const screenerReason = (c: HubLiveChannel) => c.screenerV1?.chat?.reason || c.screenerV1?.reason || ''
+
+/**
+ * Our 5-minute chat read failed, not the channels (fix, 10-30): at least half
+ * the rows came back unavailable because the backend's history read did. The
+ * empty lines then say the counts are unavailable instead of blaming the
+ * channels' windows. "Unavailable", not "delayed": nothing says the next poll
+ * brings them back.
+ */
+export function screenerDown(live: readonly HubLiveChannel[]): boolean {
+  if (!live.length) return false
+  const failed = live.filter((c) => c.screenerV1?.state === 'unavailable' && SCREENER_READ_FAILED.has(screenerReason(c))).length
+  return failed * 2 >= live.length
+}
+
+/** The empty line of Busiest now and Where chat is when the counts did not come (fix, 10-30). */
+export const HUB_CHAT_COUNTS_DOWN = 'Chat counts are unavailable right now.'
+
+/**
+ * Which chat rate the lists rank by (HUB-1, candidate, 10-30): the 5-minute
+ * screener count, or, while that count is down, each row's own chatPerMin. The
+ * backend averages that over the reply's lookback of up to 35 minutes (minutes
+ * with data only, the open minute included; hub_overview.go
+ * summarizeChannelWindow), and the row does not say how many minutes it covers.
+ * It is not "now" and not a fixed 35 minutes, so every list that uses it says
+ * "recent average" (CX-4 fix, 10-30), and the two rates never share a list.
+ */
+export type HubChatBasis = 'five_min' | 'avg_35'
+
+/** The hub windows whose reply averages row chatPerMin over up to 35 minutes; 7d and longer look back 47 minutes or more. */
+const AVG_35_WINDOWS: ReadonlySet<string> = new Set(['30m', '24h'])
+
+/** A synced row with a chat average above zero (candidate, 10-30). */
+const hasChatAverage = (c: HubLiveChannel) => c.coverageState === 'synced' && finite(c.chatPerMin) && c.chatPerMin > 0
+
+/** 'avg_35' only on 30m and 24h, while the screener is down and no row has a 5-minute count (candidate, 10-30). */
+export function hubChatBasis(live: readonly HubLiveChannel[], windowKey?: string): HubChatBasis {
+  if (live.some(hasFullChatWindow)) return 'five_min'
+  return windowKey != null && AVG_35_WINDOWS.has(windowKey) && screenerDown(live) && live.some(hasChatAverage) ? 'avg_35' : 'five_min'
+}
+
+/** The rows a basis counts, and their rate (candidate, 10-30). */
+const countedOn = (basis: HubChatBasis) => (basis === 'avg_35' ? hasChatAverage : hasFullChatWindow)
+const rateOn = (basis: HubChatBasis): ((c: HubLiveChannel) => number) => (basis === 'avg_35' ? (c) => c.chatPerMin : chatNow)
+
 export interface HubBusiestRow {
   rank: number
   login: string
@@ -130,6 +179,8 @@ export interface HubBusiestRow {
   fig: string
   href: string
   avatar: string | null
+  /** 'avg_35': perMin is the row's recent average (up to 35 min) (candidate, 10-30). */
+  basis?: HubChatBasis
 }
 
 export interface HubBusiestSet {
@@ -144,6 +195,8 @@ export interface HubBusiestSet {
   noWindow: number
   /** Channels with a full window that is not the shared one (left out). */
   otherWindow: number
+  /** 'avg_35': ranked by each row's recent average (up to 35 min), with no shared window (candidate, 10-30). */
+  basis?: HubChatBasis
 }
 
 export const HUB_BUSIEST_COUNT = 12
@@ -151,7 +204,8 @@ export const HUB_BUSIEST_COUNT = 12
 export const HUB_LIVE_MS = 180_000
 
 /** Busiest now: the shared (most common) 5-minute window, chat/min desc, then viewers desc, then login. */
-export function rankBusiest(live: readonly HubLiveChannel[], n = HUB_BUSIEST_COUNT): HubBusiestSet {
+export function rankBusiest(live: readonly HubLiveChannel[], n = HUB_BUSIEST_COUNT, basis: HubChatBasis = 'five_min'): HubBusiestSet {
+  if (basis === 'avg_35') return rankBusiestOnAverage(live, n)
   const ok = live.filter(hasFullChatWindow)
   const synced = live.filter((c) => c.coverageState === 'synced').length
   const tally = new Map<string, number>()
@@ -182,16 +236,46 @@ export function rankBusiest(live: readonly HubLiveChannel[], n = HUB_BUSIEST_COU
   return { rows, windowStart, windowEnd, eligible: ok.length, synced, noWindow: synced - ok.length, otherWindow: ok.length - shared.length }
 }
 
+/** Busiest now on each synced row's recent average (up to 35 min): no shared window, same ties (candidate, 10-30). */
+function rankBusiestOnAverage(live: readonly HubLiveChannel[], n: number): HubBusiestSet {
+  const ok = live.filter(hasChatAverage)
+  const synced = live.filter((c) => c.coverageState === 'synced').length
+  const rows = ok
+    .slice()
+    .sort((a, b) => b.chatPerMin - a.chatPerMin || (b.viewers || 0) - (a.viewers || 0) || (a.login < b.login ? -1 : a.login > b.login ? 1 : 0))
+    .slice(0, n)
+    .map((c, index): HubBusiestRow => ({
+      rank: index + 1,
+      login: c.login,
+      displayName: nameOf(c),
+      category: c.category || '',
+      streamId: c.streamId,
+      viewers: c.viewers,
+      perMin: c.chatPerMin,
+      fig: formatHubRate(c.chatPerMin),
+      href: channelHref(c),
+      avatar: c.profileImageUrl || null,
+      basis: 'avg_35',
+    }))
+  return { rows, windowStart: NaN, windowEnd: NaN, eligible: ok.length, synced, noWindow: synced - ok.length, otherWindow: 0, basis: 'avg_35' }
+}
+
 export type HubBusiestCue = 'live' | 'stale'
 
 export function busiestCue(set: HubBusiestSet, nowMs: number): HubBusiestCue {
   return finite(set.windowEnd) && nowMs - set.windowEnd <= HUB_LIVE_MS ? 'live' : 'stale'
 }
 
+/** Twitch's live pictures show only beside live 5-minute numbers (mockup §5); the recent average and old numbers get faces. */
+export function busiestShowsPictures(set: HubBusiestSet, cue: HubBusiestCue): boolean {
+  return set.basis !== 'avg_35' && cue === 'live'
+}
+
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 
 /** The (i): one paragraph per line. */
 export function busiestTip(set: HubBusiestSet, cue: HubBusiestCue): string {
+  if (set.basis === 'avg_35') return busiestAverageTip(set)
   const lines: string[] = []
   if (cue === 'stale' && finite(set.windowEnd)) lines.push(`Not updated since ${hubClock(set.windowEnd)}.`)
   if (finite(set.windowStart)) lines.push(`Ranked by chat messages per minute in the last full 5-minute window (${hubClockRange(set.windowStart, set.windowEnd)}); ties go to more viewers.`)
@@ -199,12 +283,27 @@ export function busiestTip(set: HubBusiestSet, cue: HubBusiestCue): string {
     ? `${set.eligible} of ${set.synced} synced channels have that full window; ${set.noWindow}${set.noWindow === 1 ? ' doesn’t yet and is left out.' : ' don’t yet and are left out.'}`
     : `All ${set.synced} synced channels have that full window.`)
   if (set.otherWindow > 0) lines.push(`${count(set.otherWindow, 'channel', 'channels')} reported a different window and ${set.otherWindow === 1 ? 'is' : 'are'} left out.`)
-  lines.push('Live means numbers under 3 minutes old. No live preview is checked, so each channel shows its profile picture.')
+  lines.push('Live means numbers under 3 minutes old. While they are, each tile shows Twitch’s live picture, which can be a few minutes old; a channel Twitch has no picture for shows its profile picture.')
   return lines.join('\n')
 }
 
-export function busiestAria(row: HubBusiestRow, total: number): string {
-  return `${row.displayName}, ${row.fig} chat messages per minute, ${row.category || 'No category'}, rank ${row.rank} of ${total}. Profile picture, no live preview saved.`
+/** The (i) while Busiest ranks by the recent average (up to 35 min) (candidate, 10-30). */
+function busiestAverageTip(set: HubBusiestSet): string {
+  return [
+    'The 5-minute counts did not load, so this ranks channels by recent average chat per minute: up to the last 35 minutes, counting only minutes with data and the current unfinished minute, so it can cover much less; ties go to more viewers.',
+    set.noWindow > 0
+      ? `${set.eligible} of ${set.synced} synced channels have a chat average; ${set.noWindow}${set.noWindow === 1 ? ' doesn’t and is left out.' : ' don’t and are left out.'}`
+      : `All ${set.synced} synced channels have a chat average.`,
+    'Live pictures show only beside the 5-minute counts, so each channel shows its profile picture.',
+  ].join('\n')
+}
+
+/** `livePicture`: the tile shows Twitch's live picture (checked), not the face tile. */
+export function busiestAria(row: HubBusiestRow, total: number, livePicture = false): string {
+  // the recent average says so, with no fixed span (candidate, 10-30)
+  const basis = row.basis === 'avg_35' ? ', recent average' : ''
+  const picture = livePicture ? 'Twitch’s live picture, can be a few minutes old.' : 'Profile picture.'
+  return `${row.displayName}, ${row.fig} chat messages per minute${basis}, ${row.category || 'No category'}, rank ${row.rank} of ${total}. ${picture}`
 }
 
 /* ---------- Where chat is (R5-6, the round-5 list) ---------- */
@@ -226,20 +325,27 @@ export interface HubWhereChatIs {
   /** Channels counted (full 5-minute window). */
   counted: number
   noWindow: number
+  /** The 5-minute counts did not come (screenerDown): the rack's empty line says so (fix, 10-30). */
+  down?: boolean
+  /** 'avg_35': shares of each row's recent average (up to 35 min) (candidate, 10-30). */
+  basis?: HubChatBasis
 }
 
 export const HUB_NO_CATEGORY = 'No category'
 export const gameOf = (c: Pick<HubLiveChannel, 'category'>) => c.category || HUB_NO_CATEGORY
 
-export function whereChatIs(live: readonly HubLiveChannel[], limit = 10): HubWhereChatIs {
-  const ok = live.filter(hasFullChatWindow)
+/** `windowKey`: the hub window on screen; on 30m and 24h a screener outage shares out the recent average (up to 35 min) (candidate, 10-30). */
+export function whereChatIs(live: readonly HubLiveChannel[], limit = 10, windowKey?: string): HubWhereChatIs {
+  const basis = hubChatBasis(live, windowKey)
+  const rate = rateOn(basis)
+  const ok = live.filter(countedOn(basis))
   const synced = live.filter((c) => c.coverageState === 'synced').length
   const byGame = new Map<string, HubGameShare>()
   for (const c of ok) {
     const key = gameOf(c)
     let game = byGame.get(key)
     if (!game) byGame.set(key, (game = { name: key, chat: 0, viewers: 0, chatShare: 0, viewerShare: 0, rows: [] }))
-    game.chat += chatNow(c)
+    game.chat += rate(c)
     game.viewers += c.viewers || 0
     game.rows.push(c)
   }
@@ -249,23 +355,30 @@ export function whereChatIs(live: readonly HubLiveChannel[], limit = 10): HubWhe
   for (const game of all) {
     game.chatShare = totalChat > 0 ? (game.chat / totalChat) * 100 : 0
     game.viewerShare = totalViewers > 0 ? (game.viewers / totalViewers) * 100 : 0
-    game.rows.sort((a, b) => chatNow(b) - chatNow(a) || (b.viewers || 0) - (a.viewers || 0))
+    game.rows.sort((a, b) => rate(b) - rate(a) || (b.viewers || 0) - (a.viewers || 0))
   }
-  return { top: all.slice(0, limit), rest: all.slice(limit), all, counted: ok.length, noWindow: synced - ok.length }
+  return { top: all.slice(0, limit), rest: all.slice(limit), all, counted: ok.length, noWindow: synced - ok.length, down: screenerDown(live), basis }
 }
 
 export function whereChatIsTip(games: HubWhereChatIs): string {
   const rest = games.rest.reduce((sum, g) => sum + g.chatShare, 0)
-  return `Each game’s share of chat messages per minute over the last 5 closed minutes, across the ${formatHubInt(games.counted)} channels with a full 5-minute window among the 500 biggest live channels we track`
-    + (games.noWindow > 0 ? ` (${games.noWindow} more ${games.noWindow === 1 ? 'has' : 'have'} none yet)` : '')
+  // the recent average says what it is and why (candidate, 10-30)
+  const lead = games.basis === 'avg_35'
+    ? `The 5-minute counts did not load, so this is each game’s share of recent average chat messages per minute (each channel’s average over up to the last 35 minutes, minutes with data only, so it can cover much less), across the ${formatHubInt(games.counted)} synced channels with a chat average among the 500 biggest live channels we track`
+      + (games.noWindow > 0 ? ` (${games.noWindow} more ${games.noWindow === 1 ? 'has' : 'have'} none)` : '')
+    : `Each game’s share of chat messages per minute over the last 5 closed minutes, across the ${formatHubInt(games.counted)} channels with a full 5-minute window among the 500 biggest live channels we track`
+      + (games.noWindow > 0 ? ` (${games.noWindow} more ${games.noWindow === 1 ? 'has' : 'have'} none yet)` : '')
+  return lead
     + '. It is not a share of all of Twitch: Twitch has tens of thousands of live channels and no one counts chat on all of them, so a Twitch-wide figure would be a guess. The game is each channel’s current category. '
     + (games.rest.length ? `The other ${games.rest.length} games share ${rest.toFixed(1)}%. ` : '')
     + 'Click a game to list its channels below.'
 }
 
-export function gameAria(game: HubGameShare, pressed: boolean): string {
+export function gameAria(game: HubGameShare, pressed: boolean, basis: HubChatBasis = 'five_min'): string {
   const n = game.rows.length
-  return `${game.name}: ${game.chatShare.toFixed(1)}% of chat, ${n} ${n === 1 ? 'channel' : 'channels'}. ${pressed ? 'Show all channels again' : 'Show these channels in Channels'}`
+  // the recent average says so, as on the Busiest tiles (candidate, 10-30)
+  const avg = basis === 'avg_35' ? ' (recent average)' : ''
+  return `${game.name}: ${game.chatShare.toFixed(1)}% of chat${avg}, ${n} ${n === 1 ? 'channel' : 'channels'}. ${pressed ? 'Show all channels again' : 'Show these channels in Channels'}`
 }
 
 /* ---------- Where chat is as a ranked rack (R5-22, mockup hub-rack.js) ---------- */
@@ -317,6 +430,21 @@ const WHY: Record<string, string> = {
   irc_unbound: 'IRC unbound',
   mismatch: 'numbers disagree',
   not_synced: 'viewers only',
+  // the backend's own history read failed, or the row has no stream to read (fix, 10-30)
+  history_query_unavailable: 'chat counts unavailable right now',
+  history_store_unavailable: 'chat counts unavailable right now',
+  missing_stream_identity: 'stream not matched yet',
+  stream_identity_unavailable: 'stream not matched yet',
+}
+
+/** Reasons that say why a synced row has no 5-minute count at all (the rest are about its average). */
+const NO_COUNT_REASONS = new Set(['history_query_unavailable', 'history_store_unavailable', 'missing_stream_identity', 'stream_identity_unavailable', 'rollup_unavailable', 'irc_unbound'])
+
+/** Why Chat/min shows a dash: the row's own screener reason when it explains a missing count (fix, 10-30). */
+export function channelChatWhy(c: HubLiveChannel): string {
+  if (c.coverageState !== 'synced') return 'viewers only'
+  const reason = screenerReason(c)
+  return NO_COUNT_REASONS.has(reason) ? WHY[reason]! : 'no full 5 minutes yet'
 }
 
 function whyText(metric: Pick<HubScreenerMetric, 'state' | 'reason'> | null | undefined): string {
@@ -332,9 +460,9 @@ function baselineMinutes(c: HubLiveChannel): number | null {
   return finite(minutes) ? minutes : null
 }
 
-/** Chat/min for the last 5 closed minutes, or null (no full window). */
-export function channelChat(c: HubLiveChannel): number | null {
-  return hasFullChatWindow(c) ? chatNow(c) : null
+/** Chat/min for the last 5 closed minutes, or null (no full window). 'avg_35': the row's recent average (up to 35 min) (candidate, 10-30). */
+export function channelChat(c: HubLiveChannel, basis: HubChatBasis = 'five_min'): number | null {
+  return countedOn(basis)(c) ? rateOn(basis)(c) : null
 }
 
 export type HubChannelVs = { x: number } | { why: string }
@@ -344,7 +472,9 @@ export type HubChannelVs = { x: number } | { why: string }
  * metric are ready (with prod's 5/min floor) and the average is built from at
  * least 10 measured minutes (Q4). Otherwise the plain reason.
  */
-export function channelVs(c: HubLiveChannel): HubChannelVs {
+export function channelVs(c: HubLiveChannel, basis: HubChatBasis = 'five_min'): HubChannelVs {
+  // a recent average has no 5-minute count to compare (candidate, 10-30)
+  if (basis === 'avg_35') return { why: c.coverageState === 'synced' ? 'comparison unavailable right now' : 'viewers only' }
   const metric = c.screenerV1?.chat ?? null
   if (!hasFullChatWindow(c)) return { why: c.coverageState === 'synced' ? whyText(metric?.reason ? metric : { state: '', reason: 'rollup_unavailable' }) : 'viewers only' }
   const x = screenerMetricMultiplier(c.screenerV1, 'chat')
@@ -353,12 +483,12 @@ export function channelVs(c: HubLiveChannel): HubChannelVs {
   return { x }
 }
 
-const vsValue = (c: HubLiveChannel) => {
-  const vs = channelVs(c)
+const vsValue = (c: HubLiveChannel, basis: HubChatBasis) => {
+  const vs = channelVs(c, basis)
   return 'x' in vs ? vs.x : null
 }
 
-const SORT_VALUE: Record<HubChannelSort, (c: HubLiveChannel) => number | null> = {
+const SORT_VALUE: Record<HubChannelSort, (c: HubLiveChannel, basis: HubChatBasis) => number | null> = {
   viewers: (c) => (finite(c.viewers) ? c.viewers : null),
   chat: channelChat,
   vs: vsValue,
@@ -370,15 +500,19 @@ export interface HubChannelQuery {
   sort: HubChannelSort
   /** -1 descending, 1 ascending. */
   dir: 1 | -1
+  /** 'avg_35': Chat/min is the row's recent average (up to 35 min) (candidate, 10-30). */
+  basis?: HubChatBasis
 }
 
 export function channelRows(live: readonly HubLiveChannel[], query: HubChannelQuery): HubLiveChannel[] {
+  const basis = query.basis ?? 'five_min'
   let rows = live.slice()
   // A game lists the same chat-counted rows its share counts.
-  if (query.game) rows = rows.filter((c) => hasFullChatWindow(c) && gameOf(c) === query.game)
+  if (query.game) rows = rows.filter((c) => countedOn(basis)(c) && gameOf(c) === query.game)
   const t = query.q.trim().toLowerCase()
   if (t) rows = rows.filter((c) => nameOf(c).toLowerCase().includes(t) || c.login.includes(t) || (c.category || '').toLowerCase().includes(t))
-  const get = SORT_VALUE[query.sort]
+  const value = SORT_VALUE[query.sort]
+  const get = (c: HubLiveChannel) => value(c, basis)
   rows.sort((a, b) => {
     const va = get(a)
     const vb = get(b)
@@ -390,7 +524,12 @@ export function channelRows(live: readonly HubLiveChannel[], query: HubChannelQu
   return rows
 }
 
-export function channelsTip(liveCount: number, poolSize: number): string {
+export function channelsTip(liveCount: number, poolSize: number, basis: HubChatBasis = 'five_min'): string {
+  // the recent average says what it is and why (candidate, 10-30)
+  if (basis === 'avg_35') {
+    return `Every channel in the live pool (${formatHubInt(liveCount)} of the ~${formatHubInt(poolSize)} we follow). The 5-minute counts did not load, so Chat/min is each channel’s recent average: up to the last 35 minutes, counting only minutes with data and the current unfinished minute, so it can cover much less. vs own avg has nothing to compare. `
+      + 'A dash means not measured: viewers-only channels have no chat count. Click a channel to open its stream page.'
+  }
   return `Every channel in the live pool (${formatHubInt(liveCount)} of the ~${formatHubInt(poolSize)} we follow). Chat/min is the last 5 closed minutes. `
     + 'vs own avg compares those 5 minutes with the stream’s own measured average so far, shown only when that average is ready and built from at least 10 measured minutes. '
     + 'A dash means not measured: viewers-only channels have no chat count, and young streams have no average yet. Click a channel to open its stream page.'

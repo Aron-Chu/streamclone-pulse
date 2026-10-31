@@ -229,6 +229,8 @@ export interface SessionBarStripModel {
   figures: StripFigure[]
   topEmotes: StripEmote[]
   topEmotesExact: boolean
+  /** Why the top emotes list is empty, else null. */
+  topEmotesNote: string | null
   namedNote: string | null
   providers: { sevenTv: number; other: number } | null
   category: { name: string; artUrl: string | null } | null
@@ -331,6 +333,10 @@ export function buildSessionBarStrip(args: {
     imageUrl: getEmoteImageUrl(hit) || null,
   }))
   const emoteTotal = sum(rows, (row) => minuteEmoteTotal(row))
+  // A bar that counted emote uses but whose minutes name none did not name none: the count decides, as on the
+  // hub's bar card (pick 12S, 10-30).
+  const topEmotesNote = topEmotes.length ? null
+    : emoteTotal > 0 ? 'names not in this update' : `none named in this ${span.levelMinutes === 1 ? 'minute' : 'bar'}`
   const namedPct = emoteTotal > 0 ? Math.round((sum(Object.values(merged), (v) => v) / emoteTotal) * 1000) / 10 : null
   const namedNote = namedPct != null && namedPct < NAMED_MIN_PCT
     ? `Names for ${namedPct < 1 ? '<1' : Math.round(namedPct)}% of emote uses`
@@ -464,6 +470,7 @@ export function buildSessionBarStrip(args: {
     figures,
     topEmotes,
     topEmotesExact: n === 1,
+    topEmotesNote,
     namedNote,
     providers,
     category,

@@ -60,7 +60,7 @@ import {
   streamWallDurationSeconds,
   trimRollupsToWallDuration,
 } from '../../utils/gameSegmentChart.ts'
-import { GamesPlayedStrip } from './GamesPlayedStrip.tsx'
+import { GamesPlayedList, GamesPlayedStrip, gamesOpenAtDataEnd } from './GamesPlayedStrip.tsx'
 import { ChartNavigator, useChartScrollZoom, zoomNavigatorRange } from './ChartNavigator.tsx'
 import { sessionNavigatorPresets } from '../../utils/sessionChartNavigator.ts'
 import {
@@ -70,7 +70,7 @@ import {
   rollupsThroughMinute,
 } from '../../utils/chartLiveEdge.ts'
 import { buildSessionChartModel, ratesCaption, spanLabel, type SessionChartModel } from './sessionSpChartModel.ts'
-import { SessionSpChart, sessionPlotHeight } from './SessionSpChart.tsx'
+import { SessionSpChart, sessionPlotHeight, zoomSessionToSegment } from './SessionSpChart.tsx'
 import { sessionBandSegments } from './SessionChartLayers.tsx'
 import { buildSessionPins, selectedPinIndex, type SessionPin, type SessionStripPinsSource } from './SessionChartPins.tsx'
 import { SessionShowOnChart, SESSION_MARKERS_OFF, type SessionMarkers } from './SessionShowOnChart.tsx'
@@ -482,10 +482,13 @@ function AnalyticsChart({
   const stripGamesEndSeconds = gamesDataEndSeconds > 0 && games.some(game => game.durationSeconds > 0)
     ? gamesDataEndSeconds
     : gamesDurationSeconds
-  const stripGames = useMemo(
-    () => normalizeGameSegments(games, stripGamesEndSeconds),
-    [games, stripGamesEndSeconds],
-  )
+  // (fix, 10-30) GP-3: the strip gets the raw games (it normalizes them to the
+  // same end, so its keys still match the band) to see which ones run past the
+  // data; those get an open run time on the poster and a data-end mark on the band.
+  const stripDataEndSeconds = gamesDataEndSeconds > 0 && stripGamesEndSeconds === gamesDataEndSeconds
+    ? gamesDataEndSeconds
+    : null
+  const gamesOpenKeys = useMemo(() => gamesOpenAtDataEnd(games, stripDataEndSeconds), [games, stripDataEndSeconds])
   // Live: range-aware Games played (chart window) with expand. Offline/VOD: full list.
   const gamesVisibleRange = useMemo(
     () => (isLive ? chartVisibleRangeFromRollups(rollups, streamStartedAt) : null),
@@ -768,8 +771,8 @@ function AnalyticsChart({
   }, [indexOfMs, lockedBar, model, selectedChartOffsetSeconds, selectedRollup])
 
   const bandSegments = useMemo(
-    () => (model ? sessionBandSegments(chartGames, model.originMs, model.data.startMs + model.n * model.data.stepMs) : []),
-    [chartGames, model],
+    () => (model ? sessionBandSegments(chartGames, model.originMs, model.data.startMs + model.n * model.data.stepMs, gamesOpenKeys) : []),
+    [chartGames, gamesOpenKeys, model],
   )
   const highlightRange = useMemo(() => {
     const segment = hoveredGameKey ? bandSegments.find(item => item.key === hoveredGameKey) : null
@@ -832,6 +835,13 @@ function AnalyticsChart({
     () => ({ segments: bandSegments, highlightedKey: hoveredGameKey, onHoverKey: setHoveredGameKey }),
     [bandSegments, hoveredGameKey],
   )
+  // (candidate, 10-30) GP1: a poster click zooms to the game like its band segment;
+  // unpinning (a second click) leaves the view where it is.
+  const zoomToGameKey = useCallback((key: string | null) => {
+    if (!key || !model) return
+    const segment = bandSegments.find(item => item.key === key)
+    if (segment) zoomSessionToSegment(model, store, segment)
+  }, [bandSegments, model, store])
 
   // Prod click semantics: inside a moment group selects that moment, otherwise
   // the minute under the pointer is pinned; a click on the selection clears it.
@@ -973,10 +983,21 @@ function AnalyticsChart({
   const plotHeight = sessionPlotHeight(expanded, phone)
   const toggleExpanded = useCallback(() => setExpanded(value => !value), [])
 
+  // (fix, 10-30) GP-6: the empty, loading and syncing states still list the games played.
+  const emptyStateGames = games.length ? (
+    <GamesPlayedList
+      games={games}
+      streamEnded={Boolean(detail?.stream?.endedAt) || detail?.stream?.lifecycleState === 'confirmed_ended'}
+    />
+  ) : null
+
   if (loading && !detail) {
     return (
       <div className="grid min-h-80 place-items-center rounded border border-white/10 bg-[#0d0d12]/50 px-4 text-center">
-        <div className="text-sm font-bold text-zinc-500">Loading chart data…</div>
+        <div>
+          <div className="text-sm font-bold text-zinc-500">Loading chart data…</div>
+          {emptyStateGames}
+        </div>
       </div>
     )
   }
@@ -994,6 +1015,7 @@ function AnalyticsChart({
           </div>
           {syncNotice ? <div className="mt-2 text-xs font-bold text-amber-300">{syncNotice}</div> : null}
           {syncError ? <div className="mt-2 text-xs font-bold text-red-400">{syncError}</div> : null}
+          {emptyStateGames}
         </div>
       </div>
     )
@@ -1003,7 +1025,10 @@ function AnalyticsChart({
     if (coreMinuteChartsBlocked) {
       return (
         <div className="grid min-h-80 place-items-center rounded border border-white/10 bg-[#0d0d12]/50 backdrop-blur-md px-4 text-center">
-          <CoreMinuteChartsNotice />
+          <div>
+            <CoreMinuteChartsNotice />
+            {emptyStateGames}
+          </div>
         </div>
       )
     }
@@ -1023,6 +1048,7 @@ function AnalyticsChart({
             >
               {refreshing ? 'Refreshing…' : 'Refresh data'}
             </button> : null}
+            {emptyStateGames}
           </div>
         </div>
       )
@@ -1037,11 +1063,14 @@ function AnalyticsChart({
       const minuteDataCount = rollups.filter(point => rollupHasMinuteData(point)).length
       return (
         <div className="grid min-h-80 place-items-center rounded border border-white/10 bg-[#0d0d12]/50 backdrop-blur-md px-4 py-8 text-center">
-          <LiveCollectionWarmup
-            rollupMinuteCount={minuteDataCount}
-            viewerSamples={detail?.stream?.viewerSamples}
-            chatMessages={detail?.stream?.chatMessages}
-          />
+          <div>
+            <LiveCollectionWarmup
+              rollupMinuteCount={minuteDataCount}
+              viewerSamples={detail?.stream?.viewerSamples}
+              chatMessages={detail?.stream?.chatMessages}
+            />
+            {emptyStateGames}
+          </div>
         </div>
       )
     }
@@ -1083,6 +1112,7 @@ function AnalyticsChart({
               {syncError ? <div className="mt-2 text-xs font-bold text-red-400">{syncError}</div> : null}
             </div>
           ) : null}
+          {emptyStateGames}
         </div>
       </div>
     )
@@ -1206,10 +1236,12 @@ function AnalyticsChart({
             </div>
           </div>
           <GamesPlayedStrip
-            games={stripGames}
+            games={games}
             durationSeconds={stripGamesEndSeconds}
+            dataEndSeconds={stripDataEndSeconds}
             highlightedKey={hoveredGameKey}
             onHighlightKey={setHoveredGameKey}
+            onSelectKey={zoomToGameKey}
             visibleRange={gamesVisibleRange}
             headerless
           />

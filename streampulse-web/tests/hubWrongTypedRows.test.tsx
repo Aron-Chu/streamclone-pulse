@@ -87,6 +87,7 @@ vi.mock('../src/hooks/usePublicHubData', () => ({
     displayedSnapshotAt: Date.now(),
     lastSuccessfulPollAt: Date.now(),
     pollSequence: 1,
+    pollAttempt: 0,
     cachedAt: null,
     refresh: vi.fn(),
   }),
