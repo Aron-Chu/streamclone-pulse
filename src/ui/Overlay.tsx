@@ -2038,7 +2038,6 @@ function OverlayMain({
                   onLoadFromStart={() => void loadStreamFromStart()}
                   onJumpToOffset={jumpToOffset}
                   onOpenAnalytics={openAnalytics}
-                  onOpenFullAnalytics={() => openAnalytics()}
                   onRequestFullTimeline={requestFullTimeline}
                   onChartWindowChange={handleChartWindowChange}
                   onPinOffset={handleChartPin}

@@ -12,7 +12,7 @@ import type { TwitchPageContext } from '../src/content/twitch.ts'
 /**
  * Overlay.openAnalytics passes "no offset" through as undefined, and
  * buildAnalyticsUrl keeps offset 0 as a real minute. Both halves matter:
- * the header and coverage links call openAnalytics() with no argument, so an
+ * the coverage link calls openAnalytics() with no argument, so an
  * `offsetSeconds ?? 0` there would aim them at minute 0 instead of the stream,
  * and the live "From start" fallback outside Twitch's DVR window must keep
  * `#t=0`. These tests click the real buttons and read what window.open got.
@@ -108,9 +108,15 @@ describe('Overlay analytics links', () => {
     document.body.append(video)
   }
 
-  it('"Stream analytics" opens the stream itself, with no #t minute', async () => {
+  it('the live panel has one Analytics link, the Hub button, and no "Stream analytics"', async () => {
     await render()
-    await act(async () => { button('Stream analytics →').click() })
+    button('Open Analytics Hub →')
+    expect(node.textContent).not.toContain('Stream analytics')
+  })
+
+  it('this stream\'s Past streams row opens the stream itself, with no #t minute', async () => {
+    await render()
+    await act(async () => { button('Analytics').click() })
     expect(openedUrls()).toEqual([STREAM_ANALYTICS])
   })
 
