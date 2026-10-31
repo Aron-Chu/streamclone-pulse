@@ -147,13 +147,14 @@ function cancelChatFocusSchedule(): void {
 }
 
 /** Tell chart/rail surfaces to release pointer capture before Chat owns the body. */
-function cancelPulseInteractions(): void {
+function cancelPulseInteractions(keepPageFocus = false): void {
   cancelChatFocusSchedule()
   document.dispatchEvent(new CustomEvent('streampulse:deactivate-interactions'))
   const activeElements = [
     tabsShadowRoot?.activeElement,
     panelShadowRoot?.activeElement,
-    document.activeElement,
+    // An automatic switch never takes focus from Twitch's chat box.
+    keepPageFocus ? null : document.activeElement,
   ]
   for (const element of activeElements) {
     if (element instanceof HTMLElement) element.blur()
@@ -166,6 +167,13 @@ function scheduleNativeChatFocus(): void {
 }
 
 let currentSidebarTab: SidebarTab = 'pulse'
+/**
+ * Chat for this channel visit only: it has nothing to chart, or the reader
+ * chose Back to chat. Never saved, so the next channel opens on the reader's tab.
+ */
+let autoChat = false
+/** Which channel visit autoChat belongs to (login, VOD and session start). */
+let autoChatVisit = ''
 let currentOverlayMode: OverlayMode = 'expanded'
 let currentPayload: PulsePayload | null = null
 let currentError: string | undefined
@@ -181,10 +189,22 @@ function handleSidebarTabChange(
   tab: SidebarTab,
   source: SidebarTabChangeSource = 'sync',
 ): void {
-  if (tab !== currentSidebarTab || source === 'user') cancelPulseInteractions()
-  currentSidebarTab = tab
+  const shown = shownSidebarTab()
+  if (source === 'auto') autoChat = true
+  // A click on the tab already shown changes nothing: an automatic Chat stays
+  // this visit's, and the saved tab stays the reader's.
+  else if (source === 'sync' || tab !== shown) {
+    if (source === 'user') autoChat = false
+    currentSidebarTab = tab
+  }
+  if (shownSidebarTab() !== shown || source === 'user') cancelPulseInteractions(source === 'auto')
   renderOverlay(currentPayload, currentError)
   if (tab === 'chat' && source === 'user') scheduleNativeChatFocus()
+}
+
+/** The tab on screen: the saved one, unless this visit has nothing to chart. */
+function shownSidebarTab(): SidebarTab {
+  return autoChat ? 'chat' : currentSidebarTab
 }
 
 function handleOverlayModeChange(mode: OverlayMode): void {
@@ -377,7 +397,7 @@ function buildDockHostRect(
 function applySidebarSnapLayout(): void {
   if (!sidebarLayout) return
 
-  const pulseTabActive = currentSidebarTab === 'pulse'
+  const pulseTabActive = shownSidebarTab() === 'pulse'
   // Pulse owns the body, so hide Twitch's native message chrome while it is
   // active. Chat owns the body, so remove the style entirely and restore all
   // native banners/messages when the user switches back. The collapsed and mini
@@ -459,7 +479,7 @@ function currentHostVisibility(): OverlayHostVisibility {
     sidebarFallbackToFloat,
     placementResolved,
     chatClosedPulseDockEnabled,
-    sidebarTab: currentSidebarTab,
+    sidebarTab: shownSidebarTab(),
   })
 }
 
@@ -504,6 +524,7 @@ function installMountStorageListener(): void {
   if (chrome.runtime?.onMessage) {
     chrome.runtime.onMessage.addListener((message: unknown) => {
       if (message && typeof message === 'object' && 'type' in message && message.type === 'OPEN_PULSE_SIDEBAR') {
+        autoChat = false
         currentSidebarTab = 'pulse'
         currentOverlayMode = 'expanded'
         syncSidebarObserver()
@@ -534,7 +555,7 @@ function renderOverlay(payload: PulsePayload | null, error?: string): void {
     effectivePlacement,
     sidebarSnapped,
     panelHostWidth: sidebarLayout?.panel.width ?? sidebarLayout?.column.width ?? 0,
-    sidebarTab: currentSidebarTab,
+    sidebarTab: shownSidebarTab(),
     overlayMode: currentOverlayMode,
     onSidebarTabChange: handleSidebarTabChange,
     onOverlayModeChange: handleOverlayModeChange,
@@ -552,7 +573,7 @@ function renderOverlay(payload: PulsePayload | null, error?: string): void {
   if (sidebarSnapped) {
     const tabsKey = [
       effectivePlacement,
-      currentSidebarTab,
+      shownSidebarTab(),
       currentOverlayMode,
       sidebarSnapped ? '1' : '0',
     ].join('|')
@@ -567,7 +588,7 @@ function renderOverlay(payload: PulsePayload | null, error?: string): void {
             effectivePlacement={effectivePlacement}
             sidebarSnapped
             sidebarPart="tabs"
-            sidebarTab={currentSidebarTab}
+            sidebarTab={shownSidebarTab()}
             overlayMode={currentOverlayMode}
             onSidebarTabChange={sharedProps.onSidebarTabChange}
             onOverlayModeChange={sharedProps.onOverlayModeChange}
@@ -626,6 +647,12 @@ export function mountOverlay(
   yieldedToOtherInstall = !tabsHostEl && !panelHostEl && otherInstallHostPresent()
   if (yieldedToOtherInstall) return
   const needsDisplayHydration = !tabsHostEl || !panelHostEl
+  // A new channel visit opens on the reader's own tab again.
+  const visit = `${login}:${context.vodId ?? ''}:${options.sessionOpenedAtMs ?? ''}`
+  if (visit !== autoChatVisit) {
+    autoChatVisit = visit
+    autoChat = false
+  }
   currentLogin = login
   currentContext = context
   currentOptions = options
@@ -821,6 +848,8 @@ export function unmountOverlay(): void {
   currentError = undefined
   currentCoverageTier = null
   currentSidebarTab = 'pulse'
+  autoChat = false
+  autoChatVisit = ''
   currentOverlayMode = 'expanded'
 }
 

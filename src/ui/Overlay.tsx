@@ -129,7 +129,8 @@ function coverageErrorMessage(raw: string | null | undefined, fallback: string):
   return formatPulseApiError(raw) ?? fallback
 }
 
-export type SidebarTabChangeSource = 'user' | 'sync'
+/** 'auto': Chat for this channel visit only, never saved as the reader's tab. */
+export type SidebarTabChangeSource = 'user' | 'sync' | 'auto'
 
 interface OverlayProps {
   login: string
@@ -262,12 +263,15 @@ function OverlayTabsShell({
       await setOverlayMode('expanded')
       onOverlayModeChange?.('expanded')
     }
+    const changed = next !== resolvedSidebarTab
     setSidebarTabState(next)
     // The content mount must hide/show the panel synchronously on a direct
     // click. Waiting for sync storage here leaves the old Pulse host intercepting
     // Twitch chat during the transition window.
     onSidebarTabChange?.(next, 'user')
-    await setSidebarTab(next)
+    // A click on the tab already shown is no new choice, so an automatic Chat
+    // (a channel with nothing to chart) is never saved through it.
+    if (changed) await setSidebarTab(next)
   }
 
   if (resolvedPlacement === 'hidden') {
@@ -838,6 +842,17 @@ function OverlayMain({
     pulseLiveAccess: pulseLiveAccess.state,
     pulseSupported,
   })
+  // Nothing to chart on this channel (off the list, or live while StreamPulse
+  // isn't reading its chat): the mount shows Chat, once per visit, unsaved.
+  const nothingToChart = context.kind === 'channel' && (panelSurfaceState === 'unsupported'
+    || (hostedBackend && panelSurfaceState === 'live_untracked' && !payload?.tracking))
+  const autoChatVisitRef = useRef('')
+  useEffect(() => {
+    if (!nothingToChart || autoChatVisitRef.current === loadKey) return
+    autoChatVisitRef.current = loadKey
+    onSidebarTabChange?.('chat', 'auto')
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per channel visit
+  }, [nothingToChart, loadKey])
   const recapCoverageTier = coverageTierState
   const recapUiState = payload
     ? resolveRecapUiState({
