@@ -19,11 +19,15 @@
  * page), the moment rows are that list's: the same moments, the same × and the
  * server's checks, nothing scored here. Spikes, went live and Picking up still
  * come from the hub. A quiet hour shows the day's top moments under it.
+ *
+ * Without the list (E1 candidate, 10-30), the hub's other moments sit under the
+ * hour as "earlier": the strongest peaks so far on streams live now, newest
+ * first, under the same rules as the hour's.
  */
 import type { HubEmote, HubLiveChannel, HubLivePulseMoment, HubMoment, PublicHub } from '../../../../lib/publicHub'
 import { screenerMetricMultiplier, type HubScreenerMetricKey } from '../../../../lib/channelScreenerContract'
 import type { MomentsFeedItem } from '../../../../lib/momentsFeed'
-import { avatarImage, boxArtImage, checkMoment, emoteImage, sameDay, type CheckedMoment } from '../../../../lib/momentsChecked'
+import { avatarImage, boxArtImage, checkMoment, emoteImage, fx, sameDay, type CheckedMoment } from '../../../../lib/momentsChecked'
 import {
   channelHref,
   formatHubInt,
@@ -73,10 +77,15 @@ export function screenerHot(c: HubLiveChannel | null | undefined, ser: HubScreen
     && s.multiplier! >= FEED_UP_MIN && s.currentPerMin >= FEED_NOW_MIN && finite(s.absoluteDeltaPerMin) && s.absoluteDeltaPerMin >= FEED_ADD_MIN
 }
 
-/** When the stream started: Twitch's start time when sent, else the start of its own average (the backend sets it to the stream's start). */
-export function liveStartOf(c: HubLiveChannel): number | null {
+/**
+ * When the stream started: Twitch's start time when sent, else the pool wire's
+ * went-live event (its time is the stream's start), else the start of its own
+ * average (the stream's start, or up to 5 minutes early on a new stream).
+ */
+export function liveStartOf(c: HubLiveChannel, attachAt?: number | null): number | null {
   const t = c.startedAt ? Date.parse(c.startedAt) : Number.NaN
   if (Number.isFinite(t)) return t
+  if (finite(attachAt)) return attachAt
   const s = c.screenerV1?.baselineWindow?.start
   return finite(s) ? s : null
 }
@@ -98,8 +107,10 @@ export function feedShort(at: number, nowMs: number): string {
   return m < 1 ? 'now' : m < 60 ? `${m}m` : `${Math.floor(m / 60)}h`
 }
 
-/** The feed says "10×" where the tables say "10×+"; its aria says "at least 10". */
-export const feedMultiplier = (x: number) => (x >= 10 ? '10×' : formatHubMultiplier(x))
+/** The × as the backend sent it, whole from 10 up ("50×"), so a 50× flood never reads as 10× (E1 candidate, 10-30). */
+export const feedMultiplier = (x: number) => (x >= 10 ? `${Math.round(x)}×` : formatHubMultiplier(x))
+/** Screen-reader words for feedMultiplier: the same whole number at 10 and up, never "at least 10" beside a printed 50×. */
+export const feedMultiplierWords = (x: number) => (x >= 10 ? formatHubInt(Math.round(x)) : multiplierWords(x))
 export const feedMore = (n: number) => formatHubInt(Math.round(n))
 
 interface FeedBase {
@@ -135,6 +146,10 @@ export interface FeedMoment extends FeedBase {
   /** From the Moments list: its × is written as that page writes it, and `why` stands in when it sends none. */
   list?: true
   why?: string
+  /** Other channels that counted the same emotes in the same minute, folded into this row. */
+  also?: string[]
+  /** Those channels' own moments, so a picked game can show its channel's row (feedForGame). */
+  folded?: FeedMoment[]
 }
 export interface FeedLive extends FeedBase {
   kind: 'live'
@@ -176,6 +191,12 @@ export interface LiveFeedModel {
   items: FeedItem[]
   /** The day's top moments from before the hour, for a quiet hour: by ×, one a channel, none from a channel in the hour. */
   top: FeedItem[]
+  /** Without the list: the hub's moments from before the hour (streams live now), newest first, same-minute twins folded. */
+  earlier: FeedItem[]
+  /** Live channels whose chat vs usual came with this update; 0 means spikes and Picking up could not be checked. */
+  screenerReady: number
+  /** Live channels in this update. */
+  channels: number
   /** The moment rows are the Moments list's. */
   list: boolean
   up: FeedUpRow[]
@@ -281,12 +302,32 @@ function commonWindow(rows: readonly HubLiveChannel[]): string {
   return top ? hubClockRange(top.a, top.b) : ''
 }
 
+/** A hub moment as a row under the hour's rules (not in a stream's first 20 minutes, a ready × of 1.5+), else null. */
+function hubMoment(row: HubMomentRowV5, live: ReadonlyMap<string, HubLiveChannel>): FeedMoment | null {
+  const m = row.moment
+  const raw = m.comparison?.[row.series]
+  const rx = raw && raw.state === 'ready' && finite(raw.multiplier) ? raw.multiplier : null
+  const kx = 'x' in row.cmp ? row.cmp.x : null
+  if (!finite(row.at)) return null
+  if ((m.offsetSeconds || 0) / 60 < FEED_START_MIN) return null
+  if ((kx != null && kx < FEED_KEEP_MIN) || (rx != null && rx < FEED_KEEP_MIN)) return null
+  if (!(kx != null && kx >= FEED_UP_MIN)) return null
+  const act = momentAct(row)
+  const avg = 'x' in row.cmp ? row.cmp.avg : null
+  const login = lo(row.login)
+  return {
+    kind: 'moment', at: row.at, key: `m:${row.key}`, login, name: row.displayName, cat: m.category || null,
+    streamId: m.streamId || live.get(login)?.streamId || '', avatar: m.profileImageUrl || live.get(login)?.profileImageUrl || null,
+    row, act, x: act.x ?? kx, add: act.x === kx && avg != null && row.rate != null ? row.rate - avg : null,
+  }
+}
+
 export function liveFeedModel(hub: LiveFeedInput | null | undefined, list: FeedMomentsList | null = null): LiveFeedModel {
   const hubAt = hub ? Date.parse(hub.generatedAt) : Number.NaN
   const asOf = list && finite(list.generatedAt) ? Math.max(hubAt, list.generatedAt) : hubAt
   const art = hubCategoryArt(hub?.livePulseMoments ?? [])
   if (!hub || !Number.isFinite(asOf)) {
-    return { asOf: null, events: [], items: [], top: [], list: false, up: [], upWindow: '', art, left: EMPTY_LEFT, spikeSeen: 0, liveCount: 0 }
+    return { asOf: null, events: [], items: [], top: [], earlier: [], screenerReady: 0, channels: 0, list: false, up: [], upWindow: '', art, left: EMPTY_LEFT, spikeSeen: 0, liveCount: 0 }
   }
   for (const item of list?.items ?? []) {
     const boxArt = boxArtImage(item)
@@ -297,9 +338,11 @@ export function liveFeedModel(hub: LiveFeedInput | null | undefined, list: FeedM
   const left: FeedLeftOut = { spikeUnder: [], spikeNew: [], momStart: 0, momUnder: [], momNoNum: 0 }
 
   // Went live: every stream that started in the hour
+  const attach = new Map<string, number>()
+  for (const m of hub.moments ?? []) if (m.kind === 'live_attach' && m.login && finite(m.at)) attach.set(lo(m.login), m.at)
   const lives: FeedLive[] = []
   for (const c of hub.liveChannels) {
-    const at = liveStartOf(c)
+    const at = liveStartOf(c, attach.get(lo(c.login)))
     if (!inHour(at)) continue
     lives.push({
       kind: 'live', at, key: `l:${lo(c.login)}`, login: lo(c.login), name: c.displayName || c.login, cat: c.category || null,
@@ -339,9 +382,14 @@ export function liveFeedModel(hub: LiveFeedInput | null | undefined, list: FeedM
   for (const item of list?.items ?? []) {
     if (item.verdict !== 'bad' && inHour(item.minuteStart)) moments.push(listMoment(checkMoment(item, asOf), live))
   }
+  const before: FeedMoment[] = []
   for (const row of list ? [] : momentRowsV5(hub.livePulseMoments ?? [])) {
     const m = row.moment
-    if (!inHour(row.at)) continue
+    if (!inHour(row.at)) {
+      const e = finite(row.at) && row.at < asOf ? hubMoment(row, live) : null
+      if (e) before.push(e)
+      continue
+    }
     const raw = m.comparison?.[row.series]
     const rx = raw && raw.state === 'ready' && finite(raw.multiplier) ? raw.multiplier : null
     const kx = 'x' in row.cmp ? row.cmp.x : null
@@ -363,6 +411,25 @@ export function liveFeedModel(hub: LiveFeedInput | null | undefined, list: FeedM
   }
 
   const events: FeedEvent[] = [...moments, ...spikes, ...lives].sort((a, b) => b.at - a.at)
+
+  // Earlier (E1): the hub's moments from before the hour, newest first; a minute two channels counted the same emotes in is one row
+  const earlier: FeedItem[] = []
+  const twins = new Map<string, FeedMoment>()
+  for (const e of before.sort((a, b) => b.at - a.at || (b.x ?? 0) - (a.x ?? 0))) {
+    const emotes = (e.row.moment.topEmotes ?? []).map((t) => `${t.name}:${t.count}`).join('|')
+    const k = `${Math.floor(e.at / 60_000)}|${emotes}`
+    const twin = emotes ? twins.get(k) : undefined
+    if (twin) {
+      if (twin.login !== e.login && !twin.also?.includes(e.name)) {
+        twin.also = [...(twin.also ?? []), e.name]
+        twin.folded = [...(twin.folded ?? []), e]
+      }
+      continue
+    }
+    if (emotes) twins.set(k, e)
+    earlier.push({ key: `e:${e.key}`, at: e.at, old: true, group: [e] })
+  }
+  const screenerReady = hub.liveChannels.filter((c) => hasFullChatWindow(c) && c.screenerV1?.chat?.state === 'ready').length
 
   // Picking up: chat 1.5×+ usual with the same floors, not counting channels with a spike row
   const spiked = new Set(spikes.map((e) => e.login))
@@ -402,7 +469,7 @@ export function liveFeedModel(hub: LiveFeedInput | null | undefined, list: FeedM
   }
 
   return {
-    asOf, events, items, top, list: !!list, up, upWindow: commonWindow(hotChat), art, left,
+    asOf, events, items, top, earlier, screenerReady, channels: hub.liveChannels.length, list: !!list, up, upWindow: commonWindow(hotChat), art, left,
     spikeSeen: spikes.length + left.spikeUnder.length + left.spikeNew.length,
     liveCount: lives.length,
   }
@@ -445,10 +512,18 @@ export const feedStale = (asOf: number | null, nowMs: number): boolean => asOf !
  * saved copy whatever the viewer's clock says, names the hour it covers on the
  * feed's own clock, the "as of" time (Q1, 10-28).
  */
-export function feedQuietText(game: string | null, asOf: number, nowMs: number, saved = false): string {
+export function feedQuietText(game: string | null, asOf: number, nowMs: number, saved = false, blind = false): string {
   if (saved || feedStale(asOf, nowMs)) return `Nothing${game ? ` from ${game}` : ''} in the hour before ${feedClockFloor(asOf)}`
+  // without chat vs usual, spikes and Picking up were never checked, so the hour is not known to be quiet
+  if (blind) return game ? `No ${game} moments in the last hour` : 'No new moments in the last hour'
   return game ? `Nothing from ${game} in the last hour` : 'Quiet right now · nothing in the last hour'
 }
+
+/** Said over the feed when no live channel's chat vs usual came with the update (the backend's history read failed). */
+export const FEED_BLIND = 'Chat vs usual isn’t in this update, so chat spikes and Picking up can’t show.'
+
+/** No live channel's chat vs usual came with this update. */
+export const feedBlind = (model: LiveFeedModel): boolean => model.asOf != null && model.channels > 0 && model.screenerReady === 0
 
 /** The phone peek's quiet line, under the same rule. */
 export function feedPeekQuietText(asOf: number, nowMs: number, saved = false): string {
@@ -473,7 +548,7 @@ export type FeedWait = 'loading' | 'unavailable' | null
  * yet, is still coming. Nothing at all to show is never a quiet hour.
  */
 export function feedWaitText(model: LiveFeedModel, wait: FeedWait, waiting = false): string | null {
-  if (model.items.length || model.up.length || model.top.length) return null
+  if (model.items.length || model.up.length || model.top.length || model.earlier.length) return null
   if (wait === 'loading' || (!wait && model.asOf == null && waiting)) return FEED_LOADING
   return wait === 'unavailable' || model.asOf == null ? FEED_UNAVAILABLE : null
 }
@@ -509,9 +584,15 @@ export function feedMomentsHref(game: FeedGame | null | undefined): string {
 export function feedGames(model: LiveFeedModel, keep: string | null = null): FeedGame[] {
   const tally = new Map<string, number>()
   const add = (cat: string | null) => { if (cat) tally.set(cat, (tally.get(cat) ?? 0) + 1) }
-  for (const it of [...model.items, ...model.top]) {
+  for (const it of [...model.items, ...model.top, ...model.earlier]) {
     if ('group' in it) add(feedGroupCat(it.group))
     else for (const e of it.lives) add(e.cat)
+  }
+  // a folded twin in another game is that game's row once it is picked (feedForGame)
+  for (const it of model.earlier) {
+    const lead = 'group' in it ? it.group[0] : undefined
+    if (lead?.kind !== 'moment' || !lead.folded) continue
+    for (const cat of new Set(lead.folded.map((t) => t.cat))) if (cat !== lead.cat) add(cat)
   }
   for (const u of model.up) add(u.cat)
   if (keep && !tally.has(keep)) tally.set(keep, 0)
@@ -521,6 +602,21 @@ export function feedGames(model: LiveFeedModel, keep: string | null = null): Fee
       return { name, art, id: feedGameId(art), rows }
     })
     .sort((a, b) => b.rows - a.rows || a.name.localeCompare(b.name))
+}
+
+/**
+ * An earlier row under a picked game: the lead's row with only that game's twins named, or, when the lead is in
+ * another game, the first folded twin in this one as its own row.
+ */
+function earlierForGame(it: FeedItem, game: string): FeedItem[] {
+  if (!('group' in it)) return []
+  const lead = it.group[0]
+  if (lead?.kind !== 'moment' || !lead.folded) return feedGroupCat(it.group) === game ? [it] : []
+  const named = (ms: readonly FeedMoment[]) => ms.filter((t) => t.cat === game).map((t) => t.name)
+  if (lead.cat === game) return [{ ...it, group: [{ ...lead, also: named(lead.folded) }] }]
+  const twin = lead.folded.find((t) => t.cat === game)
+  if (!twin) return []
+  return [{ ...it, key: `e:${twin.key}`, at: twin.at, group: [{ ...twin, also: named(lead.folded.filter((t) => t !== twin)) }] }]
 }
 
 /** The feed with only `game`'s rows; null leaves it whole. A shared went-live row keeps that game's starts. */
@@ -542,6 +638,7 @@ export function feedForGame(model: LiveFeedModel, game: string | null): LiveFeed
     events: model.events.filter((e) => e.cat === game),
     items,
     top: model.top.filter((it) => 'group' in it && feedGroupCat(it.group) === game),
+    earlier: model.earlier.flatMap((it) => earlierForGame(it, game)),
     up: model.up.filter((u) => u.cat === game),
   }
 }
@@ -563,10 +660,10 @@ export function feedRowAria(group: readonly FeedEvent[], nowMs: number): string 
   let said: string
   if (e.kind === 'spike') {
     const u = e.ser === 'chat' ? 'chat' : 'emotes'
-    said = `${feedWord(e)}, ${ago}: ${feedMore(e.add)} more ${u} a minute than usual, ${multiplierWords(e.x)} times usual`
+    said = `${feedWord(e)}, ${ago}: ${feedMore(e.add)} more ${u} a minute than usual, ${feedMultiplierWords(e.x)} times usual`
   } else if (e.kind === 'moment') {
     const u = e.row.series
-    said = `${feedWord(e)}, ${ago}${e.add != null && e.add > 0 ? `: ${feedMore(e.add)} more ${u} a minute than usual` : ''}${e.x != null ? `, ${feedMomentSer(e)} ${multiplierWords(e.x)} times usual` : e.why ? `, ${e.why}` : ''}`
+    said = `${feedWord(e)}, ${ago}${e.add != null && e.add > 0 ? `: ${feedMore(e.add)} more ${u} a minute than usual` : ''}${e.x != null ? `, ${feedMomentSer(e)} ${e.list ? fx(e.x).replace('×', '') : feedMultiplierWords(e.x)} times usual` : e.why ? `, ${e.why}` : ''}${e.also?.length ? `, with ${e.also.join(', ')} in the same minute` : ''}`
   } else {
     said = `went live ${ago}${e.chat != null && e.chat >= 1 ? `, chat ${feedMore(e.chat)} a minute` : ''}${e.jump ? ', chat jumping' : ''}${e.viewers != null ? `, ${formatHubInt(e.viewers)} viewers now` : ''}`
   }
@@ -597,13 +694,15 @@ export function feedTip(model: LiveFeedModel): string {
     + (left.spikeUnder.length ? `; under ${FEED_UP_MIN}× their usual: ${left.spikeUnder.join(', ')}` : '')
     + (left.spikeNew.length ? `; too new to compare, so their went-live row says “chat jumping”: ${left.spikeNew.join(', ')}` : '') + '. '
     + 'One number a row, how many times the stream’s usual chat or emotes (“5.0× more emotes”), beside its game; a moment’s other numbers are in its card when you point at it. '
+    + (feedBlind(model) ? 'Chat vs usual did not come with this update, so chat spikes and Picking up are hidden. ' : '')
     + (model.list
       ? `Moments: the Moments page’s own list, the hour’s moments that hold up or partly do (${moments || 'none this hour'}), with its checks. `
         + 'The × is the minute against the 15 minutes before, shown when the moment holds up; one that partly holds up says why. '
         + 'When the hour is quiet, the day’s top moments sit under it. '
       : `Moments: the detector’s moments from the hour at ${FEED_UP_MIN}× usual or more (${moments || 'none this hour'}). `
         + `Moments in a stream’s first ${FEED_START_MIN} minutes are left out (chat saying hello), and so is any the backend’s own comparison puts under ${FEED_KEEP_MIN}×`
-        + (left.momUnder.length ? ` (${left.momUnder.join('; ')})` : '') + '. The day’s top moments are in All moments. ')
+        + (left.momUnder.length ? ` (${left.momUnder.join('; ')})` : '') + '. '
+        + (model.earlier.length ? `Under the hour, “earlier”: ${model.earlier.length} of the strongest moments so far on streams live now (the hub sends up to 10, from the 12 busiest channels), newest first, under the same rules; channels that counted the same emotes in the same minute share a row. ` : ''))
     + `Went live: every stream that started in the hour (${model.liveCount}). ${formatHubInt(FEED_BIG_VIEWERS)}+ viewers get their own row; the rest share one. `
     + `Picking up: chat at least ${FEED_UP_MIN}× usual${model.upWindow ? ` over ${model.upWindow}` : ''} with the same floors (${model.up.length}, not counting channels with a spike row), ranked by how many more messages a minute. `
     + 'Rows older than 30 minutes fade. Went offline needs a backend event and is not shown.'

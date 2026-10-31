@@ -13,7 +13,7 @@ import { twitchProfileImageRendition } from '../../../../lib/twitchProfileImage'
 import { ResilientImage } from '../../ResilientImage'
 import { HubToggletip } from '../d3/HubToggletip'
 import { HubV5Icon } from './HubV5Icon'
-import { busiestAria, busiestCue, busiestTip, hubAvatarTone, hubClock, hubMonogram, rankBusiest } from './hubV5Model'
+import { HUB_BUSIEST_COUNT, HUB_CHAT_COUNTS_DOWN, busiestAria, busiestCue, busiestTip, hubAvatarTone, hubChatBasis, hubClock, hubMonogram, rankBusiest, screenerDown } from './hubV5Model'
 
 const reduced = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function'
   && window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -23,9 +23,14 @@ const TRACK_ID = 'hv5-busy-track'
 /** A tile's face is 40 % of the tile's height (34–70 px from 390 to 2560 wide), so it asks for Twitch's 150 px rendition; the original is the fallback. */
 const FACE_RENDITION = 150
 
-/** `unavailable`: the hub request failed, so an empty list says so rather than that no channel qualifies (INT-02). */
-export function HubV5Busiest({ live, nowMs, loading = false, unavailable = false }: { live: readonly HubLiveChannel[]; nowMs: number; loading?: boolean; unavailable?: boolean }) {
-  const set = useMemo(() => rankBusiest(live), [live])
+/**
+ * `unavailable`: the hub request failed, so an empty list says so rather than that no channel qualifies (INT-02).
+ * `windowKey`: the window of the hub answer on screen (the old one while a new range loads); on 30m and 24h a screener outage ranks by the recent average (up to 35 min) (candidate, 10-30).
+ */
+export function HubV5Busiest({ live, nowMs, loading = false, unavailable = false, windowKey }: { live: readonly HubLiveChannel[]; nowMs: number; loading?: boolean; unavailable?: boolean; windowKey?: string }) {
+  const set = useMemo(() => rankBusiest(live, HUB_BUSIEST_COUNT, hubChatBasis(live, windowKey)), [live, windowKey])
+  // the recent average is never "Live" (candidate, 10-30)
+  const avg = set.basis === 'avg_35'
   const cue = busiestCue(set, nowMs)
   const rows = set.rows
   const N = rows.length
@@ -152,18 +157,23 @@ export function HubV5Busiest({ live, nowMs, loading = false, unavailable = false
   const hasWindow = Number.isFinite(set.windowEnd)
 
   return (
-    <section id="busiest" className="hv5-sec hv5-busiest" aria-labelledby={H_ID} data-cue={hasWindow ? cue : undefined}>
+    <section id="busiest" className="hv5-sec hv5-busiest" aria-labelledby={H_ID} data-cue={hasWindow ? cue : avg ? 'stale' : undefined}>
       <div className="hv5-bzv-in">
         <header className="hv5-bzv-rh">
           <h2 id={H_ID}>Busiest now</h2>
-          {hasWindow ? <HubToggletip tip={<span className="hv5-pre">{busiestTip(set, cue)}</span>} label="About Busiest now" /> : null}
-          {hasWindow ? (
+          {hasWindow || avg ? <HubToggletip tip={<span className="hv5-pre">{busiestTip(set, cue)}</span>} label="About Busiest now" /> : null}
+          {avg ? (
+            <span className="hv5-bzv-cue" data-cue="stale">
+              <i aria-hidden="true" />
+              5-min counts unavailable
+            </span>
+          ) : hasWindow ? (
             <span className="hv5-bzv-cue" data-cue={cue}>
               <i aria-hidden="true" />
               {cue === 'live' ? 'Live' : `Not updated since ${hubClock(set.windowEnd)}`}
             </span>
           ) : null}
-          <p className="hv5-bzv-meta">Chat messages per minute · last 5 min</p>
+          <p className="hv5-bzv-meta">{avg ? 'Chat messages per minute · recent average' : 'Chat messages per minute · last 5 min'}</p>
           {N ? (
             <div className="hv5-bzc-pg">
               <span className="hv5-bzc-pos" aria-live="polite">{pos}</span>
@@ -213,7 +223,8 @@ export function HubV5Busiest({ live, nowMs, loading = false, unavailable = false
         ) : loading ? (
           <div className="hv5-bzs-wait" aria-hidden="true" />
         ) : (
-          <p className="hv5-bzv-none">{unavailable ? 'Unavailable right now.' : 'No synced channel has a full 5-minute window right now.'}</p>
+          // our 5-minute read failed, not the channels: say so rather than blame their windows (fix, 10-30)
+          <p className="hv5-bzv-none">{unavailable ? 'Unavailable right now.' : screenerDown(live) ? HUB_CHAT_COUNTS_DOWN : 'No synced channel has a full 5-minute window right now.'}</p>
         )}
       </div>
     </section>

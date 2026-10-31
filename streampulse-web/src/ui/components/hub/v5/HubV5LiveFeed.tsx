@@ -62,7 +62,10 @@ import {
   feedMomentSer,
   feedMomentsHref,
   feedMore,
+  FEED_BLIND,
+  feedBlind,
   feedMultiplier,
+  feedMultiplierWords,
   feedPeekQuietText,
   feedQuietText,
   feedRestTip,
@@ -84,12 +87,10 @@ import {
 import {
   channelHref,
   formatHubInt,
-  formatHubMultiplier,
   formatHubRate,
   hubClock,
   hubSavedClock,
   isLowMultiplier,
-  multiplierWords,
   type HubMomentRowV5,
 } from './hubV5Model'
 
@@ -201,7 +202,7 @@ export function useHubLiveFeed(hub: PublicHub | null): HubLiveFeed {
   // A feed with no rows has nothing to hold still: the hub's answer shows at once, pointer in the list or not.
   useEffect(() => {
     const shown = shownRef.current
-    if (!held.current || !(shown.items.length || shown.up.length || shown.top.length)) flush()
+    if (!held.current || !(shown.items.length || shown.up.length || shown.top.length || shown.earlier.length)) flush()
   }, [latest, flush])
   const setHeld = useCallback((h: boolean) => {
     held.current = h
@@ -287,7 +288,12 @@ function GroupRow({ item, model, nowMs, isNew }: { item: Extract<FeedItem, { gro
           ? <span className="hv5-fd-art"><GameArt url={artFor(e, cat, model) ?? undefined} name={cat} w={30} h={40} /></span>
           : <span className="hv5-fd-av"><HubV5Avatar login={e.login} name={e.name} src={e.avatar} size={28} /></span>}
         <span className="hv5-fd-tx">
-          <span className="hv5-fd-l1"><span className="hv5-fd-nm">{e.name}</span>{act}</span>
+          <span className="hv5-fd-l1">
+            <span className="hv5-fd-nm">{e.name}</span>{act}
+            {e.kind === 'moment' && e.also?.length
+              ? <span className="hv5-fd-also" title="These channels counted the same emotes in the same minute">+ {e.also.join(', ')}</span>
+              : null}
+          </span>
           <span className="hv5-fd-l2">
             {mid}
             {cat ? <>{mid ? SEP : null}<span className="hv5-fd-g">{cat}</span></> : null}
@@ -363,7 +369,7 @@ function UpRow({ model, isNew, onUpMore }: { model: LiveFeedModel; isNew: boolea
               className="hv5-fd"
               to={channelHref({ login: x.login, streamId: x.streamId })}
               data-key={`u:${x.login}`}
-              aria-label={`${x.name}, picking up: ${feedMore(x.add)} more chat a minute than usual, ${multiplierWords(x.x)} times usual${x.cat ? `, ${x.cat}` : ''}. Opens the stream page.`}
+              aria-label={`${x.name}, picking up: ${feedMore(x.add)} more chat a minute than usual, ${feedMultiplierWords(x.x)} times usual${x.cat ? `, ${x.cat}` : ''}. Opens the stream page.`}
             >
               <span className="hv5-fd-av"><HubV5Avatar login={x.login} name={x.name} src={x.avatar} size={22} /></span>
               <span className="hv5-fd-tx">
@@ -412,7 +418,7 @@ function MomentCard({ row, avatar }: { row: HubMomentRowV5; avatar: string | nul
         </p>
       ) : 'x' in cmp ? (
         <p className="hv5-mc-x">
-          <b className={isLowMultiplier(cmp.x) ? 'lo' : undefined}>{formatHubMultiplier(cmp.x)}</b> its own average
+          <b className={isLowMultiplier(cmp.x) ? 'lo' : undefined}>{feedMultiplier(cmp.x)}</b> its own average
           <span>{formatHubRate(cmp.avg)} {unit} on average before this, over {cmp.mins} measured min</span>
         </p>
       ) : (
@@ -617,16 +623,18 @@ function LiveFeedV3({ feed, nowMs, loading = false, wait = null, saved = false, 
   const cap = column && columnPx != null ? feedColumnCap(columnPx) : feedCap(phone, wide, innerHeight)
   const room = Math.max(0, cap - (upOn ? 1 : 0))
   const shown = model.items.slice(0, showAll ? model.items.length : room)
-  const hidden = model.items.length - shown.length
   const quiet = feedIsQuiet(model)
   // a quiet hour: the day's top moments under it, in the rows it leaves
   const filler = quiet ? model.top.slice(0, Math.max(0, room - shown.length)) : []
+  // E1: the hub's moments from before the hour, in the rows left (all of them with Show more)
+  const earlier = model.earlier.slice(0, showAll ? model.earlier.length : Math.max(0, room - shown.length - filler.length))
+  const hidden = model.items.length - shown.length + model.earlier.length - earlier.length
   const fresh = feed.fresh
   const isNew = (it: FeedItem) => !!fresh && ('group' in it ? fresh.has(it.group[0]!.key) : it.lives.some((e) => fresh.has(e.key)))
 
   const byKey = useMemo(() => {
     const map = new Map<string, { row: HubMomentRowV5; avatar: string | null }>()
-    for (const it of model.top) if ('group' in it) for (const e of it.group) if (e.kind === 'moment') map.set(e.row.key, { row: e.row, avatar: e.avatar })
+    for (const it of [...model.top, ...model.earlier]) if ('group' in it) for (const e of it.group) if (e.kind === 'moment') map.set(e.row.key, { row: e.row, avatar: e.avatar })
     for (const e of model.events) if (e.kind === 'moment') map.set(e.row.key, { row: e.row, avatar: e.avatar })
     return map
   }, [model])
@@ -651,6 +659,10 @@ function LiveFeedV3({ feed, nowMs, loading = false, wait = null, saved = false, 
   if (filler.length) {
     rows.push(<li key="rule-top" className="hv5-f3-rule" aria-hidden="true">{ruled ? 'top moments today' : 'earlier today, top moments'}</li>)
     for (const it of filler) if ('group' in it) rows.push(<GroupRow key={it.key} item={it} model={model} nowMs={nowMs} isNew={false} />)
+  }
+  if (earlier.length) {
+    rows.push(<li key="rule-earlier" className="hv5-f3-rule" aria-hidden="true">earlier · strongest on streams live now</li>)
+    for (const it of earlier) if ('group' in it) rows.push(<GroupRow key={it.key} item={it} model={model} nowMs={nowMs} isNew={false} />)
   }
 
   // Nothing behind the feed to show: one line, a grey dot, no time and no (i).
@@ -700,7 +712,10 @@ function LiveFeedV3({ feed, nowMs, loading = false, wait = null, saved = false, 
           {...handlers}
           onClick={() => window.requestAnimationFrame(() => setOpened(!!wrapRef.current?.querySelector('.hv5-fd-list [aria-expanded="true"]')))}
         >
-          {model.asOf != null && !waitLine && !upOn && !rows.length ? <p className="hv5-fd-quiet">{feedQuietText(game, model.asOf, nowMs, saved)}</p> : null}
+          {!waitLine && feedBlind(model) ? <p className="hv5-fd-note">{FEED_BLIND}</p> : null}
+          {model.asOf != null && !waitLine && !upOn && !shown.length && !filler.length
+            ? <p className="hv5-fd-quiet">{feedQuietText(game, model.asOf, nowMs, saved, feedBlind(model))}</p>
+            : null}
           {upOn || rows.length ? (
             <ol className="hv5-fd-list" aria-labelledby={H_ID}>
               {upOn ? <UpRow model={model} isNew={!!fresh?.has('now')} onUpMore={onUpMore} /> : null}

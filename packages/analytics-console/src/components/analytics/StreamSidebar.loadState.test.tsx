@@ -69,6 +69,28 @@ describe('StreamSidebar list load state', () => {
     }
   })
 
+  // VOD-4 (fix, 10-30): the console may render the first page of the list
+  // before the full list lands; that page's length is not the channel's total.
+  it('never shows a partial list as the total: the known count gets a "+"', () => {
+    const page = Array.from({ length: 12 }, (_, index) => ({
+      streamId: String(300 + index),
+      login: 'xqc',
+      startedAt: new Date(Date.parse('2026-10-29T09:00:00.000Z') - index * 86_400_000).toISOString(),
+      title: `Broadcast ${index + 1}`,
+    })) as AnalyticsStream[]
+    const view = renderSidebar({ streams: page, streamsPartial: true })
+    const count = document.querySelector('[data-stream-count]')!
+    expect(count.textContent).toBe('12+')
+    expect(count.getAttribute('title')).toBe('At least 12 streams')
+    expect(screen.queryByRole('button', { name: 'Show all 12 streams' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Show all streams' })).toBeTruthy()
+    view.unmount()
+
+    renderSidebar({ streams: page })
+    expect(document.querySelector('[data-stream-count]')!.textContent).toBe('12')
+    expect(screen.getByRole('button', { name: 'Show all 12 streams' })).toBeTruthy()
+  })
+
   it('keeps loaded rows visible when a later refresh fails', () => {
     const stream = { streamId: '101', login: 'xqc', startedAt: '2026-07-11T18:00:00.000Z', title: 'Loaded broadcast' } as AnalyticsStream
     renderSidebar({ streams: [stream], loadFailed: true, onRetry: vi.fn() })

@@ -8,9 +8,14 @@ export function analyticsLiveQueryKey(login: string) {
   return ['analytics-live', login] as const
 }
 
+/** What a `refetchInterval` function reads of the query (any session read's query fits). */
+export type SessionReadIntervalQuery = {
+  state: { data?: AnalyticsStreamDetail | null; dataUpdateCount: number; errorUpdateCount: number }
+}
+
 export type UseAnalyticsLiveOptions = {
   enabled?: boolean
-  refetchInterval?: number | false
+  refetchInterval?: number | false | ((query: SessionReadIntervalQuery) => number | false)
   /** Reject if getAnalyticsLive does not resolve within LIVE_REQUEST_TIMEOUT_MS. */
   withTimeout?: boolean
 }

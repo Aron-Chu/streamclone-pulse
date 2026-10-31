@@ -98,10 +98,19 @@ describe('MomentReel helpers', () => {
       "Pictures are Twitch's VOD preview frames, one every 4 min 9 s. Move across one to step through them.",
     )
     expect(reelNote({ frame: { ...frame, intervalSec: null }, reason: null, loading: false, hasArt: true })).toMatch(/not the exact second/)
-    expect(reelNote({ frame: null, reason: 'recording', loading: false, hasArt: true })).toBe('Twitch publishes preview frames when the VOD finishes.')
-    expect(reelNote({ frame: null, reason: 'no_storyboard', loading: false, hasArt: true })).toMatch(/box art/)
-    expect(reelNote({ frame: null, reason: 'no_storyboard', loading: false, hasArt: false })).toBeNull()
+    expect(reelNote({ frame: null, reason: 'recording', loading: false, hasArt: true })).toBe('No preview frames while the stream is live.')
+    expect(reelNote({ frame: null, reason: 'no_storyboard', loading: false, hasArt: true }))
+      .toBe("Preview frames aren't available right now. Pictures are the game's box art.")
+    // (fix, 10-30, PIC-3) no cover, no claim about box art: just the reason (it said nothing until 10-30)
+    expect(reelNote({ frame: null, reason: 'no_storyboard', loading: false, hasArt: false })).toBe("Preview frames aren't available right now.")
     expect(reelNote({ frame: null, reason: null, loading: true, hasArt: true })).toBeNull()
+  })
+
+  it("follows the page's recording flag over the frame answer's reason (fix, 10-30, PIC-3)", () => {
+    // every VOD answers no_storyboard today (F6), the live one too
+    expect(reelNote({ frame: null, reason: 'no_storyboard', loading: false, hasArt: true, recording: true })).toBe('No preview frames while the stream is live.')
+    expect(reelNote({ frame: null, reason: 'recording', loading: false, hasArt: true, recording: false }))
+      .toBe("Preview frames aren't available right now. Pictures are the game's box art.")
   })
 })
 
@@ -183,8 +192,23 @@ describe('SessionRecapMomentsStrip reel', () => {
     render(reel({ vodId: VOD }))
     expect(get).not.toHaveBeenCalled()
     expect(card(1).dataset.momentFrame).toBe('fallback')
-    expect(card(1).querySelector('img.ssr-rc-art')!.getAttribute('src')).toBe(GAMES[0]!.boxArtUrl)
-    expect(screen.getByText("Pictures are the game's box art: no VOD preview frames for this stream.")).toBeTruthy()
+    // (candidate, 10-30, PIC-2) the cover whole and sharp in the corner, at ~2x its drawn size; nothing blurred
+    // fills the card
+    expect(card(1).querySelector('img.ssr-rc-cover')!.getAttribute('src'))
+      .toBe('https://static-cdn.jtvnw.net/ttv-boxart/32982_IGDB-216x288.jpg')
+    expect(card(2).querySelector('img.ssr-rc-cover')!.getAttribute('src'))
+      .toBe('https://static-cdn.jtvnw.net/ttv-boxart/32982_IGDB-144x192.jpg')
+    expect(card(1).querySelector('.ssr-rc-pic img')).toBeNull()
+    expect(document.querySelector('.ssr-rc-art')).toBeNull()
+    expect(screen.getByText("Preview frames aren't available right now. Pictures are the game's box art.")).toBeTruthy()
+  })
+
+  it("a cover that fails at the asked size reports the games answer's URL, so the next candidate takes over", () => {
+    configure(vi.fn(async () => ({ reason: 'no_storyboard' })))
+    render(reel({ vodId: VOD }))
+    fireEvent.error(card(1).querySelector('img.ssr-rc-cover')!)
+    const next = card(1).querySelector('img.ssr-rc-cover')?.getAttribute('src') ?? null
+    expect(next).toBe('https://static-cdn.jtvnw.net/ttv-boxart/32982-216x288.jpg')
   })
 
   it('a VOD with no storyboard asks once and falls back to the box art', async () => {
@@ -196,12 +220,12 @@ describe('SessionRecapMomentsStrip reel', () => {
     expect(get).toHaveBeenCalledTimes(1)
   })
 
-  it('a VOD still recording says when frames come', async () => {
+  it('a VOD still recording says there are no preview frames while the stream is live', async () => {
     configure(async () => {
       throw Object.assign(new Error('forbidden'), { status: 403 })
     })
     render(reel({ vodId: VOD, vodAlignSeconds: ALIGN }))
-    await waitFor(() => expect(screen.getByText('Twitch publishes preview frames when the VOD finishes.')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('No preview frames while the stream is live.')).toBeTruthy())
   })
 
   it('moving across a picture steps through the tiles either side; leaving puts the moment back', async () => {

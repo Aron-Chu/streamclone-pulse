@@ -67,7 +67,7 @@ function Emotes({ model }: { model: HubV5BarCardModel }) {
   if (!model.topEmotes.length) {
     return (
       <div className="hbk-emo">
-        <p className="hbk-sl"><span>Top emotes</span><span className="r">none named in this bucket</span></p>
+        <p className="hbk-sl"><span>Top emotes</span><span className="r">{model.topEmotesNote}</span></p>
       </div>
     )
   }

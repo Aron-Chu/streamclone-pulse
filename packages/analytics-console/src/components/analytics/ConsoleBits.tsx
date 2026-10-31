@@ -9,6 +9,7 @@ import { resolveAnalyticsVodId } from '../../utils/twitchVodUrl.ts'
 import {
   analyticsQualityChipClass,
   deriveAnalyticsQualityLabel,
+  sessionDataQualityLabel,
   type AnalyticsQualityLabel,
   type StreamSummaryMetrics,
 } from '../../utils/streamQuality.ts'
@@ -55,15 +56,7 @@ export function deriveSessionDataQuality(
   detail?: AnalyticsStreamDetail,
   summaryMetrics?: StreamSummaryMetrics,
 ): SessionDataQuality {
-  const label = deriveAnalyticsQualityLabel({
-    analyticsQuality: detail?.analyticsQuality,
-    summaryMetrics,
-    rollupCount: detail?.timelineMinutes ?? detail?.rollups?.length,
-    chatMessages: detail?.stream?.chatMessages,
-    vodId: detail?.vodId ?? detail?.stream?.vodId,
-    chartState: detail?.availability?.chartState,
-    chartUsable: detail?.availability?.chartUsable,
-  })
+  const label = sessionDataQualityLabel(detail, summaryMetrics)
   const vodState = (detail?.availability?.vodState ?? '').toLowerCase()
   const hasVod = Boolean(resolveAnalyticsVodId(detail))
   return {

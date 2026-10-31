@@ -49,8 +49,8 @@ test('a bar click opens the card under the chart without covering it, and makes 
   await expect(card.locator('.hbk-s')).toHaveText(/^Bucket selected · \d+ min$/)
   await expect(card.locator('.hbk-m')).toHaveText(/^[A-Z][a-z]{2} \d{1,2} local time$/)
   for (const label of ['chat/min', 'emotes/min', 'viewers (sample)']) await expect(card.locator('.hbk-figs')).toContainText(label)
-  // The mock's buckets carry no per-bucket emotes: the card says so instead of inventing a list.
-  await expect(card.locator('.hbk-emo')).toContainText('none named in this bucket')
+  // The mock's buckets count emotes but send no names: the card says so instead of inventing a list (pick 12A, 10-30).
+  await expect(card.locator('.hbk-emo')).toContainText('names not in this update')
   const plotBox = (await plot.boundingBox())!
   const cardBox = (await card.boundingBox())!
   expect(cardBox.y).toBeGreaterThanOrEqual(plotBox.y + plotBox.height - 1)

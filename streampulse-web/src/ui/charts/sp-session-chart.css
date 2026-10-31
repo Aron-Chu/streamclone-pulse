@@ -289,6 +289,33 @@
   outline-offset: 1px;
 }
 
+/* (candidate, 10-30) GP1: under each poster, its name and run time as two
+   visible lines; the item is as wide as the name, 52 to 96 px, and a longer
+   name is cut with an ellipsis (its title has the full name) */
+.ssc-gp .ssc-gp-i {
+  gap: 2px;
+}
+
+.ssc-gp .ssc-gp-name {
+  display: block;
+  max-width: 96px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  color: #ededef;
+}
+
+.ssc-gp .ssc-gp-rt {
+  font-size: 12px;
+  line-height: 16px;
+  color: #8e8e96;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .ssc-ro-row {
   display: flex;
   align-items: center;
@@ -729,10 +756,29 @@
   background: #1c1c1f;
 }
 
+/* (candidate, 10-30) GP1: a hovered or pinned poster outlines its segment */
+.ssc .ssc-band[data-active] {
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.3);
+}
+
 .ssc-band-label {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* (fix, 10-30) GP-3: where a game the games list runs on leaves the data, a
+   dashed edge and "Data ends" (SessionChartLayers sets data-end-visible only
+   while that end is on screen; the word needs a wide enough segment) */
+.ssc .ssc-band[data-end-visible] {
+  border-right: 1px dashed var(--sp-text-3);
+}
+
+.ssc-band-end {
+  flex: none;
+  margin-left: auto;
+  padding-left: 6px;
+  color: var(--sp-text-3);
 }
 
 /* pin leaders and the strip-hover ghost */

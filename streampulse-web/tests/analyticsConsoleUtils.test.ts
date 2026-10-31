@@ -83,6 +83,15 @@ describe('syncedLiveStream badges', () => {
       ),
     ).toBe('Partial')
   })
+
+  it('uses the header 80% line for the open session, not 99.5% (pick 11A, 10-30)', () => {
+    const openRow = { streamId: 'x', login: 'x', startedAt: '2026-10-30T04:20:06Z', viewerSamples: 1 }
+    const evidence = { hasViewerMinutes: true, hasChatMinutes: true, coveragePct: 99.44, syncHealthState: 'synced' }
+    expect(streamSyncBadgeLabel(streamSyncBadgeState(openRow, false, evidence))).toBe('Synced')
+    expect(
+      streamSyncBadgeLabel(streamSyncBadgeState(openRow, false, { ...evidence, coveragePct: 79.9, syncHealthState: 'partial' })),
+    ).toBe('Partial')
+  })
 })
 
 describe('displayStreamTitle', () => {

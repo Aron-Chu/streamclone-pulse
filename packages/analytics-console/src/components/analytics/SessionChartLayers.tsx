@@ -22,23 +22,36 @@ export interface SessionBandSegment {
   label: string
   startMs: number
   endMs: number
+  /** (fix, 10-30) GP-3: the games API runs this game past the data; the band cuts it at the data end. */
+  openEnd?: boolean
 }
 
-/** Games played as band segments in epoch ms, clipped to the plotted end. */
+/**
+ * Games played as band segments in epoch ms, clipped to the plotted end.
+ * (fix, 10-30) GP-3: `openEndKeys` (gamesOpenAtDataEnd) marks the games cut there.
+ */
 export function sessionBandSegments(
   games: readonly ChartGameSegment[],
   originMs: number,
   endMs: number,
+  openEndKeys?: ReadonlySet<string>,
 ): SessionBandSegment[] {
   return games
-    .map(game => ({
-      key: gameSegmentKey(game),
-      label: game.gameName,
-      startMs: originMs + game.offsetSeconds * 1000,
-      endMs: Math.min(endMs, originMs + (game.offsetSeconds + game.durationSeconds) * 1000),
-    }))
+    .map(game => {
+      const key = gameSegmentKey(game)
+      return {
+        key,
+        label: game.gameName,
+        startMs: originMs + game.offsetSeconds * 1000,
+        endMs: Math.min(endMs, originMs + (game.offsetSeconds + game.durationSeconds) * 1000),
+        ...(openEndKeys?.has(key) ? { openEnd: true } : {}),
+      }
+    })
     .filter(segment => Number.isFinite(segment.startMs) && segment.endMs > segment.startMs)
 }
+
+/** (fix, 10-30) GP-3: the "Data ends" word needs this much segment; the dashed edge shows at any width. */
+const BAND_END_LABEL_MIN_PX = 120
 
 interface BandProps {
   ctx: SpLayerContext
@@ -58,11 +71,18 @@ function BandSegments({ ctx, segments, highlightedKey, onHoverKey, onZoom }: Ban
         if (!el) return
         const box = bandBox(frame.xOfMs(segment.startMs), frame.xOfMs(segment.endMs), width)
         el.style.display = box.hidden ? 'none' : ''
+        // (fix, 10-30) GP-3: mark the data end only while it is on screen.
+        const endVisible = Boolean(segment.openEnd) && !box.hidden && frame.xOfMs(segment.endMs) <= width + 0.5
+        if (endVisible) el.setAttribute('data-end-visible', '')
+        else el.removeAttribute('data-end-visible')
         if (box.hidden) return
         el.style.transform = `translateX(${box.left.toFixed(1)}px)`
         el.style.width = `${box.width.toFixed(1)}px`
         const label = el.firstElementChild as HTMLElement | null
         if (label) label.style.visibility = box.showLabel ? '' : 'hidden'
+        if (!segment.openEnd) return
+        const marker = el.querySelector<HTMLElement>('[data-session-band-end]')
+        if (marker) marker.style.display = endVisible && box.width >= BAND_END_LABEL_MIN_PX ? '' : 'none'
       })
     }
     place()
@@ -78,7 +98,8 @@ function BandSegments({ ctx, segments, highlightedKey, onHoverKey, onZoom }: Ban
           className="ssc-band spc-pe"
           data-session-band=""
           data-active={highlightedKey === segment.key ? '' : undefined}
-          aria-label={`${segment.label}, zoom to this segment`}
+          aria-label={`${segment.label}${segment.openEnd ? ' (data ends here)' : ''}, zoom to this segment`}
+          data-open-end={segment.openEnd ? '' : undefined}
           onClick={() => onZoom(segment)}
           onPointerEnter={() => onHoverKey(segment.key)}
           onPointerLeave={() => onHoverKey(null)}
@@ -86,6 +107,7 @@ function BandSegments({ ctx, segments, highlightedKey, onHoverKey, onZoom }: Ban
           onBlur={() => onHoverKey(null)}
         >
           <span className="ssc-band-label" aria-hidden="true">{segment.label}</span>
+          {segment.openEnd ? <span className="ssc-band-end" aria-hidden="true" data-session-band-end>Data ends</span> : null}
         </button>
       ))}
     </>

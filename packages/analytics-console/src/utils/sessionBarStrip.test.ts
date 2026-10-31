@@ -162,6 +162,19 @@ describe('buildSessionBarStrip', () => {
     expect(m.namedNote).toBe('Names for <1% of emote uses')
   })
 
+  it('an empty top emotes list says none were named only when the bar counted no emote uses (pick 12S, 10-30)', () => {
+    const one = { ...base, span: { startSec: 3054, endSec: 3114, levelMinutes: 1 } }
+    expect(buildSessionBarStrip({ ...one, rollups: [minute(3054)] }).topEmotesNote).toBeNull()
+    expect(buildSessionBarStrip({ ...one, rollups: [minute(3054, { emotes: {} })] }).topEmotesNote).toBe('names not in this update')
+    expect(buildSessionBarStrip({ ...one, rollups: [minute(3054, { totalEmoteCount: 0, seventvEmoteCount: 0, emotes: {} })] }).topEmotesNote)
+      .toBe('none named in this minute')
+    const five = { ...base, span: { startSec: 3000, endSec: 3300, levelMinutes: 5 } }
+    expect(buildSessionBarStrip({ ...five, rollups: [minute(3000, { emotes: undefined }), minute(3060, { emotes: {} })] }).topEmotesNote)
+      .toBe('names not in this update')
+    expect(buildSessionBarStrip({ ...five, rollups: [minute(3000, { totalEmoteCount: 0, emotes: undefined })] }).topEmotesNote)
+      .toBe('none named in this bar')
+  })
+
   it('reads a category switch in time order', () => {
     const m = buildSessionBarStrip({
       ...base,

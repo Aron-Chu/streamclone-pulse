@@ -917,6 +917,81 @@
   .hv5-bzt-t::after { transition: none; }
 }
 
+/* ---------- 2b. Featured stream (picks I1 and I1b, 10-30; board artifacts/session-hub-gaps-20261030): the featured stream under Busiest now ---------- */
+.hv5-most { grid-area: most; margin-top: 12px; }
+/* its own row under Busiest now, only while the card is on the page; without it the templates above apply */
+.hub-v5.hub-d3:has(> .hv5-most) {
+  grid-template-areas: "mast" "peek" "busy" "most" "act" "intv" "rail" "emo" "games" "chan" "meas";
+}
+@media (min-width: 720px) and (max-width: 1099px) {
+  .hub-v5.hub-d3:has(> .hv5-most) {
+    grid-template-areas: "mast mast" "busy busy" "most most" "act act" "intv intv" "rail rail" "emo games" "chan chan" "meas meas";
+  }
+}
+@media (min-width: 1100px) and (max-width: 1535px) {
+  .hub-v5.hub-d3:has(> .hv5-most) {
+    grid-template-areas: "mast mast mast" "busy busy busy" "most most most" "act act act" "intv intv intv" "rail emo games" "chan chan chan" "meas meas meas";
+  }
+}
+@media (min-width: 1536px) {
+  .hub-v5.hub-d3:has(> .hv5-most) {
+    grid-template-areas: "mast mast mast" "busy busy rail" "most most rail" "act act rail" "intv intv rail" "emo games rail" "chan chan rail" "meas meas rail";
+  }
+}
+/* the base rules the other sections get */
+.hub-v5 .hv5-most :is(*, *::before, *::after) { box-sizing: border-box; }
+.hub-v5 .hv5-most :is(h2, p) { margin: 0; }
+.hub-v5 .hv5-most img { display: block; }
+.hub-v5 .hv5-most .hv5-mst-lb {
+  font: 500 12px/16px var(--sp-font);
+  color: var(--sp-text-3);
+}
+.hv5-mst-rw {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  padding: 8px 0;
+  border-top: 1px solid var(--sp-line);
+}
+/* long names and emotes wrap inside the card, never past a 360 px phone */
+.hv5-mst-tx { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.hv5-mst-l1,
+.hv5-mst-l2 { display: block; }
+.hv5-mst-l2 { margin-top: 2px; }
+.hv5-mst-nm { font-weight: 600; color: var(--sp-text-1); }
+.hv5-mst-m { font-size: 12px; color: var(--sp-text-3); }
+.hv5-mst-x {
+  font-weight: 600;
+  color: var(--hv5-accent);
+  font-variant-numeric: tabular-nums;
+}
+.hub-v5 .hv5-most a.hv5-mst-open {
+  flex: none;
+  font: 500 13px/16px var(--sp-font);
+  color: var(--hv5-accent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.hub-v5 .hv5-most a.hv5-mst-open:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.hub-v5 .hv5-most .hv5-mst-note {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--sp-text-3);
+  overflow-wrap: anywhere;
+}
+/* a moment moves to the next line whole, unless it is wider than the line */
+.hv5-mst-mo { display: inline-block; max-width: 100%; }
+/* while Busiest now holds its place (pick K1): one grey block the size of a one-line card, as Busiest now's own */
+.hv5-mst-wait {
+  border-radius: 8px;
+  background: linear-gradient(90deg, var(--sp-raised), var(--sp-panel));
+}
+.hv5-mst-wait > * { visibility: hidden; }
+
 /* ---------- 3. The live feed v3 (hub-live.css: R5-10 rail, R5-20 v2, v3; the default since 2026-10-17) ---------- */
 .hub-v5 .hv5-mo-all { font-weight: 500; white-space: nowrap; }
 /* F2's picked game names the link ("Elden Ring moments →"): the name takes the room the age line leaves, then ellipses */
@@ -1068,6 +1143,9 @@
 }
 .hv5-fd-g,
 .hv5-fd-w { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* E1 candidate (10-30): a minute two channels counted the same emotes in, and the line when chat vs usual is missing */
+.hv5-fd-also { flex: none; font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
+.hub-v5 .hv5-feed .hv5-fd-note { margin: 6px 8px 2px; font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
 .hv5-fd-w time { font-variant-numeric: tabular-nums; }
 /* what happened: a spike or moment in teal, a stream start in red with a ring, Picking up in purple */
 .hv5-f2-act { flex: none; font-weight: 500; color: var(--sp-text-2); white-space: nowrap; }

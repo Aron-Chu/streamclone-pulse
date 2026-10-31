@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   momentRowClock,
@@ -9,7 +9,6 @@ import {
   momentRowTwitchTime,
 } from '../../utils/momentRowDisplay.ts'
 import {
-  MOMENT_ROW_DWELL_MS,
   SessionMomentPlayer,
   SessionMomentRow,
   momentRowVodStart,
@@ -98,14 +97,17 @@ describe('SessionMomentRow', () => {
     expect(row.getAttribute('data-moment-rank')).toBe('1')
     expect(row.getAttribute('aria-pressed')).toBe('false')
     expect(row.hasAttribute('aria-expanded')).toBe(false)
-    expect(row.className).toBe('ssr-row has-art has-bd')
+    // (candidate, 10-30, PIC-2) no blurred backdrop: the small cover by the game's name is the row's only picture
+    expect(row.className).toBe('ssr-row')
+    expect(row.querySelector('.ssr-fr')).toBeNull()
     expect(row.querySelector('.ssr-rk')!.textContent).toBe('1')
     expect(row.querySelector('.ssr-off')!.textContent).toBe('0:50:54')
     expect(row.querySelector('.ssr-why.emotes')!.textContent).toBe('Emote spike')
     expect(row.querySelector('.ssr-sc')!.textContent).toBe('reaction score 56 in this stream')
     expect(row.querySelector('.ssr-gm-n')!.textContent).toBe('Grand Theft Auto V')
-    expect(row.querySelector('.ssr-gm img')!.getAttribute('src')).toBe(ART)
-    expect(row.querySelector('.ssr-fr-art')!.getAttribute('src')).toBe(ART)
+    // asked at 2x its 15x20 (candidate, 10-30, PIC-2)
+    expect(row.querySelector('.ssr-gm img')!.getAttribute('src')).toBe('https://static-cdn.jtvnw.net/ttv-boxart/32982_IGDB-30x40.jpg')
+    expect(row.querySelectorAll('img')).toHaveLength(1 + row.querySelectorAll('.ssr-tok img').length)
     expect(row.querySelectorAll('.ssr-tok')).toHaveLength(2)
     expect(row.querySelector('.ssr-tok .ssr-tok-n')!.textContent).toBe('56')
     expect(row.querySelector('.ssr-rt')!.textContent).toBe('250 emotes/min')
@@ -120,7 +122,7 @@ describe('SessionMomentRow', () => {
     render(<SessionMomentRow model={model({ game: { name: 'Just Chatting', artUrls: [] } })} artUrl={null} lockMode="strip" locked={false} showPlay={false} onActivate={vi.fn()} />)
     const row = screen.getByRole('button')
     expect(row.className).toBe('ssr-row')
-    expect(row.querySelector('img.ssr-fr-art')).toBeNull()
+    expect(row.querySelector('.ssr-gm img')).toBeNull()
     expect(row.querySelector('[data-moment-row-play]')).toBeNull()
     expect(row.querySelector('.ssr-gm-n')!.textContent).toBe('Just Chatting')
   })
@@ -132,20 +134,22 @@ describe('SessionMomentRow', () => {
     expect(document.querySelector('.ssr-tok')).toBeNull()
   })
 
-  it('lifts the backdrop after a 350 ms hover dwell, not on touch', () => {
-    vi.useFakeTimers()
+  it('tells the page about hover, with no backdrop to light (candidate, 10-30, PIC-2)', () => {
     const onHover = vi.fn()
     render(<SessionMomentRow model={model()} artUrl={ART} lockMode="strip" locked={false} showPlay onActivate={vi.fn()} onHover={onHover} />)
     const row = screen.getByRole('button')
     fireEvent.pointerEnter(row, { pointerType: 'mouse' })
     expect(onHover).toHaveBeenLastCalledWith(true)
-    act(() => { vi.advanceTimersByTime(MOMENT_ROW_DWELL_MS - 1) })
     expect(row.classList.contains('lit')).toBe(false)
-    act(() => { vi.advanceTimersByTime(1) })
-    expect(row.classList.contains('lit')).toBe(true)
     fireEvent.pointerLeave(row, { pointerType: 'mouse' })
-    expect(row.classList.contains('lit')).toBe(false)
     expect(onHover).toHaveBeenLastCalledWith(false)
+  })
+
+  it("reports the games answer's URL when the resized cover fails", () => {
+    const onArtError = vi.fn()
+    render(<SessionMomentRow model={model()} artUrl={ART} lockMode="strip" locked={false} showPlay onActivate={vi.fn()} onArtError={onArtError} />)
+    fireEvent.error(document.querySelector('.ssr-gm img')!)
+    expect(onArtError).toHaveBeenCalledWith(ART)
   })
 
   it('rings the locked row with aria-pressed and plays the glow once per lock', () => {
@@ -188,7 +192,9 @@ describe('SessionMomentPlayer', () => {
     render(<SessionMomentPlayer model={model()} artUrl={ART} vodId="2590000000" vodAlignSeconds={-54} vodDurationSeconds={40_000} />)
     expect(momentRowVodStart({ offsetSeconds: 3054, vodId: '2590000000', vodAlignSeconds: -54, vodDurationSeconds: 40_000 })).toBe(2990)
     expect(document.querySelector('iframe')).toBeNull()
-    expect(screen.getByText('No preview frame for this minute.')).toBeTruthy()
+    // (fix, 10-30, PIC-3) the reel's line; (candidate, 10-30, PIC-2) no blurred box art in the box
+    expect(screen.getByText("Preview frames aren't available right now. Pictures are the game's box art.")).toBeTruthy()
+    expect(document.querySelector('.ssr-pl-box img')).toBeNull()
     expect(screen.getByText("Twitch's player loads only when you press play.")).toBeTruthy()
     const cap = document.querySelector('.ssr-pl-cap span[title]')!
     expect(cap.getAttribute('title')).toBe('VOD time = stream time − 54 s (the VOD starts 54 s after the stream went live), then 10 s earlier so the moment plays in')
@@ -206,9 +212,9 @@ describe('SessionMomentPlayer', () => {
     expect(screen.queryByRole('link')).toBeNull()
   })
 
-  it('says when there is no VOD, and that frames come when a recording VOD finishes', () => {
+  it('says when there is no VOD, and that there are no preview frames while the stream is live', () => {
     render(<SessionMomentPlayer model={model()} artUrl={ART} vodId={null} vodRecording />)
     expect(screen.getByText('No VOD for this stream yet.')).toBeTruthy()
-    expect(screen.getByText('Twitch publishes preview frames when the VOD finishes.')).toBeTruthy()
+    expect(screen.getByText('No preview frames while the stream is live.')).toBeTruthy()
   })
 })
