@@ -166,6 +166,27 @@ describe('route change scroll (OP1-FUN-008)', () => {
     expect(scrolledElements()).toContain(target)
   })
 
+  it('opens the Pulse Supporter section of the Terms for /terms#supporter, and only that one', async () => {
+    renderApp('/terms#supporter')
+    await settleMicrotasks()
+    const target = document.getElementById('supporter')
+    expect(target).toBeTruthy()
+    const fold = target?.closest('details')
+    expect(fold?.open).toBe(true)
+    expect(scrolledElements()).toContain(target)
+    const others = [...document.querySelectorAll<HTMLDetailsElement>('details[data-fold]')].filter((other) => other !== fold)
+    expect(others.length).toBeGreaterThan(5)
+    expect(others.every((other) => !other.open)).toBe(true)
+  })
+
+  it('opens the Feedback form section of the Privacy policy for /privacy#feedback-form', async () => {
+    renderApp('/privacy#feedback-form')
+    await settleMicrotasks()
+    const target = document.getElementById('feedback-form')
+    expect(target?.closest('details')?.open).toBe(true)
+    expect(scrolledElements()).toContain(target)
+  })
+
   it('leaves Back and Forward to the browser scroll restoration', async () => {
     renderApp('/docs')
     await settleMicrotasks()
