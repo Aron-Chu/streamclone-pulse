@@ -11,7 +11,7 @@ import {
   type PublicHubLoadSource,
   type PublicHubProjection,
 } from '../lib/publicHub'
-import { hubActivityNeedsRecentFallback } from '../lib/hubActivityHonesty'
+import { HUB_ACTIVITY_REASON_PORTAL_STAND_IN, hubActivityNeedsRecentFallback } from '../lib/hubActivityHonesty'
 import { HUB_READ_HARD_CAP_MS, hubReadTimeoutMs } from '../lib/hubEarlyFetch'
 import { computeJitteredDelayMs } from '../lib/pollDelay'
 import { isApiError } from '../lib/apiClient'
@@ -170,7 +170,12 @@ export function resetHubDataMarkForTests(): void {
   hubDataMarked = false
 }
 
-function replaceWithCanonicalRecentActivity(requested: PublicHub, recent: PublicHub): PublicHub {
+/**
+ * `reason`: the backend's own when it served the fallback; the portal's
+ * stand-in reason when the portal's 30m read stands in (fix, 10-30), so the
+ * page never claims a cause the backend did not send.
+ */
+function replaceWithCanonicalRecentActivity(requested: PublicHub, recent: PublicHub, reason = 'historical_projection_unavailable'): PublicHub {
   const requestedActivity = requested.activity
   return {
     ...requested,
@@ -187,18 +192,18 @@ function replaceWithCanonicalRecentActivity(requested: PublicHub, recent: Public
       availableWindowMinutes: 30,
       state: 'degraded',
       source: 'live_pool_fallback',
-      reason: 'historical_projection_unavailable',
+      reason,
       bucketMinutes: recent.activity.bucketMinutes ?? 1,
     },
   }
 }
 
-/** A 30m read standing in for a longer requested window: the bounded live-pool fallback. */
+/** A 30m read standing in for a longer requested window: the bounded live-pool view, tagged as the portal's stand-in (fix, 10-30). */
 function recentForRequestedWindow(recent: PublicHub, minutes: number): PublicHub {
   return replaceWithCanonicalRecentActivity({
     ...recent,
     activity: { ...recent.activity, windowMinutes: minutes, requestedWindowMinutes: minutes },
-  }, recent)
+  }, recent, HUB_ACTIVITY_REASON_PORTAL_STAND_IN)
 }
 
 function withUnavailableActivity(hub: PublicHub): PublicHub {

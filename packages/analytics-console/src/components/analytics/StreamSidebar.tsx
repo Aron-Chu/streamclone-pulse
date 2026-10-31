@@ -12,8 +12,111 @@ import {
 import { count, displayStreamTitle, duration, formatDateTime, getLocalDateString } from '../../utils/consoleFormat.ts'
 import { CoreMinuteChartsNotice } from '../CoreMinuteChartsNotice.tsx'
 import { useEdgeFade } from '../../hooks/useSessionColumnFill.ts'
+import {
+  SIDEBAR_GAME_COVER_LIMIT,
+  sidebarCategoryIdsByName,
+  sidebarStreamGames,
+  type SidebarGame,
+} from '../../utils/streamSidebarGames.ts'
+import { gameArtCandidates, initialsForGame, isKnownGenericTwitchArtwork } from './GamesPlayedStrip.tsx'
+import { isTwitchPlaceholderBoxArt } from '../../utils/twitchBoxArt.ts'
 
 const EDGE_FADE_PX = 24
+/** A list row's game cover, portrait like Twitch box art (GP-4, candidate, 10-30). */
+const GAME_COVER_W_PX = 20
+const GAME_COVER_H_PX = 27
+
+/**
+ * One game cover in a list row (GP-4, candidate, 10-30). Id-based Twitch box
+ * art only, standard then IGDB, else initials: a name-based path is a guess
+ * and can land on Twitch's placeholder. Keyed by name + id by the caller, so a
+ * new game starts from its first candidate.
+ *
+ * (fix, 10-30) A newer game's standard id cover redirects to Twitch's grey "?"
+ * (checked 10-30: ttv-boxart/1419480843-144x192.jpg → 404_boxart, HTTP 200, so
+ * no onError); only its _IGDB cover is real. Each cover loads with CORS, stays
+ * hidden until checked, and a proven placeholder moves to the next candidate.
+ */
+function StreamGameCover({ name, categoryId }: SidebarGame) {
+  const candidates = useMemo(
+    () => (categoryId ? gameArtCandidates(undefined, categoryId).filter((url) => !isKnownGenericTwitchArtwork(url, categoryId)) : []),
+    [categoryId],
+  )
+  const [failed, setFailed] = useState(0)
+  const [checked, setChecked] = useState<string | null>(null)
+  const src = candidates[failed]
+  const size = { width: GAME_COVER_W_PX, height: GAME_COVER_H_PX }
+  if (!src) {
+    return (
+      <span
+        className="grid shrink-0 place-items-center overflow-hidden rounded-sm bg-white/10 text-xs font-bold leading-none tracking-tighter text-zinc-300"
+        style={size}
+        data-game-cover="initials"
+      >
+        {initialsForGame(name)}
+      </span>
+    )
+  }
+  return (
+    <img
+      key={src}
+      src={src}
+      alt=""
+      width={GAME_COVER_W_PX}
+      height={GAME_COVER_H_PX}
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      crossOrigin="anonymous"
+      className="block shrink-0 rounded-sm bg-white/10 object-cover"
+      style={checked === src ? size : { ...size, opacity: 0 }}
+      data-game-cover="art"
+      onLoad={(event) => {
+        const url = src
+        void isTwitchPlaceholderBoxArt(event.currentTarget).then((placeholder) => {
+          if (!placeholder) setChecked(url)
+          else setFailed((index) => (candidates[index] === url ? index + 1 : index))
+        })
+      }}
+      onError={() => setFailed((index) => index + 1)}
+    />
+  )
+}
+
+/**
+ * A row's games (GP-4, candidate, 10-30): up to 3 covers, their names as
+ * Twitch writes them on at most two lines, and "+N" for the rest. Replaces the
+ * uppercase "Games played: …" chip; the words stay for screen readers and the
+ * hover title. Covers are decorative; the names carry the meaning.
+ */
+function StreamRowGames({ games }: { games: SidebarGame[] }) {
+  const shown = games.slice(0, SIDEBAR_GAME_COVER_LIMIT)
+  const more = games.length - shown.length
+  return (
+    <span
+      className="flex min-w-0 max-w-full items-center gap-1.5"
+      title={`Games played: ${games.map((game) => game.name).join(' · ')}`}
+      data-stream-games
+    >
+      <span className="sr-only">{`Games played: ${games.map((game) => game.name).join(', ')}`}</span>
+      <span className="flex shrink-0 items-center gap-0.5" aria-hidden="true">
+        {shown.map((game) => <StreamGameCover key={`${game.name}:${game.categoryId ?? ''}`} {...game} />)}
+      </span>
+      <span
+        className="line-clamp-2 min-w-0 break-words text-xs font-semibold leading-[14px] text-zinc-300"
+        aria-hidden="true"
+        data-stream-games-names
+      >
+        {shown.map((game) => game.name).join(' · ')}
+      </span>
+      {more > 0 ? (
+        <span className="shrink-0 text-xs font-bold tabular-nums text-zinc-400" aria-hidden="true" data-stream-games-more>
+          +{more}
+        </span>
+      ) : null}
+    </span>
+  )
+}
 
 export function StreamSidebar({
   login,
@@ -37,11 +140,18 @@ export function StreamSidebar({
   retrying = false,
   onRetry,
   showLiveRow = true,
+  streamsPartial = false,
 }: {
   login: string
   streams: AnalyticsStream[]
   /** The first stream list request is in flight; a later poll of a failed list keeps the failure shown. */
   loading?: boolean
+  /**
+   * `streams` is only the first page of the list and more rows may exist: the
+   * count reads "12+" and "Show all" names no number, so a partial page is never
+   * shown as the channel's total (VOD-4, fix, 10-30).
+   */
+  streamsPartial?: boolean
   /** The stream list request failed and nothing is loaded; never shown as an empty channel. */
   loadFailed?: boolean
   /** A list request is in flight; the retry stays in place but cannot restart it. */
@@ -70,7 +180,11 @@ export function StreamSidebar({
   const visibleStreams = useMemo(() => {
     return streams.filter((s) => streamIsSidebarVisible(s, Boolean(syncedOnly)))
   }, [streams, syncedOnly])
+  // Name → category id from the list's own rows, no extra requests (GP-4, candidate, 10-30).
+  const categoryIdsByName = useMemo(() => sidebarCategoryIdsByName(streams), [streams])
 
+  // An empty first page has nothing after it, so only a non-empty one gets the "+" (fix, 10-30).
+  const countIsPartial = streamsPartial && streams.length > 0
   const [archiveExpanded, setArchiveExpanded] = useState(false)
   const MOBILE_COLLAPSED_ROWS = 2
   const hasCollapsibleRows = visibleStreams.length > MOBILE_COLLAPSED_ROWS
@@ -119,9 +233,11 @@ export function StreamSidebar({
         <span
           className={`rounded bg-white/10 px-1.5 py-0.5 text-xs font-black text-zinc-400${streams.length === 0 && loading ? ' invisible' : ''}`}
           data-stream-count
+          title={countIsPartial ? `At least ${streams.length} streams` : undefined}
         >
           {visibleStreams.length}
           {syncedOnly ? `/${streams.length}` : ''}
+          {countIsPartial ? '+' : ''}
         </span>
       </div>
       {onSyncedOnlyChange ? (
@@ -188,13 +304,12 @@ export function StreamSidebar({
               const targetSlug = analyticsStreamPathSlug(stream, streams)
               const dateSlug = targetSlug !== stream.streamId ? targetSlug : ''
               const isActive = !isLiveView && (activeID === stream.streamId || activeID === dateSlug || activeID === targetSlug)
-              const syncBadge = streamSyncBadgeState(
-                stream,
-                Boolean(syncing && isActive),
-                isActive ? activeSyncEvidence : undefined,
-              )
+              // The badge and its hover text read the same evidence (pick 11A, 10-30).
+              const syncEvidence = isActive ? activeSyncEvidence : undefined
+              const syncBadge = streamSyncBadgeState(stream, Boolean(syncing && isActive), syncEvidence)
               const isSyncingActive = syncBadge === 'syncing'
               const rollupStats = isSyncingActive ? activeRollupStats : null
+              const games = sidebarStreamGames(stream, categoryIdsByName) // (candidate, 10-30)
               // The current stream's row stays in view while the list is collapsed (MOCK).
               const mobileHiddenClass = !archiveExpanded && !isActive && rowIndex >= MOBILE_COLLAPSED_ROWS ? 'hidden xl:block' : ''
               const badgeTone =
@@ -227,18 +342,11 @@ export function StreamSidebar({
                     {streamTitle}
                   </div>
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                    {(stream.gamesSummary || stream.category) ? (
-                      <span
-                        className="min-w-0 max-w-full rounded bg-violet-500/15 px-1.5 py-0.5 text-xs font-black uppercase text-violet-200"
-                        title={`Games played: ${stream.gamesSummary || stream.category}`}
-                      >
-                        <span className="mr-1 text-violet-300/70">Games played:</span>
-                        <span className="whitespace-normal break-words">{stream.gamesSummary || stream.category}</span>
-                      </span>
-                    ) : null}
+                    {/* Covers + names, not the uppercase "Games played: …" chip (GP-4, candidate, 10-30). */}
+                    {games.length ? <StreamRowGames games={games} /> : null}
                     <span
                       className={`rounded px-1.5 py-0.5 text-xs font-black uppercase ${badgeTone}`}
-                      title={streamSyncBadgeTitle(syncBadge, stream)}
+                      title={streamSyncBadgeTitle(syncBadge, stream, syncEvidence)}
                     >
                       {streamSyncBadgeLabel(syncBadge)}
                     </span>
@@ -277,7 +385,8 @@ export function StreamSidebar({
           aria-expanded={archiveExpanded}
           className="ssp-sl-more block w-full shrink-0 border-t border-white/10 px-3 py-2 text-center text-xs font-black uppercase tracking-wide text-zinc-400 transition hover:bg-white/[0.05] hover:text-white xl:hidden"
         >
-          {archiveExpanded ? 'Show fewer streams' : `Show all ${visibleStreams.length} streams`}
+          {/* A partial page's length is not "all" (VOD-4, fix, 10-30). */}
+          {archiveExpanded ? 'Show fewer streams' : countIsPartial ? 'Show all streams' : `Show all ${visibleStreams.length} streams`}
         </button>
       ) : null}
     </div>

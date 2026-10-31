@@ -30,9 +30,10 @@ import { HubV5EmoteMap } from '../../ui/components/hub/v5/HubV5EmoteMap'
 import { HubV5Hero } from '../../ui/components/hub/v5/HubV5Hero'
 import { HubV5Icon } from '../../ui/components/hub/v5/HubV5Icon'
 import { HubV5LiveFeed, HubV5LivePeek, useHubLiveFeed } from '../../ui/components/hub/v5/HubV5LiveFeed'
+import { HubV5MostChat, mostChatModel } from '../../ui/components/hub/v5/HubV5MostChat'
 import { HubV5Rack } from '../../ui/components/hub/v5/HubV5Rack'
 import type { FeedWait } from '../../ui/components/hub/v5/hubV5FeedModel'
-import { HUB_RACK_ROWS, hubCategoryArt, hubSavedAt, whereChatIs, type HubChannelSort } from '../../ui/components/hub/v5/hubV5Model'
+import { HUB_BUSIEST_COUNT, HUB_RACK_ROWS, hubCategoryArt, hubChatBasis, hubSavedAt, rankBusiest, whereChatIs, type HubChannelSort } from '../../ui/components/hub/v5/hubV5Model'
 import { useHashScrollHold } from '../../ui/RouteScrollManager'
 import '../../ui/components/analytics/figma-analytics.css'
 import '../../ui/components/hub/d3/hub-d3-tokens.css'
@@ -174,7 +175,11 @@ export default function AnalyticsHubV5Page() {
     }
   }, [data])
 
-  const games = useMemo(() => whereChatIs(data.liveChannels), [data.liveChannels])
+  // The window the answer on screen was read for. While a new range loads the old answer stays up, so the chat basis
+  // follows the answer, not the tab: a 1y answer's long averages are never called recent (review 10-30).
+  const answerWindow = Object.keys(ACTIVITY_WINDOW_MINUTES)
+    .find((key) => ACTIVITY_WINDOW_MINUTES[key] === (data.activity.requestedWindowMinutes ?? data.activity.windowMinutes))
+  const games = useMemo(() => whereChatIs(data.liveChannels, undefined, answerWindow), [data.liveChannels, answerWindow])
   const gameArt = useMemo(() => hubCategoryArt(data.livePulseMoments), [data.livePulseMoments])
   // Never the totals-only fallback: its fresh time and empty hour would read as a quiet hour.
   const feed = useHubLiveFeed(hub.loadSource === 'stats-fallback' ? null : hub.data ?? null)
@@ -183,6 +188,23 @@ export default function AnalyticsHubV5Page() {
     for (const c of data.liveChannels) if (c.profileImageUrl) map.set(c.login, c.profileImageUrl)
     return map
   }, [data.liveChannels])
+  // The featured stream (picks I1 and I1b, 10-30) shows on every hub answer that has a ready one: never on a saved copy
+  // or totals only, where Busiest now shows no rows. A failed later read keeps it, as Busiest now keeps its rows; the
+  // health banner above says the read failed. Its chat/min shows only beside a list on the same rate: Busiest now on
+  // recent averages, with the stream one of its rows (reviews 10-30: never beside the 5-minute counts, never a stream
+  // Busiest now leaves out). Its name and game come from the stream's live row, the one Busiest now shows when it lists
+  // the stream (pick 15B). While Busiest now holds its place for an answer, a grey block holds the card's (pick K1).
+  const busiestWaiting = measurementsWaiting || (savedAt != null && !hubGaveUp)
+  const mostChatFeatured = hubAnswered ? data.featuredSession : null
+  const mostChatLogin = mostChatModel(data.featuredSession)?.login
+  const mostChatLive = useMemo(
+    () => (mostChatLogin ? data.liveChannels.find((c) => c.login.toLowerCase() === mostChatLogin) ?? null : null),
+    [data.liveChannels, mostChatLogin],
+  )
+  const mostChatRate = useMemo(() => {
+    if (!hubAnswered || hubChatBasis(data.liveChannels, answerWindow) !== 'avg_35') return false
+    return Boolean(mostChatLogin) && rankBusiest(data.liveChannels, HUB_BUSIEST_COUNT, 'avg_35').rows.some((row) => row.login.toLowerCase() === mostChatLogin)
+  }, [hubAnswered, data.liveChannels, mostChatLogin, answerWindow])
 
   const [game, setGameState] = useState<string | null>(null)
   const channelsRef = useRef<HTMLElement>(null)
@@ -257,9 +279,13 @@ export default function AnalyticsHubV5Page() {
           <HubV5Busiest
             live={savedAt != null ? EMPTY_PUBLIC_HUB.liveChannels : data.liveChannels}
             nowMs={nowMs}
-            loading={measurementsWaiting || (savedAt != null && !hubGaveUp)}
+            loading={busiestWaiting}
             unavailable={measurementsUnavailable || (savedAt != null && hubGaveUp)}
+            windowKey={answerWindow}
           />
+
+          {/* The featured stream (picks I1 and I1b, 10-30): its chat/min only while Busiest now ranks by the same recent average and lists it. */}
+          <HubV5MostChat featured={mostChatFeatured} showRate={mostChatRate} live={mostChatLive} avatars={avatars} waiting={busiestWaiting} />
 
           <div id="activity" className="hv5-sec hv5-activity">
             {hub.error && measurementAvailable && ACTIVITY_WINDOW_MINUTES[activityWindow] !== (data.activity.requestedWindowMinutes ?? data.activity.windowMinutes) ? (
@@ -332,6 +358,7 @@ export default function AnalyticsHubV5Page() {
             game={game}
             onClearGame={() => setGameState(null)}
             sortRequest={sortRequest}
+            windowKey={answerWindow}
           />
 
           <details id="measured" className="hv5-sec hv5-dis" ref={measuredRef}>

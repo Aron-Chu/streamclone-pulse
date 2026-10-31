@@ -4,14 +4,14 @@ import {
   MomentPreviewTile,
   PREVIEW_PLAYER_LOADS_COPY,
   PREVIEW_RECORDING_COPY,
+  PREVIEW_UNAVAILABLE_COPY,
+  previewMissLine,
   previewNoteLines,
-  safePreviewArtUrl,
 } from './MomentPreviewTile.tsx'
 import type { VodFrame } from '../../utils/vodFrames.ts'
 
 const SHEET = 'https://d2vi6trrdongqn.cloudfront.net/x/storyboards/1-high-0.jpg'
 const FRAME: VodFrame = { sheetUrl: SHEET, sheetWidth: 1600, sheetHeight: 900, cropX: 320, cropY: 180, cropW: 160, cropH: 90, fromSec: 3000 }
-const ART = 'https://static-cdn.jtvnw.net/ttv-boxart/32982_IGDB-144x192.jpg'
 
 afterEach(() => cleanup())
 
@@ -30,29 +30,23 @@ describe('MomentPreviewTile', () => {
       .toBe(`${PREVIEW_PLAYER_LOADS_COPY}Preview frame from about 54 s before this minute.`)
   })
 
-  it('falls back to blurred game art and the reason, never a stand-in frame', () => {
+  it('without a frame is a plain dark box with the reason: no picture, never a stand-in frame (candidate, 10-30, PIC-2)', () => {
     const { container } = render(
-      <MomentPreviewTile frame={null} subject="minute" artUrl={ART} recording playLabel="Play from 0:50:54" onPlay={() => {}} />,
+      <MomentPreviewTile frame={null} subject="minute" hasArt recording playLabel="Play from 0:50:54" onPlay={() => {}} />,
     )
     expect(container.querySelector('.mpl-box')?.className).toBe('mpl-box nofr')
     expect(container.querySelector('.mpl-fr')).toBeNull()
-    expect(container.querySelector('img.mpl-bg')?.getAttribute('src')).toBe(ART)
+    expect(container.querySelector('.mpl-pic')).toBeNull()
+    expect(container.querySelector('img')).toBeNull()
     expect(container.querySelector('.mpl-note')?.textContent).toBe(PREVIEW_RECORDING_COPY)
   })
 
-  it('says there is no frame for an ended VOD and names the unit', () => {
+  it("an ended VOD's box says frames aren't available, and box art only with a cover beside it (fix, 10-30, PIC-3)", () => {
     const { container, rerender } = render(<MomentPreviewTile frame={null} subject="minute" />)
-    expect(container.querySelector('.mpl-note')?.textContent).toBe('No preview frame for this minute.')
-    rerender(<MomentPreviewTile frame={null} subject="bar" />)
-    expect(container.querySelector('.mpl-note')?.textContent).toBe('No preview frame for this bar.')
-  })
-
-  it('refuses box art from other hosts', () => {
-    expect(safePreviewArtUrl('https://example.com/a.jpg')).toBeNull()
-    expect(safePreviewArtUrl('https://static-cdn.jtvnw.net/a b.jpg')).toBeNull()
-    expect(safePreviewArtUrl(ART)).toBe(ART)
-    const { container } = render(<MomentPreviewTile frame={null} subject="minute" artUrl="https://example.com/a.jpg" />)
-    expect(container.querySelector('img')).toBeNull()
+    expect(container.querySelector('.mpl-note')?.textContent).toBe(PREVIEW_UNAVAILABLE_COPY)
+    rerender(<MomentPreviewTile frame={null} subject="bar" hasArt />)
+    expect(container.querySelector('.mpl-note')?.textContent)
+      .toBe("Preview frames aren't available right now. Pictures are the game's box art.")
   })
 
   it('shows Play only with a handler, else the message', () => {
@@ -66,7 +60,7 @@ describe('MomentPreviewTile', () => {
   })
 
   it('holds the reason back while the frame is loading', () => {
-    const { container } = render(<MomentPreviewTile frame={null} loading subject="minute" artUrl={ART} />)
+    const { container } = render(<MomentPreviewTile frame={null} loading subject="minute" hasArt />)
     expect(container.querySelector('.mpl-note')).toBeNull()
     expect(container.querySelector('[data-preview-tile]')?.getAttribute('data-preview-tile')).toBe('loading')
   })
@@ -88,8 +82,21 @@ describe('previewNoteLines', () => {
       { text: PREVIEW_PLAYER_LOADS_COPY, quiet: true },
     ])
     expect(previewNoteLines({ frame: null, subject: 'moment', recording: false, canPlay: false })).toEqual([
-      { text: 'No preview frame for this minute.', quiet: false },
+      { text: PREVIEW_UNAVAILABLE_COPY, quiet: false },
     ])
+  })
+
+  it("says the reel's line, from the page's recording flag (fix, 10-30, PIC-3)", () => {
+    expect(PREVIEW_RECORDING_COPY).toBe('No preview frames while the stream is live.')
+    expect(previewMissLine({ recording: true, hasArt: true })).toBe(PREVIEW_RECORDING_COPY)
+    expect(previewMissLine({ recording: false, hasArt: false })).toBe("Preview frames aren't available right now.")
+    expect(previewMissLine({ hasArt: true })).toBe("Preview frames aren't available right now. Pictures are the game's box art.")
+    for (const recording of [true, false]) {
+      for (const hasArt of [true, false]) {
+        const line = previewMissLine({ recording, hasArt })
+        expect(line).not.toMatch(/for this stream|when the VOD finishes|No preview frame for/)
+      }
+    }
   })
 
   it('drops the timing line when the tile start is unknown', () => {

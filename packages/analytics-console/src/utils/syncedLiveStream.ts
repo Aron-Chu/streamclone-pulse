@@ -1,17 +1,35 @@
 import type { AnalyticsStream } from '../api.ts'
+import { GOOD_COVERAGE_PCT, type AnalyticsQualityLabel } from './streamQuality.ts'
 
 export type StreamSyncBadge = 'synced' | 'partial' | 'stats_only' | 'unknown' | 'syncing'
 
 export interface StreamSyncEvidence {
   hasViewerMinutes?: boolean
   hasChatMinutes?: boolean
+  /** The share of the stream's minutes with data (the backend's data coverage), never the chat-only share. */
   coveragePct?: number
   syncHealthState?: string
+  /** The open session's "Data: <label>": the selected row says Synced exactly when it says Good (pick 11A review, 10-30). */
+  quality?: AnalyticsQualityLabel
 }
 
 /** Stream list row has both viewer and chat minute rollups synced into analytics DB. */
 export function streamHasSyncedMinutes(stream: AnalyticsStream): boolean {
   return (stream.viewerSamples ?? 0) > 0 && (stream.chatMessages ?? 0) > 0
+}
+
+/**
+ * What a row's badge and its hover text both read: the list row's counts, plus
+ * the open session's own minutes when the row is the selected one (pick 11A, 10-30).
+ */
+function streamSyncSignals(stream: AnalyticsStream, evidence?: StreamSyncEvidence) {
+  const coveragePct = evidence?.coveragePct
+  return {
+    hasViewers: (stream.viewerSamples ?? 0) > 0 || evidence?.hasViewerMinutes === true,
+    hasChat: (stream.chatMessages ?? 0) > 0 || evidence?.hasChatMinutes === true,
+    coveragePct: coveragePct != null && Number.isFinite(coveragePct) ? coveragePct : undefined,
+    health: evidence?.syncHealthState?.trim().toLowerCase() ?? '',
+  }
 }
 
 export function streamSyncBadgeState(
@@ -20,12 +38,15 @@ export function streamSyncBadgeState(
   evidence?: StreamSyncEvidence,
 ): StreamSyncBadge {
   if (syncing) return 'syncing'
-  const health = evidence?.syncHealthState?.trim().toLowerCase() ?? ''
-  const hasViewers = (stream.viewerSamples ?? 0) > 0 || evidence?.hasViewerMinutes === true
-  const hasChat = (stream.chatMessages ?? 0) > 0 || evidence?.hasChatMinutes === true
+  // One verdict with the header, whatever the row's own counts say (pick 11A review, 10-30).
+  if (evidence?.quality === 'Good') return 'synced'
+  const { hasViewers, hasChat, coveragePct, health } = streamSyncSignals(stream, evidence)
+  // With no header verdict: the header's and the backend's 80% line, not a stricter 99.5% (pick 11A, 10-30).
+  // The open session's row always passes `quality`, so there the verdict above or below decides.
   const hasPartialCoverage =
-    (evidence?.coveragePct != null && Number.isFinite(evidence.coveragePct) && evidence.coveragePct < 99.5)
+    (coveragePct != null && coveragePct < GOOD_COVERAGE_PCT)
     || ['partial', 'viewer_only', 'chat_only', 'degraded', 'limited'].includes(health)
+    || evidence?.quality != null
   if (hasViewers && hasChat) return hasPartialCoverage ? 'partial' : 'synced'
   if (hasViewers || hasChat) return 'partial'
   if (health === 'stats_only' || health === 'none') return 'stats_only'
@@ -53,17 +74,33 @@ export function streamSyncBadgeLabel(badge: StreamSyncBadge): string {
   }
 }
 
-export function streamSyncBadgeTitle(badge: StreamSyncBadge, stream: AnalyticsStream): string {
+/**
+ * Hover text for a row's badge. Pass the badge's own evidence: the selected
+ * row's chat minutes are then never called missing (pick 11A, 10-30).
+ */
+export function streamSyncBadgeTitle(
+  badge: StreamSyncBadge,
+  stream: AnalyticsStream,
+  evidence?: StreamSyncEvidence,
+): string {
   switch (badge) {
     case 'syncing':
       return 'Sync in progress — partial chart data may already be visible.'
     case 'synced':
+      // Synced on the header's verdict while this page has none of the session's minutes: the minute read failed.
+      if (evidence && evidence.hasViewerMinutes === false && evidence.hasChatMinutes === false) {
+        return 'Data synced; the minute chart did not load on this page.'
+      }
       return 'Minute-level viewer, chat, and emote rollups are synced for charts.'
     case 'partial': {
-      const hasViewers = (stream.viewerSamples ?? 0) > 0
-      const hasChat = (stream.chatMessages ?? 0) > 0
+      const { hasViewers, hasChat, coveragePct } = streamSyncSignals(stream, evidence)
       if (hasViewers && !hasChat) return 'Viewer minutes synced; chat rollups missing or partial.'
       if (!hasViewers && hasChat) return 'Chat rollups synced; viewer minutes missing or partial.'
+      if (coveragePct != null && coveragePct < GOOD_COVERAGE_PCT) {
+        // Rounded down, so 79.6 never reads as the line itself (pick 11A, 10-30).
+        const shown = coveragePct < 1 ? 'less than 1%' : `${Math.floor(coveragePct)}%`
+        return `Data in ${shown} of this stream's minutes; under ${GOOD_COVERAGE_PCT}% counts as partial.`
+      }
       return 'Partial minute coverage — chart may be incomplete.'
     }
     case 'unknown':

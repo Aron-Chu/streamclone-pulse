@@ -1591,3 +1591,64 @@ describe('usePublicHubData', () => {
     })
   })
 })
+
+// IRC-10 (fix, 10-30): the portal's own 30m read standing in for a longer window is tagged as such. It never
+// carries the backend's historical_projection_unavailable, which only a backend fallback may state.
+describe('usePublicHubData stand-in reason (IRC-10 fix, 10-30)', () => {
+  beforeEach(() => {
+    installIdleCallback((callback) => {
+      callback(IDLE_DEADLINE)
+      return 0
+    })
+    resetHubBucketSelectionForTests()
+    clearPublicHubCacheForTests()
+    fetchPublicHubBase.mockReset()
+    fetchPublicHubStatsFallback.mockReset()
+    fetchPublicHubStatsFallback.mockRejectedValue(new Error('Public hub unavailable'))
+  })
+
+  afterEach(() => {
+    removeIdleCallback()
+    resetHubBucketSelectionForTests()
+  })
+
+  const recentRead = () => {
+    const recent = hubResult(99)
+    recent.data.activity.windowMinutes = 30
+    return recent
+  }
+
+  it('tags the early 30m view as the portal stand-in while the long window loads', async () => {
+    const pending = deferredHub()
+    fetchPublicHubBase.mockImplementation((_signal?: AbortSignal, window?: PublicHubActivityWindow) =>
+      window === '30m' ? Promise.resolve(recentRead()) : pending.promise,
+    )
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '24h' }))
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(99), { timeout: 2500 })
+    expect(result.current.activityRefreshing).toBe(true)
+    expect(result.current.data?.activity).toMatchObject({ source: 'live_pool_fallback', reason: 'portal_stand_in', requestedWindowMinutes: 1440 })
+    await act(async () => { pending.resolve(hubResult(42)) })
+  })
+
+  it('tags the recovery after a failed long-window read as the portal stand-in, saved copy included', async () => {
+    fetchPublicHubBase.mockImplementation((_signal?: AbortSignal, window?: PublicHubActivityWindow) =>
+      window === '30m' ? Promise.resolve(recentRead()) : Promise.reject({ kind: 'server', status: 503, message: 'unavailable' }),
+    )
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '24h' }))
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(99))
+    await waitFor(() => expect(result.current.activityRefreshing).toBe(false))
+    expect(result.current.data?.activity).toMatchObject({ source: 'live_pool_fallback', reason: 'portal_stand_in' })
+    publicHubCache.flushPublicHubCacheWritesForTests()
+    expect(readPublicHubCache(getBackendUrl(), '24h')?.data.activity.reason).toBe('portal_stand_in')
+  })
+
+  it('keeps the backend reason when the backend itself sent the fallback', async () => {
+    fetchPublicHubBase.mockImplementation((_signal?: AbortSignal, window?: PublicHubActivityWindow) =>
+      Promise.resolve(window === '30m' ? recentRead() : repairHubResult()),
+    )
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '24h' }))
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(3))
+    await waitFor(() => expect(result.current.activityRefreshing).toBe(false))
+    expect(result.current.data?.activity).toMatchObject({ source: 'live_pool_fallback', reason: 'historical_projection_unavailable' })
+  })
+})

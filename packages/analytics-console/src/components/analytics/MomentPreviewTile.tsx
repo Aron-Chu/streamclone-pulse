@@ -2,11 +2,14 @@
  * The picture box of a moment or a selected bar (mockup `.mpl-box`, d3-v2
  * moment-rows.js playerHTML / session-original.js previewHTML).
  *
- * A VOD storyboard tile cropped with CSS when one exists; otherwise the game's
- * box art, blurred, with the reason there is no frame. Never a stand-in or a
- * live frame. Over it: Play (the caller loads Twitch's player only on click),
- * or a line saying why there is no Play. Shared by the bar strip (U14) and the
- * moment rows (U11). Styles: WEB/src/ui/charts/sp-session-strip.css (`.mpl-*`).
+ * A VOD storyboard tile cropped with CSS when one exists; otherwise a plain
+ * dark box with the reason there is no frame (candidate, 10-30, PIC-2: the
+ * game's sharp cover sits beside it, in the strip's caption; until 10-30 the
+ * 210x280 box art was stretched and blurred behind the box and read as a
+ * broken preview). Never a stand-in or a live frame. Over it: Play (the caller
+ * loads Twitch's player only on click), or a line saying why there is no Play.
+ * Shared by the bar strip (U14) and the moment rows (U11). Styles:
+ * WEB/src/ui/charts/sp-session-strip.css (`.mpl-*`).
  */
 import { forwardRef, type ReactNode } from 'react'
 import { frameBackgroundStyle, frameTimingPhrase, type VodFrame } from '../../utils/vodFrames.ts'
@@ -14,13 +17,22 @@ import { frameBackgroundStyle, frameTimingPhrase, type VodFrame } from '../../ut
 export type PreviewSubject = 'minute' | 'bar' | 'moment'
 
 export const PREVIEW_PLAYER_LOADS_COPY = "Twitch's player loads only when you press play."
-export const PREVIEW_RECORDING_COPY = 'Twitch publishes preview frames when the VOD finishes.'
+// PIC-3 (candidate, 10-30): the copy for Aron. Until 10-30 the reel said "no VOD preview frames for this stream",
+// which blamed Twitch and the stream for our lookup (F6: the backend asks Twitch for a field that doesn't exist,
+// so every VOD answers no_storyboard, ended ones too), and the bar said "when the VOD finishes" on a stream that
+// had long ended. Say "recording" only while the page says the stream records; otherwise say it's on our side.
+export const PREVIEW_RECORDING_COPY = 'No preview frames while the stream is live.'
+export const PREVIEW_UNAVAILABLE_COPY = "Preview frames aren't available right now."
+const PREVIEW_BOX_ART_COPY = "Pictures are the game's box art."
 
-const BOX_ART = /^https:\/\/static-cdn\.jtvnw\.net\/[^"'()\\\s]+$/i
-
-/** Box art is a blurred backdrop only from Twitch's own CDN. */
-export function safePreviewArtUrl(url: string | null | undefined): string | null {
-  return typeof url === 'string' && BOX_ART.test(url) ? url : null
+/**
+ * The one line for a picture with no frame (fix, 10-30, PIC-3): the reel's note, the bar's picture and the row
+ * player say it alike, from the page's one `recording` flag. `hasArt`: a game cover shows with it, so the line
+ * may say what the pictures are.
+ */
+export function previewMissLine(args: { recording?: boolean; hasArt?: boolean }): string {
+  if (args.recording) return PREVIEW_RECORDING_COPY
+  return args.hasArt ? `${PREVIEW_UNAVAILABLE_COPY} ${PREVIEW_BOX_ART_COPY}` : PREVIEW_UNAVAILABLE_COPY
 }
 
 function PlayIcon() {
@@ -32,17 +44,17 @@ function PlayIcon() {
 }
 
 export interface MomentPreviewTileProps {
-  /** The storyboard tile; null = no frame (art + reason). */
+  /** The storyboard tile; null = no frame (the reason instead). */
   frame: VodFrame | null
-  /** The frame request is still out: show the art, hold the reason back so it never flips. */
+  /** The frame request is still out: hold the reason back so it never flips. */
   loading?: boolean
   /** What the picture previews; picks the copy ("this minute", "this bar", "the moment"). */
   subject: PreviewSubject
   /** The subject's start on the VOD's clock, for "Preview frame from about N s before …". */
   subjectVodStart?: number | null
-  /** The game's box art (Twitch CDN only), blurred when there is no frame. */
-  artUrl?: string | null
-  /** The VOD is still recording (Twitch has no storyboard yet). */
+  /** The game's cover shows beside the box (the strip's caption): the note may say the pictures are box art. (fix, 10-30) */
+  hasArt?: boolean
+  /** The page's flag: this is the channel's current live stream, still recording. */
   recording?: boolean
   /** Play's label, e.g. "Play VOD from 0:50:39"; null = no Play, `message` says why. */
   playLabel?: string | null
@@ -59,9 +71,10 @@ export function previewNoteLines(args: {
   subject: PreviewSubject
   subjectVodStart?: number | null
   recording?: boolean
+  hasArt?: boolean
   canPlay: boolean
 }): Array<{ text: string; quiet: boolean }> {
-  const { frame, subject, subjectVodStart, recording, canPlay } = args
+  const { frame, subject, subjectVodStart, recording, hasArt, canPlay } = args
   if (frame) {
     const lines: Array<{ text: string; quiet: boolean }> = []
     if (canPlay) lines.push({ text: PREVIEW_PLAYER_LOADS_COPY, quiet: false })
@@ -69,15 +82,15 @@ export function previewNoteLines(args: {
     if (when) lines.push({ text: `Preview frame ${when}.`, quiet: true })
     return lines
   }
-  const unit = subject === 'bar' ? 'this bar' : 'this minute'
-  const lines = [{ text: recording ? PREVIEW_RECORDING_COPY : `No preview frame for ${unit}.`, quiet: false }]
+  // the reel's line, word for word (fix, 10-30, PIC-3; it was "No preview frame for this minute.")
+  const lines = [{ text: previewMissLine({ recording, hasArt }), quiet: false }]
   // the moment player says both; the bar's picture only the reason (session-original.js previewHTML)
   if (subject === 'moment' && canPlay) lines.push({ text: PREVIEW_PLAYER_LOADS_COPY, quiet: true })
   return lines
 }
 
 export const MomentPreviewTile = forwardRef<HTMLDivElement, MomentPreviewTileProps>(function MomentPreviewTile(
-  { frame, loading, subject, subjectVodStart, artUrl, recording, playLabel, message, onPlay, player },
+  { frame, loading, subject, subjectVodStart, hasArt, recording, playLabel, message, onPlay, player },
   ref,
 ) {
   if (player) {
@@ -87,22 +100,20 @@ export const MomentPreviewTile = forwardRef<HTMLDivElement, MomentPreviewTilePro
       </div>
     )
   }
-  const art = frame ? null : safePreviewArtUrl(artUrl)
   const canPlay = Boolean(playLabel && onPlay)
-  const lines = loading ? [] : previewNoteLines({ frame, subject, subjectVodStart, recording, canPlay })
+  const lines = loading ? [] : previewNoteLines({ frame, subject, subjectVodStart, recording, hasArt, canPlay })
   return (
     <div
       ref={ref}
       className={`mpl-box ${frame ? 'fr' : 'nofr'}`}
       data-preview-tile={frame ? 'frame' : loading ? 'loading' : 'fallback'}
     >
-      <span className="mpl-pic" aria-hidden="true">
-        {frame ? (
+      {/* a frame or nothing: no blurred box art behind the box (candidate, 10-30, PIC-2) */}
+      {frame ? (
+        <span className="mpl-pic" aria-hidden="true">
           <span className="mpl-fr" style={frameBackgroundStyle(frame)} data-preview-frame />
-        ) : art ? (
-          <img className="mpl-bg" src={art} alt="" decoding="async" referrerPolicy="no-referrer" data-preview-art />
-        ) : null}
-      </span>
+        </span>
+      ) : null}
       {canPlay ? (
         <button type="button" className="mpl-go" onClick={onPlay} data-preview-play>
           <PlayIcon />

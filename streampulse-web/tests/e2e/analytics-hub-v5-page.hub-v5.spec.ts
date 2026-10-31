@@ -1,11 +1,13 @@
 import { expect, test, type Page } from '@playwright/test'
-import { installHubUxMock, type HubUxMockOptions } from './helpers/hubUxMock'
+import { installHubUxMock, READY_FEATURED_SESSION, type HubUxMockOptions } from './helpers/hubUxMock'
 
 // The page around the chart (d3-v5 mockup, round 5): the search hero, Busiest
-// now, the Live feed beside or under the chart, Top emotes, Where chat is,
-// Channels and How this is measured. The shared mock has no screener windows,
-// so this spec serves the same reply with one per channel: three games, one
-// channel with viewers only and one whose average is too short to compare.
+// now, the Featured stream under it, the Live feed beside or under the chart,
+// Top emotes, Where chat is, Channels and How this is measured. The shared mock
+// has no screener windows, so this spec serves the same reply with one per
+// channel: three games, one channel with viewers only and one whose average is
+// too short to compare. With the check working, the reply also names xQc as its
+// featured stream, as production's replies do (picks I1 and I1b, 10-30).
 
 const GAMES = ['Just Chatting', 'Just Chatting', 'Just Chatting', 'Minecraft', 'Just Chatting', 'Minecraft', 'Valorant', 'Just Chatting', 'Minecraft', 'Valorant', 'Just Chatting', 'Minecraft', 'Valorant', 'Just Chatting']
 
@@ -15,7 +17,7 @@ const GAMES = ['Just Chatting', 'Just Chatting', 'Just Chatting', 'Minecraft', '
 const FEED_MOMENT: HubUxMockOptions = { withComparisons: true, momentOffsets: [3600, 3600] }
 
 async function openV5Hub(page: Page, options: HubUxMockOptions = {}) {
-  await installHubUxMock(page, options)
+  await installHubUxMock(page, { featuredSession: READY_FEATURED_SESSION, ...options })
   const first = page.waitForResponse(response => /\/v1\/public\/hub\?/.test(response.url()))
   await page.goto('/analytics')
   const payload = await (await first).json()
@@ -56,38 +58,106 @@ const box = async (page: Page, selector: string) => (await page.locator(selector
 // below moves (about 36 px at 1440), so each layout check retries until the boxes agree.
 const SETTLED = { timeout: 10_000 }
 
-test('sections stack in the mockup order on a phone and sit in their columns on desktop', async ({ page }) => {
+// The page has two sets of grid templates, with and without the Featured stream card (an answer with no ready featured
+// stream, a saved copy or totals only), so the order and columns are checked both ways.
+for (const [label, featuredSession] of [['with', READY_FEATURED_SESSION], ['without', undefined]] as const) {
+  test(`sections stack in the mockup order on a phone and sit in their columns on desktop, ${label} the Featured stream`, async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await page.setViewportSize({ width: 390, height: 844 })
+    await openV5Hub(page, { featuredSession })
+    await expect(page.getByRole('heading', { level: 1, name: 'Find your streamer' })).toBeVisible()
+    await expect(page.locator('.hv5-most')).toHaveCount(featuredSession ? 1 : 0)
+    const order = ['.hv5-mast', '#busiest', ...(featuredSession ? ['.hv5-most'] : []), '#activity', '#latest', '#emotes', '#games', '#channels', '#measured']
+    await expect(async () => {
+      const tops: number[] = []
+      for (const selector of order) tops.push((await box(page, selector)).y)
+      expect(tops).toEqual([...tops].sort((a, b) => a - b))
+    }).toPass(SETTLED)
+    await noSideScroll(page)
+
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await expect(async () => {
+      const [latest, emotes, games] = [await box(page, '#latest'), await box(page, '#emotes'), await box(page, '#games')]
+      expect(Math.abs(latest.y - emotes.y)).toBeLessThanOrEqual(1)
+      expect(Math.abs(emotes.y - games.y)).toBeLessThanOrEqual(1)
+      expect(latest.x + latest.width).toBeLessThanOrEqual(emotes.x + 1)
+      expect(emotes.x + emotes.width).toBeLessThanOrEqual(games.x + 1)
+    }).toPass(SETTLED)
+    await noSideScroll(page)
+
+    await page.setViewportSize({ width: 1920, height: 1000 })
+    await expect(async () => {
+      const [activity, rail] = [await box(page, '#activity'), await box(page, '#latest')]
+      expect(rail.x).toBeGreaterThanOrEqual(activity.x + activity.width - 1)
+      const [emotesWide, gamesWide] = [await box(page, '#emotes'), await box(page, '#games')]
+      expect(Math.abs(emotesWide.y - gamesWide.y)).toBeLessThanOrEqual(1)
+      expect(emotesWide.y).toBeGreaterThanOrEqual(activity.y + activity.height - 1)
+    }).toPass(SETTLED)
+    await noSideScroll(page)
+  })
+}
+
+test('the Featured stream sits under Busiest now with its moments and no chat/min while the 5-minute check works', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
-  await page.setViewportSize({ width: 390, height: 844 })
+  await page.setViewportSize({ width: 360, height: 780 })
   await openV5Hub(page)
-  await expect(page.getByRole('heading', { level: 1, name: 'Find your streamer' })).toBeVisible()
-  const order = ['.hv5-mast', '#busiest', '#activity', '#latest', '#emotes', '#games', '#channels', '#measured']
-  await expect(async () => {
-    const tops: number[] = []
-    for (const selector of order) tops.push((await box(page, selector)).y)
-    expect(tops).toEqual([...tops].sort((a, b) => a - b))
-  }).toPass(SETTLED)
-  await noSideScroll(page)
+  const card = page.locator('.hv5-most')
+  await expect(card.getByRole('heading', { name: 'Featured stream' })).toBeVisible()
+  // the live row's name and game, as Busiest now shows them (the stored record says XQC, Grand Theft Auto V)
+  await expect(card.locator('.hv5-mst-l1')).toHaveText('xQc · Just Chatting · 12,000 watching')
+  await expect(page.locator('#busiest li[data-rank="1"] .hv5-bzt-cat')).toHaveText('Just Chatting')
+  // Busiest now names xQc's 5-minute count (400); the card's average (200) would be a second rate for one stream
+  await expect(page.locator('#busiest li[data-rank="1"]')).toHaveAttribute('data-login', 'xqc')
+  await expect(card.locator('.hv5-mst-l2')).toHaveCount(0)
+  await expect(card).not.toContainText(/chat\/min|200/)
+  await expect(card.locator('.hv5-mst-mo')).toHaveText(['0:13:54 YappingDuck 930', '1:35:54 NotLikeThis 1,286', '0:41:54 YappingDuck 319'])
+  await expect(card.getByRole('link', { name: 'Open stream: xQc' })).toHaveAttribute('href', '/analytics/xqc/s1')
 
-  await page.setViewportSize({ width: 1440, height: 900 })
-  await expect(async () => {
-    const [latest, emotes, games] = [await box(page, '#latest'), await box(page, '#emotes'), await box(page, '#games')]
-    expect(Math.abs(latest.y - emotes.y)).toBeLessThanOrEqual(1)
-    expect(Math.abs(emotes.y - games.y)).toBeLessThanOrEqual(1)
-    expect(latest.x + latest.width).toBeLessThanOrEqual(emotes.x + 1)
-    expect(emotes.x + emotes.width).toBeLessThanOrEqual(games.x + 1)
-  }).toPass(SETTLED)
-  await noSideScroll(page)
+  // one column on a phone, then the main column on desktop, then beside the rail on a wide screen; each side of the
+  // card's template breakpoints (720, 1100, 1536)
+  for (const [width, height] of [[360, 780], [719, 900], [720, 900], [1099, 900], [1100, 900], [1535, 900], [1536, 900], [1920, 1000]]) {
+    await page.setViewportSize({ width, height })
+    await expect(async () => {
+      const [busiest, most, activity] = [await box(page, '#busiest'), await box(page, '.hv5-most'), await box(page, '#activity')]
+      expect(most.y).toBeGreaterThanOrEqual(busiest.y + busiest.height - 1)
+      expect(activity.y).toBeGreaterThanOrEqual(most.y + most.height - 1)
+      expect(Math.abs(most.x - activity.x)).toBeLessThanOrEqual(1)
+      expect(Math.abs(most.width - activity.width)).toBeLessThanOrEqual(1)
+      if (width >= 1536) expect(most.x + most.width).toBeLessThanOrEqual((await box(page, '#latest')).x + 1)
+    }).toPass(SETTLED)
+    await noSideScroll(page)
+  }
+})
 
-  await page.setViewportSize({ width: 1920, height: 1000 })
-  await expect(async () => {
-    const [activity, rail] = [await box(page, '#activity'), await box(page, '#latest')]
-    expect(rail.x).toBeGreaterThanOrEqual(activity.x + activity.width - 1)
-    const [emotesWide, gamesWide] = [await box(page, '#emotes'), await box(page, '#games')]
-    expect(Math.abs(emotesWide.y - gamesWide.y)).toBeLessThanOrEqual(1)
-    expect(emotesWide.y).toBeGreaterThanOrEqual(activity.y + activity.height - 1)
-  }).toPass(SETTLED)
-  await noSideScroll(page)
+test('the Featured stream holds its place while the hub loads, so nothing under it moves when it lands (pick K1, 10-30)', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  const payload = await openV5Hub(page)
+  // a first visit (nothing saved) and a return visit (the saved copy while the read runs) at two templates; the reply
+  // waits until the block is measured
+  for (const [visit, width, height] of [['first', 1440, 900], ['return', 1440, 900], ['first', 1920, 1000]] as const) {
+    await page.setViewportSize({ width, height })
+    let release!: () => void
+    const held = new Promise<void>((resolve) => { release = resolve })
+    await page.route(/\/v1\/public\/hub(\?.*)?$/, async (route) => { await held; await route.fulfill({ json: payload }) })
+    if (visit === 'first') await page.evaluate(() => localStorage.clear())
+    await page.reload()
+    const wait = page.locator('.hv5-most.hv5-mst-wait')
+    await expect(wait).toHaveAttribute('aria-hidden', 'true')
+    await expect(page.locator('#busiest .hv5-bzs-wait')).toBeVisible()
+    let before = { height: 0, gap: 0 }
+    await expect(async () => {
+      const [w, activity] = [await box(page, '.hv5-mst-wait'), await box(page, '#activity')]
+      before = { height: w.height, gap: activity.y - w.y }
+      expect(w.height).toBeGreaterThan(40)
+    }).toPass(SETTLED)
+    release()
+    await expect(page.locator('.hv5-most .hv5-mst-nm')).toHaveText('xQc')
+    await expect(wait).toHaveCount(0)
+    await expect(async () => {
+      const [card, activity] = [await box(page, '.hv5-most'), await box(page, '#activity')]
+      expect([visit, width, Math.round(card.height), Math.round(activity.y - card.y)]).toEqual([visit, width, Math.round(before.height), Math.round(before.gap)])
+    }).toPass(SETTLED)
+  }
 })
 
 test('the hero search lists live channels, filters as you type and opens the pick', async ({ page }) => {

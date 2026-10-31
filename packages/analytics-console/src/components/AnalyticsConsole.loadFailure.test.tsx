@@ -92,7 +92,10 @@ afterEach(() => cleanup())
 
 describe('AnalyticsConsole channel route load failures', () => {
   it('shows a failed stream list with a working retry, not "No past streams indexed yet"', async () => {
-    api.getAnalyticsStreams.mockRejectedValueOnce({ kind: 'server', message: 'internal_error', status: 500 })
+    // (fix, 10-30) VOD-4: the list is two reads (12 rows, then 100); both fail here.
+    api.getAnalyticsStreams
+      .mockRejectedValueOnce({ kind: 'server', message: 'internal_error', status: 500 })
+      .mockRejectedValueOnce({ kind: 'server', message: 'internal_error', status: 500 })
     renderConsole('/analytics/xqc')
 
     await screen.findByText("Couldn't load streams.")
@@ -108,18 +111,20 @@ describe('AnalyticsConsole channel route load failures', () => {
     await waitFor(() => expect(screen.queryByText("Couldn't load streams.")).toBeNull())
     const column = document.querySelector('[data-analytics-stream-column]') as HTMLElement
     expect(within(column).getByText('Recovered broadcast')).toBeTruthy()
-    expect(api.getAnalyticsStreams).toHaveBeenCalledTimes(2)
+    expect(api.getAnalyticsStreams).toHaveBeenCalledTimes(3)
   })
 
   it('keeps the failed list panel in place while the list is requested again', async () => {
+    // (fix, 10-30) VOD-4: both list reads (12 rows, then 100) fail; the retry stays out.
     api.getAnalyticsStreams
+      .mockRejectedValueOnce(serverError)
       .mockRejectedValueOnce(serverError)
       .mockImplementationOnce(() => new Promise(() => undefined))
     renderConsole('/analytics/xqc')
 
     await screen.findByText("Couldn't load streams.")
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
-    await waitFor(() => expect(api.getAnalyticsStreams).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(api.getAnalyticsStreams).toHaveBeenCalledTimes(3))
     await waitFor(() => expect((screen.getByRole('button', { name: 'Try again' }) as HTMLButtonElement).disabled).toBe(true))
     expect(screen.getByText("Couldn't load streams.")).toBeTruthy()
     expect(screen.queryByText('Loading streams…')).toBeNull()

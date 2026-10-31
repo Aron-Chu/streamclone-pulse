@@ -2,13 +2,15 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { MomentsFeedItem } from '../src/lib/momentsFeed'
-import type { HubLiveChannel, HubLivePulseMoment, HubMoment } from '../src/lib/publicHub'
+import { normalizePublicHub, type HubLiveChannel, type HubLivePulseMoment, type HubMoment } from '../src/lib/publicHub'
 import type { HubChannelScreenerV1, HubScreenerMetric } from '../src/lib/channelScreenerContract'
 import {
+  FEED_BLIND,
   FEED_LOADING,
   FEED_STALE_MS,
   FEED_UNAVAILABLE,
   feedAgo,
+  feedBlind,
   feedCap,
   feedClockFloor,
   feedColumnCap,
@@ -30,6 +32,8 @@ import {
   liveFeedModel,
   liveStartOf,
   screenerHot,
+  type FeedEvent,
+  type FeedMoment,
   type LiveFeedInput,
 } from '../src/ui/components/hub/v5/hubV5FeedModel'
 
@@ -236,12 +240,13 @@ describe('feed formatting', () => {
     expect(feedColumnCap(120)).toBe(3)
   })
 
-  it('says how long ago, and 10× without the plus', () => {
+  it('says how long ago, and a big × as sent (E1 candidate, 10-30)', () => {
     expect(feedAgo(W1 - 30_000, W1)).toBe('just now')
     expect(feedAgo(W1 - 12 * MIN, W1)).toBe('12 min ago')
     // a row's time, on its right (L1, 10-22)
     expect([30_000, 12 * MIN, 125 * MIN].map(ago => feedShort(W1 - ago, W1))).toEqual(['now', '12m', '2h'])
-    expect(feedMultiplier(12)).toBe('10×')
+    expect(feedMultiplier(12)).toBe('12×')
+    expect(feedMultiplier(68.1)).toBe('68×')
     expect(feedMultiplier(2.04)).toBe('2.0×')
   })
 
@@ -374,6 +379,13 @@ describe('liveFeedModel with the Moments list', () => {
     expect(feedRowAria([kilo], W1 + 30_000)).toContain(`, ${holds.label.kind} ${String(holds[holds.label.kind].x).replace(/\.0$/, '')}`)
   })
 
+  it('says a big list × to screen readers as the row prints it, never "at least 10"', () => {
+    const kilo = model.events.find((e): e is FeedMoment => e.kind === 'moment' && e.login === 'kilo')!
+    const aria = feedRowAria([{ ...kilo, x: 23.7 }], W1 + 30_000)
+    expect(aria).toContain(`${feedMomentSer(kilo)} 24 times usual`)
+    expect(aria).not.toContain('at least')
+  })
+
   it('without the list, keeps the hub’s own moment rows', () => {
     const hubOnly = liveFeedModel(withHub)
     expect(hubOnly.list).toBe(false)
@@ -395,5 +407,69 @@ describe('liveFeedModel with the Moments list', () => {
     const m = liveFeedModel(withHub, { items: [...items, ...early], generatedAt: W1 })
     expect(m.top.map((it) => it.key)).toEqual(['t:papa', 't:oscar'])
     expect(m.top.every((it) => it.old)).toBe(true)
+  })
+})
+
+describe('earlier on streams live now (E1 candidate, 10-30)', () => {
+  // The hub answer of 2026-10-30 07:19Z, trimmed: 10 livePulseMoments, the pool wire and 6 of its live channels.
+  const capture: LiveFeedInput = normalizePublicHub(JSON.parse(readFileSync(resolve(__dirname, 'fixtures/hub_live_pulse_20261030.json'), 'utf8')))
+  const m = liveFeedModel(capture)
+
+  it('keeps the hour as it was and lists the other moments under it, newest first, same-minute twins folded', () => {
+    expect(m.events.filter((e) => e.kind === 'moment').map((e) => e.login)).toEqual(['aldo_geo'])
+    const rows = m.earlier.map((it) => ('group' in it ? it.group[0]! : null)).filter((e): e is FeedMoment => e?.kind === 'moment')
+    expect(rows.map((e) => e.login)).toEqual(['e11ysa', 'findjeremiah', 'supertf', 'supertf', 'e11ysa'])
+    expect(rows.every((e, i) => i === 0 || rows[i - 1]!.at >= e.at)).toBe(true)
+    // the 04:29Z and 00:05Z minutes: both channels counted the same emotes, one row each naming the other
+    expect(rows[0]!.also).toEqual(['findjeremiah'])
+    expect(rows[4]!.also).toEqual(['findjeremiah'])
+    // a stream's first 20 minutes, and a moment with no ready ×, stay out as in the hour
+    expect(rows.some((e) => e.login === 'jinnytty')).toBe(false)
+    expect(m.earlier.every((it) => it.old)).toBe(true)
+  })
+
+  it('counts the earlier rows in the game strip and keeps only the picked game’s', () => {
+    // findjeremiah (IRL) shares two minutes with e11ysa (Just Chatting): both count for IRL, and picking IRL shows them
+    expect(feedGames(m).find((g) => g.name === 'IRL')?.rows).toBe(4)
+    const irl = feedForGame(m, 'IRL')
+    const lead = (it: (typeof irl.earlier)[number]) => ('group' in it ? it.group[0]! : null)
+    expect(irl.earlier.map((it) => lead(it)?.login)).toEqual(['findjeremiah', 'findjeremiah', 'findjeremiah'])
+    expect(irl.earlier.map((it) => it.at)).toEqual([...irl.earlier.map((it) => it.at)].sort((a, b) => b - a))
+    expect(new Set(irl.earlier.map((it) => it.key)).size).toBe(3)
+    // under Just Chatting the e11ysa rows no longer name the IRL channel
+    const jc = feedForGame(m, 'Just Chatting')
+    expect(jc.earlier.flatMap((it) => (lead(it)?.kind === 'moment' ? (lead(it) as FeedMoment).also ?? [] : []))).toEqual([])
+  })
+
+  it('names a folded channel to screen readers too', () => {
+    const shared = m.earlier.map((it) => ('group' in it ? it.group[0]! : null)).find((e): e is FeedMoment => e?.kind === 'moment' && !!e.also?.length)!
+    expect(feedRowAria([shared], Date.parse('2026-10-30T07:19:35Z'))).toContain('with findjeremiah in the same minute')
+  })
+
+  it('prints a big × as sent, and says the same number to screen readers', () => {
+    const big = m.earlier.flatMap((it) => ('group' in it ? it.group : [])).find((e: FeedEvent): e is FeedMoment => e.kind === 'moment' && e.x != null && e.x > 30)
+    expect(big?.login).toBe('e11ysa')
+    expect(feedMultiplier(big!.x!)).toBe('38×')
+    expect(feedRowAria([big!], Date.parse('2026-10-30T07:19:35Z'))).toContain('emotes 38 times usual')
+  })
+
+  it('takes a went-live time from the pool wire when the channel sends none', () => {
+    const astana = capture.liveChannels.find((c) => c.login.toLowerCase() === 'astana666santa')!
+    const attach = capture.moments.find((x) => x.kind === 'live_attach' && x.login?.toLowerCase() === 'astana666santa')!
+    expect(liveStartOf({ ...astana, startedAt: undefined } as HubLiveChannel, attach.at)).toBe(attach.at)
+  })
+
+  it('says chat vs usual is missing when no channel’s came, instead of calling the hour quiet', () => {
+    const down = liveFeedModel({
+      ...capture,
+      liveChannels: capture.liveChannels.map((c) => ({ ...c, screenerV1: c.screenerV1 && { ...c.screenerV1, state: 'unavailable', currentWindow: { ...c.screenerV1.currentWindow, measuredMinutes: 0 } } } as HubLiveChannel)),
+    })
+    expect(down.screenerReady).toBe(0)
+    expect(down.up).toEqual([])
+    expect(feedBlind(down)).toBe(true)
+    expect(feedBlind(m)).toBe(false)
+    expect(FEED_BLIND).toBe('Chat vs usual isn’t in this update, so chat spikes and Picking up can’t show.')
+    expect(feedQuietText(null, down.asOf!, down.asOf! + 1000, false, feedBlind(down))).toBe('No new moments in the last hour')
+    expect(m.screenerReady).toBeGreaterThan(0)
   })
 })

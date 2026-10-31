@@ -106,6 +106,28 @@ export type HubUxMockOptions = {
   momentOffsets?: [number, number]
   /** More Pulse moments after the two defaults, `minutesBefore` the second one. */
   extraPulseMoments?: Array<{ login: string; streamId: string; offsetSeconds: number; label: string; minutesBefore: number }>
+  /** The hub's featured stream (default: none qualifies, so the Featured stream card stays off). */
+  featuredSession?: unknown
+}
+
+/**
+ * A ready featured stream for xQc, the mock's first live row, with three top moments (shape of the 10-30 07:19Z reply).
+ * Its stored name and game differ from the live row's on purpose: the card shows the live row's, as Busiest now does
+ * (review 10-30).
+ */
+export const READY_FEATURED_SESSION = {
+  state: 'ready',
+  login: 'xqc',
+  displayName: 'XQC',
+  streamId: 's1',
+  category: 'Grand Theft Auto V',
+  viewers: 12_000,
+  chatPerMin: 200,
+  topMoments: [
+    { offsetSeconds: 834, score: 39, label: 'Emote spike', topEmoteCode: 'YappingDuck', topEmotes: [{ name: 'YappingDuck', count: 930 }] },
+    { offsetSeconds: 5754, score: 36, label: 'Emote spike', topEmoteCode: 'NotLikeThis', topEmotes: [{ name: 'NotLikeThis', count: 1286 }] },
+    { offsetSeconds: 2514, score: 34, label: 'Emote spike', topEmoteCode: 'YappingDuck', topEmotes: [{ name: 'YappingDuck', count: 319 }] },
+  ],
 }
 
 /** What the mock served, for routes a test adds around it. */
@@ -387,7 +409,7 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
             topEmotes: [{ name: 'KEKW', provider: '7tv', count: 40, sharePct: 25 }],
           })),
         ],
-        featuredSession: { state: 'empty', reason: 'no_qualifying_session' },
+        featuredSession: options.featuredSession ?? { state: 'empty', reason: 'no_qualifying_session' },
       }),
     })
   })

@@ -163,7 +163,8 @@ describe('AnalyticsConsole staged Layer 2 queries', () => {
       expect(screen.queryByText(/^live$/i)).toBeNull()
       await act(async () => { await vi.advanceTimersByTimeAsync(90_000) })
       expect(api.getStreamMinutesTail).not.toHaveBeenCalled()
-      expect(api.getAnalyticsStreams).toHaveBeenCalledTimes(1)
+      // (fix, 10-30) VOD-4: the list is two reads, the first 12 rows then 100.
+      expect(api.getAnalyticsStreams).toHaveBeenCalledTimes(2)
       expect(screen.queryByText(/^live$/i)).toBeNull()
     } finally { vi.useRealTimers() }
   })
@@ -205,10 +206,13 @@ describe('AnalyticsConsole staged Layer 2 queries', () => {
     try {
       renderConsole()
       await screen.findByRole('heading', { name: 'Staging fixture' })
-      expect(api.getAnalyticsStreams).toHaveBeenCalledTimes(1)
+      // (fix, 10-30) VOD-4: the list is two reads, the first 12 rows then 100.
+      await waitFor(() => expect(api.getAnalyticsStreams).toHaveBeenCalledTimes(2))
+      expect(api.getAnalyticsStreams).toHaveBeenNthCalledWith(1, expect.any(String), 12)
+      expect(api.getAnalyticsStreams).toHaveBeenNthCalledWith(2, expect.any(String), 100)
 
       await act(async () => { await vi.advanceTimersByTimeAsync(90_000) })
-      expect(api.getAnalyticsStreams).toHaveBeenCalledTimes(1)
+      expect(api.getAnalyticsStreams).toHaveBeenCalledTimes(2)
       expect(api.watchAnalyticsChannel).not.toHaveBeenCalled()
     } finally {
       vi.useRealTimers()
@@ -495,5 +499,15 @@ describe('AnalyticsConsole Stream Recap slot', () => {
     await waitFor(() => expect(api.getAnalyticsStreams).toHaveBeenCalled())
     await waitFor(() => expect(recapSlot()).toBeNull())
     expect(screen.queryByText('Recap')).toBeNull()
+  })
+
+  it('does not hold the slot on the channel route for the 100-row list once the first rows answered', async () => {
+    // (fix, 10-30) VOD-4: the first 12 rows already show there is no session to open.
+    api.getAnalyticsStreams.mockImplementation((_login: string, limit: number) =>
+      limit === 12 ? Promise.resolve({ items: [] }) : new Promise(() => undefined))
+    renderConsole('eager', '/analytics/xqc')
+
+    await waitFor(() => expect(api.getAnalyticsStreams).toHaveBeenCalledWith('xqc', 100))
+    await waitFor(() => expect(recapSlot()).toBeNull())
   })
 })
