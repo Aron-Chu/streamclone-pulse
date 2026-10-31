@@ -62,14 +62,15 @@ describe('Supporter legal copy', () => {
     expect(body).toMatch(/no public Twitch chat badge — it is not included/)
   })
 
-  it('Terms says in one sentence that the selling entity, address and law are stated before sign-ups open', () => {
+  it('Terms states the owner-supplied seller details while keeping sales closed', () => {
     render(<MemoryRouter><Terms /></MemoryRouter>)
-    const pending = screen.getByTestId('terms-pending-owner-input')
-    expect(pending.textContent?.replace(/\s+/g, ' ')).toContain(
-      'The selling entity, legal address, governing law and consumer cancellation rights will be stated here before paid sign-ups open.',
+    const seller = screen.getByTestId('terms-seller-and-law')
+    expect(seller.textContent?.replace(/\s+/g, ' ')).toContain(
+      'Aron Chu, 906 N Miller Rd, Unit 3099, Tempe, AZ 85288, USA.',
     )
-    // No table of four "Pending" rows: one sentence says it once.
-    expect(screen.getByTestId('terms-of-use').textContent).not.toMatch(/Pending — not yet stated/)
+    expect(seller.textContent).toContain('governed by the law of Arizona, USA')
+    expect(screen.getByTestId('prelaunch-notice').textContent).toContain('not open yet')
+    expect(screen.queryByTestId('terms-pending-owner-input')).toBeNull()
   })
 
   it('Terms gives the Pulse Supporter section an anchor the extension links to (/terms#supporter)', () => {
@@ -234,9 +235,12 @@ describe('Supporter legal copy', () => {
     expect(twitch).toMatch(/only to sign\s+that account out everywhere and does not store/)
   })
 
-  it('Refunds asks for requests from the billing email given to Stripe, not an account address', () => {
+  it('Refunds accepts requests after loss of the current billing email without asking for card secrets', () => {
     const body = textOf(Refunds, 'refund-policy')
     expect(body).not.toMatch(/address on the account/)
-    expect(body.match(/from the billing\s+email you gave Stripe at checkout/g)).toHaveLength(2)
+    expect(body).toMatch(/If possible, use\s+your current Stripe billing email/)
+    expect(body).toMatch(/If you cannot access it, contact us anyway/)
+    expect(body).not.toMatch(/from the billing\s+email you gave Stripe at checkout/)
+    expect(body).toMatch(/do not include your full card number\s+or security code/)
   })
 })

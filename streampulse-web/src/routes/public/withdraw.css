@@ -1,0 +1,11 @@
+.withdraw-page { width: min(100%, 46rem); margin: 0 auto; padding: 2rem 1rem 4rem; line-height: 1.6; }
+.withdraw-page h1 { font-size: clamp(1.9rem, 5vw, 2.8rem); line-height: 1.15; }
+.withdraw-page a { text-decoration: underline; }
+.withdraw-kicker { color: #c4b5fd; font-weight: 700; }
+.withdraw-card, .withdraw-message { margin: 1.5rem 0; padding: 1.25rem; border: 1px solid #6d5b9b; border-radius: 0.75rem; background: #181425; }
+.withdraw-card .feedback-field { display: grid; gap: 0.4rem; margin: 1rem 0; }
+.withdraw-card dl { display: grid; gap: 0.2rem; overflow-wrap: anywhere; }
+.withdraw-card dt { margin-top: 0.7rem; font-weight: 700; }
+.withdraw-card dd { margin: 0; }
+.withdraw-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1rem; }
+.withdraw-actions button { min-height: 44px; }
