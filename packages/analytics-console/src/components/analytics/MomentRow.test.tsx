@@ -127,9 +127,9 @@ describe('SessionMomentRow', () => {
     expect(row.querySelector('.ssr-gm-n')!.textContent).toBe('Just Chatting')
   })
 
-  it('says "emote names not captured" instead of naming emotes from a thin sample', () => {
+  it('says "names not in this update" instead of naming emotes from a thin sample', () => {
     render(<SessionMomentRow model={model({ namesNotCaptured: 'Names for 15% of 400 emote uses in this minute' })} artUrl={ART} lockMode="strip" locked={false} showPlay onActivate={vi.fn()} />)
-    const nn = screen.getByText('emote names not captured')
+    const nn = screen.getByText('names not in this update')
     expect(nn.getAttribute('title')).toBe('Names for 15% of 400 emote uses in this minute')
     expect(document.querySelector('.ssr-tok')).toBeNull()
   })

@@ -245,7 +245,7 @@ export function momentRowSparkBars(args: {
 export const MOMENT_ROW_NAMED_MIN_PCT = 25
 
 /**
- * "emote names not captured": the measured minute names under 25 % of its
+ * "names not in this update": the measured minute names under 25 % of its
  * emote uses. Returns the row's title, or null when names are fine or unknown.
  */
 export function momentRowNamesNotCaptured(rollup: AnalyticsMinuteRollup | null | undefined): string | null {

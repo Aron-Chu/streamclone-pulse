@@ -242,7 +242,7 @@ export function MomentReelCard({
             {' '}
             <span className="ssr-rc-l3">
               {model.namesNotCaptured ? (
-                <span className="ssr-nn" title={model.namesNotCaptured}>emote names not captured</span>
+                <span className="ssr-nn" title={model.namesNotCaptured}>names not in this update</span>
               ) : model.emotes.length > 0 ? (
                 <span
                   className="ssr-toks"

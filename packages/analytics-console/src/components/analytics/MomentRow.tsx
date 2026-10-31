@@ -234,7 +234,7 @@ export interface SessionMomentRowModel {
   spark: MomentRowSparkBar[]
   game: { name: string; artUrls: string[] } | null
   emotes: MomentRowEmote[]
-  /** Title of "emote names not captured", when the minute names under 25 % of its uses. */
+  /** Title of "names not in this update", when the minute names under 25 % of its uses. */
   namesNotCaptured: string | null
   /** No measured minute lines up: the emotes come from the detection snapshot. */
   snapshotOnly: boolean
@@ -380,7 +380,7 @@ export function SessionMomentRow({
             </span>
           ) : null}{' '}
           {model.namesNotCaptured ? (
-            <span className="ssr-nn" title={model.namesNotCaptured}>emote names not captured</span>
+            <span className="ssr-nn" title={model.namesNotCaptured}>names not in this update</span>
           ) : model.emotes.length > 0 ? (
             <span
               className="ssr-toks"
