@@ -338,10 +338,10 @@ test.describe('extension mocked states', () => {
     await expect(hostPage.locator('.pulse-host-nav [aria-current="page"]')).toHaveCount(1)
     await expect(hostPage.getByRole('link', { name: 'Updates & Changelog' })).toHaveAttribute('aria-current', 'page')
     await expect(hostPage.getByText('Installed version', { exact: true })).toBeVisible()
-    await expect(hostPage.locator('.pulse-changelog-release')).toHaveCount(4)
-    await expect(hostPage.locator('.pulse-changelog-release .pulse-changelog-version')).toHaveText(['v0.2.6', 'v0.2.1', 'v0.1.1', 'v0.1.0'])
+    await expect(hostPage.locator('.pulse-changelog-release')).toHaveCount(5)
+    await expect(hostPage.locator('.pulse-changelog-release .pulse-changelog-version')).toHaveText(['v0.2.7', 'v0.2.6', 'v0.2.1', 'v0.1.1', 'v0.1.0'])
     // What's new leads the page with the version you have.
-    await expect(hostPage.locator('[data-whatsnew="true"] .pulse-changelog-version')).toHaveText('v0.2.6')
+    await expect(hostPage.locator('[data-whatsnew="true"] .pulse-changelog-version')).toHaveText('v0.2.7')
 
     // The complete page owns the superset, and shared storage changes are reflected
     // by the already-open Twitch quick controls without reloading either surface.
@@ -595,27 +595,27 @@ test.describe('extension mocked states', () => {
     await expect(workspace.locator('[data-settings-section="updates"]')).toBeVisible()
     await expect(workspace.locator('[data-settings-section]')).toHaveCount(1)
     const releases = workspace.locator('.pulse-changelog-release')
-    await expect(releases).toHaveCount(4)
-    await expect(releases.locator('.pulse-changelog-version')).toHaveText(['v0.2.6', 'v0.2.1', 'v0.1.1', 'v0.1.0'])
+    await expect(releases).toHaveCount(5)
+    await expect(releases.locator('.pulse-changelog-version')).toHaveText(['v0.2.7', 'v0.2.6', 'v0.2.1', 'v0.1.1', 'v0.1.0'])
     const latestRelease = releases.nth(0)
     const olderRelease = releases.nth(1)
     // What's new leads: this version's title and three highlights, with every release folded under it.
     const whatsNew = workspace.locator('[data-whatsnew="true"]')
     await expect(whatsNew).toBeVisible()
     await expect(whatsNew.locator('li')).toHaveCount(3)
-    for (let index = 0; index < 4; index += 1) await expect(releases.nth(index)).toHaveAttribute('data-changelog-open', 'false')
+    for (let index = 0; index < 5; index += 1) await expect(releases.nth(index)).toHaveAttribute('data-changelog-open', 'false')
     expect((await whatsNew.boundingBox())!.y).toBeLessThan((await latestRelease.boundingBox())!.y)
-    // See all changes unfolds this version's notes and moves focus there. New, Improved
-    // and Fixed fold to a count; Changed and Known limitations stay open.
+    // See all changes unfolds this version's notes and moves focus there. New
+    // and Fixed fold to a count; Known limitations stays open.
     await whatsNew.getByRole('button', { name: 'See all changes ↓', exact: true }).click()
     await expect(latestRelease).toHaveAttribute('data-changelog-open', 'true')
     await expect(latestRelease.locator('.pulse-changelog-toggle')).toBeFocused()
     await expect(olderRelease).toHaveAttribute('data-changelog-open', 'false')
     const groups = latestRelease.locator('details.pulse-changelog-category')
-    await expect(groups.locator('summary h3')).toHaveText(['New', 'Changed', 'Improved', 'Fixed', 'Known limitations'])
-    await expect(latestRelease.locator('[data-release-category="changed"]')).toHaveCount(1)
-    expect(await groups.evaluateAll(details => details.map(group => (group as HTMLDetailsElement).open))).toEqual([false, true, false, false, true])
-    await expect(latestRelease.locator('[data-release-category="fixed"] .pulse-changelog-count')).toHaveText('7')
+    await expect(groups.locator('summary h3')).toHaveText(['New', 'Fixed', 'Known limitations'])
+    await expect(latestRelease.locator('[data-release-category="changed"]')).toHaveCount(0)
+    expect(await groups.evaluateAll(details => details.map(group => (group as HTMLDetailsElement).open))).toEqual([false, false, true])
+    await expect(latestRelease.locator('[data-release-category="fixed"] .pulse-changelog-count')).toHaveText('1')
     await latestRelease.locator('[data-release-category="fixed"] summary').click()
     await expect(latestRelease.locator('[data-release-category="fixed"] li').first()).toBeVisible()
     await latestRelease.locator('[data-release-category="fixed"] summary').click()
@@ -642,7 +642,7 @@ test.describe('extension mocked states', () => {
     // Soft, like the emote-picker set: the test still fails on any mismatch, but one
     // run records the actual PNG of all three settings-page captures, so a baseline
     // refresh never has to stop at the first stale one.
-    await expect.soft(host.locator('.pulse-host')).toHaveScreenshot('full-settings-changelog.png', {
+    await expect.soft(host.locator('.pulse-host')).toHaveScreenshot('full-settings-changelog-v027.png', {
       animations: 'disabled',
       // Only the Supporter banner's emote pile moves, so it is masked. On wide banners the pile spans the right
       // half under the "View benefits" pill, so the mask hides the pill too: bannerPillOnTop() checks it instead.

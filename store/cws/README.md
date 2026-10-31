@@ -2,6 +2,11 @@
 
 Generated Peak mark + listing screenshots for CWS readiness.
 
+October 31 source candidate: **0.2.7**, preparing Supporter recovery and
+refund/rejoin handling. Its notes are unreleased with no submission date.
+The last recorded public Chrome listing was 0.2.6 on October 29; confirm the
+publisher dashboard, Support URL and trader details before a new upload.
+
 Canonical process docs:
 
 - [`docs/pulse-extension/chrome-web-store-review-checklist.md`](../../docs/pulse-extension/chrome-web-store-review-checklist.md)
@@ -37,11 +42,11 @@ Canonical process docs:
   `https://streampulse.stream/support`. The public listing was observed linking
   Support to Twitch on 2026-09-20, but the public scrape is not authoritative
   for the configured dashboard field.
-- Before packaging 0.2.6, open the dashboard **Package** tab and record the
-  published 0.2.1's upload date and requested hosts. `release-notes.json`
-  marks 0.2.1 released on 2026-08-31; verify that date against the dashboard.
+- Before packaging 0.2.7, open the dashboard **Package** tab and record its
+  current published version, upload date and requested hosts. `release-notes.json`
+  retains earlier released entries; match the actual package to its own evidence.
   Store users never had the 7TV header backdrop as a free perk.
-- 0.2.6 stays `status: "unreleased"` with no `releasedAt` until the packaging
+- 0.2.7 stays `status: "unreleased"` with no `releasedAt` until the packaging
   commit, which sets `released` and the real submission date. `package:cws`
   refuses the notes until then, by design. The private feedback form may stay
   off (owner decision D19); see the `FEEDBACK_FORM_LIVE` line in
