@@ -354,7 +354,7 @@ test.describe('extension mocked states', () => {
     // controls so this test does not regress when chart state changes.
     await expect(hostPage.getByText('Default chart range', { exact: true })).toHaveCount(0)
     await expect(hostPage.getByRole('group', { name: 'Accent theme' })).toBeVisible()
-    await expect(hostPage.getByRole('group', { name: 'Overlay placement' })).toBeVisible()
+    await expect(hostPage.getByRole('group', { name: 'Placement', exact: true })).toBeVisible()
     await expect(hostPage.getByText('Dock when chat is closed', { exact: true })).toBeVisible()
     await hostPage.getByRole('button', { name: /Azure/ }).click()
     await expect(settings.getByRole('button', { name: 'Azure', exact: true })).toHaveAttribute('aria-pressed', 'true')
