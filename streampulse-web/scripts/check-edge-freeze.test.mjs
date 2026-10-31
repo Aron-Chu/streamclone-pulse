@@ -8,7 +8,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   APPROVAL_DOCUMENT, MIGRATION_APPROVAL_DOCUMENT, MIGRATION_EXCEPTION_FILE, EDGE_PATHS, EXCEPTION_FILE, WRANGLER_CONFIG_FILES, assertDeploySourceIsOriginMaster, assertEdgeFreeze,
-  assertApexTargetForWorker, assertEdgeFreezeStructural, assertFreshPolicyHead, assertRemotePolicyFresh, checkRemotePolicyFresh, selectPolicyToken, pinnedRoutesBytes,
+  assertApexTargetForWorker, assertProductionPagesTarget, PRODUCTION_PAGES_ACCOUNT_SHA256, assertEdgeFreezeStructural, assertFreshPolicyHead, assertRemotePolicyFresh, checkRemotePolicyFresh, selectPolicyToken, pinnedRoutesBytes,
 } from './check-edge-freeze.mjs'
 
 const webRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -36,6 +36,50 @@ const BROAD_WORKER = `export default {
 const BROAD_ROUTES = '{"version":1,"include":["/v1/*"],"exclude":[]}\n'
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex')
 const escape = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+test('production target requires an explicit canonical project and independent account agreement', () => {
+  const account = 'a'.repeat(32)
+  const env = { CLOUDFLARE_PAGES_PROJECT: 'streampulse-main', CLOUDFLARE_ACCOUNT_ID: account, PAGES_DEPLOY_EXPECTED_ACCOUNT_ID: account }
+  const fixtureDigest = sha256(account)
+  assert.match(PRODUCTION_PAGES_ACCOUNT_SHA256, /^[a-f0-9]{64}$/)
+  assert.deepEqual(assertProductionPagesTarget(env, fixtureDigest), { project: 'streampulse-main', account })
+  assert.deepEqual(assertProductionPagesTarget(Object.fromEntries(Object.entries(env).map(([k, v]) => [k, ` ${v} `])), fixtureDigest),
+    { project: 'streampulse-main', account })
+  for (const project of [undefined, '', ' ', 'streampulse-web', 'other-project']) {
+    assert.throws(() => assertProductionPagesTarget({ ...env, CLOUDFLARE_PAGES_PROJECT: project }, fixtureDigest), /must explicitly select streampulse-main/)
+  }
+  for (const missing of [undefined, '', ' ', 'bad-account']) {
+    assert.throws(() => assertProductionPagesTarget({ ...env, CLOUDFLARE_ACCOUNT_ID: missing }, fixtureDigest), /must explicitly identify/)
+    assert.throws(() => assertProductionPagesTarget({ ...env, PAGES_DEPLOY_EXPECTED_ACCOUNT_ID: missing }, fixtureDigest), /must match the independently verified/)
+  }
+  assert.throws(() => assertProductionPagesTarget({ ...env, PAGES_DEPLOY_EXPECTED_ACCOUNT_ID: 'b'.repeat(32) }, fixtureDigest), /must match the independently verified/)
+  assert.throws(() => assertProductionPagesTarget(env), /does not match the reviewed production account/)
+  assert.deepEqual(env, { CLOUDFLARE_PAGES_PROJECT: 'streampulse-main', CLOUDFLARE_ACCOUNT_ID: account, PAGES_DEPLOY_EXPECTED_ACCOUNT_ID: account })
+})
+
+test('production CLI refuses missing, legacy or unapproved targets before dependencies or policy requests', () => {
+  const account = 'a'.repeat(32)
+  const validShape = { CLOUDFLARE_PAGES_PROJECT: 'streampulse-main', CLOUDFLARE_ACCOUNT_ID: account, PAGES_DEPLOY_EXPECTED_ACCOUNT_ID: account }
+  const cases = [
+    [{ ...validShape, CLOUDFLARE_PAGES_PROJECT: '' }, /must explicitly select/],
+    [{ ...validShape, CLOUDFLARE_PAGES_PROJECT: 'streampulse-web' }, /must explicitly select/],
+    [{ ...validShape, CLOUDFLARE_ACCOUNT_ID: '' }, /must explicitly identify/],
+    [{ ...validShape, PAGES_DEPLOY_EXPECTED_ACCOUNT_ID: '' }, /must match the independently verified/],
+    [{ ...validShape, PAGES_DEPLOY_EXPECTED_ACCOUNT_ID: 'b'.repeat(32) }, /must match the independently verified/],
+    [validShape, /does not match the reviewed production account/],
+  ]
+  for (const [target, error] of cases) {
+    const child = spawnSync(process.execPath, ['scripts/pages-deploy-prod.mjs'], {
+      cwd: webRoot, encoding: 'utf8', timeout: 10_000,
+      env: { ...process.env, ...target, CLOUDFLARE_API_TOKEN: '', GH_TOKEN: '', GITHUB_TOKEN: '' },
+    })
+    assert.equal(child.status, 1)
+    assert.equal(child.stdout, '')
+    assert.match(child.stderr, error)
+    assert.ok(!child.stderr.includes(account))
+    assert.doesNotMatch(child.stderr, /ERR_MODULE_NOT_FOUND|Running production deploy gates|Deploying dist/)
+  }
+})
 
 function fixture(t, {
   worker = committed.worker, routes = committed.routes, pin = committed.pin,
@@ -333,7 +377,7 @@ test('has no environment-variable or CLI bypass, and the deploy runs every edge 
   const deploy = readFileSync(join(webRoot, 'scripts/pages-deploy-prod.mjs'), 'utf8')
   const build = deploy.indexOf("run('npx', ['vite', 'build'], buildEnv)")
   const fullGate = deploy.indexOf('assertEdgeFreeze(webRoot))')
-  const upload = deploy.indexOf('run(localWrangler, deployArgs)')
+  const upload = deploy.indexOf('run(localWrangler, deployArgs,')
   assert.ok(deploy.includes('assertEdgeFreeze(webRoot, { sourceOnly: true })'))
   assert.ok(fullGate > build, 'full gate runs after the build')
   assert.ok(fullGate > 0 && fullGate < upload, 'full gate runs before wrangler uploads dist/')
@@ -349,6 +393,14 @@ test('has no environment-variable or CLI bypass, and the deploy runs every edge 
   assert.match(target, /edgeCheck\(\(\) => assertApexTargetForWorker\(gate, project, webRoot\)\)/)
   assert.ok(target.indexOf('assertRemotePolicyFresh(webRoot)') < target.indexOf('assertApexTargetForWorker(gate, project, webRoot)'))
   assert.doesNotMatch(target, /ALLOW_DIRTY|\$\{process\.env/)
+  const productionChecks = [...deploy.matchAll(/edgeCheck\(\(\) => assertProductionPagesTarget\(\)\)/g)].map(match => match.index)
+  assert.equal(productionChecks.length, 2)
+  assert.ok(productionChecks[0] < deploy.indexOf("await import('vite')"))
+  assert.ok(productionChecks[0] < deploy.indexOf('checkProductionBuildEnv(productionEnv)'))
+  assert.ok(productionChecks[1] > build && productionChecks[1] < upload)
+  assert.match(deploy, /const projectName = productionTarget\.project/)
+  assert.match(deploy, /run\(localWrangler, deployArgs, \{ CLOUDFLARE_ACCOUNT_ID: uploadTarget\.account \}\)/)
+  assert.doesNotMatch(deploy, /\|\| APEX_PAGES_PROJECT|wrangler may select the wrong account/)
 })
 
 test('migration policy freshness rejects absent, malformed or stale authority heads', () => {
