@@ -57,6 +57,8 @@ See what Twitch chat reacted to: a live Pulse chart of chat and emote activity, 
 ```
 Twitch chat stats, right beside chat. StreamPulse adds a Pulse panel that charts chat and emote activity (7TV emotes included) minute by minute, so you can see the moments a stream's audience actually reacted to, and jump straight to them in the stream or VOD.
 
+Live charts cover Twitch's busiest channels; other channels show past data or nothing.
+
 • Live Pulse chart: chat, emote and viewer activity for the whole stream, with a readout for any minute you point at.
 • Top Moments: the strongest reactions, ranked. Pick one to see its card and jump to that point in the stream or VOD.
 • Moment pictures: each Top Moment shows what was on screen, even for moments you missed, when Twitch has a VOD of the stream. Pictures are never uploaded, and you can turn them off in settings.
