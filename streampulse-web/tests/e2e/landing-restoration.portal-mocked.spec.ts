@@ -1,10 +1,14 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './helpers/portalMockedTest'
+
+// The homepage reads the public hub; answer it here so no test reaches the live API.
+test.beforeEach(async ({ page }) => {
+  await page.route('**/v1/**', route => route.fulfill({ status: 503, body: '{}' }))
+})
 
 for (const width of [390, 1440]) {
   test(`restored homepage at ${width}px retains visible demos and static access`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 900 })
     await page.emulateMedia({ reducedMotion: 'reduce' })
-    await page.route('**/v1/**', route => route.fulfill({ status: 503, body: '{}' }))
     await page.goto('/')
     await expect(page.locator('.sl-fx')).toHaveCount(1)
     // landing.css hides the chat backdrop at 960px and below, so it is not mounted there.
@@ -42,13 +46,14 @@ test('the animated homepage shows the rain, the chat backdrop and the Pulse tab 
   await expect(page.locator('.sl-xtour')).toBeVisible()
 })
 
-test('the prerendered homepage stays readable with JavaScript disabled', async ({ browser, baseURL }) => {
-  const context = await browser.newContext({ javaScriptEnabled: false })
-  const page = await context.newPage()
-  await page.goto(baseURL ?? 'http://127.0.0.1:4173')
-  await expect(page.locator('#demo')).toContainText('JavaScript is available')
-  // The chat backdrop mounts after load on wide screens; it is not in the prerendered HTML.
-  await expect(page.locator('.sl-chatbg')).toHaveCount(0)
-  await expect(page.locator('#roadmap, #analysis, .lsg')).toHaveCount(0)
-  await context.close()
+test.describe('without JavaScript', () => {
+  test.use({ javaScriptEnabled: false })
+
+  test('the prerendered homepage stays readable with JavaScript disabled', async ({ page }) => {
+    await page.goto('/')
+    await expect(page.locator('#demo')).toContainText('JavaScript is available')
+    // The chat backdrop mounts after load on wide screens; it is not in the prerendered HTML.
+    await expect(page.locator('.sl-chatbg')).toHaveCount(0)
+    await expect(page.locator('#roadmap, #analysis, .lsg')).toHaveCount(0)
+  })
 })

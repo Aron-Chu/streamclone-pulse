@@ -123,6 +123,14 @@ describe('buildHubV5BarCard (R5-8 option A)', () => {
     expect(m.topEmotes[0].title).toBe('KEKW: at least 48 uses in this bucket, ≥4/min')
   })
 
+  it('says the names are not in this update unless the bar counted zero emotes (pick 12A)', () => {
+    expect(card()!.topEmotesNote).toBeNull()
+    expect(card({ points: [point(0, { topEmotes: undefined })] })!.topEmotesNote).toBe('names not in this update')
+    expect(card({ points: [point(0, { emotes: 0, seventv: 0, topEmotes: undefined })] })!.topEmotesNote).toBe('none named in this bucket')
+    // Chat counted, emotes not: the reply still sent no names, so it never claims chat named none.
+    expect(card({ points: [point(0, { emotes: undefined, topEmotes: [] })] })!.topEmotesNote).toBe('names not in this update')
+  })
+
   it('lists the detected moments inside the bar, oldest first, as Moments links', () => {
     const inside = moment()
     const later = moment({ login: 'soda', displayName: 'Sodapoppin', streamId: 's2', offsetSeconds: 300, at: T0 + 5 * MIN, label: '' })

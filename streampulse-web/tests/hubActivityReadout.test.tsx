@@ -101,6 +101,14 @@ describe('hubReadoutView', () => {
     expect(hubReadoutView(lower, bar(5, 7))!.emotes).toBe('55')
     expect(hubReadoutView(model, null)!.emotes).toBe(formatHubCardInt(69))
   })
+
+  it('says Saved, not Now, at rest on a saved copy (S1, 10-28); the hovered bar keeps its time', () => {
+    const saved = hubReadoutView(model, null, true)!
+    expect(saved.time).toBe('Saved')
+    expect(saved.time2).toBe(hubReadoutView(model, null)!.time2)
+    expect(saved.chat).toBe(formatHubCardInt(119))
+    expect(hubReadoutView(model, bar(2, 4), true)!.time).toBe(hubReadoutView(model, bar(2, 4))!.time)
+  })
 })
 
 describe('HubActivityReadout', () => {
@@ -115,6 +123,14 @@ describe('HubActivityReadout', () => {
     expect(row.querySelector('[data-k="chat"] .fig')!.textContent).toBe('123')
     act(() => hover.set(null))
     expect(row.getAttribute('data-hub-readout-mode')).toBe('now')
+  })
+
+  it('reads Saved at rest while a saved copy is on screen', () => {
+    const hover = createSpHoverStore()
+    const { container } = render(<HubActivityReadout model={model} hover={hover} series={{ chat: true, emotes: true, viewers: true }} saved />)
+    expect(container.querySelector('.tm .l1')!.textContent).toBe('Saved')
+    act(() => hover.set(hit(bar(5, 6))))
+    expect(container.querySelector('.tm .l1')!.textContent).not.toBe('Saved')
   })
 
   it('dims a series that is switched off without moving the row', () => {

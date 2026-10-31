@@ -216,14 +216,15 @@ button.bkc-more:hover { color: var(--sp-text-1); background: var(--sp-raised); }
     grid-template-rows: auto auto auto auto;
   }
   .bkc--below .bkc-in:not(:has(.bkc-pvw)) { grid-template-areas: "top top" "id id" "body body" "act act"; }
-  .bkc--below .bkc-in:has(.bkc-pvw) .bkc-art { display: none; } /* the picture beside it already shows the stream */
+  /* (candidate, 10-30, PIC-2) the 36x48 cover stays at every width: the box beside it is plain dark, no game art */
   .bkc--below .bkc-id { margin-top: 8px; align-self: center; }
   .bkc--below .bkc-body { margin-top: 12px; }
 }
 
 /* ======================================================================================
-   The moment player's box (session-original.css .mpl): a storyboard frame or the game's
-   blurred art and the reason, Play over it; Twitch's player replaces it on Play.
+   The moment player's box (session-original.css .mpl): a storyboard frame, or a plain dark box
+   with the reason (candidate, 10-30, PIC-2: no blurred game art in it; the sharp cover sits by
+   the title), Play over it; Twitch's player replaces it on Play.
    ====================================================================================== */
 .mpl { min-width: 0; }
 .mpl-box {
@@ -232,10 +233,6 @@ button.bkc-more:hover { color: var(--sp-text-1); background: var(--sp-raised); }
 }
 .mpl-pic, .mpl-fr { position: absolute; inset: 0; }
 .mpl-fr { background-repeat: no-repeat; }
-.mpl-bg {
-  position: absolute; left: -32px; top: -32px; width: calc(100% + 64px); height: calc(100% + 64px);
-  max-width: none; object-fit: cover; filter: blur(18px) brightness(.42) saturate(1.15);
-}
 .mpl-box.nofr {
   aspect-ratio: auto; min-height: 132px; display: flex; flex-direction: column; align-items: center;
   justify-content: center; gap: 10px; padding: 16px; text-align: center;
@@ -299,5 +296,4 @@ button.bkc-more:hover { color: var(--sp-text-1); background: var(--sp-raised); }
   }
   .bkc--below .mpl-msg { padding: 0 6px; font-size: 11px; line-height: 14px; }
   .bkc--below .bkc-in:has(.mpl-box.on) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "pv" "id" "body" "act"; }
-  .bkc--below .bkc-in:has(.mpl-box.on) .bkc-art { display: block; }
 }

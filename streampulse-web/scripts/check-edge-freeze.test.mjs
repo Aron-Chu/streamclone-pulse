@@ -7,8 +7,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
-  APPROVAL_DOCUMENT, EDGE_PATHS, EXCEPTION_FILE, WRANGLER_CONFIG_FILES, assertDeploySourceIsOriginMaster, assertEdgeFreeze,
-  assertEdgeFreezeStructural, pinnedRoutesBytes,
+  APPROVAL_DOCUMENT, MIGRATION_APPROVAL_DOCUMENT, MIGRATION_EXCEPTION_FILE, EDGE_PATHS, EXCEPTION_FILE, WRANGLER_CONFIG_FILES, assertDeploySourceIsOriginMaster, assertEdgeFreeze,
+  assertApexTargetForWorker, assertProductionPagesTarget, PRODUCTION_PAGES_ACCOUNT_SHA256, assertEdgeFreezeStructural, assertFreshPolicyHead, assertRemotePolicyFresh, checkRemotePolicyFresh, selectPolicyToken, pinnedRoutesBytes,
 } from './check-edge-freeze.mjs'
 
 const webRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -36,6 +36,50 @@ const BROAD_WORKER = `export default {
 const BROAD_ROUTES = '{"version":1,"include":["/v1/*"],"exclude":[]}\n'
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex')
 const escape = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+test('production target requires an explicit canonical project and independent account agreement', () => {
+  const account = 'a'.repeat(32)
+  const env = { CLOUDFLARE_PAGES_PROJECT: 'streampulse-main', CLOUDFLARE_ACCOUNT_ID: account, PAGES_DEPLOY_EXPECTED_ACCOUNT_ID: account }
+  const fixtureDigest = sha256(account)
+  assert.match(PRODUCTION_PAGES_ACCOUNT_SHA256, /^[a-f0-9]{64}$/)
+  assert.deepEqual(assertProductionPagesTarget(env, fixtureDigest), { project: 'streampulse-main', account })
+  assert.deepEqual(assertProductionPagesTarget(Object.fromEntries(Object.entries(env).map(([k, v]) => [k, ` ${v} `])), fixtureDigest),
+    { project: 'streampulse-main', account })
+  for (const project of [undefined, '', ' ', 'streampulse-web', 'other-project']) {
+    assert.throws(() => assertProductionPagesTarget({ ...env, CLOUDFLARE_PAGES_PROJECT: project }, fixtureDigest), /must explicitly select streampulse-main/)
+  }
+  for (const missing of [undefined, '', ' ', 'bad-account']) {
+    assert.throws(() => assertProductionPagesTarget({ ...env, CLOUDFLARE_ACCOUNT_ID: missing }, fixtureDigest), /must explicitly identify/)
+    assert.throws(() => assertProductionPagesTarget({ ...env, PAGES_DEPLOY_EXPECTED_ACCOUNT_ID: missing }, fixtureDigest), /must match the independently verified/)
+  }
+  assert.throws(() => assertProductionPagesTarget({ ...env, PAGES_DEPLOY_EXPECTED_ACCOUNT_ID: 'b'.repeat(32) }, fixtureDigest), /must match the independently verified/)
+  assert.throws(() => assertProductionPagesTarget(env), /does not match the reviewed production account/)
+  assert.deepEqual(env, { CLOUDFLARE_PAGES_PROJECT: 'streampulse-main', CLOUDFLARE_ACCOUNT_ID: account, PAGES_DEPLOY_EXPECTED_ACCOUNT_ID: account })
+})
+
+test('production CLI refuses missing, legacy or unapproved targets before dependencies or policy requests', () => {
+  const account = 'a'.repeat(32)
+  const validShape = { CLOUDFLARE_PAGES_PROJECT: 'streampulse-main', CLOUDFLARE_ACCOUNT_ID: account, PAGES_DEPLOY_EXPECTED_ACCOUNT_ID: account }
+  const cases = [
+    [{ ...validShape, CLOUDFLARE_PAGES_PROJECT: '' }, /must explicitly select/],
+    [{ ...validShape, CLOUDFLARE_PAGES_PROJECT: 'streampulse-web' }, /must explicitly select/],
+    [{ ...validShape, CLOUDFLARE_ACCOUNT_ID: '' }, /must explicitly identify/],
+    [{ ...validShape, PAGES_DEPLOY_EXPECTED_ACCOUNT_ID: '' }, /must match the independently verified/],
+    [{ ...validShape, PAGES_DEPLOY_EXPECTED_ACCOUNT_ID: 'b'.repeat(32) }, /must match the independently verified/],
+    [validShape, /does not match the reviewed production account/],
+  ]
+  for (const [target, error] of cases) {
+    const child = spawnSync(process.execPath, ['scripts/pages-deploy-prod.mjs'], {
+      cwd: webRoot, encoding: 'utf8', timeout: 10_000,
+      env: { ...process.env, ...target, CLOUDFLARE_API_TOKEN: '', GH_TOKEN: '', GITHUB_TOKEN: '' },
+    })
+    assert.equal(child.status, 1)
+    assert.equal(child.stdout, '')
+    assert.match(child.stderr, error)
+    assert.ok(!child.stderr.includes(account))
+    assert.doesNotMatch(child.stderr, /ERR_MODULE_NOT_FOUND|Running production deploy gates|Deploying dist/)
+  }
+})
 
 function fixture(t, {
   worker = committed.worker, routes = committed.routes, pin = committed.pin,
@@ -314,7 +358,7 @@ test('rejects a missing, malformed, or extended pin', t => {
 
 test('edge paths cover the Worker, routes, pin, gate, deploy script, Functions, and wrangler config', () => {
   assert.deepEqual(EDGE_PATHS, [
-    'public/_worker.js', 'public/_routes.json', 'edge-freeze-exception.json',
+    'public/_worker.js', 'public/_routes.json', 'edge-freeze-exception.json', 'pages-migration-approval.json',
     'scripts/check-edge-freeze.mjs', 'scripts/pages-deploy-prod.mjs', 'functions',
     'wrangler.json', 'wrangler.jsonc', 'wrangler.toml', '.wrangler/deploy/config.json',
   ])
@@ -333,7 +377,7 @@ test('has no environment-variable or CLI bypass, and the deploy runs every edge 
   const deploy = readFileSync(join(webRoot, 'scripts/pages-deploy-prod.mjs'), 'utf8')
   const build = deploy.indexOf("run('npx', ['vite', 'build'], buildEnv)")
   const fullGate = deploy.indexOf('assertEdgeFreeze(webRoot))')
-  const upload = deploy.indexOf('run(localWrangler, deployArgs)')
+  const upload = deploy.indexOf('run(localWrangler, deployArgs,')
   assert.ok(deploy.includes('assertEdgeFreeze(webRoot, { sourceOnly: true })'))
   assert.ok(fullGate > build, 'full gate runs after the build')
   assert.ok(fullGate > 0 && fullGate < upload, 'full gate runs before wrangler uploads dist/')
@@ -345,8 +389,142 @@ test('has no environment-variable or CLI bypass, and the deploy runs every edge 
   assert.equal(targetChecks.length, 2)
   assert.ok(targetChecks[0] < build && targetChecks[1] > fullGate && targetChecks[1] < upload)
   const target = deploy.slice(deploy.indexOf('function requireApexTargetForWorker'), deploy.indexOf('const sourceGate'))
-  assert.match(target, /if \(!process\.env\.CLOUDFLARE_ACCOUNT_ID\?\.trim\(\)\) \{\n\s+console\.error\('[^'$`]*'\)\n\s+process\.exit\(1\)/)
+  assert.match(target, /if \(project === MIGRATION_PAGES_PROJECT\) edgeCheck\(\(\) => assertRemotePolicyFresh\(webRoot\)\)/)
+  assert.match(target, /edgeCheck\(\(\) => assertApexTargetForWorker\(gate, project, webRoot\)\)/)
+  assert.ok(target.indexOf('assertRemotePolicyFresh(webRoot)') < target.indexOf('assertApexTargetForWorker(gate, project, webRoot)'))
   assert.doesNotMatch(target, /ALLOW_DIRTY|\$\{process\.env/)
+  const productionChecks = [...deploy.matchAll(/edgeCheck\(\(\) => assertProductionPagesTarget\(\)\)/g)].map(match => match.index)
+  assert.equal(productionChecks.length, 2)
+  assert.ok(productionChecks[0] < deploy.indexOf("await import('vite')"))
+  assert.ok(productionChecks[0] < deploy.indexOf('checkProductionBuildEnv(productionEnv)'))
+  assert.ok(productionChecks[1] > build && productionChecks[1] < upload)
+  assert.match(deploy, /const projectName = productionTarget\.project/)
+  assert.match(deploy, /run\(localWrangler, deployArgs, \{ CLOUDFLARE_ACCOUNT_ID: uploadTarget\.account \}\)/)
+  assert.doesNotMatch(deploy, /\|\| APEX_PAGES_PROJECT|wrangler may select the wrong account/)
+})
+
+test('migration policy freshness rejects absent, malformed or stale authority heads', () => {
+  const head = 'a'.repeat(40)
+  assert.doesNotThrow(() => assertFreshPolicyHead(head, head))
+  for (const [local, remote] of [['', head], [head, ''], [head, 'b'.repeat(40)], [head, head.toUpperCase()], [head, `${head}\n`]]) {
+    assert.throws(() => assertFreshPolicyHead(local, remote), /must match the current canonical remote head/)
+  }
+})
+
+test('remote policy lookup fails closed offline without revealing lookup errors', t => {
+  const f = mergedApprovalFixture(t)
+  let calls = 0
+  assert.doesNotThrow(() => checkRemotePolicyFresh(f.web, () => { calls++; return { status: 0, stdout: `${f.revision}\n` } }))
+  assert.equal(calls, 1)
+  for (const response of [{ status: 1, stderr: 'synthetic-private-error' }, { error: new Error('synthetic-private-error') }, null]) {
+    assert.throws(() => checkRemotePolicyFresh(f.web, () => response), error => {
+      assert.match(error.message, /cannot verify the current canonical SDLC policy head/)
+      assert.doesNotMatch(error.message, /synthetic-private-error/)
+      return true
+    })
+  }
+  assert.throws(() => checkRemotePolicyFresh(f.web, () => { throw new Error('synthetic-private-error') }), error => {
+    assert.match(error.message, /cannot verify the current canonical SDLC policy head/)
+    assert.doesNotMatch(error.message, /synthetic-private-error/)
+    return true
+  })
+  for (const stdout of ['', 'not-a-sha', 'b'.repeat(40)]) {
+    assert.throws(() => checkRemotePolicyFresh(f.web, () => ({ status: 0, stdout })), /must match the current canonical remote head/)
+  }
+})
+
+test('migration policy lookup requires an unambiguous runtime token without making a request when missing', t => {
+  const f = mergedApprovalFixture(t)
+  const names = ['GH_TOKEN', 'GITHUB_TOKEN']
+  const previous = names.map(name => [name, Object.hasOwn(process.env, name), process.env[name]])
+  try {
+    for (const name of names) delete process.env[name]
+    assert.throws(() => assertRemotePolicyFresh(f.web), /cannot verify the current canonical SDLC policy head/)
+    process.env.GH_TOKEN = 'synthetic whitespace'
+    assert.throws(() => assertRemotePolicyFresh(f.web), /cannot verify the current canonical SDLC policy head/)
+    process.env.GH_TOKEN = 'synthetic-first'
+    process.env.GITHUB_TOKEN = 'synthetic-second'
+    assert.throws(() => assertRemotePolicyFresh(f.web), /cannot verify the current canonical SDLC policy head/)
+  } finally {
+    for (const [name, existed, value] of previous) { if (existed) process.env[name] = value; else delete process.env[name] }
+  }
+  assert.equal(selectPolicyToken({ GH_TOKEN: 'synthetic', GITHUB_TOKEN: 'synthetic' }), 'synthetic')
+  assert.equal(selectPolicyToken({ GITHUB_TOKEN: 'synthetic' }), 'synthetic')
+  assert.equal(selectPolicyToken({ GH_TOKEN: '', GITHUB_TOKEN: 'synthetic' }), 'synthetic')
+  assert.equal(selectPolicyToken({ GH_TOKEN: 'first', GITHUB_TOKEN: 'second' }), null)
+  assert.equal(selectPolicyToken({ GH_TOKEN: 'has whitespace' }), null)
+})
+
+test('an admitted Pages Worker requires matching operator-supplied migration account values', t => {
+  const worker = { admitted: {} }
+  const source = 'streampulse-web'
+  const destination = 'streampulse-main'
+  const account = 'a'.repeat(32)
+  const other = 'b'.repeat(32)
+  const env = { CLOUDFLARE_ACCOUNT_ID: account, PAGES_DEPLOY_EXPECTED_ACCOUNT_ID: account }
+
+  assert.doesNotThrow(() => assertApexTargetForWorker({ admitted: null }, 'other', webRoot, {}))
+  assert.throws(() => assertApexTargetForWorker({ admitted: null }, destination, webRoot, env), /requires the approved Pages Worker/)
+  assert.throws(() => assertApexTargetForWorker(worker, source, webRoot, {}), /CLOUDFLARE_ACCOUNT_ID/)
+  assert.doesNotThrow(() => assertApexTargetForWorker(worker, source, webRoot, env))
+  assert.throws(() => assertApexTargetForWorker(worker, 'other', webRoot, env), /approved apex project/)
+  assert.throws(() => assertApexTargetForWorker(worker, destination, webRoot, {}), /CLOUDFLARE_ACCOUNT_ID/)
+  assert.throws(() => assertApexTargetForWorker(worker, destination, webRoot, { CLOUDFLARE_ACCOUNT_ID: account }), /requires a matching/)
+  assert.throws(() => assertApexTargetForWorker(worker, destination, webRoot, { ...env, PAGES_DEPLOY_EXPECTED_ACCOUNT_ID: other }), /requires a matching/)
+  assert.throws(() => assertApexTargetForWorker(worker, destination, webRoot, { ...env, CLOUDFLARE_ACCOUNT_ID: 'invalid' }), /requires a matching/)
+  const missingPinRoot = mkdtempSync(join(tmpdir(), 'pulse-missing-migration-pin-'))
+  t.after(() => rmSync(missingPinRoot, { recursive: true, force: true }))
+  assert.throws(() => assertApexTargetForWorker(worker, destination, missingPinRoot, env), /requires pages-migration-approval.json/)
+})
+
+function addMigrationApproval(f, overrides = {}, { merged = true } = {}) {
+  const policy = { version: 1, status: 'approved', project: 'streampulse-main', workerSha256: committed.pin.sha256, routes: committed.pin.routes, expires: committed.pin.expires, ...overrides }
+  const document = `# Synthetic migration policy\n\n\`\`\`pages-migration-approval-json\n${JSON.stringify(policy)}\n\`\`\`\n`
+  mkdirSync(dirname(join(f.sdlc, MIGRATION_APPROVAL_DOCUMENT)), { recursive: true })
+  writeFileSync(join(f.sdlc, MIGRATION_APPROVAL_DOCUMENT), document)
+  f.fixtureGit(f.sdlc, 'add', MIGRATION_APPROVAL_DOCUMENT)
+  f.fixtureGit(f.sdlc, 'commit', '--quiet', '-m', 'synthetic migration approval')
+  const revision = f.fixtureGit(f.sdlc, 'rev-parse', 'HEAD')
+  if (merged) f.fixtureGit(f.sdlc, 'update-ref', 'refs/remotes/origin/master', revision)
+  writeFileSync(join(f.web, MIGRATION_EXCEPTION_FILE), JSON.stringify({ approval: `streampulse-sdlc@${revision}:${MIGRATION_APPROVAL_DOCUMENT}` }))
+  return { revision, document }
+}
+
+test('migration target fails closed until an independent immutable merged policy matches the existing relay', t => {
+  const account = 'a'.repeat(32)
+  const env = { CLOUDFLARE_ACCOUNT_ID: account, PAGES_DEPLOY_EXPECTED_ACCOUNT_ID: account }
+  const f = mergedApprovalFixture(t)
+  const gate = assertEdgeFreeze(f.web, { now })
+  assert.doesNotThrow(() => assertApexTargetForWorker(gate, 'streampulse-web', f.web, env))
+  assert.throws(() => assertApexTargetForWorker(gate, 'streampulse-main', f.web, env), /requires pages-migration-approval.json/)
+  writeFileSync(join(f.web, MIGRATION_EXCEPTION_FILE), JSON.stringify({ approval: 'draft approval', bypass: true }))
+  assert.throws(() => assertApexTargetForWorker(gate, 'streampulse-main', f.web, env), /must contain exactly an approval reference/)
+  writeFileSync(join(f.web, MIGRATION_EXCEPTION_FILE), JSON.stringify({ approval: 'draft approval' }))
+  assert.throws(() => assertApexTargetForWorker(gate, 'streampulse-main', f.web, env), /immutable merged streampulse-sdlc document/)
+  const { document } = addMigrationApproval(f)
+  assert.doesNotThrow(() => assertApexTargetForWorker(gate, 'streampulse-main', f.web, env))
+  writeFileSync(join(f.sdlc, MIGRATION_APPROVAL_DOCUMENT), 'uncommitted working-tree changes are not authority')
+  assert.doesNotThrow(() => assertApexTargetForWorker(gate, 'streampulse-main', f.web, env))
+  writeFileSync(join(f.sdlc, MIGRATION_APPROVAL_DOCUMENT), document + '\nSuperseded\n')
+  f.fixtureGit(f.sdlc, 'commit', '--quiet', '-am', 'supersede migration policy')
+  f.fixtureGit(f.sdlc, 'update-ref', 'refs/remotes/origin/master', 'HEAD')
+  assert.throws(() => assertApexTargetForWorker(gate, 'streampulse-main', f.web, env), /superseded on SDLC origin\/master/)
+  assert.doesNotThrow(() => assertApexTargetForWorker(gate, 'streampulse-web', f.web, env))
+})
+
+test('migration target rejects unmerged, draft, mismatched or widened migration policies', t => {
+  const account = 'a'.repeat(32)
+  const env = { CLOUDFLARE_ACCOUNT_ID: account, PAGES_DEPLOY_EXPECTED_ACCOUNT_ID: account }
+  const unmerged = mergedApprovalFixture(t)
+  const gate = assertEdgeFreeze(unmerged.web, { now })
+  addMigrationApproval(unmerged, {}, { merged: false })
+  assert.throws(() => assertApexTargetForWorker(gate, 'streampulse-main', unmerged.web, env), /not merged into SDLC origin\/master/)
+  for (const policy of [{ status: 'draft' }, { project: 'other' }, { version: 2 }, { workerSha256: 'b'.repeat(64) }, { expires: '2026-12-23' }, { routes: { ...committed.pin.routes, include: ['/v1/account/*'] } }, { bypass: true }]) {
+    const f = mergedApprovalFixture(t)
+    const admitted = assertEdgeFreeze(f.web, { now })
+    addMigrationApproval(f, policy)
+    assert.throws(() => assertApexTargetForWorker(admitted, 'streampulse-main', f.web, env), /must approve only|does not bind the exact/)
+  }
 })
 
 test('deploy source must be a fresh origin/master with byte-identical edge files', t => {
@@ -416,6 +594,9 @@ test('deploy source must be a fresh origin/master with byte-identical edge files
   git(work, 'add', 'streampulse-web/public/_routes.json')
   refuses(/uncommitted edge files/)
   git(work, 'reset', '--quiet', '--hard', 'refs/remotes/origin/master')
+  writeFileSync(join(web, MIGRATION_EXCEPTION_FILE), '{}')
+  refuses(/uncommitted edge files/)
+  rmSync(join(web, MIGRATION_EXCEPTION_FILE))
   writeFileSync(join(web, 'wrangler.json'), '{}')
   refuses(/uncommitted edge files/)
   rmSync(join(web, 'wrangler.json'))

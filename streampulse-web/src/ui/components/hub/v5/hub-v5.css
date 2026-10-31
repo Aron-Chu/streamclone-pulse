@@ -120,10 +120,13 @@
 .hv5-latest { grid-area: rail; margin-top: 8px; }
 .hv5-emotes { grid-area: emo; margin-top: 32px; display: flex; flex-direction: column; }
 .hv5-games { grid-area: games; margin-top: 32px; display: flex; flex-direction: column; container: hv5grk / inline-size; }
-/* phones: a 3-row "Live now" peek under the hero; the full feed stays where it is */
+/* phones: a 3-row "Top today" peek under the hero; the rail stays where it is */
 .hv5-f3-peek { grid-area: peek; display: none; margin-top: 12px; }
 @media (max-width: 719px) {
   .hv5-f3-peek { display: block; }
+  /* while it waits, the height its rows land in: the 43 px head with its age line and three 53 px rows
+     (.hv5-top .hv5-rh in section 3b, .hv5-tm-row and its rule) */
+  .hv5-f3-peek[data-wait] { min-height: 202px; }
 }
 .hv5-channels { grid-area: chan; margin-top: 32px; scroll-margin-top: 72px; }
 .hv5-dis { grid-area: meas; margin-top: 32px; }
@@ -811,8 +814,34 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Twitch's live picture over the face tile (mockup §5): it stays clear until checked, so the face shows meanwhile */
+.hv5-bzv-prev {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  opacity: 0;
+  transition: opacity var(--sp-dur-quick);
+}
+.hv5-bzv-prev[data-shown] { opacity: 1; }
+/* the next picture waits under the proven one, fully drawn, so the swap is a cut and never shows the face */
+.hv5-bzv-prev[data-under] { opacity: 1; transition: none; }
+/* over a live picture, the caption's small face (mockup .bzt-cap .bzv-av) */
+.hv5-bzt-cap.hf { grid-template-columns: auto minmax(0, 1fr); column-gap: 6px; }
+.hv5-bzv-av {
+  grid-row: 1 / 3;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  object-fit: cover;
+}
 @container hv5bzv (max-width: 559px) {
   .hv5-bzt-cap { padding: 16px 6px 5px; }
+  .hv5-bzt-cap.hf { column-gap: 5px; }
+  .hv5-bzv-av { width: 16px; height: 16px; }
   .hv5-bzt-nm { font-size: 12px; line-height: 15px; }
 }
 /* each tile answers its own width: under 180 px the caption keeps only the name on a shorter scrim
@@ -823,7 +852,8 @@
     padding: 7px 6px 2px;
     background: linear-gradient(to top, rgb(9 9 11 / 0.9) 0, rgb(9 9 11 / 0.62) 60%, rgb(9 9 11 / 0) 100%);
   }
-  .hv5-bzt-cat { display: none; }
+  .hv5-bzt-cat, .hv5-bzv-av { display: none; }
+  .hv5-bzt-cap.hf { grid-template-columns: minmax(0, 1fr); }
   .hv5-bzt-nm { font-size: 12px; line-height: 15px; }
 }
 /* the pager: position and ‹ › in the header */
@@ -839,6 +869,7 @@
 }
 .hub-v5 .hv5-bzc-pg .hv5-ib[aria-disabled="true"] { opacity: 0.35; cursor: default; }
 .hub-v5 .hv5-bzc-pg .hv5-ib[aria-disabled="true"]:hover { background: none; color: var(--sp-text-2); }
+.hv5-bzc-pg-wait { visibility: hidden; }
 @container hv5bzv (max-width: 639px) {
   .hv5-bzc-pg { order: 10; margin-left: auto; }
 }
@@ -911,10 +942,85 @@
   background: linear-gradient(90deg, var(--sp-raised), var(--sp-panel));
 }
 @media (prefers-reduced-motion: reduce) {
-  .hv5-bzt-t::after { transition: none; }
+  .hv5-bzt-t::after, .hv5-bzv-prev { transition: none; }
 }
 
-/* ---------- 3. The live feed v3 (hub-live.css: R5-10 rail, R5-20 v2, v3; the default since 2026-10-17) ---------- */
+/* ---------- 2b. Featured stream (picks I1 and I1b, 10-30; board artifacts/session-hub-gaps-20261030): the featured stream under Busiest now ---------- */
+.hv5-most { grid-area: most; margin-top: 12px; }
+/* its own row under Busiest now, only while the card is on the page; without it the templates above apply */
+.hub-v5.hub-d3:has(> .hv5-most) {
+  grid-template-areas: "mast" "peek" "busy" "most" "act" "intv" "rail" "emo" "games" "chan" "meas";
+}
+@media (min-width: 720px) and (max-width: 1099px) {
+  .hub-v5.hub-d3:has(> .hv5-most) {
+    grid-template-areas: "mast mast" "busy busy" "most most" "act act" "intv intv" "rail rail" "emo games" "chan chan" "meas meas";
+  }
+}
+@media (min-width: 1100px) and (max-width: 1535px) {
+  .hub-v5.hub-d3:has(> .hv5-most) {
+    grid-template-areas: "mast mast mast" "busy busy busy" "most most most" "act act act" "intv intv intv" "rail emo games" "chan chan chan" "meas meas meas";
+  }
+}
+@media (min-width: 1536px) {
+  .hub-v5.hub-d3:has(> .hv5-most) {
+    grid-template-areas: "mast mast mast" "busy busy rail" "most most rail" "act act rail" "intv intv rail" "emo games rail" "chan chan rail" "meas meas rail";
+  }
+}
+/* the base rules the other sections get */
+.hub-v5 .hv5-most :is(*, *::before, *::after) { box-sizing: border-box; }
+.hub-v5 .hv5-most :is(h2, p) { margin: 0; }
+.hub-v5 .hv5-most img { display: block; }
+.hub-v5 .hv5-most .hv5-mst-lb {
+  font: 500 12px/16px var(--sp-font);
+  color: var(--sp-text-3);
+}
+.hv5-mst-rw {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  padding: 8px 0;
+  border-top: 1px solid var(--sp-line);
+}
+/* long names and emotes wrap inside the card, never past a 360 px phone */
+.hv5-mst-tx { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.hv5-mst-l1,
+.hv5-mst-l2 { display: block; }
+.hv5-mst-l2 { margin-top: 2px; }
+.hv5-mst-nm { font-weight: 600; color: var(--sp-text-1); }
+.hv5-mst-m { font-size: 12px; color: var(--sp-text-3); }
+.hv5-mst-x {
+  font-weight: 600;
+  color: var(--hv5-accent);
+  font-variant-numeric: tabular-nums;
+}
+.hub-v5 .hv5-most a.hv5-mst-open {
+  flex: none;
+  font: 500 13px/16px var(--sp-font);
+  color: var(--hv5-accent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.hub-v5 .hv5-most a.hv5-mst-open:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.hub-v5 .hv5-most .hv5-mst-note {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--sp-text-3);
+  overflow-wrap: anywhere;
+}
+/* a moment moves to the next line whole, unless it is wider than the line */
+.hv5-mst-mo { display: inline-block; max-width: 100%; }
+/* while Busiest now holds its place (pick K1): one grey block the size of a one-line card, as Busiest now's own */
+.hv5-mst-wait {
+  border-radius: 8px;
+  background: linear-gradient(90deg, var(--sp-raised), var(--sp-panel));
+}
+.hv5-mst-wait > * { visibility: hidden; }
+
+/* ---------- 3. The rail's frame, chips and Picking up (from the live feed v3, hub-live.css: R5-10 rail, R5-20 v2, v3) ---------- */
 .hub-v5 .hv5-mo-all { font-weight: 500; white-space: nowrap; }
 /* F2's picked game names the link ("Elden Ring moments →"): the name takes the room the age line leaves, then ellipses */
 .hv5-feed .hv5-rh .hv5-end { flex: 1 1 0; justify-content: flex-end; }
@@ -983,9 +1089,8 @@
   color: var(--sp-text-3);
 }
 .hv5-fd-gn { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.hub-v5 :is(.hv5-feed, .hv5-f3-peek) :is(.hv5-fd-list, .hv5-fd-sub) { list-style: none; margin: 0; padding: 0; }
-.hub-v5 .hv5-fd-body > .hv5-fd-list:first-child { margin-top: 4px; }
-.hub-v5 :is(.hv5-feed, .hv5-f3-peek) .hv5-fd-quiet { margin: 6px 8px; font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
+.hub-v5 .hv5-feed :is(.hv5-fd-list, .hv5-fd-sub) { list-style: none; margin: 0; padding: 0; }
+.hub-v5 .hv5-f3-peek .hv5-fd-quiet { margin: 6px 8px; font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
 /* the list and its "N new" pill, which floats over the top row so nothing moves when it appears */
 .hv5-f2-wrap { position: relative; }
 .hub-v5 .hv5-feed .hv5-f2-pill {
@@ -1005,10 +1110,10 @@
 .hub-v5 .hv5-feed .hv5-f2-pill[hidden] { display: none; }
 .hub-v5 .hv5-f2-pill:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: 2px; }
 
-/* one row (games first, L1 10-22): the game's cover · who + what / "5.0× more emotes" · game · the time (52 px) */
-.hub-v5 :is(.hv5-feed, .hv5-f3-peek) .hv5-fd {
+/* a Picking up row: the faces · what / "1.8× more chat" · game (52 px) */
+.hub-v5 .hv5-feed .hv5-fd {
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr) auto;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
   column-gap: 10px;
   align-items: center;
   width: 100%;
@@ -1024,24 +1129,11 @@
   text-decoration: none;
   cursor: pointer;
 }
-.hub-v5 :is(.hv5-feed, .hv5-f3-peek) .hv5-fd:hover { background: var(--sp-panel); text-decoration: none; }
-.hub-v5 :is(.hv5-feed, .hv5-f3-peek) a.hv5-fd:hover .hv5-fd-nm { text-decoration: underline; }
-.hub-v5 :is(.hv5-feed, .hv5-f3-peek) .hv5-fd:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: -2px; }
-.hv5-fd-av { position: relative; display: flex; width: 28px; height: 28px; }
-.hv5-fd-art {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 40px;
-  border-radius: 4px;
-  overflow: hidden;
-  background: var(--sp-raised);
-  box-shadow: inset 0 0 0 1px var(--sp-line-strong);
-}
-.hub-v5 .hv5-fd-art img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.hv5-fd-art span { font: 600 10px/1 var(--sp-font); color: var(--sp-text-3); }
-.hv5-fd-t { font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.hv5-fd-av .hv5-av { width: 28px; height: 28px; }
+.hub-v5 .hv5-feed .hv5-fd:hover { background: var(--sp-panel); text-decoration: none; }
+.hub-v5 .hv5-feed a.hv5-fd:hover .hv5-fd-nm { text-decoration: underline; }
+.hub-v5 .hv5-feed .hv5-fd:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: -2px; }
+.hv5-fd-av { position: relative; display: flex; width: 22px; height: 22px; }
+.hv5-fd-av .hv5-av { width: 22px; height: 22px; }
 .hv5-fd-tx { display: flex; flex-direction: column; min-width: 0; }
 .hv5-fd-l1 { display: flex; align-items: center; gap: 6px; min-width: 0; font: 600 13px/18px var(--sp-font); }
 .hv5-fd-nm { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1053,7 +1145,6 @@
   color: var(--sp-text-3);
   white-space: nowrap;
 }
-.hv5-fd-l2 time { flex: none; font-variant-numeric: tabular-nums; }
 .hub-v5 .hv5-fd-l2 img {
   flex: none;
   width: 12px;
@@ -1065,12 +1156,9 @@
 }
 .hv5-fd-g,
 .hv5-fd-w { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.hv5-fd-w time { font-variant-numeric: tabular-nums; }
-/* what happened: a spike or moment in teal, a stream start in red with a ring, Picking up in purple */
+/* Picking up in purple */
 .hv5-f2-act { flex: none; font-weight: 500; color: var(--sp-text-2); white-space: nowrap; }
-.hv5-f2-live { color: var(--hv5-live); }
 .hv5-f2-up { color: var(--hv5-chat); font-weight: 600; }
-.hv5-f3-jump { flex: none; font-weight: 500; color: var(--hv5-chat); white-space: nowrap; }
 .hv5-f2-names { font-weight: 500; color: var(--sp-text-2); }
 .hv5-f2-em { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 45%; font-weight: 600; color: var(--sp-text-1); }
 .hub-v5 .hv5-f2-em img { flex: none; width: 20px; height: 20px; object-fit: contain; }
@@ -1078,8 +1166,7 @@
 /* "5.0× more emotes" (games first, 10-22: as Moments writes it) */
 .hv5-f2-x { flex: none; color: var(--sp-text-2); font-variant-numeric: tabular-nums; }
 .hv5-f2-x b { font-weight: 600; color: var(--hv5-accent); }
-/* the went-live stack and Picking up: a stack of faces that opens a short list */
-.hub-v5 :is(.hv5-feed, .hv5-f3-peek) :is([data-kind="now"], [data-kind="lives"]) > .hv5-fd { grid-template-columns: 40px minmax(0, 1fr) auto; }
+/* Picking up: a stack of faces that opens a short list */
 .hv5-fd-stack { display: flex; width: 40px; height: 28px; align-items: center; }
 .hv5-fd-stack .hv5-av { width: 20px; height: 20px; flex: none; border-radius: 50%; box-shadow: 0 0 0 2px var(--sp-canvas); }
 .hv5-fd-stack > * + * { margin-left: -10px; }
@@ -1090,120 +1177,18 @@
 .hub-v5 .hv5-feed .hv5-fd-sub { margin: 0 0 4px 18px; border-left: 1px solid var(--sp-line-strong); }
 .hub-v5 .hv5-feed .hv5-fd-sub[hidden] { display: none; }
 .hub-v5 .hv5-feed .hv5-fd-sub .hv5-fd { grid-template-columns: 22px minmax(0, 1fr); height: 44px; }
-.hv5-fd-sub .hv5-fd-av,
-.hv5-fd-sub .hv5-fd-av .hv5-av { width: 22px; height: 22px; }
 .hv5-fd-sub .hv5-fd-l1 { font-size: 12px; line-height: 16px; }
 .hv5-fd-more { display: flex; justify-content: center; padding: 6px 0 0; }
 .hv5-f2-upmore { padding: 8px 8px 10px 10px; font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
-/* past 30 minutes: the face and the number step back, the words stay readable (one thin rule, no tiers) */
-.hv5-f3-old > .hv5-fd :is(.hv5-fd-av, .hv5-fd-stack, .hv5-fd-art) { opacity: 0.5; }
-.hv5-f3-old > .hv5-fd .hv5-fd-nm { color: var(--sp-text-2); }
-.hv5-f3-rule { display: flex; align-items: center; gap: 8px; margin: 8px 8px 2px; font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
-.hv5-f3-rule::after { content: ""; flex: 1; height: 1px; background: var(--sp-line); }
-/* 1100–1535 the feed sits beside Top emotes and Where chat is: it takes the height they give the row and fits its rows to it (L1); an open list or Show more lets it grow */
+/* 1100–1535 the rail sits beside Top emotes and Where chat is: it takes the height they give the row and fits its rows to it (L1); an open row or Show more lets it grow */
 @media (min-width: 1100px) and (max-width: 1535px) {
   .hv5-feed.hv5-fd-fit { contain: size; min-height: 432px; }
 }
-/* ≥ 1536 the rail is sticky; Show more lets the list scroll inside the window (scrollbar hidden) */
-@media (min-width: 1536px) {
-  .hv5-feed.hv5-fd-all .hv5-fd-body {
-    max-height: calc(100vh - 72px - 150px);
-    overflow-y: auto;
-    scrollbar-width: none;
-    overscroll-behavior: contain;
-  }
-  .hv5-feed.hv5-fd-all .hv5-fd-body::-webkit-scrollbar { display: none; }
-}
 @media (max-width: 719px) {
-  .hub-v5 :is(.hv5-feed, .hv5-f3-peek) .hv5-fd { height: 56px; }
+  .hub-v5 .hv5-feed .hv5-fd { height: 56px; }
 }
-/* a row a poll brings: it opens, slides in and flashes once (backwards fill only, so hover and an open list are untouched after) */
-.hv5-fd-new { animation: hv5-fd-in 0.42s cubic-bezier(0.2, 0.7, 0.2, 1) backwards; overflow: hidden; }
-.hv5-fd-new > .hv5-fd { animation: hv5-fd-flash 1.4s ease-out; }
-.hv5-fd-new[data-kind="live"] > .hv5-fd,
-.hv5-fd-new[data-kind="lives"] > .hv5-fd { animation-name: hv5-fd-flash-live; }
-@keyframes hv5-fd-in { from { max-height: 0; opacity: 0; transform: translateY(-8px); } to { max-height: 56px; opacity: 1; transform: none; } }
-@keyframes hv5-fd-flash { from { background: rgb(94 234 212 / 0.16); } to { background: transparent; } }
-@keyframes hv5-fd-flash-live { from { background: rgb(239 68 68 / 0.16); } to { background: transparent; } }
 @media (prefers-reduced-motion: reduce) {
-  .hv5-fd-new,
-  .hv5-fd-new > .hv5-fd { animation: none !important; }
   .hv5-fd-chev { transition: none !important; }
-}
-
-/* the moment card (round-5 Moments, now the feed's) */
-/* the hover card: never takes the pointer */
-.hv5-mo-card {
-  position: fixed;
-  z-index: 70;
-  width: 280px;
-  padding: 12px 14px 10px;
-  border-radius: 8px;
-  background: var(--sp-popover);
-  border: 1px solid var(--sp-line-strong);
-  box-shadow: 0 12px 32px rgb(0 0 0 / 0.45);
-  pointer-events: none;
-  color: var(--sp-text-2);
-  font: 500 12px/16px var(--sp-font);
-  font-variant-numeric: tabular-nums;
-  text-align: left;
-}
-.hv5-mc-h { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.hv5-mc-nm {
-  min-width: 0;
-  font: 600 14px/20px var(--sp-font);
-  color: var(--sp-text-1);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.hv5-mc-t { margin-left: auto; color: var(--sp-text-3); white-space: nowrap; }
-.hv5-mc-g {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  margin: 4px 0 0 32px;
-  color: var(--sp-text-3);
-}
-.hv5-mc-g img { flex: none; width: 12px; height: 16px; border-radius: 2px; object-fit: cover; }
-.hv5-mc-g span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.hv5-mc-r {
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
-  margin-top: 10px;
-  color: var(--sp-text-2);
-}
-.hv5-mc-r b {
-  font: 700 20px/24px var(--sp-font);
-  color: var(--sp-text-1);
-  font-variant-numeric: tabular-nums;
-}
-.hv5-mc-l { margin-left: auto; color: var(--sp-text-3); }
-.hv5-layer .hv5-mc-x { margin: 6px 0 0; color: var(--sp-text-2); }
-.hv5-mc-x b {
-  font: 700 15px/18px var(--sp-font);
-  color: var(--sp-text-1);
-  font-variant-numeric: tabular-nums;
-}
-.hv5-mc-x b.lo { color: var(--sp-text-3); }
-.hv5-mc-x span { display: block; color: var(--sp-text-3); }
-.hv5-layer .hv5-mc-x.hv5-mc-na { color: var(--sp-text-3); }
-.hv5-mc-e {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 8px;
-  color: var(--sp-text-3);
-}
-.hv5-mc-e img { width: 20px; height: 20px; object-fit: contain; }
-.hv5-mc-e b { color: var(--sp-text-1); font-weight: 600; }
-.hv5-layer .hv5-mc-go {
-  margin: 10px 0 0;
-  padding-top: 8px;
-  border-top: 1px solid var(--sp-line);
-  color: var(--sp-text-3);
 }
 
 /* ---------- 4. Top emotes as the emote map (R5-13; r4 A2, emotemap-moments-r4; tiles as r5 C1 and r6 D2, emotemap-r5/r6) ---------- */
@@ -1233,6 +1218,8 @@
 .hv5-em-rh,
 .hv5-gm-rh { flex-wrap: wrap; row-gap: 0; }
 .hv5-em-rh .hv5-end { overflow: visible; }
+/* a narrow card puts the window chips under the zoom (W1, 10-30: "1 year" is the widest chip) */
+.hv5-em-rh .hv5-end { flex-wrap: wrap; justify-content: flex-end; row-gap: 6px; }
 .hv5-gm-rh > h2 { display: flex; align-items: center; min-height: 33px; } /* as tall as the switch beside Top emotes */
 .hv5-em-meta,
 .hv5-gm-meta { order: 5; flex-basis: 100%; margin: -4px 0 6px; }
@@ -1494,6 +1481,36 @@
 .hv5-el-x { font-weight: 600; color: var(--hv5-accent); }
 .hv5-el-foot { display: flex; justify-content: flex-end; margin-top: 8px; font: 500 12px/16px var(--sp-font); }
 @keyframes hv5-el-rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+/* C1 (10-30 board): a selected emote's uses per interval with the busiest marked, then who drove it */
+.hv5-es { margin: 2px 0 10px; }
+.hv5-es-bars { display: block; width: 100%; height: 40px; }
+/* plain bars 3:1 against the panel; the busiest bar is the full accent */
+.hv5-es-bars rect { fill: color-mix(in oklab, var(--hv5-accent) 46%, var(--sp-raised)); }
+.hv5-es-bars rect.hv5-es-hi { fill: var(--hv5-accent); }
+.hv5-es-bars rect.hv5-es-gap { fill: var(--sp-line-strong); }
+.hv5-es-ax {
+  display: flex;
+  justify-content: space-between;
+  gap: 2px 10px;
+  margin-top: 4px;
+  font: 500 12px/16px var(--sp-font);
+  color: var(--sp-text-3);
+  font-variant-numeric: tabular-nums;
+}
+.hv5-es-ax span { white-space: nowrap; }
+.hv5-es-pk { color: var(--hv5-accent); }
+.hv5-el-sub b { font-weight: 600; color: var(--sp-text-1); }
+.hub-v5 .hv5-emotes .hv5-es-live { margin-top: 12px; }
+.hub-v5 .hv5-emotes .hv5-es-rows { grid-template-rows: repeat(3, auto); }
+.hv5-es-at { color: var(--hv5-accent); }
+.hv5-es-ph { display: flex; align-items: center; height: 36px; border-bottom: 1px solid var(--sp-line); }
+.hv5-es-ph::before { content: ""; width: 60%; height: 10px; border-radius: 4px; background: var(--sp-line-strong); animation: hv5-es-wait 1.2s ease-in-out infinite alternate; }
+@keyframes hv5-es-wait { from { opacity: 0.5; } to { opacity: 1; } }
+/* a narrow card puts the busiest interval on its own line under the ends */
+@container (max-width: 419px) {
+  .hv5-es-ax { flex-wrap: wrap; }
+  .hv5-es-pk { order: 3; flex-basis: 100%; }
+}
 /* two columns only where a name still fits beside its numbers */
 @container (max-width: 559px) {
   .hub-v5 .hv5-emotes .hv5-el-cols { grid-template-columns: minmax(0, 1fr); grid-auto-flow: row; grid-template-rows: none; }
@@ -1504,7 +1521,8 @@
   .hv5-em-ff,
   .hub-v5 .hv5-emotes .hv5-em-fl,
   .hv5-em-mini,
-  .hv5-el-cols > li { transition: none; animation: none; }
+  .hv5-el-cols > li,
+  .hv5-es-ph::before { transition: none; animation: none; }
 }
 
 /* the hover cards (emote map, rack): never take the pointer */
@@ -1773,49 +1791,24 @@
   margin-top: 12px;
 }
 
-/* ---------- 3b. Top moments (F1, 10-25; board artifacts/feed-top20-board-20261025): the feed where the Moments list is on ---------- */
-.hv5-tm-ctl { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 2px 0 8px; }
-/* a radio group whose pill slides to the pick (placed before it may glide, so it does not sweep in on first paint) */
-.hv5-tm-seg { position: relative; isolation: isolate; display: inline-flex; flex: none; padding: 2px; border: 1px solid var(--sp-line); border-radius: 9px; background: rgb(255 255 255 / 0.045); }
-.hub-v5 .hv5-top .hv5-tm-seg button {
-  position: relative;
-  z-index: 1;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 28px;
-  padding: 0 10px;
-  border-radius: 7px;
-  font: 550 12.5px/1 var(--sp-font);
-  color: var(--sp-text-2);
-  white-space: nowrap;
-  transition: color 0.2s;
-}
-.hub-v5 .hv5-top .hv5-tm-sm button { padding: 0 9px; }
-.hv5-tm-seg small { font: 500 10.5px/1 var(--sp-font-mono, ui-monospace, monospace); color: var(--sp-text-3); transition: color 0.2s; }
-.hub-v5 .hv5-top .hv5-tm-seg button[aria-checked="true"] { color: var(--sp-text-1); }
-.hv5-tm-seg button[aria-checked="true"] small { color: var(--hv5-accent); }
-.hub-v5 .hv5-top .hv5-tm-seg button:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: -2px; }
-.hv5-tm-pill {
-  position: absolute;
-  z-index: 0;
-  top: 2px;
-  bottom: 2px;
-  left: 0;
-  width: 0;
-  border-radius: 7px;
-  background: rgb(255 255 255 / 0.09);
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.06), 0 1px 2px rgb(0 0 0 / 0.4);
-}
-.hv5-tm-pill[data-on] { transition: transform 0.32s cubic-bezier(0.2, 0.8, 0.2, 1), width 0.32s cubic-bezier(0.2, 0.8, 0.2, 1); }
-/* a game chip's count: the feed's moments in that game, every verdict */
+/* ---------- 3b. Top moments today (D1 C1 F1 O1, 10-30; board artifacts/moments-top-today-20261030): the rail, and the phone peek's rows ---------- */
+/* a game chip's count: the day's moments in that game that hold up */
 .hv5-tm-games small { flex: none; font: 500 10.5px/1 var(--sp-font-mono, ui-monospace, monospace); color: var(--sp-text-3); }
-.hv5-tm-games { mask-image: linear-gradient(90deg, #000 88%, transparent); }
+/* a scroll box, so in the sticky column (>= 1536 px) it would shrink with the head when the rows overflow: it doesn't */
+.hv5-tm-games { flex: none; mask-image: linear-gradient(90deg, #000 88%, transparent); }
+/* "Top moments today" leaves no room beside it for the age line (59 px at 1536 px and up, 14 px at 1100), so the line sits
+   under the heading, lined up with its words, and keeps its height before the first answer. The head is a whole 43 px
+   (1 + 4 + 22 + 16; the phone peek's wait counts on it) and never shrinks in the sticky column when the rows overflow */
+.hv5-top .hv5-rh { flex: none; flex-wrap: wrap; row-gap: 0; }
+.hv5-top .hv5-rh h2 { line-height: 22px; }
+.hv5-top .hv5-rh .hv5-f2-fresh { order: 1; flex-basis: 100%; min-height: 16px; margin-left: 0; padding-left: 16px; }
 
 .hub-v5 .hv5-top .hv5-tm-body > .hv5-fd-list:first-child { margin-top: 4px; }
 .hub-v5 .hv5-top .hv5-tm-list { list-style: none; margin: 0; padding: 0; transition: opacity 0.2s; }
 .hub-v5 .hv5-top .hv5-tm-busy { opacity: 0.5; }
 .hv5-tm-it { border-bottom: 1px solid var(--sp-line); }
+/* the Moments list's last answer, kept after a read failed: greyed until a read answers (15 minutes at most) */
+.hub-v5 .hv5-top .hv5-tm-old > .hv5-tm-row { opacity: 0.6; }
 .hub-v5 .hv5-top .hv5-tm-row {
   display: flex;
   align-items: center;
@@ -1917,14 +1910,13 @@
 .hub-v5 .hv5-top .hv5-tm-pri:hover { background: var(--hv5-accent); filter: brightness(1.08); }
 .hub-v5 .hv5-top .hv5-tm-ghost { border-color: transparent; color: var(--sp-text-2); }
 
-/* a quiet window: the next one up, with its count */
+/* the list's last line: nothing to show, that's all (the hub's rows), or unavailable with Try again */
 .hub-v5 .hv5-top .hv5-tm-q { margin: 12px 0 4px; padding: 10px 12px; border: 1px dashed var(--sp-line-strong); border-radius: 9px; background: rgb(255 255 255 / 0.03); font: 500 12.5px/1.4 var(--sp-font); color: var(--sp-text-2); }
-.hub-v5 .hv5-top .hv5-tm-lnk { font-weight: 600; color: var(--hv5-accent); }
+.hub-v5 .hv5-top .hv5-tm-lnk { font-weight: 600; color: var(--hv5-accent); white-space: nowrap; }
 .hub-v5 .hv5-top .hv5-tm-lnk:hover { text-decoration: underline; text-underline-offset: 3px; }
 .hv5-tm-ft { display: flex; justify-content: flex-end; align-items: center; padding: 10px 0 0; font: 500 11.5px/1.3 var(--sp-font); color: var(--sp-text-3); }
 .hv5-tm-ft .hv5-fd-sep { margin: 0 6px; }
-.hv5-fd-new > .hv5-tm-row { animation: hv5-fd-flash 1.4s ease-out; }
-/* >= 1536 the rail is sticky: the list scrolls inside the window (scrollbar hidden), its last rows fading under the footer */
+/* >= 1536 the rail is sticky: the list scrolls inside the window (scrollbar hidden), its last rows fading under the footer while more is below (data-more) */
 @media (min-width: 1536px) {
   .hv5-feed.hv5-top { display: flex; flex-direction: column; max-height: calc(100vh - 88px); }
   .hv5-top .hv5-tm-wrap { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
@@ -1934,19 +1926,17 @@
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-width: none;
-    mask-image: linear-gradient(180deg, #000 calc(100% - 28px), transparent);
   }
+  .hv5-top .hv5-tm-body[data-more] { mask-image: linear-gradient(180deg, #000 calc(100% - 28px), transparent); }
   .hv5-top .hv5-tm-body::-webkit-scrollbar { display: none; }
 }
 @media (max-width: 719px) {
-  .hv5-tm-ctl { flex-wrap: wrap; }
   .hub-v5 .hv5-top .hv5-tm-row { min-height: 52px; }
   .hv5-tm-det { margin-left: 0; }
+  /* a peek row or "Top moments ↓" brings the rail up: it lands under the sticky nav (about 101 px), not behind it */
+  .hub-v5 :is(#latest, .hv5-tm-it) { scroll-margin-top: 112px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .hv5-tm-pill[data-on],
-  .hub-v5 .hv5-top .hv5-tm-seg button,
   .hub-v5 .hv5-top .hv5-tm-list { transition: none; }
-  .hv5-tm-det,
-  .hv5-fd-new > .hv5-tm-row { animation: none !important; }
+  .hv5-tm-det { animation: none !important; }
 }

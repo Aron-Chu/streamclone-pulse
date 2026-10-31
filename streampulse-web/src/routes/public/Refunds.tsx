@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { STRIPE_CUSTOMER_PORTAL_LOGIN_URL, SUPPORTER_PATH, TERMS_PATH } from '../../lib/externalLinks'
+import { SUPPORTER_WITHDRAWAL_PATH, supporterWithdrawalEnabled } from '../../lib/supporterWithdrawal'
 
 /**
  * Cancellation and refund policy for Pulse Supporter.
@@ -31,10 +32,9 @@ export default function Refunds() {
           </div>
           <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Cancellation &amp; Refunds</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            Last updated: October 28, 2026 · Applies to the Pulse Supporter subscription.
+            Last updated: October 31, 2026 · Applies to the Pulse Supporter subscription.
           </p>
         </header>
-
 
         <section className="mt-8 rounded-xl border border-white/[0.08] bg-black/20 p-6">
           <h2 className="!mt-0">Summary</h2>
@@ -54,8 +54,9 @@ export default function Refunds() {
           subscription in the connected extension or through{' '}
           <a href={STRIPE_CUSTOMER_PORTAL_LOGIN_URL} target="_blank" rel="noopener noreferrer">Stripe's billing-email portal</a>.
           You can also ask to cancel by emailing{' '}
-          <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a>. If possible,
-          use your current Stripe billing email so we can find your subscription.
+          <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a>. If possible, use
+          your current Stripe billing email. If you cannot access it, contact us anyway as described
+          under How to ask.
         </p>
         <ul>
           <li>Cancelling takes effect at the end of the period you have already paid for.</li>
@@ -136,10 +137,12 @@ export default function Refunds() {
         </p>
 
         <h2>Consumer cancellation rights</h2>
+        {supporterWithdrawalEnabled() ? <p><Link to={SUPPORTER_WITHDRAWAL_PATH}>Withdraw from contract here</Link>.</p> : null}
         <p>
           If you live in the EU, the wider European Economic Area or the UK, you can withdraw from a
           new Supporter subscription within 14 days after you subscribe, without giving a reason,
-          and get a full refund. To withdraw, email within that period as described under How to ask.
+          and get a full refund. To withdraw, email within that period as described under How to ask
+          {supporterWithdrawalEnabled() ? <>{' '}or use the <Link to={SUPPORTER_WITHDRAWAL_PATH}>withdrawal form</Link></> : null}.
           This is on top of the refunds above. Other places may give you a statutory right to cancel
           too, and nothing here removes a right you have under consumer law that cannot be waived.
           Who sells Supporter, and which law applies, is in the <Link to={TERMS_PATH}>terms of use</Link>.
@@ -150,8 +153,8 @@ export default function Refunds() {
           Email <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a> and include
           the date and amount of the charge or the invoice number from your Stripe receipt. If possible,
           use your current Stripe billing email. If you cannot access it, contact us anyway; we may
-          ask for other information to verify your request. Please do not include your full card number —
-          it is not needed and StreamPulse cannot use it.
+          ask for other information to verify your request. Please do not include your full card number
+          or security code — they are not needed and StreamPulse cannot use them.
         </p>
         <p>
           Aron answers billing, cancellation and refund requests within 7 days. There is no

@@ -8,6 +8,9 @@
   align-content: center;
   cursor: pointer;
   font-weight: 600;
+  /* Keeps the 44px tap box but takes one text line of layout, so a footer row is as
+     tall as its links and the label sits on their line instead of 12px below it. */
+  margin-block: calc((1lh - 44px) / 2);
   min-height: 44px;
   width: fit-content;
 }

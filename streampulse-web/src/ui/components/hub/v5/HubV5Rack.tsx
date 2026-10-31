@@ -13,7 +13,11 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FocusEv
 import { createPortal } from 'react-dom'
 import { HubToggletip } from '../d3/HubToggletip'
 import { HubV5Avatar } from './HubV5Avatar'
+// the leaf module, not the console entry, so the hub chunk stays without the console (fix, 10-30)
+import { isTwitchPlaceholderBoxArt, twitchBoxArtByName } from '../../../../../../packages/analytics-console/src/utils/twitchBoxArt.ts'
 import {
+  HUB_CHAT_COUNTS_DOWN,
+  HUB_NO_CATEGORY,
   HUB_RACK_NARROW_ROWS,
   HUB_RACK_ROWS,
   boxArtAt,
@@ -23,6 +27,7 @@ import {
   gameInitials,
   rackFoot,
   whereChatIsTip,
+  type HubChatBasis,
   type HubGameShare,
   type HubWhereChatIs,
 } from './hubV5Model'
@@ -31,13 +36,39 @@ import { isFocusVisible, placeHubV5Card } from './hubV5HoverCard'
 const H_ID = 'hv5-gm-h'
 
 export function GameArt({ url, name, w, h }: { url: string | undefined; name: string; w: number; h: number }) {
-  const [failed, setFailed] = useState(false)
-  if (!url || failed) return <span>{gameInitials(name)}</span>
+  // no vetted art: Twitch box art by name, at twice the box (fix, 10-30, LW-5/GP-5)
+  const byName = !url && name !== HUB_NO_CATEGORY ? twitchBoxArtByName(name, w * 2, h * 2) : null
   // three times the box, so the cover stays sharp
-  return <img src={boxArtAt(url, w * 3, h * 3)} alt="" width={w} height={h} decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} />
+  const src = url ? boxArtAt(url, w * 3, h * 3) : byName
+  const [failed, setFailed] = useState<string | null>(null)
+  const [checked, setChecked] = useState<string | null>(null)
+  if (!src || failed === src) return <span>{gameInitials(name)}</span>
+  if (!byName) return <img src={src} alt="" width={w} height={h} decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(src)} />
+  // an unknown name gets Twitch's grey "?" cover with HTTP 200 (no onError): it
+  // loads with CORS and stays hidden until checked; a proven placeholder or a
+  // failed load shows the initials, a check that cannot tell keeps the cover
+  return (
+    <img
+      key={src}
+      src={src}
+      alt=""
+      width={w}
+      height={h}
+      decoding="async"
+      crossOrigin="anonymous"
+      referrerPolicy="no-referrer"
+      style={checked === src ? undefined : { opacity: 0 }}
+      onLoad={(event) => {
+        void isTwitchPlaceholderBoxArt(event.currentTarget)
+          .then((placeholder) => (placeholder ? setFailed(src) : setChecked(src)))
+          .catch(() => setChecked(src))
+      }}
+      onError={() => setFailed(src)}
+    />
+  )
 }
 
-function GameCard({ g, rank, of, pressed, art, avatars }: { g: HubGameShare; rank: number; of: number; pressed: boolean; art: string | undefined; avatars: ReadonlyMap<string, string> }) {
+function GameCard({ g, rank, of, pressed, art, avatars, basis }: { g: HubGameShare; rank: number; of: number; pressed: boolean; art: string | undefined; avatars: ReadonlyMap<string, string>; basis?: HubChatBasis }) {
   const n = g.rows.length
   return (
     <>
@@ -58,7 +89,7 @@ function GameCard({ g, rank, of, pressed, art, avatars }: { g: HubGameShare; ran
             <span key={c.login} className="hv5-gc-ch">
               <HubV5Avatar login={c.login} name={c.displayName} src={avatars.get(c.login) ?? c.profileImageUrl} size={20} />
               <span>{c.displayName || c.login}</span>
-              <span>{formatHubInt(channelChat(c))}/min</span>
+              <span>{formatHubInt(channelChat(c, basis))}/min</span>
             </span>
           ))}
         </dd>
@@ -145,7 +176,8 @@ export function HubV5Rack({ games, game, onGame, art, avatars, loading, unavaila
       <div className="hv5-rh hv5-gm-rh">
         <h2 id={H_ID}>Where chat is</h2>
         <HubToggletip tip={whereChatIsTip(games)} label="About Where chat is" />
-        <span className="hv5-meta hv5-gm-meta">share of chat in the top 500 live channels · last 5 min</span>
+        {/* the recent average says so (candidate, 10-30) */}
+        <span className="hv5-meta hv5-gm-meta">{games.basis === 'avg_35' ? 'share of chat in the top 500 live channels · recent average' : 'share of chat in the top 500 live channels · last 5 min'}</span>
       </div>
       {list.length ? (
         <>
@@ -155,7 +187,7 @@ export function HubV5Rack({ games, game, onGame, art, avatars, loading, unavaila
               const n = g.rows.length
               return (
                 <li key={g.name}>
-                  <button type="button" className="hv5-gr" data-game={g.name} aria-pressed={pressed} aria-label={gameAria(g, pressed)} onClick={onRow(g)}>
+                  <button type="button" className="hv5-gr" data-game={g.name} aria-pressed={pressed} aria-label={gameAria(g, pressed, games.basis)} onClick={onRow(g)}>
                     <span className="hv5-gr-art"><GameArt url={art.get(g.name)} name={g.name} w={30} h={40} /></span>
                     <span className="hv5-gr-nm">{g.name}</span>
                     <span className="hv5-gr-v">{g.chatShare.toFixed(1)}%</span>
@@ -172,7 +204,8 @@ export function HubV5Rack({ games, game, onGame, art, avatars, loading, unavaila
       ) : loading ? (
         <div className="hv5-gr-skel" aria-hidden="true" />
       ) : (
-        <p className="hv5-none">{unavailable ? 'Unavailable right now.' : 'No channel has a full 5-minute window right now.'}</p>
+        // our 5-minute read failed, not the channels (fix, 10-30)
+        <p className="hv5-none">{unavailable ? 'Unavailable right now.' : games.down ? HUB_CHAT_COUNTS_DOWN : 'No channel has a full 5-minute window right now.'}</p>
       )}
       {current && on && typeof document !== 'undefined'
         ? createPortal(
@@ -184,6 +217,7 @@ export function HubV5Rack({ games, game, onGame, art, avatars, loading, unavaila
               pressed={game === current.name}
               art={art.get(current.name)}
               avatars={avatars}
+              basis={games.basis}
             />
           </div>,
           document.body,

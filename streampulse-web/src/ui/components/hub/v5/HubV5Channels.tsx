@@ -13,6 +13,7 @@ import { HubV5Icon } from './HubV5Icon'
 import {
   HUB_CHANNEL_SORTS,
   channelChat,
+  channelChatWhy,
   channelHref,
   channelRows,
   channelVs,
@@ -20,16 +21,18 @@ import {
   formatHubInt,
   formatHubMultiplier,
   formatHubRate,
-  hasFullChatWindow,
+  hubChatBasis,
+  hubSavedAt,
   isLowMultiplier,
   multiplierWords,
   type HubChannelSort,
+  type HubChatBasis,
 } from './hubV5Model'
 
 const PER = 10
 
-function VsCell({ channel }: { channel: HubLiveChannel }) {
-  const vs = channelVs(channel)
+function VsCell({ channel, basis }: { channel: HubLiveChannel; basis: HubChatBasis }) {
+  const vs = channelVs(channel, basis)
   if (!('x' in vs)) return <HubV5Dash why={vs.why} />
   return (
     <span className={`hv5-ch5-x${isLowMultiplier(vs.x) ? ' lo' : ''}`} aria-label={`chat ${multiplierWords(vs.x)} times own average`}>
@@ -45,14 +48,20 @@ export interface HubV5ChannelsProps {
   unavailable?: boolean
   /** The first hub reply has not landed: no count and no empty line yet. */
   loading?: boolean
+  /** When the saved copy on screen was saved (S1, 10-28): the live count gives its time, "212 of 500 live at 10:50 AM". */
+  savedAt?: number | null
+  /** The page's clock, for the saved time's day. */
+  nowMs?: number
   /** The game picked in Where chat is, or null. */
   game: string | null
   onClearGame: () => void
-  /** A sort asked for from elsewhere (the Live feed's "+N more in Channels"); a new `id` applies it. */
+  /** A sort asked for from elsewhere (Picking up's "+N more in Channels"); a new `id` applies it. */
   sortRequest?: { id: number; sort: HubChannelSort; dir: 1 | -1 } | null
+  /** The window of the hub answer on screen (the old one while a new range loads); on 30m and 24h a screener outage fills Chat/min with the recent average (up to 35 min) (candidate, 10-30). */
+  windowKey?: string
 }
 
-export const HubV5Channels = forwardRef<HTMLElement, HubV5ChannelsProps>(function HubV5Channels({ live, poolSize, unavailable = false, loading = false, game, onClearGame, sortRequest }, ref) {
+export const HubV5Channels = forwardRef<HTMLElement, HubV5ChannelsProps>(function HubV5Channels({ live, poolSize, unavailable = false, loading = false, savedAt = null, nowMs, game, onClearGame, sortRequest, windowKey }, ref) {
   const [q, setQ] = useState('')
   const [sort, setSort] = useState<HubChannelSort>('viewers')
   const [dir, setDir] = useState<1 | -1>(-1)
@@ -73,7 +82,8 @@ export const HubV5Channels = forwardRef<HTMLElement, HubV5ChannelsProps>(functio
     setN(PER)
   }, [sortRequest])
 
-  const rows = useMemo(() => channelRows(live, { q, game, sort, dir }), [live, q, game, sort, dir])
+  const basis = useMemo(() => hubChatBasis(live, windowKey), [live, windowKey])
+  const rows = useMemo(() => channelRows(live, { q, game, sort, dir, basis }), [live, q, game, sort, dir, basis])
   const visible = rows.slice(0, n)
   const left = rows.length - visible.length
 
@@ -112,7 +122,7 @@ export const HubV5Channels = forwardRef<HTMLElement, HubV5ChannelsProps>(functio
   const countLabel = (unavailable || loading) && !live.length ? ''
     : game || q
     ? `${formatHubInt(rows.length)} ${rows.length === 1 ? 'channel' : 'channels'}`
-    : `${formatHubInt(live.length)} of ${formatHubInt(poolSize)} live`
+    : `${formatHubInt(live.length)} of ${formatHubInt(poolSize)} live${savedAt != null ? ` ${hubSavedAt(savedAt, nowMs ?? Date.now())}` : ''}`
 
   return (
     <section
@@ -129,7 +139,9 @@ export const HubV5Channels = forwardRef<HTMLElement, HubV5ChannelsProps>(functio
       <div className="hv5-rh">
         <h2 id="hv5-cn-h">Channels</h2>
         <span className="hv5-meta" data-hv5-channel-count="">{countLabel}</span>
-        <HubToggletip tip={channelsTip(live.length, poolSize)} label="About Channels" />
+        {/* the recent average says so (candidate, 10-30) */}
+        {basis === 'avg_35' ? <span className="hv5-meta" data-hv5-chat-basis="">Chat/min = recent average</span> : null}
+        <HubToggletip tip={channelsTip(live.length, poolSize, basis)} label="About Channels" />
         <span className="hv5-end hv5-ch5-tools">
           {game ? (
             <span className="hv5-chip" data-chip="game">
@@ -189,7 +201,7 @@ export const HubV5Channels = forwardRef<HTMLElement, HubV5ChannelsProps>(functio
         <tbody>
           {visible.length ? visible.map((c) => {
             const gm = c.category || '—'
-            const chat = channelChat(c)
+            const chat = channelChat(c, basis)
             return (
               <tr key={c.login} data-login={c.login}>
                 <td className="c-ch">
@@ -204,11 +216,12 @@ export const HubV5Channels = forwardRef<HTMLElement, HubV5ChannelsProps>(functio
                 <td className="c-gm">{gm}</td>
                 <td className="r">{formatHubInt(c.viewers)}</td>
                 <td className="r">
-                  {hasFullChatWindow(c) && chat != null
+                  {chat != null
                     ? formatHubRate(chat)
-                    : <HubV5Dash why={c.coverageState === 'synced' ? 'no full 5 minutes yet' : 'viewers only'} />}
+                    // the row's own screener reason, so a failed read never reads as a short window (fix, 10-30)
+                    : <HubV5Dash why={channelChatWhy(c)} />}
                 </td>
-                <td className="r"><VsCell channel={c} /></td>
+                <td className="r"><VsCell channel={c} basis={basis} /></td>
               </tr>
             )
           }) : loading ? null : (

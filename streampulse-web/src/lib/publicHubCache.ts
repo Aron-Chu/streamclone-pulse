@@ -1,16 +1,22 @@
 import { getBackendUrl } from './apiClient'
+import { hubDataAsOf } from './hubDataAge'
 import { hasPublicHubResponseShape, normalizePublicHub, type HubActivityPoint, type HubLiveChannel, type PublicHub, type PublicHubActivityWindow, type PublicHubProjection } from './publicHub'
 import type { HubChannelScreenerV1 } from './channelScreenerContract'
-import { hubActivityContractIssues } from './hubActivityHonesty'
+import { hubActivityContractIssues, isHubActivityLivePoolFallback } from './hubActivityHonesty'
 import { isHubGestureActive } from './hubBucketSelection'
 import { allowPublicHubCacheWritesForTests, clearPublicHubCache, PROJECTION_STORAGE_PREFIX, publicHubCacheWritesStopped, STORAGE_PREFIX } from './publicHubCacheReset'
 
-/** The oldest saved projection (Moments, home tickers) a page may show while it refreshes. */
+/**
+ * The oldest saved projection (Moments, home tickers) a page may show while it
+ * refreshes. A saved hub copy whose chart covers only 30 minutes gets the same
+ * short life.
+ */
 export const PUBLIC_HUB_CACHE_STALE_MS = 10 * 60 * 1000
 /**
  * The oldest saved hub copy the hub may show, under its "Cached snapshot from
  * <time>" note: a slow API then leaves a returning visitor the last hub it
  * saw, not an empty page. The fresh read replaces it as soon as it lands.
+ * Only a chart longer than 30 minutes keeps this life; see readPublicHubCache.
  */
 export const PUBLIC_HUB_CACHE_HUB_STALE_MS = 6 * 60 * 60 * 1000
 
@@ -30,8 +36,9 @@ const COMPACT_AVATAR_ROWS = 24
  * version 1: `data` is the hub as normalized.
  * version 2: the compact projection. `data` holds the hub without activity
  * points and live channels; those two arrays are stored column by column in
- * `columns` and rebuilt on read. Per-point top emotes and most avatar URLs are
- * not kept; the next network read restores them.
+ * `columns` and rebuilt on read. Per-point top emotes, most avatar URLs and
+ * the screener detail no saved-copy gate reads are not kept; the next network
+ * read restores them.
  */
 export interface PublicHubCacheEntry {
   version: 1 | 2
@@ -40,6 +47,7 @@ export interface PublicHubCacheEntry {
   activityWindow: PublicHubActivityWindow
   projection?: PublicHubProjection
   generatedAt?: string
+  dataAsOf?: number | null
   data: PublicHub
   columns?: PublicHubCacheColumns
 }
@@ -160,15 +168,22 @@ function decodeColumns(raw: unknown): Record<string, unknown>[] | null {
  * ------------------------------------------------------------------------- */
 
 // Screener v1 keeps only what "× usual" reads (state, N, now and the backend
-// multiplier per metric). Flattened under keys the API never uses. A screener
+// multiplier per metric) and the current 5-minute window that Busiest now and
+// Where chat is gate on. Flattened under keys the API never uses. A screener
 // stream id equal to the row's own is stored as 0 and restored from the row.
-const SV = { state: '~sv', reason: '~svr', minutes: '~svn', streamId: '~svs' } as const
+// The window is a [start, end, expected, measured, coverage] tuple: rows share
+// a handful of windows, so the column dictionary stores each one once.
+const SV = { state: '~sv', reason: '~svr', minutes: '~svn', streamId: '~svs', window: '~svw' } as const
 const SM = {
   chat: { state: '~cs', reason: '~cr', now: '~cn', x: '~cx' },
   emotes: { state: '~es', reason: '~er', now: '~en', x: '~ex' },
 } as const
 
-function flattenScreenerV1(screener: HubChannelScreenerV1 | undefined, rowStreamId: string | undefined): Record<string, unknown> {
+function flattenScreenerV1(
+  screener: HubChannelScreenerV1 | undefined,
+  rowStreamId: string | undefined,
+  keepWindow: boolean,
+): Record<string, unknown> {
   if (!screener) return {}
   const flat: Record<string, unknown> = {
     [SV.state]: screener.state,
@@ -176,6 +191,8 @@ function flattenScreenerV1(screener: HubChannelScreenerV1 | undefined, rowStream
     [SV.minutes]: screener.baselineMeasuredMinutes,
     [SV.streamId]: screener.streamId !== undefined && screener.streamId === rowStreamId ? 0 : screener.streamId,
   }
+  const w = screener.currentWindow
+  if (w && keepWindow) flat[SV.window] = [w.start, w.end, w.expectedMinutes, w.measuredMinutes, w.coveragePct]
   for (const metric of ['chat', 'emotes'] as const) {
     const m = screener[metric]
     if (!m) continue
@@ -202,6 +219,7 @@ function unflattenScreenerV1(row: Record<string, unknown>): void {
   }
   const chat = metric('chat')
   const emotes = metric('emotes')
+  const w = row[SV.window]
   if (state !== undefined) {
     // Validated again by normalizeHubChannelScreenerV1 inside normalizePublicHub.
     row.screenerV1 = {
@@ -211,7 +229,10 @@ function unflattenScreenerV1(row: Record<string, unknown>): void {
       reason: row[SV.reason],
       streamId: row[SV.streamId] === 0 ? row.streamId : row[SV.streamId],
       baselineMeasuredMinutes: row[SV.minutes] ?? null,
-      currentWindow: null,
+      // Anything but five finite numbers restores no window; the normalizer checks the rest.
+      currentWindow: Array.isArray(w) && w.length === 5 && w.every((n) => typeof n === 'number' && Number.isFinite(n))
+        ? { start: w[0], end: w[1], expectedMinutes: w[2], measuredMinutes: w[3], coveragePct: w[4] }
+        : null,
       baselineWindow: null,
       chat,
       emotes,
@@ -225,7 +246,7 @@ function busiestOrder(a: HubLiveChannel, b: HubLiveChannel): number {
   return rate(b) - rate(a) || (b.viewers || 0) - (a.viewers || 0)
 }
 
-function compactLiveChannelRows(channels: readonly HubLiveChannel[], avatarRows: number): Record<string, unknown>[] {
+function compactLiveChannelRows(channels: readonly HubLiveChannel[], avatarRows: number, keepWindows: boolean): Record<string, unknown>[] {
   const keepAvatar = new Set<HubLiveChannel>([
     ...[...channels].sort(busiestOrder).slice(0, avatarRows),
     ...[...channels].sort((a, b) => (b.viewers || 0) - (a.viewers || 0)).slice(0, avatarRows),
@@ -235,7 +256,7 @@ function compactLiveChannelRows(channels: readonly HubLiveChannel[], avatarRows:
     return {
       ...rest,
       profileImageUrl: keepAvatar.has(channel) ? profileImageUrl : undefined,
-      ...flattenScreenerV1(screenerV1, channel.streamId),
+      ...flattenScreenerV1(screenerV1, channel.streamId, keepWindows),
     }
   })
 }
@@ -292,9 +313,11 @@ function prepareCompactFullWrite(data: PublicHub): PreparedCacheWrite | null {
     featuredSession: data.livePulseMoments.length > 0 ? empty.featuredSession : data.featuredSession,
   } satisfies PublicHub)
   const points = JSON.stringify(encodeColumns(compactPointRows(data.activity.points)))
-  // A busier day may not fit with avatars; the second try keeps none.
-  for (const avatarRows of [COMPACT_AVATAR_ROWS, 0]) {
-    const channels = JSON.stringify(encodeColumns(compactLiveChannelRows(data.liveChannels, avatarRows)))
+  // A busier day may not fit with avatars; the second try keeps none. The
+  // last drops the 5-minute windows too (rows that each carry their own): the
+  // saved copy then shows no full window until the next network read.
+  for (const [avatarRows, keepWindows] of [[COMPACT_AVATAR_ROWS, true], [0, true], [0, false]] as const) {
+    const channels = JSON.stringify(encodeColumns(compactLiveChannelRows(data.liveChannels, avatarRows, keepWindows)))
     const tail = `"data":${shell},"columns":{"points":${points},"liveChannels":${channels}}}`
     if (tail.length <= PUBLIC_HUB_CACHE_MAX_CHARS - 512) {
       return { version: 2, tail, generatedAt: data.generatedAt }
@@ -329,12 +352,14 @@ function entryHead(
   activityWindow: PublicHubActivityWindow,
   projection: PublicHubProjection | undefined,
   generatedAt: string | undefined,
+  dataAsOf?: number | null,
 ): string {
   // Built by hand so `cachedAt` is always the second field: eviction reads it
   // from the prefix instead of parsing other entries.
   let head = `{"version":${version},"cachedAt":${cachedAt},"backendUrl":${JSON.stringify(backendUrl)},"activityWindow":${JSON.stringify(activityWindow)}`
   if (projection !== undefined) head += `,"projection":${JSON.stringify(projection)}`
   if (generatedAt !== undefined) head += `,"generatedAt":${JSON.stringify(generatedAt)}`
+  if (dataAsOf !== undefined) head += `,"dataAsOf":${JSON.stringify(dataAsOf)}`
   return head + ','
 }
 
@@ -350,7 +375,7 @@ export function readPublicHubCache(
   backendUrl: string,
   activityWindow: PublicHubActivityWindow,
   projection?: PublicHubProjection,
-): { data: PublicHub; cachedAt: number; generatedAt?: string; stale: boolean } | null {
+): { data: PublicHub; cachedAt: number; generatedAt?: string; dataAsOf: number | null; stale: boolean } | null {
   if (typeof window === 'undefined') return null
   try {
     const raw = window.localStorage.getItem(publicHubCacheKey(backendUrl, activityWindow, projection))
@@ -388,9 +413,21 @@ export function readPublicHubCache(
     if (hubActivityContractIssues(data.activity).length > 0) return null
     const cachedAt = parsed.cachedAt
     const generatedAt = typeof parsed.generatedAt === 'string' ? parsed.generatedAt : data.generatedAt
-    const stale = Date.now() - cachedAt > (projection ? PUBLIC_HUB_CACHE_STALE_MS : PUBLIC_HUB_CACHE_HUB_STALE_MS)
+    // A chart that covers only 30 minutes (the 30m tab, or a live-pool
+    // fallback standing in for a longer window) overlaps nothing current
+    // after half an hour, so it gets the short projection life, not 6 h.
+    const shortLived =
+      projection != null ||
+      activityWindow === '30m' ||
+      activityWindow === 'recent' ||
+      isHubActivityLivePoolFallback(data.activity)
+    const stale = Date.now() - cachedAt > (shortLived ? PUBLIC_HUB_CACHE_STALE_MS : PUBLIC_HUB_CACHE_HUB_STALE_MS)
     if (stale) return null
-    return { data, cachedAt, generatedAt, stale }
+    // Legacy entries lack server-age metadata; receipt alone is not freshness.
+    const dataAsOf = 'dataAsOf' in parsed
+      ? typeof parsed.dataAsOf === 'number' && Number.isFinite(parsed.dataAsOf) && parsed.dataAsOf > 0 && parsed.dataAsOf <= Date.now() ? Math.min(parsed.dataAsOf, cachedAt) : null
+      : hubDataAsOf({ generatedAt }, { receivedAt: cachedAt })
+    return { data, cachedAt, generatedAt, dataAsOf, stale }
   } catch {
     return null
   }
@@ -457,15 +494,32 @@ export function writePublicHubCache(
   activityWindow: PublicHubActivityWindow,
   fullData: PublicHub,
   projection?: PublicHubProjection,
+  dataAsOf?: number | null,
 ): void {
   if (typeof window === 'undefined' || publicHubCacheWritesStopped()) return
   try {
     const prepared = prepareWrite(fullData, projection)
     if (!prepared) return
     const key = publicHubCacheKey(backendUrl, activityWindow, projection)
-    // Avoid storage rewrites for an unchanged network snapshot. A stale
-    // timestamp stays stale; receipt time must not invent source freshness.
-    if (window.localStorage.getItem(key)?.endsWith(prepared.tail)) return
+    // An unchanged body does not extend its saved-copy lifetime. A later
+    // trusted measurement may fill a previously unknown data-age anchor.
+    const previous = window.localStorage.getItem(key)
+    if (previous?.endsWith(prepared.tail)) {
+      if (typeof dataAsOf === 'number' && Number.isFinite(dataAsOf) && dataAsOf > 0 && dataAsOf <= Date.now()) {
+        const prefix = previous.slice(0, -prepared.tail.length)
+        // A newer measurement of identical data cannot make the original
+        // saved copy look newer than the time at which it was saved.
+        const originalCachedAt = cachedAtFromPrefix(previous)
+        if (!Number.isFinite(originalCachedAt) || originalCachedAt <= 0 || originalCachedAt > Date.now() + 60_000) return
+        const boundedAsOf = Math.min(dataAsOf, originalCachedAt)
+        if (!/"dataAsOf":/.test(prefix)) {
+          window.localStorage.setItem(key, prefix + `"dataAsOf":${boundedAsOf},` + prepared.tail)
+        } else if (/"dataAsOf":null,/.test(prefix)) {
+          window.localStorage.setItem(key, prefix.replace('"dataAsOf":null,', `"dataAsOf":${boundedAsOf},`) + prepared.tail)
+        }
+      }
+      return
+    }
     const serialized = entryHead(
       prepared.version,
       Date.now(),
@@ -473,6 +527,7 @@ export function writePublicHubCache(
       activityWindow,
       projection,
       prepared.generatedAt,
+      dataAsOf,
     ) + prepared.tail
     if (serialized.length > (projection ? PUBLIC_HUB_PROJECTION_CACHE_MAX_CHARS : PUBLIC_HUB_CACHE_MAX_CHARS)) return
     const otherEntries: { key: string; cachedAt: number }[] = []
@@ -502,6 +557,7 @@ interface PendingCacheWrite {
   activityWindow: PublicHubActivityWindow
   data: PublicHub
   projection?: PublicHubProjection
+  dataAsOf?: number | null
 }
 
 type IdleHandle = { kind: 'idle'; id: number } | { kind: 'timeout'; id: number }
@@ -559,7 +615,7 @@ function runPendingWrites(): void {
   const writes = [...pendingWrites.values()]
   pendingWrites.clear()
   for (const write of writes) {
-    writePublicHubCache(write.backendUrl, write.activityWindow, write.data, write.projection)
+    writePublicHubCache(write.backendUrl, write.activityWindow, write.data, write.projection, write.dataAsOf)
   }
 }
 
@@ -571,10 +627,11 @@ export function schedulePublicHubCacheWrite(
   activityWindow: PublicHubActivityWindow,
   data: PublicHub,
   projection?: PublicHubProjection,
+  dataAsOf?: number | null,
 ): void {
   if (typeof window === 'undefined' || publicHubCacheWritesStopped()) return
   const backendUrl = getBackendUrl()
-  pendingWrites.set(publicHubCacheKey(backendUrl, activityWindow, projection), { backendUrl, activityWindow, data, projection })
+  pendingWrites.set(publicHubCacheKey(backendUrl, activityWindow, projection), { backendUrl, activityWindow, data, projection, dataAsOf })
   ensureWriteScheduled()
 }
 

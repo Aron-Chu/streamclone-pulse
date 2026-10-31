@@ -1,11 +1,16 @@
-/** As tall as the loaded chart block (720 px), so the page under it does not jump when the chart lands. */
+/**
+ * As tall as the loaded chart card (770 px below 610 px, where its toolbar wraps; 738 px at 610-639 px;
+ * 730 px at 640-719 px; 830 px from 720 px, where the plot grows from 340 to 440 px), so Stream Recap and the
+ * Moments tabs under it do not jump when the chart lands on one-column widths. From 1280 px the columns sit
+ * side by side and only the footer is below it. 610 and 720 px have no named breakpoint.
+ */
 export function AnalyticsConsoleDataSkeleton() {
   return (
     <div
       role="status"
       aria-label="Loading analytics chart"
       data-console-skeleton="chart"
-      className="flex min-h-[45rem] animate-pulse flex-col rounded border border-white/[0.07] bg-white/[0.025] p-4"
+      className="flex min-h-[48.125rem] min-[610px]:min-h-[46.125rem] sm:min-h-[45.625rem] min-[720px]:min-h-[51.875rem] animate-pulse flex-col rounded border border-white/[0.07] bg-white/[0.025] p-4"
     >
       <span className="sr-only">Loading analytics chart</span>
       <div className="flex min-h-80 flex-1 flex-col justify-between gap-6" aria-hidden="true">

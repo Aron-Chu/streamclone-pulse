@@ -11,6 +11,10 @@ export interface HubDataHealthBannerProps {
   hubEndpointOk: boolean
   activitySummary: ActivitySummary
   pipeline?: HubCorpusPipeline
+  /** Coverage from the displayed hub copy; omitted when no hub data is available. */
+  coverageState?: string
+  /** Database check from the same displayed copy, not a current health probe. */
+  coverageDatabaseOk?: boolean
   liveRosterCount: number
   error?: string | null
   backendUrl?: string
@@ -20,6 +24,10 @@ export interface HubDataHealthBannerProps {
   onRetry?: () => void
   /** A hub request is already in flight; Try again stays in place but cannot restart it. */
   retryDisabled?: boolean
+  /** The hub read still runs with no answer on screen. */
+  pending?: boolean
+  /** The read has missed its deadline. */
+  late?: boolean
 }
 
 type HealthMessage = { tone: 'warn' | 'info'; text: string; detail?: string }
@@ -37,30 +45,53 @@ export function HubDataHealthBanner({
   hubEndpointOk,
   activitySummary,
   pipeline,
+  coverageState,
+  coverageDatabaseOk,
   liveRosterCount: _liveRosterCount,
   error,
   backendUrl,
   loading = false,
   onRetry,
   retryDisabled = false,
+  pending = false,
+  late = false,
 }: HubDataHealthBannerProps) {
   const [expanded, setExpanded] = useState(false)
+  // Preserve the slow-read behavior when no snapshot is available. A known
+  // snapshot must still expose its coverage while its refresh is pending.
+  if (coverageState == null && pending && !error && loadSource !== 'stats-fallback') return null
+  if (coverageState == null && pending && late) {
+    return (
+      <div className="hx-health-banner" role="status" aria-live="polite">
+        <div className="hx-health-banner__row hx-health-banner__row--info">
+          <Info aria-hidden="true" size={16} />
+          <div className="hx-health-banner__body"><span>Live data is slow — still loading…</span></div>
+        </div>
+      </div>
+    )
+  }
   const messages: HealthMessage[] = []
+  const slowPending = pending && late
+  if (coverageState != null && slowPending) messages.push({ tone: 'info', text: 'Live data is slow — still loading…' })
 
-  if (error) {
+  // Batch 3 suppresses an earlier error while the current slow read is still
+  // in flight. Keep that read-status behavior alongside snapshot warnings.
+  if (error && !slowPending) {
     messages.push({
       tone: 'warn',
-      text: 'Could not refresh hub data. Showing the last loaded snapshot if available.',
+      text: loadSource == null
+        ? 'Live data is unavailable right now.'
+        : 'Could not refresh hub data. Showing the last loaded snapshot if available.',
       detail: error,
     })
   }
 
-  if (loadSource === 'stats-fallback') {
+  if (!slowPending && loadSource === 'stats-fallback') {
     messages.push({
       tone: 'warn',
       text: 'Hub temporarily unavailable — showing aggregate stats only.',
     })
-  } else if (!loading && hubEndpointOk && activitySummary.pointCount < 2) {
+  } else if (!slowPending && !loading && hubEndpointOk && activitySummary.pointCount < 2) {
     messages.push({
       tone: 'info',
       text: 'Hub connected but no activity yet — the chart fills as tracked channels send chat and emotes.',
@@ -68,7 +99,7 @@ export function HubDataHealthBanner({
   }
 
   // Coverage / IRC details — only after load settles (avoid false 0/240 on first paint).
-  if (!loading) {
+  if (!loading && !slowPending) {
     if (activitySummary.gapCount > 0) {
       messages.push({
         tone: 'info',
@@ -87,8 +118,12 @@ export function HubDataHealthBanner({
       })
     }
 
-    const pipelineCritical =
-      pipeline?.state === 'critical' || (pipeline?.roster.collectorTracking ?? 0) <= 0
+    // The normalizer uses a zero-filled defensive shape when the pipeline is
+    // absent; that is not evidence that live tracking is limited.
+    const knownPipeline = pipeline && pipeline.available !== false &&
+      ['healthy', 'operational', 'degraded', 'critical'].includes(pipeline.state)
+    const pipelineCritical = Boolean(knownPipeline &&
+      (pipeline.state === 'critical' || (pipeline.roster?.collectorTracking != null && pipeline.roster.collectorTracking <= 0)))
     if (pipelineCritical) {
       const tracking = pipeline?.roster.collectorTracking ?? 0
       const expected = Math.max(
@@ -106,18 +141,56 @@ export function HubDataHealthBanner({
     }
   }
 
-  if (messages.length === 0) return null
+  // Keep coverage visible even when another warning occupies the primary row.
+  // The normalized state combines coverage with pipeline health and belongs to the
+  // displayed copy, not necessarily the current origin.
+  const pipelineUnknown = !loading && coverageState != null &&
+    (pipeline?.available === false || !['healthy', 'operational', 'degraded', 'critical'].includes(pipeline?.state ?? ''))
+
+  const coverageText = !loading && coverageState != null
+    ? coverageState === 'critical'
+      ? 'Tracking or coverage is critical in this snapshot — analytics may be incomplete.'
+      : coverageState === 'degraded'
+        ? 'Tracking or coverage is degraded in this snapshot — analytics may be incomplete.'
+        : coverageState === 'operational' && coverageDatabaseOk !== false && !pipelineUnknown
+          ? 'Coverage was operational in this snapshot; current status may have changed.'
+          : coverageState === 'operational'
+            ? null
+          : 'Coverage status is unknown in this snapshot — analytics may be incomplete.'
+    : null
+
+  const databaseWarning = !loading && coverageState != null && coverageDatabaseOk === false
+
+  if (messages.length === 0 && !coverageText && !pipelineUnknown && !databaseWarning) return null
 
   const showBackendCaption = backendUrl && resolveBackendSource(backendUrl) !== 'hosted'
   const caption = showBackendCaption ? backendSourceCaption(backendUrl) : null
   const primary = messages[0]!
   const extras = messages.slice(1)
-  const PrimaryIcon = primary.tone === 'warn' ? AlertTriangle : Info
-  const canRetry = Boolean(onRetry && (error || loadSource === 'stats-fallback'))
+  const PrimaryIcon = primary?.tone === 'warn' ? AlertTriangle : Info
+  const canRetry = Boolean(onRetry && !slowPending && (error || loadSource === 'stats-fallback'))
 
   return (
     <div className="hx-health-banner" role="status" aria-live="polite">
-      <div className={`hx-health-banner__row hx-health-banner__row--${primary.tone}`}>
+      {databaseWarning ? (
+        <div className="hx-health-banner__row hx-health-banner__row--warn">
+          <AlertTriangle aria-hidden="true" size={16} />
+          <div className="hx-health-banner__body"><span>Database check failed in this snapshot — analytics may be incomplete.</span></div>
+        </div>
+      ) : null}
+      {coverageText ? (
+        <div className={`hx-health-banner__row hx-health-banner__row--${coverageState === 'operational' ? 'info' : 'warn'}`}>
+          {coverageState === 'operational' ? <Info aria-hidden="true" size={16} /> : <AlertTriangle aria-hidden="true" size={16} />}
+          <div className="hx-health-banner__body"><span>{coverageText}</span></div>
+        </div>
+      ) : null}
+      {pipelineUnknown ? (
+        <div className="hx-health-banner__row hx-health-banner__row--warn">
+          <AlertTriangle aria-hidden="true" size={16} />
+          <div className="hx-health-banner__body"><span>Tracking status is unknown in this snapshot — analytics may be incomplete.</span></div>
+        </div>
+      ) : null}
+      {primary ? <div className={`hx-health-banner__row hx-health-banner__row--${primary.tone}`}>
         <PrimaryIcon aria-hidden="true" size={16} />
         <div className="hx-health-banner__body">
           <span>{primary.text}</span>
@@ -142,7 +215,7 @@ export function HubDataHealthBanner({
             <span>{expanded ? 'Less' : `${extras.length} more`}</span>
           </button>
         ) : null}
-      </div>
+      </div> : null}
       {expanded
         ? extras.map((message, index) => {
             const Icon = message.tone === 'warn' ? AlertTriangle : Info

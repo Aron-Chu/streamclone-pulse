@@ -66,6 +66,7 @@ export default defineConfig({
       'scripts/account-routing.test.mjs',
       'scripts/account-proxy-worker.test.mjs',
       'scripts/check-edge-freeze.test.mjs',
+      'scripts/destination-pages-smoke.test.mjs',
       'tests/e2e/**',
       'node_modules/**',
     ],

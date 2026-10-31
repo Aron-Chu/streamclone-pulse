@@ -31,12 +31,20 @@ export function publicHubPath(activityWindow?: HubApiWindow, projection?: HubPat
  * The 24h-and-longer bodies get the slow-read deadline; the small 30-minute
  * bodies keep apiClient's default (undefined). The moments read is the Moments
  * page's only source and prod builds it in 4.5–10 s, so it gets the slow
- * deadline at any window.
+ * deadline at any window. usePublicHubData shows its fallback at this
+ * deadline but keeps the read itself going until HUB_READ_HARD_CAP_MS.
  */
 export function hubReadTimeoutMs(activityWindow?: HubApiWindow, projection?: HubPathProjection): number | undefined {
   if (projection === 'moments') return SLOW_READ_TIMEOUT_MS
   return activityWindow === '30m' || activityWindow === 'recent' ? undefined : SLOW_READ_TIMEOUT_MS
 }
+
+/**
+ * apiClient deadline for usePublicHubData's own hub read (and the primed one it
+ * adopts). A busy API can take longer than the deadline above to build the
+ * body; the page shows its fallback meanwhile and the real hub when it lands.
+ */
+export const HUB_READ_HARD_CAP_MS = 90_000
 
 export interface HubLocationLike {
   pathname: string
@@ -55,7 +63,7 @@ export function primedHubRequestForLocation(location: HubLocationLike | null | u
   const pathname = location.pathname.replace(/\/+$/, '') || '/'
   if (pathname !== HUB_PAGE_PATH) return null
   const activityWindow = parseHubWindowParam(location.search)
-  return { path: publicHubPath(activityWindow), activityWindow, timeoutMs: hubReadTimeoutMs(activityWindow) }
+  return { path: publicHubPath(activityWindow), activityWindow, timeoutMs: HUB_READ_HARD_CAP_MS }
 }
 
 type HubResult = ApiClientResult<unknown>
@@ -65,9 +73,19 @@ interface PrimedSlot {
   backendUrl: string
   startedAt: number
   promise: Promise<HubResult>
+  /** Ends the request: nobody will read it, so the origin need not build it. */
+  abort: () => void
 }
 
 let slot: PrimedSlot | null = null
+let unclaimedTimer: ReturnType<typeof setTimeout> | undefined
+
+/** Drops `primed` and ends its request, unless an adopter took it meanwhile. */
+function dropUnclaimed(primed: PrimedSlot): void {
+  if (slot !== primed) return
+  slot = null
+  primed.abort()
+}
 
 function now(): number {
   return Date.now()
@@ -88,11 +106,22 @@ export function primePublicHub(location: HubLocationLike | null | undefined = ty
   } catch {
     return null
   }
-  const promise = apiClient<unknown>(request.path, { timeoutMs: request.timeoutMs })
+  const controller = new AbortController()
+  const promise = apiClient<unknown>(request.path, { timeoutMs: request.timeoutMs, signal: controller.signal, slowOrigin: true })
   // Nobody may adopt it (another route, a later visit): never surface an
   // unhandled rejection. The adopter still sees the rejection on its own chain.
   promise.catch(() => undefined)
-  slot = { path: request.path, backendUrl, startedAt: now(), promise }
+  const primed: PrimedSlot = {
+    path: request.path,
+    backendUrl,
+    startedAt: now(),
+    promise,
+    abort: () => controller.abort(new DOMException('primed hub read unclaimed', 'AbortError')),
+  }
+  slot = primed
+  // Still unclaimed once it can no longer be adopted.
+  clearTimeout(unclaimedTimer)
+  unclaimedTimer = setTimeout(() => dropUnclaimed(primed), PRIMED_HUB_TTL_MS + 1)
   return request.path
 }
 
@@ -103,13 +132,14 @@ function abortedError(): ApiError {
 /**
  * Hands the primed promise over once, within 10 s, when `path` matches. The
  * caller's abort rejects its own promise and puts the primed request back, so
- * a StrictMode remount (or the next consumer) can still adopt it.
+ * a StrictMode remount (or the next consumer) can still adopt it in the same
+ * tick; left unclaimed after that (the window changed), the request ends.
  */
 export function takePrimedPublicHub<T = unknown>(path: string, signal?: AbortSignal | null): Promise<ApiClientResult<T>> | null {
   const current = slot
   if (!current) return null
   if (now() - current.startedAt > PRIMED_HUB_TTL_MS) {
-    slot = null
+    dropUnclaimed(current)
     return null
   }
   if (current.path !== path) return null
@@ -120,7 +150,7 @@ export function takePrimedPublicHub<T = unknown>(path: string, signal?: AbortSig
     return null
   }
   if (current.backendUrl !== backendUrl) {
-    slot = null
+    dropUnclaimed(current)
     return null
   }
   if (signal?.aborted) return null
@@ -133,7 +163,12 @@ export function takePrimedPublicHub<T = unknown>(path: string, signal?: AbortSig
       if (settled) return
       settled = true
       // Restore for the next consumer while still fresh and unclaimed.
-      if (!slot) slot = current
+      if (!slot && now() - current.startedAt <= PRIMED_HUB_TTL_MS) {
+        slot = current
+        setTimeout(() => dropUnclaimed(current), 0)
+      } else {
+        current.abort()
+      }
       reject(abortedError())
     }
     signal.addEventListener('abort', onAbort, { once: true })
@@ -160,5 +195,7 @@ export function hasPrimedPublicHub(): boolean {
 }
 
 export function resetPrimedPublicHubForTests(): void {
+  clearTimeout(unclaimedTimer)
+  slot?.abort()
   slot = null
 }

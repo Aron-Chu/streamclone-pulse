@@ -20,7 +20,7 @@ export interface MomentsFeedChecks { history: MomentsFeedCheck; busy?: MomentsFe
 export interface MomentsFeedLabel { kind: MomentMetricKind; text: string; spammed?: boolean; relabelled?: boolean }
 export interface MomentsFeedMetric { perMin: number | null; baselinePerMin: number | null; x: number | null; state: string }
 export interface MomentsFeedCategory { id: string; name: string; boxArtUrl?: string }
-/** facets.categories: the window's games, most moments first (at most 24; every verdict counted), with each game's live channels. */
+/** facets.categories: the window's games, most moments first (at most 24; a verdict filter narrows the counts), with each game's live channels. */
 export interface MomentsFeedCategoryFacet { id: string; name: string; boxArtUrl?: string; moments: number; liveChannels: number }
 export interface MomentsFeedEmote { name: string; imageUrl?: string; count: number; provider?: string; zeroWidth?: boolean; animated?: boolean }
 /** 25 one-minute slots, -16..+8 around the moment; slot `momentIndex` (16) is the moment. */
@@ -145,11 +145,12 @@ const PAGE_BYTES = 512 * 1024
 export const MOMENTS_WINDOW_MS = 12 * 60 * 60_000
 
 /**
- * `from` for the last 12 hours, floored to 10 minutes so every reader in the
- * same 10 minutes asks for the same URL and the edge answers it from cache.
+ * `from` for the last 12 hours (or `windowMs`), floored to 10 minutes so every
+ * reader in the same 10 minutes asks for the same URL and the edge answers it
+ * from cache.
  */
-export function momentsFeedFrom(nowMs: number): number {
-  return Math.floor((nowMs - MOMENTS_WINDOW_MS) / 600_000) * 600_000
+export function momentsFeedFrom(nowMs: number, windowMs = MOMENTS_WINDOW_MS): number {
+  return Math.floor((nowMs - windowMs) / 600_000) * 600_000
 }
 
 async function readPage(nowMs: number, cursor: string | null, signal?: AbortSignal, cache: RequestCache = 'default'): Promise<MomentsFeedSnapshot> {
@@ -167,11 +168,14 @@ export interface MomentsWindowQuery {
   limit: number
   /** One game's Twitch category id. */
   category?: string | null
+  /** Only the moments with this verdict (the facets' verdict counts still cover every one). */
+  verdict?: MomentVerdict
 }
 
-/** The first page of a window the caller picks (the hub's Top moments: any window, either order, one game). */
+/** The first page of a window the caller picks (the hub's Top moments today: the last 24 hours, one game). */
 export async function loadMomentsWindow(range: MomentsWindowQuery, signal?: AbortSignal): Promise<MomentsFeedSnapshot> {
   const query = new URLSearchParams({ sort: range.sort, from: String(range.from), limit: String(Math.max(1, Math.min(PAGE_LIMIT, range.limit))) })
+  if (range.verdict) query.set('verdict', range.verdict)
   if (range.category) query.set('category', range.category)
   const { data } = await apiClient<unknown>(`/v1/public/moments?${query}`, { signal, timeoutMs: 8000, maxResponseBytes: PAGE_BYTES, cache: 'default' })
   return snapshotOf(feedPage(data))

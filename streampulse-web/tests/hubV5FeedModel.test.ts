@@ -1,28 +1,15 @@
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import type { MomentsFeedItem } from '../src/lib/momentsFeed'
-import type { HubLiveChannel, HubLivePulseMoment, HubMoment } from '../src/lib/publicHub'
+import type { HubLiveChannel } from '../src/lib/publicHub'
 import type { HubChannelScreenerV1, HubScreenerMetric } from '../src/lib/channelScreenerContract'
 import {
+  FEED_STALE_MS,
   feedAgo,
-  feedCap,
-  feedColumnCap,
-  feedForGame,
-  feedFresh,
-  feedGameId,
-  feedGames,
-  feedIsQuiet,
-  feedMomentSer,
-  feedMomentsHref,
-  feedMultiplier,
-  feedRestTip,
-  feedRowAria,
-  feedShort,
-  liveFeedModel,
-  liveStartOf,
+  feedClockFloor,
+  feedFreshText,
+  feedStale,
+  feedUp,
+  feedUpAria,
   screenerHot,
-  type LiveFeedInput,
 } from '../src/ui/components/hub/v5/hubV5FeedModel'
 
 const W0 = Date.UTC(2026, 9, 19, 17, 45)
@@ -77,252 +64,60 @@ function channel(login: string, over: Partial<HubLiveChannel> = {}, chat: Partia
   } as HubLiveChannel
 }
 
-const spike = (login: string, at: number): HubMoment => ({ kind: 'chat_spike', login, displayName: login.toUpperCase(), label: 'Chat spike', at })
-
-function hub(liveChannels: HubLiveChannel[], moments: HubMoment[] = [], asOf = W1): LiveFeedInput {
-  return { generatedAt: new Date(asOf).toISOString(), liveChannels, moments, livePulseMoments: [] } as unknown as LiveFeedInput
-}
-
 describe('screenerHot', () => {
   it('needs 1.5×+, 30+ a minute and 20+ more than usual over a full window', () => {
-    expect(screenerHot(channel('alpha'), 'chat')).toBe(true)
-    expect(screenerHot(channel('beta', {}, { multiplier: 1.4 }), 'chat')).toBe(false)
-    expect(screenerHot(channel('gamma', {}, { currentPerMin: 25 }), 'chat')).toBe(false)
-    expect(screenerHot(channel('delta', {}, { absoluteDeltaPerMin: 10 }), 'chat')).toBe(false)
-    expect(screenerHot(channel('eps', {}, { baselineMeasuredMinutes: 4 }), 'chat')).toBe(false)
-    expect(screenerHot(channel('zeta', { coverageState: 'pending' } as Partial<HubLiveChannel>), 'chat')).toBe(false)
-    expect(screenerHot(channel('eta', {}, null), 'chat')).toBe(false)
-    expect(screenerHot(null, 'chat')).toBe(false)
+    expect(screenerHot(channel('alpha'))).toBe(true)
+    expect(screenerHot(channel('beta', {}, { multiplier: 1.4 }))).toBe(false)
+    expect(screenerHot(channel('gamma', {}, { currentPerMin: 25 }))).toBe(false)
+    expect(screenerHot(channel('delta', {}, { absoluteDeltaPerMin: 10 }))).toBe(false)
+    expect(screenerHot(channel('eps', {}, { baselineMeasuredMinutes: 4 }))).toBe(false)
+    expect(screenerHot(channel('zeta', { coverageState: 'pending' } as Partial<HubLiveChannel>))).toBe(false)
+    expect(screenerHot(channel('eta', {}, null))).toBe(false)
+    expect(screenerHot(null)).toBe(false)
   })
 })
 
-describe('liveStartOf', () => {
-  it('prefers the start time Twitch sent, else the start of its own average', () => {
-    expect(liveStartOf(channel('alpha', { startedAt: new Date(W0).toISOString() }))).toBe(W0)
-    const c = channel('beta')
-    c.screenerV1 = { ...c.screenerV1!, baselineWindow: { start: W0 - 30 * MIN, end: W0 } as HubChannelScreenerV1['baselineWindow'] }
-    expect(liveStartOf(c)).toBe(W0 - 30 * MIN)
-    expect(liveStartOf(channel('gamma'))).toBeNull()
-  })
-})
-
-describe('liveFeedModel', () => {
-  const live = [
-    channel('alpha'), // hot, with a spike row
-    channel('bravo', {}, { multiplier: 1.6, absoluteDeltaPerMin: 30 }), // hot, Picking up only
-    channel('charlie', {}, { multiplier: 3, absoluteDeltaPerMin: 90 }), // hot, Picking up first
-    channel('delta', {}, { multiplier: 1.3 }), // under 1.5×
-    channel('echo', { startedAt: new Date(W1 - 10 * MIN).toISOString(), viewers: 8000 }, { multiplier: 1 }),
-    channel('foxtrot', { startedAt: new Date(W1 - 20 * MIN).toISOString(), viewers: 200 }, { baselineMeasuredMinutes: 4 }),
-    channel('golf', { startedAt: new Date(W1 - 40 * MIN).toISOString(), viewers: 300 }, { multiplier: 1 }),
-    channel('hotel', { startedAt: new Date(W1 - 2 * 60 * MIN).toISOString(), viewers: 9000 }, { multiplier: 1 }),
-  ]
-  const moments = [spike('alpha', W1 - 3 * MIN), spike('delta', W1 - 4 * MIN), spike('foxtrot', W1 - 6 * MIN), spike('alpha', W1 - 2 * 60 * MIN)]
-  const model = liveFeedModel(hub(live, moments))
-
-  it('is empty before the first reply', () => {
-    const empty = liveFeedModel(null)
-    expect(empty.asOf).toBeNull()
-    expect(empty.items).toEqual([])
-    expect(feedIsQuiet(empty)).toBe(false)
+describe('Picking up', () => {
+  const up = feedUp({
+    liveChannels: [
+      channel('alpha'),
+      channel('bravo', { category: 'Chess' }, { multiplier: 1.6, absoluteDeltaPerMin: 30 }),
+      channel('charlie', {}, { multiplier: 3, absoluteDeltaPerMin: 90 }),
+      channel('delta', {}, { multiplier: 1.3 }),
+    ],
   })
 
-  it('keeps a spike only when the screener agrees, once per channel and only in the hour', () => {
-    const spikes = model.events.filter((e) => e.kind === 'spike')
-    expect(spikes.map((e) => e.login)).toEqual(['alpha'])
-    expect(spikes[0]).toMatchObject({ ser: 'chat', x: 2, add: 60 })
-    expect(model.left.spikeUnder).toEqual(['DELTA 1.3×'])
-    // too new for its own average: its went-live row says chat jumped
-    expect(model.left.spikeNew).toEqual(['FOXTROT'])
-    const fox = model.events.find((e) => e.kind === 'live' && e.login === 'foxtrot')
-    expect(fox && fox.kind === 'live' && fox.jump).toBe(true)
+  it('ranks the hot channels by messages a minute over usual', () => {
+    expect(up.up.map((r) => r.login)).toEqual(['charlie', 'alpha', 'bravo'])
+    expect(up.up[0]).toMatchObject({ name: 'CHARLIE', x: 3, add: 90, cat: 'Just Chatting', streamId: 's-charlie' })
+    expect(up.upWindow).not.toBe('')
+    expect(feedUp(null)).toEqual({ up: [], upWindow: '' })
   })
 
-  it('lists streams that started in the hour; 5,000+ viewers get their own row', () => {
-    expect(model.liveCount).toBe(3)
-    const lives = model.events.filter((e) => e.kind === 'live')
-    expect(lives.map((e) => e.login)).toEqual(['echo', 'foxtrot', 'golf'])
-    expect(lives.map((e) => e.kind === 'live' && e.small)).toEqual([false, true, true])
-  })
-
-  it('groups one row per channel, the small starts sharing one, newest first', () => {
-    expect(model.items.map((it) => it.key)).toEqual(['g:alpha', 'g:echo', 'lives'])
-    const shared = model.items[2]!
-    expect('lives' in shared && shared.lives.map((e) => e.login)).toEqual(['foxtrot', 'golf'])
-    expect(model.items.map((it) => it.old)).toEqual([false, false, false])
-    expect(feedIsQuiet(model)).toBe(false)
-  })
-
-  it('ranks Picking up by messages a minute over usual, leaving out channels with a spike row', () => {
-    expect(model.up.map((r) => r.login)).toEqual(['charlie', 'bravo'])
-    expect(model.up[0]).toMatchObject({ x: 3, add: 90 })
-    expect(model.upWindow).not.toBe('')
-  })
-
-  it('goes quiet when nothing happened in the last 15 minutes', () => {
-    const quiet = liveFeedModel(hub([channel('golf', { startedAt: new Date(W1 - 40 * MIN).toISOString(), viewers: 300 }, { multiplier: 1 })]))
-    expect(quiet.items).toHaveLength(1)
-    expect(feedIsQuiet(quiet)).toBe(true)
-    expect(quiet.items[0]!.old).toBe(true)
-  })
-
-  it('marks only the rows a newer poll brings as fresh', () => {
-    const before = liveFeedModel(hub(live.slice(0, 4)))
-    const fresh = feedFresh(before, model)
-    expect([...fresh].sort()).toEqual(['k:alpha', 'l:echo', 'l:foxtrot', 'l:golf'])
-    expect(feedFresh(liveFeedModel(null), model).size).toBe(0)
-  })
-})
-
-describe('one game at a time (F2)', () => {
-  const live = [
-    channel('alpha', { category: 'Elden Ring' }), // spike row
-    channel('bravo', { category: 'Chess' }, { multiplier: 1.6, absoluteDeltaPerMin: 30 }), // Picking up
-    channel('charlie', { category: 'Elden Ring' }, { multiplier: 3, absoluteDeltaPerMin: 90 }), // Picking up
-    channel('echo', { category: 'Chess', startedAt: new Date(W1 - 10 * MIN).toISOString(), viewers: 8000 }, { multiplier: 1 }),
-    channel('foxtrot', { category: 'Chess', startedAt: new Date(W1 - 20 * MIN).toISOString(), viewers: 200 }, { multiplier: 1 }),
-    channel('golf', { category: 'Elden Ring', startedAt: new Date(W1 - 40 * MIN).toISOString(), viewers: 300 }, { multiplier: 1 }),
-    channel('india', { category: 'Elden Ring', startedAt: new Date(W1 - 5 * MIN).toISOString(), viewers: 6000 }, { multiplier: 1 }),
-  ]
-  const model = liveFeedModel(hub(live, [spike('alpha', W1 - 3 * MIN)]))
-
-  it('lists the games the rows name, most rows first, keeping a picked game with none', () => {
-    expect(feedGames(model).map((g) => [g.name, g.rows])).toEqual([['Elden Ring', 4], ['Chess', 3]])
-    expect(feedGames(model, 'Minecraft').at(-1)).toMatchObject({ name: 'Minecraft', rows: 0 })
-  })
-
-  it('keeps only the game’s rows, its share of the went-live row and its Picking up channels', () => {
-    const er = feedForGame(model, 'Elden Ring')
-    expect(er.items.map((it) => it.key)).toEqual(['g:alpha', 'g:india', 'lives'])
-    const shared = er.items[2]!
-    expect('lives' in shared && shared.lives.map((e) => e.login)).toEqual(['golf'])
-    expect(shared.old).toBe(true) // golf started 40 minutes ago
-    expect(er.up.map((u) => u.login)).toEqual(['charlie'])
-    expect(er.events.every((e) => e.cat === 'Elden Ring')).toBe(true)
-    expect(feedForGame(model, 'Minecraft').items).toEqual([])
-    expect(feedForGame(model, null)).toBe(model)
-  })
-
-  it('links the picked game to its Moments (B2’s ?game=), by the id its art names', () => {
-    const art = new Map([['Elden Ring', 'https://static-cdn.jtvnw.net/ttv-boxart/512953_IGDB-52x72.jpg'], ['Chess', 'https://example.com/ttv-boxart/743-52x72.jpg']])
-    const [er, chess] = feedGames({ ...model, art })
-    expect(er).toMatchObject({ name: 'Elden Ring', id: '512953' })
-    expect(chess).toMatchObject({ name: 'Chess', id: null })
-    expect(feedMomentsHref(er)).toBe('/analytics/moments?game=512953')
-    // no id (no art, or art not Twitch's): the whole page
-    expect(feedMomentsHref(chess)).toBe('/analytics/moments')
-    expect(feedMomentsHref(null)).toBe('/analytics/moments')
-    expect(feedGameId('https://static-cdn.jtvnw.net/ttv-boxart/27471-144x192.jpg')).toBe('27471')
-    expect(feedGameId('https://static-cdn.jtvnw.net/ttv-boxart/Minecraft-144x192.jpg')).toBeNull()
+  it('says the bar and the channel that added most', () => {
+    expect(feedUpAria(up)).toMatch(/^Picking up: 3 channels whose chat over .+ ran at least 1\.5 times usual, at least 30 a minute and 20 more than usual\. Most added: CHARLIE, 90 more a minute\. Show them\.$/)
   })
 })
 
 describe('feed formatting', () => {
-  it('caps rows by screen', () => {
-    expect(feedCap(true, false, 900)).toBe(6)
-    expect(feedCap(false, false, 900)).toBe(8)
-    expect(feedCap(false, true, 1000)).toBe(12)
-    expect(feedCap(false, true, 500)).toBe(6)
-    // 1100–1535: what the column beside Top emotes gives, less the rule and Show more
-    expect(feedColumnCap(794)).toBe(14)
-    expect(feedColumnCap(120)).toBe(3)
-  })
-
-  it('says how long ago, and 10× without the plus', () => {
+  it('says how long ago', () => {
     expect(feedAgo(W1 - 30_000, W1)).toBe('just now')
     expect(feedAgo(W1 - 12 * MIN, W1)).toBe('12 min ago')
-    // a row's time, on its right (L1, 10-22)
-    expect([30_000, 12 * MIN, 125 * MIN].map(ago => feedShort(W1 - ago, W1))).toEqual(['now', '12m', '2h'])
-    expect(feedMultiplier(12)).toBe('10×')
-    expect(feedMultiplier(2.04)).toBe('2.0×')
   })
 
-  it('names the earlier events of a row', () => {
-    const one = model1()
-    expect(feedRestTip(one.slice(0, 1))).toBe('')
-    expect(feedRestTip(one)).toMatch(/^Earlier: .+ went live$/)
-  })
-})
-
-function model1() {
-  const m = liveFeedModel(hub(
-    [channel('alpha', { startedAt: new Date(W1 - 9 * MIN).toISOString(), viewers: 7000 })],
-    [spike('alpha', W1 - 2 * MIN)],
-  ))
-  const item = m.items[0]!
-  return 'group' in item ? item.group : []
-}
-
-/* ---------- L1: the moment rows from the Moments list ---------- */
-
-const feedFixture = JSON.parse(readFileSync(resolve(__dirname, 'fixtures/moments_feed_v1.json'), 'utf8')) as { items: MomentsFeedItem[] }
-const pick = (test: (item: MomentsFeedItem) => boolean) => {
-  const found = feedFixture.items.find(test)
-  if (!found) throw new Error('fixture lacks the case')
-  return found
-}
-const holds = pick((item) => item.verdict === 'ok' && item.checks.rise?.code === 'rose' && item[item.label.kind].x != null)
-const partly = pick((item) => item.verdict === 'warn')
-const fails = pick((item) => item.verdict === 'bad')
-const at = (item: MomentsFeedItem, login: string, minuteStart: number): MomentsFeedItem =>
-  ({ ...item, id: `pulse-${login}-s-${login}-${item.offsetSeconds}`, login, displayName: login.toUpperCase(), streamId: `s-${login}`, minuteStart })
-
-describe('liveFeedModel with the Moments list', () => {
-  const live = [channel('alpha'), channel('kilo', {}, { multiplier: 1 }), channel('lima', {}, { multiplier: 1 })]
-  const hubMoment = {
-    login: 'mike', displayName: 'MIKE', streamId: 's-mike', at: W1 - 4 * MIN, offsetSeconds: 3600, score: 9, label: 'Chat spike', kind: 'chat_spike', chatPerMin: 90,
-    comparison: { chat: { state: 'ready', multiplier: 3, currentPerMin: 90, baselinePerMin: 30, baselineMeasuredMinutes: 40 } },
-  } as unknown as HubLivePulseMoment
-  const items = [
-    at(holds, 'kilo', W1 - 2 * MIN),
-    at(partly, 'lima', W1 - 40 * MIN),
-    at(fails, 'november', W1 - 5 * MIN),
-    at(holds, 'oscar', W1 - 3 * 60 * MIN), // before the hour
-  ]
-  const withHub = { ...hub(live, [spike('alpha', W1 - 1 * MIN)]), livePulseMoments: [hubMoment] } as LiveFeedInput
-  const model = liveFeedModel(withHub, { items, generatedAt: W1 + 30_000 })
-
-  it('takes its moment rows from the list in the hour, leaving out what does not hold up, and keeps the hub spikes', () => {
-    expect(model.list).toBe(true)
-    expect(model.asOf).toBe(W1 + 30_000)
-    expect(model.events.map((e) => `${e.kind}:${e.login}`)).toEqual(['spike:alpha', 'moment:kilo', 'moment:lima'])
+  it('says how old the data is on its own clock, floored to the minute', () => {
+    const at = feedClockFloor(W1)
+    expect(feedFreshText(null, W1)).toBe('')
+    expect(feedFreshText(W1, W1 + 30_000)).toBe(`as of ${at}`)
+    expect(feedFreshText(W1 + 59_000, W1 + 4 * MIN)).toBe(`as of ${at} · 3 min old`)
+    expect(feedFreshText(W1, W1 + 59 * MIN + 59_000)).toBe(`as of ${at} · 59 min old`)
+    expect(feedFreshText(W1, W1 + 60 * MIN)).toBe(`as of ${at} · 1 h old`)
+    expect(feedFreshText(W1, W1 + 1042 * MIN)).toBe(`as of ${at} · 17 h old`)
   })
 
-  it('shows the list’s own × for a moment that holds up, and why for one that partly does', () => {
-    const [kilo, lima] = model.events.filter((e) => e.kind === 'moment')
-    if (kilo?.kind !== 'moment' || lima?.kind !== 'moment') throw new Error('no moments')
-    expect(kilo.x).toBe(holds[holds.label.kind].x)
-    expect(kilo.list).toBe(true)
-    expect(kilo.row.href).toBe(`/analytics/moments?m=pulse-kilo-s-kilo-${holds.offsetSeconds}`)
-    expect(kilo.row.cmp).toMatchObject({ x: holds[holds.label.kind].x, over: 'the 15 minutes before' })
-    expect(lima.x).toBeNull()
-    expect(lima.why).toBeTruthy()
-    expect('why' in lima.row.cmp && lima.row.cmp.why).toBe(lima.why)
-    // the × says what it counts, as on Moments (X1, 10-22)
-    expect(feedMomentSer(kilo)).toBe(holds.label.kind)
-    expect(feedRowAria([kilo], W1 + 30_000)).toContain(`, ${holds.label.kind} ${String(holds[holds.label.kind].x).replace(/\.0$/, '')}`)
-  })
-
-  it('without the list, keeps the hub’s own moment rows', () => {
-    const hubOnly = liveFeedModel(withHub)
-    expect(hubOnly.list).toBe(false)
-    expect(hubOnly.top).toEqual([])
-    const moments = hubOnly.events.filter((e) => e.kind === 'moment')
-    expect(moments.map((e) => e.login)).toEqual(['mike'])
-    if (moments[0]?.kind !== 'moment') throw new Error('no moment')
-    expect(feedMomentSer(moments[0])).toBe('chat')
-    expect(feedRowAria(moments, W1 + 30_000)).toBe('MIKE chat burst, 4 min ago: 60 more chat a minute than usual, chat 3.0 times usual. Opens in Moments.')
-  })
-
-  it('keeps the day’s top moments from before the hour for a quiet hour, one a channel, none from a channel in the hour', () => {
-    const early = [
-      at(holds, 'oscar', W1 - 3 * 60 * MIN),
-      { ...at(holds, 'papa', W1 - 2 * 60 * MIN), [holds.label.kind]: { ...holds[holds.label.kind], x: 9 } } as MomentsFeedItem,
-      at(holds, 'kilo', W1 - 4 * 60 * MIN), // kilo has a row in the hour
-      at(partly, 'quebec', W1 - 2 * 60 * MIN), // no ×: not a top moment
-    ]
-    const m = liveFeedModel(withHub, { items: [...items, ...early], generatedAt: W1 })
-    expect(m.top.map((it) => it.key)).toEqual(['t:papa', 't:oscar'])
-    expect(m.top.every((it) => it.old)).toBe(true)
+  it('greys the dot once the data is over 3 minutes old', () => {
+    expect(feedStale(W1, W1 + FEED_STALE_MS)).toBe(false)
+    expect(feedStale(W1, W1 + FEED_STALE_MS + 1)).toBe(true)
+    expect(feedStale(null, W1 + 60 * MIN)).toBe(false)
   })
 })

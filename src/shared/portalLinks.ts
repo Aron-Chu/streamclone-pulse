@@ -33,7 +33,9 @@ export const POLICY_LINKS = {
    */
   supporterTerms: `${CANONICAL_PORTAL_ORIGIN}/terms#supporter`,
   refunds: `${CANONICAL_PORTAL_ORIGIN}/refunds`,
+  withdrawal: `${CANONICAL_PORTAL_ORIGIN}/withdraw`,
   support: `${CANONICAL_PORTAL_ORIGIN}/support`,
+  supportBillingEmail: `${CANONICAL_PORTAL_ORIGIN}/support#billing-email`,
 } as const
 
 /**

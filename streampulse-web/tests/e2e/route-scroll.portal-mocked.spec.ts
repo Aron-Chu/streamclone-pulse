@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './helpers/portalMockedTest'
 
 import { installHubUxMock } from './helpers/hubUxMock'
 // The notes the page is built from; the extension's release step marks versions released.
@@ -29,13 +29,15 @@ const topOf = (page: Page, selector: string) =>
 /**
  * A followed #link landed: its section is at the top under the sticky top
  * navigation, or the page is scrolled as far as it goes (a section near the end
- * of the page, like the hub's Channels, cannot reach the top).
+ * of the page, like the hub's Channels, cannot reach the top). The scroll
+ * offset snaps to whole pixels, so below a fractional-height row the section
+ * can sit a fraction of a pixel above 0 and still have landed.
  */
 const landedOn = (page: Page, selector: string) =>
   page.locator(selector).evaluate((element) => {
     const top = element.getBoundingClientRect().top
     const atEnd = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 2
-    return top >= 0 && (top <= 100 || atEnd)
+    return top > -1 && (top <= 100 || atEnd)
   })
 
 async function scrollToBottom(page: Page) {

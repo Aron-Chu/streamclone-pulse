@@ -1,4 +1,5 @@
 import { DEFAULT_PRODUCTION_BACKEND_URL } from './auth'
+import { hubDataAsOf } from './hubDataAge'
 import { measurementTimeIso, measurementTimeMs } from '@streampulse/pulse-core'
 import { apiClient, getBackendUrl, isApiError, type ApiError } from './apiClient'
 import { hubReadTimeoutMs, publicHubPath, takePrimedPublicHub } from './hubEarlyFetch'
@@ -682,6 +683,7 @@ export interface FetchPublicHubResult {
   data: PublicHub
   loadSource: PublicHubLoadSource
   hubEndpointOk: boolean
+  dataAsOf?: number | null
   cache?: 'HIT' | 'MISS' | 'BYPASS'
   status: number
 }
@@ -799,12 +801,13 @@ export async function fetchPublicHubBase(
     const path = publicHubPath(activityWindow, projection)
     // Adopt the request main.tsx primed for this exact path (plan §2.6).
     const primed = takePrimedPublicHub<PublicHub>(path, signal)
-    const primary = await (primed ?? apiClient<PublicHub>(path, { signal, timeoutMs }))
+    const primary = await (primed ?? apiClient<PublicHub>(path, { signal, timeoutMs, slowOrigin: true }))
     if (!hasPublicHubResponseShape(primary.data)) {
       throw { kind: 'server', message: 'Public hub returned an incomplete response', status: primary.status, code: 'invalid_hub_response' } satisfies ApiError
     }
     return {
       data: normalizePublicHub(primary.data),
+      dataAsOf: hubDataAsOf(primary.data as PublicHub & { snapshot?: { ageSeconds?: unknown } }, primary),
       loadSource: 'full',
       hubEndpointOk: true,
       cache: primary.cache,

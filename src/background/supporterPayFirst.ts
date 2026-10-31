@@ -9,7 +9,7 @@ const ATTEMPT_MAX_MS = 24 * 60 * 60_000
 const RETRY_MAX_MS = 24 * 60 * 60_000
 type Billing = { accountId: string; attemptId?: string; phase: 'waiting' | 'confirming'; until: number; watchUntil: number; nextPoll: number; url?: string }
 type UnresolvedAccount = { hash: string; until: number }
-type Restore = { accountId: string; restoreId: string; secret: string; expiresAt: string; comparisonCode: string; nextPoll: number; interval: number }
+type Restore = { accountId: string; restoreId: string; secret: string; key?: string; expiresAt: string; comparisonCode: string; nextPoll: number; interval: number }
 type RestoreStart = { accountId: string; key: string; until: number; nextRetry: number }
 type PrivateJourney = { billing?: Billing; billingRetryUntil?: number; restoreRetryUntil?: number; restore?: Restore; restoreStart?: RestoreStart; unresolvedAccounts?: UnresolvedAccount[]; restoreResult?: 'restored' | 'expired' | 'conflict' }
 type Result = { status: number; body: unknown; retryAfterMs?: number }
@@ -66,7 +66,7 @@ export class SupporterPayFirstCoordinator {
     const raw = object(await this.ports.read()), b = object(raw.billing), r = object(raw.restore), start = object(raw.restoreStart)
     const value: PrivateJourney = {}
     if (id(b.accountId) && (b.attemptId === undefined || id(b.attemptId)) && (b.phase === 'waiting' || b.phase === 'confirming') && typeof b.until === 'number' && Number.isFinite(b.until) && typeof b.nextPoll === 'number' && Number.isFinite(b.nextPoll)) value.billing = { ...b, watchUntil: typeof b.watchUntil === 'number' && Number.isFinite(b.watchUntil) ? b.watchUntil : Math.min(b.until, this.now() + PAY_FIRST_WATCH_MS), url: validatedStripeUrl(b.url, 'checkout') ?? undefined } as Billing
-    if (id(r.accountId) && id(r.restoreId) && secret(r.secret) && code(r.comparisonCode) && typeof r.expiresAt === 'string' && Number.isFinite(Date.parse(r.expiresAt)) && typeof r.nextPoll === 'number' && Number.isFinite(r.nextPoll) && typeof r.interval === 'number' && r.interval >= POLL_MS && r.interval <= 60_000) value.restore = r as unknown as Restore
+    if (id(r.accountId) && id(r.restoreId) && secret(r.secret) && (r.key === undefined || secret(r.key)) && code(r.comparisonCode) && typeof r.expiresAt === 'string' && Number.isFinite(Date.parse(r.expiresAt)) && typeof r.nextPoll === 'number' && Number.isFinite(r.nextPoll) && typeof r.interval === 'number' && r.interval >= POLL_MS && r.interval <= 60_000) value.restore = r as unknown as Restore
     if (id(start.accountId) && secret(start.key) && typeof start.until === 'number' && Number.isFinite(start.until) && typeof start.nextRetry === 'number' && Number.isFinite(start.nextRetry)) value.restoreStart = { accountId: start.accountId, key: start.key, until: start.until, nextRetry: start.nextRetry }
     if (Array.isArray(raw.unresolvedAccounts)) {
       // Upgrade old unbounded hashes once; reconcile persists these deadlines.
@@ -335,6 +335,7 @@ export class SupporterPayFirstCoordinator {
   }
   private async pollBilling(value: PrivateJourney, explicit = false): Promise<SupporterBillingState> {
     const pending = value.billing!
+    let ownedCompletedAttempt = false
     const projection = (): SupporterBillingState => ({ state: this.now() >= pending.until || !pending.attemptId || this.now() >= pending.watchUntil && pending.phase === 'confirming' ? 'still_confirming' : pending.phase, ...(pending.attemptId ? { attemptId: pending.attemptId } : {}), ...(this.now() >= pending.watchUntil ? { automaticPolling: false } : {}) })
     if (value.billingRetryUntil && value.billingRetryUntil > this.now() || !explicit && (pending.nextPoll > this.now() || pending.watchUntil <= this.now())) return projection()
     pending.nextPoll = this.now() + POLL_MS
@@ -346,6 +347,9 @@ export class SupporterPayFirstCoordinator {
       if (result.status === 200 && body.attemptId === pending.attemptId) {
         this.updateExpiry(pending, body)
         if (body.state === 'expired' || body.state === 'unpaid' || body.state === 'review') { await this.resolveBilling(value, pending.accountId); return { state: body.state === 'review' ? 'review' : 'expired' } }
+        // `active` is an owned, historical completion of this exact attempt,
+        // not evidence that the subscription is still active today.
+        ownedCompletedAttempt = body.state === 'active'
         if (body.state === 'paid' || body.state === 'active' || body.state === 'complete' || body.state === 'completed' || body.state === 'pending') pending.phase = 'confirming'
       }
     }
@@ -354,6 +358,16 @@ export class SupporterPayFirstCoordinator {
       await this.resolveBilling(value, pending.accountId)
       await this.ports.changed?.().catch(() => undefined)
       return { state: membership.status === 'review' ? 'review' : 'active' }
+    }
+    // An authoritative completed attempt plus a fresh ended entitlement ends
+    // this attempt's local double-payment precaution. Neither an expired
+    // entitlement alone nor a different/pending attempt is sufficient. A new
+    // payment still requires an explicit click and the server's subscription
+    // and unresolved-attempt checks.
+    if (ownedCompletedAttempt && membership.state === 'ready' && membership.status === 'expired' && await this.ports.account.localAccountId() === pending.accountId) {
+      await this.resolveBilling(value, pending.accountId)
+      await this.ports.changed?.().catch(() => undefined)
+      return { state: 'idle' }
     }
     await this.ports.write(value)
     return projection()
@@ -365,12 +379,16 @@ export class SupporterPayFirstCoordinator {
     if (value.restore) {
       const pending = value.restore
       const projection = (): SupporterRestoreState => ({ state: 'pending', expiresAt: pending.expiresAt, comparisonCode: pending.comparisonCode })
+      // An older pending request has no key for the strengthened redemption
+      // check. Keep its payment barrier until status is read, then require a
+      // new explicit restore rather than sending an unbound poll.
+      if (!pending.key) { delete value.restore; value.restoreResult = 'expired'; await this.ports.write(value); return { state: 'expired' } }
       if (Date.parse(pending.expiresAt) <= this.now()) { delete value.restore; value.restoreResult = 'expired'; await this.ports.write(value); return { state: 'expired' } }
       if (pending.nextPoll > this.now()) return projection()
       pending.nextPoll = this.now() + pending.interval
       await this.ports.write(value)
       let result: Result
-      try { result = await this.ports.account.withCredential(token => this.ports.request('/v1/account/restores/poll', { restoreId: pending.restoreId, pollingSecret: pending.secret }, token), pending.accountId, async response => { await this.ports.account.discardRestoredCredentials(response.body) }) }
+      try { result = await this.ports.account.withCredential(token => this.ports.request('/v1/account/restores/poll', { restoreId: pending.restoreId, pollingSecret: pending.secret, restoreKey: pending.key }, token), pending.accountId, async response => { await this.ports.account.discardRestoredCredentials(response.body) }) }
       catch (error) {
         if (error instanceof Error && error.message === 'account_temporarily_unavailable') return projection()
         throw error
@@ -384,7 +402,7 @@ export class SupporterPayFirstCoordinator {
         await this.ports.changed?.().catch(() => undefined)
         return { state: 'restored' }
       }
-      if (result.status === 401 || body.state === 'expired' || body.state === 'restore_conflict') {
+      if (result.status === 410 || body.state === 'expired' || body.state === 'restore_conflict') {
         delete value.restore; value.restoreResult = body.state === 'restore_conflict' ? 'conflict' : 'expired'; await this.ports.write(value); return { state: value.restoreResult }
       }
       return projection()
@@ -428,7 +446,7 @@ export class SupporterPayFirstCoordinator {
     if (result.status === 404 && body.error === 'restore_request_not_found') { delete value.restoreStart; await this.ports.write(value); return { state: 'error' } }
     if (result.status === 409 || result.status === 400 || result.status === 401) { delete value.restoreStart; await this.ports.write(value); return { state: result.status === 401 ? 'expired' : 'ineligible' } }
     if (result.status !== 201 || !id(body.restoreId) || !secret(body.pollingSecret) || !code(body.comparisonCode) || typeof body.expiresAt !== 'string' || !Number.isFinite(Date.parse(body.expiresAt)) || Date.parse(body.expiresAt) <= this.now() || Date.parse(body.expiresAt) > this.now() + RESTORE_WATCH_MS || typeof body.intervalSeconds !== 'number' || body.intervalSeconds < 5 || body.intervalSeconds > 60) return { state: 'uncertain' }
-    value.restore = { accountId: start.accountId, restoreId: body.restoreId, secret: body.pollingSecret, expiresAt: body.expiresAt, comparisonCode: body.comparisonCode, nextPoll: this.now() + body.intervalSeconds * 1000, interval: body.intervalSeconds * 1000 }
+    value.restore = { accountId: start.accountId, restoreId: body.restoreId, secret: body.pollingSecret, key: start.key, expiresAt: body.expiresAt, comparisonCode: body.comparisonCode, nextPoll: this.now() + body.intervalSeconds * 1000, interval: body.intervalSeconds * 1000 }
     delete value.restoreStart
     await this.ports.write(value)
     return { state: 'pending', expiresAt: body.expiresAt, comparisonCode: body.comparisonCode }

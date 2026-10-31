@@ -222,7 +222,12 @@ describe('AnalyticsConsole data skeleton', () => {
     })
     const status = screen.getByRole('status', { name: /loading analytics chart/i })
     expect(status.getAttribute('data-console-skeleton')).toBe('chart')
-    expect(status.className).toMatch(/min-h-\[45rem\]/)
+    // One height per loaded chart card size: 770 px below 610 px, 738 px at 610-639 px, 730 px at 640-719 px,
+    // 830 px from 720 px.
+    expect(status.className).toMatch(/(?:^| )min-h-\[48\.125rem\]/)
+    expect(status.className).toMatch(/ min-\[610px\]:min-h-\[46\.125rem\]/)
+    expect(status.className).toMatch(/ sm:min-h-\[45\.625rem\]/)
+    expect(status.className).toMatch(/ min-\[720px\]:min-h-\[51\.875rem\]/)
     expect(screen.getByRole('heading', { level: 1 })).not.toBeNull()
     expect(screen.queryByRole('alert')).toBeNull()
   })

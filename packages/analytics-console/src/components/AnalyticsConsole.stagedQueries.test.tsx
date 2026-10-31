@@ -51,7 +51,7 @@ vi.mock('./analytics/SessionRecapMomentsStrip.tsx', () => ({ SessionRecapMoments
 vi.mock('./analytics/StreamRecapPanel.tsx', () => ({ StreamRecapPanel: () => <div>Recap</div> }))
 vi.mock('./analytics/SyncStatusPanel.tsx', () => ({ SyncStatusPanel: () => <div>Sync</div> }))
 vi.mock('./analytics/StreamQualityBanner.tsx', () => ({ StreamQualityBanner: () => null }))
-vi.mock('./signals/SessionSignalTape.tsx', () => ({ SessionSignalTape: () => null }))
+vi.mock('./signals/SessionSignalTape.tsx', () => ({ SessionSignalTape: () => <div data-testid="session-signal-tape" /> }))
 
 const streamId = 'staged-stream'
 const startedAt = '2026-07-16T18:00:00.000Z'
@@ -77,6 +77,32 @@ const detail = {
   topEmotes: [],
   sources: [],
   updatedAt: Date.now(),
+}
+
+// The channel's live read naming this session while it is confirmed live.
+const confirmedLiveDetail = {
+  ...detail,
+  state: 'live',
+  stream: { ...detail.stream, endedAt: null, lifecycleState: 'confirmed_live', lifecycleObservedAt: new Date().toISOString() },
+}
+
+// The channel's live read naming this session after it ended: lifecycle unknown and
+// an archive id with no verified timing.
+const endedLiveFrame = {
+  ...detail,
+  state: 'unknown',
+  vodId: '1111111111',
+  stream: { ...detail.stream, title: 'Live frame title', endedAt: undefined, lifecycleState: 'unknown', vodId: '1111111111' },
+  availability: { vodId: '1111111111' },
+}
+
+// The session read for the same stream, with a verified archive.
+const verifiedSessionDetail = {
+  ...detail,
+  vodId: '2222222222',
+  vodAlignSeconds: 0,
+  vodDurationSeconds: 3_600,
+  stream: { ...detail.stream, lifecycleState: 'confirmed_ended', vodId: '2222222222' },
 }
 
 function renderConsole(layer2LoadMode: 'eager' | 'staged' = 'eager', entry = `/analytics/xqc/${streamId}`) {
@@ -137,7 +163,8 @@ describe('AnalyticsConsole staged Layer 2 queries', () => {
       expect(screen.queryByText(/^live$/i)).toBeNull()
       await act(async () => { await vi.advanceTimersByTimeAsync(90_000) })
       expect(api.getStreamMinutesTail).not.toHaveBeenCalled()
-      expect(api.getAnalyticsStreams).toHaveBeenCalledTimes(1)
+      // (fix, 10-30) VOD-4: the list is two reads, the first 12 rows then 100.
+      expect(api.getAnalyticsStreams).toHaveBeenCalledTimes(2)
       expect(screen.queryByText(/^live$/i)).toBeNull()
     } finally { vi.useRealTimers() }
   })
@@ -179,10 +206,13 @@ describe('AnalyticsConsole staged Layer 2 queries', () => {
     try {
       renderConsole()
       await screen.findByRole('heading', { name: 'Staging fixture' })
-      expect(api.getAnalyticsStreams).toHaveBeenCalledTimes(1)
+      // (fix, 10-30) VOD-4: the list is two reads, the first 12 rows then 100.
+      await waitFor(() => expect(api.getAnalyticsStreams).toHaveBeenCalledTimes(2))
+      expect(api.getAnalyticsStreams).toHaveBeenNthCalledWith(1, expect.any(String), 12)
+      expect(api.getAnalyticsStreams).toHaveBeenNthCalledWith(2, expect.any(String), 100)
 
       await act(async () => { await vi.advanceTimersByTimeAsync(90_000) })
-      expect(api.getAnalyticsStreams).toHaveBeenCalledTimes(1)
+      expect(api.getAnalyticsStreams).toHaveBeenCalledTimes(2)
       expect(api.watchAnalyticsChannel).not.toHaveBeenCalled()
     } finally {
       vi.useRealTimers()
@@ -231,9 +261,9 @@ describe('AnalyticsConsole staged Layer 2 queries', () => {
 
   it('checks ownership when a historical route reuses its live detail', async () => {
     mockedLive.data = {
-      ...detail,
+      ...confirmedLiveDetail,
       channel: 'zchum',
-      stream: { ...detail.stream, login: 'zchum', title: 'Other creator broadcast' },
+      stream: { ...confirmedLiveDetail.stream, login: 'zchum', title: 'Other creator broadcast' },
     }
     renderConsole('staged')
 
@@ -243,6 +273,105 @@ describe('AnalyticsConsole staged Layer 2 queries', () => {
     expect(screen.queryByTestId('analytics-chart')).toBeNull()
     expect(api.getAnalyticsStream).not.toHaveBeenCalled()
     expect(api.getPulseStreamRecap).not.toHaveBeenCalled()
+  })
+
+  it('reuses a confirmed-live frame on its session route without reading the session', async () => {
+    mockedLive.data = confirmedLiveDetail
+    renderConsole('staged')
+
+    expect(await screen.findByRole('heading', { name: 'Staging fixture' })).toBeTruthy()
+    expect(screen.getByTestId('analytics-chart')).toBeTruthy()
+    expect(screen.getByTestId('session-signal-tape')).toBeTruthy()
+    expect(api.getAnalyticsStream).not.toHaveBeenCalled()
+  })
+
+  it('reads the session for an ended stream the live read also carries, loading as the direct page does', async () => {
+    let answer: (session: unknown) => void = () => undefined
+    api.getAnalyticsStream.mockImplementation(() => new Promise(resolve => { answer = resolve }))
+    mockedLive.data = endedLiveFrame
+    renderConsole('staged')
+
+    // The session read is out: chart skeleton and a held meta slot, as when the page opens directly.
+    await waitFor(() => expect(api.getAnalyticsStream).toHaveBeenCalledWith(streamId, { sparse: false, channel: 'xqc' }))
+    expect(document.querySelector('[data-console-skeleton="chart"]')).toBeTruthy()
+    expect(document.querySelector('[data-session-meta-pending]')).toBeTruthy()
+    expect(screen.queryByTestId('analytics-chart')).toBeNull()
+    expect(screen.queryByTestId('session-signal-tape')).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(document.querySelector('[data-session-watch-vod]')).toBeNull()
+    expect(screen.queryByText(/No verified archive link/)).toBeNull()
+
+    await act(async () => answer(verifiedSessionDetail))
+    expect(await screen.findByRole('heading', { name: 'Staging fixture' })).toBeTruthy()
+    expect(screen.getByTestId('analytics-chart')).toBeTruthy()
+    expect(document.querySelector('[data-console-skeleton="chart"]')).toBeNull()
+    expect(document.querySelector('[data-session-watch-vod]')?.getAttribute('href')).toBe('https://www.twitch.tv/videos/2222222222')
+    expect(screen.queryByText(/No verified archive link/)).toBeNull()
+    await waitFor(() => expect(api.getPulseStreamRecap).toHaveBeenCalledWith(streamId))
+    expect(api.getAnalyticsStream).toHaveBeenCalledTimes(1)
+  })
+
+  it('stands in with the live frame when the session read finds nothing', async () => {
+    api.getAnalyticsStream.mockResolvedValue(null)
+    mockedLive.data = endedLiveFrame
+    renderConsole('staged')
+
+    expect(await screen.findByRole('heading', { name: 'Live frame title' })).toBeTruthy()
+    expect(screen.getByTestId('analytics-chart')).toBeTruthy()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByText(new RegExp(`Session not found for`))).toBeNull()
+    expect(document.querySelector('[data-session-watch-vod]')).toBeNull()
+  })
+
+  it('never titles a session route with a live frame from another stream', async () => {
+    let answer: (session: unknown) => void = () => undefined
+    api.getAnalyticsStream.mockImplementation(() => new Promise(resolve => { answer = resolve }))
+    mockedLive.data = {
+      ...confirmedLiveDetail,
+      stream: { ...confirmedLiveDetail.stream, streamId: 'other-live-stream', title: 'Other stream title' },
+    }
+    renderConsole('staged')
+
+    await waitFor(() => expect(api.getAnalyticsStream).toHaveBeenCalledWith(streamId, { sparse: false, channel: 'xqc' }))
+    expect(screen.queryByText('Other stream title')).toBeNull()
+
+    await act(async () => answer(detail))
+    expect(await screen.findByRole('heading', { name: 'Staging fixture' })).toBeTruthy()
+    expect(screen.queryByText('Other stream title')).toBeNull()
+  })
+
+  it('keeps the live frame when the session read fails, without its unverified archive link', async () => {
+    api.getAnalyticsStream.mockRejectedValue(new Error('backend unavailable'))
+    mockedLive.data = endedLiveFrame
+    renderConsole('staged')
+
+    expect(await screen.findByRole('heading', { name: 'Live frame title' })).toBeTruthy()
+    await waitFor(() => expect(api.getAnalyticsStream).toHaveBeenCalled())
+    expect(await screen.findByText(/No verified archive link is available/)).toBeTruthy()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByTestId('analytics-chart')).toBeTruthy()
+    expect(document.querySelector('[data-session-watch-vod]')).toBeNull()
+  })
+
+  it('never stands in with another creator\'s live frame', async () => {
+    let answer: (session: unknown) => void = () => undefined
+    api.getAnalyticsStream.mockImplementation(() => new Promise(resolve => { answer = resolve }))
+    mockedLive.data = {
+      ...endedLiveFrame,
+      channel: 'zchum',
+      stream: { ...endedLiveFrame.stream, login: 'zchum', title: 'Other creator broadcast' },
+    }
+    renderConsole('staged')
+
+    await waitFor(() => expect(api.getAnalyticsStream).toHaveBeenCalledWith(streamId, { sparse: false, channel: 'xqc' }))
+    expect(screen.queryByText('Other creator broadcast')).toBeNull()
+    expect(screen.queryByTestId('analytics-chart')).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByRole('heading', { name: `Session ${streamId} not found` })).toBeNull()
+
+    await act(async () => answer(detail))
+    expect(await screen.findByRole('heading', { name: 'Staging fixture' })).toBeTruthy()
+    expect(screen.queryByText('Other creator broadcast')).toBeNull()
   })
 
   it('loads summary and recap first without initial heatmap or sync requests in staged mode', async () => {
@@ -370,5 +499,15 @@ describe('AnalyticsConsole Stream Recap slot', () => {
     await waitFor(() => expect(api.getAnalyticsStreams).toHaveBeenCalled())
     await waitFor(() => expect(recapSlot()).toBeNull())
     expect(screen.queryByText('Recap')).toBeNull()
+  })
+
+  it('does not hold the slot on the channel route for the 100-row list once the first rows answered', async () => {
+    // (fix, 10-30) VOD-4: the first 12 rows already show there is no session to open.
+    api.getAnalyticsStreams.mockImplementation((_login: string, limit: number) =>
+      limit === 12 ? Promise.resolve({ items: [] }) : new Promise(() => undefined))
+    renderConsole('eager', '/analytics/xqc')
+
+    await waitFor(() => expect(api.getAnalyticsStreams).toHaveBeenCalledWith('xqc', 100))
+    await waitFor(() => expect(recapSlot()).toBeNull())
   })
 })

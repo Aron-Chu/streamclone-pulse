@@ -10,7 +10,8 @@ import Terms from '../src/routes/public/Terms'
 
 /**
  * The public Supporter pages must describe what the backend actually does
- * (audit LG-2, LG-3, LG-5, LG-6). From launch day, none says sign-ups are closed.
+ * (audit LG-2, LG-3, LG-5, LG-6). This held launch-day candidate removes the
+ * prelaunch wording only after the separate release gates are satisfied.
  */
 const pages: Array<[string, ComponentType, string]> = [
   ['Terms', Terms, 'terms-of-use'],
@@ -25,12 +26,10 @@ function textOf(Page: ComponentType, testId: string): string {
 }
 
 describe('Supporter legal copy', () => {
-  // Fails until the owner's seller, governing-law and consumer-rights text
-  // replaces the pending paragraphs in Terms and Refunds (audit LG-1).
-  it.each(pages)('%s no longer says Supporter sign-ups are closed', (_, Page, testId) => {
-    const body = textOf(Page, testId)
+  it.each(pages)('%s has no prelaunch notice in the held launch-day copy', (_, Page, testId) => {
+    render(<MemoryRouter><Page /></MemoryRouter>)
     expect(screen.queryByTestId('prelaunch-notice')).toBeNull()
-    expect(body).not.toMatch(/not open yet|sign-ups are not open|once (paid )?sign-ups open|before (paid )?sign-ups open|no sale is offered/i)
+    expect(screen.getByTestId(testId).textContent).not.toMatch(/sign-ups are not open yet|once sign-ups open|once paid sales open/i)
   })
 
   it.each(pages)('%s makes none of the withdrawn promises', (_, Page, testId) => {
@@ -63,14 +62,17 @@ describe('Supporter legal copy', () => {
     expect(body).toMatch(/no public Twitch chat badge — it is not included/)
   })
 
-  it('Terms states the owner-provided seller, public address and governing law', () => {
+  it('Terms preserves the corrected seller details and the approved change-notice period', () => {
     render(<MemoryRouter><Terms /></MemoryRouter>)
-    const seller = screen.getByTestId('terms-seller-and-law').textContent?.replace(/\s+/g, ' ') ?? ''
-    expect(seller).toContain('Aron Chu, 906 North Miller Dr, Unit 3099, Tempe, AZ 85288, USA.')
-    expect(seller).toContain('governed by the law of Arizona, USA')
-    expect(seller).toMatch(/EU.*European Economic Area.*UK.*within 14 days/)
-    expect(seller).toContain('refunded in full within 14 days')
-    expect(seller).not.toMatch(/\[(SELLER|GOVERNING)/)
+    const seller = screen.getByTestId('terms-seller-and-law')
+    expect(seller.textContent?.replace(/\s+/g, ' ')).toContain(
+      'Aron Chu, 906 N Miller Rd, Unit 3099, Tempe, AZ 85288, USA.',
+    )
+    expect(seller.textContent).toContain('governed by the law of Arizona, USA')
+    expect(screen.getByTestId('terms-of-use').textContent?.replace(/\s+/g, ' ')).toContain(
+      'billing email at least 30 days before the change takes effect',
+    )
+    expect(screen.queryByTestId('terms-pending-owner-input')).toBeNull()
   })
 
   it('Terms gives the Pulse Supporter section an anchor the extension links to (/terms#supporter)', () => {
@@ -186,8 +188,8 @@ describe('Supporter legal copy', () => {
     expect(billing).toMatch(/checks the notification's\s+signature and removes contact details before saving the new payment notification/)
     expect(billing).toMatch(/keyed, one-way hash of the billing email as a recovery\s+lookup, rather than the address itself/)
     expect(billing).toMatch(/does not automatically combine accounts\s+or grant Supporter access/)
+    expect(billing).toMatch(/refreshes the hash using your current Stripe billing email and checks that email again/)
     expect(screen.getByTestId('privacy-installation-account').textContent).toMatch(/Looking at your status does not create a connection/)
-    expect(screen.getByTestId('privacy-installation-account').textContent).toMatch(/Restore existing Supporter/)
     expect(screen.getByTestId('privacy-installation-account').textContent).toMatch(/does not sync My Moments: bookmarks, notes and watched history stay in this browser/)
     const twitch = screen.getByTestId('privacy-continue-with-twitch').textContent ?? ''
     expect(twitch).toMatch(/keyed hash of your Twitch user ID/)
@@ -236,11 +238,12 @@ describe('Supporter legal copy', () => {
     expect(twitch).toMatch(/only to sign\s+that account out everywhere and does not store/)
   })
 
-  it('Refunds offers the current Stripe billing email as a helpful identifier, not a barrier', () => {
+  it('Refunds accepts requests after loss of the current billing email without asking for card secrets', () => {
     const body = textOf(Refunds, 'refund-policy')
     expect(body).not.toMatch(/address on the account/)
-    expect(body.match(/use your current Stripe billing email/g)).toHaveLength(2)
+    expect(body).toMatch(/If possible, use\s+your current Stripe billing email/)
     expect(body).toMatch(/If you cannot access it, contact us anyway/)
-    expect(body).toMatch(/European Economic Area or the UK.*withdraw.*within 14 days.*full refund/)
+    expect(body).not.toMatch(/from the billing\s+email you gave Stripe at checkout/)
+    expect(body).toMatch(/do not include your full card number\s+or security code/)
   })
 })

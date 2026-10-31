@@ -9,6 +9,8 @@ import {
   resolveGamesPlayedTimelineRange,
   type ChartGameSegment,
 } from '@streampulse/pulse-charts'
+import { isIdBuiltBoxArt, isTwitchPlaceholderBoxArt, twitchBoxArtByName } from '../../utils/twitchBoxArt.ts'
+import { hms } from './sessionSpChartModel.ts'
 
 /** Keep the portal rail visually aligned with the Twitch extension rail. */
 export const GAMES_PLAYED_ICON_SIZE_PX = 64
@@ -23,6 +25,53 @@ export const GAMES_PLAYED_CHIP_MIN_WIDTH_PX = GAMES_PLAYED_HIT_TARGET_PX
 
 const CHIP_GAP_PX = 8
 const CHIP_STEP_PX = GAMES_PLAYED_HIT_TARGET_PX + CHIP_GAP_PX
+/** (candidate, 10-30) GP1: a headerless item is as wide as its name line, up to this. */
+export const GAMES_PLAYED_NAME_MAX_PX = 96
+
+// (fix, 10-30) GP-3 / GP-7: what a run time can and cannot claim.
+/** A game the API runs this far past the newest measured minute has no known end (a live poll runs to now). */
+const OPEN_END_TOLERANCE_SECONDS = 120
+const ESTIMATE_NOTE = 'Estimated from the stream category.'
+const dataEndNote = (dataEndSeconds: number) => `Data ends at ${hms(dataEndSeconds)}; the games list runs past it.`
+
+/**
+ * (fix, 10-30) GP-7: switch times read from the stream's category, not
+ * measured: category_fallback (the stream's one category) and snapshot
+ * (category checks a poll apart). Stored segments are VOD-bounded.
+ */
+export function isEstimatedGameSource(source: string | undefined): boolean {
+  return source === 'category_fallback' || source === 'snapshot'
+}
+
+/**
+ * (fix, 10-30) GP-3: keys of the games the API runs past the newest measured
+ * minute. The chart cuts them there, so their length is not known.
+ */
+export function gamesOpenAtDataEnd(
+  games: readonly Pick<ChartGameSegment, 'gameName' | 'offsetSeconds' | 'durationSeconds'>[] | null | undefined,
+  dataEndSeconds: number | null | undefined,
+): Set<string> {
+  const open = new Set<string>()
+  if (dataEndSeconds == null || !Number.isFinite(dataEndSeconds) || dataEndSeconds <= 0) return open
+  for (const game of games ?? []) {
+    if (!Number.isFinite(game.offsetSeconds) || !Number.isFinite(game.durationSeconds)) continue
+    if (game.offsetSeconds < dataEndSeconds && game.offsetSeconds + game.durationSeconds > dataEndSeconds + OPEN_END_TOLERANCE_SECONDS) {
+      open.add(gameSegmentKey(game as ChartGameSegment))
+    }
+  }
+  return open
+}
+
+/** (fix, 10-30) GP-3 / GP-7: "≈2h 55m+", about when estimated, "+" when the data ends first. */
+function runTimeText(seconds: number, estimated: boolean, open: boolean): string {
+  return `${estimated ? '≈' : ''}${formatRunTime(seconds)}${open ? '+' : ''}`
+}
+
+function runTimeNote(estimated: boolean, openAtSeconds: number | null): string {
+  return [openAtSeconds != null ? dataEndNote(openAtSeconds) : null, estimated ? ESTIMATE_NOTE : null]
+    .filter(Boolean)
+    .join(' ')
+}
 
 export interface GamesPlayedVisibleRange {
   startOffset: number
@@ -41,12 +90,18 @@ export interface GamesPlayedStripProps {
    * The session chart (d3-v2 session-original, 2026-10-14/15 declutter): no
    * "Games played" header row, every game on the rail (no chart-window toggle
    * to host), and each poster says how long it ran, so the posters read as a
-   * timeline against the chart's game band. The run time is aria-hidden: the
-   * poster's label already carries it. No box around the posters and no
+   * timeline against the chart's game band. No box around the posters and no
    * details line under them (the poster's title carries the game and span);
    * the poster borders follow the mockup's .po-gp-b (sp-session-chart.css).
+   * (candidate, 10-30) GP1: each poster has two visible lines under it, the
+   * name and the run time (they were title-only and aria-hidden).
    */
   headerless?: boolean
+  /**
+   * (fix, 10-30) GP-3: where the measured data ends (the newest minute's end).
+   * A game the API runs past it gets an open run time ("2h 54m+") and says so.
+   */
+  dataEndSeconds?: number | null
 }
 
 function formatStreamDuration(durationSeconds: number): string {
@@ -64,9 +119,16 @@ function formatRunTime(durationSeconds: number): string {
   return total < 60 ? `${total}m` : `${Math.floor(total / 60)}h ${total % 60}m`
 }
 
-function formatWindowLabel(startOffset: number, endOffset: number, rounded = false): string {
+function formatWindowLabel(
+  startOffset: number,
+  endOffset: number,
+  rounded = false,
+  // (fix, 10-30) GP-3 / GP-7: "about" for an estimate, "+" for a run past the data.
+  { estimated = false, open = false }: { estimated?: boolean; open?: boolean } = {},
+): string {
   const span = Math.max(0, endOffset - startOffset)
-  return `${formatHeatOffset(startOffset)}–${formatHeatOffset(endOffset)} · ${rounded ? formatRunTime(span) : formatStreamDuration(span)}`
+  const run = rounded ? formatRunTime(span) : formatStreamDuration(span)
+  return `${formatHeatOffset(startOffset)}–${formatHeatOffset(endOffset)} · ${estimated ? 'about ' : ''}${run}${open ? '+' : ''}`
 }
 
 function countHiddenAhead(node: HTMLDivElement, total: number): number {
@@ -75,6 +137,40 @@ function countHiddenAhead(node: HTMLDivElement, total: number): number {
   const scrolledPast = Math.max(0, Math.round(node.scrollLeft / CHIP_STEP_PX))
   const visibleApprox = Math.max(1, Math.floor((node.clientWidth + CHIP_GAP_PX) / CHIP_STEP_PX))
   return Math.max(0, total - scrolledPast - visibleApprox)
+}
+
+// (candidate, 10-30) GP1: a named poster is 52 to 96 px wide, so the fixed chip
+// step miscounts them. These measure the posters against the rail's visible width.
+function namedRailEdges(node: HTMLDivElement): { left: number; right: number } {
+  const left = node.getBoundingClientRect().left
+  return { left, right: left + node.clientWidth }
+}
+
+/** (candidate, 10-30) GP1: posters wholly or partly past the rail's right edge. */
+function countNamedHiddenAhead(node: HTMLDivElement): number {
+  if (node.scrollWidth - node.clientWidth <= 1) return 0
+  const { right } = namedRailEdges(node)
+  return Array.from(node.children).filter(item => item.getBoundingClientRect().right > right + 1).length
+}
+
+/**
+ * (candidate, 10-30) GP1: one poster per click, like the chip step. The next
+ * poster cut off in that direction moves into the place of the last whole one,
+ * so the rail moves by that poster's own width and gap.
+ */
+function namedScrollStepPx(node: HTMLDivElement, direction: -1 | 1): number {
+  const { left, right } = namedRailEdges(node)
+  const rects = Array.from(node.children, item => item.getBoundingClientRect())
+  if (direction > 0) {
+    const next = rects.findIndex(rect => rect.right > right + 1)
+    if (next < 0) return CHIP_STEP_PX
+    return Math.ceil(rects[next]!.right - (next > 0 ? rects[next - 1]!.right : right))
+  }
+  for (let previous = rects.length - 1; previous >= 0; previous -= 1) {
+    if (rects[previous]!.left >= left - 1) continue
+    return Math.floor(rects[previous]!.left - (previous < rects.length - 1 ? rects[previous + 1]!.left : left))
+  }
+  return -CHIP_STEP_PX
 }
 
 export function safeGameArtUrl(raw: string | undefined): string | null {
@@ -106,8 +202,9 @@ function twitchIgdbVariant(url: string): string | null {
 function twitchNameArtUrl(gameName: string | undefined, igdb = false): string | null {
   const normalized = gameName?.trim()
   if (!normalized) return null
-  const suffix = igdb ? '_IGDB' : ''
-  return `https://static-cdn.jtvnw.net/ttv-boxart/${encodeURIComponent(normalized)}${suffix}-144x192.jpg`
+  // (fix, 10-30) GP-8: one builder for name-based art (twitchBoxArt.ts); "_" is
+  // unreserved, so the IGDB name encodes exactly as before.
+  return twitchBoxArtByName(igdb ? `${normalized}_IGDB` : normalized, 144, 192)
 }
 
 export function gameArtCandidates(
@@ -171,11 +268,14 @@ function GameArt({
   boxArtUrl,
   categoryId,
   size = GAMES_PLAYED_ICON_SIZE_PX,
+  width,
 }: {
   gameName: string
   boxArtUrl?: string
   categoryId?: string
   size?: number
+  /** Px; defaults to the portrait ratio of `size` (at least 24). */
+  width?: number
 }) {
   const candidates = useMemo(
     () => gameArtCandidates(boxArtUrl, categoryId, gameName),
@@ -185,10 +285,24 @@ function GameArt({
     candidates.findIndex(candidate => !isKnownGenericTwitchArtwork(candidate, categoryId)),
   )
   const resolved = candidateIndex >= 0 ? candidates[candidateIndex] : null
-  const artWidth = Math.max(24, Math.round(size * (GAMES_PLAYED_ART_WIDTH_PX / GAMES_PLAYED_ICON_SIZE_PX)))
+  const artWidth = width ?? Math.max(24, Math.round(size * (GAMES_PLAYED_ART_WIDTH_PX / GAMES_PLAYED_ICON_SIZE_PX)))
   useEffect(() => {
     setCandidateIndex(candidates.findIndex(candidate => !isKnownGenericTwitchArtwork(candidate, categoryId)))
   }, [candidates, categoryId])
+  // (fix, 10-30) GP-8: a cover the page builds itself, by name or by id, can be
+  // Twitch's grey "?" (HTTP 200, so no onError). A newer game's standard id
+  // cover redirects there too (checked 10-30: ttv-boxart/1419480843-144x192.jpg
+  // → 404_boxart); only its _IGDB cover is real. It loads with CORS, stays hidden
+  // until checked, and a proven placeholder falls through to the next candidate
+  // or the initials. The backend's own cover is checked only when it is that id
+  // cover (its fallback when the Twitch name lookup fails); its _IGDB or
+  // looked-up cover loads as before.
+  const sentArt = useMemo(() => safeGameArtUrl(boxArtUrl), [boxArtUrl])
+  const checkArt = resolved != null && (resolved !== sentArt || isIdBuiltBoxArt(resolved))
+  const [checkedArt, setCheckedArt] = useState<string | null>(null)
+  const nextCandidate = (index: number) => candidates.findIndex((candidate, at) =>
+    at > index && !isKnownGenericTwitchArtwork(candidate, categoryId),
+  )
 
   if (!resolved) {
     const hue = hueForGame(gameName)
@@ -216,6 +330,7 @@ function GameArt({
 
   return (
     <img
+      key={resolved}
       src={resolved}
       alt=""
       width={artWidth}
@@ -223,13 +338,23 @@ function GameArt({
       loading="lazy"
       decoding="async"
       referrerPolicy="no-referrer"
+      crossOrigin={checkArt ? 'anonymous' : undefined}
       className="block shrink-0 rounded-md object-cover"
-      style={{ height: size, width: artWidth }}
+      style={{ height: size, width: artWidth, opacity: checkArt && checkedArt !== resolved ? 0 : undefined }}
+      onLoad={checkArt
+        ? event => {
+          const url = resolved
+          void isTwitchPlaceholderBoxArt(event.currentTarget).then(placeholder => {
+            if (!placeholder) {
+              setCheckedArt(url)
+              return
+            }
+            setCandidateIndex(current => (candidates[current] === url ? nextCandidate(current) : current))
+          })
+        }
+        : undefined}
       onError={() => {
-        const next = candidates.findIndex((candidate, index) =>
-          index > candidateIndex && !isKnownGenericTwitchArtwork(candidate, categoryId),
-        )
-        setCandidateIndex(next)
+        setCandidateIndex(nextCandidate(candidateIndex))
       }}
     />
   )
@@ -250,6 +375,7 @@ export function GamesPlayedStrip({
   onSelectKey,
   visibleRange = null,
   headerless = false,
+  dataEndSeconds = null,
 }: GamesPlayedStripProps) {
   const rootRef = useRef<HTMLDivElement | null>(null)
   const trackRef = useRef<HTMLDivElement | null>(null)
@@ -263,6 +389,8 @@ export function GamesPlayedStrip({
     () => normalizeGameSegments(games ?? [], durationSeconds),
     [games, durationSeconds],
   )
+  // (fix, 10-30) GP-3: from the raw games; normalizing already cut them at the chart end.
+  const openKeys = useMemo(() => gamesOpenAtDataEnd(games, dataEndSeconds), [games, dataEndSeconds])
 
   const rangeAware = Boolean(visibleRange) && !headerless
   const inRangeCount = useMemo(() => {
@@ -297,7 +425,9 @@ export function GamesPlayedStrip({
       const overflow = node.scrollWidth - node.clientWidth
       setCanScrollLeft(overflow > 1 && node.scrollLeft > 1)
       setCanScrollRight(overflow > 1 && node.scrollLeft < overflow - 1)
-      setHiddenAhead(overflow > 1 ? countHiddenAhead(node, gameSlots.length) : 0)
+      // (candidate, 10-30) GP1: named posters are measured; chips keep the fixed step.
+      const hidden = headerless ? countNamedHiddenAhead(node) : countHiddenAhead(node, gameSlots.length)
+      setHiddenAhead(overflow > 1 ? hidden : 0)
     }
 
     function onWheel(event: WheelEvent): void {
@@ -328,7 +458,7 @@ export function GamesPlayedStrip({
       track.removeEventListener('wheel', onWheel)
       observer?.disconnect()
     }
-  }, [gameSlots.length])
+  }, [gameSlots.length, headerless])
 
   useEffect(() => {
     const valid = new Set(gameSlots.map(slot => gameSegmentKey(slot.segment)))
@@ -379,7 +509,9 @@ export function GamesPlayedStrip({
   function scrollByChip(direction: -1 | 1): void {
     const node = trackRef.current
     if (!node) return
-    node.scrollBy({ left: direction * CHIP_STEP_PX, behavior: prefersReducedMotion() ? 'auto' : 'smooth' })
+    // (candidate, 10-30) GP1: named posters differ in width, so step by the next one's own.
+    const left = headerless ? namedScrollStepPx(node, direction) : direction * CHIP_STEP_PX
+    node.scrollBy({ left, behavior: prefersReducedMotion() ? 'auto' : 'smooth' })
   }
 
   function focusRelative(index: number, direction: -1 | 1 | 0): void {
@@ -470,11 +602,24 @@ export function GamesPlayedStrip({
               const key = gameSegmentKey(segment)
               const selected = selectedKey === key
               const active = highlightedKey === key || selected
-              const title = `${segment.gameName} · ${formatWindowLabel(slot.visibleStart, slot.visibleEnd, headerless)}${slot.clipped ? ' · clipped to chart' : ''}`
+              // (fix, 10-30) GP-3 / GP-7: an estimated switch says so; a run past the data end is open.
+              const estimated = isEstimatedGameSource(segment.source)
+              const open = openKeys.has(key)
+              const note = runTimeNote(estimated, open ? dataEndSeconds : null)
+              const title = `${segment.gameName} · ${formatWindowLabel(slot.visibleStart, slot.visibleEnd, headerless, { estimated, open })}${slot.clipped ? ' · clipped to chart' : ''}${note ? ` · ${note}` : ''}`
               const detailsId = `games-played-details-${index}-${key.replace(/[^a-z0-9_-]/gi, '-')}`
 
               return (
-                <div key={`${segment.gameName}-${segment.offsetSeconds}-${index}`} role="listitem" aria-label={title} className={headerless ? 'relative flex shrink-0 flex-col items-center gap-0.5' : 'relative shrink-0'} style={{ flex: `0 0 ${GAMES_PLAYED_HIT_TARGET_PX}px` }}>
+                <div
+                  key={`${segment.gameName}-${segment.offsetSeconds}-${index}`}
+                  role="listitem"
+                  aria-label={title}
+                  className={headerless ? 'ssc-gp-i relative flex flex-col items-center gap-0.5' : 'relative shrink-0'}
+                  // (candidate, 10-30) GP1: as wide as the name line, 52 to 96 px.
+                  style={headerless
+                    ? { flex: '0 0 auto', minWidth: GAMES_PLAYED_HIT_TARGET_PX, maxWidth: GAMES_PLAYED_NAME_MAX_PX }
+                    : { flex: `0 0 ${GAMES_PLAYED_HIT_TARGET_PX}px` }}
+                >
                   <button
                     type="button"
                     className={headerless ? 'ssc-gp-b relative flex items-center justify-center' : `relative flex items-center justify-center rounded-lg border-2 p-0.5 outline-none transition ${
@@ -516,9 +661,13 @@ export function GamesPlayedStrip({
                     <GameArt gameName={segment.gameName} boxArtUrl={segment.boxArtUrl} categoryId={segment.categoryId} />
                   </button>
                   {headerless ? (
-                    <span className="whitespace-nowrap text-xs font-semibold leading-[14px] tabular-nums text-zinc-500" aria-hidden="true" data-games-played-run-time>
-                      {formatRunTime(slot.visibleEnd - slot.visibleStart)}
-                    </span>
+                    <>
+                      {/* (candidate, 10-30) GP1: name and run time as visible lines (sp-session-chart.css). */}
+                      <span className="ssc-gp-name" data-games-played-name title={segment.gameName}>{segment.gameName}</span>
+                      <span className="ssc-gp-rt" data-games-played-run-time title={note || undefined}>
+                        {runTimeText(slot.visibleEnd - slot.visibleStart, estimated, open)}
+                      </span>
+                    </>
                   ) : null}
                   {displayedKey === key ? <span id={detailsId} role="tooltip" className="sr-only">{title}</span> : null}
                 </div>
@@ -554,6 +703,57 @@ export function GamesPlayedStrip({
           {selectedKey === displayedKey ? <span className="ml-1 text-cyan-300">· pinned</span> : null}
         </div>
       ) : null}
+    </div>
+  )
+}
+
+/**
+ * (fix, 10-30) GP-6: the games list for the chart's empty, loading and syncing
+ * states, so a stream with games but no minutes still says what was played.
+ * A length only where one is recorded: the last game of a stream with no end
+ * (or a game with no length) shows its start instead, never the open record's
+ * run to now.
+ */
+export function GamesPlayedList({
+  games,
+  streamEnded,
+}: {
+  games?: ChartGameSegment[] | null
+  /** The stream record has an end (endedAt or a confirmed end). */
+  streamEnded: boolean
+}) {
+  const rows = useMemo(
+    () => (games ?? [])
+      .filter(game =>
+        game.gameName?.trim()
+        && Number.isFinite(game.offsetSeconds)
+        && Number.isFinite(game.durationSeconds)
+        && game.offsetSeconds >= 0,
+      )
+      .slice()
+      .sort((a, b) => a.offsetSeconds - b.offsetSeconds),
+    [games],
+  )
+  if (!rows.length) return null
+  return (
+    <div aria-label="Games played" data-games-played-list className="mx-auto mt-4 w-full max-w-sm text-left">
+      <p className="mb-1.5 text-xs font-semibold text-zinc-500">Games played</p>
+      <ul className="flex flex-col gap-1.5">
+        {rows.map((game, index) => {
+          const estimated = isEstimatedGameSource(game.source)
+          const last = index === rows.length - 1
+          const noEnd = game.durationSeconds <= 0 || (last && !streamEnded && game.source !== 'stored')
+          const time = noEnd ? `from ${hms(game.offsetSeconds)}` : runTimeText(game.durationSeconds, estimated, false)
+          const note = [noEnd ? 'No end recorded yet.' : null, estimated ? ESTIMATE_NOTE : null].filter(Boolean).join(' ')
+          return (
+            <li key={`${gameSegmentKey(game)}-${index}`} className="flex min-w-0 items-center gap-2" data-games-played-list-item>
+              <GameArt gameName={game.gameName} boxArtUrl={game.boxArtUrl} categoryId={game.categoryId} size={24} width={18} />
+              <span className="min-w-0 flex-1 truncate text-sm font-semibold text-zinc-200" title={game.gameName}>{game.gameName}</span>
+              <span className="shrink-0 text-xs tabular-nums text-zinc-500" title={note || undefined} data-games-played-list-time>{time}</span>
+            </li>
+          )
+        })}
+      </ul>
     </div>
   )
 }

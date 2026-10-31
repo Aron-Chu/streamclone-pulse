@@ -4,6 +4,7 @@ import type { HubChannelScreenerV1, HubScreenerMetric } from '../src/lib/channel
 import {
   boxArtAt,
   busiestCue,
+  busiestShowsPictures,
   busiestTip,
   channelRows,
   channelVs,
@@ -11,6 +12,9 @@ import {
   formatHubRate,
   gameInitials,
   hubCategoryArt,
+  hubClock,
+  hubSavedAt,
+  hubSavedClock,
   hubAvatarTone,
   hubMonogram,
   isLowMultiplier,
@@ -97,6 +101,37 @@ describe('hub v5 formatting', () => {
   })
 })
 
+describe('a saved copy’s time (N1, 10-28)', () => {
+  const at = (d: number, h: number, m: number, s = 0) => new Date(2026, 9, d, h, m, s).getTime()
+
+  it('keeps today’s plain clock', () => {
+    expect(hubSavedClock(at(28, 10, 50), at(28, 11, 5))).toBe(hubClock(at(28, 10, 50)))
+    expect(hubSavedClock(at(28, 10, 50), at(28, 11, 5))).toMatch(/^10:50\sAM$/)
+  })
+
+  it('says the day when it is not today', () => {
+    expect(hubSavedClock(at(27, 23, 30), at(28, 2, 0))).toBe(`yesterday, ${hubClock(at(27, 23, 30))}`)
+    expect(hubSavedClock(at(27, 23, 30), at(28, 2, 0))).toMatch(/^yesterday, 11:30\sPM$/)
+    expect(hubSavedClock(at(26, 10, 50), at(28, 9, 0))).toBe(`Oct 26, ${hubClock(at(26, 10, 50))}`)
+    // across a year end
+    const nye = new Date(2026, 11, 31, 23, 0).getTime()
+    expect(hubSavedClock(nye, new Date(2027, 0, 1, 1, 0).getTime())).toBe(`yesterday, ${hubClock(nye)}`)
+  })
+
+  it('takes the day and minute it was saved, never a time later than now', () => {
+    expect(hubSavedClock(at(27, 23, 59, 40), at(28, 0, 5))).toMatch(/^yesterday, 11:59\sPM$/)
+    expect(hubSavedClock(at(28, 10, 50, 40), at(28, 10, 50, 50))).toMatch(/^10:50\sAM$/)
+    // A copy stamped ahead of this clock reads as now.
+    expect(hubSavedClock(at(28, 10, 52), at(28, 10, 50, 30))).toMatch(/^10:50\sAM$/)
+  })
+
+  it('reads in Channels as "at" a time today, else the day and time', () => {
+    expect(hubSavedAt(at(28, 10, 50), at(28, 11, 5))).toMatch(/^at 10:50\sAM$/)
+    expect(hubSavedAt(at(27, 23, 30), at(28, 2, 0))).toMatch(/^yesterday, 11:30\sPM$/)
+    expect(hubSavedAt(at(26, 21, 5), at(28, 9, 0))).toMatch(/^Oct 26, 9:05\sPM$/)
+  })
+})
+
 describe('Busiest now', () => {
   it('ranks the shared 5-minute window by chat, then viewers, then login, and leaves out other windows', () => {
     const live = [
@@ -125,6 +160,14 @@ describe('Busiest now', () => {
     expect(set.rows).toEqual([])
     expect(Number.isNaN(set.windowEnd)).toBe(true)
     expect(busiestCue(set, W1)).toBe('stale')
+  })
+
+  it('shows Twitch live pictures only beside live 5-minute numbers (mockup §5, 10-31)', () => {
+    const set = rankBusiest([channel('a', {}, { currentPerMin: 300 })])
+    expect(busiestShowsPictures(set, busiestCue(set, W1 + 60_000))).toBe(true)
+    expect(busiestShowsPictures(set, busiestCue(set, W1 + 10 * 60_000))).toBe(false)
+    expect(busiestShowsPictures({ ...set, basis: 'avg_35' }, 'live')).toBe(false)
+    expect(busiestTip(set, 'live').split('\n').at(-1)).toBe('Live means numbers under 3 minutes old. While they are, each tile shows Twitch’s live picture, which can be a few minutes old; a channel Twitch has no picture for shows its profile picture.')
   })
 })
 

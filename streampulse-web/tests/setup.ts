@@ -59,6 +59,22 @@ if (typeof HTMLElement.prototype.scrollTo !== 'function') {
   HTMLElement.prototype.scrollTo = () => {}
 }
 
+// Unit tests never reach a real API: a request to any host but this machine waits, unanswered,
+// until its caller aborts it. A test that needs a reply stubs fetch itself.
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]'])
+const passThroughFetch = globalThis.fetch
+if (typeof passThroughFetch === 'function') {
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const href = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    if (LOCAL_HOSTS.has(new URL(href, 'http://localhost').hostname)) return passThroughFetch(input, init)
+    const signal = init?.signal ?? (input instanceof Request ? input.signal : undefined)
+    return new Promise<Response>((_resolve, reject) => {
+      if (signal?.aborted) reject(signal.reason)
+      signal?.addEventListener('abort', () => reject(signal.reason), { once: true })
+    })
+  }) as typeof fetch
+}
+
 afterEach(() => {
   vi.restoreAllMocks()
   localStorage.clear()

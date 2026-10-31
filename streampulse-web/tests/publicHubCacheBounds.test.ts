@@ -13,6 +13,7 @@ import {
   publicHubCacheKey,
 } from '../src/lib/publicHubCache'
 import { isScreenerAtTwoTimesUsual, screenerUsual, screenerUsualTooltip } from '../src/lib/channelScreenerContract'
+import { hasFullChatWindow, rankBusiest, whereChatIs } from '../src/ui/components/hub/v5/hubV5Model'
 
 const origin = 'https://api.streampulse.stream'
 describe('bounded public hub persistence', () => {
@@ -63,6 +64,47 @@ describe('bounded public hub persistence', () => {
       expect(readPublicHubCache(origin, '24h')?.cachedAt).toBe(1_800_000_000_000)
       vi.setSystemTime(1_800_000_000_000 + (6 * 60 + 1) * 60_000)
       expect(readPublicHubCache(origin, '24h')).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // A 30-minute chart overlaps nothing current after half an hour, so a copy
+  // that holds only one gets the 10-minute life even under the 24h key.
+  it.each([
+    ['a live-pool fallback saved for 24h', '24h', {
+      windowMinutes: 1440, requestedWindowMinutes: 1440, servedWindowMinutes: 30, availableWindowMinutes: 30,
+      state: 'degraded', source: 'live_pool_fallback', reason: 'historical_projection_unavailable',
+      points: [{ t: 1_800_000_000_000 - 120_000, chat: 12, emotes: 3, viewers: 1200 }, { t: 1_800_000_000_000 - 60_000, chat: 18, emotes: 4, viewers: 1300 }],
+    }],
+    ['a withheld empty chart saved for 24h', '24h', {
+      windowMinutes: 1440, requestedWindowMinutes: 1440, servedWindowMinutes: 30, availableWindowMinutes: 30,
+      state: 'degraded', reason: 'historical_projection_unavailable', points: [],
+    }],
+    ['the 30m tab', '30m', { windowMinutes: 30, points: [{ t: 1_800_000_000_000 - 60_000, chat: 12, emotes: 3, viewers: 1200 }] }],
+    ['the recent view', 'recent', { windowMinutes: 30, points: [{ t: 1_800_000_000_000 - 60_000, chat: 12, emotes: 3, viewers: 1200 }] }],
+  ] as const)('shows %s for 10 minutes, not 6 hours', (_label, window, activity) => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(1_800_000_000_000)
+      const generatedAt = new Date().toISOString()
+      writePublicHubCache(origin, window, normalizePublicHub({ generatedAt, corpusPipeline: { generatedAt, state: 'healthy' }, activity } as never))
+      vi.setSystemTime(1_800_000_000_000 + 9 * 60_000)
+      expect(readPublicHubCache(origin, window)?.cachedAt).toBe(1_800_000_000_000)
+      vi.setSystemTime(1_800_000_000_000 + 11 * 60_000)
+      expect(readPublicHubCache(origin, window)).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps the 6 hour life for a real 24h chart', () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(1_800_000_000_000)
+      writePublicHubCache(origin, '24h', fullSizeHub())
+      vi.setSystemTime(1_800_000_000_000 + (5 * 60 + 59) * 60_000)
+      expect(readPublicHubCache(origin, '24h')?.data.activity.source).toBe('historical_projection')
     } finally {
       vi.useRealTimers()
     }
@@ -260,6 +302,85 @@ describe('compact full-hub snapshot (plan §2.6)', () => {
     expect(cached.liveChannels.filter(channel => channel.profileImageUrl).length).toBeLessThanOrEqual(48)
   })
 
+  // Busiest now, Where chat is and Chat/min read the current 5-minute window:
+  // a saved copy without it says no channel has a full window.
+  it('keeps the current 5-minute window, so the full-window lists read the same', () => {
+    const hub = fullSizeHub()
+    hub.liveChannels = hub.liveChannels.map((channel, i) => {
+      const w = channel.screenerV1!.currentWindow!
+      const currentWindow =
+        i % 7 === 0 ? { ...w, measuredMinutes: 3, coveragePct: 60 } // still filling
+          : i % 13 === 0 ? { ...w, start: w.start - 60_000, end: w.end - 60_000 } // a minute behind
+            : i % 17 === 0 ? null
+              : w
+      return { ...channel, screenerV1: { ...channel.screenerV1!, currentWindow } }
+    })
+    expect(publicHubCacheEntrySize(hub, '24h', origin)?.version).toBe(2)
+    writePublicHubCache(origin, '24h', hub)
+    const cached = readPublicHubCache(origin, '24h')!.data
+    expect(cached.liveChannels.map(channel => channel.screenerV1?.currentWindow ?? null))
+      .toEqual(hub.liveChannels.map(channel => channel.screenerV1?.currentWindow ?? null))
+    expect(cached.liveChannels.map(hasFullChatWindow)).toEqual(hub.liveChannels.map(hasFullChatWindow))
+    expect(cached.liveChannels.filter(hasFullChatWindow).length).toBeGreaterThan(300)
+    const busiest = (rows: PublicHub['liveChannels']) => {
+      const set = rankBusiest(rows)
+      return { ...set, rows: set.rows.map(({ avatar: _avatar, ...row }) => row) }
+    }
+    expect(busiest(cached.liveChannels)).toEqual(busiest(hub.liveChannels))
+    expect(busiest(cached.liveChannels).rows).toHaveLength(12)
+    const games = (rows: PublicHub['liveChannels']) => {
+      const where = whereChatIs(rows)
+      return { counted: where.counted, noWindow: where.noWindow, all: where.all.map(game => [game.name, game.chat, game.viewers, game.rows.map(row => row.login)]) }
+    }
+    expect(games(cached.liveChannels)).toEqual(games(hub.liveChannels))
+    // Rows share a few windows, so each is stored once.
+    const entry = JSON.parse(localStorage.getItem(publicHubCacheKey(origin, '24h'))!)
+    expect(entry.columns.liveChannels.cols['~svw'].d).toHaveLength(3)
+  })
+
+  it('drops the windows last when a body with one window per row is still too large', () => {
+    const own = (hub: PublicHub, withWindows: boolean, pad: number) => {
+      hub.liveChannels = hub.liveChannels.map((channel, i) => {
+        const w = channel.screenerV1!.currentWindow!
+        return {
+          ...channel,
+          title: `${channel.title}${'x'.repeat(pad)}`,
+          profileImageUrl: undefined,
+          screenerV1: {
+            ...channel.screenerV1!,
+            currentWindow: withWindows ? { ...w, start: w.start - i * 1_001, end: w.end - i * 1_001, coveragePct: 99.5 - i / 1_000 } : null,
+          },
+        }
+      })
+      return hub
+    }
+    const withWindows = publicHubCacheEntrySize(own(fullSizeHub(), true, 0), '24h', origin)!.chars
+    const without = publicHubCacheEntrySize(own(fullSizeHub(), false, 0), '24h', origin)!.chars
+    expect(withWindows - without).toBeGreaterThan(20_000)
+    // Titles padded so the body fits only without its windows.
+    const pad = Math.ceil((PUBLIC_HUB_CACHE_MAX_CHARS - 512 - (withWindows + without) / 2) / 500)
+    const hub = own(fullSizeHub(), true, pad)
+    writePublicHubCache(origin, '24h', hub)
+    const raw = localStorage.getItem(publicHubCacheKey(origin, '24h'))!
+    expect(raw.length).toBeLessThanOrEqual(PUBLIC_HUB_CACHE_MAX_CHARS)
+    const cached = readPublicHubCache(origin, '24h')!.data
+    expect(cached.liveChannels).toHaveLength(500)
+    expect(cached.liveChannels.every(channel => channel.screenerV1?.currentWindow === null)).toBe(true)
+    // "× usual" still reads the same.
+    expect(cached.liveChannels.map(channel => screenerUsual(channel.screenerV1))).toEqual(hub.liveChannels.map(channel => screenerUsual(channel.screenerV1)))
+  })
+
+  it('restores no window from a malformed tuple, and keeps the rest of the screener', () => {
+    writePublicHubCache(origin, '24h', fullSizeHub())
+    const key = publicHubCacheKey(origin, '24h')
+    const entry = JSON.parse(localStorage.getItem(key)!)
+    entry.columns.liveChannels.cols['~svw'].d[0] = [1, 2, 'five', 5, 100]
+    localStorage.setItem(key, JSON.stringify(entry))
+    const cached = readPublicHubCache(origin, '24h')!.data
+    expect(cached.liveChannels.every(channel => channel.screenerV1?.currentWindow === null)).toBe(true)
+    expect(cached.liveChannels[1].screenerV1).toMatchObject({ state: 'ready', chat: { currentPerMin: cached.liveChannels[1].chatPerMin } })
+  })
+
   it('drops the kept avatars before giving up on a body that is still too large', () => {
     const hub = fullSizeHub()
     hub.liveChannels = hub.liveChannels.map(channel => ({ ...channel, profileImageUrl: `${channel.profileImageUrl}?pad=${'x'.repeat(2_500)}` }))
@@ -394,6 +515,7 @@ describe.skipIf(!capture)('production hub capture', () => {
       .toEqual(hub.liveChannels.map(channel => screenerUsualTooltip(channel.screenerV1)))
     const twoTimes = (rows: PublicHub['liveChannels']) => rows.filter(channel => isScreenerAtTwoTimesUsual(channel.screenerV1)).length
     expect(twoTimes(data.liveChannels)).toBe(twoTimes(hub.liveChannels))
+    expect(data.liveChannels.map(hasFullChatWindow)).toEqual(hub.liveChannels.map(hasFullChatWindow))
     expect(data.livePulseMoments).toEqual(hub.livePulseMoments)
 
     const evidenceDir = process.env.SP_U03_EVIDENCE_DIR

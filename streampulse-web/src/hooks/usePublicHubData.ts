@@ -11,9 +11,11 @@ import {
   type PublicHubLoadSource,
   type PublicHubProjection,
 } from '../lib/publicHub'
-import { hubActivityNeedsRecentFallback } from '../lib/hubActivityHonesty'
+import { HUB_ACTIVITY_REASON_PORTAL_STAND_IN, hubActivityNeedsRecentFallback } from '../lib/hubActivityHonesty'
+import { HUB_READ_HARD_CAP_MS, hubReadTimeoutMs } from '../lib/hubEarlyFetch'
 import { computeJitteredDelayMs } from '../lib/pollDelay'
 import { isApiError } from '../lib/apiClient'
+import { hubDataAsOf, olderHubDataAsOf } from '../lib/hubDataAge'
 
 export interface UsePublicHubOptions {
   /** Poll cadence in ms. Matches the backend cache TTL (~30s) by default. */
@@ -42,6 +44,10 @@ export interface PublicHubState {
    * Does not advance while the API is failing — use for trust-line "UPDATED … AGO".
    */
   lastUpdated: number | null
+  /** Local apply time or saved-copy timestamp associated with the displayed data. */
+  displayedSnapshotAt: number | null
+  /** Browser-clock anchor for the oldest displayed data, independent of receipt. */
+  dataAsOf: number | null
   /** Alias of lastUpdated — last successful poll receipt time. */
   lastSuccessfulPollAt: number | null
   /**
@@ -49,10 +55,28 @@ export interface PublicHubState {
    * Pool Wire and other reducers must consume each sequence at most once.
    */
   pollSequence: number
+  /**
+   * Counts hub reads started (poll, Try again, back to the tab), answered or
+   * not, so a reader that rides the hub's polls keeps going while the hub fails.
+   */
+  pollAttempt: number
   /** When data was read from browser cache (ms since epoch). */
   cachedAt: number | null
   /** A server Retry-After window is active; refresh() waits for it to end. */
   retryBlocked: boolean
+  /**
+   * The hub read for this window is still running and nothing on screen came
+   * from a hub read (no data yet, totals only, or a saved copy). The read
+   * outlives its deadline (up to HUB_READ_HARD_CAP_MS) and replaces what is
+   * shown when it lands; false once its load has settled (answered, or failed
+   * and its stand-in shown).
+   */
+  hubReadPending: boolean
+  /** A load of this window is running, its stand-in included: Try again would only wait on it. */
+  hubReadRunning: boolean
+  /** The running read has missed its deadline: only then does the page call it slow. */
+  hubReadLate: boolean
+  /** Reads now; a read for this window still running is waited on, never started over. */
   refresh: () => void
 }
 
@@ -72,6 +96,24 @@ function canRecoverHubRead(error: unknown): boolean {
     ['server', 'timeout', 'unreachable'].includes(error.kind)
 }
 
+/** What a hub read that has not answered by its deadline counts as. */
+const HUB_DEADLINE_MISSED = { kind: 'timeout', message: 'Request deadline exceeded', status: 0 } as const
+
+/** True when `read` has not settled after `ms`; false once it settles or `signal` aborts. */
+function missesDeadline(read: Promise<unknown>, ms: number, signal: AbortSignal): Promise<boolean> {
+  return new Promise((resolve) => {
+    const finish = (missed: boolean) => {
+      window.clearTimeout(timer)
+      signal.removeEventListener('abort', onAbort)
+      resolve(missed)
+    }
+    const onAbort = () => finish(false)
+    const timer = window.setTimeout(() => finish(true), ms)
+    signal.addEventListener('abort', onAbort, { once: true })
+    read.then(() => finish(false), () => finish(false))
+  })
+}
+
 const WINDOW_MINUTES: Partial<Record<PublicHubActivityWindow, number>> = {
   '30m': 30, 'recent': 30, '24h': 1440, '7d': 10080, '1m': 43200,
   '3m': 129600, '6m': 259200, '1y': 525600,
@@ -86,6 +128,7 @@ function hydrateFromCache(activityWindow: PublicHubActivityWindow, projection?: 
       loadSource: null as PublicHubLoadSource | null,
       hubEndpointOk: false,
       lastUpdated: null as number | null,
+      dataAsOf: null as number | null,
       cachedAt: null as number | null,
       hasData: false,
       loadedActivityWindow: null as PublicHubActivityWindow | null,
@@ -98,16 +141,17 @@ function hydrateFromCache(activityWindow: PublicHubActivityWindow, projection?: 
     // Cache implies a prior successful hub payload — do not start as "endpoint failed".
     hubEndpointOk: true,
     lastUpdated: cached.cachedAt,
+    dataAsOf: cached.dataAsOf,
     cachedAt: cached.cachedAt,
     hasData: true,
     loadedActivityWindow: activityWindow,
   }
 }
 
-function persistSuccessfulHub(activityWindow: PublicHubActivityWindow, hub: PublicHub, projection?: PublicHubProjection) {
+function persistSuccessfulHub(activityWindow: PublicHubActivityWindow, hub: PublicHub, projection?: PublicHubProjection, dataAsOf?: number | null) {
   // Idle time, never mid-gesture; the projection is computed once per
   // snapshot (plan §2.6).
-  schedulePublicHubCacheWrite(activityWindow, hub, projection)
+  schedulePublicHubCacheWrite(activityWindow, hub, projection, dataAsOf)
 }
 
 /** Performance mark for the first successful full-hub read of this page load (plan §4.5). */
@@ -131,7 +175,12 @@ export function resetHubDataMarkForTests(): void {
   hubDataMarked = false
 }
 
-function replaceWithCanonicalRecentActivity(requested: PublicHub, recent: PublicHub): PublicHub {
+/**
+ * `reason`: the backend's own when it served the fallback; the portal's
+ * stand-in reason when the portal's 30m read stands in (fix, 10-30), so the
+ * page never claims a cause the backend did not send.
+ */
+function replaceWithCanonicalRecentActivity(requested: PublicHub, recent: PublicHub, reason = 'historical_projection_unavailable'): PublicHub {
   const requestedActivity = requested.activity
   return {
     ...requested,
@@ -148,18 +197,18 @@ function replaceWithCanonicalRecentActivity(requested: PublicHub, recent: Public
       availableWindowMinutes: 30,
       state: 'degraded',
       source: 'live_pool_fallback',
-      reason: 'historical_projection_unavailable',
+      reason,
       bucketMinutes: recent.activity.bucketMinutes ?? 1,
     },
   }
 }
 
-/** A 30m read standing in for a longer requested window: the bounded live-pool fallback. */
+/** A 30m read standing in for a longer requested window: the bounded live-pool view, tagged as the portal's stand-in (fix, 10-30). */
 function recentForRequestedWindow(recent: PublicHub, minutes: number): PublicHub {
   return replaceWithCanonicalRecentActivity({
     ...recent,
     activity: { ...recent.activity, windowMinutes: minutes, requestedWindowMinutes: minutes },
-  }, recent)
+  }, recent, HUB_ACTIVITY_REASON_PORTAL_STAND_IN)
 }
 
 function withUnavailableActivity(hub: PublicHub): PublicHub {
@@ -192,17 +241,36 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
   const [loadSource, setLoadSource] = useState<PublicHubLoadSource | null>(() => initial.loadSource)
   const [hubEndpointOk, setHubEndpointOk] = useState(() => initial.hubEndpointOk)
   const [lastUpdated, setLastUpdated] = useState<number | null>(() => initial.lastUpdated)
+  const [displayedSnapshotAt, setDisplayedSnapshotAt] = useState<number | null>(() => initial.lastUpdated)
+  const [dataAsOf, setDataAsOf] = useState<number | null>(() => initial.dataAsOf)
   const [cachedAt, setCachedAt] = useState<number | null>(() => initial.cachedAt)
   const [pollSequence, setPollSequence] = useState(() => (initial.hasData ? 1 : 0))
+  const [pollAttempt, setPollAttempt] = useState(0)
   const [loadedActivityWindow, setLoadedActivityWindow] = useState<PublicHubActivityWindow | null>(
     () => initial.loadedActivityWindow,
   )
+  // A load of the requested window is running, its stand-in included (an enabled hook starts one on mount).
+  const [hubReadRunning, setHubReadRunning] = useState(enabled)
+  const [hubReadLate, setHubReadLate] = useState(false)
+  // The window and projection whose load last settled. A newly picked one counts as read from
+  // its first render, before its effect starts the load: the page never reads that gap as given up.
+  const [settledKey, setSettledKey] = useState<string | null>(null)
 
   const controllerRef = useRef<AbortController | null>(null)
+  // The requested window's own hub read while it runs: refresh() waits on it rather than start the build over.
+  const hubReadRef = useRef<Promise<unknown> | null>(null)
   const inFlightRef = useRef(false)
   const lastFetchAtRef = useRef(0)
   const mountedRef = useRef(true)
   const hasDataRef = useRef(initial.hasData)
+  // A hub read has answered since mount. A saved copy is not one, so it still
+  // gives way to the early 30m view.
+  const networkAppliedRef = useRef(false)
+  // The window and projection on screen: a reply for any other never lands,
+  // even before the effect cleanup aborts its load.
+  const loadKey = `${activityWindow}|${projection ?? ''}`
+  const loadKeyRef = useRef(loadKey)
+  loadKeyRef.current = loadKey
   const prevActivityWindowRef = useRef(activityWindow)
   const pollSequenceRef = useRef(initial.hasData ? 1 : 0)
   const consecutiveFailuresRef = useRef(0)
@@ -210,25 +278,31 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
   const retryNotBeforeRef = useRef(0)
   // Ends retryBlocked when the server's pause ends, whether or not a read runs then.
   const unblockTimerRef = useRef<number>()
-  const pendingPersistRef = useRef<{ hub: PublicHub; activityWindow: PublicHubActivityWindow; projection?: PublicHubProjection } | null>(null)
+  const pendingPersistRef = useRef<{ hub: PublicHub; activityWindow: PublicHubActivityWindow; projection?: PublicHubProjection; dataAsOf: number | null } | null>(null)
   const randomRef = useRef(random)
   randomRef.current = random
 
   const applySuccessfulLoad = useCallback(
     // interim: the 30m view shown while the requested window loads; never cached or marked.
-    (hub: PublicHub, source: PublicHubLoadSource, endpointOk: boolean, interim = false) => {
+    (hub: PublicHub, source: PublicHubLoadSource, endpointOk: boolean, interim = false, asOf: number | null = hubDataAsOf(hub, {})) => {
+      const appliedAt = Date.now()
       setData(hub)
       setLoadSource(source)
       setHubEndpointOk(endpointOk)
       setError(null)
-      setLastUpdated(Date.now())
+      // A Retry-After from the stand-in's read ends with this answer.
+      setRetryBlocked(false)
+      setLastUpdated(appliedAt)
+      setDisplayedSnapshotAt(appliedAt)
+      setDataAsOf(asOf)
       setCachedAt(null)
       pollSequenceRef.current += 1
       setPollSequence(pollSequenceRef.current)
       hasDataRef.current = true
+      if (endpointOk) networkAppliedRef.current = true
       setLoadedActivityWindow(activityWindow)
       // Persisted by the effect below once React has committed this snapshot.
-      pendingPersistRef.current = endpointOk && !interim ? { hub, activityWindow, projection } : null
+      pendingPersistRef.current = endpointOk && !interim ? { hub, activityWindow, projection, dataAsOf: asOf } : null
       if (endpointOk && !interim && !projection) markHubDataOnce()
       consecutiveFailuresRef.current = 0
       nextRetryAfterMsRef.current = null
@@ -239,8 +313,21 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
   )
 
   const load = useCallback(async (force = false) => {
-    if (Date.now() < retryNotBeforeRef.current) return
+    const key = `${activityWindow}|${projection ?? ''}`
+    if (Date.now() < retryNotBeforeRef.current) {
+      // A window picked during a Retry-After pause: nothing runs for it, so it never reads as loading.
+      // The rate-limit error stays on screen, and the poll loads the window when the pause ends.
+      if (!inFlightRef.current && mountedRef.current && loadKeyRef.current === key) {
+        setLoading(false)
+        setRefreshing(false)
+        setHubReadRunning(false)
+        setHubReadLate(false)
+        setSettledKey(key)
+      }
+      return
+    }
     if (inFlightRef.current && !force) return
+    setPollAttempt((n) => n + 1)
     setRetryBlocked(false)
 
     controllerRef.current?.abort(new DOMException('superseded by new request', 'AbortError'))
@@ -248,80 +335,190 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
     controllerRef.current = controller
     inFlightRef.current = true
     setActivityRepairing(false)
+    setHubReadRunning(true)
+    setHubReadLate(false)
+    // This load still owns the hook: not superseded, unmounted or for another window.
+    const current = () => !controller.signal.aborted && mountedRef.current && loadKeyRef.current === key
 
     if (hasDataRef.current) setRefreshing(true)
     else setLoading(true)
 
     const minutes = WINDOW_MINUTES[activityWindow]
-    // Cold long window: a busy API can take its whole deadline to build it. If it
-    // has not answered after the head start, show the 30m view meanwhile, with
-    // the chart still updating; the requested window's own result settles the load.
-    let recentView: ReturnType<typeof fetchPublicHubBase> | undefined
+    // The 30m view and the totals read stop with this load, and once the
+    // requested window has answered.
     let recentViewTimer: number | undefined
-    let primaryFailed = false
-    const recentViewController = new AbortController()
-    const stopRecentView = () => {
+    const sideReads = new AbortController()
+    const stopSideReads = () => {
       window.clearTimeout(recentViewTimer)
-      recentViewController.abort(new DOMException('requested window settled', 'AbortError'))
+      sideReads.abort(new DOMException('requested window settled', 'AbortError'))
     }
-    if (!hasDataRef.current && minutes != null && minutes > 30) {
+    controller.signal.addEventListener('abort', stopSideReads, { once: true })
+    // Long window with no hub answer yet (a cold load, or only a saved copy): a
+    // busy API can take its whole deadline to build it. If it has not answered
+    // after the head start, read the 30m view too, with the hard cap as well:
+    // whichever lands first fills the page, the chart still updating, and the
+    // requested window's own result settles the load and replaces the 30m view.
+    let recentView: ReturnType<typeof fetchPublicHubBase> | undefined
+    let recentViewStartedAt = 0
+    let recentSettled = false
+    // Set once recover() takes this reply as its own result.
+    let recovering = false
+    // The 30m view is on screen: totals read meanwhile never replace it.
+    let recentShown = false
+    // Past the deadline the 30m view is what stands in for the late read: it is saved like one.
+    let pastDeadline = false
+    if (!networkAppliedRef.current && minutes != null && minutes > 30) {
       recentViewTimer = window.setTimeout(() => {
-        recentView = fetchPublicHubBase(recentViewController.signal, '30m', projection, 8_000)
+        recentViewStartedAt = Date.now()
+        recentView = fetchPublicHubBase(sideReads.signal, '30m', projection, HUB_READ_HARD_CAP_MS)
         void recentView.then((recent) => {
-          // A failed primary takes this reply as its recovery read below.
-          if (primaryFailed || recentViewController.signal.aborted || !mountedRef.current || !recent.hubEndpointOk) return
-          applySuccessfulLoad(recentForRequestedWindow(recent.data, minutes), recent.loadSource, true, true)
+          recentSettled = true
+          if (recovering || sideReads.signal.aborted || !current() || !recent.hubEndpointOk) return
+          applySuccessfulLoad(recentForRequestedWindow(recent.data, minutes), recent.loadSource, true, !pastDeadline, recent.dataAsOf ?? null)
+          recentShown = true
           setLoading(false)
           setActivityRepairing(true)
-        }, () => undefined)
+        }, () => { recentSettled = true })
       }, HUB_RECENT_VIEW_HEAD_START_MS)
-      controller.signal.addEventListener('abort', stopRecentView, { once: true })
+    }
+
+    // What stands in for a failed or late read of the requested window. A
+    // historical outage must not erase independently available live health:
+    // a longer window takes the 30m view (at most one 30m read per load), else
+    // totals while nothing measured is on screen. Never bypasses auth or 429
+    // backoff. Throws what to report; null once the stand-in is not needed.
+    // `readEnded`: the requested window failed; else it missed its deadline and runs on.
+    const recover = async (primaryError: unknown, readEnded: boolean) => {
+      window.clearTimeout(recentViewTimer)
+      if (!canRecoverHubRead(primaryError)) throw primaryError
+      let recent: Awaited<ReturnType<typeof fetchPublicHubBase>> | undefined
+      // A 30m view still under way at the deadline is not waited on: it fills the page when it lands.
+      if (minutes != null && minutes > 30 && (readEnded || !recentView || recentSettled)) {
+        recovering = true
+        try {
+          // A 30m view already read or under way is the recovery read: never a second one.
+          // A fresh one keeps the 8 s default: the small body, so a failed cold load reaches its error sooner.
+          // One under way runs to the hard cap, but a failed read waits on it only to that same 8 s from
+          // its start: past that the stand-in or the error shows now, not when the 30m view gives up.
+          const pending = recentView
+          if (pending && !recentSettled
+            && await missesDeadline(pending, Math.max(0, recentViewStartedAt + 8_000 - Date.now()), sideReads.signal)) {
+            recovering = false
+          } else {
+            recent = await (pending ?? fetchPublicHubBase(sideReads.signal, '30m', projection, 8_000))
+          }
+        } catch (recentError) {
+          if (!canRecoverHubRead(recentError)) throw recentError
+        }
+      }
+      if (sideReads.signal.aborted || !current()) return null
+      if (recent?.hubEndpointOk && minutes != null) {
+        return { hub: recentForRequestedWindow(recent.data, minutes), source: recent.loadSource, endpointOk: true, dataAsOf: recent.dataAsOf ?? null }
+      }
+      // Keep an existing measured snapshot instead of replacing it with totals.
+      // A projection read (Moments, home tickers) shows no totals, so it reports
+      // its own error now rather than waiting on /stats it would never show.
+      if (hasDataRef.current || projection) throw primaryError
+      const fallback = await fetchPublicHubStatsFallback(sideReads.signal).catch((fallbackError: unknown) => {
+        // A 30m view that landed meanwhile is on screen: nothing to report.
+        if (recentShown) return null
+        // When totals are unreachable too, report the slow hub so the timeout stays visible;
+        // a typed fallback error (e.g. a 429 with Retry-After) is kept as is.
+        throw isApiError(primaryError) && primaryError.kind === 'timeout' && !isApiError(fallbackError) ? primaryError : fallbackError
+      })
+      if (!fallback || recentShown || sideReads.signal.aborted || !current()) return null
+      return { hub: fallback.data, source: fallback.loadSource, endpointOk: false, dataAsOf: null }
+    }
+
+    // Honor server Retry-After when present; never shorten below healthy cadence.
+    const pauseFor = (err: unknown) => {
+      if (!isApiError(err) || typeof err.retryAfterMs !== 'number' || err.retryAfterMs <= 0) return
+      const pauseMs = Math.max(pollMs, err.retryAfterMs)
+      nextRetryAfterMsRef.current = pauseMs
+      retryNotBeforeRef.current = Date.now() + pauseMs
+      setRetryBlocked(true)
+      // Offer Try again once the pause ends: a hidden tab, polling turned off, or a
+      // poll that fired just before the end may not run a read then.
+      window.clearTimeout(unblockTimerRef.current)
+      unblockTimerRef.current = window.setTimeout(() => setRetryBlocked(false), pauseMs)
+    }
+
+    const report = (err: unknown) => {
+      if (isApiError(err) && err.kind === 'aborted') return
+      consecutiveFailuresRef.current += 1
+      pauseFor(err)
+      setError(
+        isApiError(err)
+          ? err.kind === 'timeout' ? HUB_TIMEOUT_MESSAGE : err.message
+          : err instanceof Error
+            ? err.message
+            : 'Failed to load live hub data',
+      )
+      // Cache hydrate may have set hubEndpointOk=true; a total network miss must clear it.
+      setHubEndpointOk(false)
     }
 
     try {
-      // A historical outage must not erase independently available live health.
-      // At most one recent-window recovery read; never bypass auth or 429 backoff.
+      // apiClient ends the read itself at the hard cap; its deadline only ends the wait.
+      const read = fetchPublicHubBase(controller.signal, activityWindow, projection, HUB_READ_HARD_CAP_MS)
+      hubReadRef.current = read
+      const readDone = () => { if (hubReadRef.current === read) hubReadRef.current = null }
+      read.then(readDone, readDone)
+      // Past its deadline the read counts as timed out (the 30m view, totals, or
+      // the saved copy with the slow-hub error) but keeps running: its answer
+      // replaces whatever stands in for it.
+      let standIn: Promise<void> | undefined
+      if (await missesDeadline(read, hubReadTimeoutMs(activityWindow, projection) ?? 8_000, controller.signal)) {
+        if (!current()) return
+        pastDeadline = true
+        setHubReadLate(true)
+        standIn = recover(HUB_DEADLINE_MISSED, false).then(
+          (shown) => {
+            if (!shown || sideReads.signal.aborted || !current()) return
+            applySuccessfulLoad(shown.hub, shown.source, shown.endpointOk, false, shown.dataAsOf)
+            // A 30m view stands in for the requested window: its chart says it is updating, as on a cold load.
+            if (shown.endpointOk) setActivityRepairing(true)
+          },
+          (err: unknown) => {
+            if (!sideReads.signal.aborted && current()) report(err)
+          },
+        ).then(() => {
+          if (sideReads.signal.aborted || !current()) return
+          // The chart of a 30m view keeps saying it is updating: the requested window still runs.
+          setLoading(false)
+          setRefreshing(false)
+        })
+      }
+
       let base: Awaited<ReturnType<typeof fetchPublicHubBase>>
       try {
-        base = await fetchPublicHubBase(controller.signal, activityWindow, projection)
-        stopRecentView()
+        base = await read
       } catch (primaryError) {
-        primaryFailed = true
-        window.clearTimeout(recentViewTimer)
-        if (controller.signal.aborted || !mountedRef.current) return
-        if (!canRecoverHubRead(primaryError)) throw primaryError
-        let recent: Awaited<ReturnType<typeof fetchPublicHubBase>> | undefined
-        if (minutes != null && minutes > 30) {
-          try {
-            // A 30m view already read or under way is the recovery read: never a second one.
-            // The small 30m body keeps the 8 s default, so a failed cold load reaches its error sooner.
-            recent = await (recentView ?? fetchPublicHubBase(controller.signal, '30m', projection, 8_000))
-          } catch (recentError) {
-            if (!canRecoverHubRead(recentError)) throw recentError
-          }
-        }
-        if (controller.signal.aborted || !mountedRef.current) return
-        if (recent?.hubEndpointOk && minutes != null) {
-          applySuccessfulLoad(recentForRequestedWindow(recent.data, minutes), recent.loadSource, true)
+        if (!current()) return
+        if (standIn) {
+          // The stand-in already shows what replaces this read; a 30m view
+          // still under way may yet land in its place. Only a Retry-After
+          // still holds the next one back.
+          await standIn
+          if (recentView && canRecoverHubRead(primaryError)) await recentView.catch(() => undefined)
+          if (current()) pauseFor(primaryError)
           return
         }
-        // Keep an existing measured snapshot instead of replacing it with totals.
-        // A projection read (Moments, home tickers) shows no totals, so it reports
-        // its own error now rather than waiting on /stats it would never show.
-        if (hasDataRef.current || projection) throw primaryError
-        const fallback = await fetchPublicHubStatsFallback(controller.signal).catch((fallbackError: unknown) => {
-          // When totals are unreachable too, report the slow hub so the timeout stays visible;
-          // a typed fallback error (e.g. a 429 with Retry-After) is kept as is.
-          throw isApiError(primaryError) && primaryError.kind === 'timeout' && !isApiError(fallbackError) ? primaryError : fallbackError
-        })
-        if (controller.signal.aborted || !mountedRef.current) return
-        applySuccessfulLoad(fallback.data, fallback.loadSource, false)
+        const shown = await recover(primaryError, true)
+        if (shown) applySuccessfulLoad(shown.hub, shown.source, shown.endpointOk, false, shown.dataAsOf)
         return
       }
-      if (!mountedRef.current || controller.signal.aborted) return
+      if (!current()) return
+      // A late unhealthy answer changes nothing the stand-in shows.
+      if (standIn && !base.hubEndpointOk) {
+        await standIn
+        return
+      }
+      stopSideReads()
 
       if (base.hubEndpointOk) {
         let next = base.data
+        let nextAsOf = base.dataAsOf ?? null
         // Older hosted instances returned coarse long-window rows while
         // claiming a 30m fallback. Fetch the canonical 30m endpoint so the
         // chart never presents repeated aggregates as minute activity.
@@ -331,6 +528,8 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
           // only the final snapshot advances freshness, sequence, and cache.
           const withheld = withUnavailableActivity(base.data)
           setData(withheld)
+          setDisplayedSnapshotAt(Date.now())
+          setDataAsOf(nextAsOf)
           setLoadSource(base.loadSource)
           setHubEndpointOk(true)
           setError(null)
@@ -338,11 +537,13 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
           setLoading(false)
           setActivityRepairing(true)
           hasDataRef.current = true
+          networkAppliedRef.current = true
           try {
             // Same short deadline as the recovery read: the 30m body is small.
             const recent = await fetchPublicHubBase(controller.signal, '30m', projection, 8_000)
             if (recent.hubEndpointOk) {
               next = replaceWithCanonicalRecentActivity(base.data, recent.data)
+              nextAsOf = olderHubDataAsOf(nextAsOf, recent.dataAsOf ?? null)
             } else {
               next = withheld
             }
@@ -355,8 +556,8 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
             next = withheld
           }
         }
-        if (controller.signal.aborted || !mountedRef.current) return
-        applySuccessfulLoad(next, base.loadSource, true)
+        if (!current()) return
+        applySuccessfulLoad(next, base.loadSource, true, false, nextAsOf)
         return
       }
 
@@ -370,51 +571,42 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
       }
 
       const fallback = await fetchPublicHubStatsFallback(controller.signal)
-      if (!mountedRef.current || controller.signal.aborted) return
+      if (!current()) return
       applySuccessfulLoad(fallback.data, fallback.loadSource, fallback.hubEndpointOk)
     } catch (err) {
       // Aborts are intentional cleanup (refresh supersession, unmount, hook disable,
       // or our own apiClient timeout). They are NOT user-facing errors — surfacing
       // them painted the "Could not refresh hub data" banner with Chrome's raw
       // DOMException name ("signal is aborted without reason").
-      if (controller.signal.aborted || !mountedRef.current) return
-      if (isApiError(err) && err.kind === 'aborted') return
-      consecutiveFailuresRef.current += 1
-      if (isApiError(err) && typeof err.retryAfterMs === 'number' && err.retryAfterMs > 0) {
-        // Honor server Retry-After when present; never shorten below healthy cadence.
-        const pauseMs = Math.max(pollMs, err.retryAfterMs)
-        nextRetryAfterMsRef.current = pauseMs
-        retryNotBeforeRef.current = Date.now() + pauseMs
-        setRetryBlocked(true)
-        // Offer Try again once the pause ends: a hidden tab, polling turned off, or a
-        // poll that fired just before the end may not run a read then.
-        window.clearTimeout(unblockTimerRef.current)
-        unblockTimerRef.current = window.setTimeout(() => setRetryBlocked(false), pauseMs)
-      }
-      setError(
-        isApiError(err)
-          ? err.kind === 'timeout' ? HUB_TIMEOUT_MESSAGE : err.message
-          : err instanceof Error
-            ? err.message
-            : 'Failed to load live hub data',
-      )
-      // Cache hydrate may have set hubEndpointOk=true; a total network miss must clear it.
-      setHubEndpointOk(false)
+      if (!current()) return
+      report(err)
     } finally {
-      stopRecentView()
-      if (controllerRef.current === controller) {
+      stopSideReads()
+      // A load for a window no longer shown leaves its flags to the effect cleanup that ends it.
+      if (controllerRef.current === controller && loadKeyRef.current === key) {
         inFlightRef.current = false
         lastFetchAtRef.current = Date.now()
         if (mountedRef.current) {
           setLoading(false)
           setRefreshing(false)
           setActivityRepairing(false)
+          // Only now, with its stand-in shown: the page never reads a gap between them as given up.
+          setHubReadRunning(false)
+          setHubReadLate(false)
+          setSettledKey(key)
         }
       }
     }
   }, [activityWindow, applySuccessfulLoad, pollMs, projection])
 
   const refresh = useCallback(() => {
+    // The origin may still be building the read under way: starting over would
+    // only push its answer back. Wait on it instead, and show that it is waited on.
+    if (hubReadRef.current) {
+      if (hasDataRef.current) setRefreshing(true)
+      else setLoading(true)
+      return
+    }
     void load(true)
   }, [load])
 
@@ -425,7 +617,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
     const pending = pendingPersistRef.current
     if (!pending) return
     pendingPersistRef.current = null
-    persistSuccessfulHub(pending.activityWindow, pending.hub, pending.projection)
+    persistSuccessfulHub(pending.activityWindow, pending.hub, pending.projection, pending.dataAsOf)
   }, [pollSequence])
 
   useEffect(() => {
@@ -438,6 +630,8 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
       setLoadSource('cache')
       setHubEndpointOk(true)
       setLastUpdated(cached.cachedAt)
+      setDisplayedSnapshotAt(cached.cachedAt)
+      setDataAsOf(cached.dataAsOf)
       setCachedAt(cached.cachedAt)
       pollSequenceRef.current += 1
       setPollSequence(pollSequenceRef.current)
@@ -457,6 +651,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
     if (!enabled) {
       setLoading(false)
       setRefreshing(false)
+      setHubReadRunning(false)
       return () => {
         mountedRef.current = false
         const controller = controllerRef.current
@@ -474,9 +669,11 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
       if (!active || pollMs <= 0) return
       const retryAfter = nextRetryAfterMsRef.current
       nextRetryAfterMsRef.current = null
+      // A window picked during a Retry-After pause loads as soon as the pause ends.
+      const paused = retryNotBeforeRef.current - Date.now()
       const delay =
         retryAfter ??
-        computeJitteredDelayMs(pollMs, consecutiveFailuresRef.current, randomRef.current)
+        (paused > 0 ? paused : computeJitteredDelayMs(pollMs, consecutiveFailuresRef.current, randomRef.current))
       arm(delay)
     }
     const arm = (delay: number) => {
@@ -544,10 +741,17 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
     hubEndpointOk,
     liveEmpty: Boolean(data) && (data?.poolSize ?? 0) === 0,
     lastUpdated,
+    displayedSnapshotAt,
+    dataAsOf,
     lastSuccessfulPollAt: lastUpdated,
     pollSequence,
+    pollAttempt,
     cachedAt,
     retryBlocked,
+    hubReadPending: enabled && (hubReadRunning || settledKey !== loadKey) &&
+      (!data || loadSource === 'stats-fallback' || loadSource === 'cache'),
+    hubReadRunning: enabled && hubReadRunning,
+    hubReadLate: enabled && hubReadLate,
     refresh,
   }
 }

@@ -30,7 +30,9 @@
   .analytics-console[data-analytics-console-shell] header[data-session-header] h1.ssp-h1 { font-size: 32px; }
 }
 @media (max-width: 639px) {
-  .analytics-console[data-analytics-console-shell] header[data-session-header] h1.ssp-h1 { font-size: 21.6px; }
+  /* min-height: room for two title lines (2 x 1.08) for every heading here, so the figures under it do not
+     drop when a title lands on two lines or the page switches to the not-recorded or error heading. */
+  .analytics-console[data-analytics-console-shell] header[data-session-header] h1.ssp-h1 { font-size: 21.6px; min-height: 2.16em; }
 }
 
 /* One meta line: name · game · Started · Updated [refresh] · First 54s not tracked · Watch VOD · Data: Good.
@@ -42,9 +44,17 @@
   overflow-clip-margin: 6px;
 }
 /* While the first session read is out the line keeps its slot but stays hidden: its items arrive with
-   the read and would slide "Data" and "Updated" across the line (CLS). */
+   the read and would slide "Data" and "Updated" across the line (CLS). The slot also keeps the rows the
+   full line above wraps to (24 px rows, 2 px gaps), so the stat row under it does not drop when they
+   land: three rows below 456 px, two up to 797 px, one from 798 px (measured; the count follows the text). */
 .analytics-console .ssp-meta-w[data-session-meta-pending] {
   visibility: hidden;
+}
+@media (max-width: 797px) {
+  .analytics-console .ssp-meta-w[data-session-meta-pending] { min-height: 50px; }
+}
+@media (max-width: 455px) {
+  .analytics-console .ssp-meta-w[data-session-meta-pending] { min-height: 76px; }
 }
 .analytics-console .ssp-meta {
   display: flex;

@@ -15,6 +15,7 @@ const expected = [
   ['privacy/index.html', 'Privacy Policy — StreamPulse', 'index,follow', 'https://streampulse.stream/privacy'],
   ['terms/index.html', 'Terms of Use — StreamPulse', 'index,follow', 'https://streampulse.stream/terms'],
   ['refunds/index.html', 'Cancellation and Refunds — StreamPulse', 'index,follow', 'https://streampulse.stream/refunds'],
+  ['withdraw/index.html', 'Withdraw from your contract — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/withdraw'],
   ['supporter/index.html', 'Pulse Supporter — StreamPulse', 'index,follow', 'https://streampulse.stream/supporter'],
   ['supporter/thanks/index.html', 'Return to your extension — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/supporter/thanks'],
   ['account/restore/index.html', 'Restore Supporter — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/account/restore'],
@@ -97,6 +98,14 @@ for (const [relativePath, title, robots, canonical] of expected) {
 
 for (const relativePath of ['robots.txt', 'sitemap.xml', '_headers', '_redirects']) {
   if (!existsSync(join(dist, relativePath))) failures.push(`${relativePath}: missing`)
+}
+
+// A sitemap URL must be a page that asks to be indexed: listing a noindex page is a Search Console error.
+if (existsSync(join(dist, 'sitemap.xml'))) {
+  const indexable = new Set(expected.filter(([, , robots]) => robots === 'index,follow').map(([, , , canonical]) => canonical))
+  for (const [, loc] of readFileSync(join(dist, 'sitemap.xml'), 'utf8').matchAll(/<loc>([^<]+)<\/loc>/g)) {
+    if (!indexable.has(loc)) failures.push(`sitemap.xml: ${loc} is not an indexable page`)
+  }
 }
 
 for (const route of ['analytics', 'docs', 'status', 'privacy', 'terms', 'refunds', 'supporter', 'support', 'feedback', 'discord', 'changelog']) {

@@ -151,6 +151,21 @@ export interface SessionSpChartProps {
   onLevel?(minutes: number): void
 }
 
+/**
+ * Zoom the session chart to a game segment's minutes (the band click).
+ * (candidate, 10-30) GP1: shared so a Games played poster click zooms the same way.
+ */
+export function zoomSessionToSegment(
+  model: SessionChartModel,
+  store: SpViewportStore,
+  segment: Pick<SessionBandSegment, 'startMs' | 'endMs'>,
+): void {
+  const { startMs, stepMs } = model.data
+  const startIndex = Math.max(0, Math.floor((segment.startMs - startMs) / stepMs))
+  const endIndex = Math.min(model.n - 1, Math.ceil((segment.endMs - startMs) / stepMs) - 1)
+  store.setTarget({ startIndex, endIndex: Math.max(endIndex, startIndex + 1) }, { animate: true })
+}
+
 export const SessionSpChart = forwardRef<SpChartHandle, SessionSpChartProps>(function SessionSpChart(p, ref) {
   const { model, store } = p
   const chartRef = useRef<SpChartHandle | null>(null)
@@ -160,12 +175,10 @@ export const SessionSpChart = forwardRef<SpChartHandle, SessionSpChartProps>(fun
     else if (ref) ref.current = handle
   }, [ref])
 
-  const zoomToSegment = useCallback((segment: SessionBandSegment) => {
-    const { startMs, stepMs } = model.data
-    const startIndex = Math.max(0, Math.floor((segment.startMs - startMs) / stepMs))
-    const endIndex = Math.min(model.n - 1, Math.ceil((segment.endMs - startMs) / stepMs) - 1)
-    store.setTarget({ startIndex, endIndex: Math.max(endIndex, startIndex + 1) }, { animate: true })
-  }, [model, store])
+  const zoomToSegment = useCallback(
+    (segment: SessionBandSegment) => zoomSessionToSegment(model, store, segment),
+    [model, store],
+  )
 
   // session-original lanes leaders: from the pin rail down through every lane to the last lane's floor,
   // which is the plot's bottom (the last lane takes the rest); the layer stops 3 px above what this returns

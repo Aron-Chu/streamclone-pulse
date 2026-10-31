@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { FEEDBACK_PATH, PRIVACY_PATH, REFUNDS_PATH, SECURITY_REPORT_URL, STRIPE_CUSTOMER_PORTAL_LOGIN_URL, SUPPORTER_PATH } from '../../lib/externalLinks'
 import { discordInviteUrl } from '../../lib/discord'
+import { SUPPORTER_WITHDRAWAL_PATH, supporterWithdrawalEnabled } from '../../lib/supporterWithdrawal'
 import { SupporterPerkItems, supporterOnlyYou } from '../../ui/components/SupporterPerks'
 import { TermsSeenInChatBullets } from '../../ui/components/SupporterChatBadgeCopy'
 import { supporterChatBadgesEnabled } from '../../lib/supporterChatBadgesFlag'
@@ -28,20 +29,20 @@ export default function Terms() {
           </div>
           <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Terms of Use</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            Last updated: October 28, 2026 · Applies to{' '}
+            Last updated: October 31, 2026 · Applies to{' '}
             <code className="font-mono text-zinc-300">streampulse.stream</code>, the StreamPulse
             browser extension (Chrome, Brave, Edge and Firefox), and the Pulse Supporter subscription.
           </p>
         </header>
-
 
         <section className="mt-8 rounded-xl border border-white/[0.08] bg-black/20 p-6">
           <h2 className="!mt-0">Summary</h2>
           <p className="text-zinc-300">
             StreamPulse is a free Twitch analytics site and browser extension. Pulse Supporter is an
             optional subscription of US$4.99 per month that funds development and adds cosmetics — it
-            does not unlock analytics. You can cancel at any time and keep access until the end of the
-            period you paid for. The service is provided as-is, with no uptime guarantee.
+            does not unlock analytics. You can cancel at any time and keep access until the end of
+            the period you paid for. The
+            service is provided as-is, with no uptime guarantee.
           </p>
         </section>
 
@@ -65,7 +66,8 @@ export default function Terms() {
         </p>
         <p>
           Core Pulse is free and does not require an account. You can connect the extension without
-          Twitch or a separate StreamPulse sign-up; connecting starts no payment. A Supporter purchase is offered separately through Stripe and linked to that extension
+          Twitch or a separate StreamPulse sign-up; connecting starts no payment. A Supporter
+          purchase is offered separately through Stripe and linked to that extension
           connection.
         </p>
         <p>Please do not:</p>
@@ -161,16 +163,17 @@ export default function Terms() {
         </p>
 
         <h2>Selling entity and applicable law</h2>
+        {supporterWithdrawalEnabled() ? <p><Link to={SUPPORTER_WITHDRAWAL_PATH}>Withdraw from contract here</Link>.</p> : null}
         <p data-testid="terms-seller-and-law">
-          StreamPulse is run by, and Pulse Supporter is sold by, Aron Chu, 906 North Miller Dr,
+          StreamPulse is run by, and Pulse Supporter is sold by, Aron Chu, 906 N Miller Rd,
           Unit 3099, Tempe, AZ 85288, USA. These terms are governed by the law of Arizona, USA.
           If you are a consumer, that choice of law does not take away the protection of consumer
           law where you live. If you live in the EU, the wider European Economic Area or the UK, you
           can withdraw from a new Supporter subscription within 14 days after you subscribe,
           without giving a reason: email{' '}
-          <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a> within that
+          <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a>{supporterWithdrawalEnabled() ? <>{' '}or use the <Link to={SUPPORTER_WITHDRAWAL_PATH}>withdrawal form</Link></> : null} within that
           period. Withdrawing cancels the subscription, the charge is refunded in full within 14 days
-          of your email, and Supporter access ends. Any other statutory right to cancel that you have
+          of your request, and Supporter access ends. Any other statutory right to cancel that you have
           where you live applies as well, on top of the{' '}
           <Link to={REFUNDS_PATH}>cancellation and refund policy</Link>.
         </p>
@@ -178,8 +181,9 @@ export default function Terms() {
 
         <h2>Price and term changes</h2>
         <p>
-          If the Supporter price changes, members will be notified by email before
-          the change takes effect and will be able to cancel before being charged the new amount. A
+          If the Supporter price changes, members will be notified at their Stripe
+          billing email at least 30 days before the change takes effect and will be able to cancel
+          before being charged the new amount. A
           price change is never applied retroactively to a month already paid for.
         </p>
 

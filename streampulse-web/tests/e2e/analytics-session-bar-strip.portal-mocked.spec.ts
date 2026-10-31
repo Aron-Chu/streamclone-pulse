@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from './helpers/portalMockedTest'
 import {
   assertNoUnexpected,
   buildDetail,
@@ -13,8 +13,9 @@ import {
 // U14 (PORT-PLAN F22, d3-v2 session-original .bkc--below): a bar click opens
 // the selected bar's strip in the page's flow under the chart, never over the
 // plot. The picture is a VOD storyboard frame or, with no frame (today: the web
-// client has none), the game's blurred art and the reason. Play loads Twitch's
-// player only on click; every Twitch request here is intercepted, never live.
+// client has none), a plain dark box and the reason, with the game's sharp cover
+// by the title (candidate 10-30, PIC-2). Play loads Twitch's player only on click;
+// every Twitch request here is intercepted, never live.
 const MINUTES = 30
 const PLOT = '[data-bench-plot]'
 const PART = '[data-session-chart-part]'
@@ -174,12 +175,17 @@ test.describe('session bar strip at 1440', () => {
     expect(pic.x + pic.width).toBeLessThanOrEqual(body.x)
     expect(Math.abs(pic.width / pic.height - 16 / 9)).toBeLessThan(0.05)
 
-    // no frame from the web client today: the fallback and its reason, never a stand-in frame
+    // no frame from the web client today: a dark box and its reason, never a stand-in frame or blurred art
+    // (candidate, 10-30, PIC-2); the reel's line (fix, 10-30, PIC-3)
     await expect(strip.locator('[data-preview-tile]')).toHaveAttribute('data-preview-tile', 'fallback')
     await expect(strip.locator('[data-preview-frame]')).toHaveCount(0)
-    await expect(strip.locator('.mpl-note')).toContainText('No preview frame for this minute.')
-    const art = strip.locator('img[data-preview-art]')
-    if (await art.count()) expect(await art.getAttribute('src')).toMatch(/^https:\/\/static-cdn\.jtvnw\.net\//)
+    await expect(strip.locator('.mpl-box img')).toHaveCount(0)
+    await expect(strip.locator('.mpl-note')).toContainText("Preview frames aren't available right now.")
+    await expect(strip.locator('.mpl-note')).not.toContainText('for this minute')
+    // the fixture's game at 0:04:00 is Just Chatting, so the cover is always there
+    const cover = strip.locator('img.bkc-art')
+    await expect(cover).toHaveCount(1)
+    await expect(cover).toHaveAttribute('src', /^https:\/\/static-cdn\.jtvnw\.net\/ttv-boxart\/.+-72x96\.jpg$/)
 
     // the figures, and the bar's moment, locked
     await expect(strip.locator('.bkc-fl')).toHaveText(['viewers', 'chat/min', 'emotes/min'])
@@ -277,6 +283,8 @@ test.describe('session bar strip at 390', () => {
     expect(pb.width).toBeLessThanOrEqual(40)
     // the note is read out, not shown
     expect(await strip.locator('.mpl-note').evaluate((el) => el.getBoundingClientRect().width)).toBeLessThanOrEqual(1)
+    // the sharp 36x48 cover stays at every width (candidate, 10-30, PIC-2)
+    await expect(strip.locator('img.bkc-art')).toBeVisible()
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
     expect(overflow).toBeLessThanOrEqual(0)
 
