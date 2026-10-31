@@ -30,6 +30,8 @@ export interface DetailProps {
   setLk: (rel: number | null) => void
   saved: boolean
   onSave: () => void
+  /** Why the last Save didn't go through (the 200 limit), under the buttons (Q3b, 10-31). */
+  saveNote?: string | null
   onCopy: () => Promise<void>
   onOpen: (key: string) => void
   onClose: () => void
@@ -59,7 +61,7 @@ export interface DetailProps {
  * draws the feed's 25-minute sparkline.
  */
 export function MomentDetail(props: DetailProps) {
-  const { m, pool, now, metric, setMetric, lk, setLk, saved, onSave, onCopy, onOpen, onClose, motion, phone, say, playRef, vods, moreAll, setMoreAll, game, onGame } = props
+  const { m, pool, now, metric, setMetric, lk, setLk, saved, onSave, saveNote, onCopy, onOpen, onClose, motion, phone, say, playRef, vods, moreAll, setMoreAll, game, onGame } = props
   const item = m.item
   const [vod, setVod] = useState<MomentVod | null>(() => vods.peek(item) ?? null)
   const [minutes, setMinutes] = useState<MinuteSeries | null>(null)
@@ -186,6 +188,7 @@ export function MomentDetail(props: DetailProps) {
       <button className="mk-btn" type="button" aria-pressed={saved} onClick={onSave}><BookGlyph />{saved ? 'Saved' : 'Save'}</button>
       <button className="mk-btn" type="button" onClick={() => { void onCopy().finally(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1600) }) }}><LinkGlyph />{copied ? 'Copied ✓' : 'Copy link'}</button>
     </div>
+    {saveNote ? <p className="mk-note mk-d-note">{saveNote}</p> : null}
     <figure className="mk-ch" data-k={kind}>
       <div className="mk-ch-top"><h3>The minutes around it</h3>
         <div className="mk-seg" role="group" aria-label="Chart shows">

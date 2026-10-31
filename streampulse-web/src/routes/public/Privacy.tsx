@@ -403,10 +403,12 @@ export default function Privacy() {
             backend URL and activity window (<code>sp:publicHub:v1:…</code>, with a staleness hint of about
             10 minutes), browser-saved moments and any notes you add to them
             (<code>streampulse.saved-moments.v2</code>; an older <code>v1</code> copy may remain after
-            migration), your optional website analytics choice, your chart Scroll zoom choice
+            migration), the Moments page’s Viewed list (<code>sp-moments-viewed</code>: the moments you
+            opened there, at most 100, each with its channel, stream, time, what chat sent and game, kept
+            30 days; Clear under Viewed removes it), your optional website analytics choice, your chart Scroll zoom choice
             (<code>sp.chart.scrollZoom.v1</code>), and an optional beta key
             (<code>sp.betaKey</code>) when a gated portal feature is
-            used. Saved moments and notes are not synced to your account and remain on this browser after
+            used. Saved moments, notes and Viewed are not synced to your account and remain on this browser after
             sign-out. Clearing site data for streampulse.stream removes these keys.
           </li>
           <li>

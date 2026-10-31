@@ -35,6 +35,9 @@ if (!isPrivateSupporterRoute(window.location.pathname)) initPortalSentry()
 // d3-v5 hub only: start the first hub read while the analytics chunk downloads.
 // Read inline so a flag-off build drops the call and the module.
 if (import.meta.env.VITE_PUBLIC_HUB_V5 === 'on' || import.meta.env.VITE_PUBLIC_HUB_V5 === '1') primePublicHub()
+// the Moments page's Viewed list is kept 30 days, as Privacy says, also for a visitor who doesn't open that page again;
+// its code loads only for a browser that has one (the key is viewedMoments' VIEWED_KEY)
+try { if (window.localStorage.getItem('sp-moments-viewed')) void import('./lib/viewedMoments').then(v => v.pruneViewed()) } catch { /* private window */ }
 
 const queryClient = new QueryClient({
   defaultOptions: {

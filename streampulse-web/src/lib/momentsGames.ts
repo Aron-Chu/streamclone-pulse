@@ -4,7 +4,7 @@ import type { MomentsFeedCategoryFacet } from './momentsFeed'
 
 /**
  * The Moments page's game covers (B2, 2026-10-22: Twitch's Browse → Categories,
- * big covers; on top of the page since M1). A game's count is the moments Latest shows for it (all but the
+ * big covers; on top of the page since M1). A game's count is the moments Live shows for it (all but the
  * ones that don't hold up) among those the page holds, so a card says what its
  * list will show; the feed's own facet counts include those that don't hold up.
  * "N live" is the feed's count of the game's live channels (facets.categories),
@@ -24,7 +24,7 @@ export function momentsGameArt(url: string | undefined, id: string): string | nu
   return url && isExactCategoryBoxArt(url, id) ? url.replace(/-\d+x\d+\.(jpe?g|png|webp)$/i, '-285x380.$1') : null
 }
 
-/** The games in what Latest shows, most moments first, then by name. */
+/** The games in what Live shows, most moments first, then by name. */
 export function momentsGames(pool: readonly CheckedMoment[], facets: readonly MomentsFeedCategoryFacet[] | null): MomentsGame[] {
   const byId = new Map((facets ?? []).map(f => [f.id, f]))
   const games = new Map<string, MomentsGame>()

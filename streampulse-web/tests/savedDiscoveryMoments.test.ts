@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fromHubMoment } from '../src/lib/discoveryMoments'
-import { parseSavedMoments, savedMomentRecord } from '../src/lib/savedDiscoveryMoments'
+import { parseSavedMoment, parseSavedMoments, savedMomentRecord } from '../src/lib/savedDiscoveryMoments'
 const moment = fromHubMoment({ login: 'creator', streamId: 'stream-a', offsetSeconds: 10, label: 'Moment', vodId: '12345', handoffRef: 'cr_secret', profileImageUrl: 'https://example.com/secret',
   category: 'Wuthering Waves', categoryId: '213490846', boxArtUrl: 'https://static-cdn.jtvnw.net/ttv-boxart/213490846-144x192.jpg' })!
 const comparison = {
@@ -17,10 +17,23 @@ describe('device shortlist', () => {
   it('persists public identity only and strips source/authorization data on read', () => {
     const saved = savedMomentRecord(moment)
     expect(saved).not.toHaveProperty('vodId'); expect(saved).not.toHaveProperty('handoffRef'); expect(saved).not.toHaveProperty('profileImageUrl')
-    expect(saved).not.toHaveProperty('categoryId'); expect(saved).not.toHaveProperty('boxArtUrl')
+    expect(saved).not.toHaveProperty('boxArtUrl')
+    // the game's id is the one addition (V1, 10-30), so a save stays in its game's list
+    expect(saved.categoryId).toBe('213490846')
     const parsed = parseSavedMoments(JSON.stringify({ version: 1, items: [{ ...saved, vodId: '111', handoffRef: 'cr_bad', categoryId: '213490846', boxArtUrl: 'https://static-cdn.jtvnw.net/ttv-boxart/213490846-144x192.jpg' }] }))
     expect(parsed[0]).not.toHaveProperty('vodId'); expect(parsed[0]).not.toHaveProperty('handoffRef')
     expect(parsed[0]).not.toHaveProperty('categoryId'); expect(parsed[0]).not.toHaveProperty('boxArtUrl')
+  })
+  it('keeps the small card a row draws from: the game id and the × read back from v2, and older v2 saves still read (V1, 10-30)', () => {
+    const card = savedMomentRecord({ ...moment, multiplier: 4.2, reactionSignal: 'emotes' }, 1_800_000_000_000)
+    expect(parseSavedMoment(JSON.parse(JSON.stringify(card)))).toMatchObject({ categoryId: '213490846', multiplier: 4.2, reactionSignal: 'emotes', category: 'Wuthering Waves' })
+    const older = { key: moment.key, login: 'creator', streamId: 'stream-a', offsetSeconds: 10, label: 'Moment', category: 'Wuthering Waves', provenance: 'saved', savedAt: 1_800_000_000_000 }
+    const [read] = parseSavedMoments(JSON.stringify({ version: 2, items: [older] }))
+    expect(read).toMatchObject({ key: moment.key, category: 'Wuthering Waves', savedAt: 1_800_000_000_000 })
+    expect(read).not.toHaveProperty('categoryId'); expect(read).not.toHaveProperty('multiplier')
+    expect(parseSavedMoment({ ...older, categoryId: 'not a game' })).not.toHaveProperty('categoryId')
+    expect(parseSavedMoment({ ...older, multiplier: -1 })).not.toHaveProperty('multiplier')
+    expect(parseSavedMoment({ ...older, savedAt: 'yesterday' })).toBeNull()
   })
   it('bounds story IDs before writing and when loading older records', () => {
     expect(savedMomentRecord({ ...moment, storyId: 'story-1' }).storyId).toBe('story-1')
@@ -118,10 +131,23 @@ describe('device shortlist', () => {
     const store = await import('../src/lib/savedDiscoveryMoments')
     const at = (offsetSeconds: number) => fromHubMoment({ ...moment, offsetSeconds })!
     for (let i = 0; i < 200; i++) store.toggleSavedMoment(at(i))
-    expect(store.toggleSavedMoment(at(201))).toContain('200 saved moments reached')
+    expect(store.toggleSavedMoment(at(201))).toBe(store.SAVED_MOMENTS_FULL)
     expect(JSON.parse(localStorage.getItem(store.SAVED_MOMENTS_KEY)!).items).toHaveLength(200)
     expect(store.toggleSavedMoment(at(0))).toContain('Removed')
     expect(store.toggleSavedMoment(at(201))).toContain('Saved on this device')
+  })
+  it('removes one save, and never saves again one another tab already removed (Q3b, 10-31)', async () => {
+    vi.resetModules()
+    const store = await import('../src/lib/savedDiscoveryMoments')
+    const second = fromHubMoment({ ...moment, offsetSeconds: 20 })!
+    store.toggleSavedMoment(moment)
+    store.toggleSavedMoment(second)
+    store.removeSavedMoment(moment.key)
+    expect(parseSavedMoments(localStorage.getItem(store.SAVED_MOMENTS_KEY)).map(item => item.key)).toEqual([second.key])
+    // another tab removed it first: Remove leaves it gone, where a toggle would save it again
+    localStorage.setItem(store.SAVED_MOMENTS_KEY, JSON.stringify({ version: 2, legacyMerged: true, items: [] }))
+    store.removeSavedMoment(second.key)
+    expect(parseSavedMoments(localStorage.getItem(store.SAVED_MOMENTS_KEY))).toHaveLength(0)
   })
   it('falls back to session saves without overwriting unreadable stored data', async () => {
     localStorage.setItem('streampulse.saved-moments.v1', 'broken')

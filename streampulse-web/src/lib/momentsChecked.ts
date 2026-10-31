@@ -1,7 +1,7 @@
 import { sanitizeEmoteImageUrl } from './emoteAssetUrl'
 import { isExactCategoryBoxArt } from './momentCategoryArtwork'
 import { newsroomProfileUrl } from './newsroomProfiles'
-import type { MomentCheckLevel, MomentMetricKind, MomentVerdict, MomentsFeedEmote, MomentsFeedItem } from './momentsFeed'
+import { MOMENTS_WINDOW_MS, type MomentCheckLevel, type MomentMetricKind, type MomentVerdict, type MomentsFeedEmote, type MomentsFeedItem } from './momentsFeed'
 
 /**
  * The checked Moments page's display model (design: moments-r2, 2026-10-16).
@@ -317,7 +317,7 @@ export function stripModel(m: CheckedMoment, all: CheckedMoment[], now: number):
   const mine = all.filter(x => x.sid === m.sid).sort((a, b) => a.at - b.at)
   if (mine.length < 2) return null
   const live = m.live
-  const t0 = Math.max(m.startedAt, now - 12 * 3600e3), t1 = live ? now : mine[mine.length - 1].at + 10 * 60_000
+  const t0 = Math.max(m.startedAt, now - MOMENTS_WINDOW_MS), t1 = live ? now : mine[mine.length - 1].at + 10 * 60_000
   const span = Math.max(60_000, t1 - t0), pos = (t: number) => Math.max(0, Math.min(100, ((t - t0) / span) * 100))
   const tall = (x: CheckedMoment) => (x.x == null ? 8 : 8 + Math.min(1, Math.log(Math.max(1, x.x)) / Math.log(20)) * 26)
   const step = [1, 2, 3, 4, 6].find(n => span / 3600e3 / n <= 5) ?? 12
@@ -332,7 +332,7 @@ export function stripModel(m: CheckedMoment, all: CheckedMoment[], now: number):
   }
   const since = m.startedAt >= t0
     ? `live since ${clk(m.startedAt)}${sameDay(m.startedAt, now) ? '' : ' yesterday'}`
-    : `the last 12 hours · live for ${Math.round((now - m.startedAt) / 3600e3)} hours`
+    : `the last ${MOMENTS_WINDOW_MS / 3600e3} hours · live for ${Math.round((now - m.startedAt) / 3600e3)} hours`
   return {
     stems: mine.map(x => ({ m: x, left: pos(x.at), h: tall(x) })),
     marks, from: clk(t0), to: live ? 'now' : clk(t1), since, count: mine.length,

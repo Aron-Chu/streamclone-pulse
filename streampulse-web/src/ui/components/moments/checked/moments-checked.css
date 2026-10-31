@@ -55,7 +55,7 @@
 .mk-head h1{font:600 26px/32px var(--mk-font);letter-spacing:-.015em}
 .mk-lede{color:var(--mk-text-2);max-width:84ch}
 
-/* ---------- toolbar (M1, 10-22): Latest | Top | Saved, Replay as a small link, then how fresh the list is and the search ---------- */
+/* ---------- toolbar (M1, 10-22): Live | Top | Saved (N1, 10-30), Replay as a small link on Live, Top's 24h | 6h | 1h (W1), then how fresh the list is and the search ---------- */
 .mk-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:0 0 12px}
 .mk-bar .mk-seg button{display:inline-flex;align-items:center}
 .mk-srch{display:flex;align-items:center;gap:8px;height:32px;width:260px;padding:0 10px;border:1px solid var(--mk-line-strong);border-radius:var(--mk-r);color:var(--mk-text-3)}
@@ -75,6 +75,7 @@
 .mk .mk-rp:hover span{text-decoration:underline;text-underline-offset:3px}
 .mk .mk-rp:disabled{opacity:.5;cursor:default}
 .mk-rp svg{width:13px;height:13px}
+.mk-rng button{height:24px;padding:0 8px;font-size:12.5px}
 
 /* ---------- the games on top (M1, 10-22): B2's covers in one row, "All games" first; it scrolls sideways, scrollbar hidden ---------- */
 .mk .mk-covers{--fade:40px;list-style:none;display:flex;gap:14px;margin:0 0 4px;padding:4px 4px 10px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none}
@@ -116,6 +117,8 @@
 .mk-empty{padding:24px 8px;color:var(--mk-text-3)}
 .mk .mk-empty button{color:var(--mk-text-2);text-decoration:underline;text-underline-offset:3px}
 .mk-gone{padding:12px 8px;color:var(--mk-text-2)}
+/* wide, before a click (A1, 10-30): the side panel waits */
+.mk-pick{padding:24px 8px;color:var(--mk-text-3);text-align:center}
 /* a row Tab reaches under the sticky header scrolls clear of it */
 .mk .mk-r{scroll-margin-top:calc(var(--mk-top) + 8px)}
 
@@ -158,6 +161,8 @@
 /* the right column: when; under Viewed, when you opened it */
 .mk-r-v{display:flex;flex-direction:column;align-items:flex-end;text-align:right}
 .mk-r-v time{font:500 12px/16px var(--mk-font);color:var(--mk-text-3);font-variant-numeric:tabular-nums;white-space:nowrap}
+.mk .mk-r-rm{font:500 12px/16px var(--mk-font);color:var(--mk-text-2);text-decoration:underline;text-underline-offset:3px}
+.mk .mk-r-rm:hover{color:var(--mk-text-1)}
 [data-vd="bad"]>.mk-r .mk-r-nm,[data-vd="bad"]>.mk-r .mk-r-l1{color:var(--mk-text-2)}
 /* a save the feed can't find (Unavailable saves C, 10-22): a striped empty picture, no minutes, a link where it can still be seen */
 .mk .mk-r-gone:hover{background:none}
@@ -303,6 +308,8 @@
 
 /* Top (T1, 10-22): one line over the list says its order */
 .mk .mk-cap{margin:4px 0 8px;padding:0 10px;font:500 12px/16px var(--mk-font);color:var(--mk-text-3)}
+.mk .mk-note{margin:0 0 8px;padding:0 10px;font:500 12px/16px var(--mk-font);color:var(--mk-text-2)}
+.mk .mk-d-note{padding:0}
 
 /* Saved's two halves (M1, 10-22): Saved | Viewed over the list; Viewed (V1) adds one line and Clear */
 .mk-sv{display:flex;align-items:center;flex-wrap:wrap;gap:6px 14px;margin:2px 0 8px;padding:0 10px}
@@ -327,7 +334,7 @@
   .mk-bar .mk-seg{order:1}
   .mk .mk-rp{order:2}
   .mk-rp span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
-  .mk-fresh{order:3;margin-left:auto}
+  .mk .mk-fresh{order:3;margin-left:auto}
   .mk-srch{order:4;width:100%}
   .mk-bar-sp{display:none}
   /* smaller covers, about four on screen */

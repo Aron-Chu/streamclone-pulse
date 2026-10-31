@@ -1,11 +1,18 @@
 import { useSyncExternalStore } from 'react'
 import { fromHubMoment, type DiscoveryMoment } from './discoveryMoments'
+import type { FigmaMomentRow } from './figmaSessionAnalytics'
 import type { LiveWireMetricComparison, LiveWireMomentComparison } from './liveWire'
 
 export const SAVED_MOMENTS_KEY = 'streampulse.saved-moments.v2'
 export const LEGACY_SAVED_MOMENTS_KEY = 'streampulse.saved-moments.v1'
 export const SAVED_MOMENTS_LIMIT = 200
-export interface SavedMoment extends DiscoveryMoment { savedAt: number; note?: string }
+/** What a save refused at the limit says (the Moments page also shows it under Saved once the list is full). */
+export const SAVED_MOMENTS_FULL = '200 saved moments reached. Remove a saved moment before adding another.'
+/**
+ * One save, and the small card its row draws from without a read (V1, 10-30): who, what chat sent, the game, the rates,
+ * the top emotes, when, and `multiplier`, the row's × for its reaction signal (a moment that held up and rose).
+ */
+export interface SavedMoment extends DiscoveryMoment { savedAt: number; note?: string; multiplier?: number }
 interface Snapshot { items: SavedMoment[]; warning: string }
 let snapshot: Snapshot = { items: [], warning: '' }
 let initialized = false
@@ -90,9 +97,12 @@ function cleanTopEmotes(value: unknown): NonNullable<DiscoveryMoment['topEmotes'
 }
 
 /** Allowlist bounded public evidence: never persist media URLs, source IDs, credentials, or handoff grants. */
-export function savedMomentRecord(moment: DiscoveryMoment & { note?: string }, savedAt = Date.now()): SavedMoment {
+export function savedMomentRecord(moment: DiscoveryMoment & { note?: string; multiplier?: number }, savedAt = Date.now()): SavedMoment {
   const chatPerMin = finite(moment.chatPerMin)
   const emotesPerMin = finite(moment.emotesPerMin)
+  const multiplier = finite(moment.multiplier, 0, 1_000_000)
+  // the game's Twitch category id, so a save stays in its game's list
+  const categoryId = typeof moment.categoryId === 'string' && /^\d{1,20}$/.test(moment.categoryId) ? moment.categoryId : undefined
   const comparison = cleanComparison(moment.comparison)
   const topEmotes = cleanTopEmotes(moment.topEmotes)
   const revision = integer(moment.revision, 1)
@@ -103,11 +113,43 @@ export function savedMomentRecord(moment: DiscoveryMoment & { note?: string }, s
     label: moment.label.slice(0, 300), provenance: 'saved', savedAt,
     ...(moment.publicMomentId ? { publicMomentId: moment.publicMomentId } : {}), ...(moment.at == null ? {} : { at: moment.at }),
     ...(moment.displayName ? { displayName: moment.displayName.slice(0, 100) } : {}), ...(moment.category ? { category: moment.category.slice(0, 150) } : {}),
-    ...(chatPerMin == null ? {} : { chatPerMin }), ...(emotesPerMin == null ? {} : { emotesPerMin }),
+    ...(categoryId ? { categoryId } : {}), ...(chatPerMin == null ? {} : { chatPerMin }), ...(emotesPerMin == null ? {} : { emotesPerMin }),
+    ...(multiplier == null ? {} : { multiplier }),
     ...(evidenceAsOf ? { evidenceAsOf } : {}), ...(measurementScope ? { measurementScope } : {}),
     ...(comparison ? { comparison } : {}), ...(moment.reactionSignal === 'chat' || moment.reactionSignal === 'emotes' ? { reactionSignal: moment.reactionSignal } : {}),
     ...(topEmotes ? { topEmotes } : {}), ...(revision == null ? {} : { revision }), ...(storyId ? { storyId } : {}),
     ...(typeof moment.note === 'string' ? { note: moment.note.slice(0, 1000) } : {}) }
+}
+/**
+ * One stored save read back by the list's rules; null when it isn't one. The Moments page reads its Viewed cards the
+ * same way (V1, 10-30). A record from before the game id and × were kept still reads, without them.
+ */
+export function parseSavedMoment(value: unknown, version = 2): SavedMoment | null {
+  const row = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
+  if (!row || typeof row.label !== 'string' || row.label.length > 300 || typeof row.savedAt !== 'number' || !Number.isFinite(row.savedAt) || row.savedAt <= 0) return null
+  const v2 = version === 2
+  const moment = fromHubMoment({ publicMomentId: row.publicMomentId, login: row.login, streamId: row.streamId,
+    offsetSeconds: row.offsetSeconds, at: row.at, label: row.label, displayName: row.displayName, category: row.category,
+    categoryId: v2 ? row.categoryId : undefined,
+    chatPerMin: v2 ? finite(row.chatPerMin) : undefined,
+    emotesPerMin: v2 ? finite(row.emotesPerMin) : undefined,
+    comparison: v2 ? cleanComparison(row.comparison) : undefined,
+    kind: v2 ? row.reactionSignal : undefined,
+    topEmotes: v2 ? cleanTopEmotes(row.topEmotes) : undefined } as FigmaMomentRow)
+  if (!moment) return null
+  // Loading historical metadata must not replace its rates with a newer adapter's
+  // preferred comparison values. Retain the saved scope only when supported.
+  const verifiedRates = moment.measurementScope === 'verified_minute'
+    && moment.chatPerMin === row.chatPerMin && moment.emotesPerMin === row.emotesPerMin
+  moment.chatPerMin = v2 ? finite(row.chatPerMin) : undefined
+  moment.emotesPerMin = v2 ? finite(row.emotesPerMin) : undefined
+  moment.measurementScope = !v2 ? undefined
+    : row.measurementScope === 'detector_snapshot' ? 'detector_snapshot'
+      : row.measurementScope === 'verified_minute' && verifiedRates ? 'verified_minute' : undefined
+  moment.evidenceAsOf = v2 ? cleanEvidenceTime(row.evidenceAsOf) : undefined
+  moment.revision = v2 ? integer(row.revision, 1) : undefined
+  moment.storyId = cleanText(row.storyId, 220)
+  return savedMomentRecord({ ...moment, note: typeof row.note === 'string' ? row.note : undefined, multiplier: v2 ? finite(row.multiplier) : undefined }, row.savedAt)
 }
 export function parseSavedMoments(raw: string | null): SavedMoment[] {
   if (!raw) return []
@@ -116,28 +158,9 @@ export function parseSavedMoments(raw: string | null): SavedMoment[] {
   if (![1, 2].includes(envelope?.version) || !Array.isArray(envelope.items) || envelope.items.length > SAVED_MOMENTS_LIMIT) throw new Error('Unsupported saved data')
   const unique = new Map<string, SavedMoment>()
   for (const row of envelope.items) {
-    if (!row || typeof row.label !== 'string' || row.label.length > 300 || !Number.isFinite(row.savedAt) || row.savedAt <= 0) throw new Error('Invalid saved moment')
-    const moment = fromHubMoment({ publicMomentId: row.publicMomentId, login: row.login, streamId: row.streamId,
-      offsetSeconds: row.offsetSeconds, at: row.at, label: row.label, displayName: row.displayName, category: row.category,
-      chatPerMin: envelope.version === 2 ? finite(row.chatPerMin) : undefined,
-      emotesPerMin: envelope.version === 2 ? finite(row.emotesPerMin) : undefined,
-      comparison: envelope.version === 2 ? cleanComparison(row.comparison) : undefined,
-      kind: envelope.version === 2 ? row.reactionSignal : undefined,
-      topEmotes: envelope.version === 2 ? cleanTopEmotes(row.topEmotes) : undefined })
-    if (!moment) throw new Error('Invalid saved identity')
-    // Loading historical metadata must not replace its rates with a newer adapter's
-    // preferred comparison values. Retain the saved scope only when supported.
-    const verifiedRates = moment.measurementScope === 'verified_minute'
-      && moment.chatPerMin === row.chatPerMin && moment.emotesPerMin === row.emotesPerMin
-    moment.chatPerMin = envelope.version === 2 ? finite(row.chatPerMin) : undefined
-    moment.emotesPerMin = envelope.version === 2 ? finite(row.emotesPerMin) : undefined
-    moment.measurementScope = envelope.version !== 2 ? undefined
-      : row.measurementScope === 'detector_snapshot' ? 'detector_snapshot'
-        : row.measurementScope === 'verified_minute' && verifiedRates ? 'verified_minute' : undefined
-    moment.evidenceAsOf = envelope.version === 2 ? cleanEvidenceTime(row.evidenceAsOf) : undefined
-    moment.revision = envelope.version === 2 ? integer(row.revision, 1) : undefined
-    moment.storyId = cleanText(row.storyId, 220)
-    unique.set(moment.key, savedMomentRecord({ ...moment, note: row.note }, row.savedAt))
+    const saved = parseSavedMoment(row, envelope.version)
+    if (!saved) throw new Error('Invalid saved moment')
+    unique.set(saved.key, saved)
   }
   return [...unique.values()]
 }
@@ -245,8 +268,14 @@ export function toggleSavedMoment(moment: DiscoveryMoment): string {
   refreshStored()
   const existing = snapshot.items.some(item => item.key === moment.key)
   if (existing) { persist(snapshot.items.filter(item => item.key !== moment.key)); return 'Removed from saved moments.' }
-  if (snapshot.items.length >= SAVED_MOMENTS_LIMIT) return '200 saved moments reached. Remove a saved moment before adding another.'
+  if (snapshot.items.length >= SAVED_MOMENTS_LIMIT) return SAVED_MOMENTS_FULL
   persist([savedMomentRecord(moment), ...snapshot.items]); return sessionOnly ? 'Saved for this session only.' : 'Saved on this device.'
+}
+/** Removes one save; a save already gone (another tab removed it) stays gone, never saved again as a toggle would. */
+export function removeSavedMoment(key: string): void {
+  initialize()
+  refreshStored()
+  if (snapshot.items.some(item => item.key === key)) persist(snapshot.items.filter(item => item.key !== key))
 }
 export function updateSavedMomentNote(key: string, note: string): string {
   initialize(); refreshStored()

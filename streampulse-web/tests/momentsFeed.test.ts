@@ -33,9 +33,9 @@ describe('moments feed client', () => {
     expect(fixture.items.every(isMomentsFeedItem)).toBe(true)
   })
 
-  it('asks every reader in the same 10 minutes for the same URL', () => {
+  it('asks every reader in the same 10 minutes for the same URL, from 24 hours back (W1, 10-30)', () => {
     const now = Date.UTC(2026, 9, 16, 18, 7, 31)
-    expect(momentsFeedFrom(now)).toBe(Date.UTC(2026, 9, 16, 6, 0, 0))
+    expect(momentsFeedFrom(now)).toBe(Date.UTC(2026, 9, 15, 18, 0, 0))
     expect(momentsFeedFrom(now + 2 * 60_000)).toBe(momentsFeedFrom(now))
   })
 
@@ -48,7 +48,7 @@ describe('moments feed client', () => {
     expect(apiClient).toHaveBeenCalledTimes(1)
     const first = new URL(apiClient.mock.calls[0][0] as string, 'https://x')
     expect(first.pathname).toBe('/v1/public/moments')
-    expect(Object.fromEntries(first.searchParams)).toEqual({ sort: 'new', from: String(Date.UTC(2026, 9, 16, 6, 0)), limit: '50' })
+    expect(Object.fromEntries(first.searchParams)).toEqual({ sort: 'new', from: String(Date.UTC(2026, 9, 15, 18, 0)), limit: '50' })
     // a capture without facets or total: the counts come from what loaded
     apiClient.mockResolvedValueOnce({ data: { schemaVersion: 1, generatedAt: 1, stale: false, nextCursor: null, items: [a] } })
     expect(await loadMomentsFeed(Date.now())).toMatchObject({ total: 1, verdicts: null, nextCursor: null })

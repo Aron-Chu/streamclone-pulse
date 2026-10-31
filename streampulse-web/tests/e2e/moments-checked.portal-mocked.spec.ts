@@ -20,6 +20,7 @@ test.skip(!/^(on|1)$/.test(process.env.VITE_PUBLIC_MOMENTS_FEED ?? ''), 'needs a
 
 interface FeedItem {
   id: string; verdict: string; streamId: string; login: string; minuteStart: number; offsetSeconds: number; viewers?: number
+  category: { id: string; name: string } | null
   spark: { chat: Array<number | null>; emotes: Array<number | null>; momentIndex: number }
   topEmotes: Array<{ name: string; imageUrl?: string; count: number }>
 }
@@ -39,6 +40,9 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
 async function mockFeed(page: Page, feed: 'ok' | 'off' | 'outage' = 'ok', failPage?: number) {
   const reads: string[] = []
   const feedReads: string[] = []
+  // moments asked for one at a time by id, and where each first page's window starts
+  const idReads: string[] = []
+  const froms: number[] = []
   let down = feed === 'outage'
   await page.route(url => !/^(127\.0\.0\.1|localhost)$/.test(url.hostname), route => route.abort())
   await page.route('**/v1/**', route => route.fulfill({ status: 503, json: { error: 'unmocked_endpoint' } }))
@@ -74,11 +78,13 @@ async function mockFeed(page: Page, feed: 'ok' | 'off' | 'outage' = 'ok', failPa
     if (feed === 'off') return route.fulfill({ status: 404, contentType: 'text/plain', body: '404 page not found\n' })
     const params = new URL(route.request().url()).searchParams, id = params.get('id')
     if (id) {
+      idReads.push(id)
       const item = fixture.items.find(x => x.id === id)
       return item ? route.fulfill({ json: { schemaVersion: 1, generatedAt: fixture.generatedAt, stale: false, item } }) : route.fulfill({ status: 404, json: { error: 'not_found' } })
     }
     const cursor = params.get('cursor')
     feedReads.push(cursor ?? 'first')
+    if (!cursor) froms.push(Number(params.get('from')))
     if (down && !cursor) return route.fulfill({ status: 503, json: { error: 'unavailable' } })
     const from = cursor ? Number(cursor.slice(1)) : 0
     if (failPage != null && from === failPage * PAGE) return route.fulfill({ status: 503, headers: { 'retry-after': '5' }, json: { error: 'unavailable' } })
@@ -87,7 +93,7 @@ async function mockFeed(page: Page, feed: 'ok' | 'off' | 'outage' = 'ok', failPa
   })
   // the fixture's capture time, so "N min ago" reads as it did
   await page.clock.setFixedTime(fixture.generatedAt + 90_000)
-  return Object.assign(reads, { feed: feedReads, up: () => { down = false } })
+  return Object.assign(reads, { feed: feedReads, ids: idReads, froms, up: () => { down = false } })
 }
 const headerBottom = (page: Page) => page.evaluate(() => document.querySelector('.analytics-topnav')!.getBoundingClientRect().bottom)
 
@@ -106,7 +112,7 @@ const rows = (page: Page) => page.locator('.mk-list .mk-r')
 const streamRows = (page: Page) => page.locator('.mk-list > li.mk-g > .mk-r')
 const seg = (page: Page, name: string) => page.getByRole('group', { name: 'Which moments' }).getByRole('button', { name: new RegExp(`^${name}`) })
 
-test('wide: the latest moments, the first one open beside the list', async ({ page }, testInfo) => {
+test('wide: the latest moments, nothing open beside the list until a click', async ({ page }, testInfo) => {
   const errors = attachConsoleErrorGuard(page)
   const reads = await mockFeed(page)
   await page.goto('/analytics/moments', { waitUntil: 'domcontentloaded' })
@@ -118,16 +124,22 @@ test('wide: the latest moments, the first one open beside the list', async ({ pa
 
   const streams = new Set(fixture.items.filter(x => x.verdict !== 'bad').map(x => x.streamId)).size
   await expect(streamRows(page)).toHaveCount(streams)
-  // every page, one at a time, then no more
+  // every page of the last 24 hours (W1, 10-30), one at a time, then no more
   expect(reads.feed).toEqual(['first', 'c20'])
-  const open = await page.locator('.mk-det .mk-d').getAttribute('data-key')
+  expect(reads.froms).toEqual([Math.floor((fixture.generatedAt + 90_000 - 24 * 3_600_000) / 600_000) * 600_000])
+  // nothing opens by itself (A1, 10-30), so nothing is read for it
+  await expect(page.getByRole('complementary', { name: 'Selected moment' })).toHaveText('Pick a moment.')
+  const detail = page.locator('.mk-det .mk-d')
+  await expect(detail).toHaveCount(0)
+  expect([...reads]).toEqual([])
+  const open = await rows(page).first().getAttribute('data-key')
+  await rows(page).first().locator('.mk-r-th').click()
+  await expect(detail).toHaveAttribute('data-key', open!)
   const openStream = fixture.items.find(x => x.id === open)!.streamId
   // the games on top (M1, 10-22); the open stream's earlier moments are in the open moment
   await expect(page.getByRole('list', { name: 'Games, busiest first' })).toBeVisible()
   const earlier = fixture.items.filter(x => x.verdict !== 'bad' && x.streamId === openStream).length - 1
   await expect(page.locator('.mk-det .mk-d-more button')).toHaveCount(earlier)
-  const detail = page.locator('.mk-det .mk-d')
-  await expect(detail).toBeVisible()
   // the verdict's (i) says why it counts (moments-r4 B2: no verdict tiers, filters or orders); Esc closes only that.
   // A moment that holds up has it on its × line, the others on their chip (C1, 10-22)
   const chip = detail.locator('.mk-d-why, .mk-hold')
@@ -152,6 +164,16 @@ test('wide: the latest moments, the first one open beside the list', async ({ pa
   await expect(card).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(card).toHaveCount(0)
+  // with focus elsewhere in the moment (the Emotes switch), Esc still lets go of the minute first, and the moment stays open (Q4b, 10-31)
+  const openKey = await detail.getAttribute('data-key')
+  await page.mouse.click(box.x + box.width * 0.3, box.y + box.height * 0.7)
+  await expect(card).toBeVisible()
+  await detail.getByRole('group', { name: 'Chart shows' }).getByRole('button', { name: 'Emotes' }).click()
+  await expect(card).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(card).toHaveCount(0)
+  await expect(detail).toHaveAttribute('data-key', openKey!)
+  await detail.getByRole('group', { name: 'Chart shows' }).getByRole('button', { name: 'Chat' }).click()
 
   // J moves to the next row and keeps the list put
   await rows(page).first().locator('.mk-r-hit').focus()
@@ -215,8 +237,8 @@ test('a later page that fails keeps what has loaded', async ({ page }) => {
   await expect.poll(() => reads.feed.filter(c => c === 'c20').length).toBeGreaterThan(0)
   const loaded = new Set(newest.slice(0, PAGE).filter(x => x.verdict !== 'bad').map(x => x.streamId)).size
   await expect(streamRows(page)).toHaveCount(loaded)
-  // "Live", or how old once it greys (M1, 10-22)
-  await expect(page.locator('.mk-fresh')).toHaveText(/^(Live|updated .+)$/)
+  // the dot alone, or how old once it greys (N1, 10-30)
+  await expect(page.locator('.mk-fresh')).toHaveText(/^(updated .+)?$/)
   expect(reads.feed.filter(c => c === 'c40')).toEqual([])
   expect(errors.filter(e => !/status of 503/.test(e))).toEqual([])
 })
@@ -232,22 +254,68 @@ test('a deep link to a moment that is gone says so, with the stream’s page, an
   expect([...reads]).toEqual([])
 })
 
-test('a deep link to a moment that didn’t hold up opens it in Latest', async ({ page }) => {
+test('a deep link to a moment that didn’t hold up opens it in Live', async ({ page }) => {
   await mockFeed(page)
   const bad = fixture.items.find(x => x.verdict === 'bad')!
   await page.goto(`/analytics/moments?m=${bad.id}`, { waitUntil: 'domcontentloaded' })
   await expect(page.locator('.mk-det .mk-d')).toHaveAttribute('data-key', bad.id)
-  await expect(seg(page, 'Latest')).toHaveAttribute('aria-pressed', 'true')
+  await expect(seg(page, 'Live')).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator(`.mk-list .mk-r[data-key="${bad.id}"]`)).toHaveAttribute('aria-current', 'true')
 })
 
-test('Saved keeps a moment across a reload', async ({ page }) => {
-  await mockFeed(page)
+test('Top: the last 24, 6 or 1 hours from what has loaded, with no new reads; an old Latest link opens Live', async ({ page }) => {
+  const reads = await mockFeed(page)
+  await page.goto('/analytics/moments?view=latest', { waitUntil: 'domcontentloaded' })
+  await expect(seg(page, 'Live')).toHaveAttribute('aria-pressed', 'true')
+  await expect(rows(page).first()).toBeVisible()
+  await expect.poll(() => reads.feed).toEqual(['first', 'c20'])
+  const range = page.getByRole('group', { name: 'How far back' })
+  await expect(range).toHaveCount(0)
+  await seg(page, 'Top').click()
+  const caption = page.locator('.mk-cap')
+  await expect(caption).toHaveText('Top moments in the last 24 hours, strongest first')
+  await expect(range.getByRole('button', { name: '24h', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  const times = () => rows(page).locator('time').evaluateAll(ts => ts.map(t => Date.parse(t.getAttribute('datetime') ?? '')))
+  const now = fixture.generatedAt + 90_000
+  let shown = await times()
+  expect(Math.min(...shown)).toBeLessThan(now - 6 * 3_600_000)
+  for (const [hours, words] of [[6, '6 hours'], [1, 'hour']] as const) {
+    await range.getByRole('button', { name: `${hours}h`, exact: true }).click()
+    await expect(caption).toHaveText(`Top moments in the last ${words}, strongest first`)
+    const ats = await times()
+    expect(ats.length).toBeGreaterThan(0)
+    expect(ats.length).toBeLessThanOrEqual(shown.length)
+    expect(Math.min(...ats)).toBeGreaterThan(now - hours * 3_600_000)
+    shown = ats
+  }
+  expect(reads.feed).toEqual(['first', 'c20'])
+  expect(reads.ids).toEqual([])
+  expect([...reads]).toEqual([])
+})
+
+test('Saved is one list in this browser: an older save still reads, and no save is looked up', async ({ page }) => {
+  const reads = await mockFeed(page)
   await page.goto('/analytics/moments', { waitUntil: 'domcontentloaded' })
+  await expect(rows(page).first()).toBeVisible()
+  // a save kept before the cards (v1), of a stream the feed no longer has
+  await page.evaluate(at => localStorage.setItem('streampulse.saved-moments.v1', JSON.stringify({ version: 1,
+    items: [{ login: 'somestreamer', streamId: '123456', offsetSeconds: 930, at, label: 'spammed PJSalt', savedAt: at }] })), fixture.generatedAt - 30 * 3_600_000)
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  const key = await rows(page).first().getAttribute('data-key')
+  const item = fixture.items.find(x => x.id === key)!
+  await rows(page).first().locator('.mk-r-th').click()
   await page.locator('.mk-det').getByRole('button', { name: 'Save' }).click()
+  // the save keeps its game in the one list; there is no second copy
+  const kept = await page.evaluate(() => ({ list: JSON.parse(localStorage.getItem('streampulse.saved-moments.v2') ?? '{}'), copy: localStorage.getItem('sp-moments-checked-saved') }))
+  expect(kept.copy).toBeNull()
+  expect(kept.list.items.map((s: { streamId: string; categoryId?: string }) => [s.streamId, s.categoryId])).toEqual([[item.streamId, item.category!.id], ['123456', undefined]])
   await page.reload({ waitUntil: 'domcontentloaded' })
   await seg(page, 'Saved').click()
-  await expect(streamRows(page)).toHaveCount(1)
+  await expect(streamRows(page)).toHaveCount(2)
+  await expect(streamRows(page).first()).toHaveAttribute('data-key', key!)
+  await expect(streamRows(page).nth(1)).toHaveClass(/mk-r-gone/)
+  await expect(streamRows(page).nth(1)).toContainText('Gone from the feed')
+  expect(reads.ids).toEqual([])
 })
 
 test('with the feed off (404) the page is the current one', async ({ page }) => {
@@ -263,7 +331,7 @@ test('with the feed off (404) the page is the current one', async ({ page }) => 
 test('an outage says Moments couldn’t load, keeps the deep link, and Try again opens it', async ({ page }) => {
   const errors = attachConsoleErrorGuard(page)
   const reads = await mockFeed(page, 'outage')
-  // a moment down the first page, not the one that opens by itself
+  // a moment down the first page, not its first row
   const target = newest.slice(0, PAGE).filter(x => x.verdict === 'ok').at(-1)!
   expect(target.id).not.toBe(newest.find(x => x.verdict !== 'bad')!.id)
   await page.goto(`/analytics/moments?m=${target.id}`, { waitUntil: 'domcontentloaded' })

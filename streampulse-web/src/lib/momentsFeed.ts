@@ -142,10 +142,11 @@ function feedPage(data: unknown): MomentsFeedResponse {
 
 const PAGE_LIMIT = 50
 const PAGE_BYTES = 512 * 1024
-export const MOMENTS_WINDOW_MS = 12 * 60 * 60_000
+/** The Moments page's window: the last 24 hours, the hub's "today" (W1, 10-30). */
+export const MOMENTS_WINDOW_MS = 24 * 60 * 60_000
 
 /**
- * `from` for the last 12 hours, floored to 10 minutes so every reader in the
+ * `from` for the window, floored to 10 minutes so every reader in the
  * same 10 minutes asks for the same URL and the edge answers it from cache.
  */
 export function momentsFeedFrom(nowMs: number): number {
@@ -189,7 +190,7 @@ function snapshotOf(page: MomentsFeedResponse): MomentsFeedSnapshot {
   }
 }
 
-/** The newest page of the last 12 hours: what the page draws first. The rest come from loadMomentsFeedRest. */
+/** The newest page of the window: what the page draws first. The rest come from loadMomentsFeedRest. */
 export function loadMomentsFeed(nowMs: number, signal?: AbortSignal): Promise<MomentsFeedSnapshot> {
   return readPage(nowMs, null, signal)
 }
