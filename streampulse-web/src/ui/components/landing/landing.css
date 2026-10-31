@@ -255,7 +255,8 @@
 .sl-announce__new {
   padding: 0.12rem 0.52rem;
   border-radius: 999px;
-  background: hsl(var(--sc-chart-5));
+  /* The rose of --sc-chart-5, deepened so the white label reads at 4.5:1 or more. */
+  background: hsl(347 89% 46%);
   color: white;
   font-size: 0.68rem;
   font-weight: 900;

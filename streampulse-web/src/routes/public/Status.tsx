@@ -112,14 +112,14 @@ export default function Status() {
     <details className="mt-8 rounded-lg border border-white/[0.08] px-4 py-3" data-testid="status-details">
       <summary className="cursor-pointer font-semibold text-zinc-200">Details</summary>
       <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4 text-xs font-mono">
-        <div><dt className="text-zinc-500 font-bold uppercase">Portal Build</dt><dd className="mt-1 text-zinc-200 font-bold">{PORTAL_VERSION_DISPLAY}</dd></div>
-        <div><dt className="text-zinc-500 font-bold uppercase">API Source</dt><dd className="mt-1 text-zinc-200 font-bold">{backendSourceCaption(backendUrl)}</dd></div>
-        <div><dt className="text-zinc-500 font-bold uppercase">Checked at</dt><dd className="mt-1 text-zinc-200 font-bold">{checkedAt ? checkedAt.toLocaleString() : 'Not checked yet'}</dd></div>
-        <div><dt className="text-zinc-500 font-bold uppercase">Data as of</dt><dd className="mt-1 text-zinc-200 font-bold">{safeDataTime(statusProbe.data?.updatedAt)}</dd></div>
+        <div><dt className="text-zinc-400 font-bold uppercase">Portal Build</dt><dd className="mt-1 text-zinc-200 font-bold">{PORTAL_VERSION_DISPLAY}</dd></div>
+        <div><dt className="text-zinc-400 font-bold uppercase">API Source</dt><dd className="mt-1 text-zinc-200 font-bold">{backendSourceCaption(backendUrl)}</dd></div>
+        <div><dt className="text-zinc-400 font-bold uppercase">Checked at</dt><dd className="mt-1 text-zinc-200 font-bold">{checkedAt ? checkedAt.toLocaleString() : 'Not checked yet'}</dd></div>
+        <div><dt className="text-zinc-400 font-bold uppercase">Data as of</dt><dd className="mt-1 text-zinc-200 font-bold">{safeDataTime(statusProbe.data?.updatedAt)}</dd></div>
       </dl>
       <p className="mt-4 text-xs text-zinc-300 font-mono">{`API version ${versionLabel(healthProbe.data?.version)}`}</p>
-      <p className="mt-4 text-xs text-zinc-500">Public status does not expose fleet counts or packet loss</p>
-      {backendSource !== 'hosted' ? <p className="mt-4 text-xs text-zinc-500">Local or custom API — status reflects that backend, not necessarily production.</p> : null}
+      <p className="mt-4 text-xs text-zinc-400">Public status does not expose fleet counts or packet loss</p>
+      {backendSource !== 'hosted' ? <p className="mt-4 text-xs text-zinc-400">Local or custom API — status reflects that backend, not necessarily production.</p> : null}
     </details>
   </section></PublicLayout>
 }

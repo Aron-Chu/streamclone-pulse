@@ -1364,7 +1364,7 @@
 .hv5-em-ft { width: 100%; min-width: 0; }
 .hv5-em-row .hv5-em-ft { display: flex; align-items: baseline; gap: 6px; width: auto; flex: 1 1 auto; }
 .hv5-em-nm { display: block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font: 600 13px/18px var(--sp-font); }
-.hv5-em-v { display: block; flex: none; color: var(--sp-text-3); }
+.hv5-em-v { display: block; flex: none; color: var(--sp-text-2); }
 /* while zoomed or moving, tiles and frames follow the view at once (the layout's own glide is for re-tiling) */
 .hub-v5 .hv5-emotes .hv5-em-zm .hv5-em-t { transition: background-color 0.18s, box-shadow 0.18s; }
 .hub-v5 .hv5-emotes .hv5-em-zm .hv5-em-ff,

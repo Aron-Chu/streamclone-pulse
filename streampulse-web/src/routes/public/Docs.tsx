@@ -40,7 +40,7 @@ export default function Docs() {
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <ChromeInstallCta className={buttonClass('default', 'sm')} data-cta="chrome-install-docs" />
-            <span className="text-xs text-zinc-500">Desktop Chrome, Brave, Edge and Firefox · the extension version shown in the store listing identifies the published package, not the website release.</span>
+            <span className="text-xs text-zinc-400">Desktop Chrome, Brave, Edge and Firefox · the extension version shown in the store listing identifies the published package, not the website release.</span>
           </div>
           <div className="alert alert-warning mt-4">
             <span>

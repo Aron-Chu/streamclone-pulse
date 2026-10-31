@@ -77,13 +77,13 @@ export function PlotOnChartStrip({
             )
           })}
           {plottedCount === 0 ? (
-            <span className="truncate text-xs font-semibold text-slate-500">Aggregate Emotes/min only</span>
+            <span className="truncate text-xs font-semibold text-slate-400">Aggregate Emotes/min only</span>
           ) : null}
         </span>
         <span className="shrink-0 text-xs font-black uppercase text-slate-300">
           {expanded ? 'Collapse' : 'Manage'}
         </span>
-        <span aria-hidden="true" className="shrink-0 text-xs text-slate-500">{expanded ? '−' : '+'}</span>
+        <span aria-hidden="true" className="shrink-0 text-xs text-slate-400">{expanded ? '−' : '+'}</span>
       </button>
       {expanded ? (
         <div
@@ -101,7 +101,7 @@ export function PlotOnChartStrip({
                   onClick={onClear}
                   aria-label="Clear emote lanes"
                   disabled={plottedCount === 0}
-                  className="rounded border border-slate-400/15 px-2 py-0.5 text-xs font-black uppercase text-slate-500 transition hover:border-slate-300/25 hover:text-slate-300 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="rounded border border-slate-400/15 px-2 py-0.5 text-xs font-black uppercase text-slate-400 transition hover:border-slate-300/25 hover:text-slate-300 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Clear
                 </button>
@@ -111,7 +111,7 @@ export function PlotOnChartStrip({
                   type="button"
                   onClick={onReset}
                   aria-label="Restore default emote lanes"
-                  className="rounded border border-slate-400/15 px-2 py-0.5 text-xs font-black uppercase text-slate-500 transition hover:border-slate-300/25 hover:text-slate-300"
+                  className="rounded border border-slate-400/15 px-2 py-0.5 text-xs font-black uppercase text-slate-400 transition hover:border-slate-300/25 hover:text-slate-300"
                 >
                   Restore defaults
                 </button>
@@ -165,7 +165,7 @@ export function PlotOnChartStrip({
             </button>
           )
         }) : (
-          <span className="px-0.5 py-1 text-xs font-semibold text-slate-500">
+          <span className="px-0.5 py-1 text-xs font-semibold text-slate-400">
             No individual emotes are available for this stream.
           </span>
         )}

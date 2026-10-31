@@ -98,7 +98,7 @@ export default function Changelog() {
                     <summary className="flex cursor-pointer list-none items-center gap-2 py-3 [&::-webkit-details-marker]:hidden">
                       <h3 className={`!my-0 ${key === 'knownIssues' ? '!text-amber-300' : ''}`}>{label}</h3>
                       <span className="rounded-full bg-white/[0.07] px-2 py-0.5 text-xs font-bold text-zinc-400" aria-label={`${items.length} ${items.length === 1 ? 'item' : 'items'}`}>{items.length}</span>
-                      <span aria-hidden="true" className="ml-auto inline-block text-xl leading-none text-zinc-500 transition-transform group-open:[transform:rotate(90deg)]">›</span>
+                      <span aria-hidden="true" className="ml-auto inline-block text-xl leading-none text-zinc-400 transition-transform group-open:[transform:rotate(90deg)]">›</span>
                     </summary>
                     <ul className="!mb-0 !mt-1 pb-3">
                       {items.map((item, index) => <li key={index}>{item}</li>)}

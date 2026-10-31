@@ -152,7 +152,7 @@ export function MomentReviewPanel({
       <div
         className={`${
           embedded ? 'px-3 py-4' : 'rounded border border-white/[0.07] bg-[#0d0d12] p-3'
-        } text-center text-xs font-semibold text-zinc-500`}
+        } text-center text-xs font-semibold text-zinc-400`}
       >
         {rollups.some(rollupHasMinuteData)
           ? 'Not enough peaks yet — wait for more minutes.'
@@ -164,7 +164,7 @@ export function MomentReviewPanel({
   return (
     <div className={embedded ? 'p-3' : 'rounded border border-white/[0.07] bg-[#0d0d12] p-3'}>
       <div className="mb-2 flex flex-col gap-0.5">
-        <div className="text-xs font-black uppercase text-zinc-500">Top Moments</div>
+        <div className="text-xs font-black uppercase text-zinc-400">Top Moments</div>
         <MomentListLegend />
       </div>
       <div ref={scrollRef} className="sc-console-scroll flex max-h-72 flex-col gap-1 overflow-y-auto">

@@ -43,7 +43,7 @@ export interface StatCardClassification {
 export type StatCardClassifications = Record<StatCardKey, StatCardClassification>
 
 /** Suggested muted class for placeholder text so every placement renders identically (Req 6.5). */
-export const STAT_PLACEHOLDER_MUTED_CLASS = 'text-zinc-600 font-semibold'
+export const STAT_PLACEHOLDER_MUTED_CLASS = 'text-zinc-400 font-semibold'
 
 const NUMERIC: StatCardClassification = { placeholder: null, muted: false }
 
