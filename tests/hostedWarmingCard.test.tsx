@@ -82,7 +82,7 @@ describe('hosted warming channel', () => {
     expect(text).toContain('Warming')
     expect(text).toContain('Chat is counted once a minute. The chart and Top Moments fill in on their own.')
     expect(text).toContain('0 / 5 minutes collected')
-    expect(text).not.toContain('Not tracked live')
+    expect(text).not.toContain('Not charted')
     expect(text).not.toContain('isn’t reading')
   })
 })

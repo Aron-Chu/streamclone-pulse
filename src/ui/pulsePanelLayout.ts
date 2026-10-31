@@ -1,4 +1,5 @@
 import type { PulsePayload } from '../shared/messages.ts'
+import { NOT_CHARTED_TITLE } from '../shared/notCharted.ts'
 import { isPulseLiveContext, pulseLiveAccessAllowsChart, type PulseLiveAccessState } from './resolvePulseLiveAccess.ts'
 
 export interface PulsePanelSections {
@@ -68,10 +69,10 @@ export function pulseSurfaceStatusLabel(state: PulsePanelSurfaceState): string {
     case 'loading': return 'Loading'
     case 'error': return 'Unavailable'
     case 'identity_mismatch': return 'Stream changed'
-    case 'unsupported': return 'Limited roster'
+    case 'unsupported': return NOT_CHARTED_TITLE
     case 'live_tracked': return 'Live chart'
     case 'live_late': return 'Joined late'
-    case 'live_untracked': return 'Not tracked'
+    case 'live_untracked': return NOT_CHARTED_TITLE
     case 'offline_recap': return 'Replay ready'
     case 'offline_empty': return 'Offline'
   }

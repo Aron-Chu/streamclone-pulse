@@ -762,9 +762,9 @@ test.describe('extension mocked states', () => {
     // Hosted + warming tier: chat is being read, so the channel gets the live
     // view and its warm-up card. This fixture's refresh fails once, and until
     // the overlay keeps the last coverage tier across a failed refresh, that
-    // failure drops the tier and the plain not-tracked card shows instead.
+    // failure drops the tier and the plain Not charted card shows instead.
     // Neither may use pipeline words.
-    await assertPulseShadowContains(extension.page, /Warming.*3 \/ 5 minutes collected|Not tracked live/)
+    await assertPulseShadowContains(extension.page, /Warming.*3 \/ 5 minutes collected|Not charted/)
     expect(await pulseShadowText(extension.page)).not.toMatch(/IRC pool|IRC chat|rollups are/)
     assertNoUncaughtErrors(evidence)
   })

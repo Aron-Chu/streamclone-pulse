@@ -58,6 +58,7 @@ import {
 import { theme } from './theme.ts'
 import { sendBackgroundMessage } from '../content/bridge.ts'
 import { EXTENSION_RECONNECT_MESSAGE } from '../shared/backgroundResponse.ts'
+import { NOT_CHARTED_TITLE } from '../shared/notCharted.ts'
 import {
   activationFromOverlay,
   createBackfillOperationController,
@@ -84,8 +85,7 @@ import { SIDEBAR_COMPACT_WIDTH } from '../content/resolveOverlayHostVisibility.t
 import { effectivePulseIsLive, pulsePayloadForDisplay } from './effectivePulseLive.ts'
 import { isPulseTop500Supported } from './pulseEligibility.ts'
 import { PulseLiveUnavailablePanel } from './PulseLiveUnavailablePanel.tsx'
-import { PulseNotTrackedPanel } from './PulseNotTrackedPanel.tsx'
-import { PulseRosterUnsupportedPanel } from './PulseRosterUnsupportedPanel.tsx'
+import { PulseNotChartedPanel } from './PulseNotChartedPanel.tsx'
 import { PulseSidebarSkeleton } from './PulseSidebarSkeleton.tsx'
 import { coverageTierStatusLabel, resolvePulseLiveAccess } from './resolvePulseLiveAccess.ts'
 import { PULSE_STREAM_START_TOLERANCE_SEC } from './coverageStartHint.ts'
@@ -1992,16 +1992,8 @@ function OverlayMain({
         </div>
       ) : null}
 
-      {payload && !pulseSupported ? (
-        <PulseRosterUnsupportedPanel login={login} />
-      ) : null}
-
-      {!isVodPage && hostedBackend && uiIsLive && pulseSupported && panelSurfaceState === 'live_untracked' ? (
-        <PulseNotTrackedPanel
-          login={login}
-          hostedActiveCount={pulseLiveAccess.hostedActiveCount}
-          hostedActiveLimit={pulseLiveAccess.hostedActiveLimit}
-        />
+      {payload && (!pulseSupported || (!isVodPage && hostedBackend && uiIsLive && panelSurfaceState === 'live_untracked')) ? (
+        <PulseNotChartedPanel onBackToChat={sidebarBodyOnly ? () => onSidebarTabChange?.('chat', 'auto') : undefined} />
       ) : null}
 
       {!isVodPage && !hostedBackend && payload && pulseSupported && panelSurfaceState === 'live_untracked' ? (
@@ -2303,9 +2295,7 @@ function StreamPulseHeader({
       </div>
       <div className={sidebarFill ? 'pulse-header-actions-sidebar' : 'pulse-header-actions'} style={hostedBackend && hideUtilityActions ? { display: 'none' } : undefined}>
         {!pulseSupported && !hostedBackend ? (
-          <span className={trackingPillClass} aria-label="Limited tracked roster">
-            Limited roster
-          </span>
+          <span className={trackingPillClass}>{NOT_CHARTED_TITLE}</span>
         ) : hostedBackend ? null : pulseLiveAccess === 'full_live' ? (
           <span className={trackingPillClass} aria-label="Tracking this streamer">
             Tracking

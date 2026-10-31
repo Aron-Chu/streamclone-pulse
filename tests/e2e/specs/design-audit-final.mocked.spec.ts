@@ -267,7 +267,7 @@ test.describe('StreamPulse final visual, interaction & failure-state audit', () 
     const shell = extension.page.locator('#streamclone-pulse-root .pulse-shell')
     await expect(shell).toBeVisible()
 
-    await assertPulseShadowContains(extension.page, /Not tracked|IRC pool|Partial|Warming|tracking/i)
+    await assertPulseShadowContains(extension.page, /Not charted|IRC pool|Partial|Warming|tracking/i)
     await saveScreenshot(extension.page, '21-failure-state-live-partial.png', shell)
   })
 

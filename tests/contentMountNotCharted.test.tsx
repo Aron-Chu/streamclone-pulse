@@ -161,6 +161,15 @@ describe('content mount on a channel with nothing to chart', () => {
     // A later answer for the same visit does not switch the reader back.
     await settle(() => mountOverlay('offlist', payload('offlist', { rosterEligible: false, login: 'offlist' }), channel('offlist'), { sessionOpenedAtMs: 1 }))
     expect(shownTab()).toBe('pulse')
+
+    // One Not charted card; Back to chat shows Chat for this visit, unsaved.
+    const panel = document.getElementById(PULSE_ROOT_HOST_ID)?.shadowRoot
+    expect(panel?.textContent).toContain('Not chartedStreamPulse only charts Twitch’s busiest channels. This one isn’t charted right now.')
+    const back = [...(panel?.querySelectorAll('button') ?? [])].find(node => node.textContent?.trim() === 'Back to chat')
+    await settle(() => back?.click())
+    expect(shownTab()).toBe('chat')
+    expect(panelHidden()).toBe(true)
+    expect(savedTabWrites()).toEqual(['pulse'])
   })
 
   it('shows Chat on a live channel StreamPulse isn’t reading (coverage full)', async () => {
