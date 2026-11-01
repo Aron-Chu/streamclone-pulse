@@ -3,6 +3,7 @@ import { formatHeatOffset } from '@streampulse/pulse-core'
 import { sendBackgroundMessage } from '../content/bridge.ts'
 import type { CreatePulseBookmarkInput, PulseBookmark } from '../shared/messages.ts'
 import { TWITCH_SIGNIN_ENABLED } from '../shared/twitchSignIn.ts'
+import { ReviewRequest } from './ReviewRequest.tsx'
 
 /** What a moment card saves: the ranked moment it shows, or its raw chart minute (no score). */
 export interface BookmarkTarget {
@@ -139,6 +140,7 @@ export function MomentBookmarksProvider({ login, streamId, vodId, resolveVodId, 
   const [items, setItems] = useState<PulseBookmark[]>([])
   const [busy, setBusy] = useState(false)
   const [toast, setToast] = useState<BookmarkToast | null>(null)
+  const [reviewRequested, setReviewRequested] = useState(false)
   const generation = useRef(0)
   const pending = useRef(false)
   const toastKey = useRef(0)
@@ -157,6 +159,7 @@ export function MomentBookmarksProvider({ login, streamId, vodId, resolveVodId, 
       generation.current++
       pending.current = false
       setItems([]); setToast(null); setBusy(false)
+      setReviewRequested(false)
     }
     const hydrate = () => {
       const current = generation.current
@@ -212,6 +215,7 @@ export function MomentBookmarksProvider({ login, streamId, vodId, resolveVodId, 
     if ('error' in result && result.error) throw new Error(result.error)
     if (!('type' in result) || result.type !== 'BOOKMARK') throw new Error('invalid_bookmark_response')
     setItems(previous => [result.item, ...previous.filter(item => item.id !== result.item.id)])
+    if (result.reviewRequest === true && !restoreOf) setReviewRequested(true)
     return { item: result.item, device: result.device === true }
   }
 
@@ -296,7 +300,10 @@ export function MomentBookmarksProvider({ login, streamId, vodId, resolveVodId, 
     // The handlers read refs, or what these change with.
   }), [items, busy, toast, canSave, momentOffsets, login, streamId, validVodId])
 
-  return <MomentBookmarksContext.Provider value={value}>{children}</MomentBookmarksContext.Provider>
+  return <MomentBookmarksContext.Provider value={value}>
+    {children}
+    {reviewRequested ? <ReviewRequest onDismiss={() => setReviewRequested(false)} /> : null}
+  </MomentBookmarksContext.Provider>
 }
 
 /** The bookmark mark: an outline to save, filled once saved. */
