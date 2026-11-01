@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { ArrowRight, Lock } from 'lucide-react'
 import { PublicLayout } from '../../ui/components/PublicLayout'
-import { ChromeInstallCta } from '../../ui/components/ChromeInstallCta'
+import { InstallCta } from '../../ui/components/InstallCta'
 import { buttonClass } from '../../ui/primitives'
 import { FEEDBACK_PATH, SECURITY_REPORT_URL } from '../../lib/externalLinks'
 import { feedbackSiteKey, supportFormAvailability } from '../../lib/supportForm'
@@ -49,7 +49,7 @@ export default function Support() {
           <section id="install">
             <h2 className="!mt-0">Install StreamPulse</h2>
             <div className="mt-3 flex flex-wrap items-center gap-3">
-              <ChromeInstallCta className={buttonClass('default', 'sm')} data-cta="chrome-install-support" />
+              <InstallCta className={buttonClass('default', 'sm')} data-cta="chrome-install-support" />
               <span className="text-xs font-mono text-zinc-500">Chrome Web Store · Chrome and Brave</span>
             </div>
           </section>

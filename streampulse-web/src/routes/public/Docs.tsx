@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
-import { ChromeInstallCta } from '../../ui/components/ChromeInstallCta'
-import { FirefoxInstallCta } from '../../ui/components/FirefoxInstallCta'
+import { InstallCta } from '../../ui/components/InstallCta'
 import { buttonClass } from '../../ui/primitives'
 import { discordInviteUrl } from '../../lib/discord'
 import { FEEDBACK_PATH } from '../../lib/externalLinks'
@@ -34,18 +33,18 @@ export default function Docs() {
         <section id="extension" aria-labelledby="extension-title" className="mt-8 rounded-xl border border-white/[0.08] bg-white/[0.02] p-6">
           <h2 id="extension-title" className="!mt-0 text-xl font-bold text-white">1. Install the StreamPulse extension</h2>
           <p className="mt-2 text-zinc-300">
-            For Chrome and Brave, use the Chrome Web Store. For Firefox, use Firefox Add-ons.
+            For Chrome and Brave, use the Chrome Web Store. For Edge, use Edge Add-ons. For Firefox, use Firefox Add-ons.
             Then open a Twitch channel or VOD. Channels with nothing to chart stay on <strong>Chat</strong>.
             Use the <strong>Chat / Pulse</strong> switch at the top of Twitch chat to change tabs.
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-3">
-            <ChromeInstallCta className={buttonClass('default', 'sm')} data-cta="chrome-install-docs" />
-            <FirefoxInstallCta className={buttonClass('outline', 'sm')} />
+            <InstallCta store="chrome" className={buttonClass('default', 'sm')} data-cta="chrome-install-docs" />
+            <InstallCta store="edge" label="short" className={buttonClass('outline', 'sm')} data-cta="edge-install-docs" />
+            <InstallCta store="firefox" label="short" className={buttonClass('outline', 'sm')} data-cta="firefox-install-docs" />
             <span className="text-xs text-zinc-500">The extension version shown in the store listing identifies the published package, not the website release.</span>
           </div>
           <p className="mt-3 text-sm text-zinc-300">
             Install using a desktop browser. On a phone or tablet, open this page on your computer.
-            An Edge Add-ons link will appear here once its listing is verified.
           </p>
           <div className="alert alert-warning mt-4">
             <span>

@@ -1,8 +1,9 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import { Menu } from 'lucide-react'
 import { BrandMark } from '../BrandMark'
-import { ChromeInstallCta } from '../ChromeInstallCta'
+import { DiscordMark } from '../DiscordMark'
+import { InstallCta } from '../InstallCta'
 import { discordInviteUrl } from '../../../lib/discord'
 import { FEEDBACK_PATH } from '../../../lib/externalLinks'
 
@@ -15,11 +16,17 @@ export interface AnalyticsTopNavItem {
 export interface AnalyticsTopNavProps {
   items: AnalyticsTopNavItem[]
   navigationLabel?: string
+  /** A page's own search in the bar (the hub's docked search), between the links and the buttons. */
+  dock?: ReactNode
+  /** A page's own install button in place of the bar's (the hub hides it while its card shows). */
+  install?: ReactNode
 }
 
 export function AnalyticsTopNav({
   items,
   navigationLabel = 'Analytics navigation',
+  dock,
+  install,
 }: AnalyticsTopNavProps) {
   const [isOpen, setIsOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -87,7 +94,6 @@ export function AnalyticsTopNav({
             </button>
             <div ref={panelRef} id={panelId} className="analytics-topnav__more-links" data-state={isOpen ? 'open' : 'closed'} aria-hidden={!isOpen}>
               <Link to={FEEDBACK_PATH} onClick={() => closeMenu()}>Send feedback</Link>
-              {discord ? <a href={discord} target="_blank" rel="noopener noreferrer" aria-label="Discord (opens in a new tab)" onClick={() => closeMenu()}>Discord</a> : null}
               <Link to="/docs" onClick={() => closeMenu()}>Extension guide</Link>
               <Link to="/support" onClick={() => closeMenu()}>Support</Link>
               <Link to="/status" onClick={() => closeMenu()}>Service status</Link>
@@ -103,8 +109,16 @@ export function AnalyticsTopNav({
         </nav>
       ) : null}
 
+      {dock}
+
+      {/* Discord stays on the bar at every width (a 44 px mark below 1280 px); install hides on phones. */}
       <div className="analytics-topnav__actions" aria-label="Analytics utilities">
-        <ChromeInstallCta className="analytics-topnav__install" data-cta="chrome-install-analytics" />
+        {install ?? <InstallCta className="analytics-topnav__install" label="short" icon="mark" data-cta="chrome-install-analytics" />}
+        {discord ? (
+          <a href={discord} target="_blank" rel="noopener noreferrer" className="analytics-topnav__discord" aria-label="Discord (opens in a new tab)">
+            <DiscordMark size={18} /><span>Discord</span>
+          </a>
+        ) : null}
       </div>
     </header>
   )

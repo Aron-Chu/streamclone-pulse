@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
-import { ChromeInstallCta } from '../../ui/components/ChromeInstallCta'
+import { InstallCta } from '../../ui/components/InstallCta'
 import './growth-guides.css'
 
 export default function FindTwitchMomentsGuide() {
@@ -23,7 +23,7 @@ export default function FindTwitchMomentsGuide() {
     <section id="editor-workflow"><h2>A practical editor or moderator pass</h2>
       <ol><li>Confirm the broadcast and measured window before selecting peaks.</li><li>Review a small shortlist of reactions in context instead of treating every spike as a finished highlight.</li><li>Write a brief human note for each useful moment: what happened and how much context it needs.</li><li>Test each replay link with the permissions your audience will have.</li><li>Recheck the link before publishing a timestamp thread or handing it to an editor.</li></ol>
       <p>StreamPulse helps with discovery and review. This workflow does not create an edited video, grant media rights, or bypass subscriber-only access.</p></section>
-    <div className="public-document__actions"><ChromeInstallCta className="btn btn-primary" /><Link className="btn btn-secondary" to="/docs#extension">Installation guide</Link></div>
+    <div className="public-document__actions"><InstallCta className="btn btn-primary" /><Link className="btn btn-secondary" to="/docs#extension">Installation guide</Link></div>
     <nav className="growth-guide__related" aria-label="Related tools and guides"><Link to="/tools/twitch-vod-timestamp-link">Build a Twitch timestamp link</Link><Link to="/guides/twitch-vod-timestamps">Why a VOD or timestamp may be unavailable</Link><Link to="/support">Get help with StreamPulse</Link></nav>
   </article></PublicLayout>
 }
