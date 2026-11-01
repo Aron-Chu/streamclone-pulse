@@ -121,7 +121,7 @@ export function useMomentPicture<T extends HTMLElement>(view: MomentPictureView 
   const ref = useRef<T>(null)
   useSyncExternalStore(subscribeAt, () => atVersion, () => atVersion)
   const at = pictureAt
-  const key = view ? `${view.kind} ${view.from} ${view.to} ${view.peak} ${view.art} ${view.emote} ${view.exact} ${at?.key} ${at?.vodId}` : ''
+  const key = view ? `${view.kind} ${view.from} ${view.to} ${view.peak} ${view.art} ${view.emote} ${view.exact} ${at?.key} ${at?.vodId} ${at?.vodOriginDeltaSeconds}` : ''
   useEffect(() => (frames && view && ref.current ? frames.mount(ref.current, view, at) : undefined), [frames, key])
   return ref
 }

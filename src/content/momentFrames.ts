@@ -339,11 +339,24 @@ function loaded(url: string): Promise<HTMLImageElement | null> {
 
 const cssUrl = (url: string): string => `url(${JSON.stringify(url)})`
 
+/**
+ * A row's picture its last mount left up for the next mount of the same box:
+ * which moment it shows, its frame image, and how to take it down. Only a
+ * mount of that moment keeps it; any other takes it down first.
+ */
+const handoffs = new WeakMap<HTMLElement, { id: string; image: HTMLImageElement; blank: () => void }>()
+
 function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt): () => void {
   addStyles(host)
   at = lastAt = at ?? lastAt
   const card = view.kind === 'card'
   let gone = false
+  // The same moment of the same stream, at the same alignment: a VOD id
+  // arriving or a move in or out of the top 3 keeps the box's picture.
+  const id = `${at?.key} ${at?.vodOriginDeltaSeconds ?? 0} ${view.kind} ${view.from} ${view.to} ${view.peak}`
+  const handed = handoffs.get(host)
+  handoffs.delete(host)
+  if (handed && handed.id !== id) handed.blank()
 
   /** Puts `source` on a card's picture: its chip, and what a screen reader hears. */
   const name = (picture: HTMLElement, source: string): void => {
@@ -451,7 +464,8 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
   let pinnedPeak: StoredFrame | undefined
   let chosen: StoredFrame | undefined
   let held = new Set<StoredFrame>()
-  const image = element('img')
+  // The frame image left up for this moment stays the one on screen.
+  const image = handed?.id === id ? handed.image : element('img')
   image.alt = ''
   image.decoding = 'async'
 
@@ -644,10 +658,23 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
     stopFlip()
     row?.removeEventListener('pointerenter', startFlip)
     row?.removeEventListener('pointerleave', endFlip)
-    host.removeAttribute('data-has')
-    host.removeAttribute('data-top')
-    host.replaceChildren()
-    markList(list)
+    const blank = (): void => {
+      host.removeAttribute('data-has')
+      host.removeAttribute('data-top')
+      host.replaceChildren()
+      markList(list)
+    }
+    if (card) return blank()
+    // A row leaves its picture up for a mount that takes the box over in the
+    // same render (its VOD id arrived, or it moved in or out of the top 3), so
+    // the picture neither blinks nor closes the list's picture column.
+    const handoff = { id, image, blank }
+    handoffs.set(host, handoff)
+    queueMicrotask(() => {
+      if (handoffs.get(host) !== handoff) return
+      handoffs.delete(host)
+      blank()
+    })
   }
 }
 
