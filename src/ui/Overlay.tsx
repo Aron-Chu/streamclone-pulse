@@ -52,6 +52,8 @@ import {
 import { buildTwitchVodUrl } from '../shared/pastVods.ts'
 import { rememberVodAnalyticsBridge } from '../shared/vodAnalyticsBridge.ts'
 import { rememberMomentArrival, takeMomentArrival, type MomentArrival } from '../shared/momentArrival.ts'
+import { keptVodOriginDelta } from '../shared/vodOriginAlignment.ts'
+import { jumpHistoryReference, keptMomentSecond } from './keptMoment.ts'
 import {
   pulseSurfaceStatusLabel,
   resolvePulsePanelSections,
@@ -931,13 +933,16 @@ function OverlayMain({
       setArrival({ source: found.source, at, vodSecond: Math.max(0, at - delta) })
       // Only a Pulse link counts toward History; any other timestamped link
       // is just where the player started.
-      if (found.source !== 'link') watchArrival(found, at, Math.max(0, at - delta))
+      if (found.source !== 'link') watchArrival(found, at, Math.max(0, at - delta), source.vodId === found.vodId ? keptVodOriginDelta(source.vodOriginDeltaSeconds) : undefined)
     }).catch(() => undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- lockMinuteAt reads this render's state
   }, [pendingArrival, chartSourcePayload, canRenderPayload, isVodPage, liveChartShown, surfaceIdentity])
 
-  /** History counts an arrival once 10 s of it plays, as after a jump in this tab. */
-  function watchArrival(found: MomentArrival, at: number, vodSecond: number): void {
+  /**
+   * History counts an arrival once 10 s of it plays, as after a jump in this
+   * tab. `vodOriginDeltaSeconds`: this VOD's, so the entry's link lands there too.
+   */
+  function watchArrival(found: MomentArrival, at: number, vodSecond: number, vodOriginDeltaSeconds?: number): void {
     arrivalWatchRef.current?.()
     const start = Math.max(0, vodSecond - 5)
     const end = start + 60
@@ -949,7 +954,8 @@ function OverlayMain({
       if (!video || video.currentTime < start - 10 || video.currentTime > end) return
       clearInterval(timer)
       void observeMomentPlayback(video, { id: 'moment', channel: found.login ?? payload?.login ?? login, title: found.title ?? 'Moment',
-        vodId: found.vodId, streamId: found.streamId ?? payload?.streamId, offsetSeconds: at, availability: 'unresolved' }, start, end, () => {
+        vodId: found.vodId, streamId: found.streamId ?? payload?.streamId, offsetSeconds: at,
+        ...(vodOriginDeltaSeconds === undefined ? {} : { vodOriginDeltaSeconds }), availability: 'unresolved' }, start, end, () => {
         if (mountedRef.current) setArrivalNotice({ key: Date.now(), text: `Added to History · ${formatHeatOffset(at)}` })
       })
     }, 500)
@@ -1741,8 +1747,9 @@ function OverlayMain({
         if (point.estimated || point.collecting) return
         const window = reactionMomentWindow(point)
         const start = target + window.startSeconds - reactionLeadInOffset(point, 5)
-        void observeMomentPlayback(getPrimaryVideo(), { id: 'moment', channel: login, title: point.reasonLabel,
-          vodId: jumpVodId ?? context.vodId, streamId: payload?.streamId, offsetSeconds: point.offsetSeconds, availability: 'unresolved' }, start, start + window.durationSeconds)
+        // Kept at the second its bookmark keeps, so My Moments shows one row for both.
+        void observeMomentPlayback(getPrimaryVideo(), jumpHistoryReference(point, { login, vodId: jumpVodId ?? context.vodId, streamId: payload?.streamId,
+          payloadVodId: payload?.vodId, payloadVodOriginDeltaSeconds: payload?.vodOriginDeltaSeconds }), start, start + window.durationSeconds)
       }
       if (action.kind === 'seek-vod') {
         const result = await seekPlaybackOffsetVerified(getPrimaryVideo(), action.offsetSeconds, { isLive: false })
@@ -1759,7 +1766,7 @@ function OverlayMain({
 
       if (action.kind === 'open-vod-tab') {
         // The new tab's panel locks this moment (board E).
-        void rememberMomentArrival({ vodId: action.vodId, offsetSeconds: reactionAnalyticalOffset(point), source: 'panel',
+        void rememberMomentArrival({ vodId: action.vodId, offsetSeconds: keptMomentSecond(point), source: 'panel',
           login, streamId: payload?.streamId, title: point.reasonLabel })
         if (payload?.streamId) {
           void rememberVodAnalyticsBridge({
@@ -1924,6 +1931,7 @@ function OverlayMain({
         login={payload && canRenderPayload ? payload.login : ''}
         streamId={payload?.streamId}
         vodId={payload?.vodId ?? undefined}
+        vodOriginDeltaSeconds={payload?.vodOriginDeltaSeconds}
         // Lookup only: linking the VOD mid-save would re-key the bookmark row and drop the save.
         // Live, the live archive; an ended stream's recap, its row in stream history.
         resolveVodId={context.kind !== 'channel' ? undefined

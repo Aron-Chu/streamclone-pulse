@@ -60,6 +60,15 @@ describe('Library semantics', () => {
     expect(replayUrl({ ...demoReference, offsetSeconds: NaN })).toBeNull()
     expect(replayUrl(demoReference)).toBe('https://www.twitch.tv/videos/9999999991?t=6138s')
   })
+  it('takes a kept VOD origin delta off the stream offset, and only a usable one', () => {
+    expect(replayUrl({ ...demoReference, vodOriginDeltaSeconds: 95 })).toBe('https://www.twitch.tv/videos/9999999991?t=6043s')
+    expect(replayUrl({ ...demoReference, vodOriginDeltaSeconds: -9 })).toBe('https://www.twitch.tv/videos/9999999991?t=6147s')
+    expect(replayUrl({ ...demoReference, offsetSeconds: 30, vodOriginDeltaSeconds: 95 })).toBe('https://www.twitch.tv/videos/9999999991?t=0s')
+    // Older records have none; a corrupt one is not trusted.
+    for (const vodOriginDeltaSeconds of [undefined, 1.5, 6 * 3600 + 1]) {
+      expect(replayUrl({ ...demoReference, vodOriginDeltaSeconds })).toBe('https://www.twitch.tv/videos/9999999991?t=6138s')
+    }
+  })
   it('formats timestamps and bounds notes', () => {
     expect(timestamp(6138)).toBe('01:42:18'); expect(timestamp(null)).toBe('Position unknown')
     expect(validateNote('x'.repeat(1001))).toBeTruthy(); expect(validateNote('<script>plain text</script>')).toBeNull()

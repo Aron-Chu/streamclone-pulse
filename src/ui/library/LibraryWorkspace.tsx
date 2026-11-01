@@ -6,8 +6,8 @@ import { hasRecent, replayAvailability, visibleMoments, type HistorySyncView, ty
 import { useLibrary } from './useLibrary.ts'
 import { MomentPreview, type MomentContextState } from './MomentPreview.tsx'
 import type { MomentPresentation } from './MomentMedia.tsx'
-import type { BookmarksState } from '../../shared/myMoments.ts'
-import type { PulseBookmark } from '../../shared/messages.ts'
+import type { BookmarksState, DeviceBookmark } from '../../shared/myMoments.ts'
+import { keptVodOriginDelta } from '../../shared/vodOriginAlignment.ts'
 import { TWITCH_SIGNIN_ENABLED } from '../../shared/twitchSignIn.ts'
 import { rememberMomentArrival } from '../../shared/momentArrival.ts'
 import { buildAnalyticsUrl, DEFAULT_WEB_ANALYTICS_BASE_URL } from '../../shared/analyticsLinks.ts'
@@ -56,13 +56,15 @@ function sameSource(a: MomentReference, b: MomentReference): boolean {
 
 /** Pre-link device saves as rows, newest first. Only the worker's linked snapshot carries any. */
 function deviceSaveMoments(snapshot: LibrarySnapshot | null): LibraryMoment[] {
-  const saves = snapshot && 'deviceBookmarks' in snapshot ? (snapshot as { deviceBookmarks: Partial<PulseBookmark>[] }).deviceBookmarks : []
+  const saves = snapshot && 'deviceBookmarks' in snapshot ? (snapshot as { deviceBookmarks: Partial<DeviceBookmark>[] }).deviceBookmarks : []
   return saves.flatMap(b => {
     if (typeof b.id !== 'string') return []
     const vodId = b.vodId ?? null
     const offsetSeconds = typeof b.offsetSeconds === 'number' ? b.offsetSeconds : null
     const savedAt = Date.parse(b.createdAt ?? '')
+    const delta = vodId ? keptVodOriginDelta(b.vodOriginDeltaSeconds) : undefined
     return [{ id: b.id, channel: b.login ?? '', title: b.label || 'Saved moment', vodId, streamId: b.streamId, offsetSeconds,
+      ...(delta === undefined ? {} : { vodOriginDeltaSeconds: delta }),
       availability: replayAvailability({ vodId, offsetSeconds }), ...(Number.isFinite(savedAt) ? { savedAt } : {}), note: b.notes ?? '' }]
   }).sort((a, b) => (b.savedAt ?? 0) - (a.savedAt ?? 0) || a.id.localeCompare(b.id))
 }
@@ -137,12 +139,16 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
     setView(next); setQuery(''); setChannel(''); setWatchLater(false); setPage(1); setLocalNotice('')
     if (focus === 'heading') heading.current?.focus()
   }
-  function navigateFromTab(index: number, key: string) {
+  function navigateFromTab(index: number, event: { key: string; altKey: boolean; ctrlKey: boolean; metaKey: boolean; preventDefault(): void }) {
+    const { key } = event
     const next = key === 'ArrowRight' ? (index + 1) % views.length
       : key === 'ArrowLeft' ? (index + views.length - 1) % views.length
         : key === 'Home' ? 0
           : key === 'End' ? views.length - 1 : -1
     if (next === -1) return
+    // The key moves between tabs, so the page must not scroll with it too.
+    // A browser shortcut (Alt, Ctrl or Cmd held) keeps its own default.
+    if (!event.altKey && !event.ctrlKey && !event.metaKey) event.preventDefault()
     navigate(views[next].id, 'tab')
     tabButtons.current[next]?.focus()
   }
@@ -228,7 +234,7 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
       ref={element => { tabButtons.current[index] = element }}
       role="tab" id={`${id}-tab-${item.id}`} aria-controls={`${id}-panel-${item.id}`} tabIndex={view === item.id ? 0 : -1}
       className="pl-tab" aria-selected={view === item.id} onClick={() => navigate(item.id)}
-      onKeyDown={event => navigateFromTab(index, event.key)}>{item.label}</button>)}</div>
+      onKeyDown={event => navigateFromTab(index, event)}>{item.label}</button>)}</div>
 
     <div className="pl-feedback" role="status" aria-live="polite" aria-atomic="true">{localNotice || library.notice}</div>
     {library.error && !modal ? <div role="alert" className="pl-warning"><p>{library.error}</p>

@@ -28,12 +28,12 @@ beforeAll(async () => {
 beforeEach(() => { vi.resetAllMocks(); signIn.on = true; host = document.createElement('div'); document.body.append(host); root = createRoot(host) })
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); vi.useRealTimers() })
 
-type Context = { login?: string; streamId?: string; vodId?: string; resolveVodId?: () => Promise<string | null>; momentOffsets?: number[] }
+type Context = { login?: string; streamId?: string; vodId?: string; vodOriginDeltaSeconds?: number; resolveVodId?: () => Promise<string | null>; momentOffsets?: number[] }
 async function panel(children: ReactNode, context: Context = {}) {
-  const { login = 'xqc', vodId, resolveVodId, momentOffsets } = context
+  const { login = 'xqc', vodId, vodOriginDeltaSeconds, resolveVodId, momentOffsets } = context
   const streamId = 'streamId' in context ? context.streamId : '123456'
   await act(async () => root.render(
-    <MomentBookmarksProvider login={login} streamId={streamId} vodId={vodId} resolveVodId={resolveVodId} momentOffsets={momentOffsets}>
+    <MomentBookmarksProvider login={login} streamId={streamId} vodId={vodId} vodOriginDeltaSeconds={vodOriginDeltaSeconds} resolveVodId={resolveVodId} momentOffsets={momentOffsets}>
       {children}
       <MomentBookmarkToast />
     </MomentBookmarksProvider>,
@@ -325,6 +325,31 @@ it('preserves a valid VOD reference when no live stream id is available', async 
     type: 'SAVE_BOOKMARK', bookmark: expect.objectContaining({ login: 'xqc', vodId: '987654321', offsetSeconds: 120 }),
   }))
   expect(bookmark()?.getAttribute('data-moment-save-state')).toBe('saved')
+})
+
+describe('the VOD origin delta of a save', () => {
+  const saveWith = async (context: Context) => {
+    vi.mocked(sendBackgroundMessage)
+      .mockResolvedValueOnce({ type: 'BOOKMARKS', items: [] })
+      .mockResolvedValueOnce({ type: 'BOOKMARK', item: { ...item, vodId: '987654321' } })
+    await card(context)
+    await press(bookmark())
+    return calls('SAVE_BOOKMARK')[0] as Record<string, unknown> & { bookmark: Record<string, unknown> }
+  }
+  it('a save on the payload\'s VOD sends its delta beside the bookmark, never inside it', async () => {
+    const save = await saveWith({ vodId: '987654321', vodOriginDeltaSeconds: 95 })
+    expect(save).toMatchObject({ vodOriginDeltaSeconds: 95, bookmark: { vodId: '987654321', offsetSeconds: 120 } })
+    // The bookmark is what the hosted save posts.
+    expect(save.bookmark).not.toHaveProperty('vodOriginDeltaSeconds')
+  })
+  it('sends none for a zero or unusable delta', async () => {
+    expect(await saveWith({ vodId: '987654321', vodOriginDeltaSeconds: 0 })).not.toHaveProperty('vodOriginDeltaSeconds')
+  })
+  it('sends none for an archive found by lookup: the payload\'s delta is not that VOD\'s', async () => {
+    const save = await saveWith({ vodOriginDeltaSeconds: 95, resolveVodId: async () => '987654321' })
+    expect(save.bookmark).toMatchObject({ vodId: '987654321' })
+    expect(save).not.toHaveProperty('vodOriginDeltaSeconds')
+  })
 })
 
 describe('the chart minute card', () => {

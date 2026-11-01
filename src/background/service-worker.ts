@@ -1,4 +1,4 @@
-import { bindReplayLookups, handleDeviceBookmarks, handleMyMoments, handlePicture, removePanelBookmark, restoreRemovedNote, wantSavedPicture } from './myMoments.ts'
+import { bindReplayLookups, handleDeviceBookmarks, handleMyMoments, handlePicture, keepSaveDelta, removePanelBookmark, restoreRemovedNote, wantSavedPicture } from './myMoments.ts'
 import { loadHubSnapshot } from './hubSnapshot.ts'
 import { loadMomentMinute } from './momentMinute.ts'
 import {
@@ -1226,6 +1226,8 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           const device = await handleDeviceBookmarks(message, sender)
           const saved = device ?? { type: 'BOOKMARK', item: await createPulseBookmark(message.bookmark) } satisfies BackgroundResponse
           if (message.restoreOf && 'item' in saved) await restoreRemovedNote(message.restoreOf, saved.item, sender)
+          // A device save keeps the delta on its row; an account's keeps it beside its id.
+          if (!device && 'item' in saved) void keepSaveDelta(saved.item, message.bookmark.vodId, message.vodOriginDeltaSeconds, sender)
           sendResponse(saved)
           void wantSavedPicture(message.bookmark, sender)
           return
