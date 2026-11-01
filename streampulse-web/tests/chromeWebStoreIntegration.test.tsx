@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   CHROME_WEB_STORE_EXTENSION_ID,
   CHROME_WEB_STORE_LISTING_URL,
+  FIREFOX_ADDONS_LISTING_URL,
   PUBLIC_SITE,
   STREAM_PULSE_ANALYTICS_URL,
   STREAM_PULSE_PRIVACY_URL,
@@ -89,6 +90,19 @@ describe('ChromeInstallCta', () => {
 })
 
 describe('install CTAs across surfaces', () => {
+  it('offers the published Firefox listing and honest desktop and Edge guidance', () => {
+    render(<MemoryRouter><Docs /></MemoryRouter>)
+    const install = screen.getByRole('heading', { name: /install the streampulse extension/i }).closest('section')!
+    const firefox = within(install).getByRole('link', { name: 'Add to Firefox' })
+    expect(firefox.getAttribute('href')).toBe(FIREFOX_ADDONS_LISTING_URL)
+    expect(PUBLIC_SITE.firefoxAddonsListingUrl).toBe(FIREFOX_ADDONS_LISTING_URL)
+    expect(firefox.getAttribute('target')).toBe('_blank')
+    expect(firefox.getAttribute('rel')).toBe('noopener noreferrer')
+    expect(install.textContent).toContain('On a phone or tablet, open this page on your computer.')
+    expect(install.textContent).toContain('An Edge Add-ons link will appear here once its listing is verified.')
+    expect(install.querySelector('a[href*="microsoftedge.microsoft.com"]')).toBeNull()
+  })
+
   it('landing hero and nav CTAs use the canonical listing', () => {
     render(
       <MemoryRouter>
@@ -172,6 +186,33 @@ function LocationProbe() {
   const { pathname } = useLocation()
   return <span data-testid="pathname">{pathname}</span>
 }
+
+function InstallLocationProbe() {
+  const { pathname, search, hash } = useLocation()
+  return <span data-testid="install-location">{pathname}{search}{hash}</span>
+}
+
+describe('install entry', () => {
+  it.each(['/install', '/install/'])('opens the guide from %s without forwarding query values to stores', async path => {
+    const search = '?utm_campaign=editor-pilot&channel=private-channel&email=private@example.test'
+    window.history.replaceState({}, '', `${path}${search}`)
+    render(
+      <MemoryRouter initialEntries={[`${path}${search}#old-anchor`]}>
+        <InstallLocationProbe />
+        <AppRoutes />
+      </MemoryRouter>,
+    )
+    expect(await screen.findByTestId('docs-page')).toBeTruthy()
+    expect(screen.getByTestId('install-location').textContent).toBe(`/docs${search}#extension`)
+    for (const link of screen.getAllByRole('link').filter(el =>
+      el.hasAttribute('data-cws-listing') || el.getAttribute('href') === FIREFOX_ADDONS_LISTING_URL,
+    )) {
+      expect(link.getAttribute('href')).not.toMatch(/editor-pilot|private-channel|private@example/)
+    }
+    expect(screen.queryByTestId('not-found')).toBeNull()
+    window.history.replaceState({}, '', '/')
+  })
+})
 
 describe('analytics routes and admin', () => {
   it('resolves /analytics and /analytics/ to the command center', async () => {

@@ -58,14 +58,16 @@ describe('Cloudflare Pages production deployment hygiene', () => {
     }
   })
 
-  it('preserves search discovery while opting out of AI model use', () => {
+  it('permits public retrieval while restricting model training', () => {
     const robots = readFileSync(resolve(webRoot, 'public/robots.txt'), 'utf8')
     const headers = readFileSync(resolve(webRoot, 'public/_headers'), 'utf8')
-    expect(robots).toContain('Content-signal: search=yes, ai-input=no, ai-train=no, use=reference')
-    for (const agent of ['CCBot', 'ClaudeBot', 'GPTBot', 'Google-Extended', 'meta-externalagent']) {
+    expect(robots).toContain('Content-signal: search=yes, ai-input=yes, ai-train=no')
+    for (const agent of ['CCBot', 'ClaudeBot', 'GPTBot', 'meta-externalagent']) {
       expect(robots).toMatch(new RegExp(`User-agent: ${agent}\\s+Disallow: /`, 'i'))
     }
-    expect(headers).toContain('Content-Signal: search=yes, ai-input=no, ai-train=no, use=reference')
+    expect(headers).toContain('Content-Signal: search=yes, ai-input=yes')
+    expect(headers).not.toContain('ai-train=no')
+    expect(robots).toContain('User-agent: Google-Extended\nContent-signal: search=yes, ai-input=yes, ai-train=yes\nAllow: /')
   })
 
   it('ships static redirects for legacy analytics entrypoints and SPA deep links', () => {
@@ -87,10 +89,16 @@ describe('Cloudflare Pages production deployment hygiene', () => {
       '/analytics/:login/s/:streamId', '/analytics/:login/s/:streamId/',
       '/s/:login', '/s/:login/:streamId',
     ]) {
-      // Pages must serve the canonical asset internally while retaining the
+      // Pages must serve the separate noindexed fallback while retaining the
       // requested URL; an .html target produces a browser redirect instead.
-      expect(redirects.split(/\r?\n/).find(line => line.startsWith(`${path} `))).toBe(`${path} /analytics/ 200`)
+      expect(redirects.split(/\r?\n/).find(line => line.startsWith(`${path} `))).toBe(`${path} /analytics-fallback/ 200`)
     }
+  })
+
+  it('temporarily redirects both install entry forms to the existing guide', () => {
+    const redirects = readFileSync(resolve(webRoot, 'public/_redirects'), 'utf8').split(/\r?\n/)
+    expect(redirects).toContain('/install /docs#extension 302')
+    expect(redirects).toContain('/install/ /docs#extension 302')
   })
 
   it('rewrites every account deep link to the private SPA entry', () => {

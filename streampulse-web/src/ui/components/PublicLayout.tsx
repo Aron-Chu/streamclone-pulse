@@ -132,6 +132,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
               </a>
             </div>
             <div className="app-footer__links">
+              <Link to="/tools/twitch-vod-timestamp-link">Timestamp link tool</Link>
               <Link to={SUPPORTER_PATH}>Supporter</Link>
               <Link to={PRIVACY_PATH}>Privacy Policy</Link>
               <Link to={TERMS_PATH}>Terms of Use</Link>

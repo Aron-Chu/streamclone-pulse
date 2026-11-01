@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+vi.mock('../src/generated/recap-page-paths.json', () => ({ default: [
+  { path: '/analytics/fixturechan', category: 'channel_summary' },
+  { path: '/analytics/fixturechan/12345', category: 'stream_recap' },
+  { path: '/analytics/fixturechan/67890', category: 'stream_recap' },
+] }))
+
 const transport = vi.hoisted(() => ({
   clients: [] as { capturePage: ReturnType<typeof vi.fn>; captureCta: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn> }[],
   loaded: vi.fn(),
@@ -36,6 +42,65 @@ async function allow() {
 }
 
 describe('public product analytics consent boundary', () => {
+  it('classifies only the three supported tools and guides, without their inputs', () => {
+    expect(analytics.publicPageCategory('/tools/twitch-vod-timestamp-link/')).toBe('tool')
+    expect(analytics.publicPageCategory('/guides/find-twitch-moments')).toBe('guide')
+    expect(analytics.publicPageCategory('/guides/twitch-vod-timestamps')).toBe('guide')
+    expect(analytics.publicPageCategory('/tools/private-input')).toBeNull()
+    expect(analytics.publicPageCategory('/guides/unreviewed')).toBeNull()
+  })
+
+  it('requires a new choice after the old excluded-page consent scope', async () => {
+    localStorage.setItem('sp.websiteAnalytics.v1', 'allowed')
+    window.history.replaceState({}, '', '/analytics/fixturechan/12345')
+    analytics.setProductAnalyticsRoute()
+    await Promise.resolve()
+    expect(analytics.getAnalyticsPreference()).toBe('unset')
+    expect(transport.clients).toHaveLength(0)
+    await allow()
+    expect(transport.clients[0]!.capturePage).toHaveBeenLastCalledWith('stream_recap')
+    localStorage.removeItem('sp.websiteAnalytics.v1')
+  })
+
+  it('counts consecutive approved recaps separately without sending their paths', async () => {
+    window.history.replaceState({}, '', '/analytics/fixturechan/12345')
+    await allow()
+    const client = transport.clients[0]!
+    analytics.setProductAnalyticsRoute()
+    expect(client.capturePage).toHaveBeenCalledTimes(1)
+    window.history.replaceState({}, '', '/analytics/fixturechan/67890')
+    analytics.setProductAnalyticsRoute()
+    analytics.setProductAnalyticsRoute()
+    expect(client.capturePage).toHaveBeenCalledTimes(2)
+    expect(client.capturePage.mock.calls).toEqual([['stream_recap'], ['stream_recap']])
+  })
+
+  it.each(['gpc', 'dnt'])('does not measure approved summaries when %s is set', async signal => {
+    window.history.replaceState({}, '', '/analytics/fixturechan/12345')
+    Object.defineProperty(navigator, signal === 'gpc' ? 'globalPrivacyControl' : 'doNotTrack', { configurable: true, value: signal === 'gpc' ? true : '1' })
+    analytics.setAnalyticsPreference('allowed')
+    analytics.capturePublicCta('install_extension')
+    await Promise.resolve()
+    expect(transport.clients).toHaveLength(0)
+  })
+
+  it('measures approved summaries as coarse categories only and stops on another stream', async () => {
+    window.history.replaceState({}, '', '/analytics/fixturechan/12345?secret=private#notes')
+    analytics.setProductAnalyticsRoute()
+    await Promise.resolve()
+    expect(transport.clients).toHaveLength(0)
+    await allow()
+    const client = transport.clients[0]!
+    expect(client.capturePage).toHaveBeenLastCalledWith('stream_recap')
+    analytics.capturePublicCta('install_extension')
+    expect(client.captureCta).toHaveBeenLastCalledWith('stream_recap', 'install_extension')
+    window.history.replaceState({}, '', '/analytics/fixturechan/99999')
+    analytics.capturePublicCta('install_extension')
+    analytics.setProductAnalyticsRoute()
+    expect(client.captureCta).toHaveBeenCalledTimes(1)
+    expect(client.stop).toHaveBeenCalledOnce()
+  })
+
   it('does not import or start capture before explicit consent', async () => {
     analytics.setProductAnalyticsRoute()
     await Promise.resolve()

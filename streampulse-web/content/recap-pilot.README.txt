@@ -1,0 +1,68 @@
+Reviewed recap pilot
+
+content/recap-pilot.json is the only production allowlist. It starts empty.
+The first supply check found no sampled session meeting the existing score gate;
+the build must not invent pages to reach the planned count of twenty.
+
+Each manually reviewed entry is an aggregate snapshot from the sanitized portal
+API. scripts/recap-pilot.mjs validates the strict field allowlist, exact source
+identity, canonical draft duration/moment gate, honest coverage and review dates.
+It does not fetch data, recalculate scores, discover channels or admit collectors.
+
+Before adding an entry:
+1. Read the current SEO strategy gate in the control plane. It remains a draft
+   internal quality policy, not a Google threshold. Do not quietly change it.
+2. Verify source identity, measured duration/minutes, actual reaction scores,
+   coverage state and unique explanatory text. Include measured top emotes.
+3. Record review approval, the UTC review time, a future review expiry, the exact
+   sanitized recap/live API URL and the review's evidence/limitations.
+4. To include replay actions, separately verify the exact VOD ID, signed alignment
+   offset, observed archive duration, check time and a future availability review
+   expiry. A VOD ID alone is insufficient. Missing/expired verification displays
+   an archive summary with replay links disabled, while retaining useful analysis.
+5. Keep the pilot to at most twenty distinct pages. Channel summaries are scoped
+   to the supplied broadcast measurements; do not imply complete channel history.
+
+The required schema is executable in scripts/recap-pilot.mjs. The synthetic sample
+in scripts/fixtures/recap-pilot.mjs demonstrates fields but is test data only and
+must never be copied into the production manifest. Unknown fields (including raw
+chat, private identity or arbitrary image URLs) are rejected.
+
+Preparation runs before dev, build and typecheck. It generates two runtime files:
+- src/generated/recap-page-paths.json: canonical paths and coarse categories only,
+  used by consented measurement. Never transmit the path to analytics.
+- src/generated/recap-page-metadata.json: public metadata retained after app boot.
+Commit these generated files with a reviewed manifest change, and regenerate them
+before a release. An expired review fails the next build; production snapshots
+still need a scheduled human/approved build review before their review window
+ends. This static pipeline does not introduce a background expiry service.
+
+prerender.mjs emits eligible summaries under /_recap-pages/ and exact public-path
+rewrites ahead of the dynamic fallbacks. This ordering is essential: Cloudflare
+Pages applies a matching redirect even when an HTML asset exists. Canonical
+/analytics paths remain the public URLs; internal assets are not sitemap entries.
+Non-allowlisted deep links use a separate /analytics-fallback/ document whose
+initial HTML says noindex. The /analytics hub stays indexable. The client does not
+remove an initial noindex tag to make a page eligible.
+
+Checks:
+  node --test scripts/recap-pilot.test.mjs
+  npx vitest run tests/pageMetadata.test.ts tests/recapPageMetadata.test.ts
+  npm run build:ci
+
+Local Cloudflare routing proof:
+  npx wrangler pages dev dist --port <free-port>
+For isolated positive-fixture HTTP/initial-HTML proof, first build, then run:
+  node scripts/recap-pages-proof.mjs
+It copies the repository into an isolated temporary fixture workspace, writes a
+nonempty synthetic manifest there, and runs the actual build:ci pipeline. It
+prints the resulting dist directory and build-log path. Serve that directory
+with wrangler pages dev on a free loopback port. It is visibly synthetic and must
+not be uploaded. The runtime bundle includes only its local fixture allowlist,
+so this can prove initial HTML, routing and persistent client summary behavior.
+It does not prove public data qualification, deployed indexing or acquisition.
+The original production manifest and generated maps remain unchanged.
+
+Before promotion, inspect Search Console for existing indexed URLs and evaluate
+the noindex impact. Existing release/freeze and owner publication gates remain.
+Local build success does not establish deployment, indexing or acquisition.

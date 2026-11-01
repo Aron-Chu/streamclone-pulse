@@ -1,3 +1,8 @@
+# A stable install link while the dedicated extension page is being prepared.
+# Pages preserves the incoming query; store CTAs send only fixed page categories.
+/install /docs#extension 302
+/install/ /docs#extension 302
+
 # Legacy public routes → Command Center (must be static; client-only Navigate
 # never runs when Pages returns 404.html for a missing path).
 /analytics/streams /analytics 301
@@ -53,16 +58,18 @@
 # one path segment, so these reach the SPA and src/lib/momentsNavigation.ts maps them.
 # Use the canonical asset URL: Pages redirects /analytics/index.html to
 # /analytics/, which would otherwise discard the requested deep-link path.
-/analytics/explore/:broadcastId /analytics/ 200
-/analytics/explore/:broadcastId/ /analytics/ 200
+/analytics/explore/:broadcastId /analytics-fallback/ 200
+/analytics/explore/:broadcastId/ /analytics-fallback/ 200
 
-# Channel/session deep links must SPA-fallback — prerender only covers /analytics/.
+# Reviewed recap pilot routes are inserted here at build time.
+
+# Unreviewed deep links use a separate noindexed shell; /analytics stays indexable.
 # Without these, Cloudflare Pages serves 404.html for /analytics/:login/:streamId.
-/analytics/:login /analytics/ 200
-/analytics/:login/ /analytics/ 200
-/analytics/:login/:streamId /analytics/ 200
-/analytics/:login/:streamId/ /analytics/ 200
-/analytics/:login/s/:streamId /analytics/ 200
-/analytics/:login/s/:streamId/ /analytics/ 200
-/s/:login /analytics/ 200
-/s/:login/:streamId /analytics/ 200
+/analytics/:login /analytics-fallback/ 200
+/analytics/:login/ /analytics-fallback/ 200
+/analytics/:login/:streamId /analytics-fallback/ 200
+/analytics/:login/:streamId/ /analytics-fallback/ 200
+/analytics/:login/s/:streamId /analytics-fallback/ 200
+/analytics/:login/s/:streamId/ /analytics-fallback/ 200
+/s/:login /analytics-fallback/ 200
+/s/:login/:streamId /analytics-fallback/ 200

@@ -7,6 +7,7 @@ import Landing from './public/Landing'
 // styled before its chunk loads, and the cascade is unchanged.
 import './account/account.css'
 import './public/support.css'
+import './public/growth-guides.css'
 import NotFound from './public/NotFound'
 import { PageErrorBoundary } from '../ui/PortalErrorBoundary'
 import { PublicLayout } from '../ui/components/PublicLayout'
@@ -40,6 +41,10 @@ function onDemandPage(load: () => Promise<{ default: ComponentType }>) {
   return Object.assign(Page, { preload })
 }
 
+const TwitchTimestampTool = onDemandPage(() => import('./public/TwitchTimestampTool'))
+const FindTwitchMomentsGuide = onDemandPage(() => import('./public/FindTwitchMomentsGuide'))
+const TwitchVodTimestampsGuide = onDemandPage(() => import('./public/TwitchVodTimestampsGuide'))
+
 const Docs = onDemandPage(() => import('./public/Docs'))
 const Status = onDemandPage(() => import('./public/Status'))
 const Privacy = onDemandPage(() => import('./public/Privacy'))
@@ -53,6 +58,9 @@ const Discord = onDemandPage(() => import('./public/Discord'))
 const Changelog = onDemandPage(() => import('./public/Changelog'))
 
 const OPENING_PAGES: Record<string, { preload: () => Promise<void> }> = {
+  '/tools/twitch-vod-timestamp-link': TwitchTimestampTool,
+  '/guides/find-twitch-moments': FindTwitchMomentsGuide,
+  '/guides/twitch-vod-timestamps': TwitchVodTimestampsGuide,
   '/docs': Docs,
   '/status': Status,
   '/privacy': Privacy,
@@ -105,6 +113,12 @@ function AnalyticsAliasRedirect() {
   return <Navigate to={`/analytics${search}${hash}`} replace />
 }
 
+/** Matches the static install redirect during local dev and client navigation. */
+function InstallRedirect() {
+  const { search } = useLocation()
+  return <Navigate to={`/docs${search}#extension`} replace />
+}
+
 /** Pulse Explorer and the older Newsroom are retired: a broadcast opens its stream page, the rest open Moments. */
 function RetiredExplorerRedirect() {
   const { broadcastId, storyId } = useParams<{ broadcastId?: string; storyId?: string }>()
@@ -145,7 +159,11 @@ function PortalRoutes() {
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/setup" element={<AnalyticsAliasRedirect />} />
+        <Route path="/tools/twitch-vod-timestamp-link" element={<TwitchTimestampTool />} />
+        <Route path="/guides/find-twitch-moments" element={<FindTwitchMomentsGuide />} />
+        <Route path="/guides/twitch-vod-timestamps" element={<TwitchVodTimestampsGuide />} />
         <Route path="/docs" element={<Docs />} />
+        <Route path="/install" element={<InstallRedirect />} />
         <Route path="/docs/getting-started" element={<Navigate to="/docs#extension" replace />} />
         <Route path="/docs/coverage" element={<Navigate to="/docs#coverage" replace />} />
         <Route path="/docs/api" element={<Navigate to="/docs#api" replace />} />
