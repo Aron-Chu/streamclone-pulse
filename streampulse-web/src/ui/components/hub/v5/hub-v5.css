@@ -46,40 +46,40 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   column-gap: 24px;
-  grid-template-areas: "mast" "peek" "busy" "act" "intv" "rail" "emo" "games" "chan" "meas";
+  grid-template-areas: "mast" "fol" "peek" "busy" "act" "intv" "rail" "emo" "games" "chan" "meas";
   color: var(--sp-text-1);
   font: 400 13px/1.4 var(--sp-font);
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1;
   -webkit-font-smoothing: antialiased;
 }
-.hub-v5 :is(.hv5-mast, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) :is(*, *::before, *::after),
+.hub-v5 :is(.hv5-mast, .hv5-fol, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) :is(*, *::before, *::after),
 .hv5-layer,
 .hv5-layer :is(*, *::before, *::after) {
   box-sizing: border-box;
 }
-.hub-v5 :is(.hv5-mast, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) :is(h1, h2, h3, p, ol, ul),
+.hub-v5 :is(.hv5-mast, .hv5-fol, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) :is(h1, h2, h3, p, ol, ul),
 .hv5-layer :is(p, ol, ul) {
   margin: 0;
 }
-.hub-v5 :is(.hv5-mast, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels) img,
+.hub-v5 :is(.hv5-mast, .hv5-fol, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels) img,
 .hv5-layer img {
   display: block;
 }
-.hub-v5 :is(.hv5-mast, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) a {
+.hub-v5 :is(.hv5-mast, .hv5-fol, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) a {
   color: var(--hv5-accent);
   text-decoration: none;
 }
-.hub-v5 :is(.hv5-mast, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) a:hover {
+.hub-v5 :is(.hv5-mast, .hv5-fol, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) a:hover {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
-.hub-v5 :is(.hv5-mast, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) :is(button, input) {
+.hub-v5 :is(.hv5-mast, .hv5-fol, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) :is(button, input) {
   font: inherit;
   color: inherit;
   letter-spacing: inherit;
 }
-.hub-v5 :is(.hv5-mast, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) button {
+.hub-v5 :is(.hv5-mast, .hv5-fol, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) button {
   margin: 0;
   padding: 0;
   border: 0;
@@ -137,19 +137,19 @@
 @media (min-width: 720px) and (max-width: 1099px) {
   .hub-v5.hub-d3 {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-areas: "mast mast" "busy busy" "act act" "intv intv" "rail rail" "emo games" "chan chan" "meas meas";
+    grid-template-areas: "mast mast" "fol fol" "busy busy" "act act" "intv intv" "rail rail" "emo games" "chan chan" "meas meas";
   }
 }
 @media (min-width: 1100px) and (max-width: 1535px) {
   .hub-v5.hub-d3 {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    grid-template-areas: "mast mast mast" "busy busy busy" "act act act" "intv intv intv" "rail emo games" "chan chan chan" "meas meas meas";
+    grid-template-areas: "mast mast mast" "fol fol fol" "busy busy busy" "act act act" "intv intv intv" "rail emo games" "chan chan chan" "meas meas meas";
   }
 }
 @media (min-width: 1536px) {
   .hub-v5.hub-d3 {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 380px;
-    grid-template-areas: "mast mast mast" "busy busy rail" "act act rail" "intv intv rail" "emo games rail" "chan chan rail" "meas meas rail";
+    grid-template-areas: "mast mast mast" "fol fol rail" "busy busy rail" "act act rail" "intv intv rail" "emo games rail" "chan chan rail" "meas meas rail";
   }
   .hv5-latest {
     position: sticky;
@@ -1196,25 +1196,83 @@
   .hv5-bzt-t::after, .hv5-bzv-prev { transition: none; }
 }
 
+/* ---------- 2a. Your follows (Show my Twitch follows, 11-01): the hero foot's button, and Busiest now's strip
+   for the viewer's own live follows above it (HubV5Follows) ---------- */
+/* the way back from Twitch lands on #follows under the sticky nav (56 px, about 101 px from its 720 px breakpoint
+   down), not behind it; so do the button and the heading that Forget and Dismiss move focus to */
+.hv5-fol, .hv5-fol h2, .hv5-fol-go { scroll-margin-top: 72px; }
+@media (max-width: 720px) {
+  .hv5-fol, .hv5-fol h2, .hv5-fol-go { scroll-margin-top: 112px; }
+}
+.hv5-fol { grid-area: fol; margin-top: 8px; }
+@media (max-width: 719px) {
+  .hv5-fol { margin-top: 4px; }
+}
+/* right of the scope line, and already there while the line waits for the hub */
+.hv5-fol-start { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; }
+@media (max-width: 719px) {
+  .hv5-fol-start { margin-left: 0; }
+}
+.hub-v5 .hv5-mast .hv5-fol-go {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--sp-line-strong);
+  border-radius: var(--sp-r);
+  background: var(--sp-panel);
+  color: var(--sp-text-1);
+  font: 500 13px/1 var(--sp-font);
+  white-space: nowrap;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+.hub-v5 .hv5-mast .hv5-fol-go:hover { background: var(--sp-raised); border-color: #3f3f46; }
+.hub-v5 .hv5-mast .hv5-fol-go[aria-disabled="true"] { color: var(--sp-text-2); cursor: progress; }
+/* Twitch's purple, lifted for the dark panel */
+.hv5-fol-tw { width: 16px; height: 16px; flex: none; fill: #a970ff; }
+/* the summary and Forget share Busiest now's meta slot; they wrap rather than run past a phone's edge */
+.hub-v5 .hv5-fol .hv5-fol-meta { white-space: normal; text-align: right; }
+.hub-v5 .hv5-fol .hv5-fol-x {
+  color: var(--sp-text-2);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: var(--sp-line-strong);
+  text-underline-offset: 3px;
+}
+.hub-v5 .hv5-fol .hv5-fol-x:hover { color: var(--sp-text-1); text-decoration-color: currentColor; }
+@container hv5bzv (max-width: 639px) {
+  .hub-v5 .hv5-fol .hv5-fol-meta { text-align: left; }
+}
+.hub-v5 .hv5-fol .hv5-fol-msg { margin: 0 0 8px; font: 500 13px/18px var(--sp-font); color: var(--sp-text-2); }
+.hv5-fol-fail { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.hub-v5 .hv5-fol .hv5-fol-fail .hv5-fol-msg { flex: 1 1 260px; margin: 0; color: var(--sp-text-1); }
+/* the section's own buttons over the base reset above (which outranks .hv5-btn and .hv5-qb) */
+.hub-v5 .hv5-fol .hv5-btn { padding: 0 12px; border: 1px solid var(--sp-line-strong); }
+.hub-v5 .hv5-fol .hv5-qb { padding: 0 8px; }
+@media (prefers-reduced-motion: reduce) {
+  .hub-v5 .hv5-mast .hv5-fol-go { transition: none; }
+}
+
 /* ---------- 2b. Featured stream (picks I1 and I1b, 10-30; board artifacts/session-hub-gaps-20261030): the featured stream under Busiest now ---------- */
 .hv5-most { grid-area: most; margin-top: 12px; }
 /* its own row under Busiest now, only while the card is on the page; without it the templates above apply */
 .hub-v5.hub-d3:has(> .hv5-most) {
-  grid-template-areas: "mast" "peek" "busy" "most" "act" "intv" "rail" "emo" "games" "chan" "meas";
+  grid-template-areas: "mast" "fol" "peek" "busy" "most" "act" "intv" "rail" "emo" "games" "chan" "meas";
 }
 @media (min-width: 720px) and (max-width: 1099px) {
   .hub-v5.hub-d3:has(> .hv5-most) {
-    grid-template-areas: "mast mast" "busy busy" "most most" "act act" "intv intv" "rail rail" "emo games" "chan chan" "meas meas";
+    grid-template-areas: "mast mast" "fol fol" "busy busy" "most most" "act act" "intv intv" "rail rail" "emo games" "chan chan" "meas meas";
   }
 }
 @media (min-width: 1100px) and (max-width: 1535px) {
   .hub-v5.hub-d3:has(> .hv5-most) {
-    grid-template-areas: "mast mast mast" "busy busy busy" "most most most" "act act act" "intv intv intv" "rail emo games" "chan chan chan" "meas meas meas";
+    grid-template-areas: "mast mast mast" "fol fol fol" "busy busy busy" "most most most" "act act act" "intv intv intv" "rail emo games" "chan chan chan" "meas meas meas";
   }
 }
 @media (min-width: 1536px) {
   .hub-v5.hub-d3:has(> .hv5-most) {
-    grid-template-areas: "mast mast mast" "busy busy rail" "most most rail" "act act rail" "intv intv rail" "emo games rail" "chan chan rail" "meas meas rail";
+    grid-template-areas: "mast mast mast" "fol fol rail" "busy busy rail" "most most rail" "act act rail" "intv intv rail" "emo games rail" "chan chan rail" "meas meas rail";
   }
 }
 /* the base rules the other sections get */

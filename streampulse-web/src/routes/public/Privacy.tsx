@@ -28,7 +28,7 @@ export default function Privacy() {
           </div>
           <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Privacy Policy</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            Last updated: October 31, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse browser extension (Chrome, Brave, Edge and Firefox).
+            Last updated: November 1, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse browser extension (Chrome, Brave, Edge and Firefox).
           </p>
         </header>
 
@@ -73,6 +73,17 @@ export default function Privacy() {
           Twitch password, Twitch email or a Twitch access token. While you're on Twitch's page, this
           tab keeps a one-time sign-in value in session storage; it's removed when you return.
           {supporterChatBadgesEnabled() ? <> {PRIVACY_TWITCH_PLAIN_ID_SENTENCE}</> : null}
+        </p>
+        <p data-testid="privacy-twitch-follows">
+          <strong>Show my Twitch follows.</strong> On the analytics hub you can ask Twitch which
+          channels you follow, without a StreamPulse account. Twitch asks whether StreamPulse may read
+          the channels you follow (<code>user:read:follows</code>). If you agree, Twitch sends this tab
+          an access token in the address it returns to. The page removes the token from the address
+          bar right away and reads your follows directly from Twitch. It then asks Twitch to revoke
+          the token: as soon as the read ends, or as you leave the page if the read has not ended. A
+          token that arrives when this tab did not ask for one, or without that permission, is revoked
+          at once and never used. The token and your list never reach StreamPulse's servers. The page
+          only compares the list with the live channels the hub already shows.
         </p>
         <p>
           <strong>Tester email sign-in.</strong> During the private pilot, invited testers can sign in
@@ -435,9 +446,15 @@ export default function Privacy() {
             <strong>Portal sessionStorage</strong> — while a Twitch sign-in is in progress, the
             one-time sign-in value and the page to return to (<code>pulse.account.twitchFlow.v1</code>,
             removed when you return); after a Twitch sign-in, the Twitch display name and picture shown
-            for that tab (<code>pulse.account.twitch.v1</code>, removed on sign-out); and, during a
+            for that tab (<code>pulse.account.twitch.v1</code>, removed on sign-out); during a
             “Confirm it’s you” check, a short tag of the account that asked
-            (<code>pulse.account.billingStepUp.v1</code>, at most 10 minutes). In local development
+            (<code>pulse.account.billingStepUp.v1</code>, at most 10 minutes); and, while Show my
+            Twitch follows is in progress, a one-time sign-in value and the page to return to
+            (<code>sp.twitchFollows.pending</code>, removed when you come back from Twitch and ignored
+            after 15 minutes). After it, the tab keeps your Twitch login and display name, the logins
+            of up to 3,000 channels you follow, Twitch's total count and when they were read
+            (<code>sp.twitchFollows.v1</code>). These stay until you choose Forget or close the tab; a
+            browser that restores or duplicates the tab can bring them back with it. In local development
             builds only, it may also hold a developer backend URL override
             (<code>sp.backendUrlOverride</code>); production portal builds do not apply session backend
             overrides. Clearing site data removes session keys as well.
@@ -481,7 +498,9 @@ export default function Privacy() {
             confirms your Twitch user ID
             to StreamPulse. If you disconnect StreamPulse in your Twitch settings, Twitch sends
             StreamPulse a notification with your Twitch user ID, which StreamPulse uses only to sign
-            that account out everywhere and does not store.
+            that account out everywhere and does not store. Show my Twitch follows sends your browser
+            to Twitch's sign-in page and reads your follows from Twitch's API with the token Twitch
+            gave the tab; StreamPulse's servers are not involved.
             {supporterChatBadgesEnabled() ? <> {PRIVACY_TWITCH_THIRD_PARTY_SEEN_IN_CHAT}</> : null}
           </li>
           <li>
