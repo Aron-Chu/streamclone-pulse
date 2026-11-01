@@ -7,8 +7,9 @@ import {
   PULSE_TABS_HOST_ID,
   mountOverlay,
   unmountOverlay,
+  updateOverlayPayload,
 } from '../src/content/mount.tsx'
-import type { PulsePayload } from '../src/shared/messages.ts'
+import type { ExtensionCoverageTierResponse, PulsePayload } from '../src/shared/messages.ts'
 import type { TwitchPageContext } from '../src/content/twitch.ts'
 import type { SidebarSnapLayout } from '../src/content/twitchChat.ts'
 
@@ -190,5 +191,34 @@ describe('content mount on a channel with nothing to chart', () => {
     await visit('readlive', payload('readlive', { isLive: true, tracking: true, streamId: '320000000003' }), 2)
     expect(shownTab()).toBe('chat')
     expect(savedTabWrites()).toEqual([])
+  })
+
+  it('never shows Not charted while a read channel’s chart arrives with its coverage', async () => {
+    page.live = true
+    await settle(() => mountOverlay('readlive', null, channel('readlive'), { sessionOpenedAtMs: 1 }))
+    const panel = document.getElementById(PULSE_ROOT_HOST_ID)!.shadowRoot!
+    // Every text the panel puts up on the way, even for one render.
+    const shown: string[] = []
+    const watch = new MutationObserver(records => {
+      for (const record of records) {
+        if (record.oldValue) shown.push(record.oldValue)
+        for (const node of record.addedNodes) shown.push(node.textContent ?? '')
+      }
+    })
+    watch.observe(panel, { childList: true, subtree: true, characterData: true, characterDataOldValue: true })
+
+    // The worker's answer, as entry.ts hands it on: the chart and its coverage together.
+    const coverage = { login: 'readlive', coverageTier: 'active_live_coverage', hostedCap: { activeLimit: 250, activeCount: 120, activeAvailable: true } }
+    await settle(() => updateOverlayPayload(
+      payload('readlive', { isLive: true, tracking: true, streamId: '320000000003' }),
+      undefined,
+      coverage as ExtensionCoverageTierResponse,
+      { authoritative: true },
+    ))
+    watch.disconnect()
+
+    expect(shown.join(' ')).not.toContain('Not charted')
+    expect(panel.textContent).not.toContain('Not charted')
+    expect(shownTab()).toBe('pulse')
   })
 })

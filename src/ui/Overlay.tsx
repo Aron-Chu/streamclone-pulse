@@ -301,7 +301,7 @@ function OverlayMain({
   pendingTrackPrompt = false,
   onTrackStarted,
   sessionOpenedAtMs = null,
-  coverageTier: coverageTierProp = null,
+  coverageTier = null,
   effectivePlacement,
   sidebarSnapped = false,
   sidebarPart = 'full',
@@ -370,9 +370,6 @@ function OverlayMain({
   const [chartMinuteSelection, setChartMinuteSelection] = useState<ExtensionRollup | null>(null)
   const jumpBusyRef = useRef(false)
   const [alwaysTrackedLogins, setAlwaysTrackedLogins] = useState<string[]>([])
-  const [coverageTierState, setCoverageTierState] = useState<ExtensionCoverageTierResponse | null>(
-    coverageTierProp,
-  )
   // Route/session identity is deliberately separate from payload.vodId. A
   // channel payload can gain its linked VOD asynchronously without becoming a
   // new UI surface, while a real channel/VOD/stream transition must clear all
@@ -394,10 +391,6 @@ function OverlayMain({
   jumpSurfaceRef.current = surfaceIdentity
   const backfillOpsRef = useRef(createBackfillOperationController())
   const mountedRef = useRef(true)
-
-  useEffect(() => {
-    setCoverageTierState(coverageTierProp)
-  }, [coverageTierProp, login])
 
   useEffect(() => {
     mountedRef.current = true
@@ -789,7 +782,7 @@ function OverlayMain({
   const localStackBackend = isLocalStackBackendUrl(backendUrl)
   const pulseLiveAccess = resolvePulseLiveAccess({
     payload,
-    coverageTier: coverageTierState,
+    coverageTier,
     alwaysTrackedLogins,
     sessionOpenedAtMs,
     pageIsLive,
@@ -863,7 +856,7 @@ function OverlayMain({
     onSidebarTabChange?.('chat', 'auto')
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per channel visit
   }, [nothingToChart, loadKey])
-  const recapCoverageTier = coverageTierState
+  const recapCoverageTier = coverageTier
   const recapUiState = payload
     ? resolveRecapUiState({
         isLive: uiIsLive,
@@ -1902,11 +1895,11 @@ function OverlayMain({
             // An unresolved VOD page has only the internal placeholder, which is not a channel name.
             channel={login.startsWith('__vod__:') ? undefined : {
               login,
-              displayName: coverageTierState?.displayName,
+              displayName: coverageTier?.displayName,
               isLive: uiIsLive,
-              category: payload?.category ?? coverageTierState?.liveMetadata?.category,
+              category: payload?.category ?? coverageTier?.liveMetadata?.category,
               viewerCount: currentViewerCount(payload, uiIsLive),
-              startedAt: payload?.startedAt ?? coverageTierState?.liveMetadata?.startedAt,
+              startedAt: payload?.startedAt ?? coverageTier?.liveMetadata?.startedAt,
               surface: panelSurfaceState,
             }}
           />
@@ -2072,8 +2065,8 @@ function OverlayMain({
                   // shows in the Top Moments card; the chart keeps minutes.
                   cardInList={panelSections?.showMostReacted}
                   hasVodContext={Boolean(payload?.vodId ?? context.vodId)}
-                  coverageTier={coverageTierState?.coverageTier ?? null}
-                  liveMetadata={coverageTierState?.liveMetadata ?? null}
+                  coverageTier={coverageTier?.coverageTier ?? null}
+                  liveMetadata={coverageTier?.liveMetadata ?? null}
                   arrivalNote={arrivalNote}
                 />
               ) : null}
@@ -2117,7 +2110,7 @@ function OverlayMain({
               count={mostReactedHeat?.completedRollupCount ?? 0}
               coverageStart={coverageStart}
               tracking={payload?.tracking ?? false}
-              coverageTier={coverageTierState?.coverageTier}
+              coverageTier={coverageTier?.coverageTier}
             />
           ) : null}
         </>
