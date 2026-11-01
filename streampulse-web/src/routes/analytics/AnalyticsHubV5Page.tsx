@@ -3,7 +3,8 @@
  * hub.html): the
  * search hero with the emote conveyor behind it (R5-15 at Soft), Busiest now,
  * the activity chart, Top moments today (D1, 10-30; a "Top today" peek under
- * the hero on phones), Top emotes as the emote map (R5-13), Where chat is as
+ * the hero on phones), Your follows above Busiest now once the viewer shows
+ * their Twitch follows (11-01), Top emotes as the emote map (R5-13), Where chat is as
  * the ranked rack (R5-22), Channels and one "How this is measured" disclosure
  * on the d3 grid (one column on phones, the rail beside the page from 1536 px).
  */
@@ -28,6 +29,7 @@ import { HubV5BarCard } from '../../ui/components/hub/v5/HubV5BarCard'
 import { HubV5Busiest } from '../../ui/components/hub/v5/HubV5Busiest'
 import { HubV5Channels } from '../../ui/components/hub/v5/HubV5Channels'
 import { HubV5EmoteMap } from '../../ui/components/hub/v5/HubV5EmoteMap'
+import { HubV5Follows, HubV5FollowsButton } from '../../ui/components/hub/v5/HubV5Follows'
 import { HubV5Hero } from '../../ui/components/hub/v5/HubV5Hero'
 import { HubV5Icon } from '../../ui/components/hub/v5/HubV5Icon'
 import { HubV5MostChat, mostChatModel } from '../../ui/components/hub/v5/HubV5MostChat'
@@ -280,7 +282,17 @@ export default function AnalyticsHubV5Page() {
         <HubBackendSourceBanner />
 
         <div className="hub-v5 hub-d3" data-hub-v5-page="">
-          <HubV5Hero live={data.liveChannels} poolSize={data.poolSize} points={data.activity.points} />
+          <HubV5Hero live={data.liveChannels} poolSize={data.poolSize} points={data.activity.points} foot={<HubV5FollowsButton />} />
+
+          {/* The viewer's own live follows, on Busiest now's live list and rate (Show my Twitch follows, 11-01). */}
+          <HubV5Follows
+            live={savedAt != null ? EMPTY_PUBLIC_HUB.liveChannels : data.liveChannels}
+            nowMs={nowMs}
+            loading={busiestWaiting}
+            unavailable={measurementsUnavailable || (savedAt != null && hubGaveUp)}
+            windowKey={answerWindow}
+            poolSize={data.poolSize}
+          />
 
           <HubV5TopPeek top={top} nowMs={nowMs} />
 

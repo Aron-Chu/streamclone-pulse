@@ -9,7 +9,7 @@
  * (R5-15, HubV5Conveyor); the mockup's hero-motion switch was a proposal aid
  * and is not ported.
  */
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import panelChart from '../../../../demo/pictures/panel-chart-2x.webp'
 import panelCard from '../../../../demo/pictures/panel-moment-card-2x.webp'
@@ -64,7 +64,8 @@ function PanelFrames() {
   )
 }
 
-export function HubV5Hero({ live, poolSize, points = NO_POINTS }: { live: readonly HubLiveChannel[]; poolSize: number; points?: readonly HubActivityPoint[] }) {
+/** `foot`: beside the scope line, under the hero's rule (Show my Twitch follows, 11-01). */
+export function HubV5Hero({ live, poolSize, points = NO_POINTS, foot }: { live: readonly HubLiveChannel[]; poolSize: number; points?: readonly HubActivityPoint[]; foot?: ReactNode }) {
   const navigate = useNavigate()
   const uid = useId()
   const inputId = `${uid}q`
@@ -285,6 +286,7 @@ export function HubV5Hero({ live, poolSize, points = NO_POINTS }: { live: readon
       ) : null}
       <div className="hv5-hero-foot" ref={footRef}>
         {poolSize > 0 ? <p className="hv5-scope">The hub below covers {formatHubInt(poolSize)} channels we follow · not all of Twitch</p> : null}
+        {foot}
       </div>
     </header>
   )

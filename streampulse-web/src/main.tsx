@@ -24,13 +24,18 @@ import { captureAccountDeviceCode } from './lib/accountDeviceCode'
 import { captureAccountRestore, isPrivateSupporterRoute } from './lib/accountRestore'
 import { setProductAnalyticsRoute } from './lib/productAnalytics'
 import { primePublicHub } from './lib/hubEarlyFetch'
+import { captureTwitchFollowsCallback } from './lib/twitchFollowsCallback'
 
+// Read before the captures: the Twitch follows return leaves its private route for the hub,
+// and a load that started on a private route still gets no diagnostics.
+const privateLoad = isPrivateSupporterRoute(window.location.pathname)
 // A tab opened before a deploy reloads onto the new build when its next lazy page is gone.
 installStaleBuildReload()
 captureAccountConfirmation()
 captureAccountDeviceCode()
 captureAccountRestore()
-if (!isPrivateSupporterRoute(window.location.pathname)) initPortalSentry()
+captureTwitchFollowsCallback()
+if (!privateLoad) initPortalSentry()
 // Start the first hub read while the analytics chunk downloads.
 primePublicHub()
 
