@@ -223,11 +223,12 @@ async function fetchChannelPulse(login: string): Promise<PulseUpdateMessage> {
 }
 
 async function loadInitialChannelPayload(
+  pulse: Promise<PulseUpdateMessage>,
   login: string,
   autoTrack: boolean,
   hosted: boolean,
 ): Promise<PulseUpdateMessage> {
-  const response = await fetchChannelPulse(login)
+  const response = await pulse
 
   if (hosted || !autoTrack || !isPulseRosterEligible(response.payload)) {
     return response
@@ -325,11 +326,13 @@ async function activateChannel(context: TwitchPageContext): Promise<void> {
   installOverlayPrefsListener()
 
   const pageIsLive = detectTwitchChannelLive(context)
-  const generation = activationGate.begin()
   const intendedLogin = login
   const intendedPath = window.location.pathname
 
   if (activeSession?.kind === 'channel' && activeSession.login === login) {
+    // Same channel (Twitch rewrites the URL while it boots): never cancel this
+    // channel's first load still in flight. A real navigation still does.
+    const generation = activationGate.current()
     updateOverlayContext(context)
     updateOverlayVodState({ vodPulse: null, loading: false })
     if (pageIsLive !== lastPageIsLive) {
@@ -351,6 +354,7 @@ async function activateChannel(context: TwitchPageContext): Promise<void> {
     return
   }
 
+  const generation = activationGate.begin()
   resetAnalyticsActivationLatches()
 
   // Capture session intent before any await that could race with navigation.
@@ -370,6 +374,11 @@ async function activateChannel(context: TwitchPageContext): Promise<void> {
 
   const hosted = isHostedBackendUrl(backendUrl)
   const localStack = isLocalStackBackendUrl(backendUrl)
+  // Ask for the chart now: the worker answers while the empty panel, its
+  // stylesheet and the auto-track settings load. A superseded activation never
+  // reads it, so its rejection is handled below or not at all.
+  const pulse = fetchChannelPulse(intendedLogin)
+  pulse.catch(() => {})
 
   mountOverlay(intendedLogin, null, context, {
     sessionOpenedAtMs,
@@ -385,7 +394,7 @@ async function activateChannel(context: TwitchPageContext): Promise<void> {
 
   const onWatchlist = watchlist.includes(intendedLogin.toLowerCase())
   const autoTrack = localStack && (policy === 'followed' || (policy === 'ask' && onWatchlist))
-  const message = await loadInitialChannelPayload(intendedLogin, autoTrack, hosted)
+  const message = await loadInitialChannelPayload(pulse, intendedLogin, autoTrack, hosted)
     // A rejected worker call (e.g. a closed message port) is a failed load, not a pending one.
     .catch((): PulseUpdateMessage => ({ type: 'PULSE_UPDATE', login: intendedLogin, payload: null, error: 'request_failed' }))
   if (generation !== activationGate.current()) return
@@ -658,7 +667,9 @@ setInterval(() => {
   }
 }, 5000)
 
-routeSync.schedule()
+// The page is already settled at document_idle: check it now. Only later URL
+// changes wait out the debounce.
+syncFromLocation()
 }
 
 export {}
