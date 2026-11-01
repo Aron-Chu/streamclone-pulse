@@ -1,4 +1,6 @@
 import { isChannelRouteLogin } from './channelRoute'
+import { GROWTH_PAGES } from './growthPages'
+import reviewedRecapMetadata from '../generated/recap-page-metadata.json'
 
 export interface PageMetadata {
   title: string
@@ -27,6 +29,19 @@ function resolveBasePageMetadata(pathname: string): PageMetadata {
   if (pathname.replace(/\/+$/, '') === '/account/restore') return { title: 'Restore Supporter — StreamPulse', description: 'Confirm a requested Supporter restore for your extension.', canonicalPath: '/account/restore', robots: 'noindex,nofollow' }
   if (pathname.startsWith('/account/')) return { title: 'Your account — StreamPulse', description: 'Manage your StreamPulse account and connected extension.', canonicalPath: pathname.split(/[?#]/)[0], robots: 'noindex,nofollow' }
   const normalizedPath = pathname !== '/' ? pathname.replace(/\/+$/, '') : pathname
+
+  const growthPage = GROWTH_PAGES.find(page => page.canonicalPath === normalizedPath)
+  if (growthPage) {
+    const { path: _path, ...metadata } = growthPage
+    return metadata
+  }
+
+  const reviewedPath = normalizedPath
+    .replace(/^\/s\/([^/]+)(\/[^/]+)?$/, '/analytics/$1$2')
+    .replace(/^\/analytics\/([^/]+)\/s\/([^/]+)$/, '/analytics/$1/$2')
+  const reviewed = Object.prototype.hasOwnProperty.call(reviewedRecapMetadata, reviewedPath)
+    ? (reviewedRecapMetadata as Record<string, PageMetadata>)[reviewedPath] : undefined
+  if (reviewed) return reviewed
 
   switch (normalizedPath) {
     case '/':

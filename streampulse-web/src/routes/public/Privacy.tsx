@@ -28,7 +28,7 @@ export default function Privacy() {
           </div>
           <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Privacy Policy</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            Last updated: October 27, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse browser extension (Chrome, Brave, Edge and Firefox).
+            Last updated: October 31, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse browser extension (Chrome, Brave, Edge and Firefox).
           </p>
         </header>
 
@@ -199,8 +199,11 @@ export default function Privacy() {
           No person profile is created, and no analytics identifier is saved in cookies or browser
           storage. Events do not include full URLs, query strings, URL fragments, form entries,
           email addresses, account or payment identifiers, Twitch channel names, viewing history,
-          searched channels or saved moments. Account pages, dashboard activity and individual
-          channel or stream pages are excluded. Automatic click collection and session replay are off.
+          searched channels or saved moments. Selected public summaries count only as a channel
+          summary or stream recap category, without identifying the channel or stream. Selected tools
+          and guides use only tool or guide categories; form inputs and generated links are excluded. Account pages,
+          dashboard activity and other channel or stream pages are excluded. Automatic click collection
+          and session replay are off.
         </p>
         <p>
           PostHog processes these optional events in its United States region. As with any direct

@@ -1,9 +1,12 @@
-# Preserve conventional search discovery while reserving AI training and
-# real-time model-input use. Cloudflare can enforce the agent blocks at the
-# edge; robots.txt alone is advisory.
+# Permit public search retrieval while reserving model training.
+# Owner-approved Google-Extended exception permits Gemini grounding and training.
+# Robots are advisory; approved edge verification remains required.
 User-agent: *
-Content-signal: search=yes, ai-input=no, ai-train=no, use=reference
+Content-signal: search=yes, ai-input=yes, ai-train=no
 Allow: /
+Disallow: /account
+Disallow: /dashboard
+Disallow: /supporter/thanks
 
 User-agent: Amazonbot
 Disallow: /
@@ -18,13 +21,20 @@ User-agent: CCBot
 Disallow: /
 
 User-agent: ChatGPT-User
-Disallow: /
+Allow: /
+Disallow: /account
+Disallow: /dashboard
+Disallow: /supporter/thanks
 
 User-agent: ClaudeBot
 Disallow: /
 
 User-agent: Google-Extended
-Disallow: /
+Content-signal: search=yes, ai-input=yes, ai-train=yes
+Allow: /
+Disallow: /account
+Disallow: /dashboard
+Disallow: /supporter/thanks
 
 User-agent: GPTBot
 Disallow: /
@@ -33,9 +43,33 @@ User-agent: meta-externalagent
 Disallow: /
 
 User-agent: OAI-SearchBot
-Disallow: /
+Allow: /
+Disallow: /account
+Disallow: /dashboard
+Disallow: /supporter/thanks
 
 User-agent: PerplexityBot
-Disallow: /
+Allow: /
+Disallow: /account
+Disallow: /dashboard
+Disallow: /supporter/thanks
+
+User-agent: Perplexity-User
+Allow: /
+Disallow: /account
+Disallow: /dashboard
+Disallow: /supporter/thanks
+
+User-agent: Claude-SearchBot
+Allow: /
+Disallow: /account
+Disallow: /dashboard
+Disallow: /supporter/thanks
+
+User-agent: Claude-User
+Allow: /
+Disallow: /account
+Disallow: /dashboard
+Disallow: /supporter/thanks
 
 Sitemap: https://streampulse.stream/sitemap.xml
