@@ -687,3 +687,94 @@ describe('Exact VOD frames', () => {
     next()
   })
 })
+
+/** A row's picture through a remount in the same render: its VOD id arriving, or a move in or out of the top 3. */
+describe('Row pictures through a remount', () => {
+  const LIVE: MomentPictureAt = { api: 'https://api.streampulse.stream/', key: '319006602598', login: 'forsen' }
+  const LIVE_PICTURE = 'https://api.streampulse.stream/v1/analytics/moments/picture?stream=319006602598&t=3049&login=forsen'
+  const WITH_VOD: MomentPictureAt = { ...LIVE, vodId: '2905053890' }
+  const VOD_PICTURE = `${LIVE_PICTURE}&vod=2905053890`
+
+  it('keeps the picture until the new mount has its own when the VOD id arrives', async () => {
+    const { host, list } = thumbHost()
+    const unmountLive = api.mount(host, THUMB, LIVE)
+    await load(LIVE_PICTURE)
+    const first = requested(LIVE_PICTURE)!
+    expect(host.firstChild).toBe(first)
+
+    unmountLive()
+    const unmount = api.mount(host, THUMB, WITH_VOD)
+    await settle()
+    expect(requested(VOD_PICTURE)).toBeDefined()
+    expect(host.firstChild).toBe(first)
+    expect(host.hasAttribute('data-has')).toBe(true)
+    expect(list.hasAttribute('data-pmf-pictures')).toBe(true)
+
+    await load(VOD_PICTURE)
+    expect(host.firstChild).toBe(requested(VOD_PICTURE))
+    expect(host.childNodes).toHaveLength(1)
+    unmount()
+  })
+
+  it.each([
+    ['another stream', { ...LIVE, key: '319006602599' }],
+    ['a timing correction', { ...LIVE, vodOriginDeltaSeconds: 12 }],
+  ])('takes the picture down at once for %s', async (_, next) => {
+    const { host, list } = thumbHost()
+    const unmountFirst = api.mount(host, THUMB, LIVE)
+    await load(LIVE_PICTURE)
+    expect(host.hasAttribute('data-has')).toBe(true)
+
+    unmountFirst()
+    const unmount = api.mount(host, THUMB, next)
+    expect(host.firstChild).toBeNull()
+    expect(host.hasAttribute('data-has')).toBe(false)
+    expect(list.hasAttribute('data-pmf-pictures')).toBe(false)
+    unmount()
+  })
+
+  it('takes the picture down when no mount takes the row over', async () => {
+    const { host, list } = thumbHost()
+    const unmount = api.mount(host, THUMB, LIVE)
+    await load(LIVE_PICTURE)
+    unmount()
+    await Promise.resolve()
+    expect(host.firstChild).toBeNull()
+    expect(host.hasAttribute('data-has')).toBe(false)
+    expect(list.hasAttribute('data-pmf-pictures')).toBe(false)
+  })
+
+  it('never shows a picture the old mount was still loading', async () => {
+    const { host } = thumbHost()
+    const unmountLive = api.mount(host, THUMB, LIVE)
+    await settle()
+    const late = requested(LIVE_PICTURE)!
+    unmountLive()
+    const unmount = api.mount(host, THUMB, WITH_VOD)
+    late.dispatchEvent(new Event('load'))
+    await settle()
+    expect(host.contains(late)).toBe(false)
+    expect(host.hasAttribute('data-has')).toBe(false)
+
+    await load(VOD_PICTURE)
+    expect(host.firstChild).toBe(requested(VOD_PICTURE))
+    unmount()
+  })
+
+  it('takes a kept picture down when pictures are switched off, and shows the new one once back on', async () => {
+    const { host, list } = thumbHost()
+    const unmountLive = api.mount(host, THUMB, LIVE)
+    await load(LIVE_PICTURE)
+    unmountLive()
+    const unmount = api.mount(host, THUMB, WITH_VOD)
+    setPictures(false)
+    expect(host.firstChild).toBeNull()
+    expect(list.hasAttribute('data-pmf-pictures')).toBe(false)
+
+    setPictures(true)
+    await load(VOD_PICTURE)
+    expect(host.firstChild).toBe(requested(VOD_PICTURE))
+    expect(list.hasAttribute('data-pmf-pictures')).toBe(true)
+    unmount()
+  })
+})

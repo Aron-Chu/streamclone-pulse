@@ -133,4 +133,25 @@ describe('asking for Moment pictures after enabling them', () => {
     expect(send).not.toHaveBeenCalled()
     expect(listeners.size).toBe(0)
   })
+
+  it('mounts a picture again when the stream’s timing correction changes', async () => {
+    const deltas: Array<number | undefined> = []
+    const unmount = vi.fn()
+    const frames: MomentFramesApi = {
+      start: vi.fn(() => vi.fn()), keep: vi.fn(), vod: vi.fn(async () => null),
+      mount: vi.fn((_element, _view, at) => {
+        deltas.push(at?.vodOriginDeltaSeconds)
+        return unmount
+      }),
+    }
+    globalThis.__pulseMomentFrames = frames
+    function Timed({ delta }: { delta: number }) {
+      hooks.useMomentCapture({ key: 'stream-1', live: false, vod: true, vodOriginDeltaSeconds: delta }, [60], video)
+      return null
+    }
+    await act(async () => root.render(<><Timed delta={0} /><Slot /></>))
+    await act(async () => root.render(<><Timed delta={12} /><Slot /></>))
+    expect(deltas).toEqual([0, 12])
+    expect(unmount).toHaveBeenCalledTimes(1)
+  })
 })
