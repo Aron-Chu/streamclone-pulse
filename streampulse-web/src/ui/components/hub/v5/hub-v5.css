@@ -1573,7 +1573,8 @@
 .hub-v5 .hv5-emotes .hv5-em-fl:hover { color: var(--sp-text-1); background: var(--sp-raised); }
 .hv5-em-fl i { width: 7px; height: 7px; border-radius: 50%; background: var(--fc); }
 .hv5-em-fl b { font-weight: 500; color: var(--sp-text-3); }
-.hub-v5 .hv5-emotes .hv5-em-map[data-zoomed] .hv5-em-fl { opacity: 0; pointer-events: none; }
+/* the labels step aside while the camera moves and stay away while zoomed */
+.hub-v5 .hv5-emotes .hv5-em-map:is([data-zoomed], [data-moving]) .hv5-em-fl { opacity: 0; pointer-events: none; }
 /* a narrow field: the share, or the whole label, stays measurable but off the line */
 .hv5-em-fl[data-fit="name"] > b { position: absolute; visibility: hidden; }
 .hub-v5 .hv5-emotes .hv5-em-fl[data-fit="none"] { visibility: hidden; pointer-events: none; }
@@ -1622,64 +1623,93 @@
    the neutral dark of the Busiest cards: hover lifts the fill and adds their light ring, selected is a solid ring */
 .hv5-em-ff {
   position: absolute;
-  border-radius: 6px;
-  box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--fc) 75%, transparent);
+  border-radius: calc(6px * var(--iz, 1));
+  box-shadow: inset 0 0 0 calc(1.5px * var(--iz, 1)) color-mix(in oklab, var(--fc) 75%, transparent);
+  transform-origin: 0 0;
   pointer-events: none;
-  transition:
-    left 0.5s cubic-bezier(0.2, 0.7, 0.2, 1),
-    top 0.5s cubic-bezier(0.2, 0.7, 0.2, 1),
-    width 0.5s cubic-bezier(0.2, 0.7, 0.2, 1),
-    height 0.5s cubic-bezier(0.2, 0.7, 0.2, 1);
-  animation: hv5-em-in 0.3s backwards;
 }
 /* K1 (10-22): with pace heat on, the fill carries the meaning and the frames go grey */
-.hv5-em-map[data-heat] .hv5-em-ff { box-shadow: inset 0 0 0 1px rgb(252 252 254 / 0.16); }
+.hv5-em-map[data-heat] .hv5-em-ff { box-shadow: inset 0 0 0 calc(1px * var(--iz, 1)) rgb(252 252 254 / 0.16); }
+/* A (10-31): the frames and tiles are laid out once, in map units, on one camera that a CSS transition moves,
+   so a zoom or a pan re-renders nothing. --iz (1 / the resting zoom) keeps seams, rings and corners at their
+   size on screen, and zoomed in, each tile's content is drawn at screen size */
+.hv5-em-cam {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+}
+/* M1 (10-31): another window, or a reshuffle, fades the new layout in over the old one as that fades out */
+.hv5-em-ly { position: absolute; inset: 0; animation: hv5-em-in 0.3s backwards; }
+.hv5-em-ly[data-out] { animation: hv5-em-out 0.2s ease-out forwards; pointer-events: none; }
 .hub-v5 .hv5-emotes .hv5-em-t {
   position: absolute;
+  display: block;
+  contain: layout size style;
+  color: var(--sp-text-1);
+  font: 500 12px/16px var(--sp-font);
+  text-align: left;
+  min-width: 0;
+}
+/* a tile a poll dropped fades where it was */
+.hub-v5 .hv5-emotes .hv5-em-t[data-out] { animation: hv5-em-out 0.18s ease-out forwards; pointer-events: none; }
+/* the plate is the fill and the rings: a glide morphs it while the content only slides, so text never stretches */
+.hv5-em-pl {
+  position: absolute;
+  inset: 0;
+  border-radius: 4px;
+  background: var(--bg, #17171a);
+  transform-origin: 0 0;
+  transition: background-color 0.18s, box-shadow 0.18s;
+}
+.hub-v5 .hv5-emotes .hv5-em-t:hover > .hv5-em-pl { background-color: var(--bgh, #1e1e22); box-shadow: inset 0 0 0 calc(1.5px * var(--iz, 1)) rgb(237 237 239 / 0.35); }
+.hub-v5 .hv5-emotes .hv5-em-t[aria-pressed="true"] { z-index: 2; }
+.hub-v5 .hv5-emotes .hv5-em-t[aria-pressed="true"] > .hv5-em-pl { background-color: var(--bgh, #222227); box-shadow: inset 0 0 0 calc(2px * var(--iz, 1)) var(--sp-text-1); }
+.hub-v5 .hv5-emotes .hv5-em-t:focus-visible { outline: none; z-index: 3; }
+.hub-v5 .hv5-emotes .hv5-em-t:focus-visible > .hv5-em-pl { box-shadow: inset 0 0 0 calc(2px * var(--iz, 1)) var(--sp-focus); }
+.hv5-em-c {
+  position: absolute;
+  left: 0;
+  top: 0;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   align-items: flex-start;
   gap: 4px;
+  width: 100%;
+  height: 100%;
   padding: 8px;
   overflow: hidden;
   border-radius: 4px;
-  background: var(--bg, #17171a);
-  color: var(--sp-text-1);
-  font: 500 12px/16px var(--sp-font);
-  text-align: left;
-  min-width: 0;
-  transition:
-    left 0.5s cubic-bezier(0.2, 0.7, 0.2, 1),
-    top 0.5s cubic-bezier(0.2, 0.7, 0.2, 1),
-    width 0.5s cubic-bezier(0.2, 0.7, 0.2, 1),
-    height 0.5s cubic-bezier(0.2, 0.7, 0.2, 1),
-    background-color 0.18s,
-    box-shadow 0.18s;
-  animation: hv5-em-in 0.3s backwards;
+  transform-origin: 0 0;
+  pointer-events: none;
 }
-.hub-v5 .hv5-emotes .hv5-em-t:hover { background-color: var(--bgh, #1e1e22); box-shadow: inset 0 0 0 1.5px rgb(237 237 239 / 0.35); }
-.hub-v5 .hv5-emotes .hv5-em-t[aria-pressed="true"] { background-color: var(--bgh, #222227); box-shadow: inset 0 0 0 2px var(--sp-text-1); z-index: 2; }
-.hub-v5 .hv5-emotes .hv5-em-t:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--sp-focus); z-index: 3; }
+/* zoomed in: the content box is zoom times bigger and scaled by 1 / zoom, so it fills the tile in screen pixels.
+   At 1× these rules stay plain: a var() is re-parsed for every tile each time a layer is built */
+.hub-v5 .hv5-emotes .hv5-em-map[data-zoomed] .hv5-em-c {
+  width: calc(100% / var(--iz, 1));
+  height: calc(100% / var(--iz, 1));
+  transform: scale(var(--iz, 1));
+}
+.hub-v5 .hv5-emotes .hv5-em-map[data-zoomed] .hv5-em-pl { border-radius: calc(4px * var(--iz, 1)); }
 .hub-v5 .hv5-emotes .hv5-em-t img {
   display: block;
   flex: none;
   object-fit: contain;
-  transition: width 0.5s cubic-bezier(0.2, 0.7, 0.2, 1), height 0.5s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 /* wide, short tiles: the picture, then the name and share on one line */
-.hub-v5 .hv5-emotes .hv5-em-row { flex-direction: row; align-items: center; justify-content: flex-start; gap: 8px; }
-.hub-v5 .hv5-emotes :is(.hv5-em-s, .hv5-em-xs) { justify-content: center; align-items: center; padding: 2px; }
+.hub-v5 .hv5-emotes .hv5-em-row > .hv5-em-c { flex-direction: row; align-items: center; justify-content: flex-start; gap: 8px; }
+.hub-v5 .hv5-emotes :is(.hv5-em-s, .hv5-em-xs) > .hv5-em-c { justify-content: center; align-items: center; padding: 2px; }
+/* the smallest tiles stay 4 px dots on screen, as the tile's 2 px padding kept them before A */
+.hub-v5 .hv5-emotes :is(.hv5-em-s, .hv5-em-xs) { min-width: 4px; min-height: 4px; }
+.hub-v5 .hv5-emotes .hv5-em-map[data-zoomed] :is(.hv5-em-s, .hv5-em-xs) { min-width: calc(4px * var(--iz, 1)); min-height: calc(4px * var(--iz, 1)); }
 .hv5-em-ft { width: 100%; min-width: 0; }
 .hv5-em-row .hv5-em-ft { display: flex; align-items: baseline; gap: 6px; width: auto; flex: 1 1 auto; }
 .hv5-em-nm { display: block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font: 600 13px/18px var(--sp-font); }
 .hv5-em-v { display: block; flex: none; color: var(--sp-text-3); }
-/* while zoomed or moving, tiles and frames follow the view at once (the layout's own glide is for re-tiling) */
-.hub-v5 .hv5-emotes .hv5-em-zm .hv5-em-t { transition: background-color 0.18s, box-shadow 0.18s; }
-.hub-v5 .hv5-emotes .hv5-em-zm .hv5-em-ff,
-.hub-v5 .hv5-emotes .hv5-em-zm .hv5-em-t img { transition: none; }
 /* backwards, not both (10-31): a fade held after it ends kept each of ~600 tiles and frames on a GPU layer and slowed the chart */
 @keyframes hv5-em-in { from { opacity: 0; } }
+@keyframes hv5-em-out { to { opacity: 0; } }
 /* the legend (each field's share) with Taller map */
 .hv5-em-foot {
   display: flex;
@@ -1826,8 +1856,11 @@
   .hub-v5 .hv5-emotes .hv5-el-cols { grid-template-columns: minmax(0, 1fr); grid-auto-flow: row; grid-template-rows: none; }
 }
 @media (prefers-reduced-motion: reduce) {
+  .hv5-em-ly,
+  .hv5-em-ly[data-out],
   .hub-v5 .hv5-emotes .hv5-em-t,
-  .hub-v5 .hv5-emotes .hv5-em-t img,
+  .hub-v5 .hv5-emotes .hv5-em-t[data-out],
+  .hv5-em-pl,
   .hv5-em-ff,
   .hub-v5 .hv5-emotes .hv5-em-fl,
   .hv5-em-mini,
