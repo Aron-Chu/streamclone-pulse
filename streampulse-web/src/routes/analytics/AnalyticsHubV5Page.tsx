@@ -372,6 +372,7 @@ export default function AnalyticsHubV5Page() {
               nowMs={nowMs}
               intervalWindow={emoteIntervalWindow}
               historyBehind={hubActivityBehindWords(data.activity)}
+              topEmotes={data.topEmotes}
             />
 
             <HubV5Rack games={games} game={game} onGame={setGame} art={gameArt} avatars={avatars} loading={measurementsWaiting} unavailable={measurementsUnavailable} />

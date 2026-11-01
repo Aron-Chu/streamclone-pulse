@@ -169,29 +169,88 @@ export function emoteImageAt(url: string | undefined, px: number): string {
   return url
 }
 
+/**
+ * A (10-31 board): a map tile's picture file, at the scale its side needs on
+ * this screen (px × device pixels) and, unless it plays, a still: 600 moving
+ * pictures were a large part of the map's cost. Twitch serves a still of any
+ * emote; 7TV only of an animated one (a still emote's _static file is a 404),
+ * so a 7TV still needs the hub's animated flag. Other hosts pass through.
+ */
+export function tilePicUrl(url: string | undefined, px: number, play: boolean, animated: boolean, dpr = 1): string {
+  if (!url) return ''
+  const need = px * dpr
+  const tw = /^(https?:\/\/static-cdn\.jtvnw\.net\/emoticons\/v2\/[^/]+\/)(?:default|static|animated)(\/[^/]+\/)[123]\.0$/.exec(url)
+  if (tw) return `${tw[1]}${play ? 'default' : 'static'}${tw[2]}${need > 56 ? '3.0' : need > 28 ? '2.0' : '1.0'}`
+  const sv = /^(https?:\/\/cdn\.7tv\.app\/emote\/[^/]+\/)[1-4]x(?:_static)?\.(?:webp|avif|png|gif)$/.exec(url)
+  if (sv) return `${sv[1]}${need > 96 ? 4 : need > 64 ? 3 : need > 32 ? 2 : 1}x${!play && animated ? '_static' : ''}.webp`
+  return url
+}
+
+/** Provider and name: how the hub's top emotes (the ones with an animated flag) match a tile. */
+export const emoteFlagKey = (prov: string | undefined, name: string) => `${prov || 'other'}|${name}`
+
 /* ---------- squarified treemap (Bruls, Huizing, van Wijk) ---------- */
 
 export interface Rect { x: number; y: number; w: number; h: number }
 export type Placed<T> = Rect & { it: T }
 
-export function squarify<T extends { area: number }>(items: readonly T[], rect: Rect): Placed<T>[] {
-  const out: Placed<T>[] = []
+/** The remaining rect once a row of this total area is laid along its shorter side. */
+function shrink(r: Rect, s: number) {
+  if (r.w >= r.h) {
+    const w = r.h ? s / r.h : 0
+    r.x += w
+    r.w -= w
+  } else {
+    const h = r.w ? s / r.w : 0
+    r.y += h
+    r.h -= h
+  }
+}
+
+/**
+ * Squarify's rows: a row takes the next item while that does not make its
+ * worst aspect ratio worse. The row's sum, largest and smallest grow with it,
+ * so each test is O(1) instead of a pass over the row.
+ */
+export function chooseRows<T extends { area: number }>(items: readonly T[], rect: Rect): T[][] {
+  const rows: T[][] = []
   const r = { ...rect }
   let row: T[] = []
-  const worst = (rw: readonly T[], len: number) => {
-    let s = 0
-    let mx = 0
-    let mn = Infinity
-    for (const it of rw) {
+  let s = 0
+  let mx = 0
+  let mn = Infinity
+  const worst = (sum: number, big: number, small: number, len: number) => {
+    const s2 = sum * sum
+    const l2 = len * len
+    return Math.max((l2 * big) / s2, s2 / (l2 * small))
+  }
+  for (let i = 0; i < items.length;) {
+    const len = Math.min(r.w, r.h)
+    const it = items[i]!
+    if (!row.length || worst(s + it.area, Math.max(mx, it.area), Math.min(mn, it.area), len) <= worst(s, mx, mn, len)) {
+      row.push(it)
       s += it.area
       mx = Math.max(mx, it.area)
       mn = Math.min(mn, it.area)
+      i += 1
+    } else {
+      rows.push(row)
+      shrink(r, s)
+      row = []
+      s = 0
+      mx = 0
+      mn = Infinity
     }
-    const s2 = s * s
-    const l2 = len * len
-    return Math.max((l2 * mx) / s2, s2 / (l2 * mn))
   }
-  const lay = (rw: readonly T[]) => {
+  if (row.length) rows.push(row)
+  return rows
+}
+
+/** Lays rows into the rect in order, each along the shorter side of what is left. */
+export function layRows<T extends { area: number }>(rows: readonly (readonly T[])[], rect: Rect): Placed<T>[] {
+  const out: Placed<T>[] = []
+  const r = { ...rect }
+  for (const rw of rows) {
     const s = rw.reduce((x, it) => x + it.area, 0)
     if (r.w >= r.h) {
       const w = r.h ? s / r.h : 0
@@ -201,8 +260,6 @@ export function squarify<T extends { area: number }>(items: readonly T[], rect: 
         out.push({ it, x: r.x, y, w, h })
         y += h
       }
-      r.x += w
-      r.w -= w
     } else {
       const h = r.w ? s / r.w : 0
       let x = r.x
@@ -211,23 +268,60 @@ export function squarify<T extends { area: number }>(items: readonly T[], rect: 
         out.push({ it, x, y: r.y, w, h })
         x += w
       }
-      r.y += h
-      r.h -= h
     }
+    shrink(r, s)
   }
-  for (let i = 0; i < items.length;) {
-    const len = Math.min(r.w, r.h)
-    const it = items[i]!
-    if (!row.length || worst([...row, it], len) <= worst(row, len)) {
-      row.push(it)
-      i += 1
-    } else {
-      lay(row)
-      row = []
-    }
-  }
-  if (row.length) lay(row)
   return out
+}
+
+export function squarify<T extends { area: number }>(items: readonly T[], rect: Rect): Placed<T>[] {
+  return layRows(chooseRows(items, rect), rect)
+}
+
+/** Area-weighted mean of max(w/h, h/w): 1 is all squares, and long slivers push it up. */
+export function layoutAspect<T extends { area: number }>(placed: readonly Placed<T>[]): number {
+  let s = 0
+  let a = 0
+  for (const p of placed) {
+    if (!(p.w > 0 && p.h > 0)) continue
+    s += Math.max(p.w / p.h, p.h / p.w) * p.it.area
+    a += p.it.area
+  }
+  return a ? s / a : 1
+}
+
+/**
+ * M1 sticky rows (10-31 board): keep the last layout's rows (who shares a row,
+ * in what order) and only resize them, so a poll moves tiles a little instead
+ * of reshuffling them; newcomers squarify into what is left. When the kept rows
+ * get less square than a fresh layout by more than the slack, the fresh one wins.
+ */
+export function stickyRows<T extends { area: number; key: string }>(
+  items: readonly T[], rect: Rect, prev: readonly (readonly string[])[] | null | undefined, slack: number,
+): { rows: T[][]; fresh: boolean } {
+  const fresh = chooseRows(items, rect)
+  if (!prev?.length) return { rows: fresh, fresh: true }
+  const byKey = new Map(items.map((it) => [it.key, it]))
+  const rows: T[][] = []
+  const kept = new Set<string>()
+  for (const keys of prev) {
+    const row: T[] = []
+    for (const k of keys) {
+      const it = byKey.get(k)
+      if (it && !kept.has(k)) {
+        row.push(it)
+        kept.add(k)
+      }
+    }
+    if (row.length) rows.push(row)
+  }
+  const rest = items.filter((it) => !kept.has(it.key))
+  if (rest.length) {
+    const r = { ...rect }
+    for (const row of rows) shrink(r, row.reduce((x, it) => x + it.area, 0))
+    for (const row of chooseRows(rest, r)) rows.push(row)
+  }
+  return layoutAspect(layRows(rows, rect)) <= layoutAspect(layRows(fresh, rect)) * slack ? { rows, fresh: false } : { rows: fresh, fresh: true }
 }
 
 /* ---------- W1 window chips (10-30 board): the standard stops that fit the loaded answer ---------- */
@@ -369,7 +463,18 @@ export interface MapLayout {
   /** Emotes in this view. */
   count: number
   total: number
+  /** Its rows of keys, for the next poll's sticky layout (M1). */
+  memo: MapMemo
 }
+
+/** A layout's rows: the fields' rows of field names, and each field's rows of emote ids. */
+export interface MapMemo {
+  fields: string[][] | null
+  tiles: Partial<Record<EmoteField, string[][]>>
+}
+
+/** M1's slack: kept rows may be this much less square than a fresh layout before it takes over. */
+export const EMOTE_STICKY_SLACK = 1.25
 
 /** r6 D2 field frames: a field's tiles sit this far inside it, so its frame shows around them. */
 export const EMOTE_FIELD_INSET = 4
@@ -406,34 +511,45 @@ export function emoteInWindow(data: HubEmoteMapData, a: HubEmoteAgg, win: HubEmo
   return out
 }
 
-export function emoteMapLayout(data: HubEmoteMapData, win: HubEmoteWindow, W: number, H: number): MapLayout {
+/**
+ * The map's layout. Pass the last layout's memo to keep its rows (M1 sticky
+ * rows, for a poll); without one it is a fresh squarify. Fields come out most
+ * used first and tiles by field, then rank, however the rows fell.
+ */
+export function emoteMapLayout(
+  data: HubEmoteMapData, win: HubEmoteWindow, W: number, H: number, memo?: MapMemo | null, slack = EMOTE_STICKY_SLACK,
+): MapLayout {
   const ranked = data.emotes
     .map((a) => ({ a, v: emoteMapValue(a, win, data) }))
     .filter((x) => x.v > 0)
     .sort((x, y) => y.v - x.v || x.a.id.localeCompare(y.a.id))
   const total = ranked.reduce((s, x) => s + x.v, 0)
-  const empty: MapLayout = { fields: [], tiles: [], ranked, count: ranked.length, total }
-  if (!ranked.length || W <= 0 || H <= 0 || total <= 0) return empty
+  const out: MapLayout = { fields: [], tiles: [], ranked, count: ranked.length, total, memo: { fields: null, tiles: {} } }
+  if (!ranked.length || W <= 0 || H <= 0 || total <= 0) return out
   const rank = new Map(ranked.map((x, i) => [x.a.id, i + 1]))
   const groups = EMOTE_FIELDS.map((field) => {
     const xs = ranked.filter((x) => fieldOf(x.a.prov) === field)
     return { field, xs, v: xs.reduce((s, x) => s + x.v, 0) }
   }).filter((g) => g.v > 0).sort((p, q) => q.v - p.v)
+  const order = new Map(groups.map((g, i) => [g.field, i]))
   const scale = (W * H) / total
-  const fields: MapField[] = []
-  const tiles: MapTile[] = []
-  for (const g of squarify(groups.map((it) => ({ it, area: it.v * scale })), { x: 0, y: 0, w: W, h: H })) {
-    const { field, xs, v } = g.it.it
-    fields.push({ field, name: FIELD_NAMES[field], v, share: emoteSharePct((v / total) * 100), x: g.x, y: g.y, w: g.w, h: g.h })
+  const rect = { x: 0, y: 0, w: W, h: H }
+  const fieldRows = stickyRows(groups.map((g) => ({ key: g.field as string, area: g.v * scale, g })), rect, memo?.fields, slack)
+  out.memo.fields = fieldRows.rows.map((row) => row.map((it) => it.key))
+  for (const p of layRows(fieldRows.rows, rect)) {
+    const { field, xs, v } = p.it.g
+    out.fields.push({ field, name: FIELD_NAMES[field], v, share: emoteSharePct((v / total) * 100), x: p.x, y: p.y, w: p.w, h: p.h })
     // the field's frame takes its outer 4 px (none on a sliver); its tiles share what is inside
-    const inset = g.w > 12 && g.h > 12 ? EMOTE_FIELD_INSET : 0
-    const inner = { x: g.x + inset, y: g.y + inset, w: g.w - 2 * inset, h: g.h - 2 * inset }
+    const inset = p.w > 12 && p.h > 12 ? EMOTE_FIELD_INSET : 0
+    const inner = { x: p.x + inset, y: p.y + inset, w: p.w - 2 * inset, h: p.h - 2 * inset }
     if (inner.w <= 0 || inner.h <= 0) continue
     const fieldScale = (inner.w * inner.h) / v
     // Z1 (10-22): every emote gets its tile, however small; zooming in makes room for it
-    for (const t of squarify(xs.map((x2) => ({ x2, area: x2.v * fieldScale })), inner)) {
+    const tileRows = stickyRows(xs.map((x2) => ({ key: x2.a.id, area: x2.v * fieldScale, x2 })), inner, memo?.tiles[field], slack)
+    out.memo.tiles[field] = tileRows.rows.map((row) => row.map((it) => it.key))
+    for (const t of layRows(tileRows.rows, inner)) {
       const x2 = t.it.x2
-      tiles.push({
+      out.tiles.push({
         field, a: x2.a, v: x2.v, rank: rank.get(x2.a.id) ?? 0, share: emoteSharePct((x2.v / total) * 100),
         // 2 px seams: each tile gives up 1 px on every side
         ...tileFace(t.w - 2, t.h - 2),
@@ -441,7 +557,121 @@ export function emoteMapLayout(data: HubEmoteMapData, win: HubEmoteWindow, W: nu
       })
     }
   }
-  return { fields, tiles, ranked, count: ranked.length, total }
+  out.fields.sort((p, q) => order.get(p.field)! - order.get(q.field)!)
+  out.tiles.sort((p, q) => order.get(p.field)! - order.get(q.field)! || p.rank - q.rank)
+  return out
+}
+
+/**
+ * How far a new layout moves the tiles both layouts have: their mean centre
+ * move, and the share whose centre moves over 24 px. M1 glides a small move
+ * and fades a reshuffle (over 0.45), since 200 tiles crossing read as noise.
+ */
+export function emoteMapDrift(prev: readonly MapTile[], next: readonly MapTile[]): { n: number; mean: number; jump: number } {
+  const was = new Map(prev.map((t) => [t.a.id, t]))
+  let n = 0
+  let sum = 0
+  let jumps = 0
+  for (const t of next) {
+    const p = was.get(t.a.id)
+    if (!p) continue
+    const d = Math.hypot(t.x + t.w / 2 - (p.x + p.w / 2), t.y + t.h / 2 - (p.y + p.h / 2))
+    n += 1
+    sum += d
+    if (d > 24) jumps += 1
+  }
+  return { n, mean: n ? sum / n : 0, jump: n ? jumps / n : 0 }
+}
+
+/** M1: a reshuffle past this share of jumping tiles fades the map instead of gliding it. */
+export const EMOTE_FADE_JUMP = 0.45
+
+/* ---------- M1 motion (10-31 board): how the map gets from one layout to the next ---------- */
+
+export type MapMove = 'first' | 'glide' | 'fade' | 'still'
+export interface MapLayer { gen: number; layout: MapLayout; out?: boolean }
+export interface MapShown {
+  data: HubEmoteMapData
+  win: HubEmoteWindow
+  W: number
+  H: number
+  /** The live layer last; a fade keeps the layer it replaces before it until that has faded out. */
+  layers: MapLayer[]
+  /** Tiles a glide drops: they fade out where they were. */
+  gone: MapTile[]
+  move: MapMove
+  /** The layout a glide starts from. */
+  from: MapLayout | null
+  gen: number
+  /** One per move, for the effect that runs it. */
+  tid: number
+}
+
+/**
+ * The map's next layout and how it gets there. A poll keeps the rows (sticky)
+ * and glides, unless most tiles would still move over 24 px: then it fades to
+ * a fresh layout, as another window does. A new size lays out afresh, as the
+ * map did before M1 (the rows suit its shape, and the first answer often lands
+ * before its height settles). That is still (dragging a window lays the map out
+ * every frame), unless asked to glide (Taller map). Reduced motion is always
+ * still; the first layout with tiles fades in.
+ */
+export function emoteMapNext(
+  prev: MapShown | null, data: HubEmoteMapData, win: HubEmoteWindow, W: number, H: number,
+  opts: { reduce?: boolean; glideResize?: boolean } = {},
+): MapShown {
+  const tid = (prev?.tid ?? 0) + 1
+  const live = prev?.layers[prev.layers.length - 1]
+  if (!prev || !live?.layout.tiles.length) {
+    const gen = (prev?.gen ?? 0) + 1
+    return { data, win, W, H, layers: [{ gen, layout: emoteMapLayout(data, win, W, H) }], gone: [], move: 'first', from: null, gen, tid }
+  }
+  let layout: MapLayout
+  let move: MapMove
+  if (prev.win !== win) {
+    layout = emoteMapLayout(data, win, W, H)
+    move = 'fade'
+  } else if (prev.W !== W || prev.H !== H) {
+    layout = emoteMapLayout(data, win, W, H)
+    move = opts.glideResize ? 'glide' : 'still'
+  } else {
+    layout = emoteMapLayout(data, win, W, H, live.layout.memo)
+    if (emoteMapDrift(live.layout.tiles, layout.tiles).jump > EMOTE_FADE_JUMP) {
+      layout = emoteMapLayout(data, win, W, H)
+      move = 'fade'
+    } else move = 'glide'
+  }
+  if (opts.reduce || !layout.tiles.length) move = 'still'
+  const fading = prev.layers.filter((l) => l.out)
+  if (move === 'fade') {
+    const gen = prev.gen + 1
+    return { data, win, W, H, layers: [...fading, { ...live, out: true }, { gen, layout }], gone: [], move, from: null, gen, tid }
+  }
+  const ids = new Set(layout.tiles.map((t) => t.a.id))
+  return {
+    data, win, W, H,
+    layers: [...fading, { gen: live.gen, layout }],
+    gone: move === 'glide' ? live.layout.tiles.filter((t) => !ids.has(t.a.id)) : [],
+    move,
+    from: move === 'glide' ? live.layout : null,
+    gen: prev.gen,
+    tid,
+  }
+}
+
+/**
+ * M1's glide: a damped spring's progress (ω 13/s, ζ 0.8, about 1.5% over)
+ * at n + 1 even steps through ms, ending on 1, for a CSS linear() easing.
+ */
+export function springCurve(omega = 13, zeta = 0.8, ms = 460, n = 30): number[] {
+  const wd = omega * Math.sqrt(1 - zeta * zeta)
+  const out: number[] = []
+  for (let i = 0; i <= n; i += 1) {
+    const t = ((i / n) * ms) / 1000
+    out.push(1 - Math.exp(-zeta * omega * t) * (Math.cos(wd * t) + ((zeta * omega) / wd) * Math.sin(wd * t)))
+  }
+  out[n] = 1
+  return out
 }
 
 /* ---------- Z1 zoom (10-22 board): the wheel, a drag, a pinch and fly-to over the map ---------- */
@@ -485,6 +715,64 @@ export function mapRectOnScreen(r: Rect, v: MapView, W: number, H: number): Rect
   const w = r.w * v.k
   const h = r.h * v.k
   return { x, y, w, h, cl: Math.max(0, -x), ct: Math.max(0, -y), cr: Math.max(0, x + w - W), cb: Math.max(0, y + h - H) }
+}
+
+/* ---------- A (10-31 board): what tiles show once the camera settles, and which pictures move ---------- */
+
+/** A tile's face at the settled zoom, when that is not its layout face; cut by the view's edge, a pad keeps it in the part on show. */
+export interface TileFit { face: TileFace; pad?: string }
+export const NO_TILE_FITS: ReadonlyMap<string, TileFit> = new Map()
+/** Only tiles this near the view (screen px) re-fit when the camera settles. */
+export const TILE_FIT_MARGIN = 48
+
+const fitPx = (n: number) => `${n.toFixed(1)}px`
+const sameFace = (p: TileFace, q: TileFace) => p.size === q.size && p.pic === q.pic && p.name === q.name && p.val === q.val
+
+/**
+ * The tiles' faces at a settled zoom. Only tiles within 48 px of the view are
+ * measured, by a rectangle test over the layout (an observer re-checked every
+ * tile on every frame of a glide); the rest keep the face they had. An entry
+ * that comes out the same is the same object, so its tile skips a render.
+ * At 1× every tile shows its layout face.
+ */
+export function tileFits(
+  tiles: readonly MapTile[], v: MapView, W: number, H: number, prev: ReadonlyMap<string, TileFit> = NO_TILE_FITS,
+): ReadonlyMap<string, TileFit> {
+  if (v.k <= 1 + 1e-3 || W <= 0 || H <= 0) return NO_TILE_FITS
+  const out = new Map(prev)
+  const m = TILE_FIT_MARGIN / v.k
+  const x0 = -v.tx / v.k - m
+  const y0 = -v.ty / v.k - m
+  const x1 = (W - v.tx) / v.k + m
+  const y1 = (H - v.ty) / v.k + m
+  for (const t of tiles) {
+    if (t.x + t.w <= x0 || t.x >= x1 || t.y + t.h <= y0 || t.y >= y1) continue
+    const s = mapRectOnScreen(t, v, W, H)
+    const shown = s.x < W && s.y < H && s.x + s.w > 0 && s.y + s.h > 0
+    // one bigger than the view keeps its picture and name in the part on show
+    const face = shown ? tileFace(Math.max(0, s.w - 2 - s.cl - s.cr), Math.max(0, s.h - 2 - s.ct - s.cb)) : tileFace(s.w - 2, s.h - 2)
+    const cut = shown && s.cl + s.ct + s.cr + s.cb > 0 && face.size !== 's' && face.size !== 'xs'
+    const pad = cut ? `${fitPx(8 + s.ct)} ${fitPx(8 + s.cr)} ${fitPx(8 + s.cb)} ${fitPx(8 + s.cl)}` : undefined
+    const was = out.get(t.a.id)
+    if (!was || was.pad !== pad || !sameFace(was.face, face)) out.set(t.a.id, pad ? { face, pad } : { face })
+  }
+  return out
+}
+
+/** A (10-31 board): how many map pictures move at once; the rest show a still. */
+export const EMOTE_PLAYING = 8
+
+/** The pictures that move: the most used tiles on screen whose picture is 28 px or more. */
+export function playingTiles(
+  tiles: readonly MapTile[], v: MapView, W: number, H: number, fits: ReadonlyMap<string, TileFit> = NO_TILE_FITS, n = EMOTE_PLAYING,
+): Set<string> {
+  const x0 = -v.tx / v.k
+  const y0 = -v.ty / v.k
+  const x1 = (W - v.tx) / v.k
+  const y1 = (H - v.ty) / v.k
+  const pool = tiles.filter((t) => t.x + t.w > x0 && t.x < x1 && t.y + t.h > y0 && t.y < y1 && (fits.get(t.a.id)?.face.pic ?? t.pic) >= 28)
+  pool.sort((p, q) => p.rank - q.rank)
+  return new Set(pool.slice(0, n).map((t) => t.a.id))
 }
 
 /* ---------- K1 pace heat (10-22 board): a tile's fill is its last hour against its own pace ---------- */
