@@ -35,7 +35,7 @@ export default function Docs() {
           <h2 id="extension-title" className="!mt-0 text-xl font-bold text-white">1. Install the StreamPulse extension</h2>
           <p className="mt-2 text-zinc-300">
             For Chrome and Brave, use the Chrome Web Store. For Firefox, use Firefox Add-ons.
-            Then open a Twitch channel or VOD: <strong>Pulse</strong> opens by default.
+            Then open a Twitch channel or VOD. Channels with nothing to chart stay on <strong>Chat</strong>.
             Use the <strong>Chat / Pulse</strong> switch at the top of Twitch chat to change tabs.
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-3">
