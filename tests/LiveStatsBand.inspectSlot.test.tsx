@@ -37,15 +37,15 @@ const refinedPeak: ExtensionPeak = {
 }
 
 describe('LiveStatsBand chart layout', () => {
-  it('distinguishes stream analytics from the separate Analytics Hub action', () => {
+  it('adds no second Analytics link: the panel\'s Hub button is the one', () => {
     const markup = renderToStaticMarkup(
       <LiveStatsBand
         payload={makePayload([])}
         backendUrl="https://api.example.test"
-        onOpenFullAnalytics={vi.fn()}
+        onOpenAnalytics={vi.fn()}
       />,
     )
-    expect(markup).toContain('Stream analytics')
+    expect(markup).not.toContain('Stream analytics')
     expect(markup).not.toContain('Open full analytics')
     expect(markup).not.toContain('Open Analytics Hub')
   })
@@ -205,6 +205,21 @@ describe('LiveStatsBand chart layout', () => {
     )
     expect(markup).toContain('Viewer updates paused')
     expect(markup).not.toContain('Viewer data unavailable')
+  })
+
+  it('says a viewer delay once, and shows no 5m change while it lasts', () => {
+    const payload = makePayload([])
+    // Steady viewers through minute 9, then nothing new for 6 minutes.
+    payload.rollups = payload.rollups.map(rollup => ({ ...rollup, viewerCount: 1_000 }))
+    payload.currentOffsetSeconds = 900
+    const markup = renderToStaticMarkup(
+      <LiveStatsBand payload={payload} backendUrl="https://api.streampulse.stream" currentOffsetSeconds={900} isLive />,
+    )
+    // Shown text only: the status lane also repeats its line as a tooltip.
+    expect(markup.match(/>[^<]*delayed[^<]*</g)).toEqual(['>Viewer timeline delayed<'])
+    expect(markup).not.toContain('data-chart-confidence')
+    expect(markup).toContain('— · 5m')
+    expect(markup).not.toContain('>0 · 5m')
   })
 
   it('renders an idle readout band above the chart without a bottom inspector card', () => {

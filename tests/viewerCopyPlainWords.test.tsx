@@ -2,8 +2,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { PulseLiveUnavailablePanel } from '../src/ui/PulseLiveUnavailablePanel.tsx'
-import { PulseNotTrackedPanel } from '../src/ui/PulseNotTrackedPanel.tsx'
-import { PulseRosterUnsupportedPanel } from '../src/ui/PulseRosterUnsupportedPanel.tsx'
+import { PulseNotChartedPanel } from '../src/ui/PulseNotChartedPanel.tsx'
 import { coverageCardCopy } from '../src/ui/missedMoments.ts'
 import type { PulseCoverage } from '../src/shared/messages.ts'
 
@@ -32,20 +31,13 @@ function lateCoverage(overrides: Partial<PulseCoverage> = {}): PulseCoverage {
 }
 
 describe('viewer copy on the not-charting cards', () => {
-  it('hosted not tracked: plain body and the live spots in use', () => {
-    const counted = text(createElement(PulseNotTrackedPanel, { login: 'xqc', hostedActiveCount: 412, hostedActiveLimit: 500 }))
-    expect(counted).toContain('StreamPulse isn’t reading xqc’s chat right now, so there’s no live chart.')
-    expect(counted).toContain('412 of 500 live spots in use')
-    const limitOnly = text(createElement(PulseNotTrackedPanel, { login: 'xqc', hostedActiveCount: null, hostedActiveLimit: 500 }))
-    expect(limitOnly).toContain('Up to 500 live spots')
-    expect(`${counted} ${limitOnly}`).not.toMatch(JARGON)
-  })
-
-  it('not on the tracked list', () => {
-    const card = text(createElement(PulseRosterUnsupportedPanel, { login: 'xqc' }))
-    expect(card).toMatch(/^Not on the tracked list/i)
-    expect(card).toContain('Check back later.')
+  it('hosted, off the list or not read live: one Not charted card with Back to chat', () => {
+    const card = text(createElement(PulseNotChartedPanel, { onBackToChat: () => {} }))
+    expect(card).toBe('Not charted StreamPulse only charts Twitch’s busiest channels. This one isn’t charted right now. Back to chat')
+    expect(card).not.toMatch(/spots|Check back later|tracked list/i)
     expect(card).not.toMatch(JARGON)
+    // A floating panel has no Chat tab to go back to.
+    expect(text(createElement(PulseNotChartedPanel, {}))).not.toContain('Back to chat')
   })
 
   it('own stack: says your stack is not reading the channel, and nothing about the hosted pool', () => {
