@@ -24,8 +24,8 @@ import Privacy from '../src/routes/public/Privacy'
 
 const FAKE = 'http://127.0.0.1:8098'
 const FAKE_CLIENT = 'devfaketwitchclient000000000000'
-const TOKEN = 'abcdefghij0123456789klmnop'
-const SAVED_KEY = 'sp.twitchFollows.v1'
+const TOKEN = 'abcdefghij0123456789klmnop' // gitleaks:allow (made-up test token)
+const SAVED_KEY = 'sp.twitchFollows.v1' // gitleaks:allow (storage key name)
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 const USER = { data: [{ id: '42', login: 'Viewer_One', display_name: 'Viewer_One' }] }

@@ -20,7 +20,7 @@ import {
   type TwitchFollowsSetup,
 } from './twitchFollowsCallback'
 
-const SAVED_KEY = 'sp.twitchFollows.v1'
+const SAVED_KEY = 'sp.twitchFollows.v1' // gitleaks:allow (storage key name)
 /** Twitch sends 100 follows a page; 30 pages read up to 3,000. */
 const PAGE = 100
 const MAX_PAGES = 30

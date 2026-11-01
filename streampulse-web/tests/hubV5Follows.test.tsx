@@ -13,7 +13,7 @@ import { HubV5Follows, HubV5FollowsButton } from '../src/ui/components/hub/v5/Hu
 
 const MIN = 60_000
 const END = Date.UTC(2026, 10, 1, 18, 0)
-const SAVED_KEY = 'sp.twitchFollows.v1'
+const SAVED_KEY = 'sp.twitchFollows.v1' // gitleaks:allow (storage key name)
 
 function chan(login: string, rate: number | null, viewers: number): HubLiveChannel {
   return {

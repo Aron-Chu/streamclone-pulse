@@ -14,7 +14,7 @@ import {
   takeTwitchFollowsReturn,
 } from '../src/lib/twitchFollowsCallback'
 
-const TOKEN = 'abcdefghij0123456789klmnop'
+const TOKEN = 'abcdefghij0123456789klmnop' // gitleaks:allow (made-up test token)
 const STATE = 'f.0123456789abcdef0123456789abcdef'
 const FAKE = 'http://127.0.0.1:8098'
 
@@ -74,8 +74,8 @@ describe('captureTwitchFollowsCallback', () => {
 
   it('leaves other pages and other sign-ins alone', () => {
     pending()
-    arrive('/analytics#access_token=abcdefghij0123456789')
-    expect(here()).toBe('/analytics#access_token=abcdefghij0123456789')
+    arrive('/analytics#access_token=abcdefghij0123456789') // gitleaks:allow (made-up test token)
+    expect(here()).toBe('/analytics#access_token=abcdefghij0123456789') // gitleaks:allow (made-up test token)
     arrive('/account/twitch/callback?code=servercode&state=s.other')
     expect(here()).toBe('/account/twitch/callback?code=servercode&state=s.other')
     arrive('/account/twitch/callback?error=access_denied&state=s.other')
