@@ -35,6 +35,8 @@ import { HubV5Icon } from '../../ui/components/hub/v5/HubV5Icon'
 import { HubV5MostChat, mostChatModel } from '../../ui/components/hub/v5/HubV5MostChat'
 import { HubV5Rack } from '../../ui/components/hub/v5/HubV5Rack'
 import { HubV5TopMoments, HubV5TopPeek, useTopToday } from '../../ui/components/hub/v5/HubV5TopMoments'
+import { HubV5BarInstall, HubV5DockSearch } from '../../ui/components/hub/v5/HubV5TopBar'
+import { HubV5SearchContext, createHubV5SearchStore } from '../../ui/components/hub/v5/hubV5SearchStore'
 import { HUB_BUSIEST_COUNT, HUB_RACK_ROWS, hubCategoryArt, hubChatBasis, hubSavedAt, rankBusiest, whereChatIs, type HubChannelSort } from '../../ui/components/hub/v5/hubV5Model'
 import { useHashScrollHold } from '../../ui/RouteScrollManager'
 import '../../ui/components/analytics/figma-analytics.css'
@@ -101,6 +103,8 @@ function useFreshnessClock(): number {
 
 export default function AnalyticsHubV5Page() {
   const [searchParams, setSearchParams] = useSearchParams()
+  // The hero's search and the top bar's share the typed text and the scroll state (HubV5TopBar).
+  const [searchStore] = useState(createHubV5SearchStore)
   const rawWindow = searchParams.get('window') || searchParams.get('activityWindow')
   const activityWindow: PublicHubActivityWindow = rawWindow && rawWindow in ACTIVITY_WINDOW_MINUTES
     ? (rawWindow as PublicHubActivityWindow)
@@ -252,141 +256,143 @@ export default function AnalyticsHubV5Page() {
   }, [])
 
   return (
-    <AnalyticsFigmaShell hideSidebar>
-      <main className="figma-analytics__main" aria-label="StreamPulse analytics" data-hub-state={hubUiState}>
-        <div id="analytics-main" tabIndex={-1} className="analytics-focus-target">Analytics content</div>
-        {/* A saved copy can be hours old: it names its time, and its day when that is not today (N1), for as long as it is on screen, never reading as live. */}
-        {hub.loadSource === 'cache' && hub.cachedAt != null ? (
-          <div className="figma-hub-fallback-banner figma-hub-fallback-banner--info" role="status">
-            {formatCachedSnapshotNotice(hub.cachedAt, nowMs)}{hub.refreshing || hub.hubReadPending ? ' · refreshing...' : ''}
-          </div>
-        ) : null}
-        <HubDataHealthBanner
-          loadSource={hub.loadSource}
-          hubEndpointOk={hub.hubEndpointOk}
-          activitySummary={activitySummary}
-          pipeline={data.corpusPipeline}
-          coverageState={measurementAvailable ? data.coverage.state : undefined}
-          coverageDatabaseOk={measurementAvailable ? data.coverage.databaseOk : undefined}
-          liveRosterCount={data.coverage.liveChannels}
-          error={hub.error}
-          backendUrl={getBackendUrl()}
-          loading={loadingInitial || hubUiState === 'loading'}
-          onRetry={hub.retryBlocked ? undefined : hub.refresh}
-          retryDisabled={hub.refreshing || hub.hubReadRunning || hub.hubReadPending}
-          pending={hub.hubReadPending}
-          late={hub.hubReadLate}
-        />
-        <HubBackendSourceBanner />
-
-        <div className="hub-v5 hub-d3" data-hub-v5-page="">
-          <HubV5Hero live={data.liveChannels} poolSize={data.poolSize} points={data.activity.points} foot={<HubV5FollowsButton />} />
-
-          {/* The viewer's own live follows, on Busiest now's live list and rate (Show my Twitch follows, 11-01). */}
-          <HubV5Follows
-            live={savedAt != null ? EMPTY_PUBLIC_HUB.liveChannels : data.liveChannels}
-            nowMs={nowMs}
-            loading={busiestWaiting}
-            unavailable={measurementsUnavailable || (savedAt != null && hubGaveUp)}
-            windowKey={answerWindow}
-            poolSize={data.poolSize}
+    <HubV5SearchContext.Provider value={searchStore}>
+      <AnalyticsFigmaShell hideSidebar topNavDock={<HubV5DockSearch live={data.liveChannels} />} topNavInstall={<HubV5BarInstall />}>
+        <main className="figma-analytics__main" aria-label="StreamPulse analytics" data-hub-state={hubUiState}>
+          <div id="analytics-main" tabIndex={-1} className="analytics-focus-target">Analytics content</div>
+          {/* A saved copy can be hours old: it names its time, and its day when that is not today (N1), for as long as it is on screen, never reading as live. */}
+          {hub.loadSource === 'cache' && hub.cachedAt != null ? (
+            <div className="figma-hub-fallback-banner figma-hub-fallback-banner--info" role="status">
+              {formatCachedSnapshotNotice(hub.cachedAt, nowMs)}{hub.refreshing || hub.hubReadPending ? ' · refreshing...' : ''}
+            </div>
+          ) : null}
+          <HubDataHealthBanner
+            loadSource={hub.loadSource}
+            hubEndpointOk={hub.hubEndpointOk}
+            activitySummary={activitySummary}
+            pipeline={data.corpusPipeline}
+            coverageState={measurementAvailable ? data.coverage.state : undefined}
+            coverageDatabaseOk={measurementAvailable ? data.coverage.databaseOk : undefined}
+            liveRosterCount={data.coverage.liveChannels}
+            error={hub.error}
+            backendUrl={getBackendUrl()}
+            loading={loadingInitial || hubUiState === 'loading'}
+            onRetry={hub.retryBlocked ? undefined : hub.refresh}
+            retryDisabled={hub.refreshing || hub.hubReadRunning || hub.hubReadPending}
+            pending={hub.hubReadPending}
+            late={hub.hubReadLate}
           />
+          <HubBackendSourceBanner />
 
-          <HubV5TopPeek top={top} nowMs={nowMs} />
+          <div className="hub-v5 hub-d3" data-hub-v5-page="">
+            <HubV5Hero live={data.liveChannels} poolSize={data.poolSize} points={data.activity.points} foot={<HubV5FollowsButton />} />
 
-          <HubV5Busiest
-            live={savedAt != null ? EMPTY_PUBLIC_HUB.liveChannels : data.liveChannels}
-            nowMs={nowMs}
-            loading={busiestWaiting}
-            unavailable={measurementsUnavailable || (savedAt != null && hubGaveUp)}
-            windowKey={answerWindow}
-          />
-
-          {/* The featured stream (picks I1 and I1b, 10-30): its chat/min only while Busiest now ranks by the same recent average and lists it. */}
-          <HubV5MostChat featured={mostChatFeatured} showRate={mostChatRate} live={mostChatLive} avatars={avatars} waiting={busiestWaiting} />
-
-          <div id="activity" className="hv5-sec hv5-activity">
-            {hub.error && measurementAvailable && ACTIVITY_WINDOW_MINUTES[activityWindow] !== (data.activity.requestedWindowMinutes ?? data.activity.windowMinutes) ? (
-              <p className="figma-hub-fallback-banner" role="status">
-                Could not load {activityWindow} activity. Retaining the last {formatActivityWindowLabel(servedActivityWindowMinutes)} snapshot.
-              </p>
-            ) : null}
-            <HubActivityPanelV5
-              unavailable={measurementsUnavailable}
-              hub={data}
-              activitySummary={activitySummary}
-              suggestions={[]}
-              topEmotes={data.topEmotes}
-              loading={measurementsWaiting || hub.activityRefreshing}
-              awaitingData={measurementsWaiting}
-              activityRefreshing={hub.activityRefreshing}
-              updatedAgo={formatUpdatedAgo(hub.dataAsOf, nowMs)}
-              lastAppliedAgo={formatUpdatedAgo(hub.displayedSnapshotAt, nowMs)}
-              lastAppliedFromCache={hub.loadSource === 'cache'}
-              rangeControl={{
-                active: activityWindow,
-                options: activityRangeOptions,
-                onSelect: (key) => {
-                  setSearchParams((prev) => {
-                    const next = new URLSearchParams(prev)
-                    next.set('window', key)
-                    return next
-                  }, { replace: true })
-                },
-              }}
-              activityWindowKey={activityWindow}
-              measuredTarget={measuredBody}
-              onOpenMeasured={openMeasured}
-              saved={savedAt != null}
+            {/* The viewer's own live follows, on Busiest now's live list and rate (Show my Twitch follows, 11-01). */}
+            <HubV5Follows
+              live={savedAt != null ? EMPTY_PUBLIC_HUB.liveChannels : data.liveChannels}
+              nowMs={nowMs}
+              loading={busiestWaiting}
+              unavailable={measurementsUnavailable || (savedAt != null && hubGaveUp)}
+              windowKey={answerWindow}
+              poolSize={data.poolSize}
             />
-          </div>
 
-          {/* Mounted while the hub read runs, so its place is kept for the answer. */}
-          {measurementsUnavailable ? null : (
-            <HubV5BarCard
+            <HubV5TopPeek top={top} nowMs={nowMs} />
+
+            <HubV5Busiest
+              live={savedAt != null ? EMPTY_PUBLIC_HUB.liveChannels : data.liveChannels}
+              nowMs={nowMs}
+              loading={busiestWaiting}
+              unavailable={measurementsUnavailable || (savedAt != null && hubGaveUp)}
+              windowKey={answerWindow}
+            />
+
+            {/* The featured stream (picks I1 and I1b, 10-30): its chat/min only while Busiest now ranks by the same recent average and lists it. */}
+            <HubV5MostChat featured={mostChatFeatured} showRate={mostChatRate} live={mostChatLive} avatars={avatars} waiting={busiestWaiting} />
+
+            <div id="activity" className="hv5-sec hv5-activity">
+              {hub.error && measurementAvailable && ACTIVITY_WINDOW_MINUTES[activityWindow] !== (data.activity.requestedWindowMinutes ?? data.activity.windowMinutes) ? (
+                <p className="figma-hub-fallback-banner" role="status">
+                  Could not load {activityWindow} activity. Retaining the last {formatActivityWindowLabel(servedActivityWindowMinutes)} snapshot.
+                </p>
+              ) : null}
+              <HubActivityPanelV5
+                unavailable={measurementsUnavailable}
+                hub={data}
+                activitySummary={activitySummary}
+                suggestions={[]}
+                topEmotes={data.topEmotes}
+                loading={measurementsWaiting || hub.activityRefreshing}
+                awaitingData={measurementsWaiting}
+                activityRefreshing={hub.activityRefreshing}
+                updatedAgo={formatUpdatedAgo(hub.dataAsOf, nowMs)}
+                lastAppliedAgo={formatUpdatedAgo(hub.displayedSnapshotAt, nowMs)}
+                lastAppliedFromCache={hub.loadSource === 'cache'}
+                rangeControl={{
+                  active: activityWindow,
+                  options: activityRangeOptions,
+                  onSelect: (key) => {
+                    setSearchParams((prev) => {
+                      const next = new URLSearchParams(prev)
+                      next.set('window', key)
+                      return next
+                    }, { replace: true })
+                  },
+                }}
+                activityWindowKey={activityWindow}
+                measuredTarget={measuredBody}
+                onOpenMeasured={openMeasured}
+                saved={savedAt != null}
+              />
+            </div>
+
+            {/* Mounted while the hub read runs, so its place is kept for the answer. */}
+            {measurementsUnavailable ? null : (
+              <HubV5BarCard
+                points={chartActivity.points}
+                bucketMinutes={chartActivity.bucketMinutes}
+                moments={data.livePulseMoments}
+                avatars={avatars}
+              />
+            )}
+
+            <HubV5TopMoments top={top} nowMs={nowMs} onUpMore={showUpInChannels} />
+
+            <HubV5EmoteMap
               points={chartActivity.points}
-              bucketMinutes={chartActivity.bucketMinutes}
+              bucketMinutes={emoteBucketMinutes}
+              loading={measurementsWaiting}
+              unavailable={measurementsUnavailable}
               moments={data.livePulseMoments}
               avatars={avatars}
+              nowMs={nowMs}
+              intervalWindow={emoteIntervalWindow}
+              historyBehind={hubActivityBehindWords(data.activity)}
             />
-          )}
 
-          <HubV5TopMoments top={top} nowMs={nowMs} onUpMore={showUpInChannels} />
+            <HubV5Rack games={games} game={game} onGame={setGame} art={gameArt} avatars={avatars} loading={measurementsWaiting} unavailable={measurementsUnavailable} />
 
-          <HubV5EmoteMap
-            points={chartActivity.points}
-            bucketMinutes={emoteBucketMinutes}
-            loading={measurementsWaiting}
-            unavailable={measurementsUnavailable}
-            moments={data.livePulseMoments}
-            avatars={avatars}
-            nowMs={nowMs}
-            intervalWindow={emoteIntervalWindow}
-            historyBehind={hubActivityBehindWords(data.activity)}
-          />
+            <HubV5Channels
+              ref={channelsRef}
+              live={data.liveChannels}
+              poolSize={data.poolSize}
+              unavailable={measurementsUnavailable}
+              loading={measurementsWaiting}
+              savedAt={savedAt}
+              nowMs={nowMs}
+              game={game}
+              onClearGame={() => setGameState(null)}
+              sortRequest={sortRequest}
+              windowKey={answerWindow}
+            />
 
-          <HubV5Rack games={games} game={game} onGame={setGame} art={gameArt} avatars={avatars} loading={measurementsWaiting} unavailable={measurementsUnavailable} />
-
-          <HubV5Channels
-            ref={channelsRef}
-            live={data.liveChannels}
-            poolSize={data.poolSize}
-            unavailable={measurementsUnavailable}
-            loading={measurementsWaiting}
-            savedAt={savedAt}
-            nowMs={nowMs}
-            game={game}
-            onClearGame={() => setGameState(null)}
-            sortRequest={sortRequest}
-            windowKey={answerWindow}
-          />
-
-          <details id="measured" className="hv5-sec hv5-dis" ref={measuredRef}>
-            <summary><HubV5Icon name="right" />How this is measured</summary>
-            <div className="hv5-dis-body" ref={setMeasuredBody} />
-          </details>
-        </div>
-      </main>
-    </AnalyticsFigmaShell>
+            <details id="measured" className="hv5-sec hv5-dis" ref={measuredRef}>
+              <summary><HubV5Icon name="right" />How this is measured</summary>
+              <div className="hv5-dis-body" ref={setMeasuredBody} />
+            </details>
+          </div>
+        </main>
+      </AnalyticsFigmaShell>
+    </HubV5SearchContext.Provider>
   )
 }

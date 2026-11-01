@@ -28,11 +28,16 @@ const NAV_ITEMS = [
 export interface AnalyticsFigmaShellProps {
   /** Hide hub section nav (session console routes use in-page chrome instead). */
   hideSidebar?: boolean
+  /** The page's own search and install button in the top bar (the hub's; see AnalyticsTopNav). */
+  topNavDock?: ReactNode
+  topNavInstall?: ReactNode
   children: ReactNode
 }
 
 function AnalyticsFigmaShellInner({
   hideSidebar = false,
+  topNavDock,
+  topNavInstall,
   children,
 }: AnalyticsFigmaShellProps) {
   const { labels } = useAnalyticsTheme()
@@ -41,7 +46,7 @@ function AnalyticsFigmaShellInner({
 
   return (
     <div className="figma-analytics">
-      <AnalyticsTopNav items={NAV_ITEMS} />
+      <AnalyticsTopNav items={NAV_ITEMS} dock={topNavDock} install={topNavInstall} />
       <div className={`figma-analytics__frame${hideSidebar ? ' figma-analytics__frame--no-sidebar' : ''}`}>
         {hideSidebar ? null : (
           <aside className="figma-analytics__sidebar" aria-label="Hub section navigation">
