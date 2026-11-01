@@ -194,6 +194,35 @@ select {
   background: #4285f4;
   box-shadow: 0 0 0 1.6px #fff;
 }
+/* Edge's and Firefox's, for the same button when the visitor's browser picks their store. */
+.edge-mark,
+.firefox-mark {
+  position: relative;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+}
+.edge-mark { background: conic-gradient(from 200deg, #0c59a4 0 110deg, #1fa2e4 0 200deg, #36c06e 0 290deg, #0c59a4 0); }
+.edge-mark::after {
+  content: "";
+  position: absolute;
+  left: 25%;
+  top: 34%;
+  width: 55%;
+  height: 34%;
+  border-radius: 6px 6px 2px 2px;
+  background: #fff;
+}
+.firefox-mark { background: radial-gradient(circle at 60% 35%, #ffbd4f 0 22%, #ff6b2c 45%, #b833e1 90%); }
+.firefox-mark::after {
+  content: "";
+  position: absolute;
+  inset: 25% 20% 25% 35%;
+  border-radius: 50%;
+  background: #3d1a8a;
+  opacity: 0.85;
+}
 
 /* Elevating Public Document Panel */
 .panel {

@@ -3,7 +3,7 @@ import { Link, NavLink } from 'react-router-dom'
 import { BrandMark } from './BrandMark'
 import { DiscordMark } from './DiscordMark'
 import { discordInviteUrl } from '../../lib/discord'
-import { ChromeInstallCta } from './ChromeInstallCta'
+import { InstallCta } from './InstallCta'
 import { capturePublicCta } from '../../lib/productAnalytics'
 import { AnalyticsPreferences } from './AnalyticsPreferences'
 import { PageErrorBoundary } from '../PortalErrorBoundary'
@@ -99,7 +99,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
               <DiscordMark size={16} />Discord
             </a>
           ) : null}
-          <ChromeInstallCta className="app-nav__install" data-cta="chrome-install-public-nav" />
+          <InstallCta className="app-nav__install" data-cta="chrome-install-public-nav" />
         </nav>
       </header>
       <main className="app-main" id="public-main" tabIndex={-1}><PageErrorBoundary>{children}</PageErrorBoundary></main>
