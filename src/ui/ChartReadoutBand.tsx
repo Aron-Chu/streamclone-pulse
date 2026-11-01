@@ -68,16 +68,15 @@ export function ChartReadoutBand({
       data-chart-readout="true"
       data-chart-readout-state={mode}
       aria-live={mode === 'selected' ? 'polite' : 'off'}
+      // Updated in place, so a new pick reads out whole, as a remount used to.
+      aria-atomic="true"
       onClick={event => {
         const target = event.target as HTMLElement | null
         if (target?.closest('button, a, input, select')) return
         onClearSelection?.()
       }}
     >
-      <div
-        key={`${mode}:${offsetSeconds ?? 'none'}`}
-        className="pulse-chart-readout-content pulse-rb-content"
-      >
+      <div className="pulse-chart-readout-content pulse-rb-content">
         <div className="pulse-rb-header">
           <span className="pulse-rb-kicker">{title}</span>
           <span className="pulse-rb-time">{time}</span>
