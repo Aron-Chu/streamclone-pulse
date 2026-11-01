@@ -191,17 +191,19 @@ describe('feedback and Discord beyond the landing page', () => {
     expect(document.querySelector('header.app-nav a[href*="discord"]')).toBeNull()
   })
 
-  it('opens the analytics Support and account menu with Send feedback and Discord first', () => {
+  it('shows Discord once on the analytics bar, beside the install button, and not again in the menu', () => {
     vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', SHORT_INVITE)
     render(<MemoryRouter><AnalyticsTopNav items={[{ label: 'Analytics', to: '/analytics' }]} /></MemoryRouter>)
+    const bar = document.querySelector<HTMLAnchorElement>('a.analytics-topnav__discord')!
+    expect(bar.getAttribute('href')).toBe(SHORT_INVITE)
+    expect(bar.getAttribute('aria-label')).toBe('Discord (opens in a new tab)')
+    expect(bar.previousElementSibling?.classList.contains('analytics-topnav__install')).toBe(true)
     fireEvent.click(screen.getByRole('button', { name: 'Support and account' }))
     const panel = screen.getByRole('link', { name: 'Extension guide' }).parentElement!
     const links = [...panel.querySelectorAll('a')]
     expect(links[0].textContent).toBe('Send feedback')
     expect(links[0].getAttribute('href')).toBe('/feedback')
-    expect(links[1].textContent).toBe('Discord')
-    expect(links[1].getAttribute('href')).toBe(SHORT_INVITE)
-    expect(links[1].getAttribute('aria-label')).toBe('Discord (opens in a new tab)')
+    expect(discordLinks()).toEqual([bar])
   })
 
   it('keeps Send feedback in the analytics menu and drops Discord without an invite', () => {
