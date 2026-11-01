@@ -182,10 +182,12 @@ export default function AnalyticsHubV5Page() {
   // follows the answer, not the tab: a 1y answer's long averages are never called recent (review 10-30).
   const answerWindow = Object.keys(ACTIVITY_WINDOW_MINUTES)
     .find((key) => ACTIVITY_WINDOW_MINUTES[key] === (data.activity.requestedWindowMinutes ?? data.activity.windowMinutes))
-  // The emote map's interval read (C1, 10-30) asks on the bucket grid the answer uses: 30m on the live-pool fallback.
+  // The emote map's interval read (C1, 10-30) and the bar lock's busiest chats (L1, 11-01) ask on the bucket grid the
+  // answer uses: 30m on the live-pool fallback.
   const emoteBucketMinutes = data.activity.bucketMinutes ?? chartActivity.bucketMinutes
   const emoteIntervalWindow = (Object.keys(ACTIVITY_WINDOW_MINUTES) as PublicHubActivityWindow[])
     .find((key) => activityBucketMs(ACTIVITY_WINDOW_MINUTES[key]!) === emoteBucketMinutes * 60_000)
+  const historyBehind = hubActivityBehindWords(data.activity)
   const games = useMemo(() => whereChatIs(data.liveChannels, undefined, answerWindow), [data.liveChannels, answerWindow])
   const gameArt = useMemo(() => hubCategoryArt(data.livePulseMoments), [data.livePulseMoments])
   // Top moments today and its phone peek stay in every state: the Moments list, a hub answer or a saved copy (never
@@ -355,6 +357,9 @@ export default function AnalyticsHubV5Page() {
                 bucketMinutes={chartActivity.bucketMinutes}
                 moments={data.livePulseMoments}
                 avatars={avatars}
+                intervalWindow={emoteIntervalWindow}
+                intervalBucketMinutes={emoteBucketMinutes}
+                historyBehind={historyBehind}
               />
             )}
 
@@ -371,7 +376,7 @@ export default function AnalyticsHubV5Page() {
               avatars={avatars}
               nowMs={nowMs}
               intervalWindow={emoteIntervalWindow}
-              historyBehind={hubActivityBehindWords(data.activity)}
+              historyBehind={historyBehind}
               topEmotes={data.topEmotes}
             />
 

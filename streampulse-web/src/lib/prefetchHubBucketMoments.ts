@@ -60,7 +60,10 @@ async function fetchOneBucket(
     })
     .catch(error => {
       if (isApiError(error) && error.kind === 'rate_limited') {
-        backoff.set(origin, { until: Date.now() + (error.retryAfterMs ?? 30_000), error })
+        // A cross-origin 429 can hide Retry-After: the caller still learns how long this origin waits.
+        const retryAfterMs = error.retryAfterMs ?? 30_000
+        backoff.set(origin, { until: Date.now() + retryAfterMs, error })
+        throw { ...error, retryAfterMs }
       }
       throw error
     })
