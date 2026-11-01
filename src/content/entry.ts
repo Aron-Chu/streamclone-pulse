@@ -85,6 +85,14 @@ function hydrateLivePollPreferences(): void {
 }
 
 hydrateLivePollPreferences()
+
+/**
+ * The one place the live poll learns what this channel is: charted on the
+ * chart cadence, or off the list and rechecked every 10 minutes.
+ */
+function syncLivePoll(login: string, context: TwitchPageContext, hosted: boolean): void {
+  livePoll.sync(login, context, lastCollecting && lastRosterEligible, hosted, !lastRosterEligible)
+}
 const VOD_LIVE_POLL_INTERVAL_MS = 30_000
 let vodLivePollTimer: ReturnType<typeof setTimeout> | null = null
 let vodLivePollInFlight = false
@@ -339,7 +347,7 @@ async function activateChannel(context: TwitchPageContext): Promise<void> {
     ) {
       return
     }
-    livePoll.sync(login, context, lastCollecting && lastRosterEligible, hostedNow)
+    syncLivePoll(login, context, hostedNow)
     return
   }
 
@@ -369,7 +377,7 @@ async function activateChannel(context: TwitchPageContext): Promise<void> {
     ...overlayMountOptions,
   })
   updateOverlayVodState({ vodPulse: null, loading: false })
-  livePoll.sync(intendedLogin, context, false, hosted)
+  syncLivePoll(intendedLogin, context, hosted)
 
   const [policy, watchlist] = await Promise.all([getAutoTrackPolicy(), getWatchlist()])
   if (generation !== activationGate.current()) return
@@ -404,7 +412,7 @@ async function activateChannel(context: TwitchPageContext): Promise<void> {
     requestPulseLoadCompletedAnalytics()
   }
 
-  livePoll.sync(intendedLogin, contextNow, lastCollecting && lastRosterEligible, hosted)
+  syncLivePoll(intendedLogin, contextNow, hosted)
 }
 
 async function activateVod(context: TwitchPageContext): Promise<void> {
@@ -563,7 +571,7 @@ onPulseUpdate((message: PulseUpdateMessage) => {
     void getBackendUrl().then(url => {
       if (generationSnapshot !== activationGate.current()) return
       if (!activeSession || activeSession.kind !== 'channel' || activeSession.login !== sessionLogin) return
-      livePoll.sync(sessionLogin, context, lastCollecting && lastRosterEligible, isHostedBackendUrl(url))
+      syncLivePoll(sessionLogin, context, isHostedBackendUrl(url))
     })
   }
 })
@@ -645,7 +653,7 @@ setInterval(() => {
     void getBackendUrl().then(url => {
       if (generationSnapshot !== activationGate.current()) return
       if (!activeSession || activeSession.kind !== 'channel' || activeSession.login !== login) return
-      livePoll.sync(login, context, lastCollecting && lastRosterEligible, isHostedBackendUrl(url))
+      syncLivePoll(login, context, isHostedBackendUrl(url))
     })
   }
 }, 5000)

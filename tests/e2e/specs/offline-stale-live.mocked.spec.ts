@@ -28,6 +28,6 @@ test('an open stream the backend no longer collects reads Offline on an offline 
   const pill = extension.page.locator(`#${PULSE_ROOT_ID} header.pulse-personal-banner h2 + span`)
   await expect(pill).toHaveAttribute('aria-label', 'Offline')
   await expect(extension.page.locator(`#${PULSE_ROOT_ID} .pulse-offline-state`)).toContainText('Channel offline')
-  expect(await pulseShadowText(extension.page)).not.toMatch(/Not tracked/)
+  expect(await pulseShadowText(extension.page)).not.toMatch(/Not tracked|Not charted/)
   assertNoUncaughtErrors(evidence)
 })

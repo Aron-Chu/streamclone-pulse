@@ -1,5 +1,6 @@
 import { extensionPayloadStreamEdges, momentStreamEdge, OPENING_STREAM_EDGE } from '@streampulse/pulse-core'
 import type { ExtensionCoverageTierResponse, ExtensionRollup, PulsePayload } from '../shared/messages.ts'
+import { NOT_CHARTED_REASON, NOT_CHARTED_TITLE } from '../shared/notCharted.ts'
 
 /** What the active tab is, as far as the toolbar popup cares. */
 export type PopupTabView =
@@ -127,6 +128,11 @@ export interface PopupChannelSummary {
   biggest: PopupMoment | null
   /** When the last broadcast ended, for an offline channel. */
   endedAt: number | null
+}
+
+/** Why a channel has no chart, in place of a button into a panel with nothing in it. */
+export function notChartedNote(summary: PopupChannelSummary | null): { title: string; reason: string } | null {
+  return summary && !summary.tracked ? { title: NOT_CHARTED_TITLE, reason: NOT_CHARTED_REASON } : null
 }
 
 const SPARK_LIVE_MINUTES = 30
