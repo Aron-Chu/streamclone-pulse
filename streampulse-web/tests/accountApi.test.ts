@@ -20,6 +20,19 @@ it('allows checkout and pagination identifiers without changing the endpoint', a
   expect(fetch.mock.calls.map(([url]) => url)).toEqual([`/v1/billing/checkout/${id}`, `/v1/account/devices?cursor=${id}`])
 })
 
+it('allows the channel opt-in routes and nothing beside them', async () => {
+  const fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) })
+  vi.stubGlobal('fetch', fetch)
+  await accountRequest('/channel')
+  await accountRequest('/channel/complete', {})
+  await accountRequest('/channel/remove', {})
+  expect(fetch.mock.calls.map(([url]) => url)).toEqual(['/v1/account/channel', '/v1/account/channel/complete', '/v1/account/channel/remove'])
+  for (const path of ['/channels', '/channel/', '/channel/add', '/channel?login=x']) {
+    await expect(accountRequest(path as never)).rejects.toMatchObject({ status: 400 })
+  }
+  expect(fetch).toHaveBeenCalledTimes(3)
+})
+
 it('rejects extra query parameters in pagination', async () => {
   const fetch = vi.fn()
   vi.stubGlobal('fetch', fetch)

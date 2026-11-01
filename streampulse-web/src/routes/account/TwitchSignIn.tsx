@@ -61,7 +61,7 @@ export function TwitchErrorNotice({ code, purpose, returnTo, page = false, onEma
   let action: ReactNode = null
   switch (copy.next) {
     case 'twitch':
-      action = <TwitchButton busy={busy} busyLabel="Opening Twitch…" onClick={() => void restart(false)}>{purpose === 'link' ? 'Link Twitch' : 'Sign in with Twitch'}</TwitchButton>
+      action = <TwitchButton busy={busy} busyLabel="Opening Twitch…" onClick={() => void restart(false)}>{purpose === 'link' ? 'Link Twitch' : purpose === 'channel' ? 'Add to my channel' : 'Sign in with Twitch'}</TwitchButton>
       break
     case 'switch_account':
       action = <button type="button" disabled={busy} onClick={() => void restart(true)}>{busy ? 'Opening Twitch…' : 'Use a different Twitch account'}</button>
@@ -73,6 +73,9 @@ export function TwitchErrorNotice({ code, purpose, returnTo, page = false, onEma
       break
     case 'settings':
       action = current === '/account/settings' ? null : <Link className="pulse-account-button" to="/account/settings">Back to Account &amp; devices</Link>
+      break
+    case 'account':
+      action = current === '/account' ? null : <Link className="pulse-account-button" to="/account">Back to your account</Link>
       break
     case 'reauth':
       action = <button type="button" className="pulse-account-primary" disabled={busy} onClick={() => void signInAgain()}>{busy ? 'Signing out…' : 'Sign out and sign in again'}</button>

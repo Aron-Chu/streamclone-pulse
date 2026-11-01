@@ -154,6 +154,48 @@
 .pulse-account .account-home__error { margin: 8px 0 0; color: #fda4af; font-size: 13px; }
 .account-home__signed-out { text-align: center; }
 
+/* "Add to my channel" (A1 on the IRC past 1,000 board): the mock's frame, at page size. */
+.account-home__block.account-channel {
+  border: 0;
+  border-radius: 8px;
+  background: #0e0e10;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 8%) inset;
+  color: #efeff1;
+}
+.pulse-account .account-channel h2 {
+  margin: 0 0 4px;
+  color: #efeff1;
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.pulse-account .account-channel__text { margin: 0; color: #adadb8; font-size: 14px; line-height: 1.45; }
+.pulse-account .account-channel__text b { color: #efeff1; }
+.account-channel__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.pulse-account .account-channel__button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: #3987e5;
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.pulse-account .account-channel__button:hover:not(:disabled) { background: #2f78d4; }
+.pulse-account .account-channel__ghost { background: transparent; box-shadow: 0 0 0 1px #3a3a3d inset; color: #efeff1; }
+.pulse-account .account-channel__ghost:hover:not(:disabled) { background: rgb(255 255 255 / 5%); }
+.pulse-account .account-channel__button:disabled { cursor: default; opacity: .55; }
+.pulse-account .account-channel__button:focus-visible { outline: 2px solid #9fc4f5; outline-offset: 2px; }
+.account-channel__how { margin: 10px 0 0; padding-left: 20px; color: #adadb8; font-size: 13px; line-height: 1.5; }
+.pulse-account .account-channel__how li { padding-block: 2px; border: 0; }
+.pulse-account .account-channel__fine { margin: 10px 0 0; color: #8b8b94; font-size: 12.5px; line-height: 1.45; }
+
 @media (prefers-reduced-motion: reduce) {
   .pulse-account .account-home__switch, .pulse-account .account-home__switch::after { transition: none; }
 }
