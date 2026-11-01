@@ -30,6 +30,7 @@ import { ChangelogCard, WhatsNewCard } from './ChangelogCard.tsx'
 import { ACCENT_THEME_OPTIONS } from './overlayTheme.ts'
 import { ChoicePicker } from './ChoicePicker.tsx'
 import { DENSITY_OPTIONS, PLACEMENT_OPTIONS } from './preferenceOptions.ts'
+import { AUTO_UPDATE_LABEL, DENSITY_LABEL, DOCK_LABEL, LIVE_SETTINGS_TITLE, PLACEMENT_LABEL, VOD_JUMP_PIN_LABEL } from './settingLabels.ts'
 import { withDescriptions } from '../options/preferenceDescriptions.ts'
 import { PulseSectionCard } from './PulseSectionCard.tsx'
 import { usePulseHealth } from './usePulseHealth.ts'
@@ -277,17 +278,17 @@ function PulseExperienceSection({ preferences, health, supporterPerks }: { prefe
         {health.error ? <p className="pulse-settings-hint" role="status">{health.error}</p> : null}
       </PulseSectionCard>
 
-      <PulseSectionCard title="Live behavior" headingLevel={3}>
+      <PulseSectionCard title={LIVE_SETTINGS_TITLE} headingLevel={3}>
         <ToggleRow
           id="settings-auto-update"
-          label="Refresh live data automatically"
+          label={AUTO_UPDATE_LABEL}
           hint="Auto-update live activity and viewer metrics continuously on open channels."
           checked={preferences.autoUpdate}
           onChange={preferences.setAutoUpdate}
         />
         <ToggleRow
           id="settings-chat-dock"
-          label="Dock when chat is closed"
+          label={DOCK_LABEL}
           hint={preferences.placement === 'sidebar' ? 'Show a mini Pulse dock when Twitch chat is hidden.' : 'Docking needs Sidebar placement.'}
           checked={preferences.dock}
           disabled={preferences.placement !== 'sidebar'}
@@ -295,7 +296,7 @@ function PulseExperienceSection({ preferences, health, supporterPerks }: { prefe
         />
         <StoredToggleRow
           id="settings-vod-jump-chart-pin"
-          label="Show VOD jumps on the chart"
+          label={VOD_JUMP_PIN_LABEL}
           hint="Keep playback seeking enabled while optionally pinning the jumped-to offset in the activity chart."
           read={getVodJumpChartPinEnabled}
           write={setVodJumpChartPinEnabled}
@@ -316,22 +317,22 @@ function PulseExperienceSection({ preferences, health, supporterPerks }: { prefe
           />
         </div>
         <div className="pulse-settings-field">
-          <span className="pulse-settings-label">Density</span>
+          <span className="pulse-settings-label">{DENSITY_LABEL}</span>
           <ChoicePicker
             kind="density"
             variant="detailed"
-            groupLabel="Density"
+            groupLabel={DENSITY_LABEL}
             options={withDescriptions('density', DENSITY_OPTIONS)}
             value={preferences.density}
             onChange={next => void preferences.setDensity(next)}
           />
         </div>
         <div className="pulse-settings-field">
-          <span className="pulse-settings-label">Overlay placement</span>
+          <span className="pulse-settings-label">{PLACEMENT_LABEL}</span>
           <ChoicePicker
             kind="placement"
             variant="detailed"
-            groupLabel="Overlay placement"
+            groupLabel={PLACEMENT_LABEL}
             options={withDescriptions('placement', PLACEMENT_OPTIONS).map(option => ({
               ...option,
               icon: <span className="pulse-placement-icon" data-placement={option.value} aria-hidden="true" />,

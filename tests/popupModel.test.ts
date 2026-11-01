@@ -6,6 +6,7 @@ import {
   formatCount,
   formatSince,
   formatUptime,
+  notChartedNote,
   popupShowsDeviceHistory,
   popupTabView,
   safeImageUrl,
@@ -167,6 +168,16 @@ describe('popup channel summary', () => {
   it('marks channels outside the hosted roster and survives a missing payload', () => {
     expect(summarizeChannel('fixturechan', livePayload({ rosterEligible: false }), null, NOW).tracked).toBe(false)
     expect(summarizeChannel('fixturechan', null, null, NOW)).toMatchObject({ displayName: 'fixturechan', isLive: false, spark: [], biggest: null })
+  })
+
+  it('says why a channel off the list has no chart, and stays quiet otherwise', () => {
+    expect(notChartedNote(summarizeChannel('fixturechan', livePayload({ rosterEligible: false }), null, NOW))).toEqual({
+      title: 'Not charted',
+      reason: 'StreamPulse only charts Twitch’s busiest channels.',
+    })
+    expect(notChartedNote(summarizeChannel('fixturechan', livePayload(), null, NOW))).toBeNull()
+    expect(notChartedNote(summarizeChannel('fixturechan', null, null, NOW))).toBeNull()
+    expect(notChartedNote(null)).toBeNull()
   })
 
   it('never renders emote images from hosts the extension does not trust', () => {
