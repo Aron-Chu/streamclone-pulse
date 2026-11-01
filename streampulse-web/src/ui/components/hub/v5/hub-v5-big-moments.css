@@ -1,0 +1,165 @@
+/*
+ * Chat's big moments (C1, 11-01; board artifacts/top-emotes-perf-board-20261031,
+ * index.html "carousel C1: stage"): HubV5BigMoments, above Top emotes. The
+ * board's stage in hub tokens; no text under 12 px.
+ *
+ * Its grid row exists only while the section is on the page, as the featured
+ * stream's does (hub-v5.css section 2b). These templates outrank hub-v5.css's
+ * by specificity, so they hold whichever file the bundle puts first.
+ */
+.hv5-big { grid-area: big; margin-top: 32px; }
+.hub-v5.hub-d3:has(> .hv5-big) {
+  grid-template-areas: "mast" "fol" "peek" "busy" "act" "intv" "rail" "big" "emo" "games" "chan" "meas";
+}
+@media (min-width: 720px) and (max-width: 1099px) {
+  .hub-v5.hub-d3:has(> .hv5-big) {
+    grid-template-areas: "mast mast" "fol fol" "busy busy" "act act" "intv intv" "rail rail" "big big" "emo games" "chan chan" "meas meas";
+  }
+}
+/* a row of its own above the rail, Top emotes and Games, which keep sharing theirs */
+@media (min-width: 1100px) and (max-width: 1535px) {
+  .hub-v5.hub-d3:has(> .hv5-big) {
+    grid-template-areas: "mast mast mast" "fol fol fol" "busy busy busy" "act act act" "intv intv intv" "big big big" "rail emo games" "chan chan chan" "meas meas meas";
+  }
+}
+@media (min-width: 1536px) {
+  .hub-v5.hub-d3:has(> .hv5-big) {
+    grid-template-areas: "mast mast mast" "fol fol rail" "busy busy rail" "act act rail" "intv intv rail" "big big rail" "emo games rail" "chan chan rail" "meas meas rail";
+  }
+}
+/* with the featured stream's row too */
+.hub-v5.hub-d3:has(> .hv5-most):has(> .hv5-big) {
+  grid-template-areas: "mast" "fol" "peek" "busy" "most" "act" "intv" "rail" "big" "emo" "games" "chan" "meas";
+}
+@media (min-width: 720px) and (max-width: 1099px) {
+  .hub-v5.hub-d3:has(> .hv5-most):has(> .hv5-big) {
+    grid-template-areas: "mast mast" "fol fol" "busy busy" "most most" "act act" "intv intv" "rail rail" "big big" "emo games" "chan chan" "meas meas";
+  }
+}
+@media (min-width: 1100px) and (max-width: 1535px) {
+  .hub-v5.hub-d3:has(> .hv5-most):has(> .hv5-big) {
+    grid-template-areas: "mast mast mast" "fol fol fol" "busy busy busy" "most most most" "act act act" "intv intv intv" "big big big" "rail emo games" "chan chan chan" "meas meas meas";
+  }
+}
+@media (min-width: 1536px) {
+  .hub-v5.hub-d3:has(> .hv5-most):has(> .hv5-big) {
+    grid-template-areas: "mast mast mast" "fol fol rail" "busy busy rail" "most most rail" "act act rail" "intv intv rail" "big big rail" "emo games rail" "chan chan rail" "meas meas rail";
+  }
+}
+
+/* the base rules the other sections get */
+.hub-v5 .hv5-big :is(*, *::before, *::after) { box-sizing: border-box; }
+.hub-v5 .hv5-big :is(h2, p, ul) { margin: 0; }
+.hub-v5 .hv5-big ul { padding: 0; list-style: none; }
+.hub-v5 .hv5-big img { display: block; }
+.hub-v5 .hv5-big a { color: var(--hv5-accent); text-decoration: none; }
+.hub-v5 .hv5-big .hv5-rh a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.hub-v5 .hv5-big button { margin: 0; padding: 0; border: 0; background: none; font: inherit; letter-spacing: inherit; cursor: pointer; }
+
+/* ---------- the stage ---------- */
+.hv5-bm { position: relative; margin-top: 4px; }
+.hv5-bm-track { position: relative; height: 330px; overflow: hidden; border-radius: 14px; touch-action: pan-y; user-select: none; }
+.hv5-bm-card {
+  --hv5-bm-s: var(--hv5-emotes);
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: 50%;
+  width: min(620px, 64%);
+  margin-left: calc(min(620px, 64%) / -2);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--sp-raised);
+  box-shadow: 0 0 0 1px var(--sp-line-strong), 0 18px 40px rgb(0 0 0 / 0.45);
+  transition: transform 0.52s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.4s ease, filter 0.4s ease;
+  cursor: pointer;
+}
+.hv5-bm-card[data-s="chat"] { --hv5-bm-s: var(--hv5-chat); }
+.hv5-bm-card[data-pos="0"] { transform: none; opacity: 1; z-index: 3; cursor: default; }
+.hv5-bm-card[data-pos="-1"] { transform: translateX(-64%) scale(0.84); opacity: 0.55; z-index: 2; filter: saturate(0.6); }
+.hv5-bm-card[data-pos="1"] { transform: translateX(64%) scale(0.84); opacity: 0.55; z-index: 2; filter: saturate(0.6); }
+.hv5-bm-card[data-pos="-2"] { transform: translateX(-112%) scale(0.7); opacity: 0; z-index: 1; pointer-events: none; }
+.hv5-bm-card[data-pos="2"] { transform: translateX(112%) scale(0.7); opacity: 0; z-index: 1; pointer-events: none; }
+.hv5-bm-card[data-pos="far"] { transform: scale(0.6); opacity: 0; z-index: 0; pointer-events: none; }
+/* a live stream's picture behind the words, darkest under them */
+.hv5-bm-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.55; }
+.hv5-bm-shade { position: absolute; inset: 0; background: linear-gradient(90deg, rgb(10 10 12 / 0.96) 0%, rgb(10 10 12 / 0.82) 46%, rgb(10 10 12 / 0.25) 100%); }
+.hv5-bm-body { position: relative; height: 100%; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; }
+
+.hv5-bm-who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.hub-v5 .hv5-bm-av { width: 40px; height: 40px; }
+.hv5-bm-card[data-live] .hv5-bm-av { box-shadow: 0 0 0 2px var(--hv5-live); }
+.hv5-bm-id { min-width: 0; flex: 1 1 auto; }
+.hv5-bm-id strong { display: block; overflow: hidden; font-size: 16px; line-height: 20px; font-weight: 700; white-space: nowrap; text-overflow: ellipsis; }
+.hv5-bm-id small { display: block; overflow: hidden; color: var(--sp-text-2); font-size: 12px; line-height: 16px; white-space: nowrap; text-overflow: ellipsis; }
+/* white on Twitch's live red is 4.5:1 */
+.hv5-bm-live { flex: none; padding: 1px 7px; border-radius: 4px; background: #e91916; color: #fff; font-size: 12px; line-height: 16px; font-weight: 700; letter-spacing: 0.03em; white-space: nowrap; }
+
+.hv5-bm-what { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.hv5-bm-lbl { padding: 2px 8px; border-radius: 999px; background: color-mix(in oklab, var(--hv5-bm-s) 18%, transparent); color: var(--hv5-bm-s); font-size: 12px; line-height: 16px; font-weight: 600; }
+.hv5-bm-x { font-size: 30px; line-height: 1.1; font-weight: 700; letter-spacing: -0.02em; }
+.hv5-bm-x small { margin-left: 4px; color: var(--sp-text-2); font-size: 14px; font-weight: 500; letter-spacing: 0; }
+
+.hv5-bm-meter { display: grid; grid-template-columns: 52px minmax(0, 1fr) 72px; gap: 4px 10px; align-items: center; max-width: 340px; color: var(--sp-text-2); font-size: 12px; line-height: 16px; }
+.hv5-bm-bar { height: 7px; border-radius: 4px; background: var(--sp-line-strong); overflow: hidden; }
+.hv5-bm-bar i { display: block; height: 100%; border-radius: 4px; background: var(--hv5-bm-s); }
+.hv5-bm-base i { background: var(--sp-step-2); }
+
+.hv5-bm-em { display: flex; gap: 14px; min-width: 0; }
+/* the emotes and the actions sit at the card's foot; the base margin reset outranks a bare class */
+.hub-v5 .hv5-big .hv5-bm-em { margin-top: auto; }
+.hv5-bm-em li { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--sp-text-2); font-size: 12px; line-height: 16px; }
+.hv5-bm-em img,
+.hv5-bm-emph { flex: none; width: 32px; height: 32px; object-fit: contain; }
+.hv5-bm-emph { border-radius: 6px; background: var(--sp-line-strong); }
+.hv5-bm-emt { min-width: 0; }
+.hv5-bm-em b { display: block; max-width: 110px; overflow: hidden; color: var(--sp-text-1); font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
+
+.hv5-bm-foot { display: flex; align-items: center; gap: 10px; color: var(--sp-text-3); font-size: 12px; line-height: 16px; }
+.hv5-bm-t { white-space: nowrap; }
+.hv5-bm-more { padding: 0 6px; border-radius: 4px; background: var(--sp-line-strong); color: var(--sp-text-2); white-space: nowrap; }
+.hv5-bm-act { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-left: auto; }
+.hub-v5 .hv5-big .hv5-bm-act a { display: inline-flex; align-items: center; gap: 4px; height: 30px; padding: 0 12px; border-radius: 8px; font-weight: 600; white-space: nowrap; }
+/* the first step: the moment in Moments, as the rail's primary button */
+.hub-v5 .hv5-big .hv5-bm-act .hv5-bm-open { background: var(--hv5-accent); color: #04201b; }
+.hub-v5 .hv5-big .hv5-bm-act .hv5-bm-open:hover { filter: brightness(1.08); }
+.hub-v5 .hv5-big .hv5-bm-act .hv5-bm-tw { background: rgb(145 71 255 / 0.18); color: #c4a8ff; box-shadow: inset 0 0 0 1px rgb(145 71 255 / 0.45); }
+.hub-v5 .hv5-big .hv5-bm-act .hv5-bm-tw:hover { background: rgb(145 71 255 / 0.3); }
+
+/* ---------- the controls: the front dot's fill is the clock ---------- */
+.hv5-bm-nav { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 10px; }
+.hv5-bm-dots { display: flex; gap: 6px; }
+.hub-v5 .hv5-bm-dots button { position: relative; width: 22px; height: 24px; flex: none; }
+.hub-v5 .hv5-bm-dots button[aria-current="true"] { width: 40px; }
+.hv5-bm-dot { position: absolute; top: 9px; left: 0; right: 0; height: 6px; overflow: hidden; border-radius: 3px; background: var(--sp-step-2); }
+.hv5-bm-fill { position: absolute; inset: 0; background: var(--hv5-accent); transform: scaleX(0); transform-origin: 0 50%; }
+/* longhands: the shorthand resets the play state, and its selector outranks the hold under it */
+.hv5-bm-dots button[aria-current="true"] .hv5-bm-fill { animation-name: hv5-bm-clock; animation-duration: 6000ms; animation-timing-function: linear; animation-fill-mode: forwards; }
+.hv5-bm[data-paused] .hv5-bm-fill { animation-play-state: paused; }
+.hv5-bm-dots button.hv5-bm-done .hv5-bm-fill { transform: scaleX(1); opacity: 0.35; }
+@keyframes hv5-bm-clock { to { transform: scaleX(1); } }
+.hv5-bm-count { min-width: 44px; color: var(--sp-text-3); font-size: 12px; text-align: center; }
+
+/* reduced motion: it starts paused (HubV5BigMoments), and cards fade instead of sliding */
+@media (prefers-reduced-motion: reduce) {
+  .hv5-bm-card { transition: opacity 0.2s; }
+}
+
+/* phones: wider cards, a neighbour's edge on each side, swipe */
+@media (max-width: 620px) {
+  .hv5-bm-track { height: 360px; }
+  .hv5-bm-card { width: 86%; margin-left: -43%; }
+  .hv5-bm-card[data-pos="-1"] { transform: translateX(-96%) scale(0.9); }
+  .hv5-bm-card[data-pos="1"] { transform: translateX(96%) scale(0.9); }
+  .hv5-bm-body { padding: 16px; }
+  .hv5-bm-x { font-size: 24px; }
+  .hv5-bm-em { gap: 8px; }
+  .hv5-bm-em li:nth-child(3) { display: none; }
+  .hv5-bm-em b { max-width: 64px; }
+  .hv5-bm-foot { flex-wrap: wrap; row-gap: 8px; }
+  .hv5-bm-nav { gap: 6px; }
+  .hv5-bm-dots { gap: 4px; }
+  .hub-v5 .hv5-bm-dots button { width: 10px; }
+  .hub-v5 .hv5-bm-dots button[aria-current="true"] { width: 22px; }
+  .hv5-bm-count { display: none; }
+}
