@@ -75,11 +75,22 @@ function devConnectSrcPlugin(): Plugin {
   const fixtureHosts = Number.isFinite(fixturePort) && fixturePort > 0
     ? [`http://localhost:${fixturePort}`, `http://127.0.0.1:${fixturePort}`]
     : []
-  const devConnect = [...devHosts, ...fixtureHosts].join(' ')
+  let devConnect = [...devHosts, ...fixtureHosts].join(' ')
   const devImg = devHosts.join(' ')
   return {
     name: 'streampulse-dev-connect-src',
     apply: 'serve',
+    // scripts/dev-fake-twitch.mjs stands in for id.twitch.tv and api.twitch.tv
+    // when VITE_DEV_FAKE_TWITCH names it (src/lib/twitchFollows.ts). Read from
+    // the resolved env, which has the .env files' VITE_ values as the page does.
+    configResolved(config) {
+      try {
+        const fake = new URL(String(config.env.VITE_DEV_FAKE_TWITCH ?? ''))
+        if (fake.protocol === 'http:' && (fake.hostname === 'localhost' || fake.hostname === '127.0.0.1')) devConnect += ` ${fake.origin}`
+      } catch {
+        // unset: Twitch itself
+      }
+    },
     transformIndexHtml(html) {
       return html
         .replace(

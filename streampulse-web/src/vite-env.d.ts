@@ -13,6 +13,8 @@ interface ImportMetaEnv {
   readonly VITE_PUBLIC_DISCORD_INVITE_URL?: string
   /** Launch switch: `on` shows the optional "Seen in chat" Supporter copy (lib/supporterChatBadgesFlag.ts). */
   readonly VITE_SUPPORTER_CHAT_BADGES?: string
+  /** Dev only: scripts/dev-fake-twitch.mjs's origin stands in for Twitch behind "Show my Twitch follows" (lib/twitchFollows.ts). */
+  readonly VITE_DEV_FAKE_TWITCH?: string
   readonly DEV: boolean
   readonly PROD: boolean
   readonly MODE: string
