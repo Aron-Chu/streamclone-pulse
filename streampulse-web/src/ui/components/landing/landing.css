@@ -380,6 +380,21 @@
   color: #fff;
 }
 
+/* While the hero's own install and Discord buttons are on screen, the header's
+   step back (Landing useHeroButtonsInView): one of each at a time. They keep
+   their place, so Menu and Open Analytics never move. */
+.sl-nav :is(.sl-discord-nav, .sl-discord-icon, .sl-nav__install) {
+  transition: opacity 0.2s ease, visibility 0s linear 0s;
+}
+.sl-nav[data-hero-buttons] :is(.sl-discord-nav, .sl-discord-icon, .sl-nav__install) {
+  opacity: 0;
+  visibility: hidden;
+  transition-delay: 0s, 0.2s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sl-nav :is(.sl-discord-nav, .sl-discord-icon, .sl-nav__install) { transition: none; }
+}
+
 .sl-stage__cue {
   display: inline-flex;
   align-items: center;
