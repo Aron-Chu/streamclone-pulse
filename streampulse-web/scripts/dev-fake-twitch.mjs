@@ -207,7 +207,7 @@ function decide(response, query) {
     token_type: 'bearer',
   })
   callback.hash = fragment.toString()
-  console.log(`[fake-twitch] AUTHORIZE allow scenario=${scenario} → ${logSafe(callback.host)}`)
+  console.log(`[fake-twitch] AUTHORIZE allow scenario=${logSafe(scenario)} → ${logSafe(callback.host)}`)
   redirect(response, callback.href)
 }
 
