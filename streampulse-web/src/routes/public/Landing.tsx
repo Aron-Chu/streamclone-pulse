@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { lazy, Suspense, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useState, type ReactNode, type RefObject } from 'react'
 import { ArrowRight, ArrowUpRight, BookOpen, LineChart, PanelTopOpen, Radio, ShieldCheck, Sparkles } from 'lucide-react'
 import '../../ui/tokens.css'
 import '../../ui/components/landing/landing.css'
@@ -15,7 +15,7 @@ import { useMatchMedia } from '../../ui/hooks/useMatchMedia'
 import { buildEmoteTicker, buildMoverTicker } from '../../ui/components/landing/landingData'
 import { BrandMark } from '../../ui/components/BrandMark'
 import { DiscordMark } from '../../ui/components/DiscordMark'
-import { ChromeInstallCta } from '../../ui/components/ChromeInstallCta'
+import { InstallCta } from '../../ui/components/InstallCta'
 import { AnalyticsPreferences } from '../../ui/components/AnalyticsPreferences'
 import { FEEDBACK_PATH, GITHUB_REPO_URL } from '../../lib/externalLinks'
 import { discordInviteUrl } from '../../lib/discord'
@@ -56,10 +56,35 @@ function DeferredChatBackdrop() {
 
 const DISCORD_LABEL = 'Join the StreamPulse Discord (opens in a new tab)'
 
-function TopNav({ discord }: { discord: string | null }) {
+/**
+ * Whether the hero's own install and Discord buttons are on screen below the
+ * header. While they are, the header's step back, so the page shows one of
+ * each at a time (11-01). On at first paint, which is the top of the page.
+ */
+function useHeroButtonsInView(mainRef: RefObject<HTMLElement | null>): boolean {
+  const [inView, setInView] = useState(true)
+  useEffect(() => {
+    const targets = Array.from(mainRef.current?.querySelectorAll<HTMLElement>('.sl-hero__actions, .sl-community') ?? [])
+    if (!targets.length || typeof IntersectionObserver === 'undefined') { setInView(false); return }
+    const header = document.querySelector('.sl-header')?.getBoundingClientRect().height ?? 0
+    const showing = new Set<Element>()
+    const io = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) showing.add(entry.target)
+        else showing.delete(entry.target)
+      }
+      setInView(showing.size > 0)
+    }, { rootMargin: `${-Math.round(header)}px 0px 0px 0px` })
+    targets.forEach((el) => io.observe(el))
+    return () => io.disconnect()
+  }, [mainRef])
+  return inView
+}
+
+function TopNav({ discord, heroButtons }: { discord: string | null; heroButtons: boolean }) {
   return (
     <header className="sl-header">
-      <nav className={discord ? 'sl-nav sl-nav--discord' : 'sl-nav'} aria-label="StreamPulse">
+      <nav className={discord ? 'sl-nav sl-nav--discord' : 'sl-nav'} aria-label="StreamPulse" data-hero-buttons={heroButtons ? '' : undefined}>
         <Link to="/" className="sl-brand">
           <BrandMark className="sl-brand__mark" size={28} />
           StreamPulse
@@ -74,7 +99,7 @@ function TopNav({ discord }: { discord: string | null }) {
               <DiscordMark size={16} />Discord
             </a>
           ) : null}
-          <ChromeInstallCta className={buttonClass('outline', 'sm')} data-cta="chrome-install-nav" />
+          <InstallCta className={buttonClass('outline', 'sm', { className: 'sl-nav__install' })} data-cta="chrome-install-nav" />
           <Link to="/analytics" className={buttonClass('outline', 'sm', { className: 'sl-nav__analytics' })} onClick={() => capturePublicCta('open_analytics')}>
             Open Analytics
           </Link>
@@ -116,10 +141,7 @@ function Hero({
           VODs.
         </p>
         <div className="sl-hero__actions">
-          <ChromeInstallCta className={buttonClass('default', 'lg')} data-cta="chrome-install-hero">
-            <PanelTopOpen size={17} aria-hidden="true" />
-            Add StreamPulse to Chrome
-          </ChromeInstallCta>
+          <InstallCta className={buttonClass('default', 'lg')} data-cta="chrome-install-hero" icon={<PanelTopOpen size={17} aria-hidden="true" />} />
           <Link to="/analytics" className={buttonClass('outline', 'lg')} onClick={() => capturePublicCta('open_analytics')}>
             <LineChart size={17} aria-hidden="true" />
             Open Analytics
@@ -253,6 +275,7 @@ export default function Landing() {
   const moverItems = useMemo(() => buildMoverTicker(data), [data])
   const mainRef = useRef<HTMLElement | null>(null)
   const discord = discordInviteUrl()
+  const heroButtons = useHeroButtonsInView(mainRef)
 
   // A hash in the entry URL cannot scroll on its own: the browser looks for the
   // target while React is still rendering, finds nothing, and gives up. Without
@@ -301,7 +324,7 @@ export default function Landing() {
       <EmoteRain />
       <DeferredChatBackdrop />
       <a className="sl-skip-link" href="#landing-main">Skip to main content</a>
-      <TopNav discord={discord} />
+      <TopNav discord={discord} heroButtons={heroButtons} />
       <main id="landing-main" tabIndex={-1} className="sl-main" ref={mainRef}>
         <Hero emoteItems={emoteItems} moverItems={moverItems} discord={discord} />
 

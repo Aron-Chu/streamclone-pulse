@@ -1,7 +1,7 @@
 import { useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
-import { ChromeInstallCta } from '../../ui/components/ChromeInstallCta'
+import { InstallCta } from '../../ui/components/InstallCta'
 import { buildTwitchTimestampLink, type TimestampLinkResult } from '../../lib/twitchTimestampLink'
 import './growth-guides.css'
 
@@ -68,7 +68,7 @@ export default function TwitchTimestampTool() {
     <p>If you found a moment in StreamPulse, use its verified replay action when available. Broadcast time and VOD time can have an offset; this builder does not calculate that alignment.</p>
     <h2>Need to find a moment first?</h2>
     <p>StreamPulse shows chat and emote reactions for streams it tracked. It can help you choose moments to review; it does not analyze every past Twitch VOD on demand.</p>
-    <div className="public-document__actions"><ChromeInstallCta className="btn btn-primary" /><Link className="btn btn-secondary" to="/analytics">Explore tracked channels</Link></div>
+    <div className="public-document__actions"><InstallCta className="btn btn-primary" /><Link className="btn btn-secondary" to="/analytics">Explore tracked channels</Link></div>
     <nav className="growth-guide__related" aria-label="Related tools and guides"><Link to="/guides/find-twitch-moments">Find and bookmark tracked reaction moments</Link><Link to="/guides/twitch-vod-timestamps">Understand replay availability and timestamps</Link><Link to="/docs#extension">Installation guide</Link></nav>
     <p className="growth-guide__source">Twitch also offers a “Skip to” option in its sharing controls. <a href="https://help.twitch.tv/s/article/how-to-share-a-stream" target="_blank" rel="noopener noreferrer">Read Twitch’s sharing guide</a>.</p>
   </article></PublicLayout>

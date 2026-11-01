@@ -191,6 +191,7 @@
 .analytics-topnav__install {
   display: inline-flex;
   align-items: center;
+  gap: 0.45rem;
   min-height: 44px;
   white-space: nowrap;
   font-size: 0.8rem;
@@ -207,15 +208,44 @@
   text-overflow: ellipsis;
 }
 
+/* Discord, on the bar at every width: Blurple like the site header's, a 44px mark below 1280px. */
+.analytics-topnav__discord {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 0.42rem;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 0.8rem 0 0.7rem;
+  border-radius: 0.5rem;
+  background: #5865f2;
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 650;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: background 0.15s ease;
+}
+.analytics-topnav__discord:hover { background: #4752c4; color: #fff; }
+.analytics-topnav__discord:focus-visible { outline: 2px solid var(--fma-accent); outline-offset: 2px; }
+@media (max-width: 1279px) {
+  .analytics-topnav__discord { padding: 0; }
+  .analytics-topnav__discord span { display: none; }
+}
+
 .figma-analytics__center--themed {
   transition: opacity 0.15s ease;
 }
 
 /* Reserve the phone navigation row before the webfont arrives. Otherwise its
-   slightly wider metrics can push the links down and shift the entire page. */
-@media (max-width: 480px) {
+   slightly wider metrics can push the links down and shift the entire page.
+   Below 600px the buttons (Discord, the hub's search) stay on the brand's row,
+   so the bar keeps one height with the hub's search docked or not. */
+@media (max-width: 599px) {
   .analytics-topnav .analytics-topnav__links {
     flex: 1 0 100%;
+    order: 5;
   }
 }
 
@@ -233,9 +263,9 @@
     padding-inline: 0.55rem;
   }
 
-  /* Add to Chrome is no use on a phone, and on its own it would take a third
-     header row. The hub hero and Moments already drop it the same way. */
-  .analytics-topnav__actions {
+  /* Add to Chrome is no use on a phone; Discord stays. The hub hero and
+     Moments drop install the same way. */
+  .analytics-topnav__install {
     display: none;
   }
 }
