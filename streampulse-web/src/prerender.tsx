@@ -1,3 +1,7 @@
+import TwitchTimestampTool from './routes/public/TwitchTimestampTool'
+import FindTwitchMomentsGuide from './routes/public/FindTwitchMomentsGuide'
+import TwitchVodTimestampsGuide from './routes/public/TwitchVodTimestampsGuide'
+export { GROWTH_PAGES } from './lib/growthPages'
 import { renderToString } from 'react-dom/server'
 import { StaticRouter } from 'react-router-dom'
 import Landing from './routes/public/Landing'
@@ -19,7 +23,10 @@ import { AnalyticsRouteFallback } from './routes/AnalyticsRouteFallback'
 
 /** Render the actual public components, without a network request or private state. */
 export function prerenderPublicPage(path: string): string {
-  const page = path === '/' ? <Landing />
+  const page = path === '/tools/twitch-vod-timestamp-link' ? <TwitchTimestampTool />
+    : path === '/guides/find-twitch-moments' ? <FindTwitchMomentsGuide />
+    : path === '/guides/twitch-vod-timestamps' ? <TwitchVodTimestampsGuide />
+    : path === '/' ? <Landing />
     : path === '/docs' || path.startsWith('/docs/') ? <Docs />
     : path === '/privacy' ? <Privacy />
     : path === '/terms' ? <Terms />

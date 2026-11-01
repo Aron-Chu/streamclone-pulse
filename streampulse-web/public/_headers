@@ -1,7 +1,8 @@
+# Training permissions are scoped by agent in robots.txt; no blanket header overrides them.
 # Do not enable HSTS until every streampulse.stream subdomain is confirmed HTTPS-only.
 /*
   X-Content-Type-Options: nosniff
-  Content-Signal: search=yes, ai-input=no, ai-train=no, use=reference
+  Content-Signal: search=yes, ai-input=yes
   Referrer-Policy: strict-origin-when-cross-origin
   X-Frame-Options: DENY
   Permissions-Policy: camera=(), microphone=(), geolocation=()

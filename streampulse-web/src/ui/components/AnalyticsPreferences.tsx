@@ -42,8 +42,9 @@ export function AnalyticsPreferences() {
       <div className="analytics-preferences__body" aria-describedby={descriptionId}>
         <p id={descriptionId}>
           If you allow it, PostHog receives anonymous public page categories and clicks on
-          Install or Open Analytics to help us improve this website. Account pages, dashboard
-          activity and your Twitch viewing are excluded. No cookies, session recordings or
+          Install or Open Analytics to help us improve this website. Selected public summaries
+          count only as channel summary or stream recap; selected tools and guides use tool or guide categories; no channel name or stream ID is sent.
+          Account pages, other analytics pages and your Twitch viewing are excluded. No cookies, session recordings or
           person profiles are used.
         </p>
         <p className="analytics-preferences__status" role="status">{status}</p>

@@ -13,6 +13,7 @@ import { initPortalSentry } from './lib/sentry'
 import { PortalErrorBoundary } from './ui/PortalErrorBoundary'
 import { installStaleBuildReload } from './ui/staleBuildReload'
 import { PageMetadata } from './ui/PageMetadata'
+import { ReviewedRecapSummary } from './ui/ReviewedRecapSummary'
 import { RouteScrollManager } from './ui/RouteScrollManager'
 import { shadowStyles } from './ui/theme'
 import './ui/portal-fonts.css'
@@ -87,6 +88,7 @@ async function bootstrap() {
         <QueryClientProvider client={queryClient}>
           <BrowserRouter>
             <PageMetadata />
+            <ReviewedRecapSummary />
             <RouteScrollManager />
             <ProductAnalyticsRouteObserver />
             <AppRoutes />

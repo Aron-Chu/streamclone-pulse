@@ -1,13 +1,17 @@
 import type { PublicCaptureClient } from './productAnalyticsCapture'
+import { recapAnalyticsCategory, type RecapPageCategory } from './recapAnalyticsCategory'
 
 /** Optional public-site product analytics. No network or import before consent. */
 export type AnalyticsPreference = 'allowed' | 'declined' | 'unset'
-export type PublicPageCategory = 'home' | 'docs' | 'status' | 'privacy' | 'terms' | 'refunds' | 'supporter' | 'support'
+export type PublicPageCategory = 'home' | 'docs' | 'status' | 'privacy' | 'terms' | 'refunds' | 'supporter' | 'support' | 'tool' | 'guide' | RecapPageCategory
 export type PublicCta = 'install_extension' | 'open_analytics'
-export const ANALYTICS_PREFERENCE_KEY = 'sp.websiteAnalytics.v1'
+// Renew consent after adding selected public summaries to the disclosed scope.
+export const ANALYTICS_PREFERENCE_KEY = 'sp.websiteAnalytics.v2'
 
 const categories: Record<string, PublicPageCategory> = {
   '/': 'home', '/docs': 'docs', '/status': 'status', '/privacy': 'privacy',
+  '/tools/twitch-vod-timestamp-link': 'tool',
+  '/guides/find-twitch-moments': 'guide', '/guides/twitch-vod-timestamps': 'guide',
   '/terms': 'terms', '/refunds': 'refunds', '/supporter': 'supporter', '/support': 'support',
 }
 const listeners = new Set<() => void>()
@@ -16,7 +20,7 @@ let client: PublicCaptureClient | undefined
 let loading: Promise<void> | undefined
 let generation = 0
 let page: PublicPageCategory | null = null
-let lastPage: PublicPageCategory | null = null
+let lastPage: string | null = null
 let listening = false
 
 export function analyticsConfigured(): boolean {
@@ -45,7 +49,8 @@ export function getAnalyticsPreference(): AnalyticsPreference {
 }
 
 export function publicPageCategory(pathname: string): PublicPageCategory | null {
-  return Object.prototype.hasOwnProperty.call(categories, pathname) ? categories[pathname]! : null
+  const path = pathname.replace(/\/+$/, '') || '/'
+  return Object.prototype.hasOwnProperty.call(categories, path) ? categories[path]! : recapAnalyticsCategory(path)
 }
 
 function eligible(category: PublicPageCategory | null): boolean {
@@ -63,8 +68,11 @@ function stop(): void {
 }
 
 function capturePage(): void {
-  if (!client || !eligible(page) || page === lastPage) return
-  lastPage = page
+  if (!client || !eligible(page)) return
+  const pathname = window.location.pathname.replace(/\/$/, '') || '/'
+  if (pathname === lastPage) return
+  // Keep the deduplication path in memory only; capture receives the category.
+  lastPage = pathname
   client.capturePage(page!)
 }
 
