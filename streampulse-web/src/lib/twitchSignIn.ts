@@ -19,24 +19,28 @@ import { twitchProfileImageRendition } from './twitchProfileImage'
  * 3. Twitch redirects to /account/twitch/callback#id_token=…&state=<flowId>.
  *    twitchCallback.ts strips the URL before anything else runs.
  * 4. The callback posts {flowId, flowSecret, idToken} to
- *    /v1/account/auth/twitch/complete (sign-in; sets the session cookie) or
- *    /v1/account/identities/twitch/link (link; needs the CSRF header).
+ *    /v1/account/auth/twitch/complete (sign-in; sets the session cookie),
+ *    /v1/account/identities/twitch/link (link; needs the CSRF header) or
+ *    /v1/account/channel/complete (a streamer adds StreamPulse to their own
+ *    channel; the flow also asks Twitch for channel:bot, see channelOptIn.ts).
  */
 
-export type TwitchPurpose = 'signin' | 'link'
+export type TwitchPurpose = 'signin' | 'link' | 'channel'
 
 /** Every code the callback or start can end in; server codes keep their API names. */
 export type TwitchErrorCode =
   | 'pilot_only' | 'link_required' | 'identity_in_use' | 'account_already_linked' | 'revoked'
   | 'signup_unavailable' | 'interaction_required' | 'recent_auth_required' | 'sign_in_required'
   | 'account_deleted' | 'flow_invalid_or_expired' | 'token_invalid' | 'try_later'
+  | 'identity_mismatch' | 'channel_permission_missing' | 'channel_unavailable'
   | 'state_mismatch' | 'callback_invalid' | 'access_denied' | 'twitch_error' | 'storage_unavailable'
   | 'unavailable'
 
-export type TwitchNextStep = 'twitch' | 'switch_account' | 'email' | 'settings' | 'reauth' | 'support' | 'later'
+export type TwitchNextStep = 'twitch' | 'switch_account' | 'email' | 'settings' | 'account' | 'reauth' | 'support' | 'later'
 
 export type TwitchCompletion =
   | { status: 'signed_in' | 'linked'; purpose: TwitchPurpose; returnTo: string; profile: AccountProfile }
+  | { status: 'channel_added'; purpose: TwitchPurpose; returnTo: string }
   | { status: 'error'; purpose: TwitchPurpose; code: TwitchErrorCode }
 
 type PendingFlow = { flowId: string; flowSecret: string; purpose: TwitchPurpose; returnTo: string; expiresAt: number }
@@ -68,6 +72,7 @@ const SERVER_CODES = new Set<TwitchErrorCode>([
   'pilot_only', 'link_required', 'identity_in_use', 'account_already_linked', 'revoked',
   'signup_unavailable', 'interaction_required', 'recent_auth_required', 'sign_in_required',
   'account_deleted', 'flow_invalid_or_expired', 'token_invalid', 'try_later',
+  'identity_mismatch', 'channel_permission_missing', 'channel_unavailable',
 ])
 
 class TwitchFlowError extends Error {
@@ -146,7 +151,7 @@ function readPendingFlow(): PendingFlow | null {
     const { flowId, flowSecret, purpose, returnTo, expiresAt } = value as Record<string, unknown>
     const destination = twitchReturnPath(returnTo)
     if (typeof flowId !== 'string' || !TWITCH_STATE.test(flowId) || typeof flowSecret !== 'string' || !FLOW_SECRET.test(flowSecret)
-      || (purpose !== 'signin' && purpose !== 'link') || !destination || typeof expiresAt !== 'number') return null
+      || (purpose !== 'signin' && purpose !== 'link' && purpose !== 'channel') || !destination || typeof expiresAt !== 'number') return null
     return { flowId, flowSecret, purpose, returnTo: destination, expiresAt }
   } catch { return null }
 }
@@ -157,7 +162,8 @@ function clearPendingFlow(): void {
 
 /**
  * Starts a flow and returns the Twitch URL to visit. `returnTo` is kept only
- * when it passes twitchReturnPath; a link flow always returns to settings.
+ * when it passes twitchReturnPath; a link flow always returns to settings, a
+ * channel flow to the Account page.
  */
 export async function startTwitchFlow(options: { purpose: TwitchPurpose; returnTo?: unknown; forceVerify?: boolean }): Promise<string> {
   const { purpose } = options
@@ -171,7 +177,9 @@ export async function startTwitchFlow(options: { purpose: TwitchPurpose; returnT
   const now = Date.now()
   const serverExpiry = typeof result.expiresAt === 'string' ? Date.parse(result.expiresAt) : Number.NaN
   const expiresAt = Number.isFinite(serverExpiry) && serverExpiry > now ? Math.min(serverExpiry, now + MAX_FLOW_MS) : now + MAX_FLOW_MS
-  const returnTo = purpose === 'link' ? TWITCH_LINK_RETURN : twitchReturnPath(options.returnTo) ?? TWITCH_DEFAULT_RETURN
+  const returnTo = purpose === 'link' ? TWITCH_LINK_RETURN
+    : purpose === 'channel' ? TWITCH_DEFAULT_RETURN
+      : twitchReturnPath(options.returnTo) ?? TWITCH_DEFAULT_RETURN
   savePendingFlow({ flowId, flowSecret, purpose, returnTo, expiresAt })
   return authorizeUrl
 }
@@ -207,8 +215,14 @@ async function finishTwitchCallback(): Promise<TwitchCompletion> {
   if (callback.kind === 'error') return fail(callback.error === 'access_denied' ? 'access_denied' : 'twitch_error')
   if (flow.expiresAt <= Date.now()) return fail('flow_invalid_or_expired')
   try {
+    const finish = { flowId: flow.flowId, flowSecret: flow.flowSecret, idToken: callback.idToken }
+    if (purpose === 'channel') {
+      // The session is the one that started the flow; nothing about it changes.
+      const result = await accountRequest('/channel/complete', finish)
+      return result.status === 'channel_added' ? { status: 'channel_added', purpose, returnTo: flow.returnTo } : fail('unavailable')
+    }
     const path = purpose === 'link' ? '/identities/twitch/link' : '/auth/twitch/complete'
-    const result = await accountRequest(path, { flowId: flow.flowId, flowSecret: flow.flowSecret, idToken: callback.idToken })
+    const result = await accountRequest(path, finish)
     const status = purpose === 'link' ? 'linked' : 'signed_in'
     if (result.status !== status) return fail('unavailable')
     const profile = twitchProfile(result.profile)
@@ -233,6 +247,7 @@ export type TwitchErrorCopy = { title: string; body: string; next: TwitchNextSte
 
 /** Plain words for every outcome, each with one next step. */
 export function twitchErrorCopy(code: TwitchErrorCode, purpose: TwitchPurpose): TwitchErrorCopy {
+  if (purpose === 'channel') return channelErrorCopy(code)
   const link = purpose === 'link'
   switch (code) {
     case 'pilot_only':
@@ -270,5 +285,35 @@ export function twitchErrorCopy(code: TwitchErrorCode, purpose: TwitchPurpose): 
     case 'unavailable':
     default:
       return { title: link ? 'Twitch linking is unavailable' : 'Sign in with Twitch is unavailable', body: 'Account services couldn’t finish this right now. Please try again in a few minutes.', next: link ? 'settings' : 'email' }
+  }
+}
+
+/** Adding StreamPulse to a channel: nothing is added unless the flow finished. */
+function channelErrorCopy(code: TwitchErrorCode): TwitchErrorCopy {
+  switch (code) {
+    case 'identity_mismatch':
+      return { title: 'That’s a different Twitch account', body: 'Add your channel with the Twitch account you use for StreamPulse. Nothing was added.', next: 'switch_account' }
+    case 'channel_permission_missing':
+      return { title: 'Twitch didn’t give the chat permission', body: 'StreamPulse needs permission to read your channel’s chat. Nothing was added. Please try again.', next: 'twitch' }
+    case 'access_denied':
+      return { title: 'Adding your channel was cancelled', body: 'StreamPulse wasn’t authorized on Twitch, so nothing was shared or added.', next: 'account' }
+    case 'sign_in_required':
+      return { title: 'Your session has ended', body: 'Sign in again, then add your channel from your account.', next: 'account' }
+    case 'account_deleted':
+      return { title: 'This account was deleted', body: 'The StreamPulse account for this sign-in no longer exists. Contact support if you think this is a mistake.', next: 'support' }
+    case 'flow_invalid_or_expired':
+    case 'state_mismatch':
+    case 'callback_invalid':
+    case 'token_invalid':
+    case 'twitch_error':
+      return { title: 'Adding your channel didn’t finish', body: 'This works once, for 10 minutes, in the browser tab that started it. Please start again.', next: 'twitch' }
+    case 'try_later':
+      return { title: 'Too many attempts', body: 'Wait a few minutes, then try again.', next: 'account' }
+    case 'storage_unavailable':
+      return { title: 'This browser blocked a needed setting', body: 'Adding your channel needs to keep a short-lived value in this tab. Allow site data for streampulse.stream, then try again.', next: 'account' }
+    case 'channel_unavailable':
+    case 'unavailable':
+    default:
+      return { title: 'Adding channels is unavailable', body: 'StreamPulse couldn’t finish this right now. Nothing was added. Please try again in a few minutes.', next: 'account' }
   }
 }

@@ -9,6 +9,8 @@ import { listHistory } from '../../lib/accountMoments'
 import { apiClient } from '../../lib/apiClient'
 import { isExactCategoryBoxArt } from '../../lib/momentCategoryArtwork'
 import { SUPPORTER_PATH } from '../../lib/externalLinks'
+import { channelOptInEnabled } from '../../lib/channelOptIn'
+import { AccountChannelCard } from './AccountChannel'
 import './account.css'
 import './account-home.css'
 
@@ -39,6 +41,7 @@ function SignedIn({ profile }: { profile: AccountProfile }) {
   const watched = useWatched()
   return <div className="account-home">
     <ProfileBlock profile={profile} email={email} />
+    {channelOptInEnabled() && (profile.twitchLinked || profile.displayName) ? <AccountChannelCard /> : null}
     <MomentsBlock watched={watched} />
     <div className="account-home__pair">
       <BrowsersBlock />

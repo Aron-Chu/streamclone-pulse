@@ -18,6 +18,7 @@ import {
   twitchProfile,
   twitchReturnPath,
   type TwitchErrorCode,
+  type TwitchPurpose,
 } from '../src/lib/twitchSignIn'
 
 vi.mock('../src/lib/accountApi', async importOriginal => ({ ...await importOriginal<typeof import('../src/lib/accountApi')>(), accountRequest: vi.fn() }))
@@ -182,6 +183,13 @@ describe('starting a flow', () => {
     expect(JSON.parse(sessionStorage.getItem('pulse.account.twitchFlow.v1')!)).toMatchObject({ purpose: 'link', returnTo: '/account/settings' })
   })
 
+  it('sends a channel flow back to the Account page whatever it was asked', async () => {
+    vi.mocked(accountRequest).mockResolvedValue(startResponse({ authorizeUrl: authorizeUrl({ scope: 'openid channel:bot' }) }))
+    await expect(startTwitchFlow({ purpose: 'channel', returnTo: billingReturn })).resolves.toBe(authorizeUrl({ scope: 'openid channel:bot' }))
+    expect(accountRequest).toHaveBeenLastCalledWith('/auth/twitch/start', { purpose: 'channel' })
+    expect(JSON.parse(sessionStorage.getItem('pulse.account.twitchFlow.v1')!)).toMatchObject({ purpose: 'channel', returnTo: '/account' })
+  })
+
   it.each([
     ['a malformed flow ID', { flowId: 'x' }],
     ['a malformed flow secret', { flowSecret: 'short' }],
@@ -200,7 +208,7 @@ describe('starting a flow', () => {
 })
 
 describe('completing the callback', () => {
-  async function started(purpose: 'signin' | 'link' = 'signin', returnTo?: string) {
+  async function started(purpose: TwitchPurpose = 'signin', returnTo?: string) {
     vi.mocked(accountRequest).mockResolvedValueOnce(startResponse())
     await startTwitchFlow({ purpose, returnTo })
   }
@@ -228,6 +236,35 @@ describe('completing the callback', () => {
     vi.mocked(accountRequest).mockResolvedValueOnce({ status: 'linked', profile: { displayName: 'PulseTester', picture: '' } })
     await expect(completeTwitchCallback()).resolves.toMatchObject({ status: 'linked', returnTo: '/account/settings' })
     expect(accountRequest).toHaveBeenLastCalledWith('/identities/twitch/link', { flowId: FLOW_ID, flowSecret: FLOW_SECRET, idToken: ID_TOKEN })
+  })
+
+  it('finishes a channel flow through the channel route and leaves the session and identity alone', async () => {
+    await started('channel')
+    arriveAtCallback(`#id_token=${ID_TOKEN}&scope=openid+channel%3Abot&state=${FLOW_ID}`)
+    vi.mocked(accountRequest).mockResolvedValueOnce({ status: 'channel_added', channel: { login: 'pixel_parade', addedAt: '2026-11-01T18:00:00Z', status: 'active' } })
+    await expect(completeTwitchCallback()).resolves.toEqual({ status: 'channel_added', purpose: 'channel', returnTo: '/account' })
+    expect(accountRequest).toHaveBeenLastCalledWith('/channel/complete', { flowId: FLOW_ID, flowSecret: FLOW_SECRET, idToken: ID_TOKEN })
+    expect(refreshAccountSession).not.toHaveBeenCalled()
+    expect(knownTwitchIdentity()).toBeNull()
+  })
+
+  it.each([
+    [new AccountError(403, 'identity_mismatch'), 'identity_mismatch'],
+    [new AccountError(403, 'channel_permission_missing'), 'channel_permission_missing'],
+    [new AccountError(503, 'channel_unavailable'), 'channel_unavailable'],
+    [new AccountError(401, 'sign_in_required'), 'sign_in_required'],
+  ] as const)('maps a channel refusal %s to %s', async (failure, code) => {
+    await started('channel')
+    arriveAtCallback(`#id_token=${ID_TOKEN}&state=${FLOW_ID}`)
+    vi.mocked(accountRequest).mockRejectedValueOnce(failure)
+    await expect(completeTwitchCallback()).resolves.toEqual({ status: 'error', purpose: 'channel', code })
+  })
+
+  it('refuses a channel flow answered with another status', async () => {
+    await started('channel')
+    arriveAtCallback(`#id_token=${ID_TOKEN}&state=${FLOW_ID}`)
+    vi.mocked(accountRequest).mockResolvedValueOnce({ status: 'signed_in', profile: {} })
+    await expect(completeTwitchCallback()).resolves.toEqual({ status: 'error', purpose: 'channel', code: 'unavailable' })
   })
 
   it('posts a single-use token once even when asked twice', async () => {
@@ -332,10 +369,10 @@ describe('profile and copy', () => {
     'pilot_only', 'link_required', 'identity_in_use', 'account_already_linked', 'revoked', 'signup_unavailable',
     'interaction_required', 'recent_auth_required', 'sign_in_required', 'account_deleted', 'flow_invalid_or_expired',
     'token_invalid', 'try_later', 'state_mismatch', 'callback_invalid', 'access_denied', 'twitch_error',
-    'storage_unavailable', 'unavailable',
+    'storage_unavailable', 'unavailable', 'identity_mismatch', 'channel_permission_missing', 'channel_unavailable',
   ]
-  it.each(codes)('explains %s with a title, plain copy and a next step for both purposes', code => {
-    for (const purpose of ['signin', 'link'] as const) {
+  it.each(codes)('explains %s with a title, plain copy and a next step for every purpose', code => {
+    for (const purpose of ['signin', 'link', 'channel'] as const) {
       const copy = twitchErrorCopy(code, purpose)
       expect(copy.title.length).toBeGreaterThan(5)
       expect(copy.body.length).toBeGreaterThan(20)
@@ -352,5 +389,15 @@ describe('profile and copy', () => {
     expect(twitchErrorCopy('signup_unavailable', 'signin').next).toBe('later')
     expect(twitchErrorCopy('recent_auth_required', 'link').next).toBe('reauth')
     expect(twitchErrorCopy('unavailable', 'signin').next).toBe('email')
+  })
+
+  it('keeps a channel outcome on the Account page and says nothing was added', () => {
+    expect(twitchErrorCopy('identity_mismatch', 'channel').next).toBe('switch_account')
+    expect(twitchErrorCopy('channel_permission_missing', 'channel').next).toBe('twitch')
+    expect(twitchErrorCopy('token_invalid', 'channel').next).toBe('twitch')
+    for (const code of ['access_denied', 'sign_in_required', 'try_later', 'channel_unavailable', 'unavailable'] as const) {
+      expect(twitchErrorCopy(code, 'channel').next).toBe('account')
+    }
+    expect(twitchErrorCopy('channel_unavailable', 'channel').body).toContain('Nothing was added')
   })
 })
