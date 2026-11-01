@@ -357,6 +357,15 @@ async function activateChannel(context: TwitchPageContext): Promise<void> {
   const generation = activationGate.begin()
   resetAnalyticsActivationLatches()
 
+  // Ask for the chart first: the worker answers while the settings load. A
+  // superseded activation never reads it, so its rejection is handled here.
+  const pulse = fetchChannelPulse(intendedLogin)
+  const answered = pulse.catch(() => {})
+  // With no panel up yet, the empty one waits a moment for that answer, as the
+  // route debounce used to: a channel with nothing to chart then opens on Chat,
+  // never on Pulse's loading card.
+  const firstAnswer = !activeSession && Promise.race([answered, new Promise(resolve => setTimeout(resolve, NAV_DEBOUNCE_MS))])
+
   // Capture session intent before any await that could race with navigation.
   activeSession = { kind: 'channel', login: intendedLogin }
   activeStreamId = null
@@ -365,7 +374,7 @@ async function activateChannel(context: TwitchPageContext): Promise<void> {
   lastRosterEligible = true
   lastPageIsLive = pageIsLive
 
-  const backendUrl = await getBackendUrl()
+  const [backendUrl] = await Promise.all([getBackendUrl(), firstAnswer])
   if (generation !== activationGate.current()) return
   if (activeSession?.kind !== 'channel' || activeSession.login !== intendedLogin) return
   if (window.location.pathname !== intendedPath && parseTwitchPage(window.location.pathname).login !== intendedLogin) {
@@ -374,11 +383,6 @@ async function activateChannel(context: TwitchPageContext): Promise<void> {
 
   const hosted = isHostedBackendUrl(backendUrl)
   const localStack = isLocalStackBackendUrl(backendUrl)
-  // Ask for the chart now: the worker answers while the empty panel, its
-  // stylesheet and the auto-track settings load. A superseded activation never
-  // reads it, so its rejection is handled below or not at all.
-  const pulse = fetchChannelPulse(intendedLogin)
-  pulse.catch(() => {})
 
   mountOverlay(intendedLogin, null, context, {
     sessionOpenedAtMs,

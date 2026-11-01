@@ -5,7 +5,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 /**
  * Startup order of the real content entry against a stubbed worker: the first
  * route check runs on load, the chart request does not wait on the auto-track
- * settings, and a same-route URL rewrite never cancels a load in flight. The
+ * settings, a same-route URL rewrite never cancels a load in flight, and with
+ * no panel up the empty one waits a moment for the chart's answer. The
  * entry is a side-effect module, so it is imported once and the cases below
  * run in order, each on its own Twitch route.
  */
@@ -177,5 +178,35 @@ describe('content entry startup', () => {
     } finally {
       stored = {}
     }
+  })
+
+  it('a channel switch with a panel up shows the new channel at once', async () => {
+    reply = async message => message.type === 'GET_PULSE' ? pulse(message.login, 1_000) : { ok: true }
+    await navigate('/switchchan', 400)
+    expect(mountedPayloads('switchchan')).toEqual([null])
+  })
+
+  it('with no panel up, the empty panel waits for the answer, at most as long as the navigation wait', async () => {
+    await navigate('/directory')
+    expect(mount.unmountOverlay).toHaveBeenCalled()
+    reply = async message => message.type === 'GET_PULSE' ? pulse(message.login, 1_000) : { ok: true }
+    await navigate('/coldchan', 600)
+    expect(pulseRequests('coldchan')).toHaveLength(1)
+    expect(mountedPayloads('coldchan')).toEqual([])
+
+    await vi.advanceTimersByTimeAsync(150)
+    expect(mountedPayloads('coldchan')).toEqual([null])
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(mountedPayloads('coldchan').at(-1)).toMatchObject({ login: 'coldchan' })
+  })
+
+  it('with no panel up, a quick answer comes up with the panel', async () => {
+    await navigate('/directory')
+    reply = async message => message.type === 'GET_PULSE' ? pulse(message.login, 100) : { ok: true }
+    await navigate('/quickchan', 440)
+    expect(mountedPayloads('quickchan')).toEqual([])
+
+    await vi.advanceTimersByTimeAsync(20)
+    expect(mountedPayloads('quickchan')).toEqual([null, expect.objectContaining({ login: 'quickchan' })])
   })
 })
