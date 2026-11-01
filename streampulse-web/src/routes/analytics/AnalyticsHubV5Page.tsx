@@ -4,7 +4,8 @@
  * search hero with the emote conveyor behind it (R5-15 at Soft), Busiest now,
  * the activity chart, Top moments today (D1, 10-30; a "Top today" peek under
  * the hero on phones), Your follows above Busiest now once the viewer shows
- * their Twitch follows (11-01), Top emotes as the emote map (R5-13), Where chat is as
+ * their Twitch follows (11-01), Chat's big moments as a stage of its rows (C1,
+ * 11-01), Top emotes as the emote map (R5-13), Where chat is as
  * the ranked rack (R5-22), Channels and one "How this is measured" disclosure
  * on the d3 grid (one column on phones, the rail beside the page from 1536 px).
  */
@@ -26,6 +27,7 @@ import { HubBackendSourceBanner } from '../../ui/components/analytics/HubBackend
 import { HubDataHealthBanner } from '../../ui/components/hub/HubDataHealthBanner'
 import { hubBucketMinutes, pointSpacingMinutes } from '../../ui/components/hub/hubActivitySpModel'
 import { HubV5BarCard } from '../../ui/components/hub/v5/HubV5BarCard'
+import { HubV5BigMoments } from '../../ui/components/hub/v5/HubV5BigMoments'
 import { HubV5Busiest } from '../../ui/components/hub/v5/HubV5Busiest'
 import { HubV5Channels } from '../../ui/components/hub/v5/HubV5Channels'
 import { HubV5EmoteMap } from '../../ui/components/hub/v5/HubV5EmoteMap'
@@ -357,6 +359,8 @@ export default function AnalyticsHubV5Page() {
             )}
 
             <HubV5TopMoments top={top} nowMs={nowMs} onUpMore={showUpInChannels} />
+
+            <HubV5BigMoments top={top} nowMs={nowMs} />
 
             <HubV5EmoteMap
               points={chartActivity.points}
