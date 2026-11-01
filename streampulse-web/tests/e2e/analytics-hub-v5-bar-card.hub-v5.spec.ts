@@ -61,6 +61,8 @@ const titleText = async (page: Page) => (await page.locator(`${CARD} .hbk-t`).te
 /** Locks the newest bar from the keyboard: the plot cursor, Enter, then right until the lock stops moving. */
 async function lockNewest(page: Page) {
   const plot = page.locator(PLOT)
+  // The arrows start from the bar under a resting mouse, so a keyboard walk moves the mouse off the plot first.
+  await page.mouse.move(0, 0)
   await plot.focus()
   await page.keyboard.press('ArrowLeft')
   await page.keyboard.press('Enter')
