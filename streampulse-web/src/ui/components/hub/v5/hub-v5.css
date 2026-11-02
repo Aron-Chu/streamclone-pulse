@@ -1437,9 +1437,15 @@
 /* steady; the dot greys once the data is over 2 minutes old */
 .hv5-fd-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--hv5-live); }
 .hv5-f2-stale .hv5-fd-dot { background: var(--sp-text-3); }
-/* a live section whose "as of" is over 2 min old, or a list kept while its counts don't load, reads greyed */
-.hv5-f2-stale :is(.hv5-fd-list, .hv5-bm-track), .hv5-up-old { opacity: .55; transition: opacity .2s; }
-@media (prefers-reduced-motion: reduce) { .hv5-f2-stale :is(.hv5-fd-list, .hv5-bm-track), .hv5-up-old { transition: none; } }
+/* a live section whose "as of" is over 2 min old, or a list kept while its counts don't load, reads greyed:
+   the rows lose their colour and only the pictures (avatars, game covers, emotes) fade, so the text keeps
+   its full contrast (G1, 11-02). No fixed-position descendant sits in these lists (the hover cards are portaled). */
+.hv5-f2-stale :is(.hv5-fd-list, .hv5-bm-track), .hv5-up-old { filter: grayscale(1); transition: filter .2s; }
+.hv5-f2-stale :is(.hv5-fd-list, .hv5-bm-track) :is(img, .hv5-mono), .hv5-up-old :is(img, .hv5-mono) { opacity: .55; transition: opacity .2s; }
+@media (prefers-reduced-motion: reduce) {
+  .hv5-f2-stale :is(.hv5-fd-list, .hv5-bm-track), .hv5-up-old,
+  .hv5-f2-stale :is(.hv5-fd-list, .hv5-bm-track) :is(img, .hv5-mono), .hv5-up-old :is(img, .hv5-mono) { transition: none; }
+}
 .hv5-f2-fresh {
   min-width: 0;
   margin-left: -2px;
