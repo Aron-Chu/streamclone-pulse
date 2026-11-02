@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type MouseEvent } from 'react'
 import { LibraryDialog } from './LibraryPrimitives.tsx'
-import { replayUrl, timestamp, type LibraryMoment, type MomentReference } from './model.ts'
+import { replayUrl, timestamp, videoUrl, type LibraryMoment, type MomentReference } from './model.ts'
 import { safePresentationUrl, type MomentPresentation } from './MomentMedia.tsx'
 import { EmoteArtwork, MomentStats, MomentEmotes } from './MomentStats.tsx'
 import { CLIP_LENGTHS, CLIP_NUDGE_SECONDS, centreClipWindow, clipOnTwitchUrl, defaultClipWindow, nudgeClipWindow, resizeClipWindow, type ClipWindow } from './clipWindow.ts'
@@ -149,6 +149,8 @@ export function MomentPreview({ moment, context, presentation, busy, error, remo
   const data = context?.kind === 'ready' ? context.value : undefined
   const seconds = validSeconds(moment.offsetSeconds) ? moment.offsetSeconds : null
   const watch = replayUrl(moment)
+  // Last seen playing over a week ago: offered as a try, not as Watch.
+  const tryUrl = moment.availability === 'unavailable' ? videoUrl(moment) : null
   // Same gate as Watch: a resolved numeric VOD id and a real position.
   const canClip = watch !== null && seconds !== null
   const clipUrl = clip ? clipOnTwitchUrl(moment.vodId, clip) : null
@@ -203,12 +205,14 @@ export function MomentPreview({ moment, context, presentation, busy, error, remo
         <button type="button" className="pl-button pl-around-ghost" onClick={() => { focusNext.current = 'clip'; setClip(null) }}>Cancel</button>
       </div> : <div className="pl-around-actions">
         {watch ? <a className="pl-button pl-primary" href={watch} target="_blank" rel="noopener noreferrer" onClick={onOpenLink}><span aria-hidden="true">{'▶︎'}</span> Watch</a>
-          : <button type="button" className="pl-button" disabled aria-describedby={`${id}-watch-reason`}>Watch</button>}
+          : tryUrl ? <a className="pl-button" href={tryUrl} target="_blank" rel="noopener noreferrer" onClick={onOpenLink} aria-describedby={`${id}-watch-reason`}>Try the replay <span aria-hidden="true">↗</span></a>
+            : <button type="button" className="pl-button" disabled aria-describedby={`${id}-watch-reason`}>Watch</button>}
         {canClip ? <button ref={clipButton} type="button" className="pl-button" onClick={() => { focusNext.current = 'link'; setClip(defaultClipWindow(seconds)) }}><span aria-hidden="true">{'✂︎'}</span> Clip</button> : null}
         {analysisUrl ? <a className="pl-button pl-around-ghost" href={analysisUrl} target="_blank" rel="noopener noreferrer">Analysis <span aria-hidden="true">↗</span></a> : null}
       </div>}
       {copied ? <p className="pl-muted" role="status">{copied}</p> : null}
-      {!watch && !clip ? <p id={`${id}-watch-reason`} className="pl-muted">{moment.availability === 'unresolved' ? 'No verified archive link. This does not mean Twitch is still processing it.' : 'The source cannot currently be played.'}</p> : null}
+      {!watch && !clip ? <p id={`${id}-watch-reason`} className="pl-muted">{moment.availability === 'unresolved' ? 'No verified archive link. This does not mean Twitch is still processing it.'
+        : 'This replay may be gone. Twitch deletes most replays 7 to 60 days after the stream.'}</p> : null}
     </div>
   </LibraryDialog>
 }

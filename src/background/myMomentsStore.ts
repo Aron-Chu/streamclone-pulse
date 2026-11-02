@@ -1,8 +1,9 @@
 import { parseBookmarkPage } from '../shared/bookmarkPage.ts'
 import type { CreatePulseBookmarkInput, PulseBookmark } from '../shared/messages.ts'
 import type { DeviceBookmark } from '../shared/myMoments.ts'
+import type { BackupMoment } from '../shared/myMomentsBackup.ts'
 import { keptVodOriginDelta } from '../shared/vodOriginAlignment.ts'
-import type { LibraryMoment, LibraryPreferences } from '../ui/library/model.ts'
+import { replayAvailability, type LibraryMoment, type LibraryPreferences } from '../ui/library/model.ts'
 import type { AccountHistorySync } from './historySync.ts'
 import { streamKey } from './bookmarkReplay.ts'
 
@@ -109,6 +110,45 @@ export function linkDeviceReplays(data: PersonalData, vods: ReadonlyMap<string, 
 /** Keeps the replay found for hosted stream-only saves, by bookmark id; a link already kept stays. */
 export function linkAccountReplays(data: PersonalData, links: Record<string, string>): PersonalData {
   return { ...data, replayLinks: { ...links, ...data.replayLinks } }
+}
+/**
+ * Import: a backup file's saves join this browser's own, oldest first and
+ * keeping when each was saved. One this scope keeps already (same channel,
+ * stream or VOD, and second), or that `have` lists, is skipped; nothing kept
+ * is changed or removed. A new save's note comes with it.
+ */
+export function importSaves(data: PersonalData, saves: readonly BackupMoment[], have: ReadonlySet<string> = new Set()): PersonalData {
+  let next = data
+  for (const s of [...saves].sort((a, b) => a.at - b.at)) {
+    if (have.has(momentIdentity(s))) continue
+    const added = addDeviceBookmark(next, { login: s.channel, streamId: s.streamId, vodId: s.vodId ?? undefined, offsetSeconds: s.offsetSeconds,
+      label: s.title === 'Saved moment' ? '' : s.title, vodOriginDeltaSeconds: s.vodOriginDeltaSeconds }, s.at)
+    if (added === next) continue
+    const id = added.bookmarks[added.bookmarks.length - 1].id
+    next = s.note ? { ...added, notes: { ...added.notes, [id]: s.note } } : added
+  }
+  return next
+}
+/**
+ * Import: a backup file's visits join History while it is on, each within
+ * this browser's retention from when it was watched. A visit History lists
+ * already keeps its own time.
+ */
+export function importHistory(data: PersonalData, history: readonly BackupMoment[], now: number): PersonalData {
+  if (!data.preferences.captureHistory) return data
+  const listed = new Set(data.history.map(m => m.id))
+  const added: LibraryMoment[] = []
+  for (const h of history) {
+    const id = momentIdentity(h)
+    const expires = h.at + data.preferences.retentionDays * 86400000
+    if (listed.has(id) || expires <= now || h.at > now) continue
+    listed.add(id)
+    added.push({ id, channel: h.channel, title: h.title, vodId: h.vodId, ...(h.streamId ? { streamId: h.streamId } : {}), offsetSeconds: h.offsetSeconds,
+      ...(h.vodOriginDeltaSeconds === undefined ? {} : { vodOriginDeltaSeconds: h.vodOriginDeltaSeconds }),
+      availability: replayAvailability(h, h.at, now), note: '', jumpedAt: h.at, historyExpiresAt: expires })
+  }
+  if (!added.length) return data
+  return { ...data, history: [...data.history, ...added].sort((a, b) => (a.jumpedAt ?? 0) - (b.jumpedAt ?? 0)).slice(-1000) }
 }
 export function recordWatched(data: PersonalData, moment: LibraryMoment, epoch: number, now: number): PersonalData {
   const next = prunePersonalData(data, now)

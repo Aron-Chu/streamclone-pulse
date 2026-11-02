@@ -34,7 +34,7 @@ async function openWatchLink(captureHistory: boolean) {
   const root = createRoot(host)
   await act(async () => root.render(createElement(LibraryWorkspace, { repository, onExport: () => {} })))
   for (let i = 0; i < 4; i++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 5)) })
-  const link = host.querySelector<HTMLAnchorElement>('a[aria-label^="Watch moment: Big laugh"]')
+  const link = host.querySelector<HTMLAnchorElement>('a[aria-label^="Watch: Big laugh"]')
   expect(link?.href).toBe('https://www.twitch.tv/videos/2903671992?t=3879s')
   await act(async () => { link!.click() })
   const text = host.textContent ?? ''

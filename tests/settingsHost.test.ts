@@ -26,5 +26,7 @@ describe('settings host navigation', () => {
     const create = vi.fn(async () => undefined)
     await openSettingsHost({ create }, path => `chrome-extension://id/${path}`, 'updates')
     expect(create).toHaveBeenCalledWith({ url: 'chrome-extension://id/options/index.html#updates' })
+    await openSettingsHost({ create }, path => `chrome-extension://id/${path}`, 'moments-history')
+    expect(create).toHaveBeenLastCalledWith({ url: 'chrome-extension://id/options/index.html#moments-history' })
   })
 })

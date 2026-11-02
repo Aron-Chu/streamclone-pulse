@@ -1,8 +1,10 @@
 import type { LibraryCommand, LibrarySnapshot, MomentReference } from '../ui/library/model.ts'
 import type { PulseBookmark } from './messages.ts'
 import { keptVodOriginDelta } from './vodOriginAlignment.ts'
+import { BACKUP_MAX_HISTORY, BACKUP_MAX_SAVES, validBackupMoment } from './myMomentsBackup.ts'
 
-export type MyMomentsCommand = Extract<LibraryCommand, { kind: 'save' | 'unsave' | 'edit' | 'clear-history' | 'preferences' | 'import-device-saves' | 'history-sync' }>
+export type MyMomentsCommand = Extract<LibraryCommand, { kind: 'save' | 'unsave' | 'edit' | 'clear-history' | 'preferences' | 'import-device-saves' | 'history-sync'
+  | 'remove-visit' | 'restore-visit' | 'import-backup' }>
 export type MyMomentsRequest =
   | { type: 'MY_MOMENTS'; action: 'load' }
   | { type: 'MY_MOMENTS'; action: 'recent' }
@@ -52,6 +54,8 @@ export interface MyMomentsSnapshot extends LibrarySnapshot {
    * uploads them except an explicit "Add to account" (`import-device-saves`).
    */
   deviceBookmarks: DeviceBookmark[]
+  /** History this browser kept before the account was linked; Clear history clears it too. */
+  deviceHistory?: number
 }
 
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
@@ -87,6 +91,11 @@ export function parseMyMoments(raw: Record<string, unknown>): MyMomentsRequest |
     : c.kind === 'clear-history' ? keys(c, ['kind'])
       : c.kind === 'import-device-saves' ? keys(c, ['kind', 'id']) && (c.id === undefined || typeof c.id === 'string' && c.id.length > 0 && c.id.length <= 200)
       : c.kind === 'history-sync' ? keys(c, ['kind','enabled']) && typeof c.enabled === 'boolean'
+      : c.kind === 'remove-visit' ? keys(c, ['kind','reference']) && validMomentReference(c.reference)
+      : c.kind === 'restore-visit' ? keys(c, ['kind','reference','jumpedAt']) && validMomentReference(c.reference)
+        && typeof c.jumpedAt === 'number' && Number.isSafeInteger(c.jumpedAt) && c.jumpedAt > Date.now() - 91 * 86_400_000 && c.jumpedAt <= Date.now() + 60_000
+      : c.kind === 'import-backup' ? keys(c, ['kind','saves','history']) && Array.isArray(c.saves) && Array.isArray(c.history)
+        && c.saves.length <= BACKUP_MAX_SAVES && c.history.length <= BACKUP_MAX_HISTORY && [...c.saves, ...c.history].every(m => validBackupMoment(m))
       : c.kind === 'preferences' ? keys(c, ['kind','value']) && record(c.value) && keys(c.value, ['captureHistory','retentionDays']) && typeof c.value.captureHistory === 'boolean' && [7,30,90].includes(c.value.retentionDays as number)
         : c.kind === 'edit' || c.kind === 'unsave' ? keys(c, c.kind === 'edit' ? ['kind','id','note'] : ['kind','id']) && typeof c.id === 'string' && c.id.length <= 200 && c.id.length > 0 && (c.kind !== 'edit' || typeof c.note === 'string' && c.note.length <= 1000)
           : false

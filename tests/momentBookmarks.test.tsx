@@ -88,7 +88,7 @@ it('saves the stream offset after a dedupe preflight, then shows it saved on the
     .mockResolvedValueOnce({ type: 'BOOKMARKS', items: [] })
     .mockResolvedValueOnce({ type: 'BOOKMARK', item })
   await card()
-  expect(bookmark()?.getAttribute('aria-label')).toBe('Bookmark moment at 00:02')
+  expect(bookmark()?.getAttribute('aria-label')).toBe('Save moment at 00:02')
   expect(bookmark()?.getAttribute('aria-pressed')).toBe('false')
   expect(host.textContent).not.toContain('Free to use')
   // Outside the extension runtime nothing is read until a save.
@@ -99,10 +99,10 @@ it('saves the stream offset after a dedupe preflight, then shows it saved on the
     expect.objectContaining({ type: 'SAVE_BOOKMARK', bookmark: expect.objectContaining({ login: 'xqc', streamId: '123456', offsetSeconds: 120, label: 'Chat spike' }) }),
   ])
   expect(toast()?.getAttribute('role')).toBe('status')
-  expect(toast()?.textContent).toContain('Saved to your account at 00:02:00.')
+  expect(toast()?.textContent).toContain('Saved at 00:02:00')
   expect(bookmark()?.getAttribute('data-moment-save-state')).toBe('saved')
   expect(bookmark()?.getAttribute('aria-pressed')).toBe('true')
-  expect(bookmark()?.getAttribute('aria-label')).toBe('Remove bookmark at 00:02')
+  expect(bookmark()?.getAttribute('aria-label')).toBe('Saved moment at 00:02')
 })
 
 it('offers no bookmark outside the panel, as on demo cards', async () => {
@@ -174,7 +174,7 @@ it('finds live bookmarks on the same stream replay and removes one with its stre
   expect(calls('REMOVE_BOOKMARK')).toEqual([{ type: 'REMOVE_BOOKMARK', id: 'one', login: 'xqc', streamId: '123456', contextVodId: '987654321' }])
   expect(calls('SAVE_BOOKMARK')).toEqual([])
   expect(bookmark()?.getAttribute('data-moment-save-state')).toBe('ready')
-  expect(toast()?.textContent).toContain('Removed bookmark at 00:02:00.')
+  expect(toast()?.textContent).toContain('Removed at 00:02:00')
 })
 
 it('puts a removed bookmark back with Undo', async () => {
@@ -254,7 +254,7 @@ it('does not claim a failed save succeeded and permits retry', async () => {
   expect(bookmark()?.getAttribute('data-moment-save-state')).toBe('ready')
   await press(bookmark())
   expect(toast()?.getAttribute('role')).toBe('status')
-  expect(toast()?.textContent).toContain('Saved to your account at 00:02:00.')
+  expect(toast()?.textContent).toContain('Saved at 00:02:00')
 })
 
 it('checks every bookmark page and does not create a duplicate', async () => {
@@ -264,7 +264,7 @@ it('checks every bookmark page and does not create a duplicate', async () => {
   await card()
   await press(bookmark())
   expect(bookmarkCalls()).toEqual([expect.objectContaining({ type: 'LIST_BOOKMARKS' }), expect.objectContaining({ type: 'LIST_BOOKMARKS', cursor: 'cursor-next' })])
-  expect(toast()?.textContent).toContain('Already bookmarked at 00:02:00.')
+  expect(toast()?.textContent).toContain('Already saved at 00:02:00')
   expect(bookmark()?.getAttribute('data-moment-save-state')).toBe('saved')
 })
 
@@ -273,7 +273,7 @@ it('treats a save that rescoring moved as the same moment', async () => {
   await card()
   await press(bookmark())
   expect(calls('SAVE_BOOKMARK')).toEqual([])
-  expect(toast()?.textContent).toContain('Already bookmarked at 00:03:00.')
+  expect(toast()?.textContent).toContain('Already saved at 00:03:00')
 })
 
 it('ignores an obsolete channel response', async () => {
@@ -361,7 +361,7 @@ describe('the chart minute card', () => {
       .mockResolvedValueOnce({ type: 'BOOKMARKS', items: [] })
       .mockResolvedValueOnce({ type: 'BOOKMARK', item: { ...item, offsetSeconds: 300, label: 'Minute activity' } })
     await minute('selected')
-    expect(bookmark()?.getAttribute('aria-label')).toBe('Bookmark minute at 00:05:00')
+    expect(bookmark()?.getAttribute('aria-label')).toBe('Save minute at 00:05:00')
     await press(bookmark())
     expect(sendBackgroundMessage).toHaveBeenLastCalledWith(expect.objectContaining({
       type: 'SAVE_BOOKMARK', bookmark: expect.objectContaining({ offsetSeconds: 300, label: 'Minute activity', streamId: '123456' }),
@@ -392,7 +392,8 @@ describe('the toast', () => {
   it('leaves after a few seconds', async () => {
     await saved()
     expect(toast()).not.toBeNull()
-    await act(async () => vi.advanceTimersByTime(4100))
+    // H3: six seconds, long enough to reach Undo or View.
+    await act(async () => vi.advanceTimersByTime(5900))
     expect(toast()).not.toBeNull()
     await act(async () => vi.advanceTimersByTime(200))
     expect(toast()).toBeNull()
@@ -403,14 +404,23 @@ describe('the toast', () => {
     await act(async () => vi.advanceTimersByTime(10_000))
     expect(toast()).not.toBeNull()
     await act(async () => toast()?.dispatchEvent(new MouseEvent('mouseout', { bubbles: true })))
-    await act(async () => vi.advanceTimersByTime(4300))
+    await act(async () => vi.advanceTimersByTime(6100))
     expect(toast()).toBeNull()
   })
-  it('opens My Moments', async () => {
+  it('reads "Saved at …  Undo  View", and View opens My Moments on Saved', async () => {
     await saved()
+    expect([...toast()!.querySelectorAll('button')].map(b => b.textContent)).toEqual(['Undo', 'View'])
     vi.mocked(sendBackgroundMessage).mockResolvedValueOnce({ type: 'OPEN_SETTINGS_HOST', ok: true })
-    await press(host.querySelector('[data-bookmark-toast-action="library"]'))
+    await press(host.querySelector('[data-bookmark-toast-action="view"]'))
     expect(sendBackgroundMessage).toHaveBeenLastCalledWith({ type: 'OPEN_SETTINGS_HOST', section: 'moments' })
+  })
+  it('opens My Moments on History from the notice that a moment joined it', async () => {
+    vi.mocked(sendBackgroundMessage).mockResolvedValue({ type: 'OPEN_SETTINGS_HOST', ok: true })
+    await act(async () => root.render(
+      <MomentBookmarksProvider login="xqc" streamId="123456" notice={{ key: 1, text: 'Added to History.' }}><MomentBookmarkToast /></MomentBookmarksProvider>))
+    expect(host.querySelector('.pulse-bookmark-toast-text')?.textContent).toBe('Added to History.')
+    await press(host.querySelector('[data-bookmark-toast-action="view"]'))
+    expect(sendBackgroundMessage).toHaveBeenLastCalledWith({ type: 'OPEN_SETTINGS_HOST', section: 'moments-history' })
   })
 })
 
@@ -428,7 +438,7 @@ it('says once that a save on this device syncs after sign-in', async () => {
   expect(chrome.local.get('pulseBookmarkSyncHintShown')).toBe(true)
   await press(host.querySelector('[data-bookmark-toast-action="undo"]'))
   await press(bookmark())
-  expect(toast()?.textContent).toContain('Saved on this device at 00:02:00.')
+  expect(toast()?.textContent).toContain('Saved at 00:02:00')
   expect(host.querySelector('[role="alert"]')).toBeNull()
 })
 
@@ -443,7 +453,7 @@ describe('with Sign in with Twitch compiled off (every store build today)', () =
       .mockResolvedValueOnce({ type: 'BOOKMARK', item: { ...item, id: 'local:one' }, device: true })
     await card()
     await press(bookmark())
-    expect(toast()?.textContent).toContain('Saved on this device at 00:02:00.')
+    expect(toast()?.textContent).toContain('Saved at 00:02:00')
     expect(host.textContent).not.toMatch(/Sign in|Pulse account|Connect/)
   })
 
@@ -494,5 +504,5 @@ it('PAGE-1: a live save without a findable archive still saves, stream-only', as
   await press(bookmark())
   const save = calls('SAVE_BOOKMARK')[0] as { bookmark: Record<string, unknown> }
   expect(save.bookmark).not.toHaveProperty('vodId')
-  expect(toast()?.textContent).toContain('Saved to your account at 00:02:00.')
+  expect(toast()?.textContent).toContain('Saved at 00:02:00')
 })

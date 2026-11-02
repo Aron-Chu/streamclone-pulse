@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'rea
 import { extensionEmoteImageUrls } from '../shared/emoteUrl.ts'
 import type { ExtensionEmote } from '../shared/messages.ts'
 import type { MomentPictureView } from '../shared/momentFramesContract.ts'
-import { BookmarkGlyph, useMomentBookmarks, type BookmarkTarget } from './momentBookmarks.tsx'
+import { useMomentBookmarks, type BookmarkTarget } from './momentBookmarks.tsx'
 import { useMomentPicture, type MomentGame } from './momentPicture.ts'
 import { formatCount } from './mostReacted.ts'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
@@ -198,11 +198,10 @@ export function MomentSelectionCard({
                 aria-pressed={saved}
                 aria-busy={bookmarks!.busy}
                 disabled={bookmarks!.busy}
-                title={saved ? 'Remove bookmark' : `Bookmark this ${kind}`}
-                aria-label={saved ? `Remove bookmark at ${timeLabel}` : `Bookmark ${kind} at ${timeLabel}`}
+                aria-label={`${saved ? 'Saved' : 'Save'} ${kind} at ${timeLabel}`}
                 onClick={() => bookmarks!.toggle(bookmark!)}
               >
-                <BookmarkGlyph filled={saved} />
+                {saved ? '✓ Saved' : 'Save'}
               </button>
             ) : null}
             {onAnalytics ? (

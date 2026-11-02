@@ -178,8 +178,11 @@ export interface CheckForUpdateMessage {
 }
 
 export type SettingsHostSection = 'moments' | 'pulse' | 'supporter' | 'privacy' | 'updates' | 'help' | 'developer'
-/** A section, or a place inside one: `pulse-background` opens Pulse with Background & motion expanded. */
-export type SettingsHostTarget = SettingsHostSection | 'pulse-background'
+/**
+ * A section, or a place inside one: `pulse-background` opens Pulse with
+ * Background & motion expanded; `moments-history`, My Moments on History.
+ */
+export type SettingsHostTarget = SettingsHostSection | 'pulse-background' | 'moments-history'
 
 /** Open the packaged extension-origin settings host from a Twitch surface. */
 export interface OpenSettingsHostMessage {
