@@ -89,6 +89,15 @@ function save(follows: TwitchFollows): void {
 /** Why the list is not on screen: the viewer said no, the sign-in did not finish in this tab, Twitch refused it, Twitch did not answer, or this tab cannot keep the sign-in's state. */
 export type TwitchFollowsFailure = 'denied' | 'unfinished' | 'rejected' | 'unreachable' | 'storage'
 
+/** Why the follows didn't load, in the viewer's words (the hub and the clips library both say it). */
+export const FOLLOWS_FAILED: Record<TwitchFollowsFailure, string> = {
+  denied: 'You cancelled on Twitch, so nothing was read.',
+  unfinished: 'That Twitch sign-in didn’t finish in this tab, so nothing was read.',
+  rejected: 'Twitch didn’t accept the sign-in, so nothing was read.',
+  unreachable: 'Twitch didn’t answer, so your follows didn’t load.',
+  storage: 'Your browser is blocking this tab’s storage, which the Twitch sign-in needs.',
+}
+
 class ReadFailed extends Error {
   constructor(readonly why: TwitchFollowsFailure) {
     super(why)

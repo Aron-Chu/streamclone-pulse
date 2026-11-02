@@ -17,5 +17,7 @@ export function clearAccountRestore(): void { restoreSecret = null }
 
 /** These routes must not bootstrap a cookie principal or diagnostics. */
 export function isPrivateSupporterRoute(pathname: string): boolean {
-  return pathname.startsWith('/account/') || pathname.replace(/\/+$/, '') === '/supporter/thanks'
+  const path = pathname.replace(/\/+$/, '')
+  // The Account page itself too (My Moments on), not only the pages under it.
+  return pathname.startsWith('/account/') || path === '/account' || path === '/supporter/thanks'
 }

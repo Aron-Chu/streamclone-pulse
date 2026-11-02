@@ -20,6 +20,7 @@ describe('sanitizePortalPath', () => {
       '/supporter', '/supporter/thanks', '/changelog',
       '/account/sign-in', '/account/confirm', '/account/restore', '/account/link-device',
       '/account/settings', '/account/billing', '/account/billing/return',
+      '/account', '/account/moments',
     ]) {
       expect(sanitizePortalPath(path), path).toBe(path)
       expect(sanitizePortalPath(`${path === '/' ? '' : path}/?ref=private#private`), path).toBe(path)
