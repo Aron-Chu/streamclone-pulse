@@ -219,7 +219,3 @@ Otherwise → it's not TDD
 ```
 
 No exceptions without your human partner's permission.
-
-## BaJie-MCP integration notes
-
-This skill is used by the BaJie-MCP control center when dispatching tasks. When the control center dispatches a feature-development task to feature_dev / backend_dev / frontend_dev, it attaches a `[SKILL: test-driven-development]` hint.

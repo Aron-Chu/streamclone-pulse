@@ -145,7 +145,3 @@ After all tasks are done and verified:
 - Commit each task separately, with a commit message referencing the task number
 - Stop when blocked — don't guess
 - Never start implementing on the main/master branch without the user's explicit agreement
-
-## BaJie-MCP integration notes
-
-This skill is used by BaJie-MCP execution roles (feature_dev / backend_dev, etc.) when they receive a task that comes with a plan.
