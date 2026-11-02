@@ -7,7 +7,8 @@ import { StreamSidebar } from './StreamSidebar.tsx'
 afterEach(() => cleanup())
 
 // One badge rule: the live row says LIVE; the open row follows the page's own verdict,
-// so a page that says "Streamed Oct 29 · 4h" never sits beside a LIVE row.
+// so a page that says "Streamed Oct 29 · 4h" never sits beside a LIVE row, and a page
+// that says "Live now" never sits beside a Synced one (L1, 11-02).
 const row = (over: Partial<AnalyticsStream> = {}) => ({
   streamId: '316700000001',
   login: 'xqc',
@@ -40,6 +41,12 @@ describe('stream list LIVE badge', () => {
   it('the open row of an ended stream never says LIVE, whatever the row data says', () => {
     renderSidebar({ stream: row({ lifecycleState: 'confirmed_live' }), activeLive: false, liveState: 'live', liveStreamId: '316700000001' })
     expect(document.querySelector('[data-stream-row-live]')).toBeNull()
+  })
+
+  it('L1: the open row of a live stream says LIVE, not its sync badge, with no live answer naming it', () => {
+    renderSidebar({ stream: row(), activeLive: true })
+    expect(document.querySelector('[data-stream-row-live]')?.textContent).toBe('Live')
+    expect(document.body.textContent).not.toMatch(/Synced|Partial|Stats only/)
   })
 
   it('a live answer naming another row marks that row only', () => {

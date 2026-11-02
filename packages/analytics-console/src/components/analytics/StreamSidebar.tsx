@@ -170,9 +170,10 @@ export function StreamSidebar({
   liveStreamId?: string
   /**
    * The open page's own live verdict for the active row: false once the page knows the stream
-   * ended (the header says "Streamed …"), so the row never says LIVE beside it. Undefined falls
-   * back to the row rule; the console never forces true, since the open row's badge otherwise
-   * follows the header's "Data:" verdict (pick 11A).
+   * ended (the header says "Streamed …"), so the row never says LIVE beside it; true while the
+   * page says the stream is live ("Live now"), so the open live row says LIVE like every other
+   * live row (L1, 11-02; this replaces pick 11A's Synced on a live open row only). Undefined
+   * falls back to the row rule. A row that is not live keeps the header's "Data:" verdict (11A).
    */
   activeLive?: boolean
   liveSessionPath?: string

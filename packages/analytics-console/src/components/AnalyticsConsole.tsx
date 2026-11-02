@@ -1834,7 +1834,7 @@ export function AnalyticsConsole({
                   isLiveView={isLiveRoute}
                   liveState={detail?.stream?.lifecycleState === 'unknown' ? 'unknown' : channelIsLive || isActiveLiveCollector ? 'live' : isLiveRoute ? detail?.state : undefined}
                   liveStreamId={liveActiveStreamId}
-                  activeLive={sessionEnded ? false : undefined}
+                  activeLive={sessionEnded ? false : sessionIsLive ? true : undefined}
                   liveSessionPath={
                     canonicalLiveSessionSlug
                       ? buildSessionPath(channelLogin, canonicalLiveSessionSlug)
