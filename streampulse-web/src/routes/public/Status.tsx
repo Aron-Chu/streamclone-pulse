@@ -12,6 +12,9 @@ interface PublicStatusPayload {
 }
 interface ExtensionHealthPayload { ok?: boolean; version?: string }
 type ProbeResult<T> = { data: T | null; error: string | null }
+/** The overall line when the service runs and only coverage or chat tracking is behind. */
+export const QUIET_ONLY_LINE = 'Running · a few channels are quiet'
+
 type State = 'operational' | 'degraded' | 'unavailable' | 'unknown'
 
 const PORTAL_VERSION_DISPLAY = portalReleaseShort()
@@ -78,6 +81,13 @@ export default function Status() {
     : statusProbe.data?.degraded || healthProbe.data?.ok === false || componentStates.includes('degraded') ? 'degraded'
     : statusState === 'operational' && healthProbe.data?.ok === true ? 'operational' : statusState === 'operational' ? 'unknown' : statusState
   const errors = [statusProbe.error, healthProbe.error].filter(Boolean)
+  // Only coverage or chat tracking is behind while the API and the panel answer: the service is
+  // running and some channels are quiet. That reads neutral, not as an outage; amber stays for Down.
+  const components = statusProbe.data?.components ?? {}
+  const quietOnly = overall === 'degraded' && healthProbe.data?.ok === true &&
+    normalizedState(components.api ?? statusProbe.data?.api ?? 'operational') === 'operational' &&
+    (['coverage', 'corpus'] as const).some((key) => normalizedState(components[key]) === 'degraded') &&
+    Object.entries(components).every(([key, value]) => key === 'coverage' || key === 'corpus' || normalizedState(value) === 'operational')
   const fromStatus = (value: unknown): State => loading ? 'unknown' : statusProbe.error ? 'unavailable' : normalizedState(value)
   const websiteState = fromStatus(statusProbe.data?.components?.api ?? statusProbe.data?.api)
   const chatTrackingState = fromStatus(statusProbe.data?.components?.corpus)
@@ -96,8 +106,8 @@ export default function Status() {
   return <PublicLayout><section className="panel" data-testid="status-page">
     <header className="mb-6 border-b border-white/[0.08] pb-6"><div className="flex flex-wrap items-center justify-between gap-4">
       <div><h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">System Status</h1><p className="mt-1 text-sm text-zinc-400">Public service health. Open the <Link to="/analytics" className="text-violet-400 hover:underline">Hub</Link> for coverage detail.</p></div>
-      <div data-testid="status-overall" className={`inline-flex items-center gap-2.5 rounded-full border px-4 py-2 text-sm font-bold ${overall === 'operational' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : overall === 'unknown' ? 'border-white/15 bg-white/5 text-zinc-300' : 'border-amber-500/30 bg-amber-500/10 text-amber-300'}`}>
-        <span>{loading ? 'Checking systems…' : stateLabel(overall)}</span>
+      <div data-testid="status-overall" className={`inline-flex items-center gap-2.5 rounded-full border px-4 py-2 text-sm font-bold ${overall === 'operational' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : overall === 'unknown' || quietOnly ? 'border-white/15 bg-white/5 text-zinc-300' : 'border-amber-500/30 bg-amber-500/10 text-amber-300'}`}>
+        <span>{loading ? 'Checking systems…' : quietOnly ? QUIET_ONLY_LINE : stateLabel(overall)}</span>
       </div>
     </div></header>
     {loading ? <div className="flex items-center gap-2.5 py-8 text-zinc-400"><span className="analytics-route-fallback__spinner" /><span>Probing StreamPulse services…</span></div> : null}

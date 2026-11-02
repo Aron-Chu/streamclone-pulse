@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import Status from '../src/routes/public/Status'
+import Status, { QUIET_ONLY_LINE } from '../src/routes/public/Status'
 
 vi.mock('../src/lib/apiClient', async importOriginal => ({
   ...await importOriginal<typeof import('../src/lib/apiClient')>(),
@@ -31,13 +31,37 @@ describe('public Status', () => {
       .mockResolvedValueOnce(response({ status: 'operational', components: { api: 'operational', corpus: 'degraded', coverage: 'operational' } }))
       .mockResolvedValueOnce(response({ ok: true, version: '0.2.41' })))
     render(<MemoryRouter><Status /></MemoryRouter>)
-    await waitFor(() => expect(overall()).toBe('Slow'))
+    await waitFor(() => expect(overall()).toBe(QUIET_ONLY_LINE))
     expect(rows()).toEqual({ 'Website': 'Working', 'Live chat tracking': 'Slow', 'Twitch panel data': 'Working' })
     expect(screen.getByTestId('status-checked').textContent).toMatch(/^Checked \d{1,2}:\d{2}/)
     // No operator words on the page itself.
     const page = screen.getByTestId('status-page').cloneNode(true) as HTMLElement
     page.querySelector('[data-testid="status-details"]')?.remove()
     expect(page.textContent).not.toMatch(/IRC|Coverage Engine|Extension Ingest|Hosted API|Telemetry|Provenance|Operational|rollups|heatmaps/i)
+  })
+
+  it('reads only-coverage-behind as running and neutral, and keeps amber when the API or panel is behind', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(response({ status: 'degraded', degraded: true, components: { api: 'operational', corpus: 'operational', coverage: 'degraded' } }))
+      .mockResolvedValueOnce(response({ ok: true })))
+    const quiet = render(<MemoryRouter><Status /></MemoryRouter>)
+    await waitFor(() => expect(overall()).toBe(QUIET_ONLY_LINE))
+    expect(screen.getByTestId('status-overall').className).not.toContain('amber')
+    quiet.unmount()
+
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(response({ status: 'degraded', components: { api: 'degraded', corpus: 'degraded', coverage: 'operational' } }))
+      .mockResolvedValueOnce(response({ ok: true })))
+    const api = render(<MemoryRouter><Status /></MemoryRouter>)
+    await waitFor(() => expect(overall()).toBe('Slow'))
+    expect(screen.getByTestId('status-overall').className).toContain('amber')
+    api.unmount()
+
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(response({ status: 'operational', components: { api: 'operational', corpus: 'degraded', coverage: 'operational' } }))
+      .mockResolvedValueOnce(response({ ok: false })))
+    render(<MemoryRouter><Status /></MemoryRouter>)
+    await waitFor(() => expect(overall()).toBe('Slow'))
   })
 
   it('reads a failing component as Down and a failing extension probe as a Down panel', async () => {
