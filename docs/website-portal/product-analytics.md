@@ -29,7 +29,12 @@ token or without native beacon/UUID support display analytics as unavailable.
 
 The build input is `VITE_POSTHOG_PROJECT_TOKEN`; supply it through the process
 environment, never a committed token or local environment file. The only allowed
-ingestion origin is `https://us.i.posthog.com` in both CSP policies. Production
+ingestion origin is `https://i.streampulse.stream` in both CSP policies. This is
+PostHog's managed reverse proxy, which routes through Cloudflare as a PostHog
+subprocessor. It forwards the same single-event capture path and envelope; it
+does not enable an SDK or additional collection. Consent, GPC and DNT remain
+required before any beacon. DNS and certificate readiness do not establish that
+a website release uses this endpoint or that an event was ingested. Production
 enablement must verify that the intended project's **Discard IP data** setting
 is on. Network transmission inherently exposes the source IP to the processor;
 event properties and GeoIP enrichment do not store it.
