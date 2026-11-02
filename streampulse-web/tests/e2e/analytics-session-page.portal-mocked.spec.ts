@@ -112,9 +112,10 @@ test.describe('analytics session page shell, d3-v2 session-original (mocked)', (
     const texts = (await items.allTextContents()).map(text => text.trim())
     expect(texts[0]).toBe('xQc')
     expect(texts[1]).toBe('Just Chatting')
-    expect(texts[2]).toMatch(/^Started /)
-    // An ended stream names its end ("Ended 12h ago"); the read time is for live and unknown sessions.
-    expect(texts[3]).toMatch(/^(Ended|Updated|Refreshed) /)
+    // An ended stream says when it streamed and for how long ("Streamed Jul 25 · 3h");
+    // the read time ("Updated …") is for live and unknown sessions, so it leaves only the refresh icon.
+    expect(texts[2]).toMatch(/^Streamed [A-Z][a-z]{2} \d{1,2} · \d+(h|m|h \d+m)/)
+    expect(texts[3]).toBe('')
     expect(texts[4]).toBe('First 54s not tracked')
     expect(texts[5]).toBe('Watch VOD')
     expect(texts[6]).toMatch(/^Data: (Good|Limited|Partial|No data)$/)
@@ -127,7 +128,7 @@ test.describe('analytics session page shell, d3-v2 session-original (mocked)', (
     await expect(vod).toHaveAttribute('href', `https://www.twitch.tv/videos/${PORTAL_VOD_ID}`)
     await expect(vod).toHaveAttribute('target', '_blank')
 
-    // "Refresh data" is the icon beside "Ended" / "Updated", not a text button.
+    // "Refresh data" is an icon (beside "Updated" while live), not a text button.
     const refresh = page.getByRole('button', { name: 'Refresh data' })
     await expect(refresh).toHaveCount(1)
     await expect(refresh).toHaveText('')

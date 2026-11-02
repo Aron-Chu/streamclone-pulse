@@ -113,6 +113,10 @@ function sessionUpdatedText() {
   return document.querySelector<HTMLElement>('[data-session-updated]')?.textContent ?? ''
 }
 
+function streamedText() {
+  return document.querySelector<HTMLElement>('[data-session-streamed]')?.textContent ?? ''
+}
+
 function statLabels() {
   return [...document.querySelectorAll('[data-session-stat-row] .sc-stat-card__label')].map(el => el.textContent)
 }
@@ -136,9 +140,9 @@ describe('AnalyticsConsole session page shell (d3-v2 session-original)', () => {
     const text = items.map(item => item.textContent ?? '')
     expect(text[0]).toBe('xQc')
     expect(text[1]).toBe('Grand Theft Auto V')
-    expect(text[2]).toMatch(/^Started /)
-    // An ended stream names its end, not the read time (which reads as live).
-    expect(text[3]).toMatch(/^Ended \d+d ago$/)
+    // An ended stream says when it streamed and for how long, not the read time (which reads as live).
+    expect(text[2]).toMatch(/^Streamed Jul 1[56] · 3m\. /)
+    expect(text[3]).toBe('')
     expect(text[4]).toBe('First 54s not tracked')
     expect(text[5]).toBe('Watch VOD')
     expect(text[6]).toMatch(/^Data: /)
@@ -176,12 +180,13 @@ describe('AnalyticsConsole session page shell (d3-v2 session-original)', () => {
     expect(statLabels()).toEqual(['Viewers at end', 'Average viewers', 'Peak viewers', 'Chat messages', 'Emote uses', 'Time tracked'])
   })
 
-  it('names when an ended stream ended and keeps Refresh data, which then says it refreshed', async () => {
+  it('says when an ended stream streamed and for how long, and keeps Refresh data, which then says it refreshed', async () => {
     renderConsole()
     await screen.findByTestId('analytics-chart')
-    await waitFor(() => expect(sessionUpdatedText()).toMatch(/^Ended \d+d ago$/))
+    await waitFor(() => expect(streamedText()).toMatch(/^Streamed Jul 1[56] · 3m$/))
     const updated = document.querySelector<HTMLElement>('[data-session-updated]')!
-    expect(updated.textContent).not.toMatch(/Updated|ago.*ago/)
+    expect(updated.textContent).toBe('')
+    expect(updated.textContent).not.toMatch(/Updated|Ended/)
     const refresh = within(updated).getByRole('button', { name: 'Refresh data' })
     expect(refresh.hasAttribute('disabled')).toBe(false)
     const reads = api.getAnalyticsStream.mock.calls.length
@@ -212,7 +217,20 @@ describe('AnalyticsConsole session page shell (d3-v2 session-original)', () => {
     })
     renderConsole()
     await screen.findByTestId('analytics-chart')
-    await waitFor(() => expect(sessionUpdatedText()).toMatch(/^Ended \d+d ago$/))
+    await waitFor(() => expect(streamedText()).toMatch(/^Streamed Jul 1[56] · 3m$/))
+  })
+
+  it('reads a hosted ended stream (no endedAt, lifecycle unknown) from availability alone', async () => {
+    const base = detail()
+    api.getAnalyticsStream.mockResolvedValue({
+      ...base,
+      stream: { ...base.stream, endedAt: undefined, lifecycleState: 'unknown', lifecycleDetectedAt: undefined },
+      availability: { ...base.availability, liveDvrState: 'ended' },
+    })
+    renderConsole()
+    await screen.findByTestId('analytics-chart')
+    await waitFor(() => expect(streamedText()).toMatch(/^Streamed Jul 1[56] · 3m$/))
+    expect(statLabels()[0]).toBe('Viewers at end')
   })
 
   it('"Data" opens the Status tab, whose panel is always in the page, and moves focus to it', async () => {

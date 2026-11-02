@@ -173,9 +173,10 @@ test.describe('session bar strip at 1440', () => {
     const body = await box(strip.locator('.bkc-body'))
     expect(pic.width).toBeLessThanOrEqual(420.5)
     expect(pic.x + pic.width).toBeLessThanOrEqual(body.x)
-    expect(Math.abs(pic.width / pic.height - 16 / 9)).toBeLessThan(0.05)
+    // no frame means no box: a compact row (Play, then the reason), never an empty 16:9 box
+    expect(pic.height).toBeLessThan((pic.width * 9) / 16)
 
-    // no frame from the web client today: a dark box and its reason, never a stand-in frame or blurred art
+    // no frame from the web client today: the reason, never a stand-in frame or blurred art
     // (candidate, 10-30, PIC-2); the reel's line (fix, 10-30, PIC-3)
     await expect(strip.locator('[data-preview-tile]')).toHaveAttribute('data-preview-tile', 'fallback')
     await expect(strip.locator('[data-preview-frame]')).toHaveCount(0)

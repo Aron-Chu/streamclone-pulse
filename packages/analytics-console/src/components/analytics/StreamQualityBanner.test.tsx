@@ -35,4 +35,20 @@ describe('StreamQualityBanner', () => {
     expect(screen.getByRole('status').textContent).toContain('Session metadata only')
     expect(screen.queryByRole('button')).toBeNull()
   })
+
+  it('hides the sync notes from visitors, and keeps them where sync actions exist', () => {
+    const partial: StreamQualityDiagnosis = {
+      issues: ['partial_chat'],
+      message: 'Chat coverage is partial for this stream. A full sync can fill missing segments.',
+      suggestedAction: 'sync_full',
+      actionLabel: 'Sync chat & emotes',
+    }
+    for (const issue of ['partial_chat', 'viewer_resync', 'syncing'] as const) {
+      const { container } = render(<StreamQualityBanner diagnosis={{ ...partial, issues: [issue] }} />)
+      expect(container.firstChild).toBeNull()
+      cleanup()
+    }
+    render(<StreamQualityBanner diagnosis={partial} canSync />)
+    expect(screen.getByRole('status').textContent).toContain('A full sync can fill missing segments')
+  })
 })

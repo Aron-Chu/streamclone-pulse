@@ -5,11 +5,12 @@ import {
   streamIsSidebarVisible,
   analyticsStreamPathSlug,
   streamSyncBadgeState,
+  streamRowIsLive,
   streamSyncBadgeLabel,
   streamSyncBadgeTitle,
   type StreamSyncEvidence,
 } from '../../utils/syncedLiveStream.ts'
-import { count, displayStreamTitle, duration, formatDateTime, getLocalDateString } from '../../utils/consoleFormat.ts'
+import { count, displayStreamTitle, duration, formatDateDotTime, getLocalDateString } from '../../utils/consoleFormat.ts'
 import { CoreMinuteChartsNotice } from '../CoreMinuteChartsNotice.tsx'
 import { useEdgeFade } from '../../hooks/useSessionColumnFill.ts'
 import {
@@ -125,6 +126,7 @@ export function StreamSidebar({
   isLiveView,
   liveState,
   liveStreamId,
+  activeLive,
   syncing,
   syncedOnly,
   onSyncedOnlyChange,
@@ -166,6 +168,13 @@ export function StreamSidebar({
   isLiveView: boolean
   liveState?: string
   liveStreamId?: string
+  /**
+   * The open page's own live verdict for the active row: false once the page knows the stream
+   * ended (the header says "Streamed …"), so the row never says LIVE beside it. Undefined falls
+   * back to the row rule; the console never forces true, since the open row's badge otherwise
+   * follows the header's "Data:" verdict (pick 11A).
+   */
+  activeLive?: boolean
   liveSessionPath?: string
   syncing?: boolean
   syncedOnly?: boolean
@@ -308,6 +317,7 @@ export function StreamSidebar({
               const syncEvidence = isActive ? activeSyncEvidence : undefined
               const syncBadge = streamSyncBadgeState(stream, Boolean(syncing && isActive), syncEvidence)
               const isSyncingActive = syncBadge === 'syncing'
+              const rowLive = !isSyncingActive && (isActive && activeLive !== undefined ? activeLive : streamRowIsLive(stream, { liveStreamId, liveState }))
               const rollupStats = isSyncingActive ? activeRollupStats : null
               const games = sidebarStreamGames(stream, categoryIdsByName) // (candidate, 10-30)
               // The current stream's row stays in view while the list is collapsed (MOCK).
@@ -332,8 +342,8 @@ export function StreamSidebar({
                     isActive ? 'border-l-cyan-400 bg-cyan-400/10' : 'border-l-transparent'
                   }`}
                 >
-                  <div className="text-xs font-black uppercase tracking-wide text-zinc-400">
-                    {formatDateTime(stream.startedAt)}
+                  <div className="text-xs font-semibold text-zinc-400">
+                    {formatDateDotTime(stream.startedAt)}
                   </div>
                   <div
                     className="sc-stream-row__title mt-0.5 text-[13px] font-bold leading-snug text-white"
@@ -344,12 +354,18 @@ export function StreamSidebar({
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                     {/* Covers + names, not the uppercase "Games played: …" chip (GP-4, candidate, 10-30). */}
                     {games.length ? <StreamRowGames games={games} /> : null}
-                    <span
-                      className={`rounded px-1.5 py-0.5 text-xs font-black uppercase ${badgeTone}`}
-                      title={streamSyncBadgeTitle(syncBadge, stream, syncEvidence)}
-                    >
-                      {streamSyncBadgeLabel(syncBadge)}
-                    </span>
+                    {rowLive ? (
+                      <span className="rounded bg-red-500/15 px-1.5 py-0.5 text-xs font-black uppercase text-red-300" data-stream-row-live>
+                        Live
+                      </span>
+                    ) : (
+                      <span
+                        className={`rounded px-1.5 py-0.5 text-xs font-black uppercase ${badgeTone}`}
+                        title={streamSyncBadgeTitle(syncBadge, stream, syncEvidence)}
+                      >
+                        {streamSyncBadgeLabel(syncBadge)}
+                      </span>
+                    )}
                   </div>
                   {isActive && activeMinutesUnavailable ? (
                     <p className="mt-1.5 text-xs font-semibold leading-snug text-amber-200/80">

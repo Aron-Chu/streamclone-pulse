@@ -91,7 +91,7 @@ import { resolveMomentVodJump } from '../utils/selectedMomentDisplay.ts'
 import { SyncStatusPanel } from './analytics/SyncStatusPanel.tsx'
 import { StreamQualityBanner } from './analytics/StreamQualityBanner.tsx'
 import { diagnoseStreamQuality, sessionDataQualityLabel } from '../utils/streamQuality.ts'
-import { sessionEndedAtMs } from '../utils/sessionEnd.ts'
+import { sessionIsEnded, sessionStreamedLine, sessionVodLine } from '../utils/sessionState.ts'
 import { isTerminalSyncPhase, pollSyncUntilDone } from '../utils/syncPolling.ts'
 import { buildSessionSignals } from '../signals/buildSessionSignals.ts'
 import { SessionSignalTape } from './signals/SessionSignalTape.tsx'
@@ -781,9 +781,10 @@ export function AnalyticsConsole({
     () => sessionStreamEdges({
       rollups: sessionRollups,
       streamStartedAt: detail?.stream?.startedAt,
-      streamEnded: Boolean(detail?.stream?.endedAt) && !sessionIsLive,
+      // the hosted adapter blanks endedAt, so the end comes from the shared rule (availability's "ended")
+      streamEnded: sessionIsEnded({ live: sessionIsLive, stream: detail?.stream, availability: detail?.availability }),
     }),
-    [detail?.stream?.endedAt, detail?.stream?.startedAt, sessionIsLive, sessionRollups],
+    [detail?.stream, detail?.availability, sessionIsLive, sessionRollups],
   )
 
   // One source of truth for chart markers: refined recap windows outrank the
@@ -1029,9 +1030,12 @@ export function AnalyticsConsole({
   ])
 
   const stream = detail?.stream
-  // An ended stream names its end ("Ended 31h ago", "Viewers at end") instead of
-  // the read time, which reads as live. Refresh data stays: ended data still changes.
-  const sessionEndedAt = sessionEndedAtMs(stream, sessionIsLive)
+  // An ended stream says when it streamed and for how long ("Streamed Oct 29 · 4h",
+  // "Viewers at end") instead of the read time, which reads as live. The hosted
+  // data blanks endedAt, so the shared rule reads availability's "ended" too.
+  // Refresh data stays: ended data still changes.
+  const sessionEnded = sessionIsEnded({ live: sessionIsLive, stream, availability: detail?.availability })
+  const streamedLine = sessionEnded ? sessionStreamedLine(stream?.startedAt, detail?.momentRollups ?? detail?.rollups) : null
   const fallbackVodId = useMemo(
     () =>
       resolveSessionFallbackVodId({
@@ -1068,7 +1072,9 @@ export function AnalyticsConsole({
   // answered). The bar picture and the moments reel read this one flag, so
   // they say the same line; it used to be `isLive && vodId` on the bar only.
   const recording = sessionIsLive && sidebarStreams.length > 0
-  const vodRecording = recording && Boolean(streamVodId)
+  // The pictures' "No preview frames while live." follows the live stream itself, VOD id or not:
+  // a live stream with no VOD id yet used to blame missing frames instead.
+  const vodRecording = recording
   // (candidate, 10-30) PIC-4: the "Live now" tile names the login only while
   // recording, and hides once the newest measured minute is old (LiveNowTile.tsx).
   const liveNowLogin = recording ? channelLogin : null
@@ -1084,6 +1090,7 @@ export function AnalyticsConsole({
       }),
     [detail, recapForStream?.vodId, fallbackVodId, isActiveLiveCollector, channelIsLive],
   )
+  const noVodLine = sessionVodLine(vodLinkState)
   // Tiles and totals read every measured minute; `rollups` is the chart's downsampled series.
   const measuredRollups = detail?.momentRollups?.length ? detail.momentRollups : detail?.rollups
 
@@ -1537,6 +1544,8 @@ export function AnalyticsConsole({
                     isActiveLiveCollector={isActiveLiveCollector}
                     stream={stream}
                     syncing={syncing}
+                    streamedLine={streamedLine}
+                    ended={sessionEnded}
                     hasChartData={
                       (detail?.rollups ?? []).some(rollupHasMinuteData)
                       || rollupsHaveViewerData(detail?.rollups ?? [])
@@ -1549,8 +1558,8 @@ export function AnalyticsConsole({
                   <span className="mi" data-session-updated>
                     {lastRefreshedAt
                       ? <RelativeTimeText prefix="Refreshed" value={lastRefreshedAt} />
-                      : sessionEndedAt != null
-                        ? <RelativeTimeText prefix="Ended" value={sessionEndedAt} />
+                      : sessionEnded
+                        ? null
                         : <RelativeTimeText prefix="Updated" value={sessionUpdatedAt} />}
                     <button
                       type="button"
@@ -1630,7 +1639,7 @@ export function AnalyticsConsole({
 
         <section className="ssp-stats grid grid-cols-2 gap-3 lg:grid-cols-6" data-session-stat-row aria-label="Stream figures">
           <StatCard
-            label={sessionEndedAt != null ? 'Viewers at end' : 'Latest viewers'}
+            label={sessionEnded ? 'Viewers at end' : 'Latest viewers'}
             value={statCardsPending ? '-' : statCardClasses.current.placeholder ?? count(headerStats.current)}
             tone={statCardClasses.current.muted ? STAT_PLACEHOLDER_MUTED_CLASS : 'text-cyan-300/90'}
           />
@@ -1779,10 +1788,9 @@ export function AnalyticsConsole({
               />
               {/* d3-v2 session-original: "Watch VOD" sits in the meta line; only a
                   missing VOD still says why under the chart. */}
-              {!streamVodId && vodLinkState.detail ? (
-                <p className={`text-xs font-semibold ${vodLinkState.status === 'request_failed' ? 'text-amber-200' : 'text-zinc-400'}`}>
-                  {vodLinkState.status === 'request_failed' ? `${vodLinkState.label} · ` : null}
-                  {vodLinkState.detail}
+              {!streamVodId ? (
+                <p className={`text-xs font-semibold ${noVodLine.failed ? 'text-amber-200' : 'text-zinc-400'}`} data-session-vod-line data-vod-status={vodLinkState.status}>
+                  {noVodLine.text}
                 </p>
               ) : null}
             </div>
@@ -1824,6 +1832,7 @@ export function AnalyticsConsole({
                   isLiveView={isLiveRoute}
                   liveState={detail?.stream?.lifecycleState === 'unknown' ? 'unknown' : channelIsLive || isActiveLiveCollector ? 'live' : isLiveRoute ? detail?.state : undefined}
                   liveStreamId={liveActiveStreamId}
+                  activeLive={sessionEnded ? false : undefined}
                   liveSessionPath={
                     canonicalLiveSessionSlug
                       ? buildSessionPath(channelLogin, canonicalLiveSessionSlug)

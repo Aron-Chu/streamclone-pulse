@@ -16,6 +16,9 @@
  */
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { boxArtAtSize } from '../../utils/boxArtSize.ts'
+import { getEmoteImageUrl } from '../../utils/consoleFormat.ts'
+import { isChattingCategory } from '../../utils/streamSidebarGames.ts'
+import { sessionHasFrame } from '../../utils/sessionState.ts'
 import { momentRowHms } from '../../utils/momentRowDisplay.ts'
 import {
   frameBackgroundStyle,
@@ -92,6 +95,19 @@ export interface MomentReelCardProps {
   onArtError?: (url: string) => void
 }
 
+/**
+ * Just Chatting / IRL has no gameplay to picture (Aron's pick 4): the card shows the moment's top emote,
+ * large, in the cover's place. Null for a game, or when no emote has a picture.
+ */
+export function reelCardEmote(model: Pick<SessionMomentRowModel, 'game' | 'emotes'>): { emote: SessionMomentRowModel['emotes'][number]; src: string } | null {
+  if (!isChattingCategory(model.game?.name)) return null
+  for (const emote of model.emotes) {
+    const src = getEmoteImageUrl(emote)
+    if (src) return { emote, src }
+  }
+  return null
+}
+
 export function MomentReelCard({
   model,
   size,
@@ -151,10 +167,15 @@ export function MomentReelCard({
     })
   }
 
+  const bigEmote = shown ? null : reelCardEmote(model)
+  // No frame means no box: a compact card (rank, cover or top emote, words), never an empty 16:9 box.
+  // The 16:9 picture comes back on its own once a frame loads.
+  const flat = !sessionHasFrame(shown)
   const className = [
     'ssr-rc',
     hero ? 'ssr-rc--hero' : 'ssr-rc--sm',
-    shown ? 'has-fr' : artUrl ? 'has-art' : '',
+    shown ? 'has-fr' : bigEmote ? 'has-emote' : artUrl ? 'has-art' : '',
+    flat ? 'flat' : '',
     locked ? 'lk sc-moment-row-selected' : '',
     ghost ? 'ghost' : '',
     scrub ? 'scrubbing' : '',
@@ -202,7 +223,18 @@ export function MomentReelCard({
       </span>
       {/* the cover whole and sharp in the corner, no blur, no zoom (candidate, 10-30, PIC-2); asked at ~2x the
           drawn size (hero up to 144 px tall, small up to 96 px); a failed load still reports the games answer's URL */}
-      {!shown && artUrl ? (
+      {bigEmote ? (
+        <img
+          className="ssr-rc-emote"
+          src={bigEmote.src}
+          alt=""
+          aria-hidden="true"
+          decoding="async"
+          loading="lazy"
+          data-moment-card-emote={bigEmote.emote.name}
+        />
+      ) : null}
+      {!shown && !bigEmote && artUrl ? (
         <img
           className="ssr-rc-cover"
           src={boxArtAtSize(artUrl, hero ? 216 : 144, hero ? 288 : 192)}

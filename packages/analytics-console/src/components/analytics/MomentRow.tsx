@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { NO_VOD_LINKED_COPY } from '../../utils/sessionState.ts'
 import { momentRankAccent, momentReasonChipTone } from '../../utils/momentListDisplay.tsx'
 import { boxArtAtSize } from '../../utils/boxArtSize.ts'
 import { count, getEmoteImageUrl } from '../../utils/consoleFormat.ts'
@@ -517,7 +518,7 @@ export function SessionMomentPlayer({
         ) : (
           <>
             {start == null ? (
-              <p className="ssr-pl-msg">{vodId ? "This minute isn't in the VOD yet." : 'No VOD for this stream yet.'}</p>
+              <p className="ssr-pl-msg">{!vodId ? NO_VOD_LINKED_COPY : vodAlignSeconds == null ? 'Timestamp alignment is not verified.' : "This minute isn't in the VOD yet."}</p>
             ) : (
               <button type="button" className="ssr-pl-go" data-moment-play onClick={play}>
                 <MomentPlayIcon />

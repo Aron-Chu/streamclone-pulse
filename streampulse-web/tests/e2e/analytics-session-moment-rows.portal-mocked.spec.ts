@@ -17,8 +17,9 @@ import {
 // a ±8 min spark, no backdrop: the game's small cover is the row's only picture
 // (F6: never a live frame; candidate 10-30, PIC-2: the blurred box art went).
 // Since 2026-10-16 the top three are the highlight reel (recap-r1 C1, MomentReel.tsx):
-// #1 a large card, #2 and #3 side by side, each the moment's VOD preview frame or
-// the game's box art as a sharp cover; rows start at #4, behind "Show N more moments".
+// #1 a large card, #2 and #3 side by side, each the moment's VOD preview frame or, with no
+// frame, a compact card with the game's box art as a sharp cover (Just Chatting / IRL: the
+// moment's top emote); rows start at #4, behind "Show N more moments".
 const LIST = '[data-moment-list]'
 const ROW = '[data-moment-row]'
 const REEL = '[data-moment-reel]'
@@ -170,8 +171,9 @@ test.describe('session Moments rows (d3-v2) at 1440', () => {
     // F8: the backend label and score only; no rate or spark on a card.
     await expect(page.locator(`${CARD} .ssr-rt, ${CARD} svg.ssr-msp`)).toHaveCount(0)
 
-    // 16:9 pictures, 8 px radius and weight 400 (the console's button reset would make them 6 px and 600);
-    // #1 is the big one, #2 and #3 share the other column at 1440.
+    // 8 px radius and weight 400 (the console's button reset would make them 6 px and 600);
+    // #1 is the big one, #2 and #3 share the other column at 1440. No frame means no box:
+    // the cards are compact rows, never an empty 16:9 picture.
     const style = await first.evaluate(el => {
       const cs = getComputedStyle(el)
       return { radius: cs.borderTopLeftRadius, weight: cs.fontWeight }
@@ -179,8 +181,9 @@ test.describe('session Moments rows (d3-v2) at 1440', () => {
     expect(style).toEqual({ radius: '8px', weight: '400' })
     const hero = await box(first)
     const small = await box(row(page, 2))
-    expect(Math.abs(hero.w / hero.h - 16 / 9)).toBeLessThan(0.05)
-    expect(Math.abs(small.w / small.h - 16 / 9)).toBeLessThan(0.05)
+    await expect(page.locator(CARD)).toHaveClass([/\bflat\b/, /\bflat\b/, /\bflat\b/])
+    expect(hero.h).toBeLessThan((hero.w * 9) / 16)
+    expect(small.h).toBeLessThan((small.w * 9) / 16)
     expect(hero.w).toBeGreaterThan(small.w * 1.5)
 
     // No reduced-motion glow, and no frame without a verified VOD: the picture is box art (F6).
@@ -189,8 +192,9 @@ test.describe('session Moments rows (d3-v2) at 1440', () => {
     expect(await page.locator(CARD).evaluateAll(els => els.map(el => el.getAttribute('data-moment-frame')))).toEqual(['fallback', 'fallback', 'fallback'])
     const srcs = await page.locator(`${CARD} img.ssr-rc-cover`).evaluateAll(els => els.map(el => el.getAttribute('src') ?? ''))
     for (const src of srcs) expect(src.startsWith('https://static-cdn.jtvnw.net/ttv-boxart/')).toBe(true)
-    // (fix, 10-30, PIC-3) the same line as the bar's picture; never "for this stream" (F6 is our lookup)
-    await expect(page.locator('[data-moment-reel-note]')).toHaveText("Preview frames aren't available right now. Pictures are the game's box art.")
+    // The fixture stream is live with no VOD yet: the reel says why there are no frames, plainly,
+    // never "for this stream" (F6 is our lookup) and never the box-art line over emote cards.
+    await expect(page.locator('[data-moment-reel-note]')).toHaveText('No preview frames while live.')
   })
 
   test('rows from #4 keep the rate and the ±8 min spark', async ({ page }) => {
@@ -286,19 +290,21 @@ test.describe('session Moments rows (d3-v2) at 1440', () => {
 test.describe('session Moments rows: game art', () => {
   test.use({ viewport: { width: 1440, height: 900 } })
 
-  test('the reel shows the game and its box art as a sharp, whole cover; rows keep only the small cover', async ({ page }) => {
+  test('a Just Chatting card shows its top emote large in the cover\'s place; rows keep only the small cover', async ({ page }) => {
     await open(page)
     const first = row(page, 1)
     await expect(first.locator('.ssr-rc-gm'), 'the page passes games= to SessionRecapMomentsStrip').toHaveText('Just Chatting')
-    await expect(first).toHaveClass(/\bhas-art\b/)
-    const art = first.locator('img.ssr-rc-cover')
-    // (candidate, 10-30, PIC-2) asked at ~2x the hero cover's size
-    await expect(art).toHaveAttribute('src', /^https:\/\/static-cdn\.jtvnw\.net\/ttv-boxart\/.+-216x288\.jpg$/)
-    // No blur and no zoom: the cover sits inside the card at the box art's own 3:4.
+    // Just Chatting / IRL has no gameplay to picture: the moment's top emote, not the category's box art
+    await expect(first).toHaveClass(/\bhas-emote\b/)
+    await expect(first.locator('img.ssr-rc-cover')).toHaveCount(0)
+    const art = first.locator('img.ssr-rc-emote')
+    await expect(art).toHaveCount(1)
+    await expect(art).toHaveAttribute('loading', 'lazy')
+    await expect(art).toHaveAttribute('data-moment-card-emote', /\S/)
+    // No blur and no zoom: the emote sits whole inside the card.
     expect(await art.evaluate(el => getComputedStyle(el).filter)).toBe('none')
     const card = (await first.boundingBox())!
     const cover = (await art.boundingBox())!
-    expect(Math.abs(cover.width / cover.height - 3 / 4)).toBeLessThan(0.03)
     expect(cover.x).toBeGreaterThanOrEqual(card.x)
     expect(cover.y).toBeGreaterThanOrEqual(card.y)
     expect(cover.x + cover.width).toBeLessThanOrEqual(card.x + card.width)
@@ -322,8 +328,13 @@ test.describe('session Moments rows: game art', () => {
     await expect(page.locator('[data-moment-row-play]')).toHaveCount(0)
   })
 
-  test('with a VOD every card gets the round play button; pressing it locks the moment', async ({ page }) => {
+  test('a VOD without a verified alignment gets no play button: Play could land on the wrong minute', async ({ page }) => {
     await open(page, { vodId: PORTAL_VOD_ID })
+    await expect(page.locator('[data-moment-row-play]')).toHaveCount(0)
+  })
+
+  test('with an aligned VOD every card gets the round play button; pressing it locks the moment', async ({ page }) => {
+    await open(page, {}, { verifiedVod: true, beforeOpen: () => stubStoryboard(page) })
     const shown = await page.locator(ROW).count()
     await expect(page.locator(`${ROW} [data-moment-row-play]`)).toHaveCount(shown)
     expect((await box(row(page, 1).locator('[data-moment-row-play]'))).w).toBe(32)
