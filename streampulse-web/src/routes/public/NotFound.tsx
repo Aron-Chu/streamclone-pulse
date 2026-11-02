@@ -9,7 +9,7 @@ export default function NotFound() {
         <p className="muted">That URL is not a public StreamPulse page.</p>
         <p className="public-document__actions">
           <Link to="/">Return home</Link>
-          <Link to="/analytics">Open Analytics</Link>
+          <Link to="/analytics">Open the Hub</Link>
           <Link to="/support">Support</Link>
         </p>
       </section>

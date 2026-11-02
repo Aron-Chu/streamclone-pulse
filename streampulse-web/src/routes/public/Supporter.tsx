@@ -51,7 +51,7 @@ export default function Supporter() {
 
         <section className="mt-8 rounded-xl border border-violet-500/25 bg-violet-500/[0.06] p-6" data-testid="supporter-terms">
           <h2 className="!mt-0">The offer, once sign-ups open</h2>
-          <dl className="mt-4 grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-[10rem_minmax(0,1fr)]">
+          <dl className="public-terms">
             <dt className="text-sm font-bold text-zinc-400">Price</dt>
             <dd className="m-0 text-sm font-bold text-white">{PRICE_DISPLAY}</dd>
             <dt className="text-sm font-bold text-zinc-400">Renews</dt>
@@ -109,7 +109,7 @@ export default function Supporter() {
         <h2 id="subscribe">How to subscribe</h2>
         <div className="rounded-xl border border-white/[0.08] bg-black/20 p-6" data-testid="supporter-availability">
           <p className="!mt-0">
-            <strong>Supporter sign-ups are not open yet.</strong> When they open, choose{' '}
+            When sign-ups open, choose{' '}
             <strong>Become a Supporter</strong> in the extension&rsquo;s{' '}
             <strong>Account &amp; Supporter</strong> page and pay on Stripe.
           </p>
@@ -130,15 +130,14 @@ export default function Supporter() {
           renewal, a membership may show as active for up to 72 hours after the paid period ends. See{' '}
           <Link to={REFUNDS_PATH}>cancellation and refunds</Link> for the details.
         </p>
-        <p data-testid="supporter-reinstall">
-          Your Supporter connection stays in this browser. Reinstalled or using another browser?
-          Contact billing support to restore a membership.
-        </p>
+        {/* One answer for a new browser (audit row 2, Aron 11-02): restoring access
+            is us, billing is Stripe, and one does not do the other. */}
         <p data-testid="supporter-billing-help">
-          You can still cancel or update billing in{' '}
+          Your membership is saved in this browser. If you reinstall or switch browsers,{' '}
+          <a href="mailto:privacy@streampulse.stream">contact us</a> to restore it; changing billing in
+          Stripe does not restore extension access. You can cancel or update billing any time in{' '}
           <a href={STRIPE_CUSTOMER_PORTAL_LOGIN_URL} target="_blank" rel="noopener noreferrer">Stripe&rsquo;s customer portal</a>{' '}
-          with the email you paid with. Billing changes do not restore extension access;{' '}
-          <a href="mailto:privacy@streampulse.stream">contact us</a> and we&rsquo;ll help.
+          with the email you paid with.
         </p>
 
         <h2>Before you subscribe</h2>
@@ -153,7 +152,7 @@ export default function Supporter() {
         {/* OWNER CONFIRMED 2026-10-13 (D35): Aron answers billing, cancellation
             and refund requests within 7 days. Private mailbox routing is ops-owned. */}
         <p>
-          Billing and account questions: <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a>.
+          Billing, account and privacy questions: <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a>.
           Product questions and bug reports belong on the <Link to="/support">support page</Link>.
         </p>
         <p>Aron answers billing, cancellation and refund requests within 7 days.</p>
