@@ -502,8 +502,8 @@
 .hv5-sg-open b { color: var(--sp-text-1); }
 .hv5-sg-k { margin-left: auto; font-size: 12px; color: var(--sp-text-3); }
 /* 3A (11-02): the looked-up login's row, a game's cover and an emote's picture */
-[data-kind="login"] > .hv5-ico { flex: none; width: 16px; height: 16px; margin: 0 6px; }
-[data-kind="login"] b { color: var(--sp-text-1); }
+:is(.hub-v5, .hv5-dock) .hv5-sugg [data-kind="login"] > .hv5-ico { flex: none; width: 16px; height: 16px; margin: 0 6px; }
+:is(.hub-v5, .hv5-dock) .hv5-sugg [data-kind="login"] b { color: var(--sp-text-1); }
 .hv5-sg-gm,
 .hv5-sg-em {
   flex: none;

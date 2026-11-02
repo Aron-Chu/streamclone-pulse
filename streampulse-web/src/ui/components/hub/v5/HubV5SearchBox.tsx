@@ -152,12 +152,13 @@ export function HubV5SearchBox({
     return true
   }
 
-  /** The highlighted row, else the exact live channel, else the typed login's page. */
+  /** The highlighted row, else the exact live channel, else the typed login's page, else (text no login can be, "Just Chatting") the first game. */
   const go = (): boolean => {
-    const picked = open && active >= 0 ? options[active] : undefined
-    if (picked && actOn(picked)) return true
     const t = typedLogin(value)
     const exact = t ? byViewers.find((c) => c.login === t) : undefined
+    const firstGame = !exact && !(t && isPlausibleTwitchLogin(t)) ? options.find((o) => o.kind === 'game') : undefined
+    const picked = open && active >= 0 ? options[active] : firstGame
+    if (picked && actOn(picked)) return true
     const href = picked
       ? picked.href
       : exact

@@ -155,6 +155,13 @@ describe('HubV5SearchBox: one box that knows more (3A, 11-02)', () => {
     expect(where).toBe('/')
   })
 
+  it('Enter on text no login can be opens the first game', () => {
+    const { input } = renderBox()
+    type(input, 'grand theft')
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(where).toBe('/analytics?game=Grand%20Theft%20Auto%20V')
+  })
+
   it('says nothing live matches when the text is no login, game or emote', () => {
     const { input, list } = renderBox()
     type(input, 'just chatting!!')
