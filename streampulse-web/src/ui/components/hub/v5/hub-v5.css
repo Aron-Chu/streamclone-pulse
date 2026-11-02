@@ -761,10 +761,16 @@
 @media (prefers-reduced-motion: reduce) {
   .hv5-pr-cursor, .hv5-pr-cap { display: none; }
 }
+@media (prefers-reduced-motion: no-preference) {
+  .hub-v5 .hv5-mast .hv5-pr-more .hv5-ico { transition: transform 0.2s; }
+}
 .hv5-pr-copy { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
 .hub-v5 .hv5-mast .hv5-pr-h { font: 750 22px/28px var(--sp-font); letter-spacing: -0.01em; color: var(--sp-text-1); }
 .hub-v5 .hv5-mast .hv5-pr-p { margin: 8px 0 18px; font: 500 14px/21px var(--sp-font); color: var(--sp-text-2); }
 .hv5-pr-desk { display: none; }
+/* the phone card's own line and "See how it works" (A, 11-02) */
+.hv5-pr-sub,
+.hv5-pr-more { display: none; }
 .hub-v5 .hv5-mast .hv5-pr-free { margin-top: 10px; font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
 .hub-v5 .hv5-mast a.hv5-hero-install {
   display: inline-flex;
@@ -854,21 +860,42 @@
   .hub-v5 .hv5-mast .hv5-hero-h { font-size: 28px; line-height: 34px; }
   .hub-v5 .hv5-mast .hv5-hero-sub { max-width: 320px; font-size: 14px; line-height: 20px; }
   .hv5-hero-field { margin-top: 18px; }
-  /* the panel alone, no button: it's a desktop extension */
-  .hub-v5 .hv5-mast .hv5-promo { grid-template-columns: minmax(0, 1fr); gap: 14px; margin-top: 14px; padding: 12px; }
-  .hv5-pr-stage { grid-template-columns: minmax(0, 1fr); height: 330px; }
+  /* A (11-02; a named phone-only change from 11-01's "panel alone"): an 84 px card, the title and that it is a free
+     desktop extension, and no install button. "See how it works" opens the panel and the line under it in place */
+  .hub-v5 .hv5-mast .hv5-promo {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "h more" "sub more" "stage stage" "p p";
+    align-items: center;
+    gap: 0 10px;
+    min-height: 84px;
+    margin-top: 14px;
+    padding: 12px 12px 12px 14px;
+  }
+  .hv5-pr-copy { display: contents; }
+  .hv5-pr-stage { grid-area: stage; grid-template-columns: minmax(0, 1fr); height: 330px; margin-top: 12px; }
+  .hub-v5 .hv5-mast .hv5-promo:not([data-open]) :is(.hv5-pr-stage, .hv5-pr-p) { display: none; }
   .hv5-pr-player, .hv5-pr-cap { display: none; }
   .hv5-pr-side { border-left: 0; }
-  .hub-v5 .hv5-mast .hv5-pr-h { font-size: 18px; line-height: 24px; }
-  .hub-v5 .hv5-mast .hv5-pr-p { margin-bottom: 10px; font-size: 13px; line-height: 19px; }
-  .hub-v5 .hv5-mast a.hv5-hero-install { display: none; }
-  /* plain text, so it never reads as a button */
-  .hub-v5 .hv5-mast .hv5-pr-desk {
-    display: block;
-    color: var(--sp-text-2);
-    font: 600 13px/18px var(--sp-font);
+  .hub-v5 .hv5-mast .hv5-pr-h { grid-area: h; font: 700 16px/22px var(--sp-font); color: #ededef; }
+  .hub-v5 .hv5-mast .hv5-pr-sub { display: block; grid-area: sub; font: 500 12px/16px var(--sp-font); color: #8e8e96; }
+  .hub-v5 .hv5-mast .hv5-pr-more {
+    display: inline-flex;
+    grid-area: more;
+    align-items: center;
+    gap: 4px;
+    height: 44px;
+    padding: 0 0 0 4px;
+    border: 0;
+    background: none;
+    color: #b4b4bb;
+    font: 600 13px/16px var(--sp-font);
+    white-space: nowrap;
+    cursor: pointer;
   }
-  .hub-v5 .hv5-mast .hv5-pr-free { margin-top: 2px; }
+  .hub-v5 .hv5-mast .hv5-pr-more .hv5-ico { width: 16px; height: 16px; }
+  .hub-v5 .hv5-mast .hv5-promo[data-open] .hv5-pr-more .hv5-ico { transform: rotate(180deg); }
+  .hub-v5 .hv5-mast .hv5-pr-p { grid-area: p; margin: 10px 0 0; font-size: 13px; line-height: 19px; }
+  .hub-v5 .hv5-mast :is(a.hv5-hero-install, .hv5-pr-desk, .hv5-pr-free) { display: none; }
   .hv5-search .hv5-field { height: 56px; padding: 0 6px 0 16px; gap: 10px; border-radius: 14px; }
   .hub-v5 .hv5-search .hv5-field input { font-size: 16px; }
   .hv5-search .hv5-kbd { display: none; }
