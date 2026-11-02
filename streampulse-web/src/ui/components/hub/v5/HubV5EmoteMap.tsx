@@ -1086,6 +1086,13 @@ export function HubV5EmoteMap({
     flyFound.current = null
     moveCam(tileMapView(t, W, VH), FLY_MS)
   }, [found, layout, W, VH, moveCam])
+  // a chip that changes the window asks again, so a 'not in this window' line never outlives the window it names (E1)
+  const missView = useRef(view)
+  useEffect(() => {
+    if (missView.current === view) return
+    missView.current = view
+    if (findMiss === 'wider' && findText.trim().length >= 2) runFind(findText, false)
+  }, [view, layout])
   // the hub search's pick: fill the box, select the emote and bring the map into view, once per request
   const askedFind = useRef(0)
   useEffect(() => {

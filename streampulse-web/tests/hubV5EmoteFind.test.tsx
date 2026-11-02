@@ -88,6 +88,16 @@ describe('Find emote: the window widens only on the search key (E1, 11-02)', () 
     expect(status.textContent).toBe('No emote matches “Pogg” here. Esc clears.')
   })
 
+  it('a chip that has the emote finds it, and the line never names a window no longer shown', () => {
+    const { find, status, chip } = renderMap()
+    fireEvent.click(chip('30m'))
+    typeIn(find, 'Pog')
+    expect(status.textContent).toBe('Not in the last 30 min. Search to look in 24h.')
+    fireEvent.click(chip('24h'))
+    expect(status.className).not.toContain('hv5-em-fmsg')
+    expect(status.textContent).toBe('Pog is marked on the map.')
+  })
+
   it('keeps the plain miss line when the whole answer has nothing either', () => {
     const { find, status, chip } = renderMap()
     fireEvent.click(chip('30m'))
