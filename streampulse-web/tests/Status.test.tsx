@@ -33,7 +33,7 @@ describe('public Status', () => {
     await waitFor(() => expect(screen.getByText('Reported Services Operational')).toBeTruthy())
     expect(screen.getByText('API version v0.2.41')).toBeTruthy()
     expect(screen.getAllByText('Unknown').length).toBeGreaterThanOrEqual(2)
-    expect(screen.getByText('Public status does not expose fleet counts or packet loss')).toBeTruthy()
+    expect(screen.getByText('Live chat collection has not reported yet')).toBeTruthy()
     expect(screen.queryByText(/500\/500|0% packet loss/i)).toBeNull()
     expect(screen.getByText('Unknown', { selector: 'dd' })).toBeTruthy()
   })

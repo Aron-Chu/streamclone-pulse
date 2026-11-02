@@ -226,7 +226,7 @@ for (const { width, height, zoom } of responsiveCases) {
     await saveProof(panel.locator('[data-tour-step="1"]'), `homepage-sample-chart-${size}`)
     if (proofDirectory) {
       await mkdir(proofDirectory, { recursive: true })
-      await page.getByRole('heading', { name: /Pulse tab, feature by feature/i }).scrollIntoViewIfNeeded()
+      await page.getByRole('heading', { name: /See it beside Twitch chat/i }).scrollIntoViewIfNeeded()
       await page.screenshot({ path: join(proofDirectory, `homepage-demo-viewport-${size}.png`), animations: 'disabled' })
     }
   })

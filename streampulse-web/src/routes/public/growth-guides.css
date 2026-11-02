@@ -7,6 +7,10 @@
 .timestamp-form label, .timestamp-result label { display: block; color: #f4f4f5; font-weight: 700; margin-bottom: .5rem; }
 .timestamp-form input, .timestamp-result input { box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; padding: .75rem; border: 1px solid #71717a; border-radius: .5rem; background: #18181b; color: #fafafa; font: inherit; }
 .timestamp-form input[aria-invalid="true"] { border-color: #fbbf24; }
+/* the border and any ring ease in and out (2026-11-02) */
+@media (prefers-reduced-motion: no-preference) {
+  .timestamp-form input, .timestamp-result input { transition: border-color 150ms ease, box-shadow 150ms ease; }
+}
 .timestamp-form p { font-size: .9rem; }
 .timestamp-form .timestamp-form__error { color: #fde68a; }
 .timestamp-form button { justify-self: start; }

@@ -60,7 +60,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
             onClick={() => capturePublicCta('open_analytics')}
             className={({ isActive }) => `app-nav__link${isActive ? ' is-active' : ''}`}
           >
-            Analytics
+            Hub
           </NavLink>
           <NavLink
             to="/docs"
@@ -109,7 +109,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
             <BrandMark size={20} />
             <span className="font-bold text-zinc-300">StreamPulse</span>
             <span className="text-zinc-600">·</span>
-            <span className="text-xs text-zinc-500">Twitch reaction analytics</span>
+            <span className="text-xs text-zinc-500">Free Twitch chat and emote stats. Not affiliated with Twitch.</span>
           </div>
           {/* Two rows rather than nine links in one: product destinations and
               policy documents are different errands. Both rows keep the same
@@ -117,7 +117,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
               contrast floor for small text. */}
           <nav className="app-footer__nav" aria-label="Footer">
             <div className="app-footer__links">
-              <Link to="/analytics" onClick={() => capturePublicCta('open_analytics')}>Analytics Hub</Link>
+              <Link to="/analytics" onClick={() => capturePublicCta('open_analytics')}>Hub</Link>
               <Link to="/docs">Documentation</Link>
               <Link to="/status">System Status</Link>
               <Link to="/support">Support</Link>

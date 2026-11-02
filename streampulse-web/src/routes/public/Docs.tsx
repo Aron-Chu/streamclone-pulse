@@ -24,7 +24,7 @@ export default function Docs() {
 
         <nav className="public-toc" aria-label="On this page">
           <a href="#extension">Install</a>
-          <a href="#analytics">Use Analytics</a>
+          <a href="#analytics">Use the Hub</a>
           <a href="#coverage">Data coverage</a>
           <a href="#help">Help</a>
         </nav>
@@ -57,9 +57,9 @@ export default function Docs() {
 
         {/* Public Analytics */}
         <section id="analytics" aria-labelledby="analytics-title" className="mt-8">
-          <h2 id="analytics-title">2. Explore Analytics</h2>
+          <h2 id="analytics-title">2. Explore the Hub</h2>
           <p className="text-zinc-300">
-            <Link to="/analytics" className="font-bold text-violet-400 hover:underline">StreamPulse Analytics</Link> provides aggregate channel, stream, emote, and reaction
+            <Link to="/analytics" className="font-bold text-violet-400 hover:underline">The StreamPulse Hub</Link> provides aggregate channel, stream, emote, and reaction
             signals without exposing raw chat or chatter identities.
           </p>
           <ol className="mt-3 space-y-2">
