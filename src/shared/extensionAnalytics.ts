@@ -4,7 +4,7 @@
  * No PostHog SDK in MV3; backend aggregates only.
  */
 
-import { isAnalyticsConsentGranted } from './analyticsConsent.ts'
+import { isAnalyticsConsentGranted, onAnalyticsConsentWithdrawal } from './analyticsConsent.ts'
 import { getBackendUrl } from './storage.ts'
 
 /** Client kill switch — must stay false until hosted activation. */
@@ -27,9 +27,15 @@ export function shouldEmitAnalytics(opts: {
   return ingestEnabled === true && opts.consentOn === true
 }
 
-export type AnalyticsTransport = (body: { events: Array<{ name: AnalyticsEmitEventName }> }) => Promise<void>
+export type AnalyticsTransport = (body: { events: Array<{ name: AnalyticsEmitEventName }> }, signal: AbortSignal) => Promise<void>
 
 let transportOverride: AnalyticsTransport | null = null
+const pendingAnalyticsWork = new Set<AbortController>()
+
+onAnalyticsConsentWithdrawal(() => {
+  for (const work of pendingAnalyticsWork) work.abort()
+  pendingAnalyticsWork.clear()
+})
 
 /** In-memory latches for the current activation (no durable identifier). */
 let pulseLoadEmittedForActivation = false
@@ -51,12 +57,14 @@ export function setAnalyticsTransportForTest(transport: AnalyticsTransport | nul
   transportOverride = transport
 }
 
-async function defaultTransport(body: { events: Array<{ name: AnalyticsEmitEventName }> }): Promise<void> {
+async function defaultTransport(body: { events: Array<{ name: AnalyticsEmitEventName }> }, signal: AbortSignal): Promise<void> {
   const root = await getBackendUrl()
+  if (signal.aborted) return
   await fetch(`${root}/v1/extension/analytics/events`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    signal,
   })
 }
 
@@ -68,16 +76,20 @@ export async function emitAnalyticsEvents(
   events: AnalyticsEmitEventName[],
   opts?: { ingestEnabled?: boolean },
 ): Promise<void> {
+  if (!events.length || !shouldEmitAnalytics({ consentOn: true, ingestEnabled: opts?.ingestEnabled })) return
+  const work = new AbortController()
+  pendingAnalyticsWork.add(work)
   try {
-    if (!events.length) return
     const consentOn = await isAnalyticsConsentGranted()
-    if (!shouldEmitAnalytics({ consentOn, ingestEnabled: opts?.ingestEnabled })) {
+    if (work.signal.aborted || !shouldEmitAnalytics({ consentOn, ingestEnabled: opts?.ingestEnabled })) {
       return
     }
     const transport = transportOverride ?? defaultTransport
-    await transport({ events: events.map(name => ({ name })) })
+    await transport({ events: events.map(name => ({ name })) }, work.signal)
   } catch {
     // swallow
+  } finally {
+    pendingAnalyticsWork.delete(work)
   }
 }
 

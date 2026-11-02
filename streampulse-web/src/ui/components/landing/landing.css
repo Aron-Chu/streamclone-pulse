@@ -968,34 +968,6 @@
   padding: 2.4rem 0;
 }
 
-/* The search once more after the demo (B1, 11-02). */
-.sl-close {
-  position: relative;
-  z-index: 1;
-  padding: clamp(3rem, 7vw, 5rem) 0;
-}
-
-.sl-close__inner {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-}
-
-.sl-close h2 {
-  margin: 0;
-  font-size: clamp(1.6rem, 3.2vw, 2.25rem);
-  letter-spacing: -0.02em;
-}
-
-.sl-close .sl-search { margin-top: 1.25rem; }
-
-.sl-close__actions {
-  display: flex;
-  justify-content: center;
-  margin-top: 1.25rem;
-}
-
 /* Brand on the left, then Product, Help and Legal columns (B1). */
 .sl-foot {
   display: grid;
@@ -1053,13 +1025,16 @@
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  align-items: center;
+  /* Top-aligned, so an open Analytics preferences panel grows down, not around the line beside it. */
+  align-items: flex-start;
   gap: 0.4rem 1rem;
   padding-top: 1rem;
   border-top: 1px solid hsl(var(--sc-border));
   color: hsl(var(--sc-muted-foreground));
   text-align: center;
 }
+
+.sl-foot small .analytics-preferences__body { text-align: left; }
 
 @media (max-width: 719px) {
   .sl-foot { grid-template-columns: minmax(0, 1fr); }

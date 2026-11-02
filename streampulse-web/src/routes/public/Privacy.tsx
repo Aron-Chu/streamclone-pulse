@@ -29,7 +29,7 @@ export default function Privacy() {
           </div>
           <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Privacy Policy</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            Last updated: November 1, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse browser extension (Chrome, Brave, Edge and Firefox).
+            Last updated: November 2, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse browser extension (Chrome, Brave, Edge and Firefox).
           </p>
         </header>
 
@@ -210,6 +210,8 @@ export default function Privacy() {
           preferences</strong> in the footer, the website sends PostHog a fixed event for a public page
           category and for clicks on Install or Open the Hub. These events help us understand which
           public pages and product links are useful.
+          Successful timestamp-link creation adds a fixed tool-completion event. It contains only the
+          tool category and a link-built outcome, never your entered link, timestamp or generated URL.
         </p>
         <p>
           Events use a random identifier held only in page memory, replaced when the page reloads.

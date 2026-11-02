@@ -98,9 +98,12 @@ import {
   protectStatusMessage,
 } from './alwaysTrackedSync.ts'
 import {
+  EXTENSION_ANALYTICS_INGEST_ENABLED,
   emitAnalyticsEvents,
   type AnalyticsEmitEventName,
 } from '../shared/extensionAnalytics.ts'
+import { issueAnalyticsConsentGrantTicket, setAnalyticsConsentGranted } from '../shared/analyticsConsent.ts'
+import { FIREFOX_TECHNICAL_DATA_PERMISSION } from '../shared/firefoxDataConsent.ts'
 import { createExtensionHealthCache } from './extensionHealthCache.ts'
 import { COMMUNITY_LINKS } from '../shared/portalLinks.ts'
 import { getUpdateCheckCapability, requestBrowserUpdateCheck } from './extensionUpdateCheck.ts'
@@ -710,6 +713,16 @@ if (chrome.storage?.onChanged) {
   })
 }
 
+// Firefox users can withdraw this browser-owned permission outside Settings.
+// Deny synchronously in this worker and remove its separate analytics grant.
+chrome.permissions?.onRemoved?.addListener(removed => {
+  const dataCollection = (removed as unknown as { data_collection?: unknown }).data_collection
+  if (!Array.isArray(dataCollection) || !dataCollection.includes(FIREFOX_TECHNICAL_DATA_PERMISSION)) return
+  void setAnalyticsConsentGranted(false).catch(() => {
+    // The worker remains denied in memory if storage fails.
+  })
+})
+
 chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
   void (async () => {
     if (!sender.id || sender.id !== chrome.runtime.id) {
@@ -1126,6 +1139,37 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           sendResponse({ ok: true })
           return
         }
+        case 'PREPARE_ANALYTICS_CONSENT_GRANT': {
+          if (!EXTENSION_ANALYTICS_INGEST_ENABLED) {
+            sendResponse({ ok: false, error: 'analytics_disabled' })
+            return
+          }
+          sendResponse({ ok: true, grantTicket: await issueAnalyticsConsentGrantTicket() })
+          return
+        }
+        case 'SET_ANALYTICS_CONSENT': {
+          // The settings page requests Firefox permission with the user gesture;
+          // the worker verifies it and owns consent writes and pending sends.
+          if (message.granted && !EXTENSION_ANALYTICS_INGEST_ENABLED) {
+            sendResponse({ ok: false, error: 'analytics_disabled' })
+            return
+          }
+          try {
+            await setAnalyticsConsentGranted(message.granted, undefined, {
+              requireExistingPlatformPermission: true,
+              requireGrantTicket: message.granted,
+              grantTicket: message.grantTicket,
+            })
+          } catch (error) {
+            if (error instanceof Error && error.message === 'analytics_consent_superseded') {
+              sendResponse({ ok: false, error: 'analytics_consent_superseded' })
+              return
+            }
+            throw error
+          }
+          sendResponse({ ok: true })
+          return
+        }
         case 'EMIT_EXTENSION_ANALYTICS': {
           if (sender.id !== chrome.runtime.id) {
             sendResponse({ ok: true })
@@ -1299,6 +1343,10 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
     } catch (err) {
       const messageText = err instanceof Error ? err.message : 'error'
       switch (message.type) {
+        case 'PREPARE_ANALYTICS_CONSENT_GRANT':
+        case 'SET_ANALYTICS_CONSENT':
+          sendResponse({ ok: false, error: 'analytics_consent_update_failed' })
+          return
         case 'LOAD_MISSED_MOMENTS':
           sendResponse({ type: 'PULSE_BACKFILL', job: null, error: messageText } satisfies BackgroundResponse)
           return
