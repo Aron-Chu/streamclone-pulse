@@ -68,6 +68,26 @@ uploads the prebuilt `dist/` with `wrangler pages deploy`. The public site is
 static + the hosted API (plus the pinned account relay below), so it works with
 your local PC off and never depends on `localhost:5173`.
 
+**Switch preflight (no switch without a live route).** Before a deploy that
+turns on a build switch, run `npm run check:switch-routes` with the same env
+the build will see (it reads the shell plus `.env.production`; `--mode <mode>`
+and `--backend-url <url>` override). For each switch that is on, it GETs the
+routes that switch calls on the backend and fails on a 404 or no answer;
+same-origin account routes must also be listed in `public/_worker.js`. With
+every switch off it prints `no switches on` and passes. It is read-only.
+
+| Switch | Routes it needs |
+|--------|-----------------|
+| `VITE_PUBLIC_MOMENTS_FEED` (`on`/`1`) | `/v1/public/moments` |
+| `VITE_PUBLIC_NATIVE_CLIPS` (`on`/`1`) | `/v1/public/clips` |
+| `VITE_TWITCH_SIGNIN` (`1`) | `/v1/account/auth/twitch/{start,complete}`, `/v1/account/identities/twitch/link`, `/v1/account/sessions/revoke-all` (relay) |
+| `VITE_ACCOUNT_MOMENTS` (`1`) | `/v1/account/history/{list,forget,settings}`, `/v1/account/saves/{list,update}` (relay) |
+| `VITE_ACCOUNT_HEADER` (`1`) | `/v1/account/me` (relay) |
+| `VITE_SUPPORTER_CHAT_BADGES` (`on`/`1`) | none the site calls; prints a note to check the backend flag by hand |
+
+A new `VITE_` read in `src/` fails `scripts/check-switch-routes.test.mjs` until
+it is added to the script's switch list (or its not-a-switch list).
+
 **Edge freeze gate.** `pages:deploy:prod` runs `scripts/check-edge-freeze.mjs` on
 `public/` before building and on the built `dist/` right before uploading. A
 deploy is either worker-free or carries exactly one Pages Worker:
