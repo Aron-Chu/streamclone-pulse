@@ -35,11 +35,13 @@ import { HubV5Follows, HubV5FollowsButton } from '../../ui/components/hub/v5/Hub
 import { HubV5Hero } from '../../ui/components/hub/v5/HubV5Hero'
 import { HubV5Icon } from '../../ui/components/hub/v5/HubV5Icon'
 import { HubV5MostChat, mostChatModel } from '../../ui/components/hub/v5/HubV5MostChat'
+import { HubV5PickingUp } from '../../ui/components/hub/v5/HubV5PickingUp'
 import { HubV5Rack } from '../../ui/components/hub/v5/HubV5Rack'
-import { HubV5TopMoments, HubV5TopPeek, useTopToday } from '../../ui/components/hub/v5/HubV5TopMoments'
+import { HubV5TopPeek, useTopToday } from '../../ui/components/hub/v5/HubV5TopMoments'
 import { HubV5BarInstall, HubV5DockSearch } from '../../ui/components/hub/v5/HubV5TopBar'
 import { HubV5SearchContext, createHubV5SearchStore } from '../../ui/components/hub/v5/hubV5SearchStore'
-import { HUB_BUSIEST_COUNT, HUB_RACK_ROWS, hubCategoryArt, hubChatBasis, hubSavedAt, rankBusiest, whereChatIs, type HubChannelSort } from '../../ui/components/hub/v5/hubV5Model'
+import { useHubV5LockWarmup } from '../../ui/components/hub/v5/useHubV5LockWarmup'
+import { HUB_BUSIEST_COUNT, HUB_RACK_ROWS, hubCategoryArt, hubChatBasis, hubSavedAt, rankBusiest, whereChatIs } from '../../ui/components/hub/v5/hubV5Model'
 import { useHashScrollHold } from '../../ui/RouteScrollManager'
 import '../../ui/components/analytics/figma-analytics.css'
 import '../../ui/components/hub/d3/hub-d3-tokens.css'
@@ -188,6 +190,13 @@ export default function AnalyticsHubV5Page() {
   const emoteIntervalWindow = (Object.keys(ACTIVITY_WINDOW_MINUTES) as PublicHubActivityWindow[])
     .find((key) => activityBucketMs(ACTIVITY_WINDOW_MINUTES[key]!) === emoteBucketMinutes * 60_000)
   const historyBehind = hubActivityBehindWords(data.activity)
+  // Both locks read before the click (L1, 11-02): a bar the pointer rests on, then the busiest bars and top emotes' spikes.
+  useHubV5LockWarmup({
+    points: chartActivity.points,
+    bucketMinutes: emoteBucketMinutes,
+    intervalWindow: emoteIntervalWindow,
+    ready: measurementAvailable && savedAt == null,
+  })
   const games = useMemo(() => whereChatIs(data.liveChannels, undefined, answerWindow), [data.liveChannels, answerWindow])
   const gameArt = useMemo(() => hubCategoryArt(data.livePulseMoments), [data.livePulseMoments])
   // Top moments today and its phone peek stay in every state: the Moments list, a hub answer or a saved copy (never
@@ -238,14 +247,6 @@ export default function AnalyticsHubV5Page() {
     if (top > window.innerHeight - 160 || top < 0) {
       section.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' })
     }
-  }, [])
-
-  // Picking up's "+N more in Channels": Channels sorted by chat vs own avg, brought into view.
-  const [sortRequest, setSortRequest] = useState<{ id: number; sort: HubChannelSort; dir: 1 | -1 } | null>(null)
-  const showUpInChannels = useCallback(() => {
-    setGameState(null)
-    setSortRequest({ id: Date.now(), sort: 'vs', dir: -1 })
-    channelsRef.current?.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' })
   }, [])
 
   const [measuredBody, setMeasuredBody] = useState<HTMLDivElement | null>(null)
@@ -363,7 +364,8 @@ export default function AnalyticsHubV5Page() {
               />
             )}
 
-            <HubV5TopMoments top={top} nowMs={nowMs} onUpMore={showUpInChannels} />
+            {/* M1 (11-02): the rail is what is heating up now; the day's moments are the carousel below. */}
+            <HubV5PickingUp top={top} nowMs={nowMs} />
 
             <HubV5BigMoments top={top} nowMs={nowMs} />
 
@@ -392,7 +394,6 @@ export default function AnalyticsHubV5Page() {
               nowMs={nowMs}
               game={game}
               onClearGame={() => setGameState(null)}
-              sortRequest={sortRequest}
               windowKey={answerWindow}
             />
 

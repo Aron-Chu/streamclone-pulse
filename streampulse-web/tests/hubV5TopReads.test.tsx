@@ -73,7 +73,7 @@ describe('Top moments today reads', () => {
     act(() => result.current.pickGame(result.current.games[0]!))
     await waitFor(() => expect(load).toHaveBeenCalledTimes(2))
     expect(reads()[1]).toMatchObject({ category: '27471', verdict: 'ok', sort: 'top' })
-    await waitFor(() => expect(result.current.busy).toBe(false))
+    await waitFor(() => expect(result.current.shown?.key).toBe('27471'))
     act(() => result.current.pickGame(null))
     await act(async () => {})
     expect(load).toHaveBeenCalledTimes(2)

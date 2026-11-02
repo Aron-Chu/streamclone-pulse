@@ -207,6 +207,12 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* hover as the bar's other buttons (2026-11-02), with the approved ease and press */
+.analytics-topnav__install:hover { background: var(--fma-dim); color: var(--fma-text, #f4f4f5); }
+@media (prefers-reduced-motion: no-preference) {
+  .analytics-topnav__install { transition: background-color 140ms ease, color 140ms ease, scale 260ms cubic-bezier(.34, 1.56, .64, 1); }
+  .analytics-topnav__install:active { scale: .96; transition-duration: 140ms, 140ms, 70ms; }
+}
 
 /* Discord, on the bar at every width: Blurple like the site header's, a 44px mark below 1280px. */
 .analytics-topnav__discord {

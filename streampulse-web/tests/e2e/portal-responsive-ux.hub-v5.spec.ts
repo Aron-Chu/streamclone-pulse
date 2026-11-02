@@ -176,25 +176,34 @@ const responsiveCases = [
 
 for (const { width, height, zoom } of responsiveCases) {
   const size = `${width}x${height}-zoom${zoom}`
-  test(`Top moments rows and the Channels table fit at ${size}`, async ({ page }) => {
+  test(`Top moments today, Picking up now and the Channels table fit at ${size}`, async ({ page }) => {
     await page.setViewportSize({ width, height })
     await installHubUxMock(page, TOP_MOMENT)
     await page.goto('/analytics')
     await page.evaluate(value => { document.documentElement.style.zoom = String(value) }, zoom)
+    const big = page.locator('#big-moments')
+    const card = big.locator('.hv5-bm-card[data-pos="0"]')
+    await expect(card).toBeVisible()
+    expect(await card.evaluate(el => {
+      const bounds = el.getBoundingClientRect()
+      const stage = el.closest('#big-moments')!.getBoundingClientRect()
+      const foot = el.querySelector('.hv5-bm-foot')!.getBoundingClientRect()
+      return bounds.right <= stage.right + 1 && foot.right <= bounds.right + 1 && foot.left >= bounds.left - 1
+    })).toBe(true)
     const latest = page.locator('#latest')
-    const rows = latest.locator('.hv5-tm-list > .hv5-tm-it')
-    await expect(rows.first()).toBeVisible()
-    expect(await rows.evaluateAll(rows => rows.flatMap(row => {
+    await expect(latest.getByRole('heading', { name: 'Picking up now' })).toBeVisible()
+    expect(await latest.locator('.hv5-fd').evaluateAll(rows => rows.flatMap(row => {
       const bounds = row.getBoundingClientRect()
-      const value = row.querySelector('.hv5-tm-t')!.getBoundingClientRect()
-      return value.right <= bounds.right + 1 && value.left >= bounds.left - 1 && bounds.height >= 44 * Number(document.documentElement.style.zoom || 1) - 0.5 ? [] : [row.textContent?.trim()]
+      const value = row.querySelector('.hv5-fd-tx')!.getBoundingClientRect()
+      return value.right <= bounds.right + 1 && value.left >= bounds.left - 1 ? [] : [row.textContent?.trim()]
     }))).toEqual([])
     const channels = page.locator('#channels')
     const table = channels.locator('table')
     await expect(table.locator('tbody tr').first()).toBeVisible()
     expect(await table.evaluate(el => el.getBoundingClientRect().right <= el.parentElement!.getBoundingClientRect().right + 1)).toBe(true)
     await assertNoPageOverflow(page)
-    await saveProof(latest, `hub-v5-top-moments-${size}`)
+    await saveProof(big, `hub-v5-top-moments-${size}`)
+    await saveProof(latest, `hub-v5-picking-up-${size}`)
     await saveProof(channels, `hub-v5-channels-${size}`)
   })
 
@@ -282,7 +291,7 @@ test('Top moments and Channels render while a legacy successful history reply aw
     const chart = page.locator('.figma-global-activity__hub-chart')
     await expect(chart.getByText('Loading measured activity…', { exact: true })).toBeVisible()
     await expect(chart.locator('.spc-bar')).toHaveCount(0)
-    const rows = page.locator('#latest .hv5-tm-list > .hv5-tm-it')
+    const rows = page.locator('#big-moments .hv5-bm-card')
     await expect(rows.first()).toBeVisible()
     const momentsBefore = await rows.allTextContents()
     const count = page.locator('#channels [data-hv5-channel-count]')

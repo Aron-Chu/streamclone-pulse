@@ -271,6 +271,11 @@ export function prefetchHubIntervalMoments(request: HubIntervalRequest, signal?:
   return missing.length
 }
 
+/** A bucket call is in flight or queued: the warm-up waits so a click never queues behind it. */
+export function hubIntervalBusy(): boolean {
+  return active > 0 || waiting.length > 0
+}
+
 /** Test-only: the limiter's current and highest in-flight counts. */
 export function hubIntervalInFlightForTests(): { active: number; peak: number; queued: number } {
   return { active, peak: peakActive, queued: waiting.length }

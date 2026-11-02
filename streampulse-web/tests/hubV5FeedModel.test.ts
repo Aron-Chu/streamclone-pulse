@@ -8,7 +8,6 @@ import {
   feedFreshText,
   feedStale,
   feedUp,
-  feedUpAria,
   screenerHot,
 } from '../src/ui/components/hub/v5/hubV5FeedModel'
 
@@ -84,18 +83,16 @@ describe('Picking up', () => {
       channel('bravo', { category: 'Chess' }, { multiplier: 1.6, absoluteDeltaPerMin: 30 }),
       channel('charlie', {}, { multiplier: 3, absoluteDeltaPerMin: 90 }),
       channel('delta', {}, { multiplier: 1.3 }),
+      channel('echo', {}, { multiplier: 3, absoluteDeltaPerMin: 40 }),
+      channel('foxtrot', {}, { multiplier: 4, currentPerMin: 33, baselinePerMin: 8, absoluteDeltaPerMin: 25 }),
     ],
   })
 
-  it('ranks the hot channels by messages a minute over usual', () => {
-    expect(up.up.map((r) => r.login)).toEqual(['charlie', 'alpha', 'bravo'])
-    expect(up.up[0]).toMatchObject({ name: 'CHARLIE', x: 3, add: 90, cat: 'Just Chatting', streamId: 's-charlie' })
+  it('ranks the hot channels by × their usual, then by messages a minute over it (P1)', () => {
+    expect(up.up.map((r) => r.login)).toEqual(['foxtrot', 'charlie', 'echo', 'alpha', 'bravo'])
+    expect(up.up[1]).toMatchObject({ name: 'CHARLIE', x: 3, add: 90, cat: 'Just Chatting', streamId: 's-charlie' })
     expect(up.upWindow).not.toBe('')
     expect(feedUp(null)).toEqual({ up: [], upWindow: '' })
-  })
-
-  it('says the bar and the channel that added most', () => {
-    expect(feedUpAria(up)).toMatch(/^Picking up: 3 channels whose chat over .+ ran at least 1\.5 times usual, at least 30 a minute and 20 more than usual\. Most added: CHARLIE, 90 more a minute\. Show them\.$/)
   })
 })
 
