@@ -70,7 +70,7 @@ const NO_LIVE: readonly HubLiveChannel[] = []
 function useHeroButtonsInView(mainRef: RefObject<HTMLElement | null>): boolean {
   const [inView, setInView] = useState(true)
   useEffect(() => {
-    const targets = Array.from(mainRef.current?.querySelectorAll<HTMLElement>('.sl-hero__actions, .sl-close__actions') ?? [])
+    const targets = Array.from(mainRef.current?.querySelectorAll<HTMLElement>('.sl-hero__actions') ?? [])
     if (!targets.length || typeof IntersectionObserver === 'undefined') { setInView(false); return }
     const header = document.querySelector('.sl-header')?.getBoundingClientRect().height ?? 0
     const showing = new Set<Element>()
@@ -210,30 +210,6 @@ function Hero({
   )
 }
 
-/**
- * The last stop after the demo (Aron's B1 pick, 11-02): the search once more,
- * and the install button. Its own search store, so "/" still focuses the
- * hero's box at the top.
- */
-function ClosingSearch({ live }: { live: readonly HubLiveChannel[] }) {
-  const [store] = useState(createHubV5SearchStore)
-  return (
-    <section className="sl-close" aria-labelledby="close-title">
-      <div className="sl-container sl-close__inner">
-        <h2 id="close-title">Look up a streamer</h2>
-        <HubV5SearchContext.Provider value={store}>
-          <div className="sl-search">
-            <HubV5SearchBox live={live} variant="hero" />
-          </div>
-        </HubV5SearchContext.Provider>
-        <div className="sl-close__actions">
-          <InstallCta className={buttonClass('default', 'lg')} data-cta="chrome-install-closing" icon="mark" />
-        </div>
-      </div>
-    </section>
-  )
-}
-
 /** Product, help and legal links in three columns (B1), with the Twitch disclaimer. */
 function Footer({ discord }: { discord: string | null }) {
   return (
@@ -359,7 +335,6 @@ export default function Landing() {
               <DeferredDemo><ExtensionShowcase /></DeferredDemo>
             </div>
           </section>
-          <ClosingSearch live={live} />
         </main>
         <Footer discord={discord} />
       </div>

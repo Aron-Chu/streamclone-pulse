@@ -44,6 +44,7 @@ export function AnalyticsPreferences() {
           If you allow it, PostHog receives anonymous public page categories and clicks on
           Install or Open the Hub to help us improve this website. Selected public summaries
           count only as channel summary or stream recap; selected tools and guides use tool or guide categories; no channel name or stream ID is sent.
+          Successful timestamp-link creation adds a fixed tool-completion count, without your link or timestamp.
           Account pages, other analytics pages and your Twitch viewing are excluded. No cookies, session recordings or
           person profiles are used.
         </p>
