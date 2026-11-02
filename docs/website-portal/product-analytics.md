@@ -46,3 +46,11 @@ routes, storage failure, fixed envelopes, generated identifiers, rejected beacon
 and withdrawal. Hosted acceptance separately requires a real opt-in event in the
 intended project. A generic PostHog web-analytics health check that expects
 `$pageview` does not justify enabling automatic pageviews.
+
+Chrome store links use a fixed source (`streampulse.stream`), referral medium and
+`website_install` campaign. Their content value carries only the existing
+allowlisted page category, with `site` as the fallback. The URL is built from
+the canonical listing, so incoming campaign parameters, paths, fragments and
+channel/account identifiers are never forwarded. Firefox and Edge links remain
+their canonical listings. These tags describe a link's placement, not a verified
+extension install or the visitor's original acquisition source.
