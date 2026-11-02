@@ -124,7 +124,7 @@ export function HubV5Hero({ live, poolSize, points = NO_POINTS, foot, games, emo
         </p>
       ) : null}
       <div className="hv5-hero-foot" ref={footRef}>
-        {poolSize > 0 ? <p className="hv5-scope">The hub below covers {formatHubInt(poolSize)} channels we follow · not all of Twitch</p> : null}
+        {poolSize > 0 ? <p className="hv5-scope">The hub below covers {formatHubInt(poolSize)} channels we track · not all of Twitch</p> : null}
         {foot}
       </div>
     </header>
