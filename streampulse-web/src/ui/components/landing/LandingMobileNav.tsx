@@ -114,7 +114,7 @@ export function LandingMobileNav({
                 className={buttonClass('default', 'sm')}
                 onClick={() => { if (analyticsHref === '/analytics') capturePublicCta('open_analytics'); setOpen(false) }}
               >
-                Open Analytics
+                Open the Hub
               </Link>
             </nav>
           </div>
