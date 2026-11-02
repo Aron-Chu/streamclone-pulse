@@ -286,4 +286,11 @@ describe('reelCardEmote (Just Chatting / IRL cards)', () => {
     expect(reelCardEmote({ game: { name: 'Just Chatting', artUrls: [] }, emotes: [] })).toBeNull()
     expect(reelCardEmote({ game: null, emotes: [emote] })).toBeNull()
   })
+  it('binds only an https emote CDN URL, never a payload URL from elsewhere', () => {
+    const game = { name: 'Just Chatting', artUrls: [] }
+    expect(reelCardEmote({ game, emotes: [emote] })?.src).toBe('https://cdn.7tv.app/emote/01HUH/1x.webp')
+    for (const imageUrl of ['javascript:alert(1)', 'http://cdn.7tv.app/emote/01HUH/1x.webp', 'https://evil.example/huh.webp']) {
+      expect(reelCardEmote({ game, emotes: [{ name: 'HUH', count: 56, imageUrl }] })).toBeNull()
+    }
+  })
 })

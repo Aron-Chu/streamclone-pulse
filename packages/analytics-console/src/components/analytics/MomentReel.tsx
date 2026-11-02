@@ -17,6 +17,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { boxArtAtSize } from '../../utils/boxArtSize.ts'
 import { getEmoteImageUrl } from '../../utils/consoleFormat.ts'
+import { sanitizeConsoleEmoteUrl } from '../../utils/emoteImageUrl.ts'
 import { isChattingCategory } from '../../utils/streamSidebarGames.ts'
 import { sessionHasFrame } from '../../utils/sessionState.ts'
 import { momentRowHms } from '../../utils/momentRowDisplay.ts'
@@ -97,12 +98,13 @@ export interface MomentReelCardProps {
 
 /**
  * Just Chatting / IRL has no gameplay to picture (Aron's pick 4): the card shows the moment's top emote,
- * large, in the cover's place. Null for a game, or when no emote has a picture.
+ * large, in the cover's place. Null for a game, or when no emote has a picture. Payload URLs are untrusted:
+ * only an https allowlisted CDN/proxy URL is returned for the <img>, as in ConsoleEmoteImg.
  */
 export function reelCardEmote(model: Pick<SessionMomentRowModel, 'game' | 'emotes'>): { emote: SessionMomentRowModel['emotes'][number]; src: string } | null {
   if (!isChattingCategory(model.game?.name)) return null
   for (const emote of model.emotes) {
-    const src = getEmoteImageUrl(emote)
+    const src = sanitizeConsoleEmoteUrl(getEmoteImageUrl(emote))
     if (src) return { emote, src }
   }
   return null

@@ -14,11 +14,14 @@ const folds = (page: Page) => page.locator('details[data-fold]')
 const openFolds = (page: Page) => page.locator('details[data-fold][open]')
 
 for (const route of ['/privacy', '/terms']) {
+  // The open block above the folds: /privacy calls it "At a glance" (#217), /terms keeps "Summary".
+  const summaryName = route === '/privacy' ? 'At a glance' : 'Summary'
+
   test(`${route}: the summary stays open above closed sections, one heading each`, async ({ page }) => {
     await guardNetwork(page)
     await page.goto(route)
     await expect(page.locator('h1').first()).toBeVisible()
-    await expect(page.getByRole('heading', { level: 2, name: 'Summary' })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 2, name: summaryName })).toBeVisible()
     expect(await folds(page).count()).toBeGreaterThan(8)
     await expect(openFolds(page)).toHaveCount(0)
     // Every section heading is visible and is the summary of its section; the text under it is not shown.
