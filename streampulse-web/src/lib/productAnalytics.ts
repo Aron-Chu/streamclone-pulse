@@ -5,8 +5,8 @@ import { recapAnalyticsCategory, type RecapPageCategory } from './recapAnalytics
 export type AnalyticsPreference = 'allowed' | 'declined' | 'unset'
 export type PublicPageCategory = 'home' | 'docs' | 'status' | 'privacy' | 'terms' | 'refunds' | 'supporter' | 'support' | 'tool' | 'guide' | RecapPageCategory
 export type PublicCta = 'install_extension' | 'open_analytics'
-// Renew consent after adding selected public summaries to the disclosed scope.
-export const ANALYTICS_PREFERENCE_KEY = 'sp.websiteAnalytics.v2'
+// Renew consent after adding a fixed tool-completion observation to the scope.
+export const ANALYTICS_PREFERENCE_KEY = 'sp.websiteAnalytics.v3'
 
 const categories: Record<string, PublicPageCategory> = {
   '/': 'home', '/docs': 'docs', '/status': 'status', '/privacy': 'privacy',
@@ -126,4 +126,10 @@ export function setProductAnalyticsRoute(): void {
 export function capturePublicCta(cta: PublicCta): void {
   if (!client || !eligible(page) || (cta !== 'install_extension' && cta !== 'open_analytics')) return
   client.captureCta(page!, cta)
+}
+
+/** A successful local build, without accepting the entered or generated link. */
+export function captureTimestampLinkBuilt(): void {
+  if (!client || page !== 'tool' || !eligible(page)) return
+  client.captureTimestampLinkBuilt()
 }

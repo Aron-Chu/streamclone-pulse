@@ -3,17 +3,27 @@
 Website product analytics are a separate, voluntary choice from StreamPulse's
 Twitch reaction analytics. They start off. The visitor can allow or withdraw them
 through **Analytics preferences** in either public footer. Account pages,
-dashboards, all `/analytics` routes and unknown routes are excluded.
+dashboards, unlisted `/analytics` routes and unknown routes are excluded. Only
+explicitly generated public summary/recap paths are admitted from `/analytics`.
 
 The only admitted page paths are `/`, `/docs`, `/status`, `/privacy`, `/terms`,
-`/refunds`, `/supporter` and `/support`. Page categories and calls to action use
+`/refunds`, `/supporter`, `/support`, the timestamp-link tool and the two published
+guides, plus the explicitly generated public summaries. Page categories and calls to action use
 fixed enums; no URL, query, fragment, link text, form value, channel name or
 account identity is admitted.
 
 | Event | Properties |
 | --- | --- |
-| `portal_public_page_viewed` | `page_category`: home, docs, status, privacy, terms, refunds, supporter or support |
+| `portal_public_page_viewed` | `page_category`: home, docs, status, privacy, terms, refunds, supporter, support, tool, guide, channel_summary or stream_recap |
 | `portal_public_cta_clicked` | Same `page_category`; `cta`: install_extension or open_analytics |
+| `portal_public_tool_completed` | `page_category`: tool; `tool`: twitch_vod_timestamp_link; `outcome`: link_built |
+
+The tool event records a successfully constructed timestamp link, not a clipboard
+copy, replay verification or share. No entered value or generated URL reaches the
+capture method. Repeated valid builds are repeated observations, not unique users.
+This scope requires a new choice under `sp.websiteAnalytics.v3`; older choices do
+not opt visitors into the expanded scope. DNT/GPC and withdrawal still prevail.
+This local implementation is not evidence of a released or ingested tool event.
 
 Each event also sets `$process_person_profile=false` and `$geoip_disable=true`.
 The capture API envelope carries the public project token, a random identifier
@@ -22,7 +32,7 @@ The identifier is discarded on withdrawal or entry into an excluded route.
 Reloading or a new analytics client generates another identifier.
 
 Only the preference (`allowed` or `declined`) is saved, under
-`sp.websiteAnalytics.v1` in local storage. If storage is unavailable, a choice
+`sp.websiteAnalytics.v3` in local storage. If storage is unavailable, a choice
 works in the current tab. Global Privacy Control and Do Not Track keep capture
 off even if a previous choice allowed it. Builds without a valid public project
 token or without native beacon/UUID support display analytics as unavailable.

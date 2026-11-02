@@ -6,8 +6,14 @@ import FindTwitchMomentsGuide from '../src/routes/public/FindTwitchMomentsGuide'
 import TwitchVodTimestampsGuide from '../src/routes/public/TwitchVodTimestampsGuide'
 import { resolvePageMetadata } from '../src/lib/pageMetadata'
 import { GROWTH_PAGES } from '../src/lib/growthPages'
+import { captureTimestampLinkBuilt } from '../src/lib/productAnalytics'
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals() })
+vi.mock('../src/lib/productAnalytics', async importOriginal => ({
+  ...await importOriginal<typeof import('../src/lib/productAnalytics')>(),
+  captureTimestampLinkBuilt: vi.fn(),
+}))
+
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.mocked(captureTimestampLinkBuilt).mockClear() })
 function tool() { render(<MemoryRouter><TwitchTimestampTool /></MemoryRouter>) }
 function build() {
   fireEvent.change(screen.getByLabelText('Twitch VOD link or video ID'), { target: { value: '2916038039' } })
@@ -20,11 +26,13 @@ describe('public timestamp tool', () => {
     expect(screen.getByRole('alert').textContent).toContain('past-broadcast')
     expect(document.activeElement).toBe(screen.getByLabelText('Twitch VOD link or video ID'))
     expect(screen.queryByRole('link', { name: 'Open on Twitch' })).toBeNull()
+    expect(captureTimestampLinkBuilt).not.toHaveBeenCalled()
   })
   it('copies only the clean constructed link and clears stale output after an edit', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
     tool(); build()
+    expect(captureTimestampLinkBuilt).toHaveBeenCalledExactlyOnceWith()
     expect(screen.getByRole('link', { name: 'Open on Twitch' }).getAttribute('href')).toBe('https://www.twitch.tv/videos/2916038039?t=1h23m45s')
     fireEvent.click(screen.getByRole('button', { name: 'Copy link' }))
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('https://www.twitch.tv/videos/2916038039?t=1h23m45s'))
