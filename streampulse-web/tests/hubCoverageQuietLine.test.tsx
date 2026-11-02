@@ -58,9 +58,12 @@ describe('hub banner: no buckets row at any coverage', () => {
     expect(container.querySelector('.hx-health-banner__row--warn')).not.toBeNull()
   })
 
-  it('keeps the degraded title when pipeline state alone sets it', () => {
-    banner(summary(239, 240), { coverageState: 'degraded' })
+  it('keeps the degraded title from 1% missing, and hides it below (HUB-7: 239 of 240 is not news)', () => {
+    const view = banner(summary(237, 240), { coverageState: 'degraded' })
     expect(screen.getByText(/Tracking or coverage is degraded in this snapshot/)).toBeTruthy()
+    view.unmount()
+    banner(summary(239, 240), { coverageState: 'degraded' })
+    expect(screen.queryByText(/Tracking or coverage is degraded in this snapshot/)).toBeNull()
   })
 
   it('keeps the critical coverage line and the limited-tracking warning', () => {

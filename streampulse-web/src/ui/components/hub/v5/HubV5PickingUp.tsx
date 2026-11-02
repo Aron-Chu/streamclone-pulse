@@ -32,6 +32,8 @@ export const UP_TIP = `Live channels whose chat over the last 5 minutes ran at l
 export const UP_NONE = 'Nothing is picking up right now.'
 export const upSavedNone = (clock: string) => `Nothing was picking up as of ${clock}.`
 export const UP_UNAVAILABLE = 'Unavailable right now.'
+/** The chat counts behind the list did not load: never "nothing is picking up". */
+export const UP_DOWN = "Can't tell right now — chat counts didn't load."
 
 const upAria = (x: FeedUpRow) => `${x.name}, chat ${fx(x.x).replace('×', ' times')} its usual, ${feedMore(x.add)} more messages a minute${x.cat ? `, ${x.cat}` : ''}. Opens the stream page.`
 
@@ -56,12 +58,13 @@ function UpItem({ x, art }: { x: FeedUpRow; art: string | null }) {
 }
 
 export interface HubV5PickingUpProps {
-  top: Pick<TopToday, 'shown' | 'up' | 'upAsOf' | 'upSaved' | 'art'>
+  top: Pick<TopToday, 'shown' | 'up' | 'upAsOf' | 'upSaved' | 'art'> & Partial<Pick<TopToday, 'upDown'>>
   nowMs: number
 }
 
 export function HubV5PickingUp({ top, nowMs }: HubV5PickingUpProps) {
   const { up, upAsOf, upSaved, art } = top
+  const down = top.upDown === true
   const rows = up.up
   const n = rows.length
   const wide = useMatchMedia('(min-width: 1100px)')
@@ -87,10 +90,10 @@ export function HubV5PickingUp({ top, nowMs }: HubV5PickingUpProps) {
 
   const none = top.shown?.source === 'none'
   // it waits while Top moments today does (the hub read runs), so it never says "nothing" before the answer
-  const waiting = !none && (upAsOf == null || top.shown == null)
+  const waiting = !none && !down && (upAsOf == null || top.shown == null)
   const saved = !waiting && upSaved && upAsOf != null ? hubSavedClock(upAsOf, nowMs) : null
   const fresh = waiting ? '' : saved ? `Saved ${saved}` : feedFreshText(upAsOf, nowMs)
-  const stale = waiting || upAsOf == null || upSaved || feedStale(upAsOf, nowMs)
+  const stale = waiting || down || upAsOf == null || upSaved || feedStale(upAsOf, nowMs)
 
   return (
     <aside
@@ -102,7 +105,7 @@ export function HubV5PickingUp({ top, nowMs }: HubV5PickingUpProps) {
         <h2 id={H_ID}><span className="hv5-fd-dot" aria-hidden="true" />Picking up now</h2>
         <span className="hv5-f2-fresh">{fresh}</span>
         {waiting || none ? null : <HubToggletip tip={UP_TIP} label="About Picking up now" />}
-        {n ? <span className="hv5-end hv5-up-n" aria-label={`${n} ${n === 1 ? 'channel' : 'channels'}`}>{n}</span> : null}
+        {n && !down ? <span className="hv5-end hv5-up-n" aria-label={`${n} ${n === 1 ? 'channel' : 'channels'}`}>{n}</span> : null}
       </div>
       <div ref={bodyRef} className="hv5-tm-body" data-more={more ? '' : undefined} onScroll={measureMore}>
         {waiting ? (
@@ -111,6 +114,15 @@ export function HubV5PickingUp({ top, nowMs }: HubV5PickingUpProps) {
               {Array.from({ length: 6 }, (_, i) => <li key={i} />)}
             </ol>
             <p role="status" className="hv5-vh">Loading channels picking up</p>
+          </>
+        ) : down ? (
+          <>
+            <p className="hv5-tm-q" data-up-down>{UP_DOWN}</p>
+            {n ? (
+              <ol className="hv5-fd-list hv5-up-old" aria-labelledby={H_ID}>
+                {listed.map((x) => <UpItem key={x.login} x={x} art={x.cat ? art.get(x.cat) ?? null : null} />)}
+              </ol>
+            ) : null}
           </>
         ) : n ? (
           <ol className="hv5-fd-list" aria-labelledby={H_ID}>

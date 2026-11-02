@@ -5,7 +5,7 @@ import type { HubCorpusPipeline } from '../src/lib/publicHub'
 import { HubDataHealthBanner } from '../src/ui/components/hub/HubDataHealthBanner'
 
 const activity: ActivitySummary = {
-  pointCount: 12, expectedBuckets: 12, missingBuckets: 0, coveragePct: 100,
+  pointCount: 11, expectedBuckets: 12, missingBuckets: 1, coveragePct: 92,
   nonZeroCount: 8, gapCount: 0, bucketMinutes: 1, windowLabel: '30 minutes', footnote: '',
 }
 const healthyPipeline = {
@@ -80,9 +80,23 @@ describe('hub coverage state disclosure', () => {
     expect(screen.queryByText(/Tracking status is unknown/)).toBeNull()
   })
 
-  it('labels operational coverage as the snapshot state, not current health', () => {
-    render(banner('operational'))
-    expect(screen.getByText(/Coverage was operational in this snapshot; current status may have changed/)).toBeTruthy()
+  it('says nothing for operational coverage', () => {
+    const view = render(banner('operational'))
+    expect(screen.queryByText(/Coverage was operational/)).toBeNull()
+    expect(view.container.querySelector('.hx-health-banner')).toBeNull()
+  })
+
+  it('hides a degraded row while under 1% of the minutes are missing, and keeps critical', () => {
+    const nearlyAll = { ...activity, pointCount: 1438, expectedBuckets: 1440, missingBuckets: 2, coveragePct: 99.9 }
+    const view = render(<HubDataHealthBanner hubEndpointOk activitySummary={nearlyAll} pipeline={healthyPipeline}
+      liveRosterCount={500} coverageState="degraded" />)
+    expect(screen.queryByText(/Tracking or coverage is degraded/)).toBeNull()
+    view.rerender(<HubDataHealthBanner hubEndpointOk activitySummary={{ ...nearlyAll, pointCount: 1420, missingBuckets: 20 }}
+      pipeline={healthyPipeline} liveRosterCount={500} coverageState="degraded" />)
+    expect(screen.getByText(/Tracking or coverage is degraded/)).toBeTruthy()
+    view.rerender(<HubDataHealthBanner hubEndpointOk activitySummary={nearlyAll} pipeline={healthyPipeline}
+      liveRosterCount={500} coverageState="critical" />)
+    expect(screen.getByText(/Tracking or coverage is critical/)).toBeTruthy()
   })
 
   it('does not report operational coverage when the displayed database check failed', () => {

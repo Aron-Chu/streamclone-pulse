@@ -30,6 +30,9 @@ export interface HubDataHealthBannerProps {
   late?: boolean
 }
 
+/** A degraded coverage row stays hidden while fewer than this share of the window's minutes are missing. */
+export const COVERAGE_QUIET_MISSING_SHARE = 0.01
+
 type HealthMessage = { tone: 'warn' | 'info'; text: string; detail?: string }
 
 export function formatCoveragePercent(pointCount: number, expectedBuckets: number): string {
@@ -141,15 +144,20 @@ export function HubDataHealthBanner({
   const pipelineUnknown = !loading && coverageState != null &&
     (pipeline?.available === false || !['healthy', 'operational', 'degraded', 'critical'].includes(pipeline?.state ?? ''))
 
+  // Operational coverage needs no row: the chart's own grey line already says when
+  // minutes are missing (below 95%). A degraded snapshot with under 1% of the
+  // window's minutes missing stays quiet too; critical always shows.
+  const nearlyComplete = activitySummary.expectedBuckets > 0 &&
+    activitySummary.missingBuckets < activitySummary.expectedBuckets * COVERAGE_QUIET_MISSING_SHARE
   const coverageText = !loading && coverageState != null
     ? coverageState === 'critical'
       ? 'Tracking or coverage is critical in this snapshot — analytics may be incomplete.'
       : coverageState === 'degraded'
-        ? 'Tracking or coverage is degraded in this snapshot — analytics may be incomplete.'
-        : coverageState === 'operational' && coverageDatabaseOk !== false && !pipelineUnknown
-          ? 'Coverage was operational in this snapshot; current status may have changed.'
-          : coverageState === 'operational'
-            ? null
+        ? nearlyComplete
+          ? null
+          : 'Tracking or coverage is degraded in this snapshot — analytics may be incomplete.'
+        : coverageState === 'operational'
+          ? null
           : 'Coverage status is unknown in this snapshot — analytics may be incomplete.'
     : null
 

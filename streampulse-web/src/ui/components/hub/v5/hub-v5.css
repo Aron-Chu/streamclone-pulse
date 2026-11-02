@@ -1434,9 +1434,12 @@
 .hv5-f3-peek .hv5-rh { flex-wrap: nowrap; }
 .hv5-feed .hv5-rh h2,
 .hv5-f3-peek .hv5-rh h2 { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
-/* steady; the dot greys once the data is over 3 minutes old */
+/* steady; the dot greys once the data is over 2 minutes old */
 .hv5-fd-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--hv5-live); }
 .hv5-f2-stale .hv5-fd-dot { background: var(--sp-text-3); }
+/* a live section whose "as of" is over 2 min old, or a list kept while its counts don't load, reads greyed */
+.hv5-f2-stale :is(.hv5-fd-list, .hv5-bm-track), .hv5-up-old { opacity: .55; transition: opacity .2s; }
+@media (prefers-reduced-motion: reduce) { .hv5-f2-stale :is(.hv5-fd-list, .hv5-bm-track), .hv5-up-old { transition: none; } }
 .hv5-f2-fresh {
   min-width: 0;
   margin-left: -2px;

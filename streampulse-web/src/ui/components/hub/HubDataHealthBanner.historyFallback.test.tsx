@@ -7,7 +7,10 @@
  * Top-N rows are aged without chat rollups"). ingest "operational" only says
  * desired <= active and every active collector has a stream id (hub_ingest.go
  * 63-79); joinAcknowledged is that bound-stream proxy, not an IRC join. So the
- * banner takes no activity or ingest, and never says chat collection is fine.
+ * banner takes no ingest, and never says chat collection is fine. Since 11-02
+ * (HUB-7) it reads one thing from activity: a degraded row stays hidden while
+ * under 1% of the window's minutes are missing; the database and critical rows
+ * never hide.
  */
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -60,8 +63,9 @@ const raw30m = {
 /** The saved answer, or a variant of it, as the hub reads it. */
 const hubOf = (input: unknown): PublicHub => normalizePublicHub(input as PublicHubInput)
 
+// 1 of 12 minutes missing: past the 1% under which a degraded row stays hidden (HUB-7, 11-02).
 const summary: ActivitySummary = {
-  pointCount: 12, expectedBuckets: 12, missingBuckets: 0, coveragePct: 100,
+  pointCount: 11, expectedBuckets: 12, missingBuckets: 1, coveragePct: 92,
   nonZeroCount: 8, gapCount: 0, bucketMinutes: 1, windowLabel: '30 minutes', footnote: '',
 }
 

@@ -21,6 +21,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type FocusEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type SyntheticEvent } from 'react'
 import { Link } from 'react-router-dom'
+import { emoteDisplaySrc } from '../../../../lib/emoteAssetUrl'
 import { fx, int, when } from '../../../../lib/momentsChecked'
 import { twitchProfileImageRendition } from '../../../../lib/twitchProfileImage'
 import { twitchLivePreviewUrl } from '../../analytics/hubFormat'
@@ -150,7 +151,8 @@ function BigSlide({ card, i, n, pos, nowMs, live, avatar, seen, still }: {
             {row.emotes.map((e) => (
               <li key={e.name}>
                 {e.imageUrl && seen
-                  ? <img src={still ? bigStillEmote(e.imageUrl) : e.imageUrl} alt="" width={32} height={32} draggable={false} decoding="async" referrerPolicy="no-referrer" onError={hide} />
+                  // right-sized (1x for 32 px, not the 4x the feed may send) and lazy; hidden cards load none (`seen`)
+                  ? <img src={emoteDisplaySrc(still ? bigStillEmote(e.imageUrl) : e.imageUrl, 32) ?? e.imageUrl} alt="" width={32} height={32} draggable={false} decoding="async" loading="lazy" referrerPolicy="no-referrer" onError={hide} />
                   : <span className="hv5-bm-emph" aria-hidden="true" />}
                 <span className="hv5-bm-emt"><b>{e.name}</b>{int(e.count)} uses</span>
               </li>

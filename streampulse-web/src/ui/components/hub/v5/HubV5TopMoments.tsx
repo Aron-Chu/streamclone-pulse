@@ -36,7 +36,7 @@ import '../d3/hub-d3-tokens.css'
 import { HubV5Avatar } from './HubV5Avatar'
 import { GameArt } from './HubV5Rack'
 import { feedFreshText, feedStale, feedUp, type FeedUp } from './hubV5FeedModel'
-import { hubCategoryArt, hubSavedAt, hubSavedClock } from './hubV5Model'
+import { hubCategoryArt, hubSavedAt, hubSavedClock, screenerDown } from './hubV5Model'
 import {
   TOP_KEEP_MS,
   TOP_MIN_X,
@@ -183,11 +183,17 @@ export interface TopToday {
   upAsOf: number | null
   /** Picking up is the page's saved copy. */
   upSaved: boolean
+  /** The chat counts behind Picking up did not load (screenerDown): `up` is the last good list, at most 3 min old, or empty. */
+  upDown: boolean
   /** Live channels' pictures by login, for a row whose source sends none. */
   avatars: ReadonlyMap<string, string>
   /** Box art by game name, for Picking up. */
   art: ReadonlyMap<string, string>
 }
+
+/** How long Picking up keeps its last good list, greyed, while the chat counts don't load. */
+export const UP_KEEP_MS = 3 * 60_000
+const NO_UP: FeedUp = { up: [], upWindow: '' }
 
 /** The rail's state, shared by the rail and the phone peek (see the top of this file). */
 export function useTopToday({ hub, savedAt, reading, attempt, nowMs }: TopTodayInput): TopToday {
@@ -273,14 +279,24 @@ export function useTopToday({ hub, savedAt, reading, attempt, nowMs }: TopTodayI
     setGame(next)
   }, [])
   const games = useMemo(() => topGames(read?.games, game), [read, game])
-  const up = useMemo(() => feedUp(hub), [hub])
-  const upAsOf = hub ? savedAt ?? Date.parse(hub.generatedAt) : null
+  const hubUp = useMemo(() => feedUp(hub), [hub])
+  const hubUpAsOf = hub ? savedAt ?? Date.parse(hub.generatedAt) : null
+  // Our 5-minute chat read failed (screenerDown): "nothing is picking up" would be a guess. The rail says it
+  // can't tell, and keeps the last good list greyed for up to 3 minutes (UP_KEEP_MS).
+  const upDown = !!hub && screenerDown(hub.liveChannels)
+  const lastUp = useRef<{ up: FeedUp; asOf: number } | null>(null)
+  useEffect(() => {
+    if (hub && !upDown && hubUpAsOf != null) lastUp.current = { up: hubUp, asOf: hubUpAsOf }
+  }, [hub, upDown, hubUp, hubUpAsOf])
+  const keptUp = upDown && lastUp.current && nowMs - lastUp.current.asOf <= UP_KEEP_MS ? lastUp.current : null
+  const up = upDown ? keptUp?.up ?? NO_UP : hubUp
+  const upAsOf = upDown ? keptUp?.asOf ?? null : hubUpAsOf
   const avatars = useMemo(() => new Map((hub?.liveChannels ?? []).flatMap((c) => (c.profileImageUrl ? [[c.login.toLowerCase(), c.profileImageUrl] as const] : []))), [hub])
   const art = useMemo(() => hubCategoryArt(hub?.livePulseMoments ?? []), [hub])
 
   return {
     shown, hold,
-    chips: feed && read != null, game, games, pickGame, open, setOpen: setOpenState, up, upAsOf, upSaved: savedAt != null, avatars, art,
+    chips: feed && read != null, game, games, pickGame, open, setOpen: setOpenState, up, upAsOf, upSaved: savedAt != null, upDown, avatars, art,
   }
 }
 
@@ -357,7 +373,7 @@ function RowFace({ row, avatar, rank, nowMs }: { row: TopRowData; avatar: string
           <span className="hv5-tm-nm">{row.name}</span>
           {row.emote ? (
             <span className="hv5-f2-em">
-              {emoteSrc ? <img src={emoteSrc} alt="" width={18} height={18} decoding="async" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.style.display = 'none' }} /> : null}
+              {emoteSrc ? <img src={emoteSrc} alt="" width={18} height={18} decoding="async" loading="lazy" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.style.display = 'none' }} /> : null}
               <span>{row.emote.name}</span>
             </span>
           ) : null}

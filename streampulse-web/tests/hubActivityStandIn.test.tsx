@@ -103,8 +103,9 @@ describe('HubActivityPanelV5 under a fallback (10-30)', () => {
   })
 })
 
+// 1 of 12 minutes missing, so a degraded row shows (it hides under 1% missing, HUB-7)
 const summary: ActivitySummary = {
-  pointCount: 12, expectedBuckets: 12, missingBuckets: 0, coveragePct: 100,
+  pointCount: 11, expectedBuckets: 12, missingBuckets: 1, coveragePct: 92,
   nonZeroCount: 8, gapCount: 0, bucketMinutes: 1, windowLabel: '30 minutes', footnote: '',
 }
 const pipeline = { state: 'degraded', collectorMax: 500, roster: { collectorTracking: 500, expectedCollectorRows: 500 } } as HubCorpusPipeline
