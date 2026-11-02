@@ -63,8 +63,8 @@ test('relay routes must be live on the backend and listed in the edge relay', as
   // POST-only account routes answer a GET with 405 when they exist.
   const live = Object.fromEntries(SWITCHES.find((s) => s.name === 'VITE_ACCOUNT_MOMENTS').routes.map((p) => [p, 405]))
   const moments = await checkSwitchRoutes({ env: { VITE_ACCOUNT_MOMENTS: '1' }, fetch: fakeFetch(live), workerText: worker })
-  // Today's relay has none of the My Moments routes.
-  assert.equal(moments.failures.length, 5)
+  // Today's relay has none of the My Moments routes, nor export and delete.
+  assert.equal(moments.failures.length, 7)
   assert.ok(moments.failures.every((f) => f.problem === 'not in the edge relay (public/_worker.js)'))
 
   const header = await checkSwitchRoutes({ env: { VITE_ACCOUNT_HEADER: '1' }, fetch: fakeFetch({ '/v1/account/me': 401 }), workerText: worker })
@@ -98,7 +98,8 @@ test('every VITE_ name the portal reads is either a checked switch or listed as 
       const path = join(dir, name)
       if (statSync(path).isDirectory()) walk(path)
       else if (/\.(ts|tsx)$/.test(name) && !/\.test\.tsx?$/.test(name)) {
-        for (const m of readFileSync(path, 'utf8').matchAll(/import\.meta\.env\.(VITE_[A-Z0-9_]+)/g)) seen.add(m[1])
+        // Any VITE_ name, so a read through an alias (const env = import.meta.env) counts too.
+        for (const m of readFileSync(path, 'utf8').matchAll(/\b(VITE_[A-Z0-9_]+)\b/g)) seen.add(m[1])
       }
     }
   }

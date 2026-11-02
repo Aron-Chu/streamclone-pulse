@@ -81,7 +81,7 @@ every switch off it prints `no switches on` and passes. It is read-only.
 | `VITE_PUBLIC_MOMENTS_FEED` (`on`/`1`) | `/v1/public/moments` |
 | `VITE_PUBLIC_NATIVE_CLIPS` (`on`/`1`) | `/v1/public/clips` |
 | `VITE_TWITCH_SIGNIN` (`1`) | `/v1/account/auth/twitch/{start,complete}`, `/v1/account/identities/twitch/link`, `/v1/account/sessions/revoke-all` (relay) |
-| `VITE_ACCOUNT_MOMENTS` (`1`) | `/v1/account/history/{list,forget,settings}`, `/v1/account/saves/{list,update}` (relay) |
+| `VITE_ACCOUNT_MOMENTS` (`1`) | `/v1/account/history/{list,forget,settings}`, `/v1/account/saves/{list,update}`, `/v1/account/{export,delete}` (relay) |
 | `VITE_ACCOUNT_HEADER` (`1`) | `/v1/account/me` (relay) |
 | `VITE_SUPPORTER_CHAT_BADGES` (`on`/`1`) | none the site calls; prints a note to check the backend flag by hand |
 

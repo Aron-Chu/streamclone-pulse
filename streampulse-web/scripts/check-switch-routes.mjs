@@ -43,7 +43,8 @@ export const SWITCHES = Object.freeze([
   },
   {
     name: 'VITE_ACCOUNT_MOMENTS', on: ONE, relay: true, source: 'src/lib/accountMoments.ts, src/lib/accountSaves.ts, src/routes/account/AccountHome.tsx',
-    routes: ['/v1/account/history/list', '/v1/account/history/forget', '/v1/account/history/settings', '/v1/account/saves/list', '/v1/account/saves/update'],
+    // AccountHome (only in this build) also offers Download your data and Delete account.
+    routes: ['/v1/account/history/list', '/v1/account/history/forget', '/v1/account/history/settings', '/v1/account/saves/list', '/v1/account/saves/update', '/v1/account/export', '/v1/account/delete'],
   },
   { name: 'VITE_ACCOUNT_HEADER', on: ONE, relay: true, source: 'src/lib/accountSession.ts', routes: ['/v1/account/me'] },
   // No route the site calls; the backend flag has to be checked by hand.
