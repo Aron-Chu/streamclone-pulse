@@ -41,8 +41,12 @@ import {
 import { useHubV5Search, useHubV5SearchStore } from './hubV5SearchStore'
 
 export const IS_MAC = typeof navigator !== 'undefined' && /Mac|iP(hone|ad|od)/.test(navigator.platform || navigator.userAgent)
-export const HUB_SEARCH_PLACEHOLDER = 'Search streamers or games'
+/** Q1 (11-02): the field says what it finds; its name keeps the verb. */
+export const HUB_SEARCH_PLACEHOLDER = 'Streamers or games'
+export const HUB_SEARCH_LABEL = 'Search streamers or games'
 const BLUR_CLOSE_MS = 150
+/** K1 (11-02): the window this much taller than the visual viewport means a phone keyboard is up. */
+const KEYBOARD_MIN_PX = 100
 /** The pause in typing before the box asks about a login: one read per settled name, not one per key. */
 export const LOOKUP_DELAY_MS = 300
 const NO_GAMES: readonly HubSearchGame[] = []
@@ -83,6 +87,7 @@ export function HubV5SearchBox({
   const optionId = (i: number) => `${uid}sg${i}`
   const inputRef = useRef<HTMLInputElement | null>(null)
   const blurTimer = useRef<number | undefined>(undefined)
+  const listRef = useRef<HTMLDivElement | null>(null)
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(-1)
   const [found, setFound] = useState<ChannelLookup | null>(null)
@@ -129,6 +134,29 @@ export function HubV5SearchBox({
   }, [])
 
   useEffect(() => () => window.clearTimeout(blurTimer.current), [])
+  // K1 (11-02): with a phone keyboard up, rows under it could not be reached. While the list is open it ends 8 px
+  // above the keyboard (no shorter than 120 px) and scrolls inside; the page stays put. Keyboard closed, nothing changes.
+  useEffect(() => {
+    const list = listRef.current
+    const vv = typeof window === 'undefined' ? null : window.visualViewport
+    if (!expanded || !list || !vv) return undefined
+    const fit = () => {
+      if (window.innerHeight - vv.height * vv.scale < KEYBOARD_MIN_PX) {
+        list.style.removeProperty('--hv5-sugg-room')
+        return
+      }
+      const room = Math.max(120, Math.floor(vv.offsetTop + vv.height - list.getBoundingClientRect().top - 8))
+      list.style.setProperty('--hv5-sugg-room', `${room}px`)
+    }
+    fit()
+    vv.addEventListener('resize', fit)
+    vv.addEventListener('scroll', fit)
+    // the room stays set while the closing list fades, so it doesn't grow on its way out
+    return () => {
+      vv.removeEventListener('resize', fit)
+      vv.removeEventListener('scroll', fit)
+    }
+  }, [expanded])
   // the list scrolls inside when long: the arrow keys keep their row in sight
   useEffect(() => {
     if (active >= 0) document.getElementById(`${uid}sg${active}`)?.scrollIntoView?.({ block: 'nearest' })
@@ -218,7 +246,7 @@ export function HubV5SearchBox({
           aria-controls={listId}
           aria-autocomplete="list"
           aria-activedescendant={expanded && active >= 0 ? optionId(active) : undefined}
-          aria-label={HUB_SEARCH_PLACEHOLDER}
+          aria-label={HUB_SEARCH_LABEL}
           placeholder={HUB_SEARCH_PLACEHOLDER}
           spellCheck={false}
           autoComplete="off"
@@ -255,7 +283,7 @@ export function HubV5SearchBox({
           </button>
         ) : null}
       </label>
-      <div className="hv5-sugg" id={listId} role="listbox" aria-label="Search suggestions" hidden={!expanded}>
+      <div ref={listRef} className="hv5-sugg" id={listId} role="listbox" aria-label="Search suggestions" hidden={!expanded}>
         {options.map((option, i) => {
           // a heading over each group: live channels (or the busiest, before typing), the looked-up login, games, emotes
           const prev = options[i - 1]

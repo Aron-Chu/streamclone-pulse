@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -14,7 +16,7 @@ vi.mock('../src/lib/channelLookup', async (importOriginal) => ({
   readChannelLookup: lookup.readChannelLookup,
 }))
 
-import { HUB_SEARCH_PLACEHOLDER, HubV5SearchBox, LOOKUP_DELAY_MS } from '../src/ui/components/hub/v5/HubV5SearchBox'
+import { HUB_SEARCH_LABEL, HubV5SearchBox, LOOKUP_DELAY_MS } from '../src/ui/components/hub/v5/HubV5SearchBox'
 import { HubV5SearchContext, createHubV5SearchStore, type HubV5SearchStore } from '../src/ui/components/hub/v5/hubV5SearchStore'
 
 const live = (login: string, viewers: number, category = 'Just Chatting'): HubLiveChannel => ({
@@ -46,7 +48,7 @@ function renderBox(store: HubV5SearchStore = createHubV5SearchStore()) {
       </MemoryRouter>
     </HubV5SearchContext.Provider>,
   )
-  const input = screen.getByRole('combobox', { name: HUB_SEARCH_PLACEHOLDER })
+  const input = screen.getByRole('combobox', { name: HUB_SEARCH_LABEL })
   const list = document.querySelector<HTMLElement>('[role="listbox"]')!
   expect(list.getAttribute('aria-label')).toBe('Search suggestions')
   return { input, list, store }
@@ -68,7 +70,9 @@ afterEach(() => cleanup())
 describe('HubV5SearchBox: one box that knows more (3A, 11-02)', () => {
   it('says what it searches, without promising every Twitch channel', () => {
     const { input } = renderBox()
-    expect(input.getAttribute('placeholder')).toBe('Search streamers or games')
+    // Q1 (11-02): the field shows what it finds; its name keeps the verb
+    expect(input.getAttribute('placeholder')).toBe('Streamers or games')
+    expect(input.getAttribute('aria-label')).toBe('Search streamers or games')
     expect(document.body.textContent).not.toMatch(/any Twitch/i)
   })
 
@@ -167,5 +171,61 @@ describe('HubV5SearchBox: one box that knows more (3A, 11-02)', () => {
     type(input, 'just chatting!!')
     expect(within(list).queryAllByRole('option')).toHaveLength(0)
     expect(list.textContent).toBe('Nothing live matches “just chatting!!”.')
+  })
+})
+
+describe('HubV5SearchBox: the list above a phone keyboard (K1, 11-02)', () => {
+  const viewport = (height: number) => Object.assign(new EventTarget(), { height, offsetTop: 0, scale: 1 })
+  afterEach(() => {
+    Reflect.deleteProperty(window, 'visualViewport')
+  })
+
+  it('ends 8 px above the keyboard while open, follows it, and leaves the list alone once closed', () => {
+    const vv = viewport(window.innerHeight)
+    Object.defineProperty(window, 'visualViewport', { configurable: true, value: vv })
+    const { input, list } = renderBox()
+    list.getBoundingClientRect = () => ({ top: 300 }) as DOMRect
+    const room = () => list.style.getPropertyValue('--hv5-sugg-room')
+    fireEvent.focus(input)
+    expect(list.hidden).toBe(false)
+    // keyboard closed: the stylesheet's own limits
+    expect(room()).toBe('')
+    // a keyboard over the lower part: 500 visible, the list starts at 300
+    vv.height = 500
+    vv.dispatchEvent(new Event('resize'))
+    expect(room()).toBe('192px')
+    // the visual viewport scrolled 40 px down the page
+    vv.offsetTop = 40
+    vv.dispatchEvent(new Event('scroll'))
+    expect(room()).toBe('232px')
+    // never shorter than 120 px
+    vv.offsetTop = 0
+    vv.height = 380
+    vv.dispatchEvent(new Event('resize'))
+    expect(room()).toBe('120px')
+    // the keyboard goes: the limit goes with it
+    vv.height = window.innerHeight
+    vv.dispatchEvent(new Event('resize'))
+    expect(room()).toBe('')
+    // closed, the box stops listening
+    fireEvent.keyDown(input, { key: 'Escape' })
+    expect(list.hidden).toBe(true)
+    vv.height = 500
+    vv.dispatchEvent(new Event('resize'))
+    expect(room()).toBe('')
+  })
+
+  it('sets nothing where there is no visual viewport', () => {
+    const { input, list } = renderBox()
+    fireEvent.focus(input)
+    expect(list.style.getPropertyValue('--hv5-sugg-room')).toBe('')
+  })
+
+  it('caps the hero, front page and dock lists by the room', () => {
+    const read = (p: string) => readFileSync(resolve(process.cwd(), p), 'utf8')
+    const hub = read('src/ui/components/hub/v5/hub-v5.css')
+    expect(hub).toMatch(/\n\.hv5-sugg \{[^}]*max-height: min\(72vh, 640px, var\(--hv5-sugg-room, 640px\)\);/)
+    expect(hub).toMatch(/\.hv5-dock \.hv5-sugg \{ max-height: min\(calc\(100dvh - 200px\), var\(--hv5-sugg-room, 100dvh\)\);/)
+    expect(read('src/ui/components/landing/landing.css')).toMatch(/\.sl-search \.hv5-sugg \{[^}]*max-height: min\(72vh, 640px, var\(--hv5-sugg-room, 640px\)\);/)
   })
 })

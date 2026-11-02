@@ -452,8 +452,9 @@
   position: absolute;
   z-index: 45;
   top: 68px;
-  /* games and emotes make the list longer (3A): it scrolls inside, with no bar */
-  max-height: min(72vh, 640px);
+  /* games and emotes make the list longer (3A): it scrolls inside, with no bar. With a phone keyboard up the
+     search box sets the room above it (K1, 11-02) */
+  max-height: min(72vh, 640px, var(--hv5-sugg-room, 640px));
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: none;
