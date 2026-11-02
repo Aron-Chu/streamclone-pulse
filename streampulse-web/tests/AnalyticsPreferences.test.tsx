@@ -111,7 +111,7 @@ describe('website analytics privacy disclosure', () => {
   it('discloses voluntary US processing, event limits, withdrawal limits and separate extension plans', () => {
     render(<MemoryRouter><Privacy /></MemoryRouter>)
     const policy = screen.getByTestId('privacy-policy').textContent ?? ''
-    expect(policy).toContain('Last updated: October 27, 2026')
+    expect(policy).toContain('Last updated: November 1, 2026')
     expect(policy).toContain('Optional website analytics')
     expect(policy).toContain('off by default')
     expect(policy).toContain('United States region')
@@ -119,7 +119,8 @@ describe('website analytics privacy disclosure', () => {
     expect(policy).toContain('not to retain the IP address or collect GeoIP')
     expect(policy).toContain('cannot recall events already transmitted')
     expect(policy).toContain('does not promise a fixed retention period')
-    expect(policy).toContain('Account pages, dashboard activity and individual channel or stream pages are excluded')
+    expect(policy).toContain('Selected public summaries count only as a channel summary or stream recap category, without identifying the channel or stream')
+    expect(policy).toContain('Account pages, dashboard activity and other channel or stream pages are excluded')
     expect(policy).toContain('Product-analytics ingest is not active. The extension does not embed a Sentry or PostHog SDK')
     expect(policy).not.toContain('nothing optional to consent to')
     expect(screen.getByText('Analytics preferences', { selector: 'summary' })).toBeTruthy()

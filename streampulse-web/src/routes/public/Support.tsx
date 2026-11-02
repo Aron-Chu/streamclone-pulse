@@ -1,29 +1,37 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowRight, Lock } from 'lucide-react'
 import { PublicLayout } from '../../ui/components/PublicLayout'
-import { ChromeInstallCta } from '../../ui/components/ChromeInstallCta'
+import { InstallCta } from '../../ui/components/InstallCta'
 import { buttonClass } from '../../ui/primitives'
 import { FEEDBACK_PATH, SECURITY_REPORT_URL } from '../../lib/externalLinks'
+import { DEFAULT_INSTALL_STORE, detectInstallStore, type InstallStore } from '../../lib/installBrowser'
 import { feedbackSiteKey, supportFormAvailability } from '../../lib/supportForm'
 import './support.css'
+
+/** The store the install button opens, named the way Docs names it. */
+const STORE_LABELS: Record<InstallStore, string> = {
+  chrome: 'Chrome Web Store',
+  edge: 'Edge Add-ons',
+  firefox: 'Firefox Add-ons',
+}
 
 export default function Support() {
   // A build without the Turnstile site key cannot take private messages yet, so
   // the card says the form opens soon and its button says where it goes:
   // /feedback then lists the public places to ask.
   const formReady = supportFormAvailability(feedbackSiteKey()) === 'ready'
+  // Detected after mount, like InstallCta, so the prerender says Chrome.
+  const [store, setStore] = useState<InstallStore>(DEFAULT_INSTALL_STORE)
+  useEffect(() => { setStore(detectInstallStore()) }, [])
   return (
     <PublicLayout>
       <div data-testid="support-page" className="support-page">
         {/* The page's h1 comes first, so the heading outline and "next h1"
             reach the title before the card's h2. */}
         <header className="support-page__head">
-          <span className="support-page__badge">
-            <span aria-hidden="true" />
-            StreamPulse Help & Diagnostic Desk
-          </span>
           <h1>Support & Troubleshooting</h1>
-          <p>Troubleshooting for the Twitch extension, coverage states, and public analytics portal.</p>
+          <p>Troubleshooting for the Twitch extension, coverage states, and the Hub.</p>
         </header>
 
         {/* The private form lives on /feedback. This card keeps the
@@ -48,9 +56,9 @@ export default function Support() {
         <article className="panel public-document support-page__guide">
           <section id="install">
             <h2 className="!mt-0">Install StreamPulse</h2>
-            <div className="mt-3 flex flex-wrap items-center gap-3">
-              <ChromeInstallCta className={buttonClass('default', 'sm')} data-cta="chrome-install-support" />
-              <span className="text-xs font-mono text-zinc-400">Chrome Web Store · Chrome and Brave</span>
+            <div className="support-page__install mt-3">
+              <InstallCta className={buttonClass('default', 'sm')} data-cta="chrome-install-support" />
+              <span className="text-xs text-zinc-400" data-testid="support-install-store">From the {STORE_LABELS[store]}</span>
             </div>
           </section>
 
@@ -96,8 +104,7 @@ export default function Support() {
             </ul>
             <p className="alert alert-warning mt-4 text-xs">
               <span>
-                <strong>Privacy Protection:</strong> Do not send Twitch cookies, authorization headers, raw chat exports, passwords, or access keys.
-                Do not attach screenshots that contain account secrets.
+                <strong>Don’t send:</strong> Twitch cookies, authorization headers, raw chat exports, passwords, access keys, or screenshots that show any of them.
               </span>
             </p>
           </section>

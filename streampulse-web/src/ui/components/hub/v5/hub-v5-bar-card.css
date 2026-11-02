@@ -1,27 +1,30 @@
 /*
- * The d3-v5 hub's bar card (PR 3 of 5: U7).
- * Ported from the approved round-5 mockup: bucket-card.css (base and the
- * 'below' placement; the anchor, dock, tray and sheet placements were removed
- * by R5-8) and hub-r5.css (#bk: the stepper, the link rows, the 900 px and
- * 1200 px layouts). Every rule sits under .hub-v5 .hv5-bk. No text under 12 px.
+ * The d3-v5 hub's bar lock (L1, bar-lock board 2026-11-01): the emote lock's
+ * list (hv5-el-*) for one chart bar. A hairline, one header row, then the
+ * bar's busiest chats in two columns of three and its top emotes on the right.
+ * No boxes or tiles, sentence case, no text under 12 px. Every rule sits under
+ * .hub-v5 .hv5-bk.
  *
- * The mockup's .bkc-* classes are .hbk-* here: the session page's card
+ * The classes are .hbk-* (not the mockup's .bkc-*): the session page's card
  * (sp-session-strip.css) styles .bkc-* globally, and its rules would reach
- * this card after an in-app move from a session page to the hub.
+ * this lock after an in-app move from a session page to the hub.
  */
 
 .hub-v5 .hv5-bk {
-  --hv5-viewers: #c0c7ce;
   grid-area: intv;
   position: relative;
   min-width: 0;
-  container: hbk-below / inline-size;
+  container: hbk / inline-size;
 }
 
-/* ---------- base (the page's resets do not reach the card) ---------- */
+/* ---------- base (the page's resets do not reach the lock) ---------- */
 .hub-v5 .hv5-bk .hbk {
+  --hbk-dy: -4px;
   position: relative;
   box-sizing: border-box;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--sp-line);
   color: var(--sp-text-1);
   font: 400 14px/20px var(--sp-font);
   font-variant-numeric: tabular-nums;
@@ -30,10 +33,10 @@
     opacity 120ms cubic-bezier(0.16, 1, 0.3, 1),
     transform 120ms cubic-bezier(0.16, 1, 0.3, 1);
 }
-/* resets at zero specificity, so the page's .hv5-ib / .hv5-qb keep their padding and hover */
+/* resets at zero specificity, so the page's .hv5-ib keeps its size and hover */
 :where(.hub-v5 .hv5-bk .hbk) :where(*, *::before, *::after) { box-sizing: border-box; }
-:where(.hub-v5 .hv5-bk .hbk) :where(p, h2, ul) { margin: 0; }
-:where(.hub-v5 .hv5-bk .hbk) :where(ul) { list-style: none; padding: 0; }
+:where(.hub-v5 .hv5-bk .hbk) :where(p, h2, ol, ul) { margin: 0; }
+:where(.hub-v5 .hv5-bk .hbk) :where(ol, ul) { list-style: none; padding: 0; }
 :where(.hub-v5 .hv5-bk .hbk) :where(img) { display: block; }
 :where(.hub-v5 .hv5-bk .hbk) :where(button) {
   margin: 0;
@@ -48,263 +51,183 @@
 .hub-v5 .hv5-bk .hbk.hbk-enter,
 .hub-v5 .hv5-bk .hbk.hbk-leave {
   opacity: 0;
-  transform: translate(0, var(--hbk-dy, 4px));
+  transform: translate(0, var(--hbk-dy));
 }
 .hub-v5 .hv5-bk .hbk.hbk-leave { pointer-events: none; }
-@media (prefers-reduced-motion: reduce) {
-  .hub-v5 .hv5-bk .hbk { transition: none; }
-  .hub-v5 .hv5-bk .hbk.hbk-enter,
-  .hub-v5 .hv5-bk .hbk.hbk-leave { transform: none; }
-}
 .hub-v5 .hv5-bk .hbk .hv5-ico { width: 16px; height: 16px; }
-.hub-v5 .hv5-bk .hbk .hv5-ib .hv5-ico { width: 18px; height: 18px; }
 
-/* ---------- header: the teal state line and close, then the time range and its date ---------- */
-.hub-v5 .hv5-bk .hbk-h { display: block; padding-bottom: 12px; border-bottom: 1px solid var(--sp-line); }
-.hub-v5 .hv5-bk .hbk-top { display: flex; align-items: center; gap: 8px; min-height: 24px; }
-.hub-v5 .hv5-bk .hbk-s {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--hv5-accent);
-  font-size: 12px;
-  line-height: 16px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+/* the lock mark: a tiny copy of the chart's selected bar (a light bar in the amber band) */
+.hub-v5 .hv5-bk .hbk-mk {
+  display: inline-block;
+  flex: none;
+  width: 7px;
+  height: 13px;
+  border-radius: 2px;
+  background: #b9b8c0;
+  box-shadow: 0 0 0 1.5px #c4861a;
 }
-/* the chart draws the selected bar's band in this teal */
-.hub-v5 .hv5-bk .hbk-s::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: var(--hv5-accent); flex: none; }
-.hub-v5 .hv5-bk .hbk-id { display: flex; align-items: flex-start; gap: 12px; margin-top: 6px; min-width: 0; }
-.hub-v5 .hv5-bk .hbk-hl { flex: 1; min-width: 0; }
-.hub-v5 .hv5-bk .hbk-t {
-  font-family: var(--sp-font);
-  font-weight: 700;
-  font-size: 20px;
-  line-height: 24px;
-  letter-spacing: -0.015em;
-  font-variant-numeric: tabular-nums;
-  color: var(--sp-text-1);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.hub-v5 .hv5-bk .hbk-m {
+
+/* ---------- header: mark, time, day and bar size, ‹ ›, then Zoom to bar and Clear ---------- */
+.hub-v5 .hv5-bk .hbk-h {
   display: flex;
-  align-items: center;
   flex-wrap: wrap;
-  gap: 0 6px;
-  margin-top: 2px;
-  font-size: 12px;
-  line-height: 16px;
+  align-items: center;
+  gap: 2px 10px;
+  min-height: 30px;
+  margin-bottom: 2px;
+  font: 500 12px/16px var(--sp-font);
   color: var(--sp-text-3);
 }
-.hub-v5 .hv5-bk .hbk-hatch { width: 16px; height: 12px; flex: none; overflow: hidden; border-radius: 2px; background: var(--sp-raised); }
-.hub-v5 .hv5-bk .hbk-x { position: relative; flex: none; margin: -6px -8px -6px 0; }
-.hub-v5 .hv5-bk .hbk-x::after { content: ""; position: absolute; inset: -6px; }
-
-/* ---------- three figures: prod's stat tiles (label, value, peak or sample line) ---------- */
-.hub-v5 .hv5-bk .hbk-figs { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1fr) minmax(0, 1.3fr); gap: 6px; }
-.hub-v5 .hv5-bk .hbk-fig {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  padding: 8px;
-  border: 1px solid var(--sp-line-strong);
-  border-radius: 6px;
-  background: var(--sp-panel);
-}
-.hub-v5 .hv5-bk .hbk-fl {
-  order: 0;
-  display: flex;
+.hub-v5 .hv5-bk .hbk-ti { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.hub-v5 .hv5-bk .hbk-t { font: 600 14px/20px var(--sp-font); color: var(--sp-text-1); white-space: nowrap; }
+.hub-v5 .hv5-bk .hbk-day { white-space: nowrap; }
+.hub-v5 .hv5-bk .hbk-step { display: inline-flex; align-items: center; }
+.hub-v5 .hv5-bk .hbk-step .hv5-ib { position: relative; width: 28px; height: 28px; }
+.hub-v5 .hv5-bk .hbk-step .hv5-ib::after { content: ""; position: absolute; left: -1px; right: -1px; top: -6px; bottom: -6px; }
+.hub-v5 .hv5-bk .hbk-step .hv5-ib .hv5-ico { width: 18px; height: 18px; }
+.hub-v5 .hv5-bk .hbk-step .hv5-ib[aria-disabled="true"] { opacity: 0.35; cursor: default; }
+.hub-v5 .hv5-bk .hbk-step .hv5-ib[aria-disabled="true"]:hover { background: none; color: var(--sp-text-2); }
+.hub-v5 .hv5-bk .hbk-act { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; }
+.hub-v5 .hv5-bk .hbk-btn,
+.hub-v5 .hv5-bk .hbk-lk {
+  display: inline-flex;
   align-items: center;
-  gap: 5px;
-  font-size: 12px;
-  line-height: 16px;
-  color: var(--sp-text-3);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.hub-v5 .hv5-bk .hbk-sw { display: inline-block; width: 8px; height: 8px; border-radius: 2px; flex: none; }
-.hub-v5 .hv5-bk .hbk-sw.chat { background: var(--hv5-chat); }
-.hub-v5 .hv5-bk .hbk-sw.emotes { background: var(--hv5-emotes); }
-.hub-v5 .hv5-bk .hbk-sw.viewers { background: var(--hv5-viewers); }
-.hub-v5 .hv5-bk .hbk-n {
-  order: 1;
-  margin-top: 4px;
-  font-family: var(--sp-font);
-  font-weight: 700;
-  font-size: 18px;
-  line-height: 22px;
-  letter-spacing: -0.01em;
-  font-variant-numeric: tabular-nums;
-  color: var(--sp-text-1);
-}
-.hub-v5 .hv5-bk .hbk-n.na { color: var(--sp-text-3); }
-.hub-v5 .hv5-bk .hbk-u {
-  order: 2;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  margin-top: 2px;
-  font-size: 12px;
-  line-height: 16px;
+  gap: 4px;
+  height: 26px;
+  padding: 0 7px;
+  border-radius: 4px;
   color: var(--sp-text-2);
+  font: 500 12px/16px var(--sp-font);
   white-space: nowrap;
-  min-width: 0;
 }
-.hub-v5 .hv5-bk .hbk-ut { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.hub-v5 .hv5-bk .hbk-cap { margin-top: 6px; font-size: 12px; line-height: 16px; color: var(--sp-text-3); }
+.hub-v5 .hv5-bk .hbk-lk { margin-left: 4px; color: var(--hv5-accent); }
+.hub-v5 .hv5-bk :is(.hbk-btn, .hbk-lk):hover { color: var(--sp-text-1); background: var(--sp-raised); }
+.hub-v5 .hv5-bk :is(.hbk-btn, .hbk-lk) .hv5-ico { width: 14px; height: 14px; }
 
-/* ---------- top emotes: one row, each item as wide as its name ---------- */
-.hub-v5 .hv5-bk .hbk-el { display: flex; align-items: center; gap: 16px; min-width: 0; }
-.hub-v5 .hv5-bk .hbk-el li {
+/* ---------- busiest chats (two columns of three) and top emotes (right) ---------- */
+.hub-v5 .hv5-bk .hbk-g { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); column-gap: 24px; }
+.hub-v5 .hv5-bk .hbk-g--emotes { grid-template-columns: minmax(0, 420px); }
+.hub-v5 .hv5-bk .hbk-sub { margin: 6px 0 2px; font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
+.hub-v5 .hv5-bk .hbk-sub:focus { outline: none; }
+.hub-v5 .hv5-bk .hbk-sub:focus-visible { outline: 2px solid var(--hv5-accent); outline-offset: 2px; border-radius: 2px; }
+.hub-v5 .hv5-bk .hbk-sub b { font-weight: 600; color: var(--sp-text-1); }
+.hub-v5 .hv5-bk .hbk-none { padding: 10px 0; font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
+.hub-v5 .hv5-bk .hbk-rows {
   display: grid;
-  grid-template-columns: 28px minmax(0, auto);
-  grid-template-rows: auto auto;
-  column-gap: 8px;
-  align-items: center;
-  min-width: 0;
-  flex: 0 1 auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-auto-flow: column;
+  grid-template-rows: repeat(3, auto);
+  column-gap: 24px;
 }
-.hub-v5 .hv5-bk .hbk-el :is(img, .hbk-noimg) { grid-row: 1 / span 2; width: 28px; height: 28px; object-fit: contain; }
+/* each row is its own container, so a narrow row (not a narrow lock) drops its top emote */
+.hub-v5 .hv5-bk .hbk-rows > li { min-width: 0; container: hbkr / inline-size; animation: hbk-rise 0.35s both; }
+/* the name keeps 72 px: a long text emote shrinks before it does */
+.hub-v5 .hv5-bk .hbk-r {
+  display: grid;
+  grid-template-columns: 14px 24px minmax(72px, 1fr) minmax(0, auto) auto auto;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  min-height: 40px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--sp-line);
+  color: var(--sp-text-1);
+  font: 500 13px/18px var(--sp-font);
+  text-decoration: none;
+}
+.hub-v5 .hv5-bk .hbk-r:hover { color: var(--sp-text-1); text-decoration: none; }
+.hub-v5 .hv5-bk .hbk-r:hover .hbk-n > span { text-decoration: underline; text-underline-offset: 3px; }
+.hub-v5 .hv5-bk .hbk-r:focus-visible { outline: 2px solid var(--hv5-accent); outline-offset: -2px; border-radius: 4px; }
+.hub-v5 .hv5-bk .hbk-i { font-size: 12px; color: var(--sp-text-3); }
+.hub-v5 .hv5-bk .hbk-n { display: grid; min-width: 0; }
+.hub-v5 .hv5-bk .hbk-n > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hub-v5 .hv5-bk .hbk-n small { font: 400 12px/16px var(--sp-font); color: var(--sp-text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* top-aligned, so the dot never makes its line (and its row) a pixel taller */
+.hub-v5 .hv5-bk .hbk-mo { display: inline-flex; align-items: center; gap: 4px; vertical-align: top; color: var(--sp-text-2); }
+.hub-v5 .hv5-bk .hbk-mo::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #ef4444; }
+.hub-v5 .hv5-bk .hbk-te { display: inline-flex; align-items: center; gap: 3px; min-width: 0; overflow: hidden; font-size: 12px; color: var(--sp-text-2); white-space: nowrap; }
+.hub-v5 .hv5-bk .hbk-te img { flex: none; width: 20px; height: 20px; object-fit: contain; }
+.hub-v5 .hv5-bk .hbk-tn { min-width: 0; max-width: 72px; overflow: hidden; text-overflow: ellipsis; }
+.hub-v5 .hv5-bk .hbk-tc { flex: none; }
+.hub-v5 .hv5-bk .hbk-v { font-size: 12px; color: var(--sp-text-2); text-align: right; white-space: nowrap; }
+.hub-v5 .hv5-bk .hbk-at { font-size: 12px; color: var(--hv5-accent); white-space: nowrap; }
+/* loading: six rows hold the list's height, each built like a row (its two lines, 34 px, its padding and its rule) */
+.hub-v5 .hv5-bk .hbk-ph { display: flex; align-items: center; box-sizing: content-box; height: 34px; padding: 4px 0; border-bottom: 1px solid var(--sp-line); }
+.hub-v5 .hv5-bk .hbk-ph::before { content: ""; width: 60%; height: 10px; border-radius: 4px; background: var(--sp-line-strong); animation: hbk-wait 1.2s ease-in-out infinite alternate; }
+.hub-v5 .hv5-bk .hbk-e {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 40px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--sp-line);
+  font: 500 13px/18px var(--sp-font);
+}
+.hub-v5 .hv5-bk .hbk-e :is(img, .hbk-noimg) { width: 24px; height: 24px; object-fit: contain; }
 .hub-v5 .hv5-bk .hbk-noimg {
   display: grid;
   place-items: center;
   border: 1px solid var(--sp-line-strong);
   border-radius: 4px;
-  font-size: 12px;
-  line-height: 16px;
+  font: 500 12px/16px var(--sp-font);
   color: var(--sp-text-3);
 }
-.hub-v5 .hv5-bk .hbk-en { font-size: 14px; line-height: 18px; font-weight: 500; color: var(--sp-text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.hub-v5 .hv5-bk .hbk-ec { font-size: 12px; line-height: 16px; color: var(--sp-text-2); font-variant-numeric: tabular-nums; }
-.hub-v5 .hv5-bk .hbk-emo .hbk-sl { margin-bottom: 4px; }
-
-/* ---------- section label (sentence case, 12 px) ---------- */
-.hub-v5 .hv5-bk .hbk-sl { display: flex; align-items: center; gap: 8px; min-height: 20px; font-size: 12px; line-height: 16px; color: var(--sp-text-2); font-weight: 600; }
-.hub-v5 .hv5-bk .hbk-sl .r { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-weight: 400; color: var(--sp-text-2); white-space: nowrap; }
-
-/* ---------- moments: who, when and the top emote; each row opens in Moments ---------- */
-.hub-v5 .hv5-bk .hbk-ml { margin: 2px -6px 0; }
-.hub-v5 .hv5-bk .hbk-mr {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  height: 28px;
-  padding: 0 6px;
-  border-radius: 4px;
-  color: var(--sp-text-1);
-  text-align: left;
-  text-decoration: none;
-  white-space: nowrap;
-}
-.hub-v5 .hv5-bk .hbk-mr:hover { background: var(--sp-raised); text-decoration: none; }
-.hub-v5 .hv5-bk .hbk-mr:focus-visible { outline: 2px solid var(--hv5-accent); outline-offset: -2px; }
-.hub-v5 .hv5-bk .hbk-mr .nm { flex: 1; min-width: 0; font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
-.hub-v5 .hv5-bk .hbk-mr .ck { flex: none; font-size: 12px; color: var(--sp-text-3); }
-.hub-v5 .hv5-bk .hbk-mr .em { display: inline-flex; align-items: center; gap: 4px; flex: none; margin-left: auto; font-size: 12px; color: var(--sp-text-2); }
-.hub-v5 .hv5-bk .hbk-mr .em img { width: 20px; height: 20px; object-fit: contain; }
-
-/* ---------- provider split: 7TV and other (= total - 7TV) ---------- */
-.hub-v5 .hv5-bk .hbk-pv .hbk-sl b { font-weight: 500; color: var(--sp-text-1); }
-
-/* ---------- notes and actions ---------- */
-.hub-v5 .hv5-bk .hbk-notes { font-size: 12px; line-height: 16px; color: var(--sp-text-3); }
+.hub-v5 .hv5-bk .hbk-en { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hub-v5 .hv5-bk .hbk-prov { margin-top: 8px; font: 400 12px/16px var(--sp-font); color: var(--sp-text-3); }
+.hub-v5 .hv5-bk .hbk-prov b { font-weight: 600; color: var(--sp-text-2); }
+.hub-v5 .hv5-bk .hbk-notes { margin-top: 8px; font: 400 12px/16px var(--sp-font); color: var(--sp-text-3); }
 .hub-v5 .hv5-bk .hbk-notes li + li { margin-top: 2px; }
-.hub-v5 .hv5-bk .hbk-nw:empty { display: none; }
-.hub-v5 .hv5-bk .hbk-act { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 4px; }
-.hub-v5 .hv5-bk .hbk-act .hv5-ico { width: 14px; height: 14px; }
-.hub-v5 .hv5-bk .hbk-act .hv5-qb { gap: 4px; padding: 0 6px; }
-/* the stepper: first in the actions row, Zoom to bar after it */
-.hub-v5 .hv5-bk .hv5-step { order: -1; display: inline-flex; align-items: center; gap: 2px; margin-right: auto; font-size: 12px; color: var(--sp-text-2); }
-.hub-v5 .hv5-bk .hv5-step span { padding: 0 4px; white-space: nowrap; }
-.hub-v5 .hv5-bk .hv5-step .hv5-ib { position: relative; width: 28px; height: 28px; }
-.hub-v5 .hv5-bk .hv5-step .hv5-ib::after { content: ""; position: absolute; left: -2px; right: -2px; top: -6px; bottom: -6px; }
-.hub-v5 .hv5-bk .hv5-step .hv5-ib .hv5-ico { width: 18px; height: 18px; }
 
-/* ---------- gap (no measurement) ---------- */
-.hub-v5 .hv5-bk .hbk-gap { display: flex; align-items: center; gap: 12px; }
-.hub-v5 .hv5-bk .hbk-gapm .hbk-hatch { display: block; width: 40px; height: 28px; }
-.hub-v5 .hv5-bk .hbk-gt { font-size: 14px; line-height: 20px; color: var(--sp-text-1); font-weight: 500; }
-.hub-v5 .hv5-bk .hbk-gap .hbk-cap { margin-top: 0; }
+/* ---------- gap: the chart's hatch, never zeros ---------- */
+.hub-v5 .hv5-bk .hbk-hatch {
+  height: 34px;
+  margin: 8px 0 4px;
+  border-radius: 4px;
+  background: repeating-linear-gradient(135deg, var(--sp-line-strong) 0 5px, transparent 5px 10px);
+}
+.hub-v5 .hv5-bk .hbk-gap .hbk-none { padding-top: 4px; }
 
-/* ======================================================================================
-   below: a strip in the page's flow under the chart, at every width (never a sheet), so nothing covers the plot.
-   The time range on the left; figures, emotes, moments and the actions on the right.
-   ====================================================================================== */
-.hub-v5 .hv5-bk .hbk--below {
-  --hbk-dy: -4px;
-  margin-top: 10px;
-  padding: 12px 16px 14px;
-  background: var(--sp-panel);
-  border: 1px solid var(--sp-line-strong);
-  border-radius: 8px;
+@keyframes hbk-rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes hbk-wait { from { opacity: 0.5; } to { opacity: 1; } }
+
+/* tablet: the emotes go under the chats as three chips */
+@container hbk (max-width: 999px) {
+  .hub-v5 .hv5-bk .hbk-g { grid-template-columns: minmax(0, 1fr); }
+  .hub-v5 .hv5-bk .hbk-erows { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .hub-v5 .hv5-bk .hbk-e { grid-template-columns: 22px minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 6px; row-gap: 0; min-height: 0; border: 0; font-size: 12px; line-height: 16px; }
+  .hub-v5 .hv5-bk .hbk-e :is(img, .hbk-noimg) { grid-row: span 2; width: 22px; height: 22px; }
+  .hub-v5 .hv5-bk .hbk-e .hbk-v { text-align: left; }
 }
-.hub-v5 .hv5-bk .hbk--below > .hbk-in {
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(320px, 1fr);
-  column-gap: 24px;
-  grid-template-areas: "top top" "id body" ". body" ". act";
-  grid-template-rows: auto auto auto 1fr;
-}
-.hub-v5 .hv5-bk .hbk--below .hbk-h { display: contents; }
-.hub-v5 .hv5-bk .hbk--below .hbk-top { grid-area: top; }
-.hub-v5 .hv5-bk .hbk--below .hbk-id { grid-area: id; margin-top: 10px; align-self: start; }
-.hub-v5 .hv5-bk .hbk--below .hbk-body { grid-area: body; min-width: 0; margin-top: 8px; }
-.hub-v5 .hv5-bk .hbk--below .hbk-body > * + * { margin-top: 12px; }
-.hub-v5 .hv5-bk .hbk--below :is(.hbk-emo, .hbk-mom) { padding-top: 10px; border-top: 1px solid var(--sp-line); }
-.hub-v5 .hv5-bk .hbk--below .hbk-pv + .hbk-nw { margin-top: 8px; }
-.hub-v5 .hv5-bk .hbk--below .hbk-act { grid-area: act; align-self: end; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--sp-line); }
-@container hbk-below (min-width: 1000px) {
-  .hub-v5 .hv5-bk .hbk--below > .hbk-in { grid-template-columns: minmax(0, 420px) minmax(0, 1fr); }
-}
-@container hbk-below (max-width: 599px) {
-  .hub-v5 .hv5-bk .hbk--below { padding: 10px 12px 12px; }
-  .hub-v5 .hv5-bk .hbk--below > .hbk-in {
-    grid-template-columns: 128px minmax(0, 1fr);
-    column-gap: 12px;
-    grid-template-areas: "top top" "id id" "body body" "act act";
-    grid-template-rows: auto auto auto auto;
+/* phone: one column of chats, a two-line header, no provider split */
+@container hbk (max-width: 699px) {
+  .hub-v5 .hv5-bk .hbk-rows { grid-template-columns: minmax(0, 1fr); grid-auto-flow: row; grid-template-rows: none; }
+  .hub-v5 .hv5-bk .hbk-prov { display: none; }
+  .hub-v5 .hv5-bk .hbk-h {
+    display: grid;
+    grid-template-columns: auto auto auto minmax(0, 1fr) auto;
+    grid-template-areas: "mk time step . clear" "day day day day zoom";
+    column-gap: 6px;
+    row-gap: 0;
   }
-  .hub-v5 .hv5-bk .hbk--below .hbk-id { margin-top: 8px; align-self: center; }
-  .hub-v5 .hv5-bk .hbk--below .hbk-body { margin-top: 12px; }
+  .hub-v5 .hv5-bk :is(.hbk-ti, .hbk-act) { display: contents; }
+  .hub-v5 .hv5-bk .hbk-mk { grid-area: mk; }
+  .hub-v5 .hv5-bk .hbk-t { grid-area: time; }
+  .hub-v5 .hv5-bk .hbk-step { grid-area: step; }
+  .hub-v5 .hv5-bk .hbk-day { grid-area: day; white-space: normal; }
+  .hub-v5 .hv5-bk .hbk-zoom { grid-area: zoom; justify-self: end; }
+  .hub-v5 .hv5-bk .hbk-clear { grid-area: clear; justify-self: end; }
 }
-/* 900 px and up: the time range and the actions in a narrow left column, the figures over two lists on the right */
-@container hbk-below (min-width: 900px) {
-  .hub-v5 .hv5-bk .hbk--below > .hbk-in {
-    grid-template-columns: minmax(150px, 200px) minmax(0, 1fr);
-    grid-template-rows: auto auto 1fr;
-    grid-template-areas: "top top" "id body" "act body";
-  }
-  .hub-v5 .hv5-bk .hbk--below .hbk-act { flex-direction: column; align-items: flex-start; gap: 4px; margin-top: 12px; padding-top: 0; border-top: 0; align-self: end; }
-  .hub-v5 .hv5-bk .hbk--below .hv5-step { margin-right: 0; margin-left: -6px; }
-  .hub-v5 .hv5-bk .hbk--below .hbk-zoom { margin-left: -6px; }
-  .hub-v5 .hv5-bk .hbk--below .hbk-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 24px; align-items: start; }
-  .hub-v5 .hv5-bk .hbk--below .hbk-body > * { margin-top: 0; }
-  .hub-v5 .hv5-bk .hbk--below .hbk-fg { grid-column: 1 / -1; grid-row: 1; }
-  .hub-v5 .hv5-bk .hbk--below .hbk-emo { grid-column: 1; grid-row: 2; margin-top: 12px; }
-  .hub-v5 .hv5-bk .hbk--below .hbk-mom { grid-column: 2; grid-row: 2; margin-top: 12px; }
-  .hub-v5 .hv5-bk .hbk--below .hbk-pv { grid-column: 1 / -1; grid-row: 3; margin-top: 8px; }
-  .hub-v5 .hv5-bk .hbk--below .hbk-nw { grid-column: 1 / -1; grid-row: 4; margin-top: 8px; }
-  .hub-v5 .hv5-bk .hbk--below .hbk-gap { grid-column: 1 / -1; }
-  .hub-v5 .hv5-bk .hbk--below .hbk-el { flex-direction: column; align-items: stretch; gap: 6px; }
-  .hub-v5 .hv5-bk .hbk--below .hbk-el li { grid-template-columns: 28px minmax(0, 1fr) auto; grid-template-rows: auto; }
-  .hub-v5 .hv5-bk .hbk--below .hbk-el :is(img, .hbk-noimg) { grid-row: 1; }
+/* a row with no room for its top emote (under 340 px, at any lock width) drops it */
+@container hbkr (max-width: 339px) {
+  .hub-v5 .hv5-bk .hbk-r { grid-template-columns: 14px 24px minmax(0, 1fr) auto auto; }
+  .hub-v5 .hv5-bk .hbk-te { display: none; }
 }
-/* 1200 px and up: figures, top emotes and moments side by side */
-@container hbk-below (min-width: 1200px) {
-  .hub-v5 .hv5-bk .hbk--below .hbk-body { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr); }
-  .hub-v5 .hv5-bk .hbk--below .hbk-fg { grid-column: 1; }
-  .hub-v5 .hv5-bk .hbk--below .hbk-emo { grid-column: 2; grid-row: 1 / span 2; margin-top: 0; padding-top: 0; border-top: 0; }
-  .hub-v5 .hv5-bk .hbk--below .hbk-mom { grid-column: 3; grid-row: 1 / span 2; margin-top: 0; padding-top: 0; border-top: 0; }
-  .hub-v5 .hv5-bk .hbk--below .hbk-pv { grid-column: 1; grid-row: 2; }
-  .hub-v5 .hv5-bk .hbk--below .hbk-nw { grid-row: 3; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hub-v5 .hv5-bk .hbk { transition: none; }
+  .hub-v5 .hv5-bk .hbk.hbk-enter,
+  .hub-v5 .hv5-bk .hbk.hbk-leave { transform: none; }
+  .hub-v5 .hv5-bk .hbk-rows > li,
+  .hub-v5 .hv5-bk .hbk-ph::before { animation: none; }
 }

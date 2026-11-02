@@ -109,6 +109,8 @@
 .moments-tabs.moments-tabs-two { grid-template-columns: repeat(2, minmax(6.5rem, 1fr)); }
 .moments-tabs-two .moments-tab-indicator { width: calc((100% - 8px) / 2); }
 .moments-tabs-two[data-view="saved"] .moments-tab-indicator { transform: translateX(100%); }
+/* With the Clips tab on, the tab set varies, so the indicator follows the selected tab's index. */
+.moments-tabs.moments-tabs-indexed[data-view] .moments-tab-indicator { transform: translateX(calc(var(--moments-tab-index, 0) * 100%)); }
 .moments-explore { min-width: 0; }
 .moments-explore-toolbar { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; align-items: end; padding-block: 12px; }
 .moments-explore-toolbar label { display: grid; min-width: 0; gap: 5px; color: var(--fma-muted); font-size: 12px; }
@@ -371,7 +373,10 @@ a.moments-creator-link:hover strong { text-decoration: underline; text-underline
 .moments-workspace :is(button,a,input,select,summary):focus-visible { outline: 2px solid var(--fma-accent-text); outline-offset: 3px; }
 @media (prefers-reduced-motion: no-preference) {
   .moments-loading__card { animation: moments-loading-breathe 1.8s ease-in-out infinite alternate; }
-  .moments-workspace :is(button,a,select,input) { transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease; }
+  .moments-workspace :is(button,a,select,input) { transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease, scale 260ms cubic-bezier(.34, 1.56, .64, 1); }
+  /* the approved press (2026-10-21): a button dips and springs back; cards and wide rows dip less */
+  .moments-workspace button:not(:disabled):active { scale: .96; transition-duration: 140ms, 140ms, 140ms, 140ms, 70ms; }
+  .moments-workspace :is(.moments-category-track > button, .nc-card-hit):not(:disabled):active { scale: .985; }
 }
 @keyframes moments-loading-breathe { from { opacity: .5; } to { opacity: .9; } }
 .moments-identity { display: flex; align-items: center; gap: 12px; margin: 20px 0 14px; }
@@ -530,7 +535,7 @@ a.moments-creator-link:hover strong { text-decoration: underline; text-underline
 .moments-category-track::-webkit-scrollbar { height: 6px; }
 .moments-category-track::-webkit-scrollbar-track { background: transparent; }
 .moments-category-track::-webkit-scrollbar-thumb { border-radius: 999px; background: var(--sp-surface-3, var(--fma-dim)); }
-.moments-category-track > button { display: flex; flex: 0 0 180px; align-items: center; text-align: left; gap: 8px; min-height: 64px; padding: 8px; border: 1px solid var(--fma-border); border-radius: 8px; background: transparent; scroll-snap-align: start; transition: border-color 160ms ease; }
+.moments-category-track > button { display: flex; flex: 0 0 180px; align-items: center; text-align: left; gap: 8px; min-height: 64px; padding: 8px; border: 1px solid var(--fma-border); border-radius: 8px; background: transparent; scroll-snap-align: start; transition: border-color 160ms ease, background-color 160ms ease, scale 260ms cubic-bezier(.34, 1.56, .64, 1); }
 .moments-category-track > button[aria-pressed="true"] { border-color: var(--fma-accent, #a1d4c5); }
 .moments-category-track strong { display: block; color: var(--fma-text); font-size: 14px; overflow-wrap: anywhere; }
 .moments-category-track small { display: block; margin-top: 6px; color: var(--fma-muted); font-size: 12px; }

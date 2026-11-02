@@ -110,6 +110,8 @@ export type HubUxMockOptions = {
   featuredSession?: unknown
   /** Serves the 24h activity without the buckets this returns false for (index from the oldest): a window the collector missed. */
   keepActivityBucket?: (index: number) => boolean
+  /** Each 24h bucket names its top three emotes and certifies its provider counts (default: counts only, no names). */
+  bucketEmoteDetail?: boolean
 }
 
 /**
@@ -136,6 +138,8 @@ export const READY_FEATURED_SESSION = {
 export type HubUxMockServed = {
   /** `at` of the two default Pulse moments: each one's own minute. */
   momentAts: [number, number]
+  /** Later 24h hub replies carry these buckets (counted back from the newest, 0 = newest) as unmeasured gaps. */
+  markUnmeasured: (bucketsAgo: Iterable<number>) => void
 }
 
 export async function installHubUxMock(page: Page, options: HubUxMockOptions = {}): Promise<HubUxMockServed> {
@@ -145,6 +149,20 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
   const now = options.diurnal7d ? Date.parse('2026-09-13T12:00:00Z') : Date.now()
   const liveChannels = noLiveData || mode === 'error' ? [] : buildLiveChannels(14)
   const activityPoints = noLiveData || mode === 'error' ? [] : options.diurnal7d ? build7dDiurnalActivityPoints(now) : build24hActivityPoints(now)
+  const unmeasured = new Set<number>()
+  /** The 24h reply's points as they stand: emote detail when asked for, unmeasured buckets as gaps. */
+  const dayPoints = () => activityPoints.map((point, index) => {
+    if (unmeasured.has(activityPoints.length - 1 - index)) {
+      return { t: point.t, chat: 0, seventv: 0, viewers: 0, gapKind: 'unmeasured', bucketComplete: true }
+    }
+    return options.bucketEmoteDetail
+      ? { ...point, providerCountsComplete: true, topEmotes: [
+          { name: 'KEKW', provider: '7tv', count: 30 },
+          { name: 'OMEGALUL', provider: 'bttv', count: 18 },
+          { name: 'DinoDance', provider: 'twitch', count: 12 },
+        ] }
+      : point
+  })
   const newsroomMomentAt = activityPoints.length >= 2
     ? activityPoints[activityPoints.length - 2].t
     : now - 6 * 60_000
@@ -241,7 +259,7 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
     })) : servingRecent && activityPoints.length ? Array.from({ length: 30 }, (_, i) => ({
       ...activityPoints[activityPoints.length - 1],
       t: Math.floor(now / 60_000) * 60_000 - (30 - i) * 60_000,
-    })) : activityPoints
+    })) : dayPoints()
     const answeredPoints = options.keepActivityBucket && !servingRecent
       ? servedPoints.filter((_, index) => options.keepActivityBucket!(index))
       : servedPoints
@@ -441,5 +459,10 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
   await page.route(/\/v1\/public\/newsroom(\/[^?]+)?(\?.*)?$/, (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ schemaVersion: 0 }) }),
   )
-  return { momentAts: [newsroomMomentAt, newsroomMomentAt - 6 * 60_000] }
+  return {
+    momentAts: [newsroomMomentAt, newsroomMomentAt - 6 * 60_000],
+    markUnmeasured: (bucketsAgo) => {
+      for (const ago of bucketsAgo) unmeasured.add(ago)
+    },
+  }
 }

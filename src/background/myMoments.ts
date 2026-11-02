@@ -11,6 +11,7 @@ import { clearAccountHistory, historySyncCheckDue, historySyncView, refreshHisto
 import { handleMomentPicture, wantPicture, type PictureMoment } from './momentPictures.ts'
 import { momentPictures } from '../shared/momentPictureStore.ts'
 import type { MomentPictureRequest } from '../shared/momentPictureMessages.ts'
+import { recordNewDeviceBookmark } from './reviewRequest.ts'
 
 export { replayAvailability }
 const bookmarkMoment = (b: PulseBookmark, note: string): LibraryMoment => ({ id: b.id, channel: b.login, title: b.label || 'Saved moment', vodId: b.vodId ?? null,
@@ -145,9 +146,15 @@ export async function handleDeviceBookmarks(message: ListBookmarksMessage | Save
   if (held || scopeAccount(scope)) return null
   if (message.type === 'SAVE_BOOKMARK') {
     const b = message.bookmark
-    const data = await personalTransaction(scope, d => addDeviceBookmark(d, b, Date.now()))
+    let created = false
+    const data = await personalTransaction(scope, d => {
+      const next = addDeviceBookmark(d, b, Date.now())
+      created = next !== d
+      return next
+    })
     const key = identity({ channel: b.login ?? '', vodId: b.vodId ?? null, streamId: b.streamId, offsetSeconds: Math.floor(b.offsetSeconds) })
-    return { type: 'BOOKMARK', item: data.bookmarks.find(item => bookmarkIdentity(item) === key)!, device: true }
+    const reviewRequest = created && !message.restoreOf && await recordNewDeviceBookmark()
+    return { type: 'BOOKMARK', item: data.bookmarks.find(item => bookmarkIdentity(item) === key)!, device: true, ...(reviewRequest ? { reviewRequest: true } : {}) }
   }
   const start = message.cursor ? Number(message.cursor) : 0
   if (!Number.isSafeInteger(start) || start < 0) throw new Error('invalid_bookmark_cursor')

@@ -8,6 +8,7 @@ import { readTwitchChannelAvatarUrl } from '../content/twitch.ts'
 import { ACCENT_THEME_OPTIONS } from './overlayTheme.ts'
 import { ChoicePicker } from './ChoicePicker.tsx'
 import { DENSITY_OPTIONS, PLACEMENT_OPTIONS } from './preferenceOptions.ts'
+import { AUTO_UPDATE_LABEL, DENSITY_LABEL, DOCK_LABEL, LIVE_SETTINGS_TITLE, PLACEMENT_LABEL, VOD_JUMP_PIN_LABEL } from './settingLabels.ts'
 import { usePulseHealth } from './usePulseHealth.ts'
 import { usePulsePreferences } from './usePulsePreferences.ts'
 import { useSupporterAppearanceDetails, type SupporterAppearance } from './useSupporterAppearance.ts'
@@ -190,17 +191,17 @@ export function PulseSettingsPanel({ onBack, channel }: { onBack?: () => void; c
 
         <QuickGroup title="Moments">
           <StoredToggleRow label="Moment pictures" hint="Kept on this device with your saves, never uploaded." read={getMomentPicturesEnabled} write={setMomentPicturesEnabled} />
-          <StoredToggleRow label="Mark VOD jumps on the chart" read={getVodJumpChartPinEnabled} write={setVodJumpChartPinEnabled} />
+          <StoredToggleRow label={VOD_JUMP_PIN_LABEL} read={getVodJumpChartPinEnabled} write={setVodJumpChartPinEnabled} />
           <div className="pulse-settings-toggle-row pulse-settings-control-block">
             <span className="pulse-settings-label">My Moments</span>
             <button type="button" className="pulse-link-btn" data-settings-host-cta="moments" disabled={opening} onClick={() => void openHost('moments')}>Open ↗</button>
           </div>
         </QuickGroup>
 
-        <QuickGroup title="Live data">
+        <QuickGroup title={LIVE_SETTINGS_TITLE}>
           <ToggleRow
             id="pulse-auto-update"
-            label="Refresh live data automatically"
+            label={AUTO_UPDATE_LABEL}
             checked={preferences.autoUpdate}
             onChange={preferences.setAutoUpdate}
           />
@@ -208,11 +209,11 @@ export function PulseSettingsPanel({ onBack, channel }: { onBack?: () => void; c
 
         <QuickGroup title="Layout">
           <div className="pulse-settings-field pulse-settings-control-block">
-            <span className="pulse-settings-label">Density</span>
+            <span className="pulse-settings-label">{DENSITY_LABEL}</span>
             <ChoicePicker
               kind="density"
               variant="compact"
-              groupLabel="Density"
+              groupLabel={DENSITY_LABEL}
               options={DENSITY_OPTIONS}
               value={preferences.density}
               onChange={next => void preferences.setDensity(next)}
@@ -220,11 +221,11 @@ export function PulseSettingsPanel({ onBack, channel }: { onBack?: () => void; c
           </div>
 
           <div className="pulse-settings-field pulse-settings-control-block">
-            <span className="pulse-settings-label">Placement</span>
+            <span className="pulse-settings-label">{PLACEMENT_LABEL}</span>
             <ChoicePicker
               kind="placement"
               variant="compact"
-              groupLabel="Placement"
+              groupLabel={PLACEMENT_LABEL}
               options={PLACEMENT_OPTIONS.map(option => ({
                 ...option,
                 icon: <span className="pulse-placement-icon" data-placement={option.value} aria-hidden="true" />,
@@ -236,7 +237,7 @@ export function PulseSettingsPanel({ onBack, channel }: { onBack?: () => void; c
 
           <ToggleRow
             id="pulse-chat-dock"
-            label="Dock when chat is closed"
+            label={DOCK_LABEL}
             hint={isSidebar ? 'Show a mini Pulse dock when Twitch chat is hidden.' : 'Docking needs Sidebar placement.'}
             checked={preferences.dock}
             disabled={!isSidebar}

@@ -6,21 +6,59 @@ import { emptyPersonalData, type PersonalData } from '../src/background/myMoment
 import type { PulseBookmark } from '../src/shared/messages.ts'
 import { MomentListItem } from '../src/ui/library/LibraryPrimitives.tsx'
 import { replayUrl, type LibraryMoment } from '../src/ui/library/model.ts'
-const f = vi.hoisted(() => ({ accountId: 'one' as string | null, pages: vi.fn(), save: vi.fn(), remove: vi.fn(), data: new Map<string, PersonalData>() }))
+const f = vi.hoisted(() => ({ accountId: 'one' as string | null, pages: vi.fn(), save: vi.fn(), remove: vi.fn(), data: new Map<string, PersonalData>(), failWrite: false }))
 vi.mock('../src/background/supporterAccountRuntime.ts', () => ({ bindAccountDataForget: () => undefined, supporterAccount: { isInstallationIdentity: async () => false, run: async () => f.accountId ? { state: 'linked', accountId: f.accountId } : { state: 'signed_out' } } }))
 vi.mock('../src/background/api.ts', () => ({ fetchPulseBookmarks: f.pages, createPulseBookmark: f.save, deletePulseBookmark: f.remove }))
 vi.mock('../src/background/myMomentsStore.ts', async original => ({ ...await original<object>(), personalTransaction: async (scope: string, update?: (value: PersonalData) => PersonalData) => {
   const value = f.data.get(scope) ?? emptyPersonalData()
   if (!update) return value
-  const next = update(value); f.data.set(scope, next); return next
+  const next = update(value); if (f.failWrite) throw new Error('write failed'); f.data.set(scope, next); return next
 } }))
 beforeEach(() => {
-  f.accountId = 'one'; f.data.clear(); f.pages.mockReset(); f.save.mockReset(); f.remove.mockReset()
+  f.accountId = 'one'; f.failWrite = false; f.data.clear(); f.pages.mockReset(); f.save.mockReset(); f.remove.mockReset()
   vi.stubGlobal('chrome', {})
 })
 afterEach(() => vi.unstubAllGlobals())
 const load = () => handleMyMoments({ type: 'MY_MOMENTS', action: 'load' }, {}) as Promise<{ snapshot: { scope: string; moments: { note: string }[]; bookmarksState: string } }>
 const item = { id: 'bk', login: 'xqc', vodId: '123', offsetSeconds: 1, label: 'saved', notes: '', createdAt: new Date().toISOString() }
+
+function reviewStore() {
+  const data: Record<string, unknown> = {}
+  vi.stubGlobal('chrome', { storage: { local: {
+    get: async (key: string) => ({ [key]: data[key] }),
+    set: async (values: Record<string, unknown>) => Object.assign(data, values),
+  } } })
+  return data
+}
+const reviewSaveRequest = (offsetSeconds: number) => ({ type: 'SAVE_BOOKMARK' as const, bookmark: { login: 'xqc', streamId: '123456', offsetSeconds, source: 'extension' as const } })
+
+it('offers a review only for the third new committed device save, ignoring duplicates and Undo restores', async () => {
+  f.accountId = null
+  const local = reviewStore()
+  expect(await handleDeviceBookmarks(reviewSaveRequest(1), {})).not.toHaveProperty('reviewRequest')
+  expect(await handleDeviceBookmarks(reviewSaveRequest(1), {})).not.toHaveProperty('reviewRequest')
+  expect(local['pulseReviewRequest.v1']).toEqual({ bookmarks: 1, offered: false })
+  await handleDeviceBookmarks({ ...reviewSaveRequest(2), restoreOf: 'removed' }, {})
+  expect(local['pulseReviewRequest.v1']).toEqual({ bookmarks: 1, offered: false })
+  await handleDeviceBookmarks(reviewSaveRequest(3), {})
+  expect(await handleDeviceBookmarks(reviewSaveRequest(4), {})).toHaveProperty('reviewRequest', true)
+  expect(await handleDeviceBookmarks(reviewSaveRequest(5), {})).not.toHaveProperty('reviewRequest')
+  expect(local['pulseReviewRequest.v1']).toEqual({ bookmarks: 3, offered: true })
+})
+
+it('does not count a failed bookmark write or private/account saves', async () => {
+  f.accountId = null
+  const local = reviewStore()
+  f.failWrite = true
+  await expect(handleDeviceBookmarks(reviewSaveRequest(1), {})).rejects.toThrow('write failed')
+  expect(local['pulseReviewRequest.v1']).toBeUndefined()
+  f.failWrite = false
+  expect(await handleDeviceBookmarks(reviewSaveRequest(2), { tab: { incognito: true } as chrome.tabs.Tab })).toBeNull()
+  expect(local['pulseReviewRequest.v1']).toBeUndefined()
+  f.accountId = 'linked'
+  expect(await handleDeviceBookmarks(reviewSaveRequest(3), {})).toBeNull()
+  expect(local['pulseReviewRequest.v1']).toBeUndefined()
+})
 it('scopes server requests and local notes to account identity, retaining notes after reconnect', async () => {
   f.pages.mockResolvedValue({ items: [item] })
   const one = await load()

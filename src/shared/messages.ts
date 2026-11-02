@@ -820,7 +820,7 @@ export type BackgroundResponse =
   | { type: 'PULSE_DEBUG_LOG'; entries: import('./pulseDebug.ts').PulseDebugEntry[] }
   /** `device`: saved without an account; these rows never leave this browser. */
   | ({ type: 'BOOKMARKS'; device?: true; error?: string } & PulseBookmarkPage)
-  | { type: 'BOOKMARK'; item: PulseBookmark; device?: true; error?: string }
+  | { type: 'BOOKMARK'; item: PulseBookmark; device?: true; reviewRequest?: true; error?: string }
   | { type: 'DELETE_BOOKMARK'; ok: boolean; error?: string }
   | { type: 'REMOVE_BOOKMARK'; ok: boolean; device?: true; error?: string }
   | { type: 'WATCHLIST'; channels: string[]; sync?: WatchlistSyncStatus; error?: string }

@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   CHROME_WEB_STORE_EXTENSION_ID,
   CHROME_WEB_STORE_LISTING_URL,
+  EDGE_ADDONS_LISTING_URL,
+  FIREFOX_ADDONS_LISTING_URL,
   PUBLIC_SITE,
   STREAM_PULSE_ANALYTICS_URL,
   STREAM_PULSE_PRIVACY_URL,
@@ -12,7 +14,8 @@ import {
   storeLinkPageForPath,
   type StoreLinkPage,
 } from '../src/lib/publicSiteConfig'
-import { ChromeInstallCta } from '../src/ui/components/ChromeInstallCta'
+import { detectInstallStore, installStoreUrl } from '../src/lib/installBrowser'
+import { InstallCta } from '../src/ui/components/InstallCta'
 import { AppRoutes } from '../src/routes/index'
 import Docs from '../src/routes/public/Docs'
 import Support from '../src/routes/public/Support'
@@ -68,27 +71,107 @@ describe('store link page kind', () => {
   })
 })
 
-describe('ChromeInstallCta', () => {
-  afterEach(() => window.history.replaceState(null, '', '/'))
+const UA = {
+  chrome: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36',
+  edge: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0',
+  firefox: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:144.0) Gecko/20100101 Firefox/144.0',
+  safari: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15',
+  // Brave sends Chrome's user agent; its brands say Brave.
+  brave: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36',
+} as const
+
+describe('install store detection', () => {
+  it('sends Edge to Edge Add-ons, Firefox to Firefox Add-ons and every other browser to the Chrome Web Store', () => {
+    expect(detectInstallStore({ userAgent: UA.edge })).toBe('edge')
+    expect(detectInstallStore({ userAgent: UA.chrome, userAgentData: { brands: [{ brand: 'Microsoft Edge' }] } })).toBe('edge')
+    expect(detectInstallStore({ userAgent: UA.firefox })).toBe('firefox')
+    expect(detectInstallStore({ userAgent: 'Mozilla/5.0 (iPhone) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/144.0 Mobile/15E148' })).toBe('firefox')
+    expect(detectInstallStore({ userAgent: UA.chrome })).toBe('chrome')
+    expect(detectInstallStore({ userAgent: UA.brave, userAgentData: { brands: [{ brand: 'Brave' }, { brand: 'Chromium' }] } })).toBe('chrome')
+    expect(detectInstallStore({ userAgent: UA.safari })).toBe('chrome')
+    expect(detectInstallStore({ userAgent: '' })).toBe('chrome')
+    expect(detectInstallStore(undefined)).toBe('chrome')
+  })
+
+  it('opens the official listings, with the page kind on the Chrome link only', () => {
+    expect(installStoreUrl('edge', 'analytics')).toBe(EDGE_ADDONS_LISTING_URL)
+    expect(installStoreUrl('firefox', 'analytics')).toBe(FIREFOX_ADDONS_LISTING_URL)
+    expect(new URL(installStoreUrl('chrome', 'analytics')).searchParams.get('utm_medium')).toBe('analytics')
+  })
+})
+
+describe('InstallCta', () => {
+  const realUa = Object.getOwnPropertyDescriptor(window.navigator, 'userAgent')
+  const setUa = (value: string) => Object.defineProperty(window.navigator, 'userAgent', { configurable: true, get: () => value })
+  afterEach(() => {
+    window.history.replaceState(null, '', '/')
+    if (realUa) Object.defineProperty(window.navigator, 'userAgent', realUa)
+    else delete (window.navigator as { userAgent?: string }).userAgent
+  })
 
   it('uses the exact canonical CWS listing with safe target/rel', () => {
-    render(<ChromeInstallCta />)
+    render(<InstallCta />)
     const link = screen.getByRole('link', { name: /Add StreamPulse to Chrome/i })
     assertSafeCwsLink(link)
   })
 
   it('keeps the channel and stream id out of the store link on a session page', () => {
     window.history.replaceState(null, '', '/analytics/zackrawrr/317702962423')
-    render(<ChromeInstallCta />)
+    render(<InstallCta />)
     const link = screen.getByRole('link', { name: /Add StreamPulse to Chrome/i })
     const href = link.getAttribute('href') ?? ''
     expect(new URL(href).searchParams.get('utm_medium')).toBe('analytics')
     expect(href).not.toMatch(/zackrawrr|317702962423/)
     expect(link.getAttribute('data-cws-listing')).toBe(href)
   })
+
+  it.each([
+    ['edge', UA.edge, 'Add to Edge', EDGE_ADDONS_LISTING_URL],
+    ['firefox', UA.firefox, 'Add to Firefox', FIREFOX_ADDONS_LISTING_URL],
+  ] as const)('shows one %s button for that browser, opening its official listing', (store, ua, name, url) => {
+    setUa(ua)
+    render(<InstallCta label="short" icon="mark" />)
+    const link = screen.getByRole('link', { name })
+    expect(link.getAttribute('href')).toBe(url)
+    expect(link.getAttribute('data-store')).toBe(store)
+    expect(link.getAttribute('data-cws-listing')).toBeNull()
+    expect(link.getAttribute('target')).toBe('_blank')
+    expect(link.getAttribute('rel')).toBe('noopener noreferrer')
+    expect(link.querySelector(`.${store}-mark`)).toBeTruthy()
+    expect(screen.getAllByRole('link')).toHaveLength(1)
+  })
+
+  it.each([['Brave', UA.brave], ['Safari', UA.safari]])('sends %s to the Chrome Web Store', (_name, ua) => {
+    setUa(ua)
+    render(<InstallCta label="short" />)
+    assertSafeCwsLink(screen.getByRole('link', { name: 'Add to Chrome' }))
+  })
+
+  it('keeps a fixed store whatever the browser', () => {
+    setUa(UA.edge)
+    render(<InstallCta store="firefox" label="short" />)
+    expect(screen.getByRole('link', { name: 'Add to Firefox' }).getAttribute('href')).toBe(FIREFOX_ADDONS_LISTING_URL)
+  })
 })
 
 describe('install CTAs across surfaces', () => {
+  it('lists the published Edge and Firefox listings beside Chrome, with honest desktop guidance', () => {
+    render(<MemoryRouter><Docs /></MemoryRouter>)
+    const install = screen.getByRole('heading', { name: /install the streampulse extension/i }).closest('section')!
+    const firefox = within(install).getByRole('link', { name: 'Add to Firefox' })
+    expect(firefox.getAttribute('href')).toBe(FIREFOX_ADDONS_LISTING_URL)
+    expect(PUBLIC_SITE.firefoxAddonsListingUrl).toBe(FIREFOX_ADDONS_LISTING_URL)
+    expect(firefox.getAttribute('target')).toBe('_blank')
+    expect(firefox.getAttribute('rel')).toBe('noopener noreferrer')
+    const edge = within(install).getByRole('link', { name: 'Add to Edge' })
+    expect(edge.getAttribute('href')).toBe(EDGE_ADDONS_LISTING_URL)
+    expect(PUBLIC_SITE.edgeAddonsListingUrl).toBe(EDGE_ADDONS_LISTING_URL)
+    expect(edge.getAttribute('target')).toBe('_blank')
+    expect(edge.getAttribute('rel')).toBe('noopener noreferrer')
+    expect(install.textContent).toContain('On a phone or tablet, open this page on your computer.')
+    expect(install.textContent).not.toContain('will appear here once its listing is verified')
+  })
+
   it('landing hero and nav CTAs use the canonical listing', () => {
     render(
       <MemoryRouter>
@@ -140,7 +223,7 @@ describe('install CTAs across surfaces', () => {
     )
     const header = screen.getByRole('banner')
     expect(header.getAttribute('data-analytics-build')).toBe('command-center-cws-2026-07-22')
-    assertSafeCwsLink(within(header).getByRole('link', { name: /Add StreamPulse to Chrome/i }))
+    assertSafeCwsLink(within(header).getByRole('link', { name: 'Add to Chrome' }))
   })
 
   it('keeps install CTAs visible without overflow on mobile and desktop widths', () => {
@@ -173,6 +256,33 @@ function LocationProbe() {
   return <span data-testid="pathname">{pathname}</span>
 }
 
+function InstallLocationProbe() {
+  const { pathname, search, hash } = useLocation()
+  return <span data-testid="install-location">{pathname}{search}{hash}</span>
+}
+
+describe('install entry', () => {
+  it.each(['/install', '/install/'])('opens the guide from %s without forwarding query values to stores', async path => {
+    const search = '?utm_campaign=editor-pilot&channel=private-channel&email=private@example.test'
+    window.history.replaceState({}, '', `${path}${search}`)
+    render(
+      <MemoryRouter initialEntries={[`${path}${search}#old-anchor`]}>
+        <InstallLocationProbe />
+        <AppRoutes />
+      </MemoryRouter>,
+    )
+    expect(await screen.findByTestId('docs-page')).toBeTruthy()
+    expect(screen.getByTestId('install-location').textContent).toBe(`/docs${search}#extension`)
+    for (const link of screen.getAllByRole('link').filter(el =>
+      el.hasAttribute('data-cws-listing') || el.getAttribute('href') === FIREFOX_ADDONS_LISTING_URL,
+    )) {
+      expect(link.getAttribute('href')).not.toMatch(/editor-pilot|private-channel|private@example/)
+    }
+    expect(screen.queryByTestId('not-found')).toBeNull()
+    window.history.replaceState({}, '', '/')
+  })
+})
+
 describe('analytics routes and admin', () => {
   it('resolves /analytics and /analytics/ to the command center', async () => {
     const { unmount } = render(
@@ -184,7 +294,10 @@ describe('analytics routes and admin', () => {
     expect(await screen.findByRole('main', { name: /streampulse analytics/i })).toBeTruthy()
     expect(screen.getByTestId('pathname').textContent).toBe('/analytics')
     expect(document.querySelector('[data-analytics-build="command-center-cws-2026-07-22"]')).toBeTruthy()
-    assertSafeCwsLink(screen.getByRole('link', { name: /Add StreamPulse to Chrome/i }))
+    // The hub's install card and the bar's button (which hides while the card shows).
+    const installs = screen.getAllByRole('link', { name: 'Add to Chrome' })
+    expect(installs.map((a) => a.getAttribute('data-cta')).sort()).toEqual(['chrome-install-analytics', 'chrome-install-hub-hero'])
+    for (const link of installs) assertSafeCwsLink(link)
     unmount()
 
     render(

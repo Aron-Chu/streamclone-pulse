@@ -36,6 +36,11 @@ export function panelComponentCss(): string {
   .pulse-notice { background: #2a2440; border: 1px solid #3f3f50; border-radius: 10px; color: var(--pulse-accent-soft, #c4b5fd); font-size: 12px; font-weight: 700; margin: 14px 0 0; padding: 10px 12px; }
   .pulse-notice-warn { background: rgba(249,115,22,0.12); border-color: rgba(249,115,22,0.35); color: #fdba74; }
   .pulse-notice-ok { background: rgba(34,197,94,0.12); border-color: rgba(34,197,94,0.35); color: #86efac; }
+  .pulse-review-request { background: #1f1f27; border: 1px solid #3f3f50; border-radius: 10px; color: #b7b7c6; font-size: 12px; line-height: 1.4; margin-top: 12px; padding: 10px 12px; }
+  .pulse-review-request p { margin: 0; }
+  .pulse-review-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 12px; margin-top: 6px; }
+  .pulse-review-actions a, .pulse-review-actions button { background: none; border: 0; color: var(--pulse-accent-soft, #c4b5fd); cursor: pointer; font: inherit; min-height: 28px; padding: 4px 0; }
+  .pulse-review-actions :is(a, button):focus-visible { outline: 2px solid var(--pulse-accent-soft, #c4b5fd); outline-offset: 3px; }
   .pulse-vod-state { background: #1f1f27; border: 1px solid #3f3f50; border-radius: 12px; padding: 14px; }
   .pulse-vod-state-warn { background: rgba(245, 158, 11, 0.08); border-color: rgba(251, 191, 36, 0.38); }
   .pulse-vod-state-title { font-size: 15px; font-weight: 700; line-height: 1.3; margin: 0 0 6px; }

@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink } from 'react-router-dom'
+import { AccountEntrySlot } from './AccountEntrySlot'
+import { accountHeaderEnabled } from '../../lib/accountHeaderFlag'
 import { BrandMark } from './BrandMark'
 import { DiscordMark } from './DiscordMark'
 import { discordInviteUrl } from '../../lib/discord'
-import { ChromeInstallCta } from './ChromeInstallCta'
+import { InstallCta } from './InstallCta'
 import { capturePublicCta } from '../../lib/productAnalytics'
 import { AnalyticsPreferences } from './AnalyticsPreferences'
 import { PageErrorBoundary } from '../PortalErrorBoundary'
@@ -36,7 +38,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="app-shell">
       <a className="public-skip-link" href="#public-main">Skip to main content</a>
-      <header className="app-nav">
+      <header className={accountHeaderEnabled() ? 'app-nav app-nav--account' : 'app-nav'}>
         <Link to="/" className="app-nav__brand" title="StreamPulse Home">
           <BrandMark className="app-nav__mark" size={28} />
           <span>StreamPulse</span>
@@ -60,7 +62,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
             onClick={() => capturePublicCta('open_analytics')}
             className={({ isActive }) => `app-nav__link${isActive ? ' is-active' : ''}`}
           >
-            Analytics
+            Hub
           </NavLink>
           <NavLink
             to="/docs"
@@ -99,8 +101,9 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
               <DiscordMark size={16} />Discord
             </a>
           ) : null}
-          <ChromeInstallCta className="app-nav__install" data-cta="chrome-install-public-nav" />
+          <InstallCta className="app-nav__install" data-cta="chrome-install-public-nav" />
         </nav>
+        <AccountEntrySlot variant="public" />
       </header>
       <main className="app-main" id="public-main" tabIndex={-1}><PageErrorBoundary>{children}</PageErrorBoundary></main>
       <footer className="app-footer">
@@ -109,7 +112,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
             <BrandMark size={20} />
             <span className="font-bold text-zinc-300">StreamPulse</span>
             <span className="text-zinc-400">·</span>
-            <span className="text-xs text-zinc-400">Twitch reaction analytics</span>
+            <span className="text-xs text-zinc-400">Free Twitch chat and emote stats. Not affiliated with Twitch.</span>
           </div>
           {/* Two rows rather than nine links in one: product destinations and
               policy documents are different errands. Both rows keep the same
@@ -117,7 +120,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
               contrast floor for small text. */}
           <nav className="app-footer__nav" aria-label="Footer">
             <div className="app-footer__links">
-              <Link to="/analytics" onClick={() => capturePublicCta('open_analytics')}>Analytics Hub</Link>
+              <Link to="/analytics" onClick={() => capturePublicCta('open_analytics')}>Hub</Link>
               <Link to="/docs">Documentation</Link>
               <Link to="/status">System Status</Link>
               <Link to="/support">Support</Link>
@@ -132,6 +135,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
               </a>
             </div>
             <div className="app-footer__links">
+              <Link to="/tools/twitch-vod-timestamp-link">Timestamp link tool</Link>
               <Link to={SUPPORTER_PATH}>Supporter</Link>
               <Link to={PRIVACY_PATH}>Privacy Policy</Link>
               <Link to={TERMS_PATH}>Terms of Use</Link>

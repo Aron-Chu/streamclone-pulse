@@ -19,6 +19,7 @@ import {
   formatCount,
   formatSince,
   emoteImage,
+  notChartedNote,
   popupShowsDeviceHistory,
   popupTabView,
   safeImageUrl,
@@ -297,6 +298,7 @@ function ChannelCard({ login, load, avatar, onOpen, onRetry, analyticsHref = nul
     )
   }
   const summary = load.status === 'ready' ? load.summary : null
+  const notCharted = notChartedNote(summary)
   const name = summary?.displayName ?? login
   const isLive = summary?.isLive ?? false
   const meta = summary
@@ -326,10 +328,10 @@ function ChannelCard({ login, load, avatar, onOpen, onRetry, analyticsHref = nul
           <strong>Couldn’t load chat activity</strong>
           The Pulse panel may still have it. <button type="button" className="pp-inline" onClick={onRetry}>Try again</button>
         </p>
-      ) : summary && !summary.tracked ? (
+      ) : notCharted ? (
         <p className="pp-note">
-          <strong>Pulse isn’t charting this channel yet</strong>
-          Open the panel to see what’s available here.
+          <strong>{notCharted.title}</strong>
+          {notCharted.reason}
         </p>
       ) : summary ? (
         <ChannelPulse summary={summary} />
@@ -340,7 +342,7 @@ function ChannelCard({ login, load, avatar, onOpen, onRetry, analyticsHref = nul
         <button type="button" className="pp-primary" data-popup-action="open-analytics" onClick={() => onOpenUrl?.(analyticsHref)}>
           {login} on Analytics <span aria-hidden="true">↗</span>
         </button>
-      </> : <button type="button" className="pp-primary" data-popup-action="open-pulse" onClick={onOpen}>
+      </> : notCharted ? null : <button type="button" className="pp-primary" data-popup-action="open-pulse" onClick={onOpen}>
         Open Pulse panel <ArrowIcon />
       </button>}
     </section>

@@ -32,7 +32,8 @@ describe.each(PAGES)('$name is folded into headed sections', ({ Page, root }) =>
     const { container } = renderPage(Page)
     const article = screen.getByTestId(root)
     const headings = [...article.querySelectorAll('h2')]
-    const summary = headings.find((heading) => heading.textContent === 'Summary')!
+    // Terms opens with a Summary block, Privacy with At a glance; neither is folded.
+    const summary = headings.find((heading) => heading.textContent === 'Summary' || heading.textContent === 'At a glance')!
     expect(summary.closest('details')).toBeNull()
     const folded = headings.filter((heading) => heading !== summary)
     expect(folded.length).toBeGreaterThan(8)

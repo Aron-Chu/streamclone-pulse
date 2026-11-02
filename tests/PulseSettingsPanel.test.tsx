@@ -169,7 +169,7 @@ describe('PulseSettingsPanel quick workspace', () => {
   it('groups quick controls into titled cards', () => {
     const html = renderToStaticMarkup(<PulseSettingsPanel />)
     expect(html.match(/class="pulse-quick-group-card"/g)).toHaveLength(5)
-    for (const title of ['Moments', 'Live data', 'Layout', 'Appearance']) {
+    for (const title of ['Moments', 'Live behavior', 'Layout', 'Appearance']) {
       expect(html).toContain(`<h2 class="pulse-quick-group-title">${title}</h2>`)
     }
     // Your look tells everyone without the perk that trying is free.

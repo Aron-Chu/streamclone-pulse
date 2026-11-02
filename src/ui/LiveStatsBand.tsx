@@ -107,7 +107,6 @@ export interface LiveStatsBandProps {
   onLoadFromStart?: () => void
   onJumpToOffset?: (offsetSeconds: number) => void
   onOpenAnalytics?: (offsetSeconds: number) => void
-  onOpenFullAnalytics?: () => void
   onRequestFullTimeline?: () => Promise<FullHistoryRequestResult>
   onChartWindowChange?: (window: ChartTimelineWindow) => void
   onPinOffset?: (offsetSeconds: number | null) => void
@@ -261,7 +260,6 @@ export function LiveStatsBand({
   onLoadFromStart,
   onJumpToOffset,
   onOpenAnalytics,
-  onOpenFullAnalytics,
   onRequestFullTimeline,
   onChartWindowChange,
   onPinOffset,
@@ -1122,8 +1120,9 @@ export function LiveStatsBand({
   const viewerEndOffsetSeconds = viewerSamples[viewerSamples.length - 1]?.offsetSeconds ?? null
   const viewerPaused = viewerAvailability === 'paused'
   // The chart itself is the healthy-state proof. Keep the header badge for
-  // actionable or degraded states where it tells the user what changed.
-  const showConfidenceBadge = viewerPaused || stats.confidence !== 'Synced'
+  // actionable or degraded states where it tells the user what changed. A
+  // viewer delay has one notice, in the status lane below, not here too.
+  const showConfidenceBadge = stats.confidence !== 'Synced'
   const viewerTimelineHint = viewerSamplesAvailable && viewerEndOffsetSeconds != null
     ? isLive
       ? `Viewer data from ${formatHeatOffset(viewerStartOffsetSeconds)} · ${!autoUpdate || viewerPaused ? 'latest sample ' + formatHeatOffset(viewerEndOffsetSeconds) : 'sampling now'}`
@@ -1187,7 +1186,8 @@ export function LiveStatsBand({
   const viewerMetricValue = stats.viewerState === 'stale' ? null : stats.currentViewers
   const viewerMetricMeta = stats.viewerState === 'stale' && liveMetadata?.viewerCount != null
     ? `Last known ${formatNumber(liveMetadata.viewerCount)} · ${formatFreshnessAge(liveMetadata.freshnessSeconds)}`
-    : `${formatSignedDelta(stats.viewerDelta5m)} · 5m${stats.viewerState === 'unknown' ? ' · unavailable' : ''}`
+    // While viewer data is delayed a 5m change of 0 means no data, not no change.
+    : `${formatSignedDelta(viewerPaused ? null : stats.viewerDelta5m)} · 5m${stats.viewerState === 'unknown' ? ' · unavailable' : ''}`
 
   return (
     <PulseSectionCard
@@ -1196,11 +1196,6 @@ export function LiveStatsBand({
       style={{ marginBottom: sidebarFill ? 10 : 14, width: '100%' }}
       meta={
         <span style={styles.headerMeta}>
-          {onOpenFullAnalytics && !demoMode ? (
-            <button type="button" style={styles.analyticsHeaderLink} onClick={onOpenFullAnalytics}>
-              Stream analytics →
-            </button>
-          ) : null}
           {showConfidenceBadge ? (
             <span
               style={{
@@ -1214,7 +1209,7 @@ export function LiveStatsBand({
               }}
               data-chart-confidence={stats.confidence}
             >
-              {viewerPaused ? 'Viewer history delayed' : stats.confidence}
+              {stats.confidence}
             </span>
           ) : null}
         </span>
@@ -1748,16 +1743,6 @@ const styles: Record<string, CSSProperties> = {
     flexWrap: 'wrap',
     gap: 8,
     justifyContent: 'flex-end',
-  },
-  analyticsHeaderLink: {
-    background: 'transparent',
-    border: 0,
-    color: '#c4b5fd',
-    cursor: 'pointer',
-    fontSize: 10,
-    fontWeight: 800,
-    padding: '2px 0',
-    whiteSpace: 'nowrap',
   },
   expandButton: {
     background: 'rgba(255, 255, 255, 0.05)',

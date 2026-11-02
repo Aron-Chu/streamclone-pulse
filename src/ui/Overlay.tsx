@@ -29,15 +29,18 @@ import type { ExtensionClip, ExtensionCoverageTierResponse, ExtensionRollup, Pul
 import { buildHubAnalyticsUrl, defaultWebAnalyticsBaseUrlForApi, openStreamAnalytics, resolveStreamAnalyticsHref } from '../shared/analyticsLinks.ts'
 import {
   DEFAULT_BACKEND_URL,
+  FIRST_RUN_LINE_DISMISSED_KEY,
   getAutoUpdateEnabled,
   getBackendUrl,
   densityFromStorageChange,
   getDensityPreference,
+  getFirstRunLineDismissed,
   getVodJumpChartPinEnabled,
   getOverlayDisplayPreferences,
   getSidebarTab,
   isHostedBackendUrl,
   isLocalStackBackendUrl,
+  setFirstRunLineDismissed,
   setOverlayMode,
   setSidebarTab,
   type DensityPreference,
@@ -58,6 +61,7 @@ import {
 import { theme } from './theme.ts'
 import { sendBackgroundMessage } from '../content/bridge.ts'
 import { EXTENSION_RECONNECT_MESSAGE } from '../shared/backgroundResponse.ts'
+import { NOT_CHARTED_TITLE } from '../shared/notCharted.ts'
 import {
   activationFromOverlay,
   createBackfillOperationController,
@@ -84,8 +88,7 @@ import { SIDEBAR_COMPACT_WIDTH } from '../content/resolveOverlayHostVisibility.t
 import { effectivePulseIsLive, pulsePayloadForDisplay } from './effectivePulseLive.ts'
 import { isPulseTop500Supported } from './pulseEligibility.ts'
 import { PulseLiveUnavailablePanel } from './PulseLiveUnavailablePanel.tsx'
-import { PulseNotTrackedPanel } from './PulseNotTrackedPanel.tsx'
-import { PulseRosterUnsupportedPanel } from './PulseRosterUnsupportedPanel.tsx'
+import { PulseNotChartedPanel } from './PulseNotChartedPanel.tsx'
 import { PulseSidebarSkeleton } from './PulseSidebarSkeleton.tsx'
 import { coverageTierStatusLabel, resolvePulseLiveAccess } from './resolvePulseLiveAccess.ts'
 import { PULSE_STREAM_START_TOLERANCE_SEC } from './coverageStartHint.ts'
@@ -129,7 +132,8 @@ function coverageErrorMessage(raw: string | null | undefined, fallback: string):
   return formatPulseApiError(raw) ?? fallback
 }
 
-export type SidebarTabChangeSource = 'user' | 'sync'
+/** 'auto': Chat for this channel visit only, never saved as the reader's tab. */
+export type SidebarTabChangeSource = 'user' | 'sync' | 'auto'
 
 interface OverlayProps {
   login: string
@@ -262,12 +266,15 @@ function OverlayTabsShell({
       await setOverlayMode('expanded')
       onOverlayModeChange?.('expanded')
     }
+    const changed = next !== resolvedSidebarTab
     setSidebarTabState(next)
     // The content mount must hide/show the panel synchronously on a direct
     // click. Waiting for sync storage here leaves the old Pulse host intercepting
     // Twitch chat during the transition window.
     onSidebarTabChange?.(next, 'user')
-    await setSidebarTab(next)
+    // A click on the tab already shown is no new choice, so an automatic Chat
+    // (a channel with nothing to chart) is never saved through it.
+    if (changed) await setSidebarTab(next)
   }
 
   if (resolvedPlacement === 'hidden') {
@@ -356,6 +363,8 @@ function OverlayMain({
   const [panelView, setPanelView] = useState<'pulse' | 'settings'>('pulse')
   const [chartPinOffset, setChartPinOffset] = useState<number | null>(null)
   const [vodJumpChartPinEnabled, setVodJumpChartPinEnabled] = useState(true)
+  // Hidden until storage says the reader hasn't dismissed it.
+  const [firstRunLine, setFirstRunLine] = useState(false)
   const [mostReactedPinOffset, setMostReactedPinOffset] = useState<number | null>(null)
   const [mostReactedPreviewOffset, setMostReactedPreviewOffset] = useState<number | null>(null)
   const [chartMinuteSelection, setChartMinuteSelection] = useState<ExtensionRollup | null>(null)
@@ -675,6 +684,9 @@ function OverlayMain({
       void getVodJumpChartPinEnabled().then(value => {
         if (mounted) setVodJumpChartPinEnabled(value)
       })
+      void getFirstRunLineDismissed().then(dismissed => {
+        if (mounted) setFirstRunLine(!dismissed)
+      })
       if (backendId === backendRequestId) setBackendUrlState(storedBackend)
       if (!controlledSidebarTab && storedSidebarTab != null && tabId === tabRequestId) {
         setSidebarTabState(storedSidebarTab)
@@ -717,6 +729,8 @@ function OverlayMain({
           if (mounted) setVodJumpChartPinEnabled(value)
         })
       }
+      // Dismissed in another tab: gone here too.
+      if (changes[FIRST_RUN_LINE_DISMISSED_KEY]?.newValue === true) setFirstRunLine(false)
     }
     if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
       chrome.storage.onChanged.addListener(storageHandler)
@@ -838,6 +852,17 @@ function OverlayMain({
     pulseLiveAccess: pulseLiveAccess.state,
     pulseSupported,
   })
+  // Nothing to chart on this channel (off the list, or live while StreamPulse
+  // isn't reading its chat): the mount shows Chat, once per visit, unsaved.
+  const nothingToChart = context.kind === 'channel' && (panelSurfaceState === 'unsupported'
+    || (hostedBackend && panelSurfaceState === 'live_untracked' && !payload?.tracking))
+  const autoChatVisitRef = useRef('')
+  useEffect(() => {
+    if (!nothingToChart || autoChatVisitRef.current === loadKey) return
+    autoChatVisitRef.current = loadKey
+    onSidebarTabChange?.('chat', 'auto')
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per channel visit
+  }, [nothingToChart, loadKey])
   const recapCoverageTier = coverageTierState
   const recapUiState = payload
     ? resolveRecapUiState({
@@ -1930,6 +1955,17 @@ function OverlayMain({
         onSupporterPerks={setSupporterPerks}
       />
 
+      {/* Once, in the sidebar where the Chat tab is: what Pulse is, and the way back to chat. */}
+      {firstRunLine && (sidebarBodyOnly || showSidebarTabs) && !sidebarChatOnly && !nothingToChart ? (
+        <p className="pulse-state-text" data-pulse-first-run="true">
+          Pulse charts this stream’s chat. Click Chat for Twitch chat.{' '}
+          <button type="button" className="pulse-link-btn" onClick={() => {
+            setFirstRunLine(false)
+            void setFirstRunLineDismissed().catch(() => undefined)
+          }}>Dismiss</button>
+        </p>
+      ) : null}
+
       {panelView === 'pulse' && !sidebarChatOnly ? (
         <AnalyticsHubCta backendUrl={backendUrl} compact />
       ) : null}
@@ -1977,16 +2013,8 @@ function OverlayMain({
         </div>
       ) : null}
 
-      {payload && !pulseSupported ? (
-        <PulseRosterUnsupportedPanel login={login} />
-      ) : null}
-
-      {!isVodPage && hostedBackend && uiIsLive && pulseSupported && panelSurfaceState === 'live_untracked' ? (
-        <PulseNotTrackedPanel
-          login={login}
-          hostedActiveCount={pulseLiveAccess.hostedActiveCount}
-          hostedActiveLimit={pulseLiveAccess.hostedActiveLimit}
-        />
+      {payload && (!pulseSupported || (!isVodPage && hostedBackend && uiIsLive && panelSurfaceState === 'live_untracked')) ? (
+        <PulseNotChartedPanel onBackToChat={sidebarBodyOnly ? () => onSidebarTabChange?.('chat', 'auto') : undefined} />
       ) : null}
 
       {!isVodPage && !hostedBackend && payload && pulseSupported && panelSurfaceState === 'live_untracked' ? (
@@ -2031,7 +2059,6 @@ function OverlayMain({
                   onLoadFromStart={() => void loadStreamFromStart()}
                   onJumpToOffset={jumpToOffset}
                   onOpenAnalytics={openAnalytics}
-                  onOpenFullAnalytics={() => openAnalytics()}
                   onRequestFullTimeline={requestFullTimeline}
                   onChartWindowChange={handleChartWindowChange}
                   onPinOffset={handleChartPin}
@@ -2288,9 +2315,7 @@ function StreamPulseHeader({
       </div>
       <div className={sidebarFill ? 'pulse-header-actions-sidebar' : 'pulse-header-actions'} style={hostedBackend && hideUtilityActions ? { display: 'none' } : undefined}>
         {!pulseSupported && !hostedBackend ? (
-          <span className={trackingPillClass} aria-label="Limited tracked roster">
-            Limited roster
-          </span>
+          <span className={trackingPillClass}>{NOT_CHARTED_TITLE}</span>
         ) : hostedBackend ? null : pulseLiveAccess === 'full_live' ? (
           <span className={trackingPillClass} aria-label="Tracking this streamer">
             Tracking

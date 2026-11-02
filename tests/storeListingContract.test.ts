@@ -39,6 +39,13 @@ describe('Chrome Web Store listing copy (0.2.6)', () => {
     expect(description).toContain('the 7TV header backdrop')
   })
 
+  it("says near the top that live charts cover only Twitch's busiest channels", () => {
+    const description = section('### Detailed description')
+    const line = "Live charts cover Twitch's busiest channels; other channels show past data or nothing."
+    expect(description).toContain(line)
+    expect(description.indexOf(line)).toBeLessThan(description.indexOf('• '))
+  })
+
   it('describes no account, Protect enrollment or sign-in this build does not offer', () => {
     const fields = section('## Next store candidate: 0.2.6 listing fields') + section('## Permission justifications (0.2.6 store package)')
     expect(fields).not.toMatch(/Protect|beta access key|Twitch OAuth|Email address for optional sign-in|free Pulse account/i)

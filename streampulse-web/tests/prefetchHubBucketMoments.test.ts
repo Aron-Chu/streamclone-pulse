@@ -152,3 +152,20 @@ it('honors a rate limit across bucket selections on the same backend', async () 
   expect(fetchHistoricalHubMoments).toHaveBeenCalledTimes(1)
   clearHubBucketMomentsInFlight()
 })
+
+it('waits out a 429 that hides Retry-After for 30 s, and tells each caller how long is left (review 11-01)', async () => {
+  clearHubBucketMomentsInFlight()
+  fetchHistoricalHubMoments.mockReset()
+  fetchHistoricalHubMoments.mockRejectedValue({ kind: 'rate_limited', status: 429, message: 'slow down' })
+  const opts = { bucketT: 1719000900000, activityWindow: '24h' as const, activityWindowMinutes: 1440 }
+  await expect(requestHubBucketMoments(opts)).rejects.toMatchObject({ status: 429, retryAfterMs: 30000 })
+  const second = await requestHubBucketMoments({ ...opts, bucketT: opts.bucketT + 360000 }).then(
+    () => { throw new Error('expected the cooldown to refuse the read') },
+    (error: unknown) => error as { status: number; retryAfterMs: number },
+  )
+  expect(second.status).toBe(429)
+  expect(second.retryAfterMs).toBeGreaterThan(0)
+  expect(second.retryAfterMs).toBeLessThanOrEqual(30000)
+  expect(fetchHistoricalHubMoments).toHaveBeenCalledTimes(1)
+  clearHubBucketMomentsInFlight()
+})

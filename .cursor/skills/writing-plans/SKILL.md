@@ -89,7 +89,3 @@ After writing the complete plan, review the spec with fresh eyes and check the p
 **3. Type consistency:** Are the types, method signatures, and property names used in later tasks consistent with those defined in earlier tasks? Calling it `clearLayers()` in task 3 but `clearFullLayers()` in task 7 is a bug.
 
 If you find a problem, fix it inline. No need to re-review — fix it and move on. If you find a spec requirement with no corresponding task, add a task.
-
-## BaJie-MCP integration notes
-
-This skill is used by the BaJie-MCP control center during §5.5 Step 2 task decomposition. When the control center breaks down a complex task, it references this skill's methodology to create the subtask checklist.

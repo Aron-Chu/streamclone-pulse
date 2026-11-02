@@ -130,10 +130,9 @@ test.describe('in-app navigation scroll', () => {
     await expect(details).not.toHaveAttribute('open', '')
   })
 
-  test('the home page has no Developer reference card; /docs/api still opens the collapsed #api section', async ({ page }) => {
-    await page.goto('/')
-    await expect(page.locator('a.sl-rescard')).toHaveCount(2)
-    await expect(page.locator('a.sl-rescard[href="/docs#api"]')).toHaveCount(0)
+  // The landing's Developer reference card is gone, so the app's own /docs/api redirect is the
+  // in-app arrival left. Production answers /docs/api with an edge 301 before the app loads.
+  test('the in-app /docs/api redirect opens the collapsed #api section', async ({ page }) => {
     await page.goto('/docs/api')
     await expect(page).toHaveURL(/\/docs#api$/)
     await expect(page.locator('details:has(#api)')).toHaveAttribute('open', '')

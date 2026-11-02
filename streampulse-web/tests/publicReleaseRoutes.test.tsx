@@ -114,6 +114,6 @@ describe('public release routes', () => {
     renderRoute(<NotFound />)
     const page = screen.getByTestId('not-found')
     expect(within(page).getByRole('heading', { name: /page not found/i })).toBeTruthy()
-    expect(within(page).getByRole('link', { name: /open analytics/i }).getAttribute('href')).toBe('/analytics')
+    expect(within(page).getByRole('link', { name: /open the hub/i }).getAttribute('href')).toBe('/analytics')
   })
 })

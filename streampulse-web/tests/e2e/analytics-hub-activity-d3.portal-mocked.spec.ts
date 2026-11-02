@@ -304,7 +304,7 @@ test('series chips switch series on and off and keep at least one on', async ({ 
   await expect(page.locator(`${CARD} .spc-bar`)).not.toHaveCount(0)
 })
 
-test('the readout shows Now at rest and the hovered bar only, and never moves', async ({ page }) => {
+test('the readout shows Now at rest, the hovered bar, and a locked bar until Esc, and never moves', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await installHubUxMock(page)
   await openHub(page)
@@ -320,9 +320,13 @@ test('the readout shows Now at rest and the hovered bar only, and never moves', 
     await expect(readout.locator('.tm .l1')).not.toHaveText('Now')
     expect(await readout.boundingBox()).toEqual(rest)
   }
-  // A picked bar does not take over the readout: it stays Now (or hover).
+  // A locked bar holds the readout at rest, in the same place (R1, bar-lock board 11-01); Esc goes back to Now.
   await clickBar(page, 0.5)
   await page.mouse.move(2, 2)
+  await expect(readout).toHaveAttribute('data-hub-readout-mode', 'lock')
+  await expect(readout.locator('.tm .l2')).toHaveText(/ · locked$/)
+  expect(await readout.boundingBox()).toEqual(rest)
+  await page.keyboard.press('Escape')
   await expect(readout).toHaveAttribute('data-hub-readout-mode', 'now')
   await expect(readout.locator('.tm .l1')).toHaveText('Now')
 })

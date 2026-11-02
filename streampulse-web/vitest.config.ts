@@ -63,6 +63,8 @@ export default defineConfig({
     testTimeout: 120_000,
     setupFiles: ['./tests/setup.ts'],
     exclude: [
+      'scripts/recap-pilot.test.mjs',
+      'scripts/audit-ai-crawl.test.mjs',
       'scripts/account-routing.test.mjs',
       'scripts/account-proxy-worker.test.mjs',
       'scripts/check-edge-freeze.test.mjs',

@@ -285,39 +285,23 @@ test('Channels sorts, filters, shows more and marks what is not measured', async
   await expect(channels.getByText('No channels match.')).toBeVisible()
 })
 
-test('a Top moments row opens under itself, closes on a second click and Escape, and links to the minute', async ({ page }) => {
-  // No drop-in, so the opened numbers are measured where they settle.
+test('Top moments today is the carousel under the chart, and the rail is only what is picking up now, strongest × first', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.setViewportSize({ width: 1440, height: 900 })
   await openV5Hub(page, TOP_MOMENT)
-  // The opened row's one stream-record read: a VOD with verified timing, so Watch lands on the minute.
-  await page.route(/\/v1\/portal\/analytics\/streams\/s1(\?.*)?$/, route => route.fulfill({
-    json: { channel: 'xqc', vodId: '2000000001', vodAlignSeconds: 30, vodDurationSeconds: 7200, vodTiming: { state: 'verified' }, stream: { streamId: 's1', login: 'xqc' } },
-  }))
-  const latest = page.locator('#latest')
-  await expect(latest.getByRole('heading', { name: 'Top moments today' })).toBeVisible()
-  const item = latest.locator('.hv5-tm-list > .hv5-tm-it').first()
-  const row = item.locator('.hv5-tm-row')
-  await row.scrollIntoViewIfNeeded()
-  await expect(row).toContainText('xQc')
-  await expect(row).toHaveAttribute('aria-expanded', 'false')
-  const open = item.locator('.hv5-tm-det')
-  await row.click()
-  await expect(open).toBeVisible()
-  await expect(row).toHaveAttribute('aria-expanded', 'true')
-  // Under the row, never over it, so the row keeps the click.
-  const rowBox = (await row.boundingBox())!
-  expect((await open.boundingBox())!.y).toBeGreaterThanOrEqual(rowBox.y + rowBox.height - 1)
-  // An hour in plus the VOD's 30 s, from 10 s before, as Moments plays it.
-  await expect(open.getByRole('link', { name: /^Watch the moment/ })).toHaveAttribute('href', /\/videos\/2000000001\?t=1h0m20s$/)
-  await row.click()
-  await expect(open).toHaveCount(0)
-  await row.click()
-  await expect(open).toBeVisible()
-  await page.keyboard.press('Escape')
-  await expect(open).toHaveCount(0)
-  await row.click()
-  await open.getByRole('link', { name: 'Open in Moments' }).click()
+  const big = page.locator('#big-moments')
+  await expect(big.getByRole('heading', { name: 'Top moments today' })).toBeVisible()
+  await expect(big.getByRole('link', { name: 'Every moment today →' })).toHaveAttribute('href', '/analytics/moments?view=top')
+  const card = big.locator('.hv5-bm-card[data-pos="0"]')
+  await expect(card).toContainText('xQc')
+  const rail = page.locator('#latest')
+  await expect(rail.getByRole('heading', { name: 'Picking up now' })).toBeVisible()
+  await expect(rail.locator('.hv5-tm-it')).toHaveCount(0)
+  const xs = (await rail.locator('.hv5-fd-list .hv5-f2-x b').allTextContents()).map(t => Number.parseFloat(t))
+  expect(xs).toEqual([...xs].sort((p, q) => q - p))
+  // every row in the rail from 1100 px, none behind a button
+  await expect(rail.getByRole('button', { name: /^Show all/ })).toHaveCount(0)
+  await card.getByRole('link', { name: 'Open in Moments' }).click()
   await expect(page).toHaveURL(/\/analytics\/moments\?login=xqc&stream=s1&offset=3600$/)
 })
 

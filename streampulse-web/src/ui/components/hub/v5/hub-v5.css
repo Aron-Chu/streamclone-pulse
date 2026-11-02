@@ -41,45 +41,65 @@
 .analytics-focus-target { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .analytics-focus-target:focus { position: static; width: auto; height: auto; clip-path: none; padding: .5rem; color: var(--fma-accent-text); }
 
+/* hover and press motion for the hub's buttons and links (2026-11-02), the approved pattern of 2026-10-21:
+   colours and shadow ease in 140 ms, a press dips the control and it springs back. Element-level specificity
+   (0,0,1), so it beats global.css's `a { transition: color }` while a control that sets its own transition
+   with a class keeps it. Rows and tiles dip less (.985).
+   Individual scale/translate, so the transforms already on cards and tiles are untouched. */
+@media (prefers-reduced-motion: no-preference) {
+  :where(.hub-v5) :is(button, a) {
+    transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease, opacity 140ms ease, scale 260ms cubic-bezier(.34, 1.56, .64, 1), translate 200ms cubic-bezier(.16, 1, .3, 1);
+  }
+  :where(.hub-v5 button:not(:disabled)):active {
+    scale: .96;
+    transition-duration: 140ms, 140ms, 140ms, 140ms, 140ms, 70ms, 200ms;
+  }
+  /* wide targets: feed rows, game rows, top-moment rows, emote rows and tiles, Busiest tiles, lock rows */
+  :where(.hub-v5 :is(.hv5-fd, .hv5-gr, .hv5-tm-row, .hv5-el-r, .hv5-em-t, .hv5-bzt-t, .hbk-r):not(:disabled)):active {
+    scale: .985;
+    transition-duration: 140ms, 140ms, 140ms, 140ms, 140ms, 70ms, 200ms;
+  }
+}
+
 /* ---------- base (mockup shared.css), only on the page's own sections ---------- */
 .hub-v5.hub-d3 {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   column-gap: 24px;
-  grid-template-areas: "mast" "peek" "busy" "act" "intv" "rail" "emo" "games" "chan" "meas";
+  grid-template-areas: "mast" "fol" "peek" "busy" "act" "intv" "rail" "emo" "games" "chan" "meas";
   color: var(--sp-text-1);
   font: 400 13px/1.4 var(--sp-font);
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1;
   -webkit-font-smoothing: antialiased;
 }
-.hub-v5 :is(.hv5-mast, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) :is(*, *::before, *::after),
+.hub-v5 :is(.hv5-mast, .hv5-fol, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) :is(*, *::before, *::after),
 .hv5-layer,
 .hv5-layer :is(*, *::before, *::after) {
   box-sizing: border-box;
 }
-.hub-v5 :is(.hv5-mast, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) :is(h1, h2, h3, p, ol, ul),
+.hub-v5 :is(.hv5-mast, .hv5-fol, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) :is(h1, h2, h3, p, ol, ul),
 .hv5-layer :is(p, ol, ul) {
   margin: 0;
 }
-.hub-v5 :is(.hv5-mast, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels) img,
+.hub-v5 :is(.hv5-mast, .hv5-fol, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels) img,
 .hv5-layer img {
   display: block;
 }
-.hub-v5 :is(.hv5-mast, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) a {
+.hub-v5 :is(.hv5-mast, .hv5-fol, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) a {
   color: var(--hv5-accent);
   text-decoration: none;
 }
-.hub-v5 :is(.hv5-mast, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) a:hover {
+.hub-v5 :is(.hv5-mast, .hv5-fol, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) a:hover {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
-.hub-v5 :is(.hv5-mast, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) :is(button, input) {
+.hub-v5 :is(.hv5-mast, .hv5-fol, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) :is(button, input) {
   font: inherit;
   color: inherit;
   letter-spacing: inherit;
 }
-.hub-v5 :is(.hv5-mast, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) button {
+.hub-v5 :is(.hv5-mast, .hv5-fol, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) button {
   margin: 0;
   padding: 0;
   border: 0;
@@ -137,19 +157,19 @@
 @media (min-width: 720px) and (max-width: 1099px) {
   .hub-v5.hub-d3 {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-areas: "mast mast" "busy busy" "act act" "intv intv" "rail rail" "emo games" "chan chan" "meas meas";
+    grid-template-areas: "mast mast" "fol fol" "busy busy" "act act" "intv intv" "rail rail" "emo games" "chan chan" "meas meas";
   }
 }
 @media (min-width: 1100px) and (max-width: 1535px) {
   .hub-v5.hub-d3 {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    grid-template-areas: "mast mast mast" "busy busy busy" "act act act" "intv intv intv" "rail emo games" "chan chan chan" "meas meas meas";
+    grid-template-areas: "mast mast mast" "fol fol fol" "busy busy busy" "act act act" "intv intv intv" "rail emo games" "chan chan chan" "meas meas meas";
   }
 }
 @media (min-width: 1536px) {
   .hub-v5.hub-d3 {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 380px;
-    grid-template-areas: "mast mast mast" "busy busy rail" "act act rail" "intv intv rail" "emo games rail" "chan chan rail" "meas meas rail";
+    grid-template-areas: "mast mast mast" "fol fol rail" "busy busy rail" "act act rail" "intv intv rail" "emo games rail" "chan chan rail" "meas meas rail";
   }
   .hv5-latest {
     position: sticky;
@@ -269,7 +289,7 @@
   min-width: 0;
 }
 .hv5-field:focus-within { border-color: var(--sp-text-3); }
-.hub-v5 .hv5-field input {
+:is(.hub-v5, .hv5-dock) .hv5-field input {
   flex: 1;
   min-width: 0;
   height: 100%;
@@ -282,9 +302,9 @@
   color: var(--sp-text-1);
   font-size: 13px;
 }
-.hub-v5 .hv5-field input::placeholder { color: var(--sp-text-3); }
+:is(.hub-v5, .hv5-dock) .hv5-field input::placeholder { color: var(--sp-text-3); }
 @media (pointer: coarse) {
-  .hub-v5 .hv5-field input { font-size: 16px; }
+  :is(.hub-v5, .hv5-dock) .hv5-field input { font-size: 16px; }
 }
 .hv5-av {
   flex: none;
@@ -383,7 +403,11 @@
   border-radius: 6px;
   background: var(--sp-raised);
 }
-.hv5-search .hv5-field:focus-within .hv5-kbd { display: none; }
+/* the hint fades as you focus the field (2026-11-02) instead of vanishing; it keeps its place, so the text does not jump */
+.hv5-search .hv5-field:focus-within .hv5-kbd { opacity: 0; pointer-events: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .hv5-search .hv5-kbd { transition: opacity 140ms ease; }
+}
 .hub-v5 .hv5-mast .hv5-hero-go {
   flex: none;
   height: 44px;
@@ -407,8 +431,20 @@
   background: var(--sp-popover);
   box-shadow: 0 22px 50px rgb(0 0 0 / 0.55);
 }
-.hv5-sugg[hidden] { display: none; }
-.hub-v5 .hv5-sugg a {
+/* closing, the list fades and lifts 4 px out (2026-11-02), then goes display none, as the narrow search row does: a
+   closed list that stayed laid out widened the page at 200% zoom. Browsers without discrete display transitions just hide it. */
+.hv5-sugg[hidden] {
+  display: none;
+  opacity: 0;
+  translate: 0 -4px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .hv5-sugg { transition: opacity 140ms ease, translate 140ms ease, display 140ms allow-discrete; }
+  @starting-style {
+    .hv5-sugg:not([hidden]) { opacity: 0; translate: 0 -4px; }
+  }
+}
+:is(.hub-v5, .hv5-dock) .hv5-sugg a {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -417,8 +453,8 @@
   border-radius: 9px;
   color: var(--sp-text-1);
 }
-.hub-v5 .hv5-sugg a[aria-selected="true"],
-.hub-v5 .hv5-sugg a:hover {
+:is(.hub-v5, .hv5-dock) .hv5-sugg a[aria-selected="true"],
+:is(.hub-v5, .hv5-dock) .hv5-sugg a:hover {
   background: var(--sp-raised);
   text-decoration: none;
 }
@@ -451,7 +487,7 @@
   color: var(--sp-text-2);
   font-variant-numeric: tabular-nums;
 }
-.hub-v5 .hv5-sugg a.hv5-sg-open {
+:is(.hub-v5, .hv5-dock) .hv5-sugg a.hv5-sg-open {
   margin-top: 4px;
   border-top: 1px solid var(--sp-line);
   border-radius: 0 0 7px 7px;
@@ -466,94 +502,277 @@
   line-height: 16px;
   color: var(--sp-text-3);
 }
-/* C1 (10-21): what you get, under the search. A picture of the panel beside a stream, one line,
-   one big button. Opaque so the conveyor doesn't show through. */
-.hv5-hero-get {
+/* What you get, under the search (C1, 10-21): direction A of the 11-01 board, "Beside chat". A sample
+   stream with the Pulse tab beside it plays five beats (HubV5Promo sets data-beat), one line, one
+   button. Opaque so the conveyor doesn't show through. The panel pictures are the real panel at 2×;
+   the stage text is the panel's own, at the 12 px floor. */
+.hv5-promo {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 18px;
+  grid-template-columns: minmax(0, 600px) minmax(0, 1fr);
+  gap: 28px;
   align-items: center;
-  width: min(760px, 100%);
-  padding: 12px;
+  width: min(980px, 100%);
+  padding: 14px 28px 14px 14px;
   border: 1px solid rgb(255 255 255 / 0.1);
-  border-radius: 14px;
-  background: rgb(16 16 20 / 0.94);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgb(24 24 30 / 0.97), rgb(14 14 18 / 0.97));
   box-shadow: 0 18px 50px rgb(0 0 0 / 0.45);
   text-align: left;
 }
-/* P2 (10-22): the real panel at full size, its three states crossfading, dots under them */
-.hv5-get-pic {
+.hub-v5 .hv5-mast .hv5-promo { margin-top: 18px; }
+.hv5-pr-stage {
+  --hv5-pr-side: 284px;
+  --hv5-pr-shift: -68px;
   position: relative;
-  width: 338px;
-  max-width: 100%;
-  aspect-ratio: 338 / 188;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--hv5-pr-side);
+  height: 336px;
   overflow: hidden;
-  border-radius: 9px;
-  background: #0e0e11;
-  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08);
+  border-radius: 12px;
+  background: #0b0b0f;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.06);
+  contain: layout paint;
+  user-select: none;
 }
-.hub-v5 .hv5-mast .hv5-get-pic img {
+.hv5-pr-player { position: relative; overflow: hidden; background: #15131c; }
+.hub-v5 .hv5-mast .hv5-pr-scene {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: left top;
-  opacity: 0;
-  transition: opacity 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition: opacity 0.5s ease;
 }
-.hub-v5 .hv5-mast .hv5-get-pic img.on { opacity: 1; }
-.hv5-get-dots {
+.hub-v5 .hv5-mast .hv5-pr-cave { opacity: 0; }
+.hv5-pr-player::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgb(0 0 0 / 0.35), transparent 30%, transparent 60%, rgb(0 0 0 / 0.7));
+}
+.hv5-pr-ptop {
+  position: absolute;
+  z-index: 2;
+  left: 10px;
+  top: 10px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font: 700 12px/16px var(--sp-font);
+}
+.hv5-pr-ch { padding: 2px 8px; border-radius: 6px; background: rgb(0 0 0 / 0.55); color: #fff; }
+.hv5-pr-rp { padding: 2px 6px; border-radius: 5px; background: #164e63; color: #a5f3fc; letter-spacing: 0.05em; }
+.hv5-pr-toast {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  top: 44%;
+  padding: 8px 14px;
+  border: 1px solid rgb(167 139 250 / 0.5);
+  border-radius: 10px;
+  background: rgb(12 12 16 / 0.85);
+  color: var(--sp-text-1);
+  font: 700 13px/18px var(--sp-font);
+  white-space: nowrap;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.92);
+  transition: opacity 0.3s, transform 0.3s;
+}
+.hv5-pr-pbot { position: absolute; z-index: 2; left: 10px; right: 10px; bottom: 10px; }
+.hv5-pr-tl { position: relative; height: 4px; border-radius: 4px; background: rgb(255 255 255 / 0.22); }
+.hv5-pr-tl i { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
+.hv5-pr-tl .hv5-pr-fill {
+  left: 0;
+  width: 28.5%;
+  background: #a78bfa;
+  transition: width 0.9s cubic-bezier(0.3, 0.7, 0.2, 1);
+}
+.hv5-pr-tl .hv5-pr-tick { top: -3px; bottom: auto; width: 4px; height: 10px; margin-left: -2px; border-radius: 2px; background: #fde68a; opacity: 0.8; }
+.hv5-pr-tl .hv5-pr-hot { background: #fb7185; opacity: 1; box-shadow: 0 0 0 3px rgb(251 113 133 / 0.25); }
+.hv5-pr-time {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  color: #fff;
+  font: 700 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-shadow: 0 1px 2px #000;
+}
+.hv5-pr-side {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: #0b0b0f;
+  border-left: 1px solid rgb(255 255 255 / 0.07);
+}
+.hv5-pr-tabs {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 8px;
+  border-bottom: 1px solid rgb(255 255 255 / 0.06);
+  background: #0e0c14;
+  color: #d4d4d8;
+}
+.hv5-pr-tabs svg { flex: none; width: 16px; height: 16px; opacity: 0.9; }
+.hv5-pr-pills {
+  display: grid;
+  flex: 1;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 9px;
+  background: #1e1e21;
+}
+.hv5-pr-pills span {
+  display: grid;
+  place-items: center;
+  height: 24px;
+  border-radius: 7px;
+  color: #a1a1aa;
+  font: 800 12px/1 var(--sp-font);
+  letter-spacing: 0.06em;
+  transition: background-color 0.25s, color 0.25s;
+}
+.hv5-pr-vp { position: relative; flex: 1; overflow: hidden; }
+.hv5-pr-ly {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 7px;
-  display: flex;
-  justify-content: center;
-  gap: 5px;
+  top: 0;
+  transition: opacity 0.45s ease, transform 0.6s cubic-bezier(0.3, 0.7, 0.2, 1);
 }
-.hv5-get-dots i { width: 5px; height: 5px; border-radius: 50%; background: rgb(255 255 255 / 0.28); transition: background-color 0.3s; }
-.hv5-get-dots i.on { background: #fff; }
-@media (prefers-reduced-motion: reduce) {
-  .hub-v5 .hv5-mast .hv5-get-pic img { transition: none; }
+.hub-v5 .hv5-mast .hv5-pr-ly img { width: 100%; height: auto; }
+.hv5-pr-chat {
+  bottom: 0;
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 18%);
+  mask-image: linear-gradient(180deg, transparent, #000 18%);
 }
-.hv5-get-tx {
+/* Pinned by its top and lifted by its own height, so it still ends 8px above the bottom: a new line
+   lengthens it downward and the lift moves the older ones up. A moved transform isn't layout shift. */
+.hv5-pr-lines {
+  position: absolute;
+  left: 10px;
+  right: 8px;
+  top: calc(100% - 8px);
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  min-width: 0;
+  gap: 5px;
+  transform: translateY(-100%);
 }
-.hub-v5 .hv5-mast .hv5-get-h { font: 700 17px/22px var(--sp-font); color: var(--sp-text-1); }
-.hub-v5 .hv5-mast .hv5-get-p { font: 500 13px/18px var(--sp-font); color: var(--sp-text-2); }
-.hub-v5 .hv5-mast .hv5-get-row {
+.hv5-pr-cl {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 12px;
-  margin-top: 4px;
+  gap: 4px;
+  color: #e4e4e7;
+  font: 500 12px/20px var(--sp-font);
+  animation: hv5-pr-in 0.25s ease backwards;
 }
+.hv5-pr-cl b { font-weight: 700; }
+.hub-v5 .hv5-mast .hv5-pr-cl img { width: 20px; height: 20px; }
+/* backwards, not both (11-01): a fade held after it ends kept every finished line in effect */
+@keyframes hv5-pr-in { from { opacity: 0; transform: translateY(8px); } }
+.hv5-pr-chart, .hv5-pr-mom, .hv5-pr-card { opacity: 0; }
+.hv5-pr-mom { transform: translateY(60px); }
+.hv5-pr-card { transform: translateY(var(--hv5-pr-shift)); }
+.hv5-pr-hl {
+  position: absolute;
+  left: 71.5%;
+  top: 46%;
+  width: 5%;
+  height: 37%;
+  border-radius: 4px;
+  transition: box-shadow 0.4s, background-color 0.4s;
+}
+.hv5-pr-cursor {
+  position: absolute;
+  z-index: 5;
+  left: 0;
+  top: 0;
+  width: 22px;
+  height: 22px;
+  overflow: visible;
+  opacity: 0;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.6));
+  transition: transform 0.75s cubic-bezier(0.45, 0.05, 0.2, 1), opacity 0.3s;
+}
+.hv5-pr-cursor.hv5-pr-click { animation: hv5-pr-press 0.45s ease-out; }
+@keyframes hv5-pr-press { 40% { scale: 0.86; } }
+.hv5-pr-cap {
+  position: absolute;
+  z-index: 4;
+  left: 10px;
+  top: 40px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - var(--hv5-pr-side) - 20px);
+  padding: 4px 10px 4px 5px;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 999px;
+  background: rgb(10 10 14 / 0.82);
+  color: #fff;
+  font: 650 12px/18px var(--sp-font);
+  white-space: nowrap;
+}
+.hv5-pr-n { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: #7c3aed; font-weight: 800; }
+.hv5-pr-dots { display: flex; gap: 4px; margin-left: 4px; }
+.hv5-pr-dots i { width: 14px; height: 3px; border-radius: 2px; background: rgb(255 255 255 / 0.25); }
+.hv5-pr-dots i.on { background: #a78bfa; }
+/* the beats */
+.hv5-pr-stage[data-beat="0"] .hv5-pr-chat-t { background: #2b2b31; color: #fff; }
+.hv5-pr-stage:not([data-beat="0"]) .hv5-pr-pulse-t { background: #7c3aed; color: #fff; }
+.hv5-pr-stage:not([data-beat="0"]) .hv5-pr-chat { opacity: 0; }
+.hv5-pr-stage[data-beat="1"] .hv5-pr-chart { opacity: 1; }
+.hv5-pr-stage[data-beat="1"] .hv5-pr-hl { background: rgb(251 113 133 / 0.12); box-shadow: 0 0 0 2px rgb(251 113 133 / 0.65); }
+.hv5-pr-stage[data-beat="2"] .hv5-pr-chart { transform: translateY(-80px); }
+.hv5-pr-stage[data-beat="2"] .hv5-pr-mom { opacity: 1; transform: none; }
+.hv5-pr-stage:is([data-beat="3"], [data-beat="4"]) .hv5-pr-card { opacity: 1; }
+.hv5-pr-stage:is([data-beat="3"], [data-beat="4"]) .hv5-pr-mom { transform: translateY(40px); }
+.hub-v5 .hv5-mast .hv5-pr-stage[data-beat="4"] .hv5-pr-cave { opacity: 1; }
+.hv5-pr-stage[data-beat="4"] .hv5-pr-fill { width: 77.2%; }
+.hv5-pr-stage[data-beat="4"] .hv5-pr-toast { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+.hv5-pr-snap :is(.hv5-pr-ly, .hv5-pr-scene, .hv5-pr-fill, .hv5-pr-toast, .hv5-pr-pills span),
+.hub-v5 .hv5-mast .hv5-pr-snap .hv5-pr-scene { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  .hv5-pr-cursor, .hv5-pr-cap { display: none; }
+}
+.hv5-pr-copy { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
+.hub-v5 .hv5-mast .hv5-pr-h { font: 750 22px/28px var(--sp-font); letter-spacing: -0.01em; color: var(--sp-text-1); }
+.hub-v5 .hv5-mast .hv5-pr-p { margin: 8px 0 18px; font: 500 14px/21px var(--sp-font); color: var(--sp-text-2); }
+.hv5-pr-desk { display: none; }
+.hub-v5 .hv5-mast .hv5-pr-free { margin-top: 10px; font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
 .hub-v5 .hv5-mast a.hv5-hero-install {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
+  min-width: 178px;
   height: 46px;
-  padding: 0 20px;
-  border-radius: 10px;
+  padding: 0 20px 0 14px;
+  border-radius: 12px;
   background: #fff;
-  color: #0b0b0f;
+  color: #18181b;
   font: 700 15px/1 var(--sp-font);
   white-space: nowrap;
-  box-shadow: 0 6px 28px rgb(255 255 255 / 0.14);
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.4) inset, 0 8px 24px rgb(0 0 0 / 0.35);
   transition: background-color 0.15s;
 }
 .hub-v5 .hv5-mast a.hv5-hero-install:hover {
   text-decoration: none;
   background: #e4e4e7;
-  color: #0b0b0f;
+  color: #18181b;
 }
-.hv5-hero-install .chrome-mark { width: 20px; height: 20px; }
+.hv5-hero-install :is(.chrome-mark, .edge-mark, .firefox-mark) { width: 20px; height: 20px; }
 .hv5-hero-install .chrome-mark::after { inset: 5.6px; }
-.hv5-get-free { font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
+/* stacked between phone and desktop: the stage full width, the words under it */
+@media (min-width: 720px) and (max-width: 1023px) {
+  .hv5-promo { grid-template-columns: minmax(0, 1fr); gap: 18px; width: min(760px, 100%); padding: 12px 12px 18px; }
+  .hv5-pr-copy { padding: 0 8px; }
+}
 .hv5-hero-try {
   display: flex;
   flex-wrap: wrap;
@@ -563,7 +782,6 @@
   max-width: 100%;
   margin-top: 16px;
 }
-.hub-v5 .hv5-mast .hv5-hero-get { margin-top: 16px; }
 .hub-v5 .hv5-mast .hv5-hero-try { margin-top: 16px; }
 .hv5-hero-tl {
   margin-right: 2px;
@@ -615,13 +833,21 @@
   .hub-v5 .hv5-mast .hv5-hero-h { font-size: 28px; line-height: 34px; }
   .hub-v5 .hv5-mast .hv5-hero-sub { max-width: 320px; font-size: 14px; line-height: 20px; }
   .hv5-hero-field { margin-top: 18px; }
-  .hub-v5 .hv5-mast .hv5-hero-get { grid-template-columns: 1fr; gap: 12px; margin-top: 14px; padding: 10px; }
-  .hv5-get-pic { justify-self: center; }
-  .hub-v5 .hv5-mast .hv5-get-h { font-size: 16px; }
-  .hub-v5 .hv5-mast a.hv5-hero-install { justify-content: center; width: 100%; height: 48px; }
-  .hv5-get-free { width: 100%; text-align: center; }
-  /* The hub card is enough on phones: the top bar's full-width Add to Chrome goes here only (C1). */
-  body:has(.hub-v5 .hv5-hero-get) .analytics-topnav__install { display: none; }
+  /* the panel alone, no button: it's a desktop extension */
+  .hub-v5 .hv5-mast .hv5-promo { grid-template-columns: minmax(0, 1fr); gap: 14px; margin-top: 14px; padding: 12px; }
+  .hv5-pr-stage { grid-template-columns: minmax(0, 1fr); height: 330px; }
+  .hv5-pr-player, .hv5-pr-cap { display: none; }
+  .hv5-pr-side { border-left: 0; }
+  .hub-v5 .hv5-mast .hv5-pr-h { font-size: 18px; line-height: 24px; }
+  .hub-v5 .hv5-mast .hv5-pr-p { margin-bottom: 10px; font-size: 13px; line-height: 19px; }
+  .hub-v5 .hv5-mast a.hv5-hero-install { display: none; }
+  /* plain text, so it never reads as a button */
+  .hub-v5 .hv5-mast .hv5-pr-desk {
+    display: block;
+    color: var(--sp-text-2);
+    font: 600 13px/18px var(--sp-font);
+  }
+  .hub-v5 .hv5-mast .hv5-pr-free { margin-top: 2px; }
   .hv5-search .hv5-field { height: 56px; padding: 0 6px 0 16px; gap: 10px; border-radius: 14px; }
   .hub-v5 .hv5-search .hv5-field input { font-size: 16px; }
   .hv5-search .hv5-kbd { display: none; }
@@ -673,6 +899,126 @@
 .hv5-hc-conv canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 @media (prefers-reduced-motion: reduce) {
   .hv5-hc-conv { transition: none; }
+}
+
+/* the docked search in the top bar (11-01 board; HubV5TopBar). From 1100 px a field between the links and
+   the buttons, shown once the hero's field is under the bar; narrower, a search button that opens it as a
+   full row under the bar. It keeps its place while hidden, so the bar never shifts. The bar's install
+   button hides while the hero's install card is on screen. */
+.analytics-topnav .hv5-dock {
+  position: relative;
+  flex: 3 1 0;
+  min-width: 0;
+  max-width: 380px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-6px);
+  transition: opacity 0.18s ease, transform 0.18s ease, visibility 0s linear 0.18s;
+}
+.analytics-topnav .hv5-dock[data-shown] { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
+.hv5-dock .hv5-search .hv5-field {
+  height: 40px;
+  padding: 0 8px 0 12px;
+  gap: 8px;
+  border-radius: 10px;
+  box-shadow: none;
+}
+.hv5-dock .hv5-search .hv5-field .hv5-ico { width: 16px; height: 16px; }
+.hv5-dock .hv5-search .hv5-field input { font-size: 14px; font-weight: 500; }
+.hv5-dock .hv5-search .hv5-field input::placeholder { color: #a1a1aa; }
+.hv5-dock .hv5-search .hv5-kbd { line-height: 20px; padding: 0 6px; }
+.hv5-dock .hv5-sugg { top: 46px; }
+.hv5-dock-btn { display: none; }
+.hv5-bar-install { display: contents; }
+.hv5-bar-install .analytics-topnav__install { transition: opacity 0.2s ease, visibility 0s linear 0s, background-color 140ms ease, color 140ms ease, scale 260ms cubic-bezier(.34, 1.56, .64, 1); }
+.hv5-bar-install[data-hidden] .analytics-topnav__install { opacity: 0; visibility: hidden; transition-delay: 0s, 0.2s, 0s, 0s, 0s; }
+@media (max-width: 1099px) {
+  /* The narrow row (2026-11-02). Open, it is a full row under the bar whose height is one grid row (1fr); closed it is
+     display none, so the bar never shifts. The clip holds the field inside the row while it grows, then frees the
+     suggestion list below it (the motion block under this one sets the timing). */
+  .analytics-topnav .hv5-dock {
+    order: 10;
+    flex: 1 0 100%;
+    max-width: none;
+    display: grid;
+    grid-template-rows: 1fr;
+    clip-path: inset(0 -100vmax -100vh);
+  }
+  .analytics-topnav .hv5-dock > .hv5-search { min-height: 0; }
+  .analytics-topnav .hv5-dock:not([data-open]) {
+    display: none;
+    opacity: 0;
+    transform: translateY(-6px);
+    grid-template-rows: 0fr;
+    clip-path: inset(0 -100vmax);
+  }
+  .hv5-dock .hv5-sugg { max-height: calc(100dvh - 200px); overflow-y: auto; }
+  .hv5-dock-btn {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    margin-left: auto;
+    padding: 0;
+    border: 1px solid var(--fma-border);
+    border-radius: 0.55rem;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+  }
+  /* hover as the bar's other icon button (the More menu's) */
+  .hv5-dock-btn:hover { background: var(--fma-dim); color: var(--fma-text); }
+  .hv5-dock-btn[aria-expanded="true"] { border-color: var(--sp-accent, #5eead4); }
+  .hv5-dock-btn .hv5-ico { width: 18px; height: 18px; }
+  .hv5-dock-btn[hidden] { display: none; }
+  .hv5-dock-btn:not([hidden]) ~ .analytics-topnav__actions { margin-left: 0; }
+}
+/* 721-819 px: next to the search button the bar's install fits only as its browser mark (the name stays for screen readers). */
+@media (min-width: 721px) and (max-width: 819px) {
+  .hv5-bar-install .analytics-topnav__install { justify-content: center; width: 44px; padding: 0; }
+  .hv5-bar-install .install-cta__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+@media (pointer: coarse) {
+  .hv5-dock .hv5-search .hv5-field input { font-size: 16px; }
+}
+/* The search button gets the approved hover and press (the bar sits outside .hub-v5, so the hub's blanket rule
+   does not reach it). The narrow row fades and lifts in and out in 160 ms while its height grows and shrinks
+   (grid rows, as the Moments page opens a moment). display is part of the transition, so the row still drops out of
+   the layout once it has gone; the clip switches 160 ms late on the way in (after the row has grown) and at once on
+   the way out. Known edge: the bar's row gap (8 to 10 px) still appears with the row and goes with it, as the row is a flex line. */
+@media (prefers-reduced-motion: no-preference) {
+  .hv5-dock-btn {
+    transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease, opacity 140ms ease, scale 260ms cubic-bezier(.34, 1.56, .64, 1), translate 200ms cubic-bezier(.16, 1, .3, 1);
+  }
+  .hv5-dock-btn:not(:disabled):active {
+    scale: .96;
+    transition-duration: 140ms, 140ms, 140ms, 140ms, 140ms, 70ms, 200ms;
+  }
+}
+@media (max-width: 1099px) and (prefers-reduced-motion: no-preference) {
+  .analytics-topnav .hv5-dock {
+    transition: opacity 160ms ease, transform 160ms ease, grid-template-rows 160ms cubic-bezier(.22, 1, .36, 1), display 160ms allow-discrete, clip-path 0s linear 160ms;
+  }
+  .analytics-topnav .hv5-dock:not([data-open]) { transition-delay: 0s; }
+  @starting-style {
+    .analytics-topnav .hv5-dock[data-open] {
+      opacity: 0;
+      transform: translateY(-6px);
+      grid-template-rows: 0fr;
+      clip-path: inset(0 -100vmax);
+    }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .analytics-topnav .hv5-dock, .hv5-bar-install .analytics-topnav__install { transition: none; }
 }
 
 /* ---------- 2. Busiest now: the Strip (busiest-variants.css shared + Tiles + Carousel + Strip) ---------- */
@@ -945,25 +1291,83 @@
   .hv5-bzt-t::after, .hv5-bzv-prev { transition: none; }
 }
 
+/* ---------- 2a. Your follows (Show my Twitch follows, 11-01): the hero foot's button, and Busiest now's strip
+   for the viewer's own live follows above it (HubV5Follows) ---------- */
+/* the way back from Twitch lands on #follows under the sticky nav (56 px, about 101 px from its 720 px breakpoint
+   down), not behind it; so do the button and the heading that Forget and Dismiss move focus to */
+.hv5-fol, .hv5-fol h2, .hv5-fol-go { scroll-margin-top: 72px; }
+@media (max-width: 720px) {
+  .hv5-fol, .hv5-fol h2, .hv5-fol-go { scroll-margin-top: 112px; }
+}
+.hv5-fol { grid-area: fol; margin-top: 8px; }
+@media (max-width: 719px) {
+  .hv5-fol { margin-top: 4px; }
+}
+/* right of the scope line, and already there while the line waits for the hub */
+.hv5-fol-start { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; }
+@media (max-width: 719px) {
+  .hv5-fol-start { margin-left: 0; }
+}
+.hub-v5 .hv5-mast .hv5-fol-go {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--sp-line-strong);
+  border-radius: var(--sp-r);
+  background: var(--sp-panel);
+  color: var(--sp-text-1);
+  font: 500 13px/1 var(--sp-font);
+  white-space: nowrap;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+.hub-v5 .hv5-mast .hv5-fol-go:hover { background: var(--sp-raised); border-color: #3f3f46; }
+.hub-v5 .hv5-mast .hv5-fol-go[aria-disabled="true"] { color: var(--sp-text-2); cursor: progress; }
+/* Twitch's purple, lifted for the dark panel */
+.hv5-fol-tw { width: 16px; height: 16px; flex: none; fill: #a970ff; }
+/* the summary and Forget share Busiest now's meta slot; they wrap rather than run past a phone's edge */
+.hub-v5 .hv5-fol .hv5-fol-meta { white-space: normal; text-align: right; }
+.hub-v5 .hv5-fol .hv5-fol-x {
+  color: var(--sp-text-2);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: var(--sp-line-strong);
+  text-underline-offset: 3px;
+}
+.hub-v5 .hv5-fol .hv5-fol-x:hover { color: var(--sp-text-1); text-decoration-color: currentColor; }
+@container hv5bzv (max-width: 639px) {
+  .hub-v5 .hv5-fol .hv5-fol-meta { text-align: left; }
+}
+.hub-v5 .hv5-fol .hv5-fol-msg { margin: 0 0 8px; font: 500 13px/18px var(--sp-font); color: var(--sp-text-2); }
+.hv5-fol-fail { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.hub-v5 .hv5-fol .hv5-fol-fail .hv5-fol-msg { flex: 1 1 260px; margin: 0; color: var(--sp-text-1); }
+/* the section's own buttons over the base reset above (which outranks .hv5-btn and .hv5-qb) */
+.hub-v5 .hv5-fol .hv5-btn { padding: 0 12px; border: 1px solid var(--sp-line-strong); }
+.hub-v5 .hv5-fol .hv5-qb { padding: 0 8px; }
+@media (prefers-reduced-motion: reduce) {
+  .hub-v5 .hv5-mast .hv5-fol-go { transition: none; }
+}
+
 /* ---------- 2b. Featured stream (picks I1 and I1b, 10-30; board artifacts/session-hub-gaps-20261030): the featured stream under Busiest now ---------- */
 .hv5-most { grid-area: most; margin-top: 12px; }
 /* its own row under Busiest now, only while the card is on the page; without it the templates above apply */
 .hub-v5.hub-d3:has(> .hv5-most) {
-  grid-template-areas: "mast" "peek" "busy" "most" "act" "intv" "rail" "emo" "games" "chan" "meas";
+  grid-template-areas: "mast" "fol" "peek" "busy" "most" "act" "intv" "rail" "emo" "games" "chan" "meas";
 }
 @media (min-width: 720px) and (max-width: 1099px) {
   .hub-v5.hub-d3:has(> .hv5-most) {
-    grid-template-areas: "mast mast" "busy busy" "most most" "act act" "intv intv" "rail rail" "emo games" "chan chan" "meas meas";
+    grid-template-areas: "mast mast" "fol fol" "busy busy" "most most" "act act" "intv intv" "rail rail" "emo games" "chan chan" "meas meas";
   }
 }
 @media (min-width: 1100px) and (max-width: 1535px) {
   .hub-v5.hub-d3:has(> .hv5-most) {
-    grid-template-areas: "mast mast mast" "busy busy busy" "most most most" "act act act" "intv intv intv" "rail emo games" "chan chan chan" "meas meas meas";
+    grid-template-areas: "mast mast mast" "fol fol fol" "busy busy busy" "most most most" "act act act" "intv intv intv" "rail emo games" "chan chan chan" "meas meas meas";
   }
 }
 @media (min-width: 1536px) {
   .hub-v5.hub-d3:has(> .hv5-most) {
-    grid-template-areas: "mast mast mast" "busy busy rail" "most most rail" "act act rail" "intv intv rail" "emo games rail" "chan chan rail" "meas meas rail";
+    grid-template-areas: "mast mast mast" "fol fol rail" "busy busy rail" "most most rail" "act act rail" "intv intv rail" "emo games rail" "chan chan rail" "meas meas rail";
   }
 }
 /* the base rules the other sections get */
@@ -1089,26 +1493,8 @@
   color: var(--sp-text-3);
 }
 .hv5-fd-gn { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.hub-v5 .hv5-feed :is(.hv5-fd-list, .hv5-fd-sub) { list-style: none; margin: 0; padding: 0; }
+.hub-v5 .hv5-feed .hv5-fd-list { list-style: none; margin: 0; padding: 0; }
 .hub-v5 .hv5-f3-peek .hv5-fd-quiet { margin: 6px 8px; font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
-/* the list and its "N new" pill, which floats over the top row so nothing moves when it appears */
-.hv5-f2-wrap { position: relative; }
-.hub-v5 .hv5-feed .hv5-f2-pill {
-  position: absolute;
-  z-index: 2;
-  top: 6px;
-  left: 50%;
-  transform: translateX(-50%);
-  height: 28px;
-  padding: 0 12px;
-  border-radius: 14px;
-  background: var(--hv5-accent);
-  color: var(--sp-canvas);
-  font: 600 12px/28px var(--sp-font);
-  box-shadow: 0 2px 10px rgb(0 0 0 / 0.45);
-}
-.hub-v5 .hv5-feed .hv5-f2-pill[hidden] { display: none; }
-.hub-v5 .hv5-f2-pill:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: 2px; }
 
 /* a Picking up row: the faces · what / "1.8× more chat" · game (52 px) */
 .hub-v5 .hv5-feed .hv5-fd {
@@ -1154,41 +1540,18 @@
   object-fit: cover;
   box-shadow: 0 0 0 1px var(--sp-line-strong);
 }
-.hv5-fd-g,
-.hv5-fd-w { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.hv5-fd-g { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* Picking up in purple */
-.hv5-f2-act { flex: none; font-weight: 500; color: var(--sp-text-2); white-space: nowrap; }
-.hv5-f2-up { color: var(--hv5-chat); font-weight: 600; }
-.hv5-f2-names { font-weight: 500; color: var(--sp-text-2); }
 .hv5-f2-em { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 45%; font-weight: 600; color: var(--sp-text-1); }
 .hub-v5 .hv5-f2-em img { flex: none; width: 20px; height: 20px; object-fit: contain; }
 .hv5-f2-em span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* "5.0× more emotes" (games first, 10-22: as Moments writes it) */
 .hv5-f2-x { flex: none; color: var(--sp-text-2); font-variant-numeric: tabular-nums; }
 .hv5-f2-x b { font-weight: 600; color: var(--hv5-accent); }
-/* Picking up: a stack of faces that opens a short list */
-.hv5-fd-stack { display: flex; width: 40px; height: 28px; align-items: center; }
-.hv5-fd-stack .hv5-av { width: 20px; height: 20px; flex: none; border-radius: 50%; box-shadow: 0 0 0 2px var(--sp-canvas); }
-.hv5-fd-stack > * + * { margin-left: -10px; }
-.hv5-fd-end { display: flex; align-items: center; gap: 6px; }
-.hv5-fd-chev { display: flex; color: var(--sp-text-3); transition: transform 0.2s ease-out; }
-.hv5-fd-chev .hv5-ico { width: 16px; height: 16px; }
-.hv5-fd[aria-expanded="true"] .hv5-fd-chev { transform: rotate(180deg); }
-.hub-v5 .hv5-feed .hv5-fd-sub { margin: 0 0 4px 18px; border-left: 1px solid var(--sp-line-strong); }
-.hub-v5 .hv5-feed .hv5-fd-sub[hidden] { display: none; }
-.hub-v5 .hv5-feed .hv5-fd-sub .hv5-fd { grid-template-columns: 22px minmax(0, 1fr); height: 44px; }
-.hv5-fd-sub .hv5-fd-l1 { font-size: 12px; line-height: 16px; }
+/* Picking up now under 1100 px: the first 6, then Show all N */
 .hv5-fd-more { display: flex; justify-content: center; padding: 6px 0 0; }
-.hv5-f2-upmore { padding: 8px 8px 10px 10px; font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
-/* 1100–1535 the rail sits beside Top emotes and Where chat is: it takes the height they give the row and fits its rows to it (L1); an open row or Show more lets it grow */
-@media (min-width: 1100px) and (max-width: 1535px) {
-  .hv5-feed.hv5-fd-fit { contain: size; min-height: 432px; }
-}
 @media (max-width: 719px) {
   .hub-v5 .hv5-feed .hv5-fd { height: 56px; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .hv5-fd-chev { transition: none !important; }
 }
 
 /* ---------- 4. Top emotes as the emote map (R5-13; r4 A2, emotemap-moments-r4; tiles as r5 C1 and r6 D2, emotemap-r5/r6) ---------- */
@@ -1264,7 +1627,8 @@
 .hub-v5 .hv5-emotes .hv5-em-fl:hover { color: var(--sp-text-1); background: var(--sp-raised); }
 .hv5-em-fl i { width: 7px; height: 7px; border-radius: 50%; background: var(--fc); }
 .hv5-em-fl b { font-weight: 500; color: var(--sp-text-3); }
-.hub-v5 .hv5-emotes .hv5-em-map[data-zoomed] .hv5-em-fl { opacity: 0; pointer-events: none; }
+/* the labels step aside while the camera moves and stay away while zoomed */
+.hub-v5 .hv5-emotes .hv5-em-map:is([data-zoomed], [data-moving]) .hv5-em-fl { opacity: 0; pointer-events: none; }
 /* a narrow field: the share, or the whole label, stays measurable but off the line */
 .hv5-em-fl[data-fit="name"] > b { position: absolute; visibility: hidden; }
 .hub-v5 .hv5-emotes .hv5-em-fl[data-fit="none"] { visibility: hidden; pointer-events: none; }
@@ -1313,63 +1677,93 @@
    the neutral dark of the Busiest cards: hover lifts the fill and adds their light ring, selected is a solid ring */
 .hv5-em-ff {
   position: absolute;
-  border-radius: 6px;
-  box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--fc) 75%, transparent);
+  border-radius: calc(6px * var(--iz, 1));
+  box-shadow: inset 0 0 0 calc(1.5px * var(--iz, 1)) color-mix(in oklab, var(--fc) 75%, transparent);
+  transform-origin: 0 0;
   pointer-events: none;
-  transition:
-    left 0.5s cubic-bezier(0.2, 0.7, 0.2, 1),
-    top 0.5s cubic-bezier(0.2, 0.7, 0.2, 1),
-    width 0.5s cubic-bezier(0.2, 0.7, 0.2, 1),
-    height 0.5s cubic-bezier(0.2, 0.7, 0.2, 1);
-  animation: hv5-em-in 0.3s both;
 }
 /* K1 (10-22): with pace heat on, the fill carries the meaning and the frames go grey */
-.hv5-em-map[data-heat] .hv5-em-ff { box-shadow: inset 0 0 0 1px rgb(252 252 254 / 0.16); }
+.hv5-em-map[data-heat] .hv5-em-ff { box-shadow: inset 0 0 0 calc(1px * var(--iz, 1)) rgb(252 252 254 / 0.16); }
+/* A (10-31): the frames and tiles are laid out once, in map units, on one camera that a CSS transition moves,
+   so a zoom or a pan re-renders nothing. --iz (1 / the resting zoom) keeps seams, rings and corners at their
+   size on screen, and zoomed in, each tile's content is drawn at screen size */
+.hv5-em-cam {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+}
+/* M1 (10-31): another window, or a reshuffle, fades the new layout in over the old one as that fades out */
+.hv5-em-ly { position: absolute; inset: 0; animation: hv5-em-in 0.3s backwards; }
+.hv5-em-ly[data-out] { animation: hv5-em-out 0.2s ease-out forwards; pointer-events: none; }
 .hub-v5 .hv5-emotes .hv5-em-t {
   position: absolute;
+  display: block;
+  contain: layout size style;
+  color: var(--sp-text-1);
+  font: 500 12px/16px var(--sp-font);
+  text-align: left;
+  min-width: 0;
+}
+/* a tile a poll dropped fades where it was */
+.hub-v5 .hv5-emotes .hv5-em-t[data-out] { animation: hv5-em-out 0.18s ease-out forwards; pointer-events: none; }
+/* the plate is the fill and the rings: a glide morphs it while the content only slides, so text never stretches */
+.hv5-em-pl {
+  position: absolute;
+  inset: 0;
+  border-radius: 4px;
+  background: var(--bg, #17171a);
+  transform-origin: 0 0;
+  transition: background-color 0.18s, box-shadow 0.18s;
+}
+.hub-v5 .hv5-emotes .hv5-em-t:hover > .hv5-em-pl { background-color: var(--bgh, #1e1e22); box-shadow: inset 0 0 0 calc(1.5px * var(--iz, 1)) rgb(237 237 239 / 0.35); }
+.hub-v5 .hv5-emotes .hv5-em-t[aria-pressed="true"] { z-index: 2; }
+.hub-v5 .hv5-emotes .hv5-em-t[aria-pressed="true"] > .hv5-em-pl { background-color: var(--bgh, #222227); box-shadow: inset 0 0 0 calc(2px * var(--iz, 1)) var(--sp-text-1); }
+.hub-v5 .hv5-emotes .hv5-em-t:focus-visible { outline: none; z-index: 3; }
+.hub-v5 .hv5-emotes .hv5-em-t:focus-visible > .hv5-em-pl { box-shadow: inset 0 0 0 calc(2px * var(--iz, 1)) var(--sp-focus); }
+.hv5-em-c {
+  position: absolute;
+  left: 0;
+  top: 0;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   align-items: flex-start;
   gap: 4px;
+  width: 100%;
+  height: 100%;
   padding: 8px;
   overflow: hidden;
   border-radius: 4px;
-  background: var(--bg, #17171a);
-  color: var(--sp-text-1);
-  font: 500 12px/16px var(--sp-font);
-  text-align: left;
-  min-width: 0;
-  transition:
-    left 0.5s cubic-bezier(0.2, 0.7, 0.2, 1),
-    top 0.5s cubic-bezier(0.2, 0.7, 0.2, 1),
-    width 0.5s cubic-bezier(0.2, 0.7, 0.2, 1),
-    height 0.5s cubic-bezier(0.2, 0.7, 0.2, 1),
-    background-color 0.18s,
-    box-shadow 0.18s;
-  animation: hv5-em-in 0.3s both;
+  transform-origin: 0 0;
+  pointer-events: none;
 }
-.hub-v5 .hv5-emotes .hv5-em-t:hover { background-color: var(--bgh, #1e1e22); box-shadow: inset 0 0 0 1.5px rgb(237 237 239 / 0.35); }
-.hub-v5 .hv5-emotes .hv5-em-t[aria-pressed="true"] { background-color: var(--bgh, #222227); box-shadow: inset 0 0 0 2px var(--sp-text-1); z-index: 2; }
-.hub-v5 .hv5-emotes .hv5-em-t:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--sp-focus); z-index: 3; }
+/* zoomed in: the content box is zoom times bigger and scaled by 1 / zoom, so it fills the tile in screen pixels.
+   At 1× these rules stay plain: a var() is re-parsed for every tile each time a layer is built */
+.hub-v5 .hv5-emotes .hv5-em-map[data-zoomed] .hv5-em-c {
+  width: calc(100% / var(--iz, 1));
+  height: calc(100% / var(--iz, 1));
+  transform: scale(var(--iz, 1));
+}
+.hub-v5 .hv5-emotes .hv5-em-map[data-zoomed] .hv5-em-pl { border-radius: calc(4px * var(--iz, 1)); }
 .hub-v5 .hv5-emotes .hv5-em-t img {
   display: block;
   flex: none;
   object-fit: contain;
-  transition: width 0.5s cubic-bezier(0.2, 0.7, 0.2, 1), height 0.5s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 /* wide, short tiles: the picture, then the name and share on one line */
-.hub-v5 .hv5-emotes .hv5-em-row { flex-direction: row; align-items: center; justify-content: flex-start; gap: 8px; }
-.hub-v5 .hv5-emotes :is(.hv5-em-s, .hv5-em-xs) { justify-content: center; align-items: center; padding: 2px; }
+.hub-v5 .hv5-emotes .hv5-em-row > .hv5-em-c { flex-direction: row; align-items: center; justify-content: flex-start; gap: 8px; }
+.hub-v5 .hv5-emotes :is(.hv5-em-s, .hv5-em-xs) > .hv5-em-c { justify-content: center; align-items: center; padding: 2px; }
+/* the smallest tiles stay 4 px dots on screen, as the tile's 2 px padding kept them before A */
+.hub-v5 .hv5-emotes :is(.hv5-em-s, .hv5-em-xs) { min-width: 4px; min-height: 4px; }
+.hub-v5 .hv5-emotes .hv5-em-map[data-zoomed] :is(.hv5-em-s, .hv5-em-xs) { min-width: calc(4px * var(--iz, 1)); min-height: calc(4px * var(--iz, 1)); }
 .hv5-em-ft { width: 100%; min-width: 0; }
 .hv5-em-row .hv5-em-ft { display: flex; align-items: baseline; gap: 6px; width: auto; flex: 1 1 auto; }
 .hv5-em-nm { display: block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font: 600 13px/18px var(--sp-font); }
 .hv5-em-v { display: block; flex: none; color: var(--sp-text-2); }
-/* while zoomed or moving, tiles and frames follow the view at once (the layout's own glide is for re-tiling) */
-.hub-v5 .hv5-emotes .hv5-em-zm .hv5-em-t { transition: background-color 0.18s, box-shadow 0.18s; }
-.hub-v5 .hv5-emotes .hv5-em-zm .hv5-em-ff,
-.hub-v5 .hv5-emotes .hv5-em-zm .hv5-em-t img { transition: none; }
+/* backwards, not both (10-31): a fade held after it ends kept each of ~600 tiles and frames on a GPU layer and slowed the chart */
 @keyframes hv5-em-in { from { opacity: 0; } }
+@keyframes hv5-em-out { to { opacity: 0; } }
 /* the legend (each field's share) with Taller map */
 .hv5-em-foot {
   display: flex;
@@ -1516,8 +1910,11 @@
   .hub-v5 .hv5-emotes .hv5-el-cols { grid-template-columns: minmax(0, 1fr); grid-auto-flow: row; grid-template-rows: none; }
 }
 @media (prefers-reduced-motion: reduce) {
+  .hv5-em-ly,
+  .hv5-em-ly[data-out],
   .hub-v5 .hv5-emotes .hv5-em-t,
-  .hub-v5 .hv5-emotes .hv5-em-t img,
+  .hub-v5 .hv5-emotes .hv5-em-t[data-out],
+  .hv5-em-pl,
   .hv5-em-ff,
   .hub-v5 .hv5-emotes .hv5-em-fl,
   .hv5-em-mini,
@@ -1805,7 +2202,6 @@
 
 .hub-v5 .hv5-top .hv5-tm-body > .hv5-fd-list:first-child { margin-top: 4px; }
 .hub-v5 .hv5-top .hv5-tm-list { list-style: none; margin: 0; padding: 0; transition: opacity 0.2s; }
-.hub-v5 .hv5-top .hv5-tm-busy { opacity: 0.5; }
 .hv5-tm-it { border-bottom: 1px solid var(--sp-line); }
 /* the Moments list's last answer, kept after a read failed: greyed until a read answers (15 minutes at most) */
 .hub-v5 .hv5-top .hv5-tm-old > .hv5-tm-row { opacity: 0.6; }
@@ -1820,10 +2216,9 @@
   text-align: left;
   font: 500 13px/1.25 var(--sp-font);
   color: var(--sp-text-1);
-  transition: background 0.15s;
+  transition: background 0.15s, scale 260ms cubic-bezier(.34, 1.56, .64, 1);
 }
 .hub-v5 .hv5-top .hv5-tm-row:hover { background: var(--sp-panel); }
-.hub-v5 .hv5-top .hv5-tm-on > .hv5-tm-row { background: rgb(255 255 255 / 0.05); }
 .hub-v5 .hv5-top .hv5-tm-row:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: -2px; }
 .hv5-tm-rk { flex: none; width: 20px; text-align: right; font: 600 12px/1 var(--sp-font-mono, ui-monospace, monospace); color: var(--sp-text-3); font-variant-numeric: tabular-nums; }
 .hv5-tm-rk.hv5-tm-top { color: var(--hv5-accent); }
@@ -1856,70 +2251,24 @@
 .hv5-tm-t { flex: none; min-width: 28px; margin-left: auto; text-align: right; font-size: 12px; color: var(--sp-text-2); font-variant-numeric: tabular-nums; }
 .hv5-tm-wait li { height: 44px; border-bottom: 1px solid var(--sp-line); background: linear-gradient(90deg, var(--sp-raised), transparent 70%); opacity: 0.5; }
 
-/* the opened row: the clicked row stays put and the minutes around the moment open under it */
-.hv5-tm-det {
-  --c: var(--hv5-emotes);
-  margin: 0 0 8px 30px;
-  padding: 10px 12px 12px;
-  border-left: 2px solid var(--c);
-  border-radius: 0 0 10px 10px;
-  background: linear-gradient(180deg, rgb(255 255 255 / 0.045), rgb(255 255 255 / 0.02));
-  animation: hv5-tm-drop 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-.hv5-tm-det[data-s="chat"] { --c: var(--hv5-chat); }
-@keyframes hv5-tm-drop { from { opacity: 0; transform: translateY(-5px); } }
-.hv5-tm-dt { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; font: 500 12.5px/1.4 var(--sp-font); color: var(--sp-text-2); }
-.hv5-tm-dt b { font-size: 18px; font-weight: 650; letter-spacing: -0.01em; color: var(--sp-text-1); font-variant-numeric: tabular-nums; }
-.hv5-tm-ttl { font-weight: 600; color: var(--c); }
-.hv5-tm-why { flex-basis: 100%; color: var(--sp-text-2); }
-.hv5-tm-lv { font-size: 12px; font-weight: 600; color: var(--hv5-live); }
-.hv5-tm-ch { display: block; width: 100%; height: 64px; margin-top: 8px; overflow: visible; }
-.hv5-tm-span { fill: var(--c); opacity: 0.1; }
-.hv5-tm-bl { stroke: var(--sp-text-2); stroke-dasharray: 3 3; stroke-width: 1; opacity: 0.55; vector-effect: non-scaling-stroke; }
-.hv5-tm-ln { fill: none; stroke-width: 1.6; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
-.hv5-tm-ln[data-s="chat"] { stroke: var(--hv5-chat); }
-.hv5-tm-ln[data-s="emotes"] { stroke: var(--hv5-emotes); }
-.hv5-tm-ar { opacity: 0.16; }
-.hv5-tm-ar[data-s="chat"] { fill: var(--hv5-chat); }
-.hv5-tm-ar[data-s="emotes"] { fill: var(--hv5-emotes); }
-.hv5-tm-ax { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; font: 500 11px/1.3 var(--sp-font); color: var(--sp-text-3); font-variant-numeric: tabular-nums; }
-.hv5-tm-lg { display: inline-flex; align-items: center; gap: 4px; }
-.hv5-tm-lg i { display: inline-block; width: 10px; height: 2px; margin-left: 6px; border-radius: 1px; }
-.hv5-tm-lg i[data-s="chat"] { background: var(--hv5-chat); }
-.hv5-tm-lg i[data-s="emotes"] { background: var(--hv5-emotes); }
-.hv5-tm-lg i.hv5-tm-lgb { height: 0; border-top: 1px dashed var(--sp-text-2); background: none; }
-.hub-v5 .hv5-top .hv5-tm-em { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; padding: 0; list-style: none; }
-.hv5-tm-em li { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px 0 5px; border-radius: 8px; background: rgb(255 255 255 / 0.05); font: 600 12.5px/1 var(--sp-font); color: var(--sp-text-1); }
-.hub-v5 .hv5-tm-em img { width: 22px; height: 22px; object-fit: contain; }
-.hv5-tm-em small { font: 500 11px/1 var(--sp-font-mono, ui-monospace, monospace); color: var(--sp-text-2); }
-.hv5-tm-act { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
-.hub-v5 .hv5-top .hv5-tm-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 30px;
-  padding: 0 12px;
-  border: 1px solid var(--sp-line-strong);
-  border-radius: 8px;
-  font: 600 12.5px/1 var(--sp-font);
-  color: var(--sp-text-1);
-  text-decoration: none;
-}
-.hub-v5 .hv5-top .hv5-tm-btn:hover { background: rgb(255 255 255 / 0.05); text-decoration: none; }
-.hub-v5 .hv5-top .hv5-tm-pri { border-color: var(--hv5-accent); background: var(--hv5-accent); color: #04201b; }
-.hub-v5 .hv5-top .hv5-tm-pri:hover { background: var(--hv5-accent); filter: brightness(1.08); }
-.hub-v5 .hv5-top .hv5-tm-ghost { border-color: transparent; color: var(--sp-text-2); }
-
 /* the list's last line: nothing to show, that's all (the hub's rows), or unavailable with Try again */
 .hub-v5 .hv5-top .hv5-tm-q { margin: 12px 0 4px; padding: 10px 12px; border: 1px dashed var(--sp-line-strong); border-radius: 9px; background: rgb(255 255 255 / 0.03); font: 500 12.5px/1.4 var(--sp-font); color: var(--sp-text-2); }
-.hub-v5 .hv5-top .hv5-tm-lnk { font-weight: 600; color: var(--hv5-accent); white-space: nowrap; }
-.hub-v5 .hv5-top .hv5-tm-lnk:hover { text-decoration: underline; text-underline-offset: 3px; }
-.hv5-tm-ft { display: flex; justify-content: flex-end; align-items: center; padding: 10px 0 0; font: 500 11.5px/1.3 var(--sp-font); color: var(--sp-text-3); }
-.hv5-tm-ft .hv5-fd-sep { margin: 0 6px; }
+/* Picking up now (M1 + P1, 11-02), the whole rail: a row is the face, "4.2× usual · +340/min · game" and the cover. From 1100 to 1535 px
+   it takes the height Top emotes and Where chat is give the row and its list scrolls inside it, as the sticky column's does from 1536 */
+.hv5-up-n { font: 600 12px/1 var(--sp-font); color: var(--sp-text-3); font-variant-numeric: tabular-nums; }
+.hub-v5 .hv5-up .hv5-fd { grid-template-columns: 28px minmax(0, 1fr) auto; height: 48px; }
+.hv5-up .hv5-fd-av, .hv5-up .hv5-fd-av .hv5-av { width: 28px; height: 28px; }
+.hv5-up-add { flex: none; color: var(--hv5-chat); font-variant-numeric: tabular-nums; }
+.hv5-up-gm { display: flex; }
+@media (min-width: 1100px) and (max-width: 1535px) {
+  .hv5-feed.hv5-up { contain: size; min-height: 432px; display: flex; flex-direction: column; }
+  .hv5-up .hv5-tm-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
+  .hv5-up .hv5-tm-body[data-more] { mask-image: linear-gradient(180deg, #000 calc(100% - 28px), transparent); }
+  .hv5-up .hv5-tm-body::-webkit-scrollbar { display: none; }
+}
 /* >= 1536 the rail is sticky: the list scrolls inside the window (scrollbar hidden), its last rows fading under the footer while more is below (data-more) */
 @media (min-width: 1536px) {
   .hv5-feed.hv5-top { display: flex; flex-direction: column; max-height: calc(100vh - 88px); }
-  .hv5-top .hv5-tm-wrap { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
   .hv5-top .hv5-tm-body {
     flex: 1 1 auto;
     min-height: 0;
@@ -1932,11 +2281,9 @@
 }
 @media (max-width: 719px) {
   .hub-v5 .hv5-top .hv5-tm-row { min-height: 52px; }
-  .hv5-tm-det { margin-left: 0; }
   /* a peek row or "Top moments ↓" brings the rail up: it lands under the sticky nav (about 101 px), not behind it */
   .hub-v5 :is(#latest, .hv5-tm-it) { scroll-margin-top: 112px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .hub-v5 .hv5-top .hv5-tm-list { transition: none; }
-  .hv5-tm-det { animation: none !important; }
 }

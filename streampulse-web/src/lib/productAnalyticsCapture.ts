@@ -2,7 +2,7 @@ import type { PublicCta, PublicPageCategory } from './productAnalytics'
 
 // Public POST-only API: https://posthog.com/docs/api/capture#single-event
 const INGEST_ENDPOINT = 'https://us.i.posthog.com/i/v0/e/'
-const categories = new Set(['home', 'docs', 'status', 'privacy', 'terms', 'refunds', 'supporter', 'support'])
+const categories = new Set(['home', 'docs', 'status', 'privacy', 'terms', 'refunds', 'supporter', 'support', 'channel_summary', 'stream_recap', 'tool', 'guide'])
 
 export interface PublicCaptureClient {
   capturePage(category: PublicPageCategory): void

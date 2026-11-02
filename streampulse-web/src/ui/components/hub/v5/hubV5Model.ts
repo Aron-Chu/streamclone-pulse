@@ -181,6 +181,8 @@ export interface HubBusiestRow {
   avatar: string | null
   /** 'avg_35': perMin is the row's recent average (up to 35 min) (candidate, 10-30). */
   basis?: HubChatBasis
+  /** No chat rate Busiest now would count (Your follows): the tile shows viewers and perMin is NaN. */
+  viewersOnly?: boolean
 }
 
 export interface HubBusiestSet {
@@ -203,19 +205,25 @@ export const HUB_BUSIEST_COUNT = 12
 /** Numbers older than this are not "live" (the shared 3-minute rule). */
 export const HUB_LIVE_MS = 180_000
 
-/** Busiest now: the shared (most common) 5-minute window, chat/min desc, then viewers desc, then login. */
-export function rankBusiest(live: readonly HubLiveChannel[], n = HUB_BUSIEST_COUNT, basis: HubChatBasis = 'five_min'): HubBusiestSet {
-  if (basis === 'avg_35') return rankBusiestOnAverage(live, n)
-  const ok = live.filter(hasFullChatWindow)
-  const synced = live.filter((c) => c.coverageState === 'synced').length
+/** The 5-minute window most channels with a full one report (the later one on a tie), in unix ms; NaN with none. */
+export function sharedChatWindow(live: readonly HubLiveChannel[]): readonly [number, number] {
   const tally = new Map<string, number>()
-  for (const c of ok) {
+  for (const c of live) {
+    if (!hasFullChatWindow(c)) continue
     const w = c.screenerV1!.currentWindow!
     const key = `${w.start}|${w.end}`
     tally.set(key, (tally.get(key) ?? 0) + 1)
   }
   const top = [...tally.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? 1 : -1))[0]
-  const [windowStart, windowEnd] = top ? top[0].split('|').map(Number) as [number, number] : [NaN, NaN]
+  return top ? top[0].split('|').map(Number) as [number, number] : [NaN, NaN]
+}
+
+/** Busiest now: the shared (most common) 5-minute window, chat/min desc, then viewers desc, then login. */
+export function rankBusiest(live: readonly HubLiveChannel[], n = HUB_BUSIEST_COUNT, basis: HubChatBasis = 'five_min'): HubBusiestSet {
+  if (basis === 'avg_35') return rankBusiestOnAverage(live, n)
+  const ok = live.filter(hasFullChatWindow)
+  const synced = live.filter((c) => c.coverageState === 'synced').length
+  const [windowStart, windowEnd] = sharedChatWindow(live)
   const shared = ok.filter((c) => c.screenerV1!.currentWindow!.start === windowStart && c.screenerV1!.currentWindow!.end === windowEnd)
   const rows = shared
     .slice()
@@ -262,12 +270,12 @@ function rankBusiestOnAverage(live: readonly HubLiveChannel[], n: number): HubBu
 
 export type HubBusiestCue = 'live' | 'stale'
 
-export function busiestCue(set: HubBusiestSet, nowMs: number): HubBusiestCue {
+export function busiestCue(set: Pick<HubBusiestSet, 'windowEnd'>, nowMs: number): HubBusiestCue {
   return finite(set.windowEnd) && nowMs - set.windowEnd <= HUB_LIVE_MS ? 'live' : 'stale'
 }
 
 /** Twitch's live pictures show only beside live 5-minute numbers (mockup §5); the recent average and old numbers get faces. */
-export function busiestShowsPictures(set: HubBusiestSet, cue: HubBusiestCue): boolean {
+export function busiestShowsPictures(set: Pick<HubBusiestSet, 'basis'>, cue: HubBusiestCue): boolean {
   return set.basis !== 'avg_35' && cue === 'live'
 }
 
@@ -303,7 +311,8 @@ export function busiestAria(row: HubBusiestRow, total: number, livePicture = fal
   // the recent average says so, with no fixed span (candidate, 10-30)
   const basis = row.basis === 'avg_35' ? ', recent average' : ''
   const picture = livePicture ? 'Twitch’s live picture, can be a few minutes old.' : 'Profile picture.'
-  return `${row.displayName}, ${row.fig} chat messages per minute${basis}, ${row.category || 'No category'}, rank ${row.rank} of ${total}. ${picture}`
+  const figure = row.viewersOnly ? `${row.fig} ${row.viewers === 1 ? 'viewer' : 'viewers'}, no chat count` : `${row.fig} chat messages per minute${basis}`
+  return `${row.displayName}, ${figure}, ${row.category || 'No category'}, rank ${row.rank} of ${total}. ${picture}`
 }
 
 /* ---------- Where chat is (R5-6, the round-5 list) ---------- */

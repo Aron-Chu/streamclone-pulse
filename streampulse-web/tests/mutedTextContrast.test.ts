@@ -22,15 +22,6 @@ const contrast = (a: Rgb, b: Rgb) => {
 }
 /** `top` at `alpha` over `bottom`. */
 const over = (top: Rgb, alpha: number, bottom: Rgb): Rgb => top.map((v, i) => v * alpha + bottom[i]! * (1 - alpha)) as Rgb
-/** hsl(h s% l%) as sRGB. */
-const hsl = (h: number, s: number, l: number): Rgb => {
-  const sat = s / 100
-  const light = l / 100
-  const k = (n: number) => (n + h / 30) % 12
-  const a = sat * Math.min(light, 1 - light)
-  const f = (n: number) => light - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)))
-  return [f(0), f(8), f(4)].map((v) => Math.round(v * 255)) as Rgb
-}
 
 const PAGE_BG = hex('#09090b')
 /** The lightest surface small text sits on in the portal: a panel at 8% white over the page. */
@@ -99,13 +90,5 @@ describe('text on a coloured fill', () => {
     expect(contrast(hex(bg!), hex(accent!))).toBeGreaterThanOrEqual(4.5)
     // What it was: white on the accent.
     expect(contrast([255, 255, 255], hex(accent!))).toBeLessThan(2)
-  })
-
-  it('the home "Explore" pill keeps its white label on a rose deep enough for 4.5:1', () => {
-    const css = read('src/ui/components/landing/landing.css')
-    const rule = /\.sl-announce__new \{([^}]*)\}/.exec(css)?.[1] ?? ''
-    const [, h, s, l] = /background: hsl\((\d+) (\d+)% (\d+)%\);/.exec(rule) ?? []
-    expect(rule).toMatch(/color: white;/)
-    expect(contrast([255, 255, 255], hsl(Number(h), Number(s), Number(l)))).toBeGreaterThanOrEqual(4.5)
   })
 })

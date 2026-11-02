@@ -43,7 +43,7 @@ export default function Terms() {
           <p className="text-zinc-300">
             StreamPulse is a free Twitch analytics site and browser extension. Pulse Supporter is an
             optional subscription of US$4.99 per month that funds development and adds cosmetics — it
-            does not unlock analytics. Paid sign-ups are not open yet. Once they are, you will be able
+            does not unlock analytics. Once sign-ups open, you will be able
             to cancel at any time and keep access until the end of the period you paid for. The
             service is provided as-is, with no uptime guarantee.
           </p>
@@ -105,7 +105,7 @@ export default function Terms() {
 
         <h2 id="supporter">Pulse Supporter</h2>
         <p>
-          Supporter is optional, and paid sign-ups are not open yet. Full details are on the{' '}
+          Supporter is optional. Full details are on the{' '}
           <Link to={SUPPORTER_PATH}>Supporter page</Link>. Once sign-ups open, the terms of the offer
           are:
         </p>

@@ -334,8 +334,10 @@ test.describe('toolbar popup', () => {
     setPulse({ ...richLivePayload(), rosterEligible: false })
     await extension.serviceWorker.evaluate(() => chrome.storage.session.clear())
     await page.reload()
-    await expect(page.getByText('Pulse isn’t charting this channel yet')).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Open Pulse panel' })).toBeVisible()
+    // Why there is no chart, and no button into a panel with nothing in it.
+    await expect(page.locator('.pp-note')).toHaveText('Not chartedStreamPulse only charts Twitch’s busiest channels.')
+    await expect(page.locator('[data-popup-action="open-pulse"]')).toHaveCount(0)
+    await expect(page.locator('[data-popup-action="open-hub"]')).toBeVisible()
 
     setPulse(null)
     await extension.serviceWorker.evaluate(() => chrome.storage.session.clear())

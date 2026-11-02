@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 /**
- * The landing phone menu's "Open Analytics" is a light primary button
+ * The landing phone menu's "Open the Hub" is a light primary button
  * (.sc-btn--default). A drawer rule that recolours every link must not reach it:
  * #eee on its #fafafa fill measured about 1.06:1 (release review 2026-10-09).
  */

@@ -2,13 +2,20 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { policyResults } from './audit-ai-crawl.mjs'
+import { readPilot, metadataForPage } from './recap-pilot.mjs'
 import { textContainsHostedApiOrigin } from '../../scripts/lib/hosted-api-origin.mjs'
 
 const root = dirname(fileURLToPath(import.meta.url))
 const dist = join(root, '..', 'dist')
 
+const pilotPages = readPilot(join(root, '..', 'content', 'recap-pilot.json'))
 const expected = [
+  ['tools/twitch-vod-timestamp-link/index.html', 'Twitch VOD Timestamp Link Builder — StreamPulse', 'index,follow', 'https://streampulse.stream/tools/twitch-vod-timestamp-link'],
+  ['guides/find-twitch-moments/index.html', 'Find and Bookmark Twitch Reaction Moments — StreamPulse', 'index,follow', 'https://streampulse.stream/guides/find-twitch-moments'],
+  ['guides/twitch-vod-timestamps/index.html', 'Twitch VOD Availability and Timestamps — StreamPulse', 'index,follow', 'https://streampulse.stream/guides/twitch-vod-timestamps'],
   ['index.html', 'StreamPulse: Twitch Chat Stats & Top Moments', 'index,follow', 'https://streampulse.stream/'],
+  ['analytics-fallback/index.html', 'StreamPulse Analytics', 'noindex,nofollow', 'https://streampulse.stream/analytics-fallback'],
   ['analytics/index.html', 'StreamPulse Analytics', 'index,follow', 'https://streampulse.stream/analytics'],
   ['docs/index.html', 'Documentation — StreamPulse', 'index,follow', 'https://streampulse.stream/docs'],
   ['status/index.html', 'Service Status — StreamPulse', 'index,follow', 'https://streampulse.stream/status'],
@@ -25,13 +32,22 @@ const expected = [
   ['404.html', 'Page not found — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/'],
 ]
 
+for (const page of pilotPages) {
+  const metadata = metadataForPage(page)
+  expected.push([`_recap-pages/${page.login}${page.kind === 'stream' ? `/${page.streamId}` : ''}/index.html`, metadata.title, metadata.robots, `https://streampulse.stream${page.path}`])
+}
+
 const SHARE_IMAGE = 'https://streampulse.stream/og-default.png'
+
+function decodeHtml(value) {
+  return value?.replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&quot;', '"').replaceAll('&#39;', "'").replaceAll('&amp;', '&')
+}
 
 function metaContent(html, attribute, key) {
   // Keys are fixed literals of letters, '_' and ':', so they need no regex escaping.
   const tags = html.match(new RegExp(`<meta\\s+${attribute}="${key}"[^>]*>`, 'gi')) ?? []
   if (tags.length !== 1) return tags.length === 0 ? undefined : null
-  return /content="([^"]*)"/.exec(tags[0])?.[1]?.replaceAll('&amp;', '&')
+  return decodeHtml(/content="([^"]*)"/.exec(tags[0])?.[1])
 }
 
 /** Link previews: every page names the shared 1200x630 card and its own title/description. */
@@ -86,7 +102,8 @@ for (const [relativePath, title, robots, canonical] of expected) {
     continue
   }
   const html = readFileSync(absolutePath, 'utf8')
-  if (!html.includes(`<title>${title}</title>`)) failures.push(`${relativePath}: incorrect title`)
+  const actualTitle = decodeHtml(/<title>([\s\S]*?)<\/title>/.exec(html)?.[1])
+  if (actualTitle !== title) failures.push(`${relativePath}: incorrect title`)
   if (!html.includes(`<meta name="robots" content="${robots}" />`)) failures.push(`${relativePath}: incorrect robots policy`)
   if (!html.includes(`<link rel="canonical" href="${canonical}" />`)) failures.push(`${relativePath}: incorrect canonical URL`)
   failures.push(...linkPreviewFailures(relativePath, html, title, canonical))
@@ -114,10 +131,12 @@ for (const route of ['analytics', 'docs', 'status', 'privacy', 'terms', 'refunds
 
 if (existsSync(join(dist, 'robots.txt'))) {
   const robots = readFileSync(join(dist, 'robots.txt'), 'utf8')
-  if (!robots.includes('Content-signal: search=yes, ai-input=no, ai-train=no, use=reference')) {
+  const contentSignal = readFileSync(join(dist, '_headers'), 'utf8').match(/^\s+Content-Signal: ([^\r\n]+)/m)?.[1].trim()
+  if (!policyResults(robots, contentSignal).ready) failures.push('crawl policy: retrieval, private routes, training and content signals disagree')
+  if (!robots.includes('Content-signal: search=yes, ai-input=yes, ai-train=no')) {
     failures.push('robots.txt: missing AI content-use policy')
   }
-  for (const agent of ['CCBot', 'ClaudeBot', 'GPTBot', 'Google-Extended', 'meta-externalagent']) {
+  for (const agent of ['CCBot', 'ClaudeBot', 'GPTBot', 'meta-externalagent']) {
     const escapedAgent = agent.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     const agentBlock = new RegExp(`User-agent: ${escapedAgent}\\s+Disallow: /`, 'i')
     if (!agentBlock.test(robots)) failures.push(`robots.txt: ${agent} is not disallowed`)
@@ -130,7 +149,7 @@ if (existsSync(join(dist, '_headers'))) {
   if (!enforced || !enforced.includes("object-src 'none'") || !enforced.includes("frame-ancestors 'none'") || enforced.includes("'unsafe-eval'")) {
     failures.push('_headers: missing or weakened enforcing Content-Security-Policy')
   }
-  if (!headers.includes('Content-Signal: search=yes, ai-input=no, ai-train=no, use=reference')) {
+  if (!headers.includes('Content-Signal: search=yes, ai-input=yes')) {
     failures.push('_headers: missing AI content-use policy')
   }
 }
@@ -138,14 +157,16 @@ if (existsSync(join(dist, '_headers'))) {
 if (existsSync(join(dist, '_redirects'))) {
   const redirects = readFileSync(join(dist, '_redirects'), 'utf8')
   for (const rule of [
+    '/install /docs#extension 302',
+    '/install/ /docs#extension 302',
     '/analytics/streams /analytics 301',
     '/analytics/hub /analytics 301',
     '/atlas /analytics 301',
     '/docs/getting-started /docs#extension 301',
     '/docs/coverage /docs#coverage 301',
     '/docs/api /docs#api 301',
-    '/analytics/:login/:streamId /analytics/ 200',
-    '/s/:login /analytics/ 200',
+    '/analytics/:login/:streamId /analytics-fallback/ 200',
+    '/s/:login /analytics-fallback/ 200',
   ]) {
     if (!redirects.includes(rule)) failures.push(`_redirects: missing ${rule}`)
   }

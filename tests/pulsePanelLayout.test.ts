@@ -201,9 +201,10 @@ describe('resolvePulsePanelSurfaceState', () => {
     })).toBe('identity_mismatch')
   })
 
-  it('reserves Not tracked for genuine live-untracked state', () => {
-    expect(pulseSurfaceStatusLabel('live_untracked')).toBe('Not tracked')
-    expect(pulseSurfaceStatusLabel('offline_empty')).not.toBe('Not tracked')
+  it('reserves Not charted for a channel off the list or live without being read', () => {
+    expect(pulseSurfaceStatusLabel('unsupported')).toBe('Not charted')
+    expect(pulseSurfaceStatusLabel('live_untracked')).toBe('Not charted')
+    expect(pulseSurfaceStatusLabel('offline_empty')).not.toBe('Not charted')
     expect(pulseSurfaceStatusLabel('offline_recap')).toBe('Replay ready')
     expect(pulseSurfaceStatusLabel('error')).toBe('Unavailable')
   })
