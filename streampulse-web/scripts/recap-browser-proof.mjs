@@ -18,7 +18,7 @@ const captures = []
 await context.route('**/*', route => {
   const target = new URL(route.request().url())
   if (target.origin === base.origin) return route.continue()
-  if (captureProof && target.href === 'https://us.i.posthog.com/i/v0/e/') {
+  if (captureProof && target.href === 'https://i.streampulse.stream/i/v0/e/') {
     if (route.request().method() === 'POST') captures.push(JSON.parse(route.request().postData()))
     return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': base.origin,
       'access-control-allow-methods': 'POST, OPTIONS', 'access-control-allow-headers': 'content-type' } })

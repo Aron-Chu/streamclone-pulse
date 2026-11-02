@@ -60,7 +60,7 @@ describe('native public capture transport privacy boundary', () => {
     expect(beacon).toHaveBeenCalledTimes(2)
     let distinctId: string | undefined
     for (const [url, payload] of beacon.mock.calls as unknown as [string, Blob][]) {
-      expect(url).toBe('https://us.i.posthog.com/i/v0/e/')
+      expect(url).toBe('https://i.streampulse.stream/i/v0/e/')
       expect(payload.type).toBe('application/json')
       const body = await readBlob(payload)
       expect(body).not.toMatch(/private|secret|email|current_url|referrer|session_id|device_id|window_id|pathname/)
