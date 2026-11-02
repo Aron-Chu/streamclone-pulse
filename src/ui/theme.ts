@@ -870,7 +870,8 @@ export const shadowStyles = `
   .pulse-moment-selection-card{animation:tab-fade 200ms ease-out both}
   .pulse-moment-card-swap{animation:pulse-swap-fade 180ms ease-out both}
   .pulse-moment-slot{display:grid;grid-template-rows:1fr;animation:pulse-slot-open 240ms cubic-bezier(.22,1,.36,1) both}
-  .pulse-moment-slot-inner{min-height:0}
+  /* min-width:0 always, as overflow:hidden gives while it opens or closes, so the card never changes width mid-animation. */
+  .pulse-moment-slot-inner{min-height:0;min-width:0}
   .pulse-moment-slot:is(.pulse-moment-slot-opening,.pulse-moment-slot-exit)>.pulse-moment-slot-inner{overflow:hidden}
   .pulse-panel-body[data-keep-in-place]{overflow-anchor:none}
   .pulse-moment-slot-exit{animation:pulse-slot-close 180ms cubic-bezier(.4,0,.2,1) both;pointer-events:none}

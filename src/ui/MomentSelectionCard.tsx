@@ -211,7 +211,8 @@ export function MomentSelectionCard({
                 data-moment-inspector-action="analytics"
                 onClick={onAnalytics}
               >
-                Open Analytics
+                {/* The one-line row keeps the card's reserved height; with a wide font this shortens first. */}
+                <span className="pulse-sel-link-text">Open Analytics</span>
                 <span aria-hidden="true" className="pulse-sel-link-icon">↗</span>
               </button>
             ) : null}

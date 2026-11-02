@@ -154,11 +154,12 @@ export function panelComponentCss(): string {
   .pulse-sel-item { align-items: center; display: flex; gap: 8px; min-width: 0; }
   .pulse-sel-name { color: #fafafc; flex: 1; font-size: 12px; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pulse-sel-uses { color: #8b8ba0; flex-shrink: 0; font-size: 11px; font-variant-numeric: tabular-nums; }
-  .pulse-sel-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 6px 12px; justify-content: space-between; min-width: 0; width: 100%; }
+  .pulse-sel-actions { align-items: center; display: flex; flex-wrap: nowrap; gap: 12px; justify-content: space-between; min-width: 0; width: 100%; }
   .pulse-sel-primary { background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.2); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 9px; color: var(--pulse-accent-ink, #ddd6fe); cursor: pointer; font-size: 10.5px; font-weight: 800; padding: 5px 10px; white-space: nowrap; align-items: center; border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.46); display: inline-flex; flex-shrink: 0; gap: 5px; min-height: 28px; }
   .pulse-sel-play { font-size: 9px; line-height: 1; }
-  .pulse-sel-link { background: transparent; border: 0; color: var(--pulse-accent-soft, #c4b5fd); cursor: pointer; font: inherit; font-weight: 700; padding: 4px 0; text-decoration: underline; text-decoration-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.35); text-underline-offset: 2px; align-items: center; display: inline-flex; flex-shrink: 0; font-size: 10px; gap: 3px; margin-left: auto; white-space: nowrap; }
-  .pulse-sel-link-icon { font-size: 11px; line-height: 1; }
+  .pulse-sel-link { background: transparent; border: 0; color: var(--pulse-accent-soft, #c4b5fd); cursor: pointer; font: inherit; font-weight: 700; padding: 4px 0; text-decoration: underline; text-decoration-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.35); text-underline-offset: 2px; align-items: center; display: inline-flex; flex-shrink: 1; font-size: 10px; gap: 3px; margin-left: auto; min-width: 0; white-space: nowrap; }
+  .pulse-sel-link-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .pulse-sel-link-icon { flex-shrink: 0; font-size: 11px; line-height: 1; }
 
   .pulse-insp { background: rgba(13, 13, 18, 0.96); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; box-sizing: border-box; display: grid; gap: 4px; min-width: 0; padding: 8px 10px; width: 100%; }
   .pulse-insp-header { align-items: baseline; display: flex; gap: 8px; justify-content: space-between; }
