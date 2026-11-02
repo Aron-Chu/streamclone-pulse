@@ -56,7 +56,7 @@ import { EmptyState, Skeleton } from './primitives'
 import { HubRangeMenu, type HubActivityRangeControl } from './HubRangeMenuV5'
 import { HubChartNavigator, type HubChartNavigatorPreset } from './HubChartNavigator'
 import { HubToggletip } from './d3/HubToggletip'
-import { HubActivityReadout, type HubReadoutSeries } from './HubActivityReadout'
+import { HubActivityReadout, type HubReadoutLock, type HubReadoutSeries } from './HubActivityReadout'
 import { HubProviderLanes } from './HubProviderLanes'
 import { hubMarkersLayer, hubStampLayer } from './HubActivityLayers'
 import { buildHubActivitySpModel, type HubActivitySpModel } from './hubActivitySpModel'
@@ -565,6 +565,17 @@ function HubActivityReady({ model, windowMinutes, rangeControl, annotationLane, 
     () => (selection ? { startMs: selection.t, endMs: selection.endT, kind: 'bar' } : null),
     [selection],
   )
+  // R1 (bar-lock board, 11-01): the readout holds the locked bar at rest, at the level it was locked at. A bar the
+  // chart has no bar for (a gap picked by Show on chart) still holds the row, with its numbers not measured. A poll
+  // that grows or trims the locked bar re-selects it below, and a lock that moves takes a keyboard or touch cursor
+  // off its old bar, so the row and the lock always name the same bar.
+  const locked: HubReadoutLock | null = useMemo(() => {
+    if (!selection) return null
+    const level = levelAt(levels, selection.barMinutes)
+    const slot = level?.buckets.find((b) => b.startMs <= selection.t && selection.t < b.startMs + level.slotMs)
+    const bar = level && slot ? barAt(model.data, level, slot.from) : null
+    return { startMs: selection.t, endMs: selection.endT, bar: bar && bar.startMs === selection.t ? bar : null }
+  }, [selection, levels, model.data])
 
   // Show on chart (a page-picked bucket): select it as 'latest'; the pan follows below.
   useEffect(() => {
@@ -617,17 +628,30 @@ function HubActivityReady({ model, windowMinutes, rangeControl, annotationLane, 
   }, [])
   const onLevel = useCallback((minutes: number) => setLevelStep(Math.max(1, Math.round(minutes / modelRef.current.bucketMinutes))), [])
 
-  // A new bar level re-selects the bar that holds the selection at that level (the mockup's onLevel), so the card
-  // always describes a bar the chart draws.
+  // The lock follows the bar that holds it at the settled level: a new level re-selects that bar (the mockup's
+  // onLevel), and a poll that grows the newest bar or trims the oldest re-selects its new bounds, so the card, the
+  // band and the readout always describe a bar the chart draws. A poll's re-select is no page pick: it never pans.
   useEffect(() => {
     const selection = hubBucketSelectionStore.getSnapshot().selection
     const level = levelAt(levels, levelMinutes)
-    if (!selection || !level || Math.round(level.slotMs / 60_000) === Math.round(selection.barMinutes)) return
-    const data = modelRef.current.data
+    if (!selection || !level) return
+    const minutes = level.slotMs / 60_000
+    const sameLevel = Math.round(minutes) === Math.round(selection.barMinutes)
     const hit = level.buckets.find((b) => b.startMs + level.slotMs > selection.t && b.startMs < selection.endT)
-    const bar = hit ? barAt(data, level, hit.from) : null
-    if (bar) selectHubBucket({ ...selection, t: bar.startMs, endT: bar.endMs, barMinutes: level.slotMs / 60_000 })
+    const bar = hit ? barAt(modelRef.current.data, level, hit.from) : null
+    if (!bar || (sameLevel && bar.startMs === selection.t && bar.endMs === selection.endT)) return
+    const source = sameLevel && selection.source === 'latest' ? 'bar' : selection.source
+    selectHubBucket({ ...selection, t: bar.startMs, endT: bar.endMs, barMinutes: minutes, source })
   }, [levels, levelMinutes])
+
+  // A lock that moves (‹ ›, ←/→ while locked, Clear, Esc) takes a keyboard or touch cursor off the bar it was left on,
+  // so the readout shows the lock at rest, or Now. A pointer keeps its hover: it is still over the plot.
+  useEffect(() => hubBucketSelectionStore.subscribe(() => {
+    const hit = hover.get()
+    if (!hit || hit.source === 'pointer') return
+    const selection = hubBucketSelectionStore.getSnapshot().selection
+    if (!selection || hit.bar?.startMs !== selection.t) hover.set(null)
+  }), [hover])
 
   // With a card open, left and right on the plot step to the next bar (the mockup's card keys); otherwise they move the cursor.
   const onPlotKeyCapture = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -685,7 +709,7 @@ function HubActivityReady({ model, windowMinutes, rangeControl, annotationLane, 
         levelMinutes={levelMinutes}
         onOpenMeasured={onOpenMeasured}
       />
-      <HubActivityReadout model={model} hover={hover} series={series} emoteImages={emoteImages} saved={saved} />
+      <HubActivityReadout model={model} hover={hover} series={series} emoteImages={emoteImages} saved={saved} locked={locked} />
       {annotationLane}
       <div ref={stackRef} className="hx-plot-stack hub-act-stack" data-hub-chart-state="ready" data-hub-chart-wheel-zone="" onKeyDownCapture={onPlotKeyCapture}>
         <SpChart

@@ -8,6 +8,7 @@
  * same minute, 1,511 emote uses, bucketComplete, and no topEmotes. The portal
  * swaps between those replies, so the card said chat named no emotes. It now
  * says the names are not in this update; "none named" stays for zero emotes.
+ * The bar lock (L1, 11-01) keeps the line; the bar's numbers moved to the readout.
  */
 import { act, cleanup, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
@@ -73,7 +74,8 @@ function card(points: HubActivityPoint[]) {
 }
 
 const select = () => act(() => selectHubBucket({ t: T, endT: T + 60_000, barMinutes: 1, source: 'bar' }))
-const emoteLine = () => document.querySelector('[data-hub-bar-card] .hbk-emo .hbk-sl')!.textContent
+const emoteLine = () => document.querySelector('[data-hub-bar-card] .hbk-emo .hbk-sub')!.textContent
+const title = () => document.querySelector('[data-hub-bar-card] .hbk-t')!.textContent
 
 afterEach(() => {
   cleanup()
@@ -85,15 +87,16 @@ describe('HubV5BarCard top emote names across hub replies (pick 12A)', () => {
     const view = render(card([named]))
     select()
     expect(screen.getByText('renrHype2')).toBeTruthy()
+    const before = title()
 
     // The later reply (24h live-pool fallback) for the same open card.
     view.rerender(card([unnamed]))
 
-    // Still the same open card on the same minute, now from the poorer reply.
+    // Still the same open lock on the same minute, now from the poorer reply.
     expect(document.querySelector('[data-hub-bar-card]')).not.toBeNull()
-    expect(screen.getByText('1,511')).toBeTruthy()
-    expect(screen.queryByText('none named in this bucket')).toBeNull()
-    expect(emoteLine()).toBe('Top emotesnames not in this update')
+    expect(title()).toBe(before)
+    expect(screen.queryByText('renrHype2')).toBeNull()
+    expect(emoteLine()).toBe('Top emotes · names not in this update')
   })
 
   it('keeps "none named in this bucket" for a bar that counted zero emotes', () => {
@@ -101,6 +104,6 @@ describe('HubV5BarCard top emote names across hub replies (pick 12A)', () => {
     select()
     expect(document.querySelector('[data-hub-bar-card]')).not.toBeNull()
     expect(screen.queryByText('names not in this update')).toBeNull()
-    expect(emoteLine()).toBe('Top emotesnone named in this bucket')
+    expect(emoteLine()).toBe('Top emotes · none named in this bucket')
   })
 })

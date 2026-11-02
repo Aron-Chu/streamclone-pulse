@@ -1,38 +1,21 @@
 /**
- * The d3-v5 hub's bar card (R5-8 option A, Aron 2026-10-15: "i think a is fine"):
- * the numbers for one chart bar, shown as a strip under the chart. A port of the
- * mockup's round3-model.js `bucket()` arithmetic and round3-ui.js `modelA`,
- * without R5-18 (the bar's top channels) and R5-23 (the tidied card), which
- * wait for Aron.
+ * The d3-v5 hub's bar lock (L1, bar-lock board 2026-11-01; was R5-8 option A's
+ * card): one chart bar under the chart, in the emote lock's rows. Its numbers sit
+ * in the readout above the chart (R1); this model holds the rest.
  *
- * Every figure is read from `hub.activity.points` (bucket TOTALS over
- * `bucketMinutes`) and the hub's detected moments (`livePulseMoments`); the card
- * never fetches `/hub/moments`. Chat and emotes are divided by the minutes
- * actually measured; viewers are a roster sample and are averaged, never
- * divided. Nothing is scored or typed in.
+ * The top emotes and the provider split are read from `hub.activity.points`
+ * (bucket TOTALS over `bucketMinutes`), divided by the minutes actually measured.
+ * The busiest chats come from one hub/moments read per server bucket
+ * (lib/hubIntervalMoments): each row is a stream's busiest minute in the bar,
+ * one row a channel, busiest chat first. The hub's own detected moments
+ * (`livePulseMoments`) only mark the channels they name. Nothing is scored.
  */
 import type { HubActivityPoint, HubBucketEmote, HubLivePulseMoment } from '../../../../lib/publicHub'
-import { formatHubCardInt, formatHubCardRate, hubCardClockRange, type HubCardFormatOptions } from '../../../../lib/hubBucketCardModel'
-import { momentHref } from './hubV5Model'
+import { formatHubCardInt, formatHubCardRate, hubCardClockRange, sortHubMomentsByChat, type HubCardFormatOptions } from '../../../../lib/hubBucketCardModel'
 
-/** prod's hub card copy (one name for one thing on both pages). */
-export const HUB_V5_BAR_STATE = 'Bucket selected'
-/** The card lists this many detected moments and this many top emotes. */
-export const HUB_V5_BAR_MOMENTS = 3
+/** The lock lists this many busiest chats and this many top emotes. */
+export const HUB_V5_BAR_CHATS = 6
 export const HUB_V5_BAR_EMOTES = 3
-
-export interface HubV5BarFig {
-  key: 'chat' | 'emotes' | 'viewers'
-  label: 'chat/min' | 'emotes/min' | 'viewers (sample)'
-  value: number | null
-  valueText: string
-  /** The tile's third line: "peak 1.2K" for a merged bar, the viewer sample line. */
-  third: string | null
-  /** Hover text: the busiest bucket's figure and time. */
-  title: string | null
-}
-
-export type HubV5BarFigKey = HubV5BarFig['key']
 
 export interface HubV5BarEmote {
   key: string
@@ -47,71 +30,55 @@ export interface HubV5BarEmote {
   title: string
 }
 
-export interface HubV5BarMoment {
-  key: string
-  channel: string
-  login: string
-  avatar: string | null
-  clockLabel: string
-  label: string
-  href: string
-  topEmote: { name: string; count: number; imageUrl: string | null } | null
-  aria: string
-  moment: HubLivePulseMoment
-}
-
 export interface HubV5BarCardModel {
   key: string
   t: number
   end: number
-  /** The bar's length in minutes (one server bucket or a merged zoomed-out bar). */
+  /** The bar's slot in minutes (the chart's bar size), even where the window cuts it short. */
   minutes: number
-  /** No chat or emote count in the bar: the card says "Not measured", never zeros. */
+  /** No chat or emote count in the bar: the lock says "Not measured", never zeros. */
   gap: boolean
-  /** "Bucket selected · 6 min" ("Bucket selected" on a gap). */
-  stateLabel: string
   /** "12:00–12:06 PM" */
   title: string
-  /** "Oct 19 local time" */
-  when: string
-  figs: [HubV5BarFig, HubV5BarFig, HubV5BarFig]
+  /** "Oct 19" */
+  day: string
+  /** The bar's slot runs past the newest closed bucket: its figures are so far. */
+  soFar: boolean
+  /** The bar reaches the newest closed bucket, so its streams may not be in yet. */
+  newest: boolean
   topEmotes: HubV5BarEmote[]
   /** None of the shown emotes is a minimum. */
   topEmotesExact: boolean
   /** The Top emotes line when no emote is listed; "none named" only for a bar that counted zero emotes (pick 12A, 10-30). */
   topEmotesNote: string | null
-  moments: { items: HubV5BarMoment[]; total: number; note: string | null }
   /** 7TV and other (the emotes total minus 7TV), only when every bucket certifies its provider counts. */
   providers: { sevenTv: number; other: number } | null
+  /** Lowercase logins of the hub's own detected moments inside the bar ("Top moment"). */
+  hubMoments: ReadonlySet<string>
   notes: string[]
-  /** The gap card's line. */
+  /** The gap line. */
   reason: string | null
-  /** One sentence for the live region. */
-  summary: string
+  /** "12:00 to 12:06 PM", for the status line. */
+  range: string
 }
 
 export interface HubV5BarCardInput {
   points: readonly HubActivityPoint[]
   bucketMinutes: number
-  /** The bar [t, endT) as the chart reports it. */
+  /** The bar [t, endT) as the chart reports it, and its slot in minutes. */
   t: number
   endT: number
+  barMinutes?: number
   /** The hub's detected moments (`livePulseMoments`). */
   moments: readonly HubLivePulseMoment[]
-  /** login → picture, for moments without their own. */
-  avatars?: ReadonlyMap<string, string>
   format?: HubCardFormatOptions
 }
 
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
 const sum = (values: readonly number[]) => values.reduce((total, value) => total + value, 0)
-const mean = (values: readonly number[]) => (values.length ? sum(values) / values.length : null)
 
 const goodChat = (p: HubActivityPoint) => p.hasChatRollup !== false && !p.gapKind && finite(p.chat)
 const goodEmotes = (p: HubActivityPoint) => p.hasChatRollup !== false && !p.gapKind && finite(p.emotes)
-/** Qualified viewer samples only; a corpus value that cannot join the roster never counts. */
-const goodViewer = (p: HubActivityPoint) =>
-  p.viewerCoverage != null && p.hasViewerRollup !== false && p.viewerSourceMismatch !== true && !p.gapKind && finite(p.viewers)
 
 const PROVIDER_FIELDS = ['seventv', 'twitch', 'bttv', 'ffz', 'other'] as const
 
@@ -120,7 +87,7 @@ function emoteKey(e: Pick<HubBucketEmote, 'name' | 'provider' | 'imageUrl'>): st
   return JSON.stringify([e.provider || 'unknown', e.imageUrl || '', e.name])
 }
 
-/** The card's clock: the nearest minute, so the card and the Moments row agree. */
+/** The lock's clock: the nearest minute, so the lock and the Moments row agree. */
 export function hubV5BarClock(ms: number, format?: HubCardFormatOptions): string {
   return new Date(Math.round(ms / 60_000) * 60_000).toLocaleTimeString(format?.locale ?? [], {
     hour: 'numeric',
@@ -137,11 +104,6 @@ function dateShort(ms: number, format?: HubCardFormatOptions): string {
   })
 }
 
-/** Fits a phone tile; the tooltip has the full figure. */
-function short(value: number): string {
-  return value >= 1e4 ? `${(Math.round(value / 100) / 10).toLocaleString('en-US')}K` : formatHubCardInt(value)
-}
-
 /** The detected moments the chart draws: those inside its span (the mockup's lane markers), oldest first. */
 export function hubV5ChartMoments(points: readonly HubActivityPoint[], bucketMinutes: number, moments: readonly HubLivePulseMoment[]): HubLivePulseMoment[] {
   const ordered = points.filter((p) => p && finite(p.t))
@@ -155,7 +117,35 @@ export function hubV5ChartMoments(points: readonly HubActivityPoint[], bucketMin
     .sort((a, b) => (a.at as number) - (b.at as number) || id(a).localeCompare(id(b)))
 }
 
-/** The card for the bar [t, endT), or null when the bar holds no activity point. */
+/**
+ * Where the closed buckets end: the open bucket's start when the reply sends one
+ * (the chart never draws it), else the newest bucket's end.
+ */
+export function hubV5LiveEdge(points: readonly HubActivityPoint[], bucketMinutes: number): number | null {
+  let last: HubActivityPoint | null = null
+  for (const p of points) if (p && finite(p.t) && (!last || p.t > last.t)) last = p
+  if (!last) return null
+  return last.bucketComplete === true ? last.t + Math.max(1, bucketMinutes) * 60_000 : last.t
+}
+
+/**
+ * The bar's busiest chats: each channel once, at its busiest minute in the bar,
+ * busiest chat first, at most `limit`. Rows without a channel are left out.
+ */
+export function hubV5BarChats(rows: readonly HubLivePulseMoment[], limit = HUB_V5_BAR_CHATS): HubLivePulseMoment[] {
+  const seen = new Set<string>()
+  const out: HubLivePulseMoment[] = []
+  for (const row of sortHubMomentsByChat(rows)) {
+    const login = typeof row.login === 'string' ? row.login.toLowerCase() : ''
+    if (!login || seen.has(login)) continue
+    seen.add(login)
+    out.push(row)
+    if (out.length >= limit) break
+  }
+  return out
+}
+
+/** The lock for the bar [t, endT), or null when the bar holds no activity point. */
 export function buildHubV5BarCard(input: HubV5BarCardInput): HubV5BarCardModel | null {
   const { format } = input
   const minutesPerBucket = input.bucketMinutes > 0 ? input.bucketMinutes : 1
@@ -165,58 +155,21 @@ export function buildHubV5BarCard(input: HubV5BarCardInput): HubV5BarCardModel |
   if (!members.length) return null
   const t = input.t
   const end = input.endT
-  const minutes = Math.round((end - t) / 60_000)
+  const minutes = finite(input.barMinutes) && input.barMinutes > 0 ? Math.round(input.barMinutes) : Math.round((end - t) / 60_000)
   // Buckets the bar spans; a missing point is an unmeasured bucket, never a zero.
   const expected = Math.max(members.length, Math.round((end - t) / slot))
-  const merged = expected > 1
 
   const chatRows = members.filter(goodChat)
   const emoteRows = members.filter(goodEmotes)
-  const viewerRows = members.filter(goodViewer)
-  const chatMinutes = chatRows.length * minutesPerBucket
   const emoteMinutes = emoteRows.length * minutesPerBucket
-  const chat = chatMinutes ? sum(chatRows.map((p) => p.chat)) / chatMinutes : null
   const emotes = emoteMinutes ? sum(emoteRows.map((p) => p.emotes as number)) / emoteMinutes : null
-  const viewers = mean(viewerRows.map((p) => p.viewers))
   const gap = !chatRows.length && !emoteRows.length
 
   const title = hubCardClockRange(t, end, format)
-  const when = `${dateShort(t, format)} local time`
-  const clock = (ms: number) => hubV5BarClock(ms, format)
-
-  // The busiest bucket of a merged bar: its figure on the tile, its time in the tooltip.
-  const peak = (key: HubV5BarFigKey): { value: number; t: number } | null => {
-    if (!merged) return null
-    const rows = key === 'viewers' ? viewerRows : key === 'emotes' ? emoteRows : chatRows
-    if (!rows.length) return null
-    const top = rows.reduce((a, b) => ((b[key] as number) > (a[key] as number) ? b : a))
-    return { value: key === 'viewers' ? top.viewers : (top[key] as number) / minutesPerBucket, t: top.t }
-  }
-  const rateFig = (key: 'chat' | 'emotes', value: number | null): HubV5BarFig => {
-    const p = peak(key)
-    return {
-      key,
-      label: key === 'chat' ? 'chat/min' : 'emotes/min',
-      value,
-      valueText: formatHubCardInt(value),
-      third: p ? `peak ${short(p.value)}` : null,
-      title: p ? `Peak ${formatHubCardInt(p.value)} /min at ${clock(p.t)}` : null,
-    }
-  }
-  const viewerPeak = peak('viewers')
-  const viewerFig: HubV5BarFig = {
-    key: 'viewers',
-    label: 'viewers (sample)',
-    value: viewers,
-    valueText: formatHubCardInt(viewers),
-    third: viewers == null
-      ? 'not a full sample'
-      : viewerRows.length < expected
-        ? `${viewerRows.length} of ${expected} buckets sampled`
-        : viewerPeak ? `peak ${short(viewerPeak.value)}` : null,
-    title: viewerPeak ? `Peak ${formatHubCardInt(viewerPeak.value)} viewers at ${clock(viewerPeak.t)}` : null,
-  }
-  const figs: [HubV5BarFig, HubV5BarFig, HubV5BarFig] = [rateFig('chat', chat), rateFig('emotes', emotes), viewerFig]
+  // The bar's slot past the closed buckets is still filling; a bar that reaches them is the newest.
+  const edge = hubV5LiveEdge(input.points, minutesPerBucket)
+  const newest = edge != null && end >= edge
+  const soFar = edge != null && t + minutes * 60_000 > edge
 
   // Top emotes: summed per bucket; an emote missing from one measured bucket's top list is a minimum.
   const tally = new Map<string, { key: string; name: string; imageUrl: string | null; count: number }>()
@@ -243,36 +196,19 @@ export function buildHubV5BarCard(input: HubV5BarCardInput): HubV5BarCardModel |
     return {
       ...e,
       rateText: `${mark}${formatHubCardRate(e.perMin ?? e.count)}`,
-      title: `${e.name}: ${topEmotesExact ? '' : 'at least '}${formatHubCardInt(e.count)} uses in this bucket, ${topEmotesExact ? '' : '≥'}${formatHubCardRate(e.perMin)}/min`,
+      title: `${e.name}: ${e.lowerBound ? 'at least ' : ''}${formatHubCardInt(e.count)} uses in this bar, ${mark}${formatHubCardRate(e.perMin)} a minute`,
     }
   })
   // A bar that counted emotes but whose reply sent no names (the 24h fallback's newest
-  // minute) did not name none; the emotes/min tile's figure decides (pick 12A, 10-30).
+  // minute) did not name none; the emotes figure decides (pick 12A, 10-30).
   const topEmotesNote = topEmotes.length ? null : emotes === 0 ? 'none named in this bucket' : 'names not in this update'
 
-  // Detected moments inside the bar (the hub sends its highest-scoring ones); each row opens in Moments.
-  const lane = hubV5ChartMoments(input.points, minutesPerBucket, input.moments)
-  const inside = lane.filter((m) => (m.at as number) >= t && (m.at as number) < end)
-  const items: HubV5BarMoment[] = inside.map((m) => {
-    const login = m.login as string
-    const channel = m.displayName || login
-    const clockLabel = clock(m.at as number)
-    const label = m.label || 'Detected moment'
-    const te = m.topEmotes?.[0]
-    return {
-      key: `${login}:${m.streamId ?? ''}:${m.offsetSeconds ?? ''}`,
-      channel,
-      login,
-      avatar: m.profileImageUrl || input.avatars?.get(login) || null,
-      clockLabel,
-      label,
-      href: momentHref(m),
-      topEmote: te && typeof te.name === 'string' ? { name: te.name, count: te.count, imageUrl: te.imageUrl ?? null } : null,
-      aria: `${channel} at ${clockLabel}, ${label}. Opens in Moments`,
-      moment: m,
-    }
-  })
-  const moments = { items, total: items.length, note: items.length ? null : `none of the hub’s ${lane.length}` }
+  // The hub's own moments inside the bar mark their channel's row.
+  const hubMoments = new Set(
+    hubV5ChartMoments(input.points, minutesPerBucket, input.moments)
+      .filter((m) => (m.at as number) >= t && (m.at as number) < end)
+      .map((m) => (m.login as string).toLowerCase()),
+  )
 
   // The split only when every bucket certifies complete provider counts that stay inside the total.
   const providerValid = emoteRows.length > 0 && emoteRows.length === members.length && members.every((p) =>
@@ -287,36 +223,28 @@ export function buildHubV5BarCard(input: HubV5BarCardInput): HubV5BarCardModel |
     : null
 
   const partial = chatRows.length !== expected || emoteRows.length !== expected
-  const notes = partial ? ['Some minutes in this bar were not measured. Gaps are not zero.'] : []
+  const notes = !gap && partial ? ['Some minutes in this bar were not measured. Gaps are not zero.'] : []
 
-  const range = title.replace('–', ' to ')
-  const summary = gap
-    ? `${HUB_V5_BAR_STATE}, ${range}. Not measured.`
-    : [
-      `${HUB_V5_BAR_STATE}, ${range}`,
-      `Chat ${figs[0].valueText} per minute`,
-      `Emotes ${figs[1].valueText} per minute`,
-      `Viewers ${figs[2].valueText}`,
-      ...(items.length ? [`${items.length} ${items.length === 1 ? 'moment' : 'moments'}`] : []),
-    ].join('. ') + '.'
-
+  // The bar's slot at its level: a bar a poll grows (the newest) or trims (the oldest) keeps its key, so the lock does
+  // not say itself again and its rows stay put while the new bucket reads.
+  const slotMs = Math.max(1, minutes) * 60_000
   return {
-    key: `${t}:${end}`,
+    key: `${Math.floor(t / slotMs) * slotMs}:${minutes}`,
     t,
     end,
     minutes,
     gap,
-    stateLabel: gap ? HUB_V5_BAR_STATE : `${HUB_V5_BAR_STATE} · ${minutes} min`,
     title,
-    when,
-    figs,
+    day: dateShort(t, format),
+    soFar,
+    newest,
     topEmotes,
     topEmotesExact,
     topEmotesNote,
-    moments,
     providers,
+    hubMoments,
     notes,
     reason: gap ? 'No chat or emote counts for this bar.' : null,
-    summary,
+    range: title.replace('–', ' to '),
   }
 }
