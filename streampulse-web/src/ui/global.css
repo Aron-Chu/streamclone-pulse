@@ -141,7 +141,8 @@ select {
   font-weight: 500;
   color: var(--text-muted);
   text-decoration: none;
-  transition: all 0.15s ease;
+  /* named properties instead of all (2026-11-02), so only colours and the shadow ease */
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .app-nav__link:hover {
@@ -169,12 +170,20 @@ select {
   border-radius: var(--radius-button);
   padding: 0.38rem 0.8rem;
   margin-left: 0.5rem;
-  transition: all 0.15s ease;
+  /* the approved button transition (2026-11-02): colours and shadow, and a press dip (below) that springs back */
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease, opacity 140ms ease, scale 260ms cubic-bezier(.34, 1.56, .64, 1), translate 200ms cubic-bezier(.16, 1, .3, 1);
 }
 
 .app-nav__install:hover {
   background: rgba(139, 92, 246, 0.24);
   border-color: rgba(139, 92, 246, 0.55);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .app-nav__install:active {
+    scale: .96;
+    transition-duration: 140ms, 140ms, 140ms, 140ms, 140ms, 70ms, 200ms;
+  }
 }
 
 /* The Chrome mark on Add to Chrome buttons (top bars, hub hero). */
@@ -303,6 +312,96 @@ select {
   font-weight: 600;
 }
 
+/* Privacy "At a glance" box and its contents list (audit row 1, 11-02). */
+.public-glance {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  border: 1px solid rgb(255 255 255 / 0.08);
+  border-radius: 0.75rem;
+  background: rgb(0 0 0 / 0.2);
+}
+
+.public-glance ul {
+  margin: 0.75rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.public-toc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgb(255 255 255 / 0.08);
+  font-size: 0.85rem;
+}
+
+.public-toc a {
+  color: #c4b5fd;
+  text-decoration: none;
+}
+
+.public-toc a:hover,
+.public-toc a:focus-visible {
+  text-decoration: underline;
+}
+
+.public-document :is(h2, details)[id] {
+  scroll-margin-top: 5rem;
+}
+
+/* Pilot-only and future features, folded away. */
+.public-more {
+  margin-top: 2.25rem;
+  border-top: 1px solid rgb(255 255 255 / 0.08);
+}
+
+.public-more > summary {
+  cursor: pointer;
+  list-style-position: outside;
+  margin-left: 1rem;
+}
+
+.public-more > summary h2 {
+  display: inline;
+  margin: 0;
+}
+
+.public-more > summary::marker {
+  color: #a1a1aa;
+}
+
+.public-more[open] > summary {
+  margin-bottom: 0.75rem;
+}
+
+.public-more > summary {
+  padding-top: 1.5rem;
+}
+
+/* Supporter offer: label and value side by side, stacked on phones. */
+.public-terms {
+  display: grid;
+  grid-template-columns: 9rem minmax(0, 1fr);
+  gap: 0.75rem 1.5rem;
+  margin: 1rem 0 0;
+}
+
+.public-terms dd {
+  margin: 0;
+}
+
+@media (max-width: 560px) {
+  .public-terms {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.2rem;
+  }
+
+  .public-terms dd + dt {
+    margin-top: 0.6rem;
+  }
+}
+
 .public-document__actions {
   display: flex;
   flex-wrap: wrap;
@@ -420,6 +519,21 @@ select {
   font-family: var(--font-mono);
 }
 
+/* Build, source and times, folded under one "Details" line (11-02). */
+.status-details > summary {
+  width: fit-content;
+  color: var(--text-muted);
+}
+
+.status-details__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0.75rem 1.5rem;
+  margin: 0.75rem 0 0;
+}
+
+.status-details__list dd { margin: 0.2rem 0 0; }
+
 /* Modern Form Controls */
 .form-group {
   display: flex;
@@ -502,12 +616,20 @@ select {
   font-weight: 600;
   font-size: 0.875rem;
   cursor: pointer;
-  transition: all 0.15s ease;
+  /* the approved button transition (2026-11-02), as .app-nav__install above */
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease, opacity 140ms ease, scale 260ms cubic-bezier(.34, 1.56, .64, 1), translate 200ms cubic-bezier(.16, 1, .3, 1);
 }
 
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .btn:not(:disabled):active {
+    scale: .96;
+    transition-duration: 140ms, 140ms, 140ms, 140ms, 140ms, 70ms, 200ms;
+  }
 }
 
 .btn-primary {
@@ -767,6 +889,20 @@ select {
   color: #fff;
 }
 .app-nav__discord-icon:hover { background: #4752c4; color: #fff; }
+/* The mark's colours ease (2026-11-02), and both Discord buttons get the approved press dip (they had none). */
+@media (prefers-reduced-motion: no-preference) {
+  .app-nav__discord-icon {
+    transition: background-color 150ms ease, color 150ms ease, scale 260ms cubic-bezier(.34, 1.56, .64, 1), translate 200ms cubic-bezier(.16, 1, .3, 1);
+  }
+  .app-nav__discord {
+    transition: background-color 150ms ease, border-color 150ms ease, scale 260ms cubic-bezier(.34, 1.56, .64, 1), translate 200ms cubic-bezier(.16, 1, .3, 1);
+  }
+  .app-nav__discord-icon:active,
+  .app-nav__discord:active {
+    scale: .96;
+    transition-duration: 150ms, 150ms, 70ms, 200ms;
+  }
+}
 @media (max-width: 960px) {
   .app-nav__links .app-nav__discord { display: none; }
   .app-nav__discord-icon { display: grid; }
@@ -790,6 +926,9 @@ select {
   outline: 2px solid #c4b5fd;
   outline-offset: 3px;
 }
+/* .sc-btn draws its own focus ring (primitives.css, outline: none); the rule above outranks that,
+   so a focused button showed both rings (2026-11-02). */
+.app-shell .sc-btn:focus-visible { outline: none; }
 .app-shell :is(section, h2, h3)[id] { scroll-margin-top: 6rem; }
 .public-skip-link { position: fixed; top: .5rem; left: .5rem; z-index: 100; padding: .75rem 1rem; min-height: 44px; color: #fff; background: #352447; border: 2px solid #c4b5fd; transform: translateY(-200%); }
 .public-skip-link:focus { transform: translateY(0); }
@@ -820,6 +959,24 @@ select {
   .app-nav--account .app-nav__links { order: 1; }
   .app-nav__links :is(a, button) { min-height: 44px; align-content: center; }
 }
+/* The menu button's hover and press (the approved pattern), and the opened list fades and drops in (2026-11-02).
+   Closing is still instant (display none; it would need script to hold the list open). */
+.app-nav__menu:hover { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.18); }
+@keyframes app-nav-links-in {
+  from { opacity: 0; translate: 0 -4px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .app-nav__menu {
+    transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease, opacity 140ms ease, scale 260ms cubic-bezier(.34, 1.56, .64, 1), translate 200ms cubic-bezier(.16, 1, .3, 1);
+  }
+  .app-nav__menu:active {
+    scale: .96;
+    transition-duration: 140ms, 140ms, 140ms, 140ms, 140ms, 70ms, 200ms;
+  }
+}
+@media (max-width: 960px) and (prefers-reduced-motion: no-preference) {
+  .app-nav__links.is-open { animation: app-nav-links-in 160ms ease-out; }
+}
 /* Brand, menu button and account entry keep one row down to 320px. */
 @media (max-width: 360px) {
   .app-nav--account { gap: .5rem; padding-inline: .75rem; }
@@ -833,5 +990,6 @@ select {
 @media (prefers-reduced-motion: reduce) {
   .app-shell *, .app-shell *::before, .app-shell *::after {
     animation: none !important; scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
   }
 }

@@ -9,8 +9,9 @@
  * again shows every channel. Hover (after 90 ms) or keyboard focus shows the
  * game's card.
  */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FocusEvent as ReactFocusEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type FocusEvent as ReactFocusEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
+import { askGameArt, gameArtFor, missGameArt, subscribeGameArt } from '../../../../lib/hubGameArt'
 import { HubToggletip } from '../d3/HubToggletip'
 import { HubV5Avatar } from './HubV5Avatar'
 // the leaf module, not the console entry, so the hub chunk stays without the console (fix, 10-30)
@@ -35,17 +36,32 @@ import { isFocusVisible, placeHubV5Card } from './hubV5HoverCard'
 
 const H_ID = 'hv5-gm-h'
 
-export function GameArt({ url, name, w, h }: { url: string | undefined; name: string; w: number; h: number }) {
-  // no vetted art: Twitch box art by name, at twice the box (fix, 10-30, LW-5/GP-5)
-  const byName = !url && name !== HUB_NO_CATEGORY ? twitchBoxArtByName(name, w * 2, h * 2) : null
+/**
+ * A game's cover: the vetted art, else Twitch's box art by name, else one a
+ * live stream's game list gave (hubGameArt, kept). A by-name cover that proves
+ * to be Twitch's "?" placeholder shows the initials and asks hubGameArt to look
+ * the game up in the game lists of `streamIds`, streams playing it (11-02), so
+ * a new game gets its cover a moment later. A looked-up cover is checked the
+ * same way: Twitch has no cover for some ids either, and then it stays the
+ * initials.
+ */
+export function GameArt({ url, name, w, h, streamIds = [] }: { url: string | undefined; name: string; w: number; h: number; streamIds?: readonly (string | null | undefined)[] }) {
+  const kept = useSyncExternalStore(subscribeGameArt, () => gameArtFor(name), () => undefined)
+  // no vetted art: Twitch box art by name, at twice the box (fix, 10-30, LW-5/GP-5); a known miss goes straight to the initials
+  const byName = !url && kept === undefined && name !== HUB_NO_CATEGORY ? twitchBoxArtByName(name, w * 2, h * 2) : null
   // three times the box, so the cover stays sharp
-  const src = url ? boxArtAt(url, w * 3, h * 3) : byName
+  const src = url ? boxArtAt(url, w * 3, h * 3) : kept ? boxArtAt(kept, w * 3, h * 3) : byName
   const [failed, setFailed] = useState<string | null>(null)
   const [checked, setChecked] = useState<string | null>(null)
+  const missing = () => {
+    setFailed(src)
+    if (byName) askGameArt(name, streamIds)
+    else missGameArt(name)
+  }
   if (!src || failed === src) return <span>{gameInitials(name)}</span>
-  if (!byName) return <img src={src} alt="" width={w} height={h} decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(src)} />
-  // an unknown name gets Twitch's grey "?" cover with HTTP 200 (no onError): it
-  // loads with CORS and stays hidden until checked; a proven placeholder or a
+  if (url) return <img src={src} alt="" width={w} height={h} decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(src)} />
+  // an unknown name or id gets Twitch's grey "?" cover with HTTP 200 (no onError):
+  // it loads with CORS and stays hidden until checked; a proven placeholder or a
   // failed load shows the initials, a check that cannot tell keeps the cover
   return (
     <img
@@ -60,10 +76,10 @@ export function GameArt({ url, name, w, h }: { url: string | undefined; name: st
       style={checked === src ? undefined : { opacity: 0 }}
       onLoad={(event) => {
         void isTwitchPlaceholderBoxArt(event.currentTarget)
-          .then((placeholder) => (placeholder ? setFailed(src) : setChecked(src)))
+          .then((placeholder) => (placeholder ? missing() : setChecked(src)))
           .catch(() => setChecked(src))
       }}
-      onError={() => setFailed(src)}
+      onError={missing}
     />
   )
 }
@@ -73,7 +89,7 @@ function GameCard({ g, rank, of, pressed, art, avatars, basis }: { g: HubGameSha
   return (
     <>
       <div className="hv5-ec-h">
-        <span className="hv5-ec-im hv5-gc-im"><GameArt url={art} name={g.name} w={30} h={40} /></span>
+        <span className="hv5-ec-im hv5-gc-im"><GameArt url={art} name={g.name} w={30} h={40} streamIds={g.rows.map((c) => c.streamId)} /></span>
         <span className="hv5-ec-tx"><b>{g.name}</b><span>#{rank} of {of} games by chat</span></span>
       </div>
       <dl className="hv5-ec-dl">
@@ -188,7 +204,7 @@ export function HubV5Rack({ games, game, onGame, art, avatars, loading, unavaila
               return (
                 <li key={g.name}>
                   <button type="button" className="hv5-gr" data-game={g.name} aria-pressed={pressed} aria-label={gameAria(g, pressed, games.basis)} onClick={onRow(g)}>
-                    <span className="hv5-gr-art"><GameArt url={art.get(g.name)} name={g.name} w={30} h={40} /></span>
+                    <span className="hv5-gr-art"><GameArt url={art.get(g.name)} name={g.name} w={30} h={40} streamIds={g.rows.map((c) => c.streamId)} /></span>
                     <span className="hv5-gr-nm">{g.name}</span>
                     <span className="hv5-gr-v">{g.chatShare.toFixed(1)}%</span>
                     <span className="hv5-gr-bar" aria-hidden="true"><i style={{ width: `${Math.max(1.5, (g.chatShare / max) * 100).toFixed(1)}%` }} /></span>

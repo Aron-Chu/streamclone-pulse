@@ -27,6 +27,13 @@ function normalizedState(value: unknown): State {
 function stateLabel(state: State) {
   return state === 'operational' ? 'Operational' : state === 'degraded' ? 'Degraded' : state === 'unavailable' ? 'Unavailable' : 'Unknown'
 }
+/** What the chat collection card says, in plain words (no fleet counts). */
+function chatCollectionDetail(state: State): string {
+  return state === 'operational' ? 'Live chat collection is running normally'
+    : state === 'degraded' ? 'Live chat collection is slower than usual'
+    : state === 'unavailable' ? 'Live chat collection could not be checked'
+    : 'Live chat collection has not reported yet'
+}
 function safeDataTime(value?: string): string {
   const timestamp = measurementTimeMs(value)
   return timestamp != null ? new Date(timestamp).toLocaleString() : 'Unknown'
@@ -73,6 +80,7 @@ export default function Status() {
     : statusProbe.data?.degraded || healthProbe.data?.ok === false || componentStates.includes('degraded') ? 'degraded'
     : statusState === 'operational' && healthProbe.data?.ok === true ? 'operational' : statusState === 'operational' ? 'unknown' : statusState
   const errors = [statusProbe.error, healthProbe.error].filter(Boolean)
+  const corpusState: State = loading ? 'unknown' : statusProbe.error ? 'unavailable' : normalizedState(statusProbe.data?.components?.corpus)
   const card = (label: string, state: State, detail: string) => <div className="status-card">
     <div className="status-card__header"><span className="status-card__label">{label}</span><span className="status-card__indicator">
       <span className={`status-card__dot ${state === 'operational' ? 'status-card__dot--operational' : 'status-card__dot--degraded'}`} />
@@ -82,7 +90,7 @@ export default function Status() {
 
   return <PublicLayout><section className="panel" data-testid="status-page">
     <header className="mb-6 border-b border-white/[0.08] pb-6"><div className="flex flex-wrap items-center justify-between gap-4">
-      <div><h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">System Status</h1><p className="mt-1 text-sm text-zinc-400">Public service health. Open <Link to="/analytics" className="text-violet-400 hover:underline">Analytics</Link> for coverage detail.</p></div>
+      <div><h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">System Status</h1><p className="mt-1 text-sm text-zinc-400">Public service health. Open the <Link to="/analytics" className="text-violet-400 hover:underline">Hub</Link> for coverage detail.</p></div>
       <div className={`inline-flex items-center gap-2.5 rounded-full border px-4 py-2 text-sm font-bold ${overall === 'operational' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : overall === 'unknown' ? 'border-white/15 bg-white/5 text-zinc-300' : 'border-amber-500/30 bg-amber-500/10 text-amber-300'}`}>
         <span>{loading ? 'Checking systems…' : overall === 'operational' ? 'Reported Services Operational' : overall === 'degraded' ? 'Degraded Performance' : overall === 'unavailable' ? 'Status Unavailable' : 'Status Unknown'}</span>
       </div>
@@ -91,19 +99,20 @@ export default function Status() {
     {errors.length ? <div className="alert alert-error my-4" role="alert">Some checks could not be completed: {errors.join('; ')}</div> : null}
     <div className="status-grid">
       {card('Hosted API', loading ? 'unknown' : statusProbe.error ? 'unavailable' : normalizedState(statusProbe.data?.components?.api ?? statusProbe.data?.api), backendSourceCaption(backendUrl))}
-      {card('IRC collection', loading ? 'unknown' : statusProbe.error ? 'unavailable' : normalizedState(statusProbe.data?.components?.corpus), 'Public status does not expose fleet counts or packet loss')}
+      {card('Chat collection', corpusState, chatCollectionDetail(corpusState))}
       {card('Coverage Engine', loading ? 'unknown' : statusProbe.error ? 'unavailable' : normalizedState(statusProbe.data?.components?.coverage), 'Minute rollups and heatmaps')}
       {card('Extension Ingest', loading ? 'unknown' : healthProbe.error ? 'unavailable' : healthProbe.data?.ok === true ? 'operational' : healthProbe.data?.ok === false ? 'degraded' : 'unknown', `API version ${versionLabel(healthProbe.data?.version)}`)}
     </div>
-    <div className="mt-8 rounded-xl border border-white/[0.08] bg-black/30 p-6"><h2 className="!mt-0 text-base font-bold uppercase tracking-wider text-zinc-400 font-mono">Telemetry &amp; Provenance</h2>
-      <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4 text-xs font-mono">
+    {typeof statusProbe.data?.incident === 'string' && statusProbe.data.incident ? <div className="alert alert-warning mt-6"><strong>Active incident:</strong> {statusProbe.data.incident}</div> : null}
+    {/* Build, source and times stay one click away (Aron, 11-02). */}
+    <details className="status-details mt-6 text-xs text-zinc-500"><summary className="cursor-pointer">Details</summary>
+      <dl className="status-details__list mt-3 text-xs">
         <div><dt className="text-zinc-500 font-bold uppercase">Portal Build</dt><dd className="mt-1 text-zinc-200 font-bold">{PORTAL_VERSION_DISPLAY}</dd></div>
         <div><dt className="text-zinc-500 font-bold uppercase">API Source</dt><dd className="mt-1 text-zinc-200 font-bold">{backendSourceCaption(backendUrl)}</dd></div>
         <div><dt className="text-zinc-500 font-bold uppercase">Checked at</dt><dd className="mt-1 text-zinc-200 font-bold">{checkedAt ? checkedAt.toLocaleString() : 'Not checked yet'}</dd></div>
         <div><dt className="text-zinc-500 font-bold uppercase">Data as of</dt><dd className="mt-1 text-zinc-200 font-bold">{safeDataTime(statusProbe.data?.updatedAt)}</dd></div>
       </dl>
-      {typeof statusProbe.data?.incident === 'string' && statusProbe.data.incident ? <div className="alert alert-warning mt-4"><strong>Active incident:</strong> {statusProbe.data.incident}</div> : null}
-      {backendSource !== 'hosted' ? <p className="mt-4 text-xs text-zinc-500">Local or custom API — status reflects that backend, not necessarily production.</p> : null}
-    </div>
+      {backendSource !== 'hosted' ? <p className="mt-3 text-xs text-zinc-500">Local or custom API — status reflects that backend, not necessarily production.</p> : null}
+    </details>
   </section></PublicLayout>
 }

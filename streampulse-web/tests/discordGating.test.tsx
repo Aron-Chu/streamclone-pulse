@@ -97,13 +97,13 @@ describe('Discord entry points', () => {
     expect(discordLinks()).toEqual([])
   })
 
-  it('shows the hero pill, nav button, phone icon and footer link on the landing page with a valid invite', async () => {
+  it('shows the nav button, phone icon and footer link on the landing page with a valid invite', async () => {
     vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', SHORT_INVITE)
     render(<MemoryRouter><Landing /></MemoryRouter>)
     await screen.findByRole('heading', { name: /actually reacted to/i })
     const links = discordLinks()
     expect(links.map(a => a.className.split(' ').find(c => c.startsWith('sl-'))).sort())
-      .toEqual(['sl-discord-icon', 'sl-discord-nav', 'sl-discord-pill', 'sl-foot__discord'])
+      .toEqual(['sl-discord-icon', 'sl-discord-nav', 'sl-foot__discord'])
     for (const link of links) {
       expect(link.getAttribute('href')).toBe(SHORT_INVITE)
       expect(link.target).toBe('_blank')
@@ -144,9 +144,7 @@ describe('Discord entry points', () => {
     const support = render(<MemoryRouter><Feedback /></MemoryRouter>)
     const site = render(<MemoryRouter><PublicLayout><p>page</p></PublicLayout></MemoryRouter>)
     const links = discordLinks()
-    expect(links.length).toBeGreaterThanOrEqual(6)
-    const pill = links.find(a => a.classList.contains('sl-discord-pill'))!
-    expect(pill.getAttribute('aria-label')).toBe('Join the Discord (opens in a new tab)')
+    expect(links.length).toBeGreaterThanOrEqual(5)
     for (const link of links) {
       const visible = (link.textContent ?? '').replace(/\s+/g, ' ').trim()
       const name = link.getAttribute('aria-label') ?? visible

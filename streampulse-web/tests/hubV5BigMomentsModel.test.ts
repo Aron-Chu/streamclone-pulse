@@ -5,7 +5,10 @@ import type { MomentsFeedItem } from '../src/lib/momentsFeed'
 import { normalizePublicHub } from '../src/lib/publicHub'
 import {
   BIG_CARDS,
+  BIG_WHEEL_PX,
+  BIG_WHEEL_QUIET_MS,
   bigCardPos,
+  bigDragPx,
   bigIntoStream,
   bigMeter,
   bigMomentCards,
@@ -13,6 +16,8 @@ import {
   bigStillEmote,
   bigViewers,
   bigWatchHref,
+  bigWheel,
+  bigWheelTurn,
 } from '../src/ui/components/hub/v5/hubV5BigMomentsModel'
 import { hubTopRows, topFeedRows, type TopRowData } from '../src/ui/components/hub/v5/hubV5TopModel'
 
@@ -26,38 +31,53 @@ const row = (login: string, id = login): TopRowData => ({
 })
 const logins = (rows: readonly { row: TopRowData }[]) => rows.map((c) => c.row.login)
 
-describe('Chat’s big moments: its cards (C1, 11-01)', () => {
-  it('keeps the list’s order with one card per channel; a channel’s later rows only add to its "+N more"', () => {
-    const cards = bigMomentCards([row('a', 'a1'), row('b', 'b1'), row('a', 'a2'), row('c', 'c1'), row('b', 'b2'), row('a', 'a3')])
-    expect(logins(cards)).toEqual(['a', 'b', 'c'])
-    expect(cards.map((c) => [c.row.id, c.more])).toEqual([['a1', 2], ['b1', 1], ['c1', 0]])
+describe('Top moments today: its cards (C1 11-01; one per moment since 11-02)', () => {
+  it('makes one card per moment in the list’s order, a channel’s later moments too', () => {
+    const cards = bigMomentCards([row('a', 'a1'), row('b', 'b1'), row('a', 'a2'), row('c', 'c1')])
+    expect(cards.map((c) => c.row.id)).toEqual(['a1', 'b1', 'a2', 'c1'])
     expect(bigMomentCards([])).toEqual([])
   })
 
-  it('stops at ten cards; a carded channel’s later rows still count, a new channel’s are left out', () => {
-    const rows = Array.from({ length: 12 }, (_, i) => row(`ch${i}`))
-    rows.push(row('ch0', 'ch0-late'))
-    const cards = bigMomentCards(rows)
+  it('stops at ten cards', () => {
+    const rows = Array.from({ length: 12 }, (_, i) => row(`ch${i % 4}`, `m${i}`))
     expect(BIG_CARDS).toBe(10)
-    expect(logins(cards)).toEqual(rows.slice(0, 10).map((r) => r.login))
-    expect(cards[0]!.more).toBe(1)
-    expect(bigMomentCards(rows, 3).map((c) => c.row.login)).toEqual(['ch0', 'ch1', 'ch2'])
+    expect(bigMomentCards(rows).map((c) => c.row.id)).toEqual(rows.slice(0, 10).map((r) => r.id))
+    expect(bigMomentCards(rows, 3).map((c) => c.row.id)).toEqual(['m0', 'm1', 'm2'])
   })
 
   it('takes Top moments today’s rows as they come, from the Moments list and from the hub', () => {
     for (const rows of [topFeedRows(fixture), hubTopRows(capture)]) {
       expect(rows.length).toBeGreaterThan(0)
-      const cards = bigMomentCards(rows)
-      const firsts = [...new Set(rows.map((r) => r.login))].slice(0, BIG_CARDS)
-      expect(logins(cards)).toEqual(firsts)
-      // each card is its channel's first row, and its "+N more" its other rows
-      for (const c of cards) {
-        const mine = rows.filter((r) => r.login === c.row.login)
-        expect(c.row).toBe(mine[0])
-        expect(c.more).toBe(mine.length - 1)
-      }
+      expect(bigMomentCards(rows).map((c) => c.row)).toEqual(rows.slice(0, BIG_CARDS))
     }
     expect(['aldo_geo', 'e11ysa', 'findjeremiah', 'supertf']).toEqual(expect.arrayContaining(logins(bigMomentCards(hubTopRows(capture)))))
+  })
+})
+
+describe('Top moments today: a sideways wheel and a drag (11-02)', () => {
+  it('turns one page a wheel gesture, once its deltas reach 50 px either way', () => {
+    const w = bigWheel()
+    expect(bigWheelTurn(w, 20, 0)).toBe(0)
+    expect(bigWheelTurn(w, 20, 16)).toBe(0)
+    expect(bigWheelTurn(w, 20, 32)).toBe(1)
+    // the rest of that gesture, its glide included, turns nothing more
+    for (let t = 48; t < 1000; t += 16) expect(bigWheelTurn(w, 30, t)).toBe(0)
+    // a rest of 180 ms ends it; the next one turns back
+    expect(bigWheelTurn(w, -60, 1000 + BIG_WHEEL_QUIET_MS + 1)).toBe(-1)
+    expect(BIG_WHEEL_PX).toBe(50)
+  })
+
+  it('turns one page a wheel notch, a notch at a time', () => {
+    const w = bigWheel()
+    expect(bigWheelTurn(w, 100, 0)).toBe(1)
+    expect(bigWheelTurn(w, 100, 300)).toBe(1)
+    expect(bigWheelTurn(w, 100, 350)).toBe(0)
+  })
+
+  it('lets the cards follow a drag at most half the stage either way', () => {
+    expect(bigDragPx(-80, 600)).toBe(-80)
+    expect(bigDragPx(900, 600)).toBe(300)
+    expect(bigDragPx(-900, 600)).toBe(-300)
   })
 })
 

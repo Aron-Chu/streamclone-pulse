@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { HubV5BigMoments } from '../src/ui/components/hub/v5/HubV5BigMoments'
+import { HubV5BigMoments, type HubV5BigMomentsProps } from '../src/ui/components/hub/v5/HubV5BigMoments'
 import type { TopView } from '../src/ui/components/hub/v5/HubV5TopMoments'
 import type { TopGame, TopRowData } from '../src/ui/components/hub/v5/hubV5TopModel'
 
@@ -25,9 +25,13 @@ function Where() {
   const { pathname, search } = useLocation()
   return <output data-testid="where">{pathname + search}</output>
 }
-const ui = (shown: TopView | null, game: TopGame | null = null) => (
+type Top = HubV5BigMomentsProps['top']
+const top = (shown: TopView | null, over: Partial<Top> = {}): Top => ({
+  shown, avatars: new Map(), game: null, games: [], chips: false, pickGame: vi.fn(), open: null, setOpen: vi.fn(), hold: vi.fn(), ...over,
+})
+const ui = (shown: TopView | null, game: TopGame | null = null, over: Partial<Top> = {}) => (
   <MemoryRouter initialEntries={['/analytics']}>
-    <div className="hub-v5"><HubV5BigMoments top={{ shown, avatars: new Map(), game }} nowMs={NOW} /></div>
+    <div className="hub-v5"><HubV5BigMoments top={top(shown, { game, ...over })} nowMs={NOW} /></div>
     <Where />
   </MemoryRouter>
 )
@@ -72,24 +76,26 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('Chat’s big moments (C1, 11-01)', () => {
-  it('draws nothing without rows', () => {
+describe('Top moments today, the carousel (C1 11-01, M1 11-02)', () => {
+  it('draws nothing before the first answer, and one line with no rows', () => {
     const { rerender } = render(ui(null))
     expect(section()).toBeNull()
     rerender(ui(list([])))
-    expect(section()).toBeNull()
+    expect(section()!.querySelector('.hv5-bm-q')!.textContent).toBe('Nothing in the last 24 hours.')
+    expect(section()!.querySelector('.hv5-bm')).toBeNull()
+    rerender(ui(list([]), { id: '516575', name: 'Valorant', art: null, moments: 0 }))
+    expect(section()!.querySelector('.hv5-bm-q')!.textContent).toBe('Nothing from Valorant in the last 24 hours.')
   })
 
-  it('shows one card per channel in the list’s order, the front one first and its neighbours hidden from the keyboard', () => {
+  it('shows one card per moment in the list’s order, the front one first and its neighbours hidden from the keyboard', () => {
     render(ui(list([row('a'), row('b'), row('a', { id: 'm-a2' }), row('c')])))
-    expect(screen.getByRole('heading', { name: 'Chat’s big moments' })).toBeTruthy()
-    expect(screen.getByRole('link', { name: 'All moments →' }).getAttribute('href')).toBe('/analytics/moments?view=top')
+    expect(screen.getByRole('heading', { name: 'Top moments today' })).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Every moment today →' }).getAttribute('href')).toBe('/analytics/moments?view=top')
     expect(stage().getAttribute('aria-roledescription')).toBe('carousel')
-    expect(slides().map((s) => [s.querySelector('strong')!.textContent, s.dataset.pos])).toEqual([['A', '0'], ['B', '1'], ['C', '-1']])
+    expect(slides().map((s) => [s.querySelector('strong')!.textContent, s.dataset.pos])).toEqual([['A', '0'], ['B', '1'], ['A', '2'], ['C', '-1']])
     expect(front().getAttribute('aria-roledescription')).toBe('slide')
-    expect(front().getAttribute('aria-label')).toBe('1 of 3: A, emote spike, 4.2 times usual emotes')
+    expect(front().getAttribute('aria-label')).toBe('1 of 4: A, emote spike, 4.2 times usual emotes')
     expect(front().getAttribute('aria-hidden')).toBeNull()
-    expect(within(front()).getByText('+1 more today')).toBeTruthy()
     expect(within(front()).getByText('Just Chatting · 42 min into the stream')).toBeTruthy()
     expect(within(front()).getByText('5 min ago')).toBeTruthy()
     expect(within(front()).getByText('300/min')).toBeTruthy()
@@ -100,25 +106,60 @@ describe('Chat’s big moments (C1, 11-01)', () => {
       expect(side.getAttribute('aria-hidden')).toBe('true')
       for (const link of side.querySelectorAll('a')) expect(link.getAttribute('tabindex')).toBe('-1')
     }
-    expect(count()).toBe('1 / 3')
-    expect(dots().map((d) => d.getAttribute('aria-current'))).toEqual(['true', null, null])
+    expect(count()).toBe('1 / 4')
+    expect(dots().map((d) => d.getAttribute('aria-current'))).toEqual(['true', null, null, null])
+    expect(dots().map((d) => d.getAttribute('aria-label'))).toEqual(['A, 4.2×', 'B, 4.2×', 'A, 4.2×', 'C, 4.2×'])
   })
 
-  it('links the game picked in Top moments today when its list is that game’s, as the rail does', () => {
+  it('links the picked game’s moments while its Moments list is shown, else every game’s', () => {
     const valorant: TopGame = { id: '516575', name: 'Valorant', art: null, moments: 4 }
     const { rerender } = render(ui(list([row('a', { game: 'Valorant' })]), valorant))
-    const link = screen.getByRole('link', { name: 'Valorant moments →' })
+    const link = screen.getByRole('link', { name: 'Every Valorant moment →' })
     expect(link.getAttribute('href')).toBe('/analytics/moments?view=top&game=516575')
     expect(link.classList.contains('hv5-mo-game')).toBe(true)
-    // on the hub's rows the rail links every game, and so does this
     rerender(ui({ ...list([row('a')]), source: 'hub' }, valorant))
-    expect(screen.getByRole('link', { name: 'All moments →' }).getAttribute('href')).toBe('/analytics/moments?view=top')
+    expect(screen.getByRole('link', { name: 'Every moment today →' }).getAttribute('href')).toBe('/analytics/moments?view=top')
+  })
+
+  it('shows the game chips, and a chip picks its game', () => {
+    const pickGame = vi.fn()
+    const games: TopGame[] = [{ id: '516575', name: 'Valorant', art: null, moments: 4 }, { id: '509658', name: 'Just Chatting', art: null, moments: 2 }]
+    const { rerender } = render(ui(abc(), null, { chips: false, games }))
+    expect(section()!.querySelector('.hv5-fd-games')).toBeNull()
+    rerender(ui(abc(), null, { chips: true, games, pickGame }))
+    const chips = section()!.querySelector<HTMLElement>('.hv5-fd-games')!
+    fireEvent.click(within(chips).getByRole('button', { name: /Valorant/ }))
+    expect(pickGame).toHaveBeenCalledWith(games[0])
+  })
+
+  it('keeps a read’s new rows waiting while the mouse or keyboard focus is in it', () => {
+    const hold = vi.fn()
+    const { unmount } = render(ui(abc(), null, { hold }))
+    pointer(stage(), 'pointerover')
+    expect(hold).toHaveBeenLastCalledWith('hover', true)
+    pointer(stage(), 'pointerout')
+    expect(hold).toHaveBeenLastCalledWith('hover', false)
+    hold.mockClear()
+    unmount()
+    expect(hold).toHaveBeenCalledWith('hover', false)
+    expect(hold).toHaveBeenCalledWith('focus', false)
+  })
+
+  it('brings a phone peek’s pick to the front and into view', () => {
+    const setOpen = vi.fn()
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    render(ui(abc(), null, { open: 'm-c', setOpen }))
+    expect(setOpen).toHaveBeenCalledWith(null)
+    expect(frontName()).toBe('C')
+    expect(scrollIntoView).toHaveBeenCalled()
+    expect(document.activeElement).toBe(stage())
+    delete (Element.prototype as Partial<Element>).scrollIntoView
   })
 
   it('has no controls and no clock with one card', () => {
-    render(ui(list([row('a'), row('a', { id: 'm-a2' })])))
+    render(ui(list([row('a')])))
     expect(slides()).toHaveLength(1)
-    expect(within(front()).getByText('+1 more today')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Next moment' })).toBeNull()
     expect(dots()).toHaveLength(0)
     expect(stage().getAttribute('tabindex')).toBeNull()
@@ -155,7 +196,7 @@ describe('Chat’s big moments (C1, 11-01)', () => {
     expect(frontName()).toBe('B')
     fireEvent.click(screen.getByRole('button', { name: 'Previous moment' }))
     expect(frontName()).toBe('A')
-    fireEvent.click(screen.getByRole('button', { name: 'C' }))
+    fireEvent.click(screen.getByRole('button', { name: 'C, 4.2×' }))
     expect(frontName()).toBe('C')
     expect(dots().map((d) => [d.getAttribute('aria-current'), d.classList.contains('hv5-bm-done')])).toEqual([[null, true], [null, true], ['true', false]])
   })
@@ -298,7 +339,61 @@ describe('Chat’s big moments (C1, 11-01)', () => {
     expect(where()).toBe('/analytics/moments?m=m-a')
   })
 
-  it('keeps the front card’s channel in front when a poll still lists it, else starts again', () => {
+  it('follows a mouse drag, turns the page at its end and swallows the click it ends in', () => {
+    render(ui(abc()))
+    pointer(track(), 'pointerdown', { clientX: 300, clientY: 100 })
+    // under 8 px across, or more down than across: not a drag yet
+    pointer(track(), 'pointermove', { clientX: 295, clientY: 100 })
+    pointer(track(), 'pointermove', { clientX: 280, clientY: 140 })
+    expect(track().hasAttribute('data-drag')).toBe(false)
+    pointer(track(), 'pointermove', { clientX: 240, clientY: 105 })
+    expect(track().hasAttribute('data-drag')).toBe(true)
+    expect(track().style.getPropertyValue('--hv5-bm-drag')).toMatch(/px$/)
+    pointer(track(), 'pointerup', { clientX: 200, clientY: 105 })
+    expect(track().hasAttribute('data-drag')).toBe(false)
+    expect(track().style.getPropertyValue('--hv5-bm-drag')).toBe('')
+    expect(frontName()).toBe('B')
+    fireEvent.click(front().querySelector('.hv5-bm-open')!)
+    expect(where()).toBe('/analytics')
+    // a short drag springs back and turns nothing, and still swallows its click
+    pointer(track(), 'pointerdown', { clientX: 300, clientY: 100 })
+    pointer(track(), 'pointermove', { clientX: 280, clientY: 100 })
+    pointer(track(), 'pointerup', { clientX: 280, clientY: 100 })
+    expect(frontName()).toBe('B')
+    fireEvent.click(front().querySelector('.hv5-bm-open')!)
+    expect(where()).toBe('/analytics')
+  })
+
+  it('turns the page with a sideways wheel', () => {
+    render(ui(abc()))
+    expect(fireEvent.wheel(track(), { deltaX: 80, deltaY: 4 })).toBe(false)
+    expect(frontName()).toBe('B')
+  })
+
+  it('turns the page with an up-and-down wheel', () => {
+    render(ui(abc()))
+    expect(fireEvent.wheel(track(), { deltaY: 120 })).toBe(false)
+    expect(frontName()).toBe('B')
+  })
+
+  it('leaves an up-and-down wheel to the page past the last card and before the first', () => {
+    render(ui(abc()))
+    fireEvent.keyDown(stage(), { key: 'End' })
+    expect(frontName()).toBe('C')
+    expect(fireEvent.wheel(track(), { deltaY: 120 })).toBe(true)
+    expect(frontName()).toBe('C')
+    fireEvent.keyDown(stage(), { key: 'Home' })
+    expect(fireEvent.wheel(track(), { deltaY: -120 })).toBe(true)
+    expect(frontName()).toBe('A')
+  })
+
+  it('turns the page with shift and the wheel', () => {
+    render(ui(abc()))
+    expect(fireEvent.wheel(track(), { deltaY: -120, shiftKey: true })).toBe(false)
+    expect(frontName()).toBe('C')
+  })
+
+  it('keeps the front card in front when a poll still lists it, else starts again', () => {
     const { rerender } = render(ui(abc()))
     fireEvent.keyDown(stage(), { key: 'ArrowRight' })
     expect(frontName()).toBe('B')
@@ -309,7 +404,7 @@ describe('Chat’s big moments (C1, 11-01)', () => {
     expect(frontName()).toBe('D')
     expect(count()).toBe('1 / 2')
     rerender(ui(list([])))
-    expect(section()).toBeNull()
+    expect(section()!.querySelector('.hv5-bm')).toBeNull()
     rerender(ui(abc()))
     expect(frontName()).toBe('A')
   })

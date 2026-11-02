@@ -1,17 +1,23 @@
 /**
- * Chat's big moments (C1, 11-01; board artifacts/top-emotes-perf-board-20261031):
- * a stage above Top emotes, one big moment at a time with its neighbours
- * peeking. Its cards are Top moments today's rows, one per channel
- * (hubV5BigMomentsModel). It moves on every 6 seconds, timed by the front
+ * Top moments today (M1, hub rail board 2026-11-02; was Chat's big moments, C1,
+ * 11-01, board artifacts/top-emotes-perf-board-20261031): a stage above Top
+ * emotes, one big moment at a time with its neighbours peeking, with the game
+ * chips and "Every moment today →". Its cards are the day's rows (useTopToday),
+ * one per moment (hubV5BigMomentsModel). It moves on every 6 seconds, timed by the front
  * dot's fill; it holds while the mouse is over it, keyboard focus is in it,
  * it is mostly off screen, the tab is hidden, or the pause button is pressed.
+ * The mouse or keyboard focus in it also keeps a read's new rows waiting.
  * With reduced motion it starts paused and cards fade instead of sliding.
- * ← →, Home and End move it, as do a swipe and a click on a side card. Side
+ * ← →, Home and End move it, as do a swipe or a mouse drag (the cards follow
+ * it), the wheel (up and down until the first or last card, or sideways) and a click
+ * on a side card. Side
  * cards show Twitch emotes' still frames (a 7TV emote has one file, so it stays
- * as it is). A poll keeps the front card's channel in front while it is still
- * listed. A game picked in Top moments today narrows these cards too, and the
- * header links that game's moments as the rail's does. With no rows there is
- * no section; with one card, no controls.
+ * as it is). A poll keeps the front card in front while it is still
+ * listed. A picked game narrows the cards, and the header links that game's
+ * moments. Its header says how old the list is ("Saved …" for the page's saved
+ * copy). A phone peek row brings its card to the front and the
+ * stage into view. Before the first answer there is no section; with no rows it
+ * says so; with one card, no controls.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type FocusEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type SyntheticEvent } from 'react'
 import { Link } from 'react-router-dom'
@@ -21,10 +27,11 @@ import { twitchLivePreviewUrl } from '../../analytics/hubFormat'
 import { ResilientImage } from '../../ResilientImage'
 import { HubToggletip } from '../d3/HubToggletip'
 import { HubV5Icon } from './HubV5Icon'
-import type { TopToday } from './HubV5TopMoments'
+import { isFeed, TOP_EVERY, TOP_NONE, TopGames, topEndLine, topFresh, topStale, topTip, type TopToday } from './HubV5TopMoments'
 import {
   BIG_SWIPE_PX,
   bigCardPos,
+  bigDragPx,
   bigIntoStream,
   bigMeter,
   bigMomentCards,
@@ -33,6 +40,8 @@ import {
   bigStillEmote,
   bigViewers,
   bigWatchHref,
+  bigWheel,
+  bigWheelTurn,
   type BigCard,
   type BigCardPos,
 } from './hubV5BigMomentsModel'
@@ -41,7 +50,6 @@ import { TOP_KEEP_MS, topMomentsHref } from './hubV5TopModel'
 import './hub-v5-big-moments.css'
 
 const H_ID = 'hv5-bm-h'
-const TIP = 'The same moments as Top moments today, one card per channel.'
 const calm = () => typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 const keyboardFocus = (el: Element) => {
   try {
@@ -95,7 +103,7 @@ function BigSlide({ card, i, n, pos, nowMs, live, avatar, seen, still }: {
   /** Its emotes hold still (a side card, or reduced motion). */
   still: boolean
 }) {
-  const { row, more } = card
+  const { row } = card
   const front = pos === 0
   const meter = bigMeter(row)
   const sub = [row.game, bigIntoStream(row.offsetSeconds)].filter(Boolean).join(' · ')
@@ -151,7 +159,6 @@ function BigSlide({ card, i, n, pos, nowMs, live, avatar, seen, still }: {
         ) : null}
         <div className="hv5-bm-foot">
           <span className="hv5-bm-t">{when(row.at, nowMs)}</span>
-          {more ? <span className="hv5-bm-more">+{more} more today</span> : null}
           <span className="hv5-bm-act">
             {live ? (
               <a className="hv5-bm-tw" href={bigWatchHref(row.login)} target="_blank" rel="noopener noreferrer" tabIndex={tab} draggable={false}>
@@ -167,8 +174,8 @@ function BigSlide({ card, i, n, pos, nowMs, live, avatar, seen, still }: {
 }
 
 export interface HubV5BigMomentsProps {
-  /** Top moments today's state: the list it shows, live channels' pictures and the picked game. */
-  top: Pick<TopToday, 'shown' | 'avatars' | 'game'>
+  /** Top moments today's state: the list it shows, live channels' pictures, the game chips and a phone peek's pick. */
+  top: Pick<TopToday, 'shown' | 'avatars' | 'game' | 'games' | 'chips' | 'pickGame' | 'open' | 'setOpen' | 'hold'>
   nowMs: number
 }
 
@@ -178,15 +185,15 @@ export function HubV5BigMoments({ top, nowMs }: HubV5BigMomentsProps) {
   const n = cards.length
   const playing = n > 1
 
-  // the front card, by channel: a poll that keeps the channel keeps it in front; one that drops it starts again at 1
+  // the front card, by moment: a poll that keeps the moment keeps it in front; one that drops it starts again at 1
   const [front, setFront] = useState<string | null>(null)
-  const found = cards.findIndex((c) => c.row.login === front)
+  const found = cards.findIndex((c) => c.row.id === front)
   const at = found < 0 ? 0 : found
   useEffect(() => {
-    if (n && found < 0) setFront(cards[0]!.row.login)
+    if (n && found < 0) setFront(cards[0]!.row.id)
   }, [cards, found, n])
   const go = useCallback((i: number) => {
-    if (n) setFront(cards[((i % n) + n) % n]!.row.login)
+    if (n) setFront(cards[((i % n) + n) % n]!.row.id)
   }, [cards, n])
   const step = useRef(() => {})
   step.current = () => go(at + 1)
@@ -231,24 +238,84 @@ export function HubV5BigMoments({ top, nowMs }: HubV5BigMomentsProps) {
     go(to[event.key]!)
   }
 
-  // a swipe turns the page and swallows the click it ends in; a click on a side card brings it to the front
-  const down = useRef<{ x: number; y: number } | null>(null)
+  // a swipe or a mouse drag: the cards follow it, and a long enough one turns the page and swallows the click it ends in;
+  // a click on a side card brings it to the front
+  const trackRef = useRef<HTMLDivElement>(null)
+  const down = useRef<{ x: number; y: number; id: number; drag: boolean } | null>(null)
   const swiped = useRef(false)
+  const follow = (dx: number | null) => {
+    const el = trackRef.current
+    if (!el) return
+    if (dx == null) {
+      delete el.dataset.drag
+      el.style.removeProperty('--hv5-bm-drag')
+    } else {
+      el.dataset.drag = ''
+      el.style.setProperty('--hv5-bm-drag', `${bigDragPx(dx, el.clientWidth)}px`)
+    }
+  }
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
-    down.current = { x: event.clientX, y: event.clientY }
     swiped.current = false
+    if (event.button !== 0) return
+    down.current = { x: event.clientX, y: event.clientY, id: event.pointerId, drag: false }
+  }
+  const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const start = down.current
+    if (!start || start.id !== event.pointerId || !playing) return
+    const dx = event.clientX - start.x
+    if (!start.drag) {
+      // a drag once it goes 8 px across, more across than down; the stage keeps the pointer from then on
+      if (Math.abs(dx) < 8 || Math.abs(dx) <= Math.abs(event.clientY - start.y)) return
+      start.drag = true
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId)
+      } catch {
+        // the pointer has gone
+      }
+    }
+    follow(dx)
   }
   const onPointerUp = (event: PointerEvent<HTMLDivElement>) => {
     const start = down.current
     down.current = null
+    follow(null)
     if (!start || !playing) return
     const dx = event.clientX - start.x
     const dy = event.clientY - start.y
+    if (start.drag) swiped.current = true
     if (Math.abs(dx) > BIG_SWIPE_PX && Math.abs(dx) > Math.abs(dy)) {
       swiped.current = true
       go(at + (dx < 0 ? 1 : -1))
     }
   }
+  const onPointerCancel = () => {
+    down.current = null
+    follow(null)
+  }
+
+  // the wheel turns one page a gesture: sideways (a trackpad swipe, or shift and the wheel) or up and down (Aron, 11-02:
+  // "scroll wheel doesn't work"); up and down, it lets the page scroll on past the first and the last card
+  const turn = useRef((_d: number) => {})
+  turn.current = (d: number) => go(at + d)
+  const edge = useRef((_d: number): boolean => false)
+  edge.current = (d: number) => (d > 0 ? at >= n - 1 : at <= 0)
+  useEffect(() => {
+    const el = trackRef.current
+    if (!playing || !el) return undefined
+    const wheel = bigWheel()
+    const onWheel = (event: WheelEvent) => {
+      const across = Math.abs(event.deltaX) > Math.abs(event.deltaY)
+      const dx = across ? event.deltaX : event.deltaY
+      if (!dx || (!across && !event.shiftKey && edge.current(dx))) return
+      event.preventDefault()
+      // a wheel that counts in lines: about 40 px a line
+      const d = bigWheelTurn(wheel, event.deltaMode === 1 ? dx * 40 : dx, event.timeStamp)
+      if (d) turn.current(d)
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [playing])
+
   const onClickCapture = (event: MouseEvent<HTMLDivElement>) => {
     const card = (event.target as Element).closest<HTMLElement>('.hv5-bm-card')
     if (swiped.current) {
@@ -262,10 +329,35 @@ export function HubV5BigMoments({ top, nowMs }: HubV5BigMomentsProps) {
     }
   }
 
-  const onFocus = (event: FocusEvent<HTMLDivElement>) => setFocus(keyboardFocus(event.target))
-  const onBlur = (event: FocusEvent<HTMLDivElement>) => {
-    if (!(event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))) setFocus(false)
+  const onFocus = (event: FocusEvent<HTMLDivElement>) => {
+    const on = keyboardFocus(event.target)
+    setFocus(on)
+    top.hold('focus', on)
   }
+  const onBlur = (event: FocusEvent<HTMLDivElement>) => {
+    if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return
+    setFocus(false)
+    top.hold('focus', false)
+  }
+
+  // leaving the page lets a waiting read in
+  const { hold } = top
+  useEffect(() => () => {
+    hold('hover', false)
+    hold('focus', false)
+  }, [hold])
+
+  // a phone peek row (top.open): its card to the front, the stage into view and focus
+  const { open, setOpen } = top
+  useEffect(() => {
+    if (open == null) return
+    setOpen(null)
+    if (!cards.some((c) => c.row.id === open)) return
+    setFront(open)
+    const stage = stageRef.current
+    stage?.scrollIntoView?.({ block: 'center', behavior: calm() ? 'auto' : 'smooth' })
+    stage?.focus({ preventScroll: true })
+  }, [open, setOpen, cards])
 
   // pictures load once a card has been in front or beside it
   const seen = useRef(new Set<string>())
@@ -273,20 +365,25 @@ export function HubV5BigMoments({ top, nowMs }: HubV5BigMomentsProps) {
   // an answer over 15 minutes old no longer says a stream is live now
   const recent = shown?.asOf != null && nowMs - shown.asOf <= TOP_KEEP_MS
   // the link goes where the rail's does: the picked game's moments while its Moments list is shown, else every game's
-  const linkGame = shown?.source === 'feed' || shown?.source === 'feed-old' ? top.game : null
+  const linkGame = isFeed(shown) ? top.game : null
 
-  if (!n) return null
+  if (!shown) return null
+  // nothing today (or a picked game with nothing): the heading, the chips and one line
+  const empty = !n ? (shown.source === 'none' ? TOP_NONE : isFeed(shown) ? `Nothing${linkGame ? ` from ${linkGame.name}` : ''} in the last 24 hours.` : topEndLine(shown, 0, nowMs)) : null
   return (
-    <section id="big-moments" className="hv5-sec hv5-big" aria-labelledby={H_ID}>
+    <section id="big-moments" className={`hv5-sec hv5-big${topStale(shown, nowMs) ? ' hv5-f2-stale' : ''}`} aria-labelledby={H_ID}>
       <div className="hv5-rh">
-        <h2 id={H_ID}>Chat’s big moments</h2>
-        <HubToggletip tip={TIP} label="About Chat’s big moments" />
+        <h2 id={H_ID}>Top moments today</h2>
+        <span className="hv5-f2-fresh">{topFresh(shown, nowMs)}</span>
+        {shown.source !== 'none' ? <HubToggletip tip={topTip(shown, nowMs)} label="About Top moments today" /> : null}
         <span className="hv5-end">
           <Link className={`hv5-mo-all${linkGame ? ' hv5-mo-game' : ''}`} to={topMomentsHref(linkGame?.id ?? null)}>
-            {linkGame ? <><span className="hv5-mo-gm">{linkGame.name}</span>&nbsp;moments →</> : 'All moments →'}
+            {linkGame ? <>Every&nbsp;<span className="hv5-mo-gm">{linkGame.name}</span>&nbsp;moment →</> : TOP_EVERY}
           </Link>
         </span>
       </div>
+      {top.chips ? <TopGames games={top.games} game={top.game} onGame={top.pickGame} /> : null}
+      {empty ? <p className="hv5-bm-q">{empty}</p> : (
       <div
         ref={stageRef}
         className="hv5-bm"
@@ -298,23 +395,25 @@ export function HubV5BigMoments({ top, nowMs }: HubV5BigMomentsProps) {
         onKeyDown={onKey}
         onFocus={onFocus}
         onBlur={onBlur}
-        onPointerEnter={(event) => { if (event.pointerType === 'mouse') setHover(true) }}
-        onPointerLeave={(event) => { if (event.pointerType === 'mouse') setHover(false) }}
+        onPointerEnter={(event) => { if (event.pointerType === 'mouse') { setHover(true); top.hold('hover', true) } }}
+        onPointerLeave={(event) => { if (event.pointerType === 'mouse') { setHover(false); top.hold('hover', false) } }}
       >
         <div
+          ref={trackRef}
           className="hv5-bm-track"
           aria-live={paused || !playing ? 'polite' : 'off'}
           onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
-          onPointerCancel={() => { down.current = null }}
+          onPointerCancel={onPointerCancel}
           onClickCapture={onClickCapture}
         >
           {cards.map((card, k) => {
             const pos = bigCardPos(k, at, n)
-            if (pos !== 'far' && Math.abs(pos) <= 1) seen.current.add(card.row.login)
+            if (pos !== 'far' && Math.abs(pos) <= 1) seen.current.add(card.row.id)
             return (
               <BigSlide
-                key={card.row.login}
+                key={card.row.id}
                 card={card}
                 i={k}
                 n={n}
@@ -322,7 +421,7 @@ export function HubV5BigMoments({ top, nowMs }: HubV5BigMomentsProps) {
                 nowMs={nowMs}
                 live={card.row.live && recent}
                 avatar={card.row.avatar ?? avatars.get(card.row.login) ?? null}
-                seen={seen.current.has(card.row.login)}
+                seen={seen.current.has(card.row.id)}
                 still={pos !== 0 || !moving}
               />
             )
@@ -334,10 +433,10 @@ export function HubV5BigMoments({ top, nowMs }: HubV5BigMomentsProps) {
             <div ref={dotsRef} className="hv5-bm-dots" role="group" aria-label="Choose a moment">
               {cards.map((card, k) => (
                 <button
-                  key={card.row.login}
+                  key={card.row.id}
                   className={k < at ? 'hv5-bm-done' : undefined}
                   type="button"
-                  aria-label={card.row.name}
+                  aria-label={`${card.row.name}, ${fx(card.row.x)}`}
                   aria-current={k === at ? 'true' : undefined}
                   onClick={() => go(k)}
                 >
@@ -351,6 +450,7 @@ export function HubV5BigMoments({ top, nowMs }: HubV5BigMomentsProps) {
           </div>
         ) : null}
       </div>
+      )}
     </section>
   )
 }

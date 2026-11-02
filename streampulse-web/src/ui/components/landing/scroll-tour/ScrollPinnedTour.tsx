@@ -45,6 +45,7 @@ export const ScrollPinnedTour = forwardRef<HTMLDivElement, ScrollPinnedTourProps
     ref,
   ) {
     const sceneRef = useRef<HTMLDivElement | null>(null)
+    const stickyRef = useRef<HTMLDivElement | null>(null)
     const [animate, setAnimate] = useState(false)
 
     useEffect(() => {
@@ -79,7 +80,7 @@ export const ScrollPinnedTour = forwardRef<HTMLDivElement, ScrollPinnedTourProps
       const scene = sceneRef.current
       if (!scene) return
 
-      const stop = startScrollScene({ scene, onProgress })
+      const stop = startScrollScene({ scene, pinned: stickyRef.current, onProgress })
 
       return stop
     }, [animate, onProgress])
@@ -94,7 +95,7 @@ export const ScrollPinnedTour = forwardRef<HTMLDivElement, ScrollPinnedTourProps
         {...(animate ? {} : { 'data-static': '' })}
       >
         <div className={sceneClassName} ref={sceneRef}>
-          <div className="sl-xtour__sticky">
+          <div className="sl-xtour__sticky" ref={stickyRef}>
             {children}
           </div>
         </div>

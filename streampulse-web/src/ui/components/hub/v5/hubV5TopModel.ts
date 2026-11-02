@@ -7,12 +7,14 @@
  * - The Moments list (/v1/public/moments, where it is on and answers): its
  *   moments that hold up and rose (those with a ×), one per burst, by the
  *   feed's score, as Moments' Top shows them. Every figure is the feed's.
- * - Otherwise the hub's own moments, on streams live now (it sends up to 10):
+ * - Otherwise the hub's own moments (it sends its latest 10, on streams live now):
  *   none older than 24 hours by the hub's clock (a long stream sends peaks
  *   from its whole session), none from a stream's first 20 minutes, only a
  *   ready × of 1.5 or more; a
  *   minute two channels counted the same emotes in is one row, one row per
- *   burst, strongest × first.
+ *   burst, strongest × first. The hub sends only its latest 10, so the page
+ *   keeps the rows it was sent earlier in the day (topDayRows, 11-02): a
+ *   moment stays after the hub moves on or its stream ends.
  */
 import { sanitizeEmoteImageUrl } from '../../../../lib/emoteAssetUrl'
 import { avatarImage, boxArtImage, checkMoment, clk, emoteImage, fx, topBursts, TOP_BURST_MS, when, type CheckedMoment } from '../../../../lib/momentsChecked'
@@ -127,6 +129,53 @@ export function topFeedRows(snap: Pick<MomentsFeedSnapshot, 'items' | 'generated
     .map(feedRow)
 }
 
+/**
+ * The hub's rows now with the day's rows it sent before (`kept`), as the list
+ * shows them: none older than 24 hours by `nowMs`, one row per burst (the hub's
+ * latest answer wins), strongest × first, at most TOP_ROWS. A kept row is live
+ * while its channel is in the hub's live channels (`live`, lowercase logins).
+ */
+export function topDayRows(kept: readonly TopRowData[], fresh: readonly TopRowData[], live: ReadonlySet<string>, nowMs: number): TopRowData[] {
+  const from = nowMs - TOP_DAY_MS
+  const rows = [...fresh]
+  const ids = new Set(fresh.map((r) => r.id))
+  for (const r of kept) {
+    if (ids.has(r.id) || !(r.at >= from) || r.at > nowMs + 60_000) continue
+    if (rows.some((k) => k.login === r.login && k.streamId === r.streamId && Math.abs(k.at - r.at) < TOP_BURST_MS)) continue
+    ids.add(r.id)
+    rows.push({ ...r, live: live.has(r.login) })
+  }
+  return rows.sort((a, b) => b.x - a.x || b.at - a.at).slice(0, TOP_ROWS)
+}
+
+const str = (v: unknown): v is string => typeof v === 'string'
+const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+const orNull = <T,>(v: unknown, ok: (v: unknown) => v is T): T | null => (ok(v) ? v : null)
+function keptEmote(v: unknown): TopEmote | null {
+  if (!v || typeof v !== 'object') return null
+  const e = v as Record<string, unknown>
+  return str(e.name) && num(e.count) ? { name: e.name, imageUrl: sanitizeEmoteImageUrl(str(e.imageUrl) ? e.imageUrl : undefined), count: e.count } : null
+}
+
+/** Rows saved with topDayRows' answer (JSON), checked field by field; anything else is dropped. Saved rows are never live. */
+export function topDayParse(raw: unknown): TopRowData[] {
+  if (!Array.isArray(raw)) return []
+  return raw.slice(0, TOP_ROWS).flatMap((v): TopRowData[] => {
+    if (!v || typeof v !== 'object') return []
+    const r = v as Record<string, unknown>
+    if (!str(r.id) || !str(r.login) || !str(r.name) || !num(r.x) || !num(r.at) || !str(r.href) || !/^\/analytics\/[a-z]/.test(r.href)) return []
+    if (r.kind !== 'chat' && r.kind !== 'emotes') return []
+    return [{
+      id: r.id, login: r.login.toLowerCase(), name: r.name, streamId: str(r.streamId) ? r.streamId : '',
+      offsetSeconds: num(r.offsetSeconds) ? r.offsetSeconds : 0, avatar: orNull(r.avatar, str), kind: r.kind, x: r.x, at: r.at,
+      game: orNull(r.game, str), art: orNull(r.art, str), emote: keptEmote(r.emote),
+      emotes: Array.isArray(r.emotes) ? r.emotes.flatMap((e) => keptEmote(e) ?? []).slice(0, 3) : [],
+      rate: orNull(r.rate, num), usual: orNull(r.usual, num), viewers: orNull(r.viewers, num), live: false,
+      href: r.href, also: Array.isArray(r.also) ? r.also.filter(str) : [], checked: null,
+    }]
+  })
+}
+
 /** The hub's moments as rows, under the rules at the top of this file. */
 export function hubTopRows(hub: Pick<PublicHub, 'liveChannels' | 'livePulseMoments' | 'generatedAt'> | null | undefined): TopRowData[] {
   if (!hub) return []
@@ -175,72 +224,9 @@ export function hubTopRows(hub: Pick<PublicHub, 'liveChannels' | 'livePulseMomen
 }
 
 /** A row's label; `open` null for the phone peek, whose rows open in the rail. */
-export function topRowAria(row: TopRowData, rank: number, nowMs: number, open: boolean | null): string {
+export function topRowAria(row: TopRowData, rank: number, nowMs: number): string {
   const x = `${row.kind} ${fx(row.x).replace('×', ' times')} usual`
   const t = `${when(row.at, nowMs)}${nowMs - row.at < 60 * 60_000 ? ` at ${clk(row.at)}` : ''}`
-  const act = open == null ? 'Open it in Top moments below' : `${open ? 'Hide' : 'Show'} ${row.checked ? 'the minutes around it' : 'its numbers and links'}`
   return `${rank}. ${row.name}${row.emote ? `, ${row.emote.name}` : ''}, ${x}${row.game ? `, ${row.game}` : ''}`
-    + `${row.also.length ? `, the same emotes on ${row.also.join(', ')}` : ''}, ${t}. ${act}.`
-}
-
-/** 1100–1535 px: rows of 45 px that fit the column's `px` under the header, beside Picking up, "Show N more" and the footer. */
-export function topColumnCap(px: number, up: boolean): number {
-  return Math.max(3, Math.floor((px - (up ? 56 : 0) - 40 - 26) / 45))
-}
-
-/* ---------- the opened row's chart ---------- */
-
-export interface TopCurve {
-  w: number
-  h: number
-  /** Lines, one path each (a gap where a minute wasn't measured). */
-  chat: string
-  emotes: string
-  /** The area under the moment's own series. */
-  area: string
-  /** The moment's minutes, shaded. */
-  span: { x: number; w: number }
-  /** The stream's usual for the moment's series, as a y, when known. */
-  base: number | null
-  /** The first and last minute drawn (epoch ms). */
-  from: number
-  to: number
-}
-
-const pt = (n: number) => Math.round(n * 10) / 10
-
-/** The 25 minutes around the moment (the feed's spark), chat and emotes on one scale, with the moment's usual dashed. */
-export function topCurve(m: CheckedMoment, w = 400, h = 64): TopCurve {
-  const s = m.item.spark
-  const n = Math.max(s.chat.length, s.emotes.length, 2)
-  const usual = m.kind === 'chat' ? m.baseC : m.baseE
-  const vals = [...s.chat, ...s.emotes, usual].filter((v): v is number => v != null && Number.isFinite(v))
-  const max = Math.max(1, ...vals) * 1.08
-  const X = (i: number) => (i / (n - 1)) * w
-  const Y = (v: number) => h - (v / max) * h
-  const runs = (a: Array<number | null>) => {
-    const out: Array<Array<[number, number]>> = []
-    let run: Array<[number, number]> = []
-    a.forEach((v, i) => {
-      if (v == null || !Number.isFinite(v)) { if (run.length) out.push(run); run = []; return }
-      run.push([pt(X(i)), pt(Y(v))])
-    })
-    if (run.length) out.push(run)
-    return out
-  }
-  const line = (a: Array<number | null>) => runs(a).map((r) => r.map(([x, y], i) => `${i ? 'L' : 'M'}${x},${y}`).join('')).join('')
-  const area = runs(m.kind === 'chat' ? s.chat : s.emotes)
-    .filter((r) => r.length > 1)
-    .map((r) => `M${r[0]![0]},${h}${r.map(([x, y]) => `L${x},${y}`).join('')}L${r[r.length - 1]![0]},${h}Z`).join('')
-  const s0 = s.spanStartIndex ?? s.momentIndex
-  const s1 = Math.min(n - 1, s0 + Math.max(1, m.item.spanMinutes || 1) - 1)
-  const x0 = Math.max(0, X(s0 - 0.5))
-  const x1 = Math.min(w, X(s1 + 0.5))
-  return {
-    w, h, chat: line(s.chat), emotes: line(s.emotes), area,
-    span: { x: pt(x0), w: pt(Math.max(2, x1 - x0)) },
-    base: usual != null && Number.isFinite(usual) ? pt(Y(usual)) : null,
-    from: m.at - s.momentIndex * 60_000,
-    to: m.at + (n - 1 - s.momentIndex) * 60_000,
-  }
+    + `${row.also.length ? `, the same emotes on ${row.also.join(', ')}` : ''}, ${t}. Open it in Top moments below.`
 }

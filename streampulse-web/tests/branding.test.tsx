@@ -43,6 +43,9 @@ describe('StreamPulse Peak branding', () => {
     )
     expect(container.querySelector('[data-brand-mark="peak"]')).toBeTruthy()
     expect(screen.getByRole('link', { name: /^privacy$/i }).getAttribute('href')).toBe('/privacy')
-    expect(screen.getByRole('link', { name: /^analytics$/i }).getAttribute('href')).toBe('/analytics')
+    // The header and the footer both say Hub (11-02).
+    const hubLinks = screen.getAllByRole('link', { name: /^hub$/i })
+    expect(hubLinks.length).toBeGreaterThan(0)
+    for (const link of hubLinks) expect(link.getAttribute('href')).toBe('/analytics')
   })
 })
