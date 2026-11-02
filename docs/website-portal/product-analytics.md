@@ -107,6 +107,17 @@ is withdrawn or the component unmounts. Lookup/import races recheck consent
 before displaying or sending anything. These controls cannot recall requests
 already transmitted.
 
+## Event retention
+
+The production project's event retention is configured to six calendar months.
+Expired events are permanently deleted at the following monthly cleanup, so this
+is not an exact 180-day deletion deadline. The window applies to website events,
+tool-feedback events and future extension aggregate events in that project; it
+does not change publisher snapshot rows in Data Warehouse tables. Reverify the
+project setting before extension activation. A saved retention setting is not
+evidence that ingestion is enabled or cleanup has already executed. See
+PostHog's [event-retention API](https://posthog.com/docs/api/events-retention).
+
 Local privacy checks cover consent/import races, browser privacy signals, private
 routes, storage failure, fixed envelopes, generated identifiers, rejected beacons
 and withdrawal, plus fixed survey definitions, explicit opening, response retry

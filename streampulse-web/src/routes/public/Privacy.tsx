@@ -235,11 +235,16 @@ export default function Privacy() {
           events are configured not to retain the IP address or collect GeoIP location information.
         </p>
         <p>
+          The PostHog project used for these website events and tool-feedback responses has a
+          six-calendar-month event retention window. Events older than that window are permanently
+          deleted at the following monthly cleanup. This is not an exact 180-day deletion deadline.
+        </p>
+        <p>
           You can turn analytics off at any time in the footer. This stops future events and clears
           the in-memory analytics identifier, but cannot recall events already transmitted. Browser
           Global Privacy Control or Do Not Track signals keep analytics off. Clearing website data
-          removes your saved choice and returns analytics to its default-off state. This policy does
-          not promise a fixed retention period for events already sent to PostHog.
+          removes your saved choice and returns analytics to its default-off state. Events already
+          transmitted remain subject to the retention window and monthly cleanup described above.
         </p>
 
         {/* Feedback form: describes the processing in streampulse-backend
@@ -400,8 +405,10 @@ export default function Privacy() {
           fixed aggregate event names (for example <code>pulse_load_completed</code> and{' '}
           <code>extension_error_shown</code>) through the StreamPulse backend to PostHog for
           processing. Events are non-identifying aggregates (no person profiles, no channel/stream/VOD
-          identifiers, no free text). Retention target is about 180 days once activated; this page
-          does not claim that activation has occurred.
+          identifiers, no free text). The intended PostHog project has a six-calendar-month event
+          retention window; older events are permanently deleted at the following monthly cleanup.
+          This is not an exact 180-day deletion deadline, and this page does not claim that extension
+          analytics activation has occurred.
         </p>
 
         <h2 id="stored">What is stored in the browser</h2>
