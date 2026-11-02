@@ -1,5 +1,5 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { KeyboardEvent as ReactKeyboardEvent, SyntheticEvent } from 'react'
+import { Fragment, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, SyntheticEvent } from 'react'
 import { X } from 'lucide-react'
 import { Link, useLocation, useNavigate, useNavigationType, useSearchParams } from 'react-router-dom'
 import LegacyMomentSession from './LegacyMomentSession'
@@ -40,8 +40,14 @@ import { loadExactMomentRecap } from '../../lib/discoveryMomentRecap'
 import { loadNewsroomProfiles, newsroomProfileUrl } from '../../lib/newsroomProfiles'
 import { creatorHistoryHref } from '../../lib/creatorHistoryHref'
 import type { PublicHubLoadSource } from '../../lib/publicHub'
+import { nativeClipsEnabled } from '../../lib/nativeClipsFlag'
 import '../../ui/components/analytics/figma-analytics.css'
 import '../../ui/components/moments/moments-workspace.css'
+
+const clipsBuildFlag = import.meta.env.VITE_PUBLIC_NATIVE_CLIPS
+/** null in a production build without the flag, so the clip library isn't bundled at all. */
+const NativeClipsLibrary = !import.meta.env.PROD || clipsBuildFlag === 'on' || clipsBuildFlag === '1'
+  ? lazy(() => import('../../ui/components/clips/NativeClipsLibrary')) : null
 
 const present = (value?: number) => value != null && Number.isFinite(value) ? value.toLocaleString(undefined, { maximumFractionDigits: 1 }) : 'Unavailable'
 const valid = (moment: DiscoveryMoment | null): moment is DiscoveryMoment => moment !== null
@@ -353,8 +359,11 @@ function MomentsWorkspace() {
   const navigationType = useNavigationType()
   const navigate = useNavigate()
   const workspaceRef = useRef<HTMLElement>(null)
+  const clipsFlag = import.meta.env.VITE_PUBLIC_NATIVE_CLIPS
+  // read inline so a production build without the flag folds the Clips tab away
+  const clipsOn = import.meta.env.PROD ? clipsFlag === 'on' || clipsFlag === '1' : nativeClipsEnabled()
   // Ranked discovery is opt-in until its hosted route and calibration are ready.
-  const view = params.get('view') === 'saved' ? 'saved' : params.get('view') === 'history' || params.get('collection') === 'history' ? 'history' : params.get('view') === 'explore' ? 'explore' : 'recent'
+  const view = clipsOn && params.get('view') === 'clips' ? 'clips' : params.get('view') === 'saved' ? 'saved' : params.get('view') === 'history' || params.get('collection') === 'history' ? 'history' : params.get('view') === 'explore' ? 'explore' : 'recent'
   const explore = view === 'explore'
   const historyMode = view === 'history'
   const rankedMode = explore || historyMode
@@ -868,7 +877,7 @@ function MomentsWorkspace() {
     continuation={rankedMode && ranked.data ? { loading: ranked.loading, canLoad: ranked.canLoad, limited: ranked.limited, error: ranked.error, load: ranked.loadMore } : undefined} /> : null
   // Explore and History stay hidden while the ranked backend is not deployed (owner
   // request). A bookmarked ranked view keeps its own tab and honest unavailable panel.
-  const viewTabs = (['explore', 'recent', 'history', 'saved'] as const).filter(tab => tab === view || tab === 'recent' || tab === 'saved')
+  const viewTabs = (['explore', 'recent', 'clips', 'history', 'saved'] as const).filter(tab => tab === view || tab === 'recent' || tab === 'saved' || (tab === 'clips' && clipsOn))
   const historyAvailable = viewTabs.includes('history')
   function onViewTabsKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
@@ -883,9 +892,10 @@ function MomentsWorkspace() {
     document.getElementById(`moments-view-tab-${next}`)?.focus()
   }
   return <AnalyticsFigmaShell hideSidebar><main ref={workspaceRef} id="analytics-main" className="moments-workspace" data-filters-expanded={filtersExpanded} tabIndex={-1}>
-    <header className="moments-heading"><div><h1>{historyMode ? 'Moment history' : view === 'saved' ? 'Saved moments' : 'Moments'}</h1><p>{historyMode ? 'Browse recent indexed detections by UTC day and creator.' : view === 'saved' ? 'Your shortlist of reactions to return to.' : 'Catch a reaction. Open its timeline. Keep what matters.'}</p></div><Link to="/analytics">Live activity →</Link></header>
-    <nav aria-label="Moment views"><div className={`moments-tabs${viewTabs.length === 4 ? ' moments-tabs-four' : viewTabs.length === 2 ? ' moments-tabs-two' : ''}`} data-view={view} role="tablist" aria-label="Moment views" onKeyDown={onViewTabsKeyDown}><span className="moments-tab-indicator" aria-hidden="true" />{viewTabs.map(tab => <button type="button" role="tab" id={`moments-view-tab-${tab}`} aria-controls="moments-view-panel" aria-selected={view === tab} tabIndex={view === tab ? 0 : -1} key={tab} onClick={() => changeView(tab)}>{tab === 'saved' ? `Saved (${saved.items.length})` : tab === 'recent' ? 'Latest' : tab === 'explore' ? 'Explore' : 'History'}</button>)}</div></nav>
+    <header className="moments-heading"><div><h1>{historyMode ? 'Moment history' : view === 'saved' ? 'Saved moments' : view === 'clips' ? 'Clips' : 'Moments'}</h1><p>{historyMode ? 'Browse recent indexed detections by UTC day and creator.' : view === 'saved' ? 'Your shortlist of reactions to return to.' : view === 'clips' ? 'Twitch clips StreamPulse made when chat reacted strongly.' : 'Catch a reaction. Open its timeline. Keep what matters.'}</p></div><Link to="/analytics">Live activity →</Link></header>
+    <nav aria-label="Moment views"><div className={`moments-tabs${viewTabs.length === 4 ? ' moments-tabs-four' : viewTabs.length === 2 ? ' moments-tabs-two' : ''}${clipsOn ? ' moments-tabs-indexed' : ''}`} style={clipsOn ? { '--moments-tab-index': viewTabs.indexOf(view) } as CSSProperties : undefined} data-view={view} role="tablist" aria-label="Moment views" onKeyDown={onViewTabsKeyDown}><span className="moments-tab-indicator" aria-hidden="true" />{viewTabs.map(tab => <button type="button" role="tab" id={`moments-view-tab-${tab}`} aria-controls="moments-view-panel" aria-selected={view === tab} tabIndex={view === tab ? 0 : -1} key={tab} onClick={() => changeView(tab)}>{tab === 'saved' ? `Saved (${saved.items.length})` : tab === 'recent' ? 'Latest' : tab === 'clips' ? 'Clips' : tab === 'explore' ? 'Explore' : 'History'}</button>)}</div></nav>
     <div id="moments-view-panel" role="tabpanel" aria-labelledby={`moments-view-tab-${view}`} tabIndex={0}>
+    {clipsOn && view === 'clips' && NativeClipsLibrary ? <Suspense fallback={null}><NativeClipsLibrary onOpenMoments={() => { changeView('recent'); document.getElementById('moments-view-tab-recent')?.focus() }} /></Suspense> : <>
     <p className="moments-muted">{explore ? 'Detector-selected moments from indexed completed broadcasts, ordered by observed IRC chat/min. Coverage is partial; this is not a list of all busy Twitch minutes.' : view === 'saved' ? 'Saved in this browser · not synced to the extension or your account.' : historyMode ? 'Recent indexed completed broadcasts with measured IRC activity. Coverage is partial; older days are not a durable archive.' : <>Latest shows up to 10 high-scoring detections from currently live streams, ordered by occurrence time. A detection may be older than the chart range.{historyAvailable ? <> For earlier broadcasts, open <Link to="/analytics/moments?view=history">History</Link>.</> : null}</>}</p>
     {explore ? <RankedExploreControls params={params} now={certifiedClock} indexedRetentionStart={retention.from} certifiedThroughExclusive={retention.throughExclusive} retentionCheckedAt={retention.checkedAt} data={ranked.data} loading={retention.loading || ranked.loading} retained={ranked.retained || Boolean(rankedValidation)} error={retention.error || rankedValidation || ranked.error} invalid={Boolean(rankedValidation)} notDeployed={retention.notDeployed}
       onChange={(values, options) => { leaveSelection(); keepPlaceFor(options); update({ ...resetSelection, ...values, view: 'explore', sort: 'volume', q: null }, options?.replace ?? false) }}
@@ -931,6 +941,7 @@ function MomentsWorkspace() {
         {rankedMode && ranked.limited ? <p className="moments-muted" role="status">1,000 results loaded. Choose a narrower date range, creator, or category to see more of this collection.</p> : null}
       </section>
     </div> : null}
+    </>}
     </div>
   </main></AnalyticsFigmaShell>
 }

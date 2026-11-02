@@ -6,6 +6,8 @@ import { DiscordMark } from '../DiscordMark'
 import { InstallCta } from '../InstallCta'
 import { discordInviteUrl } from '../../../lib/discord'
 import { FEEDBACK_PATH } from '../../../lib/externalLinks'
+import { AccountEntrySlot, MenuAccountSlot } from '../AccountEntrySlot'
+import { accountHeaderEnabled } from '../../../lib/accountHeaderFlag'
 
 export interface AnalyticsTopNavItem {
   label: string
@@ -59,7 +61,7 @@ export function AnalyticsTopNav({
   }
 
   return (
-    <header className="analytics-topnav" data-analytics-build="command-center-cws-2026-07-22">
+    <header className={accountHeaderEnabled() ? 'analytics-topnav analytics-topnav--account' : 'analytics-topnav'} data-analytics-build="command-center-cws-2026-07-22">
       <a href="#analytics-main" className="analytics-topnav__skip">
         Skip to analytics content
       </a>
@@ -100,7 +102,9 @@ export function AnalyticsTopNav({
               <Link to="/supporter" onClick={() => closeMenu()}>Pulse Supporter</Link>
               {/* No account entries until Continue with Twitch is public: the sign-in
                   page is the invited-tester bridge, sign-ups are closed, and extension
-                  connection codes are tester-only. Testers reach them from account pages. */}
+                  connection codes are tester-only. Testers reach them from account pages.
+                  The header account entry switch (VITE_ACCOUNT_HEADER=1) adds the one link. */}
+              <MenuAccountSlot onNavigate={() => closeMenu()} />
               <Link to="/privacy" onClick={() => closeMenu()}>Privacy</Link>
               <Link to="/terms" onClick={() => closeMenu()}>Terms</Link>
               <Link to="/refunds" onClick={() => closeMenu()}>Cancellation and refunds</Link>
@@ -120,6 +124,7 @@ export function AnalyticsTopNav({
           </a>
         ) : null}
       </div>
+      <AccountEntrySlot variant="analytics" />
     </header>
   )
 }
