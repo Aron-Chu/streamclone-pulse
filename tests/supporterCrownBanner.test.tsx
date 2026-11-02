@@ -88,10 +88,11 @@ const youImages = (stage: HTMLElement) => [...stage.querySelectorAll<HTMLImageEl
 const chips = (banner: HTMLElement) => [...banner.querySelectorAll('.pulse-settings-supporter-perk')].map(chip => chip.textContent)
 
 describe('full-settings Supporter banner: Crown, staged', () => {
-  it('shows the price and View benefits only while paid sign-ups are open', async () => {
+  it('shows the price only while paid sign-ups are open, and See what’s coming only while the server says they are closed', async () => {
     for (const [entitlement, eyebrow, arrow] of [
-      [undefined, 'Pulse Supporter', 'See what’s coming →'],
-      [{ state: 'not_linked' }, 'Pulse Supporter', 'See what’s coming →'],
+      // A browser that cannot ask yet is never told Supporter is closed.
+      [undefined, 'Pulse Supporter', 'View benefits →'],
+      [{ state: 'not_linked' }, 'Pulse Supporter', 'View benefits →'],
       [{ state: 'ready', status: 'none', checkoutEnabled: false }, 'Pulse Supporter', 'See what’s coming →'],
       [{ state: 'ready', status: 'none', checkoutEnabled: true }, 'Pulse Supporter· US$4.99/mo', 'View benefits →'],
     ] as const) {
@@ -147,7 +148,8 @@ describe('full-settings Supporter banner: Crown, staged', () => {
     unavailable = true
     await act(async () => { for (const listener of listeners) listener({ pulseSupporterRevision: { newValue: 'next', oldValue: 'prev' } }, 'local') })
     expect(eyebrow()).toBe('Pulse Supporter')
-    expect(view.banner().querySelector('.pulse-settings-supporter-banner-arrow')?.textContent).toBe('See what’s coming →')
+    // A failed read is not an answer: no price, and no claim that sales closed.
+    expect(view.banner().querySelector('.pulse-settings-supporter-banner-arrow')?.textContent).toBe('View benefits →')
   })
 
   it('renders the staged Crown for a non-Supporter: the sample kit, a chip for every perk and the way to the benefits', async () => {
@@ -160,7 +162,7 @@ describe('full-settings Supporter banner: Crown, staged', () => {
     expect(view.stage().dataset.mode).toBe('crown')
     expect(view.stage().getAttribute('aria-hidden')).toBe('true')
     expect(view.stage().dataset.running).toBe('true')
-    // Sign-ups closed (no entitlement says otherwise): no price.
+    // No entitlement answer yet: no price, and no claim that sign-ups are closed.
     expect(view.banner().querySelector('.pulse-settings-supporter-banner-eyebrow')?.textContent).toBe('Pulse Supporter')
     expect(view.banner().querySelector('strong')?.textContent).toBe('Your crest lands on top')
     expect(chips(view.banner())).toEqual(SUPPORTER_PERKS.names)
@@ -168,7 +170,7 @@ describe('full-settings Supporter banner: Crown, staged', () => {
     expect(view.banner().querySelector('[data-perk="crest"] .pulse-crest')?.getAttribute('data-tenure')).toBe('12m')
     expect(view.banner().querySelector('small')?.textContent).toBe('Only you see them. Core tools stay free.')
     expect(view.banner().textContent).not.toMatch(/signature/i)
-    expect(view.banner().querySelector('.pulse-settings-supporter-banner-arrow')?.textContent).toBe('See what’s coming →')
+    expect(view.banner().querySelector('.pulse-settings-supporter-banner-arrow')?.textContent).toBe('View benefits →')
     expect(view.banner().style.getPropertyValue('--spk-fin')).toBe('#efc96a')
     runFrames(1)
     // The lab builds nine chat emotes and one of yours into a settled pile. Yours is your crest, not an emote.
@@ -330,15 +332,19 @@ describe('full-settings Supporter banner: Crown, staged', () => {
   })
 
   it('shares the banner’s membership check with the settings it frames', async () => {
-    for (const [appearance, perks] of [[NON_SUPPORTER, 'false'], [SUPPORTER, 'true']] as const) {
-      resetSupporterAppearanceForTests()
-      stubExtension(appearance)
-      const view = await mount(<SettingsHostShell>{(section, supporterPerks) => <span data-probe={`${section}:${supporterPerks}`} />}</SettingsHostShell>)
-      expect(view.host.querySelector('[data-probe]')?.getAttribute('data-probe')).toBe(`moments:${perks}`)
-      expect(view.stage().dataset.mode).toBe('crown')
-      const sent = (chrome.runtime.sendMessage as ReturnType<typeof vi.fn>).mock.calls.filter(([message]) => message.type === 'SUPPORTER_APPEARANCE')
-      expect(sent).toHaveLength(1)
-      view.unmount()
-    }
+    // My Moments is a working page with no banner, so the check is shared from Pulse on Twitch.
+    window.location.hash = '#pulse'
+    try {
+      for (const [appearance, perks] of [[NON_SUPPORTER, 'false'], [SUPPORTER, 'true']] as const) {
+        resetSupporterAppearanceForTests()
+        stubExtension(appearance)
+        const view = await mount(<SettingsHostShell>{(section, supporterPerks) => <span data-probe={`${section}:${supporterPerks}`} />}</SettingsHostShell>)
+        expect(view.host.querySelector('[data-probe]')?.getAttribute('data-probe')).toBe(`pulse:${perks}`)
+        expect(view.stage().dataset.mode).toBe('crown')
+        const sent = (chrome.runtime.sendMessage as ReturnType<typeof vi.fn>).mock.calls.filter(([message]) => message.type === 'SUPPORTER_APPEARANCE')
+        expect(sent).toHaveLength(1)
+        view.unmount()
+      }
+    } finally { window.location.hash = '' }
   })
 })

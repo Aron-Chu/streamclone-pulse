@@ -61,7 +61,7 @@ describe('Seen in chat copy, flag off (before launch)', () => {
     expect(supporterOnlyYou()).toBe(SUPPORTER_PERKS.onlyYou)
     expect(supporterPerkNames()).toEqual(SUPPORTER_PERKS.names)
     expect(textOf(Terms, 'terms-of-use')).toContain('no public Twitch chat badge — it is not included')
-    expect(textOf(Supporter, 'supporter-offer')).toMatch(/No public Twitch chat badge\. A chat badge is not included in Supporter/)
+    expect(textOf(Supporter, 'supporter-offer')).toMatch(/There’s no public chat badge\./)
     for (const [, Page, testId] of pages) {
       const body = textOf(Page, testId)
       expect(body).not.toMatch(/Seen in chat/)

@@ -5,6 +5,12 @@ import type { SupporterAccountCoordinator } from './supporterAccount.ts'
 export const PAY_FIRST_WATCH_MS = 30 * 60_000
 const RESTORE_WATCH_MS = 15 * 60_000
 const POLL_MS = 5_000
+/**
+ * After the fast watch ends, a status read (settings opening) still checks
+ * now and then, so a settled or refunded checkout drops its card without a
+ * click. Nothing keeps the worker awake for it.
+ */
+const LATE_POLL_MS = 10 * 60_000
 const ATTEMPT_MAX_MS = 24 * 60 * 60_000
 const RETRY_MAX_MS = 24 * 60 * 60_000
 type Billing = { accountId: string; attemptId?: string; phase: 'waiting' | 'confirming'; until: number; watchUntil: number; nextPoll: number; url?: string }
@@ -337,8 +343,9 @@ export class SupporterPayFirstCoordinator {
     const pending = value.billing!
     let ownedCompletedAttempt = false
     const projection = (): SupporterBillingState => ({ state: this.now() >= pending.until || !pending.attemptId || this.now() >= pending.watchUntil && pending.phase === 'confirming' ? 'still_confirming' : pending.phase, ...(pending.attemptId ? { attemptId: pending.attemptId } : {}), ...(this.now() >= pending.watchUntil ? { automaticPolling: false } : {}) })
-    if (value.billingRetryUntil && value.billingRetryUntil > this.now() || !explicit && (pending.nextPoll > this.now() || pending.watchUntil <= this.now())) return projection()
-    pending.nextPoll = this.now() + POLL_MS
+    const late = !explicit && pending.watchUntil <= this.now()
+    if (value.billingRetryUntil && value.billingRetryUntil > this.now() || !explicit && (pending.nextPoll > this.now() || late && pending.until <= this.now())) return projection()
+    pending.nextPoll = this.now() + (late ? LATE_POLL_MS : POLL_MS)
     await this.ports.write(value)
     if (pending.attemptId) {
       const result = await this.ports.account.withCredential(token => this.ports.request(`/v1/billing/checkout/${pending.attemptId}`, undefined, token), pending.accountId)

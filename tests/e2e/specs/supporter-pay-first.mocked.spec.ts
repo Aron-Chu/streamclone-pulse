@@ -65,8 +65,8 @@ test('a customer restores an existing membership by email without starting check
   })
   const page = extension.page
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
-  await page.getByRole('button', { name: 'Restore existing Supporter', exact: true }).click()
-  await page.getByLabel('Stripe billing email').fill('payer@example.test')
+  await page.getByRole('button', { name: 'Restore with Stripe email', exact: true }).click()
+  await page.getByLabel('Stripe email').fill('payer@example.test')
   await page.getByRole('button', { name: 'Send restore link', exact: true }).click()
   await expect(page.getByText('A3B4C5', { exact: true })).toBeVisible()
   await expect(page.getByText('payer@example.test')).toHaveCount(0)
@@ -368,9 +368,9 @@ test('uncertain installation refresh retains its identity and restores after ren
   expect(installations).toBe(1)
   expect(restoreStarts).toBe(1)
   approved = true
-  await expect(page.getByText('Supporter active', { exact: true })).toBeVisible({ timeout: 20_000 })
-  // The Account card's billing row carries its own Manage subscription; this is the footer's.
-  await expect(page.locator('.pulse-journey').getByRole('button', { name: 'Manage subscription', exact: true })).toBeVisible()
+  await expect(page.locator('[data-journey-state="active"]')).toBeVisible({ timeout: 20_000 })
+  // Stripe is the card's one door; the Account card has no billing row.
+  await expect(page.locator('.pulse-journey').getByRole('button', { name: 'Manage on Stripe', exact: true })).toBeVisible()
 })
 
 test('a 429 try_later from Checkout names the wait and the worker sends nothing until it ends', async ({ extension, prepare }) => {
@@ -424,7 +424,7 @@ test('slow Checkout and Portal responses survive the former twelve-second deadli
   await page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_BILLING', action: 'check' }))
   await page.reload()
   await expect(page.locator('[data-journey-state="active"]')).toBeVisible()
-  await page.locator('.pulse-journey').getByRole('button', { name: 'Manage subscription', exact: true }).click()
+  await page.locator('.pulse-journey').getByRole('button', { name: 'Manage on Stripe', exact: true }).click()
   await expect.poll(tabs, { timeout: 30_000 }).toContain('https://billing.stripe.com/p/session/slow-fixture')
 })
 

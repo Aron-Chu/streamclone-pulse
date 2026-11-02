@@ -66,11 +66,14 @@ export function SupporterRestore({ onClose, onRestored, onCheckMembership }: { o
   return <div className="pulse-journey-restore" data-restore-state={view.state}>
     {view.state === 'loading' ? <p role="status">Checking for an existing restore request…</p> : null}
     {view.state === 'idle' ? <form onSubmit={event => void submit(event)}>
-      <p>Enter your current Stripe billing email. If you changed it recently, you may need to wait before trying again. Contact support if you cannot access it. This will not start a payment.</p>
-      <p>Still signed in on the browser you paid in? Open Manage subscription there to change your billing email.</p>
-      <label htmlFor="supporter-restore-email">Stripe billing email</label>
+      <p>Use the email your Stripe receipt went to. This won't charge you.</p>
+      <label htmlFor="supporter-restore-email">Stripe email</label>
       <input id="supporter-restore-email" type="email" autoComplete="email" required maxLength={254} value={email} onChange={event => setEmail(event.target.value)} disabled={busy} />
-      <div className="pulse-account-link-actions pulse-journey-actions"><button className="pulse-journey-primary" type="submit" disabled={busy}>{busy ? 'Preparing…' : 'Send restore link'}</button></div>
+      <div className="pulse-account-link-actions pulse-journey-actions">
+        <button className="pulse-journey-primary" type="submit" disabled={busy}>{busy ? 'Preparing…' : 'Send restore link'}</button>
+        <button type="button" disabled={busy} onClick={() => void leave()}>Back</button>
+      </div>
+      <p className="pulse-supporter-detail"><a href={POLICY_LINKS.supportBillingEmail} target="_blank" rel="noopener noreferrer">Can't get into that email? Support can help</a></p>
     </form> : null}
     {view.state === 'pending' ? <div className="pulse-restore-wait" role="status" aria-live="polite">
       <p>If that email matches a recoverable membership, a link may arrive. Check your inbox and spam folder.</p>
@@ -80,19 +83,19 @@ export function SupporterRestore({ onClose, onRestored, onCheckMembership }: { o
     </div> : null}
     {view.state === 'uncertain' ? <p role="status">The request may have sent an email. Check this request before asking for another link.</p> : null}
     {view.state === 'finished' ? <p role="status">This request is no longer waiting. Check the current Supporter status before trying again.</p> : null}
-    {view.state === 'expired' ? <p role="status">This restore request expired or the billing email changed. Enter your current Stripe billing email, or contact support if no email arrived.</p> : null}
+    {view.state === 'expired' ? <p role="status">This link expired, or the Stripe email changed. If you changed it recently, wait a few minutes and try again. Still signed in on the browser you paid in? Manage on Stripe there shows the email it uses.</p> : null}
     {view.state === 'conflict' || view.state === 'ineligible' ? <p role="status">This connection cannot restore another membership. Contact support for help; accounts with payment history are not combined.</p> : null}
-    {view.state === 'fallback' ? <p role="status">Supporter recovery is not available on the server yet. Your free tools still work.</p> : null}
-    {view.state === 'error' ? <p role="status">The restore request could not be prepared. Enter your current Stripe billing email again, or contact support.</p> : null}
+    {view.state === 'fallback' ? <p role="status">Restore isn't available yet. Your free tools still work.</p> : null}
+    {view.state === 'error' ? <p role="status">We couldn't send a restore link. Check the email your Stripe receipt went to and try again, or contact support.</p> : null}
     {view.state === 'unavailable' ? <p role="status">The restore service could not be checked. Try checking again, or contact support.</p> : null}
-    <div className="pulse-account-link-actions pulse-journey-actions">
+    {view.state === 'idle' ? null : <div className="pulse-account-link-actions pulse-journey-actions">
       {view.state === 'pending' || view.state === 'uncertain' ? <button type="button" disabled={busy} onClick={() => void request('check')}>{view.state === 'pending' ? 'Check restore status' : 'Check restore request'}</button> : null}
       {view.state === 'finished' ? <button type="button" disabled={busy} onClick={onCheckMembership}>Check Supporter status</button> : null}
       {view.state === 'unavailable' ? <button type="button" disabled={busy} onClick={() => void request('status')}>Check again</button> : null}
       {view.state === 'expired' || view.state === 'error' ? <button type="button" disabled={busy} onClick={() => void request('cancel')}>Enter email again</button> : null}
       <button type="button" disabled={busy} onClick={() => void leave()}>Back</button>
-      {view.state !== 'idle' && view.state !== 'loading' ? <a href={POLICY_LINKS.supportBillingEmail} target="_blank" rel="noopener noreferrer">Contact support</a> : null}
-    </div>
+      {view.state !== 'loading' ? <a href={POLICY_LINKS.supportBillingEmail} target="_blank" rel="noopener noreferrer">Contact support</a> : null}
+    </div>}
     {view.state === 'pending' || view.state === 'uncertain' ? <p className="pulse-supporter-detail">Going back stops checking this request; the email may still arrive.</p> : null}
   </div>
 }

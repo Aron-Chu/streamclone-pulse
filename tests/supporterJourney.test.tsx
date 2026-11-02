@@ -3,7 +3,7 @@ import SUPPORTER_PERKS from '../src/shared/supporter-perks.json'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ACCOUNT_COPY, MEMBERSHIP_WATCH_DELAYS_MS, MEMBERSHIP_WATCH_MS, SupporterJourney, accountReference, retryWaitCopy } from '../src/options/SupporterJourney.tsx'
+import { ACCOUNT_COPY, MEMBERSHIP_WAKE_DEBOUNCE_MS, MEMBERSHIP_WATCH_DELAYS_MS, MEMBERSHIP_WATCH_MS, SupporterJourney, accountReference, retryWaitCopy } from '../src/options/SupporterJourney.tsx'
 import type { SupporterAccountAction, SupporterAccountState, SupporterEntitlement, SupporterBillingState, SupporterRestoreState } from '../src/shared/supporterAccount.ts'
 import type { TwitchSignInResponse, TwitchSignInStage } from '../src/shared/twitchSignIn.ts'
 
@@ -11,6 +11,14 @@ import type { TwitchSignInResponse, TwitchSignInStage } from '../src/shared/twit
 
 const ACCOUNT_ID = '11111111-1111-4111-8111-1111111a1b2c'
 const linked: SupporterAccountState = { state: 'linked', accountId: ACCOUNT_ID, expiresAt: new Date(Date.now() + 86_400_000).toISOString() }
+/** Returning to the page after the wake debounce: the card re-reads billing and membership by itself. */
+let wakeOffset = 0
+const wakeLater = async () => {
+  const now = performance.now.bind(performance)
+  const offset = wakeOffset += MEMBERSHIP_WAKE_DEBOUNCE_MS
+  const later = vi.spyOn(performance, 'now').mockImplementation(() => now() + offset)
+  try { await act(async () => { window.dispatchEvent(new Event('focus')) }) } finally { later.mockRestore() }
+}
 const pendingLink = (overrides: Record<string, unknown> = {}) => ({ state: 'pending', code: 'ABCDE-12345', expiresAt: new Date(Date.now() + 600_000).toISOString(), retryAfterSeconds: 5, ...overrides }) as SupporterAccountState
 const ready = (status: string, extra: Partial<Extract<SupporterEntitlement, { state: 'ready' }>> = {}): SupporterEntitlement =>
   ({ state: 'ready', status, supportPeriods: status === 'none' ? 0 : 2, features: [], checkoutEnabled: true, ...(extra.installationAccountsEnabled ? { accountKind: 'installation', restoreEligible: true } : {}), ...extra }) as SupporterEntitlement
@@ -123,8 +131,8 @@ describe('pay-first settings', () => {
     try {
       expect(view.calls('SUPPORTER_RESTORE')).toBe(0)
       expect(view.state()).toBe('active')
-      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Manage subscription')
-      await view.click('Manage subscription')
+      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Manage on Stripe ↗')
+      await view.click('Manage on Stripe ↗')
       expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(1)
     } finally { view.cleanup() }
   })
@@ -146,9 +154,9 @@ describe('pay-first settings', () => {
       expect(view.text()).toContain('Check your current membership before starting another payment')
       expect(view.text()).not.toContain('Supporter active')
       expect(view.text()).not.toContain('Your Supporter finishes are unlocked')
-      expect(view.buttons()).not.toContain('Rejoin Supporter')
+      expect(view.buttons()).not.toContain('Rejoin')
       expect(view.buttons()).not.toContain('Become a Supporter')
-      expect(view.buttons()).not.toContain('Manage subscription')
+      expect(view.buttons()).not.toContain('Manage on Stripe ↗')
       expect(onEntitlement.mock.calls.some(([value]) => value?.state === 'ready' && (value.status === 'active' || value.status === 'grace'))).toBe(false)
       membership = ready('active', { installationAccountsEnabled: true })
       await view.click('Check again')
@@ -158,7 +166,7 @@ describe('pay-first settings', () => {
       expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(0)
       expect(view.create).not.toHaveBeenCalled()
       expect(view.state()).toBe('active')
-      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Manage subscription')
+      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Manage on Stripe ↗')
       expect(onEntitlement).toHaveBeenLastCalledWith(membership)
     } finally { view.cleanup() }
   })
@@ -180,8 +188,8 @@ describe('pay-first settings', () => {
     } finally { view.cleanup() }
   })
   it.each([
-    ['active', 'Manage subscription'],
-    ['grace', 'Update payment method'],
+    ['active', 'Manage on Stripe ↗'],
+    ['grace', 'Fix payment ↗'],
   ] as const)('keeps verified %s membership management above worker payment confirmation', async (status, label) => {
     const view = await mount({ account: () => linked, entitlement: () => ready(status, { installationAccountsEnabled: true }), billing: () => ({ state: 'active' }) })
     try {
@@ -200,11 +208,13 @@ describe('pay-first settings', () => {
       try {
         expect(view.state()).toBe('checkout-closed')
         expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
-        expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe("Check again")
-        expect(view.text()).toContain("Check back when it goes on sale")
+        expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Try the looks')
+        expect(view.text()).toContain('Try the looks below. Nothing is saved.')
         expect(view.buttons()).not.toContain('Start checkout again')
-        expect(view.buttons()).not.toContain('Rejoin Supporter')
-        await view.click("Check again")
+        expect(view.buttons()).not.toContain('Rejoin')
+        expect(view.buttons()).not.toContain('Check again')
+        await view.click('Try the looks')
+        await wakeLater()
         expect(view.calls('SUPPORTER_ENTITLEMENT')).toBeGreaterThan(1)
         expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
         expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(0)
@@ -234,7 +244,7 @@ describe('pay-first settings', () => {
     ['still_confirming', 'still-confirming', 'Check payment status', 'check'],
     ['reconnect_required', 'previous-payment-unresolved', 'Contact support', 'support'],
     ['review', 'review', 'Contact support', 'support'],
-    ['closed', 'checkout-closed', "Check again", 'read'],
+    ['closed', 'checkout-closed', 'Try the looks', 'looks'],
     ['unavailable', 'billing-unavailable', 'Try again', 'read'],
     ['error', 'billing-unavailable', 'Try again', 'read'],
   ] as const)('keeps the %s action above an ended installation membership', async (billingState, journeyState, label, action) => {
@@ -244,8 +254,8 @@ describe('pay-first settings', () => {
         expect(view.state()).toBe(journeyState)
         expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
         expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe(label)
-        expect(view.buttons()).not.toContain('Rejoin Supporter')
-        expect(view.buttons()).not.toContain('Manage subscription')
+        expect(view.buttons()).not.toContain('Rejoin')
+        expect(view.buttons()).not.toContain('Manage on Stripe ↗')
         expect(view.text()).not.toContain("US$4.99 a month")
         if (billingState === 'confirming' || billingState === 'still_confirming' || billingState === 'review') expect(view.text()).toContain('Do not pay again')
         if (action === 'support') {
@@ -268,16 +278,15 @@ describe('pay-first settings', () => {
       expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
       expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe(billingState === 'review' ? 'Contact support' : 'Check payment status')
       expect(view.text()).toContain('Do not pay again')
-      expect(view.buttons()).not.toContain('Manage subscription')
+      expect(view.buttons()).not.toContain('Manage on Stripe ↗')
       expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
     } finally { view.cleanup() }
   })
   it.each([
-    ['active', true, 'confirming', 'Manage subscription', 'portal'],
-    ['grace', true, 'still_confirming', 'Update payment method', 'portal'],
-    ['expired', true, 'idle', 'Rejoin Supporter', 'checkout'],
-    ['expired', false, 'idle', 'Manage subscription', 'portal'],
-    ['review', true, 'fallback', 'Manage subscription', 'portal'],
+    ['active', true, 'confirming', 'Manage on Stripe ↗', 'portal'],
+    ['grace', true, 'still_confirming', 'Fix payment ↗', 'portal'],
+    ['expired', true, 'idle', 'Rejoin', 'checkout'],
+    ['review', true, 'fallback', 'Manage on Stripe ↗', 'portal'],
   ] as const)('keeps the ordinary %s installation action with Checkout %s and billing %s', async (status, checkoutEnabled, billingState, label, action) => {
     const view = await mount({ account: () => linked, entitlement: () => ready(status, { installationAccountsEnabled: true, checkoutEnabled }), billing: () => ({ state: billingState }) })
     try {
@@ -288,6 +297,19 @@ describe('pay-first settings', () => {
       expect(view.calls('SUPPORTER_BILLING', action)).toBe(1)
       if (billingState === 'fallback') expect(view.create).toHaveBeenCalledWith({ url: 'https://streampulse.stream/account/billing' })
       else expect(view.create).not.toHaveBeenCalled()
+    } finally { view.cleanup() }
+  })
+  it('offers no Rejoin on an ended installation membership while sales are closed, and keeps Stripe in Billing help', async () => {
+    const view = await mount({ account: () => linked, entitlement: () => ready('expired', { installationAccountsEnabled: true, checkoutEnabled: false }), billing: () => ({ state: 'idle' }) })
+    try {
+      expect(view.state()).toBe('expired')
+      expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(0)
+      expect(view.buttons()).not.toContain('Rejoin')
+      expect(view.text()).toContain('Your look is kept for when you come back.')
+      await view.click('Open Stripe ↗')
+      expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(1)
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
+      expect(view.create).not.toHaveBeenCalled()
     } finally { view.cleanup() }
   })
   it('requires explicit confirmation to revoke another connected extension and never offers peer revoke for this browser', async () => {
@@ -310,7 +332,7 @@ describe('pay-first settings', () => {
       expect(view.text()).toContain('This extension was disconnected from your StreamPulse account.')
       expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Supporter details')
       expect(view.buttons()).not.toContain('Become a Supporter')
-      expect(view.buttons()).toContain('Restore existing Supporter')
+      expect(view.buttons()).toContain('Restore with Stripe email')
       expect(view.buttons()).not.toContain('Use a StreamPulse website account')
       expect(view.buttons()).not.toContain('Start a new membership')
       expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
@@ -319,7 +341,7 @@ describe('pay-first settings', () => {
   })
   it.each([{ accountKind: 'email' as const, installationAccountsEnabled: true, restoreEligible: true }, { accountKind: 'installation' as const, installationAccountsEnabled: false, restoreEligible: true }, { accountKind: 'installation' as const, installationAccountsEnabled: true, restoreEligible: false }])('hides restore when server capability refuses this account: %s', async capability => {
     const view = await mount({ account: () => linked, entitlement: () => ready('none', capability), billing: () => ({ state: 'idle' }) })
-    try { expect(view.buttons()).not.toContain('Restore existing Supporter') } finally { view.cleanup() }
+    try { expect(view.buttons()).not.toContain('Restore with Stripe email') } finally { view.cleanup() }
   })
   it.each(['active', 'grace', 'expired', 'review'])('never sends a known installation to an unrelated website cookie account when billing capability is off: %s', async status => {
     const view = await mount({ account: () => linked, entitlement: () => ready(status, { accountKind: 'installation', installationAccountsEnabled: false }), billing: () => ({ state: 'idle' }) })
@@ -327,8 +349,8 @@ describe('pay-first settings', () => {
       expect(view.host.querySelector('a[data-supporter-action="billing"]')).toBeNull()
       expect(view.text()).toContain('New Supporter sign-ups are temporarily unavailable')
       expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
-      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe(status === 'grace' ? 'Update payment method' : 'Manage subscription')
-      await view.click(status === 'grace' ? 'Update payment method' : 'Manage subscription')
+      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe(status === 'grace' ? 'Fix payment ↗' : 'Manage on Stripe ↗')
+      await view.click(status === 'grace' ? 'Fix payment ↗' : 'Manage on Stripe ↗')
       expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(1)
       expect(view.create).not.toHaveBeenCalled()
     } finally { view.cleanup() }
@@ -395,21 +417,25 @@ describe('pay-first settings', () => {
     const view = await mount({ account: () => linked, entitlement: () => ready('active', { installationAccountsEnabled: true }), billing: () => ({ state: 'idle' }) })
     try {
       expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
-      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Manage subscription')
-      await view.click('Manage subscription')
+      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Manage on Stripe ↗')
+      await view.click('Manage on Stripe ↗')
       expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(1)
       expect(view.create).not.toHaveBeenCalled()
     } finally { view.cleanup() }
   })
-  it.each(['idle', 'closed'] as const)('checks closed sign-ups through a read, with one primary action: %s', async billing => {
+  it.each(['idle', 'closed'] as const)('re-reads closed sign-ups on return, with one primary action: %s', async billing => {
     let membership = ready('none', { installationAccountsEnabled: true, checkoutEnabled: false })
     let currentBilling: SupporterBillingState = { state: billing }
     const view = await mount({ account: () => linked, entitlement: () => membership, billing: () => currentBilling })
     try {
       expect(view.state()).toBe('checkout-closed')
       expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
-      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe("Check again")
-      await view.click("Check again")
+      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Try the looks')
+      expect(view.host.querySelector('a[data-supporter-action="details"]')?.textContent).toBe('What you get')
+      expect(view.text()).not.toContain('US$4.99 a month')
+      await view.click('Try the looks')
+      expect(view.host.querySelector<HTMLDetailsElement>('[data-supporter-preview-disclosure]')?.open).toBe(true)
+      await wakeLater()
       expect(view.calls('SUPPORTER_ENTITLEMENT')).toBeGreaterThan(1)
       expect(view.calls('SUPPORTER_ACCOUNT', 'start')).toBe(0)
       expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
@@ -418,7 +444,7 @@ describe('pay-first settings', () => {
       expect(view.text()).toContain("Supporter isn't on sale yet")
       membership = ready('none', { installationAccountsEnabled: true, checkoutEnabled: true })
       currentBilling = { state: 'idle' }
-      await view.click("Check again")
+      await wakeLater()
       expect(view.state()).toBe('offer')
       expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
     } finally { view.cleanup() }
@@ -438,11 +464,12 @@ describe('pay-first settings', () => {
     const view = await mount({ account: () => ({ state: 'signed_out' }), entitlement: () => ({ state: 'not_linked' }), billing: () => ({ state: 'idle' }), restore: action => action === 'start' ? { state: 'pending', expiresAt: new Date(Date.now() + 900_000).toISOString(), comparisonCode: 'A3B4C5' } : { state: 'idle' } })
     try {
       expect(view.calls('SUPPORTER_RESTORE')).toBe(0)
-      await view.click('Restore existing Supporter')
+      await view.click('Restore with Stripe email')
       expect(view.calls('SUPPORTER_RESTORE', 'status')).toBe(1)
       expect(view.buttons()).not.toContain('Become a Supporter')
-      expect(view.buttons()).not.toContain('Manage subscription')
-      expect(view.text()).toContain('Still signed in on the browser you paid in? Open Manage subscription there to change your billing email.')
+      expect(view.buttons()).not.toContain('Manage on Stripe ↗')
+      expect(view.text()).toContain("Use the email your Stripe receipt went to. This won't charge you.")
+      expect(view.host.querySelector('label[for="supporter-restore-email"]')?.textContent).toBe('Stripe email')
       await view.enterRestoreEmail('payer@example.test')
       await view.submitRestore()
       expect(view.sendMessage).toHaveBeenCalledWith({ type: 'SUPPORTER_RESTORE', action: 'start', email: 'payer@example.test' })
@@ -457,10 +484,10 @@ describe('pay-first settings', () => {
   it.each(['signed_out', 'relink_required'] as const)('offers restore and support without subscription management when %s', async state => {
     const view = await mount({ account: () => ({ state }), entitlement: () => ({ state: 'not_linked' }), billing: () => ({ state: 'idle' }), restore: () => ({ state: 'idle' }) })
     try {
-      expect(view.buttons()).toContain('Restore existing Supporter')
-      expect(view.buttons()).not.toContain('Manage subscription')
-      await view.click('Restore existing Supporter')
-      expect(view.text()).toContain('Contact support if you cannot access it')
+      expect(view.buttons()).toContain('Restore with Stripe email')
+      expect(view.buttons()).not.toContain('Manage on Stripe ↗')
+      await view.click('Restore with Stripe email')
+      expect(view.text()).toContain("Can't get into that email? Support can help")
       expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(0)
       expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
     } finally { view.cleanup() }
@@ -468,7 +495,7 @@ describe('pay-first settings', () => {
   it.each(['conflict', 'ineligible', 'expired', 'error', 'unavailable', 'uncertain', 'fallback'] as const)('links restore %s help to billing email support', async state => {
     const view = await mount({ account: () => ({ state: 'signed_out' }), entitlement: () => ({ state: 'not_linked' }), billing: () => ({ state: 'idle' }), restore: () => ({ state }) })
     try {
-      await view.click('Restore existing Supporter')
+      await view.click('Restore with Stripe email')
       const link = view.host.querySelector<HTMLAnchorElement>('.pulse-journey-restore a')
       expect(link?.textContent).toBe('Contact support')
       expect(link?.href).toBe('https://streampulse.stream/support#billing-email')
@@ -477,7 +504,7 @@ describe('pay-first settings', () => {
   it('recovers an uncertain request by its existing key instead of resending email', async () => {
     const view = await mount({ account: () => ({ state: 'signed_out' }), entitlement: () => ({ state: 'not_linked' }), billing: () => ({ state: 'idle' }), restore: action => action === 'start' ? { state: 'uncertain' } : action === 'check' ? { state: 'pending', expiresAt: new Date(Date.now() + 900_000).toISOString(), comparisonCode: 'A3B4C5' } : { state: 'idle' } })
     try {
-      await view.click('Restore existing Supporter')
+      await view.click('Restore with Stripe email')
       await view.enterRestoreEmail('payer@example.test'); await view.submitRestore()
       expect(view.buttons()).toContain('Check restore request')
       expect(view.host.querySelector('input[type="email"]')).toBeNull()
@@ -491,7 +518,7 @@ describe('pay-first settings', () => {
   it('resumes a pending restore after settings reopens without sending another email', async () => {
     const view = await mount({ account: () => ({ state: 'signed_out' }), entitlement: () => ({ state: 'not_linked' }), billing: () => ({ state: 'reconnect_required' }), restore: () => ({ state: 'pending', expiresAt: new Date(Date.now() + 900_000).toISOString(), comparisonCode: 'A3B4C5' }) })
     try {
-      await view.click('Restore existing Supporter')
+      await view.click('Restore with Stripe email')
       expect(view.text()).toContain('A3B4C5')
       expect(view.calls('SUPPORTER_RESTORE', 'start')).toBe(0)
       expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
@@ -505,7 +532,7 @@ describe('pay-first settings', () => {
       return { state: 'idle' }
     } })
     try {
-      await view.click('Restore existing Supporter')
+      await view.click('Restore with Stripe email')
       await view.enterRestoreEmail('payer@example.test'); await view.submitRestore()
       await view.click('Check restore status')
       expect(view.state()).toBe('active')
@@ -521,7 +548,7 @@ describe('pay-first settings', () => {
       return { state: 'idle' }
     } })
     try {
-      await view.click('Restore existing Supporter')
+      await view.click('Restore with Stripe email')
       await view.enterRestoreEmail('payer@example.test'); await view.submitRestore()
       await view.click('Check restore status')
       expect(view.buttons()).toContain('Check Supporter status')
@@ -537,7 +564,7 @@ describe('pay-first settings', () => {
       return { state: 'idle' }
     } })
     try {
-      await view.click('Restore existing Supporter')
+      await view.click('Restore with Stripe email')
       await view.enterRestoreEmail('payer@example.test'); await view.submitRestore()
       expect(view.buttons()).toContain('Check restore request')
       await view.click('Check restore request')
@@ -549,7 +576,7 @@ describe('pay-first settings', () => {
   it('does not offer restore over an owned checkout or a paid account', async () => {
     for (const [membership, billing] of [[ready('none', { installationAccountsEnabled: true }), { state: 'waiting' }], [ready('active', { installationAccountsEnabled: true, restoreEligible: false }), { state: 'idle' }], [ready('active', { installationAccountsEnabled: true, restoreEligible: true }), { state: 'idle' }], [ready('pending', { installationAccountsEnabled: true, restoreEligible: true }), { state: 'idle' }]] as [SupporterEntitlement, SupporterBillingState][]) {
       const view = await mount({ account: () => linked, entitlement: () => membership, billing: () => billing, restore: () => ({ state: 'idle' }) })
-      try { expect(view.buttons()).not.toContain('Restore existing Supporter'); expect(view.calls('SUPPORTER_RESTORE')).toBe(0) } finally { view.cleanup() }
+      try { expect(view.buttons()).not.toContain('Restore with Stripe email'); expect(view.calls('SUPPORTER_RESTORE')).toBe(0) } finally { view.cleanup() }
     }
   })
 })
@@ -573,7 +600,7 @@ describe('Twitch sign-in off (stage A): signed out', () => {
       expect(view.hrefs()).toContain('https://streampulse.stream/supporter')
       for (const gone of ['Connect this extension', 'Restore my Supporter', 'Use a StreamPulse website account', 'Continue with Twitch']) expect(view.buttons()).not.toContain(gone)
       expect(view.host.querySelector('.pulse-journey')?.textContent).not.toMatch(/website account/i)
-      expect(view.buttons()).toContain('Restore existing Supporter')
+      expect(view.buttons()).toContain('Restore with Stripe email')
       expect(view.text()).toContain('Your connection stays in this browser.')
       // Until the click, nothing asks the worker to buy, restore, or sign in with Twitch.
       expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
@@ -709,25 +736,27 @@ describe('membership states', () => {
   it.each<[string, SupporterEntitlement, string, string | null]>([
     ['offer', ready('none'), 'Continue to checkout', 'https://streampulse.stream/account/billing'],
     ['checkout-closed', ready('none', { checkoutEnabled: false }), '', null],
-    ['active', ready('active', { accessUntil: '2026-11-01T12:00:00Z' }), 'Manage subscription', 'https://streampulse.stream/account/billing'],
-    ['grace', ready('grace', { accessUntil: '2026-10-19T12:00:00Z' }), 'Update payment method', 'https://streampulse.stream/account/billing'],
-    ['expired', ready('expired'), 'Rejoin Supporter', 'https://streampulse.stream/account/billing'],
-    ['expired', ready('expired', { checkoutEnabled: false }), 'Review membership', 'https://streampulse.stream/account/billing'],
+    ['active', ready('active', { accessUntil: '2026-11-01T12:00:00Z' }), 'Manage on Stripe ↗', 'https://streampulse.stream/account/billing'],
+    ['grace', ready('grace', { accessUntil: '2026-10-19T12:00:00Z' }), 'Fix payment ↗', 'https://streampulse.stream/account/billing'],
+    ['expired', ready('expired'), 'Rejoin', 'https://streampulse.stream/account/billing'],
+    ['expired', ready('expired', { checkoutEnabled: false }), '', null],
     ['payment-pending', ready('pending'), 'View payment status', 'https://streampulse.stream/account/billing'],
-    ['review', ready('review'), 'Review membership', 'https://streampulse.stream/account/billing'],
+    ['review', ready('review'), 'Review membership ↗', 'https://streampulse.stream/account/billing'],
   ])('renders %s with one truthful action', async (state, entitlement, label, href) => {
     const view = await mount({ account: () => linked, entitlement: () => entitlement })
     try {
       expect(view.state()).toBe(state)
       expect(view.link()?.href ?? null).toBe(href)
       if (label) expect(view.link()?.textContent).toBe(label)
-      expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
+      // An ended membership has nothing to buy while sales are closed.
+      expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(state === 'expired' && !href ? 0 : 1)
       if (state === 'checkout-closed') {
         expect(view.text()).toContain("Supporter isn't on sale yet")
+        expect(view.text()).not.toContain('US$4.99 a month')
         expect(view.hrefs()).not.toContain('https://streampulse.stream/account/billing')
       }
       if (state === 'grace') {
-        const date = new Date('2026-10-19T12:00:00Z').toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
+        const date = new Date('2026-10-19T12:00:00Z').toLocaleDateString([], { month: 'short', day: 'numeric' })
         expect(view.text()).toContain(`stays on until ${date}`)
         expect(view.text()).not.toMatch(/7-day|seven days/)
       }
@@ -894,18 +923,13 @@ describe('notices beside the action that caused them', () => {
     } finally { view.cleanup() }
   })
 
-  it('reports a failed Manage subscription in the Account card, and the footer’s own Manage subscription in the footer', async () => {
+  it('reports a failed Manage on Stripe in the card footer, with no second Stripe door in the Account card', async () => {
     const view = await mount({ account: () => linked, entitlement: () => ready('active', { installationAccountsEnabled: true }), billing: action => action === 'portal' ? { state: 'error' } : { state: 'idle' } })
     try {
       const page = sections(view.host)
-      await view.click('Manage subscription ↗')
+      expect([...page.account.querySelectorAll('button, a')].map(control => control.textContent)).not.toContain('Manage subscription ↗')
+      await view.click('Manage on Stripe ↗')
       expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(1)
-      expect(page.accountStatus()?.textContent).toContain(MANAGE_FAILED)
-      expect(page.footer()).not.toContain(MANAGE_FAILED)
-      expect(view.state()).toBe('active')
-
-      await view.click('Manage subscription')
-      expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(2)
       expect(page.footer()).toContain(MANAGE_FAILED)
       expect(page.accountStatus()?.textContent).toBe('')
       expect(view.state()).toBe('active')
@@ -913,12 +937,12 @@ describe('notices beside the action that caused them', () => {
     } finally { view.cleanup() }
   })
 
-  it('keeps the Account card’s Manage subscription enabled and focused while it opens, ignores a second press, and reports the failure beside it', async () => {
+  it('keeps Manage on Stripe enabled and focused while it opens, ignores a second press, and reports the failure beside it', async () => {
     let answer: (billing: SupporterBillingState) => void = () => undefined
     const view = await mount({ account: () => linked, entitlement: () => ready('active', { installationAccountsEnabled: true }), billing: action => action === 'portal' ? new Promise<SupporterBillingState>(resolve => { answer = resolve }) : { state: 'idle' } })
     try {
       const page = sections(view.host)
-      const manage = [...page.account.querySelectorAll('button')].find(button => button.textContent === 'Manage subscription ↗')!
+      const manage = [...view.host.querySelectorAll<HTMLButtonElement>('.pulse-journey button')].find(button => button.textContent === 'Manage on Stripe ↗')!
       manage.focus()
       await act(async () => manage.click())
       // While the request is open: still enabled (a disabled button drops focus), marked busy, and a second press does nothing.
@@ -930,10 +954,10 @@ describe('notices beside the action that caused them', () => {
       await act(async () => answer({ state: 'error' }))
       expect(manage.hasAttribute('aria-busy')).toBe(false)
       expect(document.activeElement).toBe(manage)
-      // The failure is stated in the Account card that holds the button.
-      expect(page.accountStatus()?.textContent).toContain(MANAGE_FAILED)
-      expect(manage.closest('section')).toBe(page.accountStatus()?.closest('section'))
-      expect(page.footer()).not.toContain(MANAGE_FAILED)
+      // The failure is stated in the card that holds the button.
+      expect(page.footer()).toContain(MANAGE_FAILED)
+      expect(manage.closest('section')).toBe(view.host.querySelector('.pulse-journey-status')?.closest('section'))
+      expect(page.accountStatus()?.textContent).toBe('')
     } finally { view.cleanup() }
   })
 
@@ -971,12 +995,13 @@ describe('the offer names what the banner sells', () => {
   ] as const)('lists every perk from the shared list when %s', async (_name, account, entitlement) => {
     const view = await mount({ account, entitlement, billing: () => ({ state: 'idle' }) })
     try {
-      const list = view.host.querySelector<HTMLElement>('[data-supporter-perks-list="true"]')!
+      // One list beside the price, not a second copy in the preview.
+      const lists = view.host.querySelectorAll<HTMLElement>('[data-supporter-perks-list="true"]')
+      expect(lists).toHaveLength(1)
+      const [list] = lists
       expect([...list.querySelectorAll('li')].map(item => item.textContent)).toEqual(SUPPORTER_PERKS.names)
       expect(list.textContent).toContain(SUPPORTER_PERKS.onlyYou)
-      const full = view.host.querySelector<HTMLElement>('[data-supporter-preview-disclosure] [data-supporter-perks-list="true"]')!
-      expect([...full.querySelectorAll('li')].map(item => item.textContent)).toEqual(SUPPORTER_PERKS.names.map(name => `${name}: ${SUPPORTER_PERKS.details[name as keyof typeof SUPPORTER_PERKS.details]}`))
-      expect(full.textContent).toContain(SUPPORTER_PERKS.onlyYou)
+      expect(view.text().split(SUPPORTER_PERKS.onlyYou)).toHaveLength(2)
       expect(list.textContent).not.toMatch(/signature|header accent|concept/i)
     } finally { view.cleanup() }
   })
@@ -990,8 +1015,7 @@ describe('the price comes before the button that buys it', () => {
     ['signed-out', () => ({ state: 'signed_out' }), () => ({ state: 'not_linked' }), 'Become a Supporter'],
     ['offer', () => linked, () => ready('none', { installationAccountsEnabled: true }), 'Become a Supporter'],
     ['offer', () => linked, () => ready('none'), 'Continue to checkout'],
-    ['checkout-closed', () => linked, () => ready('none', { checkoutEnabled: false }), "Check again"],
-    ['expired', () => linked, () => ready('expired'), 'Rejoin Supporter'],
+    ['expired', () => linked, () => ready('expired'), 'Rejoin'],
   ])('in the %s state, before "%s"', async (state, account, entitlement, label) => {
     const view = await mount({ account, entitlement })
     try {
@@ -1014,7 +1038,7 @@ describe('Your card is a headed section', () => {
   // ladder, status and action, not skip to "Your look" below it.
   it.each<[string, () => SupporterAccountState, () => SupporterEntitlement, string, string]>([
     ['signed-out', () => ({ state: 'signed_out' }), () => ({ state: 'not_linked' }), 'Become a Supporter', 'Become a Supporter'],
-    ['grace', () => linked, () => ready('grace', { accessUntil: '2026-10-19T12:00:00Z' }), 'Payment needs attention', 'Update payment method'],
+    ['grace', () => linked, () => ready('grace', { accessUntil: '2026-10-19T12:00:00Z' }), "Your last payment didn't go through.", 'Fix payment ↗'],
   ])('in the %s state', async (_state, account, entitlement, title, action) => {
     const view = await mount({ account, entitlement })
     try {
@@ -1530,8 +1554,8 @@ describe('Continue with Twitch (tester and public stages)', () => {
       return { state: 'idle' }
     }, twitch: () => ({ status: twitchStatus({ profile: PROFILE }), account: linked }) }, undefined, 'public')
     try {
-      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Manage subscription')
-      await view.click('Manage subscription')
+      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Manage on Stripe ↗')
+      await view.click('Manage on Stripe ↗')
       expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(1)
       expect(view.state()).toBe('confirm-identity')
       expect(view.text()).toContain(ACCOUNT_COPY.confirmHeading)
@@ -1579,7 +1603,7 @@ describe('Continue with Twitch (tester and public stages)', () => {
     const retryAt = Date.now() + 2 * 60 * 60_000
     const view = await mount({ account: () => linked, entitlement: () => twitchAccount('active', { features: PERKS }), billing: action => action === 'portal' ? { state: 'try_later', retryAt } : { state: 'idle' }, twitch: () => ({ status: twitchStatus({ profile: PROFILE }), account: linked }) }, undefined, 'public')
     try {
-      await view.click('Manage subscription')
+      await view.click('Manage on Stripe ↗')
       expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(1)
       expect(view.text()).toContain(`Subscription management was opened too many times in a short while, so it is paused for this account. Your membership is unchanged. Try again after ${retryWaitCopy(retryAt).at} (about 2 hours).`)
       expect(view.text()).not.toContain('Could not open subscription management')
@@ -1591,7 +1615,7 @@ describe('Continue with Twitch (tester and public stages)', () => {
   it('names a different Twitch account in the check and never opens the portal', async () => {
     const view = await mount({ account: () => linked, entitlement: () => twitchAccount('active'), billing: action => action === 'portal' ? { state: 'wrong_account' } : { state: 'idle' }, twitch: () => ({ status: twitchStatus(), account: linked }) }, undefined, 'public')
     try {
-      await view.click('Manage subscription ↗')
+      await view.click('Manage on Stripe ↗')
       expect(view.text()).toContain('This subscription belongs to a different Twitch account. Sign out, then Continue with Twitch with the account you subscribed with.')
       expect(view.create).not.toHaveBeenCalled()
       expect(view.state()).toBe('active')
@@ -1803,7 +1827,8 @@ describe('one Become a Supporter button with Twitch sign-in off', () => {
       if (state === 'checkout-closed') {
         expect(view.text()).toContain("Supporter isn't on sale yet")
         expect(view.text()).not.toMatch(/could not|error/i)
-        await view.click('Check again')
+        expect(view.buttons()).toContain('Try the looks')
+        await wakeLater()
         expect(view.state()).toBe('signed-out')
         expect(view.buttons()).toContain('Become a Supporter')
       }
@@ -1831,7 +1856,7 @@ describe('one Become a Supporter button with Twitch sign-in off', () => {
     const view = await mount({ account: () => linked, entitlement: () => ready('none', { accountKind: 'installation', checkoutEnabled: false, installationAccountsEnabled: true }) })
     try {
       expect(view.state()).toBe('checkout-closed')
-      expect(view.text()).toContain('This browser is connected. The offer appears here when it goes on sale.')
+      expect(view.text()).toContain("Supporter isn't on sale yet")
       expect(view.text()).not.toContain('Your account is connected.')
       // A key-only connection has no account to name.
       expect(card(view.host).name().textContent).toBe('You')

@@ -172,8 +172,9 @@ describe('PulseSettingsPanel quick workspace', () => {
     for (const title of ['Moments', 'Live data', 'Layout', 'Appearance']) {
       expect(html).toContain(`<h2 class="pulse-quick-group-title">${title}</h2>`)
     }
-    // Your look tells everyone without the perk that trying is free.
-    expect(html).toContain('<h2 class="pulse-quick-group-title">Your look<span class="pulse-quick-chip">Supporter · try free</span></h2>')
+    // Your look says it is a Supporter preview, without promising anything is free to keep.
+    expect(html).toContain('<h2 class="pulse-quick-group-title">Your look<span class="pulse-quick-chip">Supporter · preview</span></h2>')
+    expect(html).not.toContain('try free')
   })
 
   /**

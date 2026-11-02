@@ -64,7 +64,8 @@ describe('emote rain is a Supporter perk in settings', () => {
     const perk = view.host.querySelector('[data-supporter-perk="emote-rain"]')!
     expect(perk.textContent).toContain('Supporter perk')
     expect(perk.textContent).toContain('Only you see it')
-    expect(perk.textContent).toBe("Emote rain is a Supporter perk. Only you see it. Supporter isn't on sale yet. See Supporter →")
+    // A browser with no account cannot ask whether Supporter is on sale, so the line never says it is closed.
+    expect(perk.textContent).toBe('Emote rain is a Supporter perk. Only you see it. See Supporter →')
     expect(perk.textContent).not.toMatch(/moved from free|a backdrop you chose is kept/i)
     expect(perk.querySelector('a')?.getAttribute('href')).toBe('#supporter')
 
@@ -190,6 +191,7 @@ describe('emote rain is a Supporter perk in settings', () => {
     const { sendMessage, changed } = stubSavedBanner()
     const older = deferred<ReturnType<typeof reply>>()
     const current = deferred<ReturnType<typeof reply>>()
+    sendMessage.mockResolvedValueOnce(reply(entitlement(false)))
     const view = await mount(<PulseBannerControls expanded perks={false} />)
     expect(view.host.textContent).toContain("Supporter isn't on sale yet.")
     sendMessage.mockReturnValueOnce(older.promise).mockReturnValueOnce(current.promise)

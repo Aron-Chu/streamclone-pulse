@@ -45,7 +45,8 @@ export function SupporterLookPreview({ finish, paint, tenure, rain, shown, hideS
       <div className="pulse-supporter-preview-foot">
         <span>Everyone else on Twitch sees normal chat.</span>
         <small data-supporter-perk-names="true">{PERK_NAMES.join(' · ')}</small>
-        {shown && !hideStateLabel ? <small>{shown === 'own' ? 'Your look' : shown === 'trying' ? 'Trying' : 'Sample look'}</small> : null}
+        {/* The card above already says "Sample look"; the preview names only a look that is yours or being tried. */}
+        {shown && shown !== 'sample' && !hideStateLabel ? <small>{shown === 'own' ? 'Your look' : 'Trying'}</small> : null}
       </div>
     </div>
   )

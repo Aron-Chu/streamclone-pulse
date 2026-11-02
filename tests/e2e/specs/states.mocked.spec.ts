@@ -673,7 +673,8 @@ test.describe('extension mocked states', () => {
       const hit = root.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)
       return Boolean(banner && box.width > 0 && box.left >= banner.left && box.right <= banner.right && box.top >= banner.top && box.bottom <= banner.bottom && hit && pill.contains(hit))
     })
-    await expect(bannerPill).toHaveText('See what’s coming →')
+    // A browser with no account cannot tell whether sales are open, so the pill makes no claim.
+    await expect(bannerPill).toHaveText('View benefits →')
     expect(await bannerPillOnTop()).toBe(true)
     await expect.soft(host.locator('.pulse-host')).toHaveScreenshot('settings-host-page.png', {
       animations: 'disabled',

@@ -35,17 +35,22 @@ describe('audited pay-first recovery', () => {
     f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 200, body: { attemptId, url: 'https://checkout.stripe.com/c/pay/retry', expiresAt: iso(1_200_000) } })
     expect(await f.pay.billing('checkout')).toEqual({ state: 'waiting', attemptId })
   })
-  it('keeps an unpaid open session reopenable while stopping automatic polling at thirty minutes', async () => {
+  it('keeps an unpaid open session reopenable while slowing automatic polling at thirty minutes', async () => {
     const f = fixture()
     f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 200, body: { attemptId, url: 'https://checkout.stripe.com/c/pay/local', expiresAt: iso(86_400_000) } })
     await f.pay.billing('checkout'); f.advance(5000)
     f.request.mockResolvedValueOnce({ status: 200, body: { attemptId, state: 'open', expiresAt: iso(86_400_000) } })
     expect(await f.pay.billing('status')).toEqual({ state: 'waiting', attemptId })
     f.advance(30 * 60_000)
-    const calls = f.request.mock.calls.length
     expect(await f.recreate().hasPending()).toBe(false)
+    // One late check when settings reads the status, then none for ten minutes.
+    f.request.mockResolvedValueOnce({ status: 200, body: { attemptId, state: 'open', expiresAt: iso(86_400_000) } })
     expect(await f.recreate().billing('status')).toEqual({ state: 'waiting', attemptId, automaticPolling: false })
-    expect(f.request).toHaveBeenCalledTimes(calls)
+    const checks = () => f.request.mock.calls.filter(([path]) => path === `/v1/billing/checkout/${attemptId}`).length
+    const late = checks()
+    f.advance(10 * 60_000 - 1)
+    expect(await f.recreate().billing('status')).toEqual({ state: 'waiting', attemptId, automaticPolling: false })
+    expect(checks()).toBe(late)
     expect(await f.pay.billing('resume')).toEqual({ state: 'waiting', attemptId })
     f.request.mockResolvedValueOnce({ status: 200, body: { attemptId, state: 'unpaid' } })
     expect(await f.pay.billing('check')).toEqual({ state: 'expired' })
@@ -195,6 +200,16 @@ describe('audited pay-first recovery', () => {
     f.request.mockResolvedValueOnce({ status: 200, body: { attemptId, state: 'expired', expiresAt: iso(4000) } })
     expect(await f.pay.billing('check')).toEqual({ state: 'expired' })
     expect(JSON.stringify(f.stored())).not.toContain('checkout.stripe')
+  })
+  it('drops a refunded checkout on a late status read, without a click', async () => {
+    const f = fixture()
+    f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 200, body: { attemptId, url: 'https://checkout.stripe.com/c/pay/local', expiresAt: iso(86_400_000) } })
+    await f.pay.billing('checkout')
+    f.advance(31 * 60_000)
+    f.setMembership({ status: 'expired', restoreEligible: false })
+    f.request.mockResolvedValueOnce({ status: 200, body: { attemptId, state: 'active', expiresAt: iso(86_400_000) } })
+    expect(await f.recreate().billing('status')).toEqual({ state: 'idle' })
+    expect(f.stored()).not.toHaveProperty('billing')
   })
   it('clears a completed owned checkout after its membership has ended, allowing a deliberate rejoin', async () => {
     const f = fixture()
