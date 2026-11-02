@@ -536,10 +536,10 @@ export function channelRows(live: readonly HubLiveChannel[], query: HubChannelQu
 export function channelsTip(liveCount: number, poolSize: number, basis: HubChatBasis = 'five_min'): string {
   // the recent average says what it is and why (candidate, 10-30)
   if (basis === 'avg_35') {
-    return `Every channel in the live pool (${formatHubInt(liveCount)} of the ~${formatHubInt(poolSize)} we follow). The 5-minute counts did not load, so Chat/min is each channel’s recent average: up to the last 35 minutes, counting only minutes with data and the current unfinished minute, so it can cover much less. vs own avg has nothing to compare. `
+    return `Every channel in the live pool (${formatHubInt(liveCount)} of the ~${formatHubInt(poolSize)} we track). The 5-minute counts did not load, so Chat/min is each channel’s recent average: up to the last 35 minutes, counting only minutes with data and the current unfinished minute, so it can cover much less. vs own avg has nothing to compare. `
       + 'A dash means not measured: viewers-only channels have no chat count. Click a channel to open its stream page.'
   }
-  return `Every channel in the live pool (${formatHubInt(liveCount)} of the ~${formatHubInt(poolSize)} we follow). Chat/min is the last 5 closed minutes. `
+  return `Every channel in the live pool (${formatHubInt(liveCount)} of the ~${formatHubInt(poolSize)} we track). Chat/min is the last 5 closed minutes. `
     + 'vs own avg compares those 5 minutes with the stream’s own measured average so far, shown only when that average is ready and built from at least 10 measured minutes. '
     + 'A dash means not measured: viewers-only channels have no chat count, and young streams have no average yet. Click a channel to open its stream page.'
 }
