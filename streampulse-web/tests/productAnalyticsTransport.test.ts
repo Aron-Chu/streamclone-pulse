@@ -11,6 +11,25 @@ async function readBlob(blob: Blob): Promise<string> {
 }
 
 describe('native public capture transport privacy boundary', () => {
+  it('sends only fixed tool and outcome values, with no inputs, profile or persistent identity', async () => {
+    const beacon = vi.fn(() => true)
+    Object.defineProperty(navigator, 'sendBeacon', { configurable: true, value: beacon })
+    let allowed = true
+    const client = createPublicCaptureClient('phc_testonly', category => allowed && category === 'tool')
+    client.captureTimestampLinkBuilt()
+    const event = JSON.parse(await readBlob((beacon.mock.calls as unknown as [string, Blob][])[0]![1]))
+    expect(event.event).toBe('portal_public_tool_completed')
+    expect(event.properties).toEqual({ page_category: 'tool', tool: 'twitch_vod_timestamp_link', outcome: 'link_built', $process_person_profile: false, $geoip_disable: true })
+    expect(JSON.stringify(event)).not.toMatch(/current_url|referrer|video_id|timestamp_input|session_id/)
+    allowed = false
+    client.captureTimestampLinkBuilt()
+    client.stop()
+    allowed = true
+    client.captureTimestampLinkBuilt()
+    expect(beacon).toHaveBeenCalledTimes(1)
+    expect(Object.keys(localStorage)).toEqual([])
+  })
+
   it('accepts summary categories without transmitting channel, stream or location data', async () => {
     const beacon = vi.fn(() => true)
     Object.defineProperty(navigator, 'sendBeacon', { configurable: true, value: beacon })
