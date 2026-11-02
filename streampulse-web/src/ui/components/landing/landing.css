@@ -281,6 +281,31 @@
   margin-top: 1.6rem;
 }
 
+/* P1 (11-02): a phone leads with Open the Hub, filled as the default button, and a line that the extension is for
+   desktop; the install button goes there, as on the hub. Wider screens keep both buttons as they are. */
+.sl-stage > p.sl-hero__desk { display: none; }
+
+@media (max-width: 719px) {
+  .sl-hero__actions [data-cta="chrome-install-hero"] { display: none; }
+  .sl-hero__actions .sc-btn.sl-hero__hub {
+    border-color: transparent;
+    background: hsl(var(--sc-primary));
+    color: hsl(var(--sc-primary-foreground));
+  }
+  .sl-hero__actions .sc-btn.sl-hero__hub:hover:not(:disabled) {
+    background: hsl(var(--sc-primary) / 0.9);
+    color: hsl(var(--sc-primary-foreground));
+  }
+  .sl-stage > p.sl-hero__desk {
+    display: block;
+    margin: 0.6rem auto 0;
+    color: hsl(var(--sc-muted-foreground));
+    font-size: 13px;
+    line-height: 18px;
+    text-align: center;
+  }
+}
+
 .sl-discord-icon:focus-visible,
 .sc-btn.sl-discord-nav:focus-visible {
   outline: 2px solid #c4b5fd;

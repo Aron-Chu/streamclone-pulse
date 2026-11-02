@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
@@ -236,5 +238,24 @@ describe('landing page', () => {
     await screen.findByRole('heading', { name: /actually reacted to/i })
     expect(screen.getByText(/trending emotes/i)).toBeTruthy()
     expect(screen.getByText(/trending channels/i)).toBeTruthy()
+  })
+})
+
+describe('landing hero on a phone (P1, 11-02)', () => {
+  it('marks Open the Hub for the phone style and says the extension is for desktop', async () => {
+    renderLanding()
+    await screen.findByRole('heading', { name: /actually reacted to/i })
+    const hub = screen.getAllByRole('link', { name: /open the hub/i }).find((a) => a.closest('.sl-hero__actions'))!
+    expect(hub.className).toContain('sl-hero__hub')
+    // the outline style stays for wider screens
+    expect(hub.className).toContain('sc-btn--outline')
+    const desk = document.querySelector('.sl-stage > p.sl-hero__desk')!
+    expect(desk.textContent).toBe('Desktop extension for Chrome, Edge and Firefox')
+    expect(desk.previousElementSibling?.classList.contains('sl-hero__actions')).toBe(true)
+  })
+
+  it('hides the install button and fills Open the Hub only below 720 px', () => {
+    const css = readFileSync(resolve(process.cwd(), 'src/ui/components/landing/landing.css'), 'utf8')
+    expect(css).toMatch(/\.sl-stage > p\.sl-hero__desk \{ display: none; \}\s*@media \(max-width: 719px\) \{\s*\.sl-hero__actions \[data-cta="chrome-install-hero"\] \{ display: none; \}\s*\.sl-hero__actions \.sc-btn\.sl-hero__hub \{[^}]*background: hsl\(var\(--sc-primary\)\);/)
   })
 })

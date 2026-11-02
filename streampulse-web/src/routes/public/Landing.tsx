@@ -199,12 +199,14 @@ function Hero({
         </div>
         <div className="sl-hero__actions">
           <InstallCta className={buttonClass('default', 'lg')} data-cta="chrome-install-hero" icon="mark" />
-          <Link to="/analytics" className={buttonClass('outline', 'lg')} onClick={() => capturePublicCta('open_analytics')}>
+          {/* a phone leads with this one, filled, and no install button (P1, 11-02; landing.css) */}
+          <Link to="/analytics" className={buttonClass('outline', 'lg', { className: 'sl-hero__hub' })} onClick={() => capturePublicCta('open_analytics')}>
             <LineChart size={17} aria-hidden="true" />
             Open the Hub
             <ArrowRight size={16} aria-hidden="true" />
           </Link>
         </div>
+        <p className="sl-hero__desk">Desktop extension for Chrome, Edge and Firefox</p>
       </div>
     </section>
   )
