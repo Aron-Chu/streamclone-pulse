@@ -41,8 +41,10 @@ export function momentLiftLine(moment: Pick<DiscoveryMoment, 'comparison' | 'rea
     ? [['emotes', moment.comparison?.emotes], ['chat', moment.comparison?.chat]] as const
     : [['chat', moment.comparison?.chat], ['emotes', moment.comparison?.emotes]] as const
   for (const [what, metric] of order) {
-    if (metric?.state !== 'ready' || metric.multiplier == null || !Number.isFinite(metric.multiplier) || metric.multiplier < 1) continue
-    return { x: `${metric.multiplier.toFixed(metric.multiplier >= 10 ? 0 : 1)}×`, what }
+    // "1.0× more" would claim a rise that rounds away; such a minute keeps the plain summary.
+    if (metric?.state !== 'ready' || metric.multiplier == null || !Number.isFinite(metric.multiplier) || metric.multiplier < 1.05) continue
+    // 9.95–9.99 rounds to ten, so it reads "10×", not "10.0×"
+    return { x: `${metric.multiplier.toFixed(metric.multiplier >= 9.95 ? 0 : 1)}×`, what }
   }
   return null
 }

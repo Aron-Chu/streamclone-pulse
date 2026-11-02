@@ -604,8 +604,9 @@ a.moments-creator-link:hover strong { text-decoration: underline; text-underline
 .moments-notice .moments-back { margin-left: 10px; }
 .moments-workspace select option { background: var(--sp-popover, #18181b); color: var(--fma-text, #f4f4f5); }
 
-/* The games on top (M1, 10-22, ported from the checked Moments page): big covers, All first, the busiest next. */
-.moments-covers { --fade: 40px; list-style: none; display: flex; gap: 14px; margin: 14px 0 4px; padding: 4px 4px 10px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+/* The games on top (M1, 10-22, ported from the checked Moments page): big covers, All first, the busiest next.
+   A cover reached by Tab scrolls clear of the faded edge (scroll-padding), so its focus ring shows. */
+.moments-covers { --fade: 40px; list-style: none; display: flex; gap: 14px; margin: 14px 0 4px; padding: 4px 4px 10px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; scroll-padding-inline: var(--fade); }
 .moments-covers::-webkit-scrollbar { display: none; }
 .moments-covers.more-r { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - var(--fade)), transparent); mask-image: linear-gradient(to right, #000 calc(100% - var(--fade)), transparent); }
 .moments-covers.more-l { -webkit-mask-image: linear-gradient(to right, transparent, #000 var(--fade)); mask-image: linear-gradient(to right, transparent, #000 var(--fade)); }

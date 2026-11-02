@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type FocusEvent } from 'react'
 import type { MomentsGame } from '../../../lib/momentsPage'
 
 const initials = (name: string) => name.replace(/[^\p{L}\p{N}]/gu, '').slice(0, 2).toUpperCase() || '?'
@@ -69,7 +69,15 @@ export function MomentsGameRow({ games, total, picked, onPick }: {
     if (card.offsetLeft + card.offsetWidth > row.clientWidth) row.scrollLeft = card.offsetLeft - 8
   }, [picked, shown.length])
 
-  return <ul ref={ref} className={`moments-covers${edge.left ? ' more-l' : ''}${edge.right ? ' more-r' : ''}`} aria-label="Games, busiest first">
+  // a cover reached by Tab comes clear of the faded edges (the row's scroll-padding), so its focus ring shows; a click never moves the row
+  const onFocus = (event: FocusEvent<HTMLUListElement>) => {
+    const target = event.target as HTMLElement
+    let keyboard = false
+    try { keyboard = target.matches(':focus-visible') } catch { /* an engine without :focus-visible leaves the row where it is */ }
+    if (keyboard) target.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+  }
+
+  return <ul ref={ref} className={`moments-covers${edge.left ? ' more-l' : ''}${edge.right ? ' more-r' : ''}`} aria-label="Games, busiest first" onFocus={onFocus}>
     <li>
       <button className="moments-cover moments-cover-all" type="button" aria-pressed={!picked} onClick={() => onPick(null)}
         aria-label={`All games: ${count(total)}. Shows every game’s moments.`}>

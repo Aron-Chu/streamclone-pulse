@@ -35,11 +35,16 @@ describe('the open moment’s × line', () => {
 
   it('falls back to the other signal that rose, and rounds ten and over', () => {
     expect(momentLiftLine({ reactionSignal: 'emotes', comparison: comparison(ready(12.4), ready(0.8)) })).toEqual({ x: '12×', what: 'chat' })
+    expect(momentLiftLine({ reactionSignal: 'chat', comparison: comparison(ready(9.97), undefined) })).toEqual({ x: '10×', what: 'chat' })
+    expect(momentLiftLine({ reactionSignal: 'chat', comparison: comparison(ready(9.9), undefined) })).toEqual({ x: '9.9×', what: 'chat' })
   })
 
   it('says nothing when neither rose', () => {
     expect(momentLiftLine({ reactionSignal: 'chat', comparison: comparison(ready(0.9), ready(0.4)) })).toBeNull()
     expect(momentLiftLine({ reactionSignal: 'chat', comparison: undefined })).toBeNull()
+    // a rise that rounds to 1.0× is not "more"
+    expect(momentLiftLine({ reactionSignal: 'chat', comparison: comparison(ready(1.04), ready(1.02)) })).toBeNull()
+    expect(momentLiftLine({ reactionSignal: 'chat', comparison: comparison(ready(1.05), undefined) })).toEqual({ x: '1.1×', what: 'chat' })
   })
 })
 
