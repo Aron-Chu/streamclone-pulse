@@ -613,7 +613,18 @@
   -webkit-mask-image: linear-gradient(180deg, transparent, #000 18%);
   mask-image: linear-gradient(180deg, transparent, #000 18%);
 }
-.hv5-pr-lines { position: absolute; left: 10px; right: 8px; bottom: 8px; display: flex; flex-direction: column; gap: 5px; }
+/* Pinned by its top and lifted by its own height, so it still ends 8px above the bottom: a new line
+   lengthens it downward and the lift moves the older ones up. A moved transform isn't layout shift. */
+.hv5-pr-lines {
+  position: absolute;
+  left: 10px;
+  right: 8px;
+  top: calc(100% - 8px);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  transform: translateY(-100%);
+}
 .hv5-pr-cl {
   display: flex;
   flex-wrap: wrap;
@@ -621,10 +632,11 @@
   gap: 4px;
   color: #e4e4e7;
   font: 500 12px/20px var(--sp-font);
-  animation: hv5-pr-in 0.25s ease both;
+  animation: hv5-pr-in 0.25s ease backwards;
 }
 .hv5-pr-cl b { font-weight: 700; }
 .hub-v5 .hv5-mast .hv5-pr-cl img { width: 20px; height: 20px; }
+/* backwards, not both (11-01): a fade held after it ends kept every finished line in effect */
 @keyframes hv5-pr-in { from { opacity: 0; transform: translateY(8px); } }
 .hv5-pr-chart, .hv5-pr-mom, .hv5-pr-card { opacity: 0; }
 .hv5-pr-mom { transform: translateY(60px); }

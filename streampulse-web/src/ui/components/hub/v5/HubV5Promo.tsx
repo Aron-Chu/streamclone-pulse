@@ -114,14 +114,12 @@ export const HubV5Promo = forwardRef<HTMLDivElement>(function HubV5Promo(_props,
       setBeat(b)
       requestAnimationFrame(() => requestAnimationFrame(() => stage.classList.remove('hv5-pr-snap')))
     }
-    const say = (line: HTMLElement) => {
-      lines.append(line)
-      while (lines.childElementCount > 14) lines.firstElementChild?.remove()
-    }
+    // No line leaves while chat plays: dropping the oldest would move the others up in layout, which counts as
+    // layout shift. A loop adds about 20, out of sight above the top, and the next loop starts afresh.
     const chat = (everyMs: number) => {
       window.clearInterval(chatTimer)
       let i = 0
-      chatTimer = window.setInterval(() => say(chatLine(CHAT[i++ % CHAT.length]!)), everyMs)
+      chatTimer = window.setInterval(() => lines.append(chatLine(CHAT[i++ % CHAT.length]!)), everyMs)
     }
     const click = () => {
       cursor.classList.remove('hv5-pr-click')
