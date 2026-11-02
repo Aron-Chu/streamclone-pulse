@@ -94,7 +94,7 @@ describe('landing page', () => {
 
     // One search, in the hero: the page ends with the demo, then the footer (D1, 11-02).
     expect(screen.getAllByRole('search')).toHaveLength(1)
-    expect(screen.getAllByRole('combobox', { name: /search a channel/i })).toHaveLength(1)
+    expect(screen.getAllByRole('combobox', { name: /search streamers or games/i })).toHaveLength(1)
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
       expect.stringMatching(/see it beside twitch chat/i),
     ])
@@ -140,7 +140,7 @@ describe('landing page', () => {
     expect(chips.map((chip) => chip.lastElementChild?.textContent)).toEqual(['xQc', 'tarik'])
     expect(chips[0]!.getAttribute('href')).toBe('/analytics/xqc')
 
-    const box = hero.getByRole('combobox', { name: /search a channel/i })
+    const box = hero.getByRole('combobox', { name: /search streamers or games/i })
     fireEvent.keyDown(document.body, { key: '/' })
     expect(document.activeElement).toBe(box)
   })

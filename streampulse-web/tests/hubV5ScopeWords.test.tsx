@@ -13,25 +13,25 @@ function hero(poolSize: number) {
   )
 }
 
-// The hub says what it covers in one set of words: Twitch's busiest channels.
+// The hub says what it covers in one set of words: the Twitch channels we track (W1, 11-02).
 describe('hub scope words', () => {
-  it('promises the busiest channels, not any channel, in the line under the heading', () => {
+  it('promises the channels we track, not any channel, in the line under the heading', () => {
     const { container } = hero(1000)
     expect(container.querySelector('.hv5-hero-sub')!.textContent)
-      .toBe("Chat, emotes and top moments for Twitch's busiest channels, minute by minute.")
+      .toBe('Chat, emotes and top moments for the Twitch channels we track, minute by minute.')
     expect(container.textContent).not.toMatch(/any Twitch channel/i)
   })
 
-  it('asks for "a channel" in the search box', () => {
+  it('asks for streamers or games in the search box (Q1, 11-02)', () => {
     hero(1000)
-    const field = screen.getByRole('combobox', { name: 'Search a channel' })
-    expect(field.getAttribute('placeholder')).toBe('Search a channel')
+    const field = screen.getByRole('combobox', { name: 'Search streamers or games' })
+    expect(field.getAttribute('placeholder')).toBe('Streamers or games')
   })
 
   it('names the scope once, with no second total, and keeps "not all of Twitch"', () => {
     const { container } = hero(1000)
     const scope = container.querySelector('.hv5-scope')!
-    expect(scope.textContent).toBe("The hub below covers Twitch's busiest channels · not all of Twitch")
+    expect(scope.textContent).toBe('The hub below covers the Twitch channels we track · not all of Twitch')
     expect(container.textContent).not.toMatch(/channels we follow|1,000/)
   })
 

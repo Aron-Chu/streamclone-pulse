@@ -100,7 +100,7 @@ export function HubV5Hero({ live, poolSize, points = NO_POINTS, foot }: { live: 
       <HubV5Conveyor points={points} refs={conveyorRefs} />
       <p className="hv5-hero-k" ref={kickerRef}>Analytics</p>
       <h1 className="hv5-hero-h">Find your streamer</h1>
-      <p className="hv5-hero-sub">Chat, emotes and top moments for Twitch&apos;s busiest channels, minute by minute.</p>
+      <p className="hv5-hero-sub">Chat, emotes and top moments for the Twitch channels we track, minute by minute.</p>
       <div className="hv5-hero-field" ref={fieldRef}>
         <HubV5SearchBox live={live} variant="hero" />
       </div>
@@ -123,7 +123,7 @@ export function HubV5Hero({ live, poolSize, points = NO_POINTS, foot }: { live: 
         </p>
       ) : null}
       <div className="hv5-hero-foot" ref={footRef}>
-        {poolSize > 0 ? <p className="hv5-scope">The hub below covers Twitch&apos;s busiest channels · not all of Twitch</p> : null}
+        {poolSize > 0 ? <p className="hv5-scope">The hub below covers the Twitch channels we track · not all of Twitch</p> : null}
         {foot}
       </div>
     </header>

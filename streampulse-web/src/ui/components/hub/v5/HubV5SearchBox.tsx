@@ -18,7 +18,9 @@ import { channelHref, channelsByViewers, formatHubInt, searchChannels, typedLogi
 import { useHubV5Search, useHubV5SearchStore } from './hubV5SearchStore'
 
 export const IS_MAC = typeof navigator !== 'undefined' && /Mac|iP(hone|ad|od)/.test(navigator.platform || navigator.userAgent)
-export const HUB_SEARCH_PLACEHOLDER = 'Search a channel'
+export const HUB_SEARCH_PLACEHOLDER = 'Streamers or games'
+/** The field's name for screen readers: the placeholder's words, said as an action. */
+export const HUB_SEARCH_LABEL = 'Search streamers or games'
 const BLUR_CLOSE_MS = 150
 
 interface Option {
@@ -117,7 +119,7 @@ export function HubV5SearchBox({ live, variant }: { live: readonly HubLiveChanne
           aria-controls={listId}
           aria-autocomplete="list"
           aria-activedescendant={expanded && active >= 0 ? optionId(active) : undefined}
-          aria-label={HUB_SEARCH_PLACEHOLDER}
+          aria-label={HUB_SEARCH_LABEL}
           placeholder={HUB_SEARCH_PLACEHOLDER}
           spellCheck={false}
           autoComplete="off"
