@@ -17,6 +17,8 @@ const GAMES = ['Just Chatting', 'Just Chatting', 'Just Chatting', 'Minecraft', '
 const TOP_MOMENT: HubUxMockOptions = { withComparisons: true, momentOffsets: [3600, 3600] }
 
 async function openV5Hub(page: Page, options: HubUxMockOptions = {}) {
+  // on the context, so every page mock wins: an API read nothing here answers gets a 404, never the live API
+  await page.context().route(/^https:\/\/api\.streampulse\.stream\//, route => route.fulfill({ status: 404, json: {} }))
   await installHubUxMock(page, { featuredSession: READY_FEATURED_SESSION, ...options })
   const first = page.waitForResponse(response => /\/v1\/public\/hub\?/.test(response.url()))
   await page.goto('/analytics')
@@ -160,13 +162,34 @@ test('the Featured stream holds its place while the hub loads, so nothing under 
   }
 })
 
+/**
+ * The search's lookups for one login (3A): the latest recorded stream and the Twitch profile. Fulfilled here, never
+ * passed on: a login in `streams` answers with that stream, every other read is the edge's 502.
+ */
+async function fenceLookups(page: Page, streams: Record<string, Record<string, unknown>> = {}) {
+  await page.route(/\/v1\/channels\/[^/?]+(\?.*)?$/, route => {
+    const login = new URL(route.request().url()).pathname.split('/').pop() ?? ''
+    return streams[login]
+      ? route.fulfill({ json: { login, displayName: String(streams[login].displayName ?? login) } })
+      : route.fulfill({ status: 502, contentType: 'text/plain', body: 'error code: 502' })
+  })
+  await page.route(/\/v1\/portal\/analytics\/channels\/[^/]+\/streams(\?.*)?$/, route => {
+    const login = new URL(route.request().url()).pathname.split('/')[5] ?? ''
+    return streams[login]
+      ? route.fulfill({ json: { channel: login, items: [{ login, ...streams[login] }] } })
+      : route.fulfill({ status: 502, contentType: 'text/plain', body: 'error code: 502' })
+  })
+}
+
 test('the hero search lists live channels, filters as you type and opens the pick', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
+  await fenceLookups(page)
   await openV5Hub(page)
   const input = page.getByRole('combobox', { name: /search/i })
+  await expect(input).toHaveAttribute('placeholder', 'Search streamers or games')
   await page.keyboard.press('Control+k')
   await expect(input).toBeFocused()
-  const list = page.getByRole('listbox', { name: 'Channels' })
+  const list = page.getByRole('listbox', { name: 'Search suggestions' })
   await expect(list).toBeVisible()
   await expect(list.getByRole('option')).toHaveCount(6)
   await expect(list.getByRole('option').first()).toContainText('xQc')
@@ -178,6 +201,89 @@ test('the hero search lists live channels, filters as you type and opens the pic
   await input.fill('sodapoppin')
   await page.keyboard.press('Enter')
   await expect(page).toHaveURL(/\/analytics\/sodapoppin$/)
+})
+
+test('the hero search shows an offline channel from its records, and "can’t check" when the read fails', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await fenceLookups(page, {
+    mizkif: { displayName: 'Mizkif', streamId: '777', startedAt: '2026-10-31T18:00:00Z', endedAt: '2026-10-31T22:00:00Z', category: 'Just Chatting' },
+  })
+  await openV5Hub(page)
+  const input = page.getByRole('combobox', { name: /search/i })
+  const list = page.getByRole('listbox', { name: 'Search suggestions' })
+  // not live in the mock, so its row comes from the lookups
+  await input.fill('mizkif')
+  const row = list.locator('[data-kind="login"]')
+  await expect(row).toHaveAttribute('data-state', 'recorded')
+  await expect(row).toContainText('Mizkif')
+  await expect(row).toContainText('Offline · last streamed Oct 31 · Just Chatting')
+  await expect(row).toHaveAttribute('href', '/analytics/mizkif/777')
+  await input.fill('zzzqqqxx1')
+  await expect(row).toHaveAttribute('data-state', 'unknown')
+  await expect(row).toContainText('Open analytics for zzzqqqxx1')
+  await expect(row).toContainText('Can’t check right now')
+  await expect(row).toHaveAttribute('href', '/analytics/zzzqqqxx1')
+  await noSideScroll(page)
+})
+
+test('a game from the hero search filters Channels in place and keeps it in the link', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await fenceLookups(page)
+  await openV5Hub(page)
+  // the hero's box: once the page scrolls to Channels, the top bar shows its own
+  const hero = page.getByRole('main')
+  const input = hero.getByRole('combobox', { name: /search/i })
+  const list = hero.getByRole('listbox', { name: 'Search suggestions', includeHidden: true })
+  await input.fill('minec')
+  const game = list.locator('[data-kind="game"]', { hasText: 'Minecraft' })
+  await expect(game).toContainText('4 channels live')
+  await game.click()
+  await expect(page).toHaveURL(/\/analytics\?game=Minecraft$/)
+  await expect(input).toHaveValue('')
+  await expect(list).toBeHidden()
+  const channels = page.locator('#channels')
+  await expect(channels.locator('[data-chip="game"]')).toContainText('Minecraft')
+  await expect(channels.locator('[data-hv5-channel-count]')).toHaveText('4 channels')
+  await expect(page.locator('#games [data-game="Minecraft"]')).toHaveAttribute('aria-pressed', 'true')
+  // the link opens on the same filter
+  await page.reload()
+  await expect(page.locator('#channels [data-chip="game"]')).toContainText('Minecraft')
+  await page.locator('#channels').getByRole('button', { name: 'Remove the Minecraft filter' }).click()
+  await expect(page).toHaveURL(/\/analytics$/)
+})
+
+test('an emote from the hero search is found on the Top emotes map, and Find emote clears with Esc', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await fenceLookups(page)
+  await openV5Hub(page, { bucketEmoteDetail: true })
+  const emotes = page.locator('#emotes')
+  await expect(emotes.locator('.hv5-em-t').first()).toBeVisible()
+  const input = page.getByRole('combobox', { name: /search/i })
+  const list = page.getByRole('listbox', { name: 'Search suggestions' })
+  await input.fill('OMEGA')
+  const pick = list.locator('[data-kind="emote"]', { hasText: 'OMEGALUL' })
+  await expect(pick).toContainText('BTTV')
+  await pick.click()
+  const find = emotes.getByRole('searchbox', { name: 'Find emote on the map' })
+  await expect(find).toHaveValue('OMEGALUL')
+  const found = emotes.locator('.hv5-em-ly:not([data-out]) > .hv5-em-t[data-found]')
+  await expect(found).toHaveCount(1)
+  await expect(found).toHaveAttribute('aria-pressed', 'true')
+  await expect(found).toHaveAttribute('aria-label', /OMEGALUL/)
+  await expect(emotes.locator('.hv5-el-ti')).toContainText('OMEGALUL')
+  await expect(emotes).toBeInViewport()
+  // typed in the map's own box: the best match, and a plain line when nothing matches
+  await find.fill('Dino')
+  await expect(found).toHaveAttribute('aria-label', /DinoDance/)
+  await find.fill('nothing-here')
+  await expect(found).toHaveCount(0)
+  await expect(emotes.locator('.hv5-em-fmsg[role="status"]')).toContainText('No emote matches “nothing-here”')
+  await find.fill('KEKW')
+  await expect(found).toHaveAttribute('aria-label', /KEKW/)
+  await find.press('Escape')
+  await expect(find).toHaveValue('')
+  await expect(found).toHaveCount(0)
+  await expect(emotes.locator('.hv5-em-zr')).toHaveText('1.0×')
 })
 
 test('Busiest now ranks by chat, pages with the buttons and moves focus with the arrow keys', async ({ page }) => {

@@ -37,6 +37,7 @@ import type { HubActivityPoint, HubEmote, HubLivePulseMoment } from '../../../..
 import { useMatchMedia } from '../../../hooks/useMatchMedia'
 import { HubToggletip } from '../d3/HubToggletip'
 import { HubV5Avatar } from './HubV5Avatar'
+import { HubV5Icon } from './HubV5Icon'
 import {
   EMOTE_ZOOM_MAX,
   MAP_VIEW_1X,
@@ -62,6 +63,7 @@ import {
   emoteWindowLabel,
   emoteWindowWords,
   fieldMapView,
+  findMapEmote,
   mapViewShowing,
   nearestTile,
   paceHeat,
@@ -69,6 +71,7 @@ import {
   providerName,
   springCurve,
   tileFits,
+  tileMapView,
   tilePicUrl,
   zoomMapAt,
   type EmoteChange,
@@ -243,10 +246,12 @@ interface TileProps {
   label: string
   /** Dropped by a glide: it fades where it was. */
   gone?: boolean
+  /** The emote Find emote matched (3A). */
+  found?: boolean
 }
 
 /** A tile: its plate (the fill and the rings) and its content, which the resting zoom counter-scales to screen pixels. */
-const Tile = memo(function Tile({ t, fit, heat, play, animated, tab, pressed, label, gone }: TileProps) {
+const Tile = memo(function Tile({ t, fit, heat, play, animated, tab, pressed, label, gone, found }: TileProps) {
   const face = fit?.face ?? t
   return (
     <button
@@ -255,6 +260,7 @@ const Tile = memo(function Tile({ t, fit, heat, play, animated, tab, pressed, la
       data-eid={t.a.id}
       data-field={t.field}
       data-out={gone || undefined}
+      data-found={found || undefined}
       style={heat ? { ...cellStyle(t), ...heatStyle(t.a) } : cellStyle(t)}
       tabIndex={tab ? 0 : -1}
       aria-pressed={pressed}
@@ -288,6 +294,7 @@ interface TileLayerProps {
   hoverId: string | null
   tabId: string | null
   selId: string | null
+  foundId: string | null
   heat: boolean
   animatedSet: ReadonlySet<string>
   words: string
@@ -302,7 +309,7 @@ interface TileLayerProps {
 const TileLayer = memo(function TileLayer(props: TileLayerProps) {
   const kept = useRef(props)
   if (!props.out) kept.current = props
-  const { gen, layout, gone, fits, playing, hoverId, tabId, selId, heat, animatedSet, words, hourOk, windowLabel } = props.out ? kept.current : props
+  const { gen, layout, gone, fits, playing, hoverId, tabId, selId, foundId, heat, animatedSet, words, hourOk, windowLabel } = props.out ? kept.current : props
   const out = props.out
   const labels = useMemo(() => {
     const m = new Map<string, string>()
@@ -324,6 +331,7 @@ const TileLayer = memo(function TileLayer(props: TileLayerProps) {
       pressed={!isGone && selId === t.a.id}
       label={labels.get(t.a.id) ?? ''}
       gone={isGone}
+      found={!isGone && foundId === t.a.id}
     />
   )
   return (
@@ -526,6 +534,7 @@ export function HubV5EmoteMap({
   intervalWindow,
   historyBehind,
   topEmotes,
+  findRequest,
 }: {
   points: readonly HubActivityPoint[]
   bucketMinutes: number
@@ -542,6 +551,8 @@ export function HubV5EmoteMap({
   historyBehind?: string | null
   /** The hub's top emotes: which are animated, so a 7TV still is asked for only those (A). */
   topEmotes?: readonly HubEmote[]
+  /** The hub search's emote pick (3A): find it on the map once per n. */
+  findRequest?: { name: string; n: number } | null
 }) {
   const data = useMemo(() => emoteMapData(points, bucketMinutes), [points, bucketMinutes])
   const phone = useMatchMedia('(max-width: 719px)')
@@ -1016,6 +1027,62 @@ export function HubV5EmoteMap({
     target.focus({ preventScroll: true })
   }
 
+  /* ---------- Find emote (3A, 11-02): typing highlights an emote and flies to it; Esc clears ---------- */
+  const [findText, setFindText] = useState('')
+  const [found, setFound] = useState<{ id: string; n: number } | null>(null)
+  const [findMiss, setFindMiss] = useState(false)
+  const flyFound = useRef<string | null>(null)
+  /** The best match in this window, else in the whole answer (its chip then switches to it); `pick` also selects it. */
+  const runFind = (text: string, pick: boolean): boolean => {
+    if (!data) return false
+    let hit = findMapEmote(layout?.ranked ?? [], text)?.a ?? null
+    if (!hit && view !== 'all') {
+      hit = findMapEmote(data.emotes.map((a) => ({ a, v: emoteMapValue(a, 'all', data) })).filter((x) => x.v > 0), text)?.a ?? null
+      if (hit) setWin('all')
+    }
+    setFindMiss(!hit)
+    if (!hit) {
+      if (found) {
+        setFound(null)
+        moveCam(MAP_VIEW_1X, FLY_MS)
+      }
+      return false
+    }
+    const id = hit.id
+    hide()
+    flyFound.current = id
+    setFound((prev) => ({ id, n: (prev?.n ?? 0) + 1 }))
+    if (pick) setSel(id)
+    return true
+  }
+  const clearFind = () => {
+    setFindText('')
+    setFindMiss(false)
+    if (found) {
+      setFound(null)
+      moveCam(MAP_VIEW_1X, FLY_MS)
+    }
+  }
+  // once the found emote has its tile (a switched window lays out first), the camera flies to it
+  useEffect(() => {
+    const id = flyFound.current
+    if (!id || !layout) return
+    const t = layout.tiles.find((x) => x.a.id === id)
+    if (!t) return
+    flyFound.current = null
+    moveCam(tileMapView(t, W, VH), FLY_MS)
+  }, [found, layout, W, VH, moveCam])
+  // the hub search's pick: fill the box, select the emote and bring the map into view, once per request
+  const askedFind = useRef(0)
+  useEffect(() => {
+    if (!findRequest || findRequest.n === askedFind.current || !data || !layout) return
+    askedFind.current = findRequest.n
+    setFindText(findRequest.name)
+    runFind(findRequest.name, true)
+    mapRef.current?.closest('section')?.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' })
+  }, [findRequest, data, layout])
+  const foundAgg = found ? data?.byId.get(found.id) : undefined
+
   const tabId = layout && tiles.some((t) => t.a.id === focusId) ? focusId : tiles[0]?.a.id ?? null
   const onAgg = on ? data?.byId.get(on.id) : undefined
   const meta = data && layout ? emoteMapMeta(data, layout, view, historyBehind) : ''
@@ -1034,6 +1101,40 @@ export function HubV5EmoteMap({
         {data ? <HubToggletip tip={emoteMapTip(data)} label="About the emote map" /> : null}
         {data ? (
           <span className="hv5-end">
+            <span className="hv5-field hv5-em-find">
+              <HubV5Icon name="search" />
+              <input
+                type="search"
+                value={findText}
+                placeholder="Find emote"
+                aria-label="Find emote on the map"
+                autoComplete="off"
+                spellCheck={false}
+                enterKeyHint="search"
+                onChange={(event) => {
+                  const next = event.target.value
+                  setFindText(next)
+                  if (next.trim().length >= 2) runFind(next, false)
+                  else if (found || findMiss) {
+                    setFindMiss(false)
+                    if (found) {
+                      setFound(null)
+                      moveCam(MAP_VIEW_1X, FLY_MS)
+                    }
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    runFind(findText, true)
+                  } else if (event.key === 'Escape' && (findText || found)) {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    clearFind()
+                  }
+                }}
+              />
+            </span>
             <span className="hv5-em-zoom" role="group" aria-label="Map zoom">
               {/* written as the camera moves, never by a render (A) */}
               <span ref={readRef} className="hv5-em-zr">1.0×</span>
@@ -1051,6 +1152,11 @@ export function HubV5EmoteMap({
           </span>
         ) : null}
         {data ? <span className="hv5-meta hv5-em-meta" id={META_ID}>{meta}</span> : null}
+        {data ? (
+          <span className={findMiss ? 'hv5-meta hv5-em-fmsg' : 'hv5-vh'} role="status">
+            {findMiss ? `No emote matches “${findText.trim()}” here. Esc clears.` : foundAgg ? `${foundAgg.e.name} is marked on the map.` : ''}
+          </span>
+        ) : null}
       </div>
       {data ? (
         <>
@@ -1110,6 +1216,7 @@ export function HubV5EmoteMap({
                       hoverId={live ? on?.id ?? null : null}
                       tabId={live ? tabId : null}
                       selId={live ? selected?.id ?? null : null}
+                      foundId={live ? found?.id ?? null : null}
                       heat={heat}
                       animatedSet={animatedSet}
                       words={windowWords}

@@ -23,7 +23,7 @@ import type { HubLiveChannel } from '../../lib/publicHub'
 // The hub's own search: the same suggestions and Enter rules, styled for this page in landing.css.
 import { HubV5SearchBox } from '../../ui/components/hub/v5/HubV5SearchBox'
 import { HubV5Avatar } from '../../ui/components/hub/v5/HubV5Avatar'
-import { channelHref, channelsByViewers, formatHubInt } from '../../ui/components/hub/v5/hubV5Model'
+import { channelHref, channelsByViewers, formatHubInt, hubCategoryArt, hubSearchEmotes, hubSearchGames, whereChatIs, type HubSearchEmote, type HubSearchGame } from '../../ui/components/hub/v5/hubV5Model'
 import { createHubV5SearchStore, HubV5SearchContext, useHubV5SearchStore } from '../../ui/components/hub/v5/hubV5SearchStore'
 
 const ExtensionShowcase = lazy(() => import('../../ui/components/landing/ExtensionShowcase').then(module => ({ default: module.ExtensionShowcase })))
@@ -169,10 +169,15 @@ function useSearchShortcut() {
  */
 function Hero({
   live,
+  games,
+  emotes,
   emoteItems,
   moverItems,
 }: {
   live: readonly HubLiveChannel[]
+  /** What the top search offers besides channels (3A): games live now and the top emotes. */
+  games: readonly HubSearchGame[]
+  emotes: readonly HubSearchEmote[]
   emoteItems: ReturnType<typeof buildEmoteTicker>
   moverItems: ReturnType<typeof buildMoverTicker>
 }) {
@@ -183,9 +188,9 @@ function Hero({
         <h1 id="hero-headline">
           Find the Twitch moments people <span className="sl-grad">actually reacted to.</span>
         </h1>
-        <p>Chat, emotes and top moments for any Twitch channel, minute by minute.</p>
+        <p>Chat, emotes and top moments for the Twitch channels we track, minute by minute.</p>
         <div className="sl-search">
-          <HubV5SearchBox live={live} variant="hero" />
+          <HubV5SearchBox live={live} variant="hero" games={games} emotes={emotes} />
         </div>
         <TryChannels live={live} />
         <div className="sl-tickwrap" aria-label="Latest available emote and channel snapshot">
@@ -282,6 +287,8 @@ export default function Landing() {
   const emoteItems = useMemo(() => buildEmoteTicker(data), [data])
   const moverItems = useMemo(() => buildMoverTicker(data), [data])
   const live = data?.liveChannels ?? NO_LIVE
+  const searchGames = useMemo(() => hubSearchGames(whereChatIs(live, undefined, '30m'), hubCategoryArt(data?.livePulseMoments ?? [])), [live, data?.livePulseMoments])
+  const searchEmotes = useMemo(() => hubSearchEmotes([{ topEmotes: data?.topEmotes }]), [data?.topEmotes])
   // One store for the box and the / shortcut.
   const [searchStore] = useState(createHubV5SearchStore)
   const mainRef = useRef<HTMLElement | null>(null)
@@ -338,7 +345,7 @@ export default function Landing() {
         <a className="sl-skip-link" href="#landing-main">Skip to main content</a>
         <TopNav discord={discord} heroButtons={heroButtons} />
         <main id="landing-main" tabIndex={-1} className="sl-main" ref={mainRef}>
-          <Hero live={live} emoteItems={emoteItems} moverItems={moverItems} />
+          <Hero live={live} games={searchGames} emotes={searchEmotes} emoteItems={emoteItems} moverItems={moverItems} />
 
           <section id="demo" className="sl-section" aria-labelledby="demo-title">
             <div className="sl-container">

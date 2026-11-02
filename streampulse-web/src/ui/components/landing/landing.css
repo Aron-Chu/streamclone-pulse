@@ -452,6 +452,11 @@
   position: absolute;
   z-index: 45;
   top: 68px;
+  /* games and emotes make the list longer (3A): it scrolls inside, with no bar */
+  max-height: min(72vh, 640px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
   left: 0;
   right: 0;
   padding: 6px;
@@ -524,6 +529,21 @@
 .sl-search .hv5-sg-open .hv5-ico { width: 16px; height: 16px; margin: 0 6px; }
 .sl-search .hv5-sg-open b { color: hsl(var(--sc-foreground)); }
 .sl-search .hv5-sg-k { margin-left: auto; color: hsl(var(--sc-muted-foreground)); font-size: 12px; }
+
+/* 3A (11-02): the looked-up login's row, a game's cover and an emote's picture */
+.sl-search [data-kind="login"] > .hv5-ico { flex: none; width: 16px; height: 16px; margin: 0 6px; }
+.sl-search [data-kind="login"] b { color: hsl(var(--sc-foreground)); }
+.sl-search :is(.hv5-sg-gm, .hv5-sg-em) {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+}
+.sl-search .hv5-sg-gm > * { width: 24px; height: 32px; border-radius: 3px; overflow: hidden; background: hsl(var(--sc-muted)); }
+.sl-search .hv5-sg-gm img { display: block; object-fit: cover; }
+.sl-search .hv5-sg-gm span { display: grid; place-items: center; color: hsl(var(--sc-muted-foreground)); font-size: 10px; font-weight: 600; }
+.sl-search .hv5-sg-em img { display: block; width: 28px; height: 28px; object-fit: contain; }
 
 .sl-search .hv5-sg-none {
   padding: 10px;
