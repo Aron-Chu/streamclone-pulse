@@ -1035,7 +1035,9 @@ export function AnalyticsConsole({
   // data blanks endedAt, so the shared rule reads availability's "ended" too.
   // Refresh data stays: ended data still changes.
   const sessionEnded = sessionIsEnded({ live: sessionIsLive, stream, availability: detail?.availability })
-  const streamedLine = sessionEnded ? sessionStreamedLine(stream?.startedAt, detail?.momentRollups ?? detail?.rollups) : null
+  const streamedLine = sessionEnded
+    ? sessionStreamedLine(stream?.startedAt, detail?.momentRollups?.length ? detail.momentRollups : detail?.rollups)
+    : null
   const fallbackVodId = useMemo(
     () =>
       resolveSessionFallbackVodId({
