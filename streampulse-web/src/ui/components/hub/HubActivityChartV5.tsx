@@ -52,6 +52,7 @@ import {
   setHubGestureActive,
   toggleHubBucket,
 } from '../../../lib/hubBucketSelection'
+import { HUB_BAR_REST_MS, noteHubBarRest } from '../../../lib/hubLockWarmup'
 import { EmptyState, Skeleton } from './primitives'
 import { HubRangeMenu, type HubActivityRangeControl } from './HubRangeMenuV5'
 import { HubChartNavigator, type HubChartNavigatorPreset } from './HubChartNavigator'
@@ -617,6 +618,24 @@ function HubActivityReady({ model, windowMinutes, rangeControl, annotationLane, 
       onBucketHover(t)
     })
   }, [hover, onBucketHover])
+
+  // A bar the pointer or keyboard cursor rests on for 250 ms: the page reads its busiest chats before the click (L1, 11-02).
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let last: string | null = null
+    const off = hover.subscribe(() => {
+      const bar = hover.get()?.bar ?? null
+      const key = bar ? `${bar.startMs}|${bar.endMs}` : null
+      if (key === last) return
+      last = key
+      clearTimeout(timer)
+      if (bar) timer = setTimeout(() => noteHubBarRest({ t: bar.startMs, endT: bar.endMs }), HUB_BAR_REST_MS)
+    })
+    return () => {
+      clearTimeout(timer)
+      off()
+    }
+  }, [hover])
 
   const onBarClick = useCallback((hit: SpHit) => {
     const bar = hit.bar

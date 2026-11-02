@@ -4,8 +4,8 @@
  * neighbours peeking. Its cards are Top moments today's rows (hubV5TopModel:
  * the Moments list's moments that hold up and rose, else the hub's ready × of
  * 1.5 or more on streams live now), in that order, strongest first, one card
- * per channel: a channel's later rows only add to its "+N more today". Pure
- * functions; HubV5BigMoments draws them.
+ * per moment (11-02: was one per channel, which left 3 cards from the hub's
+ * ten). Pure functions; HubV5BigMoments draws them.
  */
 import { fx } from '../../../../lib/momentsChecked'
 import type { TopRowData } from './hubV5TopModel'
@@ -14,30 +14,48 @@ import type { TopRowData } from './hubV5TopModel'
 export const BIG_CARDS = 10
 /** A horizontal drag this long (px), longer than it is tall, turns the page. */
 export const BIG_SWIPE_PX = 40
+/** A sideways wheel gesture (a trackpad swipe, or shift and the wheel) this long (px) turns the page. */
+export const BIG_WHEEL_PX = 50
+/** A wheel at rest this long (ms) ends its gesture: a trackpad's glide after a turn turns nothing more. */
+export const BIG_WHEEL_QUIET_MS = 180
 
 export interface BigCard {
   row: TopRowData
-  /** The channel's other moments in the list. */
-  more: number
 }
 
-/** One card per channel, in the list's order, at most `max`; a channel's later rows count as its "+N more". */
+/** One card per moment, in the list's order, at most `max`. */
 export function bigMomentCards(rows: readonly TopRowData[], max = BIG_CARDS): BigCard[] {
-  const cards: BigCard[] = []
-  const byLogin = new Map<string, BigCard>()
-  for (const row of rows) {
-    const had = byLogin.get(row.login)
-    if (had) {
-      had.more += 1
-      continue
-    }
-    if (cards.length >= max) continue
-    const card = { row, more: 0 }
-    byLogin.set(row.login, card)
-    cards.push(card)
-  }
-  return cards
+  return rows.slice(0, max).map((row) => ({ row }))
 }
+
+/** A wheel gesture's state: its sideways deltas so far, when the last came, and whether it has turned a page. */
+export interface BigWheel {
+  sum: number
+  last: number
+  spent: boolean
+}
+export const bigWheel = (): BigWheel => ({ sum: 0, last: -Infinity, spent: false })
+
+/**
+ * One sideways wheel gesture turns one page: its deltas add up to BIG_WHEEL_PX,
+ * then the rest of it, the glide included, turns nothing until the wheel rests
+ * BIG_WHEEL_QUIET_MS. 1 is the next card, -1 the one before, 0 none.
+ */
+export function bigWheelTurn(w: BigWheel, dx: number, t: number): -1 | 0 | 1 {
+  if (t - w.last > BIG_WHEEL_QUIET_MS) {
+    w.sum = 0
+    w.spent = false
+  }
+  w.last = t
+  if (w.spent || !dx) return 0
+  w.sum += dx
+  if (Math.abs(w.sum) < BIG_WHEEL_PX) return 0
+  w.spent = true
+  return w.sum > 0 ? 1 : -1
+}
+
+/** How far the cards follow a drag (px): with it, at most half the stage either way. */
+export const bigDragPx = (dx: number, width: number) => Math.max(-width / 2, Math.min(width / 2, dx))
 
 export type BigCardPos = -2 | -1 | 0 | 1 | 2 | 'far'
 
