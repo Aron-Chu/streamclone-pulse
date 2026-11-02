@@ -92,14 +92,14 @@ describe('landing page', () => {
     renderLanding()
     await screen.findByRole('heading', { name: /actually reacted to/i })
 
-    // The hero's search, and the same search again after the demo (B1, 11-02).
-    expect(screen.getAllByRole('search')).toHaveLength(2)
-    expect(screen.getAllByRole('combobox', { name: /search any twitch channel/i })).toHaveLength(2)
+    // One search, in the hero: the page ends with the demo, then the footer (D1, 11-02).
+    expect(screen.getAllByRole('search')).toHaveLength(1)
+    expect(screen.getAllByRole('combobox', { name: /search any twitch channel/i })).toHaveLength(1)
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
       expect.stringMatching(/see it beside twitch chat/i),
-      'Look up a streamer',
     ])
-    expect(document.querySelector('[data-cta="chrome-install-closing"]')).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Look up a streamer' })).toBeNull()
+    expect(document.querySelector('[data-cta="chrome-install-closing"]')).toBeNull()
     const footer = screen.getByRole('navigation', { name: 'Footer' })
     for (const name of ['Privacy', 'Terms', 'Refunds', 'Supporter']) {
       expect(within(footer).getByRole('link', { name })).toBeTruthy()
