@@ -60,8 +60,17 @@ describe('public Status', () => {
     vi.stubGlobal('fetch', vi.fn()
       .mockResolvedValueOnce(response({ status: 'operational', components: { api: 'operational', corpus: 'degraded', coverage: 'operational' } }))
       .mockResolvedValueOnce(response({ ok: false })))
+    const panel = render(<MemoryRouter><Status /></MemoryRouter>)
+    await waitFor(() => expect(overall()).toBe('Slow'))
+    panel.unmount()
+
+    // a top-level "down" is never softened into the quiet line, even when only coverage names a fault
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(response({ status: 'down', components: { api: 'operational', corpus: 'operational', coverage: 'degraded' } }))
+      .mockResolvedValueOnce(response({ ok: true })))
     render(<MemoryRouter><Status /></MemoryRouter>)
     await waitFor(() => expect(overall()).toBe('Slow'))
+    expect(screen.getByTestId('status-overall').className).toContain('amber')
   })
 
   it('reads a failing component as Down and a failing extension probe as a Down panel', async () => {

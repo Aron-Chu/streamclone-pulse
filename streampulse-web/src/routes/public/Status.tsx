@@ -84,7 +84,8 @@ export default function Status() {
   // Only coverage or chat tracking is behind while the API and the panel answer: the service is
   // running and some channels are quiet. That reads neutral, not as an outage; amber stays for Down.
   const components = statusProbe.data?.components ?? {}
-  const quietOnly = overall === 'degraded' && healthProbe.data?.ok === true &&
+  // A top-level "down" still reads as Down, never as a quiet line.
+  const quietOnly = overall === 'degraded' && statusState !== 'unavailable' && healthProbe.data?.ok === true &&
     normalizedState(components.api ?? statusProbe.data?.api ?? 'operational') === 'operational' &&
     (['coverage', 'corpus'] as const).some((key) => normalizedState(components[key]) === 'degraded') &&
     Object.entries(components).every(([key, value]) => key === 'coverage' || key === 'corpus' || normalizedState(value) === 'operational')
