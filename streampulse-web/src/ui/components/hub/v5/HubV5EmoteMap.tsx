@@ -557,6 +557,8 @@ export function HubV5EmoteMap({
   const data = useMemo(() => emoteMapData(points, bucketMinutes), [points, bucketMinutes])
   const phone = useMatchMedia('(max-width: 719px)')
   const reduce = useMatchMedia('(prefers-reduced-motion: reduce)')
+  // a phone has no Esc key: Find emote's × clears there (X1, 11-02)
+  const touch = useMatchMedia('(pointer: coarse)')
   const [win, setWin] = useState<HubEmoteWindow>('all')
   const chips = useMemo(() => (data ? emoteMapChips(data) : []), [data])
   // n counts the clicks, so the resize each one causes glides (M1)
@@ -1027,20 +1029,32 @@ export function HubV5EmoteMap({
     target.focus({ preventScroll: true })
   }
 
-  /* ---------- Find emote (3A, 11-02): typing highlights an emote and flies to it; Esc clears ---------- */
+  /* ---------- Find emote (3A, 11-02): typing highlights an emote and flies to it; Esc or the × clears ---------- */
   const [findText, setFindText] = useState('')
-  const [found, setFound] = useState<{ id: string; n: number } | null>(null)
-  const [findMiss, setFindMiss] = useState(false)
+  // `from`: the window the search key widened from (E1)
+  const [found, setFound] = useState<{ id: string; n: number; from?: HubEmoteWindow } | null>(null)
+  // 'wider': not in this window, but in the whole answer
+  const [findMiss, setFindMiss] = useState<'nowhere' | 'wider' | null>(null)
+  const findRef = useRef<HTMLInputElement>(null)
   const flyFound = useRef<string | null>(null)
-  /** The best match in this window, else in the whole answer (its chip then switches to it); `pick` also selects it. */
+  /**
+   * The best match in this window; `pick` (Enter, the search key, the hub search) also selects it. A window that misses
+   * widens to the whole answer only on a pick (E1, 11-02: its chip then switches); typing just says the whole answer has it.
+   */
   const runFind = (text: string, pick: boolean): boolean => {
     if (!data) return false
     let hit = findMapEmote(layout?.ranked ?? [], text)?.a ?? null
+    let from: HubEmoteWindow | undefined
+    let wider = false
     if (!hit && view !== 'all') {
-      hit = findMapEmote(data.emotes.map((a) => ({ a, v: emoteMapValue(a, 'all', data) })).filter((x) => x.v > 0), text)?.a ?? null
-      if (hit) setWin('all')
+      const wide = findMapEmote(data.emotes.map((a) => ({ a, v: emoteMapValue(a, 'all', data) })).filter((x) => x.v > 0), text)?.a ?? null
+      if (wide && pick) {
+        hit = wide
+        from = view
+        setWin('all')
+      } else wider = Boolean(wide)
     }
-    setFindMiss(!hit)
+    setFindMiss(hit ? null : wider ? 'wider' : 'nowhere')
     if (!hit) {
       if (found) {
         setFound(null)
@@ -1051,13 +1065,13 @@ export function HubV5EmoteMap({
     const id = hit.id
     hide()
     flyFound.current = id
-    setFound((prev) => ({ id, n: (prev?.n ?? 0) + 1 }))
+    setFound((prev) => ({ id, n: (prev?.n ?? 0) + 1, from }))
     if (pick) setSel(id)
     return true
   }
   const clearFind = () => {
     setFindText('')
-    setFindMiss(false)
+    setFindMiss(null)
     if (found) {
       setFound(null)
       moveCam(MAP_VIEW_1X, FLY_MS)
@@ -1082,6 +1096,18 @@ export function HubV5EmoteMap({
     mapRef.current?.closest('section')?.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' })
   }, [findRequest, data, layout])
   const foundAgg = found ? data?.byId.get(found.id) : undefined
+  const wideLabel = chips.find((c) => c.win === 'all')?.label ?? data?.windowLabel ?? ''
+  const findLine = !data
+    ? ''
+    : findMiss === 'wider'
+      ? `Not in the ${emoteWindowWords(data, view)}. Search to look in ${wideLabel}.`
+      : findMiss
+        ? `No emote matches “${findText.trim()}” here.${touch ? '' : ' Esc clears.'}`
+        : foundAgg
+          ? found?.from !== undefined
+            ? `${foundAgg.e.name} is marked on the map (${wideLabel}; not in the ${emoteWindowWords(data, found.from)}).`
+            : `${foundAgg.e.name} is marked on the map.`
+          : ''
 
   const tabId = layout && tiles.some((t) => t.a.id === focusId) ? focusId : tiles[0]?.a.id ?? null
   const onAgg = on ? data?.byId.get(on.id) : undefined
@@ -1101,9 +1127,10 @@ export function HubV5EmoteMap({
         {data ? <HubToggletip tip={emoteMapTip(data)} label="About the emote map" /> : null}
         {data ? (
           <span className="hv5-end">
-            <span className="hv5-field hv5-em-find">
+            <label className="hv5-field hv5-em-find">
               <HubV5Icon name="search" />
               <input
+                ref={findRef}
                 type="search"
                 value={findText}
                 placeholder="Find emote"
@@ -1116,7 +1143,7 @@ export function HubV5EmoteMap({
                   setFindText(next)
                   if (next.trim().length >= 2) runFind(next, false)
                   else if (found || findMiss) {
-                    setFindMiss(false)
+                    setFindMiss(null)
                     if (found) {
                       setFound(null)
                       moveCam(MAP_VIEW_1X, FLY_MS)
@@ -1134,7 +1161,21 @@ export function HubV5EmoteMap({
                   }
                 }}
               />
-            </span>
+              {findText || found ? (
+                <button
+                  className="hv5-ib hv5-em-fx"
+                  type="button"
+                  aria-label="Clear emote search"
+                  onClick={() => {
+                    clearFind()
+                    resetZoom()
+                    findRef.current?.focus()
+                  }}
+                >
+                  <HubV5Icon name="x" />
+                </button>
+              ) : null}
+            </label>
             <span className="hv5-em-zoom" role="group" aria-label="Map zoom">
               {/* written as the camera moves, never by a render (A) */}
               <span ref={readRef} className="hv5-em-zr">1.0×</span>
@@ -1154,7 +1195,7 @@ export function HubV5EmoteMap({
         {data ? <span className="hv5-meta hv5-em-meta" id={META_ID}>{meta}</span> : null}
         {data ? (
           <span className={findMiss ? 'hv5-meta hv5-em-fmsg' : 'hv5-vh'} role="status">
-            {findMiss ? `No emote matches “${findText.trim()}” here. Esc clears.` : foundAgg ? `${foundAgg.e.name} is marked on the map.` : ''}
+            {findLine}
           </span>
         ) : null}
       </div>

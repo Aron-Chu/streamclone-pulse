@@ -1688,12 +1688,21 @@
 }
 .hub-v5 .hv5-emotes .hv5-em-zb:hover:not(:disabled) { background: var(--sp-raised); color: var(--sp-text-1); }
 .hub-v5 .hv5-emotes .hv5-em-zb:disabled { opacity: 0.35; cursor: default; }
+/* Z1 (11-02): a 38 px tall tap area round each 26 px button, 2 px wider each side; the gaps keep it off the field and the chips */
+.hub-v5 .hv5-emotes .hv5-em-zb { position: relative; }
+.hub-v5 .hv5-emotes .hv5-em-zb::after { content: ''; position: absolute; inset: -6px -2px; }
 .hv5-em-skel { background: var(--sp-panel); }
 /* Find emote (3A, 11-02): a small field before the zoom; the match gets a ring in the focus teal */
 .hv5-em-find { width: 168px; height: 28px; padding: 0 8px; gap: 6px; }
 .hv5-em-find .hv5-ico { width: 14px; height: 14px; flex: none; }
-.hub-v5 .hv5-em-find input { font-size: 12px; }
+/* a mouse gets the small text; touch keeps the hub's 16 px, so a phone does not zoom in on focus (11-02) */
+@media (pointer: fine) {
+  .hub-v5 .hv5-em-find input { font-size: 12px; }
+}
 .hub-v5 .hv5-em-find input::-webkit-search-cancel-button { display: none; }
+/* X1 (11-02): the game filter's ×, 24 px, at the field's end while it has text or a match; a 32 × 40 tap area */
+.hub-v5 .hv5-em-find .hv5-ib { position: relative; width: 24px; height: 24px; margin-right: -4px; }
+.hub-v5 .hv5-em-find .hv5-ib::after { content: ''; position: absolute; inset: -8px -4px; }
 .hv5-em-fmsg { order: 6; flex-basis: 100%; margin: -2px 0 6px; color: var(--sp-degraded, #fbbf24); }
 .hub-v5 .hv5-emotes .hv5-em-t[data-found] { z-index: 3; }
 .hub-v5 .hv5-emotes .hv5-em-t[data-found] > .hv5-em-pl { box-shadow: inset 0 0 0 calc(2.5px * var(--iz, 1)) var(--sp-focus, #99f6e4); }
