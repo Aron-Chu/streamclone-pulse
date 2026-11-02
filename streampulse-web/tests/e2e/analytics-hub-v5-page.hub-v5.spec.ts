@@ -291,7 +291,7 @@ test('Top moments today is the carousel under the chart, and the rail is only wh
   await openV5Hub(page, TOP_MOMENT)
   const big = page.locator('#big-moments')
   await expect(big.getByRole('heading', { name: 'Top moments today' })).toBeVisible()
-  await expect(big.getByRole('link', { name: 'Every moment today →' })).toHaveAttribute('href', '/analytics/moments?view=top')
+  await expect(big.getByRole('link', { name: 'All moments →' })).toHaveAttribute('href', '/analytics/moments')
   const card = big.locator('.hv5-bm-card[data-pos="0"]')
   await expect(card).toContainText('xQc')
   const rail = page.locator('#latest')
@@ -303,6 +303,34 @@ test('Top moments today is the carousel under the chart, and the rail is only wh
   await expect(rail.getByRole('button', { name: /^Show all/ })).toHaveCount(0)
   await card.getByRole('link', { name: 'Open in Moments' }).click()
   await expect(page).toHaveURL(/\/analytics\/moments\?login=xqc&stream=s1&offset=3600$/)
+})
+
+// Board 2A (11-02): the mock's two moments are 2 and 4 minutes into their streams, so
+// they show as "Early in the stream" with their rate and no ×. The locks' warm-up reads
+// hub/moments on its own; another channel's busiest minute from those reads fills a
+// card, and a channel already shown (xQc) never gets a second one.
+test('Top moments today keeps early moments with no × and fills with busiest minutes from the chart’s own reads', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await installHubUxMock(page, { featuredSession: READY_FEATURED_SESSION })
+  const now = Date.now()
+  const busy = (login: string, displayName: string, chatPerMin: number) => ({
+    login, displayName, streamId: `hist-${login}`, offsetSeconds: 1800, score: 80, label: 'Corpus peak', source: 'corpus',
+    confidence: 90, vodState: 'vod_ready', chatPerMin, at: now - 3 * 60 * 60 * 1000,
+    topEmotes: [{ name: 'KEKW', provider: '7tv', count: 12, sharePct: 18 }],
+  })
+  await page.route(/\/v1\/public\/hub\/moments(\?.*)?$/, route => route.fulfill({
+    json: { status: 'ready', moments: [busy('kaicenat', 'KaiCenat', 1204), busy('xqc', 'xQc', 9000)] },
+  }))
+  await page.goto('/analytics')
+  const big = page.locator('#big-moments')
+  await expect(big.locator('.hv5-bm-card .hv5-bm-lbl', { hasText: 'Early in the stream' })).toHaveCount(2)
+  const fill = big.locator('.hv5-bm-card', { has: page.locator('.hv5-bm-lbl', { hasText: 'Busiest minute' }) })
+  await expect(fill).toHaveCount(1, { timeout: 15_000 })
+  await expect(fill).toContainText('KaiCenat')
+  await expect(fill.locator('.hv5-bm-x')).toHaveText('1,204chat/min')
+  await expect(big.locator('.hv5-bm-card', { hasText: 'xQc' })).toHaveCount(1)
+  await expect(big.locator('.hv5-bm-card .hv5-bm-x', { hasText: '×' })).toHaveCount(0)
 })
 
 test('the chart (i) opens How this is measured with the served-window facts', async ({ page }) => {

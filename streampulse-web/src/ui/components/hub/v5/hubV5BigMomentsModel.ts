@@ -5,10 +5,12 @@
  * the Moments list's moments that hold up and rose, else the hub's ready × of
  * 1.5 or more on streams live now), in that order, strongest first, one card
  * per moment (11-02: was one per channel, which left 3 cards from the hub's
- * ten). Pure functions; HubV5BigMoments draws them.
+ * ten). Since board 2A (11-02) a card may have no ×: a moment early in its
+ * stream or one not compared shows its rate, and a "Busiest minute" fills in.
+ * Pure functions; HubV5BigMoments draws them.
  */
-import { fx } from '../../../../lib/momentsChecked'
-import type { TopRowData } from './hubV5TopModel'
+import { fx, int, sameDay, when } from '../../../../lib/momentsChecked'
+import { topFigureWords, topPlainLabel, type TopRowData } from './hubV5TopModel'
 
 /** Cards at most: ten dots fit a phone's nav, and one loop stays about a minute. */
 export const BIG_CARDS = 10
@@ -69,6 +71,29 @@ export function bigCardPos(k: number, at: number, n: number): BigCardPos {
 
 export const bigSpike = (kind: TopRowData['kind']) => (kind === 'emotes' ? 'Emote spike' : 'Chat spike')
 
+/** A card's label: its spike, or why it shows no × ("Busiest minute", "Early in the stream", "Chat spike · not compared"). */
+export function bigLabel(row: Pick<TopRowData, 'kind' | 'plain'>): string {
+  if (row.plain === 'unmatched') return `${bigSpike(row.kind)} · not compared`
+  return row.plain ? topPlainLabel(row.plain) : bigSpike(row.kind)
+}
+
+/** A card's figure: "2.4×", else its rate ("1,204"; the card adds "chat/min"). */
+export const bigFigure = (row: Pick<TopRowData, 'x' | 'rate'>) => (row.x != null ? fx(row.x) : int(row.rate))
+
+/** A moment this young (ms) may show its stream's live picture; an older one never does (HUB-6). */
+export const BIG_LIVE_PICTURE_MS = 10 * 60_000
+export const bigLivePicture = (at: number, nowMs: number) => nowMs - at < BIG_LIVE_PICTURE_MS
+
+/**
+ * A card's time under "today", which is the last 24 hours: "just now", "12 min
+ * ago", "3:05 PM", and for a moment before midnight how long ago ("17 h ago"),
+ * never "Yesterday" (HUB-6).
+ */
+export function bigWhen(t: number, nowMs: number): string {
+  if (sameDay(t, nowMs)) return when(t, nowMs)
+  return `${Math.max(1, Math.floor((nowMs - t) / 3_600_000))} h ago`
+}
+
 /** "42 min into the stream", "2 h 5 min into the stream"; null without a minute in. */
 export function bigIntoStream(offsetSeconds: number | null | undefined): string | null {
   if (offsetSeconds == null || !Number.isFinite(offsetSeconds)) return null
@@ -112,7 +137,8 @@ const COMPACT = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFra
 export const bigViewers = (n: number) => COMPACT.format(n)
 
 /** A slide's label: its place, who and what rose. */
-export function bigSlideLabel(row: Pick<TopRowData, 'name' | 'kind' | 'x'>, i: number, n: number): string {
+export function bigSlideLabel(row: Pick<TopRowData, 'name' | 'kind' | 'x'> & Partial<Pick<TopRowData, 'plain' | 'rate'>>, i: number, n: number): string {
+  if (row.x == null) return `${i + 1} of ${n}: ${row.name}, ${topFigureWords({ ...row, x: null, plain: row.plain ?? null, rate: row.rate ?? null })}`
   return `${i + 1} of ${n}: ${row.name}, ${bigSpike(row.kind).toLowerCase()}, ${fx(row.x).replace('×', ' times')} usual ${row.kind}`
 }
 

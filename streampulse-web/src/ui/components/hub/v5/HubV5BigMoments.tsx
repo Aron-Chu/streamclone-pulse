@@ -2,7 +2,7 @@
  * Top moments today (M1, hub rail board 2026-11-02; was Chat's big moments, C1,
  * 11-01, board artifacts/top-emotes-perf-board-20261031): a stage above Top
  * emotes, one big moment at a time with its neighbours peeking, with the game
- * chips and "Every moment today →". Its cards are the day's rows (useTopToday),
+ * chips and "All moments →". Its cards are the day's rows (useTopToday),
  * one per moment (hubV5BigMomentsModel). It moves on every 6 seconds, timed by the front
  * dot's fill; it holds while the mouse is over it, keyboard focus is in it,
  * it is mostly off screen, the tab is hidden, or the pause button is pressed.
@@ -18,30 +18,37 @@
  * copy). A phone peek row brings its card to the front and the
  * stage into view. Before the first answer there is no section; with no rows it
  * says so; with one card, no controls.
+ * Board 2A (11-02): a card with no × shows its rate a minute under its reason
+ * ("Busiest minute", "Early in the stream", "Chat spike · not compared"). A
+ * live stream's picture shows only behind a moment under 10 minutes old, and a
+ * moment before midnight says how long ago it was, not "Yesterday" (HUB-6).
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type FocusEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type SyntheticEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { fx, int, when } from '../../../../lib/momentsChecked'
+import { int } from '../../../../lib/momentsChecked'
 import { twitchProfileImageRendition } from '../../../../lib/twitchProfileImage'
 import { twitchLivePreviewUrl } from '../../analytics/hubFormat'
 import { ResilientImage } from '../../ResilientImage'
 import { HubToggletip } from '../d3/HubToggletip'
 import { HubV5Icon } from './HubV5Icon'
-import { isFeed, TOP_EVERY, TOP_NONE, TopGames, topEndLine, topFresh, topStale, topTip, type TopToday } from './HubV5TopMoments'
+import { isFeed, TOP_ALL, TOP_NONE, TopGames, topEndLine, topFresh, topStale, topTip, type TopToday } from './HubV5TopMoments'
 import {
   BIG_SWIPE_PX,
   bigCardPos,
   bigDragPx,
+  bigFigure,
   bigIntoStream,
+  bigLabel,
+  bigLivePicture,
   bigMeter,
   bigMomentCards,
   bigSlideLabel,
-  bigSpike,
   bigStillEmote,
   bigViewers,
   bigWatchHref,
   bigWheel,
   bigWheelTurn,
+  bigWhen,
   type BigCard,
   type BigCardPos,
 } from './hubV5BigMomentsModel'
@@ -120,7 +127,7 @@ function BigSlide({ card, i, n, pos, nowMs, live, avatar, seen, still }: {
       aria-label={bigSlideLabel(row, i, n)}
       aria-hidden={front ? undefined : true}
     >
-      {live && seen ? (
+      {live && seen && bigLivePicture(row.at, nowMs) ? (
         <>
           <img className="hv5-bm-bg" src={twitchLivePreviewUrl(row.login, 640, 360)} alt="" draggable={false} decoding="async" referrerPolicy="no-referrer" onError={hide} />
           <div className="hv5-bm-shade" />
@@ -136,8 +143,8 @@ function BigSlide({ card, i, n, pos, nowMs, live, avatar, seen, still }: {
           {live ? <span className="hv5-bm-live">LIVE{row.viewers != null ? ` · ${bigViewers(row.viewers)}` : ''}</span> : null}
         </div>
         <div className="hv5-bm-what">
-          <span className="hv5-bm-lbl">{bigSpike(row.kind)}</span>
-          <span className="hv5-bm-x">{fx(row.x)}<small>usual {row.kind}</small></span>
+          <span className="hv5-bm-lbl">{bigLabel(row)}</span>
+          <span className="hv5-bm-x">{bigFigure(row)}<small>{row.x != null ? `usual ${row.kind}` : `${row.kind}/min`}</small></span>
         </div>
         {meter ? (
           <div className="hv5-bm-meter">
@@ -158,7 +165,7 @@ function BigSlide({ card, i, n, pos, nowMs, live, avatar, seen, still }: {
           </ul>
         ) : null}
         <div className="hv5-bm-foot">
-          <span className="hv5-bm-t">{when(row.at, nowMs)}</span>
+          <span className="hv5-bm-t">{bigWhen(row.at, nowMs)}</span>
           <span className="hv5-bm-act">
             {live ? (
               <a className="hv5-bm-tw" href={bigWatchHref(row.login)} target="_blank" rel="noopener noreferrer" tabIndex={tab} draggable={false}>
@@ -377,8 +384,8 @@ export function HubV5BigMoments({ top, nowMs }: HubV5BigMomentsProps) {
         <span className="hv5-f2-fresh">{topFresh(shown, nowMs)}</span>
         {shown.source !== 'none' ? <HubToggletip tip={topTip(shown, nowMs)} label="About Top moments today" /> : null}
         <span className="hv5-end">
-          <Link className={`hv5-mo-all${linkGame ? ' hv5-mo-game' : ''}`} to={topMomentsHref(linkGame?.id ?? null)}>
-            {linkGame ? <>Every&nbsp;<span className="hv5-mo-gm">{linkGame.name}</span>&nbsp;moment →</> : TOP_EVERY}
+          <Link className={`hv5-mo-all${linkGame ? ' hv5-mo-game' : ''}`} to={topMomentsHref(linkGame?.name ?? null)}>
+            {linkGame ? <>All&nbsp;<span className="hv5-mo-gm">{linkGame.name}</span>&nbsp;moments →</> : TOP_ALL}
           </Link>
         </span>
       </div>
@@ -436,7 +443,7 @@ export function HubV5BigMoments({ top, nowMs }: HubV5BigMomentsProps) {
                   key={card.row.id}
                   className={k < at ? 'hv5-bm-done' : undefined}
                   type="button"
-                  aria-label={`${card.row.name}, ${fx(card.row.x)}`}
+                  aria-label={`${card.row.name}, ${card.row.x != null ? bigFigure(card.row) : `${bigFigure(card.row)} ${card.row.kind}/min`}`}
                   aria-current={k === at ? 'true' : undefined}
                   onClick={() => go(k)}
                 >

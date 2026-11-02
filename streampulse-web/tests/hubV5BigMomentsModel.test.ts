@@ -8,8 +8,12 @@ import {
   BIG_WHEEL_PX,
   BIG_WHEEL_QUIET_MS,
   bigCardPos,
+  BIG_LIVE_PICTURE_MS,
   bigDragPx,
+  bigFigure,
   bigIntoStream,
+  bigLabel,
+  bigLivePicture,
   bigMeter,
   bigMomentCards,
   bigSlideLabel,
@@ -18,6 +22,7 @@ import {
   bigWatchHref,
   bigWheel,
   bigWheelTurn,
+  bigWhen,
 } from '../src/ui/components/hub/v5/hubV5BigMomentsModel'
 import { hubTopRows, topFeedRows, type TopRowData } from '../src/ui/components/hub/v5/hubV5TopModel'
 
@@ -26,7 +31,7 @@ const fixture = JSON.parse(readFileSync(resolve(__dirname, 'fixtures/moments_fee
 const capture = normalizePublicHub(JSON.parse(readFileSync(resolve(__dirname, 'fixtures/hub_live_pulse_20261030.json'), 'utf8')))
 
 const row = (login: string, id = login): TopRowData => ({
-  id, login, name: login, streamId: `s-${login}`, offsetSeconds: 600, avatar: null, kind: 'emotes', x: 3, at: 0, game: null, art: null,
+  id, login, name: login, streamId: `s-${login}`, offsetSeconds: 600, avatar: null, kind: 'emotes', x: 3, plain: null, at: 0, game: null, art: null,
   emote: null, emotes: [], rate: 90, usual: 30, viewers: null, live: true, href: `/analytics/moments?m=${id}`, also: [], checked: null,
 })
 const logins = (rows: readonly { row: TopRowData }[]) => rows.map((c) => c.row.login)
@@ -50,7 +55,7 @@ describe('Top moments today: its cards (C1 11-01; one per moment since 11-02)', 
       expect(rows.length).toBeGreaterThan(0)
       expect(bigMomentCards(rows).map((c) => c.row)).toEqual(rows.slice(0, BIG_CARDS))
     }
-    expect(['aldo_geo', 'e11ysa', 'findjeremiah', 'supertf']).toEqual(expect.arrayContaining(logins(bigMomentCards(hubTopRows(capture)))))
+    expect(['aldo_geo', 'e11ysa', 'findjeremiah', 'supertf', 'jinnytty']).toEqual(expect.arrayContaining(logins(bigMomentCards(hubTopRows(capture)))))
   })
 })
 
@@ -134,5 +139,36 @@ describe('Chat’s big moments: the card’s words and pictures', () => {
     expect(bigViewers(5600)).toBe('5.6K')
     expect(bigViewers(940)).toBe('940')
     expect(bigWatchHref('aldo_geo')).toBe('https://www.twitch.tv/aldo_geo')
+  })
+})
+
+describe('Top moments today: cards with no × (board 2A, 11-02)', () => {
+  it('says why a card has no × and shows its rate instead', () => {
+    expect(bigLabel({ kind: 'emotes', plain: null })).toBe('Emote spike')
+    expect(bigLabel({ kind: 'chat', plain: 'busiest' })).toBe('Busiest minute')
+    expect(bigLabel({ kind: 'emotes', plain: 'early' })).toBe('Early in the stream')
+    expect(bigLabel({ kind: 'emotes', plain: 'unmatched' })).toBe('Emote spike · not compared')
+    expect(bigFigure({ x: 2.43, rate: 900 })).toBe('2.4×')
+    expect(bigFigure({ x: null, rate: 1204 })).toBe('1,204')
+    expect(bigSlideLabel({ name: 'kaicenat', kind: 'chat', x: null, plain: 'busiest', rate: 1204 }, 3, 10)).toBe('4 of 10: kaicenat, Busiest minute, 1,204 chat a minute')
+    expect(bigSlideLabel({ name: 'jinnytty', kind: 'emotes', x: null, plain: 'early', rate: 181 }, 0, 2)).toBe('1 of 2: jinnytty, Early in the stream, 181 emotes a minute')
+  })
+})
+
+describe('Top moments today: today and a live picture (HUB-6, 11-02)', () => {
+  const now = new Date(2026, 10, 2, 0, 44).getTime()
+  it('says how long ago a moment before midnight was, never "Yesterday"', () => {
+    expect(bigWhen(now - 5 * 60_000, now)).toBe('5 min ago')
+    expect(bigWhen(new Date(2026, 10, 1, 19, 44).getTime(), now)).toBe('5 h ago')
+    expect(bigWhen(new Date(2026, 10, 1, 0, 50).getTime(), now)).toBe('23 h ago')
+    const noon = new Date(2026, 10, 2, 14, 0).getTime()
+    expect(bigWhen(new Date(2026, 10, 2, 9, 5).getTime(), noon)).toMatch(/^9:05\sAM$/)
+  })
+
+  it('shows a stream’s live picture only behind a moment under 10 minutes old', () => {
+    expect(BIG_LIVE_PICTURE_MS).toBe(10 * 60_000)
+    expect(bigLivePicture(now - 9 * 60_000, now)).toBe(true)
+    expect(bigLivePicture(now - 10 * 60_000, now)).toBe(false)
+    expect(bigLivePicture(now - 84 * 60_000, now)).toBe(false)
   })
 })

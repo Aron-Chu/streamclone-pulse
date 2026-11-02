@@ -40,6 +40,7 @@ import { HubV5Rack } from '../../ui/components/hub/v5/HubV5Rack'
 import { HubV5TopPeek, useTopToday } from '../../ui/components/hub/v5/HubV5TopMoments'
 import { HubV5BarInstall, HubV5DockSearch } from '../../ui/components/hub/v5/HubV5TopBar'
 import { HubV5SearchContext, createHubV5SearchStore } from '../../ui/components/hub/v5/hubV5SearchStore'
+import { useHubV5BusiestMoments } from '../../ui/components/hub/v5/useHubV5BusiestMoments'
 import { useHubV5LockWarmup } from '../../ui/components/hub/v5/useHubV5LockWarmup'
 import { HUB_BUSIEST_COUNT, HUB_RACK_ROWS, hubCategoryArt, hubChatBasis, hubSavedAt, rankBusiest, whereChatIs } from '../../ui/components/hub/v5/hubV5Model'
 import { useHashScrollHold } from '../../ui/RouteScrollManager'
@@ -201,12 +202,15 @@ export default function AnalyticsHubV5Page() {
   const gameArt = useMemo(() => hubCategoryArt(data.livePulseMoments), [data.livePulseMoments])
   // Top moments today and its phone peek stay in every state: the Moments list, a hub answer or a saved copy (never
   // totals only), waiting on any hub read under way, else unavailable. The list is read with each hub read, answered or not.
+  // Under 10 hub rows, the busiest minutes in the locks' reads fill in (board 2A, 11-02).
+  const busiest = useHubV5BusiestMoments(emoteIntervalWindow)
   const top = useTopToday({
     hub: hubAnswered || savedAt != null ? hub.data : null,
     savedAt,
     reading: !hubGaveUp,
     attempt: hub.pollAttempt,
     nowMs,
+    busiest,
   })
   const avatars = useMemo(() => {
     const map = new Map<string, string>()

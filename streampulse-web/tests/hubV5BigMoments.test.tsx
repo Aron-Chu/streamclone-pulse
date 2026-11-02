@@ -12,7 +12,7 @@ const KEKW_STILL = 'https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_k/static/
 const SEVEN = 'https://cdn.7tv.app/emote/01H/2x.webp'
 
 const row = (login: string, over: Partial<TopRowData> = {}): TopRowData => ({
-  id: `m-${login}`, login, name: login.toUpperCase(), streamId: `s-${login}`, offsetSeconds: 42 * 60, avatar: null, kind: 'emotes', x: 4.2,
+  id: `m-${login}`, login, name: login.toUpperCase(), streamId: `s-${login}`, offsetSeconds: 42 * 60, avatar: null, kind: 'emotes', x: 4.2, plain: null,
   at: NOW - 5 * MIN, game: 'Just Chatting', art: null, emote: null,
   emotes: [{ name: 'KEKW', imageUrl: KEKW, count: 120 }, { name: 'OMEGALUL', imageUrl: SEVEN, count: 80 }],
   rate: 300, usual: 60, viewers: 5600, live: true, href: `/analytics/moments?m=m-${login}`, also: [], checked: null,
@@ -90,7 +90,7 @@ describe('Top moments today, the carousel (C1 11-01, M1 11-02)', () => {
   it('shows one card per moment in the list’s order, the front one first and its neighbours hidden from the keyboard', () => {
     render(ui(list([row('a'), row('b'), row('a', { id: 'm-a2' }), row('c')])))
     expect(screen.getByRole('heading', { name: 'Top moments today' })).toBeTruthy()
-    expect(screen.getByRole('link', { name: 'Every moment today →' }).getAttribute('href')).toBe('/analytics/moments?view=top')
+    expect(screen.getByRole('link', { name: 'All moments →' }).getAttribute('href')).toBe('/analytics/moments')
     expect(stage().getAttribute('aria-roledescription')).toBe('carousel')
     expect(slides().map((s) => [s.querySelector('strong')!.textContent, s.dataset.pos])).toEqual([['A', '0'], ['B', '1'], ['A', '2'], ['C', '-1']])
     expect(front().getAttribute('aria-roledescription')).toBe('slide')
@@ -114,11 +114,11 @@ describe('Top moments today, the carousel (C1 11-01, M1 11-02)', () => {
   it('links the picked game’s moments while its Moments list is shown, else every game’s', () => {
     const valorant: TopGame = { id: '516575', name: 'Valorant', art: null, moments: 4 }
     const { rerender } = render(ui(list([row('a', { game: 'Valorant' })]), valorant))
-    const link = screen.getByRole('link', { name: 'Every Valorant moment →' })
-    expect(link.getAttribute('href')).toBe('/analytics/moments?view=top&game=516575')
+    const link = screen.getByRole('link', { name: 'All Valorant moments →' })
+    expect(link.getAttribute('href')).toBe('/analytics/moments?category=Valorant')
     expect(link.classList.contains('hv5-mo-game')).toBe(true)
     rerender(ui({ ...list([row('a')]), source: 'hub' }, valorant))
-    expect(screen.getByRole('link', { name: 'Every moment today →' }).getAttribute('href')).toBe('/analytics/moments?view=top')
+    expect(screen.getByRole('link', { name: 'All moments →' }).getAttribute('href')).toBe('/analytics/moments')
   })
 
   it('shows the game chips, and a chip picks its game', () => {
@@ -310,6 +310,29 @@ describe('Top moments today, the carousel (C1 11-01, M1 11-02)', () => {
     expect(slide('b').querySelector('.hv5-bm-open')!.getAttribute('href')).toBe('/analytics/moments?m=m-b')
     rerender(ui(list([row('a'), row('b', { live: false })], NOW - 20 * MIN)))
     expect(slide('a').querySelector('.hv5-bm-live, .hv5-bm-tw, .hv5-bm-bg')).toBeNull()
+  })
+
+  it('keeps the live badge and Watch live on an older moment, but not today’s live picture behind it (HUB-6)', () => {
+    render(ui(list([row('a', { at: NOW - 84 * MIN }), row('b', { at: NOW - 9 * MIN })])))
+    expect(within(slide('a')).getByText('LIVE · 5.6K')).toBeTruthy()
+    expect(slide('a').querySelector('.hv5-bm-tw')).toBeTruthy()
+    expect(slide('a').querySelector('.hv5-bm-bg')).toBeNull()
+    expect(slide('b').querySelector('.hv5-bm-bg')).toBeTruthy()
+  })
+
+  it('shows a card with no × as its reason and its rate a minute, with no meter (board 2A)', () => {
+    render(ui(list([
+      row('a', { x: null, plain: 'busiest', kind: 'chat', rate: 1204, usual: null, live: false }),
+      row('b', { x: null, plain: 'early', rate: 181, usual: null }),
+    ])))
+    const card = slide('a')
+    expect(card.querySelector('.hv5-bm-lbl')!.textContent).toBe('Busiest minute')
+    expect(card.querySelector('.hv5-bm-x')!.textContent).toBe('1,204chat/min')
+    expect(card.querySelector('.hv5-bm-meter')).toBeNull()
+    expect(card.textContent).not.toMatch(/×|spike/i)
+    expect(card.getAttribute('aria-label')).toBe('1 of 2: A, Busiest minute, 1,204 chat a minute')
+    expect(slide('b').querySelector('.hv5-bm-lbl')!.textContent).toBe('Early in the stream')
+    expect(screen.getByRole('button', { name: 'B, 181 emotes/min' })).toBeTruthy()
   })
 
   it('brings a side card to the front on a click, without following its links', () => {

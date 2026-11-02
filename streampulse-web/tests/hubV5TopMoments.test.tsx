@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { normalizeApiError } from '../src/lib/apiClient'
 import type { MomentsFeedCategoryFacet, MomentsFeedItem, MomentsFeedSnapshot, MomentsWindowQuery } from '../src/lib/momentsFeed'
-import { normalizePublicHub, type HubLiveChannel, type PublicHub } from '../src/lib/publicHub'
+import { normalizePublicHub, type HubLiveChannel, type HubLivePulseMoment, type PublicHub } from '../src/lib/publicHub'
 import type { HubChannelScreenerV1 } from '../src/lib/channelScreenerContract'
 
 const fixture = JSON.parse(readFileSync(resolve(__dirname, 'fixtures/moments_feed_v1.json'), 'utf8')) as { generatedAt: number; items: MomentsFeedItem[] }
@@ -26,7 +26,7 @@ vi.mock('../src/lib/momentsFeedVod', async (importOriginal) => ({
 
 import { HubV5BigMoments } from '../src/ui/components/hub/v5/HubV5BigMoments'
 import { HubV5PickingUp, UP_FIRST } from '../src/ui/components/hub/v5/HubV5PickingUp'
-import { HubV5TopPeek, useTopToday } from '../src/ui/components/hub/v5/HubV5TopMoments'
+import { HubV5TopPeek, TOP_DAY_KEY, useTopToday } from '../src/ui/components/hub/v5/HubV5TopMoments'
 import { hubTopRows, topFeedRows } from '../src/ui/components/hub/v5/hubV5TopModel'
 
 /** The backend as the list reads it: the window, the verdict and the game filter the moments, the total and the games facet. */
@@ -65,9 +65,9 @@ function mouse(target: Element, type: 'pointerover' | 'pointerout') {
   fireEvent(target, event)
 }
 
-interface PageProps { attempt: number; hub?: PublicHub | null; nowMs?: number; reading?: boolean }
-function Page({ attempt, hub = null, nowMs = NOW, reading = true }: PageProps) {
-  const top = useTopToday({ hub, savedAt: null, reading, attempt, nowMs })
+interface PageProps { attempt: number; hub?: PublicHub | null; nowMs?: number; reading?: boolean; busiest?: HubLivePulseMoment[] }
+function Page({ attempt, hub = null, nowMs = NOW, reading = true, busiest }: PageProps) {
+  const top = useTopToday({ hub, savedAt: null, reading, attempt, nowMs, busiest })
   return (
     <>
       <output data-testid="ids">{JSON.stringify(top.shown?.rows.map((r) => r.id) ?? null)}</output>
@@ -96,7 +96,7 @@ afterEach(() => {
 })
 
 describe('Top moments today from the Moments list (the carousel, M1)', () => {
-  it('shows the day’s top 20 that hold up, with the game chips, Every moment today and rows 1–3 in the phone peek', async () => {
+  it('shows the day’s top 20 that hold up, with the game chips, All moments and rows 1–3 in the phone peek', async () => {
     render(view({ attempt: 1 }))
     await waitFor(() => expect(ids().length).toBeGreaterThan(0))
     expect(screen.getByRole('heading', { name: 'Top moments today' }).closest('#big-moments')).toBeTruthy()
@@ -104,7 +104,7 @@ describe('Top moments today from the Moments list (the carousel, M1)', () => {
     const snap = answer(items, reads()[0]!)
     expect(ids()).toEqual(topFeedRows(snap).map((r) => r.id))
     expect(ids().length).toBeLessThanOrEqual(20)
-    expect(within(big()!).getByRole('link', { name: 'Every moment today →' }).getAttribute('href')).toBe('/analytics/moments?view=top')
+    expect(within(big()!).getByRole('link', { name: 'All moments →' }).getAttribute('href')).toBe('/analytics/moments')
     const chips = within(within(big()!).getByRole('group', { name: 'Show one game' })).getAllByRole('button').slice(1)
     expect(chips.map((c) => c.getAttribute('aria-label'))).toEqual(snap.categories!.map((g) => `${g.name}, ${g.moments} ${g.moments === 1 ? 'moment' : 'moments'} that hold up today`))
     // the list's (i): ended streams drop out of the list too, until B1
@@ -139,7 +139,7 @@ describe('Top moments today from the Moments list (the carousel, M1)', () => {
     fireEvent.click(await screen.findByRole('button', { name: /^Overwatch, / }))
     await waitFor(() => expect(reads().at(-1)).toMatchObject({ category: ow, verdict: 'ok', sort: 'top' }))
     expect(reads()).toHaveLength(2)
-    await waitFor(() => expect(within(big()!).getByRole('link', { name: /^Every Overwatch moment →$/ }).getAttribute('href')).toBe(`/analytics/moments?view=top&game=${ow}`))
+    await waitFor(() => expect(within(big()!).getByRole('link', { name: /^All Overwatch moments →$/ }).getAttribute('href')).toBe('/analytics/moments?category=Overwatch'))
     expect(ids()).toEqual(topFeedRows(answer(items, reads().at(-1)!)).map((r) => r.id))
   })
 
@@ -274,7 +274,7 @@ describe('Top moments today’s fallbacks', () => {
     await waitFor(() => expect(ids()).toEqual(hubRows))
     expect(source()).toBe('hub')
     expect(screen.queryByRole('group', { name: 'Show one game' })).toBeNull()
-    expect(within(big()!).getByRole('link', { name: 'Every moment today →' })).toBeTruthy()
+    expect(within(big()!).getByRole('link', { name: 'All moments →' })).toBeTruthy()
     rerender(view({ attempt: 2, hub: capture }))
     rerender(view({ attempt: 3, hub: capture }))
     await act(async () => {})
@@ -387,9 +387,41 @@ describe('Top moments today’s fallbacks', () => {
     vi.stubEnv('VITE_PUBLIC_MOMENTS_FEED', '')
     render(view({ attempt: 1, hub: { ...capture, livePulseMoments: [] } }))
     expect(big()!.querySelector('.hv5-bm-q')!.textContent).toBe('No standout moments on streams live now yet.')
-    expect(within(big()!).getByRole('link', { name: 'Every moment today →' })).toBeTruthy()
+    expect(within(big()!).getByRole('link', { name: 'All moments →' })).toBeTruthy()
     expect(within(peek()).getByText('No standout moments on streams live now yet.')).toBeTruthy()
     expect(feed.load).not.toHaveBeenCalled()
+  })
+
+  describe('the busiest-minute fill (board 2A, 11-02)', () => {
+    const at = Date.parse(capture.generatedAt)
+    const busy = (login: string, chatPerMin: number, ago = 3 * 60): HubLivePulseMoment => ({
+      login, displayName: login, streamId: `h-${login}`, offsetSeconds: 900, at: at - ago * MIN, score: 100, label: 'Corpus peak', chatPerMin,
+      topEmotes: [{ name: 'KEKW', provider: '7tv', count: 30, sharePct: 0 }],
+    }) as HubLivePulseMoment
+    const fill = [busy('kaicenat', 1204), busy('caseoh_', 412), busy('jynxzi', 388), busy('lacy', 300), busy('supertf', 9000), busy('aldo_geo', 5000)]
+
+    it('fills the hub’s rows to 10 with other channels’ busiest minutes, after them, labelled, and keeps none of them', () => {
+      vi.stubEnv('VITE_PUBLIC_MOMENTS_FEED', '')
+      window.localStorage.removeItem(TOP_DAY_KEY)
+      render(view({ attempt: 1, hub: capture, nowMs: at, busiest: fill }))
+      // the hub's 7 rows, then 3 of the 4 channels it does not show, the most chat first
+      expect(ids()).toEqual([...hubRows, ...['kaicenat', 'caseoh_', 'jynxzi'].map((l) => `busiest|${l}|h-${l}|${at - 180 * MIN}|900`)])
+      expect(big()!.querySelectorAll('.hv5-bm-card')).toHaveLength(10)
+      const last = big()!.querySelector<HTMLElement>('.hv5-bm-card[data-i="9"]')!
+      expect(last.querySelector('.hv5-bm-lbl')!.textContent).toBe('Busiest minute')
+      expect(last.querySelector('.hv5-bm-x')!.textContent).toBe('388chat/min')
+      const kept = JSON.parse(window.localStorage.getItem(TOP_DAY_KEY)!) as { id: string }[]
+      expect(kept.map((r) => r.id)).toEqual(hubRows)
+    })
+
+    it('shows busiest minutes when the hub has no standout moments, in place of "none yet"', () => {
+      vi.stubEnv('VITE_PUBLIC_MOMENTS_FEED', '')
+      window.localStorage.removeItem(TOP_DAY_KEY)
+      render(view({ attempt: 1, hub: { ...capture, livePulseMoments: [] }, nowMs: at, busiest: fill.slice(0, 2) }))
+      expect(big()!.querySelector('.hv5-bm-q')).toBeNull()
+      expect(big()!.querySelectorAll('.hv5-bm-card')).toHaveLength(2)
+      expect(peekRows().map((r) => r.textContent)).toEqual([expect.stringContaining('Busiest minute · 1,204 chat/min'), expect.stringContaining('Busiest minute · 412 chat/min')])
+    })
   })
 })
 
