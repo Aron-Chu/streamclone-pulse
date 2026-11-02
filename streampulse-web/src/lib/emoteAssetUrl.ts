@@ -83,6 +83,7 @@ export function preferResolvableEmoteUrl(
  * 7TV / hosted proxy: …/{1x|2x|4x}.webp
  * Twitch static CDN: …/{1.0|2.0|3.0}
  * FFZ: trailing /{1|2|4}
+ * BTTV: trailing /{1x|2x|3x}, with or without .webp/.gif/.png; its biggest is 3x, so 4x asks 3x
  */
 export function emoteUrlForScale(url: string | undefined, scale: EmoteDisplayScale): string | undefined {
   const abs = absolutizeEmoteAssetUrl(url)
@@ -102,6 +103,11 @@ export function emoteUrlForScale(url: string | undefined, scale: EmoteDisplaySca
     if (host === 'cdn.frankerfacez.com') {
       const ffz = scale === '1x' ? '1' : scale === '2x' ? '2' : '4'
       u.pathname = u.pathname.replace(/\/[124]$/i, `/${ffz}`)
+      return u.toString()
+    }
+    if (host === 'cdn.betterttv.net') {
+      const bttv = scale === '4x' ? '3x' : scale
+      u.pathname = u.pathname.replace(/\/[123]x(\.(?:webp|gif|png))?$/i, `/${bttv}$1`)
       return u.toString()
     }
   } catch {

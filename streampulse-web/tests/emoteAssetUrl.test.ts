@@ -120,6 +120,22 @@ describe('emoteUrlForScale / emoteSrcSet', () => {
     expect(emoteSrcSet(base, 72)).toContain('4x')
   })
 
+  it('transforms BTTV URLs across 1x/2x/3x, keeping any file extension', () => {
+    const base = 'https://cdn.betterttv.net/emote/5f1b0186cf6d2144653d2970/3x'
+    expect(emoteUrlForScale(base, '1x')).toBe('https://cdn.betterttv.net/emote/5f1b0186cf6d2144653d2970/1x')
+    expect(emoteUrlForScale(base, '2x')).toBe('https://cdn.betterttv.net/emote/5f1b0186cf6d2144653d2970/2x')
+    // BTTV's biggest file is 3x.
+    expect(emoteUrlForScale(base, '4x')).toBe('https://cdn.betterttv.net/emote/5f1b0186cf6d2144653d2970/3x')
+    expect(emoteUrlForScale('https://cdn.betterttv.net/emote/abc/3x.webp', '1x')).toBe('https://cdn.betterttv.net/emote/abc/1x.webp')
+    expect(emoteUrlForScale('https://cdn.betterttv.net/emote/abc/1x.gif', '2x')).toBe('https://cdn.betterttv.net/emote/abc/2x.gif')
+    expect(emoteUrlForScale('https://cdn.betterttv.net/emote/abc/2x.png', '4x')).toBe('https://cdn.betterttv.net/emote/abc/3x.png')
+    // A real 1x/2x pair, not the 3x file for every density (about 1 MB on a busy page).
+    expect(emoteSrcSet(base)).toBe(
+      'https://cdn.betterttv.net/emote/5f1b0186cf6d2144653d2970/1x 1x, https://cdn.betterttv.net/emote/5f1b0186cf6d2144653d2970/2x 2x',
+    )
+    expect(emoteDisplaySrc(base, 28)).toBe('https://cdn.betterttv.net/emote/5f1b0186cf6d2144653d2970/1x')
+  })
+
   it('defaults small display src to 1x not 4x', () => {
     const base = 'https://cdn.7tv.app/emote/abc/4x.webp'
     expect(emoteDisplaySrc(base, 28)).toBe('https://cdn.7tv.app/emote/abc/1x.webp')
