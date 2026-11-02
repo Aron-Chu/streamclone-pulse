@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { InstallCta } from '../../ui/components/InstallCta'
 import { buildTwitchTimestampLink, type TimestampLinkResult } from '../../lib/twitchTimestampLink'
+import { captureTimestampLinkBuilt } from '../../lib/productAnalytics'
 import './growth-guides.css'
 
 export default function TwitchTimestampTool() {
@@ -19,6 +20,7 @@ export default function TwitchTimestampTool() {
     copyGeneration.current += 1
     const next = buildTwitchTimestampLink(video, timestamp)
     setResult(next); setCopyStatus('')
+    if (next.ok) captureTimestampLinkBuilt()
     if (!next.ok) (next.field === 'video' ? videoInput : timeInput).current?.focus()
   }
   function change(set: (value: string) => void, value: string) { copyGeneration.current += 1; set(value); setResult(null); setCopyStatus('') }
