@@ -8,6 +8,7 @@ import {
   resetHubBucketSelectionForTests,
   selectHubBucket,
 } from '../src/lib/hubBucketSelection'
+import { hubCardClockRange } from '../src/lib/hubBucketCardModel'
 import { resetSpPerfForTests } from '@streampulse/pulse-charts/perfMarks'
 import { HubActivityChart } from '../src/ui/components/hub/HubActivityChartV5'
 
@@ -61,6 +62,23 @@ function renderDay(props: Partial<Parameters<typeof HubActivityChart>[0]> = {}) 
   const navigatorWindow = () => view.container.querySelector('[data-hub-chart-navigator]')!.getAttribute('data-hub-chart-navigator-window')
   return { ...view, plot, click, key, navigatorWindow }
 }
+
+/** A day on a 400 px box, where a bar holds several buckets. */
+function narrow(run: (view: ReturnType<typeof renderDay>) => void) {
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 400 })
+  try {
+    run(renderDay())
+  } finally {
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => BOX_WIDTH })
+  }
+}
+
+/** The bar size the navigator reads out, in minutes. */
+const barLevel = (container: HTMLElement) =>
+  Number(/bars (\d+)-min/.exec(container.querySelector('.hx-chart-navigator__bucket-count')!.textContent!)![1])
+
+/** The next poll: the window slides on by one closed bucket. */
+const polled = () => [...day().slice(1), { ...day()[239]!, t: END + BUCKET }]
 
 describe('bar click and the shared hub bucket selection', () => {
   it('selects the clicked bar, marks it on the plot, and a second click clears it', () => {
@@ -150,6 +168,69 @@ describe('bar click and the shared hub bucket selection', () => {
     const [zoomStart, zoomEnd] = navigatorWindow()!.split(':').map(Number)
     expect(zoomStart).toBe(100)
     expect(zoomEnd).toBe(101)
+  })
+
+  it('holds the locked bar in the readout at rest, and Now again once it unlocks (R1, 11-01)', () => {
+    const { container, click, key } = renderDay()
+    const readout = () => container.querySelector('[data-hub-readout]')!
+    expect(readout().getAttribute('data-hub-readout-mode')).toBe('now')
+    click(100)
+    expect(readout().getAttribute('data-hub-readout-mode')).toBe('lock')
+    expect(readout().querySelector('.tm .mk')).not.toBeNull()
+    expect(readout().querySelector('.tm .l2')!.textContent).toMatch(/ · locked$/)
+    key('Escape')
+    expect(readout().getAttribute('data-hub-readout-mode')).toBe('now')
+    expect(readout().querySelector('.tm .mk')).toBeNull()
+  })
+
+  it('takes the keyboard cursor off a bar the lock steps away from, so the readout names the lock (review 11-01)', () => {
+    const { container, key } = renderDay()
+    const readout = () => container.querySelector('[data-hub-readout]')!
+    key('ArrowLeft')
+    key('Enter')
+    const first = getHubBucketSelectionSnapshot().selection!
+    expect(readout().getAttribute('data-hub-readout-mode')).toBe('lock')
+    key('ArrowLeft')
+    const stepped = getHubBucketSelectionSnapshot().selection!
+    expect(stepped.t).toBe(first.t - BUCKET)
+    expect(readout().getAttribute('data-hub-readout-mode')).toBe('lock')
+    expect(readout().querySelector('.tm .l1')!.textContent).toBe(hubCardClockRange(stepped.t, stepped.endT))
+    key('Escape')
+    expect(getHubBucketSelectionSnapshot().selection).toBeNull()
+    expect(readout().getAttribute('data-hub-readout-mode')).toBe('now')
+  })
+
+  it('re-selects a locked newest bar a poll grows, as a bar pick that never pans (review 11-01)', () => {
+    narrow(({ container, rerender }) => {
+      const level = barLevel(container)
+      const newest = getHubChartBridge()!.stepBar!(END + 24 * 60 * MIN, -1)!
+      expect(newest).toEqual({ t: END, endT: END + BUCKET, barMinutes: level })
+      act(() => selectHubBucket({ ...newest, source: 'latest' }))
+      rerender(<HubActivityChart points={polled()} windowMinutes={1440} channelCount={100} bucketMinutes={6} />)
+      expect(getHubBucketSelectionSnapshot().selection).toMatchObject({ t: END, endT: END + 2 * BUCKET, barMinutes: level, source: 'bar' })
+    })
+  })
+
+  it('re-selects a locked oldest bar a poll trims (review 11-01)', () => {
+    narrow(({ container, rerender }) => {
+      const level = barLevel(container)
+      const oldest = getHubChartBridge()!.stepBar!(START - 24 * 60 * MIN, 1)!
+      expect(oldest.t).toBe(START)
+      expect(oldest.endT - oldest.t).toBeGreaterThan(BUCKET)
+      act(() => selectHubBucket({ ...oldest, source: 'bar' }))
+      rerender(<HubActivityChart points={polled()} windowMinutes={1440} channelCount={100} bucketMinutes={6} />)
+      expect(getHubBucketSelectionSnapshot().selection).toMatchObject({ t: START + BUCKET, endT: oldest.endT, barMinutes: level, source: 'bar' })
+    })
+  })
+
+  it('shows a locked bar the chart did not measure as dashes in the readout, never zeros', () => {
+    const points = day().map((point, index) => (index === 100 ? { ...point, hasChatRollup: false, hasViewerRollup: false } : point))
+    const { container } = renderDay({ points })
+    act(() => selectHubBucket({ t: START + 100 * BUCKET, endT: START + 101 * BUCKET, barMinutes: 6, source: 'bar' }))
+    const readout = container.querySelector('[data-hub-readout]')!
+    expect(readout.getAttribute('data-hub-readout-mode')).toBe('lock')
+    expect(readout.querySelector('[data-k="chat"] .fig')!.textContent).toBe('—')
+    expect(readout.querySelector('[data-k="viewers"] .l2')!.textContent).toBe('Not measured')
   })
 
   it('drops the selection when the window changes', () => {

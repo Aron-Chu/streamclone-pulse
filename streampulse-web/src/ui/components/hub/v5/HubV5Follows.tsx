@@ -10,10 +10,10 @@ import type { HubLiveChannel } from '../../../../lib/publicHub'
 import {
   connectTwitchFollows,
   dismissTwitchFollowsFailure,
+  FOLLOWS_FAILED,
   forgetTwitchFollows,
   useTwitchFollows,
   type TwitchFollows,
-  type TwitchFollowsFailure,
 } from '../../../../lib/twitchFollows'
 import { HubToggletip } from '../d3/HubToggletip'
 import { BusiestTile } from './HubV5Busiest'
@@ -63,14 +63,6 @@ export function HubV5FollowsButton() {
       <HubToggletip tip={FOLLOWS_START_TIP} label="About Show my Twitch follows" align="right" />
     </span>
   )
-}
-
-const FAILED: Record<TwitchFollowsFailure, string> = {
-  denied: 'You cancelled on Twitch, so nothing was read.',
-  unfinished: 'That Twitch sign-in didn’t finish in this tab, so nothing was read.',
-  rejected: 'Twitch didn’t accept the sign-in, so nothing was read.',
-  unreachable: 'Twitch didn’t answer, so your follows didn’t load.',
-  storage: 'Your browser is blocking this tab’s storage, which the Twitch sign-in needs.',
 }
 
 function Section({ children, head }: { children?: ReactNode; head?: ReactNode }) {
@@ -143,7 +135,7 @@ export function HubV5Follows(props: RowProps) {
     body = (
       <Section>
         <div className="hv5-fol-fail">
-          <p className="hv5-fol-msg" role="alert">{FAILED[state.why]}</p>
+          <p className="hv5-fol-msg" role="alert">{FOLLOWS_FAILED[state.why]}</p>
           {state.why === 'storage' ? null : <button type="button" className="hv5-btn" onClick={connectTwitchFollows}>Try again</button>}
           <button type="button" className="hv5-qb" onClick={dismiss}>Dismiss</button>
         </div>

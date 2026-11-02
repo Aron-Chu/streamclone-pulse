@@ -5,19 +5,24 @@ import {
   EMOTE_FIELD_INSET,
   EMOTE_ZOOM_MAX,
   MAP_VIEW_1X,
+  NO_TILE_FITS,
   clampMapView,
   conveyorEmotes,
   conveyorRng,
   emoteChange,
   emoteDrivers,
+  emoteFlagKey,
   emoteImageAt,
   emoteInWindow,
   emoteIntervalLabel,
   emoteMapChips,
   emoteMapData,
+  emoteMapDrift,
   emoteMapHeight,
+  emoteMapId,
   emoteMapLayout,
   emoteMapMeta,
+  emoteMapNext,
   emoteMapValue,
   emoteMomentRows,
   emoteSpike,
@@ -34,12 +39,17 @@ import {
   mapViewShowing,
   nearestTile,
   paceHeat,
+  playingTiles,
+  springCurve,
   squarify,
   tileFace,
+  tileFits,
   tilePic,
+  tilePicUrl,
   tileSize,
   zoomMapAt,
 } from '../src/ui/components/hub/v5/hubV5EmoteMapModel'
+import type { HubEmoteAgg, MapTile } from '../src/ui/components/hub/v5/hubV5EmoteMapModel'
 
 const T0 = Date.UTC(2026, 9, 19, 12, 0)
 const MIN = 60_000
@@ -131,6 +141,23 @@ describe('emote formatting', () => {
       .toBe('https://img.test/static-cdn.jtvnw.net/emoticons/v2/1/default/dark/1.0')
     expect(emoteImageAt('https://img.test/cdn.7tv.app/emote/abc/1x.webp', 50)).toBe('https://img.test/cdn.7tv.app/emote/abc/1x.webp')
   })
+
+  it('sizes a map picture to its tile on screen, a still unless it plays (A, 10-31)', () => {
+    const tw = 'https://static-cdn.jtvnw.net/emoticons/v2/123/default/dark/1.0'
+    expect(tilePicUrl(tw, 20, true, true)).toBe('https://static-cdn.jtvnw.net/emoticons/v2/123/default/dark/1.0')
+    expect(tilePicUrl(tw, 20, false, false)).toBe('https://static-cdn.jtvnw.net/emoticons/v2/123/static/dark/1.0')
+    expect(tilePicUrl(tw, 20, true, true, 2)).toBe('https://static-cdn.jtvnw.net/emoticons/v2/123/default/dark/2.0')
+    expect(tilePicUrl(tw, 36, false, true, 2)).toBe('https://static-cdn.jtvnw.net/emoticons/v2/123/static/dark/3.0')
+    const sv = 'https://cdn.7tv.app/emote/abc/1x.webp'
+    expect(tilePicUrl(sv, 28, true, true)).toBe('https://cdn.7tv.app/emote/abc/1x.webp')
+    expect(tilePicUrl(sv, 40, false, true)).toBe('https://cdn.7tv.app/emote/abc/2x_static.webp')
+    // 7TV has a still only for an emote the hub marks animated
+    expect(tilePicUrl(sv, 112, false, false, 2)).toBe('https://cdn.7tv.app/emote/abc/4x.webp')
+    expect(tilePicUrl('https://img.test/x.png', 50, false, true)).toBe('https://img.test/x.png')
+    expect(tilePicUrl(undefined, 50, true, true)).toBe('')
+    expect(emoteFlagKey('seventv', 'KEKW')).toBe('seventv|KEKW')
+    expect(emoteFlagKey(undefined, 'KEKW')).toBe('other|KEKW')
+  })
 })
 
 describe('squarify', () => {
@@ -146,7 +173,74 @@ describe('squarify', () => {
       expect(r.y + r.h).toBeLessThanOrEqual(4 + 1e-9)
     }
   })
+
+  it('lays the same rects as the one-pass squarify it replaced', () => {
+    const rnd = conveyorRng(7)
+    for (let n = 1; n <= 120; n += 17) {
+      const raw = Array.from({ length: n }, () => 1 + rnd() * 40).sort((a, b) => b - a)
+      const scale = (640 * 360) / raw.reduce((s, x) => s + x, 0)
+      const items = raw.map((x) => ({ area: x * scale }))
+      expect(squarify(items, { x: 0, y: 0, w: 640, h: 360 })).toEqual(classicSquarify(items, { x: 0, y: 0, w: 640, h: 360 }))
+    }
+  })
 })
+
+/** squarify as it stood before the 11-01 split into rows and laying, kept to check the split changes nothing. */
+function classicSquarify<T extends { area: number }>(items: readonly T[], rect: { x: number; y: number; w: number; h: number }) {
+  const out: Array<{ it: T; x: number; y: number; w: number; h: number }> = []
+  const r = { ...rect }
+  let row: T[] = []
+  const worst = (rw: readonly T[], len: number) => {
+    let s = 0
+    let mx = 0
+    let mn = Infinity
+    for (const it of rw) {
+      s += it.area
+      mx = Math.max(mx, it.area)
+      mn = Math.min(mn, it.area)
+    }
+    const s2 = s * s
+    const l2 = len * len
+    return Math.max((l2 * mx) / s2, s2 / (l2 * mn))
+  }
+  const lay = (rw: readonly T[]) => {
+    const s = rw.reduce((x, it) => x + it.area, 0)
+    if (r.w >= r.h) {
+      const w = r.h ? s / r.h : 0
+      let y = r.y
+      for (const it of rw) {
+        const h = w ? it.area / w : 0
+        out.push({ it, x: r.x, y, w, h })
+        y += h
+      }
+      r.x += w
+      r.w -= w
+    } else {
+      const h = r.w ? s / r.w : 0
+      let x = r.x
+      for (const it of rw) {
+        const w = h ? it.area / h : 0
+        out.push({ it, x, y: r.y, w, h })
+        x += w
+      }
+      r.y += h
+      r.h -= h
+    }
+  }
+  for (let i = 0; i < items.length;) {
+    const len = Math.min(r.w, r.h)
+    const it = items[i]!
+    if (!row.length || worst([...row, it], len) <= worst(row, len)) {
+      row.push(it)
+      i += 1
+    } else {
+      lay(row)
+      row = []
+    }
+  }
+  if (row.length) lay(row)
+  return out
+}
 
 describe('emoteMapLayout', () => {
   // 80 emotes on two providers, from one very big to many small
@@ -219,6 +313,124 @@ describe('emoteMapLayout', () => {
     expect(emoteMapMeta(d, lay, 'all')).toBe('80 emotes · sized by uses · last 36 min')
     // a chip under a day shows its clock span, as the last-hour view did
     expect(emoteMapMeta(d, lay, 30)).toBe(`80 emotes · sized by uses · ${hubClockRange(d.t1 - 30 * MIN, d.t1)}`)
+  })
+
+  describe('M1 sticky rows (10-31 board)', () => {
+    // a poll later: every fifth emote a little busier, and one new
+    const later = emoteMapData(pts.map((p) => ({
+      ...p,
+      topEmotes: [...p.topEmotes!.map((e, k) => (k % 5 ? e : { ...e, count: e.count + 4 })), em('EmNew', 'twitch', 30)],
+    })), 6)!
+    const kept = emoteMapLayout(later, 'all', W, H, lay.memo)
+
+    it('keeps who shares a row, so a poll moves tiles less than a fresh layout would', () => {
+      for (const f of ['twitch', 'seventv'] as const) {
+        const was = lay.memo.tiles[f]!
+        expect(kept.memo.tiles[f]!.slice(0, was.length)).toEqual(was)
+      }
+      expect(kept.memo.fields).toEqual(lay.memo.fields)
+      const fresh = emoteMapLayout(later, 'all', W, H)
+      expect(emoteMapDrift(lay.tiles, kept.tiles).mean).toBeLessThan(emoteMapDrift(lay.tiles, fresh.tiles).mean)
+    })
+
+    it('fits the newcomer into what the kept rows leave, every tile still sized by uses inside its frame', () => {
+      expect(kept.tiles).toHaveLength(81)
+      expect(kept.memo.tiles.twitch!.flat()).toContain(emoteMapId(em('EmNew', 'twitch', 30)))
+      const e = 1e-6
+      for (const f of kept.fields) {
+        const own = kept.tiles.filter((t) => t.field === f.field)
+        const per = own.map((t) => (t.w * t.h) / t.v)
+        for (const p of per) expect(p).toBeCloseTo(per[0], 6)
+        for (const t of own) {
+          expect(t.x).toBeGreaterThanOrEqual(f.x + EMOTE_FIELD_INSET - e)
+          expect(t.y).toBeGreaterThanOrEqual(f.y + EMOTE_FIELD_INSET - e)
+          expect(t.x + t.w).toBeLessThanOrEqual(f.x + f.w - EMOTE_FIELD_INSET + e)
+          expect(t.y + t.h).toBeLessThanOrEqual(f.y + f.h - EMOTE_FIELD_INSET + e)
+        }
+      }
+    })
+
+    it('goes back to a fresh layout when the kept rows get too thin', () => {
+      const oneRow = { fields: lay.memo.fields, tiles: { ...lay.memo.tiles, twitch: [lay.memo.tiles.twitch!.flat()] } }
+      expect(emoteMapLayout(d, 'all', W, H, oneRow).memo.tiles.twitch).toEqual(lay.memo.tiles.twitch)
+    })
+
+    it('comes out by field, most used first, then by rank, however the rows fell', () => {
+      expect(kept.fields.map((f) => f.v)).toEqual(kept.fields.map((f) => f.v).slice().sort((a, b) => b - a))
+      const at = (field: string) => kept.fields.findIndex((f) => f.field === field)
+      const keys = kept.tiles.map((t) => [at(t.field), t.rank])
+      expect(keys).toEqual(keys.slice().sort((p, q) => p[0]! - q[0]! || p[1]! - q[1]!))
+    })
+
+    it('measures how far tiles both layouts have move', () => {
+      expect(emoteMapDrift(lay.tiles, lay.tiles)).toEqual({ n: 80, mean: 0, jump: 0 })
+      const moved = lay.tiles.map((t) => ({ ...t, x: t.x + 30 }))
+      expect(emoteMapDrift(lay.tiles, moved).jump).toBe(1)
+      expect(emoteMapDrift(lay.tiles, moved).mean).toBeCloseTo(30)
+      // a tile only one layout has does not count
+      expect(emoteMapDrift(lay.tiles.slice(0, 10), moved).n).toBe(10)
+    })
+  })
+
+  describe('M1 motion (10-31 board)', () => {
+    const first = emoteMapNext(null, d, 'all', W, H)
+    // a poll later, with one new emote
+    const poll = emoteMapData(pts.map((p) => ({ ...p, topEmotes: [...p.topEmotes!, em('EmNew', 'twitch', 30)] })), 6)!
+    const layers = (s: ReturnType<typeof emoteMapNext>) => s.layers.map((l) => [l.gen, !!l.out])
+
+    it('fades the first layout in', () => {
+      expect(first).toMatchObject({ move: 'first', gen: 1, tid: 1, from: null, gone: [] })
+      expect(layers(first)).toEqual([[1, false]])
+      expect(first.layers[0]!.layout.tiles).toHaveLength(80)
+    })
+
+    it('glides a poll on the kept rows, a tile it drops fading where it was', () => {
+      const next = emoteMapNext(first, poll, 'all', W, H)
+      expect(next).toMatchObject({ move: 'glide', gen: 1, tid: 2, gone: [] })
+      expect(next.from).toBe(first.layers[0]!.layout)
+      expect(layers(next)).toEqual([[1, false]])
+      expect(next.layers[0]!.layout.memo.tiles.twitch!.slice(0, lay.memo.tiles.twitch!.length)).toEqual(lay.memo.tiles.twitch)
+      const back = emoteMapNext(next, d, 'all', W, H)
+      expect(back.move).toBe('glide')
+      expect(back.gone.map((t) => t.a.e.name)).toEqual(['EmNew'])
+    })
+
+    it('fades to a fresh layout on another window, keeping the old layer until it has faded', () => {
+      const hour = emoteMapNext(first, d, 60, W, H)
+      expect(hour).toMatchObject({ move: 'fade', gen: 2, from: null, gone: [] })
+      expect(layers(hour)).toEqual([[1, true], [2, false]])
+      expect(hour.layers[0]!.layout).toBe(first.layers[0]!.layout)
+      // another move while it fades keeps it; the map drops it once it has faded
+      expect(layers(emoteMapNext(hour, d, 'all', W, H))).toEqual([[1, true], [2, true], [3, false]])
+    })
+
+    it('fades a reshuffle instead of gliding 80 tiles across each other', () => {
+      // the order turned over: the least used now the most
+      const flip = emoteMapData(pts.map((p) => ({ ...p, topEmotes: p.topEmotes!.map((e, k) => ({ ...e, count: p.topEmotes![79 - k]!.count })) })), 6)!
+      const next = emoteMapNext(first, flip, 'all', W, H)
+      expect(next.move).toBe('fade')
+      expect(layers(next)).toEqual([[1, true], [2, false]])
+    })
+
+    it('lays a new size out afresh, still unless asked to glide, and always still under reduced motion', () => {
+      // the map's height often settles after the first answer: the rows are the new size's, as before M1
+      const settled = emoteMapNext(first, d, 'all', W, H - 40)
+      expect(settled.move).toBe('still')
+      expect(settled.layers[0]!.layout).toEqual(emoteMapLayout(d, 'all', W, H - 40))
+      const taller = emoteMapNext(first, d, 'all', W, H + 200, { glideResize: true })
+      expect(taller.move).toBe('glide')
+      expect(taller.from).toBe(first.layers[0]!.layout)
+      expect(taller.layers[0]!.layout).toEqual(emoteMapLayout(d, 'all', W, H + 200))
+      expect(emoteMapNext(first, poll, 'all', W, H, { reduce: true })).toMatchObject({ move: 'still', gone: [], from: null })
+      expect(layers(emoteMapNext(first, d, 60, W, H, { reduce: true }))).toEqual([[1, false]])
+    })
+
+    it('starts again from a map with no tiles', () => {
+      const none = emoteMapNext(null, d, 'all', 0, H)
+      expect(none.move).toBe('first')
+      expect(none.layers[0]!.layout.tiles).toEqual([])
+      expect(emoteMapNext(none, d, 'all', W, H)).toMatchObject({ move: 'first', gen: 2, tid: 2 })
+    })
   })
 })
 
@@ -475,6 +687,51 @@ describe('the map zoom', () => {
     const v = { k: 2, tx: -50, ty: -20 }
     expect(mapRectOnScreen({ x: 0, y: 0, w: 100, h: 100 }, v, W, H)).toEqual({ x: -50, y: -20, w: 200, h: 200, cl: 50, ct: 20, cr: 0, cb: 0 })
     expect(mapRectOnScreen({ x: 350, y: 150, w: 100, h: 100 }, v, W, H)).toMatchObject({ cl: 0, ct: 0, cr: 50, cb: 80 })
+  })
+
+  const tile = (id: string, rank: number, x: number, y: number, w: number, h: number): MapTile => ({
+    field: 'twitch', a: { id } as HubEmoteAgg, v: 1, rank, share: '1%', ...tileFace(w - 2, h - 2), x, y, w, h,
+  })
+
+  it('re-fits only the tiles near the view once it settles, a cut tile padded to the part on show (A, 10-31)', () => {
+    const tiles = [tile('a', 1, 0, 0, 100, 100), tile('b', 2, 100, 0, 100, 100), tile('d', 4, 252, 0, 10, 10), tile('c', 3, 600, 300, 200, 100)]
+    expect(tileFits(tiles, MAP_VIEW_1X, W, H)).toBe(NO_TILE_FITS)
+    // 4×, showing map x 50–250: the view cuts 200 px off a's left
+    const v = { k: 4, tx: -200, ty: 0 }
+    const fits = tileFits(tiles, v, W, H)
+    expect(fits.get('a')).toEqual({ face: tileFace(198, 398), pad: '8.0px 8.0px 8.0px 208.0px' })
+    expect(fits.get('b')).toEqual({ face: tileFace(398, 398) })
+    // d is just past the view's edge: fitted to its whole size, so a small pan shows it right
+    expect(fits.get('d')).toEqual({ face: tileFace(38, 38) })
+    expect(fits.has('c')).toBe(false)
+    // an entry that comes out the same is the same object
+    expect(tileFits(tiles, v, W, H, fits).get('a')).toBe(fits.get('a'))
+    // panned away, a keeps the face it had
+    const far = tileFits(tiles, { k: 4, tx: -2400, ty: -1200 }, W, H, fits)
+    expect(far.get('a')).toBe(fits.get('a'))
+    expect(far.get('c')).toEqual({ face: tileFace(798, 398) })
+  })
+
+  it('plays the 8 most used pictures on screen, from 28 px (A, 10-31)', () => {
+    const grid = Array.from({ length: 12 }, (_, i) => tile(`t${i}`, i + 1, (i % 6) * 100, Math.floor(i / 6) * 100, 100, 100))
+    expect([...playingTiles(grid, MAP_VIEW_1X, W, H)]).toEqual(['t0', 't1', 't2', 't3', 't4', 't5', 't6', 't7'])
+    // 2×, showing map x 300–700
+    expect([...playingTiles(grid, { k: 2, tx: -600, ty: 0 }, W, H)].sort()).toEqual(['t10', 't11', 't3', 't4', 't5', 't9'])
+    const small = [tile('s', 1, 0, 0, 20, 20), tile('m', 2, 20, 0, 100, 100)]
+    expect([...playingTiles(small, MAP_VIEW_1X, W, H)]).toEqual(['m'])
+    // its face at the settled zoom says how big its picture is
+    expect([...playingTiles(small, MAP_VIEW_1X, W, H, new Map([['s', { face: tileFace(80, 80) }]]))]).toEqual(['s', 'm'])
+  })
+})
+
+describe('the glide spring (M1, 10-31)', () => {
+  it('runs from 0 to 1, about 1.5% over on the way', () => {
+    const c = springCurve()
+    expect(c).toHaveLength(31)
+    expect(c[0]).toBe(0)
+    expect(c[30]).toBe(1)
+    expect(Math.max(...c)).toBeGreaterThan(1.01)
+    expect(Math.max(...c)).toBeLessThan(1.02)
   })
 })
 

@@ -12,13 +12,28 @@ import NotFound from './public/NotFound'
 import { PageErrorBoundary } from '../ui/PortalErrorBoundary'
 import { PublicLayout } from '../ui/components/PublicLayout'
 import { retiredExplorerPath } from '../lib/momentsNavigation'
+import { twitchSignInEnabled } from '../lib/twitchSignInFlag'
+import { accountMomentsEnabled } from '../lib/accountMoments'
 
 const AnalyticsHubV5Page = lazy(() => import('./analytics/AnalyticsHubV5Page'))
 const AnalyticsMomentsPage = lazy(() => import('./analytics/AnalyticsMomentsPage'))
+// A clip's own page exists only in a build with the Clips tab; read inline so a build without it folds the route away.
+const clipsBuildFlag = import.meta.env.VITE_PUBLIC_NATIVE_CLIPS
+const clipsRouteOn = clipsBuildFlag === 'on' || clipsBuildFlag === '1'
+const NativeClipWatchPage = clipsRouteOn ? lazy(() => import('./analytics/NativeClipWatchPage')) : null
 const AccountPage = lazy(() => import('./account/AccountPage'))
 const AccountSettings = lazy(() => import('./account/AccountSettings'))
 const BillingPage = lazy(() => import('./account/BillingPage'))
 const AccountRestore = lazy(() => import('./account/AccountRestore'))
+// Sign in with Twitch and My Moments pages exist only in builds with their
+// switches on; read inline, like the clip page, so a build without them emits
+// no chunk for them.
+const twitchSignInBuild = import.meta.env.VITE_TWITCH_SIGNIN === '1'
+const accountMomentsBuild = import.meta.env.VITE_ACCOUNT_MOMENTS === '1'
+const AccountTwitchCallback = twitchSignInBuild ? lazy(() => import('./account/AccountTwitchCallback')) : null
+const AccountMoments = accountMomentsBuild ? lazy(() => import('./account/AccountMoments')) : null
+const AccountHome = accountMomentsBuild ? lazy(() => import('./account/AccountHome')) : null
+const AccountSync = accountMomentsBuild ? lazy(() => import('../ui/components/AccountSync').then((m) => ({ default: m.AccountSync }))) : null
 const ChannelAnalyticsPage = lazy(() => import('./analytics/ChannelAnalyticsPage'))
 const AnalyticsShell = lazy(() =>
   import('../ui/components/analytics/AnalyticsFigmaShell').then((module) => ({ default: module.AnalyticsFigmaShell })),
@@ -149,6 +164,7 @@ export function AppRoutes() {
   return (
     <PageErrorBoundary shell={(panel, moduleLoadFailed) => routeErrorShell(pathname, panel, moduleLoadFailed)}>
       <PortalRoutes />
+      {AccountSync && accountMomentsEnabled() ? <Suspense fallback={null}><AccountSync /></Suspense> : null}
     </PageErrorBoundary>
   )
 }
@@ -191,6 +207,16 @@ function PortalRoutes() {
         <Route path="/account/link-device" element={<AccountPage />} />
         <Route path="/account/billing" element={<BillingPage />} />
         <Route path="/account/billing/return" element={<BillingPage />} />
+        {/* Sign in with Twitch (VITE_TWITCH_SIGNIN=1). While off, the path is
+            the ordinary 404; main.tsx still strips any token from its URL.
+            Show my Twitch follows returns here too, and main.tsx moves that
+            return back to the page that asked before the routes render. */}
+        {AccountTwitchCallback && twitchSignInEnabled() ? <Route path="/account/twitch/callback" element={<AccountTwitchCallback />} /> : null}
+        {/* My Moments (VITE_ACCOUNT_MOMENTS=1); while off, the ordinary 404. */}
+        {AccountMoments && accountMomentsEnabled() ? <Route path="/account/moments" element={<AccountMoments />} /> : null}
+        {/* The one Account page and My Moments' short address, with My Moments on. */}
+        {AccountHome && accountMomentsEnabled() ? <Route path="/account" element={<AccountHome />} /> : null}
+        {AccountMoments && accountMomentsEnabled() ? <Route path="/moments" element={<Navigate to="/account/moments" replace />} /> : null}
 
         {/* Public analytics is a no-login surface. The legacy beta-key /login
             screen is gone — point old links at the public analytics hub. */}
@@ -206,6 +232,7 @@ function PortalRoutes() {
 
         {/* Fixed discovery routes must precede dynamic channel routes. */}
         <Route path="/analytics/moments" element={<AnalyticsMomentsPage />} />
+        {NativeClipWatchPage ? <Route path="/analytics/clips/:clipId" element={<NativeClipWatchPage />} /> : null}
         <Route path="/analytics/newsroom" element={<RetiredExplorerRedirect />} />
         <Route path="/analytics/newsroom/:storyId" element={<RetiredExplorerRedirect />} />
         <Route path="/analytics/explore" element={<RetiredExplorerRedirect />} />

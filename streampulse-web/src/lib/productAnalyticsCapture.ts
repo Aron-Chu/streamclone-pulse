@@ -1,12 +1,13 @@
 import type { PublicCta, PublicPageCategory } from './productAnalytics'
 
 // Public POST-only API: https://posthog.com/docs/api/capture#single-event
-const INGEST_ENDPOINT = 'https://us.i.posthog.com/i/v0/e/'
+const INGEST_ENDPOINT = 'https://i.streampulse.stream/i/v0/e/'
 const categories = new Set(['home', 'docs', 'status', 'privacy', 'terms', 'refunds', 'supporter', 'support', 'channel_summary', 'stream_recap', 'tool', 'guide'])
 
 export interface PublicCaptureClient {
   capturePage(category: PublicPageCategory): void
   captureCta(category: PublicPageCategory, cta: PublicCta): void
+  captureTimestampLinkBuilt(): void
   stop(): void
 }
 
@@ -14,9 +15,8 @@ export interface PublicCaptureClient {
 export function createPublicCaptureClient(token: string, permitted: (category: PublicPageCategory) => boolean): PublicCaptureClient {
   let anonymousId: string | undefined = crypto.randomUUID()
 
-  function send(category: PublicPageCategory, cta?: PublicCta): void {
-    if (!anonymousId || !categories.has(category) || !permitted(category) ||
-      (cta !== undefined && cta !== 'install_extension' && cta !== 'open_analytics')) return
+  function send(category: PublicPageCategory, eventName: string, details: Record<string, string>): void {
+    if (!anonymousId || !categories.has(category) || !permitted(category)) return
     // Identity, UUID and time are generated here; callers cannot supply arbitrary
     // properties, URLs, form values, persistent identifiers or profile writes.
     const event = {
@@ -24,10 +24,10 @@ export function createPublicCaptureClient(token: string, permitted: (category: P
       distinct_id: anonymousId,
       uuid: crypto.randomUUID(),
       timestamp: new Date().toISOString(),
-      event: cta === undefined ? 'portal_public_page_viewed' : 'portal_public_cta_clicked',
+      event: eventName,
       properties: {
         page_category: category,
-        ...(cta === undefined ? {} : { cta }),
+        ...details,
         $process_person_profile: false,
         $geoip_disable: true,
       },
@@ -40,8 +40,13 @@ export function createPublicCaptureClient(token: string, permitted: (category: P
   }
 
   return {
-    capturePage: category => send(category),
-    captureCta: (category, cta) => send(category, cta),
+    capturePage: category => send(category, 'portal_public_page_viewed', {}),
+    captureCta: (category, cta) => {
+      if (cta === 'install_extension' || cta === 'open_analytics') send(category, 'portal_public_cta_clicked', { cta })
+    },
+    captureTimestampLinkBuilt: () => send('tool', 'portal_public_tool_completed', {
+      tool: 'twitch_vod_timestamp_link', outcome: 'link_built',
+    }),
     stop: () => { anonymousId = undefined },
   }
 }
