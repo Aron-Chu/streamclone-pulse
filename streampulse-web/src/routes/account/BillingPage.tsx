@@ -12,6 +12,9 @@ import { AccountError, billingRequest } from '../../lib/accountApi'
 import { accountBillingReturnPath, accountBillingSignInHref } from '../../lib/accountBillingReturn'
 import { onAccountSessionSignal } from '../../lib/accountSessionSignal'
 import { STRIPE_CUSTOMER_PORTAL_LOGIN_URL, SUPPORTER_TERMS_PATH } from '../../lib/externalLinks'
+import { needsRecentSignIn } from '../../lib/accountStepUp'
+import { twitchSignInEnabled } from '../../lib/twitchSignInFlag'
+import { RecentSignInNotice } from './RecentSignIn'
 import './account.css'
 
 export function stripeDestination(value: unknown, kind: 'checkout' | 'portal'): string | null {
@@ -291,7 +294,7 @@ export default function BillingPage() {
     } catch (error) {
       if (request !== requestID.current) return
       openingRef.current = false; setOpening(false)
-      if (error instanceof AccountError && error.status === 401) {
+      if ((error instanceof AccountError && error.status === 401) || needsRecentSignIn(error)) {
         // Changing billing needs a sign-in from the last ten minutes; the
         // membership read does not, so the page stays as it is.
         setReauth(true)
@@ -444,7 +447,9 @@ export default function BillingPage() {
       </div>
       {facts.length ? <dl className="pulse-membership-facts">{facts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl> : null}
       {terms ? <dl className="pulse-membership-terms"><dt>Price</dt><dd>US$4.99 per month, charged in US dollars</dd><dt>Renews</dt><dd>Monthly, automatically, until you cancel</dd><dt>Includes</dt><dd>{SUPPORTER_PERKS.names.join(', ')}. {supporterChatBadgesEnabled() ? BILLING_SEEN_IN_CHAT_NOTE : 'Only you see them'}</dd><dt>Taxes</dt><dd>Handled as stated at checkout</dd></dl> : null}
-      {reauth ? <div className="pulse-account-note" role="alert"><p>Changing billing for this website account needs a sign-in from the last 10 minutes. Nothing was charged.</p><Link className="pulse-account-button pulse-account-primary" to={signInHref}>Sign in again</Link></div> : null}
+      {/* With Sign in with Twitch on, a Twitch account signs in again on Twitch and comes back here. */}
+      {reauth && twitchSignInEnabled() ? <RecentSignInNotice what="changing billing" returnTo={returnPath} outcome="Nothing was charged." emailLink={signInHref} /> : null}
+      {reauth && !twitchSignInEnabled() ? <div className="pulse-account-note" role="alert"><p>Changing billing for this website account needs a sign-in from the last 10 minutes. Nothing was charged.</p><Link className="pulse-account-button pulse-account-primary" to={signInHref}>Sign in again</Link></div> : null}
       {!reauth && (primary || secondary) ? <div className="pulse-account-actions">{primary}{secondary}</div> : null}
       {retrySeconds > 0 && <p role="status">Wait {retrySeconds} seconds before checking again.</p>}
       {status !== 'none' && load === 'ready' && !uncertain ? <p className="pulse-account-meta">Payment details, invoices and cancellation are in the Stripe Customer Portal. Cancellation takes effect at the end of the paid period.</p> : null}

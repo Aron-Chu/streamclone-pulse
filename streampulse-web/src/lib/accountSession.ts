@@ -1,0 +1,313 @@
+import { useSyncExternalStore } from 'react'
+import { AccountError, accountRequest } from './accountApi'
+import { announceAccountSignedOut, onAccountSessionSignal } from './accountSessionSignal'
+
+/**
+ * Page-lifetime answer to "is this browser signed in to a website account?"
+ * for header chrome. It is a hint, not access control: the API still decides
+ * every account request.
+ *
+ * The session cookie is HttpOnly. The CSRF cookie the API sets beside it is
+ * readable, and the two are set, expire and clear together, so a visitor
+ * without it is signed out and never sends a request. A visitor with it asks
+ * /v1/account/me once per page, again on focus at most once a minute. A 401 or
+ * 403 reads as signed out; any other failure (an outage, no network) keeps what
+ * the page knew and asks again on the next focus. Either way, quietly: nothing
+ * is logged or reported, and the account ID in the response is never kept.
+ *
+ * /me answers with the name and picture from the account's last Twitch
+ * sign-in when the server keeps them (the sandbox backend, 2026-10-21), so a
+ * restart still shows who is signed in. When a Twitch sign-in or link answers
+ * with them, this tab also keeps them for display only (sessionStorage), tied
+ * to the session they arrived with, and drops them on sign-out or when the
+ * session changes.
+ */
+
+/** What the header can show about the person. Email sign-in provides neither;
+ * a Twitch sign-in can fill both without changing the header. */
+export type AccountProfile = {
+  displayName?: string
+  avatarUrl?: string
+  /** From /me: the account can sign in with Twitch, even if this tab never saw it happen. */
+  twitchLinked?: boolean
+}
+export type AccountSession =
+  /** `unreachable`: the first check failed (not a 401/403), so the session is still unknown and the account can't be reached right now. */
+  | { status: 'checking'; unreachable?: true }
+  | { status: 'signed_out' }
+  | { status: 'signed_in'; profile: AccountProfile }
+
+export const ACCOUNT_SESSION_REFRESH_MS = 60_000
+
+const CHECKING: AccountSession = { status: 'checking' }
+const UNREACHABLE: AccountSession = { status: 'checking', unreachable: true }
+const SIGNED_OUT: AccountSession = { status: 'signed_out' }
+const SIGNED_IN: AccountSession = { status: 'signed_in', profile: {} }
+
+const TWITCH_IDENTITY_KEY = 'pulse.account.twitch.v1'
+const CSRF_COOKIE = /^__Host-pulse_csrf=([a-f0-9]{64})$/
+
+let snapshot: AccountSession | null = null
+let generation = 0
+let pending: Promise<void> | null = null
+let lastRequestAt = Number.NEGATIVE_INFINITY
+let accountTagValue: string | null = null
+const listeners = new Set<() => void>()
+const endedListeners = new Set<() => void>()
+
+function csrfCookie(): string | null {
+  try {
+    for (const part of document.cookie.split(';')) {
+      const match = CSRF_COOKIE.exec(part.trim())
+      if (match) return match[1]!
+    }
+  } catch { /* An unreadable cookie jar reads as signed out. */ }
+  return null
+}
+
+/** True when the readable CSRF cookie suggests a session; reads nothing else. */
+export function hasAccountSessionHint(): boolean {
+  return csrfCookie() !== null
+}
+
+function fnv1a(text: string): string {
+  let hash = 0x811c9dc5
+  for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193) >>> 0
+  return hash.toString(16).padStart(8, '0')
+}
+
+/**
+ * Names the current session without storing its CSRF value: a 32-bit FNV-1a
+ * digest. It only detects that cached display data belongs to another session;
+ * it is not a security check (the API decides every request).
+ */
+function sessionTag(): string | null {
+  const csrf = csrfCookie()
+  return csrf ? fnv1a(csrf) : null
+}
+
+/**
+ * The signed-in account, as the same kind of digest: enough for this
+ * browser's copy of the account's saves to notice another account signed in,
+ * without keeping the account ID. Null until /me answers.
+ */
+export function currentAccountTag(): string | null {
+  return accountTagValue
+}
+
+function displayProfile(value: unknown): AccountProfile {
+  const profile: AccountProfile = {}
+  if (!value || typeof value !== 'object') return profile
+  const { displayName, avatarUrl } = value as { displayName?: unknown; avatarUrl?: unknown }
+  if (typeof displayName === 'string' && displayName.length <= 100) profile.displayName = displayName
+  if (typeof avatarUrl === 'string' && avatarUrl.length <= 512 && avatarUrl.startsWith('https://')) profile.avatarUrl = avatarUrl
+  return profile
+}
+
+/** Records that this session signed in with, or linked, Twitch; name and avatar are optional. */
+export function rememberTwitchIdentity(profile: AccountProfile): void {
+  const session = sessionTag()
+  try {
+    if (session) sessionStorage.setItem(TWITCH_IDENTITY_KEY, JSON.stringify({ session, ...displayProfile(profile) }))
+    else sessionStorage.removeItem(TWITCH_IDENTITY_KEY)
+  } catch { /* Display only: the header falls back to "Account". */ }
+}
+
+/** The Twitch identity this tab saw for the current session, or null when unknown. */
+export function knownTwitchIdentity(): AccountProfile | null {
+  try {
+    const raw = sessionStorage.getItem(TWITCH_IDENTITY_KEY)
+    if (!raw) return null
+    const value: unknown = JSON.parse(raw)
+    const session = sessionTag()
+    if (session && value && typeof value === 'object' && (value as { session?: unknown }).session === session) return displayProfile(value)
+    sessionStorage.removeItem(TWITCH_IDENTITY_KEY)
+  } catch { /* Missing, malformed or blocked storage is simply unknown. */ }
+  return null
+}
+
+function forgetTwitchIdentity(): void {
+  try { sessionStorage.removeItem(TWITCH_IDENTITY_KEY) } catch { /* Nothing to forget. */ }
+}
+
+/** Keeps the snapshot identity stable while the profile is unchanged, so subscribers do not re-render. */
+function signedIn(profile: AccountProfile): AccountSession {
+  if (!profile.displayName && !profile.avatarUrl && !profile.twitchLinked) return SIGNED_IN
+  if (snapshot?.status === 'signed_in' && snapshot.profile.displayName === profile.displayName
+    && snapshot.profile.avatarUrl === profile.avatarUrl && snapshot.profile.twitchLinked === profile.twitchLinked) return snapshot
+  return { status: 'signed_in', profile }
+}
+
+function publish(next: AccountSession) {
+  if (snapshot === next) return
+  snapshot = next
+  listeners.forEach(listener => listener())
+}
+
+/** Tells onAccountSessionEnded listeners when the account this tab knew is gone or replaced. */
+function leftAccount(previous: string | null) {
+  if (previous && previous !== accountTagValue) endedListeners.forEach(listener => listener())
+}
+
+function settleSignedOut() {
+  generation++
+  pending = null
+  const previous = accountTagValue
+  accountTagValue = null
+  forgetTwitchIdentity()
+  publish(SIGNED_OUT)
+  leftAccount(previous)
+}
+
+/** A newer request or sign-out supersedes any answer still in flight. */
+function request(): Promise<void> {
+  const turn = ++generation
+  lastRequestAt = Date.now()
+  // Trying again after an outage shows the check again.
+  if (snapshot === UNREACHABLE) publish(CHECKING)
+  let tag: string | null = null
+  const result = accountRequest('/me').then(
+    me => {
+      if (typeof me.accountId !== 'string') return SIGNED_OUT
+      tag = fnv1a(me.accountId)
+      const stored = me.profile && typeof me.profile === 'object'
+        ? displayProfile({ displayName: (me.profile as { displayName?: unknown }).displayName, avatarUrl: (me.profile as { picture?: unknown }).picture })
+        : {}
+      return signedIn({
+        ...stored,
+        ...(knownTwitchIdentity() ?? {}),
+        ...(Array.isArray(me.signInMethods) && me.signInMethods.includes('twitch') ? { twitchLinked: true } : {}),
+      })
+    },
+    error => (error instanceof AccountError && (error.status === 401 || error.status === 403) ? SIGNED_OUT : null),
+  ).then(next => {
+    if (turn !== generation) return
+    pending = null
+    // An outage says nothing about the session: keep it (and this browser's
+    // copy of the account's saves), and let the next focus ask again. With no
+    // session known yet, the account pages say it can't be reached.
+    if (next === null) { lastRequestAt = Number.NEGATIVE_INFINITY; if (snapshot === CHECKING) publish(UNREACHABLE); return }
+    const previous = accountTagValue
+    accountTagValue = next === SIGNED_OUT ? null : tag
+    publish(next)
+    leftAccount(previous)
+  })
+  pending = result
+  return result
+}
+
+function onReturn() {
+  if (document.visibilityState === 'hidden') return
+  // Cookies clear on sign-out in another tab; that needs no request to notice.
+  if (!hasAccountSessionHint()) { if (snapshot?.status !== 'signed_out') settleSignedOut(); return }
+  if (pending || Date.now() - lastRequestAt < ACCOUNT_SESSION_REFRESH_MS) return
+  void request()
+}
+
+function getSnapshot(): AccountSession {
+  if (snapshot === null) snapshot = hasAccountSessionHint() ? CHECKING : SIGNED_OUT
+  return snapshot
+}
+
+let stopSignals: (() => void) | null = null
+function subscribe(listener: () => void) {
+  if (!listeners.size) {
+    window.addEventListener('focus', onReturn)
+    document.addEventListener('visibilitychange', onReturn)
+    // Another tab signed in or out: re-check now rather than on the next focus.
+    // A sign-out this tab already settled (its own announcement) needs no request.
+    stopSignals = onAccountSessionSignal(signal => {
+      if (signal === 'signed-out' && snapshot?.status === 'signed_out') return
+      void refreshAccountSession()
+    })
+  }
+  listeners.add(listener)
+  if (getSnapshot() === CHECKING && !pending) void request()
+  return () => {
+    listeners.delete(listener)
+    if (listeners.size) return
+    window.removeEventListener('focus', onReturn)
+    document.removeEventListener('visibilitychange', onReturn)
+    stopSignals?.()
+    stopSignals = null
+  }
+}
+
+// Prerendered public pages show the signed-out entry, which is what nearly
+// every first visit resolves to, so the common case never shifts the header.
+const serverSnapshot = () => SIGNED_OUT
+
+export function useAccountSession(): AccountSession {
+  return useSyncExternalStore(subscribe, getSnapshot, serverSnapshot)
+}
+
+/** Re-check now, ignoring the focus throttle (for example after confirming a sign-in). */
+export function refreshAccountSession(): Promise<void> {
+  if (!hasAccountSessionHint()) { settleSignedOut(); return Promise.resolve() }
+  return request()
+}
+
+/**
+ * Work around sign-out: `before` runs while the session still works (sending
+ * saves that have not reached the account yet) and may throw to stop the
+ * sign-out; `after` clears what this browser kept for the account.
+ *
+ * Both run only in the tab where the person chose Sign out or Sign out
+ * everywhere. To drop per-account state held in memory (a list loaded for the
+ * account, for example) whenever the account goes away from this tab, for any
+ * reason, use onAccountSessionEnded instead.
+ */
+export interface SignOutStep { before?: (force: boolean) => Promise<void>; after?: () => void }
+const signOutSteps: SignOutStep[] = []
+export function addSignOutStep(step: SignOutStep): void {
+  signOutSteps.push(step)
+}
+
+/**
+ * Calls `listener` whenever the account this tab knew stops being the
+ * signed-in one: Sign out or Sign out everywhere here, a sign-out in another
+ * tab or on another device (noticed on the next check), an expired session,
+ * or a different account signing in. Use it to drop per-account data kept in
+ * memory; it never says which account it was. Returns an unsubscribe.
+ */
+export function onAccountSessionEnded(listener: () => void): () => void {
+  endedListeners.add(listener)
+  return () => { endedListeners.delete(listener) }
+}
+
+/**
+ * Ends the website session. A session the API no longer recognises is already
+ * over. `force` signs out even when a step could not finish (offline, for
+ * example), after the person was told what that loses.
+ *
+ * `everywhere` first ends every website session and extension sign-in of the
+ * account (POST /v1/account/sessions/revoke-all), this one included. If that
+ * request fails (a recent sign-in is needed, an outage), nothing is signed out
+ * and the error is thrown. Once it succeeds, the rest cannot fail.
+ *
+ * Other open tabs are told to check again, so they notice at once.
+ */
+export async function signOutAccount({ force = false, everywhere = false }: { force?: boolean; everywhere?: boolean } = {}): Promise<void> {
+  for (const step of signOutSteps) await step.before?.(force)
+  if (everywhere) await accountRequest('/sessions/revoke-all', {})
+  // After revoke-all this session is already over; logout only clears its cookies.
+  try { await accountRequest('/auth/logout', {}) }
+  catch (error) { if (!everywhere && !(error instanceof AccountError && error.status === 401)) throw error }
+  settleSignedOut()
+  announceAccountSignedOut()
+  for (const step of signOutSteps) step.after?.()
+}
+
+/** Account pages hold loaded account data; a full navigation drops it, as Account settings does. */
+export function leaveAccountPagesAfterSignOut(): void {
+  window.location.assign('/account/sign-in')
+}
+
+export function resetAccountSessionForTests(): void {
+  generation++
+  endedListeners.clear()
+  accountTagValue = null
+  snapshot = null
+  pending = null
+  lastRequestAt = Number.NEGATIVE_INFINITY
+}
