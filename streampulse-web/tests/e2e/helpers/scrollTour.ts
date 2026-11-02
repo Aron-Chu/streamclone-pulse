@@ -18,12 +18,29 @@ export async function scrollSceneToProgress(page: Page, progress: number): Promi
   const scrollable = Math.max(metrics.height - viewport, 1)
   const targetY = metrics.top + clamped * scrollable
 
+  // Opening /#demo lands the anchor, then holds it for about a second
+  // (scrollToHashTarget in src/lib/routeScroll.ts) and pulls a bare scrollTo
+  // back. A visitor's wheel ends that hold, so start with a still wheel tick
+  // and wait until the page has seen it.
+  await page.evaluate(() => {
+    const w = window as Window & { __sceneWheel?: Promise<void> }
+    w.__sceneWheel = new Promise(resolve => window.addEventListener('wheel', () => resolve(), { once: true, passive: true }))
+  })
+  await page.mouse.wheel(0, 0)
+  await page.evaluate(() => (window as Window & { __sceneWheel?: Promise<void> }).__sceneWheel)
+
   await page.evaluate(y => window.scrollTo({ top: y, behavior: 'instant' as ScrollBehavior }), targetY)
   await page.evaluate(() => {
     window.dispatchEvent(new Event('scroll'))
     window.dispatchEvent(new Event('resize'))
   })
   await page.waitForTimeout(400)
+
+  const drift = await page.evaluate(y => {
+    const maxY = document.documentElement.scrollHeight - window.innerHeight
+    return Math.abs(window.scrollY - Math.min(y, maxY))
+  }, targetY)
+  expect(drift, 'the page stays where the scene was scrolled').toBeLessThanOrEqual(1)
 }
 
 export async function scrollTourToStep(page: Page, step: number): Promise<void> {
