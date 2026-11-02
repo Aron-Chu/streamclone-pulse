@@ -303,9 +303,12 @@ export function useTopToday({ hub, savedAt, reading, attempt, nowMs, busiest = N
 
 /** "5.0× more emotes", as Moments writes it (games first, 10-22). */
 const More = ({ x, ser }: { x: string; ser: 'chat' | 'emotes' }) => <span className="hv5-f2-x"><b>{x}</b> more {ser}</span>
-/** A row with no ×: "Busiest minute · 1,204 chat/min". */
+/** A row with no ×: "Busiest minute · 1,204 chat/min". On a narrow row the game goes first, then the reason ellipses; the rate stays. */
 const Plain = ({ row }: { row: TopRowData }) => (
-  <span className="hv5-f2-x">{row.plain ? <>{topPlainLabel(row.plain)} · </> : null}<b>{int(row.rate)}</b> {row.kind}/min</span>
+  <span className="hv5-f2-x hv5-f2-plain">
+    {row.plain ? <span className="hv5-f2-why">{topPlainLabel(row.plain)} ·</span> : null}
+    <span className="hv5-f2-rt"> <b>{int(row.rate)}</b> {row.kind}/min</span>
+  </span>
 )
 
 function Game({ cat, art }: { cat: string | null; art: string | null }) {

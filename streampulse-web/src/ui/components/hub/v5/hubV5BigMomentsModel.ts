@@ -10,7 +10,7 @@
  * Pure functions; HubV5BigMoments draws them.
  */
 import { fx, int, sameDay, when } from '../../../../lib/momentsChecked'
-import { topFigureWords, topPlainLabel, type TopRowData } from './hubV5TopModel'
+import { topPlainLabel, type TopRowData } from './hubV5TopModel'
 
 /** Cards at most: ten dots fit a phone's nav, and one loop stays about a minute. */
 export const BIG_CARDS = 10
@@ -90,7 +90,8 @@ export const bigLivePicture = (at: number, nowMs: number) => nowMs - at < BIG_LI
  * never "Yesterday" (HUB-6).
  */
 export function bigWhen(t: number, nowMs: number): string {
-  if (sameDay(t, nowMs)) return when(t, nowMs)
+  // under an hour stays "N min ago" across midnight too
+  if (sameDay(t, nowMs) || nowMs - t < 3_600_000) return when(t, nowMs)
   return `${Math.max(1, Math.floor((nowMs - t) / 3_600_000))} h ago`
 }
 
@@ -138,7 +139,8 @@ export const bigViewers = (n: number) => COMPACT.format(n)
 
 /** A slide's label: its place, who and what rose. */
 export function bigSlideLabel(row: Pick<TopRowData, 'name' | 'kind' | 'x'> & Partial<Pick<TopRowData, 'plain' | 'rate'>>, i: number, n: number): string {
-  if (row.x == null) return `${i + 1} of ${n}: ${row.name}, ${topFigureWords({ ...row, x: null, plain: row.plain ?? null, rate: row.rate ?? null })}`
+  // says what the card says ("Chat spike · not compared"), then the rate
+  if (row.x == null) return `${i + 1} of ${n}: ${row.name}, ${bigLabel({ kind: row.kind, plain: row.plain ?? null })}, ${int(row.rate)} ${row.kind} a minute`
   return `${i + 1} of ${n}: ${row.name}, ${bigSpike(row.kind).toLowerCase()}, ${fx(row.x).replace('×', ' times')} usual ${row.kind}`
 }
 

@@ -152,6 +152,7 @@ describe('Top moments today: cards with no × (board 2A, 11-02)', () => {
     expect(bigFigure({ x: null, rate: 1204 })).toBe('1,204')
     expect(bigSlideLabel({ name: 'kaicenat', kind: 'chat', x: null, plain: 'busiest', rate: 1204 }, 3, 10)).toBe('4 of 10: kaicenat, Busiest minute, 1,204 chat a minute')
     expect(bigSlideLabel({ name: 'jinnytty', kind: 'emotes', x: null, plain: 'early', rate: 181 }, 0, 2)).toBe('1 of 2: jinnytty, Early in the stream, 181 emotes a minute')
+    expect(bigSlideLabel({ name: 'keliencs', kind: 'chat', x: null, plain: 'unmatched', rate: 128 }, 1, 5)).toBe('2 of 5: keliencs, Chat spike · not compared, 128 chat a minute')
   })
 })
 
@@ -159,6 +160,8 @@ describe('Top moments today: today and a live picture (HUB-6, 11-02)', () => {
   const now = new Date(2026, 10, 2, 0, 44).getTime()
   it('says how long ago a moment before midnight was, never "Yesterday"', () => {
     expect(bigWhen(now - 5 * 60_000, now)).toBe('5 min ago')
+    // 23:59 the day before is 45 minutes ago, not "1 h ago"
+    expect(bigWhen(new Date(2026, 10, 1, 23, 59).getTime(), now)).toBe('45 min ago')
     expect(bigWhen(new Date(2026, 10, 1, 19, 44).getTime(), now)).toBe('5 h ago')
     expect(bigWhen(new Date(2026, 10, 1, 0, 50).getTime(), now)).toBe('23 h ago')
     const noon = new Date(2026, 10, 2, 14, 0).getTime()
