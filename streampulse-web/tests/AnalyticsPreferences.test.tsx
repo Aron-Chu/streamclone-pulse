@@ -113,6 +113,8 @@ describe('website analytics privacy disclosure', () => {
     const policy = screen.getByTestId('privacy-policy').textContent ?? ''
     expect(policy).toContain('Last updated: November 2, 2026')
     expect(policy).toContain('never your entered link, timestamp or generated URL')
+    expect(policy).toContain('Only submitting includes the fixed Yes or Not yet answer')
+    expect(policy).toContain('no person profile, persistent survey history or free-text answer is created')
     expect(policy).toContain('Optional website analytics')
     expect(policy).toContain('off by default')
     expect(policy).toContain('United States region')

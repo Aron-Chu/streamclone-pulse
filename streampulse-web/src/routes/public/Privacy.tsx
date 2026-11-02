@@ -211,6 +211,14 @@ export default function Privacy() {
           tool category and a link-built outcome, never your entered link, timestamp or generated URL.
         </p>
         <p>
+          After copying a timestamp link, visitors who allowed website analytics can choose to open
+          one optional feedback question. Opening, closing and submitting it send fixed feedback events.
+          Only submitting includes the fixed Yes or Not yet answer, the question identifier and tool category.
+          A temporary submission identifier prevents duplicate
+          responses. Feedback uses the same page-memory identifier as the optional website events;
+          no person profile, persistent survey history or free-text answer is created.
+        </p>
+        <p>
           Events use a random identifier held only in page memory, replaced when the page reloads.
           No person profile is created, and no analytics identifier is saved in cookies or browser
           storage. Events do not include full URLs, query strings, URL fragments, form entries,

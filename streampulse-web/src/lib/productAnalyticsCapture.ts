@@ -1,4 +1,5 @@
 import type { PublicCta, PublicPageCategory } from './productAnalytics'
+import type { TimestampFeedbackSession } from './timestampFeedback'
 
 // Public POST-only API: https://posthog.com/docs/api/capture#single-event
 const INGEST_ENDPOINT = 'https://i.streampulse.stream/i/v0/e/'
@@ -8,10 +9,11 @@ export interface PublicCaptureClient {
   capturePage(category: PublicPageCategory): void
   captureCta(category: PublicPageCategory, cta: PublicCta): void
   captureTimestampLinkBuilt(): void
+  openTimestampFeedback(signal: AbortSignal): Promise<TimestampFeedbackSession | null>
   stop(): void
 }
 
-/** No SDK, remote configuration, fallback, retry, event queue or unload flush. */
+/** No SDK, fallback, event queue or unload flush. Survey lookup is explicitly requested. */
 export function createPublicCaptureClient(token: string, permitted: (category: PublicPageCategory) => boolean): PublicCaptureClient {
   let anonymousId: string | undefined = crypto.randomUUID()
 
@@ -47,6 +49,12 @@ export function createPublicCaptureClient(token: string, permitted: (category: P
     captureTimestampLinkBuilt: () => send('tool', 'portal_public_tool_completed', {
       tool: 'twitch_vod_timestamp_link', outcome: 'link_built',
     }),
+    openTimestampFeedback: async signal => {
+      const id = anonymousId
+      if (!id || !permitted('tool') || signal.aborted) return null
+      const { loadTimestampFeedback } = await import('./timestampFeedback')
+      return loadTimestampFeedback(token, id, () => anonymousId === id && permitted('tool'), signal)
+    },
     stop: () => { anonymousId = undefined },
   }
 }
