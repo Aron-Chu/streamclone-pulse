@@ -59,9 +59,12 @@ export function sessionMeasuredMinutes(
   return Math.round((last + 60_000 - start) / 60_000)
 }
 
+/** "45m", "4h", "2h 30m": never rounded up past what was measured. */
 function durationWords(minutes: number): string {
   if (minutes < 60) return `${Math.max(1, minutes)}m`
-  return `${Math.round(minutes / 60)}h`
+  const hours = Math.floor(minutes / 60)
+  const rest = minutes % 60
+  return rest ? `${hours}h ${rest}m` : `${hours}h`
 }
 
 /**

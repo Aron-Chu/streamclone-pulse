@@ -71,6 +71,11 @@ describe('sessionStreamedLine', () => {
     expect(sessionStreamedLine(startedAt, rollups)).toBe('Streamed Oct 29 · 4h')
   })
 
+  it('keeps the minutes past a whole hour instead of rounding up', () => {
+    expect(sessionStreamedLine(startedAt, [minute(0), minute(149)])).toBe('Streamed Oct 29 · 2h 30m')
+    expect(sessionStreamedLine(startedAt, [minute(0), minute(90)])).toBe('Streamed Oct 29 · 1h 31m')
+  })
+
   it('ignores missing minutes, and uses minutes under an hour', () => {
     expect(sessionStreamedLine(startedAt, [minute(0), minute(44), minute(200, true)])).toBe('Streamed Oct 29 · 45m')
   })

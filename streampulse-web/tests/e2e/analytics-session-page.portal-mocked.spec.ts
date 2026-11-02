@@ -112,7 +112,7 @@ test.describe('analytics session page shell, d3-v2 session-original (mocked)', (
     const texts = (await items.allTextContents()).map(text => text.trim())
     expect(texts[0]).toBe('xQc')
     expect(texts[1]).toBe('Just Chatting')
-    // An ended stream says when it streamed and for how long ("Streamed Jul 25 · 3h");
+    // An ended stream says when it streamed and for how long ("Streamed Jul 25 · 2h 30m");
     // the read time ("Updated …") is for live and unknown sessions, so it leaves only the refresh icon.
     expect(texts[2]).toMatch(/^Streamed [A-Z][a-z]{2} \d{1,2} · \d+(h|m|h \d+m)/)
     expect(texts[3]).toBe('')
