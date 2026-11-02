@@ -11,6 +11,23 @@ async function readBlob(blob: Blob): Promise<string> {
 }
 
 describe('native public capture transport privacy boundary', () => {
+  it('accepts summary categories without transmitting channel, stream or location data', async () => {
+    const beacon = vi.fn(() => true)
+    Object.defineProperty(navigator, 'sendBeacon', { configurable: true, value: beacon })
+    const client = createPublicCaptureClient('phc_testonly', () => true)
+    client.capturePage('channel_summary')
+    client.captureCta('stream_recap', 'install_extension')
+    expect(beacon).toHaveBeenCalledTimes(2)
+    const events = await Promise.all((beacon.mock.calls as unknown as [string, Blob][]).map(async ([, blob]) => JSON.parse(await readBlob(blob))))
+    expect(events[0].properties.page_category).toBe('channel_summary')
+    expect(events[1].properties).toEqual({page_category: 'stream_recap', cta: 'install_extension', $process_person_profile: false, $geoip_disable: true})
+    expect(JSON.stringify(events)).not.toMatch(/fixturechan|12345|pathname|referrer|current_url/)
+    client.capturePage('tool')
+    client.captureCta('guide', 'install_extension')
+    expect(beacon).toHaveBeenCalledTimes(4)
+    client.stop()
+  })
+
   afterEach(() => { vi.unstubAllEnvs() })
 
   it('sends only a generated capture API envelope; refused beacons have no fallback, retry or shutdown/unload flush', async () => {

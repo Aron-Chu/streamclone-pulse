@@ -6,12 +6,15 @@ import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createServer, loadConfigFromFile } from 'vite'
+import { readPilot, writeRuntimeManifests, renderRecapDocument, recapRedirects, sitemapWithRecaps } from './recap-pilot.mjs'
 
 const root = join(fileURLToPath(new URL('.', import.meta.url)), '..')
 const dist = join(root, 'dist')
 const indexPath = join(dist, 'index.html')
 const indexHtml = readFileSync(indexPath, 'utf8')
 const origin = 'https://streampulse.stream'
+const pilotPages = readPilot(join(root, 'content', 'recap-pilot.json'))
+writeRuntimeManifests(root, pilotPages)
 const analyticsCriticalStyles = readdirSync(join(dist, 'assets'))
   .filter(name => /^figma-analytics-.+\.css$/.test(name))
   .map(name => `<link rel="stylesheet" href="/assets/${name}">`)
@@ -20,6 +23,9 @@ const analyticsCriticalStyles = readdirSync(join(dist, 'assets'))
 // preloads its own chunks, so they download beside the entry, not after it.
 const manifest = JSON.parse(readFileSync(join(dist, '.vite', 'manifest.json'), 'utf8'))
 const publicPageSources = {
+  'tools/twitch-vod-timestamp-link': 'TwitchTimestampTool',
+  'guides/find-twitch-moments': 'FindTwitchMomentsGuide',
+  'guides/twitch-vod-timestamps': 'TwitchVodTimestampsGuide',
   docs: 'Docs', status: 'Status', privacy: 'Privacy', terms: 'Terms', refunds: 'Refunds',
   supporter: 'Supporter', 'supporter/thanks': 'SupporterThanks', support: 'Support',
   feedback: 'Feedback', discord: 'Discord', changelog: 'Changelog',
@@ -56,15 +62,16 @@ const server = await createServer({
   optimizeDeps: { noDiscovery: true, include: [] },
   server: { middlewareMode: true, watch: null }, appType: 'custom',
 })
-let prerenderPublicPage
+let prerenderPublicPage, GROWTH_PAGES
 try {
-  ;({ prerenderPublicPage } = await server.ssrLoadModule('/src/prerender.tsx'))
+  ;({ prerenderPublicPage, GROWTH_PAGES } = await server.ssrLoadModule('/src/prerender.tsx'))
 } catch (error) {
   await server.close()
   throw error
 }
 
 const routes = [
+  ...GROWTH_PAGES,
   {
     path: 'supporter/thanks',
     title: 'Return to your extension — StreamPulse',
@@ -292,6 +299,23 @@ writeFileSync(
     robots: 'noindex,nofollow',
   }),
 )
+
+// A separate document prevents noindex on unreviewed paths from affecting the hub.
+const fallback = renderShell({ path: 'analytics', title: 'StreamPulse Analytics',
+  description: 'Explore tracked Twitch streams. Coverage and replay availability load with the data.',
+  canonicalPath: '/analytics-fallback', robots: 'noindex,nofollow' })
+mkdirSync(join(dist, 'analytics-fallback'), { recursive: true })
+writeFileSync(join(dist, 'analytics-fallback', 'index.html'), fallback)
+writeFileSync(join(dist, 'analytics-fallback.html'), fallback)
+
+for (const page of pilotPages) {
+  const html = renderRecapDocument(renderShell(routes.find(route => route.path === 'analytics')), page)
+  const asset = join(dist, '_recap-pages', page.login, ...(page.kind === 'stream' ? [page.streamId] : []))
+  mkdirSync(asset, { recursive: true })
+  writeFileSync(join(asset, 'index.html'), html)
+}
+writeFileSync(join(dist, '_redirects'), recapRedirects(readFileSync(join(root, 'public', '_redirects'), 'utf8'), pilotPages))
+writeFileSync(join(dist, 'sitemap.xml'), sitemapWithRecaps(readFileSync(join(root, 'public', 'sitemap.xml'), 'utf8'), pilotPages))
 
 await server.close()
 console.log('prerender: wrote rendered public pages, analytics loading content, and 404 fallback')

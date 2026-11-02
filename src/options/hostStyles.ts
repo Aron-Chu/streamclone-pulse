@@ -647,7 +647,7 @@ const hostStyles = `
     gap: 7px;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .pulse-settings-choice-grid[aria-label="Overlay placement"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .pulse-settings-choice-grid[aria-label="Placement"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .pulse-settings-choice-card {
     align-items: center;
     appearance: none;

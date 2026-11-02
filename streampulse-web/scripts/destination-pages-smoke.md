@@ -54,3 +54,13 @@ acceptance remains unverified. Do not rotate a secret, modify the backend, or
 enable a production route as part of this preparation.
 
 Local offline tests: `node --test scripts/destination-pages-smoke.test.mjs`.
+
+After an upload the CLI waits two seconds, then retries transient request,
+document or relay-propagation failures after two, four and eight seconds.
+There are at most four attempts and a 45-second overall budget, including waits
+and requests. Every attempt uses the same identity, shell and refusal checks;
+incorrect identity and redirects fail immediately. Refused response bodies are
+cancelled. A timeout or exhausted retries still fails the smoke. Retry lines
+contain only the attempt number and a fixed reason, with no URL or error text.
+The wait happens after authenticated deployment evidence has been validated;
+this does not make an unready or wrong deployment eligible for checking.

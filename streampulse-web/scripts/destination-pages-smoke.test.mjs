@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import { Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
-import { destinationOrigin, directFetch, verifyDestinationPreview } from './destination-pages-smoke.mjs'
+import { destinationOrigin, directFetch, verifyDestinationPreview, verifyDestinationPreviewWithRetry } from './destination-pages-smoke.mjs'
 import { handleRequest } from '../public/_worker.js'
 
 const fakeOrigin = () => `https://${randomUUID()}.invalid`
@@ -38,6 +38,109 @@ function goodFetch(requests) {
     return new Response('<html><title>StreamPulse</title><div id="root"></div><script type="module"></script></html>', { headers: { 'content-type': 'text/html; charset=utf-8' } })
   }
 }
+
+function retryClock() {
+  let elapsed = 0
+  const waits = []
+  return {
+    waits,
+    now: () => elapsed,
+    advance: milliseconds => { elapsed += milliseconds },
+    waitImpl: async milliseconds => { waits.push(milliseconds); elapsed += milliseconds },
+  }
+}
+
+test('post-upload smoke waits briefly and recovers from a temporary invalid document', async () => {
+  const fixture = setup()
+  const clock = retryClock()
+  const requests = []
+  const retries = []
+  const healthy = goodFetch(requests)
+  let calls = 0
+  const result = await verifyDestinationPreviewWithRetry({ ...fixture, ...clock, onRetry: value => retries.push(value), fetchImpl: async (...args) => {
+    if (calls++ === 0) return new Response('not ready', { status: 503 })
+    return healthy(...args)
+  } })
+  assert.deepEqual(result, { previewRoutes: 3, relayRefusedOnPreview: true, signedRelayVerified: false, attempts: 2 })
+  assert.deepEqual(clock.waits, [2000, 2000])
+  assert.deepEqual(retries, [{ nextAttempt: 2, reason: 'preview-document-invalid' }])
+  assert.equal(calls, 5)
+  assert.equal(requests.length, 4)
+})
+
+test('post-upload smoke can recover while the relay route is still propagating', async () => {
+  const fixture = setup()
+  const requests = []
+  const healthy = goodFetch(requests)
+  let relayCalls = 0
+  const result = await verifyDestinationPreviewWithRetry({ ...fixture, ...retryClock(), fetchImpl: async (url, init) => {
+    if (url.pathname === '/v1/account/me' && relayCalls++ === 0) return new Response('not routed yet')
+    return healthy(url, init)
+  } })
+  assert.equal(result.attempts, 2)
+  assert.equal(result.signedRelayVerified, false)
+  assert.equal(relayCalls, 2)
+})
+
+test('post-upload smoke stops after four unsuccessful attempts', async () => {
+  const fixture = setup()
+  const clock = retryClock()
+  let calls = 0
+  await assert.rejects(verifyDestinationPreviewWithRetry({ ...fixture, ...clock, fetchImpl: async () => {
+    calls++
+    return new Response(null, { status: 503 })
+  } }), /preview-document-invalid/)
+  assert.equal(calls, 4)
+  assert.deepEqual(clock.waits, [2000, 2000, 4000, 8000])
+})
+
+test('post-upload smoke rejects incorrect identity before waiting or requesting anything', async () => {
+  const fixture = setup()
+  const clock = retryClock()
+  let calls = 0
+  fixture.expected.accountId = randomBytes(16).toString('hex')
+  await assert.rejects(verifyDestinationPreviewWithRetry({ ...fixture, ...clock, fetchImpl: async () => { calls++ } }), /account-mismatch/)
+  assert.equal(calls, 0)
+  assert.deepEqual(clock.waits, [])
+})
+
+test('post-upload smoke does not retry redirects and cancels their response bodies', async () => {
+  const fixture = setup()
+  const clock = retryClock()
+  let calls = 0
+  let cancelled = false
+  await assert.rejects(verifyDestinationPreviewWithRetry({ ...fixture, ...clock, fetchImpl: async () => {
+    calls++
+    return new Response(new ReadableStream({ cancel() { cancelled = true } }), { status: 302, headers: { location: fakeOrigin() } })
+  } }), /unexpected-redirect/)
+  assert.equal(calls, 1)
+  assert.equal(cancelled, true)
+  assert.deepEqual(clock.waits, [2000])
+})
+
+test('post-upload smoke stops at its overall budget instead of starting another retry', async () => {
+  const fixture = setup()
+  const clock = retryClock()
+  let calls = 0
+  await assert.rejects(verifyDestinationPreviewWithRetry({ ...fixture, ...clock, fetchImpl: async (_url, init) => {
+    calls++
+    assert.ok(init.signal instanceof AbortSignal)
+    clock.advance(43000)
+    throw new Error('network failure containing private details')
+  } }), /preview-propagation-timeout/)
+  assert.equal(calls, 1)
+  assert.deepEqual(clock.waits, [2000])
+})
+
+test('post-upload smoke never accepts a successful check that completes after its budget', async () => {
+  const fixture = setup()
+  const clock = retryClock()
+  const healthy = goodFetch([])
+  await assert.rejects(verifyDestinationPreviewWithRetry({ ...fixture, ...clock, fetchImpl: async (url, init) => {
+    if (url.pathname === '/v1/account/me') clock.advance(43000)
+    return healthy(url, init)
+  } }), /preview-propagation-timeout/)
+})
 
 test('checks the intended preview without credentials or redirects and does not claim signature proof', async () => {
   const { evidence, expected } = setup()

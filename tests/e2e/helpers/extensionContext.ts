@@ -28,6 +28,8 @@ export interface ExtensionStorageSeed {
   /** When true, skips the one-time pre-v3→Full migration for this fixture. */
   defaultChartWindowMigratedToRecentV2?: boolean
   defaultChartWindowMigratedToFullV3?: boolean
+  /** Defaults to true: specs see the panel as a returning reader does. */
+  firstRunLineDismissed?: boolean
 }
 
 export interface LaunchedExtension {
@@ -163,6 +165,7 @@ export async function seedExtensionStorage(
     chatClosedPulseDockEnabled: seed.chatClosedPulseDockEnabled ?? false,
     defaultChartWindow: seed.defaultChartWindow ?? 'full',
     keepLocalCache: true,
+    firstRunLineDismissed: seed.firstRunLineDismissed ?? true,
   }
 
   if (seed.defaultChartWindowMigratedToFullV1 === true) {

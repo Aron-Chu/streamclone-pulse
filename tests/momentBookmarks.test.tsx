@@ -116,6 +116,28 @@ it('offers no bookmark without a stream or VOD to save against', async () => {
   expect(bookmark()).toBeNull()
 })
 
+it('shows only the worker-issued review offer, dismisses it and does not restore it on remount', async () => {
+  vi.mocked(sendBackgroundMessage)
+    .mockResolvedValueOnce({ type: 'BOOKMARKS', items: [] })
+    .mockResolvedValueOnce({ type: 'BOOKMARK', item, device: true, reviewRequest: true })
+  await card()
+  expect(host.querySelector('.pulse-review-request')).toBeNull()
+  await press(bookmark())
+  const invitation = host.querySelector('.pulse-review-request')!
+  expect(invitation.textContent).toContain('Your review helps other Twitch viewers discover StreamPulse.')
+  expect(invitation.textContent).not.toMatch(/five.star|5.star|reward|enjoying|happy/i)
+  const link = invitation.querySelector('a')!
+  expect(link.getAttribute('target')).toBe('_blank')
+  expect(link.getAttribute('rel')).toBe('noopener noreferrer')
+  expect(link.getAttribute('href')).toContain('chromewebstore.google.com/detail/streampulse/')
+  await press(invitation.querySelector('button'))
+  expect(host.querySelector('.pulse-review-request')).toBeNull()
+  await act(async () => root.unmount())
+  root = createRoot(host)
+  await card()
+  expect(host.querySelector('.pulse-review-request')).toBeNull()
+})
+
 it('hydrates the saved state inside the extension runtime, on the card and the row', async () => {
   runtime()
   vi.mocked(sendBackgroundMessage).mockResolvedValueOnce({ type: 'BOOKMARKS', items: [item] })
