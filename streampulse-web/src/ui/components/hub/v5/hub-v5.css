@@ -869,7 +869,7 @@
     gap: 0 10px;
     min-height: 84px;
     margin-top: 14px;
-    padding: 12px 12px 12px 14px;
+    padding: 12px;
   }
   .hv5-pr-copy { display: contents; }
   .hv5-pr-stage { grid-area: stage; grid-template-columns: minmax(0, 1fr); height: 330px; margin-top: 12px; }
