@@ -159,7 +159,9 @@ describe('landing page', () => {
       'https://chromewebstore.google.com/detail/streampulse/nifgoonpcgmdhiffcpmhndjgkgahnelg',
     )
     expect(installUrl.searchParams.get('utm_source')).toBe('streampulse.stream')
-    expect(installUrl.searchParams.get('utm_medium')).toMatch(/^[a-z0-9-]+$/)
+    expect(installUrl.searchParams.get('utm_medium')).toBe('referral')
+    expect(installUrl.searchParams.get('utm_campaign')).toBe('website_install')
+    expect(installUrl.searchParams.get('utm_content')).toBe('home')
     expect(install.getAttribute('target')).toBe('_blank')
     expect(install.getAttribute('rel')).toBe('noopener noreferrer')
   })

@@ -48,6 +48,8 @@ export type MessageType =
   | 'VOD_PULSE_UPDATE'
   | 'REPORT_EXTENSION_DIAGNOSTIC'
   | 'EMIT_EXTENSION_ANALYTICS'
+  | 'PREPARE_ANALYTICS_CONSENT_GRANT'
+  | 'SET_ANALYTICS_CONSENT'
   | 'ENROLL_DEVICE'
   | 'GET_DEVICE_AUTH_STATUS'
   | 'ROTATE_DEVICE'
@@ -240,6 +242,12 @@ export interface EmitExtensionAnalyticsMessage {
   name: 'pulse_load_completed' | 'extension_error_shown'
 }
 
+export interface SetAnalyticsConsentMessage {
+  type: 'SET_ANALYTICS_CONSENT'
+  granted: boolean
+  grantTicket?: string
+}
+
 export interface ListBookmarksMessage {
   type: 'LIST_BOOKMARKS'
   /** Sender-page identity only; never a backend bookmark filter. */
@@ -318,6 +326,8 @@ export type BackgroundRequest =
   | RevokeDeviceMessage
   | ReportExtensionDiagnosticMessage
   | EmitExtensionAnalyticsMessage
+  | { type: 'PREPARE_ANALYTICS_CONSENT_GRANT' }
+  | SetAnalyticsConsentMessage
   | ListBookmarksMessage
   | SaveBookmarkMessage
   | DeleteBookmarkMessage
