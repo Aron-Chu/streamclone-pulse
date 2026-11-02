@@ -114,7 +114,11 @@ async function main(argv) {
   const { loadEnv } = await import('vite')
   // The same view pages:deploy:prod builds with: .env.<mode> files under the shell.
   const env = { ...process.env, ...loadEnv(mode, webRoot, ['VITE_']) }
-  const backendUrl = argValue(argv, '--backend-url') || env.VITE_BACKEND_URL?.trim() || DEFAULT_BACKEND_URL
+  const backendFlag = argValue(argv, '--backend-url')
+  const envBackend = env.VITE_BACKEND_URL?.trim()
+  const backendUrl = backendFlag || envBackend || DEFAULT_BACKEND_URL
+  // Say where the backend came from, never an env value, so nothing set in the env is printed.
+  const backendFrom = backendFlag ? 'from --backend-url' : envBackend ? 'from VITE_BACKEND_URL (set)' : `${DEFAULT_BACKEND_URL} (default)`
   const workerPath = join(webRoot, 'public', '_worker.js')
   const workerText = existsSync(workerPath) ? readFileSync(workerPath, 'utf8') : ''
   const { on, results, failures, notes } = await checkSwitchRoutes({ env, backendUrl, workerText })
@@ -122,7 +126,7 @@ async function main(argv) {
     console.log(`check-switch-routes: no switches on (${mode} env)`)
     return 0
   }
-  console.log(`check-switch-routes: ${on.join(', ')} on (${mode} env); backend ${backendUrl}`)
+  console.log(`check-switch-routes: ${on.join(', ')} on (${mode} env); backend ${backendFrom}`)
   for (const r of results) console.log(`  ${r.problem ? 'FAIL' : 'ok  '} ${r.switch}: GET ${r.path} -> ${r.status || '-'}${r.problem ? ` (${r.problem})` : ''}`)
   for (const n of notes) console.warn(`  note ${n.switch}: ${n.note}`)
   if (failures.length > 0) {

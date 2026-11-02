@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { NOT_SWITCHES, SWITCHES, checkSwitchRoutes, relayPaths, switchesOn } from './check-switch-routes.mjs'
@@ -94,9 +94,11 @@ test('every VITE_ name the portal reads is either a checked switch or listed as 
   const known = new Set([...SWITCHES.map((s) => s.name), ...NOT_SWITCHES])
   const seen = new Set()
   const walk = (dir) => {
-    for (const name of readdirSync(dir)) {
+    // Dirent types, so each file is only opened by the one read below (no stat, then read).
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const name = entry.name
       const path = join(dir, name)
-      if (statSync(path).isDirectory()) walk(path)
+      if (entry.isDirectory()) walk(path)
       else if (/\.(ts|tsx)$/.test(name) && !/\.test\.tsx?$/.test(name)) {
         // Any VITE_ name, so a read through an alias (const env = import.meta.env) counts too.
         for (const m of readFileSync(path, 'utf8').matchAll(/\b(VITE_[A-Z0-9_]+)\b/g)) seen.add(m[1])
