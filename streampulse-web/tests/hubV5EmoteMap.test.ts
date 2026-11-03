@@ -35,6 +35,7 @@ import {
   emoteSharePct,
   fieldMapView,
   fieldOf,
+  findMapEmote,
   mapRectOnScreen,
   mapViewShowing,
   nearestTile,
@@ -44,6 +45,7 @@ import {
   squarify,
   tileFace,
   tileFits,
+  tileMapView,
   tilePic,
   tilePicUrl,
   tileSize,
@@ -837,5 +839,54 @@ describe('the conveyor', () => {
       expect(v).toBeLessThan(1)
     }
     expect(conveyorRng(0)()).toBe(conveyorRng(1)())
+  })
+})
+
+describe('Find emote (3A, 11-02)', () => {
+  const W = 800
+  const H = 400
+  const agg = (name: string, id = name) => ({ id, e: { name } }) as HubEmoteAgg
+  const ranked = [
+    { a: agg('KEKW'), v: 50 },
+    { a: agg('kekw', 'kekw-7tv'), v: 90 },
+    { a: agg('KEKWait'), v: 120 },
+    { a: agg('OMEGALUL'), v: 30 },
+    { a: agg('LUL'), v: 10 },
+  ]
+
+  it('takes the name as typed, then any case, then a start, then a part; more uses first within each', () => {
+    expect(findMapEmote(ranked, 'KEKW')?.a.id).toBe('KEKW')
+    expect(findMapEmote(ranked, 'kekw')?.a.id).toBe('kekw-7tv')
+    expect(findMapEmote(ranked, 'Kekw')?.a.id).toBe('kekw-7tv')
+    expect(findMapEmote(ranked, 'kekwa')?.a.id).toBe('KEKWait')
+    expect(findMapEmote(ranked, ' lul ')?.a.id).toBe('LUL')
+    expect(findMapEmote(ranked, 'GALU')?.a.id).toBe('OMEGALUL')
+  })
+
+  it('needs two letters and says nothing for no match', () => {
+    expect(findMapEmote(ranked, 'K')).toBeNull()
+    expect(findMapEmote(ranked, 'PogChamp')).toBeNull()
+    expect(findMapEmote([], 'KEKW')).toBeNull()
+  })
+
+  it('centres a small tile, zoomed until it is about 40% of the short side, within 8×', () => {
+    const t = { x: 600, y: 300, w: 20, h: 20 }
+    const v = tileMapView(t, W, H)
+    expect(v.k).toBe(EMOTE_ZOOM_MAX)
+    const tiny = { x: 100, y: 100, w: 40, h: 40 }
+    const v2 = tileMapView(tiny, W, H)
+    expect(v2.k).toBeCloseTo(4)
+    const s = mapRectOnScreen(tiny, v2, W, H)
+    expect(s.x + s.w / 2).toBeCloseTo(W / 2)
+    expect(s.y + s.h / 2).toBeCloseTo(H / 2)
+    // near the corner the view stays on the map
+    const corner = tileMapView({ x: 780, y: 380, w: 20, h: 20 }, W, H)
+    expect(corner).toEqual(clampMapView(corner, W, H))
+    expect(mapRectOnScreen({ x: 780, y: 380, w: 20, h: 20 }, corner, W, H)).toMatchObject({ cl: 0, ct: 0, cr: 0, cb: 0 })
+  })
+
+  it('keeps the whole map for a tile already that big, or no size', () => {
+    expect(tileMapView({ x: 0, y: 0, w: 300, h: 200 }, W, H)).toEqual(MAP_VIEW_1X)
+    expect(tileMapView({ x: 0, y: 0, w: 20, h: 20 }, 0, 0)).toEqual(MAP_VIEW_1X)
   })
 })

@@ -281,6 +281,31 @@
   margin-top: 1.6rem;
 }
 
+/* P1 (11-02): a phone leads with Open the Hub, filled as the default button, and a line that the extension is for
+   desktop; the install button goes there, as on the hub. Wider screens keep both buttons as they are. */
+.sl-stage > p.sl-hero__desk { display: none; }
+
+@media (max-width: 719px) {
+  .sl-hero__actions [data-cta="chrome-install-hero"] { display: none; }
+  .sl-hero__actions .sc-btn.sl-hero__hub {
+    border-color: transparent;
+    background: hsl(var(--sc-primary));
+    color: hsl(var(--sc-primary-foreground));
+  }
+  .sl-hero__actions .sc-btn.sl-hero__hub:hover:not(:disabled) {
+    background: hsl(var(--sc-primary) / 0.9);
+    color: hsl(var(--sc-primary-foreground));
+  }
+  .sl-stage > p.sl-hero__desk {
+    display: block;
+    margin: 0.6rem auto 0;
+    color: hsl(var(--sc-muted-foreground));
+    font-size: 13px;
+    line-height: 18px;
+    text-align: center;
+  }
+}
+
 .sl-discord-icon:focus-visible,
 .sc-btn.sl-discord-nav:focus-visible {
   outline: 2px solid #c4b5fd;
@@ -452,6 +477,12 @@
   position: absolute;
   z-index: 45;
   top: 68px;
+  /* games and emotes make the list longer (3A): it scrolls inside, with no bar. With a phone keyboard up the
+     search box sets the room above it (K1, 11-02) */
+  max-height: min(72vh, 640px, var(--hv5-sugg-room, 640px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
   left: 0;
   right: 0;
   padding: 6px;
@@ -524,6 +555,21 @@
 .sl-search .hv5-sg-open .hv5-ico { width: 16px; height: 16px; margin: 0 6px; }
 .sl-search .hv5-sg-open b { color: hsl(var(--sc-foreground)); }
 .sl-search .hv5-sg-k { margin-left: auto; color: hsl(var(--sc-muted-foreground)); font-size: 12px; }
+
+/* 3A (11-02): the looked-up login's row, a game's cover and an emote's picture */
+.sl-search [data-kind="login"] > .hv5-ico { flex: none; width: 16px; height: 16px; margin: 0 6px; }
+.sl-search [data-kind="login"] b { color: hsl(var(--sc-foreground)); }
+.sl-search :is(.hv5-sg-gm, .hv5-sg-em) {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+}
+.sl-search .hv5-sg-gm > * { width: 24px; height: 32px; border-radius: 3px; overflow: hidden; background: hsl(var(--sc-muted)); }
+.sl-search .hv5-sg-gm img { display: block; object-fit: cover; }
+.sl-search .hv5-sg-gm span { display: grid; place-items: center; color: hsl(var(--sc-muted-foreground)); font-size: 10px; font-weight: 600; }
+.sl-search .hv5-sg-em img { display: block; width: 28px; height: 28px; object-fit: contain; }
 
 .sl-search .hv5-sg-none {
   padding: 10px;

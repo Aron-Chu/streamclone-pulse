@@ -4,6 +4,7 @@ export type {
   PulseBookmarkQuery,
   SetupWelcome,
   StartHistoricalSyncOptions,
+  TwitchChannelLookup,
 } from './configureApi.ts'
 export type {
   AnalyticsMinuteRollup,

@@ -25,6 +25,8 @@ const api = vi.hoisted(() => ({
 }))
 
 vi.mock('../api.ts', () => api)
+const twitch = vi.hoisted(() => ({ lookupTwitchChannel: vi.fn() }))
+vi.mock('../twitchChannelLookup.ts', () => twitch)
 vi.mock('./analytics/AnalyticsChart.tsx', () => ({
   default: () => <div data-testid="analytics-chart">No recent data</div>,
 }))
@@ -83,6 +85,7 @@ beforeEach(() => {
   api.getStreamSummary.mockResolvedValue(null)
   api.getSyncStatus.mockResolvedValue(null)
   api.watchAnalyticsChannel.mockResolvedValue(undefined)
+  twitch.lookupTwitchChannel.mockResolvedValue({ state: 'unknown' })
 })
 
 afterEach(() => cleanup())
@@ -125,6 +128,31 @@ describe('AnalyticsConsole: a channel StreamPulse has never recorded', () => {
     // The other two links are as before, and no link still says "Suggest a channel".
     expect(within(panel).getByRole('link', { name: 'Search tracked channels' }).getAttribute('href')).toBe('/analytics')
     expect(within(panel).queryByRole('link', { name: 'Suggest a channel' })).toBeNull()
+  })
+
+  it('says it can’t check Twitch when the check fails, never that the channel does not exist', async () => {
+    renderConsole('/analytics/zzzqqqxx1')
+    const panel = await screen.findByRole('region', { name: 'StreamPulse hasn’t recorded zzzqqqxx1 yet' })
+    await waitFor(() => expect(panel.querySelector('[data-twitch-lookup="unknown"]')).not.toBeNull())
+    expect(panel.textContent).toMatch(/We can’t check Twitch for zzzqqqxx1 right now\. Check the spelling, or suggest it\./)
+    expect(panel.textContent).not.toMatch(/doesn.t exist|no such|not a Twitch/i)
+    expect(twitch.lookupTwitchChannel).toHaveBeenCalledWith('zzzqqqxx1')
+    expect(within(panel).getByRole('link', { name: 'Suggest a channel' }).getAttribute('href')).toBe('/feedback')
+  })
+
+  it('names a real Twitch account that is not tracked yet and offers to suggest it', async () => {
+    twitch.lookupTwitchChannel.mockResolvedValue({ state: 'found', displayName: 'NewStreamer', avatar: 'https://static-cdn.jtvnw.net/jtv_user_pictures/n.png' })
+    renderConsole('/analytics/newstreamer')
+    const panel = await screen.findByRole('region', { name: 'StreamPulse hasn’t recorded newstreamer yet' })
+    const line = await waitFor(() => {
+      const el = panel.querySelector('[data-twitch-lookup="found"]')
+      expect(el).not.toBeNull()
+      return el!
+    })
+    expect(line.textContent).toBe('NewStreamer is on Twitch, not tracked yet.')
+    expect(line.querySelector('img')?.getAttribute('src')).toBe('https://static-cdn.jtvnw.net/jtv_user_pictures/n.png')
+    expect(within(panel).getByRole('link', { name: 'Suggest newstreamer' }).getAttribute('href')).toBe('/feedback')
+    expect(within(panel).getByRole('link', { name: 'Search tracked channels' }).getAttribute('href')).toBe('/analytics')
   })
 
   it('keeps the dashboard for a channel with stored streams', async () => {

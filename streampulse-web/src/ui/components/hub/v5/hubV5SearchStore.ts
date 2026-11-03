@@ -19,6 +19,8 @@ export interface HubV5SearchStore {
   subscribe: (listener: () => void) => () => void
   /** The box / and Ctrl/⌘K focus: the bar's once docked, else the hero's. */
   inputs: { hero: HTMLInputElement | null; dock: HTMLInputElement | null; openDock: (() => void) | null }
+  /** On the hub, a picked game sets its game filter and a picked emote is found on the map (3A); elsewhere both are links to the hub. */
+  actions: { game: ((name: string) => void) | null; emote: ((name: string) => void) | null }
 }
 
 export function createHubV5SearchStore(): HubV5SearchStore {
@@ -37,6 +39,7 @@ export function createHubV5SearchStore(): HubV5SearchStore {
       return () => listeners.delete(listener)
     },
     inputs: { hero: null, dock: null, openDock: null },
+    actions: { game: null, emote: null },
   }
 }
 

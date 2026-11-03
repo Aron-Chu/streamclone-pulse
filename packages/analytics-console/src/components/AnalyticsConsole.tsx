@@ -89,6 +89,7 @@ import { StreamRecapPanel } from './analytics/StreamRecapPanel.tsx'
 import { hasRecapMomentsAvailable } from '../utils/recapMomentsAvailable.ts'
 import { resolveMomentVodJump } from '../utils/selectedMomentDisplay.ts'
 import { SyncStatusPanel } from './analytics/SyncStatusPanel.tsx'
+import { lookupTwitchChannel } from '../twitchChannelLookup.ts'
 import { StreamQualityBanner } from './analytics/StreamQualityBanner.tsx'
 import { diagnoseStreamQuality, sessionDataQualityLabel } from '../utils/streamQuality.ts'
 import { sessionIsEnded, sessionStreamedLine, sessionVodLine } from '../utils/sessionState.ts'
@@ -2015,6 +2016,16 @@ export function AnalyticsConsole({
  * the stat grid, stream list and chart (which would all be empty placeholders).
  */
 function ChannelNotRecordedPanel({ login, suggest }: { login: string; suggest?: { href: string; label: string } }) {
+  // SRCH-5 (3A, 11-02): Twitch's answer turns the dead end into a next step. Only a
+  // real answer says the account exists; a failed read never says it doesn't.
+  const twitch = useQuery({
+    queryKey: ['analytics', 'twitch-channel', login],
+    queryFn: () => lookupTwitchChannel(login),
+    staleTime: 5 * 60_000,
+    retry: false,
+  })
+  const lookup = twitch.data
+  const found = lookup && lookup.state === 'found' ? lookup : null
   return (
     <section
       data-channel-not-recorded
@@ -2031,6 +2042,20 @@ function ChannelNotRecordedPanel({ login, suggest }: { login: string; suggest?: 
           How coverage works
         </Link>
       </p>
+      {found ? (
+        <p data-twitch-lookup="found" className="mt-5 flex items-center gap-3 text-sm font-semibold text-zinc-200">
+          {found.avatar ? (
+            <img src={found.avatar} alt="" width={32} height={32} referrerPolicy="no-referrer" className="h-8 w-8 shrink-0 rounded-full bg-white/10" />
+          ) : null}
+          <span>
+            <span className="font-black text-white">{found.displayName || login}</span> is on Twitch, not tracked yet.
+          </span>
+        </p>
+      ) : twitch.isSuccess ? (
+        <p data-twitch-lookup="unknown" className="mt-5 max-w-2xl text-sm font-semibold leading-6 text-zinc-400">
+          We can&rsquo;t check Twitch for <span className="break-words">{login}</span> right now. Check the spelling, or suggest it.
+        </p>
+      ) : null}
       <div className="mt-6 flex flex-wrap gap-3">
         <Link
           to="/analytics"
@@ -2053,7 +2078,7 @@ function ChannelNotRecordedPanel({ login, suggest }: { login: string; suggest?: 
             to="/feedback"
             className="inline-flex min-h-11 items-center rounded border border-white/15 bg-white/[0.05] px-4 py-2 text-sm font-black text-zinc-200 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
           >
-            Suggest a channel
+            {found ? `Suggest ${login}` : 'Suggest a channel'}
           </Link>
         )}
       </div>

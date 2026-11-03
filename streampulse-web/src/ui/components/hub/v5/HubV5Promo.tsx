@@ -5,9 +5,13 @@
  * while half of it is on screen, then rests on the last. Hover plays it once more; reduced motion
  * and a hidden tab show the last beat still. The panel pictures are 2× captures of the real panel
  * (the sandbox /extension demo); the stream is drawn sample art. One install button, for the
- * visitor's own browser; phones get the panel alone and a line that it is a desktop extension.
+ * visitor's own browser.
+ *
+ * Phones (A, 11-02, a named change from 11-01's "panel alone" there only) get no install button but a compact card:
+ * the title, that it is a free desktop extension, and "See how it works", which opens the panel and the line under it
+ * in place and plays it once. Desktop and tablet are unchanged.
  */
-import { forwardRef, useLayoutEffect, useRef } from 'react'
+import { forwardRef, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import blocksCave from '../../../../demo/pictures/blocks-cave.svg'
 import blocksDay from '../../../../demo/pictures/blocks-day.svg'
 import sceneCard from '../../../../demo/pictures/panel-scene-card-2x.webp'
@@ -15,6 +19,7 @@ import sceneChart from '../../../../demo/pictures/panel-scene-chart-2x.webp'
 import sceneMoments from '../../../../demo/pictures/panel-scene-moments-2x.webp'
 import { useMatchMedia } from '../../../hooks/useMatchMedia'
 import { InstallCta } from '../../InstallCta'
+import { HubV5Icon } from './HubV5Icon'
 
 /** Twitch global emotes, by id. */
 const EMOTES = { PogChamp: 305954156, LUL: 425618, Kreygasm: 41, WutFace: 28087 } as const
@@ -74,6 +79,12 @@ function chatLine([color, name, says]: readonly [string, string, string | readon
 export const HubV5Promo = forwardRef<HTMLDivElement>(function HubV5Promo(_props, ref) {
   const reduce = useMatchMedia('(prefers-reduced-motion: reduce)')
   const stageRef = useRef<HTMLDivElement>(null)
+  const uid = useId()
+  const stageId = `${uid}stage`
+  const bodyId = `${uid}body`
+  // phones: the compact card opens on "See how it works"; wider screens always show the stage
+  const [open, setOpen] = useState(false)
+  const playOnce = useRef<(() => void) | null>(null)
 
   // The beats run on timers that write to the stage directly: nothing re-renders while it plays.
   useLayoutEffect(() => {
@@ -184,6 +195,7 @@ export const HubV5Promo = forwardRef<HTMLDivElement>(function HubV5Promo(_props,
 
     if (reduce || typeof IntersectionObserver === 'undefined') {
       still()
+      playOnce.current = null
       return halt
     }
 
@@ -207,8 +219,13 @@ export const HubV5Promo = forwardRef<HTMLDivElement>(function HubV5Promo(_props,
         still()
       }
     }
+    // a closed phone card's stage is not drawn: a tap on the card plays nothing until it opens
     const onEnter = () => {
-      if (running) return
+      if (running || !stage.getClientRects().length) return
+      loops = MAX_LOOPS - 1
+      play()
+    }
+    playOnce.current = () => {
       loops = MAX_LOOPS - 1
       play()
     }
@@ -218,16 +235,21 @@ export const HubV5Promo = forwardRef<HTMLDivElement>(function HubV5Promo(_props,
       io.disconnect()
       document.removeEventListener('visibilitychange', onVisibility)
       card.removeEventListener('pointerenter', onEnter)
+      playOnce.current = null
       halt()
     }
   }, [reduce])
+  // opened on a phone: the stage is drawn now, so it plays once (reduced motion keeps the still)
+  useEffect(() => {
+    if (open) playOnce.current?.()
+  }, [open])
 
   return (
-    <div className="hv5-promo" ref={ref}>
-      <div className="hv5-pr-stage" ref={stageRef} data-beat={LAST} aria-hidden="true">
+    <div className="hv5-promo" ref={ref} data-open={open ? '' : undefined}>
+      <div className="hv5-pr-stage" id={stageId} ref={stageRef} data-beat={LAST} aria-hidden="true">
         <div className="hv5-pr-player">
-          <img className="hv5-pr-scene" src={blocksDay} alt="" width={320} height={180} decoding="async" />
-          <img className="hv5-pr-scene hv5-pr-cave" src={blocksCave} alt="" width={320} height={180} decoding="async" />
+          <img className="hv5-pr-scene" src={blocksDay} alt="" width={320} height={180} loading="lazy" decoding="async" />
+          <img className="hv5-pr-scene hv5-pr-cave" src={blocksCave} alt="" width={320} height={180} loading="lazy" decoding="async" />
           <div className="hv5-pr-ptop"><span className="hv5-pr-ch">sample_streamer</span><span className="hv5-pr-rp">REPLAY</span></div>
           <div className="hv5-pr-toast">▶ Jumped to 2:18:20</div>
           <div className="hv5-pr-pbot">
@@ -246,9 +268,9 @@ export const HubV5Promo = forwardRef<HTMLDivElement>(function HubV5Promo(_props,
           </div>
           <div className="hv5-pr-vp">
             <div className="hv5-pr-ly hv5-pr-chat"><div className="hv5-pr-lines" /></div>
-            <div className="hv5-pr-ly hv5-pr-chart"><img src={sceneChart} alt="" width={338} height={390} decoding="async" /><span className="hv5-pr-hl" /></div>
-            <div className="hv5-pr-ly hv5-pr-mom"><img src={sceneMoments} alt="" width={338} height={415} decoding="async" /></div>
-            <div className="hv5-pr-ly hv5-pr-card"><img src={sceneCard} alt="" width={338} height={500} decoding="async" /></div>
+            <div className="hv5-pr-ly hv5-pr-chart"><img src={sceneChart} alt="" width={338} height={390} loading="lazy" decoding="async" /><span className="hv5-pr-hl" /></div>
+            <div className="hv5-pr-ly hv5-pr-mom"><img src={sceneMoments} alt="" width={338} height={415} loading="lazy" decoding="async" /></div>
+            <div className="hv5-pr-ly hv5-pr-card"><img src={sceneCard} alt="" width={338} height={500} loading="lazy" decoding="async" /></div>
           </div>
         </div>
         <div className="hv5-pr-cap">
@@ -260,7 +282,18 @@ export const HubV5Promo = forwardRef<HTMLDivElement>(function HubV5Promo(_props,
       </div>
       <div className="hv5-pr-copy">
         <p className="hv5-pr-h">See chat's big moments on Twitch</p>
-        <p className="hv5-pr-p">The Pulse tab sits beside Twitch chat. It marks every spike and jumps you to the second it happened.</p>
+        <p className="hv5-pr-sub">Desktop extension for Chrome, Edge and Firefox · Free</p>
+        <button
+          className="hv5-pr-more"
+          type="button"
+          aria-expanded={open}
+          aria-controls={`${stageId} ${bodyId}`}
+          onClick={() => setOpen((was) => !was)}
+        >
+          See how it works
+          <HubV5Icon name="down" />
+        </button>
+        <p className="hv5-pr-p" id={bodyId}>The Pulse tab sits beside Twitch chat. It marks every spike and jumps you to the second it happened.</p>
         <InstallCta className="hv5-hero-install" label="short" icon="mark" data-cta="chrome-install-hub-hero" />
         <p className="hv5-pr-desk">Desktop extension for Chrome, Edge and Firefox</p>
         <p className="hv5-pr-free">Free · no account</p>

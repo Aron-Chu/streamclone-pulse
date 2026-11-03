@@ -17,6 +17,8 @@ const GAMES = ['Just Chatting', 'Just Chatting', 'Just Chatting', 'Minecraft', '
 const TOP_MOMENT: HubUxMockOptions = { withComparisons: true, momentOffsets: [3600, 3600] }
 
 async function openV5Hub(page: Page, options: HubUxMockOptions = {}) {
+  // on the context, so every page mock wins: an API read nothing here answers gets a 404, never the live API
+  await page.context().route(/^https:\/\/api\.streampulse\.stream\//, route => route.fulfill({ status: 404, json: {} }))
   await installHubUxMock(page, { featuredSession: READY_FEATURED_SESSION, ...options })
   const first = page.waitForResponse(response => /\/v1\/public\/hub\?/.test(response.url()))
   await page.goto('/analytics')
@@ -160,13 +162,35 @@ test('the Featured stream holds its place while the hub loads, so nothing under 
   }
 })
 
+/**
+ * The search's lookups for one login (3A): the latest recorded stream and the Twitch profile. Fulfilled here, never
+ * passed on: a login in `streams` answers with that stream, every other read is the edge's 502.
+ */
+async function fenceLookups(page: Page, streams: Record<string, Record<string, unknown>> = {}) {
+  await page.route(/\/v1\/channels\/[^/?]+(\?.*)?$/, route => {
+    const login = new URL(route.request().url()).pathname.split('/').pop() ?? ''
+    return streams[login]
+      ? route.fulfill({ json: { login, displayName: String(streams[login].displayName ?? login) } })
+      : route.fulfill({ status: 502, contentType: 'text/plain', body: 'error code: 502' })
+  })
+  await page.route(/\/v1\/portal\/analytics\/channels\/[^/]+\/streams(\?.*)?$/, route => {
+    const login = new URL(route.request().url()).pathname.split('/')[5] ?? ''
+    return streams[login]
+      ? route.fulfill({ json: { channel: login, items: [{ login, ...streams[login] }] } })
+      : route.fulfill({ status: 502, contentType: 'text/plain', body: 'error code: 502' })
+  })
+}
+
 test('the hero search lists live channels, filters as you type and opens the pick', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
+  await fenceLookups(page)
   await openV5Hub(page)
   const input = page.getByRole('combobox', { name: /search/i })
+  await expect(input).toHaveAttribute('placeholder', 'Streamers or games')
+  await expect(input).toHaveAttribute('aria-label', 'Search streamers or games')
   await page.keyboard.press('Control+k')
   await expect(input).toBeFocused()
-  const list = page.getByRole('listbox', { name: 'Channels' })
+  const list = page.getByRole('listbox', { name: 'Search suggestions' })
   await expect(list).toBeVisible()
   await expect(list.getByRole('option')).toHaveCount(6)
   await expect(list.getByRole('option').first()).toContainText('xQc')
@@ -178,6 +202,89 @@ test('the hero search lists live channels, filters as you type and opens the pic
   await input.fill('sodapoppin')
   await page.keyboard.press('Enter')
   await expect(page).toHaveURL(/\/analytics\/sodapoppin$/)
+})
+
+test('the hero search shows an offline channel from its records, and "can’t check" when the read fails', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await fenceLookups(page, {
+    mizkif: { displayName: 'Mizkif', streamId: '777', startedAt: '2026-10-31T18:00:00Z', endedAt: '2026-10-31T22:00:00Z', category: 'Just Chatting' },
+  })
+  await openV5Hub(page)
+  const input = page.getByRole('combobox', { name: /search/i })
+  const list = page.getByRole('listbox', { name: 'Search suggestions' })
+  // not live in the mock, so its row comes from the lookups
+  await input.fill('mizkif')
+  const row = list.locator('[data-kind="login"]')
+  await expect(row).toHaveAttribute('data-state', 'recorded')
+  await expect(row).toContainText('Mizkif')
+  await expect(row).toContainText('Offline · last streamed Oct 31 · Just Chatting')
+  await expect(row).toHaveAttribute('href', '/analytics/mizkif/777')
+  await input.fill('zzzqqqxx1')
+  await expect(row).toHaveAttribute('data-state', 'unknown')
+  await expect(row).toContainText('Open analytics for zzzqqqxx1')
+  await expect(row).toContainText('Can’t check right now')
+  await expect(row).toHaveAttribute('href', '/analytics/zzzqqqxx1')
+  await noSideScroll(page)
+})
+
+test('a game from the hero search filters Channels in place and keeps it in the link', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await fenceLookups(page)
+  await openV5Hub(page)
+  // the hero's box: once the page scrolls to Channels, the top bar shows its own
+  const hero = page.getByRole('main')
+  const input = hero.getByRole('combobox', { name: /search/i })
+  const list = hero.getByRole('listbox', { name: 'Search suggestions', includeHidden: true })
+  await input.fill('minec')
+  const game = list.locator('[data-kind="game"]', { hasText: 'Minecraft' })
+  await expect(game).toContainText('4 channels live')
+  await game.click()
+  await expect(page).toHaveURL(/\/analytics\?game=Minecraft$/)
+  await expect(input).toHaveValue('')
+  await expect(list).toBeHidden()
+  const channels = page.locator('#channels')
+  await expect(channels.locator('[data-chip="game"]')).toContainText('Minecraft')
+  await expect(channels.locator('[data-hv5-channel-count]')).toHaveText('4 channels')
+  await expect(page.locator('#games [data-game="Minecraft"]')).toHaveAttribute('aria-pressed', 'true')
+  // the link opens on the same filter
+  await page.reload()
+  await expect(page.locator('#channels [data-chip="game"]')).toContainText('Minecraft')
+  await page.locator('#channels').getByRole('button', { name: 'Remove the Minecraft filter' }).click()
+  await expect(page).toHaveURL(/\/analytics$/)
+})
+
+test('an emote from the hero search is found on the Top emotes map, and Find emote clears with Esc', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await fenceLookups(page)
+  await openV5Hub(page, { bucketEmoteDetail: true })
+  const emotes = page.locator('#emotes')
+  await expect(emotes.locator('.hv5-em-t').first()).toBeVisible()
+  const input = page.getByRole('combobox', { name: /search/i })
+  const list = page.getByRole('listbox', { name: 'Search suggestions' })
+  await input.fill('OMEGA')
+  const pick = list.locator('[data-kind="emote"]', { hasText: 'OMEGALUL' })
+  await expect(pick).toContainText('BTTV')
+  await pick.click()
+  const find = emotes.getByRole('searchbox', { name: 'Find emote on the map' })
+  await expect(find).toHaveValue('OMEGALUL')
+  const found = emotes.locator('.hv5-em-ly:not([data-out]) > .hv5-em-t[data-found]')
+  await expect(found).toHaveCount(1)
+  await expect(found).toHaveAttribute('aria-pressed', 'true')
+  await expect(found).toHaveAttribute('aria-label', /OMEGALUL/)
+  await expect(emotes.locator('.hv5-el-ti')).toContainText('OMEGALUL')
+  await expect(emotes).toBeInViewport()
+  // typed in the map's own box: the best match, and a plain line when nothing matches
+  await find.fill('Dino')
+  await expect(found).toHaveAttribute('aria-label', /DinoDance/)
+  await find.fill('nothing-here')
+  await expect(found).toHaveCount(0)
+  await expect(emotes.locator('.hv5-em-fmsg[role="status"]')).toContainText('No emote matches “nothing-here”')
+  await find.fill('KEKW')
+  await expect(found).toHaveAttribute('aria-label', /KEKW/)
+  await find.press('Escape')
+  await expect(find).toHaveValue('')
+  await expect(found).toHaveCount(0)
+  await expect(emotes.locator('.hv5-em-zr')).toHaveText('1.0×')
 })
 
 test('Busiest now ranks by chat, pages with the buttons and moves focus with the arrow keys', async ({ page }) => {
@@ -291,7 +398,7 @@ test('Top moments today is the carousel under the chart, and the rail is only wh
   await openV5Hub(page, TOP_MOMENT)
   const big = page.locator('#big-moments')
   await expect(big.getByRole('heading', { name: 'Top moments today' })).toBeVisible()
-  await expect(big.getByRole('link', { name: 'Every moment today →' })).toHaveAttribute('href', '/analytics/moments?view=top')
+  await expect(big.getByRole('link', { name: 'All moments →' })).toHaveAttribute('href', '/analytics/moments')
   const card = big.locator('.hv5-bm-card[data-pos="0"]')
   await expect(card).toContainText('xQc')
   const rail = page.locator('#latest')
@@ -303,6 +410,34 @@ test('Top moments today is the carousel under the chart, and the rail is only wh
   await expect(rail.getByRole('button', { name: /^Show all/ })).toHaveCount(0)
   await card.getByRole('link', { name: 'Open in Moments' }).click()
   await expect(page).toHaveURL(/\/analytics\/moments\?login=xqc&stream=s1&offset=3600$/)
+})
+
+// Board 2A (11-02): the mock's two moments are 2 and 4 minutes into their streams, so
+// they show as "Early in the stream" with their rate and no ×. The locks' warm-up reads
+// hub/moments on its own; another channel's busiest minute from those reads fills a
+// card, and a channel already shown (xQc) never gets a second one.
+test('Top moments today keeps early moments with no × and fills with busiest minutes from the chart’s own reads', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await installHubUxMock(page, { featuredSession: READY_FEATURED_SESSION })
+  const now = Date.now()
+  const busy = (login: string, displayName: string, chatPerMin: number) => ({
+    login, displayName, streamId: `hist-${login}`, offsetSeconds: 1800, score: 80, label: 'Corpus peak', source: 'corpus',
+    confidence: 90, vodState: 'vod_ready', chatPerMin, at: now - 3 * 60 * 60 * 1000,
+    topEmotes: [{ name: 'KEKW', provider: '7tv', count: 12, sharePct: 18 }],
+  })
+  await page.route(/\/v1\/public\/hub\/moments(\?.*)?$/, route => route.fulfill({
+    json: { status: 'ready', moments: [busy('kaicenat', 'KaiCenat', 1204), busy('xqc', 'xQc', 9000)] },
+  }))
+  await page.goto('/analytics')
+  const big = page.locator('#big-moments')
+  await expect(big.locator('.hv5-bm-card .hv5-bm-lbl', { hasText: 'Early in the stream' })).toHaveCount(2)
+  const fill = big.locator('.hv5-bm-card', { has: page.locator('.hv5-bm-lbl', { hasText: 'Busiest minute' }) })
+  await expect(fill).toHaveCount(1, { timeout: 15_000 })
+  await expect(fill).toContainText('KaiCenat')
+  await expect(fill.locator('.hv5-bm-x')).toHaveText('1,204chat/min')
+  await expect(big.locator('.hv5-bm-card', { hasText: 'xQc' })).toHaveCount(1)
+  await expect(big.locator('.hv5-bm-card .hv5-bm-x', { hasText: '×' })).toHaveCount(0)
 })
 
 test('the chart (i) opens How this is measured with the served-window facts', async ({ page }) => {
@@ -353,4 +488,53 @@ test('with every bucket there, the page says nothing about buckets either', asyn
   await openHubKeepingBuckets(page, () => true)
   await expect(page.getByTestId('hub-minutes-missing-note')).toHaveCount(0)
   await expect(page.getByText(/Activity coverage|buckets missing|A few minutes/)).toHaveCount(0)
+})
+
+// Phone round (11-02): on a phone the promo is a compact card (title, the desktop line, See how it works) that opens to
+// the scene and the line under it (A); Find emote has a × that clears it (X1); the hero search says what it finds (Q1).
+test('on a phone the promo opens on See how it works, and Find emote clears with its ×', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await openV5Hub(page, { bucketEmoteDetail: true })
+  const promo = page.locator('.hv5-mast .hv5-promo')
+  const more = promo.getByRole('button', { name: 'See how it works' })
+  await expect(promo.locator('.hv5-pr-h')).toBeVisible()
+  await expect(promo.locator('.hv5-pr-sub')).toHaveText('Desktop extension for Chrome, Edge and Firefox · Free')
+  await expect(more).toHaveAttribute('aria-expanded', 'false')
+  for (const selector of ['.hv5-pr-stage', '.hv5-pr-p', '.hv5-hero-install', '.hv5-pr-desk', '.hv5-pr-free']) await expect(promo.locator(selector)).toBeHidden()
+  expect((await more.boundingBox())!.height).toBeGreaterThanOrEqual(44)
+  expect((await promo.boundingBox())!.height).toBeLessThanOrEqual(120)
+  await more.click()
+  await expect(more).toHaveAttribute('aria-expanded', 'true')
+  await expect(promo).toHaveAttribute('data-open', '')
+  await expect(promo.locator('.hv5-pr-stage')).toBeVisible()
+  await expect(promo.locator('.hv5-pr-p')).toBeVisible()
+  await noSideScroll(page)
+  await more.click()
+  await expect(more).toHaveAttribute('aria-expanded', 'false')
+  await expect(promo.locator('.hv5-pr-stage')).toBeHidden()
+
+  const input = page.getByRole('combobox', { name: 'Search streamers or games' })
+  await expect(input).toHaveAttribute('placeholder', 'Streamers or games')
+
+  const emotes = page.locator('#emotes')
+  await expect(emotes.locator('.hv5-em-t').first()).toBeVisible()
+  const find = emotes.getByRole('searchbox', { name: 'Find emote on the map' })
+  const clear = emotes.getByRole('button', { name: 'Clear emote search' })
+  await expect(clear).toHaveCount(0)
+  await find.fill('KEKW')
+  await expect(emotes.locator('.hv5-em-ly:not([data-out]) > .hv5-em-t[data-found]')).toHaveAttribute('aria-label', /KEKW/)
+  await clear.click()
+  await expect(find).toHaveValue('')
+  await expect(find).toBeFocused()
+  await expect(clear).toHaveCount(0)
+  await expect(emotes.locator('.hv5-em-ly:not([data-out]) > .hv5-em-t[data-found]')).toHaveCount(0)
+  await noSideScroll(page)
+
+  // a desktop keeps the promo as it was: the scene and the install button, no phone line or button
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await expect(promo.locator('.hv5-pr-stage')).toBeVisible()
+  await expect(promo.locator('.hv5-hero-install')).toBeVisible()
+  await expect(promo.locator('.hv5-pr-sub')).toBeHidden()
+  await expect(more).toBeHidden()
 })
