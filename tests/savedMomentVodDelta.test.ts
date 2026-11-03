@@ -5,6 +5,7 @@ import { emptyPersonalData, type PersonalData } from '../src/background/myMoment
 import type { PulseBookmark } from '../src/shared/messages.ts'
 import { parseMyMoments, validMomentReference, type DeviceBookmark } from '../src/shared/myMoments.ts'
 import { parseBackgroundRequest } from '../src/shared/parseBackgroundRequest.ts'
+import { keptVodOriginDelta, MAX_ORIGIN_DELTA_SECONDS, resolveVodOriginAlignment } from '../src/shared/vodOriginAlignment.ts'
 import { replayUrl, type LibraryMoment, type MomentReference } from '../src/ui/library/model.ts'
 
 /**
@@ -171,6 +172,13 @@ describe('account saves keep the delta on this device', () => {
 
 describe('the delta at the message boundary', () => {
   const reference = { id: 'x', channel: 'zackrawrr', title: 'Chat spike', vodId: VOD, streamId: '123456', offsetSeconds: 600, availability: 'available' }
+  it('keeps exactly the non-zero deltas the alignment rule accepts', () => {
+    const max = MAX_ORIGIN_DELTA_SECONDS
+    for (const raw of [95, -95, 1, -1, max, -max, max + 1, -max - 1, 0, -0, 1.5, Number.NaN, Number.POSITIVE_INFINITY, null, undefined, '95', {}]) {
+      const alignment = resolveVodOriginAlignment(raw)
+      expect(keptVodOriginDelta(raw)).toBe(alignment.kind === 'aligned' && alignment.originDeltaSeconds !== 0 ? alignment.originDeltaSeconds : undefined)
+    }
+  })
   it('a reference may carry a usable delta only beside a VOD id', () => {
     expect(validMomentReference({ ...reference, vodOriginDeltaSeconds: 95 })).toBe(true)
     expect(validMomentReference({ ...reference, vodOriginDeltaSeconds: -95 })).toBe(true)
