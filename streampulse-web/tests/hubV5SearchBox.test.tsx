@@ -194,10 +194,18 @@ describe('HubV5SearchBox: the list above a phone keyboard (K1, 11-02)', () => {
     vv.height = 500
     vv.dispatchEvent(new Event('resize'))
     expect(room()).toBe('192px')
-    // the visual viewport scrolled 40 px down the page
+    // the visual viewport scrolled 40 px down the page: the offset is not added, as iPhone Safari measures the list
+    // from the visual viewport (real phones, 11-03: 223 px of offset put the front page's list under the keyboard)
     vv.offsetTop = 40
     vv.dispatchEvent(new Event('scroll'))
-    expect(room()).toBe('232px')
+    expect(room()).toBe('192px')
+    // the iPhone reading: 435.66 visible, offset 223.34, list at 251.56 → the 176 px above the keyboard, not 399
+    list.getBoundingClientRect = () => ({ top: 251.5625 }) as DOMRect
+    vv.height = 435.65625
+    vv.offsetTop = 223.34375
+    vv.dispatchEvent(new Event('scroll'))
+    expect(room()).toBe('176px')
+    list.getBoundingClientRect = () => ({ top: 300 }) as DOMRect
     // never shorter than 120 px
     vv.offsetTop = 0
     vv.height = 380

@@ -98,6 +98,22 @@ describe('Find emote: the window widens only on the search key (E1, 11-02)', () 
     expect(status.textContent).toBe('Pog is marked on the map.')
   })
 
+  it('a found emote is asked again when a chip changes the window, so the line never names a window no longer shown', () => {
+    const { find, status, chip } = renderMap()
+    fireEvent.click(chip('30m'))
+    typeIn(find, 'Pog')
+    fireEvent.keyDown(find, { key: 'Enter' })
+    expect(status.textContent).toBe('Pog is marked on the map (24h; not in the last 30 min).')
+    // back to 30m (real phones, 11-03): the hidden line kept the 24h match
+    fireEvent.click(chip('30m'))
+    expect(chip('30m').getAttribute('aria-pressed')).toBe('true')
+    expect(status.className).toContain('hv5-em-fmsg')
+    expect(status.textContent).toBe('Not in the last 30 min. Search to look in 24h.')
+    // a window that has it finds it again, with no switch named
+    fireEvent.click(chip('1h'))
+    expect(status.textContent).toBe('Pog is marked on the map.')
+  })
+
   it('keeps the plain miss line when the whole answer has nothing either', () => {
     const { find, status, chip } = renderMap()
     fireEvent.click(chip('30m'))

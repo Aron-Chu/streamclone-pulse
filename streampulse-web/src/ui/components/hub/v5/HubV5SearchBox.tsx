@@ -136,6 +136,9 @@ export function HubV5SearchBox({
   useEffect(() => () => window.clearTimeout(blurTimer.current), [])
   // K1 (11-02): with a phone keyboard up, rows under it could not be reached. While the list is open it ends 8 px
   // above the keyboard (no shorter than 120 px) and scrolls inside; the page stays put. Keyboard closed, nothing changes.
+  // The visible bottom is the lower of the two readings: Chrome measures the list from the layout viewport, so the
+  // visual viewport's offset counts, but iPhone Safari measured it from the visual viewport itself, and adding the
+  // offset there left the front page's list 170 px under the keyboard (real phones, 11-03).
   useEffect(() => {
     const list = listRef.current
     const vv = typeof window === 'undefined' ? null : window.visualViewport
@@ -145,7 +148,8 @@ export function HubV5SearchBox({
         list.style.removeProperty('--hv5-sugg-room')
         return
       }
-      const room = Math.max(120, Math.floor(vv.offsetTop + vv.height - list.getBoundingClientRect().top - 8))
+      const bottom = Math.min(vv.height, vv.offsetTop + vv.height)
+      const room = Math.max(120, Math.floor(bottom - list.getBoundingClientRect().top - 8))
       list.style.setProperty('--hv5-sugg-room', `${room}px`)
     }
     fit()

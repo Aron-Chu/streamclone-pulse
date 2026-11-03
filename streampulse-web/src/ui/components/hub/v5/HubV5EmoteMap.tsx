@@ -1031,8 +1031,8 @@ export function HubV5EmoteMap({
 
   /* ---------- Find emote (3A, 11-02): typing highlights an emote and flies to it; Esc or the × clears ---------- */
   const [findText, setFindText] = useState('')
-  // `from`: the window the search key widened from (E1)
-  const [found, setFound] = useState<{ id: string; n: number; from?: HubEmoteWindow } | null>(null)
+  // `from`: the window the search key widened from (E1); `win`: the window the match was found in
+  const [found, setFound] = useState<{ id: string; n: number; from?: HubEmoteWindow; win: HubEmoteWindow } | null>(null)
   // 'wider': not in this window, but in the whole answer
   const [findMiss, setFindMiss] = useState<'nowhere' | 'wider' | null>(null)
   const findRef = useRef<HTMLInputElement>(null)
@@ -1065,7 +1065,7 @@ export function HubV5EmoteMap({
     const id = hit.id
     hide()
     flyFound.current = id
-    setFound((prev) => ({ id, n: (prev?.n ?? 0) + 1, from }))
+    setFound((prev) => ({ id, n: (prev?.n ?? 0) + 1, from, win: from !== undefined ? 'all' : view }))
     if (pick) setSel(id)
     return true
   }
@@ -1086,12 +1086,18 @@ export function HubV5EmoteMap({
     flyFound.current = null
     moveCam(tileMapView(t, W, VH), FLY_MS)
   }, [found, layout, W, VH, moveCam])
-  // a chip that changes the window asks again, so a 'not in this window' line never outlives the window it names (E1)
+  // a chip that changes the window asks again, so neither a 'not in this window' line nor a match outlives the window
+  // it names (E1; a 24h match kept its line after a tap back to 30m on real phones, 11-03)
   const missView = useRef(view)
   useEffect(() => {
     if (missView.current === view) return
     missView.current = view
-    if (findMiss === 'wider' && findText.trim().length >= 2) runFind(findText, false)
+    if (findMiss !== 'wider' && (!found || found.win === view)) return
+    if (findText.trim().length >= 2) runFind(findText, false)
+    else if (found) {
+      setFound(null)
+      moveCam(MAP_VIEW_1X, FLY_MS)
+    }
   }, [view, layout])
   // the hub search's pick: fill the box, select the emote and bring the map into view, once per request
   const askedFind = useRef(0)
