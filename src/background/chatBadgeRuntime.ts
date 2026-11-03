@@ -65,6 +65,8 @@ export const chatBadgeList: ChatBadgeList = new ChatBadgeList({
 
 export const chatBadgeOptIn = new ChatBadgeOptIn({
   confirm: badge => twitchSignIn.confirmForBadge(badge),
+  link: () => twitchSignIn.linkToMembership(),
+  unlink: () => twitchSignIn.unlinkTwitch(),
   request: body => supporterAccount.withCredential(token => accountRequest('/v1/billing/badge', body, token)),
   list: chatBadgeList,
   invalidate: () => supporterAccount.invalidateEntitlement(),

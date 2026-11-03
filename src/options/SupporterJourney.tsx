@@ -2,6 +2,8 @@ import { isValidElement, useCallback, useEffect, useRef, useState, type ReactNod
 import { SupporterPerkList } from './SupporterPerkList.tsx'
 import { useChatBadgeListReceived } from './useChatBadges.ts'
 import { SupporterRestore } from './SupporterRestore.tsx'
+import { SupporterLinkedRows } from './SupporterLinkedRows.tsx'
+import type { SeenInChatLink } from './SupporterChatBadgeControls.tsx'
 import type { BackgroundResponse } from '../shared/messages.ts'
 import { POLICY_LINKS, deviceLinkWithCode, productLink } from '../shared/portalLinks.ts'
 import {
@@ -37,7 +39,10 @@ import { usePortalOrigin } from './usePortalOrigin.ts'
  * Supporter page's "Your card" (direction B of the 2026-10-07 redesign): the
  * card states who you are and your membership, its footer is this journey's
  * status and one primary action, and the Account card closes the page with the
- * sign-in and billing. `children` sit in the card's cosmetic preview disclosure;
+ * sign-in and billing. `children` (Your look) sit in the card's preview
+ * disclosure, or below the card for a Supporter; `publicCard` (Seen in chat)
+ * always follows them, outside anything named Preview. A pay-first Supporter's
+ * card lists what the membership is linked to and offers Link Twitch;
  * static recovery/payment explanations and policies sit under Account help.
  *
  * One public account flow (account journey spec, closeout 2026-10-08b):
@@ -186,14 +191,16 @@ function openPortal(url: string): void {
 /** The paint a new Supporter wears when they did not choose one before paying. */
 const DEFAULT_FINISH = 'halo'
 
-/** Opens the card's look preview and moves to the studio's current choice. */
+/** Moves to the Your look studio's current choice, opening the card's preview when the studio sits in it. */
 function showLooks(): void {
   const disclosure = document.querySelector<HTMLDetailsElement>('[data-supporter-preview-disclosure]')
-  if (!disclosure) return
-  disclosure.open = true
-  const studio = disclosure.querySelector<HTMLElement>('.pulse-supporter-studio') ?? disclosure
-  studio.scrollIntoView?.({ block: 'start' })
-  studio.querySelector<HTMLElement>('input:checked, input, button')?.focus({ preventScroll: true })
+  const studio = document.querySelector<HTMLElement>('.pulse-supporter-studio')
+  if (studio && disclosure?.contains(studio)) disclosure.open = true
+  const target = studio ?? disclosure
+  if (!target) return
+  if (!studio && disclosure) disclosure.open = true
+  target.scrollIntoView?.({ block: 'start' })
+  target.querySelector<HTMLElement>('input:checked, input, button')?.focus({ preventScroll: true })
 }
 
 function OfferTerms({ seenInChat }: { seenInChat: boolean }) {
@@ -211,7 +218,7 @@ function OfferTerms({ seenInChat }: { seenInChat: boolean }) {
 /** Twitch reachable only if the worker says so; a dead worker still leaves a working button. */
 const UNKNOWN_TWITCH: TwitchSignInStatus = { enabled: true, available: true, silentEligible: false, profile: null }
 
-export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = TWITCH_SIGNIN_STAGE, children }: {
+export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = TWITCH_SIGNIN_STAGE, children, publicCard }: {
   /** The membership paid controls may act on: null while loading, or while a read has failed or the server is down. */
   onEntitlement?: (value: SupporterEntitlement | null) => void
   /** The last confirmed membership on screen, kept through a failed refresh. Display only. */
@@ -221,6 +228,8 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   /** Sign in with Twitch build stage; fixed at build time, a prop for tests only. */
   twitchStage?: TwitchSignInStage
   children?: ReactNode
+  /** The public card, drawn after Your look with what the membership card offers it. */
+  publicCard?: (link: SeenInChatLink) => ReactNode
 } = {}) {
   const portalOrigin = usePortalOrigin()
   const banner = usePulseBanner()
@@ -238,6 +247,15 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   const setNotice = useCallback((text: string, at: NoticeAt = 'card') => setNoticeState({ text, at }), [])
   const [billing, setBilling] = useState<SupporterBillingState>({ state: 'idle' })
   const [restoreOpen, setRestoreOpen] = useState(false)
+  // Link Twitch: one inline panel on the card, opened from its row or from Seen in chat.
+  const [twitchLinkOpen, setTwitchLinkOpen] = useState(false)
+  const twitchLinkTrigger = useRef<HTMLElement | null>(null)
+  // Focus goes back after the next render, once a button disabled while linking is enabled again.
+  const [twitchLinkFocusBack, setTwitchLinkFocusBack] = useState<HTMLElement | null>(null)
+  useEffect(() => { if (twitchLinkFocusBack) { twitchLinkFocusBack.focus(); setTwitchLinkFocusBack(null) } }, [twitchLinkFocusBack])
+  // What Link Twitch or Unlink just did, until the server's next read says it.
+  const [twitchLinkDone, setTwitchLinkDone] = useState<boolean | null>(null)
+  const [twitchLinkLogin, setTwitchLinkLogin] = useState<string | undefined>()
   const [confirmDisconnect, setConfirmDisconnect] = useState(false)
   // "Confirm it's you": the portal asked for a Twitch check a click must start.
   const [confirmIdentity, setConfirmIdentity] = useState<NoticeAt | null>(null)
@@ -275,6 +293,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   const usable = stale || unanswered ? null : entitlement
   useEffect(() => { onEntitlement?.(usable) }, [usable, onEntitlement])
   useEffect(() => { onShown?.(entitlement) }, [entitlement, onShown])
+  useEffect(() => { setTwitchLinkDone(null) }, [entitlement])
 
   const readEntitlement = useCallback(async (quiet: boolean) => {
     if (entitlementInFlight.current) return
@@ -696,6 +715,15 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
     if (!linked) await run('status')
     await readEntitlement(false)
   }
+  function openTwitchLink() {
+    twitchLinkTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    setTwitchLinkOpen(true)
+  }
+  function closeTwitchLink(returnFocus: boolean) {
+    setTwitchLinkOpen(false)
+    if (returnFocus) setTwitchLinkFocusBack(twitchLinkTrigger.current)
+    twitchLinkTrigger.current = null
+  }
   async function checkPayment() {
     if (payInFlight.current) return
     payInFlight.current = true; setPayBusy(true)
@@ -989,7 +1017,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   // A restore may recover a lost connection, or replace an empty installation.
   // The worker and server independently refuse paid/pending account merges.
   // Never offer it over an owned in-flight checkout or an unknown account.
-  const restoreAvailable = !twitchOn && !pending && !accountDown && !renewalWaiting && !revocationPending && !linkingNotDeployed &&
+  const restoreAvailable = !pending && !accountDown && !renewalWaiting && !revocationPending && !linkingNotDeployed &&
     (unlinked || linked !== null && !stale && entitlement?.state === 'ready' && entitlement.accountKind === 'installation' && entitlement.installationAccountsEnabled === true && entitlement.restoreEligible === true && (entitlement.status === 'none' || entitlement.status === 'expired')) &&
     (billing.state === 'idle' || billing.state === 'fallback' || billing.state === 'closed' || billing.state === 'reconnect_required')
   // Asked before checkout, so someone who paid on another browser restores
@@ -1030,6 +1058,13 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   // never a purchase: "Connect tester account" in the tester disclosure, or
   // "Other ways to connect" beside Continue with Twitch. Firefox leaves it out.
   const testerBridge = DEVICE_LINK_ENABLED && unlinked && !linkingNotDeployed && billing.state !== 'reconnect_required' && !restoreOpen
+  // A pay-first Supporter in the paid browser links Twitch here for Seen in
+  // chat. The server attaches it to this membership's account and never
+  // creates one; the Stripe email keeps restoring the membership either way.
+  const chatBadge = twitchOn && linked !== null && !stale && isSupporter && entitlement?.state === 'ready' && entitlement.accountKind === 'installation' ? entitlement.chatBadge : undefined
+  const linkedTwitchLogin = twitchLinkLogin ?? chatBadge?.login
+  const twitchLink = chatBadge ? { linked: twitchLinkDone ?? chatBadge.available, ...(linkedTwitchLogin ? { login: linkedTwitchLogin } : {}) } : null
+  const seenInChatLink: SeenInChatLink = { open: twitchLink && !twitchLink.linked ? openTwitchLink : null, ...(twitchLink ? { linked: twitchLink.linked } : {}), ...(twitchLink?.login ? { login: twitchLink.login } : {}), checkAgain }
 
   return (
     <>
@@ -1037,7 +1072,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
         identity={identity}
         membership={{ status: cardStatus, months: periods, tenure: supporterTenureForMonths(periods) }}
         look={cardLook}
-        preview={<>{terms || onlyYouSaid ? null : <SupporterPerkList seenInChat={seenInChat} />}{children}</>}
+        preview={<>{terms || onlyYouSaid ? null : <SupporterPerkList seenInChat={seenInChat} />}{isSupporter ? null : children}</>}
       >
         <div className="pulse-journey" data-journey-state={state} data-twitch-stage={twitchStage} data-tone={status === 'grace' && state === 'grace' ? 'warn' : undefined}>
           <div className="pulse-journey-row">
@@ -1074,6 +1109,15 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
               <a className="pulse-supporter-withdrawal-link" href={POLICY_LINKS.withdrawal} target="_blank" rel="noopener noreferrer">Withdraw from contract here</a>
             </p>
           </details> : null}
+          {twitchLink && !restoreOpen ? <SupporterLinkedRows
+            twitch={twitchLink}
+            open={twitchLinkOpen}
+            onOpen={openTwitchLink}
+            onClose={closeTwitchLink}
+            onLinked={login => { setTwitchLinkDone(true); setTwitchLinkLogin(login) }}
+            onUnlinked={() => { setTwitchLinkDone(false); setTwitchLinkLogin(undefined) }}
+            disabled={payBusy || accountBusy || signingIn !== null}
+          /> : null}
           {testerBridge ? <details className="pulse-journey-devices" data-tester-bridge="true">
             <summary>{twitchOn ? ACCOUNT_COPY.otherWays : ACCOUNT_COPY.testerBridge}</summary>
             <p className="pulse-supporter-detail">For invited testers with a StreamPulse account: connect this extension with a one-time code from streampulse.stream. This is not a purchase.</p>
@@ -1083,6 +1127,8 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
           </details> : null}
         </div>
       </SupporterCard>
+      {isSupporter ? children : null}
+      {publicCard?.(seenInChatLink)}
 
       <PulseSectionCard title="Account" headingLevel={3}>
         <div className="pulse-supporter-account-rows">

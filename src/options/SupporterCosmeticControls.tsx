@@ -8,6 +8,7 @@ import { SUPPORTER_FINISH_OPTIONS } from '../ui/supporterFinish.ts'
 import { PulseBannerLoadError, usePulseBanner } from '../ui/PulseBanner.tsx'
 import type { PulseBannerPreference } from '../shared/storage.ts'
 import type { SupporterTenure } from '../shared/supporterPaint.ts'
+import { SupporterCardTag } from './SupporterCardTag.tsx'
 import { SupporterLookPreview } from './SupporterLookPreview.tsx'
 import { SupporterPaintStyleFields, useSupporterPaintStyle } from './SupporterPaintStyleFields.tsx'
 
@@ -205,6 +206,7 @@ export function SupporterCosmeticControls({ entitlement, unavailable = false, te
     title="Your look"
     headingLevel={3}
     className="pulse-supporter-studio"
+    titleAction={<SupporterCardTag audience="only-you">Only you</SupporterCardTag>}
     meta={unknown ? undefined : tryOnly ? "Try a look. Changes here aren't saved." : allowed ? 'Wave, sheen and Emote rain save right away' : 'Try any look. Paint, wave and sheen apply when you support.'}
   >
     <SupporterLookPreview

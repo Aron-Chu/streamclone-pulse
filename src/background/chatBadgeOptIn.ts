@@ -2,14 +2,19 @@ import { CHAT_BADGE_CONSENT_VERSION, TWITCH_LOGIN, TWITCH_USER_ID, waveCode, typ
 import type { BackgroundResponse } from '../shared/messages.ts'
 import type { SupporterWave } from '../shared/supporterPaint.ts'
 import type { ChatBadgeList } from './chatBadgeList.ts'
-import type { TwitchBadgeResult } from './twitchSignIn.ts'
+import type { TwitchBadgeResult, TwitchLinkResult } from './twitchSignIn.ts'
 
 type Reply = Extract<BackgroundResponse, { type: 'SUPPORTER_CHAT_BADGE' }>
+type LinkReply = Extract<BackgroundResponse, { type: 'SUPPORTER_TWITCH_LINK' }>
 type ActionResult = { body: unknown } | { error: ChatBadgeActionError }
 
 export interface ChatBadgeOptInPorts {
   /** The Twitch check plus consent action (TwitchSignIn.confirmForBadge). */
   confirm: (badge: { consentVersion: number; wave: SupporterWave }) => Promise<TwitchBadgeResult>
+  /** Link Twitch to this membership (TwitchSignIn.linkToMembership). */
+  link: () => Promise<TwitchLinkResult>
+  /** Unlink it; the server withdraws the chat entry first (TwitchSignIn.unlinkTwitch). */
+  unlink: () => Promise<TwitchLinkResult>
   /** POST /v1/billing/badge with this device's bearer. */
   request: (body: Record<string, unknown>) => Promise<{ status: number; body: unknown }>
   list: Pick<ChatBadgeList, 'patchOwn' | 'ownOverlay' | 'status'>
@@ -70,13 +75,39 @@ export class ChatBadgeOptIn {
     // An idempotent retry may have no receipt: retain the earlier local removal.
     const body = answer.body && typeof answer.body === 'object' ? answer.body as Record<string, unknown> : undefined
     const receipt = body?.withdrawn && typeof body.withdrawn === 'object' ? body.withdrawn as Record<string, unknown> : undefined
+    await this.forgetOwn(before, snapshot, receipt)
+    await this.ports.invalidate()
+    return this.reply({ ok: true, own: 'off' })
+  }
+
+  /** Link Twitch to this membership. Seen in chat stays off: linking publishes nothing. */
+  async linkTwitch(): Promise<LinkReply> {
+    const result = await this.ports.link()
+    if (!result.ok) return { type: 'SUPPORTER_TWITCH_LINK', ok: false, error: result.error }
+    await this.ports.invalidate()
+    return { type: 'SUPPORTER_TWITCH_LINK', ok: true, ...(result.login ? { login: result.login } : {}) }
+  }
+
+  /**
+   * Unlink Twitch. The server withdraws your chat entry in the same step, so
+   * your own extension hides its cached crest as Turn off does.
+   */
+  async unlinkTwitch(): Promise<LinkReply> {
+    const before = await this.ports.list.ownOverlay()
+    const snapshot = await this.ports.snapshot().catch(() => undefined)
+    const result = await this.ports.unlink()
+    if (!result.ok) return { type: 'SUPPORTER_TWITCH_LINK', ok: false, error: result.error }
+    if (before?.kind === 'on' || (snapshot && snapshot.state !== 'off')) await this.forgetOwn(before, snapshot)
+    await this.ports.invalidate()
+    return { type: 'SUPPORTER_TWITCH_LINK', ok: true }
+  }
+
+  private async forgetOwn(before: Awaited<ReturnType<ChatBadgeOptInPorts['list']['ownOverlay']>>, snapshot: ChatBadgeSnapshot | undefined, receipt?: Record<string, unknown>): Promise<void> {
     const id = typeof receipt?.twitchUserId === 'string' && TWITCH_USER_ID.test(receipt.twitchUserId)
       ? receipt.twitchUserId : before?.kind === 'on' ? before.entry[0] : before?.id
     const login = typeof receipt?.login === 'string' && TWITCH_LOGIN.test(receipt.login)
       ? receipt.login : before?.kind === 'on' ? before.entry[1] : before?.login ?? snapshot?.login
     await this.ports.list.patchOwn({ kind: 'off', at: this.now(), ...(id ? { id } : {}), ...(login ? { login } : {}) })
-    await this.ports.invalidate()
-    return this.reply({ ok: true, own: 'off' })
   }
 
   async style(wave: SupporterWave): Promise<Reply> {

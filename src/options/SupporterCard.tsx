@@ -123,7 +123,7 @@ export function SupporterCard({ identity, membership, look, children, preview }:
         </div>
       </div>
       {children}
-      <details className="pulse-supporter-preview-disclosure" data-supporter-preview-disclosure open={isSupporter(status) || undefined}>
+      <details className="pulse-supporter-preview-disclosure" data-supporter-preview-disclosure>
         <summary>Preview Supporter looks</summary>
         <div className="pulse-supporter-preview-content">
           <div className="pulse-supporter-card-ladder">

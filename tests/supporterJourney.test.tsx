@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ACCOUNT_COPY, MEMBERSHIP_WAKE_DEBOUNCE_MS, MEMBERSHIP_WATCH_DELAYS_MS, MEMBERSHIP_WATCH_MS, SupporterJourney, accountReference, retryWaitCopy } from '../src/options/SupporterJourney.tsx'
 import type { SupporterAccountAction, SupporterAccountState, SupporterEntitlement, SupporterBillingState, SupporterRestoreState } from '../src/shared/supporterAccount.ts'
 import type { TwitchSignInResponse, TwitchSignInStage } from '../src/shared/twitchSignIn.ts'
+import type { SeenInChatLink } from '../src/options/SupporterChatBadgeControls.tsx'
+import { LINKED_COPY } from '../src/options/SupporterLinkedRows.tsx'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -30,9 +32,10 @@ type Worker = {
   restore?: (action: string, email?: string) => SupporterRestoreState | Promise<SupporterRestoreState>
   devices?: (action: string, deviceId?: string) => import('../src/shared/supporterAccount.ts').SupporterDevicesState
   twitch?: (message: { action: string; mode?: string; forceVerify?: boolean; confirm?: boolean }) => Omit<TwitchSignInResponse, 'type'> | Promise<Omit<TwitchSignInResponse, 'type'>>
+  link?: (action: string) => { ok: boolean; login?: string; error?: string }
 }
 
-async function mount(worker: Worker, onEntitlement?: (value: SupporterEntitlement | null) => void, twitchStage: TwitchSignInStage = 'off') {
+async function mount(worker: Worker, onEntitlement?: (value: SupporterEntitlement | null) => void, twitchStage: TwitchSignInStage = 'off', slots: { children?: React.ReactNode; publicCard?: (link: SeenInChatLink) => React.ReactNode } = {}) {
   const write = vi.fn()
   const listeners = new Set<(changes: Record<string, chrome.storage.StorageChange>) => void>()
   const sendMessage = vi.fn(async (message: { type: string; action?: string; email?: string; deviceId?: string; mode?: string; forceVerify?: boolean; confirm?: boolean }) => {
@@ -49,6 +52,7 @@ async function mount(worker: Worker, onEntitlement?: (value: SupporterEntitlemen
     if (message.type === 'SUPPORTER_BILLING') return { type: 'SUPPORTER_BILLING', billing: (await worker.billing?.(message.action!)) ?? { state: 'fallback' } }
     if (message.type === 'SUPPORTER_RESTORE' && worker.restore) return { type: 'SUPPORTER_RESTORE', restore: await worker.restore(message.action!, message.email) }
     if (message.type === 'SUPPORTER_DEVICES' && worker.devices) return { type: 'SUPPORTER_DEVICES', devices: worker.devices(message.action!, message.deviceId) }
+    if (message.type === 'SUPPORTER_TWITCH_LINK' && worker.link) return { type: 'SUPPORTER_TWITCH_LINK', ...worker.link(message.action!) }
     if (message.type === 'TWITCH_SIGN_IN' && worker.twitch) return { type: 'TWITCH_SIGN_IN', ...(await worker.twitch({ action: message.action!, mode: message.mode, forceVerify: message.forceVerify, confirm: message.confirm })) }
     return undefined
   })
@@ -69,7 +73,7 @@ async function mount(worker: Worker, onEntitlement?: (value: SupporterEntitlemen
   const host = document.createElement('div')
   document.body.append(host)
   const root = createRoot(host)
-  await act(async () => root.render(<SupporterJourney onEntitlement={onEntitlement} twitchStage={twitchStage} />))
+  await act(async () => root.render(<SupporterJourney onEntitlement={onEntitlement} twitchStage={twitchStage} publicCard={slots.publicCard}>{slots.children}</SupporterJourney>))
   const button = (name: string) => [...host.querySelectorAll('button')].find(element => element.textContent === name)
   return {
     host, sendMessage, create, write, listeners,
@@ -1902,5 +1906,89 @@ describe('one Become a Supporter button with Twitch sign-in off', () => {
         expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
       } finally { view.cleanup() }
     }
+  })
+})
+
+describe('Link Twitch to a pay-first membership', () => {
+  const installationMember = (chatBadge: { available: boolean; state: 'off' | 'on'; login?: string }) =>
+    ready('active', { installationAccountsEnabled: true, restoreEligible: false, chatBadge })
+
+  it('lists what the membership is linked to and offers Link Twitch where Twitch sign-in is on', async () => {
+    let offered: SeenInChatLink | null = null
+    const view = await mount({ account: () => linked, entitlement: () => installationMember({ available: false, state: 'off' }) }, undefined, 'tester', {
+      children: <section className="pulse-supporter-studio" data-testid="look">Your look</section>,
+      publicCard: link => { offered = link; return <section data-testid="public">Seen in chat</section> },
+    })
+    try {
+      expect(view.text()).toContain(LINKED_COPY.heading)
+      expect(view.text()).toContain(`${LINKED_COPY.stripe}${LINKED_COPY.stripeValue}`)
+      expect(view.text()).toContain(`${LINKED_COPY.twitch}${LINKED_COPY.notLinked}`)
+      expect(offered!.open).toBeTypeOf('function')
+      // Membership, then Your look, then Seen in chat; nothing public inside the preview disclosure.
+      const disclosure = view.host.querySelector<HTMLDetailsElement>('[data-supporter-preview-disclosure]')!
+      expect(disclosure.open).toBe(false)
+      const look = view.host.querySelector('[data-testid="look"]')!
+      const publicCard = view.host.querySelector('[data-testid="public"]')!
+      expect(disclosure.contains(look)).toBe(false)
+      expect(disclosure.contains(publicCard)).toBe(false)
+      expect(look.compareDocumentPosition(publicCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    } finally { view.cleanup() }
+  })
+
+  it('opens one inline panel from Seen in chat, links, and shows the login', async () => {
+    let offered: SeenInChatLink | null = null
+    const view = await mount({
+      account: () => linked,
+      entitlement: () => installationMember({ available: false, state: 'off' }),
+      link: () => ({ ok: true, login: 'my_login' }),
+    }, undefined, 'tester', { publicCard: link => { offered = link; return null } })
+    try {
+      // The card's messages go through sendBackgroundMessage, which needs a live extension context.
+      ;(globalThis.chrome.runtime as { id?: string }).id = 'test'
+      await act(async () => offered!.open!())
+      expect(view.host.querySelector('[data-twitch-link-panel]')).not.toBeNull()
+      await view.click(LINKED_COPY.continue)
+      expect(view.calls('SUPPORTER_TWITCH_LINK', 'link')).toBe(1)
+      expect(view.text()).toContain('Twitch linked as @my_login. Your membership didn’t change.')
+      expect(view.text()).toContain(`${LINKED_COPY.twitch}@my_login`)
+      expect(offered!.open).toBeNull()
+      expect(offered!.login).toBe('my_login')
+    } finally { view.cleanup() }
+  })
+
+  it('a failed link from the row returns focus to its Link Twitch, once it is enabled again, and alerts', async () => {
+    const view = await mount({
+      account: () => linked,
+      entitlement: () => installationMember({ available: false, state: 'off' }),
+      link: () => ({ ok: false, error: 'network' }),
+    }, undefined, 'tester', { publicCard: () => null })
+    try {
+      ;(globalThis.chrome.runtime as { id?: string }).id = 'test'
+      const rowButton = [...view.host.querySelectorAll<HTMLButtonElement>('[data-supporter-linked] button')].find(button => button.textContent === LINKED_COPY.link)!
+      rowButton.focus()
+      await view.click(LINKED_COPY.link)
+      await view.click(LINKED_COPY.continue)
+      expect(view.host.querySelector('[data-twitch-link-panel]')).toBeNull()
+      expect(document.activeElement).toBe(rowButton)
+      expect(view.host.querySelector('[role="alert"]')?.textContent).toBe(LINKED_COPY.failed)
+    } finally { view.cleanup() }
+  })
+
+  it('offers no Link Twitch where Twitch sign-in is compiled off', async () => {
+    let offered: SeenInChatLink | null = null
+    const view = await mount({ account: () => linked, entitlement: () => installationMember({ available: false, state: 'off' }) }, undefined, 'off', { publicCard: link => { offered = link; return null } })
+    try {
+      expect(view.text()).not.toContain(LINKED_COPY.heading)
+      expect(offered!.open).toBeNull()
+    } finally { view.cleanup() }
+  })
+
+  it('never offers Link Twitch to a browser that is not the paid one', async () => {
+    const view = await mount({ account: () => ({ state: 'signed_out' }), entitlement: () => ({ state: 'not_linked' }) }, undefined, 'tester')
+    try {
+      expect(view.text()).not.toContain(LINKED_COPY.heading)
+      // The Stripe email still restores a membership where Twitch sign-in is on.
+      expect(view.buttons()).toContain('Restore with Stripe email')
+    } finally { view.cleanup() }
   })
 })

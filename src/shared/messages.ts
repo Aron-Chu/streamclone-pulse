@@ -10,6 +10,7 @@ export type MessageType =
   | 'SUPPORTER_FINISH_INTENT'
   | 'SUPPORTER_CARD_SCRIPT'
   | 'SUPPORTER_CHAT_BADGE'
+  | 'SUPPORTER_TWITCH_LINK'
   | 'CHAT_BADGES'
   | 'MOMENT_FRAMES_SCRIPT'
   | 'MOMENT_PICTURE'
@@ -306,6 +307,8 @@ export type BackgroundRequest =
   /** Explicit opt-in/out controls are restricted to extension pages. */
   | { type: 'SUPPORTER_CHAT_BADGE'; action: 'status' | 'on' | 'off' }
   | { type: 'SUPPORTER_CHAT_BADGE'; action: 'style'; wave: SupporterPaintStyle['wave'] }
+  /** Link Twitch to this membership's account, or unlink it. Extension pages only. */
+  | { type: 'SUPPORTER_TWITCH_LINK'; action: 'link' | 'unlink' }
   /** A chat tab asks only for the public list and its own cached version. */
   | { type: 'CHAT_BADGES'; have?: string }
   | { type: 'MOMENT_FRAMES_SCRIPT' }
@@ -832,6 +835,7 @@ export type BackgroundResponse =
   | { type: 'SUPPORTER_CARD_SCRIPT'; ok: boolean }
   | import('./chatBadges.ts').ChatBadgesReply
   | { type: 'SUPPORTER_CHAT_BADGE'; ok: boolean; listReceived: boolean; keysPinned?: boolean; own?: 'on' | 'off'; login?: string; error?: import('./chatBadges.ts').ChatBadgeActionError }
+  | { type: 'SUPPORTER_TWITCH_LINK'; ok: boolean; login?: string; error?: import('./chatBadges.ts').TwitchLinkError }
   | { type: 'MOMENT_FRAMES_SCRIPT'; ok: boolean }
   | { type: 'MOMENT_PICTURE'; wants?: import('./momentFramesContract.ts').MomentPictureWant[]; ok?: boolean; vod?: import('./vodPictures.ts').VodPictures | null; frame?: import('../background/vodFrameInject.ts').VodFrame | { error: string } | null }
   | { type: 'CATCH_ME_UP_SCRIPT'; ok: boolean }

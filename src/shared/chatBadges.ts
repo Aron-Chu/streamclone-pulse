@@ -228,6 +228,10 @@ export function parseChatBadgeSnapshot(value: unknown): ChatBadgeSnapshot | unde
 export type ChatBadgeActionError =
   | 'identity_mismatch' | 'supporter_required' | 'consent_outdated' | 'consent_required' | 'pilot_only' | 'twitch_in_use'
   | 'cancelled' | 'busy' | 'unavailable' | 'sign_in_required' | 'try_later' | 'network' | 'error'
+/** Why Link Twitch or Unlink did nothing. `linked_elsewhere`: the Twitch account belongs to another StreamPulse account, or this one already has another. */
+export type TwitchLinkError =
+  | 'linked_elsewhere' | 'unlink_not_allowed'
+  | 'cancelled' | 'busy' | 'unavailable' | 'sign_in_required' | 'try_later' | 'network' | 'error'
 export interface ChatBadgeStatus {
   /** A verified list arrived and no kill switch (404) since: the viewer settings are shown. */
   listReceived: boolean

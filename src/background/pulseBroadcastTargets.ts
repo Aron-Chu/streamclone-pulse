@@ -64,6 +64,7 @@ export const MESSAGE_SENDER_SCOPE: Record<BackgroundRequest['type'], MessageSend
   // A Twitch tab's quick settings asks for the card script in its own frame only.
   SUPPORTER_CARD_SCRIPT: 'twitch-any',
   SUPPORTER_CHAT_BADGE: 'extension-page',
+  SUPPORTER_TWITCH_LINK: 'extension-page',
   CHAT_BADGES: 'twitch-any',
   // A Twitch tab showing Pulse asks for the moment-pictures script in its own frame only.
   MOMENT_FRAMES_SCRIPT: 'twitch-any',

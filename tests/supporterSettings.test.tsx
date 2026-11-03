@@ -161,7 +161,8 @@ describe('supporter settings', () => {
       expect(journey.hasAttribute('data-tone')).toBe(false)
       // Billing is one tap away on the card, with no second door in the Account card, and nothing about a chat badge is offered as included.
       expect(host.querySelector('.pulse-journey-primary[data-supporter-action="billing"]')?.textContent).toBe('Manage on Stripe ↗')
-      expect(host.querySelector<HTMLDetailsElement>('[data-supporter-preview-disclosure]')?.open).toBe(true)
+      // The ladder and perks stay in the disclosure, closed for members too: Your look and Seen in chat sit below the card.
+      expect(host.querySelector<HTMLDetailsElement>('[data-supporter-preview-disclosure]')?.open).toBe(false)
       expect(host.querySelector('[data-row="billing"]')).toBeNull()
       expect(host.querySelector('.pulse-journey')?.closest('[data-supporter-preview-disclosure]')).toBeNull()
       expect(host.textContent).not.toContain('Concept · not built')

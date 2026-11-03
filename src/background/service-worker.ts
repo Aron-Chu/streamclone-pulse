@@ -1038,6 +1038,10 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
                 : await chatBadgeOptIn.status()) satisfies BackgroundResponse)
           return
         }
+        case 'SUPPORTER_TWITCH_LINK': {
+          sendResponse((message.action === 'link' ? await chatBadgeOptIn.linkTwitch() : await chatBadgeOptIn.unlinkTwitch()) satisfies BackgroundResponse)
+          return
+        }
         case 'MOMENT_FRAMES_SCRIPT': {
           sendResponse({ type: 'MOMENT_FRAMES_SCRIPT', ok: await injectMomentFrames(chrome.scripting, sender) } satisfies BackgroundResponse)
           return

@@ -3,7 +3,7 @@ import { ChatBadgeOptIn, CHAT_BADGE_STYLE_DEBOUNCE_MS } from '../src/background/
 import { CHAT_BADGES_SCRIPT_FILE, CHAT_BADGES_SCRIPT_ID, notifyChatBadgeTabs, reconcileChatBadgeScript, type ChatBadgeScripting } from '../src/background/chatBadgeScript.ts'
 import { MESSAGE_SENDER_SCOPE, isSenderAuthorizedForMessage } from '../src/background/pulseBroadcastTargets.ts'
 import { SupporterAccountCoordinator } from '../src/background/supporterAccount.ts'
-import { TwitchSignIn, type WebAuthFlowDetails } from '../src/background/twitchSignIn.ts'
+import { TwitchSignIn, type TwitchLinkResult, type WebAuthFlowDetails } from '../src/background/twitchSignIn.ts'
 import type { ChatBadgeOwnOverlay } from '../src/background/chatBadgeList.ts'
 import { CHAT_BADGE_CONSENT_VERSION, parseChatBadgeSnapshot } from '../src/shared/chatBadges.ts'
 import { parseBackgroundRequest } from '../src/shared/parseBackgroundRequest.ts'
@@ -84,11 +84,69 @@ describe('Seen in chat opt-in: the Twitch check and the consent action', () => {
   })
 })
 
-function optIn(options: { keysPinned?: boolean; send?: (body: Record<string, unknown>) => { status: number; body?: unknown }; confirm?: Awaited<ReturnType<TwitchSignIn['confirmForBadge']>>; snapshot?: ReturnType<typeof parseChatBadgeSnapshot> } = {}) {
+describe('Link Twitch to this membership: the worker side', () => {
+  const routes = { '/v1/account/auth/twitch/link': () => json(200, { status: 'linked', login: 'pulsefan', profile: { login: 'pulsefan' } }) }
+
+  it('runs a purpose-link Twitch window bound to this device and attaches it, keeping the flow secret in the worker', async () => {
+    const f = twitch(routes)
+    const result = await f.signIn.linkToMembership()
+    expect(result).toEqual({ ok: true, login: 'pulsefan' })
+    expect(f.bodyOf('/v1/account/auth/twitch/start-device')).toEqual({ surface: 'chrome', purpose: 'link', mode: 'interactive', forceVerify: false })
+    expect(f.launchMock).toHaveBeenCalledWith({ url: authorizeUrl, interactive: true })
+    expect(f.bodyOf('/v1/account/auth/twitch/link')).toEqual({ flowId: FLOW_ID, flowSecret: FLOW_SECRET, idToken: ID_TOKEN })
+    for (const path of ['/v1/account/auth/twitch/start-device', '/v1/account/auth/twitch/link']) {
+      const [, init] = f.calls(path)[0]
+      expect((init!.headers as Record<string, string>).Authorization).toBe(`Bearer ${'c'.repeat(64)}`)
+      expect(init).toMatchObject({ credentials: 'omit', redirect: 'error', cache: 'no-store' })
+    }
+    // Linking is not consent: nothing goes to the badge route.
+    expect(f.calls('/v1/account/auth/twitch/badge')).toHaveLength(0)
+    expect(JSON.stringify(result)).not.toContain(FLOW_SECRET)
+    expect(JSON.stringify(result)).not.toContain(ID_TOKEN)
+  })
+
+  it('maps every refusal to one the card can say; both conflicts read as linked elsewhere', async () => {
+    const cases: Array<[Parameters<typeof twitch>, string]> = [
+      [[{ '/v1/account/auth/twitch/link': () => json(409, { error: 'identity_in_use' }) }], 'linked_elsewhere'],
+      [[{ '/v1/account/auth/twitch/link': () => json(409, { error: 'account_already_linked' }) }], 'linked_elsewhere'],
+      [[{ '/v1/account/auth/twitch/link': () => json(503, { error: 'request_unavailable' }) }], 'unavailable'],
+      [[{ '/v1/account/auth/twitch/link': () => json(429, { error: 'try_later' }) }], 'try_later'],
+      [[{ '/v1/account/auth/twitch/link': () => json(200, { status: 'created' }) }], 'error'],
+      // Linking off on the server: start refuses the purpose, or the route is not mounted.
+      [[{ '/v1/account/auth/twitch/start-device': () => json(400, { error: 'invalid_request' }) }], 'unavailable'],
+      [[{}], 'unavailable'],
+      [[routes, async () => { throw new Error('The user did not approve access.') }], 'cancelled'],
+      [[routes, undefined, null], 'sign_in_required'],
+    ]
+    for (const [args, error] of cases) {
+      const f = twitch(...args)
+      expect(await f.signIn.linkToMembership(), error).toMatchObject({ ok: false, error })
+    }
+    const cancelled = twitch(routes, async () => { throw new Error('closed') })
+    await cancelled.signIn.linkToMembership()
+    expect(cancelled.calls('/v1/account/auth/twitch/link')).toHaveLength(0)
+  })
+
+  it('unlinks with the bearer alone and an empty body; a Twitch-only account is refused', async () => {
+    const f = twitch({ '/v1/account/identities/twitch/unlink': () => json(200, { status: 'unlinked' }) })
+    expect(await f.signIn.unlinkTwitch()).toEqual({ ok: true })
+    expect(f.bodyOf('/v1/account/identities/twitch/unlink')).toEqual({})
+    expect((f.calls('/v1/account/identities/twitch/unlink')[0][1]!.headers as Record<string, string>).Authorization).toBe(`Bearer ${'c'.repeat(64)}`)
+    expect(f.launchMock).not.toHaveBeenCalled()
+    const refused = twitch({ '/v1/account/identities/twitch/unlink': () => json(409, { error: 'unlink_not_allowed' }) })
+    expect(await refused.signIn.unlinkTwitch()).toEqual({ ok: false, error: 'unlink_not_allowed' })
+    expect(await twitch().signIn.unlinkTwitch()).toMatchObject({ ok: false, error: 'unavailable' })
+    expect(await twitch({}, undefined, null).signIn.unlinkTwitch()).toMatchObject({ ok: false, error: 'sign_in_required' })
+  })
+})
+
+function optIn(options: { keysPinned?: boolean; send?: (body: Record<string, unknown>) => { status: number; body?: unknown }; confirm?: Awaited<ReturnType<TwitchSignIn['confirmForBadge']>>; link?: TwitchLinkResult; unlink?: TwitchLinkResult; snapshot?: ReturnType<typeof parseChatBadgeSnapshot> } = {}) {
   let own: ChatBadgeOwnOverlay | undefined
   const timers: Array<() => void> = []
   const ports = {
     confirm: vi.fn(async () => options.confirm ?? { ok: true as const, own: ['123', 'pulsefan', 2, 1, 1] as [string, string, number, number, number], chatBadge: { available: true, state: 'on' as const, login: 'pulsefan' } }),
+    link: vi.fn(async (): Promise<TwitchLinkResult> => options.link ?? { ok: true, login: 'pulsefan' }),
+    unlink: vi.fn(async (): Promise<TwitchLinkResult> => options.unlink ?? { ok: true }),
     request: vi.fn(async (body: Record<string, unknown>) => { const answer = options.send?.(body) ?? { status: 200 }; return { status: answer.status, body: answer.body ?? null } }),
     list: { patchOwn: vi.fn(async (next: ChatBadgeOwnOverlay | null) => { own = next ?? undefined }), ownOverlay: async () => own, status: async () => ({ listReceived: true, keysPinned: options.keysPinned ?? true }) },
     invalidate: vi.fn(async () => {}),
@@ -137,6 +195,34 @@ describe('Seen in chat opt-in coordinator', () => {
     const failed = optIn({ send: () => ({ status: 503 }) })
     expect(await failed.coordinator.off()).toMatchObject({ ok: false, error: 'unavailable' })
     expect(failed.ports.list.patchOwn).not.toHaveBeenCalled()
+  })
+
+  it('link: replies with the login and re-reads settings; Seen in chat stays off', async () => {
+    const f = optIn()
+    expect(await f.coordinator.linkTwitch()).toEqual({ type: 'SUPPORTER_TWITCH_LINK', ok: true, login: 'pulsefan' })
+    expect(f.ports.invalidate).toHaveBeenCalled()
+    expect(f.ports.confirm).not.toHaveBeenCalled()
+    expect(f.ports.list.patchOwn).not.toHaveBeenCalled()
+    const refused = optIn({ link: { ok: false, error: 'linked_elsewhere' } })
+    expect(await refused.coordinator.linkTwitch()).toEqual({ type: 'SUPPORTER_TWITCH_LINK', ok: false, error: 'linked_elsewhere' })
+    expect(refused.ports.invalidate).not.toHaveBeenCalled()
+  })
+
+  it('unlink while on: your crest leaves your own chat at once, as Turn off does', async () => {
+    const f = optIn({ snapshot: { available: true, state: 'on', login: 'pulsefan' } })
+    await f.coordinator.on()
+    f.ports.invalidate.mockClear()
+    expect(await f.coordinator.unlinkTwitch()).toEqual({ type: 'SUPPORTER_TWITCH_LINK', ok: true })
+    expect(f.own()).toEqual({ kind: 'off', id: '123', login: 'pulsefan', at: 1_000 })
+    expect(f.ports.invalidate).toHaveBeenCalled()
+    // Unlinking while off hides nothing; a refusal changes nothing locally.
+    const off = optIn({ snapshot: { available: true, state: 'off' } })
+    expect(await off.coordinator.unlinkTwitch()).toMatchObject({ ok: true })
+    expect(off.ports.list.patchOwn).not.toHaveBeenCalled()
+    const refused = optIn({ snapshot: { available: true, state: 'on', login: 'pulsefan' }, unlink: { ok: false, error: 'unlink_not_allowed' } })
+    expect(await refused.coordinator.unlinkTwitch()).toEqual({ type: 'SUPPORTER_TWITCH_LINK', ok: false, error: 'unlink_not_allowed' })
+    expect(refused.ports.list.patchOwn).not.toHaveBeenCalled()
+    expect(refused.ports.invalidate).not.toHaveBeenCalled()
   })
 
   it('off uses the committed withdrawal receipt when the worker has no identity or snapshot', async () => {
@@ -208,6 +294,16 @@ describe('Seen in chat messages and sender scopes', () => {
     expect(MESSAGE_SENDER_SCOPE.SUPPORTER_CHAT_BADGE).toBe('extension-page')
     expect(isSenderAuthorizedForMessage('SUPPORTER_CHAT_BADGE', undefined, { id: extensionId, frameId: 0, tab: { url: 'https://www.twitch.tv/xqc' } }, extensionId)).toBe(false)
     expect(isSenderAuthorizedForMessage('SUPPORTER_CHAT_BADGE', undefined, { id: extensionId, url: `chrome-extension://${extensionId}/options/index.html` }, extensionId)).toBe(true)
+  })
+
+  it('linking or unlinking Twitch is for the options page only, in exact shapes', () => {
+    for (const action of ['link', 'unlink'] as const) expect(parseBackgroundRequest({ type: 'SUPPORTER_TWITCH_LINK', action })).toEqual({ type: 'SUPPORTER_TWITCH_LINK', action })
+    for (const bad of [{}, { action: 'relink' }, { action: 'link', twitchUserId: '1' }, { action: 'unlink', idToken: 'x' }]) {
+      expect(parseBackgroundRequest({ type: 'SUPPORTER_TWITCH_LINK', ...bad })).toBeNull()
+    }
+    expect(MESSAGE_SENDER_SCOPE.SUPPORTER_TWITCH_LINK).toBe('extension-page')
+    expect(isSenderAuthorizedForMessage('SUPPORTER_TWITCH_LINK', undefined, { id: extensionId, frameId: 0, tab: { url: 'https://www.twitch.tv/xqc' } }, extensionId)).toBe(false)
+    expect(isSenderAuthorizedForMessage('SUPPORTER_TWITCH_LINK', undefined, { id: extensionId, url: `chrome-extension://${extensionId}/options/index.html` }, extensionId)).toBe(true)
   })
 
   it('parses only a well-formed chatBadge snapshot', () => {
