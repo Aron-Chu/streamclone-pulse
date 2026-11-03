@@ -1,12 +1,13 @@
 import type { PublicCaptureClient } from './productAnalyticsCapture'
+import type { TimestampFeedbackSession } from './timestampFeedback'
 import { recapAnalyticsCategory, type RecapPageCategory } from './recapAnalyticsCategory'
 
 /** Optional public-site product analytics. No network or import before consent. */
 export type AnalyticsPreference = 'allowed' | 'declined' | 'unset'
 export type PublicPageCategory = 'home' | 'docs' | 'status' | 'privacy' | 'terms' | 'refunds' | 'supporter' | 'support' | 'tool' | 'guide' | RecapPageCategory
 export type PublicCta = 'install_extension' | 'open_analytics'
-// Renew consent after adding a fixed tool-completion observation to the scope.
-export const ANALYTICS_PREFERENCE_KEY = 'sp.websiteAnalytics.v3'
+// Renew consent for the explicitly opened, closed-choice tool feedback survey.
+export const ANALYTICS_PREFERENCE_KEY = 'sp.websiteAnalytics.v4'
 
 const categories: Record<string, PublicPageCategory> = {
   '/': 'home', '/docs': 'docs', '/status': 'status', '/privacy': 'privacy',
@@ -132,4 +133,17 @@ export function capturePublicCta(cta: PublicCta): void {
 export function captureTimestampLinkBuilt(): void {
   if (!client || page !== 'tool' || !eligible(page)) return
   client.captureTimestampLinkBuilt()
+}
+
+export function timestampFeedbackAvailable(): boolean {
+  return page === 'tool' && eligible('tool')
+}
+
+export async function openTimestampFeedback(signal: AbortSignal): Promise<TimestampFeedbackSession | null> {
+  if (!timestampFeedbackAvailable() || signal.aborted) return null
+  const turn = generation
+  if (!client) reconcile()
+  await loading
+  if (turn !== generation || !client || !timestampFeedbackAvailable() || signal.aborted) return null
+  return client.openTimestampFeedback(signal)
 }

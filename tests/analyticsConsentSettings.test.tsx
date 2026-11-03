@@ -73,7 +73,9 @@ describe('analytics consent in open settings', () => {
     expect(description?.textContent).toMatch(/Pulse receives data without a reported error and when a panel rendering error is shown/)
     expect(description?.textContent).toMatch(/aggregate counts to PostHog/)
     expect(description?.textContent).toMatch(/stops new events from this browser/)
-    expect(description?.textContent).toMatch(/Events already sent to StreamPulse may still be added to totals sent to PostHog; those totals remain until they expire/)
+    expect(description?.textContent).toMatch(/Events already sent to StreamPulse may still be added to totals sent to PostHog/)
+    expect(description?.textContent).toMatch(/six calendar months/)
+    expect(description?.textContent).toMatch(/permanently deletes expired events at the following monthly cleanup/)
   })
 
   it('reflects a withdrawal made in another context', async () => {

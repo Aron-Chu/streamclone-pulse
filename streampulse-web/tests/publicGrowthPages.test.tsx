@@ -12,6 +12,7 @@ vi.mock('../src/lib/productAnalytics', async importOriginal => ({
   ...await importOriginal<typeof import('../src/lib/productAnalytics')>(),
   captureTimestampLinkBuilt: vi.fn(),
 }))
+vi.mock('../src/ui/components/TimestampToolFeedback', () => ({ TimestampToolFeedback: () => <span data-testid="feedback-invitation" /> }))
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.mocked(captureTimestampLinkBuilt).mockClear() })
 function tool() { render(<MemoryRouter><TwitchTimestampTool /></MemoryRouter>) }
@@ -32,11 +33,13 @@ describe('public timestamp tool', () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
     tool(); build()
+    expect(screen.queryByTestId('feedback-invitation')).toBeNull()
     expect(captureTimestampLinkBuilt).toHaveBeenCalledExactlyOnceWith()
     expect(screen.getByRole('link', { name: 'Open on Twitch' }).getAttribute('href')).toBe('https://www.twitch.tv/videos/2916038039?t=1h23m45s')
     fireEvent.click(screen.getByRole('button', { name: 'Copy link' }))
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('https://www.twitch.tv/videos/2916038039?t=1h23m45s'))
     expect(await screen.findByText('Link copied.')).toBeTruthy()
+    expect(screen.getByTestId('feedback-invitation')).toBeTruthy()
     fireEvent.change(screen.getByLabelText('Start time'), { target: { value: '5' } })
     expect(screen.queryByRole('button', { name: 'Copy link' })).toBeNull()
   })
@@ -51,6 +54,7 @@ describe('public timestamp tool', () => {
     await act(async () => { settle(); await pending.catch(() => undefined) })
     expect(screen.getByRole('link', { name: 'Open on Twitch' }).getAttribute('href')).toContain('t=0h0m5s')
     expect(screen.queryByText('Link copied.')).toBeNull()
+    expect(screen.queryByTestId('feedback-invitation')).toBeNull()
     expect(screen.queryByText(/Copy is unavailable here/)).toBeNull()
     expect(document.activeElement).toBe(focusBefore)
   })
@@ -58,6 +62,7 @@ describe('public timestamp tool', () => {
     vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) } })
     tool(); build(); fireEvent.click(screen.getByRole('button', { name: 'Copy link' }))
     expect(await screen.findByText(/Copy is unavailable here/)).toBeTruthy()
+    expect(screen.queryByTestId('feedback-invitation')).toBeNull()
     expect(document.activeElement).toBe(screen.getByLabelText('Timestamped Twitch link'))
   })
 })

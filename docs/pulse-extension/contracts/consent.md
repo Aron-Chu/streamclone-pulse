@@ -27,7 +27,7 @@
 | Schema version | Integer; bump invalidates prior grants |
 | Default | Off |
 | Control | Unchecked “Share anonymous product usage” (wording may vary; must stay accurate) |
-| Disclosure | Purpose, fixed event names only, PostHog processor, ~180-day retention target, withdrawal |
+| Disclosure | Purpose, fixed event names only, PostHog processor, six-calendar-month event window with irreversible deletion at the following monthly cleanup, withdrawal |
 | Scope | Fixed aggregate events only — does **not** enable diagnostics |
 
 ## Support consent (RPR-4)
