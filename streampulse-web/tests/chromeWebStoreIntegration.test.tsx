@@ -43,7 +43,11 @@ function assertSafeCwsLink(anchor: HTMLElement) {
   const parsed = new URL(href)
   expect(`${parsed.origin}${parsed.pathname}`).toBe(CANONICAL)
   expect(parsed.searchParams.get('utm_source')).toBe('streampulse.stream')
-  expect(parsed.searchParams.get('utm_medium')).toMatch(/^[a-z0-9-]+$/)
+  expect(parsed.searchParams.get('utm_medium')).toBe('referral')
+  expect(parsed.searchParams.get('utm_campaign')).toBe('website_install')
+  expect(parsed.searchParams.get('utm_content')).toMatch(/^[a-z0-9-]+$/)
+  expect([...parsed.searchParams.keys()].sort()).toEqual(['utm_campaign', 'utm_content', 'utm_medium', 'utm_source'])
+  expect(parsed.hash).toBe('')
   expect(anchor.getAttribute('target')).toBe('_blank')
   expect(anchor.getAttribute('rel')).toBe('noopener noreferrer')
   expect(anchor.getAttribute('href') ?? '').not.toMatch(/^chrome:/i)
@@ -64,10 +68,14 @@ describe('store link page kind', () => {
     expect(storeLinkPageForPath('/Analytics/zackrawrr')).toBe('site')
   })
 
-  it('never puts an unlisted value in utm_medium', () => {
+  it('keeps campaign tags fixed and rejects unlisted page content', () => {
     const url = new URL(chromeWebStoreUrlForPage('/analytics/zackrawrr/317702962423' as StoreLinkPage))
-    expect(url.searchParams.get('utm_medium')).toBe('site')
-    expect(new URL(chromeWebStoreUrlForPage('supporter')).searchParams.get('utm_medium')).toBe('supporter')
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      utm_source: 'streampulse.stream', utm_medium: 'referral',
+      utm_campaign: 'website_install', utm_content: 'site',
+    })
+    expect(url.toString()).not.toMatch(/zackrawrr|317702962423/)
+    expect(new URL(chromeWebStoreUrlForPage('supporter')).searchParams.get('utm_content')).toBe('supporter')
   })
 })
 
@@ -96,7 +104,7 @@ describe('install store detection', () => {
   it('opens the official listings, with the page kind on the Chrome link only', () => {
     expect(installStoreUrl('edge', 'analytics')).toBe(EDGE_ADDONS_LISTING_URL)
     expect(installStoreUrl('firefox', 'analytics')).toBe(FIREFOX_ADDONS_LISTING_URL)
-    expect(new URL(installStoreUrl('chrome', 'analytics')).searchParams.get('utm_medium')).toBe('analytics')
+    expect(new URL(installStoreUrl('chrome', 'analytics')).searchParams.get('utm_content')).toBe('analytics')
   })
 })
 
@@ -120,7 +128,7 @@ describe('InstallCta', () => {
     render(<InstallCta />)
     const link = screen.getByRole('link', { name: /Add StreamPulse to Chrome/i })
     const href = link.getAttribute('href') ?? ''
-    expect(new URL(href).searchParams.get('utm_medium')).toBe('analytics')
+    expect(new URL(href).searchParams.get('utm_content')).toBe('analytics')
     expect(href).not.toMatch(/zackrawrr|317702962423/)
     expect(link.getAttribute('data-cws-listing')).toBe(href)
   })

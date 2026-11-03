@@ -23,7 +23,7 @@ export const EDGE_ADDONS_LISTING_URL =
   'https://microsoftedge.microsoft.com/addons/detail/streampulse-twitch-chat-/cnakgkalmjbhelabgjkbinlgjeflebjd' as const
 
 /**
- * Fixed utm_medium values for store links. Only the kind of page goes to the store, never the path,
+ * Fixed utm_content values for store links. Only the kind of page goes to the store, never the path,
  * so a channel or stream id in the URL never reaches Google.
  */
 const STORE_LINK_PAGES = [
@@ -47,7 +47,9 @@ export function storeLinkPageForPath(pathname: string): StoreLinkPage {
 export function chromeWebStoreUrlForPage(page: StoreLinkPage): string {
   const url = new URL(CHROME_WEB_STORE_LISTING_URL)
   url.searchParams.set('utm_source', 'streampulse.stream')
-  url.searchParams.set('utm_medium', isStoreLinkPage(page) ? page : 'site')
+  url.searchParams.set('utm_medium', 'referral')
+  url.searchParams.set('utm_campaign', 'website_install')
+  url.searchParams.set('utm_content', isStoreLinkPage(page) ? page : 'site')
   return url.toString()
 }
 

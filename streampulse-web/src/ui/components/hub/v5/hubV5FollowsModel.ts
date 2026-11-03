@@ -81,7 +81,7 @@ export function followsMeta(set: Pick<HubFollowsSet, 'live'>, follows: Pick<Twit
 
 /** The (i): one paragraph per line. The follows are matched in the live pool, sized as Channels sizes it. */
 export function followsTip(set: HubFollowsSet, follows: TwitchFollows, liveCount: number, poolSize: number): string {
-  const pool = poolSize > 0 ? `${formatHubInt(liveCount)} of the ~${formatHubInt(poolSize)} we follow` : `${formatHubInt(liveCount)} channels`
+  const pool = poolSize > 0 ? `${formatHubInt(liveCount)} of the ~${formatHubInt(poolSize)} we track` : `${formatHubInt(liveCount)} channels`
   const lines = [
     `Channels you follow on Twitch that are in the live pool (${pool}). Your other follows can be live on Twitch too.`,
   ]

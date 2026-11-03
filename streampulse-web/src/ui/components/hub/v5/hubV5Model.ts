@@ -536,10 +536,10 @@ export function channelRows(live: readonly HubLiveChannel[], query: HubChannelQu
 export function channelsTip(liveCount: number, poolSize: number, basis: HubChatBasis = 'five_min'): string {
   // the recent average says what it is and why (candidate, 10-30)
   if (basis === 'avg_35') {
-    return `Every channel in the live pool (${formatHubInt(liveCount)} of the ~${formatHubInt(poolSize)} we follow). The 5-minute counts did not load, so Chat/min is each channel’s recent average: up to the last 35 minutes, counting only minutes with data and the current unfinished minute, so it can cover much less. vs own avg has nothing to compare. `
+    return `Every channel in the live pool (${formatHubInt(liveCount)} of the ~${formatHubInt(poolSize)} we track). The 5-minute counts did not load, so Chat/min is each channel’s recent average: up to the last 35 minutes, counting only minutes with data and the current unfinished minute, so it can cover much less. vs own avg has nothing to compare. `
       + 'A dash means not measured: viewers-only channels have no chat count. Click a channel to open its stream page.'
   }
-  return `Every channel in the live pool (${formatHubInt(liveCount)} of the ~${formatHubInt(poolSize)} we follow). Chat/min is the last 5 closed minutes. `
+  return `Every channel in the live pool (${formatHubInt(liveCount)} of the ~${formatHubInt(poolSize)} we track). Chat/min is the last 5 closed minutes. `
     + 'vs own avg compares those 5 minutes with the stream’s own measured average so far, shown only when that average is ready and built from at least 10 measured minutes. '
     + 'A dash means not measured: viewers-only channels have no chat count, and young streams have no average yet. Click a channel to open its stream page.'
 }
@@ -718,6 +718,76 @@ export function searchChannels(byViewers: readonly HubLiveChannel[], raw: string
     openLogin,
     empty: Boolean(t) && !channels.length && !openLogin,
   }
+}
+
+/** A game the box offers (3A, 11-02): `n` is the channels its Channels filter lists, the chat-counted ones Where chat is counts. */
+export interface HubSearchGame {
+  name: string
+  n: number
+  art?: string
+}
+
+/** An emote the box offers: one the hub's intervals counted, so the map has its tile. */
+export interface HubSearchEmote {
+  name: string
+  provider?: string
+  imageUrl?: string
+  uses: number
+}
+
+/** Every game a live channel is counted in, busiest first: the games the hub's game filter can list. */
+export function hubSearchGames(games: Pick<HubWhereChatIs, 'all'>, art?: ReadonlyMap<string, string>): HubSearchGame[] {
+  return games.all
+    .filter((g) => g.name !== HUB_NO_CATEGORY && g.rows.length > 0)
+    .map((g) => ({ name: g.name, n: g.rows.length, art: art?.get(g.name) }))
+}
+
+/** The emotes in the hub's interval top 10s, most used first, one row per provider and name. */
+export function hubSearchEmotes(points: readonly Pick<HubActivityPoint, 'topEmotes'>[]): HubSearchEmote[] {
+  const byKey = new Map<string, HubSearchEmote>()
+  for (const p of points) {
+    for (const e of p.topEmotes ?? []) {
+      if (!e?.name || !finite(e.count) || e.count <= 0) continue
+      const key = `${e.provider || ''}|${e.name}`
+      const row = byKey.get(key)
+      if (row) row.uses += e.count
+      else byKey.set(key, { name: e.name, provider: e.provider, imageUrl: e.imageUrl, uses: e.count })
+    }
+  }
+  return [...byKey.values()].sort((a, b) => b.uses - a.uses)
+}
+
+/** Name matches from 2 letters: the whole name first, then names that start with it, then the rest; the bigger first within each. */
+function matchByName<T extends { name: string }>(rows: readonly T[], raw: string, size: (row: T) => number, limit: number): T[] {
+  const exact = raw.trim()
+  const t = exact.toLowerCase()
+  if (t.length < 2) return []
+  // the spelling as typed first: emote names are case sensitive ("KEKW", "kekw")
+  const rank = (name: string) => (name === exact ? 0 : name.toLowerCase() === t ? 1 : name.toLowerCase().startsWith(t) ? 2 : name.toLowerCase().includes(t) ? 3 : 4)
+  return rows
+    .map((row) => ({ row, r: rank(row.name) }))
+    .filter((x) => x.r < 4)
+    .sort((a, b) => a.r - b.r || size(b.row) - size(a.row))
+    .slice(0, limit)
+    .map((x) => x.row)
+}
+
+export function searchGames(games: readonly HubSearchGame[], raw: string, limit = 3): HubSearchGame[] {
+  return matchByName(games, raw, (g) => g.n, limit)
+}
+
+export function searchEmotes(emotes: readonly HubSearchEmote[], raw: string, limit = 3): HubSearchEmote[] {
+  return matchByName(emotes, raw, (e) => e.uses, limit)
+}
+
+/** "/analytics?game=VALORANT": the hub with its game filter set. */
+export function hubGameHref(name: string): string {
+  return `/analytics?game=${encodeURIComponent(name)}`
+}
+
+/** "/analytics?emote=KEKW": the hub, its Top emotes map finding the emote. */
+export function hubEmoteHref(name: string): string {
+  return `/analytics?emote=${encodeURIComponent(name)}`
 }
 
 /* ---------- How this is measured ---------- */

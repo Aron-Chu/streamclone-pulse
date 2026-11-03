@@ -423,6 +423,12 @@
   position: absolute;
   z-index: 45;
   top: 68px;
+  /* games and emotes make the list longer (3A): it scrolls inside, with no bar. With a phone keyboard up the
+     search box sets the room above it (K1, 11-02) */
+  max-height: min(72vh, 640px, var(--hv5-sugg-room, 640px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
   left: 0;
   right: 0;
   padding: 6px;
@@ -496,6 +502,21 @@
 .hv5-sg-open .hv5-ico { width: 16px; height: 16px; margin: 0 6px; }
 .hv5-sg-open b { color: var(--sp-text-1); }
 .hv5-sg-k { margin-left: auto; font-size: 12px; color: var(--sp-text-3); }
+/* 3A (11-02): the looked-up login's row, a game's cover and an emote's picture */
+:is(.hub-v5, .hv5-dock) .hv5-sugg [data-kind="login"] > .hv5-ico { flex: none; width: 16px; height: 16px; margin: 0 6px; }
+:is(.hub-v5, .hv5-dock) .hv5-sugg [data-kind="login"] b { color: var(--sp-text-1); }
+.hv5-sg-gm,
+.hv5-sg-em {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+}
+.hv5-sg-gm > * { width: 24px; height: 32px; border-radius: 3px; overflow: hidden; background: var(--sp-raised); box-shadow: inset 0 0 0 1px var(--sp-line-strong); }
+.hv5-sg-gm img { display: block; object-fit: cover; }
+.hv5-sg-gm span { display: grid; place-items: center; font: 600 10px/1 var(--sp-font); color: var(--sp-text-3); }
+.hv5-sg-em img { display: block; width: 28px; height: 28px; object-fit: contain; }
 .hv5-sg-none {
   padding: 10px;
   font-size: 12px;
@@ -740,10 +761,16 @@
 @media (prefers-reduced-motion: reduce) {
   .hv5-pr-cursor, .hv5-pr-cap { display: none; }
 }
+@media (prefers-reduced-motion: no-preference) {
+  .hub-v5 .hv5-mast .hv5-pr-more .hv5-ico { transition: transform 0.2s; }
+}
 .hv5-pr-copy { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
 .hub-v5 .hv5-mast .hv5-pr-h { font: 750 22px/28px var(--sp-font); letter-spacing: -0.01em; color: var(--sp-text-1); }
 .hub-v5 .hv5-mast .hv5-pr-p { margin: 8px 0 18px; font: 500 14px/21px var(--sp-font); color: var(--sp-text-2); }
 .hv5-pr-desk { display: none; }
+/* the phone card's own line and "See how it works" (A, 11-02) */
+.hv5-pr-sub,
+.hv5-pr-more { display: none; }
 .hub-v5 .hv5-mast .hv5-pr-free { margin-top: 10px; font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
 .hub-v5 .hv5-mast a.hv5-hero-install {
   display: inline-flex;
@@ -833,21 +860,42 @@
   .hub-v5 .hv5-mast .hv5-hero-h { font-size: 28px; line-height: 34px; }
   .hub-v5 .hv5-mast .hv5-hero-sub { max-width: 320px; font-size: 14px; line-height: 20px; }
   .hv5-hero-field { margin-top: 18px; }
-  /* the panel alone, no button: it's a desktop extension */
-  .hub-v5 .hv5-mast .hv5-promo { grid-template-columns: minmax(0, 1fr); gap: 14px; margin-top: 14px; padding: 12px; }
-  .hv5-pr-stage { grid-template-columns: minmax(0, 1fr); height: 330px; }
+  /* A (11-02; a named phone-only change from 11-01's "panel alone"): an 84 px card, the title and that it is a free
+     desktop extension, and no install button. "See how it works" opens the panel and the line under it in place */
+  .hub-v5 .hv5-mast .hv5-promo {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "h more" "sub more" "stage stage" "p p";
+    align-items: center;
+    gap: 0 10px;
+    min-height: 84px;
+    margin-top: 14px;
+    padding: 12px;
+  }
+  .hv5-pr-copy { display: contents; }
+  .hv5-pr-stage { grid-area: stage; grid-template-columns: minmax(0, 1fr); height: 330px; margin-top: 12px; }
+  .hub-v5 .hv5-mast .hv5-promo:not([data-open]) :is(.hv5-pr-stage, .hv5-pr-p) { display: none; }
   .hv5-pr-player, .hv5-pr-cap { display: none; }
   .hv5-pr-side { border-left: 0; }
-  .hub-v5 .hv5-mast .hv5-pr-h { font-size: 18px; line-height: 24px; }
-  .hub-v5 .hv5-mast .hv5-pr-p { margin-bottom: 10px; font-size: 13px; line-height: 19px; }
-  .hub-v5 .hv5-mast a.hv5-hero-install { display: none; }
-  /* plain text, so it never reads as a button */
-  .hub-v5 .hv5-mast .hv5-pr-desk {
-    display: block;
-    color: var(--sp-text-2);
-    font: 600 13px/18px var(--sp-font);
+  .hub-v5 .hv5-mast .hv5-pr-h { grid-area: h; font: 700 16px/22px var(--sp-font); color: #ededef; }
+  .hub-v5 .hv5-mast .hv5-pr-sub { display: block; grid-area: sub; font: 500 12px/16px var(--sp-font); color: #8e8e96; }
+  .hub-v5 .hv5-mast .hv5-pr-more {
+    display: inline-flex;
+    grid-area: more;
+    align-items: center;
+    gap: 4px;
+    height: 44px;
+    padding: 0 0 0 4px;
+    border: 0;
+    background: none;
+    color: #b4b4bb;
+    font: 600 13px/16px var(--sp-font);
+    white-space: nowrap;
+    cursor: pointer;
   }
-  .hub-v5 .hv5-mast .hv5-pr-free { margin-top: 2px; }
+  .hub-v5 .hv5-mast .hv5-pr-more .hv5-ico { width: 16px; height: 16px; }
+  .hub-v5 .hv5-mast .hv5-promo[data-open] .hv5-pr-more .hv5-ico { transform: rotate(180deg); }
+  .hub-v5 .hv5-mast .hv5-pr-p { grid-area: p; margin: 10px 0 0; font-size: 13px; line-height: 19px; }
+  .hub-v5 .hv5-mast :is(a.hv5-hero-install, .hv5-pr-desk, .hv5-pr-free) { display: none; }
   .hv5-search .hv5-field { height: 56px; padding: 0 6px 0 16px; gap: 10px; border-radius: 14px; }
   .hub-v5 .hv5-search .hv5-field input { font-size: 16px; }
   .hv5-search .hv5-kbd { display: none; }
@@ -952,7 +1000,7 @@
     grid-template-rows: 0fr;
     clip-path: inset(0 -100vmax);
   }
-  .hv5-dock .hv5-sugg { max-height: calc(100dvh - 200px); overflow-y: auto; }
+  .hv5-dock .hv5-sugg { max-height: min(calc(100dvh - 200px), var(--hv5-sugg-room, 100dvh)); overflow-y: auto; }
   .hv5-dock-btn {
     display: grid;
     flex: none;
@@ -1667,7 +1715,27 @@
 }
 .hub-v5 .hv5-emotes .hv5-em-zb:hover:not(:disabled) { background: var(--sp-raised); color: var(--sp-text-1); }
 .hub-v5 .hv5-emotes .hv5-em-zb:disabled { opacity: 0.35; cursor: default; }
+/* Z1 (11-02): a 38 px tall tap area round each 26 px button, 2 px wider each side; the gaps keep it off the field and the chips */
+.hub-v5 .hv5-emotes .hv5-em-zb { position: relative; }
+.hub-v5 .hv5-emotes .hv5-em-zb::after { content: ''; position: absolute; inset: -6px -2px; }
 .hv5-em-skel { background: var(--sp-panel); }
+/* Find emote (3A, 11-02): a small field before the zoom; the match gets a ring in the focus teal */
+.hv5-em-find { width: 168px; height: 28px; padding: 0 8px; gap: 6px; }
+.hv5-em-find .hv5-ico { width: 14px; height: 14px; flex: none; }
+/* a mouse gets the small text; touch keeps the hub's 16 px, so a phone does not zoom in on focus (11-02) */
+@media (pointer: fine) {
+  .hub-v5 .hv5-em-find input { font-size: 12px; }
+}
+.hub-v5 .hv5-em-find input::-webkit-search-cancel-button { display: none; }
+/* X1 (11-02): the game filter's ×, 24 px, at the field's end while it has text or a match; a 32 × 40 tap area */
+.hub-v5 .hv5-em-find .hv5-ib { position: relative; width: 24px; height: 24px; margin-right: -4px; }
+.hub-v5 .hv5-em-find .hv5-ib::after { content: ''; position: absolute; inset: -8px -4px; }
+.hv5-em-fmsg { order: 6; flex-basis: 100%; margin: -2px 0 6px; color: var(--sp-degraded, #fbbf24); }
+.hub-v5 .hv5-emotes .hv5-em-t[data-found] { z-index: 3; }
+.hub-v5 .hv5-emotes .hv5-em-t[data-found] > .hv5-em-pl { box-shadow: inset 0 0 0 calc(2.5px * var(--iz, 1)) var(--sp-focus, #99f6e4); }
+@media (max-width: 719px) {
+  .hv5-em-find { flex: 1 1 100%; width: auto; height: 32px; }
+}
 /* the provider colours (validated for colour-blind separation on dark) */
 :is(.hv5-em-map, .hv5-em-lg) [data-field="twitch"] { --fc: #3987e5; }
 :is(.hv5-em-map, .hv5-em-lg) [data-field="seventv"] { --fc: #d95926; }

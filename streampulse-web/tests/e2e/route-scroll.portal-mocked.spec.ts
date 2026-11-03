@@ -233,7 +233,8 @@ test.describe('Back to the Moments list', () => {
   for (const { name, leave } of ways) {
     test(`returns the reader to their place in Latest after following ${name}`, async ({ page }) => {
       await page.setViewportSize({ width: 390, height: 640 })
-      await installHubUxMock(page)
+      // Latest leaves out a stream's first 5 minutes, so these rows sit later in their streams.
+      await installHubUxMock(page, { momentOffsets: [1200, 1440] })
       await page.goto('/analytics/moments')
       await expect(page.locator('.moments-result').first()).toBeVisible()
       await scrollToBottom(page)
