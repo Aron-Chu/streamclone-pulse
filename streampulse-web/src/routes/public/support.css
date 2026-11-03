@@ -65,6 +65,12 @@
 .feedback-choice__opt.is-on { border-color: rgba(139, 92, 246, 0.75); background: rgba(139, 92, 246, 0.12); color: #fff; box-shadow: inset 0 0 0 1px rgba(139, 92, 246, 0.35); }
 .feedback-choice__opt.is-on svg { color: #c4b5fd; }
 .feedback-choice__opt:has(input:focus-visible) { outline: 2px solid #c4b5fd; outline-offset: 2px; }
+/* hover (2026-11-02): a step lighter, and not on the chosen one; picking and unpicking eases (150 ms) */
+.feedback-choice__opt:hover:not(.is-on) { background: #18181b; }
+@media (prefers-reduced-motion: no-preference) {
+  .feedback-choice__opt { transition: border-color 150ms ease, background-color 150ms ease, color 150ms ease, box-shadow 150ms ease; }
+  .feedback-choice__opt svg { transition: color 150ms ease; }
+}
 
 .feedback-field { display: grid; gap: 0.4rem; min-width: 0; }
 .feedback-label { font-size: 0.88rem; font-weight: 600; color: #e4e4e7; }
@@ -85,6 +91,10 @@ textarea.feedback-input { min-height: 118px; resize: vertical; line-height: 1.5;
 .feedback-input[aria-invalid='true'] { border-color: rgba(251, 191, 36, 0.6); }
 .feedback-input:focus { outline: none; border-color: rgba(139, 92, 246, 0.6); box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15); }
 .feedback-input[readonly] { color: #d4d4d8; }
+/* the border and focus ring ease in (2026-11-02) */
+@media (prefers-reduced-motion: no-preference) {
+  .feedback-input { transition: border-color 150ms ease, box-shadow 150ms ease; }
+}
 
 .feedback-hint { margin: 0; font-size: 0.84rem; color: #fcd34d; }
 .feedback-count { margin: 0; font: 500 0.78rem/1.4 var(--font-mono); color: #8b8b95; }
@@ -234,3 +244,6 @@ textarea.feedback-input { min-height: 118px; resize: vertical; line-height: 1.5;
 @media (prefers-reduced-motion: reduce) {
   .feedback-spin { animation: none; }
 }
+
+/* Install button and the store it opens (named after detection, 11-02). */
+.support-page__install { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; }

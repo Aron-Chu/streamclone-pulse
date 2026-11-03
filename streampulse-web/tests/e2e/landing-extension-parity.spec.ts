@@ -21,7 +21,7 @@ test.describe('landing extension showcase parity', () => {
     test(`pulse panel tour beat ${beat}`, async ({ page }) => {
       await page.setViewportSize({ width: 1440, height: 900 })
       await page.goto('/#demo', { waitUntil: 'domcontentloaded' })
-      await expect(page.getByRole('heading', { name: /pulse tab, feature by feature/i })).toBeVisible({
+      await expect(page.getByRole('heading', { name: /see it beside twitch chat/i })).toBeVisible({
         timeout: 15_000,
       })
 
@@ -59,7 +59,7 @@ test.describe('landing extension showcase parity', () => {
     test(`full panel scroll-through step ${i}`, async ({ page }) => {
       await page.setViewportSize({ width: 1440, height: 900 })
       await page.goto('/#demo', { waitUntil: 'domcontentloaded' })
-      await expect(page.getByRole('heading', { name: /pulse tab, feature by feature/i })).toBeVisible({
+      await expect(page.getByRole('heading', { name: /see it beside twitch chat/i })).toBeVisible({
         timeout: 15_000,
       })
 
@@ -111,7 +111,7 @@ test.describe('landing extension showcase parity', () => {
   test('narrow 960px keeps pinned scroll animation', async ({ page }) => {
     await page.setViewportSize({ width: 960, height: 800 })
     await page.goto('/#demo', { waitUntil: 'domcontentloaded' })
-    await expect(page.getByRole('heading', { name: /pulse tab, feature by feature/i })).toBeVisible({
+    await expect(page.getByRole('heading', { name: /see it beside twitch chat/i })).toBeVisible({
       timeout: 15_000,
     })
     await assertAnimatedTourAdvances(page)
@@ -120,7 +120,7 @@ test.describe('landing extension showcase parity', () => {
   test('mid laptop 1280x720 keeps pinned scroll animation', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 })
     await page.goto('/#demo', { waitUntil: 'domcontentloaded' })
-    await expect(page.getByRole('heading', { name: /pulse tab, feature by feature/i })).toBeVisible({
+    await expect(page.getByRole('heading', { name: /see it beside twitch chat/i })).toBeVisible({
       timeout: 15_000,
     })
     await assertAnimatedTourAdvances(page)
@@ -130,7 +130,7 @@ test.describe('landing extension showcase parity', () => {
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await page.setViewportSize({ width: 960, height: 800 })
     await page.goto('/#demo', { waitUntil: 'domcontentloaded' })
-    await expect(page.getByRole('heading', { name: /pulse tab, feature by feature/i })).toBeVisible({
+    await expect(page.getByRole('heading', { name: /see it beside twitch chat/i })).toBeVisible({
       timeout: 15_000,
     })
     await assertStaticTourNativeScroll(page)

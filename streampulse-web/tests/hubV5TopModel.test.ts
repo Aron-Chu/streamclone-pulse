@@ -5,7 +5,7 @@ import type { MomentsFeedItem } from '../src/lib/momentsFeed'
 import { checkMoment, topBursts } from '../src/lib/momentsChecked'
 import { normalizePublicHub, type HubLiveChannel, type HubLivePulseMoment, type PublicHub } from '../src/lib/publicHub'
 import {
-  TOP_DAY_MS, TOP_ROWS, hubTopRows, topColumnCap, topCount, topCurve, topFeedRows, topFrom, topGames, topMomentsHref, topRowAria,
+  TOP_DAY_MS, TOP_ROWS, hubTopRows, topCount, topDayParse, topDayRows, topFeedRows, topFrom, topGames, topMomentsHref, topRowAria, type TopRowData,
 } from '../src/ui/components/hub/v5/hubV5TopModel'
 
 const fixture = JSON.parse(readFileSync(resolve(__dirname, 'fixtures/moments_feed_v1.json'), 'utf8')) as { generatedAt: number; items: MomentsFeedItem[] }
@@ -169,47 +169,52 @@ describe('Top moments today from the hub', () => {
   })
 })
 
+describe('Top moments today: the day’s hub rows this browser kept (11-02)', () => {
+  const T = Date.UTC(2026, 10, 2, 3, 0)
+  const r = (id: string, over: Partial<TopRowData> = {}): TopRowData => ({
+    id, login: id.split('-')[0]!, name: id, streamId: `s-${id.split('-')[0]}`, offsetSeconds: 1800, avatar: null, kind: 'chat', x: 2, at: T - 60 * MIN,
+    game: null, art: null, emote: null, emotes: [], rate: 90, usual: 30, viewers: null, live: true, href: `/analytics/moments?m=${id}`, also: [], checked: null,
+    ...over,
+  })
+
+  it('adds the kept rows to the hub’s, strongest × first, at most 20', () => {
+    const rows = topDayRows([r('a-1', { x: 5 }), r('b-1', { x: 1.6, at: T - 300 * MIN })], [r('c-1', { x: 3 })], new Set(['c']), T)
+    expect(rows.map((x) => x.id)).toEqual(['a-1', 'c-1', 'b-1'])
+    expect(topDayRows(Array.from({ length: 30 }, (_, i) => r(`k${i}-1`, { x: 2 + i })), [], new Set(), T)).toHaveLength(TOP_ROWS)
+  })
+
+  it('lets the hub’s answer win: its own row by id, and its row in the same burst', () => {
+    const rows = topDayRows([r('a-1', { x: 9, live: false }), r('a-2', { x: 8, at: T - 62 * MIN })], [r('a-1', { x: 4 })], new Set(['a']), T)
+    expect(rows.map((x) => [x.id, x.x])).toEqual([['a-1', 4]])
+  })
+
+  it('drops kept rows older than 24 hours, and says a kept row is live only while its channel is', () => {
+    const rows = topDayRows([r('a-1', { at: T - TOP_DAY_MS - MIN }), r('b-1', { live: true }), r('c-1', { live: false, x: 1.7 })], [], new Set(['c']), T)
+    expect(rows.map((x) => [x.id, x.live])).toEqual([['b-1', false], ['c-1', true]])
+  })
+
+  it('reads back what it saved, field by field, and drops anything else', () => {
+    const saved = JSON.parse(JSON.stringify([r('a-1', { emotes: [{ name: 'KEKW', imageUrl: 'https://static-cdn.jtvnw.net/emoticons/v2/1/default/dark/2.0', count: 9 }] })]))
+    const back = topDayParse(saved)
+    expect(back).toEqual([{ ...r('a-1', { emotes: [{ name: 'KEKW', imageUrl: 'https://static-cdn.jtvnw.net/emoticons/v2/1/default/dark/2.0', count: 9 }] }), live: false }])
+    expect(topDayParse({ rows: [] })).toEqual([])
+    expect(topDayParse([null, 3, { ...saved[0], x: '2' }, { ...saved[0], kind: 'bits' }, { ...saved[0], href: 'https://evil.example/' }, { ...saved[0], href: '//evil.example/analytics' }])).toEqual([])
+  })
+})
+
 describe('Top moments today row words', () => {
   const now = T + 30 * MIN
   const [hubRow] = hubTopRows(hubOf([pulse('alpha', 12, { at: now - 13 * MIN })]))
   const feedRow = topFeedRows(fixture)[0]!
 
   it('says the rank, who, what rose, the game and when, then what a click does', () => {
-    expect(topRowAria(hubRow!, 1, now, false)).toMatch(/^1\. ALPHA, KEKW, emotes 12 times usual, Chess, 13 min ago at .+\. Show its numbers and links\.$/)
-    expect(topRowAria(hubRow!, 1, now, true)).toMatch(/Hide its numbers and links\.$/)
-    expect(topRowAria(feedRow, 2, NOW, false)).toMatch(/^2\. .+ Show the minutes around it\.$/)
-    // the phone peek's rows open in the rail
-    expect(topRowAria(hubRow!, 3, now, null)).toMatch(/^3\. .+ Open it in Top moments below\.$/)
+    // the phone peek's rows bring their card to the front of the carousel below
+    expect(topRowAria(hubRow!, 1, now)).toMatch(/^1\. ALPHA, KEKW, emotes 12 times usual, Chess, 13 min ago at .+\. Open it in Top moments below\.$/)
+    expect(topRowAria(feedRow, 2, NOW)).toMatch(/^2\. .+ Open it in Top moments below\.$/)
   })
 
   it('names the channels folded into a row', () => {
     const [row] = hubTopRows(hubOf([pulse('alpha', 4), pulse('bravo', 12)]))
-    expect(topRowAria(row!, 1, T + MIN, false)).toContain(', the same emotes on ALPHA,')
-  })
-
-  it('fits 45 px rows under the header, beside Picking up, at least 3', () => {
-    expect(topColumnCap(794, false)).toBe(16)
-    expect(topColumnCap(794, true)).toBe(14)
-    expect(topColumnCap(120, true)).toBe(3)
-  })
-})
-
-describe('Top moments opened row', () => {
-  const m = checkMoment(fixture.items.find((i) => i.verdict === 'ok' && i.spark.chat.every((v) => v != null))!, NOW)
-
-  it('draws the 25 minutes around the moment, its own minutes shaded, inside the box', () => {
-    const c = topCurve(m)
-    expect(c.span.x).toBeGreaterThanOrEqual(0)
-    expect(c.span.x + c.span.w).toBeLessThanOrEqual(c.w + 0.1)
-    expect(c.from).toBe(m.at - m.item.spark.momentIndex * MIN)
-    expect(c.to - c.from).toBe(24 * MIN)
-    expect(c.chat.startsWith('M')).toBe(true)
-    expect(c.area.endsWith('Z')).toBe(true)
-  })
-
-  it('breaks a line where a minute was not measured', () => {
-    const chat = m.item.spark.chat.map((v, i) => (i === 5 ? null : v))
-    const gap = checkMoment({ ...m.item, spark: { ...m.item.spark, chat } }, NOW)
-    expect(topCurve(gap).chat.match(/M/g)).toHaveLength(2)
+    expect(topRowAria(row!, 1, T + MIN)).toContain(', the same emotes on ALPHA,')
   })
 })

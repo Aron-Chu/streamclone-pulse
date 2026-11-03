@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
-import { ChromeInstallCta } from '../../ui/components/ChromeInstallCta'
+import { InstallCta } from '../../ui/components/InstallCta'
 import './growth-guides.css'
 
 export default function TwitchVodTimestampsGuide() {
@@ -22,7 +22,7 @@ export default function TwitchVodTimestampsGuide() {
     <h2>Check a link before sharing it</h2>
     <ol><li>Open the correct broadcaster’s video and confirm the broadcast.</li><li>Check that the video is accessible to the intended viewer.</li><li>Use the elapsed player time and verify that it is inside the recording’s duration.</li><li>Open the final timestamped link and watch enough context to confirm the scene.</li><li>If the recording disappears, remove the replay promise. A saved link or reaction recap is not a video backup.</li></ol>
     <p>StreamPulse works with tracked-stream data and available source checks. It does not restore deleted VODs, remove subscriber restrictions, or analyze every historical recording.</p>
-    <div className="public-document__actions"><ChromeInstallCta className="btn btn-primary" /><Link className="btn btn-secondary" to="/analytics">Explore tracked reaction data</Link></div>
+    <div className="public-document__actions"><InstallCta className="btn btn-primary" /><Link className="btn btn-secondary" to="/analytics">Explore tracked reaction data</Link></div>
     <nav className="growth-guide__related" aria-label="Related tools and guides"><Link to="/tools/twitch-vod-timestamp-link">Build a timestamp link</Link><Link to="/guides/find-twitch-moments">Find and bookmark tracked moments</Link><Link to="/support">Get help with StreamPulse</Link></nav>
     <p className="growth-guide__source">Twitch sources reviewed October 31, 2026. Follow the linked official guidance for current retention and sharing behavior.</p>
   </article></PublicLayout>

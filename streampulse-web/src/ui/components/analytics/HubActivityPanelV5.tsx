@@ -69,7 +69,7 @@ function HubMeasuredNotes({ hub, bars }: { hub: FigmaGlobalActivityPanelProps["h
   const bucket = bars?.bucketMinutes ?? hub.activity.bucketMinutes ?? bucketMinutes(resolveHubActivityChartWindowMinutes(hub.activity));
   return (
     <ul className="hv5-measured" data-testid="hub-v5-measured-notes">
-      <li>We follow <b>{facts.poolSize.toLocaleString("en-US")}</b> live Twitch channels, not all of Twitch.</li>
+      <li>We track <b>{facts.poolSize.toLocaleString("en-US")}</b> live Twitch channels, not all of Twitch.</li>
       <li>
         Chat and emotes are counted in each channel&apos;s chat. 7TV counts are complete; Twitch, BTTV and FFZ counts are minimums in{" "}
         <b>{facts.lowerBoundBuckets} of {facts.buckets}</b> intervals.

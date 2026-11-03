@@ -55,6 +55,8 @@ const KNOWN_MESSAGE_TYPES = new Set<string>([
   'CLEAR_PULSE_DEBUG_LOG',
   'REPORT_EXTENSION_DIAGNOSTIC',
   'EMIT_EXTENSION_ANALYTICS',
+  'PREPARE_ANALYTICS_CONSENT_GRANT',
+  'SET_ANALYTICS_CONSENT',
   'ENROLL_DEVICE',
   'GET_DEVICE_AUTH_STATUS',
   'ROTATE_DEVICE',
@@ -436,6 +438,17 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
     case 'EMIT_EXTENSION_ANALYTICS': {
       if (raw.name !== 'pulse_load_completed' && raw.name !== 'extension_error_shown') return null
       return { type, name: raw.name }
+    }
+    case 'PREPARE_ANALYTICS_CONSENT_GRANT': {
+      return Object.keys(raw).every(key => key === 'type') ? { type } : null
+    }
+    case 'SET_ANALYTICS_CONSENT': {
+      if (Object.keys(raw).some(key => key !== 'type' && key !== 'granted' && key !== 'grantTicket')) return null
+      if (typeof raw.granted !== 'boolean') return null
+      if (raw.grantTicket === undefined) return { type, granted: raw.granted }
+      if (!raw.granted || typeof raw.grantTicket !== 'string' ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(raw.grantTicket)) return null
+      return { type, granted: true, grantTicket: raw.grantTicket }
     }
     case 'APPEND_PULSE_DEBUG': {
       if (!isObject(raw.entry)) return null
