@@ -226,4 +226,18 @@ describe('Open card pictures from this tab’s captures', () => {
     expect(revokeObjectURL).toHaveBeenCalledWith(third)
   })
 
+  it('keeps a row’s frame image on screen when the same moment mounts again', () => {
+    const { host, list } = thumbHost()
+    capture(3049)
+    const unmount = api.mount(host, THUMB)
+    const image = host.querySelector('img')
+    expect(image?.getAttribute('src')).toMatch(/^blob:/)
+
+    // A move into the top 3 remounts the row in the same render.
+    unmount()
+    mount(host, { ...THUMB, exact: true })
+    expect(host.querySelector('img')).toBe(image)
+    expect(host.hasAttribute('data-has')).toBe(true)
+    expect(list.hasAttribute('data-pmf-pictures')).toBe(true)
+  })
 })
