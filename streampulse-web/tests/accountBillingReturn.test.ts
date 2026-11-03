@@ -138,3 +138,29 @@ describe('extension-link continuation', () => {
     expect(accountBillingReturnPath('/account/link-device')).toBeNull()
   })
 })
+
+describe('clip page continuation', () => {
+  afterEach(() => vi.unstubAllEnvs())
+  const clip = '/analytics/clips/BraveClipSlug-abc_1'
+
+  it('sends a sign-in back to the clip, only in a build with the Clips page', () => {
+    expect(accountContinuationPath(clip)).toBeNull()
+    expect(accountBillingSignInHref(clip)).toBe('/account/sign-in')
+    vi.stubEnv('VITE_PUBLIC_NATIVE_CLIPS', 'on')
+    expect(accountContinuationPath(clip)).toBe(clip)
+    const href = accountBillingSignInHref(clip)
+    expect(accountBillingReturnFromSearch(href.slice(href.indexOf('?')))).toBe(clip)
+    rememberAccountBillingReturn(clip)
+    expect(consumeAccountBillingReturn()).toBe(clip)
+  })
+
+  it.each([`${clip}?x=1`, `${clip}#x`, `${clip}/`, '/analytics/clips/', '/analytics/clips/a%2Fb', '/analytics/clipsX/a', `//evil.test${clip}`])('rejects %s', value => {
+    vi.stubEnv('VITE_PUBLIC_NATIVE_CLIPS', 'on')
+    expect(accountContinuationPath(value)).toBeNull()
+  })
+
+  it('never treats a clip page as a billing return', () => {
+    vi.stubEnv('VITE_PUBLIC_NATIVE_CLIPS', 'on')
+    expect(accountBillingReturnPath(clip)).toBeNull()
+  })
+})

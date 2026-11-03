@@ -1,7 +1,7 @@
 import { useLocation } from 'react-router-dom'
 import reviewedMetadata from '../generated/recap-page-metadata.json'
 import { resolvePageMetadata } from '../lib/pageMetadata'
-import { ChromeInstallCta } from './components/ChromeInstallCta'
+import { InstallCta } from './components/InstallCta'
 import { AnalyticsPreferences } from './components/AnalyticsPreferences'
 
 /** Keep the reviewed initial summary useful after the interactive app boots.
@@ -17,7 +17,7 @@ export function ReviewedRecapSummary() {
   return <section aria-label="Reviewed reaction summary" data-reviewed-recap-mounted>
     <div dangerouslySetInnerHTML={{ __html: template.innerHTML }} />
     <div className="public-document panel">
-      <ChromeInstallCta />
+      <InstallCta />
       <AnalyticsPreferences />
     </div>
   </section>

@@ -16,6 +16,7 @@ export function resolveBackendSource(url?: string): BackendSource {
 }
 
 export function backendSourceLabel(source: BackendSource): string {
+  if (source !== 'hosted' && isSandboxSiteBuild()) return 'Sandbox'
   switch (source) {
     case 'hosted':
       return 'Hosted API'
@@ -44,6 +45,11 @@ export function backendSourceCaption(url?: string): string {
 export function isEnvLocalBackendDefault(): boolean {
   const envDefault = import.meta.env.VITE_BACKEND_URL?.trim().replace(/\/+$/, '')
   return Boolean(envDefault && isLocalDevBackendUrl(envDefault))
+}
+
+/** The local sandbox site build reads its own API on purpose, so it shows no API-source banner. */
+export function isSandboxSiteBuild(): boolean {
+  return import.meta.env.VITE_SANDBOX_SITE === 'true'
 }
 
 export function isNonHostedBackend(url?: string): boolean {

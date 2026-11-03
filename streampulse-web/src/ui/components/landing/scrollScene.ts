@@ -19,6 +19,12 @@
 export interface ScrollSceneOptions {
   /** Tall element that defines the scroll distance. */
   scene: HTMLElement
+  /**
+   * The sticky child, when it is shorter than the viewport. Progress then runs
+   * exactly while it is pinned (from its CSS top). Without it the pin is taken
+   * to be one viewport tall at top 0.
+   */
+  pinned?: HTMLElement | null
   /** Called each animation frame with smoothed progress (reveals) and raw scroll progress (position). */
   onProgress: (smoothed: number, raw: number) => void
   /**
@@ -31,7 +37,7 @@ export interface ScrollSceneOptions {
 const clamp01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x)
 
 /** Starts the engine; returns a cleanup function. */
-export function startScrollScene({ scene, onProgress, stiffness = 14 }: ScrollSceneOptions): () => void {
+export function startScrollScene({ scene, pinned, onProgress, stiffness = 14 }: ScrollSceneOptions): () => void {
   let raf = 0
   let current = -1 // -1 = snap to target on the first frame (no load-in swoosh)
   let lastTime = 0
@@ -40,8 +46,9 @@ export function startScrollScene({ scene, onProgress, stiffness = 14 }: ScrollSc
     raf = 0
     const vh = window.innerHeight || 1
     const rect = scene.getBoundingClientRect()
-    const scrollable = scene.offsetHeight - vh
-    const target = scrollable > 0 ? clamp01(-rect.top / scrollable) : 0
+    const pinTop = pinned ? parseFloat(getComputedStyle(pinned).top) || 0 : 0
+    const scrollable = scene.offsetHeight - (pinned ? pinned.offsetHeight : vh)
+    const target = scrollable > 0 ? clamp01((pinTop - rect.top) / scrollable) : 0
 
     const dt = lastTime ? Math.min((time - lastTime) / 1000, 0.05) : 1 / 60
     lastTime = time

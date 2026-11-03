@@ -7,7 +7,7 @@
  * Pictures (mockup §5, Aron 10-31): while the numbers are Live, each tile shows
  * Twitch's live picture over its face tile; otherwise the face tile.
  */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { liveNowPreviewUrl } from '../../../../../../packages/analytics-console/src/components/analytics/LiveNowTile.tsx'
 import { isTwitchOfflinePreview } from '../../../../../../packages/analytics-console/src/utils/twitchBoxArt.ts'
@@ -17,9 +17,7 @@ import { ResilientImage } from '../../ResilientImage'
 import { HubToggletip } from '../d3/HubToggletip'
 import { HubV5Icon } from './HubV5Icon'
 import { HUB_BUSIEST_COUNT, HUB_CHAT_COUNTS_DOWN, busiestAria, busiestCue, busiestShowsPictures, busiestTip, hubAvatarTone, hubChatBasis, hubClock, hubMonogram, rankBusiest, screenerDown, type HubBusiestRow } from './hubV5Model'
-
-const reduced = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-  && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+import { useHubStrip } from './useHubStrip'
 
 const H_ID = 'hv5-busy-h'
 const TRACK_ID = 'hv5-busy-track'
@@ -39,9 +37,10 @@ const livePictureSize = (): readonly [number, number] =>
  * proven picture stays up while the next one is checked under it, fully drawn, so the swap never shows the face.
  * A failed or offline picture drops back to the face tile until the next bucket, and a check that ends after its
  * bucket has passed changes nothing. Over a live picture the caption adds the small face, only from a real profile
- * image (one that failed is tried again when the profile image changes).
+ * image (one that failed is tried again when the profile image changes). Your follows uses it too: a row with no chat
+ * rate Busiest now would count shows its viewers.
  */
-function BusiestTile({ row, total, tab, pictures, nowMs }: { row: HubBusiestRow; total: number; tab: boolean; pictures: boolean; nowMs: number }) {
+export function BusiestTile({ row, total, tab, pictures, nowMs }: { row: HubBusiestRow; total: number; tab: boolean; pictures: boolean; nowMs: number }) {
   const [width, height] = livePictureSize()
   const src = pictures ? liveNowPreviewUrl(row.login, nowMs, width, height) : null
   const [shown, setShown] = useState<string | null>(null)
@@ -99,7 +98,7 @@ function BusiestTile({ row, total, tab, pictures, nowMs }: { row: HubBusiestRow;
           onError={() => settle(pic, false)}
         />
       ))}
-      <span className="hv5-bzt-fig"><b>{row.fig}</b> chat/min</span>
+      <span className="hv5-bzt-fig"><b>{row.fig}</b> {row.viewersOnly ? (row.viewers === 1 ? 'viewer' : 'viewers') : 'chat/min'}</span>
       <span className={`hv5-bzt-cap${smallFace ? ' hf' : ''}`}>
         {smallFace ? (
           <ResilientImage
@@ -134,125 +133,7 @@ export function HubV5Busiest({ live, nowMs, loading = false, unavailable = false
   const pictures = busiestShowsPictures(set, cue)
   const rows = set.rows
   const N = rows.length
-  const trackRef = useRef<HTMLOListElement>(null)
-  const [pos, setPos] = useState(() => `1–${Math.min(6, N)} of ${N}`)
-  const [prevOff, setPrevOff] = useState(true)
-  const [nextOff, setNextOff] = useState(false)
-  const [more, setMore] = useState({ l: false, r: false })
-  const [rove, setRove] = useState(0)
-
-  const geo = useCallback(() => {
-    const track = trackRef.current!
-    const cs = getComputedStyle(track)
-    const per = parseFloat(cs.getPropertyValue('--per')) || 6
-    const gap = parseFloat(cs.columnGap) || 0
-    const item = track.querySelector('.hv5-bzc-it')
-    return { whole: Math.max(1, Math.floor(per + 1e-6)), step: (item ? item.getBoundingClientRect().width : 0) + gap, max: track.scrollWidth - track.clientWidth }
-  }, [])
-
-  const firstOf = useCallback((g: ReturnType<typeof geo>) => {
-    const left = trackRef.current!.scrollLeft
-    if (g.max <= 1) return 0
-    if (left >= g.max - 1) return Math.max(0, N - g.whole)
-    return Math.max(0, Math.min(N - 1, Math.round(left / (g.step || 1))))
-  }, [N])
-
-  // announce false (the per-frame scroll path): only the pager state and the roving tab stop; the aria-live
-  // position text is written when the scroll settles, so one page announces one position.
-  const update = useCallback((announce = true) => {
-    const track = trackRef.current
-    if (!track || !track.isConnected) return
-    const g = geo()
-    const f = firstOf(g)
-    const left = track.scrollLeft
-    if (announce) setPos(`${f + 1}–${Math.min(N, f + g.whole)} of ${N}`)
-    setPrevOff(g.max <= 1 || left <= 1)
-    setNextOff(g.max <= 1 || left >= g.max - 1)
-    setMore((m) => {
-      const l = g.max > 1 && left > 1
-      const r = g.max > 1 && left < g.max - 1
-      return m.l === l && m.r === r ? m : { l, r }
-    })
-    if (!track.contains(document.activeElement)) setRove(f)
-  }, [N, firstOf, geo])
-
-  useEffect(() => {
-    const track = trackRef.current
-    if (!track || !N) return undefined
-    let raf = 0
-    let quiet = 0
-    const onScroll = () => {
-      if (!raf) raf = requestAnimationFrame(() => { raf = 0; update(false) })
-      window.clearTimeout(quiet)
-      quiet = window.setTimeout(() => update(true), 200) // where scrollend is missing
-    }
-    const onScrollEnd = () => { window.clearTimeout(quiet); update(true) }
-    // An up/down wheel moves the strip one tile per notch (the track snaps to tile starts). At either end the
-    // page scrolls; sideways swipes and Shift+wheel stay native; Ctrl+wheel stays the browser's zoom.
-    let acc = 0
-    let until = 0
-    const onWheel = (event: WheelEvent) => {
-      if (event.ctrlKey || event.shiftKey || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return
-      const max = track.scrollWidth - track.clientWidth
-      const dy = event.deltaY * (event.deltaMode === 1 ? 40 : event.deltaMode === 2 ? track.clientWidth : 1)
-      if (max <= 1 || (dy > 0 && track.scrollLeft >= max - 1) || (dy < 0 && track.scrollLeft <= 1)) { acc = 0; return }
-      event.preventDefault()
-      if (event.timeStamp < until) return // a trackpad's burst of small deltas counts once
-      acc += dy
-      if (Math.abs(acc) < 40) return
-      const item = track.querySelector('.hv5-bzc-it')
-      const step = (item ? item.getBoundingClientRect().width : 200) + (parseFloat(getComputedStyle(track).columnGap) || 0)
-      track.scrollBy({ left: Math.sign(acc) * step, behavior: reduced() ? 'auto' : 'smooth' })
-      acc = 0
-      until = event.timeStamp + 160
-    }
-    track.addEventListener('scroll', onScroll, { passive: true })
-    track.addEventListener('scrollend', onScrollEnd)
-    track.addEventListener('wheel', onWheel, { passive: false })
-    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => update(true))
-    ro?.observe(track)
-    update(true)
-    return () => {
-      cancelAnimationFrame(raf)
-      window.clearTimeout(quiet)
-      track.removeEventListener('scroll', onScroll)
-      track.removeEventListener('scrollend', onScrollEnd)
-      track.removeEventListener('wheel', onWheel)
-      ro?.disconnect()
-    }
-  }, [N, update])
-
-  // Pages snap to fixed starts (multiples of the whole tiles per page, the last one clamped), so forward and
-  // back show the same sets: at 5 per page 1–5, 6–10, 8–12, then back 6–10, 1–5.
-  const page = (dir: 1 | -1) => {
-    if (dir < 0 ? prevOff : nextOff) return
-    const track = trackRef.current
-    if (!track) return
-    const g = geo()
-    const f = firstOf(g)
-    const w = g.whole
-    const target = Math.max(0, dir > 0 ? Math.min(N - w, (Math.floor(f / w) + 1) * w) : (Math.ceil(f / w) - 1) * w)
-    track.scrollTo({ left: target * g.step, behavior: reduced() ? 'auto' : 'smooth' })
-    if (reduced()) update(true)
-  }
-
-  const onTrackKeyDown = (event: KeyboardEvent<HTMLOListElement>) => {
-    const link = (event.target as HTMLElement).closest<HTMLAnchorElement>('.hv5-bzc-c')
-    if (!link || event.altKey || event.ctrlKey || event.metaKey) return
-    const links = [...(trackRef.current?.querySelectorAll<HTMLAnchorElement>('.hv5-bzc-c') ?? [])]
-    const i = links.indexOf(link)
-    const j = event.key === 'ArrowRight' ? Math.min(N - 1, i + 1)
-      : event.key === 'ArrowLeft' ? Math.max(0, i - 1)
-        : event.key === 'Home' ? 0
-          : event.key === 'End' ? N - 1
-            : null
-    if (j == null) return
-    event.preventDefault()
-    if (j === i) return
-    setRove(j)
-    links[j]!.focus({ preventScroll: true })
-    links[j]!.scrollIntoView({ inline: 'nearest', block: 'nearest', behavior: reduced() ? 'auto' : 'smooth' })
-  }
+  const { trackRef, pos, prevOff, nextOff, more, rove, page, onTrackKeyDown } = useHubStrip(N, rows.map((row) => row.login).join(' '))
 
   const hasWindow = Number.isFinite(set.windowEnd)
 
