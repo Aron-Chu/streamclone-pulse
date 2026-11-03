@@ -48,7 +48,7 @@ function resolveBasePageMetadata(pathname: string): PageMetadata {
     case '/':
       return {
         title: 'StreamPulse: Twitch Chat Stats & Top Moments',
-        description: 'Free Twitch chat and emote stats beside chat, Top Moments with pictures, and Stream Recap for past streams.',
+        description: 'Explore Twitch chat stats, top emotes and reaction moments for tracked streams. Add the free Chrome, Edge or Firefox extension beside Twitch chat.',
         canonicalPath: '/',
         robots: 'index,follow',
       }
