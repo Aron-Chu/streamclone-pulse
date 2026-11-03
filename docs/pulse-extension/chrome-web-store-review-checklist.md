@@ -91,7 +91,7 @@ elements, which need no host permission.
 - [ ] Data use disclosure matches Privacy page (current behavior)
 - [ ] Disclose optional one-time Protect enrollment: beta key is discarded, device token is local/trusted-only, and the token is revocable
 - [ ] Distinguish browser-sync saved watchlist entries from server-confirmed Protect rows, including pending DELETE tombstones and backend retention
-- [ ] Disclose separate default-off product analytics consent + PostHog server processing (no identity; ~180-day target) **without claiming activation**
+- [ ] Disclose separate default-off product analytics consent + PostHog server processing (no identity; six-calendar-month event window, expired events permanently deleted at the following monthly cleanup) **without claiming activation**; reverify the intended project setting
 - [ ] Limited Use affirmed
 - [ ] Listing name / screenshots say **StreamPulse**
 - [ ] Listing / submission / Google approval — owner action only

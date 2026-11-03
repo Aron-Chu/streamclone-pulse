@@ -20,6 +20,7 @@ import type {
   SyncStatus,
 } from '@streampulse/analytics-console'
 import { apiClient, getBackendUrl } from './apiClient'
+import { lookupTwitchProfile } from './channelLookup'
 import { SLOW_READ_TIMEOUT_MS } from './portalTimeouts'
 import { verifiedArchiveMapping } from './verifiedArchiveMapping'
 import { resolveBackendSource } from './backendSource'
@@ -1448,6 +1449,10 @@ export const portalAnalyticsApi: AnalyticsApi = {
       incomplete: false,
       showWelcome: false,
     }
+  },
+  async lookupTwitchChannel(login: string) {
+    const answer = await lookupTwitchProfile(login)
+    return answer.state === 'found' ? { state: 'found' as const, ...answer.profile } : { state: 'unknown' as const }
   },
 }
 

@@ -12,6 +12,10 @@ import {
   formatHubRate,
   gameInitials,
   hubCategoryArt,
+  hubEmoteHref,
+  hubGameHref,
+  hubSearchEmotes,
+  hubSearchGames,
   hubClock,
   hubSavedAt,
   hubSavedClock,
@@ -26,6 +30,8 @@ import {
   rackFoot,
   rankBusiest,
   searchChannels,
+  searchEmotes,
+  searchGames,
   topEmoteRows,
   typedLogin,
   whereChatIs,
@@ -262,6 +268,46 @@ describe('Top emotes and search', () => {
     expect(searchChannels(live, 'someone_else').openLogin).toBe('someone_else')
     expect(searchChannels(live, 'a b').empty).toBe(true)
     expect(searchChannels(live, '').heading).toBe('Busiest live channels')
+  })
+})
+
+describe('Search: games and emotes (3A, 11-02)', () => {
+  const share = (name: string, logins: string[]) => ({ name, chat: 1, viewers: 1, chatShare: 1, viewerShare: 1, rows: logins.map((l) => channel(l)) })
+
+  it('offers the games the filter can list, with their chat-counted channels and box art', () => {
+    const games = hubSearchGames(
+      { all: [share('Just Chatting', ['a', 'b', 'c']), share('No category', ['d']), share('VALORANT', ['e']), share('Empty', [])] },
+      new Map([['VALORANT', 'https://art.test/v.jpg']]),
+    )
+    expect(games).toEqual([
+      { name: 'Just Chatting', n: 3, art: undefined },
+      { name: 'VALORANT', n: 1, art: 'https://art.test/v.jpg' },
+    ])
+  })
+
+  it('sums the emotes the intervals counted, one row per provider and name', () => {
+    const emotes = hubSearchEmotes([
+      { topEmotes: [{ name: 'KEKW', provider: 'twitch', count: 5 }, { name: 'OMEGALUL', provider: 'bttv', count: 2 }] },
+      { topEmotes: [{ name: 'KEKW', provider: 'twitch', count: 7 }, { name: 'KEKW', provider: 'seventv', count: 3 }, { name: '', count: 9 }, { name: 'Zero', count: 0 }] },
+      { topEmotes: undefined },
+    ])
+    expect(emotes.map((e) => [e.name, e.provider, e.uses])).toEqual([['KEKW', 'twitch', 12], ['KEKW', 'seventv', 3], ['OMEGALUL', 'bttv', 2]])
+  })
+
+  it('matches names from two letters: whole name, then start, then part; bigger first', () => {
+    const games = [{ name: 'Grand Theft Auto V', n: 40 }, { name: 'GTFO', n: 2 }, { name: 'Just Chatting', n: 90 }, { name: 'Chess', n: 5 }]
+    expect(searchGames(games, 'g')).toEqual([])
+    expect(searchGames(games, 'gt').map((g) => g.name)).toEqual(['GTFO'])
+    expect(searchGames(games, 'ch').map((g) => g.name)).toEqual(['Chess', 'Just Chatting'])
+    expect(searchGames(games, 'just chatting').map((g) => g.name)).toEqual(['Just Chatting'])
+    const emotes = [{ name: 'kekw', uses: 90 }, { name: 'KEKW', uses: 50 }, { name: 'KEKWait', uses: 200 }, { name: 'LUL', uses: 1 }, { name: 'OMEGALUL', uses: 9 }]
+    expect(searchEmotes(emotes, 'KEKW').map((e) => e.name)).toEqual(['KEKW', 'kekw', 'KEKWait'])
+    expect(searchEmotes(emotes, 'lul', 1).map((e) => e.name)).toEqual(['LUL'])
+  })
+
+  it('links to the hub with its game filter or the emote map', () => {
+    expect(hubGameHref('Grand Theft Auto V')).toBe('/analytics?game=Grand%20Theft%20Auto%20V')
+    expect(hubEmoteHref('KEKW')).toBe('/analytics?emote=KEKW')
   })
 })
 

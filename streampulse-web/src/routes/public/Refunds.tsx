@@ -41,7 +41,7 @@ export default function Refunds() {
         <section className="mt-8 rounded-xl border border-white/[0.08] bg-black/20 p-6">
           <h2 className="!mt-0">Summary</h2>
           <p className="text-zinc-300">
-            Paid sign-ups are not open yet. Once they are, you can cancel whenever you like and keep
+            Once sign-ups open, you can cancel whenever you like and keep
             access until the end of the period you already paid for. No cancellation fee, no minimum
             term, and no need to ask anyone. If something went wrong — a duplicate charge, a charge
             you did not intend, or a feature that did not work — email and it gets refunded.
@@ -143,7 +143,7 @@ export default function Refunds() {
         <p>
           Some places give you a statutory right to cancel a new online purchase within a set period,
           separate from this policy. Nothing here removes a right you have under consumer law that
-          cannot be waived. Paid sign-ups are not open yet. The specific statutory rights that apply
+          cannot be waived. The specific statutory rights that apply
           to you are pending and will be stated in the <Link to={TERMS_PATH}>terms of use</Link>{' '}
           before sign-ups open.
         </p>

@@ -1,5 +1,7 @@
 import { parseBookmarkPage } from '../shared/bookmarkPage.ts'
 import type { CreatePulseBookmarkInput, PulseBookmark } from '../shared/messages.ts'
+import type { DeviceBookmark } from '../shared/myMoments.ts'
+import { keptVodOriginDelta } from '../shared/vodOriginAlignment.ts'
 import type { LibraryMoment, LibraryPreferences } from '../ui/library/model.ts'
 import type { AccountHistorySync } from './historySync.ts'
 import { streamKey } from './bookmarkReplay.ts'
@@ -12,9 +14,10 @@ export interface PersonalData {
   /**
    * Saves made without an account. They leave this database only through an
    * explicit "Add to account" (`import-device-saves`), which posts the hosted
-   * bookmark shape each one keeps. Account scopes leave this empty.
+   * bookmark shape each one keeps, and a save's VOD origin delta stays here.
+   * Account scopes leave this empty.
    */
-  bookmarks: PulseBookmark[]
+  bookmarks: DeviceBookmark[]
   /** Account scopes only: this browser's side of the account's synced history. */
   accountSync?: AccountHistorySync
   /**
@@ -22,6 +25,12 @@ export interface PersonalData {
    * stream-only, by bookmark id. The hosted bookmark itself cannot change.
    */
   replayLinks?: Record<string, string>
+  /**
+   * Account scopes only: the VOD origin delta the panel knew when this device
+   * saved a hosted bookmark, by bookmark id, with the VOD it belongs to. The
+   * hosted bookmark has no field for it; saves made elsewhere have none.
+   */
+  replayDeltas?: Record<string, { vodId: string; seconds: number }>
 }
 export const emptyPersonalData = (): PersonalData => ({ preferences: { captureHistory: false, retentionDays: 30 }, epoch: 0, history: [], notes: {}, bookmarks: [] })
 type MomentKey = { channel: string; vodId: string | null; streamId?: string; offsetSeconds: number | null }
@@ -59,14 +68,28 @@ export function prunePersonalData(data: PersonalData, now: number): PersonalData
  * Idempotent per channel, stream (or VOD) and whole second, like the hosted
  * list. Rows must pass the hosted page parser, so an import can post them as-is.
  */
-export function addDeviceBookmark(data: PersonalData, input: Pick<CreatePulseBookmarkInput, 'login' | 'streamId' | 'vodId' | 'offsetSeconds' | 'label'>, now: number): PersonalData {
+export function addDeviceBookmark(data: PersonalData, input: Pick<CreatePulseBookmarkInput, 'login' | 'streamId' | 'vodId' | 'offsetSeconds' | 'label'>
+  & { vodOriginDeltaSeconds?: number }, now: number): PersonalData {
   const at = new Date(now).toISOString()
   const [bookmark] = parseBookmarkPage({ items: [{ id: `local:${crypto.randomUUID()}`, login: input.login, offsetSeconds: Math.floor(input.offsetSeconds),
     label: (input.label ?? '').slice(0, 160), notes: '', source: 'extension', createdAt: at, updatedAt: at,
     ...(input.streamId ? { streamId: input.streamId } : {}), ...(input.vodId ? { vodId: input.vodId } : {}) }] }, 1).items
   if (!bookmark.streamId && !bookmark.vodId) throw new Error('invalid_bookmark_page')
   if (data.bookmarks.some(b => bookmarkIdentity(b) === bookmarkIdentity(bookmark))) return data
-  return { ...data, bookmarks: [...data.bookmarks, bookmark] }
+  // Only beside the VOD id it was reported for.
+  const delta = bookmark.vodId ? keptVodOriginDelta(input.vodOriginDeltaSeconds) : undefined
+  return { ...data, bookmarks: [...data.bookmarks, delta === undefined ? bookmark : { ...bookmark, vodOriginDeltaSeconds: delta }] }
+}
+/** Keeps the delta of a hosted save this device made; a delta already kept stays. */
+export function keepReplayDelta(data: PersonalData, id: string, vodId: string | undefined, raw: unknown): PersonalData {
+  const seconds = vodId ? keptVodOriginDelta(raw) : undefined
+  if (!vodId || seconds === undefined || data.replayDeltas?.[id]) return data
+  return { ...data, replayDeltas: { ...data.replayDeltas, [id]: { vodId, seconds } } }
+}
+/** The delta a save's replay link takes: its own, or the one kept for its id while it names the same VOD. */
+export function savedVodOriginDelta(b: DeviceBookmark, kept?: { vodId: string; seconds: number }): number | undefined {
+  if (!b.vodId) return undefined
+  return keptVodOriginDelta(kept && kept.vodId === b.vodId ? kept.seconds : b.vodOriginDeltaSeconds)
 }
 /**
  * Stream-only device saves take their stream's VOD id once it is known, by

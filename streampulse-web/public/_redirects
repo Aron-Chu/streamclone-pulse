@@ -28,6 +28,7 @@
 /account/settings/ /account/settings 301
 /account/billing/ /account/billing 301
 /account/billing/return/ /account/billing/return 301
+/account/twitch/callback/ /account/twitch/callback 301
 # Pages canonicalizes /index.html to /. Rewrite to the canonical asset URL so
 # the browser retains the requested account path instead of following a 308.
 /account/sign-in / 200
@@ -37,6 +38,9 @@
 /account/settings / 200
 /account/billing / 200
 /account/billing/return / 200
+# Show my Twitch follows comes back here and the page moves itself to the hub
+# (src/lib/twitchFollowsCallback.ts), so it gets the hub's noindexed shell.
+/account/twitch/callback /analytics-fallback/ 200
 
 # Static Checkout return remains a no-login surface with no payment claims.
 /supporter/thanks/ /supporter/thanks 301

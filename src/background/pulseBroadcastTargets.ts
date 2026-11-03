@@ -107,6 +107,8 @@ export const MESSAGE_SENDER_SCOPE: Record<BackgroundRequest['type'], MessageSend
   OPEN_COMMUNITY_LINK: 'twitch-any',
   REPORT_EXTENSION_DIAGNOSTIC: 'twitch-any',
   EMIT_EXTENSION_ANALYTICS: 'twitch-any',
+  PREPARE_ANALYTICS_CONSENT_GRANT: 'extension-page',
+  SET_ANALYTICS_CONSENT: 'extension-page',
   SET_AUTO_UPDATE: 'twitch-any',
   FETCH_EMOTE_IMAGE: 'twitch-any',
   GET_PULSE_VOD: 'twitch-any',

@@ -10,6 +10,15 @@ describe('Sentry privacy boundary', () => {
     }
     window.history.replaceState({}, '', '/')
   })
+  it('drops diagnostics on the Account page itself, with or without a query, fragment or trailing slash (12.2)', () => {
+    for (const path of ['/account', '/account/', '/account?tab=data', '/account#private', '/account/moments']) {
+      window.history.replaceState({}, '', path)
+      expect(scrubPortalEvent({ type: undefined, message: 'Failed to fetch' }), path).toBeNull()
+    }
+    window.history.replaceState({}, '', '/accounts')
+    expect(scrubPortalEvent({ type: undefined, message: 'Failed to fetch' })).not.toBeNull()
+    window.history.replaceState({}, '', '/')
+  })
   it('names the page for events that arrive without a route tag', () => {
     for (const [path, route] of [['/feedback?ref=private', '/feedback'], ['/terms', '/terms'], ['/no-such-page', '/:unknown']]) {
       window.history.replaceState({}, '', path)

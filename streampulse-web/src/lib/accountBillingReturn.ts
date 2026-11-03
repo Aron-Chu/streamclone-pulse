@@ -1,3 +1,5 @@
+import { clipPageReturnPath } from './nativeClipsFlag'
+
 const STORAGE_KEY = 'pulse.account.billingReturn.v1'
 const MAX_AGE_MS = 15 * 60_000
 const ATTEMPT_ID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/
@@ -23,11 +25,12 @@ export const ACCOUNT_LINK_DEVICE_PATH = '/account/link-device'
 
 /**
  * Every destination a sign-in may continue to: billing (including a validated
- * Stripe return) or the extension-link page. A fixed allowlist, never an
- * arbitrary return URL; the link page continuation carries no code.
+ * Stripe return), the extension-link page, or a clip's own page (to review or
+ * comment on it). A fixed allowlist, never an arbitrary return URL; the link
+ * page continuation carries no code.
  */
 export function accountContinuationPath(value: unknown): string | null {
-  return value === ACCOUNT_LINK_DEVICE_PATH ? ACCOUNT_LINK_DEVICE_PATH : accountBillingReturnPath(value)
+  return value === ACCOUNT_LINK_DEVICE_PATH ? ACCOUNT_LINK_DEVICE_PATH : clipPageReturnPath(value) ?? accountBillingReturnPath(value)
 }
 
 export function accountBillingReturnFromSearch(search: string): string | null {

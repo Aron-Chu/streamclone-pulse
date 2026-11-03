@@ -2,6 +2,7 @@ import { normalizeLogin } from './login.ts'
 import { parseMyMoments } from './myMoments.ts'
 import { parseMomentPicture } from './momentPictureMessages.ts'
 import { validBookmarkCursor, validBookmarkPageLimit } from './bookmarkPage.ts'
+import { keptVodOriginDelta, resolveVodOriginAlignment } from './vodOriginAlignment.ts'
 import type { BackgroundRequest, CreatePulseBookmarkInput } from './messages.ts'
 
 const KNOWN_MESSAGE_TYPES = new Set<string>([
@@ -54,6 +55,8 @@ const KNOWN_MESSAGE_TYPES = new Set<string>([
   'CLEAR_PULSE_DEBUG_LOG',
   'REPORT_EXTENSION_DIAGNOSTIC',
   'EMIT_EXTENSION_ANALYTICS',
+  'PREPARE_ANALYTICS_CONSENT_GRANT',
+  'SET_ANALYTICS_CONSENT',
   'ENROLL_DEVICE',
   'GET_DEVICE_AUTH_STATUS',
   'ROTATE_DEVICE',
@@ -246,10 +249,16 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
     case 'SAVE_BOOKMARK': {
       const bookmark = parseBookmarkInput(raw.bookmark)
       if (!bookmark) return null
-      if (raw.restoreOf === undefined) return { type, bookmark }
+      // A delta belongs to the VOD it was reported for: never without one. Zero
+      // is the identity mapping, so it is accepted and not kept.
+      const rawDelta = raw.vodOriginDeltaSeconds
+      if (rawDelta !== undefined && (typeof rawDelta !== 'number' || resolveVodOriginAlignment(rawDelta).kind !== 'aligned' || !bookmark.vodId)) return null
+      const delta = keptVodOriginDelta(rawDelta)
+      const extra = delta === undefined ? {} : { vodOriginDeltaSeconds: delta }
+      if (raw.restoreOf === undefined) return { type, bookmark, ...extra }
       const restoreOf = requireString(raw.restoreOf)
       if (!restoreOf || restoreOf.length > 200) return null
-      return { type, bookmark, restoreOf }
+      return { type, bookmark, restoreOf, ...extra }
     }
     case 'DELETE_BOOKMARK': {
       const id = requireString(raw.id)
@@ -429,6 +438,17 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
     case 'EMIT_EXTENSION_ANALYTICS': {
       if (raw.name !== 'pulse_load_completed' && raw.name !== 'extension_error_shown') return null
       return { type, name: raw.name }
+    }
+    case 'PREPARE_ANALYTICS_CONSENT_GRANT': {
+      return Object.keys(raw).every(key => key === 'type') ? { type } : null
+    }
+    case 'SET_ANALYTICS_CONSENT': {
+      if (Object.keys(raw).some(key => key !== 'type' && key !== 'granted' && key !== 'grantTicket')) return null
+      if (typeof raw.granted !== 'boolean') return null
+      if (raw.grantTicket === undefined) return { type, granted: raw.granted }
+      if (!raw.granted || typeof raw.grantTicket !== 'string' ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(raw.grantTicket)) return null
+      return { type, granted: true, grantTicket: raw.grantTicket }
     }
     case 'APPEND_PULSE_DEBUG': {
       if (!isObject(raw.entry)) return null

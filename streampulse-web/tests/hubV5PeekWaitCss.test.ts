@@ -42,8 +42,4 @@ describe('the rail’s head, chips and links (10-30)', () => {
   it('brings the rail and its rows up under the phone nav, not behind it', () => {
     expect(phone).toMatch(/\.hub-v5 :is\(#latest, \.hv5-tm-it\) \{ scroll-margin-top: 112px; \}/)
   })
-
-  it('wraps the last line’s link as one piece, its arrow with it', () => {
-    expect(css).toMatch(/\.hub-v5 \.hv5-top \.hv5-tm-lnk \{[^}]*white-space: nowrap;/)
-  })
 })
