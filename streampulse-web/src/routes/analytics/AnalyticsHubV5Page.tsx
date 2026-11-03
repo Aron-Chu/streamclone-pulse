@@ -41,7 +41,7 @@ import { HubV5TopPeek, useTopToday } from '../../ui/components/hub/v5/HubV5TopMo
 import { HubV5BarInstall, HubV5DockSearch } from '../../ui/components/hub/v5/HubV5TopBar'
 import { HubV5SearchContext, createHubV5SearchStore } from '../../ui/components/hub/v5/hubV5SearchStore'
 import { useHubV5LockWarmup } from '../../ui/components/hub/v5/useHubV5LockWarmup'
-import { HUB_BUSIEST_COUNT, HUB_RACK_ROWS, hubCategoryArt, hubChatBasis, hubSavedAt, rankBusiest, whereChatIs } from '../../ui/components/hub/v5/hubV5Model'
+import { HUB_BUSIEST_COUNT, hubCategoryArt, hubChatBasis, hubSavedAt, hubSearchEmotes, hubSearchGames, rankBusiest, whereChatIs } from '../../ui/components/hub/v5/hubV5Model'
 import { useHashScrollHold } from '../../ui/RouteScrollManager'
 import '../../ui/components/analytics/figma-analytics.css'
 import '../../ui/components/hub/d3/hub-d3-tokens.css'
@@ -231,16 +231,24 @@ export default function AnalyticsHubV5Page() {
     return Boolean(mostChatLogin) && rankBusiest(data.liveChannels, HUB_BUSIEST_COUNT, 'avg_35').rows.some((row) => row.login.toLowerCase() === mostChatLogin)
   }, [hubAnswered, data.liveChannels, mostChatLogin, answerWindow])
 
-  const [game, setGameState] = useState<string | null>(null)
+  // The game filter lives in the link (?game=, 3A), so the front page's search can open the hub on a game; any game a
+  // live channel is counted in can be picked from the search, not only the rack's top 16.
+  const game = searchParams.get('game') || null
   const channelsRef = useRef<HTMLElement>(null)
-  // A game that left the rack (a new poll) drops its filter.
+  const writeGame = useCallback((next: string | null) => {
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev)
+      if (next) params.set('game', next)
+      else params.delete('game')
+      return params
+    }, { replace: true })
+  }, [setSearchParams])
+  // A game no live channel is counted in any more (a new poll) drops its filter, once there is an answer to judge by.
   useEffect(() => {
-    if (game && !games.all.slice(0, HUB_RACK_ROWS).some((g) => g.name === game)) setGameState(null)
-  }, [game, games])
-  const setGame = useCallback((next: string | null) => {
-    setGameState(next)
-    if (!next) return
-    // The filtered table comes into view only when it is off screen.
+    if (game && hubAnswered && !games.all.some((g) => g.name === game)) writeGame(null)
+  }, [game, games, hubAnswered, writeGame])
+  /** The filtered table comes into view only when it is off screen. */
+  const showChannels = useCallback(() => {
     const section = channelsRef.current
     if (!section) return
     const top = section.getBoundingClientRect().top
@@ -248,6 +256,35 @@ export default function AnalyticsHubV5Page() {
       section.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' })
     }
   }, [])
+  const setGame = useCallback((next: string | null) => {
+    writeGame(next)
+    if (next) showChannels()
+  }, [writeGame, showChannels])
+  // Opened on a game (/analytics?game=…): the table comes into view once the answer has its rows.
+  const gameOnOpen = useRef(Boolean(game))
+  useEffect(() => {
+    if (!gameOnOpen.current || !hubAnswered) return
+    gameOnOpen.current = false
+    if (game) requestAnimationFrame(showChannels)
+  }, [game, hubAnswered, showChannels])
+
+  // What the search offers besides channels (3A): the games the filter can list and the emotes the map has.
+  const searchGames = useMemo(() => hubSearchGames(games, gameArt), [games, gameArt])
+  const searchEmotes = useMemo(() => hubSearchEmotes(chartActivity.points), [chartActivity.points])
+  // A picked emote is found on the map; ?emote= (from the front page's search) asks once, on open.
+  const [emoteFind, setEmoteFind] = useState<{ name: string; n: number } | null>(() => {
+    const name = searchParams.get('emote')
+    return name ? { name, n: 1 } : null
+  })
+  useEffect(() => {
+    const actions = searchStore.actions
+    actions.game = setGame
+    actions.emote = (name: string) => setEmoteFind((prev) => ({ name, n: (prev?.n ?? 0) + 1 }))
+    return () => {
+      actions.game = null
+      actions.emote = null
+    }
+  }, [searchStore, setGame])
 
   const [measuredBody, setMeasuredBody] = useState<HTMLDivElement | null>(null)
   const measuredRef = useRef<HTMLDetailsElement>(null)
@@ -262,7 +299,7 @@ export default function AnalyticsHubV5Page() {
 
   return (
     <HubV5SearchContext.Provider value={searchStore}>
-      <AnalyticsFigmaShell hideSidebar topNavDock={<HubV5DockSearch live={data.liveChannels} />} topNavInstall={<HubV5BarInstall />}>
+      <AnalyticsFigmaShell hideSidebar topNavDock={<HubV5DockSearch live={data.liveChannels} games={searchGames} emotes={searchEmotes} />} topNavInstall={<HubV5BarInstall />}>
         <main className="figma-analytics__main" aria-label="StreamPulse analytics" data-hub-state={hubUiState}>
           <div id="analytics-main" tabIndex={-1} className="analytics-focus-target">Analytics content</div>
           {/* A saved copy can be hours old: it names its time, and its day when that is not today (N1), for as long as it is on screen, never reading as live. */}
@@ -290,7 +327,7 @@ export default function AnalyticsHubV5Page() {
           <HubBackendSourceBanner />
 
           <div className="hub-v5 hub-d3" data-hub-v5-page="">
-            <HubV5Hero live={data.liveChannels} poolSize={data.poolSize} points={data.activity.points} foot={<HubV5FollowsButton />} />
+            <HubV5Hero live={data.liveChannels} poolSize={data.poolSize} points={data.activity.points} foot={<HubV5FollowsButton />} games={searchGames} emotes={searchEmotes} />
 
             {/* The viewer's own live follows, on Busiest now's live list and rate (Show my Twitch follows, 11-01). */}
             <HubV5Follows
@@ -380,6 +417,7 @@ export default function AnalyticsHubV5Page() {
               intervalWindow={emoteIntervalWindow}
               historyBehind={historyBehind}
               topEmotes={data.topEmotes}
+              findRequest={emoteFind}
             />
 
             <HubV5Rack games={games} game={game} onGame={setGame} art={gameArt} avatars={avatars} loading={measurementsWaiting} unavailable={measurementsUnavailable} />
@@ -393,7 +431,7 @@ export default function AnalyticsHubV5Page() {
               savedAt={savedAt}
               nowMs={nowMs}
               game={game}
-              onClearGame={() => setGameState(null)}
+              onClearGame={() => writeGame(null)}
               windowKey={answerWindow}
             />
 

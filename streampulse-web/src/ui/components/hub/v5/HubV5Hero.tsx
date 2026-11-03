@@ -12,6 +12,7 @@
 import { useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import type { HubActivityPoint, HubLiveChannel } from '../../../../lib/publicHub'
+import type { HubSearchEmote, HubSearchGame } from './hubV5Model'
 import { HubV5Avatar } from './HubV5Avatar'
 import { HubV5Conveyor, type HubV5ConveyorRefs } from './HubV5Conveyor'
 import { HubV5Promo } from './HubV5Promo'
@@ -26,8 +27,8 @@ function barBottom(): number {
   return Math.round(document.querySelector('.analytics-topnav')?.getBoundingClientRect().bottom ?? 0)
 }
 
-/** `foot`: beside the scope line, under the hero's rule (Show my Twitch follows, 11-01). */
-export function HubV5Hero({ live, poolSize, points = NO_POINTS, foot }: { live: readonly HubLiveChannel[]; poolSize: number; points?: readonly HubActivityPoint[]; foot?: ReactNode }) {
+/** `foot`: beside the scope line, under the hero's rule (Show my Twitch follows, 11-01). `games` and `emotes`: what the search offers besides channels (3A). */
+export function HubV5Hero({ live, poolSize, points = NO_POINTS, foot, games, emotes }: { live: readonly HubLiveChannel[]; poolSize: number; points?: readonly HubActivityPoint[]; foot?: ReactNode; games?: readonly HubSearchGame[]; emotes?: readonly HubSearchEmote[] }) {
   const store = useHubV5SearchStore()
   const mastRef = useRef<HTMLElement>(null)
   const kickerRef = useRef<HTMLParagraphElement>(null)
@@ -100,9 +101,9 @@ export function HubV5Hero({ live, poolSize, points = NO_POINTS, foot }: { live: 
       <HubV5Conveyor points={points} refs={conveyorRefs} />
       <p className="hv5-hero-k" ref={kickerRef}>Analytics</p>
       <h1 className="hv5-hero-h">Find your streamer</h1>
-      <p className="hv5-hero-sub">Chat, emotes and top moments for any Twitch channel, minute by minute.</p>
+      <p className="hv5-hero-sub">Chat, emotes and top moments for the Twitch channels we track, minute by minute.</p>
       <div className="hv5-hero-field" ref={fieldRef}>
-        <HubV5SearchBox live={live} variant="hero" />
+        <HubV5SearchBox live={live} variant="hero" games={games} emotes={emotes} />
       </div>
       {/* What you get, under the search, which stays first (Aron's C1 pick, 10-21; the scene is direction A of the 11-01 board). */}
       <HubV5Promo ref={getRef} />
@@ -123,7 +124,7 @@ export function HubV5Hero({ live, poolSize, points = NO_POINTS, foot }: { live: 
         </p>
       ) : null}
       <div className="hv5-hero-foot" ref={footRef}>
-        {poolSize > 0 ? <p className="hv5-scope">The hub below covers {formatHubInt(poolSize)} channels we follow · not all of Twitch</p> : null}
+        {poolSize > 0 ? <p className="hv5-scope">The hub below covers {formatHubInt(poolSize)} channels we track · not all of Twitch</p> : null}
         {foot}
       </div>
     </header>

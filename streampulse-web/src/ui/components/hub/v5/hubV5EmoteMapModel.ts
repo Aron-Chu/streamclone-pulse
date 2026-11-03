@@ -708,6 +708,41 @@ export function mapViewShowing(v: MapView, r: Rect, W: number, H: number): MapVi
   return clampMapView({ k: v.k, tx: W / 2 - (r.x + r.w / 2) * v.k, ty: H / 2 - (r.y + r.h / 2) * v.k }, W, H)
 }
 
+/**
+ * Find emote (3A, 11-02): a tile centred and zoomed until it is about 40% of
+ * the view's short side, within 1×–8×. A tile already that big keeps the
+ * whole map.
+ */
+export function tileMapView(t: Rect, W: number, H: number): MapView {
+  if (W <= 0 || H <= 0 || t.w <= 0 || t.h <= 0) return MAP_VIEW_1X
+  const k = Math.max(1, Math.min(EMOTE_ZOOM_MAX, (Math.min(W, H) * 0.4) / Math.max(t.w, t.h)))
+  if (k <= 1 + 1e-3) return MAP_VIEW_1X
+  return clampMapView({ k, tx: W / 2 - (t.x + t.w / 2) * k, ty: H / 2 - (t.y + t.h / 2) * k }, W, H)
+}
+
+/**
+ * Find emote: the best match for typed text among ranked emotes (2+
+ * characters): the exact name as typed, then any case, then a name that
+ * starts with it, then one holding it; more uses first within each.
+ */
+export function findMapEmote<T extends { a: HubEmoteAgg; v: number }>(ranked: readonly T[], raw: string): T | null {
+  const q = raw.trim()
+  if (q.length < 2) return null
+  const lower = q.toLowerCase()
+  let best: T | null = null
+  let bestRank = 4
+  for (const x of ranked) {
+    const name = x.a.e.name
+    const n = name.toLowerCase()
+    const rank = name === q ? 0 : n === lower ? 1 : n.startsWith(lower) ? 2 : n.includes(lower) ? 3 : 4
+    if (rank < bestRank || (rank === bestRank && rank < 4 && best && x.v > best.v)) {
+      best = x
+      bestRank = rank
+    }
+  }
+  return bestRank < 4 ? best : null
+}
+
 /** A map rect on screen, with how much of it each edge of the view cuts off. */
 export function mapRectOnScreen(r: Rect, v: MapView, W: number, H: number): Rect & { cl: number; ct: number; cr: number; cb: number } {
   const x = r.x * v.k + v.tx
