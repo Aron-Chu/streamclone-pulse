@@ -57,3 +57,28 @@ test.describe('without JavaScript', () => {
     await expect(page.locator('#roadmap, #analysis, .lsg')).toHaveCount(0)
   })
 })
+
+// P1 (11-02): a phone leads with Open the Hub, filled, with no install button and a line saying the extension is for
+// desktop; a desktop keeps the install button first and no such line.
+test('the homepage hero leads with Open the Hub on a phone and keeps the install button on a desktop', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+  const actions = page.locator('.sl-hero__actions')
+  const hub = actions.getByRole('link', { name: 'Open the Hub' })
+  const install = actions.locator('[data-cta="chrome-install-hero"]')
+  const desk = page.locator('p.sl-hero__desk')
+  await expect(hub).toBeVisible()
+  await expect(install).toBeHidden()
+  await expect(desk).toBeVisible()
+  await expect(desk).toHaveText('Desktop extension for Chrome, Edge and Firefox')
+  const filled = (el: Element) => getComputedStyle(el).backgroundColor
+  expect(await hub.evaluate(filled)).not.toMatch(/rgba\(0, 0, 0, 0\)|transparent/)
+  expect((await hub.boundingBox())!.height).toBeGreaterThanOrEqual(40)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
+
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await expect(install).toBeVisible()
+  await expect(desk).toBeHidden()
+  await expect(hub).toBeVisible()
+})

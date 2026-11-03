@@ -38,7 +38,18 @@ Build the upload from the release commit only.
   uploads are compiled off in this release (their toggles are hidden), so the
   manifest does not declare it. Turning either on later needs
   `"optional": ["technicalAndInteraction"]` in the manifest first, or Firefox
-  refuses the runtime request.
+  refuses the runtime request. The package gate in
+  `scripts/validate-extension-package.mjs` checks the two
+  literal upload switches and requires the optional declaration exactly when
+  either upload is enabled. Changing only the manifest or only a switch fails
+  that gate. The switch check reads source; a standalone validation of a stale
+  `dist/` does not prove which switch was compiled. Use the fresh-build package
+  command. Review the AMO listing and privacy disclosure alongside the package,
+  and verify both fresh
+  installs and upgrades before submission. Firefox can offer this optional
+  permission during installation, but it does not replace StreamPulse's
+  separate, default-off in-product analytics and diagnostics choices. See
+  [Mozilla's built-in data consent documentation](https://extensionworkshop.com/documentation/develop/firefox-builtin-data-consent/).
 - Firefox grants the listed host permissions at install (shown in the install
   prompt), but people can switch an add-on's site access off later in
   `about:addons`; the panel then has no Twitch access until it is switched back on.

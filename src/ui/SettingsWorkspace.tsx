@@ -22,7 +22,7 @@ import {
   setDiagnosticsConsentEnabled,
 } from '../shared/diagnosticsConsent.ts'
 import { momentPictures } from '../shared/momentPictureStore.ts'
-import { isAnalyticsConsentGranted, setAnalyticsConsentGranted } from '../shared/analyticsConsent.ts'
+import { ANALYTICS_CONSENT_STORAGE, parseAnalyticsConsent, prepareAnalyticsConsentGrant, readAnalyticsConsentState, requestAnalyticsConsentChange } from '../shared/analyticsConsent.ts'
 import { EXTENSION_ANALYTICS_INGEST_ENABLED } from '../shared/extensionAnalytics.ts'
 import { installedExtensionVersion } from '../shared/releaseManifest.ts'
 import { compactViewerSamplingLabel, summarizeViewerSampling } from '../shared/viewerSamplingStatus.ts'
@@ -62,24 +62,84 @@ function useAdministrativeSettings() {
   const [cacheEntryCount, setCacheEntryCount] = useState(0)
   const [cacheBusy, setCacheBusy] = useState(false)
   const [analyticsConsent, setAnalyticsConsentState] = useState(false)
+  const [analyticsBusy, setAnalyticsBusy] = useState(false)
+  const [analyticsAvailability, setAnalyticsAvailability] = useState<'loading' | 'ready' | 'unavailable'>('loading')
+  const [analyticsGrantPreparation, setAnalyticsGrantPreparation] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle')
+  const analyticsSaving = useRef(false)
+  const analyticsRevision = useRef(0)
+  const analyticsMounted = useRef(false)
+  const analyticsTicket = useRef<string | null>(null)
+  const analyticsTicketRevision = useRef(0)
   const [diagnosticsConsent, setDiagnosticsConsentState] = useState(false)
   const [updateCapability, setUpdateCapability] = useState<UpdateCapability>('loading')
   const [updateStatus, setUpdateStatus] = useState('')
   const [savedStatus, showSavedStatus] = useTransientStatus()
   const [saveError, setSaveError] = useState<string | null>(null)
 
+  const clearAnalyticsGrantPreparation = useCallback(() => {
+    analyticsTicketRevision.current += 1
+    analyticsTicket.current = null
+    setAnalyticsGrantPreparation('idle')
+  }, [])
+
+  const prepareAnalyticsGrant = useCallback(() => {
+    if (!EXTENSION_ANALYTICS_INGEST_ENABLED) return
+    const revision = ++analyticsTicketRevision.current
+    analyticsTicket.current = null
+    setAnalyticsGrantPreparation('loading')
+    void prepareAnalyticsConsentGrant().then(ticket => {
+      if (!analyticsMounted.current || analyticsTicketRevision.current !== revision) return
+      analyticsTicket.current = ticket
+      setAnalyticsGrantPreparation('ready')
+    }).catch(() => {
+      if (analyticsMounted.current && analyticsTicketRevision.current === revision) {
+        setAnalyticsGrantPreparation('unavailable')
+      }
+    })
+  }, [])
+
   useEffect(() => {
     let mounted = true
+    analyticsMounted.current = true
+    const loadRevision = analyticsRevision.current
+    const readAnalytics = async (revision: number) => {
+      const state = await readAnalyticsConsentState().catch(() => 'unavailable' as const)
+      if (!mounted || analyticsRevision.current !== revision) return
+      if (state === 'unavailable') {
+        clearAnalyticsGrantPreparation()
+        setAnalyticsAvailability('unavailable')
+        return
+      }
+      setAnalyticsConsentState(state === 'granted')
+      setAnalyticsAvailability('ready')
+      if (state === 'denied') prepareAnalyticsGrant()
+      else clearAnalyticsGrantPreparation()
+    }
+    const onStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }, area: string) => {
+      if (area !== 'local' || !changes[ANALYTICS_CONSENT_STORAGE]) return
+      const revision = ++analyticsRevision.current
+      if (parseAnalyticsConsent(changes[ANALYTICS_CONSENT_STORAGE].newValue)?.granted !== true) {
+        setAnalyticsConsentState(false)
+        setAnalyticsAvailability('ready')
+        prepareAnalyticsGrant()
+        return
+      }
+      clearAnalyticsGrantPreparation()
+      setAnalyticsAvailability('loading')
+      void readAnalytics(revision)
+    }
+    chrome.storage.onChanged?.addListener?.(onStorageChange)
+    // Consent must load independently: a failed or stalled cache/diagnostics
+    // lookup must never make an existing analytics grant appear switched off.
+    void readAnalytics(loadRevision)
     void Promise.all([
       getKeepLocalCache(),
       countSessionPulseEntries(),
-      isAnalyticsConsentGranted(),
       isDiagnosticsConsentEnabled(),
-    ]).then(([storedCache, cacheCount, storedAnalyticsConsent, storedDiagnosticsConsent]) => {
+    ]).then(([storedCache, cacheCount, storedDiagnosticsConsent]) => {
       if (!mounted) return
       setKeepCacheState(storedCache)
       setCacheEntryCount(cacheCount)
-      setAnalyticsConsentState(storedAnalyticsConsent)
       setDiagnosticsConsentState(storedDiagnosticsConsent)
     }).catch(() => { if (mounted) showSavedStatus('Could not load privacy settings') })
     void sendBackgroundMessage({ type: 'GET_UPDATE_CHECK_CAPABILITY' })
@@ -92,8 +152,14 @@ function useAdministrativeSettings() {
           setUpdateCapability('browser')
         }
       })
-    return () => { mounted = false }
-  }, [showSavedStatus])
+    return () => {
+      mounted = false
+      analyticsMounted.current = false
+      analyticsTicketRevision.current += 1
+      analyticsTicket.current = null
+      chrome.storage.onChanged?.removeListener?.(onStorageChange)
+    }
+  }, [clearAnalyticsGrantPreparation, prepareAnalyticsGrant, showSavedStatus])
 
   async function persistSetting<T>(
     setter: (val: T) => void,
@@ -119,6 +185,9 @@ function useAdministrativeSettings() {
     cacheEntryCount,
     cacheBusy,
     analyticsConsent,
+    analyticsBusy,
+    analyticsAvailability,
+    analyticsGrantPreparation,
     diagnosticsConsent,
     savedStatus,
     saveError,
@@ -137,13 +206,38 @@ function useAdministrativeSettings() {
       )
     },
     setAnalytics(enabled: boolean) {
-      void persistSetting(
-        setAnalyticsConsentState,
-        analyticsConsent,
-        enabled,
-        setAnalyticsConsentGranted(enabled),
-        'Could not update analytics sharing. Changes were reverted.',
-      )
+      if (analyticsSaving.current) return
+      const ticket = enabled ? analyticsTicket.current : undefined
+      if (enabled && !ticket) return
+      clearAnalyticsGrantPreparation()
+      analyticsSaving.current = true
+      const revision = ++analyticsRevision.current
+      const previousAvailability = analyticsAvailability
+      setAnalyticsBusy(true)
+      setAnalyticsConsentState(enabled)
+      setSaveError(null)
+      void requestAnalyticsConsentChange(enabled, ticket ?? undefined).then(() => {
+        if (analyticsRevision.current === revision) {
+          setAnalyticsConsentState(enabled)
+          setAnalyticsAvailability('ready')
+          if (!enabled) prepareAnalyticsGrant()
+        }
+        showSavedStatus('Saved')
+      }).catch(() => {
+        if (analyticsRevision.current === revision) {
+          setAnalyticsConsentState(analyticsConsent)
+          setAnalyticsAvailability(previousAvailability === 'ready' ? 'ready' : 'unavailable')
+          if (!analyticsConsent && previousAvailability === 'ready') prepareAnalyticsGrant()
+        }
+        setSaveError('Could not save analytics sharing. Please try again.')
+        showSavedStatus('Could not save')
+      }).finally(() => {
+        analyticsSaving.current = false
+        setAnalyticsBusy(false)
+      })
+    },
+    retryAnalyticsGrant() {
+      prepareAnalyticsGrant()
     },
     setDiagnostics(enabled: boolean) {
       void persistSetting(
@@ -473,7 +567,23 @@ function PrivacySection({ settings }: { settings: AdministrativeSettings }) {
       </PulseSectionCard>
       {(EXTENSION_ANALYTICS_INGEST_ENABLED || EXTENSION_DIAGNOSTICS_INGEST_ENABLED) ? (
         <PulseSectionCard title="Optional sharing" headingLevel={3}>
-          {EXTENSION_ANALYTICS_INGEST_ENABLED ? <ToggleRow label="Share anonymous product usage" checked={settings.analyticsConsent} onChange={settings.setAnalytics} /> : null}
+          {EXTENSION_ANALYTICS_INGEST_ENABLED ? (
+            <>
+              <ToggleRow label="Share anonymous product usage" hint="Shares when Pulse receives data without a reported error and when a panel rendering error is shown. StreamPulse sends aggregate counts to PostHog to improve the extension. Turning this off stops new events from this browser. Events already sent to StreamPulse may still be added to totals sent to PostHog. PostHog keeps these events for six calendar months, then permanently deletes expired events at the following monthly cleanup." checked={settings.analyticsConsent} disabled={settings.analyticsBusy || settings.analyticsAvailability !== 'ready' || (!settings.analyticsConsent && settings.analyticsGrantPreparation !== 'ready')} onChange={settings.setAnalytics} />
+              {settings.analyticsAvailability !== 'ready' ? (
+                <div>
+                  <p role="status">{settings.analyticsAvailability === 'loading' ? 'Checking your saved analytics choice…' : 'Unable to check your saved analytics choice.'}</p>
+                  <button type="button" className="pulse-link-btn" disabled={settings.analyticsBusy} onClick={() => settings.setAnalytics(false)}>Turn off sharing</button>
+                </div>
+              ) : null}
+              {settings.analyticsAvailability === 'ready' && !settings.analyticsConsent && settings.analyticsGrantPreparation !== 'ready' ? (
+                <div>
+                  <p role="status">{settings.analyticsGrantPreparation === 'unavailable' ? 'Unable to prepare the sharing control.' : 'Preparing the sharing control…'}</p>
+                  {settings.analyticsGrantPreparation === 'unavailable' ? <button type="button" className="pulse-link-btn" disabled={settings.analyticsBusy} onClick={settings.retryAnalyticsGrant}>Try again</button> : null}
+                </div>
+              ) : null}
+            </>
+          ) : null}
           {EXTENSION_DIAGNOSTICS_INGEST_ENABLED ? <ToggleRow label="Share crash diagnostics" checked={settings.diagnosticsConsent} onChange={settings.setDiagnostics} /> : null}
         </PulseSectionCard>
       ) : null}

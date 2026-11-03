@@ -2537,6 +2537,7 @@ function SidebarHeaderBar({
     const id = window.setInterval(sync, 600)
     return () => window.clearInterval(id)
   }, [])
+  const chattersLabel = chattersOpen && active === 'chat' ? 'Close chatters list' : 'Open chatters list'
 
   return (
     <div className="pulse-sidebar-header-row">
@@ -2556,11 +2557,18 @@ function SidebarHeaderBar({
       <button
         type="button"
         className={`pulse-sidebar-header-edge${chattersOpen ? ' pulse-sidebar-header-edge-active' : ''}`}
-        aria-label={chattersOpen ? 'Close chatters list' : 'Open chatters list'}
+        aria-label={chattersLabel}
         aria-pressed={chattersOpen}
-        title={chattersOpen ? 'Close chatters list' : 'Open chatters list'}
+        title={chattersLabel}
         onClick={() => {
-          toggleTwitchChatters()
+          // Twitch draws the list in its chat column, so it is only seen on CHAT:
+          // from PULSE the button switches tabs and opens the list, never closes it.
+          if (active !== 'chat') {
+            onChange('chat')
+            if (!isTwitchChattersOpen()) toggleTwitchChatters()
+          } else {
+            toggleTwitchChatters()
+          }
           window.setTimeout(() => setChattersOpen(isTwitchChattersOpen()), 120)
         }}
       >

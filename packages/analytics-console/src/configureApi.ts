@@ -81,6 +81,19 @@ export interface AnalyticsApi {
   getVodStoryboardThumb(vodId: string, offsetSec: number): Promise<unknown | null>
   getTwitchDayClips(login: string, startedAt: string, endedAt: string): Promise<TwitchDayClipsResponse>
   getSetupWelcome(): Promise<SetupWelcome>
+  /**
+   * The Twitch profile for a login, for the "not recorded" panel: "found" only
+   * when Twitch answered for it. Anything else is "unknown", never "no such
+   * account" (a missing account and an outage both come back as a 502).
+   */
+  lookupTwitchChannel?(login: string): Promise<TwitchChannelLookup>
+}
+
+/** `displayName` and `avatar` come only with "found". */
+export interface TwitchChannelLookup {
+  state: 'found' | 'unknown'
+  displayName?: string
+  avatar?: string
 }
 
 let configuredAnalyticsApi: AnalyticsApi | null = null

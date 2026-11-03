@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
@@ -92,14 +94,14 @@ describe('landing page', () => {
     renderLanding()
     await screen.findByRole('heading', { name: /actually reacted to/i })
 
-    // The hero's search, and the same search again after the demo (B1, 11-02).
-    expect(screen.getAllByRole('search')).toHaveLength(2)
-    expect(screen.getAllByRole('combobox', { name: /search any twitch channel/i })).toHaveLength(2)
+    // One search, in the hero: the page ends with the demo, then the footer (D1, 11-02).
+    expect(screen.getAllByRole('search')).toHaveLength(1)
+    expect(screen.getAllByRole('combobox', { name: /search streamers or games/i })).toHaveLength(1)
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
       expect.stringMatching(/see it beside twitch chat/i),
-      'Look up a streamer',
     ])
-    expect(document.querySelector('[data-cta="chrome-install-closing"]')).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Look up a streamer' })).toBeNull()
+    expect(document.querySelector('[data-cta="chrome-install-closing"]')).toBeNull()
     const footer = screen.getByRole('navigation', { name: 'Footer' })
     for (const name of ['Privacy', 'Terms', 'Refunds', 'Supporter']) {
       expect(within(footer).getByRole('link', { name })).toBeTruthy()
@@ -140,7 +142,7 @@ describe('landing page', () => {
     expect(chips.map((chip) => chip.lastElementChild?.textContent)).toEqual(['xQc', 'tarik'])
     expect(chips[0]!.getAttribute('href')).toBe('/analytics/xqc')
 
-    const box = hero.getByRole('combobox', { name: /search any twitch channel/i })
+    const box = hero.getByRole('combobox', { name: /search streamers or games/i })
     fireEvent.keyDown(document.body, { key: '/' })
     expect(document.activeElement).toBe(box)
   })
@@ -159,7 +161,9 @@ describe('landing page', () => {
       'https://chromewebstore.google.com/detail/streampulse/nifgoonpcgmdhiffcpmhndjgkgahnelg',
     )
     expect(installUrl.searchParams.get('utm_source')).toBe('streampulse.stream')
-    expect(installUrl.searchParams.get('utm_medium')).toMatch(/^[a-z0-9-]+$/)
+    expect(installUrl.searchParams.get('utm_medium')).toBe('referral')
+    expect(installUrl.searchParams.get('utm_campaign')).toBe('website_install')
+    expect(installUrl.searchParams.get('utm_content')).toBe('home')
     expect(install.getAttribute('target')).toBe('_blank')
     expect(install.getAttribute('rel')).toBe('noopener noreferrer')
   })
@@ -234,5 +238,24 @@ describe('landing page', () => {
     await screen.findByRole('heading', { name: /actually reacted to/i })
     expect(screen.getByText(/trending emotes/i)).toBeTruthy()
     expect(screen.getByText(/trending channels/i)).toBeTruthy()
+  })
+})
+
+describe('landing hero on a phone (P1, 11-02)', () => {
+  it('marks Open the Hub for the phone style and says the extension is for desktop', async () => {
+    renderLanding()
+    await screen.findByRole('heading', { name: /actually reacted to/i })
+    const hub = screen.getAllByRole('link', { name: /open the hub/i }).find((a) => a.closest('.sl-hero__actions'))!
+    expect(hub.className).toContain('sl-hero__hub')
+    // the outline style stays for wider screens
+    expect(hub.className).toContain('sc-btn--outline')
+    const desk = document.querySelector('.sl-stage > p.sl-hero__desk')!
+    expect(desk.textContent).toBe('Desktop extension for Chrome, Edge and Firefox')
+    expect(desk.previousElementSibling?.classList.contains('sl-hero__actions')).toBe(true)
+  })
+
+  it('hides the install button and fills Open the Hub only below 720 px', () => {
+    const css = readFileSync(resolve(process.cwd(), 'src/ui/components/landing/landing.css'), 'utf8')
+    expect(css).toMatch(/\.sl-stage > p\.sl-hero__desk \{ display: none; \}\s*@media \(max-width: 719px\) \{\s*\.sl-hero__actions \[data-cta="chrome-install-hero"\] \{ display: none; \}\s*\.sl-hero__actions \.sc-btn\.sl-hero__hub \{[^}]*background: hsl\(var\(--sc-primary\)\);/)
   })
 })

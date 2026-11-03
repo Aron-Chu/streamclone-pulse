@@ -7,13 +7,22 @@ import {
 import type { FigmaMomentRow } from "../../../lib/figmaSessionAnalytics";
 import type { HubEmote, HubLiveChannel, PublicHub } from "../../../lib/publicHub";
 import type { HubActivityRangeControl } from "../hub/HubActivityChart";
-import type { HubSuggestion } from "../hub/HubSearch";
 import { SystemStatusBadge } from "./primitives/SystemStatusBadge";
 import { compact } from "./hubFormat";
 // Keep this before hub.css: its readability floor overrides hub.css rules of the
 // same weight (it used to arrive first through the HubActivityChart import).
 import "../hub/hub-public-audit.css";
 import "../hub/hub.css";
+
+/** A channel the panel can suggest (moved here from the removed HubSearch). */
+export interface HubSuggestion {
+  login: string;
+  displayName?: string;
+  category?: string;
+  viewers?: number;
+  profileImageUrl?: string;
+  live?: boolean;
+}
 
 /**
  * The hub activity panel's status chips and props, shared with the d3-v5

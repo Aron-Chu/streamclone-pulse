@@ -122,7 +122,7 @@ describe('followsTip', () => {
     const set = rankFollows(live, live.map((c) => c.login), 'five_min')
     const mine = follows(live.map((c) => c.login), { total: 3_200, at: END + 2 * MIN })
     expect(followsTip(set, mine, 480, 1_000).split('\n')).toEqual([
-      'Channels you follow on Twitch that are in the live pool (480 of the ~1,000 we follow). Your other follows can be live on Twitch too.',
+      'Channels you follow on Twitch that are in the live pool (480 of the ~1,000 we track). Your other follows can be live on Twitch too.',
       `Ranked like Busiest now: chat messages per minute in the last full 5-minute window (${hubClockRange(END - 5 * MIN, END)}). Channels without that count show viewers and come after.`,
       'The busiest 60 are shown.',
       `Read from Twitch at ${hubClock(END + 2 * MIN)} for Viewer: Twitch lists 3,200 follows and the 62 most recent are used.`,
