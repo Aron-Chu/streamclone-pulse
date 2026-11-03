@@ -28,7 +28,7 @@ describe('Supporter legal copy', () => {
   it.each(pages)('%s states that Supporter sign-ups are not open yet', (_, Page, testId) => {
     render(<MemoryRouter><Page /></MemoryRouter>)
     const notice = screen.getByTestId('prelaunch-notice')
-    expect(notice.textContent).toMatch(/^Supporter sign-ups are not open yet\./)
+    expect(notice.textContent).toMatch(/^Supporter sign-ups aren’t open yet, so you can’t buy it today\./)
     expect(screen.getByTestId(testId).contains(notice)).toBe(true)
   })
 
@@ -62,14 +62,15 @@ describe('Supporter legal copy', () => {
     expect(body).toMatch(/no public Twitch chat badge — it is not included/)
   })
 
-  it('Terms says in one sentence that the selling entity, address and law are stated before sign-ups open', () => {
+  it('Terms states the owner-supplied seller details while keeping sales closed', () => {
     render(<MemoryRouter><Terms /></MemoryRouter>)
-    const pending = screen.getByTestId('terms-pending-owner-input')
-    expect(pending.textContent?.replace(/\s+/g, ' ')).toContain(
-      'The selling entity, legal address, governing law and consumer cancellation rights will be stated here before paid sign-ups open.',
+    const seller = screen.getByTestId('terms-seller-and-law')
+    expect(seller.textContent?.replace(/\s+/g, ' ')).toContain(
+      'Aron Chu, 906 N Miller Rd, Unit 3099, Tempe, AZ 85288, USA.',
     )
-    // No table of four "Pending" rows: one sentence says it once.
-    expect(screen.getByTestId('terms-of-use').textContent).not.toMatch(/Pending — not yet stated/)
+    expect(seller.textContent).toContain('governed by the law of Arizona, USA')
+    expect(screen.getByTestId('prelaunch-notice').textContent).toContain('aren’t open yet')
+    expect(screen.queryByTestId('terms-pending-owner-input')).toBeNull()
   })
 
   it('Terms gives the Pulse Supporter section an anchor the extension links to (/terms#supporter)', () => {
@@ -104,22 +105,23 @@ describe('Supporter legal copy', () => {
     expect(body).toMatch(/Cancelling takes effect at the end of the period you have already paid for/)
   })
 
-  it('Supporter states the USD price, keeps the chat badge excluded and promises nothing more', () => {
+  it('Supporter states the USD price once, keeps the chat badge excluded and promises nothing more', () => {
     render(<MemoryRouter><Supporter /></MemoryRouter>)
-    const terms = screen.getByTestId('supporter-terms').textContent ?? ''
-    expect(terms).toContain('US$4.99 per month, charged in US dollars')
-    expect(terms).toContain('Handled as stated at checkout')
-    expect(terms).toMatch(/7-day grace period/)
-    expect(terms).toMatch(/A full refund ends access for that period; a partial refund keeps it/)
+    const terms = (screen.getByTestId('supporter-terms').textContent ?? '').replace(/\s+/g, ' ')
+    expect(terms).toContain('US$4.99 a month. It renews monthly until you cancel.')
+    expect(terms).toContain('You keep Supporter until the end of the month you paid for.')
+    expect(terms).toContain('Stripe handles payment and shows the total, including any tax, before you pay.')
     const body = screen.getByTestId('supporter-offer').textContent ?? ''
-    expect(body).toMatch(/No public Twitch chat badge\. A chat badge is not included in Supporter/)
+    expect(body.match(/US\$4\.99/g)).toHaveLength(1)
+    expect(body).toMatch(/There’s no public chat badge\. That’s everything Supporter adds\./)
     expect(body).not.toMatch(/at no extra cost/i)
-    expect(body).toMatch(/active for up to 72 hours after the paid period ends/)
+    // Grace, refunds, disputes and the renewal window are in the linked Terms and refund policy.
+    expect(screen.getByRole('link', { name: 'Cancellation & refunds' }).getAttribute('href')).toBe('/refunds')
   })
 
   it('Supporter lists the three perks the extension sells: title paint, the tenure crest and emote rain', () => {
     render(<MemoryRouter><Supporter /></MemoryRouter>)
-    const list = screen.getByRole('heading', { name: 'What Supporter includes' }).nextElementSibling!
+    const list = screen.getByRole('heading', { name: 'What you get' }).nextElementSibling!
     const items = [...list.querySelectorAll('li')].map(item => item.textContent ?? '')
     expect(items.some(item => /^Title paint/.test(item))).toBe(true)
     expect(items.some(item => /^Tenure crest/.test(item))).toBe(true)
@@ -133,14 +135,14 @@ describe('Supporter legal copy', () => {
     expect(body).not.toMatch(/none will be moved|nothing free will move|will never be moved/i)
     expect(body).not.toMatch(/clip downloading/i)
     expect(screen.queryByTestId('supporter-moved')).toBeNull()
-    expect(screen.getByRole('heading', { name: 'What stays free' })).toBeTruthy()
+    expect(body).toContain('All analytics stay free.')
     expect(body).not.toMatch(/moved from free|was free up to|backdrop you saved/i)
     expect(body).not.toMatch(/header accent|overlay finishes/i)
   })
 
   it('Terms keeps the backdrop in the perk list without the removed migration claim', () => {
     const body = textOf(Terms, 'terms-of-use')
-    expect(body).toContain('Emote rain: 7TV emotes behind your Pulse panel header, still or falling: the 7TV header backdrop.')
+    expect(body).toContain('Emote rain: 7TV emotes behind your Pulse panel header, still or falling. This is the 7TV header backdrop.')
     expect(body).not.toMatch(/moved from free|was free up to|backdrop you saved/i)
     expect(body).not.toMatch(/header accent|overlay finishes|none will be moved/i)
   })
@@ -234,9 +236,12 @@ describe('Supporter legal copy', () => {
     expect(twitch).toMatch(/only to sign\s+that account out everywhere and does not store/)
   })
 
-  it('Refunds asks for requests from the billing email given to Stripe, not an account address', () => {
+  it('Refunds accepts requests after loss of the current billing email without asking for card secrets', () => {
     const body = textOf(Refunds, 'refund-policy')
     expect(body).not.toMatch(/address on the account/)
-    expect(body.match(/from the billing\s+email you gave Stripe at checkout/g)).toHaveLength(2)
+    expect(body).toMatch(/If possible, use\s+your current Stripe billing email/)
+    expect(body).toMatch(/If you cannot access it, contact us anyway/)
+    expect(body).not.toMatch(/from the billing\s+email you gave Stripe at checkout/)
+    expect(body).toMatch(/do not include your full card number\s+or security code/)
   })
 })

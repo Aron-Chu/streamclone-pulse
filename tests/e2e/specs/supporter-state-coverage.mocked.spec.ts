@@ -33,17 +33,17 @@ type StateCase = {
 }
 const CASES: StateCase[] = [
   { name: 'not-a-supporter', journey: 'signed-out', principal: 'Become a Supporter', setup: 'unlinked', alias: 'The signed-out page offers one Become a Supporter button; nothing is sent until it is clicked.' },
-  { name: 'checkout-closed', journey: 'checkout-closed', principal: 'Check again', status: 'none', checkoutEnabled: false },
+  { name: 'checkout-closed', journey: 'checkout-closed', principal: 'Try the looks', status: 'none', checkoutEnabled: false },
   { name: 'preparing-checkout', journey: 'offer', principal: 'Preparing checkout…', status: 'none', setup: 'preparing', alias: 'Transient busy offer. The worker is awaiting the mocked checkout response; the disabled action prevents another request.' },
   { name: 'stripe-open', journey: 'stripe-open', principal: 'Return to Stripe checkout', status: 'none', billing: 'waiting' },
   { name: 'payment-confirming', journey: 'payment-pending', principal: 'Check payment status', status: 'pending', billing: 'confirming' },
   { name: 'still-confirming', journey: 'still-confirming', principal: 'Check payment status', status: 'none', billing: 'still_confirming' },
-  { name: 'active', journey: 'active', principal: 'Manage subscription', status: 'active', renewal: 'auto', alias: 'Active and renewing: renewal auto with renewsOn gives one Renews on line.' },
-  { name: 'scheduled-cancellation', journey: 'active', principal: 'Manage subscription', status: 'active', renewal: 'ends', alias: 'Active after a cancel at period end: renewal ends with endsOn gives one Cancels on line; Access through stays the authoritative accessUntil.' },
-  { name: 'grace', journey: 'grace', principal: 'Update payment method', status: 'grace' },
-  { name: 'ended', journey: 'expired', principal: 'Rejoin Supporter', status: 'expired' },
-  { name: 'review-dispute', journey: 'review', principal: 'Manage subscription', status: 'review', alias: 'Authoritative review status. The snapshot exposes no dispute-reason field, so this does not prove a dispute.' },
-  { name: 'refunded', journey: 'expired', principal: 'Rejoin Supporter', status: 'expired', alias: 'Expired is the only supported inactive projection. No refund-reason field exists; this image does not prove a refund and must not be labelled a distinct refunded UI.' },
+  { name: 'active', journey: 'active', principal: 'Manage on Stripe', status: 'active', renewal: 'auto', alias: 'Active and renewing: renewal auto with renewsOn puts the renewal date in the one title line.' },
+  { name: 'scheduled-cancellation', journey: 'active', principal: 'Keep Supporter', status: 'active', renewal: 'ends', alias: 'Active after a cancel at period end: renewal ends with endsOn gives one Cancels on line; Access through stays the authoritative accessUntil.' },
+  { name: 'grace', journey: 'grace', principal: 'Fix payment', status: 'grace' },
+  { name: 'ended', journey: 'expired', principal: 'Rejoin', status: 'expired' },
+  { name: 'review-dispute', journey: 'review', principal: 'Manage on Stripe', status: 'review', alias: 'Authoritative review status. The snapshot exposes no dispute-reason field, so this does not prove a dispute.' },
+  { name: 'refunded', journey: 'expired', principal: 'Rejoin', status: 'expired', alias: 'Expired is the only supported inactive projection. No refund-reason field exists; this image does not prove a refund and must not be labelled a distinct refunded UI.' },
   { name: 'tester-connect', journey: 'link-pending', principal: 'Reopen streampulse.stream', setup: 'fallback', alias: 'Invited-tester device link from the closed disclosure. No installation account is created.' },
   { name: 'service-outage', journey: 'membership-unknown', principal: 'Check again', status: 'none', setup: 'outage' },
   { name: 'sandbox-live-mismatch', journey: 'membership-unknown', principal: 'Check again', status: 'active', setup: 'sandbox' },
@@ -171,7 +171,7 @@ for (const state of CASES) {
     const identity = packageIdentity(), storeTarget = ['cws', 'edge', 'firefox'].includes(identity.target)
     const mismatchRepresentable = state.setup !== 'sandbox' || storeTarget
     const expectedJourney = mismatchRepresentable ? state.journey : 'active'
-    const expectedPrincipal = mismatchRepresentable ? state.principal : 'Manage subscription'
+    const expectedPrincipal = mismatchRepresentable ? state.principal : 'Manage on Stripe'
     const membership = snapshot(state)
     const requests: Array<{ path: string; method: string; status: number }> = []
     let releaseCheckout: (() => void) | undefined
@@ -256,14 +256,11 @@ for (const state of CASES) {
         await expect(journey).toContainText('Do not pay again')
         await expect(journey.getByRole('button', { name: /Become a Supporter|Rejoin|Start checkout again/ })).toHaveCount(0)
       }
-      if (state.name === 'scheduled-cancellation') await expect(journey).toContainText('Access through')
       if (CAPTURE_PHASE === 'after' && state.renewal) {
-        // One line, dated in the page's own locale (short month, no year).
+        // One title line carries the date, in the page's own locale (short month, no year).
         const day = await page.evaluate(value => new Date(value).toLocaleDateString([], { month: 'short', day: 'numeric' }), membership.accessUntil)
-        const line = journey.locator('[data-journey-renewal]')
-        await expect(line).toHaveCount(1)
-        await expect(line).toHaveAttribute('data-journey-renewal', state.renewal)
-        await expect(line).toHaveText(state.renewal === 'ends' ? `Cancels on ${day}` : `Renews on ${day}`)
+        await expect(journey).toContainText(state.renewal === 'ends' ? `Supporter until ${day} · won't renew` : `Supporter · renews ${day}`)
+        await expect(journey.locator('[data-journey-renewal]')).toHaveCount(0)
       }
       // Rendering and status reads never enroll an installation or restore.
       expect(requests.some(request => request.path === '/v1/account/installations' || request.path === '/v1/account/restores')).toBe(false)

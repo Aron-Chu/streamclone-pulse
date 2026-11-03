@@ -30,14 +30,18 @@ describe('portal link registry', () => {
       // redirect hop, and a query or fragment is not part of a policy address.
       expect(url.pathname.endsWith('/')).toBe(false)
       expect(url.search).toBe('')
-      // The one exception: a section of the terms document, linked by its anchor.
-      expect(url.hash).toBe(name === 'supporterTerms' ? '#supporter' : '')
+      // These two links address sections within existing documents.
+      expect(url.hash).toBe(name === 'supporterTerms' ? '#supporter' : name === 'supportBillingEmail' ? '#billing-email' : '')
     }
     expect(new Set(links).size).toBe(links.length)
   })
 
   it('links "Supporter terms" to the Supporter section of the terms', () => {
     expect(POLICY_LINKS.supporterTerms).toBe(`${POLICY_LINKS.terms}#supporter`)
+  })
+
+  it('links billing email help to the support section', () => {
+    expect(POLICY_LINKS.supportBillingEmail).toBe(`${POLICY_LINKS.support}#billing-email`)
   })
 
   it('keeps policy links on production even when a dev portal is configured', () => {

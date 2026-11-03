@@ -3,6 +3,7 @@ import { PublicLayout } from '../../ui/components/PublicLayout'
 import { REFUNDS_PATH, SUPPORTER_PATH, TERMS_PATH } from '../../lib/externalLinks'
 import { PrelaunchNotice } from './PrelaunchNotice'
 import { supporterChatBadgesEnabled } from '../../lib/supporterChatBadgesFlag'
+import { supporterWithdrawalEnabled } from '../../lib/supporterWithdrawal'
 import {
   PRIVACY_CHATTER_IDENTITY_EXCEPTION,
   PRIVACY_TWITCH_PLAIN_ID_SENTENCE,
@@ -115,8 +116,13 @@ export default function Privacy() {
           code, the device label you approve, and a device credential identifier. Approving a device
           does not publish anything about you or start a subscription.
         </p>
-        {/* This release has no extension Twitch sign-in, so it never runs the silent first-install check
-            (src/background/twitchSignIn.ts). Describe that check again when sign-in ships. */}
+        {supporterChatBadgesEnabled() ? <p data-testid="privacy-extension-first-install">
+          After a fresh installation, opening Account &amp; Supporter may trigger one silent Twitch
+          sign-in attempt without opening a window. If Twitch can confirm an existing authorization
+          without interaction, this may connect the account; otherwise you can choose Continue with
+          Twitch. Signing out prevents that automatic attempt from repeating. Seen in chat remains
+          off until you separately choose to turn it on and confirm its disclosure.
+        </p> : null}
 
         {/* Seen in chat copy only once VITE_SUPPORTER_CHAT_BADGES is on (launch day). */}
         {supporterChatBadgesEnabled() ? <PrivacySeenInChat /> : null}
@@ -147,6 +153,14 @@ export default function Privacy() {
           These identifiers are treated as private financial references; they are never shown
           publicly or attached to a badge or profile.
         </p>
+        {supporterWithdrawalEnabled() ? <p data-testid="privacy-withdrawal">
+          If you submit an online withdrawal, StreamPulse stores your acknowledgement email, any name
+          or purchase date you provide, your request and its submission time to handle it. The mail
+          service and private billing inbox receive your email, withdrawal statement, reference and
+          request time to deliver the acknowledgement and notify StreamPulse.
+          A random request key, but no form details, may be kept in this tab to help retry an interrupted submission.
+          Do not include a full card number or security code. The request does not automatically issue a refund.
+        </p> : null}
         <p>
           Provider webhook notifications are stored in a durable queue so a payment event is never
           lost or processed twice. The proposed retention for a raw stored notification is about 30
@@ -365,8 +379,8 @@ export default function Privacy() {
         </ul>
         <p>
            The extension does not request or transmit Twitch cookies, passwords, Twitch OAuth credentials
-           (except the one-time sign-in proof described under Your account, sent only when you choose
-           Continue with Twitch, not available in this release), raw chat exports, or chatter identities.
+           (except the one-time sign-in proof described under Your account, sent{' '}
+           {supporterChatBadgesEnabled() ? 'during the first-install check or when you choose Continue with Twitch' : 'only when you choose Continue with Twitch, not available in this release'}), raw chat exports, or chatter identities.
            In earlier beta builds, a beta access key is sent only to the hosted enrollment
            endpoint when you explicitly connect Protect; it is discarded after that request and is not stored
            or sent with later requests. Protect enrollment is not offered in this release. Page-context Twitch requests may
@@ -495,10 +509,16 @@ export default function Privacy() {
             recorded.
           </li>
           <li data-testid="privacy-third-party-turnstile">
-            <strong>Cloudflare Turnstile (feedback form bot check)</strong> — only on the feedback
-            form. Cloudflare processes your IP address and browser signals to tell people from bots,
+            <strong>Cloudflare Turnstile (feedback form bot check)</strong> —{' '}
+            {supporterWithdrawalEnabled() ? 'on the feedback form and online withdrawal form' : 'only on the feedback form'}.
+            Cloudflare processes your IP address and browser signals to tell people from bots,
             as described under Feedback form.
           </li>
+          {supporterWithdrawalEnabled() ? <li data-testid="privacy-third-party-withdrawal-mail">
+            <strong>Withdrawal mail service and billing inbox</strong> — receive your email address,
+            withdrawal statement, request reference and submission time to deliver the acknowledgement
+            and notify StreamPulse.
+          </li> : null}
           <li data-testid="privacy-third-party-support-mail">
             <strong>Outgoing mail service and support inbox (feedback form only)</strong> — the email
             provider StreamPulse uses to send feedback reports, and the provider that hosts
@@ -514,7 +534,7 @@ export default function Privacy() {
           </li>
           <li data-testid="privacy-third-party-twitch">
             <strong>Twitch</strong> — page context and GraphQL used to identify streams and VODs on
-            twitch.tv, and, only when you choose Continue with Twitch, Twitch's sign-in service, which
+            twitch.tv, and, {supporterChatBadgesEnabled() ? 'during the first-install check or when you choose Continue with Twitch' : 'only when you choose Continue with Twitch'}, Twitch's sign-in service, which
             confirms your Twitch user ID
             to StreamPulse. If you disconnect StreamPulse in your Twitch settings, Twitch sends
             StreamPulse a notification with your Twitch user ID, which StreamPulse uses only to sign
@@ -615,8 +635,10 @@ export default function Privacy() {
         <details className="public-more" id="pilot">
           <summary><h2>Pilot and future features</h2></summary>
           <p>
-            Extension Twitch sign-in is not available in this release. When available, the extension uses Twitch sign-in only to confirm your Twitch
-            user ID, when you choose Continue with Twitch. Protect enrollment is not offered in this release. Earlier beta enrollment
+            {supporterChatBadgesEnabled()
+              ? 'The extension uses Twitch sign-in to confirm your Twitch user ID; a fresh installation may try one silent check as described above.'
+              : 'Extension Twitch sign-in is not available in this release. When available, the extension uses Twitch sign-in only to confirm your Twitch user ID, when you choose Continue with Twitch.'}{' '}
+            Protect enrollment is not offered in this release. Earlier beta enrollment
             used a beta access key once to create a local device credential.
           </p>
           <p>

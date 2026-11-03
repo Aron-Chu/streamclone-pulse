@@ -8,6 +8,7 @@ import { discordInviteUrl } from '../../lib/discord'
 import { InstallCta } from './InstallCta'
 import { capturePublicCta } from '../../lib/productAnalytics'
 import { AnalyticsPreferences } from './AnalyticsPreferences'
+import { SUPPORTER_WITHDRAWAL_PATH, supporterWithdrawalEnabled } from '../../lib/supporterWithdrawal'
 import { PageErrorBoundary } from '../PortalErrorBoundary'
 import {
   FEEDBACK_PATH,
@@ -140,6 +141,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
               <Link to={PRIVACY_PATH}>Privacy Policy</Link>
               <Link to={TERMS_PATH}>Terms of Use</Link>
               <Link to={REFUNDS_PATH}>Cancellation &amp; Refunds</Link>
+              {supporterWithdrawalEnabled() ? <Link to={SUPPORTER_WITHDRAWAL_PATH}>Withdraw from contract here</Link> : null}
               <AnalyticsPreferences />
             </div>
           </nav>

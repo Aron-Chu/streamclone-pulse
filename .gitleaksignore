@@ -1,4 +1,8 @@
 # Reviewed gitleaks false positives (one fingerprint per line: commit:file:rule:line).
+# Deterministic UUID fixture for mocked anonymous withdrawal idempotency. It has
+# never authorized a real request or provider operation. The next commit replaces
+# it with a low-entropy, still-valid v4 UUID; retain only this historic fingerprint.
+a990ff97fa8c6c9a28ce7cd38048ff1722f33c5e:streampulse-web/tests/supporterWithdrawal.test.tsx:generic-api-key:17
 # docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json maps tracked file paths to
 # their SHA-256 content hashes. Paths such as src/background/api.ts and src/lib/sentry.ts
 # make generic-api-key and sentry-access-token match the hashes. All 32 lines were checked

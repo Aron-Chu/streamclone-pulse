@@ -36,6 +36,8 @@ import { PulseSectionCard } from './PulseSectionCard.tsx'
 import { usePulseHealth } from './usePulseHealth.ts'
 import { usePulsePreferences } from './usePulsePreferences.ts'
 import { PulseBannerControls } from './PulseBanner.tsx'
+import { CHAT_CRESTS_KEY, CHAT_PAINT_MOTION_KEY, DEFAULT_CHAT_CRESTS, DEFAULT_CHAT_PAINT_MOTION } from '../shared/chatBadges.ts'
+import { useChatBadgeListReceived } from '../options/useChatBadges.ts'
 
 type UpdateCapability = 'loading' | 'supported' | 'browser' | 'development'
 
@@ -399,6 +401,7 @@ function PulseExperienceSection({ preferences, health, supporterPerks }: { prefe
 
       <PulseSectionCard title="Appearance & placement" headingLevel={3}>
         <PulseBannerControls perks={supporterPerks} />
+        <ChatCrestToggles />
         <div className="pulse-settings-field">
           <span className="pulse-settings-label">Accent</span>
           <ChoicePicker
@@ -441,6 +444,50 @@ function PulseExperienceSection({ preferences, health, supporterPerks }: { prefe
 }
 
 /** A switch stored on its own key: loads before it can be flipped, and reverts if saving fails. */
+/** Viewer controls only appear after this build receives a verified public list. */
+export function ChatCrestToggles() {
+  const [received] = useChatBadgeListReceived()
+  const [crests, setCrests] = useState(DEFAULT_CHAT_CRESTS)
+  const [motion, setMotion] = useState(DEFAULT_CHAT_PAINT_MOTION)
+  const [saving, setSaving] = useState(false)
+  const [status, setStatus] = useState('')
+  useEffect(() => {
+    let mounted = true
+    void chrome.storage.sync.get([CHAT_CRESTS_KEY, CHAT_PAINT_MOTION_KEY]).then(stored => {
+      if (!mounted) return
+      setCrests((stored[CHAT_CRESTS_KEY] ?? DEFAULT_CHAT_CRESTS) !== false)
+      setMotion((stored[CHAT_PAINT_MOTION_KEY] ?? DEFAULT_CHAT_PAINT_MOTION) === true)
+    }).catch(() => undefined)
+    return () => { mounted = false }
+  }, [])
+  if (!received) return null
+  async function save(key: string, next: boolean, apply: (value: boolean) => void, previous: boolean) {
+    setSaving(true)
+    setStatus('')
+    apply(next)
+    try {
+      await chrome.storage.sync.set({ [key]: next })
+      setStatus('Saved')
+    } catch {
+      apply(previous)
+      setStatus('Could not save; changes were reverted.')
+    } finally {
+      setSaving(false)
+    }
+  }
+  return (
+    <div data-settings-chat-crests="true">
+      <ToggleRow id="settings-chat-crests" label="Show Supporter crests in chat"
+        hint="Show crests and name paints for Supporters who chose to be visible. The public list is downloaded without the chat name."
+        checked={crests} disabled={saving} onChange={next => save(CHAT_CRESTS_KEY, next, setCrests, crests)} />
+      <ToggleRow id="settings-chat-paint-motion" label="Animate paints in chat"
+        hint="Always still when your system asks for reduced motion."
+        checked={motion} disabled={saving || !crests} onChange={next => save(CHAT_PAINT_MOTION_KEY, next, setMotion, motion)} />
+      {status ? <span className="pulse-settings-hint" role="status">{status}</span> : null}
+    </div>
+  )
+}
+
 function StoredToggleRow({ id, label, hint, read, write }: {
   id: string
   label: string

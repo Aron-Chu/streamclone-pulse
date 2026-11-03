@@ -3,6 +3,10 @@ import releaseNotes from '../src/shared/release-notes.json'
 import { evaluateReleaseNotesGate } from '../scripts/lib/release-notes-gate.mjs'
 import { selectExtensionReleasePreview } from '../scripts/release-preview.ts'
 import { releaseLifecycleLabel } from '../src/ui/ChangelogCard.tsx'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { JSDOM } from 'jsdom'
+import { ChangelogCard, WhatsNewCard } from '../src/ui/ChangelogCard.tsx'
 
 /**
  * Release review 2026-10-09 (A-4): the 0.2.6 notes describe what ships, the store packager accepts them, and the changelog labels say
@@ -16,7 +20,8 @@ const text = (release: Entry) => [release.title, release.summary, ...(release.pr
 describe('0.2.6 release notes', () => {
   it('are released on the submission date and pass the store packaging gate', () => {
     expect(entry('0.2.6')).toMatchObject({ status: 'released', releasedAt: '2026-10-27' })
-    const gate = evaluateReleaseNotesGate({ notes: releaseNotes, version: '0.2.6', storeTarget: true })
+    const historicalNotes = { ...releaseNotes, currentVersion: '0.2.6' }
+    const gate = evaluateReleaseNotesGate({ notes: historicalNotes, version: '0.2.6', storeTarget: true })
     expect(gate.failures).toEqual([])
     expect(gate.publishable).toBe(true)
   })
@@ -104,6 +109,29 @@ describe('changelog labels', () => {
     expect(releaseLifecycleLabel({ status: 'released' }, true)).toBe('Installed')
     expect(releaseLifecycleLabel({ status: 'released' }, false)).toBe('Released')
     expect(releaseLifecycleLabel({ status: 'unreleased' }, false)).toBe('Not published')
-    expect(releases.filter(release => release.status !== 'released').map(release => release.version)).toEqual(['0.1.0'])
+    expect(releases.filter(release => release.status !== 'released').map(release => release.version)).toEqual(['0.2.7', '0.1.0'])
+  })
+})
+
+describe('0.2.7 release candidate', () => {
+  it('remains unavailable for store upload until the real submission date is recorded', () => {
+    expect(entry('0.2.7')).toMatchObject({ status: 'unreleased', releasedAt: null })
+    const gate = evaluateReleaseNotesGate({ notes: releaseNotes, version: '0.2.7', storeTarget: true })
+    expect(gate.uploadable).toBe(false)
+    expect(gate.failures).toEqual(expect.arrayContaining([expect.stringContaining('unreleased')]))
+  })
+
+  it('does not say Supporter sales are open', () => {
+    expect(text(entry('0.2.7'))).toContain('Supporter sales remain closed until launch.')
+  })
+
+  it('renders the installed candidate and preserves the published history', () => {
+    const rendered = renderToStaticMarkup(createElement(ChangelogCard, { variant: 'history', startCollapsed: true }))
+    const document = new JSDOM(rendered).window.document
+    expect([...document.querySelectorAll('.pulse-changelog-release .pulse-changelog-version')].map(node => node.textContent))
+      .toEqual(['v0.2.7', 'v0.2.6', 'v0.2.1', 'v0.1.1', 'v0.1.0'])
+    expect(document.querySelector('.pulse-changelog-lifecycle')?.textContent).toBe('Installed')
+    const whatsNew = renderToStaticMarkup(createElement(WhatsNewCard, { onSeeAll: () => {} }))
+    expect(new JSDOM(whatsNew).window.document.querySelector('[data-whatsnew] .pulse-changelog-version')?.textContent).toBe('v0.2.7')
   })
 })

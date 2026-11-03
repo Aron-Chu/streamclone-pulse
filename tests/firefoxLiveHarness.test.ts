@@ -45,7 +45,7 @@ function artifactFixture() {
   const zip = Buffer.from([0x50, 0x4b, 0x03, 0x04, 1, 2, 3])
   writeFileSync(zipPath, zip)
   const artifact = { schemaVersion: 1, localOnly: true, zipPath, sha256: createHash('sha256').update(zip).digest('hex'),
-    buildId: 'dev-2e374f22f95b-clean', target: 'firefox', version: '0.2.6', addonId: FIREFOX_ADDON_ID,
+    buildId: 'dev-2e374f22f95b-clean', target: 'firefox', version: manifest.version, addonId: FIREFOX_ADDON_ID,
     sourceRevision: '2e374f22f95b83041095e621c3462238b48cc522', manifest: structuredClone(manifest),
     zipEntries: ['manifest.json', 'extension-target.json', 'content/twitch.js', 'content/shadow.css', 'background/service-worker.js'],
     verification: { manifest: true, targetMetadata: true, bundleBuildId: true, provenance: true } }
@@ -103,7 +103,7 @@ describe('Firefox harness input boundary', () => {
   it('requires Firefox target, ID, local-only declaration and every proof', async () => {
     const f = artifactFixture()
     await expect(verifyFirefoxArtifact(f.artifactPath)).resolves.toMatchObject({ actualSha256: f.artifact.sha256 })
-    for (const change of [{ target: 'chrome' }, { addonId: 'another@example.com' }, { localOnly: false },
+    for (const change of [{ target: 'chrome' }, { version: '0.0.0' }, { addonId: 'another@example.com' }, { localOnly: false },
       { verification: { ...f.artifact.verification, provenance: false } }, { manifest: { ...f.artifact.manifest, background: { service_worker: 'background/service-worker.js' } } }]) {
       writeFileSync(f.artifactPath, JSON.stringify({ ...f.artifact, ...change }))
       await expect(verifyFirefoxArtifact(f.artifactPath)).rejects.toThrow()

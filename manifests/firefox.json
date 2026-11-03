@@ -3,7 +3,7 @@
   "name": "StreamPulse: Twitch Chat Stats & Top Moments",
   "short_name": "StreamPulse",
   "description": "See what Twitch chat reacted to: a live Pulse chart of chat and emote activity, Top Moments you can jump to, and stream recaps.",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "action": {
     "default_popup": "popup/index.html",
     "default_title": "StreamPulse"

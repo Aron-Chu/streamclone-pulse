@@ -9,6 +9,8 @@ export type MessageType =
   | 'SUPPORTER_APPEARANCE'
   | 'SUPPORTER_FINISH_INTENT'
   | 'SUPPORTER_CARD_SCRIPT'
+  | 'SUPPORTER_CHAT_BADGE'
+  | 'CHAT_BADGES'
   | 'MOMENT_FRAMES_SCRIPT'
   | 'MOMENT_PICTURE'
   | 'CATCH_ME_UP_SCRIPT'
@@ -301,6 +303,11 @@ export type BackgroundRequest =
   | { type: 'SUPPORTER_FINISH_INTENT'; finish?: 'glass' | 'etched' | 'halo' | null }
   /** Injects the quick-settings Supporter card's stage script into the sender's own Twitch tab. */
   | { type: 'SUPPORTER_CARD_SCRIPT' }
+  /** Explicit opt-in/out controls are restricted to extension pages. */
+  | { type: 'SUPPORTER_CHAT_BADGE'; action: 'status' | 'on' | 'off' }
+  | { type: 'SUPPORTER_CHAT_BADGE'; action: 'style'; wave: SupporterPaintStyle['wave'] }
+  /** A chat tab asks only for the public list and its own cached version. */
+  | { type: 'CHAT_BADGES'; have?: string }
   | { type: 'MOMENT_FRAMES_SCRIPT' }
   /** The frames script asks which pictures the worker wants from its tab, or sends one. */
   | import('./momentPictureMessages.ts').MomentPictureRequest
@@ -823,6 +830,8 @@ export type BackgroundResponse =
   | { type: 'SUPPORTER_APPEARANCE'; finish: 'glass' | 'etched' | 'halo' | null; validForMs: number; tenure?: SupporterTenure; paint?: SupporterPaintStyle; perks?: true; unverified?: true }
   | { type: 'SUPPORTER_FINISH_INTENT'; finish: 'glass' | 'etched' | 'halo' | null; setAt?: number }
   | { type: 'SUPPORTER_CARD_SCRIPT'; ok: boolean }
+  | import('./chatBadges.ts').ChatBadgesReply
+  | { type: 'SUPPORTER_CHAT_BADGE'; ok: boolean; listReceived: boolean; keysPinned?: boolean; own?: 'on' | 'off'; login?: string; error?: import('./chatBadges.ts').ChatBadgeActionError }
   | { type: 'MOMENT_FRAMES_SCRIPT'; ok: boolean }
   | { type: 'MOMENT_PICTURE'; wants?: import('./momentFramesContract.ts').MomentPictureWant[]; ok?: boolean; vod?: import('./vodPictures.ts').VodPictures | null; frame?: import('../background/vodFrameInject.ts').VodFrame | { error: string } | null }
   | { type: 'CATCH_ME_UP_SCRIPT'; ok: boolean }

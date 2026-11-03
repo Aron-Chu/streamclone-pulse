@@ -5,6 +5,8 @@ import { SAMPLE_KIT } from '../supporter/kit.ts'
 import { SupporterCosmeticControls } from './SupporterCosmeticControls.tsx'
 import { useSupporterPaintStyle } from './SupporterPaintStyleFields.tsx'
 import { SupporterJourney } from './SupporterJourney.tsx'
+import { SupporterChatBadgeControls } from './SupporterChatBadgeControls.tsx'
+import { useChatBadgeListReceived } from './useChatBadges.ts'
 
 /**
  * Account & Supporter, direction B "Your card" of the 2026-10-07 redesign:
@@ -21,6 +23,8 @@ export function SupporterAccountSection() {
   // membership on screen, which keeps the look through a failed refresh.
   const [entitlement, setEntitlement] = useState<SupporterEntitlement | null>(null)
   const [shown, setShown] = useState<SupporterEntitlement | null>(null)
+  const [chatListReceived, , chatKeysPinned] = useChatBadgeListReceived()
+  const seenInChat = chatListReceived || (chatKeysPinned && entitlement?.state === 'ready' && entitlement.chatBadge !== undefined)
   const paint = useSupporterPaintStyle()
   const savedCosmetics = useCallback((cosmetics: SupporterCosmetics) => {
     const saved = (current: SupporterEntitlement | null) => current?.state === 'ready' ? { ...current, cosmetics } : current
@@ -43,7 +47,8 @@ export function SupporterAccountSection() {
         <p>Your Supporter card, your look, and billing.</p>
       </div>
       <SupporterJourney onEntitlement={setEntitlement} onShown={setShown} look={{ finish: worn, paint: paint.style }}>
-        <SupporterCosmeticControls entitlement={entitlement} unavailable={unavailable} tenure={tenure} onSaved={savedCosmetics} />
+        <SupporterChatBadgeControls entitlement={entitlement} />
+        <SupporterCosmeticControls entitlement={entitlement} unavailable={unavailable} tenure={tenure} onSaved={savedCosmetics} seenInChat={seenInChat} />
       </SupporterJourney>
     </div>
   )

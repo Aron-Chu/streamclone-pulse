@@ -168,10 +168,9 @@ function nextLine(membership: CardMembership, current: number): ReactNode {
   if (!isKnown(membership.status)) return <>A crest starts at <b>New</b> and grows at 3, 6, 12 and 24 months.</>
   if (current < 0) return <>Your crest starts at <b>New</b> and grows at 3, 6, 12 and 24 months.</>
   if (membership.status === 'review') return <><b>{TENURES[current].title}</b> earned · on hold while your membership is reviewed</>
-  const now = <><b>{TENURES[current].title}</b> now</>
   const next = LADDER[current + 1]
-  if (!next) return <>{now} · the top crest</>
-  return <>{now} · <b>{TENURES[current + 1].title}</b> in {months(Math.max(1, next.months - membership.months))}</>
+  if (!next) return <>You have the top crest</>
+  return <>Next crest in <b>{months(Math.max(1, next.months - membership.months))}</b></>
 }
 
 /** The avatar: a neutral silhouette for nobody or an account not known yet, the StreamPulse mark for an account with no name to show. */

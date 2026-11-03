@@ -14,6 +14,8 @@ const KNOWN_MESSAGE_TYPES = new Set<string>([
   'SUPPORTER_APPEARANCE',
   'SUPPORTER_FINISH_INTENT',
   'SUPPORTER_CARD_SCRIPT',
+  'SUPPORTER_CHAT_BADGE',
+  'CHAT_BADGES',
   'MOMENT_FRAMES_SCRIPT',
   'MOMENT_PICTURE',
   'CATCH_ME_UP_SCRIPT',
@@ -348,6 +350,18 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
       if (Object.keys(raw).some(key => key !== 'type' && key !== 'finish')) return null
       if (!('finish' in raw)) return { type }
       return raw.finish === null || raw.finish === 'glass' || raw.finish === 'etched' || raw.finish === 'halo' ? { type, finish: raw.finish } : null
+    case 'SUPPORTER_CHAT_BADGE': {
+      const keys = Object.keys(raw)
+      if (raw.action === 'status' || raw.action === 'on' || raw.action === 'off') return keys.length === 2 ? { type, action: raw.action } : null
+      if (raw.action !== 'style' || keys.length !== 3) return null
+      return raw.wave === 'smooth' || raw.wave === 'ripple' || raw.wave === 'chrome' || raw.wave === 'aurora' ? { type, action: 'style', wave: raw.wave } : null
+    }
+    case 'CHAT_BADGES': {
+      const keys = Object.keys(raw)
+      if (keys.some(key => key !== 'type' && key !== 'have')) return null
+      if (raw.have === undefined) return { type }
+      return typeof raw.have === 'string' && /^[0-9]{1,16}\.[0-9]{1,16}$/.test(raw.have) ? { type, have: raw.have } : null
+    }
     case 'SUPPORTER_ENTITLEMENT':
     case 'SUPPORTER_APPEARANCE':
     // No file, tab or frame comes from the caller: the worker injects one fixed script into the sender's own frame.
