@@ -9,7 +9,7 @@
  * it is 32 bytes of 0x07, the same fixed test seed the backend golden uses, so
  * it must never be pinned by a store build (tests/chatBadgeKeys.test.ts).
  */
-export const E2E_CHAT_BADGE_KEY = Object.freeze({ kid: 'spb-sandbox-7', key: '6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw' })
+export const E2E_CHAT_BADGE_KEY = Object.freeze({ kid: 'spb-sandbox-7', key: '6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw' }) // gitleaks:allow (public verification key of the published 0x07 test seed)
 
 const KID = /^spb-(live|sandbox)-[0-9]{1,4}$/
 const KEY = /^[A-Za-z0-9_-]{43}$/

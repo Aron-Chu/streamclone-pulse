@@ -65,3 +65,8 @@ bc6f9a4f8802104983fa21a266a38d8566dbfa45:src/shared/momentArrival.ts:generic-api
 0732b10e9507c2d01fd5ab967765b7dfed93d53d:streampulse-web/tests/twitchFollowsCallback.test.ts:generic-api-key:17
 0732b10e9507c2d01fd5ab967765b7dfed93d53d:streampulse-web/tests/twitchFollowsCallback.test.ts:generic-api-key:77
 0732b10e9507c2d01fd5ab967765b7dfed93d53d:streampulse-web/tests/twitchFollowsCallback.test.ts:generic-api-key:78
+# scripts/chat-badge-keys.mjs line 12 is the Ed25519 public verification key derived from
+# the published e2e seed (32 bytes of 0x07). It verifies lists only and is never pinned by
+# a store build. Checked by re-deriving it from the seed (2026-11-03). Later commits carry
+# an inline gitleaks:allow on that line.
+b2d83f94e41c1391adef17905bd8613780ff5dff:scripts/chat-badge-keys.mjs:generic-api-key:12
