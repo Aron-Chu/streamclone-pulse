@@ -9,7 +9,7 @@ vi.mock('../src/hooks/useMomentProfiles', () => ({ useMomentProfiles: (rows: unk
 vi.mock('../src/ui/components/analytics/AnalyticsFigmaShell', () => ({ AnalyticsFigmaShell: ({ children }: { children: React.ReactNode }) => <>{children}</> }))
 // One stable hub result: a fresh object per render would re-run the feed effects forever.
 const { hub } = vi.hoisted(() => ({ hub: {
-  data: { generatedAt: new Date().toISOString(), livePulseMoments: [{ login: 'xqc', displayName: 'xQc', streamId: 's1', offsetSeconds: 60,
+  data: { generatedAt: new Date().toISOString(), livePulseMoments: [{ login: 'xqc', displayName: 'xQc', streamId: 's1', offsetSeconds: 660,
     label: 'Chat spike', kind: 'chat_spike', chatPerMin: 200, emotesPerMin: 40, category: 'Just Chatting', at: Date.now() - 60_000, score: 80 }] },
   loading: false, refreshing: false, error: null, loadSource: 'network', hubEndpointOk: true, refresh: () => {},
 } }))
@@ -54,7 +54,7 @@ it('keeps Latest creator links on the stream console while History is hidden', a
   await passIdleTime()
   expect(screen.getByRole('tab', { name: 'Latest' }).getAttribute('aria-selected')).toBe('true')
   expect(screen.queryByRole('link', { name: 'History' })).toBeNull()
-  expect(screen.getByText(/A detection may be older than the chart range\.$/)).toBeTruthy()
+  expect(screen.getByText(/A detection may be older than the chart range\. It leaves out a stream’s first 5 minutes and minutes under 1\.2× the stream’s earlier average\.$/)).toBeTruthy()
   expect(screen.getByRole('link', { name: 'All xQc broadcasts' }).getAttribute('href')).toBe('/analytics/xqc')
 })
 

@@ -97,3 +97,11 @@ describe('route smoke', () => {
     expect(screen.getByTestId('pathname').textContent).toBe(path)
   })
 })
+
+describe('clip addresses without the clip page', () => {
+  it.each(['/analytics/clips/BraveClipSlug-abc_1', '/analytics/clips'])('%s is not found, never a channel named "clips"', async path => {
+    renderPath(path)
+    expect(await screen.findByTestId('not-found')).toBeTruthy()
+    expect(screen.queryByRole('main', { name: 'Stream page' })).toBeNull()
+  })
+})
