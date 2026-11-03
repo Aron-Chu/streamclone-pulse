@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { InstallCta } from '../../ui/components/InstallCta'
 import { buildTwitchTimestampLink, type TimestampLinkResult } from '../../lib/twitchTimestampLink'
+import { captureTimestampLinkBuilt } from '../../lib/productAnalytics'
+import { TimestampToolFeedback } from '../../ui/components/TimestampToolFeedback'
 import './growth-guides.css'
 
 export default function TwitchTimestampTool() {
@@ -10,6 +12,8 @@ export default function TwitchTimestampTool() {
   const [timestamp, setTimestamp] = useState('')
   const [result, setResult] = useState<TimestampLinkResult | null>(null)
   const [copyStatus, setCopyStatus] = useState('')
+  const [hasCopied, setHasCopied] = useState(false)
+  const copyButton = useRef<HTMLButtonElement>(null)
   const videoInput = useRef<HTMLInputElement>(null)
   const timeInput = useRef<HTMLInputElement>(null)
   const output = useRef<HTMLInputElement>(null)
@@ -19,6 +23,7 @@ export default function TwitchTimestampTool() {
     copyGeneration.current += 1
     const next = buildTwitchTimestampLink(video, timestamp)
     setResult(next); setCopyStatus('')
+    if (next.ok) captureTimestampLinkBuilt()
     if (!next.ok) (next.field === 'video' ? videoInput : timeInput).current?.focus()
   }
   function change(set: (value: string) => void, value: string) { copyGeneration.current += 1; set(value); setResult(null); setCopyStatus('') }
@@ -28,7 +33,7 @@ export default function TwitchTimestampTool() {
     try {
       if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable')
       await navigator.clipboard.writeText(result.url)
-      if (generation === copyGeneration.current) setCopyStatus('Link copied.')
+      if (generation === copyGeneration.current) { setCopyStatus('Link copied.'); setHasCopied(true) }
     } catch {
       if (generation !== copyGeneration.current) return
       output.current?.focus(); output.current?.select()
@@ -58,11 +63,12 @@ export default function TwitchTimestampTool() {
       <h2>Your link starts at {result.displayTime}</h2>
       <label htmlFor="timestamp-result">Timestamped Twitch link</label>
       <input ref={output} id="timestamp-result" readOnly value={result.url} onFocus={event => event.currentTarget.select()} />
-      <div className="public-document__actions"><button type="button" className="btn btn-secondary" onClick={copy}>Copy link</button>
+      <div className="public-document__actions"><button ref={copyButton} type="button" className="btn btn-secondary" onClick={copy}>Copy link</button>
         <a className="btn btn-secondary" href={result.url} target="_blank" rel="noopener noreferrer">Open on Twitch</a></div>
       <p role="status">{copyStatus}</p>
       <p>A correctly formatted link can still point to a deleted, unpublished, subscriber-only, or shorter video. Open it on Twitch to verify it before sharing.</p>
     </section> : null}
+    {hasCopied ? <TimestampToolFeedback returnFocus={() => (copyButton.current ?? videoInput.current)?.focus()} /> : null}
     <h2>Which timestamp should I enter?</h2>
     <p>Use the elapsed time shown in the Twitch VOD player. For example, 1:23:45 is 5,025 seconds after the replay starts. A wall-clock time such as “8:15 pm” does not identify a replay position.</p>
     <p>If you found a moment in StreamPulse, use its verified replay action when available. Broadcast time and VOD time can have an offset; this builder does not calculate that alignment.</p>

@@ -7,13 +7,13 @@ vi.mock('../src/generated/recap-page-paths.json', () => ({ default: [
 ] }))
 
 const transport = vi.hoisted(() => ({
-  clients: [] as { capturePage: ReturnType<typeof vi.fn>; captureCta: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn> }[],
+  clients: [] as { capturePage: ReturnType<typeof vi.fn>; captureCta: ReturnType<typeof vi.fn>; captureTimestampLinkBuilt: ReturnType<typeof vi.fn>; openTimestampFeedback: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn> }[],
   loaded: vi.fn(),
 }))
 vi.mock('../src/lib/productAnalyticsCapture', () => {
   transport.loaded()
   return { createPublicCaptureClient: () => {
-    const client = { capturePage: vi.fn(), captureCta: vi.fn(), stop: vi.fn() }
+    const client = { capturePage: vi.fn(), captureCta: vi.fn(), captureTimestampLinkBuilt: vi.fn(), openTimestampFeedback: vi.fn().mockResolvedValue(null), stop: vi.fn() }
     transport.clients.push(client)
     return client
   } }
@@ -50,8 +50,8 @@ describe('public product analytics consent boundary', () => {
     expect(analytics.publicPageCategory('/guides/unreviewed')).toBeNull()
   })
 
-  it('requires a new choice after the old excluded-page consent scope', async () => {
-    localStorage.setItem('sp.websiteAnalytics.v1', 'allowed')
+  it.each(['sp.websiteAnalytics.v1', 'sp.websiteAnalytics.v2', 'sp.websiteAnalytics.v3'])('requires a new choice after consent scope %s', async oldKey => {
+    localStorage.setItem(oldKey, 'allowed')
     window.history.replaceState({}, '', '/analytics/fixturechan/12345')
     analytics.setProductAnalyticsRoute()
     await Promise.resolve()
@@ -59,7 +59,45 @@ describe('public product analytics consent boundary', () => {
     expect(transport.clients).toHaveLength(0)
     await allow()
     expect(transport.clients[0]!.capturePage).toHaveBeenLastCalledWith('stream_recap')
-    localStorage.removeItem('sp.websiteAnalytics.v1')
+    localStorage.removeItem(oldKey)
+  })
+
+  it('admits tool completion only on the opted-in tool and stops after withdrawal or navigation', async () => {
+    analytics.captureTimestampLinkBuilt()
+    window.history.replaceState({}, '', '/tools/twitch-vod-timestamp-link?private=secret#private')
+    await allow()
+    const client = transport.clients[0]!
+    analytics.captureTimestampLinkBuilt()
+    expect(client.captureTimestampLinkBuilt).toHaveBeenCalledExactlyOnceWith()
+    window.history.replaceState({}, '', '/account/billing')
+    analytics.captureTimestampLinkBuilt()
+    expect(client.captureTimestampLinkBuilt).toHaveBeenCalledTimes(1)
+    window.history.replaceState({}, '', '/tools/twitch-vod-timestamp-link')
+    analytics.setAnalyticsPreference('declined')
+    analytics.captureTimestampLinkBuilt()
+    expect(client.captureTimestampLinkBuilt).toHaveBeenCalledTimes(1)
+  })
+
+  it('admits feedback lookup only with current tool consent and a live request', async () => {
+    const controller = new AbortController()
+    expect(await analytics.openTimestampFeedback(controller.signal)).toBeNull()
+    window.history.replaceState({}, '', '/tools/twitch-vod-timestamp-link')
+    await allow()
+    await analytics.openTimestampFeedback(controller.signal)
+    expect(transport.clients[0]!.openTimestampFeedback).toHaveBeenCalledOnce()
+    controller.abort()
+    await analytics.openTimestampFeedback(controller.signal)
+    window.history.replaceState({}, '', '/account/sign-in')
+    await analytics.openTimestampFeedback(new AbortController().signal)
+    expect(transport.clients[0]!.openTimestampFeedback).toHaveBeenCalledOnce()
+  })
+
+  it.each(['gpc', 'dnt'])('blocks tool completion when %s changes after consent', async signal => {
+    window.history.replaceState({}, '', '/tools/twitch-vod-timestamp-link')
+    await allow()
+    Object.defineProperty(navigator, signal === 'gpc' ? 'globalPrivacyControl' : 'doNotTrack', { configurable: true, value: signal === 'gpc' ? true : '1' })
+    analytics.captureTimestampLinkBuilt()
+    expect(transport.clients[0]!.captureTimestampLinkBuilt).not.toHaveBeenCalled()
   })
 
   it('counts consecutive approved recaps separately without sending their paths', async () => {

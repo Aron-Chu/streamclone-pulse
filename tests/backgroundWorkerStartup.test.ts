@@ -17,6 +17,7 @@ const chunks = JSON.parse(fs.readFileSync(0, 'utf8'));
 const trace = [];
 const errors = [];
 const installed = [];
+const messageListeners = [];
 const storage = { sync: { watchlist: ['testchannel'] }, local: {}, session: {} };
 const event = () => ({ addListener() {} });
 const area = name => ({
@@ -38,7 +39,7 @@ const chrome = {
   runtime: {
     id: 'test-extension',
     getURL: file => 'chrome-extension://test-extension/' + file,
-    onMessage: event(), onStartup: event(),
+    onMessage: { addListener(listener) { messageListeners.push(listener); } }, onStartup: event(),
     onInstalled: { addListener(listener) { installed.push(listener); } },
     async sendMessage() {},
   },
@@ -80,7 +81,17 @@ for (const reason of ['install', 'update']) {
   await settle();
   installTraces[reason] = [...trace];
 }
-console.log(JSON.stringify({ startupTrace, installTraces, errors, local: storage.local }));
+const send = (message, sender) => new Promise(resolve => messageListeners[0](message, sender, resolve));
+const consentKey = 'pulse-analytics-consent-v1';
+storage.local[consentKey] = { schemaVersion: 1, granted: true, updatedAt: 1 };
+const twitch = { id: 'test-extension', frameId: 0, tab: { url: 'https://www.twitch.tv/testchannel' } };
+const options = { id: 'test-extension', url: 'chrome-extension://test-extension/options/index.html' };
+const twitchWithdrawal = await send({ type: 'SET_ANALYTICS_CONSENT', granted: false }, twitch);
+const afterTwitch = storage.local[consentKey];
+const optionsWithdrawal = await send({ type: 'SET_ANALYTICS_CONSENT', granted: false }, options);
+const afterOptions = storage.local[consentKey] ?? null;
+const disabledGrant = await send({ type: 'SET_ANALYTICS_CONSENT', granted: true }, options);
+console.log(JSON.stringify({ startupTrace, installTraces, errors, local: storage.local, twitchWithdrawal, afterTwitch, optionsWithdrawal, afterOptions, disabledGrant }));
 `
 
 it('the built worker starts without import(), syncs the watchlist on install and update, and leaves storage access levels alone', async () => {
@@ -118,4 +129,9 @@ it('the built worker starts without import(), syncs the watchlist on install and
     expect(observed.installTraces[reason], reason).toEqual(['read-watchlist', 'write-protect-state'])
   }
   expect(observed.local.protectSyncState.channels.testchannel.state).toBe('unauthorized')
+  expect(observed.twitchWithdrawal).toEqual({ error: 'unauthorized_sender' })
+  expect(observed.afterTwitch.granted).toBe(true)
+  expect(observed.optionsWithdrawal).toEqual({ ok: true })
+  expect(observed.afterOptions).toBeNull()
+  expect(observed.disabledGrant).toEqual({ ok: false, error: 'analytics_disabled' })
 }, 30_000)

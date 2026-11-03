@@ -10,11 +10,12 @@ import type { HubLiveChannel } from '../../../../lib/publicHub'
 import { InstallCta } from '../../InstallCta'
 import { HubV5Icon } from './HubV5Icon'
 import { HubV5SearchBox } from './HubV5SearchBox'
+import type { HubSearchEmote, HubSearchGame } from './hubV5Model'
 import { useHubV5Search, useHubV5SearchStore } from './hubV5SearchStore'
 
 const LEAVE_MS = 200
 
-export function HubV5DockSearch({ live }: { live: readonly HubLiveChannel[] }) {
+export function HubV5DockSearch({ live, games, emotes }: { live: readonly HubLiveChannel[]; games?: readonly HubSearchGame[]; emotes?: readonly HubSearchEmote[] }) {
   const store = useHubV5SearchStore()
   const docked = useHubV5Search((s) => s.docked)
   const [open, setOpen] = useState(false)
@@ -50,7 +51,7 @@ export function HubV5DockSearch({ live }: { live: readonly HubLiveChannel[] }) {
       <button
         type="button"
         className="hv5-dock-btn"
-        aria-label="Search channels"
+        aria-label="Search streamers or games"
         aria-expanded={open}
         hidden={!docked}
         onClick={() => {
@@ -79,7 +80,7 @@ export function HubV5DockSearch({ live }: { live: readonly HubLiveChannel[] }) {
           }, LEAVE_MS)
         }}
       >
-        <HubV5SearchBox live={live} variant="dock" />
+        <HubV5SearchBox live={live} variant="dock" games={games} emotes={emotes} />
       </div>
     </>
   )
