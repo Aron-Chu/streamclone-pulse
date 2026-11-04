@@ -27,12 +27,12 @@ for (const surface of ['offline', 'vod'] as const) {
     await expect(save).toHaveAttribute('data-moment-save-state', 'saved')
     await expect(save).toHaveAttribute('aria-pressed', 'true')
     const toast = root.locator('.pulse-bookmark-toast')
-    await expect(toast).toContainText('Saved on this device')
+    await expect(toast).toContainText('Saved at')
     await expect(root.locator('[data-moment-action="connect-account"]')).toHaveCount(0)
-    // The same icon removes it, and Undo puts it back.
+    // The same button removes it, and Undo puts it back.
     await save.click()
     await expect(save).toHaveAttribute('data-moment-save-state', 'ready')
-    await expect(toast).toContainText('Removed bookmark at')
+    await expect(toast).toContainText('Removed at')
     await toast.locator('[data-bookmark-toast-action="undo"]').click()
     await expect(save).toHaveAttribute('data-moment-save-state', 'saved')
     const opened = extension.context.waitForEvent('page')
