@@ -15,7 +15,8 @@ vi.mock('../src/lib/twitchFollows', () => ({
 }))
 
 const second = rawNativeClip({ id: 'Second', url: 'https://clips.twitch.tv/Second', title: 'The comeback', views: null, vod: null, game: null,
-  channel: { id: '2', login: 'kaicenat', displayName: 'KaiCenat', profileImageUrl: '' } })
+  channel: { id: '2', login: 'kaicenat', displayName: 'KaiCenat', profileImageUrl: '' },
+  reaction: { chatLift: 3, emoteLift: 2.4, chatters: 95, largestShare: 0.1, topEmote: { name: 'KEKW', count: 140 } } })
 
 let where = ''
 function Where() {
@@ -55,6 +56,8 @@ describe('Clips library', () => {
     renderAt()
     const card = await screen.findByRole('link', { name: /Chat loses it/ })
     expect(card.getAttribute('href')).toBe('/analytics/clips/BraveClipSlug-abc_1')
+    expect(within(card).getByText('Chat 6.2× faster, 412+ chatters')).toBeTruthy()
+    expect(within(card).getByText('Chat loses it')).toBeTruthy()
     expect(screen.getAllByRole('listitem')).toHaveLength(2)
     expect(within(card).getByText(/1\.2K views/)).toBeTruthy()
     expect(within(card).getByText('Ju')).toBeTruthy()
@@ -153,29 +156,31 @@ describe('A clip’s own page', () => {
     renderAt()
     fireEvent.click(await screen.findByRole('link', { name: /Chat loses it/ }))
     expect(where).toBe('/analytics/clips/BraveClipSlug-abc_1')
-    expect(screen.getByRole('heading', { level: 1, name: 'Chat loses it' })).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 1, name: 'Chat 6.2× faster, 412+ chatters' })).toBeTruthy()
+    expect(screen.getByText('On Twitch: Chat loses it')).toBeTruthy()
     expect(screen.getByRole('link', { name: /Watch on Twitch/ }).getAttribute('href')).toBe('https://clips.twitch.tv/BraveClipSlug-abc_1')
     expect(screen.getByRole('link', { name: /Watch in the VOD/ }).getAttribute('href')).toBe('https://www.twitch.tv/videos/2100000000?t=1h2m5s')
     expect(screen.getByRole('link', { name: 'See clips from this game' }).getAttribute('href')).toBe('/analytics/moments?view=clips&game=509658&period=30d')
     const upNext = screen.getByRole('complementary', { name: 'Up next' })
-    expect(within(upNext).getByRole('link', { name: /The comeback/ })).toBeTruthy()
+    expect(within(upNext).getByRole('link', { name: /KEKW flood/ })).toBeTruthy()
     expect(document.querySelector('iframe')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Play clip' }))
     const src = new URL(document.querySelector('iframe')!.getAttribute('src')!)
     expect(src.origin + src.pathname).toBe('https://clips.twitch.tv/embed')
     expect(src.searchParams.get('parent')).toBe(window.location.hostname)
     expect(calls).toHaveLength(1)
-    fireEvent.click(within(upNext).getByRole('link', { name: /The comeback/ }))
-    expect(screen.getByRole('heading', { level: 1, name: 'The comeback' })).toBeTruthy()
+    fireEvent.click(within(upNext).getByRole('link', { name: /KEKW flood/ }))
+    expect(screen.getByRole('heading', { level: 1, name: 'KEKW flood: chat 3× faster, 95+ chatters' })).toBeTruthy()
+    expect(screen.getByText(/KEKW/, { selector: '.nc-facts .nc-strong' }).closest('li')?.textContent).toBe("KEKW was chat's top emote then, used 140 times")
     expect(document.querySelector('iframe')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Back' }))
-    await screen.findByRole('heading', { level: 1, name: 'Chat loses it' })
+    await screen.findByRole('heading', { level: 1, name: 'Chat 6.2× faster, 412+ chatters' })
   })
 
   it('reads a shared link by id', async () => {
     const calls = stubClipsFetch({ body: nativeClipsPage([rawNativeClip()]) })
     renderAt('/analytics/clips/BraveClipSlug-abc_1')
-    await screen.findByRole('heading', { level: 1, name: 'Chat loses it' })
+    await screen.findByRole('heading', { level: 1, name: 'Chat 6.2× faster, 412+ chatters' })
     expect(new URL(calls[0].url).searchParams.get('ids')).toBe('BraveClipSlug-abc_1')
     expect(screen.getByRole('link', { name: 'All clips' }).getAttribute('href')).toBe('/analytics/moments?view=clips')
   })

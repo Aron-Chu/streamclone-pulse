@@ -29,6 +29,9 @@ export interface NativeClipChannel {
 
 export interface NativeClipGame { id: string; name: string; boxArtUrl: string }
 
+/** count is every use in the reaction's whole minutes. */
+export interface NativeClipEmote { name: string; count: number }
+
 export interface NativeClip {
   /** Twitch's clip id (its slug). */
   id: string
@@ -47,8 +50,11 @@ export interface NativeClip {
   views: { count: number; checkedAt: number } | null
   /** offsetSeconds is null until Twitch places the clip in the VOD. */
   vod: { videoId: string; offsetSeconds: number | null } | null
-  /** How chat reacted when the clip was made, against that stream's usual pace. */
-  reaction: { chatLift: number; emoteLift: number; chatters: number; largestShare: number }
+  /**
+   * How chat reacted when the clip was made, against that stream's usual pace.
+   * topEmote is the emote chat used most in the reaction's minutes, or null.
+   */
+  reaction: { chatLift: number; emoteLift: number; chatters: number; largestShare: number; topEmote: NativeClipEmote | null }
   /** false once Twitch no longer has the clip (only a saved-clips lookup sends these). */
   available: boolean
 }
@@ -153,9 +159,40 @@ export function toNativeClip(value: unknown): NativeClip | null {
       profileImageUrl: twitchImage(channel.profileImageUrl, new Set(['static-cdn.jtvnw.net'])) },
     game, views, vod,
     reaction: { chatLift: reaction.chatLift, emoteLift: reaction.emoteLift, chatters: Math.max(0, Math.round(reaction.chatters)),
-      largestShare: Math.min(1, Math.max(0, reaction.largestShare)) },
+      largestShare: Math.min(1, Math.max(0, reaction.largestShare)), topEmote: topEmote(reaction.topEmote) },
     available: value.available,
   }
+}
+
+/** The reaction's top emote, or null: a malformed one is dropped, not the clip. */
+function topEmote(v: unknown): NativeClipEmote | null {
+  return record(v) && plain(v.name, 100) && v.name.trim() && finite(v.count) && v.count >= 1
+    ? { name: v.name.trim(), count: Math.round(v.count) } : null
+}
+
+/** Uses, and emote pace against the stream's usual, before a headline calls the top emote a flood. */
+const FLOOD_USES = 10
+const FLOOD_EMOTE_LIFT = 1.5
+
+/** 4.1, 4 (not 4.0), and whole numbers from 10 up. */
+const liftText = (lift: number) => lift >= 10 ? String(Math.round(lift)) : lift.toFixed(1).replace(/\.0$/, '')
+
+/**
+ * StreamPulse's title for a clip, built from how chat reacted: "KEKW flood:
+ * chat 4.1× faster, 2,300+ chatters". Twitch's own title (often the stream's
+ * title, the same for every clip of a stream) stays in `title` and is shown
+ * under it. Chatters is a lower bound, hence the "+". With nothing to say, it
+ * is Twitch's title.
+ */
+export function clipHeadline(clip: Pick<NativeClip, 'title' | 'reaction'>): string {
+  const r = clip.reaction
+  const facts: string[] = []
+  if (r.chatLift >= 1.1) facts.push(`chat ${liftText(r.chatLift)}× faster`)
+  if (r.chatters >= 2) facts.push(`${r.chatters.toLocaleString()}+ chatters`)
+  const emote = r.topEmote && r.topEmote.count >= FLOOD_USES && r.emoteLift >= FLOOD_EMOTE_LIFT ? r.topEmote.name : null
+  if (!facts.length) return emote ? `${emote} flood in chat` : clip.title
+  const text = facts.join(', ')
+  return emote ? `${emote} flood: ${text}` : text[0].toUpperCase() + text.slice(1)
 }
 
 const facets = (v: unknown): NativeClipFacet[] => Array.isArray(v)

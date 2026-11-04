@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  clipEmbedSrc, clipVodHref, clipsNotOn, loadNativeClips, lookupNativeClips, nativeClipsSearch, toNativeClip,
+  clipEmbedSrc, clipHeadline, clipVodHref, clipsNotOn, loadNativeClips, lookupNativeClips, nativeClipsSearch, toNativeClip,
 } from '../src/lib/nativeClips'
 import { clipListKey, clipListQueryFromKey } from '../src/lib/nativeClipsList'
 import { normalizeApiError } from '../src/lib/apiClient'
@@ -61,6 +61,54 @@ describe('toNativeClip', () => {
     expect(toNativeClip(rawClip({ game: { id: '509658', name: 'Just Chatting', boxArtUrl: 'https://static-cdn.jtvnw.net/ttv-boxart/27471-144x192.jpg' } }))?.game?.boxArtUrl).toBe('')
     expect(toNativeClip(rawClip({ game: { id: '509658', name: 'Just Chatting', boxArtUrl: 'https://example.com/509658-144x192.jpg' } }))?.game?.boxArtUrl).toBe('')
     expect(toNativeClip(rawClip())?.game).toEqual({ id: '509658', name: 'Just Chatting', boxArtUrl: '' })
+  })
+})
+
+describe('a clip’s top emote', () => {
+  const reaction = { chatLift: 6.2, emoteLift: 3.1, chatters: 412, largestShare: 0.04 }
+
+  it('keeps the top emote, and reads a missing one as none', () => {
+    expect(toNativeClip(rawClip({ reaction: { ...reaction, topEmote: { name: ' KEKW ', count: 312.4 } } }))?.reaction.topEmote).toEqual({ name: 'KEKW', count: 312 })
+    expect(toNativeClip(rawClip())?.reaction.topEmote).toBeNull()
+    expect(toNativeClip(rawClip({ reaction: { ...reaction, topEmote: null } }))?.reaction.topEmote).toBeNull()
+  })
+
+  it.each([
+    ['no name', { name: '', count: 5 }],
+    ['a control character', { name: `KE${String.fromCharCode(7)}KW`, count: 5 }],
+    ['a name over 100 characters', { name: 'K'.repeat(101), count: 5 }],
+    ['no uses', { name: 'KEKW', count: 0 }],
+    ['a count that is not a number', { name: 'KEKW', count: 'lots' }],
+    ['a list', ['KEKW']],
+  ])('drops a top emote with %s but keeps the clip', (_, topEmote) => {
+    const clip = toNativeClip(rawClip({ reaction: { ...reaction, topEmote } }))
+    expect(clip).not.toBeNull()
+    expect(clip?.reaction.topEmote).toBeNull()
+  })
+})
+
+describe('clipHeadline', () => {
+  const headline = (reaction: Record<string, unknown>, title = 'Day 4 ranked grind') =>
+    clipHeadline(toNativeClip(rawClip({ title, reaction: { chatLift: 4.1, emoteLift: 3, chatters: 2300, largestShare: 0.05, topEmote: null, ...reaction } }))!)
+
+  it('names a flood of the top emote, then chat pace and chatters', () => {
+    expect(headline({ topEmote: { name: 'KEKW', count: 312 } })).toBe('KEKW flood: chat 4.1× faster, 2,300+ chatters')
+  })
+
+  it('leaves the emote out when it was used little or emotes did not speed up', () => {
+    expect(headline({ topEmote: { name: 'KEKW', count: 9 } })).toBe('Chat 4.1× faster, 2,300+ chatters')
+    expect(headline({ emoteLift: 1.4, topEmote: { name: 'KEKW', count: 312 } })).toBe('Chat 4.1× faster, 2,300+ chatters')
+  })
+
+  it('writes 4 for 4.0 and whole numbers from 10 up', () => {
+    expect(headline({ chatLift: 4.04 })).toBe('Chat 4× faster, 2,300+ chatters')
+    expect(headline({ chatLift: 12.6 })).toBe('Chat 13× faster, 2,300+ chatters')
+  })
+
+  it('says only what holds, and falls back to Twitch’s title', () => {
+    expect(headline({ chatLift: 1, chatters: 1, topEmote: { name: 'LUL', count: 40 } })).toBe('LUL flood in chat')
+    expect(headline({ chatLift: 1.05 })).toBe('2,300+ chatters')
+    expect(headline({ chatLift: 1, chatters: 0 })).toBe('Day 4 ranked grind')
   })
 })
 

@@ -232,7 +232,7 @@ describe('Clip reviews and comments on the page', () => {
   it('shows nothing of reviews while they are switched off, and offers Try again on an outage', async () => {
     serve({})
     renderPage()
-    await screen.findByRole('heading', { level: 1, name: 'Chat loses it' })
+    await screen.findByRole('heading', { level: 1, name: 'Chat 6.2× faster, 412+ chatters' })
     await act(async () => {})
     expect(screen.queryByRole('button', { name: /Worth watching/ })).toBeNull()
     expect(screen.queryByText(/comments/)).toBeNull()
