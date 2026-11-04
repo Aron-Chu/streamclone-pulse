@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { clipPagePath, type NativeClip } from '../../../lib/nativeClips'
+import { clipHeadline, clipPagePath, type NativeClip } from '../../../lib/nativeClips'
 import { ChannelAvatar, ClipThumb, SaveClipButton, formatAgo, viewsLabel } from './NativeClipParts'
 
 /** What a clip's page is told about where it was opened from. */
@@ -8,8 +8,9 @@ export interface ClipLinkState { from?: string; clip?: NativeClip }
 
 /**
  * One clip as a link to its page: the picture with its game's box art, then
- * the channel's picture beside a two-line title, the channel, and one number
- * with the clip's age. `row` is the narrower Up next layout.
+ * the channel's picture beside StreamPulse's two-line headline, Twitch's own
+ * title on one line, the channel, and one number with the clip's age. `row`
+ * is the narrower Up next layout, without Twitch's title.
  */
 export function ClipCard({ clip, from, variant = 'grid', navIndex, onStatus, number }: {
   clip: NativeClip
@@ -24,13 +25,15 @@ export function ClipCard({ clip, from, variant = 'grid', navIndex, onStatus, num
 }) {
   const state: ClipLinkState = { from, clip }
   const row = variant === 'row'
+  const headline = clipHeadline(clip)
   return (
     <article className="nc-card" data-variant={variant} role="listitem">
       <Link className="nc-card-hit" to={clipPagePath(clip.id)} state={state} data-nav={navIndex == null ? undefined : ''} tabIndex={navIndex == null ? undefined : navIndex === 0 ? 0 : -1}>
         <ClipThumb clip={clip} art={row ? 's' : 'm'} />
         {row ? null : <ChannelAvatar channel={clip.channel} size={36} />}
         <span className="nc-card-text">
-          <span className="nc-card-title">{clip.title}</span>
+          <span className="nc-card-title">{headline}</span>
+          {row || headline === clip.title ? null : <span className="nc-card-twitch">{clip.title}</span>}
           <span className="nc-card-channel">{clip.channel.displayName}</span>
           <span className="nc-card-meta">
             {number ?? viewsLabel(clip)}
