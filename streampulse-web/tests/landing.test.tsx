@@ -90,15 +90,16 @@ function stubWideScreen(wide: boolean) {
 }
 
 describe('landing page', () => {
-  it('is the hero with search and the demo, nothing else (Aron, F2, 2026-11-02)', async () => {
+  it('keeps the search and demo with the requested streamer chat stats links', async () => {
     renderLanding()
     await screen.findByRole('heading', { name: /actually reacted to/i })
 
-    // One search, in the hero: the page ends with the demo, then the footer (D1, 11-02).
+    // Keep one search; the streamer directory follows the demo (Aron, 11-03).
     expect(screen.getAllByRole('search')).toHaveLength(1)
     expect(screen.getAllByRole('combobox', { name: /search streamers or games/i })).toHaveLength(1)
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
       expect.stringMatching(/see it beside twitch chat/i),
+      'Twitch chat stats by streamer',
     ])
     expect(screen.queryByRole('heading', { name: 'Look up a streamer' })).toBeNull()
     expect(document.querySelector('[data-cta="chrome-install-closing"]')).toBeNull()
