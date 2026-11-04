@@ -16,6 +16,7 @@ import { BrandMark } from '../../ui/components/BrandMark'
 import { DiscordMark } from '../../ui/components/DiscordMark'
 import { InstallCta } from '../../ui/components/InstallCta'
 import { AnalyticsPreferences } from '../../ui/components/AnalyticsPreferences'
+import { StreamerChatStats } from '../../ui/components/StreamerChatStats'
 import { FEEDBACK_PATH, GITHUB_REPO_URL, PRIVACY_PATH, REFUNDS_PATH, SUPPORTER_PATH, TERMS_PATH } from '../../lib/externalLinks'
 import { discordInviteUrl } from '../../lib/discord'
 import { capturePublicCta } from '../../lib/productAnalytics'
@@ -23,7 +24,7 @@ import type { HubLiveChannel } from '../../lib/publicHub'
 // The hub's own search: the same suggestions and Enter rules, styled for this page in landing.css.
 import { HubV5SearchBox } from '../../ui/components/hub/v5/HubV5SearchBox'
 import { HubV5Avatar } from '../../ui/components/hub/v5/HubV5Avatar'
-import { channelHref, channelsByViewers, formatHubInt } from '../../ui/components/hub/v5/hubV5Model'
+import { channelHref, channelsByViewers, formatHubInt, hubCategoryArt, hubSearchEmotes, hubSearchGames, whereChatIs, type HubSearchEmote, type HubSearchGame } from '../../ui/components/hub/v5/hubV5Model'
 import { createHubV5SearchStore, HubV5SearchContext, useHubV5SearchStore } from '../../ui/components/hub/v5/hubV5SearchStore'
 
 const ExtensionShowcase = lazy(() => import('../../ui/components/landing/ExtensionShowcase').then(module => ({ default: module.ExtensionShowcase })))
@@ -70,7 +71,7 @@ const NO_LIVE: readonly HubLiveChannel[] = []
 function useHeroButtonsInView(mainRef: RefObject<HTMLElement | null>): boolean {
   const [inView, setInView] = useState(true)
   useEffect(() => {
-    const targets = Array.from(mainRef.current?.querySelectorAll<HTMLElement>('.sl-hero__actions, .sl-close__actions') ?? [])
+    const targets = Array.from(mainRef.current?.querySelectorAll<HTMLElement>('.sl-hero__actions') ?? [])
     if (!targets.length || typeof IntersectionObserver === 'undefined') { setInView(false); return }
     const header = document.querySelector('.sl-header')?.getBoundingClientRect().height ?? 0
     const showing = new Set<Element>()
@@ -169,10 +170,15 @@ function useSearchShortcut() {
  */
 function Hero({
   live,
+  games,
+  emotes,
   emoteItems,
   moverItems,
 }: {
   live: readonly HubLiveChannel[]
+  /** What the top search offers besides channels (3A): games live now and the top emotes. */
+  games: readonly HubSearchGame[]
+  emotes: readonly HubSearchEmote[]
   emoteItems: ReturnType<typeof buildEmoteTicker>
   moverItems: ReturnType<typeof buildMoverTicker>
 }) {
@@ -183,9 +189,9 @@ function Hero({
         <h1 id="hero-headline">
           Find the Twitch moments people <span className="sl-grad">actually reacted to.</span>
         </h1>
-        <p>Chat, emotes and top moments for any Twitch channel, minute by minute.</p>
+        <p>Chat, emotes and top moments for the Twitch channels we track, minute by minute.</p>
         <div className="sl-search">
-          <HubV5SearchBox live={live} variant="hero" />
+          <HubV5SearchBox live={live} variant="hero" games={games} emotes={emotes} />
         </div>
         <TryChannels live={live} />
         <div className="sl-tickwrap" aria-label="Latest available emote and channel snapshot">
@@ -194,36 +200,14 @@ function Hero({
         </div>
         <div className="sl-hero__actions">
           <InstallCta className={buttonClass('default', 'lg')} data-cta="chrome-install-hero" icon="mark" />
-          <Link to="/analytics" className={buttonClass('outline', 'lg')} onClick={() => capturePublicCta('open_analytics')}>
+          {/* a phone leads with this one, filled, and no install button (P1, 11-02; landing.css) */}
+          <Link to="/analytics" className={buttonClass('outline', 'lg', { className: 'sl-hero__hub' })} onClick={() => capturePublicCta('open_analytics')}>
             <LineChart size={17} aria-hidden="true" />
             Open the Hub
             <ArrowRight size={16} aria-hidden="true" />
           </Link>
         </div>
-      </div>
-    </section>
-  )
-}
-
-/**
- * The last stop after the demo (Aron's B1 pick, 11-02): the search once more,
- * and the install button. Its own search store, so "/" still focuses the
- * hero's box at the top.
- */
-function ClosingSearch({ live }: { live: readonly HubLiveChannel[] }) {
-  const [store] = useState(createHubV5SearchStore)
-  return (
-    <section className="sl-close" aria-labelledby="close-title">
-      <div className="sl-container sl-close__inner">
-        <h2 id="close-title">Look up a streamer</h2>
-        <HubV5SearchContext.Provider value={store}>
-          <div className="sl-search">
-            <HubV5SearchBox live={live} variant="hero" />
-          </div>
-        </HubV5SearchContext.Provider>
-        <div className="sl-close__actions">
-          <InstallCta className={buttonClass('default', 'lg')} data-cta="chrome-install-closing" icon="mark" />
-        </div>
+        <p className="sl-hero__desk">Desktop extension for Chrome, Edge and Firefox</p>
       </div>
     </section>
   )
@@ -246,6 +230,8 @@ function Footer({ discord }: { discord: string | null }) {
             <span className="sl-foot__head">Product</span>
             <Link to="/analytics" onClick={() => capturePublicCta('open_analytics')}>Hub</Link>
             <Link to="/docs">Extension guide</Link>
+            <Link to="/tools/twitch-vod-timestamp-link">Twitch timestamp tool</Link>
+            <Link to="/guides/find-twitch-moments">Find Twitch moments</Link>
             <Link to="/status">Status</Link>
             <Link to="/changelog">Changelog</Link>
           </div>
@@ -282,6 +268,8 @@ export default function Landing() {
   const emoteItems = useMemo(() => buildEmoteTicker(data), [data])
   const moverItems = useMemo(() => buildMoverTicker(data), [data])
   const live = data?.liveChannels ?? NO_LIVE
+  const searchGames = useMemo(() => hubSearchGames(whereChatIs(live, undefined, '30m'), hubCategoryArt(data?.livePulseMoments ?? [])), [live, data?.livePulseMoments])
+  const searchEmotes = useMemo(() => hubSearchEmotes([{ topEmotes: data?.topEmotes }]), [data?.topEmotes])
   // One store for the box and the / shortcut.
   const [searchStore] = useState(createHubV5SearchStore)
   const mainRef = useRef<HTMLElement | null>(null)
@@ -338,7 +326,7 @@ export default function Landing() {
         <a className="sl-skip-link" href="#landing-main">Skip to main content</a>
         <TopNav discord={discord} heroButtons={heroButtons} />
         <main id="landing-main" tabIndex={-1} className="sl-main" ref={mainRef}>
-          <Hero live={live} emoteItems={emoteItems} moverItems={moverItems} />
+          <Hero live={live} games={searchGames} emotes={searchEmotes} emoteItems={emoteItems} moverItems={moverItems} />
 
           <section id="demo" className="sl-section" aria-labelledby="demo-title">
             <div className="sl-container">
@@ -352,7 +340,7 @@ export default function Landing() {
               <DeferredDemo><ExtensionShowcase /></DeferredDemo>
             </div>
           </section>
-          <ClosingSearch live={live} />
+          <div className="sl-container sl-streamer-stats"><StreamerChatStats /></div>
         </main>
         <Footer discord={discord} />
       </div>

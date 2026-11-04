@@ -64,7 +64,8 @@ test.describe('portal crash guards (mocked)', () => {
   })
 
   test('Moments Latest keeps rendering with a wrong-typed moment label', async ({ page }) => {
-    await installHubUxMock(page)
+    // Latest leaves out a stream's first 5 minutes, so these rows sit later in their streams.
+    await installHubUxMock(page, { momentOffsets: [1200, 1440] })
     await serveWrongTypedHubRows(page)
     await page.goto('/analytics/moments?view=recent')
     // Wait for the row whose label was wrong-typed: it shows the generic label instead.
