@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import { validClipId, type NativeClip } from './nativeClips'
+import { clipHeadline, validClipId, type NativeClip } from './nativeClips'
 
 /**
  * Clips saved in this browser, apart from saved moments. Each keeps the clip's
@@ -58,11 +58,11 @@ function persist(items: SavedClip[]) {
 }
 
 /** Saves or unsaves a clip; returns what happened, for a status line. */
-export function toggleSavedClip(clip: Pick<NativeClip, 'id' | 'title' | 'channel'>): string {
+export function toggleSavedClip(clip: Pick<NativeClip, 'id' | 'title' | 'channel' | 'reaction'>): string {
   initialize(); refreshStored()
   if (snapshot.items.some(item => item.id === clip.id)) { persist(snapshot.items.filter(item => item.id !== clip.id)); return 'Removed from saved clips.' }
   if (snapshot.items.length >= SAVED_CLIPS_LIMIT) return `${SAVED_CLIPS_LIMIT} saved clips reached. Remove one before saving another.`
-  persist([{ id: clip.id, savedAt: Date.now(), title: label(clip.title, 200), channel: label(clip.channel.displayName, 100) }, ...snapshot.items])
+  persist([{ id: clip.id, savedAt: Date.now(), title: label(clipHeadline(clip), 200), channel: label(clip.channel.displayName, 100) }, ...snapshot.items])
   return sessionOnly ? 'Saved for this visit only.' : 'Saved in this browser.'
 }
 

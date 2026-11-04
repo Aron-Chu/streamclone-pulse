@@ -24,7 +24,8 @@ describe('saved clips', () => {
     expect(stored.version).toBe(1)
     expect(stored.items.map((item: { id: string }) => item.id)).toEqual(['two', 'one'])
     expect(Object.keys(stored.items[0]).sort()).toEqual(['channel', 'id', 'savedAt', 'title'])
-    expect(stored.items[0]).toMatchObject({ title: 'Chat loses it', channel: 'xQc' })
+    // The label is StreamPulse's headline, as the library shows it.
+    expect(stored.items[0]).toMatchObject({ title: 'Chat 6.2× faster, 412+ chatters', channel: 'xQc' })
     expect(store.toggleSavedClip(clip('two'))).toBe('Removed from saved clips.')
     store.removeSavedClip('one')
     expect(JSON.parse(window.localStorage.getItem(KEY)!).items).toEqual([])
