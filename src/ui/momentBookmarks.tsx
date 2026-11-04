@@ -48,6 +48,8 @@ export interface BookmarkToast {
   undo?: () => void
   /** Offers to connect an account (a save that needs one). */
   connect?: boolean
+  /** Where View opens My Moments: on History for a moment that joined it; Saved otherwise. */
+  view?: 'moments-history'
 }
 
 interface MomentBookmarksValue {
@@ -59,7 +61,7 @@ interface MomentBookmarksValue {
   toggle: (target: BookmarkTarget) => void
   toast: BookmarkToast | null
   dismissToast: () => void
-  openSettings: (section: 'moments' | 'supporter') => void
+  openSettings: (section: 'moments' | 'moments-history' | 'supporter') => void
 }
 
 const MomentBookmarksContext = createContext<MomentBookmarksValue | null>(null)
@@ -199,7 +201,7 @@ export function MomentBookmarksProvider({ login, streamId, vodId, vodOriginDelta
     setToast({ tone: 'info', ...next, key: ++toastKey.current })
 
   useEffect(() => {
-    if (notice) show({ text: notice.text })
+    if (notice) show({ text: notice.text, view: 'moments-history' })
   }, [notice?.key])
 
   /** Runs one bookmark change at a time; a change of account or stream drops its result. */
@@ -252,7 +254,7 @@ export function MomentBookmarksProvider({ login, streamId, vodId, vodOriginDelta
   const unsave = (item: PulseBookmark, undoing = false) => run(async current => {
     if (!await remove(item, current)) return
     if (undoing) setToast(null)
-    else show({ text: `Removed bookmark at ${formatHeatOffset(item.offsetSeconds)}.`, undo: () => void restore(item) })
+    else show({ text: `Removed at ${formatHeatOffset(item.offsetSeconds)}`, undo: () => void restore(item) })
   })
 
   const save = (target: BookmarkTarget) => run(async current => {
@@ -270,7 +272,7 @@ export function MomentBookmarksProvider({ login, streamId, vodId, vodOriginDelta
       const existing = matchBookmark(result.items.filter(inContext), target, offsetsRef.current)
       if (existing) {
         setItems(previous => [...previous.filter(item => item.id !== existing.id), existing])
-        show({ text: `Already bookmarked at ${formatHeatOffset(existing.offsetSeconds)}.` })
+        show({ text: `Already saved at ${formatHeatOffset(existing.offsetSeconds)}` })
         return
       }
       cursor = result.nextCursor
@@ -285,9 +287,7 @@ export function MomentBookmarksProvider({ login, streamId, vodId, vodOriginDelta
     const saved = await create({ login, streamId, ...(saveVodId ? { vodId: saveVodId } : {}), offsetSeconds: offset,
       label: target.label, source: 'extension' }, current)
     if (!saved) return
-    const at = formatHeatOffset(offset)
-    const text = !saved.device ? `Saved to your account at ${at}.`
-      : await firstDeviceSave() ? 'Saved on this device · Sign in to sync' : `Saved on this device at ${at}.`
+    const text = saved.device && await firstDeviceSave() ? 'Saved on this device · Sign in to sync' : `Saved at ${formatHeatOffset(offset)}`
     if (current !== generation.current) return
     show({ text, undo: () => void unsave(saved.item, true) })
   })
@@ -356,7 +356,7 @@ export function MomentBookmarkToast() {
   const dismiss = bookmarks?.dismissToast
   useEffect(() => {
     if (!toast || held || !dismiss) return
-    const timer = setTimeout(dismiss, toast.tone === 'error' ? 8000 : 4200)
+    const timer = setTimeout(dismiss, toast.tone === 'error' ? 8000 : 6000)
     return () => clearTimeout(timer)
   }, [toast, held, dismiss])
   useEffect(() => setHeld(false), [toast?.key])
@@ -383,7 +383,7 @@ export function MomentBookmarkToast() {
               {TWITCH_SIGNIN_ENABLED ? 'Connect' : 'Settings'}
             </button>
           ) : (
-            <button type="button" data-bookmark-toast-action="library" onClick={() => bookmarks.openSettings('moments')}>My Moments</button>
+            <button type="button" data-bookmark-toast-action="view" onClick={() => bookmarks.openSettings(toast.view ?? 'moments')}>View</button>
           )}
         </div>
       ) : null}

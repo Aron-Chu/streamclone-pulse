@@ -53,12 +53,12 @@ test('Undo puts back a note kept on this device, for two minutes', async ({ exte
   const save = root.locator('[data-moment-action="bookmark"]')
   const toast = root.locator('.pulse-bookmark-toast')
   await save.click()
-  await expect(toast).toContainText('Saved on this device')
+  await expect(toast).toContainText('Saved at')
 
   const moments = await extension.context.newPage()
   await moments.goto(`chrome-extension://${extension.extensionId}/options/index.html#moments`)
-  await moments.getByText('More', { exact: true }).click()
-  await moments.getByRole('button', { name: /^Edit note:/ }).click()
+  await moments.locator('summary[aria-label^="More actions:"]').click()
+  await moments.getByRole('button', { name: /^(Add|Edit) note:/ }).click()
   await moments.getByLabel('Your note').fill('clutch round')
   await moments.getByRole('button', { name: 'Save changes', exact: true }).click()
   await expect(moments.getByText('clutch round', { exact: true })).toBeVisible()
@@ -66,7 +66,7 @@ test('Undo puts back a note kept on this device, for two minutes', async ({ exte
   const removeThenUndo = async (late: boolean) => {
     await twitch.bringToFront()
     await save.click()
-    await expect(toast).toContainText('Removed bookmark at')
+    await expect(toast).toContainText('Removed at')
     // The worker keeps the note two minutes; move its clock past that.
     if (late) await extension.serviceWorker.evaluate(() => {
       const realNow = Date.now

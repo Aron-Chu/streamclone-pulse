@@ -1,7 +1,7 @@
 import { test, expect } from '../helpers/testFixtures.ts'
 
 /**
- * My Moments' tab bar moves between Bookmarks, History and Storage with the
+ * My Moments' tab bar moves between Saved, History and Storage with the
  * arrow keys, Home and End. Those keys also scroll a page by default, so
  * without preventing that the page jumped to its top or bottom while the tab
  * changed. Packaged options page, real Chromium key handling.
@@ -14,7 +14,7 @@ test('the My Moments tab keys change the tab without scrolling the page', async 
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#moments`)
   await expect(page.getByRole('heading', { name: 'My Moments', exact: true })).toBeVisible()
   const tabs = page.getByRole('tablist', { name: 'My Moments views' })
-  await expect(tabs.getByRole('tab')).toHaveText(['Bookmarks', 'History', 'Storage & privacy'])
+  await expect(tabs.getByRole('tab')).toHaveText(['Saved', 'History', 'Storage & privacy'])
   await page.addStyleTag({ content: 'html { min-height: 4000px; }' })
 
   /** The window's scroll and every scrolling box around the tabs. */
@@ -31,7 +31,7 @@ test('the My Moments tab keys change the tab without scrolling the page', async 
 
   const selected = tabs.locator('[role="tab"][aria-selected="true"]')
   await selected.focus()
-  for (const [key, tab] of [['End', 'Storage & privacy'], ['Home', 'Bookmarks'], ['ArrowRight', 'History'], ['ArrowLeft', 'Bookmarks'], ['ArrowLeft', 'Storage & privacy']] as const) {
+  for (const [key, tab] of [['End', 'Storage & privacy'], ['Home', 'Saved'], ['ArrowRight', 'History'], ['ArrowLeft', 'Saved'], ['ArrowLeft', 'Storage & privacy']] as const) {
     await page.keyboard.press(key)
     await expect(selected).toHaveText(tab)
     await expect(tabs.getByRole('tab', { name: tab, exact: true })).toBeFocused()

@@ -79,6 +79,8 @@ test('a save keeps the frame its tab held; My Moments shows it, and Settings can
   expect(Math.abs(picture.height - clock.height)).toBeLessThanOrEqual(2)
   expect(Math.abs(picture.x - clock.x)).toBeLessThanOrEqual(1)
 
+  // A replay that plays is watched from the row; Preview sits under ⋯ (H2).
+  await withPicture.locator('summary[aria-label^="More actions:"]').click()
   await withPicture.getByRole('button', { name: /^Preview: / }).click()
   const preview = library.getByRole('dialog', { name: 'Moment preview' })
   await expect(preview.locator('img[src^="blob:"]')).toBeVisible()
@@ -98,6 +100,7 @@ test('a save keeps the frame its tab held; My Moments shows it, and Settings can
   await expect.poll(pictures, { timeout: 20000, intervals: [1000] }).toBe(1)
   await library.reload()
   await expect(withPicture).toHaveCount(1)
+  await withClock.locator('summary[aria-label^="More actions:"]').click()
   await withClock.getByRole('button', { name: /^Preview: / }).click()
   await expect(library.getByRole('dialog', { name: 'Moment preview' }).locator('img[src^="blob:"]')).toHaveCount(0)
   await expect(library.getByRole('dialog', { name: 'Moment preview' })).not.toContainText('Saved frame')
