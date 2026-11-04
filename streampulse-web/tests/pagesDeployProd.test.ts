@@ -109,6 +109,9 @@ describe('Cloudflare Pages production deployment hygiene', () => {
       expect(redirects.split(/\r?\n/).find(line => line.startsWith(`${path} `))).toBe(`${path} / 200`)
       expect(redirects).toContain(`${path}/ ${path} 301`)
     }
+    // Show my Twitch follows returns to a private route that moves itself to the hub.
+    expect(redirects.split(/\r?\n/)).toContain('/account/twitch/callback /analytics-fallback/ 200')
+    expect(redirects).toContain('/account/twitch/callback/ /account/twitch/callback 301')
   })
 
   it('ships Pages security and cache headers', () => {
@@ -120,6 +123,10 @@ describe('Cloudflare Pages production deployment hygiene', () => {
     expect(enforced).toContain("frame-ancestors 'none'")
     expect(enforced).toContain("script-src 'self' https://challenges.cloudflare.com")
     expect(enforced).not.toContain("'unsafe-eval'")
+    // Show my Twitch follows reads from Twitch and cancels its sign-in from the page.
+    for (const policy of [enforced, readFileSync(resolve(webRoot, 'index.html'), 'utf8')]) {
+      expect(policy).toMatch(/connect-src [^;]*https:\/\/api\.twitch\.tv https:\/\/id\.twitch\.tv;/)
+    }
     expect(headers).toContain('/assets/*')
     expect(headers).toContain('/static/*')
     expect(headers).toContain('Cache-Control: public, max-age=31536000, immutable')

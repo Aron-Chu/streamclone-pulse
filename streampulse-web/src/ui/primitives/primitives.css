@@ -254,6 +254,10 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+/* the border and focus ring ease in (2026-11-02) */
+@media (prefers-reduced-motion: no-preference) {
+  .sc-input { transition: border-color 150ms ease, box-shadow 150ms ease; }
+}
 
 /* ---------------------------------------------------------- Search input */
 .sc-search {

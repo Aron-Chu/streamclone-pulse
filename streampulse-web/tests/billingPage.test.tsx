@@ -24,7 +24,9 @@ describe('public Supporter handoff', () => {
   it('states that Supporter sign-ups are closed, starts with the extension and offers no website-account or restore choice', () => {
     render(<MemoryRouter><Supporter /></MemoryRouter>)
     expect(screen.queryByRole('link', { name: 'Use a StreamPulse website account' })).toBeNull()
-    expect(screen.getByTestId('supporter-availability').textContent).toMatch(/Supporter sign-ups are not open yet/)
+    // Said once, in the notice at the top (11-02); the availability row says what happens when they open.
+    expect(screen.getByTestId('prelaunch-notice').textContent).toMatch(/Supporter sign-ups are not open yet/)
+    expect(screen.getByTestId('supporter-availability').textContent).toMatch(/^When sign-ups open/)
     expect(screen.getByText('US$4.99 per month, charged in US dollars')).toBeTruthy()
     expect(screen.getByText(/Handled as stated at checkout/)).toBeTruthy()
     const body = screen.getByTestId('supporter-offer').textContent ?? ''

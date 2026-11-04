@@ -146,6 +146,7 @@ const page = (strict = false) => {
   return strict ? <StrictMode>{tree}</StrictMode> : tree
 }
 const rail = () => document.getElementById('latest')!
+const big = () => document.getElementById('big-moments')
 const peek = () => document.querySelector<HTMLElement>('.hv5-f3-peek')!
 const bannerText = () => document.querySelector('.hx-health-banner')?.textContent ?? ''
 const enabledRetry = () =>
@@ -156,24 +157,24 @@ async function at(sec: number) {
   await act(async () => { await vi.advanceTimersByTimeAsync(Math.max(0, T0 + sec * 1000 - Date.now())) })
 }
 
-/** Top moments today and its phone peek wait in grey rows, and nothing stands in for them. */
+/** Top moments today's phone peek waits in grey rows, the carousel isn't there yet, and Picking up now waits too. */
 function expectTopLoading() {
-  expect(within(rail()).getByRole('status').textContent).toBe('Loading top moments')
-  expect(rail().querySelector('.hv5-tm-it')).toBeNull()
+  expect(big()).toBeNull()
   expect(peek().hasAttribute('data-wait')).toBe(true)
+  expect(within(rail()).getByRole('status').textContent).toBe('Loading channels picking up')
 }
 
-/** Both say "Unavailable right now."; the one Try again is the banner's (Q5b). */
+/** The carousel, its peek and Picking up all say "Unavailable right now."; the one Try again is the banner's (Q5b). */
 function expectTopUnavailable() {
+  expect(big()!.querySelector('.hv5-bm-q')!.textContent).toBe(TOP_NONE)
   expect(rail().querySelector('.hv5-tm-q')!.textContent).toBe(TOP_NONE)
-  expect(within(rail()).queryByRole('button', { name: 'Try again' })).toBeNull()
   expect([...document.querySelectorAll('button')].filter((b) => b.textContent?.includes('Try again'))).toHaveLength(1)
   expect(within(peek()).getByText(TOP_NONE)).toBeTruthy()
   expect(within(rail()).queryByRole('status')).toBeNull()
 }
 
 function expectTopRows(who: string) {
-  expect(within(rail()).getByRole('button', { name: new RegExp(`^1\\. ${who}, chat 3\\.0 times usual`) })).toBeTruthy()
+  expect(big()!.querySelector('.hv5-bm-card[data-pos="0"]')!.getAttribute('aria-label')).toMatch(new RegExp(`^1 of \\d+: ${who}, `))
   expect(within(peek()).getByRole('button', { name: new RegExp(`^1\\. ${who}, `) })).toBeTruthy()
   expect(within(rail()).queryByRole('status')).toBeNull()
   expect(peek().hasAttribute('data-wait')).toBe(false)

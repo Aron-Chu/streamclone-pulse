@@ -38,6 +38,9 @@ describe('parseBackgroundRequest', () => {
     })
     // A place inside a section: Pulse with Background & motion open.
     expect(parseBackgroundRequest({ type: 'OPEN_SETTINGS_HOST', section: 'pulse-background' })).toEqual({ type: 'OPEN_SETTINGS_HOST', section: 'pulse-background' })
+    // My Moments on History: the panel toast's View after a moment joined it.
+    expect(parseBackgroundRequest({ type: 'OPEN_SETTINGS_HOST', section: 'moments-history' })).toEqual({ type: 'OPEN_SETTINGS_HOST', section: 'moments-history' })
+    expect(parseBackgroundRequest({ type: 'OPEN_SETTINGS_HOST', section: 'moments-saved' })).toBeNull()
     // A fixed community link name only, never a caller-controlled URL.
     expect(parseBackgroundRequest({ type: 'OPEN_COMMUNITY_LINK', link: 'discord' })).toEqual({ type: 'OPEN_COMMUNITY_LINK', link: 'discord' })
     expect(parseBackgroundRequest({ type: 'OPEN_COMMUNITY_LINK', link: 'feedback' })).toEqual({ type: 'OPEN_COMMUNITY_LINK', link: 'feedback' })

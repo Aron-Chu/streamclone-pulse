@@ -48,6 +48,8 @@ export type MessageType =
   | 'VOD_PULSE_UPDATE'
   | 'REPORT_EXTENSION_DIAGNOSTIC'
   | 'EMIT_EXTENSION_ANALYTICS'
+  | 'PREPARE_ANALYTICS_CONSENT_GRANT'
+  | 'SET_ANALYTICS_CONSENT'
   | 'ENROLL_DEVICE'
   | 'GET_DEVICE_AUTH_STATUS'
   | 'ROTATE_DEVICE'
@@ -178,8 +180,11 @@ export interface CheckForUpdateMessage {
 }
 
 export type SettingsHostSection = 'moments' | 'pulse' | 'supporter' | 'privacy' | 'updates' | 'help' | 'developer'
-/** A section, or a place inside one: `pulse-background` opens Pulse with Background & motion expanded. */
-export type SettingsHostTarget = SettingsHostSection | 'pulse-background'
+/**
+ * A section, or a place inside one: `pulse-background` opens Pulse with
+ * Background & motion expanded; `moments-history`, My Moments on History.
+ */
+export type SettingsHostTarget = SettingsHostSection | 'pulse-background' | 'moments-history'
 
 /** Open the packaged extension-origin settings host from a Twitch surface. */
 export interface OpenSettingsHostMessage {
@@ -240,6 +245,12 @@ export interface EmitExtensionAnalyticsMessage {
   name: 'pulse_load_completed' | 'extension_error_shown'
 }
 
+export interface SetAnalyticsConsentMessage {
+  type: 'SET_ANALYTICS_CONSENT'
+  granted: boolean
+  grantTicket?: string
+}
+
 export interface ListBookmarksMessage {
   type: 'LIST_BOOKMARKS'
   /** Sender-page identity only; never a backend bookmark filter. */
@@ -256,6 +267,11 @@ export interface SaveBookmarkMessage {
   bookmark: CreatePulseBookmarkInput
   /** The panel's Undo of a remove: the removed bookmark's id, whose note on this device comes back. */
   restoreOf?: string
+  /**
+   * The panel payload's VOD origin delta, sent only when `bookmark.vodId` is
+   * that payload's VOD. Kept on this device beside the save, never posted.
+   */
+  vodOriginDeltaSeconds?: number
 }
 
 export interface DeleteBookmarkMessage {
@@ -318,6 +334,8 @@ export type BackgroundRequest =
   | RevokeDeviceMessage
   | ReportExtensionDiagnosticMessage
   | EmitExtensionAnalyticsMessage
+  | { type: 'PREPARE_ANALYTICS_CONSENT_GRANT' }
+  | SetAnalyticsConsentMessage
   | ListBookmarksMessage
   | SaveBookmarkMessage
   | DeleteBookmarkMessage

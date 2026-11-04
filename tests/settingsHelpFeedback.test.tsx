@@ -8,6 +8,7 @@ import { injectHostStyles } from '../src/options/hostStyles.ts'
 import { FEEDBACK_FORM_LIVE } from '../src/shared/feedbackPolicy.ts'
 import { COMMUNITY_LINKS } from '../src/shared/portalLinks.ts'
 import { SettingsWorkspace } from '../src/ui/SettingsWorkspace.tsx'
+import { MyMomentsPage } from '../src/options/MyMomentsPage.tsx'
 import { resetSupporterAppearanceForTests } from '../src/ui/useSupporterAppearance.ts'
 import { listSourceFiles } from './helpers/sourceFiles.ts'
 
@@ -125,6 +126,20 @@ describe('settings page: Community card', () => {
     expect(host.querySelector('[data-settings-section="updates"]')).not.toBeNull()
     expect(host.querySelector('[data-settings-section="help"]')).toBeNull()
     expect(host.querySelector('[data-settings-host-banner="supporter"]')).not.toBeNull()
+  })
+
+  it('opens My Moments on History from #moments-history (the panel toast’s View) and keeps the place', async () => {
+    Object.assign((globalThis as unknown as { chrome: { runtime: object } }).chrome.runtime, { onMessage: { addListener() {}, removeListener() {} } })
+    window.history.replaceState(null, '', '/options/index.html#moments-history')
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    await act(async () => root.render(<SettingsHostShell>{section => section === 'moments' ? <MyMomentsPage /> : null}</SettingsHostShell>))
+    for (let k = 0; k < 6; k++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 1)) })
+    roots.push(() => { act(() => root.unmount()); host.remove() })
+    expect(host.querySelector('.pulse-host')?.getAttribute('data-host-active-section')).toBe('moments')
+    expect(window.location.hash).toBe('#moments-history')
+    expect(host.querySelector('.pl-tabs [role="tab"][aria-selected="true"]')?.textContent).toBe('History')
   })
 
   it('shows the Community card under the section list on every section, with a subline that makes no privacy promise while the form is off', async () => {

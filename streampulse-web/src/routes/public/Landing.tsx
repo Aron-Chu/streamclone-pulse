@@ -1,7 +1,7 @@
 ﻿import { useEffect, useMemo, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { lazy, Suspense, useState, type ReactNode } from 'react'
-import { ArrowRight, ArrowUpRight, BookOpen, LineChart, PanelTopOpen, Radio, ShieldCheck, Sparkles } from 'lucide-react'
+import { lazy, Suspense, useState, type ReactNode, type RefObject } from 'react'
+import { ArrowRight, LineChart } from 'lucide-react'
 import '../../ui/tokens.css'
 import '../../ui/components/landing/landing.css'
 import { buttonClass } from '../../ui/primitives'
@@ -10,16 +10,22 @@ import { LandingMobileNav } from '../../ui/components/landing/LandingMobileNav'
 import { EmoteRain } from '../../ui/components/landing/EmoteRain'
 import { TwitchChatBackdrop } from '../../ui/components/landing/TwitchChatBackdrop'
 import { EmoteTicker } from '../../ui/components/landing/EmoteTicker'
-import { ResourceGrid } from '../../ui/components/landing/ResourceGrid'
 import { useMatchMedia } from '../../ui/hooks/useMatchMedia'
 import { buildEmoteTicker, buildMoverTicker } from '../../ui/components/landing/landingData'
 import { BrandMark } from '../../ui/components/BrandMark'
 import { DiscordMark } from '../../ui/components/DiscordMark'
-import { ChromeInstallCta } from '../../ui/components/ChromeInstallCta'
+import { InstallCta } from '../../ui/components/InstallCta'
 import { AnalyticsPreferences } from '../../ui/components/AnalyticsPreferences'
-import { FEEDBACK_PATH, GITHUB_REPO_URL } from '../../lib/externalLinks'
+import { StreamerChatStats } from '../../ui/components/StreamerChatStats'
+import { FEEDBACK_PATH, GITHUB_REPO_URL, PRIVACY_PATH, REFUNDS_PATH, SUPPORTER_PATH, TERMS_PATH } from '../../lib/externalLinks'
 import { discordInviteUrl } from '../../lib/discord'
 import { capturePublicCta } from '../../lib/productAnalytics'
+import type { HubLiveChannel } from '../../lib/publicHub'
+// The hub's own search: the same suggestions and Enter rules, styled for this page in landing.css.
+import { HubV5SearchBox } from '../../ui/components/hub/v5/HubV5SearchBox'
+import { HubV5Avatar } from '../../ui/components/hub/v5/HubV5Avatar'
+import { channelHref, channelsByViewers, formatHubInt, hubCategoryArt, hubSearchEmotes, hubSearchGames, whereChatIs, type HubSearchEmote, type HubSearchGame } from '../../ui/components/hub/v5/hubV5Model'
+import { createHubV5SearchStore, HubV5SearchContext, useHubV5SearchStore } from '../../ui/components/hub/v5/hubV5SearchStore'
 
 const ExtensionShowcase = lazy(() => import('../../ui/components/landing/ExtensionShowcase').then(module => ({ default: module.ExtensionShowcase })))
 
@@ -55,11 +61,37 @@ function DeferredChatBackdrop() {
 }
 
 const DISCORD_LABEL = 'Join the StreamPulse Discord (opens in a new tab)'
+const NO_LIVE: readonly HubLiveChannel[] = []
 
-function TopNav({ discord }: { discord: string | null }) {
+/**
+ * Whether the hero's own buttons are on screen below the header. While they
+ * are, the header's step back, so the page shows one of each at a time
+ * (11-01). On at first paint, which is the top of the page.
+ */
+function useHeroButtonsInView(mainRef: RefObject<HTMLElement | null>): boolean {
+  const [inView, setInView] = useState(true)
+  useEffect(() => {
+    const targets = Array.from(mainRef.current?.querySelectorAll<HTMLElement>('.sl-hero__actions') ?? [])
+    if (!targets.length || typeof IntersectionObserver === 'undefined') { setInView(false); return }
+    const header = document.querySelector('.sl-header')?.getBoundingClientRect().height ?? 0
+    const showing = new Set<Element>()
+    const io = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) showing.add(entry.target)
+        else showing.delete(entry.target)
+      }
+      setInView(showing.size > 0)
+    }, { rootMargin: `${-Math.round(header)}px 0px 0px 0px` })
+    targets.forEach((el) => io.observe(el))
+    return () => io.disconnect()
+  }, [mainRef])
+  return inView
+}
+
+function TopNav({ discord, heroButtons }: { discord: string | null; heroButtons: boolean }) {
   return (
     <header className="sl-header">
-      <nav className={discord ? 'sl-nav sl-nav--discord' : 'sl-nav'} aria-label="StreamPulse">
+      <nav className={discord ? 'sl-nav sl-nav--discord' : 'sl-nav'} aria-label="StreamPulse" data-hero-buttons={heroButtons ? '' : undefined}>
         <Link to="/" className="sl-brand">
           <BrandMark className="sl-brand__mark" size={28} />
           StreamPulse
@@ -74,9 +106,9 @@ function TopNav({ discord }: { discord: string | null }) {
               <DiscordMark size={16} />Discord
             </a>
           ) : null}
-          <ChromeInstallCta className={buttonClass('outline', 'sm')} data-cta="chrome-install-nav" />
+          <InstallCta className={buttonClass('outline', 'sm', { className: 'sl-nav__install' })} data-cta="chrome-install-nav" icon="mark" />
           <Link to="/analytics" className={buttonClass('outline', 'sm', { className: 'sl-nav__analytics' })} onClick={() => capturePublicCta('open_analytics')}>
-            Open Analytics
+            Open the Hub
           </Link>
         </div>
         <LandingMobileNav />
@@ -91,156 +123,140 @@ function TopNav({ discord }: { discord: string | null }) {
   )
 }
 
+/** Five live channels to try, busiest first, as on the hub. */
+function TryChannels({ live }: { live: readonly HubLiveChannel[] }) {
+  const channels = useMemo(() => channelsByViewers(live).slice(0, 5), [live])
+  if (!channels.length) return null
+  return (
+    <p className="sl-try">
+      <span className="sl-try__label">Try</span>
+      {channels.map((c) => (
+        <Link
+          key={c.login}
+          className="sl-try__chip"
+          to={channelHref(c)}
+          aria-label={`${c.displayName || c.login}, live, ${formatHubInt(c.viewers || 0)} viewers`}
+        >
+          <HubV5Avatar login={c.login} name={c.displayName} src={c.profileImageUrl} size={22} />
+          <span>{c.displayName || c.login}</span>
+        </Link>
+      ))}
+    </p>
+  )
+}
+
+/** / and Ctrl/⌘K focus the search box, as on the hub. */
+function useSearchShortcut() {
+  const store = useHubV5SearchStore()
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      const inField = Boolean(target && (/INPUT|TEXTAREA|SELECT/.test(target.tagName) || target.isContentEditable))
+      const cmdK = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k'
+      const slash = event.key === '/' && !inField && !event.metaKey && !event.ctrlKey && !event.altKey
+      if (!cmdK && !slash) return
+      event.preventDefault()
+      store.inputs.hero?.focus()
+      store.inputs.hero?.select()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [store])
+}
+
+/**
+ * The front page is this hero and the demo (Aron's F2 pick, 11-02): find a
+ * streamer, see what is trending, then add the extension or open the Hub.
+ */
 function Hero({
+  live,
+  games,
+  emotes,
   emoteItems,
   moverItems,
-  discord,
 }: {
+  live: readonly HubLiveChannel[]
+  /** What the top search offers besides channels (3A): games live now and the top emotes. */
+  games: readonly HubSearchGame[]
+  emotes: readonly HubSearchEmote[]
   emoteItems: ReturnType<typeof buildEmoteTicker>
   moverItems: ReturnType<typeof buildMoverTicker>
-  discord: string | null
 }) {
+  useSearchShortcut()
   return (
     <section className="sl-hero sl-hero--stage" aria-labelledby="hero-headline">
       <div className="sl-stage">
-        <Link to="/analytics" className="sl-announce" onClick={() => capturePublicCta('open_analytics')}>
-          <span className="sl-announce__new">Explore</span>
-          Public analytics — no account needed
-          <ArrowRight size={13} aria-hidden="true" />
-        </Link>
         <h1 id="hero-headline">
           Find the Twitch moments people <span className="sl-grad">actually reacted to.</span>
         </h1>
-        <p>
-          StreamPulse tracks chat velocity, emote spikes, viewer movement, and jumpable moments across live streams and
-          VODs.
-        </p>
-        <div className="sl-hero__actions">
-          <ChromeInstallCta className={buttonClass('default', 'lg')} data-cta="chrome-install-hero">
-            <PanelTopOpen size={17} aria-hidden="true" />
-            Add StreamPulse to Chrome
-          </ChromeInstallCta>
-          <Link to="/analytics" className={buttonClass('outline', 'lg')} onClick={() => capturePublicCta('open_analytics')}>
-            <LineChart size={17} aria-hidden="true" />
-            Open Analytics
-            <ArrowRight size={16} aria-hidden="true" />
-          </Link>
+        <p>Chat, emotes and top moments for the Twitch channels we track, minute by minute.</p>
+        <div className="sl-search">
+          <HubV5SearchBox live={live} variant="hero" games={games} emotes={emotes} />
         </div>
-        {discord ? (
-          <div className="sl-community">
-            {/* The name starts with the words on the pill, for voice control. */}
-            <a href={discord} target="_blank" rel="noopener noreferrer" className="sl-discord-pill" aria-label="Join the Discord (opens in a new tab)">
-              <DiscordMark size={20} />
-              Join the Discord
-              <ArrowUpRight className="sl-discord-pill__ext" size={13} aria-hidden="true" />
-            </a>
-          </div>
-        ) : null}
-        <a href="#demo" className="sl-stage__cue">
-          See an example of the Pulse tab
-          <span className="sl-stage__cuedot" aria-hidden="true" />
-        </a>
+        <TryChannels live={live} />
         <div className="sl-tickwrap" aria-label="Latest available emote and channel snapshot">
           <EmoteTicker variant="a" label="Trending emotes" items={emoteItems} />
           <EmoteTicker variant="b" label="Trending channels" items={moverItems} />
         </div>
+        <div className="sl-hero__actions">
+          <InstallCta className={buttonClass('default', 'lg')} data-cta="chrome-install-hero" icon="mark" />
+          {/* a phone leads with this one, filled, and no install button (P1, 11-02; landing.css) */}
+          <Link to="/analytics" className={buttonClass('outline', 'lg', { className: 'sl-hero__hub' })} onClick={() => capturePublicCta('open_analytics')}>
+            <LineChart size={17} aria-hidden="true" />
+            Open the Hub
+            <ArrowRight size={16} aria-hidden="true" />
+          </Link>
+        </div>
+        <p className="sl-hero__desk">Desktop extension for Chrome, Edge and Firefox</p>
       </div>
     </section>
   )
 }
 
-function HowItWorks() {
-  const steps = [
-    {
-      icon: PanelTopOpen,
-      title: 'Open Twitch with Pulse',
-      copy: 'Switch from Chat to Pulse beside a Twitch stream. See which parts of the broadcast have measurements.',
-    },
-    {
-      icon: Radio,
-      title: 'Watch the signal build',
-      copy: 'Compare chat, viewers, and emote reactions minute by minute. Missing measurements stay visible as gaps.',
-    },
-    {
-      icon: Sparkles,
-      title: 'Jump to the loudest moments',
-      copy: 'Open a moment in Analytics, then jump to its replay when video is available.',
-    },
-  ]
-
-  return (
-    <div className="sl-steps">
-      {steps.map(({ icon: Icon, title, copy }) => (
-        <article className="sl-card sl-step" key={title}>
-          <span className="sl-step__ic" aria-hidden="true">
-            <Icon />
-          </span>
-          <h3>{title}</h3>
-          <p>{copy}</p>
-        </article>
-      ))}
-    </div>
-  )
-}
-
-function FeatureGrid() {
-  const features = [
-    {
-      icon: ShieldCheck,
-      title: 'Coverage honesty',
-      copy: 'Live pages distinguish no pulse, stats-only, chat-synced, and full-pulse states instead of filling gaps client-side.',
-    },
-    {
-      icon: LineChart,
-      title: 'Backend-scored peaks',
-      copy: 'Pulse scores, emote bursts, and stream ledgers stay server-authored so every surface reports the same truth.',
-    },
-    {
-      icon: BookOpen,
-      title: 'Public-safe analytics',
-      copy: 'Global and hub views expose aggregate signals only: no raw chat, user IDs, or chatter-level rankings.',
-    },
-  ]
-
-  return (
-    <div className="sl-featgrid">
-      {features.map(({ icon: Icon, title, copy }) => (
-        <article className="sl-card sl-feat" key={title}>
-          <span className="sl-feat__ic" aria-hidden="true">
-            <Icon />
-          </span>
-          <h3>{title}</h3>
-          <p>{copy}</p>
-        </article>
-      ))}
-    </div>
-  )
-}
-
+/** Product, help and legal links in three columns (B1), with the Twitch disclaimer. */
 function Footer({ discord }: { discord: string | null }) {
   return (
     <footer className="sl-footer">
       <div className="sl-container sl-foot">
-        <Link to="/" className="sl-brand">
-          <BrandMark className="sl-brand__mark" size={28} />
-          StreamPulse
-        </Link>
-        <div className="sl-foot__links">
-          <Link to="/docs">Docs</Link>
-          <Link to="/status">Status</Link>
-          <Link to="/analytics" onClick={() => capturePublicCta('open_analytics')}>Analytics</Link>
-          <Link to="/support">Support</Link>
-          <Link to={FEEDBACK_PATH}>Send feedback</Link>
-          {discord ? (
-            <a href={discord} target="_blank" rel="noopener noreferrer" className="sl-foot__discord" aria-label="Discord (opens in a new tab)">
-              <DiscordMark size={15} />Discord
-            </a>
-          ) : null}
-          <Link to="/privacy">Privacy</Link>
-          <AnalyticsPreferences />
-          <a href={GITHUB_REPO_URL} target="_blank" rel="noreferrer noopener">GitHub</a>
+        <div className="sl-foot__brand">
+          <Link to="/" className="sl-brand">
+            <BrandMark className="sl-brand__mark" size={28} />
+            StreamPulse
+          </Link>
+          <p>Free Twitch chat and emote stats.</p>
         </div>
-        <small>Public analytics for StreamPulse. Aggregate-first, coverage-honest, and Twitch-native.</small>
+        <nav className="sl-foot__cols" aria-label="Footer">
+          <div className="sl-foot__links">
+            <span className="sl-foot__head">Product</span>
+            <Link to="/analytics" onClick={() => capturePublicCta('open_analytics')}>Hub</Link>
+            <Link to="/docs">Extension guide</Link>
+            <Link to="/tools/twitch-vod-timestamp-link">Twitch timestamp tool</Link>
+            <Link to="/guides/find-twitch-moments">Find Twitch moments</Link>
+            <Link to="/status">Status</Link>
+            <Link to="/changelog">Changelog</Link>
+          </div>
+          <div className="sl-foot__links">
+            <span className="sl-foot__head">Help</span>
+            <Link to="/support">Support</Link>
+            <Link to={FEEDBACK_PATH}>Send feedback</Link>
+            {discord ? (
+              <a href={discord} target="_blank" rel="noopener noreferrer" className="sl-foot__discord" aria-label="Discord (opens in a new tab)">
+                <DiscordMark size={15} />Discord
+              </a>
+            ) : null}
+            <a href={GITHUB_REPO_URL} target="_blank" rel="noreferrer noopener">GitHub</a>
+          </div>
+          <div className="sl-foot__links">
+            <span className="sl-foot__head">Legal</span>
+            <Link to={PRIVACY_PATH}>Privacy</Link>
+            <Link to={TERMS_PATH}>Terms</Link>
+            <Link to={REFUNDS_PATH}>Refunds</Link>
+            <Link to={SUPPORTER_PATH}>Supporter</Link>
+          </div>
+        </nav>
+        <small>
+          StreamPulse is not affiliated with Twitch. <AnalyticsPreferences />
+        </small>
       </div>
     </footer>
   )
@@ -251,8 +267,14 @@ export default function Landing() {
   const { data } = usePublicHubData({ pollMs: 0, activityWindow: '30m', projection: 'tickers' })
   const emoteItems = useMemo(() => buildEmoteTicker(data), [data])
   const moverItems = useMemo(() => buildMoverTicker(data), [data])
+  const live = data?.liveChannels ?? NO_LIVE
+  const searchGames = useMemo(() => hubSearchGames(whereChatIs(live, undefined, '30m'), hubCategoryArt(data?.livePulseMoments ?? [])), [live, data?.livePulseMoments])
+  const searchEmotes = useMemo(() => hubSearchEmotes([{ topEmotes: data?.topEmotes }]), [data?.topEmotes])
+  // One store for the box and the / shortcut.
+  const [searchStore] = useState(createHubV5SearchStore)
   const mainRef = useRef<HTMLElement | null>(null)
   const discord = discordInviteUrl()
+  const heroButtons = useHeroButtonsInView(mainRef)
 
   // A hash in the entry URL cannot scroll on its own: the browser looks for the
   // target while React is still rendering, finds nothing, and gives up. Without
@@ -297,62 +319,31 @@ export default function Landing() {
   }, [])
 
   return (
-    <div className="sp-landing">
-      <EmoteRain />
-      <DeferredChatBackdrop />
-      <a className="sl-skip-link" href="#landing-main">Skip to main content</a>
-      <TopNav discord={discord} />
-      <main id="landing-main" tabIndex={-1} className="sl-main" ref={mainRef}>
-        <Hero emoteItems={emoteItems} moverItems={moverItems} discord={discord} />
+    <HubV5SearchContext.Provider value={searchStore}>
+      <div className="sp-landing">
+        <EmoteRain />
+        <DeferredChatBackdrop />
+        <a className="sl-skip-link" href="#landing-main">Skip to main content</a>
+        <TopNav discord={discord} heroButtons={heroButtons} />
+        <main id="landing-main" tabIndex={-1} className="sl-main" ref={mainRef}>
+          <Hero live={live} games={searchGames} emotes={searchEmotes} emoteItems={emoteItems} moverItems={moverItems} />
 
-        <section id="demo" className="sl-section" aria-labelledby="demo-title">
-          <div className="sl-container">
-            <div className="sl-section-head" data-reveal>
-              <h2 id="demo-title">The Pulse tab, feature by feature</h2>
-              <span className="sl-sample-label">Sample data · interactive demonstration</span>
-              <p>
-                Explore an example of the panel beside Twitch chat. These numbers illustrate the interface; they are not a live broadcast.
-              </p>
+          <section id="demo" className="sl-section" aria-labelledby="demo-title">
+            <div className="sl-container">
+              <div className="sl-section-head" data-reveal>
+                <h2 id="demo-title">See it beside Twitch chat</h2>
+                <span className="sl-sample-label">Sample data · interactive demonstration</span>
+                <p>
+                  The extension panel on a made-up stream. These numbers illustrate the interface; they are not a live broadcast.
+                </p>
+              </div>
+              <DeferredDemo><ExtensionShowcase /></DeferredDemo>
             </div>
-            <DeferredDemo><ExtensionShowcase /></DeferredDemo>
-          </div>
-        </section>
-
-        <section className="sl-section" aria-labelledby="features-title">
-          <div className="sl-container">
-            <div className="sl-section-head" data-reveal>
-              <h2 id="features-title">Designed around trust, not mystery scores</h2>
-              <p>Coverage state, backfill state, and Pulse peaks come from the backend source of truth.</p>
-            </div>
-            <div data-reveal>
-              <FeatureGrid />
-            </div>
-          </div>
-        </section>
-
-        <section id="how" className="sl-section" aria-labelledby="how-title">
-          <div className="sl-container">
-            <div className="sl-section-head" data-reveal>
-              <h2 id="how-title">How it works</h2>
-              <p>Three steps from opening Twitch to catching up on the loudest minutes.</p>
-            </div>
-            <HowItWorks />
-          </div>
-        </section>
-
-        <section id="resources" className="sl-section" aria-labelledby="resources-title">
-          <div className="sl-container">
-            <div className="sl-section-head" data-reveal>
-              <h2 id="resources-title">Resources</h2>
-              <p>Documentation, setup, and the status of the hosted stack.</p>
-            </div>
-            <div data-reveal>
-              <ResourceGrid />
-            </div>
-          </div>
-        </section>
-      </main>
-      <Footer discord={discord} />
-    </div>
+          </section>
+          <div className="sl-container sl-streamer-stats"><StreamerChatStats /></div>
+        </main>
+        <Footer discord={discord} />
+      </div>
+    </HubV5SearchContext.Provider>
   )
 }

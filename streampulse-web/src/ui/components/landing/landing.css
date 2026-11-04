@@ -216,6 +216,10 @@
   background: hsl(var(--sc-accent-surface));
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  .sl-menu a { transition: color 150ms ease, background-color 150ms ease; }
+}
+
 .sl-nav__right {
   margin-left: auto;
   display: flex;
@@ -235,32 +239,6 @@
   flex-direction: column;
   align-items: center;
   text-align: center;
-}
-
-.sl-announce {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.3rem 0.45rem 0.3rem 0.85rem;
-  border: 1px solid hsl(var(--sc-border));
-  border-radius: 999px;
-  background: hsl(var(--sc-card) / 0.7);
-  color: hsl(var(--sc-muted-foreground));
-  text-decoration: none;
-  font-size: 0.8rem;
-  font-weight: 600;
-  backdrop-filter: blur(10px);
-}
-
-.sl-announce__new {
-  padding: 0.12rem 0.52rem;
-  border-radius: 999px;
-  background: hsl(var(--sc-chart-5));
-  color: white;
-  font-size: 0.68rem;
-  font-weight: 900;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
 }
 
 .sl-stage h1 {
@@ -303,45 +281,35 @@
   margin-top: 1.6rem;
 }
 
-.sl-community {
-  display: flex;
-  justify-content: center;
-  margin-top: 0.9rem;
+/* P1 (11-02): a phone leads with Open the Hub, filled as the default button, and a line that the extension is for
+   desktop; the install button goes there, as on the hub. Wider screens keep both buttons as they are. */
+.sl-stage > p.sl-hero__desk { display: none; }
+
+@media (max-width: 719px) {
+  .sl-hero__actions [data-cta="chrome-install-hero"] { display: none; }
+  .sl-hero__actions .sc-btn.sl-hero__hub {
+    border-color: transparent;
+    background: hsl(var(--sc-primary));
+    color: hsl(var(--sc-primary-foreground));
+  }
+  .sl-hero__actions .sc-btn.sl-hero__hub:hover:not(:disabled) {
+    background: hsl(var(--sc-primary) / 0.9);
+    color: hsl(var(--sc-primary-foreground));
+  }
+  .sl-stage > p.sl-hero__desk {
+    display: block;
+    margin: 0.6rem auto 0;
+    color: hsl(var(--sc-muted-foreground));
+    font-size: 13px;
+    line-height: 18px;
+    text-align: center;
+  }
 }
 
-/* Discord's own Blurple; white text on it is 4.6:1. Seen at once, but still
-   smaller than the white install button above it. */
-.sl-discord-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.55rem;
-  height: 2.6rem;
-  padding: 0 1.1rem 0 0.95rem;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  background: #5865f2;
-  color: #fff;
-  text-decoration: none;
-  font-size: 0.95rem;
-  font-weight: 650;
-  white-space: nowrap;
-  transition: background 0.15s ease;
-}
-
-.sl-discord-pill:hover {
-  background: #4752c4;
-  color: #fff;
-}
-
-.sl-discord-pill:focus-visible,
 .sl-discord-icon:focus-visible,
 .sc-btn.sl-discord-nav:focus-visible {
   outline: 2px solid #c4b5fd;
   outline-offset: 2px;
-}
-
-.sl-discord-pill__ext {
-  opacity: 0.8;
 }
 
 .sc-btn.sl-discord-nav {
@@ -380,28 +348,318 @@
   color: #fff;
 }
 
-.sl-stage__cue {
+/* The mark's colours ease (2026-11-02), and it gets the approved press dip (it had none). */
+@media (prefers-reduced-motion: no-preference) {
+  .sl-discord-icon {
+    transition: background-color 150ms ease, color 150ms ease, scale 260ms cubic-bezier(.34, 1.56, .64, 1), translate 200ms cubic-bezier(.16, 1, .3, 1);
+  }
+  .sl-discord-icon:active {
+    scale: .96;
+    transition-duration: 150ms, 150ms, 70ms, 200ms;
+  }
+}
+
+/* While the hero's own install button is on screen, the header's steps back
+   (Landing useHeroButtonsInView): one at a time. It keeps its place, so Menu
+   and Open the Hub never move. Discord lives only in the header now. */
+.sl-nav .sl-nav__install {
+  transition: opacity 0.2s ease, visibility 0s linear 0s;
+}
+.sl-nav[data-hero-buttons] .sl-nav__install {
+  opacity: 0;
+  visibility: hidden;
+  transition-delay: 0s, 0.2s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sl-nav .sl-nav__install { transition: none; }
+}
+
+/* Search a streamer (F2, 11-02). The markup is the hub's HubV5SearchBox, so the
+   suggestions and Enter rules match; these rules restyle it with this page's
+   tokens instead of loading hub-v5.css on the front page. */
+.sl-search {
+  width: min(620px, 100%);
+  margin-top: 1.6rem;
+}
+
+.sl-search .hv5-search {
+  position: relative;
+  text-align: left;
+}
+
+.sl-search .hv5-field {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 60px;
+  padding: 0 8px 0 20px;
+  border: 1px solid hsl(240 5% 24%);
+  border-radius: 16px;
+  background: hsl(var(--sc-card));
+  color: hsl(var(--sc-muted-foreground));
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 18px 44px rgb(0 0 0 / 0.42);
+  cursor: text;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.sl-search .hv5-field:hover { border-color: hsl(240 5% 34%); }
+
+.sl-search .hv5-field:focus-within {
+  border-color: #5eead4;
+  box-shadow: 0 0 0 4px rgb(94 234 212 / 0.16), 0 18px 44px rgb(0 0 0 / 0.42);
+}
+
+.sl-search .hv5-ico {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+}
+
+.sl-search .hv5-field input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  outline: none;
+  box-shadow: none;
+  color: hsl(var(--sc-foreground));
+  font: 500 17px/1.2 var(--sc-font);
+}
+
+.sl-search .hv5-field input::placeholder { color: hsl(var(--sc-muted-foreground)); }
+.sl-search .hv5-field input::-webkit-search-cancel-button { display: none; }
+
+.sl-search .hv5-kbd {
+  flex: none;
+  padding: 0 7px;
+  border: 1px solid hsl(240 5% 24%);
+  border-radius: 6px;
+  background: hsl(var(--sc-muted));
+  color: hsl(var(--sc-muted-foreground));
+  font-size: 12px;
+  line-height: 24px;
+}
+
+/* the hint fades as you focus the field (2026-11-02) instead of vanishing; it keeps its place, so the text does not jump */
+.sl-search .hv5-field:focus-within .hv5-kbd { opacity: 0; pointer-events: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .sl-search .hv5-kbd { transition: opacity 140ms ease; }
+}
+
+.sl-search .hv5-hero-go {
+  flex: none;
+  height: 44px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 11px;
+  background: #5eead4;
+  color: #042f2a;
+  font: 600 15px/1 var(--sc-font);
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.sl-search .hv5-hero-go:hover { background: #99f6e4; }
+
+.sl-search .hv5-hero-go:focus-visible {
+  outline: 2px solid #99f6e4;
+  outline-offset: 2px;
+}
+
+.sl-search .hv5-sugg {
+  position: absolute;
+  z-index: 45;
+  top: 68px;
+  /* games and emotes make the list longer (3A): it scrolls inside, with no bar. With a phone keyboard up the
+     search box sets the room above it (K1, 11-02) */
+  max-height: min(72vh, 640px, var(--hv5-sugg-room, 640px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  left: 0;
+  right: 0;
+  padding: 6px;
+  border: 1px solid hsl(240 5% 24%);
+  border-radius: 14px;
+  background: hsl(var(--sc-popover));
+  box-shadow: 0 22px 50px rgb(0 0 0 / 0.55);
+}
+
+/* closed, the list stays in the page but fades and lifts 4 px out (2026-11-02), then drops out of reach after the fade
+   (visibility delayed, as the header's buttons do above). It floats (absolute), so it takes no room while closed. */
+.sl-search .hv5-sugg[hidden] {
+  display: block;
+  visibility: hidden;
+  opacity: 0;
+  translate: 0 -4px;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .sl-search .hv5-sugg { transition: opacity 140ms ease, translate 140ms ease, visibility 0s linear 0s; }
+  .sl-search .hv5-sugg[hidden] { transition-delay: 0s, 0s, 140ms; }
+}
+
+.sl-search .hv5-sugg a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 52px;
+  padding: 0 12px;
+  border-radius: 9px;
+  color: hsl(var(--sc-foreground));
+  text-decoration: none;
+}
+
+.sl-search .hv5-sugg a[aria-selected="true"],
+.sl-search .hv5-sugg a:hover { background: hsl(var(--sc-muted)); }
+
+.sl-search .hv5-sg-h {
+  padding: 4px 10px 6px;
+  color: hsl(var(--sc-muted-foreground));
+  font: 600 12px/16px var(--sc-font);
+}
+
+.sl-search .hv5-sg-tx { display: flex; flex-direction: column; min-width: 0; }
+
+.sl-search :is(.hv5-sg-nm, .hv5-sg-c) {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sl-search .hv5-sg-nm { font-size: 15px; font-weight: 600; line-height: 20px; }
+.sl-search .hv5-sg-c { color: hsl(var(--sc-muted-foreground)); font-size: 12px; line-height: 16px; }
+
+.sl-search .hv5-sg-v {
+  flex: none;
+  margin-left: auto;
+  color: hsl(var(--sc-muted-foreground));
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sl-search .hv5-sugg a.hv5-sg-open {
+  margin-top: 4px;
+  border-top: 1px solid hsl(var(--sc-border));
+  border-radius: 0 0 7px 7px;
+  color: hsl(var(--sc-muted-foreground));
+}
+
+.sl-search .hv5-sg-open .hv5-ico { width: 16px; height: 16px; margin: 0 6px; }
+.sl-search .hv5-sg-open b { color: hsl(var(--sc-foreground)); }
+.sl-search .hv5-sg-k { margin-left: auto; color: hsl(var(--sc-muted-foreground)); font-size: 12px; }
+
+/* 3A (11-02): the looked-up login's row, a game's cover and an emote's picture */
+.sl-search [data-kind="login"] > .hv5-ico { flex: none; width: 16px; height: 16px; margin: 0 6px; }
+.sl-search [data-kind="login"] b { color: hsl(var(--sc-foreground)); }
+.sl-search :is(.hv5-sg-gm, .hv5-sg-em) {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+}
+.sl-search .hv5-sg-gm > * { width: 24px; height: 32px; border-radius: 3px; overflow: hidden; background: hsl(var(--sc-muted)); }
+.sl-search .hv5-sg-gm img { display: block; object-fit: cover; }
+.sl-search .hv5-sg-gm span { display: grid; place-items: center; color: hsl(var(--sc-muted-foreground)); font-size: 10px; font-weight: 600; }
+.sl-search .hv5-sg-em img { display: block; width: 28px; height: 28px; object-fit: contain; }
+
+.sl-search .hv5-sg-none {
+  padding: 10px;
+  color: hsl(var(--sc-muted-foreground));
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* Avatars in the suggestions and Try chips (HubV5Avatar). */
+.sp-landing .hv5-av {
+  flex: none;
+  border-radius: 50%;
+  object-fit: cover;
+  background: hsl(var(--sc-muted));
+}
+
+.sp-landing .hv5-mono {
+  display: inline-grid;
+  place-items: center;
+  color: #d6d6dc;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* Five live channels to try, busiest first. */
+.sl-try {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  margin: 1rem 0 0;
+}
+
+.sl-try__label {
+  margin-right: 2px;
+  color: hsl(var(--sc-muted-foreground));
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.sp-landing .sl-try__chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  margin-top: 1.5rem;
-  color: hsl(var(--sc-muted-foreground));
+  gap: 7px;
+  height: 32px;
+  padding: 0 12px 0 5px;
+  border-radius: 16px;
+  background: hsl(var(--sc-card));
+  box-shadow: inset 0 0 0 1px hsl(240 5% 22%);
+  color: hsl(var(--sc-foreground));
+  font: 500 13px/1 var(--sc-font);
   text-decoration: none;
-  font-size: 0.75rem;
-  font-weight: 700;
-  animation: sl-bob 1.8s ease-in-out infinite;
+  white-space: nowrap;
+  transition: background-color 0.15s, box-shadow 0.15s;
 }
 
-.sl-stage__cuedot {
-  width: 0.5rem;
-  height: 0.5rem;
-  border-right: 2px solid currentColor;
-  border-bottom: 2px solid currentColor;
-  transform: rotate(45deg);
+.sp-landing .sl-try__chip:hover {
+  background: hsl(var(--sc-muted));
+  box-shadow: inset 0 0 0 1px hsl(240 5% 30%);
 }
 
-@keyframes sl-bob {
-  50% { transform: translateY(4px); }
+@media (pointer: coarse) {
+  .sl-search .hv5-field input { font-size: 16px; }
+}
+
+@media (max-width: 719px) {
+  .sl-search .hv5-field { height: 56px; padding: 0 6px 0 16px; gap: 10px; border-radius: 14px; }
+  .sl-search .hv5-field input { font-size: 16px; }
+  .sl-search .hv5-kbd { display: none; }
+  .sl-search .hv5-hero-go { padding: 0 14px; font-size: 14px; }
+  .sl-search .hv5-sugg { top: 62px; }
+  /* One swipeable row instead of three wrapped lines. */
+  .sl-try {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    scrollbar-width: none;
+    width: calc(100% + 2rem);
+    margin: 0.9rem -1rem 0;
+    padding: 0 1rem;
+  }
+  .sl-try::-webkit-scrollbar { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sl-search .hv5-field,
+  .sl-search .hv5-hero-go,
+  .sp-landing .sl-try__chip { transition: none; }
 }
 
 .sl-tickwrap {
@@ -592,31 +850,27 @@
   transform: none;
 }
 
-.sl-card,
-.sl-rescard {
-  border: 1px solid hsl(var(--sc-border));
-  border-radius: calc(var(--sc-radius) + 0.3rem);
-  background: linear-gradient(180deg, hsl(var(--sc-card) / 0.86), hsl(var(--sc-card) / 0.54));
-  backdrop-filter: blur(12px);
-  box-shadow: 0 24px 70px -48px rgb(0 0 0 / 0.8);
-}
-
 .sl-xtour {
   margin-top: clamp(1.25rem, 3vw, 2.25rem);
+  /* The pinned box: one screen, but no taller than the panel and its padding.
+     A full screen on a tall or zoomed-out window left a band of empty page
+     above and below the panel (11-02); capped, it pins centred instead. */
+  --sl-xtour-pin: min(100vh, 48rem);
+  /* Scroll while pinned. ~4 steps of dwell; longer reads as a frozen page. */
+  --sl-xtour-dwell: 80vh;
 }
 
 .sl-xtour__scene {
   position: relative;
-  /* ~4 steps of dwell. Longer reads as a frozen page: the visitor scrolls and
-     nothing appears to move. */
-  height: 180vh;
+  height: calc(var(--sl-xtour-pin) + var(--sl-xtour-dwell));
 }
 
 .sl-xtour__sticky {
-  /* Native sticky — see the note on .lsg__sticky in LiveSignalScrollGraph.css. */
+  /* Native sticky — see the note on .lsg__sticky in LiveSignalScrollGraph.css.
+     ScrollPinnedTour hands this box to the scroll engine, which reads its top. */
   position: sticky;
-  top: 0;
-  min-height: 100vh;
+  top: max(0px, calc((100vh - var(--sl-xtour-pin)) / 2));
+  min-height: var(--sl-xtour-pin);
   display: flex;
   align-items: center;
 }
@@ -753,47 +1007,6 @@
     0 16px 40px -22px rgba(var(--xp-rgb), 0.7);
 }
 
-.sl-featgrid,
-.sl-steps,
-.sl-resgrid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1rem;
-}
-
-.sl-feat,
-.sl-step,
-.sl-rescard {
-  padding: 1.35rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
-}
-
-.sl-feat__ic,
-.sl-step__ic,
-.sl-res-ic {
-  width: 2.55rem;
-  height: 2.55rem;
-  display: grid;
-  place-items: center;
-  border: 1px solid hsl(var(--sc-chart-2) / 0.38);
-  border-radius: var(--sc-radius);
-  background: hsl(var(--sc-chart-2) / 0.1);
-  color: hsl(var(--sc-chart-2));
-}
-
-.sl-feat h3,
-.sl-step h3,
-.sl-rescard h3 { margin: 0; font-size: 1rem; }
-.sl-feat p,
-.sl-step p,
-.sl-rescard p { margin: 0; color: hsl(var(--sc-muted-foreground)); font-size: 0.86rem; line-height: 1.55; }
-.sl-rescard { color: inherit; text-decoration: none; }
-.sl-rescard:hover { transform: translateY(-3px); border-color: hsl(var(--sc-chart-2) / 0.55); }
-.sl-res-go { margin-top: auto; color: hsl(var(--sc-chart-2)); font-size: 0.82rem; font-weight: 800; }
-.sl-res-soon { margin-left: 0.5rem; padding: 0.12rem 0.4rem; border-radius: 999px; color: hsl(var(--sc-chart-4)); background: hsl(var(--sc-chart-4) / 0.15); font-size: 0.58rem; font-weight: 900; text-transform: uppercase; }
-
 .sl-footer {
   position: relative;
   z-index: 1;
@@ -801,19 +1014,37 @@
   padding: 2.4rem 0;
 }
 
+/* Brand on the left, then Product, Help and Legal columns (B1). */
 .sl-foot {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 2fr);
+  gap: 1.6rem 2rem;
+  align-items: start;
+}
+
+.sl-foot__brand p {
+  margin: 0.6rem 0 0;
+  color: hsl(var(--sc-muted-foreground));
+  font-size: 0.86rem;
+}
+
+.sl-foot__cols {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1.2rem;
 }
 
 .sl-foot__links {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   align-items: flex-start;
-  gap: 1rem;
+  gap: 0.65rem;
+}
+
+.sl-foot__head {
+  color: hsl(var(--sc-foreground));
+  font-size: 0.8rem;
+  font-weight: 700;
 }
 
 .sl-foot__links a {
@@ -836,11 +1067,27 @@
 }
 
 .sl-foot small {
-  width: 100%;
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  /* Top-aligned, so an open Analytics preferences panel grows down, not around the line beside it. */
+  align-items: flex-start;
+  gap: 0.4rem 1rem;
   padding-top: 1rem;
   border-top: 1px solid hsl(var(--sc-border));
   color: hsl(var(--sc-muted-foreground));
   text-align: center;
+}
+
+.sl-foot small .analytics-preferences__body { text-align: left; }
+
+@media (max-width: 719px) {
+  .sl-foot { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 420px) {
+  .sl-foot__cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 /* Static / reduced-motion / no-JS / mobile: native panel scroll */
@@ -899,6 +1146,7 @@
   border-radius: .5rem; background: hsl(var(--sc-background));
   color: hsl(var(--sc-foreground)); font: inherit; cursor: pointer;
 }
+.sl-mobile-nav__toggle:hover { background: hsl(var(--sc-accent-surface)); }
 .sl-mobile-nav__layer { position: fixed; inset: 0; z-index: 1000; }
 .sl-mobile-nav__backdrop { position: absolute; inset: 0; background: rgb(0 0 0 / 65%); border: 0; }
 .sl-mobile-nav__panel {
@@ -909,11 +1157,27 @@
 .sl-mobile-nav__title { margin: 0 0 1rem; font-weight: 700; }
 .sl-mobile-nav__links { display: flex; flex-direction: column; gap: .5rem; margin-top: 1rem; }
 .sl-mobile-nav__links a { display: flex; align-items: center; min-height: 44px; padding: .6rem; }
-/* Text links only: the drawer's Open Analytics is a light primary button and
+/* Text links only: the drawer's Open the Hub is a light primary button and
    keeps its own dark label (#eee on its #fafafa fill was about 1.06:1). */
 .sl-mobile-nav__links a:not(.sc-btn) { color: #eee; }
 .sl-mobile-nav__links a.sc-btn { justify-content: center; margin-top: .5rem; }
 .sl-mobile-nav__layer :focus-visible { outline: 2px solid #c4b5fd; outline-offset: 2px; }
+/* The drawer slides in from the right over a fading backdrop (2026-11-02), and the Menu / Close button gets the
+   approved hover and press. Closing is still instant: LandingMobileNav removes the layer when it closes, so an
+   exit would need script to keep it mounted. */
+@keyframes sl-mobile-nav-fade { from { opacity: 0; } }
+@keyframes sl-mobile-nav-slide { from { translate: 100% 0; } }
+@media (prefers-reduced-motion: no-preference) {
+  .sl-mobile-nav__toggle {
+    transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease, opacity 140ms ease, scale 260ms cubic-bezier(.34, 1.56, .64, 1), translate 200ms cubic-bezier(.16, 1, .3, 1);
+  }
+  .sl-mobile-nav__toggle:active {
+    scale: .96;
+    transition-duration: 140ms, 140ms, 140ms, 140ms, 140ms, 70ms, 200ms;
+  }
+  .sl-mobile-nav__backdrop { animation: sl-mobile-nav-fade 200ms cubic-bezier(.16, 1, .3, 1); }
+  .sl-mobile-nav__panel { animation: sl-mobile-nav-slide 200ms cubic-bezier(.16, 1, .3, 1); }
+}
 .sl-sample-label {
   display: inline-block; margin-block: .75rem; padding: .35rem .65rem;
   border: 1px solid #555063; border-radius: .4rem; color: #d5cce7; font-size: .8rem;
@@ -943,13 +1207,10 @@
      grazes the copy. Halve it there so it stays texture rather than content. */
   .sl-fx { opacity: 0.5; }
   /* Match LiveSignalScrollGraph: keep tall scene + sticky pin; only [data-static] collapses. */
-  .sl-xtour:not([data-static]) .sl-xtour__scene { height: 220vh; }
+  .sl-xtour { --sl-xtour-dwell: 120vh; }
   .sl-xtour__grid { grid-template-columns: minmax(0, 1fr); padding-inline: 0; }
   .sl-xtour__rail { display: none; }
   .pulse-landing-panel.sl-ext { height: min(72vh, 640px); max-height: 78vh; }
-  .sl-featgrid,
-  .sl-steps,
-  .sl-resgrid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 560px) {
@@ -959,11 +1220,11 @@
   .sl-stage { padding: 0 1rem; }
   .sl-stage h1 { font-size: 2.35rem; }
   .sl-ln-grid { grid-template-columns: 1fr; }
-  .sl-xtour:not([data-static]) .sl-xtour__scene { height: 260vh; }
+  .sl-xtour { --sl-xtour-dwell: 160vh; }
 }
 
 /* With the Discord mark beside Menu there is no room for both small nav
-   buttons; Open Analytics stays one tap away in the hero and the menu. */
+   buttons; Open the Hub stays one tap away in the hero and the menu. */
 @media (min-width: 561px) and (max-width: 700px) {
   .sl-nav--discord .sl-nav__analytics { display: none; }
 }

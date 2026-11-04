@@ -130,11 +130,10 @@ test.describe('in-app navigation scroll', () => {
     await expect(details).not.toHaveAttribute('open', '')
   })
 
-  test('the landing Developer reference card opens the collapsed #api section', async ({ page }) => {
-    await page.goto('/')
-    const card = page.locator('a.sl-rescard[href="/docs#api"]')
-    await card.scrollIntoViewIfNeeded()
-    await card.click()
+  // The landing's Developer reference card is gone, so the app's own /docs/api redirect is the
+  // in-app arrival left. Production answers /docs/api with an edge 301 before the app loads.
+  test('the in-app /docs/api redirect opens the collapsed #api section', async ({ page }) => {
+    await page.goto('/docs/api')
     await expect(page).toHaveURL(/\/docs#api$/)
     await expect(page.locator('details:has(#api)')).toHaveAttribute('open', '')
     await expect(page.locator('#api')).toBeInViewport()
@@ -234,7 +233,8 @@ test.describe('Back to the Moments list', () => {
   for (const { name, leave } of ways) {
     test(`returns the reader to their place in Latest after following ${name}`, async ({ page }) => {
       await page.setViewportSize({ width: 390, height: 640 })
-      await installHubUxMock(page)
+      // Latest leaves out a stream's first 5 minutes, so these rows sit later in their streams.
+      await installHubUxMock(page, { momentOffsets: [1200, 1440] })
       await page.goto('/analytics/moments')
       await expect(page.locator('.moments-result').first()).toBeVisible()
       await scrollToBottom(page)

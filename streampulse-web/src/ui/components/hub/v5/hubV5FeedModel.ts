@@ -1,12 +1,13 @@
 /**
- * What the hub's Top moments today rail (HubV5TopMoments) shares with the rest
- * of the page: the Picking up row, the age line and the × words. Pure
+ * What the hub's Picking up now rail (HubV5PickingUp) and Top moments today
+ * share with the rest of the page: Picking up, the age line and the × words. Pure
  * functions over the hub payload; every time and figure is one the backend
  * sent, nothing is estimated.
  *
  * - Picking up: live channels whose chat over the last 5 minutes ran at least
  *   1.5× their own average, at least 30 a minute and 20 more than usual,
- *   ranked by how many more messages a minute.
+ *   strongest × first (the number each row shows; P1, 11-02), then the most
+ *   more messages a minute.
  */
 import type { HubLiveChannel, PublicHub } from '../../../../lib/publicHub'
 import { screenerMetricMultiplier } from '../../../../lib/channelScreenerContract'
@@ -15,7 +16,6 @@ import { formatHubInt, hasFullChatWindow, hubClock, hubClockRange } from './hubV
 export const FEED_UP_MIN = 1.5
 export const FEED_NOW_MIN = 30
 export const FEED_ADD_MIN = 20
-export const FEED_UP_LIST = 5
 /** The dot greys once the data is older than this. */
 export const FEED_STALE_MS = 3 * 60_000
 
@@ -91,10 +91,11 @@ function commonWindow(rows: readonly HubLiveChannel[]): string {
   return top ? hubClockRange(top.a, top.b) : ''
 }
 
-/** Picking up: chat 1.5×+ usual with the floors above, most more messages a minute first. */
+/** Picking up: chat 1.5×+ usual with the floors above, strongest × first, then most more messages a minute. */
 export function feedUp(hub: Pick<PublicHub, 'liveChannels'> | null | undefined): FeedUp {
   const hot = (hub?.liveChannels ?? []).filter((c) => screenerHot(c))
-    .sort((a, b) => b.screenerV1!.chat!.absoluteDeltaPerMin! - a.screenerV1!.chat!.absoluteDeltaPerMin!)
+    .sort((a, b) => b.screenerV1!.chat!.multiplier! - a.screenerV1!.chat!.multiplier!
+      || b.screenerV1!.chat!.absoluteDeltaPerMin! - a.screenerV1!.chat!.absoluteDeltaPerMin!)
   return {
     up: hot.map((c) => ({
       login: c.login.toLowerCase(), name: c.displayName || c.login, cat: c.category || null, streamId: c.streamId || '', avatar: c.profileImageUrl || null,
@@ -102,11 +103,4 @@ export function feedUp(hub: Pick<PublicHub, 'liveChannels'> | null | undefined):
     })),
     upWindow: commonWindow(hot),
   }
-}
-
-export function feedUpAria({ up, upWindow }: FeedUp): string {
-  const n = up.length
-  const top = up[0]
-  return `Picking up: ${n} ${n === 1 ? 'channel' : 'channels'} whose chat${upWindow ? ` over ${upWindow}` : ''} ran at least ${FEED_UP_MIN} times usual, at least ${FEED_NOW_MIN} a minute and ${FEED_ADD_MIN} more than usual.`
-    + (top ? ` Most added: ${top.name}, ${feedMore(top.add)} more a minute.` : '') + ' Show them.'
 }

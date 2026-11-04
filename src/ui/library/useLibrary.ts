@@ -19,8 +19,9 @@ export function useLibrary(repository: LibraryRepository) {
     setSnapshot(null); setLoading(true); setBusy(false); setError(null); setNotice('')
     repository.load(controller.signal).then(value => {
       if (!controller.signal.aborted) setSnapshot(value)
-    }).catch(() => {
-      if (!controller.signal.aborted) setError('Could not load your Library. Nothing has been changed.')
+    }).catch(e => {
+      // The repository's own words say what failed (MyMomentsPage names it).
+      if (!controller.signal.aborted) setError(e instanceof Error && e.message ? e.message : 'Could not load your Library. Nothing has been changed.')
     }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [repository, reload])
@@ -33,14 +34,15 @@ export function useLibrary(repository: LibraryRepository) {
       if (!controller.signal.aborted && !locked.current && changes.current === seen) setSnapshot(value)
     }).catch(() => undefined)
   }), [repository])
-  const run = useCallback(async (command: LibraryCommand, message: string): Promise<boolean> => {
+  /** `message`: the notice on success, or one written from the new snapshot. */
+  const run = useCallback(async (command: LibraryCommand, message: string | ((next: LibrarySnapshot) => string)): Promise<boolean> => {
     const controller = session.current
     if (!controller || controller.signal.aborted || locked.current) return false
     locked.current = true; changes.current++; setBusy(true); setError(null); setNotice('')
     try {
       const next = await repository.execute(command, controller.signal)
       if (controller.signal.aborted) return false
-      setSnapshot(next); setNotice(message); return true
+      setSnapshot(next); setNotice(typeof message === 'function' ? message(next) : message); return true
     } catch (e) {
       if (!controller.signal.aborted) setError(e instanceof Error ? e.message : 'Change could not be saved. Try again.')
       return false

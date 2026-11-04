@@ -224,7 +224,7 @@ test.describe('public surface audit', () => {
     await expect(dialog.getByRole('link', { name: 'Support' })).toHaveAttribute('href', '/support')
     await expect(dialog.getByRole('link', { name: 'Privacy' })).toHaveAttribute('href', '/privacy')
     // The drawer's primary button once inherited the text-link colour (#eee on #fafafa, about 1.06:1).
-    const openAnalytics = dialog.getByRole('link', { name: 'Open Analytics' })
+    const openAnalytics = dialog.getByRole('link', { name: 'Open the Hub' })
     await expect(openAnalytics).toBeVisible()
     const contrast = await openAnalytics.evaluate((element) => {
       const rgb = (value: string) => (value.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number)
