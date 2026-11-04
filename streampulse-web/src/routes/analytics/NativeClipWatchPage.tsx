@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, ExternalLink, Link2 } from 'lucide-react'
-import { clipPagePath, clipsNotOn, lookupNativeClips, validClipId, type NativeClip } from '../../lib/nativeClips'
+import { clipHeadline, clipPagePath, clipsNotOn, lookupNativeClips, validClipId, type NativeClip } from '../../lib/nativeClips'
 import { cachedClip, clipListKey, clipListQueryFromKey, useClipList, type ClipListQuery } from '../../lib/nativeClipsList'
 import { useSavedClips } from '../../lib/savedNativeClips'
 import { useTwitchFollows } from '../../lib/twitchFollows'
@@ -144,7 +144,7 @@ function ClipWatch({ id }: { id: string }) {
   const [askSignIn, setAskSignIn] = useState(false)
 
   useEffect(() => {
-    if (clip) document.title = `${clip.title} — ${clip.channel.displayName} — StreamPulse`
+    if (clip) document.title = `${clipHeadline(clip)} — ${clip.channel.displayName} — StreamPulse`
   }, [clip])
 
   const back = handed.from != null ? (
@@ -170,11 +170,13 @@ function ClipWatch({ id }: { id: string }) {
     body = <Notice title="This clip isn’t in the library" body="It may have been removed, or the link may be wrong." action={<Link className="nc-btn" to={LIBRARY_PATH}>See all clips</Link>} />
   } else {
     const c = clip
+    const headline = clipHeadline(c)
     body = (
       <div className="nc-watch-grid">
         <div className="nc-watch-main">
           <ClipPlayer key={c.id} clip={c} />
-          <h1 className="nc-watch-title">{c.title}</h1>
+          <h1 className="nc-watch-title">{headline}</h1>
+          {headline === c.title ? null : <p className="nc-watch-twitch">On Twitch: {c.title}</p>}
           <div className="nc-watch-row">
             <div className="nc-watch-channel">
               <ChannelAvatar channel={c.channel} size={40} />

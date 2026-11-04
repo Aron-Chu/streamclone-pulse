@@ -67,6 +67,12 @@ export function ClipDescription({ clip, worthShare = null }: { clip: NativeClip;
           Chat ran <span className="nc-heat-text nc-num">{r.chatLift.toFixed(1)}×</span> its usual pace for this stream
         </li>
         {r.emoteLift >= 1.1 ? <li>Emotes ran <span className="nc-num">{r.emoteLift.toFixed(1)}×</span> their usual pace</li> : null}
+        {r.topEmote ? (
+          <li>
+            <span className="nc-strong">{r.topEmote.name}</span> was chat's top emote then, used{' '}
+            <span className="nc-num">{r.topEmote.count.toLocaleString()}</span> {r.topEmote.count === 1 ? 'time' : 'times'}
+          </li>
+        ) : null}
         <li>
           At least <span className="nc-num">{r.chatters.toLocaleString()}</span> people chatting, and no one sent more than{' '}
           <span className="nc-num">{Math.max(1, Math.round(r.largestShare * 100))}%</span> of the messages
