@@ -486,7 +486,7 @@ export function smoothSeriesValues(values: number[], window = 3): number[] {
   })
 }
 
-/** Adaptive window for aggregate chat/emote trend lines (longer timelines → slightly smoother). */
+/** Adaptive window for the resting chat trend line (longer timelines → slightly smoother). Emotes are drawn unsmoothed: averaging flattens their short bursts. */
 export function trendSmoothingWindow(pointCount: number): number {
   if (pointCount <= 30) return 3
   if (pointCount <= 90) return 5

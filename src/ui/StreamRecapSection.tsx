@@ -57,7 +57,6 @@ import {
 } from './mostReacted.ts'
 import { usePinnedCardHold } from './pinnedCardExit.ts'
 import { prefersReducedMotion } from './motion/useSmoothedScalar.ts'
-import { theme } from './theme.ts'
 
 export interface StreamRecapSectionProps {
   externalPoint?: LiveHeatPoint | null
@@ -79,6 +78,8 @@ export interface StreamRecapSectionProps {
   hideHubLink?: boolean
   /** A VOD page, where Jump seeks this player. */
   vodPage?: boolean
+  /** This tab plays the payload's VOD: the chart follows the player. */
+  followVod?: boolean
   /** The VOD stream history names for this stream, when the payload names none (useArchiveVodId). */
   archiveVodId?: string | null
 }
@@ -158,7 +159,7 @@ interface SummarySlot {
  * script is on its way, so the chart and the list below never move down.
  */
 function RecapSummarySlot({ summary }: { summary: SummarySlot }) {
-  return <div ref={summary.ref} hidden={!summary.shown && !summary.pending} style={summary.pending ? styles.summaryReserve : undefined} />
+  return <div ref={summary.ref} hidden={!summary.shown && !summary.pending} style={summary.pending ? SUMMARY_RESERVE : undefined} />
 }
 
 /**
@@ -220,14 +221,14 @@ function RecapTopMoments({
   const hiddenCount = sorted.length - shown.length
   return (
     <>
-      <div style={styles.topHead}>
-        <div style={styles.topHeadMain}>
-          <h4 style={styles.topTitle}>{TOP_MOMENTS_TITLE}</h4>
-          <span style={styles.topSubtitle}>{TOP_MOMENTS_SUBTITLE}</span>
+      <div className="pulse-sr-head">
+        <div className="pulse-sr-head-main">
+          <h4 className="pulse-sr-title">{TOP_MOMENTS_TITLE}</h4>
+          <span className="pulse-sr-subtitle">{TOP_MOMENTS_SUBTITLE}</span>
         </div>
         {items.length > 0 ? (
-          <div style={styles.topMeta}>
-            <span style={styles.momentCount}>{items.length} moment{items.length === 1 ? '' : 's'}</span>
+          <div className="pulse-sr-meta">
+            <span className="pulse-sr-count">{items.length} moment{items.length === 1 ? '' : 's'}</span>
             <PulseThemedSelect
               label="Sort"
               value={sortMode}
@@ -250,7 +251,7 @@ function RecapTopMoments({
       <div>
         {arrivalNote}
         <TopMomentCard {...card} />
-        <div style={styles.momentList} data-pmf-list="true" onKeyDown={clearOnEscape(card)}>
+        <div className="pulse-sr-list" data-pmf-list="true" onKeyDown={clearOnEscape(card)}>
           {shown.map(({ key, point }) => (
             <PulseMomentRow
               key={momentRowKey(point, points)}
@@ -267,11 +268,11 @@ function RecapTopMoments({
           ))}
         </div>
         {expanded || hiddenCount > 0 ? (
-          <button type="button" className="pulse-moment-more" style={styles.momentsExpandButton} data-chart-action="true" onClick={() => setExpanded(value => !value)}>
+          <button type="button" className="pulse-moment-more pulse-sr-more" data-chart-action="true" onClick={() => setExpanded(value => !value)}>
             <span>
               {expanded ? 'Show less' : `Show ${hiddenCount} more moment${hiddenCount === 1 ? '' : 's'}`}
             </span>
-            <span style={styles.momentsExpandChevron} aria-hidden="true">
+            <span className="pulse-sr-chevron" aria-hidden="true">
               {expanded ? '▾' : '▸'}
             </span>
           </button>
@@ -301,7 +302,7 @@ function RecapChartCard({ arrivalNote, hold, backendUrl, games, onJump, onAnalyt
       {arrivalNote}
       {hold.point ? (
         <MomentCardSlot exiting={hold.exiting} momentKey={hold.point.minuteTs} data-chart-inspector-exiting={hold.exiting ? 'true' : undefined}>
-          <div style={styles.slotSpacing}>
+          <div className="pulse-sr-slot">
             <SelectedMomentCard
               point={hold.point}
               backendUrl={backendUrl}
@@ -353,6 +354,7 @@ function RecapReadyContent({
   sidebarFill = false,
   hideHubLink = false,
   vodPage = false,
+  followVod,
   onJump,
   onAnalytics,
   onRequestFullRollups,
@@ -368,6 +370,7 @@ function RecapReadyContent({
   sidebarFill?: boolean
   hideHubLink?: boolean
   vodPage?: boolean
+  followVod?: boolean
   onJump: (point: LiveHeatPoint) => void
   onAnalytics: (point: LiveHeatPoint) => void
   onRequestFullRollups?: () => Promise<FullHistoryRequestResult>
@@ -461,7 +464,7 @@ function RecapReadyContent({
     : `${formatNumber(recap.totalMessages)} messages`
 
   return (
-    <div style={styles.recapContent}>
+    <div className="pulse-sr-stack">
       <RecapSummarySlot summary={summary} />
       <RecapGamesStrip
         key={payload.streamId ?? payload.vodId ?? 'recap'}
@@ -489,6 +492,7 @@ function RecapReadyContent({
           return moment != null
         }}
         onRequestFullRollups={onRequestFullRollups}
+        followVod={followVod}
       />
       <RecapChartCard
         arrivalNote={selectedMoment ? undefined : arrivalNote}
@@ -523,7 +527,7 @@ function RecapReadyContent({
         offsetSeconds={selectedPoint?.offsetSeconds ?? null}
         hideHubLink={hideHubLink}
       />
-      <span style={styles.srOnly}>{meta}</span>
+      <span className="pulse-sr-only">{meta}</span>
     </div>
   )
 }
@@ -555,6 +559,7 @@ function OfflineFallbackContent({
   sidebarFill = false,
   hideHubLink = false,
   vodPage = false,
+  followVod,
   onJump,
   onAnalytics,
   onOpenAnalytics,
@@ -569,6 +574,7 @@ function OfflineFallbackContent({
   sidebarFill?: boolean
   hideHubLink?: boolean
   vodPage?: boolean
+  followVod?: boolean
   onJump: (point: LiveHeatPoint) => void
   onAnalytics: (point: LiveHeatPoint) => void
   onOpenAnalytics: (offsetSeconds?: number) => void
@@ -664,11 +670,11 @@ function OfflineFallbackContent({
   if (endedAgo) metaParts.push(`ended ${endedAgo}`)
 
   return (
-    <div style={styles.recapContent}>
+    <div className="pulse-sr-stack">
       <RecapSummarySlot summary={summary} />
       {peakPoints.length === 0 && (peakChat > 0 || totalMessages > 0) ? (
-        <div style={styles.fallbackCta}>
-          <button type="button" className="pulse-recap-analytics-cta" style={styles.actionPrimary} onClick={() => onOpenAnalytics()}>
+        <div className="pulse-sr-cta-row">
+          <button type="button" className="pulse-recap-analytics-cta pulse-sr-cta" onClick={() => onOpenAnalytics()}>
             Open analytics
           </button>
         </div>
@@ -698,6 +704,7 @@ function OfflineFallbackContent({
           return point != null
         }}
         onRequestFullRollups={onRequestFullRollups}
+        followVod={followVod}
       />
       <RecapChartCard
         arrivalNote={listedPoint ? undefined : arrivalNote}
@@ -732,7 +739,7 @@ function OfflineFallbackContent({
         offsetSeconds={selectedPoint?.offsetSeconds ?? null}
         hideHubLink={hideHubLink}
       />
-      {metaParts.length > 0 ? <span style={styles.offlineMeta}>{metaParts.join(' · ')}</span> : null}
+      {metaParts.length > 0 ? <span className="pulse-sr-offline-meta">{metaParts.join(' · ')}</span> : null}
     </div>
   )
 }
@@ -755,6 +762,7 @@ export function StreamRecapSection({
   sidebarFill = false,
   hideHubLink = false,
   vodPage = false,
+  followVod,
   archiveVodId = null,
 }: StreamRecapSectionProps) {
   if (isLive) return null
@@ -784,12 +792,12 @@ export function StreamRecapSection({
   if (uiState === 'error') {
     return (
       <PulseSectionCard title={title}>
-        <div style={styles.stateBlock}>
-          <p style={styles.stateText}>
+        <div className="pulse-sr-stack">
+          <p className="pulse-sr-state">
             {formatPulseApiError(pollError) ?? 'Stream recap is unavailable right now.'}
           </p>
           {onRetry ? (
-            <button type="button" className="pulse-secondary-btn" style={styles.secondaryButton} onClick={onRetry}>
+            <button type="button" className="pulse-secondary-btn pulse-sr-retry" onClick={onRetry}>
               Retry
             </button>
           ) : null}
@@ -802,7 +810,7 @@ export function StreamRecapSection({
     if (!showEmptyState) return null
     return (
       <PulseSectionCard title={title}>
-        <p style={styles.emptyText}>
+        <p className="pulse-sr-empty">
           No recap yet. Track this channel to capture chat and emote analytics the next time it goes live.
         </p>
       </PulseSectionCard>
@@ -824,6 +832,7 @@ export function StreamRecapSection({
           sidebarFill={sidebarFill}
           hideHubLink={hideHubLink}
           vodPage={vodPage}
+          followVod={followVod}
           onJump={onJump}
           onAnalytics={onAnalytics}
           onRequestFullRollups={onRequestFullRollups}
@@ -839,6 +848,7 @@ export function StreamRecapSection({
           sidebarFill={sidebarFill}
           hideHubLink={hideHubLink}
           vodPage={vodPage}
+          followVod={followVod}
           onJump={onJump}
           onAnalytics={onAnalytics}
           onOpenAnalytics={onOpenAnalytics}
@@ -849,80 +859,5 @@ export function StreamRecapSection({
   )
 }
 
-const styles: Record<string, CSSProperties> = {
-  recapContent: {
-    display: 'grid',
-    gap: 10,
-  },
-  /** The recap grid gap, carried inside the card slot so it animates with it. */
-  slotSpacing: { paddingTop: 10 },
-  /** The summary's height (catch-me-up.js), kept while its script loads. */
-  summaryReserve: { minHeight: 63 },
-  topHead: { alignItems: 'flex-start', display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', marginBottom: -4, rowGap: 6 },
-  topHeadMain: { display: 'grid', flex: '1 1 140px', gap: 2, minWidth: 0 },
-  topTitle: { color: theme.textPrimary, fontSize: 11, fontWeight: 900, letterSpacing: '0.05em', margin: 0, textTransform: 'uppercase' },
-  topSubtitle: { color: theme.textMuted, fontSize: 11, fontWeight: 600, lineHeight: 1.35 },
-  topMeta: { alignItems: 'center', display: 'flex', gap: 6 },
-  momentCount: { color: theme.textMuted, fontSize: 9, fontVariantNumeric: 'tabular-nums', fontWeight: 700 },
-  // The list's last row: a row's box, gap and text inset (padding, accent, gap).
-  momentsExpandButton: {
-    alignItems: 'center',
-    appearance: 'none',
-    background: 'rgba(255, 255, 255, 0.03)',
-    border: 0,
-    borderRadius: 6,
-    color: theme.accentSoft,
-    cursor: 'pointer',
-    display: 'flex',
-    fontSize: 11,
-    fontWeight: 700,
-    gap: 6,
-    marginTop: 4,
-    padding: '6px 8px 6px 18px',
-    width: '100%',
-  },
-  momentsExpandChevron: {
-    color: theme.accentSoft,
-    fontSize: 11,
-    fontWeight: 900,
-    lineHeight: 1,
-  },
-  momentList: { display: 'grid', gap: 4 },
-  stateBlock: { display: 'grid', gap: 10 },
-  stateText: { color: theme.textSecondary, fontSize: 12, lineHeight: 1.45, margin: 0 },
-  secondaryButton: {
-    background: 'rgba(255, 255, 255, 0.06)',
-    border: '1px solid rgba(255, 255, 255, 0.12)',
-    borderRadius: 10,
-    color: theme.textPrimary,
-    cursor: 'pointer',
-    fontSize: 12,
-    fontWeight: 800,
-    padding: '8px 12px',
-    width: 'fit-content',
-  },
-  emptyText: { color: theme.textMuted, fontSize: 12, lineHeight: 1.5, margin: 0 },
-  offlineMeta: { color: theme.textMuted, fontSize: 11, fontWeight: 600 },
-  fallbackCta: { display: 'flex', gap: 8 },
-  actionPrimary: {
-    background: theme.accent,
-    border: 0,
-    borderRadius: 10,
-    color: theme.onAccent,
-    cursor: 'pointer',
-    fontSize: 12,
-    fontWeight: 800,
-    padding: '8px 12px',
-  },
-  srOnly: {
-    border: 0,
-    clip: 'rect(0 0 0 0)',
-    height: 1,
-    margin: -1,
-    overflow: 'hidden',
-    padding: 0,
-    position: 'absolute',
-    whiteSpace: 'nowrap',
-    width: 1,
-  },
-}
+/** The summary's height (catch-me-up.js), kept while its script loads. Inline: tests read it. */
+const SUMMARY_RESERVE: CSSProperties = { minHeight: 63 }
