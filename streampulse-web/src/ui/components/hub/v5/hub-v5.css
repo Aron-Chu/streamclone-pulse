@@ -2322,6 +2322,11 @@
 .hv5-tm-l1 { height: 18px; }
 .hv5-tm-l2 { font-size: 12px; line-height: 15px; color: var(--sp-text-2); }
 .hv5-tm-l2 .hv5-fd-sep { margin: 0; }
+/* a row with no × (board 2A): the game gives way first, then "Early in the stream ·" ellipses; the rate never does */
+.hv5-tm-l2 .hv5-f2-plain { display: inline-flex; gap: 0.3em; flex: 0 1 auto; min-width: 0; }
+.hv5-tm-l2 .hv5-f2-plain ~ .hv5-fd-g { flex-shrink: 1000; }
+.hv5-tm-l2 .hv5-f2-why { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.hv5-tm-l2 .hv5-f2-rt { flex: none; }
 .hv5-tm-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 600; font-size: 13.5px; }
 .hv5-tm-l1 .hv5-f2-em { font-size: 13px; }
 .hub-v5 .hv5-tm-l1 .hv5-f2-em img { width: 18px; height: 18px; }

@@ -5,7 +5,7 @@ import type { MomentsFeedItem } from '../src/lib/momentsFeed'
 import { checkMoment, topBursts } from '../src/lib/momentsChecked'
 import { normalizePublicHub, type HubLiveChannel, type HubLivePulseMoment, type PublicHub } from '../src/lib/publicHub'
 import {
-  TOP_DAY_MS, TOP_ROWS, hubTopRows, topCount, topDayParse, topDayRows, topFeedRows, topFrom, topGames, topMomentsHref, topRowAria, type TopRowData,
+  TOP_DAY_MS, TOP_FILL_TO, TOP_ROWS, busiestFillRows, hubTopRows, topCount, topDayParse, topDayRows, topFeedRows, topFrom, topGames, topMomentsHref, topRowAria, type TopRowData,
 } from '../src/ui/components/hub/v5/hubV5TopModel'
 
 const fixture = JSON.parse(readFileSync(resolve(__dirname, 'fixtures/moments_feed_v1.json'), 'utf8')) as { generatedAt: number; items: MomentsFeedItem[] }
@@ -50,9 +50,10 @@ describe('Top moments today from the Moments list', () => {
     expect(topGames(null)).toEqual([])
   })
 
-  it('sends "Every moment" to the Moments page’s Top, on the picked game', () => {
-    expect(topMomentsHref(null)).toBe('/analytics/moments?view=top')
-    expect(topMomentsHref('509672')).toBe('/analytics/moments?view=top&game=509672')
+  it('sends "All moments" to the Moments page (it has no Top view), on the picked game by name', () => {
+    expect(topMomentsHref(null)).toBe('/analytics/moments')
+    expect(topMomentsHref('Counter-Strike')).toBe('/analytics/moments?category=Counter-Strike')
+    expect(topMomentsHref('Slots & Casino')).toBe('/analytics/moments?category=Slots+%26+Casino')
   })
 })
 
@@ -85,7 +86,7 @@ const hubOf = (livePulseMoments: HubLivePulseMoment[], liveChannels: HubLiveChan
   ({ livePulseMoments, liveChannels, generatedAt }) as unknown as Pick<PublicHub, 'liveChannels' | 'livePulseMoments' | 'generatedAt'>
 
 describe('Top moments today from the hub', () => {
-  it('leaves out a stream’s first 20 minutes and anything under a ready 1.5×', () => {
+  it('leaves out anything under a ready 1.5×, and keeps a stream’s first 20 minutes with its rate and no × (board 2A)', () => {
     const rows = hubTopRows(hubOf([
       pulse('early', 6, { offsetSeconds: 19 * 60 + 59, topEmotes: [] }),
       pulse('low', 1.4, { topEmotes: [] }),
@@ -93,8 +94,26 @@ describe('Top moments today from the hub', () => {
       pulse('none', null, { topEmotes: [] }),
       pulse('edge', 1.5, { offsetSeconds: 20 * 60, topEmotes: [] }),
     ]))
-    expect(rows.map((r) => r.login)).toEqual(['edge'])
+    expect(rows.map((r) => [r.login, r.x, r.plain, r.rate])).toEqual([['edge', 1.5, null, 300], ['early', null, 'early', 300]])
+    // an early row says no usual, so the card draws no meter
+    expect(rows[1]!.usual).toBeNull()
     expect(hubTopRows(null)).toEqual([])
+  })
+
+  it('keeps a moment whose two counts disagree (the backend’s minute off-by-one) with its own rate and no ×', () => {
+    const mismatch = pulse('keliencs', 48.33, { emotesPerMin: 84, chatPerMin: 128, topEmotes: [] })
+    mismatch.comparison!.emotes!.currentPerMin = 145
+    const rows = hubTopRows(hubOf([mismatch, pulse('supertf', 2.2, { topEmotes: [] })]))
+    expect(rows.map((r) => [r.login, r.x, r.plain, r.rate, r.usual])).toEqual([['supertf', 2.2, null, 300, 136], ['keliencs', null, 'unmatched', 84, null]])
+  })
+
+  it('puts the rows with a × first, then the rest by their rate', () => {
+    const rows = hubTopRows(hubOf([
+      pulse('slow', null, { offsetSeconds: 300, emotesPerMin: 100, topEmotes: [] }),
+      pulse('fast', null, { offsetSeconds: 300, emotesPerMin: 900, at: T - 9 * MIN, topEmotes: [] }),
+      pulse('spike', 1.6, { topEmotes: [] }),
+    ]))
+    expect(rows.map((r) => r.login)).toEqual(['spike', 'fast', 'slow'])
   })
 
   it('keeps the last 24 hours by the answer’s clock: a long stream’s older peak drops out', () => {
@@ -152,7 +171,7 @@ describe('Top moments today from the hub', () => {
     expect(hubTopRows(hubOf(many))).toHaveLength(TOP_ROWS)
   })
 
-  it('turns the 10-30 hub answer into its six standout moments', () => {
+  it('turns the 10-30 hub answer into its six standout moments, then the early one with no ×', () => {
     // The hub answer of 2026-10-30 07:19Z, trimmed: 10 livePulseMoments and 6 of its live channels.
     const capture = normalizePublicHub(JSON.parse(readFileSync(resolve(__dirname, 'fixtures/hub_live_pulse_20261030.json'), 'utf8')))
     const rows = hubTopRows(capture)
@@ -163,16 +182,18 @@ describe('Top moments today from the hub', () => {
       ['aldo_geo', 14.08, 'QSMP', []],
       ['supertf', 2.97, 'Just Chatting', []],
       ['supertf', 2.47, 'Just Chatting', []],
+      ['jinnytty', null, 'Just Chatting', []],
     ])
-    // a stream's first 20 minutes stays out
-    expect(rows.some((r) => r.login === 'jinnytty')).toBe(false)
+    // a stream's first 20 minutes stays, with its rate and no ×; a partial average 20 minutes in stays out
+    expect(rows.at(-1)).toMatchObject({ plain: 'early', rate: 181, kind: 'emotes' })
+    expect(rows.filter((r) => r.login === 'findjeremiah')).toHaveLength(1)
   })
 })
 
 describe('Top moments today: the day’s hub rows this browser kept (11-02)', () => {
   const T = Date.UTC(2026, 10, 2, 3, 0)
   const r = (id: string, over: Partial<TopRowData> = {}): TopRowData => ({
-    id, login: id.split('-')[0]!, name: id, streamId: `s-${id.split('-')[0]}`, offsetSeconds: 1800, avatar: null, kind: 'chat', x: 2, at: T - 60 * MIN,
+    id, login: id.split('-')[0]!, name: id, streamId: `s-${id.split('-')[0]}`, offsetSeconds: 1800, avatar: null, kind: 'chat', x: 2, plain: null, at: T - 60 * MIN,
     game: null, art: null, emote: null, emotes: [], rate: 90, usual: 30, viewers: null, live: true, href: `/analytics/moments?m=${id}`, also: [], checked: null,
     ...over,
   })
@@ -199,6 +220,55 @@ describe('Top moments today: the day’s hub rows this browser kept (11-02)', ()
     expect(back).toEqual([{ ...r('a-1', { emotes: [{ name: 'KEKW', imageUrl: 'https://static-cdn.jtvnw.net/emoticons/v2/1/default/dark/2.0', count: 9 }] }), live: false }])
     expect(topDayParse({ rows: [] })).toEqual([])
     expect(topDayParse([null, 3, { ...saved[0], x: '2' }, { ...saved[0], kind: 'bits' }, { ...saved[0], href: 'https://evil.example/' }, { ...saved[0], href: '//evil.example/analytics' }])).toEqual([])
+  })
+
+  it('keeps a row with no × only with its reason, and never a busiest-minute fill', () => {
+    const early = JSON.parse(JSON.stringify(r('e-1', { x: null, plain: 'early' })))
+    expect(topDayParse([early])).toEqual([{ ...r('e-1', { x: null, plain: 'early' }), live: false }])
+    expect(topDayParse([{ ...early, plain: 'busiest' }, { ...early, plain: undefined }, { ...early, x: 3 }])).toEqual([])
+  })
+
+  it('puts kept rows with a × before the ones without', () => {
+    const rows = topDayRows([r('a-1', { x: null, plain: 'early', rate: 900 }), r('b-1', { x: 1.6 })], [], new Set(), T)
+    expect(rows.map((k) => k.id)).toEqual(['b-1', 'a-1'])
+  })
+})
+
+describe('Top moments today: the busiest-minute fill (board 2A, 11-02)', () => {
+  const NOW = Date.UTC(2026, 10, 2, 8, 0)
+  const m = (login: string, chatPerMin: number, over: Partial<HubLivePulseMoment> = {}): HubLivePulseMoment => ({
+    login, displayName: login.toUpperCase(), streamId: `h-${login}`, offsetSeconds: 600, at: NOW - 3 * 60 * MIN, score: 100,
+    label: 'Corpus peak', chatPerMin, topEmotes: [{ name: 'KEKW', provider: '7tv', count: 12, sharePct: 0 }, { name: 'LUL', provider: 'twitch', count: 40, sharePct: 0 }],
+    category: 'Just Chatting', ...over,
+  }) as HubLivePulseMoment
+  const shown = (logins: string[]) => logins.map((login) => ({ login }))
+
+  it('adds one card per other channel, its busiest minute, the most chat first, up to 10 in all', () => {
+    const rows = busiestFillRows([
+      m('kaicenat', 900), m('kaicenat', 1204, { at: NOW - 60 * MIN }), m('jynxzi', 388), m('supertf', 5000), m('caseoh_', 412),
+    ], shown(['supertf']), new Map([['jynxzi', { profileImageUrl: 'https://static-cdn.jtvnw.net/jtv_user_pictures/j-300x300.png' }]]), NOW)
+    expect(rows.map((r) => [r.login, r.rate, r.x, r.plain, r.kind])).toEqual([
+      ['kaicenat', 1204, null, 'busiest', 'chat'], ['caseoh_', 412, null, 'busiest', 'chat'], ['jynxzi', 388, null, 'busiest', 'chat'],
+    ])
+    expect(rows[0]).toMatchObject({ name: 'KAICENAT', at: NOW - 60 * MIN, usual: null, emote: null, live: false, href: '/analytics/moments?login=kaicenat&stream=h-kaicenat&offset=600' })
+    expect(rows[0]!.emotes.map((e) => e.name)).toEqual(['LUL', 'KEKW'])
+    expect(rows[2]).toMatchObject({ live: true, avatar: 'https://static-cdn.jtvnw.net/jtv_user_pictures/j-300x300.png' })
+    const many = Array.from({ length: 12 }, (_, i) => m(`c${i}`, 100 + i))
+    expect(busiestFillRows(many, shown(['a', 'b', 'c']), new Map(), NOW)).toHaveLength(TOP_FILL_TO - 3)
+    expect(busiestFillRows(many, shown(Array.from({ length: 10 }, (_, i) => `s${i}`)), new Map(), NOW)).toEqual([])
+  })
+
+  it('takes only the last 24 hours, and nothing without a channel or a chat count', () => {
+    const rows = busiestFillRows([
+      m('old', 999, { at: NOW - TOP_DAY_MS - MIN }), m('ahead', 999, { at: NOW + 5 * MIN }), m('nochat', 0), { ...m('x', 50), login: undefined },
+      m('kept', 10, { at: NOW - TOP_DAY_MS + MIN }),
+    ], [], new Map(), NOW)
+    expect(rows.map((r) => r.login)).toEqual(['kept'])
+  })
+
+  it('says what it is, never a ×', () => {
+    const [row] = busiestFillRows([m('kaicenat', 1204, { at: NOW - 13 * MIN })], [], new Map(), NOW)
+    expect(topRowAria(row!, 4, NOW)).toMatch(/^4\. KAICENAT, Busiest minute, 1,204 chat a minute, Just Chatting, 13 min ago at .+\. Open it in Top moments below\.$/)
   })
 })
 
