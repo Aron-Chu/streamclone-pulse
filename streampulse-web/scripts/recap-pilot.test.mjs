@@ -17,18 +17,21 @@ test('uses canonical draft OR alternatives and honest partial coverage', () => {
   assert.throws(() => validate(fixture({ durationSeconds: 1000, nonMissingRollupMinutes: 30 })), /exceed/)
 })
 
-test('fails closed for score gate, unknown coverage and unapproved or expired review', () => {
-  assert.throws(() => validate(fixture({ moments: [{ offsetSeconds: 100, score: 69 }] })), /score-70/)
+test('fails closed for fewer than three moments, unknown coverage and unapproved or expired review', () => {
+  assert.throws(() => validate(fixture({ moments: [{ offsetSeconds: 100, score: 90 }, { offsetSeconds: 200, score: 80 }] })), /top 3/)
+  assert.throws(() => validate(fixture({ moments: [] })), /top 3/)
+  assert.throws(() => validate(fixture({ moments: Array.from({ length: 21 }, (_, i) => ({ offsetSeconds: i * 60, score: 50 })) })), /top 3/)
   assert.throws(() => validate(fixture({ coverage: { state: 'unknown', description: 'Unknown.' } })), /coverage/)
   for (const review of [{ ...fixture().review, approved: false }, { ...fixture().review, expiresAt: now.toISOString() }, { ...fixture().review, reviewedAt: '2026-11-01T17:00:00Z' }]) {
     assert.throws(() => validate(fixture({ review })), /review/)
   }
 })
 
-test('a documented peak alternative remains explicit and manually reviewed', () => {
-  assert.equal(validate(fixture({ moments: [{ offsetSeconds: 100, score: 40 }],
-    peakChatThreshold: { minimum: 100, observed: 120, rationale: 'Synthetic threshold for an explicit alternative-gate test.' } })).moments.length, 1)
-  assert.throws(() => validate(fixture({ moments: [{ offsetSeconds: 100, score: 40 }], peakChatThreshold: { minimum: 100, observed: 99, rationale: 'Under threshold.' } })), /score-70/)
+test('a stream qualifies on its own top 3, whatever their absolute scores (owner decision 2026-11-05)', () => {
+  const quiet = [{ offsetSeconds: 100, score: 41 }, { offsetSeconds: 200, score: 22 }, { offsetSeconds: 300, score: 9 }]
+  assert.equal(validate(fixture({ moments: quiet })).moments.length, 3)
+  // The old alternative gate is gone, not silently ignored.
+  assert.throws(() => validate(fixture({ peakChatThreshold: { minimum: 100, observed: 120, rationale: 'Retired.' } })), /unsupported field peakChatThreshold/)
 })
 
 test('rejects raw/private fields, unsafe identities and mismatched provenance', () => {
@@ -39,13 +42,13 @@ test('rejects raw/private fields, unsafe identities and mismatched provenance', 
   assert.throws(() => validate(fixture({ login: 'moments' })), /login/)
   assert.throws(() => validate(fixture({ review: { ...fixture().review, sourceUrl: 'https://api.streampulse.stream/v1/portal/analytics/streams/999/recap' } })), /identity/)
   assert.throws(() => validate(fixture({ review: { ...fixture().review, sourceUrl: 'https://user:pass@api.streampulse.stream/v1/portal/analytics/streams/123/recap' } })), /identity/)
-  assert.throws(() => validate(fixture({ moments: [{ offsetSeconds: -1, score: 80 }] })), /nonnegative/)
+  assert.throws(() => validate(fixture({ moments: [{ offsetSeconds: -1, score: 80 }, ...fixture().moments.slice(1)] })), /nonnegative/)
 })
 
 test('deduplicates output paths, summaries and timestamps', () => {
   assert.throws(() => validatePilot({ schemaVersion: 1, pages: [fixture(), fixture()] }, { now }), /duplicate/)
   assert.throws(() => validatePilot({ schemaVersion: 1, pages: [fixture(), fixture({ streamId: '124', summary: 'A different unique reviewed summary.', review: { ...fixture().review, sourceUrl: 'https://api.streampulse.stream/v1/portal/analytics/streams/124/recap' } })] }, { now }), /duplicate/)
-  assert.throws(() => validate(fixture({ moments: [{ offsetSeconds: 100, score: 75 }, { offsetSeconds: 100, score: 90 }] })), /duplicate/)
+  assert.throws(() => validate(fixture({ moments: [{ offsetSeconds: 100, score: 75 }, { offsetSeconds: 100, score: 90 }, { offsetSeconds: 300, score: 60 }] })), /duplicate/)
 })
 
 test('maps verified replay offsets and keeps useful expired archives without replay promises', () => {
