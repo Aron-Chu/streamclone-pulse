@@ -26,8 +26,16 @@ describe('the phone peek while it waits (U6, 10-28)', () => {
   it('reserves it only while waiting, and only on phones', () => {
     const reservations = [...css.matchAll(/([^{}\n]*\.hv5-f3-peek[^{}\n]*)\{[^}]*min-height/g)].map(m => m[1].trim())
     expect(reservations).toEqual(['.hv5-f3-peek[data-wait]'])
-    expect(css.split('[data-wait]')).toHaveLength(2)
+    expect(css.split('.hv5-f3-peek[data-wait]')).toHaveLength(2)
     expect(phone).toContain('.hv5-f3-peek[data-wait]')
+  })
+})
+
+describe('the hero while the first answer loads', () => {
+  it('keeps the Try row as tall as its chips, and the scope line unseen', () => {
+    expect(css).toMatch(/\n\.hub-v5 \.hv5-hero-chip \{[^}]*height: 34px;/)
+    expect(css).toMatch(/\n\.hv5-hero-try\[data-wait\] \{ min-height: 34px; \}/)
+    expect(css).toMatch(/\n\.hv5-scope\[data-wait\] \{ visibility: hidden; \}/)
   })
 })
 

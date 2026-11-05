@@ -810,6 +810,8 @@
   margin-top: 16px;
 }
 .hub-v5 .hv5-mast .hv5-hero-try { margin-top: 16px; }
+/* while the first answer loads, the room its 34 px chips land in */
+.hv5-hero-try[data-wait] { min-height: 34px; }
 .hv5-hero-tl {
   margin-right: 2px;
   font-size: 12px;
@@ -852,6 +854,7 @@
   line-height: 16px;
   color: var(--sp-text-3);
 }
+.hv5-scope[data-wait] { visibility: hidden; }
 @media (max-width: 1100px) {
   .hub-v5 .hv5-mast .hv5-hero-h { font-size: 34px; line-height: 40px; }
 }
