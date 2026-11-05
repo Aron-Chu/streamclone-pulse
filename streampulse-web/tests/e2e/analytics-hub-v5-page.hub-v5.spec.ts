@@ -398,7 +398,7 @@ test('Top moments today is the carousel under the chart, and the rail is only wh
   await openV5Hub(page, TOP_MOMENT)
   const big = page.locator('#big-moments')
   await expect(big.getByRole('heading', { name: 'Top moments today' })).toBeVisible()
-  await expect(big.getByRole('link', { name: 'Every moment today →' })).toHaveAttribute('href', '/analytics/moments?view=top')
+  await expect(big.getByRole('link', { name: 'All moments →' })).toHaveAttribute('href', '/analytics/moments')
   const card = big.locator('.hv5-bm-card[data-pos="0"]')
   await expect(card).toContainText('xQc')
   const rail = page.locator('#latest')
@@ -412,6 +412,34 @@ test('Top moments today is the carousel under the chart, and the rail is only wh
   await expect(page).toHaveURL(/\/analytics\/moments\?login=xqc&stream=s1&offset=3600$/)
 })
 
+// Board 2A (11-02): the mock's two moments are 2 and 4 minutes into their streams, so
+// they show as "Early in the stream" with their rate and no ×. The locks' warm-up reads
+// hub/moments on its own; another channel's busiest minute from those reads fills a
+// card, and a channel already shown (xQc) never gets a second one.
+test('Top moments today keeps early moments with no × and fills with busiest minutes from the chart’s own reads', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await installHubUxMock(page, { featuredSession: READY_FEATURED_SESSION })
+  const now = Date.now()
+  const busy = (login: string, displayName: string, chatPerMin: number) => ({
+    login, displayName, streamId: `hist-${login}`, offsetSeconds: 1800, score: 80, label: 'Corpus peak', source: 'corpus',
+    confidence: 90, vodState: 'vod_ready', chatPerMin, at: now - 3 * 60 * 60 * 1000,
+    topEmotes: [{ name: 'KEKW', provider: '7tv', count: 12, sharePct: 18 }],
+  })
+  await page.route(/\/v1\/public\/hub\/moments(\?.*)?$/, route => route.fulfill({
+    json: { status: 'ready', moments: [busy('kaicenat', 'KaiCenat', 1204), busy('xqc', 'xQc', 9000)] },
+  }))
+  await page.goto('/analytics')
+  const big = page.locator('#big-moments')
+  await expect(big.locator('.hv5-bm-card .hv5-bm-lbl', { hasText: 'Early in the stream' })).toHaveCount(2)
+  const fill = big.locator('.hv5-bm-card', { has: page.locator('.hv5-bm-lbl', { hasText: 'Busiest minute' }) })
+  await expect(fill).toHaveCount(1, { timeout: 15_000 })
+  await expect(fill).toContainText('KaiCenat')
+  await expect(fill.locator('.hv5-bm-x')).toHaveText('1,204chat/min')
+  await expect(big.locator('.hv5-bm-card', { hasText: 'xQc' })).toHaveCount(1)
+  await expect(big.locator('.hv5-bm-card .hv5-bm-x', { hasText: '×' })).toHaveCount(0)
+})
+
 test('the chart (i) opens How this is measured with the served-window facts', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await openV5Hub(page)
@@ -422,6 +450,44 @@ test('the chart (i) opens How this is measured with the served-window facts', as
   await expect(measured).toHaveAttribute('open', '')
   await expect(measured.locator('summary')).toBeFocused()
   await expect(measured.locator('.hv5-dis-body li').first()).toBeVisible()
+})
+
+// The buckets rule (board pick 5): below 95% of the chart's buckets, one grey line directly under the
+// chart; 95% or more, nothing; and never an amber "Activity coverage ... buckets" row in the banner.
+async function openHubKeepingBuckets(page: Page, keep: (index: number) => boolean) {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await installHubUxMock(page, { keepActivityBucket: keep })
+  await page.goto('/analytics')
+  await expect(page.locator('.figma-global-activity__hub-chart h2')).toHaveText('Activity · last 24 h')
+  await expect(page.getByTestId('hub-data-age')).toBeVisible()
+}
+
+test("below 95% of the chart's buckets, one grey line sits directly under the chart and nothing amber says buckets", async ({ page }) => {
+  await openHubKeepingBuckets(page, index => index % 10 !== 5)
+  const note = page.getByTestId('hub-minutes-missing-note')
+  await expect(note).toHaveText('A few minutes are missing from this chart.')
+  const chart = (await box(page, '.figma-global-activity__hub-chart'))
+  const noteBox = (await note.boundingBox())!
+  // Directly under the chart card (the caption style tucks its top 3 px up under the card's edge),
+  // above the data age line, in the grey caption colour.
+  expect(noteBox.y).toBeGreaterThanOrEqual(chart.y + chart.height - 4)
+  expect(noteBox.y - (chart.y + chart.height)).toBeLessThan(24)
+  expect((await box(page, '[data-testid="hub-data-age"]')).y).toBeGreaterThan(noteBox.y)
+  expect(await note.evaluate(element => getComputedStyle(element).color)).toBe('rgba(255, 255, 255, 0.62)')
+  await expect(page.locator('.hx-health-banner').getByText(/Activity coverage|buckets|rollups/)).toHaveCount(0)
+  await expect(page.getByText(/Activity coverage/)).toHaveCount(0)
+})
+
+test("at 95% or more of the chart's buckets, the page says nothing about buckets", async ({ page }) => {
+  await openHubKeepingBuckets(page, index => index % 48 !== 5)
+  await expect(page.getByTestId('hub-minutes-missing-note')).toHaveCount(0)
+  await expect(page.getByText(/Activity coverage|buckets missing|A few minutes/)).toHaveCount(0)
+})
+
+test('with every bucket there, the page says nothing about buckets either', async ({ page }) => {
+  await openHubKeepingBuckets(page, () => true)
+  await expect(page.getByTestId('hub-minutes-missing-note')).toHaveCount(0)
+  await expect(page.getByText(/Activity coverage|buckets missing|A few minutes/)).toHaveCount(0)
 })
 
 // Phone round (11-02): on a phone the promo is a compact card (title, the desktop line, See how it works) that opens to

@@ -11,6 +11,9 @@
  * copy, so a page crash clears it too). One source a list, never both. While the pointer or keyboard focus is in the carousel,
  * what a read brings waits; a change of source (the list's rows for the hub's)
  * goes in at once.
+ * Under 10 hub rows, each other channel's busiest minute from the chart's
+ * hub/moments reads fills in after them (busiestFillRows; board 2A, 11-02),
+ * labelled as that, never as a spike, and never kept in this browser.
  *
  * The list is read once each time the hub reads (a poll, Try again, back to
  * the tab), answered or not, so it keeps going while the hub fails, and once
@@ -26,21 +29,23 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { isApiError } from '../../../../lib/apiClient'
-import { clk, fx, whenShort } from '../../../../lib/momentsChecked'
+import { emoteDisplaySrc } from '../../../../lib/emoteAssetUrl'
+import { clk, fx, int, whenShort } from '../../../../lib/momentsChecked'
 import { loadMomentsWindow, type MomentsFeedCategoryFacet, type MomentsFeedSnapshot } from '../../../../lib/momentsFeed'
 import { momentsFeedEnabled } from '../../../../lib/momentsFeedFlag'
-import type { PublicHub } from '../../../../lib/publicHub'
+import type { HubLivePulseMoment, PublicHub } from '../../../../lib/publicHub'
 import { publicHubCacheWritesStopped, STORAGE_PREFIX } from '../../../../lib/publicHubCacheReset'
 import '../d3/hub-d3-tokens.css'
 import { HubV5Avatar } from './HubV5Avatar'
 import { GameArt } from './HubV5Rack'
 import { feedFreshText, feedStale, feedUp, type FeedUp } from './hubV5FeedModel'
-import { hubCategoryArt, hubSavedAt, hubSavedClock } from './hubV5Model'
+import { hubCategoryArt, hubSavedAt, hubSavedClock, screenerDown } from './hubV5Model'
 import {
   TOP_KEEP_MS,
   TOP_MIN_X,
   TOP_READ,
   TOP_START_MIN,
+  busiestFillRows,
   hubTopRows,
   topCount,
   topDayParse,
@@ -48,6 +53,7 @@ import {
   topFeedRows,
   topFrom,
   topGames,
+  topPlainLabel,
   topRowAria,
   type TopGame,
   type TopRowData,
@@ -163,6 +169,8 @@ export interface TopTodayInput {
   /** The hub's read count (usePublicHubData's pollAttempt): the list is read again with each one. */
   attempt: number
   nowMs: number
+  /** The chart's hub/moments answers this visit (the locks and their warm-up): busiest minutes that fill the hub's rows to 10. */
+  busiest?: readonly HubLivePulseMoment[]
 }
 
 export interface TopToday {
@@ -182,14 +190,22 @@ export interface TopToday {
   upAsOf: number | null
   /** Picking up is the page's saved copy. */
   upSaved: boolean
+  /** The chat counts behind Picking up did not load (screenerDown): `up` is the last good list, at most 3 min old, or empty. */
+  upDown: boolean
   /** Live channels' pictures by login, for a row whose source sends none. */
   avatars: ReadonlyMap<string, string>
   /** Box art by game name, for Picking up. */
   art: ReadonlyMap<string, string>
 }
 
+/** How long Picking up keeps its last good list, greyed, while the chat counts don't load. */
+export const UP_KEEP_MS = 3 * 60_000
+const NO_UP: FeedUp = { up: [], upWindow: '' }
+
 /** The rail's state, shared by the rail and the phone peek (see the top of this file). */
-export function useTopToday({ hub, savedAt, reading, attempt, nowMs }: TopTodayInput): TopToday {
+const NO_MOMENTS: readonly HubLivePulseMoment[] = []
+
+export function useTopToday({ hub, savedAt, reading, attempt, nowMs, busiest = NO_MOMENTS }: TopTodayInput): TopToday {
   const [gone, setGone] = useState(false)
   const flag = import.meta.env.VITE_PUBLIC_MOMENTS_FEED
   // read inline so a production build without the flag folds the list's reads away
@@ -222,12 +238,19 @@ export function useTopToday({ hub, savedAt, reading, attempt, nowMs }: TopTodayI
     : null), [feed, read, expired])
   const hubView = useMemo<TopView | null>(() => {
     if (hub && (savedAt == null || hubRows.length || !reading)) {
+      const asOf = savedAt ?? Date.parse(hub.generatedAt)
       // a picked game's read failed with nothing kept: the hub's rows from that game, under its pressed chip
-      const rows = feed && game ? hubRows.filter((r) => r.game === game.name) : hubRows
-      return { key, source: savedAt != null ? 'saved' : 'hub', asOf: savedAt ?? Date.parse(hub.generatedAt), total: rows.length, rows }
+      if (feed && game) {
+        const rows = hubRows.filter((r) => r.game === game.name)
+        return { key, source: savedAt != null ? 'saved' : 'hub', asOf, total: rows.length, rows }
+      }
+      // under 10, other channels' busiest minutes fill in; a saved copy's channels may have ended, so none says live
+      const live = new Map(savedAt != null ? [] : hub.liveChannels.map((c) => [c.login.toLowerCase(), c] as const))
+      const rows = [...hubRows, ...busiestFillRows(busiest, hubRows, live, asOf)]
+      return { key, source: savedAt != null ? 'saved' : 'hub', asOf, total: rows.length, rows }
     }
     return reading ? null : { key, source: 'none', asOf: null, total: 0, rows: [] }
-  }, [hub, hubRows, savedAt, reading, key, feed, game])
+  }, [hub, hubRows, savedAt, reading, key, feed, game, busiest])
   const latest = feed && read?.key !== key ? null : listView ?? hubView
 
   // what is shown: a read's list waits while you're in the list or a row is open; a picked game shows at once
@@ -272,14 +295,24 @@ export function useTopToday({ hub, savedAt, reading, attempt, nowMs }: TopTodayI
     setGame(next)
   }, [])
   const games = useMemo(() => topGames(read?.games, game), [read, game])
-  const up = useMemo(() => feedUp(hub), [hub])
-  const upAsOf = hub ? savedAt ?? Date.parse(hub.generatedAt) : null
+  const hubUp = useMemo(() => feedUp(hub), [hub])
+  const hubUpAsOf = hub ? savedAt ?? Date.parse(hub.generatedAt) : null
+  // Our 5-minute chat read failed (screenerDown): "nothing is picking up" would be a guess. The rail says it
+  // can't tell, and keeps the last good list greyed for up to 3 minutes (UP_KEEP_MS).
+  const upDown = !!hub && screenerDown(hub.liveChannels)
+  const lastUp = useRef<{ up: FeedUp; asOf: number } | null>(null)
+  useEffect(() => {
+    if (hub && !upDown && hubUpAsOf != null) lastUp.current = { up: hubUp, asOf: hubUpAsOf }
+  }, [hub, upDown, hubUp, hubUpAsOf])
+  const keptUp = upDown && lastUp.current && nowMs - lastUp.current.asOf <= UP_KEEP_MS ? lastUp.current : null
+  const up = upDown ? keptUp?.up ?? NO_UP : hubUp
+  const upAsOf = upDown ? keptUp?.asOf ?? null : hubUpAsOf
   const avatars = useMemo(() => new Map((hub?.liveChannels ?? []).flatMap((c) => (c.profileImageUrl ? [[c.login.toLowerCase(), c.profileImageUrl] as const] : []))), [hub])
   const art = useMemo(() => hubCategoryArt(hub?.livePulseMoments ?? []), [hub])
 
   return {
     shown, hold,
-    chips: feed && read != null, game, games, pickGame, open, setOpen: setOpenState, up, upAsOf, upSaved: savedAt != null, avatars, art,
+    chips: feed && read != null, game, games, pickGame, open, setOpen: setOpenState, up, upAsOf, upSaved: savedAt != null, upDown, avatars, art,
   }
 }
 
@@ -287,6 +320,13 @@ export function useTopToday({ hub, savedAt, reading, attempt, nowMs }: TopTodayI
 
 /** "5.0× more emotes", as Moments writes it (games first, 10-22). */
 const More = ({ x, ser }: { x: string; ser: 'chat' | 'emotes' }) => <span className="hv5-f2-x"><b>{x}</b> more {ser}</span>
+/** A row with no ×: "Busiest minute · 1,204 chat/min". On a narrow row the game goes first, then the reason ellipses; the rate stays. */
+const Plain = ({ row }: { row: TopRowData }) => (
+  <span className="hv5-f2-x hv5-f2-plain">
+    {row.plain ? <span className="hv5-f2-why">{topPlainLabel(row.plain)} ·</span> : null}
+    <span className="hv5-f2-rt"> <b>{int(row.rate)}</b> {row.kind}/min</span>
+  </span>
+)
 
 function Game({ cat, art }: { cat: string | null; art: string | null }) {
   if (!cat) return null
@@ -344,6 +384,7 @@ export function TopGames({ games, game, onGame }: { games: TopGame[]; game: TopG
 
 /** What a row shows (F1's look): rank, the channel's picture, who and the emote, "6.2× more emotes", the game's cover, the time. */
 function RowFace({ row, avatar, rank, nowMs }: { row: TopRowData; avatar: string | null; rank: number; nowMs: number }) {
+  const emoteSrc = emoteDisplaySrc(row.emote?.imageUrl, 18)
   return (
     <>
       <span className={`hv5-tm-rk${rank <= 3 ? ' hv5-tm-top' : ''}`} aria-hidden="true">{rank}</span>
@@ -355,13 +396,13 @@ function RowFace({ row, avatar, rank, nowMs }: { row: TopRowData; avatar: string
           <span className="hv5-tm-nm">{row.name}</span>
           {row.emote ? (
             <span className="hv5-f2-em">
-              {row.emote.imageUrl ? <img src={row.emote.imageUrl} alt="" width={18} height={18} decoding="async" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.style.display = 'none' }} /> : null}
+              {emoteSrc ? <img src={emoteSrc} alt="" width={18} height={18} decoding="async" loading="lazy" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.style.display = 'none' }} /> : null}
               <span>{row.emote.name}</span>
             </span>
           ) : null}
         </span>
         <span className="hv5-tm-l2">
-          <More x={fx(row.x)} ser={row.kind} />
+          {row.x != null ? <More x={fx(row.x)} ser={row.kind} /> : <Plain row={row} />}
           <Game cat={row.game} art={null} />
         </span>
       </span>
@@ -380,8 +421,10 @@ const FEED_TIP = 'The day’s strongest moments, the last 24 hours, from the Mom
 /** A saved copy's streams may have ended since: it says when they were live, and keeps its rows (Q1b, 10-31). */
 const hubTip = (savedAt: string | null) => `The day’s strongest moments, the last 24 hours, on streams ${savedAt ? `that were live ${savedAt}` : 'live today'}: `
   + 'the hub sends its latest 10, from the 12 chattiest live channels. '
-  + `None from a stream’s first ${TOP_START_MIN} minutes (chat saying hello), and only those at least ${TOP_MIN_X}× the stream’s own average before them. `
-  + 'Strongest × first, one card per moment. This browser keeps the ones the hub sent earlier today, so a moment stays after its stream ends.'
+  + `Those at least ${TOP_MIN_X}× the stream’s own average before them come first, strongest × first, one card per moment. `
+  + `A moment from a stream’s first ${TOP_START_MIN} minutes (too soon for its average), or one whose two counts disagree, shows its rate a minute and no ×. `
+  + 'Under 10, a “Busiest minute” card fills in for other channels: the most chat a minute in the chart’s reads, not a spike. '
+  + 'This browser keeps the moments the hub sent earlier today, so a moment stays after its stream ends.'
 /** Top moments today's "?" (the carousel's): the list's words, or the hub's. */
 export const topTip = (v: TopView, nowMs: number) => (isFeed(v) ? FEED_TIP : hubTip(v.source === 'saved' && v.asOf != null ? hubSavedAt(v.asOf, nowMs) : null))
 export const TOP_NONE = 'Unavailable right now.'
@@ -389,7 +432,8 @@ export const TOP_HUB_EMPTY = 'No standout moments on streams live now yet.'
 export const TOP_HUB_END = 'That’s all so far today.'
 /** A saved copy's last line, empty or not: "as of" its time, never "live now". */
 export const topSavedLine = (rows: number, clock: string) => (rows ? `That’s all as of ${clock}.` : `No standout moments as of ${clock}.`)
-export const TOP_EVERY = 'Every moment today →'
+/** The header's link: the Moments page (board 2A: it has no Top view yet). */
+export const TOP_ALL = 'All moments →'
 
 /** The dot greys: still waiting, a kept list, a saved copy, nothing, or data over 3 minutes old. */
 export const topStale = (v: TopView | null, nowMs: number) => v == null || v.source === 'feed-old' || v.source === 'saved' || v.source === 'none' || feedStale(v.asOf, nowMs)

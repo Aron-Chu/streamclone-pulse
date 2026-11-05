@@ -15,7 +15,7 @@ import { optionsForBoundedActivityFallback } from '../../lib/activityRangeCapabi
 import { usePublicHubData } from '../../hooks/usePublicHubData'
 import { getBackendUrl } from '../../lib/apiClient'
 import { hubActivityBehindWords } from '../../lib/hubActivityFallbackLine'
-import { activityBucketMs, formatActivityWindowLabel, summarizeActivity } from '../../lib/hubActivitySummary'
+import { activityBucketMs, formatActivityWindowLabel, showsMinutesMissingNote, summarizeActivity } from '../../lib/hubActivitySummary'
 import { selectHubChartActivityInputs } from '../../lib/hubChartActivityModel'
 import { isHubActivityLivePoolFallback, resolveHubActivityChartWindowMinutes } from '../../lib/hubActivityHonesty'
 import { normalizePublicHub, type PublicHubActivityWindow } from '../../lib/publicHub'
@@ -40,6 +40,7 @@ import { HubV5Rack } from '../../ui/components/hub/v5/HubV5Rack'
 import { HubV5TopPeek, useTopToday } from '../../ui/components/hub/v5/HubV5TopMoments'
 import { HubV5BarInstall, HubV5DockSearch } from '../../ui/components/hub/v5/HubV5TopBar'
 import { HubV5SearchContext, createHubV5SearchStore } from '../../ui/components/hub/v5/hubV5SearchStore'
+import { useHubV5BusiestMoments } from '../../ui/components/hub/v5/useHubV5BusiestMoments'
 import { useHubV5LockWarmup } from '../../ui/components/hub/v5/useHubV5LockWarmup'
 import { HUB_BUSIEST_COUNT, hubCategoryArt, hubChatBasis, hubSavedAt, hubSearchEmotes, hubSearchGames, rankBusiest, whereChatIs } from '../../ui/components/hub/v5/hubV5Model'
 import { useHashScrollHold } from '../../ui/RouteScrollManager'
@@ -169,6 +170,9 @@ export default function AnalyticsHubV5Page() {
     () => summarizeActivity(data.activity.points, servedActivityWindowMinutes, data.poolSize),
     [data.activity.points, data.poolSize, servedActivityWindowMinutes],
   )
+  // The health banner and the note under the chart judge "settled" alike: first paint and a read past its deadline are not.
+  const hubSettling = loadingInitial || hubUiState === 'loading'
+  const minutesMissingNote = showsMinutesMissingNote(activitySummary, !hubSettling && !(hub.hubReadPending && hub.hubReadLate))
 
   // The bar card reads the points the chart draws, on the chart's bucket grid.
   const chartActivity = useMemo(() => {
@@ -201,12 +205,15 @@ export default function AnalyticsHubV5Page() {
   const gameArt = useMemo(() => hubCategoryArt(data.livePulseMoments), [data.livePulseMoments])
   // Top moments today and its phone peek stay in every state: the Moments list, a hub answer or a saved copy (never
   // totals only), waiting on any hub read under way, else unavailable. The list is read with each hub read, answered or not.
+  // Under 10 hub rows, the busiest minutes in the locks' reads fill in (board 2A, 11-02).
+  const busiest = useHubV5BusiestMoments(emoteIntervalWindow)
   const top = useTopToday({
     hub: hubAnswered || savedAt != null ? hub.data : null,
     savedAt,
     reading: !hubGaveUp,
     attempt: hub.pollAttempt,
     nowMs,
+    busiest,
   })
   const avatars = useMemo(() => {
     const map = new Map<string, string>()
@@ -318,7 +325,7 @@ export default function AnalyticsHubV5Page() {
             liveRosterCount={data.coverage.liveChannels}
             error={hub.error}
             backendUrl={getBackendUrl()}
-            loading={loadingInitial || hubUiState === 'loading'}
+            loading={hubSettling}
             onRetry={hub.retryBlocked ? undefined : hub.refresh}
             retryDisabled={hub.refreshing || hub.hubReadRunning || hub.hubReadPending}
             pending={hub.hubReadPending}
@@ -385,6 +392,7 @@ export default function AnalyticsHubV5Page() {
                 measuredTarget={measuredBody}
                 onOpenMeasured={openMeasured}
                 saved={savedAt != null}
+                minutesMissingNote={minutesMissingNote}
               />
             </div>
 

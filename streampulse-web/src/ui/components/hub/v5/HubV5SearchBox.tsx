@@ -43,6 +43,7 @@ import { useHubV5Search, useHubV5SearchStore } from './hubV5SearchStore'
 export const IS_MAC = typeof navigator !== 'undefined' && /Mac|iP(hone|ad|od)/.test(navigator.platform || navigator.userAgent)
 /** Q1 (11-02): the field says what it finds; its name keeps the verb. */
 export const HUB_SEARCH_PLACEHOLDER = 'Streamers or games'
+/** The field's name for screen readers: the placeholder's words, said as an action. */
 export const HUB_SEARCH_LABEL = 'Search streamers or games'
 const BLUR_CLOSE_MS = 150
 /** K1 (11-02): the window this much taller than the visual viewport means a phone keyboard is up. */

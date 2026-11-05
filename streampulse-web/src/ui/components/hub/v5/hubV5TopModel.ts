@@ -9,19 +9,24 @@
  *   feed's score, as Moments' Top shows them. Every figure is the feed's.
  * - Otherwise the hub's own moments (it sends its latest 10, on streams live now):
  *   none older than 24 hours by the hub's clock (a long stream sends peaks
- *   from its whole session), none from a stream's first 20 minutes, only a
- *   ready × of 1.5 or more; a
+ *   from its whole session), only a ready × of 1.5 or more; a
  *   minute two channels counted the same emotes in is one row, one row per
  *   burst, strongest × first. The hub sends only its latest 10, so the page
  *   keeps the rows it was sent earlier in the day (topDayRows, 11-02): a
  *   moment stays after the hub moves on or its stream ends.
+ *   Carousel fill (board 2A, deep audit 11-02): a moment from a stream's first
+ *   20 minutes, or one whose counts and comparison disagree (the backend's
+ *   minute off-by-one), stays, with its rate and no × (`plain`), after the
+ *   rows with one. Under 10, each other channel's busiest minute from the
+ *   chart's hub/moments reads fills in (busiestFillRows): "Busiest minute",
+ *   never a spike.
  */
 import { sanitizeEmoteImageUrl } from '../../../../lib/emoteAssetUrl'
-import { avatarImage, boxArtImage, checkMoment, clk, emoteImage, fx, topBursts, TOP_BURST_MS, when, type CheckedMoment } from '../../../../lib/momentsChecked'
+import { avatarImage, boxArtImage, checkMoment, clk, emoteImage, fx, int, topBursts, TOP_BURST_MS, when, type CheckedMoment } from '../../../../lib/momentsChecked'
 import { momentsFeedFrom, type MomentsFeedCategoryFacet, type MomentsFeedSnapshot } from '../../../../lib/momentsFeed'
 import type { MomentVodRef } from '../../../../lib/momentsFeedVod'
-import type { PublicHub } from '../../../../lib/publicHub'
-import { hubCategoryArt, momentRowsV5 } from './hubV5Model'
+import type { HubLivePulseMoment, PublicHub } from '../../../../lib/publicHub'
+import { hubCategoryArt, momentHref, momentRowKey, momentRowsV5 } from './hubV5Model'
 
 /** Rows the list shows. */
 export const TOP_ROWS = 20
@@ -64,11 +69,12 @@ export function topGames(categories: readonly MomentsFeedCategoryFacet[] | null 
   return games
 }
 
-/** "Every moment →": the Moments page's Top, on the picked game. */
-export function topMomentsHref(gameId: string | null): string {
-  const query = new URLSearchParams({ view: 'top' })
-  if (gameId) query.set('game', gameId)
-  return `/analytics/moments?${query}`
+/** Cards the carousel fills up to with busiest minutes (board 2A: 5–10). */
+export const TOP_FILL_TO = 10
+
+/** "All moments →": the Moments page (it has no Top view yet), on the picked game by name (its category filter). */
+export function topMomentsHref(gameName: string | null): string {
+  return gameName ? `/analytics/moments?${new URLSearchParams({ category: gameName })}` : '/analytics/moments'
 }
 
 export interface TopEmote {
@@ -76,6 +82,14 @@ export interface TopEmote {
   imageUrl: string | undefined
   count: number
 }
+
+/**
+ * Why a row shows its rate and no ×: 'early', a stream's first 20 minutes (too
+ * soon for its own average); 'unmatched', the moment's counts and its
+ * comparison's disagree; 'busiest', a channel's busiest minute from the chart's
+ * reads (a fill, not a spike).
+ */
+export type TopPlain = 'early' | 'unmatched' | 'busiest'
 
 /** One row, from either source; it names its moment as a VOD lookup does (momentVods). */
 export interface TopRowData extends MomentVodRef {
@@ -86,7 +100,10 @@ export interface TopRowData extends MomentVodRef {
   avatar: string | null
   /** What rose. */
   kind: 'chat' | 'emotes'
-  x: number
+  /** The × against the usual; null for a `plain` row. */
+  x: number | null
+  /** Why it shows no ×; null for a row with one. */
+  plain: TopPlain | null
   /** Epoch ms of the moment's minute. */
   at: number
   game: string | null
@@ -114,7 +131,7 @@ function feedRow(m: CheckedMoment): TopRowData {
   const emotes = item.topEmotes.slice(0, 3).map((e) => ({ name: e.name, imageUrl: emoteImage(e), count: e.count }))
   return {
     id: item.id, login: item.login.toLowerCase(), name: m.name, streamId: item.streamId, offsetSeconds: item.offsetSeconds,
-    avatar: avatarImage(item) ?? null, kind: m.kind, x: m.rowX!, at: m.at,
+    avatar: avatarImage(item) ?? null, kind: m.kind, x: m.rowX!, plain: null, at: m.at,
     game: item.category?.name || null, art: boxArtImage(item) ?? null,
     emote: m.kind === 'emotes' ? emotes[0] ?? null : null, emotes,
     rate: item[m.kind].perMin, usual: m.kind === 'chat' ? m.baseC : m.baseE, viewers: item.viewers ?? null, live: item.streamLive,
@@ -129,10 +146,16 @@ export function topFeedRows(snap: Pick<MomentsFeedSnapshot, 'items' | 'generated
     .map(feedRow)
 }
 
+/** The list's order: rows with a × first, strongest first; then the rest by their rate; the newer first on a tie. */
+export function topOrder(a: Pick<TopRowData, 'x' | 'rate' | 'at'>, b: Pick<TopRowData, 'x' | 'rate' | 'at'>): number {
+  if ((a.x == null) !== (b.x == null)) return a.x == null ? 1 : -1
+  return (a.x != null && b.x != null ? b.x - a.x : (b.rate ?? 0) - (a.rate ?? 0)) || b.at - a.at
+}
+
 /**
  * The hub's rows now with the day's rows it sent before (`kept`), as the list
  * shows them: none older than 24 hours by `nowMs`, one row per burst (the hub's
- * latest answer wins), strongest × first, at most TOP_ROWS. A kept row is live
+ * latest answer wins), in topOrder, at most TOP_ROWS. A kept row is live
  * while its channel is in the hub's live channels (`live`, lowercase logins).
  */
 export function topDayRows(kept: readonly TopRowData[], fresh: readonly TopRowData[], live: ReadonlySet<string>, nowMs: number): TopRowData[] {
@@ -145,7 +168,7 @@ export function topDayRows(kept: readonly TopRowData[], fresh: readonly TopRowDa
     ids.add(r.id)
     rows.push({ ...r, live: live.has(r.login) })
   }
-  return rows.sort((a, b) => b.x - a.x || b.at - a.at).slice(0, TOP_ROWS)
+  return rows.sort(topOrder).slice(0, TOP_ROWS)
 }
 
 const str = (v: unknown): v is string => typeof v === 'string'
@@ -163,11 +186,14 @@ export function topDayParse(raw: unknown): TopRowData[] {
   return raw.slice(0, TOP_ROWS).flatMap((v): TopRowData[] => {
     if (!v || typeof v !== 'object') return []
     const r = v as Record<string, unknown>
-    if (!str(r.id) || !str(r.login) || !str(r.name) || !num(r.x) || !num(r.at) || !str(r.href) || !/^\/analytics\/[a-z]/.test(r.href)) return []
+    if (!str(r.id) || !str(r.login) || !str(r.name) || !num(r.at) || !str(r.href) || !/^\/analytics\/[a-z]/.test(r.href)) return []
     if (r.kind !== 'chat' && r.kind !== 'emotes') return []
+    // a row has its × or says why not (a busiest-minute fill is never kept)
+    const plain = r.plain === 'early' || r.plain === 'unmatched' ? r.plain : null
+    if (num(r.x) ? r.plain != null : plain == null) return []
     return [{
       id: r.id, login: r.login.toLowerCase(), name: r.name, streamId: str(r.streamId) ? r.streamId : '',
-      offsetSeconds: num(r.offsetSeconds) ? r.offsetSeconds : 0, avatar: orNull(r.avatar, str), kind: r.kind, x: r.x, at: r.at,
+      offsetSeconds: num(r.offsetSeconds) ? r.offsetSeconds : 0, avatar: orNull(r.avatar, str), kind: r.kind, x: orNull(r.x, num), plain, at: r.at,
       game: orNull(r.game, str), art: orNull(r.art, str), emote: keptEmote(r.emote),
       emotes: Array.isArray(r.emotes) ? r.emotes.flatMap((e) => keptEmote(e) ?? []).slice(0, 3) : [],
       rate: orNull(r.rate, num), usual: orNull(r.usual, num), viewers: orNull(r.viewers, num), live: false,
@@ -183,13 +209,21 @@ export function hubTopRows(hub: Pick<PublicHub, 'liveChannels' | 'livePulseMomen
   const art = hubCategoryArt(hub.livePulseMoments ?? [])
   // the last 24 hours by the answer's own clock (no clock: none left out)
   const from = Date.parse(hub.generatedAt) - TOP_DAY_MS
-  const gated = momentRowsV5(hub.livePulseMoments ?? []).flatMap((row) => {
+  type Gated = { row: (typeof rows)[number]; x: number | null; plain: TopPlain | null; at: number; rate: number | null }
+  const rows = momentRowsV5(hub.livePulseMoments ?? [])
+  const gated = rows.flatMap((row): Gated[] => {
+    if (row.at == null || row.at < from) return []
     const x = 'x' in row.cmp ? row.cmp.x : null
-    return row.at != null && !(row.at < from) && (row.moment.offsetSeconds || 0) / 60 >= TOP_START_MIN && x != null && x >= TOP_MIN_X ? [{ row, x, at: row.at }] : []
-  }).sort((a, b) => b.x - a.x || b.at - a.at)
+    const at = row.at
+    // a stream's first 20 minutes, or a minute whose two counts disagree: its rate, no ×
+    const plain: TopPlain | null = (row.moment.offsetSeconds || 0) / 60 < TOP_START_MIN ? 'early'
+      : 'why' in row.cmp && row.cmp.why === 'not compared' ? 'unmatched' : null
+    if (plain) return row.rate != null ? [{ row, x: null, plain, at, rate: row.rate }] : []
+    return x != null && x >= TOP_MIN_X ? [{ row, x, plain, at, rate: row.rate }] : []
+  }).sort(topOrder)
   const kept: TopRowData[] = []
   const twins = new Map<string, TopRowData>()
-  for (const { row, x, at } of gated) {
+  for (const { row, x, plain, at } of gated) {
     const m = row.moment
     const login = row.login.toLowerCase()
     const c = live.get(login)
@@ -209,11 +243,11 @@ export function hubTopRows(hub: Pick<PublicHub, 'liveChannels' | 'livePulseMomen
     const top = row.series === 'emotes' && row.topEmote ? row.topEmote : null
     const next: TopRowData = {
       id: row.key, login, name: row.displayName, streamId, offsetSeconds: m.offsetSeconds || 0,
-      avatar: m.profileImageUrl || c?.profileImageUrl || null, kind: row.series, x, at,
+      avatar: m.profileImageUrl || c?.profileImageUrl || null, kind: row.series, x, plain, at,
       game: m.category || null,
       art: m.categoryMetadataRejected ? null : m.boxArtUrl || (m.category ? art.get(m.category) ?? null : null),
       emote: top ? { name: row.topEmoteName ?? top.name, imageUrl: sanitizeEmoteImageUrl(top.imageUrl), count: top.count || 0 } : null, emotes,
-      rate: row.rate, usual: 'x' in row.cmp ? row.cmp.avg : null, viewers: Number.isFinite(m.viewers) ? m.viewers! : null, live: !!c,
+      rate: row.rate, usual: x != null && 'x' in row.cmp ? row.cmp.avg : null, viewers: Number.isFinite(m.viewers) ? m.viewers! : null, live: !!c,
       href: row.href, also: [], checked: null,
     }
     if (counts) twins.set(twinKey, next)
@@ -223,9 +257,60 @@ export function hubTopRows(hub: Pick<PublicHub, 'liveChannels' | 'livePulseMomen
   return kept
 }
 
+/**
+ * Each other channel's busiest minute in the chart's hub/moments reads
+ * (`moments`), within the 24 hours to `nowMs`, as rows after `shown`: one per
+ * channel, none for a channel `shown` has, the most chat a minute first, up to
+ * TOP_FILL_TO rows in all. The backend ranks these by size alone and sends no
+ * comparison, so they carry no ×. Live while the channel is in `live`.
+ */
+export function busiestFillRows(
+  moments: readonly HubLivePulseMoment[],
+  shown: readonly Pick<TopRowData, 'login'>[],
+  live: ReadonlyMap<string, { profileImageUrl?: string }>,
+  nowMs: number,
+): TopRowData[] {
+  const room = TOP_FILL_TO - shown.length
+  if (room <= 0) return []
+  const from = nowMs - TOP_DAY_MS
+  const taken = new Set(shown.map((r) => r.login))
+  const best = new Map<string, HubLivePulseMoment & { login: string; at: number; chatPerMin: number }>()
+  for (const m of moments) {
+    if (!m || !str(m.login) || !m.login || !num(m.at) || !num(m.chatPerMin) || m.chatPerMin <= 0) continue
+    if (m.at < from || m.at > nowMs + 60_000) continue
+    const login = m.login.toLowerCase()
+    if (taken.has(login)) continue
+    const prev = best.get(login)
+    if (!prev || m.chatPerMin > prev.chatPerMin || (m.chatPerMin === prev.chatPerMin && m.at > prev.at)) {
+      best.set(login, m as HubLivePulseMoment & { login: string; at: number; chatPerMin: number })
+    }
+  }
+  return [...best.entries()]
+    .sort(([, a], [, b]) => b.chatPerMin - a.chatPerMin || b.at - a.at)
+    .slice(0, room)
+    .map(([login, m]): TopRowData => ({
+      id: `busiest|${momentRowKey(m)}`, login, name: m.displayName || m.login, streamId: m.streamId || '', offsetSeconds: m.offsetSeconds || 0,
+      avatar: m.profileImageUrl || live.get(login)?.profileImageUrl || null, kind: 'chat', x: null, plain: 'busiest', at: m.at,
+      game: m.category || null, art: m.categoryMetadataRejected ? null : m.boxArtUrl || null, emote: null,
+      emotes: (m.topEmotes ?? []).slice().sort((a, b) => (b.count || 0) - (a.count || 0)).slice(0, 3)
+        .map((e) => ({ name: e.name, imageUrl: sanitizeEmoteImageUrl(e.imageUrl), count: e.count || 0 })),
+      rate: m.chatPerMin, usual: null, viewers: num(m.viewers) ? m.viewers : null, live: live.has(login),
+      href: momentHref(m), also: [], checked: null,
+    }))
+}
+
+/** What a plain row says in place of its × ("Busiest minute", "Early in the stream", "Not compared"). */
+export const topPlainLabel = (plain: TopPlain) => (plain === 'busiest' ? 'Busiest minute' : plain === 'early' ? 'Early in the stream' : 'Not compared')
+
+/** What rose, for a label: "chat 2.4 times usual", or "Busiest minute, 1,204 chat a minute". */
+export function topFigureWords(row: Pick<TopRowData, 'kind' | 'x' | 'plain' | 'rate'>): string {
+  if (row.x != null) return `${row.kind} ${fx(row.x).replace('×', ' times')} usual`
+  return `${row.plain ? `${topPlainLabel(row.plain)}, ` : ''}${int(row.rate)} ${row.kind} a minute`
+}
+
 /** A row's label; `open` null for the phone peek, whose rows open in the rail. */
 export function topRowAria(row: TopRowData, rank: number, nowMs: number): string {
-  const x = `${row.kind} ${fx(row.x).replace('×', ' times')} usual`
+  const x = topFigureWords(row)
   const t = `${when(row.at, nowMs)}${nowMs - row.at < 60 * 60_000 ? ` at ${clk(row.at)}` : ''}`
   return `${rank}. ${row.name}${row.emote ? `, ${row.emote.name}` : ''}, ${x}${row.game ? `, ${row.game}` : ''}`
     + `${row.also.length ? `, the same emotes on ${row.also.join(', ')}` : ''}, ${t}. Open it in Top moments below.`

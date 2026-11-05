@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { AnalyticsStream } from '../api.ts'
 import { GOOD_COVERAGE_PCT, deriveAnalyticsQualityLabel } from './streamQuality.ts'
 import {
+  streamRowIsLive,
   streamSyncBadgeLabel,
   streamSyncBadgeState,
   streamSyncBadgeTitle,
@@ -139,5 +140,17 @@ describe('streamSyncBadgeState: the header verdict (pick 11A review, 10-30)', ()
 
   it('a syncing row stays Syncing', () => {
     expect(streamSyncBadgeState(OPEN_ROW, true, { ...sessionEvidence(99), quality: 'Good' })).toBe('syncing')
+  })
+})
+
+describe('streamRowIsLive (one badge rule: LIVE for the live row)', () => {
+  it('is the row of the stream that is live now', () => {
+    expect(streamRowIsLive({ streamId: '1', lifecycleState: 'confirmed_live' }, {})).toBe(true)
+    expect(streamRowIsLive({ streamId: '1', lifecycleState: 'unknown' }, { liveStreamId: '1', liveState: 'live' })).toBe(true)
+  })
+  it('is never another row, nor a row the page does not call live', () => {
+    expect(streamRowIsLive({ streamId: '2', lifecycleState: 'unknown' }, { liveStreamId: '1', liveState: 'live' })).toBe(false)
+    expect(streamRowIsLive({ streamId: '1', lifecycleState: 'unknown' }, { liveStreamId: '1', liveState: 'unknown' })).toBe(false)
+    expect(streamRowIsLive({ streamId: '1' }, {})).toBe(false)
   })
 })

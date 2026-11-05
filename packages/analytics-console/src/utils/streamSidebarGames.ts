@@ -19,6 +19,24 @@ export interface SidebarGame {
   categoryId?: string
 }
 
+/**
+ * Twitch's fixed ids for the two non-game categories, so a row that names them
+ * shows their cover, not "JC" / "IR" letters, even when no row in the list
+ * carries the id itself.
+ */
+export const KNOWN_CATEGORY_IDS: Readonly<Record<string, string>> = {
+  'Just Chatting': '509658',
+  IRL: '509672',
+}
+
+/** Just Chatting or IRL: no gameplay to show, so a moment's card shows its top emote instead. */
+export function isChattingCategory(name?: string | null, categoryId?: string | null): boolean {
+  const id = categoryId?.trim()
+  if (id === KNOWN_CATEGORY_IDS['Just Chatting'] || id === KNOWN_CATEGORY_IDS.IRL) return true
+  const key = name?.trim().toLowerCase()
+  return key === 'just chatting' || key === 'irl'
+}
+
 function validCategoryId(raw: string | undefined): string | undefined {
   const id = raw?.trim()
   return id && /^\d{1,20}$/.test(id) ? id : undefined
@@ -39,7 +57,7 @@ export function sidebarCategoryIdsByName(streams: readonly AnalyticsStream[]): R
     if (known === undefined) seen.set(name, id)
     else if (known !== id) seen.set(name, null)
   }
-  const ids = new Map<string, string>()
+  const ids = new Map<string, string>(Object.entries(KNOWN_CATEGORY_IDS))
   for (const [name, id] of seen) if (id) ids.set(name, id)
   return ids
 }

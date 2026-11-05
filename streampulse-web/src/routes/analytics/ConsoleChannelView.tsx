@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { analyticsReturnPath, broadcastTimelineHref } from '../../lib/momentsNavigation'
 import { fromHubMoment } from '../../lib/discoveryMoments'
+import { suggestChannelLink } from '../../lib/suggestChannel'
 import { SaveMomentButton } from '../../ui/components/moments/SaveMomentButton'
 import { AnalyticsConsole } from '@streampulse/analytics-console'
 // Same cascade position as when the console module imported it: before portal styles.
@@ -72,6 +73,7 @@ export default function ConsoleChannelView() {
           layer2LoadMode="staged"
           enableSyncActions={usesLocalAnalyticsBackend()}
           buildSessionPath={(channel, id) => broadcastTimelineHref(channel, id, returnTo || undefined)}
+          suggestChannel={suggestChannelLink()}
           renderSelectedMomentActions={selection => {
             const moment = fromHubMoment({ ...selection, label: selection.label || 'Saved stream minute' })
             return moment ? <div className="broadcast-save"><SaveMomentButton moment={moment} contextLabel="selected minute" /><Link to="/analytics/moments?view=saved">View saved moments →</Link></div> : null

@@ -74,9 +74,10 @@ import {
 } from '../../utils/sessionStripMoments.ts'
 import { alignedVodOffset } from '../../utils/twitchVodUrl.ts'
 import { useVodFrame } from '../../utils/vodFrames.ts'
+import { sessionCanPlay } from '../../utils/sessionState.ts'
 import { gameArtCandidates, isKnownGenericTwitchArtwork } from './GamesPlayedStrip.tsx'
 import { LiveNowTile } from './LiveNowTile.tsx'
-import { MomentReelCard, REEL_SIZE, reelNote } from './MomentReel.tsx'
+import { MomentReelCard, REEL_SIZE, reelCardEmote, reelNote } from './MomentReel.tsx'
 import {
   SessionMomentDetail,
   SessionMomentPlayer,
@@ -261,7 +262,7 @@ export function SessionRecapMomentsStrip({
       const reasonLabel = momentRowReasonLabel(recapMomentReasonLabel(moment))
       const series = momentRowSeries(moment.reasons?.[0])
       const exactRollup = resolveMomentRowRollup({ moment, rollups, streamStartedAt })
-      const { exact, emotes } = stripMomentEmotes({ moment, rollups, streamStartedAt, topEmotesCatalog })
+      const { exact, fromRecap, emotes } = stripMomentEmotes({ moment, rollups, streamStartedAt, topEmotesCatalog })
       const rawScore = moment.reactionScore ?? moment.score
       const game = momentRowGameAt(games, offsetSeconds)
       return {
@@ -284,7 +285,8 @@ export function SessionRecapMomentsStrip({
           }
           : null,
         emotes,
-        namesNotCaptured: momentRowNamesNotCaptured(exactRollup),
+        // the recap's names stand in when the minute named too few; then nothing is missing to say
+        namesNotCaptured: fromRecap ? null : momentRowNamesNotCaptured(exactRollup),
         snapshotOnly: !exact,
       }
     }),
@@ -293,6 +295,8 @@ export function SessionRecapMomentsStrip({
   // ---- the reel: the top three as pictures (strip mode only) ----
   const reelOn = reel && lockMode === 'strip'
   const align = typeof vodAlignSeconds === 'number' && Number.isFinite(vodAlignSeconds) ? vodAlignSeconds : null
+  // Play shows only when the moment can play: a VOD and its verified alignment (never a dead Play icon).
+  const canPlay = sessionCanPlay({ vodId: validVodId, vodAlignSeconds: align })
   // A frame needs the VOD and its verified alignment (PORT-PLAN §2.4); the tile is the one under the
   // middle of the moment's minute (sessionBarStrip frameMid).
   const vodAt = (offset: number) => (validVodId && align != null
@@ -381,7 +385,7 @@ export function SessionRecapMomentsStrip({
       artUrl={artFor(model)}
       locked={lockedOffset === model.offsetSeconds}
       ghost={pinHover === model.offsetSeconds}
-      showPlay={Boolean(validVodId)}
+      showPlay={canPlay}
       pop={pop?.offset === model.offsetSeconds ? pop.token : 0}
       vodId={validVodId}
       frameVodOffset={vodAt(model.offsetSeconds + 30)}
@@ -397,7 +401,8 @@ export function SessionRecapMomentsStrip({
       frame: heroFrame.result?.frame ?? null,
       reason: heroFrame.result?.reason ?? null,
       loading: heroFrame.loading,
-      hasArt: reelRows.some((model) => Boolean(artFor(model))),
+      // a Just Chatting / IRL card shows its top emote, not the cover, so it never counts as box art
+      hasArt: reelRows.some((model) => Boolean(artFor(model)) && !reelCardEmote(model)),
       recording: pageRecording,
     })
     : null
@@ -452,7 +457,7 @@ export function SessionRecapMomentsStrip({
               isClosing={isClosing}
               detailId={detailId}
               ghost={pinHover === model.offsetSeconds}
-              showPlay={Boolean(validVodId)}
+              showPlay={canPlay}
               pop={pop?.offset === model.offsetSeconds ? pop.token : 0}
               autoPlay={isOpen && Boolean(open?.play)}
               selectedDetail={selectedDetail}

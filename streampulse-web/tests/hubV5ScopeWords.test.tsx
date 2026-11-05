@@ -1,7 +1,7 @@
 /**
  * W1 (11-02): the lines that say what the hub covers name "the Twitch channels we track".
  */
-import { cleanup, render } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it } from 'vitest'
 import { summarizeActivity } from '../src/lib/hubActivitySummary'
@@ -12,18 +12,40 @@ import { createHubV5SearchStore, HubV5SearchContext } from '../src/ui/components
 
 afterEach(() => cleanup())
 
+function hero(poolSize: number) {
+  return render(
+    <HubV5SearchContext.Provider value={createHubV5SearchStore()}>
+      <MemoryRouter>
+        <HubV5Hero live={[]} poolSize={poolSize} points={[]} />
+      </MemoryRouter>
+    </HubV5SearchContext.Provider>,
+  )
+}
+
 describe('the hub’s coverage words (W1, 11-02)', () => {
+  it('promises the channels we track, not any channel, in the line under the heading', () => {
+    const { container } = hero(1000)
+    expect(container.querySelector('.hv5-hero-sub')!.textContent)
+      .toBe('Chat, emotes and top moments for the Twitch channels we track, minute by minute.')
+    expect(container.textContent).not.toMatch(/any Twitch channel/i)
+  })
+
+  it('asks for streamers or games in the search box (Q1, 11-02)', () => {
+    hero(1000)
+    const field = screen.getByRole('combobox', { name: 'Search streamers or games' })
+    expect(field.getAttribute('placeholder')).toBe('Streamers or games')
+  })
+
   it('the hero: the Twitch channels we track, and the scope line with the real count', () => {
-    const { container } = render(
-      <HubV5SearchContext.Provider value={createHubV5SearchStore()}>
-        <MemoryRouter>
-          <HubV5Hero live={[]} poolSize={500} />
-        </MemoryRouter>
-      </HubV5SearchContext.Provider>,
-    )
+    const { container } = hero(500)
     expect(container.querySelector('.hv5-hero-sub')!.textContent).toBe('Chat, emotes and top moments for the Twitch channels we track, minute by minute.')
     expect(container.querySelector('.hv5-scope')!.textContent).toBe('The hub below covers 500 channels we track · not all of Twitch')
     expect(container.textContent).not.toMatch(/we follow/i)
+  })
+
+  it('shows no scope line until the hub has told how many channels it follows', () => {
+    const { container } = hero(0)
+    expect(container.querySelector('.hv5-scope')).toBeNull()
   })
 
   it('How this is measured: we track the pool', () => {

@@ -58,7 +58,7 @@ export function ConsoleEmoteImg({
   if (!normalizedSrc || attempt > 1 || !imageSrc) {
     return (
       <span
-        className={fallbackClassName ?? 'inline-flex shrink-0 items-center justify-center rounded bg-white/[0.06] text-xs font-black text-zinc-500'}
+        className={fallbackClassName ?? 'inline-flex shrink-0 items-center justify-center rounded bg-white/[0.06] text-xs font-black text-zinc-400'}
         aria-hidden="true"
       >
         {emoteInitial(name)}

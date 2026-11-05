@@ -123,7 +123,8 @@ describe('AnalyticsConsole: channel route to the live session', () => {
     // The session page then loads as when opened directly: its own read, then the recap.
     await waitFor(() => expect(api.getAnalyticsStream).toHaveBeenCalledWith('101', { sparse: false, channel: 'xqc' }))
     await waitFor(() => expect(api.getPulseStreamRecap).toHaveBeenCalledWith('101'))
-    expect(document.querySelector('[data-stat-label]')?.textContent).toBe('Latest viewers')
+    // Confirmed ended: the first figure is the viewers at the end, not the latest.
+    await waitFor(() => expect(document.querySelector('[data-stat-label]')?.textContent).toBe('Viewers at end'))
   })
 
   it('opens it when the stream list failed too', async () => {

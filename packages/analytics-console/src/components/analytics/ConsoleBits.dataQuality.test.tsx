@@ -12,7 +12,7 @@ describe('DataQualityDisclosure', () => {
     const chip = container.querySelector('[data-data-quality-pending]')!
     expect(chip.textContent).toBe('Data quality: —')
     expect(chip.className).toContain('min-h-11')
-    expect(chip.className).toContain('text-zinc-500')
+    expect(chip.className).toContain('text-zinc-400')
     expect(container.textContent).not.toMatch(/No data/i)
     // Nothing to disclose yet, so no expandable details.
     expect(container.querySelector('details')).toBeNull()

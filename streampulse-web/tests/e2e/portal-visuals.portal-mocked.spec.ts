@@ -123,7 +123,7 @@ test.describe('portal responsive visuals (mocked)', () => {
           }),
         })
         await openAnalyticsSession(page)
-        await expect(page.getByText(/Waiting for Twitch VOD/i).first()).toBeVisible({ timeout: 20_000 })
+        await expect(page.locator('[data-session-vod-line]')).toHaveText('No VOD linked yet.', { timeout: 20_000 })
         await assertNonBlankScreenshot(page, `portal-resolving-${viewport.name}.png`)
         if (viewport.name === 'narrow') {
           await assertScenarioRegionScreenshot(

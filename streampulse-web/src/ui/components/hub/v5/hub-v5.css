@@ -1482,9 +1482,18 @@
 .hv5-f3-peek .hv5-rh { flex-wrap: nowrap; }
 .hv5-feed .hv5-rh h2,
 .hv5-f3-peek .hv5-rh h2 { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
-/* steady; the dot greys once the data is over 3 minutes old */
+/* steady; the dot greys once the data is over 2 minutes old */
 .hv5-fd-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--hv5-live); }
 .hv5-f2-stale .hv5-fd-dot { background: var(--sp-text-3); }
+/* a live section whose "as of" is over 2 min old, or a list kept while its counts don't load, reads greyed:
+   the rows lose their colour and only the pictures (avatars, game covers, emotes) fade, so the text keeps
+   its full contrast (G1, 11-02). No fixed-position descendant sits in these lists (the hover cards are portaled). */
+.hv5-f2-stale :is(.hv5-fd-list, .hv5-bm-track), .hv5-up-old { filter: grayscale(1); transition: filter .2s; }
+.hv5-f2-stale :is(.hv5-fd-list, .hv5-bm-track) :is(img, .hv5-mono), .hv5-up-old :is(img, .hv5-mono) { opacity: .55; transition: opacity .2s; }
+@media (prefers-reduced-motion: reduce) {
+  .hv5-f2-stale :is(.hv5-fd-list, .hv5-bm-track), .hv5-up-old,
+  .hv5-f2-stale :is(.hv5-fd-list, .hv5-bm-track) :is(img, .hv5-mono), .hv5-up-old :is(img, .hv5-mono) { transition: none; }
+}
 .hv5-f2-fresh {
   min-width: 0;
   margin-left: -2px;
@@ -1828,7 +1837,7 @@
 .hv5-em-ft { width: 100%; min-width: 0; }
 .hv5-em-row .hv5-em-ft { display: flex; align-items: baseline; gap: 6px; width: auto; flex: 1 1 auto; }
 .hv5-em-nm { display: block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font: 600 13px/18px var(--sp-font); }
-.hv5-em-v { display: block; flex: none; color: var(--sp-text-3); }
+.hv5-em-v { display: block; flex: none; color: var(--sp-text-2); }
 /* backwards, not both (10-31): a fade held after it ends kept each of ~600 tiles and frames on a GPU layer and slowed the chart */
 @keyframes hv5-em-in { from { opacity: 0; } }
 @keyframes hv5-em-out { to { opacity: 0; } }
@@ -2313,6 +2322,11 @@
 .hv5-tm-l1 { height: 18px; }
 .hv5-tm-l2 { font-size: 12px; line-height: 15px; color: var(--sp-text-2); }
 .hv5-tm-l2 .hv5-fd-sep { margin: 0; }
+/* a row with no × (board 2A): the game gives way first, then "Early in the stream ·" ellipses; the rate never does */
+.hv5-tm-l2 .hv5-f2-plain { display: inline-flex; gap: 0.3em; flex: 0 1 auto; min-width: 0; }
+.hv5-tm-l2 .hv5-f2-plain ~ .hv5-fd-g { flex-shrink: 1000; }
+.hv5-tm-l2 .hv5-f2-why { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.hv5-tm-l2 .hv5-f2-rt { flex: none; }
 .hv5-tm-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 600; font-size: 13.5px; }
 .hv5-tm-l1 .hv5-f2-em { font-size: 13px; }
 .hub-v5 .hv5-tm-l1 .hv5-f2-em img { width: 18px; height: 18px; }

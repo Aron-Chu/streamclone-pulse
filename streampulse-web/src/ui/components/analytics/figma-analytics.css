@@ -87,7 +87,7 @@
   z-index: 90;
   padding: 0.5rem 0.9rem;
   background: var(--fma-accent);
-  color: #fff;
+  color: var(--fma-bg);
   border-radius: 8px;
   font-size: 0.8rem;
 }

@@ -127,7 +127,7 @@ describe('SelectedMomentCompactCard (bar strip)', () => {
   it('says the VOD is recording for a live archive', async () => {
     const { container } = renderStrip({ vodLinkState: { ...LINKED, label: 'Jump to VOD (live archive)' } as VodLinkState })
     await act(async () => {})
-    expect(container.querySelector('.mpl-note')?.textContent).toContain('No preview frames while the stream is live.')
+    expect(container.querySelector('.mpl-note')?.textContent).toContain('No preview frames while live.')
   })
 
   it('claims box art only while the cover shows (fix, 10-30, PIC-3)', async () => {
@@ -164,7 +164,7 @@ describe('SelectedMomentCompactCard (bar strip)', () => {
   it('says there is no VOD yet while live', async () => {
     renderStrip({ vodId: null, vodLinkState: { status: 'live', label: 'Live', detail: '' } as VodLinkState })
     await act(async () => {})
-    expect(screen.getByText('No VOD for this stream yet.')).toBeTruthy()
+    expect(screen.getByText('No VOD linked yet.')).toBeTruthy()
     expect(screen.queryByRole('link')).toBeNull()
   })
 

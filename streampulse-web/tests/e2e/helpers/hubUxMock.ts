@@ -108,6 +108,8 @@ export type HubUxMockOptions = {
   extraPulseMoments?: Array<{ login: string; streamId: string; offsetSeconds: number; label: string; minutesBefore: number }>
   /** The hub's featured stream (default: none qualifies, so the Featured stream card stays off). */
   featuredSession?: unknown
+  /** Serves the 24h activity without the buckets this returns false for (index from the oldest): a window the collector missed. */
+  keepActivityBucket?: (index: number) => boolean
   /** Each 24h bucket names its top three emotes and certifies its provider counts (default: counts only, no names). */
   bucketEmoteDetail?: boolean
 }
@@ -258,6 +260,9 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
       ...activityPoints[activityPoints.length - 1],
       t: Math.floor(now / 60_000) * 60_000 - (30 - i) * 60_000,
     })) : dayPoints()
+    const answeredPoints = options.keepActivityBucket && !servingRecent
+      ? servedPoints.filter((_, index) => options.keepActivityBucket!(index))
+      : servedPoints
     if (hubDelayMs > 0) {
       await new Promise((resolve) => setTimeout(resolve, hubDelayMs))
     }
@@ -311,7 +316,7 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
           },
         },
         activity: {
-          points: servedPoints,
+          points: answeredPoints,
           windowMinutes: legacyCoarse ? requestedMinutes : servedWindowMinutes,
           servedWindowMinutes,
           bucketMinutes,
@@ -432,6 +437,11 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
     })
   })
 
+  // Top moments today now keeps the mock's early moments (board 2A, 11-02), so the
+  // carousel asks for their streams' game covers; answer with none.
+  await page.route(/\/v1\/portal\/analytics\/streams\/[^/]+\/games(\?.*)?$/, (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+  )
   await page.route(/\/v1\/extension\/health(\?.*)?$/, (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, version: 'test' }) }),
   )

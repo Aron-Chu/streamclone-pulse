@@ -57,6 +57,20 @@ describe('sessionStripMoments', () => {
     expect(snapshot.emotes[0]?.name).toBe('KEKW')
   })
 
+  it('uses the recap’s names when the measured minute names under a quarter of its emote uses', () => {
+    const aligned = { offsetSeconds: 4_500, score: 90, reasons: ['emote_spike'], chatCount: 10, emoteCount: 10, topEmotes: [{ code: 'KEKW', count: 9 }] }
+    const exactRollup = STRIP_ROLLUPS.find((row) => stripMomentEmotes({ moment: aligned, rollups: [row], streamStartedAt: STRIP_STARTED_AT }).exact)!
+    const named = Object.values(exactRollup.emotes ?? {}).reduce((sum, n) => sum + n, 0)
+    const thin = { ...exactRollup, totalEmoteCount: named * 5 }
+    const out = stripMomentEmotes({ moment: aligned, rollups: [thin], streamStartedAt: STRIP_STARTED_AT, topEmotesCatalog: STRIP_TOP_EMOTES })
+    expect(out).toMatchObject({ exact: true, fromRecap: true })
+    expect(out.emotes[0]?.name).toBe('KEKW')
+    // no recap names to stand in: the minute's own names stay
+    const bare = stripMomentEmotes({ moment: { ...aligned, topEmotes: [] }, rollups: [thin], streamStartedAt: STRIP_STARTED_AT, topEmotesCatalog: STRIP_TOP_EMOTES })
+    expect(bare).toMatchObject({ exact: true, fromRecap: false })
+    expect(bare.emotes[0]?.name).toBe('OMEGALUL')
+  })
+
   it('notifies pin hover listeners once per change', () => {
     const listener = vi.fn()
     const off = subscribeStripPinHover(listener)
