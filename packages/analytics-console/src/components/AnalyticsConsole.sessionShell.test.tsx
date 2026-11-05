@@ -109,6 +109,18 @@ function header() {
   return document.querySelector<HTMLElement>('[data-session-header]')!
 }
 
+function sessionUpdatedText() {
+  return document.querySelector<HTMLElement>('[data-session-updated]')?.textContent ?? ''
+}
+
+function streamedText() {
+  return document.querySelector<HTMLElement>('[data-session-streamed]')?.textContent ?? ''
+}
+
+function statLabels() {
+  return [...document.querySelectorAll('[data-session-stat-row] .sc-stat-card__label')].map(el => el.textContent)
+}
+
 describe('AnalyticsConsole session page shell (d3-v2 session-original)', () => {
   it('drops the badge row and the separate Refresh button; the facts sit on one meta line', async () => {
     renderConsole({ enableLayoutControls: true })
@@ -128,8 +140,9 @@ describe('AnalyticsConsole session page shell (d3-v2 session-original)', () => {
     const text = items.map(item => item.textContent ?? '')
     expect(text[0]).toBe('xQc')
     expect(text[1]).toBe('Grand Theft Auto V')
-    expect(text[2]).toMatch(/^Started /)
-    expect(text[3]).toMatch(/^Updated /)
+    // An ended stream says when it streamed and for how long, not the read time (which reads as live).
+    expect(text[2]).toMatch(/^Streamed Jul 1[56] · 3m\. /)
+    expect(text[3]).toBe('')
     expect(text[4]).toBe('First 54s not tracked')
     expect(text[5]).toBe('Watch VOD')
     expect(text[6]).toMatch(/^Data: /)
@@ -160,11 +173,64 @@ describe('AnalyticsConsole session page shell (d3-v2 session-original)', () => {
     expect(within(actions).getAllByRole('button').map(button => button.textContent)).toEqual(['Hide streams', 'Focus chart'])
   })
 
-  it('prints the stat labels in plain case', async () => {
+  it('prints the stat labels in plain case, the first one "Viewers at end" on an ended stream', async () => {
     renderConsole()
     await screen.findByTestId('analytics-chart')
-    const labels = [...document.querySelectorAll('[data-session-stat-row] .sc-stat-card__label')].map(el => el.textContent)
-    expect(labels).toEqual(['Latest viewers', 'Average viewers', 'Peak viewers', 'Chat messages', 'Emote uses', 'Time tracked'])
+    await waitFor(() => expect(statLabels()[0]).toBe('Viewers at end'))
+    expect(statLabels()).toEqual(['Viewers at end', 'Average viewers', 'Peak viewers', 'Chat messages', 'Emote uses', 'Time tracked'])
+  })
+
+  it('says when an ended stream streamed and for how long, and keeps Refresh data, which then says it refreshed', async () => {
+    renderConsole()
+    await screen.findByTestId('analytics-chart')
+    await waitFor(() => expect(streamedText()).toMatch(/^Streamed Jul 1[56] · 3m$/))
+    const updated = document.querySelector<HTMLElement>('[data-session-updated]')!
+    expect(updated.textContent).toBe('')
+    expect(updated.textContent).not.toMatch(/Updated|Ended/)
+    const refresh = within(updated).getByRole('button', { name: 'Refresh data' })
+    expect(refresh.hasAttribute('disabled')).toBe(false)
+    const reads = api.getAnalyticsStream.mock.calls.length
+    fireEvent.click(refresh)
+    await waitFor(() => expect(sessionUpdatedText()).toMatch(/^Refreshed /))
+    expect(api.getAnalyticsStream.mock.calls.length).toBeGreaterThan(reads)
+  })
+
+  it('keeps "Updated" and "Latest viewers" where the lifecycle is unknown, and says nothing of an end', async () => {
+    const base = detail()
+    api.getAnalyticsStream.mockResolvedValue({
+      ...base,
+      stream: { ...base.stream, lifecycleState: 'unknown', lifecycleDetectedAt: undefined },
+    })
+    renderConsole()
+    await screen.findByTestId('analytics-chart')
+    await waitFor(() => expect(within(header()).getByRole('link', { name: 'Watch VOD' })).toBeTruthy())
+    expect(sessionUpdatedText()).toMatch(/^Updated /)
+    expect(sessionUpdatedText()).not.toMatch(/Ended/)
+    expect(statLabels()[0]).toBe('Latest viewers')
+  })
+
+  it('names the end of an older row that states no lifecycle, from its stored end', async () => {
+    const base = detail()
+    api.getAnalyticsStream.mockResolvedValue({
+      ...base,
+      stream: { ...base.stream, lifecycleState: undefined, lifecycleDetectedAt: undefined },
+    })
+    renderConsole()
+    await screen.findByTestId('analytics-chart')
+    await waitFor(() => expect(streamedText()).toMatch(/^Streamed Jul 1[56] · 3m$/))
+  })
+
+  it('reads a hosted ended stream (no endedAt, lifecycle unknown) from availability alone', async () => {
+    const base = detail()
+    api.getAnalyticsStream.mockResolvedValue({
+      ...base,
+      stream: { ...base.stream, endedAt: undefined, lifecycleState: 'unknown', lifecycleDetectedAt: undefined },
+      availability: { ...base.availability, liveDvrState: 'ended' },
+    })
+    renderConsole()
+    await screen.findByTestId('analytics-chart')
+    await waitFor(() => expect(streamedText()).toMatch(/^Streamed Jul 1[56] · 3m$/))
+    expect(statLabels()[0]).toBe('Viewers at end')
   })
 
   it('"Data" opens the Status tab, whose panel is always in the page, and moves focus to it', async () => {

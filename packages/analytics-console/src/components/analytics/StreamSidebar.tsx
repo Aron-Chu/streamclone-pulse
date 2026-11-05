@@ -5,11 +5,12 @@ import {
   streamIsSidebarVisible,
   analyticsStreamPathSlug,
   streamSyncBadgeState,
+  streamRowIsLive,
   streamSyncBadgeLabel,
   streamSyncBadgeTitle,
   type StreamSyncEvidence,
 } from '../../utils/syncedLiveStream.ts'
-import { count, displayStreamTitle, duration, formatDateTime, getLocalDateString } from '../../utils/consoleFormat.ts'
+import { count, displayStreamTitle, duration, formatDateDotTime, getLocalDateString } from '../../utils/consoleFormat.ts'
 import { CoreMinuteChartsNotice } from '../CoreMinuteChartsNotice.tsx'
 import { useEdgeFade } from '../../hooks/useSessionColumnFill.ts'
 import {
@@ -125,6 +126,7 @@ export function StreamSidebar({
   isLiveView,
   liveState,
   liveStreamId,
+  activeLive,
   syncing,
   syncedOnly,
   onSyncedOnlyChange,
@@ -166,6 +168,14 @@ export function StreamSidebar({
   isLiveView: boolean
   liveState?: string
   liveStreamId?: string
+  /**
+   * The open page's own live verdict for the active row: false once the page knows the stream
+   * ended (the header says "Streamed …"), so the row never says LIVE beside it; true while the
+   * page says the stream is live ("Live now"), so the open live row says LIVE like every other
+   * live row (L1, 11-02; this replaces pick 11A's Synced on a live open row only). Undefined
+   * falls back to the row rule. A row that is not live keeps the header's "Data:" verdict (11A).
+   */
+  activeLive?: boolean
   liveSessionPath?: string
   syncing?: boolean
   syncedOnly?: boolean
@@ -227,7 +237,7 @@ export function StreamSidebar({
   return (
     <div className="ssp-sl flex min-h-0 w-full flex-col overflow-hidden rounded border border-white/10 bg-white/[0.035]" data-stream-list>
       <div className="flex items-center justify-between border-b border-white/10 px-3 py-2.5">
-        <span className="text-xs font-black uppercase tracking-wide text-zinc-500">Streams</span>
+        <span className="text-xs font-black uppercase tracking-wide text-zinc-400">Streams</span>
         {/* Hidden, not removed, while the first list request is in flight: "0" would
             read as an empty channel, and the header keeps its height. */}
         <span
@@ -266,17 +276,17 @@ export function StreamSidebar({
                 {liveState === 'live' ? 'Live session' : 'Latest indexed session'}
               </span>
             </div>
-            <div className="mt-1 text-xs font-semibold text-zinc-500">
+            <div className="mt-1 text-xs font-semibold text-zinc-400">
               {liveState === 'live' ? 'Live tracking' : 'No live session confirmed'}
             </div>
           </Link>
         ) : null}
         {streams.length === 0 && loading ? (
-          <div role="status" className="px-3 py-4 text-center text-xs font-semibold text-zinc-500">
+          <div role="status" className="px-3 py-4 text-center text-xs font-semibold text-zinc-400">
             Loading streams…
           </div>
         ) : streams.length === 0 && loadFailed ? (
-          <div role="alert" className="px-3 py-4 text-center text-xs font-semibold text-zinc-500">
+          <div role="alert" className="px-3 py-4 text-center text-xs font-semibold text-zinc-400">
             Couldn&apos;t load streams.
             {onRetry ? (
               <button
@@ -290,11 +300,11 @@ export function StreamSidebar({
             ) : null}
           </div>
         ) : streams.length === 0 ? (
-          <div className="px-3 py-4 text-center text-xs font-semibold text-zinc-500">
+          <div className="px-3 py-4 text-center text-xs font-semibold text-zinc-400">
             No past streams indexed yet.
           </div>
         ) : visibleStreams.length === 0 ? (
-          <div className="px-3 py-4 text-center text-xs font-semibold text-zinc-500">
+          <div className="px-3 py-4 text-center text-xs font-semibold text-zinc-400">
             No synced streams match this filter. Turn off &quot;Synced only&quot; to see stats-only sessions.
           </div>
         ) : (
@@ -308,6 +318,7 @@ export function StreamSidebar({
               const syncEvidence = isActive ? activeSyncEvidence : undefined
               const syncBadge = streamSyncBadgeState(stream, Boolean(syncing && isActive), syncEvidence)
               const isSyncingActive = syncBadge === 'syncing'
+              const rowLive = !isSyncingActive && (isActive && activeLive !== undefined ? activeLive : streamRowIsLive(stream, { liveStreamId, liveState }))
               const rollupStats = isSyncingActive ? activeRollupStats : null
               const games = sidebarStreamGames(stream, categoryIdsByName) // (candidate, 10-30)
               // The current stream's row stays in view while the list is collapsed (MOCK).
@@ -332,8 +343,8 @@ export function StreamSidebar({
                     isActive ? 'border-l-cyan-400 bg-cyan-400/10' : 'border-l-transparent'
                   }`}
                 >
-                  <div className="text-xs font-black uppercase tracking-wide text-zinc-500">
-                    {formatDateTime(stream.startedAt)}
+                  <div className="text-xs font-semibold text-zinc-400">
+                    {formatDateDotTime(stream.startedAt)}
                   </div>
                   <div
                     className="sc-stream-row__title mt-0.5 text-[13px] font-bold leading-snug text-white"
@@ -344,12 +355,18 @@ export function StreamSidebar({
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                     {/* Covers + names, not the uppercase "Games played: …" chip (GP-4, candidate, 10-30). */}
                     {games.length ? <StreamRowGames games={games} /> : null}
-                    <span
-                      className={`rounded px-1.5 py-0.5 text-xs font-black uppercase ${badgeTone}`}
-                      title={streamSyncBadgeTitle(syncBadge, stream, syncEvidence)}
-                    >
-                      {streamSyncBadgeLabel(syncBadge)}
-                    </span>
+                    {rowLive ? (
+                      <span className="rounded bg-red-500/15 px-1.5 py-0.5 text-xs font-black uppercase text-red-300" data-stream-row-live>
+                        Live
+                      </span>
+                    ) : (
+                      <span
+                        className={`rounded px-1.5 py-0.5 text-xs font-black uppercase ${badgeTone}`}
+                        title={streamSyncBadgeTitle(syncBadge, stream, syncEvidence)}
+                      >
+                        {streamSyncBadgeLabel(syncBadge)}
+                      </span>
+                    )}
                   </div>
                   {isActive && activeMinutesUnavailable ? (
                     <p className="mt-1.5 text-xs font-semibold leading-snug text-amber-200/80">
@@ -368,7 +385,7 @@ export function StreamSidebar({
                       { key: 'avg', text: `avg ${count(rollupStats?.avg ?? stream.avgViewers)}`, missing: count(rollupStats?.avg ?? stream.avgViewers) === '-' },
                       { key: 'peak', text: `peak ${count(rollupStats?.peak ?? stream.peakViewers)}`, missing: count(rollupStats?.peak ?? stream.peakViewers) === '-' },
                     ].filter(fact => !fact.missing)
-                    return facts.length ? <div className="mt-1.5 grid grid-cols-3 gap-1 text-xs font-bold text-zinc-500">
+                    return facts.length ? <div className="mt-1.5 grid grid-cols-3 gap-1 text-xs font-bold text-zinc-400">
                       {facts.map(fact => <span key={fact.key} title={fact.title}>{fact.text}</span>)}
                     </div> : null
                   })()}

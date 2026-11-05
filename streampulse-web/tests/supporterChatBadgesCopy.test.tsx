@@ -138,7 +138,9 @@ describe('Seen in chat copy, flag on (launch)', () => {
     expect((screen.getByTestId('privacy-continue-with-twitch').textContent ?? '').replace(/\s+/g, ' '))
       .toContain('If you turn on Seen in chat, StreamPulse also stores your Twitch user ID and username in plain form so it can publish them; turning it off deletes them.')
     const section = (screen.getByTestId('privacy-seen-in-chat').textContent ?? '').replace(/\s+/g, ' ')
-    expect(section).toMatch(/^Seen in chat \(optional, Supporters only\)/)
+    // The folds move the heading into its section's summary, ahead of the text.
+    expect(document.getElementById('seen-in-chat')?.textContent).toBe('Seen in chat (optional, Supporters only)')
+    expect(section).toMatch(/^What is stored\. Nothing until you turn it on\./)
     expect(section).toContain('Nothing until you turn it on.')
     expect(section).toContain('your Twitch user ID, Twitch username, crest level')
     expect(section).toContain('no account identifier, email, billing detail or date')

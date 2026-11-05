@@ -90,11 +90,17 @@ export function PrivacyObservesChatUsernames() {
 export const PRIVACY_TWITCH_THIRD_PARTY_SEEN_IN_CHAT =
   'If you turned on Seen in chat, StreamPulse also uses that notification to delete your Seen in chat entry. For Supporters who turned on Seen in chat, StreamPulse asks Twitch’s API about once an hour for the current username of each Twitch user ID in the list, so a renamed account keeps its crest.'
 
-/** Privacy: the Seen in chat section. */
-export function PrivacySeenInChat() {
+/** Privacy: the Seen in chat section's heading. */
+export const PRIVACY_SEEN_IN_CHAT_HEADING = 'Seen in chat (optional, Supporters only)'
+
+/**
+ * Privacy: the Seen in chat section's text. The page writes the `<section>` and
+ * its `<h2>` itself, so FoldedSections finds the heading and folds the section
+ * under it (it can't see a heading inside a component).
+ */
+export function PrivacySeenInChatBody() {
   return (
-    <section data-testid="privacy-seen-in-chat">
-      <h2 id="seen-in-chat">Seen in chat (optional, Supporters only)</h2>
+    <>
       <p>
         <strong>What is stored.</strong> Nothing until you turn it on. When an active Supporter turns
         on Seen in chat in the extension and confirms with Twitch that it&rsquo;s their account,
@@ -133,6 +139,6 @@ export function PrivacySeenInChat() {
         most. Because the list is public, a copy someone saved outside the extension is beyond
         StreamPulse&rsquo;s control.
       </p>
-    </section>
+    </>
   )
 }

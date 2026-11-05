@@ -2,6 +2,7 @@ import { normalizeLogin } from './login.ts'
 import { parseMyMoments } from './myMoments.ts'
 import { parseMomentPicture } from './momentPictureMessages.ts'
 import { validBookmarkCursor, validBookmarkPageLimit } from './bookmarkPage.ts'
+import { keptVodOriginDelta, resolveVodOriginAlignment } from './vodOriginAlignment.ts'
 import type { BackgroundRequest, CreatePulseBookmarkInput } from './messages.ts'
 
 const KNOWN_MESSAGE_TYPES = new Set<string>([
@@ -251,10 +252,16 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
     case 'SAVE_BOOKMARK': {
       const bookmark = parseBookmarkInput(raw.bookmark)
       if (!bookmark) return null
-      if (raw.restoreOf === undefined) return { type, bookmark }
+      // A delta belongs to the VOD it was reported for: never without one. Zero
+      // is the identity mapping, so it is accepted and not kept.
+      const rawDelta = raw.vodOriginDeltaSeconds
+      if (rawDelta !== undefined && (typeof rawDelta !== 'number' || resolveVodOriginAlignment(rawDelta).kind !== 'aligned' || !bookmark.vodId)) return null
+      const delta = keptVodOriginDelta(rawDelta)
+      const extra = delta === undefined ? {} : { vodOriginDeltaSeconds: delta }
+      if (raw.restoreOf === undefined) return { type, bookmark, ...extra }
       const restoreOf = requireString(raw.restoreOf)
       if (!restoreOf || restoreOf.length > 200) return null
-      return { type, bookmark, restoreOf }
+      return { type, bookmark, restoreOf, ...extra }
     }
     case 'DELETE_BOOKMARK': {
       const id = requireString(raw.id)
@@ -297,7 +304,7 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
       // a caller-controlled destination into this content-script-reachable action.
       if ('url' in raw || 'path' in raw || 'target' in raw) return null
       const section =
-        raw.section === 'moments' || raw.section === 'pulse' || raw.section === 'supporter' || raw.section === 'privacy' || raw.section === 'updates' || raw.section === 'help' || raw.section === 'developer' || raw.section === 'pulse-background'
+        raw.section === 'moments' || raw.section === 'pulse' || raw.section === 'supporter' || raw.section === 'privacy' || raw.section === 'updates' || raw.section === 'help' || raw.section === 'developer' || raw.section === 'pulse-background' || raw.section === 'moments-history'
           ? raw.section
           : raw.section == null ? undefined : null
       if (section === null) return null

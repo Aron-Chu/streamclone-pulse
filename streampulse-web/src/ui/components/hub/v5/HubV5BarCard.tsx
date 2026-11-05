@@ -17,7 +17,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { Link } from 'react-router-dom'
 import { BUCKET_MOMENTS_CACHE_EMPTY_MS } from '../../../../lib/bucketMomentsCache'
-import { sanitizeEmoteImageUrl } from '../../../../lib/emoteAssetUrl'
+import { emoteDisplaySrc } from '../../../../lib/emoteAssetUrl'
 import { loadHubIntervalMoments, planHubInterval, readHubIntervalMoments, type HubIntervalMomentsState, type HubIntervalRequest } from '../../../../lib/hubIntervalMoments'
 import type { HubApiWindow } from '../../../../lib/hubWindows'
 import type { HubActivityPoint, HubLivePulseMoment } from '../../../../lib/publicHub'
@@ -46,7 +46,7 @@ function reveal(card: HTMLElement) {
 /** An emote picture that fails to load, or whose URL is not an allowlisted https one, becomes the quiet two-letter placeholder. */
 function EmoteImage({ emote }: { emote: HubV5BarEmote }) {
   const [failed, setFailed] = useState(false)
-  const src = sanitizeEmoteImageUrl(emote.imageUrl ?? undefined)
+  const src = emoteDisplaySrc(emote.imageUrl ?? undefined, 28)
   if (!src || failed) return <span className="hbk-noimg" aria-hidden="true">{emote.name.slice(0, 2) || '?'}</span>
   return <img src={src} alt="" width={24} height={24} decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} />
 }
@@ -180,7 +180,7 @@ function ChatRow({ m, i, top, avatars }: { m: HubLivePulseMoment; i: number; top
   const login = m.login as string
   const name = m.displayName || login
   const te = m.topEmotes?.[0]
-  const teSrc = te ? sanitizeEmoteImageUrl(te.imageUrl ?? undefined) : null
+  const teSrc = te ? emoteDisplaySrc(te.imageUrl ?? undefined, 20) : null
   return (
     <li style={{ animationDelay: `${i * 18}ms` }}>
       <Link to={momentHref(m)} className="hbk-r" aria-label={chatAria(m, top)}>

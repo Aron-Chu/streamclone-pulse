@@ -72,7 +72,8 @@ describe('public release routes', () => {
 
   it('lists the extension My Moments database with what it holds and that it stays on the device', () => {
     renderRoute(<Privacy />)
-    const storage = screen.getByRole('heading', { name: /what is stored in the browser/i }).nextElementSibling
+    // The heading is the summary of its folded section; the list is in that section's body.
+    const storage = screen.getByRole('heading', { name: /what is stored in the browser/i }).closest('details')?.querySelector('ul')
     const entry = [...(storage?.querySelectorAll('li') ?? [])].find(item => item.textContent?.includes('pulse-my-moments-v1'))
     const text = entry?.textContent?.replace(/\s+/g, ' ') ?? ''
     expect(text).toMatch(/Extension IndexedDB/)

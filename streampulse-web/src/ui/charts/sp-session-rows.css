@@ -159,7 +159,9 @@
 .ssr-det-card { min-width: 0; }
 .ssr-pl { min-width: 0; }
 .ssr-pl-box { position: relative; aspect-ratio: 16 / 9; border-radius: 6px; overflow: hidden; background: #000; box-shadow: 0 0 0 1px rgb(255 255 255 / .06); }
-.ssr-pl-box.nofr { aspect-ratio: auto; min-height: 132px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 16px; text-align: center; }
+/* no frame, no box: one compact line (Play first when it can play), never an empty 16:9 box */
+.ssr-pl-box.nofr { aspect-ratio: auto; min-height: 0; display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 6px 10px; padding: 8px 10px; text-align: left; background: rgb(255 255 255 / .03); }
+.ssr-pl-box.nofr .ssr-pl-note { position: relative; padding: 0; background: none; flex-direction: row; align-items: center; color: var(--ssr-text-2); }
 .ssr-pl-box.nofr > * { position: relative; }
 .ssr-pl-box.on { aspect-ratio: 16 / 9; display: block; min-height: 0; padding: 0; }
 .ssr-pl-box:focus { outline: none; }
@@ -234,6 +236,16 @@
   border-radius: 4px; box-shadow: 0 0 0 1px rgb(255 255 255 / .14), 0 4px 14px rgb(0 0 0 / .5); pointer-events: none;
 }
 .ssr-rc-fr { position: absolute; inset: 0; background-color: #000; animation: ssr-rc-in .16s var(--ssr-ease); }
+/* Just Chatting / IRL: the moment's top emote, large, where a game's cover would sit (only on a card with no frame) */
+.ssr-rc-emote {
+  position: absolute; right: 10px; top: 8px; z-index: -1; display: block;
+  width: auto; height: 56px; max-width: none; aspect-ratio: 1; object-fit: contain; pointer-events: none;
+}
+/* no frame means no box (11-02): a compact card, the rank on top and the words under it, the cover or the top
+   emote small in the corner; the 16:9 picture comes back once a frame loads */
+.ssr-rc.flat { aspect-ratio: auto; min-height: 0; padding: 36px 10px 9px; }
+.ssr-rc.flat .ssr-rc-cap { position: relative; left: auto; right: auto; bottom: auto; padding-right: 72px; }
+.ssr-rc.flat .ssr-rc-cover { top: 8px; right: 10px; height: 56px; }
 @keyframes ssr-rc-in { from { opacity: 0; } to { opacity: 1; } }
 /* the shade under the words over a frame: dark at the top (rank) and the bottom (caption), open in between */
 .ssr-rc::after {
@@ -283,6 +295,9 @@
 .ssr-rc--sm .ssr-rc-at { top: 8px; right: 38px; }
 .ssr-rc--sm .ssr-rc-bar { left: 8px; right: 8px; top: 32px; }
 .ssr-rc--sm .ssr-rc-cover { top: 6px; right: 38px; height: min(40%, 96px); border-radius: 3px; }
+.ssr-rc--sm.flat { padding: 34px 8px 7px; }
+.ssr-rc--sm.flat .ssr-rc-cap { padding-right: 0; }
+.ssr-rc--sm.flat :is(.ssr-rc-cover, .ssr-rc-emote) { top: 5px; right: 38px; height: 26px; }
 @media (prefers-reduced-motion: reduce) { .ssr-rc, .ssr-rc-at, .ssr-rc-bar { transition: none; } .ssr-rc-fr { animation: none; } }
 @container ssr-mom (min-width: 641px) {
   .ssr-reel { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }

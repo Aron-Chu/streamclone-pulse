@@ -14,23 +14,26 @@ export function sessionLifecycleSentence({
   stream,
   syncing = false,
   hasChartData = false,
+  ended = false,
 }: {
   isLiveRoute: boolean
   isActiveLiveCollector: boolean
   stream?: AnalyticsStream
   syncing?: boolean
   hasChartData?: boolean
+  /** The page's shared ended rule (sessionIsEnded) says this stream ended: no "lifecycle unknown" for it. */
+  ended?: boolean
 }): { phrase: string; sentence: string } | null {
   if (isActiveLiveCollector || syncing || !hasChartData) return null
   const startedLabel = stream?.startedAt ? formatDateTime(stream.startedAt) : null
   const durationLabel = duration(stream)
-  const lifecycleKnown = stream?.lifecycleState === 'confirmed_ended'
+  const lifecycleKnown = stream?.lifecycleState === 'confirmed_ended' || ended
   const lifecycleUnknown = !stream?.lifecycleState || stream.lifecycleState === 'unknown'
   const parts = isLiveRoute
     ? lifecycleKnown ? ['Streamer offline', 'Showing last broadcast']
       : lifecycleUnknown ? ['Session lifecycle unknown', 'Showing measured session'] : ['Showing measured session']
     : [lifecycleKnown ? 'Past broadcast' : lifecycleUnknown ? 'Session lifecycle unknown' : 'Measured session']
-  if (!isLiveRoute && lifecycleKnown) {
+  if (!isLiveRoute && stream?.lifecycleState === 'confirmed_ended') {
     parts.push(`Offline confirmed ${formatDateTime(stream?.lifecycleDetectedAt)} (exact end time unknown)`)
   }
   if (startedLabel) parts.push(`Started ${startedLabel}`)
@@ -59,6 +62,8 @@ export function SessionLifecycleMeta({
   sessionStreamId,
   channelLogin,
   buildSessionPath,
+  streamedLine,
+  ended = false,
 }: {
   isLiveRoute: boolean
   isActiveLiveCollector: boolean
@@ -70,8 +75,12 @@ export function SessionLifecycleMeta({
   sessionStreamId?: string
   channelLogin: string
   buildSessionPath: (login: string, streamId: string) => string
+  /** An ended stream: "Streamed Oct 29 · 4h" in place of "Started 3d ago". */
+  streamedLine?: string | null
+  /** The shared ended rule (sessionIsEnded): the hidden sentence says "Past broadcast", not "lifecycle unknown". */
+  ended?: boolean
 }) {
-  const lifecycle = sessionLifecycleSentence({ isLiveRoute, isActiveLiveCollector, stream, syncing, hasChartData })
+  const lifecycle = sessionLifecycleSentence({ isLiveRoute, isActiveLiveCollector, stream, syncing, hasChartData, ended })
   const sessionPath = lifecycle && isLiveRoute && sessionStreamId?.trim()
     ? buildSessionPath(channelLogin, sessionStreamId.trim())
     : null
@@ -88,7 +97,7 @@ export function SessionLifecycleMeta({
     <>
       {startedAt ? (
         <span className="mi" title={title} {...lifecycleHooks}>
-          <RelativeTimeText prefix="Started" value={startedAt} />
+          {streamedLine ? <span data-session-streamed>{streamedLine}</span> : <RelativeTimeText prefix="Started" value={startedAt} />}
           {lifecycle ? <span role="status" className="sr-only">{`. ${lifecycle.sentence}`}</span> : null}
         </span>
       ) : lifecycle ? (

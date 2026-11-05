@@ -16,6 +16,12 @@ describe('Twitch VOD links', () => {
     expect(state.detail).toContain('Analytics are available')
     expect(state.detail).not.toMatch(/pending|processing|still live/i)
   })
+  it('says it is looking for the replay link, not how the lifecycle stands, while an unknown-lifecycle archive resolves', () => {
+    const state = resolveVodLinkState({ detail: { stream: { lifecycleState: 'unknown' }, availability: { vodState: 'resolving' } } })
+    expect(state.status).toBe('syncing')
+    expect(state.detail).toBe('Looking for the replay link…')
+    expect(state.detail).not.toMatch(/lifecycle/i)
+  })
   it('does not turn missing video into an archive-existence or lifecycle claim', () => {
     for (const vodState of ['unavailable', 'pending_live', 'resolving']) {
       const state = resolveVodLinkState({ detail: { stream: { lifecycleState: 'unknown' }, availability: { vodState } } })

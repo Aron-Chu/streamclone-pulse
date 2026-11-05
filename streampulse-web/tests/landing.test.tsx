@@ -90,15 +90,16 @@ function stubWideScreen(wide: boolean) {
 }
 
 describe('landing page', () => {
-  it('is the hero with search and the demo, nothing else (Aron, F2, 2026-11-02)', async () => {
+  it('keeps the search and demo with the requested streamer chat stats links', async () => {
     renderLanding()
     await screen.findByRole('heading', { name: /actually reacted to/i })
 
-    // One search, in the hero: the page ends with the demo, then the footer (D1, 11-02).
+    // Keep one search; the streamer directory follows the demo (Aron, 11-03).
     expect(screen.getAllByRole('search')).toHaveLength(1)
     expect(screen.getAllByRole('combobox', { name: /search streamers or games/i })).toHaveLength(1)
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
       expect.stringMatching(/see it beside twitch chat/i),
+      'Twitch chat stats by streamer',
     ])
     expect(screen.queryByRole('heading', { name: 'Look up a streamer' })).toBeNull()
     expect(document.querySelector('[data-cta="chrome-install-closing"]')).toBeNull()
@@ -231,6 +232,22 @@ describe('landing page', () => {
       expect(id).toBeTruthy()
       expect(sources.some((src) => src.includes(id!))).toBe(false)
     }
+  })
+
+  it('says what a viewer gets in plain words, with no design-doc jargon', async () => {
+    const { container } = renderLanding()
+    await screen.findByRole('heading', { name: /actually reacted to/i })
+    const text = container.textContent ?? ''
+    for (const jargon of [/coverage honesty/i, /backend-scored/i, /server-authored/i, /backfill state/i, /source of truth/i, /coverage-honest/i, /aggregate-first/i, /twitch-native/i]) {
+      expect(text).not.toMatch(jargon)
+    }
+  })
+
+  it('keeps the Developer reference in Docs, not on the home page', async () => {
+    const { container } = renderLanding()
+    await screen.findByRole('heading', { name: /actually reacted to/i })
+    expect(screen.queryByText('Developer reference')).toBeNull()
+    expect(container.querySelector('a[href="/docs#api"]')).toBeNull()
   })
 
   it('shows the live emote and mover tickers', async () => {

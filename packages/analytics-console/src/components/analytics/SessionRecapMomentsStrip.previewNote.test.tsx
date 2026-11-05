@@ -102,12 +102,13 @@ describe('one preview note on the session page (PIC-3)', () => {
     render(page(LIVE, true))
     await waitFor(() => expect(reelNoteText()).toBe(PREVIEW_RECORDING_COPY))
     expect(getVodStoryboardThumb).toHaveBeenCalled()
-    expect(PREVIEW_RECORDING_COPY).toBe('No preview frames while the stream is live.')
+    expect(PREVIEW_RECORDING_COPY).toBe('No preview frames while live.')
     expect(barNoteText()).toBe(PREVIEW_RECORDING_COPY)
   })
 
   it("an ended stream says frames aren't available right now, never that the stream has none", async () => {
     render(page(PAST, false))
+    // these moments name no emote, so the Just Chatting cards keep the cover and the line may say so
     await waitFor(() => expect(reelNoteText()).toBe(BOX_ART_LINE))
     expect(BOX_ART_LINE).toBe("Preview frames aren't available right now. Pictures are the game's box art.")
     expect(barNoteText()).toBe(BOX_ART_LINE)

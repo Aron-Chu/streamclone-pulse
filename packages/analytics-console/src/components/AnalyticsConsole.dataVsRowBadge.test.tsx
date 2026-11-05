@@ -12,6 +12,9 @@ import { AnalyticsConsole } from './AnalyticsConsole.tsx'
 // row badge called < 99.5 % Partial, and its hover text read only the list
 // row, which carries no chat count for an open stream. The badge now uses the
 // header's line and its hover text reads the badge's own evidence.
+// L1 (11-02): the open row of a stream the page calls live says LIVE, like
+// every other live row, so the agreement checks below run on the same
+// evidence once the stream has ended (`ended`), where the row keeps the badge.
 // Shapes below are the saved real answers in
 // streampulse-sdlc/artifacts/session-hub-gaps-20261030/codex-audit/inputs/evidence
 // (live-stream/status/summary/minutes, past-*, streams-12), trimmed.
@@ -67,6 +70,8 @@ interface Fixture {
   health: string
   /** analyticsQuality, as the backend's portalQualityFromMetrics writes it. */
   quality: string
+  /** The stream has ended: the hosted shape, state offline and availability "ended", no lifecycleState. */
+  ended?: boolean
 }
 
 // live-*.json: 178 measured minutes from offset 114 s; summary 99.44 %, "synced", full_pulse.
@@ -98,6 +103,9 @@ const PAST: Fixture = {
   health: 'synced',
   quality: 'full_pulse',
 }
+
+// The same stream once it has ended (L1: a live open row says LIVE, so the badge checks read this).
+const LIVE_ENDED: Fixture = { ...LIVE, ended: true }
 
 // Not in the evidence: the same live stream with only 110 of its 179 minutes
 // measured (61.45 %), so the backend writes "partial" / partial_pulse.
@@ -138,7 +146,7 @@ function availability(f: Fixture) {
     coveragePct: f.coveragePct,
     missingRanges: [{ fromOffsetSeconds: 0, toOffsetSeconds: f.missingTo }],
     coverageMessage: 'Partial data coverage — missing ranges are backend-authored',
-    liveDvrState: 'live',
+    liveDvrState: f.ended ? 'ended' : 'live',
     vodState: 'linked',
     vodId: f.vodId,
     backfillState: 'idle',
@@ -150,7 +158,7 @@ function detail(f: Fixture) {
   const rows = rollups(f)
   return {
     channel: LOGIN,
-    state: 'live',
+    state: f.ended ? 'offline' : 'live',
     stream: {
       streamId: f.streamId,
       login: LOGIN,
@@ -186,7 +194,7 @@ function status(f: Fixture) {
     channel: LOGIN,
     chatCoveragePct: f.coveragePct,
     dataCoveragePct: f.coveragePct,
-    state: 'live',
+    state: f.ended ? 'offline' : 'live',
     streamId: f.streamId,
     syncPhase: '',
     updatedAt: Date.parse(READ_AT),
@@ -268,6 +276,10 @@ function selectedRowBadge(): HTMLElement | undefined {
   return badgeIn(document.querySelector<HTMLElement>('a.sc-stream-row[aria-current="page"]'))
 }
 
+function selectedRowLive(): HTMLElement | null {
+  return document.querySelector<HTMLElement>('a.sc-stream-row[aria-current="page"] [data-stream-row-live]')
+}
+
 function rowBadge(streamId: string): HTMLElement | undefined {
   return badgeIn(document.querySelector<HTMLElement>(`a.sc-stream-row[href*="${streamId}"]`))
 }
@@ -286,7 +298,7 @@ async function settled(f: Fixture, answers?: () => void) {
   await waitFor(() => expect(api.getStreamSummary).toHaveBeenCalled())
   await waitFor(() => {
     expect(dataLabel()).not.toBeNull()
-    expect(selectedRowBadge()).toBeDefined()
+    expect(selectedRowBadge() ?? selectedRowLive()).toBeTruthy()
   })
   // Let the summary answer reach both the header and the row.
   await new Promise((resolve) => setTimeout(resolve, 50))
@@ -304,15 +316,23 @@ afterEach(() => {
 })
 
 describe('pick 11A: the selected row badge agrees with "Data: <label>"', () => {
-  it('live 316655688306 (99.44 %, synced, full_pulse): "Data: Good" and the selected row says Synced', async () => {
+  it('L1: live 316655688306 (no lifecycleState, as hosted sends it): "Data: Good" and the selected row says LIVE, not Synced', async () => {
     await settled(LIVE)
+    expect(dataLabel()).toBe('Good')
+    await waitFor(() => expect(selectedRowLive()?.textContent).toBe('Live'))
+    expect(selectedRowBadge()).toBeUndefined()
+  })
+
+  it('316655688306 once ended (99.44 %, synced, full_pulse): "Data: Good" and the selected row says Synced', async () => {
+    await settled(LIVE_ENDED)
     const label = dataLabel()!
     expect(label).toBe('Good')
     await waitFor(() => expect(selectedRowBadge()?.textContent).toBe(badgeFor(label)))
+    expect(selectedRowLive()).toBeNull()
   })
 
-  it('live 316655688306: the selected row hover text does not claim chat is missing while the session has chat minutes', async () => {
-    await settled(LIVE)
+  it('316655688306 once ended: the selected row hover text does not claim chat is missing while the session has chat minutes', async () => {
+    await settled(LIVE_ENDED)
     await waitFor(() => expect(selectedRowBadge()?.textContent).toBe('Synced'))
     const title = selectedRowBadge()?.getAttribute('title') ?? ''
     expect(title).not.toMatch(/chat rollups missing/i)
@@ -327,7 +347,7 @@ describe('pick 11A: the selected row badge agrees with "Data: <label>"', () => {
   })
 
   it('under the 80 % line (61.45 %, partial, partial_pulse): both say Partial and the hover text names the share in plain words', async () => {
-    await settled(LIVE_LOW)
+    await settled({ ...LIVE_LOW, ended: true })
     const label = dataLabel()!
     expect(label).toBe('Partial')
     await waitFor(() => expect(selectedRowBadge()?.textContent).toBe(badgeFor(label)))
@@ -338,7 +358,7 @@ describe('pick 11A: the selected row badge agrees with "Data: <label>"', () => {
 
   // Review 10-30: with no summary the row read chatCoveragePct (the backend's chat-only share) as its data share.
   it('summary failed, chat in 40 % of rows but data in 90 % of minutes (full_pulse): both say Good / Synced, and no "40%"', async () => {
-    const f: Fixture = { ...LIVE, coveragePct: 90 }
+    const f: Fixture = { ...LIVE_ENDED, coveragePct: 90 }
     await settled(f, () => {
       api.getAnalyticsStream.mockResolvedValue({ ...detail(f), chatCoveragePct: 40 })
       api.getStreamStatus.mockResolvedValue({ ...status(f), chatCoveragePct: 40 })
@@ -350,7 +370,7 @@ describe('pick 11A: the selected row badge agrees with "Data: <label>"', () => {
   })
 
   it('summary failed, data in 70 % of minutes, chat in 95 %: the hover text names the data share, not chat’s', async () => {
-    const f: Fixture = { ...LIVE, coveragePct: 70, health: 'partial', quality: 'partial_pulse' }
+    const f: Fixture = { ...LIVE_ENDED, coveragePct: 70, health: 'partial', quality: 'partial_pulse' }
     await settled(f, () => {
       api.getAnalyticsStream.mockResolvedValue({ ...detail(f), chatCoveragePct: 95 })
       api.getStreamStatus.mockResolvedValue({ ...status(f), chatCoveragePct: 95 })
@@ -362,7 +382,7 @@ describe('pick 11A: the selected row badge agrees with "Data: <label>"', () => {
   })
 
   it('summary failed, a chat-only session (no viewer minutes, partial_pulse, data 90 %): both say Partial', async () => {
-    const f: Fixture = { ...LIVE, coveragePct: 90, health: 'chat_only', quality: 'partial_pulse' }
+    const f: Fixture = { ...LIVE_ENDED, coveragePct: 90, health: 'chat_only', quality: 'partial_pulse' }
     const d = detail(f)
     const noViewers = d.rollups.map((r) => ({ ...r, viewerAvg: 0, viewerMax: 0, viewerLatest: 0, viewerSamples: 0 }))
     await settled(f, () => {
@@ -374,8 +394,8 @@ describe('pick 11A: the selected row badge agrees with "Data: <label>"', () => {
   })
 
   it('minutes read failed, summary synced 99.44 %: both say Good / Synced, and the hover text says the chart did not load', async () => {
-    await settled(LIVE, () => {
-      api.getAnalyticsStream.mockResolvedValue({ ...detail(LIVE), rollups: [], momentRollups: undefined, minutesUnavailable: true, timelineMinutes: 0 })
+    await settled(LIVE_ENDED, () => {
+      api.getAnalyticsStream.mockResolvedValue({ ...detail(LIVE_ENDED), rollups: [], momentRollups: undefined, minutesUnavailable: true, timelineMinutes: 0 })
     })
     expect(dataLabel()).toBe('Good')
     await waitFor(() => expect(selectedRowBadge()?.textContent).toBe('Synced'))

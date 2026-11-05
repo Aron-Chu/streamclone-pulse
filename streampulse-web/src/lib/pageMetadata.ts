@@ -48,7 +48,7 @@ function resolveBasePageMetadata(pathname: string): PageMetadata {
     case '/':
       return {
         title: 'StreamPulse: Twitch Chat Stats & Top Moments',
-        description: 'Free Twitch chat and emote stats beside chat, Top Moments with pictures, and Stream Recap for past streams.',
+        description: 'Explore Twitch chat stats, top emotes and reaction moments for tracked streams. Add the free Chrome, Edge or Firefox extension beside Twitch chat.',
         canonicalPath: '/',
         robots: 'index,follow',
       }
@@ -113,9 +113,15 @@ function resolveBasePageMetadata(pathname: string): PageMetadata {
       if (normalizedPath === '/analytics/moments' || normalizedPath === '/analytics/explore' || /^\/analytics\/explore\/[^/]+$/.test(normalizedPath)) {
         return { title: 'Moments — StreamPulse', description: 'Discover measured reactions, review exact sources, and save moments on this device.', canonicalPath: '/analytics/moments', robots: 'noindex,nofollow' }
       }
-      // A clip's own page; the page names the clip once it has read it. Before "clips" is read as a channel.
-      if (/^\/analytics\/clips\/[^/]+$/.test(normalizedPath)) {
+      // A clip's own page, only in a build that has it; the page names the clip once it has read it.
+      // Without the page every clip address is not found, never a channel named "clips".
+      const clips = import.meta.env.VITE_PUBLIC_NATIVE_CLIPS
+      const clipsOn = clips === 'on' || clips === '1'
+      if (clipsOn && /^\/analytics\/clips\/[^/]+$/.test(normalizedPath)) {
         return { title: 'Clip — StreamPulse', description: 'A Twitch clip StreamPulse made when chat reacted strongly, with why it was clipped.', canonicalPath: normalizedPath, robots: 'noindex,nofollow' }
+      }
+      if (!clipsOn && /^\/analytics\/clips(?:\/|$)/.test(normalizedPath)) {
+        return { title: 'Page not found — StreamPulse', description: DEFAULT_DESCRIPTION, canonicalPath: normalizedPath, robots: 'noindex,nofollow' }
       }
       if (normalizedPath === '/analytics/newsroom' || /^\/analytics\/newsroom\/[^/]+$/.test(normalizedPath)) {
         return {

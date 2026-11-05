@@ -235,7 +235,8 @@ function PortalRoutes() {
 
         {/* Fixed discovery routes must precede dynamic channel routes. */}
         <Route path="/analytics/moments" element={<AnalyticsMomentsPage />} />
-        {NativeClipWatchPage ? <Route path="/analytics/clips/:clipId" element={<NativeClipWatchPage />} /> : null}
+        {/* Without the clip page, a clip address is a 404, never a channel named "clips". */}
+        {NativeClipWatchPage ? <Route path="/analytics/clips/:clipId" element={<NativeClipWatchPage />} /> : <Route path="/analytics/clips/*" element={<NotFound />} />}
         <Route path="/analytics/newsroom" element={<RetiredExplorerRedirect />} />
         <Route path="/analytics/newsroom/:storyId" element={<RetiredExplorerRedirect />} />
         <Route path="/analytics/explore" element={<RetiredExplorerRedirect />} />

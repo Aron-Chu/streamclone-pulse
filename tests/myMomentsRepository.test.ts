@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { createMyMomentsRepository } from '../src/options/MyMomentsPage.tsx'
+import { createMyMomentsRepository, myMomentsProblem } from '../src/options/MyMomentsPage.tsx'
 afterEach(() => vi.unstubAllGlobals())
 it('strips row enrichment from saves and labels complete exports without leaking scope', async () => {
   const snapshot={production:true,scope:'private-principal',bookmarksState:'ready',bookmarksAvailable:true,moments:[],localNotes:{orphan:'Keep my note'}}
@@ -33,7 +33,20 @@ it('does not report a successful mutation when the worker fails', async()=>{
   vi.stubGlobal('chrome',{runtime:{sendMessage}})
   const repository=createMyMomentsRepository(), signal=new AbortController().signal
   await repository.load(signal)
-  await expect(repository.execute({kind:'clear-history'},signal)).rejects.toThrow('Could not load or save')
+  await expect(repository.execute({kind:'clear-history'},signal)).rejects.toThrow('Couldn’t save that. Try again.')
+})
+// F9: say what happened, never "check your device connection" when it was fine.
+it('names the problem: a full browser, StreamPulse out of reach, or a change or load that failed', async()=>{
+  expect(myMomentsProblem('Local data allowance reached. Remove saves or export them first.',true)).toBe('This browser’s storage is full. Remove or export some saves.')
+  expect(myMomentsProblem(new DOMException('QuotaExceededError','QuotaExceededError'),true)).toBe('This browser’s storage is full. Remove or export some saves.')
+  expect(myMomentsProblem('Failed to fetch',true)).toBe('Couldn’t reach StreamPulse. Your saves on this browser are safe.')
+  expect(myMomentsProblem('extension_api_503',false)).toBe('Couldn’t reach StreamPulse. Your saves on this browser are safe.')
+  expect(myMomentsProblem('Synced History can only be cleared as a whole.',true)).toBe('Synced History can only be cleared as a whole.')
+  expect(myMomentsProblem(undefined,true)).toBe('Couldn’t save that. Try again.')
+  expect(myMomentsProblem('TypeError: x is undefined',false)).toBe('Couldn’t load your moments. Try again.')
+  // A worker that throws while sending (no extension context) is told the same way.
+  vi.stubGlobal('chrome',{runtime:{sendMessage:vi.fn().mockRejectedValue(new Error('Extension context invalidated.'))}})
+  await expect(createMyMomentsRepository().load(new AbortController().signal)).rejects.toThrow('Couldn’t load your moments. Try again.')
 })
 it('hears the worker say My Moments changed, and nothing a Twitch tab sends', ()=>{
   const listeners=new Set<(message:unknown,sender:{tab?:unknown})=>void>()

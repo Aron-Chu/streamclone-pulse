@@ -49,6 +49,7 @@ describe('stream list games (GP-4, candidate, 10-30)', () => {
     const ids = sidebarCategoryIdsByName(rows)
     expect(Object.fromEntries(ids)).toEqual({
       'Just Chatting': '509658',
+      IRL: '509672',
       'Powerful Pro Yakyuu 2026-2027': '1189321824',
       'Gakuen iDOLM@STER': '1419480843',
     })
@@ -70,7 +71,10 @@ describe('stream list games (GP-4, candidate, 10-30)', () => {
     ] as AnalyticsStream[]
     const ids = sidebarCategoryIdsByName(clash)
     expect(ids.has('Retro')).toBe(false)
-    expect(sidebarStreamGames({ gamesSummary: 'Just Chatting · Retro' }, ids)).toEqual([{ name: 'Just Chatting' }, { name: 'Retro' }])
+    // Just Chatting and IRL keep Twitch's fixed ids, so their covers show even when no row carries the id
+    expect(sidebarStreamGames({ gamesSummary: 'Just Chatting · Retro · IRL' }, ids)).toEqual([
+      { name: 'Just Chatting', categoryId: '509658' }, { name: 'Retro' }, { name: 'IRL', categoryId: '509672' },
+    ])
     expect(sidebarStreamGames({ gamesSummary: 'Retro', category: 'Retro', categoryId: '22' }, ids)).toEqual([{ name: 'Retro', categoryId: '22' }])
   })
 

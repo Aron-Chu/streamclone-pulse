@@ -89,7 +89,7 @@ const routes = [
   {
     path: '',
     title: 'StreamPulse: Twitch Chat Stats & Top Moments',
-    description: 'Free Twitch chat and emote stats beside chat, Top Moments with pictures, and Stream Recap for past streams.',
+    description: 'Explore Twitch chat stats, top emotes and reaction moments for tracked streams. Add the free Chrome, Edge or Firefox extension beside Twitch chat.',
     canonicalPath: '/',
     robots: 'index,follow',
   },
@@ -263,10 +263,16 @@ function renderShell(metadata) {
       '@type': 'SoftwareApplication',
       name: 'StreamPulse: Twitch Chat Stats & Top Moments',
       applicationCategory: 'BrowserApplication',
-      operatingSystem: 'Chrome',
+      operatingSystem: ['Windows', 'macOS', 'Linux', 'ChromeOS'],
+      softwareRequirements: 'A desktop version of Chrome, Edge or Firefox.',
       offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
       url: origin,
       downloadUrl: 'https://chromewebstore.google.com/detail/streampulse/nifgoonpcgmdhiffcpmhndjgkgahnelg',
+      sameAs: [
+        'https://chromewebstore.google.com/detail/streampulse/nifgoonpcgmdhiffcpmhndjgkgahnelg',
+        'https://addons.mozilla.org/en-US/firefox/addon/streampulse/',
+        'https://microsoftedge.microsoft.com/addons/detail/streampulse-twitch-chat-/cnakgkalmjbhelabgjkbinlgjeflebjd',
+      ],
       softwareVersion: '0.2.6',
       description: metadata.description,
     }

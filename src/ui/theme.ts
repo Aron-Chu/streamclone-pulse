@@ -107,11 +107,6 @@ export const shadowStyles = `
     18% { opacity: 0.72; }
     100% { opacity: 0; transform: translateX(430%) skewX(-18deg); }
   }
-  @keyframes pulse-moment-saved {
-    0% { opacity: 0.72; transform: scale(0.96); }
-    55% { opacity: 1; transform: scale(1.08); }
-    100% { opacity: 1; transform: scale(1); }
-  }
   @keyframes pulse-moment-feedback {
     from { opacity: 0; transform: translateY(6px); }
     to { opacity: 1; transform: translateY(0); }
@@ -410,17 +405,17 @@ export const shadowStyles = `
     height: 28px;
     justify-content: center;
     min-height: 28px;
-    padding: 0;
-    width: 34px;
+    padding: 0 10px;
+    font-family: inherit;
+    font-size: 10.5px;
+    font-weight: 800;
+    white-space: nowrap;
   }
   .pulse-card-bookmark[aria-pressed="true"],
   .pulse-card-bookmark[aria-pressed="true"]:hover:not(:disabled) {
     background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.28) !important;
     border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.7) !important;
     color: #fff;
-  }
-  .pulse-card-bookmark[aria-pressed="true"] svg {
-    animation: pulse-moment-saved 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
   .pulse-card-bookmark:focus-visible,
   .pulse-my-moments-link:focus-visible,
@@ -875,7 +870,8 @@ export const shadowStyles = `
   .pulse-moment-selection-card{animation:tab-fade 200ms ease-out both}
   .pulse-moment-card-swap{animation:pulse-swap-fade 180ms ease-out both}
   .pulse-moment-slot{display:grid;grid-template-rows:1fr;animation:pulse-slot-open 240ms cubic-bezier(.22,1,.36,1) both}
-  .pulse-moment-slot-inner{min-height:0}
+  /* min-width:0 always, as overflow:hidden gives while it opens or closes, so the card never changes width mid-animation. */
+  .pulse-moment-slot-inner{min-height:0;min-width:0}
   .pulse-moment-slot:is(.pulse-moment-slot-opening,.pulse-moment-slot-exit)>.pulse-moment-slot-inner{overflow:hidden}
   .pulse-panel-body[data-keep-in-place]{overflow-anchor:none}
   .pulse-moment-slot-exit{animation:pulse-slot-close 180ms cubic-bezier(.4,0,.2,1) both;pointer-events:none}
@@ -897,7 +893,6 @@ export const shadowStyles = `
     .pulse-analytics-hub-cta:active {
       transform: none !important;
     }
-    .pulse-card-bookmark svg,
     .pulse-bookmark-toast {
       animation: none !important;
     }

@@ -16,6 +16,7 @@ import { BrandMark } from '../../ui/components/BrandMark'
 import { DiscordMark } from '../../ui/components/DiscordMark'
 import { InstallCta } from '../../ui/components/InstallCta'
 import { AnalyticsPreferences } from '../../ui/components/AnalyticsPreferences'
+import { StreamerChatStats } from '../../ui/components/StreamerChatStats'
 import { FEEDBACK_PATH, GITHUB_REPO_URL, PRIVACY_PATH, REFUNDS_PATH, SUPPORTER_PATH, TERMS_PATH } from '../../lib/externalLinks'
 import { discordInviteUrl } from '../../lib/discord'
 import { capturePublicCta } from '../../lib/productAnalytics'
@@ -229,6 +230,8 @@ function Footer({ discord }: { discord: string | null }) {
             <span className="sl-foot__head">Product</span>
             <Link to="/analytics" onClick={() => capturePublicCta('open_analytics')}>Hub</Link>
             <Link to="/docs">Extension guide</Link>
+            <Link to="/tools/twitch-vod-timestamp-link">Twitch timestamp tool</Link>
+            <Link to="/guides/find-twitch-moments">Find Twitch moments</Link>
             <Link to="/status">Status</Link>
             <Link to="/changelog">Changelog</Link>
           </div>
@@ -337,6 +340,7 @@ export default function Landing() {
               <DeferredDemo><ExtensionShowcase /></DeferredDemo>
             </div>
           </section>
+          <div className="sl-container sl-streamer-stats"><StreamerChatStats /></div>
         </main>
         <Footer discord={discord} />
       </div>

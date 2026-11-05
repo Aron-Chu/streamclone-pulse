@@ -17,7 +17,7 @@ export const FEED_UP_MIN = 1.5
 export const FEED_NOW_MIN = 30
 export const FEED_ADD_MIN = 20
 /** The dot greys once the data is older than this. */
-export const FEED_STALE_MS = 3 * 60_000
+export const FEED_STALE_MS = 2 * 60_000
 
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
 
@@ -56,7 +56,7 @@ export function feedFreshText(asOf: number | null, nowMs: number): string {
   return `as of ${feedClockFloor(asOf)}${m >= 1 ? ` · ${m < 60 ? `${m} min` : `${Math.floor(m / 60)} h`} old` : ''}`
 }
 
-/** The data is over 3 minutes old: the dot greys. */
+/** The data is over 2 minutes old: the section greys (its dot and its list). */
 export const feedStale = (asOf: number | null, nowMs: number): boolean => asOf != null && nowMs - asOf > FEED_STALE_MS
 
 export const feedMore = (n: number) => formatHubInt(Math.round(n))

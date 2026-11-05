@@ -59,6 +59,19 @@ export function streamSyncBadgeState(
   return 'stats_only'
 }
 
+/**
+ * One badge rule for the stream list: the row of the stream that is live now says LIVE, whatever its
+ * counts say (a live stream is still filling in, so "Partial" would read as a fault). Live is the row's
+ * own confirmed-live lifecycle, or the page's live answer naming this row.
+ */
+export function streamRowIsLive(
+  stream: Pick<AnalyticsStream, 'streamId' | 'lifecycleState'>,
+  live: { liveStreamId?: string; liveState?: string },
+): boolean {
+  if (stream.lifecycleState === 'confirmed_live') return true
+  return live.liveState === 'live' && Boolean(live.liveStreamId) && live.liveStreamId === stream.streamId
+}
+
 export function streamSyncBadgeLabel(badge: StreamSyncBadge): string {
   switch (badge) {
     case 'syncing':
