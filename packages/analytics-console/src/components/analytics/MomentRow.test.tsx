@@ -127,9 +127,9 @@ describe('SessionMomentRow', () => {
     expect(row.querySelector('.ssr-gm-n')!.textContent).toBe('Just Chatting')
   })
 
-  it('says "emote names not captured" instead of naming emotes from a thin sample', () => {
+  it('says "names not in this update" instead of naming emotes from a thin sample', () => {
     render(<SessionMomentRow model={model({ namesNotCaptured: 'Names for 15% of 400 emote uses in this minute' })} artUrl={ART} lockMode="strip" locked={false} showPlay onActivate={vi.fn()} />)
-    const nn = screen.getByText('emote names not captured')
+    const nn = screen.getByText('names not in this update')
     expect(nn.getAttribute('title')).toBe('Names for 15% of 400 emote uses in this minute')
     expect(document.querySelector('.ssr-tok')).toBeNull()
   })
@@ -207,14 +207,14 @@ describe('SessionMomentPlayer', () => {
 
   it('never guesses a VOD time without a verified alignment', () => {
     render(<SessionMomentPlayer model={model()} artUrl={null} vodId="2590000000" vodAlignSeconds={null} />)
-    expect(screen.getByText("This minute isn't in the VOD yet.")).toBeTruthy()
+    expect(screen.getByText("Timestamp alignment is not verified.")).toBeTruthy()
     expect(screen.queryByRole('button')).toBeNull()
     expect(screen.queryByRole('link')).toBeNull()
   })
 
   it('says when there is no VOD, and that there are no preview frames while the stream is live', () => {
     render(<SessionMomentPlayer model={model()} artUrl={ART} vodId={null} vodRecording />)
-    expect(screen.getByText('No VOD for this stream yet.')).toBeTruthy()
-    expect(screen.getByText('No preview frames while the stream is live.')).toBeTruthy()
+    expect(screen.getByText('No VOD linked yet.')).toBeTruthy()
+    expect(screen.getByText('No preview frames while live.')).toBeTruthy()
   })
 })

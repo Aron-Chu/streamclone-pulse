@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
+  MINUTES_MISSING_NOTE,
   bucketMinutes,
   formatActivityWindowLabel,
 } from "../../../lib/hubActivitySummary";
@@ -57,6 +58,8 @@ export type HubActivityPanelV5Props = FigmaGlobalActivityPanelProps & {
   awaitingData?: boolean;
   /** A saved copy is on screen: the readout's rest time reads "Saved", not "Now" (S1, 10-28). */
   saved?: boolean;
+  /** Under 95% of this chart's buckets are measured and the read has settled: say so in one grey line under it. */
+  minutesMissingNote?: boolean;
   /** Time this displayed data was loaded or saved, distinct from data age. */
   lastAppliedAgo?: string;
   lastAppliedFromCache?: boolean;
@@ -115,6 +118,7 @@ export function HubActivityPanelV5({
   onOpenMeasured,
   awaitingData = false,
   saved = false,
+  minutesMissingNote = false,
 }: HubActivityPanelV5Props) {
   const labels = useCommandCenterLabels();
   const [bars, setBars] = useState<HubActivityBars | null>(null);
@@ -290,6 +294,9 @@ export function HubActivityPanelV5({
           saved={saved}
         />
       </div>
+      {minutesMissingNote && !awaitingData && !unavailable ? (
+        <p className="figma-global-activity__served-window" data-testid="hub-minutes-missing-note">{MINUTES_MISSING_NOTE}</p>
+      ) : null}
       {!awaitingData && !unavailable ? (
         <p className="figma-global-activity__served-window" data-testid="hub-data-age">
           {updatedAgo ? `Data from about ${updatedAgo}` : lastAppliedAgo && !activityRefreshing ? `Data age unavailable · ${lastAppliedFromCache ? "Saved" : "Loaded"} ${lastAppliedAgo}` : "Data age unavailable"}

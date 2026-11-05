@@ -92,6 +92,7 @@ import { SyncStatusPanel } from './analytics/SyncStatusPanel.tsx'
 import { lookupTwitchChannel } from '../twitchChannelLookup.ts'
 import { StreamQualityBanner } from './analytics/StreamQualityBanner.tsx'
 import { diagnoseStreamQuality, sessionDataQualityLabel } from '../utils/streamQuality.ts'
+import { sessionIsEnded, sessionStreamedLine, sessionVodLine } from '../utils/sessionState.ts'
 import { isTerminalSyncPhase, pollSyncUntilDone } from '../utils/syncPolling.ts'
 import { buildSessionSignals } from '../signals/buildSessionSignals.ts'
 import { SessionSignalTape } from './signals/SessionSignalTape.tsx'
@@ -150,6 +151,12 @@ export interface AnalyticsConsoleProps {
   enableSyncActions?: boolean
   buildSessionPath?: (login: string, streamId: string) => string
   buildChannelPath?: (login: string) => string
+  /**
+   * Where "Suggest a channel" goes on a channel StreamPulse has not recorded.
+   * By default the site's /feedback page; a host whose feedback form is not open
+   * can point it straight at its public Discord instead (an outside link).
+   */
+  suggestChannel?: { href: string; label: string }
   /** Host-owned actions for an explicitly selected minute on a resolved stream. */
   renderSelectedMomentActions?: (moment: { login: string; streamId: string; offsetSeconds: number; at?: number; chatPerMin?: number; emotesPerMin?: number; category?: string; label?: string }) => ReactNode
 }
@@ -194,6 +201,7 @@ export function AnalyticsConsole({
   enableSyncActions = false,
   buildSessionPath = defaultSessionPath,
   buildChannelPath = defaultChannelPath,
+  suggestChannel,
   renderSelectedMomentActions,
 }: AnalyticsConsoleProps = {}) {
   const navigate = useNavigate()
@@ -774,9 +782,10 @@ export function AnalyticsConsole({
     () => sessionStreamEdges({
       rollups: sessionRollups,
       streamStartedAt: detail?.stream?.startedAt,
-      streamEnded: Boolean(detail?.stream?.endedAt) && !sessionIsLive,
+      // the hosted adapter blanks endedAt, so the end comes from the shared rule (availability's "ended")
+      streamEnded: sessionIsEnded({ live: sessionIsLive, stream: detail?.stream, availability: detail?.availability }),
     }),
-    [detail?.stream?.endedAt, detail?.stream?.startedAt, sessionIsLive, sessionRollups],
+    [detail?.stream, detail?.availability, sessionIsLive, sessionRollups],
   )
 
   // One source of truth for chart markers: refined recap windows outrank the
@@ -1022,6 +1031,14 @@ export function AnalyticsConsole({
   ])
 
   const stream = detail?.stream
+  // An ended stream says when it streamed and for how long ("Streamed Oct 29 · 4h",
+  // "Viewers at end") instead of the read time, which reads as live. The hosted
+  // data blanks endedAt, so the shared rule reads availability's "ended" too.
+  // Refresh data stays: ended data still changes.
+  const sessionEnded = sessionIsEnded({ live: sessionIsLive, stream, availability: detail?.availability })
+  const streamedLine = sessionEnded
+    ? sessionStreamedLine(stream?.startedAt, detail?.momentRollups?.length ? detail.momentRollups : detail?.rollups)
+    : null
   const fallbackVodId = useMemo(
     () =>
       resolveSessionFallbackVodId({
@@ -1058,7 +1075,9 @@ export function AnalyticsConsole({
   // answered). The bar picture and the moments reel read this one flag, so
   // they say the same line; it used to be `isLive && vodId` on the bar only.
   const recording = sessionIsLive && sidebarStreams.length > 0
-  const vodRecording = recording && Boolean(streamVodId)
+  // The pictures' "No preview frames while live." follows the live stream itself, VOD id or not:
+  // a live stream with no VOD id yet used to blame missing frames instead.
+  const vodRecording = recording
   // (candidate, 10-30) PIC-4: the "Live now" tile names the login only while
   // recording, and hides once the newest measured minute is old (LiveNowTile.tsx).
   const liveNowLogin = recording ? channelLogin : null
@@ -1074,6 +1093,7 @@ export function AnalyticsConsole({
       }),
     [detail, recapForStream?.vodId, fallbackVodId, isActiveLiveCollector, channelIsLive],
   )
+  const noVodLine = sessionVodLine(vodLinkState)
   // Tiles and totals read every measured minute; `rollups` is the chart's downsampled series.
   const measuredRollups = detail?.momentRollups?.length ? detail.momentRollups : detail?.rollups
 
@@ -1527,6 +1547,8 @@ export function AnalyticsConsole({
                     isActiveLiveCollector={isActiveLiveCollector}
                     stream={stream}
                     syncing={syncing}
+                    streamedLine={streamedLine}
+                    ended={sessionEnded}
                     hasChartData={
                       (detail?.rollups ?? []).some(rollupHasMinuteData)
                       || rollupsHaveViewerData(detail?.rollups ?? [])
@@ -1539,7 +1561,9 @@ export function AnalyticsConsole({
                   <span className="mi" data-session-updated>
                     {lastRefreshedAt
                       ? <RelativeTimeText prefix="Refreshed" value={lastRefreshedAt} />
-                      : <RelativeTimeText prefix="Updated" value={sessionUpdatedAt} />}
+                      : sessionEnded
+                        ? null
+                        : <RelativeTimeText prefix="Updated" value={sessionUpdatedAt} />}
                     <button
                       type="button"
                       className="ssp-rf"
@@ -1614,11 +1638,11 @@ export function AnalyticsConsole({
             </div>
           )}
         </header>
-        {channelNotRecorded ? <ChannelNotRecordedPanel login={channelLogin} /> : <>
+        {channelNotRecorded ? <ChannelNotRecordedPanel login={channelLogin} suggest={suggestChannel} /> : <>
 
         <section className="ssp-stats grid grid-cols-2 gap-3 lg:grid-cols-6" data-session-stat-row aria-label="Stream figures">
           <StatCard
-            label="Latest viewers"
+            label={sessionEnded ? 'Viewers at end' : 'Latest viewers'}
             value={statCardsPending ? '-' : statCardClasses.current.placeholder ?? count(headerStats.current)}
             tone={statCardClasses.current.muted ? STAT_PLACEHOLDER_MUTED_CLASS : 'text-cyan-300/90'}
           />
@@ -1767,10 +1791,9 @@ export function AnalyticsConsole({
               />
               {/* d3-v2 session-original: "Watch VOD" sits in the meta line; only a
                   missing VOD still says why under the chart. */}
-              {!streamVodId && vodLinkState.detail ? (
-                <p className={`text-xs font-semibold ${vodLinkState.status === 'request_failed' ? 'text-amber-200' : 'text-zinc-400'}`}>
-                  {vodLinkState.status === 'request_failed' ? `${vodLinkState.label} · ` : null}
-                  {vodLinkState.detail}
+              {!streamVodId ? (
+                <p className={`text-xs font-semibold ${noVodLine.failed ? 'text-amber-200' : 'text-zinc-400'}`} data-session-vod-line data-vod-status={vodLinkState.status}>
+                  {noVodLine.text}
                 </p>
               ) : null}
             </div>
@@ -1812,6 +1835,7 @@ export function AnalyticsConsole({
                   isLiveView={isLiveRoute}
                   liveState={detail?.stream?.lifecycleState === 'unknown' ? 'unknown' : channelIsLive || isActiveLiveCollector ? 'live' : isLiveRoute ? detail?.state : undefined}
                   liveStreamId={liveActiveStreamId}
+                  activeLive={sessionEnded ? false : sessionIsLive ? true : undefined}
                   liveSessionPath={
                     canonicalLiveSessionSlug
                       ? buildSessionPath(channelLogin, canonicalLiveSessionSlug)
@@ -1991,7 +2015,7 @@ export function AnalyticsConsole({
  * One honest panel for a channel StreamPulse has never recorded, in place of
  * the stat grid, stream list and chart (which would all be empty placeholders).
  */
-function ChannelNotRecordedPanel({ login }: { login: string }) {
+function ChannelNotRecordedPanel({ login, suggest }: { login: string; suggest?: { href: string; label: string } }) {
   // SRCH-5 (3A, 11-02): Twitch's answer turns the dead end into a next step. Only a
   // real answer says the account exists; a failed read never says it doesn't.
   const twitch = useQuery({
@@ -2039,12 +2063,24 @@ function ChannelNotRecordedPanel({ login }: { login: string }) {
         >
           Search tracked channels
         </Link>
-        <Link
-          to="/feedback"
-          className="inline-flex min-h-11 items-center rounded border border-white/15 bg-white/[0.05] px-4 py-2 text-sm font-black text-zinc-200 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
-        >
-          {found ? `Suggest ${login}` : 'Suggest a channel'}
-        </Link>
+        {suggest ? (
+          <a
+            href={suggest.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`${suggest.label} (opens in a new tab)`}
+            className="inline-flex min-h-11 items-center rounded border border-white/15 bg-white/[0.05] px-4 py-2 text-sm font-black text-zinc-200 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+          >
+            {suggest.label}
+          </a>
+        ) : (
+          <Link
+            to="/feedback"
+            className="inline-flex min-h-11 items-center rounded border border-white/15 bg-white/[0.05] px-4 py-2 text-sm font-black text-zinc-200 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+          >
+            {found ? `Suggest ${login}` : 'Suggest a channel'}
+          </Link>
+        )}
       </div>
     </section>
   )

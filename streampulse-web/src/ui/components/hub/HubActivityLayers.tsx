@@ -9,6 +9,7 @@
  * the view moves, so nothing here runs per frame.
  */
 import type { SpLayer, SpLayerContext } from '@streampulse/pulse-charts/spchart'
+import { emoteDisplaySrc } from '../../../lib/emoteAssetUrl'
 import { formatHubCardInt } from '../../../lib/hubBucketCardModel'
 import type { HubActivitySpModel } from './hubActivitySpModel'
 
@@ -16,6 +17,8 @@ import type { HubActivitySpModel } from './hubActivitySpModel'
 const STAMP_EDGE_PX = 30
 /** Distance from the bar top to the stamp top (chart.js: y - 28). */
 const STAMP_LIFT_PX = 28
+/** The stamp's picture is drawn this wide, so it asks the CDN for the size that matches. */
+const STAMP_PICTURE_PX = 20
 
 export interface HubMarkerInput {
   key: string
@@ -48,6 +51,7 @@ export function hubStampLayer(model: HubActivitySpModel, emoteImages?: ReadonlyM
   if (!stamp) return null
   const { emote } = stamp
   const imageUrl = emote.imageUrl || emoteImages?.get(emote.name.toLowerCase()) || null
+  const stampSrc = imageUrl ? emoteDisplaySrc(imageUrl, STAMP_PICTURE_PX) : undefined
   return {
     id: 'hub-stamp',
     panel: 'rates',
@@ -65,7 +69,7 @@ export function hubStampLayer(model: HubActivitySpModel, emoteImages?: ReadonlyM
           aria-label={stampAccessibleName(emote.name, emote.count, model.bucketMinutes)}
           style={{ left: Math.round(x * 10) / 10, top: Math.round(top * 10) / 10 }}
         >
-          {imageUrl ? <img src={imageUrl} alt="" width={20} height={20} decoding="async" referrerPolicy="no-referrer" /> : null}
+          {stampSrc ? <img src={stampSrc} alt="" width={STAMP_PICTURE_PX} height={STAMP_PICTURE_PX} decoding="async" referrerPolicy="no-referrer" /> : null}
           <span aria-hidden="true">×{formatHubCardInt(emote.count)}</span>
         </span>
       )

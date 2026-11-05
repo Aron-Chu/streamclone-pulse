@@ -1,6 +1,7 @@
-import { useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { cn } from '../../primitives/cn'
-import type { TickerItem } from './landingData'
+import { ResilientImage } from '../ResilientImage'
+import { TICKER_PICTURE_PX, type TickerItem } from './landingData'
 
 interface EmoteTickerProps {
   variant: 'a' | 'b'
@@ -10,22 +11,19 @@ interface EmoteTickerProps {
 }
 
 function TickerLead({ item, round }: { item: TickerItem; round: boolean }) {
-  const [broken, setBroken] = useState(false)
-  if (item.image && !broken) {
-    return (
-      <img
-        className={cn('sl-ticker__img', round && 'sl-ticker__img--round')}
-        src={item.image}
-        alt=""
-        loading="lazy"
-        decoding="async"
-        width={20}
-        height={20}
-        onError={() => setBroken(true)}
-      />
-    )
-  }
-  return <span className="sl-ticker__lead">{item.lead}</span>
+  return (
+    <ResilientImage
+      className={cn('sl-ticker__img', round && 'sl-ticker__img--round')}
+      src={item.image}
+      fallbackSrc={item.imageFallback}
+      alt=""
+      loading="lazy"
+      decoding="async"
+      width={TICKER_PICTURE_PX}
+      height={TICKER_PICTURE_PX}
+      fallback={<span className="sl-ticker__lead">{item.lead}</span>}
+    />
+  )
 }
 
 function TickerItems({ items, round }: { items: TickerItem[]; round: boolean }) {

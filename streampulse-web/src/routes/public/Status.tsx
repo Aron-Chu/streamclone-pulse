@@ -12,6 +12,9 @@ interface PublicStatusPayload {
 }
 interface ExtensionHealthPayload { ok?: boolean; version?: string }
 type ProbeResult<T> = { data: T | null; error: string | null }
+/** The overall line when the service runs and only coverage or chat tracking is behind. */
+export const QUIET_ONLY_LINE = 'Running · a few channels are quiet'
+
 type State = 'operational' | 'degraded' | 'unavailable' | 'unknown'
 
 const PORTAL_VERSION_DISPLAY = portalReleaseShort()
@@ -25,14 +28,12 @@ function normalizedState(value: unknown): State {
   return 'unknown'
 }
 function stateLabel(state: State) {
-  return state === 'operational' ? 'Operational' : state === 'degraded' ? 'Degraded' : state === 'unavailable' ? 'Unavailable' : 'Unknown'
+  return state === 'operational' ? 'Working' : state === 'degraded' ? 'Slow' : state === 'unavailable' ? 'Down' : 'Unknown'
 }
-/** What the chat collection card says, in plain words (no fleet counts). */
-function chatCollectionDetail(state: State): string {
-  return state === 'operational' ? 'Live chat collection is running normally'
-    : state === 'degraded' ? 'Live chat collection is slower than usual'
-    : state === 'unavailable' ? 'Live chat collection could not be checked'
-    : 'Live chat collection has not reported yet'
+/** The worst of several states; an unknown one is never read as working. */
+function worstState(states: State[]): State {
+  for (const state of ['unavailable', 'degraded', 'unknown'] as const) if (states.includes(state)) return state
+  return 'operational'
 }
 function safeDataTime(value?: string): string {
   const timestamp = measurementTimeMs(value)
@@ -80,39 +81,56 @@ export default function Status() {
     : statusProbe.data?.degraded || healthProbe.data?.ok === false || componentStates.includes('degraded') ? 'degraded'
     : statusState === 'operational' && healthProbe.data?.ok === true ? 'operational' : statusState === 'operational' ? 'unknown' : statusState
   const errors = [statusProbe.error, healthProbe.error].filter(Boolean)
-  const corpusState: State = loading ? 'unknown' : statusProbe.error ? 'unavailable' : normalizedState(statusProbe.data?.components?.corpus)
-  const card = (label: string, state: State, detail: string) => <div className="status-card">
+  // Only coverage or chat tracking is behind while the API and the panel answer: the service is
+  // running and some channels are quiet. That reads neutral, not as an outage; amber stays for Down.
+  const components = statusProbe.data?.components ?? {}
+  // A top-level "down" still reads as Down, never as a quiet line.
+  const quietOnly = overall === 'degraded' && statusState !== 'unavailable' && healthProbe.data?.ok === true &&
+    normalizedState(components.api ?? statusProbe.data?.api ?? 'operational') === 'operational' &&
+    (['coverage', 'corpus'] as const).some((key) => normalizedState(components[key]) === 'degraded') &&
+    Object.entries(components).every(([key, value]) => key === 'coverage' || key === 'corpus' || normalizedState(value) === 'operational')
+  const fromStatus = (value: unknown): State => loading ? 'unknown' : statusProbe.error ? 'unavailable' : normalizedState(value)
+  const websiteState = fromStatus(statusProbe.data?.components?.api ?? statusProbe.data?.api)
+  const chatTrackingState = fromStatus(statusProbe.data?.components?.corpus)
+  // What the Twitch panel shows comes from the extension API and the coverage engine behind it.
+  const panelState = worstState([
+    loading ? 'unknown' : healthProbe.error ? 'unavailable' : healthProbe.data?.ok === true ? 'operational' : healthProbe.data?.ok === false ? 'degraded' : 'unknown',
+    fromStatus(statusProbe.data?.components?.coverage),
+  ])
+  const row = (label: string, state: State) => <div className="status-card">
     <div className="status-card__header"><span className="status-card__label">{label}</span><span className="status-card__indicator">
       <span className={`status-card__dot ${state === 'operational' ? 'status-card__dot--operational' : 'status-card__dot--degraded'}`} />
       <span className={state === 'operational' ? 'text-emerald-400' : state === 'unknown' ? 'text-zinc-400' : 'text-amber-400'}>{stateLabel(state)}</span>
-    </span></div><span className="status-card__detail">{detail}</span>
+    </span></div>
   </div>
 
   return <PublicLayout><section className="panel" data-testid="status-page">
     <header className="mb-6 border-b border-white/[0.08] pb-6"><div className="flex flex-wrap items-center justify-between gap-4">
       <div><h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">System Status</h1><p className="mt-1 text-sm text-zinc-400">Public service health. Open the <Link to="/analytics" className="text-violet-400 hover:underline">Hub</Link> for coverage detail.</p></div>
-      <div className={`inline-flex items-center gap-2.5 rounded-full border px-4 py-2 text-sm font-bold ${overall === 'operational' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : overall === 'unknown' ? 'border-white/15 bg-white/5 text-zinc-300' : 'border-amber-500/30 bg-amber-500/10 text-amber-300'}`}>
-        <span>{loading ? 'Checking systems…' : overall === 'operational' ? 'Reported Services Operational' : overall === 'degraded' ? 'Degraded Performance' : overall === 'unavailable' ? 'Status Unavailable' : 'Status Unknown'}</span>
+      <div data-testid="status-overall" className={`inline-flex items-center gap-2.5 rounded-full border px-4 py-2 text-sm font-bold ${overall === 'operational' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : overall === 'unknown' || quietOnly ? 'border-white/15 bg-white/5 text-zinc-300' : 'border-amber-500/30 bg-amber-500/10 text-amber-300'}`}>
+        <span>{loading ? 'Checking systems…' : quietOnly ? QUIET_ONLY_LINE : stateLabel(overall)}</span>
       </div>
     </div></header>
     {loading ? <div className="flex items-center gap-2.5 py-8 text-zinc-400"><span className="analytics-route-fallback__spinner" /><span>Probing StreamPulse services…</span></div> : null}
     {errors.length ? <div className="alert alert-error my-4" role="alert">Some checks could not be completed: {errors.join('; ')}</div> : null}
     <div className="status-grid">
-      {card('Hosted API', loading ? 'unknown' : statusProbe.error ? 'unavailable' : normalizedState(statusProbe.data?.components?.api ?? statusProbe.data?.api), backendSourceCaption(backendUrl))}
-      {card('Chat collection', corpusState, chatCollectionDetail(corpusState))}
-      {card('Coverage Engine', loading ? 'unknown' : statusProbe.error ? 'unavailable' : normalizedState(statusProbe.data?.components?.coverage), 'Minute rollups and heatmaps')}
-      {card('Extension Ingest', loading ? 'unknown' : healthProbe.error ? 'unavailable' : healthProbe.data?.ok === true ? 'operational' : healthProbe.data?.ok === false ? 'degraded' : 'unknown', `API version ${versionLabel(healthProbe.data?.version)}`)}
+      {row('Website', websiteState)}
+      {row('Live chat tracking', chatTrackingState)}
+      {row('Twitch panel data', panelState)}
     </div>
-    {typeof statusProbe.data?.incident === 'string' && statusProbe.data.incident ? <div className="alert alert-warning mt-6"><strong>Active incident:</strong> {statusProbe.data.incident}</div> : null}
-    {/* Build, source and times stay one click away (Aron, 11-02). */}
-    <details className="status-details mt-6 text-xs text-zinc-500"><summary className="cursor-pointer">Details</summary>
-      <dl className="status-details__list mt-3 text-xs">
-        <div><dt className="text-zinc-500 font-bold uppercase">Portal Build</dt><dd className="mt-1 text-zinc-200 font-bold">{PORTAL_VERSION_DISPLAY}</dd></div>
-        <div><dt className="text-zinc-500 font-bold uppercase">API Source</dt><dd className="mt-1 text-zinc-200 font-bold">{backendSourceCaption(backendUrl)}</dd></div>
-        <div><dt className="text-zinc-500 font-bold uppercase">Checked at</dt><dd className="mt-1 text-zinc-200 font-bold">{checkedAt ? checkedAt.toLocaleString() : 'Not checked yet'}</dd></div>
-        <div><dt className="text-zinc-500 font-bold uppercase">Data as of</dt><dd className="mt-1 text-zinc-200 font-bold">{safeDataTime(statusProbe.data?.updatedAt)}</dd></div>
+    {checkedAt ? <p className="mt-4 text-sm text-zinc-400" data-testid="status-checked">Checked {checkedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</p> : null}
+    {typeof statusProbe.data?.incident === 'string' && statusProbe.data.incident ? <div className="alert alert-warning mt-4"><strong>Active incident:</strong> {statusProbe.data.incident}</div> : null}
+    <details className="mt-8 rounded-lg border border-white/[0.08] px-4 py-3" data-testid="status-details">
+      <summary className="cursor-pointer font-semibold text-zinc-200">Details</summary>
+      <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4 text-xs font-mono">
+        <div><dt className="text-zinc-400 font-bold uppercase">Portal Build</dt><dd className="mt-1 text-zinc-200 font-bold">{PORTAL_VERSION_DISPLAY}</dd></div>
+        <div><dt className="text-zinc-400 font-bold uppercase">API Source</dt><dd className="mt-1 text-zinc-200 font-bold">{backendSourceCaption(backendUrl)}</dd></div>
+        <div><dt className="text-zinc-400 font-bold uppercase">Checked at</dt><dd className="mt-1 text-zinc-200 font-bold">{checkedAt ? checkedAt.toLocaleString() : 'Not checked yet'}</dd></div>
+        <div><dt className="text-zinc-400 font-bold uppercase">Data as of</dt><dd className="mt-1 text-zinc-200 font-bold">{safeDataTime(statusProbe.data?.updatedAt)}</dd></div>
       </dl>
-      {backendSource !== 'hosted' ? <p className="mt-3 text-xs text-zinc-500">Local or custom API — status reflects that backend, not necessarily production.</p> : null}
+      <p className="mt-4 text-xs text-zinc-300 font-mono">{`API version ${versionLabel(healthProbe.data?.version)}`}</p>
+      <p className="mt-4 text-xs text-zinc-400">Public status does not expose fleet counts or packet loss</p>
+      {backendSource !== 'hosted' ? <p className="mt-4 text-xs text-zinc-400">Local or custom API — status reflects that backend, not necessarily production.</p> : null}
     </details>
   </section></PublicLayout>
 }

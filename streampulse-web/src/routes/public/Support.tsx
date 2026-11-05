@@ -58,7 +58,7 @@ export default function Support() {
             <h2 className="!mt-0">Install StreamPulse</h2>
             <div className="support-page__install mt-3">
               <InstallCta className={buttonClass('default', 'sm')} data-cta="chrome-install-support" />
-              <span className="text-xs text-zinc-500" data-testid="support-install-store">From the {STORE_LABELS[store]}</span>
+              <span className="text-xs text-zinc-400" data-testid="support-install-store">From the {STORE_LABELS[store]}</span>
             </div>
           </section>
 

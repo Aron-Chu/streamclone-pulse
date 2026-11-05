@@ -69,7 +69,10 @@ test.describe('portal lifecycle (mocked)', () => {
     })
 
     await openAnalyticsSession(page)
-    await expect(page.getByText(/This session is still live\. A timestamped VOD link appears/i).first()).toBeVisible()
+    // one plain line while no VOD is linked; the state rides on the line, not in the copy
+    const vodLine = page.locator('[data-session-vod-line]')
+    await expect(vodLine).toHaveText('No VOD linked yet.')
+    await expect(vodLine).toHaveAttribute('data-vod-status', 'live')
     await expect(page.getByText(/Just Chatting|xQc|Deterministic portal/i).first()).toBeVisible()
 
     const mountBefore = await getMountId(page)
@@ -79,7 +82,8 @@ test.describe('portal lifecycle (mocked)', () => {
     const statusBefore = harness.counter.count(`/streams/${PORTAL_STREAM_ID}/status`)
 
     await harness.advancePoll(30_000)
-    await expect(page.getByText(/Waiting for Twitch VOD/i).first()).toBeVisible({ timeout: 15_000 })
+    await expect(vodLine).toHaveAttribute('data-vod-status', 'syncing', { timeout: 15_000 })
+    await expect(vodLine).toHaveText('No VOD linked yet.')
 
     await expect
       .poll(

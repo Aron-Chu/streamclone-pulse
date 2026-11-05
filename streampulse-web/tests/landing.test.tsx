@@ -234,6 +234,22 @@ describe('landing page', () => {
     }
   })
 
+  it('says what a viewer gets in plain words, with no design-doc jargon', async () => {
+    const { container } = renderLanding()
+    await screen.findByRole('heading', { name: /actually reacted to/i })
+    const text = container.textContent ?? ''
+    for (const jargon of [/coverage honesty/i, /backend-scored/i, /server-authored/i, /backfill state/i, /source of truth/i, /coverage-honest/i, /aggregate-first/i, /twitch-native/i]) {
+      expect(text).not.toMatch(jargon)
+    }
+  })
+
+  it('keeps the Developer reference in Docs, not on the home page', async () => {
+    const { container } = renderLanding()
+    await screen.findByRole('heading', { name: /actually reacted to/i })
+    expect(screen.queryByText('Developer reference')).toBeNull()
+    expect(container.querySelector('a[href="/docs#api"]')).toBeNull()
+  })
+
   it('shows the live emote and mover tickers', async () => {
     renderLanding()
     await screen.findByRole('heading', { name: /actually reacted to/i })

@@ -41,7 +41,7 @@ export default function Docs() {
             <InstallCta store="chrome" className={buttonClass('default', 'sm')} data-cta="chrome-install-docs" />
             <InstallCta store="edge" label="short" className={buttonClass('outline', 'sm')} data-cta="edge-install-docs" />
             <InstallCta store="firefox" label="short" className={buttonClass('outline', 'sm')} data-cta="firefox-install-docs" />
-            <span className="text-xs text-zinc-500">The extension version shown in the store listing identifies the published package, not the website release.</span>
+            <span className="text-xs text-zinc-400">The extension version shown in the store listing identifies the published package, not the website release.</span>
           </div>
           <p className="mt-3 text-sm text-zinc-300">
             Install using a desktop browser. On a phone or tablet, open this page on your computer.
@@ -63,7 +63,7 @@ export default function Docs() {
             signals without exposing raw chat or chatter identities.
           </p>
           <ol className="mt-3 space-y-2">
-            <li>Start with Overview, then explore Moments, Emotes, or Channels.</li>
+            <li>Search a channel, or pick one under Busiest now.</li>
             <li>Check the displayed time window and coverage before comparing numbers.</li>
             <li>Open a moment to inspect its stream timestamp. Video may be pending or unavailable even when analytics exist.</li>
             <li>Share the timestamped stream link to return to the same broadcast and moment.</li>

@@ -13,6 +13,7 @@
  */
 import { forwardRef, type ReactNode } from 'react'
 import { frameBackgroundStyle, frameTimingPhrase, type VodFrame } from '../../utils/vodFrames.ts'
+import { sessionHasFrame } from '../../utils/sessionState.ts'
 
 export type PreviewSubject = 'minute' | 'bar' | 'moment'
 
@@ -21,7 +22,7 @@ export const PREVIEW_PLAYER_LOADS_COPY = "Twitch's player loads only when you pr
 // which blamed Twitch and the stream for our lookup (F6: the backend asks Twitch for a field that doesn't exist,
 // so every VOD answers no_storyboard, ended ones too), and the bar said "when the VOD finishes" on a stream that
 // had long ended. Say "recording" only while the page says the stream records; otherwise say it's on our side.
-export const PREVIEW_RECORDING_COPY = 'No preview frames while the stream is live.'
+export const PREVIEW_RECORDING_COPY = 'No preview frames while live.'
 export const PREVIEW_UNAVAILABLE_COPY = "Preview frames aren't available right now."
 const PREVIEW_BOX_ART_COPY = "Pictures are the game's box art."
 
@@ -102,6 +103,28 @@ export const MomentPreviewTile = forwardRef<HTMLDivElement, MomentPreviewTilePro
   }
   const canPlay = Boolean(playLabel && onPlay)
   const lines = loading ? [] : previewNoteLines({ frame, subject, subjectVodStart, recording, hasArt, canPlay })
+  if (!sessionHasFrame(frame)) {
+    // No frame means no box: one compact line (Play first when the VOD can play), never an empty 16:9 box.
+    return (
+      <div ref={ref} className="mpl-box nofr" data-preview-tile={loading ? 'loading' : 'fallback'}>
+        {canPlay ? (
+          <button type="button" className="mpl-go" onClick={onPlay} data-preview-play>
+            <PlayIcon />
+            <span>{playLabel}</span>
+          </button>
+        ) : message ? (
+          <p className="mpl-msg">{message}</p>
+        ) : null}
+        {lines.length > 0 ? (
+          <p className="mpl-note">
+            {lines.map((line) => (
+              <span key={line.text} className={line.quiet ? 't3' : undefined}>{line.text}</span>
+            ))}
+          </p>
+        ) : null}
+      </div>
+    )
+  }
   return (
     <div
       ref={ref}

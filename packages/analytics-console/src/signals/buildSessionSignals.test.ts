@@ -35,7 +35,7 @@ describe('buildSessionSignals', () => {
   it('A1: keeps an older server quiet except eligible legacy coverage', () => {
     const signals = build(fixture('session-signal-detail.v1.older-server.json'))
     expect(signals).toEqual([
-      expect.objectContaining({ kind: 'coverage', state: 'partial', detail: 'Partial coverage (legacy)' }),
+      expect.objectContaining({ kind: 'coverage', state: 'partial', detail: 'Some chat minutes are missing' }),
     ])
   })
 

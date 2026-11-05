@@ -24,7 +24,7 @@ describe('EmoteImg', () => {
     expect(screen.getByText('K')).toBeTruthy()
   })
 
-  it('sets 7TV src to 1x and srcset with 1x/2x/4x', () => {
+  it('sets 7TV src to 1x and srcset with 1x/2x, never the 4x file for a small picture', () => {
     const { container } = render(
       <EmoteImg src="https://cdn.7tv.app/emote/abc/4x.webp" name="Wide" width={28} />,
     )
@@ -32,7 +32,26 @@ describe('EmoteImg', () => {
     expect(img.src).toBe('https://cdn.7tv.app/emote/abc/1x.webp')
     expect(img.srcset).toContain('1x.webp 1x')
     expect(img.srcset).toContain('2x.webp 2x')
+    expect(img.srcset).not.toContain('4x')
+  })
+
+  it('offers the 4x file only to a picture drawn 64 px or wider', () => {
+    const { container } = render(
+      <EmoteImg src="https://cdn.7tv.app/emote/abc/1x.webp" name="Big" width={72} />,
+    )
+    const img = container.querySelector('img') as HTMLImageElement
     expect(img.srcset).toContain('4x.webp 4x')
+  })
+
+  it("asks for Twitch's still picture for a 20 px icon, in src and srcset", () => {
+    const { container } = render(
+      <EmoteImg src="https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_abc/default/dark/2.0" name="Kappa" width={20} />,
+    )
+    const img = container.querySelector('img') as HTMLImageElement
+    expect(img.src).toBe('https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_abc/static/dark/1.0')
+    expect(img.srcset).toBe(
+      'https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_abc/static/dark/1.0 1x, https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_abc/static/dark/2.0 2x',
+    )
   })
 
   it('sets Twitch srcset with scaled CDN paths', () => {
@@ -49,13 +68,14 @@ describe('EmoteImg', () => {
     expect(img.srcset).toContain('2x')
   })
 
-  it('sets FFZ srcset with 1/2/4 scales', () => {
+  it('sets FFZ srcset with 1/2 scales', () => {
     const { container } = render(
       <EmoteImg src="https://cdn.frankerfacez.com/emote/12345/4" name="FFZ" width={28} />,
     )
     const img = container.querySelector('img') as HTMLImageElement
     expect(img.src).toContain('/1')
     expect(img.srcset).toContain('/1 1x')
-    expect(img.srcset).toContain('/4 4x')
+    expect(img.srcset).toContain('/2 2x')
+    expect(img.srcset).not.toContain('/4 4x')
   })
 })

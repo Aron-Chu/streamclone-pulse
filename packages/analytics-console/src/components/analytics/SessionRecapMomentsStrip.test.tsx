@@ -223,6 +223,7 @@ describe('SessionRecapMomentsStrip lock (strip mode)', () => {
         recap={recapWith(5)}
         streamStartedAt={START}
         vodId="2590000000"
+        vodAlignSeconds={0}
         onSelectOffset={onSelectOffset}
         onPlayOffset={onPlayOffset}
         onReleaseOffset={onReleaseOffset}
@@ -237,12 +238,15 @@ describe('SessionRecapMomentsStrip lock (strip mode)', () => {
     expect(onPlayOffset).toHaveBeenCalledTimes(2)
   })
 
-  it('shows the play button only when the stream has a VOD', () => {
+  it('shows the play button only when the stream has a VOD and its verified alignment', () => {
     const { rerender } = render(<SessionRecapMomentsStrip recap={recapWith(5)} streamStartedAt={START} onSelectOffset={vi.fn()} />)
     expect(document.querySelector('[data-moment-row-play]')).toBeNull()
-    rerender(<SessionRecapMomentsStrip recap={recapWith(5)} streamStartedAt={START} vodId="not-a-vod" onSelectOffset={vi.fn()} />)
+    rerender(<SessionRecapMomentsStrip recap={recapWith(5)} streamStartedAt={START} vodId="not-a-vod" vodAlignSeconds={0} onSelectOffset={vi.fn()} />)
     expect(document.querySelector('[data-moment-row-play]')).toBeNull()
+    // a VOD without verified alignment: no Play at all, never a dead one (the hosted case today)
     rerender(<SessionRecapMomentsStrip recap={recapWith(5)} streamStartedAt={START} vodId="2590000000" onSelectOffset={vi.fn()} />)
+    expect(document.querySelector('[data-moment-row-play]')).toBeNull()
+    rerender(<SessionRecapMomentsStrip recap={recapWith(5)} streamStartedAt={START} vodId="2590000000" vodAlignSeconds={0} onSelectOffset={vi.fn()} />)
     expect(document.querySelectorAll('[data-moment-row-play]')).toHaveLength(3)
   })
 })

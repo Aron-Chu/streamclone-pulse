@@ -87,7 +87,7 @@ describe('previewNoteLines', () => {
   })
 
   it("says the reel's line, from the page's recording flag (fix, 10-30, PIC-3)", () => {
-    expect(PREVIEW_RECORDING_COPY).toBe('No preview frames while the stream is live.')
+    expect(PREVIEW_RECORDING_COPY).toBe('No preview frames while live.')
     expect(previewMissLine({ recording: true, hasArt: true })).toBe(PREVIEW_RECORDING_COPY)
     expect(previewMissLine({ recording: false, hasArt: false })).toBe("Preview frames aren't available right now.")
     expect(previewMissLine({ hasArt: true })).toBe("Preview frames aren't available right now. Pictures are the game's box art.")

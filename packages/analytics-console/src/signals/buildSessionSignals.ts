@@ -139,7 +139,7 @@ function buildCoverage(input: BuildSessionSignalsInput): CoverageSignal | null {
       observedThrough: null,
       coveragePct,
       label: 'Chat coverage',
-      detail: 'Partial coverage (legacy)',
+      detail: 'Some chat minutes are missing',
       seekable: false,
     }
   }

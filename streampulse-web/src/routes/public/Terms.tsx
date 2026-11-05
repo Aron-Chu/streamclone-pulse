@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
+import { FoldedSections } from '../../ui/components/FoldedSections'
 import { FEEDBACK_PATH, PRIVACY_PATH, REFUNDS_PATH, SECURITY_REPORT_URL, STRIPE_CUSTOMER_PORTAL_LOGIN_URL, SUPPORTER_PATH } from '../../lib/externalLinks'
 import { discordInviteUrl } from '../../lib/discord'
 import { PrelaunchNotice } from './PrelaunchNotice'
@@ -48,6 +49,8 @@ export default function Terms() {
           </p>
         </section>
 
+        {/* Each h2 below opens a section that folds under its heading (FoldedSections). */}
+        <FoldedSections>
         <h2>What StreamPulse is</h2>
         <p>
           StreamPulse shows Twitch stream activity using minute-level aggregates: chat, emote and
@@ -232,6 +235,7 @@ export default function Terms() {
           There is no phone support.
         </p>
         <p>Aron answers billing, cancellation and refund requests within 7 days.</p>
+        </FoldedSections>
       </article>
     </PublicLayout>
   )

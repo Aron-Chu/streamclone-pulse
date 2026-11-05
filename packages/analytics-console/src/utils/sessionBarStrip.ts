@@ -22,6 +22,7 @@ import { resolveGameArtUrl } from '../components/analytics/GamesPlayedStrip.tsx'
 import { getEmoteImageUrl, rollupOffsetSeconds } from './consoleFormat.ts'
 import { resolveMomentRowRollup } from './momentRowDisplay.ts'
 import { stripMomentEmotes } from './sessionStripMoments.ts'
+import { sessionVodLine } from './sessionState.ts'
 import { alignedVodOffset, buildTwitchVodUrl, type VodLinkState } from './twitchVodUrl.ts'
 
 /** Seconds of lead-in before a moment, so it plays in (moment-rows.js LEAD). */
@@ -345,7 +346,9 @@ export function buildSessionBarStrip(args: {
   // 7TV is complete; "other" = the emotes total minus 7TV, so the two add up to emotes/min
   const svRows = rows.filter((row) => row.seventvEmoteCount != null && Number.isFinite(row.seventvEmoteCount))
   const sevenTv = n && svRows.length ? Math.round(sum(svRows, (row) => row.seventvEmoteCount ?? 0) / n) : null
-  const providers = sevenTv != null && emotes != null
+  // A stream with no 7TV count anywhere (7TV not tracked for it) hides the split: "7TV 0" would read as a fact.
+  const streamHasSevenTv = args.rollups.some((row) => (row.seventvEmoteCount ?? 0) > 0)
+  const providers = sevenTv != null && emotes != null && streamHasSevenTv
     ? { sevenTv, other: Math.max(0, Math.round(emotes) - sevenTv) }
     : null
 
@@ -409,10 +412,9 @@ export function buildSessionBarStrip(args: {
     return v == null ? null : v
   }
   if (!vodId) {
-    const pending = args.vodLinkState.status === 'live' || args.vodLinkState.status === 'syncing'
     vod = {
       vodId: null, playAt: null, playVerb: 'Play from', leadCaption: null, open: null,
-      message: pending || !args.vodLinkState.label ? 'No VOD for this stream yet.' : args.vodLinkState.label,
+      message: sessionVodLine(args.vodLinkState).text,
       subjectVodStart: null, frameVodOffset: null, subject: lockedMoment ? 'moment' : unitMinute ? 'minute' : 'bar',
     }
   } else if (align == null) {
