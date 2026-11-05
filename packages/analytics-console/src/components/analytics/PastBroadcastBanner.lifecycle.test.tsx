@@ -67,3 +67,13 @@ it('keeps "Started" but drops the lifecycle facts during live collection', () =>
   expect(container.querySelector('[data-session-lifecycle-row]')).toBeNull()
   expect(screen.queryByRole('status')).toBeNull()
 })
+
+it('an ended stream (the shared rule) reads "Streamed Oct 29 · 4h" and "Past broadcast", never "lifecycle unknown"', () => {
+  // the hosted shape: lifecycle unknown, endedAt blanked; the page's sessionIsEnded read availability's "ended"
+  const stream = { streamId: '123', login: 'example', startedAt: '2026-10-29T12:00:00Z', lifecycleState: 'unknown' as const }
+  const { container } = render(<SessionLifecycleMeta {...base} isLiveRoute={false} stream={stream} ended streamedLine="Streamed Oct 29 · 4h" />)
+  const item = container.querySelector<HTMLElement>('.mi[data-session-lifecycle-row]')!
+  expect(item.textContent).toMatch(/^Streamed Oct 29 · 4h/)
+  expect(item.title).toMatch(/Past broadcast/)
+  expect(container.textContent).not.toMatch(/lifecycle unknown|Offline confirmed/)
+})

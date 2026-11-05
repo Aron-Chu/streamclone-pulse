@@ -397,6 +397,7 @@
   -webkit-line-clamp: 2;
 }
 
+.nc-library .nc-card-twitch,
 .nc-library .nc-card-channel,
 .nc-library .nc-card-meta {
   overflow: hidden;
@@ -583,6 +584,16 @@
   font-weight: 700;
   line-height: 1.3;
   letter-spacing: -0.2px;
+  overflow-wrap: anywhere;
+}
+
+.nc-library .nc-watch-title:has(+ .nc-watch-twitch) { margin-bottom: 4px; }
+
+.nc-library .nc-watch-twitch {
+  margin: 0 0 12px;
+  color: var(--fma-sub);
+  font-size: 13px;
+  line-height: 1.4;
   overflow-wrap: anywhere;
 }
 

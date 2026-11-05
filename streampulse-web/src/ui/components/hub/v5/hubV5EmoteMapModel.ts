@@ -161,11 +161,23 @@ export function emoteSharePct(x: number): string {
   return `${x >= 10 ? x.toFixed(0) : x >= 1 ? x.toFixed(1) : x >= 0.1 ? x.toFixed(2) : '<0.1'}%`
 }
 
-/** A sharper picture for a bigger tile (Twitch 2.0/3.0, 7TV 2x/4x). */
-export function emoteImageAt(url: string | undefined, px: number): string {
+/**
+ * The picture for a tile drawn `px` wide, sized to how it is drawn: Twitch 1.0 and
+ * 7TV 1x up to 28 px, 2.0 and 2x above that. Twitch 3.0 and 7TV 4x only in the
+ * zoomed map, and only for a picture wider than the 2.0 / 2x file (56 / 64 px).
+ * Up to 20 px Twitch's still (not animated) file.
+ */
+export function emoteImageAt(url: string | undefined, px: number, zoomed = false): string {
   if (!url) return ''
-  if (/^https?:\/\/static-cdn\.jtvnw\.net\/emoticons\/v2\//.test(url)) return url.replace(/\/[123]\.0$/, px > 40 ? '/3.0' : '/2.0')
-  if (/^https?:\/\/cdn\.7tv\.app\/emote\//.test(url)) return url.replace(/\/[1-4]x\.(webp|avif|png|gif)$/, px > 40 ? '/4x.$1' : '/2x.$1')
+  if (/^https?:\/\/static-cdn\.jtvnw\.net\/emoticons\/v2\//.test(url)) {
+    const scale = px <= 28 ? '1.0' : zoomed && px > 56 ? '3.0' : '2.0'
+    const sized = url.replace(/\/[123]\.0$/, `/${scale}`)
+    return px <= 20 ? sized.replace(/(\/emoticons\/v2\/[^/]+\/)default\//, '$1static/') : sized
+  }
+  if (/^https?:\/\/cdn\.7tv\.app\/emote\//.test(url)) {
+    const scale = px <= 28 ? '1x' : zoomed && px > 64 ? '4x' : '2x'
+    return url.replace(/\/[1-4]x\.(webp|avif|png|gif)$/, `/${scale}.$1`)
+  }
   return url
 }
 

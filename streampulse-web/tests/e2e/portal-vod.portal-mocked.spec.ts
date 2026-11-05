@@ -39,7 +39,8 @@ test.describe('portal VOD correctness (mocked)', () => {
     await openAnalyticsSession(page)
     await expect.poll(() => harness.counter.count(`/streams/${PORTAL_STREAM_ID}/status`)).toBeGreaterThan(0)
     await expect(page.getByRole('status').filter({ hasText: 'Past broadcast' })).toBeVisible()
-    await expect(page.getByText('This broadcast is confirmed ended. A fresh archive check has not verified a link yet.', { exact: true })).toBeVisible()
+    // a cache miss is not a reason the viewer can act on: one plain line, no link
+    await expect(page.locator('[data-session-vod-line]')).toHaveText('No VOD linked yet.')
     await expect(page.getByText(/This session is still live\. A timestamped VOD link/i)).toHaveCount(0)
     await expect(page.locator('a[href*="/videos/"]')).toHaveCount(0)
     await assertNoUnexpected(harness)
@@ -203,7 +204,7 @@ test.describe('portal VOD correctness (mocked)', () => {
       }),
     })
     await openAnalyticsSession(page)
-    await expect(page.getByText('Waiting for Twitch VOD publication.', { exact: true })).toBeVisible()
+    await expect(page.locator('[data-session-vod-line]')).toHaveText('No VOD linked yet.')
     await expect(page.locator(`a[href*="${OTHER_VOD_ID}"]`)).toHaveCount(0)
     await expect(page.locator('a[href*="/videos/"]')).toHaveCount(0)
 

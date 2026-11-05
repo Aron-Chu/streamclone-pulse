@@ -463,40 +463,45 @@ function JumpBackIn({ recent, onReplay, onOpenMoments }: {
   onReplay: (url: string, moment: MomentReference) => void
   onOpenMoments: () => void
 }) {
-  // One row keeps the popup short: the latest replayable moment, else the saves.
+  // Two rows at most (H3): the latest save, and the latest replayable watch of another moment.
+  const save = recent.deviceSaves > 0 ? recent.latestSave : null
+  const saveUrl = save ? replayUrl(save) : null
+  const key = (m: MomentReference) => `${m.channel}:${m.streamId || m.vodId}:${Math.floor(m.offsetSeconds ?? 0)}`
   const watched = recent.watched.flatMap(moment => {
     const url = replayUrl(moment)
-    return url ? [{ moment, url }] : []
+    return url && (!save || key(save) !== key(moment)) ? [{ moment, url }] : []
   }).slice(0, 1)
   if (watched.length === 0 && recent.deviceSaves === 0) return null
+  const saves = `${recent.deviceSaves === 1 ? '1 save' : `${formatCount(recent.deviceSaves)} saves`} on this device`
   return (
     <section className="pp-card" aria-labelledby="pp-jump-title">
       <p className="pp-label" id="pp-jump-title">Jump back in</p>
       <ul className="pp-jump-list">
+        {recent.deviceSaves > 0 ? (
+          <li>
+            <button type="button" className="pp-jump" data-popup-action={saveUrl ? 'replay-save' : 'open-saves'}
+              onClick={() => saveUrl && save ? onReplay(saveUrl, save) : onOpenMoments()}>
+              <span className="pp-jump-icon" aria-hidden="true"><BookmarkIcon /></span>
+              <span className="pp-jump-text">
+                <b>{save ? `${save.channel} · ${save.title}` : saves}</b>
+                <small>{save ? `Last saved · ${saves}` : 'Open My Moments'}</small>
+              </span>
+              <span className="pp-jump-go" aria-hidden="true">{saveUrl ? 'Watch ›' : 'Open ›'}</span>
+            </button>
+          </li>
+        ) : null}
         {watched.map(({ moment, url }) => (
           <li key={moment.id}>
             <button type="button" className="pp-jump" data-popup-action="replay" onClick={() => onReplay(url, moment)}>
               <span className="pp-jump-icon" aria-hidden="true"><BoltIcon /></span>
               <span className="pp-jump-text">
                 <b>{moment.channel} · {moment.title}</b>
-                <small>Watched {formatSince(moment.jumpedAt)} · replay at {formatClock(moment.offsetSeconds ?? 0)}</small>
+                <small>Last watched {formatSince(moment.jumpedAt)} · replay at {formatClock(moment.offsetSeconds ?? 0)}</small>
               </span>
               <span className="pp-jump-go" aria-hidden="true">Watch ›</span>
             </button>
           </li>
         ))}
-        {watched.length === 0 && recent.deviceSaves > 0 ? (
-          <li>
-            <button type="button" className="pp-jump" data-popup-action="open-saves" onClick={onOpenMoments}>
-              <span className="pp-jump-icon" aria-hidden="true"><BookmarkIcon /></span>
-              <span className="pp-jump-text">
-                <b>{recent.deviceSaves === 1 ? '1 save' : `${formatCount(recent.deviceSaves)} saves`} on this device</b>
-                {recent.latestSave ? <small>Latest: {recent.latestSave.channel} · {recent.latestSave.title}</small> : null}
-              </span>
-              <span className="pp-jump-go" aria-hidden="true">Open ›</span>
-            </button>
-          </li>
-        ) : null}
       </ul>
     </section>
   )

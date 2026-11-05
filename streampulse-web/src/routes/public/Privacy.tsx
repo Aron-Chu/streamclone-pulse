@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
+import { FoldedSections } from '../../ui/components/FoldedSections'
 import { REFUNDS_PATH, SUPPORTER_PATH, TERMS_PATH } from '../../lib/externalLinks'
 import { PrelaunchNotice } from './PrelaunchNotice'
 import { supporterChatBadgesEnabled } from '../../lib/supporterChatBadgesFlag'
@@ -72,6 +73,8 @@ export default function Privacy() {
           </nav>
         </section>
 
+        {/* Each h2 below opens a section that folds under its heading (FoldedSections). */}
+        <FoldedSections>
         <h2 id="account">Your account, if you create one</h2>
         <p data-testid="privacy-installation-account">
           <strong>Extension-only connections.</strong> The extension generates a random installation
@@ -610,34 +613,32 @@ export default function Privacy() {
           separate from the extension package.
         </p>
 
-        {/* Pilot-only and not-yet-shipped features, kept in full but folded away so
-            the policy reads as what this release does (audit row 1, Aron 11-02). */}
-        <details className="public-more" id="pilot">
-          <summary><h2>Pilot and future features</h2></summary>
-          <p>
-            Extension Twitch sign-in is not available in this release. When available, the extension uses Twitch sign-in only to confirm your Twitch
-            user ID, when you choose Continue with Twitch. Protect enrollment is not offered in this release. Earlier beta enrollment
-            used a beta access key once to create a local device credential.
-          </p>
-          <p>
-          <strong>Tester email sign-in.</strong> During the private pilot, invited testers can sign in
-          by emailed link. A tester account stores the email address, an internal account identifier,
-          and timestamps for creation and sign-in; there is no password, no name field and no
-          profile. When you request a link, StreamPulse stores a hash of a single-use secret — not
-          the secret itself — with a 15-minute expiry, and emails you a link containing it. The
-          secret travels in the link's <strong>URL fragment</strong> (after the <code>#</code>), which
-          browsers do not send to the server or include in a <code>Referer</code> header, so it is
-          not written into server logs. Confirming a sign-in requires the same browser that
-          requested it. A tester's email is used for sign-in links and for notices about the account
-          or subscription. It is not used for marketing, and it is not sold, shared or used to build
-          an advertising profile.
-          </p>
-          <p>
-          Testers can link Twitch to the same account. Linking needs a sign-in from the last 10
-          minutes plus a fresh Twitch sign-in, and never combines two accounts.
-          </p>
-          <p>Invited testers may use a separate email account.</p>
-        </details>
+        {/* Pilot-only and not-yet-shipped features, kept in full but folded away like every
+            section here, so the policy reads as what this release does (audit row 1, Aron 11-02). */}
+        <h2 id="pilot">Pilot and future features</h2>
+        <p>
+          Extension Twitch sign-in is not available in this release. When available, the extension uses Twitch sign-in only to confirm your Twitch
+          user ID, when you choose Continue with Twitch. Protect enrollment is not offered in this release. Earlier beta enrollment
+          used a beta access key once to create a local device credential.
+        </p>
+        <p>
+        <strong>Tester email sign-in.</strong> During the private pilot, invited testers can sign in
+        by emailed link. A tester account stores the email address, an internal account identifier,
+        and timestamps for creation and sign-in; there is no password, no name field and no
+        profile. When you request a link, StreamPulse stores a hash of a single-use secret — not
+        the secret itself — with a 15-minute expiry, and emails you a link containing it. The
+        secret travels in the link's <strong>URL fragment</strong> (after the <code>#</code>), which
+        browsers do not send to the server or include in a <code>Referer</code> header, so it is
+        not written into server logs. Confirming a sign-in requires the same browser that
+        requested it. A tester's email is used for sign-in links and for notices about the account
+        or subscription. It is not used for marketing, and it is not sold, shared or used to build
+        an advertising profile.
+        </p>
+        <p>
+        Testers can link Twitch to the same account. Linking needs a sign-in from the last 10
+        minutes plus a fresh Twitch sign-in, and never combines two accounts.
+        </p>
+        <p>Invited testers may use a separate email account.</p>
 
         <h2 id="contact">Contact</h2>
         {/* OWNER CONFIRMED 2026-10-13 (D35): Aron answers billing, cancellation
@@ -659,6 +660,7 @@ export default function Privacy() {
 
         <h2 id="changes">Changes</h2>
         <p>Material changes to this policy will be reflected on this page with an updated date.</p>
+        </FoldedSections>
       </article>
     </PublicLayout>
   )

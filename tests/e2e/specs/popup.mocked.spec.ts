@@ -178,21 +178,24 @@ test.describe('toolbar popup', () => {
     await page.goto(`chrome-extension://${extension.extensionId}/popup/index.html`)
     await expect(page.locator('section.pp-live')).toBeVisible()
     await expect(page.getByText('Jump back in')).toHaveCount(0)
-    // Save a moment without an account, the way the panel's Bookmark does.
+    // Save a moment without an account, the way the panel's Save does.
     await page.evaluate(async () => {
       const loaded = await chrome.runtime.sendMessage({ type: 'MY_MOMENTS', action: 'load' })
       await chrome.runtime.sendMessage({ type: 'MY_MOMENTS', action: 'mutate', scope: loaded.snapshot.scope, command: { kind: 'save', reference: { id: 'fixture', channel: 'fixturechan', title: 'Chat spike', vodId: '2806037629', offsetSeconds: 3600, availability: 'available' } } })
     })
     await page.reload()
     const jump = page.locator('section.pp-card').filter({ hasText: 'Jump back in' })
-    await expect(jump.getByRole('button', { name: /1 save on this device/ })).toContainText('Latest: fixturechan · Chat spike')
+    // H3: the latest save is a row of its own, and plays its replay.
+    const latest = jump.locator('[data-popup-action="replay-save"]')
+    await expect(latest).toContainText('fixturechan · Chat spike')
+    await expect(latest).toContainText('Last saved · 1 save on this device')
     await expect(page.locator('section.pp-card').first()).toContainText('Jump back in')
     await expect(page.locator('section.pp-live')).toBeVisible()
     await settle(page)
     await page.screenshot({ path: info.outputPath('popup-jump-back-in.png') })
     const opened = extension.context.waitForEvent('page')
-    await jump.getByRole('button', { name: /1 save on this device/ }).click()
-    expect((await opened).url()).toBe(`chrome-extension://${extension.extensionId}/options/index.html#moments`)
+    await latest.click()
+    expect((await opened).url()).toBe('https://www.twitch.tv/videos/2806037629?t=3600s')
   })
 
   test('in a private window it leaves out jump back in and never asks for My Moments', async ({ extension, prepare }) => {

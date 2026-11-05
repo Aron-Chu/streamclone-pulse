@@ -49,7 +49,7 @@ export function momentRankAccent(index: number): MomentRankAccent {
     }
   }
   return {
-    badge: 'bg-white/[0.06] text-zinc-500',
+    badge: 'bg-white/[0.06] text-zinc-400',
   }
 }
 

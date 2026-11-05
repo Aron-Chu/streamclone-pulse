@@ -96,7 +96,7 @@ export default function LiveCollectionWarmup({
       </p>
 
       <div className="mt-4">
-        <div className="mb-1.5 flex justify-between text-xs font-bold uppercase tracking-wide text-zinc-500">
+        <div className="mb-1.5 flex justify-between text-xs font-bold uppercase tracking-wide text-zinc-400">
           <span>Minute buckets</span>
           <span>
             {progress.readyMinutes} / {progress.targetMinutes}
@@ -125,7 +125,7 @@ export default function LiveCollectionWarmup({
         </div>
       </div>
 
-      <ul className="mt-4 space-y-1 text-left text-xs font-semibold text-zinc-500">
+      <ul className="mt-4 space-y-1 text-left text-xs font-semibold text-zinc-400">
         <li className="flex items-start gap-2">
           <span className="mt-0.5 text-violet-300">•</span>
           <span>Polls Twitch for live viewer counts (~every 15s).</span>

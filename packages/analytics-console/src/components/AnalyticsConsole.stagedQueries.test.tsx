@@ -347,7 +347,7 @@ describe('AnalyticsConsole staged Layer 2 queries', () => {
 
     expect(await screen.findByRole('heading', { name: 'Live frame title' })).toBeTruthy()
     await waitFor(() => expect(api.getAnalyticsStream).toHaveBeenCalled())
-    expect(await screen.findByText(/No verified archive link is available/)).toBeTruthy()
+    expect(await screen.findByText('No VOD linked yet.')).toBeTruthy()
     expect(screen.queryByRole('alert')).toBeNull()
     expect(screen.getByTestId('analytics-chart')).toBeTruthy()
     expect(document.querySelector('[data-session-watch-vod]')).toBeNull()

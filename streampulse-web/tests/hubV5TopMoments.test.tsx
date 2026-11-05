@@ -25,7 +25,7 @@ vi.mock('../src/lib/momentsFeedVod', async (importOriginal) => ({
 }))
 
 import { HubV5BigMoments } from '../src/ui/components/hub/v5/HubV5BigMoments'
-import { HubV5PickingUp, UP_FIRST } from '../src/ui/components/hub/v5/HubV5PickingUp'
+import { HubV5PickingUp, UP_DOWN, UP_FIRST } from '../src/ui/components/hub/v5/HubV5PickingUp'
 import { HubV5TopPeek, TOP_DAY_KEY, useTopToday } from '../src/ui/components/hub/v5/HubV5TopMoments'
 import { hubTopRows, topFeedRows } from '../src/ui/components/hub/v5/hubV5TopModel'
 
@@ -218,6 +218,41 @@ describe('Picking up now, the rail (M1 + P1)', () => {
     expect(within(rail()).getByRole('status').textContent).toBe('Loading channels picking up')
     rerender(view({ attempt: 1, hub: hubWith([]), nowMs: at }))
     expect(rail().querySelector('.hv5-tm-q')!.textContent).toBe('Nothing is picking up right now.')
+  })
+
+  it('says it can’t tell when the chat counts didn’t load, keeping the last list greyed for up to 3 minutes', () => {
+    vi.stubEnv('VITE_PUBLIC_MOMENTS_FEED', '')
+    // every screener came back unavailable (the 10-30 outage answer)
+    const outage = normalizePublicHub(JSON.parse(readFileSync(resolve(__dirname, 'fixtures/hub_screener_down_20261030.json'), 'utf8'))).liveChannels
+    const good = hubWith([hot('alpha', 2, 120, 60), hot('bravo', 3, 45, 15)])
+    const down = (ms: number) => ({ ...capture, generatedAt: new Date(ms).toISOString(), liveChannels: outage })
+    const { rerender } = render(view({ attempt: 1, hub: good, nowMs: at }))
+    expect(upRows()).toHaveLength(2)
+    rerender(view({ attempt: 2, hub: down(at + 60_000), nowMs: at + 60_000 }))
+    expect(rail().querySelector('[data-up-down]')!.textContent).toBe(UP_DOWN)
+    expect(within(rail()).queryByText('Nothing is picking up right now.')).toBeNull()
+    expect(rail().querySelector('.hv5-fd-list')!.classList.contains('hv5-up-old')).toBe(true)
+    expect(upRows()).toHaveLength(2)
+    expect(rail().classList.contains('hv5-f2-stale')).toBe(true)
+    expect(rail().querySelector('.hv5-up-n')).toBeNull()
+    // past 3 minutes the old list goes; the line stays
+    rerender(view({ attempt: 3, hub: down(at + 4 * MIN), nowMs: at + 4 * MIN }))
+    expect(rail().querySelector('[data-up-down]')!.textContent).toBe(UP_DOWN)
+    expect(upRows()).toHaveLength(0)
+    expect(within(rail()).queryByRole('status')).toBeNull()
+    // counts back: the fresh list, not greyed
+    rerender(view({ attempt: 4, hub: { ...good, generatedAt: new Date(at + 5 * MIN).toISOString() }, nowMs: at + 5 * MIN }))
+    expect(rail().querySelector('[data-up-down]')).toBeNull()
+    expect(upRows()).toHaveLength(2)
+    expect(rail().querySelector('.hv5-up-old')).toBeNull()
+  })
+
+  it('says it can’t tell on a first answer that is already down, never "loading" forever', () => {
+    vi.stubEnv('VITE_PUBLIC_MOMENTS_FEED', '')
+    const outage = normalizePublicHub(JSON.parse(readFileSync(resolve(__dirname, 'fixtures/hub_screener_down_20261030.json'), 'utf8')))
+    render(view({ attempt: 1, hub: outage, nowMs: Date.parse(outage.generatedAt) }))
+    expect(rail().querySelector('[data-up-down]')!.textContent).toBe(UP_DOWN)
+    expect(within(rail()).queryByText('Loading channels picking up')).toBeNull()
   })
 
   it('fades the list’s bottom only while more of it is below', () => {

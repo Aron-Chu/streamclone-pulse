@@ -5,9 +5,10 @@ import { bindAccountDataForget, supporterAccount } from './supporterAccountRunti
 import { MY_MOMENTS_CHANGED, type BookmarksState, type DeviceBookmark, type MyMomentsRecent, type MyMomentsRequest, type MyMomentsSnapshot } from '../shared/myMoments.ts'
 import type { BackgroundResponse, ListBookmarksMessage, PulseBookmark, RemoveBookmarkMessage, SaveBookmarkMessage } from '../shared/messages.ts'
 import { replayAvailability, type LibraryMoment, type MomentReference } from '../ui/library/model.ts'
-import { addDeviceBookmark, bookmarkIdentity, deletePersonal, keepReplayDelta, linkAccountReplays, linkDeviceReplays, momentIdentity as identity, personalTransaction, recordWatched, savedVodOriginDelta } from './myMomentsStore.ts'
+import { addDeviceBookmark, bookmarkIdentity, deletePersonal, importHistory, importSaves, keepReplayDelta, linkAccountReplays, linkDeviceReplays, momentIdentity as identity, personalTransaction, recordWatched, savedVodOriginDelta } from './myMomentsStore.ts'
 import { findStreamReplays, streamKey, type ReplayLookups } from './bookmarkReplay.ts'
-import { clearAccountHistory, historySyncCheckDue, historySyncView, refreshHistorySync, setAccountRetention, setHistorySync, syncHistoryNow } from './historySync.ts'
+import { clearAccountHistory, historySyncCheckDue, historySyncView, refreshHistorySync, setAccountRetention, setHistorySync, syncableKeys, syncHistoryNow } from './historySync.ts'
+import type { BackupMoment } from '../shared/myMomentsBackup.ts'
 import { handleMomentPicture, wantPicture, type PictureMoment } from './momentPictures.ts'
 import { momentPictures } from '../shared/momentPictureStore.ts'
 import type { MomentPictureRequest } from '../shared/momentPictureMessages.ts'
@@ -19,8 +20,10 @@ const bookmarkMoment = (b: DeviceBookmark, note: string, kept?: { vodId: string;
   const delta = savedVodOriginDelta(b, kept)
   return { id: b.id, channel: b.login, title: b.label || 'Saved moment', vodId: b.vodId ?? null, streamId: b.streamId, offsetSeconds: b.offsetSeconds,
     ...(delta === undefined ? {} : { vodOriginDeltaSeconds: delta }),
-    availability: replayAvailability({ vodId: b.vodId ?? null, offsetSeconds: b.offsetSeconds }), savedAt: Date.parse(b.createdAt), note }
+    availability: replayAvailability({ vodId: b.vodId ?? null, offsetSeconds: b.offsetSeconds }, Date.parse(b.createdAt)), savedAt: Date.parse(b.createdAt), note }
 }
+/** When a moment's replay was last known to play: its save, or the last time it was watched. */
+const seenAt = (m: Pick<LibraryMoment, 'savedAt' | 'jumpedAt'>) => Math.max(m.savedAt ?? 0, m.jumpedAt ?? 0) || undefined
 /**
  * Who owns this device's moments, and whether the device may keep bookmarks.
  *
@@ -86,15 +89,18 @@ async function snapshot(scope: string): Promise<MyMomentsSnapshot> {
   for (const h of data.history) {
     const bookmark = moments.find(b => identity(b) === identity(h))
     if (bookmark) Object.assign(bookmark, { jumpedAt: h.jumpedAt, historyExpiresAt: h.historyExpiresAt })
-    else moments.push({ ...h, availability: replayAvailability(h), note: data.notes[h.id] ?? h.note })
+    else moments.push({ ...h, note: data.notes[h.id] ?? h.note })
   }
+  // A replay last seen playing over a week ago may be gone (REPLAY_KEPT_DAYS).
+  for (const m of moments) m.availability = replayAvailability(m, seenAt(m))
   // A picture goes with the last save or History entry of its moment. Only a
   // complete list decides: an account's bookmarks must have loaded.
   if (!scopeAccount(scope) || bookmarksState === 'ready') await momentPictures.reconcile(scope, new Set(moments.map(identity))).catch(() => undefined)
   if (device) await momentPictures.reconcile(deviceScope(scope), new Set([...device.bookmarks.map(bookmarkIdentity), ...device.history.map(identity)])).catch(() => undefined)
   const historySync = historySyncView(!!scopeAccount(scope), data)
   return { scope, production: true, bookmarksState, bookmarksAvailable: bookmarksState === 'ready', localNotes: data.notes, moments,
-    deviceBookmarks: device?.bookmarks.map(b => ({ ...b, notes: device.notes[b.id] ?? '' })) ?? [], collections: [], membership: 'free', preferences: data.preferences,
+    deviceBookmarks: device?.bookmarks.map(b => ({ ...b, notes: device.notes[b.id] ?? '' })) ?? [], ...(device ? { deviceHistory: device.history.length } : {}),
+    collections: [], membership: 'free', preferences: data.preferences,
     sync: historySync.state !== 'on' ? { kind: 'local' } : historySync.failed ? { kind: 'offline', pending: historySync.pending }
       : historySync.syncedAt ? { kind: 'synced', at: historySync.syncedAt } : { kind: 'syncing', pending: historySync.pending },
     historySync, storage: { usedBytes: new TextEncoder().encode(JSON.stringify(data)).length, limitBytes: 2 * 1048576, persistence: 'unknown' } }
@@ -298,8 +304,8 @@ export async function restoreRemovedNote(removedId: string, item: PulseBookmark,
     // Only the note stays behind.
   }
 }
-const reference = (m: MomentReference): MomentReference => ({ id: m.id, channel: m.channel, title: m.title, vodId: m.vodId, streamId: m.streamId,
-  offsetSeconds: m.offsetSeconds, ...(m.vodOriginDeltaSeconds === undefined ? {} : { vodOriginDeltaSeconds: m.vodOriginDeltaSeconds }), availability: replayAvailability(m) })
+const reference = (m: MomentReference, seen?: number): MomentReference => ({ id: m.id, channel: m.channel, title: m.title, vodId: m.vodId, streamId: m.streamId,
+  offsetSeconds: m.offsetSeconds, ...(m.vodOriginDeltaSeconds === undefined ? {} : { vodOriginDeltaSeconds: m.vodOriginDeltaSeconds }), availability: replayAvailability(m, seen) })
 /** The popup's "Jump back in": this device's history and saves only, no network. */
 async function recent(scope: string): Promise<MyMomentsRecent> {
   const now = Date.now()
@@ -309,9 +315,9 @@ async function recent(scope: string): Promise<MyMomentsRecent> {
     .filter(m => m.jumpedAt !== undefined && (m.historyExpiresAt ?? 0) > now)
     .sort((a, b) => b.jumpedAt! - a.jumpedAt!)
     .slice(0, 2)
-    .map(m => ({ ...reference(m), jumpedAt: m.jumpedAt! }))
+    .map(m => ({ ...reference(m, m.jumpedAt), jumpedAt: m.jumpedAt! }))
   const latest = [...device.bookmarks].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
-  return { watched, deviceSaves: device.bookmarks.length, latestSave: latest ? reference(bookmarkMoment(latest, '')) : null }
+  return { watched, deviceSaves: device.bookmarks.length, latestSave: latest ? reference(bookmarkMoment(latest, ''), Date.parse(latest.createdAt)) : null }
 }
 /** One click adds at most this many; any rest stay listed for another click. */
 const IMPORT_LIMIT = 100
@@ -367,6 +373,35 @@ async function importDeviceSaves(scope: string, held: boolean, id?: string): Pro
     await momentPictures.move(deviceScope(scope), scope, key).catch(() => undefined)
     added++
   }
+}
+/**
+ * Import: a backup file's saves join this browser's saves (an account's stay
+ * listed beside it, for "Add to account"), skipping any this browser or the
+ * account has; its visits join History while History is on. Nothing kept is
+ * changed or removed.
+ */
+async function importBackup(scope: string, held: boolean, backup: { saves: BackupMoment[]; history: BackupMoment[] }): Promise<void> {
+  if (held) throw new Error('Could not reach StreamPulse. Your saves on this browser are safe; try again shortly.')
+  const account = scopeAccount(scope)
+  const have = new Set<string>()
+  if (account && backup.saves.length) {
+    // The account's own saves are not added again. Unread, Add to account still skips them.
+    const all = await snapshot(scope)
+    for (const m of all.moments) if (m.savedAt !== undefined) have.add(identity(m))
+  }
+  await assertScope(scope)
+  if (backup.saves.length) await personalTransaction(deviceScope(scope), data => importSaves(data, backup.saves, have))
+  if (!backup.history.length) return
+  const now = Date.now()
+  await personalTransaction(scope, data => {
+    const next = importHistory(data, backup.history, now)
+    const sync = next.accountSync
+    if (next === data || !sync?.enabled) return next
+    // While the account syncs, imported visits go up like watched ones.
+    const listed = new Set(data.history.map(m => m.id))
+    const added = syncableKeys(next.history.filter(m => !listed.has(m.id)))
+    return { ...next, accountSync: { ...sync, pending: [...sync.pending.filter(k => !added.includes(k)), ...added] } }
+  })
 }
 let queue: Promise<unknown> = Promise.resolve()
 /**
@@ -482,6 +517,19 @@ export function handleMyMoments(message: MyMomentsRequest, sender: chrome.runtim
           else { delete notes[command.id]; delete replayLinks[command.id]; delete replayDeltas[command.id] }
           return { ...data, notes, ...(data.replayLinks ? { replayLinks } : {}), ...(data.replayDeltas ? { replayDeltas } : {}), bookmarks: command.kind === 'unsave' ? data.bookmarks.filter(b => b.id !== command.id) : data.bookmarks }
         })
+      } else if (command.kind === 'import-backup') {
+        await importBackup(scope, held, command)
+      } else if (command.kind === 'remove-visit' || command.kind === 'restore-visit') {
+        // One visit at a time stays on this browser: synced History clears only as a whole.
+        if ((await personalTransaction(scope)).accountSync?.enabled) throw new Error('Synced History can only be cleared as a whole.')
+        const r = command.reference
+        const key = identity(r)
+        await personalTransaction(scope, data => command.kind === 'remove-visit'
+          ? { ...data, history: data.history.filter(m => identity(m) !== key) }
+          // Undo: back as it was, unless it was watched again meanwhile.
+          : data.history.some(m => identity(m) === key) ? data
+            : { ...data, history: [...data.history, { ...r, id: key, note: '', jumpedAt: command.jumpedAt,
+              historyExpiresAt: command.jumpedAt + data.preferences.retentionDays * 86400000 }].sort((a, b) => (a.jumpedAt ?? 0) - (b.jumpedAt ?? 0)).slice(-1000) })
       } else if (command.kind === 'history-sync') {
         const account = scopeAccount(scope)
         if (!account) throw new Error('Connect a Pulse account to sync history.')
@@ -499,6 +547,10 @@ export function handleMyMoments(message: MyMomentsRequest, sender: chrome.runtim
           ? { ...data, epoch: Math.max(Date.now(), data.epoch + 1), history: [], ...(data.accountSync ? { accountSync: { ...data.accountSync, pending: [] } } : {}) }
           : { ...data, epoch: Math.max(Date.now(), data.epoch + 1), preferences: command.value,
             history: data.history.map(m => ({ ...m, historyExpiresAt: Math.min(m.historyExpiresAt!, m.jumpedAt! + command.value.retentionDays * 86400000) })) })
+        // History this browser kept before signing in goes too, or Sign out would bring it back.
+        if (command.kind === 'clear-history' && account) {
+          await personalTransaction(deviceScope(scope), data => data.history.length ? { ...data, epoch: Math.max(Date.now(), data.epoch + 1), history: [] } : data)
+        }
       }
     }
     return { type: 'MY_MOMENTS', snapshot: await snapshot(scope) }

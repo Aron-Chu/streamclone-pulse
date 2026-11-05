@@ -8,8 +8,11 @@ import type { TopGame, TopRowData } from '../src/ui/components/hub/v5/hubV5TopMo
 const NOW = Date.UTC(2026, 9, 31, 20, 0)
 const MIN = 60_000
 const KEKW = 'https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_k/default/dark/2.0'
-const KEKW_STILL = 'https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_k/static/dark/2.0'
 const SEVEN = 'https://cdn.7tv.app/emote/01H/2x.webp'
+// the card draws emotes at 32 px, so it asks for the 1x file (about a quarter of the bytes)
+const KEKW_1X = 'https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_k/default/dark/1.0'
+const KEKW_STILL_1X = 'https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_k/static/dark/1.0'
+const SEVEN_1X = 'https://cdn.7tv.app/emote/01H/1x.webp'
 
 const row = (login: string, over: Partial<TopRowData> = {}): TopRowData => ({
   id: `m-${login}`, login, name: login.toUpperCase(), streamId: `s-${login}`, offsetSeconds: 42 * 60, avatar: null, kind: 'emotes', x: 4.2, plain: null,
@@ -274,28 +277,28 @@ describe('Top moments today, the carousel (C1 11-01, M1 11-02)', () => {
     render(ui(abc()))
     expect(paused()).toBe(true)
     expect(track().getAttribute('aria-live')).toBe('polite')
-    expect(emoteSrcs(front())).toEqual([KEKW_STILL, SEVEN])
+    expect(emoteSrcs(front())).toEqual([KEKW_STILL_1X, SEVEN_1X])
     fireEvent.click(screen.getByRole('button', { name: 'Play' }))
     expect(paused()).toBe(false)
   })
 
   it('moves only the front card’s emotes, and loads pictures only a step from the front', () => {
     render(ui(list([row('a'), row('b'), row('c'), row('d'), row('e')])))
-    expect(emoteSrcs(slide('a'))).toEqual([KEKW, SEVEN])
-    expect(emoteSrcs(slide('b'))).toEqual([KEKW_STILL, SEVEN])
-    expect(emoteSrcs(slide('e'))).toEqual([KEKW_STILL, SEVEN])
+    expect(emoteSrcs(slide('a'))).toEqual([KEKW_1X, SEVEN_1X])
+    expect(emoteSrcs(slide('b'))).toEqual([KEKW_STILL_1X, SEVEN_1X])
+    expect(emoteSrcs(slide('e'))).toEqual([KEKW_STILL_1X, SEVEN_1X])
     for (const far of [slide('c'), slide('d')]) {
       expect(far.dataset.pos).toMatch(/^-?2$/)
       expect(emoteSrcs(far)).toEqual([])
       expect(far.querySelector('.hv5-bm-bg')).toBeNull()
     }
     fireEvent.keyDown(stage(), { key: 'ArrowRight' })
-    expect(emoteSrcs(slide('b'))).toEqual([KEKW, SEVEN])
-    expect(emoteSrcs(slide('a'))).toEqual([KEKW_STILL, SEVEN])
-    expect(emoteSrcs(slide('c'))).toEqual([KEKW_STILL, SEVEN])
+    expect(emoteSrcs(slide('b'))).toEqual([KEKW_1X, SEVEN_1X])
+    expect(emoteSrcs(slide('a'))).toEqual([KEKW_STILL_1X, SEVEN_1X])
+    expect(emoteSrcs(slide('c'))).toEqual([KEKW_STILL_1X, SEVEN_1X])
     expect(emoteSrcs(slide('d'))).toEqual([])
     // once loaded, a picture stays
-    expect(emoteSrcs(slide('e'))).toEqual([KEKW_STILL, SEVEN])
+    expect(emoteSrcs(slide('e'))).toEqual([KEKW_STILL_1X, SEVEN_1X])
   })
 
   it('says live, links the stream and shows its picture only for a stream live in a recent answer', () => {

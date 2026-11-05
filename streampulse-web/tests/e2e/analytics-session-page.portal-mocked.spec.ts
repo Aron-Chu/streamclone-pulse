@@ -112,8 +112,10 @@ test.describe('analytics session page shell, d3-v2 session-original (mocked)', (
     const texts = (await items.allTextContents()).map(text => text.trim())
     expect(texts[0]).toBe('xQc')
     expect(texts[1]).toBe('Just Chatting')
-    expect(texts[2]).toMatch(/^Started /)
-    expect(texts[3]).toMatch(/^(Updated|Refreshed) /)
+    // An ended stream says when it streamed and for how long ("Streamed Jul 25 · 2h 30m");
+    // the read time ("Updated …") is for live and unknown sessions, so it leaves only the refresh icon.
+    expect(texts[2]).toMatch(/^Streamed [A-Z][a-z]{2} \d{1,2} · \d+(h|m|h \d+m)/)
+    expect(texts[3]).toBe('')
     expect(texts[4]).toBe('First 54s not tracked')
     expect(texts[5]).toBe('Watch VOD')
     expect(texts[6]).toMatch(/^Data: (Good|Limited|Partial|No data)$/)
@@ -126,7 +128,7 @@ test.describe('analytics session page shell, d3-v2 session-original (mocked)', (
     await expect(vod).toHaveAttribute('href', `https://www.twitch.tv/videos/${PORTAL_VOD_ID}`)
     await expect(vod).toHaveAttribute('target', '_blank')
 
-    // "Refresh data" is the icon beside "Updated", not a text button.
+    // "Refresh data" is an icon (beside "Updated" while live), not a text button.
     const refresh = page.getByRole('button', { name: 'Refresh data' })
     await expect(refresh).toHaveCount(1)
     await expect(refresh).toHaveText('')
@@ -141,7 +143,8 @@ test.describe('analytics session page shell, d3-v2 session-original (mocked)', (
     expect(Math.abs(actionsBox!.y - titleBox!.y)).toBeLessThanOrEqual(12)
 
     const labels = await page.locator('[data-session-stat-row] .sc-stat-card__label').allTextContents()
-    expect(labels).toEqual(['Latest viewers', 'Average viewers', 'Peak viewers', 'Chat messages', 'Emote uses', 'Time tracked'])
+    // This fixture is an ended stream, so its first figure is the viewers at the end.
+    expect(labels).toEqual(['Viewers at end', 'Average viewers', 'Peak viewers', 'Chat messages', 'Emote uses', 'Time tracked'])
 
     await expect(page.getByText('Up to 100 recent stored streams')).toHaveCount(0)
     await expect(page.getByText(/Synced only/)).toHaveCount(0)

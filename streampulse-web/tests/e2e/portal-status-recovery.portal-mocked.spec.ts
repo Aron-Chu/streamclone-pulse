@@ -67,7 +67,7 @@ test.describe('portal status recovery (mocked)', () => {
 
       await openAnalyticsSession(page)
       const mountBefore = await getMountId(page)
-      await expect(page.getByText(/Waiting for Twitch VOD/i).first()).toBeVisible({ timeout: 20_000 })
+      await expect(page.locator('[data-session-vod-line]')).toHaveText('No VOD linked yet.', { timeout: 20_000 })
 
       if (failure.name === 'timeout') {
         // Hold long enough for apiClient timeout under fake timers.

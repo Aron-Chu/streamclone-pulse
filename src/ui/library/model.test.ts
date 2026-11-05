@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clearHistory, DAY, hasRecent, rememberInteraction, replayUrl, timestamp, validateNote, visibleMoments } from './model.ts'
+import { clearHistory, DAY, hasRecent, rememberInteraction, REPLAY_KEPT_DAYS, replayAvailability, replayUrl, rowReplay, timestamp, validateNote, videoUrl, visibleMoments } from './model.ts'
 import { createDemoRepository, createDemoSnapshot, demoReference } from '../../../docs/pulse-extension/monetization-mockups/library-workflow/demoRepository.ts'
 
 const now = 1_800_000_000_000
@@ -113,5 +113,33 @@ describe('demonstration adapter contracts', () => {
     const after = await repo.execute({ kind: 'unsave', id: 'three' }, signal())
     const recent = after.moments.find(m => m.id === 'three')!
     expect(recent.savedAt).toBeUndefined(); expect(recent.note).toBe(''); expect(hasRecent(recent, now)).toBe(true)
+  })
+})
+describe('replay status (F10, H2)', () => {
+  const vod = { vodId: '1234567890', offsetSeconds: 120 }
+  it('marks a replay last seen playing over a week ago as may be gone', () => {
+    expect(REPLAY_KEPT_DAYS).toBe(7)
+    expect(replayAvailability(vod, now - DAY, now)).toBe('available')
+    expect(replayAvailability(vod, now - 7 * DAY, now)).toBe('available')
+    expect(replayAvailability(vod, now - 7 * DAY - 1, now)).toBe('unavailable')
+    // Never seen (a reference passed in): no age, so no claim it is gone.
+    expect(replayAvailability(vod, undefined, now)).toBe('available')
+    expect(replayAvailability({ vodId: null, offsetSeconds: 120 }, now, now)).toBe('unresolved')
+    expect(replayAvailability({ vodId: '12', offsetSeconds: 120 }, now, now)).toBe('unresolved')
+    expect(replayAvailability({ vodId: '1234567890', offsetSeconds: null }, now, now)).toBe('unresolved')
+  })
+  it('gives each status one chip and one main button', () => {
+    const moment = { id: 'm', channel: 'xqc', title: 'Clutch', ...vod }
+    expect(rowReplay({ ...moment, availability: 'available' })).toEqual({ chip: 'Replay ready', tone: 'ok', main: 'watch' })
+    expect(rowReplay({ ...moment, availability: 'unavailable' })).toEqual({ chip: 'Replay may be gone', tone: 'gone', main: 'channel' })
+    expect(rowReplay({ ...moment, availability: 'unresolved' })).toEqual({ chip: 'Replay not linked yet', tone: 'wait', main: 'preview' })
+    // Available but with nothing to address: not linked yet, never a dead Watch.
+    expect(rowReplay({ ...moment, vodId: null, streamId: '321274489178', availability: 'available' })).toEqual({ chip: 'Replay not linked yet', tone: 'wait', main: 'preview' })
+  })
+  it('keeps the link of a replay that may be gone for "Try the replay", but never as Watch', () => {
+    const gone = { id: 'm', channel: 'xqc', title: 'Clutch', ...vod, availability: 'unavailable' as const }
+    expect(replayUrl(gone)).toBeNull()
+    expect(videoUrl(gone)).toBe('https://www.twitch.tv/videos/1234567890?t=120s')
+    expect(videoUrl({ ...gone, availability: 'unresolved' })).toBeNull()
   })
 })
