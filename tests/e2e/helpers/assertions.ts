@@ -35,7 +35,10 @@ export async function waitForPulseRoot(page: Page, timeoutMs = 20_000): Promise<
     rootId => {
       const host = document.getElementById(rootId)
       if (!host) return false
-      return getComputedStyle(host).display !== 'none'
+      // The host stays hidden until its stylesheet loads; a click before then
+      // lands on Twitch, not the panel.
+      const style = getComputedStyle(host)
+      return style.display !== 'none' && style.visibility !== 'hidden'
     },
     PULSE_ROOT_ID,
     { timeout: timeoutMs },
