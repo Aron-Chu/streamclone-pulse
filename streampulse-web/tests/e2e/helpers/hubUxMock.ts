@@ -437,6 +437,11 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
     })
   })
 
+  // Top moments today now keeps the mock's early moments (board 2A, 11-02), so the
+  // carousel asks for their streams' game covers; answer with none.
+  await page.route(/\/v1\/portal\/analytics\/streams\/[^/]+\/games(\?.*)?$/, (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+  )
   await page.route(/\/v1\/extension\/health(\?.*)?$/, (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, version: 'test' }) }),
   )
