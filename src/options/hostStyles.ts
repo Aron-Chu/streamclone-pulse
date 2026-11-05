@@ -107,6 +107,27 @@ const hostStyles = `
   .pulse-journey-notice { padding: 8px 10px; border: 1px solid ${theme.border}; border-radius: 8px; background: ${theme.bgCanvas}; color: ${theme.textSecondary}; font-size: 12px; }
   .pulse-journey-confirm { display: grid; gap: 10px; padding: 12px; border: 1px solid ${theme.border}; border-radius: 8px; background: ${theme.bgCanvas}; color: ${theme.textSecondary}; font-size: 12px; }
   .pulse-journey-confirm p { margin: 0; line-height: 1.5; }
+  .pulse-chat-badge { display: grid; gap: 10px; }
+  .pulse-chat-badge-consent { display: grid; gap: 6px; line-height: 1.5; margin: 0; padding-left: 18px; }
+  /* Who sees a card, beside its heading; it wraps under the heading when there is no room. */
+  .pulse-supporter-settings .pulse-section-title-row { align-items: center; flex-wrap: wrap; justify-content: flex-start; row-gap: 6px; }
+  .pulse-supporter-tag { align-items: center; border: 1px solid ${theme.border}; border-radius: 999px; color: ${theme.textSecondary}; display: inline-flex; font-size: 12px; font-weight: 800; gap: 5px; letter-spacing: 0; line-height: 18px; padding: 1px 8px; text-transform: none; white-space: nowrap; }
+  .pulse-supporter-tag svg { flex: none; height: 12px; width: 12px; }
+  .pulse-supporter-tag[data-audience="public"] { border-color: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.55); color: var(--pulse-accent-soft, #c4b5fd); }
+  .pulse-supporter-tag[data-tone="on"] { background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.2); }
+  .pulse-supporter-tag[data-tone="pending"] { border-color: rgba(253, 186, 116, 0.5); color: #fdba74; }
+  .pulse-supporter-tag[data-tone="unknown"] { border-style: dashed; color: ${theme.textMuted}; }
+  /* Seen in chat's two chat lines: one line each, the message ends in an ellipsis. */
+  .pulse-chat-badge-preview { align-items: center; background: ${theme.bgCanvas}; border: 1px solid ${theme.border}; border-radius: 10px; display: grid; gap: 6px 10px; grid-template-columns: auto minmax(0, 1fr); margin: 0; padding: 10px; }
+  .pulse-chat-badge-preview dt { color: ${theme.textSecondary}; font-size: 12px; font-weight: 700; white-space: nowrap; }
+  .pulse-supporter-settings .pulse-chat-badge-preview .pulse-supporter-chat-line { margin: 0; min-width: 0; overflow: hidden; overflow-wrap: normal; padding: 4px 8px; text-overflow: ellipsis; white-space: nowrap; }
+  .pulse-chat-badge-plain-name { color: #ff7f50; }
+  .pulse-supporter-linked { border-top: 1px solid ${theme.border}; padding-top: 12px; }
+  .pulse-supporter-linked-body { display: grid; gap: 8px; }
+  .pulse-supporter-linked-heading { color: ${theme.textPrimary}; font-size: 12.5px; font-weight: 800; margin: 0; }
+  @media (max-width: 420px) {
+    .pulse-chat-badge-preview { grid-template-columns: minmax(0, 1fr); }
+  }
   .pulse-journey-steps { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0; padding: 0; list-style: none; font-size: 12px; color: ${theme.textMuted}; }
   .pulse-journey-steps li { display: inline-flex; align-items: center; gap: 6px; min-height: 22px; }
   .pulse-journey-step-mark { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 1px solid ${theme.border}; border-radius: 999px; font-size: 12px; font-weight: 700; }
@@ -118,12 +139,15 @@ const hostStyles = `
   .pulse-journey-facts div { display: grid; gap: 1px; min-width: 0; }
   .pulse-journey-facts dt { color: ${theme.textMuted}; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
   .pulse-journey-facts dd { margin: 0; color: ${theme.textPrimary}; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-  .pulse-account-link-actions .pulse-journey-primary { border-color: var(--pulse-accent, #8b5cf6); background: var(--pulse-accent, #8b5cf6); color: var(--pulse-on-accent, #fff); text-decoration: none; }
-  .pulse-account-link-actions .pulse-journey-primary:hover:not(:disabled) { border-color: var(--pulse-accent-strong, #7c3aed); background: var(--pulse-accent-strong, #7c3aed); color: var(--pulse-on-accent, #fff); }
+  .pulse-account-link-actions .pulse-journey-primary { border-color: var(--pulse-accent-strong, #7c3aed); background: var(--pulse-accent-strong, #7c3aed); color: var(--pulse-on-accent, #fff); text-decoration: none; }
+  .pulse-account-link-actions .pulse-journey-primary:hover:not(:disabled) { border-color: var(--pulse-accent-strong, #7c3aed); background: var(--pulse-accent-strong, #7c3aed); color: var(--pulse-on-accent, #fff); filter: brightness(0.9); }
   .pulse-account-link-actions .pulse-journey-secondary-link { text-decoration: none; }
   .pulse-account-link-code { font-variant-numeric: tabular-nums; font-weight: 700; letter-spacing: .08em; color: ${theme.textPrimary}; user-select: all; }
   .pulse-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .pulse-journey-restore { display: grid; gap: 8px; min-width: 0; }
+  .pulse-journey-restore form { display: grid; gap: 8px; }
+  .pulse-restore-wait { display: grid; gap: 8px; }
+  .pulse-restore-wait .pulse-account-link-code { font-size: 20px; letter-spacing: .16em; }
   .pulse-journey-restore label { font-size: 12px; color: ${theme.textSecondary}; }
   .pulse-journey-restore input { box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; border: 1px solid ${theme.border}; border-radius: 8px; background: ${theme.panel}; color: ${theme.textPrimary}; padding: 10px 12px; font: inherit; }
   .pulse-journey-restore input:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 2px; }
@@ -165,9 +189,13 @@ const hostStyles = `
     padding-top: 10px;
     border-top: 1px solid ${theme.border};
   }
-  .pulse-supporter-policies a { display: inline-flex; align-items: center; box-sizing: border-box; min-width: 44px; min-height: 44px; padding: 0 4px; color: ${theme.textSecondary}; font-weight: 600; }
-  .pulse-supporter-policies a:hover { color: var(--pulse-accent-soft, #c4b5fd); }
-  .pulse-supporter-policies a:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 3px; }
+  .pulse-supporter-policies a, .pulse-supporter-withdrawal-link { display: inline-flex; align-items: center; box-sizing: border-box; min-width: 44px; min-height: 44px; padding: 0 4px; color: ${theme.textSecondary}; font-weight: 600; }
+  .pulse-supporter-policies a:hover, .pulse-supporter-withdrawal-link:hover { color: var(--pulse-accent-soft, #c4b5fd); }
+  .pulse-supporter-policies a:focus-visible, .pulse-supporter-withdrawal-link:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 3px; }
+  .pulse-journey-inline-link { display: inline-flex; align-items: center; box-sizing: border-box; min-height: 44px; padding: 0 4px; border: 0; background: transparent; color: ${theme.textPrimary}; font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+  .pulse-journey-inline-link:hover:not(:disabled) { color: var(--pulse-accent-soft, #c4b5fd); }
+  .pulse-journey-inline-link:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 3px; }
+  .pulse-journey-inline-link:disabled { opacity: .6; cursor: not-allowed; }
   .pulse-supporter-save-status { min-height: 20px; }
   .pulse-supporter-settings input:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 3px; }
 
@@ -295,6 +323,7 @@ const hostStyles = `
   .pulse-supporter-account-status:not(:empty) { margin-top: 10px; }
   @media (max-width: 620px) {
     .pulse-supporter-rows > div { grid-template-columns: minmax(0, 1fr); }
+    .pulse-supporter-linked .pulse-supporter-rows .pulse-account-link-actions button { width: 100%; }
   }
   @media (prefers-reduced-motion: reduce) {
     .pulse-account-link-actions button, .pulse-account-link-actions a, .pulse-supporter-tile { transition: none; transform: none !important; }

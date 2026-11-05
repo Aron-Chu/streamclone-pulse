@@ -26,7 +26,7 @@ const publicPageSources = {
   'tools/twitch-vod-timestamp-link': 'TwitchTimestampTool',
   'guides/find-twitch-moments': 'FindTwitchMomentsGuide',
   'guides/twitch-vod-timestamps': 'TwitchVodTimestampsGuide',
-  docs: 'Docs', status: 'Status', privacy: 'Privacy', terms: 'Terms', refunds: 'Refunds',
+  docs: 'Docs', status: 'Status', privacy: 'Privacy', terms: 'Terms', refunds: 'Refunds', withdraw: 'Withdraw',
   supporter: 'Supporter', 'supporter/thanks': 'SupporterThanks', support: 'Support',
   feedback: 'Feedback', discord: 'Discord', changelog: 'Changelog',
 }
@@ -136,6 +136,13 @@ const routes = [
     description: 'How to cancel Pulse Supporter and when a charge is refunded.',
     canonicalPath: '/refunds',
     robots: 'index,follow',
+  },
+  {
+    path: 'withdraw',
+    title: 'Withdraw from your contract — StreamPulse',
+    description: 'Send a withdrawal request for your Pulse Supporter subscription.',
+    canonicalPath: '/withdraw',
+    robots: 'noindex,nofollow',
   },
   {
     path: 'supporter',

@@ -28,6 +28,7 @@ const TIMEOUT_MS = 8000
 // "on" spellings mirror each flag's read in src/lib/*Flag.ts exactly.
 const ON_OR_ONE = Object.freeze(['on', '1'])
 const ONE = Object.freeze(['1'])
+const TRUE = Object.freeze(['true'])
 
 /**
  * Every VITE_ switch that gates a backend feature, with the routes it calls
@@ -49,6 +50,8 @@ export const SWITCHES = Object.freeze([
   { name: 'VITE_ACCOUNT_HEADER', on: ONE, relay: true, source: 'src/lib/accountSession.ts', routes: ['/v1/account/me'] },
   // No route the site calls; the backend flag has to be checked by hand.
   { name: 'VITE_SUPPORTER_CHAT_BADGES', on: ON_OR_ONE, source: 'src/lib/supporterChatBadgesFlag.ts', routes: [], note: 'no route to check: confirm the backend PULSE_SUPPORTER_CHAT_BADGES_ENABLED and the extension release by hand' },
+  // The /withdraw form posts straight to the API (no relay).
+  { name: 'VITE_SUPPORTER_WITHDRAWAL_ENABLED', on: TRUE, source: 'src/lib/supporterWithdrawal.ts, src/routes/public/Withdraw.tsx', routes: ['/v1/portal/supporter/withdrawals'] },
 ])
 
 /** Build-time VITE_ inputs that are not feature switches (config, keys, dev only). */

@@ -184,7 +184,8 @@ test.describe('packaged supporter offer', () => {
       expect(sawBearer).not.toContain('pulse_account=')
 
       const action = page.locator('a[data-supporter-action="billing"]')
-      const label = { none: 'Continue to checkout', active: 'Manage subscription', grace: 'Update payment method', pending: 'View payment status', review: 'Review membership', expired: 'Rejoin Supporter' }[status]
+      // Stripe doors carry a hidden ↗ that the visible text includes.
+      const label = { none: 'Continue to checkout', active: 'Manage on Stripe ↗', grace: 'Fix payment ↗', pending: 'View payment status', review: 'Review membership ↗', expired: 'Rejoin' }[status]
       await expect(action).toHaveText(label)
       if (status === 'none' || status === 'expired') await expect(page.getByText('US$4.99 a month')).toBeVisible()
       else await expect(page.getByText('US$4.99 a month')).toHaveCount(0)
@@ -192,13 +193,17 @@ test.describe('packaged supporter offer', () => {
       await expect(action).toHaveAttribute('href', 'https://streampulse.stream/account/billing')
       await expect(page.getByText('··', { exact: false }).first()).toBeVisible()
       const accountHelp = page.getByText('Account help', { exact: true })
-      await expect(page.locator('.pulse-supporter-help')).toHaveJSProperty('open', false)
+      // Billing help sits beside it for anyone who has paid; both start closed.
+      const accountHelpBox = page.locator('.pulse-supporter-help:not([data-billing-help])')
+      await expect(page.locator('[data-billing-help]')).toHaveCount(status === 'none' ? 0 : 1)
+      if (status !== 'none') await expect(page.locator('[data-billing-help]')).toHaveJSProperty('open', false)
+      await expect(accountHelpBox).toHaveJSProperty('open', false)
       await accountHelp.click()
       for (const policy of ['/privacy', '/terms#supporter', '/refunds']) {
         await expect(page.locator(`a[href="https://streampulse.stream${policy}"]`).first()).toBeVisible()
       }
       await accountHelp.click()
-      await expect(page.locator('.pulse-supporter-help')).toHaveJSProperty('open', false)
+      await expect(accountHelpBox).toHaveJSProperty('open', false)
 
       // The purchase page offers only what ships: no unbuilt chat crest concept.
       await expect(page.getByText('Concept · not built', { exact: true })).toHaveCount(0)
@@ -253,7 +258,7 @@ test.describe('packaged supporter offer', () => {
     await expect(page.getByRole('button', { name: 'Check again', exact: true })).toBeVisible()
   })
 
-  test('a signed-out install offers one Become a Supporter button, and no restore or website account, without sending anything', async ({ extension, prepare }) => {
+  test('a signed-out install offers purchase and restore without sending anything until a click', async ({ extension, prepare }) => {
     await prepare({ scenario: 'live-ready' })
     const requests: string[] = []
     for (const path of ['account/installations', 'account/restores', 'account/device-links', 'billing/checkout', 'billing/portal', 'account/auth/twitch/start-device']) {
@@ -264,6 +269,7 @@ test.describe('packaged supporter offer', () => {
     await expect(page.locator('[data-journey-state="signed-out"]')).toBeVisible()
     await expect(page.getByText('Opens Stripe checkout. No account or sign-up. Saves a key in this browser.', { exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Become a Supporter', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Restore with Stripe email', exact: true })).toBeVisible()
     await expect(page.getByRole('link', { name: 'Supporter details', exact: true })).toHaveAttribute('href', 'https://streampulse.stream/supporter')
     await expect(page.locator('a[data-supporter-action="billing"]')).toHaveCount(0)
     for (const gone of ['Connect this extension', 'Restore my Supporter', 'Use a StreamPulse website account', 'Continue with Twitch']) {

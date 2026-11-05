@@ -16,7 +16,10 @@ vi.mock('../src/ui/components/FoldedSections', async (importOriginal) => {
 })
 
 beforeEach(() => { state.flat = false })
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.unstubAllEnvs()
+})
 
 const PAGES = [
   { name: 'Privacy', Page: Privacy, root: 'privacy-policy' },
@@ -75,6 +78,17 @@ describe('anchors still point at their sections', () => {
     expect(fold.hasAttribute('data-fold')).toBe(true)
     expect(fold.querySelector('[data-testid="privacy-feedback"] [data-testid="privacy-feedback-sent"]')).not.toBeNull()
     expect(screen.getByRole('heading', { level: 2, name: 'Feedback form' }).id).toBe('feedback-form')
+  })
+
+  it('Privacy with Seen in chat on: #seen-in-chat heads its own section, not the one above it', () => {
+    vi.stubEnv('VITE_SUPPORTER_CHAT_BADGES', 'on')
+    renderPage(Privacy)
+    const heading = document.getElementById('seen-in-chat')!
+    expect(heading.parentElement?.tagName).toBe('SUMMARY')
+    const fold = heading.closest('details')!
+    expect(fold.hasAttribute('data-fold')).toBe(true)
+    expect(fold.querySelector('[data-testid="privacy-seen-in-chat"]')).not.toBeNull()
+    expect(fold.querySelector('[data-testid="privacy-extensions"]')).toBeNull()
   })
 
   it('Terms: #supporter is the heading of the Pulse Supporter section, which holds the offer terms', () => {

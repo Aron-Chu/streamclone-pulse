@@ -166,8 +166,8 @@ describe('settings page: Community card', () => {
       // The card follows the nav, so keyboard order is still skip link, sections, content.
       const rail = host.querySelector('.pulse-host-rail')!
       expect(rail.firstElementChild?.matches('nav.pulse-host-nav')).toBe(true)
-      // The Supporter banner shows everywhere except its own section.
-      expect(host.querySelector('[data-settings-host-banner="supporter"]') !== null).toBe(section !== 'supporter')
+      // The Supporter banner shows everywhere except its own section and the working My Moments page.
+      expect(host.querySelector('[data-settings-host-banner="supporter"]') !== null).toBe(section !== 'supporter' && section !== 'moments')
       roots.splice(0).forEach(unmount => unmount())
     }
   })

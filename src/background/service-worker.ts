@@ -43,6 +43,7 @@ import { openSettingsHost } from './settingsHost.ts'
 import { resumePendingLink, supporterAccount, supporterPayFirst, watchPendingLink } from './supporterAccountRuntime.ts'
 import { supporterAppearanceReply } from './supporterAppearance.ts'
 import { injectSupporterCard } from './supporterCardScript.ts'
+import { chatBadgeList, chatBadgeOptIn, installChatBadges, reconcileChatBadges } from './chatBadgeRuntime.ts'
 import { injectMomentFrames } from './momentFramesScript.ts'
 import { injectCatchMeUp } from './catchMeUpScript.ts'
 import { twitchSignIn } from './twitchSignInRuntime.ts'
@@ -1026,6 +1027,21 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           sendResponse({ type: 'SUPPORTER_CARD_SCRIPT', ok: await injectSupporterCard(chrome.scripting, sender) } satisfies BackgroundResponse)
           return
         }
+        case 'CHAT_BADGES': {
+          sendResponse(await chatBadgeList.ask(message.have) satisfies BackgroundResponse)
+          return
+        }
+        case 'SUPPORTER_CHAT_BADGE': {
+          sendResponse((message.action === 'on' ? await chatBadgeOptIn.on()
+            : message.action === 'off' ? await chatBadgeOptIn.off()
+              : message.action === 'style' ? await chatBadgeOptIn.style(message.wave)
+                : await chatBadgeOptIn.status()) satisfies BackgroundResponse)
+          return
+        }
+        case 'SUPPORTER_TWITCH_LINK': {
+          sendResponse((message.action === 'link' ? await chatBadgeOptIn.linkTwitch() : await chatBadgeOptIn.unlinkTwitch()) satisfies BackgroundResponse)
+          return
+        }
         case 'MOMENT_FRAMES_SCRIPT': {
           sendResponse({ type: 'MOMENT_FRAMES_SCRIPT', ok: await injectMomentFrames(chrome.scripting, sender) } satisfies BackgroundResponse)
           return
@@ -1409,6 +1425,7 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
 void resumePendingLink()
 
 chrome.runtime.onStartup.addListener(() => {
+  void reconcileChatBadges()
   void (async () => {
     await syncWatchlistToBackend()
     if (await hostedBackend()) return
@@ -1419,6 +1436,7 @@ chrome.runtime.onStartup.addListener(() => {
 })
 
 chrome.runtime.onInstalled.addListener(details => {
+  void reconcileChatBadges()
   // The only moment silent Twitch sign-in may later be tried (no-op while the flag is off).
   if (details?.reason === 'install') void twitchSignIn.markFirstInstall().catch(() => undefined)
   void syncWatchlistToBackend().catch(() => undefined)
@@ -1431,6 +1449,7 @@ chrome.runtime.onInstalled.addListener(details => {
 // reads go through worker messages.
 
 installBackgroundDiagnosticsEmitters()
+installChatBadges()
 
 chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
   handleTwitchTabUpdate(changeInfo, tab)

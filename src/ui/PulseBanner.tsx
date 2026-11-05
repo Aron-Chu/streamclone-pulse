@@ -109,7 +109,10 @@ function useBannerCheckoutAvailability(perks: boolean | undefined) {
     void read()
     return () => { alive = false; request++; storage?.removeListener(changed) }
   }, [perks])
-  return supporterPerksAllowed(entitlement) ? 'unknown' : supporterCheckoutAvailability(entitlement)
+  if (supporterPerksAllowed(entitlement)) return 'unknown'
+  // A browser with no account yet is locked out of the perk, but nothing says Supporter is closed.
+  if (entitlement?.state === 'not_linked') return 'locked'
+  return supporterCheckoutAvailability(entitlement)
 }
 
 /**

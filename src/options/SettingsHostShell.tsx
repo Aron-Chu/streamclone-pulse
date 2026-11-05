@@ -115,7 +115,8 @@ export function SettingsHostShell({
         </div>
 
         <div className="pulse-host-main">
-          {activeSection !== 'supporter'
+          {/* My Moments is a working page; the banner stays off it. */}
+          {activeSection !== 'supporter' && activeSection !== 'moments'
             ? <SupporterBanner onOpen={() => navigateToSection('supporter')} onPerks={setSupporterPerks} />
             : null}
           {typeof children === 'function' ? children(activeSection, supporterPerks) : children}

@@ -114,10 +114,10 @@ for (const width of [1440, 390]) {
 test('public Supporter describes a separate offered purchase after connection while sign-ups stay closed', async ({ page }) => {
   await page.goto('/supporter')
   await expect(page.getByRole('link', { name: 'Get the extension', exact: true })).toBeVisible()
-  await expect(page.getByTestId('supporter-availability')).toContainText('When they open, choose Become a Supporter')
+  await expect(page.getByTestId('supporter-availability')).toContainText('Joining later: choose Become a Supporter')
   await expect(page.getByTestId('supporter-availability')).toContainText('and pay on Stripe.')
   await expect(page.getByTestId('supporter-availability')).toContainText('No Twitch sign-in or separate StreamPulse sign-up is needed.')
-  await expect(page.getByTestId('prelaunch-notice')).toContainText('Supporter sign-ups are not open yet.')
+  await expect(page.getByTestId('prelaunch-notice')).toContainText('Supporter sign-ups aren’t open yet, so you can’t buy it today.')
   const billingPortal = page.getByRole('link', { name: 'Stripe’s customer portal', exact: true })
   await expect(billingPortal).toHaveAttribute('href', 'https://billing.stripe.com/p/login/fZueVd91paK85MAgKt8AE00')
   await expect(billingPortal).toHaveAttribute('target', '_blank')

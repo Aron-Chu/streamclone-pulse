@@ -5,7 +5,9 @@ import { FINISHES, SAMPLE_KIT, TENURES, finishVars, kitEmoteSrc, tenureIndex, ty
 import { PeakMark } from '../ui/PeakMark.tsx'
 import { names as PERK_NAMES } from '../shared/supporter-perks.json'
 import { useSupporterAppearanceDetails } from '../ui/useSupporterAppearance.ts'
-import { ACCOUNT_REVISION_KEY, SUPPORTER_REVISION_KEY } from '../shared/supporterAccount.ts'
+import { ACCOUNT_REVISION_KEY, SUPPORTER_REVISION_KEY, type SupporterEntitlement } from '../shared/supporterAccount.ts'
+import { supporterCheckoutAvailability } from '../shared/supporterCheckoutAvailability.ts'
+import { useChatBadgeListReceived } from './useChatBadges.ts'
 
 /** How long the banner waits for the membership answer before showing the sample pile. */
 const SAMPLE_AFTER_MS = 1200
@@ -23,8 +25,9 @@ const PRICE_SHORT = 'US$4.99/mo'
  * A Supporter sees their own paint and crest; everyone else sees the lab's
  * sample. The price shows only while paid sign-ups are open (the worker's
  * entitlement says checkoutEnabled); until then nothing here advertises a
- * price for something that cannot be bought, and the way in reads "See
- * what's coming".
+ * price for something that cannot be bought. The way in reads "See what's
+ * coming" only while the server says sales are closed; a browser that cannot
+ * ask yet reads "View benefits".
  *
  * It owns the settings page's membership check (the same worker reply the
  * overlay header uses) and reports whether perks are on, so the page's other
@@ -52,7 +55,8 @@ export function SupporterBanner({ onOpen, onPerks }: { onOpen: () => void; onPer
   const shown = kit ?? SAMPLE_KIT
   const state = kit ? (perks ? 'own' : 'sample') : 'pending'
   const own = state === 'own'
-  const checkoutOpen = useCheckoutOpen()
+  const checkout = useCheckoutAvailability()
+  const [chatListReceived] = useChatBadgeListReceived()
   return (
     <div className="pulse-settings-supporter-banner-frame">
       <button
@@ -68,15 +72,15 @@ export function SupporterBanner({ onOpen, onPerks }: { onOpen: () => void; onPer
           <span className="pulse-settings-supporter-banner-eyebrow">
             <PeakMark size={13} strokeWidth={2} stroke="currentColor" />
             <span>{own ? 'Your kit' : 'Pulse Supporter'}</span>
-            {state === 'sample' && checkoutOpen ? <em>· {PRICE_SHORT}</em> : null}
+            {state === 'sample' && checkout === 'open' ? <em>· {PRICE_SHORT}</em> : null}
           </span>
           <strong>{own ? 'Yours lands on top' : 'Your crest lands on top'}</strong>
           <span className="pulse-settings-supporter-banner-perks">
             <BannerPerks kit={shown} own={own} />
           </span>
-          <small>{own ? 'Only you see your kit. Core tools stay free.' : 'Only you see them. Core tools stay free.'}</small>
+          <small>{chatListReceived ? 'Your panel kit is personal; showing it in chat is optional.' : own ? 'Only you see your kit. Core tools stay free.' : 'Only you see them. Core tools stay free.'}</small>
         </span>
-        <span className="pulse-settings-supporter-banner-arrow">{checkoutOpen || own ? 'View benefits' : 'See what’s coming'} <span aria-hidden="true">→</span></span>
+        <span className="pulse-settings-supporter-banner-arrow">{checkout === 'closed' && !own ? 'See what’s coming' : 'View benefits'} <span aria-hidden="true">→</span></span>
       </button>
     </div>
   )
@@ -84,21 +88,22 @@ export function SupporterBanner({ onOpen, onPerks }: { onOpen: () => void; onPer
 
 /**
  * Whether paid sign-ups are open, from the worker's entitlement read, read
- * again when the worker signals a new account or membership. Unknown, failed
- * or closed all read as closed, so a price never shows by default.
+ * again when the worker signals a new account or membership. The price shows
+ * only when sales are confirmed open, and "See what's coming" only when they
+ * are confirmed closed; an unknown or failed read claims neither.
  */
-function useCheckoutOpen(): boolean {
-  const [open, setOpen] = useState(false)
+function useCheckoutAvailability(): 'open' | 'closed' | 'unknown' {
+  const [availability, setAvailability] = useState<'open' | 'closed' | 'unknown'>('unknown')
   useEffect(() => {
     let live = true
     let request = 0
     const read = () => {
       const id = ++request
       try {
-        void Promise.resolve(chrome.runtime.sendMessage({ type: 'SUPPORTER_ENTITLEMENT' })).then((reply: { type?: string; entitlement?: { state?: string; checkoutEnabled?: boolean } } | undefined) => {
-          if (live && id === request) setOpen(reply?.type === 'SUPPORTER_ENTITLEMENT' && reply.entitlement?.state === 'ready' && reply.entitlement.checkoutEnabled === true)
-        }, () => { if (live && id === request) setOpen(false) })
-      } catch { if (live && id === request) setOpen(false) }
+        void Promise.resolve(chrome.runtime.sendMessage({ type: 'SUPPORTER_ENTITLEMENT' })).then((reply: { type?: string; entitlement?: SupporterEntitlement } | undefined) => {
+          if (live && id === request) setAvailability(supporterCheckoutAvailability(reply?.type === 'SUPPORTER_ENTITLEMENT' ? reply.entitlement ?? null : null))
+        }, () => { if (live && id === request) setAvailability('unknown') })
+      } catch { if (live && id === request) setAvailability('unknown') }
     }
     const changed = (changes: Record<string, chrome.storage.StorageChange>, area?: string) => {
       if ((!area || area === 'local') && (ACCOUNT_REVISION_KEY in changes || SUPPORTER_REVISION_KEY in changes)) read()
@@ -108,7 +113,7 @@ function useCheckoutOpen(): boolean {
     storage?.addListener(changed)
     return () => { live = false; storage?.removeListener(changed) }
   }, [])
-  return open
+  return availability
 }
 
 /**

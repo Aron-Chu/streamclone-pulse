@@ -248,7 +248,8 @@ test('full settings: the staged Crown, the lab sample for non-Supporters, paused
   await expect(banner.locator('strong')).toHaveText('Your crest lands on top')
   await expect(banner.locator('.pulse-settings-supporter-perk')).toHaveText(['Title paint', 'Tenure crest', 'Emote rain', 'Supporter card'])
   await expect(banner.locator('small')).toHaveText('Only you see them. Core tools stay free.')
-  await expect(banner.locator('.pulse-settings-supporter-banner-arrow')).toHaveText('See what’s coming →')
+  // No account yet, so whether sales are open is unknown: no price and no closed claim.
+  await expect(banner.locator('.pulse-settings-supporter-banner-arrow')).toHaveText('View benefits →')
   await expect.poll(() => stage.locator('.spk-body').count()).toBeGreaterThanOrEqual(8)
   // Yours is the sample crest, with the small "you" tag riding above it.
   const you = stage.locator('.spk-you')

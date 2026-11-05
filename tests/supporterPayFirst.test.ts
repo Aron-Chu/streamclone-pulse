@@ -309,7 +309,7 @@ describe('worker-private pay-first journey', () => {
     const restored = { ...credentials, accountId: '55555555-5555-4555-8555-555555555555', deviceId: '66666666-6666-4666-8666-666666666666', token: 'd'.repeat(64), refreshToken: 'e'.repeat(64) }
     f.request.mockResolvedValueOnce({ status: 200, body: renewed }).mockResolvedValueOnce({ status: 200, body: { state: 'approved', ...restored } })
     expect(await f.pay.restore('status')).toEqual({ state: 'restored' })
-    expect(f.request).toHaveBeenLastCalledWith('/v1/account/restores/poll', { restoreId, pollingSecret: 'c'.repeat(64) }, renewed.token)
+    expect(f.request).toHaveBeenLastCalledWith('/v1/account/restores/poll', { restoreId, pollingSecret: 'c'.repeat(64), restoreKey: expect.stringMatching(/^[a-f0-9]{64}$/) }, renewed.token)
     expect(await f.supporter.localAccountId()).toBe(restored.accountId)
   })
   it('retains the uncertain payment barrier after credentials are revoked', async () => {
@@ -329,7 +329,7 @@ describe('worker-private pay-first journey', () => {
     let resolve!: (value: { status: number; body: unknown }) => void
     f.request.mockImplementationOnce(() => new Promise(done => { resolve = done })).mockResolvedValue({ status: 204, body: null })
     const poll = f.pay.restore('status')
-    await vi.waitFor(() => expect(f.request).toHaveBeenCalledWith('/v1/account/restores/poll', { restoreId, pollingSecret: 'c'.repeat(64) }, credentials.token))
+    await vi.waitFor(() => expect(f.request).toHaveBeenCalledWith('/v1/account/restores/poll', { restoreId, pollingSecret: 'c'.repeat(64), restoreKey: expect.stringMatching(/^[a-f0-9]{64}$/) }, credentials.token))
     const disconnect = f.supporter.run('disconnect')
     resolve({ status: 200, body: { state: 'approved', ...credentials, token: 'd'.repeat(64), refreshToken: 'e'.repeat(64), accountId: '55555555-5555-4555-8555-555555555555', deviceId: '66666666-6666-4666-8666-666666666666' } })
     await poll; await disconnect
@@ -398,7 +398,7 @@ describe('worker-private pay-first journey', () => {
     const recovered = { ...credentials, accountId: '55555555-5555-4555-8555-555555555555', token: 'd'.repeat(64), refreshToken: 'e'.repeat(64) }
     f.request.mockResolvedValueOnce({ status: 200, body: { state: 'approved', ...recovered } })
     expect(await f.pay.restore('status')).toEqual({ state: 'restored' })
-    expect(f.request).toHaveBeenLastCalledWith('/v1/account/restores/poll', { restoreId, pollingSecret: 'c'.repeat(64) }, credentials.token)
+    expect(f.request).toHaveBeenLastCalledWith('/v1/account/restores/poll', { restoreId, pollingSecret: 'c'.repeat(64), restoreKey: expect.stringMatching(/^[a-f0-9]{64}$/) }, credentials.token)
     expect(await f.supporter.run('status')).toMatchObject({ state: 'linked', accountId: recovered.accountId })
     expect(await f.pay.hasPending()).toBe(false)
   })
@@ -407,6 +407,17 @@ describe('worker-private pay-first journey', () => {
     f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 409, body: { error: 'restore_conflict' } })
     expect(await f.pay.restore('start', 'payer@example.test')).toEqual({ state: 'ineligible' })
     expect(await f.pay.hasPending()).toBe(false)
+  })
+  it('expires a changed-email restore without signing out the current browser', async () => {
+    const f = fixture()
+    f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 201, body: { restoreId, pollingSecret: 'c'.repeat(64), expiresAt: iso(900_000), intervalSeconds: 5, comparisonCode: 'A3B4C5' } })
+    await f.pay.restore('start', 'payer@example.test')
+    f.advance(5000)
+    f.request.mockResolvedValueOnce({ status: 410, body: { error: 'restore_invalid_or_expired' } })
+    expect(await f.pay.restore('status')).toEqual({ state: 'expired' })
+    expect(await f.supporter.run('status')).toMatchObject({ state: 'linked', accountId: credentials.accountId })
+    expect(f.request.mock.calls.filter(([path]) => path === '/v1/account/restores/poll')).toHaveLength(1)
+    expect(f.stored().journey).not.toHaveProperty('restore')
   })
   it('expires a pending restore at its deadline without polling or retaining a secret', async () => {
     const f = fixture()

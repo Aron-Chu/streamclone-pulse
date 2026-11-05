@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { FINISH_INTENT_TTL_MS, supporterPerksAllowed, type SupporterEntitlement, type SupporterCosmetics } from '../shared/supporterAccount.ts'
 import { supporterCheckoutAvailability } from '../shared/supporterCheckoutAvailability.ts'
+import { TWITCH_SIGNIN_ENABLED } from '../shared/twitchSignIn.ts'
 import { finishVars, SAMPLE_KIT } from '../supporter/kit.ts'
 import { PulseSectionCard } from '../ui/PulseSectionCard.tsx'
 import { SUPPORTER_FINISH_OPTIONS } from '../ui/supporterFinish.ts'
 import { PulseBannerLoadError, usePulseBanner } from '../ui/PulseBanner.tsx'
 import type { PulseBannerPreference } from '../shared/storage.ts'
 import type { SupporterTenure } from '../shared/supporterPaint.ts'
+import { SupporterCardTag } from './SupporterCardTag.tsx'
 import { SupporterLookPreview } from './SupporterLookPreview.tsx'
 import { SupporterPaintStyleFields, useSupporterPaintStyle } from './SupporterPaintStyleFields.tsx'
 
@@ -26,13 +28,14 @@ const SAMPLE_RAIN = { mode: 'rain', intensity: 35, title: '' } as const
  * (emote rain only in the preview) and choose a paint to apply when Supporter
  * starts.
  */
-export function SupporterCosmeticControls({ entitlement, unavailable = false, tenure, onSaved }: {
+export function SupporterCosmeticControls({ entitlement, unavailable = false, tenure, onSaved, seenInChat = false }: {
   entitlement: SupporterEntitlement | null
   /** With `entitlement` null: the status could not be read, rather than still loading. */
   unavailable?: boolean
   /** The crest the preview wears: a Supporter's own, or the sample's. */
   tenure: SupporterTenure
   onSaved?: (cosmetics: SupporterCosmetics) => void
+  seenInChat?: boolean
 }) {
   const banner = usePulseBanner()
   // Emote rain tried without the perk: shown in the preview only, never saved.
@@ -144,8 +147,9 @@ export function SupporterCosmeticControls({ entitlement, unavailable = false, te
   const intentLabel = SUPPORTER_FINISH_OPTIONS.find(option => option.id === intent)?.label
   const unchanged = finish === appliedFinish
   const checkoutAvailability = supporterCheckoutAvailability(entitlement)
-  const checkoutOpen = checkoutAvailability === 'open'
-  const tryOnly = !allowed && checkoutAvailability === 'closed'
+  // A store build's browser with no account yet cannot ask whether sales are
+  // open, so it keeps the closed try-on: nothing saved, no claim either way.
+  const tryOnly = !allowed && (checkoutAvailability === 'closed' || (entitlement?.state === 'not_linked' && !TWITCH_SIGNIN_ENABLED))
   const intentExpiresAt = intentSetAt === null ? null : intentSetAt + FINISH_INTENT_TTL_MS
   const savedEarlier = intentLabel && intentExpiresAt !== null && intentExpiresAt >= Date.now()
     ? { label: intentLabel, date: new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(intentExpiresAt) }
@@ -202,6 +206,7 @@ export function SupporterCosmeticControls({ entitlement, unavailable = false, te
     title="Your look"
     headingLevel={3}
     className="pulse-supporter-studio"
+    titleAction={<SupporterCardTag audience="only-you">Only you</SupporterCardTag>}
     meta={unknown ? undefined : tryOnly ? "Try a look. Changes here aren't saved." : allowed ? 'Wave, sheen and Emote rain save right away' : 'Try any look. Paint, wave and sheen apply when you support.'}
   >
     <SupporterLookPreview
@@ -211,6 +216,7 @@ export function SupporterCosmeticControls({ entitlement, unavailable = false, te
       rain={allowed || unknown ? banner.value : { ...SAMPLE_RAIN, mode: rainTry }}
       shown={shown}
       hideStateLabel={tryOnly}
+      seenInChat={seenInChat}
     />
     <div className="pulse-supporter-look" data-preview-finish={finish ?? 'default'}>
       <fieldset className="pulse-supporter-look-row" disabled={busy || unknown}>
@@ -241,7 +247,7 @@ export function SupporterCosmeticControls({ entitlement, unavailable = false, te
         <summary>Wave and sheen</summary>
         <SupporterPaintStyleFields style={paintTry} onChoose={next => { paintTried.current = true; setPaintTry(next) }} />
       </details> : <SupporterPaintStyleFields style={paint.style} disabled={unknown} onChoose={next => { if (!unknown) void paint.choose(next) }} />}
-      <EmoteRainField banner={banner} perks={unknown ? undefined : allowed} availability={checkoutAvailability} closedOfferKnown={entitlement?.state === 'ready'} tried={rainTry} onTry={setRainTry} />
+      <EmoteRainField banner={banner} perks={unknown ? undefined : allowed} line={checkoutAvailability === 'closed' ? 'closed' : checkoutAvailability === 'open' || entitlement?.state === 'not_linked' ? 'locked' : null} tried={rainTry} onTry={setRainTry} />
     </div>
     {banner.loadError ? <PulseBannerLoadError onRetry={() => void banner.reload()} /> : null}
     {tryOnly || unknown ? null : <p className="pulse-supporter-detail" aria-live="polite">{paint.status || 'Wave and sheen save to this browser profile right away and show whenever your paint is equipped.'}</p>}
@@ -254,14 +260,14 @@ export function SupporterCosmeticControls({ entitlement, unavailable = false, te
         </button>
       ) : finish && finish !== intent ? (
         <button type="button" disabled={intentBusy} aria-busy={intentBusy} onClick={() => void chooseForLater(finish)}>
-          {intentBusy ? 'Saving...' : checkoutOpen ? `Use ${selectedLabel} when Supporter starts` : 'Save for when Supporter opens'}
+          {intentBusy ? 'Saving...' : `Use ${selectedLabel} when Supporter starts`}
         </button>
       ) : (
-        <button type="button" disabled>{!finish ? 'Default active' : checkoutOpen ? `${selectedLabel} chosen` : 'Saved for when Supporter opens'}</button>
+        <button type="button" disabled>{finish ? `${selectedLabel} chosen` : 'Default active'}</button>
       )}
       {!allowed && !unknown && intent ? <button type="button" disabled={intentBusy} onClick={() => void chooseForLater(null)}>Clear choice</button> : null}
     </div>}
-    {!allowed && checkoutOpen ? <p className="pulse-supporter-detail">We keep this choice for 7 days.</p> : null}
+    {!allowed && !unknown && !tryOnly ? <p className="pulse-supporter-detail">We keep this choice for 7 days.</p> : null}
     {tryOnly && savedEarlier ? <p className="pulse-supporter-detail" data-supporter-finish-intent={intent ?? 'none'}>
       Saved earlier: {savedEarlier.label}, until {savedEarlier.date}.{' '}
       <button className="pulse-supporter-remove-intent" type="button" disabled={intentBusy} onClick={() => void chooseForLater(null)}>Remove</button>
@@ -285,11 +291,15 @@ export function SupporterCosmeticControls({ entitlement, unavailable = false, te
  * to the page. Presses while one saves are ignored instead, and one live region,
  * always present, is cleared when a save starts and then states its result.
  */
-function EmoteRainField({ banner, perks, availability, closedOfferKnown, tried, onTry }: {
+function EmoteRainField({ banner, perks, line, tried, onTry }: {
   banner: ReturnType<typeof usePulseBanner>
   perks: boolean | undefined
-  availability: 'open' | 'closed' | 'unknown'
-  closedOfferKnown: boolean
+  /**
+   * The lock line: "closed" adds that Supporter isn't on sale yet, as the server
+   * said. A browser with no account yet gets the plain line; an older or
+   * unreachable server gets none.
+   */
+  line: 'locked' | 'closed' | null
   tried: PulseBannerPreference['mode']
   onTry: (mode: PulseBannerPreference['mode']) => void
 }) {
@@ -321,8 +331,8 @@ function EmoteRainField({ banner, perks, availability, closedOfferKnown, tried, 
           onClick={() => choose(mode)}
         >{mode === 'off' ? 'Off' : mode === 'still' ? 'Still' : 'Rain'}</button>)}
       </div>
-      {perks === false && availability !== 'unknown'
-        ? <p className="pulse-supporter-detail" data-supporter-perk="emote-rain">Emote rain is a Supporter perk. Only you see it. {closedOfferKnown && availability === 'closed' ? "Supporter isn't on sale yet. " : ''}<a href="#supporter" onClick={() => window.scrollTo?.(0, 0)}>See Supporter →</a></p>
+      {perks === false && line
+        ? <p className="pulse-supporter-detail" data-supporter-perk="emote-rain">Emote rain is a Supporter perk. Only you see it. {line === 'closed' ? "Supporter isn't on sale yet. " : ''}<a href="#supporter" onClick={() => window.scrollTo?.(0, 0)}>See Supporter →</a></p>
         : null}
       <p className="pulse-supporter-detail" role="status" data-emote-rain-status>{message}</p>
     </div>

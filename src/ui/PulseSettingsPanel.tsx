@@ -394,7 +394,7 @@ export function QuickLook({ appearance, disabled, onOpen }: { appearance: Suppor
   const mode = perks ? banner.value.mode : rain ?? 'off'
   const title = banner.value.title || 'Stream Pulse'
   return (
-    <QuickGroup title={<>Your look{perks ? null : <span className="pulse-quick-chip">Supporter · try free</span>}</>}>
+    <QuickGroup title={<>Your look{perks ? null : <span className="pulse-quick-chip">Supporter · preview</span>}</>}>
       <div className="pulse-settings-control-block">
         <div className="pulse-quick-look" aria-hidden="true">
           <PulseBannerBackdrop value={{ ...banner.value, mode }} perks />

@@ -5,11 +5,14 @@ import { SAMPLE_KIT } from '../supporter/kit.ts'
 import { SupporterCosmeticControls } from './SupporterCosmeticControls.tsx'
 import { useSupporterPaintStyle } from './SupporterPaintStyleFields.tsx'
 import { SupporterJourney } from './SupporterJourney.tsx'
+import { SupporterChatBadgeControls } from './SupporterChatBadgeControls.tsx'
+import { useChatBadgeListReceived } from './useChatBadges.ts'
 
 /**
  * Account & Supporter, direction B "Your card" of the 2026-10-07 redesign:
  * your card (who you are, your membership, the crest ladder, and the one
- * action that matters now), the Your look studio, then the account.
+ * action that matters now), the Your look studio (only you), Seen in chat
+ * (public), then the account.
  *
  * A Supporter's card wears what they have equipped; everyone else's wears the
  * sample. The studio's own preview shows the look being tried. Nothing here
@@ -21,6 +24,8 @@ export function SupporterAccountSection() {
   // membership on screen, which keeps the look through a failed refresh.
   const [entitlement, setEntitlement] = useState<SupporterEntitlement | null>(null)
   const [shown, setShown] = useState<SupporterEntitlement | null>(null)
+  const [chatListReceived, , chatKeysPinned] = useChatBadgeListReceived()
+  const seenInChat = chatListReceived || (chatKeysPinned && entitlement?.state === 'ready' && entitlement.chatBadge !== undefined)
   const paint = useSupporterPaintStyle()
   const savedCosmetics = useCallback((cosmetics: SupporterCosmetics) => {
     const saved = (current: SupporterEntitlement | null) => current?.state === 'ready' ? { ...current, cosmetics } : current
@@ -32,6 +37,8 @@ export function SupporterAccountSection() {
   // The card wears a Supporter's equipped paint, or the sample.
   const worn = perks ? equipped : SAMPLE_KIT.finish
   const tenure = perks && shown?.state === 'ready' ? supporterTenureForMonths(shown.supportPeriods) : SAMPLE_KIT.tenure
+  // Seen in chat previews what others would see: your own crest, and paint only once equipped.
+  const chatLook = { finish: equipped, paint: paint.style, tenure: shown?.state === 'ready' ? supporterTenureForMonths(shown.supportPeriods) : SAMPLE_KIT.tenure }
   // The server answered, but not with a membership the controls can use: the
   // read failed, is unavailable, or a refresh failed. Loading is the other pause.
   const unavailable = entitlement === null && shown !== null
@@ -42,8 +49,13 @@ export function SupporterAccountSection() {
         <h2>Account &amp; Supporter</h2>
         <p>Your Supporter card, your look, and billing.</p>
       </div>
-      <SupporterJourney onEntitlement={setEntitlement} onShown={setShown} look={{ finish: worn, paint: paint.style }}>
-        <SupporterCosmeticControls entitlement={entitlement} unavailable={unavailable} tenure={tenure} onSaved={savedCosmetics} />
+      <SupporterJourney
+        onEntitlement={setEntitlement}
+        onShown={setShown}
+        look={{ finish: worn, paint: paint.style }}
+        publicCard={link => <SupporterChatBadgeControls entitlement={entitlement} unavailable={unavailable} look={chatLook} link={link} />}
+      >
+        <SupporterCosmeticControls entitlement={entitlement} unavailable={unavailable} tenure={tenure} onSaved={savedCosmetics} seenInChat={seenInChat} />
       </SupporterJourney>
     </div>
   )

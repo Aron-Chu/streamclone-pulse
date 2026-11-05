@@ -298,7 +298,7 @@ test('a Supporter’s emote rain choice keeps keyboard focus through its save', 
   expect(stored).toMatchObject({ pulseBanner: { mode: 'rain' } })
 })
 
-test('the Account card’s Manage subscription keeps keyboard focus while it opens and reports a failure in the Account card', async ({ extension, prepare }) => {
+test('Manage on Stripe keeps keyboard focus while it opens and reports a failure beside it', async ({ extension, prepare }) => {
   await prepare()
   await linkDevice(extension.serviceWorker)
   await serveMembership(extension.context, () => ({ ...supporterBody('active', 2), accountKind: 'installation', installationAccountsEnabled: true, restoreEligible: false }))
@@ -312,10 +312,11 @@ test('the Account card’s Manage subscription keeps keyboard focus while it ope
   const page = extension.page
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
   const account = page.locator('section').filter({ has: page.getByRole('heading', { level: 3, name: 'Account', exact: true }) })
-  // The footer has its own Manage subscription; this is the one in the Account card's billing row.
-  const manage = account.locator('[data-row="billing"]').getByRole('button', { name: 'Manage subscription', exact: true })
-  const status = account.locator('[data-account-notice]')
-  await expect(status).toHaveText('')
+  // Stripe is the membership card's one door; the Account card has no billing row.
+  await expect(account.locator('[data-row="billing"]')).toHaveCount(0)
+  const manage = page.locator('.pulse-journey').getByRole('button', { name: 'Manage on Stripe', exact: true })
+  const status = page.locator('.pulse-journey-status')
+  await expect(status).not.toContainText('Could not open subscription management')
   await manage.focus()
   await page.keyboard.press('Enter')
   await expect.poll(() => portals).toBe(1)
@@ -330,6 +331,6 @@ test('the Account card’s Manage subscription keeps keyboard focus while it ope
   await expect(manage).not.toHaveAttribute('aria-busy', 'true')
   await expect(manage).toBeFocused()
   expect(portals).toBe(1)
-  // Reported beside the button, not in the card footer a screen above.
-  await expect(page.locator('.pulse-journey-status')).not.toContainText('Could not open subscription management')
+  // Reported beside the button, not in the Account card further down.
+  await expect(account.locator('[data-account-notice]')).not.toContainText('Could not open subscription management')
 })
