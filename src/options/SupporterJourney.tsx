@@ -33,7 +33,7 @@ import { SUPPORTER_FINISH_OPTIONS } from '../ui/supporterFinish.ts'
 import { SupporterCard, type CardIdentity, type CardLook, type CardStatus } from './SupporterCard.tsx'
 import { TwitchGlitch, twitchOutcomeMessage } from './TwitchAccountConnection.tsx'
 import { usePortalOrigin } from './usePortalOrigin.ts'
-import { AccountFollows, FirstSignInMove } from './FirstSignInMove.tsx'
+import { ACCOUNT_FOLLOWS_COPY, AccountFollows, FirstSignInMove } from './FirstSignInMove.tsx'
 import type { MyMomentsSnapshot } from '../shared/myMoments.ts'
 
 /**
@@ -85,7 +85,9 @@ export const ACCOUNT_COPY = {
   notYou: 'Not you?',
   notYouHeading: (name: string) => `Sign out ${name} on this browser?`,
   notYouSentFirst: 'Changes not yet sent are sent first.',
-  notYouForget: (name: string) => `Then this browser forgets ${name}’s saves and history. They stay in the account.`,
+  notYouForget: (name: string, historySynced: boolean) => historySynced
+    ? `Then this browser forgets ${name}’s saves and history. Saves and synced history stay in the account. Notes saved here while signed in are removed.`
+    : `Then this browser forgets ${name}’s saves. They stay in the account. Watched history and notes saved here while signed in are removed.`,
   notYouSwitch: 'Sign out and switch',
   notYouKeep: (name: string) => `Keep ${name}`,
   followsHint: 'Signed out, everything still works on this browser. It just doesn’t follow you.',
@@ -1225,7 +1227,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
             {momentsAccount && moments ? <AccountFollows
               saves={snapshot?.bookmarksAvailable ? snapshot.moments.filter(moment => moment.savedAt !== undefined).length : null}
               historySync={followsHistory}
-              supporter={isSupporter && !stale ? { line: status === 'grace' ? 'Active · last payment didn’t go through' : `Active${renewal ? ` · ${renewal.text}` : ''}` } : null}
+              supporter={isSupporter && !stale ? { line: status === 'grace' ? ACCOUNT_FOLLOWS_COPY.supporterGrace : ACCOUNT_FOLLOWS_COPY.supporterActive(renewal?.text ?? null) } : null}
             /> : null}
             {/* Its own row: the account row already holds Sign out and the account switch. */}
             {everywhereOffered ? <div data-row="sign-out-everywhere">
@@ -1274,7 +1276,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
         {notYou && everywhereOffered ? <div className="pulse-journey-confirm" role="group" aria-label={ACCOUNT_COPY.notYouHeading(notYouName)} data-not-you-confirm>
           <p tabIndex={-1} ref={notYouHeading}><strong>{ACCOUNT_COPY.notYouHeading(notYouName)}</strong></p>
           <p>{ACCOUNT_COPY.notYouSentFirst}</p>
-          <p>{ACCOUNT_COPY.notYouForget(notYouName)}</p>
+          <p>{ACCOUNT_COPY.notYouForget(notYouName, followsHistory === 'on')}</p>
           <div className="pulse-account-link-actions pulse-journey-actions">
             <button type="button" disabled={accountBusy || payBusy || signingIn !== null} onClick={() => { setNotYou(false); void signIn('interactive', true) }}>{ACCOUNT_COPY.notYouSwitch}</button>
             <button type="button" onClick={() => { setNotYou(false); setFocusNext('not-you') }}>{ACCOUNT_COPY.notYouKeep(notYouName)}</button>

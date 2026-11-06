@@ -2,7 +2,7 @@
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { AccountFollows, FIRST_SIGN_IN_COPY, FirstSignInMove } from '../src/options/FirstSignInMove.tsx'
+import { ACCOUNT_FOLLOWS_COPY, AccountFollows, FIRST_SIGN_IN_COPY, FirstSignInMove } from '../src/options/FirstSignInMove.tsx'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -50,7 +50,7 @@ describe('first Twitch sign-in on this browser', () => {
     try {
       expect(view.text()).toContain('Signed in with Twitch as mira_tv')
       expect(view.heading()).toBe('Move this browser’s 12 saves to your account?')
-      expect(view.text()).toContain('They’ll follow you to every browser where you sign in. Notes stay on this browser.')
+      expect(view.text()).toContain('They’ll follow you to every browser where you sign in. Notes stay on this browser, and signing out removes them.')
       expect(view.box()?.checked).toBe(true)
       expect(view.text()).toContain('Also sync watched history (84 moments)')
       expect(view.text()).toContain('Up to 1,000 recent moments. You can turn this off in My Moments.')
@@ -76,6 +76,26 @@ describe('first Twitch sign-in on this browser', () => {
       expect(view.sendMessage.mock.calls[0]![0]).toEqual({ type: 'MY_MOMENTS', action: 'mutate', scope: SCOPE, command: { kind: 'import-device-saves' } })
       expect(view.sent()).toEqual(['mutate:import-device-saves', 'mutate:history-sync:true', 'mutate:import-device-history', 'first-sign-in:move'])
       expect(view.onDone).toHaveBeenCalledWith('Moved 12 saves. History sync is on.')
+    } finally { view.cleanup() }
+  })
+
+  it('keeps its buttons focusable while it moves, and ignores a second press', async () => {
+    let finish: (value: unknown) => void = () => undefined
+    const pending = new Promise(resolve => { finish = resolve })
+    const view = mount({ deviceHistory: 0 }, message => message.action === 'mutate' ? pending : {})
+    try {
+      await view.click('Move 12 saves')
+      const working = view.host.querySelector<HTMLButtonElement>('.pulse-journey-primary')!
+      expect(working.textContent).toBe('Moving…')
+      expect(working.disabled).toBe(false)
+      expect(working.getAttribute('aria-busy')).toBe('true')
+      expect(view.host.querySelector<HTMLButtonElement>('button:not(.pulse-journey-primary)')!.disabled).toBe(false)
+      await view.click('Moving…')
+      await view.click('Not now')
+      expect(view.sent()).toEqual(['mutate:import-device-saves'])
+      await act(async () => { finish({ type: 'MY_MOMENTS', snapshot: { deviceBookmarks: [] } }) })
+      expect(view.sent()).toEqual(['mutate:import-device-saves', 'first-sign-in:move'])
+      expect(view.onDone).toHaveBeenCalledWith('Moved 12 saves.')
     } finally { view.cleanup() }
   })
 
@@ -166,7 +186,11 @@ describe('what follows the account', () => {
       expect(view.row('watched-history')?.textContent).toBe('Watched historySyncing · up to 1,000 momentsChange')
       expect(view.row('watched-history')?.querySelector('a')?.getAttribute('href')).toBe('#moments-history')
       expect(view.row('supporter')?.textContent).toBe('SupporterActive · Renews on Dec 5Details')
-      expect(view.row('notes')?.textContent).toBe('NotesStay on this browser')
+      expect(view.row('notes')?.textContent).toBe('NotesThis browser only, until you sign out')
+      // The rows' words live in one exported const, like ACCOUNT_COPY and LINKED_COPY.
+      expect(ACCOUNT_FOLLOWS_COPY.supporterActive('Renews on Dec 5')).toBe('Active · Renews on Dec 5')
+      expect(ACCOUNT_FOLLOWS_COPY.supporterActive(null)).toBe('Active')
+      expect(ACCOUNT_FOLLOWS_COPY.supporterGrace).toBe('Active · last payment didn’t go through')
       expect([...view.host.querySelectorAll('[data-row]')].map(row => row.getAttribute('data-row'))).toEqual(['saves', 'watched-history', 'supporter', 'notes'])
     } finally { view.cleanup() }
   })

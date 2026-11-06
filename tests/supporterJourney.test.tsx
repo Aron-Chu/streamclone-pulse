@@ -1486,6 +1486,16 @@ describe('Continue with Twitch (tester and public stages)', () => {
     } finally { view.cleanup() }
   })
 
+  it('Not you says synced history stays in the account and notes saved here are removed', async () => {
+    const worker = moments(0, { saves: 12, historySync: 'on' })
+    const view = await mount({ account: () => linked, entitlement: () => twitchAccount('none', { checkoutEnabled: false }), moments: worker.handler, twitch: () => ({ status: twitchStatus({ profile: PROFILE }), account: linked }) }, undefined, 'public')
+    try {
+      await view.click('Not you?')
+      const confirm = view.host.querySelector('[data-not-you-confirm]')!
+      expect(confirm.textContent).toContain('Then this browser forgets PulseViewer’s saves and history. Saves and synced history stay in the account. Notes saved here while signed in are removed.')
+    } finally { view.cleanup() }
+  })
+
   it.each<[string, SupporterEntitlement]>([
     ['billing is off', { state: 'unavailable', reason: 'not_deployed' }],
     ['the membership read fails', { state: 'error' }],
@@ -1712,7 +1722,9 @@ describe('Continue with Twitch (tester and public stages)', () => {
       expect(confirm.getAttribute('role')).toBe('group')
       expect(confirm.textContent).toContain('Sign out PulseViewer on this browser?')
       expect(confirm.textContent).toContain('Changes not yet sent are sent first.')
-      expect(confirm.textContent).toContain('Then this browser forgets PulseViewer’s saves and history. They stay in the account.')
+      // History sync is not known to be on: history and notes saved here go.
+      expect(confirm.textContent).toContain('Then this browser forgets PulseViewer’s saves. They stay in the account. Watched history and notes saved here while signed in are removed.')
+      expect(confirm.textContent).not.toContain('saves and history. They stay in the account.')
       expect(document.activeElement?.textContent).toBe('Sign out PulseViewer on this browser?')
       expect(view.sendMessage.mock.calls.some(([message]) => message.forceVerify)).toBe(false)
       await view.click('Keep PulseViewer')

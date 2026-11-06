@@ -12,7 +12,7 @@ export const FIRST_SIGN_IN_COPY = {
   // The same words as the Account row's (ACCOUNT_COPY.signedInWithTwitch).
   signedIn: (name: string | null) => name ? `Signed in with Twitch as ${name}` : 'Signed in with Twitch',
   moveHeading: (n: number) => `Move this browser’s ${saves(n)} to your account?`,
-  moveBody: 'They’ll follow you to every browser where you sign in. Notes stay on this browser.',
+  moveBody: 'They’ll follow you to every browser where you sign in. Notes stay on this browser, and signing out removes them.',
   addHeading: (n: number, name: string | null) => `Add these ${saves(n)} to ${named(name)}?`,
   addBody: 'They were saved on this browser while nobody was signed in. Another Twitch account has used this browser before, so they may not be yours.',
   history: (n: number) => `Also sync watched history (${count(n, 'moment', 'moments')})`,
@@ -28,6 +28,23 @@ export const FIRST_SIGN_IN_COPY = {
   syncOn: ' History sync is on.',
   syncOnHistoryStays: ' History sync is on. This browser’s earlier history stays here.',
   syncOff: ' History sync didn’t turn on. You can turn it on in My Moments.',
+} as const
+
+/** The Account card's rows for what follows the account, and what stays here. */
+export const ACCOUNT_FOLLOWS_COPY = {
+  saves: 'Saves',
+  savesValue: (n: number | null) => n === null ? 'On every browser you sign in to' : `${n.toLocaleString('en-US')} · on every browser you sign in to`,
+  open: 'Open',
+  history: 'Watched history',
+  historyOn: 'Syncing · up to 1,000 moments',
+  historyOff: 'Off · this browser only',
+  change: 'Change',
+  supporter: 'Supporter',
+  supporterActive: (renewal: string | null) => `Active${renewal ? ` · ${renewal}` : ''}`,
+  supporterGrace: 'Active · last payment didn’t go through',
+  details: 'Details',
+  notes: 'Notes',
+  notesValue: 'This browser only, until you sign out',
 } as const
 
 type Mutation = { kind: 'import-device-saves' } | { kind: 'history-sync'; enabled: true } | { kind: 'import-device-history' }
@@ -96,12 +113,14 @@ export function FirstSignInMove({ scope, deviceSaves, deviceHistory, accountName
     onDone(notice)
   }
 
-  const moveButton = <button key="move" className={otherAccountSeen ? undefined : 'pulse-journey-primary'} type="button" disabled={busy} aria-busy={busy || undefined} onClick={() => void move()}>
+  // Never disabled while it works: a disabled button drops keyboard focus to
+  // the page. move() and leave() ignore a press while one is under way.
+  const moveButton = <button key="move" className={otherAccountSeen ? undefined : 'pulse-journey-primary'} type="button" aria-busy={busy || undefined} onClick={() => void move()}>
     {busy ? FIRST_SIGN_IN_COPY.moving : otherAccountSeen ? FIRST_SIGN_IN_COPY.add(accountName) : FIRST_SIGN_IN_COPY.move(deviceSaves)}
   </button>
   const stayButton = otherAccountSeen
-    ? <button key="stay" className="pulse-journey-primary" type="button" disabled={busy} onClick={() => void leave('not-mine')}>{FIRST_SIGN_IN_COPY.notMine}</button>
-    : <button key="stay" type="button" disabled={busy} onClick={() => void leave('later')}>{FIRST_SIGN_IN_COPY.notNow}</button>
+    ? <button key="stay" className="pulse-journey-primary" type="button" onClick={() => void leave('not-mine')}>{FIRST_SIGN_IN_COPY.notMine}</button>
+    : <button key="stay" type="button" onClick={() => void leave('later')}>{FIRST_SIGN_IN_COPY.notNow}</button>
 
   return (
     <PulseSectionCard title={otherAccountSeen ? FIRST_SIGN_IN_COPY.addHeading(deviceSaves, accountName) : FIRST_SIGN_IN_COPY.moveHeading(deviceSaves)} headingLevel={3}>
@@ -129,17 +148,17 @@ export function AccountFollows({ saves: saved, historySync, supporter }: {
 }) {
   return <>
     <div data-row="saves">
-      <dt>Saves</dt>
-      <dd>{saved === null ? 'On every browser you sign in to' : `${saved.toLocaleString('en-US')} · on every browser you sign in to`}</dd>
-      <dd className="pulse-account-link-actions"><a href="#moments">Open</a></dd>
+      <dt>{ACCOUNT_FOLLOWS_COPY.saves}</dt>
+      <dd>{ACCOUNT_FOLLOWS_COPY.savesValue(saved)}</dd>
+      <dd className="pulse-account-link-actions"><a href="#moments">{ACCOUNT_FOLLOWS_COPY.open}</a></dd>
     </div>
     {historySync === 'unavailable' ? null : <div data-row="watched-history">
-      <dt>Watched history</dt>
-      <dd>{historySync === 'on' ? 'Syncing · up to 1,000 moments' : 'Off · this browser only'}</dd>
-      <dd className="pulse-account-link-actions"><a href="#moments-history">Change</a></dd>
+      <dt>{ACCOUNT_FOLLOWS_COPY.history}</dt>
+      <dd>{historySync === 'on' ? ACCOUNT_FOLLOWS_COPY.historyOn : ACCOUNT_FOLLOWS_COPY.historyOff}</dd>
+      <dd className="pulse-account-link-actions"><a href="#moments-history">{ACCOUNT_FOLLOWS_COPY.change}</a></dd>
     </div>}
     {supporter ? <div data-row="supporter">
-      <dt>Supporter</dt>
+      <dt>{ACCOUNT_FOLLOWS_COPY.supporter}</dt>
       <dd>{supporter.line}</dd>
       {/* The membership card is above on this page: Details goes back to it. */}
       <dd className="pulse-account-link-actions"><a href="#supporter" onClick={event => {
@@ -147,11 +166,11 @@ export function AccountFollows({ saves: saved, historySync, supporter }: {
         if (!card) return
         event.preventDefault()
         card.scrollIntoView({ block: 'start' })
-      }}>Details</a></dd>
+      }}>{ACCOUNT_FOLLOWS_COPY.details}</a></dd>
     </div> : null}
     <div data-row="notes">
-      <dt>Notes</dt>
-      <dd>Stay on this browser</dd>
+      <dt>{ACCOUNT_FOLLOWS_COPY.notes}</dt>
+      <dd>{ACCOUNT_FOLLOWS_COPY.notesValue}</dd>
       <dd />
     </div>
   </>
