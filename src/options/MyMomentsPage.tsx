@@ -15,7 +15,7 @@ function reference(r: MomentReference): MomentReference {
   return { id, channel, title, vodId, streamId, offsetSeconds, ...(vodOriginDeltaSeconds === undefined ? {} : { vodOriginDeltaSeconds }), availability }
 }
 /** Worker sentences written for people; anything else is told in one of the lines below. */
-const WORKER_SENTENCE = /^(My Moments is|Device connection|Your Pulse account|Added \d|Sign in|Connect a Pulse|Bookmark unavailable|That save|Synced History)/
+const WORKER_SENTENCE = /^(My Moments is|Device connection|Your Pulse account|Added \d|Could not add to your account|Sign in|Connect a Pulse|Bookmark unavailable|That save|Synced History)/
 /**
  * What failed, in words (F9): a full browser, StreamPulse out of reach, or a
  * change or load that did not go through. Never "check your connection" when

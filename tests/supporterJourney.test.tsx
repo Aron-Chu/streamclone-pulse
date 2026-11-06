@@ -33,12 +33,15 @@ type Worker = {
   devices?: (action: string, deviceId?: string) => import('../src/shared/supporterAccount.ts').SupporterDevicesState
   twitch?: (message: { action: string; mode?: string; forceVerify?: boolean; confirm?: boolean }) => Omit<TwitchSignInResponse, 'type'> | Promise<Omit<TwitchSignInResponse, 'type'>>
   link?: (action: string) => { ok: boolean; login?: string; error?: string }
+  /** My Moments in the worker: the snapshot and the one-time move ask. */
+  moments?: (message: { action?: string; command?: { kind: string }; answer?: string }) => unknown
 }
 
 async function mount(worker: Worker, onEntitlement?: (value: SupporterEntitlement | null) => void, twitchStage: TwitchSignInStage = 'off', slots: { children?: React.ReactNode; publicCard?: (link: SeenInChatLink) => React.ReactNode } = {}) {
   const write = vi.fn()
   const listeners = new Set<(changes: Record<string, chrome.storage.StorageChange>) => void>()
-  const sendMessage = vi.fn(async (message: { type: string; action?: string; email?: string; deviceId?: string; mode?: string; forceVerify?: boolean; confirm?: boolean }) => {
+  const sendMessage = vi.fn(async (message: { type: string; action?: string; email?: string; deviceId?: string; mode?: string; forceVerify?: boolean; confirm?: boolean; command?: { kind: string }; answer?: string }) => {
+    if (message.type === 'MY_MOMENTS' && worker.moments) return worker.moments(message)
     if (message.type === 'SUPPORTER_ACCOUNT') {
       const account = await worker.account(message.action as SupporterAccountAction)
       if (account instanceof Error) throw account
@@ -1403,9 +1406,83 @@ describe('Continue with Twitch (tester and public stages)', () => {
       expect(view.text()).toContain("Supporter isn't on sale yet")
       expect(view.buttons()).not.toContain('Become a Supporter')
       expect(view.buttons()).toContain('Sign out')
-      expect(view.buttons()).toContain('Use a different Twitch account')
+      expect(view.buttons()).toContain('Not you?')
       expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
       expect(view.write).not.toHaveBeenCalled()
+    } finally { view.cleanup() }
+  })
+
+  it('shows the signed-in Twitch name and Not you when the account has no membership', async () => {
+    const view = await mount({ account: () => linked, entitlement: () => twitchAccount('none', { checkoutEnabled: false }), twitch: () => ({ status: twitchStatus({ profile: PROFILE }), account: linked }) }, undefined, 'public')
+    try {
+      expect(accountRow(view.host)).toContain('Signed in with Twitch as PulseViewer')
+      const row = view.host.querySelector('[data-row="account"]')!
+      expect([...row.querySelectorAll('button')].map(button => button.textContent)).toEqual(['Sign out', 'Not you?'])
+      expect(view.buttons()).not.toContain('Use a different Twitch account')
+    } finally { view.cleanup() }
+  })
+
+  const moments = (deviceSaves: number, extra: { saves?: number; historySync?: string; ask?: boolean; otherAccountSeen?: boolean } = {}) => {
+    const sent: string[] = []
+    const handler = (message: { action?: string; command?: { kind: string }; answer?: string }) => {
+      sent.push(message.action === 'mutate' ? `mutate:${message.command!.kind}` : `${message.action}${message.answer ? `:${message.answer}` : ''}`)
+      if (message.action === 'first-sign-in') return { type: 'MY_MOMENTS_FIRST_SIGN_IN', ask: !message.answer && (extra.ask ?? true), otherAccountSeen: extra.otherAccountSeen ?? false }
+      return { type: 'MY_MOMENTS', snapshot: { scope: `https://api.streampulse.stream|account:${ACCOUNT_ID}`, production: true, bookmarksState: 'ready', bookmarksAvailable: true, localNotes: {},
+        moments: Array.from({ length: extra.saves ?? 0 }, (_, i) => ({ id: `bk-${i}`, savedAt: 1 })), collections: [], membership: 'free',
+        deviceBookmarks: Array.from({ length: deviceSaves }, (_, i) => ({ id: `local:${i}` })), deviceHistory: 84,
+        historySync: { state: extra.historySync ?? 'off' } } }
+    }
+    return { sent, handler }
+  }
+
+  it('asks once, above the Supporter card, to move this browser’s saves after a Twitch sign-in', async () => {
+    const worker = moments(12)
+    const view = await mount({ account: () => linked, entitlement: () => twitchAccount('none', { checkoutEnabled: false }), moments: worker.handler, twitch: () => ({ status: twitchStatus({ profile: PROFILE }), account: linked }) }, undefined, 'public')
+    try {
+      const move = view.host.querySelector('[data-first-sign-in-move]')!
+      expect(move.querySelector('h3')?.textContent).toBe('Move this browser’s 12 saves to your account?')
+      expect(move.textContent).toContain('Signed in with Twitch as PulseViewer')
+      // First in the section, before the Supporter card.
+      expect(move.compareDocumentPosition(view.host.querySelector('[data-journey-state]')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      expect(worker.sent).not.toContain('mutate:import-device-saves')
+      await view.click('Not now')
+      expect(worker.sent).toContain('first-sign-in:later')
+      expect(worker.sent).not.toContain('mutate:import-device-saves')
+      expect(view.host.querySelector('[data-first-sign-in-move]')).toBeNull()
+      expect(view.text()).toContain('Saves stay on this browser. You can add them from My Moments.')
+    } finally { view.cleanup() }
+  })
+
+  it('never asks again for the same account', async () => {
+    const worker = moments(12, { ask: false })
+    const view = await mount({ account: () => linked, entitlement: () => twitchAccount('none', { checkoutEnabled: false }), moments: worker.handler, twitch: () => ({ status: twitchStatus({ profile: PROFILE }), account: linked }) }, undefined, 'public')
+    try {
+      expect(worker.sent).toContain('first-sign-in')
+      expect(view.host.querySelector('[data-first-sign-in-move]')).toBeNull()
+    } finally { view.cleanup() }
+  })
+
+  it('relink_required keeps device saves', async () => {
+    const worker = moments(12)
+    const view = await mount({ account: () => ({ state: 'relink_required' }), entitlement: () => ({ state: 'not_linked' }), moments: worker.handler, twitch: () => ({ status: twitchStatus(), account: { state: 'relink_required' } }) }, undefined, 'public')
+    try {
+      expect(view.host.querySelector('[data-first-sign-in-move]')).toBeNull()
+      expect(worker.sent.filter(sent => sent.startsWith('mutate'))).toEqual([])
+      expect(worker.sent).not.toContain('first-sign-in')
+    } finally { view.cleanup() }
+  })
+
+  it('account card lists what follows the account', async () => {
+    const worker = moments(0, { saves: 12, historySync: 'on' })
+    const view = await mount({ account: () => linked, entitlement: () => twitchAccount('none', { checkoutEnabled: false }), moments: worker.handler, twitch: () => ({ status: twitchStatus({ profile: PROFILE }), account: linked }) }, undefined, 'public')
+    try {
+      const rows = [...view.host.querySelectorAll('.pulse-supporter-account-rows > dl > [data-row]')].map(row => row.getAttribute('data-row'))
+      expect(rows.slice(0, 4)).toEqual(['account', 'saves', 'watched-history', 'notes'])
+      expect(view.host.querySelector('[data-row="saves"]')?.textContent).toContain('12 · on every browser you sign in to')
+      expect(view.host.querySelector('[data-row="watched-history"]')?.textContent).toContain('Syncing · up to 1,000 moments')
+      expect(view.text()).toContain('Signed out, everything still works on this browser. It just doesn’t follow you.')
+      // No device saves: nothing to ask.
+      expect(view.host.querySelector('[data-first-sign-in-move]')).toBeNull()
     } finally { view.cleanup() }
   })
 
@@ -1629,7 +1706,20 @@ describe('Continue with Twitch (tester and public stages)', () => {
   it('chooses another Twitch account through a forced Twitch window', async () => {
     const view = await mount({ account: () => linked, entitlement: () => twitchAccount('none', { checkoutEnabled: false }), twitch: message => ({ status: twitchStatus({ profile: PROFILE }), account: linked, ...(message.action === 'sign_in' ? { outcome: 'signed_in' as const } : {}) }) }, undefined, 'public')
     try {
-      await view.click('Use a different Twitch account')
+      await view.click('Not you?')
+      // One confirm first: the next person on this browser must not see this account's saves.
+      const confirm = view.host.querySelector('[data-not-you-confirm]')!
+      expect(confirm.getAttribute('role')).toBe('group')
+      expect(confirm.textContent).toContain('Sign out PulseViewer on this browser?')
+      expect(confirm.textContent).toContain('Changes not yet sent are sent first.')
+      expect(confirm.textContent).toContain('Then this browser forgets PulseViewer’s saves and history. They stay in the account.')
+      expect(document.activeElement?.textContent).toBe('Sign out PulseViewer on this browser?')
+      expect(view.sendMessage.mock.calls.some(([message]) => message.forceVerify)).toBe(false)
+      await view.click('Keep PulseViewer')
+      expect(view.host.querySelector('[data-not-you-confirm]')).toBeNull()
+      expect(document.activeElement?.textContent).toBe('Not you?')
+      await view.click('Not you?')
+      await view.click('Sign out and switch')
       expect(view.sendMessage).toHaveBeenCalledWith({ type: 'TWITCH_SIGN_IN', action: 'sign_in', mode: 'interactive', forceVerify: true })
     } finally { view.cleanup() }
   })

@@ -4,14 +4,23 @@ import { keptVodOriginDelta } from './vodOriginAlignment.ts'
 import { BACKUP_MAX_HISTORY, BACKUP_MAX_SAVES, validBackupMoment } from './myMomentsBackup.ts'
 
 export type MyMomentsCommand = Extract<LibraryCommand, { kind: 'save' | 'unsave' | 'edit' | 'clear-history' | 'preferences' | 'import-device-saves' | 'history-sync'
-  | 'remove-visit' | 'restore-visit' | 'import-backup' }>
+  | 'remove-visit' | 'restore-visit' | 'import-backup' | 'import-device-history' }>
+/** How a Twitch account answered the one-time "move this browser's saves" ask. */
+export type FirstSignInAnswer = 'move' | 'later' | 'not-mine'
 export type MyMomentsRequest =
   | { type: 'MY_MOMENTS'; action: 'load' }
   | { type: 'MY_MOMENTS'; action: 'recent' }
+  /**
+   * The one-time ask after a Twitch sign-in: whether to ask the signed-in
+   * account, and whether another Twitch account used this browser before.
+   * `answer` records the account's answer; it moves nothing by itself.
+   */
+  | { type: 'MY_MOMENTS'; action: 'first-sign-in'; answer?: FirstSignInAnswer }
   | { type: 'MY_MOMENTS'; action: 'mutate'; scope: string; command: MyMomentsCommand }
   /** `reference`: the moment a jump or arrival plays, so its picture can be kept (src/background/momentPictures.ts). */
   | { type: 'MOMENT_CAPTURE'; action: 'status'; reference?: MomentReference }
   | { type: 'MOMENT_CAPTURE'; action: 'record'; epoch: number; reference: MomentReference; watchedSeconds: number }
+export interface MyMomentsFirstSignIn { type: 'MY_MOMENTS_FIRST_SIGN_IN'; ask: boolean; otherAccountSeen: boolean }
 /** The worker tells open extension pages that My Moments changed elsewhere: a watched moment joined History. */
 export const MY_MOMENTS_CHANGED = 'MY_MOMENTS_CHANGED'
 /**
@@ -85,10 +94,14 @@ export function parseMyMoments(raw: Record<string, unknown>): MyMomentsRequest |
   }
   if (raw.type !== 'MY_MOMENTS') return null
   if ((raw.action === 'load' || raw.action === 'recent') && keys(raw, ['type','action'])) return { type: raw.type, action: raw.action }
+  if (raw.action === 'first-sign-in' && keys(raw, ['type','action','answer'])) {
+    if (raw.answer === undefined) return { type: raw.type, action: raw.action }
+    return raw.answer === 'move' || raw.answer === 'later' || raw.answer === 'not-mine' ? { type: raw.type, action: raw.action, answer: raw.answer } : null
+  }
   if (raw.action !== 'mutate' || !keys(raw, ['type','action','scope','command']) || typeof raw.scope !== 'string' || raw.scope.length > 500 || !record(raw.command)) return null
   const c = raw.command
   const valid = c.kind === 'save' ? keys(c, ['kind','reference']) && validMomentReference(c.reference)
-    : c.kind === 'clear-history' ? keys(c, ['kind'])
+    : c.kind === 'clear-history' || c.kind === 'import-device-history' ? keys(c, ['kind'])
       : c.kind === 'import-device-saves' ? keys(c, ['kind', 'id']) && (c.id === undefined || typeof c.id === 'string' && c.id.length > 0 && c.id.length <= 200)
       : c.kind === 'history-sync' ? keys(c, ['kind','enabled']) && typeof c.enabled === 'boolean'
       : c.kind === 'remove-visit' ? keys(c, ['kind','reference']) && validMomentReference(c.reference)

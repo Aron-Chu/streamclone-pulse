@@ -33,6 +33,8 @@ import { SUPPORTER_FINISH_OPTIONS } from '../ui/supporterFinish.ts'
 import { SupporterCard, type CardIdentity, type CardLook, type CardStatus } from './SupporterCard.tsx'
 import { TwitchGlitch, twitchOutcomeMessage } from './TwitchAccountConnection.tsx'
 import { usePortalOrigin } from './usePortalOrigin.ts'
+import { AccountFollows, FirstSignInMove } from './FirstSignInMove.tsx'
+import type { MyMomentsSnapshot } from '../shared/myMoments.ts'
 
 /**
  * Account and Supporter membership as one journey, drawn as the Account &
@@ -79,6 +81,14 @@ export const ACCOUNT_COPY = {
   continueWithTwitch: 'Continue with Twitch',
   openingTwitch: 'Opening Twitch…',
   differentAccount: 'Use a different Twitch account',
+  // "Not you?" (board C1): one confirm, then the forced Twitch window.
+  notYou: 'Not you?',
+  notYouHeading: (name: string) => `Sign out ${name} on this browser?`,
+  notYouSentFirst: 'Changes not yet sent are sent first.',
+  notYouForget: (name: string) => `Then this browser forgets ${name}’s saves and history. They stay in the account.`,
+  notYouSwitch: 'Sign out and switch',
+  notYouKeep: (name: string) => `Keep ${name}`,
+  followsHint: 'Signed out, everything still works on this browser. It just doesn’t follow you.',
   manageSubscription: 'Manage subscription',
   signOut: 'Sign out',
   signOutEverywhere: 'Sign out everywhere',
@@ -284,6 +294,23 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   // The membership on screen, for deciding whether a failed quiet read can keep it.
   const shown = useRef<SupporterEntitlement | null>(null)
   const lastAccount = useRef<SupporterAccountState | null>(null)
+  // My Moments for the signed-in Twitch account: what follows it, and the
+  // one-time ask to move this browser's saves. 'unavailable': the read failed.
+  const [moments, setMoments] = useState<MyMomentsSnapshot | 'unavailable' | null>(null)
+  const [moveAsk, setMoveAsk] = useState<{ otherAccountSeen: boolean } | null>(null)
+  const momentsRequest = useRef(0)
+  // "Not you?": one confirm before this browser forgets the account.
+  const [notYou, setNotYou] = useState(false)
+  // Focus moves after the next render, once the element it goes to is drawn.
+  const [focusNext, setFocusNext] = useState<'not-you-heading' | 'not-you' | 'card-notice' | null>(null)
+  const notYouHeading = useRef<HTMLParagraphElement>(null)
+  const notYouButton = useRef<HTMLButtonElement>(null)
+  const cardNotice = useRef<HTMLParagraphElement>(null)
+  useEffect(() => {
+    if (!focusNext) return
+    ;({ 'not-you-heading': notYouHeading, 'not-you': notYouButton, 'card-notice': cardNotice })[focusNext].current?.focus()
+    setFocusNext(null)
+  }, [focusNext])
 
   // Paid controls act only on a membership the server answered: a read that
   // failed, or a server that is down or on another environment, pauses them as
@@ -439,7 +466,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   // Firefox builds have no device link (deviceLink.ts), so never a code to show.
   const pending = DEVICE_LINK_ENABLED && account?.state === 'pending' ? account : null
   const linked = account?.state === 'linked' ? account : null
-  useEffect(() => { deviceRequest.current++; setDevices(null); setRevokeDevice(null); setConfirmDisconnect(false); setConfirmIdentity(null) }, [linked?.accountId])
+  useEffect(() => { deviceRequest.current++; setDevices(null); setRevokeDevice(null); setConfirmDisconnect(false); setConfirmIdentity(null); setNotYou(false) }, [linked?.accountId])
   const status = entitlement?.state === 'ready' ? entitlement.status : null
   useEffect(() => {
     // A worker poll can finish while settings is open or hidden. Once its
@@ -643,8 +670,14 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
 
   /** Sign out always asks first: it removes this browser's signed-in watched history and notes. */
   function disconnect() {
-    setEverywhere(null)
+    setEverywhere(null); setNotYou(false)
     setConfirmDisconnect(true)
+  }
+
+  /** "Not you?" asks first too: the next person on this browser must not see this account's saves. */
+  function openNotYou() {
+    setConfirmDisconnect(false); setEverywhere(null); setNotice('', 'account')
+    setNotYou(true); setFocusNext('not-you-heading')
   }
 
   async function confirmDisconnection() {
@@ -790,6 +823,38 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
   // Sign out everywhere needs this device's Twitch check, so it is offered only
   // to a Twitch sign-in where the Twitch window can open.
   const everywhereOffered = twitchOn && signedInWithTwitch && twitchWindow
+
+  // Signed in with Twitch: read what follows the account, and whether to ask
+  // once about this browser's saves. Nothing moves here; FirstSignInMove asks.
+  const momentsAccount = twitchOn && signedInWithTwitch && linked ? linked.accountId : null
+  const readMoments = useCallback(async () => {
+    const id = momentsRequest.current
+    let snapshot: MyMomentsSnapshot | 'unavailable' = 'unavailable'
+    try {
+      const reply = await chrome.runtime.sendMessage({ type: 'MY_MOMENTS', action: 'load' }) as { type?: string; snapshot?: MyMomentsSnapshot } | undefined
+      if (reply?.type === 'MY_MOMENTS' && reply.snapshot?.production) snapshot = reply.snapshot
+    } catch { /* The rows say what follows, without the counts. */ }
+    if (id === momentsRequest.current) setMoments(snapshot)
+  }, [])
+  useEffect(() => {
+    const id = ++momentsRequest.current
+    setMoments(null); setMoveAsk(null)
+    if (!momentsAccount) return
+    void readMoments()
+    void (async () => {
+      try {
+        const reply = await chrome.runtime.sendMessage({ type: 'MY_MOMENTS', action: 'first-sign-in' }) as BackgroundResponse | undefined
+        if (id === momentsRequest.current && reply && 'type' in reply && reply.type === 'MY_MOMENTS_FIRST_SIGN_IN' && reply.ask) setMoveAsk({ otherAccountSeen: reply.otherAccountSeen })
+      } catch { /* Not asked: the saves stay here, and My Moments offers the move. */ }
+    })()
+    return () => { momentsRequest.current++ }
+  }, [momentsAccount, readMoments])
+  const snapshot = moments !== null && moments !== 'unavailable' ? moments : null
+  // Only a browser with saves of its own, and an account whose saves loaded, is asked.
+  const moveSaves = moveAsk && snapshot?.bookmarksAvailable ? snapshot.deviceBookmarks.length : 0
+  const historyState = snapshot?.historySync?.state
+  const followsHistory = historyState === 'on' || historyState === 'off' ? historyState : 'unavailable'
+  const notYouName = profile?.displayName ?? 'this account'
 
   const continueWithTwitch = (key?: string) => (
     <button key={key} className="pulse-twitch-signin" data-twitch-signin="true" type="button" disabled={accountBusy || payBusy || signingIn !== null || (twitchOn && twitch === null)} aria-busy={signingIn === 'interactive' ? true : undefined} onClick={() => void signIn('interactive')}>
@@ -1068,6 +1133,18 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
 
   return (
     <>
+      {/* First in the section: the one-time ask after a Twitch sign-in. Its
+          outcome is told in the card's status below, where the ask was. */}
+      {moveAsk && snapshot && moveSaves > 0 ? <div data-first-sign-in-move>
+        <FirstSignInMove
+          scope={snapshot.scope}
+          deviceSaves={moveSaves}
+          deviceHistory={followsHistory === 'unavailable' ? 0 : snapshot.deviceHistory ?? 0}
+          accountName={profile?.displayName ?? null}
+          otherAccountSeen={moveAsk.otherAccountSeen}
+          onDone={text => { setMoveAsk(null); setNotice(text); setFocusNext('card-notice'); void readMoments() }}
+        />
+      </div> : null}
       <SupporterCard
         identity={identity}
         membership={{ status: cardStatus, months: periods, tenure: supporterTenureForMonths(periods) }}
@@ -1081,7 +1158,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
                 <p className="pulse-journey-title"><strong>{title}</strong></p>
                 {body}
                 {stale ? <p className="pulse-supporter-detail" data-journey-stale="true">Could not refresh just now; showing the last confirmed status.</p> : null}
-                {notice.text && notice.at === 'card' ? <p className="pulse-journey-notice">{notice.text}</p> : null}
+                {notice.text && notice.at === 'card' ? <p className="pulse-journey-notice" tabIndex={-1} ref={cardNotice}>{notice.text}</p> : null}
               </div>
               {/* The price and its renewal terms come before the button that
                   buys it, in reading and Tab order and above it at any width;
@@ -1141,16 +1218,23 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
               </dd>
               <dd className="pulse-account-link-actions">{connected ? <>
                 <button type="button" disabled={accountBusy || payBusy || restoreOpen || signingIn !== null} onClick={disconnect}>{ACCOUNT_COPY.signOut}</button>
-                {twitchOn && signedInWithTwitch && twitchWindow ? <button type="button" className="pulse-account-quiet-button" disabled={accountBusy || payBusy || signingIn !== null} onClick={() => void signIn('interactive', true)}>{ACCOUNT_COPY.differentAccount}</button> : null}
+                {twitchOn && signedInWithTwitch && twitchWindow ? <button ref={notYouButton} type="button" className="pulse-account-quiet-button" disabled={accountBusy || payBusy || signingIn !== null} aria-expanded={notYou} onClick={openNotYou}>{profile ? ACCOUNT_COPY.notYou : ACCOUNT_COPY.differentAccount}</button> : null}
               </> : null}</dd>
             </div> : null}
+            {/* What follows the Twitch account to every browser it signs in on, and what stays here. */}
+            {momentsAccount && moments ? <AccountFollows
+              saves={snapshot?.bookmarksAvailable ? snapshot.moments.filter(moment => moment.savedAt !== undefined).length : null}
+              historySync={followsHistory}
+              supporter={isSupporter && !stale ? { line: status === 'grace' ? 'Active · last payment didn’t go through' : `Active${renewal ? ` · ${renewal.text}` : ''}` } : null}
+            /> : null}
             {/* Its own row: the account row already holds Sign out and the account switch. */}
             {everywhereOffered ? <div data-row="sign-out-everywhere">
               <dt>All devices</dt>
               <dd>Every browser and extension<small>Sign out everywhere ends every website session and extension signed in to this account. Nothing is deleted from your account.</small></dd>
-              <dd className="pulse-account-link-actions"><button type="button" disabled={accountBusy || payBusy || signingIn !== null} onClick={() => { setConfirmDisconnect(false); setNotice('', 'account'); setEverywhere('ask') }}>{ACCOUNT_COPY.signOutEverywhere}</button></dd>
+              <dd className="pulse-account-link-actions"><button type="button" disabled={accountBusy || payBusy || signingIn !== null} onClick={() => { setConfirmDisconnect(false); setNotYou(false); setNotice('', 'account'); setEverywhere('ask') }}>{ACCOUNT_COPY.signOutEverywhere}</button></dd>
             </div> : null}
           </dl>
+          {momentsAccount && moments ? <p className="pulse-supporter-detail">{ACCOUNT_COPY.followsHint}</p> : null}
           {/* Static explanations stay out of the live account and billing actions. */}
           <details className="pulse-supporter-help">
             <summary>Account help</summary>
@@ -1187,6 +1271,15 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
             {notice.text && notice.at === 'account' ? <p className="pulse-journey-notice">{notice.text}</p> : null}
           </div>
         </div>
+        {notYou && everywhereOffered ? <div className="pulse-journey-confirm" role="group" aria-label={ACCOUNT_COPY.notYouHeading(notYouName)} data-not-you-confirm>
+          <p tabIndex={-1} ref={notYouHeading}><strong>{ACCOUNT_COPY.notYouHeading(notYouName)}</strong></p>
+          <p>{ACCOUNT_COPY.notYouSentFirst}</p>
+          <p>{ACCOUNT_COPY.notYouForget(notYouName)}</p>
+          <div className="pulse-account-link-actions pulse-journey-actions">
+            <button type="button" disabled={accountBusy || payBusy || signingIn !== null} onClick={() => { setNotYou(false); void signIn('interactive', true) }}>{ACCOUNT_COPY.notYouSwitch}</button>
+            <button type="button" onClick={() => { setNotYou(false); setFocusNext('not-you') }}>{ACCOUNT_COPY.notYouKeep(notYouName)}</button>
+          </div>
+        </div> : null}
         {everywhereOffered && everywhere === 'ask' ? <div className="pulse-journey-confirm" role="group" aria-label="Confirm sign out everywhere" data-sign-out-everywhere="ask"><p>Sign out everywhere? This ends every StreamPulse website session and signs out every extension connected to this account, including this one. Nothing is deleted from your account, and it does not cancel your subscription. This extension removes its signed-in watched history and notes. Other browsers keep theirs hidden until this account signs in there again. Continue with Twitch with the same Twitch account to sign in again.</p><div className="pulse-account-link-actions pulse-journey-actions"><button type="button" disabled={everywhereBusy || accountBusy || payBusy} aria-busy={everywhereBusy || undefined} onClick={() => void signOutEverywhere()}>{everywhereBusy ? 'Signing out everywhere…' : 'Confirm sign out everywhere'}</button><button type="button" disabled={everywhereBusy} onClick={() => setEverywhere(null)}>Stay signed in</button></div></div> : null}
         {everywhereOffered && everywhere === 'confirm_identity' ? <div className="pulse-journey-confirm" role="group" aria-label={ACCOUNT_COPY.confirmHeading} data-sign-out-everywhere="confirm-identity"><p><strong>{ACCOUNT_COPY.confirmHeading}</strong></p><p>{ACCOUNT_COPY.confirmEverywhereBody}</p><div className="pulse-account-link-actions pulse-journey-actions"><button className="pulse-twitch-signin" type="button" disabled={everywhereBusy} aria-busy={everywhereBusy || undefined} onClick={() => void signOutEverywhere(true)}><TwitchGlitch />{everywhereBusy ? ACCOUNT_COPY.openingTwitch : ACCOUNT_COPY.continueWithTwitch}</button><button type="button" disabled={everywhereBusy} onClick={() => setEverywhere(null)}>Not now</button></div></div> : null}
         {confirmDisconnect ? <div className="pulse-journey-confirm" role="group" aria-label="Confirm sign out"><p>Sign out of this extension? {accountKind === 'installation' ? 'Your bookmarks, notes and watched history stay in this browser.' : 'This removes the watched history and notes saved here while signed in. Saves made without an account stay.'} It does not cancel your subscription or stop a payment already in progress. {twitchOn ? 'Continue with Twitch with the same Twitch account to see it here again.' : accountKind === 'installation' ? 'Use Restore with Stripe email to reconnect, or contact support for help.' : DEVICE_LINK_ENABLED ? 'Connect this extension again to see it here.' : ''}</p><div className="pulse-account-link-actions pulse-journey-actions"><button type="button" disabled={accountBusy || payBusy} onClick={() => void confirmDisconnection()}>Confirm sign out</button><button type="button" onClick={() => setConfirmDisconnect(false)}>Stay signed in</button></div></div> : null}
