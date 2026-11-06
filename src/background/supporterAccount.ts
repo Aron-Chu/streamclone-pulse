@@ -561,6 +561,30 @@ export class SupporterAccountCoordinator {
     return this.clear('signed_out')
   }
 
+  /**
+   * Sign out from credentials a refresh retry kept. If the lost reply rotated
+   * the pair, the kept token is dead and its disconnect would answer 401 with
+   * the device still live, so resend the refresh and disconnect the pair the
+   * server answers with. A refused resend means the device is already revoked
+   * (a late replay revokes it). If the resend can't be made, disconnect the
+   * kept token, which is live when the lost request never arrived.
+   */
+  private async revokeKept(credentials: Linked): Promise<SupporterAccountState> {
+    // No local access survives the attempt, as in revoke().
+    await this.ports.write({ kind: 'revoking', token: credentials.token })
+    await this.ports.identityChanged?.()
+    let result
+    try { result = await this.ports.request('/v1/account/devices/refresh', { refreshToken: credentials.refreshToken }) }
+    catch { return this.revoke(credentials.token) }
+    if (result.status === 401) {
+      this.revocationUnconfirmed = false
+      return this.clear('signed_out')
+    }
+    const current = result.status === 200 ? linked(result.body) : null
+    if (current && current.accountId === credentials.accountId && current.deviceId === credentials.deviceId) return this.revoke(current.token)
+    return this.revoke(credentials.token)
+  }
+
   /** Refresh open account surfaces after an acknowledged badge change. */
   invalidateEntitlement(): Promise<void> {
     const task = this.queue.then(async () => {
@@ -613,7 +637,7 @@ export class SupporterAccountCoordinator {
       if (credentials) {
         // Before any network I/O: a failed revocation must not keep the copy.
         this.forgetAccount(credentials.accountId)
-        return this.revoke(credentials.token)
+        return raw.kind === 'refreshing' ? this.revokeKept(credentials) : this.revoke(credentials.token)
       }
       if (raw.kind === 'refreshing') this.revocationUnconfirmed = true
       // Clear before network I/O so a failed request cannot keep local access.
