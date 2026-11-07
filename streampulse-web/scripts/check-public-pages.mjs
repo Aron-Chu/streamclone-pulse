@@ -16,7 +16,7 @@ const expected = [
   ['guides/twitch-vod-timestamps/index.html', 'Twitch VOD Availability and Timestamps — StreamPulse', 'index,follow', 'https://streampulse.stream/guides/twitch-vod-timestamps'],
   ['index.html', 'StreamPulse: Twitch Chat Stats & Top Moments', 'index,follow', 'https://streampulse.stream/'],
   ['analytics-fallback/index.html', 'StreamPulse Analytics', 'noindex,nofollow', 'https://streampulse.stream/analytics-fallback'],
-  ['analytics/index.html', 'StreamPulse Analytics', 'index,follow', 'https://streampulse.stream/analytics'],
+  ['analytics/index.html', 'Live Twitch Chat Stats & Top Emotes — StreamPulse', 'index,follow', 'https://streampulse.stream/analytics'],
   ['docs/index.html', 'Documentation — StreamPulse', 'index,follow', 'https://streampulse.stream/docs'],
   ['status/index.html', 'Service Status — StreamPulse', 'index,follow', 'https://streampulse.stream/status'],
   ['privacy/index.html', 'Privacy Policy — StreamPulse', 'index,follow', 'https://streampulse.stream/privacy'],
@@ -120,8 +120,24 @@ for (const relativePath of ['robots.txt', 'sitemap.xml', '_headers', '_redirects
 // A sitemap URL must be a page that asks to be indexed: listing a noindex page is a Search Console error.
 if (existsSync(join(dist, 'sitemap.xml'))) {
   const indexable = new Set(expected.filter(([, , robots]) => robots === 'index,follow').map(([, , , canonical]) => canonical))
-  for (const [, loc] of readFileSync(join(dist, 'sitemap.xml'), 'utf8').matchAll(/<loc>([^<]+)<\/loc>/g)) {
+  const sitemap = readFileSync(join(dist, 'sitemap.xml'), 'utf8')
+  for (const [, loc] of sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)) {
     if (!indexable.has(loc)) failures.push(`sitemap.xml: ${loc} is not an indexable page`)
+  }
+  // A <lastmod> is a W3C date no later than today; pages that state no date carry none (scripts/sitemap-lastmod.mjs).
+  for (const [, lastmod] of sitemap.matchAll(/<lastmod>([^<]*)<\/lastmod>/g)) {
+    const valid = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2}))?$/.test(lastmod) && Date.parse(lastmod) <= Date.now() + 86_400_000
+    if (!valid) failures.push(`sitemap.xml: lastmod ${lastmod} is not a past W3C date`)
+  }
+}
+
+// The home page names the product, who makes it and the site, for search results.
+if (existsSync(join(dist, 'index.html'))) {
+  const types = [...readFileSync(join(dist, 'index.html'), 'utf8').matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)]
+    .flatMap(([, json]) => { const data = JSON.parse(json); return data['@graph'] ?? [data] })
+    .map(item => item['@type'])
+  for (const type of ['SoftwareApplication', 'Organization', 'WebSite']) {
+    if (!types.includes(type)) failures.push(`index.html: missing ${type} structured data`)
   }
 }
 

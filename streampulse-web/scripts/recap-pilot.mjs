@@ -8,7 +8,7 @@ const LOGIN = /^[a-z0-9_]{1,25}$/
 const ID = /^\d{1,30}$/
 const RESERVED = new Set(['hub', 'emotes', 'streams', 'explore', 'moments', 'newsroom', 'settings'])
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/
-const PAGE_KEYS = ['kind', 'login', 'streamId', 'displayName', 'game', 'title', 'description', 'summary', 'startedAt', 'durationSeconds', 'nonMissingRollupMinutes', 'coverage', 'moments', 'topEmotes', 'review', 'replay', 'peakChatThreshold']
+const PAGE_KEYS = ['kind', 'login', 'streamId', 'displayName', 'game', 'title', 'description', 'summary', 'startedAt', 'durationSeconds', 'nonMissingRollupMinutes', 'coverage', 'moments', 'topEmotes', 'review', 'replay']
 
 function fail(message) { throw new Error(`Recap pilot: ${message}`) }
 function record(value, label, keys) {
@@ -26,7 +26,7 @@ function date(value, label) {
   if (typeof value !== 'string' || !ISO.test(value) || !Number.isFinite(Date.parse(value)) || new Date(value).toISOString().slice(0, 19) !== value.slice(0, 19)) fail(`${label} must be a UTC timestamp`)
 }
 
-/** The canonical draft gate uses OR alternatives, not a new coverage percentage. */
+/** The draft gate: 60 stream minutes or 30 measured ones, honest coverage, and the stream's own top 3 moments. */
 export function validatePilot(input, { now = new Date() } = {}) {
   record(input, 'manifest', ['schemaVersion', 'pages'])
   if (input.schemaVersion !== 1 || !Array.isArray(input.pages) || input.pages.length > 20) fail('expected schemaVersion 1 and at most 20 pilot pages')
@@ -49,7 +49,10 @@ export function validatePilot(input, { now = new Date() } = {}) {
     record(page.coverage, `${label}.coverage`, ['state', 'description'])
     if (!['complete', 'partial'].includes(page.coverage.state)) fail(`${label}: unknown coverage cannot qualify`)
     text(page.coverage.description, `${label}.coverage.description`)
-    if (!Array.isArray(page.moments) || !page.moments.length || page.moments.length > 20) fail(`${label}: requires 1-20 measured moments`)
+    // The stream's own top 3 (owner decision 2026-11-05): at least three measured moments, ranked within
+    // that stream. It replaces "three moments scoring 70+ or a documented peak chat threshold", which no
+    // sampled stream passed. Scores are relative to the stream, so no absolute score is required.
+    if (!Array.isArray(page.moments) || page.moments.length < 3 || page.moments.length > 20) fail(`${label}: needs the stream's top 3 measured moments (3-20 moments)`)
     const offsets = new Set()
     for (const moment of page.moments) {
       record(moment, `${label}.moment`, ['offsetSeconds', 'score', 'chatCount', 'emoteCount'])
@@ -59,15 +62,6 @@ export function validatePilot(input, { now = new Date() } = {}) {
       offsets.add(moment.offsetSeconds)
       for (const key of ['chatCount', 'emoteCount']) if (moment[key] !== undefined) number(moment[key], `${label}.moment.${key}`)
     }
-    let documentedPeak = false
-    if (page.peakChatThreshold !== undefined) {
-      record(page.peakChatThreshold, `${label}.peakChatThreshold`, ['minimum', 'observed', 'rationale'])
-      number(page.peakChatThreshold.minimum, 'peak minimum')
-      number(page.peakChatThreshold.observed, 'peak observed')
-      text(page.peakChatThreshold.rationale, 'documented peak threshold rationale')
-      documentedPeak = page.peakChatThreshold.minimum > 0 && page.peakChatThreshold.observed >= page.peakChatThreshold.minimum
-    }
-    if (page.moments.filter(moment => moment.score >= 70).length < 3 && !documentedPeak) fail(`${label}: needs three score-70 moments or a documented peak threshold`)
     if (!Array.isArray(page.topEmotes) || !page.topEmotes.length || page.topEmotes.length > 10) fail(`${label}: requires measured top emotes`)
     for (const emote of page.topEmotes) {
       record(emote, `${label}.emote`, ['code', 'count'])

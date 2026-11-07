@@ -1,19 +1,37 @@
 Reviewed recap pilot
 
-content/recap-pilot.json is the only production allowlist. It starts empty.
-The first supply check found no sampled session meeting the existing score gate;
-the build must not invent pages to reach the planned count of twenty.
+content/recap-pilot.json is the only production allowlist. The first supply
+check found no sampled session meeting the old absolute score gate, so the owner
+replaced that gate (below). The build must not invent pages to reach the planned
+count of twenty.
 
 Each manually reviewed entry is an aggregate snapshot from the sanitized portal
 API. scripts/recap-pilot.mjs validates the strict field allowlist, exact source
-identity, canonical draft duration/moment gate, honest coverage and review dates.
+identity, the duration and top-3 gate, honest coverage and review dates.
 It does not fetch data, recalculate scores, discover channels or admit collectors.
+
+The gate (owner decision 2026-11-05, "Top 3 per stream"):
+- The stream ran at least 60 minutes, or at least 30 of its minutes were measured.
+- Coverage is honestly complete or partial.
+- The page lists that stream's own top 3 measured moments (3 to 20 moments),
+  ranked within the stream. Scores are relative to the stream, so no absolute
+  score is required. This replaces "three moments scoring 70 or more, or a
+  documented peak chat threshold", which no sampled stream passed. The
+  peakChatThreshold field went with it.
+Take the top 3 as the portal ranks them: the /streams/<id>/recap moments ordered
+by pulse-core mergeRecapMoments, leaving out the opening and closing minutes
+(hello and goodbye spam).
 
 Before adding an entry:
 1. Read the current SEO strategy gate in the control plane. It remains a draft
-   internal quality policy, not a Google threshold. Do not quietly change it.
+   internal quality policy, not a Google threshold. Only the owner changes it.
 2. Verify source identity, measured duration/minutes, actual reaction scores,
    coverage state and unique explanatory text. Include measured top emotes.
+   Check the duration against /streams/<id>/minutes: the last measured minute
+   should be within 30 minutes of the recorded end. Many recorded ends are
+   hours late, and those pages are skipped rather than given a shorter length.
+   Skip a stream whose emote count is a small fraction of its chat with next to
+   no 7TV: its top emotes are missing the 7TV ones.
 3. Record review approval, the UTC review time, a future review expiry, the exact
    sanitized recap/live API URL and the review's evidence/limitations.
 4. To include replay actions, separately verify the exact VOD ID, signed alignment
