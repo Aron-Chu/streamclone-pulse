@@ -6,6 +6,7 @@ import {
   GAMES_PLAYED_ICON_SIZE_PX as ART_H,
 } from './gamesPlayedLayout.ts'
 import { theme } from './theme.ts'
+import { CHART_THEME } from './chartTheme.ts'
 
 /**
  * Static styles of the overlay panel's components.
@@ -204,6 +205,38 @@ export function panelComponentCss(): string {
   .pulse-ch-stroke { background: transparent; border: 1.5px solid #a78bfa; border-radius: 1px; flex-shrink: 0; height: 0; width: 10px; }
   .pulse-ch-overlay-legend { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
 
+  /* Stream recap (StreamRecapSection): were inline styles, same values. */
+  .pulse-sr-stack { display: grid; gap: 10px; }
+  .pulse-sr-slot { padding-top: 10px; }
+  .pulse-sr-head { align-items: flex-start; display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; margin-bottom: -4px; row-gap: 6px; }
+  .pulse-sr-head-main { display: grid; flex: 1 1 140px; gap: 2px; min-width: 0; }
+  .pulse-sr-title { color: ${theme.textPrimary}; font-size: 11px; font-weight: 900; letter-spacing: 0.05em; margin: 0; text-transform: uppercase; }
+  .pulse-sr-subtitle { color: ${theme.textMuted}; font-size: 11px; font-weight: 600; line-height: 1.35; }
+  .pulse-sr-meta { align-items: center; display: flex; gap: 6px; }
+  .pulse-sr-count { color: ${theme.textMuted}; font-size: 9px; font-variant-numeric: tabular-nums; font-weight: 700; }
+  .pulse-sr-list { display: grid; gap: 4px; }
+  .pulse-sr-more { align-items: center; appearance: none; background: rgba(255, 255, 255, 0.03); border: 0; border-radius: 6px; color: ${theme.accentSoft}; cursor: pointer; display: flex; font-size: 11px; font-weight: 700; gap: 6px; margin-top: 4px; padding: 6px 8px 6px 18px; width: 100%; }
+  .pulse-sr-chevron { color: ${theme.accentSoft}; font-size: 11px; font-weight: 900; line-height: 1; }
+  .pulse-sr-state { color: ${theme.textSecondary}; font-size: 12px; line-height: 1.45; margin: 0; }
+  .pulse-secondary-btn.pulse-sr-retry { background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 10px; color: ${theme.textPrimary}; cursor: pointer; font-size: 12px; font-weight: 800; padding: 8px 12px; width: fit-content; }
+  .pulse-sr-empty { color: ${theme.textMuted}; font-size: 12px; line-height: 1.5; margin: 0; }
+  .pulse-sr-offline-meta { color: ${theme.textMuted}; font-size: 11px; font-weight: 600; }
+  .pulse-sr-cta-row { display: flex; gap: 8px; }
+  .pulse-sr-cta { background: ${theme.accent}; border: 0; border-radius: 10px; color: ${theme.onAccent}; cursor: pointer; font-size: 12px; font-weight: 800; padding: 8px 12px; }
+  .pulse-sr-only { border: 0; clip: rect(0 0 0 0); height: 1px; margin: -1px; overflow: hidden; padding: 0; position: absolute; white-space: nowrap; width: 1px; }
+  /* Recap chart (RecapTimelineChart): were inline styles, same values. Hover rules in theme.ts stay !important. */
+  .pulse-rc { display: grid; gap: 6px; }
+  .pulse-rc-surface { min-width: 0; width: 100%; }
+  .pulse-rc-stack { display: grid; gap: 0; }
+  .pulse-rc .pulse-chart-toggle-btn, .pulse-rc .pulse-chart-expand-btn { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 8px; color: ${theme.textSecondary}; cursor: pointer; font-size: 10px; font-weight: 800; padding: 4px 8px; white-space: nowrap; }
+  .pulse-rc .pulse-chart-toggle-btn-active, .pulse-rc .pulse-chart-expand-btn-active { background: rgba(139, 92, 246, 0.12); border: 1px solid rgba(167, 139, 250, 0.35); color: #ddd6fe; }
+  .pulse-rc .pulse-chart-overlay-legend-chip { align-items: center; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; display: inline-flex; flex-shrink: 0; padding: 2px 5px; }
+  .pulse-rc-gap { color: ${theme.textMuted}; font-size: 10px; font-weight: 600; line-height: 1.4; margin: 0; }
+  /* Overview chart (PulseOverviewChart): were inline styles, same values. */
+  .pulse-oc { background: ${CHART_THEME.background}; border-radius: 8px; min-width: 0; overflow: hidden; position: relative; width: 100%; }
+  .pulse-oc-empty { align-items: center; color: rgba(161, 161, 170, 0.95); display: grid; font-size: 11px; font-weight: 700; height: 100%; min-height: 0; padding: 0 12px; place-items: center; text-align: center; }
+  .pulse-overview-chart { display: block; width: 100%; }
+  .pulse-chart-playhead { opacity: 0.85; stroke: ${theme.textPrimary}; stroke-width: 1.5; }
   .pulse-rb { background: rgba(255, 255, 255, 0.025); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; box-sizing: border-box; display: grid; gap: 4px; height: 60px; min-height: 60px; overflow: hidden; padding: 6px 8px; width: 100%; }
   .pulse-rb-content { display: grid; gap: 3px; grid-template-rows: 16px 27px; min-width: 0; }
   .pulse-rb-header { align-items: center; display: flex; gap: 6px; min-width: 0; white-space: nowrap; }

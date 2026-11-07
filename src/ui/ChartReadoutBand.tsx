@@ -3,7 +3,8 @@ import { formatHeatOffset } from '@streampulse/pulse-core'
 import type { ExtensionEmote } from '../shared/messages.ts'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
 
-export type ChartReadoutMode = 'idle' | 'preview' | 'selected'
+/** `playing` / `paused`: on a VOD with nothing hovered or picked, the band follows the video. */
+export type ChartReadoutMode = 'idle' | 'preview' | 'selected' | 'playing' | 'paused'
 
 export interface ChartReadoutBandProps {
   mode: ChartReadoutMode
@@ -48,7 +49,9 @@ export function ChartReadoutBand({
       </div>
     )
   }
-  const title = mode === 'selected' ? 'Selected' : 'Preview'
+  // The kicker is the mode's name: Selected, Preview, Playing, Paused.
+  const title = mode[0]!.toUpperCase() + mode.slice(1)
+  const following = mode === 'playing' || mode === 'paused'
   const time = typeof offsetSeconds === 'number' && Number.isFinite(offsetSeconds)
     ? formatHeatOffset(offsetSeconds)
     : '—'
@@ -64,13 +67,13 @@ export function ChartReadoutBand({
 
   return (
     <div
-      className="pulse-chart-readout-band pulse-rb pulse-rb-picked"
+      className={`pulse-chart-readout-band pulse-rb${following ? '' : ' pulse-rb-picked'}`}
       data-chart-readout="true"
       data-chart-readout-state={mode}
       aria-live={mode === 'selected' ? 'polite' : 'off'}
       // Updated in place, so a new pick reads out whole, as a remount used to.
       aria-atomic="true"
-      onClick={event => {
+      onClick={following ? undefined : event => {
         const target = event.target as HTMLElement | null
         if (target?.closest('button, a, input, select')) return
         onClearSelection?.()
