@@ -2156,6 +2156,7 @@ function OverlayMain({
               sidebarFill={sidebarSnapped}
               hideHubLink
               vodPage={isVodPage}
+              followVod={isVodPage && payload.vodId === context.vodId}
               archiveVodId={archiveVodId}
               onJump={jumpMoment}
               onAnalytics={openAnalyticsForMoment}
