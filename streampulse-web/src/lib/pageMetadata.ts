@@ -58,8 +58,8 @@ function resolveBasePageMetadata(pathname: string): PageMetadata {
     case '/analytics/streams':
     case '/atlas':
       return {
-        title: 'StreamPulse Analytics',
-        description: 'Explore aggregate live Twitch activity, Pulse moments, emote signals, and tracked channels.',
+        title: 'Live Twitch Chat Stats & Top Emotes — StreamPulse',
+        description: 'Live Twitch chat stats for the channels StreamPulse tracks: chat per minute, top Twitch and 7TV emotes, and the reaction moments when chat jumps.',
         canonicalPath: '/analytics',
         robots: 'index,follow',
       }

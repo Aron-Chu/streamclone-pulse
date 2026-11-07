@@ -334,7 +334,7 @@ export default function AnalyticsHubV5Page() {
           <HubBackendSourceBanner />
 
           <div className="hub-v5 hub-d3" data-hub-v5-page="">
-            <HubV5Hero live={data.liveChannels} poolSize={data.poolSize} points={data.activity.points} foot={<HubV5FollowsButton />} games={searchGames} emotes={searchEmotes} />
+            <HubV5Hero live={data.liveChannels} poolSize={data.poolSize} points={data.activity.points} foot={<HubV5FollowsButton />} games={searchGames} emotes={searchEmotes} waiting={measurementsWaiting} />
 
             {/* The viewer's own live follows, on Busiest now's live list and rate (Show my Twitch follows, 11-01). */}
             <HubV5Follows
