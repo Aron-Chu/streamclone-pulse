@@ -1,6 +1,6 @@
 import { parseBookmarkPage } from '../shared/bookmarkPage.ts'
 import type { CreatePulseBookmarkInput, PulseBookmark } from '../shared/messages.ts'
-import type { DeviceBookmark } from '../shared/myMoments.ts'
+import type { DeviceBookmark, FirstSignInAnswer } from '../shared/myMoments.ts'
 import type { BackupMoment } from '../shared/myMomentsBackup.ts'
 import { keptVodOriginDelta } from '../shared/vodOriginAlignment.ts'
 import { replayAvailability, type LibraryMoment, type LibraryPreferences } from '../ui/library/model.ts'
@@ -32,6 +32,12 @@ export interface PersonalData {
    * hosted bookmark has no field for it; saves made elsewhere have none.
    */
   replayDeltas?: Record<string, { vodId: string; seconds: number }>
+  /**
+   * The `|local` scope only: the Twitch accounts that signed in on this
+   * browser, oldest first, and each one's answer to the one-time "move this
+   * browser's saves" ask. Kept here, where no content script can read it.
+   */
+  firstSignIn?: { seen: string[]; answered: Record<string, FirstSignInAnswer> }
 }
 export const emptyPersonalData = (): PersonalData => ({ preferences: { captureHistory: false, retentionDays: 30 }, epoch: 0, history: [], notes: {}, bookmarks: [] })
 type MomentKey = { channel: string; vodId: string | null; streamId?: string; offsetSeconds: number | null }
@@ -149,6 +155,16 @@ export function importHistory(data: PersonalData, history: readonly BackupMoment
   }
   if (!added.length) return data
   return { ...data, history: [...data.history, ...added].sort((a, b) => (a.jumpedAt ?? 0) - (b.jumpedAt ?? 0)).slice(-1000) }
+}
+/** The accounts kept in `firstSignIn`; an older one dropped from it would be asked again. */
+const FIRST_SIGN_IN_ACCOUNTS = 20
+/** Notes that `accountId` signed in on this browser, and its answer when given. */
+export function noteFirstSignIn(data: PersonalData, accountId: string, answer?: FirstSignInAnswer): PersonalData {
+  const current = data.firstSignIn ?? { seen: [], answered: {} }
+  if (current.seen[current.seen.length - 1] === accountId && (!answer || current.answered[accountId] === answer) && data.firstSignIn) return data
+  const seen = [...current.seen.filter(id => id !== accountId), accountId].slice(-FIRST_SIGN_IN_ACCOUNTS)
+  const answered = Object.fromEntries(Object.entries({ ...current.answered, ...(answer ? { [accountId]: answer } : {}) }).filter(([id]) => seen.includes(id)))
+  return { ...data, firstSignIn: { seen, answered } }
 }
 export function recordWatched(data: PersonalData, moment: LibraryMoment, epoch: number, now: number): PersonalData {
   const next = prunePersonalData(data, now)

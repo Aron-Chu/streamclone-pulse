@@ -62,6 +62,8 @@ export type LibraryCommand =
   | { kind: 'preferences'; value: LibraryPreferences }
   /** Adds saves made without an account to the signed-in account: one (`id`) or all. */
   | { kind: 'import-device-saves'; id?: string }
+  /** Copies the watched history this browser kept signed out into the signed-in account's; the browser's copy stays. */
+  | { kind: 'import-device-history' }
   /** Drops one moment from History, saved or not; `restore-visit` is its Undo. */
   | { kind: 'remove-visit'; reference: MomentReference }
   | { kind: 'restore-visit'; reference: MomentReference; jumpedAt: number }

@@ -75,6 +75,10 @@ export interface TwitchSignInPorts {
   meta: Record_
   /** Browser-session display profile. */
   profile: Record_
+  /** "Not you?": sends the signed-in account's unsent watched history before it is signed out. */
+  flushAccount?: () => Promise<void>
+  /** Notes each account that signs in here, for the one-time "move this browser's saves" ask. */
+  accountSeen?: (accountId: string) => Promise<void>
 }
 
 /** Persisted markers. A missing or unreadable record is never a first install. */
@@ -493,7 +497,9 @@ export class TwitchSignIn {
     if (account.state === 'error' && account.revocationPending) return this.respond(account, { outcome: 'revocation_pending' })
     if (signedIn(account)) {
       if (!forceVerify) return this.respond(account, { outcome: 'already_signed_in' })
-      // "Not you?": sign this identity out first, then choose an account.
+      // "Not you?": send what is not sent yet, sign this identity out, then
+      // choose an account. A failed send never keeps the old account here.
+      await Promise.resolve().then(() => this.ports.flushAccount?.()).catch(() => undefined)
       await this.markSignedOutByUser()
       account = await this.ports.account.run('disconnect')
       if (account.state !== 'signed_out') return this.respond(account, { outcome: account.state === 'error' && account.revocationPending ? 'revocation_pending' : 'network' })
@@ -537,6 +543,7 @@ export class TwitchSignIn {
       return { outcome: account.state === 'linked' ? 'already_signed_in' : 'error', account }
     }
     if (profile && account.state === 'linked') await this.ports.profile.write({ accountId: account.accountId, ...profile }).catch(() => undefined)
+    if (account.state === 'linked') await Promise.resolve().then(() => this.ports.accountSeen?.(account.accountId)).catch(() => undefined)
     return { outcome: 'signed_in', account }
   }
 
