@@ -341,6 +341,18 @@ export default function Landing() {
             </div>
           </section>
           <div className="sl-container sl-streamer-stats"><StreamerChatStats /></div>
+          <section className="sl-section" aria-labelledby="about-title">
+            <div className="sl-container">
+              <div className="sl-section-head" data-reveal>
+                <h2 id="about-title">What is StreamPulse?</h2>
+                <p>
+                  StreamPulse is a free desktop extension for Chrome, Edge and Firefox, with this website as its hub. It counts
+                  Twitch chat and top emotes, 7TV ones included, minute by minute for the channels we track, and marks the
+                  reaction moments when chat jumps.
+                </p>
+              </div>
+            </div>
+          </section>
         </main>
         <Footer discord={discord} />
       </div>

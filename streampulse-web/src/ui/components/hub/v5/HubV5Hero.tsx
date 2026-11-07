@@ -27,8 +27,11 @@ function barBottom(): number {
   return Math.round(document.querySelector('.analytics-topnav')?.getBoundingClientRect().bottom ?? 0)
 }
 
-/** `foot`: beside the scope line, under the hero's rule (Show my Twitch follows, 11-01). `games` and `emotes`: what the search offers besides channels (3A). */
-export function HubV5Hero({ live, poolSize, points = NO_POINTS, foot, games, emotes }: { live: readonly HubLiveChannel[]; poolSize: number; points?: readonly HubActivityPoint[]; foot?: ReactNode; games?: readonly HubSearchGame[]; emotes?: readonly HubSearchEmote[] }) {
+/**
+ * `foot`: beside the scope line, under the hero's rule (Show my Twitch follows, 11-01). `games` and `emotes`: what the search offers besides channels (3A).
+ * `waiting`: the hub's first answer is still on its way, so the Try row and the scope line keep their room and nothing below moves when they land.
+ */
+export function HubV5Hero({ live, poolSize, points = NO_POINTS, foot, games, emotes, waiting = false }: { live: readonly HubLiveChannel[]; poolSize: number; points?: readonly HubActivityPoint[]; foot?: ReactNode; games?: readonly HubSearchGame[]; emotes?: readonly HubSearchEmote[]; waiting?: boolean }) {
   const store = useHubV5SearchStore()
   const mastRef = useRef<HTMLElement>(null)
   const kickerRef = useRef<HTMLParagraphElement>(null)
@@ -122,9 +125,15 @@ export function HubV5Hero({ live, poolSize, points = NO_POINTS, foot, games, emo
             </Link>
           ))}
         </p>
+      ) : waiting ? (
+        // Keeps the chips' room while the first answer loads (hub-v5.css), so they land without a shift.
+        <p className="hv5-hero-try" ref={tryRef} data-wait="" aria-hidden="true" />
       ) : null}
       <div className="hv5-hero-foot" ref={footRef}>
-        {poolSize > 0 ? <p className="hv5-scope">The hub below covers {formatHubInt(poolSize)} channels we track · not all of Twitch</p> : null}
+        {poolSize > 0 ? <p className="hv5-scope">The hub below covers {formatHubInt(poolSize)} channels we track · not all of Twitch</p>
+          // The same line without its number, unseen, so it wraps as the real one will.
+          : waiting ? <p className="hv5-scope" data-wait="" aria-hidden="true">The hub below covers the channels we track · not all of Twitch</p>
+            : null}
         {foot}
       </div>
     </header>

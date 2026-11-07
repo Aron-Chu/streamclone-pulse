@@ -100,6 +100,7 @@ describe('landing page', () => {
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
       expect.stringMatching(/see it beside twitch chat/i),
       'Twitch chat stats by streamer',
+      'What is StreamPulse?',
     ])
     expect(screen.queryByRole('heading', { name: 'Look up a streamer' })).toBeNull()
     expect(document.querySelector('[data-cta="chrome-install-closing"]')).toBeNull()
