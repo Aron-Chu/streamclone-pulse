@@ -71,6 +71,76 @@ describe('private supporter account coordinator', () => {
     await f.coordinator.run('disconnect')
     expect(f.key()).toBeNull()
   })
+  it('a Twitch device keeps its credentials after a lost refresh reply', async () => {
+    const old = { ...creds, twitch: true, expiresAt: iso(0) }
+    const f = fixture(old)
+    f.request.mockImplementationOnce(async () => {
+      expect(f.stored()).toMatchObject({ kind: 'refreshing', credentials: { refreshToken: old.refreshToken, twitch: true } })
+      throw new TypeError('Failed to fetch')
+    })
+    const waiting = { state: 'unavailable', reason: 'temporarily_unavailable', linked: true }
+    expect(await f.coordinator.run('status')).toEqual(waiting)
+    expect(f.stored()).not.toHaveProperty('installation')
+    expect(await f.coordinator.localAccountId()).toBe(creds.accountId)
+    expect(await f.coordinator.localDeviceId()).toBe(creds.deviceId)
+    expect(await f.coordinator.isInstallationIdentity()).toBe(false)
+    expect(f.identityChanged).not.toHaveBeenCalled()
+    // The worker stopped; a new one waits out the 30 s, then sends the same refresh.
+    const restarted = fixture(f.stored())
+    expect(await restarted.coordinator.run('status')).toEqual(waiting)
+    expect(restarted.request).not.toHaveBeenCalled()
+    restarted.advance(30_000)
+    const next = { ...creds, token: 'e'.repeat(64), refreshToken: 'f'.repeat(64) }
+    restarted.request.mockResolvedValueOnce({ status: 200, body: next })
+    expect(await restarted.coordinator.run('status')).toMatchObject({ state: 'linked', accountId: creds.accountId, twitch: true })
+    expect(restarted.request).toHaveBeenCalledExactlyOnceWith('/v1/account/devices/refresh', { refreshToken: old.refreshToken })
+    expect(restarted.stored()).toMatchObject({ kind: 'linked', token: next.token, refreshToken: next.refreshToken, twitch: true })
+  })
+  it('a Twitch device keeps its credentials through a 503, and relinks only after an authoritative rejection', async () => {
+    const f = fixture({ ...creds, twitch: true, expiresAt: iso(0) })
+    f.request.mockResolvedValueOnce({ status: 503, body: null })
+    expect(await f.coordinator.run('status')).toEqual({ state: 'unavailable', reason: 'temporarily_unavailable', linked: true })
+    expect(f.stored()).toMatchObject({ kind: 'refreshing', credentials: { token: creds.token, twitch: true } })
+    f.advance(30_000)
+    f.request.mockResolvedValueOnce({ status: 401, body: null })
+    expect(await f.coordinator.run('status')).toEqual({ state: 'relink_required' })
+    expect(f.request).toHaveBeenCalledTimes(2)
+  })
+  it('a sign-out during a Twitch refresh retry disconnects the pair the server holds', async () => {
+    // The lost reply rotated the pair, so the kept token is dead: resend the
+    // refresh, then disconnect the pair it answers with.
+    const f = fixture({ ...creds, twitch: true, expiresAt: iso(0) })
+    f.request.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    await f.coordinator.run('status')
+    const current = { ...creds, token: 'e'.repeat(64), refreshToken: 'f'.repeat(64) }
+    f.request.mockResolvedValueOnce({ status: 200, body: current })
+    f.request.mockResolvedValueOnce({ status: 204, body: null })
+    expect(await f.coordinator.run('disconnect')).toEqual({ state: 'signed_out' })
+    expect(f.request.mock.calls.slice(1)).toEqual([
+      ['/v1/account/devices/refresh', { refreshToken: creds.refreshToken }],
+      ['/v1/account/devices/disconnect', { token: current.token }],
+    ])
+    expect(f.stored()).toBeNull()
+  })
+  it('a sign-out during a refresh retry trusts a refused resend, and falls back to the kept token when the resend fails', async () => {
+    // Refused: the server revoked the device (a late replay) or it was gone.
+    const refused = fixture({ ...creds, twitch: true, expiresAt: iso(0) })
+    refused.request.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    await refused.coordinator.run('status')
+    refused.request.mockResolvedValueOnce({ status: 401, body: null })
+    expect(await refused.coordinator.run('disconnect')).toEqual({ state: 'signed_out' })
+    expect(refused.request).toHaveBeenCalledTimes(2)
+    expect(refused.stored()).toBeNull()
+    // Unreachable: disconnect the kept token, which is live if the lost request never arrived.
+    const offline = fixture({ ...creds, twitch: true, expiresAt: iso(0) })
+    offline.request.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    await offline.coordinator.run('status')
+    offline.request.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    offline.request.mockResolvedValueOnce({ status: 204, body: null })
+    expect(await offline.coordinator.run('disconnect')).toEqual({ state: 'signed_out' })
+    expect(offline.request).toHaveBeenLastCalledWith('/v1/account/devices/disconnect', { token: creds.token })
+    expect(offline.stored()).toBeNull()
+  })
   it('serializes bookmark credentials with refresh and binds operations to their account', async () => {
     const f = fixture({ ...creds, expiresAt: iso(0) })
     const next = { ...creds, token: 'e'.repeat(64), refreshToken: 'f'.repeat(64) }
