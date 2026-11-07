@@ -7,6 +7,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createServer, loadConfigFromFile } from 'vite'
 import { readPilot, writeRuntimeManifests, renderRecapDocument, recapRedirects, sitemapWithRecaps } from './recap-pilot.mjs'
+import { sitemapWithStatedDates, statedUpdateDate } from './sitemap-lastmod.mjs'
 
 const root = join(fileURLToPath(new URL('.', import.meta.url)), '..')
 const dist = join(root, 'dist')
@@ -62,9 +63,10 @@ const server = await createServer({
   optimizeDeps: { noDiscovery: true, include: [] },
   server: { middlewareMode: true, watch: null }, appType: 'custom',
 })
-let prerenderPublicPage, GROWTH_PAGES
+let prerenderPublicPage, GROWTH_PAGES, GITHUB_REPO_URL
 try {
   ;({ prerenderPublicPage, GROWTH_PAGES } = await server.ssrLoadModule('/src/prerender.tsx'))
+  ;({ GITHUB_REPO_URL } = await server.ssrLoadModule('/src/lib/externalLinks.ts'))
 } catch (error) {
   await server.close()
   throw error
@@ -95,8 +97,8 @@ const routes = [
   },
   {
     path: 'analytics',
-    title: 'StreamPulse Analytics',
-    description: 'Explore aggregate live Twitch activity, Pulse moments, emote signals, and tracked channels.',
+    title: 'Live Twitch Chat Stats & Top Emotes — StreamPulse',
+    description: 'Live Twitch chat stats for the channels StreamPulse tracks: chat per minute, top Twitch and 7TV emotes, and the reaction moments when chat jumps.',
     canonicalPath: '/analytics',
     robots: 'index,follow',
   },
@@ -214,6 +216,13 @@ const shareImage = {
   alt: 'StreamPulse: find the Twitch moments people actually reacted to.',
 }
 
+// The extension's store listings, which the home page's structured data names as the same product.
+const storeListings = [
+  'https://chromewebstore.google.com/detail/streampulse/nifgoonpcgmdhiffcpmhndjgkgahnelg',
+  'https://addons.mozilla.org/en-US/firefox/addon/streampulse/',
+  'https://microsoftedge.microsoft.com/addons/detail/streampulse-twitch-chat-/cnakgkalmjbhelabgjkbinlgjeflebjd',
+]
+
 function escapeAttribute(value) {
   return value
     .replaceAll('&', '&amp;')
@@ -267,17 +276,23 @@ function renderShell(metadata) {
       softwareRequirements: 'A desktop version of Chrome, Edge or Firefox.',
       offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
       url: origin,
-      downloadUrl: 'https://chromewebstore.google.com/detail/streampulse/nifgoonpcgmdhiffcpmhndjgkgahnelg',
-      sameAs: [
-        'https://chromewebstore.google.com/detail/streampulse/nifgoonpcgmdhiffcpmhndjgkgahnelg',
-        'https://addons.mozilla.org/en-US/firefox/addon/streampulse/',
-        'https://microsoftedge.microsoft.com/addons/detail/streampulse-twitch-chat-/cnakgkalmjbhelabgjkbinlgjeflebjd',
-      ],
+      downloadUrl: storeListings[0],
+      sameAs: storeListings,
       softwareVersion: '0.2.6',
       description: metadata.description,
+      publisher: { '@id': `${origin}/#organization` },
     }
-    const jsonLd = `<script type="application/ld+json">${JSON.stringify(software)}</script>`
-    html = html.replace('</head>', `    ${jsonLd}\n  </head>`)
+    // Who makes it and what the site is, for search results: the store listings and the public source code.
+    const site = {
+      '@context': 'https://schema.org',
+      '@graph': [
+        { '@type': 'Organization', '@id': `${origin}/#organization`, name: 'StreamPulse', url: origin, sameAs: [...storeListings, GITHUB_REPO_URL] },
+        { '@type': 'WebSite', '@id': `${origin}/#website`, name: 'StreamPulse', url: origin, inLanguage: 'en', publisher: { '@id': `${origin}/#organization` } },
+      ],
+    }
+    for (const data of [software, site]) {
+      html = html.replace('</head>', `    <script type="application/ld+json">${JSON.stringify(data)}</script>\n  </head>`)
+    }
   }
   const path = metadata.path == null ? '/404' : `/${metadata.path}`
   const markup = `<div id="root" data-prerendered>${prerenderPublicPage(path)}</div>`
@@ -286,8 +301,12 @@ function renderShell(metadata) {
   return html.replace(boundary, () => `<!--public-root:start-->${markup}<!--public-root:end-->`)
 }
 
+// The date each page states it was last updated (privacy, terms, refunds), for the sitemap's <lastmod>.
+const statedDates = new Map()
 for (const route of routes) {
   const html = renderShell(route)
+  const stated = route.robots === 'index,follow' ? statedUpdateDate(html) : null
+  if (stated) statedDates.set(new URL(route.canonicalPath, origin).toString(), stated)
   if (!route.path) {
     writeFileSync(indexPath, html)
     continue
@@ -328,7 +347,7 @@ for (const page of pilotPages) {
   writeFileSync(join(asset, 'index.html'), html)
 }
 writeFileSync(join(dist, '_redirects'), recapRedirects(readFileSync(join(root, 'public', '_redirects'), 'utf8'), pilotPages))
-writeFileSync(join(dist, 'sitemap.xml'), sitemapWithRecaps(readFileSync(join(root, 'public', 'sitemap.xml'), 'utf8'), pilotPages))
+writeFileSync(join(dist, 'sitemap.xml'), sitemapWithStatedDates(sitemapWithRecaps(readFileSync(join(root, 'public', 'sitemap.xml'), 'utf8'), pilotPages), statedDates))
 
 await server.close()
 console.log('prerender: wrote rendered public pages, analytics loading content, and 404 fallback')

@@ -27,7 +27,7 @@ describe('public page metadata', () => {
   it('canonicalizes analytics aliases without treating them as channel names', () => {
     for (const path of ['/analytics/hub', '/analytics/emotes', '/analytics/streams', '/atlas']) {
       expect(resolvePageMetadata(path)).toMatchObject({
-        title: 'StreamPulse Analytics',
+        title: 'Live Twitch Chat Stats & Top Emotes — StreamPulse',
         canonicalPath: '/analytics',
         robots: 'index,follow',
       })
