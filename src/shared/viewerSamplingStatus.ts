@@ -8,7 +8,7 @@ export interface ViewerSamplingSummary {
 /** Short state label for compact status rows; `label` retains the full detail. */
 export function compactViewerSamplingLabel(summary: ViewerSamplingSummary): string {
   switch (summary.state) {
-    case 'ok': return 'Active'
+    case 'ok': return 'Updating'
     case 'warming': return 'Warming up'
     case 'off': return 'Off'
     case 'error': return 'Error'

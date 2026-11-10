@@ -683,7 +683,7 @@ export function RecapTimelineChart({
             showPeakMarkers={showPeakMarkers}
             pinOffsets={pins}
             playheadOffsetSeconds={playheadRollup?.offsetSeconds ?? null}
-            emptyMessage={chartEmpty || 'Loading full stream rollups…'}
+            emptyMessage={chartEmpty || 'Loading the full stream…'}
             // Full history is enrichment for recap too: keep any recent/partial
             // rollups drawable while the one-shot request is pending or fails.
             loading={(timelineLoading && minuteRollups.length === 0) || (minuteRollups.length === 0 && Boolean(onRequestFullRollups))}

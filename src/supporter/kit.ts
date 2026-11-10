@@ -140,11 +140,28 @@ export function emoteImg(name: KitEmoteName, h: number | null, still: boolean): 
   return img
 }
 
-/** The lab's `crestSvg()`: the tenure crest, its frame drawn in the kit's paint colour. */
-export function crestSvg(tenure: SupporterTenure, size: number, finish: KitFinish | null): string {
+const SVG_NS = 'http://www.w3.org/2000/svg'
+
+function svgNode(tag: string, attrs: Record<string, string>): SVGElement {
+  const node = document.createElementNS(SVG_NS, tag)
+  for (const [name, value] of Object.entries(attrs)) node.setAttribute(name, value)
+  return node
+}
+
+/**
+ * The lab's `crestSvg()`: the tenure crest, its frame drawn in the kit's paint
+ * colour. Built node by node rather than parsed from a string, so no markup
+ * goes through innerHTML (Firefox's add-on lint flags that).
+ */
+export function crestSvg(tenure: SupporterTenure, size: number, finish: KitFinish | null): SVGSVGElement {
   const g = SUPPORTER_CREST_GEMS[tenure]
   const edge = finish ? FINISHES[finish].c : g.edge
-  return `<svg width="${size}" height="${size}" viewBox="0 0 18 18" aria-hidden="true"><polygon points="${g.points}" fill="#08080a" stroke="${edge}" stroke-width="1.5" stroke-linejoin="round"/>${g.crown ? `<path d="${g.crown}" fill="none" stroke="#ffe8a6" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round"/>` : ''}<path d="${g.rank}" fill="none" stroke="${g.edge}" stroke-width="1.5" stroke-linecap="round"/><path d="${SUPPORTER_CREST_PULSE_PATH}" fill="none" stroke="#fff" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round"/></svg>`
+  const svg = svgNode('svg', { width: String(size), height: String(size), viewBox: '0 0 18 18', 'aria-hidden': 'true' }) as SVGSVGElement
+  svg.append(svgNode('polygon', { points: g.points, fill: '#08080a', stroke: edge, 'stroke-width': '1.5', 'stroke-linejoin': 'round' }))
+  if (g.crown) svg.append(svgNode('path', { d: g.crown, fill: 'none', stroke: '#ffe8a6', 'stroke-width': '1.1', 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }))
+  svg.append(svgNode('path', { d: g.rank, fill: 'none', stroke: g.edge, 'stroke-width': '1.5', 'stroke-linecap': 'round' }))
+  svg.append(svgNode('path', { d: SUPPORTER_CREST_PULSE_PATH, fill: 'none', stroke: '#fff', 'stroke-width': '1.75', 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }))
+  return svg
 }
 
 /** The lab's `kitCrest()`. */
@@ -152,7 +169,7 @@ export function kitCrest(kit: Kit, size: number, tenure: SupporterTenure = kit.t
   const s = document.createElement('span')
   s.className = 'spk-crest'
   s.dataset.tenure = tenure
-  s.innerHTML = crestSvg(tenure, size, kit.finish)
+  s.append(crestSvg(tenure, size, kit.finish))
   return s
 }
 

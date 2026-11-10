@@ -364,8 +364,8 @@ function PulseExperienceSection({ preferences, health, supporterPerks }: { prefe
         <div className="pulse-settings-host-connection">
           <span className={`pulse-settings-status-dot pulse-settings-status-dot-${apiStatus}`} aria-hidden="true" />
           <span>
-            <strong data-api-status={apiStatus}>{reachable ? 'Hosted API connected' : health.checking ? 'Checking connection' : health.error ? 'Extension disconnected' : 'API unreachable'}</strong>
-            <small data-sampler-status={sampler.state}>Viewer sampler · {reachable ? compactViewerSamplingLabel(sampler) : 'Unknown'}</small>
+            <strong data-api-status={apiStatus}>{reachable ? 'Connected to StreamPulse' : health.checking ? 'Checking connection' : health.error ? 'Extension disconnected' : 'API unreachable'}</strong>
+            <small data-sampler-status={sampler.state}>Viewer counts · {reachable ? compactViewerSamplingLabel(sampler) : 'Unknown'}</small>
           </span>
           <button type="button" className="pulse-secondary-btn" disabled={health.checking} onClick={() => void health.refresh(true)}>
             {health.checking ? 'Testing…' : 'Test connection'}

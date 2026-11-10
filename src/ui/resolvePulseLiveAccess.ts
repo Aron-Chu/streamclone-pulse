@@ -9,7 +9,7 @@ export const COVERAGE_TIER_WARMING = 'warming'
 export type CoverageTierStatusLabel =
   | 'Chat tracked'
   | 'Warming'
-  | 'Metadata only — no chat coverage'
+  | 'Viewer counts only'
 
 export function coverageTierStatusLabel(
   coverageTier: string | null | undefined,
@@ -17,8 +17,8 @@ export function coverageTierStatusLabel(
 ): CoverageTierStatusLabel {
   if (coverageTier === COVERAGE_TIER_ACTIVE_LIVE) return 'Chat tracked'
   if (coverageTier === COVERAGE_TIER_WARMING) return 'Warming'
-  if (coverageTier?.trim()) return 'Metadata only — no chat coverage'
-  return tracking ? 'Warming' : 'Metadata only — no chat coverage'
+  if (coverageTier?.trim()) return 'Viewer counts only'
+  return tracking ? 'Warming' : 'Viewer counts only'
 }
 
 export type PulseLiveAccessState =

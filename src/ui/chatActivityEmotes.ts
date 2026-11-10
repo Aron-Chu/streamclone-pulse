@@ -214,7 +214,7 @@ export function chartTimelineWindowLabel(window: ChartTimelineWindow): string {
 
 export function chartTimelineWindowHeader(window: ChartTimelineWindow, hasFullRollups: boolean): string {
   if (window === 'full' && hasFullRollups) return 'Chat activity (full stream)'
-  if (window === 'full') return 'Chat activity · waiting for rollups'
+  if (window === 'full') return 'Chat activity · waiting for the first minute'
   return `Chat activity (${chartTimelineWindowLabel(window)})`
 }
 
@@ -783,7 +783,7 @@ export function chartEmptyMessage(options: {
   } = options
   const fullTimelineRequested = chartWindow === 'full'
   if (awaitingFullRollups) {
-    return 'Loading full stream rollups from StreamPulse…'
+    return 'Loading the full stream from StreamPulse…'
   }
   if (visibleRollupCount >= 1) return ''
   if (rollupCount >= 1) {
