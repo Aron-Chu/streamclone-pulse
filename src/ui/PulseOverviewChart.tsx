@@ -1562,7 +1562,9 @@ function PulseOverviewChartImpl({
         data-chart-locked-index={pinIndex ?? undefined}
         data-chart-preview-index={hoveredBucketIndex ?? listPreviewIndex ?? undefined}
         viewBox={`0 0 ${width} ${height}`}
-        role="img"
+        // role="img" hides its children from assistive tech, so it only fits
+        // a chart with nothing to focus; the plot and moment markers are controls.
+        role={onSelectIndex || onSelectMoment || onViewportChange ? 'group' : 'img'}
         className="pulse-overview-chart"
         aria-label="Chat and emote activity timeline with viewer context. Move or drag across the plot to inspect a moment."
         data-chart-mode={detailPresentationState}

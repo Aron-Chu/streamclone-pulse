@@ -1146,7 +1146,7 @@ function OverlayMain({
     if (!canShowVodBackfillCTA(activePayload, pageHint)) {
       setNotice({
         kind: 'info',
-        text: 'No validated archive is linked yet — live IRC tracking continues. Try again later.',
+        text: 'No Twitch replay is linked yet — live tracking continues. Try again later.',
       })
       return
     }
@@ -1986,7 +1986,7 @@ function OverlayMain({
 
       {awaitingTrack && !isVodPage && localStackBackend && pulseSupported && !payload?.tracking ? (
         <section className="pulse-track-prompt">
-          <p className="pulse-state-text">Track <strong>{login}</strong> to collect live chat and 7TV rollups from your StreamPulse stack.</p>
+          <p className="pulse-state-text">Track <strong>{login}</strong> to chart live chat and 7TV emotes from your StreamPulse stack.</p>
           <div className="pulse-footer-actions">
             <button type="button" className="pulse-primary-button" disabled={trackBusy} onClick={() => void startTracking()}>
               {trackBusy ? 'Starting…' : 'Track this channel'}
@@ -2616,7 +2616,7 @@ function WarmingState({
   coverageTier?: string
 }) {
   const statusLabel = coverageTierStatusLabel(coverageTier, tracking)
-  if (statusLabel === 'Metadata only — no chat coverage') {
+  if (statusLabel === 'Viewer counts only') {
     return (
       <section className="pulse-state-block">
         <h2 className="pulse-state-title">{statusLabel}</h2>
@@ -2637,7 +2637,7 @@ function WarmingState({
         {firstMinutePending
           ? 'Chat is counted once a minute. The chart and Top Moments fill in on their own.'
           : lateTracking
-            ? `StreamPulse is tracking this broadcast (${formatHeatOffset(coverageStart)} in). Top Moments unlock after ${LIVE_HEAT_MIN_COMPLETED_ROLLUPS} completed minutes of chat rollups.`
+            ? `StreamPulse is tracking this broadcast (${formatHeatOffset(coverageStart)} in). Top Moments unlock after ${LIVE_HEAT_MIN_COMPLETED_ROLLUPS} full minutes of chat.`
             : `Collecting chat and emote activity. Top Moments unlock after ${LIVE_HEAT_MIN_COMPLETED_ROLLUPS} completed minutes.`}
       </p>
       <div className="pulse-shimmer pulse-progress-track"><span className="pulse-progress-fill" style={{ width: `${progress * 100}%` }} /></div>

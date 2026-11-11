@@ -428,6 +428,46 @@ test.describe('chart preview/lock interactions', () => {
     assertNoUncaughtErrors(evidence)
   })
 
+  test('keyboard focus rings the plot and moment markers; a mouse click shows no ring', async ({
+    extension,
+    prepare,
+    evidence,
+  }) => {
+    await prepare({ scenario: 'live-ready', twitchKind: 'live' })
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+
+    const chart = extension.page.locator(`#${PULSE_ROOT_ID} svg[data-testid="pulse-overview-chart"]`)
+    const scrubber = extension.page.locator(`#${PULSE_ROOT_ID} [data-chart-scrubber="true"]`)
+    const markers = extension.page.locator(`#${PULSE_ROOT_ID} [data-chart-moment-marker="true"]`)
+    // The plot and the markers are controls, so the chart is a group: role="img"
+    // would hide them from assistive tech.
+    await expect(chart).toHaveAttribute('role', 'group')
+    await extension.page.locator(`#${PULSE_ROOT_ID} [data-chart-moment-toggle="true"]`).click()
+    await expect(markers).toHaveCount(1)
+
+    const ring = (target: typeof scrubber) => target.evaluate(element => {
+      const style = getComputedStyle(element)
+      return { focusVisible: element.matches(':focus-visible'), stroke: style.stroke, outlineStyle: style.outlineStyle }
+    })
+
+    // Mouse: clicking the plot (away from the marker) focuses it with no ring.
+    await scrubber.click({ position: { x: 12, y: 12 } })
+    await expect(scrubber).toBeFocused()
+    expect(await ring(scrubber)).toMatchObject({ focusVisible: false, stroke: 'none' })
+
+    // Keyboard: Tab on to the moment marker, then Shift+Tab back to the plot.
+    await extension.page.keyboard.press('Tab')
+    await expect(markers.first()).toBeFocused()
+    expect(await ring(markers.first())).toMatchObject({ focusVisible: true, outlineStyle: 'solid' })
+    await extension.page.keyboard.press('Shift+Tab')
+    await expect(scrubber).toBeFocused()
+    const plotRing = await ring(scrubber)
+    expect(plotRing.focusVisible).toBe(true)
+    expect(plotRing.stroke).not.toBe('none')
+    assertNoUncaughtErrors(evidence)
+  })
+
   test('a locked moment keeps its exact offset while keyboard zoom changes the viewport', async ({
     extension,
     prepare,

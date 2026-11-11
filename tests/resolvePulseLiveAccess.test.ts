@@ -35,9 +35,9 @@ describe('coverageTierStatusLabel', () => {
   it.each([
     ['active_live_coverage', true, 'Chat tracked'],
     ['warming', true, 'Warming'],
-    ['top500_metadata_only', false, 'Metadata only — no chat coverage'],
+    ['top500_metadata_only', false, 'Viewer counts only'],
     [undefined, true, 'Warming'],
-    [undefined, false, 'Metadata only — no chat coverage'],
+    [undefined, false, 'Viewer counts only'],
   ] as const)('maps backend tier %s to canonical status copy', (tier, tracking, label) => {
     expect(coverageTierStatusLabel(tier, tracking)).toBe(label)
   })

@@ -801,12 +801,14 @@ test.describe('extension mocked states', () => {
     await openTwitchChannel(extension.page)
     await waitForPulseRoot(extension.page)
     // Hosted + warming tier: chat is being read, so the channel gets the live
-    // view and its warm-up card. This fixture's refresh fails once, and until
-    // the overlay keeps the last coverage tier across a failed refresh, that
-    // failure drops the tier and the plain Not charted card shows instead.
-    // Neither may use pipeline words.
-    await assertPulseShadowContains(extension.page, /Warming.*3 \/ 5 minutes collected|Not charted/)
-    expect(await pulseShadowText(extension.page)).not.toMatch(/IRC pool|IRC chat|rollups are/)
+    // view and its warm-up card. This fixture's refresh fails once; the
+    // overlay keeps the last coverage tier across that failure (mount.tsx), so
+    // the card stays the warm-up card and never drops to a not-charted card.
+    // No pipeline words either way.
+    await assertPulseShadowContains(extension.page, /Warming.*3 \/ 5 minutes collected/)
+    const shadowText = await pulseShadowText(extension.page)
+    expect(shadowText).not.toMatch(/Not charted|Not tracked live/)
+    expect(shadowText).not.toMatch(/IRC pool|IRC chat|rollups are/)
     assertNoUncaughtErrors(evidence)
   })
 

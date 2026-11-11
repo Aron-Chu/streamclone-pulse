@@ -194,9 +194,22 @@ export const shadowStyles = `
     border-color: inherit !important;
     transform: none !important;
   }
-  .pulse-overview-chart:focus-visible,
+  .pulse-overview-chart:focus-visible {
+    outline: none !important;
+  }
+  /* Keyboard focus only (:focus-visible), so mouse users see no change. The
+     plot is an SVG rect, so its ring is a stroke on the plot's edge. */
   .pulse-overview-chart [data-chart-scrubber]:focus-visible {
     outline: none !important;
+    stroke: rgba(var(--pulse-accent-light-rgb, 196, 181, 253), 0.95);
+    stroke-width: 2px;
+  }
+  .pulse-overview-chart [data-chart-moment-marker]:focus:not(:focus-visible) {
+    outline: none;
+  }
+  .pulse-overview-chart [data-chart-moment-marker]:focus-visible {
+    outline: 2px solid rgba(var(--pulse-accent-light-rgb, 196, 181, 253), 0.95);
+    outline-offset: 2px;
   }
   .pulse-chart-legend-chip {
     transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease,
