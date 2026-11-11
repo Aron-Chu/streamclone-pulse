@@ -232,7 +232,11 @@ export const LANDING_PULSE_PAYLOAD = {
 } as LandingPulsePayload
 
 export function loadLandingPulseFixture(): LandingPulsePayload {
-  return structuredClone(LANDING_PULSE_PAYLOAD)
+  // This fixture contains only JSON data. Older browsers may not provide
+  // structuredClone, so keep the demo available there as well.
+  return typeof globalThis.structuredClone === 'function'
+    ? globalThis.structuredClone(LANDING_PULSE_PAYLOAD)
+    : JSON.parse(JSON.stringify(LANDING_PULSE_PAYLOAD)) as LandingPulsePayload
 }
 
 export function isLandingPulsePayload(value: unknown): value is LandingPulsePayload {
