@@ -1997,7 +1997,13 @@ function OverlayMain({
       ) : null}
 
       {error && !payload && !(isVodPage && error !== EXTENSION_RECONNECT_MESSAGE) ? (
-        <BackendError backendUrl={backendUrl} error={error} onRetry={() => void refreshPulse()} onSettings={openInlineSettings} />
+        <BackendError
+          backendUrl={backendUrl}
+          error={error}
+          onRetry={() => void refreshPulse()}
+          onSettings={openInlineSettings}
+          onBackToChat={sidebarBodyOnly ? () => onSidebarTabChange?.('chat', 'auto') : undefined}
+        />
       ) : null}
 
       {error && payload && panelSurfaceState !== 'identity_mismatch' ? (
@@ -2646,7 +2652,14 @@ function WarmingState({
   )
 }
 
-function BackendError({ backendUrl, error, onRetry, onSettings }: { backendUrl: string; error?: string; onRetry: () => void; onSettings: () => void }) {
+function BackendError({ backendUrl, error, onRetry, onSettings, onBackToChat }: {
+  backendUrl: string
+  error?: string
+  onRetry: () => void
+  onSettings: () => void
+  /** Shows Chat again for this visit. Absent where there is no Chat tab. */
+  onBackToChat?: () => void
+}) {
   // A disconnected tab is not an unreachable backend. Retrying and opening
   // settings both go through the same dead port, so a reload is the only thing
   // worth offering.
@@ -2661,17 +2674,26 @@ function BackendError({ backendUrl, error, onRetry, onSettings }: { backendUrl: 
       </section>
     )
   }
+  // A hosted viewer can't fix an outage in Settings, so the second way out is
+  // back to chat, as on the Not charted card; the floating panel has no Chat
+  // tab, so it keeps Retry alone. An own stack keeps Open settings, since its
+  // fix may be the backend URL.
+  const hosted = isHostedBackendUrl(backendUrl)
   return (
     <section className="pulse-error-block">
       <h2 className="pulse-error-title">Can&apos;t reach StreamPulse</h2>
       <p className="pulse-state-text">
-        {isHostedBackendUrl(backendUrl)
+        {hosted
           ? 'StreamPulse isn’t responding right now. Try again in a minute.'
           : `No response from ${backendUrl}.`}
       </p>
       <div className="pulse-footer-actions">
         <button type="button" className="pulse-secondary-button" onClick={onRetry}>Retry</button>
-        <button type="button" className="pulse-text-button-large" onClick={onSettings}>Open settings</button>
+        {!hosted ? (
+          <button type="button" className="pulse-text-button-large" onClick={onSettings}>Open settings</button>
+        ) : onBackToChat ? (
+          <button type="button" className="pulse-text-button-large" onClick={onBackToChat}>Back to chat</button>
+        ) : null}
       </div>
     </section>
   )

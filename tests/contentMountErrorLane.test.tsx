@@ -67,6 +67,10 @@ describe('content mount error lane', () => {
     expect(panelText()).not.toContain('Loading Pulse')
     expect(panelText()).not.toContain('pulse 500')
     expect(panelButtons('Retry')).toHaveLength(1)
+    // Hosted, floating panel: no Chat tab to go back to, and Settings can't fix
+    // an outage, so Retry stands alone.
+    expect(panelButtons('Back to chat')).toHaveLength(0)
+    expect(panelButtons('Open settings')).toHaveLength(0)
   })
 
   it('LIFE-1: a first load from an orphaned tab mounts the reconnect card with Reload page', async () => {
