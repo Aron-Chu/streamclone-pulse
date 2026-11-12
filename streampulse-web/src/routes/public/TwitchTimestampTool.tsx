@@ -41,7 +41,6 @@ export default function TwitchTimestampTool() {
     }
   }
   return <PublicLayout><article className="panel public-document growth-guide">
-    <p className="growth-guide__eyebrow">Free Twitch tool</p>
     <h1>Twitch VOD timestamp link builder</h1>
     <p>Share the exact time you already found in a Twitch replay. Paste a past-broadcast link, enter the player time, and copy a clean link.</p>
     <p>This works in your browser. It does not upload your inputs, search a video, or check whether a replay is available.</p>

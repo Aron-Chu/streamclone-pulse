@@ -233,7 +233,7 @@ test.describe('StreamPulse final visual, interaction & failure-state audit', () 
     await openTwitchChannel(extension.page)
     await waitForPulseRoot(extension.page)
 
-    // The failed first load shows the outage card (with its own "Open settings"), not an endless "Loading Pulse".
+    // The failed first load shows the outage card (Retry, and Back to chat in the sidebar), not an endless "Loading Pulse".
     await expect(
       extension.page.locator(`#${PULSE_ROOT_ID}`).getByRole('heading', { name: "Can't reach StreamPulse" }),
     ).toBeVisible()

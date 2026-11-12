@@ -274,6 +274,25 @@ describe('route change scroll (OP1-FUN-008)', () => {
     expect(scrollTo).not.toHaveBeenCalled()
   })
 
+  it('opens a closed fold for a native #fragment link without scrolling', async () => {
+    const navigator = { createHref: () => '', go: () => {}, push: () => {}, replace: () => {} } as unknown as Navigator
+    const at = (hash: string) => (
+      <Router location={{ pathname: '/docs', search: '', hash, state: null, key: 'default' }} navigationType={NavigationType.Pop} navigator={navigator}>
+        <RouteScrollManager />
+        <main><section id="first">First</section><details><summary>More</summary><section id="inside">Inside</section></details></main>
+      </Router>
+    )
+    const view = render(at('#first'))
+    await settleMicrotasks()
+    runFrames(120)
+    scrollIntoView.mockClear()
+    view.rerender(at('#inside'))
+    await settleMicrotasks()
+    runFrames(120)
+    expect(document.getElementById('inside')!.closest('details')!.open).toBe(true)
+    expect(scrollIntoView).not.toHaveBeenCalled()
+  })
+
   it('animates an in-page hash change unless the reader prefers reduced motion', async () => {
     renderApp('/docs')
     await settleMicrotasks()

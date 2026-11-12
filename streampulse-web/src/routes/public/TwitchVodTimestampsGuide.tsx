@@ -5,7 +5,6 @@ import './growth-guides.css'
 
 export default function TwitchVodTimestampsGuide() {
   return <PublicLayout><article className="panel public-document growth-guide">
-    <p className="growth-guide__eyebrow">Twitch replay guide</p>
     <h1>Twitch VOD availability and timestamps explained</h1>
     <p>A timestamp identifies a position in one recording. It cannot make an expired or restricted recording playable. Check the source first, then the time.</p>
     <h2>Why a replay link can stop working</h2>

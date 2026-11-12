@@ -62,7 +62,7 @@ export default function Support() {
             </div>
           </section>
 
-          <section className="mt-8 rounded-xl border border-white/[0.08] bg-black/20 p-6">
+          <section className="mt-8 border-t border-white/[0.08] pt-6">
             <h2 className="!mt-0">Extension not appearing on Twitch</h2>
             <ol className="mt-3 space-y-2 text-sm text-zinc-300">
               <li>

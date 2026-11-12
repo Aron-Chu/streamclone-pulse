@@ -82,6 +82,23 @@ describe('public Status', () => {
     expect(rows()).toEqual({ 'Website': 'Working', 'Live chat tracking': 'Down', 'Twitch panel data': 'Down' })
   })
 
+  it('reads a network failure as "Couldn\'t check", never Down, and offers Retry', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')))
+    render(<MemoryRouter><Status /></MemoryRouter>)
+    await screen.findByRole('button', { name: 'Retry' })
+    expect(Object.values(rows())).toEqual(['Couldn\'t check', 'Couldn\'t check', 'Couldn\'t check'])
+    expect(document.body.textContent).not.toMatch(/\bDown\b/)
+  })
+
+  it('keeps a reported "down" as Down when only the panel check could not run', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(response({ status: 'down', components: { api: 'operational', corpus: 'operational', coverage: 'degraded' } }))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch')))
+    render(<MemoryRouter><Status /></MemoryRouter>)
+    await waitFor(() => expect(overall()).toBe('Down'))
+    expect(screen.getByTestId('status-overall').className).toContain('red')
+  })
+
   it('never reads a panel as working while its coverage is unknown', async () => {
     vi.stubGlobal('fetch', vi.fn()
       .mockResolvedValueOnce(response({ status: 'operational', components: { api: 'operational', corpus: 'operational' } }))
