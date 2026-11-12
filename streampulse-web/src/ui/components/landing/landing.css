@@ -881,24 +881,9 @@
   align-items: center;
 }
 
-.sl-xtour__eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.34rem 0.74rem;
-  border: 1px solid hsl(var(--sc-chart-2) / 0.35);
-  border-radius: 999px;
-  color: hsl(var(--sc-chart-2));
-  background: hsl(var(--sc-chart-2) / 0.08);
-  font-size: 0.7rem;
-  font-weight: 900;
-  letter-spacing: 0.13em;
-  text-transform: uppercase;
-}
-
 .sl-xtour__steps {
   list-style: none;
-  margin: 1.4rem 0 0;
+  margin: 0;
   padding: 0;
   display: grid;
   gap: 0.4rem;
@@ -907,28 +892,23 @@
 .sl-xtour__step {
   display: grid;
   gap: 0.28rem;
-  padding: 0.75rem 0 0.75rem 1rem;
-  border-left: 2px solid hsl(var(--sc-border));
-  /* Dimmed, but its text still reads at 4.5:1: the kicker is grey until its step is active. */
+  padding: 0.75rem 0;
+  /* Dimmed, but its text still reads at 4.5:1; the active step's title takes the accent colour. */
   opacity: 0.8;
-  --sl-step-kicker: var(--sc-muted-foreground);
 }
 
 .sl-xtour[data-step='1'] .sl-xtour__step[data-step='1'],
 .sl-xtour[data-step='2'] .sl-xtour__step[data-step='2'],
 .sl-xtour[data-step='3'] .sl-xtour__step[data-step='3'],
 .sl-xtour[data-step='4'] .sl-xtour__step[data-step='4'] {
-  border-left-color: hsl(var(--sc-chart-2));
   opacity: 1;
-  --sl-step-kicker: var(--sc-chart-2);
 }
 
-.sl-xtour__step-kicker {
-  color: hsl(var(--sl-step-kicker));
-  font-size: 0.75rem;
-  font-weight: 900;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+.sl-xtour[data-step='1'] .sl-xtour__step[data-step='1'] .sl-xtour__step-title,
+.sl-xtour[data-step='2'] .sl-xtour__step[data-step='2'] .sl-xtour__step-title,
+.sl-xtour[data-step='3'] .sl-xtour__step[data-step='3'] .sl-xtour__step-title,
+.sl-xtour[data-step='4'] .sl-xtour__step[data-step='4'] .sl-xtour__step-title {
+  color: hsl(var(--sc-chart-2));
 }
 
 .sl-xtour__step-title {
@@ -1082,6 +1062,13 @@
 
 @media (max-width: 719px) {
   .sl-foot { grid-template-columns: minmax(0, 1fr); }
+  .sl-foot__links { gap: 0; }
+  .sl-foot__head { display: flex; align-items: center; min-height: 32px; }
+  .sl-foot__links a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
 }
 
 @media (max-width: 420px) {
@@ -1112,9 +1099,7 @@
   gap: 0.75rem 1.5rem;
 }
 .sl-xtour[data-static] .sl-xtour__step[data-step] {
-  border-left-color: hsl(var(--sc-chart-2) / 0.35);
   opacity: 1;
-  --sl-step-kicker: var(--sc-chart-2);
 }
 .sl-xtour[data-static] .sl-ext__scrollport,
 .sl-xtour[data-static] .sl-ext__scrollport.is-playing {
