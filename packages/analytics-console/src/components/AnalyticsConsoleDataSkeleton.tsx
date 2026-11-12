@@ -3,6 +3,8 @@
  * 730 px at 640-719 px; 830 px from 720 px, where the plot grows from 340 to 440 px), so Stream Recap and the
  * Moments tabs under it do not jump when the chart lands on one-column widths. From 1280 px the columns sit
  * side by side and only the footer is below it. 610 and 720 px have no named breakpoint.
+ *
+ * A readout-styled loading line paints before the data; its text stays out of the spoken status.
  */
 export function AnalyticsConsoleDataSkeleton() {
   return (
@@ -13,7 +15,16 @@ export function AnalyticsConsoleDataSkeleton() {
       className="flex min-h-[48.125rem] min-[610px]:min-h-[46.125rem] sm:min-h-[45.625rem] min-[720px]:min-h-[51.875rem] animate-pulse flex-col rounded border border-white/[0.07] bg-white/[0.025] p-4"
     >
       <span className="sr-only">Loading analytics chart</span>
-      <div className="flex min-h-80 flex-1 flex-col justify-between gap-6" aria-hidden="true">
+      <div className="ssc-head" aria-hidden="true">
+        <div className="ssc ssc-top">
+          <div className="ssc-ro-row">
+            <p className="ssc-ro" data-console-skeleton-readout="">
+              Latest · loading viewers, chat and emotes for every minute of this stream
+            </p>
+          </div>
+        </div>
+      </div>
+      <div className="flex min-h-72 flex-1 flex-col justify-between gap-6" aria-hidden="true">
         <div className="space-y-3">
           <div className="h-4 w-40 rounded bg-zinc-800/80" />
           <div className="h-3 w-64 max-w-full rounded bg-zinc-800/60" />

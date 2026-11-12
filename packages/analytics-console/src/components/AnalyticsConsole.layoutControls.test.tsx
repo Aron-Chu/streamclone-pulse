@@ -228,6 +228,11 @@ describe('AnalyticsConsole data skeleton', () => {
     expect(status.className).toMatch(/ min-\[610px\]:min-h-\[46\.125rem\]/)
     expect(status.className).toMatch(/ sm:min-h-\[45\.625rem\]/)
     expect(status.className).toMatch(/ min-\[720px\]:min-h-\[51\.875rem\]/)
+    // The readout's place holds a loading line in the readout's style, kept out of the status's spoken text.
+    const readout = status.querySelector('[data-console-skeleton-readout]')!
+    expect(readout.className).toBe('ssc-ro')
+    expect(readout.textContent?.trim()).toBe('Latest · loading viewers, chat and emotes for every minute of this stream')
+    expect(readout.closest('[aria-hidden="true"]')).not.toBeNull()
     expect(screen.getByRole('heading', { level: 1 })).not.toBeNull()
     expect(screen.queryByRole('alert')).toBeNull()
   })
