@@ -33,11 +33,9 @@ export function MiniDock({
 }: MiniDockProps) {
   const rollups = payload ? chartRollupSeries(payload) : []
   const heatValues = chatSeriesFromRollups(rollups).slice(-MINI_HEAT_BARS)
-  const statusLabel = tracking
-    ? isLive
-      ? `Tracking ${login}`
-      : `Tracking ${login}`
-    : 'Not tracking'
+  // The dock sits on the channel's own page, so the name only goes in the tooltip.
+  const statusLabel = tracking ? 'Tracking' : 'Not tracking'
+  const statusTitle = tracking ? `Tracking ${login}` : `Not tracking ${login}`
 
   return (
     <section
@@ -57,7 +55,7 @@ export function MiniDock({
             className={`pulse-mini-dot${tracking ? ' pulse-mini-dot-live' : ''}${tracking && isLive ? ' pulse-live-dot' : ''}`}
             aria-hidden
           />
-          <span className="pulse-mini-status-text">{statusLabel}</span>
+          <span className="pulse-mini-status-text" title={statusTitle}>{statusLabel}</span>
         </span>
         <MiniHeatStrip values={heatValues} />
       </button>

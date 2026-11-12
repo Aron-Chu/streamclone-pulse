@@ -133,7 +133,8 @@ export function panelComponentCss(): string {
   .pulse-mini-status-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pulse-mini-dot { background: ${theme.textMuted}; border-radius: 999px; display: inline-block; flex-shrink: 0; height: 7px; width: 7px; }
   .pulse-mini-dot-live { background: ${theme.live}; }
-  .pulse-mini-heat { align-items: flex-end; display: flex; flex: 1 1 96px; gap: 3px; height: 28px; justify-content: flex-end; margin-left: auto; max-width: 168px; min-width: 72px; }
+  /* The strip takes only the room left after the status (basis 0), dropping its oldest bars on the left, so "Tracking" never cuts to "Tr…". */
+  .pulse-mini-heat { align-items: flex-end; display: flex; flex: 1 1 0; gap: 3px; height: 28px; justify-content: flex-end; margin-left: auto; max-width: 168px; min-width: 0; overflow: hidden; }
   .pulse-mini-heat-bar { border-radius: 3px; display: block; flex: 1 1 4px; max-width: 8px; min-width: 3px; transform-origin: bottom center; }
   .pulse-mini-heat-ghost { background: rgba(139, 92, 246, 0.14); border-radius: 3px; display: block; flex: 1 1 4px; height: 22%; max-width: 8px; min-width: 3px; }
   .pulse-mini-dock-actions { align-items: center; display: flex; flex-shrink: 0; gap: 2px; }
@@ -173,7 +174,8 @@ export function panelComponentCss(): string {
   .pulse-insp-emote-name { color: #fafafc; font-size: 9.5px; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pulse-insp-emote-count { color: #8b8ba0; flex-shrink: 0; font-size: 9px; font-weight: 700; }
 
-  .pulse-vp-toolbar { align-items: center; display: flex; gap: 5px; min-height: 30px; min-width: 0; width: 100%; }
+  /* Wraps when Retry full history or Load full history needs the room, so Spikes and Expand drop to a second row instead of off the edge. */
+  .pulse-vp-toolbar { align-items: center; display: flex; flex-wrap: wrap; gap: 5px; min-height: 30px; min-width: 0; row-gap: 6px; width: 100%; }
   .pulse-vp-range { display: inline-flex; flex-shrink: 0; }
   .pulse-vp-aux { align-items: center; display: inline-flex; flex: 0 0 auto; gap: 4px; min-width: 0; overflow: visible; white-space: nowrap; }
   .pulse-vp-expand { display: inline-flex; flex: 0 0 auto; margin-left: auto; }

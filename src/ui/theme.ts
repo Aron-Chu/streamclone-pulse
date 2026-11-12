@@ -506,11 +506,15 @@ export const shadowStyles = `
     outline: 2px solid rgba(103, 232, 249, 0.95);
     outline-offset: 1px;
   }
+  /* Sticks to the bottom while there is more below; at the end of the panel it
+     takes its own room after the last item, so it never covers that item. */
   .pulse-bookmark-toast-anchor {
     bottom: 0;
-    height: 0;
     position: sticky;
     z-index: 30;
+  }
+  .pulse-bookmark-toast-anchor:has(> .pulse-bookmark-toast) {
+    padding-bottom: 8px;
   }
   .pulse-bookmark-toast {
     align-items: center;
@@ -518,16 +522,12 @@ export const shadowStyles = `
     background: #1d1d27;
     border: 1px solid rgba(255, 255, 255, 0.14);
     border-radius: 10px;
-    bottom: 8px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
     color: #e4e4e7;
     display: flex;
     font-size: 11.5px;
     gap: 10px;
-    left: 0;
     padding: 8px 10px;
-    position: absolute;
-    right: 0;
   }
   .pulse-bookmark-toast[data-bookmark-toast="error"] {
     border-color: rgba(248, 113, 113, 0.45);

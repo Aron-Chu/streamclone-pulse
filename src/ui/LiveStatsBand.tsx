@@ -1186,8 +1186,12 @@ export function LiveStatsBand({
   const viewerMetricValue = stats.viewerState === 'stale' ? null : stats.currentViewers
   const viewerMetricMeta = stats.viewerState === 'stale' && liveMetadata?.viewerCount != null
     ? `Last known ${formatNumber(liveMetadata.viewerCount)} · ${formatFreshnessAge(liveMetadata.freshnessSeconds)}`
-    // While viewer data is delayed a 5m change of 0 means no data, not no change.
-    : `${formatSignedDelta(viewerPaused ? null : stats.viewerDelta5m)} · 5m${stats.viewerState === 'unknown' ? ' · unavailable' : ''}`
+    // A count of unknown age has no 5m change; saying only "unavailable" under
+    // the count read as if the count itself were missing.
+    : stats.viewerState === 'unknown' && stats.currentViewers != null
+      ? '5m change unknown'
+      // While viewer data is delayed a 5m change of 0 means no data, not no change.
+      : `${formatSignedDelta(viewerPaused ? null : stats.viewerDelta5m)} · 5m${stats.viewerState === 'unknown' ? ' · unavailable' : ''}`
 
   return (
     <PulseSectionCard

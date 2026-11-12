@@ -21,6 +21,24 @@ import { installWheelDebug, noteWheelOutcome } from './chartWheelDebug.ts'
  * Icons are inline copies of the Lucide glyphs the hub used (ISC licence),
  * so this package does not need lucide-react.
  */
+/** Touch-only screens have no wheel, so the scroll wording would send people looking for one. */
+const TOUCH_ONLY_MQ = '(hover: none) and (pointer: coarse)'
+const TOUCH_HINT ='Tap + or − to zoom · Drag the purple bar to pick a span'
+function subscribeTouchOnly(onChange: () => void): () => void {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return () => {}
+  const query = window.matchMedia(TOUCH_ONLY_MQ)
+  query?.addEventListener?.('change', onChange)
+  return () => query?.removeEventListener?.('change', onChange)
+}
+function touchOnlySnapshot(): boolean {
+  return typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && Boolean(window.matchMedia(TOUCH_ONLY_MQ)?.matches)
+}
+function useTouchOnlyScreen(): boolean {
+  return useSyncExternalStore(subscribeTouchOnly, touchOnlySnapshot, () => false)
+}
+
 type IconNode = ReadonlyArray<readonly [tag: 'path' | 'rect' | 'line' | 'circle', attrs: Record<string, string>]>
 
 function navigatorIcon(name: string, nodes: IconNode) {
@@ -1115,9 +1133,12 @@ export function ChartNavigator({
   useLayoutEffect(() => {
     if (withInfo && isFullRange && document.activeElement === resetButtonRef.current) zoomInButtonRef.current?.focus()
   }, [isFullRange, withInfo])
-  const scrollHint = scrollZoomEnabled
-    ? 'Scroll over the chart to zoom · Shift + scroll to pan · Drag the purple bar to pick a span'
-    : 'Scroll zoom is off: the wheel scrolls the page · Hold Alt and scroll to zoom · Shift + scroll to pan'
+  const touchOnly = useTouchOnlyScreen()
+  const scrollHint = touchOnly
+    ? TOUCH_HINT
+    : scrollZoomEnabled
+      ? 'Scroll over the chart to zoom · Shift + scroll to pan · Drag the purple bar to pick a span'
+      : 'Scroll zoom is off: the wheel scrolls the page · Hold Alt and scroll to zoom · Shift + scroll to pan'
   const hint = <small className="hx-chart-navigator__hint">{scrollHint}</small>
   const selectedButton = selectedOutsideView
     ? <button type="button" onClick={(event) => { event.stopPropagation(); showSelectedBucket() }}><LocateFixed size={isD3 ? 16 : 15} aria-hidden="true" />{selectedLabel}</button>
