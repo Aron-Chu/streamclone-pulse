@@ -118,6 +118,21 @@ test.describe('chart preview/lock interactions', () => {
       .poll(async () => (await probeChart(extension.page)).svg, { timeout: 20_000 })
       .not.toBeNull()
 
+    // The panel settles about 3 px sideways just after the chart mounts. Measure
+    // once it stops, or the second click can land on the neighbouring bucket.
+    let lastX = Number.NaN
+    await expect
+      .poll(
+        async () => {
+          const x = (await probeChart(extension.page)).svg?.x ?? Number.NaN
+          const settled = x === lastX
+          lastX = x
+          return settled
+        },
+        { timeout: 5_000, intervals: [150] },
+      )
+      .toBe(true)
+
     const probe = await probeChart(extension.page)
     expect(probe.svg).not.toBeNull()
     const box = probe.svg!
