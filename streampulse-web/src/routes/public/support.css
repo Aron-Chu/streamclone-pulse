@@ -192,7 +192,9 @@ textarea.feedback-input { min-height: 118px; resize: vertical; line-height: 1.5;
 .app-shell .feedback-public:not(.feedback-public--plain) { border: 1px dashed #3f3f46; }
 .app-shell :is(.feedback-public, .feedback-off) .sc-btn--outline { border: 1px solid #3f3f46; }
 
-/* /support: the card that sends readers to /feedback. */
+/* /support: the card that sends readers to /feedback reads as part of the page, not a second box. */
+.app-shell .feedback-link-card { width: 100%; margin: 0; padding: 0 0 1.75rem; border: 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08); border-radius: 0; background: none; box-shadow: none; }
+.feedback-link-card::before { content: none; }
 .feedback-link-card { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem 1.5rem; }
 .feedback-link-card__text { flex: 1 1 18rem; min-width: 0; }
 .feedback-link-card .feedback-card__title { font-size: 1.45rem; }

@@ -29,7 +29,7 @@ export default function Docs() {
         </nav>
 
         {/* Extension Installation */}
-        <section id="extension" aria-labelledby="extension-title" className="mt-8 rounded-xl border border-white/[0.08] bg-white/[0.02] p-6">
+        <section id="extension" aria-labelledby="extension-title" className="mt-8 border-t border-white/[0.08] pt-6">
           <h2 id="extension-title" className="!mt-0 text-xl font-bold text-white">1. Install the StreamPulse extension</h2>
           <p className="mt-2 text-zinc-300">
             For Chrome and Brave, use the Chrome Web Store. For Edge, use Edge Add-ons. For Firefox, use Firefox Add-ons.
@@ -84,8 +84,8 @@ export default function Docs() {
           <p className="text-zinc-400">
             Coverage describes the selected measurement window, not a guarantee that every minute of the broadcast was captured. Live status and data freshness are separate:
           </p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
-            <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.04] p-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4">
+            <div>
               <div className="flex items-center gap-2">
                 <span className="h-2 w-2 rounded-full bg-emerald-400" />
                 <span className="font-bold text-emerald-300 uppercase text-xs font-mono">Synced</span>
@@ -94,7 +94,7 @@ export default function Docs() {
                 Minute-level signals are available. Check the window and coverage counts; synced does not necessarily mean the whole broadcast is complete.
               </p>
             </div>
-            <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.04] p-4">
+            <div>
               <div className="flex items-center gap-2">
                 <span className="h-2 w-2 rounded-full bg-amber-400" />
                 <span className="font-bold text-amber-300 uppercase text-xs font-mono">Collecting</span>
@@ -103,7 +103,7 @@ export default function Docs() {
                 New measurements are arriving. Earlier minutes may still be missing.
               </p>
             </div>
-            <div className="rounded-lg border border-violet-500/20 bg-violet-500/[0.04] p-4">
+            <div>
               <div className="flex items-center gap-2">
                 <span className="h-2 w-2 rounded-full bg-violet-400" />
                 <span className="font-bold text-violet-300 uppercase text-xs font-mono">Partial</span>
@@ -114,7 +114,7 @@ export default function Docs() {
             </div>
           </div>
         </section>
-        <details className="mt-8 rounded-lg border border-white/[0.08] px-4 py-3">
+        <details className="mt-8 border-t border-white/[0.08] pt-4">
           <summary className="cursor-pointer font-semibold text-zinc-200">Developer reference</summary>
           <div id="api" className="pt-3 text-sm text-zinc-400">
             <p>These read-only aggregate endpoints power the portal. Respect rate limits and cache responses; no media access or creator permissions are granted by public analytics.</p>

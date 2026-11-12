@@ -306,10 +306,13 @@ select {
 /* Privacy and Terms (FoldedSections): each section folds under its heading, in the
    look of the Docs "Developer reference" fold: its border, radius and padding. */
 .public-document .public-fold {
-  margin-top: 0.75rem;
-  padding: 0 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 0.5rem;
+  margin-top: 0;
+  padding: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.public-document .alert {
+  max-width: none;
 }
 
 .public-document .public-fold > summary {

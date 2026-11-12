@@ -42,15 +42,6 @@
 .pulse-account form .pulse-account-intro { margin-bottom: 4px; }
 .pulse-account .pulse-account-code-help { margin: 0 0 12px; font-size: 14px; }
 
-.pulse-account .pulse-account-pilot {
-  margin: 0 0 12px;
-  padding: 14px 16px;
-  border: 1px solid #34313f;
-  border-radius: 12px;
-  background: #1c1a25;
-  font-size: 14px;
-}
-
 .pulse-account label { color: #e4e4ed; font-size: 14px; font-weight: 500; }
 
 .pulse-account input {
@@ -225,8 +216,7 @@
    #9146FF (hover #772CE8) with the white Glitch; white text is 4.6:1. */
 .pulse-account-twitch { display: grid; gap: 12px; margin-bottom: 8px; }
 .pulse-account-twitch .pulse-account-intro { margin-bottom: 4px; }
-.pulse-account-twitch .pulse-account-privacy,
-.pulse-account-twitch .pulse-account-pilot { margin: 0; }
+.pulse-account-twitch .pulse-account-privacy { margin: 0; }
 .pulse-account .pulse-account-twitch-button {
   min-height: 48px;
   border-color: #9146ff;

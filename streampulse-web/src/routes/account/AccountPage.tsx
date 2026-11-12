@@ -99,6 +99,7 @@ function SignInForm({ returnTo, heading, intro = 'We’ll email you a link. No p
   // The pilot notice is the same static text for every address, before and after
   // sending, so it never reveals whether a given address is on the tester list.
   return <><h1>{heading(sent)}</h1>
+    <p className="pulse-account-intro" data-testid="pilot-sign-in-note">{PILOT_SIGN_IN_NOTE}</p>
     {!sent && lead ? lead : null}
     {!sent && withTwitch ? <div className="pulse-account-twitch" data-testid="twitch-sign-in">
       <p className="pulse-account-intro">Keeps your saves, notes and watched streams together, on the site and in the extension.</p>
@@ -112,9 +113,9 @@ function SignInForm({ returnTo, heading, intro = 'We’ll email you a link. No p
         <Link to={PRIVACY_PATH}>privacy policy</Link> and <Link to={TERMS_PATH}>terms of use</Link>.
       </p>
     </div> : null}
-    {sent ? <div role="status"><p className="pulse-account-intro">Open the sign-in link in this browser, then confirm. The link expires after 15 minutes.</p>{sentDetail ? <p className="pulse-account-waiting" data-testid="sign-in-waiting"><span className="pulse-account-spinner" aria-hidden="true" />{sentDetail}</p> : null}<p className="pulse-account-pilot" data-testid="pilot-sign-in-note">{PILOT_SIGN_IN_NOTE}</p><button onClick={() => setSent(false)}>Use another email</button></div>
+    {sent ? <div role="status"><p className="pulse-account-intro">Open the sign-in link in this browser, then confirm. The link expires after 15 minutes.</p>{sentDetail ? <p className="pulse-account-waiting" data-testid="sign-in-waiting"><span className="pulse-account-spinner" aria-hidden="true" />{sentDetail}</p> : null}<button onClick={() => setSent(false)}>Use another email</button></div>
       : !emailOpen ? null
-      : <form id={emailFormId} onSubmit={submit}><p className="pulse-account-intro">{intro}</p><p className="pulse-account-pilot" data-testid="pilot-sign-in-note">{PILOT_SIGN_IN_NOTE}</p><label htmlFor="account-email">Email address</label>
+      : <form id={emailFormId} onSubmit={submit}><p className="pulse-account-intro">{intro}</p><label htmlFor="account-email">Email address</label>
         <input ref={emailInput} id="account-email" type="email" autoComplete="email" required maxLength={254} value={email} onChange={event => setEmail(event.target.value)} disabled={busy} />
         <button className="pulse-account-primary" disabled={busy}>{busy ? 'Sending…' : 'Send sign-in link'}</button>
         {/* The policy has to be reachable where the address is actually asked
