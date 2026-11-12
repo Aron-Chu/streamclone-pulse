@@ -20,7 +20,7 @@ export const theme = {
   panelGlass: 'rgba(17, 17, 23, 0.92)',
   textPrimary: '#fafafc',
   textSecondary: '#a1a1b2',
-  textMuted: '#8b8ba0',
+  textMuted: '#9090a5',
   accent: accentTokens.accent,
   accentStrong: accentTokens.accentStrong,
   accentSoft: accentTokens.accentSoft,

@@ -406,7 +406,7 @@ function ChannelPulse({ summary }: { summary: PopupChannelSummary }) {
             </div>
           ) : null}
           {summary.topEmote ? (
-            <div className="pp-stat">
+            <div className="pp-stat pp-stat-wide">
               <dt>Top emote · this stream</dt>
               <dd>
                 {summary.topEmote.imageUrl ? <img className="pp-emote" src={summary.topEmote.imageUrl} alt="" /> : null}

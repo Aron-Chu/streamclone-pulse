@@ -127,6 +127,7 @@ button { font: inherit; color: inherit; }
 
 .pp-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0 0; }
 .pp-stat { min-width: 0; padding: 6px 10px; border-radius: 8px; background: var(--pp-well); }
+.pp-stat-wide { grid-column: 1 / -1; }
 .pp-stat dt { font-size: 11px; font-weight: 600; color: var(--pp-text-3); }
 .pp-stat dd { margin: 2px 0 0; display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .pp-stat dd span { overflow: hidden; text-overflow: ellipsis; }
