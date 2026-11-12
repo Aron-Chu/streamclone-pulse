@@ -82,8 +82,10 @@ export default function Status() {
   const statusState: State = statusProbe.error ? probeState(statusProbe) : normalizedState(statusProbe.data?.status)
   const componentStates = Object.values(statusProbe.data?.components ?? {}).map(normalizedState)
   const probeFailures = [statusProbe, healthProbe].filter(probe => probe.error)
+  // A check that could not run never hides a "down" the status answer already gave.
   const overall: State = loading ? 'unknown'
-    : probeFailures.some(probe => !probe.unchecked) || componentStates.includes('unavailable') ? 'unavailable'
+    : probeFailures.some(probe => !probe.unchecked) || componentStates.includes('unavailable') ||
+      (probeFailures.length > 0 && statusState === 'unavailable') ? 'unavailable'
     : probeFailures.length ? 'unchecked'
     : statusProbe.data?.degraded || healthProbe.data?.ok === false || componentStates.includes('degraded') ? 'degraded'
     : statusState === 'operational' && healthProbe.data?.ok === true ? 'operational' : statusState === 'operational' ? 'unknown' : statusState
